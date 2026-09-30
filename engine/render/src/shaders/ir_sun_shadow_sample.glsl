@@ -13,6 +13,11 @@
 #include "ir_sun_projection.glsl"
 #include "ir_sun_face_query_layout.glsl"
 
+#ifndef IR_SUN_FACE_OVERFLOW_REFERENCE
+#define IR_SUN_FACE_OVERFLOW_REFERENCE 0
+#endif
+const uint kSourceFaceOverflowReferenceBudget = 256u;
+
 const float kNormalBiasVoxels = 0.5;
 const float kShadowBiasTexelScale = 2.0;
 const float kShadowBiasSlopeMin = 0.05;
@@ -52,7 +57,8 @@ float sampleCascadeShadow(
     vec2 origin, vec2 texelSz, int bufferOffset, float maxShadowThrow, bool surfaceReceiver, vec4 casterViewToWorld,
     vec3 pcfOffset
 ) {
-    const bool hasSourceFaces = sunDepthBuf[sourceFaceHeaderIndex(uint(sunDepthBuf.length()))] != 0u;
+    const uint sourceFaceCount = sunDepthBuf[sourceFaceHeaderIndex(uint(sunDepthBuf.length()))];
+    const bool hasSourceFaces = sourceFaceCount != 0u;
     bool sourceQueryComplete = !hasSourceFaces;
     if (surfaceReceiver && hasSourceFaces) {
         const ivec2 tile = ivec2(floor((sunUV - origin) / (texelSz * float(kSourceFaceTileEdge))));
@@ -62,9 +68,16 @@ float sampleCascadeShadow(
             const uint tileBase = sourceFaceTileBase(tileIndex);
             const uint count = sunDepthBuf[tileBase];
             sourceQueryComplete = sourceFaceQueryComplete(count);
+            // A complete small record pool is an exact reference for an incomplete tile.
+            const bool queryAllFaces = IR_SUN_FACE_OVERFLOW_REFERENCE != 0
+                && !sourceQueryComplete && sourceFaceCount <= kSourceFaceOverflowReferenceBudget
+                && sourceFaceCount <= kSourceFaceCapacity;
+            sourceQueryComplete = sourceQueryComplete || queryAllFaces;
+            const uint candidateCount = queryAllFaces ? sourceFaceCount : count;
             if (sourceQueryComplete && dot(normal, sunDir) > 0.0) {
-                for (uint candidate = 0; candidate < count; ++candidate) {
-                    const uint record = kSourceFaceRecordOffset + kSourceFaceRecordWords * sunDepthBuf[tileBase + 1u + candidate];
+                for (uint candidate = 0; candidate < candidateCount; ++candidate) {
+                    const uint faceIndex = queryAllFaces ? candidate : sunDepthBuf[tileBase + 1u + candidate];
+                    const uint record = kSourceFaceRecordOffset + kSourceFaceRecordWords * faceIndex;
                     const vec3 corner = vec3(uintBitsToFloat(sunDepthBuf[record]), uintBitsToFloat(sunDepthBuf[record+1u]), uintBitsToFloat(sunDepthBuf[record+2u]));
                     const vec3 edgeU = vec3(uintBitsToFloat(sunDepthBuf[record+3u]), uintBitsToFloat(sunDepthBuf[record+4u]), uintBitsToFloat(sunDepthBuf[record+5u]));
                     const vec3 edgeV = vec3(uintBitsToFloat(sunDepthBuf[record+6u]), uintBitsToFloat(sunDepthBuf[record+7u]), uintBitsToFloat(sunDepthBuf[record+8u]));

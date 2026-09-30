@@ -1,0 +1,1334 @@
+{
+  "captures/before/count128-oblique-sun/sun-face-index-0.csv.gz": {
+    "face_records_requested": 387,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 11383,
+        "incomplete_tiles": 187,
+        "max_counter": 374
+      },
+      {
+        "occupied_tiles": 9242,
+        "incomplete_tiles": 156,
+        "max_counter": 381
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 74,
+        "y": 69,
+        "counter": 92,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 64,
+        "counter": 65,
+        "complete": false
+      }
+    ]
+  },
+  "captures/before/count128-oblique-sun/sun-face-index-1.csv.gz": {
+    "face_records_requested": 387,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 5616,
+        "incomplete_tiles": 190,
+        "max_counter": 371
+      },
+      {
+        "occupied_tiles": 4706,
+        "incomplete_tiles": 86,
+        "max_counter": 385
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 3,
+        "y": 50,
+        "counter": 44,
+        "complete": true
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 63,
+        "counter": 140,
+        "complete": false
+      }
+    ]
+  },
+  "captures/before/count128-oblique-sun/sun-face-index-2.csv.gz": {
+    "face_records_requested": 387,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 3953,
+        "incomplete_tiles": 143,
+        "max_counter": 377
+      },
+      {
+        "occupied_tiles": 2766,
+        "incomplete_tiles": 54,
+        "max_counter": 385
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 20,
+        "y": 107,
+        "counter": 83,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 63,
+        "counter": 84,
+        "complete": false
+      }
+    ]
+  },
+  "captures/before/count128-oblique-sun/sun-face-index-3.csv.gz": {
+    "face_records_requested": 387,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 3999,
+        "incomplete_tiles": 171,
+        "max_counter": 384
+      },
+      {
+        "occupied_tiles": 3399,
+        "incomplete_tiles": 65,
+        "max_counter": 378
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 89,
+        "y": 126,
+        "counter": 107,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 64,
+        "counter": 45,
+        "complete": true
+      }
+    ]
+  },
+  "captures/reference/count63/sun-face-index-0.csv.gz": {
+    "face_records_requested": 64,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 0,
+        "max_counter": 64
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 0,
+        "max_counter": 64
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 100,
+        "y": 27,
+        "counter": 64,
+        "complete": true
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 64,
+        "counter": 64,
+        "complete": true
+      }
+    ]
+  },
+  "captures/reference/count63/sun-face-index-1.csv.gz": {
+    "face_records_requested": 64,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 0,
+        "max_counter": 64
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 0,
+        "max_counter": 64
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 27,
+        "y": 27,
+        "counter": 64,
+        "complete": true
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 63,
+        "counter": 64,
+        "complete": true
+      }
+    ]
+  },
+  "captures/reference/count63/sun-face-index-2.csv.gz": {
+    "face_records_requested": 64,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 0,
+        "max_counter": 64
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 0,
+        "max_counter": 64
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 27,
+        "y": 100,
+        "counter": 64,
+        "complete": true
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 63,
+        "counter": 64,
+        "complete": true
+      }
+    ]
+  },
+  "captures/reference/count63/sun-face-index-3.csv.gz": {
+    "face_records_requested": 64,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 0,
+        "max_counter": 64
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 0,
+        "max_counter": 64
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 100,
+        "y": 100,
+        "counter": 64,
+        "complete": true
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 64,
+        "counter": 64,
+        "complete": true
+      }
+    ]
+  },
+  "captures/reference/count64/sun-face-index-0.csv.gz": {
+    "face_records_requested": 65,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 132,
+        "max_counter": 65
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 56,
+        "max_counter": 65
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 100,
+        "y": 27,
+        "counter": 65,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 64,
+        "counter": 65,
+        "complete": false
+      }
+    ]
+  },
+  "captures/reference/count64/sun-face-index-1.csv.gz": {
+    "face_records_requested": 65,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 132,
+        "max_counter": 65
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 56,
+        "max_counter": 65
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 27,
+        "y": 27,
+        "counter": 65,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 63,
+        "counter": 65,
+        "complete": false
+      }
+    ]
+  },
+  "captures/reference/count64/sun-face-index-2.csv.gz": {
+    "face_records_requested": 65,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 120,
+        "max_counter": 65
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 56,
+        "max_counter": 65
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 27,
+        "y": 100,
+        "counter": 65,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 63,
+        "counter": 65,
+        "complete": false
+      }
+    ]
+  },
+  "captures/reference/count64/sun-face-index-3.csv.gz": {
+    "face_records_requested": 65,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 132,
+        "max_counter": 65
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 56,
+        "max_counter": 65
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 100,
+        "y": 100,
+        "counter": 65,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 64,
+        "counter": 65,
+        "complete": false
+      }
+    ]
+  },
+  "captures/reference/count128/sun-face-index-0.csv.gz": {
+    "face_records_requested": 129,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 144,
+        "max_counter": 129
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 64,
+        "max_counter": 129
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 100,
+        "y": 27,
+        "counter": 129,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 64,
+        "counter": 129,
+        "complete": false
+      }
+    ]
+  },
+  "captures/reference/count128/sun-face-index-1.csv.gz": {
+    "face_records_requested": 129,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 154,
+        "max_counter": 129
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 71,
+        "max_counter": 129
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 27,
+        "y": 27,
+        "counter": 129,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 63,
+        "counter": 129,
+        "complete": false
+      }
+    ]
+  },
+  "captures/reference/count128/sun-face-index-2.csv.gz": {
+    "face_records_requested": 129,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 144,
+        "max_counter": 129
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 64,
+        "max_counter": 129
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 27,
+        "y": 100,
+        "counter": 129,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 63,
+        "counter": 129,
+        "complete": false
+      }
+    ]
+  },
+  "captures/reference/count128/sun-face-index-3.csv.gz": {
+    "face_records_requested": 129,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 154,
+        "max_counter": 129
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 71,
+        "max_counter": 129
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 100,
+        "y": 100,
+        "counter": 129,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 64,
+        "counter": 129,
+        "complete": false
+      }
+    ]
+  },
+  "captures/reference/count128-oblique-sun/sun-face-index-0.csv.gz": {
+    "face_records_requested": 387,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 11383,
+        "incomplete_tiles": 187,
+        "max_counter": 374
+      },
+      {
+        "occupied_tiles": 9242,
+        "incomplete_tiles": 156,
+        "max_counter": 381
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 74,
+        "y": 69,
+        "counter": 92,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 64,
+        "counter": 65,
+        "complete": false
+      }
+    ]
+  },
+  "captures/reference/count128-oblique-sun/sun-face-index-1.csv.gz": {
+    "face_records_requested": 387,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 5616,
+        "incomplete_tiles": 190,
+        "max_counter": 371
+      },
+      {
+        "occupied_tiles": 4706,
+        "incomplete_tiles": 86,
+        "max_counter": 385
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 3,
+        "y": 50,
+        "counter": 44,
+        "complete": true
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 63,
+        "counter": 140,
+        "complete": false
+      }
+    ]
+  },
+  "captures/reference/count128-oblique-sun/sun-face-index-2.csv.gz": {
+    "face_records_requested": 387,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 3953,
+        "incomplete_tiles": 143,
+        "max_counter": 377
+      },
+      {
+        "occupied_tiles": 2766,
+        "incomplete_tiles": 54,
+        "max_counter": 385
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 20,
+        "y": 107,
+        "counter": 83,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 63,
+        "counter": 84,
+        "complete": false
+      }
+    ]
+  },
+  "captures/reference/count128-oblique-sun/sun-face-index-3.csv.gz": {
+    "face_records_requested": 387,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 3999,
+        "incomplete_tiles": 171,
+        "max_counter": 384
+      },
+      {
+        "occupied_tiles": 3399,
+        "incomplete_tiles": 65,
+        "max_counter": 378
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 89,
+        "y": 126,
+        "counter": 107,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 64,
+        "counter": 45,
+        "complete": true
+      }
+    ]
+  },
+  "captures/restored/count63/sun-face-index-0.csv.gz": {
+    "face_records_requested": 64,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 0,
+        "max_counter": 64
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 0,
+        "max_counter": 64
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 100,
+        "y": 27,
+        "counter": 64,
+        "complete": true
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 64,
+        "counter": 64,
+        "complete": true
+      }
+    ]
+  },
+  "captures/restored/count63/sun-face-index-1.csv.gz": {
+    "face_records_requested": 64,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 0,
+        "max_counter": 64
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 0,
+        "max_counter": 64
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 27,
+        "y": 27,
+        "counter": 64,
+        "complete": true
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 63,
+        "counter": 64,
+        "complete": true
+      }
+    ]
+  },
+  "captures/restored/count63/sun-face-index-2.csv.gz": {
+    "face_records_requested": 64,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 0,
+        "max_counter": 64
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 0,
+        "max_counter": 64
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 27,
+        "y": 100,
+        "counter": 64,
+        "complete": true
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 63,
+        "counter": 64,
+        "complete": true
+      }
+    ]
+  },
+  "captures/restored/count63/sun-face-index-3.csv.gz": {
+    "face_records_requested": 64,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 0,
+        "max_counter": 64
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 0,
+        "max_counter": 64
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 100,
+        "y": 100,
+        "counter": 64,
+        "complete": true
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 64,
+        "counter": 64,
+        "complete": true
+      }
+    ]
+  },
+  "captures/restored/count64/sun-face-index-0.csv.gz": {
+    "face_records_requested": 65,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 132,
+        "max_counter": 65
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 56,
+        "max_counter": 65
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 100,
+        "y": 27,
+        "counter": 65,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 64,
+        "counter": 65,
+        "complete": false
+      }
+    ]
+  },
+  "captures/restored/count64/sun-face-index-1.csv.gz": {
+    "face_records_requested": 65,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 132,
+        "max_counter": 65
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 56,
+        "max_counter": 65
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 27,
+        "y": 27,
+        "counter": 65,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 63,
+        "counter": 65,
+        "complete": false
+      }
+    ]
+  },
+  "captures/restored/count64/sun-face-index-2.csv.gz": {
+    "face_records_requested": 65,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 120,
+        "max_counter": 65
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 56,
+        "max_counter": 65
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 27,
+        "y": 100,
+        "counter": 65,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 63,
+        "counter": 65,
+        "complete": false
+      }
+    ]
+  },
+  "captures/restored/count64/sun-face-index-3.csv.gz": {
+    "face_records_requested": 65,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 132,
+        "max_counter": 65
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 56,
+        "max_counter": 65
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 100,
+        "y": 100,
+        "counter": 65,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 64,
+        "counter": 65,
+        "complete": false
+      }
+    ]
+  },
+  "captures/restored/count128/sun-face-index-0.csv.gz": {
+    "face_records_requested": 129,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 144,
+        "max_counter": 129
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 64,
+        "max_counter": 129
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 100,
+        "y": 27,
+        "counter": 129,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 64,
+        "counter": 129,
+        "complete": false
+      }
+    ]
+  },
+  "captures/restored/count128/sun-face-index-1.csv.gz": {
+    "face_records_requested": 129,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 154,
+        "max_counter": 129
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 71,
+        "max_counter": 129
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 27,
+        "y": 27,
+        "counter": 129,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 63,
+        "counter": 129,
+        "complete": false
+      }
+    ]
+  },
+  "captures/restored/count128/sun-face-index-2.csv.gz": {
+    "face_records_requested": 129,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 144,
+        "max_counter": 129
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 64,
+        "max_counter": 129
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 27,
+        "y": 100,
+        "counter": 129,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 63,
+        "counter": 129,
+        "complete": false
+      }
+    ]
+  },
+  "captures/restored/count128/sun-face-index-3.csv.gz": {
+    "face_records_requested": 129,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 4970,
+        "incomplete_tiles": 154,
+        "max_counter": 129
+      },
+      {
+        "occupied_tiles": 3025,
+        "incomplete_tiles": 71,
+        "max_counter": 129
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 100,
+        "y": 100,
+        "counter": 129,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 64,
+        "counter": 129,
+        "complete": false
+      }
+    ]
+  },
+  "captures/restored/count128-oblique-sun/sun-face-index-0.csv.gz": {
+    "face_records_requested": 387,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 11383,
+        "incomplete_tiles": 187,
+        "max_counter": 374
+      },
+      {
+        "occupied_tiles": 9242,
+        "incomplete_tiles": 156,
+        "max_counter": 381
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 74,
+        "y": 69,
+        "counter": 92,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 64,
+        "counter": 65,
+        "complete": false
+      }
+    ]
+  },
+  "captures/restored/count128-oblique-sun/sun-face-index-1.csv.gz": {
+    "face_records_requested": 387,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 5616,
+        "incomplete_tiles": 190,
+        "max_counter": 371
+      },
+      {
+        "occupied_tiles": 4706,
+        "incomplete_tiles": 86,
+        "max_counter": 385
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 3,
+        "y": 50,
+        "counter": 44,
+        "complete": true
+      },
+      {
+        "cascade": 1,
+        "x": 64,
+        "y": 63,
+        "counter": 140,
+        "complete": false
+      }
+    ]
+  },
+  "captures/restored/count128-oblique-sun/sun-face-index-2.csv.gz": {
+    "face_records_requested": 387,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 3953,
+        "incomplete_tiles": 143,
+        "max_counter": 377
+      },
+      {
+        "occupied_tiles": 2766,
+        "incomplete_tiles": 54,
+        "max_counter": 385
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 20,
+        "y": 107,
+        "counter": 83,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 63,
+        "counter": 84,
+        "complete": false
+      }
+    ]
+  },
+  "captures/restored/count128-oblique-sun/sun-face-index-3.csv.gz": {
+    "face_records_requested": 387,
+    "face_record_capacity": 65536,
+    "tile_capacity": 64,
+    "cascades": [
+      {
+        "occupied_tiles": 3999,
+        "incomplete_tiles": 171,
+        "max_counter": 384
+      },
+      {
+        "occupied_tiles": 3399,
+        "incomplete_tiles": 65,
+        "max_counter": 378
+      }
+    ],
+    "sun_uv": [
+      0.0,
+      0.0
+    ],
+    "point_tiles": [
+      {
+        "cascade": 0,
+        "x": 89,
+        "y": 126,
+        "counter": 107,
+        "complete": false
+      },
+      {
+        "cascade": 1,
+        "x": 63,
+        "y": 64,
+        "counter": 45,
+        "complete": true
+      }
+    ]
+  }
+}

@@ -1,0 +1,106 @@
+{
+  "count128-oblique-sun/screenshots/yaw180.png": {
+    "changed_rgb_pixels": 0,
+    "bounds": null
+  },
+  "count128-oblique-sun/screenshots/yaw90.png": {
+    "changed_rgb_pixels": 0,
+    "bounds": null
+  },
+  "count128-oblique-sun/screenshots/yaw0.png": {
+    "changed_rgb_pixels": 0,
+    "bounds": null
+  },
+  "count128-oblique-sun/screenshots/yaw270.png": {
+    "changed_rgb_pixels": 0,
+    "bounds": null
+  },
+  "count64/screenshots/yaw180.png": {
+    "changed_rgb_pixels": 540,
+    "bounds": [
+      1214,
+      674,
+      1382,
+      870
+    ]
+  },
+  "count64/screenshots/yaw90.png": {
+    "changed_rgb_pixels": 528,
+    "bounds": [
+      1046,
+      726,
+      1474,
+      808
+    ]
+  },
+  "count64/screenshots/yaw0.png": {
+    "changed_rgb_pixels": 476,
+    "bounds": [
+      1170,
+      676,
+      1338,
+      856
+    ]
+  },
+  "count64/screenshots/yaw270.png": {
+    "changed_rgb_pixels": 536,
+    "bounds": [
+      1078,
+      706,
+      1506,
+      786
+    ]
+  },
+  "count63/screenshots/yaw180.png": {
+    "changed_rgb_pixels": 0,
+    "bounds": null
+  },
+  "count63/screenshots/yaw90.png": {
+    "changed_rgb_pixels": 0,
+    "bounds": null
+  },
+  "count63/screenshots/yaw0.png": {
+    "changed_rgb_pixels": 0,
+    "bounds": null
+  },
+  "count63/screenshots/yaw270.png": {
+    "changed_rgb_pixels": 0,
+    "bounds": null
+  },
+  "count128/screenshots/yaw180.png": {
+    "changed_rgb_pixels": 696,
+    "bounds": [
+      1214,
+      682,
+      1424,
+      888
+    ]
+  },
+  "count128/screenshots/yaw90.png": {
+    "changed_rgb_pixels": 632,
+    "bounds": [
+      1012,
+      726,
+      1474,
+      830
+    ]
+  },
+  "count128/screenshots/yaw0.png": {
+    "changed_rgb_pixels": 532,
+    "bounds": [
+      1128,
+      660,
+      1338,
+      856
+    ]
+  },
+  "count128/screenshots/yaw270.png": {
+    "changed_rgb_pixels": 624,
+    "bounds": [
+      1078,
+      682,
+      1540,
+      786
+    ]
+  }
+}

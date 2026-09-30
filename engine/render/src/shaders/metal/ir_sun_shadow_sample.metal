@@ -15,6 +15,11 @@
 
 #include "ir_sun_face_query_layout.metal"
 
+#ifndef IR_SUN_FACE_OVERFLOW_REFERENCE
+#define IR_SUN_FACE_OVERFLOW_REFERENCE 0
+#endif
+constant uint kSourceFaceOverflowReferenceBudget = 256u;
+
 constant float kNormalBiasVoxels = 0.5;
 constant float kShadowBiasTexelScale = 2.0;
 constant float kShadowBiasSlopeMin = 0.05;
@@ -51,7 +56,8 @@ inline float sampleCascadeShadow(
     device const uint *sunDepthBuf, float maxShadowThrow, bool surfaceReceiver, float4 casterViewToWorld,
     float3 pcfOffset
 ) {
-    const bool hasSourceFaces = sunDepthBuf[kSourceFaceHeaderOffset] != 0u;
+    const uint sourceFaceCount = sunDepthBuf[kSourceFaceHeaderOffset];
+    const bool hasSourceFaces = sourceFaceCount != 0u;
     bool sourceQueryComplete = !hasSourceFaces;
     if (surfaceReceiver && hasSourceFaces) {
         const int2 tile = int2(floor((sunUV - origin) / (texelSz * float(kSourceFaceTileEdge))));
@@ -61,9 +67,16 @@ inline float sampleCascadeShadow(
             const uint tileBase = sourceFaceTileBase(tileIndex);
             const uint count = sunDepthBuf[tileBase];
             sourceQueryComplete = sourceFaceQueryComplete(count);
+            // A complete small record pool is an exact reference for an incomplete tile.
+            const bool queryAllFaces = IR_SUN_FACE_OVERFLOW_REFERENCE != 0
+                && !sourceQueryComplete && sourceFaceCount <= kSourceFaceOverflowReferenceBudget
+                && sourceFaceCount <= kSourceFaceCapacity;
+            sourceQueryComplete = sourceQueryComplete || queryAllFaces;
+            const uint candidateCount = queryAllFaces ? sourceFaceCount : count;
             if (sourceQueryComplete && dot(normal, sunDir) > 0.0) {
-                for (uint candidate = 0; candidate < count; ++candidate) {
-                    const uint record = kSourceFaceRecordOffset + kSourceFaceRecordWords * sunDepthBuf[tileBase + 1u + candidate];
+                for (uint candidate = 0; candidate < candidateCount; ++candidate) {
+                    const uint faceIndex = queryAllFaces ? candidate : sunDepthBuf[tileBase + 1u + candidate];
+                    const uint record = kSourceFaceRecordOffset + kSourceFaceRecordWords * faceIndex;
                     const float3 corner = float3(as_type<float>(sunDepthBuf[record]), as_type<float>(sunDepthBuf[record+1u]), as_type<float>(sunDepthBuf[record+2u]));
                     const float3 edgeU = float3(as_type<float>(sunDepthBuf[record+3u]), as_type<float>(sunDepthBuf[record+4u]), as_type<float>(sunDepthBuf[record+5u]));
                     const float3 edgeV = float3(as_type<float>(sunDepthBuf[record+6u]), as_type<float>(sunDepthBuf[record+7u]), as_type<float>(sunDepthBuf[record+8u]));
