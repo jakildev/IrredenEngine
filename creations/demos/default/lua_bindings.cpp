@@ -133,12 +133,6 @@ void registerLuaBindings() {
         );
 
         registerLuaComponentPack(luaScript);
-        luaScript.registerType<IRScript::LuaEntity, IRScript::LuaEntity(EntityId)>(
-            "LuaEntity",
-            "entity",
-            [](IRScript::LuaEntity &obj) { return obj.entity; }
-        );
-
         luaScript.lua()["TextAlignH"] = luaScript.lua().create_table_with(
             "LEFT",
             static_cast<int>(TextAlignH::LEFT),

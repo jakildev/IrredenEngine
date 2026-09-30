@@ -24,11 +24,6 @@ class LuaEntityBatchCreateTest : public testing::Test {
         : m_lua{}
         , m_entity_manager{} {
         m_lua.registerType<IRMath::ivec3, IRMath::ivec3(int, int, int)>("ivec3");
-        m_lua.registerType<IRScript::LuaEntity, IRScript::LuaEntity(IREntity::EntityId)>(
-            "LuaEntity",
-            "entity",
-            &IRScript::LuaEntity::entity
-        );
         registerComponents(std::make_integer_sequence<int, 13>{});
         m_lua.registerCreateEntityBatchFunction<
             BatchComponent<1>,

@@ -23,6 +23,10 @@ creation lists its types in `lua_component_pack.hpp`; unlisted types are hidden.
 - **C++-component field writes:** bind scalars as member pointers and math fields
   as `sol::property` over `{x,y,z[,w]}` via `*FromLua`. `C_LocalTransform` is the
   reference; `setAt(i, T.new(...))` writes whole rows.
+- **Usertype ownership:** the engine registers `LuaEntity` (constructor) and
+  `_IRLuaCppColumnView`/`_IRLuaTypedColumnView` (`bindLuaDrivenEcs`); never
+  re-register them. A second `new_usertype<T>` (pinned sol2) strips `T`'s
+  `__index` at the next GC: `registerType` warns and refuses; raw `new_usertype` won't.
 
 ## Lua-defined components (`IRComponent.register`)
 
@@ -154,8 +158,7 @@ keys, and stays separate from `bindLuaDrivenEcs()`.
 - `setCell`, `getCell`, and `revealRadius` edit/query the grid; `clear()` clears
   only that grid. States are `UNEXPLORED`, `EXPLORED`, and `VISIBLE`.
 
-The tested examples are
-[`fog_binding_selftest.lua`](../../creations/demos/fog_demo/scripts/fog_binding_selftest.lua)
+The tested examples are [`fog_binding_selftest.lua`](../../creations/demos/fog_demo/scripts/fog_binding_selftest.lua)
 and its [cap/governance companion](../../creations/demos/fog_demo/scripts/fog_binding_cap_selftest.lua).
 These are setup/EVAL APIs, not tick intrinsics. `setVisionLineOfSight(slot, eye[,
 softness])` gates a slot the vision calls returned; it needs `FOG_LOS_BUILD`.
@@ -173,8 +176,7 @@ softness])` gates a slot the vision calls returned; it needs `FOG_LOS_BUILD`.
 
 ## Commands and input (`IRCommand.*`, `IRInput.*`)
 
-`LuaScript::bindLuaCommands()`; design in
-[`docs/design/lua-input-commands.md`](../../docs/design/lua-input-commands.md).
+`LuaScript::bindLuaCommands()`; design in [`docs/design/lua-input-commands.md`](../../docs/design/lua-input-commands.md).
 Compose modifiers with `bit.bor`. A `createCommand` body appears in the F1
 overlay only with `name`/`description`; `isButtonBound` is modifier-blind. A
 new prefab command needs an `IR_BIND_CMD` line in `lua_command_bindings.hpp`
@@ -204,6 +206,5 @@ cwd ([`BUILD.md`](../../docs/agents/BUILD.md) §"Running an executable").
 - `registerTypeFromTraits<T>()` without its `_lua.hpp` include is a link error.
 - `IRScript::*FromLua` (`ir_script_utils.hpp`) default instead of raising, so
   check the type first; `sol::object::is<sol::table>()` is true for userdata.
-- Batch-create factories must match C++ arity
-  ([`cpp-ecs-smells.md`](../../.claude/rules/cpp-ecs-smells.md)).
+- Batch-create factories must match C++ arity ([`cpp-ecs-smells.md`](../../.claude/rules/cpp-ecs-smells.md)).
 - `LuaScript` lifetime is absolute: its destruction invalidates every Lua handle.

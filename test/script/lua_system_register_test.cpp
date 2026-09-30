@@ -82,17 +82,6 @@ class LuaSystemRegisterTest : public testing::Test {
         m_lua.bindLuaDrivenEcs();
         m_lua.registerTypeFromTraits<TestPos>();
         m_lua.registerTypeFromTraits<TestVel>();
-
-        // LuaEntity is bound by each creation's lua_bindings.cpp;
-        // tests bind a minimal version locally so the dynamic-add
-        // path (`IREntity.addLuaComponent(LuaEntity.new(id), ...)`)
-        // is exercised end-to-end.
-        m_lua.lua().new_usertype<IRScript::LuaEntity>(
-            "LuaEntity",
-            sol::constructors<IRScript::LuaEntity(IREntity::EntityId)>(),
-            "entity",
-            &IRScript::LuaEntity::entity
-        );
     }
 
     // m_lua first so its sol::state outlives sol::function-bearing

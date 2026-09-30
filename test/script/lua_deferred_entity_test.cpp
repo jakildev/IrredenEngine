@@ -29,14 +29,6 @@ class LuaDeferredEntityTest : public testing::Test {
         , m_entity_manager{}
         , m_system_manager{} {
         m_lua.bindLuaDrivenEcs();
-        // LuaEntity is bound per-creation in production; tests bind a minimal
-        // version so the addLuaComponent / setLuaField setup path resolves.
-        m_lua.lua().new_usertype<IRScript::LuaEntity>(
-            "LuaEntity",
-            sol::constructors<IRScript::LuaEntity(IREntity::EntityId)>(),
-            "entity",
-            &IRScript::LuaEntity::entity
-        );
     }
 
     // Count live entities carrying `componentId` across all archetype nodes.
