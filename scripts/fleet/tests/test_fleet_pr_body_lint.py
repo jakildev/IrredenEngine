@@ -275,6 +275,26 @@ class FleetPrBodyLintTests(unittest.TestCase):
             self.run_lint(evidence_body(4), issue=snapshot(comments=comments)).returncode, 2
         )
 
+    def test_plan_correction_supersedes_an_invalid_original_plan(self):
+        comments = [
+            {
+                "body": (
+                    "## Plan\n\n### Acceptance criteria\n\n"
+                    "| Criterion | Validator |\n|---|---|\n| first | test |\n\n"
+                    "This trailing prose makes the original structure invalid."
+                )
+            },
+            {
+                "body": (
+                    "## Plan corrections\n\n### Acceptance criteria\n"
+                    "- first\n- second"
+                )
+            },
+        ]
+        result = self.run_lint(evidence_body(2), issue=snapshot(comments=comments))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("source=plan correction", result.stdout)
+
     def test_ignored_regions_crlf_escaped_pipes_and_table_controls(self):
         fake = (
             "> Closes #2563\r\n```\r\nCloses #2563\r\n## Acceptance evidence\r\n"
