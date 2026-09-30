@@ -205,11 +205,11 @@ if(IR_isDarwin)
             AND IRREDEN_METAL_COMPILER
             AND IRREDEN_METALLIB_TOOL
         )
-            file(MAKE_DIRECTORY ${PROJECT_BINARY_DIR}/shaders)
+            file(MAKE_DIRECTORY ${PROJECT_BINARY_DIR}/metal_aot)
             unset(METAL_AIR_FILES)
             foreach(SHADER ${METAL_SHADER_SOURCES})
                 get_filename_component(SHADER_NAME ${SHADER} NAME_WE)
-                set(AIR_FILE ${PROJECT_BINARY_DIR}/shaders/${SHADER_NAME}.air)
+                set(AIR_FILE ${PROJECT_BINARY_DIR}/metal_aot/${SHADER_NAME}.air)
                 add_custom_command(
                     OUTPUT ${AIR_FILE}
                     COMMAND ${IRREDEN_XCRUN_BIN} -sdk macosx metal -c ${SHADER} -o ${AIR_FILE}
@@ -220,13 +220,13 @@ if(IR_isDarwin)
             endforeach()
 
             add_custom_command(
-                OUTPUT ${PROJECT_BINARY_DIR}/shaders/default.metallib
-                COMMAND ${IRREDEN_XCRUN_BIN} -sdk macosx metallib ${METAL_AIR_FILES} -o ${PROJECT_BINARY_DIR}/shaders/default.metallib
+                OUTPUT ${PROJECT_BINARY_DIR}/metal_aot/default.metallib
+                COMMAND ${IRREDEN_XCRUN_BIN} -sdk macosx metallib ${METAL_AIR_FILES} -o ${PROJECT_BINARY_DIR}/metal_aot/default.metallib
                 DEPENDS ${METAL_AIR_FILES}
                 COMMENT "Linking Metal shader library"
             )
 
-            add_custom_target(MetalShaders ALL DEPENDS ${PROJECT_BINARY_DIR}/shaders/default.metallib)
+            add_custom_target(MetalShaders ALL DEPENDS ${PROJECT_BINARY_DIR}/metal_aot/default.metallib)
             add_dependencies(IrredenEngineRendering MetalShaders)
         else()
             message(
@@ -239,11 +239,3 @@ if(IR_isDarwin)
         message(STATUS "Metal AOT shader precompilation disabled (IRREDEN_METAL_AOT_SHADERS=OFF); shaders compile at runtime.")
     endif()
 endif()
-
-add_custom_command(TARGET IrredenEngineRendering POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/shaders ${PROJECT_BINARY_DIR}/shaders)
-
-add_custom_command(TARGET IrredenEngineRendering POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_CURRENT_SOURCE_DIR}/data ${PROJECT_BINARY_DIR}/data)
