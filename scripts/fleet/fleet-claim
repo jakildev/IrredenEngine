@@ -1444,7 +1444,8 @@ check_planning_gates() {
 # --- host-capability gate -------------------------------------------------
 
 check_host_capability() {
-    # Refuse the claim if the issue requires GL runtime verification (label
+    # Refuse the claim if the record carries `fleet:needs-macos-host` and this
+    # machine is not macOS, or if it requires GL runtime verification (label
     # `fleet:needs-gl-host`) and this machine is not GL-capable. GL-capable
     # hosts are {linux, windows}; macOS GL is 4.1 (< the shaders' required
     # 4.5), so a Metal host cannot run/verify the GL backend. Mirrors
@@ -1492,12 +1493,25 @@ check_host_capability() {
         esac
     done <<< "$info"
 
+    local host
+    case " $labels " in
+        *" fleet:needs-macos-host "*)
+            # One-OS residual pin; no backend-symmetric narrowing (it names
+            # an OS, not a backend). Checked first so a record carrying both
+            # host labels refuses everywhere, as the dispatcher does.
+            host=$(derive_host)
+            if [[ "$host" != "mac" ]]; then
+                echo "fleet-claim: refuse #${issue_num} — tagged [fleet:needs-macos-host], this host is [${host}]; the remaining work needs a macOS host" >&2
+                return 1
+            fi
+            ;;
+    esac
+
     case " $labels " in
         *" fleet:needs-gl-host "*) ;;
         *) return 0 ;;
     esac
 
-    local host
     host=$(derive_host)
     case "$host" in
         linux|windows) return 0 ;;
@@ -4996,15 +5010,23 @@ reconcile_apply_field() {
         'import sys,os,json; a=(json.load(sys.stdin).get("apply") or {}); print(a.get(os.environ["KEY"],""))' | tr -d '\r'
 }
 
-# reconcile_open_drift_tracker
-#   Echo the number of the single open fleet:state-drift tracker, or empty if
-#   none. `// empty` keeps gojq from emitting the literal `null` (which would
-#   otherwise read as a real issue number). Both the refresh/create path and
-#   the auto-close path resolve the tracker the same way.
-reconcile_open_drift_tracker() {
-    gh issue list --repo "$FLEET_GITHUB_REPO" --state open \
-        --label "fleet:state-drift" --json number --jq '.[0].number // empty' \
-        2>/dev/null || true
+# reconcile_open_drift_trackers
+#   Echo every open fleet:state-drift tracker number, newest first, one per
+#   line (nothing when none are open). Exits non-zero when the lookup itself
+#   fails, so a caller can tell "confirmed no tracker" (exit 0, empty output)
+#   apart from "could not ask" (non-zero) and skip filing/closing rather than
+#   fail open on a transient error. Reads REST rather than `gh issue list
+#   --json` (GraphQL), so the lookup does not share the budget that throttles
+#   first under a rate limit; `select(.pull_request == null)` drops PRs, since
+#   the issues endpoint returns both. The query rides in the URL, not `-f`
+#   fields: any `-f` switches `gh api` to POST, which would try to create an
+#   issue. Both the refresh/create path and the auto-close path resolve the
+#   tracker set the same way.
+reconcile_open_drift_trackers() {
+    gh api --paginate \
+        "repos/$FLEET_GITHUB_REPO/issues?state=open&labels=fleet:state-drift&sort=created&direction=desc&per_page=100" \
+        --jq '.[] | select(.pull_request == null) | .number' \
+        2>/dev/null
 }
 
 # reconcile_escalate_drift <findings-jsonl> <state-dir> <threshold>
@@ -5136,17 +5158,24 @@ PYEOF
         # owns its lifecycle, and a fixed claim surface must not leave a stale
         # tracker lingering open with findings that no longer reproduce. The
         # counter reset above means a genuinely-recurring finding re-accrues
-        # from zero and re-files a fresh tracker once it crosses threshold.
-        local cleared
-        cleared=$(reconcile_open_drift_tracker)
-        if [[ -n "$cleared" && "$cleared" != "null" ]]; then
-            if gh issue close "$cleared" --repo "$FLEET_GITHUB_REPO" \
-                --comment "All tracked claim-surface drift has cleared across reconcile ticks; auto-closing. \`fleet-claim reconcile\` re-files a fresh tracker if new persistent drift appears." >/dev/null 2>&1; then
-                echo "  reconcile --apply: drift cleared — auto-closed fleet:state-drift tracker #$cleared"
-            else
-                echo "  reconcile --apply: drift cleared but failed to auto-close fleet:state-drift tracker #$cleared" >&2
-            fi
+        # from zero and re-files a fresh tracker once it crosses threshold. A
+        # failed lookup neither files nor closes — it retries next tick rather
+        # than reading its own failure as "no tracker".
+        local trackers t lookup_status=0
+        trackers=$(reconcile_open_drift_trackers) || lookup_status=$?
+        if [[ $lookup_status -ne 0 ]]; then
+            echo "  reconcile --apply: drift-tracker lookup failed; not auto-closing this tick" >&2
+            return 0
         fi
+        while IFS= read -r t; do
+            [[ -z "$t" ]] && continue
+            if gh issue close "$t" --repo "$FLEET_GITHUB_REPO" \
+                --comment "All tracked claim-surface drift has cleared across reconcile ticks; auto-closing. \`fleet-claim reconcile\` re-files a fresh tracker if new persistent drift appears." >/dev/null 2>&1; then
+                echo "  reconcile --apply: drift cleared — auto-closed fleet:state-drift tracker #$t"
+            else
+                echo "  reconcile --apply: drift cleared but failed to auto-close fleet:state-drift tracker #$t" >&2
+            fi
+        done <<< "$trackers"
         return 0
     fi
 
@@ -5156,16 +5185,33 @@ PYEOF
         --description "reconcile surfaced persistent unresolved claim-surface drift" \
         --color "fbca04" 2>/dev/null || true
 
-    local existing title
+    local trackers existing title t lookup_status=0
     title="fleet: claim-surface drift — $persistent_count persistent finding(s)"
-    existing=$(reconcile_open_drift_tracker)
-    if [[ -n "$existing" && "$existing" != "null" ]]; then
+    trackers=$(reconcile_open_drift_trackers) || lookup_status=$?
+    if [[ $lookup_status -ne 0 ]]; then
+        echo "  reconcile --apply: drift-tracker lookup failed; not filing or refreshing this tick" >&2
+        rm -f "$body_file"
+        return 0
+    fi
+    existing=$(printf '%s\n' "$trackers" | sed -n '1p')
+    if [[ -n "$existing" ]]; then
         if gh issue edit "$existing" --repo "$FLEET_GITHUB_REPO" \
             --title "$title" --body-file "$body_file" >/dev/null 2>&1; then
             echo "  reconcile --apply: refreshed deduped fleet:state-drift tracker #$existing ($persistent_count finding(s))"
         else
             echo "  reconcile --apply: failed to refresh fleet:state-drift tracker #$existing" >&2
         fi
+        # More than one tracker open: the newest survives and every other
+        # closes naming it, so the tick converges on one deduped tracker.
+        while IFS= read -r t; do
+            [[ -z "$t" || "$t" == "$existing" ]] && continue
+            if gh issue close "$t" --repo "$FLEET_GITHUB_REPO" \
+                --comment "Deduped with fleet:state-drift tracker #$existing, the surviving tracker for this drift; closing this duplicate." >/dev/null 2>&1; then
+                echo "  reconcile --apply: closed duplicate fleet:state-drift tracker #$t (survivor #$existing)"
+            else
+                echo "  reconcile --apply: failed to close duplicate fleet:state-drift tracker #$t" >&2
+            fi
+        done <<< "$trackers"
     else
         local created
         if created=$(gh issue create --repo "$FLEET_GITHUB_REPO" \

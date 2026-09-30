@@ -11,7 +11,10 @@
 //      fogLosCanonicalSample.
 // The reveal is split from the colour apply so a caller can skip the colour
 // read-modify-write for a fully revealed sample (state >= 1.0), which is most
-// of a revealed scene's pixels.
+// of a revealed scene's pixels. The reveal relies on that early-out: it stops
+// evaluating sources once state reaches 1.0, and it skips a gated source's
+// march whenever the march cannot change what the caller writes, so only a
+// march that can move the output is paid for.
 //
 // Include-FRAGMENT: the wrapper defines IR_FOG_LOS_BINDING before including it
 // (ir_fog_los). Metal twin: metal/ir_fog_common.metal — the reveal loop and the
@@ -104,6 +107,10 @@ FogReveal fogRevealSample(vec3 pos3D, vec3 losSample, float aaFloor, bool fogWho
     float hardDistPastRim = kFogRimFadeCells;
 
     for (int i = 0; i < visionCircleCount; ++i) {
+        // Every caller returns without reading the reveal at state >= 1.0.
+        if (state >= 1.0) {
+            break;
+        }
         // Height-penalized reveal; a whole-body pixel drops both terms.
         const vec4 heights = visionCircleHeights[i];
         const float zCostUp = fogWholeBody ? 0.0 : heights.y;
@@ -117,6 +124,14 @@ FogReveal fogRevealSample(vec3 pos3D, vec3 losSample, float aaFloor, bool fogWho
         const float reveal =
             1.0 - smoothstep(visionCircles[i].z - aa, visionCircles[i].z + aa, distEff);
         const float distPastRim = distEff - visionCircles[i].z;
+        // Exact skip: a gated source adds at most `reveal` to the max, and its
+        // rim distance is dead when the disc is soft (soft discs never feed
+        // it) or the grid is at least explored (fogApplyReveal reads it only
+        // below). Skipping leaves every value the caller reads bit-identical.
+        if (fogLosSourceGated(losSourceMask, i) && reveal <= state &&
+            (visionCircles[i].w != 0.0 || gridState >= kFogExploredValue)) {
+            continue;
+        }
         // A gated source is scaled by its line of sight to the sample; only a
         // sample the source can reveal or rim-lift is marched. A whole-body
         // pixel's visibility is its anchor's verdict, so it is never gated per
