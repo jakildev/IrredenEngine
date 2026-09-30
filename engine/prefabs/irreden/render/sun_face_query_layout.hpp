@@ -1,14 +1,16 @@
 #ifndef SUN_FACE_QUERY_LAYOUT_H
 #define SUN_FACE_QUERY_LAYOUT_H
 
+#include <irreden/render/sun_shadow_cascade.hpp>
+
 #include <cstdint>
 
 namespace IRPrefab::SunShadow {
 
 // Shared with ir_sun_face_query_layout in both shader backends. Consumers are
 // the sun-map allocation/clear, rigid source bake and surface receiver lookup.
-constexpr std::uint32_t kSourceFaceMapDimension = 1024u;
-constexpr std::uint32_t kSourceFaceCascadeCount = 2u;
+constexpr std::uint32_t kSourceFaceMapDimension = kSunShadowMapDim;
+constexpr std::uint32_t kSourceFaceCascadeCount = kSunShadowCascadeCount;
 constexpr std::uint32_t kSourceFaceTileEdge = 8u;
 constexpr std::uint32_t kSourceFaceTilesPerAxis = kSourceFaceMapDimension / kSourceFaceTileEdge;
 constexpr std::uint32_t kSourceFaceTileCount =

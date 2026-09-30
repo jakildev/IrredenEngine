@@ -60,6 +60,7 @@ add_executable(IrredenEngineTest
   math/ir_math_test.cpp
   math/ir_math_wrap_test.cpp
   math/ir_math_viewport_helpers_test.cpp
+  math/sun_frustum_test.cpp
   math/camera_subpixel_test.cpp
   math/ir_math_color_layout_test.cpp
   math/ir_math_coord_helpers_test.cpp

@@ -90,6 +90,7 @@ int main() {
                 (path / "query.cpp").write_text(source)
                 build = subprocess.run([COMPILER, "-std=c++17", "-I",
                                         str(ROOT / "engine/prefabs/irreden/render"),
+                                        "-I", str(ROOT / "engine/prefabs"),
                                         str(path / "query.cpp"), "-o", str(path / "query")],
                                        capture_output=True, text=True)
                 self.assertEqual(build.returncode, 0, build.stderr)
