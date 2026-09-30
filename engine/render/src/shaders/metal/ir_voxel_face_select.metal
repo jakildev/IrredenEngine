@@ -196,9 +196,10 @@ static VoxelFaceSelect selectVoxelFace(
 ) {
     VoxelFaceSelect sel;
     sel.faceId = faceIdIn;
-    // Resampled cells already have camera-aligned occupancy; their back faces
-    // cannot become visible silhouette risers.
-    const bool rotatedEmit = !reVoxelize && (reserved & 4u) != 0u;
+    // Only the legacy cardinal raster uses opposite-polarity risers. Resampled
+    // private canvases and continuous per-axis quads retain the visible triplet:
+    // an exposed back face cannot become camera-facing at a staircase edge.
+    const bool rotatedEmit = !reVoxelize && perAxisRouteIn == 0 && (reserved & 4u) != 0u;
     sel.riserFlip = 0;
     if (rotatedEmit && !faceIsExposed(flagsByte, sel.faceId) &&
         faceIsExposed(flagsByte, sel.faceId ^ 1)) {

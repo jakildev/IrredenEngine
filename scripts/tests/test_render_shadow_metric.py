@@ -40,6 +40,7 @@ write_png = _cmp.write_png
 MAGENTA = (255, 0, 255)
 BLACK = (0, 0, 0)
 GRAY = (128, 128, 128)
+ALBEDO = (180, 90, 70)
 
 
 def _write(path: str, w: int, h: int, fn) -> None:
@@ -198,6 +199,42 @@ class TestShadowMetric(unittest.TestCase):
         rc, out, _ = self._run_cli([p, "--min-hole-ratio", "0.98"])
         self.assertEqual(rc, 1)
         self.assertIn("hole_ratio 0.0 < 0.98", out)
+
+    def test_palette_coverage_rejects_unlit_albedo(self):
+        p = str(self.dir / "overflow_albedo.png")
+        corrected = str(self.dir / "overflow_shadow.png")
+
+        def color(x, y, palette):
+            if 5 <= x < 15 and 5 <= y < 15:
+                return palette
+            return MAGENTA if x < 5 else BLACK
+
+        _write(p, 20, 20, lambda x, y: color(x, y, ALBEDO))
+        _write(corrected, 20, 20, lambda x, y: color(x, y, MAGENTA))
+        thresholds = ["--roi", "0,0,20,20", "--min-classified-frac", "0.99",
+                      "--min-shadow-frac", "0.01", "--no-components"]
+        rc, out, _ = self._run_cli([p, *thresholds])
+        self.assertEqual(rc, 1)
+        self.assertIn("classified_frac 0.75 < 0.99", out)
+        rc, out, _ = self._run_cli([corrected, *thresholds])
+        self.assertEqual(rc, 0)
+        self.assertIn('"classified_frac": 1.0', out)
+
+    def test_palette_coverage_rejects_empty_black_roi(self):
+        p = str(self.dir / "empty_black.png")
+        _write(p, 20, 20, lambda x, y: BLACK)
+        rc, out, _ = self._run_cli([
+            p, "--min-classified-frac", "0.99", "--min-shadow-frac", "0.01",
+            "--no-components"])
+        self.assertEqual(rc, 1)
+        self.assertIn("shadow_frac 0.0 < 0.01", out)
+
+    def test_palette_coverage_is_optional(self):
+        p = str(self.dir / "unclassified_default.png")
+        _write(p, 20, 20, lambda x, y: ALBEDO)
+        rc, out, _ = self._run_cli([p, "--no-components"])
+        self.assertEqual(rc, 0)
+        self.assertIn('"classified_frac": 0.0', out)
 
     def test_max_components_cli_fails_when_roi_too_large(self):
         """--max-components with an oversized ROI must warn to stderr + exit 1."""

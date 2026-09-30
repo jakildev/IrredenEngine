@@ -7,6 +7,21 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
 
 ## Session handoff: stack through #3931
 
+Post-merge follow-up: all final stack CI checks passed and the additional fleet
+recheck approved. Native Windows/OpenGL presentation smoke remains pending.
+The [post-merge audit](../pr-screenshots/codex/postmerge-shadow-correctness/README.md)
+separates valid orbit staircase bands from an actual back-facing +Z ownership
+leak. The continuous per-axis face-selection fix removes that leak in all 17
+tested yaw views while retaining cardinal behavior; strict silhouette-edge
+acceptance remains incomplete. New native structural gates reject the former
+backface and overflow-shadow diagnostic defects. Final CanvasStress validation
+passes 13/13 checks with eight reviewed macOS reference refreshes and unchanged
+thresholds; renderer tooling passes 59/59 suites. Dense 64/65-record camera
+controls verify complete/incomplete index accounting, not exact fallback shadows.
+PRs #3932 and #3936 own inherited reference refreshes; the proposed Fog overflow
+reference still fails against the retained integrated capture, so do not treat
+that PR as closing the visual debt without a fresh final comparison.
+
 The stack integrates master `d29d1ccef2b791d650c6818013c89ea0c3a5007c`.
 Review fixes add native OpenGL execution of the sun-index readback test, preserve
 analytical-shape cascade depth and PCF bias through shared lighting composition,
