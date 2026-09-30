@@ -6,20 +6,19 @@ and Metal backends.
 
 ## Working agreements
 
-- `engine/render/include/irreden/ir_render.hpp` is the public entry point.
-  Creations include it rather than internal render headers.
+- Creations include the public entry point
+  `engine/render/include/irreden/ir_render.hpp`, never internal render headers.
 
 ### What belongs in engine/render/ vs engine/prefabs/irreden/render/
 
-- `engine/render/` owns device and pipeline primitives needed by every
-  creation. Opt-in feature state belongs under
-  `engine/prefabs/irreden/render/`; expose it through a prefab-scoped API.
+- `engine/render/` owns device and pipeline primitives every creation needs.
+  Opt-in feature state lives in `engine/prefabs/irreden/render/` behind a
+  prefab-scoped API.
 
 ### Name identifiers after the rendering effect, not the caller
 
-- Names in this module describe rendering effects, never the first feature or
-  caller that uses them. This applies to C++ types, flags, shader identifiers,
-  binding names, and comments.
+- Names in this module (C++ types, flags, shader identifiers, binding names,
+  comments) describe rendering effects, never the first feature or caller.
 - System registration, ordering, and tick contracts live in
   [`engine/system/CLAUDE.md`](../system/CLAUDE.md).
 - Current feature-API exceptions are tracked in
@@ -30,14 +29,13 @@ and Metal backends.
 
 ### Verifying render changes
 
-Use the [validation index](../../docs/agents/VALIDATION.md) for the canonical
-commands. Render changes commonly need `header-checks`, `render-debug-loop`,
-`render-verify`, `backend-parity`, `cull-verify`, and the relevant
-`scripts/*-verify.py` metric. Codex image inspection and evidence requirements
-are in [`CODEX.md` § Rendering conversations](../../docs/agents/CODEX.md#rendering-conversations).
-Pure documentation, tests, mechanical refactors, and build-only changes with
-no visual effect do not require render captures. Per-frame jitter: the
-validation index's jitter probe plus the camera contracts below.
+Canonical commands: the [validation index](../../docs/agents/VALIDATION.md)
+(per-frame jitter: its probe plus the camera contracts below). Render changes
+commonly need `header-checks`, `render-debug-loop`, `render-verify`,
+`backend-parity`, `cull-verify`, and the relevant `scripts/*-verify.py`
+metric; Codex image evidence: [`CODEX.md` § Rendering conversations](../../docs/agents/CODEX.md#rendering-conversations).
+Changes with no visual effect (docs, tests, mechanical, build-only) need no
+captures.
 
 ## Pipeline contracts
 
@@ -88,27 +86,20 @@ validation index's jitter probe plus the camera contracts below.
 ### Trixel→framebuffer hover: raw texel, no parity shift
 
 - Normal voxel display preserves voxel-face footprints; raw trixel texels are
-  a debugging view, not the presentation default. Revoxelized private canvases
-  use undilated `LOCAL_TRIANGLES` with local parity and row-corrected queries;
-  plain detached canvases retain `SOURCE_FACES` through continuous quad drawing. The compositor follows the effective producer
-  layout, never depth scaling or world position. See the
-  [local-triangle contract](../../docs/design/detached-local-triangles.md).
-  Lattice agreement alone cannot certify connected source faces; use the
+  a debugging view. Revoxelized private canvases use undilated
+  `LOCAL_TRIANGLES` with local parity and row-corrected queries; plain
+  detached canvases keep `SOURCE_FACES` via continuous quad drawing. The
+  compositor follows the effective producer layout, never depth scaling or
+  world position ([local-triangle contract](../../docs/design/detached-local-triangles.md)).
+  Lattice agreement cannot certify connected source faces; use the
   [source-face gate](../../docs/design/trixel-face-reconstruction-validation.md).
-- General canvas producers retain their rectangular storage contract.
-  **Hover identity follows display identity:** the gather hover-gates on
-  `floor(displayOrigin) == ` the CPU's raw cursor texel
-  (`IRRender::mouseCanvasTexelWorld()`) and every texture read — color, depth,
-  tier and the hover entity id — samples that same texel, so every hovered
-  fragment reports the id of what it displays and the non-atomic
-  `HoveredEntityIdBuffer` write is value-identical across writers. The
-  triangle-lattice shift (`trixelFramebufferSamplePosition`,
-  `mouseTrixelPositionWorld()`) is not in the hover path: its cell straddles
-  two raw texel rows. Read the
+  General canvas producers keep their rectangular storage contract.
+- **Hover identity follows display identity:** the gather gates on
+  `floor(displayOrigin) == IRRender::mouseCanvasTexelWorld()` and every read,
+  hover entity id included, samples that raw texel; the triangle-lattice
+  shift stays out of the hover path. Read the
   [parity-shift design](../../docs/design/trixel-parity-shift-442-investigation.md)
-  before changing that coordinate path; the `hover_parity_*` shots of
-  `IRShapeDebug --gui-test` (`GuiTest::hoveredEntityId`, the
-  `_row_above_occupied` shot over three frames) are the executor.
+  before changing it; the executor is `IRShapeDebug --gui-test`'s `hover_parity_*` shots.
 - CPU frame-data structs and shader blocks must agree on field order,
   `std140` padding, and binding index. Every hard-coded binding has a matching
   `kBufferIndex_*` constant.
@@ -117,25 +108,23 @@ validation index's jitter probe plus the camera contracts below.
 
 ## GPU resource contracts
 
-- `getNamedResource` asserts on a miss and never implements optional
-  behavior. Use `getNamedResourceOrNull` only when absence is a supported
-  pipeline configuration.
-- Fresh GPU allocation contents are undefined. Prime persistent or coherent
-  prior-frame readbacks before sampling them, including statistics rings.
+- `getNamedResource` asserts on a miss; use `getNamedResourceOrNull` only
+  when absence is a supported pipeline configuration.
+- Fresh GPU allocations are undefined: prime persistent or coherent
+  prior-frame readbacks (statistics rings included) before sampling them.
 - Clear trixel distance textures to `kTrixelDistanceMaxDistance`; the separate
   SDF miss sentinel is `kInvalidDepth`. Skipping the clear exposes stale depth.
-- On Metal, sampler and image binds share one texture-slot namespace: the most
-  recent bind of either kind wins and remains resident across dispatches.
-  Before relying on a resident bind, account for both tables. Any resource
-  type stored in a sticky table must untrack itself on destruction; destroyed
-  framebuffer attachments fall back to the default render target.
-- Metal R32I image atomics land in scratch storage. For a canvas's own texture,
-  call `resolveImageAtomicScratch` after atomic passes and before its first
-  texture reader; textures that will be resolved must first be cleared through
-  `clearTexImage`. To consume a foreign canvas's atomic depth in a later
-  compute dispatch, resolve it into a main-canvas-layout texture first.
-- Metal `Texture2D::clear()` and `subImage2D()` writes are ordered through the
-  frame command buffer. A same-frame CPU `getBytes` read still requires an
+- On Metal, sampler and image binds share one texture-slot namespace: the
+  latest bind of either kind wins and stays resident across dispatches, so
+  account for both tables. A resource type in a sticky table untracks itself
+  on destruction; destroyed attachments fall back to the default render target.
+- Metal R32I image atomics land in scratch storage. For a canvas's own
+  texture, call `resolveImageAtomicScratch` after atomic passes and before its
+  first reader, having cleared it through `clearTexImage`. A later dispatch
+  consuming a foreign canvas's atomic depth resolves it into a
+  main-canvas-layout texture first.
+- Metal `Texture2D::clear()` / `subImage2D()` writes are ordered through the
+  frame command buffer; a same-frame CPU `getBytes` read still needs an
   explicit commit and wait.
 
 ## Camera and raster contracts
@@ -147,10 +136,9 @@ validation index's jitter probe plus the camera contracts below.
   hitbox, drag, and SDF-cull shortcuts; DETACHED rendering is axis-agnostic.
   See the [consumer map](../../docs/design/iso-depth-axis-invariant.md).
 - World-content placement, world-anchored sprites and debug overlays read
-  `getEffectiveCameraIso()`; lighting-grid anchoring intentionally uses the
-  raw camera offset. The default pivot depth is latched once in `beginFrame`,
-  while its focus point is derived from the current camera position; see the
-  [camera-pivot contract](../../docs/design/camera-yaw-pivot.md).
+  `getEffectiveCameraIso()`; lighting-grid anchoring deliberately uses the raw
+  camera offset. The default pivot depth latches once in `beginFrame`; its
+  focus point follows the current camera ([camera-pivot contract](../../docs/design/camera-yaw-pivot.md)).
 
 ### Voxel face rasterization (which faces a voxel emits)
 
@@ -164,24 +152,23 @@ validation index's jitter probe plus the camera contracts below.
   forward-scatter composite. Its overflow lane, analytic edge coverage,
   ordering, and fixed-cost constraints live in the
   [per-axis design](../../docs/design/per-axis-trixel-canvas-rotation.md).
-- Any per-axis consumer recovering an absolute world position applies the
-  encoded sub-cell fraction. Receivers use `perAxisCellToWorld3DSubCell`; the
+- A per-axis consumer recovering an absolute world position applies the
+  encoded sub-cell fraction: receivers use `perAxisCellToWorld3DSubCell`; the
   sun-shadow cast bridge quantizes in the face-local frame before composing
-  the rotated basis. Relative consumers may use lattice recovery only when
-  their math cancels the in-plane offset.
-- SDF and voxel-pool silhouettes are bit-identical only when effective
-  subdivision is one. At higher subdivision, SDFs are analytically smooth and
-  voxel pools retain the carved lattice silhouette; this difference is
-  intentional. Representation choice, shared geometry expectations and
-  profiling workloads: [voxel and SDF rendering](../../docs/design/voxel-and-sdf-rendering.md).
+  the rotated basis. Lattice recovery suits only relative math that cancels
+  the in-plane offset.
+- SDF and voxel-pool silhouettes are bit-identical only at effective
+  subdivision one; above it SDFs are analytically smooth and voxel pools keep
+  the carved lattice silhouette, intentionally. Representation choice, shared
+  geometry expectations and profiling workloads:
+  [voxel and SDF rendering](../../docs/design/voxel-and-sdf-rendering.md).
 
 ## Lighting contracts
 
 ### Lighting culling invariants
 
 - Light-occlusion-grid construction iterates the full voxel pool and never
-  applies `visibleIsoViewport`. A visibility-freeze check is not a viewport
-  cull.
+  applies `visibleIsoViewport`; a visibility-freeze check is not a viewport cull.
 - Light seeds include off-screen sources whose radius reaches the visible or
   camera-anchored domain. `light-verify` validates boundary clamping and fade.
 - Chunk streaming must include the sun-direction shadow ring. Any world-space
@@ -189,10 +176,9 @@ validation index's jitter probe plus the camera contracts below.
 
 ### Sun shadow bake AABB sweep
 
-- When sun shadows are enabled, visible geometry bounds include the
-  shadow-feeder sweep. The sun-map bake and receiver share
-  `kSunShadowMaxDistance`; read the
-  [coverage design](../../docs/design/sun-shadow-bake-coverage.md) before
+- With sun shadows on, visible geometry bounds include the shadow-feeder
+  sweep, and the sun-map bake and receiver share `kSunShadowMaxDistance`. Read
+  the [coverage design](../../docs/design/sun-shadow-bake-coverage.md) before
   changing the bake kernel or splat controls.
 
 ## Performance and lifecycle pitfalls
@@ -201,10 +187,9 @@ validation index's jitter probe plus the camera contracts below.
 
 - Compute grids cap X at `kMaxDispatchGroupsX` and spill into Y; consumers
   flatten both group dimensions consistently.
-- Hot compute-kernel mode branches use compile-time specializations from a
+- Hot compute-kernel mode branches use compile-time specializations of a
   shared source body, not uniform runtime branches. Multi-dispatch cost models
-  must include backend fixed dispatch cost; see
-  [GPU stage timing](../../docs/design/gpu-stage-timing-cost-model.md).
-- GUI canvas size defaults to `mainCanvasSize / guiScale`.
-  `setGuiCanvasFullResolution()` changes it to native framebuffer resolution,
-  and the creation must use that coordinate space.
+  include backend fixed dispatch cost ([GPU stage timing](../../docs/design/gpu-stage-timing-cost-model.md)).
+- GUI canvas size defaults to `mainCanvasSize / guiScale`;
+  `setGuiCanvasFullResolution()` switches it (and the creation's coordinate
+  space) to native framebuffer resolution.

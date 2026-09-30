@@ -1,11 +1,10 @@
 # scripts/fleet/ — fleet tooling
 
 Bash + Python tooling for the autonomous fleet (scout, dispatcher, claim,
-install, per-tool wrappers) and its tests under `tests/`. Style and the
-comment policy: [`CLAUDE-BASELINE.md`](../../docs/agents/CLAUDE-BASELINE.md)
-§Style, [`.claude/rules/comments.md`](../../.claude/rules/comments.md).
-Rationale for the contracts below that is not readable from the code:
-[`docs/design/fleet-tooling-contracts.md`](../../docs/design/fleet-tooling-contracts.md).
+install, per-tool wrappers) and its tests under `tests/`. Style and comments:
+[`CLAUDE-BASELINE.md`](../../docs/agents/CLAUDE-BASELINE.md) §Style,
+[`.claude/rules/comments.md`](../../.claude/rules/comments.md). Rationale the code cannot
+show: [`docs/design/fleet-tooling-contracts.md`](../../docs/design/fleet-tooling-contracts.md).
 
 ## Commands
 
@@ -48,31 +47,26 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
   it from the fixture's own timestamps, and pair the arm with one whose window
   excludes the fixture, asserting the reported boundary.
 - **A new executable ships with `tests/test_<name>.{sh,py}` in the same PR.**
-- **A missing subject under test exits 3**, the skip status `run_all.sh`
-  tallies as "skipped", with a `SKIP:` stderr prefix reserved for that case;
-  an environment-dependency skip may stay `exit 0`. A subject outside
-  `scripts/**` is added to `fleet-tests.yml`'s `paths:` **and** to
-  `OUT_OF_TREE_SUBJECTS` in `tests/test_fleet_tests_workflow_paths.sh`, which
-  asserts both hand-duplicated `paths:` blocks carry it. The list is an
-  inclusion list: `python3 scripts/fleet/fleet_test_subjects.py` (T5 there,
-  T6 in `tests/test_workflow_paths_sync.sh`) derives the population from the
-  suite sources and the both-blocks workflow glob and fails naming any member
-  the list or the `paths:` blocks omit — run it, don't hand-audit the list.
+- **A missing subject under test exits 3** (`run_all.sh` tallies "skipped"),
+  with a `SKIP:` stderr prefix reserved for that case; an environment-dependency
+  skip may stay `exit 0`. A subject outside `scripts/**` joins both
+  hand-duplicated `paths:` blocks of `fleet-tests.yml` **and**
+  `OUT_OF_TREE_SUBJECTS` in `tests/test_fleet_tests_workflow_paths.sh`. Run
+  `python3 scripts/fleet/fleet_test_subjects.py` (T5; T6 in
+  `tests/test_workflow_paths_sync.sh`), which derives the population and names
+  any member either omits — don't hand-audit the list.
 - **Bash suites source `tests/lib_assert.sh`** (`ok`/`bad`, `assert_eq`,
   `assert_contains`, `assert_absent`, PASS/FAIL counters) and **end with
   `summarize`** — never a private tally line or a local `summarize()`.
   `tests/test_suite_tally_forms.sh` ratchets this; its `OWN_TALLY_BASELINE`
   is shrink-only.
 - **Positive-control a new suite with `fleet-positive-control`, never by
-  hand.** It stages the whole directory (a partial stage trips every wrapper's
-  lib-dir preflight and prints a plausible wrong tally), dispatches `.sh` and
-  `.py` as `run_all.sh` does, and reads each suite's summary line through the
-  `--parse-tally` grammar — the single executor shared with
+  hand**: it stages the whole directory, dispatches as `run_all.sh` does, and
+  reads tallies through the `--parse-tally` grammar shared with
   `tests/test_positive_control.sh` and `tests/test_suite_tally_forms.sh`.
-  Report coverage beside any before/after drift count. An exclusion assertion
-  is outside its reach: prove it by deleting the exclusion in the current
-  implementation and watching the assertion go red ([`CLAUDE-BASELINE.md`](../../docs/agents/CLAUDE-BASELINE.md)
-  §"Encode contracts in code, not in comments").
+  Report coverage beside any before/after drift count. Prove an exclusion
+  assertion by mutation instead: delete the exclusion and watch it go red
+  ([`CLAUDE-BASELINE.md`](../../docs/agents/CLAUDE-BASELINE.md) §"Encode contracts in code, not in comments").
 - **Hand-run controls source `tests/lib_preflight.sh`** on the line after
   `SCRIPT_DIR`, above the first path built to a `fleet-*` wrapper;
   `test_positive_control.sh`'s adoption ratchet checks the placement.
@@ -90,29 +84,25 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
 - **GNU spelling first, no BSD-only flag forms.** Both arms of `$(a || b)`
   write the capture, so a failing first arm poisons it. Prefer one portable
   spelling: `mktemp -d "${TMPDIR:-/tmp}/p.XXXXXX"`, not `-t p`.
-- **Native Windows `jq -r` and `python3 print()` emit CRLF.** `mapfile -t`
-  and `read -r` strip only `\n`, so the CR rides the last field into every
-  later comparison, path lookup, and `gh … --remove-label` call. Pipe the
-  producer through `tr -d '\r'` at the producer, not the first comparison
-  site (no-op on Linux/macOS). Guard the fix with a byte-level check, never
-  grep or `$(...)` — both strip the CR on the host that has the bug
-  (`tests/test_fleet_claim_parked_release.sh` Phase 2d is the shape).
+- **Native Windows `jq -r` and `python3 print()` emit CRLF**, and `mapfile -t`
+  / `read -r` strip only `\n`. Pipe through `tr -d '\r'` at the producer, not
+  the first comparison site; guard with a byte-level check, never grep or
+  `$(...)` (`tests/test_fleet_claim_parked_release.sh` Phase 2d is the shape).
   `lint_crlf_producers.py` ratchets this tree-wide (exception set frozen
-  empty; the fix is always at the producer, never a suppression).
+  empty; fix at the producer, never a suppression).
 - **MSYS rewrites a `<rev>:.<path>` argument as a Windows path list**; spell a
   dotted path `git -C <root> show "<rev>:./<path>"` (`./` is cwd-relative).
 - **`--help` and docstrings track the code.** A `--help` that slices its own
   header derives the end from the first non-`#` line or ships a regression
-  test; a diff that adds or removes an enumerated pass/subcommand/sweep
-  updates every count and enumeration in the same change, including
-  operator-facing siblings (`fleet-up.conf.sample`, `fleet-help`'s index,
-  printed column labels), both ways: retired name gone, replacement present.
-- **`git merge --ff-only` is not a dirty-tree guard** — a disjoint dirty tree
-  fast-forwards silently. Every path that advances or restores a shared
-  clone's branch gates on `git status --porcelain` (tracked-dirty) before the
-  fetch/merge, on every branch arm. Generally, an unattended mutation of
-  shared state gates on liveness, not recoverability: one fail-closed
-  predicate on every mutating path.
+  test; adding or removing an enumerated pass/subcommand/sweep updates every
+  count and enumeration in the same change, operator-facing siblings included
+  (`fleet-up.conf.sample`, `fleet-help`'s index, printed column labels), both
+  ways: retired name gone, replacement present.
+- **`git merge --ff-only` is not a dirty-tree guard.** Every path that
+  advances or restores a shared clone's branch gates on `git status
+  --porcelain` (tracked-dirty) before the fetch/merge, on every branch arm. An
+  unattended mutation of shared state gates on liveness, not recoverability:
+  one fail-closed predicate on every mutating path.
 - **Path-containment checks normalize before the literal match.** Collapse
   `.`/`..`/repeated slashes (`normalize_path` in `fleet-guard-worktree-edit`)
   and canonicalize platform spellings (`canonicalize_path_spelling` in
@@ -120,23 +110,20 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
   `..`-embedded-absolute, allowlist-prefix rides like `/tmp/../…`) as
   hermetic cases with the guard.
 - **Worktree scoping is assignment-derived, not cwd-derived.** `fleet-up` bakes
-  `FLEET_ASSIGNED_WORKTREE` into each generated `settings.local.json`; when
-  set, `fleet-guard-worktree-edit` and `fleet-edit` allow a mutation only
-  inside that worktree (engine or game, by basename) or an allowlist mirroring
-  the settings' `additionalDirectories` (extend both together); unset means
-  legacy cwd-derived behavior. Mutating git wrappers call
-  `fleet-assert-worktree`; scout, ingest, claim and rebase run unasserted from
-  the main clone by design.
+  `FLEET_ASSIGNED_WORKTREE` into each generated `settings.local.json`; when set,
+  `fleet-guard-worktree-edit` and `fleet-edit` allow a mutation only inside that
+  worktree (engine or game, by basename) or an allowlist mirroring the settings'
+  `additionalDirectories` (extend both together); unset means legacy cwd-derived
+  behavior. Mutating git wrappers call `fleet-assert-worktree`; scout, ingest,
+  claim and rebase run unasserted from the main clone by design.
 - **Config-file generators preserve hand-edits under every emitted key**
   (`fleet-up`'s `write_worktree_settings`); a new key extends the
   preservation logic and its test in the same change.
-- **`fleet-up`'s bootstrap heredoc cannot import.** It is a standalone
-  `python3 - <<'PY'` under `|| true`, so an `ImportError` silently disables
-  the bootstrap trigger for every role. Inline the constant or predicate,
-  name the canonical copy in a `keep in sync` comment, and ship a drift guard
-  (`test_smoke_worker_projection.py`'s `TwoCopiesAgree` is the shape). Bash
+- **`fleet-up`'s bootstrap heredoc cannot import**: inline the constant or
+  predicate, name the canonical copy in a `keep in sync` comment, and ship a
+  drift guard (`test_smoke_worker_projection.py`'s `TwoCopiesAgree`). Bash
   reaches `fleet_task_class.py` and `fleet_completion.py` through CLI arms,
-  never an import (the dispatcher fetches, the module decides).
+  never an import.
 
 ## Shared-state contracts
 
@@ -147,10 +134,9 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
   `.st_mtime` reads beside a `state.json` reference; opt a justified read
   out with `# lint: state-mtime-ok <reason>`.
 - **`state.json` has a hard size ceiling** ([`FLEET-CACHE.md`](../../docs/agents/FLEET-CACHE.md)
-  §"Size invariant"): the scout emits it compact and keeps a review body only
-  on the latest review per PR — do not tidy either back. A change to the
-  per-PR record shape bumps `PR_RECORD_SCHEMA` in the same commit, or the 304
-  fast path keeps serving the old shape from disk.
+  §"Size invariant"): the scout emits it compact and keeps a review body only on
+  the latest review per PR — do not tidy either back. A per-PR record shape change
+  bumps `PR_RECORD_SCHEMA` in the same commit, or the 304 fast path serves the old shape.
 - **Concurrently-read writers use `write_atomic`**, never `Path.write_text`.
 - **A REST list fetch sets `per_page` and pages** (`gh --paginate`;
   `_rest_list`'s `max_pages`); the 30-item default truncates silently.
@@ -180,19 +166,18 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
 - **Neither a skip nor a failed action consumes an edge-triggered lane's
   edge.** In the scout's hash-self-managing lanes (`queue-manager`,
   `queue-manager-ingest`, the periodic claim-cleanup and stalled sweeps) the
-  seen-hash or last-run write sits after every early-`continue` **and** after
-  the action succeeded, clearing the whole fallible region; a multi-command
-  lane states its partial-failure rule (`queue-manager` is all-or-none), and
-  its retry path carries the escalate-then-quiet pair (`_spawn_failed` /
-  `_spawn_ok`). A new guard or action goes above the write and into
-  `tests/test_scout_degraded_fetch.py` or a suite reusing its harness.
+  seen-hash or last-run write clears the whole fallible region: after every
+  early-`continue` **and** the action's success. A multi-command lane states
+  its partial-failure rule (`queue-manager` is all-or-none); its retry path
+  carries the `_spawn_failed` / `_spawn_ok` escalate-then-quiet pair. A new guard
+  or action goes above the write and into `tests/test_scout_degraded_fetch.py`
+  or a suite reusing its harness.
 - **An ingest round-trip captures its candidate set above the section
-  filters.** `fetch_task_queue` drops every `_TASK_QUEUE_PARK_LABELS` row and
-  `fleet:plan-review` before building the task dict and splits the rest by
-  claim state, so a candidate derived from `tasks.open` is blind to all of
-  them; capture into `tasks.plan_gated` inside the loop, above the
-  `continue`s, and test the row present in the candidate list **and** absent
-  from every section (`tests/test_scout_task_queue_plan_gated.py`).
+  filters** (`fetch_task_queue` drops `_TASK_QUEUE_PARK_LABELS` rows and
+  `fleet:plan-review`, then splits by claim state): capture into
+  `tasks.plan_gated` inside the loop, above the `continue`s, and test the row
+  present in the candidate list **and** absent from every section
+  (`tests/test_scout_task_queue_plan_gated.py`).
 - **A pane-keyed signal is not an iteration-keyed one.** Per-iteration claim
   liveness (one predicate, `fleet_claim_liveness.py`) compares dispatch ids; a
   file a later role in the same pane refreshes (heartbeat, `FLEET_CLAIM_FLAG`)

@@ -39,3 +39,14 @@ withholds that PR's `feedback` / `conflict` target until its `updatedAt` is
 older than the cooldown, logging `deferring <target>: claim swept <age>s ago`
 once. A won claim clears the label
 ([`fleet-labels-reference.md`](fleet-labels-reference.md) § `fleet:sweep-cooldown`).
+
+## Why an amending claim's marker is the dispatch, not the heartbeat
+
+The heartbeat is pane-scoped, so any later dispatch of any role in the pane
+renews it: as the `fleet:amending-*` orphan marker it would keep a dead claim
+live indefinitely, leaving the PR at once un-reapable and un-claimable. The
+dispatcher's `preclaim` sentinel skips the heartbeat for the same reason in
+reverse: the pane it launches into is idle and its heartbeat still belongs to
+the previous iteration, so deferring to it would reap the dispatcher's own
+fresh claim off a carried-over past-TTL label and admit a second feedback
+worker ([`fleet-labels-reference.md § Claims`](fleet-labels-reference.md#claims-dynamic-script-owned)).

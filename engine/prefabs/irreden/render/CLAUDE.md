@@ -17,10 +17,9 @@ Rationale: [`docs/design/prefab-render-surface.md`](../../../../docs/design/pref
 ## GPU resource ownership
 
 - `C_TriangleCanvasTextures` (color / distance / entity-id + Hi-Z chain),
-  `C_TrixelCanvasFramebuffer`, and `C_SpriteSheet`'s atlas are created in the ctor
-  and freed only in `onDestroy()`. Never stack-construct one, never
-  `destroyResource` by hand, never destroy a canvas entity mid-frame while a
-  system still holds a reference.
+  `C_TrixelCanvasFramebuffer`, and `C_SpriteSheet`'s atlas are created in the
+  ctor and freed only in `onDestroy()`: never stack-construct one,
+  `destroyResource` it by hand, or destroy a still-referenced canvas mid-frame.
 - New canvas textures allocate through `detail::makeCanvas*Texture` in
   `component_triangle_canvas_textures.hpp`; the format triple has one owner. A
   canvas with no explicit parent renders to the engine's main framebuffer.
@@ -30,11 +29,11 @@ Rationale: [`docs/design/prefab-render-surface.md`](../../../../docs/design/pref
   `kParkedCardinalFrames` later. Camera-only: detached entities re-voxelize.
   The store is base-resolution with the sub-cell frac in the distance; every
   absolute-position reader decodes it via `perAxisSubCellFrac` (`engine/render/CLAUDE.md`).
-- Seed a single-byte GPU sentinel with `IRRender::device()->fillBuffer(...)`;
-  a multi-byte one (`kTrixelDistanceMaxDistance`) reuses an owned
-  self-resetting kernel or a clear dispatch — never a resource-sized CPU
-  staging vector + `subData`. Live deviation to migrate when next touched:
-  `system_resolve_per_axis_screen_depth.hpp` seeds its scratch with `subData`.
+- Seed a single-byte GPU sentinel with `IRRender::device()->fillBuffer(...)`,
+  a multi-byte one (`kTrixelDistanceMaxDistance`) with an owned self-resetting
+  kernel or clear dispatch — never a resource-sized CPU staging vector +
+  `subData` (live deviation to migrate when next touched:
+  `system_resolve_per_axis_screen_depth.hpp`).
 
 ## Ordering contracts
 
@@ -54,10 +53,9 @@ Rationale: [`docs/design/prefab-render-surface.md`](../../../../docs/design/pref
 | `SPRITE_TO_SCREEN` | after the main canvas's `FRAMEBUFFER_TO_SCREEN` |
 
 `VOXEL_TO_TRIXEL_STAGE_1` runs compact + stage 1 + stage 2 per canvas in one
-tick; do not split them. `TEXT_TO_TRIXEL` clears the GUI canvas in
-`beginTick` and caps glyphs at `kMaxGlyphCommands` (`gui_text_batch.hpp`);
-widget renderers overpaint overlay text, so keep widgets clear of the
-perf-stats overlay region (top-right by default).
+tick; never split them. `TEXT_TO_TRIXEL` clears the GUI canvas in `beginTick`
+and caps glyphs at `kMaxGlyphCommands` (`gui_text_batch.hpp`). Widget renderers
+overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right).
 
 ## Component contracts
 
@@ -65,15 +63,14 @@ perf-stats overlay region (top-right by default).
   (`camera.hpp`), pitch clamped to ±(π/2 − ε); GRID reads only the Z-yaw
   (`engine/render/CLAUDE.md` §"Iso-depth-axis invariant"), DETACHED canvases
   the full quaternion via `PROPAGATE_CANVAS_ROTATION`.
-- Hitbox / hover systems cache the camera at `beginTick`; a mid-frame camera
-  move is seen next frame. Per-canvas behaviour (zoom tracking, hover,
-  subdivisions) is a `C_TrixelCanvasRenderBehavior` flag, never a branch.
+- Hitbox / hover systems cache the camera at `beginTick` (a mid-frame move
+  shows next frame). Per-canvas behaviour (zoom tracking, hover, subdivisions)
+  is a `C_TrixelCanvasRenderBehavior` flag, never a branch.
 - `C_EntityCanvas` owns `screenLocked_` (overlay opt-out) and `depthPriority_`
-  (foreground band; meaningful only when `!screenLocked_`), read by
-  `ENTITY_CANVAS_TO_FRAMEBUFFER` with no foreign `getComponent`. Per-voxel
-  tiers: `C_VoxelSetNew::changeVoxelPriority`; every id read goes through
-  `IRRender::decodeCarrierEntityId`. A per-trixel override arbitrates only
-  across canvases — use separate detached units.
+  (foreground band, only when `!screenLocked_`), read by `ENTITY_CANVAS_TO_FRAMEBUFFER`
+  with no foreign `getComponent`. Per-voxel tiers: `C_VoxelSetNew::changeVoxelPriority`;
+  id reads go through `IRRender::decodeCarrierEntityId`. A per-trixel override
+  arbitrates only across canvases — use separate detached units.
 - `C_ActiveLodLevel` is the singleton `LOD_UPDATE` writes; `SHAPES_TO_TRIXEL`
   draws a `C_ShapeDescriptor` only when the active tier is inside its inclusive
   `[lodMax_ .. lodMin_]` band (`lod_utils.hpp`); disjoint bands on co-located
@@ -94,18 +91,15 @@ perf-stats overlay region (top-right by default).
 
 ## Exposing system public API from the prefab layer
 
-- **Pattern A — direct component access:** the caller holds the entity id and
-  reads or writes the component.
-- **Pattern B — prefab-scoped namespace:** a header in this directory exposes
-  `IRPrefab::<Feature>::` free functions that own the entity lookup
-  (`fog_of_war.hpp`, `cursor_pivot.hpp`, `help_overlay.hpp`); name it anything
-  that does not collide with `IRRender::`.
-- Never add a feature setter/getter to `IRRender::` or a field to
-  `RenderManager` (`engine/render/CLAUDE.md` §"What belongs in engine/render/
-  vs engine/prefabs/irreden/render/"). Feature visibility is a singleton
-  component (`C_HelpOverlayState`), per `.claude/rules/cpp-globals.md`.
-  Registration self-wires (`IRSystem::findSystem`); never ask the creation to
-  call a `setFooSystem(id)` after `create()` (§Deprecated).
+- **Pattern A — direct component access:** the caller holds the entity id.
+- **Pattern B — prefab-scoped namespace:** a header here exposes
+  `IRPrefab::<Feature>::` free functions owning the entity lookup (`fog_of_war.hpp`,
+  `cursor_pivot.hpp`, `help_overlay.hpp`), named clear of `IRRender::`.
+- Never add a feature setter/getter to `IRRender::` or a field to `RenderManager`
+  (`engine/render/CLAUDE.md` §"What belongs in engine/render/ vs engine/prefabs/irreden/render/").
+  Feature visibility is a singleton component (`C_HelpOverlayState`), per
+  `.claude/rules/cpp-globals.md`. Registration self-wires (`IRSystem::findSystem`);
+  never ask the creation to call a `setFooSystem(id)` after `create()` (§Deprecated).
 
 ## Editor interaction
 
@@ -120,23 +114,21 @@ perf-stats overlay region (top-right by default).
 - Cursor pivot: `IRPrefab::CursorPivot::resolveFocusWorld(exclude)` picks at
   true surface depth and falls back to `IRRender::getDefaultRotationPivotFocus()`;
   pass the indicator as `exclude`; never add a picking-side anchor compensation.
-  The indicator spawns lazily on the first drag, is re-hidden not destroyed,
-  and sets `canvasEntity_ = kNullEntity`. A marker spawned from a hook after
-  `SHAPES_TO_TRIXEL` never renders that frame.
+  The indicator spawns lazily on first drag, is re-hidden not destroyed, and sets
+  `canvasEntity_ = kNullEntity`; a marker spawned by a post-`SHAPES_TO_TRIXEL` hook misses that frame.
 
 ## Help overlay and settings menu
 
-- Adopt: splice `IRPrefab::HelpOverlay::systems()` / `SettingsMenu::renderSystems()`
-  after `TEXT_TO_TRIXEL`, `SettingsMenu::inputSystems()` after `INPUT_KEY_MOUSE`,
-  then `registerToggleCommand()` (F1 / Escape). Nothing auto-prepends or
-  probes for its dependency. Content is `CommandManager`'s registry; the
-  overlay names no key. Never default-visible in a reference-gated creation.
+- Adopt: splice the systems where the ordering table says, then
+  `registerToggleCommand()` (F1 / Escape); nothing auto-prepends or probes for
+  its dependency. Content is `CommandManager`'s registry; the overlay names no
+  key. Never default-visible in a reference-gated creation.
 - Escape opens the menu, so an adopting demo drops `IRCommand::CLOSE_WINDOW`
   via `registerStandardKeyboardCommands({.omit_ = {...}})` and gets a QUIT
   button. Register settings (`IRPrefab::Settings::register{Bool,Enum,Float}`)
   during init; the menu snapshots them at open.
 - Headless readers: `HelpOverlay::builtText()` / `lastGlyphCommandCount()`,
-  `SettingsMenu::liveRowCount()` / `*ScreenPx(...)`. A QUIT assertion
+  `SettingsMenu::liveRowCount()` / `*ScreenPx(...)`; a QUIT assertion
   evaluates when the close is observed, not on the capture frame.
   `systemOrNull()` reports absent as `IRSystem::kNullSystemId`, never
   `kNullEntity` (`engine/system/CLAUDE.md` §"Hot reload and lookup";
@@ -146,56 +138,51 @@ perf-stats overlay region (top-right by default).
 
 - `IRPrefab::Widget::make<Kind>` builds one entity: `C_Widget` +
   `C_GuiPosition` + `C_Widget<Kind>`, plus `C_WidgetState` + `C_HitBox2DGui`
-  for interactive kinds. Theme is the `C_WidgetTheme` singleton
-  (`widget_theme.hpp::defaultTheme()`): mutate it once at init, before
-  building widgets. Hover publication is opt-in: `makeGuiHoverState()` creates
-  the `C_GuiHoverState` singleton, `hoveredWidget()` reads it.
+  for interactive kinds. Mutate the `C_WidgetTheme` singleton
+  (`widget_theme.hpp::defaultTheme()`) once at init, before building widgets.
+  Opt-in hover publication: `makeGuiHoverState()` creates the
+  `C_GuiHoverState` singleton; `hoveredWidget()` reads it.
 - Dropdown strip geometry (`C_WidgetDropdown::rowHeight` / `expandedHeight` /
   `itemCenterOffsetY` / `itemAtOffsetY`) has one owner; authored `zOrder_` stays
   below `kWidgetDropdownOpenZBias`; two open dropdowns are unordered.
-- Radio exclusion (`makeRadio(..., groupId, value)`) runs in
-  `WIDGET_APPLY_RADIO::endTick`. Text input edits only while `focused_` (owned
-  by `WIDGET_INPUT`). `C_WidgetScroll` is track + thumb only — the owner
-  positions content from `scrollPos_`.
+- Radio exclusion (`makeRadio(..., groupId, value)`) runs in `WIDGET_APPLY_RADIO::endTick`;
+  text input edits only while `focused_` (owned by `WIDGET_INPUT`);
+  `C_WidgetScroll` is track + thumb only — the owner positions content from `scrollPos_`.
 - `IRPrefab::GuiTest::` (`gui_test_assertions.hpp`): `hovers` / `clickFires` /
-  `sliderValue` / `checkbox` / `picksVoxel` / `picksIsoColumn` /
-  `hoveredEntityId` / `predicate`, one `GUI-ASSERT …` line each plus one
-  `GUI-ASSERT-COVERAGE …` per shot. `hoveredEntityId(expected, label,
-  frames)` reads the GPU `HoveredEntityIdBuffer`
-  (`IRRender::getEntityIdAtMouseTrixel()`) on every live frame and requires
-  the last `frames` to all name `expected` (a hover write that races between
-  two texels passes a one-frame read); the buffer is reset by
-  `TRIXEL_TO_FRAMEBUFFER::beginTick` every frame — register the GUI-test
-  cycler ahead of the composite (`shape_debug` splices it in before
-  `TRIXEL_TO_FRAMEBUFFER`) or every read sees the reset, never the completed
-  frame. `picksVoxel` is the CPU ray cast and cannot see that buffer. Reference wiring: `creations/editors/voxel_editor/main.cpp`. Lua
-  `onClick`: `engine/script/CLAUDE.md` §"Engine service bindings".
+  `sliderValue` / `checkbox` / `picksVoxel` / `picksIsoColumn` / `hoveredEntityId` /
+  `predicate`, one `GUI-ASSERT …` line each plus one `GUI-ASSERT-COVERAGE …` per
+  shot. `hoveredEntityId(expected, label, frames)` requires the GPU `HoveredEntityIdBuffer`
+  (`IRRender::getEntityIdAtMouseTrixel()`) to name `expected` on each of the
+  last `frames` live frames ([why](../../../../docs/design/trixel-parity-shift-442-investigation.md)).
+  `TRIXEL_TO_FRAMEBUFFER::beginTick` resets that buffer, so splice the
+  GUI-test cycler ahead of the composite, as `shape_debug` does. `picksVoxel`
+  is the CPU ray cast and cannot see that buffer. Reference wiring:
+  `creations/editors/voxel_editor/main.cpp`; Lua `onClick`:
+  `engine/script/CLAUDE.md` §"Engine service bindings".
 
 ## Rotation modes
 
 - `GRID` for world-integrated rotation with exact cell aliasing or shadows from
   thin detail; `DETACHED_REVOXELIZE` for cheap smooth SO(3) that still sorts,
-  casts and receives; any `DETACHED` mode with `screenLocked_ = true` for a
-  HUD / billboard overlay
-  ([`docs/design/detached-canvas-depth-default.md`](../../../../docs/design/detached-canvas-depth-default.md)).
-- `IRPrefab::EntityCanvas::createWithVoxelPool` is the detached-canvas
-  chokepoint; it attaches `C_CanvasAOTexture` + `C_TrixelCanvasRenderBehavior`
-  unless `screenLocked` — without them the canvas composites raw albedo.
+  casts and receives; any `DETACHED` mode with `screenLocked_ = true` for a HUD
+  / billboard overlay ([depth default](../../../../docs/design/detached-canvas-depth-default.md)).
+- `IRPrefab::EntityCanvas::createWithVoxelPool` is the detached-canvas chokepoint:
+  unless `screenLocked` it attaches `C_CanvasAOTexture` + `C_TrixelCanvasRenderBehavior`,
+  without which the canvas composites raw albedo.
 - Composite depth is `pos3DtoDistance(roundVec3HalfUp(translation)) × effSub × 8`
   with `rawDist` rescaled by `effSub / renderedSubdivisions_`; on-screen size
   and gather density depend on camera zoom × world extent only
   ([`docs/design/detached-canvas-density-compensation.md`](../../../../docs/design/detached-canvas-density-compensation.md)).
-- The sun-shadow bake reads main-canvas-layout depth sources only (never a
-  foreign model-frame texture); a voxel canvas casts the cells it rasterizes.
+- The sun-shadow bake reads main-canvas-layout depth only (never a foreign
+  model-frame texture); a voxel canvas casts the cells it rasterizes.
 
 ## GPU stage timing
 
 - Read [`docs/design/gpu-stage-timing-cost-model.md`](../../../../docs/design/gpu-stage-timing-cost-model.md)
-  before quoting the overlay. `VOXEL_TO_TRIXEL_STAGE_1` is untagged; its GPU
-  rows come from `GpuSubStageScope` (`gpu_substage_timing.hpp`).
-- Untagging a system from the observer is a paired edit: add
-  `IR_PROFILE_SCOPE("<stageName>")` in the same change or its CPU row reads 0
-  forever (`IR_PROFILE_FUNCTION` does not feed the histogram).
+  before quoting the overlay (untagged `VOXEL_TO_TRIXEL_STAGE_1`'s GPU rows come
+  from `GpuSubStageScope`, `gpu_substage_timing.hpp`). Untagging a system from the
+  observer pairs with an `IR_PROFILE_SCOPE("<stageName>")` or its CPU row reads
+  0 forever (`IR_PROFILE_FUNCTION` does not feed the histogram).
 
 ## Deprecated
 
