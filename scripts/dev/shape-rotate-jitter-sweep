@@ -67,6 +67,7 @@ RENDER="${RENDER:-sdf}"
 EXE_DIR="$BUILD_DIR/creations/demos/shape_debug"
 SS_DIR="$EXE_DIR/save_files/screenshots"
 METRIC="$ROOT/scripts/render-jitter-metric.py"
+FLEET_RUN="${FLEET_RUN:-$ROOT/scripts/fleet/fleet-run}"
 
 # nproc is Linux-only; macOS uses sysctl. Fall back to a safe default.
 JOBS="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
@@ -86,8 +87,8 @@ run_one() {
     # which trips the dangerous-rm guard) — matches perf-grid-rotate-sweep.
     find "$SS_DIR" -maxdepth 1 -type f -name '*.png' -delete
     local log="/tmp/jitter-sweep-${shape}-${path}.log"
-    ( cd "$EXE_DIR" && ./IRShapeDebug --spin-shape "$shape" $voxel \
-        --spin-yaw "$RATE" --auto-screenshot "$STEPS" --zoom "$ZOOM" ) \
+    "$FLEET_RUN" --build-dir "$BUILD_DIR" IRShapeDebug --spin-shape "$shape" $voxel \
+        --spin-yaw "$RATE" --auto-screenshot "$STEPS" --zoom "$ZOOM" \
         >"$log" 2>&1 \
         || { echo "  $shape/$path: RUN FAILED (see $log)"; tail -3 "$log"; worst_rc=1; return; }
 

@@ -64,6 +64,7 @@ import sys
 # Shared branch<->issue matcher, so game claude/game-<N>-* branches resolve
 # to their issue number here too.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import fleet_github  # noqa: E402
 from fleet_branch_match import issue_from_branch
 
 # Branch shapes the reconciler can resolve to a task identifier:
@@ -81,7 +82,7 @@ HOME = pathlib.Path.home()
 DEFAULT_RES_DIR = HOME / ".fleet" / "reservations"
 RES_DIR = pathlib.Path(os.environ.get("FLEET_RESERVATIONS_DIR", str(DEFAULT_RES_DIR)))
 
-GH = os.environ.get("FLEET_AMEND_RECONCILE_GH_BIN") or shutil.which("gh") or "gh"
+GH_OVERRIDE = "FLEET_AMEND_RECONCILE_GH_BIN"
 FLEET_CLAIM = (
     os.environ.get("FLEET_AMEND_RECONCILE_FLEETCLAIM_BIN")
     or shutil.which("fleet-claim")
@@ -102,14 +103,14 @@ def list_amending_prs(repo: str) -> list[dict]:
     """Returns [{'number': int, 'headRefName': str, 'title': str}, ...]."""
     try:
         out = subprocess.run(
-            [GH, "pr", "list", "--repo", repo, "--state", "open",
-             "--label", "fleet:human-amending",
-             "--json", "number,headRefName,title",
-             "--limit", "50"],
+            fleet_github.argv(["pr", "list", "--repo", repo, "--state", "open",
+                               "--label", "fleet:human-amending",
+                               "--json", "number,headRefName,title",
+                               "--limit", "50"], GH_OVERRIDE),
             capture_output=True, text=True, timeout=30, check=True,
         )
     except FileNotFoundError:
-        warn(f"`{GH}` not on PATH; skipping {repo}")
+        warn(f"`gh` not on PATH; skipping {repo}")
         return []
     except subprocess.CalledProcessError as e:
         warn(f"`gh pr list` failed for {repo}: {e.stderr.strip() or e}")
@@ -215,9 +216,9 @@ def revert_orphan_label(repo: str, number: int) -> bool:
         return True
     try:
         subprocess.run(
-            [GH, "pr", "edit", str(number), "--repo", repo,
-             "--remove-label", "fleet:human-amending",
-             "--add-label", "human:needs-fix"],
+            fleet_github.argv(["pr", "edit", str(number), "--repo", repo,
+                               "--remove-label", "fleet:human-amending",
+                               "--add-label", "human:needs-fix"], GH_OVERRIDE),
             capture_output=True, text=True, timeout=30, check=True,
         )
     except subprocess.CalledProcessError as e:
@@ -229,16 +230,16 @@ def revert_orphan_label(repo: str, number: int) -> bool:
     # Comment is best-effort — the label revert is the load-bearing action.
     try:
         subprocess.run(
-            [GH, "pr", "comment", str(number), "--repo", repo,
-             "--body",
-             "Amendment reconciler at fleet-up boot: no worktree owns this "
-             "PR's branch, so the prior agent's iteration was interrupted "
-             "before reaching `fleet:changes-made`. Reverting "
-             "`fleet:human-amending` → `human:needs-fix` so the standard "
-             "feedback-pickup path resumes on the next dispatcher tick.\n\n"
-             "Source: `scripts/fleet/fleet-reconcile-amendments` "
-             "(invoked from `fleet-up` Step 1.7).\n\n"
-             "— fleet-up reconciler"],
+            fleet_github.argv(["pr", "comment", str(number), "--repo", repo,
+                               "--body",
+                               "Amendment reconciler at fleet-up boot: no worktree owns this "
+                               "PR's branch, so the prior agent's iteration was interrupted "
+                               "before reaching `fleet:changes-made`. Reverting "
+                               "`fleet:human-amending` → `human:needs-fix` so the standard "
+                               "feedback-pickup path resumes on the next dispatcher tick.\n\n"
+                               "Source: `scripts/fleet/fleet-reconcile-amendments` "
+                               "(invoked from `fleet-up` Step 1.7).\n\n"
+                               "— fleet-up reconciler"], GH_OVERRIDE),
             capture_output=True, text=True, timeout=30, check=False,
         )
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):

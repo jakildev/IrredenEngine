@@ -9,6 +9,7 @@ fully mocked — no real network.
 import importlib.machinery
 import importlib.util
 import json
+import sys
 import tempfile
 import unittest
 import urllib.error
@@ -16,6 +17,8 @@ from email.message import Message
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+# The module imports its sibling fleet_github, as it does under the scout.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 _SCRIPT = Path(__file__).parent.parent / "fleet_gh_poll.py"
 _loader = importlib.machinery.SourceFileLoader("fleet_gh_poll", str(_SCRIPT))
 _spec = importlib.util.spec_from_loader("fleet_gh_poll", _loader)

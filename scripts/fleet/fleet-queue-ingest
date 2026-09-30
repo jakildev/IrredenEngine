@@ -113,22 +113,16 @@ fi
 # skip scope-shipped issues without re-querying.
 if [[ -f "$PROJECTION_FILE" ]] && command -v gh >/dev/null 2>&1; then
     scope_shipped_out=$(FLEET_PROJ_FILE="$PROJECTION_FILE" INGEST_SELF="${BASH_SOURCE[0]}" python3 - << 'SCOPE_PY' 2>>"$LOG_FILE"
-import json, os, shutil, subprocess, sys
+import json, os, sys
 
 # Import the genuine-reference predicate from the sibling module. realpath
 # resolves the ~/bin/fleet-queue-ingest install symlink back to the versioned
 # scripts/fleet/ copy, where fleet_scope_shipped.py lives next to this script.
 sys.path.insert(0, os.path.dirname(os.path.realpath(os.environ['INGEST_SELF'])))
+import fleet_github
 from fleet_scope_shipped import select_shipped_pr
 
 REPO_SLUGS = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
-
-# Resolve gh through PATH ourselves: on a native-Windows python (os.name ==
-# "nt") CreateProcess appends only ".exe" to a bare name, so a PATH-shim
-# `gh`/`gh.bat` earlier in PATH is silently skipped in favor of the real
-# gh.exe — shutil.which honors PATH order and PATHEXT, and is a no-op
-# passthrough on POSIX.
-GH = shutil.which('gh') or 'gh'
 
 proj_path = os.environ['FLEET_PROJ_FILE']
 try:
@@ -151,8 +145,8 @@ for issue in pending:
     # genuine word-boundary #n cross-reference in title/body before trusting it.
     # 'files' feeds the layers 8-9 non-shipping-diff guard (a steward docs/.fleet-only
     # PR that names #n but ships no code scope); it rides the same query, no extra call.
-    r = subprocess.run(
-        [GH, 'pr', 'list', '--repo', repo, '--state', 'merged',
+    r = fleet_github.run(
+        ['pr', 'list', '--repo', repo, '--state', 'merged',
          '--search', f'#{n}', '--json', 'number,title,body,url,mergedAt,files',
          '--limit', '5'],
         capture_output=True, text=True, timeout=15,
@@ -172,15 +166,15 @@ for issue in pending:
         "Skipping ingest; please close this issue if the scope is fully "
         "addressed. — fleet-queue-ingest"
     )
-    cr = subprocess.run(
-        [GH, 'issue', 'comment', str(n), '--repo', repo, '--body', comment],
+    cr = fleet_github.run(
+        ['issue', 'comment', str(n), '--repo', repo, '--body', comment],
         capture_output=True, timeout=15,
     )
     if cr.returncode != 0:
         kept.append(issue)
         continue
-    subprocess.run(
-        [GH, 'issue', 'edit', str(n), '--repo', repo,
+    fleet_github.run(
+        ['issue', 'edit', str(n), '--repo', repo,
          '--add-label', 'fleet:scope-shipped'],
         capture_output=True, timeout=15,
     )
@@ -231,23 +225,17 @@ if ! command -v gh >/dev/null 2>&1; then
 fi
 
 stamping_out=$(FLEET_PROJ_FILE="$PROJECTION_FILE" INGEST_SELF="${BASH_SOURCE[0]}" python3 - << 'STAMP_PY' 2>>"$LOG_FILE"
-import json, os, re, shutil, subprocess, sys
+import json, os, re, sys
 
 # Shared blocker parser — one routine for scout/ingest/claim so the
 # three can't disagree. realpath resolves the ~/bin symlink back to the
 # scripts/fleet dir the module ships in (same pattern as the SCOPE_PY block).
 sys.path.insert(0, os.path.dirname(os.path.realpath(os.environ['INGEST_SELF'])))
+import fleet_github
 from fleet_blocked_by import blocker_ref_records, has_blocked_by_field
 from fleet_model_field import declared_class
 
 REPO_SLUGS = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
-
-# Resolve gh through PATH ourselves: on a native-Windows python (os.name ==
-# "nt") CreateProcess appends only ".exe" to a bare name, so a PATH-shim
-# `gh`/`gh.bat` earlier in PATH is silently skipped in favor of the real
-# gh.exe — shutil.which honors PATH order and PATHEXT, and is a no-op
-# passthrough on POSIX.
-GH = shutil.which('gh') or 'gh'
 
 proj_path = os.environ['FLEET_PROJ_FILE']
 try:
@@ -281,8 +269,8 @@ def _blocker_open(repo, ref, cache, requires_merge=False):
     key = (repo, ref, requires_merge)
     if key in cache:
         return cache[key]
-    r = subprocess.run(
-        [GH, 'pr' if requires_merge else 'issue', 'view', ref, '--repo', repo,
+    r = fleet_github.run(
+        ['pr' if requires_merge else 'issue', 'view', ref, '--repo', repo,
          '--json', 'state', '--jq', '.state'],
         capture_output=True, text=True, timeout=15,
     )
@@ -318,8 +306,8 @@ for issue in pending:
     if not n:
         continue
 
-    r = subprocess.run(
-        [GH, 'issue', 'view', str(n), '--repo', repo,
+    r = fleet_github.run(
+        ['issue', 'view', str(n), '--repo', repo,
          '--json', 'title,body,labels,comments'],
         capture_output=True, text=True, timeout=15,
     )
@@ -354,11 +342,11 @@ for issue in pending:
                     'fleet:fable', 'fleet:opus', 'fleet:sonnet'):
             if lbl in labels:
                 remove.append(lbl)
-        cmd = [GH, 'issue', 'edit', str(n), '--repo', repo,
+        cmd = ['issue', 'edit', str(n), '--repo', repo,
                '--add-label', 'fleet:needs-plan']
         for lbl in remove:
             cmd.extend(['--remove-label', lbl])
-        er = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        er = fleet_github.run(cmd, capture_output=True, text=True, timeout=15)
         if er.returncode != 0:
             failed += 1
             print(f'WARN issue {repo}#{n}: human:revise-plan reconcile failed: '
@@ -393,8 +381,8 @@ for issue in pending:
     # idle fleet). Strip the now-stale needs-plan so the issue falls through to
     # the planning gate, which queues opted-out issues directly.
     if opted_out and 'fleet:needs-plan' in labels:
-        er = subprocess.run(
-            [GH, 'issue', 'edit', str(n), '--repo', repo,
+        er = fleet_github.run(
+            ['issue', 'edit', str(n), '--repo', repo,
              '--remove-label', 'fleet:needs-plan'],
             capture_output=True, text=True, timeout=15,
         )
@@ -427,8 +415,8 @@ for issue in pending:
     # Stripping only needs-plan leaves the issue held by the plan-review arm
     # of the skip guard, which is the correct state.
     if 'fleet:needs-plan' in labels and 'fleet:plan-review' in labels:
-        er = subprocess.run(
-            [GH, 'issue', 'edit', str(n), '--repo', repo,
+        er = fleet_github.run(
+            ['issue', 'edit', str(n), '--repo', repo,
              '--remove-label', 'fleet:needs-plan'],
             capture_output=True, text=True, timeout=15,
         )
@@ -484,13 +472,13 @@ for issue in pending:
             f"adding `fleet:needs-plan` to route it through PLANNING-PROTOCOL.md "
             "before it can queue. — fleet-queue-ingest"
         )
-        subprocess.run(
-            [GH, 'issue', 'comment', str(n), '--repo', repo,
+        fleet_github.run(
+            ['issue', 'comment', str(n), '--repo', repo,
              '--body', comment],
             capture_output=True, timeout=15,
         )
-        er = subprocess.run(
-            [GH, 'issue', 'edit', str(n), '--repo', repo,
+        er = fleet_github.run(
+            ['issue', 'edit', str(n), '--repo', repo,
              '--add-label', 'fleet:needs-plan'],
             capture_output=True, text=True, timeout=15,
         )
@@ -540,10 +528,10 @@ for issue in pending:
         print(f'INFO issue {repo}#{n}: queuing with fleet:blocked '
               f'(blocked by open {joined})', file=sys.stderr)
 
-    cmd = [GH, 'issue', 'edit', str(n), '--repo', repo]
+    cmd = ['issue', 'edit', str(n), '--repo', repo]
     for lbl in add_labels:
         cmd.extend(['--add-label', lbl])
-    er = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+    er = fleet_github.run(cmd, capture_output=True, text=True, timeout=15)
     if er.returncode != 0:
         failed += 1
         print(f'WARN issue {repo}#{n}: label edit failed: {er.stderr.strip()}', file=sys.stderr)
@@ -563,8 +551,8 @@ for issue in data.get('unblock_issues', []):
     repo = REPO_SLUGS.get(issue.get('repo', 'engine'), 'jakildev/IrredenEngine')
     if not n:
         continue
-    r = subprocess.run(
-        [GH, 'issue', 'view', str(n), '--repo', repo, '--json', 'body,labels'],
+    r = fleet_github.run(
+        ['issue', 'view', str(n), '--repo', repo, '--json', 'body,labels'],
         capture_output=True, text=True, timeout=15,
     )
     if r.returncode != 0:
@@ -589,8 +577,8 @@ for issue in data.get('unblock_issues', []):
     if has_open_blocker:
         unblock_still += 1
         continue  # still genuinely blocked — leave the marker
-    er = subprocess.run(
-        [GH, 'issue', 'edit', str(n), '--repo', repo,
+    er = fleet_github.run(
+        ['issue', 'edit', str(n), '--repo', repo,
          '--remove-label', 'fleet:blocked'],
         capture_output=True, text=True, timeout=15,
     )
@@ -623,8 +611,8 @@ for issue in data.get('retract_issues', []):
     repo = REPO_SLUGS.get(issue.get('repo', 'engine'), 'jakildev/IrredenEngine')
     if not n:
         continue
-    r = subprocess.run(
-        [GH, 'issue', 'view', str(n), '--repo', repo, '--json', 'labels'],
+    r = fleet_github.run(
+        ['issue', 'view', str(n), '--repo', repo, '--json', 'labels'],
         capture_output=True, text=True, timeout=15,
     )
     if r.returncode != 0:
@@ -644,8 +632,8 @@ for issue in data.get('retract_issues', []):
     if 'fleet:queued' not in labels or not gates:
         retract_skipped += 1
         continue
-    er = subprocess.run(
-        [GH, 'issue', 'edit', str(n), '--repo', repo,
+    er = fleet_github.run(
+        ['issue', 'edit', str(n), '--repo', repo,
          '--remove-label', 'fleet:queued'],
         capture_output=True, text=True, timeout=15,
     )
@@ -654,8 +642,8 @@ for issue in data.get('retract_issues', []):
         print(f'WARN issue {repo}#{n}: remove fleet:queued failed: {er.stderr.strip()}', file=sys.stderr)
         continue
     gate_list = ', '.join(f'`{g}`' for g in gates)
-    subprocess.run(
-        [GH, 'issue', 'comment', str(n), '--repo', repo, '--body',
+    fleet_github.run(
+        ['issue', 'comment', str(n), '--repo', repo, '--body',
          f'{gate_list} landed after this issue was queued. Removed '
          '`fleet:queued` so it leaves the worker pickup set until the gate '
          'clears — a planning queue-block held ingest but not pickup (#2740). '

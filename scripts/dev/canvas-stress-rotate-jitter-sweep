@@ -77,6 +77,7 @@ ROI_FRAC="${ROI_FRAC:-0.5}"
 EXE_DIR="$BUILD_DIR/creations/demos/canvas_stress"
 SS_DIR="$EXE_DIR/save_files/screenshots"
 METRIC="$ROOT/scripts/render-jitter-metric.py"
+FLEET_RUN="${FLEET_RUN:-$ROOT/scripts/fleet/fleet-run}"
 
 # nproc is Linux-only; macOS uses sysctl. Fall back to a safe default.
 JOBS="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
@@ -92,8 +93,8 @@ find "$SS_DIR" -maxdepth 1 -type f -name '*.png' -delete
 
 echo "[2/3] sweep: camera yaw ${FROM}->${TO} rad across $STEPS shots (entities frozen, --no-spin), warmup=$WARMUP gate=max_jitter=$MAX_JITTER"
 LOG="/tmp/canvas-stress-jitter-sweep.log"
-( cd "$EXE_DIR" && ./IRCanvasStress --sweep-yaw "$FROM" "$TO" "$STEPS" --no-spin \
-    --auto-screenshot "$WARMUP" ) >"$LOG" 2>&1 \
+"$FLEET_RUN" --build-dir "$BUILD_DIR" IRCanvasStress --sweep-yaw "$FROM" "$TO" "$STEPS" \
+    --no-spin --auto-screenshot "$WARMUP" >"$LOG" 2>&1 \
     || { echo "  RUN FAILED (see $LOG)"; tail -5 "$LOG"; exit 1; }
 
 echo "[3/3] scoring central ${ROI_FRAC} ROI ..."

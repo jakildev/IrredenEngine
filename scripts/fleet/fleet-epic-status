@@ -30,11 +30,11 @@ import json
 import os
 import pathlib
 import re
-import subprocess
 import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import fleet_github  # noqa: E402
 from fleet_poll_topology import state_age_seconds  # noqa: E402
 from fleet_validate_stack import discover_children, validate_stack  # noqa: E402
 
@@ -67,7 +67,7 @@ def repo_slug(repo_key):
 
 
 def _gh_json(args):
-    proc = subprocess.run(args, capture_output=True, text=True)
+    proc = fleet_github.run(args, capture_output=True, text=True)
     if proc.returncode != 0:
         warn("gh failed: %s" % (proc.stderr or "").strip())
         return None
@@ -116,7 +116,7 @@ def load_state_cache():
 
 def fetch_issue(slug, number):
     return _gh_json([
-        "gh", "issue", "view", str(number), "--repo", slug,
+        "issue", "view", str(number), "--repo", slug,
         "--json", "number,title,body,state,labels",
     ])
 
@@ -181,7 +181,7 @@ def prs_for_child_cached(state_data, repo_key, child_number):
 
 def prs_for_child_live(slug, number):
     result = _gh_json([
-        "gh", "pr", "list", "--repo", slug,
+        "pr", "list", "--repo", slug,
         "--search", "in:title #%d" % number,
         "--state", "open",
         "--json", "number,title,headRefName,labels,url",
@@ -191,7 +191,7 @@ def prs_for_child_live(slug, number):
 
 def plan_comment_exists(slug, number):
     data = _gh_json([
-        "gh", "issue", "view", str(number), "--repo", slug,
+        "issue", "view", str(number), "--repo", slug,
         "--json", "comments",
     ]) or {}
     for c in data.get("comments", []) or []:

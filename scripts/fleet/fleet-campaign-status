@@ -59,6 +59,7 @@ import sys
 import time
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import fleet_github  # noqa: E402
 from fleet_poll_topology import state_age_seconds  # noqa: E402
 
 STATE_DIR = os.path.join(os.path.expanduser("~"), ".fleet", "state")
@@ -211,8 +212,8 @@ def repo_root(repo_key, state):
 
 def gh_json(args):
     try:
-        proc = subprocess.run(args, capture_output=True, text=True,
-                              timeout=SUBPROCESS_TIMEOUT_S)
+        proc = fleet_github.run(args, capture_output=True, text=True,
+                                timeout=SUBPROCESS_TIMEOUT_S)
     except subprocess.TimeoutExpired:
         warn("gh timed out after %ds" % SUBPROCESS_TIMEOUT_S)
         return None
@@ -253,7 +254,7 @@ def open_prs(slug, repo_key, pr_json):
         if rows is not None:
             return rows, True
     rows = gh_json([
-        "gh", "pr", "list", "--repo", slug, "--state", "open", "--limit", "60",
+        "pr", "list", "--repo", slug, "--state", "open", "--limit", "60",
         "--json", "number,title,headRefName,headRefOid,labels,isDraft,baseRefName",
     ])
     return (rows or []), rows is not None
@@ -273,7 +274,7 @@ def closed_campaign_prs(repo, campaign, pr_json):
     complete = True
     for selector in ("head:claude/%s-" % campaign, "label:fleet:campaign-%s" % campaign):
         rows = gh_json([
-            "gh", "pr", "list", "--repo", repo, "--state", "closed",
+            "pr", "list", "--repo", repo, "--state", "closed",
             "--search", selector, "--limit", str(CLOSED_PR_LIMIT),
             "--json", "number,title,headRefName,mergedAt,mergeCommit,body,labels",
         ])
@@ -298,7 +299,7 @@ def rest_list(pr_json, key, path):
         return (rows or []), rows is not None, False
     out = []
     for page in range(1, REST_MAX_PAGES + 1):
-        rows = gh_json(["gh", "api", "%s%sper_page=%d&page=%d" % (
+        rows = gh_json(["api", "%s%sper_page=%d&page=%d" % (
             path, "&" if "?" in path else "?", REST_PAGE_SIZE, page)])
         if not isinstance(rows, list):
             return out, False, False
