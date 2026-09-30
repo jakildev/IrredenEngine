@@ -1,0 +1,94 @@
+{
+  "head": "968190473166767779ea314bd19f18fdbb8dd829",
+  "changes": " M engine/render/src/shaders/ir_world_surface_lighting.glsl\n M engine/render/src/shaders/metal/ir_world_surface_lighting.metal\n M scripts/tests/test_render_shape_surface_lighting.py\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "host_power": "Battery Power",
+  "host_cpus": 14,
+  "build_dir": "build",
+  "build_type": "Debug",
+  "binary_sha256": "92d9c264d6e485f3bd4184c8b209bf2eea270bf7f8758e710761a8bd1bfa01e3",
+  "shader_sha256": "17016739a32ea3ce57ee5af618292f814fc24e20ea5bad3dfd8749bd0bdb303e",
+  "runtime_scripts_sha256": "c3ab47543e58c89b874850315b06881210a2dc81013b1524233269e9f7edad5b",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRCanvasStress",
+    "--only",
+    "orbit",
+    "--focus-orbit",
+    "7",
+    "--focus-identity",
+    "--probe-grid",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--no-ao",
+    "--zoom",
+    "4",
+    "--subdivisions",
+    "1",
+    "--auto-profile",
+    "--auto-screenshot",
+    "6",
+    "--sweep-yaw",
+    "0.39269908",
+    "5.10508806",
+    "4"
+  ],
+  "runs": [
+    {
+      "index": 1,
+      "launched_utc": "2026-09-28T05:10:41Z",
+      "finished_utc": "2026-09-28T05:10:45Z",
+      "host_battery_percent": 29,
+      "host_load_1m": 5.13,
+      "exit_code": 0,
+      "cpu_sampling": null,
+      "fresh_report": true,
+      "clean": true,
+      "engine_logged": true,
+      "yaw_pose_mismatch": null,
+      "pivot_mismatch": null,
+      "explicit_pivot_samples": 0,
+      "overflow_failure": null,
+      "yaw_first_deg": 0.0,
+      "yaw_last_deg": -67.5,
+      "yaw_travel_deg": 292.5,
+      "zoom_first": 4.0,
+      "zoom_last": 4.0,
+      "zoom_min": 4.0,
+      "zoom_max": 4.0,
+      "zoom_range_present": true,
+      "overflow_max_dropped": 0,
+      "overflow_max_entries": 0,
+      "overflow_samples": 248,
+      "gpu_measured": true
+    }
+  ],
+  "environment": {
+    "IR_PERAXIS_SURFACE_LIGHTING": "1"
+  },
+  "screenshots": [
+    {
+      "source": "screenshot_003113.png",
+      "file": "frame-0.png",
+      "sha256": "a2acb93d52508a0c907b16982094f574b7bb70a77da3244a9ff11b21dced4f1f"
+    },
+    {
+      "source": "screenshot_003114.png",
+      "file": "frame-1.png",
+      "sha256": "f9f068027cb8fd8b4b1cd847d9300359694b6e8ad3da7f76cd2d6dca2d24abf6"
+    },
+    {
+      "source": "screenshot_003115.png",
+      "file": "frame-2.png",
+      "sha256": "ca0028649dff53ea8ed14f05a60e5ff2c0497eed885ff6dda82acd7b6cd53048"
+    },
+    {
+      "source": "screenshot_003116.png",
+      "file": "frame-3.png",
+      "sha256": "1bc02a831fd18ae0ec5e9dd49ad1de41cf66707690b235d7bb8d0fed3df13fe0"
+    }
+  ]
+}
