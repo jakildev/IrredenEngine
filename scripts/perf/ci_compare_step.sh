@@ -17,6 +17,8 @@
 #
 # Env:
 #   BASELINE_ROOT  baseline root directory (may be empty/absent -> seed-new)
+#   BASELINE_HISTORY  per-capture history root (<slug>/<commit>/); when set,
+#                  the checker gates against the class-matched capture
 #   HEAD_DIR       head perf run directory (must exist and be non-empty)
 #   PR_NUMBER      pull request number to comment on
 #   REGRESS_PCT    regression threshold, default 10
@@ -30,6 +32,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 BASELINE_ROOT="${BASELINE_ROOT:?BASELINE_ROOT is required}"
+BASELINE_HISTORY="${BASELINE_HISTORY:-}"
 HEAD_DIR="${HEAD_DIR:?HEAD_DIR is required}"
 PR_NUMBER="${PR_NUMBER:?PR_NUMBER is required}"
 REGRESS_PCT="${REGRESS_PCT:-10}"
@@ -60,9 +63,14 @@ print((m.get('calibration') or {}).get('host_slug', ''))
 " "${HEAD_DIR}/manifest.json")
 echo "perf-gate: head host_slug=${HEAD_SLUG:-(none)}"
 
+HISTORY_ARGS=()
+if [[ -n "$BASELINE_HISTORY" ]]; then
+  HISTORY_ARGS=(--baseline-history "$BASELINE_HISTORY")
+fi
+
 STATUS=0
 # shellcheck disable=SC2086  # CHECK_REGRESSION is an intentionally split command
-$CHECK_REGRESSION "$BASELINE_ROOT" "$HEAD_DIR" \
+$CHECK_REGRESSION "$BASELINE_ROOT" "$HEAD_DIR" ${HISTORY_ARGS[@]+"${HISTORY_ARGS[@]}"} \
   --regress-pct "$REGRESS_PCT" --improve-pct "$IMPROVE_PCT" \
   > "$BODY" 2> "$STDERR" || STATUS=$?
 

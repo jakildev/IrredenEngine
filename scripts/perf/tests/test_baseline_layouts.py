@@ -18,6 +18,17 @@ a gate that silently passes produce the same check mark — so they get arms:
     I  normalization reference is the BASELINE's ref_ms, not the global
        calibration target: a slow SKU at rest gates raw, a genuinely loaded
        head gates normalized
+    J  one slug, two runner classes: with --baseline-history a neutral
+       head gates raw against the slow-class capture and passes;
+       without it the same fixture fails (the defect, reproduced)
+    K  a real +25% regression on that head still fails against the capture
+    L  history holds only the other class -> informational, no table, no ↓
+    M  an in-band capture 15 days older than the head is excluded
+    N  an in-band report-less capture newer than a measured one is skipped
+    O  a capture with a different frame count is excluded
+    P  ci_compare_step.sh forwards BASELINE_HISTORY as --baseline-history
+    Q  an in-band capture finished after the head started is excluded,
+       even though it is the newest
 
 Stdlib only, no network, no build. Wired into the perf-gate job so it
 executes rather than drifting.
@@ -83,11 +94,73 @@ def write_run(run_dir: Path, *, slug: str, avg_ms: float,
     return run_dir
 
 
-def run_checker(baseline_root: Path, head_dir: Path) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        [sys.executable, str(CHECK_REGRESSION), str(baseline_root), str(head_dir)],
-        capture_output=True, text=True,
-    )
+def run_checker(baseline_root: Path, head_dir: Path,
+                history: Path | None = None) -> subprocess.CompletedProcess:
+    cmd = [sys.executable, str(CHECK_REGRESSION), str(baseline_root), str(head_dir)]
+    if history is not None:
+        cmd += ["--baseline-history", str(history)]
+    return subprocess.run(cmd, capture_output=True, text=True)
+
+
+# Real readings on linux-x86_64-epyc-9v74-80-unknown: `(ref_ms, zoom=1 avg,
+# zoom=4 avg)`. The slug covers a fast and a slow runner class, and the head
+# is a PR whose diff cannot reach the grid, measured on the slow class.
+SPLIT_SLUG = "linux-x86_64-epyc-9v74-80-unknown"
+FAST_TIP = (89.97, 625.09, 1314.24)         # perf-baseline a50a77e1e
+SLOW_CAPTURE = (115.47, 845.33, 1904.92)    # perf-baseline 3ae85adf8
+HEAD_NEUTRAL = (116.37, 878.47, 1917.39)
+HEAD_STARTED = "2026-09-28T12:00:00Z"
+ZOOM_CELLS = ("zoom=1", "zoom=4")
+
+
+def write_capture(run_dir: Path, reading: tuple, *, finished_at: str,
+                  started_at: str | None = None, frames: int = 60,
+                  reportless: bool = False) -> Path:
+    """A perf-run directory shaped like a real CI capture: two zoom cells and
+    the manifest fields the class-matched resolver filters on."""
+    ref_ms, *avgs = reading
+    run_dir.mkdir(parents=True, exist_ok=True)
+    cells = []
+    for cell_id, avg in zip(ZOOM_CELLS, avgs):
+        cells.append({"id": cell_id, "report": f"{cell_id}.txt",
+                      "status": "no_report" if reportless else "ok"})
+        if not reportless:
+            (run_dir / f"{cell_id}.txt").write_text(
+                "=== PROFILE REPORT ===\n"
+                f"Frame time:  avg={avg:.3f}ms p50={avg:.3f}ms p95={avg:.3f}ms "
+                f"p99={avg:.3f}ms min={avg:.3f}ms max={avg:.3f}ms\n"
+                "=== END REPORT ===\n"
+            )
+    (run_dir / "manifest.json").write_text(json.dumps({
+        "matrix": "quick",
+        "frames": frames,
+        "git_sha": run_dir.name[:9],
+        "started_at": started_at or finished_at,
+        "finished_at": finished_at,
+        "cells": cells,
+        "calibration": {"host_slug": SPLIT_SLUG, "ref_ms": ref_ms,
+                        "ref_target_ms": 50.0},
+    }))
+    return run_dir
+
+
+def split_fixture(work: Path, extra: dict) -> tuple[Path, Path]:
+    """The fast tip at <root>/<slug>/ and in the history, plus `extra`
+    history captures `{commit-name: (reading, finished_at, kwargs)}`."""
+    root = work / "baseline_latest"
+    history = work / "history"
+    write_capture(root / SPLIT_SLUG, FAST_TIP, finished_at="2026-09-27T23:25:21Z")
+    write_capture(history / SPLIT_SLUG / "a50a77e1e", FAST_TIP,
+                  finished_at="2026-09-27T23:25:21Z")
+    for name, (reading, finished_at, kwargs) in extra.items():
+        write_capture(history / SPLIT_SLUG / name, reading,
+                      finished_at=finished_at, **kwargs)
+    return root, history
+
+
+def write_head(work: Path, reading: tuple = HEAD_NEUTRAL, **kwargs) -> Path:
+    return write_capture(work / "head", reading, finished_at=HEAD_STARTED,
+                         started_at=HEAD_STARTED, **kwargs)
 
 
 # --- Arms A/B/C: baseline resolution -------------------------------------
@@ -328,6 +401,163 @@ def arm_i_baseline_relative_normalization(tmp: Path) -> None:
           "a 1.50x load factor selects the normalized weighting")
 
 
+# --- Arms J-P: class-matched baseline selection ---------------------------
+
+SLOW_3AE = {"3ae85adf8": (SLOW_CAPTURE, "2026-09-25T23:10:00Z", {})}
+
+
+def arm_j_class_split_repro(tmp: Path) -> None:
+    work = tmp / "j"
+    root, history = split_fixture(work, SLOW_3AE)
+    head = write_head(work)
+
+    r = run_checker(root, head)
+    check("J", r.returncode == 1,
+          f"tip-only gate fails the neutral head — the defect (got {r.returncode})")
+    check("J", "normalized" in r.stderr,
+          "the tip-only gate normalizes across the class split")
+
+    r = run_checker(root, head, history)
+    check("J", r.returncode == 0,
+          f"--baseline-history passes the same head (got {r.returncode}; {r.stderr.strip()})")
+    check("J", "on raw" not in r.stderr and "(raw," in r.stderr,
+          "the class-matched comparison weighs raw")
+    check("J", "`perf-baseline@3ae85adf8`" in r.stdout,
+          "the host note names the slow-class capture")
+    check("J", "class-matched history capture, not the branch tip" in r.stdout,
+          "the host note says the capture is not the tip")
+    check("J", "1904.92 → 1917.39 (+0.7%)" in r.stdout,
+          "zoom=4 reads +0.7% against the slow capture")
+    check("J", "2.5 d before the head run" in r.stdout,
+          "the host note carries the capture's age")
+
+
+def arm_k_regression_still_fires(tmp: Path) -> None:
+    """Only the frame times scale: a real regression does not move ref_ms, and
+    scaling it too would push the head out of band into the informational
+    path, making this control vacuous."""
+    work = tmp / "k"
+    root, history = split_fixture(work, SLOW_3AE)
+    ref_ms, *avgs = HEAD_NEUTRAL
+    head = write_head(work, (ref_ms, *(a * 1.25 for a in avgs)))
+
+    r = run_checker(root, head, history)
+    check("K", r.returncode == 1,
+          f"+25% on the class-matched capture fails (got {r.returncode})")
+    check("K", "on raw mean frame avg" in r.stderr and "zoom=4" in r.stderr,
+          "the failure is raw and names zoom=4")
+    check("K", "(+25.8%)" in r.stdout, "zoom=4 reads +25.8%")
+
+
+def arm_l_no_class_match(tmp: Path) -> None:
+    work = tmp / "l"
+    root, history = split_fixture(work, {
+        "b570d9eb3": ((90.07, 628.0, 1318.65), "2026-09-26T23:00:00Z", {}),
+    })
+    head = write_head(work)
+
+    r = run_checker(root, head, history)
+    check("L", r.returncode == 0, f"informational pass (got {r.returncode})")
+    check("L", "check_regression: NO CLASS-MATCHED BASELINE" in r.stderr,
+          "stderr names the no-match path")
+    check("L", "# perf comparison:" not in r.stdout, "no comparison table")
+    check("L", "↓" not in r.stdout, "no ↓, so perf:improved cannot fire")
+    check("L", "ref_ms 89.97 — outside the calibration band" in r.stdout,
+          "the rejected candidates are listed with their ref_ms")
+
+
+def arm_m_age_window(tmp: Path) -> None:
+    work = tmp / "m"
+    root, history = split_fixture(work, {
+        "old": (SLOW_CAPTURE, "2026-09-13T11:00:00Z", {}),   # 15 d before head
+        "edge": (SLOW_CAPTURE, "2026-09-14T13:00:00Z", {}),  # 13.96 d
+    })
+    head = write_head(work)
+    r = run_checker(root, head, history)
+    check("M", r.returncode == 0 and "`perf-baseline@edge`" in r.stdout,
+          "a capture just inside 14 days is selected (positive control)")
+
+    (history / SPLIT_SLUG / "edge" / "manifest.json").unlink()
+    r = run_checker(root, head, history)
+    check("M", "NO CLASS-MATCHED BASELINE" in r.stderr,
+          f"a 15-day-old in-band capture is excluded (rc {r.returncode})")
+    check("M", "older than 14 days" in r.stdout, "the exclusion is named")
+
+
+def arm_n_reportless_skipped(tmp: Path) -> None:
+    work = tmp / "n"
+    root, history = split_fixture(work, {
+        **SLOW_3AE,
+        "dead": (SLOW_CAPTURE, "2026-09-26T10:00:00Z", {"reportless": True}),
+    })
+    head = write_head(work)
+    r = run_checker(root, head, history)
+    check("N", r.returncode == 0,
+          f"a newer report-less capture is not an infra error (got {r.returncode})")
+    check("N", "`perf-baseline@3ae85adf8`" in r.stdout,
+          "the older measured capture is selected")
+
+
+def arm_o_frames_mismatch(tmp: Path) -> None:
+    work = tmp / "o"
+    root, history = split_fixture(work, {
+        "long": (SLOW_CAPTURE, "2026-09-25T23:10:00Z", {"frames": 300}),
+    })
+    head = write_head(work)
+    r = run_checker(root, head, history)
+    check("O", "NO CLASS-MATCHED BASELINE" in r.stderr,
+          f"a capture with another frame count is excluded (rc {r.returncode})")
+    check("O", "different matrix or frame count" in r.stdout,
+          "the exclusion is named")
+
+
+def arm_p_step_forwards_history(tmp: Path) -> None:
+    env, work, _ = _stub_env(tmp, "p", checker_exit=0)
+    argv_log = work / "argv.txt"
+    Path(env["CHECK_REGRESSION"]).write_text(
+        "#!/usr/bin/env bash\n"
+        f"printf '%s\\n' \"$@\" > {argv_log}\n"
+    )
+    env["HEAD_DIR"] = str(write_run(work / "head", slug=HEAD_SLUG, avg_ms=10.0))
+    env["BASELINE_HISTORY"] = str(work / "history dir")
+
+    r = subprocess.run(["bash", str(COMPARE_STEP)], env=env,
+                       capture_output=True, text=True)
+    argv = argv_log.read_text().splitlines() if argv_log.exists() else []
+    check("P", r.returncode == 0 and "--baseline-history" in argv
+          and argv[argv.index("--baseline-history") + 1] == env["BASELINE_HISTORY"],
+          f"the history root reaches the checker as one argument (argv {argv})")
+
+    del env["BASELINE_HISTORY"]
+    subprocess.run(["bash", str(COMPARE_STEP)], env=env, capture_output=True, text=True)
+    argv = argv_log.read_text().splitlines()
+    check("P", "--baseline-history" not in argv,
+          "unset BASELINE_HISTORY keeps the tip-only invocation")
+
+
+def arm_q_future_capture(tmp: Path) -> None:
+    """A capture filed after the head started is the newest qualifier by
+    `finished_at` unless the upper bound rejects it. Its frame times sit 25%
+    under the head's, so selecting it would fail a neutral head."""
+    work = tmp / "q"
+    ref_ms, *avgs = SLOW_CAPTURE
+    root, history = split_fixture(work, {
+        **SLOW_3AE,
+        "future": ((ref_ms, *(a * 0.75 for a in avgs)), "2026-09-28T13:00:00Z", {}),
+    })
+    head = write_head(work)
+    r = run_checker(root, head, history)
+    check("Q", r.returncode == 0 and "`perf-baseline@3ae85adf8`" in r.stdout,
+          f"the latest pre-head capture wins over a newer one (rc {r.returncode})")
+
+    (history / SPLIT_SLUG / "3ae85adf8" / "manifest.json").unlink()
+    r = run_checker(root, head, history)
+    check("Q", "NO CLASS-MATCHED BASELINE" in r.stderr,
+          f"a capture finished after the head started is excluded (rc {r.returncode})")
+    check("Q", "finished after the head run started" in r.stdout,
+          "the exclusion is named")
+
+
 def main() -> int:
     print("perf-gate baseline layout + exit-mapping control")
     with tempfile.TemporaryDirectory(prefix="perfgate.") as td:
@@ -340,6 +570,14 @@ def main() -> int:
         arm_f_missing_head(tmp)
         arm_h_reportless_head(tmp)
         arm_i_baseline_relative_normalization(tmp)
+        arm_j_class_split_repro(tmp)
+        arm_k_regression_still_fires(tmp)
+        arm_l_no_class_match(tmp)
+        arm_m_age_window(tmp)
+        arm_n_reportless_skipped(tmp)
+        arm_o_frames_mismatch(tmp)
+        arm_p_step_forwards_history(tmp)
+        arm_q_future_capture(tmp)
     arm_g_retired_literal()
 
     if _failures:

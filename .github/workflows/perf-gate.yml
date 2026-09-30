@@ -146,8 +146,12 @@ jobs:
         if: github.event_name == 'pull_request'
         id: baseline
         run: |
+          # The default shell runs without pipefail, so a failing `git archive`
+          # piped into tar would otherwise pass unnoticed.
+          set -o pipefail
           ROOT="$RUNNER_TEMP/perf-baseline/docs/perf/baseline_latest"
-          mkdir -p "$ROOT"
+          HISTORY="$RUNNER_TEMP/perf-baseline/history"
+          mkdir -p "$ROOT" "$HISTORY"
           # Only a CONFIRMED absent ref may take the seed-new path. `ls-remote
           # --exit-code` exits 2 for "no such ref" and something else for an
           # unreachable or misbehaving remote; folding the latter into
@@ -163,6 +167,26 @@ jobs:
                 | tar -x -C "$RUNNER_TEMP/perf-baseline"
               echo "perf-gate: baseline materialized from $BASELINE_BRANCH."
               ls -1 "$ROOT"
+              # Every capture in the branch history, as <slug>/<commit>/, so
+              # compare_perf_runs.py can pick the one in the head's runner
+              # class. Which capture qualifies is its call alone; this
+              # only skips commits that deleted a slug (the writer's purge of
+              # report-less siblings), which have nothing to archive.
+              TIP=$(git rev-parse FETCH_HEAD)
+              git log --format=%H "$TIP" -- docs/perf/baseline_latest \
+                | while read -r COMMIT; do
+                    git diff-tree --root --no-commit-id --name-only -r "$COMMIT" \
+                        -- docs/perf/baseline_latest \
+                      | awk -F/ 'NF >= 5 { print $4 }' | sort -u \
+                      | while read -r SLUG; do
+                          SRC="docs/perf/baseline_latest/$SLUG"
+                          git cat-file -e "$COMMIT:$SRC/manifest.json" 2>/dev/null || continue
+                          mkdir -p "$HISTORY/$SLUG/$COMMIT"
+                          git archive "$COMMIT" "$SRC" \
+                            | tar -x --strip-components=4 -C "$HISTORY/$SLUG/$COMMIT"
+                        done
+                  done
+              echo "perf-gate: $(find "$HISTORY" -mindepth 2 -maxdepth 2 -type d | wc -l) baseline capture(s) in the history."
             else
               echo "perf-gate: $BASELINE_BRANCH carries no baseline yet — seed-new path."
             fi
@@ -173,6 +197,7 @@ jobs:
             exit 1
           fi
           echo "root=$ROOT" >> "$GITHUB_OUTPUT"
+          echo "history=$HISTORY" >> "$GITHUB_OUTPUT"
 
       - name: Compare head against baseline (PR)
         if: github.event_name == 'pull_request'
@@ -180,6 +205,7 @@ jobs:
         run: scripts/perf/ci_compare_step.sh
         env:
           BASELINE_ROOT: ${{ steps.baseline.outputs.root }}
+          BASELINE_HISTORY: ${{ steps.baseline.outputs.history }}
           HEAD_DIR: ${{ steps.head.outputs.dir }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REGRESS_PCT: '10'
