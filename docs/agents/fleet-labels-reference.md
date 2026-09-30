@@ -13,14 +13,13 @@ Run from the worktree: the installed symlink uses the main clone.
 
 ## Issue/PR labeling discipline (applies everywhere, all agents)
 
-File issues and PRs with **no state labels**. Every label has an owner and
-a filing agent is not one. Three deliberate exceptions, each the filer's
-own: `fleet:coding-improvement` (a classification tag), and the
-agent-approved follow-up lane's `fleet:agent-approved` plus either
-`fleet:no-plan` or `fleet:plan-review`
-([`TASK-FILING.md § Agent-approved follow-up lane`](TASK-FILING.md)).
-Acting inside your own lane (a reviewer stamping its verdict) is not
-filing.
+File issues and PRs with **no state labels**. Every label has an owner and a
+filing agent is not one. Three deliberate exceptions, each the filer's own:
+`fleet:coding-improvement` (a classification tag), and the agent-approved
+follow-up lane's `fleet:agent-approved` plus either `fleet:no-plan` or
+`fleet:plan-review` ([`TASK-FILING.md § Agent-approved follow-up
+lane`](TASK-FILING.md)). Acting inside your own lane (a reviewer stamping its
+verdict) is not filing.
 
 The human adds `human:approved`; `fleet-queue-ingest` adds `fleet:queued`
 and the model tag (or `fleet:needs-plan` / `fleet:needs-info`) on the next
@@ -29,9 +28,8 @@ scout tick.
 ## Named edges
 
 `fleet-review-verdict` (reviewers, guarded by the reviewing claim) and
-`fleet-transition` apply a named edge as one idempotent `gh pr edit`
-against the live label set. The remove/add sets live in the JSON; edit
-there, never here.
+`fleet-transition` apply a named edge as one idempotent `gh pr edit` against the
+live label set. The remove/add sets live in the JSON; edit there, never here.
 
 | Edge | Meaning |
 |---|---|
@@ -45,10 +43,9 @@ there, never here.
 
 Every verdict edge also removes `fleet:needs-opus-recheck` and
 `fleet:awaiting-upstream-review`, and consumes the re-review triggers
-`fleet:changes-made` / `human:re-review` (the escalation edge too): a
-trigger left standing under a verdict kept the PR a sonnet candidate while
-it waited on the author or the human, and the lane re-dispatched it every
-tick.
+`fleet:changes-made` / `human:re-review` (the escalation edge too): a trigger
+left standing under a verdict kept the PR a sonnet candidate while it waited on
+the author or the human, and the lane re-dispatched it every tick.
 
 ## Queue and planning (issues)
 
@@ -56,13 +53,12 @@ tick.
   `fleet:agent-approved`). Kept through every park (`fleet:needs-human`,
   `fleet:gated`, `human:owned`); an agent never strips it.
 - `fleet:agent-approved` — **author agent, at filing**, on a follow-up that
-  meets the lane's bar ([`TASK-FILING.md`](TASK-FILING.md)).
-  Approval-equivalent to `human:approved` and never removed
-  (`gh issue list --label fleet:agent-approved` is the audit trail of
-  work that queued without human triage). Never on another agent's issue,
-  a `fleet:coding-improvement` ticket, an epic, or gated-self-config
-  work. Human veto: close, or park with `human:owned` /
-  `fleet:needs-human`.
+  meets the lane's bar ([`TASK-FILING.md`](TASK-FILING.md)). Approval-equivalent
+  to `human:approved` and never removed (`gh issue list --label
+  fleet:agent-approved` is the audit trail of work that queued without human
+  triage). Never on another agent's issue, a `fleet:coding-improvement` ticket,
+  an epic, or gated-self-config work. Human veto: close, or park with
+  `human:owned` / `fleet:needs-human`.
 - `fleet:epic` — **human**. Umbrella whose body lists `- [ ] #N` children
   under `## Children`. Ingest skips it; children ingest individually. The
   epic-steward owns the checklist, the `## Steward ledger` comment, and
@@ -73,25 +69,23 @@ tick.
   spike"). Ingest stamps every approved, non-skip task up front, with its
   model label and `fleet:blocked` where a predecessor is open.
 - `fleet:fable` / `fleet:opus` / `fleet:sonnet` — **ingest**, from the
-  `**Model:**` field (opus when absent). The dispatcher launches each
-  iteration with its task's class and `fleet-claim` exact-matches it. A
-  reviewer may add `fleet:fable` to a PR to route an approach-is-wrong
-  fix. Two mechanisms move a task up the ladder after ingest and nothing
-  moves it down: a worker's own step-8a re-tag on its claimed task, and
-  reconcile R9, which re-tags a `fleet:sonnet` backing issue to
-  `fleet:opus` while any of its PRs is parked in the design lane.
-  [`FLEET.md § Model split`](FLEET.md).
+  `**Model:**` field (opus when absent). The dispatcher launches each iteration
+  with its task's class and `fleet-claim` exact-matches it. A reviewer may add
+  `fleet:fable` to a PR to route an approach-is-wrong fix. Two mechanisms move a
+  task up the ladder after ingest and nothing moves it down: a worker's own
+  step-8a re-tag on its claimed task, and reconcile R9, which re-tags a
+  `fleet:sonnet` backing issue to `fleet:opus` while any of its PRs is parked in
+  the design lane. [`FLEET.md § Model split`](FLEET.md).
 - `fleet:blocked` — **ingest**. Queued, but a `**Blocked by:**` predecessor
   is open. `fleet-claim` refuses a plain claim; `--stackable-on <blocker
   PR>` works. Ingest removes it after a live state re-check once the last
   blocker closes. [`fleet-queue-stacking.md`](../design/fleet-queue-stacking.md).
 - `fleet:needs-plan` — **ingest**: approved, unplanned, not opted out. A
-  dispatcher-assigned planner (`FLEET_PLAN_ISSUE`, under a
-  `fleet:planning-*` claim) or the architect posts the plan and applies
-  `plan-propose` ([`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md)). Workers
-  never self-select one. Retracting gate: landing on an already-queued
-  issue makes the next ingest remove `fleet:queued`, and `fleet-claim
-  claim` refuses meanwhile.
+  dispatcher-assigned planner (`FLEET_PLAN_ISSUE`, under a `fleet:planning-*`
+  claim) or the architect posts the plan and applies `plan-propose`
+  ([`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md)). Workers never self-select
+  one. Retracting gate: landing on an already-queued issue makes the next ingest
+  remove `fleet:queued`, and `fleet-claim claim` refuses meanwhile.
 - `fleet:plan-review` — **planner** sets (`plan-propose`); the **plan
   reviewer** (architect or opus-reviewer) clears with `plan-approve`
   (queues on the next ingest) or `plan-reject` (back to `fleet:needs-plan`
@@ -115,14 +109,13 @@ tick.
   removes it. On a **PR**: the merger, for an accidental fork (branch
   inherited another open PR's commits but targets `master`); the PR leaves
   the merger queue until the human links or re-scopes it.
-- `fleet:needs-human` — **author worker** (a queued task whose remaining
-  step is a gated self-config edit: comment what the human must apply,
-  remove `fleet:queued`, add this, release), **planner** (a
-  `fleet:needs-plan` issue no planner can plan — premise refuted, target
-  code absent, parent design-blocked, direction needs a human: comment,
-  add this, **keep** `fleet:needs-plan`, release the planning claim), or
-  the **dispatcher** at the per-target dispatch cap. Keeps
-  `human:approved`; ingest, both planning projections, `fleet-claim
+- `fleet:needs-human` — **author worker** (a queued task whose remaining step is
+  a gated self-config edit: comment what the human must apply, remove
+  `fleet:queued`, add this, release), **planner** (a `fleet:needs-plan` issue no
+  planner can plan — premise refuted, target code absent, parent design-blocked,
+  direction needs a human: comment, add this, **keep** `fleet:needs-plan`,
+  release the planning claim), or the **dispatcher** at the per-target dispatch
+  cap. Keeps `human:approved`; ingest, both planning projections, `fleet-claim
   planning-claim`, and (on a PR) the merger's own skip sets skip it too.
 - `fleet:scope-shipped` — **ingest** pre-flight: a merged PR references
   #N, so the scope landed elsewhere. Set with a comment citing the PR;
@@ -183,9 +176,7 @@ the pane: `amending-claim` stamps the claiming iteration's `FLEET_DISPATCH_ID`
 into `~/.fleet/amend-snapshots/<pr>.json`, `fleet-dispatch-wrap` records
 each worktree's current dispatch at launch, and a same-host label whose
 owner is no longer that dispatch is the confirmed orphan the 120 s grace
-applies to. The heartbeat cannot carry this alone: it is pane-scoped, so any
-later dispatch of any role renews a dead claim indefinitely, leaving the PR
-at once un-reapable and un-claimable.
+applies to (why not the heartbeat: [`fleet-claim-liveness.md`](fleet-claim-liveness.md)).
 
 The pre-claim `fleet-dispatcher` takes for a `feedback` or `task` target is
 acquired before the iteration that will own it has an id, so it records the
@@ -193,11 +184,8 @@ acquired before the iteration that will own it has an id, so it records the
 `FLEET_CLAIM_PRECLAIM_GRACE_SECS` (300 s) from the snapshot's
 `acquired_epoch` without consulting the heartbeat, and never as superseded;
 the role's step-a re-acquire overwrites it with the minted id and ends the
-window. Deferring to the heartbeat there would reap the dispatcher's own
-fresh claim off a carried-over past-TTL label and admit a second feedback
-worker, because the pane it launches into is idle and that heartbeat still
-belongs to the previous iteration. Past the grace, the dispatch record
-naming the target keeps it for as long as the iteration runs.
+window. Past the grace, the dispatch record naming the target keeps it for
+as long as the iteration runs.
 
 Claim and sweep are separate processes, so the verdict alone does not close
 that window: `cleanup --gh` can judge the carried label from the old record,
@@ -219,13 +207,12 @@ lock's presumed-dead bound. Rationale: `fleet-claim`'s `_amend_lock_acquire`.
 
 ## Review verdicts (PRs)
 
-- `fleet:approved` / `fleet:has-nits` / `fleet:needs-fix`
-  — **reviewer agents**, via the `verdict-*` edges. `fleet:has-nits` rides
-  with `fleet:approved` and means the nits are worth one amend push
-  ([`REVIEWER-PROTOCOL.md § Nits vs needs-fix`](REVIEWER-PROTOCOL.md)).
-  `auto-rereview.yml` swaps `fleet:approved` for `human:re-review` on any
-  push that is neither a mechanical rebase nor a docs-only delta; an author
-  never re-adds it.
+- `fleet:approved` / `fleet:has-nits` / `fleet:needs-fix` — **reviewer agents**,
+  via the `verdict-*` edges. `fleet:has-nits` rides with `fleet:approved` and
+  means the nits are worth one amend push ([`REVIEWER-PROTOCOL.md § Nits vs
+  needs-fix`](REVIEWER-PROTOCOL.md)). `auto-rereview.yml` swaps `fleet:approved`
+  for `human:re-review` on any push that is neither a mechanical rebase nor a
+  docs-only delta; an author never re-adds it.
 - `fleet:needs-opus-recheck` — **sonnet-reviewer**, instead of a verdict,
   when its pass ends `Opus recheck required:`. The signal
   `project_opus_reviewer` wakes on; every opus-reviewer verdict edge
@@ -246,13 +233,12 @@ lock's presumed-dead bound. Rationale: `fleet-claim`'s `_amend_lock_acquire`.
 - `fleet:merger-cooldown` — **merger** touched the PR; skip until the next
   iteration.
 - `fleet:sweep-cooldown` — **`fleet-claim cleanup --gh`** removed the PR's
-  `fleet:amending-*` / `fleet:resolving-*` claim on age alone, without
-  proof its owner was dead (not on a superseded dispatch or a missing
-  marker). The **dispatcher** withholds the PR's `feedback` / `conflict`
-  target while `updatedAt` is younger than `FLEET_CLAIM_SWEPT_COOLDOWN_SECS`
-  (default 1800), logging the deferral once. A won `amending-claim` /
-  `resolving-claim` removes it; so does the sweep once the PR has been quiet
-  past the cooldown.
+  `fleet:amending-*` / `fleet:resolving-*` claim on age alone, without proof its
+  owner was dead (not on a superseded dispatch or a missing marker). The
+  **dispatcher** withholds the PR's `feedback` / `conflict` target while
+  `updatedAt` is younger than `FLEET_CLAIM_SWEPT_COOLDOWN_SECS` (default 1800),
+  logging the deferral once. A won `amending-claim` / `resolving-claim` removes
+  it; so does the sweep once the PR has been quiet past the cooldown.
 
 ## Feedback and amendment (PRs)
 
@@ -270,9 +256,8 @@ Protocol: [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md).
   it. Scoped to the diff at defer time: whoever pushes new commits drops it
   and the PR re-enters review, honoring the linked issue without re-raising.
 - `human:wip` — **human** is editing the PR; every agent stands off.
-- `fleet:wip` — **author worker or campaign driver** while a PR is not
-  ready for review; reviewers skip it. Not on Cursor / human-ready PRs;
-  not on issues.
+- `fleet:wip` — **author worker or campaign driver** while a PR is not ready for
+  review; reviewers skip it. Not on Cursor / human-ready PRs; not on issues.
 - `fleet:stalled` — hourly `fleet-stalled-sweep`, **scout**-spawned on the
   authoritative poller: a `fleet:wip` PR idle 7+ days by `updatedAt` takes the
   label plus one comment; `human:wip` / `fleet:awaiting-infra` exempt, design
@@ -283,13 +268,12 @@ Protocol: [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md).
 ## Escalation and parks
 
 - `fleet:design-blocked` / `fleet:design-unblocked` — the worker escalates
-  (`design-block`), the architect or steward answers (`design-unblock`),
-  the worker clears on resume or re-escalates with `design-block`.
-  Mutually exclusive; coexist with `fleet:wip`. Reviewers skip
-  design-blocked PRs. The resume tier is opus+-only, so a design-parked PR
-  must have an opus+ backing task: reconcile R9 re-tags a `fleet:sonnet`
-  backing issue one class up while the PR is parked.
-  [`FLEET.md § Design-escalation flow`](FLEET.md).
+  (`design-block`), the architect or steward answers (`design-unblock`), the
+  worker clears on resume or re-escalates with `design-block`. Mutually
+  exclusive; coexist with `fleet:wip`. Reviewers skip design-blocked PRs. The
+  resume tier is opus+-only, so a design-parked PR must have an opus+ backing
+  task: reconcile R9 re-tags a `fleet:sonnet` backing issue one class up while
+  the PR is parked. [`FLEET.md § Design-escalation flow`](FLEET.md).
 - `fleet:design-proposed` (PR) / `fleet:steward-proposal` (umbrella issue)
   — **epic steward**. `design-propose` parks a design-blocked epic child
   whose question is novel; reviewer, merger and reconcile skip it;

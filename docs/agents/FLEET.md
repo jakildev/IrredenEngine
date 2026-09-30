@@ -58,12 +58,10 @@ one canonical set (`derive_host()`: `Linux` → `linux`, `Darwin` → `mac`,
 `MINGW*/MSYS*/CYGWIN*` → `windows`); WSL2 is `linux`, so two such fleets on
 one account collide unless one forces `FLEET_TEST_HOST`.
 
-Claim liveness is heartbeat- and dispatch-derived and judged only on the host
-that owns the claim: TTLs are 30 min for PR labels and 2 h for issue claims,
-another host's amending/issue claim falls only past a 12 h backstop (a host
-that dies without `fleet-down` strands those up to 12 h; recover with `fleet-up`
-there or by hand), and an age-only sweep defers the PR 30 min under
-`fleet:sweep-cooldown` ([`fleet-claim-liveness.md`](fleet-claim-liveness.md)).
+Claim liveness is heartbeat- and dispatch-derived and judged only on the
+owning host: 30 min TTL for PR labels, 2 h for issue claims, a 12 h backstop
+for another host's amending/issue claim, and a 30 min `fleet:sweep-cooldown`
+after an age-only sweep ([`fleet-claim-liveness.md`](fleet-claim-liveness.md)).
 
 ### Who takes the claim
 
@@ -82,37 +80,35 @@ in both cap modes, never borrowed over under elastic.
 
 ### How a launch ends
 
-When a target-bound pane exits, `scripts/fleet/fleet_completion.py` reads
-the target: **finished** (label released, or the task's PR is open),
-**declined** (a `declined: <role>/<class> @<host>-<agent> <reason>` comment
-since dispatch — `fleet-claim decline` writes it and releases), or
-**abandoned** (label still standing, no record). Declined items wait under
-`~/.fleet/state/declined/` until they change (per declining role); declined
-and abandoned exits count as empty for the lane's backoff. Marker-vouched
-reviewing, resolving, and planning claims release on the first abandonment;
-they have no pane affinity or reservation to resume. Other claimed kinds retry
-once via the session sidecar, then release. A release salvages dirty worktrees
-to `~/.fleet/state/salvage/` and writes
+When a target-bound pane exits, `scripts/fleet/fleet_completion.py` reads the
+target: **finished** (label released, or the task's PR is open), **declined** (a
+`declined: <role>/<class> @<host>-<agent> <reason>` comment since dispatch —
+`fleet-claim decline` writes it and releases), or **abandoned** (label still
+standing, no record). Declined items wait under `~/.fleet/state/declined/` until
+they change (per declining role); declined and abandoned exits count as empty
+for the lane's backoff. Marker-vouched reviewing, resolving, and planning claims
+release on the first abandonment; they have no pane affinity or reservation to
+resume. Other claimed kinds retry once via the session sidecar, then release. A
+release salvages dirty worktrees to `~/.fleet/state/salvage/` and writes
 `~/.fleet/state/handoff/<kind>-<repo>-<N>.md`. At `FLEET_TARGET_DISPATCH_CAP`
 assignments (default 5, cleared on finished) it is parked `fleet:needs-human`.
 
 ### Ingestion
 
-The scout fires `fleet-queue-ingest` (pure label stamping; per-host
-lockfile; live re-check before each edit) when approved issues appear —
-`human:approved` or `fleet:agent-approved`, treated identically. Ingest
-queues every approved, non-skip task up front, marking `fleet:blocked` where
-a predecessor is open ([`fleet-queue-stacking.md`](../design/fleet-queue-stacking.md)).
-An issue queues only with a `## Plan` comment or an opt-out: filed with a plan by
-the architect ([`TASK-FILING.md § File with a plan`](TASK-FILING.md)) →
-queues directly; an agent-approved follow-up → `fleet:no-plan` queues
-directly, a filer-authored `## Plan` + `fleet:plan-review` is vetted first
-([`TASK-FILING.md § Agent-approved follow-up lane`](TASK-FILING.md));
-planless → `fleet:needs-plan` → an opus+ planner posts the plan and swaps
-to `fleet:plan-review` → the plan reviewer clears it → it queues. There is
-no human approach gate (the human steers with `human:revise-plan`,
-`fleet:needs-human`, and PR review) and no plan-doc PR: plan and code land
-in one merge.
+The scout fires `fleet-queue-ingest` (pure label stamping; per-host lockfile;
+live re-check before each edit) when approved issues appear — `human:approved`
+or `fleet:agent-approved`, treated identically. Ingest queues every approved,
+non-skip task up front, marking `fleet:blocked` where a predecessor is open
+([`fleet-queue-stacking.md`](../design/fleet-queue-stacking.md)). An issue
+queues only with a `## Plan` comment or an opt-out: filed with a plan by the
+architect ([`TASK-FILING.md § File with a plan`](TASK-FILING.md)) → queues
+directly; an agent-approved follow-up → `fleet:no-plan` queues directly, a
+filer-authored `## Plan` + `fleet:plan-review` is vetted first ([`TASK-FILING.md
+§ Agent-approved follow-up lane`](TASK-FILING.md)); planless →
+`fleet:needs-plan` → an opus+ planner posts the plan and swaps to
+`fleet:plan-review` → the plan reviewer clears it → it queues. There is no human
+approach gate (the human steers with `human:revise-plan`, `fleet:needs-human`,
+and PR review) and no plan-doc PR: plan and code land in one merge.
 
 ### Cursor flow (human-in-the-loop)
 
@@ -127,22 +123,20 @@ auto-invoke `commit-and-push` or `start-next-task`; `fleet:queued` is fleet-only
 | "I merged it", "back to master", "fresh start", "new task", "next task" | `start-next-task` (fresh branch off `origin/master`) |
 | "stack this", "next slice, stacked", "keep stacking", "stack the next on this PR" | cursor stack mode (below) |
 
-No local commits on `master` (dirty changes migrate to the new branch;
-commits do not); mention a stale local `master` at commit time. In a new
-chat check `git rev-parse --abbrev-ref HEAD` on the first code-touching
-turn: a branch with an open PR → continue it; a merged branch → ask before
-`start-next-task`; `master` → just work. When unsure which flow you are
-in, default to Cursor flow.
+No local commits on `master` (dirty changes migrate to the new branch; commits
+do not); mention a stale local `master` at commit time. In a new chat check `git
+rev-parse --abbrev-ref HEAD` on the first code-touching turn: a branch with an
+open PR → continue it; a merged branch → ask before `start-next-task`; `master`
+→ just work. When unsure which flow you are in, default to Cursor flow.
 
-**Cursor stacking.** After "commit and push" for slice A, "next slice,
-stacked" makes `start-next-task` branch off A's head and write
+**Cursor stacking.** After "commit and push" for slice A, "next slice, stacked"
+makes `start-next-task` branch off A's head and write
 `branch.<new>.cursor-stack-base = <A's branch>`; the next `commit-and-push`
-reads it, opens with `--base <A's branch>`, and links the native stack.
-The config is per-branch, so it survives chats. On a branch that already
-has `cursor-stack-base` and a non-specific "next slice", ask whether to
-continue the stack or branch off master. macOS sandbox: `git config`
-writes, `git push`, `gh pr create` / `edit` from a cursor-flow skill need
-the `all` permission.
+reads it, opens with `--base <A's branch>`, and links the native stack. The
+config is per-branch, so it survives chats. On a branch that already has
+`cursor-stack-base` and a non-specific "next slice", ask whether to continue the
+stack or branch off master. macOS sandbox: `git config` writes, `git push`, `gh
+pr create` / `edit` from a cursor-flow skill need the `all` permission.
 
 ### Design-escalation flow
 
@@ -152,19 +146,16 @@ the `all` permission.
 2. Architect answers in a PR comment and applies `design-unblock` — no
    push to the branch, no rewrite of the issue's `## Plan`. For an epic
    child (`**Part of epic:** #U`) the **epic-steward** does this step:
-   derivable questions get a `## Steward direction` comment + the same
-   swap; novel ones go `design-propose` and aggregate into a
-   `## STEWARD PROPOSAL` on the umbrella (`fleet:steward-proposal`) until
-   the human answers and removes the label
+   derivable questions get `## Steward direction` + the same swap; novel
+   ones go `design-propose` into the umbrella's `## STEWARD PROPOSAL`
    ([`epic-steward-protocol.md`](epic-steward-protocol.md)).
 3. Any **opus+** worker resumes from the `fleet:design-unblocked` PR via its
    feedback loop: reads the reply, the issue's `## Plan` and any `## Plan
    corrections`, addresses the direction, removes the label, pushes via
    `commit-and-push`. A further design question re-escalates with
    `design-block` (never both labels on the PR). A design-parked PR always
-   has an opus+ backing task: `fleet-claim reconcile` R9 re-tags a
-   `fleet:sonnet` backing issue to `fleet:opus` while any of its PRs
-   carries a design-lane label.
+   has an opus+ backing task (`fleet-claim reconcile` R9,
+   [`fleet-labels-reference.md § Reconcile`](fleet-labels-reference.md#reconcile)).
 
 The handoff is the PR plus its issue, never the escalating worker's claim.
 Reviewers skip `fleet:design-blocked` PRs. Detail: `role-worker.md`,
@@ -182,14 +173,13 @@ architect panes run `xhigh`. Class → model strings live in
 logs the resolved ids — a lagging alias means `claude update` and re-run.
 `FLEET_CONCURRENCY_MODEL_FABLE` (default 1) caps fable iterations.
 
-- **fable** — design-tier: novel render-pipeline algorithm or stage
-  design, cross-backend algorithm work, open-ended problems, long-horizon
-  multi-system work filed with an intent plan, epic decomposition,
-  design-blocked resolutions, invariant-heavy refactors, approach-is-wrong
-  feedback fixes (the reviewer adds `fleet:fable`), and the architect
-  panes. A plan inherits its issue's class (label, else `**Model:**`).
-  Rendering is not automatically fable — implementing against a vetted
-  plan is opus or sonnet.
+- **fable** — design-tier: novel render-pipeline algorithm or stage design,
+  cross-backend algorithm work, open-ended problems, long-horizon multi-system
+  work filed with an intent plan, epic decomposition, design-blocked
+  resolutions, invariant-heavy refactors, approach-is-wrong feedback fixes (the
+  reviewer adds `fleet:fable`), and the architect panes. A plan inherits its
+  issue's class (label, else `**Model:**`). Rendering is not automatically fable
+  — implementing against a vetted plan is opus or sonnet.
 - **opus** — the default when `Model:` is absent (choose deliberately
   anyway): core engine work against an existing plan (ECS,
   ownership/lifetime, `engine/{render,entity,system,world,audio,video,math}`),
@@ -208,16 +198,15 @@ recheck for anything in the opus/fable lists.
 ### Cross-platform parity (OpenGL ↔ Metal)
 
 Hosts: WSL2 (`linux-debug`, OpenGL), macOS (`macos-debug`, Metal), native
-Windows (`windows-debug`, OpenGL; MSYS2 bash + tmux). Two verification
-tiers: OpenGL `{linux, windows}` (either satisfies the merge gate; the
-representative routes to `windows`, the ship platform) and Metal `{macos}`
-([`FLEET-CROSS-HOST-SMOKE.md`](FLEET-CROSS-HOST-SMOKE.md)). After a render
-PR that touched one backend, run `backend-parity` on the lagging host: a
-port is complete only when it builds clean on the lagging preset and the
-target demo renders at functional parity; one logical feature per parity
-PR; parity touching `engine/math/`, dispatch-grid helpers, GPU buffer
-lifetime, or a shared CPU-side feeder struct is opus work
-(`.claude/skills/backend-parity/SKILL.md`).
+Windows (`windows-debug`, OpenGL; MSYS2 bash + tmux). Two verification tiers:
+OpenGL `{linux, windows}` (either satisfies the merge gate; the representative
+routes to `windows`, the ship platform) and Metal `{macos}`
+([`FLEET-CROSS-HOST-SMOKE.md`](FLEET-CROSS-HOST-SMOKE.md)). After a render PR
+that touched one backend, run `backend-parity` on the lagging host: a port is
+complete only when it builds clean on the lagging preset and the target demo
+renders at functional parity; one logical feature per parity PR; parity touching
+`engine/math/`, dispatch-grid helpers, GPU buffer lifetime, or a shared CPU-side
+feeder struct is opus work (`.claude/skills/backend-parity/SKILL.md`).
 
 ### Verifying render changes
 
@@ -227,36 +216,34 @@ screenshot pair (exceptions: `engine/render/CLAUDE.md` "Verifying render changes
 
 ### Clean-exit policy
 
-Every scripted demo, test, or tool run through `fleet-run` / `ir-run` must
-end `RESULT=CLEAN`. `RESULT=CRASH` — any signal death or non-zero exit not
-proven HOST-CLOSED, including a teardown crash after outputs were saved —
-fails the step that ran it; parse the RESULT line or exit code, never log
-prose or the existence of outputs. `RESULT=ALIVE-TIMEOUT` is healthy for
-smoke but says nothing about shutdown. On a CRASH, fix it this session
-(fix-forward; ownership of the introducing change is irrelevant; bisect if
-needed). Only if genuinely out of reach (another host or hardware, design
-escalation, exceeds the session) file an issue with the repro command,
-RESULT line and bisect window — and mark your own lane failed: no smoke
-verdict, PR body, or `fleet:verified-<host>` reports green over an observed
-crash ("N/M shots captured, run FAILED clean-exit (issue #X)"). Partial
-outputs stay usable for diagnosis. `RESULT=HOST-CLOSED` (native Windows)
-means host hang handling closed a Not Responding window, proven by an
-Application Hang event for that exact process. It is host interference,
-never green: re-run once; a second leaves no verdict, bucketed apart from
-crash and pass (`render-verify` retries itself).
+Every scripted demo, test, or tool run through `fleet-run` / `ir-run` must end
+`RESULT=CLEAN`. `RESULT=CRASH` — any signal death or non-zero exit not proven
+HOST-CLOSED, including a teardown crash after outputs were saved — fails the
+step that ran it; parse the RESULT line or exit code, never log prose or the
+existence of outputs. `RESULT=ALIVE-TIMEOUT` is healthy for smoke but says
+nothing about shutdown. On a CRASH, fix it this session (fix-forward; ownership
+of the introducing change is irrelevant; bisect if needed). Only if genuinely
+out of reach (another host or hardware, design escalation, exceeds the session)
+file an issue with the repro command, RESULT line and bisect window — and mark
+your own lane failed: no smoke verdict, PR body, or `fleet:verified-<host>`
+reports green over an observed crash ("N/M shots captured, run FAILED clean-exit
+(issue #X)"). Partial outputs stay usable for diagnosis. `RESULT=HOST-CLOSED`
+(native Windows) means host hang handling closed a Not Responding window, proven
+by an Application Hang event for that exact process. It is host interference,
+never green: re-run once; a second leaves no verdict, bucketed apart from crash
+and pass (`render-verify` retries itself).
 
 ### Fix-forward
 
-An adjacent defect found while working (bug, crash, dead code,
-duplication, stale doc, missing test) is fixed by the finder in the same
-session: **same PR** for small or mechanical fixes, in their own commit
-under `## Opportunistic fixes` in the PR body (reviewers review that
-section on its merits and ask for a split only when it materially raises
-risk); **immediate sibling PR** for separable fixes or anything that
-balloons the primary PR (finish, `start-next-task`, ship next, stacked when
-dependent); **issue** only when the fix needs design escalation, another
-host, or exceeds the session — with full forensics (repro, output,
-suspected window, what was ruled out).
+An adjacent defect found while working (bug, crash, dead code, duplication,
+stale doc, missing test) is fixed by the finder in the same session: **same PR**
+for small or mechanical fixes, in their own commit under `## Opportunistic
+fixes` in the PR body (reviewers review that section on its merits and ask for a
+split only when it materially raises risk); **immediate sibling PR** for
+separable fixes or anything that balloons the primary PR (finish,
+`start-next-task`, ship next, stacked when dependent); **issue** only when the
+fix needs design escalation, another host, or exceeds the session — with full
+forensics (repro, output, suspected window, what was ruled out).
 
 ### Resource coordination
 
@@ -295,17 +282,16 @@ text files with the Write tool (only the `.claude/` target is gated);
 
 Stacks are GitHub-native: every mode ends with `commit-and-push`'s link step
 ([`native-stack-link.md`](../../.claude/skills/commit-and-push/procedures/native-stack-link.md)),
-after which GitHub retargets and rebases children server-side when a
-parent merges, cascades with `gh stack sync` (a conflicting replay pauses
-with exit 3 for `gh stack rebase --continue`), and merges couple
-bottom-up; the auto-rereview classifier keeps the verdict across the
-content-identical force-push
+after which GitHub retargets and rebases children server-side when a parent
+merges, cascades with `gh stack sync` (a conflicting replay pauses with exit 3
+for `gh stack rebase --continue`), and merges couple bottom-up; the
+auto-rereview classifier keeps the verdict across the content-identical
+force-push
 ([`native-stacked-prs-migration.md`](../design/native-stacked-prs-migration.md)).
-The merger rebases any feature-branch-based PR against its own base and
-labels an accidental fork (`baseRefName` `master` with commits inherited
-from another open PR) `fleet:needs-info`; a child whose base branch
-vanished is logged and skipped for a human, since GitHub retargets on
-merge, not close.
+The merger rebases any feature-branch-based PR against its own base and labels
+an accidental fork (`baseRefName` `master` with commits inherited from another
+open PR) `fleet:needs-info`; a child whose base branch vanished is logged and
+skipped for a human, since GitHub retargets on merge, not close.
 
 ### Cross-author stacking (scheduler)
 
@@ -432,30 +418,27 @@ PRs with no state labels.
 Instructions cost every task that loads them, so an improvement must earn
 its lines:
 
-- **Validator or nothing.** A snag a check, ratchet, lint, or test can
-  catch becomes that check, its failure message carrying the rule; a snag
-  nothing can execute is almost always something the model already does,
-  and is dropped.
+- **Validator or nothing.** A snag a check, ratchet, lint, or test can catch
+  becomes that check, its failure message carrying the rule; a snag nothing can
+  execute is almost always something the model already does, and is dropped.
 - **Prose only for facts the model cannot derive** — build commands,
   invariants, platform gotchas — at one canonical home, within the file's
   budget (`scripts/lint_instruction_size.py`), replacing text, not adding.
 - **Reviews block on the big picture.** Needs-fix is for defects in what
   the code does; wording and comments are nits that never block
   (REVIEWER-PROTOCOL.md §"Nits vs needs-fix").
-- **Filing is rare.** A `fleet:coding-improvement` ticket needs a fired
-  incident and a validator shape; batch triage runs a few times a month,
-  not per ticket.
+- **Filing is rare.** A `fleet:coding-improvement` ticket needs a fired incident
+  and a validator shape; batch triage runs a few times a month, not per ticket.
 
 ## Fleet feedback channel
 
-Durable observations go to `~/.fleet/feedback/<role>.md` (`mkdir -p`
-first; append; file names in
-[`FLEET-RUNTIME.md § End-of-iteration feedback`](FLEET-RUNTIME.md)).
-One-way: the human reads `fleet-feedback` and responds by editing the
-fleet. The bar is "would a future `fleet-up` benefit from the human
-knowing this" — a fleet bug or surprising state, a missing tool /
-permission / confusing instruction that cost time, a pattern across
-iterations. Routine completion notes go to logs; most iterations write nothing.
+Durable observations go to `~/.fleet/feedback/<role>.md` (`mkdir -p` first;
+append; file names in [`FLEET-RUNTIME.md § End-of-iteration
+feedback`](FLEET-RUNTIME.md)). One-way: the human reads `fleet-feedback` and
+responds by editing the fleet. The bar is "would a future `fleet-up` benefit
+from the human knowing this" — a fleet bug or surprising state, a missing tool /
+permission / confusing instruction that cost time, a pattern across iterations.
+Routine completion notes go to logs; most iterations write nothing.
 
 ```
 ## YYYY-MM-DD HH:MM
@@ -470,16 +453,15 @@ merger`; `--headlines`; `--clear` archives to
 
 ## The decision digest (`fleet-decisions`)
 
-`fleet-decisions [--repo engine|game]` is a read-only report of what waits
-on the human: the merge queue (`fleet:approved`, with `+nits` and any
-smoke hold), decisions parked on human-only labels (`fleet:needs-human`,
-`fleet:gated`, `fleet:human-deferred`, `fleet:design-blocked`,
-`fleet:steward-proposal`, `fleet:state-drift`), cues (`fleet:coding-improvement`
-backlog → `triage-coding-improvements`;
-untriaged issues; feedback files newer than
+`fleet-decisions [--repo engine|game]` is a read-only report of what waits on
+the human: the merge queue (`fleet:approved`, with `+nits` and any smoke hold),
+decisions parked on human-only labels (`fleet:needs-human`, `fleet:gated`,
+`fleet:human-deferred`, `fleet:design-blocked`, `fleet:steward-proposal`,
+`fleet:state-drift`), cues (`fleet:coding-improvement` backlog →
+`triage-coding-improvements`; untriaged issues; feedback files newer than
 `~/.fleet/feedback/.last-reviewed` → `review-fleet-feedback`), and per-repo
-counts. `fleet-digest-tick` refreshes `~/.fleet/digest/latest.md` and
-fires `fleet-notify` (desktop toast, log-first to `~/.fleet/notify.log`)
-only when decision-relevant content changed since this host's last tick;
-schedule it per host by cron (`*/30 * * * * $HOME/bin/fleet-digest-tick`;
-read-only, host-local, no coordination).
+counts. `fleet-digest-tick` refreshes `~/.fleet/digest/latest.md` and fires
+`fleet-notify` (desktop toast, log-first to `~/.fleet/notify.log`) only when
+decision-relevant content changed since this host's last tick; schedule it per
+host by cron (`*/30 * * * * $HOME/bin/fleet-digest-tick`; read-only, host-local,
+no coordination).

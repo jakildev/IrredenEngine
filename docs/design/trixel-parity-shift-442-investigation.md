@@ -158,6 +158,8 @@ must not be treated as clean baselines.
 - `creations/demos/shape_debug/main.cpp` — the `hover_parity_*` fixture
   (`--gui-test`): the isolated-voxel pair distinguishes a raw id read from a
   shifted one; `_row_above_occupied` distinguishes a raw compare from a
-  shifted one.
+  shifted one. Its `GuiTest::hoveredEntityId(expected, label, frames)`
+  assertion requires `expected` on each of the last `frames` live frames,
+  because a two-writer race on the hover slot can pass a one-frame read.
 - `engine/render/CLAUDE.md` §"Trixel→framebuffer hover: raw texel, no parity
   shift".
