@@ -24,6 +24,10 @@ count; a clean shadow is ~0 holes and a handful of large components.
 
 Metrics (within the ROI, default = whole image):
   * shadow_px / lit_px  — classified-pixel counts.
+  * classified_frac     — (shadow_px + lit_px) / ROI pixels. A palette
+                          coverage gate; pair it with min_shadow_frac when
+                          black background could otherwise pass vacuously.
+  * shadow_frac         — shadow_px / ROI pixels.
   * hole_ratio          — lit_px / (lit_px + shadow_px): fraction of the
                           cast-shadow region that reads as a lit hole.
   * components          — 4-connected shadow components (cross-hatch shatters
@@ -60,6 +64,7 @@ def shadow_metrics(
     rx, ry, _, _ = rect
 
     classified = shadow_px + lit_px
+    roi_pixels = rw * rh
     hole_ratio = (lit_px / classified) if classified else 0.0
 
     result = {
@@ -67,6 +72,8 @@ def shadow_metrics(
         "roi": [rx, ry, rw, rh],
         "shadow_px": shadow_px,
         "lit_px": lit_px,
+        "classified_frac": round(classified / roi_pixels, 4),
+        "shadow_frac": round(shadow_px / roi_pixels, 4),
         "hole_ratio": round(hole_ratio, 4),
     }
 
@@ -95,6 +102,14 @@ def _main(argv: list[str]) -> int:
                          "self-shadow guard (#2092): a fully-lit floor reads "
                          "hole_ratio ~1.0, and self-shadow acne (shadow where "
                          "there should be none) drives it down.")
+    ap.add_argument("--min-classified-frac", type=float, default=None,
+                    help="fail if fewer than this fraction of ROI pixels are "
+                         "classified black or magenta. Pair with "
+                         "--min-shadow-frac when black background is present.")
+    ap.add_argument("--min-shadow-frac", type=float, default=None,
+                    help="fail if fewer than this fraction of ROI pixels are "
+                         "classified as magenta shadow; also rejects an empty "
+                         "black ROI paired with --min-classified-frac.")
     ap.add_argument("--max-components", type=int, default=None,
                     help="fail if the shadow shatters into more than this many "
                          "4-connected components.")
@@ -121,6 +136,13 @@ def _main(argv: list[str]) -> int:
         failed.append(f"hole_ratio {m['hole_ratio']} > {args.max_hole_ratio}")
     if args.min_hole_ratio is not None and m["hole_ratio"] < args.min_hole_ratio:
         failed.append(f"hole_ratio {m['hole_ratio']} < {args.min_hole_ratio}")
+    if (args.min_classified_frac is not None
+            and m["classified_frac"] < args.min_classified_frac):
+        failed.append(
+            f"classified_frac {m['classified_frac']} < {args.min_classified_frac}"
+        )
+    if args.min_shadow_frac is not None and m["shadow_frac"] < args.min_shadow_frac:
+        failed.append(f"shadow_frac {m['shadow_frac']} < {args.min_shadow_frac}")
     if args.max_components is not None:
         if m.get("components") is None:
             print(

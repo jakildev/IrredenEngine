@@ -37,7 +37,6 @@ PILLOW_EXCEPTIONS = frozenset({
     "scripts/render-detached-face-metric.py",
     "scripts/render-detached-lighting-metric.py",
     "scripts/render-local-voxel-metric.py",
-    "scripts/render-normal-facing-metric.py",
     "scripts/render-receiver-position-metric.py",
     "scripts/render-shadow-box-metric.py",
     "scripts/render-shadow-probes-metric.py",
