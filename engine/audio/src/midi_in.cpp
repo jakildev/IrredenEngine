@@ -1,14 +1,9 @@
 #include <irreden/ir_audio.hpp>
-#include <irreden/ir_entity.hpp>
 
 #include <irreden/audio/midi_in.hpp>
-#include <irreden/update/components/component_lifetime.hpp>
 #include <irreden/audio/components/component_midi_message.hpp>
-#include <irreden/audio/components/component_midi_source_port.hpp>
-#include <irreden/common/components/component_tags_all.hpp>
 
 using namespace IRComponents;
-// using namespace IREntity;
 
 namespace IRAudio {
 
@@ -133,12 +128,7 @@ void MidiIn::processMidiMessageQueue() {
     for (auto &port : m_ports) {
         while (!port->queue_.empty()) {
             const C_MidiMessage &message = port->queue_.front();
-            IREntity::createEntity(
-                C_MidiMessage{message},
-                C_MidiIn{},
-                C_MidiSourcePort{port->portIndex_},
-                C_Lifetime{1}
-            );
+            m_frameBuffer.insertMessage(port->portIndex_, message);
             port->queue_.pop();
         }
     }

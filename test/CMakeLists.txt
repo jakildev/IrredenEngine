@@ -13,6 +13,7 @@ add_executable(IrredenEngineTest
   asset/voxel_set_rle_test.cpp
   asset/voxel_set_shapes_test.cpp
   audio/audio_playback_test.cpp
+  audio/midi_in_tick_test.cpp
   audio/midi_multiport_test.cpp
   audio/music_theory_test.cpp
   command/default_binding_manifest_test.cpp

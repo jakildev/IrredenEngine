@@ -77,6 +77,9 @@ class MidiIn {
     void insertCCMessage(int portIndex, MidiChannel channel, const C_MidiMessage &midiMessage);
 
   private:
+    // Defined only by the engine test suite to attach a detached input port.
+    friend struct MidiInTestAccess;
+
     // Enumeration probe only — never opened for input. Null when the RtMidi
     // client failed to init (no MIDI server available); degraded state is
     // 0 ports, every query/tick path already tolerates that.

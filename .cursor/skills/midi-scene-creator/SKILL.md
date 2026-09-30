@@ -69,7 +69,7 @@ Register these in your creation's `initSystems()` under the appropriate pipeline
 
 | System | Pipeline | Purpose |
 |--------|----------|---------|
-| `INPUT_MIDI_MESSAGE_IN` | INPUT | Routes inbound MIDI from hardware into `IRAudio` buffers |
+| `INPUT_MIDI_MESSAGE_IN` | INPUT | Deprecated; hardware input drains through `MidiIn::tick()` with no system required |
 | `OUTPUT_MIDI_MESSAGE_OUT` | UPDATE | Sends `C_MidiMessage` entities tagged `C_MidiOut` to hardware |
 | `MIDI_SEQUENCE_OUT` | UPDATE | Advances `C_MidiSequence` tick counters, spawns outbound message entities |
 | `MIDI_DELAY_PROCESS` | UPDATE | After countdown expires, spawns the delayed message as an outbound entity |

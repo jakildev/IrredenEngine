@@ -99,15 +99,15 @@ Lua (`scripts/audio_demo.lua`).
   port index — the stable handle used as the source-port id, the
   `sendMidiMessage(portIndex, …)` target, and the per-port query key.
   `midiInOpenPorts()` / `midiOutOpenPorts()` enumerate the open handles.
-- Inbound message entities carry `C_MidiSourcePort{portIndex}`; the
-  `InputMidiMessageIn` system reads it to route each message into both the
-  merged and per-port views. **Merged CC collapses same-channel+cc traffic
-  (last write wins)** — use the per-port query when two devices share a
-  channel.
-- `MidiIn::tick()` is called by the INPUT pipeline; it drains every open
-  port's RtMidi callback queue into the per-frame buffer. **State is cleared
-  every frame** — no history. Systems must read during their tick or they
-  miss the event.
+- `MidiIn::tick()` drains every open port's RtMidi callback queue directly
+  into the merged and per-port buffer views before the INPUT pipeline runs;
+  no prefab system is required and no inbound entities are minted. **Merged
+  CC collapses same-channel+cc traffic (last write wins)** — use the per-port
+  query when two devices share a channel.
+- The buffer is cleared at the start of every `MidiIn::tick()` — there is no
+  history. Systems must read during their tick or they miss the event. The
+  deprecated entity route is listed in `engine/prefabs/irreden/audio/CLAUDE.md`
+  under `## Deprecated`.
 - Device names are substring-matched at `openPort()` time, with hardcoded
   fallback patterns for common devices (UMC1820, Focusrite, MPKmini2,
   OP-1). Edit `midi_in.cpp` / `midi_out.cpp` to add a new hardware match.
