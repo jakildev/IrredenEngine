@@ -150,7 +150,7 @@ static_assert(
 // that lattice and marks whole half-faces of the displayed staircase as
 // self-shadowed (docs/design/revoxelized-display-fidelity.md, "Direct sun").
 struct VoxelSunFaceFrame {
-    vec4 worldOrigin_;
+    vec4 worldOrigin_; // xyz: world translation; w: per-axis raster enabled
     vec4 viewToWorld_;
     ivec4 dispatch_;
 };
@@ -864,7 +864,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         int count,
         int subdivisions,
         const C_CanvasLocalRotation &rotation,
-        vec3 rasterCellOffset = vec3(0.0f)
+        vec3 rasterCellOffset = vec3(0.0f),
+        bool perAxisRaster = false
     ) {
         if (frameData_.shadowsEnabled_ == 0 || count == 0 ||
             (rotation.isDetached() && !rotation.castsWorldShadow_)) {
@@ -882,7 +883,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                     ? rotation.worldCellOffset_ +
                           IRMath::rotateVectorByQuat(rasterCellOffset, cameraRotation)
                     : vec3(0.0f),
-                0.0f
+                perAxisRaster ? 1.0f : 0.0f
             ),
             orientation,
             ivec4(

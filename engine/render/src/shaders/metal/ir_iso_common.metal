@@ -489,6 +489,16 @@ inline int3 roundHalfUp(float3 v) {
     return int3(floor(v + float3(0.5)));
 }
 
+// Per-axis faces encode translation in signed sixteenths, independent of
+// subdivisions. Axis 2 maps the packed u/v/w fractions to world x/y/z.
+inline float3 perAxisRenderedVoxelCenter(float3 voxelPosition) {
+    const float3 aligned = snapNearIntegerVoxelPosition(voxelPosition);
+    const int3 cell = roundHalfUp(aligned);
+    int u, v, w;
+    fracToFrac4(2, aligned - float3(cell), u, v, w);
+    return float3(cell) + (float3(u, v, w) / 16.0 - float3(0.5));
+}
+
 inline int roundHalfUp(float v) {
     return int(floor(v + 0.5f));
 }
