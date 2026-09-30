@@ -41,6 +41,7 @@ STUB
 cat > "$BIN/git" <<'STUB'
 #!/usr/bin/env bash
 case "$*" in
+  *"rev-parse --show-toplevel"*) pwd ;;
   *"rev-parse --abbrev-ref HEAD"*) echo "master" ;;
   *"rev-parse --verify --quiet refs/remotes/origin/"*) exit 1 ;;
   *"status --porcelain"*) : ;;

@@ -407,8 +407,13 @@ def collect_runtimes(conf, state_dir, alerts_dir, state_json, rows):
     for p in sorted((Path(state_dir) / "runtime-problems").glob("*.json")):
         try:
             d = json.loads(p.read_text())
+            alert_exists = (Path(alerts_dir) / ("fleet-runtime-" + p.stem)).exists()
+            # fleet_runtime.routing_problem's own alert threshold: below it, a
+            # record is still forming and not yet the standing problem the
+            # WARN section exists to surface.
+            warn = (d.get("count") or 0) >= 3 or alert_exists
             problems.append({"key": d.get("key"), "reason": d.get("reason"),
-                             "count": d.get("count")})
+                             "count": d.get("count"), "warn": warn})
         except (OSError, ValueError):
             continue
     gate_alerts = sorted(p.name for p in Path(alerts_dir).glob("dispatch-gate-*"))
@@ -523,7 +528,8 @@ def derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts):
             w.append(f"{n} open PR(s) carry no fleet:author-* label; cross-provider "
                      f"review routing refuses them until stamped")
     for pr in runtimes["problems"]:
-        w.append(f"runtime routing problem: {pr['key']}: {pr['reason']} (x{pr['count']})")
+        if pr["warn"]:
+            w.append(f"runtime routing problem: {pr['key']}: {pr['reason']} (x{pr['count']})")
     for name in runtimes["gate_alerts"]:
         w.append(f"standing dispatch-gate alert: {name}")
     return w

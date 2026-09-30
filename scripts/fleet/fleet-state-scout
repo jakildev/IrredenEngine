@@ -47,6 +47,7 @@ if sys.platform == "win32" and not os.environ.get("PYTHONUTF8"):
 # python. Insert this script's own dir so the import resolves whether the
 # scout is run directly or loaded by-path in the unit tests.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import fleet_gh_fallback
 import fleet_poll_topology
 from fleet_blocked_by import (
     is_no_blocker_value,
@@ -451,8 +452,28 @@ def run_capture(cmd, cwd=None):
         return None
     if proc.returncode != 0:
         log(f"command rc={proc.returncode}: {' '.join(cmd)}: {proc.stderr.strip()}")
+        _latch_graphql_refusal(cmd, proc.stderr)
         return None
     return proc.stdout
+
+
+def _latch_graphql_refusal(cmd, stderr):
+    """Close the dispatcher's usage gate on a GraphQL rate-limit refusal.
+
+    The GraphQL self-report can read healthy while the limiter refuses real
+    calls, so a refusal latches its own file until the sampled reset. Logs
+    once per refusal window, on the open->refused edge.
+    """
+    if not fleet_gh_fallback.is_refusal(stderr):
+        return
+    reason = fleet_gh_fallback.refusal_reason(cmd[1:], stderr)
+    try:
+        opened = fleet_gh_fallback.latch_refusal(reason, USAGE_DIR)
+    except OSError as e:
+        log(f"github graphql refusal latch failed: {e}")
+        return
+    if opened:
+        log(f"github graphql refused; usage gate latched closed: {reason}")
 
 
 # Both constants are sized against the ONE predicate that reads a review body:
@@ -1029,6 +1050,11 @@ def _sample_github_graphql():
     wall, since no counter can be read through it — and the next good
     reply overwrites it, so recovery needs no TTL. Any other failure
     leaves the prior latch untouched.
+
+    A refusal of any other GraphQL call latches the separate
+    github-graphql.rejected.json (_latch_graphql_refusal), which this
+    sampler never writes or clears: the self-report can read healthy while
+    the limiter still refuses real calls.
     """
     cmd = ["gh", "api", "graphql", "-f", f"query={_GITHUB_GRAPHQL_RATE_QUERY}"]
     try:
@@ -2238,9 +2264,12 @@ DESIGN_RESUME_LABELS = frozenset({"fleet:design-unblocked"})
 # Keep in lockstep with the step-1c filter list in role-worker.md.
 SEMANTIC_CONFLICT_EXCLUDE_LABELS = frozenset({
     "fleet:wip", "human:wip", "human:needs-fix", "human:blocker",
-    "fleet:awaiting-base", "fleet:awaiting-upstream-review",
+    "fleet:awaiting-base",
     "fleet:fork-of-other-pr", "fleet:design-blocked", "fleet:design-proposed",
 })
+# What makes a stacked child's upstream count as reviewed for the
+# fleet:awaiting-upstream-review gate (REVIEWER-PROTOCOL.md step 3).
+_UPSTREAM_APPROVED_LABELS = frozenset({"fleet:approved", "human:approved"})
 REVIEW_VERDICT_LABELS = frozenset({
     "fleet:approved", "fleet:needs-fix", "fleet:has-nits",
 })
@@ -2267,6 +2296,13 @@ REVIEW_SKIP_LABELS = frozenset({
     # fleet:human-deferred this is NOT mergeable-by-the-merger: the conflict
     # itself sits in the gated file, so a human must resolve before merge.
     "fleet:gated",
+    # Complete, but parked behind an open blocker named in the PR's own
+    # `Parked-until: #N` line. Re-reviewing the unchanged head every tick
+    # re-stamps a fleet verdict tier, which WORKER_SKIP_LABELS below then
+    # re-declines — an unbounded review/decline cycle with no diff change
+    # and no blocker change. Resume signal is `fleet-claim reconcile`'s
+    # auto-un-park removing the label once the blocker closes.
+    "fleet:awaiting-infra",
 })
 # Dynamic per-host claim prefixes that also bar reviewer pickup. A worker
 # amending a fleet:needs-fix PR holds fleet:amending-<host>-<agent> (minted
@@ -2287,6 +2323,11 @@ RECHECK_LABELS = frozenset({"human:re-review", "fleet:changes-made"})
 # its verdict swap, so a handled escalation drops back out of the projection.
 OPUS_REVIEWER_FLAG_LABELS = frozenset({"fleet:needs-opus-recheck"})
 
+# Labels on the upstream PR that lift a stacked child's
+# fleet:awaiting-upstream-review gate (REVIEWER-PROTOCOL.md §"Stack
+# awareness" step 3).
+_UPSTREAM_APPROVAL_LABELS = frozenset({"fleet:approved", "human:approved"})
+
 
 def _review_skipped(labels):
     """True if a PR's label set bars reviewer pickup — exact-name skip
@@ -2299,6 +2340,25 @@ def _review_skipped(labels):
 def _review_claim_held(labels):
     return any(label.startswith(p) for label in labels
                for p in REVIEW_HELD_PREFIXES)
+
+
+def _upstream_review_gate_holds(pr, labels, head_labels):
+    """True when a stacked PR's fleet:awaiting-upstream-review gate is still
+    live — the upstream (found by baseRefName in the repo's open-PR head map,
+    the same lookup _semantic_conflict_claimable uses for a stacked base)
+    carries neither fleet:approved nor human:approved. REVIEWER-PROTOCOL.md
+    §"Stack awareness" step 3 has the human skip this case silently, so
+    admission must not fan a pane out onto the same no-op every tick. An
+    upstream absent from the open-PR map (merged or closed) does not hold
+    the gate — step 3 lifts it on merge, and a closed-unmerged upstream is a
+    stack issue surfaced once to a human, not repeated review dispatch."""
+    if "fleet:awaiting-upstream-review" not in labels:
+        return False
+    upstream_labels = head_labels.get(pr.get("baseRefName"))
+    if upstream_labels is None:
+        return False
+    return not (upstream_labels & _UPSTREAM_APPROVAL_LABELS)
+
 
 # Smoke-worker label sets. Every host label belongs in the pending set:
 # update_role_trigger keys the smoke-worker wake on this projection's hash, so
@@ -3130,8 +3190,16 @@ SEMANTIC_CONFLICT_SKIP_PREFIXES = WORKER_SKIP_PREFIXES + (
 # resume signal is fleet:design-unblocked, which the state machine keeps
 # mutually exclusive with both park labels, so suppressing the fleet tiers
 # here never masks real resume work.
+#
+# fleet:awaiting-infra parks a PR the same way, behind an open blocker named
+# in the PR's own `Parked-until: #N` line rather than a design question. Its
+# resume signal is the label's own removal (`fleet-claim reconcile`'s
+# auto-un-park once the blocker closes), which re-arms whatever fleet verdict
+# tier is still on the PR — so suppressing here never masks real resume work
+# either.
 WORKER_SKIP_LABELS = frozenset({
     "fleet:needs-opus-recheck", "fleet:design-blocked", "fleet:design-proposed",
+    "fleet:awaiting-infra",
 })
 # Only the fleet-owned tiers are suppressible by transient lane state.
 # human:needs-fix / human:blocker outrank that state, but persistent PR
@@ -3167,6 +3235,12 @@ def worker_feedback_labels(labels):
     ):
         relevant -= _WORKER_SUPPRESSIBLE_LABELS
     return relevant
+
+
+def _head_labels_map(prs):
+    """headRefName -> label set, for resolving a stacked PR's upstream (its
+    baseRefName) among a repo's other open PRs."""
+    return {p.get("headRefName"): set(p.get("labels", [])) for p in prs}
 
 
 def _semantic_conflict_claimable(pr, labels, head_labels):
@@ -3246,6 +3320,17 @@ def _semantic_conflict_claimable(pr, labels, head_labels):
     base_labels = head_labels.get(pr.get("baseRefName"))
     if base_labels and "fleet:semantic-conflict" in base_labels:
         return False
+    # fleet:awaiting-upstream-review holds a stacked child's *review* until
+    # its upstream is approved, and the reviewer lifts it (REVIEWER-PROTOCOL
+    # step 3). No reviewer admits a semantic-conflicted PR, though, so on a
+    # conflicted child nothing ever lifts it. The gate holds only while the
+    # upstream is open and unapproved, when its next amend would redo the
+    # resolution. Once the upstream is approved or no longer open (merged,
+    # or the PR is master-based), the gate is stale and the conflict is
+    # claimable. Mirror in role-worker.md step 1c.
+    if ("fleet:awaiting-upstream-review" in labels and base_labels is not None
+            and not base_labels & _UPSTREAM_APPROVED_LABELS):
+        return False
     return True
 
 
@@ -3286,9 +3371,7 @@ def project_worker(state):
             items.append({"kind": "needs_plan", "repo": repo,
                           "issue": issue["number"]})
         prs = repo_state.get("prs", [])
-        head_labels = {
-            p.get("headRefName"): set(p.get("labels", [])) for p in prs
-        }
+        head_labels = _head_labels_map(prs)
         for pr in prs:
             labels = set(pr["labels"])
             if "human:wip" in labels:
@@ -3321,18 +3404,19 @@ def project_worker(state):
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
-def _reviewable(pr, labels):
+def _reviewable(pr, labels, head_labels):
     """A conflicting PR's diff is not the diff that will merge, so neither
     reviewer lane admits it; the merger or a conflict worker changes its state
     and re-arms the lane. Shared by each lane's projection and slice — the
     dispatcher elects targets from the slice."""
     return (not _review_skipped(labels)
             and not _review_claim_held(labels)
-            and pr.get("mergeable") != "CONFLICTING")
+            and pr.get("mergeable") != "CONFLICTING"
+            and not _upstream_review_gate_holds(pr, labels, head_labels))
 
 
-def sonnet_review_admissible(pr, labels):
-    if not _reviewable(pr, labels) or pr.get("isDraft"):
+def sonnet_review_admissible(pr, labels, head_labels):
+    if not _reviewable(pr, labels, head_labels) or pr.get("isDraft"):
         return False
     # Re-review triggers override every standing-state check below.
     if labels & RECHECK_LABELS:
@@ -3351,15 +3435,18 @@ def sonnet_review_admissible(pr, labels):
     return not (labels & REVIEW_VERDICT_LABELS)
 
 
-def opus_review_admissible(pr, labels):
-    return _reviewable(pr, labels) and bool(labels & OPUS_REVIEWER_FLAG_LABELS)
+def opus_review_admissible(pr, labels, head_labels):
+    return (_reviewable(pr, labels, head_labels)
+            and bool(labels & OPUS_REVIEWER_FLAG_LABELS))
 
 
 def project_sonnet_reviewer(state):
     items = []
     for repo, repo_state in state["repos"].items():
-        for pr in repo_state.get("prs", []):
-            if not sonnet_review_admissible(pr, set(pr["labels"])):
+        prs = repo_state.get("prs", [])
+        head_labels = _head_labels_map(prs)
+        for pr in prs:
+            if not sonnet_review_admissible(pr, set(pr["labels"]), head_labels):
                 continue
             items.append({"repo": repo, "pr": pr["number"],
                           "head": pr["headRefName"]})
@@ -3369,9 +3456,11 @@ def project_sonnet_reviewer(state):
 def project_opus_reviewer(state):
     items = []
     for repo, repo_state in state["repos"].items():
-        for pr in repo_state.get("prs", []):
+        prs = repo_state.get("prs", [])
+        head_labels = _head_labels_map(prs)
+        for pr in prs:
             labels = set(pr["labels"])
-            if not opus_review_admissible(pr, labels):
+            if not opus_review_admissible(pr, labels, head_labels):
                 continue
             items.append({"repo": repo, "pr": pr["number"],
                           "labels": sorted(labels & OPUS_REVIEWER_FLAG_LABELS)})
@@ -3410,11 +3499,12 @@ def project_queue_manager(state):
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
-# The labels that park a PR away from the merger entirely. Every member of
-# `_SMOKE_PENDING_LABELS` is one — the merger isn't the agent that resolves
-# those; a smoke-runner clears them — read straight from the constant so
-# widening the producer set can never orphan this consumer.
-_MERGER_PROJECTION_SKIP_LABELS = frozenset(_SMOKE_PENDING_LABELS | {
+# The labels that park a PR away from the merger entirely. The cross-host
+# smoke labels (`_SMOKE_PENDING_LABELS`) are deliberately NOT here: the human
+# merges without waiting for smoke, and a conflicting head must change before
+# anything merges, so a pending smoke never holds conflict work.
+# `_merger_action_signal` still keeps a smoke-pending PR off `merge-ready`.
+_MERGER_PROJECTION_SKIP_LABELS = frozenset({
     "fleet:wip", "human:wip",
     "fleet:fork-of-other-pr", "fleet:design-blocked",
     # Parked by the epic-steward pending a proposal answer on the
@@ -3480,12 +3570,14 @@ def _merger_action_signal(labels, mergeable, base_ref, checks=None):
     them turns the projection hash into a self-trigger loop: the merger
     fires, toggles its cooldown, and re-fires itself on the next scout tick.
 
-    Every member of `_SMOKE_PENDING_LABELS` is also a skip signal — the
-    merger isn't the agent that resolves those; a smoke-runner clears them.
-    Including them as merger candidates just makes the merger fire
-    repeatedly to find nothing to do. Read straight from the constant
-    (rather than hand-listed) so widening the producer set can never
-    orphan this consumer.
+    A `_SMOKE_PENDING_LABELS` member suppresses only `merge-ready`: a
+    smoke-runner, not the merger, clears it. It never suppresses
+    `needs-resolve`. The human merges without waiting for smoke, and a
+    conflicting PR's head changes before anything merges, so the smoke runs
+    on the resolved head. Hiding the conflict instead parks it until a host
+    of that tier happens to smoke a head that cannot merge. Read straight
+    from the constant so widening the producer set can never orphan this
+    consumer.
 
     `fleet:human-deferred` is intentionally NOT skipped. It marks a PR
     whose *human-review feedback* was deferred to a follow-up issue
@@ -3517,6 +3609,8 @@ def _merger_action_signal(labels, mergeable, base_ref, checks=None):
             return None
         return "needs-resolve"
     if approved and mergeable == "MERGEABLE" and base_ref == "master":
+        if labels & _SMOKE_PENDING_LABELS:
+            return None
         return {"red": "checks-red", "unread": "checks-unread"}.get(checks, "merge-ready")
     return None
 
@@ -3781,10 +3875,10 @@ def _epic_adopt_candidates(repo_state):
     return out
 
 
-# Umbrella labels that park the steward's per-umbrella flows on the human:
+# Umbrella labels that park the steward's close-out on the human:
 # fleet:needs-human (the steward's own hand-off) and fleet:steward-proposal
-# (a ruling the human owes, close-out included). Read from
-# repo_state["epics"][*]["labels"], the field _epic_design_prs consults.
+# (a ruling the human owes). Read from repo_state["epics"][*]["labels"], the
+# field _epic_design_prs consults.
 _EPIC_PARKED_LABELS = frozenset({"fleet:needs-human", "fleet:steward-proposal"})
 
 
@@ -3814,11 +3908,13 @@ def project_epic_steward(state):
                    back-ref means the epic is not done); gone when the
                    umbrella closes.
 
-    An umbrella parked on the human (_EPIC_PARKED_LABELS) emits no rollup
-    or closeout item: the steward has already audited it and recorded the
-    park, so re-arming on it only re-audits. The label's removal is the
-    re-fire edge — the same shape _epic_design_prs gives a design-proposed
-    PR whose proposal is pending. adopt and design keep their own rules.
+    An umbrella parked on the human (_EPIC_PARKED_LABELS) emits no closeout
+    item: the steward has already audited it and recorded the park, so
+    re-arming on it only re-audits. The label's removal is the re-fire edge —
+    the same shape _epic_design_prs gives a design-proposed PR whose proposal
+    is pending. rollup, adopt and design keep their own rules: a rollup is a
+    child-state edge the steward has not yet seen, and the label stays on
+    while the epic's other children keep merging.
     """
     items = []
     for repo, repo_state in state["repos"].items():
@@ -3835,13 +3931,13 @@ def project_epic_steward(state):
                     items.append({"kind": "normalize", "repo": repo,
                                   "epic": number})
                 continue
-            if set(epic.get("labels", [])) & _EPIC_PARKED_LABELS:
-                continue
             for entry in checklist:
                 if entry.get("closed") and not entry.get("checked"):
                     items.append({"kind": "rollup", "repo": repo,
                                   "epic": number,
                                   "child": entry.get("number")})
+            if set(epic.get("labels", [])) & _EPIC_PARKED_LABELS:
+                continue
             if (all(entry.get("closed") for entry in checklist)
                     and number not in adopting):
                 items.append({"kind": "closeout", "repo": repo,
@@ -3975,9 +4071,7 @@ def slice_worker(state):
                 continue
             out["needs_plan"].append(_slice_issue_with_repo(repo_key, issue))
         prs = repo_state.get("prs", [])
-        head_labels = {
-            p.get("headRefName"): set(p.get("labels", [])) for p in prs
-        }
+        head_labels = _head_labels_map(prs)
         task_hosts = _task_required_hosts(repo_state)
         for pr in prs:
             labels = set(pr["labels"])
@@ -4008,8 +4102,10 @@ def slice_worker(state):
 def slice_sonnet_reviewer(state):
     out = {"candidate_prs": []}
     for repo_key, repo_state in state["repos"].items():
-        for pr in repo_state.get("prs", []):
-            if sonnet_review_admissible(pr, set(pr["labels"])):
+        prs = repo_state.get("prs", [])
+        head_labels = _head_labels_map(prs)
+        for pr in prs:
+            if sonnet_review_admissible(pr, set(pr["labels"]), head_labels):
                 out["candidate_prs"].append(_slice_pr_with_repo(repo_key, pr))
     return out
 
@@ -4017,8 +4113,10 @@ def slice_sonnet_reviewer(state):
 def slice_opus_reviewer(state):
     out = {"flagged_prs": [], "plan_review": []}
     for repo_key, repo_state in state["repos"].items():
-        for pr in repo_state.get("prs", []):
-            if opus_review_admissible(pr, set(pr["labels"])):
+        prs = repo_state.get("prs", [])
+        head_labels = _head_labels_map(prs)
+        for pr in prs:
+            if opus_review_admissible(pr, set(pr["labels"]), head_labels):
                 out["flagged_prs"].append(_slice_pr_with_repo(repo_key, pr))
         # Plan-review issues the reviewer should vet (mirror project_opus_reviewer
         # so a woken reviewer reads the same set that triggered it).
@@ -4299,6 +4397,52 @@ def check_state_size(size_bytes: int) -> None:
         )
     except OSError:
         pass
+
+
+# A PR carrying both residual host labels is refused by every host (the macOS
+# pin refuses linux/windows, the GL gate refuses mac) and vanishes from every
+# lane until a human drops the stale label. "<repo>-<number>" -> consecutive
+# ticks; in-process, like _state_size_over_streak.
+_DUAL_HOST_LABELS = {"fleet:needs-macos-host", "fleet:needs-gl-host"}
+_dual_host_label_streak = {}
+
+
+def _dual_host_label_alert_path(key) -> Path:
+    return _alerts_dir() / f"state-scout-dual-host-labels-{key}"
+
+
+def check_dual_host_labels(state) -> None:
+    """Escalate-then-quiet for PRs carrying both residual host labels: loud on
+    the first tick and every Nth after, alert file rewritten every tick,
+    one all-clear line and the file removed once the PR is gone or fixed.
+    Best-effort: a read-only $HOME never breaks the tick."""
+    live = set()
+    for repo_key, repo_state in state.get("repos", {}).items():
+        for pr in repo_state.get("prs", []):
+            if not _DUAL_HOST_LABELS <= set(pr.get("labels", [])):
+                continue
+            key = f"{repo_key}-{pr.get('number')}"
+            live.add(key)
+            streak = _dual_host_label_streak.get(key, 0) + 1
+            _dual_host_label_streak[key] = streak
+            if streak == 1 or streak % STATE_SIZE_WARN_REPEAT_TICKS == 0:
+                log(f"{repo_key} PR#{pr.get('number')}: carries both "
+                    "fleet:needs-macos-host and fleet:needs-gl-host — no fleet "
+                    f"host can claim it; drop the stale one [tick {streak}]")
+            try:
+                path = _dual_host_label_alert_path(key)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                write_atomic(path, "dual residual host labels\n"
+                                   f"pr={key}\nconsecutive_ticks={streak}\n")
+            except OSError:
+                pass
+    for key in [k for k in _dual_host_label_streak if k not in live]:
+        log(f"{key}: no longer carries both residual host labels")
+        del _dual_host_label_streak[key]
+        try:
+            _dual_host_label_alert_path(key).unlink()
+        except OSError:
+            pass
 
 
 # --- Self-spawned-lane spawn failures --------------------------------------
@@ -5155,6 +5299,7 @@ def tick_once():
         elif update_role_trigger(role, projection):
             triggers_fired.append(role)
 
+    check_dual_host_labels(state)
     for role, slicer in SLICERS.items():
         try:
             sliced = slicer(state)

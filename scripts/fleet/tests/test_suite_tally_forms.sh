@@ -79,7 +79,6 @@ OWN_TALLY_BASELINE=(
     test_dispatcher_effort.sh
     test_dispatcher_empty_exit_backoff.sh
     test_dispatcher_github_gate.sh
-    test_dispatcher_stagger.sh
     test_dispatcher_usage_gate.sh
     test_fleet_claim_acquire.sh
     test_fleet_claim_amending_sweep.sh
