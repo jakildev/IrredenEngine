@@ -154,11 +154,10 @@ validation index's jitter probe plus the camera contracts below.
 
 ### Voxel face rasterization (which faces a voxel emits)
 
-- Voxel faces follow `visible-face triplet × exposed-face mask`. Authored
-  rotated GRID staircases may emit opposite-polarity risers and dual faces only
-  on the legacy cardinal raster when the rotated-content marker is set and the
-  canvas is not revoxelized. Continuous per-axis quads and revoxelized detached
-  occupancy use the strict triplet; see the
+- Voxel faces follow `visible-face triplet × exposed-face mask`. Only marked
+  rotated GRID cells on the non-revoxelized legacy cardinal raster may emit
+  opposite-polarity risers and dual faces. Continuous per-axis quads and
+  revoxelized detached canvases use the strict triplet; see the
   [face-rasterization model](../../docs/design/voxel-face-rasterization.md)
   and the [detached-face-normal contract](../../docs/design/detached-face-normals.md).
 - Continuous-yaw GRID rendering uses three face-local canvases plus a
