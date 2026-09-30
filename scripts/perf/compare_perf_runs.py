@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from dataclasses import dataclass, field
@@ -61,6 +62,7 @@ STEADY_FRAME_RE = re.compile(
 WITNESS_YAW_RE = re.compile(
     r"^Camera yaw: first=(-?[\d.]+)deg last=(-?[\d.]+)deg travel=([\d.]+)deg samples=(\d+)$"
 )
+WITNESS_ZOOM_RANGE_RE = re.compile(r"^Camera zoom range: min=(\S+) max=(\S+)$")
 WITNESS_ZOOM_RE = re.compile(r"^Camera zoom: first=([\d.]+) last=([\d.]+)$")
 WITNESS_PIVOT_RE = re.compile(r"^Camera pivot: explicit focus on (\d+) of (\d+) frames$")
 WITNESS_OVERFLOW_RE = re.compile(
@@ -136,6 +138,9 @@ class RunWitness:
     pose_samples: int = 0
     zoom_first: Optional[float] = None
     zoom_last: Optional[float] = None
+    zoom_range_present: bool = False
+    zoom_min: Optional[float] = None
+    zoom_max: Optional[float] = None
     # Pose samples rendered with an explicit yaw pivot focus; None without the line.
     explicit_pivot_samples: Optional[int] = None
     # samples == 0 with the line present: the overflow lane never ran (cardinal pose).
@@ -340,6 +345,18 @@ def parse_report(path: Path, cell_id: str) -> CellReport:
                     witness.yaw_first_deg, witness.yaw_last_deg, witness.yaw_travel_deg = (
                         float(m.group(i)) for i in range(1, 4)
                     )
+                continue
+            if s.startswith("Camera zoom range:"):
+                witness.zoom_range_present = True
+                witness.zoom_min = witness.zoom_max = None
+                m = WITNESS_ZOOM_RANGE_RE.match(s)
+                if m:
+                    try:
+                        minimum, maximum = float(m.group(1)), float(m.group(2))
+                        if math.isfinite(minimum) and math.isfinite(maximum):
+                            witness.zoom_min, witness.zoom_max = minimum, maximum
+                    except ValueError:
+                        pass
                 continue
             m = WITNESS_ZOOM_RE.match(s)
             if m:

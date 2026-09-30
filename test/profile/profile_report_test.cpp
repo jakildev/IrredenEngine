@@ -52,6 +52,8 @@ TEST(ProfileReportWitness, WitnessSectionIsWrittenEvenWhenNothingWasSampled) {
     report.witness_.yawLastDeg_ = -135.0f;
     report.witness_.zoomFirst_ = 4.0f;
     report.witness_.zoomLast_ = 4.0f;
+    report.witness_.zoomMin_ = 1.0f;
+    report.witness_.zoomMax_ = 32.0f;
     report.witness_.poseSamples_ = 8;
     report.witness_.explicitPivotSamples_ = 8;
     report.witness_.overflowSamples_ = 7;
@@ -63,6 +65,8 @@ TEST(ProfileReportWitness, WitnessSectionIsWrittenEvenWhenNothingWasSampled) {
         text.find("Camera yaw: first=-135.000deg last=-135.000deg travel=0.000deg samples=8\n"),
         std::string::npos
     ) << text;
+    EXPECT_NE(text.find("Camera zoom: first=4.000 last=4.000\n"), std::string::npos) << text;
+    EXPECT_NE(text.find("Camera zoom range: min=1.000 max=32.000\n"), std::string::npos) << text;
     EXPECT_NE(text.find("Camera pivot: explicit focus on 8 of 8 frames\n"), std::string::npos)
         << text;
     EXPECT_NE(
@@ -71,6 +75,7 @@ TEST(ProfileReportWitness, WitnessSectionIsWrittenEvenWhenNothingWasSampled) {
     ) << text;
 
     const std::string empty = writeAndRead(IRProfile::ProfileReport{});
+    EXPECT_NE(empty.find("Camera zoom range: min=0.000 max=0.000\n"), std::string::npos) << empty;
     EXPECT_NE(
         empty.find("Per-axis overflow: maxEntries=0 maxDropped=0 cap=0 samples=0\n"),
         std::string::npos

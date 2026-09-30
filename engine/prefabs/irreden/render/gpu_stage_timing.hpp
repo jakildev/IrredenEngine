@@ -255,6 +255,8 @@ struct RenderRunWitness {
     float yawTravel_ = 0.0f;
     float zoomFirst_ = 0.0f;
     float zoomLast_ = 0.0f;
+    float zoomMin_ = 0.0f;
+    float zoomMax_ = 0.0f;
     std::uint32_t poseSamples_ = 0;
     // Pose samples rendered with an explicit yaw pivot focus. With the default
     // pivot the part of the world a yaw shows depends on how the run began.
@@ -277,8 +279,12 @@ struct RenderRunWitness {
         if (poseSamples_ == 0) {
             yawFirst_ = yaw;
             zoomFirst_ = zoom;
+            zoomMin_ = zoom;
+            zoomMax_ = zoom;
         } else {
             yawTravel_ += IRMath::abs(IRMath::wrapAnglePi(yaw - yawLast_));
+            zoomMin_ = IRMath::min(zoomMin_, zoom);
+            zoomMax_ = IRMath::max(zoomMax_, zoom);
         }
         yawLast_ = yaw;
         zoomLast_ = zoom;

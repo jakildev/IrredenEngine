@@ -124,6 +124,20 @@ IRCanvasStress` before `--` for rotating/attached canvas workloads, with that
 demo’s `--auto-profile --auto-screenshot N` exit controls. Canvas stress enables
 both CPU and GPU timing for auto-profile.
 
+For a fixed CanvasStress camera, use `--sweep-frames 2 480` with
+`--auto-screenshot 6`. The runner requires finite yaw samples, unchanged yaw
+and all-frame zoom bounds; `--yaw` also fixes the expected angle when supplied.
+It rejects a mid-run zoom excursion even if the endpoints match. Actual zoom
+can be quantized, so the guard compares rendered scales rather than requiring
+the requested fractional zoom. Reports without zoom bounds cannot certify this
+lane. Historical IRPerfGrid reports remain readable with endpoint-only checks;
+new bounds are checked when present, and malformed bounds fail validation.
+Active yaw/pan sweeps, `--full-rotate` and the default screenshot suite remain
+moving captures outside the static guard. Translation and pitch/roll are not
+witnessed by this check.
+The [static-camera smoke report](static-camera-profile/README.md) retains a native
+accepted run and describes the deterministic rejection controls.
+
 `--legacy-depth-shadows` on either demo provides the point-caster comparison.
 Use the same pose, population and flags in both arms. GPU values are encoder
 intervals, not exclusive costs that can always be summed into frame time; see
@@ -135,8 +149,9 @@ excluded) and a tail pooled over every run's steady frames, the full-frame GPU
 rows, every GPU stage row the runs share, fixed updates per rendered frame, and
 each run's witnessed yaw and per-axis overflow peak and drops. Pose and drops
 come from the report's `Run witness` section, which every build type writes,
-so a Release run is checked like a Debug one; a run that dropped an overflow
-entry, left its `--yaw`, or carries no witness fails. The manifest records the
+so a Release run is checked like a Debug one. Dropped overflow entries fail
+every run; missing or mismatched poses fail the predictable IRPerfGrid and
+static CanvasStress lanes described above. The manifest records the
 power source (`host_power`), `host_cpus`, the build tree and its
 `CMAKE_BUILD_TYPE`, and per run the start time, battery charge and one-minute
 load average: the benchmark lock excludes cooperating builds only, so read the

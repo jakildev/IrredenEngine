@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from compare_perf_runs import CellReport, parse_report, render_markdown
+from repeat_profile import yaw_pose_mismatch
 
 
 class GpuReportParserTest(unittest.TestCase):
@@ -117,6 +118,7 @@ WITNESSED_REPORT = (
     "--- Run witness ---\n"
     "Camera yaw: first=-135.000deg last=-135.000deg travel=0.000deg samples=8\n"
     "Camera zoom: first=4.000 last=4.000\n"
+    "Camera zoom range: min=4.000 max=4.000\n"
     "Camera pivot: explicit focus on 8 of 8 frames\n"
     "Per-axis overflow: maxEntries=630842 maxDropped=7 cap=1048576 samples=8\n"
     "\n"
@@ -149,6 +151,7 @@ class RunWitnessParserTest(unittest.TestCase):
         self.assertEqual(
             (witness.pose_samples, witness.zoom_first, witness.zoom_last), (8, 4.0, 4.0)
         )
+        self.assertEqual((witness.zoom_min, witness.zoom_max), (4.0, 4.0))
         self.assertEqual(
             (witness.overflow_max_entries, witness.overflow_max_dropped,
              witness.overflow_cap, witness.overflow_samples),
@@ -182,6 +185,30 @@ class RunWitnessParserTest(unittest.TestCase):
         self.assertIsNone(witness.yaw_first_deg)
         self.assertIsNone(witness.yaw_travel_deg)
 
+    def test_zoom_excursions_do_not_disappear_when_endpoints_match(self):
+        text = WITNESSED_REPORT.replace("min=4.000 max=4.000", "min=1.000 max=32.000")
+        witness = self.parse(text).witness
+        self.assertEqual((witness.zoom_first, witness.zoom_last), (4.0, 4.0))
+        self.assertEqual((witness.zoom_min, witness.zoom_max), (1.0, 32.0))
+
+    def test_legacy_report_does_not_invent_all_frame_zoom_bounds(self):
+        text = WITNESSED_REPORT.replace("Camera zoom range: min=4.000 max=4.000\n", "")
+        witness = self.parse(text).witness
+        self.assertEqual((witness.zoom_first, witness.zoom_last), (4.0, 4.0))
+        self.assertEqual((witness.zoom_min, witness.zoom_max), (None, None))
+        self.assertFalse(witness.zoom_range_present)
+
+    def test_malformed_range_is_not_mistaken_for_legacy_absence(self):
+        for bounds in ("min=nan max=4.000", "min=4..000 max=4.000", "min=4 max=inf",
+                       "min=4", "max=4 min=4"):
+            with self.subTest(bounds=bounds):
+                text = WITNESSED_REPORT.replace("min=4.000 max=4.000", bounds)
+                witness = self.parse(text).witness
+                self.assertTrue(witness.zoom_range_present)
+                self.assertEqual((witness.zoom_min, witness.zoom_max), (None, None))
+                self.assertIn("all-frame", yaw_pose_mismatch(
+                    "IRPerfGrid", ["--yaw", "-2.35619449"], witness))
+
     def test_a_series_shorter_than_the_steady_line_states_pools_nothing(self):
         report = self.parse(WITNESSED_REPORT.replace("19.000 18.000 18.000\n", "19.000\n"))
         self.assertEqual((report.recorded_frames, len(report.frame_times_ms)), (8, 6))
@@ -201,6 +228,7 @@ class RunWitnessParserTest(unittest.TestCase):
             '"--- Run witness ---\\n"',
             '"Camera yaw: first=%.3fdeg last=%.3fdeg travel=%.3fdeg samples=%u\\n"',
             '"Camera zoom: first=%.3f last=%.3f\\n"',
+            '"Camera zoom range: min=%.3f max=%.3f\\n"',
             '"Camera pivot: explicit focus on %u of %u frames\\n"',
             '"Per-axis overflow: maxEntries=%u maxDropped=%u cap=%u samples=%u\\n"',
             '"Steady frame time (first %zu of %zu frames excluded):   avg=%.2fms   p50=%.2fms   "',

@@ -25,9 +25,22 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   affected GPU pass means by about 0.09/0.15 ms; frame ranges overlap. Profile
   worst-case complete tiles and larger populations before extrapolating, and
   retain a native camera-change/off-on GPU frame-upload assertion as follow-up.
-  Extend the profile runner's pose guard to static `IRCanvasStress` frame
-  sweeps: rejected candidate runs changed zoom from 2 to 1 and 32 to 2 without failing
-  the runner's existing IRPerfGrid-only pose checks.
+  The profile runner now validates yaw and all-frame zoom bounds for static
+  `IRCanvasStress` frame sweeps, including excursions that return to their initial
+  zoom. Requested fractional zoom is not assumed to equal rendered zoom. Moving
+  screenshot suites remain outside this static guard; camera translation and
+  pitch/roll still need their own recorded witnesses.
+- For continuous per-axis receiving, first validate the displayed point
+  `P = O + eu*q.x + ev*q.y - kVoxelRasterCellAnchor` using the existing
+  dilation-aware interpolated quad parameter. Preserve signed face identity and
+  the regular/overflow ownership rules. The production color path must retain
+  linear ambient/local/sky and direct-sun terms separately before display
+  mapping; multiplying already-lit RGBA8 color would incorrectly shadow other
+  light sources. Reuse the source-face composition contract, account for fog,
+  and measure storage and fragment-query cost before enabling it. Conservative
+  margins outside the finite face need an explicit extension policy and should
+  be excluded from the initial interior geometry oracle. This is investigated,
+  not yet implemented.
 - [Bounded overflow reference](../perf/bounded-source-face-reference.md) isolates
   the dense analytical-box teeth: identical geometry and tile tables regain
   clean floor edges when incomplete tiles query the complete small face pool.
