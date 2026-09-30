@@ -346,7 +346,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // the off-screen shadow feeders (struct 1), so the visible stage-1 program
     // carries none of the feeder branches (no runtime predication tax).
     ShaderProgram *stage1FeederProgram_ = nullptr;
-    // canonical-orders the view-visibility overflow entry list between
+    // Canonical-orders the overflow entry list between
     // the mode-3 append and the overflow indirect draw (rotating frames only).
     ShaderProgram *overflowSortProgram_ = nullptr;
     ShaderProgram *stage2Program_ = nullptr;
@@ -703,7 +703,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             .recordOverflow(ctrl[1], dropped, static_cast<std::uint32_t>(axes.overflowCap_));
         if (dropped > 0 && dropped != lastOverflowDropWarned_) {
             IRE_LOG_WARN(
-                "Per-axis view-visibility overflow list dropped {} entries last "
+                "Per-axis overflow list dropped {} entries last "
                 "rotating frame (cap {}); revealed-sliver coverage may be "
                 "incomplete while rotating (#2333).",
                 dropped,
@@ -717,7 +717,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             const std::uint32_t count = ctrl[1];
             if (count != lastOverflowCountLogged_) {
                 IRE_LOG_INFO(
-                    "[overflow-count] per-axis view-visibility overflow entries: {} "
+                    "[overflow-count] per-axis overflow entries: {} "
                     "(cap {}).",
                     count,
                     axes.overflowCap_
@@ -955,6 +955,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             // All three distance stores settled — read below by the mode-3
             // cardinal-winner test, the elections, and stage 2's depth re-test.
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
+            // Order the control reset and prefix fill on binding 28 before
+            // mode-3 atomics read and increment the current-frame counter.
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
         }
 

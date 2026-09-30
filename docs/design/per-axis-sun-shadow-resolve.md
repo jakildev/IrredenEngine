@@ -155,10 +155,9 @@ already writes a dense sun map. There is **no per-pixel bake-side footprint
 splat, and none is needed on these paths**: #2204's deterministic A/B
 implemented one and proved it byte-identical on the acceptance scene (even at
 a forced 12-texel radius) — the resolve-fed input was already saturated. The
-scatter fragment path's analytic edge coverage (`scatterAnalyticEdgeCoverage`,
-#1933/#2013, Metal) has no compute-domain call site; the bake cannot "call"
-it — a per-fragment helper keyed on `fwidth` and footprint params has no
-meaning in the bake's per-pixel sun-space projection (#2082 findings F1/F2).
+scatter path rasterizes exact finite face quads in the framebuffer. That
+hardware coverage has no compute-domain call site; the bake cannot reuse it
+for its per-pixel sun-space projection (#2082 findings F1/F2).
 
 Two bounded exceptions, both tracked elsewhere:
 

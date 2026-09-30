@@ -1194,7 +1194,7 @@ constexpr std::uint32_t kBufferIndex_SunShadowDepthMap = kBufferIndex_LightOcclu
 // resolve/bake consumer. Same non-overlapping-stage safety as the per-axis
 // election above; a lattice (unflagged) pool never binds it at all.
 constexpr std::uint32_t kBufferIndex_PerAxisResolveScratch = kBufferIndex_LightOcclusionGrid;
-// View-visibility overflow entries live in PerAxisResolveScratch (slot 28), but
+// Overflow entries live in PerAxisResolveScratch (slot 28), but
 // LIGHTING_TO_TRIXEL's
 // overflow-relight dispatch must ALSO sample the sun-depth map — which holds slot
 // 28 (kBufferIndex_SunShadowDepthMap) during that stage — so the two cannot share

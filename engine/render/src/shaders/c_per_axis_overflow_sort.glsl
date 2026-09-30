@@ -1,6 +1,6 @@
 #version 450 core
 
-// Canonical-order the view-visibility overflow entry list.
+// Canonical-order the overflow entry list.
 //
 // The mode-3 append (c_voxel_to_trixel_stage_1_body.glsl) assigns entry
 // indices with atomicAdd, and entry index IS draw order in the overflow

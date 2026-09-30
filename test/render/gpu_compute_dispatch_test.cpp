@@ -972,10 +972,10 @@ TEST_F(PositionUploadTest, OverflowLightingDispatchUsesCurrentCountAndPreservesD
     }
 }
 
-TEST_F(PositionUploadTest, ScatterCoverageCodesSurviveDepthQuantization) {
+TEST_F(PositionUploadTest, ScatterCellTieCodesSurviveDepthQuantization) {
     using namespace IRRender;
     const std::uint32_t bands[] = {0u, 1u, 131071u, 262143u, 262144u, 262145u, 524286u, 524287u};
-    std::vector<float> values(256, -1.0f);
+    std::vector<float> values(128, -1.0f);
     Buffer output{
         values.data(),
         values.size() * sizeof(float),
@@ -988,16 +988,17 @@ TEST_F(PositionUploadTest, ScatterCoverageCodesSurviveDepthQuantization) {
     program.use();
     output.bindBase(BufferTarget::SHADER_STORAGE, 0);
 #if defined(IR_GRAPHICS_METAL)
-    device_->dispatchCompute(256, 1, 1);
+    device_->dispatchCompute(128, 1, 1);
     device_->finish();
 #else
-    ENG_API->glDispatchCompute(256, 1, 1);
+    ENG_API->glDispatchCompute(128, 1, 1);
     ENG_API->glMemoryBarrier(GL_ALL_BARRIER_BITS);
     ENG_API->glFinish();
 #endif
     output.getSubData(0, values.size() * sizeof(float), values.data());
     for (std::uint32_t i = 0; i < values.size(); ++i) {
-        const std::uint32_t expected = bands[i >> 5u] * 32u + (i & 31u);
+        // Each cell-tie step spans two D24 codes; odd codes are unused.
+        const std::uint32_t expected = bands[i >> 4u] * 32u + (i & 15u) * 2u;
         ASSERT_GE(values[i], 0.0f);
         ASSERT_LE(values[i], 1.0f);
         const auto depth24 = static_cast<std::uint32_t>(double(values[i]) * 16777215.0 + 0.5);
@@ -1007,7 +1008,7 @@ TEST_F(PositionUploadTest, ScatterCoverageCodesSurviveDepthQuantization) {
         }
     }
     EXPECT_EQ(values.front(), 0.0f);
-    EXPECT_EQ(values.back(), 1.0f);
+    EXPECT_EQ(values.back(), 1.0f - 1.0f / 16777216.0f);
 }
 
 // Slots whose bit is set in `gpuMask` are GPU-transform-owned. A saturated

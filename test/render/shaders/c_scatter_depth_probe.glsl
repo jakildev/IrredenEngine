@@ -5,8 +5,7 @@ layout(std430, binding = 0) buffer Results { float depths[]; };
 void main() {
     const uint bands[8] = uint[8](0u, 1u, 131071u, 262143u, 262144u, 262145u, 524286u, 524287u);
     uint i = gl_GlobalInvocationID.x;
-    uint q = bands[i >> 5u] * 32u + (i & 31u);
     depths[i] = scatterFinalDepth(
-        float(q >> 5u) * kScatterCellTieBand,
-        float((q >> 1u) & 15u) * kScatterCellTieStep, (q & 1u) != 0u);
+        float(bands[i >> 4u]) * kScatterCellTieBand,
+        float(i & 15u) * kScatterCellTieStep);
 }

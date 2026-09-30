@@ -45,7 +45,7 @@ struct FrameDataIsoTriangles {
     float depthColorExtent;
     float _depthColorPad0;
     float _depthColorPad1;
-    // View-visibility overflow lane draw selector. 0 = the per-cell
+    // Overflow lane draw selector. 0 = the per-cell
     // scatter (instancing over the compacted occupied cells). 1 = the overflow
     // entry draw drawPerAxisScatter issues after the three cell draws: buffer
     // 25 then holds the appended {iso cell, colorPacked, encoded distance}

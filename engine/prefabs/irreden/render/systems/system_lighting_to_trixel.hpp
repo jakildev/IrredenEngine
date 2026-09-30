@@ -85,7 +85,7 @@ static_assert(sizeof(FrameDataLightingToTrixel) == 80, "Lighting frame must matc
 template <> struct System<LIGHTING_TO_TRIXEL> {
     ShaderProgram *program_ = nullptr;
     ShaderProgram *shapeProgram_ = nullptr;
-    // View-visibility overflow-face relight kernel: a bounded compute
+    // Overflow-face relight kernel: a bounded compute
     // dispatch at the tail of per-axis lighting that relights overflow entries
     // at their world position and rewrites their stored colour in
     // place, so the framebuffer scatter draws LIT slivers while rotating.
@@ -435,7 +435,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         mainShadow.getTexture()->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
     }
 
-    // Relight the view-visibility overflow entries that were appended
+    // Relight the overflow entries that were appended
     // albedo-only. A bounded compute dispatch over the
     // overflow list recovers each entry's world pos + face normal and rewrites
     // its stored colour with the same world sample the per-axis cells got
