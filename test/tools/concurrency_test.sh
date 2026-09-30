@@ -105,6 +105,67 @@ echo "[8] PID-death recovery — kill a holder mid-flight, ensure stale-cleanup"
 )
 check "reclaim after SIGKILL'd holder" "0" "$?"
 
+HELPERS="$REPO_ROOT/engine/tools/lib/concurrency_helpers.sh"
+IR_RUN="$REPO_ROOT/engine/tools/bin/ir-run"
+
+echo "[9] wrapped command inherits the holder pid + verb"
+out="$("$IR_ACQUIRE" gpu -- bash -c 'echo "$IR_ACQUIRE_HELD_VERB:${IR_ACQUIRE_HOLDER_PID:+set}"')"
+check "IR_ACQUIRE_HELD_VERB/HOLDER_PID exported" "gpu:set" "$out"
+
+echo "[10] benchmark hold covers gpu, perf, benchmark; gpu hold covers only gpu"
+out="$("$IR_ACQUIRE" benchmark -- bash -c '
+    source "'"$HELPERS"'"
+    for v in gpu perf benchmark; do
+        ir_inherited_lock_covers "$v" && printf "%s+ " "$v" || printf "%s- " "$v"
+    done')"
+check "under benchmark" "gpu+ perf+ benchmark+ " "$out"
+out="$("$IR_ACQUIRE" gpu -- bash -c '
+    source "'"$HELPERS"'"
+    for v in gpu perf benchmark; do
+        ir_inherited_lock_covers "$v" && printf "%s+ " "$v" || printf "%s- " "$v"
+    done')"
+check "under gpu" "gpu+ perf- benchmark- " "$out"
+
+echo "[11] an env naming a pid that does not own the lock covers nothing"
+out="$(IR_ACQUIRE_HOLDER_PID=1 IR_ACQUIRE_HELD_VERB=benchmark bash -c '
+    source "'"$HELPERS"'"
+    ir_inherited_lock_covers gpu && echo covered || echo not')"
+check "stale env, free lock" "not" "$out"
+out="$("$IR_ACQUIRE" gpu -- env IR_ACQUIRE_HOLDER_PID=1 bash -c '
+    source "'"$HELPERS"'"
+    ir_inherited_lock_covers gpu && echo covered || echo not')"
+check "env pid is not the lock's holder" "not" "$out"
+
+echo "[12] ir-run --auto-profile nested in ir-acquire benchmark runs, not queues"
+FAKE_BUILD="$(mktemp -d)"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$FAKE_BUILD/ir_fake_exe"
+chmod +x "$FAKE_BUILD/ir_fake_exe"
+status=0
+IR_QUEUE_TIMEOUT=3 "$IR_ACQUIRE" benchmark -- \
+    "$IR_RUN" --build-dir "$FAKE_BUILD" --timeout 30 ir_fake_exe --auto-profile 1 \
+    > "$FAKE_BUILD/run.log" 2>&1 || status=$?
+check "nested auto-profile run exits clean" "0" "$status"
+grep -q "RESULT=CLEAN" "$FAKE_BUILD/run.log" && out=clean || out="$(tail -3 "$FAKE_BUILD/run.log")"
+check "nested run reports RESULT=CLEAN" "clean" "$out"
+rm -rf "$FAKE_BUILD"
+
+echo "[13] a holder from the other Cygwin runtime is judged by its Windows pid"
+if [[ -r /proc/$$/winpid ]]; then
+    # A pid this runtime cannot see, stamped with a live Windows pid (ours).
+    out="$(bash -c '
+        source "'"$HELPERS"'"
+        lock="$IR_LOCK_ROOT/gpu/lock"
+        mkdir "$lock"; echo 999999 > "$lock/pid"
+        echo "$_IR_SELF_WINPID C:/other-runtime" > "$lock/winpid"
+        _ir_try_lock "$lock" && printf "taken " || printf "held "
+        echo "$_IR_SELF_WINPID $_IR_RUNTIME_ROOT" > "$lock/winpid"
+        _ir_try_lock "$lock" && printf "taken" || printf "held"
+        rm -rf "$lock"')"
+    check "foreign-runtime live holder kept; same-runtime dead holder reclaimed" "held taken" "$out"
+else
+    echo "  SKIP: no /proc/\$\$/winpid (not a Cygwin runtime)"
+fi
+
 echo
 echo "concurrency_test.sh: $pass passed, $fail failed"
 exit "$fail"

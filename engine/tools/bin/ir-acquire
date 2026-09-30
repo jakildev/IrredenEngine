@@ -119,5 +119,8 @@ if [[ $# -lt 1 ]]; then
     while true; do sleep 60; done
 fi
 
-# Run the command with the locks held; trap releases on exit.
+# Run the command with the locks held; trap releases on exit. The exports let
+# a nested ir-run see that its ancestor already holds what it would queue on
+# (ir_inherited_lock_covers).
+export IR_ACQUIRE_HOLDER_PID="$$" IR_ACQUIRE_HELD_VERB="$verb"
 "$@"

@@ -60,6 +60,6 @@ case "$mode" in
         cat "$CACHE"
         ;;
     slug)
-        python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["slug"])' "$CACHE"
+        python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["slug"])' "$CACHE" | tr -d '\r'
         ;;
 esac

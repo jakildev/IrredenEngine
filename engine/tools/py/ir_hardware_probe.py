@@ -18,10 +18,10 @@ invocations (no timestamps, no uptime-derived values, no random ordering).
 """
 
 import json
+import os
 import platform
 import re
 import subprocess
-import sys
 from pathlib import Path
 
 
@@ -105,6 +105,103 @@ def _gpu_macos():
     return {"model": "unknown"}
 
 
+_WIN_CPU_KEY = r"HARDWARE\DESCRIPTION\System\CentralProcessor\0"
+# The display-adapter device class; each numbered subkey is one adapter.
+_WIN_DISPLAY_CLASS_KEY = (
+    r"SYSTEM\CurrentControlSet\Control\Class\{4d36e968-e325-11ce-bfc1-08002be10318}"
+)
+
+
+def _win_physical_cores():
+    import ctypes
+    from ctypes import wintypes
+
+    # SYSTEM_LOGICAL_PROCESSOR_INFORMATION: ULONG_PTR mask, int relationship,
+    # then a 16-byte union — one record per relation, RelationProcessorCore = 0.
+    class _Info(ctypes.Structure):
+        _fields_ = [("mask", ctypes.c_size_t),
+                    ("relationship", ctypes.c_int),
+                    ("union", ctypes.c_ubyte * 16)]
+
+    fn = ctypes.windll.kernel32.GetLogicalProcessorInformation
+    size = wintypes.DWORD(0)
+    fn(None, ctypes.byref(size))
+    if size.value == 0:
+        return 0
+    buf = (_Info * (size.value // ctypes.sizeof(_Info)))()
+    if not fn(buf, ctypes.byref(size)):
+        return 0
+    return sum(1 for rec in buf if rec.relationship == 0)
+
+
+def _cpu_windows():
+    import winreg
+
+    info = {"model": "unknown", "cores": 0, "threads": os.cpu_count() or 0, "mhz": 0}
+    try:
+        with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, _WIN_CPU_KEY) as key:
+            info["model"] = winreg.QueryValueEx(key, "ProcessorNameString")[0].strip()
+            info["mhz"] = int(winreg.QueryValueEx(key, "~MHz")[0])
+    except OSError:
+        pass
+    try:
+        info["cores"] = _win_physical_cores()
+    except (OSError, AttributeError):
+        pass
+    return info
+
+
+def _gpu_windows():
+    import winreg
+
+    # Adapter subkeys are "0000", "0001", ...; the lowest-numbered one with a
+    # description is the primary adapter. Sibling non-numeric subkeys
+    # ("Configuration", "Properties") carry no DriverDesc and are unreadable.
+    try:
+        cls = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, _WIN_DISPLAY_CLASS_KEY)
+    except OSError:
+        return {"model": "unknown"}
+    with cls:
+        names = []
+        i = 0
+        while True:
+            try:
+                names.append(winreg.EnumKey(cls, i))
+            except OSError:
+                break
+            i += 1
+        for name in sorted(n for n in names if n.isdigit()):
+            try:
+                with winreg.OpenKey(cls, name) as sub:
+                    desc = winreg.QueryValueEx(sub, "DriverDesc")[0].strip()
+            except OSError:
+                continue
+            if desc and "basic display" not in desc.lower():
+                return {"model": desc}
+    return {"model": "unknown"}
+
+
+def _ram_windows():
+    import ctypes
+
+    class _MemStatus(ctypes.Structure):
+        _fields_ = [("dwLength", ctypes.c_ulong),
+                    ("dwMemoryLoad", ctypes.c_ulong),
+                    ("ullTotalPhys", ctypes.c_ulonglong),
+                    ("ullAvailPhys", ctypes.c_ulonglong),
+                    ("ullTotalPageFile", ctypes.c_ulonglong),
+                    ("ullAvailPageFile", ctypes.c_ulonglong),
+                    ("ullTotalVirtual", ctypes.c_ulonglong),
+                    ("ullAvailVirtual", ctypes.c_ulonglong),
+                    ("ullAvailExtendedVirtual", ctypes.c_ulonglong)]
+
+    status = _MemStatus()
+    status.dwLength = ctypes.sizeof(_MemStatus)
+    if not ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(status)):
+        return {"gb": 0}
+    return {"gb": status.ullTotalPhys // (1024 ** 3)}
+
+
 def _ram_linux():
     try:
         text = Path("/proc/meminfo").read_text()
@@ -139,13 +236,21 @@ def _os_info():
         version = _run("sw_vers", "-productVersion")
         if version:
             distro = f"macOS {version}"
+    elif platform.system() == "Windows":
+        distro = f"Windows {platform.version()}"
     return {"kernel": kernel, "distro": distro}
 
 
+# Windows reports x86-64 as "AMD64"; one spelling keeps slugs comparable
+# across OSes.
+_MACHINE_ALIASES = {"amd64": "x86_64"}
+
+
 def _slug(probe):
+    machine = platform.machine().lower()
     parts = [
         platform.system().lower(),
-        platform.machine().lower(),
+        _MACHINE_ALIASES.get(machine, machine),
         # Drop vendor noise and shorten — "AMD Ryzen 9 7950X 16-Core" → "ryzen-9-7950x".
         _slugify(probe["cpu"]["model"]),
         _slugify(probe["gpu"]["model"]),
@@ -160,7 +265,7 @@ def _slugify(s):
     # Aggressive normalization: lowercase, strip common vendor tokens,
     # collapse runs of non-alphanumerics to single dashes.
     s = s.lower()
-    s = re.sub(r"\b(amd|intel|nvidia|apple|corporation|inc|ltd|co|with radeon graphics)\b",
+    s = re.sub(r"\b(amd|intel|nvidia|geforce|apple|corporation|inc|ltd|co|with radeon graphics)\b",
                "", s)
     s = re.sub(r"\(r\)|\(tm\)", "", s)
     s = re.sub(r"[^a-z0-9]+", "-", s)
@@ -177,6 +282,8 @@ def probe():
         cpu, gpu, ram = _cpu_linux(), _gpu_linux(), _ram_linux()
     elif system == "Darwin":
         cpu, gpu, ram = _cpu_macos(), _gpu_macos(), _ram_macos()
+    elif system == "Windows":
+        cpu, gpu, ram = _cpu_windows(), _gpu_windows(), _ram_windows()
     else:
         cpu = {"model": "unknown", "cores": 0, "threads": 0, "mhz": 0}
         gpu = {"model": "unknown"}
