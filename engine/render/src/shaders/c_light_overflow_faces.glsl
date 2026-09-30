@@ -95,8 +95,8 @@ void main() {
     if (gid >= entryCount) {
         return;
     }
-    // Only the normals diagnostic recolors overflow faces; other overlays retain albedo.
-    if (lightingEnabled == 0 || (debugOverlayMode != 0 && debugOverlayMode != 8)) {
+    // Only the shadow and normals diagnostics recolor overflow faces.
+    if (lightingEnabled == 0 || (debugOverlayMode != 0 && debugOverlayMode != 3 && debugOverlayMode != 8)) {
         return;
     }
 
@@ -135,6 +135,10 @@ void main() {
     const float shadow = shadowsEnabled != 0
         ? perAxisSunShadowFactor(pos3D, faceId)
         : 1.0;
+    if (debugOverlayMode == 3) {
+        overflowScratch[entryBase + 1u] = packColor(vec4(surfaceShadowDebugColor(shadow), albedo.a));
+        return;
+    }
     const float lambert = max(0.0, dot(worldNormal, sunDirection.xyz));
     const float faceFactor =
         surfaceSunFactor(sunAmbient, sunIntensity, lambert, shadow);

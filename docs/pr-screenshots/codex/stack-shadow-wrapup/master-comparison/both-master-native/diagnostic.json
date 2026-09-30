@@ -1,0 +1,8 @@
+{
+  "substitution": "Both staged receiver and caster shaders from masterd29; allotherfiles integratede10",
+  "sha256": {
+    "c_compute_sun_shadow_body.metal": "a004e6c08ad397cb6ccb0c0e3961333d2879b8adfe8486a352aa31b88ab89608",
+    "c_bake_voxel_sun_faces.metal": "ffac16ca80e7ccbaf822846363dff2dde758dfd401917cbf245278962d279e2f"
+  },
+  "restored_and_verified": true
+}

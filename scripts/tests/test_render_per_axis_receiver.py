@@ -330,6 +330,111 @@ struct vec4 {
             + controls + "\n" + direct + call_sites(root, suffix) + camera_refresh() + CHECKS)
 
 
+def shader_block(source, condition):
+    match = re.search(r"if \(" + condition + r"\) \{.*?\n    \}", source, re.DOTALL)
+    if match is None:
+        raise ValueError(f"missing shader branch {condition}")
+    return match[0]
+
+
+def overflow_overlay_harness(suffix, directory, old_gate=False):
+    root = ROOT / "engine/render/src/shaders" / directory
+    source = host((root / f"c_light_overflow_faces.{suffix}").read_text())
+    source = source.replace("frameData.", "").replace("voxelFrameData.", "")
+    source = source.replace("sunFrameData.shadowsEnabled", "shadowsEnabled")
+    source = source.replace("overflowScratchLayout", "layout")
+    if old_gate:
+        source = replace_once(source, " && debugOverlayMode != 3", "")
+    lighting = host(functions((root / f"ir_surface_lighting.{suffix}").read_text(),
+                              "surfaceShadowDebugColor"))
+    dispatch_guard = shader_block(source, r"gid >= entryCount")
+    overlay_guard = shader_block(source, r"lightingEnabled == 0 \|\| .*?debugOverlayMode != 8\)")
+    normals = shader_block(source, r"debugOverlayMode == 8")
+    shadow_overlay = shader_block(source, r"debugOverlayMode == 3")
+    shadow = statement(source, "shadow")
+    entry_base = statement(source, "entryBase")
+    color_packed = statement(source, "colorPacked")
+    albedo = statement(source, "albedo")
+    body = "\n".join((statement(source, "entryCount"), dispatch_guard, overlay_guard,
+                      entry_base, color_packed, albedo,
+                      "const vec3 worldNormal(-1.f, 0.f, 0.f);",
+                      normals, "const vec3 pos3D(1.f, 2.f, 3.f);",
+                      "const int faceId = 4;", shadow, shadow_overlay))
+    return r"""
+#include <cstdio>
+#include <cstdint>
+#include <initializer_list>
+using uint=unsigned int;
+struct vec3 {
+    float x,y,z;
+    explicit vec3(float v=0):x(v),y(v),z(v){}
+    vec3(float a,float b,float c):x(a),y(b),z(c){}
+    vec3 operator*(float v)const{return {x*v,y*v,z*v};}
+    vec3 operator+(float v)const{return {x+v,y+v,z+v};}
+};
+struct vec4 {
+    vec3 rgb;float a;
+    vec4(vec3 v,float alpha):rgb(v),a(alpha){}
+};
+uint packCount=0,queryCount=0;
+vec4 packed(vec3(0),0);
+uint packColor(vec4 color){packed=color;++packCount;return 0xCEu;}
+vec4 unpackColor(uint){return vec4(vec3(.4f,.3f,.2f),.75f);}
+struct FrameDataSun {int shadowsEnabled;};
+FrameDataSun sunFrameData{1};
+uint sunDepthBuf[]={0u};
+float sample=.25f;
+float perAxisSunShadowFactor(vec3 position,int faceId){
+    ++queryCount;
+    if(position.x!=1.f||position.y!=2.f||position.z!=3.f||faceId!=4)
+        return -1.f;
+    return sample;
+}
+float perAxisSunShadowFactor(vec3 position,int faceId,FrameDataSun,const uint*){
+    return perAxisSunShadowFactor(position,faceId);
+}
+""" + lighting + r"""
+uint overflowScratch[16]={};
+struct Layout {int x,y,z,w;};
+Layout layout{0,0,3,0};
+int lightingEnabled=1,debugOverlayMode=0,shadowsEnabled=1;
+void overflowRoute(uint gid) {
+""" + body + r"""
+}
+int check(int mode,int enabled,int shadows,uint entries,float visibility,
+          uint expectedQueries,uint expectedPacks,vec3 expectedColor) {
+    for(uint& word:overflowScratch)word=0;
+    overflowScratch[1]=entries;
+    overflowScratch[4]=0x11u;
+    lightingEnabled=enabled;debugOverlayMode=mode;shadowsEnabled=shadows;
+    sunFrameData.shadowsEnabled=shadows;sample=visibility;
+    packCount=0;queryCount=0;
+    overflowRoute(0);
+    if(queryCount!=expectedQueries||packCount!=expectedPacks||
+       overflowScratch[4]!=(expectedPacks?0xCEu:0x11u)) {
+        std::fprintf(stderr,"mode %d: query/recolor count or early return\n",mode);
+        return 1;
+    }
+    if(expectedPacks&&(packed.rgb.x!=expectedColor.x||packed.rgb.y!=expectedColor.y||
+        packed.rgb.z!=expectedColor.z||packed.a!=.75f)) {
+        std::fprintf(stderr,"mode %d: debug RGB/alpha\n",mode);
+        return 1;
+    }
+    return 0;
+}
+int main(){
+    if(check(3,1,1,0,.25f,0,0,vec3(0)))return 1;
+    if(check(3,0,1,1,.25f,0,0,vec3(0)))return 2;
+    for(int mode:{1,2,9})if(check(mode,1,1,1,.25f,0,0,vec3(0)))return 3;
+    if(check(8,1,1,1,.25f,0,1,vec3(0.f,.5f,.5f)))return 4;
+    if(check(3,1,1,1,.25f,1,1,vec3(1.f,0.f,1.f)))return 5;
+    if(check(3,1,1,1,.999f,1,1,vec3(0)))return 6;
+    if(check(3,1,0,1,.25f,0,1,vec3(0)))return 7;
+    if(check(0,1,1,1,.25f,1,0,vec3(0)))return 8;
+}
+"""
+
+
 @unittest.skipUnless(COMPILER, "per-axis receiver controls require a C++ compiler")
 class PerAxisReceiverTest(unittest.TestCase):
     def test_displayed_face_center_and_shadow_contract(self):
@@ -362,6 +467,26 @@ class PerAxisReceiverTest(unittest.TestCase):
                                                 capture_output=True, text=True)
                         self.assertNotEqual(result.returncode, 0)
                         self.assertIn(failure, result.stderr)
+
+    def test_overflow_shadow_overlay_route(self):
+        for suffix, directory in (("glsl", ""), ("metal", "metal/")):
+            for old_gate in (False, True):
+                with self.subTest(backend=suffix, old_gate=old_gate):
+                    with tempfile.TemporaryDirectory() as temporary:
+                        path = Path(temporary)
+                        source, executable = path / "overlay.cpp", path / "overlay"
+                        source.write_text(overflow_overlay_harness(suffix, directory, old_gate))
+                        build = subprocess.run(
+                            [COMPILER, "-std=c++17", str(source), "-o", str(executable)],
+                            capture_output=True, text=True)
+                        self.assertEqual(build.returncode, 0, build.stderr)
+                        result = subprocess.run([str(executable)], capture_output=True,
+                                                text=True)
+                        if old_gate:
+                            self.assertNotEqual(result.returncode, 0)
+                            self.assertIn("mode 3: query/recolor", result.stderr)
+                        else:
+                            self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":

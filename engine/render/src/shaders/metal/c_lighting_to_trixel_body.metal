@@ -249,7 +249,7 @@ kernel void IR_LIGHTING_KERNEL_NAME(
             const float level = ao * shadow;
             debugColor = float3(level, level, 1.0f);
         } else {
-            debugColor = shadow >= 0.999f ? float3(0.0f) : float3(1.0f, 0.0f, 1.0f);
+            debugColor = surfaceShadowDebugColor(shadow);
         }
         writeLitTrixel(trixelColors, sourceFaces, sourceMode, sourceIndex, uint2(pixel), float4(debugColor, src.a));
         return;

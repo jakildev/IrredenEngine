@@ -5,6 +5,45 @@ changed paths and other bottlenecks, consolidating logic and improving robustnes
 against measured costs and the visual controls. Keep the agreed work in this order. A diagnostic experiment is not an implemented
 fix, and a small native scene does not establish fleet-scale rendering throughput.
 
+## Session handoff: stack through #3931
+
+The stack integrates master `d29d1ccef2b791d650c6818013c89ea0c3a5007c`.
+Review fixes add native OpenGL execution of the sun-index readback test, preserve
+analytical-shape cascade depth and PCF bias through shared lighting composition,
+and retain explicit zero-bias voxel queries and their mutation tests. The
+experimental attached lighting and visibility prepass remain default-off.
+The final debug-view correction shades overflow faces in shadow mode instead
+of leaving their albedo visible. Eight Metal CanvasStress references record the
+intentional receiver change; unchanged beauty controls and independent GRID
+center-ray expectations support that refresh.
+
+[Final captures and validation limits](../pr-screenshots/codex/stack-shadow-wrapup/README.md)
+record the integration checks. These checks do not establish universal sharp-edge
+correctness or million-entity throughput. Existing orbit banding and strict
+silhouette deviations remain unresolved; image equality between two modes does
+not make either image geometrically correct.
+
+After merging, resume with these bounded tasks:
+
+1. Diagnose the remaining orbit/face-edge artifacts with signed-face, depth and
+   independent ray expectations; distinguish legitimate occupancy steps from
+   wrong face ownership. Reconcile inherited fog/performance reference drift
+   against intended geometry before changing those baselines.
+2. Validate dense and incomplete sun-index tiles, moving camera/light transitions,
+   local spotlights and native OpenGL presentation. Preserve exact finite
+   footprint tests; the bounded full-pool reference is diagnostic, not a scalable
+   production fallback.
+3. Extend eligible continuous receiving to cardinal GRID and remaining SDF/fog
+   routes while preserving actual voxel or revoxelized occupancy. Resolve shared
+   resource lifetimes before removing the existing fog fallback.
+4. Measure candidate visits, footprint misses and first-blocker position after
+   visibility rejection, then profile proposed changes with counters disabled.
+   Use representative populations, rotation and effective subdivision with
+   separate CPU/GPU timings before selecting defaults or claiming scale.
+
+The detailed entries below retain the implementation evidence and narrower
+acceptance limits for each step.
+
 ## Current shadow investigation
 
 - Implemented [per-axis caster position agreement](../pr-screenshots/codex/peraxis-shadow-caster-position/README.md):

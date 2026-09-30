@@ -1,0 +1,35 @@
+import hashlib,json,os,re,shutil,subprocess,sys
+from pathlib import Path
+root=Path.cwd(); phase=sys.argv[1]; out=Path('/tmp/codex-stack-default-pairs')/phase
+if out.exists():raise RuntimeError('Refusing to overwrite '+str(out))
+build=Path(os.environ.get('IRREDEN_BUILD_DIR',root/'build')).resolve(); binary=build/'creations/demos/canvas_stress/IRCanvasStress'
+out.mkdir(parents=True)
+head=subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()
+built=set()
+cases=[('default','IRCanvasStress','canvas_stress',120,[]),('compare','IRCanvasStress','canvas_stress',120,['--only','compare']),('default-no-shadows','IRCanvasStress','canvas_stress',120,['--no-shadows']),('compare-no-shadows','IRCanvasStress','canvas_stress',120,['--only','compare','--no-shadows']),('perf','IRPerfGrid','perf_grid',10,['--mode','voxel_set','--no-overlay','--wave-amplitude','0','--subdivision-mode','none']),('fog-detached','IRFogDemo','fog_demo',10,['--detached-edge']),('fog-paint','IRFogDemo','fog_demo',10,['--edge-zcost-ceiling','--fog-debug-color']),('fog-overflow','IRFogDemo','fog_demo',10,['--peraxis-overflow'])]
+
+for angle,label in [("0","upright"),("0.5235987756","rotated")]:
+ for overlay in ["shadow","normals"]:
+  cases.append(("grid-"+label+"-"+overlay,"IRCanvasStress","canvas_stress",6,["--only","gridspin","--frozen-pose",angle,"--no-auto-rotate","--no-ao","--pivot-origin","--zoom","4","--debug-overlay",overlay,"--sun-face-index-probe","--sweep-yaw","0.39269908","0.39269908","1"]))
+if len(sys.argv)>2: cases=[c for c in cases if c[0] in sys.argv[2].split(",")]
+for case,target,demo,warmup,extra in cases:
+ if target not in built and not os.environ.get("STACK_DIAGNOSTIC_SKIP_BUILD") and "--skip-build" not in sys.argv:
+  subprocess.run(['fleet-build','--target',target],check=True);built.add(target)
+ binary=build/'creations/demos'/demo/target
+ dest=out/case;dest.mkdir()
+ env=os.environ.copy()
+ for key in ['IR_PERAXIS_SURFACE_LIGHTING','IR_PERAXIS_VISIBILITY_PREPASS','IR_PERAXIS_VISIBILITY_STATS','IR_PERAXIS_SURFACE_SHADOW_PROBE','IR_SUN_FACE_EXACT_OVERFLOW_REFERENCE']:env.pop(key,None)
+ cmd=['fleet-run','--timeout','120',target,'--auto-screenshot',str(warmup)]+extra
+ print('CAPTURE',phase,case,flush=True)
+ with (dest/'run.log').open('w') as f:r=subprocess.run(cmd,env=env,stdout=f,stderr=subprocess.STDOUT)
+ log=(dest/'run.log').read_text()
+ if r.returncode!=0 or 'RESULT=CLEAN' not in log:raise RuntimeError('Unclean '+str(dest))
+ shots=re.findall(r'Saved screenshot: ([^\r\n]+)',log)
+ for i,shot in enumerate(shots):
+  src=Path(re.sub(r'\x1b\[[0-9;]*m','',shot).strip())
+  if not src.is_absolute():src=binary.parent/src
+  shutil.copy2(src,dest/('shot-'+str(i)+'.png'))
+ (dest/'manifest.json').write_text(json.dumps({'head':head,'command':cmd,'clean':True,'count':len(shots),'binary_sha256':hashlib.sha256(binary.read_bytes()).hexdigest(),'shader_files_sha256':{str(p.relative_to(binary.parent)):hashlib.sha256(p.read_bytes()).hexdigest() for p in sorted((binary.parent/'shaders').rglob('*')) if p.is_file()},'source_dirty':subprocess.check_output(['git','status','--porcelain','--','engine/render/src/shaders'],text=True).splitlines()},indent=2)+'\n')
+ 
+ for probe in binary.parent.glob("sun-face-index-*.csv"):shutil.copy2(probe,dest/probe.name)
+ print('SAVED',len(shots),flush=True)
