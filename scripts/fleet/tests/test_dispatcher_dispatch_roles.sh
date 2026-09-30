@@ -48,6 +48,10 @@ mkdir -p "$FLEET_STATE_DIR/projections" "$FLEET_STATE_DIR/dispatch" \
 # environment cannot pre-empt them.
 unset FLEET_DISPATCH_ROLES FLEET_WORKER_HOST_PINNED_ONLY FLEET_SMOKE_WORKER FLEET_EPIC_STEWARD
 unset FLEET_RUNTIMES FLEET_CROSS_PROVIDER_REVIEW FLEET_WORKER_RUNTIME
+# A dispatched pane exports its host's caps (FLEET_CONCURRENCY_WORKER=5 and
+# friends), which outrank the conf; T4c asserts the default cap.
+# shellcheck disable=SC2046
+unset $(compgen -v FLEET_CONCURRENCY_)
 
 # One idle pool pane; pgrep exits 1 so it reads as not running a wrapper.
 STUB_BIN="$TMPROOT/bin"; mkdir -p "$STUB_BIN"
@@ -185,5 +189,8 @@ assert_contains "$out" "defer=0" "and not a defer either — the '' gate stands 
 echo "T4c: the knob is not a cap — worker stays served and its cap untouched"
 assert_contains "$(config_line)" "roles=worker smoke-worker pinned-only=1; caps worker=4" \
     "served roles and caps unchanged by the pinned-only mode"
+printf 'FLEET_DISPATCH_ROLES="worker smoke-worker"\nFLEET_WORKER_HOST_PINNED_ONLY=1\nFLEET_CONCURRENCY_WORKER=2\n' > "$FLEET_CONF"
+assert_contains "$(config_line)" "roles=worker smoke-worker pinned-only=1; caps worker=2" \
+    "a configured worker cap is kept under the pinned-only mode"
 
 summarize "fleet-dispatcher host-profile knobs (FLEET_DISPATCH_ROLES / FLEET_WORKER_HOST_PINNED_ONLY)"
