@@ -102,147 +102,144 @@ chmod +x "$STUB_DIR/git"
 
 # --- gh stub -----------------------------------------------------------------
 cat >"$STUB_DIR/gh" <<'GHSTUB'
-#!/usr/bin/env bash
+#!/usr/bin/env python3
 #
 # Recognized invocations:
-#   gh issue view N --json state,labels,body             → full issue info
-#   gh issue view N --repo R --json state --jq .state    → state only
+#   gh issue view N --json state,labels,body             -> full issue info
+#   gh issue view N --repo R --json state --jq .state    -> state only
 #   gh pr list --state merged --limit 30 --json headRefName --jq ...
 #   gh pr list --state open --json url,headRefName,author,number,body --limit 200
 #   gh pr list --state open --json ... --jq ... (claim side)
-#   gh api .../labels ... / gh issue edit ... / gh label ...  → no-op
+#   gh pr view N / gh pr diff N                          -> --stackable-on re-verify
+#   gh api .../labels ... / gh issue edit ... / gh label ...  -> no-op
+import os
+import re
+import sys
 
-has_jq=0
-issue_num=""
-pr_state=""
-is_merged_list=0
-is_open_list=0
-for arg in "$@"; do
-    [[ "$arg" == "--jq" ]] && has_jq=1
-    [[ "$arg" == "merged" ]] && pr_state="merged"
-    [[ "$arg" == "open"   ]] && pr_state="open"
-    if [[ -z "$issue_num" && "$arg" =~ ^[0-9]+$ ]]; then
-        issue_num="$arg"
-    fi
-done
+args = sys.argv[1:]
+has_jq = False
+issue_num = ""
+pr_state = ""
+for arg in args:
+    if arg == "--jq":
+        has_jq = True
+    if arg == "merged":
+        pr_state = "merged"
+    if arg == "open":
+        pr_state = "open"
+    if not issue_num and re.fullmatch(r"[0-9]+", arg):
+        issue_num = arg
 
-case "$1 $2" in
-    "issue view")
-        if [[ "$has_jq" -eq 1 ]]; then
-            # check_blockers / find-stackable-blockers state-only lookup
-            case "$issue_num" in
-                100) echo "CLOSED" ;;
-                101) echo "OPEN"   ;;
-                102) echo "OPEN"   ;;
-                *)   echo "OPEN"   ;;
-            esac
-            exit 0
-        fi
-        # fetch_issue_info: full body
-        case "$issue_num" in
-            3001)
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #100 (done), #101 (still open)\n"}'
-                ;;
-            3002)
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #101, #102\n"}'
-                ;;
-            3003)
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #100\n"}'
-                ;;
-            3004)
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** (none)\n"}'
-                ;;
-            3005)
-                # Two separate **Blocked by:** lines — issue 100 CLOSED, issue
-                # 101 OPEN with a PR → stacks on the remaining issue.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #100\n**Blocked by:** #101\n"}'
-                ;;
-            3006)
-                # The blocker ref names an issue-less open PR by its OWN
-                # number (PR 540). Neither the branch arm nor the Closes arm
-                # can resolve it — only the number arm can.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #540\n"}'
-                ;;
-            3007)
-                # Negative control: a PR-shaped ref with no open PR of that
-                # number → still empty, the arm is not a wildcard.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #777\n"}'
-                ;;
-            3008)
-                # A number-matched base is still subject to filter (b) — PR
-                # 541 carries fleet:wip.
-                printf '%s' '{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #541\n"}'
-                ;;
-            *)
-                printf '%s' '{"state":"OPEN","labels":[],"body":""}'
-                ;;
-        esac
-        exit 0
-        ;;
-    "pr list")
-        if [[ "$pr_state" == "merged" ]]; then
-            echo "[]"
-            exit 0
-        fi
-        if [[ "$pr_state" == "open" ]]; then
-            # PR 536 is issue 101's PR (branch + Closes arms).
-            # PRs 540 / 541 are ISSUE-LESS: non-claude branch, no Closes ref —
-            # reachable only by the number arm. PR 541 is fleet:wip so filter
-            # (b) can be exercised on a number-matched base. Neither matches
-            # issue 101 (number, branch, and body all disagree), so the
-            # single-match contract of T1/T5 is unaffected.
-            printf '%s\n' '[{"url":"https://github.com/jakildev/IrredenEngine/pull/536","headRefName":"claude/101-work-branch","author":{"login":"bot"},"number":536,"body":"Closes #101"},{"url":"https://github.com/jakildev/IrredenEngine/pull/540","headRefName":"audit/stage-select-dedup","author":{"login":"jakildev"},"number":540,"body":"Audit-driven, no backing issue."},{"url":"https://github.com/jakildev/IrredenEngine/pull/541","headRefName":"audit/wip-thing","author":{"login":"jakildev"},"number":541,"body":"No backing issue.","labels":[{"name":"fleet:wip"}]}]'
-            exit 0
-        fi
-        echo "[]"
-        exit 0
-        ;;
-    "pr view")
-        # claim --stackable-on base re-verify: state + head + labels.
-        # $3 is the PR id passed to --stackable-on.
-        case "$3" in
-            901) printf '%s' '{"state":"OPEN","headRefName":"claude/901-wip","labels":[{"name":"fleet:wip"}]}' ;;
-            902) printf '%s' '{"state":"OPEN","headRefName":"claude/902-empty","labels":[{"name":"fleet:queued"}]}' ;;
-            903) printf '%s' '{"state":"OPEN","headRefName":"claude/903-clean","labels":[{"name":"fleet:queued"}]}' ;;
-            904) printf '%s' '{"state":"OPEN","headRefName":"claude/904-difffail","labels":[{"name":"fleet:queued"}]}' ;;
-            # An approved base whose ONLY formerly-disqualifying label is
-            # fleet:awaiting-base — the label is deliberately still present, so
-            # the accept is graded against a live carrier, not a cleaned-up one.
-            905) printf '%s' '{"state":"OPEN","headRefName":"claude/905-awaiting-base","labels":[{"name":"fleet:approved"},{"name":"fleet:awaiting-base"}]}' ;;
-            *)   printf '%s' '{"state":"OPEN","headRefName":"claude/x","labels":[]}' ;;
-        esac
-        exit 0
-        ;;
-    "pr diff")
-        # claim --stackable-on live diff: empty output = empty claim-commit,
-        # non-empty = real diff, exit 1 = fetch failure (unverifiable base).
-        case "$3" in
-            902) : ;;                                  # empty diff (claim-commit only)
-            903) printf '%s\n' "engine/render/x.cpp" ;;  # real non-empty diff
-            904) exit 1 ;;                             # fetch failure
-            905) printf '%s\n' "scripts/fleet/witness" ;;  # real non-empty diff
-            *)   printf '%s\n' "engine/x.cpp" ;;
-        esac
-        exit 0
-        ;;
-    "api "*)
-        label=""
-        while [[ $# -gt 0 ]]; do
-            case "$1" in
-                -f) shift; case "$1" in labels\[\]=*) label="${1#labels[]=}" ;; esac ;;
-            esac
-            shift || true
-        done
-        [[ -n "$label" ]] && printf '[{"name":"%s"}]\n' "$label" || printf '[[{"name":"%s"}]]\n' "${FLEET_CLAIM_CANDIDATE:-}"
-        exit 0
-        ;;
-    "issue edit"|"label "*)
-        exit 0
-        ;;
-esac
-exit 0
+
+def emit(text):
+    sys.stdout.buffer.write(text.encode("utf-8"))
+    sys.stdout.flush()
+
+
+STATE_ONLY = {"100": "CLOSED", "101": "OPEN", "102": "OPEN"}
+
+ISSUE_INFO = {
+    "3001": r'{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #100 (done), #101 (still open)\n"}',
+    "3002": r'{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #101, #102\n"}',
+    "3003": r'{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #100\n"}',
+    "3004": r'{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** (none)\n"}',
+    # Two separate **Blocked by:** lines — issue 100 CLOSED, issue
+    # 101 OPEN with a PR → stacks on the remaining issue.
+    "3005": r'{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #100\n**Blocked by:** #101\n"}',
+    # The blocker ref names an issue-less open PR by its OWN
+    # number (PR 540). Neither the branch arm nor the Closes arm
+    # can resolve it — only the number arm can.
+    "3006": r'{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #540\n"}',
+    # Negative control: a PR-shaped ref with no open PR of that
+    # number → still empty, the arm is not a wildcard.
+    "3007": r'{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #777\n"}',
+    # A number-matched base is still subject to filter (b) — PR
+    # 541 carries fleet:wip.
+    "3008": r'{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #541\n"}',
+}
+ISSUE_INFO_DEFAULT = r'{"state":"OPEN","labels":[],"body":""}'
+
+# PR 536 is issue 101's PR (branch + Closes arms).
+# PRs 540 / 541 are ISSUE-LESS: non-claude branch, no Closes ref -
+# reachable only by the number arm. PR 541 is fleet:wip so filter
+# (b) can be exercised on a number-matched base. Neither matches
+# issue 101 (number, branch, and body all disagree), so the
+# single-match contract of T1/T5 is unaffected.
+OPEN_PR_LIST = r'[{"url":"https://github.com/jakildev/IrredenEngine/pull/536","headRefName":"claude/101-work-branch","author":{"login":"bot"},"number":536,"body":"Closes #101"},{"url":"https://github.com/jakildev/IrredenEngine/pull/540","headRefName":"audit/stage-select-dedup","author":{"login":"jakildev"},"number":540,"body":"Audit-driven, no backing issue."},{"url":"https://github.com/jakildev/IrredenEngine/pull/541","headRefName":"audit/wip-thing","author":{"login":"jakildev"},"number":541,"body":"No backing issue.","labels":[{"name":"fleet:wip"}]}]'
+
+# claim --stackable-on base re-verify: state + head + labels.
+PR_VIEW = {
+    "901": r'{"state":"OPEN","headRefName":"claude/901-wip","labels":[{"name":"fleet:wip"}]}',
+    "902": r'{"state":"OPEN","headRefName":"claude/902-empty","labels":[{"name":"fleet:queued"}]}',
+    "903": r'{"state":"OPEN","headRefName":"claude/903-clean","labels":[{"name":"fleet:queued"}]}',
+    "904": r'{"state":"OPEN","headRefName":"claude/904-difffail","labels":[{"name":"fleet:queued"}]}',
+    # An approved base whose ONLY formerly-disqualifying label is
+    # fleet:awaiting-base - the label is deliberately still present, so
+    # the accept is graded against a live carrier, not a cleaned-up one.
+    "905": r'{"state":"OPEN","headRefName":"claude/905-awaiting-base","labels":[{"name":"fleet:approved"},{"name":"fleet:awaiting-base"}]}',
+}
+PR_VIEW_DEFAULT = r'{"state":"OPEN","headRefName":"claude/x","labels":[]}'
+
+verb = " ".join(args[:2])
+if verb == "issue view":
+    if has_jq:
+        # check_blockers / find-stackable-blockers state-only lookup
+        emit(STATE_ONLY.get(issue_num, "OPEN") + "\n")
+        sys.exit(0)
+    # fetch_issue_info: full body
+    emit(ISSUE_INFO.get(issue_num, ISSUE_INFO_DEFAULT))
+    sys.exit(0)
+if verb == "pr list":
+    if pr_state == "open":
+        emit(OPEN_PR_LIST + "\n")
+    else:
+        emit("[]\n")
+    sys.exit(0)
+if verb == "pr view":
+    # $3 is the PR id passed to --stackable-on.
+    pr_id = args[2] if len(args) > 2 else ""
+    emit(PR_VIEW.get(pr_id, PR_VIEW_DEFAULT))
+    sys.exit(0)
+if verb == "pr diff":
+    # claim --stackable-on live diff: empty output = empty claim-commit,
+    # non-empty = real diff, exit 1 = fetch failure (unverifiable base).
+    pr_id = args[2] if len(args) > 2 else ""
+    if pr_id == "902":
+        pass
+    elif pr_id == "903":
+        emit("engine/render/x.cpp\n")
+    elif pr_id == "904":
+        sys.exit(1)
+    elif pr_id == "905":
+        emit("scripts/fleet/witness\n")
+    else:
+        emit("engine/x.cpp\n")
+    sys.exit(0)
+if args[:1] == ["api"]:
+    label = ""
+    i = 0
+    while i < len(args):
+        if args[i] == "-f" and i + 1 < len(args):
+            i += 1
+            if args[i].startswith("labels[]="):
+                label = args[i][len("labels[]="):]
+        i += 1
+    if label:
+        emit('[{"name":"%s"}]\n' % label)
+    else:
+        emit('[[{"name":"%s"}]]\n' % os.environ.get("FLEET_CLAIM_CANDIDATE", ""))
+    sys.exit(0)
+sys.exit(0)
 GHSTUB
 chmod +x "$STUB_DIR/gh"
+# Native-Windows twin: find-stackable-blockers reaches `gh` from PYTHON
+# (subprocess), which resolves it through shutil.which() and finds this `.bat`
+# (a bare extensionless script is skipped). Inert on POSIX hosts.
+# See scripts/fleet/CLAUDE.md's native-Windows PATHEXT rule.
+cat > "$STUB_DIR/gh.bat" <<'BATEOF'
+@echo off
+python3 "%~dp0gh" %*
+BATEOF
 
 export PATH="$STUB_DIR:$PATH"
 

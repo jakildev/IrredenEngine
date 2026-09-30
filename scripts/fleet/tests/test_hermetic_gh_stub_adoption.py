@@ -11,16 +11,14 @@ is the literal `"gh"`, and a suite counts as a "PATH stub suite" when it
 writes an executable file literally named `gh` under some directory it
 prepends to PATH. A suite matching both is adoption-required.
 
-KNOWN_SUBJECTS scopes the ratchet to the subjects this pass actually
-fixed rather than the full tree-wide population: a wider census found
-fleet-claim also reaches `gh` from embedded Python (contrary to its own
-"pure bash" doc comment) across roughly fifty test suites — a separate,
-larger migration tracked in its own follow-up issue rather than folded in
-here unadopted-and-red. Every adopted suite keeps the poison-env backstop
-even where its subject's python-reached code path isn't the one under
-test, which is why the broader 53-suite set already carries
-`hermetic_poison_gh_env` even though only the KNOWN_SUBJECTS below are
-asserted here.
+KNOWN_SUBJECTS scopes the ratchet to the subjects whose python-reached `gh`
+calls resolve through `shutil.which`. Every suite that names a subject keeps
+the poison-env backstop even where its python-reached code path isn't the one
+under test: fleet-claim reaches `gh` from embedded Python only through
+`check_blockers` and `find-stackable-blockers`, and only
+`test_fleet_claim_blockers.sh` and `test_fleet_claim_stackable_live_resolve.sh`
+drive those paths, so only those two ship a python `gh` stub with a `gh.bat`
+twin.
 """
 import re
 import unittest
@@ -39,6 +37,7 @@ GH_STUB_FILE_RE = re.compile(r"""["'][^"'\n]*[/\\]gh["']""")
 # Scope of this pass's actual fix. See module docstring for why this isn't
 # the full tree-wide subprocess-gh census.
 KNOWN_SUBJECTS = [
+    "fleet-claim",
     "fleet-queue-ingest",
     "fleet-decisions",
     "fleet-queue-backfill-model-labels",
