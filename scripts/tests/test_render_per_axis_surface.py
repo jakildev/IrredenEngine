@@ -1,7 +1,7 @@
 """Execute continuous per-axis face geometry, decoding and fragment query inputs.
 
 Host adapters preserve shader expressions. Barycentric interpolation is explicit;
-these tests do not execute GPU interpolation, coverage, bindings or shadow maps.
+these tests do not execute GPU interpolation, raster coverage, bindings or shadow maps.
 """
 
 import re
@@ -33,6 +33,9 @@ bvec2 greaterThan(vec2 a,vec2 b){return {a.x>b.x,a.y>b.y};}
 bvec2 operator<(vec2 a,vec2 b){return lessThan(a,b);}
 bvec2 operator>(vec2 a,vec2 b){return greaterThan(a,b);}
 bool any(bvec2 value){return value.x || value.y;}
+vec2 clamp(vec2 point,vec2 low,vec2 high){
+    return {std::clamp(point.x,low.x,high.x),std::clamp(point.y,low.y,high.y)};
+}
 vec4 fragmentColor;
 struct FaceFields {vec3 faceOrigin;int faceId;ivec2 ownerPixel;};
 struct DistanceSample {int r;};
@@ -62,8 +65,6 @@ int main(int argc,char** argv) {
     const vec2 points[]={vec2(0,0),vec2(1,0),vec2(0,1),vec2(1,1),
         vec2(.5f,.5f),vec2(.125f,.75f),vec2(.625f,.25f),vec2(-.25f,.5f),vec2(1.25f,.5f)};
     const vec2 selectors[]={vec2(0,0),vec2(1,0),vec2(0,1),vec2(1,1)};
-    const vec2 offsets[]={vec2(-.25f,-.125f),vec2(.375f,-.25f),
-        vec2(-.125f,.25f),vec2(.25f,.375f)};
     const int triangles[][3]={{0,1,2},{2,1,3}};
     const vec3 weights[]={vec3(1,0,0),vec3(0,1,0),vec3(0,0,1),
         vec3(.25f,.5f,.25f),vec3(.125f,.375f,.5f)};
@@ -94,44 +95,33 @@ int main(int argc,char** argv) {
         const vec4 quaternion=quaternions[(x+y+z+faceId+flip)%4];
         sunCasterViewToWorld=quaternion;sunFrameData.sunCasterViewToWorld=quaternion;
         for(FaceFields face:{regular,overflow})for(vec2 param:points) {
-            const vec3 expected=cubeSurface(center,faceId,param);
+            const vec3 planePoint=cubeSurface(center,faceId,param);
             const vec3 actual=perAxisFaceSurfacePoint(face.faceOrigin,face.faceId,param);
-            if(!same(actual,expected))return fail("surface point",actual,expected);
+            if(!same(actual,planePoint))return fail("surface point",actual,planePoint);
             ++surfacePoints;
+            const vec3 expected=cubeSurface(center,faceId,vec2(
+                std::clamp(param.x,0.f,1.f),std::clamp(param.y,0.f,1.f)));
             calls=0;sampledFrame=nullptr;sampledBuffer=nullptr;
             const float value=fragmentShadow(face,param);
-            const bool margin=param.x<0 || param.x>1 || param.y<0 || param.y>1;
-            if(margin) {
-                if(calls) {std::fprintf(stderr,"margin queried a receiver\n");return 1;}
-                if(!same(fragmentColor,vec4(1,1,0,.75f)))return 2;
-            } else if(verifySample("fragment",value,expected,normal,quaternion))return 1;
+            if(!calls) {std::fprintf(stderr,"finite face clipped before query\n");return 1;}
+            if(verifySample("fragment",value,expected,normal,quaternion))return 1;
         }
-        const vec2 su=(faceId&1)?vec2(2,1):vec2(1,2);
-        const vec2 sv=(faceId&1)?vec2(-1,3):vec2(3,-1);
-        const vec2 pxPerNdc(2,4);
-        vec2 dilated[4];
-        for(int vertex=0;vertex<4;++vertex) {
-            // Screen displacement is generated from an independent plane-coordinate offset.
-            const vec2 displacement=su*offsets[vertex].x+sv*offsets[vertex].y;
-            const vec2 dilNdc=displacement/pxPerNdc;
-            dilated[vertex]=scatterQuadParam(selectors[vertex],dilNdc,pxPerNdc,su,sv);
-        }
+        vec2 corners[4];
+        for(int vertex=0;vertex<4;++vertex)
+            corners[vertex]=scatterQuadParam(selectors[vertex]);
         for(const auto& triangle:triangles)for(vec3 weight:weights) {
-            const vec2 param=dilated[triangle[0]]*weight.x+
-                dilated[triangle[1]]*weight.y+dilated[triangle[2]]*weight.z;
+            const vec2 param=corners[triangle[0]]*weight.x+
+                corners[triangle[1]]*weight.y+corners[triangle[2]]*weight.z;
             const vec3 expected=
-                cubeSurface(center,faceId,selectors[triangle[0]]+offsets[triangle[0]])*weight.x+
-                cubeSurface(center,faceId,selectors[triangle[1]]+offsets[triangle[1]])*weight.y+
-                cubeSurface(center,faceId,selectors[triangle[2]]+offsets[triangle[2]])*weight.z;
+                cubeSurface(center,faceId,selectors[triangle[0]])*weight.x+
+                cubeSurface(center,faceId,selectors[triangle[1]])*weight.y+
+                cubeSurface(center,faceId,selectors[triangle[2]])*weight.z;
             const vec3 actual=perAxisFaceSurfacePoint(regular.faceOrigin,faceId,param);
-            if(!same(actual,expected))return fail("dilated interpolation",actual,expected);
+            if(!same(actual,expected))return fail("finite interpolation",actual,expected);
             ++interpolations;
         }
         ++faces;
     }
-    const vec2 degenerate=scatterQuadParam(vec2(1,0),vec2(4,7),vec2(2,4),
-                                         vec2(1,2),vec2(2,4));
-    if(!same(degenerate,vec2(1,0)))return 2;
     shadowsEnabled=0;sunFrameData.shadowsEnabled=0;calls=0;
     const float disabled=fragmentShadow({vec3(1),0,ivec2(-1)},vec2(.25f,.75f));
     if(calls || disabled!=1.f || !same(fragmentColor,vec4(0,0,0,.75f))) {
@@ -176,19 +166,14 @@ FaceFields scatterFace(bool overflowMode,ivec2 cell,int encoded,ivec2 canvasSize
 
 
 def quad_parameter(vertex):
-    source = host(vertex).replace("abs(det)", "std::abs(det)")
-    match = re.search(r"const vec2 dilPx = dilNdc \* pxPerNdc;.*?"
-                      r"(?:vQuadParam|out\.quadParam) = [^;]+;", source, re.DOTALL)
+    source = host(vertex)
+    match = re.search(r"(?:vQuadParam|out\.quadParam) = cornerSel;", source)
     if match is None:
-        raise ValueError("missing dilated quad parameter calculation")
+        raise ValueError("missing finite quad parameter forwarding")
     body = match[0].replace("out.quadParam", "quadParam").replace("vQuadParam", "quadParam")
-    bad = replace_once(body, "cornerSel + dilParam", "cornerSel")
-    header = "vec2 scatterQuadParam(vec2 cornerSel,vec2 dilNdc,vec2 pxPerNdc,vec2 su,vec2 sv) {\n"
-    return (header.replace("scatterQuadParam", "undilatedQuadParam") + "vec2 quadParam;\n"
-            + bad + "\nreturn quadParam;\n}\n" + header
-            + 'if(std::strcmp(mutation,"ignore-dilation")==0)'
-            + "return undilatedQuadParam(cornerSel,dilNdc,pxPerNdc,su,sv);\nvec2 quadParam;\n"
-            + body + "\nreturn quadParam;\n}\n")
+    return ("vec2 scatterQuadParam(vec2 cornerSel) {\n"
+            'if(std::strcmp(mutation,"shift-quad-param")==0)return cornerSel+vec2(.25f,0);\n'
+            + "vec2 quadParam;\n" + body + "\nreturn quadParam;\n}\n")
 
 
 def surface_controls(surface):
@@ -222,8 +207,8 @@ def fragment_controls(source, suffix):
         ("out.color", "fragmentColor"), ("FragColor", "fragmentColor"),
     ):
         source = source.replace(shader, adapter)
-    margin = re.search(r"const bool inMargin = [^;]+;", source)[0]
-    start = source.index("#if IR_PER_AXIS_SURFACE_SHADOW", source.index(margin))
+    start = source.index("#if IR_PER_AXIS_SURFACE_SHADOW",
+                         source.index("const float finalDepth"))
     end = start + re.search(r"^#(?:elif|else)\b", source[start:], re.MULTILINE).start()
     body = source[start:end].split("\n", 1)[1]
     query = re.search(r"const float visibility = [^;]+;", body)[0]
@@ -241,17 +226,19 @@ float fragmentShadow(FaceFields face,vec2 quadParam) {
         "identity-basis": replace_once(body, "sunFrameData.sunCasterViewToWorld"
                                        if suffix == "metal" else "sunCasterViewToWorld",
                                        "vec4(0,0,0,1)"),
-        "query-margin": replace_once(body, "if (inMargin)", "if (false)"),
+        "clip-finite-face": ("if(quadParam.x<0||quadParam.x>1||quadParam.y<0||quadParam.y>1)"
+                             "{fragmentColor=vec4(1,1,0,colorAlpha);return queryVisibility;}\n"
+                             + body),
         "query-disabled": replace_once(body, "sunFrameData.shadowsEnabled == 0"
                                        if suffix == "metal" else "shadowsEnabled == 0", "false"),
     }
     generated, select = "", ""
     for index, (label, mutant) in enumerate(variants.items()):
         name = f"fragmentShadowMutation{index}"
-        generated += (header.replace("fragmentShadow", name) + margin + "\n" + mutant
+        generated += (header.replace("fragmentShadow", name) + mutant
                       + "\nreturn queryVisibility;\n}\n")
         select += f'if(std::strcmp(mutation,"{label}")==0)return {name}(face,quadParam);\n'
-    return generated + header + select + margin + "\n" + body \
+    return generated + header + select + body \
         + "\nreturn queryVisibility;\n}\n"
 
 
@@ -277,7 +264,8 @@ struct vec4 {
     entry = host(functions(sampler, "worldSurfaceSunShadowFactor"))
     controls = surface_controls(host(functions(surface, "perAxisFaceSurfacePoint")))
     return (f"#define METAL_BACKEND {int(suffix == 'metal')}\n" + geometry + SPY + ADAPTER
-            + host(helpers) + "\n" + entry + "\n" + controls + vertex_decode(vertex)
+            + host(helpers) + "\n" + entry + "\n" + controls + "\n"
+            + host(functions(surface, "perAxisFaceClosestPoint")) + vertex_decode(vertex)
             + quad_parameter(vertex) + fragment_controls(fragment, suffix) + CHECKS)
 
 
@@ -300,11 +288,11 @@ class PerAxisSurfaceTest(unittest.TestCase):
                 for mutant, failure in (
                     ("no-anchor", "surface point"),
                     ("double-polarity", "surface point"),
-                    ("ignore-dilation", "dilated interpolation"),
+                    ("shift-quad-param", "finite interpolation"),
                     ("integer-depth", "fractional world depth"),
                     ("wrong-normal", "receiver polarity"),
                     ("identity-basis", "caster quaternion"),
-                    ("query-margin", "margin queried a receiver"),
+                    ("clip-finite-face", "finite face clipped before query"),
                     ("query-disabled", "disabled shadow query"),
                 ):
                     with self.subTest(mutation=mutant):

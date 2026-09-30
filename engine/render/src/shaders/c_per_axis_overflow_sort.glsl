@@ -91,7 +91,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     int   _occlusionCullMipCount;
     int   _feederSubCap;
     int   _feederPassTailBase;
-    ivec4 overflowScratchLayout;   // .x view-mask base, .y ctrl base, .z entry base, .w cap
+    ivec4 overflowScratchLayout;   // .x reserved, .y ctrl base, .z entry base, .w cap
     ivec4 overflowSortStep;        // .x mode, .y stage k, .z pLo, .w pHi
 };
 

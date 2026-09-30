@@ -14,16 +14,49 @@
 > and read as superseded; the §"Mechanism chosen" store/recover steps and the
 > §"Recommended store" are current.
 
-Status: **in implementation.** T1 (#1308) and T2 (#1309) have merged; T3
-(#1310) is in flight. The framebuffer composite is decided: **Option 4 —
-forward-scatter** (see "## Implementation decision" below). This doc is the
+Status: **implemented.** The framebuffer composite uses **Option 4 —
+forward-scatter** (see "## Implementation decision" below). Earlier rollout
+status and measurements below are retained as history. This doc is the
 architecture for *smooth* continuous world-camera Z-yaw — rotation that
 visually interpolates between the 90° cardinals instead of snapping. Read
 [`voxel-face-rasterization.md`](voxel-face-rasterization.md) (which faces a
 voxel emits) and [`iso-depth-axis-invariant.md`](iso-depth-axis-invariant.md)
 first; this builds directly on both.
 
-## Current contract — view-visibility overflow lane (epic #2331, 2026-07-14)
+## Current contract — finite-face scatter and cardinal-loser overflow
+
+The live GRID camera-yaw path draws the **exact projected unit face quad**
+for each recovered per-axis cell or overflow record. Hardware raster coverage
+and the shared framebuffer depth test decide which pixel centers the finite
+faces own. This path does not expand quads by a screen-space margin or perform
+an analytic margin discard. The older conservative-coverage section below is
+historical and superseded for this path.
+
+The cardinal store retains one depth winner per axis and un-yawed iso cell.
+At non-cardinal yaw, resolve mode 3 appends **every exposed face that loses its
+settled cardinal store cell**, subject to the bounded buffer. A yawed
+face-origin depth mask cannot safely reject a loser: the mask samples origins,
+not coverage and depth over the candidate's finite footprint. The framebuffer
+resolves the complete candidate set by depth. The scratch layout still
+reserves the former mask region so its offsets and binding ABI remain stable;
+the region is not an occlusion test. See the independent
+[six-face mask reproduction](../pr-screenshots/codex/scatter-silhouette-edges/overflow-mask-analysis.md)
+and its [source-equation checker](../pr-screenshots/codex/scatter-silhouette-edges/overflow-mask-analysis.py).
+
+The rotating-frame sequence is store ×3 (mode 0), overflow append ×3
+(mode 3), then per-axis election and stage 2 ×3, with the required barriers.
+At cardinal yaw the per-axis set is parked and the original gather path runs.
+The overflow capacity is at least three records per voxel, rounded to a power
+of two: mode 3 emits at most one record per voxel and axis. Cap drops remain
+reported; the larger all-loser list requires its own current-frame cost
+measurement rather than extrapolation from masked-lane numbers.
+
+The two-set model, lighting and ordering below still explain the lane. Its
+former view-mask admission rule, origin-mask measurements, and conservative
+margin contract document previous implementations. They are **superseded**,
+not current correctness or performance claims.
+
+## Overflow lane background — superseded mask admission (epic #2331, 2026-07-14)
 
 > Supersedes §"Per-axis store occlusion model — engine invariant (established
 > #1457, 2026-06-10)" below, and the "two faces … never share a cell" /
@@ -64,9 +97,10 @@ inverts past 120° full yaw (`2·cos(visualYaw) + 1 < 0`), so in the
 member instead of the nearest — worse than a coin flip, not just a coverage
 gap.
 
-### The overflow lane (C1 #2333, C2 #2334)
+### Historical view-mask admission (C1 #2333, C2 #2334)
 
-A bounded **overflow lane**, additive and rotating-only, carries exactly
+A bounded **overflow lane**, additive and rotating-only, was originally
+intended to carry
 `viewVisible ∖ cardinalWinners` — the set the cardinal store cannot
 represent regardless of which election metric it sorts by. It rides the
 existing per-axis stage-1 kernel
@@ -139,8 +173,8 @@ overflow branch forces `color.a = 1`. A translucent voxel that reaches the scree
 overflow lane (not its cardinal cell's store winner, camera off-cardinal)
 renders opaque there. Its cell-path fragments keep their alpha.
 
-**Binding.** No new permanent binding. The view-mask + ctrl-block +
-overflow-entries scratch rides `kBufferIndex_PerAxisResolveScratch` — the
+**Binding.** No new permanent binding. The reserved mask region, ctrl block,
+and overflow entries ride `kBufferIndex_PerAxisResolveScratch` — the
 same transient per-axis-window reuse #2255's winner-id scratch already
 established (dead during the store window). C2's relight reuses every
 resource the per-axis lighting pass already bound; its one new binding
@@ -160,7 +194,8 @@ resident, not live, never bound), so the frame after the crossing re-enters on
 the resident set; the set is freed after
 `IRPrefab::PerAxisCanvas::kParkedCardinalFrames` consecutive cardinal frames.
 
-**Measured cost + cap utilization** (C2, Metal/Apple M4 Max; GL side owes
+**Historical masked-lane cost + cap utilization** (C2, Metal/Apple M4 Max;
+not a measurement of the current all-cardinal-loser lane; GL side owed
 cross-host smoke as of PR #2388):
 
 | scene / pose | overflow entries | cap | utilization | drops |
@@ -186,9 +221,10 @@ bound rather than a measured far-quadrant peak.
 
 This historical no-pressure conclusion is limited to the workloads measured
 here. The [million-entity capacity audit](../perf/million-entity-capacity.md)
-records 671,737 dropped entries at capacity 524,288 after duplicate-face
-removal. Overflow sizing and early rejection therefore remain active work;
-screen-cell proportional sizing alone is not a completeness guarantee.
+recorded 671,737 dropped entries at capacity 524,288 after duplicate-face
+removal under the earlier sizing. That audit motivated the current
+three-records-per-voxel capacity bound; screen-cell proportional sizing alone
+is not a completeness guarantee.
 The original decision deferred switching the cardinal store's election
 metric from un-yawed `x+y+z` to yawed depth, based on the zero-drop samples
 in the table above and an assumed screen-cell bound. Those samples covered
@@ -205,9 +241,9 @@ drift from the cell-path lighting model.
 
 The overflow sorting guarantee below does not cover cell-list compaction order.
 Displaced cells can share the same face/cell depth code, including same-axis
-pairs outside the immediate lattice-neighbor proof. Final coverage arbitration
-now prefers exact footprints over equal-code margins; same-class collisions
-remain. See [the frozen-scene diagnosis](frozen-scatter-flicker.md).
+pairs outside the immediate lattice-neighbor proof. Current scatter uses exact
+finite footprints; same-class depth collisions remain. See
+[the frozen-scene diagnosis](frozen-scatter-flicker.md).
 
 The mode-3 append assigns entry indices with `atomicAdd`, and **entry index IS
 draw order** in the scatter's overflow branch (`v_peraxis_scatter.glsl` indexes
@@ -468,7 +504,15 @@ Concretely:
    indirect draw args, shrinking the instance count to ≈ visible faces. Recorded
    here so the optimization is scoped, not silent.
 
-#### Conservative coverage — the scatter quad must be dilated to ≥ a pixel (#1494)
+#### Historical conservative coverage — superseded for GRID camera yaw (#1494)
+
+> The margin contract below describes the former raster path. The current
+> GRID camera-yaw path draws the exact finite face quad without vertex
+> dilation or analytic margin coverage. The old margin could paint pixels
+> outside the face and hide a missing cardinal loser with the wrong normal;
+> exact face coverage plus all-loser overflow leaves pixel ownership to
+> hardware rasterization and depth. This does not assert that every residual
+> boundary pixel in every scene is already correct.
 
 The forward-scatter draws **one quad per non-empty cell**. Each cell stores a
 face at its two in-plane integer coords (pitch-1, face-local), and the quad
@@ -490,7 +534,7 @@ is dense pitch-1, recovery is exact). A blunt `cornerSel × 2` model-space span
 *does* fill it but over-draws (wrong silhouette, scales with size, breaks at
 `subdivisions > 1`) and is **rejected**.
 
-**Contract:** the scatter vertex shader grows each quad by a fixed
+**Superseded contract:** the scatter vertex shader grew each quad by a fixed
 **screen-space** margin (`kScatterDilateMarginPx`, ~0.85 framebuffer px) outward
 along **both** of its two screen edge normals (`scatterConservativeDilation` in
 `ir_iso_common.{glsl,metal}`), so the thin dimension always spans a fragment

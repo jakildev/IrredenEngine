@@ -162,13 +162,9 @@ struct FrameDataTrixelToFramebuffer {
     /// Preserve offsets 144 / 160 so framebuffer resolution remains at 176.
     vec4 detachedResidual_{0.0f, 0.0f, 0.0f, 1.0f};
     vec4 detachedDepthAxis_{1.0f, 1.0f, 1.0f, 0.0f};
-    /// Framebuffer resolution (.xy) the scatter renders into; .zw pad. Lets the
-    /// per-axis scatter vertex shaders convert a screen-space conservative-
-    /// coverage margin (in framebuffer pixels) into clip/NDC so a sub-pixel-thin
-    /// deformed face rhombus still covers a fragment center. It is appended
-    /// after detachedDepthAxis_ so the gather + world/detached scatter
-    /// blocks that stop earlier stay byte-identical; only the scatter shaders
-    /// that dilate read it.
+    /// Per-axis scatter framebuffer extent (.xy), visibility-pass flags (.z),
+    /// and padding (.w). It follows detachedDepthAxis_ at std140 offset 176;
+    /// the earlier gather and detached blocks keep their existing offsets.
     vec4 scatterFbResolution_{0.0f, 0.0f, 0.0f, 0.0f};
     /// Depth-color debug mode for the per-axis scatter path. When
     /// depthColorMode_ != 0, the scatter fragment shader evaluates hue from the
@@ -490,157 +486,15 @@ inline std::uint32_t decodeCarrierPriority(uvec2 packed) {
     return (packed.y >> kEntityIdPriorityShiftInHighWord) & ((1u << kEntityIdPriorityBits) - 1u);
 }
 
-// The scatter path quantizes each fragment's final depth to a coarse band and
-// injects a priority-major tie code into the sub-band bits, so band ties resolve
-// by rank instead of by run-variant draw order. Mirrors of the tie constants in
-// `ir_iso_common.{glsl,metal}` — the shaders remain authoritative for the values;
-// these exist so the two-sided precondition below can be CHECKED at compile time,
-// which the shader languages cannot do.
-//
-// The ordering guarantee rests on TWO independent halves, and they pull in
-// OPPOSITE directions:
-//
-//   A. margin-vs-exact — a margin fragment must land at least one full band
-//      behind its same-plane exact owner after floor quantization:
-//        kScatterMarginDepthBiasKey * subScale / depthRange >= band
-//      Widening the band TIGHTENS this (a bigger band is harder to clear).
-//      `subScale` is a runtime value floor-clamped to 1.0
-//      (`v_peraxis_scatter.glsl` / `metal/peraxis_scatter.metal`), and the bias
-//      is linear in it, so subScale == 1 is the true worst case and the check
-//      below is sound for every subdivision.
-//   B. code-fits-in-band — the tie code must not spill into the next band:
-//        maxCode <= bandSteps - 1
-//      Widening the band RELAXES this.
-//
-// At the current depth range these bracket the band to [16, 16.0002], so 16 is
-// the UNIQUE admissible width — which is also why the rank field collapses to 2
-// bits (6 face states do not fit; see the rank2 note in ir_iso_common.glsl).
-// A future pass that adds tie levels (a 3-bit rank) pushes maxCode to 23 and
-// needs a 32-step band — and a 32-step band breaks half A. The two asserts below
-// fail that change at compile time instead of letting margins silently start
-// beating their exact owners. The trap is specific to spending a RANK bit:
-// `kScatterMarginInteriorBiasKey` orders interior-edge margins in KEY space
-// instead — a flat bias plus a yield-slope floor — which leaves maxCode at
-// 15 and is why that constant has its own bracket rather than widening this one.
+// The scattered fragment depth uses a 16-step band and a priority-major
+// face/cell code. These constants mirror ir_iso_common.{glsl,metal}; the code
+// must fit within one band or a depth tie could reorder actual occlusion.
 constexpr int kScatterCellTieStepShift = 23;     // kScatterCellTieStep = 2^-23
 constexpr int kScatterCellTieBandSteps = 16;     // kScatterCellTieBand = 16 * 2^-23
 constexpr int kScatterTieMaxCode = (3 << 2) | 3; // code = (rank2 << 2) | cell2
-/// Reciprocal of the shader's `kScatterMarginDepthBiasKey` (0.25 key units).
-/// Kept as a reciprocal so the precondition stays in exact integer arithmetic.
-constexpr int kScatterMarginDepthBiasKeyInv = 4;
-constexpr int kScatterTieDepthRange =
-    IRConstants::kTrixelDistanceMaxDistance - IRConstants::kTrixelDistanceMinDistance;
-
-// Half A, multiplied through by `depthRange * 2^shift` to clear the fractions:
-//   bias/depthRange >= bandSteps * 2^-shift   <=>   2^shift/biasInv >= bandSteps*depthRange
-// Holds by 2097152 >= 2097120 — a 32-unit slack, i.e. depthRange may reach
-// 131072 and is 131070. There is no room to grow the range either.
-static_assert(
-    (1 << kScatterCellTieStepShift) / kScatterMarginDepthBiasKeyInv >=
-        kScatterCellTieBandSteps * kScatterTieDepthRange,
-    "per-axis scatter margin-vs-exact precondition broken: the margin bias no "
-    "longer clears one full tie band at subScale 1, so a margin fragment can tie "
-    "or beat its same-plane exact owner. Narrow kScatterCellTieBandSteps or "
-    "shrink the trixel depth range."
-);
-// Half B — exact today (15 <= 15): the code fills the band with zero slack.
 static_assert(
     kScatterTieMaxCode <= kScatterCellTieBandSteps - 1,
-    "per-axis scatter tie code overflows its band: the sub-band code would spill "
-    "into the next band and reorder genuine occlusion. Widen "
-    "kScatterCellTieBandSteps (and re-check the margin-vs-exact assert above — "
-    "the two constraints are mutually opposed)."
-);
-// Uniqueness: doubling the band to satisfy a wider code would break half A.
-// Stated as its own assert so the next widening pass sees WHY it fails, rather
-// than re-deriving the bracket by hand.
-static_assert(
-    (1 << kScatterCellTieStepShift) / kScatterMarginDepthBiasKeyInv <
-        (2 * kScatterCellTieBandSteps) * kScatterTieDepthRange,
-    "kScatterCellTieBandSteps is no longer the unique admissible band width — the "
-    "margin-vs-exact ceiling moved, so the comment in ir_iso_common.{glsl,metal} "
-    "claiming band 16 is forced needs re-deriving."
-);
-
-// The composite key folds the cardinal encode's low bits in at unit scale
-// (`encodeDepthWithFace`: depth [31:3] | flip [2] | slot [1:0]), so two adjacent
-// visible faces' planes sit a CONSTANT, penetration-independent distance apart
-// across their whole shared edge. A conservative-dilation margin penetrating an
-// INTERIOR edge holds that advantage at arbitrarily small penetration, where the
-// penetration-scaled yield can never repay it. This creates a fractional-offset
-// shared-edge fringe. `kScatterMarginInteriorBiasKey` is the
-// flat, penetration-independent yield that cancels it, and it is bracketed from
-// both sides — by bounds that sit exactly ONE unit apart:
-//
-//   A. must cover the tiebreak — the worst-case constant advantage is the
-//      encode's low-bits span, `max(flip << 2 | slot) == kDepthEncodeShift - 1`.
-//      Bounding on the FIELD WIDTH rather than the currently-reachable slot
-//      range (slot maxes at 2 today, so 6) is deliberate: a 4th slot must not
-//      silently invalidate the bias.
-//   B. must not out-yield real occlusion — one subdivided depth step is
-//      kDepthEncodeShift key units at EVERY subdivision: depth key per world
-//      unit is `encScale = kDepthEncodeShift * subScale` and a subdivided cell
-//      is `1/subScale` world units, so Δkey per step = encScale / subScale =
-//      kDepthEncodeShift, independent of subScale.
-//
-// So the bias is the unique integer in (kDepthEncodeShift - 1, kDepthEncodeShift]
-// — it EQUALS kDepthEncodeShift and sits ON the ceiling, exactly one subdivided
-// step, NOT "well below" one. That identity is structural, not a tuned choice:
-// the low-bits span is by construction one less than the step it must fit
-// inside, so it holds for any kDepthEncodeShift. Sitting on the ceiling is sound
-// because the only thing within one cell behind an interior-edge margin is the
-// adjacent visible face it is SUPPOSED to lose to; background and genuinely
-// farther gap-fill targets (>> 1 cell) still win. But there is no headroom here
-// — treat the bias as forced, not as a knob.
-//
-// Mirror of `kScatterMarginInteriorBiasKey` in `metal/ir_iso_common.metal` and
-// `ir_iso_common.glsl` (Metal-lead).
-constexpr int kScatterMarginInteriorBiasKey = 8;
-/// Worst-case constant low-bits advantage between two adjacent faces' planes:
-/// `max(flip << 2 | slot)` over the field width `encodeDepthWithFace` reserves.
-constexpr int kScatterTieLowBitsSpan = kDepthEncodeShift - 1;
-
-static_assert(
-    kScatterMarginInteriorBiasKey > kScatterTieLowBitsSpan,
-    "per-axis interior-edge margin bias no longer covers the (flip << 2) | slot "
-    "tiebreak span: a sub-pixel interior margin can again hold a constant "
-    "fractional-offset shared-edge fringe."
-);
-static_assert(
-    kScatterMarginInteriorBiasKey <= kDepthEncodeShift,
-    "per-axis interior-edge margin bias exceeds one subdivided depth step "
-    "(kDepthEncodeShift key units at every subdivision), so an interior margin "
-    "would yield past genuinely nearer geometry instead of only past the "
-    "adjacent visible face it shares an edge with."
-);
-// Uniqueness: halves A and B are one apart, so kDepthEncodeShift is the only
-// integer satisfying both. Stated as its own assert so a pass that widens the
-// encode's low-bits field sees WHY the bias must move with it, rather than
-// re-deriving the bracket by hand.
-static_assert(
-    kScatterMarginInteriorBiasKey == kDepthEncodeShift,
-    "kScatterMarginInteriorBiasKey is no longer the unique admissible bias — the "
-    "low-bits span and the subdivided depth step are no longer one apart, so the "
-    "comment in metal/ir_iso_common.metal claiming the bias is forced needs "
-    "re-deriving."
-);
-
-// `kScatterMarginYieldGradScale` also floors the interior-edge yield slope at
-// `scale * encScale`, which must cover the worst-case cross-face plane
-// divergence of `2*sqrt(2) * encScale` per world unit. The scale remains
-// integral so the bound is exact; a
-// fractional retune must re-express it in exact form (cf. the reciprocal
-// `kScatterMarginDepthBiasKeyInv` above).
-constexpr int kScatterMarginYieldGradScale = 3;
-// Squared so the 2*sqrt(2) bound compares in exact integers: (2*sqrt(2))^2 == 8.
-// Holds by 9 >= 8 — a single unit of slack.
-static_assert(
-    kScatterMarginYieldGradScale * kScatterMarginYieldGradScale >= 8,
-    "kScatterMarginYieldGradScale dropped below the 2*sqrt(2) cross-face "
-    "divergence bound required by the interior-edge yield floor: an "
-    "interior-edge margin can again beat the adjacent face's exact fragments at "
-    "sub-pixel penetration (the shared-edge fringe). Raise it back to "
-    ">= 2*sqrt(2), or give the floor a constant of its own."
+    "per-axis scatter tie code overflows its depth band"
 );
 
 struct FrameDataVoxelToCanvas {
@@ -806,14 +660,11 @@ struct FrameDataVoxelToCanvas {
     // per-dispatch flag upload is needed and the hottest kernel carries none
     // of the feeder branches.
     int feederPassTailBase_ = 0;
-    // View-visibility overflow-lane scratch layout. Region base offsets (in uints)
-    // into the unified per-axis resolve scratch bound at
-    // kBufferIndex_PerAxisResolveScratch, plus the overflow entry cap:
-    // .x = view-mask base, .y = ctrl base (draw args + counters), .z = overflow
-    // entry base, .w = entry cap. Read and written by c_voxel_to_trixel_stage_1
-    // at resolve modes 0 (view-mask write) and 3 (overflow append), on rotating
-    // frames only. It is appended after the feeder partition block (offset 208),
-    // so every prior offset and every prefix-reading shader is unchanged.
+    // Overflow scratch layout: region base offsets (in uints) into the unified
+    // per-axis resolve scratch bound at kBufferIndex_PerAxisResolveScratch,
+    // plus the entry cap. .x = reserved, .y = ctrl base, .z = entry base,
+    // .w = cap. Stage 1 reads this in resolve mode 3 on rotating frames.
+    // It follows the feeder partition block at std140 offset 208.
     ivec4 overflowScratchLayout_ = ivec4(0, 0, 0, 0);
     // Overflow-entry canonical-sort step descriptor, read only by
     // c_per_axis_overflow_sort between the mode-3 append and the overflow

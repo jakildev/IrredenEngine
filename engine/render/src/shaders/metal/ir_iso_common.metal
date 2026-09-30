@@ -908,176 +908,12 @@ inline void faceInPlaneIsoSteps(int faceId, thread int2& su, thread int2& sv) {
     sv = roundHalfUp(normalize(float2(pos3DtoPos2DIso(int3(ev)))));
 }
 
-// Visit-bound margin (framebuffer pixels) the per-axis forward-scatter grows each
-// quad by along each screen edge normal. It is ONLY a rasterization
-// visit-bound — f_peraxis_scatter decides coverage analytically from the true
-// [0,1]^2 footprint, so this just has to be wide enough (~1px) that every
-// fragment the true footprint could touch gets visited. Mirrors the GLSL twin.
-constant float kScatterDilateMarginPx = 0.85;
-
-// Depth penalty (× kDepthEncodeShift + slot key scale) a scatter fragment in the
-// conservative-dilation MARGIN adds — mirror of kScatterMarginDepthBiasKey in
-// ir_iso_common.glsl. A margin only fills pixels no exact footprint claims: two
-// cells of the same face plane carry identical planar depth, so without the
-// bias their margin-vs-interior overlap is an exact tie decided by draw order.
-// 0.25 key units = 1/32 world unit, far below any separation between distinct
-// planes.
-constant float kScatterMarginDepthBiasKey = 0.25;
-
-// Four-bit priority-major face/cell code, matching ir_iso_common.glsl.
-// Displaced cells and flipped cross-axis pairs can share a code; final
-// coverage arbitration prefers an exact footprint over an equal-code margin.
-// Same-class collisions still follow draw order. The 16-step band is bounded
-// by the margin-yield and code-fit assertions in ir_render_types.hpp.
+// Per-axis scatter quantizes final depth to a 16-step band and injects a
+// priority-major face/cell code (rank2 << 2 | cell2) into that band. The code
+// spans 0..15, so the band width and tie step must match the CPU assertion in
+// ir_render_types.hpp and the final-depth helper in ir_scatter_depth.metal.
 constant float kScatterCellTieStep = 1.0f / 8388608.0f;
-// Derived, not retunable alone — mirror of ir_iso_common.glsl: 16 is pinned by
-// the two-sided precondition asserted CPU-side (kScatterCellTieBandSteps,
-// ir_render_types.hpp). Exact power-of-two product (bit-identical to the
-// literal); the overflow lane's two-band bias derives from this in turn.
 constant float kScatterCellTieBand = 16.0f * kScatterCellTieStep;
-
-
-
-
-// Flat interior-edge margin yield, in composite-key units. The scatter key
-// folds the cardinal encode's (flip << 2) | slot low bits in at unit scale, so
-// two adjacent faces' planes sit a CONSTANT up-to-7-key-unit apart across their
-// whole shared edge; a conservative-dilation margin penetrating an INTERIOR
-// edge (over the adjacent visible face) can hold that advantage at arbitrarily
-// small penetration, where the penetration-scaled yield
-// (kScatterMarginYieldGradScale) never repays it — a shared-edge fringe on
-// fractional-offset content.
-//
-// 8 is FORCED, not chosen, and it sits ON its ceiling — there is no headroom
-// here. The admissible range is bracketed (7, 8]: strictly above the 7-key
-// low-bits span it must cover, and at-or-below one subdivided depth step. That
-// step is kDepthEncodeShift (8) key units at EVERY subdivision, not just the
-// coarsest — depth key per world unit is encScale = kDepthEncodeShift x subScale
-// and a subdivided cell is 1/subScale world units, so Δkey per step =
-// encScale / subScale = kDepthEncodeShift. So this bias IS exactly one
-// subdivided step. The identity is structural (the low-bits span is by
-// construction one less than the step it must fit inside), which is why 8 is the
-// unique integer in the bracket. Sitting on the ceiling is sound: the only thing
-// within one cell behind an interior-edge margin is the adjacent visible face it
-// is SUPPOSED to lose to, so interior margins still gap-fill against background
-// and genuinely farther surfaces (>> 1 cell). Both bounds are asserted CPU-side
-// in ir_render_types.hpp (kScatterMarginInteriorBiasKey) — do not retune here.
-constant float kScatterMarginInteriorBiasKey = 8.0;
-
-// Margin-yield gradient scale — mirror of ir_iso_common.glsl. Scales the
-// margin yield by the fragment's own plane-extrapolation excursion (penetration
-// past the exact footprint x per-axis depth gradient) so a cell-deep per-axis
-// margin yields the shared ridge to the neighbor face's exact footprint (a
-// doubled top/side sliver otherwise) while sub-pixel gap-fills still win.
-// Folded into the yield-grad varying by the scatter vertex stage.
-//
-// SECOND requirement, pulling in the OPPOSITE direction: the interior-edge
-// yield slope is FLOORED at kScatterMarginYieldGradScale * encScale, which must
-// cover the worst-case 2*sqrt(2)*encScale cross-face plane divergence.
-// 3 >= 2.8284 holds by only 6%. The first purpose argues for a SMALLER scale
-// ("sub-pixel gap-fills still win"), so the plausible retune direction is
-// exactly the one that puts the floor under the divergence bound and opens the
-// interior-edge shared-edge fringe. Asserted CPU-side in ir_render_types.hpp
-// (kScatterMarginYieldGradScale, squared for exact integer comparison); if the
-// two purposes ever need different values, give the interior-edge floor its own
-// constant rather than splitting the difference.
-constant float kScatterMarginYieldGradScale = 3.0;
-
-// Miter limit for scatterConservativeDilation: caps how far an acute sliver
-// corner extends, in multiples of marginPx. Mirror of the GLSL constant in
-// ir_iso_common.glsl.
-constant float kScatterMiterLimit = 2.0;
-
-// Screen-space visit-bound dilation for the per-axis forward-scatter. At
-// off-snap residual poses a per-cell deformed rhombus foreshortens toward a
-// sub-pixel-thin sliver that slips between fragment centers and drops out under
-// pixel-center rasterization. Grow each quad outward; `su`/`sv` are the face
-// in-plane unit axes projected to framebuffer pixels, `cornerSign` is
-// sign(position). Returns the clip-space (NDC) offset to add.
-//
-// The margin is a FIXED `minMarginPx` per edge: the dilation only guarantees
-// the rasterizer VISITS the fragments the true footprint could touch, and
-// f_peraxis_scatter decides coverage analytically from vQuadParam. The miter
-// geometry is the visit-bound's shape. Mirrors the GL twin.
-//
-// MITER, not additive sum: the naive marginPx*(e1+e2) of the two edge
-// normals cancels at a sliver's acute corner (e1,e2 antiparallel -> sum ~0),
-// leaving the sharp tip un-grown — those tips line up along the foreshortened
-// lattice and leak (lattice-aligned cracks + interior speckle on detached
-// cubes). The miter marginPx*(e1+e2)/(1+dot(e1,e2)) moves BOTH edges out by
-// marginPx, equals the additive sum at a square corner, and keeps the acute tip
-// moving outward; clamp |δ| to kScatterMiterLimit*marginPx so a sliver tip can't
-// blow into a blob (the failure mode of just raising marginPx).
-inline float2 scatterConservativeDilation(
-    float2 su, float2 sv, float2 cornerSign, float minMarginPx, float2 ndcPerPx
-) {
-    // Outward normal of each edge = the component of the OTHER edge perpendicular
-    // to it; |nu|/|nv| are the on-screen perpendicular extents across each edge.
-    float2 nu = sv - su * (dot(sv, su) / max(dot(su, su), 1e-8f));
-    float2 nv = su - sv * (dot(su, sv) / max(dot(sv, sv), 1e-8f));
-    bool hasU = dot(nu, nu) > 1e-10f;
-    bool hasV = dot(nv, nv) > 1e-10f;
-    if (!hasU && !hasV) return float2(0.0);
-    // Fixed visit-bound: both edges grow by the same minMarginPx, because
-    // f_peraxis_scatter decides coverage analytically. marginU == marginV
-    // reduces the miter solve to the equal-margin miter.
-    const float marginU = minMarginPx;
-    const float marginV = minMarginPx;
-    float2 e1 = hasU ? cornerSign.y * normalize(nu) : float2(0.0); // e_u edge normal
-    float2 e2 = hasV ? cornerSign.x * normalize(nv) : float2(0.0); // e_v edge normal
-    if (!hasU) return e2 * marginV * ndcPerPx;
-    if (!hasV) return e1 * marginU * ndcPerPx;
-    // Miter that moves edge-u out by marginU and edge-v by marginV: solve
-    // [e1;e2]·δ = (marginU,marginV).
-    float det = e1.x * e2.y - e1.y * e2.x;
-    if (abs(det) < 1e-4f) {
-        return float2(-e1.y, e1.x) * (max(marginU, marginV) * kScatterMiterLimit) * ndcPerPx;
-    }
-    float2 delta = float2(
-        e2.y * marginU - e1.y * marginV,
-        e1.x * marginV - e2.x * marginU
-    ) / det;
-    // Clamp the miter so an acute corner can't blow a sliver tip into a blob,
-    // relative to the larger contributing margin.
-    float maxLen = kScatterMiterLimit * max(marginU, marginV);
-    float dLen = length(delta);
-    if (dLen > maxLen) delta *= maxLen / dLen;
-    return delta * ndcPerPx;
-}
-
-// Analytic edge-aware coverage for the per-axis forward-scatter (mirrored in
-// ir_iso_common.glsl). `q` is the fragment's position in the face's true
-// [0,1]^2 footprint (the scatter's vQuadParam, with the
-// visit-bound dilation landing just outside the unit box); `fw = fwidth(q)`
-// converts a footprint-parameter distance to framebuffer pixels. `interior` flags
-// the 4 edges — .x = u-low (q.x==0), .y = u-high (q.x==1), .z = v-low (q.y==0),
-// .w = v-high (q.y==1) — as 1 = occupied same-plane neighbour (interior: the face
-// continues, no silhouette here) or 0 = silhouette (boundary).
-//
-// Interior edges fill the whole visit-bound region solid (coverage 1), so
-// foreshortened same-plane cells bridge the sub-pixel scatter gaps between their
-// true footprints — the depth-yield bias in f_peraxis_scatter arbitrates the
-// resulting 1px overlap, so an exact footprint owner still wins and only
-// genuine gaps fill. Boundary edges get exact sub-pixel box coverage
-// clamp(0.5 + distPx, 0, 1): at a convex corner two boundary edges intersect,
-// so min() yields a crisp corner with no spike,
-// and a foreshortened silhouette gets per-pixel partial coverage instead of
-// dropping out (no dashing). Returns min coverage across the 4 edges; the caller
-// hard-thresholds it at 0.5 (no alpha blend — the R32I/depth co-sort write is a
-// single per-pixel value).
-inline float scatterAnalyticEdgeCoverage(float2 q, float2 fw, float4 interior) {
-    const float2 inv = 1.0f / max(fw, float2(1e-5f));
-    // Signed pixel distance to each edge; + is inside the footprint.
-    const float dULo = q.x * inv.x;
-    const float dUHi = (1.0f - q.x) * inv.x;
-    const float dVLo = q.y * inv.y;
-    const float dVHi = (1.0f - q.y) * inv.y;
-    const float cULo = (interior.x > 0.5f) ? 1.0f : clamp(0.5f + dULo, 0.0f, 1.0f);
-    const float cUHi = (interior.y > 0.5f) ? 1.0f : clamp(0.5f + dUHi, 0.0f, 1.0f);
-    const float cVLo = (interior.z > 0.5f) ? 1.0f : clamp(0.5f + dVLo, 0.0f, 1.0f);
-    const float cVHi = (interior.w > 0.5f) ? 1.0f : clamp(0.5f + dVHi, 0.0f, 1.0f);
-    return min(min(cULo, cUHi), min(cVLo, cVHi));
-}
 
 // Builds the local->world matrix from an SQT triple (scale, quaternion
 // rotation, translation). Composition is T * R * S; quaternion layout matches
@@ -1197,13 +1033,10 @@ struct FrameDataVoxelToTrixel {
     // the two lanes pack the 192..208 std140 row exactly.
     int feederSubCap;
     int feederPassTailBase;
-    // View-visibility overflow scratch layout: region base offsets (in uints)
-    // into the unified buffer-28 scratch + the entry cap. .x = view mask,
-    // .y = ctrl block (draw args + counters), .z = overflow entries, .w = entry
-    // cap. Region 0 of the scratch is the winner-id array, indexed directly as
-    // perAxisWinnerIds[cell]. Mirrors
-    // FrameDataVoxelToCanvas::overflowScratchLayout_ (offset 208). Read by
-    // c_voxel_to_trixel_stage_1 at resolveMode 0 (mask write) and 3 (append).
+    // Overflow scratch layout: region base offsets (in uints) into the
+    // unified buffer-28 scratch + entry cap. .x = reserved, .y = ctrl block,
+    // .z = overflow entries, .w = entry cap. Region 0 holds winner ids.
+    // Mirrors FrameDataVoxelToCanvas::overflowScratchLayout_ (offset 208).
     int4 overflowScratchLayout;
     // Overflow-entry canonical-sort step descriptor, read only by
     // c_per_axis_overflow_sort between the mode-3 append and the overflow

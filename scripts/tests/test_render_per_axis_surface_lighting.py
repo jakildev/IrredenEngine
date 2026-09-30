@@ -12,9 +12,6 @@ from test_render_per_axis_surface import CHECKS as SURFACE_CHECKS
 from test_render_per_axis_surface import harness as surface_harness
 
 FRAGMENT_ADAPTER = r"""
-vec2 clamp(vec2 point,vec2 low,vec2 high){
-    return {std::clamp(point.x,low.x,high.x),std::clamp(point.y,low.y,high.y)};
-}
 int aoReads=0,lightingCalls=0;
 float aoInput=0,capturedAO=0;
 ivec2 aoPixel;
@@ -64,7 +61,7 @@ int main(int argc,char** argv){
                 std::fprintf(stderr,"owner pixel forwarding\n");return 1;
             }
             for(vec2 param:points)for(float ao:{0.f,.3125f,1.f}){
-                // Project the infinite plane point onto the independently specified cube bounds.
+                // Defensive query samples outside the rendered finite quad clamp to its bounds.
                 vec3 expected=cubeSurface(center,faceId,param);
                 for(int coordinate=0;coordinate<3;++coordinate){
                     expected[coordinate]=std::max(center[coordinate]-.5f,
@@ -116,7 +113,7 @@ def beauty_controls(source):
                   r"\s*lights\s*,\s*paletteLUT\s*,\s*lightVolume\s*,\s*lightVolumeId", "", body)
     body = body.replace("color.rgb", "color.xyz").replace("color.a", "color.w")
     variants = {
-        "unclamped-margin": body.replace("perAxisFaceClosestPoint(", "perAxisFaceSurfacePoint("),
+        "unclamped-receiver": body.replace("perAxisFaceClosestPoint(", "perAxisFaceSurfacePoint("),
         "center-only": re.sub(r"(perAxisFaceClosestPoint\([^;]+,)\s*quadParam\)",
                               r"\1 vec2(.5))", body),
         "moving-local-light": re.sub(r"(sunCasterViewToWorld\s*,)\s*face\.faceOrigin",
@@ -145,9 +142,8 @@ def beauty_controls(source):
 def fragment_harness(suffix, directory):
     root = ROOT / "engine/render/src/shaders" / directory
     source = (root / f"ir_peraxis_scatter_fragment_body.{suffix}").read_text()
-    surface = (root / f"ir_per_axis_surface.{suffix}").read_text()
     return ("#include <cstdlib>\n" + surface_harness(suffix, directory).removesuffix(SURFACE_CHECKS)
-            + FRAGMENT_ADAPTER + host(functions(surface, "perAxisFaceClosestPoint"))
+            + FRAGMENT_ADAPTER
             + beauty_controls(source) + FRAGMENT_CASES)
 
 
@@ -450,7 +446,7 @@ class PerAxisSurfaceLightingTest(unittest.TestCase):
                 result = subprocess.run([str(executable)], capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn("55296 finite fragment inputs", result.stdout)
-                for variant in ("unclamped-margin", "center-only", "moving-local-light",
+                for variant in ("unclamped-receiver", "center-only", "moving-local-light",
                                 "wrong-normal", "wrong-rotation", "ignored-ao",
                                 "overflow-reads-ao", "lost-alpha"):
                     with self.subTest(variant=variant):

@@ -1,10 +1,10 @@
 #version 450 core
 
-// View-visibility overflow-face lighting.
+// Overflow-face lighting.
 //
-// The per-axis stage-1 append writes the view-visible faces the cardinal-keyed
-// per-axis store drops — the set `viewVisible \ cardinalWinners` — into a
-// bounded overflow list, and the framebuffer scatter draws each entry with its
+// The per-axis stage-1 append writes every exposed face that loses its
+// cardinal-keyed store cell into a bounded overflow list. The framebuffer
+// scatter draws each entry with its
 // stored colorPacked. This compute pass, dispatched inside LIGHTING_TO_TRIXEL
 // AFTER the per-axis CELL lighting (so the baked sun-shadow map at slot 28 and
 // the 128^3 light volume are already bound), relights each overflow entry at its
@@ -59,7 +59,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     int   _occlusionCullMipCount;
     int   _feederSubCap;
     int   _feederPassTailBase;
-    ivec4 overflowScratchLayout;   // .x view-mask base, .y ctrl base, .z entry base, .w cap
+    ivec4 overflowScratchLayout;   // .x reserved, .y ctrl base, .z entry base, .w cap
 };
 
 layout(std140, binding = 23) uniform LightVolumeParams {

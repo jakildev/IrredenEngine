@@ -87,30 +87,37 @@ vec2 max(vec2 a,vec2 b){return {std::max(a.x,b.x),std::max(a.y,b.y)};}
 float max(float a,float b){return std::max(a,b);}
 float clamp(float d,float a,float b){return std::clamp(d,a,b);}
 struct Input {
-    vec4 color{1,1,1,1},edgeInterior{0,0,0,0};
+    vec4 color{1,1,1,1};
     vec2 quadParam{.5f,.5f},position{2.5f,1.5f};
     ivec3 visibilityExtent{4,3,1};
     vec3 faceOrigin{0,0,0};int faceId=0;ivec2 ownerPixel{-1,-1};
-    float depth=.25f,cellTieOffset=0,marginBias=0,marginYieldGradU=0,marginYieldGradV=0;
-    float marginYieldGradFloor=0,marginInteriorYieldBias=0;
+    float depth=.25f,cellTieOffset=0;
 };
 struct Discard {};
 void discard_fragment(){throw Discard{};}
-float coverageInput=1,outputDepth=0;
+float outputDepth=0;
 vec4 outputColor;
-int lightingCalls=0,coverageCalls=0,minCalls=0,addCalls=0;
+vec3 sampledPosition;
+int lightingCalls=0,shadowCalls=0,minCalls=0,addCalls=0;
 std::array<uint,15> visibilityCodes;
-vec2 fwidth(vec2){return {0,0};}
-float scatterAnalyticEdgeCoverage(vec2,vec2,vec4){++coverageCalls;return coverageInput;}
-vec3 perAxisFaceClosestPoint(vec3 p,int,vec2){return p;}
+vec2 clamp(vec2 p,vec2 low,vec2 high){
+    return {std::clamp(p.x,low.x,high.x),std::clamp(p.y,low.y,high.y)};
+}
 vec3 faceOutwardNormal6(int){return {0,0,-1};}
-template<class... Args>vec3 worldSurfaceLighting(Args...){++lightingCalls;return {.25f,.5f,.75f};}
+template<class... Args>vec3 worldSurfaceLighting(vec3,float,vec3 position,Args...){
+    ++lightingCalls;sampledPosition=position;return {.25f,.5f,.75f};
+}
+float pos3DtoDistance(vec3){return 0.5f;}
+template<class... Args>float worldSurfaceSunShadowFactor(vec3 position,Args...){
+    ++shadowCalls;sampledPosition=position;return 0.5f;
+}
 struct AOValue {float r;};
 struct AOTexture {AOValue read(ivec2){return {.5f};}} surfaceAO;
 AOValue texelFetch(AOTexture,ivec2,int){return {.5f};}
 int lighting=0,volumeParams=0,sunDepthBuf=0,lights=0,paletteLUT=0,lightVolume=0,lightVolumeId=0;
+int shadowsEnabled=1;
 vec4 sunCasterViewToWorld{0,0,0,1};
-struct {vec4 sunCasterViewToWorld{0,0,0,1};} sunFrameData;
+struct {int shadowsEnabled=1;vec4 sunCasterViewToWorld{0,0,0,1};} sunFrameData;
 constexpr int memory_order_relaxed=0;
 uint atomicMin(uint& slot,uint value){
     ++minCalls;uint old=slot;slot=std::min(slot,value);return old;
@@ -123,7 +130,7 @@ using Fragment=float(*)(Input);
 bool run(Fragment fragment,Input in){try{fragment(in);return true;}catch(Discard){return false;}}
 void reset(){
     visibilityCodes.fill(0xffffffffu);
-    lightingCalls=coverageCalls=minCalls=addCalls=0;coverageInput=1;outputDepth=-999;
+    lightingCalls=shadowCalls=minCalls=addCalls=0;outputDepth=-999;
 }
 """
 
@@ -132,36 +139,36 @@ int main(int argc,char** argv){
     Fragment prepass=fragmentPrepass,replay=fragmentReplay;
     if(argc>1&&std::strcmp(argv[1],"late-rejection")==0)replay=fragmentLate;
     if(argc>1&&std::strcmp(argv[1],"late-alpha")==0)prepass=fragmentLateAlpha;
-    if(argc>1&&std::strcmp(argv[1],"late-coverage")==0)prepass=fragmentLateCoverage;
     if(argc>1&&std::strcmp(argv[1],"wrong-pass-bit")==0)prepass=fragmentWrongPass;
     if(argc>1&&std::strcmp(argv[1],"stats-pass-bit")==0){
         prepass=fragmentWrongStatsPrepass;replay=fragmentWrongStatsReplay;
     }
     Input in;
     reset();in.color.w=.09f;
-    if(run(prepass,in)||minCalls||addCalls||lightingCalls||coverageCalls)return 1;
-    reset();in.color.w=1;coverageInput=.49f;
-    if(run(prepass,in)||minCalls||addCalls||lightingCalls||coverageCalls!=1)return 2;
+    if(run(prepass,in)||minCalls||addCalls||lightingCalls)return 1;
+    in.color.w=1;
     for(vec2 position:{vec2(-1.5f,1.5f),vec2(4.5f,1.5f),vec2(2.5f,3.5f)}){
         reset();in.position=position;
         if(run(prepass,in)||minCalls||addCalls||lightingCalls)return 3;
     }
     in.position=vec2(2.5f,1.5f);
-    for(int margin=0;margin<3;++margin){
-        in.quadParam=margin==0?vec2(.5f,.5f):margin==1?vec2(-.25f,.5f):vec2(1.5f,1.25f);
-        in.edgeInterior=margin==1?vec4(1,0,0,0):vec4(0,0,0,0);
-        in.marginBias=0x1p-10f;in.marginYieldGradU=0x1p-7f;in.marginYieldGradV=0x1p-8f;
-        in.marginYieldGradFloor=0x1p-6f;in.marginInteriorYieldBias=0x1p-9f;
-        const float raw=margin==0?.25f:margin==1?.2568359375f:.255859375f;
-        const float expected=raw+(margin?0x1p-24f:0.f);
+    for(vec2 q:{vec2(.5f,.5f),vec2(-0x1p-10f,.5f),vec2(1.0f+0x1p-10f,1.0f+0x1p-10f)}){
+        in.quadParam=q;
+        const float expected=scatterFinalDepth(in.depth,in.cellTieOffset);
+        const vec3 nearest(-.5f,std::clamp(q.x,0.f,1.f)-.5f,
+                           std::clamp(q.y,0.f,1.f)-.5f);
         reset();
-        if(!run(fragmentLegacy,in)||lightingCalls!=1||outputDepth!=expected)return 4;
+        if(!run(fragmentLegacy,in)||lightingCalls!=1||outputDepth!=expected||
+           !same(sampledPosition,nearest))return 4;
+        reset();
+        if(!run(fragmentShadow,in)||shadowCalls!=1||lightingCalls||outputDepth!=expected||
+           !same(sampledPosition,nearest))return 4;
         reset();
         if(run(prepass,in)||minCalls!=1||lightingCalls||visibilityCodes[6]!=uint(expected*16777216.f)||
            visibilityCodes[5]!=0xffffffffu||visibilityCodes[12]!=0)return 5;
         lightingCalls=0;
-        if(!run(replay,in)||lightingCalls!=1||outputDepth!=expected||visibilityCodes[13]!=0)
-            return 6;
+        if(!run(replay,in)||lightingCalls!=1||outputDepth!=expected||
+           !same(sampledPosition,nearest)||visibilityCodes[13]!=0)return 6;
         in.depth=.75f;lightingCalls=0;
         if(run(replay,in)||lightingCalls||visibilityCodes[14]!=0){
             std::fprintf(stderr,"hidden fragment lit before rejection\n");return 7;
@@ -185,7 +192,7 @@ int main(int argc,char** argv){
     }
     in=Input{};in.visibilityExtent.z=0;reset();run(prepass,in);
     if(addCalls||!run(replay,in)||addCalls||lightingCalls!=1)return 11;
-    std::printf("fragment coverage/depth/prepass/replay ordering passed\n");
+    std::printf("fragment depth/prepass/replay ordering passed\n");
 }
 """
 
@@ -203,12 +210,10 @@ def conditional_block(source):
 
 def fragment_body(source, suffix):
     body = host(function_body(source, "main" if suffix == "glsl" else "IR_PER_AXIS_FRAGMENT_NAME"))
-    fields = ("Color", "QuadParam", "EdgeInterior", "Depth", "CellTieOffset", "MarginYieldGradU",
-              "MarginYieldGradV", "MarginYieldGradFloor", "MarginInteriorYieldBias",
-              "VisibilityExtent", "FaceOrigin", "FaceId", "OwnerPixel")
+    fields = ("Color", "QuadParam", "Depth", "CellTieOffset", "VisibilityExtent",
+              "FaceOrigin", "FaceId", "OwnerPixel")
     for field in sorted(fields, key=len, reverse=True):
         body = body.replace("v" + field, "in." + field[0].lower() + field[1:])
-    body = body.replace("vMarginDepthBias", "in.marginBias")
     body = body.replace("in.visibilityExtent.xy",
                         "ivec2(in.visibilityExtent.x,in.visibilityExtent.y)")
     body = body.replace("gl_FragCoord.xy", "in.position").replace("in.position.xy", "in.position")
@@ -227,11 +232,9 @@ def routing_harness(root, suffix):
     late = late.replace("outputDepth =", visibility + "\noutputDepth =")
     variants = [("fragmentLegacy", 0, body), ("fragmentVisible", 1, body),
                 ("fragmentLateBody", 1, late)]
-    for name, condition in (("Alpha", r"in\.color\.w\s*<[^)]+"),
-                            ("Coverage", r"coverage\s*<[^)]+")):
-        guard = re.search(r"if\s*\(" + condition + r"\)\s*\{[^{}]+\}", body)[0]
-        moved = body.replace(guard, "").replace(visibility, visibility + "\n" + guard)
-        variants.append(("fragmentLate" + name + "Body", 1, moved))
+    guard = re.search(r"if\s*\(in\.color\.w\s*<[^)]+\)\s*\{[^{}]+\}", body)[0]
+    moved = body.replace(guard, "").replace(visibility, visibility + "\n" + guard)
+    variants.append(("fragmentLateAlphaBody", 1, moved))
     wrong_pass, pass_count = re.subn(r"in\.visibilityExtent\.z\s*&\s*2u?\b",
                                    "in.visibilityExtent.z & 1", body)
     wrong_stats, stats_count = re.subn(r"in\.visibilityExtent\.z\s*&\s*1u?\b",
@@ -249,7 +252,6 @@ def routing_harness(root, suffix):
         ("fragmentReplay", "fragmentVisible", False),
         ("fragmentLate", "fragmentLateBody", False),
         ("fragmentLateAlpha", "fragmentLateAlphaBody", True),
-        ("fragmentLateCoverage", "fragmentLateCoverageBody", True),
         ("fragmentWrongPass", "fragmentWrongPassBody", True),
         ("fragmentWrongStatsPrepass", "fragmentWrongStatsBody", True),
         ("fragmentWrongStatsReplay", "fragmentWrongStatsBody", False),
@@ -257,10 +259,23 @@ def routing_harness(root, suffix):
         generated += (f"float {name}(Input in){{in.visibilityExtent.z="
                       f"(in.visibilityExtent.z & ~2) | {2 if prepass else 0};"
                       f"return {target}(in);}}\n")
+    generated += ("#undef IR_PER_AXIS_SURFACE_LIGHTING\n"
+                  "#define IR_PER_AXIS_SURFACE_LIGHTING 0\n"
+                  "#undef IR_PER_AXIS_SURFACE_SHADOW\n"
+                  "#define IR_PER_AXIS_SURFACE_SHADOW 1\n"
+                  "#define IR_PER_AXIS_VISIBILITY 0\n"
+                  "float fragmentShadow(Input in){\n" + body
+                  + "\nreturn outputDepth;\n}\n#undef IR_PER_AXIS_VISIBILITY\n")
     common = (root / f"ir_iso_common.{suffix}").read_text()
     constants = "\n".join(re.search(r"(?:const|constant) float " + name + r"\s*=[^;]+;", common)[0]
                           for name in ("kScatterCellTieStep", "kScatterCellTieBand"))
     depth = functions((root / f"ir_scatter_depth.{suffix}").read_text(), "scatterFinalDepth")
+    anchor = re.search(r"(?:const|constant) (?:vec3|float3) kVoxelRasterCellAnchor\s*=[^;]+;",
+                       common)[0]
+    axes = functions(common, "faceInPlaneUnitAxes")
+    surface = (root / f"ir_per_axis_surface.{suffix}").read_text()
+    closest = "\n".join(functions(surface, name) for name in (
+        "perAxisFaceSurfacePoint", "perAxisFaceClosestPoint"))
     adapter = PREAMBLE.replace("struct vec4 {vec3 xyz; float w;};", r"""
 struct vec4 {
     float x,y,z,w;
@@ -270,7 +285,8 @@ struct vec4 {
     vec3 rgb()const{return {x,y,z};}
 };
 """)
-    return adapter + ADAPTER + host(constants + depth) + visibility_helpers(root, suffix) \
+    return adapter + ADAPTER + host(constants + depth + anchor + axes + closest) \
+        + visibility_helpers(root, suffix) \
         + "\n" + generated + ROUTING
 
 
@@ -292,7 +308,7 @@ class ScatterVisibilityTest(unittest.TestCase):
                                         "-o", str(executable)], capture_output=True, text=True)
                 self.assertEqual(build.returncode, 0, build.stderr)
                 for variant, expected in (("production", 0), ("late-rejection", 7),
-                                          ("late-alpha", 1), ("late-coverage", 2),
+                                          ("late-alpha", 1),
                                           ("wrong-pass-bit", 11), ("stats-pass-bit", 6)):
                     with self.subTest(variant=variant):
                         run = subprocess.run([str(executable), variant],

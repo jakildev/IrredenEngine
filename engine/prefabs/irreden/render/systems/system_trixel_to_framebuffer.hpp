@@ -419,8 +419,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // (unchanged main-canvas path); .x only feeds hover, which is gated off here.
         frameData.frameData_.effectiveSubdivisionsForHover_ =
             vec2(static_cast<float>(effSub), 0.0f);
-        // Conservative-coverage dilation needs the framebuffer extent the ortho
-        // mpMatrix maps into, to convert a pixel margin to NDC.
+        // The scatter shader reads the framebuffer extent and visibility-pass
+        // flags from this shared std140 field.
         const bool visibilityPrepass = visibilityPrepassEnabled_ && scatterLightingEnabled_;
         frameData.frameData_.scatterFbResolution_ = vec4(
             framebufferResolution,
