@@ -138,6 +138,13 @@ def host_body(body):
     return body.replace(".xyz", "").replace("skyColor.rgb", "skyColor").replace(".rgb", ".rgb()")
 
 
+def replace_last(source, before, after):
+    start = source.rfind(before)
+    if start < 0:
+        raise ValueError(f"missing mutation target: {before}")
+    return source[:start] + after + source[start + len(before):]
+
+
 @unittest.skipUnless(COMPILER, "finite lighting controls require a C++ compiler")
 class ShapeSurfaceLightingTest(unittest.TestCase):
     def test_composition_and_mutations(self):
@@ -186,6 +193,16 @@ class ShapeSurfaceLightingTest(unittest.TestCase):
                 "skip_tiny_intensity": body.replace(
                     "sunIntensity != 0.0", "sunIntensity > 0.00001"),
                 "skip_near_full_ambient": body.replace("sunAmbient != 1.0", "sunAmbient < 0.99999"),
+                "unconditional_world_query": body.replace(
+                    "worldSurfaceNeedsSunShadow(lambert) ?", "true ?", 1),
+                "unconditional_shape_query": replace_last(
+                    body, "worldSurfaceNeedsSunShadow(lambert) ?", "true ?"),
+                "query_back_facing": re.sub(
+                    r"\s*&&\s*lambert\s*!=\s*0\.0", "", body, count=1),
+                "query_zero_intensity": re.sub(
+                    r"\s*&&\s*sunIntensity\s*!=\s*0\.0", "", body, count=1),
+                "query_full_ambient": re.sub(
+                    r"\s*&&\s*sunAmbient\s*!=\s*1\.0", "", body, count=1),
                 "ignored_lambert": body.replace("sunIntensity, lambert, visibility",
                                                 "sunIntensity, 1.0, visibility"),
                 "lost_local_light": body.replace("localLight(localLightPosition)", "vec3(0.0)"),
