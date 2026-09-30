@@ -274,7 +274,11 @@ class OpenGLRenderDevice final : public RenderDevice {
             ENG_API->glGetQueryObjectui64v(pair.endQuery_, GL_QUERY_RESULT, &endNs);
         }
         return classifyOpenGLTimestampPair(
-            startAvailable == GL_TRUE, endAvailable == GL_TRUE, startNs, endNs, outMs
+            startAvailable == GL_TRUE,
+            endAvailable == GL_TRUE,
+            startNs,
+            endNs,
+            outMs
         );
     }
 

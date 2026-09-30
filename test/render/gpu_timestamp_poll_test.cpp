@@ -143,19 +143,13 @@ TEST_F(GpuTimestampPollTest, ExistingBooleanBackendAdaptsToPolling) {
 // delegates to; testing it directly needs no GL context.
 TEST(OpenGLTimestampClassifyTest, NotYetAvailableStaysPending) {
     float ms = -1.0f;
-    EXPECT_EQ(
-        classifyOpenGLTimestampPair(false, false, 0, 0, ms), TimestampReadStatus::PENDING
-    );
-    EXPECT_EQ(
-        classifyOpenGLTimestampPair(true, false, 100, 50, ms), TimestampReadStatus::PENDING
-    );
+    EXPECT_EQ(classifyOpenGLTimestampPair(false, false, 0, 0, ms), TimestampReadStatus::PENDING);
+    EXPECT_EQ(classifyOpenGLTimestampPair(true, false, 100, 50, ms), TimestampReadStatus::PENDING);
 }
 
 TEST(OpenGLTimestampClassifyTest, AvailableAndInvertedIsInvalid) {
     float ms = -1.0f;
-    EXPECT_EQ(
-        classifyOpenGLTimestampPair(true, true, 200, 100, ms), TimestampReadStatus::INVALID
-    );
+    EXPECT_EQ(classifyOpenGLTimestampPair(true, true, 200, 100, ms), TimestampReadStatus::INVALID);
 }
 
 TEST(OpenGLTimestampClassifyTest, AvailableAndOrderedIsReadyWithDurationMs) {
