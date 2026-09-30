@@ -318,6 +318,14 @@ class Runtimes(Env):
         self.assertIn("standing dispatch-gate alert: dispatch-gate-sonnet-reviewer",
                       rep["warnings"])
 
+    def test_sub_threshold_routing_problem_lists_without_warning(self):
+        (self.root / "state" / "runtime-problems" / "def.json").write_text(json.dumps(
+            {"key": "route:review:engine:3804", "reason": "unstamped PR", "count": 1}))
+        rc, rep = self.run_report()
+        self.assertFalse(any(w.startswith("runtime routing problem:") for w in rep["warnings"]))
+        self.assertTrue(any(p["key"] == "route:review:engine:3804"
+                            for p in rep["runtimes"]["problems"]))
+
     def test_codex_cooldown(self):
         (self.root / "state" / "runtime-cooldown" / "codex.json").write_text(
             json.dumps({"until": 4102444800}))

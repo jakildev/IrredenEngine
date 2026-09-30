@@ -5,11 +5,23 @@
 #     N --apply ticks files EXACTLY ONE fleet:state-drift tracking issue, then
 #     refreshes it in place (never a second one), and resets when drift clears.
 #   - report-only stays pure: it neither advances persistence nor files issues.
+#   - The tracker lookup (`reconcile_open_drift_trackers`) is a REST GET
+#     (`gh api repos/.../issues?labels=fleet:state-drift&state=open`, filtering
+#     out pull requests), never `gh issue list` (GraphQL), and a FAILED lookup
+#     is distinguished from a CONFIRMED-empty one: a tick whose lookup errors
+#     neither files nor closes a tracker, and a tick that sees more than one
+#     open tracker refreshes the newest and closes the rest, naming the
+#     survivor in the close comment.
 #
 # Like the C1 test, `gh` is stubbed so the label/PR surfaces are canned JSON.
-# The stub is stateful for the tracker: `issue create` flips a marker file so a
-# later `issue list --label fleet:state-drift` reports the tracker as existing
-# (emulating --json number --jq '.[0].number' directly).
+# The stub is stateful for the tracker: it keeps an ordered list of open
+# tracker numbers (newest first) in $TRACKER_LIST, `issue create` prepends a
+# freshly-minted number, `issue close <n>` removes `<n>`, and `gh api` against
+# the state-drift query renders the list (plus a labeled PR decoy) as REST JSON
+# and runs the caller's own --jq program over it through real `jq`. The stub
+# resolves the HTTP method as gh does (any parameter flag without --method
+# means POST) and fails a non-GET lookup. Touching $FAIL_LOOKUP makes that
+# `gh api` call exit 1 with no output, modeling a rate-limited/errored lookup.
 
 set -euo pipefail
 
@@ -20,6 +32,11 @@ FLEET_CLAIM="$SCRIPT_DIR/fleet-claim"
 if [[ ! -x "$FLEET_CLAIM" ]]; then
     echo "test setup: fleet-claim not found at $FLEET_CLAIM" >&2
     exit 1
+fi
+
+if ! command -v jq >/dev/null 2>&1; then
+    echo "test setup: jq not on PATH; skipping (the gh stub runs the tracker lookup's real --jq filter)" >&2
+    exit 0
 fi
 
 PASS=0
@@ -63,35 +80,44 @@ mkdir -p "$STUB_DIR"
 export CREATE_LOG="$TMPROOT/create.log"; : > "$CREATE_LOG"
 export EDIT_LOG="$TMPROOT/edit.log"; : > "$EDIT_LOG"
 export CLOSE_LOG="$TMPROOT/close.log"; : > "$CLOSE_LOG"
-export TRACKER_STATE="$TMPROOT/tracker.exists"
+export API_LOG="$TMPROOT/api.log"; : > "$API_LOG"
+export ISSUE_LIST_LOG="$TMPROOT/issue-list.log"; : > "$ISSUE_LIST_LOG"
+# Ordered (newest-first) list of open tracker numbers, one per line.
+export TRACKER_LIST="$TMPROOT/tracker.list"; : > "$TRACKER_LIST"
+export TRACKER_NEXT="$TMPROOT/tracker.next"; echo 9001 > "$TRACKER_NEXT"
+# Touch this to make the state-drift `gh api` lookup fail (exit 1, no output).
+export FAIL_LOOKUP="$TMPROOT/fail-lookup.flag"
 cat > "$STUB_DIR/gh" <<'GHSTUB'
 #!/usr/bin/env bash
 case "$1" in
     issue)
         case "$2" in
             list)
-                # The escalation's tracker lookup carries --label fleet:state-drift
-                # with --json number --jq '.[0].number'; emulate the jq output
-                # directly (bare number when the tracker exists, else nothing).
+                printf '%s\n' "$*" >> "$ISSUE_LIST_LOG"
+                # The GraphQL form of the tracker lookup honors $FAIL_LOOKUP
+                # too, so a caller using `issue list` fails the same way.
                 if printf '%s ' "$@" | grep -q 'fleet:state-drift'; then
-                    [[ -f "$TRACKER_STATE" ]] && echo "9001" || true
-                else
-                    cat "$ISSUES_JSON"
+                    [[ -f "$FAIL_LOOKUP" ]] && exit 1
+                    head -n1 "$TRACKER_LIST"
+                    exit 0
                 fi
+                cat "$ISSUES_JSON"
                 exit 0 ;;
             create)
                 printf '%s\n' "$*" >> "$CREATE_LOG"
-                touch "$TRACKER_STATE"
-                echo "https://github.com/jakildev/IrredenEngine/issues/9001"
+                n=$(cat "$TRACKER_NEXT")
+                echo "$((n + 1))" > "$TRACKER_NEXT"
+                { echo "$n"; cat "$TRACKER_LIST"; } > "$TRACKER_LIST.tmp"
+                mv "$TRACKER_LIST.tmp" "$TRACKER_LIST"
+                echo "https://github.com/jakildev/IrredenEngine/issues/$n"
                 exit 0 ;;
             edit)
                 printf '%s\n' "$*" >> "$EDIT_LOG"
                 exit 0 ;;
             close)
-                # Auto-close path: log the call and flip the tracker marker off
-                # so a later `issue list --label fleet:state-drift` reports none.
                 printf '%s\n' "$*" >> "$CLOSE_LOG"
-                rm -f "$TRACKER_STATE"
+                grep -vFx "$3" "$TRACKER_LIST" > "$TRACKER_LIST.tmp" || true
+                mv "$TRACKER_LIST.tmp" "$TRACKER_LIST"
                 exit 0 ;;
             *) exit 0 ;;
         esac ;;
@@ -100,7 +126,43 @@ case "$1" in
             list) cat "$PRS_JSON"; exit 0 ;;
             *) exit 0 ;;
         esac ;;
-    api)   exit 0 ;;
+    api)
+        printf '%s\n' "$*" >> "$API_LOG"
+        # Real `gh api` sends POST once any parameter flag is present unless
+        # --method/-X names another verb; POST to the issues list endpoint is
+        # issue creation, which 422s without a title.
+        shift
+        method="" has_params=0 jqexpr="" prev=""
+        for a in "$@"; do
+            case "$prev" in
+                -X|--method) method="$a" ;;
+                --jq|-q)     jqexpr="$a" ;;
+            esac
+            case "$a" in
+                -f|-F|--field|--raw-field|--input) has_params=1 ;;
+                --method=*) method="${a#--method=}" ;;
+            esac
+            prev="$a"
+        done
+        [[ -z "$method" ]] && { (( has_params )) && method=POST || method=GET; }
+        if printf '%s ' "$@" | grep -q 'labels=fleet:state-drift'; then
+            if [[ "$method" != GET ]]; then
+                echo "gh: Validation Failed (HTTP 422)" >&2
+                exit 1
+            fi
+            [[ -f "$FAIL_LOOKUP" ]] && exit 1
+            # The issues endpoint returns PRs carrying the label too; the
+            # decoy proves the caller's --jq filters them out.
+            {
+                echo '[{"number":8999,"pull_request":{"url":"x"}}'
+                while IFS= read -r n; do
+                    [[ -n "$n" ]] && echo ",{\"number\":$n}"
+                done < "$TRACKER_LIST"
+                echo ']'
+            } | jq -r "${jqexpr:-.}"
+            exit 0
+        fi
+        exit 0 ;;
     repo)  exit 1 ;;   # game repo "not reachable"
     label) exit 0 ;;
     *)     exit 0 ;;
@@ -195,6 +257,67 @@ create_n=$(wc -l < "$CREATE_LOG" | tr -d ' ')
 run_reconcile --apply   # count 3 == threshold → re-file
 create_n=$(wc -l < "$CREATE_LOG" | tr -d ' ')
 [[ "$create_n" == "2" ]] && ok "recurring drift re-files a fresh tracker after auto-close" || bad "no fresh tracker after recurrence (create count=$create_n)"
+
+echo "=== Phase 7: two open trackers → one tick refreshes the newest, closes the other, naming the survivor ==="
+# A second tracker (9010) open alongside the one Phase 6 filed (9002), newest
+# first per the real REST call's sort=created&direction=desc.
+{ echo "9010"; cat "$TRACKER_LIST"; } > "$TRACKER_LIST.setup"
+mv "$TRACKER_LIST.setup" "$TRACKER_LIST"
+edit_n_before=$(wc -l < "$EDIT_LOG" | tr -d ' ')
+close_n_before=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
+run_reconcile --apply
+edit_n=$(wc -l < "$EDIT_LOG" | tr -d ' ')
+[[ "$edit_n" -eq $((edit_n_before + 1)) ]] && ok "the newest tracker is refreshed via issue edit" || bad "edit count did not advance by 1 ($edit_n_before -> $edit_n)"
+if tail -n1 "$EDIT_LOG" | grep -qE '\bissue edit 9010\b'; then ok "the refreshed tracker is #9010, the newest"; else bad "edit did not target #9010: $(tail -n1 "$EDIT_LOG")"; fi
+close_n=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
+[[ "$close_n" -eq $((close_n_before + 1)) ]] && ok "exactly one duplicate tracker closed this tick" || bad "close count did not advance by 1 ($close_n_before -> $close_n)"
+last_close=$(tail -n1 "$CLOSE_LOG")
+if printf '%s' "$last_close" | grep -qE '\bissue close 9002\b'; then ok "the duplicate closed is #9002 (the older tracker)"; else bad "closed the wrong tracker: $last_close"; fi
+if printf '%s' "$last_close" | grep -q '#9010'; then ok "the close comment names the survivor (#9010)"; else bad "close comment does not name the survivor: $last_close"; fi
+[[ "$(cat "$TRACKER_LIST")" == "9010" ]] && ok "exactly one tracker (#9010) remains open after dedup" || bad "tracker list after dedup: $(cat "$TRACKER_LIST" | tr '\n' ',')"
+
+echo "=== Phase 8: a failing tracker lookup skips filing/refreshing entirely ==="
+create_n_before=$(wc -l < "$CREATE_LOG" | tr -d ' ')
+edit_n_before=$(wc -l < "$EDIT_LOG" | tr -d ' ')
+touch "$FAIL_LOOKUP"
+run_reconcile --apply
+create_n=$(wc -l < "$CREATE_LOG" | tr -d ' ')
+[[ "$create_n" == "$create_n_before" ]] && ok "a failed lookup files no gh issue create (does not mistake the failure for 'no tracker')" || bad "a failed lookup filed a tracker anyway (create count $create_n_before -> $create_n)"
+edit_n=$(wc -l < "$EDIT_LOG" | tr -d ' ')
+[[ "$edit_n" == "$edit_n_before" ]] && ok "a failed lookup also skips the refresh (no gh issue edit)" || bad "a failed lookup still edited anyway (edit count $edit_n_before -> $edit_n)"
+
+echo "=== Phase 9: drift clears but the lookup still fails → no gh issue close, tick still exits 0 ==="
+echo '[]' > "$ISSUES_JSON"   # issue 700 no longer queued+human:owned
+close_n_before=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
+rc=0
+run_reconcile --apply || rc=$?
+close_n=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
+[[ "$close_n" == "$close_n_before" ]] && ok "a failed lookup on drift-clear makes no gh issue close call" || bad "a failed lookup on drift-clear closed anyway (close count $close_n_before -> $close_n)"
+[[ "$rc" == "0" ]] && ok "reconcile --apply still exits 0 when the tracker lookup fails" || bad "reconcile --apply exited $rc when the tracker lookup fails (want 0)"
+
+echo "=== Phase 10: once the lookup recovers, the next tick closes the survivor normally ==="
+rm -f "$FAIL_LOOKUP"
+close_n_before=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
+run_reconcile --apply
+close_n=$(wc -l < "$CLOSE_LOG" | tr -d ' ')
+[[ "$close_n" -eq $((close_n_before + 1)) ]] && ok "a recovered lookup closes the surviving tracker (#9010) once drift stays cleared" || bad "recovered lookup did not close (count $close_n_before -> $close_n)"
+[[ -z "$(cat "$TRACKER_LIST")" ]] && ok "no open trackers remain after recovery" || bad "tracker list not empty after recovery: $(cat "$TRACKER_LIST" | tr '\n' ',')"
+
+echo "=== Phase 11: lookup shape + stub fidelity ==="
+if grep -q 'fleet:state-drift' "$ISSUE_LIST_LOG"; then bad "the tracker lookup still goes through gh issue list (GraphQL)"; else ok "the tracker lookup never calls gh issue list (GraphQL)"; fi
+lookup=$(grep 'labels=fleet:state-drift' "$API_LOG" | tail -n1 || true)
+if printf '%s' "$lookup" | grep -q -- '--paginate'; then ok "the tracker lookup pages (--paginate)"; else bad "the tracker lookup does not page: $lookup"; fi
+if printf '%s' "$lookup" | grep -q 'per_page=100'; then ok "the tracker lookup sets per_page=100"; else bad "the tracker lookup keeps the 30-item default: $lookup"; fi
+if gh api "repos/jakildev/IrredenEngine/issues?labels=fleet:state-drift" -f state=open >/dev/null 2>&1; then
+    bad "stub accepted a -f parameter without --method GET (real gh sends POST)"
+else
+    ok "stub rejects a -f parameter without --method GET, as real gh's POST would"
+fi
+if gh api --method GET "repos/jakildev/IrredenEngine/issues?labels=fleet:state-drift" -f state=open >/dev/null 2>&1; then
+    ok "stub accepts -f parameters under an explicit --method GET"
+else
+    bad "stub rejected -f parameters under an explicit --method GET"
+fi
 
 echo
 echo "================================"
