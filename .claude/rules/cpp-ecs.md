@@ -148,12 +148,6 @@ The anonymous-namespace and `*Detail`-namespace bans are executed by the
 
 ## Live deviations
 
-- `engine/prefabs/irreden/render/components/component_canvas_fog_of_war.hpp`
-  — `C_CanvasFogOfWar::dirty_` / `allUnexplored_` gate the per-frame
-  `subImage2D` upload of the 256² fog texture (CPU-authored, GPU-read-only,
-  whole-texture upload; performed by `VOXEL_TO_TRIXEL_STAGE_1`, read-only in
-  `FOG_TO_TRIXEL`). Migration to per-region `subImage2D` was evaluated and
-  deferred: [`docs/design/fog-of-war-upload-strategy.md`](../../docs/design/fog-of-war-upload-strategy.md).
 - `engine/prefabs/irreden/update/systems/system_spring_platform.hpp` —
   per-contact `getComponentOptional<C_Velocity3D>(contact.otherEntity_)`
   inside the tick; migrate to the batched-vector pattern when touching it.
