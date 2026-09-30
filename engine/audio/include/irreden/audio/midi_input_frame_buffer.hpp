@@ -53,6 +53,7 @@ class MidiInputFrameBuffer {
         m_perPort[portIndex].insertNoteOff(channel, message);
     }
 
+    // Statuses other than NOTE_ON, NOTE_OFF, and CONTROL_CHANGE are dropped.
     void insertMessage(int portIndex, const IRComponents::C_MidiMessage &message) {
         const MidiChannel channel = message.getChannelBits();
         const MidiStatus status = message.getStatusBits();

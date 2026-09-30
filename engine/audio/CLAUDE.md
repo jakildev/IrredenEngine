@@ -106,7 +106,8 @@ Lua (`scripts/audio_demo.lua`).
   query when two devices share a channel.
 - The buffer is cleared at the start of every `MidiIn::tick()` — there is no
   history. Systems must read during their tick or they miss the event. The
-  deprecated entity route is registered in the prefab audio module.
+  deprecated entity route is listed in `engine/prefabs/irreden/audio/CLAUDE.md`
+  under `## Deprecated`.
 - Device names are substring-matched at `openPort()` time, with hardcoded
   fallback patterns for common devices (UMC1820, Focusrite, MPKmini2,
   OP-1). Edit `midi_in.cpp` / `midi_out.cpp` to add a new hardware match.

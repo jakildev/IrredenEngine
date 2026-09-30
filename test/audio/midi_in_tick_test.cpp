@@ -97,6 +97,7 @@ TEST_F(MidiInTickTest, DropsUnsupportedStatus) {
     m_audioManager.getMidiIn().tick();
 
     EXPECT_EQ(checkCCMessage(kChannel, kCCNumber), kCCFalse);
+    EXPECT_EQ(checkCCMessage(kChannel, 42), kCCFalse);
     EXPECT_TRUE(getMidiNotesOnThisFrame(kChannel).empty());
     EXPECT_TRUE(getMidiNotesOffThisFrame(kChannel).empty());
 }
