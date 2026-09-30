@@ -42,6 +42,9 @@ export FLEET_SESSION="fleet-test-$$"
 export FLEET_DISPATCH_MIN_GAP_SECONDS=0     # no stagger between ticks
 export FLEET_CONCURRENCY_SMOKE_WORKER=1
 export BOOT_FANOUT_WINDOW_SECONDS=0         # post-window steady state
+# The normal fixture predates each short-lived --smoke-check process. Keep
+# its dispatcher's boot marker before the fixture unless a case overrides it.
+export FLEET_DISPATCHER_STARTED_EPOCH=0
 mkdir -p "$FLEET_STATE_DIR/projections" "$FLEET_STATE_DIR/dispatch" \
          "$FLEET_STATE_DIR/triggers" "$FLEET_RESERVATIONS_DIR"
 touch "$FLEET_CONF"
@@ -116,7 +119,7 @@ write_slice() {  # write_slice <[repo:]label...> — one approved PR per label, 
         body+="{\"repo\":\"$repo\",\"number\":$n,\"labels\":[\"fleet:approved\",\"$label\"]}"
         n=$((n + 1))
     done
-    printf '{"smoke_pending_prs":[%s]}\n' "$body" > "$SLICE"
+    printf '{"generated_at":"2026-01-01T00:00:00Z","smoke_pending_prs":[%s]}\n' "$body" > "$SLICE"
 }
 
 # Bound every dispatcher invocation. fleet-dispatcher's argument `case` falls
@@ -150,7 +153,15 @@ tick() {  # tick <host> — one dispatch_role smoke-worker tick; prints the log
     run_dispatcher "$1" --dispatch-role smoke-worker 2>&1 >/dev/null
 }
 
-echo "T1: Windows-pending PR on a Windows host -> fire"
+echo "T1: a pre-boot projection is quiet and cannot grant smoke work"
+write_slice "$WINDOWS"
+export FLEET_DISPATCHER_STARTED_EPOCH=1767225601
+assert_eq "$(check windows)" "quiet" "pre-boot slice stands down"
+out=$(tick windows)
+assert_absent "$out" "dispatching smoke-worker" "pre-boot slice grants no pane"
+export FLEET_DISPATCHER_STARTED_EPOCH=0
+
+echo "T2: Windows-pending PR on a Windows host -> fire"
 write_slice "$WINDOWS"
 assert_eq "$(check windows)" "fire prs=engine:101" "windows host serves its own smoke label"
 
@@ -178,7 +189,7 @@ assert_eq "$(check mac)" "fire prs=game:103" "a game-only macOS PR fires the mac
 assert_eq "$(check linux)" "quiet" "linux stands down on a slice with no linux label in either repo"
 
 echo "T5c: a legacy record with no repo field reports as engine"
-printf '{"smoke_pending_prs":[{"number":101,"labels":["fleet:approved","%s"]}]}\n' "$WINDOWS" > "$SLICE"
+printf '{"generated_at":"2026-01-01T00:00:00Z","smoke_pending_prs":[{"number":101,"labels":["fleet:approved","%s"]}]}\n' "$WINDOWS" > "$SLICE"
 assert_eq "$(check windows)" "fire prs=engine:101" "repo defaults to engine"
 
 echo "T6: an unrecognized host key fails closed"
