@@ -204,8 +204,8 @@ inline void stampBodyCarrier(
 
 /// The BODY verdict kernel: the larger of the grid term and the circle term.
 /// @p gridCellState is the stored state of the cell under @p worldPosition
-/// (the world-field cell at the round-half-up column, the same cell the fog
-/// pass taps); a VISIBLE cell reveals fully, an EXPLORED cell
+/// (`C_CanvasFogOfWar::getCell` at the round-half-up column, the same cell
+/// the fog pass taps); a VISIBLE cell reveals fully, an EXPLORED cell
 /// reveals nothing on its own. The circle term is the line-of-sight gated
 /// `evalVisionReveal` on one snapshot (@p observers + @p los, see
 /// `selectRevealSnapshot`). @p channels is accepted for the source-mask seam
@@ -225,10 +225,8 @@ inline float evalReveal(
 }
 
 /// The BODY verdict at @p worldPosition against @p fog's world field and the
-/// @p observers + @p los snapshot a caller captured once per frame. The cell
-/// is read with `WorldField::peekCell`, which never probes disk, so the
-/// parallel reveal ticks can share the field: a cell whose field chunk is not
-/// resident reads UNEXPLORED until a gather or write loads it.
+/// @p observers + @p los snapshot a caller captured once per frame. The grid
+/// term reads the field's stored state for any column, with no window test.
 inline float evalReveal(
     const IRComponents::C_CanvasFogOfWar &fog,
     const IRComponents::FrameDataFogObservers &observers,
@@ -237,9 +235,7 @@ inline float evalReveal(
     std::uint32_t channels = IRComponents::kFogChannelDefault
 ) {
     const IRMath::ivec3 column = IRMath::roundVec3HalfUp(worldPosition);
-    const std::uint8_t cell = fog.field_->peekCell(IRMath::ivec2(column.x, column.y))
-                                  .value_or(IRComponents::kFogStateUnexplored);
-    return evalReveal(observers, los, cell, worldPosition, channels);
+    return evalReveal(observers, los, fog.getCell(column.x, column.y), worldPosition, channels);
 }
 
 /// The BODY verdict at @p worldPosition against @p fog, on the snapshot the

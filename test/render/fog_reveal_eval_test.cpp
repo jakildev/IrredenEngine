@@ -154,6 +154,19 @@ TEST(FogRevealEvalTest, GridAwareVerdictTakesTheMaxOfVisibleCellAndCircleTerm) {
     );
 }
 
+// The grid term reads the world field at any column, with no window test: a
+// far unexplored column reveals nothing, and a VISIBLE cell there reveals.
+TEST(FogRevealEvalTest, GridTermReadsTheWorldFieldAtAFarColumn) {
+    IRComponents::C_CanvasFogOfWar fog{IRComponents::C_CanvasFogOfWar::HeadlessInit{}};
+    const FogLosColumnField noLos{};
+    const FrameDataFogObservers none{};
+    const IRMath::vec3 far(5000.0f, -3000.0f, 0.0f);
+    EXPECT_FLOAT_EQ(IRPrefab::Fog::evalReveal(fog, none, noLos, far), 0.0f)
+        << "a far unexplored column read as revealed";
+    fog.setCell(5000, -3000, IRComponents::kFogStateVisible);
+    EXPECT_FLOAT_EQ(IRPrefab::Fog::evalReveal(fog, none, noLos, far), 1.0f);
+}
+
 TEST(FogRevealEvalTest, QuantizedFactorRoundsHalfUpAndPinsTheEnds) {
     EXPECT_EQ(IRPrefab::Fog::quantizeRevealFactor(0.0f), 0);
     EXPECT_EQ(IRPrefab::Fog::quantizeRevealFactor(1.0f), 255);
