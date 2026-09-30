@@ -405,10 +405,15 @@
 # fleet-up's bootstrap triggers and the dispatcher it launches, and
 # `fleet-up --satellite` outranks both.
 #
-# What `fleet-up --satellite` sets, verbatim (plus the caps a small box
-# wants):
+# What `fleet-up --satellite` sets, verbatim — these two knobs and nothing
+# else:
 # FLEET_DISPATCH_ROLES="smoke-worker worker"
 # FLEET_WORKER_HOST_PINNED_ONLY=1
+#
+# The flag leaves every concurrency cap at its env/conf/default value
+# (worker=4 out of the box; the boot `config:` line shows the caps in
+# force). A small box that wants the lanes narrow sets them here — the
+# flag never touches them:
 # FLEET_CONCURRENCY_WORKER=1
 # FLEET_CONCURRENCY_SMOKE_WORKER=1
 #
