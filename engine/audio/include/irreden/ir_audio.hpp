@@ -74,6 +74,8 @@ void clearOutboundMidiObserver();
 
 /// Returns the CC value for @p ccMessage on @p channel received this frame
 /// across all open input ports, or @ref kCCFalse if no CC message arrived.
+/// `MidiIn::tick()` fills this buffer before the INPUT pipeline; no prefab
+/// system is required.
 CCData checkCCMessage(int channel, CCMessage ccMessage);
 /// Per-port variant: CC value for @p ccMessage on @p channel received on the
 /// input port @p portIndex this frame. Use to disambiguate same-channel CC
@@ -81,9 +83,10 @@ CCData checkCCMessage(int channel, CCMessage ccMessage);
 CCData checkCCMessage(int portIndex, MidiChannel channel, CCMessage ccMessage);
 /// Returns the note-on messages received on @p channel this frame across all
 /// open input ports. The list is cleared on the next `MidiIn::tick()` — read
-/// during INPUT/UPDATE only.
+/// during INPUT/UPDATE only. No prefab system is required.
 const std::vector<IRComponents::C_MidiMessage> &getMidiNotesOnThisFrame(int channel);
 /// Returns the note-off messages received on @p channel this frame (all ports).
+/// `MidiIn::tick()` fills the buffer before INPUT; no prefab system is required.
 const std::vector<IRComponents::C_MidiMessage> &getMidiNotesOffThisFrame(int channel);
 /// Per-port variants: note-on / note-off messages received on @p portIndex /
 /// @p channel this frame.

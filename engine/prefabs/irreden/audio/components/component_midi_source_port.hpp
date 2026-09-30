@@ -3,11 +3,8 @@
 
 namespace IRComponents {
 
-// Source-port identity for an inbound MIDI message entity. Attached alongside
-// C_MidiMessage + C_MidiIn when a message enters the ECS from an open input
-// port, so consumers (per-port monitor lanes, port-scoped handlers) can
-// disambiguate same-channel traffic arriving on different ports. portIndex_
-// is the RtMidi port index returned by IRAudio::openPortMidiIn (-1 if unknown).
+// DEPRECATED — use the port-aware IRAudio insertion functions instead.
+// Source-port identity for a synthetic inbound MIDI message entity.
 struct C_MidiSourcePort {
     int portIndex_;
 

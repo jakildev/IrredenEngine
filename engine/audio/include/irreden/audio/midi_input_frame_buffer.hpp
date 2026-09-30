@@ -11,7 +11,7 @@ namespace IRAudio {
 
 // Per-frame snapshot of inbound MIDI state, keyed for both a merged
 // (all-ports) view and a per-port view. MidiIn fills this once per frame from
-// the C_MidiMessage entity stream; consumers poll it during the same frame.
+// each open port's callback queue; consumers poll it during the same frame.
 //
 // Two read scopes:
 //   * Merged (channel only)        — every open input port folded together.
@@ -26,8 +26,7 @@ namespace IRAudio {
 class MidiInputFrameBuffer {
   public:
     // Insert into the merged view only (no port identity). Retained for the
-    // legacy port-less insert API; the entity drainer uses the port-aware
-    // overloads below.
+    // legacy port-less insert API.
     void insertCC(MidiChannel channel, const IRComponents::C_MidiMessage &message) {
         m_merged.insertCC(channel, message);
     }
@@ -52,6 +51,18 @@ class MidiInputFrameBuffer {
     insertNoteOff(int portIndex, MidiChannel channel, const IRComponents::C_MidiMessage &message) {
         m_merged.insertNoteOff(channel, message);
         m_perPort[portIndex].insertNoteOff(channel, message);
+    }
+
+    void insertMessage(int portIndex, const IRComponents::C_MidiMessage &message) {
+        const MidiChannel channel = message.getChannelBits();
+        const MidiStatus status = message.getStatusBits();
+        if (status == kMidiStatus_NOTE_ON) {
+            insertNoteOn(portIndex, channel, message);
+        } else if (status == kMidiStatus_NOTE_OFF) {
+            insertNoteOff(portIndex, channel, message);
+        } else if (status == kMidiStatus_CONTROL_CHANGE) {
+            insertCC(portIndex, channel, message);
+        }
     }
 
     // Merged reads (all ports folded together).

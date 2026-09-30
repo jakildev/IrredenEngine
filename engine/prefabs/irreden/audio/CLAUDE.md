@@ -8,10 +8,9 @@ creation composes MIDI behavior by adding components to entities.
 
 - `C_MidiMessage` — status + channel + data1/data2. Helpers for note
   number, velocity, CC value.
-- `C_MidiSourcePort` — RtMidi port index an inbound message arrived on
-  (-1 = unknown). Attached to in-message entities alongside `C_MidiMessage`
-  + `C_MidiIn` by `MidiIn::processMidiMessageQueue`; the `InputMidiMessageIn`
-  drainer matches it to route messages into the per-port query view.
+- `C_MidiSourcePort` — deprecated source identity for synthetic inbound
+  message entities. Hardware input now retains its port identity while
+  `MidiIn::tick()` drains the callback queues directly.
 - `C_MidiSequence` — BPM, time signature, measures, tick-based playback,
   loop flag, message buffer.
 - `C_MidiNote` — note number, velocity, channel, hold duration.
@@ -69,3 +68,11 @@ None. MIDI control is entirely entity-driven.
 - **Device creation is manual.** There is no
   "audio-device-manager system" yet — `entity_midi_device.hpp` is the
   only supported path.
+
+## Deprecated
+
+- `INPUT_MIDI_MESSAGE_IN` — hardware input is drained by `MidiIn::tick()`;
+  synthetic input uses the port-aware `IRAudio::insertNoteOnMessage`,
+  `insertNoteOffMessage`, or `insertCCMessage` functions. Tracked by #3792.
+- `C_MidiSourcePort` — use the same port-aware insertion functions for
+  synthetic input. Tracked by #3792.
