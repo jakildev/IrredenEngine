@@ -19,12 +19,43 @@
 #include <irreden/ir_render.hpp>
 
 #include <irreden/common/components/component_rotation_mode.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/entity_canvas.hpp>
+#include <irreden/voxel/components/component_voxel_set.hpp>
+#include <irreden/voxel/voxel_pool_teardown.hpp>
 
 #include <string>
+#include <utility>
 
 namespace IRPrefab::RotationMode {
+
+struct SetModeOptions {
+    std::string canvasName_{};
+    IRMath::ivec2 canvasSize_{};
+    bool screenLocked_ = false;
+    int depthPriority_ = 0;
+};
+
+namespace detail {
+
+inline IRMath::ivec3 detachedPoolSize(IRMath::ivec3 extent) {
+    constexpr float kSqrt3 = 1.7320508075688772935f;
+    return IRMath::ivec3{
+        static_cast<int>(IRMath::ceil(static_cast<float>(extent.x) * kSqrt3)) + 1,
+        static_cast<int>(IRMath::ceil(static_cast<float>(extent.y) * kSqrt3)) + 1,
+        static_cast<int>(IRMath::ceil(static_cast<float>(extent.z) * kSqrt3)) + 1,
+    };
+}
+
+inline IRMath::ivec2 detachedCanvasSize(IRMath::ivec3 extent) {
+    constexpr int kPixelsPerVoxel = 12;
+    const int maxExtent = IRMath::max(IRMath::max(extent.x, extent.y), extent.z);
+    const int edge = IRMath::max(maxExtent, 1) * kPixelsPerVoxel;
+    return IRMath::ivec2{edge, edge};
+}
+
+} // namespace detail
 
 /// True when `mode` keeps the entity's rotation on a per-entity
 /// `C_EntityCanvas`. DETACHED and DETACHED_REVOXELIZE differ in how that
@@ -46,9 +77,8 @@ inline constexpr bool ownsEntityCanvas(IRComponents::RotationMode mode) {
 /// Transition an entity to `newMode`, allocating or destroying its
 /// per-entity canvas as required.
 ///
-/// - GRID → a canvas-owning mode: allocates a child canvas via
-///   `IRPrefab::EntityCanvas::create(canvasName, canvasSize)` and
-///   attaches `C_EntityCanvas` to `entity`.
+/// - GRID → a canvas-owning mode: allocates a private voxel-pool canvas,
+///   re-stages the entity's voxel set into it, and attaches `C_EntityCanvas`.
 /// - A canvas-owning mode → GRID: destroys the entity's `C_EntityCanvas`
 ///   child entity (freeing its GPU textures via `onDestroy`) and removes
 ///   the component from `entity`.
@@ -64,16 +94,14 @@ inline constexpr bool ownsEntityCanvas(IRComponents::RotationMode mode) {
 /// Gating the early return on the mode alone would make that recovery a
 /// no-op and strand the entity canvas-less.
 ///
-/// `canvasName` and `canvasSize` are only consulted when a canvas is
-/// actually allocated; pass sensible defaults otherwise.
-inline void setMode(
-    IREntity::EntityId entity,
-    IRComponents::RotationMode newMode,
-    std::string canvasName = {},
-    IRMath::ivec2 canvasSize = IRMath::ivec2{0}
-) {
+/// `options` is only consulted when a canvas is allocated. Empty dimensions
+/// derive a conservative canvas size from the voxel-set extent.
+inline void
+setMode(IREntity::EntityId entity, IRComponents::RotationMode newMode, SetModeOptions options) {
     using IRComponents::C_EntityCanvas;
+    using IRComponents::C_LocalTransform;
     using IRComponents::C_RotationMode;
+    using IRComponents::C_VoxelSetNew;
 
     auto modeOpt = IREntity::getComponentOptional<C_RotationMode>(entity);
     const IRComponents::RotationMode current =
@@ -104,10 +132,53 @@ inline void setMode(
             IRRender::g_renderManager != nullptr,
             "setMode() into a canvas-owning rotation mode requires a live RenderManager"
         );
-        IREntity::setComponent(entity, IRPrefab::EntityCanvas::create(canvasName, canvasSize));
+        auto voxelSetOpt = IREntity::getComponentOptional<C_VoxelSetNew>(entity);
+        IR_ASSERT(
+            voxelSetOpt.has_value(),
+            "setMode() into a canvas-owning rotation mode requires C_VoxelSetNew on the entity"
+        );
+        C_VoxelSetNew &voxelSet = *voxelSetOpt.value();
+        const IRMath::ivec3 extent = voxelSet.size_;
+        const IRMath::ivec2 canvasSize = options.canvasSize_.x > 0 && options.canvasSize_.y > 0
+                                             ? options.canvasSize_
+                                             : detail::detachedCanvasSize(extent);
+        const std::string canvasName = options.canvasName_.empty()
+                                           ? "rotation_mode_" + std::to_string(entity)
+                                           : options.canvasName_;
+        C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
+            canvasName,
+            canvasSize,
+            detail::detachedPoolSize(extent),
+            options.screenLocked_
+        );
+        canvas.depthPriority_ = options.depthPriority_;
+
+        IRPrefab::VoxelPool::restageSet(voxelSet);
+        const bool attached = voxelSet.attachToCanvas(canvas.canvasEntity_);
+        IR_ASSERT(attached, "setMode() failed to attach C_VoxelSetNew to the private canvas");
+        IREntity::setComponent(entity, canvas);
+    }
+
+    if (!wantsCanvas) {
+        auto localTransform = IREntity::getComponentOptional<C_LocalTransform>(entity);
+        if (localTransform) {
+            localTransform.value()->unbounded_ = false;
+        }
     }
 
     IREntity::setComponent(entity, C_RotationMode{newMode});
+}
+
+inline void setMode(
+    IREntity::EntityId entity,
+    IRComponents::RotationMode newMode,
+    std::string canvasName = {},
+    IRMath::ivec2 canvasSize = IRMath::ivec2{0}
+) {
+    SetModeOptions options;
+    options.canvasName_ = std::move(canvasName);
+    options.canvasSize_ = canvasSize;
+    setMode(entity, newMode, std::move(options));
 }
 
 } // namespace IRPrefab::RotationMode

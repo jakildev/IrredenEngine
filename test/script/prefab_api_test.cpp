@@ -1062,4 +1062,38 @@ TEST_F(PrefabApi, SpawnRejectsNonPositiveCanvasSize) {
     EXPECT_NE(r.error_.find("positive"), std::string::npos) << r.error_;
 }
 
+TEST_F(PrefabApi, SetRotationModeBindingDefersStructuralChange) {
+    const IREntity::EntityId entity = IREntity::createEntity(
+        IRComponents::C_RotationMode{IRComponents::RotationMode::DETACHED},
+        IRComponents::C_EntityCanvas{}
+    );
+    m_lua.lua()["mode_switch_entity"] = IRScript::LuaEntity{entity};
+
+    auto result = m_lua.lua().safe_script(
+        "IRPrefab.setRotationMode(mode_switch_entity, IRComponent.RotationMode.GRID)"
+    );
+    ASSERT_TRUE(result.valid());
+    EXPECT_TRUE(IREntity::getComponentOptional<IRComponents::C_EntityCanvas>(entity).has_value());
+
+    IREntity::flushStructuralChanges();
+
+    EXPECT_FALSE(IREntity::getComponentOptional<IRComponents::C_EntityCanvas>(entity).has_value());
+    EXPECT_EQ(
+        IREntity::getComponent<IRComponents::C_RotationMode>(entity).mode_,
+        IRComponents::RotationMode::GRID
+    );
+}
+
+TEST_F(PrefabApi, SetRotationModeRejectsStringMode) {
+    const IREntity::EntityId entity = IREntity::createEntity();
+    m_lua.lua()["mode_switch_entity"] = IRScript::LuaEntity{entity};
+
+    auto result = m_lua.lua().safe_script(
+        "IRPrefab.setRotationMode(mode_switch_entity, 'DETACHED')",
+        sol::script_pass_on_error
+    );
+
+    EXPECT_FALSE(result.valid());
+}
+
 } // namespace
