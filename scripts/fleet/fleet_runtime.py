@@ -13,7 +13,7 @@ from pathlib import Path
 
 RUNTIMES = ("claude", "codex")
 CODEX_MODELS = {"fable": "gpt-6-astra", "opus": "gpt-5.6-sol", "sonnet": "gpt-5.6-terra"}
-BATCH_ROLES = ("merger", "epic-steward")
+BATCH_ROLES = ("epic-steward",)
 ROLE_CLASSES = {"sonnet-reviewer": "sonnet", "opus-reviewer": "opus", "smoke-worker": "sonnet"}
 TARGET_RECORDS = {
     "task": ("tasks_open",), "stack": ("tasks_open",),
@@ -59,6 +59,77 @@ def routing_problem(state, key, message=None):
         print(f"fleet-runtime: {key}: {message}{suffix}", file=sys.stderr)
 
 
+PR_KINDS = {"review", "smoke", "feedback", "conflict", "merge"}
+ISSUE_KINDS = {"task", "stack", "plan", "planreview"}
+# An issue can sit in any open-issue slice while a record keyed on it is live
+# (a `plan` target is a needs_plan row, never a task row), so issue kinds
+# check the union: pruning a live record resets its count below the alert
+# threshold.
+ISSUE_FIELDS = ("tasks", "needs_plan", "plan_review")
+
+
+def _live_fields(kind):
+    return ("prs",) if kind in PR_KINDS else ISSUE_FIELDS
+
+
+def _live_numbers(repo_state, kind):
+    rows = []
+    for field in _live_fields(kind):
+        if field == "tasks":
+            tasks = repo_state.get("tasks") or {}
+            rows += [*(tasks.get("open") or []), *(tasks.get("in_progress") or []),
+                     *(tasks.get("plan_gated") or [])]
+        else:
+            rows += repo_state.get(field) or []
+    numbers = set()
+    for row in rows:
+        # tasks.plan_gated holds bare issue numbers, not issue records.
+        n = row.get("number", row.get("issue", row.get("id", ""))) \
+            if isinstance(row, dict) else row
+        if n not in (None, ""):
+            numbers.add(str(n).lstrip("#"))
+    return numbers
+
+
+def prune(state, alerts_dir=None):
+    """Drop a runtime-problems/alert pair once its target leaves every open slice.
+
+    A merged or closed target never routes again, so its record can never
+    clear itself; `target_record` raising "target missing from projection"
+    is the routing-time symptom of that fact, so re-derive liveness from
+    state.json rather than trusting that any one reason string caused it.
+    """
+    state_dir = Path(state)
+    alerts_dir = Path(alerts_dir or os.environ.get(
+        "FLEET_ALERTS_DIR", str(state_dir.parent / "alerts")))
+    try:
+        snapshot = json.loads((state_dir / "state.json").read_text())
+    except (OSError, ValueError):
+        return []
+    degraded = set(snapshot.get("degraded") or [])
+    repos = snapshot.get("repos") or {}
+    removed = []
+    for path in sorted((state_dir / "runtime-problems").glob("*.json")):
+        try:
+            record = json.loads(path.read_text())
+        except (OSError, ValueError):
+            continue
+        parts = (record.get("key") or "").split(":")
+        if len(parts) < 4:
+            continue
+        kind, repo, number = parts[1], parts[2], parts[3]
+        if (kind not in PR_KINDS and kind not in ISSUE_KINDS) or repo not in repos \
+                or not number.isdigit():
+            continue
+        if any(f"{repo}.{field}" in degraded for field in _live_fields(kind)) \
+                or number in _live_numbers(repos[repo], kind):
+            continue
+        path.unlink(missing_ok=True)
+        (alerts_dir / ("fleet-runtime-" + path.stem)).unlink(missing_ok=True)
+        removed.append(record.get("key"))
+    return removed
+
+
 def target_record(data, target):
     parts = target.split(":")
     if len(parts) not in (3, 4) or parts[0] not in TARGET_RECORDS:
@@ -74,10 +145,12 @@ def target_record(data, target):
     raise ValueError("target missing from projection")
 
 
-def choose_runtime(kind, record, target, env):
+def choose_runtime(kind, record, target, env, claude_gate="open"):
     available = sorted({x.strip() for x in env.get("FLEET_RUNTIMES", "claude").split(",")})
     if not available or any(x not in RUNTIMES for x in available):
         raise ValueError("FLEET_RUNTIMES must contain claude and/or codex")
+    if claude_gate not in ("open", "closed"):
+        raise ValueError("Claude gate must be open or closed")
     labels = {x["name"] if isinstance(x, dict) else x for x in record.get("labels") or []}
     authors = [x for x in RUNTIMES if f"fleet:author-{x}" in labels]
     if len(authors) > 1:
@@ -103,6 +176,9 @@ def choose_runtime(kind, record, target, env):
             chosen = available[index % len(available)]
         else:
             raise ValueError("FLEET_WORKER_RUNTIME must be balanced, claude, or codex")
+    if kind == "merge" and chosen == "claude" and claude_gate == "closed" \
+            and "codex" in available:
+        chosen = "codex"
     if chosen not in available:
         raise ValueError(f"required runtime {chosen} unavailable on this host")
     return chosen
@@ -124,9 +200,9 @@ def resolve_assignment(runtime, role, cls, model, effort, env, explicit_effort=N
     return runtime, cls, model, effort
 
 
-def route(data, target, role, cls, model, effort, env):
+def route(data, target, role, cls, model, effort, env, claude_gate="open"):
     kind, record = target_record(data, target)
-    runtime = choose_runtime(kind, record, target, env)
+    runtime = choose_runtime(kind, record, target, env, claude_gate)
     cls = cls or ROLE_CLASSES.get(role, "opus")
     return resolve_assignment(runtime, role, cls, model, effort, env, record.get("effort"))
 
@@ -198,6 +274,7 @@ def main(argv=None):
     p = subs.add_parser("route")
     for name in ("slice", "target", "role", "cls", "model", "effort"):
         p.add_argument(name)
+    p.add_argument("claude_gate", nargs="?", choices=("open", "closed"), default="open")
     p = subs.add_parser("route-role", help="select a provider for a target-less batch role")
     for name in ("role", "cls", "model", "effort", "claude_gate"):
         p.add_argument(name)
@@ -209,9 +286,15 @@ def main(argv=None):
     p.add_argument("state")
     p = subs.add_parser("resume-route", help="restore a reserved provider assignment")
     p.add_argument("sidecar")
+    p = subs.add_parser("prune", help="drop routing-problem records for targets no longer live")
+    p.add_argument("state")
     args = parser.parse_args(argv)
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(newline="\n")
+    if args.command == "prune":
+        for pruned_key in prune(args.state):
+            print(f"fleet-runtime: pruned stale routing problem: {pruned_key}", file=sys.stderr)
+        return 0
     state = os.environ.get("FLEET_STATE_DIR")
     key_subject = getattr(args, "target", getattr(args, "sidecar", getattr(args, "role", "")))
     key = args.command + ":" + key_subject
@@ -237,7 +320,7 @@ def main(argv=None):
         else:
             data = json.loads(Path(args.slice).read_text())
             result = route(data, args.target, args.role, args.cls,
-                           args.model, args.effort, os.environ)
+                           args.model, args.effort, os.environ, args.claude_gate)
             if state:
                 routing_problem(state, key)
             print(" ".join(result))

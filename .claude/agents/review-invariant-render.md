@@ -54,8 +54,8 @@ Files under `engine/render/`, `engine/prefabs/irreden/render/`, `*.glsl`,
     the 65535 clear on Metal with no error, invisible to a GL-only smoke).
     `RenderDevice::resolveImageAtomicScratch` governs a canvas's own
     unmaterialized distances — neither a substitute nor a breach. Full
-    invariant: `engine/render/CLAUDE.md` §Gotchas "Foreign-canvas R32I
-    image reads".
+    invariant: `engine/render/CLAUDE.md` §"GPU resource contracts", the
+    "Metal R32I image atomics land in scratch storage" bullet.
 
 Lighting stage (`system_*ao*`, `system_*shadow*`, `system_*flood*`,
 `system_*fog*`, `system_build_light_occlusion_grid*`,

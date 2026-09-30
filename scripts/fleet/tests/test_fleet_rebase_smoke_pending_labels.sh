@@ -1,18 +1,19 @@
 #!/usr/bin/env bash
-# Tests that fleet-rebase's SKIP_LABEL_RE treats all three cross-host smoke
-# labels identically.
+# Tests that a pending cross-host smoke label never parks a PR away from
+# tier-0, for all three smoke labels alike.
 #
-# SKIP_LABEL_RE is a hand-listed consumer of the scout's smoke-pending label
-# set. A stacked PR (base != master) carrying only fleet:approved plus a
-# smoke label must not fall through to the "attempt" verdict — tier-0 would
-# mechanically rebase and force-push it, invalidating the pending smoke
-# verification the label exists to protect (fleet-rebase:124's own stated
-# rationale for skipping smoke-pending PRs).
+# The human merges without waiting for smoke, and the smoke should run on
+# the head that will merge, so fleet-rebase's SKIP_LABEL_RE matches no
+# smoke label (the scout's drift guard pins the regex itself). Skipping them
+# used to park every approved conflict until a host of that tier smoked a
+# head that could not merge.
 #
-#   T1: base != master, fleet:needs-linux-smoke   -> skip-labels (control)
-#   T2: base != master, fleet:needs-macos-smoke   -> skip-labels (control)
-#   T3: base != master, fleet:needs-windows-smoke -> skip-labels
-#   T4: no smoke label -> the normal "attempt" path is unchanged
+#   T1: base != master, fleet:needs-linux-smoke   -> attempt
+#   T2: base != master, fleet:needs-macos-smoke   -> attempt
+#   T3: base != master, fleet:needs-windows-smoke -> attempt
+#   T4: no smoke label -> attempt (control)
+#   T5: base == master, CONFLICTING, fleet:needs-windows-smoke -> attempt
+#   T6: a persistent ownership claim still blocks the attempt
 #
 # All run --auto --dry-run: attempt_pr's git push happens against a local
 # bare remote in the sandbox, so a "clean rebase onto" or "attempted=1" line
@@ -97,7 +98,7 @@ run_rebase() {
     "$REBASE" --auto --dry-run 2>&1 || true
 }
 
-echo "T1: base != master, fleet:needs-linux-smoke -> skip-labels"
+echo "T1: base != master, fleet:needs-linux-smoke -> attempt"
 write_slice '[{
   "repo":"engine","number":500,
   "headRefName":"feat-child","baseRefName":"feat-parent",
@@ -105,12 +106,10 @@ write_slice '[{
   "labels":["fleet:approved","fleet:needs-linux-smoke"]
 }]'
 T1=$(run_rebase)
-assert_absent "$T1" "clean rebase onto" \
-    "T1 needs-linux-smoke blocks branch work"
-assert_absent "$T1" "attempted=1" \
-    "T1 needs-linux-smoke does not reach the attempt path"
+assert_contains "$T1" "attempted=1" \
+    "T1 a pending smoke does not park the PR away from tier-0"
 
-echo "T2: base != master, fleet:needs-macos-smoke -> skip-labels"
+echo "T2: base != master, fleet:needs-macos-smoke -> attempt"
 write_slice '[{
   "repo":"engine","number":501,
   "headRefName":"feat-child","baseRefName":"feat-parent",
@@ -118,12 +117,10 @@ write_slice '[{
   "labels":["fleet:approved","fleet:needs-macos-smoke"]
 }]'
 T2=$(run_rebase)
-assert_absent "$T2" "clean rebase onto" \
-    "T2 needs-macos-smoke blocks branch work"
-assert_absent "$T2" "attempted=1" \
-    "T2 needs-macos-smoke does not reach the attempt path"
+assert_contains "$T2" "attempted=1" \
+    "T2 a pending smoke does not park the PR away from tier-0"
 
-echo "T3: base != master, fleet:needs-windows-smoke -> skip-labels"
+echo "T3: base != master, fleet:needs-windows-smoke -> attempt"
 write_slice '[{
   "repo":"engine","number":502,
   "headRefName":"feat-child","baseRefName":"feat-parent",
@@ -131,12 +128,10 @@ write_slice '[{
   "labels":["fleet:approved","fleet:needs-windows-smoke"]
 }]'
 T3=$(run_rebase)
-assert_absent "$T3" "clean rebase onto" \
-    "T3 needs-windows-smoke blocks branch work — the orphaned label from #2888"
-assert_absent "$T3" "attempted=1" \
-    "T3 needs-windows-smoke does not reach the attempt path"
+assert_contains "$T3" "attempted=1" \
+    "T3 a pending smoke does not park the PR away from tier-0"
 
-echo "T4: base != master, no smoke label -> attempt (unchanged)"
+echo "T4: base != master, no smoke label -> attempt (control)"
 write_slice '[{
   "repo":"engine","number":503,
   "headRefName":"feat-child","baseRefName":"feat-parent",
@@ -147,6 +142,18 @@ T4=$(run_rebase)
 assert_contains "$T4" "attempted=1" \
     "T4 an ordinary stacked PR still reaches the attempt path"
 
+echo "T5: base == master, CONFLICTING, fleet:needs-windows-smoke -> attempt"
+write_slice '[{
+  "repo":"engine","number":505,
+  "headRefName":"feat-child","baseRefName":"master",
+  "mergeable":"CONFLICTING",
+  "labels":["fleet:approved","fleet:needs-windows-smoke"]
+}]'
+T5=$(run_rebase)
+assert_contains "$T5" "attempted=1" \
+    "T5 an approved conflict owing a smoke still reaches the attempt path"
+
+echo "T6: persistent ownership claim -> no attempt"
 write_slice '[{
   "repo":"engine","number":504,
   "headRefName":"feat-child","baseRefName":"feat-parent",
@@ -157,4 +164,4 @@ owned=$(run_rebase)
 assert_absent "$owned" "attempted=1" "persistent PR ownership blocks mechanical rebase"
 
 # --- Summary ------------------------------------------------------------------
-summarize "fleet-rebase smoke-label skip parity tests"
+summarize "fleet-rebase smoke-pending label tests"

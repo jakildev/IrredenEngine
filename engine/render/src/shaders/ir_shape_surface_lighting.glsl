@@ -14,7 +14,7 @@ layout(std140, binding = 7) uniform SurfaceLightVolumeParams {
 };
 
 vec3 shapeSurfaceLighting(ivec2 ownerPixel, int ownerWidth, vec3 position, vec3 normal,
-                          vec4 casterRotation, vec3 fallbackColor) {
+                          float cascadeDepth, vec4 casterRotation, vec3 fallbackColor) {
     const uint key = receiverOwners[uint(ownerPixel.y * ownerWidth + ownerPixel.x)];
     const int shapeIndex = receiverTiles[key / kShapeSamplesPerTile].shapeIndex;
     if ((receiverShapes[shapeIndex].flags & kShapeProceduralColorFlags) != 0u)
@@ -27,7 +27,7 @@ vec3 shapeSurfaceLighting(ivec2 ownerPixel, int ownerWidth, vec3 position, vec3 
         material = albedo * textureLod(paletteLUT, vec2(ao, luminance), 0.0).rgb;
     }
     const float visibility = shadowsEnabled == 0 ? 1.0 :
-        worldSurfaceSunShadowFactor(position, normal, pos3DtoDistance(position), casterRotation);
+        worldShapeSurfaceSunShadowFactor(position, normal, cascadeDepth, casterRotation);
     const float lambert = max(0.0, dot(normal, sunDirection.xyz));
     vec3 linearColor = material * surfaceSunFactor(sunAmbient, sunIntensity, lambert, visibility);
     if (lightVolumeEnabled != 0)

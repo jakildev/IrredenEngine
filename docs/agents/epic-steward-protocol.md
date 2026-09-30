@@ -65,7 +65,9 @@ artifacts — umbrella bodies, comments, labels — and never pushes code.
 3. Read the epic-steward projection: per repo, open `fleet:epic` umbrellas
    with parsed `## Children` checklists and the pending triggers
    (design-blocked children, closed-but-unticked children, adoptable
-   issues, answered proposals, close-out-ready umbrellas).
+   issues, answered proposals, close-out-ready umbrellas). An umbrella
+   carrying `fleet:needs-human` or `fleet:steward-proposal` still projects
+   its closed-but-unticked children, but not its close-out.
 4. Print a one-line summary: per repo, epic count and trigger counts by flow.
 5. Print `epic-steward standing by` (with the mode suffix if not `live`).
 
@@ -143,7 +145,11 @@ All derivable →
 2. Post `## Steward direction` on the PR: per question, the answer, the
    cited sentence(s), the amendment pointer.
 3. `fleet-transition design-unblock <PR-#>` (one edge; never two `gh pr
-   edit` calls — a half-executed swap strands the PR).
+   edit` calls — a half-executed swap strands the PR). When the remaining
+   work is macOS-only (Metal runs, a macOS-only repro), first
+   `gh pr edit <PR-#> --add-label fleet:needs-macos-host` (drop
+   `fleet:needs-gl-host` if present): epic children link with `Refs`, so the
+   dispatcher has no inherited `**Host:**` pin to route on.
 
 Any novel →
 1. `fleet-transition design-propose <PR-#>` — the PR leaves the
@@ -168,8 +174,9 @@ umbrella and removes `fleet:steward-proposal`. That removal re-fires the
 projection: the umbrella's `fleet:design-proposed` PRs resurface, the
 questions are now derivable (the answers are the deciding sentences), and
 distribution is the all-derivable path — amend each child plan citing the
-answers, post `## Steward direction`, `fleet-transition design-unblock`
-(its remove set clears `fleet:design-proposed`).
+answers, post `## Steward direction`, stamp `fleet:needs-macos-host` when
+the residual is macOS-only, `fleet-transition design-unblock` (its remove
+set clears `fleet:design-proposed`).
 
 ### Flow b — post-merge follow-up
 
