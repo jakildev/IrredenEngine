@@ -431,6 +431,34 @@ def body_closed_issue_refs(body, pr_repo):
     return sorted(refs)
 
 
+_REFS_KEYWORD = r"\b(?:refs?|references?)\s+"
+_REFS_REF_RE = re.compile(
+    _REFS_KEYWORD + r"(?:([A-Za-z0-9][\w.-]*/[A-Za-z0-9][\w.-]*))?#(\d+)\b",
+    re.IGNORECASE,
+)
+
+
+def body_referenced_issue_numbers(body, pr_repo):
+    """Sorted, deduped own-repo issue numbers a `Refs #N` line names in `body`.
+
+    The non-closing linkage form: an unmet acceptance criterion downgrades a
+    PR body's `Closes #N` to `Refs #N`, so the PR still works the issue while
+    GitHub links nothing. Same code-stripping and same-repo rule as
+    `body_closed_issue_refs` (a qualified ref to the other fleet repo or to an
+    unknown slug is dropped); never a substitute for it — a `Refs` line does
+    not claim the issue is being closed, so the in-flight gates must not read
+    it.
+    """
+    if not body:
+        return []
+    own = repo_key(pr_repo)
+    nums = set()
+    for slug, num in _REFS_REF_RE.findall(strip_code(body)):
+        if (repo_key(slug) if slug else own) == own:
+            nums.add(int(num))
+    return sorted(nums)
+
+
 def split_closed_issue_refs(body, pr_repo):
     """`body_closed_issue_refs` split into (own-repo numbers, other-repo refs).
 

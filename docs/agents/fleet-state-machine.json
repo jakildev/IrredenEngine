@@ -288,7 +288,7 @@
       "name": "fleet:needs-macos-host",
       "scope": "issue+pr",
       "color": "c5def5",
-      "description": "Remaining work needs a macOS host (Metal runs, macOS-only repro); non-mac panes skip it (dispatcher filter, claim + amending-claim gates, feedback-tier skip). Stamped on a PR by whoever knows the residual (architect/steward unblock, a worker design-blocking); overrides the host pin a feedback PR inherits from its Closes issue. Never narrowed. Removed by the pane that clears the residual; swapped with fleet:needs-gl-host, never carried with it. On an issue prefer the **Host:** mac body pin."
+      "description": "Remaining work needs a macOS host (Metal runs, macOS-only repro); non-mac panes skip it (dispatcher filter, claim + amending-claim gates, feedback-tier skip). Stamped on a PR by whoever knows the residual (architect/steward unblock, a worker design-blocking); overrides the host pin a feedback PR inherits from its linked issue. Never narrowed. Removed by the pane that clears the residual; swapped with fleet:needs-gl-host, never carried with it. On an issue prefer the **Host:** mac body pin."
     },
     {
       "name": "fleet:backend-symmetric",
