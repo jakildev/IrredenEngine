@@ -57,6 +57,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // single-canvas gather draw on the main canvas while rotating; see
     // drawPerAxisScatter.
     ShaderProgram *scatterProgram_ = nullptr;
+    ShaderProgram *scatterProbeProgram_ = nullptr;
+    bool scatterProbeEnabled_ = false;
     VAO *quadVao_ = nullptr;
 
     // Smooth camera Z-yaw state. Re-resolved every frame in beginTick,
@@ -253,6 +255,10 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             canvas.size_,
             *shapeProbeFrameBuf_
         );
+        bindSunShadowResources();
+    }
+
+    void bindSunShadowResources() {
         sunFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
         sunDepthBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
     }
@@ -404,7 +410,10 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // overflow-entry draw — the rotating-only composite work, separated
         // from the fall-through gather's trixelToFb row.
         GpuSubStageScope scatterScope("perAxisScatter");
-        scatterProgram_->use();
+        if (scatterProbeEnabled_) {
+            bindSunShadowResources();
+        }
+        (scatterProbeEnabled_ ? scatterProbeProgram_ : scatterProgram_)->use();
         IRRender::device()->setPolygonMode(PolygonMode::FILL);
         // instance over only the compacted occupied cells (filled by the
         // beginTick compaction pre-pass) via an indirect draw whose instance
@@ -518,11 +527,14 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             }
         }
 
-        const bool shapeReceiverAvailable =
+        const bool sunReceiverAvailable =
             findSystem(COMPUTE_SUN_SHADOW) != kNullSystemId &&
-            findSystem(SHAPES_TO_TRIXEL) != kNullSystemId &&
             perAxisCanvasEntity_ != IREntity::kNullEntity &&
             IREntity::getComponentOptional<C_CanvasSunShadow>(perAxisCanvasEntity_).has_value();
+        const bool shapeReceiverAvailable =
+            sunReceiverAvailable && findSystem(SHAPES_TO_TRIXEL) != kNullSystemId;
+        scatterProbeEnabled_ =
+            sunReceiverAvailable && IRRender::getDebugOverlay() == DebugOverlayMode::SURFACE_SHADOW;
         shapeProbeEnabled_ = shapeReceiverAvailable &&
                              IRRender::getDebugOverlay() == DebugOverlayMode::SURFACE_SHADOW;
         lighting_ = nullptr;
@@ -552,6 +564,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             shapeProbeFallbackBuf_ = IRRender::getNamedResource<Buffer>("ShapeReceiverFallback");
             shapeProducerFrameBuf_ = IRRender::getNamedResource<Buffer>("ShapesFrameDataBuffer");
             animationParamsBuf_ = IRRender::getNamedResource<Buffer>("AnimationParamsBuffer");
+        }
+        if ((scatterProbeEnabled_ || shapeProbeEnabled_ || shapeLightingEnabled_) &&
+            sunFrameBuf_ == nullptr) {
             sunFrameBuf_ = IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");
             sunDepthBuf_ = IRRender::getNamedResource<Buffer>("SunShadowDepthMap");
         }
@@ -593,6 +608,13 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 ShaderStage{IRRender::kFileFragPerAxisScatter, ShaderType::FRAGMENT}
             }
         );
+        IRRender::createNamedResource<ShaderProgram>(
+            "PerAxisSurfaceShadowProbeProgram",
+            std::vector{
+                ShaderStage{IRRender::kFileVertPerAxisScatter, ShaderType::VERTEX},
+                ShaderStage{IRRender::kFileFragPerAxisSurfaceShadow, ShaderType::FRAGMENT}
+            }
+        );
         IRRender::createNamedResource<Buffer>(
             "TrixelToFramebufferFrameData",
             nullptr,
@@ -630,6 +652,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         sys->shapeProbeProgram_ =
             IRRender::getNamedResource<ShaderProgram>("CanvasSurfaceShadowProbeProgram");
         sys->scatterProgram_ = IRRender::getNamedResource<ShaderProgram>("PerAxisScatterProgram");
+        sys->scatterProbeProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("PerAxisSurfaceShadowProbeProgram");
         sys->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAO");
         sys->overflowDrawDisabled_ = std::getenv("IR_PERAXIS_OVERFLOW_DISABLE") != nullptr;
         // NOT observer-tagged: the tick owns GpuSubStageScopes, which

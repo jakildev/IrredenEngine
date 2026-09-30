@@ -30,17 +30,22 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
   zoom. Requested fractional zoom is not assumed to equal rendered zoom. Moving
   screenshot suites remain outside this static guard; camera translation and
   pitch/roll still need their own recorded witnesses.
-- For continuous per-axis receiving, first validate the displayed point
+- Implemented a [continuous per-axis diagnostic](../pr-screenshots/codex/peraxis-surface-shadow-probe/README.md)
+  for regular and overflow faces. It validates the displayed point
   `P = O + eu*q.x + ev*q.y - kVoxelRasterCellAnchor` using the existing
-  dilation-aware interpolated quad parameter. Preserve signed face identity and
-  the regular/overflow ownership rules. The production color path must retain
+  dilation-aware interpolated quad parameter, preserving signed face identity and
+  the regular/overflow ownership rules. The native identity-frame ray oracle passes
+  all four oblique quadrants: 208,344 tested sun-facing pixels, zero false or missed
+  shadows. Normal interiors also agree, but strict outline checks retain 1/54/71/20
+  extra silhouette pixels; do not report full geometry acceptance. Beauty captures
+  remain pixel-identical in four quadrants. The production color path must retain
   linear ambient/local/sky and direct-sun terms separately before display
   mapping; multiplying already-lit RGBA8 color would incorrectly shadow other
   light sources. Reuse the source-face composition contract, account for fog,
   and measure storage and fragment-query cost before enabling it. Conservative
-  margins outside the finite face need an explicit extension policy and should
-  be excluded from the initial interior geometry oracle. This is investigated,
-  not yet implemented.
+  margins outside the finite face need an explicit extension policy: the diagnostic
+  marks them yellow and skips queries. Beauty integration, dense-index acceptance,
+  cardinal transition validation and that margin policy remain pending.
 - [Bounded overflow reference](../perf/bounded-source-face-reference.md) isolates
   the dense analytical-box teeth: identical geometry and tile tables regain
   clean floor edges when incomplete tiles query the complete small face pool.

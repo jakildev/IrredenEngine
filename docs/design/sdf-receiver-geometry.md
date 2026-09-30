@@ -380,6 +380,11 @@ presentation. [Evidence](../pr-screenshots/codex/selected-surface-query/README.m
 
 ## Fragment receiver diagnostic
 
+The same overlay also supports attached per-axis regular and overflow faces;
+their [geometry contract and controls](../pr-screenshots/codex/peraxis-surface-shadow-probe/README.md)
+are separate from elected SDF ownership. Yellow denotes conservative margins
+outside those finite voxel faces, where no surface shadow query is made.
+
 `SURFACE_SHADOW` (`--debug-overlay surface_shadow`) evaluates eligible main-canvas
 analytical boxes at the continuous presentation coordinate. Ownership comes from
 the displayed, clamped sample texel; it is not re-elected from the query coordinate.
