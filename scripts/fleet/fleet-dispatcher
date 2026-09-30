@@ -1566,6 +1566,9 @@ handle_abandoned_target() {
         git -C "$wt" add -A --intent-to-add >/dev/null 2>&1 || true
         if git -C "$wt" diff HEAD > "$patch" 2>/dev/null; then
             salvage="${salvage:+$salvage }$patch"
+            git -C "$wt" rebase --abort >/dev/null 2>&1 \
+                || git -C "$wt" merge --abort >/dev/null 2>&1 \
+                || true
             git -C "$wt" reset --hard HEAD >/dev/null 2>&1 || true
             git -C "$wt" clean -fd >/dev/null 2>&1 || true
         else
