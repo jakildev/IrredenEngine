@@ -1,0 +1,28 @@
+diff --git a/engine/prefabs/irreden/render/systems/system_trixel_to_framebuffer.hpp b/engine/prefabs/irreden/render/systems/system_trixel_to_framebuffer.hpp
+index 0bae7eccb..6b8e32f33 100644
+--- a/engine/prefabs/irreden/render/systems/system_trixel_to_framebuffer.hpp
++++ b/engine/prefabs/irreden/render/systems/system_trixel_to_framebuffer.hpp
+@@ -400,6 +400,23 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
+         );
+         frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) * perAxisModel;
+         frameData.frameData_.visualYaw_ = visualYaw;
++        if (std::getenv("IR_SCATTER_CAPTURE_INPUTS") != nullptr) {
++            const auto &matrix = frameData.frameData_.mpMatrix_;
++            const auto base = frameData.frameData_.perAxisBase_;
++            IRE_LOG_INFO("SCATTER-INPUT yaw={:.9g} canvas={},{} main={},{} fb={:.9g},{:.9g} base={},{} camera={:.9g},{:.9g}",
++                visualYaw, axes.size_.x, axes.size_.y, mainCanvasSize.x, mainCanvasSize.y,
++                framebufferResolution.x, framebufferResolution.y, base.x, base.y,
++                cameraIso.x, cameraIso.y);
++            for (int column = 0; column < 4; ++column) {
++                IRE_LOG_INFO("SCATTER-MATRIX column={} values={:.9g},{:.9g},{:.9g},{:.9g}",
++                    column, matrix[column][0], matrix[column][1], matrix[column][2], matrix[column][3]);
++            }
++            IRRender::device()->finish();
++            int encoded = 0;
++            axes.axes_[1].distances_.second->getSubImage2D(base.x - 6, base.y + 20, 1, 1,
++                PixelDataFormat::RED_INTEGER, PixelDataType::INT32, &encoded);
++            IRE_LOG_INFO("SCATTER-FACE ij={},{} encoded={}", base.x - 6, base.y + 20, encoded);
++        }
+         frameData.frameData_.visibleFaceIds_ = ivec4(
+             static_cast<int>(visibleFaces[0]),
+             static_cast<int>(visibleFaces[1]),
