@@ -914,4 +914,26 @@ TEST_F(LuaComponentRegister, DuplicateNameRaises) {
     EXPECT_EQ(components[0].fields_.size(), 2u);
 }
 
+TEST_F(LuaComponentRegister, CoexistenceOffRejectsCppBoundName) {
+    IRScript::bindLuaType<IRComponents::C_ZoomLevel>(m_lua);
+    auto &lua = m_lua.lua();
+    auto adopted = lua.safe_script(
+        "return IRComponent.register('C_ZoomLevel', {}) == IRComponent.C_ZoomLevel",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(adopted.valid()) << sol::error{adopted}.what();
+    EXPECT_TRUE(adopted.get<bool>());
+
+    m_lua.setCodegenCoexistence(false);
+    auto result = lua.safe_script(
+        "IRComponent.register('C_ZoomLevel', { weight = 1 })",
+        sol::script_pass_on_error
+    );
+    ASSERT_FALSE(result.valid());
+    const sol::error err = result;
+    EXPECT_NE(std::string{err.what()}.find("'C_ZoomLevel'"), std::string::npos);
+    EXPECT_NE(std::string{err.what()}.find("C++ component"), std::string::npos);
+    EXPECT_TRUE(m_lua.luaTypedComponents().empty());
+}
+
 } // namespace

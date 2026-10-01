@@ -103,6 +103,16 @@ class LuaScript {
         return m_ecsDefaultMode;
     }
 
+    // On (the default), `IRComponent.register` for a name a C++ component
+    // binds returns that component's handle — the codegen coexistence path,
+    // where the build-time tool and the runtime read the same `.lua` file.
+    // Off, the call raises instead. A host whose scripts the codegen never
+    // consumes turns it off so a script cannot silently adopt an engine
+    // component under its own schema.
+    void setCodegenCoexistence(bool enabled) {
+        m_codegenCoexistence = enabled;
+    }
+
     // Register a prefab system NAME so the Lua side's
     // `IRSystem.systemId(SystemName.NAME)` can return its SystemId.
     // Calls `IRSystem::createSystem<NAME>()` once and caches the
@@ -333,6 +343,8 @@ class LuaScript {
     // Excludes the coexistence carve-out's early-return (that path returns
     // an existing C++-typed handle and registers no Lua-typed impl).
     std::unordered_set<IREntity::ComponentId> m_luaTypedComponentIds;
+
+    bool m_codegenCoexistence = true;
 
     // Ordered record of the same components, with their field schemas.
     std::vector<LuaTypedComponentInfo> m_luaTypedComponents;

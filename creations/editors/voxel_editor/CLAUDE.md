@@ -62,11 +62,12 @@ render, because the aim and the pick share one screen mapping.
 - `ModuleHost` (`editor_lua_host.hpp`, whose header comment is the contract)
   runs `<dir>/init.lua` in the world's Lua VM in EVAL mode. A module registers
   components (`IRComponent.register`), recipes and panels (`IREditor.*`). A
-  missing `init.lua`, a Lua error, or a name already registered exits 2.
+  missing `init.lua`, a Lua error, or a component name already registered (a
+  C++ one included) exits 2.
 - A recipe is a pure function of `(values, size)`. APPLY writes its cells
   through `applyEditRaw` and one `commitStroke`, so one Ctrl+Z undoes it.
 - A module may call `IRSystem.registerSystem`, but the editor places no module
   system in a pipeline yet.
 - Editor source names no module content: `module_loaded` reads its
-  expectations from `<dir>/session_expect.lua`, and `test/module/` is the
-  neutral fixture.
+  expectations from `<dir>/session_expect.lua`. `test/module/` is the neutral
+  fixture; `test/module_cpp_collision/` must exit 2.

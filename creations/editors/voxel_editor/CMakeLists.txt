@@ -33,7 +33,7 @@ add_custom_target(IRVoxelEditorAssets
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${PROJECT_SOURCE_DIR}/engine/render/src/shaders ${IR_VOXEL_EDITOR_RUNTIME_DIR}/shaders
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/test/module ${IR_VOXEL_EDITOR_RUNTIME_DIR}/test/module
+        ${CMAKE_CURRENT_SOURCE_DIR}/test ${IR_VOXEL_EDITOR_RUNTIME_DIR}/test
     DEPENDS
         ${IR_VOXEL_EDITOR_CONFIG_LUA_DST}
 )
@@ -48,7 +48,7 @@ add_custom_target(IRVoxelEditorRun
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${PROJECT_SOURCE_DIR}/engine/render/src/shaders ${IR_VOXEL_EDITOR_RUNTIME_DIR}/shaders
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-        ${CMAKE_CURRENT_SOURCE_DIR}/test/module ${IR_VOXEL_EDITOR_RUNTIME_DIR}/test/module
+        ${CMAKE_CURRENT_SOURCE_DIR}/test ${IR_VOXEL_EDITOR_RUNTIME_DIR}/test
     COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_CURRENT_SOURCE_DIR}/config.lua ${IR_VOXEL_EDITOR_SCRIPTS_DIR}/config.lua
     COMMAND $<TARGET_FILE:IRVoxelEditor>

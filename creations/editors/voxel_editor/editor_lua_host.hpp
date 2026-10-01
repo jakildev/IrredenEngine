@@ -89,7 +89,9 @@ class ModuleHost {
 
     // Runs `<dir>/init.lua` with `<dir>/?.lua` prepended to package.path.
     // Returns false with @p error set on a missing directory or init.lua, or
-    // on any Lua error the module raises while loading.
+    // on any Lua error the module raises while loading — including an
+    // `IRComponent.register` of a name a C++ component already binds, since
+    // the codegen never consumes a module.
     bool load(const std::string &dir, std::string &error) {
         const std::filesystem::path root(dir);
         const std::filesystem::path init = root / "init.lua";
@@ -102,6 +104,7 @@ class ModuleHost {
             return false;
         }
         m_dir = dir;
+        m_script->setCodegenCoexistence(false);
         sol::state &lua = m_script->lua();
         const std::string packagePath = lua["package"]["path"];
         lua["package"]["path"] = (root / "?.lua").string() + ";" + packagePath;

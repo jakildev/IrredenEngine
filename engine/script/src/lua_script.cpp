@@ -530,6 +530,14 @@ void LuaScript::bindLuaDrivenEcs() {
         // CLAUDE.md.
         const IREntity::ComponentId existingCpp = componentIdByLuaName(componentName);
         if (existingCpp != IREntity::kNullComponent) {
+            // The entity manager keys C++ components by their typeid name, so
+            // isComponentRegistered never sees this collision.
+            if (!m_codegenCoexistence) {
+                throw sol::error{
+                    "IRComponent.register: '" + componentName +
+                    "' is already registered as a C++ component"
+                };
+            }
             sol::object existingHandle = m_lua["IRComponent"][componentName];
             if (existingHandle.get_type() == sol::type::table) {
                 return existingHandle;
