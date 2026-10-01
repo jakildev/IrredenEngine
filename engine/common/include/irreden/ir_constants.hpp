@@ -61,6 +61,25 @@ constexpr Distance kTrixelDistanceMaxDistance = 65535;
 /// this value to detect unwritten cells.
 constexpr Distance kPerAxisTrixelDistanceEmpty = std::numeric_limits<Distance>::max();
 
+/// Entity canvases the detached composite draws in one frame, and the default
+/// live-canvas budget the canvas-residency policy holds a world to. Authored
+/// entities may outnumber it: the ones without a canvas render through GRID.
+constexpr int kEntityCanvasLiveBudget = 512;
+/// Entity canvases the residency policy stands up in one frame. Each stands up
+/// textures and a voxel pool, so a camera cut spreads its promotions over
+/// several frames rather than spiking one.
+constexpr int kEntityCanvasPromotionsPerFrame = 8;
+/// Canvas-residency interest region, in iso units beyond the visible viewport.
+/// An entity gains a canvas inside the promote margin and gives it up outside
+/// the demote margin; the gap between them is the hysteresis band that keeps an
+/// entity pacing the boundary from re-creating its canvas every frame.
+constexpr int kEntityCanvasPromoteMarginIso = 48;
+constexpr int kEntityCanvasDemoteMarginIso = 96;
+static_assert(
+    kEntityCanvasDemoteMarginIso > kEntityCanvasPromoteMarginIso,
+    "the demote margin must lie outside the promote margin to form a hysteresis band"
+);
+
 // Voxel pool sizing lives at runtime in
 // engine/render/include/irreden/render/voxel_pool_config.hpp
 // (IRRender::VoxelPoolConfig::getSize / getMaxAllocationSize /

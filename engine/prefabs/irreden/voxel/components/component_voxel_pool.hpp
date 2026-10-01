@@ -68,6 +68,16 @@ struct ChunkWorldBounds {
     }
 };
 
+// One independently posed span of a detached re-voxelize pool: a hosted voxel
+// set resampled into the pool's shared dest lattice under its own rotation and
+// translation, both in the owning canvas's model frame.
+struct VoxelCellGroup {
+    std::size_t start_ = 0;
+    std::size_t count_ = 0;
+    vec4 rotation_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    vec3 translation_ = vec3(0.0f);
+};
+
 struct C_VoxelPool {
   public:
     // Cardinal store tie-possibility signal. TRUE when the single-
@@ -219,8 +229,59 @@ struct C_VoxelPool {
             setTransformIndexForRange(startIndex, size, IRRender::kVoxelTransformStatic);
         }
 
+        // A freed span stops being a cell group in the same call: the pose was
+        // posted earlier this frame, and a group left behind would resample a
+        // set that now lives elsewhere, drawing it twice.
+        std::erase_if(m_cellGroups, [startIndex](const VoxelCellGroup &group) {
+            return group.start_ == startIndex;
+        });
+
         m_freeVoxelSpans.push_back({startIndex, size});
         updateFreeSpanLookup(startIndex, size);
+    }
+
+    // Cell groups of a detached re-voxelize pool. The pose producer clears the
+    // list and posts every hosted set's span and pose once per frame. A pool
+    // that has never been posted to is one implicit group over its whole live
+    // prefix, posed by the canvas rotation; once a group is posted the pool
+    // resamples exactly the posted spans, so a host whose last part left draws
+    // nothing instead of resampling the freed slots.
+    void clearCellGroups() {
+        m_cellGroups.clear();
+    }
+
+    bool hostsCellGroups() const {
+        return m_hostsCellGroups;
+    }
+
+    void postCellGroup(const VoxelCellGroup &group) {
+        IR_ASSERT(
+            group.count_ > 0 &&
+                group.start_ + group.count_ <= static_cast<std::size_t>(m_voxelPoolSize),
+            "postCellGroup out of bounds: start={}, count={}, poolSize={}",
+            group.start_,
+            group.count_,
+            m_voxelPoolSize
+        );
+        const auto position = std::lower_bound(
+            m_cellGroups.begin(),
+            m_cellGroups.end(),
+            group.start_,
+            [](const VoxelCellGroup &existing, std::size_t start) {
+                return existing.start_ < start;
+            }
+        );
+        IR_ASSERT(
+            position == m_cellGroups.end() || position->start_ != group.start_,
+            "postCellGroup: span starting at {} was posted twice this frame",
+            group.start_
+        );
+        m_cellGroups.insert(position, group);
+        m_hostsCellGroups = true;
+    }
+
+    const std::vector<VoxelCellGroup> &getCellGroups() const {
+        return m_cellGroups;
     }
 
     std::vector<IRRender::VoxelGpuPosition> &getPositions() {
@@ -840,6 +901,11 @@ struct C_VoxelPool {
     // into the .w lane of binding 17 (kBufferIndex_LocalVoxelPositions);
     // mirrors `m_pendingPositionRanges`. Empty for static scenes.
     std::vector<std::pair<size_t, size_t>> m_pendingTransformIndexRanges;
+    // Sorted by span start. Capacity is retained across the per-frame clear.
+    std::vector<VoxelCellGroup> m_cellGroups;
+    // Latched by the first posted group: a persistent mode of the pool, the
+    // way `m_staticReVoxelizeBound` is, never cleared per frame.
+    bool m_hostsCellGroups = false;
 
     int m_voxelPoolIndex = 0;
 

@@ -65,6 +65,9 @@
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
+#include <irreden/render/components/component_canvas_part.hpp>
+#include <irreden/render/components/component_canvas_residency.hpp>
+#include <irreden/render/components/component_canvas_residency_settings.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_canvas_target.hpp>
 #include <irreden/render/components/component_color_hsva.hpp>
@@ -189,6 +192,13 @@ IR_SAVE_OPT_OUT(IRComponents::C_LodTierOverride)
 IR_SAVE_OPT_OUT(IRComponents::C_ChunkVisibleThisFrame)
 IR_SAVE_OPT_OUT(IRComponents::C_FrameDataTrixelToFramebuffer)
 IR_SAVE_OPT_OUT(IRComponents::C_CanvasLocalRotation)
+// Composite-canvas membership and residency policy are recreated by creation
+// setup, like the entity canvases they refer to: a canvas is a GPU-backed
+// entity no snapshot restores, so a persisted host id or residency record
+// would describe a canvas that no longer exists.
+IR_SAVE_OPT_OUT(IRComponents::C_CanvasPart)
+IR_SAVE_OPT_OUT(IRComponents::C_CanvasResidency)
+IR_SAVE_OPT_OUT(IRComponents::C_CanvasResidencySettings)
 IR_SAVE_OPT_OUT(IRComponents::C_LayoutState)
 IR_SAVE_OPT_OUT(IRComponents::C_LayoutLeaf)
 IR_SAVE_OPT_OUT(IRComponents::C_ResolvedFields)
@@ -438,6 +448,9 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_ChunkVisibleThisFrame,
     IRComponents::C_FrameDataTrixelToFramebuffer,
     IRComponents::C_CanvasLocalRotation,
+    IRComponents::C_CanvasPart,
+    IRComponents::C_CanvasResidency,
+    IRComponents::C_CanvasResidencySettings,
     IRComponents::C_LayoutState,
     IRComponents::C_LayoutLeaf,
     IRComponents::C_ResolvedFields,

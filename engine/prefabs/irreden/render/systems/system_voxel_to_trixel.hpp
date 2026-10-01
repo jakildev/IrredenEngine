@@ -375,6 +375,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // place of the CPU flushStaticPositionRanges.
     ShaderProgram *revoxelizeProgram_ = nullptr;
     Buffer *revoxelizeParamsBuf_ = nullptr;
+    // CPU staging for the params UBO; only the header and the groups a
+    // dispatch uses are uploaded.
+    RevoxelizeDetachedParams revoxelizeParams_{};
     Buffer *frameDataBuf_ = nullptr;
     Buffer *voxelPosBuf_ = nullptr;
     Buffer *voxelColorBuf_ = nullptr;
@@ -567,31 +570,30 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // flushStaticPositionRanges. Two modes (see RevoxelizeDetachedParams):
     // IDENTITY / source path — one thread per live voxel rotates+rounds
     //     its resident local into binding 5; the CPU still uploads color + active.
-    // INVERSE resample (rotating) — one thread per DEST cell of the
-    //     rotated-AABB cube inverse-looks-up the source grid and authors
-    //     position + color + active for occupied dest slots (hole-free). The
-    //     active-mask window is pre-cleared here so the fill's atomic-OR starts
-    //     from zero; the CPU color/active uploads are skipped by the caller.
+    // INVERSE resample (rotating, or any pool hosting cell groups) — one thread
+    //     per DEST cell of each group's rotated-AABB cube inverse-looks-up that
+    //     group's source grid and authors position + color + active for occupied
+    //     dest slots (hole-free). The active-mask window is pre-cleared here so
+    //     the fill's atomic-OR starts from zero; the CPU color/active uploads
+    //     are skipped by the caller.
     // The SHADER_STORAGE barrier makes the writes visible to the compact +
     // stage-1 reads later in this tick. Returns the dispatch domain size (D dest
     // cells when inverse, else the live source count) so the caller drives the
     // shared compact + frame `voxelCount` from the right slot range.
     int dispatchReVoxelize(
         C_DetachedRevoxelizeBuffer &buffer,
+        const C_VoxelPool &voxelPool,
         const C_CanvasLocalRotation &canvasRotation,
         int liveVoxelCount,
         bool isInverse
     ) {
-        RevoxelizeDetachedParams params{};
-        params.canvasRotation_ = canvasRotation.rotation_;
-        // Half-cell anchor of the authored solid; the inverse resample
-        // maps between anchored points (cell + anchor), not raw lattice cells.
-        params.anchor_ = vec4(buffer.anchor_, 0.0f);
         constexpr int kLocalSize = 64;
 
         if (!isInverse) {
-            params.dest_ = ivec4(liveVoxelCount, 0, 0, 0);
-            revoxelizeParamsBuf_->subData(0, sizeof(RevoxelizeDetachedParams), &params);
+            revoxelizeParams_.canvasRotation_ = canvasRotation.rotation_;
+            revoxelizeParams_.dest_ = ivec4(liveVoxelCount, 0, 0, 0);
+            revoxelizeParamsBuf_
+                ->subData(0, offsetof(RevoxelizeDetachedParams, groups_), &revoxelizeParams_);
 
             revoxelizeProgram_->use();
             voxelPosBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SingleVoxelPositions);
@@ -611,15 +613,21 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             return liveVoxelCount;
         }
 
-        const int destCount = buffer.destCount_;
-        params.dest_ = ivec4(destCount, buffer.destSide_, buffer.destCenter_, 1);
-        params.srcGridMin_ = ivec4(buffer.sourceGridMin_, 0);
-        params.srcGridDims_ = ivec4(buffer.sourceGridDims_, 0);
-        revoxelizeParamsBuf_->subData(0, sizeof(RevoxelizeDetachedParams), &params);
+        // The implicit single group rides the canvas pose; posted groups carry
+        // their own. The seeds were built from this same span list in beginTick.
+        const std::vector<VoxelCellGroup> &posted = voxelPool.getCellGroups();
+        const bool explicitGroups = voxelPool.hostsCellGroups();
+        IR_ASSERT(
+            buffer.groups_.size() == (explicitGroups ? posted.size() : std::size_t{1}),
+            "re-voxelize group seeds ({}) do not match the pool's cell groups ({})",
+            buffer.groups_.size(),
+            explicitGroups ? posted.size() : std::size_t{1}
+        );
 
         // Pre-clear the active-mask window the fill atomic-ORs onto (empty dest
         // cells must read back inactive). The upload precedes the dispatch in the
         // command stream, so the clear lands before the fill's atomic writes.
+        const int destCount = buffer.destCount_;
         const int activeWords = IRMath::divCeil(destCount, static_cast<int>(kVoxelActiveMaskBits));
         if (static_cast<int>(activeMaskClearScratch_.size()) < activeWords) {
             activeMaskClearScratch_.resize(activeWords, 0u);
@@ -630,21 +638,55 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             activeMaskClearScratch_.data()
         );
 
-        revoxelizeProgram_->use();
-        voxelPosBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SingleVoxelPositions);
-        voxelColorBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SingleVoxelColors);
-        voxelActiveMaskBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_VoxelActiveMask);
-        buffer.sourceGrid_.second->bindBase(
-            BufferTarget::SHADER_STORAGE,
-            kBufferIndex_RevoxelizeSourceGrid
-        );
-        revoxelizeParamsBuf_->bindBase(
-            BufferTarget::UNIFORM,
-            kBufferIndex_RevoxelizeDetachedParams
-        );
+        const int groupCount = static_cast<int>(buffer.groups_.size());
+        for (int first = 0; first < groupCount; first += kRevoxelizeGroupsPerDispatch) {
+            const int batch = IRMath::min(kRevoxelizeGroupsPerDispatch, groupCount - first);
+            for (int k = 0; k < batch; ++k) {
+                const RevoxelizeGroupSeed &seed = buffer.groups_[first + k];
+                const vec4 rotation =
+                    explicitGroups ? posted[first + k].rotation_ : canvasRotation.rotation_;
+                const vec3 translation = explicitGroups ? posted[first + k].translation_ : vec3(0);
+                revoxelizeParams_.groups_[k] = IRPrefab::DetachedRevoxelize::groupParams(
+                    seed,
+                    rotation,
+                    translation,
+                    buffer.anchor_
+                );
+            }
+            const RevoxelizeGroupSeed &firstSeed = buffer.groups_[first];
+            const RevoxelizeGroupSeed &lastSeed = buffer.groups_[first + batch - 1];
+            const int batchSlots = lastSeed.destSlotBase_ +
+                                   lastSeed.destSide_ * lastSeed.destSide_ * lastSeed.destSide_ -
+                                   firstSeed.destSlotBase_;
+            revoxelizeParams_.canvasRotation_ = canvasRotation.rotation_;
+            revoxelizeParams_.dest_ = ivec4(batchSlots, batch, firstSeed.destSlotBase_, 1);
+            revoxelizeParams_.phase_ = vec4(buffer.anchor_, 0.0f);
+            revoxelizeParamsBuf_->subData(
+                0,
+                offsetof(RevoxelizeDetachedParams, groups_) +
+                    static_cast<std::size_t>(batch) * sizeof(RevoxelizeGroupParams),
+                &revoxelizeParams_
+            );
 
-        const ivec2 grid = voxelDispatchGridForCount(IRMath::divCeil(destCount, kLocalSize));
-        IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
+            revoxelizeProgram_->use();
+            voxelPosBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SingleVoxelPositions);
+            voxelColorBuf_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SingleVoxelColors);
+            voxelActiveMaskBuf_->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_VoxelActiveMask
+            );
+            buffer.sourceGrid_.second->bindBase(
+                BufferTarget::SHADER_STORAGE,
+                kBufferIndex_RevoxelizeSourceGrid
+            );
+            revoxelizeParamsBuf_->bindBase(
+                BufferTarget::UNIFORM,
+                kBufferIndex_RevoxelizeDetachedParams
+            );
+
+            const ivec2 grid = voxelDispatchGridForCount(IRMath::divCeil(batchSlots, kLocalSize));
+            IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
+        }
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
         return destCount;
     }
@@ -1448,12 +1490,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // position + color + active for those slots, so the shared compact + frame
         // `voxelCount` walk D dest slots (not the source count) and the CPU
         // color/active uploads below are skipped. At identity, the source path
-        // runs and preserves the non-rotating output.
+        // runs and preserves the non-rotating output — except for a pool
+        // hosting cell groups, whose sets are posed independently of the canvas
+        // rotation and so always resample.
         C_DetachedRevoxelizeBuffer *revoxBuffer =
             canvasLocalRotation.reVoxelize_ ? lookupDetachedRevoxelizeBuffer(entity) : nullptr;
         const bool revoxInverse = revoxBuffer != nullptr && revoxBuffer->isAllocated() &&
                                   revoxBuffer->destCount_ > 0 &&
-                                  canvasLocalRotation.rotation_ != vec4(0.0f, 0.0f, 0.0f, 1.0f);
+                                  (voxelPool.hostsCellGroups() ||
+                                   canvasLocalRotation.rotation_ != vec4(0.0f, 0.0f, 0.0f, 1.0f));
         const int effectiveVoxelCount = revoxInverse ? revoxBuffer->destCount_ : liveVoxelCount;
         frameData_.voxelCount_ = effectiveVoxelCount;
         const bool sourceFaceDisplay =
@@ -1707,9 +1752,19 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 // Every frame, since the quat changes. Mark this canvas as the last
                 // uploader so a later switch to a CPU-owned canvas re-seeds binding
                 // 5 from its mirror, and drop any (empty) pending ranges.
-                dispatchReVoxelize(*revoxBuffer, canvasLocalRotation, liveVoxelCount, revoxInverse);
+                dispatchReVoxelize(
+                    *revoxBuffer,
+                    voxelPool,
+                    canvasLocalRotation,
+                    liveVoxelCount,
+                    revoxInverse
+                );
                 voxelPool.clearPendingPositionRanges();
                 lastUploadedCanvas_ = entity;
+                // One group authors unique integer dest cells, so no cardinal
+                // tie is representable. Two groups can author the same cell
+                // from different slots wherever their solids interpenetrate.
+                voxelPool.storeTiesPossible_ = revoxInverse && revoxBuffer->groups_.size() > 1;
             } else if (lastUploadedCanvas_ != entity) {
                 // Re-seed only static-transform voxel runs so the GPU-prepass
                 // output (UPDATE_VOXEL_POSITIONS_GPU, binding 5) is preserved
@@ -1724,9 +1779,6 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 lastUploadedCanvas_ = entity;
                 // the re-seed is a position-content change for this
                 // canvas — refresh the pool's cardinal tie-possibility signal.
-                // (The re-voxelize branch above is exempt by construction: its
-                // GPU fill authors integer DEST cells, which are unique — no
-                // cardinal tie is representable there.)
                 recomputeStoreTiesPossible(voxelPool, liveVoxelCount, tieScanCellScratch_);
             } else {
                 const bool positionsChanged = !voxelPool.getPendingPositionRanges().empty();

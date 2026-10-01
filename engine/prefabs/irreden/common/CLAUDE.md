@@ -43,7 +43,9 @@ also update `C_WorldTransform`, because propagation has already run.
 - `DETACHED_REVOXELIZE`: a private pool rebuilt at rotated cell positions.
 
 `IRPrefab::Prefab::spawnPrefab` attaches the mode. Runtime changes go through
-`IRPrefab::RotationMode::setMode`; never mutate the component directly.
+`IRPrefab::RotationMode::setMode`; never mutate the component directly. On a
+canvas part (`C_CanvasPart`) the call also leaves the host; a host's parts
+follow its mode (hosted while it re-voxelizes, GRID otherwise).
 `IRPrefab::RotationMode::ownsEntityCanvas` is authoritative for canvas
 lifecycle. Adding a mode also requires classifying it explicitly in
 `PROPAGATE_CANVAS_ROTATION`. Non-prefab entities without `C_RotationMode` are

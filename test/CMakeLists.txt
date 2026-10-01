@@ -77,7 +77,11 @@ add_executable(IrredenEngineTest
   render/camera_mouse_rotate_reset_test.cpp
   render/camera_pan_pivot_test.cpp
   render/camera_yaw_test.cpp
+  render/canvas_part_test.cpp
+  render/canvas_residency_test.cpp
+  render/canvas_rotation_test.cpp
   render/default_pivot_latch_test.cpp
+  render/detached_revoxelize_groups_test.cpp
   render/detached_world_depth_test.cpp
   render/entity_canvas_hitbox_test.cpp
   render/entity_id_carrier_test.cpp

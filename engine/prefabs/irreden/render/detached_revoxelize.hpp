@@ -21,6 +21,7 @@
 #include <irreden/voxel/grid_rotation.hpp>
 #include <irreden/voxel/face_occupancy.hpp>
 
+#include <cstddef>
 #include <cstdint>
 #include <span>
 #include <unordered_set>
@@ -67,53 +68,30 @@ inline void recomputeSourceFaceOccupancy(
     );
 }
 
-// Seed (or re-seed) the per-pool GPU buffers the re-voxelize fill reads, from
-// the pool's RIGID authored locals + per-voxel offsets, composed exactly as the
-// CPU worldCellForGridVoxel does before it rotates (`composed = local + offset`).
-// Runs once per (re)seed — the locals are rigid, so this is the "GPU owns ongoing
-// state, CPU mirror is a one-shot seed" pattern (.claude/rules/cpp-ecs.md), NOT a
-// per-frame upload. Seeds three things:
-//   1. residentLocals_ — one vec4 per voxel (.xyz = composed) for the IDENTITY
-// fast-path fill (slot == source voxel).
-//   2. sourceGrid_ — the dense 3D occupancy+color grid the INVERSE resample
-// inverse-looks-up: three uints per source cell ({colorPacked,
-//      materialFlagBone, reserved}), keyed by `roundHalfUp(composed) - gridMin`.
-//      The third lane carries C_Voxel::reserved_ (per-trixel priority tier),
-//      so a ROTATING re-voxelize unit preserves it like a static
-//      one — the GPU-side inverse fill authored color without it before, so a
-//      spinning detached solid lost its per-trixel depth priority.
-//   3. the rotation-independent dest-AABB cube bound (destSide_/destCenter_/
-//      destCount_) the inverse fill dispatches + the shared compact walks.
-inline void seedResidentLocals(
-    IRComponents::C_DetachedRevoxelizeBuffer &buffer, IRComponents::C_VoxelPool &pool, int liveCount
+// Seed one cell group from the pool span [start, start + count): scan its
+// composed locals for the integer source cells, the source-grid bounds, the
+// origin-centered radius and the half-cell anchor. The per-axis half-cell
+// anchor (GridRotation::halfCellAnchor: -0.5 on even-sized centered axes, 0 on
+// odd) is uniform across a rigid set — integer authored locals plus ONE shared
+// center-around-origin offset — asserted per voxel so non-uniform authoring
+// fails loudly instead of rendering shifted. @p cells receives the span's
+// source cells for the grid fill that follows.
+inline IRComponents::RevoxelizeGroupSeed scanGroupSpan(
+    const IRComponents::C_VoxelPool &pool,
+    std::size_t start,
+    std::size_t count,
+    std::vector<IRMath::ivec3> &cells
 ) {
     const std::vector<IRRender::VoxelGpuPosition> &locals = pool.getPositions();
     const std::vector<IRMath::vec3> &offsets = pool.getPositionOffsets();
-    const std::vector<IRComponents::C_Voxel> &colors = pool.getColors();
-    IR_ASSERT(
-        static_cast<int>(locals.size()) >= liveCount &&
-            static_cast<int>(offsets.size()) >= liveCount,
-        "DetachedRevoxelize: pool locals/offsets smaller than liveCount — pool corruption?"
-    );
-    const int n =
-        IRMath::min(liveCount, static_cast<int>(IRMath::min(locals.size(), offsets.size())));
-
-    // Resident composed locals (identity fast-path) + per-voxel integer cell and
-    // origin-centered bound scan for the inverse grid / dest cube. The per-axis
-    // half-cell anchor (GridRotation::halfCellAnchor: -0.5 on even-sized
-    // centered axes, 0 on odd) is uniform across the pool — integer authored
-    // locals plus ONE shared center-around-origin offset — asserted per voxel so
-    // non-uniform authoring fails loudly instead of rendering shifted.
-    std::vector<IRMath::vec4> staging(static_cast<std::size_t>(n));
-    std::vector<IRMath::ivec3> cells(static_cast<std::size_t>(n));
     constexpr int kBig = 1 << 30;
     IRMath::ivec3 gridMin(kBig, kBig, kBig);
     IRMath::ivec3 gridMax(-kBig, -kBig, -kBig);
     float maxRadius = 0.0f;
     IRMath::vec3 anchor(0.0f);
-    for (int i = 0; i < n; ++i) {
-        const IRMath::vec3 composed = locals[i].pos_ + offsets[i];
-        staging[i] = IRMath::vec4(composed, 0.0f);
+    cells.resize(count);
+    for (std::size_t i = 0; i < count; ++i) {
+        const IRMath::vec3 composed = locals[start + i].pos_ + offsets[start + i];
         const IRMath::ivec3 cell = IRMath::ivec3(IRMath::roundVec3HalfUp(composed));
         cells[i] = cell;
         gridMin = IRMath::min(gridMin, cell);
@@ -133,17 +111,138 @@ inline void seedResidentLocals(
             residual.x, residual.y, residual.z, anchor.x, anchor.y, anchor.z
         );
     }
-    buffer.anchor_ = anchor;
+
+    IRComponents::RevoxelizeGroupSeed seed{};
+    seed.spanStart_ = start;
+    seed.spanCount_ = count;
+    seed.gridMin_ = gridMin;
+    seed.gridDims_ = gridMax - gridMin + IRMath::ivec3(1, 1, 1);
+    seed.anchor_ = anchor;
+    // Dest cube: enclose the rotated solid under ANY rotation. Rotation
+    // preserves length, so the farthest authored corner (maxRadius) bounds
+    // every rotated coordinate. Rotation-independent — computed once, valid for
+    // every spin pose.
+    seed.destCenter_ = static_cast<int>(IRMath::ceil(maxRadius));
+    seed.destSide_ = 2 * seed.destCenter_ + 1;
+    return seed;
+}
+
+// The pool spans a re-voxelize fill resamples: the posted cell groups, or one
+// implicit group over the live prefix for a pool that never hosted any.
+inline void collectGroupSpans(
+    const IRComponents::C_VoxelPool &pool,
+    int liveCount,
+    std::vector<std::pair<std::size_t, std::size_t>> &spans
+) {
+    spans.clear();
+    if (!pool.hostsCellGroups()) {
+        if (liveCount > 0) {
+            spans.emplace_back(0u, static_cast<std::size_t>(liveCount));
+        }
+        return;
+    }
+    for (const IRComponents::VoxelCellGroup &group : pool.getCellGroups()) {
+        spans.emplace_back(group.start_, group.count_);
+    }
+}
+
+// True when @p buffer was seeded from exactly @p spans. The span set changes
+// only when a hosted set joins or leaves the pool, so a steady pool never
+// re-seeds.
+inline bool seededFromSpans(
+    const IRComponents::C_DetachedRevoxelizeBuffer &buffer,
+    const std::vector<std::pair<std::size_t, std::size_t>> &spans
+) {
+    if (buffer.groups_.size() != spans.size()) {
+        return false;
+    }
+    for (std::size_t i = 0; i < spans.size(); ++i) {
+        if (buffer.groups_[i].spanStart_ != spans[i].first ||
+            buffer.groups_[i].spanCount_ != spans[i].second) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// Seed (or re-seed) the per-pool GPU buffers the re-voxelize fill reads, from
+// the pool's RIGID authored locals + per-voxel offsets, composed exactly as the
+// CPU worldCellForGridVoxel does before it rotates (`composed = local + offset`).
+// Runs once per (re)seed — the locals are rigid, so this is the "GPU owns ongoing
+// state, CPU mirror is a one-shot seed" pattern (.claude/rules/cpp-ecs.md), NOT a
+// per-frame upload. Seeds three things:
+//   1. residentLocals_ — one vec4 per voxel (.xyz = composed) for the IDENTITY
+// fast-path fill (slot == source voxel).
+//   2. sourceGrid_ — per cell group, the dense 3D occupancy+color grid the
+//      INVERSE resample inverse-looks-up: three uints per source cell
+//      ({colorPacked, materialFlagBone, reserved}), keyed by
+//      `roundHalfUp(composed) - gridMin`. The third lane carries
+//      C_Voxel::reserved_ (per-trixel priority tier), so a ROTATING re-voxelize
+//      unit preserves it like a static one — the GPU-side inverse fill authored
+//      color without it before, so a spinning detached solid lost its
+//      per-trixel depth priority.
+//   3. the rotation-independent dest cube of each group and the contiguous
+//      dest-slot range it fills; their total is what the inverse fill
+//      dispatches + the shared compact walks.
+inline void seedResidentLocals(
+    IRComponents::C_DetachedRevoxelizeBuffer &buffer,
+    IRComponents::C_VoxelPool &pool,
+    int liveCount,
+    const std::vector<std::pair<std::size_t, std::size_t>> &spans
+) {
+    const std::vector<IRRender::VoxelGpuPosition> &locals = pool.getPositions();
+    const std::vector<IRMath::vec3> &offsets = pool.getPositionOffsets();
+    const std::vector<IRComponents::C_Voxel> &colors = pool.getColors();
+    IR_ASSERT(
+        static_cast<int>(locals.size()) >= liveCount &&
+            static_cast<int>(offsets.size()) >= liveCount,
+        "DetachedRevoxelize: pool locals/offsets smaller than liveCount — pool corruption?"
+    );
+    const int n =
+        IRMath::min(liveCount, static_cast<int>(IRMath::min(locals.size(), offsets.size())));
+
+    std::vector<IRMath::vec4> staging(static_cast<std::size_t>(n));
+    for (int i = 0; i < n; ++i) {
+        staging[i] = IRMath::vec4(locals[i].pos_ + offsets[i], 0.0f);
+    }
     buffer.residentLocals_.second
         ->subData(0, static_cast<std::size_t>(n) * sizeof(IRMath::vec4), staging.data());
 
-    // Source occupancy+color grid (inverse resample). Dims = source local AABB;
-    // three uints per cell ({colorPacked, materialFlagBone, reserved}), zero =
-    // empty (alpha byte 0). (Re)allocate only when the cell count grows past the
-    // high-water capacity so a re-seed never shrinks.
-    const IRMath::ivec3 dims =
-        (n > 0) ? (gridMax - gridMin + IRMath::ivec3(1, 1, 1)) : IRMath::ivec3(0, 0, 0);
-    const int cellCount = (n > 0) ? dims.x * dims.y * dims.z : 0;
+    // Scan every group first: the concatenated grid is sized from all of them.
+    const bool explicitGroups = pool.hostsCellGroups();
+    std::vector<std::vector<IRMath::ivec3>> groupCells(spans.size());
+    buffer.groups_.clear();
+    buffer.groups_.reserve(spans.size());
+    int cellCount = 0;
+    int destCount = 0;
+    for (std::size_t g = 0; g < spans.size(); ++g) {
+        const std::size_t start = spans[g].first;
+        const std::size_t live = static_cast<std::size_t>(n);
+        const std::size_t count = start < live ? IRMath::min(spans[g].second, live - start) : 0u;
+        IRComponents::RevoxelizeGroupSeed seed = scanGroupSpan(pool, start, count, groupCells[g]);
+        // A hosted set rotates about its own entity origin. An off-center set
+        // would orbit that origin instead of spinning in place; the implicit
+        // single group is checked by REBUILD_DETACHED_VOXELS before it seeds
+        // the cull bound.
+        IR_ASSERT(
+            !explicitGroups ||
+                IRPrefab::GridRotation::poolIsOriginCentered(
+                    static_cast<int>(count),
+                    [&](int i) { return locals[start + i].pos_ + offsets[start + i]; }
+                ),
+            "DetachedRevoxelize: the hosted voxel set at span {} is not centered on its "
+            "entity origin. Author canvas parts CENTER.",
+            start
+        );
+        seed.gridWordBase_ = cellCount * 3;
+        seed.destSlotBase_ = destCount;
+        cellCount += seed.gridDims_.x * seed.gridDims_.y * seed.gridDims_.z;
+        destCount += seed.destSide_ * seed.destSide_ * seed.destSide_;
+        buffer.groups_.push_back(seed);
+    }
+
+    // (Re)allocate only when the cell count grows past the high-water capacity
+    // so a re-seed never shrinks.
     if (cellCount > buffer.sourceGridCellCapacity_) {
         if (buffer.sourceGrid_.second != nullptr) {
             IRRender::destroyResource<IRRender::Buffer>(buffer.sourceGrid_.first);
@@ -157,66 +256,92 @@ inline void seedResidentLocals(
         );
         buffer.sourceGridCellCapacity_ = cellCount;
     }
+    // Zero = empty (alpha byte 0).
     std::vector<std::uint32_t> grid(static_cast<std::size_t>(cellCount) * 3, 0u);
-    const int m = IRMath::min(n, static_cast<int>(colors.size()));
-    for (int i = 0; i < m; ++i) {
-        const IRMath::ivec3 g = cells[i] - gridMin;
-        const int li = g.x + dims.x * (g.y + dims.y * g.z);
-        const IRComponents::C_Voxel &v = colors[i];
-        grid[static_cast<std::size_t>(li) * 3] = v.color_.toPackedRGBA();
-        grid[static_cast<std::size_t>(li) * 3 + 1] =
-            static_cast<std::uint32_t>(v.material_id_) |
-            (static_cast<std::uint32_t>(v.flags_) << 8) |
-            (static_cast<std::uint32_t>(v.bone_id_) << 16) |
-            (static_cast<std::uint32_t>(v.layer_id_) << 24);
-        // Third lane mirrors the full C_Voxel::reserved_ word (per-trixel
-        // priority in bits[1:0]) so MODE 1's GPU-authored dest record carries it
-        // exactly like the static binding-6 upload does.
-        grid[static_cast<std::size_t>(li) * 3 + 2] = v.reserved_;
+    for (std::size_t g = 0; g < buffer.groups_.size(); ++g) {
+        const IRComponents::RevoxelizeGroupSeed &seed = buffer.groups_[g];
+        const std::size_t m = IRMath::min(
+            seed.spanCount_,
+            colors.size() - IRMath::min(seed.spanStart_, colors.size())
+        );
+        for (std::size_t i = 0; i < m; ++i) {
+            const IRMath::ivec3 cell = groupCells[g][i] - seed.gridMin_;
+            const std::size_t word =
+                static_cast<std::size_t>(seed.gridWordBase_) +
+                static_cast<std::size_t>(
+                    cell.x + seed.gridDims_.x * (cell.y + seed.gridDims_.y * cell.z)
+                ) * 3;
+            const IRComponents::C_Voxel &v = colors[seed.spanStart_ + i];
+            grid[word] = v.color_.toPackedRGBA();
+            grid[word + 1] = static_cast<std::uint32_t>(v.material_id_) |
+                             (static_cast<std::uint32_t>(v.flags_) << 8) |
+                             (static_cast<std::uint32_t>(v.bone_id_) << 16) |
+                             (static_cast<std::uint32_t>(v.layer_id_) << 24);
+            // Third lane mirrors the full C_Voxel::reserved_ word (per-trixel
+            // priority in bits[1:0]) so MODE 1's GPU-authored dest record
+            // carries it exactly like the static binding-6 upload does.
+            grid[word + 2] = v.reserved_;
+        }
     }
     if (cellCount > 0) {
         buffer.sourceGrid_.second->subData(0, grid.size() * sizeof(std::uint32_t), grid.data());
     }
-    buffer.sourceGridMin_ = gridMin;
-    buffer.sourceGridDims_ = dims;
 
-    // Dest-AABB cube: enclose the rotated solid under ANY rotation. Rotation
-    // preserves length, so the farthest authored corner (maxRadius) bounds every
-    // rotated coordinate; the cube [-center, +center]³ holds them all. This is
-    // rotation-independent — computed once, valid for every spin pose. The
-    // anchored map does NOT grow the cube: an anchored axis's dest
-    // cells span the same 2·center+1 count shifted +1 cell, which the kernels
-    // fold into the slot->cell decode per axis (see revoxDestDecodeShift in
-    // c_revoxelize_detached.{glsl,metal}) instead of paying a symmetric grow
-    // (a +1 on center costs 11-46% more dispatch/clear/compact work).
-    const int center = (n > 0) ? static_cast<int>(IRMath::ceil(maxRadius)) : 0;
-    buffer.destCenter_ = center;
-    buffer.destSide_ = 2 * center + 1;
-    const int rawDestCount = (n > 0) ? (buffer.destSide_ * buffer.destSide_ * buffer.destSide_) : 0;
     const int maxAllocSize = IRRender::VoxelPoolConfig::getMaxAllocationSizeTotal();
     IR_ASSERT(
-        rawDestCount <= maxAllocSize,
-        "re-voxelize dest cube {} exceeds shared voxel buffer capacity {} — "
+        destCount <= maxAllocSize,
+        "re-voxelize dest cubes {} exceed shared voxel buffer capacity {} — "
         "a private worst-case-sized pool is needed (see #1619 architect note)",
-        rawDestCount,
+        destCount,
         maxAllocSize
     );
-    buffer.destCount_ = rawDestCount;
-
+    buffer.destCount_ = destCount;
+    buffer.anchor_ = buffer.groups_.empty() ? IRMath::vec3(0.0f) : buffer.groups_.front().anchor_;
     buffer.seededVoxelCount_ = liveCount;
 }
 
 } // namespace detail
 
+// First dest cell, per axis, of the cube that holds a group of radius
+// `destCenter` translated by @p translation, on a lattice whose cells sit at
+// `cell + phase`. A point p = cell + phase - translation belongs to the group
+// when |p| <= destCenter, so the covered cells are
+// [ceil(u - destCenter), floor(u + destCenter)] with u = translation - phase —
+// at most `2·destCenter + 1` of them starting here. With no translation this
+// is `-destCenter` on an un-anchored axis and one cell higher on an anchored
+// (phase -0.5) one, which keeps the anchored axes at zero dispatch growth.
+inline IRMath::ivec3 destWindowBase(IRMath::vec3 translation, IRMath::vec3 phase, int destCenter) {
+    return IRMath::ivec3(IRMath::ceil(translation - phase)) - IRMath::ivec3(destCenter);
+}
+
+// GPU descriptor of one cell group at this frame's pose. @p phase is the
+// canvas lattice phase every group of the pool rasters on.
+inline IRRender::RevoxelizeGroupParams groupParams(
+    const IRComponents::RevoxelizeGroupSeed &seed,
+    IRMath::vec4 rotation,
+    IRMath::vec3 translation,
+    IRMath::vec3 phase
+) {
+    IRRender::RevoxelizeGroupParams params{};
+    params.rotation_ = rotation;
+    params.destOffset_ = IRMath::vec4(phase - translation, 0.0f);
+    params.anchor_ = IRMath::vec4(seed.anchor_, 0.0f);
+    params.destBase_ =
+        IRMath::ivec4(destWindowBase(translation, phase, seed.destCenter_), seed.destSide_);
+    params.srcGridMin_ = IRMath::ivec4(seed.gridMin_, seed.destSlotBase_);
+    params.srcGridDims_ = IRMath::ivec4(seed.gridDims_, seed.gridWordBase_);
+    return params;
+}
+
 // Allocate + seed the resident locals SSBO for every DETACHED_REVOXELIZE canvas,
 // and report the live {canvasEntity, &buffer} set into @p out (cleared first) for
 // VOXEL_TO_TRIXEL_STAGE_1's per-entity tick to dispatch against. Idempotent and
 // once-per-frame: a steady pool allocates + seeds on the first frame and is a
-// pure report thereafter (seededVoxelCount_ already matches liveCount). A pool
-// mutation (live-count change) triggers a re-seed; the buffer itself is sized to
-// the pool capacity once, so a re-seed never reallocates. Skips non-re-voxelize
-// canvases (the main world canvas and forward-scatter detached canvases keep the
-// CPU pending-range flush). Called once per frame from
+// pure report thereafter. A pool mutation — a live-count change, or a hosted
+// set joining or leaving — triggers a re-seed; the locals buffer itself is
+// sized to the pool capacity once, so a re-seed never reallocates it. Skips
+// non-re-voxelize canvases (the main world canvas and forward-scatter detached
+// canvases keep the CPU pending-range flush). Called once per frame from
 // VOXEL_TO_TRIXEL_STAGE_1::beginTick.
 inline void syncResidentBuffers(
     std::vector<std::pair<IREntity::EntityId, IRComponents::C_DetachedRevoxelizeBuffer *>> *out
@@ -234,6 +359,7 @@ inline void syncResidentBuffers(
             IRComponents::C_DetachedRevoxelizeBuffer>()
     );
 
+    std::vector<std::pair<std::size_t, std::size_t>> spans;
     for (IREntity::ArchetypeNode *node : nodes) {
         std::vector<IRComponents::C_CanvasLocalRotation> &rotations =
             IREntity::getComponentData<IRComponents::C_CanvasLocalRotation>(node);
@@ -269,12 +395,13 @@ inline void syncResidentBuffers(
                 buffer.seededVoxelCount_ = -1;
             }
 
-            // Seed once; re-seed only when the live count changes (pool mutation),
+            // Seed once; re-seed only when the pool's hosted spans change,
             // never per frame — a per-frame re-seed would revert the path to
             // O(authored voxels), the exact trap the resource model exists to
             // avoid.
-            if (buffer.seededVoxelCount_ != liveCount) {
-                detail::seedResidentLocals(buffer, pool, liveCount);
+            detail::collectGroupSpans(pool, liveCount, spans);
+            if (buffer.seededVoxelCount_ != liveCount || !detail::seededFromSpans(buffer, spans)) {
+                detail::seedResidentLocals(buffer, pool, liveCount, spans);
             }
 
             if (out != nullptr) {
