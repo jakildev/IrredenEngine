@@ -14,6 +14,7 @@
 
 #include <irreden/common/components/component_local_transform_lua.hpp>
 #include <irreden/common/modifier.hpp>
+#include <irreden/voxel/components/component_voxel_set_lua.hpp>
 
 // Prefab-system specializations — must be visible at the
 // `registerPrefabSystem<N>()` call sites so `System<N>::create()` can
@@ -22,14 +23,16 @@
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
+#include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/render/systems/system_debug_overlay.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
+#include <irreden/render/systems/system_voxel_to_trixel.hpp>
 
 namespace {
 
 constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, vec2(0, 0), 0.0f, "lua_pipeline_demo_zoom1"},
+    {4.0f, vec2(0, 0), 0.0f, "lua_pipeline_demo_zoom4"},
 };
 
 void registerLuaBindings() {
@@ -41,7 +44,14 @@ void registerLuaBindings() {
 
         // Component pack: bind C_LocalTransform so the Lua-defined system
         // can read it via `arch.C_LocalTransform:at(i)`.
-        script.registerTypeFromTraits<IRComponents::C_LocalTransform>();
+        script.registerType<IRMath::Color, IRMath::Color(int, int, int, int)>("Color");
+        script.registerType<IRMath::ivec3, IRMath::ivec3(int, int, int)>("ivec3");
+        script.registerType<IRMath::vec3, IRMath::vec3(float, float, float)>("vec3");
+        script
+            .registerTypesFromTraits<IRComponents::C_LocalTransform, IRComponents::C_VoxelSetNew>();
+        script.registerCreateEntityFunction<
+            IRComponents::C_LocalTransform,
+            IRComponents::C_VoxelSetNew>("createVoxelEntity");
 
         // Make every prefab system the demo wants to compose into
         // pipelines available to Lua via `IRSystem.systemId(SystemName.X)`.
@@ -49,6 +59,8 @@ void registerLuaBindings() {
             IRSystem::INPUT_KEY_MOUSE,
             IRSystem::LIFETIME,
             IRSystem::PROPAGATE_TRANSFORM,
+            IRSystem::UPDATE_VOXEL_SET_CHILDREN,
+            IRSystem::VOXEL_TO_TRIXEL_STAGE_1,
             IRSystem::TRIXEL_TO_FRAMEBUFFER,
             // Flushes the IRDebug.* draws main.lua issues.
             IRSystem::DEBUG_OVERLAY,

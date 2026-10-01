@@ -141,6 +141,16 @@ C++ declares nameable prefab systems with `registerPrefabSystems` or
 
 ## Engine service bindings
 
+### IRAsset and voxel authoring
+
+Registering the `C_VoxelSetNew` Lua trait installs
+`IRAsset.loadVoxelSet(path[, anchor[, targetCanvas]])` and the integer-backed
+`IRShape` primitive table. The loader accepts DENSE `.vxs` assets and returns a
+component value for a creation's typed entity-construction function; it does
+not create an entity or route through `Prefab.spawn`. The default anchor is
+`CENTER`. Voxel mutations are main-thread setup operations, not
+`PARALLEL_FOR` tick operations.
+
 ### IRFog
 
 `LuaScript::bindLuaFog()` installs the opt-in engine table, preserves custom

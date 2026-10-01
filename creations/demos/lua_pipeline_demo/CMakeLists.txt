@@ -4,7 +4,14 @@ add_executable(IRLuaPipelineDemo main_lua.cpp)
 target_link_libraries(IRLuaPipelineDemo PUBLIC IrredenEngine)
 
 # Exe-relative runtime layout (data/ shaders/ scripts/ + Windows DLLs).
-irreden_bundle_assets(IRLuaPipelineDemo SCRIPTS main.lua config.lua)
+irreden_bundle_assets(
+    IRLuaPipelineDemo
+    SCRIPTS
+        main.lua
+        config.lua
+        scripts/procedural_voxel_recipe.lua
+        scripts/tests/procedural_voxel_recipe_test.lua
+)
 
 add_custom_target(IRLuaPipelineDemoRun
     COMMAND $<TARGET_FILE:IRLuaPipelineDemo>

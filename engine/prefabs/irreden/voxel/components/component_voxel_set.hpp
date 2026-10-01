@@ -266,10 +266,16 @@ struct C_VoxelSetNew {
         ivec3 boundsMin,
         ivec3 boundsMax,
         std::span<const C_Voxel> voxels,
+        EntityAnchor anchor = EntityAnchor::CORNER,
         IREntity::EntityId targetCanvas = IREntity::kNullEntity
     )
         : numVoxels_{0}
-        , size_{boundsMax - boundsMin} {
+        , size_{boundsMax - boundsMin}
+        , anchor_{anchor} {
+        IR_ASSERT(
+            anchor >= EntityAnchor::kFirst && anchor <= EntityAnchor::kLast,
+            "C_VoxelSetNew: EntityAnchor out of range"
+        );
         canvasEntity_ = targetCanvas != IREntity::kNullEntity
                             ? targetCanvas
                             : IRPrefab::VoxelPool::activeCanvasEntityOrNull();
@@ -294,9 +300,11 @@ struct C_VoxelSetNew {
             return;
         }
 
-        // Dense-authored content is CORNER by construction — its origin IS the
-        // authored boundsMin — so the integer origin is exact here.
-        seedIntoPool(vec3(boundsMin), voxels, canvasEntity_);
+        // Preserve the asset's authored origin for CORNER; semantic anchors
+        // intentionally recenter the dense extent like the allocating ctor.
+        const vec3 origin =
+            anchor == EntityAnchor::CORNER ? vec3(boundsMin) : anchorOffset(anchor, size_);
+        seedIntoPool(origin, voxels, canvasEntity_);
         IRE_LOG_DEBUG("Allocated {} dense voxel(s) from voxel_ref", numVoxels_);
     }
 
