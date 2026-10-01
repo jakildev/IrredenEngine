@@ -173,8 +173,13 @@ overflow branch forces `color.a = 1`. A translucent voxel that reaches the scree
 overflow lane (not its cardinal cell's store winner, camera off-cardinal)
 renders opaque there. Its cell-path fragments keep their alpha.
 
-**Binding.** No new permanent binding. The reserved mask region, ctrl block,
-and overflow entries ride `kBufferIndex_PerAxisResolveScratch` — the
+**Binding.** No new permanent binding. The winner region, ctrl block,
+and overflow entries ride `kBufferIndex_PerAxisResolveScratch`. The control
+block follows the winner region's 256-byte alignment padding directly; no
+view-mask storage is allocated. `PerAxisCanvasStore::scratchLayoutFor` owns
+the offsets, and `overflowScratchLayout()` publishes them to store, sort,
+lighting and fog consumers. The uniform's reserved `.x` word stays zero.
+The binding keeps the
 same transient per-axis-window reuse #2255's winner-id scratch already
 established (dead during the store window). C2's relight reuses every
 resource the per-axis lighting pass already bound; its one new binding

@@ -10,6 +10,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 
 #include <array>
+#include <limits>
 #include <utility>
 
 using namespace IRMath;
@@ -87,14 +88,11 @@ struct PerAxisCanvasStore {
     // bound whole at
     // kBufferIndex_PerAxisResolveScratch during the per-axis dispatches only
     // (transient reuse — the resolve + BAKE consumers re-bind 28
-    // themselves). Four 256-B-aligned regions, offsets in uints:
-    // [0, viewMaskBaseUints_) — winner ids, one uint per texel.
+    // themselves). Three 256-B-aligned regions, offsets in uints:
+    // [0, ctrlBaseUints_) — winner ids, one uint per texel, padded for alignment.
     //     Region 0 on purpose: the stage-1/2 kernels' perAxisWinnerIds[cell]
     //     indexing is unchanged, and dispatchPerAxisCanvases' per-axis
     //     fillBuffer(bytes = texels*4) reset covers exactly this region.
-    // [viewMaskBaseUints_, ctrlBaseUints_) — reserved and unused. The
-    //     existing aligned region keeps the following offsets stable; the
-    //     current frame-prefix fill includes it.
     // [ctrlBaseUints_, entriesBaseUints_) — ctrl block: indirect
     //     draw args {indexCount, instanceCount, firstIndex, baseVertex,
     //     baseInstance} + droppedCount, followed by GPU-authored sort commands.
@@ -108,7 +106,6 @@ struct PerAxisCanvasStore {
     // A Buffer (not textures) because Metal has only one image-atomic scratch
     // slot (held by distances_). Sized/freed with the axis textures.
     std::pair<ResourceId, Buffer *> winnerIds_{0, nullptr};
-    int viewMaskBaseUints_ = 0;
     int ctrlBaseUints_ = 0;
     int entriesBaseUints_ = 0;
     int overflowCap_ = 0;
@@ -119,6 +116,10 @@ struct PerAxisCanvasStore {
     static constexpr std::uint32_t kOverflowSortCommandCount =
         2 + kOverflowSortMaxStageBits - kOverflowSortBlockBits;
     static constexpr std::uint32_t kOverflowControlUints = 128;
+    static constexpr int kScratchAlignUints = 64;
+    static_assert(
+        kOverflowControlUints % kScratchAlignUints == 0, "overflow entries must be 256-byte aligned"
+    );
     static_assert(
         kOverflowSortArgsBaseUints + kOverflowSortCommandCount * kOverflowSortCommandUints <=
             kOverflowControlUints,
@@ -170,6 +171,29 @@ struct PerAxisCanvasStore {
         return static_cast<int>(IRMath::nextPowerOfTwo(static_cast<std::uint32_t>(demand)));
     }
 
+    static ivec4 scratchLayoutFor(int axisCells, int overflowCapacity) {
+        IR_ASSERT(
+            axisCells >= 0 && overflowCapacity >= 0,
+            "negative per-axis scratch layout input"
+        );
+        IR_ASSERT(
+            axisCells <= std::numeric_limits<int>::max() - static_cast<int>(kOverflowControlUints) -
+                             (kScratchAlignUints - 1),
+            "per-axis scratch offsets exceed signed shader fields"
+        );
+        const int controlBase = IRMath::divCeil(axisCells, kScratchAlignUints) * kScratchAlignUints;
+        return ivec4(
+            0,
+            controlBase,
+            controlBase + static_cast<int>(kOverflowControlUints),
+            overflowCapacity
+        );
+    }
+
+    ivec4 overflowScratchLayout() const {
+        return ivec4(0, ctrlBaseUints_, entriesBaseUints_, overflowCap_);
+    }
+
     // Allocate the three axis texture sets at @p size (worst-case per-axis) plus
     // the screen-space resolve texture at @p mainSize. No-op if already
     // allocated. Called at rotation start by the lifecycle.
@@ -201,7 +225,11 @@ struct PerAxisCanvasStore {
         // dispatch args). Same 25/26 bind indices the compaction + consumers
         // bindRange onto per axis.
         const int axisCells = size.x * size.y;
-        cellRegionStride_ = IRMath::divCeil(axisCells, 64) * 64;
+        overflowCap_ = overflowCapacityFor(axisCells, IRRender::VoxelPoolConfig::getTotalSize());
+        const ivec4 scratchLayout = scratchLayoutFor(axisCells, overflowCap_);
+        ctrlBaseUints_ = scratchLayout.y;
+        entriesBaseUints_ = scratchLayout.z;
+        cellRegionStride_ = ctrlBaseUints_;
         cellCompacted_ = IRRender::createResource<Buffer>(
             nullptr,
             static_cast<size_t>(cellRegionStride_) * static_cast<size_t>(kAxisCount) *
@@ -226,24 +254,15 @@ struct PerAxisCanvasStore {
         static constexpr std::int32_t kDistanceClear =
             static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance);
         IRRender::device()->clearTexImage(resolveDepth_.second, 0, &kDistanceClear);
-        // Unified resolve scratch for the winner region, reserved aligned
-        // region, control block, and overflow entries. Regions
-        // start on 256 B boundaries so bindRange windows stay
-        // SSBO-alignment-safe; the whole buffer is bindBase'd at 28 during the
-        // per-axis dispatches, with region offsets carried in
-        // FrameDataVoxelToCanvas::overflowScratchLayout_.
-        constexpr int kScratchAlignUints = 64; // 256 B / 4
-        const int alignedCells = IRMath::divCeil(axisCells, kScratchAlignUints) * kScratchAlignUints;
-        viewMaskBaseUints_ = alignedCells;
-        ctrlBaseUints_ = viewMaskBaseUints_ + alignedCells;
-        entriesBaseUints_ = ctrlBaseUints_ + static_cast<int>(kOverflowControlUints);
-        // Mode 3 emits at most one record per voxel per axis: its canonical
-        // trixel lane returns before dual-face emission, with only micro-slice
-        // zero active. Capacity covers the whole main pool, including the first
-        // frame after a camera jump or spawn. The sort, append clamp and layout
-        // share this power-of-two count. This bound depends on the mode-3 lane
-        // guard in both stage-1 shader bodies and unique axis compact lists.
-        overflowCap_ = overflowCapacityFor(axisCells, IRRender::VoxelPoolConfig::getTotalSize());
+        // Unified resolve scratch for the winner region, control block, and overflow entries.
+        // Regions start on 256 B boundaries so bindRange windows stay SSBO-alignment-safe; the
+        // whole buffer is bindBase'd at 28 during the per-axis dispatches, with region offsets
+        // carried in FrameDataVoxelToCanvas::overflowScratchLayout_. Mode 3 emits at most one
+        // record per voxel per axis: its canonical trixel lane returns before dual-face emission,
+        // with only micro-slice zero active. Capacity covers the whole main pool, including the
+        // first frame after a camera jump or spawn. The sort, append clamp and layout share this
+        // power-of-two count. This bound depends on the mode-3 lane guard in both stage-1 shader
+        // bodies and unique axis compact lists.
         winnerIds_ = IRRender::createResource<Buffer>(
             nullptr,
             (static_cast<std::size_t>(entriesBaseUints_) +
@@ -289,7 +308,6 @@ struct PerAxisCanvasStore {
         cellRegionStride_ = 0;
         IRRender::destroyResource<Buffer>(winnerIds_.first);
         winnerIds_ = {0, nullptr};
-        viewMaskBaseUints_ = 0;
         ctrlBaseUints_ = 0;
         entriesBaseUints_ = 0;
         overflowCap_ = 0;

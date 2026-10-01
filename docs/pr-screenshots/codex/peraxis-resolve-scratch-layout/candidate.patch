@@ -1,0 +1,274 @@
+diff --git a/engine/prefabs/irreden/render/components/component_per_axis_trixel_canvases.hpp b/engine/prefabs/irreden/render/components/component_per_axis_trixel_canvases.hpp
+index 8df805f7f..41cc58ee6 100644
+--- a/engine/prefabs/irreden/render/components/component_per_axis_trixel_canvases.hpp
++++ b/engine/prefabs/irreden/render/components/component_per_axis_trixel_canvases.hpp
+@@ -10,6 +10,7 @@
+ #include <irreden/render/components/component_triangle_canvas_textures.hpp>
+ 
+ #include <array>
++#include <limits>
+ #include <utility>
+ 
+ using namespace IRMath;
+@@ -87,14 +88,11 @@ struct PerAxisCanvasStore {
+     // bound whole at
+     // kBufferIndex_PerAxisResolveScratch during the per-axis dispatches only
+     // (transient reuse — the resolve + BAKE consumers re-bind 28
+-    // themselves). Four 256-B-aligned regions, offsets in uints:
+-    // [0, viewMaskBaseUints_) — winner ids, one uint per texel.
++    // themselves). Three 256-B-aligned regions, offsets in uints:
++    // [0, ctrlBaseUints_) — winner ids, one uint per texel, padded for alignment.
+     //     Region 0 on purpose: the stage-1/2 kernels' perAxisWinnerIds[cell]
+     //     indexing is unchanged, and dispatchPerAxisCanvases' per-axis
+     //     fillBuffer(bytes = texels*4) reset covers exactly this region.
+-    // [viewMaskBaseUints_, ctrlBaseUints_) — reserved and unused. The
+-    //     existing aligned region keeps the following offsets stable; the
+-    //     current frame-prefix fill includes it.
+     // [ctrlBaseUints_, entriesBaseUints_) — ctrl block: indirect
+     //     draw args {indexCount, instanceCount, firstIndex, baseVertex,
+     //     baseInstance} + droppedCount, followed by GPU-authored sort commands.
+@@ -108,7 +106,6 @@ struct PerAxisCanvasStore {
+     // A Buffer (not textures) because Metal has only one image-atomic scratch
+     // slot (held by distances_). Sized/freed with the axis textures.
+     std::pair<ResourceId, Buffer *> winnerIds_{0, nullptr};
+-    int viewMaskBaseUints_ = 0;
+     int ctrlBaseUints_ = 0;
+     int entriesBaseUints_ = 0;
+     int overflowCap_ = 0;
+@@ -119,6 +116,10 @@ struct PerAxisCanvasStore {
+     static constexpr std::uint32_t kOverflowSortCommandCount =
+         2 + kOverflowSortMaxStageBits - kOverflowSortBlockBits;
+     static constexpr std::uint32_t kOverflowControlUints = 128;
++    static constexpr int kScratchAlignUints = 64;
++    static_assert(
++        kOverflowControlUints % kScratchAlignUints == 0, "overflow entries must be 256-byte aligned"
++    );
+     static_assert(
+         kOverflowSortArgsBaseUints + kOverflowSortCommandCount * kOverflowSortCommandUints <=
+             kOverflowControlUints,
+@@ -170,6 +171,29 @@ struct PerAxisCanvasStore {
+         return static_cast<int>(IRMath::nextPowerOfTwo(static_cast<std::uint32_t>(demand)));
+     }
+ 
++    static ivec4 scratchLayoutFor(int axisCells, int overflowCapacity) {
++        IR_ASSERT(
++            axisCells >= 0 && overflowCapacity >= 0,
++            "negative per-axis scratch layout input"
++        );
++        IR_ASSERT(
++            axisCells <= std::numeric_limits<int>::max() - static_cast<int>(kOverflowControlUints) -
++                             (kScratchAlignUints - 1),
++            "per-axis scratch offsets exceed signed shader fields"
++        );
++        const int controlBase = IRMath::divCeil(axisCells, kScratchAlignUints) * kScratchAlignUints;
++        return ivec4(
++            0,
++            controlBase,
++            controlBase + static_cast<int>(kOverflowControlUints),
++            overflowCapacity
++        );
++    }
++
++    ivec4 overflowScratchLayout() const {
++        return ivec4(0, ctrlBaseUints_, entriesBaseUints_, overflowCap_);
++    }
++
+     // Allocate the three axis texture sets at @p size (worst-case per-axis) plus
+     // the screen-space resolve texture at @p mainSize. No-op if already
+     // allocated. Called at rotation start by the lifecycle.
+@@ -201,7 +225,11 @@ struct PerAxisCanvasStore {
+         // dispatch args). Same 25/26 bind indices the compaction + consumers
+         // bindRange onto per axis.
+         const int axisCells = size.x * size.y;
+-        cellRegionStride_ = IRMath::divCeil(axisCells, 64) * 64;
++        overflowCap_ = overflowCapacityFor(axisCells, IRRender::VoxelPoolConfig::getTotalSize());
++        const ivec4 scratchLayout = scratchLayoutFor(axisCells, overflowCap_);
++        ctrlBaseUints_ = scratchLayout.y;
++        entriesBaseUints_ = scratchLayout.z;
++        cellRegionStride_ = ctrlBaseUints_;
+         cellCompacted_ = IRRender::createResource<Buffer>(
+             nullptr,
+             static_cast<size_t>(cellRegionStride_) * static_cast<size_t>(kAxisCount) *
+@@ -226,24 +254,15 @@ struct PerAxisCanvasStore {
+         static constexpr std::int32_t kDistanceClear =
+             static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance);
+         IRRender::device()->clearTexImage(resolveDepth_.second, 0, &kDistanceClear);
+-        // Unified resolve scratch for the winner region, reserved aligned
+-        // region, control block, and overflow entries. Regions
+-        // start on 256 B boundaries so bindRange windows stay
+-        // SSBO-alignment-safe; the whole buffer is bindBase'd at 28 during the
+-        // per-axis dispatches, with region offsets carried in
+-        // FrameDataVoxelToCanvas::overflowScratchLayout_.
+-        constexpr int kScratchAlignUints = 64; // 256 B / 4
+-        const int alignedCells = IRMath::divCeil(axisCells, kScratchAlignUints) * kScratchAlignUints;
+-        viewMaskBaseUints_ = alignedCells;
+-        ctrlBaseUints_ = viewMaskBaseUints_ + alignedCells;
+-        entriesBaseUints_ = ctrlBaseUints_ + static_cast<int>(kOverflowControlUints);
+-        // Mode 3 emits at most one record per voxel per axis: its canonical
+-        // trixel lane returns before dual-face emission, with only micro-slice
+-        // zero active. Capacity covers the whole main pool, including the first
+-        // frame after a camera jump or spawn. The sort, append clamp and layout
+-        // share this power-of-two count. This bound depends on the mode-3 lane
+-        // guard in both stage-1 shader bodies and unique axis compact lists.
+-        overflowCap_ = overflowCapacityFor(axisCells, IRRender::VoxelPoolConfig::getTotalSize());
++        // Unified resolve scratch for the winner region, control block, and overflow entries.
++        // Regions start on 256 B boundaries so bindRange windows stay SSBO-alignment-safe; the
++        // whole buffer is bindBase'd at 28 during the per-axis dispatches, with region offsets
++        // carried in FrameDataVoxelToCanvas::overflowScratchLayout_. Mode 3 emits at most one
++        // record per voxel per axis: its canonical trixel lane returns before dual-face emission,
++        // with only micro-slice zero active. Capacity covers the whole main pool, including the
++        // first frame after a camera jump or spawn. The sort, append clamp and layout share this
++        // power-of-two count. This bound depends on the mode-3 lane guard in both stage-1 shader
++        // bodies and unique axis compact lists.
+         winnerIds_ = IRRender::createResource<Buffer>(
+             nullptr,
+             (static_cast<std::size_t>(entriesBaseUints_) +
+@@ -289,7 +308,6 @@ struct PerAxisCanvasStore {
+         cellRegionStride_ = 0;
+         IRRender::destroyResource<Buffer>(winnerIds_.first);
+         winnerIds_ = {0, nullptr};
+-        viewMaskBaseUints_ = 0;
+         ctrlBaseUints_ = 0;
+         entriesBaseUints_ = 0;
+         overflowCap_ = 0;
+diff --git a/engine/prefabs/irreden/render/systems/system_fog_to_trixel.hpp b/engine/prefabs/irreden/render/systems/system_fog_to_trixel.hpp
+index 01b5558ac..227b143a9 100644
+--- a/engine/prefabs/irreden/render/systems/system_fog_to_trixel.hpp
++++ b/engine/prefabs/irreden/render/systems/system_fog_to_trixel.hpp
+@@ -155,12 +155,7 @@ template <> struct System<FOG_TO_TRIXEL> {
+         }
+         GpuSubStageScope overflowScope("fogOverflow");
+         overflowProgram_->use();
+-        const ivec4 overflowLayout(
+-            axes.viewMaskBaseUints_,
+-            axes.ctrlBaseUints_,
+-            axes.entriesBaseUints_,
+-            axes.overflowCap_
+-        );
++        const ivec4 overflowLayout = axes.overflowScratchLayout();
+         voxelFrameDataBuf_->subData(
+             offsetof(FrameDataVoxelToCanvas, overflowScratchLayout_),
+             sizeof(ivec4),
+diff --git a/engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp b/engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp
+index 8a48c9c69..5f11fdf25 100644
+--- a/engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp
++++ b/engine/prefabs/irreden/render/systems/system_lighting_to_trixel.hpp
+@@ -460,12 +460,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
+         // that field, and this system re-authors the shared UBO per canvas,
+         // so it reads back zero here — republish it from the canvas's own scratch
+         // offsets before the dispatch (matches the ivec4 order the store uploads).
+-        const ivec4 overflowLayout(
+-            axes.viewMaskBaseUints_,
+-            axes.ctrlBaseUints_,
+-            axes.entriesBaseUints_,
+-            axes.overflowCap_
+-        );
++        const ivec4 overflowLayout = axes.overflowScratchLayout();
+         voxelFrameDataBuf_->subData(
+             offsetof(FrameDataVoxelToCanvas, overflowScratchLayout_),
+             sizeof(ivec4),
+diff --git a/engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp b/engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp
+index 837c73cf0..c8a0e3185 100644
+--- a/engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp
++++ b/engine/prefabs/irreden/render/systems/system_voxel_to_trixel.hpp
+@@ -855,7 +855,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
+         // Overflow lane bookkeeping. Read last rotating
+         // frame's drop counter for the one-shot cap warn (before the reset
+         // clears it), reset the ctrl block (draw args + counters), and reset
+-        // the winner region and reserved aligned gap to the 0xFFFFFFFF empty
++        // the aligned winner region to the 0xFFFFFFFF empty
+         // sentinel in one prefix fill ([0, ctrlBase) — the winner region is
+         // re-filled per axis before its election below anyway).
+         warnOverflowDropsIfAny(axes);
+@@ -865,12 +865,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
+             static_cast<std::size_t>(axes.ctrlBaseUints_) * sizeof(std::uint32_t),
+             0xFFu
+         );
+-        frameData_.overflowScratchLayout_ = ivec4(
+-            axes.viewMaskBaseUints_,
+-            axes.ctrlBaseUints_,
+-            axes.entriesBaseUints_,
+-            axes.overflowCap_
+-        );
++        frameData_.overflowScratchLayout_ = axes.overflowScratchLayout();
+ 
+         frameData_.trixelCanvasOffsetZ1_ = perAxisOffsetZ1;
+         frameData_.canvasSizePixels_ = axes.size_;
+@@ -989,12 +984,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
+                 dispatchSpan = detail::overflowSortDispatchSpan(axes.laggedOverflowCount_, cap);
+                 sortDispatches = sortFaceRecords(
+                     axes.winnerIds_.second,
+-                    ivec4(
+-                        axes.viewMaskBaseUints_,
+-                        axes.ctrlBaseUints_,
+-                        axes.entriesBaseUints_,
+-                        axes.overflowCap_
+-                    ),
++                    axes.overflowScratchLayout(),
+                     dispatchSpan
+                 );
+             }
+diff --git a/test/render/gpu_compute_dispatch_test.cpp b/test/render/gpu_compute_dispatch_test.cpp
+index a2c15047a..4a62b3dc0 100644
+--- a/test/render/gpu_compute_dispatch_test.cpp
++++ b/test/render/gpu_compute_dispatch_test.cpp
+@@ -731,13 +731,14 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
+     using namespace IRRender;
+     using Axes = IRComponents::C_PerAxisTrixelCanvases;
+     constexpr std::uint32_t cap = 1u << 19;
+-    constexpr std::uint32_t ctrl = 64;
+-    constexpr std::uint32_t entries = ctrl + Axes::kOverflowControlUints;
++    const auto layout = Axes::scratchLayoutFor(64, static_cast<int>(cap));
++    const std::uint32_t ctrl = static_cast<std::uint32_t>(layout.y);
++    const std::uint32_t entries = static_cast<std::uint32_t>(layout.z);
+     using Record = std::array<std::uint32_t, 3>;
+     std::vector<std::uint32_t> words(entries + cap * 3, 0xA5A5A5A5u);
+     Buffer scratch(words.data(), words.size() * sizeof(std::uint32_t), BUFFER_STORAGE_DYNAMIC);
+     FrameDataVoxelToCanvas frame{};
+-    frame.overflowScratchLayout_ = IRMath::ivec4(0, ctrl, entries, cap);
++    frame.overflowScratchLayout_ = layout;
+     Buffer uniform(&frame, sizeof(frame), BUFFER_STORAGE_DYNAMIC);
+     const std::string path =
+         std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_per_axis_overflow_sort.glsl";
+diff --git a/test/render/per_axis_canvas_lifecycle_test.cpp b/test/render/per_axis_canvas_lifecycle_test.cpp
+index 23af4328f..5ab16d354 100644
+--- a/test/render/per_axis_canvas_lifecycle_test.cpp
++++ b/test/render/per_axis_canvas_lifecycle_test.cpp
+@@ -16,6 +16,37 @@ using IRPrefab::PerAxisCanvas::LifecycleState;
+ using IRPrefab::PerAxisCanvas::LifecycleStep;
+ using IRPrefab::PerAxisCanvas::lifecycleStep;
+ 
++TEST(PerAxisCanvasLifecycle, ScratchRegionsAreAdjacentAlignedAndDisjoint) {
++    using Store = IRComponents::PerAxisCanvasStore;
++    for (const int cells : {0, 1, 63, 64, 65, 1024 * 2048, 2560 * 2000}) {
++        const auto layout = Store::scratchLayoutFor(cells, 65536);
++        EXPECT_EQ(layout.x, 0);
++        EXPECT_GE(layout.y, cells);
++        EXPECT_LT(layout.y - cells, 64);
++        EXPECT_EQ(layout.y * sizeof(std::uint32_t) % 256, 0u);
++        EXPECT_EQ(layout.z * sizeof(std::uint32_t) % 256, 0u);
++        EXPECT_EQ(layout.z - layout.y, Store::kOverflowControlUints);
++        EXPECT_EQ(layout.w, 65536);
++    }
++}
++
++TEST(PerAxisCanvasLifecycle, ScratchUniformUsesTheOwnedRegionOffsets) {
++    IRComponents::PerAxisCanvasStore store;
++    store.ctrlBaseUints_ = 128;
++    store.entriesBaseUints_ = 256;
++    store.overflowCap_ = 65536;
++    EXPECT_EQ(store.overflowScratchLayout(), IRMath::ivec4(0, 128, 256, 65536));
++}
++
++#ifndef IR_RELEASE
++TEST(PerAxisCanvasLifecycle, ScratchLayoutRefusesNegativeAndOverflowingOffsets) {
++    using Store = IRComponents::PerAxisCanvasStore;
++    EXPECT_THROW(Store::scratchLayoutFor(-1, 1), std::runtime_error);
++    EXPECT_THROW(Store::scratchLayoutFor(1, -1), std::runtime_error);
++    EXPECT_THROW(Store::scratchLayoutFor(std::numeric_limits<int>::max(), 1), std::runtime_error);
++}
++#endif
++
+ TEST(PerAxisCanvasLifecycle, RotationAllocatesOnceAndThenKeeps) {
+     EXPECT_EQ(lifecycleStep({.rotating_ = true}), LifecycleStep::ALLOCATE);
+     EXPECT_EQ(lifecycleStep({.rotating_ = true, .live_ = true}), LifecycleStep::KEEP);

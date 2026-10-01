@@ -460,12 +460,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         // that field, and this system re-authors the shared UBO per canvas,
         // so it reads back zero here — republish it from the canvas's own scratch
         // offsets before the dispatch (matches the ivec4 order the store uploads).
-        const ivec4 overflowLayout(
-            axes.viewMaskBaseUints_,
-            axes.ctrlBaseUints_,
-            axes.entriesBaseUints_,
-            axes.overflowCap_
-        );
+        const ivec4 overflowLayout = axes.overflowScratchLayout();
         voxelFrameDataBuf_->subData(
             offsetof(FrameDataVoxelToCanvas, overflowScratchLayout_),
             sizeof(ivec4),

@@ -855,7 +855,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // Overflow lane bookkeeping. Read last rotating
         // frame's drop counter for the one-shot cap warn (before the reset
         // clears it), reset the ctrl block (draw args + counters), and reset
-        // the winner region and reserved aligned gap to the 0xFFFFFFFF empty
+        // the aligned winner region to the 0xFFFFFFFF empty
         // sentinel in one prefix fill ([0, ctrlBase) — the winner region is
         // re-filled per axis before its election below anyway).
         warnOverflowDropsIfAny(axes);
@@ -865,12 +865,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             static_cast<std::size_t>(axes.ctrlBaseUints_) * sizeof(std::uint32_t),
             0xFFu
         );
-        frameData_.overflowScratchLayout_ = ivec4(
-            axes.viewMaskBaseUints_,
-            axes.ctrlBaseUints_,
-            axes.entriesBaseUints_,
-            axes.overflowCap_
-        );
+        frameData_.overflowScratchLayout_ = axes.overflowScratchLayout();
 
         frameData_.trixelCanvasOffsetZ1_ = perAxisOffsetZ1;
         frameData_.canvasSizePixels_ = axes.size_;
@@ -989,12 +984,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 dispatchSpan = detail::overflowSortDispatchSpan(axes.laggedOverflowCount_, cap);
                 sortDispatches = sortFaceRecords(
                     axes.winnerIds_.second,
-                    ivec4(
-                        axes.viewMaskBaseUints_,
-                        axes.ctrlBaseUints_,
-                        axes.entriesBaseUints_,
-                        axes.overflowCap_
-                    ),
+                    axes.overflowScratchLayout(),
                     dispatchSpan
                 );
             }

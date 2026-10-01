@@ -36,9 +36,18 @@ Next, in order:
    the remaining intermediate-angle boundary differences using actual capture
    poses and raster ownership rules. The ideal-angle diagnostic still counts
    15 wrong-face and four missing game samples; do not relax a gate to bless them.
+   A centered-scatter projection experiment reduced the actual-pose diagnostic
+   from 19 to 11 samples but introduced two differences at 22.5°; it was rejected.
+   Establish hardware raster ownership with an independent GPU reference before
+   treating an algebraically equivalent coordinate rewrite as a visual fix.
 2. Profile conservative overflow emission on large rotating populations and high
-   effective subdivisions. Remove the reserved mask scratch region only with
-   layout/consumer tests; future occlusion must prove finite-footprint coverage.
+   effective subdivisions. The scratch-layout follow-up removes the unused mask
+   allocation and consolidates consumer offsets, with layout and native GPU-sort
+   tests. Its [paired captures and profiles](../pr-screenshots/codex/peraxis-resolve-scratch-layout/README.md)
+   preserve all 27 images and show no reliable frame-time gain in the fixed-45°
+   262,144-entity control (19.247 → 19.323 ms steady Debug frames). Moving-camera
+   and effective-density sweeps remain pending. Future occlusion must prove
+   finite-footprint coverage.
 3. Continue dense/incomplete sun-index and moving light/camera controls. Incomplete
    tiles still have approximate fallback; the full-pool reference is diagnostic.
 4. Extend finite receiving to cardinal GRID and remaining eligible SDF/fog routes,
