@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <limits>
 
 #include <irreden/ir_entity.hpp>
@@ -313,6 +314,55 @@ TEST_F(LuaSpin, ImpulsesOnDifferentAxesSumAsAngularVelocity) {
     spin.impulse(IRMath::vec3(0, 0, -1), spin.radiansPerFrame_);
     EXPECT_FLOAT_EQ(spin.radiansPerFrame_, 0.0f);
     expectVec3Near(spin.axis_, IRMath::vec3(0, 0, 1));
+}
+
+// The system and `ticksToRest()` share one damping policy: NaN and -inf never
+// decay, +inf stops after one tick. Each case keeps the transform finite.
+TEST_F(LuaSpin, NonFiniteDampingFollowsTheTicksToRestPolicy) {
+    constexpr float kRate = 0.2f;
+    constexpr int kTicks = 3;
+    const IRMath::vec3 axis(0, 0, 1);
+
+    const IREntity::EntityId nanId = createFromLua(R"(
+        return IREntity.createImpulseSpinner(
+            C_LocalTransform.new(vec3.new(0, 0, 0)),
+            C_AngularVelocity.new(vec3.new(0, 0, 1), 0.2, 0 / 0)
+        )
+    )");
+    const IREntity::EntityId negInfId = createFromLua(R"(
+        return IREntity.createImpulseSpinner(
+            C_LocalTransform.new(vec3.new(0, 0, 0)),
+            C_AngularVelocity.new(vec3.new(0, 0, 1), 0.2, -1 / 0)
+        )
+    )");
+    const IREntity::EntityId posInfId = createFromLua(R"(
+        return IREntity.createImpulseSpinner(
+            C_LocalTransform.new(vec3.new(0, 0, 0)),
+            C_AngularVelocity.new(vec3.new(0, 0, 1), 0.2, 1 / 0)
+        )
+    )");
+    ASSERT_TRUE(std::isnan(IREntity::getComponent<C_AngularVelocity>(nanId).dampingPerFrame_));
+    runLua(kSpinPipeline);
+    for (int i = 0; i < kTicks; ++i) {
+        tick();
+    }
+
+    for (const IREntity::EntityId id : {nanId, negInfId}) {
+        const C_AngularVelocity &spin = IREntity::getComponent<C_AngularVelocity>(id);
+        EXPECT_EQ(C_AngularVelocity::ticksToRest(spin.radiansPerFrame_, spin.dampingPerFrame_), -1);
+        EXPECT_FLOAT_EQ(spin.radiansPerFrame_, kRate);
+        expectSameRotation(
+            IREntity::getComponent<C_WorldTransform>(id).rotation_,
+            IRMath::quatAxisAngle(axis, kRate * kTicks)
+        );
+    }
+
+    EXPECT_EQ(C_AngularVelocity::ticksToRest(kRate, std::numeric_limits<float>::infinity()), 1);
+    EXPECT_FLOAT_EQ(IREntity::getComponent<C_AngularVelocity>(posInfId).radiansPerFrame_, 0.0f);
+    expectSameRotation(
+        IREntity::getComponent<C_WorldTransform>(posInfId).rotation_,
+        IRMath::quatAxisAngle(axis, kRate)
+    );
 }
 
 TEST(AngularVelocityTicksToRest, BoundsOutOfRangeDamping) {

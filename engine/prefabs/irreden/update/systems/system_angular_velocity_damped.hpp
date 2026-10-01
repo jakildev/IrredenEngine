@@ -37,7 +37,7 @@ template <> struct System<ANGULAR_VELOCITY_DAMPED> {
             const vec4 delta = IRMath::quatAxisAngle(spin.axis_, spin.radiansPerFrame_);
             localXform.rotation_ = IRMath::quatMul(delta, localXform.rotation_);
         }
-        spin.radiansPerFrame_ *= 1.0f - IRMath::clamp(spin.dampingPerFrame_, 0.0f, 1.0f);
+        spin.radiansPerFrame_ *= 1.0f - C_AngularVelocity::effectiveDamping(spin.dampingPerFrame_);
         if (IRMath::abs(spin.radiansPerFrame_) < C_AngularVelocity::kAngularRestEpsilon) {
             spin.radiansPerFrame_ = 0.0f;
         }
