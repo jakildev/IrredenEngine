@@ -201,13 +201,14 @@ def is_scout_daemon_argv(line):
     """A scout daemon's argv is a bare python interpreter plus the script. A
     run with arguments (--once, --print-surface) is a probe, not a poller, and
     the MSYS `env.exe python3 ...` wrapper row on native Windows is the
-    daemon's parent, not a second daemon."""
+    daemon's parent, not a second daemon. The interpreter match ignores case:
+    a macOS framework build reports itself as `.../MacOS/Python`."""
     tokens = [t.strip('"') for t in _ARGV_TOKEN.findall(line)]
     if len(tokens) != 2:
         return False
     interpreter = re.split(r"[\\/]", tokens[0])[-1]
     script = re.split(r"[\\/]", tokens[1])[-1]
-    return interpreter.startswith("python") and script == "fleet-state-scout"
+    return interpreter.lower().startswith("python") and script == "fleet-state-scout"
 
 
 def scout_process_count():

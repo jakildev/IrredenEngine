@@ -405,6 +405,8 @@ class DaemonsAndWindow(Env):
             "/usr/bin/python3 /home/x/scripts/fleet/fleet-state-scout",
             "python3 fleet-state-scout",
             '"C:\\Program Files\\Python\\python.exe" "C:\\x\\fleet-state-scout"',
+            "/opt/homebrew/Frameworks/Python.framework/Versions/3.14/Resources/"
+            "Python.app/Contents/MacOS/Python /x/scripts/fleet/fleet-state-scout",
         ):
             self.assertTrue(m(argv), argv)
         for argv in (
