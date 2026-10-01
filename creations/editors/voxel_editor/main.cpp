@@ -19,6 +19,7 @@
 #include <irreden/voxel/components/component_joint_name.hpp>
 #include <irreden/voxel/components/component_skeleton.hpp>
 #include <irreden/voxel/rig_bridge.hpp>
+#include <irreden/voxel/sdf_fill.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
@@ -1043,7 +1044,7 @@ void applyEdit(
     }
 }
 
-void commitStroke() {
+void commitStroke(bool derivedStateAlreadySynced = false) {
     if (g_editor.pendingStroke_.edits_.empty()) {
         return;
     }
@@ -1059,7 +1060,7 @@ void commitStroke() {
         g_editor.undoTotalBytes_ -= g_editor.undoRecords_.front().byteSize();
         g_editor.undoRecords_.pop_front();
     }
-    if (g_sceneVoxelSetEntity != IREntity::kNullEntity) {
+    if (!derivedStateAlreadySynced && g_sceneVoxelSetEntity != IREntity::kNullEntity) {
         auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sceneVoxelSetEntity);
         set.resyncAfterRawEdits();
     }
@@ -1277,35 +1278,6 @@ void applyFillFace(
             q.push(nb);
         }
     }
-}
-
-// CPU SDF voxel bake — fill every voxel in `set` whose SDF value for
-// `shapeType`/`sdfParams` is ≤ kSurfaceThreshold. The shape is centered on
-// the voxel set; the SDF math is batched into `IRMath::SDF::evaluateGrid`,
-// so this function only owns the placement decision. Always produces
-// DENSE output (no SHAPES chunk).
-void applyFillSDF(
-    IREntity::EntityId entity,
-    C_VoxelSetNew &set,
-    IRMath::SDF::ShapeType shapeType,
-    vec4 sdfParams,
-    bool place,
-    Color color
-) {
-    const std::size_t total = static_cast<std::size_t>(set.size_.x) *
-                              static_cast<std::size_t>(set.size_.y) *
-                              static_cast<std::size_t>(set.size_.z);
-    std::vector<float> distances(total);
-    IRMath::SDF::evaluateGrid(set.size_, shapeType, sdfParams, distances);
-    IRMath::iterateAABB({0, 0, 0}, set.size_ - ivec3(1), [&](int x, int y, int z) {
-        const ivec3 local{x, y, z};
-        const std::size_t flat =
-            static_cast<std::size_t>(IRMath::index3DtoIndex1D(local, set.size_));
-        if (distances[flat] > IRMath::SDF::kSurfaceThreshold)
-            return;
-        if (flat < set.voxels_.size())
-            applyEdit(entity, set, local, flat, place, color);
-    });
 }
 
 // Update the ghost shape entity to visualize the fill region during drag.
@@ -2635,8 +2607,19 @@ void initSystems() {
 
             const Color placeColor = kPaletteColors[g_editor.activeSwatchIdx_];
             auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
-            applyFillSDF(g_editor.editableVoxelSet_, set, shapeType, sdfParams, true, placeColor);
-            commitStroke();
+            IRPrefab::Voxel::fillSdf(
+                set,
+                shapeType,
+                sdfParams,
+                placeColor,
+                true,
+                [&](ivec3 local, std::size_t flat, bool place, Color color) {
+                    if (flat < set.voxels_.size()) {
+                        applyEdit(g_editor.editableVoxelSet_, set, local, flat, place, color);
+                    }
+                }
+            );
+            commitStroke(true);
             IR_LOG_INFO("Bake: shape {} P1={:.1f} P2={:.1f}", idx, p1, p2);
         }
     );

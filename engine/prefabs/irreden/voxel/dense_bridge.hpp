@@ -84,19 +84,31 @@ inline std::vector<IRComponents::C_Voxel> toVoxels(const IRAsset::DenseVoxelSet 
 /// Extensibility Rule #5: unknown is recoverable), the returned
 /// component is empty (`recordCount() == 0`) so the caller can
 /// surface a diagnostic without crashing.
-inline IRComponents::C_VoxelSetNew toComponent(const IRAsset::DenseVoxelSet &dense) {
+inline IRComponents::C_VoxelSetNew toComponent(
+    const IRAsset::DenseVoxelSet &dense,
+    IRComponents::EntityAnchor anchor = IRComponents::EntityAnchor::CORNER,
+    IREntity::EntityId targetCanvas = IREntity::kNullEntity
+) {
     const std::vector<IRComponents::C_Voxel> runtimeVoxels = toVoxels(dense);
     if (runtimeVoxels.empty()) {
         // Empty data path: route through the dense ctor (which is
         // headless-safe) with an empty span instead of the legacy
         // default ctor that asserts on an absent render manager.
         return IRComponents::C_VoxelSetNew{
-            IRMath::ivec3(0), IRMath::ivec3(0), std::span<const IRComponents::C_Voxel>{}
+            IRMath::ivec3(0),
+            IRMath::ivec3(0),
+            std::span<const IRComponents::C_Voxel>{},
+            anchor,
+            targetCanvas
         };
     }
 
     return IRComponents::C_VoxelSetNew{
-        dense.boundsMin_, dense.boundsMax_, std::span<const IRComponents::C_Voxel>{runtimeVoxels}
+        dense.boundsMin_,
+        dense.boundsMax_,
+        std::span<const IRComponents::C_Voxel>{runtimeVoxels},
+        anchor,
+        targetCanvas
     };
 }
 

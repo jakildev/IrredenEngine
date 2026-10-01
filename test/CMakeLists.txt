@@ -120,6 +120,7 @@ add_executable(IrredenEngineTest
   script/lua_component_register_test.cpp
   script/lua_deferred_entity_test.cpp
   script/lua_entity_anchor_test.cpp
+  script/lua_voxel_seam_test.cpp
   script/lua_enum_register_test.cpp
   script/lua_persistence_test.cpp
   script/lua_print_sink_test.cpp
@@ -198,6 +199,7 @@ target_link_libraries(IrredenEngineTest PUBLIC
 target_compile_definitions(IrredenEngineTest PRIVATE
     IR_TEST_RENDER_SHADER_DIR="${CMAKE_SOURCE_DIR}/engine/render/src/shaders"
     IR_TEST_GPU_SHADER_DIR="${CMAKE_SOURCE_DIR}/test/render/shaders"
+    IR_LUA_VOXEL_ASSET_PATH="${CMAKE_SOURCE_DIR}/assets/voxel/entities/rock.vxs"
 )
 
 # Build lua_component_codegen_fixtures.hpp from the sibling .lua

@@ -15,22 +15,18 @@ local SystemName = IRSystem.SystemName
 
 local tickCounterSysId = IRSystem.registerSystem({
     name = "TickCounterLua",
-    -- No entity is created in this demo so no archetype matches
-    -- C_LocalTransform — the per-archetype tick body never fires. The
-    -- point of including this Lua system is to verify pipeline composition
-    -- mixes prefab and Lua-defined SystemIds in the same list without
-    -- crashing.
+    -- The procedural voxel entity exercises this Lua-defined system alongside
+    -- prefab SystemIds in the same pipeline.
     components = { IRComponent.C_LocalTransform },
     tick = function(arch)
-        -- Body stays trivial; the demo's success signal is the engine
-        -- reaching the game loop with a Lua-driven pipeline + exiting
-        -- cleanly under --auto-screenshot.
+        -- Reading the matching archetype proves the Lua tick executes.
         local _ = arch.length
     end,
 })
 
 IRSystem.registerPipeline(IRTime.UPDATE, {
     IRSystem.systemId(SystemName.PROPAGATE_TRANSFORM),
+    IRSystem.systemId(SystemName.UPDATE_VOXEL_SET_CHILDREN),
     IRSystem.systemId(SystemName.LIFETIME),
     IRSystem.systemId(SystemName.MODIFIER_DECAY),
     IRSystem.systemId(SystemName.GLOBAL_MODIFIER_DECAY),
@@ -53,6 +49,20 @@ IRRender.setSunDirection(0.4, 0.4, -1.0)
 IRRender.setSunIntensity(1.0)
 IRRender.setSkyColor(0.25, 0.3, 0.45)
 
+local recipe = dofile("scripts/procedural_voxel_recipe.lua")
+local voxelSet = C_VoxelSetNew.new(
+    ivec3.new(25, 25, 18),
+    Color.new(0, 0, 0, 0),
+    IRComponent.EntityAnchor.CENTER
+)
+local edits = recipe.build({ radius = 8, height = 14 })
+voxelSet:batch(function(set)
+    for _, voxel in ipairs(edits) do
+        set:setVoxel(voxel.x, voxel.y, voxel.z, Color.new(voxel.r, voxel.g, voxel.b, 255))
+    end
+end)
+IREntity.createVoxelEntity(C_LocalTransform.new(vec3.new(0.0, 0.0, 0.0)), voxelSet)
+
 -- GUI shape draw. The shape-draw primitives are immediate-mode
 -- onto the engine-default "gui" trixel canvas, so they must run every frame
 -- from a RENDER-phase system. One marker entity (singleton) puts the HUD
@@ -68,31 +78,11 @@ local hudDrawSysId = IRSystem.registerSystem({
         IRGui.drawLine(8, 56, 96, 56, { 90, 200, 255 })   -- horizontal line
         IRGui.drawLine(40, 8, 40, 56, { 120, 235, 140 })  -- vertical line
 
-        -- Debug-overlay draws. Same immediate-mode contract as
-        -- the IRGui draws above: DEBUG_OVERLAY consumes AND clears these
-        -- buffers every RENDER tick, so they must be re-issued here each
-        -- frame. Colors are 0..1 floats (the C++ IRDebug convention), NOT the
-        -- 0-255 tables IRGui takes.
-        --
-        -- World-anchored marker at the origin: IRDebug projects world → screen
-        -- itself, so this tracks the camera without any Lua-side math.
-        IRDebug.drawDiamond3D({ 0, 0, 0 }, 24, 1.0, 0.85, 0.2)
-        -- Screen-space HUD frame, in viewport pixels with (0,0) bottom-left.
-        IRDebug.drawRectScreen(
-            { 400, 30 }, { 610, 150 },
-            { 0.1, 0.15, 0.35, 0.6 },  -- fill
-            { 0.4, 0.9, 1.0, 1.0 }     -- border
-        )
     end,
 })
 
--- HUD draw → composite the trixel canvases (incl. "gui") to the framebuffer →
--- DEBUG_OVERLAY flush → blit to screen. The gui canvas is camera-independent,
--- so no camera-control systems are needed to show the HUD. DEBUG_OVERLAY sits
--- after TRIXEL_TO_FRAMEBUFFER and before FRAMEBUFFER_TO_SCREEN, matching the
--- default demo's placement; HudDraw runs before it so the buffers are filled
--- by the time the flush reads them.
 IRSystem.registerPipeline(IRTime.RENDER, {
+    IRSystem.systemId(SystemName.VOXEL_TO_TRIXEL_STAGE_1),
     hudDrawSysId,
     IRSystem.systemId(SystemName.TRIXEL_TO_FRAMEBUFFER),
     IRSystem.systemId(SystemName.DEBUG_OVERLAY),
