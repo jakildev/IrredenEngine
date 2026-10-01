@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <limits>
+
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_system.hpp>
@@ -311,6 +313,29 @@ TEST_F(LuaSpin, ImpulsesOnDifferentAxesSumAsAngularVelocity) {
     spin.impulse(IRMath::vec3(0, 0, -1), spin.radiansPerFrame_);
     EXPECT_FLOAT_EQ(spin.radiansPerFrame_, 0.0f);
     expectVec3Near(spin.axis_, IRMath::vec3(0, 0, 1));
+}
+
+TEST(AngularVelocityTicksToRest, BoundsOutOfRangeDamping) {
+    constexpr float kRate = 0.25f;
+    // Never decays: the system would spin forever, so the helper reports -1.
+    EXPECT_EQ(C_AngularVelocity::ticksToRest(kRate, 0.0f), -1);
+    EXPECT_EQ(C_AngularVelocity::ticksToRest(kRate, -0.5f), -1);
+    EXPECT_EQ(C_AngularVelocity::ticksToRest(kRate, 1.0e-9f), -1);
+    EXPECT_EQ(C_AngularVelocity::ticksToRest(kRate, std::numeric_limits<float>::quiet_NaN()), -1);
+    // Above 1 clamps to 1: one tick, like the system.
+    EXPECT_EQ(C_AngularVelocity::ticksToRest(kRate, 1.0f), 1);
+    EXPECT_EQ(C_AngularVelocity::ticksToRest(kRate, 2.0f), 1);
+    // A spin already at rest takes no ticks whatever the damping.
+    EXPECT_EQ(C_AngularVelocity::ticksToRest(0.0f, 0.0f), 0);
+    EXPECT_EQ(
+        C_AngularVelocity::ticksToRest(C_AngularVelocity::kAngularRestEpsilon * 0.5f, 0.0f),
+        0
+    );
+    // Negative rates use their magnitude.
+    EXPECT_EQ(
+        C_AngularVelocity::ticksToRest(-kRate, 0.1f),
+        C_AngularVelocity::ticksToRest(kRate, 0.1f)
+    );
 }
 
 } // namespace

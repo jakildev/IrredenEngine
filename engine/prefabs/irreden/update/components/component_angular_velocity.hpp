@@ -15,8 +15,9 @@
 // the system snaps it to exactly 0 once it falls below `kAngularRestEpsilon`,
 // so an impulse of `r0` is at rest within
 // `ceil(ln(kAngularRestEpsilon / r0) / ln(1 - dampingPerFrame_))` ticks —
-// `ticksToRest()` returns the exact count. `dampingPerFrame_` is clamped to
-// [0, 1] by the system: 0 never decays, 1 stops after a single tick.
+// `ticksToRest()` returns the exact count, or -1 when the spin never decays.
+// `dampingPerFrame_` is clamped to [0, 1] by the system: 0 never decays, 1 stops
+// after a single tick.
 //
 // Rates are per UPDATE tick, matching C_AutoSpin.
 
@@ -43,12 +44,19 @@ struct C_AngularVelocity {
         , dampingPerFrame_{dampingPerFrame} {}
 
     // Ticks ANGULAR_VELOCITY_DAMPED takes to bring a spin of `radiansPerFrame`
-    // to rest from standstill. `dampingPerFrame` must be in (0, 1].
+    // to rest from standstill. `dampingPerFrame` is clamped to [0, 1] as the
+    // system does; -1 when the rate would never fall (damping 0, NaN, or too
+    // small to move a float) and the spin is above rest.
     static constexpr int ticksToRest(float radiansPerFrame, float dampingPerFrame) {
+        const float damping =
+            dampingPerFrame < 0.0f ? 0.0f : (dampingPerFrame > 1.0f ? 1.0f : dampingPerFrame);
+        const float decay = 1.0f - damping;
+        float rate = radiansPerFrame < 0.0f ? -radiansPerFrame : radiansPerFrame;
+        if (!(decay < 1.0f)) {
+            return rate >= kAngularRestEpsilon ? -1 : 0;
+        }
         int ticks = 0;
-        for (float rate = radiansPerFrame < 0.0f ? -radiansPerFrame : radiansPerFrame;
-             rate >= kAngularRestEpsilon;
-             rate *= 1.0f - dampingPerFrame) {
+        for (; rate >= kAngularRestEpsilon; rate *= decay) {
             ++ticks;
         }
         return ticks;
