@@ -151,6 +151,8 @@ Run mode
     no exclusive verb    → no acquire (interactive / unit-test mode);
                            on native Windows every run takes the gpu lock
                            (IR_RUN_GL_EXCLUSIVE=0 opts out)
+    under an ir-acquire  → no nested acquire when the enclosing ir-acquire
+    holding the verb       still holds it (IR_ACQUIRE_HOLDER_PID/_HELD_VERB)
 
   Options (run mode):
     --build-dir <dir>   CMake build directory (must contain the built binary).
@@ -280,6 +282,13 @@ done
 # overlaps a smoke run; IR_RUN_GL_EXCLUSIVE=0 opts a call out.
 if [[ -z "$acquire_verb" && "$IR_IS_WINDOWS" == "1"       && "${IR_RUN_GL_EXCLUSIVE:-1}" == "1" ]]; then
     acquire_verb="gpu"
+fi
+
+# Under an ir-acquire that already holds the resource (ir-perf-grid wraps its
+# whole matrix in `benchmark`), run inside the ancestor's hold instead of
+# queueing on it.
+if [[ -n "$acquire_verb" ]] && ir_inherited_lock_covers "$acquire_verb"; then
+    acquire_verb=""
 fi
 
 # Default build dir: invoker's worktree, not the script-source clone.

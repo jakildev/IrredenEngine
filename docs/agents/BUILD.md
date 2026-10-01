@@ -113,7 +113,9 @@ build caps at `budget/2`). On native Windows `ir-run` takes the gpu lock for
 (`IR_RUN_GL_EXCLUSIVE=0` opts out): the NVIDIA GL driver parks a process in
 `glLinkProgram` for minutes while another engine process holds a live GL
 context, so an unwrapped test suite or a scratch launch stalls every smoke run
-on the host. Either name works. On a build failure `ir-build`
+on the host. A run nested under an `ir-acquire` that still holds its verb
+(`ir-perf-grid`'s matrix cells) runs inside that hold instead of queueing on
+it. Either name works. On a build failure `ir-build`
 runs CMake's own `cmake_check_build_system` check and retries once if it
 regenerated the tree — the case where `--target` names a target added since
 the last configure — so a target-added branch switch never needs a manual

@@ -47,7 +47,7 @@ release-early rule) ships as its own follow-up PR.
 | `bin/ir-perf-grid` | Perf-matrix runner (`ir-perf-grid [matrix-args]`, `ir-perf-grid calibrate`, `ir-perf-grid ref`). Wraps `scripts/perf/perf_grid_matrix.sh` in `ir-acquire benchmark` and splices ref_ms + host fingerprint into `manifest.json`. |
 | `bench/ir_ref_bench.cpp` | Deterministic IRMath hot-path mini-bench. Tuned to ~50ms on the calibration host; ref_ms above target means the host was loaded and per-cell measurements should be weighted normalized. |
 | `lib/concurrency_helpers.sh` | Sourced by `bin/ir-*`. Lock primitives + 3-layer config resolver. |
-| `py/ir_hardware_probe.py` | Python module called by `ir-host-probe`. Linux + macOS. |
+| `py/ir_hardware_probe.py` | Python module called by `ir-host-probe`. Linux, macOS, and Windows. |
 | `concurrency.toml` | Committed engine defaults — first layer of the three-layer config. |
 
 ## Three-layer config
@@ -77,6 +77,20 @@ Three resource types:
 Each lock dir contains a `pid` file with the holding process PID. Stale
 locks (holder PID is dead) are reclaimed on the next acquire attempt.
 `ir-acquire --info` runs a passive stale-sweep before printing state.
+On native Windows a lock also records the holder's Windows pid (`winpid`),
+because MSYS2 bash and Git for Windows bash share the lock root through
+`TEMP` but not a pid table, and `kill -0` from one runtime reports every
+holder in the other dead. Release and the stale-sweep require that record to
+match as well as the pid, and the per-holder ledger under `.held/` is keyed
+`<pid>.<winpid>` there, so two holders sharing a pid number never release
+each other's locks.
+
+Locks are not re-entrant. The wrapped command inherits
+`IR_ACQUIRE_HOLDER_PID` / `IR_ACQUIRE_HELD_VERB`, and a nested `ir-run` whose
+verb the ancestor still holds runs inside that hold instead of queueing on it.
+On native Windows it also inherits `IR_ACQUIRE_HOLDER_WINPID`, which must
+match the lock's `winpid` record: the other runtime's holder can carry the
+same pid number.
 
 ## Acquire-late, release-early
 
