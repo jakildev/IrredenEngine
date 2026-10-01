@@ -14,9 +14,13 @@
 // content renders at every zoom; disjoint bands across co-located variants
 // give exclusive (swap, not stack) LOD. See docs/design/lod-strategy.md.
 
+#include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/render/components/component_active_lod_level.hpp>
 #include <irreden/render/components/component_lod_tier_override.hpp>
+
+#include <cstdint>
 
 namespace IRRender {
 
@@ -39,6 +43,22 @@ inline LodLevel computeLodLevel(float zoomLevel) {
     if (zoomLevel >= 2.0f)
         return LodLevel::LOD_3;
     return LodLevel::LOD_4;
+}
+
+// The tier LOD_UPDATE wrote this tick, or LOD_4 when no creation registered it
+// (the singleton's own default, so every default-band entity still draws). A
+// singleton-cache probe; C++ tier consumers take it once per tick through
+// IRPrefab::Lod::TierSnapshot rather than per entity.
+inline LodLevel getActiveLodLevel() {
+    const auto *lod = IREntity::singletonOrNull<IRComponents::C_ActiveLodLevel>();
+    return lod != nullptr ? lod->current_ : LodLevel::LOD_4;
+}
+
+// getActiveLodLevel() as the integer Lua sees (0 finest .. 4 coarsest). Backs
+// both the `IRRender.getActiveLodTier` binding and its CODEGEN intrinsic, so an
+// EVAL and a CODEGEN system read the same value.
+inline std::int32_t getActiveLodTier() {
+    return static_cast<std::int32_t>(getActiveLodLevel());
 }
 
 // The tier one entity resolves to: its pinned tier when it carries a

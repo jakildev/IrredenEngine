@@ -51,6 +51,14 @@ const std::vector<Intrinsic> kIntrinsicRegistry = {
     {"IRRender", "setExposure",     "IRRender::setExposure",     1, true, "irreden/ir_render.hpp"},
     {"IRRender", "setSkyIntensity", "IRRender::setSkyIntensity", 1, true, "irreden/ir_render.hpp"},
     {"IRRender", "setCameraZoom",   "IRRender::setCameraZoom",   1, true, "irreden/ir_render.hpp"},
+    // --- IRRender.* engine-state reads ------------------------------
+    //
+    // Value-returning reads of an engine singleton, usable inside an
+    // expression. This is how a CODEGEN system reads a singleton: the DSL
+    // cannot name a C++-bound component, and declaring one as a column would
+    // iterate a one-row archetype to fetch one value.
+    {"IRRender", "getActiveLodTier", "IRRender::getActiveLodTier", 0, false,
+     "irreden/render/lod_utils.hpp", true},
 };
 
 [[noreturn]] void fail(const std::string &file, int line, const std::string &msg) {
@@ -1357,11 +1365,14 @@ struct Emitter {
                              "` returns void (side-effecting render-glue) and may only be used "
                              "as a bare statement, not inside an expression");
                 }
+                if (intr.requiredInclude_) {
+                    requiredIncludes_.insert(intr.requiredInclude_);
+                }
                 emitIntrinsicCall(e, intr);
-                // Treat value-returning intrinsic results as float (the listed
-                // set returns float/int; C++ template deduction handles the
-                // rest where we feed the result into further float math).
-                return ExprType::FLOAT;
+                // Value-returning intrinsics are float unless flagged int32
+                // (C++ template deduction handles the math.* int overloads
+                // where the result feeds further float math).
+                return intr.returnsInt32_ ? ExprType::INT32 : ExprType::FLOAT;
             }
             case ExprKind::COLUMN_AT: {
                 const auto *schema = findComponent(e.componentName_);
