@@ -101,6 +101,7 @@ add_executable(IrredenEngineTest
   render/prefab_system_probe_test.cpp
   render/run_witness_test.cpp
   render/settings_menu_reset_test.cpp
+  render/shape_tile_bounds_test.cpp
   render/sun_direction_test.cpp
   render/sun_lighting_test.cpp
   render/sun_shadow_feeder_ring_test.cpp
