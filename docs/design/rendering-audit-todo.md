@@ -34,12 +34,16 @@ Next, in order:
 
 1. Complete native OpenGL validation of finite faces and centered gather; isolate
    the remaining intermediate-angle boundary differences using actual capture
-   poses and raster ownership rules. The ideal-angle diagnostic still counts
+   poses and raster ownership rules. The prior ideal-angle diagnostic counted
    15 wrong-face and four missing game samples; do not relax a gate to bless them.
-   A centered-scatter projection experiment reduced the actual-pose diagnostic
-   from 19 to 11 samples but introduced two differences at 22.5°; it was rejected.
-   Establish hardware raster ownership with an independent GPU reference before
-   treating an algebraically equivalent coordinate rewrite as a visual fix.
+   The [independent finite-face raster control](finite-face-raster-validation.md)
+   now separates ideal-ray edges from hardware coverage. Direct Metal triangles
+   agree with the centered-scatter follow-up at all 17 sampled yaw views; the
+   former projection differs at 12 game samples. The earlier 22.5° rejection
+   was based on an ideal-ray disagreement that the independent hardware draw
+   also exhibits. Keep ray and raster expectations separate; do not add tolerance.
+   The fine 33-view sweep still has one missing game pixel at yaw 0.38781238;
+   the parent has the same miss. Native OpenGL raster precision remains unverified.
 2. Profile conservative overflow emission on large rotating populations and high
    effective subdivisions. The scratch-layout follow-up removes the unused mask
    allocation and consolidates consumer offsets, with layout and native GPU-sort
