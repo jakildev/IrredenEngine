@@ -38,48 +38,48 @@
     "game_mismatches": 3,
     "output_mismatches": 12,
     "examples": [
-      [
-        600,
-        284,
-        [
+      {
+        "game_x": 600,
+        "game_y": 284,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           128,
           128,
           0
         ]
-      ],
-      [
-        691,
-        336,
-        [
+      },
+      {
+        "game_x": 691,
+        "game_y": 336,
+        "observed": [
           0,
           128,
           128
         ],
-        [
+        "reference": [
           128,
           128,
           0
         ]
-      ],
-      [
-        691,
-        344,
-        [
+      },
+      {
+        "game_x": 691,
+        "game_y": 344,
+        "observed": [
           128,
           128,
           0
         ],
-        [
+        "reference": [
           0,
           128,
           128
         ]
-      ]
+      }
     ]
   },
   {
@@ -121,34 +121,34 @@
     "game_mismatches": 2,
     "output_mismatches": 8,
     "examples": [
-      [
-        622,
-        305,
-        [
+      {
+        "game_x": 622,
+        "game_y": 305,
+        "observed": [
           128,
           128,
           0
         ],
-        [
+        "reference": [
           0,
           128,
           128
         ]
-      ],
-      [
-        622,
-        313,
-        [
+      },
+      {
+        "game_x": 622,
+        "game_y": 313,
+        "observed": [
           0,
           128,
           128
         ],
-        [
+        "reference": [
           128,
           128,
           0
         ]
-      ]
+      }
     ]
   },
   {
@@ -158,34 +158,34 @@
     "game_mismatches": 2,
     "output_mismatches": 8,
     "examples": [
-      [
-        605,
-        318,
-        [
+      {
+        "game_x": 605,
+        "game_y": 318,
+        "observed": [
           128,
           0,
           128
         ],
-        [
+        "reference": [
           128,
           128,
           0
         ]
-      ],
-      [
-        605,
-        454,
-        [
+      },
+      {
+        "game_x": 605,
+        "game_y": 454,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ]
+      }
     ]
   },
   {
@@ -211,20 +211,20 @@
     "game_mismatches": 1,
     "output_mismatches": 4,
     "examples": [
-      [
-        556,
-        316,
-        [
+      {
+        "game_x": 556,
+        "game_y": 316,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           128,
           128,
           0
         ]
-      ]
+      }
     ]
   },
   {
@@ -266,20 +266,20 @@
     "game_mismatches": 1,
     "output_mismatches": 4,
     "examples": [
-      [
-        699,
-        296,
-        [
+      {
+        "game_x": 699,
+        "game_y": 296,
+        "observed": [
           128,
           128,
           0
         ],
-        [
+        "reference": [
           0,
           0,
           0
         ]
-      ]
+      }
     ]
   },
   {
@@ -337,34 +337,34 @@
     "game_mismatches": 2,
     "output_mismatches": 8,
     "examples": [
-      [
-        668,
-        318,
-        [
+      {
+        "game_x": 668,
+        "game_y": 318,
+        "observed": [
           128,
           128,
           0
         ],
-        [
+        "reference": [
           0,
           128,
           128
         ]
-      ],
-      [
-        668,
-        326,
-        [
+      },
+      {
+        "game_x": 668,
+        "game_y": 326,
+        "observed": [
           0,
           128,
           128
         ],
-        [
+        "reference": [
           128,
           128,
           0
         ]
-      ]
+      }
     ]
   },
   {
@@ -374,342 +374,342 @@
     "game_mismatches": 24,
     "output_mismatches": 96,
     "examples": [
-      [
-        527,
-        359,
-        [
+      {
+        "game_x": 527,
+        "game_y": 359,
+        "observed": [
           128,
           128,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        360,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 360,
+        "observed": [
           128,
           128,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        361,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 361,
+        "observed": [
           128,
           128,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        362,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 362,
+        "observed": [
           128,
           128,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        363,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 363,
+        "observed": [
           128,
           128,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        364,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 364,
+        "observed": [
           128,
           128,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        365,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 365,
+        "observed": [
           128,
           128,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        366,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 366,
+        "observed": [
           128,
           128,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        367,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 367,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        368,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 368,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        369,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 369,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        370,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 370,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        371,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 371,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        372,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 372,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        373,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 373,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        374,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 374,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        375,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 375,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        376,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 376,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        377,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 377,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        378,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 378,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        379,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 379,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        380,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 380,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        381,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 381,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ],
-      [
-        527,
-        382,
-        [
+      },
+      {
+        "game_x": 527,
+        "game_y": 382,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ]
+      }
     ]
   },
   {
@@ -719,34 +719,34 @@
     "game_mismatches": 2,
     "output_mismatches": 8,
     "examples": [
-      [
-        681,
-        325,
-        [
+      {
+        "game_x": 681,
+        "game_y": 325,
+        "observed": [
           128,
           128,
           0
         ],
-        [
+        "reference": [
           0,
           128,
           128
         ]
-      ],
-      [
-        681,
-        333,
-        [
+      },
+      {
+        "game_x": 681,
+        "game_y": 333,
+        "observed": [
           0,
           128,
           128
         ],
-        [
+        "reference": [
           128,
           128,
           0
         ]
-      ]
+      }
     ]
   },
   {
@@ -756,62 +756,62 @@
     "game_mismatches": 4,
     "output_mismatches": 16,
     "examples": [
-      [
-        693,
-        287,
-        [
+      {
+        "game_x": 693,
+        "game_y": 287,
+        "observed": [
           128,
           128,
           0
         ],
-        [
+        "reference": [
           0,
           128,
           128
         ]
-      ],
-      [
-        693,
-        295,
-        [
-          0,
-          128,
-          128
-        ],
-        [
-          128,
-          128,
-          0
-        ]
-      ],
-      [
-        708,
-        384,
-        [
+      },
+      {
+        "game_x": 693,
+        "game_y": 295,
+        "observed": [
           0,
           128,
           128
         ],
-        [
+        "reference": [
           128,
           128,
           0
         ]
-      ],
-      [
-        708,
-        392,
-        [
+      },
+      {
+        "game_x": 708,
+        "game_y": 384,
+        "observed": [
+          0,
+          128,
+          128
+        ],
+        "reference": [
+          128,
+          128,
+          0
+        ]
+      },
+      {
+        "game_x": 708,
+        "game_y": 392,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           0,
           128,
           128
         ]
-      ]
+      }
     ]
   },
   {
@@ -821,20 +821,20 @@
     "game_mismatches": 1,
     "output_mismatches": 4,
     "examples": [
-      [
-        549,
-        324,
-        [
+      {
+        "game_x": 549,
+        "game_y": 324,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           128,
           128,
           0
         ]
-      ]
+      }
     ]
   },
   {
@@ -844,20 +844,20 @@
     "game_mismatches": 1,
     "output_mismatches": 4,
     "examples": [
-      [
-        596,
-        287,
-        [
+      {
+        "game_x": 596,
+        "game_y": 287,
+        "observed": [
           128,
           128,
           0
         ],
-        [
+        "reference": [
           0,
           0,
           0
         ]
-      ]
+      }
     ]
   },
   {
@@ -875,48 +875,48 @@
     "game_mismatches": 3,
     "output_mismatches": 12,
     "examples": [
-      [
-        626,
-        324,
-        [
+      {
+        "game_x": 626,
+        "game_y": 324,
+        "observed": [
           128,
           128,
           0
         ],
-        [
+        "reference": [
           0,
           128,
           128
         ]
-      ],
-      [
-        626,
-        332,
-        [
-          0,
-          128,
-          128
-        ],
-        [
-          128,
-          128,
-          0
-        ]
-      ],
-      [
-        626,
-        444,
-        [
+      },
+      {
+        "game_x": 626,
+        "game_y": 332,
+        "observed": [
           0,
           128,
           128
         ],
-        [
+        "reference": [
+          128,
+          128,
+          0
+        ]
+      },
+      {
+        "game_x": 626,
+        "game_y": 444,
+        "observed": [
+          0,
+          128,
+          128
+        ],
+        "reference": [
           0,
           0,
           0
         ]
-      ]
+      }
     ]
   },
   {
@@ -1006,20 +1006,20 @@
     "game_mismatches": 1,
     "output_mismatches": 4,
     "examples": [
-      [
-        605,
-        454,
-        [
+      {
+        "game_x": 605,
+        "game_y": 454,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           128,
           0,
           128
         ]
-      ]
+      }
     ]
   },
   {

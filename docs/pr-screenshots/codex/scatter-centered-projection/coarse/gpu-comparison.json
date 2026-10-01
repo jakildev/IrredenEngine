@@ -14,34 +14,34 @@
     "game_mismatches": 2,
     "output_mismatches": 8,
     "examples": [
-      [
-        701,
-        301,
-        [
+      {
+        "game_x": 701,
+        "game_y": 301,
+        "observed": [
           128,
           128,
           0
         ],
-        [
+        "reference": [
           0,
           128,
           128
         ]
-      ],
-      [
-        701,
-        309,
-        [
+      },
+      {
+        "game_x": 701,
+        "game_y": 309,
+        "observed": [
           0,
           128,
           128
         ],
-        [
+        "reference": [
           128,
           128,
           0
         ]
-      ]
+      }
     ]
   },
   {
@@ -75,48 +75,48 @@
     "game_mismatches": 3,
     "output_mismatches": 12,
     "examples": [
-      [
-        670,
-        307,
-        [
+      {
+        "game_x": 670,
+        "game_y": 307,
+        "observed": [
           255,
           128,
           128
         ],
-        [
+        "reference": [
           128,
           128,
           0
         ]
-      ],
-      [
-        670,
-        315,
-        [
+      },
+      {
+        "game_x": 670,
+        "game_y": 315,
+        "observed": [
           128,
           128,
           0
         ],
-        [
+        "reference": [
           255,
           128,
           128
         ]
-      ],
-      [
-        670,
-        443,
-        [
+      },
+      {
+        "game_x": 670,
+        "game_y": 443,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           255,
           128,
           128
         ]
-      ]
+      }
     ]
   },
   {
@@ -134,48 +134,48 @@
     "game_mismatches": 3,
     "output_mismatches": 12,
     "examples": [
-      [
-        609,
-        307,
-        [
+      {
+        "game_x": 609,
+        "game_y": 307,
+        "observed": [
           255,
           128,
           128
         ],
-        [
+        "reference": [
           128,
           128,
           0
         ]
-      ],
-      [
-        609,
-        315,
-        [
+      },
+      {
+        "game_x": 609,
+        "game_y": 315,
+        "observed": [
           128,
           128,
           0
         ],
-        [
+        "reference": [
           255,
           128,
           128
         ]
-      ],
-      [
-        609,
-        443,
-        [
+      },
+      {
+        "game_x": 609,
+        "game_y": 443,
+        "observed": [
           0,
           0,
           0
         ],
-        [
+        "reference": [
           255,
           128,
           128
         ]
-      ]
+      }
     ]
   },
   {
@@ -225,34 +225,34 @@
     "game_mismatches": 2,
     "output_mismatches": 8,
     "examples": [
-      [
-        670,
-        323,
-        [
+      {
+        "game_x": 670,
+        "game_y": 323,
+        "observed": [
           0,
           128,
           128
         ],
-        [
+        "reference": [
           128,
           128,
           0
         ]
-      ],
-      [
-        670,
-        331,
-        [
+      },
+      {
+        "game_x": 670,
+        "game_y": 331,
+        "observed": [
           128,
           128,
           0
         ],
-        [
+        "reference": [
           0,
           128,
           128
         ]
-      ]
+      }
     ]
   },
   {
@@ -270,34 +270,34 @@
     "game_mismatches": 2,
     "output_mismatches": 8,
     "examples": [
-      [
-        609,
-        323,
-        [
+      {
+        "game_x": 609,
+        "game_y": 323,
+        "observed": [
           0,
           128,
           128
         ],
-        [
+        "reference": [
           128,
           128,
           0
         ]
-      ],
-      [
-        609,
-        331,
-        [
+      },
+      {
+        "game_x": 609,
+        "game_y": 331,
+        "observed": [
           128,
           128,
           0
         ],
-        [
+        "reference": [
           0,
           128,
           128
         ]
-      ]
+      }
     ]
   },
   {
