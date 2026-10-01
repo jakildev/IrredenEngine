@@ -111,6 +111,9 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   the gizmo as a unit, `create*GizmoForAnchor(anchor)` mutates the anchor's own
   `C_LocalTransform`, `kNullEntity` makes a marker hoverable but drag-inert.
   `GIZMO_DRAG` locks its iso-depth plane at press.
+- `Picking::castVoxelRay(RayCastOptions)`: `ISO_LATTICE` (default) resolves the
+  iso column; `SCREEN_PIXEL` resolves the face drawn under the cursor — an edit
+  pick uses it, with `shapes_ = false` (a shape hit has no face).
 - Cursor pivot: `IRPrefab::CursorPivot::resolveFocusWorld(exclude)` picks at
   true surface depth and falls back to `IRRender::getDefaultRotationPivotFocus()`;
   pass the indicator as `exclude`; never add a picking-side anchor compensation.

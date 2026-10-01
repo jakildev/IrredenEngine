@@ -216,35 +216,20 @@ vec2 mousePosition2DIsoWorldRender() {
     return mousePosition2DIsoScreenRender() - IRRender::getEffectiveCameraIso();
 }
 
-vec3 mouseWorldPos3DAtIsoDepth(float canvasIsoDepth) {
-    // Screen-to-world picking uses the raster-yaw inverse only.
-    // The inverse chain is the rasterYaw half only:
-    //   world = R_z(-rasterYaw) · isoPixelToPos3D · screen
-    // `mouseCanvasIso()` provides the canvas-frame iso pixel; isoPixelToPos3D
-    // recovers the unique 3D point at the requested depth (= rotated.x +
-    // rotated.y + rotated.z under rasterYaw); rotateCardinalZInv lifts
-    // back to the world frame.
-    const float rasterYaw = IRPrefab::Camera::getRasterYaw();
-    const vec2 canvasIso = mouseCanvasIso() - IRRender::getEffectiveCameraIso();
-    const vec3 rotatedWorld = IRMath::isoPixelToPos3D(
-        static_cast<int>(IRMath::floor(canvasIso.x)),
-        static_cast<int>(IRMath::floor(canvasIso.y)),
-        canvasIsoDepth
-    );
-    return IRMath::rotateCardinalZInv(rotatedWorld, IRMath::rasterYawCardinalIndex(rasterYaw));
+namespace {
+
+// Where the main canvas displays a point, relative to that point's own iso
+// projection. A voxel face cell rasterizes as two texels stacked in iso Y, and
+// the gather shows each texel as a rectangle, so the drawn footprint of a cell
+// sits half a texel below its geometric projection. The texel is one
+// subdivided iso unit, hence the divide.
+vec2 displayedIsoBias() {
+    return vec2(0.0f, 0.5f / static_cast<float>(getVoxelRenderEffectiveSubdivisions()));
 }
 
-ivec2 worldPos3DToMouseScreenPx(vec3 worldPos) {
-    // Exact inverse of mouseWorldPos3DAtIsoDepth's screen→world chain, run in
-    // reverse and reusing the identical live terms so the two never drift:
-    //   world → rotateCardinalZ → pos3DtoPos2DIso (iso pixel of worldPos)
-    //         → +0.5 (aim iso cell centre) → +effectiveCameraIso
-    //         → +mainCanvasSizeTrixels/zoom/2 → *stepSize (undo /stepSize)
-    //         → +letterboxOffset − bufferCorrection (undo getMousePositionOutputView)
-    const float rasterYaw = IRPrefab::Camera::getRasterYaw();
-    const vec3 rotated =
-        IRMath::rotateCardinalZ(worldPos, IRMath::rasterYawCardinalIndex(rasterYaw));
-    const vec2 canvasIso = IRMath::pos3DtoPos2DIso(rotated) + vec2(0.5f);
+// Window pixel whose cursor reads @p canvasIso from mouseCanvasIso() minus the
+// camera offset: that chain run in reverse on the same live terms.
+ivec2 canvasIsoToMouseScreenPx(vec2 canvasIso) {
     const vec2 isoScreen = canvasIso + IRRender::getEffectiveCameraIso() +
                            getMainCanvasSizeTrixels() / getCameraZoom() / vec2(2.0f);
     const vec2 outputView = isoScreen * IRRender::getTriangleStepSizeScreen();
@@ -252,6 +237,69 @@ ivec2 worldPos3DToMouseScreenPx(vec3 worldPos) {
     const vec2 bufferCorrection = vec2(IRConstants::kSizeExtraPixelBuffer) / vec2(2.0f) *
                                   vec2(getRenderManager().getOutputScaleFactor());
     return IRMath::roundVec(outputView + offset - bufferCorrection);
+}
+
+IRMath::CardinalIndex rasterCardinalIndex() {
+    return IRMath::rasterYawCardinalIndex(IRPrefab::Camera::getRasterYaw());
+}
+
+} // namespace
+
+vec3 mouseWorldPos3DAtIsoDepth(float canvasIsoDepth) {
+    // Screen-to-world picking uses the raster-yaw inverse only:
+    //   world = R_z(-rasterYaw) · isoPixelToPos3D · screen
+    // isoPixelToPos3D recovers the unique 3D point at the requested depth
+    // (= rotated.x + rotated.y + rotated.z under rasterYaw);
+    // rotateCardinalZInv lifts it back to the world frame.
+    const vec2 canvasIso = mouseCanvasIso() - IRRender::getEffectiveCameraIso();
+    const vec3 rotatedWorld = IRMath::isoPixelToPos3D(
+        static_cast<int>(IRMath::floor(canvasIso.x)),
+        static_cast<int>(IRMath::floor(canvasIso.y)),
+        canvasIsoDepth
+    );
+    return IRMath::rotateCardinalZInv(rotatedWorld, rasterCardinalIndex());
+}
+
+namespace {
+
+// World point at @p canvasIsoDepth behind what the main canvas displays at
+// camera-relative canvas iso position @p displayedIso.
+vec3 displayedIsoToWorldPos3D(vec2 displayedIso, float canvasIsoDepth) {
+    return IRMath::rotateCardinalZInv(
+        IRMath::isoPixelToPos3D(displayedIso - displayedIsoBias(), canvasIsoDepth),
+        rasterCardinalIndex()
+    );
+}
+
+} // namespace
+
+vec3 mouseWorldPos3DAtIsoDepthExact(float canvasIsoDepth) {
+    return displayedIsoToWorldPos3D(
+        mouseCanvasIso() - IRRender::getEffectiveCameraIso(),
+        canvasIsoDepth
+    );
+}
+
+vec3 mainCanvasTexelWorldPos3DAtIsoDepth(ivec2 texel, float canvasIsoDepth) {
+    // mouseCanvasTexelWorld() run backwards from the texel's centre.
+    const float subdivisions = static_cast<float>(getVoxelRenderEffectiveSubdivisions());
+    return displayedIsoToWorldPos3D(
+        (vec2(texel) - getMainCanvasSizeTrixels() / vec2(2.0f) + vec2(0.5f)) / subdivisions -
+            IRRender::getEffectiveCameraIso(),
+        canvasIsoDepth
+    );
+}
+
+ivec2 worldPos3DToMouseScreenPx(vec3 worldPos) {
+    // +0.5 aims the iso cell centre, so mouseWorldPos3DAtIsoDepth's floor
+    // lands on worldPos's own iso pixel.
+    const vec3 rotated = IRMath::rotateCardinalZ(worldPos, rasterCardinalIndex());
+    return canvasIsoToMouseScreenPx(IRMath::pos3DtoPos2DIso(rotated) + vec2(0.5f));
+}
+
+ivec2 worldPos3DToMouseScreenPxExact(vec3 worldPos) {
+    const vec3 rotated = IRMath::rotateCardinalZ(worldPos, rasterCardinalIndex());
+    return canvasIsoToMouseScreenPx(IRMath::pos3DtoPos2DIso(rotated) + displayedIsoBias());
 }
 
 namespace {

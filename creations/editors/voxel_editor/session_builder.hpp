@@ -24,34 +24,26 @@
 // a scripted cursor clicked a face and the editor's own place/erase path ran.
 // So a recipe never touches voxel storage. It names cells; the builder works
 // out which face of which already-placed voxel to click, aims the cursor with
-// IRRender::worldPos3DToMouseScreenPx (the world→screen primitive the
-// probe-map shots validate), and emits MOVE / PRESS / RELEASE events.
+// IRRender::worldPos3DToMouseScreenPxExact, and emits MOVE / PRESS / RELEASE
+// events.
 //
 // The shadow occupancy model is what makes that aiming reliable. It mirrors the
-// editable set's occupancy as the recipe grows it and replays
-// IRPrefab::Picking::castVoxelRay's front-to-back walk over that mirror, so an
-// aim that would be occluded is caught while the recipe is being built rather
-// than as a mystery FAIL (or, worse, a silent no-op) at run time.
+// editable set's occupancy as the recipe grows it and casts the editor's own
+// pick ray (IRPrefab::Picking::castGridRay) over that mirror, so an aim that
+// would be occluded is caught while the recipe is being built rather than as a
+// mystery FAIL (or, worse, a silent no-op) at run time.
 //
-// Three properties of the editor's isometric view drive the whole design:
-//   - The picking ray marches along +(1,1,1), so exactly three faces of a voxel
+// Two properties of the editor's isometric view drive the design:
+//   - The picking ray runs along +(1,1,1), so exactly three faces of a voxel
 //     can ever be clicked: -x, -y, -z. Placing at cell T therefore means
 //     clicking face n of anchor cell T - n for one of those three normals.
-//   - Aim accuracy is zoom-bound. The floor for hitting the right iso
-//     *column* is zoom >= 2; hitting the right *face* of a voxel
-//     needs zoom >= 3 (see kSessionZoom), because a face-centre aim is offset
-//     half a column-spacing in screen space and rounds across the boundary
-//     below that.
-//   - The cursor->ray inverse FLOORS the aim onto the integer iso lattice, so a
-//     sub-half-pixel face offset is destroyed before the ray is cast. At the
-//     cardinal camera a voxel's -x and -y faces land on one pixel (root cause:
-//     docs/design/editor-authoring-friction.md §M-2), so the model must
-//     march the floored column and predict the face normal — a model that
-//     marched the exact aim ray would separate two aims the live picker cannot,
-//     and greenlight a click that silently no-ops.
+//   - The pick resolves the face drawn under the cursor, so an aim has to sit
+//     on a part of the face that is actually visible, with margin: a neighbour
+//     one step toward the camera covers exactly half of a face, and its
+//     silhouette then runs through the face's centre.
 //
 // Recipes run at the cardinal baseline yaw (no camera rotation between
-// segments), which is what lets the model assume the (1,1,1) march axis.
+// segments), which is what lets the model assume the (1,1,1) ray.
 namespace IRVoxelEditor::Session {
 
 // The three faces whose outward normal points back at the camera — the only
@@ -63,20 +55,24 @@ inline constexpr IRMath::ivec3 kCameraFacingNormals[3] = {
     IRMath::ivec3(0, 0, -1),
 };
 
-// How far from the voxel centre, toward the clicked face, the model probes to
-// find out which iso pixel that face maps to. It is ONLY a pixel selector: the
-// picker floors the cursor onto the integer iso lattice and re-casts from the
-// pixel, so no sub-voxel structure of the probe point survives into the hit
-// (which is why the emitted aim is re-centred in the chosen pixel — see
-// faceAim). Strictly < 0.5 so the probe stays inside the cube; 0.4 puts the -z
-// probe a clear 0.8 iso row off the voxel's own pixel while leaving -x / -y on
-// it, which is the (unfixable) collapse §M-2 documents.
-inline constexpr float kFaceAimDepth = 0.4f;
+// Candidate aim points on a face, as offsets from its centre along its two
+// in-plane axes: the centre, then the centre of each quadrant.
+inline constexpr IRMath::vec2 kFaceAimOffsets[5] = {
+    IRMath::vec2(0.0f, 0.0f),
+    IRMath::vec2(-0.25f, -0.25f),
+    IRMath::vec2(0.25f, -0.25f),
+    IRMath::vec2(-0.25f, 0.25f),
+    IRMath::vec2(0.25f, 0.25f),
+};
 
-// Cardinal camera index the recipes author at. Sessions never rotate the
-// camera, so the model's aim->pixel projection is fixed at the identity
-// rotation — the same assumption that lets it hard-code the (1,1,1) march.
-inline constexpr IRMath::CardinalIndex kSessionCardinalIndex = IRMath::CardinalIndex::k0;
+// Half-width, in voxels, of the clear patch an aim must sit in the middle of.
+// An eighth of a voxel is a screen pixel at zoom 4 and half of one at zoom 2 —
+// the most the cursor's rounding to a whole pixel can move it.
+inline constexpr float kFaceAimMargin = 0.125f;
+
+// The pick ray's per-axis step at the cardinal camera the recipes author at.
+// Sessions never rotate the camera, so the model casts along it unconditionally.
+inline constexpr IRMath::ivec3 kSessionRayDirection = IRMath::ivec3(1);
 
 // Frames a session shot leaves between the cursor MOVE and the button PRESS,
 // and again before the RELEASE. One frame each is what the existing scripted
@@ -84,14 +80,8 @@ inline constexpr IRMath::CardinalIndex kSessionCardinalIndex = IRMath::CardinalI
 // editor's drag state machine sees a PRESSED, a HELD, and a RELEASED sample.
 inline constexpr int kFramesPerClickStep = 1;
 
-// Camera zoom sessions author at. The zoom >= 2 floor covers picking the
-// right iso *column*; picking the right *face within* a voxel needs more. A
-// face-centre aim sits half a column-spacing off the voxel centre in screen
-// space, so at zoom 2 (iso step (4,2) px) it rounds onto the neighbouring
-// column and the click edits the wrong cell — measured by sweeping this
-// constant against the drag_probe session: zoom 2 fails the side-face aim
-// (11 assertions, 2 FAIL), zoom 3 / 4 / 8 all pass 11/11. 4 is the floor plus
-// one step of margin.
+// Camera zoom sessions author at by default: every face is 8 x 8 screen pixels,
+// so a capture reads clearly. A face aim resolves down to zoom 1.
 inline constexpr float kSessionZoom = 4.0f;
 
 // Mirror of the editable set's occupancy, in local cell coordinates. Carries
@@ -163,100 +153,61 @@ class OccupancyModel {
         return m_origin + IRMath::vec3(local);
     }
 
-    // Iso depth (the picker's march coordinate) of `local`'s centre.
-    float cellIsoDepth(IRMath::ivec3 local) const {
-        return static_cast<float>(IRMath::pos3DtoDistance(worldCenter(local)));
+    // What the editor's edit pick reports for a cursor parked on `worldAim`:
+    // the cell the ray lands on and the face it enters through. The same
+    // traversal the live pick runs, over the mirror instead of the set.
+    std::optional<IRPrefab::Picking::GridRayHit> pick(IRMath::vec3 worldAim) const {
+        return IRPrefab::Picking::castGridRay(
+            worldAim - m_origin,
+            kSessionRayDirection,
+            m_size,
+            [this](IRMath::ivec3 local) { return occupied(local); }
+        );
     }
 
-    // What IRPrefab::Picking::castVoxelRay would report for a cursor aimed at
-    // `worldAim`: the cell the ray lands on AND the face normal it derives.
-    // Both halves matter — the editor places at `voxelPos_ + faceNormal_`, so a
-    // prediction that only carries the cell can still greenlight a click that
-    // edits a different neighbour than the recipe asked for.
-    struct PickPrediction {
-        IRMath::ivec3 cell_ = IRMath::ivec3(0);
-        IRMath::ivec3 faceNormal_ = IRMath::ivec3(0);
-    };
-
-    // Replays the picker's walk over the mirror rather than approximating it,
-    // so "where does this aim land" is answered the same way the editor will
-    // answer it at run time — including the lossy parts. The aim is reduced to
-    // its floored iso pixel first (aimIsoPixel), because that pixel is the only
-    // thing the live picker ever sees; marching the exact aim ray instead would
-    // resolve sub-pixel detail the cursor cannot carry.
-    //
-    // The face normal this returns agrees with the live picker's only because
-    // both grids land on the same 0.5 lattice today (session scenes build
-    // without demo furniture and every occupied cell/ghost origin is a multiple
-    // of 0.5 — see docs/design/editor-authoring-friction.md §M-2's
-    // quantization caveat); a future visible entity with an off-lattice depth
-    // origin in a session scene would silently break that agreement on the
-    // collapsed -x/-y columns without failing a test.
-    std::optional<PickPrediction> pick(IRMath::vec3 worldAim) const {
-        const IRMath::ivec2 isoPixel =
-            IRPrefab::Picking::aimIsoPixel(worldAim, kSessionCardinalIndex);
-        // Front-to-back over the scene's iso-depth span at the picker's own
-        // step, so no cell the real ray would sample is skipped. The span is
-        // the near and far cells' own depths, widened by the picker's margin
-        // for the half-cell rounding at either end.
-        const float nearDepth = cellIsoDepth(IRMath::ivec3(0));
-        const float farDepth = cellIsoDepth(m_size - IRMath::ivec3(1));
-        for (float depth = nearDepth - IRPrefab::Picking::kPickingDepthMargin;
-             depth <= farDepth + IRPrefab::Picking::kPickingDepthMargin;
-             depth += IRPrefab::Picking::kPickingDepthStep) {
-            const IRMath::vec3 point = IRMath::isoPixelToPos3D(isoPixel.x, isoPixel.y, depth);
-            const IRMath::ivec3 local = IRMath::roundVec3HalfUp(point - m_origin);
-            if (!occupied(local))
-                continue;
-            return PickPrediction{
-                local,
-                IRPrefab::Picking::voxelHitFaceNormal(point - worldCenter(local))
-            };
+    // Where to put the cursor to click `local`'s `normal` face, or nullopt when
+    // no candidate point on it is visible with margin. Candidates are the face
+    // centre, then the centre of each quadrant; one is taken only if the points
+    // kFaceAimMargin either side of it along both in-plane axes pick the same
+    // cell, so the emitted cursor's rounding to a whole screen pixel cannot
+    // carry it across a silhouette.
+    std::optional<IRMath::vec3> faceAim(IRMath::ivec3 local, IRMath::ivec3 normal) const {
+        const int normalAxis = normal.x != 0 ? 0 : (normal.y != 0 ? 1 : 2);
+        IRMath::vec3 tangentU(0.0f);
+        IRMath::vec3 tangentV(0.0f);
+        tangentU[(normalAxis + 1) % 3] = 1.0f;
+        tangentV[(normalAxis + 2) % 3] = 1.0f;
+        const IRMath::vec3 faceCentre = worldCenter(local) + IRMath::vec3(normal) * 0.5f;
+        for (const IRMath::vec2 &offset : kFaceAimOffsets) {
+            const IRMath::vec3 aim = faceCentre + tangentU * offset.x + tangentV * offset.y;
+            bool clear = picksCell(aim, local);
+            for (const float du : {-kFaceAimMargin, kFaceAimMargin})
+                for (const float dv : {-kFaceAimMargin, kFaceAimMargin})
+                    clear = clear && picksCell(aim + tangentU * du + tangentV * dv, local);
+            if (clear)
+                return aim;
         }
         return std::nullopt;
-    }
-
-    // Where to put the cursor to click `local`'s `normal` face.
-    //
-    // The face direction only chooses which iso pixel the click lands on; the
-    // picker floors the cursor onto the lattice and re-casts from that pixel, so
-    // nothing else about the aim survives. So probe for the pixel, then aim at
-    // the point that lands DEAD CENTRE of it rather than at the face plane.
-    //
-    // That margin is load-bearing. The live forward mapping rounds to a whole
-    // screen pixel before the inverse floors it back, and a face-plane aim sits
-    // only ~0.1 iso from a floor boundary — inside that rounding, so it flips
-    // onto the neighbouring column for some cells and not others (measured at
-    // kSessionZoom: every -x face-plane aim recovered a pixel one iso row off
-    // the model's). Re-centring buys the full half-pixel, which no rounding at
-    // any authoring zoom can cross, so model and live pick agree by
-    // construction. The depth argument only slides the point along the pixel's
-    // column; the anchor's own depth keeps it inside the anchor cube.
-    IRMath::vec3 faceAim(IRMath::ivec3 local, IRMath::ivec3 normal) const {
-        const IRMath::vec3 center = worldCenter(local);
-        const IRMath::ivec2 pixel = IRPrefab::Picking::aimIsoPixel(
-            center + IRMath::vec3(normal) * kFaceAimDepth,
-            kSessionCardinalIndex
-        );
-        return IRMath::isoPixelToPos3D(pixel.x, pixel.y, cellIsoDepth(local));
     }
 
     // Where to aim to click `target` itself (erase / drag over existing
     // geometry). Returns nullopt when every camera-facing face of `target` is
     // occluded — the caller reports that as a recipe error rather than emitting
-    // a click that would silently edit the wrong cell. Deliberately
-    // normal-agnostic: the erase path acts on `hit.voxelPos_`, so which of the
-    // target's faces the picker attributes the hit to does not change the edit.
+    // a click that would silently edit the wrong cell.
     std::optional<IRMath::vec3> aimAtVoxel(IRMath::ivec3 target) const {
         if (!occupied(target))
             return std::nullopt;
         for (const IRMath::ivec3 &normal : kCameraFacingNormals) {
-            const IRMath::vec3 aim = faceAim(target, normal);
-            const std::optional<PickPrediction> hit = pick(aim);
-            if (hit && hit->cell_ == target)
+            if (const std::optional<IRMath::vec3> aim = faceAim(target, normal))
                 return aim;
         }
         return std::nullopt;
+    }
+
+    // Where to aim to click the `normal` face of `anchor`, or nullopt when
+    // that face is occluded or `normal` does not face the camera.
+    std::optional<IRMath::vec3> aimAtFace(IRMath::ivec3 anchor, IRMath::ivec3 normal) const {
+        return occupied(anchor) ? faceAim(anchor, normal) : std::nullopt;
     }
 
     // Where to aim so a place-mode click lands a voxel at `target`. The editor
@@ -280,17 +231,7 @@ class OccupancyModel {
     // Alt flag (main.cpp's editTargetCell), and it moves exactly one thing: which
     // side of `target` the anchor sits on. Everything else is common — the anchor
     // must be occupied, the target in-bounds and empty, and the anchor's face
-    // must be the one the picker actually resolves.
-    //
-    // The predicted face has to agree as well as the cell: an aim that picks the
-    // right anchor through the wrong face offsets a different normal and so
-    // places a different neighbour, or — when that neighbour is already filled —
-    // nothing at all, which is the silent no-op this model exists to catch.
-    //
-    // Taking the FIRST normal that satisfies all three is what routes a target
-    // around the -x/-y pixel collapse: a cell with a clean-faced anchor is placed
-    // through that face instead, and only a cell whose sole anchor sits on a
-    // collapsed face comes back unreachable.
+    // toward the target aimable. The first normal that satisfies all three wins.
     std::optional<IRMath::vec3> aimToPlaceThroughAnchor(IRMath::ivec3 target, bool inverted) const {
         if (!inBounds(target) || occupied(target))
             return std::nullopt;
@@ -298,12 +239,15 @@ class OccupancyModel {
             const IRMath::ivec3 anchor = inverted ? target + normal : target - normal;
             if (!occupied(anchor))
                 continue;
-            const IRMath::vec3 aim = faceAim(anchor, normal);
-            const std::optional<PickPrediction> hit = pick(aim);
-            if (hit && hit->cell_ == anchor && hit->faceNormal_ == normal)
+            if (const std::optional<IRMath::vec3> aim = faceAim(anchor, normal))
                 return aim;
         }
         return std::nullopt;
+    }
+
+    bool picksCell(IRMath::vec3 worldAim, IRMath::ivec3 local) const {
+        const std::optional<IRPrefab::Picking::GridRayHit> hit = pick(worldAim);
+        return hit && hit->cell_ == local;
     }
 
     std::size_t flatIndex(IRMath::ivec3 local) const {
@@ -358,6 +302,13 @@ struct OccupancyCheck {
     std::string name_;
 };
 
+// Pick expectation evaluated through the editor's own edit pick at a shot's
+// capture frame: the world voxel the parked cursor must land on.
+struct PickCheck {
+    IRMath::ivec3 worldVoxel_ = IRMath::ivec3(0);
+    std::string name_;
+};
+
 // Which ANIM panel slider a SliderCheck reads. Named rather than carrying the
 // widget's EntityId directly: Session::build runs well before initEntities
 // creates the widgets, so the id isn't known yet at recipe-build time — the
@@ -396,6 +347,12 @@ struct Recipe {
     std::deque<OccupancyCheck> checks_;
     // Same stable-storage contract as checks_, for expectSliderValue.
     std::deque<SliderCheck> sliderChecks_;
+    // Same stable-storage contract as checks_, for expectPick.
+    std::deque<PickCheck> pickChecks_;
+    // Build the editor's reference furniture (floor slab, axis bars, centre
+    // cube, perimeter gizmos, starter rig, satellite sets) around the editable
+    // set instead of the bare stage entity recipes author on.
+    bool referenceFurniture_ = false;
     // Recipe errors (an unreachable cell, an occluded aim). Non-empty means the
     // session is not runnable; the editor logs these and exits rather than
     // replaying a stream that would author the wrong thing.
@@ -430,6 +387,14 @@ inline void resolveShots(Recipe &recipe) {
 // Defined in main.cpp, where the editable-set entity handle lives.
 bool evaluateOccupancyCheck(const void *context, std::string &actual);
 
+// Reads one PickCheck through the editor's edit pick. Same PREDICATE channel
+// as evaluateOccupancyCheck. Defined in main.cpp, beside the pick itself.
+bool evaluatePickCheck(const void *context, std::string &actual);
+
+// Sweeps the rendered frame for agreement with the edit pick; takes no
+// context. Defined in main.cpp.
+bool evaluatePickMatchesRender(const void *context, std::string &actual);
+
 // Reads one SliderCheck against the live widget its target_ names. Same
 // PREDICATE channel as evaluateOccupancyCheck, for the same reason: the
 // widget entity ids don't exist at recipe-build time. Defined in main.cpp,
@@ -446,6 +411,15 @@ class Builder {
         m_recipe.name_ = std::move(name);
         m_model.seedGroundPlane();
         segment("start");
+    }
+
+    // Author against the editor's full reference scene rather than the bare
+    // stage. The model is unchanged: the edit pick passes through furniture,
+    // so only the editable set's occupancy decides where an aim lands. What
+    // the model does not know is where a gizmo handle is drawn — a recipe
+    // that asks for furniture keeps its aims off those pixels itself.
+    void withReferenceFurniture() {
+        m_recipe.referenceFurniture_ = true;
     }
 
     // Close the current segment and open a new one. The camera framing is
@@ -479,10 +453,37 @@ class Builder {
             recordUnreachable("click", target);
             return;
         }
-        emitMove(*aim);
-        emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
-        emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
+        emitClick(*aim);
         m_model.setMirrored(target, !m_eraseMode, m_symmetry);
+    }
+
+    // The place click for `target`, emitted where something drawn in front of
+    // the scene is expected to take it — a gizmo handle over the anchor face.
+    // The model is left alone; pair it with an expectOccupancy(target, false).
+    void clickExpectingNoEdit(IRMath::ivec3 target) {
+        const std::optional<IRMath::vec3> aim = aimFor(target);
+        if (!aim) {
+            recordUnreachable("clickExpectingNoEdit", target);
+            return;
+        }
+        emitClick(*aim);
+    }
+
+    // Single left click on the `normal` face of `anchor`, placing the voxel in
+    // front of it. click() reaches the same cell through whichever anchor it
+    // finds first; this names the face, for a recipe whose point is that a
+    // particular face resolves.
+    void clickFace(IRMath::ivec3 anchor, IRMath::ivec3 normal) {
+        const IRMath::ivec3 target = anchor + normal;
+        const std::optional<IRMath::vec3> aim = m_eraseMode || m_model.occupied(target)
+                                                    ? std::nullopt
+                                                    : m_model.aimAtFace(anchor, normal);
+        if (!aim) {
+            recordUnreachable("clickFace", target);
+            return;
+        }
+        emitClick(*aim);
+        m_model.setMirrored(target, true, m_symmetry);
     }
 
     // Alt + single left click: places a voxel at `target` on the FAR side of the
@@ -514,16 +515,14 @@ class Builder {
         // One idle frame before the aim, so Alt is already down when the editor
         // samples it at the button PRESS (chordKey's lead, for the same reason).
         m_frame += kFramesPerClickStep;
-        emitMove(*aim);
-        emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
-        emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
+        emitClick(*aim);
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kKeyButtonLeftAlt);
         m_model.setMirrored(target, true, m_symmetry);
     }
 
     // Park the cursor on `target`'s clickable face without pressing. Splits
     // "the aim is right" from "the gesture worked" — a hover segment's
-    // PICKS_VOXEL says where the ray actually lands, so a failed edit doesn't
+    // expectPick says where the ray actually lands, so a failed edit doesn't
     // have to be diagnosed by guesswork.
     void hover(IRMath::ivec3 target) {
         const std::optional<IRMath::vec3> aim = aimFor(target);
@@ -782,9 +781,26 @@ class Builder {
     // pairs with must be the segment's LAST cursor-moving event; to arm an aim
     // check ahead of a click, put hover+expectPick in their own segment before
     // the click's segment (see segment()).
-    void expectPick(IRMath::ivec3 local, const char *name) {
-        const IRMath::ivec3 worldVoxel = IRMath::roundVec3HalfUp(m_model.worldCenter(local));
-        m_current.assertions_.push_back(IRPrefab::GuiTest::picksVoxel(worldVoxel, name));
+    void expectPick(IRMath::ivec3 local, std::string name) {
+        m_recipe.pickChecks_.push_back(
+            PickCheck{IRMath::roundVec3HalfUp(m_model.worldCenter(local)), std::move(name)}
+        );
+        const PickCheck &check = m_recipe.pickChecks_.back();
+        m_current.assertions_.push_back(
+            IRPrefab::GuiTest::predicate(&evaluatePickCheck, &check, check.name_.c_str())
+        );
+    }
+
+    // Assert that every texel showing the editable set picks the face it shows
+    // when this segment settles — the check an aim-based assertion cannot make,
+    // since the aim and the pick share one screen mapping and would agree with
+    // each other even if both were offset from the render.
+    void expectPickMatchesRender(std::string name) {
+        m_recipe.pickChecks_.push_back(PickCheck{IRMath::ivec3(0), std::move(name)});
+        const PickCheck &check = m_recipe.pickChecks_.back();
+        m_current.assertions_.push_back(
+            IRPrefab::GuiTest::predicate(&evaluatePickMatchesRender, nullptr, check.name_.c_str())
+        );
     }
 
     // Assert a slider's live value when this segment settles — the positive
@@ -817,6 +833,13 @@ class Builder {
   private:
     std::optional<IRMath::vec3> aimFor(IRMath::ivec3 target) const {
         return m_eraseMode ? m_model.aimAtVoxel(target) : m_model.aimToPlace(target);
+    }
+
+    // The editor's press-then-release-without-moving gesture at `worldAim`.
+    void emitClick(IRMath::vec3 worldAim) {
+        emitMove(worldAim);
+        emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
+        emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
     }
 
     void emitMove(IRMath::vec3 worldAim) {
@@ -874,19 +897,14 @@ class Builder {
         m_frame += kFramesPerClickStep;
     }
 
-    // An op the model could not aim. In place mode that covers both "every
-    // camera-facing anchor is occluded" and "the only anchor's face is one the
-    // picker's iso-pixel floor collapses" — same remedy either way (re-order the
-    // recipe so a clean face is exposed, or take the cell from a mirror), so
-    // they share one error rather than splitting into two the author must
-    // distinguish. The docs pointer is what makes the second case diagnosable.
+    // An op the model could not aim: no camera-facing face that would land the
+    // edit is visible with margin. The remedy is to re-order the recipe so one
+    // is exposed.
     void recordUnreachable(const char *op, IRMath::ivec3 target) {
         m_recipe.errors_.push_back(
             std::string(op) + " at local (" + std::to_string(target.x) + "," +
             std::to_string(target.y) + "," + std::to_string(target.z) +
-            "): no camera-facing anchor the picker resolves (occluded, or the face "
-            "collapses onto the voxel's own iso pixel — see "
-            "docs/design/editor-authoring-friction.md §M-2) in segment " +
+            "): no camera-facing face that would land the edit is visible in segment " +
             m_current.label_
         );
     }

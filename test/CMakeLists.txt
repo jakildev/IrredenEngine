@@ -95,7 +95,7 @@ add_executable(IrredenEngineTest
   render/opengl_shader_include_test.cpp
   render/per_canvas_light_scope_test.cpp
   render/perf_stats_overlay_reset_test.cpp
-  render/picking_aim_iso_pixel_test.cpp
+  render/picking_grid_ray_test.cpp
   render/picking_face_normal_test.cpp
   render/prefab_system_probe_test.cpp
   render/run_witness_test.cpp

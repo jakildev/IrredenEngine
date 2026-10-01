@@ -236,7 +236,7 @@ scripted click on the seed scene (all inform the Part 2c SessionBuilder):
   no cell and drops the edit. Editing skinned content by clicking the deformed
   result is not supported today; the authoring recipes operate on the static
   editable set only.
-- **F-2b-3 — perimeter gizmos consume clicks over a wide screen area.** The
+- **F-2b-3 — perimeter gizmos consume clicks over a wide screen area.** *Resolved — see [§Picking contract](#picking-contract--face-precise-editable-only-picking-resolves-m-2-f-2c-1-f-2b-3).* The
   reference gizmos are screen-space-sized, so their handles occupy a large pixel
   radius; a scripted click aimed at a ground cell near a gizmo (e.g. world
   (-4,-4) vs the scale gizmo at (-12,-12)) is swallowed by `GIZMO_DRAG` before
@@ -286,7 +286,7 @@ per-cell occupancy rather than a hover proxy.
 Findings:
 
 - **F-2c-1 — the shipped editor's own reference scene makes the ground plane
-  unauthorable. Measured, not inferred.** Running `drag_probe` against the
+  unauthorable. Measured, not inferred.** *Resolved — see [§Picking contract](#picking-contract--face-precise-editable-only-picking-resolves-m-2-f-2c-1-f-2b-3).* Running `drag_probe` against the
   default scene: **every** gesture is swallowed — place FAIL, all four drag cells
   empty, and the aim assertion reports `voxel=(-1,-1,2)`, a *shape* hit. Root
   cause: `castVoxelRay` tests SDF shapes before voxel sets at each depth step,
@@ -303,7 +303,7 @@ Findings:
   child issue — the editor should either exclude non-editable reference shapes
   from picking or fall back to the voxel-set hit behind them.
 - **F-2c-2 — face-accurate aiming needs zoom ≥ 3; P0-2's zoom ≥ 2 floor only
-  covers the column.** A face-centre aim sits half a column-spacing off the voxel
+  covers the column.** *Resolved — see [§Picking contract](#picking-contract--face-precise-editable-only-picking-resolves-m-2-f-2c-1-f-2b-3).* A face-centre aim sits half a column-spacing off the voxel
   centre in screen space, so below zoom 3 it rounds onto the *neighbouring* iso
   column and the click edits the wrong cell. Measured by sweeping `kSessionZoom`
   against this session: zoom 2 → 2 FAIL (the side-face erase aim lands on the
@@ -415,7 +415,7 @@ via the same `applyMirrors` helper, so the aiming model and the live editor can'
 disagree about where a mirror-created voxel lands.
 
 **M-2 — a voxel's `-y` face does not reliably place its `-y` neighbour at the
-cardinal (yaw-0) camera.** The load-bearing finding. Building the cap outward
+cardinal (yaw-0) camera.** *Resolved — see [§Picking contract](#picking-contract--face-precise-editable-only-picking-resolves-m-2-f-2c-1-f-2b-3).* The load-bearing finding. Building the cap outward
 from the stem, `-x`-face and `-z`-face single clicks place their neighbour every
 time, but a `-y`-face click **no-ops**: measured directly — `(6,7,cz)` and
 `(5,7,cz)` (‑x arm) place; `(7,6,cz)` and `(7,5,cz)` (‑y arm) stay empty, at the
@@ -701,6 +701,12 @@ is passed at call time).
 
 ### M-2 — `-y`-face single-click place no-ops at the cardinal (yaw-0) camera (#2575)
 
+**Resolved (#3982).** The editor's pick no longer floors the cursor onto the iso
+lattice, so the collapse described below does not occur and none of the
+workarounds under "Authoring path" are needed: a `-y`-face click places the `-y`
+neighbour. The analysis is kept as the record of why the lattice ray could not
+do it. See [§Picking contract](#picking-contract--face-precise-editable-only-picking-resolves-m-2-f-2c-1-f-2b-3).
+
 *ID note — `M-` tags a **mechanism** limitation: one that lives in the shared
 picker or edit path rather than in a single authoring slice, so it is not
 numbered `F-2e-n` like the slice findings above. `M-1` (mirror planes had no
@@ -774,7 +780,8 @@ that every editor picking consumer (live click, hover, gizmo drag, the session
 shadow model) depends on — out of scope for this friction fix and a design-level
 change to the load-bearing picker.
 
-**Authoring path (per #2575 acceptance).**
+**Authoring path (per #2575 acceptance) — retired by #3982; none of these is
+needed any more.**
 
 - **Hand-authoring:** rotate the camera one cardinal step with `Q`/`E` before
   the click. Under a `±90°` yaw the target's `-y` face presents as an `-x`- or
@@ -788,24 +795,77 @@ change to the load-bearing picker.
   automatically; only a target whose *sole* occupied anchor is on the `+y` side
   hits this wall.
 
-**Follow-up (#2578, agent-approved lane) — LANDED.** The session shadow model
-(`OccupancyModel::pick`, `session_builder.hpp`) marched the *exact* aim ray, so
-it did **not** reproduce the picker's iso-pixel floor and greenlit a `-y` aim
-whose live click misfires — the silent-no-op source. `pick` now reproduces the
-floored-iso march + `voxelHitFaceNormal` and returns the predicted normal
-alongside the cell, and `aimToPlace` rejects an aim whose predicted normal
-disagrees with the intended one — so a `-y`-only target either finds a
-disambiguable anchor or records an `unreachable` recipe error, instead of
-emitting a click that no-ops.
+**Follow-up (#2578) — superseded by #3982.** #2578 taught the session shadow
+model (`OccupancyModel::pick`) to reproduce the floored-iso march and to reject
+an aim whose predicted normal disagreed with the intended one. With the lattice
+floor gone from the editor's pick, the model casts the pick's own exact ray
+instead, the rejection is deleted, and `aimIsoPixel` (the CPU mirror of the
+floored round trip) is retired with it.
 
-**The round trip above is idealized — the live one quantizes to a whole screen
-pixel first.** `worldPos3DToMouseScreenPx` rounds to an integer *screen* pixel
-before `mouseWorldPos3DAtIsoDepth` floors back to iso, and at `kSessionZoom = 4`
-an iso row is 4 screen px. A face-plane aim sits only ~0.1 iso from a floor
-boundary, i.e. inside that rounding, so its recovered pixel can be one row off
-the table above. The collapse tables stay valid as the *mechanism*; what changes
-is that a shadow model cannot place its aim on the face plane and expect the
-floor to agree. `pick` therefore treats the face offset as a pixel *probe* and
-re-centres the emitted aim inside the chosen pixel, which buys the full
-half-pixel of margin. See `aimIsoPixel` in
-`engine/prefabs/irreden/render/picking.hpp`.
+### Picking contract — face-precise, editable-only picking (resolves M-2, F-2c-1, F-2b-3)
+
+The owner's contract for the editor (#3982): **if a pixel of an editable voxel
+is on screen, clicking it edits that voxel; whatever editable content is closest
+to the camera under the cursor is what gets clicked; reference furniture never
+hides or swallows a click.** The standing statement lives in
+`creations/editors/voxel_editor/CLAUDE.md`; this section records what changed
+and what was measured.
+
+**Mechanism.**
+
+- *Sub-lattice ray (M-2, F-2c-2).* `castVoxelRay` takes
+  `RayCastOptions::cursorRay_`. The editor passes `SCREEN_PIXEL`: the ray runs
+  through the cursor's exact position (`IRRender::mouseWorldPos3DAtIsoDepthExact`)
+  and voxel sets are traversed cell by cell (`Picking::castGridRay`), so the hit
+  face is the face the ray enters — not the dominant axis of a sample taken
+  somewhere inside the cube, which is wrong off the lattice. The default
+  (`ISO_LATTICE`) is unchanged for every other consumer: the cursor-pivot latch,
+  `VOXEL_PICKING`, and `shape_debug`'s hover-parity shots pair the `+0.5`
+  forward aim with the floored inverse and were left on it.
+- *Where a face is displayed.* A rasterized face cell is two texels stacked in
+  iso Y and the gather shows each texel as a rectangle, so the drawn footprint
+  sits half a subdivided texel below its geometric projection. The exact inverse
+  subtracts that offset. Measured, not assumed: sweeping the offset over
+  {-0.5, 0, 0.5} × {0, 0.25, 0.5, 0.75, 1} texels and comparing the pick's face
+  against the canvas's distance readback on every texel showing the editable
+  set, `(0, 0.25..0.75)` agrees on **1424/1424** texels of the rock and
+  **448/448** of `face_pick`; `(0, 0)` misses 33 and 5, `(0, 1)` 118 and 59, and
+  any ±0.5 in X misses 6–19%.
+- *Editable-only (F-2c-1, F-2b-1).* The edit pick leaves SDF shapes out and
+  passes through any voxel set tagged `C_EditorReference` (starter rig,
+  satellite sets). The floor slab, axis bars and centre cube stay visible and no
+  longer take the click.
+- *Gizmo handles (F-2b-3).* `GIZMO_HOVER` already hit-tests the GPU entity-id
+  readback, i.e. the drawn pixels. Reading the code, the padding came from the
+  *edit* pick: its ray stopped on any handle SDF within the 0.5-voxel surface
+  threshold and came back normal-less, which the edit path dropped. With shapes
+  out of the edit pick, the edit path asks the same readback whether a handle
+  is drawn under the cursor and yields only then.
+- *Session shadow model.* `OccupancyModel::pick` is `castGridRay` over the
+  mirror. An aim is a point on the anchor face that stays on the anchor across
+  an eighth-voxel patch — the face centre, else a quadrant centre. The centre
+  alone is not enough: a neighbour one step toward the camera covers exactly
+  half a face, and its silhouette then runs through the face centre (the bird's
+  raised wing hit this).
+
+**Validators and results (macOS / Metal).**
+
+- `gui-verify IRVoxelEditor -- --gui-session face_pick` — 10/10. From one
+  anchor, the `-x`, `-y` and `-z` face clicks place three distinct neighbours at
+  zoom 2 and again at zoom 4, with the reference furniture present; each pass
+  also asserts `*_pick_matches_render` (pick face and depth equal the drawn face
+  on every editable texel).
+- `gui-verify IRVoxelEditor -- --gui-session drag_probe` — 14/14 **with the
+  furniture present** (F-2c-1 measured the same recipe at 0/11). It includes a
+  click on a ground cell whose anchor face is under the scale gizmo's handle
+  (no edit) and one on its diagonal neighbour, five texels clear (places).
+  Mutation control: with the gizmo check forced off, both of those fail.
+- `author-entity.py` for rock, mushroom, ant, bird and tree — all pass their
+  assertions and re-author byte-identically to the committed assets.
+- `gui-verify IRVoxelEditor` (standing table) 22/22; `place_below` 7/7.
+
+**Still true.** A voxel's underside is never visible from the iso camera, so the
+Alt place-below modifier (#3148, §2g) stays. Editing a skinned set by clicking
+its deformed result is still unsupported (F-2b-2); the rig is now passed
+through rather than swallowing the click. A reference shape drawn in front of
+editable voxels still hides them — the click edits what is behind it.

@@ -3,10 +3,21 @@
 
 // Editor-side voxel picking: convert the cursor into a world-space ray
 // (in the engine's isometric projection) and find the first SDF shape
-// or `C_VoxelSetNew` voxel it intersects. The picking inverse is the
-// same one used by `IRRender::mouseWorldPos3DAtIsoDepth`, so the
-// recovered world point matches what the voxel rasterizer wrote at any
-// visualYaw.
+// or `C_VoxelSetNew` voxel it intersects. The inverse is raster-yaw only,
+// so the recovered world point matches what the voxel rasterizer wrote at
+// any cardinal yaw.
+//
+// Two cursor rays, chosen per call (`RayCastOptions::cursorRay_`):
+//
+//   - **ISO_LATTICE** (default) — the cursor snaps to its integer iso
+//     pixel (`IRRender::mouseWorldPos3DAtIsoDepth`) and the ray is sampled
+//     in `kPickingDepthStep` increments. Resolves the iso column; a
+//     voxel's -x and -y faces share a column at cardinal yaw, so it cannot
+//     tell them apart.
+//   - **SCREEN_PIXEL** — the ray passes through the cursor's exact
+//     position (`IRRender::mouseWorldPos3DAtIsoDepthExact`) and voxel sets
+//     are traversed cell by cell (`castGridRay`), so the hit and its face
+//     are the ones drawn under the cursor. Use it when the face matters.
 //
 // CPU-side vs GPU-readback picking — pick the right path:
 //
@@ -35,6 +46,7 @@
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_profile.hpp>
 #include <irreden/ir_render.hpp>
 
 #include <irreden/common/components/component_world_transform.hpp>
@@ -58,9 +70,10 @@ namespace IRPrefab::Picking {
 // The tie-break order is contractual, not incidental: equal magnitudes
 // resolve x → y → z, so a hit whose entry offset is parallel to the
 // (1,1,1) march axis (the ray passing exactly through the voxel centre)
-// always reports the x face. Predictors of `RayHit::faceNormal_` — the
-// voxel editor's session shadow model — depend on reproducing it
-// exactly. `test/render/picking_face_normal_test.cpp` pins it.
+// always reports the x face. `test/render/picking_face_normal_test.cpp`
+// pins it. Only the ISO_LATTICE ray derives its normal this way; it is
+// wrong for a sample taken off a lattice ray, where the dominant axis of
+// the offset need not be the face the ray entered through.
 inline IRMath::ivec3 voxelHitFaceNormal(IRMath::vec3 delta) {
     const IRMath::vec3 absDelta = IRMath::abs(delta);
     IRMath::ivec3 normal(0);
@@ -74,49 +87,11 @@ inline IRMath::ivec3 voxelHitFaceNormal(IRMath::vec3 delta) {
     return normal;
 }
 
-// The canvas-frame iso pixel a cursor aimed at `worldAim` casts its ray
-// from — the CPU mirror of the `IRRender::worldPos3DToMouseScreenPx` →
-// `IRRender::mouseWorldPos3DAtIsoDepth` round trip, with the camera pan
-// and letterbox terms cancelled (they appear identically in both halves).
-// What survives is the forward aim's `+0.5` cell-centre bias and the
-// inverse's floor back onto the integer iso lattice.
-//
-// The floor is lossy by design: an aim offset whose iso projection is
-// smaller than the half-pixel bias lands on the voxel centre's pixel, so
-// two faces of one voxel can share a pixel — at cardinal yaw the -x and
-// -y faces always do, the iso equations giving x and y coefficient 1
-// while z gets 2 (`docs/design/editor-authoring-friction.md` §M-2).
-// Anything predicting where a scripted click lands must go through this,
-// not through the exact aim ray.
-//
-// Exact only near a pixel's CENTRE. The live forward half rounds to a
-// whole screen pixel before the inverse divides back out, and near a
-// floor boundary that half-pixel is enough to land the real cursor one
-// iso pixel off this result (at zoom 4 an iso row is 4 screen px, so the
-// error reaches 0.125 iso while a face-plane aim sits 0.1 from the
-// boundary). A caller that chooses its own aim should therefore pick the
-// point that lands dead centre — `isoPixelToPos3D` re-projects onto a
-// pixel exactly. What the rounding cannot do is un-collapse two aims
-// this helper maps to one pixel.
-//
-// Cardinal-only in the same sense the rest of the picking chain is:
-// `cardinalIndex` covers the rasterYaw snap, not a residual yaw, whose
-// face deformation the picking math does not reverse either.
-inline IRMath::ivec2 aimIsoPixel(IRMath::vec3 worldAim, IRMath::CardinalIndex cardinalIndex) {
-    const IRMath::vec3 rotated = IRMath::rotateCardinalZ(worldAim, cardinalIndex);
-    const IRMath::vec2 iso = IRMath::pos3DtoPos2DIso(rotated) + IRMath::vec2(0.5f);
-    return IRMath::ivec2(
-        static_cast<int>(IRMath::floor(iso.x)),
-        static_cast<int>(IRMath::floor(iso.y))
-    );
-}
-
 struct RayHit {
     IREntity::EntityId entity_ = IREntity::kNullEntity;
     IRMath::vec3 worldHitPos_ = IRMath::vec3(0.0f);
     IRMath::ivec3 voxelPos_ = IRMath::ivec3(0);
-    // Outward unit normal of the hit face along the dominant axis of
-    // `worldHitPos_ - voxelCenter` (±1 on exactly one axis). Only
+    // Outward unit normal of the hit face (±1 on exactly one axis). Only
     // meaningful for voxel hits from `C_VoxelSetNew`; left at (0,0,0)
     // for shape hits (the cube-face convention doesn't carry meaning
     // for non-box SDF surfaces).
@@ -133,6 +108,100 @@ inline constexpr float kPickingDepthStep = 0.5f;
 // the ray. Guards against half-voxel rounding at the entry/exit
 // surface; a hit one step shy of the bounding box is still caught.
 inline constexpr float kPickingDepthMargin = 4.0f;
+
+enum class CursorRay {
+    ISO_LATTICE,
+    SCREEN_PIXEL,
+};
+
+struct RayCastOptions {
+    // Skipped outright — the caller's own highlight or indicator.
+    IREntity::EntityId excludeEntity_ = IREntity::kNullEntity;
+    CursorRay cursorRay_ = CursorRay::ISO_LATTICE;
+    // SDF shapes take part in the cast. A shape hit carries no face normal,
+    // so a caller that needs one turns shapes off rather than have a shape
+    // in front of a voxel swallow the hit.
+    bool shapes_ = true;
+    // When set, only entities it returns true for take part; everything
+    // else is passed through as if absent, so the nearest accepted surface
+    // wins even when a rejected one is drawn in front of it.
+    bool (*accepts_)(IREntity::EntityId) = nullptr;
+};
+
+struct GridRayHit {
+    IRMath::ivec3 cell_ = IRMath::ivec3(0);
+    // Outward normal of the face the ray entered `cell_` through.
+    IRMath::ivec3 faceNormal_ = IRMath::ivec3(0);
+    // Ray parameter of that entry point: `origin + vec3(direction) * rayT_`.
+    float rayT_ = 0.0f;
+};
+
+// First occupied cell an infinite line meets in a grid of unit cells, and the
+// face it enters through. Cell `c` spans `[c - 0.5, c + 0.5)` on each axis, for
+// `c` in `[0, size)`; `origin` is any point on the line in that frame and
+// `direction` its per-axis step, each component exactly +1 or -1 (every iso
+// view ray, at any cardinal yaw). The walk is exact: it visits every cell the
+// line crosses in order, so no cell is skipped however short the chord through
+// it. Crossings that tie resolve x, then y, then z.
+template <typename Occupied>
+std::optional<GridRayHit>
+castGridRay(IRMath::vec3 origin, IRMath::ivec3 direction, IRMath::ivec3 size, Occupied &&occupied) {
+    IR_ASSERT(
+        IRMath::abs(direction.x) == 1 && IRMath::abs(direction.y) == 1 &&
+            IRMath::abs(direction.z) == 1,
+        "castGridRay direction components must each be exactly +1 or -1"
+    );
+    if (size.x <= 0 || size.y <= 0 || size.z <= 0)
+        return std::nullopt;
+
+    // Shift so cell c spans [c, c + 1).
+    const IRMath::vec3 start = origin + IRMath::vec3(0.5f);
+    float tEnter = -std::numeric_limits<float>::infinity();
+    float tExit = std::numeric_limits<float>::infinity();
+    int axis = 0;
+    for (int a = 0; a < 3; ++a) {
+        const float extent = static_cast<float>(size[a]);
+        const float tNear = direction[a] > 0 ? -start[a] : start[a] - extent;
+        const float tFar = tNear + extent;
+        if (tNear > tEnter) {
+            tEnter = tNear;
+            axis = a;
+        }
+        tExit = IRMath::min(tExit, tFar);
+    }
+    if (tEnter >= tExit)
+        return std::nullopt;
+
+    IRMath::ivec3 cell(0);
+    IRMath::vec3 tNext(0.0f);
+    for (int a = 0; a < 3; ++a) {
+        const float at = start[a] + static_cast<float>(direction[a]) * tEnter;
+        cell[a] = IRMath::clamp(static_cast<int>(IRMath::floor(at)), 0, size[a] - 1);
+        if (a == axis)
+            cell[a] = direction[a] > 0 ? 0 : size[a] - 1;
+        tNext[a] = direction[a] > 0 ? static_cast<float>(cell[a] + 1) - start[a]
+                                    : start[a] - static_cast<float>(cell[a]);
+    }
+
+    float t = tEnter;
+    while (true) {
+        if (occupied(cell)) {
+            IRMath::ivec3 normal(0);
+            normal[axis] = -direction[axis];
+            return GridRayHit{cell, normal, t};
+        }
+        axis = 0;
+        if (tNext.y < tNext[axis])
+            axis = 1;
+        if (tNext.z < tNext[axis])
+            axis = 2;
+        t = tNext[axis];
+        cell[axis] += direction[axis];
+        if (cell[axis] < 0 || cell[axis] >= size[axis])
+            return std::nullopt;
+        tNext[axis] += 1.0f;
+    }
+}
 
 namespace detail {
 
@@ -163,12 +232,20 @@ struct VoxelSetSnapshot {
     float isoDepthMax_;
 };
 
+inline bool takesPart(IREntity::EntityId id, const RayCastOptions &options) {
+    if (id == options.excludeEntity_)
+        return false;
+    return options.accepts_ == nullptr || options.accepts_(id);
+}
+
 inline std::vector<ShapeSnapshot>
-gatherVisibleShapes(IRMath::CardinalIndex cardinalIndex, IREntity::EntityId excludeEntity) {
+gatherVisibleShapes(IRMath::CardinalIndex cardinalIndex, const RayCastOptions &options) {
     std::vector<ShapeSnapshot> snapshot;
+    if (!options.shapes_)
+        return snapshot;
     IREntity::forEachComponent<IRComponents::C_ShapeDescriptor>(
         [&](IREntity::EntityId id, IRComponents::C_ShapeDescriptor &sd) {
-            if (id == excludeEntity)
+            if (!takesPart(id, options))
                 return;
             if (!(sd.flags_ & IRRender::SHAPE_FLAG_VISIBLE))
                 return;
@@ -204,11 +281,11 @@ gatherVisibleShapes(IRMath::CardinalIndex cardinalIndex, IREntity::EntityId excl
 }
 
 inline std::vector<VoxelSetSnapshot>
-gatherVisibleVoxelSets(IRMath::CardinalIndex cardinalIndex, IREntity::EntityId excludeEntity) {
+gatherVisibleVoxelSets(IRMath::CardinalIndex cardinalIndex, const RayCastOptions &options) {
     std::vector<VoxelSetSnapshot> snapshot;
     IREntity::forEachComponent<IRComponents::C_VoxelSetNew>([&](IREntity::EntityId id,
                                                                 IRComponents::C_VoxelSetNew &vs) {
-        if (id == excludeEntity)
+        if (!takesPart(id, options))
             return;
         // Headless / pre-canvas sets have no pool span yet — they
         // can't be picked until a future canvas-attach pass moves
@@ -252,34 +329,36 @@ gatherVisibleVoxelSets(IRMath::CardinalIndex cardinalIndex, IREntity::EntityId e
     return snapshot;
 }
 
-} // namespace detail
+// Active = non-zero alpha (matches `C_Voxel::activate` / `deactivate` and
+// the GPU pipeline's per-voxel skip).
+inline bool voxelActive(const VoxelSetSnapshot &vs, IRMath::ivec3 local) {
+    const std::size_t flatIdx = static_cast<std::size_t>(IRMath::index3DtoIndex1D(local, vs.size_));
+    return vs.voxels_[flatIdx].color_.alpha_ != 0;
+}
 
-// Casts a ray from the cursor into the scene and returns the first
-// shape or voxel it hits, or std::nullopt if the ray misses
-// everything. The caller passes the editor's highlight entity (or any
-// entity to be skipped) so the highlight itself doesn't catch its own
-// ray.
-//
-// Algorithm: walk along the canvas-frame iso depth axis in
-// `kPickingDepthStep` increments over the union of all visible shape
-// and voxel-set iso-depth ranges. At each step, evaluate (a) every
-// shape's SDF at the recovered world point and (b) for each visible
-// `C_VoxelSetNew`, look up the candidate voxel via inverse-grid
-// indexing — the first surface hit (`SDF::evaluate <=
-// kSurfaceThreshold` for shapes; inside-unit-cube for voxels) wins.
-// The depth-range pre-filter keeps the per-step cost proportional to
-// the count of shapes / sets whose bounding box overlaps that depth
-// slice, not the total scene count.
-inline std::optional<RayHit>
-castVoxelRay(IREntity::EntityId excludeEntity = IREntity::kNullEntity) {
-    const auto [rasterYaw, residualYaw] = IRPrefab::Camera::getYawSplit();
-    const IRMath::CardinalIndex cardinalIndex = IRMath::rasterYawCardinalIndex(rasterYaw);
+inline bool shapeSurfaceAt(const ShapeSnapshot &s, IRMath::vec3 worldPoint) {
+    const IRMath::vec3 localPos = worldPoint - s.worldPos_;
+    // Cheap bounding-sphere reject before the full SDF eval.
+    if (IRMath::dot(localPos, localPos) > s.boundingRadius_ * s.boundingRadius_)
+        return false;
+    const IRMath::vec4 effective = IRMath::SDF::effectiveParams(s.type_, s.params_);
+    return IRMath::SDF::evaluate(localPos, s.type_, effective) <= IRMath::SDF::kSurfaceThreshold;
+}
 
-    auto shapes = detail::gatherVisibleShapes(cardinalIndex, excludeEntity);
-    auto voxelSets = detail::gatherVisibleVoxelSets(cardinalIndex, excludeEntity);
-    if (shapes.empty() && voxelSets.empty())
-        return std::nullopt;
+inline RayHit shapeHit(const ShapeSnapshot &s, IRMath::vec3 worldPoint) {
+    return RayHit{s.entity_, worldPoint, IRMath::roundVec3HalfUp(worldPoint), IRMath::ivec3(0)};
+}
 
+// Walk along the canvas-frame iso depth axis in `kPickingDepthStep`
+// increments over the union of all shape and voxel-set iso-depth ranges. At
+// each step, evaluate every shape's SDF at the recovered world point, then
+// look up each voxel set's candidate voxel by inverse-grid indexing; the
+// first surface hit wins. The depth-range pre-filter keeps the per-step cost
+// proportional to the count of shapes / sets whose bounding box overlaps that
+// depth slice, not the total scene count.
+inline std::optional<RayHit> castIsoLatticeRay(
+    const std::vector<ShapeSnapshot> &shapes, const std::vector<VoxelSetSnapshot> &voxelSets
+) {
     float depthMin = std::numeric_limits<float>::infinity();
     float depthMax = -std::numeric_limits<float>::infinity();
     for (const auto &s : shapes) {
@@ -297,20 +376,8 @@ castVoxelRay(IREntity::EntityId excludeEntity = IREntity::kNullEntity) {
         for (const auto &s : shapes) {
             if (d < s.isoDepthMin_ || d > s.isoDepthMax_)
                 continue;
-            const IRMath::vec3 localPos = worldPoint - s.worldPos_;
-            // Cheap bounding-sphere reject before the full SDF eval.
-            if (IRMath::dot(localPos, localPos) > s.boundingRadius_ * s.boundingRadius_)
-                continue;
-            const IRMath::vec4 effective = IRMath::SDF::effectiveParams(s.type_, s.params_);
-            const float dist = IRMath::SDF::evaluate(localPos, s.type_, effective);
-            if (dist <= IRMath::SDF::kSurfaceThreshold) {
-                return RayHit{
-                    s.entity_,
-                    worldPoint,
-                    IRMath::roundVec3HalfUp(worldPoint),
-                    IRMath::ivec3(0)
-                };
-            }
+            if (shapeSurfaceAt(s, worldPoint))
+                return shapeHit(s, worldPoint);
         }
 
         for (const auto &vs : voxelSets) {
@@ -321,24 +388,103 @@ castVoxelRay(IREntity::EntityId excludeEntity = IREntity::kNullEntity) {
                 localInt.y >= vs.size_.y || localInt.z < 0 || localInt.z >= vs.size_.z) {
                 continue;
             }
-            const IRMath::vec3 candidateCenter = vs.worldOrigin_ + IRMath::vec3(localInt);
-            const IRMath::vec3 delta = worldPoint - candidateCenter;
-            const std::size_t flatIdx =
-                static_cast<std::size_t>(IRMath::index3DtoIndex1D(localInt, vs.size_));
-            // Active = non-zero alpha (matches `C_Voxel::activate` /
-            // `deactivate` and the GPU pipeline's per-voxel skip).
-            if (vs.voxels_[flatIdx].color_.alpha_ == 0)
+            if (!voxelActive(vs, localInt))
                 continue;
+            const IRMath::vec3 candidateCenter = vs.worldOrigin_ + IRMath::vec3(localInt);
             return RayHit{
                 vs.entity_,
                 worldPoint,
                 IRMath::roundVec3HalfUp(candidateCenter),
-                voxelHitFaceNormal(delta)
+                voxelHitFaceNormal(worldPoint - candidateCenter)
             };
         }
     }
 
     return std::nullopt;
+}
+
+// The ray through the cursor's exact position. Voxel sets are traversed cell
+// by cell, so the nearest hit and its entry face are exact; shapes have no
+// closed-form entry, so they are sampled along the same ray and win only when
+// a sample lands on one in front of the nearest voxel.
+inline std::optional<RayHit> castScreenPixelRay(
+    const std::vector<ShapeSnapshot> &shapes,
+    const std::vector<VoxelSetSnapshot> &voxelSets,
+    IRMath::CardinalIndex cardinalIndex
+) {
+    // The canvas-frame depth axis is (1,1,1); lifted to the world frame it
+    // keeps unit magnitude on every axis, and canvas depth advances 3 per
+    // unit of ray parameter.
+    const IRMath::vec3 rayOrigin = IRRender::mouseWorldPos3DAtIsoDepthExact(0.0f);
+    const IRMath::ivec3 rayDirection =
+        IRMath::roundVec3HalfUp(IRMath::rotateCardinalZInv(IRMath::vec3(1.0f), cardinalIndex));
+    const IRMath::vec3 rayStep(rayDirection);
+
+    std::optional<RayHit> nearest;
+    float nearestDepth = std::numeric_limits<float>::infinity();
+    for (const auto &vs : voxelSets) {
+        const std::optional<GridRayHit> hit = castGridRay(
+            rayOrigin - vs.worldOrigin_,
+            rayDirection,
+            vs.size_,
+            [&vs](IRMath::ivec3 local) { return voxelActive(vs, local); }
+        );
+        if (!hit || hit->rayT_ * 3.0f >= nearestDepth)
+            continue;
+        nearestDepth = hit->rayT_ * 3.0f;
+        nearest = RayHit{
+            vs.entity_,
+            rayOrigin + rayStep * hit->rayT_,
+            IRMath::roundVec3HalfUp(vs.worldOrigin_ + IRMath::vec3(hit->cell_)),
+            hit->faceNormal_
+        };
+    }
+
+    float depthMin = std::numeric_limits<float>::infinity();
+    float depthMax = -std::numeric_limits<float>::infinity();
+    for (const auto &s : shapes) {
+        depthMin = IRMath::min(depthMin, s.isoDepthMin_);
+        depthMax = IRMath::max(depthMax, s.isoDepthMax_);
+    }
+    depthMax = IRMath::min(depthMax, nearestDepth);
+    for (float d = depthMin; d <= depthMax; d += kPickingDepthStep) {
+        const IRMath::vec3 worldPoint = rayOrigin + rayStep * (d / 3.0f);
+        for (const auto &s : shapes) {
+            if (d < s.isoDepthMin_ || d > s.isoDepthMax_)
+                continue;
+            if (shapeSurfaceAt(s, worldPoint))
+                return shapeHit(s, worldPoint);
+        }
+    }
+
+    return nearest;
+}
+
+} // namespace detail
+
+// Casts a ray from the cursor into the scene and returns the first shape or
+// voxel it hits, or std::nullopt if the ray misses everything. `options`
+// picks the cursor ray and which entities take part.
+inline std::optional<RayHit> castVoxelRay(const RayCastOptions &options) {
+    const auto [rasterYaw, residualYaw] = IRPrefab::Camera::getYawSplit();
+    const IRMath::CardinalIndex cardinalIndex = IRMath::rasterYawCardinalIndex(rasterYaw);
+
+    const auto shapes = detail::gatherVisibleShapes(cardinalIndex, options);
+    const auto voxelSets = detail::gatherVisibleVoxelSets(cardinalIndex, options);
+    if (shapes.empty() && voxelSets.empty())
+        return std::nullopt;
+
+    if (options.cursorRay_ == CursorRay::SCREEN_PIXEL)
+        return detail::castScreenPixelRay(shapes, voxelSets, cardinalIndex);
+    return detail::castIsoLatticeRay(shapes, voxelSets);
+}
+
+// The ISO_LATTICE cast over every visible shape and voxel set. The caller
+// passes the editor's highlight entity (or any entity to be skipped) so the
+// highlight itself doesn't catch its own ray.
+inline std::optional<RayHit>
+castVoxelRay(IREntity::EntityId excludeEntity = IREntity::kNullEntity) {
+    return castVoxelRay(RayCastOptions{.excludeEntity_ = excludeEntity});
 }
 
 } // namespace IRPrefab::Picking
