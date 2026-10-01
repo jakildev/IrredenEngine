@@ -1,0 +1,26 @@
+{
+  "native_command": [
+    "python3",
+    "scripts/render-verify.py",
+    "--target",
+    "IRCanvasStress",
+    "--no-build",
+    "--timeout",
+    "120"
+  ],
+  "native_backend": "macos-debug Metal",
+  "native_checks": 14,
+  "native_passed": 14,
+  "rgb_reference_checks": 8,
+  "rgb_match_percent_each": 100.0,
+  "structural_checks": 6,
+  "thresholds_changed": false,
+  "normal_facing_sweep_passed": 60,
+  "normal_facing_sweep_total": 60,
+  "header_checks": "pass",
+  "ruff": "pass",
+  "native_opengl": "pending",
+  "script_suites": 61,
+  "script_suites_passed": 61,
+  "overflow_mutation_test_after_test_cleanup": "pass"
+}

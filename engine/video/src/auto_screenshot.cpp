@@ -22,6 +22,25 @@ struct C_AutoScreenshotAnchor {};
 struct C_GuiTestAnchor {};
 struct C_AutoRecordAnchor {};
 
+void logCaptureCameraState(const char *label) {
+    const vec2 cameraIso = IRRender::getEffectiveCameraIso();
+    const vec2 zoom = IRRender::getCameraZoom();
+    const vec2 resolution = IRRender::getGameResolution();
+    IR_LOG_INFO(
+        "CaptureCamera: label={} yaw={} zoom=({},{}) effectiveIso=({},{}) "
+        "subdivisions={} gameResolution=({},{})",
+        label,
+        IRPrefab::Camera::getYaw(),
+        zoom.x,
+        zoom.y,
+        cameraIso.x,
+        cameraIso.y,
+        IRRender::getVoxelRenderEffectiveSubdivisions(),
+        resolution.x,
+        resolution.y
+    );
+}
+
 // Apply one shot's camera state (zoom / pan / Z-yaw / pivot focus / cull
 // freeze) before the settle window. Shared by the auto-screenshot and GUI-test
 // cyclers — `GuiTestShot::render_` is an AutoScreenshotShot — so the per-shot
@@ -116,6 +135,7 @@ IRSystem::SystemId createAutoScreenshotSystem(const AutoScreenshotConfig &config
 
             if (!state->screenshotPending_) {
                 const auto &shot = state->config_.shots_[state->currentShot_];
+                logCaptureCameraState(shot.label_);
                 if (shot.numCrops_ > 0 && shot.crops_ != nullptr) {
                     IRVideo::requestScreenshotWithCrops(shot.label_, shot.crops_, shot.numCrops_);
                 } else {
@@ -311,6 +331,7 @@ IRSystem::SystemId createGuiTestSystem(const GuiTestConfig &config) {
             // Capture frame.
             if (!state->screenshotRequested_) {
                 const auto &r = shot.render_;
+                logCaptureCameraState(r.label_);
                 if (r.numCrops_ > 0 && r.crops_ != nullptr)
                     IRVideo::requestScreenshotWithCrops(r.label_, r.crops_, r.numCrops_);
                 else

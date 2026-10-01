@@ -83,8 +83,8 @@ struct PerAxisCanvasStore {
     std::pair<ResourceId, Buffer *> cellIndirect_{0, nullptr};
     int cellRegionStride_ = 0; // uints per axis region (>= axis cells, 64-aligned)
 
-    // Unified per-axis resolve scratch for winner election and the
-    // view-visibility overflow lane, bound whole at
+    // Unified per-axis resolve scratch for winner election and overflow,
+    // bound whole at
     // kBufferIndex_PerAxisResolveScratch during the per-axis dispatches only
     // (transient reuse — the resolve + BAKE consumers re-bind 28
     // themselves). Four 256-B-aligned regions, offsets in uints:
@@ -92,10 +92,9 @@ struct PerAxisCanvasStore {
     //     Region 0 on purpose: the stage-1/2 kernels' perAxisWinnerIds[cell]
     //     indexing is unchanged, and dispatchPerAxisCanvases' per-axis
     //     fillBuffer(bytes = texels*4) reset covers exactly this region.
-    // [viewMaskBaseUints_, ctrlBaseUints_) — view mask: per yawed
-    //     screen cell, the atomicMin of the biased quantized yawed depth
-    //     (shared across the three axis routes — view visibility competes
-    //     across axes). Reset to 0xFFFFFFFF once per rotating frame.
+    // [viewMaskBaseUints_, ctrlBaseUints_) — reserved and unused. The
+    //     existing aligned region keeps the following offsets stable; the
+    //     current frame-prefix fill includes it.
     // [ctrlBaseUints_, entriesBaseUints_) — ctrl block: indirect
     //     draw args {indexCount, instanceCount, firstIndex, baseVertex,
     //     baseInstance} + droppedCount, followed by GPU-authored sort commands.
@@ -227,8 +226,8 @@ struct PerAxisCanvasStore {
         static constexpr std::int32_t kDistanceClear =
             static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance);
         IRRender::device()->clearTexImage(resolveDepth_.second, 0, &kDistanceClear);
-        // Unified resolve scratch for the winner region, view mask, control
-        // block, and overflow entries. Regions
+        // Unified resolve scratch for the winner region, reserved aligned
+        // region, control block, and overflow entries. Regions
         // start on 256 B boundaries so bindRange windows stay
         // SSBO-alignment-safe; the whole buffer is bindBase'd at 28 during the
         // per-axis dispatches, with region offsets carried in

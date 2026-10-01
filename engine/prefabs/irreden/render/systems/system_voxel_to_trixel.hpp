@@ -346,7 +346,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // the off-screen shadow feeders (struct 1), so the visible stage-1 program
     // carries none of the feeder branches (no runtime predication tax).
     ShaderProgram *stage1FeederProgram_ = nullptr;
-    // canonical-orders the view-visibility overflow entry list between
+    // Canonical-orders the overflow entry list between
     // the mode-3 append and the overflow indirect draw (rotating frames only).
     ShaderProgram *overflowSortProgram_ = nullptr;
     ShaderProgram *stage2Program_ = nullptr;
@@ -703,7 +703,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             .recordOverflow(ctrl[1], dropped, static_cast<std::uint32_t>(axes.overflowCap_));
         if (dropped > 0 && dropped != lastOverflowDropWarned_) {
             IRE_LOG_WARN(
-                "Per-axis view-visibility overflow list dropped {} entries last "
+                "Per-axis overflow list dropped {} entries last "
                 "rotating frame (cap {}); revealed-sliver coverage may be "
                 "incomplete while rotating (#2333).",
                 dropped,
@@ -717,7 +717,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             const std::uint32_t count = ctrl[1];
             if (count != lastOverflowCountLogged_) {
                 IRE_LOG_INFO(
-                    "[overflow-count] per-axis view-visibility overflow entries: {} "
+                    "[overflow-count] per-axis overflow entries: {} "
                     "(cap {}).",
                     count,
                     axes.overflowCap_
@@ -838,7 +838,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         }
 
         const ivec2 perAxisOffsetZ1 = IRMath::trixelOriginOffsetZ1(axes.size_);
-        // the unified resolve scratch — [winnerIds][viewMask]
+        // The unified resolve scratch — [winnerIds][reserved]
         // [ctrl][overflow entries] — bound whole for every per-axis dispatch
         // (transient reuse of kBufferIndex_PerAxisResolveScratch — free during
         // the per-axis window; the resolve + BAKE consumers re-bind it
@@ -852,12 +852,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             kBufferIndex_PerAxisResolveScratch
         );
 
-        // view-visibility overflow lane bookkeeping. Read LAST rotating
+        // Overflow lane bookkeeping. Read last rotating
         // frame's drop counter for the one-shot cap warn (before the reset
         // clears it), reset the ctrl block (draw args + counters), and reset
-        // the winner + view-mask regions to the 0xFFFFFFFF empty sentinel in
-        // one prefix fill ([0, ctrlBase) — the winner region is re-filled per
-        // axis before its election below anyway).
+        // the winner region and reserved aligned gap to the 0xFFFFFFFF empty
+        // sentinel in one prefix fill ([0, ctrlBase) — the winner region is
+        // re-filled per axis before its election below anyway).
         warnOverflowDropsIfAny(axes);
         resetOverflowCtrl(axes);
         IRRender::device()->fillBuffer(
@@ -910,17 +910,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
         };
 
-        // Dispatch order per rotating frame: store + view mask (mode 0) ×3 →
-        // barrier → overflow
-        // append (mode 3) ×3 → barrier → overflow canonical sort →
-        // barrier → per axis {election (mode 1) → stage 2}.
-        // The mask must be complete across ALL axes before any mode-3 test (view
-        // visibility competes across axes) — the store phase now writes all three
-        // axes' masks, so the barrier after it satisfies that; mode 3 reads each
-        // axis's settled distance store; the election stays last so its per-axis
-        // winner-region refill never overlaps the mask/append reads.
+        // Dispatch order per rotating frame: cardinal stores (mode 0) ×3 →
+        // barrier → overflow append (mode 3) ×3 → barrier → overflow canonical
+        // sort → barrier → per axis {election (mode 1) → stage 2}. Mode 3 reads
+        // each axis's settled distance store; election stays last because its
+        // per-axis winner-region refill reuses the shared scratch.
         //
-        // Store pass — clears + cardinal stores + view mask (mode 0).
+        // Store pass — clears + cardinal stores (mode 0).
         // Each dispatch group owns a GPU row so the rotating burst is
         // attributable by operation (the braces bound the
         // timers, not the GPU bindings).
@@ -959,18 +955,15 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             // All three distance stores settled — read below by the mode-3
             // cardinal-winner test, the elections, and stage 2's depth re-test.
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-            // The store also writes the view mask into the binding-28 scratch;
-            // all three axes'
-            // masks are complete here, so barrier the storage writes before the
-            // mode-3 compare reads them below.
+            // Order the control reset and prefix fill on binding 28 before
+            // mode-3 atomics read and increment the current-frame counter.
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
         }
 
         {
             GpuSubStageScope overflowScope("voxelPerAxisOverflow");
-            // Overflow append (mode 3): faces that win (tie) their view
-            // cell but lost their cardinal store cell append scatter entries. The
-            // view mask it reads was written and barriered by the store pass.
+            // Overflow append (mode 3): exposed faces that lost their cardinal
+            // store cell append scatter entries for finite-quad rasterization.
             for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
                 uploadAxisFrameData(axis, 3);
                 const std::ptrdiff_t indirectOffsetBytes = bindAxisListRegions(axis);
@@ -1030,10 +1023,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             // Winner election (mode 1) + stage 2, per axis. The
             // winner scratch (region 0) is serially reused across axes: refill to
             // the no-winner sentinel, elect this axis's winners, then let stage 2's
-            // guard admit exactly one tied face per cell — byte-identical semantics
-            // to the interleaved loop (the election ran after this axis's
-            // store then too; the mask/append phases in between touch only the
-            // other scratch regions).
+            // guard admit exactly one tied face per cell. Append dispatches
+            // use the control and entry regions, leaving winner ids untouched.
             for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
                 auto &tex = axes.axes_[axis];
                 Texture2D *colors = tex.colors_.second;

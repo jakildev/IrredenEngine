@@ -1,0 +1,2464 @@
+[
+  {
+    "yaw_deg": 0.0,
+    "roi_game": [
+      517,
+      756,
+      225,
+      484
+    ],
+    "old": {
+      "checked": 61901,
+      "missing": 24,
+      "boundary_missing": 24,
+      "wrong_face": 141,
+      "boundary_wrong_face": 141,
+      "extra": 23,
+      "boundary_extra": 23
+    },
+    "candidate": {
+      "checked": 61901,
+      "missing": 24,
+      "boundary_missing": 24,
+      "wrong_face": 141,
+      "boundary_wrong_face": 141,
+      "extra": 23,
+      "boundary_extra": 23
+    },
+    "examples": {
+      "old": [
+        [
+          659,
+          270,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          675,
+          270,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          655,
+          272,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          671,
+          272,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          687,
+          272,
+          [
+            "z-"
+          ],
+          "x-",
+          true
+        ],
+        [
+          688,
+          272,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          651,
+          274,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          667,
+          274,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          683,
+          274,
+          [
+            "z-"
+          ],
+          "x-",
+          true
+        ],
+        [
+          692,
+          274,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ]
+      ],
+      "candidate": [
+        [
+          659,
+          270,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          675,
+          270,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          655,
+          272,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          671,
+          272,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          687,
+          272,
+          [
+            "z-"
+          ],
+          "x-",
+          true
+        ],
+        [
+          688,
+          272,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          651,
+          274,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          667,
+          274,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          683,
+          274,
+          [
+            "z-"
+          ],
+          "x-",
+          true
+        ],
+        [
+          692,
+          274,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ]
+      ]
+    }
+  },
+  {
+    "yaw_deg": 22.5,
+    "roi_game": [
+      513,
+      751,
+      234,
+      477
+    ],
+    "old": {
+      "checked": 57834,
+      "extra": 24,
+      "boundary_extra": 24,
+      "wrong_face": 136,
+      "boundary_wrong_face": 136,
+      "missing": 1,
+      "boundary_missing": 1
+    },
+    "candidate": {
+      "checked": 57834,
+      "missing": 1,
+      "boundary_missing": 1
+    },
+    "examples": {
+      "old": [
+        [
+          662,
+          256,
+          null,
+          "x-",
+          true
+        ],
+        [
+          663,
+          257,
+          null,
+          "z-",
+          true
+        ],
+        [
+          658,
+          263,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          673,
+          267,
+          null,
+          "z-",
+          true
+        ],
+        [
+          653,
+          269,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          671,
+          270,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          648,
+          275,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          667,
+          275,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          666,
+          276,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          684,
+          277,
+          null,
+          "z-",
+          true
+        ]
+      ],
+      "candidate": [
+        [
+          565,
+          305,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ]
+      ]
+    }
+  },
+  {
+    "yaw_deg": 45.0,
+    "roi_game": [
+      529,
+      729,
+      252,
+      464
+    ],
+    "old": {
+      "checked": 42400,
+      "extra": 76,
+      "boundary_extra": 76,
+      "missing": 374,
+      "boundary_missing": 19,
+      "interior_missing": 355,
+      "wrong_face": 51,
+      "boundary_wrong_face": 51
+    },
+    "candidate": {
+      "checked": 42400
+    },
+    "examples": {
+      "old": [
+        [
+          622,
+          255,
+          null,
+          "z-",
+          true
+        ],
+        [
+          622,
+          256,
+          null,
+          "z-",
+          true
+        ],
+        [
+          622,
+          257,
+          null,
+          "z-",
+          true
+        ],
+        [
+          622,
+          258,
+          null,
+          "z-",
+          true
+        ],
+        [
+          622,
+          259,
+          null,
+          "z-",
+          true
+        ],
+        [
+          622,
+          260,
+          null,
+          "z-",
+          true
+        ],
+        [
+          622,
+          261,
+          null,
+          "z-",
+          true
+        ],
+        [
+          622,
+          262,
+          null,
+          "z-",
+          true
+        ],
+        [
+          589,
+          279,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          590,
+          279,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ]
+      ],
+      "candidate": []
+    }
+  },
+  {
+    "yaw_deg": 67.5,
+    "roi_game": [
+      509,
+      747,
+      238,
+      482
+    ],
+    "old": {
+      "checked": 58072,
+      "extra": 14,
+      "boundary_extra": 14,
+      "wrong_face": 73,
+      "boundary_wrong_face": 73,
+      "missing": 2,
+      "boundary_missing": 2
+    },
+    "candidate": {
+      "checked": 58072,
+      "wrong_face": 2,
+      "boundary_wrong_face": 2
+    },
+    "examples": {
+      "old": [
+        [
+          595,
+          261,
+          null,
+          "z-",
+          true
+        ],
+        [
+          599,
+          266,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          604,
+          272,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          609,
+          278,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          613,
+          283,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          614,
+          284,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          618,
+          289,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          619,
+          290,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          578,
+          293,
+          [
+            "x+"
+          ],
+          null,
+          true
+        ],
+        [
+          623,
+          295,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ]
+      ],
+      "candidate": [
+        [
+          578,
+          285,
+          [
+            "z-"
+          ],
+          "x+",
+          true
+        ],
+        [
+          578,
+          293,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ]
+      ]
+    }
+  },
+  {
+    "yaw_deg": 90.0,
+    "roi_game": [
+      509,
+      748,
+      233,
+      492
+    ],
+    "old": {
+      "checked": 61901,
+      "missing": 26,
+      "boundary_missing": 26,
+      "wrong_face": 127,
+      "boundary_wrong_face": 127,
+      "extra": 19,
+      "boundary_extra": 19
+    },
+    "candidate": {
+      "checked": 61901,
+      "missing": 26,
+      "boundary_missing": 26,
+      "wrong_face": 127,
+      "boundary_wrong_face": 127,
+      "extra": 19,
+      "boundary_extra": 19
+    },
+    "examples": {
+      "old": [
+        [
+          579,
+          270,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          588,
+          270,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          576,
+          272,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          592,
+          272,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          580,
+          274,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          596,
+          274,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          584,
+          276,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          600,
+          276,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          586,
+          277,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          602,
+          277,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ]
+      ],
+      "candidate": [
+        [
+          579,
+          270,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          588,
+          270,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          576,
+          272,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          592,
+          272,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          580,
+          274,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          596,
+          274,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          584,
+          276,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          600,
+          276,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          586,
+          277,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          602,
+          277,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ]
+      ]
+    }
+  },
+  {
+    "yaw_deg": 112.5,
+    "roi_game": [
+      527,
+      734,
+      235,
+      494
+    ],
+    "old": {
+      "checked": 53613,
+      "extra": 19,
+      "boundary_extra": 19,
+      "wrong_face": 65,
+      "boundary_wrong_face": 63,
+      "interior_wrong_face": 2,
+      "missing": 1,
+      "boundary_missing": 1
+    },
+    "candidate": {
+      "checked": 53613,
+      "wrong_face": 4,
+      "boundary_wrong_face": 4,
+      "missing": 1,
+      "boundary_missing": 1
+    },
+    "examples": {
+      "old": [
+        [
+          565,
+          286,
+          null,
+          "z-",
+          true
+        ],
+        [
+          670,
+          307,
+          [
+            "z-"
+          ],
+          "x+",
+          true
+        ],
+        [
+          695,
+          307,
+          null,
+          "z-",
+          true
+        ],
+        [
+          700,
+          309,
+          null,
+          "z-",
+          true
+        ],
+        [
+          704,
+          312,
+          null,
+          "z-",
+          true
+        ],
+        [
+          708,
+          315,
+          null,
+          "z-",
+          true
+        ],
+        [
+          700,
+          317,
+          [
+            "y-"
+          ],
+          "z-",
+          false
+        ],
+        [
+          712,
+          317,
+          null,
+          "y-",
+          true
+        ],
+        [
+          705,
+          319,
+          [
+            "y-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          717,
+          320,
+          null,
+          "z-",
+          true
+        ]
+      ],
+      "candidate": [
+        [
+          568,
+          300,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          670,
+          307,
+          [
+            "z-"
+          ],
+          "x+",
+          true
+        ],
+        [
+          568,
+          308,
+          [
+            "z-"
+          ],
+          "x+",
+          true
+        ],
+        [
+          670,
+          315,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          670,
+          443,
+          [
+            "x+"
+          ],
+          null,
+          true
+        ]
+      ]
+    }
+  },
+  {
+    "yaw_deg": 135.0,
+    "roi_game": [
+      563,
+      707,
+      246,
+      486
+    ],
+    "old": {
+      "checked": 34560,
+      "extra": 109,
+      "boundary_extra": 109
+    },
+    "candidate": {
+      "checked": 34560
+    },
+    "examples": {
+      "old": [
+        [
+          702,
+          295,
+          null,
+          "z-",
+          true
+        ],
+        [
+          702,
+          296,
+          null,
+          "z-",
+          true
+        ],
+        [
+          702,
+          297,
+          null,
+          "z-",
+          true
+        ],
+        [
+          702,
+          298,
+          null,
+          "z-",
+          true
+        ],
+        [
+          702,
+          299,
+          null,
+          "z-",
+          true
+        ],
+        [
+          702,
+          300,
+          null,
+          "x+",
+          true
+        ],
+        [
+          702,
+          301,
+          null,
+          "x+",
+          true
+        ],
+        [
+          702,
+          302,
+          null,
+          "x+",
+          true
+        ],
+        [
+          702,
+          303,
+          null,
+          "x+",
+          true
+        ],
+        [
+          702,
+          304,
+          null,
+          "x+",
+          true
+        ]
+      ],
+      "candidate": []
+    }
+  },
+  {
+    "yaw_deg": 157.5,
+    "roi_game": [
+      536,
+      743,
+      237,
+      496
+    ],
+    "old": {
+      "checked": 53613,
+      "extra": 117,
+      "boundary_extra": 116,
+      "interior_extra": 1,
+      "wrong_face": 28,
+      "boundary_wrong_face": 27,
+      "interior_wrong_face": 1,
+      "missing": 1,
+      "boundary_missing": 1
+    },
+    "candidate": {
+      "checked": 53613,
+      "wrong_face": 2,
+      "boundary_wrong_face": 2,
+      "missing": 1,
+      "boundary_missing": 1
+    },
+    "examples": {
+      "old": [
+        [
+          700,
+          283,
+          null,
+          "z-",
+          true
+        ],
+        [
+          701,
+          284,
+          null,
+          "z-",
+          true
+        ],
+        [
+          702,
+          285,
+          null,
+          "z-",
+          true
+        ],
+        [
+          703,
+          286,
+          null,
+          "z-",
+          true
+        ],
+        [
+          704,
+          287,
+          null,
+          "x+",
+          true
+        ],
+        [
+          704,
+          288,
+          null,
+          "x+",
+          true
+        ],
+        [
+          704,
+          289,
+          null,
+          "x+",
+          true
+        ],
+        [
+          704,
+          290,
+          null,
+          "x+",
+          true
+        ],
+        [
+          704,
+          291,
+          null,
+          "x+",
+          true
+        ],
+        [
+          704,
+          292,
+          null,
+          "x+",
+          true
+        ]
+      ],
+      "candidate": [
+        [
+          609,
+          307,
+          [
+            "z-"
+          ],
+          "x+",
+          true
+        ],
+        [
+          609,
+          315,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          609,
+          443,
+          [
+            "x+"
+          ],
+          null,
+          true
+        ]
+      ]
+    }
+  },
+  {
+    "yaw_deg": 180.0,
+    "roi_game": [
+      525,
+      764,
+      237,
+      496
+    ],
+    "old": {
+      "checked": 61901,
+      "missing": 24,
+      "boundary_missing": 24,
+      "wrong_face": 126,
+      "boundary_wrong_face": 126,
+      "extra": 19,
+      "boundary_extra": 19
+    },
+    "candidate": {
+      "checked": 61901,
+      "missing": 24,
+      "boundary_missing": 24,
+      "wrong_face": 126,
+      "boundary_wrong_face": 126,
+      "extra": 19,
+      "boundary_extra": 19
+    },
+    "examples": {
+      "old": [
+        [
+          687,
+          272,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          688,
+          272,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          683,
+          274,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          692,
+          274,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          679,
+          276,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          695,
+          276,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          677,
+          277,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          693,
+          277,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          673,
+          279,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          689,
+          279,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ]
+      ],
+      "candidate": [
+        [
+          687,
+          272,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          688,
+          272,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          683,
+          274,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          692,
+          274,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          679,
+          276,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          695,
+          276,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          677,
+          277,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          693,
+          277,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          673,
+          279,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          689,
+          279,
+          [
+            "x+"
+          ],
+          "z-",
+          true
+        ]
+      ]
+    }
+  },
+  {
+    "yaw_deg": 202.5,
+    "roi_game": [
+      530,
+      768,
+      244,
+      487
+    ],
+    "old": {
+      "checked": 57834,
+      "extra": 144,
+      "boundary_extra": 141,
+      "interior_extra": 3,
+      "wrong_face": 41,
+      "boundary_wrong_face": 41,
+      "missing": 3,
+      "boundary_missing": 3
+    },
+    "candidate": {
+      "checked": 57834,
+      "wrong_face": 1,
+      "boundary_wrong_face": 1,
+      "missing": 1,
+      "boundary_missing": 1
+    },
+    "examples": {
+      "old": [
+        [
+          670,
+          264,
+          null,
+          "z-",
+          true
+        ],
+        [
+          671,
+          264,
+          null,
+          "z-",
+          true
+        ],
+        [
+          672,
+          264,
+          null,
+          "z-",
+          true
+        ],
+        [
+          673,
+          264,
+          null,
+          "z-",
+          true
+        ],
+        [
+          675,
+          265,
+          null,
+          "z-",
+          true
+        ],
+        [
+          676,
+          265,
+          null,
+          "z-",
+          true
+        ],
+        [
+          677,
+          265,
+          null,
+          "z-",
+          true
+        ],
+        [
+          678,
+          265,
+          null,
+          "z-",
+          true
+        ],
+        [
+          679,
+          266,
+          null,
+          "x+",
+          true
+        ],
+        [
+          680,
+          266,
+          null,
+          "z-",
+          false
+        ]
+      ],
+      "candidate": [
+        [
+          714,
+          406,
+          [
+            "z-"
+          ],
+          "x+",
+          true
+        ],
+        [
+          714,
+          414,
+          [
+            "x+"
+          ],
+          null,
+          true
+        ]
+      ]
+    }
+  },
+  {
+    "yaw_deg": 225.0,
+    "roi_game": [
+      552,
+      752,
+      257,
+      469
+    ],
+    "old": {
+      "checked": 42400,
+      "extra": 202,
+      "boundary_extra": 202,
+      "missing": 319,
+      "interior_missing": 316,
+      "boundary_missing": 3,
+      "wrong_face": 48,
+      "boundary_wrong_face": 48
+    },
+    "candidate": {
+      "checked": 42400
+    },
+    "examples": {
+      "old": [
+        [
+          646,
+          260,
+          null,
+          "z-",
+          true
+        ],
+        [
+          647,
+          260,
+          null,
+          "z-",
+          true
+        ],
+        [
+          648,
+          260,
+          null,
+          "z-",
+          true
+        ],
+        [
+          649,
+          260,
+          null,
+          "z-",
+          true
+        ],
+        [
+          650,
+          260,
+          null,
+          "z-",
+          true
+        ],
+        [
+          651,
+          260,
+          null,
+          "z-",
+          true
+        ],
+        [
+          652,
+          260,
+          null,
+          "z-",
+          true
+        ],
+        [
+          653,
+          260,
+          null,
+          "z-",
+          true
+        ],
+        [
+          654,
+          260,
+          null,
+          "z-",
+          true
+        ],
+        [
+          655,
+          260,
+          null,
+          "z-",
+          true
+        ]
+      ],
+      "candidate": []
+    }
+  },
+  {
+    "yaw_deg": 247.5,
+    "roi_game": [
+      534,
+      772,
+      239,
+      483
+    ],
+    "old": {
+      "checked": 58072,
+      "extra": 64,
+      "boundary_extra": 64,
+      "wrong_face": 180,
+      "boundary_wrong_face": 180
+    },
+    "candidate": {
+      "checked": 58072
+    },
+    "examples": {
+      "old": [
+        [
+          630,
+          259,
+          null,
+          "z-",
+          true
+        ],
+        [
+          625,
+          260,
+          null,
+          "z-",
+          true
+        ],
+        [
+          626,
+          260,
+          null,
+          "z-",
+          true
+        ],
+        [
+          627,
+          260,
+          null,
+          "z-",
+          true
+        ],
+        [
+          628,
+          260,
+          null,
+          "z-",
+          true
+        ],
+        [
+          620,
+          261,
+          null,
+          "z-",
+          true
+        ],
+        [
+          621,
+          261,
+          null,
+          "x-",
+          true
+        ],
+        [
+          622,
+          261,
+          null,
+          "z-",
+          true
+        ],
+        [
+          623,
+          261,
+          null,
+          "z-",
+          true
+        ],
+        [
+          624,
+          261,
+          null,
+          "z-",
+          true
+        ]
+      ],
+      "candidate": []
+    }
+  },
+  {
+    "yaw_deg": 270.0,
+    "roi_game": [
+      533,
+      772,
+      229,
+      488
+    ],
+    "old": {
+      "checked": 61901,
+      "wrong_face": 137,
+      "boundary_wrong_face": 137,
+      "missing": 27,
+      "boundary_missing": 27,
+      "extra": 19,
+      "boundary_extra": 19
+    },
+    "candidate": {
+      "checked": 61901,
+      "wrong_face": 137,
+      "boundary_wrong_face": 137,
+      "missing": 27,
+      "boundary_missing": 27,
+      "extra": 19,
+      "boundary_extra": 19
+    },
+    "examples": {
+      "old": [
+        [
+          604,
+          270,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          620,
+          270,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          608,
+          272,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          624,
+          272,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          612,
+          274,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          628,
+          274,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          599,
+          276,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          600,
+          276,
+          [
+            "z-"
+          ],
+          "x-",
+          true
+        ],
+        [
+          616,
+          276,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          632,
+          276,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ]
+      ],
+      "candidate": [
+        [
+          604,
+          270,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          620,
+          270,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          608,
+          272,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          624,
+          272,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          612,
+          274,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          628,
+          274,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          599,
+          276,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          600,
+          276,
+          [
+            "z-"
+          ],
+          "x-",
+          true
+        ],
+        [
+          616,
+          276,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          632,
+          276,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ]
+      ]
+    }
+  },
+  {
+    "yaw_deg": 292.5,
+    "roi_game": [
+      547,
+      754,
+      227,
+      486
+    ],
+    "old": {
+      "checked": 53613,
+      "extra": 44,
+      "boundary_extra": 44,
+      "wrong_face": 29,
+      "boundary_wrong_face": 29,
+      "missing": 17,
+      "boundary_missing": 15,
+      "interior_missing": 2
+    },
+    "candidate": {
+      "checked": 53613,
+      "wrong_face": 2,
+      "boundary_wrong_face": 2
+    },
+    "examples": {
+      "old": [
+        [
+          588,
+          272,
+          null,
+          "z-",
+          true
+        ],
+        [
+          587,
+          273,
+          null,
+          "z-",
+          true
+        ],
+        [
+          586,
+          274,
+          null,
+          "z-",
+          true
+        ],
+        [
+          585,
+          275,
+          null,
+          "z-",
+          true
+        ],
+        [
+          584,
+          276,
+          null,
+          "z-",
+          true
+        ],
+        [
+          584,
+          277,
+          null,
+          "z-",
+          true
+        ],
+        [
+          580,
+          290,
+          null,
+          "x-",
+          true
+        ],
+        [
+          714,
+          298,
+          null,
+          "z-",
+          true
+        ],
+        [
+          713,
+          300,
+          [
+            "y+"
+          ],
+          "z-",
+          true
+        ],
+        [
+          718,
+          300,
+          null,
+          "y+",
+          true
+        ]
+      ],
+      "candidate": [
+        [
+          670,
+          323,
+          [
+            "z-"
+          ],
+          "x-",
+          true
+        ],
+        [
+          670,
+          331,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ]
+      ]
+    }
+  },
+  {
+    "yaw_deg": 315.0,
+    "roi_game": [
+      574,
+      718,
+      235,
+      475
+    ],
+    "old": {
+      "checked": 34560,
+      "extra": 141,
+      "boundary_extra": 141
+    },
+    "candidate": {
+      "checked": 34560
+    },
+    "examples": {
+      "old": [
+        [
+          577,
+          284,
+          null,
+          "z-",
+          true
+        ],
+        [
+          577,
+          285,
+          null,
+          "z-",
+          true
+        ],
+        [
+          577,
+          286,
+          null,
+          "z-",
+          true
+        ],
+        [
+          577,
+          287,
+          null,
+          "z-",
+          true
+        ],
+        [
+          577,
+          288,
+          null,
+          "x-",
+          true
+        ],
+        [
+          577,
+          289,
+          null,
+          "x-",
+          true
+        ],
+        [
+          577,
+          290,
+          null,
+          "x-",
+          true
+        ],
+        [
+          577,
+          291,
+          null,
+          "x-",
+          true
+        ],
+        [
+          577,
+          292,
+          null,
+          "x-",
+          true
+        ],
+        [
+          577,
+          293,
+          null,
+          "x-",
+          true
+        ]
+      ],
+      "candidate": []
+    }
+  },
+  {
+    "yaw_deg": 337.5,
+    "roi_game": [
+      538,
+      745,
+      225,
+      484
+    ],
+    "old": {
+      "checked": 53613,
+      "extra": 24,
+      "boundary_extra": 24,
+      "wrong_face": 72,
+      "boundary_wrong_face": 72
+    },
+    "candidate": {
+      "checked": 53613,
+      "wrong_face": 4,
+      "boundary_wrong_face": 4
+    },
+    "examples": {
+      "old": [
+        [
+          575,
+          296,
+          null,
+          "z-",
+          true
+        ],
+        [
+          571,
+          299,
+          null,
+          "z-",
+          true
+        ],
+        [
+          567,
+          301,
+          null,
+          "y-",
+          true
+        ],
+        [
+          579,
+          301,
+          [
+            "y-"
+          ],
+          "x-",
+          true
+        ],
+        [
+          579,
+          302,
+          [
+            "y-"
+          ],
+          "x-",
+          true
+        ],
+        [
+          714,
+          302,
+          null,
+          "z-",
+          true
+        ],
+        [
+          574,
+          303,
+          [
+            "y-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          579,
+          303,
+          [
+            "y-"
+          ],
+          "x-",
+          true
+        ],
+        [
+          562,
+          304,
+          null,
+          "z-",
+          true
+        ],
+        [
+          579,
+          304,
+          [
+            "y-"
+          ],
+          "x-",
+          true
+        ]
+      ],
+      "candidate": [
+        [
+          711,
+          316,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          609,
+          323,
+          [
+            "z-"
+          ],
+          "x-",
+          true
+        ],
+        [
+          711,
+          324,
+          [
+            "z-"
+          ],
+          "x-",
+          true
+        ],
+        [
+          609,
+          331,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ]
+      ]
+    }
+  },
+  {
+    "yaw_deg": 360.0,
+    "roi_game": [
+      517,
+      756,
+      225,
+      484
+    ],
+    "old": {
+      "checked": 61901,
+      "missing": 24,
+      "boundary_missing": 24,
+      "wrong_face": 141,
+      "boundary_wrong_face": 141,
+      "extra": 23,
+      "boundary_extra": 23
+    },
+    "candidate": {
+      "checked": 61901,
+      "missing": 24,
+      "boundary_missing": 24,
+      "wrong_face": 141,
+      "boundary_wrong_face": 141,
+      "extra": 23,
+      "boundary_extra": 23
+    },
+    "examples": {
+      "old": [
+        [
+          659,
+          270,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          675,
+          270,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          655,
+          272,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          671,
+          272,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          687,
+          272,
+          [
+            "z-"
+          ],
+          "x-",
+          true
+        ],
+        [
+          688,
+          272,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          651,
+          274,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          667,
+          274,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          683,
+          274,
+          [
+            "z-"
+          ],
+          "x-",
+          true
+        ],
+        [
+          692,
+          274,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ]
+      ],
+      "candidate": [
+        [
+          659,
+          270,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          675,
+          270,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          655,
+          272,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          671,
+          272,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          687,
+          272,
+          [
+            "z-"
+          ],
+          "x-",
+          true
+        ],
+        [
+          688,
+          272,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          651,
+          274,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ],
+        [
+          667,
+          274,
+          [
+            "x-"
+          ],
+          "z-",
+          true
+        ],
+        [
+          683,
+          274,
+          [
+            "z-"
+          ],
+          "x-",
+          true
+        ],
+        [
+          692,
+          274,
+          [
+            "z-"
+          ],
+          null,
+          true
+        ]
+      ]
+    }
+  }
+]

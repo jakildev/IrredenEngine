@@ -5,6 +5,40 @@ changed paths and other bottlenecks, consolidating logic and improving robustnes
 against measured costs and the visual controls. Keep the agreed work in this order. A diagnostic experiment is not an implemented
 fix, and a small native scene does not establish fleet-scale rendering throughput.
 
+## Current follow-up: finite GRID face coverage
+
+The [finite-face investigation](../pr-screenshots/codex/scatter-silhouette-edges/README.md)
+replaces continuous GRID dilation/margin classification with exact hardware quads,
+and removes whole-face rejection based only on the depth at face origins. The
+independent orbit ray sweep closes all 673 interior missing samples; non-cardinal
+silhouette overfill falls to zero. The strict yaw135° fixture has zero mismatches
+without boundary tolerance. Cardinal output remains unchanged. This supersedes
+the GRID margin policy and unresolved diagonal holes described in earlier entries.
+
+The full-scene Debug control measures a cheaper scatter pass (0.080→0.066ms),
+but whole-frame timing ranges overlap. Overflow grows 740→767 records with no
+record drops. A 32³-entity paired control reduces scatter about 1.0→0.69ms
+while overflow grows 75,166→88,647 with no drops; requested base 4 is capped to 2
+during rotation. Neither workload establishes million-entity throughput. PR #3941 has Windows smoke; this follow-up still needs its own native
+OpenGL presentation validation.
+
+Next, in order:
+
+1. Complete native OpenGL validation of finite faces; isolate remaining cardinal
+   and boundary differences using actual capture poses and raster ownership rules.
+2. Profile conservative overflow emission on large rotating populations and high
+   effective subdivisions. Remove the reserved mask scratch region only with
+   layout/consumer tests; future occlusion must prove finite-footprint coverage.
+3. Continue dense/incomplete sun-index and moving light/camera controls. Incomplete
+   tiles still have approximate fallback; the full-pool reference is diagnostic.
+4. Extend finite receiving to cardinal GRID and remaining eligible SDF/fog routes,
+   coordinating active fog PRs and shared resource lifetimes before changing defaults.
+5. Cover local spotlights and representative LOD scenes after these correctness
+   and profiling controls. Keep actual occupancy steps; do not use blur to hide
+   missing or misoriented faces.
+
+The older sections retain their original validation limits and historical evidence.
+
 ## Session handoff: stack through #3931
 
 Post-merge follow-up: all final stack CI checks passed and the additional fleet

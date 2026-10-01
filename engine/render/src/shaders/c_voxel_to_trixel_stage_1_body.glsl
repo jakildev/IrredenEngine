@@ -88,8 +88,8 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // Read by stage 2 only; declared here so resolveMode lands at the same
     // std140 offset (192) as FrameDataVoxelToCanvas::resolveMode_.
     uniform ivec4 visibleIsoBounds;
-    // Per-axis deterministic-winner resolve mode. 0 = the distance store (also
-    // writes the view mask). 1 = the winner-resolve dispatch between the stage-1
+    // Per-axis deterministic-winner resolve mode. 0 = the distance store.
+    // 1 = the winner-resolve dispatch between the stage-1
     // store and stage 2: re-run the identical per-axis geometry and, for each
     // face whose encoded distance MATCHES the settled per-cell atomicMin
     // winner, atomicMin the face's run-stable voxel pool index into the
@@ -114,13 +114,11 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // 200/204) so every binding-7 shader shares one layout.
     uniform int feederSubCap;
     uniform int feederPassTailBase;
-    // View-visibility overflow scratch layout: region base offsets (in uints)
-    // into the unified binding-28 scratch + the entry cap. .x = view mask,
-    // .y = ctrl block (draw args + counters), .z = overflow entries, .w = entry
-    // cap. Region 0 of the scratch is the winner-id array, indexed directly as
-    // perAxisWinnerIds[cell]. std140 offset 208, mirroring
-    // FrameDataVoxelToCanvas::overflowScratchLayout_. Read at resolveMode 0
-    // (mask write) and 3 (append), rotating frames only.
+    // Overflow scratch layout: region base offsets (in uints) into the unified
+    // binding-28 scratch + the entry cap. .x is reserved by the current CPU
+    // allocation, .y = ctrl block (draw args + counters), .z = overflow entries,
+    // .w = entry cap. Region 0 holds winner ids. std140 offset 208 mirrors
+    // FrameDataVoxelToCanvas::overflowScratchLayout_. Read at resolveMode 3.
     uniform ivec4 overflowScratchLayout;
     uniform ivec4 overflowSortStep;
     uniform vec4 detachedViewToWorld;
@@ -167,10 +165,9 @@ layout(r32i, binding = 1) uniform iimage2D triangleCanvasDistances;
 // color/entity-id only for the winning index. A buffer (not a texture image)
 // because Metal has no second image-atomic slot; it transiently reuses
 // kBufferIndex_PerAxisResolveScratch. The winner-id region (region 0) stays
-// untouched at resolveMode == 0, but the mode-0 per-axis store writes the
-// disjoint view-mask region (base overflowScratchLayout.x) through viewMaskTap.
-// Only the per-axis dispatches and the IR_STORE_WINNER_ELECTION variant write
-// it; the visible and feeder cardinal / detached paths leave it untouched.
+// untouched at resolveMode == 0. Only the per-axis dispatches and the
+// IR_STORE_WINNER_ELECTION variant write winner ids; the visible and feeder
+// cardinal / detached paths leave them untouched.
 layout(std430, binding = 28) buffer PerAxisWinnerScratch {
     uint perAxisWinnerIds[];
 };
@@ -207,94 +204,16 @@ void resolveWinnerTap(const ivec2 canvasPixel, const int voxelDistance, const ui
     atomicMin(perAxisWinnerIds[cell], voxelIndex);
 }
 
-// View-visibility overflow lane — yawed-depth quantization shared by the mask
-// write (in the mode-0 store) and the resolveMode-3 mask compare. 1/16-world-unit
-// steps, biased to a uint so atomicMin orders negative depths correctly. Both
-// modes call THE SAME function on the SAME facePos, so a face always ties its own
-// mask entry exactly regardless of float rounding.
-const float kOverflowDepthQuantScale = 16.0;
-// Half a world unit of tolerance (8 sixteenth-steps): absorbs quantization
-// ties between genuinely co-visible faces without admitting occluded coset
-// losers (the nearest coset pair separates by >= ~2.7 world units of yawed
-// depth). Over-emit is safe — the framebuffer depth test cleans up; under-emit
-// leaves holes where a view-visible face is missing.
-const uint kOverflowDepthEpsSteps = 8u;
-const int kOverflowDepthBias = 0x40000000;
-
-uint overflowYawedDepthKey(const ivec3 facePos) {
-    return uint(
-        int(floor(yawedIsoDistanceCellAnchor(vec3(facePos), visualYaw) * kOverflowDepthQuantScale)) +
-        kOverflowDepthBias
-    );
-}
-
-// The face's screen cell at the LIVE yaw, on the same perAxisBase anchor the
-// cardinal store uses (the scatter projects with the identical cell-anchor
-// projection, so mask cells and scattered quads agree).
-ivec2 overflowYawedPixel(const ivec2 perAxisBase, const ivec3 facePos) {
-    return perAxisBase + roundHalfUp(pos3DtoPos2DIsoYawedCellAnchor(vec3(facePos), visualYaw));
-}
-
-// View-mask write, run inside the resolveMode-0 store pass. Every per-axis face
-// (all three axis routes — view visibility competes across axes) atomicMins its
-// quantized yawed depth into the shared mask region.
-void viewMaskTap(const ivec2 perAxisBase, const ivec3 facePos) {
-    const ivec2 yawedPix = overflowYawedPixel(perAxisBase, facePos);
-    if (!isInsideCanvas(yawedPix, canvasSizePixels)) return;
-    const uint cell = uint(yawedPix.y) * uint(canvasSizePixels.x) + uint(yawedPix.x);
-    atomicMin(
-        perAxisWinnerIds[uint(overflowScratchLayout.x) + cell],
-        overflowYawedDepthKey(facePos)
-    );
-}
-
-// resolveMode == 3: overflow append. A face appends iff it is view-visible
-// (within epsilon of its view-mask cell winner) AND it is NOT its cardinal
-// store cell's settled winner — exactly the set `viewVisible \ cardinalWinners`
-// the cardinal-keyed store drops. Entries carry the exact (cardinal cell,
+// resolveMode == 3: overflow append. Every exposed face that loses its
+// cardinal store cell is retained for finite-quad rasterization and the
+// framebuffer depth test. Entries carry the exact (cardinal cell,
 // encoded distance) pair the store would have written plus the raw colorPacked,
 // so the scatter's overflow branch reuses the per-cell recovery bit-for-bit.
 void overflowAppendTap(
     const ivec2 perAxisBase, const ivec3 facePos, const int voxelDistance, const uint colorPacked
 ) {
-    // Compare the face's key against the MOST PERMISSIVE (largest) mask winner
-    // over the 2x2 cell neighborhood spanning the UNROUNDED yawed position, not
-    // the single roundHalfUp cell. A face whose footprint straddles a cell
-    // boundary rounds to cell A at one yaw step and the adjacent cell B at the
-    // next; a single-cell compare would flip its append membership discretely
-    // (A and B carry different winners), popping a whole face quad
-    // frame-to-frame. roundHalfUp(p) is floor(p) or floor(p)+1 per axis, so both
-    // A and B always lie in the 2x2 neighborhood of the unrounded position;
-    // reading the neighborhood max makes the compare vary continuously with the
-    // winner landscape the footprint actually covers. A 3x3 span buys nothing:
-    // the sub-pixel residual that survives is the per-axis scatter's positioning
-    // wobble, not overflow membership. The mask WRITE side (viewMaskTap) stays
-    // the single roundHalfUp cell, so the write/compare self-tie holds: a face's
-    // own rounded cell is inside its neighborhood, and max() can only admit a
-    // superset of the single-cell pass — the safe over-emit direction (over-emit
-    // loses the framebuffer depth test; under-emit leaves holes).
-    const vec2 yawedPosRel = pos3DtoPos2DIsoYawedCellAnchor(vec3(facePos), visualYaw);
-    const ivec2 neighborhoodBase = perAxisBase + ivec2(floor(yawedPosRel));
-    bool anyInside = false;
-    uint maxMaskKey = 0u;
-    for (int dy = 0; dy < 2; ++dy) {
-        for (int dx = 0; dx < 2; ++dx) {
-            const ivec2 neighborPix = neighborhoodBase + ivec2(dx, dy);
-            if (!isInsideCanvas(neighborPix, canvasSizePixels)) continue;
-            const uint neighborCell = uint(neighborPix.y) * uint(canvasSizePixels.x) + uint(neighborPix.x);
-            maxMaskKey = max(maxMaskKey, perAxisWinnerIds[uint(overflowScratchLayout.x) + neighborCell]);
-            anyInside = true;
-        }
-    }
-    if (!anyInside) return; // off-screen at the live yaw (whole footprint off-canvas)
-    // Wrap-safe occlusion test: an unwritten neighborhood cell reads the
-    // 0xFFFFFFFF empty sentinel, so `maxMaskKey + eps` would wrap — compare in the
-    // `key - eps` form instead (the key is bias-centered at ~0x40000000, eps=8u,
-    // so no underflow), which treats the empty sentinel as infinitely permissive
-    // (a footprint straddling background is on the silhouette — append it).
-    if (overflowYawedDepthKey(facePos) - kOverflowDepthEpsSteps > maxMaskKey) {
-        return; // view-occluded — nearer faces own the whole footprint neighborhood
-    }
+    // A face-origin depth sample cannot prove occlusion of the finite quad.
+    // Keep cardinal losers for the framebuffer depth test.
     const ivec2 cardPix = perAxisBase + pos3DtoPos2DIso(facePos);
     // Off-canvas cardinal key never stored (writeDistanceTap dropped it) and is
     // outside the worst-case-sized render domain — mirror the silent drop.
@@ -643,7 +562,6 @@ void main() {
             return;
         }
         writeDistanceTap(perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance);
-        viewMaskTap(perAxisBase, facePos);
         return;
     }
 

@@ -1,0 +1,70 @@
+{
+  "parent": "02ad32f2cacfb1b9144093ad16b9c4abbcde30aa",
+  "shaders": [
+    {
+      "source": "engine/render/src/shaders/c_light_overflow_faces.glsl",
+      "source_sha256": "0cc8b9763af02f9dd35890e69756cf84ad403d59184ffd892cc5378609fb1af2",
+      "staged_sha256": "0cc8b9763af02f9dd35890e69756cf84ad403d59184ffd892cc5378609fb1af2"
+    },
+    {
+      "source": "engine/render/src/shaders/c_per_axis_overflow_sort.glsl",
+      "source_sha256": "7a1d1df4d4b3b7dc8930933367652d9a130b32a7f2d57bd08df59d083be73250",
+      "staged_sha256": "7a1d1df4d4b3b7dc8930933367652d9a130b32a7f2d57bd08df59d083be73250"
+    },
+    {
+      "source": "engine/render/src/shaders/c_voxel_to_trixel_stage_1_body.glsl",
+      "source_sha256": "72cb9e7c74a3fb5e2bd75076b1a8c93b36a48c0d44f76f133ec2442890507503",
+      "staged_sha256": "72cb9e7c74a3fb5e2bd75076b1a8c93b36a48c0d44f76f133ec2442890507503"
+    },
+    {
+      "source": "engine/render/src/shaders/ir_iso_common.glsl",
+      "source_sha256": "3733da1ad87a8ce0ce03adeeb4fe8c58b3d1b83ba6f4a129165c7343ca2b78d2",
+      "staged_sha256": "3733da1ad87a8ce0ce03adeeb4fe8c58b3d1b83ba6f4a129165c7343ca2b78d2"
+    },
+    {
+      "source": "engine/render/src/shaders/ir_peraxis_scatter_fragment_body.glsl",
+      "source_sha256": "2474198ff45c430cfb6e5396c857df6abd03f6c7ef040b77388ac5c2c554af23",
+      "staged_sha256": "2474198ff45c430cfb6e5396c857df6abd03f6c7ef040b77388ac5c2c554af23"
+    },
+    {
+      "source": "engine/render/src/shaders/ir_scatter_depth.glsl",
+      "source_sha256": "cddc261395bae7715f1f0ff516f8f6d57ab81f2866044995889da0b5884d0613",
+      "staged_sha256": "cddc261395bae7715f1f0ff516f8f6d57ab81f2866044995889da0b5884d0613"
+    },
+    {
+      "source": "engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_body.metal",
+      "source_sha256": "6c24cf2206835731843a7a5daa3463dce582eacf8a3ca2d07f205bf5a4e8d515",
+      "staged_sha256": "6c24cf2206835731843a7a5daa3463dce582eacf8a3ca2d07f205bf5a4e8d515"
+    },
+    {
+      "source": "engine/render/src/shaders/metal/ir_iso_common.metal",
+      "source_sha256": "e7ddb0512a2b8679a550b75aa50e9aa3d0a9623e3d127c16207d8811071cf048",
+      "staged_sha256": "e7ddb0512a2b8679a550b75aa50e9aa3d0a9623e3d127c16207d8811071cf048"
+    },
+    {
+      "source": "engine/render/src/shaders/metal/ir_peraxis_scatter_fragment_body.metal",
+      "source_sha256": "2d77e6ac4643930f7afb2f3124d008d2a746e94edf9eb0997de70d090fbfabd2",
+      "staged_sha256": "2d77e6ac4643930f7afb2f3124d008d2a746e94edf9eb0997de70d090fbfabd2"
+    },
+    {
+      "source": "engine/render/src/shaders/metal/ir_peraxis_scatter_interface.metal",
+      "source_sha256": "e59dab254f55befb779a82fea1e66fa41c0f780d81416bfc112d9a14e15acf9b",
+      "staged_sha256": "e59dab254f55befb779a82fea1e66fa41c0f780d81416bfc112d9a14e15acf9b"
+    },
+    {
+      "source": "engine/render/src/shaders/metal/ir_scatter_depth.metal",
+      "source_sha256": "1cc79d3aaf4615b2f508024541d1735df6d57572582c27700c58086e2b0aab22",
+      "staged_sha256": "1cc79d3aaf4615b2f508024541d1735df6d57572582c27700c58086e2b0aab22"
+    },
+    {
+      "source": "engine/render/src/shaders/metal/peraxis_scatter.metal",
+      "source_sha256": "c71bf5c20715c4bb233c91fb8dd8cd3d429a5518e46302e0237c2184c678650d",
+      "staged_sha256": "c71bf5c20715c4bb233c91fb8dd8cd3d429a5518e46302e0237c2184c678650d"
+    },
+    {
+      "source": "engine/render/src/shaders/v_peraxis_scatter.glsl",
+      "source_sha256": "8beda73cbc84b3a37e54183341eef516f11de8adfd8e32e1443b96cea3bfda31",
+      "staged_sha256": "8beda73cbc84b3a37e54183341eef516f11de8adfd8e32e1443b96cea3bfda31"
+    }
+  ]
+}

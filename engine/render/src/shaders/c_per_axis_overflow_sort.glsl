@@ -1,6 +1,6 @@
 #version 450 core
 
-// Canonical-order the view-visibility overflow entry list.
+// Canonical-order the overflow entry list.
 //
 // The mode-3 append (c_voxel_to_trixel_stage_1_body.glsl) assigns entry
 // indices with atomicAdd, and entry index IS draw order in the overflow
@@ -91,7 +91,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     int   _occlusionCullMipCount;
     int   _feederSubCap;
     int   _feederPassTailBase;
-    ivec4 overflowScratchLayout;   // .x view-mask base, .y ctrl base, .z entry base, .w cap
+    ivec4 overflowScratchLayout;   // .x reserved, .y ctrl base, .z entry base, .w cap
     ivec4 overflowSortStep;        // .x mode, .y stage k, .z pLo, .w pHi
 };
 

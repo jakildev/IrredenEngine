@@ -1,0 +1,699 @@
+diff --git a/engine/render/src/shaders/ir_iso_common.glsl b/engine/render/src/shaders/ir_iso_common.glsl
+index eb232b03e..7c07b4b44 100644
+--- a/engine/render/src/shaders/ir_iso_common.glsl
++++ b/engine/render/src/shaders/ir_iso_common.glsl
+@@ -174,6 +174,18 @@ int decodeDepthPerAxis(int encoded) { return encoded >> 15; }
+ int decodeUFrac4PerAxis(int encoded) { return (encoded >> 6) & 15; }
+ int decodeVFrac4PerAxis(int encoded) { return (encoded >> 2) & 15; }
+ int decodeWFrac4PerAxis(int encoded) { return (encoded >> 11) & 15; }
++// The queried cell must be one integer in-plane step from the owner. Equal
++// face/fraction fields and the corresponding depth step then recover the same
++// finite face plane; nonempty storage alone also admits unrelated coset faces.
++bool perAxisCoplanarNeighbor(int owner, int neighbor, int depthStep) {
++    return decodeDepthPerAxis(neighbor) == decodeDepthPerAxis(owner) + depthStep &&
++        decodeSlot(neighbor) == decodeSlot(owner) &&
++        decodeFlipPerAxis(neighbor) == decodeFlipPerAxis(owner) &&
++        decodeUFrac4PerAxis(neighbor) == decodeUFrac4PerAxis(owner) &&
++        decodeVFrac4PerAxis(neighbor) == decodeVFrac4PerAxis(owner) &&
++        decodeWFrac4PerAxis(neighbor) == decodeWFrac4PerAxis(owner);
++}
++
+ // Route-aware forms for the shared lighting/AO/shadow/bake consumers that
+ // read either encoding behind the perAxisRoute selector.
+ int decodeDepthRoute(int encoded, int perAxisRoute) {
+@@ -890,6 +902,20 @@ float yawedIsoDistance(vec3 worldPos, float visualYaw) {
+     return worldPos.x * (c - s) + worldPos.y * (s + c) + worldPos.z;
+ }
+ 
++// Only a camera-facing face with nonzero projected area can close a convex
++// edge. A cardinal triplet also contains edge-on faces at diagonal yaw; their
++// zero-width projection provides no surface for conservative seam coverage.
++int scatterVisiblePolarityForAxis(int axisIdx, ivec4 visibleFaceIds, float visualYaw) {
++    for (int slot = 0; slot < 3; ++slot) {
++        const int faceId = visibleFaceIds[slot];
++        if ((faceId >> 1) == axisIdx) {
++            const float facing = yawedIsoDistance(faceOutwardNormal6(faceId), visualYaw);
++            return facing < -1e-6 ? (((faceId & 1) == 1) ? 1 : -1) : 0;
++        }
++    }
++    return 0;
++}
++
+ // Cell-anchor twin of yawedIsoDistance: composite depth of a voxel-raster
+ // cell/face position, measured at its authored-lattice world point
+ // (rasterPos - half cell) so voxel and SDF surfaces at the same world location
+diff --git a/engine/render/src/shaders/metal/ir_iso_common.metal b/engine/render/src/shaders/metal/ir_iso_common.metal
+index e32741c2c..009e3bc41 100644
+--- a/engine/render/src/shaders/metal/ir_iso_common.metal
++++ b/engine/render/src/shaders/metal/ir_iso_common.metal
+@@ -161,6 +161,18 @@ inline int decodeDepthPerAxis(int encoded) { return encoded >> 15; }
+ inline int decodeUFrac4PerAxis(int encoded) { return (encoded >> 6) & 15; }
+ inline int decodeVFrac4PerAxis(int encoded) { return (encoded >> 2) & 15; }
+ inline int decodeWFrac4PerAxis(int encoded) { return (encoded >> 11) & 15; }
++// The queried cell must be one integer in-plane step from the owner. Equal
++// face/fraction fields and the corresponding depth step then recover the same
++// finite face plane; nonempty storage alone also admits unrelated coset faces.
++inline bool perAxisCoplanarNeighbor(int owner, int neighbor, int depthStep) {
++    return decodeDepthPerAxis(neighbor) == decodeDepthPerAxis(owner) + depthStep &&
++        decodeSlot(neighbor) == decodeSlot(owner) &&
++        decodeFlipPerAxis(neighbor) == decodeFlipPerAxis(owner) &&
++        decodeUFrac4PerAxis(neighbor) == decodeUFrac4PerAxis(owner) &&
++        decodeVFrac4PerAxis(neighbor) == decodeVFrac4PerAxis(owner) &&
++        decodeWFrac4PerAxis(neighbor) == decodeWFrac4PerAxis(owner);
++}
++
+ // Route-aware forms for the shared lighting/AO/shadow/bake consumers that
+ // read either encoding behind the perAxisRoute selector.
+ inline int decodeDepthRoute(int encoded, int perAxisRoute) {
+@@ -811,6 +823,20 @@ inline float yawedIsoDistance(float3 worldPos, float visualYaw) {
+     return worldPos.x * (c - s) + worldPos.y * (s + c) + worldPos.z;
+ }
+ 
++// Only a camera-facing face with nonzero projected area can close a convex
++// edge. A cardinal triplet also contains edge-on faces at diagonal yaw; their
++// zero-width projection provides no surface for conservative seam coverage.
++inline int scatterVisiblePolarityForAxis(int axisIdx, int4 visibleFaceIds, float visualYaw) {
++    for (int slot = 0; slot < 3; ++slot) {
++        const int faceId = visibleFaceIds[slot];
++        if ((faceId >> 1) == axisIdx) {
++            const float facing = yawedIsoDistance(faceOutwardNormal6(faceId), visualYaw);
++            return facing < -1e-6 ? (((faceId & 1) == 1) ? 1 : -1) : 0;
++        }
++    }
++    return 0;
++}
++
+ // Cell-anchor twin of yawedIsoDistance — mirror of
+ // yawedIsoDistanceCellAnchor in ir_iso_common.glsl: composite depth of a
+ // raster cell/face position measured at its authored-lattice world point so
+diff --git a/engine/render/src/shaders/metal/peraxis_scatter.metal b/engine/render/src/shaders/metal/peraxis_scatter.metal
+index 9be584fcf..595215c56 100644
+--- a/engine/render/src/shaders/metal/peraxis_scatter.metal
++++ b/engine/render/src/shaders/metal/peraxis_scatter.metal
+@@ -83,35 +83,13 @@ static inline float3 hueWheel(float t) {
+     );
+ }
+ 
+-// Occupancy of a per-axis canvas cell at pixel `p`, for the interior/
+-// boundary edge classification. The bound `triangleColors` holds ONLY this axis's
+-// faces (each axis binds its own textures — system_trixel_to_framebuffer.hpp), so
+-// a non-empty neighbour means this face continues to its in-plane neighbour
+-// (interior edge); an empty or out-of-bounds neighbour is a silhouette (boundary).
+-static inline float occupiedNeighbor(texture2d<float> tex, int2 p, int2 size) {
+-    if (p.x < 0 || p.y < 0 || p.x >= size.x || p.y >= size.y) {
+-        return 0.0f;
+-    }
+-    return (tex.read(uint2(p)).a >= 0.1f) ? 1.0f : 0.0f;
+-}
+-
+-// Polarity (+1 / -1) of the visible face for world axis `axisIdx` (0=x,1=y,2=z),
+-// from the visible-triplet, for the cross-axis edge classification. The
+-// camera sees exactly one polarity per axis; an in-plane edge of the current face
+-// that points toward that visible side face is a CONVEX CUBE EDGE shared with
+-// another VISIBLE face (in a different per-axis canvas, so the same-axis
+-// occupiedNeighbor tap can't see it). Such an edge is an inter-face seam to CLOSE
+-// (conservative overlap), not a silhouette to trim — only the opposite,
+-// background-facing edges are true silhouettes. Returns 0 if the axis has no
+-// visible face in the triplet (degenerate).
+-static inline int visiblePolarityForAxis(int axisIdx, int4 visibleFaceIds) {
+-    for (int s = 0; s < 3; ++s) {
+-        const int fid = visibleFaceIds[s];
+-        if ((fid >> 1) == axisIdx) {
+-            return ((fid & 1) == 1) ? 1 : -1;
+-        }
+-    }
+-    return 0;
++// Only an adjacent coplanar face can extend coverage across this edge.
++static inline float coplanarNeighbor(texture2d<float> colors, texture2d<int> distances,
++                                    int2 p, int2 size, int owner, int depthStep) {
++    if (p.x < 0 || p.y < 0 || p.x >= size.x || p.y >= size.y) return 0.0f;
++    if (colors.read(uint2(p)).a < 0.1f) return 0.0f;
++    return perAxisCoplanarNeighbor(owner, distances.read(uint2(p)).r, depthStep)
++        ? 1.0f : 0.0f;
+ }
+ 
+ // In-plane corner of a face whose `origin` ALREADY sits at the face plane on
+@@ -218,41 +196,25 @@ vertex VertexOut v_peraxis_scatter(
+         + ev * (float(vFrac4) / 16.0f - 0.5f)
+         + faceOutOfPlaneUnitAxis(axis) * (float(wFrac4) / 16.0f - 0.5f);
+ 
+-    // Interior/boundary classification for the analytic coverage. An edge
+-    // is INTERIOR (fill solid, close the seam) if EITHER:
+-    //  (1) the face continues to its same-axis in-plane neighbour — a unit in-plane
+-    //      world step projects to the integer iso offset pos3DtoPos2DIso(eu/ev)
+-    //      (linear, so the cell's per-axis pixel is ij ± step); tap THIS axis's
+-    //      colour texture there, OR
+-    //  (2) the edge points toward the VISIBLE perpendicular face — a convex cube
+-    //      edge shared with another visible face in a different per-axis canvas
+-    //      (the same-axis tap can't see it). Exactly one of the ±eu / ±ev edges
+-    //      faces each visible side face; the opposite, background-facing edges
+-    //      stay BOUNDARY and get crisply trimmed (true silhouette).
+-    // The polarity-interior edge of each axis SKIPS its occupancy tap — it is
+-    // interior unconditionally, so the tap result is irrelevant (max with 1.0).
+-    // That halves the per-vertex texture reads (2 taps, not 4) on this hot per-cell
+-    // path while staying output-identical to the max(tap, polarity) form.
+-    if (frameData.overflowMode != 0) {
+-        // Overflow entries are isolated revealed slivers, and the bound
+-        // triangleColors is whichever axis drew last (the overflow draw is
+-        // axis-agnostic), so the same-axis occupancy taps below would read a
+-        // foreign axis's cells. Classify every edge as boundary: the analytic
+-        // coverage then trims the exact footprint, which tiles gap-free against
+-        // neighbouring faces' exact footprints in world space.
+-        out.edgeInterior = float4(0.0);
+-    } else {
++    // Seam coverage requires an adjoining surface: either a coplanar in-plane
++    // neighbor or a camera-facing perpendicular face with nonzero area. The
++    // cardinal store also contains depth aliases, so occupancy alone cannot
++    // establish adjacency. Perpendicular seams skip the neighbor texture reads.
++    const int euAxis = (eu.x != 0.0f) ? 0 : ((eu.y != 0.0f) ? 1 : 2);
++    const int evAxis = (ev.x != 0.0f) ? 0 : ((ev.y != 0.0f) ? 1 : 2);
++    const int euPol = scatterVisiblePolarityForAxis(euAxis, frameData.visibleFaceIds, frameData.visualYaw);
++    const int evPol = scatterVisiblePolarityForAxis(evAxis, frameData.visibleFaceIds, frameData.visualYaw);
++    out.edgeInterior = float4(euPol < 0 ? 1.0 : 0.0, euPol > 0 ? 1.0 : 0.0,
++        evPol < 0 ? 1.0 : 0.0, evPol > 0 ? 1.0 : 0.0);
++    // Overflow records share convex seams but have no matching axis texture.
++    if (frameData.overflowMode == 0) {
+         const int2 stepU = pos3DtoPos2DIso(int3(eu));
+         const int2 stepV = pos3DtoPos2DIso(int3(ev));
+-        const int euAxis = (eu.x != 0.0f) ? 0 : ((eu.y != 0.0f) ? 1 : 2);
+-        const int evAxis = (ev.x != 0.0f) ? 0 : ((ev.y != 0.0f) ? 1 : 2);
+-        const int euPol = visiblePolarityForAxis(euAxis, frameData.visibleFaceIds);
+-        const int evPol = visiblePolarityForAxis(evAxis, frameData.visibleFaceIds);
+         out.edgeInterior = float4(
+-            (euPol < 0) ? 1.0f : occupiedNeighbor(triangleColors, ij - stepU, canvasSize),  // u-low  (-eu)
+-            (euPol > 0) ? 1.0f : occupiedNeighbor(triangleColors, ij + stepU, canvasSize),  // u-high (+eu)
+-            (evPol < 0) ? 1.0f : occupiedNeighbor(triangleColors, ij - stepV, canvasSize),  // v-low  (-ev)
+-            (evPol > 0) ? 1.0f : occupiedNeighbor(triangleColors, ij + stepV, canvasSize)); // v-high (+ev)
++            (euPol < 0) ? 1.0f : coplanarNeighbor(triangleColors, triangleDistances, ij - stepU, canvasSize, rawDist, -1),  // u-low  (-eu)
++            (euPol > 0) ? 1.0f : coplanarNeighbor(triangleColors, triangleDistances, ij + stepU, canvasSize, rawDist, 1),  // u-high (+eu)
++            (evPol < 0) ? 1.0f : coplanarNeighbor(triangleColors, triangleDistances, ij - stepV, canvasSize, rawDist, -1),  // v-low  (-ev)
++            (evPol > 0) ? 1.0f : coplanarNeighbor(triangleColors, triangleDistances, ij + stepV, canvasSize, rawDist, 1)); // v-high (+ev)
+     }
+ 
+     const float2 cornerSel = in.position + float2(0.5);
+diff --git a/engine/render/src/shaders/v_peraxis_scatter.glsl b/engine/render/src/shaders/v_peraxis_scatter.glsl
+index c2a1cc36f..226717df1 100644
+--- a/engine/render/src/shaders/v_peraxis_scatter.glsl
++++ b/engine/render/src/shaders/v_peraxis_scatter.glsl
+@@ -167,35 +167,12 @@ vec3 hueWheel(float t) {
+     );
+ }
+ 
+-// Occupancy of a per-axis canvas cell at pixel `p`, for the interior/
+-// boundary edge classification. The bound `triangleColors` holds ONLY this axis's
+-// faces (each axis binds its own textures — system_trixel_to_framebuffer.hpp), so
+-// a non-empty neighbour means this face continues to its in-plane neighbour
+-// (interior edge); an empty or out-of-bounds neighbour is a silhouette (boundary).
+-float occupiedNeighbor(ivec2 p, ivec2 size) {
+-    if (p.x < 0 || p.y < 0 || p.x >= size.x || p.y >= size.y) {
+-        return 0.0;
+-    }
+-    return (texelFetch(triangleColors, p, 0).a >= 0.1) ? 1.0 : 0.0;
+-}
+-
+-// Polarity (+1 / -1) of the visible face for world axis `axisIdx` (0=x,1=y,2=z),
+-// from the visible-triplet, for the cross-axis edge classification. The
+-// camera sees exactly one polarity per axis; an in-plane edge of the current face
+-// that points toward that visible side face is a CONVEX CUBE EDGE shared with
+-// another VISIBLE face (in a different per-axis canvas, so the same-axis
+-// occupiedNeighbor tap can't see it). Such an edge is an inter-face seam to CLOSE
+-// (conservative overlap), not a silhouette to trim — only the opposite,
+-// background-facing edges are true silhouettes. Returns 0 if the axis has no
+-// visible face in the triplet (degenerate).
+-int visiblePolarityForAxis(int axisIdx) {
+-    for (int s = 0; s < 3; ++s) {
+-        const int fid = visibleFaceIds[s];
+-        if ((fid >> 1) == axisIdx) {
+-            return ((fid & 1) == 1) ? 1 : -1;
+-        }
+-    }
+-    return 0;
++// Only an adjacent coplanar face can extend coverage across this edge.
++float coplanarNeighbor(ivec2 p, ivec2 size, int owner, int depthStep) {
++    if (p.x < 0 || p.y < 0 || p.x >= size.x || p.y >= size.y) return 0.0;
++    if (texelFetch(triangleColors, p, 0).a < 0.1) return 0.0;
++    return perAxisCoplanarNeighbor(owner, texelFetch(triangleDistances, p, 0).r, depthStep)
++        ? 1.0 : 0.0;
+ }
+ 
+ // In-plane corner of a face whose `origin` ALREADY sits at the face plane on
+@@ -293,41 +270,25 @@ void main() {
+         + ev * (float(vFrac4) / 16.0 - 0.5)
+         + faceOutOfPlaneUnitAxis(axis) * (float(wFrac4) / 16.0 - 0.5);
+ 
+-    // Interior/boundary classification for the analytic coverage. An edge
+-    // is INTERIOR (fill solid, close the seam) if EITHER:
+-    //  (1) the face continues to its same-axis in-plane neighbour — a unit in-plane
+-    //      world step projects to the integer iso offset pos3DtoPos2DIso(eu/ev)
+-    //      (linear, so the cell's per-axis pixel is ij ± step); tap THIS axis's
+-    //      colour texture there, OR
+-    //  (2) the edge points toward the VISIBLE perpendicular face — a convex cube
+-    //      edge shared with another visible face in a different per-axis canvas
+-    //      (the same-axis tap can't see it). Exactly one of the ±eu / ±ev edges
+-    //      faces each visible side face; the opposite, background-facing edges
+-    //      stay BOUNDARY and get crisply trimmed (true silhouette).
+-    // The polarity-interior edge of each axis SKIPS its occupancy tap — it is
+-    // interior unconditionally, so the tap result is irrelevant (max with 1.0).
+-    // That halves the per-vertex texture reads (2 taps, not 4) on this hot per-cell
+-    // path while staying output-identical to the max(tap, polarity) form.
+-    if (overflowMode != 0) {
+-        // Overflow entries are isolated revealed slivers, and the bound
+-        // triangleColors is whichever axis drew last (the overflow draw is
+-        // axis-agnostic), so the cell path's same-axis occupancy taps would read
+-        // a foreign axis's cells. Classify every edge as boundary: the analytic
+-        // coverage then trims the exact footprint, which tiles gap-free against
+-        // neighbouring faces' exact footprints in world space.
+-        vEdgeInterior = vec4(0.0);
+-    } else {
++    // Seam coverage requires an adjoining surface: either a coplanar in-plane
++    // neighbor or a camera-facing perpendicular face with nonzero area. The
++    // cardinal store also contains depth aliases, so occupancy alone cannot
++    // establish adjacency. Perpendicular seams skip the neighbor texture reads.
++    const int euAxis = (eu.x != 0.0) ? 0 : ((eu.y != 0.0) ? 1 : 2);
++    const int evAxis = (ev.x != 0.0) ? 0 : ((ev.y != 0.0) ? 1 : 2);
++    const int euPol = scatterVisiblePolarityForAxis(euAxis, visibleFaceIds, visualYaw);
++    const int evPol = scatterVisiblePolarityForAxis(evAxis, visibleFaceIds, visualYaw);
++    vEdgeInterior = vec4(euPol < 0 ? 1.0 : 0.0, euPol > 0 ? 1.0 : 0.0,
++        evPol < 0 ? 1.0 : 0.0, evPol > 0 ? 1.0 : 0.0);
++    // Overflow records share convex seams but have no matching axis texture.
++    if (overflowMode == 0) {
+         const ivec2 stepU = pos3DtoPos2DIso(ivec3(eu));
+         const ivec2 stepV = pos3DtoPos2DIso(ivec3(ev));
+-        const int euAxis = (eu.x != 0.0) ? 0 : ((eu.y != 0.0) ? 1 : 2);
+-        const int evAxis = (ev.x != 0.0) ? 0 : ((ev.y != 0.0) ? 1 : 2);
+-        const int euPol = visiblePolarityForAxis(euAxis);
+-        const int evPol = visiblePolarityForAxis(evAxis);
+         vEdgeInterior = vec4(
+-            (euPol < 0) ? 1.0 : occupiedNeighbor(ij - stepU, canvasSize),  // u-low  (-eu)
+-            (euPol > 0) ? 1.0 : occupiedNeighbor(ij + stepU, canvasSize),  // u-high (+eu)
+-            (evPol < 0) ? 1.0 : occupiedNeighbor(ij - stepV, canvasSize),  // v-low  (-ev)
+-            (evPol > 0) ? 1.0 : occupiedNeighbor(ij + stepV, canvasSize)); // v-high (+ev)
++            (euPol < 0) ? 1.0 : coplanarNeighbor(ij - stepU, canvasSize, rawDist, -1),  // u-low  (-eu)
++            (euPol > 0) ? 1.0 : coplanarNeighbor(ij + stepU, canvasSize, rawDist, 1),  // u-high (+eu)
++            (evPol < 0) ? 1.0 : coplanarNeighbor(ij - stepV, canvasSize, rawDist, -1),  // v-low  (-ev)
++            (evPol > 0) ? 1.0 : coplanarNeighbor(ij + stepV, canvasSize, rawDist, 1)); // v-high (+ev)
+     }
+ 
+     // Project the selected face corner under the continuous yaw (the yawed
+--- /dev/null
++++ b/scripts/tests/test_render_scatter_edge_polarity.py
+@@ -0,0 +1,399 @@
++"""Execute the shared scatter edge-classification helpers from GLSL and Metal.
++
++The host adapter checks projected facing and coplanar lattice neighbors; native
++raster coverage remains the render harness's responsibility.
++"""
++
++import re
++import subprocess
++import tempfile
++import unittest
++from pathlib import Path
++
++from test_render_per_axis_caster_position import COMPILER, ROOT, cpp, functions
++
++PREAMBLE = r"""
++#include <algorithm>
++#include <array>
++#include <cmath>
++#include <cstdio>
++#include <initializer_list>
++using std::cos;
++using std::sin;
++constexpr int kFaceXNeg=0,kFaceXPos=1,kFaceYNeg=2,kFaceYPos=3,kFaceZNeg=4,kFaceZPos=5;
++struct vec3 {
++    float x,y,z;
++    vec3(float a,float b,float c):x(a),y(b),z(c){}
++};
++struct ivec4 {
++    int values[4];
++    ivec4(int a,int b,int c,int d):values{a,b,c,d}{}
++    int operator[](int i)const{return values[i];}
++};
++"""
++
++
++CHECKS = r"""
++struct Screen {double x,y;};
++Screen project(double x,double y,double z,double yaw) {
++    const double c=std::cos(yaw),s=std::sin(yaw);
++    const double viewX=x*c+y*s,viewY=-x*s+y*c;
++    return {-viewX+viewY,-viewX-viewY+2.0*z};
++}
++double projectedArea(int axis,double yaw) {
++    const Screen x=project(1,0,0,yaw),y=project(0,1,0,yaw),z=project(0,0,1,yaw);
++    const Screen u=axis==0?y:x,v=axis==2?y:z;
++    return u.x*v.y-u.y*v.x;
++}
++int expectedPolarity(int axis,ivec4 triplet,float yaw) {
++    for(int slot=0;slot<3;++slot) {
++        const int face=triplet[slot];
++        if(face/2!=axis)continue;
++        const int polarity=(face&1)?1:-1;
++        // The Y basis (X,Z) reverses orientation relative to X/Z bases.
++        const double outwardArea=projectedArea(axis,double(yaw))*
++            double(polarity*(axis==1?-1:1));
++        return outwardArea < -2e-6 ? polarity : 0;
++    }
++    return 0;
++}
++int main() {
++    const float pi=float(std::acos(-1.0));
++    const std::array<float,17> yaws={
++        0.f,pi/4.f,pi/4.f-1e-7f,pi/4.f+1e-7f,pi/4.f+1e-4f,
++        pi/2.f,3.f*pi/4.f,3.f*pi/4.f-1e-7f,3.f*pi/4.f+1e-7f,
++        3.f*pi/4.f+1e-4f,pi,5.f*pi/4.f,3.f*pi/2.f,7.f*pi/4.f,
++        .13f,1.94f,5.61f
++    };
++    int cases=0,front=0,back=0,edgeOn=0;
++    std::array<int,3> axes={0,1,2};
++    do {
++        for(int signs=0;signs<8;++signs) {
++            const ivec4 triplet(2*axes[0]+((signs>>axes[0])&1),
++                                2*axes[1]+((signs>>axes[1])&1),
++                                2*axes[2]+((signs>>axes[2])&1),5);
++            for(float yaw:yaws)for(int axis=0;axis<3;++axis) {
++                const int expected=expectedPolarity(axis,triplet,yaw);
++                const int actual=scatterVisiblePolarityForAxis(axis,triplet,yaw);
++                const int face=2*axis+((signs>>axis)&1);
++                const double area=projectedArea(axis,double(yaw));
++                if(std::abs(area)<2e-6)++edgeOn;
++                else if(expected)++front;
++                else ++back;
++                if(actual!=expected) {
++                    std::fprintf(stderr,"polarity mismatch axis=%d face=%d yaw=%.9g "
++                        "area=%.9g actual=%d expected=%d\n",
++                        axis,face,yaw,area,actual,expected);
++                    return 1;
++                }
++                ++cases;
++            }
++        }
++    } while(std::next_permutation(axes.begin(),axes.end()));
++    // The fourth lane is padding, never a face in the visible triplet.
++    const ivec4 absentTriplets[]={
++        ivec4(2,3,4,0),ivec4(0,1,4,2),ivec4(0,1,2,4)
++    };
++    for(int axis=0;axis<3;++axis) {
++        if(scatterVisiblePolarityForAxis(axis,absentTriplets[axis],.13f)!=0) {
++            std::fprintf(stderr,"absent axis accepted: %d\n",axis);
++            return 2;
++        }
++    }
++    if(cases!=2448 || !front || !back || !edgeOn)return 3;
++    std::printf("polarity cases=%d front=%d back=%d edge-on=%d\n",
++        cases,front,back,edgeOn);
++}
++"""
++
++
++COPLANAR_CHECKS = r"""
++int pack(int depth,int slot,int flip,int u,int v,int w) {
++    return depth*32768+w*2048+flip*1024+u*64+v*4+slot;
++}
++bool check(int owner,int neighbor,int step,bool expected,const char* label) {
++    const bool actual=perAxisCoplanarNeighbor(owner,neighbor,step);
++    if(actual!=expected) {
++        std::fprintf(stderr,"coplanar mismatch %s owner=%d neighbor=%d step=%d "
++            "actual=%d expected=%d\n",label,owner,neighbor,step,actual,expected);
++        return false;
++    }
++    return true;
++}
++int main() {
++    const int positions[][3]={{0,0,0},{-17,4,2},{7,-31,5},{9,8,12},{-5,-9,-3}};
++    int cases=0;
++    for(const auto& p:positions)for(int axis=0;axis<3;++axis)
++    for(int direction=0;direction<2;++direction)for(int step:{-1,1})
++    for(int slot=0;slot<4;++slot)for(int flip=0;flip<2;++flip)
++    for(int u:{0,8,15})for(int v:{0,8,15})for(int w:{0,8,15}) {
++        const int depth=p[0]+p[1]+p[2];
++        int adjacent[3]={p[0],p[1],p[2]};
++        const int inPlaneAxis=direction==0?(axis==0?1:0):(axis==2?1:2);
++        adjacent[inPlaneAxis]+=step;
++        const int adjacentDepth=adjacent[0]+adjacent[1]+adjacent[2];
++        if(adjacentDepth!=depth+step)return 2;
++        const int owner=pack(depth,slot,flip,u,v,w);
++        const int neighbor=pack(adjacentDepth,slot,flip,u,v,w);
++        if(!check(owner,neighbor,step,true,"world lattice") ||
++           !check(owner,neighbor,-step,false,"opposite step") ||
++           !check(owner,pack(adjacentDepth+2,slot,flip,u,v,w),step,false,"depth") ||
++           !check(owner,pack(adjacentDepth,(slot+1)%4,flip,u,v,w),step,false,"slot") ||
++           !check(owner,pack(adjacentDepth,slot,flip^1,u,v,w),step,false,"flip") ||
++           !check(owner,pack(adjacentDepth,slot,flip,(u+1)%16,v,w),step,false,"u") ||
++           !check(owner,pack(adjacentDepth,slot,flip,u,(v+1)%16,w),step,false,"v") ||
++           !check(owner,pack(adjacentDepth,slot,flip,u,v,(w+1)%16),step,false,"w"))
++            return 1;
++        ++cases;
++    }
++    if(cases!=12960)return 3;
++    std::printf("coplanar lattice cases=%d\n",cases);
++}
++"""
++
++
++ROUTE_PREAMBLE = r"""
++struct Pixel {
++    int x,y;
++    Pixel(int a=0,int b=0):x(a),y(b){}
++    Pixel operator+(Pixel other)const{return {x+other.x,y+other.y};}
++    Pixel operator-(Pixel other)const{return {x-other.x,y-other.y};}
++};
++struct Grid3 {
++    int x,y,z;
++    explicit Grid3(vec3 p):x(int(p.x)),y(int(p.y)),z(int(p.z)){}
++};
++struct Edges {
++    float value[4];
++    explicit Edges(float a=0):value{a,a,a,a}{}
++    Edges(float a,float b,float c,float d):value{a,b,c,d}{}
++    float operator[](int i)const{return value[i];}
++};
++struct FrameData {ivec4 visibleFaceIds;float visualYaw;int overflowMode;};
++struct VertexOut {Edges edgeInterior;};
++int neighborQueries=0;
++Pixel pos3DtoPos2DIso(Grid3 p){return {-p.x+p.y,-p.x-p.y+2*p.z};}
++float coplanarNeighbor(Pixel,Pixel,int,int){++neighborQueries;return 0.0f;}
++float coplanarNeighbor(int,int,Pixel,Pixel,int,int){++neighborQueries;return 0.0f;}
++"""
++
++
++ROUTE_CHECKS = r"""
++struct Screen {double x,y;};
++Screen project(double x,double y,double z,double yaw) {
++    const double c=std::cos(yaw),s=std::sin(yaw);
++    const double viewX=x*c+y*s,viewY=-x*s+y*c;
++    return {-viewX+viewY,-viewX-viewY+2.0*z};
++}
++double projectedArea(int axis,double yaw) {
++    const Screen x=project(1,0,0,yaw),y=project(0,1,0,yaw),z=project(0,0,1,yaw);
++    const Screen u=axis==0?y:x,v=axis==2?y:z;
++    return u.x*v.y-u.y*v.x;
++}
++int expectedPolarity(int axis,ivec4 triplet,float yaw) {
++    for(int slot=0;slot<3;++slot) {
++        const int face=triplet[slot];
++        if(face/2!=axis)continue;
++        const int polarity=(face&1)?1:-1;
++        const double outwardArea=projectedArea(axis,double(yaw))*
++            double(polarity*(axis==1?-1:1));
++        return outwardArea < -2e-6 ? polarity : 0;
++    }
++    return 0;
++}
++bool checkRoute(int faceAxis,ivec4 triplet,float yaw,int overflowMode) {
++    const vec3 basis[3]={vec3(1,0,0),vec3(0,1,0),vec3(0,0,1)};
++    const int uAxis=faceAxis==0?1:0;
++    const int vAxis=faceAxis==2?1:2;
++    neighborQueries=0;
++    const Edges actual=routeEdges(overflowMode,basis[uAxis],basis[vAxis],triplet,yaw);
++    const int u=expectedPolarity(uAxis,triplet,yaw);
++    const int v=expectedPolarity(vAxis,triplet,yaw);
++    const float expected[4]={float(u<0),float(u>0),float(v<0),float(v>0)};
++    const int expectedQueries=overflowMode?0:4-int(u!=0)-int(v!=0);
++    for(int edge=0;edge<4;++edge)if(actual[edge]!=expected[edge]) {
++        std::fprintf(stderr,"overflow route mismatch axis=%d yaw=%.9g mode=%d "
++            "edge=%d actual=%.0f expected=%.0f\n",faceAxis,yaw,overflowMode,
++            edge,actual[edge],expected[edge]);
++        return false;
++    }
++    if(neighborQueries!=expectedQueries) {
++        std::fprintf(stderr,"overflow route queried foreign axis: mode=%d "
++            "actual=%d expected=%d\n",overflowMode,neighborQueries,expectedQueries);
++        return false;
++    }
++    return true;
++}
++int main() {
++    const float pi=float(std::acos(-1.0));
++    const ivec4 qTriplet(2,1,4,0); // Y-, X+, Z- at the captured 60-degree yaw
++    if(!checkRoute(2,qTriplet,pi/3.f,1) || !checkRoute(0,qTriplet,pi/3.f,1))return 1;
++    const Edges qZ=routeEdges(1,vec3(1,0,0),vec3(0,1,0),qTriplet,pi/3.f);
++    const Edges qX=routeEdges(1,vec3(0,1,0),vec3(0,0,1),qTriplet,pi/3.f);
++    if(qZ[1]!=1.0f || qX[2]!=1.0f) {
++        std::fprintf(stderr,"overflow shared convex seam missing at 60 degrees\n");
++        return 2;
++    }
++    const std::array<float,20> yaws={
++        0.f,pi/4.f-1e-4f,pi/4.f,pi/4.f+1e-4f,
++        pi/2.f,3*pi/4.f-1e-4f,3*pi/4.f,3*pi/4.f+1e-4f,
++        pi,5*pi/4.f-1e-4f,5*pi/4.f,5*pi/4.f+1e-4f,
++        3*pi/2.f,7*pi/4.f-1e-4f,7*pi/4.f,7*pi/4.f+1e-4f,
++        pi/3.f,.13f,1.94f,5.61f
++    };
++    int cases=0;
++    std::array<int,3> axes={0,1,2};
++    do {
++        for(int signs=0;signs<8;++signs) {
++            const ivec4 triplet(2*axes[0]+((signs>>axes[0])&1),
++                                2*axes[1]+((signs>>axes[1])&1),
++                                2*axes[2]+((signs>>axes[2])&1),5);
++            for(float yaw:yaws)for(int axis=0;axis<3;++axis)
++            for(int mode=0;mode<2;++mode) {
++                if(!checkRoute(axis,triplet,yaw,mode))return 3;
++                ++cases;
++            }
++        }
++    } while(std::next_permutation(axes.begin(),axes.end()));
++    if(cases!=5760)return 4;
++    std::printf("scatter edge route cases=%d\n",cases);
++}
++"""
++
++
++def helper_source(suffix, directory, mutation=None):
++    common = (ROOT / "engine/render/src/shaders" / directory /
++              f"ir_iso_common.{suffix}").read_text()
++    names = ("faceOutwardNormal6", "yawedIsoDistance", "scatterVisiblePolarityForAxis")
++    source = cpp("\n".join(functions(common, name) for name in names))
++    source = re.sub(r"\bint4\b", "ivec4", source)
++    if mutation:
++        guard = "facing < -1e-6"
++        if source.count(guard) != 1:
++            raise ValueError("missing projected-facing guard")
++        source = source.replace(guard, mutation)
++    return source
++
++
++def coplanar_source(suffix, directory, mutation=None):
++    common = (ROOT / "engine/render/src/shaders" / directory /
++              f"ir_iso_common.{suffix}").read_text()
++    names = ("decodeDepthPerAxis", "decodeSlot", "decodeFlipPerAxis",
++             "decodeUFrac4PerAxis", "decodeVFrac4PerAxis", "decodeWFrac4PerAxis",
++             "perAxisCoplanarNeighbor")
++    source = cpp("\n".join(functions(common, name) for name in names))
++    if mutation:
++        comparison = (f"decode{mutation}(neighbor) == "
++                      f"decode{mutation}(owner)" +
++                      (" + depthStep" if mutation == "DepthPerAxis" else ""))
++        if source.count(comparison) != 1:
++            raise ValueError(f"missing {mutation} comparison")
++        source = source.replace(comparison, "true")
++    return source
++
++
++def route_source(suffix, directory, mutation=False):
++    shader_name = "v_peraxis_scatter.glsl" if suffix == "glsl" else "peraxis_scatter.metal"
++    shader = (ROOT / "engine/render/src/shaders" / directory / shader_name).read_text()
++    start = shader.index("    const int euAxis =")
++    end_marker = re.search(r"^    const (?:vec2|float2) cornerSel =", shader[start:], re.MULTILINE)
++    if end_marker is None:
++        raise ValueError("missing post-classification face corner")
++    end = start + end_marker.start()
++    block = cpp(shader[start:end])
++    for shader_type, host_type in (("ivec2", "Pixel"), ("ivec3", "Grid3"),
++                                   ("vec4", "Edges")):
++        block = re.sub(r"\b" + shader_type + r"\b", host_type, block)
++    block = block.replace("out.edgeInterior", "edges").replace("vEdgeInterior", "edges")
++    if suffix == "metal":
++        block = block.replace("frameData.visibleFaceIds", "triplet")
++        block = block.replace("frameData.visualYaw", "yaw")
++        block = block.replace("frameData.overflowMode", "overflowMode")
++    else:
++        block = block.replace("visibleFaceIds", "triplet")
++        block = block.replace("visualYaw", "yaw")
++    if mutation:
++        block += "    if (overflowMode != 0) edges = Edges(0.0f);\n"
++    return ("Edges routeEdges(int overflowMode,vec3 eu,vec3 ev,ivec4 triplet,float yaw) {\n"
++            "    Edges edges; Pixel ij(0,0),canvasSize(16,16); int rawDist=0;\n"
++            "    int triangleColors=0,triangleDistances=0;\n" + block +
++            "    return edges;\n}\n")
++
++
++@unittest.skipUnless(COMPILER, "scatter edge polarity requires a C++ compiler")
++class ScatterEdgePolarityTest(unittest.TestCase):
++    def test_overflow_and_cell_edge_routing_for_both_shader_backends(self):
++        for suffix, directory in (("glsl", ""), ("metal", "metal/")):
++            for mutation in (False, True):
++                with self.subTest(backend=suffix, old_overflow_boundary=mutation):
++                    with tempfile.TemporaryDirectory() as temporary:
++                        path = Path(temporary)
++                        source = path / "edge_routes.cpp"
++                        executable = path / "edge_routes"
++                        source.write_text(PREAMBLE + ROUTE_PREAMBLE + helper_source(
++                            suffix, directory) + route_source(suffix, directory, mutation) +
++                            ROUTE_CHECKS)
++                        build = subprocess.run(
++                            [COMPILER, "-std=c++17", str(source), "-o", str(executable)],
++                            capture_output=True, text=True)
++                        self.assertEqual(build.returncode, 0, build.stderr)
++                        result = subprocess.run([str(executable)], capture_output=True,
++                                                text=True)
++                        if mutation:
++                            self.assertNotEqual(result.returncode, 0)
++                            self.assertIn("overflow route mismatch", result.stderr)
++                        else:
++                            self.assertEqual(result.returncode, 0, result.stderr)
++                            self.assertIn("scatter edge route cases=5760", result.stdout)
++
++    def test_projected_facing_for_both_shader_backends(self):
++        for suffix, directory in (("glsl", ""), ("metal", "metal/")):
++            for mutation in (None, "facing < 0.0", "true"):
++                with self.subTest(backend=suffix, mutation=mutation):
++                    with tempfile.TemporaryDirectory() as temporary:
++                        path = Path(temporary)
++                        source = path / "edge_polarity.cpp"
++                        executable = path / "edge_polarity"
++                        source.write_text(PREAMBLE + helper_source(
++                            suffix, directory, mutation) + CHECKS)
++                        build = subprocess.run(
++                            [COMPILER, "-std=c++17", str(source), "-o", str(executable)],
++                            capture_output=True, text=True)
++                        self.assertEqual(build.returncode, 0, build.stderr)
++                        result = subprocess.run([str(executable)], capture_output=True,
++                                                text=True)
++                        if mutation:
++                            self.assertNotEqual(result.returncode, 0)
++                            self.assertIn("polarity mismatch", result.stderr)
++                        else:
++                            self.assertEqual(result.returncode, 0, result.stderr)
++                            self.assertIn("polarity cases=2448", result.stdout)
++
++    def test_coplanar_neighbors_for_both_shader_backends(self):
++        fields = (None, "DepthPerAxis", "Slot", "FlipPerAxis", "UFrac4PerAxis",
++                  "VFrac4PerAxis", "WFrac4PerAxis")
++        for suffix, directory in (("glsl", ""), ("metal", "metal/")):
++            for mutation in fields:
++                with self.subTest(backend=suffix, mutation=mutation):
++                    with tempfile.TemporaryDirectory() as temporary:
++                        path = Path(temporary)
++                        source = path / "coplanar.cpp"
++                        executable = path / "coplanar"
++                        source.write_text(PREAMBLE + coplanar_source(
++                            suffix, directory, mutation) + COPLANAR_CHECKS)
++                        build = subprocess.run(
++                            [COMPILER, "-std=c++17", str(source), "-o", str(executable)],
++                            capture_output=True, text=True)
++                        self.assertEqual(build.returncode, 0, build.stderr)
++                        result = subprocess.run([str(executable)], capture_output=True,
++                                                text=True)
++                        if mutation:
++                            self.assertNotEqual(result.returncode, 0)
++                            self.assertIn("coplanar mismatch", result.stderr)
++                        else:
++                            self.assertEqual(result.returncode, 0, result.stderr)
++                            self.assertIn("coplanar lattice cases=12960", result.stdout)
++
++
++if __name__ == "__main__":
++    unittest.main()

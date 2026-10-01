@@ -149,8 +149,10 @@ captures.
   [face-rasterization model](../../docs/design/voxel-face-rasterization.md)
   and the [detached-face-normal contract](../../docs/design/detached-face-normals.md).
 - Continuous-yaw GRID rendering uses three face-local canvases plus a
-  forward-scatter composite. Its overflow lane, analytic edge coverage,
-  ordering, and fixed-cost constraints live in the
+  forward-scatter composite. The camera-yaw path rasterizes exact finite
+  face quads; its overflow lane retains every exposed cardinal-store loser
+  for framebuffer depth arbitration, with no face-origin visibility mask.
+  Its ordering and capacity constraints live in the
   [per-axis design](../../docs/design/per-axis-trixel-canvas-rotation.md).
 - A per-axis consumer recovering an absolute world position applies the
   encoded sub-cell fraction: receivers use `perAxisCellToWorld3DSubCell`; the

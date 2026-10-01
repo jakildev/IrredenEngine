@@ -36,7 +36,7 @@ struct FrameDataIsoTriangles {
     // reach scatterFbResolution at the shared std140 offset 176.
     float4 _detachedResidualPad;
     float4 _detachedDepthAxisPad;
-    float4 scatterFbResolution; // framebuffer .xy for the conservative dilation
+    float4 scatterFbResolution; // framebuffer extent and visibility-pass flags
     // Per-pixel depth-color debug mode. When depthColorMode != 0 the fragment
     // shader evaluates hue from isoDepth instead of color. depthColorExtent is
     // the bounding half-sum used to normalize [0,1]. std140 offset 192; only the
@@ -45,7 +45,7 @@ struct FrameDataIsoTriangles {
     float depthColorExtent;
     float _depthColorPad0;
     float _depthColorPad1;
-    // View-visibility overflow lane draw selector. 0 = the per-cell
+    // Overflow lane draw selector. 0 = the per-cell
     // scatter (instancing over the compacted occupied cells). 1 = the overflow
     // entry draw drawPerAxisScatter issues after the three cell draws: buffer
     // 25 then holds the appended {iso cell, colorPacked, encoded distance}
@@ -64,9 +64,7 @@ struct FrameDataIsoTriangles {
 // real composite's winner. Mirror of v_peraxis_scatter.glsl.
 constant int kOverlayPerAxisId = 4;     // winner identity: X=red, Y=green, Z=blue
 constant int kOverlayPerAxisOrigin = 5; // recovered-origin field: hue wheel of rawDepth
-// Margin-classification overlay — mirror of v_peraxis_scatter.glsl:
-// axis hue, brightened per-fragment by the margin test (signaled via the
-// depthColorMode = -1 sentinel — the UBO field is never negative normally).
+// The margin overlay remains an axis view; exact finite faces use its dim tint.
 constant int kOverlayPerAxisMargin = 7;
 
 // Long-period hue wheel for the recovered-origin overlay — mirror of
@@ -81,37 +79,6 @@ static inline float3 hueWheel(float t) {
         0.0,
         1.0
     );
-}
-
-// Occupancy of a per-axis canvas cell at pixel `p`, for the interior/
-// boundary edge classification. The bound `triangleColors` holds ONLY this axis's
-// faces (each axis binds its own textures — system_trixel_to_framebuffer.hpp), so
-// a non-empty neighbour means this face continues to its in-plane neighbour
-// (interior edge); an empty or out-of-bounds neighbour is a silhouette (boundary).
-static inline float occupiedNeighbor(texture2d<float> tex, int2 p, int2 size) {
-    if (p.x < 0 || p.y < 0 || p.x >= size.x || p.y >= size.y) {
-        return 0.0f;
-    }
-    return (tex.read(uint2(p)).a >= 0.1f) ? 1.0f : 0.0f;
-}
-
-// Polarity (+1 / -1) of the visible face for world axis `axisIdx` (0=x,1=y,2=z),
-// from the visible-triplet, for the cross-axis edge classification. The
-// camera sees exactly one polarity per axis; an in-plane edge of the current face
-// that points toward that visible side face is a CONVEX CUBE EDGE shared with
-// another VISIBLE face (in a different per-axis canvas, so the same-axis
-// occupiedNeighbor tap can't see it). Such an edge is an inter-face seam to CLOSE
-// (conservative overlap), not a silhouette to trim — only the opposite,
-// background-facing edges are true silhouettes. Returns 0 if the axis has no
-// visible face in the triplet (degenerate).
-static inline int visiblePolarityForAxis(int axisIdx, int4 visibleFaceIds) {
-    for (int s = 0; s < 3; ++s) {
-        const int fid = visibleFaceIds[s];
-        if ((fid >> 1) == axisIdx) {
-            return ((fid & 1) == 1) ? 1 : -1;
-        }
-    }
-    return 0;
 }
 
 // In-plane corner of a face whose `origin` ALREADY sits at the face plane on
@@ -144,10 +111,9 @@ vertex VertexOut v_peraxis_scatter(
     float4 color;
     int rawDist;
     if (frameData.overflowMode != 0) {
-        // View-visibility overflow lane: this instance is an appended
-        // entry carrying the exact (cardinal cell, encoded distance) pair the
-        // store would have written for a view-visible face the per-cell store
-        // dropped, plus its packed color. Everything below is bit-identical to
+        // This appended cardinal loser carries the exact (cardinal cell,
+        // encoded distance) pair the store would have written, plus its packed
+        // color. Everything below is bit-identical to
         // the cell path; only the data source differs.
         const uint entryBase = instanceId * 3u;
         const uint packedCell = compactedCells[entryBase + 0u];
@@ -172,11 +138,7 @@ vertex VertexOut v_peraxis_scatter(
         out.depthColorMode = 0;
         out.depthColorExtent = 0.0;
         out.quadParam = float2(0.5);
-        out.marginBias = 0.0;
-        out.marginYieldGradU = 0.0;
-        out.marginYieldGradV = 0.0;
         out.cellTieOffset = 0.0;
-        out.edgeInterior = float4(0.0);
         return out;
     }
 
@@ -218,43 +180,6 @@ vertex VertexOut v_peraxis_scatter(
         + ev * (float(vFrac4) / 16.0f - 0.5f)
         + faceOutOfPlaneUnitAxis(axis) * (float(wFrac4) / 16.0f - 0.5f);
 
-    // Interior/boundary classification for the analytic coverage. An edge
-    // is INTERIOR (fill solid, close the seam) if EITHER:
-    //  (1) the face continues to its same-axis in-plane neighbour — a unit in-plane
-    //      world step projects to the integer iso offset pos3DtoPos2DIso(eu/ev)
-    //      (linear, so the cell's per-axis pixel is ij ± step); tap THIS axis's
-    //      colour texture there, OR
-    //  (2) the edge points toward the VISIBLE perpendicular face — a convex cube
-    //      edge shared with another visible face in a different per-axis canvas
-    //      (the same-axis tap can't see it). Exactly one of the ±eu / ±ev edges
-    //      faces each visible side face; the opposite, background-facing edges
-    //      stay BOUNDARY and get crisply trimmed (true silhouette).
-    // The polarity-interior edge of each axis SKIPS its occupancy tap — it is
-    // interior unconditionally, so the tap result is irrelevant (max with 1.0).
-    // That halves the per-vertex texture reads (2 taps, not 4) on this hot per-cell
-    // path while staying output-identical to the max(tap, polarity) form.
-    if (frameData.overflowMode != 0) {
-        // Overflow entries are isolated revealed slivers, and the bound
-        // triangleColors is whichever axis drew last (the overflow draw is
-        // axis-agnostic), so the same-axis occupancy taps below would read a
-        // foreign axis's cells. Classify every edge as boundary: the analytic
-        // coverage then trims the exact footprint, which tiles gap-free against
-        // neighbouring faces' exact footprints in world space.
-        out.edgeInterior = float4(0.0);
-    } else {
-        const int2 stepU = pos3DtoPos2DIso(int3(eu));
-        const int2 stepV = pos3DtoPos2DIso(int3(ev));
-        const int euAxis = (eu.x != 0.0f) ? 0 : ((eu.y != 0.0f) ? 1 : 2);
-        const int evAxis = (ev.x != 0.0f) ? 0 : ((ev.y != 0.0f) ? 1 : 2);
-        const int euPol = visiblePolarityForAxis(euAxis, frameData.visibleFaceIds);
-        const int evPol = visiblePolarityForAxis(evAxis, frameData.visibleFaceIds);
-        out.edgeInterior = float4(
-            (euPol < 0) ? 1.0f : occupiedNeighbor(triangleColors, ij - stepU, canvasSize),  // u-low  (-eu)
-            (euPol > 0) ? 1.0f : occupiedNeighbor(triangleColors, ij + stepU, canvasSize),  // u-high (+eu)
-            (evPol < 0) ? 1.0f : occupiedNeighbor(triangleColors, ij - stepV, canvasSize),  // v-low  (-ev)
-            (evPol > 0) ? 1.0f : occupiedNeighbor(triangleColors, ij + stepV, canvasSize)); // v-high (+ev)
-    }
-
     const float2 cornerSel = in.position + float2(0.5);
     const float3 worldCorner = faceSpanCorner(axis, origin, cornerSel);
     // Cell-anchor projection: the recovered origin is lower-corner
@@ -276,27 +201,6 @@ vertex VertexOut v_peraxis_scatter(
     quadPos.x = cornerIso.x / float(canvasSize.x) - 0.5f;
     quadPos.y = 0.5f - cornerIso.y / float(canvasSize.y);
     float4 clipCorner = frameData.mpMatrix * float4(quadPos, 1.0, 1.0);
-    // Conservative screen-space coverage — mirror of v_peraxis_scatter.glsl.
-    // Grow the quad outward along its two screen edge normals so a sub-pixel-thin
-    // deformed rhombus still covers a fragment center. Pre-y-flip clip space.
-    const float2 fbRes = max(frameData.scatterFbResolution.xy, float2(1.0));
-    const float2 ndcPerPx = float2(2.0) / fbRes;
-    const float2 pxPerNdc = fbRes * 0.5;
-    float2 isoEu = pos3DtoPos2DIsoYawed(eu, frameData.visualYaw);
-    float2 isoEv = pos3DtoPos2DIsoYawed(ev, frameData.visualYaw);
-    float2 quadEu = float2(isoEu.x / float(canvasSize.x), -isoEu.y / float(canvasSize.y));
-    float2 quadEv = float2(isoEv.x / float(canvasSize.x), -isoEv.y / float(canvasSize.y));
-    float2 su = (frameData.mpMatrix * float4(quadEu, 0.0, 0.0)).xy * pxPerNdc;
-    float2 sv = (frameData.mpMatrix * float4(quadEv, 0.0, 0.0)).xy * pxPerNdc;
-    // Visit-bound dilation: scatterConservativeDilation grows each edge by a FIXED
-    // kScatterDilateMarginPx (~1px) — just enough that the rasterizer VISITS every
-    // fragment the true footprint could touch. f_peraxis_scatter makes the coverage
-    // DECISION analytically, from quadParam + edgeInterior. The GL twin
-    // (v_peraxis_scatter.glsl) carries the same visit-bound.
-    const float2 dilNdc = scatterConservativeDilation(
-        su, sv, sign(in.position), kScatterDilateMarginPx, ndcPerPx
-    );
-    clipCorner.xy += dilNdc;
     clipCorner.y = -clipCorner.y;
     out.position = clipCorner;
 
@@ -312,8 +216,7 @@ vertex VertexOut v_peraxis_scatter(
     if (frameData.scatterDebugMode == kOverlayPerAxisId) {
         out.color = float4(axis == 0 ? 1.0 : 0.0, axis == 1 ? 1.0 : 0.0, axis == 2 ? 1.0 : 0.0, 1.0);
     } else if (frameData.scatterDebugMode == kOverlayPerAxisMargin) {
-        // Axis hue; the fragment stage brightens margin fragments and dims
-        // exact-footprint ones, keyed on the depthColorMode = -1 sentinel.
+        // No margin is drawn; the fragment stage uses the exact-face tint.
         out.color = float4(axis == 0 ? 1.0 : 0.0, axis == 1 ? 1.0 : 0.0, axis == 2 ? 1.0 : 0.0, 1.0);
         out.depthColorMode = -1;
     } else if (frameData.scatterDebugMode == kOverlayPerAxisOrigin) {
@@ -322,23 +225,11 @@ vertex VertexOut v_peraxis_scatter(
         out.color = float4(hueWheel(float(rawDepth) / kOriginHuePeriod) * cellParity, 1.0);
     }
 
-    // Express the dilation offset in the face's in-plane (su, sv) basis so the
-    // dilated corner's quad-param coords and its planar depth stay EXACT
-    // — mirror of v_peraxis_scatter.glsl. Degenerate basis (edge-on
-    // face) -> treat the corner as exact; such a sliver's pixels are covered
-    // by the other two visible faces.
-    const float2 dilPx = dilNdc * pxPerNdc;
-    const float det = su.x * sv.y - su.y * sv.x;
-    float2 dilParam = float2(0.0);
-    if (abs(det) > 1e-6f) {
-        dilParam =
-            float2(dilPx.x * sv.y - dilPx.y * sv.x, su.x * dilPx.y - su.y * dilPx.x) / det;
-    }
-    out.quadParam = cornerSel + dilParam;
+    out.quadParam = cornerSel;
 
     // Yaw-consistent composite depth, per-fragment PLANAR + exact — mirror of
     // v_peraxis_scatter.glsl. `rawDepth` stays the origin-recovery key; each
-    // corner emits the continuous yawed depth of its own (dilated) corner point
+    // corner emits the continuous yawed depth of its finite corner point
     // via yawedIsoDistanceCellAnchor, the shared composite depth metric in
     // ir_iso_common.metal, so linear interpolation reproduces the face plane's
     // affine depth field per fragment.
@@ -351,15 +242,13 @@ vertex VertexOut v_peraxis_scatter(
     // worldCorner keeps its sub-cell offset so precision is preserved.
     const float subScale = max(frameData.effectiveSubdivisionsForHover.x, 1.0f);
     const float encScale = float(kDepthEncodeShift) * subScale;
-    const float kU = yawedIsoDistance(eu, frameData.visualYaw) * encScale;  // gradient (no slot)
-    const float kV = yawedIsoDistance(ev, frameData.visualYaw) * encScale;  // gradient (no slot)
     // Tiebreak mirrors the integer encode's low bits ((flip << 2) | slot) so a
     // flipped cell co-sorts exactly where a real cardinal store would land it.
     // Cell-anchor depth: measured at the corner's authored-lattice
     // world point so voxel and SDF surfaces at one world location co-sort
     // exactly at every residual. Matches the GLSL twin.
     const float cornerKey = yawedIsoDistanceCellAnchor(worldCorner, frameData.visualYaw) * encScale +
-                            float((flip << 2) | slot) + dilParam.x * kU + dilParam.y * kV;
+                            float((flip << 2) | slot);
     const float depthRange =
         float(globals.kMaxTriangleDistance - globals.kMinTriangleDistance);
     out.depth =
@@ -377,31 +266,11 @@ vertex VertexOut v_peraxis_scatter(
     if (frameData.overflowMode != 0) {
         out.depth += 2.0f * kScatterCellTieBand;
     }
-    out.marginBias = kScatterMarginDepthBiasKey * subScale / depthRange;
     // cell2 separates immediate lattice neighbors; displaced cells can collide:
     // in-plane world steps project to iso-diagonal or (0,+/-2) only.
     const uint rank2 = (flip != 0) ? 3u : uint(slot);
     const uint cell2 = (ij.x & 1u) | (ij.y & 2u);
     out.cellTieOffset = float((rank2 << 2u) | cell2) * kScatterCellTieStep;
-    // Per-axis margin-yield slope — mirror of v_peraxis_scatter.glsl.
-    // kU/kV are the per-unit-axis composite depth gradients; scaled to vDepth units
-    // and pre-absed (penetration is always outward) so the fragment stage adds
-    // penetration*slope as the over-grown margin's extrapolation-proportional
-    // yield.
-    out.marginYieldGradU = kScatterMarginYieldGradScale * abs(kU) / depthRange;
-    out.marginYieldGradV = kScatterMarginYieldGradScale * abs(kV) / depthRange;
-    // Interior-edge floor: 3 * encScale >= the 2*sqrt(2)*encScale
-    // worst-case cross-face divergence per world unit (quadParam is in world
-    // units on the base-resolution store), so an interior-edge margin always
-    // yields past the adjacent face's exact fragments.
-    out.marginYieldGradFloor = kScatterMarginYieldGradScale * encScale / depthRange;
-    // Flat interior-edge yield: the composite key carries the
-    // constant (flip << 2) | slot tiebreak (up to 7 key units), so a margin
-    // whose slot ranks lower sits a CONSTANT ~key-scale distance nearer than
-    // the adjacent face across the whole shared edge — a sub-pixel
-    // penetration times any slope can never repay it. The constant is
-    // bracketed and asserted in ir_iso_common.metal and ir_render_types.hpp.
-    out.marginInteriorYieldBias = kScatterMarginInteriorBiasKey / depthRange;
     return out;
 }
 

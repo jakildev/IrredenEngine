@@ -55,7 +55,7 @@ const char *const kFileCompVoxelToTrixelStage1Feeder =
 // threadgroupSizeForFunctionName + functionUsesImageAtomicScratch).
 const char *const kFileCompVoxelToTrixelStage1WinnerResolve =
     "shaders/c_voxel_to_trixel_stage_1_winner_resolve.glsl";
-// Canonical-order the view-visibility overflow entry list between the
+// Canonical-order the overflow entry list between the
 // mode-3 append and the overflow indirect draw, so equal-key entries resolve
 // their depth contest by record value instead of run-variant append order.
 // Dispatched only for pools whose storeTiesPossible_ flag is set — the same
@@ -81,7 +81,7 @@ const char *const kFileCompShapesToTrixelCaster = "shaders/c_shapes_to_trixel_ca
 const char *const kFileCompShapesToTrixelOwner = "shaders/c_shapes_to_trixel_owner.glsl";
 const char *const kFileCompLightingToTrixelShapes = "shaders/c_lighting_to_trixel_shapes.glsl";
 const char *const kFileCompLightingToTrixel = "shaders/c_lighting_to_trixel.glsl";
-// View-visibility overflow-face lighting relights the overflow entries at their
+// Overflow-face lighting relights the overflow entries at their
 // world position inside LIGHTING_TO_TRIXEL. Metal mirror in
 // metal/c_light_overflow_faces.metal (mapped to a 64×1×1 threadgroup in
 // metal_pipeline.cpp).

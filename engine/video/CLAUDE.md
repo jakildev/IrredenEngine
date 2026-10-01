@@ -102,6 +102,11 @@ plus five lines of wire-up. Used by the `render-debug-loop` and
   for each candidate table; the configurator keeps its own
   `pipeline.push_back(createAutoScreenshotSystem(cfg))`.
 
+With logging enabled, auto-screenshot and GUI-test captures emit `CaptureCamera`
+after settling: current yaw, zoom, effective iso offset, effective subdivisions
+and game resolution. Use this state for geometric expectations; requested shot
+values can change through animation or zoom quantization before capture.
+
 Wire-up order in `main.cpp` (the common single-table case):
 
 1. Call `IREngine::init(argc, argv)` — the engine parser handles
