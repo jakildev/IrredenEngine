@@ -657,4 +657,62 @@ TEST_F(IREntityTest, DeferredTreeOrdersOverlappingRequestsChildFirst) {
 
     EXPECT_EQ(order, (std::vector<IREntity::EntityId>{child, root}));
 }
+
+// A hook that tree-marks a peer mid-drain: the peer's later plain mark must
+// not kill it ahead of its child.
+TEST_F(IREntityTest, DeferredTreeQueuedByHookOutranksLaterPlainMark) {
+    const auto trigger = IREntity::createEntity();
+    const auto root = IREntity::createEntity();
+    const auto child = IREntity::createEntity();
+    IREntity::setParent(child, root);
+
+    std::vector<IREntity::EntityId> order;
+    std::vector<bool> parentAlive;
+    const auto hook = m_entity_manager.registerPreDestroyHook([&](IREntity::EntityId entity) {
+        const auto id = entity & IREntity::IR_ENTITY_ID_BITS;
+        order.push_back(id);
+        const auto parent = m_entity_manager.getParent(entity);
+        parentAlive.push_back(parent == IREntity::kNullEntity || IREntity::entityExists(parent));
+        if (id == trigger) {
+            IREntity::destroyTree(root);
+        }
+    });
+    IREntity::destroyEntity(trigger);
+    IREntity::destroyEntity(root);
+    m_entity_manager.destroyMarkedEntities();
+    m_entity_manager.unregisterPreDestroyHook(hook);
+
+    EXPECT_EQ(order, (std::vector<IREntity::EntityId>{trigger, child, root}));
+    EXPECT_EQ(parentAlive, (std::vector<bool>{true, true, true}));
+    EXPECT_FALSE(IREntity::entityExists(child));
+}
+
+// The same hook firing inside the tree drain itself: the peer is already in
+// the drain's list without the child it gained since its own mark.
+TEST_F(IREntityTest, DeferredTreeQueuedByHookReordersTheTreeDrain) {
+    const auto trigger = IREntity::createEntity();
+    const auto root = IREntity::createEntity();
+    const auto child = IREntity::createEntity();
+
+    std::vector<IREntity::EntityId> order;
+    std::vector<bool> parentAlive;
+    const auto hook = m_entity_manager.registerPreDestroyHook([&](IREntity::EntityId entity) {
+        const auto id = entity & IREntity::IR_ENTITY_ID_BITS;
+        order.push_back(id);
+        const auto parent = m_entity_manager.getParent(entity);
+        parentAlive.push_back(parent == IREntity::kNullEntity || IREntity::entityExists(parent));
+        if (id == trigger) {
+            IREntity::destroyTree(root);
+        }
+    });
+    IREntity::destroyTree(trigger);
+    IREntity::destroyTree(root);
+    IREntity::setParent(child, root);
+    m_entity_manager.destroyMarkedEntities();
+    m_entity_manager.unregisterPreDestroyHook(hook);
+
+    EXPECT_EQ(order, (std::vector<IREntity::EntityId>{trigger, child, root}));
+    EXPECT_EQ(parentAlive, (std::vector<bool>{true, true, true}));
+    EXPECT_FALSE(IREntity::entityExists(child));
+}
 } // namespace

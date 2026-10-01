@@ -257,12 +257,15 @@ void EntityManager::destroyMarkedEntities() {
     // between marking and draining. Skipping the already-dead ones keeps the
     // drain idempotent (mirrors destroyAllEntities' contains() guard) so the
     // named destroyEntity assert stays reserved for direct caller bugs.
+    // A pre-destroy hook may tree-mark a peer that a later plain mark also
+    // names, so the tree queues drain again after every plain destroy.
     for (std::size_t i = 0; i < m_entitiesMarkedForDeletion.size(); ++i) {
         const EntityId entity = m_entitiesMarkedForDeletion.at(i);
         if (findRecord(entity) == nullptr) {
             continue;
         }
         this->destroyEntity(entity);
+        destroyMarkedTrees();
     }
     m_entitiesMarkedForDeletion.clear();
     // Then per-worker buffers in workerId order. Deterministic order is
@@ -276,6 +279,7 @@ void EntityManager::destroyMarkedEntities() {
                 continue;
             }
             this->destroyEntity(entity);
+            destroyMarkedTrees();
         }
         staging.markedForDeletion_.clear();
     }
@@ -771,20 +775,42 @@ void EntityManager::destroyMarkedTrees() {
         int depth_;
     };
     std::vector<Doomed> doomed;
-    for (auto &staging : m_workerStaging) {
-        for (EntityId entity : staging.markedTreesForDeletion_) {
-            doomed.push_back({entity, hierarchyDepth(entity)});
+    std::size_t next = 0;
+    // A pre-destroy hook may queue another tree, so the queues are re-read
+    // after every destroy and the remainder re-ordered against the hierarchy
+    // as it then stands.
+    while (true) {
+        bool absorbed = false;
+        for (auto &staging : m_workerStaging) {
+            if (staging.markedTreesForDeletion_.empty()) {
+                continue;
+            }
+            if (!absorbed) {
+                doomed.erase(doomed.begin(), doomed.begin() + static_cast<std::ptrdiff_t>(next));
+                next = 0;
+                absorbed = true;
+            }
+            for (EntityId entity : staging.markedTreesForDeletion_) {
+                doomed.push_back({entity, 0});
+            }
+            staging.markedTreesForDeletion_.clear();
         }
-        staging.markedTreesForDeletion_.clear();
-    }
-    // Stable, so equal depths keep worker-id then mark order and the drain
-    // stays deterministic.
-    std::stable_sort(doomed.begin(), doomed.end(), [](const Doomed &a, const Doomed &b) {
-        return a.depth_ > b.depth_;
-    });
-    for (const Doomed &entry : doomed) {
-        if (findRecord(entry.entity_) != nullptr) {
-            destroyEntity(entry.entity_);
+        if (absorbed) {
+            for (Doomed &entry : doomed) {
+                entry.depth_ = hierarchyDepth(entry.entity_);
+            }
+            // Stable, so equal depths keep worker-id then mark order and the
+            // drain stays deterministic.
+            std::stable_sort(doomed.begin(), doomed.end(), [](const Doomed &a, const Doomed &b) {
+                return a.depth_ > b.depth_;
+            });
+        }
+        if (next == doomed.size()) {
+            return;
+        }
+        const EntityId entity = doomed[next++].entity_;
+        if (findRecord(entity) != nullptr) {
+            destroyEntity(entity);
         }
     }
 }

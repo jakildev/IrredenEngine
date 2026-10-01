@@ -395,7 +395,8 @@ class EntityManager {
     /// parented after this call is not in the set. The drain destroys every
     /// tree-marked entity before any plainly marked one, children before
     /// parents by the hierarchy as it stands at the drain, whichever worker or
-    /// order the marks came from.
+    /// order the marks came from. A tree marked by a pre-destroy hook during
+    /// the drain is destroyed before the drain's next plain mark.
     void markTreeForDeletion(EntityId root);
     /// Clears the relation on each direct child; grandchildren keep theirs.
     void detachChildren(EntityId parent);
