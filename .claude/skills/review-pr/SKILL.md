@@ -125,6 +125,9 @@ shaders)
   teardown included) — needs-fix per
   [`FLEET.md`](../../../docs/agents/FLEET.md) §"Clean-exit policy"; an
   out-of-reach crash is filed with forensics and the lane reported failed.
+  Verification is equally not green over `RESULT=HOST-CLOSED`: the author shows
+  the documented one re-run reaching `RESULT=CLEAN`, or reports that step as no
+  verdict. A HOST-CLOSED is not a crash to fix, but it proves nothing either.
 - A grep cited as a completeness gate keyed on a retired symbol does not
   cover value-equivalent bare literals (`T{0}`, `return 0;`).
 
