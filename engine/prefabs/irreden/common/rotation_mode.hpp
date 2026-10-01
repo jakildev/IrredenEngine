@@ -122,12 +122,17 @@ setMode(IREntity::EntityId entity, IRComponents::RotationMode newMode, SetModeOp
     if (hasCanvas && !wantsCanvas) {
         const IREntity::EntityId canvas = canvasOpt.value()->canvasEntity_;
         if (canvas != IREntity::kNullEntity) {
+            auto voxelSetOpt = IREntity::getComponentOptional<C_VoxelSetNew>(entity);
+            if (voxelSetOpt && voxelSetOpt.value()->canvasEntity_ == canvas) {
+                IRPrefab::VoxelPool::restageSet(*voxelSetOpt.value());
+                const bool attached =
+                    voxelSetOpt.value()->attachToCanvas(IRRender::getCanvas("main"));
+                IR_ASSERT(attached, "setMode() failed to return C_VoxelSetNew to the main canvas");
+            }
             IREntity::destroyEntity(canvas);
         }
         IREntity::removeComponent<C_EntityCanvas>(entity);
-    }
-
-    if (wantsCanvas && !hasCanvas) {
+    } else if (wantsCanvas && !hasCanvas) {
         auto voxelSetOpt = IREntity::getComponentOptional<C_VoxelSetNew>(entity);
         if (!voxelSetOpt || voxelSetOpt.value()->recordCount() == 0) {
             IRE_LOG_ERROR(
@@ -161,7 +166,7 @@ setMode(IREntity::EntityId entity, IRComponents::RotationMode newMode, SetModeOp
         IREntity::setComponent(entity, canvas);
     }
 
-    if (!wantsCanvas) {
+    if (!wantsCanvas && (hasCanvas || ownsEntityCanvas(current))) {
         auto localTransform = IREntity::getComponentOptional<C_LocalTransform>(entity);
         if (localTransform) {
             localTransform.value()->unbounded_ = false;

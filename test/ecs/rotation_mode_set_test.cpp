@@ -11,6 +11,7 @@
 
 #include <gtest/gtest.h>
 
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/common/rotation_mode.hpp>
 #include <irreden/entity/entity_manager.hpp>
@@ -24,6 +25,7 @@
 namespace {
 
 using IRComponents::C_EntityCanvas;
+using IRComponents::C_LocalTransform;
 using IRComponents::C_RotationMode;
 using IRComponents::RotationMode;
 
@@ -154,12 +156,29 @@ TEST_F(RotationModeSwitch, SameModeWithAMatchingCanvasIsANoOp) {
 }
 
 TEST_F(RotationModeSwitch, SameModeOnAPlainGridEntityIsANoOp) {
-    const IREntity::EntityId entity = IREntity::createEntity(C_RotationMode{RotationMode::GRID});
+    C_LocalTransform transform;
+    transform.unbounded_ = true;
+    const IREntity::EntityId entity =
+        IREntity::createEntity(C_RotationMode{RotationMode::GRID}, transform);
 
     IRPrefab::RotationMode::setMode(entity, RotationMode::GRID);
 
     EXPECT_EQ(modeOf(entity), RotationMode::GRID);
     EXPECT_FALSE(hasCanvas(entity));
+    EXPECT_TRUE(IREntity::getComponent<C_LocalTransform>(entity).unbounded_);
+}
+
+TEST_F(RotationModeSwitch, LeavingHeadlessDetachedForGridClearsUnbounded) {
+    C_LocalTransform transform;
+    transform.unbounded_ = true;
+    const IREntity::EntityId entity =
+        IREntity::createEntity(C_RotationMode{RotationMode::DETACHED}, transform);
+
+    IRPrefab::RotationMode::setMode(entity, RotationMode::GRID);
+
+    EXPECT_EQ(modeOf(entity), RotationMode::GRID);
+    EXPECT_FALSE(hasCanvas(entity));
+    EXPECT_FALSE(IREntity::getComponent<C_LocalTransform>(entity).unbounded_);
 }
 
 // Mode-matches-but-canvas-does-not is the case the early return must NOT

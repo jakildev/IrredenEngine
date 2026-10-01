@@ -16,6 +16,7 @@
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
+#include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
@@ -503,8 +504,15 @@ void advanceModeSwitchCapture(int shotIndex) {
         requestModeSwitch(RotationMode::DETACHED_REVOXELIZE);
     } else if (shotIndex == 2) {
         requestModeSwitch(RotationMode::GRID);
+    } else if (shotIndex == 3) {
         g_settings.modeSwitchCaptureProbePending_ = true;
     }
+}
+
+bool modeSwitchSetIsResidentOnMainCanvas() {
+    auto voxelSet = IREntity::getComponentOptional<C_VoxelSetNew>(g_settings.modeSwitchEntity_);
+    return voxelSet && voxelSet.value()->numVoxels_ > 0 &&
+           voxelSet.value()->canvasEntity_ == IRRender::getCanvas("main");
 }
 
 struct ModeSwitchProbeState {
@@ -518,7 +526,7 @@ IRSystem::SystemId createModeSwitchProbeSystem() {
         "ModeSwitchProbe",
         [](C_Camera &) {},
         [statePtr]() {
-            const int liveCanvases = IRPrefab::EntityCanvas::count();
+            const int liveCanvases = IREntity::countComponents<C_DetachedCanvas>();
             if (statePtr->phase_ == 0) {
                 g_settings.modeSwitchBaselineCanvasCount_ = liveCanvases;
                 IR_LOG_INFO("[modeswitch] canvases={}", liveCanvases);
@@ -537,7 +545,8 @@ IRSystem::SystemId createModeSwitchProbeSystem() {
                     IREntity::getComponentOptional<C_VoxelSetNew>(g_settings.modeSwitchEntity_)
                         .has_value();
                 g_settings.modeSwitchProbeFailed_ |=
-                    liveCanvases != g_settings.modeSwitchBaselineCanvasCount_ || !hasOneVoxelSet;
+                    liveCanvases != g_settings.modeSwitchBaselineCanvasCount_ || !hasOneVoxelSet ||
+                    !modeSwitchSetIsResidentOnMainCanvas();
                 IR_LOG_INFO(
                     "[modeswitch] canvases={} result={}",
                     liveCanvases,
@@ -1765,12 +1774,13 @@ void initSystems() {
                 {2.0f, vec2(0.0f), 0.0f, "modeswitch_grid"},
                 {2.0f, vec2(0.0f), 0.0f, "modeswitch_detached"},
                 {2.0f, vec2(0.0f), 0.0f, "modeswitch_revox"},
+                {2.0f, vec2(0.0f), 0.0f, "modeswitch_grid_return"},
             };
             g_allShots.assign(
                 kModeSwitchShots,
                 kModeSwitchShots + sizeof(kModeSwitchShots) / sizeof(kModeSwitchShots[0])
             );
-            settleFrames = 6;
+            settleFrames = 60;
         } else if (
             g_settings.sweepYawCount_ > 0 || g_settings.sweepFramesCount_ > 0 ||
             g_settings.sweepPanCount_ > 0
@@ -1925,9 +1935,10 @@ void initSystems() {
                             return;
                         }
                         g_settings.modeSwitchCaptureProbePending_ = false;
-                        const int liveCanvases = IRPrefab::EntityCanvas::count();
+                        const int liveCanvases = IREntity::countComponents<C_DetachedCanvas>();
                         g_settings.modeSwitchProbeFailed_ |=
-                            liveCanvases != g_settings.modeSwitchBaselineCanvasCount_;
+                            liveCanvases != g_settings.modeSwitchBaselineCanvasCount_ ||
+                            !modeSwitchSetIsResidentOnMainCanvas();
                         IR_LOG_INFO("[modeswitch] canvases={}", liveCanvases);
                     }
                 )
@@ -1949,7 +1960,7 @@ void initEntities() {
     IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
 
     if (modeSwitchGroupRequested()) {
-        g_settings.modeSwitchBaselineCanvasCount_ = IRPrefab::EntityCanvas::count();
+        g_settings.modeSwitchBaselineCanvasCount_ = IREntity::countComponents<C_DetachedCanvas>();
         g_settings.modeSwitchEntity_ = IREntity::createEntity(
             C_LocalTransform{
                 vec3(0.0f),
