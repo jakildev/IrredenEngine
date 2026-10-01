@@ -1,7 +1,7 @@
 {
   "cpu": {
     "cores": 2,
-    "mhz": 2751,
+    "mhz": 3677,
     "model": "AMD EPYC 9V74 80-Core Processor",
     "threads": 4
   },
