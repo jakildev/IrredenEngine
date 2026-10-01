@@ -102,8 +102,13 @@ One smoke run per invocation.
    — no `--timeout` (it reports "alive at deadline" as success and masks a hang). Verdict
    from the `ir-run: RESULT=` line, not the shell status alone: `RESULT=CLEAN` required;
    `RESULT=CRASH` is a failure even with every screenshot saved (FLEET.md, clean-exit
-   policy). A log line `Discovered 0 display monitors` with no auto-screenshot exit is
-   step 5d, whatever `RESULT=` says after you interrupt it.
+   policy). `RESULT=HOST-CLOSED` (native Windows hang handling closed the window) is not
+   a failure: re-run step 4 once. On a second HOST-CLOSED, apply no verdict. Leave the
+   smoke label untouched, never `fleet:needs-fix`, and comment the RESULT line
+   (`Cross-host smoke on <host>: RESULT=HOST-CLOSED twice (Windows hang handling closed
+   the demo) — no verdict; leaving the smoke label for a re-run.`), then release. A log
+   line `Discovered 0 display monitors` with no auto-screenshot exit is step 5d, whatever
+   `RESULT=` says after you interrupt it.
 5. Verdict:
    - **5a — compile warnings in a clean run.** `warning:` / `error:` from a shader or
      GLSL/Metal compile step with exit zero:

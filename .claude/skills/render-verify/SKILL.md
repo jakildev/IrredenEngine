@@ -77,7 +77,11 @@ Resolves the demo via its manifest, detects the backend, runs
 `scripts/render-compare.py`, prints a pass/fail table, and exits non-zero on
 any failure. A run ending in `ir-run: RESULT=CRASH` fails regardless of how
 many shots saved ([`docs/agents/FLEET.md`](../../../docs/agents/FLEET.md)
-§"Clean-exit policy").
+§"Clean-exit policy"). A capture pass ending `RESULT=HOST-CLOSED` (Windows hang
+handling closed the demo) is discarded and re-run once automatically. A second
+one prints a `HOST-CLOSED` row and exits 1 with no verdict: neither a render
+regression nor a pass; re-run it, and never report it as a crash. `--all`
+tallies it apart from FAIL and ERROR.
 
 ```
 shot                            result     match%   max_d     psnr
