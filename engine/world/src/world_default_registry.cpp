@@ -17,6 +17,7 @@
 #include <irreden/audio/save_serializers_audio.hpp>
 #include <irreden/common/save_serializers_common.hpp>
 #include <irreden/demo/save_serializers_demo.hpp>
+#include <irreden/input/save_serializers_input.hpp>
 #include <irreden/render/save_serializers_render.hpp>
 #include <irreden/update/save_serializers_update.hpp>
 #include <irreden/voxel/save_serializers_voxel.hpp>

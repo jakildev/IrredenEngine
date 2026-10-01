@@ -10,6 +10,7 @@
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_position_int_3d.hpp>
 #include <irreden/common/components/component_size_int_3d.hpp>
+#include <irreden/input/components/component_hitbox_2d.hpp>
 #include <irreden/render/components/component_widget.hpp>
 #include <irreden/update/components/component_goto_easing_3d.hpp>
 #include <irreden/update/components/component_rotation_target.hpp>
@@ -18,6 +19,9 @@
 #include <irreden/voxel/components/component_bind_points.hpp>
 #include <irreden/voxel/components/component_skeleton.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
+#include <irreden/asset/binary_io.hpp>
+#include <irreden/asset/chunk_header.hpp>
+#include <irreden/world/world_snapshot.hpp>
 
 #include <sol/sol.hpp>
 
@@ -26,6 +30,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 // The `IRPersist` Lua binding and optional IR_PERSIST_DUMP `.json.txt` debug
@@ -40,6 +45,7 @@ namespace {
 
 using IRComponents::C_BindPoints;
 using IRComponents::C_GotoEasing3D;
+using IRComponents::C_HitBox2D;
 using IRComponents::C_LocalTransform;
 using IRComponents::C_Name;
 using IRComponents::C_PositionInt3D;
@@ -123,6 +129,51 @@ class LuaWorldSnapshotTest : public testing::Test {
             .generic_string();
     }
 
+    void writeHitBoxV1Snapshot(const std::string &path, EntityId entity) const {
+        struct LegacyHitBox2D {
+            IRMath::vec2 halfExtent_;
+            bool hovered_;
+        };
+        static_assert(std::is_trivially_copyable_v<LegacyHitBox2D>);
+        static_assert(sizeof(LegacyHitBox2D) == 12);
+
+        IRAsset::MemoryBinaryWriter componentNames;
+        componentNames.writeVarUInt(1);
+        componentNames.writeString("IRComponents::C_HitBox2D");
+
+        const LegacyHitBox2D legacy{IRMath::vec2{6.0f, 4.0f}, true};
+        IRAsset::MemoryBinaryWriter archetypes;
+        archetypes.writeVarUInt(1);
+        archetypes.writeVarUInt(1);
+        archetypes.writeVarUInt(0);
+        archetypes.writeVarUInt(1);
+        archetypes.writeVarUInt(entity);
+        archetypes.writeU32(1);
+        archetypes.writeVarUInt(sizeof(legacy));
+        archetypes.writeBytes(&legacy, sizeof(legacy));
+
+        IRAsset::MemoryBinaryWriter metadata;
+        metadata.writeVarUInt(entity + 1);
+        metadata.writeVarUInt(1);
+
+        std::vector<IRAsset::ChunkPayload> chunks;
+        chunks.push_back({IRAsset::makeTag("CMPN"), componentNames.takeBuffer()});
+        chunks.push_back({IRAsset::makeTag("ARCH"), archetypes.takeBuffer()});
+        chunks.push_back({IRAsset::makeTag("META"), metadata.takeBuffer()});
+
+        IRAsset::FileBinaryWriter writer(path);
+        ASSERT_TRUE(writer.ok());
+        ASSERT_TRUE(
+            IRAsset::writeChunked(
+                writer,
+                IRWorld::kWorldSnapshotMagic,
+                IRWorld::kWorldSnapshotVersion,
+                chunks
+            )
+                .ok()
+        );
+    }
+
     IRScript::LuaScript m_lua;
     IREntity::EntityManager m_entity_manager;
     IRSystem::SystemManager m_system_manager;
@@ -132,6 +183,41 @@ TEST_F(LuaWorldSnapshotTest, SurfaceBound) {
     EXPECT_TRUE(evalTrue("type(IRPersist) == 'table'"));
     EXPECT_TRUE(evalTrue("type(IRPersist.saveWorld) == 'function'"));
     EXPECT_TRUE(evalTrue("type(IRPersist.loadWorld) == 'function'"));
+}
+
+TEST_F(LuaWorldSnapshotTest, MigratesHitBoxV1AndRoundTripsAuthoredState) {
+    const EntityId entity = 1000;
+    const std::string oldPath = tempPath("hitbox_v1");
+    const std::string currentPath = tempPath("hitbox_v2");
+    ASSERT_NO_FATAL_FAILURE(writeHitBoxV1Snapshot(oldPath, entity));
+
+    ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + oldPath + "'))"));
+    ASSERT_TRUE(m_entity_manager.entityExists(entity));
+    C_HitBox2D &migrated = m_entity_manager.getComponent<C_HitBox2D>(entity);
+    EXPECT_EQ(migrated.halfExtent_, IRMath::vec2(6.0f, 4.0f));
+    EXPECT_TRUE(migrated.hovered_);
+    EXPECT_FLOAT_EQ(migrated.padding_, IRConstants::kDefaultPickPadding);
+    EXPECT_TRUE(migrated.enabled_);
+
+    migrated.padding_ = 9.0f;
+    migrated.enabled_ = false;
+    migrated.pickPriority_ = 12;
+    migrated.screenSpaceCenter_ = true;
+    migrated.centerScreen_ = IRMath::vec2{100.0f, 200.0f};
+    migrated.isoDepth_ = 31;
+    ASSERT_TRUE(runOk("assert(IRPersist.saveWorld('" + currentPath + "'))"));
+
+    m_entity_manager.destroyAllEntities();
+    ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + currentPath + "'))"));
+    const C_HitBox2D &restored = m_entity_manager.getComponent<C_HitBox2D>(entity);
+    EXPECT_EQ(restored.halfExtent_, IRMath::vec2(6.0f, 4.0f));
+    EXPECT_FLOAT_EQ(restored.padding_, 9.0f);
+    EXPECT_FALSE(restored.enabled_);
+    EXPECT_EQ(restored.pickPriority_, 12);
+    EXPECT_FALSE(restored.hovered_);
+    EXPECT_FALSE(restored.screenSpaceCenter_);
+    EXPECT_EQ(restored.centerScreen_, IRMath::vec2(0.0f));
+    EXPECT_EQ(restored.isoDepth_, 0);
 }
 
 // The core W-9 acceptance: a non-trivial world (multiple archetypes +

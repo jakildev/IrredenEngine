@@ -26,6 +26,9 @@ struct C_HitBox2D {
 
     C_HitBox2D(float width, float height)
         : halfExtent_{width * 0.5f, height * 0.5f} {}
+
+    // Snapshot persistence uses the authored-field serializer instead of a raw memory image.
+    ~C_HitBox2D() {}
 };
 
 } // namespace IRComponents

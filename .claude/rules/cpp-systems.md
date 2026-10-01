@@ -100,7 +100,6 @@ Paths relative to `engine/prefabs/irreden/`.
 | Site | Shape |
 |---|---|
 | `common/systems/system_modifier_resolve_global.hpp:35,40,45` | 3 `static const T *p = nullptr;` frame caches reassigned from `beginTick` (mutable despite the `const`). Keeps `MODIFIER_RESOLVE_GLOBAL` pinned `SERIAL`. |
-| `input/systems/system_hitbox_mouse_test.hpp:26-30` | 5 statics declared in `create()` and captured by the tick lambda. |
 | `render/systems/system_debug_overlay.hpp:87-88` | 2 static vertex vectors inside the tick body. |
 | `update/systems/system_action_animation.hpp:24` | `static std::unordered_map<...> clipCache` in `create()`. |
 | `update/systems/system_gravity.hpp:17` | `static C_Gravity3D instance{};` — keeps `GRAVITY_3D` pinned `SERIAL`; migrate with `MODIFIER_RESOLVE_GLOBAL`. |

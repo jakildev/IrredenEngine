@@ -9,6 +9,7 @@
 #include <irreden/audio/save_serializers_audio.hpp>
 #include <irreden/common/save_serializers_common.hpp>
 #include <irreden/demo/save_serializers_demo.hpp>
+#include <irreden/input/save_serializers_input.hpp>
 #include <irreden/render/save_serializers_render.hpp>
 #include <irreden/update/save_serializers_update.hpp>
 #include <irreden/voxel/save_serializers_voxel.hpp>
@@ -417,6 +418,31 @@ TEST(SaveSerializers, RotationTargetRoundTripsTheAuthoredCurve) {
 
     expectConsumesAllBytes(target);
     expectReserializesIdentically(target);
+}
+
+// --- input/ ----------------------------------------------------------------
+
+TEST(SaveSerializers, HitBox2DRoundTripsAuthoredStateOnly) {
+    C_HitBox2D hitbox{18.0f, 10.0f};
+    hitbox.padding_ = 7.0f;
+    hitbox.enabled_ = false;
+    hitbox.pickPriority_ = 23;
+    hitbox.hovered_ = true;
+    hitbox.screenSpaceCenter_ = true;
+    hitbox.centerScreen_ = IRMath::vec2{100.0f, 200.0f};
+    hitbox.isoDepth_ = 41;
+
+    const C_HitBox2D restored = roundTrip(hitbox);
+    EXPECT_EQ(restored.halfExtent_, IRMath::vec2(9.0f, 5.0f));
+    EXPECT_FLOAT_EQ(restored.padding_, 7.0f);
+    EXPECT_FALSE(restored.enabled_);
+    EXPECT_EQ(restored.pickPriority_, 23);
+    EXPECT_FALSE(restored.hovered_);
+    EXPECT_FALSE(restored.screenSpaceCenter_);
+    EXPECT_EQ(restored.centerScreen_, IRMath::vec2(0.0f));
+    EXPECT_EQ(restored.isoDepth_, 0);
+    expectConsumesAllBytes(hitbox);
+    expectReserializesIdentically(hitbox);
 }
 
 // --- render/ ---------------------------------------------------------------
