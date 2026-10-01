@@ -15,8 +15,10 @@
 #include <irreden/render/components/component_fog_field.hpp>
 #include <irreden/render/components/component_widget.hpp>
 #include <irreden/render/fog_of_war.hpp>
+#include <irreden/update/components/component_angular_velocity.hpp>
 #include <irreden/update/components/component_goto_easing_3d.hpp>
 #include <irreden/update/components/component_rotation_target.hpp>
+#include <irreden/update/systems/system_angular_velocity_damped.hpp>
 #include <irreden/update/systems/system_goto_3d.hpp>
 #include <irreden/update/systems/system_rotation_target_local_transform.hpp>
 #include <irreden/voxel/components/component_bind_points.hpp>
@@ -46,6 +48,7 @@
 
 namespace {
 
+using IRComponents::C_AngularVelocity;
 using IRComponents::C_BindPoints;
 using IRComponents::C_FogExempt;
 using IRComponents::C_FogField;
@@ -508,6 +511,58 @@ TEST_F(LuaWorldSnapshotTest, RoundTripsEasingComponentsAndKeepsTheCurveLive) {
     const IRMath::vec4 expectedRotation = IRMath::quatAxisAngle(axis, IRMath::kHalfPi * 0.0625f);
     const IRMath::vec4 rotation =
         m_entity_manager.getComponent<C_LocalTransform>(rotating).rotation_;
+    // q and -q are the same rotation, so compare by action on the basis vectors.
+    for (const auto &v : {IRMath::vec3(1, 0, 0), IRMath::vec3(0, 1, 0), IRMath::vec3(0, 0, 1)}) {
+        const IRMath::vec3 actual = IRMath::rotateVectorByQuat(v, rotation);
+        const IRMath::vec3 expected = IRMath::rotateVectorByQuat(v, expectedRotation);
+        EXPECT_NEAR(actual.x, expected.x, 1e-4f);
+        EXPECT_NEAR(actual.y, expected.y, 1e-4f);
+        EXPECT_NEAR(actual.z, expected.z, 1e-4f);
+    }
+}
+
+// C_AngularVelocity is a spin caught mid-decay: every field differs from the
+// constructor default, so a reload that substituted one fails here. One tick
+// after the reload shows the restored rate and damping still drive the
+// transform, not only that the bytes came back.
+TEST_F(LuaWorldSnapshotTest, RoundTripsAngularVelocityAndKeepsTheDecayLive) {
+    const IRMath::vec3 axis{0.0f, 0.6f, 0.8f};
+    constexpr float kRate = 0.25f;
+    constexpr float kDamping = 0.2f;
+
+    const EntityId spinning =
+        m_entity_manager.createEntity(C_LocalTransform{}, C_AngularVelocity{axis, kRate, kDamping});
+
+    const std::string path = tempPath("angular_velocity");
+    ASSERT_TRUE(runOk("assert(IRPersist.saveWorld('" + path + "'))"));
+
+    m_entity_manager.destroyAllEntities();
+    ASSERT_EQ(m_entity_manager.getLiveEntityCount(), 0u);
+    ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + path + "'))"));
+
+    ASSERT_TRUE(m_entity_manager.entityExists(spinning));
+    const C_AngularVelocity &reloaded = m_entity_manager.getComponent<C_AngularVelocity>(spinning);
+    EXPECT_FLOAT_EQ(reloaded.axis_.x, axis.x);
+    EXPECT_FLOAT_EQ(reloaded.axis_.y, axis.y);
+    EXPECT_FLOAT_EQ(reloaded.axis_.z, axis.z);
+    EXPECT_FLOAT_EQ(reloaded.radiansPerFrame_, kRate);
+    EXPECT_FLOAT_EQ(reloaded.dampingPerFrame_, kDamping);
+
+    // Registered after the reload: clearing the world takes the system
+    // entities with it.
+    m_system_manager.registerPipeline(
+        IRTime::Events::UPDATE,
+        {IRSystem::createSystem<IRSystem::ANGULAR_VELOCITY_DAMPED>()}
+    );
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+
+    EXPECT_FLOAT_EQ(
+        m_entity_manager.getComponent<C_AngularVelocity>(spinning).radiansPerFrame_,
+        kRate * (1.0f - kDamping)
+    );
+    const IRMath::vec4 expectedRotation = IRMath::quatAxisAngle(axis, kRate);
+    const IRMath::vec4 rotation =
+        m_entity_manager.getComponent<C_LocalTransform>(spinning).rotation_;
     // q and -q are the same rotation, so compare by action on the basis vectors.
     for (const auto &v : {IRMath::vec3(1, 0, 0), IRMath::vec3(0, 1, 0), IRMath::vec3(0, 0, 1)}) {
         const IRMath::vec3 actual = IRMath::rotateVectorByQuat(v, rotation);
