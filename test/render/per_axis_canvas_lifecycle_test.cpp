@@ -16,6 +16,37 @@ using IRPrefab::PerAxisCanvas::LifecycleState;
 using IRPrefab::PerAxisCanvas::LifecycleStep;
 using IRPrefab::PerAxisCanvas::lifecycleStep;
 
+TEST(PerAxisCanvasLifecycle, ScratchRegionsAreAdjacentAlignedAndDisjoint) {
+    using Store = IRComponents::PerAxisCanvasStore;
+    for (const int cells : {0, 1, 63, 64, 65, 1024 * 2048, 2560 * 2000}) {
+        const auto layout = Store::scratchLayoutFor(cells, 65536);
+        EXPECT_EQ(layout.x, 0);
+        EXPECT_GE(layout.y, cells);
+        EXPECT_LT(layout.y - cells, 64);
+        EXPECT_EQ(layout.y * sizeof(std::uint32_t) % 256, 0u);
+        EXPECT_EQ(layout.z * sizeof(std::uint32_t) % 256, 0u);
+        EXPECT_EQ(layout.z - layout.y, Store::kOverflowControlUints);
+        EXPECT_EQ(layout.w, 65536);
+    }
+}
+
+TEST(PerAxisCanvasLifecycle, ScratchUniformUsesTheOwnedRegionOffsets) {
+    IRComponents::PerAxisCanvasStore store;
+    store.ctrlBaseUints_ = 128;
+    store.entriesBaseUints_ = 256;
+    store.overflowCap_ = 65536;
+    EXPECT_EQ(store.overflowScratchLayout(), IRMath::ivec4(0, 128, 256, 65536));
+}
+
+#ifndef IR_RELEASE
+TEST(PerAxisCanvasLifecycle, ScratchLayoutRefusesNegativeAndOverflowingOffsets) {
+    using Store = IRComponents::PerAxisCanvasStore;
+    EXPECT_THROW(Store::scratchLayoutFor(-1, 1), std::runtime_error);
+    EXPECT_THROW(Store::scratchLayoutFor(1, -1), std::runtime_error);
+    EXPECT_THROW(Store::scratchLayoutFor(std::numeric_limits<int>::max(), 1), std::runtime_error);
+}
+#endif
+
 TEST(PerAxisCanvasLifecycle, RotationAllocatesOnceAndThenKeeps) {
     EXPECT_EQ(lifecycleStep({.rotating_ = true}), LifecycleStep::ALLOCATE);
     EXPECT_EQ(lifecycleStep({.rotating_ = true, .live_ = true}), LifecycleStep::KEEP);

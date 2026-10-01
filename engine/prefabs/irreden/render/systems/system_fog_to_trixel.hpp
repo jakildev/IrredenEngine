@@ -155,12 +155,7 @@ template <> struct System<FOG_TO_TRIXEL> {
         }
         GpuSubStageScope overflowScope("fogOverflow");
         overflowProgram_->use();
-        const ivec4 overflowLayout(
-            axes.viewMaskBaseUints_,
-            axes.ctrlBaseUints_,
-            axes.entriesBaseUints_,
-            axes.overflowCap_
-        );
+        const ivec4 overflowLayout = axes.overflowScratchLayout();
         voxelFrameDataBuf_->subData(
             offsetof(FrameDataVoxelToCanvas, overflowScratchLayout_),
             sizeof(ivec4),
