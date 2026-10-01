@@ -234,11 +234,14 @@ def latch_refusal(reason, usage_dir=None, now=None):
 def gh_identity():
     """Which GitHub pool this process's `gh` calls bill against.
 
-    The fleet exports GH_TOKEN only from fleet-gh-token's App installation
-    token, so a set GH_TOKEN reads as the App pool and an unset one as the
-    operator's personal (keychain) pool.
+    A set GH_TOKEN alone is no proof: an operator can export a personal
+    token there too. The token's own prefix is — GitHub issues installation
+    tokens (what fleet-gh-token mints) as `ghs_`, and personal tokens as
+    `ghp_` / `github_pat_` / `gho_`. gh reads GH_TOKEN before GITHUB_TOKEN,
+    and with neither set falls back to the keychain's personal login.
     """
-    return "app" if os.environ.get("GH_TOKEN") else "user"
+    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
+    return "app" if token.startswith("ghs_") else "user"
 
 
 # --- gh invocation -------------------------------------------------------------

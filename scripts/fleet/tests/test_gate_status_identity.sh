@@ -7,8 +7,10 @@
 #   - a latched sample carries `identity` (scout + refusal latch write it);
 #   - with the App configured, both pools' live /rate_limit readings show;
 #   - unconfigured, no live call is made.
-# `gh` is a PATH stub that answers by GH_TOKEN (token = App pool, no token =
-# personal pool); `fleet-gh-token` is a PATH stub that prints a fixed token.
+# `gh` is a PATH stub that answers by GH_TOKEN (the App token = App pool, no
+# token = personal pool); `fleet-gh-token` is a PATH stub that prints a fixed
+# `ghs_` installation-shaped token. A latch's identity comes from the token's
+# prefix, not its presence: a personal token in GH_TOKEN still reads `user`.
 
 set -euo pipefail
 
@@ -32,7 +34,7 @@ export FLEET_CONF=/dev/null
 export GH_STUB_LOG="$TMPROOT/gh-calls"
 : > "$GH_STUB_LOG"
 
-APP_TOKEN="synthetic-app-token"
+APP_TOKEN="ghs_synthetic-app-token"
 NOW=$(date +%s)
 RESET=$((NOW + 3000))
 
@@ -47,7 +49,7 @@ if sys.argv[1:] != ["api", "/rate_limit"]:
     sys.exit(1)
 reset = os.environ["GH_STUB_RESET"]
 token = os.environ.get("GH_TOKEN")
-if token == "synthetic-app-token":
+if token == "ghs_synthetic-app-token":
     core, graphql = (5000, 12, 4988), (5000, 7, 4993)
 elif token is None:
     core, graphql = (5000, 100, 4900), (5000, 71, 4929)
@@ -116,14 +118,16 @@ assert_contains "$out" "other:     graphql       remaining=4500/5000" "no identi
 
 echo "T6: the scout and the refusal latch record the identity they ran under"
 rm -f "$USAGE"/*.json
-ident() {  # ident <GH_TOKEN-or-"-"> -> identity written by each writer
-    SCOUT_PATH="$SCOUT" USAGE_PATH="$USAGE" TOKEN="$1" python3 - <<'PY'
+ident() {  # ident <GH_TOKEN-or-"-"> [GITHUB_TOKEN] -> identity written by each writer
+    SCOUT_PATH="$SCOUT" USAGE_PATH="$USAGE" TOKEN="$1" ALT_TOKEN="${2:-}" python3 - <<'PY'
 import importlib.machinery, importlib.util, json, os
 from pathlib import Path
-if os.environ["TOKEN"] == "-":
-    os.environ.pop("GH_TOKEN", None)
-else:
+os.environ.pop("GH_TOKEN", None)
+os.environ.pop("GITHUB_TOKEN", None)
+if os.environ["TOKEN"] != "-":
     os.environ["GH_TOKEN"] = os.environ["TOKEN"]
+if os.environ["ALT_TOKEN"]:
+    os.environ["GITHUB_TOKEN"] = os.environ["ALT_TOKEN"]
 loader = importlib.machinery.SourceFileLoader("fleet_state_scout", os.environ["SCOUT_PATH"])
 spec = importlib.util.spec_from_loader("fleet_state_scout", loader)
 mod = importlib.util.module_from_spec(spec)
@@ -136,7 +140,11 @@ print(json.loads((usage / "github-core.json").read_text())["identity"],
       json.loads((usage / "github-graphql.rejected.json").read_text())["identity"])
 PY
 }
-assert_eq "$(ident "$APP_TOKEN")" "app app" "GH_TOKEN set => app"
-assert_eq "$(ident -)" "user user" "GH_TOKEN unset => user"
+assert_eq "$(ident "$APP_TOKEN")" "app app" "installation token in GH_TOKEN => app"
+assert_eq "$(ident -)" "user user" "no token => user (keychain login)"
+assert_eq "$(ident ghp_synthetic-classic-pat)" "user user" "classic personal token in GH_TOKEN => user"
+assert_eq "$(ident github_pat_synthetic-fine-grained)" "user user" "fine-grained personal token in GH_TOKEN => user"
+assert_eq "$(ident - "$APP_TOKEN")" "app app" "GITHUB_TOKEN is gh's fallback when GH_TOKEN is unset"
+assert_eq "$(ident ghp_synthetic-classic-pat "$APP_TOKEN")" "user user" "GH_TOKEN outranks GITHUB_TOKEN, as in gh"
 
 summarize "fleet-gate-status identity labelling"
