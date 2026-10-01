@@ -17,10 +17,12 @@
 #include <irreden/render/systems/system_gate_voxel_sets_by_lod.hpp>
 #include <irreden/render/systems/system_lod_update.hpp>
 #include <irreden/script/lua_script.hpp>
+#include <irreden/script/prefab_api.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_voxel_set_lua.hpp>
 
+#include <fstream>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -143,6 +145,32 @@ TEST_F(LodTierLua, OverridePinsTier) {
     const C_LodTierOverride pin{LodLevel::LOD_1};
     EXPECT_EQ(IRRender::resolveEntityLod(LodLevel::LOD_4, &pin), LodLevel::LOD_1);
     EXPECT_EQ(IRRender::resolveEntityLod(LodLevel::LOD_4, nullptr), LodLevel::LOD_4);
+}
+
+// The prefab `components = {}` block resolves the pin through its own factory
+// registration, keyed on the component's name rather than its type id.
+TEST_F(LodTierLua, OverridePinsTierFromPrefabDeclaration) {
+    const std::string path = "/tmp/lod_tier_lua_test_pin.prefab.lua";
+    {
+        std::ofstream out(path);
+        out << "return {\n"
+               "  prefab_version = 1,\n"
+               "  components = { C_LodTierOverride = { tier = IRRender.LodLevel.LOD_1 } },\n"
+               "}\n";
+    }
+    IRPrefab::Prefab::registerPrefab("lod_tier_pin", path);
+    const IRPrefab::Prefab::SpawnResult spawned =
+        IRPrefab::Prefab::spawnPrefab(m_lua, "lod_tier_pin", IRMath::vec3(0.0f));
+    IRPrefab::Prefab::clearPrefabs();
+    ASSERT_NE(spawned.entity_, IREntity::kNullEntity) << spawned.error_;
+
+    const auto pin = IREntity::getComponentOptional<C_LodTierOverride>(spawned.entity_);
+    ASSERT_TRUE(pin.has_value());
+    EXPECT_EQ((*pin)->tier_, LodLevel::LOD_1);
+
+    setZoom(1.0f);
+    EXPECT_EQ(resolved(spawned.entity_), LodLevel::LOD_1);
+    EXPECT_EQ(resolved(IREntity::createEntity()), LodLevel::LOD_4);
 }
 
 TEST_F(LodTierLua, OverrideRejectsOutOfRangeTier) {
