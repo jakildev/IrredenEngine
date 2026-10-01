@@ -47,7 +47,7 @@ template <> struct System<CANVAS_RESIDENCY> {
     // False until RENDER has produced a viewport; nothing is switched before.
     bool regionValid_ = false;
 
-    // Reused across frames; cleared in beginTick, never shrunk.
+    // Reused across frames; cleared and reserved in beginTick, never shrunk.
     std::vector<IREntity::EntityId> demotions_;
     std::vector<IRPrefab::CanvasResidency::PromotionCandidate> promotions_;
 
@@ -71,6 +71,12 @@ template <> struct System<CANVAS_RESIDENCY> {
         if (!regionValid_) {
             return;
         }
+        // Each managed entity is at most one candidate, so with room for all of
+        // them the per-entity tick never grows either list.
+        const auto managed =
+            static_cast<std::size_t>(IREntity::countComponents<IRComponents::C_CanvasResidency>());
+        demotions_.reserve(managed);
+        promotions_.reserve(managed);
         promoteRegion_ = cull.isoViewportForCanvas(viewCanvasSize, settings_.promoteMarginIso_);
         demoteRegion_ = cull.isoViewportForCanvas(viewCanvasSize, settings_.demoteMarginIso_);
         viewCenterIso_ = promoteRegion_.center();

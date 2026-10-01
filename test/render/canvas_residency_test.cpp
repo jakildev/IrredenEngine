@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include "common/allocation_counter.hpp"
+
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_system.hpp>
@@ -7,6 +9,7 @@
 
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/canvas_residency.hpp>
 #include <irreden/render/components/component_canvas_residency.hpp>
 #include <irreden/render/components/component_canvas_residency_settings.hpp>
@@ -34,6 +37,7 @@ using IRComponents::C_CanvasResidencySettings;
 using IRComponents::C_EntityCanvas;
 using IRComponents::C_LocalTransform;
 using IRComponents::C_RotationMode;
+using IRComponents::C_WorldTransform;
 using IRComponents::RotationMode;
 using IRMath::IsoBounds2D;
 using IRMath::vec2;
@@ -270,6 +274,50 @@ TEST_F(CanvasResidencySystem, NothingSwitchesBeforeAViewportExists) {
 
     EXPECT_EQ(modeOf(resident), RotationMode::DETACHED_REVOXELIZE);
     EXPECT_TRUE(hasCanvas(resident));
+}
+
+TEST_F(CanvasResidencySystem, CandidateTicksAllocateNothingPastLastFramesHighWater) {
+    tick();
+    const vec3 outside = findWorld([&](vec2 iso) { return !system().demoteRegion_.contains(iso); });
+    struct Row {
+        IREntity::EntityId entity_;
+        C_WorldTransform world_;
+        C_RotationMode mode_;
+    };
+    std::vector<Row> rows;
+    const auto addCandidates = [&](int count) {
+        for (int i = 0; i < count; ++i) {
+            rows.push_back(
+                Row{makeManaged(vec3(0.0f), /*resident=*/false),
+                    C_WorldTransform{vec3(0.0f), IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f), vec3(1.0f)},
+                    C_RotationMode{RotationMode::GRID}}
+            );
+            rows.push_back(
+                Row{makeManaged(outside, /*resident=*/true),
+                    C_WorldTransform{outside, IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f), vec3(1.0f)},
+                    C_RotationMode{RotationMode::DETACHED_REVOXELIZE}}
+            );
+        }
+    };
+    // One frame of the system alone; only the per-entity ticks are counted.
+    const C_CanvasResidency residency{};
+    const auto countedTicks = [&]() {
+        system().beginTick();
+        const IRTest::AllocationCounter counter;
+        for (const Row &row : rows) {
+            system().tick(row.entity_, residency, row.world_, row.mode_);
+        }
+        return counter.allocations();
+    };
+
+    addCandidates(1);
+    countedTicks();
+    addCandidates(32);
+    const std::size_t grownFrame = countedTicks();
+
+    EXPECT_EQ(grownFrame, 0u);
+    EXPECT_EQ(system().promotions_.size(), 33u);
+    EXPECT_EQ(system().demotions_.size(), 33u);
 }
 
 } // namespace
