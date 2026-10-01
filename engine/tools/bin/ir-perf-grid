@@ -80,7 +80,7 @@ run_ref_bench() {
 
 # Parse {"ms": <N>, ...} → just N.
 extract_ref_ms() {
-    python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["ms"])'
+    python3 -c 'import json,sys; print(json.loads(sys.stdin.read())["ms"])' | tr -d '\r'
 }
 
 # ---------------------------------------------------------------------------
@@ -122,7 +122,7 @@ print(int((time.time() - m) / 86400))
 
     # SHA change — invalidate if engine/math/ moved.
     local cached_sha current_sha
-    cached_sha="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("math_sha",""))' "$path" 2>/dev/null || echo "")"
+    cached_sha="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("math_sha",""))' "$path" 2>/dev/null | tr -d '\r' || echo "")"
     current_sha="$(math_sha)"
     if [[ -n "$current_sha" && "$cached_sha" != "$current_sha" ]]; then
         return 0
@@ -258,13 +258,15 @@ EOF
         exit 1
     fi
 
-    # Splice calibration into manifest.json.
-    python3 -c "
+    # Paths go in as argv, never inside the program text: MSYS converts a
+    # /tmp/... argument for native Windows python but not a string literal.
+    python3 -c '
 import json, sys
-manifest = json.load(open('$out_dir/manifest.json'))
-manifest['calibration'] = json.load(open('$stash/calibration.json'))
-json.dump(manifest, open('$out_dir/manifest.json', 'w'), indent=2)
-"
+manifest_path, calibration_path = sys.argv[1:3]
+manifest = json.load(open(manifest_path))
+manifest["calibration"] = json.load(open(calibration_path))
+json.dump(manifest, open(manifest_path, "w"), indent=2)
+' "$out_dir/manifest.json" "$stash/calibration.json"
 
     echo "ir-perf-grid: calibration spliced into $out_dir/manifest.json"
 }

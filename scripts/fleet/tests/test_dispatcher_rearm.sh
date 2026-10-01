@@ -121,6 +121,86 @@ assert_eq "$(rearm linux)" "rearm class=opus" "…and the re-arm fires again"
 "$DISPATCHER" --note-standdown worker --class=opus
 _left=$(standdown_check)
 assert_backoff 190 200 "an empty outcome between standdowns keeps the count accumulating"
+
+echo "T7d: a changed claimable-target set bypasses the standdown delay"
+"$DISPATCHER" --record-outcome worker 300 --class=opus --claimed=yes
+write_slice worker '{"tasks_open":[{"issue":"#10","repo":"engine","model":"opus","owner":"free","blocked":false}],"feedback_prs":[],"needs_plan":[]}'
+"$DISPATCHER" --note-standdown worker --class=opus
+assert_eq "$(rearm linux)" "skip (standdown backoff class=opus)" \
+    "unchanged ordered picks remain time-gated"
+write_slice worker '{"tasks_open":[{"issue":"#10","repo":"engine","model":"opus","owner":"free","blocked":false}],"feedback_prs":[{"number":50,"repo":"engine","labels":["fleet:design-unblocked"]}],"needs_plan":[]}'
+assert_eq "$(rearm linux)" "rearm class=opus" \
+    "a newly claimable feedback target bypasses the delay"
+_fingerprint_log=$(standdown_check 2>&1)
+assert_contains "$_fingerprint_log" "recorded=" \
+    "the changed-target check reports the stood-down fingerprint"
+assert_contains "$_fingerprint_log" "current=" \
+    "the changed-target check reports the current fingerprint"
+
+"$DISPATCHER" --record-outcome worker 300 --class=opus --claimed=yes
+mkdir -p "$FLEET_STATE_DIR/declined"
+printf '2026-09-30T20:00:00Z\nreason\nworker\n' > "$FLEET_STATE_DIR/declined/task-engine-20"
+write_slice worker '{"tasks_open":[{"issue":"#10","repo":"engine","model":"opus","owner":"free","blocked":false},{"issue":"#20","repo":"engine","model":"opus","owner":"free","blocked":false,"updatedAt":"2026-09-30T20:00:00Z"}],"feedback_prs":[],"needs_plan":[]}'
+"$DISPATCHER" --note-standdown worker --class=opus
+write_slice worker '{"tasks_open":[{"issue":"#10","repo":"engine","model":"opus","owner":"free","blocked":false},{"issue":"#20","repo":"engine","model":"opus","owner":"free","blocked":false,"updatedAt":"2026-09-30T20:01:00Z"}],"feedback_prs":[],"needs_plan":[]}'
+assert_eq "$(rearm linux)" "rearm class=opus" \
+    "a superseded decline changes the picks and bypasses the delay"
+
+"$DISPATCHER" --record-outcome worker 300 --class=opus --claimed=yes
+write_slice worker '{"tasks_open":[{"issue":"#10","repo":"engine","model":"opus","owner":"free","blocked":false},{"issue":"#30","repo":"engine","model":"opus","owner":"pool-1","blocked":false}],"feedback_prs":[],"needs_plan":[]}'
+"$DISPATCHER" --note-standdown worker --class=opus
+write_slice worker '{"tasks_open":[{"issue":"#10","repo":"engine","model":"opus","owner":"free","blocked":false},{"issue":"#30","repo":"engine","model":"opus","owner":"free","blocked":false}],"feedback_prs":[],"needs_plan":[]}'
+assert_eq "$(rearm linux)" "rearm class=opus" \
+    "a released claim changes the picks and bypasses the delay"
+
+"$DISPATCHER" --record-outcome worker 300 --class=opus --claimed=yes
+write_slice worker '{"tasks_open":[{"issue":"#10","repo":"engine","model":"opus","owner":"free","blocked":false}],"feedback_prs":[],"needs_plan":[]}'
+"$DISPATCHER" --note-standdown worker --class=opus
+rm -f "$FLEET_STATE_DIR/empty-exit-streak/worker__opus.standdown.targets"
+_left=$(standdown_check)
+assert_backoff 90 100 "a legacy counter without a fingerprint remains time-gated"
+
+echo "T7e: periodic re-arm uses idle capacity instead of requiring zero activity"
+"$DISPATCHER" --record-outcome worker 300 --class=opus --claimed=yes
+rm -f "$FLEET_STATE_DIR/triggers/worker"
+assert_eq "$(FLEET_CONCURRENCY_WORKER=2 FLEET_CAP_MODE=strict FLEET_TEST_HOST=linux \
+    "$DISPATCHER" --rearm-worker-once worker 1 1 2>/dev/null)" "rearmed class=opus" \
+    "one active worker with cap headroom and an idle pane re-arms"
+rm -f "$FLEET_STATE_DIR/triggers/worker"
+assert_eq "$(FLEET_CONCURRENCY_WORKER=2 FLEET_CAP_MODE=strict FLEET_TEST_HOST=linux \
+    "$DISPATCHER" --rearm-worker-once worker 2 1 2>/dev/null)" "skip" \
+    "a strict cap consumed by active workers does not re-arm"
+if [[ ! -e "$FLEET_STATE_DIR/triggers/worker" ]]; then
+    ok "the cap-consumed case leaves the trigger absent"
+else
+    bad "the cap-consumed case leaves the trigger absent"
+fi
+assert_eq "$(FLEET_CONCURRENCY_WORKER=2 FLEET_CAP_MODE=strict FLEET_TEST_HOST=linux \
+    "$DISPATCHER" --rearm-worker-once worker 1 0 2>/dev/null)" "skip" \
+    "no idle pane does not re-arm"
+if [[ ! -e "$FLEET_STATE_DIR/triggers/worker" ]]; then
+    ok "the no-idle-pane case leaves the trigger absent"
+else
+    bad "the no-idle-pane case leaves the trigger absent"
+fi
+assert_eq "$(FLEET_CONCURRENCY_WORKER=1 FLEET_CAP_MODE=elastic FLEET_TEST_HOST=linux \
+    "$DISPATCHER" --rearm-worker-once worker 1 1 2>/dev/null)" "rearmed class=opus" \
+    "elastic capacity may re-arm above the nominal cap"
+rm -f "$FLEET_STATE_DIR/triggers/worker"
+mkdir -p "$FLEET_STATE_DIR/triggers"
+touch "$FLEET_STATE_DIR/triggers/sonnet-reviewer" \
+    "$FLEET_STATE_DIR/triggers/opus-reviewer"
+assert_eq "$(FLEET_CONCURRENCY_WORKER=1 FLEET_CAP_MODE=elastic FLEET_TEST_HOST=linux \
+    "$DISPATCHER" --rearm-worker-once worker 1 1 2>/dev/null)" "skip" \
+    "elastic reservations prevent re-arm when other pending roles consume the free pane"
+if [[ ! -e "$FLEET_STATE_DIR/triggers/worker" ]]; then
+    ok "the elastic-reservation case leaves the worker trigger absent"
+else
+    bad "the elastic-reservation case leaves the worker trigger absent"
+fi
+rm -f "$FLEET_STATE_DIR/triggers/sonnet-reviewer" \
+    "$FLEET_STATE_DIR/triggers/opus-reviewer"
+
 unset FLEET_DISPATCHER_REARM_STANDDOWN_BASE
 if "$DISPATCHER" --note-standdown >/dev/null 2>&1; then
     bad "--note-standdown without a role should exit non-zero"

@@ -207,6 +207,11 @@ complete only when it builds clean on the lagging preset and the target demo
 renders at functional parity; one logical feature per parity PR; parity touching
 `engine/math/`, dispatch-grid helpers, GPU buffer lifetime, or a shared CPU-side
 feeder struct is opus work (`.claude/skills/backend-parity/SKILL.md`).
+Perf verdicts are per host fingerprint (`ir-host-probe --slug`): a head gates
+only against a baseline of its own slug on `perf-baseline`, else it is
+informational. CI writes the hosted Linux runners' baselines; the Windows ship
+host's is hand-seeded by the cue-only procedure in [`scripts/perf/README.md`](../../scripts/perf/README.md);
+macOS has none. `perf:improved` speaks for the CI runner class only.
 
 ### Verifying render changes
 
