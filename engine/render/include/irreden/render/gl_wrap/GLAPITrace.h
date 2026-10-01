@@ -992,7 +992,7 @@ void GLTracer_glTransformFeedbackBufferBase(GLuint xfb, GLuint index, GLuint buf
 }
 
 void GLTracer_glTransformFeedbackBufferRange(GLuint xfb, GLuint index, GLuint buffer,
-                                             GLintptr offset, GLsizei size) {
+                                             GLintptr offset, GLsizeiptr size) {
     IRE_GL_LOG_DEBUG("glTransformFeedbackBufferRange({}, {}, {}, {}, {})", xfb, index, buffer,
                      offset, size);
     apiHook.glTransformFeedbackBufferRange(xfb, index, buffer, offset, size);
@@ -1090,7 +1090,7 @@ void *GLTracer_glMapNamedBuffer(GLuint buffer, GLenum access) {
     return r;
 }
 
-void *GLTracer_glMapNamedBufferRange(GLuint buffer, GLintptr offset, GLsizei length,
+void *GLTracer_glMapNamedBufferRange(GLuint buffer, GLintptr offset, GLsizeiptr length,
                                      GLbitfield access) {
     IRE_GL_LOG_DEBUG("glMapNamedBufferRange({}, {}, {}, {})", buffer, offset, length,
                      (unsigned int)(access));
@@ -1353,7 +1353,7 @@ void GLTracer_glTextureBuffer(GLuint texture, GLenum internalformat, GLuint buff
 }
 
 void GLTracer_glTextureBufferRange(GLuint texture, GLenum internalformat, GLuint buffer,
-                                   GLintptr offset, GLsizei size) {
+                                   GLintptr offset, GLsizeiptr size) {
     IRE_GL_LOG_DEBUG("glTextureBufferRange({}, {}, {}, {}, {})", texture, E2S(internalformat),
                      buffer, offset, size);
     apiHook.glTextureBufferRange(texture, internalformat, buffer, offset, size);
