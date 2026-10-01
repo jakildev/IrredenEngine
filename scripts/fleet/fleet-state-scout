@@ -1014,6 +1014,9 @@ def sample_github_rate_limit():
 
 
 def _latch_github_pool(pool, payload):
+    # `identity` (user|app) says which pool the sample was read under, so
+    # fleet-gate-status can tell the personal pool from the App's.
+    payload = {**payload, "identity": fleet_gh_fallback.gh_identity()}
     try:
         USAGE_DIR.mkdir(parents=True, exist_ok=True)
         write_atomic(USAGE_DIR / f"github-{pool}.json", json.dumps(payload))

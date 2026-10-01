@@ -218,6 +218,55 @@ nothing.
 
 ---
 
+## GitHub App identity
+
+Fleet `gh` traffic can bill a GitHub App's rate-limit pool (its own 5000/h
+core + 5000/h GraphQL) instead of the operator's personal account. Optional:
+with the knobs unset `fleet-gh-token` prints nothing and every caller keeps
+`gh`'s keychain auth.
+
+**One-time setup** (the operator, once per fleet):
+
+1. Create a GitHub App (Settings → Developer settings → GitHub Apps). No
+   webhook. Permissions: Metadata read, Contents read, Issues read & write,
+   Pull requests read & write, Actions read, Checks read, Commit statuses
+   read — the fleet never merges, and git pushes stay on SSH.
+2. Install it on **both** `jakildev/IrredenEngine` and `jakildev/irreden`
+   (a token minted for the installation only sees repos it is installed on).
+3. Generate a private key; store it `chmod 600` outside the repo.
+4. Record the three knobs in `~/.fleet/fleet-up.conf` (sample:
+   `scripts/fleet/fleet-up.conf.sample`):
+
+   | Knob | Value |
+   |---|---|
+   | `FLEET_GH_APP_ID` | the App's numeric ID |
+   | `FLEET_GH_APP_INSTALLATION_ID` | the installation ID (from the installation URL) |
+   | `FLEET_GH_APP_KEY_PATH` | path to the private key (`.pem`) |
+
+5. Verify: `fleet-gh-token` prints a token, and `fleet-gate-status` lists
+   both identities (below). All three knobs must be set; any one missing
+   means unconfigured.
+
+**Which lane bills which pool** (`GH_TOKEN` is the installation token only
+where `fleet-gh-token` exported it):
+
+| Caller | Pool |
+|---|---|
+| scout (re-mints per tick, quota samples included), dispatcher, `fleet-dispatch-wrap` and every agent it launches, `fleet-claim`, panes seeded by `fleet-up` | App |
+| git fetch/push over SSH | neither (no API call) |
+| a human's own shell `gh`, any host without the knobs | personal |
+
+**Reading it.** `fleet-gate-status` tags each latched GitHub sample with
+`identity` (`user` or `app`: the scout and the refusal latch record the pool
+their `gh` billed) — a rejected latch reads `graphql[user] … REJECTED` beside
+an App pool's `graphql[app]` — and, with the knobs set, a live
+`/rate_limit` section lists both pools' core and GraphQL remaining (the
+probe spends no quota). The dispatcher gate still keys on the latched
+samples, not on identity: a rejected latch taken under one identity holds
+the gate until its reset even after traffic moves to the other pool.
+
+---
+
 ## Usage-limit handling
 
 On a usage-limit error: print it and exit, and flag it in the iteration

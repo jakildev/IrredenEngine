@@ -226,8 +226,19 @@ def latch_refusal(reason, usage_dir=None, now=None):
         "observed_at": now,
         "resetsAt": resets_at,
         "reason": reason,
+        "identity": gh_identity(),
     })
     return not was_live
+
+
+def gh_identity():
+    """Which GitHub pool this process's `gh` calls bill against.
+
+    The fleet exports GH_TOKEN only from fleet-gh-token's App installation
+    token, so a set GH_TOKEN reads as the App pool and an unset one as the
+    operator's personal (keychain) pool.
+    """
+    return "app" if os.environ.get("GH_TOKEN") else "user"
 
 
 # --- gh invocation -------------------------------------------------------------

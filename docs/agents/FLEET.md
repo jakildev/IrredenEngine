@@ -387,7 +387,7 @@ implementation and thresholds: `scripts/fleet/fleet-dispatcher`
   defers only launches on that family (a reserved resume is gated on its own session's model and, walled, holds only its pane); a walled fable model serves as a saturated fable cap.
 - **GitHub API quota** — `github-{core,graphql,search}.json`: graphql from its
   own `rateLimit` self-report (a refused sample latches `rejected`), core from the `X-RateLimit-*` headers on the scout's own conditional REST reads (a follower sends none, so writes no core file), search
-  from `/rate_limit`; core and graphql gate at 90 % (`FLEET_DISPATCHER_USAGE_GATE_GITHUB_{CORE,GRAPHQL}`), search never.
+  from `/rate_limit`; core and graphql gate at 90 % (`FLEET_DISPATCHER_USAGE_GATE_GITHUB_{CORE,GRAPHQL}`), search never. Each sample carries the `identity` (`user`/`app`) it was read under ([`FLEET-RUNTIME.md § GitHub App identity`](FLEET-RUNTIME.md)).
 - **GraphQL refusal** — a `gh pr|issue` refusal (`GraphQL: API rate limit already
   exceeded`, self-report healthy, REST answering) seen by the scout or `fleet-net.sh`'s
   `gh()` latches `github-graphql.rejected.json` at 100 % until the graphql reset (else

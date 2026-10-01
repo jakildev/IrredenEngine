@@ -215,7 +215,7 @@ assert_eq "${out%% resets=*}" "closed:github_core util=92% (>= 90%)" \
     "dispatcher gate closes on the header reading, not the phantom bucket"
 gs=$("$GATE_STATUS")
 assert_contains "$gs" "Fleet-wide usage gate: CLOSED" "gate-status prints CLOSED"
-assert_contains "$gs" "breaching: core     remaining=400/5000 (>= 90%)" \
+assert_contains "$gs" "breaching: core[app]     remaining=400/5000 (>= 90%)" \
     "gate-status core row carries the header reading"
 
 echo "T2: the sample spends nothing beyond the reads it already made"
