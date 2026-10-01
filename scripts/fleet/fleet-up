@@ -1554,20 +1554,49 @@ if command -v fleet-state-scout >/dev/null 2>&1; then
 elif [[ -x "$ENGINE/scripts/fleet/fleet-state-scout" ]]; then
     scout_cmd="$ENGINE/scripts/fleet/fleet-state-scout"
 fi
+# reap_stale_scout <pid-file> — stop the scout a previous launch left
+# behind, so two scouts never poll against each other, then drop the file.
+#
+# scout.pid holds the scout's own os.getpid(). On Linux/macOS that is the
+# pid bash's kill speaks. On native Windows it is a Windows pid, and bash's
+# kill speaks MSYS pids: `kill -0` cannot see it, so the previous scout
+# would survive every launch and each one would add a poller. There the
+# reap goes through PowerShell, and only when the pid's command line still
+# names fleet-state-scout — Windows recycles pids fast, and a stale file
+# must never stop a stranger. FLEET_SCOUT_REAP_OSTYPE overrides the
+# platform probe so the arms are testable from one host.
+reap_stale_scout() {
+    local pid_file="$1" old_pid cmdline
+    [[ -f "$pid_file" ]] || return 0
+    old_pid=$(cat "$pid_file" 2>/dev/null || true)
+    if [[ "$old_pid" =~ ^[0-9]+$ ]]; then
+        case "${FLEET_SCOUT_REAP_OSTYPE:-$OSTYPE}" in
+            msys*|cygwin*)
+                cmdline=$(powershell -NoProfile -Command \
+                    "(Get-CimInstance Win32_Process -Filter 'ProcessId=$old_pid').CommandLine" \
+                    2>/dev/null || true)
+                if [[ "$cmdline" == *fleet-state-scout* ]]; then
+                    echo "fleet-up: stopping previous fleet-state-scout (windows pid $old_pid)"
+                    powershell -NoProfile -Command "Stop-Process -Id $old_pid -Force" \
+                        2>/dev/null || true
+                    sleep 1
+                fi
+                ;;
+            *)
+                if kill -0 "$old_pid" 2>/dev/null; then
+                    kill -TERM "$old_pid" 2>/dev/null || true
+                    sleep 1
+                fi
+                ;;
+        esac
+    fi
+    rm -f "$pid_file"
+}
 if [[ -z "$scout_cmd" ]]; then
     echo "fleet-up: fleet-state-scout not found — skipping state cache daemon"
 else
     scout_pid_file="$HOME/.fleet/state/scout.pid"
-    # If a previous scout left a PID file behind, kill that PID first
-    # to avoid two scouts polling against each other.
-    if [[ -f "$scout_pid_file" ]]; then
-        old_pid=$(cat "$scout_pid_file" 2>/dev/null || true)
-        if [[ -n "$old_pid" ]] && kill -0 "$old_pid" 2>/dev/null; then
-            kill -TERM "$old_pid" 2>/dev/null || true
-            sleep 1
-        fi
-        rm -f "$scout_pid_file"
-    fi
+    reap_stale_scout "$scout_pid_file"
     mkdir -p "$HOME/.fleet/state" "$HOME/.fleet/logs"
     scout_log="$HOME/.fleet/logs/state-scout.log"
     # Persistent daemon: it binds its modules at import, so it self-reloads at

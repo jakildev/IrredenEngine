@@ -92,6 +92,11 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
   empty; fix at the producer, never a suppression).
 - **MSYS rewrites a `<rev>:.<path>` argument as a Windows path list**; spell a
   dotted path `git -C <root> show "<rev>:./<path>"` (`./` is cwd-relative).
+- **A pid file a Python daemon writes holds a Windows pid on native Windows**
+  (`os.getpid()`), which bash's `kill` / `kill -0` (MSYS pids) cannot see.
+  Probe or stop it natively (`reap_stale_scout` in `fleet-up`, `fleet-health`'s
+  `_windows_pid_alive`), and check the command line before stopping a pid
+  Windows may have recycled.
 - **`--help` and docstrings track the code.** A `--help` that slices its own
   header derives the end from the first non-`#` line or ships a regression
   test; adding or removing an enumerated pass/subcommand/sweep updates every

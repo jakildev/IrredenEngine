@@ -71,17 +71,34 @@ from fleet_model_field import MODEL_CLASSES, declared_class
 from fleet_stack_base import unsafe_base_reason
 
 
-def _fleet_script_argv(cmd):
-    """Resolve a bare fleet-script name to a spawnable argv (bash-wrapped on win32)."""
+def _shebang_names_python(path):
+    try:
+        with open(path, "rb") as f:
+            first = f.readline()
+    except OSError:
+        return False
+    return first.startswith(b"#!") and b"python" in first
+
+
+def _fleet_script_argv(cmd, platform=None):
+    """Resolve a bare fleet-script name to a spawnable argv.
+
+    Native Windows cannot exec an extensionless script, so the interpreter
+    its shebang names runs it: this interpreter for a python script, bash
+    for the rest. Handing a python script to bash would run its docstring
+    as shell — a backtick in that prose is a command substitution."""
     name = cmd[0]
     if not os.path.isabs(name):
         sibling = os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
         if os.path.exists(sibling):
             name = sibling
-    if sys.platform == "win32":
-        bash = shutil.which("bash") or "bash"
+    if (platform or sys.platform) == "win32":
         # bash on Windows needs forward-slashed path (backslashes are mangled as escapes).
-        return [bash, name.replace("\\", "/"), *cmd[1:]]
+        name = name.replace("\\", "/")
+        if _shebang_names_python(name):
+            return [sys.executable, name, *cmd[1:]]
+        bash = shutil.which("bash") or "bash"
+        return [bash, name, *cmd[1:]]
     return [name, *cmd[1:]]
 
 
