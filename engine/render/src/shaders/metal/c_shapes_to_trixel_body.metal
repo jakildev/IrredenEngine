@@ -889,9 +889,6 @@ kernel void IR_SHAPE_KERNEL_NAME(
     );
 
     const int2 baseCanvasPixel = frameOffset + pixelCoord;
-    // The 3-pixel ring is mirrored by kShapeCanvasGuardPixels: the CPU tile
-    // feeder dispatches only tiles that reach it, so widening it here alone
-    // drops samples.
     if (baseCanvasPixel.x < -3 || baseCanvasPixel.x >= frameData.canvasSize.x + 3 ||
         baseCanvasPixel.y < -3 || baseCanvasPixel.y >= frameData.canvasSize.y + 3) {
         return;

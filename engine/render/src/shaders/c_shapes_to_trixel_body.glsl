@@ -813,9 +813,6 @@ void main() {
         trixelFrameOffset(trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
 
     ivec2 baseCanvasPixel = frameOffset + pixelCoord;
-    // The 3-pixel ring is mirrored by kShapeCanvasGuardPixels: the CPU tile
-    // feeder dispatches only tiles that reach it, so widening it here alone
-    // drops samples.
     if (baseCanvasPixel.x < -3 || baseCanvasPixel.x >= canvasSize.x + 3 ||
         baseCanvasPixel.y < -3 || baseCanvasPixel.y >= canvasSize.y + 3) {
         return;
