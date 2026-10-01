@@ -56,9 +56,10 @@ class OrbitGeometryMetricTest(unittest.TestCase):
         util.write_png(str(path), width, height, bytes(pixels), 3)
         return path
 
-    def cli(self, path):
+    def cli(self, path, yaw=135):
         result = subprocess.run(
-            [sys.executable, str(SCRIPT), str(path), "--max-mismatches", "0"],
+            [sys.executable, str(SCRIPT), str(path), "--max-mismatches", "0",
+             "--yaw", str(yaw)],
             capture_output=True, text=True,
         )
         return result.returncode, json.loads(result.stdout)
@@ -138,6 +139,52 @@ class OrbitGeometryMetricTest(unittest.TestCase):
         code, result = self.cli(malformed)
         self.assertEqual(code, 2)
         self.assertIn("error", result)
+
+    def test_cardinal_integer_rays_and_world_normal_polarity(self):
+        for yaw, x_face, y_face in (
+                (0, (0, 128, 128), (128, 0, 128)),
+                (90, (128, 0, 128), (255, 128, 128)),
+                (180, (255, 128, 128), (128, 255, 128)),
+                (270, (128, 255, 128), (0, 128, 128))):
+            geometry = metric.cardinal_geometry({(0, 0, 0)}, yaw)
+            self.assertEqual(metric.cardinal_ray_colors(640, 360, geometry), (x_face,))
+            self.assertEqual(metric.cardinal_ray_colors(639, 360, geometry), (y_face,))
+            self.assertEqual(metric.cardinal_ray_colors(640, 358, geometry),
+                             ((128, 128, 0),))
+            self.assertEqual(metric.cardinal_ray_colors(640, 350, geometry),
+                             ((0, 0, 0),))
+
+    def test_cardinal_capture_rejects_individual_edge_errors(self):
+        width, height = metric.GAME_SIZE
+        x0, x1, y0, y1 = metric.CARDINAL_GAME_WINDOW
+        for yaw in (0, 90, 180, 270):
+            with self.subTest(yaw=yaw):
+                geometry = metric.cardinal_geometry(metric.occupied_cells(), yaw)
+                pixels = bytearray(width * height * 3)
+                lit = []
+                for gy in range(y0, y1):
+                    for gx in range(x0, x1):
+                        rgb = metric.cardinal_ray_colors(gx, gy, geometry)[0]
+                        put_game_pixel(pixels, gx, gy, rgb, 1)
+                        if rgb != (0, 0, 0):
+                            lit.append((gx, gy))
+                path = self.write(f"cardinal-{yaw}.png", pixels, (width, height))
+                code, result = self.cli(path, yaw)
+                self.assertEqual(code, 0)
+                self.assertEqual(result["mismatches"], 0)
+                self.assertEqual(result["pixels"], 84000)
+
+                # Silhouette samples are not exempt from the strict gate.
+                put_game_pixel(pixels, x0, y0, (128, 128, 0), 1)
+                put_game_pixel(pixels, *lit[0], (0, 0, 0), 1)
+                put_game_pixel(pixels, *lit[-1], (0, 0, 255), 1)
+                path = self.write(f"cardinal-corrupt-{yaw}.png", pixels, (width, height))
+                code, result = self.cli(path, yaw)
+                self.assertEqual(code, 1)
+                self.assertEqual(result["mismatches"], 3)
+                self.assertEqual(result["extras"], 1)
+                self.assertEqual(result["missing"], 1)
+                self.assertEqual(result["wrong_face_or_color"], 1)
 
 
 if __name__ == "__main__":

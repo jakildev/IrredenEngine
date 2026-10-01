@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 """Exact geometry oracle for the frozen orbit-6 GRID normals-overlay fixture.
 
-Fixture: 12³ solid rotated 45° about Y, camera yaw 135°, zoom 4, no AO,
+Fixture: 12³ solid rotated 45° about Y, cardinal camera yaw or 135°, zoom 4, no AO,
 no automatic motion, 1280×720 game framebuffer at uniform integer output scale.
 The expected surface is inverse-resampled on the integer voxel lattice;
-camera rays independently choose the nearest X or Z face. This deliberately
-does not generalize to other poses or output sizes.
+camera rays independently choose the nearest visible voxel face. This deliberately
+does not generalize to other object poses or output sizes.
 """
 
 import argparse
@@ -23,6 +23,13 @@ GAME_WINDOW = (564, 705, 293, 439)  # x0, x1, y0, y1; includes empty border
 FACE_RGB = {"x": (255, 128, 128), "z": (128, 128, 0)}
 BACKGROUND_RGB = (0, 0, 0)
 ROTATION_COS = math.sqrt(0.5)
+CARDINAL_GAME_WINDOW = (500, 780, 210, 510)
+CARDINAL_FACE_RGB = (
+    ((0, 128, 128), (128, 0, 128), (128, 128, 0)),
+    ((128, 0, 128), (255, 128, 128), (128, 128, 0)),
+    ((255, 128, 128), (128, 255, 128), (128, 128, 0)),
+    ((128, 255, 128), (0, 128, 128), (128, 128, 0)),
+)
 
 
 def occupied_cells() -> set[tuple[int, int, int]]:
@@ -69,7 +76,51 @@ def expected_rgb(gx: int, face: str | None) -> tuple[int, int, int]:
     return BACKGROUND_RGB
 
 
-def measure(path: Path, max_mismatches: int = 0) -> dict:
+def cardinal_geometry(occupied, yaw):
+    """Rotate occupancy into a cardinal camera basis without trigonometric drift."""
+    turns = yaw // 90
+    cells = set()
+    for x, y, z in occupied:
+        for _ in range(turns):
+            x, y = y, -x
+        cells.add((x, y, z))
+    lower = tuple(96 * min(p[i] for p in cells) - 48 for i in range(3))
+    upper = tuple(96 * max(p[i] for p in cells) + 48 for i in range(3))
+    return cells, lower, upper, CARDINAL_FACE_RGB[turns]
+
+
+def cardinal_ray_colors(gx, gy, geometry):
+    """Trace the first occupied unit cube along the fixed (1,1,1) view ray."""
+    cells, lower, upper, colors = geometry
+    # Inverting screen x=8*(-x+y), y=4*(-x-y+2*z) at pixel
+    # centers places every ray origin on a 1/96 lattice. Integer traversal
+    # therefore resolves simultaneous face crossings without any tolerance.
+    u = 2 * gx + 1 - GAME_SIZE[0]
+    v = 2 * gy + 1 - GAME_SIZE[1]
+    origin = (-3 * u - 2 * v, 3 * u - 2 * v, 4 * v)
+    entries = tuple(lower[i] - origin[i] for i in range(3))
+    enter = max(entries)
+    leave = min(upper[i] - origin[i] for i in range(3))
+    if enter >= leave:
+        return (BACKGROUND_RGB,)
+    axes = [i for i in range(3) if entries[i] == enter]
+    cell = tuple((origin[i] + enter + 48) // 96 for i in range(3))
+    max_crossings = sum((upper[i] - lower[i]) // 96 for i in range(3))
+    for _ in range(max_crossings):
+        if cell in cells:
+            return tuple(colors[i] for i in axes)
+        exits = tuple(96 * cell[i] + 48 - origin[i] for i in range(3))
+        next_exit = min(exits)
+        if next_exit >= leave:
+            return (BACKGROUND_RGB,)
+        axes = [i for i in range(3) if exits[i] == next_exit]
+        cell = tuple(cell[i] + (i in axes) for i in range(3))
+    raise ValueError("cardinal ray exceeded the fixture bounds")
+
+
+def measure(path: Path, max_mismatches: int = 0, yaw: int = 135) -> dict:
+    if yaw not in (0, 90, 135, 180, 270):
+        raise ValueError("fixture yaw must be cardinal or 135 degrees")
     width, height, bpp, pixels = util.read_png(str(path))
     game_width, game_height = GAME_SIZE
     output_scale = width // game_width
@@ -83,13 +134,16 @@ def measure(path: Path, max_mismatches: int = 0) -> dict:
     if len(occupied) != 1740 or len(cross_section) != 145:
         raise ValueError("orbit-6 inverse-resampled occupancy changed")
 
-    x0, x1, y0, y1 = GAME_WINDOW
+    geometry = cardinal_geometry(occupied, yaw) if yaw != 135 else None
+    window = CARDINAL_GAME_WINDOW if geometry is not None else GAME_WINDOW
+    x0, x1, y0, y1 = window
     counts = Counter()
     examples = []
     for gy in range(y0, y1):
-        face = ray_face(gy, cross_section)
+        face = ray_face(gy, cross_section) if geometry is None else None
         for gx in range(x0, x1):
-            expected = expected_rgb(gx, face)
+            expected = (cardinal_ray_colors(gx, gy, geometry) if geometry is not None
+                        else (expected_rgb(gx, face),))
             for dy in range(output_scale):
                 for dx in range(output_scale):
                     sx = output_scale * gx + dx
@@ -97,10 +151,10 @@ def measure(path: Path, max_mismatches: int = 0) -> dict:
                     offset = (sy * width + sx) * bpp
                     observed = tuple(pixels[offset:offset + 3])
                     counts["pixels"] += 1
-                    if observed == expected:
+                    if observed in expected:
                         continue
                     counts["mismatches"] += 1
-                    if expected == BACKGROUND_RGB:
+                    if expected == (BACKGROUND_RGB,):
                         counts["extras"] += 1
                     elif observed == BACKGROUND_RGB:
                         counts["missing"] += 1
@@ -111,9 +165,9 @@ def measure(path: Path, max_mismatches: int = 0) -> dict:
                                          "expected": expected, "observed": observed})
     result = {
         "image": str(path),
-        "fixture": "orbit6-grid-45y-camera-135-zoom4-normals",
+        "fixture": f"orbit6-grid-45y-camera-{yaw}-zoom4-normals",
         "output_scale": output_scale,
-        "game_window": list(GAME_WINDOW),
+        "game_window": list(window),
         "pixels": counts["pixels"],
         "mismatches": counts["mismatches"],
         "extras": counts["extras"],
@@ -129,11 +183,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("image", type=Path)
     parser.add_argument("--max-mismatches", type=int, default=0)
+    parser.add_argument("--yaw", type=int, choices=(0, 90, 135, 180, 270), default=135)
     args = parser.parse_args()
     if args.max_mismatches < 0:
         parser.error("--max-mismatches must be nonnegative")
     try:
-        result = measure(args.image, args.max_mismatches)
+        result = measure(args.image, args.max_mismatches, args.yaw)
     except (OSError, ValueError, struct.error, IndexError, zlib.error) as error:
         print(json.dumps({"error": str(error)}))
         return 2

@@ -1,0 +1,674 @@
+[
+  {
+    "yaw": 0,
+    "before": {
+      "image": "before/shot-0.png",
+      "fixture": "orbit6-grid-45y-camera-0-zoom4-normals",
+      "output_scale": 2,
+      "game_window": [
+        500,
+        780,
+        210,
+        510
+      ],
+      "pixels": 336000,
+      "mismatches": 752,
+      "extras": 92,
+      "missing": 96,
+      "wrong_face_or_color": 564,
+      "examples": [
+        {
+          "x": 1318,
+          "y": 540,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "x": 1319,
+          "y": 540,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "x": 1318,
+          "y": 541,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "x": 1319,
+          "y": 541,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "x": 1350,
+          "y": 540,
+          "expected": [
+            [
+              0,
+              128,
+              128
+            ]
+          ],
+          "observed": [
+            128,
+            128,
+            0
+          ]
+        },
+        {
+          "x": 1351,
+          "y": 540,
+          "expected": [
+            [
+              0,
+              128,
+              128
+            ]
+          ],
+          "observed": [
+            128,
+            128,
+            0
+          ]
+        },
+        {
+          "x": 1350,
+          "y": 541,
+          "expected": [
+            [
+              0,
+              128,
+              128
+            ]
+          ],
+          "observed": [
+            128,
+            128,
+            0
+          ]
+        },
+        {
+          "x": 1351,
+          "y": 541,
+          "expected": [
+            [
+              0,
+              128,
+              128
+            ]
+          ],
+          "observed": [
+            128,
+            128,
+            0
+          ]
+        }
+      ],
+      "pass": false
+    },
+    "after": {
+      "image": "after/shot-0.png",
+      "fixture": "orbit6-grid-45y-camera-0-zoom4-normals",
+      "output_scale": 2,
+      "game_window": [
+        500,
+        780,
+        210,
+        510
+      ],
+      "pixels": 336000,
+      "mismatches": 0,
+      "extras": 0,
+      "missing": 0,
+      "wrong_face_or_color": 0,
+      "examples": [],
+      "pass": true
+    }
+  },
+  {
+    "yaw": 90,
+    "before": {
+      "image": "before/shot-4.png",
+      "fixture": "orbit6-grid-45y-camera-90-zoom4-normals",
+      "output_scale": 2,
+      "game_window": [
+        500,
+        780,
+        210,
+        510
+      ],
+      "pixels": 336000,
+      "mismatches": 688,
+      "extras": 76,
+      "missing": 104,
+      "wrong_face_or_color": 508,
+      "examples": [
+        {
+          "x": 1158,
+          "y": 540,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "x": 1159,
+          "y": 540,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "x": 1158,
+          "y": 541,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "x": 1159,
+          "y": 541,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "x": 1176,
+          "y": 540,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "x": 1177,
+          "y": 540,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "x": 1176,
+          "y": 541,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "x": 1177,
+          "y": 541,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "pass": false
+    },
+    "after": {
+      "image": "after/shot-4.png",
+      "fixture": "orbit6-grid-45y-camera-90-zoom4-normals",
+      "output_scale": 2,
+      "game_window": [
+        500,
+        780,
+        210,
+        510
+      ],
+      "pixels": 336000,
+      "mismatches": 0,
+      "extras": 0,
+      "missing": 0,
+      "wrong_face_or_color": 0,
+      "examples": [],
+      "pass": true
+    }
+  },
+  {
+    "yaw": 180,
+    "before": {
+      "image": "before/shot-8.png",
+      "fixture": "orbit6-grid-45y-camera-180-zoom4-normals",
+      "output_scale": 2,
+      "game_window": [
+        500,
+        780,
+        210,
+        510
+      ],
+      "pixels": 336000,
+      "mismatches": 676,
+      "extras": 76,
+      "missing": 96,
+      "wrong_face_or_color": 504,
+      "examples": [
+        {
+          "x": 1374,
+          "y": 544,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "x": 1375,
+          "y": 544,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "x": 1374,
+          "y": 545,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "x": 1375,
+          "y": 545,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "x": 1376,
+          "y": 544,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "x": 1377,
+          "y": 544,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "x": 1376,
+          "y": 545,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "x": 1377,
+          "y": 545,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "pass": false
+    },
+    "after": {
+      "image": "after/shot-8.png",
+      "fixture": "orbit6-grid-45y-camera-180-zoom4-normals",
+      "output_scale": 2,
+      "game_window": [
+        500,
+        780,
+        210,
+        510
+      ],
+      "pixels": 336000,
+      "mismatches": 0,
+      "extras": 0,
+      "missing": 0,
+      "wrong_face_or_color": 0,
+      "examples": [],
+      "pass": true
+    }
+  },
+  {
+    "yaw": 270,
+    "before": {
+      "image": "before/shot-12.png",
+      "fixture": "orbit6-grid-45y-camera-270-zoom4-normals",
+      "output_scale": 2,
+      "game_window": [
+        500,
+        780,
+        210,
+        510
+      ],
+      "pixels": 336000,
+      "mismatches": 732,
+      "extras": 76,
+      "missing": 108,
+      "wrong_face_or_color": 548,
+      "examples": [
+        {
+          "x": 1208,
+          "y": 540,
+          "expected": [
+            [
+              0,
+              128,
+              128
+            ]
+          ],
+          "observed": [
+            128,
+            128,
+            0
+          ]
+        },
+        {
+          "x": 1209,
+          "y": 540,
+          "expected": [
+            [
+              0,
+              128,
+              128
+            ]
+          ],
+          "observed": [
+            128,
+            128,
+            0
+          ]
+        },
+        {
+          "x": 1208,
+          "y": 541,
+          "expected": [
+            [
+              0,
+              128,
+              128
+            ]
+          ],
+          "observed": [
+            128,
+            128,
+            0
+          ]
+        },
+        {
+          "x": 1209,
+          "y": 541,
+          "expected": [
+            [
+              0,
+              128,
+              128
+            ]
+          ],
+          "observed": [
+            128,
+            128,
+            0
+          ]
+        },
+        {
+          "x": 1240,
+          "y": 540,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "x": 1241,
+          "y": 540,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "x": 1240,
+          "y": 541,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        },
+        {
+          "x": 1241,
+          "y": 541,
+          "expected": [
+            [
+              128,
+              128,
+              0
+            ]
+          ],
+          "observed": [
+            0,
+            0,
+            0
+          ]
+        }
+      ],
+      "pass": false
+    },
+    "after": {
+      "image": "after/shot-12.png",
+      "fixture": "orbit6-grid-45y-camera-270-zoom4-normals",
+      "output_scale": 2,
+      "game_window": [
+        500,
+        780,
+        210,
+        510
+      ],
+      "pixels": 336000,
+      "mismatches": 0,
+      "extras": 0,
+      "missing": 0,
+      "wrong_face_or_color": 0,
+      "examples": [],
+      "pass": true
+    }
+  }
+]

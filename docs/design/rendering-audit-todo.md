@@ -7,12 +7,20 @@ fix, and a small native scene does not establish fleet-scale rendering throughpu
 
 ## Current follow-up: finite GRID face coverage
 
+The [cardinal gather follow-up](../pr-screenshots/codex/scatter-boundary-ownership/README.md)
+removes normalized-UV rescaling from canvas interpolation. Exact integer ray
+checks across four cardinal views go from 2,848 incorrect output pixels to zero;
+intermediate-angle images are unchanged. The four zero-tolerance gates run in
+CanvasStress; original RGB references remain unchanged. The shared coordinate
+contract lives in [trixel gather sampling](trixel-gather-sampling.md).
+
 The [finite-face investigation](../pr-screenshots/codex/scatter-silhouette-edges/README.md)
 replaces continuous GRID dilation/margin classification with exact hardware quads,
 and removes whole-face rejection based only on the depth at face origins. The
 independent orbit ray sweep closes all 673 interior missing samples; non-cardinal
 silhouette overfill falls to zero. The strict yaw135° fixture has zero mismatches
-without boundary tolerance. Cardinal output remains unchanged. This supersedes
+without boundary tolerance. That finite-face change alone left cardinal output
+unchanged; the gather follow-up above addresses it. This supersedes
 the GRID margin policy and unresolved diagonal holes described in earlier entries.
 
 The full-scene Debug control measures a cheaper scatter pass (0.080→0.066ms),
@@ -24,8 +32,10 @@ OpenGL presentation validation.
 
 Next, in order:
 
-1. Complete native OpenGL validation of finite faces; isolate remaining cardinal
-   and boundary differences using actual capture poses and raster ownership rules.
+1. Complete native OpenGL validation of finite faces and centered gather; isolate
+   the remaining intermediate-angle boundary differences using actual capture
+   poses and raster ownership rules. The ideal-angle diagnostic still counts
+   15 wrong-face and four missing game samples; do not relax a gate to bless them.
 2. Profile conservative overflow emission on large rotating populations and high
    effective subdivisions. Remove the reserved mask scratch region only with
    layout/consumer tests; future occlusion must prove finite-footprint coverage.
