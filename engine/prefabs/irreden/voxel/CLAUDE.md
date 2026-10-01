@@ -61,6 +61,14 @@ Lua exposes anchors as integer enum values. The three-argument voxel-set ctor
 takes `(size, color, anchor)`, no legacy boolean arm; the four-argument form
 appends an explicit target canvas (headless construction, detached canvases).
 
+Lua voxel authoring uses `setVoxel`, `clearVoxel`, `fillSdf`, and `carveSdf` on
+`C_VoxelSetNew`. Wrap multi-cell recipes in `set:batch(fn)` so the rotation
+source, active mask, cull bounds, and face occupancy resync once after the
+callback. Coordinates are set-local integer cells and an out-of-range write is
+a Lua error. The SDF implementation shared with the voxel editor lives in
+`sdf_fill.hpp`; new callers use it instead of duplicating an `evaluateGrid`
+loop.
+
 ## Transform and revoxelization pipeline
 
 - `UPDATE_VOXEL_SET_CHILDREN` is translate-only: it copies the composed
@@ -165,6 +173,13 @@ with `test/ecs/chunk_bounds_eviction_test.cpp` and
   static), and bone slots.
 - `destroyEntity` only marks, so the re-stage lands at the
   `destroyMarkedEntities` drain; a test that destroys a canvas must drain first.
+- Runtime rotation-mode switches are staged structural operations. Entering a
+  detached mode creates a private voxel-pool canvas sized from the set extent,
+  re-stages the entity's single `C_VoxelSetNew`, and seeds it into that pool.
+  Leaving the detached family synchronously re-stages the same set onto the
+  named main canvas before destroying the private canvas; the teardown hook then
+  finds no resident set to recover.
+  `DETACHED` ↔ `DETACHED_REVOXELIZE` retains the existing private pool.
 
 ## Entity-based joints
 

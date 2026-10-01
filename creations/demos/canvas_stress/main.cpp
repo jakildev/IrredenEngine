@@ -16,6 +16,7 @@
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
+#include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
@@ -62,6 +63,7 @@
 #include <limits>
 #include <cstdint>
 #include <cstdio>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -217,6 +219,12 @@ struct CanvasStressSettings {
     // config only supplies defaults when the corresponding flag is absent.
     bool initialZoomSetByCli_ = false;
     bool autoRotateSetByCli_ = false;
+    bool modeSwitchProbe_ = false;
+    bool modeSwitchProbeFailed_ = false;
+    bool modeSwitchCaptureProbePending_ = false;
+    IRScript::LuaScript *modeSwitchScript_ = nullptr;
+    EntityId modeSwitchEntity_ = kNullEntity;
+    int modeSwitchBaselineCanvasCount_ = 0;
 };
 
 // Spawn groups for --only isolation. Group placement stays derived from
@@ -240,6 +248,7 @@ enum SpawnGroup : std::uint32_t {
     kGroupShadowAttached = 1u << 13,
     kGroupShadowOcclusion = 1u << 14,
     kGroupRigid = 1u << 15,
+    kGroupModeSwitch = 1u << 16,
 };
 
 // 0.5 degrees per frame → full revolution in ~720 frames (~12 s at 60 fps)
@@ -439,6 +448,7 @@ std::uint32_t parseSpawnGroups(const char *arg) {
         {"shadowattached", kGroupShadowAttached},
         {"shadowocclusion", kGroupShadowOcclusion},
         {"rigid", kGroupRigid},
+        {"modeswitch", kGroupModeSwitch},
     };
     std::uint32_t bits = 0u;
     const std::string list{arg};
@@ -463,6 +473,92 @@ std::uint32_t parseSpawnGroups(const char *arg) {
         start = end + 1;
     }
     return bits;
+}
+
+bool modeSwitchGroupRequested() {
+    return (g_settings.onlyGroups_ & kGroupModeSwitch) != 0u;
+}
+
+bool requestModeSwitch(RotationMode mode) {
+    IR_ASSERT(g_settings.modeSwitchScript_ != nullptr, "Mode-switch Lua state is not initialized");
+    sol::protected_function function =
+        g_settings.modeSwitchScript_->lua()["IRPrefab"]["setRotationMode"];
+    sol::protected_function_result result =
+        function(IRScript::LuaEntity{g_settings.modeSwitchEntity_}, static_cast<lua_Integer>(mode));
+    if (result.valid()) {
+        return true;
+    }
+    sol::error error = result;
+    IR_LOG_ERROR("[modeswitch] Lua switch failed: {}", error.what());
+    g_settings.modeSwitchProbeFailed_ = true;
+    return false;
+}
+
+void advanceModeSwitchCapture(int shotIndex) {
+    if (!modeSwitchGroupRequested()) {
+        return;
+    }
+    if (shotIndex == 0) {
+        requestModeSwitch(RotationMode::DETACHED);
+    } else if (shotIndex == 1) {
+        requestModeSwitch(RotationMode::DETACHED_REVOXELIZE);
+    } else if (shotIndex == 2) {
+        requestModeSwitch(RotationMode::GRID);
+    } else if (shotIndex == 3) {
+        g_settings.modeSwitchCaptureProbePending_ = true;
+    }
+}
+
+bool modeSwitchSetIsResidentOnMainCanvas() {
+    auto voxelSet = IREntity::getComponentOptional<C_VoxelSetNew>(g_settings.modeSwitchEntity_);
+    return voxelSet && voxelSet.value()->numVoxels_ > 0 &&
+           voxelSet.value()->canvasEntity_ == IRRender::getCanvas("main");
+}
+
+struct ModeSwitchProbeState {
+    int phase_ = 0;
+};
+
+IRSystem::SystemId createModeSwitchProbeSystem() {
+    auto state = std::make_unique<ModeSwitchProbeState>();
+    ModeSwitchProbeState *statePtr = state.get();
+    const IRSystem::SystemId system = IRSystem::createSystem<C_Camera>(
+        "ModeSwitchProbe",
+        [](C_Camera &) {},
+        [statePtr]() {
+            const int liveCanvases = IREntity::countComponents<C_DetachedCanvas>();
+            if (statePtr->phase_ == 0) {
+                g_settings.modeSwitchBaselineCanvasCount_ = liveCanvases;
+                IR_LOG_INFO("[modeswitch] canvases={}", liveCanvases);
+                requestModeSwitch(RotationMode::DETACHED);
+            } else if (statePtr->phase_ == 1) {
+                g_settings.modeSwitchProbeFailed_ |=
+                    liveCanvases != g_settings.modeSwitchBaselineCanvasCount_ + 1;
+                requestModeSwitch(RotationMode::DETACHED_REVOXELIZE);
+            } else if (statePtr->phase_ == 2) {
+                g_settings.modeSwitchProbeFailed_ |=
+                    liveCanvases != g_settings.modeSwitchBaselineCanvasCount_ + 1;
+                requestModeSwitch(RotationMode::GRID);
+            } else if (statePtr->phase_ == 3) {
+                const bool hasOneVoxelSet =
+                    IREntity::countComponents<C_VoxelSetNew>() == 1 &&
+                    IREntity::getComponentOptional<C_VoxelSetNew>(g_settings.modeSwitchEntity_)
+                        .has_value();
+                g_settings.modeSwitchProbeFailed_ |=
+                    liveCanvases != g_settings.modeSwitchBaselineCanvasCount_ || !hasOneVoxelSet ||
+                    !modeSwitchSetIsResidentOnMainCanvas();
+                IR_LOG_INFO(
+                    "[modeswitch] canvases={} result={}",
+                    liveCanvases,
+                    g_settings.modeSwitchProbeFailed_ ? "FAIL" : "PASS"
+                );
+                IRWindow::closeWindow();
+            }
+            ++statePtr->phase_;
+        }
+    );
+    IRSystem::setSystemParams(system, std::move(state));
+    return system;
 }
 
 // Combined shot table (base SO(3) suite + the re-voxelize framing shots),
@@ -1293,6 +1389,10 @@ void registerArgs() {
         "--auto-profile",
         "CPU and GPU timing; write save_files/profile_report.txt on the auto-screenshot exit"
     );
+    args.flag(
+        "--probe-assert",
+        "Run the modeswitch canvas-allocation round trip and exit nonzero on failure"
+    );
     args.enumValue(
         "--debug-overlay",
         "Force a render debug overlay for the run "
@@ -1334,6 +1434,7 @@ void applyArgs() {
     // Force base subdivisions when requested. 0 leaves the engine
     // default (1) untouched, so a flagless run stays byte-identical.
     g_settings.subdivisions_ = args.getInt("--subdivisions");
+    g_settings.modeSwitchProbe_ = args.getFlag("--probe-assert");
     g_settings.initialZoom_ = args.getFloat("--zoom");
     g_settings.initialZoomSetByCli_ = args.wasProvided("--zoom");
     if (args.wasProvided("--auto-rotate")) {
@@ -1367,6 +1468,10 @@ void applyArgs() {
     if (args.wasProvided("--only")) {
         g_settings.onlyGroups_ |= parseSpawnGroups(args.getString("--only").c_str());
     }
+    IR_ASSERT(
+        !g_settings.modeSwitchProbe_ || modeSwitchGroupRequested(),
+        "--probe-assert requires --only modeswitch"
+    );
     g_settings.autoProfile_ = args.getFlag("--auto-profile");
     if (args.wasProvided("--debug-overlay")) {
         g_settings.debugOverlay_ =
@@ -1427,6 +1532,12 @@ int main(int argc, char **argv) {
     g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     g_autoRecordFrames = IREngine::args().autoRecordFrames();
     readConfig();
+    std::unique_ptr<IRScript::LuaScript> modeSwitchScript;
+    if (modeSwitchGroupRequested()) {
+        modeSwitchScript = std::make_unique<IRScript::LuaScript>();
+        modeSwitchScript->bindLuaDrivenEcs();
+        g_settings.modeSwitchScript_ = modeSwitchScript.get();
+    }
     if (g_settings.autoProfile_) {
         IREngine::enableFrameTiming(true);
         IRRender::gpuStageTiming().enabled_ = true;
@@ -1461,7 +1572,7 @@ int main(int argc, char **argv) {
     }
 
     IREngine::gameLoop();
-    return 0;
+    return g_settings.modeSwitchProbeFailed_ ? 1 : 0;
 }
 
 void initSystems() {
@@ -1484,6 +1595,9 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::LIFETIME>()
         }
     );
+    if (g_settings.modeSwitchProbe_) {
+        IRSystem::appendToPipeline(IRTime::Events::UPDATE, createModeSwitchProbeSystem());
+    }
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
@@ -1655,8 +1769,22 @@ void initSystems() {
 
     if (g_autoWarmupFrames > 0) {
         int settleFrames = 60;
-        if (g_settings.sweepYawCount_ > 0 || g_settings.sweepFramesCount_ > 0 ||
-            g_settings.sweepPanCount_ > 0) {
+        if (modeSwitchGroupRequested()) {
+            constexpr IRVideo::AutoScreenshotShot kModeSwitchShots[]{
+                {2.0f, vec2(0.0f), 0.0f, "modeswitch_grid"},
+                {2.0f, vec2(0.0f), 0.0f, "modeswitch_detached"},
+                {2.0f, vec2(0.0f), 0.0f, "modeswitch_revox"},
+                {2.0f, vec2(0.0f), 0.0f, "modeswitch_grid_return"},
+            };
+            g_allShots.assign(
+                kModeSwitchShots,
+                kModeSwitchShots + sizeof(kModeSwitchShots) / sizeof(kModeSwitchShots[0])
+            );
+            settleFrames = 60;
+        } else if (
+            g_settings.sweepYawCount_ > 0 || g_settings.sweepFramesCount_ > 0 ||
+            g_settings.sweepPanCount_ > 0
+        ) {
             // Sweep mode: a focused diagnostic capture REPLACES the base
             // suite — the swept variable (camera yaw, or entity spin phase via
             // inter-shot settle frames) should be the only thing changing.
@@ -1782,7 +1910,9 @@ void initSystems() {
         cfg.settleFrames_ = settleFrames;
         cfg.shots_ = g_allShots.data();
         cfg.numShots_ = static_cast<int>(g_allShots.size());
-        if (IREngine::args().getFlag("--sun-face-index-probe")) {
+        if (modeSwitchGroupRequested()) {
+            cfg.onCaptureFrame_ = &advanceModeSwitchCapture;
+        } else if (IREngine::args().getFlag("--sun-face-index-probe")) {
             cfg.onCaptureFrame_ = [](int shotIndex) {
                 const std::string path = "sun-face-index-" + std::to_string(shotIndex) + ".csv";
                 const bool written = IRPrefab::SunShadow::writeSourceFaceIndexProbe(path);
@@ -1795,6 +1925,25 @@ void initSystems() {
             };
         }
         renderPipeline.push_back(IRVideo::createAutoScreenshotSystem(cfg));
+        if (modeSwitchGroupRequested()) {
+            renderPipeline.push_back(
+                IRSystem::createSystem<C_Camera>(
+                    "ModeSwitchCaptureProbe",
+                    [](C_Camera &) {},
+                    []() {
+                        if (!g_settings.modeSwitchCaptureProbePending_) {
+                            return;
+                        }
+                        g_settings.modeSwitchCaptureProbePending_ = false;
+                        const int liveCanvases = IREntity::countComponents<C_DetachedCanvas>();
+                        g_settings.modeSwitchProbeFailed_ |=
+                            liveCanvases != g_settings.modeSwitchBaselineCanvasCount_ ||
+                            !modeSwitchSetIsResidentOnMainCanvas();
+                        IR_LOG_INFO("[modeswitch] canvases={}", liveCanvases);
+                    }
+                )
+            );
+        }
     }
     IRVideo::appendAutoRecordIfRequested(renderPipeline, g_autoRecordFrames);
 
@@ -1809,6 +1958,20 @@ void initCommands() {
 void initEntities() {
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();
     IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
+
+    if (modeSwitchGroupRequested()) {
+        g_settings.modeSwitchBaselineCanvasCount_ = IREntity::countComponents<C_DetachedCanvas>();
+        g_settings.modeSwitchEntity_ = IREntity::createEntity(
+            C_LocalTransform{
+                vec3(0.0f),
+                IRMath::quatAxisAngle(IRMath::normalize(vec3(1.0f, 0.6f, 0.3f)), IRMath::kPi / 5.0f)
+            },
+            C_RotationMode{RotationMode::GRID},
+            C_VoxelSetNew{ivec3(10, 8, 6), Color{235, 145, 70, 255}, true}
+        );
+        IREntity::getComponent<C_VoxelSetNew>(g_settings.modeSwitchEntity_)
+            .carve([](vec3 position) { return position.x > 0.0f && position.y > 0.0f; });
+    }
 
     // Lighting wiring. The lighting pipeline writes per-canvas
     // shadow / AO / light-volume textures sized to the main canvas;

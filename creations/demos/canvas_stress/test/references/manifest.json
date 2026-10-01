@@ -19,6 +19,17 @@
   },
   "extra_runs": [
     {
+      "name": "modeswitch",
+      "demo_args": ["--only", "modeswitch", "--no-auto-rotate", "--no-spin"],
+      "warmup": 12,
+      "shots": [
+        "modeswitch_grid",
+        "modeswitch_detached",
+        "modeswitch_revox",
+        "modeswitch_grid_return"
+      ]
+    },
+    {
       "name": "compare",
       "demo_args": ["--only", "compare"],
       "shots": ["compare_yaw0", "compare_yaw_q"],

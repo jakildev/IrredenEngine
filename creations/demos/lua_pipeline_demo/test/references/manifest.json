@@ -1,0 +1,15 @@
+{
+  "demo": "lua_pipeline_demo",
+  "target": "IRLuaPipelineDemo",
+  "screenshot_subdir": "save_files/screenshots",
+  "shots": [
+    "lua_pipeline_demo_zoom4"
+  ],
+  "thresholds": {
+    "per_pixel_tol": 8,
+    "match_pct": 99.9,
+    "max_delta": 64,
+    "psnr_db": 35.0
+  },
+  "notes": "The shot renders a deterministic voxel shape authored by the pure-Lua procedural recipe."
+}

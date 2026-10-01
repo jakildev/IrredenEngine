@@ -55,6 +55,13 @@ TEST_F(LuaRenderBindingsTest, SkySettersBound) {
     EXPECT_TRUE(isFunction("IRRender.setSkyIntensity"));
 }
 
+TEST_F(LuaRenderBindingsTest, EntityCanvasCountBound) {
+    EXPECT_TRUE(isFunction("IRRender.entityCanvasCount"));
+    auto result = m_lua.lua().safe_script("return IRRender.entityCanvasCount()");
+    ASSERT_TRUE(result.valid());
+    EXPECT_EQ(result.get<int>(), 0);
+}
+
 TEST_F(LuaRenderBindingsTest, GuiDrawPrimitivesBound) {
     EXPECT_TRUE(isFunction("IRGui.drawDisc"));
     EXPECT_TRUE(isFunction("IRGui.drawLine"));

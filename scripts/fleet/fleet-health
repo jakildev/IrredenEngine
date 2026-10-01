@@ -27,6 +27,7 @@ Sources (all read-only; nothing here mutates fleet state):
   ~/.fleet/state/{dispatcher.pid,scout.pid,dispatch-mode,host-profile,dispatch/,
                   empty-streak/,runtime-cooldown/,runtime-problems/,state.json}
   ~/.fleet/sessions/*.session.json, ~/.fleet/alerts/, ~/.fleet/fleet-up.conf
+  the host's process table (how many fleet-state-scout daemons are alive)
 
 The window defaults to the current dispatcher boot (the last `started (pid=`
 line in dispatcher.log); `--since 24h` / `7d` / `<ISO-8601>` widens it. Tests
@@ -191,6 +192,45 @@ def pid_alive(path):
     except PermissionError:
         return pid, True
     return pid, True
+
+
+_ARGV_TOKEN = re.compile(r'"[^"]*"|\S+')
+
+
+def is_scout_daemon_argv(line):
+    """A scout daemon's argv is a bare python interpreter plus the script. A
+    run with arguments (--once, --print-surface) is a probe, not a poller, and
+    the MSYS `env.exe python3 ...` wrapper row on native Windows is the
+    daemon's parent, not a second daemon. The interpreter match ignores case:
+    a macOS framework build reports itself as `.../MacOS/Python`."""
+    tokens = [t.strip('"') for t in _ARGV_TOKEN.findall(line)]
+    if len(tokens) != 2:
+        return False
+    interpreter = re.split(r"[\\/]", tokens[0])[-1]
+    script = re.split(r"[\\/]", tokens[1])[-1]
+    return interpreter.lower().startswith("python") and script == "fleet-state-scout"
+
+
+def scout_process_count():
+    """Live fleet-state-scout daemons on this host, or None when the process
+    table cannot be read. Counted from the table, not the pid file: the file
+    names one scout, and a launch that failed to reap its predecessor leaves
+    the rest polling behind it."""
+    try:
+        if os.name == "nt":
+            run = subprocess.run(
+                ["powershell", "-NoProfile", "-Command",
+                 "Get-CimInstance Win32_Process | Where-Object { $_.Name -like 'python*' } "
+                 "| ForEach-Object { $_.CommandLine }"],
+                capture_output=True, text=True, timeout=30)
+        else:
+            run = subprocess.run(["ps", "-axo", "args="],
+                                 capture_output=True, text=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if run.returncode != 0:
+        return None
+    return sum(1 for line in run.stdout.splitlines() if is_scout_daemon_argv(line))
 
 
 def load_conf(path):
@@ -507,6 +547,10 @@ def derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts):
         w.append("dispatcher is not running")
     if not daemons["scout"]["alive"]:
         w.append("state-scout is not running")
+    scouts = daemons["scout"].get("processes")
+    if scouts is not None and scouts > 1:
+        w.append(f"{scouts} fleet-state-scout daemons are running (expected 1): "
+                 "a launch failed to reap its predecessor; stop the extras")
     for role, s in sorted(roles.items()):
         done = s["productive"] + s["no_op"]
         if done >= NO_OP_MIN_SAMPLE and s["no_op"] / done >= NO_OP_RATIO:
@@ -558,7 +602,10 @@ def render_text(report):
     o.append("## Daemons")
     for name in ("dispatcher", "scout"):
         x = d[name]
-        o.append(f"  {name:11s} pid={x['pid'] or '-'} {'alive' if x['alive'] else 'DEAD'}")
+        line = f"  {name:11s} pid={x['pid'] or '-'} {'alive' if x['alive'] else 'DEAD'}"
+        if x.get("processes") is not None:
+            line += f" processes={x['processes']}"
+        o.append(line)
     o.append(f"  mode        {d['mode']}")
     o.append(f"  profile     {d.get('profile', 'full')}")
     o.append("")
@@ -681,8 +728,8 @@ def build_report(args):
     except OSError:
         profile = "full"
     daemons = {"dispatcher": {"pid": dpid, "alive": dalive},
-               "scout": {"pid": spid, "alive": salive}, "mode": mode,
-               "profile": profile}
+               "scout": {"pid": spid, "alive": salive, "processes": scout_process_count()},
+               "mode": mode, "profile": profile}
     alerts = collect_alerts(alerts_dir)
     report = {
         "window": {"since": since.strftime("%Y-%m-%dT%H:%M:%SZ"), "label": args.since or "boot"},

@@ -3,6 +3,7 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/render/entity_canvas.hpp>
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
 
@@ -55,6 +56,7 @@ inline void bindRenderGlue(LuaScript &script) {
     lua["IRRender"]["setSkyIntensity"] = [](float intensity) {
         IRRender::setSkyIntensity(intensity);
     };
+    lua["IRRender"]["entityCanvasCount"] = []() { return IRPrefab::EntityCanvas::count(); };
 
     if (!lua["IRGui"].valid()) {
         lua["IRGui"] = lua.create_table();
