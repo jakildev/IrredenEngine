@@ -1333,20 +1333,61 @@ standdown_file() {
     printf '%s.standdown\n' "$(empty_streak_file "$1" "${2:-}")"
 }
 
+standdown_targets_file() {
+    printf '%s.targets\n' "$(standdown_file "$1" "${2:-}")"
+}
+
+worker_pick_targets() {
+    local role="$1" class="$2" fable_blocked="$3" slice picks
+    [[ "$role" == "worker" && -n "$class" ]] || return 1
+    slice="$STATE_DIR/projections/$role.json"
+    [[ -f "$slice" ]] || return 1
+    if ! picks=$(FLEET_STATE_DIR="$STATE_DIR" \
+        python3 "$FLEET_LIB_DIR/fleet_task_class.py" --pick "$slice" \
+        "$class" "$fable_blocked" \
+        "${WORKER_LANE_DEFAULT_CLASS[$role]:-opus}" 2>/dev/null); then
+        return 1
+    fi
+    picks="${picks//$'\r'/}"
+    printf '%s' "$picks"
+}
+
+worker_target_fingerprint() {
+    local picks
+    picks=$(worker_pick_targets "$1" "$2" "${DISPATCH_FABLE_BLOCKED:-0}") || return 1
+    printf '%s' "$picks" | _fleet_digest_stdin
+}
+
 note_standdown() {
-    local f
+    local f targets fingerprint
     f=$(standdown_file "$1" "${2:-}")
+    targets=$(standdown_targets_file "$1" "${2:-}")
     mkdir -p "$EMPTY_STREAK_DIR"
     printf '%s\n' "$(( $(read_counter_file "$f") + 1 ))" > "$f"
+    if fingerprint=$(worker_target_fingerprint "$1" "${2:-}"); then
+        printf '%s\n' "$fingerprint" > "$targets"
+    else
+        rm -f "$targets"
+    fi
 }
 
 # Seconds the periodic re-arm must still wait for (role, class), or 0 when no
 # standdown is in force. Backoff = BASE * 2^(count-1), capped at MAX.
 standdown_backoff_remaining() {
     (( REARM_STANDDOWN_BASE_SECONDS > 0 )) || { printf '0\n'; return 0; }
-    local f n at now backoff
+    local f targets recorded current n at now backoff
     f=$(standdown_file "$1" "${2:-}")
     [[ -f "$f" ]] || { printf '0\n'; return 0; }
+    targets=$(standdown_targets_file "$1" "${2:-}")
+    if [[ -f "$targets" ]]; then
+        recorded=$(cat "$targets" 2>/dev/null || true)
+        if current=$(worker_target_fingerprint "$1" "${2:-}") \
+            && [[ "$current" != "$recorded" ]]; then
+            log "worker-rearm: target fingerprint changed (recorded=$recorded current=$current)"
+            printf '0\n'
+            return 0
+        fi
+    fi
     n=$(read_counter_file "$f")
     (( n > 20 )) && n=20   # keep the shift in range; MAX caps it long before
     (( n < 1 )) && n=1
@@ -1397,7 +1438,9 @@ record_dispatch_outcome() {
         # A productive dispatch clears the streak AND the standdown backoff:
         # the lane is demonstrably serving work, so the re-arm may run at full
         # cadence again. The only place the standdown counter is reset.
-        rm -f "$(empty_streak_file "$role" "$class")" "$(standdown_file "$role" "$class")"
+        rm -f "$(empty_streak_file "$role" "$class")" \
+            "$(standdown_file "$role" "$class")" \
+            "$(standdown_targets_file "$role" "$class")"
     fi
 }
 
@@ -2673,18 +2716,14 @@ assign_for_pane() {
             PICKS_CACHE=$(merger_trigger_targets)
         elif [[ "$role" == "worker" ]]; then
             [[ -n "$DISPATCH_CLASS" ]] || return 1
-            PICKS_CACHE=$(FLEET_STATE_DIR="$STATE_DIR" \
-                python3 "$FLEET_LIB_DIR/fleet_task_class.py" --pick "$slice" \
-                "$DISPATCH_CLASS" "$DISPATCH_FABLE_BLOCKED" \
-                "${WORKER_LANE_DEFAULT_CLASS[$role]:-opus}" 2>/dev/null) || PICKS_CACHE=""
+            PICKS_CACHE=$(worker_pick_targets "$role" "$DISPATCH_CLASS" \
+                "$DISPATCH_FABLE_BLOCKED") || PICKS_CACHE=""
         else
             PICKS_CACHE=$(FLEET_STATE_DIR="$STATE_DIR" \
                 python3 "$FLEET_LIB_DIR/fleet_task_class.py" --pick-role \
                 "$slice" "$role" 2>/dev/null) || PICKS_CACHE=""
         fi
-        # Native-Windows python3 emits CRLF on stdout; a trailing \r would
-        # fail every numeric gate but the last line's. The producer
-        # also pins LF; this is the backstop.
+        # Non-worker pick producers may still emit CRLF on native Windows.
         PICKS_CACHE="${PICKS_CACHE//$'\r'/}"
     fi
     prune_claim_refusals_for_walk "$role" "$DISPATCH_CLASS" "$PICKS_CACHE"
@@ -2852,6 +2891,68 @@ worker_rearm_should_fire() {
     (( DISPATCH_STANDDOWN_REMAINING == 0 ))
 }
 
+role_dispatch_capacity() {
+    local role="$1" active="$2" free="$3"
+    local cap="${ROLE_CONCURRENCY[$role]:-0}" allowance
+    # These outputs are shared by dispatch admission and the worker safety
+    # re-arm, so a trigger is never created under a cap policy that the next
+    # dispatch tick would reject.
+    DISPATCH_ROLE_CAP_MODE="$CAP_MODE"
+    DISPATCH_ROLE_HEADROOM=-1
+    DISPATCH_ROLE_OVER_CAP=""
+    DISPATCH_ROLE_RESERVED=0
+    if [[ -n "${HARD_CAP_ROLES[$role]+x}" ]]; then
+        DISPATCH_ROLE_CAP_MODE=strict
+    fi
+    (( cap > 0 )) || return 0
+    if (( active < cap )); then
+        DISPATCH_ROLE_HEADROOM=$(( cap - active ))
+        if [[ "$DISPATCH_ROLE_CAP_MODE" == "elastic" ]] \
+            && (( DISPATCH_ROLE_HEADROOM > 1 )); then
+            DISPATCH_ROLE_RESERVED=$(count_panes_reserved_for_other_roles "$role")
+            allowance=$(( free - DISPATCH_ROLE_RESERVED ))
+            # An under-cap role is entitled to one launch; without this floor,
+            # two pending roles can each reserve the last pane for the other.
+            (( allowance < 1 )) && allowance=1
+            (( DISPATCH_ROLE_HEADROOM > allowance )) \
+                && DISPATCH_ROLE_HEADROOM=$allowance
+        fi
+        return 0
+    fi
+    DISPATCH_ROLE_HEADROOM=0
+    if [[ "$DISPATCH_ROLE_CAP_MODE" == "elastic" ]] && (( free > 0 )); then
+        DISPATCH_ROLE_RESERVED=$(count_panes_reserved_for_other_roles "$role")
+        DISPATCH_ROLE_HEADROOM=$(( free - DISPATCH_ROLE_RESERVED ))
+        (( DISPATCH_ROLE_HEADROOM < 0 )) && DISPATCH_ROLE_HEADROOM=0
+    fi
+    if (( DISPATCH_ROLE_HEADROOM > 0 )); then
+        DISPATCH_ROLE_OVER_CAP=$cap
+    fi
+}
+
+rearm_worker_role() {
+    local role="$1" active="$2" free="$3"
+    if [[ -f "$TRIGGERS_DIR/$role" ]]; then
+        return 1
+    fi
+    role_dispatch_capacity "$role" "$active" "$free"
+    if (( free <= 0 || DISPATCH_ROLE_HEADROOM == 0 )); then
+        return 1
+    fi
+    if worker_rearm_should_fire "$role"; then
+        unset "CAP_DEFER_LOGGED[$role-standdown]"
+        touch "$TRIGGERS_DIR/$role"
+        log "worker-rearm: re-armed $role (class=$DISPATCH_CLASS claimable, active=$active free=$free)"
+        return 0
+    fi
+    if (( DISPATCH_STANDDOWN_REMAINING > 0 )) \
+        && [[ -z "${CAP_DEFER_LOGGED[$role-standdown]+x}" ]]; then
+        log "worker-rearm: $role class=$DISPATCH_CLASS in standdown backoff (${DISPATCH_STANDDOWN_REMAINING}s left); not re-arming on an unchanged target set"
+        CAP_DEFER_LOGGED["$role-standdown"]=1
+    fi
+    return 1
+}
+
 # Host gate for the smoke lane. Returns 0 (dispatch) iff at least one PR
 # in the smoke-worker slice carries THIS host's pending smoke label, and sets
 # SMOKE_SERVABLE_PRS to those PRs as `<repo>:<number>` (newline-separated) for
@@ -2998,70 +3099,36 @@ dispatch_role() {
     # A hard-capped role (HARD_CAP_ROLES) reads strict here whatever the
     # configured mode: its cap is a ceiling, never a reservation to borrow
     # against.
-    local cap="${ROLE_CONCURRENCY[$role]:-0}"
-    local role_cap_mode="$CAP_MODE"
-    if [[ -n "${HARD_CAP_ROLES[$role]+x}" ]]; then
-        role_cap_mode=strict
+    local cap="${ROLE_CONCURRENCY[$role]:-0}" active=0
+    local free role_cap_mode role_headroom over_cap reserved
+    free=$(count_free_panes "$idle_panes")
+    if (( cap > 0 )); then
+        active=$(count_active_for_role "$role")
     fi
+    role_dispatch_capacity "$role" "$active" "$free"
+    role_cap_mode="$DISPATCH_ROLE_CAP_MODE"
+    role_headroom=$DISPATCH_ROLE_HEADROOM
+    over_cap="$DISPATCH_ROLE_OVER_CAP"
+    reserved=$DISPATCH_ROLE_RESERVED
     # Remaining cap headroom bounds this tick's fan-out. Pre-pool this was
     # implicit — a role could never out-dispatch its dedicated pane count —
     # but any pool pane can serve any role, so a single trigger meeting a
     # mostly-idle pool would otherwise blow straight past the cap.
-    local role_headroom=-1   # -1 = uncapped
     # The cap this tick's launches exceed (elastic only); stamped as
     # `over-cap=<cap>` on the dispatch line so fleet-health can count them.
-    local over_cap=""
     if (( cap > 0 )); then
-        local active
-        active=$(count_active_for_role "$role")
-        if (( active < cap )); then
-            role_headroom=$(( cap - active ))
-            # The reservation binds an under-cap fan-out too. Roles are
-            # dispatched sequentially within a tick, so a pane one role held
-            # back is simply taken by the next role in DISPATCHED_ROLES
-            # order unless every launch honours the same rule: an at-cap
-            # worker leaving two panes for pending sonnet- and opus-reviewer
-            # triggers buys the opus reviewer nothing if the sonnet reviewer
-            # (cap 4) may then take both.
-            #
-            # Floor of one: this role is WITHIN its cap, so it is entitled to
-            # launch. Without the floor two under-cap roles each reserving a
-            # pane for the other would both defer while a pane sat idle. An
-            # at-cap role has no such entitlement (it is asking for a pane it
-            # has no budget for), which is why the branch below floors at
-            # zero instead. role_headroom==1 cannot be clamped below the
-            # floor, so the reservation walk — one count_active_for_role per
-            # pending role, each a tmux walk — is only paid above that.
-            if [[ "$role_cap_mode" == "elastic" ]] && (( role_headroom > 1 )); then
-                local free reserved allowance
-                free=$(count_free_panes "$idle_panes")
-                reserved=$(count_panes_reserved_for_other_roles "$role")
-                allowance=$(( free - reserved ))
-                (( allowance < 1 )) && allowance=1
-                (( role_headroom > allowance )) && role_headroom=$allowance
-            fi
-        else
-            local free reserved=0
-            free=$(count_free_panes "$idle_panes")
-            role_headroom=0
-            if [[ "$role_cap_mode" == "elastic" ]] && (( free > 0 )); then
-                reserved=$(count_panes_reserved_for_other_roles "$role")
-                role_headroom=$(( free - reserved ))
-            fi
-            if (( role_headroom <= 0 )); then
-                if [[ -z "${CAP_DEFER_LOGGED[$role]+x}" ]]; then
-                    local held=""
-                    if (( reserved > 0 )); then
-                        held="; $free free pane(s) reserved for other pending roles"
-                    elif [[ "$role_cap_mode" != "$CAP_MODE" ]]; then
-                        held="; hard-capped role, $free free pane(s) not borrowed"
-                    fi
-                    log "$role at concurrency cap ($active >= $cap)$held; deferring trigger"
-                    CAP_DEFER_LOGGED["$role"]=1
+        if (( active >= cap && role_headroom <= 0 )); then
+            if [[ -z "${CAP_DEFER_LOGGED[$role]+x}" ]]; then
+                local held=""
+                if (( reserved > 0 )); then
+                    held="; $free free pane(s) reserved for other pending roles"
+                elif [[ "$role_cap_mode" != "$CAP_MODE" ]]; then
+                    held="; hard-capped role, $free free pane(s) not borrowed"
                 fi
-                return
+                log "$role at concurrency cap ($active >= $cap)$held; deferring trigger"
+                CAP_DEFER_LOGGED["$role"]=1
             fi
-            over_cap=$cap
+            return
         fi
         if [[ -n "${CAP_DEFER_LOGGED[$role]+x}" ]] \
             && role_projection_was_suppressed "$role"; then
@@ -3905,9 +3972,8 @@ PY
     # (a manually-cleared claim label, a claim-then-bail iteration that
     # leaves stale labels hiding the next-tick transition, etc.) and
     # strand the queue with unblocked free work and no trigger. When
-    # the role's projection has at least one actionable task AND no
-    # worker for that role is active AND no trigger is already pending,
-    # re-arm the role.
+    # the role's projection has at least one actionable task, dispatch
+    # capacity remains, and no trigger is already pending, re-arm the role.
     #
     # Stacking compatibility: stack-claimed tasks (via
     # `--stackable-on`) show `owner != "free"` once the claim lands,
@@ -3917,37 +3983,15 @@ PY
     # claim plain or as a stack.
     #
     # Cost: a worker iteration is ~$0.30. The predicate (free unblocked
-    # task AND zero active worker AND no existing trigger) means it
-    # only fires when the fleet has work it forgot to dispatch — work
-    # the fleet should be doing anyway. No idle-fleet token burn.
-    local _role _active
+    # task AND role headroom AND an idle pane AND no existing trigger) means
+    # it only fires when the fleet has work it forgot to dispatch — work the
+    # fleet should be doing anyway. No idle-fleet token burn.
+    local _role _active _idle_panes _free
     for _role in "worker"; do
-        # Skip if a trigger is already pending — scout's normal path
-        # is doing its job and the dispatcher will fire on next tick.
-        if [[ -f "$TRIGGERS_DIR/$_role" ]]; then
-            continue
-        fi
-        # Skip if any worker for this role is in-flight.
         _active=$(count_active_for_role "$_role")
-        if [[ "$_active" -gt 0 ]]; then
-            continue
-        fi
-        # Re-arm iff the resolver would dispatch a concrete class — genuinely
-        # claimable work under the FULL claimability gate. Delegating to
-        # resolve_worker_class keeps this safety re-arm in lock-step with the
-        # dispatch decision; a separate inline predicate drifts (excluding
-        # inflight_pr but not needs_gl_host re-arms every interval on GL-host
-        # tasks a Metal pane can never claim).
-        if worker_rearm_should_fire "$_role"; then
-            unset "CAP_DEFER_LOGGED[$_role-standdown]"
-            touch "$TRIGGERS_DIR/$_role"
-            log "worker-rearm: re-armed $_role (class=$DISPATCH_CLASS claimable, no active iteration)"
-        elif (( DISPATCH_STANDDOWN_REMAINING > 0 )) \
-            && [[ -z "${CAP_DEFER_LOGGED[$_role-standdown]+x}" ]]; then
-            # Logged once per backoff window.
-            log "worker-rearm: $_role class=$DISPATCH_CLASS in standdown backoff (${DISPATCH_STANDDOWN_REMAINING}s left); not re-arming on an unchanged slice"
-            CAP_DEFER_LOGGED["$_role-standdown"]=1
-        fi
+        _idle_panes=$(find_idle_panes_for_role "$_role")
+        _free=$(count_free_panes "$_idle_panes")
+        rearm_worker_role "$_role" "$_active" "$_free" || true
     done
 }
 
@@ -4269,6 +4313,22 @@ case "${1:-}" in
             echo "skip (standdown backoff class=$DISPATCH_CLASS)"
         else
             echo "skip (defer=$DISPATCH_DEFER class=$DISPATCH_CLASS)"
+        fi
+        exit 0
+        ;;
+    --rearm-worker-once)
+        # Test/debug: run the worker safety re-arm with explicit capacity
+        # observations. The live path supplies these from pane and dispatch
+        # state; explicit values keep this hook hermetic.
+        if [[ -z "${2:-}" || ! "${3:-}" =~ ^[0-9]+$ || ! "${4:-}" =~ ^[0-9]+$ ]]; then
+            echo "usage: fleet-dispatcher --rearm-worker-once <role> <active> <free-panes>" >&2
+            exit 2
+        fi
+        mkdir -p "$TRIGGERS_DIR"
+        if rearm_worker_role "$2" "$3" "$4"; then
+            echo "rearmed class=$DISPATCH_CLASS"
+        else
+            echo "skip"
         fi
         exit 0
         ;;
