@@ -186,8 +186,13 @@ class Env(unittest.TestCase):
                         "FLEET_CONF", "FLEET_DIR", "FLEET_HEALTH_NOW")}
         self.tmp = tempfile.TemporaryDirectory()
         self.root = build_fleet_dir(Path(self.tmp.name) / "fleet")
+        # The process-table probe reads the live host; pin it to the healthy
+        # reading so no fixture depends on what is running where the suite runs.
+        self._probe = fleet_health.scout_process_count
+        fleet_health.scout_process_count = lambda: 1
 
     def tearDown(self):
+        fleet_health.scout_process_count = self._probe
         self.tmp.cleanup()
         for k, v in self._saved.items():
             # Pop first: a test that pins one of these must not leak it into
@@ -364,6 +369,52 @@ class DaemonsAndWindow(Env):
         self.assertTrue(rep["daemons"]["dispatcher"]["alive"])
         self.assertFalse(rep["daemons"]["scout"]["alive"])
         self.assertIn("state-scout is not running", rep["warnings"])
+
+    def test_duplicate_scouts_warn(self):
+        fleet_health.scout_process_count = lambda: 6
+        rc, rep = self.run_report()
+        self.assertEqual(rep["daemons"]["scout"]["processes"], 6)
+        self.assertIn(
+            "6 fleet-state-scout daemons are running (expected 1): "
+            "a launch failed to reap its predecessor; stop the extras",
+            rep["warnings"])
+        out = io.StringIO()
+        with redirect_stdout(out):
+            fleet_health.main(["--fleet-dir", str(self.root)])
+        self.assertRegex(out.getvalue(), r"scout +pid=999999999 DEAD processes=6")
+
+    def test_single_scout_is_quiet(self):
+        rc, rep = self.run_report()
+        self.assertEqual(rep["daemons"]["scout"]["processes"], 1)
+        self.assertFalse([w for w in rep["warnings"] if "fleet-state-scout daemons" in w])
+
+    def test_unreadable_process_table_is_quiet(self):
+        fleet_health.scout_process_count = lambda: None
+        rc, rep = self.run_report()
+        self.assertIsNone(rep["daemons"]["scout"]["processes"])
+        self.assertFalse([w for w in rep["warnings"] if "fleet-state-scout daemons" in w])
+        out = io.StringIO()
+        with redirect_stdout(out):
+            fleet_health.main(["--fleet-dir", str(self.root)])
+        self.assertNotIn("processes=", out.getvalue())
+
+    def test_scout_daemon_argv_matcher(self):
+        m = fleet_health.is_scout_daemon_argv
+        for argv in (
+            r"C:\msys64\mingw64\bin\python3.exe C:/x/scripts/fleet/fleet-state-scout",
+            "/usr/bin/python3 /home/x/scripts/fleet/fleet-state-scout",
+            "python3 fleet-state-scout",
+            '"C:\\Program Files\\Python\\python.exe" "C:\\x\\fleet-state-scout"',
+        ):
+            self.assertTrue(m(argv), argv)
+        for argv in (
+            r"C:\msys64\usr\bin\env.exe python3 /c/x/scripts/fleet/fleet-state-scout",
+            "/usr/bin/python3 /x/fleet-state-scout --print-surface",
+            "/usr/bin/python3 /x/fleet-state-scout --once",
+            "bash /x/scripts/fleet/fleet-state-scout",
+            "/usr/bin/python3 /x/tests/test_fleet-state-scout_probe.py",
+        ):
+            self.assertFalse(m(argv), argv)
 
     def test_since_accepts_durations_and_iso(self):
         rc, rep = self.run_report("--since", "2026-09-09T05:00:00Z")
