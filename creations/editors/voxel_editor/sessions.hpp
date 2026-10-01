@@ -20,6 +20,11 @@
 // can reach at any camera yaw (docs/design/editor-authoring-friction.md §2g
 // F-2g-1). It is the only session that exercises `clickBelow`.
 //
+// `face_pick` is the proof that the pick resolves the face under the cursor:
+// from one free-standing anchor it clicks the -x, the -y and the -z face in
+// turn and asserts the three distinct neighbours, once at zoom 2 and once at
+// zoom 4. It runs against the full reference scene.
+//
 // `rock` is the first committed entity: an irregular, no-symmetry,
 // single-layer blob. It clears the seeded ground slab down to a small central
 // footprint (four erase-mode box drags on the flat plane, before any rock voxel
@@ -46,6 +51,7 @@ enum class Id {
     NONE,
     DRAG_PROBE,
     PLACE_BELOW,
+    FACE_PICK,
     ROCK,
     MUSHROOM,
     ANT,
@@ -62,6 +68,8 @@ inline Id idFromName(const std::string &name) {
         return Id::DRAG_PROBE;
     if (name == "place_below")
         return Id::PLACE_BELOW;
+    if (name == "face_pick")
+        return Id::FACE_PICK;
     if (name == "rock")
         return Id::ROCK;
     if (name == "mushroom")
@@ -82,6 +90,7 @@ namespace detail {
 // so every anchor face is exposed.
 inline Recipe buildDragProbe(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
     Builder builder("drag_probe", sceneSize, sceneOrigin);
+    builder.withReferenceFurniture();
 
     // One step toward the camera from the seeded ground plane: the cells a
     // click on the ground's camera-facing face lands in.
@@ -94,6 +103,13 @@ inline Recipe buildDragProbe(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) 
     // Never touched by the recipe — catches an occupancy check that would pass
     // for a scene that is simply full (a seeded slab misread as authored work).
     const IRMath::ivec3 untouched(centerX - 3, centerY + 3, placeZ);
+
+    // Fixed in the world, like the perimeter scale gizmo they are measured
+    // against (main.cpp initEntities), so they hold at any scene size that
+    // reaches them.
+    const IRMath::ivec3 sceneWorldOrigin = IRMath::roundVec3HalfUp(sceneOrigin);
+    const IRMath::ivec3 underGizmo(-6 - sceneWorldOrigin.x, -5 - sceneWorldOrigin.y, placeZ);
+    const IRMath::ivec3 besideGizmo(-5 - sceneWorldOrigin.x, -4 - sceneWorldOrigin.y, placeZ);
 
     builder.segment("place");
     builder.click(placed);
@@ -124,6 +140,17 @@ inline Recipe buildDragProbe(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) 
     builder.click(placed);
     builder.expectOccupancy(placed, false, "erase_removes_voxel");
     builder.expectOccupancy(dragStart, true, "erase_spares_drag_run");
+
+    // A gizmo handle owns the pixels it is drawn on and no others. The scale
+    // gizmo's handles cross the near corner of the ground: one cell's anchor
+    // face lies under a handle, and its diagonal neighbour's lies just clear
+    // of it. Place mode again first — the erase toggle is still on.
+    builder.segment("gizmo");
+    builder.toggleEraseMode();
+    builder.clickExpectingNoEdit(underGizmo);
+    builder.click(besideGizmo);
+    builder.expectOccupancy(underGizmo, false, "gizmo_keeps_its_own_pixels");
+    builder.expectOccupancy(besideGizmo, true, "click_beside_gizmo_places_voxel");
 
     // Ctrl+S through the recipe's own chord scheduling. The save-dispatch probe
     // drives the editor's save with a hand-written event list; this proves the
@@ -215,6 +242,64 @@ inline Recipe buildPlaceBelow(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin)
     builder.expectOccupancy(below, true, "voxel_placed_below");
     builder.expectOccupancy(armTip, true, "arm_tip_survives");
     builder.expectOccupancy(untouched, false, "untouched_stays_empty");
+
+    return builder.finish();
+}
+
+// One anchor, three faces, three neighbours — at two zooms.
+//
+// The anchor stands one tier above the seeded ground with nothing beside it, so
+// all three of its camera-facing faces are exposed and each neighbour has
+// exactly one way in: `clickFace` names the face, and the cell it asserts is
+// the one that face's normal points at. A pick that confused two faces of the
+// anchor would fill one neighbour twice and leave another empty.
+//
+// The two anchors sit far enough apart that neither one's neighbours cover a
+// face of the other.
+inline Recipe buildFacePick(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
+    using IRMath::ivec3;
+    Builder builder("face_pick", sceneSize, sceneOrigin);
+    builder.withReferenceFurniture();
+
+    const int gz = sceneSize.z - 1; // seeded ground plane (local z)
+    const int cx = sceneSize.x / 2;
+    const int cy = sceneSize.y / 2;
+    if (cx < 5 || cy < 2 || gz < 2 || cx + 3 >= sceneSize.x) {
+        builder.recordError(
+            "face_pick needs a scene at least 10 x 4 x 3; got " + std::to_string(sceneSize.x) +
+            " x " + std::to_string(sceneSize.y) + " x " + std::to_string(sceneSize.z)
+        );
+        return builder.finish();
+    }
+
+    struct Pass {
+        const char *label_;
+        float zoom_;
+        ivec3 anchor_;
+    };
+    const Pass passes[] = {
+        {"zoom2", 2.0f, ivec3(cx - 3, cy, gz - 1)},
+        {"zoom4", 4.0f, ivec3(cx + 3, cy, gz - 1)},
+    };
+    for (const Pass &pass : passes) {
+        const std::string label(pass.label_);
+        builder.segment((label + "_anchor").c_str(), pass.zoom_);
+        builder.click(pass.anchor_);
+        builder.expectOccupancy(pass.anchor_, true, label + "_anchor_placed");
+
+        builder.segment((label + "_faces").c_str(), pass.zoom_);
+        const char *const faceNames[3] = {"minus_x", "minus_y", "minus_z"};
+        for (int face = 0; face < 3; ++face) {
+            const ivec3 normal = kCameraFacingNormals[face];
+            builder.clickFace(pass.anchor_, normal);
+            builder.expectOccupancy(
+                pass.anchor_ + normal,
+                true,
+                label + "_" + faceNames[face] + "_neighbour_placed"
+            );
+        }
+        builder.expectPickMatchesRender(label + "_pick_matches_render");
+    }
 
     return builder.finish();
 }
@@ -754,10 +839,9 @@ inline constexpr float kBirdFps = 20.0f;
 // copy, erase the outer wing and step it up and out, (6) `Left` back to frame 0
 // and `Right` forward again, asserting each pose in place, (7) save.
 //
-// Every wing cell grows in `-x` or `-z` from the cell before it: a voxel's `-y`
-// face does not reliably place its `-y` neighbour at the cardinal camera
-// (friction log M-2), so the wing's y depth is two rows authored
-// independently rather than one row widened. The upstroke is built tier by
+// Every wing cell grows in `-x` or `-z` from the cell before it, so the wing's
+// y depth is two rows authored independently rather than one row widened.
+// The upstroke is built tier by
 // tier rather than chain by chain for the same reason the ant interleaves its
 // legs: finishing the y==7 chain first would put its outermost voxel in front
 // of the y==8 chain's next anchor, and the aim would be occluded.
@@ -1152,6 +1236,8 @@ inline Recipe build(Id id, IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
         return detail::buildDragProbe(sceneSize, sceneOrigin);
     case Id::PLACE_BELOW:
         return detail::buildPlaceBelow(sceneSize, sceneOrigin);
+    case Id::FACE_PICK:
+        return detail::buildFacePick(sceneSize, sceneOrigin);
     case Id::ROCK:
         return detail::buildRock(sceneSize, sceneOrigin);
     case Id::MUSHROOM:

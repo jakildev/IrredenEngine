@@ -319,6 +319,26 @@ vec3 mouseWorldPos3DAtIsoDepth(float canvasIsoDepth);
 /// this is exact when nothing occludes it. Scripted GUI-harness input
 /// (auto-authoring sessions, alignment probes) is the primary caller.
 ivec2 worldPos3DToMouseScreenPx(vec3 worldPos);
+/// Sub-lattice form of @ref mouseWorldPos3DAtIsoDepth: the world point at
+/// @p canvasIsoDepth on the view ray through the cursor's exact position, with
+/// no snap to the integer iso lattice. Distinct screen pixels give distinct
+/// rays, so a caller marching it resolves which face of a voxel the cursor is
+/// over. Accounts for where the main canvas displays a rasterized face cell,
+/// so the ray passes through the geometry drawn under the cursor to within a
+/// subdivided texel. Same canvas-frame depth convention and raster-yaw-only
+/// inverse as the lattice form.
+vec3 mouseWorldPos3DAtIsoDepthExact(float canvasIsoDepth);
+/// @ref mouseWorldPos3DAtIsoDepthExact for a cursor on the centre of main-canvas
+/// texel @p texel (a raw index into the main canvas's textures): the world
+/// point at @p canvasIsoDepth on the view ray through what that texel shows.
+/// Lets a probe compare a cast against the canvas's own readback texel by
+/// texel, with no cursor involved.
+vec3 mainCanvasTexelWorldPos3DAtIsoDepth(ivec2 texel, float canvasIsoDepth);
+/// Inverse of @ref mouseWorldPos3DAtIsoDepthExact: the window pixel
+/// @p worldPos is displayed at, rounded to the nearest pixel. Aim it at a
+/// point on a visible surface (a face centre), never at a voxel centre — a
+/// voxel centre projects onto the vertex its three camera-facing faces share.
+ivec2 worldPos3DToMouseScreenPxExact(vec3 worldPos);
 /// Entity id of the voxel under the mouse cursor, read from the entity-id GPU texture.
 /// @note This reads a persistent-mapped GPU buffer — values become valid only after the
 ///       GPU pipeline has completed the previous frame's @c FRAMEBUFFER_TO_SCREEN pass.

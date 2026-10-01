@@ -113,6 +113,7 @@
 
 // Authoring sessions — recipes of editor gestures compiled into
 // scripted input and replayed against the live UI by the GUI-test harness.
+#include "editor_picking.hpp"
 #include "sessions.hpp"
 
 // Scene save/load
@@ -822,7 +823,7 @@ void onSessionAssertFrame(int shotIndex, bool isCaptureFrame) {
     Session::Segment &segment = g_session.segments_[shotIndex];
     for (const Session::AimFixup &aim : segment.aims_) {
         segment.events_[static_cast<std::size_t>(aim.eventIndex_)].screenPx_ =
-            IRRender::worldPos3DToMouseScreenPx(aim.worldPoint_);
+            IRRender::worldPos3DToMouseScreenPxExact(aim.worldPoint_);
     }
     // Widget aims resolve through the GUI-canvas mapping instead — the canvas is
     // sized from the live framebuffer, so a swatch's screen pixel is no more
@@ -1630,6 +1631,7 @@ void seedDemoSkeleton() {
     // The skinned bar: local x ∈ [0..30] spans the joints at x = 10/20/30.
     // Painted per-segment colors make each bone's span legible while posing.
     IREntity::setComponent(rigRoot, C_VoxelSetNew{ivec3(31, 3, 3), Color{210, 160, 110, 255}});
+    IREntity::setComponent(rigRoot, C_EditorReference{});
     auto &voxelSet = IREntity::getComponent<C_VoxelSetNew>(rigRoot);
     const auto &skeleton = IREntity::getComponent<C_Skeleton>(rigRoot);
     constexpr Color kBoneSegmentColors[] = {
@@ -1657,6 +1659,89 @@ void seedDemoSkeleton() {
 } // namespace
 
 namespace Session {
+
+// How far, in subdivided depth units, a picked face may sit from the drawn one
+// and still be the same voxel's. The next voxel along any axis is a whole
+// subdivision (>= 1) away.
+constexpr float kPickDepthAgreement = 0.75f;
+
+// The whole-frame form of the picking contract: every main-canvas texel that
+// shows the editable set must pick the face it shows, at the depth it shows it.
+// The canvas's own distance readback is the oracle — it records which face slot
+// won each texel — so this fails on a pick that is self-consistent with the
+// session's aims yet offset from what is actually drawn. Cardinal camera only:
+// a slot names its axis directly there.
+bool evaluatePickMatchesRender(const void *, std::string &actual) {
+    if (g_sceneVoxelSetEntity == IREntity::kNullEntity) {
+        actual = "no-editable-set";
+        return false;
+    }
+    const auto &canvas =
+        IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity());
+    std::vector<IRMath::uvec2> ids;
+    std::vector<int> distances;
+    canvas.readEntityIdCarriers(ids);
+    canvas.readDistances(distances);
+
+    const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sceneVoxelSetEntity);
+    const IRMath::vec3 origin = set.globalPositions_[0].pos_;
+    const float subdivisions = static_cast<float>(IRRender::getVoxelRenderEffectiveSubdivisions());
+    // A drawn face cell is stamped with the depth of the corner-anchored
+    // micro-voxel it bounds, which sits this far behind the point the ray
+    // enters the face at, in subdivided depth units.
+    const float drawnDepthLead = 1.5f * subdivisions - 1.0f;
+    int shown = 0;
+    int agree = 0;
+    float worstDepthError = 0.0f;
+    for (int y = 0; y < canvas.size_.y; ++y) {
+        for (int x = 0; x < canvas.size_.x; ++x) {
+            const std::size_t texel = static_cast<std::size_t>(y) * canvas.size_.x + x;
+            if (static_cast<IREntity::EntityId>(IRRender::decodeCarrierEntityId(ids[texel])) !=
+                g_sceneVoxelSetEntity) {
+                continue;
+            }
+            ++shown;
+            const IRRender::DecodedCompositeDepth drawn =
+                IRRender::decodeCompositeDepth(static_cast<float>(distances[texel]));
+            const std::optional<IRPrefab::Picking::GridRayHit> hit = IRPrefab::Picking::castGridRay(
+                IRRender::mainCanvasTexelWorldPos3DAtIsoDepth(IRMath::ivec2(x, y), 0.0f) - origin,
+                kSessionRayDirection,
+                set.size_,
+                [&set](IRMath::ivec3 local) {
+                    return set.voxels_[IRMath::index3DtoIndex1D(local, set.size_)].color_.alpha_ !=
+                           0;
+                }
+            );
+            if (!hit || hit->faceNormal_[drawn.face_ % 3] == 0)
+                continue;
+            const float depthError = IRMath::abs(
+                hit->rayT_ * 3.0f * subdivisions + drawnDepthLead - static_cast<float>(drawn.iso_)
+            );
+            worstDepthError = IRMath::max(worstDepthError, depthError);
+            if (depthError < kPickDepthAgreement)
+                ++agree;
+        }
+    }
+    actual = "texels=" + std::to_string(shown) + " agree=" + std::to_string(agree) +
+             " worstDepthError=" + std::to_string(worstDepthError);
+    return shown > 0 && agree == shown;
+}
+
+// Reads one recipe pick expectation through the editor's own edit pick, so a
+// parked cursor is judged by the ray a click from that spot would cast.
+bool evaluatePickCheck(const void *context, std::string &actual) {
+    const PickCheck &check = *static_cast<const PickCheck *>(context);
+    const std::optional<IRPrefab::Picking::RayHit> hit = pickEditable();
+    if (!hit) {
+        actual = "no-hit";
+        return false;
+    }
+    actual = "voxel=(" + std::to_string(hit->voxelPos_.x) + "," + std::to_string(hit->voxelPos_.y) +
+             "," + std::to_string(hit->voxelPos_.z) + ") normal=(" +
+             std::to_string(hit->faceNormal_.x) + "," + std::to_string(hit->faceNormal_.y) + "," +
+             std::to_string(hit->faceNormal_.z) + ")";
+    return hit->voxelPos_ == check.worldVoxel_;
+}
 
 // Reads one recipe occupancy expectation against the live editable set at a
 // segment's capture frame. This is the check that makes a
@@ -1783,9 +1868,17 @@ int main(int argc, char **argv) {
     // --auto-screenshot as well (that is what wires the harness at all).
     IREngine::args().enumValue(
         "--gui-session",
-        "replay an authoring session's scripted gestures: none | drag_probe | place_below | rock | "
-        "mushroom | ant | bird | tree",
-        {"none", "drag_probe", "place_below", "rock", "mushroom", "ant", "bird", "tree"},
+        "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
+        "face_pick | rock | mushroom | ant | bird | tree",
+        {"none",
+         "drag_probe",
+         "place_below",
+         "face_pick",
+         "rock",
+         "mushroom",
+         "ant",
+         "bird",
+         "tree"},
         "none"
     );
     IREngine::init(argc, argv);
@@ -2189,6 +2282,10 @@ void initSystems() {
                 }
             }
 
+            // A gizmo handle under the cursor owns the click, the same way a
+            // widget does: GIZMO_DRAG starts its drag on this press.
+            overWidget = overWidget || IRVoxelEditor::cursorOnGizmoHandle();
+
             const bool inBoneMode = IRVoxelEditor::g_bonePaint.active_;
             const std::uint8_t placeBoneId =
                 inBoneMode ? static_cast<std::uint8_t>(IRVoxelEditor::g_bonePaint.activeBoneIdx_)
@@ -2201,7 +2298,7 @@ void initSystems() {
             // Right-click: single-voxel erase (bone_id_ unaffected — erase only).
             if (!overWidget &&
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonRight, IRInput::PRESSED)) {
-                const auto hit = IRPrefab::Picking::castVoxelRay();
+                const auto hit = IRVoxelEditor::pickEditable();
                 if (hit && hit->faceNormal_ != ivec3(0)) {
                     auto &set = IREntity::getComponent<C_VoxelSetNew>(hit->entity_);
                     auto &gpos = IREntity::getComponent<C_WorldTransform>(hit->entity_);
@@ -2222,7 +2319,7 @@ void initSystems() {
             const bool leftPressedNow =
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::PRESSED);
             if (!overWidget && ctrlDown && leftPressedNow) {
-                const auto hit = IRPrefab::Picking::castVoxelRay();
+                const auto hit = IRVoxelEditor::pickEditable();
                 if (hit && hit->faceNormal_ != ivec3(0)) {
                     auto &set = IREntity::getComponent<C_VoxelSetNew>(hit->entity_);
                     auto &gpos = IREntity::getComponent<C_WorldTransform>(hit->entity_);
@@ -2254,7 +2351,7 @@ void initSystems() {
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::RELEASED);
 
             if (noCtrl && !overWidget && leftPressedNow) {
-                const auto hit = IRPrefab::Picking::castVoxelRay();
+                const auto hit = IRVoxelEditor::pickEditable();
                 if (hit && hit->faceNormal_ != ivec3(0)) {
                     // Erase drags target the hit voxels themselves; place drags
                     // target the cells adjacent to the hit face. Latch Alt here
@@ -2272,7 +2369,7 @@ void initSystems() {
 
             if (noCtrl && IRVoxelEditor::g_fillTool.dragging_ &&
                 IRInput::checkKeyMouseButton(IRInput::kMouseButtonLeft, IRInput::HELD)) {
-                const auto hit = IRPrefab::Picking::castVoxelRay();
+                const auto hit = IRVoxelEditor::pickEditable();
                 if (hit && hit->faceNormal_ != ivec3(0)) {
                     const ivec3 endPos = IRVoxelEditor::editTargetCell(
                         *hit,
@@ -3716,16 +3813,14 @@ void initEntities() {
     g_editor.perFrameUndoStacks_.resize(IRVoxelEditor::g_anim.frameCount());
     g_editor.perFrameUndoBytes_.resize(IRVoxelEditor::g_anim.frameCount(), 0);
 
-    // An authoring session needs a stage with nothing on it but
-    // the editable set: the picking walk tests SDF shapes before voxel sets and
-    // reports no face normal for a shape hit, so any reference shape between the
-    // camera and a target cell silently swallows the click (the place/erase
-    // driver drops hits with a zero face normal). The demo furniture below —
-    // floor slab, axis bars, centre cube, perimeter gizmos, starter rig,
-    // satellite sets — is exactly that kind of occluder, so sessions build
-    // without it. Everything else about the scene, including the seeded ground
-    // plane the first click lands on, is unchanged.
-    const bool sessionScene = IRVoxelEditor::g_sessionId != IRVoxelEditor::Session::Id::NONE;
+    // An entity-authoring session builds on a bare stage — nothing but the
+    // editable set — so its captures show the entity alone and no gizmo handle
+    // is drawn over a cell the recipe clicks. The edit pick passes through the
+    // reference furniture below (floor slab, axis bars, centre cube, perimeter
+    // gizmos, starter rig, satellite sets) either way; a session that proves
+    // exactly that asks for it with referenceFurniture_.
+    const bool sessionScene = IRVoxelEditor::g_sessionId != IRVoxelEditor::Session::Id::NONE &&
+                              !IRVoxelEditor::g_session.referenceFurniture_;
 
     constexpr float kFloorZ = 2.0f;
 
@@ -3826,18 +3921,19 @@ void initEntities() {
         set.fillPlane(2, set.size_.z - 1, Color{120, 120, 130, 255});
     }
 
-    // Smaller satellite voxel sets — exercise multi-`C_VoxelSetNew`
-    // picking and give the user secondary targets to click
-    // on. Their colors stay fixed so it's obvious which click landed
-    // on the editable set versus a satellite.
+    // Smaller satellite voxel sets — reference furniture a click passes
+    // through, with fixed colors so they read as distinct from the editable
+    // set.
     if (!sessionScene) {
         IREntity::createEntity(
             C_LocalTransform{vec3(-16.0f, 0.0f, -6.0f)},
-            C_VoxelSetNew{ivec3(4, 4, 4), Color{120, 180, 240, 255}}
+            C_VoxelSetNew{ivec3(4, 4, 4), Color{120, 180, 240, 255}},
+            C_EditorReference{}
         );
         IREntity::createEntity(
             C_LocalTransform{vec3(16.0f, 0.0f, -6.0f)},
-            C_VoxelSetNew{ivec3(4, 4, 4), Color{240, 180, 120, 255}}
+            C_VoxelSetNew{ivec3(4, 4, 4), Color{240, 180, 120, 255}},
+            C_EditorReference{}
         );
     }
 
