@@ -417,6 +417,10 @@ void setVoxelRenderSubdivisions(int subdivisions);
 int getVoxelRenderSubdivisions();
 /// The actual subdivisions value sent to the shader, accounting for mode and zoom.
 int getVoxelRenderEffectiveSubdivisions();
+/// The subdivisions a canvas viewed at @p zoom rasters at under the current
+/// mode and base count; the world camera's zoom gives
+/// @ref getVoxelRenderEffectiveSubdivisions.
+int getVoxelRenderEffectiveSubdivisionsForZoom(vec2 zoom);
 void zoomMainBackgroundPatternIn();
 void zoomMainBackgroundPatternOut();
 /// @}

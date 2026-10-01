@@ -55,6 +55,7 @@ Rationale: [`docs/design/prefab-render-surface.md`](../../../../docs/design/pref
 | `TEXT_TO_TRIXEL` → `LAYOUT_COMPUTE` → `WIDGET_RENDER_*` | RENDER, before `TRIXEL_TO_FRAMEBUFFER`; `WIDGET_RENDER_DROPDOWN` last among the renderers |
 | `HelpOverlay::systems()`, `SettingsMenu::renderSystems()` / `inputSystems()` | RENDER after `TEXT_TO_TRIXEL`, before the composite / INPUT after `INPUT_KEY_MOUSE` |
 | `SPRITE_TO_SCREEN` | after the main canvas's `FRAMEBUFFER_TO_SCREEN` |
+| `SYNC_VIEWPORT_SUBJECTS` / `VIEWPORT_TO_FRAMEBUFFER` | RENDER before `VOXEL_TO_TRIXEL_STAGE_1` / after `TRIXEL_TO_FRAMEBUFFER`, before `FRAMEBUFFER_TO_SCREEN` |
 
 `VOXEL_TO_TRIXEL_STAGE_1` runs compact + stage 1 + stage 2 per canvas in one
 tick; never split them. `TEXT_TO_TRIXEL` clears the GUI canvas in `beginTick`
@@ -75,6 +76,8 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   with no foreign `getComponent`. Per-voxel tiers: `C_VoxelSetNew::changeVoxelPriority`;
   id reads go through `IRRender::decodeCarrierEntityId`. A per-trixel override
   arbitrates only across canvases — use separate detached units.
+- A canvas carrying `C_CanvasCamera` is viewed through that camera, not the world's, by
+  every `*_TO_TRIXEL` stage; `IRPrefab::Viewport::` owns it ([design](../../../../docs/design/secondary-viewport.md)).
 - `C_ActiveLodLevel` is the singleton `LOD_UPDATE` writes. A `C_ShapeDescriptor`
   (`SHAPES_TO_TRIXEL`) or `C_VoxelSetNew` (`GATE_VOXEL_SETS_BY_LOD`) draws only
   inside its `[lodMax_ .. lodMin_]` band; disjoint co-located bands swap. A new
@@ -198,5 +201,4 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
 | `IRPrefab::JointTransform::setSystem(SystemId)` | none — `system()` resolves via `IRSystem::findSystem(UPDATE_JOINT_MATRICES)` |
 | `IRPrefab::VoxelTransform::setAllocatorSystem(SystemId)` | none — `allocator()` resolves via `IRSystem::findSystem(UPDATE_VOXEL_POSITIONS_GPU)` |
 
-No-ops kept for out-of-tree creations (engine API removal rule); the pattern
-is banned by `.claude/rules/cpp-ecs.md` §"System-owned invariants".
+No-ops kept for out-of-tree creations (engine API removal rule); the pattern is banned by `.claude/rules/cpp-ecs.md` §"System-owned invariants".

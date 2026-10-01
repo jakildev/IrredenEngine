@@ -21,6 +21,7 @@
 
 #include <irreden/render/camera.hpp>
 #include <irreden/render/voxel_dispatch_grid.hpp>
+#include <irreden/render/components/component_canvas_camera.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
@@ -33,11 +34,21 @@ using namespace IRComponents;
 using namespace IRMath;
 using namespace IRRender;
 
+// The iterating canvas's own camera, or null when it is viewed through the
+// world camera. One lookup per canvas per stage — the canvas-iteration pattern.
+inline const C_CanvasCamera *canvasCameraOrNull(IREntity::EntityId canvas) {
+    auto camera = IREntity::getComponentOptional<C_CanvasCamera>(canvas);
+    return camera.has_value() ? camera.value() : nullptr;
+}
+
+// @p canvasCamera is the canvas's own camera (`canvasCameraOrNull`); null
+// reads the world camera.
 inline void buildVoxelFrameData(
     FrameDataVoxelToCanvas &frameData,
     const C_TriangleCanvasTextures &canvas,
     int liveVoxelCount,
-    const C_CanvasLocalRotation &canvasRotation
+    const C_CanvasLocalRotation &canvasRotation,
+    const C_CanvasCamera *canvasCamera = nullptr
 ) {
     // The single-canvas raster always uploads perAxisRoute_ == 0 (byte-
     // identical to master). The smooth-Z-yaw per-axis pass flips it to 1/2/3
@@ -45,7 +56,10 @@ inline void buildVoxelFrameData(
     frameData.perAxisRoute_ = 0;
 
     const auto renderMode = IRRender::getSubdivisionMode();
-    const int effectiveSubdivisions = IRRender::getVoxelRenderEffectiveSubdivisions();
+    const int effectiveSubdivisions =
+        canvasCamera != nullptr
+            ? IRRender::getVoxelRenderEffectiveSubdivisionsForZoom(canvasCamera->zoom_)
+            : IRRender::getVoxelRenderEffectiveSubdivisions();
     // Clamp to 1: voxelDispatchGridForCount divides by the count (and asserts
     // count > 0 at entry), and the lighting passes author frame data
     // for canvases whose pool is EMPTY (authorIteratingCanvasVoxelFrame /
@@ -90,11 +104,14 @@ inline void buildVoxelFrameData(
         // the canvas edge under any integer camera offset). The world canvas
         // world canvas keeps the camera term. Cull sites in
         // SYSTEM_VOXEL_TO_TRIXEL_STAGE_1 must likewise use model-space bounds
-        // so raster and cull coordinates agree.
-        frameData.cameraTrixelOffset_ = vec2(0.0f);
+        // so raster and cull coordinates agree. A canvas with its own camera
+        // pans inside that model space instead.
+        frameData.cameraTrixelOffset_ =
+            canvasCamera != nullptr ? canvasCamera->panIso_ : vec2(0.0f);
     }
     if (detachedCanvas && canvasRotation.reVoxelize_) {
-        const vec4 cameraRotation = IRPrefab::Camera::getRotationQuat();
+        const vec4 cameraRotation =
+            canvasCamera != nullptr ? canvasCamera->rotation_ : IRPrefab::Camera::getRotationQuat();
         // Re-voxelize detached canvas: the entity's full rotation is
         // baked into the private pool's CELL positions by
         // SYSTEM_REBUILD_DETACHED_VOXELS, so this canvas rasterizes its pool with
@@ -230,7 +247,8 @@ inline void authorIteratingCanvasVoxelFrame(
         scratch,
         canvasTextures,
         (*pool.value()).getLiveVoxelCount(),
-        *rotation.value()
+        *rotation.value(),
+        canvasCameraOrNull(entity)
     );
     if (rotation.value()->isDetached() && rotation.value()->reVoxelize_) {
         // Decoding must use the density actually stored, including the footprint cap.

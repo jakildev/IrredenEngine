@@ -132,6 +132,9 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     Buffer *voxelActiveMaskBuf_ = nullptr;
     Texture2D *paletteLUT_ = nullptr;
     FrameDataLightingToTrixel frameData_{};
+    // World camera view-to-world rotation, snapshotted in beginTick; a canvas
+    // with its own camera overrides it for its dispatch.
+    vec4 worldViewToWorld_{0.0f, 0.0f, 0.0f, 1.0f};
 
     // Smooth camera Z-yaw: main canvas + per-axis voxel canvases,
     // re-resolved every frame in beginTick. Null unless allocated (rotating).
@@ -179,6 +182,9 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                                       canvasTextures.shapeGeometry_.samplesValid();
         (useShapeReceiver ? shapeProgram_ : program_)->use();
         frameData_.normalOptions_.x = entity == perAxisCanvasEntity_ ? 1 : 0;
+        const C_CanvasCamera *canvasCamera = canvasCameraOrNull(entity);
+        frameData_.detachedViewToWorld_ =
+            canvasCamera != nullptr ? canvasCamera->rotation_ : worldViewToWorld_;
         frameDataBuf_->subData(0, sizeof(FrameDataLightingToTrixel), &frameData_);
 
         // Author THIS canvas's voxel frame data so the Lambert + sky terms read
@@ -512,7 +518,8 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         frameData_.skyIntensity_ = IRRender::getSkyIntensity();
         const vec3 sc = IRRender::getSkyColor();
         frameData_.skyColor_ = vec4(sc, 0.0f);
-        frameData_.detachedViewToWorld_ = IRPrefab::Camera::getRotationQuat();
+        worldViewToWorld_ = IRPrefab::Camera::getRotationQuat();
+        frameData_.detachedViewToWorld_ = worldViewToWorld_;
 
         // Resolve the main canvas + its per-axis voxel canvases, plus
         // its voxel-frame inputs and sun-shadow / light-volume placeholders for

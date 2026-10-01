@@ -5,6 +5,11 @@ Capture IRCanvasStress with --only shadowreceiver --no-spin --no-auto-rotate
 --no-ao --no-shadows --auto-screenshot 6 --sweep-yaw 0 4.71238898 4.
 Pass the four full-frame PNGs in capture order. The oracle is the world sun
 and the probe's albedo, independent of reference images and framebuffer scale.
+
+With --region x,y,w,h, pass one PNG instead: the probe is the only content of
+that region, viewed at --quarter-turns quarter turns of yaw. A secondary
+viewport's portrait is measured this way (IRShapeDebug --viewport-portrait
+--no-ao --no-shadows --auto-screenshot 10, region = the portrait rectangle).
 """
 
 import argparse
@@ -32,9 +37,20 @@ def expected_color(normal: tuple[int, int, int], cardinal: int) -> tuple[int, ..
     return tuple(round(v * factor) for v in ALBEDO)
 
 
-def measure(path: Path, cardinal: int) -> bool:
+def parse_region(text: str) -> tuple[int, int, int, int]:
+    parts = [int(part) for part in text.split(",")]
+    if len(parts) != 4 or parts[2] <= 0 or parts[3] <= 0:
+        raise argparse.ArgumentTypeError("region must be x,y,w,h with a positive size")
+    return parts[0], parts[1], parts[2], parts[3]
+
+
+def measure(path: Path, cardinal: int,
+            region: tuple[int, int, int, int] | None = None) -> bool:
     with Image.open(path) as source:
         image = source.convert("RGB")
+    if region is not None:
+        x, y, width, height = region
+        image = image.crop((x, y, x + width, y + height))
     bounds = image.getbbox()
     if bounds is None:
         print(f"{path.name}: FAIL (empty frame)")
@@ -62,9 +78,20 @@ def measure(path: Path, cardinal: int) -> bool:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("images", nargs=4, type=Path, metavar="PNG")
+    parser.add_argument("images", nargs="+", type=Path, metavar="PNG")
+    parser.add_argument("--region", type=parse_region, default=None,
+                        help="x,y,w,h holding only the probe; takes one PNG")
+    parser.add_argument("--quarter-turns", type=int, default=0, choices=range(4),
+                        help="yaw of the --region view, in quarter turns")
     args = parser.parse_args()
-    results = [measure(path, cardinal) for cardinal, path in enumerate(args.images)]
+    if args.region is not None:
+        if len(args.images) != 1:
+            parser.error("--region takes exactly one PNG")
+        results = [measure(args.images[0], args.quarter_turns, args.region)]
+    else:
+        if len(args.images) != 4:
+            parser.error("pass four PNGs (yaw 0/90/180/270), or one with --region")
+        results = [measure(path, cardinal) for cardinal, path in enumerate(args.images)]
     raise SystemExit(0 if all(results) else 1)
 
 

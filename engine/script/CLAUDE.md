@@ -168,10 +168,8 @@ keys, and stays separate from `bindLuaDrivenEcs()`.
 - `setCell`, `getCell`, and `revealRadius` edit/query the grid; `clear()` clears
   only that grid. States are `UNEXPLORED`, `EXPLORED`, and `VISIBLE`.
 
-The tested examples are [`fog_binding_selftest.lua`](../../creations/demos/fog_demo/scripts/fog_binding_selftest.lua)
-and its [cap/governance companion](../../creations/demos/fog_demo/scripts/fog_binding_cap_selftest.lua).
-These are setup/EVAL APIs, not tick intrinsics. `setVisionLineOfSight(slot, eye[,
-softness])` gates a slot the vision calls returned; it needs `FOG_LOS_BUILD`.
+The tested examples are [`fog_binding_selftest.lua`](../../creations/demos/fog_demo/scripts/fog_binding_selftest.lua) and its [cap/governance companion](../../creations/demos/fog_demo/scripts/fog_binding_cap_selftest.lua).
+These are setup/EVAL APIs, not tick intrinsics. `setVisionLineOfSight(slot, eye[, softness])` gates a slot the vision calls returned; it needs `FOG_LOS_BUILD`.
 
 - **`IRModifier`:** `add*` writes `C_Modifiers`; resolved values need
   `registerResolverPipeline()` in UPDATE. Wrong types no-op; cache ids hot.
@@ -183,6 +181,8 @@ softness])` gates a slot the vision calls returned; it needs `FOG_LOS_BUILD`.
   `TEXT_TO_TRIXEL` / before `DEBUG_OVERLAY` respectively.
 - **Widgets:** Lua `onClick` raises unless `WIDGET_LUA_DISPATCH` follows
   `WIDGET_INPUT` in INPUT.
+- **`IRRender.createViewport` family:** `LuaScript::bindLuaViewport()`, opt-in like `IRFog`;
+  every setter takes the id `createViewport` returned ([design](../../docs/design/secondary-viewport.md)).
 
 ## Commands and input (`IRCommand.*`, `IRInput.*`)
 

@@ -59,3 +59,21 @@ IRSystem.appendSystem(IRTime.UPDATE, pollSys)
 local gw, gh = IRRender.getGuiCanvasSize()
 local sx, sy = IRGui.glyphStep()
 print("LUA_WIDGETS gui canvas=" .. gw .. "x" .. gh .. " glyphStep=" .. sx .. "x" .. sy)
+
+-- Portrait: a secondary viewport pinned inside its own panel, viewing one world
+-- cube through its own camera at zoom 16 while the world camera stays at 1.
+-- The viewport is created, moved, resized, re-zoomed and retargeted from Lua.
+local firstSubject = IRTest.spawnCube(-14, 2, 0, 3, 230, 90, 60)
+local secondSubject = IRTest.spawnCube(2, -14, 0, 3, 60, 140, 230)
+IRGui.makePanel(40, 340, 200, 300, "PORTRAIT")
+local portrait = IRRender.createViewport({ x = 50, y = 370, width = 180, height = 260, zoom = 16 })
+IRRender.setViewportSubject(portrait, firstSubject)
+IRTest.setPortrait(portrait, firstSubject, secondSubject)
+
+IRGui.makeButton(260, 500, 240, 100, "RETARGET", function(id)
+    local x, y, width, height, zoom = 60, 380, 160, 240, 8
+    IRRender.setViewportRect(portrait, x, y, width, height)
+    IRRender.setViewportCamera(portrait, zoom, 0)
+    IRRender.setViewportSubject(portrait, secondSubject)
+    IRTest.onPortraitRetargeted(x, y, width, height, zoom)
+end)

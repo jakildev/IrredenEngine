@@ -62,6 +62,7 @@
 #include <irreden/render/components/component_camera.hpp>
 #include <irreden/render/components/component_camera_position_2d_iso.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
+#include <irreden/render/components/component_canvas_camera.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
@@ -105,6 +106,8 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_viewport.hpp>
+#include <irreden/render/components/component_viewport_camera.hpp>
+#include <irreden/render/components/component_viewport_subject.hpp>
 #include <irreden/render/components/component_voxel_selection.hpp>
 #include <irreden/render/components/component_widget.hpp>
 #include <irreden/render/components/component_widget_theme.hpp>
@@ -197,6 +200,12 @@ IR_SAVE_OPT_OUT(IRComponents::C_ResolvedFields)
 // visibility state, which is intentionally transient on C_VoxelSetNew.
 IR_SAVE_OPT_OUT(IRComponents::C_FogRevealed)
 IR_SAVE_OPT_OUT(IRComponents::C_FogRevealSettings)
+// A secondary viewport is a GPU canvas plus the camera viewing it, stood up by
+// creation setup; the canvas camera is re-derived from it every frame, and a
+// subject tag names a viewport id no loaded world carries.
+IR_SAVE_OPT_OUT(IRComponents::C_CanvasCamera)
+IR_SAVE_OPT_OUT(IRComponents::C_ViewportCamera)
+IR_SAVE_OPT_OUT(IRComponents::C_ViewportSubject)
 
 // Class C — transient per-frame events / device input
 IR_SAVE_OPT_OUT(IRComponents::C_ContactEvent)
@@ -443,6 +452,9 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_ResolvedFields,
     IRComponents::C_FogRevealed,
     IRComponents::C_FogRevealSettings,
+    IRComponents::C_CanvasCamera,
+    IRComponents::C_ViewportCamera,
+    IRComponents::C_ViewportSubject,
     IRComponents::C_ContactEvent,
     IRComponents::C_OverlapContactBatch,
     IRComponents::C_CursorPosition,
