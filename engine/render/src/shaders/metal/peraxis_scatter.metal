@@ -194,12 +194,13 @@ vertex VertexOut v_peraxis_scatter(
     // perAxisBase instead registers the scatter a constant ~1 iso px (per axis)
     // off the cardinal frames at non-cardinal yaw. Matches the GLSL twin.
     const int2 reprojBase = frameData.perAxisBase + int2(1);
-    const float2 cornerIso = float2(reprojBase) +
+    const float2 centeredCornerIso = (float2(reprojBase) - 0.5f * float2(canvasSize)) +
         pos3DtoPos2DIsoYawedCellAnchor(worldCorner, frameData.visualYaw);
 
+    // Center before projection to preserve the subpixel edge coordinates.
     float2 quadPos;
-    quadPos.x = cornerIso.x / float(canvasSize.x) - 0.5f;
-    quadPos.y = 0.5f - cornerIso.y / float(canvasSize.y);
+    quadPos.x = centeredCornerIso.x / float(canvasSize.x);
+    quadPos.y = -centeredCornerIso.y / float(canvasSize.y);
     float4 clipCorner = frameData.mpMatrix * float4(quadPos, 1.0, 1.0);
     clipCorner.y = -clipCorner.y;
     out.position = clipCorner;

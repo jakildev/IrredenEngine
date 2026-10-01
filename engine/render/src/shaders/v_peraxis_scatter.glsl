@@ -231,15 +231,15 @@ void main() {
     // registers the scatter a constant ~1 iso px (per axis, zoom-scaled) off the
     // cardinal frames at every non-cardinal yaw.
     const ivec2 reprojBase = perAxisBase + ivec2(1);
-    const vec2 cornerIso =
-        vec2(reprojBase) + pos3DtoPos2DIsoYawedCellAnchor(worldCorner, visualYaw);
+    const vec2 centeredCornerIso =
+        (vec2(reprojBase) - 0.5 * vec2(canvasSize)) +
+        pos3DtoPos2DIsoYawedCellAnchor(worldCorner, visualYaw);
 
-    // Inverse of the gather's aPos->canvasPixel map (v_trixel_to_framebuffer):
-    //   canvasPixel = (aPos.x + 0.5, -aPos.y + 0.5) * canvasSize
-    // so the scatter lands at the same screen scale/offset as the fast path.
+    // Center before projection: adding a large canvas origin first loses the
+    // fractional bits that decide finite-face raster coverage at shared edges.
     vec2 quadPos;
-    quadPos.x = cornerIso.x / float(canvasSize.x) - 0.5;
-    quadPos.y = 0.5 - cornerIso.y / float(canvasSize.y);
+    quadPos.x = centeredCornerIso.x / float(canvasSize.x);
+    quadPos.y = -centeredCornerIso.y / float(canvasSize.y);
     gl_Position = mpMatrix * vec4(quadPos, 1.0, 1.0);
 
     vColor = color;

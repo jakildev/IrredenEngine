@@ -1,0 +1,1201 @@
+[
+  {
+    "phase": "before",
+    "index": 0,
+    "yaw_radians": 0.37999988,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 1,
+    "yaw_radians": 0.38078117,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 2,
+    "yaw_radians": 0.38156247,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 3,
+    "yaw_radians": 0.38234377,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 4,
+    "yaw_radians": 0.38312507,
+    "game_mismatches": 3,
+    "output_mismatches": 12,
+    "examples": [
+      [
+        600,
+        284,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ],
+      [
+        691,
+        336,
+        [
+          0,
+          128,
+          128
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ],
+      [
+        691,
+        344,
+        [
+          128,
+          128,
+          0
+        ],
+        [
+          0,
+          128,
+          128
+        ]
+      ]
+    ]
+  },
+  {
+    "phase": "before",
+    "index": 5,
+    "yaw_radians": 0.38390613,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 6,
+    "yaw_radians": 0.38468742,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 7,
+    "yaw_radians": 0.38546872,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 8,
+    "yaw_radians": 0.38625002,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 9,
+    "yaw_radians": 0.38703132,
+    "game_mismatches": 2,
+    "output_mismatches": 8,
+    "examples": [
+      [
+        622,
+        305,
+        [
+          128,
+          128,
+          0
+        ],
+        [
+          0,
+          128,
+          128
+        ]
+      ],
+      [
+        622,
+        313,
+        [
+          0,
+          128,
+          128
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ]
+    ]
+  },
+  {
+    "phase": "before",
+    "index": 10,
+    "yaw_radians": 0.38781238,
+    "game_mismatches": 2,
+    "output_mismatches": 8,
+    "examples": [
+      [
+        605,
+        318,
+        [
+          128,
+          0,
+          128
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ],
+      [
+        605,
+        454,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ]
+    ]
+  },
+  {
+    "phase": "before",
+    "index": 11,
+    "yaw_radians": 0.38859367,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 12,
+    "yaw_radians": 0.38937497,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 13,
+    "yaw_radians": 0.39015627,
+    "game_mismatches": 1,
+    "output_mismatches": 4,
+    "examples": [
+      [
+        556,
+        316,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ]
+    ]
+  },
+  {
+    "phase": "before",
+    "index": 14,
+    "yaw_radians": 0.39093757,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 15,
+    "yaw_radians": 0.39171863,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 16,
+    "yaw_radians": 0.39249992,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 17,
+    "yaw_radians": 0.39328122,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 18,
+    "yaw_radians": 0.39406252,
+    "game_mismatches": 1,
+    "output_mismatches": 4,
+    "examples": [
+      [
+        699,
+        296,
+        [
+          128,
+          128,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ]
+    ]
+  },
+  {
+    "phase": "before",
+    "index": 19,
+    "yaw_radians": 0.39484382,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 20,
+    "yaw_radians": 0.39562488,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 21,
+    "yaw_radians": 0.39640617,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 22,
+    "yaw_radians": 0.39718747,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 23,
+    "yaw_radians": 0.39796877,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 24,
+    "yaw_radians": 0.39875007,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 25,
+    "yaw_radians": 0.39953113,
+    "game_mismatches": 2,
+    "output_mismatches": 8,
+    "examples": [
+      [
+        668,
+        318,
+        [
+          128,
+          128,
+          0
+        ],
+        [
+          0,
+          128,
+          128
+        ]
+      ],
+      [
+        668,
+        326,
+        [
+          0,
+          128,
+          128
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ]
+    ]
+  },
+  {
+    "phase": "before",
+    "index": 26,
+    "yaw_radians": 0.40031242,
+    "game_mismatches": 24,
+    "output_mismatches": 96,
+    "examples": [
+      [
+        527,
+        359,
+        [
+          128,
+          128,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        360,
+        [
+          128,
+          128,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        361,
+        [
+          128,
+          128,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        362,
+        [
+          128,
+          128,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        363,
+        [
+          128,
+          128,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        364,
+        [
+          128,
+          128,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        365,
+        [
+          128,
+          128,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        366,
+        [
+          128,
+          128,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        367,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        368,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        369,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        370,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        371,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        372,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        373,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        374,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        375,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        376,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        377,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        378,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        379,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        380,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        381,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ],
+      [
+        527,
+        382,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ]
+    ]
+  },
+  {
+    "phase": "before",
+    "index": 27,
+    "yaw_radians": 0.40109372,
+    "game_mismatches": 2,
+    "output_mismatches": 8,
+    "examples": [
+      [
+        681,
+        325,
+        [
+          128,
+          128,
+          0
+        ],
+        [
+          0,
+          128,
+          128
+        ]
+      ],
+      [
+        681,
+        333,
+        [
+          0,
+          128,
+          128
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ]
+    ]
+  },
+  {
+    "phase": "before",
+    "index": 28,
+    "yaw_radians": 0.40187502,
+    "game_mismatches": 4,
+    "output_mismatches": 16,
+    "examples": [
+      [
+        693,
+        287,
+        [
+          128,
+          128,
+          0
+        ],
+        [
+          0,
+          128,
+          128
+        ]
+      ],
+      [
+        693,
+        295,
+        [
+          0,
+          128,
+          128
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ],
+      [
+        708,
+        384,
+        [
+          0,
+          128,
+          128
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ],
+      [
+        708,
+        392,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          128,
+          128
+        ]
+      ]
+    ]
+  },
+  {
+    "phase": "before",
+    "index": 29,
+    "yaw_radians": 0.40265632,
+    "game_mismatches": 1,
+    "output_mismatches": 4,
+    "examples": [
+      [
+        549,
+        324,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ]
+    ]
+  },
+  {
+    "phase": "before",
+    "index": 30,
+    "yaw_radians": 0.40343738,
+    "game_mismatches": 1,
+    "output_mismatches": 4,
+    "examples": [
+      [
+        596,
+        287,
+        [
+          128,
+          128,
+          0
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ]
+    ]
+  },
+  {
+    "phase": "before",
+    "index": 31,
+    "yaw_radians": 0.40421867,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "before",
+    "index": 32,
+    "yaw_radians": 0.40499997,
+    "game_mismatches": 3,
+    "output_mismatches": 12,
+    "examples": [
+      [
+        626,
+        324,
+        [
+          128,
+          128,
+          0
+        ],
+        [
+          0,
+          128,
+          128
+        ]
+      ],
+      [
+        626,
+        332,
+        [
+          0,
+          128,
+          128
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ],
+      [
+        626,
+        444,
+        [
+          0,
+          128,
+          128
+        ],
+        [
+          0,
+          0,
+          0
+        ]
+      ]
+    ]
+  },
+  {
+    "phase": "after",
+    "index": 0,
+    "yaw_radians": 0.37999988,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 1,
+    "yaw_radians": 0.38078117,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 2,
+    "yaw_radians": 0.38156247,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 3,
+    "yaw_radians": 0.38234377,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 4,
+    "yaw_radians": 0.38312507,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 5,
+    "yaw_radians": 0.38390613,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 6,
+    "yaw_radians": 0.38468742,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 7,
+    "yaw_radians": 0.38546872,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 8,
+    "yaw_radians": 0.38625002,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 9,
+    "yaw_radians": 0.38703132,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 10,
+    "yaw_radians": 0.38781238,
+    "game_mismatches": 1,
+    "output_mismatches": 4,
+    "examples": [
+      [
+        605,
+        454,
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          128,
+          0,
+          128
+        ]
+      ]
+    ]
+  },
+  {
+    "phase": "after",
+    "index": 11,
+    "yaw_radians": 0.38859367,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 12,
+    "yaw_radians": 0.38937497,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 13,
+    "yaw_radians": 0.39015627,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 14,
+    "yaw_radians": 0.39093757,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 15,
+    "yaw_radians": 0.39171863,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 16,
+    "yaw_radians": 0.39249992,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 17,
+    "yaw_radians": 0.39328122,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 18,
+    "yaw_radians": 0.39406252,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 19,
+    "yaw_radians": 0.39484382,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 20,
+    "yaw_radians": 0.39562488,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 21,
+    "yaw_radians": 0.39640617,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 22,
+    "yaw_radians": 0.39718747,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 23,
+    "yaw_radians": 0.39796877,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 24,
+    "yaw_radians": 0.39875007,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 25,
+    "yaw_radians": 0.39953113,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 26,
+    "yaw_radians": 0.40031242,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 27,
+    "yaw_radians": 0.40109372,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 28,
+    "yaw_radians": 0.40187502,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 29,
+    "yaw_radians": 0.40265632,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 30,
+    "yaw_radians": 0.40343738,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 31,
+    "yaw_radians": 0.40421867,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  },
+  {
+    "phase": "after",
+    "index": 32,
+    "yaw_radians": 0.40499997,
+    "game_mismatches": 0,
+    "output_mismatches": 0,
+    "examples": []
+  }
+]
