@@ -533,6 +533,7 @@ IRSystem::SystemId createModeSwitchProbeSystem() {
                 requestModeSwitch(RotationMode::GRID);
             } else if (statePtr->phase_ == 3) {
                 const bool hasOneVoxelSet =
+                    IREntity::countComponents<C_VoxelSetNew>() == 1 &&
                     IREntity::getComponentOptional<C_VoxelSetNew>(g_settings.modeSwitchEntity_)
                         .has_value();
                 g_settings.modeSwitchProbeFailed_ |=

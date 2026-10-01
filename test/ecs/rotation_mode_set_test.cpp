@@ -86,6 +86,13 @@ class RotationModeSwitch : public testing::Test {
         return IREntity::getComponent<C_RotationMode>(entity).mode_;
     }
 
+    static void expectDetachedSwitchLeavesModeUnchanged(IREntity::EntityId entity) {
+        IRPrefab::RotationMode::setMode(entity, RotationMode::DETACHED);
+
+        EXPECT_FALSE(IREntity::getComponentOptional<C_RotationMode>(entity).has_value());
+        EXPECT_FALSE(hasCanvas(entity));
+    }
+
     IREntity::EntityManager m_entity_manager;
 };
 
@@ -179,6 +186,18 @@ TEST_F(RotationModeSwitch, ImplicitGridEntityWithAStrayCanvasIsReconciled) {
 
     EXPECT_EQ(modeOf(entity), RotationMode::GRID);
     EXPECT_FALSE(hasCanvas(entity));
+}
+
+TEST_F(RotationModeSwitch, MissingVoxelSetLeavesModeUnchanged) {
+    const IREntity::EntityId entity = IREntity::createEntity();
+
+    expectDetachedSwitchLeavesModeUnchanged(entity);
+}
+
+TEST_F(RotationModeSwitch, EmptyVoxelSetLeavesModeUnchanged) {
+    const IREntity::EntityId entity = IREntity::createEntity(IRComponents::C_VoxelSetNew{});
+
+    expectDetachedSwitchLeavesModeUnchanged(entity);
 }
 
 TEST_F(RotationModeSwitch, SingleVoxelSetSurvivesRoundTrip) {

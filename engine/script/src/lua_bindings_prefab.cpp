@@ -3,9 +3,11 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/common/rotation_mode.hpp>
+#include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/script/ir_script_types.hpp>
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
+#include <irreden/voxel/components/component_voxel_set.hpp>
 
 #include <sol/sol.hpp>
 
@@ -90,6 +92,18 @@ void bindPrefabApi(LuaScript &script) {
         }
 
         const auto mode = static_cast<IRComponents::RotationMode>(rawMode);
+        const bool needsCanvas =
+            IRPrefab::RotationMode::ownsEntityCanvas(mode) &&
+            !IREntity::getComponentOptional<IRComponents::C_EntityCanvas>(entity.entity);
+        if (needsCanvas) {
+            auto voxelSet =
+                IREntity::getComponentOptional<IRComponents::C_VoxelSetNew>(entity.entity);
+            if (!voxelSet || voxelSet.value()->recordCount() == 0) {
+                throw sol::error{
+                    "IRPrefab.setRotationMode: detached modes require a non-empty C_VoxelSetNew"
+                };
+            }
+        }
         IREntity::getEntityManager().stageStructuralChange(
             [entity = entity.entity, mode, options = std::move(options)]() mutable {
                 IRPrefab::RotationMode::setMode(entity, mode, std::move(options));

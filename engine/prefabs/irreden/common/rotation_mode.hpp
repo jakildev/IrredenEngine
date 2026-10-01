@@ -128,14 +128,16 @@ setMode(IREntity::EntityId entity, IRComponents::RotationMode newMode, SetModeOp
     }
 
     if (wantsCanvas && !hasCanvas) {
+        auto voxelSetOpt = IREntity::getComponentOptional<C_VoxelSetNew>(entity);
+        if (!voxelSetOpt || voxelSetOpt.value()->recordCount() == 0) {
+            IRE_LOG_ERROR(
+                "setMode() requires a non-empty C_VoxelSetNew before entering a detached mode"
+            );
+            return;
+        }
         IR_ASSERT(
             IRRender::g_renderManager != nullptr,
             "setMode() into a canvas-owning rotation mode requires a live RenderManager"
-        );
-        auto voxelSetOpt = IREntity::getComponentOptional<C_VoxelSetNew>(entity);
-        IR_ASSERT(
-            voxelSetOpt.has_value(),
-            "setMode() into a canvas-owning rotation mode requires C_VoxelSetNew on the entity"
         );
         C_VoxelSetNew &voxelSet = *voxelSetOpt.value();
         const IRMath::ivec3 extent = voxelSet.size_;

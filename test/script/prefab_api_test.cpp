@@ -121,6 +121,12 @@ class PrefabApi : public testing::Test {
         IRPrefab::Prefab::clearComponentFactories();
     }
 
+    void expectSetRotationModeRejected(IREntity::EntityId entity, const char *body) {
+        m_lua.lua()["mode_switch_entity"] = IRScript::LuaEntity{entity};
+        auto result = m_lua.lua().safe_script(body, sol::script_pass_on_error);
+        EXPECT_FALSE(result.valid());
+    }
+
     IRScript::LuaScript m_lua;
     IREntity::EntityManager m_entity_manager;
 };
@@ -1086,14 +1092,45 @@ TEST_F(PrefabApi, SetRotationModeBindingDefersStructuralChange) {
 
 TEST_F(PrefabApi, SetRotationModeRejectsStringMode) {
     const IREntity::EntityId entity = IREntity::createEntity();
-    m_lua.lua()["mode_switch_entity"] = IRScript::LuaEntity{entity};
 
-    auto result = m_lua.lua().safe_script(
-        "IRPrefab.setRotationMode(mode_switch_entity, 'DETACHED')",
-        sol::script_pass_on_error
+    expectSetRotationModeRejected(
+        entity,
+        "IRPrefab.setRotationMode(mode_switch_entity, 'DETACHED')"
     );
+}
 
-    EXPECT_FALSE(result.valid());
+TEST_F(PrefabApi, SetRotationModeRejectsOutOfRangeMode) {
+    const IREntity::EntityId entity = IREntity::createEntity();
+
+    expectSetRotationModeRejected(entity, "IRPrefab.setRotationMode(mode_switch_entity, 42)");
+}
+
+TEST_F(PrefabApi, SetRotationModeRejectsInvalidCanvasSize) {
+    const IREntity::EntityId entity = IREntity::createEntity();
+
+    expectSetRotationModeRejected(
+        entity,
+        "IRPrefab.setRotationMode(mode_switch_entity, IRComponent.RotationMode.DETACHED, "
+        "{ canvas_size = { x = 0, y = 32 } })"
+    );
+}
+
+TEST_F(PrefabApi, SetRotationModeRejectsEntityWithoutVoxelSet) {
+    const IREntity::EntityId entity = IREntity::createEntity();
+
+    expectSetRotationModeRejected(
+        entity,
+        "IRPrefab.setRotationMode(mode_switch_entity, IRComponent.RotationMode.DETACHED)"
+    );
+}
+
+TEST_F(PrefabApi, SetRotationModeRejectsEmptyVoxelSet) {
+    const IREntity::EntityId entity = IREntity::createEntity(IRComponents::C_VoxelSetNew{});
+
+    expectSetRotationModeRejected(
+        entity,
+        "IRPrefab.setRotationMode(mode_switch_entity, IRComponent.RotationMode.DETACHED)"
+    );
 }
 
 } // namespace
