@@ -2,10 +2,10 @@
   "target": "IRPerfGrid",
   "matrix": "quick",
   "frames": 60,
-  "git_sha": "4820959a7",
+  "git_sha": "97bcd206e",
   "git_dirty": false,
-  "run_name": "4820959a7-ci",
-  "started_at": "2026-09-30T22:39:26Z",
+  "run_name": "97bcd206e-ci",
+  "started_at": "2026-10-01T00:00:00Z",
   "cells": [
     {
       "id": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1",
@@ -28,9 +28,9 @@
       "report": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt"
     }
   ],
-  "finished_at": "2026-09-30T22:42:28Z",
+  "finished_at": "2026-10-01T00:03:03Z",
   "calibration": {
-    "ref_ms": 103.623,
+    "ref_ms": 103.582,
     "ref_target_ms": 50,
     "host_slug": "linux-x86_64-epyc-7763-64-unknown",
     "host_fingerprint": {
