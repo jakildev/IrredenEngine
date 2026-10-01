@@ -1383,6 +1383,7 @@ standdown_backoff_remaining() {
         recorded=$(cat "$targets" 2>/dev/null || true)
         if current=$(worker_target_fingerprint "$1" "${2:-}") \
             && [[ "$current" != "$recorded" ]]; then
+            log "worker-rearm: target fingerprint changed (recorded=$recorded current=$current)"
             printf '0\n'
             return 0
         fi
@@ -2922,6 +2923,7 @@ role_dispatch_capacity() {
     if [[ "$DISPATCH_ROLE_CAP_MODE" == "elastic" ]] && (( free > 0 )); then
         DISPATCH_ROLE_RESERVED=$(count_panes_reserved_for_other_roles "$role")
         DISPATCH_ROLE_HEADROOM=$(( free - DISPATCH_ROLE_RESERVED ))
+        (( DISPATCH_ROLE_HEADROOM < 0 )) && DISPATCH_ROLE_HEADROOM=0
     fi
     if (( DISPATCH_ROLE_HEADROOM > 0 )); then
         DISPATCH_ROLE_OVER_CAP=$cap

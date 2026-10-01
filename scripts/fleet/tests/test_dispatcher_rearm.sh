@@ -131,6 +131,11 @@ assert_eq "$(rearm linux)" "skip (standdown backoff class=opus)" \
 write_slice worker '{"tasks_open":[{"issue":"#10","repo":"engine","model":"opus","owner":"free","blocked":false}],"feedback_prs":[{"number":50,"repo":"engine","labels":["fleet:design-unblocked"]}],"needs_plan":[]}'
 assert_eq "$(rearm linux)" "rearm class=opus" \
     "a newly claimable feedback target bypasses the delay"
+_fingerprint_log=$(standdown_check 2>&1)
+assert_contains "$_fingerprint_log" "recorded=" \
+    "the changed-target check reports the stood-down fingerprint"
+assert_contains "$_fingerprint_log" "current=" \
+    "the changed-target check reports the current fingerprint"
 
 "$DISPATCHER" --record-outcome worker 300 --class=opus --claimed=yes
 mkdir -p "$FLEET_STATE_DIR/declined"
@@ -182,6 +187,19 @@ assert_eq "$(FLEET_CONCURRENCY_WORKER=1 FLEET_CAP_MODE=elastic FLEET_TEST_HOST=l
     "$DISPATCHER" --rearm-worker-once worker 1 1 2>/dev/null)" "rearmed class=opus" \
     "elastic capacity may re-arm above the nominal cap"
 rm -f "$FLEET_STATE_DIR/triggers/worker"
+mkdir -p "$FLEET_STATE_DIR/triggers"
+touch "$FLEET_STATE_DIR/triggers/sonnet-reviewer" \
+    "$FLEET_STATE_DIR/triggers/opus-reviewer"
+assert_eq "$(FLEET_CONCURRENCY_WORKER=1 FLEET_CAP_MODE=elastic FLEET_TEST_HOST=linux \
+    "$DISPATCHER" --rearm-worker-once worker 1 1 2>/dev/null)" "skip" \
+    "elastic reservations prevent re-arm when other pending roles consume the free pane"
+if [[ ! -e "$FLEET_STATE_DIR/triggers/worker" ]]; then
+    ok "the elastic-reservation case leaves the worker trigger absent"
+else
+    bad "the elastic-reservation case leaves the worker trigger absent"
+fi
+rm -f "$FLEET_STATE_DIR/triggers/sonnet-reviewer" \
+    "$FLEET_STATE_DIR/triggers/opus-reviewer"
 
 unset FLEET_DISPATCHER_REARM_STANDDOWN_BASE
 if "$DISPATCHER" --note-standdown >/dev/null 2>&1; then
