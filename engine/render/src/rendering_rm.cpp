@@ -9,13 +9,10 @@
 
 namespace IRRender {
 
-RenderingResourceManager::RenderingResourceManager() {
+RenderingResourceManager::RenderingResourceManager(ResourceId idCapacity) {
     m_liveResourceCount = 0;
-    IRE_LOG_INFO(
-        "Creating an resource id pool. IR_MAX_RESOURCES={}",
-        static_cast<int>(IR_MAX_RESOURCES)
-    );
-    for (ResourceId resource = 0; resource < IR_MAX_RESOURCES; resource++) {
+    IRE_LOG_INFO("Creating an resource id pool. idCapacity={}", static_cast<int>(idCapacity));
+    for (ResourceId resource = 0; resource < idCapacity; resource++) {
         m_resourcePool.push(resource);
     }
     registerResource<ShaderStage>();

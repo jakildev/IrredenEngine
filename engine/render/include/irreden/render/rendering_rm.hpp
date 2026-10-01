@@ -7,6 +7,9 @@
 
 #include <irreden/render/ir_render_types.hpp>
 
+#include <cstddef>
+#include <cstdlib>
+#include <string>
 #include <vector>
 #include <unordered_map>
 #include <queue>
@@ -48,10 +51,31 @@ class RenderingResourceManager {
     //     }
     //     return m_instance;
     // }
-    RenderingResourceManager();
+    // `idCapacity` is the number of ids the pool is seeded with, and so the
+    // ceiling on simultaneously live resources.
+    explicit RenderingResourceManager(ResourceId idCapacity = IR_MAX_RESOURCES);
     ~RenderingResourceManager();
 
+    int liveResourceCount() const {
+        return m_liveResourceCount;
+    }
+    std::size_t freeIdCount() const {
+        return m_resourcePool.size();
+    }
+
+    // Ids are handed out FIFO, so a destroyed id is reused only after every
+    // other free id. Exhausting the pool asserts; under IR_RELEASE, where the
+    // assert compiles out, it aborts rather than read an empty queue.
     template <typename T, typename... Args> std::pair<ResourceId, T *> create(Args &&...args) {
+        IR_ASSERT(
+            !m_resourcePool.empty(),
+            "Resource id pool exhausted at {} live resources (default ceiling IR_MAX_RESOURCES={})",
+            m_liveResourceCount,
+            IR_MAX_RESOURCES
+        );
+        if (m_resourcePool.empty()) {
+            std::abort();
+        }
         ResourceId id = m_resourcePool.front();
         m_resourcePool.pop();
         ResourceType type = getResourceType<T>();
@@ -104,11 +128,22 @@ class RenderingResourceManager {
         return get<T>(it->second);
     }
 
+    // Returns the id to the pool and drops any name registered for it, so a
+    // later resource reusing the id is never reachable under the old name.
+    // An id that is not a live `T` is rejected: it must not enter the pool a
+    // second time, or two live resources would end up sharing it.
     template <typename T> void destroy(ResourceId resource) {
         ResourceType type = getResourceType<T>();
         ResourceDataImpl<T> *container =
             static_cast<ResourceDataImpl<T> *>(m_resourceMaps[type].get());
-        container->resourceMap.erase(resource);
+        if (container->resourceMap.erase(resource) == 0) {
+            IRE_LOG_ERROR("Destroy of ResourceId={} that is not live for type={}", resource, type);
+            return;
+        }
+        std::erase_if(m_namedResources, [resource](const auto &named) {
+            return named.second == resource;
+        });
+        m_resourcePool.push(resource);
         m_liveResourceCount--;
     }
 

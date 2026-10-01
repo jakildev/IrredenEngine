@@ -112,6 +112,7 @@ captures.
 
 - `getNamedResource` asserts on a miss; use `getNamedResourceOrNull` only
   when absence is a supported pipeline configuration.
+- `ResourceId`s are pooled and reused FIFO: never cache one past its owner's destroy hook.
 - Fresh GPU allocations are undefined: prime persistent or coherent
   prior-frame readbacks (statistics rings included) before sampling them.
 - Clear trixel distance textures to `kTrixelDistanceMaxDistance`; the separate
