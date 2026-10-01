@@ -3,6 +3,7 @@
 #include <irreden/input/components/component_hitbox_2d.hpp>
 #include <irreden/input/components/component_hitbox_2d_lua.hpp>
 #include <irreden/ir_entity.hpp>
+#include <irreden/render/systems/system_entity_canvas_to_framebuffer.hpp>
 #include <irreden/script/lua_script.hpp>
 
 #include <sol/sol.hpp>
@@ -40,6 +41,25 @@ TEST_F(LuaHitBox2DTest, ConstructorsAndPropertiesAreBound) {
 
     ASSERT_TRUE(result.valid()) << sol::error{result}.what();
     EXPECT_TRUE(result.get<bool>());
+}
+
+TEST_F(LuaHitBox2DTest, DisabledHitboxSurvivesDetachedCanvasPlacement) {
+    IRComponents::C_HitBox2D hitbox{18.0f, 10.0f};
+    m_lua.lua()["hitbox"] = &hitbox;
+    auto result = m_lua.lua().safe_script("hitbox.enabled = false", sol::script_pass_on_error);
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+
+    IRSystem::System<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>::publishHitboxPlacement(
+        hitbox,
+        723.0f,
+        IRMath::vec2{642.0f, 377.0f},
+        IRMath::vec2{256.0f, 128.0f},
+        1,
+        42
+    );
+
+    EXPECT_FALSE(hitbox.enabled_);
+    EXPECT_TRUE(hitbox.screenSpacePlaced_);
 }
 
 } // namespace

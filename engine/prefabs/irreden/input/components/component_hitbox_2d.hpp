@@ -14,6 +14,7 @@ struct C_HitBox2D {
     bool hovered_ = false;
     bool enabled_ = true;
     bool screenSpaceCenter_ = false;
+    bool screenSpacePlaced_ = false;
     vec2 centerScreen_{};
     int pickPriority_ = 0;
     int isoDepth_ = 0;
@@ -26,9 +27,6 @@ struct C_HitBox2D {
 
     C_HitBox2D(float width, float height)
         : halfExtent_{width * 0.5f, height * 0.5f} {}
-
-    // Snapshot persistence uses the authored-field serializer instead of a raw memory image.
-    ~C_HitBox2D() {}
 };
 
 } // namespace IRComponents

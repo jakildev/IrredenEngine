@@ -388,6 +388,7 @@ CanvasStressSettings g_settings{};
 int g_autoWarmupFrames = 0;
 int g_autoRecordFrames = 0; // 0 = --auto-record not requested
 EntityId g_hoverCanary = IREntity::kNullEntity;
+constexpr vec3 kHoverCanaryWorldPos{0.0f, 0.0f, -48.0f};
 IRSystem::SystemId g_hoverDetectSystem = IRSystem::kNullSystemId;
 IRVideo::GuiInputEvent g_hoverCanaryMove{0, IRVideo::GuiInputEvent::Type::MOVE, ivec2(0)};
 IRVideo::GuiTestShot g_hoverCanaryShot{
@@ -409,12 +410,13 @@ void onHoverCanaryAssertFrame(int shotIndex, bool isCaptureFrame) {
     if (g_hoverCanary != IREntity::kNullEntity) {
         const C_HitBox2D &hitbox = IREntity::getComponent<C_HitBox2D>(g_hoverCanary);
         g_hoverCanaryMove.screenPx_ =
-            ivec2(hitbox.centerScreen_) + ivec2(
-                                              static_cast<int>(IRMath::roundHalfUp(
-                                                  hitbox.halfExtent_.x + hitbox.padding_ * 0.5f
-                                              )),
-                                              0
-                                          );
+            IRRender::worldPos3DToMouseScreenPx(kHoverCanaryWorldPos) +
+            ivec2(
+                static_cast<int>(
+                    IRMath::roundHalfUp(hitbox.halfExtent_.x + hitbox.padding_ * 0.5f)
+                ),
+                0
+            );
     }
     IRPrefab::GuiTest::onFrame(
         g_hoverCanaryLatch,
@@ -2510,7 +2512,8 @@ void initEntities() {
             g_settings.noSpin_ ? 0.0f : kDetachedSpinBaseRadPerFrame * static_cast<float>(i + 1);
         const EntityId canary = spawnDetachedVoxelObject(
             i,
-            focusCanary >= 0 ? vec3(0.0f) : worldPos,
+            g_settings.hoverCanarySession_ ? kHoverCanaryWorldPos
+                                           : (focusCanary >= 0 ? vec3(0.0f) : worldPos),
             kAxes[i % 4],
             spinRate,
             kDetachedColors[i % 6]

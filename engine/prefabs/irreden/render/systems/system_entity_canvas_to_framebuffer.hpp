@@ -76,17 +76,38 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     // — the world-placed depth contract.
     int effectiveSub_ = 1;
 
-    void beginTick() {
-        instances_.clear();
-        instances_.reserve(kMaxEntityCanvasInstances);
+    void collectHitboxes() {
         hitboxes_.clear();
         hitboxes_.reserve(kMaxEntityCanvasInstances);
         IREntity::forEachComponent<C_HitBox2D>([this](IREntity::EntityId &id, C_HitBox2D &hitbox) {
+            hitbox.screenSpaceCenter_ = false;
+            hitbox.screenSpacePlaced_ = false;
             hitboxes_.emplace_back(id, &hitbox);
         });
         std::sort(hitboxes_.begin(), hitboxes_.end(), [](const auto &lhs, const auto &rhs) {
             return lhs.first < rhs.first;
         });
+    }
+
+    static void publishHitboxPlacement(
+        C_HitBox2D &hitbox,
+        float framebufferHeight,
+        const vec2 &entityFbCenter,
+        const vec2 &framebufferExtent,
+        int pickPriority,
+        int isoDepth
+    ) {
+        hitbox.centerScreen_ = vec2(entityFbCenter.x, framebufferHeight - entityFbCenter.y);
+        hitbox.halfExtent_ = framebufferExtent * 0.5f;
+        hitbox.pickPriority_ = pickPriority;
+        hitbox.isoDepth_ = isoDepth;
+        hitbox.screenSpacePlaced_ = true;
+    }
+
+    void beginTick() {
+        instances_.clear();
+        instances_.reserve(kMaxEntityCanvasInstances);
+        collectHitboxes();
 
         const int liveCanvasCount = IRPrefab::EntityCanvas::count();
         if (IRPrefab::EntityCanvas::consumeCapacityWarning(
@@ -138,7 +159,6 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         );
         if (hitboxIt != hitboxes_.end() && hitboxIt->first == entity) {
             hitbox = hitboxIt->second;
-            hitbox->enabled_ = false;
             hitbox->screenSpaceCenter_ = true;
         }
         if (!entityCanvas.visible_ || entityCanvas.canvasEntity_ == IREntity::kNullEntity ||
@@ -251,15 +271,18 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         model = scale(model, vec3(framebufferExtent, 1.0f));
 
         if (hitbox != nullptr) {
-            hitbox->centerScreen_ = entityFbCenter;
-            hitbox->halfExtent_ = framebufferExtent * 0.5f;
-            hitbox->pickPriority_ = foregroundPriority ? 1 : 0;
-            hitbox->isoDepth_ = IRRender::pickIsoDepthForWorldPosition(
-                worldTransform.translation_,
-                visualYaw_,
-                effectiveSub_
+            publishHitboxPlacement(
+                *hitbox,
+                fbRes_.y,
+                entityFbCenter,
+                framebufferExtent,
+                foregroundPriority ? 1 : 0,
+                IRRender::pickIsoDepthForWorldPosition(
+                    worldTransform.translation_,
+                    visualYaw_,
+                    effectiveSub_
+                )
             );
-            hitbox->enabled_ = true;
         }
 
         FrameDataTrixelToFramebuffer fd{};

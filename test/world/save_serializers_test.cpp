@@ -423,12 +423,16 @@ TEST(SaveSerializers, RotationTargetRoundTripsTheAuthoredCurve) {
 // --- input/ ----------------------------------------------------------------
 
 TEST(SaveSerializers, HitBox2DRoundTripsAuthoredStateOnly) {
+    static_assert(std::is_trivially_copyable_v<C_HitBox2D>);
+    static_assert(std::is_trivially_destructible_v<C_HitBox2D>);
+
     C_HitBox2D hitbox{18.0f, 10.0f};
     hitbox.padding_ = 7.0f;
     hitbox.enabled_ = false;
     hitbox.pickPriority_ = 23;
     hitbox.hovered_ = true;
     hitbox.screenSpaceCenter_ = true;
+    hitbox.screenSpacePlaced_ = true;
     hitbox.centerScreen_ = IRMath::vec2{100.0f, 200.0f};
     hitbox.isoDepth_ = 41;
 
@@ -439,6 +443,7 @@ TEST(SaveSerializers, HitBox2DRoundTripsAuthoredStateOnly) {
     EXPECT_EQ(restored.pickPriority_, 23);
     EXPECT_FALSE(restored.hovered_);
     EXPECT_FALSE(restored.screenSpaceCenter_);
+    EXPECT_FALSE(restored.screenSpacePlaced_);
     EXPECT_EQ(restored.centerScreen_, IRMath::vec2(0.0f));
     EXPECT_EQ(restored.isoDepth_, 0);
     expectConsumesAllBytes(hitbox);

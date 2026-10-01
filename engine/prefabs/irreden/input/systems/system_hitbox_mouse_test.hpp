@@ -48,7 +48,8 @@ template <> struct System<HITBOX_MOUSE_TEST> {
         }
 
         const vec2 paddedExtent = hitbox.halfExtent_ + vec2(hitbox.padding_);
-        hitbox.hovered_ = hitbox.enabled_ &&
+        const bool placed = !hitbox.screenSpaceCenter_ || hitbox.screenSpacePlaced_;
+        hitbox.hovered_ = hitbox.enabled_ && placed &&
                           abs(mouseCanvas_.x - entityCenter.x) <= paddedExtent.x &&
                           abs(mouseCanvas_.y - entityCenter.y) <= paddedExtent.y;
         if (!hitbox.screenSpaceCenter_) {

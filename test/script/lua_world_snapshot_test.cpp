@@ -203,6 +203,7 @@ TEST_F(LuaWorldSnapshotTest, MigratesHitBoxV1AndRoundTripsAuthoredState) {
     migrated.enabled_ = false;
     migrated.pickPriority_ = 12;
     migrated.screenSpaceCenter_ = true;
+    migrated.screenSpacePlaced_ = true;
     migrated.centerScreen_ = IRMath::vec2{100.0f, 200.0f};
     migrated.isoDepth_ = 31;
     ASSERT_TRUE(runOk("assert(IRPersist.saveWorld('" + currentPath + "'))"));
@@ -216,6 +217,7 @@ TEST_F(LuaWorldSnapshotTest, MigratesHitBoxV1AndRoundTripsAuthoredState) {
     EXPECT_EQ(restored.pickPriority_, 12);
     EXPECT_FALSE(restored.hovered_);
     EXPECT_FALSE(restored.screenSpaceCenter_);
+    EXPECT_FALSE(restored.screenSpacePlaced_);
     EXPECT_EQ(restored.centerScreen_, IRMath::vec2(0.0f));
     EXPECT_EQ(restored.isoDepth_, 0);
 }
