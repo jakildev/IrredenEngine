@@ -53,15 +53,17 @@ template <> struct System<FOG_REVEAL_EVAL> {
         fog_ = nullptr;
         observers_ = {};
         los_ = {};
+        IRComponents::C_CanvasFogOfWar *fog = nullptr;
 
         if (activeCanvas_ != IREntity::kNullEntity) {
             if (auto pool =
                     IREntity::getComponentOptional<IRComponents::C_VoxelPool>(activeCanvas_)) {
                 activePool_ = *pool;
             }
-            if (auto fog =
+            if (auto attached =
                     IREntity::getComponentOptional<IRComponents::C_CanvasFogOfWar>(activeCanvas_)) {
-                fog_ = *fog;
+                fog = *attached;
+                fog_ = fog;
                 IRPrefab::Fog::selectRevealSnapshot(
                     fog_->observers_,
                     fog_->losPublishedObservers_,
@@ -76,16 +78,22 @@ template <> struct System<FOG_REVEAL_EVAL> {
         settings_.staggerPeriod_ = IRMath::max(settings_.staggerPeriod_, std::uint32_t{1});
         ++frameCounter_;
 
+        const std::vector<IREntity::ArchetypeNode *> nodes = IREntity::queryArchetypeNodesSimple(
+            IREntity::getArchetype<
+                IRComponents::C_FogRevealed,
+                IRComponents::C_WorldTransform,
+                IRComponents::C_VoxelSetNew>()
+        );
         std::size_t population = 0;
-        for (IREntity::ArchetypeNode *node : IREntity::queryArchetypeNodesSimple(
-                 IREntity::getArchetype<
-                     IRComponents::C_FogRevealed,
-                     IRComponents::C_WorldTransform,
-                     IRComponents::C_VoxelSetNew>()
-             )) {
+        for (IREntity::ArchetypeNode *node : nodes) {
             population += static_cast<std::size_t>(node->length_);
         }
         pending_.reset(population);
+        // No stagger filter: every anchor's region keeps its access bit each
+        // frame, so the gather's eviction keeps a far region a body reads.
+        if (fog != nullptr) {
+            IRPrefab::Fog::touchAnchorRegions(*fog, nodes);
+        }
         const std::size_t slots = static_cast<std::size_t>(IRJob::workerCount()) + 1u;
         restampedByWorker_.assign(slots, 0u);
     }

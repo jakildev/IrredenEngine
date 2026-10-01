@@ -11,6 +11,7 @@
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_render.hpp>
 
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_fog_exempt.hpp>
 #include <irreden/render/components/component_fog_field.hpp>
@@ -204,12 +205,12 @@ inline void stampBodyCarrier(
 
 /// The BODY verdict kernel: the larger of the grid term and the circle term.
 /// @p gridCellState is the stored state of the cell under @p worldPosition
-/// (`C_CanvasFogOfWar::getCell` at the round-half-up column, the same cell
-/// the fog pass taps); a VISIBLE cell reveals fully, an EXPLORED cell
-/// reveals nothing on its own. The circle term is the line-of-sight gated
-/// `evalVisionReveal` on one snapshot (@p observers + @p los, see
-/// `selectRevealSnapshot`). @p channels is accepted for the source-mask seam
-/// and is not yet consulted: every source reveals on the default channel.
+/// (the round-half-up column, the same cell the fog pass taps); a VISIBLE
+/// cell reveals fully, an EXPLORED cell reveals nothing on its own. The
+/// circle term is the line-of-sight gated `evalVisionReveal` on one snapshot
+/// (@p observers + @p los, see `selectRevealSnapshot`). @p channels is
+/// accepted for the source-mask seam and is not yet consulted: every source
+/// reveals on the default channel.
 inline float evalReveal(
     const IRComponents::FrameDataFogObservers &observers,
     const IRComponents::FogLosColumnField &los,
@@ -225,8 +226,11 @@ inline float evalReveal(
 }
 
 /// The BODY verdict at @p worldPosition against @p fog's world field and the
-/// @p observers + @p los snapshot a caller captured once per frame. The grid
-/// term reads the field's stored state for any column, with no window test.
+/// @p observers + @p los snapshot a caller captured once per frame: the
+/// parallel reveal ticks' overload. The grid term reads the field's resident
+/// state for any column through the non-loading `peekCell`, with no window
+/// test; the caller's `beginTick` made the anchor's region resident
+/// (`touchAnchorRegions`, fog-of-war-world-field.md D13).
 inline float evalReveal(
     const IRComponents::C_CanvasFogOfWar &fog,
     const IRComponents::FrameDataFogObservers &observers,
@@ -235,12 +239,12 @@ inline float evalReveal(
     std::uint32_t channels = IRComponents::kFogChannelDefault
 ) {
     const IRMath::ivec3 column = IRMath::roundVec3HalfUp(worldPosition);
-    return evalReveal(observers, los, fog.getCell(column.x, column.y), worldPosition, channels);
+    return evalReveal(observers, los, fog.peekCell(column.x, column.y), worldPosition, channels);
 }
 
 /// The BODY verdict at @p worldPosition against @p fog, on the snapshot the
-/// reveal systems read. Selects that snapshot per call; a per-entity caller
-/// captures it once and uses the overload above.
+/// reveal systems read. Serial: selects that snapshot per call and reads the
+/// grid term through the loading `getCell`.
 inline float evalReveal(
     const IRComponents::C_CanvasFogOfWar &fog,
     IRMath::vec3 worldPosition,
@@ -255,7 +259,37 @@ inline float evalReveal(
         observers,
         los
     );
-    return evalReveal(fog, observers, los, worldPosition, channels);
+    const IRMath::ivec3 column = IRMath::roundVec3HalfUp(worldPosition);
+    return evalReveal(observers, los, fog.getCell(column.x, column.y), worldPosition, channels);
+}
+
+/// The residency pre-pass of fog-of-war-world-field.md D13, run from the
+/// `beginTick` of a `PARALLEL_FOR` system whose tick takes the verdict
+/// through the snapshot overload above: touches the region of every anchor
+/// in @p nodes (each carrying `C_WorldTransform`), so the tick reads it
+/// resident. Consecutive anchors in one region cost one touch. Without
+/// persistence nothing can load, so the walk is skipped.
+inline void touchAnchorRegions(
+    IRComponents::C_CanvasFogOfWar &fog, const std::vector<IREntity::ArchetypeNode *> &nodes
+) {
+    if (!fog.hasPersistence()) {
+        return;
+    }
+    bool touched = false;
+    IRMath::ivec2 lastRegion{};
+    for (IREntity::ArchetypeNode *node : nodes) {
+        const auto &transforms = IREntity::getComponentData<IRComponents::C_WorldTransform>(node);
+        for (int i = 0; i < node->length_; ++i) {
+            const IRMath::ivec3 column = IRMath::roundVec3HalfUp(transforms[i].translation_);
+            const IRMath::ivec2 region = WorldField::regionOfCell({column.x, column.y});
+            if (touched && region == lastRegion) {
+                continue;
+            }
+            fog.touchCell(column.x, column.y);
+            lastRegion = region;
+            touched = true;
+        }
+    }
 }
 
 namespace detail {

@@ -17,6 +17,7 @@
 #include <irreden/job/worker_block_queue.hpp>
 
 #include <cstddef>
+#include <vector>
 
 namespace IRSystem {
 
@@ -51,10 +52,12 @@ template <> struct System<FOG_SUBJECT_ADOPT> {
         observers_ = {};
         los_ = {};
         activePool_ = nullptr;
+        IRComponents::C_CanvasFogOfWar *fog = nullptr;
         if (activeCanvas_ != IREntity::kNullEntity) {
-            if (auto fog =
+            if (auto attached =
                     IREntity::getComponentOptional<IRComponents::C_CanvasFogOfWar>(activeCanvas_)) {
-                fog_ = *fog;
+                fog = *attached;
+                fog_ = fog;
                 IRPrefab::Fog::selectRevealSnapshot(
                     fog_->observers_,
                     fog_->losPublishedObservers_,
@@ -70,18 +73,21 @@ template <> struct System<FOG_SUBJECT_ADOPT> {
         }
         settings_ = IREntity::singleton<IRComponents::C_FogRevealSettings>();
 
+        const std::vector<IREntity::ArchetypeNode *> nodes = IREntity::queryArchetypeNodesSimple(
+            IREntity::getArchetype<IRComponents::C_WorldTransform, IRComponents::C_VoxelSetNew>(),
+            IREntity::getArchetype<
+                IRComponents::C_FogRevealed,
+                IRComponents::C_FogField,
+                IRComponents::C_FogExempt>()
+        );
         std::size_t population = 0;
-        for (IREntity::ArchetypeNode *node : IREntity::queryArchetypeNodesSimple(
-                 IREntity::
-                     getArchetype<IRComponents::C_WorldTransform, IRComponents::C_VoxelSetNew>(),
-                 IREntity::getArchetype<
-                     IRComponents::C_FogRevealed,
-                     IRComponents::C_FogField,
-                     IRComponents::C_FogExempt>()
-             )) {
+        for (IREntity::ArchetypeNode *node : nodes) {
             population += static_cast<std::size_t>(node->length_);
         }
         pending_.reset(population);
+        if (fog != nullptr) {
+            IRPrefab::Fog::touchAnchorRegions(*fog, nodes);
+        }
     }
 
     void tick(

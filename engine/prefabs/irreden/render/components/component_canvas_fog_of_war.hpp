@@ -486,6 +486,22 @@ struct C_CanvasFogOfWar {
         return field_->getCell({wx, wy});
     }
 
+    /// The resident state of (wx, wy), an absent chunk reading unexplored.
+    /// Never loads and never sets an access bit, so a `PARALLEL_FOR` tick may
+    /// read it while no serial phase runs (fog-of-war-world-field.md D13).
+    std::uint8_t peekCell(int wx, int wy) const {
+        return field_->peekCell({wx, wy}).value_or(kFogStateUnexplored);
+    }
+
+    /// Makes (wx, wy)'s region resident for a later `peekCell`; serial only.
+    void touchCell(int wx, int wy) {
+        field_->touchCell({wx, wy});
+    }
+
+    bool hasPersistence() const {
+        return field_->hasPersistence();
+    }
+
     void setCell(int wx, int wy, std::uint8_t state) {
         field_->setCell({wx, wy}, state);
     }

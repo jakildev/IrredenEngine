@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_job.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_time.hpp>
+#include <irreden/job/job_manager.hpp>
 #include <irreden/render/active_canvas.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_fog_exempt.hpp>
@@ -13,7 +15,11 @@
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
+#include "common/fog_save_root.hpp"
+
 #include <cstdint>
+#include <optional>
+#include <vector>
 
 namespace {
 
@@ -37,6 +43,19 @@ constexpr int kSetVoxels = 8;
 
 std::uint32_t bodyCarrier(std::uint8_t factor) {
     return kBodyBit | (static_cast<std::uint32_t>(factor) << kFactorShift);
+}
+
+// Saves VISIBLE at every cell of @p cells through a field of its own, so a
+// field opened later on the same root reads them only by loading.
+void persistVisibleCells(
+    const IRTest::ScopedFogSaveRoot &root, const std::vector<IRMath::ivec2> &cells
+) {
+    IRPrefab::Fog::WorldField field;
+    ASSERT_TRUE(field.setPersistence(root.store()));
+    for (const IRMath::ivec2 cell : cells) {
+        field.setCell(cell, IRComponents::kFogStateVisible);
+    }
+    ASSERT_GT(field.flush(), 0);
 }
 
 // Headless: no render manager, so the canvas is named through the headless
@@ -283,6 +302,127 @@ TEST_F(FogSubjectAdoptTest, NothingIsAdoptedWhileTheCanvasCarriesNoFog) {
     EXPECT_FALSE(hasRevealed(body));
     EXPECT_EQ(carrierOf(body), 0u);
     EXPECT_EQ(carrierOf(exempt), 0u);
+}
+
+// fog-of-war-world-field.md D13: the tick reads the field without loading, so
+// the system's beginTick makes the anchor's region resident first.
+TEST_F(FogSubjectAdoptTest, PersistedFarVisibleCellRevealsABodyOnItsFirstFrame) {
+    const IRMath::ivec2 far{5000, -3000};
+    IRTest::ScopedFogSaveRoot root;
+    persistVisibleCells(root, {far});
+    ASSERT_TRUE(fog().field_->setPersistence(root.store()));
+    const IREntity::EntityId body = createSet(vec3(far.x, far.y, 0.0f));
+    IRPrefab::Fog::fieldStats();
+    EXPECT_FALSE(fog().field_->peekCell(far).has_value()) << "the region starts non-resident";
+
+    runFrame();
+
+    ASSERT_TRUE(hasRevealed(body));
+    EXPECT_FLOAT_EQ(IREntity::getComponent<C_FogRevealed>(body).revealFactor_, 1.0f)
+        << "the grid term reads the persisted cell; there are no circles";
+    EXPECT_EQ(IRPrefab::Fog::fieldStats().loads_, 1);
+    EXPECT_EQ(
+        fog().field_->peekCell(far),
+        std::optional<std::uint8_t>{IRComponents::kFogStateVisible}
+    );
+}
+
+// Both reveal systems fanned out over a worker pool, reading bodies spread
+// across persisted regions none of which is resident when the frame starts:
+// the untagged bodies through FOG_SUBJECT_ADOPT, the already-adopted ones
+// through FOG_REVEAL_EVAL. A parallel load would trip `touchRegion`'s
+// main-thread assert on a worker.
+class FogSubjectParallelPersistedTest : public testing::Test {
+  protected:
+    static constexpr int kBodiesPerSystem = 1024;
+    static constexpr int kRegionsPerSystem = 4;
+    static constexpr int kRegionEdgeCells = 512;
+
+    FogSubjectParallelPersistedTest()
+        : m_jobs{2}
+        , m_entityManager{}
+        , m_systemManager{} {
+        m_entityManager.resizeWorkerStaging(static_cast<std::size_t>(m_jobs.workerCount() + 1));
+        m_canvas = IREntity::createEntity(
+            C_VoxelPool{ivec3(2 * kBodiesPerSystem, 1, 1)},
+            C_CanvasFogOfWar{C_CanvasFogOfWar::HeadlessInit{}}
+        );
+        IRRender::setHeadlessActiveCanvasEntity(m_canvas);
+        m_systemManager.registerPipeline(IRTime::Events::UPDATE, IRPrefab::Fog::revealSystems());
+    }
+    ~FogSubjectParallelPersistedTest() override {
+        IRRender::setHeadlessActiveCanvasEntity(IREntity::kNullEntity);
+    }
+
+    // Body @p index of the system starting at region column @p firstRegionX;
+    // consecutive indices alternate between that system's regions.
+    static IRMath::ivec2 bodyCell(int firstRegionX, int index) {
+        const int region = index % kRegionsPerSystem;
+        const int slot = index / kRegionsPerSystem;
+        return {
+            (firstRegionX + region) * kRegionEdgeCells + slot % 64,
+            2 * kRegionEdgeCells + slot / 64
+        };
+    }
+
+    IRJob::JobManager m_jobs;
+    IREntity::EntityManager m_entityManager;
+    IRSystem::SystemManager m_systemManager;
+    IREntity::EntityId m_canvas = IREntity::kNullEntity;
+};
+
+TEST_F(FogSubjectParallelPersistedTest, BothSystemsReadPersistedCellsFromWorkers) {
+    constexpr int kAdoptRegionX = 4;
+    constexpr int kEvalRegionX = -8;
+    std::vector<IRMath::ivec2> cells;
+    for (int i = 0; i < kBodiesPerSystem; ++i) {
+        cells.push_back(bodyCell(kAdoptRegionX, i));
+        cells.push_back(bodyCell(kEvalRegionX, i));
+    }
+    IRTest::ScopedFogSaveRoot root;
+    persistVisibleCells(root, cells);
+    auto &fog = IREntity::getComponent<C_CanvasFogOfWar>(m_canvas);
+    ASSERT_TRUE(fog.field_->setPersistence(root.store()));
+
+    std::vector<IREntity::EntityId> adopted;
+    std::vector<IREntity::EntityId> evaluated;
+    for (int i = 0; i < kBodiesPerSystem; ++i) {
+        const IRMath::ivec2 adoptCell = bodyCell(kAdoptRegionX, i);
+        const IRMath::ivec2 evalCell = bodyCell(kEvalRegionX, i);
+        adopted.push_back(
+            IREntity::createEntity(
+                C_WorldTransform{
+                    vec3(adoptCell.x, adoptCell.y, 0.0f),
+                    vec4(0, 0, 0, 1),
+                    vec3(1.0f)
+                },
+                C_VoxelSetNew{ivec3(1, 1, 1), Color{200, 100, 50, 255}, true, m_canvas}
+            )
+        );
+        evaluated.push_back(
+            IREntity::createEntity(
+                C_WorldTransform{vec3(evalCell.x, evalCell.y, 0.0f), vec4(0, 0, 0, 1), vec3(1.0f)},
+                C_VoxelSetNew{ivec3(1, 1, 1), Color{200, 100, 50, 255}, true, m_canvas},
+                C_FogRevealed{}
+            )
+        );
+    }
+    IRPrefab::Fog::fieldStats();
+
+    m_systemManager.executePipeline(IRTime::Events::UPDATE);
+    IREntity::flushStructuralChanges();
+
+    EXPECT_EQ(IRPrefab::Fog::fieldStats().loads_, 2 * kRegionsPerSystem);
+    int adoptedVisible = 0;
+    int evaluatedVisible = 0;
+    for (int i = 0; i < kBodiesPerSystem; ++i) {
+        auto revealedAdopt = IREntity::getComponentOptional<C_FogRevealed>(adopted[i]);
+        adoptedVisible += revealedAdopt.has_value() && (*revealedAdopt)->revealFactor_ == 1.0f;
+        evaluatedVisible +=
+            IREntity::getComponent<C_FogRevealed>(evaluated[i]).revealFactor_ == 1.0f;
+    }
+    EXPECT_EQ(adoptedVisible, kBodiesPerSystem);
+    EXPECT_EQ(evaluatedVisible, kBodiesPerSystem);
 }
 
 } // namespace

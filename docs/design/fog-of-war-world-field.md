@@ -284,6 +284,38 @@ At `-O0`, expanding a whole RGBA8 window cost 2.5 ms at 1152 and 35 ms at
 4096; at `-O2`, 0.07 ms and 7.5 ms. A dense 257 KiB region save through a
 temporary file and rename cost 0.13-0.22 ms at `-O2`.
 
+## D13 — Readers on worker threads
+
+Residency is serial. Probing, loading, saving, evicting, the access bits,
+every write and every transient stamp run on the main thread in a serial
+phase: a system's `beginTick` or `endTick`, a serial system, or the gather.
+`touchRegion` asserts the main thread.
+
+A `PARALLEL_FOR` tick reads the field through `peekCell` only: the resident
+value of either layer, with an absent chunk reading unexplored. That read is
+two const chunk-map lookups and is safe for any number of concurrent readers
+while no serial phase runs. `getCell` loads and is never called from a
+parallel tick.
+
+A system whose parallel tick reads the field makes the regions it will read
+resident in its own `beginTick`: it walks its archetype's anchors and calls
+`touchCell` on each (consecutive anchors in one region cost one lookup),
+only when the field has persistence. That pre-pass is what keeps D11's "a
+far region read every frame remains resident" true for those readers: the
+access bit is set every frame, so the gather's eviction keeps the region.
+`FOG_SUBJECT_ADOPT` and `FOG_REVEAL_EVAL` are the first such readers.
+
+Because the pre-pass runs in the same frame as the tick, a `nullopt` from
+the tick's read is an absent chunk, not a non-resident region. There is no
+deferred state.
+
+Rejected: a lock in `touchRegion` (file I/O and map inserts on a worker
+thread, taken per anchor); a non-loading read with no pre-pass (the verdict
+would depend on the camera window, and D11's residency promise would not
+hold for these readers); a load deferred to `endTick` or the next frame's
+pre-pass (the deferred load D11 rejects: a visible one-frame state and
+frame-count-dependent fixtures).
+
 ## D5 — Pending changes and window gather
 
 The persistent and transient `ChunkedField2D` dirty-key lists form the pending
