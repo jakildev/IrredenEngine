@@ -177,6 +177,40 @@ else
     echo "  SKIP: no /proc/\$\$/winpid (not a Cygwin runtime)"
 fi
 
+echo "[14] two runtimes sharing a pid release only their own locks"
+# One shell plays both runtimes: same pid, a different winpid record each.
+# Odd numbers are never real Windows pids, so neither reads as live.
+out="$(bash -c '
+    source "'"$HELPERS"'"
+    as_runtime() { _IR_SELF_WINPID="$1"; _IR_RUNTIME_ROOT="$2"; }
+    gpu="$IR_LOCK_ROOT/gpu/lock"; perf="$IR_LOCK_ROOT/perf/lock"
+    as_runtime 99999991 C:/rt-a; _ir_try_lock "$gpu";  _ir_record_held "$gpu"
+    as_runtime 99999993 C:/rt-b; _ir_try_lock "$perf"; _ir_record_held "$perf"
+    _ir_release_one "$gpu"; [[ -d "$gpu" ]] && printf "kept " || printf "stolen "
+    ir_release_all
+    [[ -d "$gpu" ]] && printf "kept " || printf "stolen "
+    [[ -d "$perf" ]] && printf "held " || printf "released "
+    as_runtime 99999991 C:/rt-a; ir_release_all
+    [[ -d "$gpu" ]] && printf "held" || printf "released"')"
+check "rt-b exit leaves rt-a's lock; each releases its own" "kept kept released released" "$out"
+
+echo "[15] sweeping a dead holder's ledger spares a same-pid lock of another runtime"
+out="$(bash -c '
+    source "'"$HELPERS"'"
+    gpu="$IR_LOCK_ROOT/gpu/lock"; ledger="$IR_LOCK_ROOT/.held/999999.99999991"
+    mkdir -p "$ledger" "$gpu"
+    echo "99999991 C:/rt-a" > "$ledger/.winpid"; : > "$ledger/gpu__lock"
+    echo 999999 > "$gpu/pid"; echo "99999993 C:/rt-b" > "$gpu/winpid"
+    ir_sweep_stale
+    [[ -d "$gpu" ]] && printf "kept " || printf "stolen "
+    [[ -d "$ledger" ]] && printf "ledger-left " || printf "ledger-swept "
+    mkdir -p "$ledger" "$gpu"
+    echo "99999991 C:/rt-a" > "$ledger/.winpid"; : > "$ledger/gpu__lock"
+    echo 999999 > "$gpu/pid"; echo "99999991 C:/rt-a" > "$gpu/winpid"
+    ir_sweep_stale
+    [[ -d "$gpu" ]] && printf "kept" || printf "swept"')"
+check "foreign lock kept, the dead holder's own swept" "kept ledger-swept swept" "$out"
+
 echo
 echo "concurrency_test.sh: $pass passed, $fail failed"
 exit "$fail"

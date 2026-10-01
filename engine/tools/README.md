@@ -80,7 +80,10 @@ locks (holder PID is dead) are reclaimed on the next acquire attempt.
 On native Windows a lock also records the holder's Windows pid (`winpid`),
 because MSYS2 bash and Git for Windows bash share the lock root through
 `TEMP` but not a pid table, and `kill -0` from one runtime reports every
-holder in the other dead.
+holder in the other dead. Release and the stale-sweep require that record to
+match as well as the pid, and the per-holder ledger under `.held/` is keyed
+`<pid>.<winpid>` there, so two holders sharing a pid number never release
+each other's locks.
 
 Locks are not re-entrant. The wrapped command inherits
 `IR_ACQUIRE_HOLDER_PID` / `IR_ACQUIRE_HELD_VERB`, and a nested `ir-run` whose

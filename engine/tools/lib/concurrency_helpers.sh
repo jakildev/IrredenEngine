@@ -298,8 +298,8 @@ ir_queue_timeout() {
 # EEXIST. After creating it we write our PID into the dir; on acquire
 # contention, we re-check and reclaim if the holder PID is gone.
 #
-# Held resources are tracked in a per-process list at
-# $IR_LOCK_ROOT/.held/$pid/ — the trap in ir-acquire walks it on exit.
+# Held resources are tracked in a per-process list under $IR_LOCK_ROOT/.held/
+# (see _ir_held_dir) — the trap in ir-acquire walks it on exit.
 
 _ir_pid_alive() {
     local pid="$1"
@@ -502,43 +502,59 @@ ir_inherited_lock_covers() {
     local l lockdir
     for l in $locks; do
         lockdir="$IR_LOCK_ROOT/$l/lock"
-        [[ "$(_ir_lock_holder "$lockdir" || echo "")" == "$holder" ]] || return 1
-        [[ "$(cat "$lockdir/winpid" 2>/dev/null || true)" == "$token" ]] || return 1
+        _ir_lock_owned_by "$lockdir" "$holder" "$token" || return 1
     done
     return 0
 }
 
+# _ir_held_dir — this process's ledger of held locks. The pid alone does not
+# name a process on native Windows (the two Cygwin runtimes number their pids
+# independently), so the ledger is keyed "<pid>.<windows-pid>" there; two
+# holders sharing a pid would otherwise share one ledger and release each
+# other's locks on exit.
+_ir_held_dir() {
+    echo "$IR_LOCK_ROOT/.held/$$${_IR_SELF_WINPID:+.$_IR_SELF_WINPID}"
+}
+
+# _ir_lock_owned_by <lockdir> <pid> <owner-token> — the lock's pid and winpid
+# records both match. Off Windows the token and the record are both empty.
+_ir_lock_owned_by() {
+    local lockdir="$1" pid="$2" token="$3"
+    [[ "$(_ir_lock_holder "$lockdir" || echo "")" == "$pid" ]] || return 1
+    [[ "$(cat "$lockdir/winpid" 2>/dev/null || true)" == "$token" ]]
+}
+
 _ir_record_held() {
     local lockdir="$1"
-    mkdir -p "$IR_LOCK_ROOT/.held/$$" 2>/dev/null || true
+    local helddir
+    helddir="$(_ir_held_dir)"
+    mkdir -p "$helddir" 2>/dev/null || true
     # A dotfile, so the `*` walks below never read it as a held lock.
-    [[ -f "$IR_LOCK_ROOT/.held/$$/.winpid" ]] \
-        || _ir_write_winpid "$IR_LOCK_ROOT/.held/$$/.winpid"
+    [[ -f "$helddir/.winpid" ]] || _ir_write_winpid "$helddir/.winpid"
     # Use the basename plus the parent dir name so we can reconstruct the
     # full path on release (cpu/slot-3, gpu/lock, etc.).
     # Path encoding: '/' → '__'; resource paths must not contain '__'.
     local rel="${lockdir#$IR_LOCK_ROOT/}"
     local safe
     safe="${rel//\//__}"
-    : > "$IR_LOCK_ROOT/.held/$$/$safe"
+    : > "$helddir/$safe"
 }
 
 _ir_release_one() {
     local lockdir="$1"
     # Only release if we hold it (defensive against double-release).
-    local holder
-    holder="$(_ir_lock_holder "$lockdir" || echo "")"
-    if [[ "$holder" == "$$" ]]; then
+    if _ir_lock_owned_by "$lockdir" "$$" "$(ir_self_owner_token)"; then
         rm -rf "$lockdir" 2>/dev/null || true
     fi
     local rel="${lockdir#$IR_LOCK_ROOT/}"
     local safe="${rel//\//__}"
-    rm -f "$IR_LOCK_ROOT/.held/$$/$safe" 2>/dev/null || true
+    rm -f "$(_ir_held_dir)/$safe" 2>/dev/null || true
 }
 
 # Release every lock held by this process. Trap target.
 ir_release_all() {
-    local heldroot="$IR_LOCK_ROOT/.held/$$"
+    local heldroot
+    heldroot="$(_ir_held_dir)"
     [[ -d "$heldroot" ]] || return 0
     local f
     for f in "$heldroot"/*; do
@@ -560,8 +576,10 @@ ir_sweep_stale() {
     local pdir
     for pdir in "$heldroot"/*; do
         [[ -d "$pdir" ]] || continue
-        local pid
+        local pid token
         pid="$(basename "$pdir")"
+        pid="${pid%%.*}"
+        token="$(cat "$pdir/.winpid" 2>/dev/null || true)"
         if ! _ir_holder_alive "$pid" "$pdir/.winpid"; then
             local f
             for f in "$pdir"/*; do
@@ -571,9 +589,7 @@ ir_sweep_stale() {
                 rel="${safe//__/\/}"
                 lockdir="$IR_LOCK_ROOT/$rel"
                 # Only nuke if the lock still attributes to the dead holder.
-                local holder
-                holder="$(_ir_lock_holder "$lockdir" || echo "")"
-                if [[ "$holder" == "$pid" ]]; then
+                if _ir_lock_owned_by "$lockdir" "$pid" "$token"; then
                     rm -rf "$lockdir" 2>/dev/null || true
                 fi
             done
