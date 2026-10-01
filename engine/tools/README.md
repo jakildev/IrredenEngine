@@ -85,6 +85,9 @@ holder in the other dead.
 Locks are not re-entrant. The wrapped command inherits
 `IR_ACQUIRE_HOLDER_PID` / `IR_ACQUIRE_HELD_VERB`, and a nested `ir-run` whose
 verb the ancestor still holds runs inside that hold instead of queueing on it.
+On native Windows it also inherits `IR_ACQUIRE_HOLDER_WINPID`, which must
+match the lock's `winpid` record: the other runtime's holder can carry the
+same pid number.
 
 ## Acquire-late, release-early
 

@@ -123,4 +123,6 @@ fi
 # a nested ir-run see that its ancestor already holds what it would queue on
 # (ir_inherited_lock_covers).
 export IR_ACQUIRE_HOLDER_PID="$$" IR_ACQUIRE_HELD_VERB="$verb"
+IR_ACQUIRE_HOLDER_WINPID="$(ir_self_owner_token)"
+export IR_ACQUIRE_HOLDER_WINPID
 "$@"

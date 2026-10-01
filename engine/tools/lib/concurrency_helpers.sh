@@ -321,7 +321,14 @@ fi
 
 _ir_write_winpid() {
     [[ -n "$_IR_SELF_WINPID" ]] || return 0
-    echo "$_IR_SELF_WINPID $_IR_RUNTIME_ROOT" > "$1"
+    ir_self_owner_token > "$1"
+}
+
+# ir_self_owner_token — the winpid record this process stamps on its locks;
+# empty off Windows, where a lock carries none.
+ir_self_owner_token() {
+    [[ -n "$_IR_SELF_WINPID" ]] || return 0
+    echo "$_IR_SELF_WINPID $_IR_RUNTIME_ROOT"
 }
 
 # _ir_holder_alive <pid> <winpid-file> — same-runtime holders are judged by
@@ -469,14 +476,21 @@ ir_acquire_cpu() {
 }
 
 # ir_inherited_lock_covers <gpu|perf|benchmark> — true when an enclosing
-# ir-acquire, named by the IR_ACQUIRE_HOLDER_PID / IR_ACQUIRE_HELD_VERB it
-# exports to its wrapped command, still owns every exclusive lock <verb> needs.
+# ir-acquire, named by the IR_ACQUIRE_HOLDER_PID / IR_ACQUIRE_HOLDER_WINPID /
+# IR_ACQUIRE_HELD_VERB it exports to its wrapped command, still owns every
+# exclusive lock <verb> needs.
 # The locks are not re-entrant: a nested acquire of the same resource waits out
 # its queue timeout against its own ancestor. Ownership is re-read from the
 # lock dirs, so an env var outliving its holder covers nothing.
+#
+# The pid alone does not identify the owner on native Windows: the two Cygwin
+# runtimes number their pids independently, so a holder in the other runtime
+# can carry the ancestor's pid. The lock's winpid record must equal the
+# exported one as well; off Windows both are empty.
 ir_inherited_lock_covers() {
     local want="$1"
     local holder="${IR_ACQUIRE_HOLDER_PID:-}" held="${IR_ACQUIRE_HELD_VERB:-}"
+    local token="${IR_ACQUIRE_HOLDER_WINPID:-}"
     [[ -n "$holder" && -n "$held" ]] || return 1
     local locks
     case "$want:$held" in
@@ -485,9 +499,11 @@ ir_inherited_lock_covers() {
         benchmark:benchmark)      locks="gpu perf" ;;
         *) return 1 ;;
     esac
-    local l
+    local l lockdir
     for l in $locks; do
-        [[ "$(_ir_lock_holder "$IR_LOCK_ROOT/$l/lock" || echo "")" == "$holder" ]] || return 1
+        lockdir="$IR_LOCK_ROOT/$l/lock"
+        [[ "$(_ir_lock_holder "$lockdir" || echo "")" == "$holder" ]] || return 1
+        [[ "$(cat "$lockdir/winpid" 2>/dev/null || true)" == "$token" ]] || return 1
     done
     return 0
 }

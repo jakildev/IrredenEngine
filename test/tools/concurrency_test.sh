@@ -135,6 +135,17 @@ out="$("$IR_ACQUIRE" gpu -- env IR_ACQUIRE_HOLDER_PID=1 bash -c '
     source "'"$HELPERS"'"
     ir_inherited_lock_covers gpu && echo covered || echo not')"
 check "env pid is not the lock's holder" "not" "$out"
+# The other Cygwin runtime's holder can carry the ancestor's pid number; only
+# the winpid record tells them apart.
+out="$("$IR_ACQUIRE" gpu -- bash -c '
+    source "'"$HELPERS"'"
+    echo "4242 C:/other-runtime" > "$IR_LOCK_ROOT/gpu/lock/winpid"
+    ir_inherited_lock_covers gpu && echo covered || echo not')"
+check "same pid, another runtime's winpid on the lock" "not" "$out"
+out="$("$IR_ACQUIRE" gpu -- env IR_ACQUIRE_HOLDER_WINPID="4242 C:/other-runtime" bash -c '
+    source "'"$HELPERS"'"
+    ir_inherited_lock_covers gpu && echo covered || echo not')"
+check "same pid, env winpid is not the lock's" "not" "$out"
 
 echo "[12] ir-run --auto-profile nested in ir-acquire benchmark runs, not queues"
 FAKE_BUILD="$(mktemp -d)"
