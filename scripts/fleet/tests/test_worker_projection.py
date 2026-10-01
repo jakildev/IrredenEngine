@@ -34,6 +34,7 @@ project_worker = _mod.project_worker
 project_opus_reviewer = _mod.project_opus_reviewer
 project_sonnet_reviewer = _mod.project_sonnet_reviewer
 slice_worker = _mod.slice_worker
+resolve_needs_plan_blocked_by = _mod.resolve_needs_plan_blocked_by
 stable_hash = _mod.stable_hash
 worker_feedback_labels = _mod.worker_feedback_labels
 _review_skipped = _mod._review_skipped
@@ -668,6 +669,16 @@ class SliceWorkerFeedbackPrHostPinLinkage(unittest.TestCase):
     def test_branch_only_link_inherits_the_pin(self):
         self.assertEqual(self._needs_host(head="claude/3757-metal-recapture"),
                          "mac")
+
+    def test_needs_plan_backing_issue_inherits_the_pin(self):
+        pr = dict(_pr(4018, labels=["fleet:needs-fix"]),
+                  closes_issues=[4010], closes_cross_repo=[], refs_issues=[])
+        state = _state(
+            [pr], needs_plan=[{"number": 4010, "body": "**Host:** windows"}]
+        )
+        resolve_needs_plan_blocked_by(state)
+        [record] = slice_worker(state)["feedback_prs"]
+        self.assertEqual(record.get("needs_host"), "windows")
 
     def test_unlinked_pr_stays_ungated(self):
         self.assertIsNone(self._needs_host(refs=[3758],
