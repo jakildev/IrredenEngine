@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <cstddef>
+#include <cstdint>
 #include <fstream>
 #include <regex>
 #include <sstream>
@@ -715,6 +716,112 @@ TEST_F(FogLineOfSightEcsTest, RasterFillsTheWindowAnchoredField) {
     EXPECT_FLOAT_EQ(top(1285, -779), -3.0f);
     EXPECT_FLOAT_EQ(top(1283, -780), kFogLosColumnEmpty);
     EXPECT_FLOAT_EQ(top(1284, -778), kFogLosColumnEmpty);
+}
+
+// A captured view answers every pair exactly as a per-call rebuild over the
+// same occluders, and is a snapshot: after an occluder changes it keeps the
+// pre-change verdict (and so does every copy) until it is recaptured, and a
+// recapture never reaches a copy. Covers a moved flagged wall and a pool voxel
+// whose whole-body exemption is set between queries.
+TEST_F(FogLineOfSightEcsTest, CapturedViewMatchesPerCallAndIsASnapshot) {
+    const IREntity::EntityId wall = makeWall(true);
+    IRRender::VoxelPoolAllocation allocation = m_pool.allocateVoxels(2);
+    allocation.positionGlobals_[0].pos_ = vec3(-3.0f, 12.0f, -3.0f);
+    allocation.positionGlobals_[1].pos_ = vec3(9.0f, -20.0f, -6.0f);
+    allocation.voxels_[0].color_.alpha_ = 255;
+    allocation.voxels_[1].color_.alpha_ = 255;
+
+    const auto oracle = [&](vec3 from, vec3 to) {
+        rasterize();
+        return IRPrefab::Fog::losPointVisible(
+            FogLosColumnField{m_field.data(), m_fieldMin},
+            from,
+            to
+        );
+    };
+    IRPrefab::Fog::LineOfSightView view;
+    const auto capture = [&]() {
+        view.capture(m_pool, IREntity::kNullEntity, m_frame, m_fieldMin);
+    };
+
+    const vec3 wallEye(-6.0f, 0.5f, 3.0f);
+    const vec3 wallShadow(6.0f, 0.5f, 4.0f);
+    const vec3 voxelEye(-6.0f, 12.5f, 3.0f);
+    const vec3 voxelShadow(0.0f, 12.5f, 4.0f);
+    const struct {
+        vec3 from_;
+        vec3 to_;
+    } pairs[] = {
+        {wallEye, wallShadow},
+        {wallEye, vec3(-3.0f, 0.5f, 4.0f)},
+        {wallEye, vec3(6.0f, 20.0f, 4.0f)},
+        {voxelEye, voxelShadow},
+        {vec3(4.0f, -24.0f, 3.0f), vec3(14.0f, -16.0f, 4.0f)},
+        {vec3(0.1f, 30.1f, 3.0f), vec3(0.2f, 30.2f, 5.0f)},
+        {wallEye, vec3(200.0f, 0.5f, 4.0f)},
+    };
+
+    IRPrefab::Fog::LineOfSightView empty;
+    capture();
+    int blocked = 0;
+    int clear = 0;
+    for (const auto &pair : pairs) {
+        const bool expected = oracle(pair.from_, pair.to_);
+        EXPECT_EQ(view.visible(pair.from_, pair.to_), expected)
+            << "from " << pair.from_.x << "," << pair.from_.y << " to " << pair.to_.x << ","
+            << pair.to_.y;
+        EXPECT_TRUE(empty.visible(pair.from_, pair.to_)) << "an empty view must answer true";
+        (expected ? clear : blocked) += 1;
+    }
+    EXPECT_GE(blocked, 1);
+    EXPECT_GE(clear, 1);
+
+    const auto expectSnapshotFlip = [&](vec3 from, vec3 to, const auto &changeOccluders) {
+        ASSERT_FALSE(oracle(from, to));
+        capture();
+        const IRPrefab::Fog::LineOfSightView copy = view;
+        changeOccluders();
+        EXPECT_FALSE(copy.visible(from, to)) << "a copy must keep its snapshot";
+        EXPECT_FALSE(view.visible(from, to)) << "a view must not change until it is recaptured";
+        EXPECT_TRUE(oracle(from, to)) << "the change must flip the per-call verdict";
+        capture();
+        EXPECT_TRUE(view.visible(from, to)) << "a recapture must read the change";
+        EXPECT_FALSE(copy.visible(from, to)) << "a recapture must not reach a copy";
+    };
+    expectSnapshotFlip(wallEye, wallShadow, [&]() {
+        IREntity::getComponent<C_WorldTransform>(wall).translation_ = vec3(0.5f, 40.5f, 1.5f);
+    });
+    expectSnapshotFlip(voxelEye, voxelShadow, [&]() {
+        allocation.voxels_[0].reserved_ |= IRComponents::VoxelReserved::kFogWholeBodyExempt;
+    });
+}
+
+// Many queries against one capture rasterize once; recapturing an unshared view
+// reuses its snapshot, and recapturing while a copy holds it starts a new one.
+TEST_F(FogLineOfSightEcsTest, CapturedViewRasterizesOncePerCapture) {
+    makeWall(true);
+    constexpr int kQueries = 128;
+    IRPrefab::Fog::LineOfSightView view;
+    EXPECT_EQ(view.rasterizeCount(), 0u);
+    view.capture(m_pool, IREntity::kNullEntity, m_frame, m_fieldMin);
+    int blocked = 0;
+    for (int i = 0; i < kQueries; ++i) {
+        const float y = -16.0f + 32.0f * static_cast<float>(i) / static_cast<float>(kQueries);
+        blocked += view.visible(vec3(-6.0f, y, 3.0f), vec3(6.0f, y, 4.0f)) ? 0 : 1;
+    }
+    EXPECT_GT(blocked, 0);
+    EXPECT_LT(blocked, kQueries);
+    EXPECT_EQ(view.rasterizeCount(), 1u);
+
+    for (int i = 1; i < kQueries; ++i) {
+        view.capture(m_pool, IREntity::kNullEntity, m_frame, m_fieldMin);
+    }
+    EXPECT_EQ(view.rasterizeCount(), static_cast<std::uint64_t>(kQueries));
+
+    const IRPrefab::Fog::LineOfSightView copy = view;
+    view.capture(m_pool, IREntity::kNullEntity, m_frame, m_fieldMin);
+    EXPECT_EQ(view.rasterizeCount(), 1u);
+    EXPECT_EQ(copy.rasterizeCount(), static_cast<std::uint64_t>(kQueries));
 }
 
 // Slot authoring: addVisionCircle hands back the slot it filled (or -1), a new

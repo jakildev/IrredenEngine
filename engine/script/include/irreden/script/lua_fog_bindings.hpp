@@ -10,6 +10,7 @@
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <memory>
 #include <stdexcept>
 #include <string>
 
@@ -32,16 +33,20 @@ inline void requireFogArity(
     }
 }
 
-inline double requireFogNumber(sol::object value, const char *function, std::size_t index) {
+inline double requireFogNumber(sol::object value, const std::string &name) {
     if (value.get_type() != sol::type::number) {
-        throw std::invalid_argument(fogArgumentName(function, index) + " must be a number");
+        throw std::invalid_argument(name + " must be a number");
     }
     const double number = value.as<double>();
     const double maximum = static_cast<double>(std::numeric_limits<float>::max());
     if (!(number >= -maximum && number <= maximum)) {
-        throw std::invalid_argument(fogArgumentName(function, index) + " must be finite");
+        throw std::invalid_argument(name + " must be finite");
     }
     return number;
+}
+
+inline double requireFogNumber(sol::object value, const char *function, std::size_t index) {
+    return requireFogNumber(value, fogArgumentName(function, index));
 }
 
 inline float requireFogFloat(sol::object value, const char *function, std::size_t index) {
@@ -179,6 +184,49 @@ inline void applyFogVisionLineOfSight(
     );
 }
 
+/// `IRFog.lineOfSightCaptured(fx, fy, fz, targets)`: one verdict per target of
+/// the flat `{tx1, ty1, tz1, tx2, ...}` array from the eye, over @p view.
+inline sol::table queryFogLineOfSightCaptured(
+    sol::this_state state,
+    const sol::variadic_args &args,
+    const IRPrefab::Fog::LineOfSightView &view
+) {
+    constexpr const char *function = "lineOfSightCaptured";
+    requireFogArity(function, args.size(), 4, 4);
+    const IRMath::vec3 eye(
+        requireFogFloat(args[0], function, 0),
+        requireFogFloat(args[1], function, 1),
+        requireFogFloat(args[2], function, 2)
+    );
+    sol::object targetsObject = args[3];
+    if (targetsObject.get_type() != sol::type::table) {
+        throw std::invalid_argument(fogArgumentName(function, 3) + " must be a table");
+    }
+    const sol::table targets = targetsObject.as<sol::table>();
+    const std::size_t length = targets.size();
+    if (length % 3 != 0) {
+        throw std::invalid_argument(
+            fogArgumentName(function, 3) + " length must be a multiple of 3, got " +
+            std::to_string(length)
+        );
+    }
+    sol::table verdicts = sol::state_view(state).create_table(static_cast<int>(length / 3), 0);
+    for (std::size_t element = 1; element <= length; element += 3) {
+        float target[3];
+        for (std::size_t axis = 0; axis < 3; ++axis) {
+            target[axis] = static_cast<float>(requireFogNumber(
+                targets.raw_get<sol::object>(element + axis),
+                fogArgumentName(function, 3) + " element " + std::to_string(element + axis)
+            ));
+        }
+        verdicts.raw_set(
+            element / 3 + 1,
+            view.visible(eye, IRMath::vec3(target[0], target[1], target[2]))
+        );
+    }
+    return verdicts;
+}
+
 /// @p resolveTarget names the vision state the vision entries author; the
 /// default is the active canvas's.
 inline void
@@ -229,6 +277,14 @@ bindFog(LuaScript &script, FogVisionTargetResolver resolveTarget = activeFogVisi
             IRMath::vec3(coordinates[0], coordinates[1], coordinates[2]),
             IRMath::vec3(coordinates[3], coordinates[4], coordinates[5])
         );
+    };
+    auto lineOfSightView = std::make_shared<IRPrefab::Fog::LineOfSightView>();
+    fog["captureLineOfSight"] = [lineOfSightView](sol::variadic_args args) {
+        requireFogArity("captureLineOfSight", args.size(), 0, 0);
+        IRPrefab::Fog::captureLineOfSight(*lineOfSightView);
+    };
+    fog["lineOfSightCaptured"] = [lineOfSightView](sol::this_state state, sol::variadic_args args) {
+        return queryFogLineOfSightCaptured(state, args, *lineOfSightView);
     };
     fog["setEntityGoverned"] = [](sol::variadic_args args) {
         requireFogArity("setEntityGoverned", args.size(), 1, 2);
