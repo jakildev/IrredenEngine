@@ -154,6 +154,7 @@ struct C_VoxelPool {
             if (m_freeSpanLookup[size].empty()) {
                 m_freeSpanLookup.erase(size);
             }
+            ++m_spanGeneration;
             markCullBoundsDirty(startIndex, size);
             return IRRender::VoxelPoolAllocation{
                 startIndex,
@@ -170,6 +171,7 @@ struct C_VoxelPool {
         if (m_voxelPoolIndex + size <= m_voxelPoolSize) {
             size_t startIndex = static_cast<size_t>(m_voxelPoolIndex);
             m_voxelPoolIndex += size;
+            ++m_spanGeneration;
             markCullBoundsDirty(startIndex, size);
             IRE_LOG_DEBUG("Allocated voxels from {} to {}", startIndex, m_voxelPoolIndex - 1);
             return IRRender::VoxelPoolAllocation{
@@ -238,6 +240,7 @@ struct C_VoxelPool {
 
         m_freeVoxelSpans.push_back({startIndex, size});
         updateFreeSpanLookup(startIndex, size);
+        ++m_spanGeneration;
     }
 
     // Cell groups of a detached re-voxelize pool. The pose producer clears the
@@ -318,6 +321,13 @@ struct C_VoxelPool {
     }
     int getLiveVoxelCount() const {
         return m_voxelPoolIndex;
+    }
+    // Advances on every allocateVoxels / deallocateVoxels. A freed span is
+    // reused whole by the next allocation of the same size, so a different set
+    // can take over an identical (start, count) without the live count moving;
+    // a consumer caching span content keys on this instead.
+    std::uint64_t getSpanGeneration() const {
+        return m_spanGeneration;
     }
     ivec3 getVoxelPoolSize3D() const {
         return m_voxelPoolSize3D;
@@ -908,6 +918,7 @@ struct C_VoxelPool {
     bool m_hostsCellGroups = false;
 
     int m_voxelPoolIndex = 0;
+    std::uint64_t m_spanGeneration = 0;
 
     // Count of voxels in this pool carrying a non-zero per-trixel priority.
     // Maintained push-at-mutation via adjustPerTrixelPriorityVoxelCount (called by

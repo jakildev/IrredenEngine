@@ -7,6 +7,7 @@
 #include <irreden/render/buffer.hpp>
 
 #include <cstddef>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
@@ -67,10 +68,11 @@ struct C_DetachedRevoxelizeBuffer {
     // only on pool mutation. Drives the IDENTITY fast-path fill (slot == source
     // voxel). {0, nullptr} while unallocated.
     std::pair<ResourceId, Buffer *> residentLocals_{0, nullptr};
-    // Voxel count last seeded into residentLocals_. -1 = never seeded; a change
-    // (pool mutation) triggers a re-seed. NOT a per-frame dirty flag — the locals
-    // are rigid, so this only advances on an actual allocation-size change.
-    int seededVoxelCount_ = -1;
+    // Pool span generation (C_VoxelPool::getSpanGeneration) last seeded from.
+    // 0 = never seeded: a pool with live voxels has allocated at least once. A
+    // change (span allocated or freed) triggers a re-seed. NOT a per-frame dirty
+    // flag — the locals are rigid, so this only advances on an allocation change.
+    std::uint64_t seededSpanGeneration_ = 0;
     // Buffer capacity in voxels (= pool slot count). The buffer is sized to the
     // pool's full capacity once, so a re-seed never reallocates.
     int capacity_ = 0;
@@ -89,8 +91,8 @@ struct C_DetachedRevoxelizeBuffer {
 
     // One seed per cell group, in span order — the same order the pool lists
     // its groups in. A pool with no posted groups seeds exactly one implicit
-    // group spanning its live prefix. The seeded span set is what a re-seed is
-    // gated on: it changes only when a hosted set joins or leaves the pool.
+    // group spanning its live prefix. A re-seed is gated on this span set and
+    // on `seededSpanGeneration_`.
     std::vector<RevoxelizeGroupSeed> groups_;
 
     // Total dest slots across the groups: the dispatch count and the
@@ -119,7 +121,7 @@ struct C_DetachedRevoxelizeBuffer {
             IRRender::destroyResource<Buffer>(sourceGrid_.first);
             sourceGrid_ = {0, nullptr};
         }
-        seededVoxelCount_ = -1;
+        seededSpanGeneration_ = 0;
         capacity_ = 0;
         sourceGridCellCapacity_ = 0;
         groups_.clear();

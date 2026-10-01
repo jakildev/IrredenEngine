@@ -165,6 +165,19 @@ inline bool seededFromSpans(
     return true;
 }
 
+// True when @p buffer still holds @p pool's content over @p spans. The span set
+// alone is not enough: a part replaced by a same-sized one reuses the freed
+// span, so the set is unchanged while the voxels in it are not — the pool's
+// span generation catches that.
+inline bool seedIsCurrent(
+    const IRComponents::C_DetachedRevoxelizeBuffer &buffer,
+    const IRComponents::C_VoxelPool &pool,
+    const std::vector<std::pair<std::size_t, std::size_t>> &spans
+) {
+    return buffer.seededSpanGeneration_ == pool.getSpanGeneration() &&
+           seededFromSpans(buffer, spans);
+}
+
 // Seed (or re-seed) the per-pool GPU buffers the re-voxelize fill reads, from
 // the pool's RIGID authored locals + per-voxel offsets, composed exactly as the
 // CPU worldCellForGridVoxel does before it rotates (`composed = local + offset`).
@@ -297,7 +310,7 @@ inline void seedResidentLocals(
     );
     buffer.destCount_ = destCount;
     buffer.anchor_ = buffer.groups_.empty() ? IRMath::vec3(0.0f) : buffer.groups_.front().anchor_;
-    buffer.seededVoxelCount_ = liveCount;
+    buffer.seededSpanGeneration_ = pool.getSpanGeneration();
 }
 
 } // namespace detail
@@ -337,8 +350,8 @@ inline IRRender::RevoxelizeGroupParams groupParams(
 // and report the live {canvasEntity, &buffer} set into @p out (cleared first) for
 // VOXEL_TO_TRIXEL_STAGE_1's per-entity tick to dispatch against. Idempotent and
 // once-per-frame: a steady pool allocates + seeds on the first frame and is a
-// pure report thereafter. A pool mutation — a live-count change, or a hosted
-// set joining or leaving — triggers a re-seed; the locals buffer itself is
+// pure report thereafter. A pool mutation — any span allocated or freed, or a
+// hosted set joining or leaving — triggers a re-seed; the locals buffer itself is
 // sized to the pool capacity once, so a re-seed never reallocates it. Skips
 // non-re-voxelize canvases (the main world canvas and forward-scatter detached
 // canvases keep the CPU pending-range flush). Called once per frame from
@@ -392,7 +405,7 @@ inline void syncResidentBuffers(
                 );
                 buffer.residentLocals_ = resource;
                 buffer.capacity_ = capacity;
-                buffer.seededVoxelCount_ = -1;
+                buffer.seededSpanGeneration_ = 0;
             }
 
             // Seed once; re-seed only when the pool's hosted spans change,
@@ -400,7 +413,7 @@ inline void syncResidentBuffers(
             // O(authored voxels), the exact trap the resource model exists to
             // avoid.
             detail::collectGroupSpans(pool, liveCount, spans);
-            if (buffer.seededVoxelCount_ != liveCount || !detail::seededFromSpans(buffer, spans)) {
+            if (!detail::seedIsCurrent(buffer, pool, spans)) {
                 detail::seedResidentLocals(buffer, pool, liveCount, spans);
             }
 

@@ -151,9 +151,9 @@ class RevoxelizeGroupSeeds : public testing::Test {
         return IREntity::getComponent<C_VoxelPool>(m_canvas);
     }
 
-    const C_VoxelSetNew &makeSet(ivec3 size) {
+    const C_VoxelSetNew &makeSet(ivec3 size, IRMath::Color color = kColor) {
         const IREntity::EntityId entity =
-            IREntity::createEntity(C_VoxelSetNew{size, kColor, EntityAnchor::CENTER, m_canvas});
+            IREntity::createEntity(C_VoxelSetNew{size, color, EntityAnchor::CENTER, m_canvas});
         return IREntity::getComponent<C_VoxelSetNew>(entity);
     }
 
@@ -240,6 +240,39 @@ TEST_F(RevoxelizeGroupSeeds, ReseedGateTracksTheSeededSpanSet) {
     EXPECT_FALSE(IRPrefab::DetachedRevoxelize::detail::seededFromSpans(buffer, spans));
     spans.emplace_back(8u, 64u);
     EXPECT_FALSE(IRPrefab::DetachedRevoxelize::detail::seededFromSpans(buffer, spans));
+}
+
+// A part replaced by a same-sized one reuses the freed span: the span set and
+// live count are unchanged, but the seeded grid would still hold the departed
+// part's voxels.
+TEST_F(RevoxelizeGroupSeeds, ReseedGateCatchesASameSizedSetReusingAFreedSpan) {
+    makeSet(ivec3(2, 2, 2));
+    const IREntity::EntityId departing = IREntity::createEntity(
+        C_VoxelSetNew{ivec3(3, 3, 3), kColor, EntityAnchor::CENTER, m_canvas}
+    );
+    const std::size_t start = IREntity::getComponent<C_VoxelSetNew>(departing).voxelStartIdx_;
+    pool().postCellGroup(VoxelCellGroup{start, 27});
+    const int liveCount = pool().getLiveVoxelCount();
+    std::vector<std::pair<std::size_t, std::size_t>> spans;
+    IRPrefab::DetachedRevoxelize::detail::collectGroupSpans(pool(), liveCount, spans);
+
+    C_DetachedRevoxelizeBuffer buffer{};
+    RevoxelizeGroupSeed seed{};
+    seed.spanStart_ = start;
+    seed.spanCount_ = 27;
+    buffer.groups_.push_back(seed);
+    buffer.seededSpanGeneration_ = pool().getSpanGeneration();
+    ASSERT_TRUE(IRPrefab::DetachedRevoxelize::detail::seedIsCurrent(buffer, pool(), spans));
+
+    IREntity::getEntityManager().destroyEntity(departing);
+    const C_VoxelSetNew &arriving = makeSet(ivec3(3, 3, 3), IRMath::Color{240, 60, 30, 255});
+    ASSERT_EQ(arriving.voxelStartIdx_, start) << "the freed span must be reused";
+    pool().postCellGroup(VoxelCellGroup{start, 27});
+    ASSERT_EQ(pool().getLiveVoxelCount(), liveCount);
+    IRPrefab::DetachedRevoxelize::detail::collectGroupSpans(pool(), liveCount, spans);
+    ASSERT_TRUE(IRPrefab::DetachedRevoxelize::detail::seededFromSpans(buffer, spans));
+
+    EXPECT_FALSE(IRPrefab::DetachedRevoxelize::detail::seedIsCurrent(buffer, pool(), spans));
 }
 
 } // namespace
