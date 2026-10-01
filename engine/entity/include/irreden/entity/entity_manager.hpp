@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <initializer_list>
 #include <set>
@@ -631,6 +632,9 @@ class EntityManager {
     std::unordered_map<std::string, ComponentId> m_pureComponentTypes;
     std::unordered_map<EntityId, RelationId> m_parentRelations;
     std::unordered_map<RelationId, EntityId> m_childOfRelations;
+    // Bumped on every CHILD_OF change so the tree drain can tell when a hook
+    // re-parented an entry it has already ranked.
+    std::uint64_t m_hierarchyRevision = 0;
     std::unordered_map<ComponentId, smart_ComponentData> m_pureComponentVectors;
     // TODO: Remove when entity is destroyed
     std::unordered_map<std::string, EntityId> m_namedEntities;

@@ -685,6 +685,7 @@ void EntityManager::setChildOfRelation(EntityId entity, RelationId relation) {
     }
     ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(target);
     moveEntityByArchetype(record, kept, fromNode, toNode);
+    ++m_hierarchyRevision;
     IRE_LOG_DEBUG("Moved entity to new archetype with relation {}", relation);
 }
 
@@ -776,32 +777,31 @@ void EntityManager::destroyMarkedTrees() {
     };
     std::vector<Doomed> doomed;
     std::size_t next = 0;
-    // A pre-destroy hook may queue another tree, so the queues are re-read
-    // after every destroy and the remainder re-ordered against the hierarchy
-    // as it then stands.
+    std::uint64_t rankedRevision = m_hierarchyRevision;
+    // A pre-destroy hook may queue another tree or re-parent a pending entry,
+    // so after every destroy the queues are re-read and, when either happened,
+    // the remainder is re-ranked against the hierarchy as it then stands.
     while (true) {
         bool absorbed = false;
         for (auto &staging : m_workerStaging) {
             if (staging.markedTreesForDeletion_.empty()) {
                 continue;
             }
-            if (!absorbed) {
-                doomed.erase(doomed.begin(), doomed.begin() + static_cast<std::ptrdiff_t>(next));
-                next = 0;
-                absorbed = true;
-            }
             for (EntityId entity : staging.markedTreesForDeletion_) {
                 doomed.push_back({entity, 0});
             }
             staging.markedTreesForDeletion_.clear();
+            absorbed = true;
         }
-        if (absorbed) {
-            for (Doomed &entry : doomed) {
-                entry.depth_ = hierarchyDepth(entry.entity_);
+        if (absorbed || rankedRevision != m_hierarchyRevision) {
+            rankedRevision = m_hierarchyRevision;
+            const auto pending = doomed.begin() + static_cast<std::ptrdiff_t>(next);
+            for (auto it = pending; it != doomed.end(); ++it) {
+                it->depth_ = hierarchyDepth(it->entity_);
             }
             // Stable, so equal depths keep worker-id then mark order and the
             // drain stays deterministic.
-            std::stable_sort(doomed.begin(), doomed.end(), [](const Doomed &a, const Doomed &b) {
+            std::stable_sort(pending, doomed.end(), [](const Doomed &a, const Doomed &b) {
                 return a.depth_ > b.depth_;
             });
         }
