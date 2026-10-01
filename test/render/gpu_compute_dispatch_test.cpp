@@ -731,13 +731,14 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
     using namespace IRRender;
     using Axes = IRComponents::C_PerAxisTrixelCanvases;
     constexpr std::uint32_t cap = 1u << 19;
-    constexpr std::uint32_t ctrl = 64;
-    constexpr std::uint32_t entries = ctrl + Axes::kOverflowControlUints;
+    const auto layout = Axes::scratchLayoutFor(64, static_cast<int>(cap));
+    const std::uint32_t ctrl = static_cast<std::uint32_t>(layout.y);
+    const std::uint32_t entries = static_cast<std::uint32_t>(layout.z);
     using Record = std::array<std::uint32_t, 3>;
     std::vector<std::uint32_t> words(entries + cap * 3, 0xA5A5A5A5u);
     Buffer scratch(words.data(), words.size() * sizeof(std::uint32_t), BUFFER_STORAGE_DYNAMIC);
     FrameDataVoxelToCanvas frame{};
-    frame.overflowScratchLayout_ = IRMath::ivec4(0, ctrl, entries, cap);
+    frame.overflowScratchLayout_ = layout;
     Buffer uniform(&frame, sizeof(frame), BUFFER_STORAGE_DYNAMIC);
     const std::string path =
         std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_per_axis_overflow_sort.glsl";
