@@ -25,6 +25,19 @@
 
 namespace IRScript {
 
+struct LuaTypedComponentField {
+    std::string name_;
+    LuaFieldType type_;
+};
+
+// One `IRComponent.register`ed component. Holds no sol objects: LuaScript
+// closes its state before its other members destruct.
+struct LuaTypedComponentInfo {
+    std::string name_;
+    IREntity::ComponentId componentId_;
+    std::vector<LuaTypedComponentField> fields_;
+};
+
 class LuaScript {
   public:
     LuaScript();
@@ -150,6 +163,14 @@ class LuaScript {
             return IREntity::kNullComponent;
         }
         return it->second;
+    }
+
+    // Every component `IRComponent.register` created on this state, in
+    // registration order — the C++ side of `IRComponent.list()`. C++-typed
+    // components, including a codegen'd name the register call hands back,
+    // are absent.
+    const std::vector<LuaTypedComponentInfo> &luaTypedComponents() const {
+        return m_luaTypedComponents;
     }
 
     // Default-construct a C++-typed component, apply the optional
@@ -312,6 +333,9 @@ class LuaScript {
     // Excludes the coexistence carve-out's early-return (that path returns
     // an existing C++-typed handle and registers no Lua-typed impl).
     std::unordered_set<IREntity::ComponentId> m_luaTypedComponentIds;
+
+    // Ordered record of the same components, with their field schemas.
+    std::vector<LuaTypedComponentInfo> m_luaTypedComponents;
 
     // ComponentId → attach factory for C++-typed components,
     // populated by the codegen-emitted `registerCodegenComponents()`.

@@ -581,6 +581,13 @@ void LuaScript::bindLuaDrivenEcs() {
         // hands back an already-registered C++-typed handle.
         m_luaTypedComponentIds.insert(componentId);
         m_componentLuaName.emplace(componentId, componentName);
+        LuaTypedComponentInfo &info = m_luaTypedComponents.emplace_back();
+        info.name_ = componentName;
+        info.componentId_ = componentId;
+        info.fields_.reserve(schema.size());
+        for (const auto &f : schema) {
+            info.fields_.push_back(LuaTypedComponentField{f.name_, f.type_});
+        }
 
         sol::table handle = m_lua.create_table();
         handle["typeName"] = componentName;
@@ -599,6 +606,31 @@ void LuaScript::bindLuaDrivenEcs() {
     };
 
     m_lua["IRComponent"]["register"] = registerComponent;
+
+    m_lua["IRComponent"]["list"] = [this]() {
+        sol::table out = m_lua.create_table();
+        for (std::size_t i = 0; i < m_luaTypedComponents.size(); ++i) {
+            const LuaTypedComponentInfo &info = m_luaTypedComponents[i];
+            sol::table fields = m_lua.create_table();
+            for (std::size_t f = 0; f < info.fields_.size(); ++f) {
+                fields[f + 1] = m_lua.create_table_with(
+                    "name",
+                    info.fields_[f].name_,
+                    "type",
+                    std::string{toString(info.fields_[f].type_)}
+                );
+            }
+            out[i + 1] = m_lua.create_table_with(
+                "name",
+                info.name_,
+                "componentId",
+                static_cast<lua_Integer>(info.componentId_),
+                "fields",
+                fields
+            );
+        }
+        return out;
+    };
 
     // Enum-typed schema values get a Lua table mirror so prefab files and
     // creation scripts spell them as `IRComponent.X.Y` rather than the

@@ -37,8 +37,8 @@ declares a component with native per-field columns in the C++ `ComponentId` spac
   function. Explicit tags: `int32`, `float`, `bool`, `string`, `table` (opaque
   opt-in), `vec3`, `ivec3`, `vec4` (`quat`/`quaternion` alias it). A nested
   short-form table or an unclassifiable default raises.
-- A duplicate name raises unless `registerCodegenComponents` registered it, in
-  which case the existing handle returns.
+- A duplicate name raises unless `registerCodegenComponents` registered it (its
+  handle returns). `IRComponent.list()` (C++ `luaTypedComponents()`) lists the rest.
 - Scalar `int32`/`float`/`bool` fields expose `C.fields.<f>.bindingId` for
   `IRModifier`; others get `kInvalidFieldId`.
 - In a system tick use `deferredCreate` / `deferredDestroy`; use
