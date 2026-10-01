@@ -10,7 +10,7 @@
 #version 450 core
 layout (location = 0) in vec2 aPos;
 
-out vec2 TexCoords;
+out vec2 CanvasPositionFromCenter;
 
 layout (binding = 0) uniform sampler2D triangleColors;
 layout (binding = 1) uniform isampler2D  triangleDistances;
@@ -55,6 +55,8 @@ void main() {
     // -aPos.y flips the texture V so that canvas pixel Y=0 (GL bottom)
     // appears at the top of the screen.  This means higher iso/canvas Y
     // renders lower on the final output.
-    TexCoords = vec2(aPos.x, -aPos.y) + 0.50 + (textureOffset / vec2(textureSize));
+    // Centered texel units avoid normalized-UV rescaling, which can round
+    // integer sampling boundaries into a neighboring cell.
+    CanvasPositionFromCenter = vec2(aPos.x, -aPos.y) * vec2(textureSize) + textureOffset;
     gl_Position = mpMatrix * vec4(aPos, 1.0f, 1.0f);
 }

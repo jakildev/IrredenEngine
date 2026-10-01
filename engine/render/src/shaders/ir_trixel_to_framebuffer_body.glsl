@@ -20,7 +20,7 @@
 #endif
 #endif
 
-in vec2 TexCoords;
+in vec2 CanvasPositionFromCenter;
 
 layout (binding = 0) uniform sampler2D triangleColors;
 layout (binding = 1) uniform isampler2D  triangleDistances;
@@ -80,7 +80,7 @@ void main() {
     // select cells in the private canvas basis. Nothing here maps onto the
     // triangle lattice (trixelFramebufferSamplePosition): hover identity
     // follows display identity — docs/design/trixel-parity-shift-442-investigation.md.
-    vec2 originRaw = TexCoords * vec2(textureSize);
+    vec2 originRaw = CanvasPositionFromCenter + 0.5 * vec2(textureSize);
 
     vec2 displayOrigin = originRaw;
     if (trixelSampleLayout == 1) {

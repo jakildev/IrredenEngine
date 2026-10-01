@@ -1,0 +1,8 @@
+{
+  "parent": "c8e6969f662d2ae05c041ff327d4337a954f3620",
+  "source_sha256": {
+    "engine/render/src/shaders/v_trixel_to_framebuffer.glsl": "819b7c86ee262b89255a9184a64f0cc4a2a18de24d360c454e5ccf58bb885fea",
+    "engine/render/src/shaders/ir_trixel_to_framebuffer_body.glsl": "49cf2b056432364252b3b1ed7484fe75aad8356d42dd882a431f04e7383b5f05",
+    "engine/render/src/shaders/metal/ir_trixel_to_framebuffer_body.metal": "213c3b88e260a374b2222c159af6d858025e1c3f82da7b3a372cfa93d0b9d767"
+  }
+}

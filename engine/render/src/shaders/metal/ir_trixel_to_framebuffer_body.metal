@@ -65,7 +65,7 @@ struct HoveredEntityIdBuffer {
 
 struct VertexOut {
     float4 position [[position]];
-    float2 texCoords;
+    float2 canvasPositionFromCenter;
 };
 
 struct FragmentOut {
@@ -87,8 +87,9 @@ vertex VertexOut v_trixel_to_framebuffer(
     const float2 textureSize = float2(triangleColors.get_width(), triangleColors.get_height());
     out.position = frameData.mpMatrix * float4(in.position, 1.0, 1.0);
     out.position.y = -out.position.y;
-    out.texCoords =
-        float2(in.position.x, -in.position.y) + 0.5 + (frameData.textureOffset / textureSize);
+    // Centered texel units avoid normalized-coordinate rescaling at cell boundaries.
+    out.canvasPositionFromCenter =
+        float2(in.position.x, -in.position.y) * textureSize + frameData.textureOffset;
     return out;
 }
 
@@ -127,7 +128,7 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
     // triangles use canvas parity. Nothing here maps onto the triangle
     // lattice (trixelFramebufferSamplePosition): hover identity follows
     // display identity — docs/design/trixel-parity-shift-442-investigation.md.
-    const float2 originRaw = in.texCoords * textureSize;
+    const float2 originRaw = in.canvasPositionFromCenter + 0.5 * textureSize;
 
     float2 displayOrigin = originRaw;
     if (frameData.trixelSampleLayout == 1) {

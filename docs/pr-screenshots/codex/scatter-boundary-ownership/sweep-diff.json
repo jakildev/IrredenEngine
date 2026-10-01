@@ -1,0 +1,70 @@
+[
+  {
+    "yaw_degrees": 0.0,
+    "changed_output_pixels": 752
+  },
+  {
+    "yaw_degrees": 22.5,
+    "changed_output_pixels": 0
+  },
+  {
+    "yaw_degrees": 45.0,
+    "changed_output_pixels": 0
+  },
+  {
+    "yaw_degrees": 67.5,
+    "changed_output_pixels": 0
+  },
+  {
+    "yaw_degrees": 90.0,
+    "changed_output_pixels": 688
+  },
+  {
+    "yaw_degrees": 112.5,
+    "changed_output_pixels": 0
+  },
+  {
+    "yaw_degrees": 135.0,
+    "changed_output_pixels": 0
+  },
+  {
+    "yaw_degrees": 157.5,
+    "changed_output_pixels": 0
+  },
+  {
+    "yaw_degrees": 180.0,
+    "changed_output_pixels": 676
+  },
+  {
+    "yaw_degrees": 202.5,
+    "changed_output_pixels": 0
+  },
+  {
+    "yaw_degrees": 225.0,
+    "changed_output_pixels": 0
+  },
+  {
+    "yaw_degrees": 247.5,
+    "changed_output_pixels": 0
+  },
+  {
+    "yaw_degrees": 270.0,
+    "changed_output_pixels": 732
+  },
+  {
+    "yaw_degrees": 292.5,
+    "changed_output_pixels": 0
+  },
+  {
+    "yaw_degrees": 315.0,
+    "changed_output_pixels": 0
+  },
+  {
+    "yaw_degrees": 337.5,
+    "changed_output_pixels": 0
+  },
+  {
+    "yaw_degrees": 360.0,
+    "changed_output_pixels": 752
+  }
+]

@@ -100,6 +100,8 @@ captures.
   shift stays out of the hover path. Read the
   [parity-shift design](../../docs/design/trixel-parity-shift-442-investigation.md)
   before changing it; the executor is `IRShapeDebug --gui-test`'s `hover_parity_*` shots.
+- Gather interpolates [centered texel units](../../docs/design/trixel-gather-sampling.md);
+  normalized UV rescaling can select the wrong half at integer boundaries.
 - CPU frame-data structs and shader blocks must agree on field order,
   `std140` padding, and binding index. Every hard-coded binding has a matching
   `kBufferIndex_*` constant.
