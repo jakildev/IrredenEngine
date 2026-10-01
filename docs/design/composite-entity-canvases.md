@@ -48,7 +48,9 @@ rotation, so a detached child under a rotating parent turns with it.
 
 A hosted part carries `C_RotationMode{DETACHED_REVOXELIZE}` (keeps the GRID
 rebuild off its span) and no `C_EntityCanvas` (keeps the composite from
-drawing it twice). Membership outlives residency: when the host leaves
+drawing it twice). Joining a host (`attach`, `adoptParts`) therefore destroys
+any private canvas the entity owned once its set has moved, and that canvas's
+own parts fall back to GRID. Membership outlives residency: when the host leaves
 re-voxelize mode its parts fall back to GRID through
 `IRPrefab::CanvasPart::releaseSets`, and `adoptParts` moves them back when a
 re-voxelize canvas returns.

@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include "common/allocation_counter.hpp"
+
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_system.hpp>
@@ -19,7 +21,9 @@
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
+#include <cstddef>
 #include <stdexcept>
+#include <vector>
 
 // Composite entities: several voxel sets hosted in one detached re-voxelize
 // canvas, each posted to the canvas's pool as a cell group with its own pose.
@@ -39,6 +43,7 @@ using IRComponents::C_LocalTransform;
 using IRComponents::C_RotationMode;
 using IRComponents::C_VoxelPool;
 using IRComponents::C_VoxelSetNew;
+using IRComponents::C_WorldTransform;
 using IRComponents::EntityAnchor;
 using IRComponents::RotationMode;
 using IRComponents::VoxelCellGroup;
@@ -361,6 +366,56 @@ TEST_F(CanvasPart, AttachLeavesThePartInPlaceWhenTheHostPoolIsFull) {
     EXPECT_FALSE(IRPrefab::CanvasPart::isHosted(entity));
 }
 
+TEST_F(CanvasPart, AttachReleasesThePrivateCanvasThePartOwned) {
+    const Host host = makeHost(C_LocalTransform{vec3(0.0f)});
+    const Host loner = makeHost(C_LocalTransform{vec3(4.0f, 0.0f, 0.0f)});
+    IREntity::setComponent(
+        loner.entity_,
+        C_VoxelSetNew{ivec3(2, 2, 2), kColor, EntityAnchor::CENTER, loner.canvas_}
+    );
+    const IREntity::EntityId lonersPart =
+        IRPrefab::CanvasPart::create(loner.entity_, C_LocalTransform{}, ivec3(2, 2, 2), kColor);
+    ASSERT_TRUE(IRPrefab::CanvasPart::isHosted(lonersPart));
+    ASSERT_EQ(IREntity::countComponents<C_EntityCanvas>(), 2);
+
+    EXPECT_TRUE(IRPrefab::CanvasPart::attach(loner.entity_, host.entity_));
+
+    EXPECT_FALSE(IREntity::getComponentOptional<C_EntityCanvas>(loner.entity_).has_value());
+    EXPECT_EQ(IREntity::countComponents<C_EntityCanvas>(), 1);
+    EXPECT_TRUE(IRPrefab::CanvasPart::isHosted(loner.entity_));
+    EXPECT_EQ(setOf(loner.entity_).canvasEntity_, host.canvas_);
+    EXPECT_EQ(setOf(loner.entity_).numVoxels_, 8);
+    // The loner's own part falls back to GRID, as when any host releases.
+    EXPECT_EQ(modeOf(lonersPart), RotationMode::GRID);
+    EXPECT_EQ(setOf(lonersPart).numVoxels_, 0);
+    EXPECT_TRUE(isPart(lonersPart));
+
+    IREntity::getEntityManager().destroyMarkedEntities();
+    EXPECT_FALSE(IREntity::entityExists(loner.canvas_));
+    tick();
+    ASSERT_EQ(poolOf(host.canvas_).getCellGroups().size(), 1u);
+    EXPECT_EQ(poolOf(host.canvas_).getCellGroups()[0].start_, setOf(loner.entity_).voxelStartIdx_);
+}
+
+TEST_F(CanvasPart, RefusedAttachKeepsThePrivateCanvas) {
+    const Host host =
+        makeHost(C_LocalTransform{vec3(0.0f)}, RotationMode::DETACHED_REVOXELIZE, ivec3(2, 2, 2));
+    const Host loner = makeHost(C_LocalTransform{vec3(4.0f, 0.0f, 0.0f)});
+    IREntity::setComponent(
+        loner.entity_,
+        C_VoxelSetNew{ivec3(3, 3, 3), kColor, EntityAnchor::CENTER, loner.canvas_}
+    );
+
+    EXPECT_FALSE(IRPrefab::CanvasPart::attach(loner.entity_, host.entity_));
+
+    EXPECT_EQ(IREntity::getComponent<C_EntityCanvas>(loner.entity_).canvasEntity_, loner.canvas_);
+    EXPECT_EQ(IREntity::countComponents<C_EntityCanvas>(), 2);
+    EXPECT_EQ(setOf(loner.entity_).canvasEntity_, loner.canvas_);
+    EXPECT_EQ(setOf(loner.entity_).numVoxels_, 27);
+    IREntity::getEntityManager().destroyMarkedEntities();
+    EXPECT_TRUE(IREntity::entityExists(loner.canvas_));
+}
+
 TEST_F(CanvasPart, AttachToAHostWithoutACanvasOnlyRecordsMembership) {
     const IREntity::EntityId host = IREntity::createEntity(C_RotationMode{RotationMode::GRID});
     const IREntity::EntityId elsewhere = makeCanvas();
@@ -381,6 +436,69 @@ TEST_F(CanvasPart, AttachingAnEntityToItselfFiresTheGuard) {
 
     EXPECT_THROW(IRPrefab::CanvasPart::attach(host.entity_, host.entity_), std::runtime_error);
     EXPECT_FALSE(isPart(host.entity_));
+}
+
+// The host lookup is rebuilt every frame; its allocations must not scale with
+// the number of re-voxelize canvases once warm.
+TEST_F(CanvasPart, PostingAllocationsDoNotGrowWithTheCanvasCount) {
+    using PartsSystem = IRSystem::System<IRSystem::PROPAGATE_CANVAS_PARTS>;
+    PartsSystem *system = m_system_manager.getSystemParams<PartsSystem>(
+        IRSystem::findSystem(IRSystem::PROPAGATE_CANVAS_PARTS)
+    );
+    ASSERT_NE(system, nullptr);
+    std::vector<IREntity::EntityId> parts;
+    const auto addHosts = [&](int count) {
+        for (int i = 0; i < count; ++i) {
+            const Host host = makeHost(C_LocalTransform{vec3(0.0f)});
+            parts.push_back(
+                IRPrefab::CanvasPart::create(
+                    host.entity_,
+                    C_LocalTransform{},
+                    ivec3(2, 2, 2),
+                    kColor
+                )
+            );
+        }
+    };
+    struct PartRow {
+        const C_VoxelSetNew *set_;
+        const C_WorldTransform *world_;
+        const C_RotationMode *mode_;
+        const C_CanvasPart *part_;
+    };
+    std::vector<PartRow> rows;
+    // One warm frame of the system alone, counted.
+    const auto countedFrame = [&]() {
+        tick();
+        tick();
+        rows.clear();
+        for (const IREntity::EntityId part : parts) {
+            rows.push_back(
+                PartRow{
+                    &setOf(part),
+                    &IREntity::getComponent<C_WorldTransform>(part),
+                    &IREntity::getComponent<C_RotationMode>(part),
+                    &IREntity::getComponent<C_CanvasPart>(part)
+                }
+            );
+        }
+        const IRTest::AllocationCounter counter;
+        system->beginTick();
+        for (const PartRow &row : rows) {
+            system->tick(*row.set_, *row.world_, *row.mode_, *row.part_);
+        }
+        return counter.allocations();
+    };
+
+    addHosts(1);
+    const std::size_t oneCanvas = countedFrame();
+    addHosts(31);
+    const std::size_t manyCanvases = countedFrame();
+
+    EXPECT_EQ(manyCanvases, oneCanvas);
+    for (const IREntity::EntityId part : parts) {
+        ASSERT_EQ(poolOf(setOf(part).canvasEntity_).getCellGroups().size(), 1u);
+    }
 }
 
 // ---- the pool's cell-group registry -------------------------------------

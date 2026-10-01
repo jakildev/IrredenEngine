@@ -14,7 +14,8 @@
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
-#include <unordered_map>
+#include <algorithm>
+#include <vector>
 
 // PROPAGATE_CANVAS_PARTS — UPDATE pipeline.
 //
@@ -38,14 +39,16 @@ namespace IRSystem {
 
 template <> struct System<PROPAGATE_CANVAS_PARTS> {
     struct HostCanvas {
+        IREntity::EntityId entity_ = IREntity::kNullEntity;
         IRComponents::C_VoxelPool *pool_ = nullptr;
         const IRComponents::C_CanvasLocalRotation *pose_ = nullptr;
     };
 
-    // Re-voxelize canvases by entity, resolved on the main thread once per
-    // frame so the per-part tick performs no component lookup. Capacity is
-    // reused across frames.
-    std::unordered_map<IREntity::EntityId, HostCanvas> hosts_;
+    // Re-voxelize canvases sorted by entity, resolved on the main thread once
+    // per frame so the per-part tick performs no component lookup. A flat
+    // vector rather than a node-based map: once its capacity reaches the
+    // high-water canvas count the rebuild allocates nothing.
+    std::vector<HostCanvas> hosts_;
     IRMath::vec4 cameraRotationInverse_ = IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 
     void beginTick() {
@@ -60,10 +63,23 @@ template <> struct System<PROPAGATE_CANVAS_PARTS> {
             for (int i = 0; i < node->length_; ++i) {
                 pools[i].clearCellGroups();
                 if (poses[i].reVoxelize_) {
-                    hosts_[node->entities_[i]] = HostCanvas{&pools[i], &poses[i]};
+                    hosts_.push_back(HostCanvas{node->entities_[i], &pools[i], &poses[i]});
                 }
             }
         }
+        std::sort(hosts_.begin(), hosts_.end(), [](const HostCanvas &a, const HostCanvas &b) {
+            return a.entity_ < b.entity_;
+        });
+    }
+
+    const HostCanvas *findHost(IREntity::EntityId canvas) const {
+        const auto host = std::lower_bound(
+            hosts_.begin(),
+            hosts_.end(),
+            canvas,
+            [](const HostCanvas &entry, IREntity::EntityId id) { return entry.entity_ < id; }
+        );
+        return host != hosts_.end() && host->entity_ == canvas ? &*host : nullptr;
     }
 
     void tick(
@@ -78,11 +94,11 @@ template <> struct System<PROPAGATE_CANVAS_PARTS> {
         }
         // A part whose set lives anywhere but a re-voxelize canvas — the main
         // canvas while its host is released — is drawn by that pool's own path.
-        const auto host = hosts_.find(voxelSet.canvasEntity_);
-        if (host == hosts_.end()) {
+        const HostCanvas *host = findHost(voxelSet.canvasEntity_);
+        if (host == nullptr) {
             return;
         }
-        host->second.pool_->postCellGroup(
+        host->pool_->postCellGroup(
             IRComponents::VoxelCellGroup{
                 voxelSet.voxelStartIdx_,
                 static_cast<std::size_t>(voxelSet.numVoxels_),
@@ -93,7 +109,7 @@ template <> struct System<PROPAGATE_CANVAS_PARTS> {
                 IRPrefab::CanvasPose::canvasOffset(
                     cameraRotationInverse_,
                     worldTransform.translation_,
-                    host->second.pose_->ownerWorldTranslation_
+                    host->pose_->ownerWorldTranslation_
                 )
             }
         );

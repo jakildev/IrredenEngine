@@ -35,6 +35,40 @@
 
 namespace IRPrefab::CanvasPart {
 
+/// Re-home every voxel set resident on `canvas` to the active canvas, before
+/// that canvas is destroyed or stops re-voxelizing. Sets on entities other
+/// than `owner` are its parts: they fall back to GRID and keep their
+/// membership, so `adoptParts` restores them. With @p partsOnly the owner's
+/// own set stays where it is.
+///
+/// Done here rather than left to the canvas-teardown hook because that hook
+/// runs at the destroy drain and leaves the sets staged: they would miss this
+/// frame's transform chain, and a creation without SEED_STAGED_VOXELS would
+/// never draw them again.
+inline void releaseSets(IREntity::EntityId owner, IREntity::EntityId canvas, bool partsOnly) {
+    if (!IRPrefab::VoxelPool::hasPool(canvas)) {
+        return;
+    }
+    std::vector<IREntity::EntityId> parts;
+    IREntity::forEachComponent<IRComponents::C_VoxelSetNew>([&](IREntity::EntityId &id,
+                                                                IRComponents::C_VoxelSetNew &set) {
+        if (set.canvasEntity_ != canvas || (partsOnly && id == owner)) {
+            return;
+        }
+        IRPrefab::VoxelPool::restageSet(set);
+        set.attachToCanvas();
+        if (id != owner) {
+            parts.push_back(id);
+        }
+    });
+    for (const IREntity::EntityId part : parts) {
+        IREntity::setComponent(
+            part,
+            IRComponents::C_RotationMode{IRComponents::RotationMode::GRID}
+        );
+    }
+}
+
 namespace detail {
 
 /// The re-voxelize canvas `host` currently owns, or `kNullEntity` when it owns
@@ -63,10 +97,27 @@ inline std::size_t poolTailCapacity(IREntity::EntityId canvas) {
     return capacity;
 }
 
-/// Move `part`'s voxel set into `canvas`'s pool and tag the part for the
-/// re-voxelize path. False, with the part left exactly as it was, when the
-/// part has no set or the pool cannot hold it — a set seeded into a full pool
-/// would drop its records.
+/// Destroy the private canvas `part` drew on before it joined a host, and
+/// drop its `C_EntityCanvas`. Call once the part's own set has left that
+/// canvas: any set still on it belongs to the part's own parts, which fall
+/// back to GRID as when a host leaves DETACHED_REVOXELIZE.
+inline void releasePrivateCanvas(IREntity::EntityId part) {
+    auto canvasOpt = IREntity::getComponentOptional<IRComponents::C_EntityCanvas>(part);
+    if (!canvasOpt) {
+        return;
+    }
+    const IREntity::EntityId canvas = canvasOpt.value()->canvasEntity_;
+    if (canvas != IREntity::kNullEntity) {
+        releaseSets(part, canvas, /*partsOnly=*/true);
+        IREntity::destroyEntity(canvas);
+    }
+    IREntity::removeComponent<IRComponents::C_EntityCanvas>(part);
+}
+
+/// Move `part`'s voxel set into `canvas`'s pool, tag the part for the
+/// re-voxelize path and release any private canvas it owned. False, with the
+/// part left exactly as it was, when the part has no set or the pool cannot
+/// hold it — a set seeded into a full pool would drop its records.
 inline bool moveIntoHostCanvas(IREntity::EntityId part, IREntity::EntityId canvas) {
     auto setOpt = IREntity::getComponentOptional<IRComponents::C_VoxelSetNew>(part);
     if (!setOpt || setOpt.value()->recordCount() == 0) {
@@ -78,6 +129,7 @@ inline bool moveIntoHostCanvas(IREntity::EntityId part, IREntity::EntityId canva
             part,
             IRComponents::C_RotationMode{IRComponents::RotationMode::DETACHED_REVOXELIZE}
         );
+        releasePrivateCanvas(part);
         return true;
     }
     if (set.recordCount() > poolTailCapacity(canvas)) {
@@ -96,6 +148,7 @@ inline bool moveIntoHostCanvas(IREntity::EntityId part, IREntity::EntityId canva
         part,
         IRComponents::C_RotationMode{IRComponents::RotationMode::DETACHED_REVOXELIZE}
     );
+    releasePrivateCanvas(part);
     return true;
 }
 
@@ -161,40 +214,6 @@ inline void adoptParts(IREntity::EntityId host, IREntity::EntityId canvas) {
     });
     for (const IREntity::EntityId part : parts) {
         detail::moveIntoHostCanvas(part, canvas);
-    }
-}
-
-/// Re-home every voxel set resident on `canvas` to the active canvas, before
-/// that canvas is destroyed or stops re-voxelizing. Sets on entities other
-/// than `owner` are its parts: they fall back to GRID and keep their
-/// membership, so `adoptParts` restores them. With @p partsOnly the owner's
-/// own set stays where it is.
-///
-/// Done here rather than left to the canvas-teardown hook because that hook
-/// runs at the destroy drain and leaves the sets staged: they would miss this
-/// frame's transform chain, and a creation without SEED_STAGED_VOXELS would
-/// never draw them again.
-inline void releaseSets(IREntity::EntityId owner, IREntity::EntityId canvas, bool partsOnly) {
-    if (!IRPrefab::VoxelPool::hasPool(canvas)) {
-        return;
-    }
-    std::vector<IREntity::EntityId> parts;
-    IREntity::forEachComponent<IRComponents::C_VoxelSetNew>([&](IREntity::EntityId &id,
-                                                                IRComponents::C_VoxelSetNew &set) {
-        if (set.canvasEntity_ != canvas || (partsOnly && id == owner)) {
-            return;
-        }
-        IRPrefab::VoxelPool::restageSet(set);
-        set.attachToCanvas();
-        if (id != owner) {
-            parts.push_back(id);
-        }
-    });
-    for (const IREntity::EntityId part : parts) {
-        IREntity::setComponent(
-            part,
-            IRComponents::C_RotationMode{IRComponents::RotationMode::GRID}
-        );
     }
 }
 
