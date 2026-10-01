@@ -50,7 +50,8 @@ parent: `setParent` replaces it in one archetype move and asserts on a cycle;
 
 `destroyEntity` never cascades: a destroyed parent's children survive and
 still name it. `destroyTree` destroys the descendants children-first, then the
-root (`IREntity::destroyTree` marks; the manager method is eager).
+root (`IREntity::destroyTree` marks; the manager method is eager). The drain
+destroys tree marks before plain marks, deepest first across every worker.
 `detachChildren` frees the direct children instead. Every distinct parent owns
 archetype nodes for its children, so many small composites fragment the graph.
 

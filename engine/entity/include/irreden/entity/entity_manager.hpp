@@ -53,6 +53,10 @@ struct WorkerStaging {
     std::vector<PendingComponentRemoval> componentRemovals_;
     std::vector<std::function<void()>> structuralChanges_;
     std::vector<EntityId> markedForDeletion_;
+    // Members of deferred tree cascades. Drained before every plain mark,
+    // deepest first, so no plain mark of a member can kill a parent ahead of
+    // its children.
+    std::vector<EntityId> markedTreesForDeletion_;
 };
 
 class EntityManager {
@@ -387,8 +391,11 @@ class EntityManager {
     bool isAncestor(EntityId ancestor, EntityId entity);
     /// Destroys every descendant, children before parents, then `root`.
     void destroyTree(EntityId root);
-    /// Marks `root`'s current descendants, then `root`, for deletion. A child
-    /// parented after this call is not in the set.
+    /// Marks `root`'s current descendants and `root` for deletion. A child
+    /// parented after this call is not in the set. The drain destroys every
+    /// tree-marked entity before any plainly marked one, children before
+    /// parents by the hierarchy as it stands at the drain, whichever worker or
+    /// order the marks came from.
     void markTreeForDeletion(EntityId root);
     /// Clears the relation on each direct child; grandchildren keep theirs.
     void detachChildren(EntityId parent);
@@ -699,6 +706,9 @@ class EntityManager {
     RelationId childOfRelationInType(const Archetype &type);
     // Appends every descendant of `root`, children before parents, then `root`.
     void appendTreePostOrder(EntityId root, std::vector<EntityId> &out);
+    // Number of live ancestors above `entity`.
+    int hierarchyDepth(EntityId entity);
+    void destroyMarkedTrees();
 
     template <typename Component, typename... Args>
     int emplaceComponent(IComponentData *dest, Args &&...args) {

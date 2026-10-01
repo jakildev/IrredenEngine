@@ -611,4 +611,50 @@ TEST_F(IREntityTest, DestroyTreeDestroysChildrenBeforeParents) {
     EXPECT_EQ(order, (std::vector<IREntity::EntityId>{grandchild, child, root}));
     EXPECT_EQ(parentAlive, (std::vector<bool>{true, true, true}));
 }
+
+// A plain mark of the root queued ahead of the tree request must not kill
+// the root before its children.
+TEST_F(IREntityTest, DeferredTreeOutranksEarlierPlainRootMark) {
+    const auto root = IREntity::createEntity();
+    const auto child = IREntity::createEntity();
+    const auto grandchild = IREntity::createEntity();
+    IREntity::setParent(child, root);
+    IREntity::setParent(grandchild, child);
+
+    std::vector<IREntity::EntityId> order;
+    std::vector<bool> parentAlive;
+    const auto hook = m_entity_manager.registerPreDestroyHook([&](IREntity::EntityId entity) {
+        order.push_back(entity & IREntity::IR_ENTITY_ID_BITS);
+        const auto parent = m_entity_manager.getParent(entity);
+        parentAlive.push_back(parent == IREntity::kNullEntity || IREntity::entityExists(parent));
+    });
+    IREntity::destroyEntity(root);
+    IREntity::destroyEntity(child);
+    IREntity::destroyTree(root);
+    m_entity_manager.destroyMarkedEntities();
+    m_entity_manager.unregisterPreDestroyHook(hook);
+
+    EXPECT_EQ(order, (std::vector<IREntity::EntityId>{grandchild, child, root}));
+    EXPECT_EQ(parentAlive, (std::vector<bool>{true, true, true}));
+    EXPECT_FALSE(IREntity::entityExists(root));
+}
+
+// Two tree requests on one root, with a child parented between them: the
+// drain orders by the hierarchy as it stands, not by request order.
+TEST_F(IREntityTest, DeferredTreeOrdersOverlappingRequestsChildFirst) {
+    const auto root = IREntity::createEntity();
+    const auto child = IREntity::createEntity();
+
+    std::vector<IREntity::EntityId> order;
+    const auto hook = m_entity_manager.registerPreDestroyHook([&](IREntity::EntityId entity) {
+        order.push_back(entity & IREntity::IR_ENTITY_ID_BITS);
+    });
+    IREntity::destroyTree(root);
+    IREntity::setParent(child, root);
+    IREntity::destroyTree(root);
+    m_entity_manager.destroyMarkedEntities();
+    m_entity_manager.unregisterPreDestroyHook(hook);
+
+    EXPECT_EQ(order, (std::vector<IREntity::EntityId>{child, root}));
+}
 } // namespace

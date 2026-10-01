@@ -474,6 +474,67 @@ TEST_F(PrefabApi, SpawnAttachesShapesAsChildren) {
     EXPECT_EQ(children[2].color_.blue_, 255);
 }
 
+// The spawn error paths mark the whole spawned tree; nothing may survive the
+// drain. The fixture is headless, so no detached canvas exists to reclaim.
+TEST_F(PrefabApi, SetupErrorDestroysShapesAndSetupAttachedDescendants) {
+    const IREntity::EntityId bystander = IREntity::createEntity();
+    const IREntity::EntityId extra = IREntity::createEntity();
+    const IREntity::EntityId extraChild = IREntity::createEntity();
+    m_lua.lua()["g_extra"] = static_cast<lua_Integer>(extra);
+    m_lua.lua()["g_extra_child"] = static_cast<lua_Integer>(extraChild);
+
+    PrefabFiles f = writeShapesFixture(
+        "setup_error_cleanup",
+        std::string{"return {\n  prefab_version = 1,\n  voxel_ref = '"} + std::string{kTmpDir} +
+            "/prefab_test_shapes_setup_error_cleanup.vxs',\n"
+            "  setup = function(entity)\n"
+            "    IREntity.setParent(g_extra, entity)\n"
+            "    IREntity.setParent(g_extra_child, g_extra)\n"
+            "    error('boom')\n"
+            "  end,\n"
+            "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    EXPECT_EQ(r.entity_, IREntity::kNullEntity);
+    ASSERT_NE(r.error_.find("setup callback failed"), std::string::npos) << r.error_;
+
+    // Marked, not yet drained: the root (the one C_RotationMode holder), its
+    // three SHAPES children, and the setup-attached pair are all still live.
+    EXPECT_EQ(IREntity::countComponents<IRComponents::C_RotationMode>(), 1);
+    EXPECT_EQ(IREntity::countComponents<IRComponents::C_ShapeDescriptor>(), 3);
+    ASSERT_NE(m_entity_manager.getParent(extra), IREntity::kNullEntity);
+    EXPECT_EQ(m_entity_manager.getParent(extraChild), extra);
+
+    m_entity_manager.destroyMarkedEntities();
+    EXPECT_EQ(IREntity::countComponents<IRComponents::C_RotationMode>(), 0);
+    EXPECT_EQ(IREntity::countComponents<IRComponents::C_ShapeDescriptor>(), 0);
+    EXPECT_FALSE(IREntity::entityExists(extra));
+    EXPECT_FALSE(IREntity::entityExists(extraChild));
+    EXPECT_TRUE(IREntity::entityExists(bystander));
+}
+
+TEST_F(PrefabApi, ComponentsErrorDestroysRootAndShapeChildren) {
+    PrefabFiles f = writeShapesFixture(
+        "components_error_cleanup",
+        std::string{"return {\n  prefab_version = 1,\n  voxel_ref = '"} + std::string{kTmpDir} +
+            "/prefab_test_shapes_components_error_cleanup.vxs',\n"
+            "  components = { C_DoesNotExist = {} },\n"
+            "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    EXPECT_EQ(r.entity_, IREntity::kNullEntity);
+    ASSERT_NE(r.error_.find("no factory registered"), std::string::npos) << r.error_;
+
+    EXPECT_EQ(IREntity::countComponents<IRComponents::C_RotationMode>(), 1);
+    EXPECT_EQ(IREntity::countComponents<IRComponents::C_ShapeDescriptor>(), 3);
+
+    m_entity_manager.destroyMarkedEntities();
+    EXPECT_EQ(IREntity::countComponents<IRComponents::C_RotationMode>(), 0);
+    EXPECT_EQ(IREntity::countComponents<IRComponents::C_ShapeDescriptor>(), 0);
+}
+
 TEST_F(PrefabApi, SpawnSkipsShapesAttachmentWhenAbsent) {
     // A prefab without voxel_ref must still spawn cleanly with zero
     // shape children. Sanity check that the SHAPES path doesn't leak

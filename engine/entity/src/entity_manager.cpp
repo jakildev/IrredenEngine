@@ -5,6 +5,7 @@
 #include <irreden/entity/entity_manager.hpp>
 #include <irreden/job/job_manager.hpp>
 
+#include <algorithm>
 #include <memory>
 #include <unordered_set>
 
@@ -247,7 +248,8 @@ void EntityManager::destroyMarkedEntities() {
         isMainThreadForDeferred(),
         "EntityManager::destroyMarkedEntities must run on the main thread"
     );
-    // Drain the legacy main-thread list first (callers that
+    destroyMarkedTrees();
+    // The legacy main-thread list drains ahead of the worker slots (callers that
     // bypass the per-worker buffer — pre-`World` startup, e.g. — still
     // funnel through this vector).
     // The drain is set-semantics, not sequence-semantics: an id can be marked
@@ -741,10 +743,49 @@ void EntityManager::destroyTree(EntityId root) {
 }
 
 void EntityManager::markTreeForDeletion(EntityId root) {
-    std::vector<EntityId> doomed;
-    appendTreePostOrder(root, doomed);
-    for (EntityId entity : doomed) {
-        markEntityForDeletion(entity);
+    appendTreePostOrder(
+        root,
+        m_workerStaging[workerSlotForCurrentThread()].markedTreesForDeletion_
+    );
+}
+
+int EntityManager::hierarchyDepth(EntityId entity) {
+    int depth = 0;
+    const EntityRecord *record = findRecord(entity);
+    while (record != nullptr && record->archetypeNode != nullptr) {
+        const EntityId parent = getParentEntityFromArchetype(record->archetypeNode->type_);
+        if (parent == kNullEntity) {
+            break;
+        }
+        record = findRecord(parent);
+        if (record != nullptr) {
+            ++depth;
+        }
+    }
+    return depth;
+}
+
+void EntityManager::destroyMarkedTrees() {
+    struct Doomed {
+        EntityId entity_;
+        int depth_;
+    };
+    std::vector<Doomed> doomed;
+    for (auto &staging : m_workerStaging) {
+        for (EntityId entity : staging.markedTreesForDeletion_) {
+            doomed.push_back({entity, hierarchyDepth(entity)});
+        }
+        staging.markedTreesForDeletion_.clear();
+    }
+    // Stable, so equal depths keep worker-id then mark order and the drain
+    // stays deterministic.
+    std::stable_sort(doomed.begin(), doomed.end(), [](const Doomed &a, const Doomed &b) {
+        return a.depth_ > b.depth_;
+    });
+    for (const Doomed &entry : doomed) {
+        if (findRecord(entry.entity_) != nullptr) {
+            destroyEntity(entry.entity_);
+        }
     }
 }
 
