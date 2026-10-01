@@ -173,6 +173,13 @@ with `test/ecs/chunk_bounds_eviction_test.cpp` and
   static), and bone slots.
 - `destroyEntity` only marks, so the re-stage lands at the
   `destroyMarkedEntities` drain; a test that destroys a canvas must drain first.
+- Runtime rotation-mode switches are staged structural operations. Entering a
+  detached mode creates a private voxel-pool canvas sized from the set extent,
+  re-stages the entity's single `C_VoxelSetNew`, and seeds it into that pool.
+  Leaving the detached family synchronously re-stages the same set onto the
+  named main canvas before destroying the private canvas; the teardown hook then
+  finds no resident set to recover.
+  `DETACHED` ↔ `DETACHED_REVOXELIZE` retains the existing private pool.
 
 ## Entity-based joints
 

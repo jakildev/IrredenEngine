@@ -34,6 +34,18 @@
 
 namespace IRPrefab::EntityCanvas {
 
+inline int count() {
+    return IREntity::countComponents<IRComponents::C_EntityCanvas>();
+}
+
+inline bool consumeCapacityWarning(int liveCount, int capacity, bool &warningEmitted) {
+    if (warningEmitted || liveCount <= capacity) {
+        return false;
+    }
+    warningEmitted = true;
+    return true;
+}
+
 /// Spawn a child canvas entity (textures + size + name) parented to
 /// `mainFramebuffer`, and return a `C_EntityCanvas` that wraps it. Add
 /// the returned component to the parent entity that should host the

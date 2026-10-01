@@ -15,6 +15,7 @@
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
+#include <irreden/render/entity_canvas.hpp>
 
 #include <vector>
 
@@ -36,6 +37,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     // System-owned state lives on System<N> (registerSystem member form), not
     // in function-local statics.
     std::vector<CanvasInstance> instances_;
+    bool capacityWarningEmitted_ = false;
 
     // Frame constants snapshotted once in beginTick because they are constant
     // across every visible detached entity in a frame. fbRes_ comes from the
@@ -73,6 +75,19 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     void beginTick() {
         instances_.clear();
         instances_.reserve(kMaxEntityCanvasInstances);
+
+        const int liveCanvasCount = IRPrefab::EntityCanvas::count();
+        if (IRPrefab::EntityCanvas::consumeCapacityWarning(
+                liveCanvasCount,
+                kMaxEntityCanvasInstances,
+                capacityWarningEmitted_
+            )) {
+            IRE_LOG_WARN(
+                "Entity canvas count {} exceeds composite capacity {}; surplus canvases are hidden",
+                liveCanvasCount,
+                kMaxEntityCanvasInstances
+            );
+        }
 
         // Hoist the frame constants out of the per-entity tick. The
         // "mainFramebuffer" named entity is stood up at pipeline init and never

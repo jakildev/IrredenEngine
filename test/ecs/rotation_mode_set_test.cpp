@@ -11,17 +11,21 @@
 
 #include <gtest/gtest.h>
 
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/common/rotation_mode.hpp>
 #include <irreden/entity/entity_manager.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/entity_canvas.hpp>
+#include <irreden/voxel/components/component_voxel_set.hpp>
 
 #include <cstdint>
 
 namespace {
 
 using IRComponents::C_EntityCanvas;
+using IRComponents::C_LocalTransform;
 using IRComponents::C_RotationMode;
 using IRComponents::RotationMode;
 
@@ -65,7 +69,7 @@ TEST(RotationModeOwnsEntityCanvas, ClassifiesEachModeExplicitly) {
 
 // ---- setMode's canvas lifecycle ----------------------------------------
 
-class RotationModeSetMode : public testing::Test {
+class RotationModeSwitch : public testing::Test {
   protected:
     // A canvas-owning entity as it exists between frames: tagged with the
     // mode and carrying the wrapper. `canvasEntity_` stays kNullEntity so
@@ -84,12 +88,19 @@ class RotationModeSetMode : public testing::Test {
         return IREntity::getComponent<C_RotationMode>(entity).mode_;
     }
 
+    static void expectDetachedSwitchLeavesModeUnchanged(IREntity::EntityId entity) {
+        IRPrefab::RotationMode::setMode(entity, RotationMode::DETACHED);
+
+        EXPECT_FALSE(IREntity::getComponentOptional<C_RotationMode>(entity).has_value());
+        EXPECT_FALSE(hasCanvas(entity));
+    }
+
     IREntity::EntityManager m_entity_manager;
 };
 
 // Leaving the canvas-owning family releases the canvas for BOTH members, not
 // just DETACHED — this is the arm the family predicate exists for.
-TEST_F(RotationModeSetMode, LeavingDetachedRevoxelizeForGridReleasesTheCanvas) {
+TEST_F(RotationModeSwitch, LeavingDetachedRevoxelizeForGridReleasesTheCanvas) {
     const IREntity::EntityId entity = makeCanvasBackedEntity(RotationMode::DETACHED_REVOXELIZE);
     ASSERT_TRUE(hasCanvas(entity));
 
@@ -102,7 +113,7 @@ TEST_F(RotationModeSetMode, LeavingDetachedRevoxelizeForGridReleasesTheCanvas) {
 // The paired control: the same release, entered from the other family member.
 // Without it a blanket break in the teardown path would read as a pass on the
 // arm above alone, rather than as the mode-specific gap it is.
-TEST_F(RotationModeSetMode, LeavingDetachedForGridReleasesTheCanvas) {
+TEST_F(RotationModeSwitch, LeavingDetachedForGridReleasesTheCanvas) {
     const IREntity::EntityId entity = makeCanvasBackedEntity(RotationMode::DETACHED);
     ASSERT_TRUE(hasCanvas(entity));
 
@@ -114,7 +125,7 @@ TEST_F(RotationModeSetMode, LeavingDetachedForGridReleasesTheCanvas) {
 
 // A swap inside the family is a re-tag, not a re-allocation: both modes own a
 // canvas, so neither releasing nor re-creating it is correct here.
-TEST_F(RotationModeSetMode, SwitchingDetachedToDetachedRevoxelizeKeepsTheCanvas) {
+TEST_F(RotationModeSwitch, SwitchingDetachedToDetachedRevoxelizeKeepsTheCanvas) {
     const IREntity::EntityId entity = makeCanvasBackedEntity(RotationMode::DETACHED);
 
     IRPrefab::RotationMode::setMode(entity, RotationMode::DETACHED_REVOXELIZE);
@@ -123,7 +134,7 @@ TEST_F(RotationModeSetMode, SwitchingDetachedToDetachedRevoxelizeKeepsTheCanvas)
     EXPECT_TRUE(hasCanvas(entity));
 }
 
-TEST_F(RotationModeSetMode, SwitchingDetachedRevoxelizeToDetachedKeepsTheCanvas) {
+TEST_F(RotationModeSwitch, SwitchingDetachedRevoxelizeToDetachedKeepsTheCanvas) {
     const IREntity::EntityId entity = makeCanvasBackedEntity(RotationMode::DETACHED_REVOXELIZE);
 
     IRPrefab::RotationMode::setMode(entity, RotationMode::DETACHED);
@@ -135,7 +146,7 @@ TEST_F(RotationModeSetMode, SwitchingDetachedRevoxelizeToDetachedKeepsTheCanvas)
 // The early return gates on the canvas matching the mode, not on the mode
 // alone. A consistent same-mode call must still take it and attempt no
 // allocation — an allocation would trip the RenderManager assert here.
-TEST_F(RotationModeSetMode, SameModeWithAMatchingCanvasIsANoOp) {
+TEST_F(RotationModeSwitch, SameModeWithAMatchingCanvasIsANoOp) {
     const IREntity::EntityId entity = makeCanvasBackedEntity(RotationMode::DETACHED_REVOXELIZE);
 
     IRPrefab::RotationMode::setMode(entity, RotationMode::DETACHED_REVOXELIZE);
@@ -144,13 +155,30 @@ TEST_F(RotationModeSetMode, SameModeWithAMatchingCanvasIsANoOp) {
     EXPECT_TRUE(hasCanvas(entity));
 }
 
-TEST_F(RotationModeSetMode, SameModeOnAPlainGridEntityIsANoOp) {
-    const IREntity::EntityId entity = IREntity::createEntity(C_RotationMode{RotationMode::GRID});
+TEST_F(RotationModeSwitch, SameModeOnAPlainGridEntityIsANoOp) {
+    C_LocalTransform transform;
+    transform.unbounded_ = true;
+    const IREntity::EntityId entity =
+        IREntity::createEntity(C_RotationMode{RotationMode::GRID}, transform);
 
     IRPrefab::RotationMode::setMode(entity, RotationMode::GRID);
 
     EXPECT_EQ(modeOf(entity), RotationMode::GRID);
     EXPECT_FALSE(hasCanvas(entity));
+    EXPECT_TRUE(IREntity::getComponent<C_LocalTransform>(entity).unbounded_);
+}
+
+TEST_F(RotationModeSwitch, LeavingHeadlessDetachedForGridClearsUnbounded) {
+    C_LocalTransform transform;
+    transform.unbounded_ = true;
+    const IREntity::EntityId entity =
+        IREntity::createEntity(C_RotationMode{RotationMode::DETACHED}, transform);
+
+    IRPrefab::RotationMode::setMode(entity, RotationMode::GRID);
+
+    EXPECT_EQ(modeOf(entity), RotationMode::GRID);
+    EXPECT_FALSE(hasCanvas(entity));
+    EXPECT_FALSE(IREntity::getComponent<C_LocalTransform>(entity).unbounded_);
 }
 
 // Mode-matches-but-canvas-does-not is the case the early return must NOT
@@ -158,7 +186,7 @@ TEST_F(RotationModeSetMode, SameModeOnAPlainGridEntityIsANoOp) {
 // rather than short-circuited. This is the headlessly-reachable half of that
 // rule; its mirror (a detached-tagged entity with no canvas) is the
 // allocation path the file header notes cannot run without a RenderManager.
-TEST_F(RotationModeSetMode, SameModeReleasesACanvasTheModeDoesNotOwn) {
+TEST_F(RotationModeSwitch, SameModeReleasesACanvasTheModeDoesNotOwn) {
     const IREntity::EntityId entity = makeCanvasBackedEntity(RotationMode::GRID);
     ASSERT_TRUE(hasCanvas(entity));
 
@@ -170,13 +198,46 @@ TEST_F(RotationModeSetMode, SameModeReleasesACanvasTheModeDoesNotOwn) {
 
 // An entity that never carried C_RotationMode is implicitly GRID, so the
 // component-less path must reach the same conclusion as the tagged one.
-TEST_F(RotationModeSetMode, ImplicitGridEntityWithAStrayCanvasIsReconciled) {
+TEST_F(RotationModeSwitch, ImplicitGridEntityWithAStrayCanvasIsReconciled) {
     const IREntity::EntityId entity = IREntity::createEntity(C_EntityCanvas{});
 
     IRPrefab::RotationMode::setMode(entity, RotationMode::GRID);
 
     EXPECT_EQ(modeOf(entity), RotationMode::GRID);
     EXPECT_FALSE(hasCanvas(entity));
+}
+
+TEST_F(RotationModeSwitch, MissingVoxelSetLeavesModeUnchanged) {
+    const IREntity::EntityId entity = IREntity::createEntity();
+
+    expectDetachedSwitchLeavesModeUnchanged(entity);
+}
+
+TEST_F(RotationModeSwitch, EmptyVoxelSetLeavesModeUnchanged) {
+    const IREntity::EntityId entity = IREntity::createEntity(IRComponents::C_VoxelSetNew{});
+
+    expectDetachedSwitchLeavesModeUnchanged(entity);
+}
+
+TEST_F(RotationModeSwitch, SingleVoxelSetSurvivesRoundTrip) {
+    const IREntity::EntityId entity = IREntity::createEntity(
+        C_RotationMode{RotationMode::DETACHED},
+        C_EntityCanvas{},
+        IRComponents::C_VoxelSetNew{}
+    );
+
+    IRPrefab::RotationMode::setMode(entity, RotationMode::DETACHED_REVOXELIZE);
+    IRPrefab::RotationMode::setMode(entity, RotationMode::GRID);
+
+    EXPECT_EQ(IREntity::countComponents<IRComponents::C_VoxelSetNew>(), 1);
+    EXPECT_TRUE(IREntity::getComponentOptional<IRComponents::C_VoxelSetNew>(entity).has_value());
+}
+
+TEST_F(RotationModeSwitch, CapWarnsOnce) {
+    bool emitted = false;
+    EXPECT_FALSE(IRPrefab::EntityCanvas::consumeCapacityWarning(512, 512, emitted));
+    EXPECT_TRUE(IRPrefab::EntityCanvas::consumeCapacityWarning(513, 512, emitted));
+    EXPECT_FALSE(IRPrefab::EntityCanvas::consumeCapacityWarning(600, 512, emitted));
 }
 
 } // namespace
