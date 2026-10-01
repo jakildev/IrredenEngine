@@ -261,7 +261,7 @@ TEST_F(RevoxelizeGroupSeeds, ReseedGateCatchesASameSizedSetReusingAFreedSpan) {
     seed.spanStart_ = start;
     seed.spanCount_ = 27;
     buffer.groups_.push_back(seed);
-    buffer.seededSpanGeneration_ = pool().getSpanGeneration();
+    buffer.seededContentGeneration_ = pool().getContentGeneration();
     ASSERT_TRUE(IRPrefab::DetachedRevoxelize::detail::seedIsCurrent(buffer, pool(), spans));
 
     IREntity::getEntityManager().destroyEntity(departing);
@@ -273,6 +273,77 @@ TEST_F(RevoxelizeGroupSeeds, ReseedGateCatchesASameSizedSetReusingAFreedSpan) {
     ASSERT_TRUE(IRPrefab::DetachedRevoxelize::detail::seededFromSpans(buffer, spans));
 
     EXPECT_FALSE(IRPrefab::DetachedRevoxelize::detail::seedIsCurrent(buffer, pool(), spans));
+}
+
+// An in-place edit of a hosted part allocates nothing and keeps its span, but
+// the seeded grid still holds the old records. Every record mutator must
+// invalidate the seed, a hidden set's included; a per-frame position upload
+// must not, or a moving part would re-seed every frame.
+TEST_F(RevoxelizeGroupSeeds, ReseedGateCatchesAnInPlaceEditOfAHostedPart) {
+    const IREntity::EntityId part = IREntity::createEntity(
+        C_VoxelSetNew{ivec3(3, 3, 3), kColor, EntityAnchor::CENTER, m_canvas}
+    );
+    const std::size_t start = IREntity::getComponent<C_VoxelSetNew>(part).voxelStartIdx_;
+    pool().postCellGroup(VoxelCellGroup{start, 27});
+    std::vector<std::pair<std::size_t, std::size_t>> spans;
+    IRPrefab::DetachedRevoxelize::detail::collectGroupSpans(
+        pool(),
+        pool().getLiveVoxelCount(),
+        spans
+    );
+
+    C_DetachedRevoxelizeBuffer buffer{};
+    RevoxelizeGroupSeed seed{};
+    seed.spanStart_ = start;
+    seed.spanCount_ = 27;
+    buffer.groups_.push_back(seed);
+    const auto seedNow = [&] {
+        buffer.seededContentGeneration_ = pool().getContentGeneration();
+        ASSERT_TRUE(IRPrefab::DetachedRevoxelize::detail::seedIsCurrent(buffer, pool(), spans));
+    };
+    const auto set = [&]() -> C_VoxelSetNew & {
+        return IREntity::getComponent<C_VoxelSetNew>(part);
+    };
+    const auto expectStale = [&](const char *edit) {
+        EXPECT_FALSE(IRPrefab::DetachedRevoxelize::detail::seedIsCurrent(buffer, pool(), spans))
+            << edit;
+    };
+
+    seedNow();
+    pool().queuePositionRange(start, 27);
+    EXPECT_TRUE(IRPrefab::DetachedRevoxelize::detail::seedIsCurrent(buffer, pool(), spans))
+        << "position upload";
+
+    seedNow();
+    set().editVoxels([](int, IRComponents::C_Voxel &voxel, vec3) {
+        voxel.color_ = IRMath::Color{240, 60, 30, voxel.color_.alpha_};
+    });
+    expectStale("editVoxels recolor");
+
+    seedNow();
+    set().carve([](vec3 localPos) { return localPos.z > 0.0f; });
+    expectStale("carve");
+
+    seedNow();
+    set().changeVoxelColor(ivec3(1, 1, 1), IRMath::Color{10, 200, 10, 255});
+    expectStale("changeVoxelColor");
+
+    seedNow();
+    set().changeVoxelPriority(ivec3(1, 1, 1), 2);
+    expectStale("changeVoxelPriority");
+
+    seedNow();
+    set().changeVoxelPriorityAll(1);
+    expectStale("changeVoxelPriorityAll");
+
+    set().visible_ = false;
+    seedNow();
+    set().changeVoxelColorAll(IRMath::Color{30, 30, 200, 255});
+    expectStale("changeVoxelColorAll while hidden");
+
+    seedNow();
+    set().activateAll();
+    expectStale("activateAll while hidden");
 }
 
 } // namespace

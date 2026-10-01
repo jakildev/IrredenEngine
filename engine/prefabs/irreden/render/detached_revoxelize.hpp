@@ -167,14 +167,15 @@ inline bool seededFromSpans(
 
 // True when @p buffer still holds @p pool's content over @p spans. The span set
 // alone is not enough: a part replaced by a same-sized one reuses the freed
-// span, so the set is unchanged while the voxels in it are not — the pool's
-// span generation catches that.
+// span, and a recolor or carve rewrites voxels in place, so the set is
+// unchanged while the voxels in it are not — the pool's content generation
+// catches both.
 inline bool seedIsCurrent(
     const IRComponents::C_DetachedRevoxelizeBuffer &buffer,
     const IRComponents::C_VoxelPool &pool,
     const std::vector<std::pair<std::size_t, std::size_t>> &spans
 ) {
-    return buffer.seededSpanGeneration_ == pool.getSpanGeneration() &&
+    return buffer.seededContentGeneration_ == pool.getContentGeneration() &&
            seededFromSpans(buffer, spans);
 }
 
@@ -310,7 +311,7 @@ inline void seedResidentLocals(
     );
     buffer.destCount_ = destCount;
     buffer.anchor_ = buffer.groups_.empty() ? IRMath::vec3(0.0f) : buffer.groups_.front().anchor_;
-    buffer.seededSpanGeneration_ = pool.getSpanGeneration();
+    buffer.seededContentGeneration_ = pool.getContentGeneration();
 }
 
 } // namespace detail
@@ -350,12 +351,12 @@ inline IRRender::RevoxelizeGroupParams groupParams(
 // and report the live {canvasEntity, &buffer} set into @p out (cleared first) for
 // VOXEL_TO_TRIXEL_STAGE_1's per-entity tick to dispatch against. Idempotent and
 // once-per-frame: a steady pool allocates + seeds on the first frame and is a
-// pure report thereafter. A pool mutation — any span allocated or freed, or a
-// hosted set joining or leaving — triggers a re-seed; the locals buffer itself is
-// sized to the pool capacity once, so a re-seed never reallocates it. Skips
-// non-re-voxelize canvases (the main world canvas and forward-scatter detached
-// canvases keep the CPU pending-range flush). Called once per frame from
-// VOXEL_TO_TRIXEL_STAGE_1::beginTick.
+// pure report thereafter. A pool mutation — any span allocated or freed, a
+// voxel record rewritten, or a hosted set joining or leaving — triggers a
+// re-seed; the locals buffer itself is sized to the pool capacity once, so a
+// re-seed never reallocates it. Skips non-re-voxelize canvases (the main world
+// canvas and forward-scatter detached canvases keep the CPU pending-range
+// flush). Called once per frame from VOXEL_TO_TRIXEL_STAGE_1::beginTick.
 inline void syncResidentBuffers(
     std::vector<std::pair<IREntity::EntityId, IRComponents::C_DetachedRevoxelizeBuffer *>> *out
 ) {
@@ -405,13 +406,13 @@ inline void syncResidentBuffers(
                 );
                 buffer.residentLocals_ = resource;
                 buffer.capacity_ = capacity;
-                buffer.seededSpanGeneration_ = 0;
+                buffer.seededContentGeneration_ = 0;
             }
 
-            // Seed once; re-seed only when the pool's hosted spans change,
-            // never per frame — a per-frame re-seed would revert the path to
-            // O(authored voxels), the exact trap the resource model exists to
-            // avoid.
+            // Seed once; re-seed only when the pool's hosted spans or their
+            // voxel records change, never per frame — a per-frame re-seed would
+            // revert the path to O(authored voxels), the exact trap the
+            // resource model exists to avoid.
             detail::collectGroupSpans(pool, liveCount, spans);
             if (!detail::seedIsCurrent(buffer, pool, spans)) {
                 detail::seedResidentLocals(buffer, pool, liveCount, spans);
