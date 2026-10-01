@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Profile frozen rotation, density, projected extent and culling controls.
+"""Profile fixed and moving yaw, density, projected extent and culling controls.
 
 Runs alternate forward/reverse case order to reduce ordering bias. Each run
 uses repeat_profile.py for native execution, freshness checks and provenance.
@@ -8,16 +8,29 @@ No build or renderer configuration mutation is performed.
 
 import argparse
 import json
+import math
 import statistics
 import subprocess
 import sys
 from pathlib import Path
 
 from compare_perf_runs import parse_report
+from repeat_profile import percentile
 
 
-def cases(suite: str) -> dict[str, list[str]]:
+def cases(suite: str, frames: int = 300) -> dict[str, list[str]]:
     result = {}
+    if suite in ("all", "motion"):
+        for wave in (0, 5):
+            for zoom, base in ((1, 1), (1, 4), (4, 4)):
+                for pose in ("cardinal", "diagonal", "sweep"):
+                    result[f"motion-wave{wave}-zoom{zoom}-base{base}-{pose}"] = [
+                        "--grid-size", "64", "--zoom", str(zoom),
+                        "--subdivision-mode", "full", "--base-subdivisions", str(base),
+                        "--wave-amplitude", str(wave), "--pivot-origin", "--no-overlay",
+                        "--yaw", "0.785398163" if pose == "diagonal" else "0",
+                        *(["--yaw-step", str(math.tau / frames)] if pose == "sweep" else []),
+                    ]
     if suite in ("all", "density"):
         for yaw, angle in (("cardinal", "0"), ("near", "0.017453293"), ("rotated", "0.785398163")):
             for base in (1, 4):
@@ -80,13 +93,16 @@ def cases(suite: str) -> dict[str, list[str]]:
 
 
 def summarize(output: Path, selected: dict[str, list[str]]) -> None:
+    reports_by_case = {
+        name: [parse_report(p, name) for p in sorted((output / name).glob("round-*/run-1.txt"))]
+        for name in selected
+    }
     lines = [
         "| Case | Frame mean ms | Run min–max ms | Steady mean ms | GPU envelope mean ms "
         "| Retained mean | Axis entries mean |",
         "|---|---:|---:|---:|---:|---:|---:|",
     ]
-    for name in selected:
-        reports = [parse_report(p, name) for p in sorted((output / name).glob("round-*/run-1.txt"))]
+    for name, reports in reports_by_case.items():
         if not reports:
             continue
         frames = [r.frame.avg for r in reports]
@@ -108,14 +124,32 @@ def summarize(output: Path, selected: dict[str, list[str]]) -> None:
         )
     (output / "summary.md").write_text("\n".join(lines) + "\n")
 
+    budget_lines = [
+        "Steady samples exclude each report's warmup. The 60 Hz budget is 1000/60 ms; "
+        "these are measured frames, not a throughput guarantee.", "",
+        "| Case | Runs | Steady p95 / p99 ms | Frames over 60 Hz budget | "
+        "Overflow max entries / dropped |",
+        "|---|---:|---:|---:|---:|",
+    ]
+    for name, reports in reports_by_case.items():
+        if not reports:
+            continue
+        samples = [ms for report in reports for ms in report.steady_frame_times_ms()]
+        complete_samples = all(report.steady_frame_times_ms() for report in reports)
+        tail = (f"{percentile(samples, 95):.3f} / {percentile(samples, 99):.3f}"
+                if complete_samples else "unwitnessed")
+        missed = (f"{sum(ms > 1000 / 60 for ms in samples)} / {len(samples)}"
+                  if complete_samples else "unwitnessed")
+        entries = [report.witness.overflow_max_entries for report in reports]
+        dropped = [report.witness.overflow_max_dropped for report in reports]
+        overflow = (f"{max(entries)} / {max(dropped)}"
+                    if all(v is not None for v in [*entries, *dropped]) else "unwitnessed")
+        budget_lines.append(f"| {name} | {len(reports)} | {tail} | {missed} | {overflow} |")
+    (output / "budget-summary.md").write_text("\n".join(budget_lines) + "\n")
+
     write_gpu_summary(
         output / "gpu-summary.md",
-        {
-            name: [
-                parse_report(p, name) for p in sorted((output / name).glob("round-*/run-1.txt"))
-            ]
-            for name in selected
-        },
+        reports_by_case,
         "Sampled GPU invocation means; rows are not full-frame totals.",
     )
 
@@ -139,9 +173,12 @@ def verify_artifacts(output: Path) -> None:
     identities = set()
     for path in output.glob("*/round-*/manifest.json"):
         manifest = json.loads(path.read_text())
-        identities.add((manifest["binary_sha256"], manifest["shader_sha256"]))
+        identities.add((manifest["binary_sha256"], manifest["shader_sha256"],
+                        manifest["runtime_scripts_sha256"], manifest["host_power"],
+                        json.dumps(manifest["render_environment"], sort_keys=True)))
     if len(identities) != 1:
-        raise ValueError("Matrix must use one unchanged binary and shader set")
+        raise ValueError(
+            "Matrix must use unchanged runtime artifacts, render environment and power source")
 
 
 def write_cases(output: Path, rounds: int, common, selected, **extra) -> None:
@@ -198,7 +235,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
-        "--suite", choices=("all", "density", "zoom", "extent", "culling"), default="all"
+        "--suite", choices=("all", "motion", "density", "zoom", "extent", "culling"), default="all"
     )
     parser.add_argument("--rounds", type=int, default=3)
     parser.add_argument("--frames", type=int, default=300)
@@ -206,7 +243,9 @@ def main() -> int:
     args = parser.parse_args()
     if args.rounds < 1 or args.frames < 1:
         parser.error("rounds and frames must be positive")
-    selected = cases(args.suite)
+    if args.suite in ("all", "motion") and args.frames < 2:
+        parser.error("moving-camera controls need at least two frames")
+    selected = cases(args.suite, args.frames)
     common = ["--mode", "voxel_set", "--wave-freeze", "--auto-profile", str(args.frames)]
     if args.dry_run:
         print(json.dumps({name: common + extra for name, extra in selected.items()}, indent=2))
@@ -215,8 +254,8 @@ def main() -> int:
     output.mkdir(parents=True, exist_ok=False)
     write_cases(output, args.rounds, common, selected)
     def after_round():
-        summarize(output, selected)
         verify_artifacts(output)
+        summarize(output, selected)
 
     run_rounds(output, selected, common, args.rounds, after_round)
     return 0
