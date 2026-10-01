@@ -169,7 +169,9 @@ template <> struct System<FOG_REVEAL_EVAL> {
             }
             IRComponents::C_VoxelSetNew &voxelSet = *transition.voxelSet_;
             voxelSet.visible_ = transition.visible_;
-            if (transition.visible_) {
+            // A set its LOD band also hides stays masked off; the LOD gate
+            // restores the mask when the band admits it again.
+            if (voxelSet.renders()) {
                 transition.pool_->resyncActiveMaskFromColors(
                     voxelSet.voxelStartIdx_,
                     static_cast<std::size_t>(voxelSet.numVoxels_)

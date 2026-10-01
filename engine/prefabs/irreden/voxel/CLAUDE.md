@@ -18,10 +18,10 @@ binding. API contracts live in the headers; this file owns cross-header and pipe
   mask, and face occupancy in that order. For a multi-pass raw-span edit,
   write everything and call `resyncAfterRawEdits()` once; never hand-roll the
   pair. `syncActiveMask()` remains only for existing low-level raw-loop sites.
-- `visible_` is a transient whole-set render gate: hiding clears the mask but
-  preserves authored alpha; showing reconstructs it; both update arms skip
-  hidden sets. Fog's BODY carrier (bit 3 + factor bits 11:4) and the rotated
-  silhouette-riser bit are independent and must survive the rotation-source snapshot.
+- `visible_` (fog) and `lodCulled_` (LOD band) are transient whole-set gates;
+  read `renders()`, never one flag. Closing either clears the mask, keeps
+  authored alpha, and both update arms skip the set. Fog's BODY carrier (bit
+  3 + factor bits 11:4) and the rotated silhouette-riser bit must survive the rotation-source snapshot.
 - Color mutations made while GRID rotation is active must also reach
   `rotationSourceVoxels_`; the identity frame restores that source span and
   clears the snapshot. Direct raw-span writes are safe only before the first

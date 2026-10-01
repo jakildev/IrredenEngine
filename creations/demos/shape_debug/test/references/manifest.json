@@ -48,6 +48,12 @@
         "pivot_focus_ctr_z4_yaw_008"
       ],
       "capture_offset": 0
+    },
+    {
+      "name": "lod_dense_swap",
+      "demo_args": ["--lod-dense-swap"],
+      "shots": ["lod_dense_swap_z2", "lod_dense_swap_z8"],
+      "capture_offset": 0
     }
   ],
   "structural": {

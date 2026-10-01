@@ -86,6 +86,7 @@
 #include <irreden/render/components/component_layout_state.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_light_source.hpp>
+#include <irreden/render/components/component_lod_tier_override.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_render_cache.hpp>
 #include <irreden/render/components/component_settings_menu.hpp>
@@ -181,6 +182,9 @@ IR_SAVE_OPT_OUT(IRComponents::C_VoxelPoolTeardownHook)
 IR_SAVE_OPT_OUT(IRComponents::C_SpatialIndex)
 IR_SAVE_OPT_OUT(IRComponents::C_RenderCache)
 IR_SAVE_OPT_OUT(IRComponents::C_ActiveLodLevel)
+// A tier pin is the output of a creation's LOD policy, which re-applies it
+// from its own state after a load.
+IR_SAVE_OPT_OUT(IRComponents::C_LodTierOverride)
 IR_SAVE_OPT_OUT(IRComponents::C_ChunkVisibleThisFrame)
 IR_SAVE_OPT_OUT(IRComponents::C_FrameDataTrixelToFramebuffer)
 IR_SAVE_OPT_OUT(IRComponents::C_CanvasLocalRotation)
@@ -428,6 +432,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_SpatialIndex,
     IRComponents::C_RenderCache,
     IRComponents::C_ActiveLodLevel,
+    IRComponents::C_LodTierOverride,
     IRComponents::C_ChunkVisibleThisFrame,
     IRComponents::C_FrameDataTrixelToFramebuffer,
     IRComponents::C_CanvasLocalRotation,

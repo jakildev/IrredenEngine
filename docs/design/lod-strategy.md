@@ -140,7 +140,7 @@ manifest layer turned out to be enough") is much harder.
 ### 5. Runtime selection is already 80% scaffolded
 
 `engine/prefabs/irreden/render/lod_utils.hpp` already defines
-`computeLodLevel(float zoomLevel)`, `lodVoxelScale(LodLevel)`,
+`computeLodLevel(float zoomLevel)` and
 `shouldSkipAtLod(entityLodMin, currentLod)`. `C_ShapeDescriptor` already
 has a `lodLevel_` field that ships to the GPU. None of this needs a
 format change to become real — it just needs the system that reads
@@ -234,16 +234,63 @@ stack. The conventions that give the behavior #1467 describes:
 This is the **discrete** form of the per-shape `lodMin`/`lodMax` ramp model
 sketched for Phase 3 below (hard pop at the band edge instead of an alpha
 ramp). Phase 3 can later make `activeLod` continuous and turn the same two
-fields into a cross-fade without a data-model change. Applies to SHAPES mode
-only — DENSE-mode voxel-set LOD remains out of scope. The `shape_debug` demo's
-LOD fixture (cube → cone → sphere swap + a single-LOD control) is the
+fields into a cross-fade without a data-model change. The `shape_debug`
+demo's LOD fixture (cube → cone → sphere swap + a single-LOD control) is the
 reference; render-verify covers it at zoom 1×–16×.
+
+### Phase 1c — the tier surface for creations and DENSE sets (#3966)
+
+A creation runs a *structural* LOD policy — which child parts of a composite
+entity exist at a tier — on top of the zoom-derived tier. Three pieces make
+that possible without the creation re-deriving anything:
+
+- **The tier is readable from Lua.** `IRRender.getActiveLodTier()` returns the
+  `C_ActiveLodLevel` singleton as an integer (0 finest .. 4 coarsest, mirrored
+  as `IRRender.LodLevel.LOD_n`), bound in the shared render glue. It is a
+  function rather than a component column because the tier is a singleton: a
+  Lua system declaring it would iterate a one-row archetype to read one value.
+- **An entity can pin its tier.** `C_LodTierOverride { tier_ }` makes the
+  entity resolve to that tier at every zoom; removing it returns the entity to
+  the camera's tier. Every consumer resolves through
+  `IRRender::resolveEntityLod(active, override)`, fed by an
+  `IRPrefab::Lod::TierSnapshot` captured once per tick, so a pin means the same
+  thing to the shape filter, the DENSE gate, and any later consumer (a part
+  spawner, a portrait canvas). A pin is a tier, not a bias: the policies that
+  want this want "draw this entity at full detail", not "one tier finer".
+- **DENSE voxel sets carry the band.** `C_VoxelSetNew` gains `lodMin_` /
+  `lodMax_` with the same defaults and semantics as `C_ShapeDescriptor`.
+  `GATE_VOXEL_SETS_BY_LOD` (UPDATE, after `LOD_UPDATE`, before
+  `UPDATE_VOXEL_SET_CHILDREN`) holds each set to its band through the set's
+  render gate: an out-of-band set has its pool active mask cleared and is
+  skipped by the per-frame update arms, exactly like a set hidden by
+  `visible_`. The band is per set, so nothing new is uploaded and no shader
+  changes. The gate never touches the pool allocation — the span, colors and
+  authored alpha survive — so a swap is free and reversible.
+
+The LOD gate is a second flag (`lodCulled_`) beside `visible_`, not a second
+writer of it: fog's whole-body reveal owns `visible_`, and two owners of one
+flag would overwrite each other's verdict. A set draws only while
+`renders()` — both gates open.
+
+Zoom snaps to powers of two, so tier changes are discrete and the engine adds
+no hysteresis; a creation's policy owns any debounce. `computeLodLevel`'s
+thresholds are unchanged. `lodVoxelScale` is removed: it had no callers, and
+sub-world voxel pitch is ruled out.
+
+Not persisted: `C_LodTierOverride` is save-opted-out (a policy output, the
+policy re-applies it), and a `C_VoxelSetNew` band is not in the set's
+serialized form — a reloaded set comes back on the default band until its
+author re-applies it.
+
+The `shape_debug --lod-dense-swap` fixture (two co-located DENSE sets on
+disjoint bands) is the reference; render-verify covers it at zoom 2× / 8×, and
+`LodTierLua` covers the read, the pin and the gate headlessly.
 
 What Phase 1 explicitly does **not** do:
 
 - Multi-tier `.vxs` composition. A Phase 1 entity carries all its shapes
-  in a single `C_ShapeDescriptor` set; LOD is per-shape, not per-file.
-- DENSE-mode voxel LOD. The filter applies only to SHAPES-mode.
+  in a single `C_ShapeDescriptor` set; LOD is per-shape or per-set, not
+  per-file.
 - Rig LOD. See "Rigs and LOD" below — likely never.
 - Cross-tier blending. Hard pop at threshold for Phase 1.
 

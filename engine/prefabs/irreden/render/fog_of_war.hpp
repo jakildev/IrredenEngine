@@ -714,6 +714,7 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
     IREntity::EntityId canvas = IREntity::kNullEntity;
     std::size_t rangeStart = 0;
     std::size_t rangeCount = 0;
+    bool setRenders = false;
     if (setOpt.has_value()) {
         IRComponents::C_VoxelSetNew *voxelSet = *setOpt;
         const IREntity::EntityId activeCanvas = IRRender::getActiveCanvasEntityOrNull();
@@ -740,6 +741,7 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
             }
         }
         voxelSet->visible_ = subjectClass != FogSubjectClass::BODY;
+        setRenders = voxelSet->renders();
     } else if (subjectClass == FogSubjectClass::BODY) {
         return;
     }
@@ -756,7 +758,8 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
         IREntity::setComponent(entity, C_FogRevealed{});
         return;
     }
-    if (hadRevealed && rangeCount > 0) {
+    // A set its LOD band hides stays masked off; the LOD gate restores it.
+    if (hadRevealed && setRenders && rangeCount > 0) {
         IRPrefab::VoxelPool::resyncRangeFromColors(rangeStart, rangeCount, canvas);
     }
     IREntity::removeComponent<C_FogRevealed>(entity);

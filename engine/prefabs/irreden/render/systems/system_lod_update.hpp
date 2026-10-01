@@ -15,7 +15,12 @@ namespace IRSystem {
 // Takes max(zoom.x, zoom.y) — render_manager.cpp snaps to uniform power-of-two so x==y in practice.
 template <> struct System<LOD_UPDATE> {
     void beginTick() {
-        const IRMath::vec2 zoom = IRRender::getCameraZoom();
+        writeActiveTier(IRRender::getCameraZoom());
+    }
+
+    // The zoom -> singleton write on its own, so a caller with no RenderManager
+    // (a headless test) can drive the tier from a zoom value.
+    static void writeActiveTier(IRMath::vec2 zoom) {
         const float zoomScalar = IRMath::max(zoom.x, zoom.y);
         IREntity::singleton<IRComponents::C_ActiveLodLevel>().current_ =
             IRRender::computeLodLevel(zoomScalar);
