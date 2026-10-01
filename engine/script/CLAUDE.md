@@ -98,8 +98,9 @@ Anything outside this DSL is a file:line build error:
   components of the same run; `C.new(...)`; arithmetic except `^`;
   comparisons; `and`/`or`/`not`; `if`; single-target `local`.
 - `kIntrinsicRegistry` (`cmake/lua_codegen/system_dsl.cpp`) intrinsics:
-  value-returning (`math.*` → `IRMath::*`) inside expressions only;
-  `isStatement_` setters (`IRRender.setSunIntensity`) as statements only.
+  value-returning (`math.*` → `IRMath::*`, `IRRender.getActiveLodTier`)
+  inside expressions only; `isStatement_` setters (`IRRender.setSunIntensity`)
+  as statements only.
 - No C++-bound component types, upvalues, metatables, dynamic dispatch,
   `require`, varargs, `nil`, `..`/`string.format`; use `mode = "eval"`.
 

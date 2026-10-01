@@ -2,10 +2,9 @@
 #define LUA_RENDER_BINDINGS_H
 
 #include <irreden/ir_math.hpp>
-#include <irreden/ir_entity.hpp>
 #include <irreden/ir_render.hpp>
-#include <irreden/render/components/component_active_lod_level.hpp>
 #include <irreden/render/entity_canvas.hpp>
+#include <irreden/render/lod_utils.hpp>
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
 
@@ -63,7 +62,8 @@ inline void bindRenderGlue(LuaScript &script) {
     // LOD tier surface. Tier index goes down as detail goes up (LOD_0 finest,
     // LOD_4 coarsest). `getActiveLodTier` reads the singleton LOD_UPDATE writes
     // and reports LOD_4 when no creation registered that system, matching what
-    // the tier consumers resolve.
+    // the tier consumers resolve. A CODEGEN tick body reaches the same
+    // `IRRender::getActiveLodTier` through the intrinsic whitelist.
     sol::table lodLevel = lua.create_table();
 #define IR_BIND_LOD(name) lodLevel[#name] = static_cast<lua_Integer>(IRRender::LodLevel::name)
     IR_BIND_LOD(LOD_0);
@@ -74,8 +74,7 @@ inline void bindRenderGlue(LuaScript &script) {
 #undef IR_BIND_LOD
     lua["IRRender"]["LodLevel"] = lodLevel;
     lua["IRRender"]["getActiveLodTier"] = []() -> lua_Integer {
-        const auto *lod = IREntity::singletonOrNull<IRComponents::C_ActiveLodLevel>();
-        return static_cast<lua_Integer>(lod != nullptr ? lod->current_ : IRRender::LodLevel::LOD_4);
+        return IRRender::getActiveLodTier();
     };
 
     if (!lua["IRGui"].valid()) {
