@@ -18,6 +18,11 @@ inline std::span<IRComponents::C_Voxel> editableRecords(IRComponents::C_VoxelSet
     return set.voxels_;
 }
 
+inline void placeVoxel(IRComponents::C_Voxel &voxel, IRMath::Color color) {
+    voxel.color_ = color;
+    voxel.activate();
+}
+
 } // namespace detail
 
 template <typename Edit>
@@ -77,8 +82,7 @@ inline void fillSdf(
                 return;
             }
             if (shouldPlace) {
-                records[flat].color_ = fillColor;
-                records[flat].activate();
+                detail::placeVoxel(records[flat], fillColor);
             } else {
                 records[flat].deactivate();
             }

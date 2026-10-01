@@ -62,7 +62,6 @@ void registerLuaBindings() {
             IRSystem::UPDATE_VOXEL_SET_CHILDREN,
             IRSystem::VOXEL_TO_TRIXEL_STAGE_1,
             IRSystem::TRIXEL_TO_FRAMEBUFFER,
-            // Flushes the IRDebug.* draws main.lua issues.
             IRSystem::DEBUG_OVERLAY,
             IRSystem::FRAMEBUFFER_TO_SCREEN>();
 

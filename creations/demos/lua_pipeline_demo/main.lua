@@ -81,12 +81,6 @@ local hudDrawSysId = IRSystem.registerSystem({
     end,
 })
 
--- HUD draw → composite the trixel canvases (incl. "gui") to the framebuffer →
--- DEBUG_OVERLAY flush → blit to screen. The gui canvas is camera-independent,
--- so no camera-control systems are needed to show the HUD. DEBUG_OVERLAY sits
--- after TRIXEL_TO_FRAMEBUFFER and before FRAMEBUFFER_TO_SCREEN, matching the
--- default demo's placement; HudDraw runs before it so the buffers are filled
--- by the time the flush reads them.
 IRSystem.registerPipeline(IRTime.RENDER, {
     IRSystem.systemId(SystemName.VOXEL_TO_TRIXEL_STAGE_1),
     hudDrawSysId,

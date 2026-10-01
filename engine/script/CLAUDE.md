@@ -144,12 +144,11 @@ C++ declares nameable prefab systems with `registerPrefabSystems` or
 ### IRAsset and voxel authoring
 
 Registering the `C_VoxelSetNew` Lua trait installs
-`IRAsset.loadVoxelSet(path[, anchor[, targetCanvas]])` and the integer-backed
-`IRShape` primitive table. The loader accepts DENSE `.vxs` assets and returns a
-component value for a creation's typed entity-construction function; it does
-not create an entity or route through `Prefab.spawn`. The default anchor is
-`CENTER`. Voxel mutations are main-thread setup operations, not
-`PARALLEL_FOR` tick operations.
+`IRAsset.loadVoxelSet(path[, anchor[, targetCanvas]])` and the integer-backed `IRShape`
+table. Authoring contracts and methods live in
+[`engine/prefabs/irreden/voxel/CLAUDE.md`](../prefabs/irreden/voxel/CLAUDE.md).
+The loader returns a DENSE component value and defaults its anchor to `CENTER`;
+voxel mutation is main-thread setup work, never `PARALLEL_FOR` tick work.
 
 ### IRFog
 

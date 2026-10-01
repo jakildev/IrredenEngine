@@ -8,6 +8,8 @@
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
 
+#include <memory>
+
 namespace IRScript {
 template <> inline constexpr bool kHasLuaBinding<IRComponents::C_VoxelSetNew> = true;
 
@@ -31,7 +33,7 @@ setVoxelRaw(IRComponents::C_VoxelSetNew &set, int x, int y, int z, IRMath::Color
     auto records = IRPrefab::Voxel::detail::editableRecords(set);
     const std::size_t flat =
         static_cast<std::size_t>(IRMath::index3DtoIndex1D({x, y, z}, set.size_));
-    records[flat].color_ = color;
+    IRPrefab::Voxel::detail::placeVoxel(records[flat], color);
 }
 
 inline void clearVoxelRaw(IRComponents::C_VoxelSetNew &set, int x, int y, int z) {
@@ -42,7 +44,22 @@ inline void clearVoxelRaw(IRComponents::C_VoxelSetNew &set, int x, int y, int z)
     records[flat].deactivate();
 }
 
-inline IRMath::SDF::ShapeType shapeTypeFromLua(lua_Integer value) {
+struct VoxelBatchState {
+    explicit VoxelBatchState(IRComponents::C_VoxelSetNew &set)
+        : set_{&set} {}
+
+    IRComponents::C_VoxelSetNew *set_;
+};
+
+inline IRComponents::C_VoxelSetNew &
+requireActiveBatch(const std::shared_ptr<VoxelBatchState> &state) {
+    if (state->set_ == nullptr) {
+        throw sol::error{"batch handle used outside its callback"};
+    }
+    return *state->set_;
+}
+
+inline IRMath::SDF::ShapeType shapeTypeFromLua(lua_Integer value, const char *operation) {
     using IRMath::SDF::ShapeType;
     switch (static_cast<ShapeType>(value)) {
     case ShapeType::BOX:
@@ -58,7 +75,7 @@ inline IRMath::SDF::ShapeType shapeTypeFromLua(lua_Integer value) {
     case ShapeType::CUSTOM_SDF:
         break;
     }
-    throw sol::error{"fillSdf: shape must be a supported IRShape value"};
+    throw sol::error{std::string{operation} + ": shape must be a supported IRShape value"};
 }
 
 inline void applySdfRaw(
@@ -71,7 +88,7 @@ inline void applySdfRaw(
     auto records = IRPrefab::Voxel::detail::editableRecords(set);
     IRPrefab::Voxel::fillSdfRaw(
         set,
-        shapeTypeFromLua(shape),
+        shapeTypeFromLua(shape, place ? "fillSdf" : "carveSdf"),
         vec4FromLua(params),
         color,
         place,
@@ -80,7 +97,7 @@ inline void applySdfRaw(
                 return;
             }
             if (shouldPlace) {
-                records[flat].color_ = fillColor;
+                IRPrefab::Voxel::detail::placeVoxel(records[flat], fillColor);
             } else {
                 records[flat].deactivate();
             }
@@ -201,30 +218,40 @@ template <> inline void bindLuaType<IRComponents::C_VoxelSetNew>(LuaScript &luaS
             detail::applySdfRaw(set, shape, params, IRMath::Color{}, false);
             set.resyncAfterRawEdits();
         };
-    voxelSetType["batch"] =
-        [&luaScript](IRComponents::C_VoxelSetNew &set, sol::protected_function fn) {
-            sol::table batch = luaScript.lua().create_table();
-            batch["setVoxel"] = [&set](sol::table, int x, int y, int z, IRMath::Color color) {
-                detail::setVoxelRaw(set, x, y, z, color);
-            };
-            batch["clearVoxel"] = [&set](sol::table, int x, int y, int z) {
-                detail::clearVoxelRaw(set, x, y, z);
-            };
-            batch["fillSdf"] =
-                [&set](sol::table, lua_Integer shape, sol::table params, IRMath::Color color) {
-                    detail::applySdfRaw(set, shape, params, color, true);
-                };
-            batch["carveSdf"] = [&set](sol::table, lua_Integer shape, sol::table params) {
-                detail::applySdfRaw(set, shape, params, IRMath::Color{}, false);
-            };
-
-            sol::protected_function_result result = fn(batch);
-            set.resyncAfterRawEdits();
-            if (!result.valid()) {
-                sol::error error = result;
-                throw sol::error{error.what()};
-            }
+    voxelSetType["batch"] = [&luaScript](
+                                IRComponents::C_VoxelSetNew &set,
+                                sol::protected_function fn
+                            ) {
+        auto state = std::make_shared<detail::VoxelBatchState>(set);
+        sol::table batch = luaScript.lua().create_table();
+        batch["setVoxel"] = [state](sol::table, int x, int y, int z, IRMath::Color color) {
+            detail::setVoxelRaw(detail::requireActiveBatch(state), x, y, z, color);
         };
+        batch["clearVoxel"] = [state](sol::table, int x, int y, int z) {
+            detail::clearVoxelRaw(detail::requireActiveBatch(state), x, y, z);
+        };
+        batch["fillSdf"] =
+            [state](sol::table, lua_Integer shape, sol::table params, IRMath::Color color) {
+                detail::applySdfRaw(detail::requireActiveBatch(state), shape, params, color, true);
+            };
+        batch["carveSdf"] = [state](sol::table, lua_Integer shape, sol::table params) {
+            detail::applySdfRaw(
+                detail::requireActiveBatch(state),
+                shape,
+                params,
+                IRMath::Color{},
+                false
+            );
+        };
+
+        sol::protected_function_result result = fn(batch);
+        state->set_ = nullptr;
+        set.resyncAfterRawEdits();
+        if (!result.valid()) {
+            sol::error error = result;
+            throw sol::error{error.what()};
+        }
+    };
 
     detail::bindShapeTable(luaScript);
     detail::bindVoxelAssetLoader(luaScript);
