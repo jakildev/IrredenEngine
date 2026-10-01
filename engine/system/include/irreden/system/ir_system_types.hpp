@@ -102,6 +102,7 @@ enum SystemName {
     PLANT_GROW,
     PROPAGATE_TRANSFORM,
     AUTO_SPIN_LOCAL_TRANSFORM,
+    ANGULAR_VELOCITY_DAMPED,
     ROTATION_TARGET_LOCAL_TRANSFORM,
     // Sim-clock substrate (engine/prefabs/irreden/common/sim_clock.hpp).
     // Order within UPDATE: SIM_CLOCK_ADVANCE first (advances the C_SimClock

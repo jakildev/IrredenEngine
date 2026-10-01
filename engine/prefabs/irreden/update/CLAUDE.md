@@ -26,6 +26,13 @@ in the `UPDATE` pipeline unless explicitly noted.
   `minAngle_`/`maxAngle_`, `inputMin_`/`inputMax_`) are read-write member
   pointers, so a Lua automation lane drives `input_` straight through the
   column view; `axis_` + easing stay constructor-only config.
+- `C_AngularVelocity` — a spin that decays to rest (axis + radians-per-frame +
+  damping-per-frame). `impulse(axis, rate)` adds to the current spin as an
+  angular-velocity vector; the header documents the time to rest. Lua-bound
+  (`component_angular_velocity_lua.hpp`): `radiansPerFrame` / `dampingPerFrame`
+  / `axis` read-write, plus `spin:impulse({x,y,z}, rate)`. Stacks with
+  `C_AutoSpin` (Lua-bound via `common/components/component_auto_spin_lua.hpp`)
+  on one entity: the steady spin keeps turning while the impulse decays.
 - `C_OverlapContactBatch` (#1817) — **singleton** component holding this
   frame's confirmed overlap pairs (`std::vector<ContactPair>`, each with both
   entity ids + both collision layers + a normal). `COLLISION_NOTE_PLATFORM`
@@ -80,6 +87,11 @@ in the `UPDATE` pipeline unless explicitly noted.
   `PROPAGATE_TRANSFORM` so the new rotation propagates to `C_WorldTransform`
   in the same tick — and, for GRID-mode entities, drives
   `REBUILD_GRID_VOXELS` re-rasterization downstream.
+- `ANGULAR_VELOCITY_DAMPED` — rotates by `C_AngularVelocity`'s current rate
+  (left-composed, like `AUTO_SPIN_LOCAL_TRANSFORM`), then decays the rate and
+  snaps it to 0 under `kAngularRestEpsilon`. Order: `AUTO_SPIN_LOCAL_TRANSFORM`,
+  then this, then `PROPAGATE_TRANSFORM`. `PARALLEL_FOR` — apply impulses from
+  another system or a command handler, never from inside this tick.
 - `ROTATION_TARGET_LOCAL_TRANSFORM` — maps each `C_RotationTarget`'s
   normalized `input_` (over `[inputMin_, inputMax_]`, through the easing
   curve) onto `[minAngle_, maxAngle_]` and writes it as an **absolute**

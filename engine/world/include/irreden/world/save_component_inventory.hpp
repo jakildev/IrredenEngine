@@ -114,6 +114,7 @@
 #include <irreden/system/components/component_system_relation.hpp>
 #include <irreden/update/components/component_acceleration_3d.hpp>
 #include <irreden/update/components/component_action_animation.hpp>
+#include <irreden/update/components/component_angular_velocity.hpp>
 #include <irreden/update/components/component_anim_clip_color_track.hpp>
 #include <irreden/update/components/component_anim_color_state.hpp>
 #include <irreden/update/components/component_anim_motion_color_shift.hpp>
@@ -271,6 +272,7 @@ IR_SAVE_OPT_IN(IRComponents::C_RotationMode, 1)
 // explicit SaveSerialize<C>.
 IR_SAVE_OPT_IN(IRComponents::C_RotationTarget, 1)
 IR_SAVE_OPT_IN(IRComponents::C_AutoSpin, 1)
+IR_SAVE_OPT_IN(IRComponents::C_AngularVelocity, 1)
 IR_SAVE_OPT_IN(IRComponents::C_ChunkMembership, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Velocity3D, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Velocity2DIso, 1)
@@ -480,6 +482,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_RotationMode,
     IRComponents::C_RotationTarget,
     IRComponents::C_AutoSpin,
+    IRComponents::C_AngularVelocity,
     IRComponents::C_ChunkMembership,
     IRComponents::C_Velocity3D,
     IRComponents::C_Velocity2DIso,

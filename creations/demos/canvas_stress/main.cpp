@@ -46,6 +46,8 @@
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
+#include <irreden/update/components/component_angular_velocity.hpp>
+#include <irreden/update/systems/system_angular_velocity_damped.hpp>
 #include <irreden/update/systems/system_auto_spin_local_transform.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
@@ -254,6 +256,7 @@ enum SpawnGroup : std::uint32_t {
     kGroupShadowOcclusion = 1u << 14,
     kGroupRigid = 1u << 15,
     kGroupModeSwitch = 1u << 16,
+    kGroupImpulse = 1u << 17,
 };
 
 // 0.5 degrees per frame → full revolution in ~720 frames (~12 s at 60 fps)
@@ -303,6 +306,43 @@ constexpr vec3 kReVoxGroundedWorld{20.0f, 18.0f, kReVoxProbeHeight};
 // ~0.5° / frame — full revolution in ~720 frames; slow enough to read as a
 // smooth true-3D tumble, not a strobe.
 constexpr float kReVoxSpinPerFrame = IRMath::kPi / 360.0f;
+
+// ── Angular-impulse region (`--only impulse`) ───────────────────────
+// One DETACHED_REVOXELIZE solid and one GRID solid sit at rest, take a single
+// C_AngularVelocity impulse at UPDATE tick kImpulseKickTick, spin, and decay to
+// a stop. The capture replaces the base suite with two shots kImpulseSettleFrames
+// apart: `impulse_midspin` lands a few ticks after the kick, `impulse_settled`
+// after the rate has snapped to rest. With the manifest pass's 6-frame warmup
+// the shots fall near ticks 126 and 246, either side of the tick the impulse
+// comes to rest on (kImpulseRestTick).
+constexpr int kImpulseKickTick = 100;
+constexpr int kImpulseSettleFrames = 120;
+constexpr float kImpulseRadPerFrame = 0.2f;
+constexpr float kImpulseDampingPerFrame = 0.06f;
+constexpr float kImpulseZoom = 4.0f;
+// Screen-horizontal pair: world (-s, +s, 0) / (+s, -s, 0) spread along iso.x.
+constexpr float kImpulseHalfSpacing = 18.0f;
+constexpr vec3 kImpulseDetachedAxis{0.4f, 1.0f, 0.6f};
+constexpr vec3 kImpulseGridAxis{0.3f, 0.2f, 1.0f};
+
+constexpr int kImpulseRestTick =
+    kImpulseKickTick + C_AngularVelocity::ticksToRest(kImpulseRadPerFrame, kImpulseDampingPerFrame);
+static_assert(
+    kImpulseKickTick < kImpulseSettleFrames && kImpulseSettleFrames < kImpulseRestTick,
+    "impulse_midspin must land after the kick and before the impulse rests"
+);
+static_assert(
+    kImpulseRestTick <= 2 * kImpulseSettleFrames,
+    "impulse_settled must land after the impulse rests"
+);
+
+// Stand-in for "an impulse when clicked": counts UPDATE ticks down, then kicks
+// the entity's own C_AngularVelocity once.
+struct C_ImpulseKick {
+    int ticksUntilKick_ = 0;
+    vec3 axis_ = vec3(0.0f, 0.0f, 1.0f);
+    float radiansPerFrame_ = 0.0f;
+};
 
 // ── Unified rotation-harness comparison region ──────────────────────
 // One labeled entity per rotation technique in a screen-horizontal row, all
@@ -471,6 +511,12 @@ bool orbitSwapGroupRequested() {
     return (g_settings.onlyGroups_ & kGroupOrbitSwap) != 0u;
 }
 
+// The angular-impulse demo is OPT-IN only (like interpenetrate), so the default
+// scene and every existing manifest shot stay byte-identical.
+bool impulseGroupRequested() {
+    return (g_settings.onlyGroups_ & kGroupImpulse) != 0u;
+}
+
 std::uint32_t parseSpawnGroups(const char *arg) {
     struct GroupName {
         const char *name_;
@@ -494,6 +540,7 @@ std::uint32_t parseSpawnGroups(const char *arg) {
         {"shadowocclusion", kGroupShadowOcclusion},
         {"rigid", kGroupRigid},
         {"modeswitch", kGroupModeSwitch},
+        {"impulse", kGroupImpulse},
     };
     std::uint32_t bits = 0u;
     const std::string list{arg};
@@ -751,7 +798,8 @@ void spawnMixedShapeMarkers(EntityId canvasEntity) {
 }
 
 // `initialRotation` seeds a clear off-cardinal pose so even shot 0 reads as true-3D.
-void spawnDetachedReVoxelizeSolid(
+// Returns the world entity (the one carrying the canvas and the rotation).
+EntityId spawnDetachedReVoxelizeSolid(
     int index,
     vec3 worldPos,
     vec4 initialRotation,
@@ -804,7 +852,7 @@ void spawnDetachedReVoxelizeSolid(
         // mask is unaffected, and STAGE_1 re-uploads the colors each frame.
     }
 
-    IREntity::createEntity(
+    return IREntity::createEntity(
         C_LocalTransform{worldPos, initialRotation},
         C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
         C_AutoSpin{spinAxis, spinRate},
@@ -1152,6 +1200,42 @@ void spawnPerEntityPriorityUnit(
     );
 }
 
+// Angular-impulse demo (`--only impulse`): the same carved L-prism on both
+// rotation paths, each at rest until its C_ImpulseKick fires. The L is carved
+// out of a full box, so the GRID set's allocation is larger than its shape and
+// the re-voxelize span cap has room at off-axis poses.
+void spawnImpulseSolids() {
+    const C_AngularVelocity atRest{vec3(0.0f, 0.0f, 1.0f), 0.0f, kImpulseDampingPerFrame};
+
+    // Index 4: clear of the revox group's 0-3 canvas names.
+    const EntityId detached = spawnDetachedReVoxelizeSolid(
+        4,
+        vec3(-kImpulseHalfSpacing, kImpulseHalfSpacing, kReVoxProbeHeight),
+        vec4(0.0f, 0.0f, 0.0f, 1.0f),
+        kImpulseDetachedAxis,
+        0.0f,
+        Color{255, 150, 60, 255},
+        /*carveAsymmetric=*/true,
+        /*multiColor=*/true
+    );
+    IREntity::setComponent(detached, atRest);
+    IREntity::setComponent(
+        detached,
+        C_ImpulseKick{kImpulseKickTick, kImpulseDetachedAxis, kImpulseRadPerFrame}
+    );
+
+    const EntityId grid = IREntity::createEntity(
+        C_LocalTransform{vec3(kImpulseHalfSpacing, -kImpulseHalfSpacing, kReVoxProbeHeight)},
+        C_RotationMode{RotationMode::GRID},
+        atRest,
+        C_ImpulseKick{kImpulseKickTick, kImpulseGridAxis, kImpulseRadPerFrame},
+        C_VoxelSetNew{kReVoxSolidSize, Color{70, 210, 210, 255}, true}
+    );
+    IREntity::getComponent<C_VoxelSetNew>(grid).carve([](vec3 pos) {
+        return pos.x > 0.0f && pos.y > 0.0f;
+    });
+}
+
 // Per-ENTITY priority-swap orbit demo (`--only orbitswap`).
 // Two world-placed DETACHED units (SEPARATE canvases) at the SAME screen position
 // but different world depth: the FAR unit sits +6 along each axis, i.e. ≈6·(1,1,1)
@@ -1418,7 +1502,7 @@ void registerArgs() {
         "--only",
         "Spawn only the named entity groups (comma-separated: maingrid,gridspin,canary,revox,"
         "orbit,floor,compare,interpenetrate,smallzoom,orbitswap,shadowreceiver,shadowcaster,"
-        "shadowbox,shadowattached,shadowocclusion,rigid)",
+        "shadowbox,shadowattached,shadowocclusion,rigid,impulse)",
         ""
     );
     args.numbers(
@@ -1642,6 +1726,20 @@ void initSystems() {
          // reads at beginTick (the floor SDF box renders through that pass).
          IRSystem::createSystem<IRSystem::LOD_UPDATE>(),
          IRSystem::createSystem<IRSystem::AUTO_SPIN_LOCAL_TRANSFORM>(),
+         // The impulse arrives from its own system, ahead of the damped spin
+         // tick that consumes it.
+         IRSystem::createSystem<C_AngularVelocity, C_ImpulseKick>(
+             "ImpulseKick",
+             [](C_AngularVelocity &spin, C_ImpulseKick &kick) {
+                 if (kick.ticksUntilKick_ < 0) {
+                     return;
+                 }
+                 if (kick.ticksUntilKick_-- == 0) {
+                     spin.impulse(kick.axis_, kick.radiansPerFrame_);
+                 }
+             }
+         ),
+         IRSystem::createSystem<IRSystem::ANGULAR_VELOCITY_DAMPED>(),
          IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
          IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
@@ -1905,6 +2003,12 @@ void initSystems() {
                     shot.cameraIso_ = vec2(offset[0], offset[1]);
                 }
             }
+        } else if (impulseGroupRequested()) {
+            // Angular-impulse capture REPLACES the base suite: the shot spacing
+            // is the measurement (see kImpulseKickTick).
+            g_allShots.push_back({kImpulseZoom, vec2(0.0f), 0.0f, "impulse_midspin"});
+            g_allShots.push_back({kImpulseZoom, vec2(0.0f), 0.0f, "impulse_settled"});
+            settleFrames = kImpulseSettleFrames;
         } else {
             // Base SO(3) suite + dedicated re-voxelize framing shots. Detached
             // canvases rasterize their canvas-local pool against the MAIN camera's
@@ -2379,6 +2483,11 @@ void initEntities() {
     // the swap headlessly (scripts/depth-tier-verify.py --only orbitswap --tier 1).
     if (orbitSwapGroupRequested()) {
         spawnPerEntityPrioritySwap();
+    }
+
+    // Angular-impulse demo — OPT-IN only (`--only impulse`).
+    if (impulseGroupRequested()) {
+        spawnImpulseSolids();
     }
 
     // Main-canvas GRID grid: a flat lattice of small voxel cubes. Exercises
