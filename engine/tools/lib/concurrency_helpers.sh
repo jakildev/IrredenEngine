@@ -157,6 +157,7 @@ if [[ -z "${IR_LOCK_ROOT:-}" ]]; then
     fi
 fi
 IR_CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/irreden"
+export IR_LOCK_ROOT IR_CACHE_ROOT
 
 mkdir -p "$IR_LOCK_ROOT/cpu" "$IR_LOCK_ROOT/gpu" "$IR_LOCK_ROOT/perf" \
     "$IR_LOCK_ROOT/quiet/records" "$IR_LOCK_ROOT/quiet/leases" "$IR_CACHE_ROOT"
