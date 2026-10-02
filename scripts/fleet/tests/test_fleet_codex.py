@@ -235,6 +235,48 @@ class Transport(unittest.TestCase):
                 self.assertIn(f"pattern={json.dumps(pattern)}, decision=\"allow\"", text)
             self.assertNotIn('pattern=["python3"]', text)
 
+    def test_fleet_jobs_gets_only_the_display_profile_rule(self):
+        # A settings entry for fleet-jobs must not become a bare prefix allow:
+        # that would run every profile's child outside the sandbox.
+        settings = json.dumps({"permissions": {"allow": [
+            "Bash(fleet-jobs:*)", "Bash(fleet-build:*)"]}})
+        with tempfile.TemporaryDirectory() as temp, \
+                patch.object(policy.Path, "read_text", return_value=settings):
+            root = Path(temp).resolve()
+            for role in ("worker", "sonnet-reviewer", "opus-reviewer", "merger"):
+                with self.subTest(role=role):
+                    text = policy.rules(root, role)
+                    self.assertNotIn('pattern=["fleet-jobs"]', text)
+                    self.assertIn('pattern=["fleet-jobs", "start", "render-verify"], '
+                                  'decision="allow"', text)
+                    self.assertEqual(text.count('"fleet-jobs"'), 1)
+                    self.assertIn('pattern=["fleet-build"], decision="allow"', text)
+
+    @unittest.skipUnless(shutil.which("codex"), "codex CLI absent; text-level case above")
+    def test_fleet_jobs_profiles_keep_their_execpolicy_decisions(self):
+        cases = (
+            (["fleet-jobs", "start", "render-verify", "--", "--target", "IRShapeDebug"], "allow"),
+            (["fleet-jobs", "start", "fleet-tests", "--only", "x"], None),
+            (["fleet-jobs", "start", "build", "--", "--target", "IRShapeDebug"], None),
+            (["fleet-jobs", "start", "--", "python3", "-c", "print(1)"], None),
+            (["fleet-jobs", "start", "git", "push"], None),
+            (["fleet-jobs", "wait", "20260101T000000Z-build-abcdef"], None),
+            (["python3", "-c", "print(1)"], None))
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            for role in ("worker", "opus-reviewer"):
+                path = policy.prepare(root, role)
+                review = role == "opus-reviewer"
+                for cmd, expected in cases + (
+                        (["git", "commit", "-m", "x"], "forbidden" if review else "allow"),
+                        (["git", "push", "origin", "HEAD:x"],
+                         "forbidden" if review else "allow")):
+                    with self.subTest(role=role, cmd=cmd):
+                        result = subprocess.run(
+                            ["codex", "execpolicy", "check", "--rules", str(path), "--", *cmd],
+                            check=True, capture_output=True, text=True, timeout=15)
+                        self.assertEqual(json.loads(result.stdout).get("decision"), expected)
+
     def test_display_validator_list_covers_every_fleet_run_driver(self):
         # A new driver that launches a demo through fleet-run times out on a
         # macOS Codex worker until it is named in DISPLAY_VALIDATORS.

@@ -153,6 +153,40 @@ $PPID` (the classifier blocks it).
 
 ---
 
+## Long-running jobs
+
+A command expected to outlive the current tool window (a Claude Bash
+call's timeout, a Codex command window) runs as a `fleet-jobs` job. A
+new-session supervisor owns the child, so the job survives the tool call
+and the invocation that started it, and a later call reads the same job.
+Never background one in the calling shell (`&`, `nohup`): `ps` / `pgrep` /
+`kill` are denied in the sandbox, and the runtime kills orphans at exit.
+
+| Work | Start | Runs in |
+|---|---|---|
+| Engine build (`IrredenEngineTest`, a cold demo) | `fleet-build --detach --target <name>` | the same domain as foreground `fleet-build` |
+| Fleet suite | `fleet-jobs start fleet-tests [--only <substring>]` | the caller's sandbox |
+| Render verification | `fleet-jobs start render-verify -- <render-verify args>` | the display-capable domain of a direct `render-verify` run |
+
+Then, from any later call in the same pane: `fleet-jobs wait --timeout 540
+<job-id>` streams the log and exits with the child's exit code (124: still
+running, call it again; 1 with `lost` on stderr: the supervisor is gone),
+plus `status`, `kill`, and `list`. Job ids and state are pane-scoped
+(`~/.fleet/state/jobs/<pane>/`).
+
+**Evidence is a terminal `wait`, never a start.** A PR's validation row or
+a review's "builds / passes" claim cites the `wait` exit code and its
+final `fleet-jobs: <id> <status> exit=<n>` line. Do not end an iteration
+with your own job still running: wait for it, or `kill` it and report the
+check as not run.
+
+Only these three profiles detach; there is no arbitrary-command form.
+Other long commands (perf matrices, the other display validators) run in
+the foreground. A new profile is a policy-reviewed change to
+`scripts/fleet/fleet-jobs` and `scripts/fleet/fleet_codex_policy.py`.
+
+---
+
 ## Per-iteration shutdown — final step
 
 1. Per-iteration summary, so `fleet-down --summary` has coverage. No

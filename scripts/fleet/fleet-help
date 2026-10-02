@@ -38,6 +38,8 @@ fleet-build — forwards to cmake --build with auto -j and worktree build/.
 
   fleet-build --target IRShapeDebug
   fleet-build --target IrredenEngineTest -- --clean-first   # extra cmake args
+  fleet-build --detach --target IrredenEngineTest          # durable job; then
+  fleet-jobs wait <job-id>                                  # exit = build's exit
 
 Downstream-creation worktrees (creations/<name>/.claude/worktrees/<agent>/)
 are auto-configured against the enclosing engine via IRREDEN_USER_PROJECTS
@@ -179,6 +181,13 @@ Engine build / run (everyday dev)
   fleet-build [--target <name>] [...]
       cmake --build wrapper; auto -j; auto-configures <worktree>/build
       on first run. Same build directory as fleet-run.
+  fleet-build --detach [--target <name>] [...]
+      Same build as a fleet-jobs job that outlives this tool call.
+
+  fleet-jobs start build|fleet-tests|render-verify ...
+  fleet-jobs status|wait|kill <job-id>   fleet-jobs list
+      Pane-scoped durable jobs for work longer than the tool window; wait
+      streams the log and exits with the child's code. Fixed profiles only.
 
   fleet-debug [--batch] <target-or-exe> [-- program-args...]
       Builds with fleet-build, cd's beside data/shaders/scripts, then starts

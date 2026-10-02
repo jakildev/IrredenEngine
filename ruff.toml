@@ -40,6 +40,7 @@ extend-include = [
     "scripts/fleet/fleet-feedback",
     "scripts/fleet/fleet-gh-poll",
     "scripts/fleet/fleet-health",
+    "scripts/fleet/fleet-jobs",
     "scripts/fleet/fleet-issue",
     "scripts/fleet/fleet-migrate-plan-files",
     "scripts/fleet/fleet-pr",
