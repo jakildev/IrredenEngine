@@ -29,9 +29,9 @@ functions:
 ## AudioManager owns
 
 - **`MidiIn`** — one `RtMidiIn` per simultaneously-open input port, each
-  with its own callback queue. `tick()` drains every port's queue into a
-  `MidiInputFrameBuffer` (cleared and refilled each frame) that keeps both a
-  merged all-ports per-channel view and a per-port view.
+  with its own callback-to-main-thread SPSC ring. `tick()` drains every port's
+  ring into a `MidiInputFrameBuffer` (cleared and refilled each frame) that
+  keeps both a merged all-ports per-channel view and a per-port view.
 - **`MidiOut`** — one `RtMidiOut` per open output port; fire-and-forget send
   to the default (first-opened) port, or to a specific port by index.
 - **`Audio`** — `RtAudio` wrapper for microphone/line-in. Implements
@@ -179,8 +179,6 @@ IRAudio::clearOutboundMidiObserver();
   — check `patches/` before debugging driver-level issues.
 - **Single-thread `tick()` assumption.** `MidiIn::tick()` has no mutex.
   Call it only from the main loop.
-- **Callback log level.** Use `IRE_LOG_DEBUG`, never `IRE_LOG_INFO`, for
-  per-message / per-event logging inside the RtMidi/RtAudio callbacks. They
-  fire on the driver thread hundreds of times per second under a real-time
-  clock (24 pps) or dense CC sweeps — `IRE_LOG_INFO` per message floods the
-  log (and costs frame time) while staying invisible in sparse-traffic dev.
+- **RtMidi input callback constraints.** It runs on the driver thread and
+  must not throw, log, or allocate. Copy each message into the port's SPSC
+  ring and handle diagnostics on the main-thread drain.

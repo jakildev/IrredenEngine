@@ -6,8 +6,13 @@
 #include <irreden/audio/audio_manager.hpp>
 #include <irreden/audio/midi_in.hpp>
 
+#include "common/allocation_counter.hpp"
+
+#include <atomic>
+#include <chrono>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace IRAudio {
@@ -45,7 +50,7 @@ class MidiInTickTest : public ::testing::Test {
 
     void queueMessage(MidiStatus status, unsigned char data1, unsigned char data2) {
         std::vector<unsigned char> bytes{buildMidiStatus(status, kChannel), data1, data2};
-        onRtMidiMessage(0.0, &bytes, &m_port.queue_);
+        onRtMidiMessage(0.0, &bytes, &m_port.ring_);
     }
 
     IREntity::EntityManager m_entityManager;
@@ -100,6 +105,79 @@ TEST_F(MidiInTickTest, DropsUnsupportedStatus) {
     EXPECT_EQ(checkCCMessage(kChannel, 42), kCCFalse);
     EXPECT_TRUE(getMidiNotesOnThisFrame(kChannel).empty());
     EXPECT_TRUE(getMidiNotesOffThisFrame(kChannel).empty());
+}
+
+TEST_F(MidiInTickTest, PreservesConcurrentCallbackMessagesInOrder) {
+    constexpr std::size_t kConcurrentMessageCount = 1000;
+    std::atomic<bool> producerFinished{false};
+    std::vector<C_MidiMessage> received;
+    received.reserve(kConcurrentMessageCount);
+
+    std::thread producer([this, &producerFinished]() {
+        std::vector<unsigned char> bytes{buildMidiStatus(kMidiStatus_NOTE_ON, kChannel), 0, 0};
+        for (std::size_t sequence = 0; sequence < kConcurrentMessageCount; ++sequence) {
+            bytes[1] = static_cast<unsigned char>(sequence & 0x7F);
+            bytes[2] = static_cast<unsigned char>(sequence >> 7);
+            onRtMidiMessage(0.0, &bytes, &m_port.ring_);
+        }
+        producerFinished.store(true, std::memory_order_release);
+    });
+
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    while (received.size() < kConcurrentMessageCount &&
+           std::chrono::steady_clock::now() < deadline) {
+        m_audioManager.getMidiIn().tick();
+        const auto &notes = getMidiNotesOnThisFrame(kPortIndex, kChannel);
+        received.insert(received.end(), notes.begin(), notes.end());
+        if (!producerFinished.load(std::memory_order_acquire) ||
+            received.size() < kConcurrentMessageCount) {
+            std::this_thread::yield();
+        }
+    }
+    producer.join();
+
+    ASSERT_EQ(received.size(), kConcurrentMessageCount);
+    for (std::size_t sequence = 0; sequence < received.size(); ++sequence) {
+        EXPECT_EQ(received[sequence].data1_, static_cast<unsigned char>(sequence & 0x7F));
+        EXPECT_EQ(received[sequence].data2_, static_cast<unsigned char>(sequence >> 7));
+    }
+}
+
+TEST_F(MidiInTickTest, ReportsAndClearsOverflowEpisodes) {
+    constexpr std::size_t kExtraMessages = 37;
+    for (std::size_t sequence = 0; sequence < kMidiMessageRingCapacity + kExtraMessages;
+         ++sequence) {
+        queueMessage(
+            kMidiStatus_NOTE_ON,
+            static_cast<unsigned char>(sequence & 0x7F),
+            static_cast<unsigned char>(sequence >> 7)
+        );
+    }
+
+    m_audioManager.getMidiIn().tick();
+
+    const auto &notes = getMidiNotesOnThisFrame(kPortIndex, kChannel);
+    ASSERT_EQ(notes.size(), kMidiMessageRingCapacity);
+    for (std::size_t sequence = 0; sequence < notes.size(); ++sequence) {
+        EXPECT_EQ(notes[sequence].data1_, static_cast<unsigned char>(sequence & 0x7F));
+        EXPECT_EQ(notes[sequence].data2_, static_cast<unsigned char>(sequence >> 7));
+    }
+    EXPECT_TRUE(m_port.overflowing_);
+
+    m_audioManager.getMidiIn().tick();
+
+    EXPECT_FALSE(m_port.overflowing_);
+}
+
+TEST_F(MidiInTickTest, CallbackDoesNotAllocate) {
+    std::vector<unsigned char> bytes{buildMidiStatus(kMidiStatus_NOTE_ON, kChannel), 60, 100};
+    IRTest::AllocationCounter allocationCounter;
+
+    for (std::size_t index = 0; index < 1000; ++index) {
+        onRtMidiMessage(0.0, &bytes, &m_port.ring_);
+    }
+
+    EXPECT_EQ(allocationCounter.allocations(), 0u);
 }
 
 TEST(MidiInTickRoutingTest, RoutesSupportedStatuses) {
