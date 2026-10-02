@@ -8,6 +8,15 @@ REPO_ROOT=$(cd "$SCRIPT_DIR/../../.." && pwd)
 source "$SCRIPT_DIR/lib_assert.sh"
 
 TMP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/quiet-window.XXXXXX")
+HELPERS="$REPO_ROOT/engine/tools/lib/concurrency_helpers.sh"
+mkdir -p "$TMP_ROOT/default-runtime"
+DEFAULT_ROOT_EXPORTED=false
+if env -u IR_LOCK_ROOT XDG_RUNTIME_DIR="$TMP_ROOT/default-runtime" bash -c \
+    'source "$1"; env | grep -qx "IR_LOCK_ROOT=$XDG_RUNTIME_DIR/irreden/locks"' _ "$HELPERS"; then
+    DEFAULT_ROOT_EXPORTED=true
+fi
+assert_eq "$DEFAULT_ROOT_EXPORTED" "true" \
+    "the default lock root is exported to quiet helper children"
 export IR_LOCK_ROOT="$TMP_ROOT/locks"
 export FLEET_STATE_DIR="$TMP_ROOT/fleet-state"
 export IR_QUIET_LINGER=0
