@@ -402,6 +402,11 @@ class EntityManager {
     /// order the marks came from. A tree marked by a pre-destroy hook during
     /// the drain is destroyed before the drain's next plain mark.
     void markTreeForDeletion(EntityId root);
+    /// True while an undrained plain or tree mark names `entity`. A staged
+    /// change that would parent a new child to it uses this to skip the child,
+    /// which no tree mark taken earlier includes. O(pending marks);
+    /// main-thread-only.
+    bool isMarkedForDeletion(EntityId entity) const;
     /// Clears the relation on each direct child; grandchildren keep theirs.
     void detachChildren(EntityId parent);
 

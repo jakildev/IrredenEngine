@@ -849,7 +849,10 @@ void stagePartSpawn(
     parts.slots_[index].entity_ = part;
     entityManager.stageStructuralChange(
         [root, part, index, tier = parts.tier_, manifest = parts.manifest_]() {
-            auto rootParts = IREntity::entityExists(root)
+            // A root marked for deletion since staging gets no part: a tree
+            // mark already listed its descendants, so the part would outlive it.
+            auto rootParts = IREntity::entityExists(root) &&
+                                     !IREntity::getEntityManager().isMarkedForDeletion(root)
                                  ? IREntity::getComponentOptional<IRComponents::C_PrefabParts>(root)
                                  : std::nullopt;
             if (!rootParts || (*rootParts)->slots_[index].entity_ != part) {

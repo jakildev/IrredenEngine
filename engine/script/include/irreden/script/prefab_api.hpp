@@ -54,7 +54,8 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
 
 // Creates part `index` of `root`: the id is reserved now and written to the
 // slot, the part is built at the next flushStructuralChanges. Safe inside a
-// tick. The part loads its voxel_ref on its first spawn.
+// tick. A root destroyed or marked for deletion by then gets no part. The part
+// loads its voxel_ref on its first spawn.
 void stagePartSpawn(IREntity::EntityId root, IRComponents::C_PrefabParts &parts, std::size_t index);
 
 // Marks the slot's part tree and its detached canvas for deletion and clears

@@ -448,6 +448,49 @@ TEST_F(PrefabParts, VoxelRefPartLoadsOnFirstSpawn) {
     EXPECT_EQ(IREntity::countComponents<C_ShapeDescriptor>(), 0);
 }
 
+// A tree mark lists the root's descendants when it is taken, so a part staged
+// before it and built at the flush after it would outlive the root. The staged
+// build sees the mark and gives up; a root nobody marked still gets its part.
+TEST_F(PrefabParts, TreeMarkedRootCancelsStagedPart) {
+    const std::string voxelPath = std::string{kTmpDir} + "/prefab_parts_staged.vxs";
+    std::vector<IRAsset::ShapeRecord> shapes(2);
+    for (IRAsset::ShapeRecord &shape : shapes) {
+        shape.shapeTypeId_ = static_cast<std::uint32_t>(IRMath::SDF::ShapeType::ELLIPSOID);
+    }
+    IRAsset::saveShapeGroup(voxelPath, shapes);
+    const std::string body = "return {\n"
+                             "  prefab_version = 2,\n"
+                             "  parts = {\n"
+                             "    { id = 'petals', voxel_ref = '" +
+                             voxelPath +
+                             "',\n"
+                             "      lod = { fine = IRRender.LodLevel.LOD_0,\n"
+                             "              coarse = IRRender.LodLevel.LOD_2 } },\n"
+                             "  },\n"
+                             "}\n";
+    setZoom(1.0f);
+    const EntityId doomed = spawn("staged_doomed", body);
+    const EntityId kept = spawn("staged_kept", body);
+    ASSERT_NE(doomed, IREntity::kNullEntity);
+    ASSERT_NE(kept, IREntity::kNullEntity);
+    ASSERT_EQ(liveCount(doomed), 0);
+
+    IRPrefab::Prefab::stagePartSpawn(doomed, partsOf(doomed), 0);
+    IRPrefab::Prefab::stagePartSpawn(kept, partsOf(kept), 0);
+    const EntityId doomedPart = partsOf(doomed).slots_[0].entity_;
+    const EntityId keptPart = partsOf(kept).slots_[0].entity_;
+    IREntity::destroyTree(doomed);
+    m_entityManager.flushStructuralChanges();
+    m_entityManager.destroyMarkedEntities();
+
+    EXPECT_FALSE(IREntity::entityExists(doomed));
+    EXPECT_FALSE(IREntity::entityExists(doomedPart));
+    ASSERT_TRUE(IREntity::entityExists(keptPart));
+    EXPECT_EQ(m_entityManager.getChildren(keptPart).size(), 2u);
+    EXPECT_EQ(IREntity::countComponents<C_ShapeDescriptor>(), 2)
+        << "only the unmarked root's part and its records remain";
+}
+
 TEST_F(PrefabParts, V1ManifestLoadsUnchanged) {
     const IRPrefab::Prefab::SpawnResult result = spawnResult(
         "v1",
