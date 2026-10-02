@@ -26,3 +26,11 @@ for the newly attributed dispatch cost. Native OpenGL is not validated here.
 The cardinal capture also exposes a restricted central viewport at effective
 density 16. Timing on/off equality does not validate that extent; its canvas
 scale/allocation contract is a separate visual follow-up before dispatch packing.
+
+Code tracing confirms finite-storage clipping: `RenderManager` creates the main
+canvas at game resolution plus padding (642×722 texels here); the cardinal
+producer scales coordinates by effective density 16 and rejects taps outside
+`imageSize`. The gather's zoom/effective-density scale is 4/16. That cancellation
+preserves object scale but exposes only the central quarter of each screen axis.
+Changing gather scale alone would magnify objects, not recover the missing data.
+The follow-up must align finite storage, producer density, culling and gather.

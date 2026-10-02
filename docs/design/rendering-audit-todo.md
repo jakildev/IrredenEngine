@@ -66,8 +66,11 @@ Next, in order:
    28.516 ms stage 1 and 25.545 ms stage 2 in three native Debug controls.
    The paired captures expose a restricted central viewport at cardinal
    zoom 4/base 4 (effective density 16), identical with timing on/off. Resolve
-   its main-canvas scale/allocation coverage before dispatch packing; timing
-   equality is not full visual acceptance. Then measure greater micro-slice
+   its main-canvas scale/allocation coverage before dispatch packing: the fixed
+   canvas clips density-scaled producer coordinates, while the gather's
+   zoom/effective-density scale limits its footprint to a quarter in each axis.
+   Stretching that gather would distort object scale; fix the shared finite
+   storage/coverage contract. Timing equality is not full visual acceptance. Then measure greater micro-slice
    packing across all three dispatches, preserving every face sample and feeder
    contract, followed by conservative overflow processing.
    Packing remains a proposed experiment, not an implemented speedup. Measure
