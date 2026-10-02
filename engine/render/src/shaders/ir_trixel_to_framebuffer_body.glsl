@@ -9,6 +9,7 @@
 
 
 #include "ir_iso_common.glsl"
+#include "ir_fog_color.glsl"
 #if IR_SHAPE_RECEIVER
 #include "ir_sdf_common.glsl"
 #include "ir_shape_data.glsl"
@@ -59,6 +60,8 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     int depthPriorityMode;
     int overflowMode;
     int trixelSampleLayout;
+    uint fogBodyFactorEncoded;
+    uint fogUnexploredColorPacked;
 };
 
 layout(std430, binding = 14) buffer HoveredEntityIdBuffer {
@@ -195,5 +198,13 @@ void main() {
 		discard;
 	}
 	FragColor = color;
+    if (fogBodyFactorEncoded != 0u) {
+        const float fogFactor = float(fogBodyFactorEncoded - 1u) / 255.0;
+        FragColor.rgb = fogStateColor(
+            fogFactor,
+            FragColor.rgb,
+            unpackColor(fogUnexploredColorPacked).rgb
+        );
+    }
     gl_FragDepth = depth;
 }
