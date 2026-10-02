@@ -450,7 +450,9 @@ pixel. Later sources stamp their XY discs into the transient field layer with
 transient state. `clearVisionCircles` clears the transient layer. That layer
 never persists, probes or evicts, and leaves no explored memory. It deliberately
 does not provide analytic edge softness, height cost, line of sight or
-channels; callers add their highest-priority sources first.
+channels: a source past the cap ignores its channel mask and reveals every
+body in its disc, whatever channels that body carries. Callers add their
+highest-priority sources first.
 
 The tier boundary is call order since the last `clearVisionCircles`; an
 admitted field-tier source returns no analytic slot (-1), so it cannot be

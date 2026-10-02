@@ -101,14 +101,14 @@ template <> struct System<FOG_REVEAL_EVAL> {
     // The ground-anchor verdict on this frame's snapshot: the grid term when a
     // fog component is attached, else the circle term over the observers a
     // test seeded.
-    float verdict(IRMath::vec3 worldPosition) const {
+    float verdict(IRMath::vec3 worldPosition, std::uint32_t channels) const {
         if (!fogAttached_) {
             return 1.0f;
         }
         if (fog_ != nullptr) {
-            return IRPrefab::Fog::evalReveal(*fog_, observers_, los_, worldPosition);
+            return IRPrefab::Fog::evalReveal(*fog_, observers_, los_, worldPosition, channels);
         }
-        return IRPrefab::Fog::evalVisionReveal(observers_, los_, worldPosition);
+        return IRPrefab::Fog::evalVisionReveal(observers_, los_, worldPosition, channels);
     }
 
     void tick(
@@ -117,19 +117,28 @@ template <> struct System<FOG_REVEAL_EVAL> {
         const IRComponents::C_WorldTransform &worldTransform,
         IRComponents::C_VoxelSetNew &voxelSet
     ) {
-        if ((entity + frameCounter_) % settings_.staggerPeriod_ != 0u) {
-            return;
-        }
         if (!IRPrefab::Fog::isOnFogCanvas(voxelSet, activeCanvas_)) {
             return;
         }
+        if (revealed.override_ == IRComponents::FogOverride::NONE &&
+            (entity + frameCounter_) % settings_.staggerPeriod_ != 0u) {
+            return;
+        }
 
-        revealed.revealFactor_ = verdict(worldTransform.translation_);
         bool shown = revealed.shown_;
-        if (!shown && revealed.revealFactor_ >= settings_.showThreshold_) {
+        if (revealed.override_ == IRComponents::FogOverride::FORCE_REVEALED) {
+            revealed.revealFactor_ = 1.0f;
             shown = true;
-        } else if (shown && revealed.revealFactor_ <= settings_.hideThreshold_) {
+        } else if (revealed.override_ == IRComponents::FogOverride::FORCE_HIDDEN) {
+            revealed.revealFactor_ = 0.0f;
             shown = false;
+        } else {
+            revealed.revealFactor_ = verdict(worldTransform.translation_, revealed.channels_);
+            if (!shown && revealed.revealFactor_ >= settings_.showThreshold_) {
+                shown = true;
+            } else if (shown && revealed.revealFactor_ <= settings_.hideThreshold_) {
+                shown = false;
+            }
         }
         // A shown body renders at its carrier factor, so the carrier follows
         // the verdict whenever its 8-bit form moves; a hidden body's carrier

@@ -971,6 +971,80 @@ void probeManySources(int) {
     );
 }
 
+// --channel-probe: one non-default source (bit 1), two BODY subjects with
+// matching/default masks, and a FIELD slab. BODY evaluation filters by the
+// subject mask; FIELD rendering only consumes the default channel and must
+// therefore leave the slab unexplored.
+bool g_channelProbe = false;
+constexpr std::uint32_t kChannelProbeMask = 1u << 1u;
+constexpr IRVideo::AutoScreenshotShot kChannelProbeShots[] = {
+    {6.0f, vec2(0, 0), 0.0f, "fog_channel_probe"},
+};
+IREntity::EntityId g_channelMatchedBody = IREntity::kNullEntity;
+IREntity::EntityId g_channelDefaultBody = IREntity::kNullEntity;
+IREntity::EntityId g_channelField = IREntity::kNullEntity;
+
+void initChannelProbeScene() {
+    IRPrefab::Fog::clearVisionCircles();
+    IRPrefab::Fog::setVisionCircle(
+        0.0f,
+        0.0f,
+        14.0f,
+        kFogVisionEdgeDefault,
+        0.0f,
+        0.0f,
+        kFogVisionZCostMirrorUp,
+        0.0f,
+        kChannelProbeMask
+    );
+    IRPrefab::Fog::addVisionCircle(32.0f, 0.0f, 6.0f);
+    g_channelField = IREntity::createEntity(
+        C_LocalTransform{vec3(0.0f, 0.0f, 4.0f)},
+        C_VoxelSetNew{IRMath::ivec3{20, 20, 2}, Color{150, 150, 160, 255}, true},
+        C_FogField{}
+    );
+    g_channelMatchedBody = IREntity::createEntity(
+        C_LocalTransform{vec3(-4.0f, 2.0f, 0.0f)},
+        C_ShapeDescriptor{IRRender::ShapeType::BOX, vec4(4, 4, 8, 0), Color{80, 220, 100, 255}},
+        C_FogRevealed{0.0f, false, FogOverride::NONE, kChannelProbeMask}
+    );
+    g_channelDefaultBody = IREntity::createEntity(
+        C_LocalTransform{vec3(4.0f, -2.0f, 0.0f)},
+        C_ShapeDescriptor{IRRender::ShapeType::BOX, vec4(4, 4, 8, 0), Color{220, 90, 90, 255}},
+        C_FogRevealed{}
+    );
+}
+
+void probeChannel(int) {
+    int matchedTexels = 0;
+    int matchedUnexplored = 0;
+    int defaultTexels = 0;
+    int defaultUnexplored = 0;
+    int fieldTexels = 0;
+    int fieldUnexplored = 0;
+    const std::array matched{g_channelMatchedBody};
+    const std::array defaults{g_channelDefaultBody};
+    const std::array field{g_channelField};
+    countEntityTexels(matched, matchedTexels, matchedUnexplored);
+    countEntityTexels(defaults, defaultTexels, defaultUnexplored);
+    countEntityTexels(field, fieldTexels, fieldUnexplored);
+    const auto &matchedFog = IREntity::getComponent<C_FogRevealed>(g_channelMatchedBody);
+    const auto &defaultFog = IREntity::getComponent<C_FogRevealed>(g_channelDefaultBody);
+    IR_LOG_INFO(
+        "FOG-CHANNEL-PROBE matchedShown={} defaultShown={} matchedTexels={} "
+        "matchedUnexplored={} defaultTexels={} defaultUnexplored={} fieldTexels={} "
+        "fieldUnexplored={}",
+        matchedFog.shown_ ? 1 : 0,
+        defaultFog.shown_ ? 1 : 0,
+        matchedTexels,
+        matchedUnexplored,
+        defaultTexels,
+        defaultUnexplored,
+        fieldTexels,
+        fieldUnexplored
+    );
+}
+
 // --entity-reveal: fog BODY subjects under the --edge-zcost-ceiling hard
 // ceiling. One screen row (x + y = 0) of equal-height bodies rising past the
 // ceiling, each pair side by side so its crops compare like for like: an
@@ -1599,6 +1673,11 @@ int main(int argc, char **argv) {
         "past the cap and revealed through the world field's tier; logs FOG-TIER per shot; "
         "overrides every other reveal mode"
     );
+    IREngine::args().flag(
+        "--channel-probe",
+        "One channel-2 source over matching/default BODY subjects and a FIELD slab; logs "
+        "FOG-CHANNEL-PROBE and overrides every other reveal mode"
+    );
     IREngine::registerLuaBindings([](IRScript::LuaScript &script) {
         script.bindLuaFog();
         script.lua()["fogSelftestEntity"] = []() {
@@ -1662,28 +1741,33 @@ int main(int argc, char **argv) {
     g_luaFogSelftest = IREngine::args().getFlag("--lua-fog-selftest");
     g_worldPan = IREngine::args().getFlag("--world-pan");
     g_depthSlab = IREngine::args().getFlag("--depth-slab") && !g_worldPan;
+    g_channelProbe = IREngine::args().getFlag("--channel-probe") && !g_worldPan && !g_depthSlab &&
+                     !g_luaFogSelftest;
     g_manySources = IREngine::args().getFlag("--many-sources") && !g_worldPan && !g_depthSlab &&
-                    !g_luaFogSelftest;
+                    !g_channelProbe && !g_luaFogSelftest;
+    if (g_channelProbe) {
+        g_fogDebugColor = true;
+    }
     if (g_worldPan) {
         g_fogDebugColor = true;
     }
     g_occlusion = parseOcclusionScene(IREngine::args().getEnum("--occlusion"));
     g_losQueryBench = IREngine::args().getFlag("--los-query-bench") && !g_luaFogSelftest &&
-                      !g_worldPan && !g_depthSlab && !g_manySources;
+                      !g_worldPan && !g_depthSlab && !g_channelProbe && !g_manySources;
     if (g_losQueryBench) {
         g_occlusion = OcclusionScene::GROUND;
     }
     g_occlusionLosSoftness = IREngine::args().getFloat("--los-softness");
-    if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_manySources) {
+    if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_channelProbe || g_manySources) {
         g_occlusion = OcclusionScene::NONE;
     }
-    if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_manySources ||
+    if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_channelProbe || g_manySources ||
         g_occlusion != OcclusionScene::NONE) {
         g_entityReveal = false;
         g_perAxisOverflow = false;
     }
-    if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_manySources || g_entityReveal ||
-        g_occlusion != OcclusionScene::NONE) {
+    if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_channelProbe || g_manySources ||
+        g_entityReveal || g_occlusion != OcclusionScene::NONE) {
         g_movingObserver = false;
         g_playerWalk = false;
         g_edgeZoom = false;
@@ -2007,6 +2091,8 @@ void initSystems() {
             cfg.onCaptureFrame_ = &probeWorldPan;
         } else if (g_depthSlab) {
             cfg.onCaptureFrame_ = &probeDepthSlab;
+        } else if (g_channelProbe) {
+            cfg.onCaptureFrame_ = &probeChannel;
         } else if (g_manySources) {
             cfg.onCaptureFrame_ = &probeManySources;
         }
@@ -2021,6 +2107,8 @@ void initSystems() {
             IRVideo::setAutoScreenshotShots(cfg, kWorldPanShots);
         } else if (g_depthSlab) {
             IRVideo::setAutoScreenshotShots(cfg, kDepthSlabShots);
+        } else if (g_channelProbe) {
+            IRVideo::setAutoScreenshotShots(cfg, kChannelProbeShots);
         } else if (g_manySources) {
             IRVideo::setAutoScreenshotShots(cfg, kManySourcesShots);
         } else if (g_occlusion != OcclusionScene::NONE) {
@@ -2306,7 +2394,7 @@ void initEntities() {
     // cut colour.
     constexpr float kFloorZ = 5.0f;
     const bool occlusionScene = g_occlusion != OcclusionScene::NONE;
-    const bool windowScene = g_worldPan || g_depthSlab;
+    const bool windowScene = g_worldPan || g_depthSlab || g_channelProbe;
     if (!occlusionScene && !windowScene && !g_entityReveal && !g_edgeZoom && !g_edgeSmooth &&
         !g_edgeSdfBlocker && !g_detachedEdge && !g_edgeZCost && !g_edgeZCostAsym &&
         !g_edgeZCostCeiling) {
@@ -2431,6 +2519,10 @@ void initEntities() {
     }
     if (g_depthSlab) {
         initDepthSlabScene();
+        return;
+    }
+    if (g_channelProbe) {
+        initChannelProbeScene();
         return;
     }
     if (g_manySources) {

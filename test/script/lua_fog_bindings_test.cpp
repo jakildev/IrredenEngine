@@ -6,6 +6,7 @@
 #include <irreden/render/components/component_fog_field.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/fog_of_war.hpp>
+#include <irreden/render/fog_reveal_systems.hpp>
 #include <irreden/render/systems/system_fog_los_build.hpp>
 #include <irreden/script/lua_fog_bindings.hpp>
 #include <irreden/script/lua_script.hpp>
@@ -136,14 +137,14 @@ TEST_F(LuaFogBindingsTest, StoredEntityRevealAndUngovernedDefaultAreReturned) {
 TEST_F(LuaFogBindingsTest, RejectsWrongArityTypesAndNonFiniteNumbers) {
     constexpr const char *kBadCalls[] = {
         "IRFog.setVision(1, 2)",
-        "IRFog.setVision(1, 2, 3, 4, 5, 6, 7, 8, 9)",
+        "IRFog.setVision(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)",
         "IRFog.addVision('1', 2, 3)",
         "IRFog.addVision(1, 2)",
-        "IRFog.addVision(1, 2, 3, 4, 5, 6, 7, 8, 9)",
+        "IRFog.addVision(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)",
         "IRFog.clearVisions(1)",
         "IRFog.evalReveal(0, 0)",
         "IRFog.evalReveal(0, false, 0)",
-        "IRFog.evalReveal(0, 0, 0, 0)",
+        "IRFog.evalReveal(0, 0, 0, 0, 0)",
         "IRFog.lineOfSight(0, 0, 0, 0, 0)",
         "IRFog.lineOfSight(0, 0, 0, 0, 0, '0')",
         "IRFog.lineOfSight(0, 0, 0, 0, 0, 0, 0)",
@@ -206,6 +207,9 @@ TEST_F(LuaFogBindingsTest, RejectsWrongOptionalTypesWithoutMutatingDefaults) {
         "IRFog.addVision(0, 0, 2, nil, nil, {})",
         "IRFog.addVision(0, 0, 2, nil, nil, nil, 'down')",
         "IRFog.addVision(0, 0, 2, nil, nil, nil, nil, false)",
+        "IRFog.addVision(0, 0, 2, nil, nil, nil, nil, nil, 'party')",
+        "IRFog.addVision(0, 0, 2, nil, nil, nil, nil, nil, -1)",
+        "IRFog.evalReveal(0, 0, 0, 1.5)",
     };
     expectScriptsFail(kBadCalls);
 }
@@ -247,6 +251,35 @@ TEST_F(LuaFogVisionSlotsTest, AddAndSetVisionReturnTheSlot) {
     )lua")
                     .valid());
     EXPECT_EQ(m_observers.visionCircleCount_, 2);
+}
+
+TEST_F(LuaFogVisionSlotsTest, VisionAndVerdictChannelArgumentsReachTheOracle) {
+    ASSERT_TRUE(m_lua.lua()
+                    .safe_script(R"lua(
+        assert(IRFog.addVision(3, 4, 6, nil, nil, nil, nil, nil, 2) == 0)
+    )lua")
+                    .valid());
+    EXPECT_EQ(m_observers.channels(0), 2u);
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalReveal(
+            m_observers,
+            {},
+            IRComponents::kFogStateUnexplored,
+            IRMath::vec3(3.0f, 4.0f, 0.0f),
+            1u
+        ),
+        0.0f
+    );
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalReveal(
+            m_observers,
+            {},
+            IRComponents::kFogStateUnexplored,
+            IRMath::vec3(3.0f, 4.0f, 0.0f),
+            3u
+        ),
+        1.0f
+    );
 }
 
 TEST_F(LuaFogVisionSlotsTest, SourcesPastTheCapReachTheFieldAndClearWithTheSet) {
@@ -345,6 +378,35 @@ TEST(LuaFogPipelineTest, FogLosBuildResolvesFromALuaPipeline) {
     EXPECT_EQ(static_cast<IRSystem::SystemId>(result.get<lua_Integer>()), expected);
 }
 
+TEST(LuaFogPipelineTest, RevealSystemsResolveFromALuaPipeline) {
+    IRScript::LuaScript lua;
+    IREntity::EntityManager entityManager;
+    IRSystem::SystemManager systemManager;
+    lua.bindLuaDrivenEcs();
+    lua.registerPrefabSystems<
+        IRSystem::FOG_SUBJECT_EXEMPT,
+        IRSystem::FOG_SUBJECT_ADOPT,
+        IRSystem::FOG_SUBJECT_ADOPT_SHAPE,
+        IRSystem::FOG_REVEAL_EVAL,
+        IRSystem::FOG_REVEAL_EVAL_SHAPE>();
+    sol::protected_function_result result = lua.lua().safe_script(
+        R"lua(
+        local systems = {
+            IRSystem.systemId(IRSystem.SystemName.FOG_SUBJECT_EXEMPT),
+            IRSystem.systemId(IRSystem.SystemName.FOG_SUBJECT_ADOPT),
+            IRSystem.systemId(IRSystem.SystemName.FOG_SUBJECT_ADOPT_SHAPE),
+            IRSystem.systemId(IRSystem.SystemName.FOG_REVEAL_EVAL),
+            IRSystem.systemId(IRSystem.SystemName.FOG_REVEAL_EVAL_SHAPE),
+        }
+        IRSystem.registerPipeline(IRTime.UPDATE, systems)
+        return #systems
+    )lua",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+    EXPECT_EQ(result.get<lua_Integer>(), 5);
+}
+
 // `setEntityGoverned(e, false)` compares against the FIELD class, not
 // against BODY state: on an entity that was never adopted it tags FIELD
 // instead of returning early, and the tag is idempotent.
@@ -391,6 +453,9 @@ TEST_F(LuaFogBindingsActiveCanvasTest, EvalRevealReadsAVisibleCellWithNoCircles)
         IRFog.setCell(3, 4, IRFog.State.UNEXPLORED)
         IRFog.addVision(3, 4, 6)
         assert(IRFog.evalReveal(3, 4, 0) == 1)
+        IRFog.setVision(3, 4, 6, nil, nil, nil, nil, nil, 2)
+        assert(IRFog.evalReveal(3, 4, 0, 1) == 0)
+        assert(IRFog.evalReveal(3, 4, 0, 3) == 1)
         assert(IRFog.evalReveal(30, 40, 0) == 0)
     )lua"));
 }

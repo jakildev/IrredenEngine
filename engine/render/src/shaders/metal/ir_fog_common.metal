@@ -29,6 +29,7 @@ struct FogObserverData {
     float4 unexploredColor;
     // Per-source line of sight, (eye height above observerZ, softness, 0, 0).
     float4 losParams[kMaxFogVisionCircles];
+    uint4 visionCircleChannels[2];
 };
 
 struct FogReveal {
@@ -112,6 +113,9 @@ inline FogReveal fogRevealSample(
     for (int i = 0; i < fogObservers.visionCircleCount; ++i) {
         if (state >= 1.0f) {
             break;
+        }
+        if ((fogObservers.visionCircleChannels[i / 4][i % 4] & 1u) == 0u) {
+            continue;
         }
         const float4 heights = fogObservers.visionCircleHeights[i];
         const float dzUp = max(heights.x - pos3D.z, 0.0f);
