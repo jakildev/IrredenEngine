@@ -20,6 +20,25 @@ Entry = _mod.Entry
 Cluster = _mod.Cluster
 cross_reference = _mod.cross_reference
 
+_FLEET_DIR = Path(__file__).parent.parent
+sys.path.insert(0, str(_FLEET_DIR))
+from fleet_model_field import MODEL_CLASSES  # noqa: E402
+
+
+def _load_script(name, modname):
+    loader = importlib.machinery.SourceFileLoader(modname, str(_FLEET_DIR / name))
+    spec = importlib.util.spec_from_loader(modname, loader)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[modname] = mod
+    loader.exec_module(mod)
+    return mod
+
+
+def _sig(headline, body="", ts="2026-07-14", role="worker-4"):
+    """signature_for over a one-entry fixture: headline plus first body line."""
+    e = Entry(ts=ts, role=role, headline=headline, body=[body] if body else [])
+    return _mod.signature_for(e)
+
 
 class TestParseDt(unittest.TestCase):
     def test_z_suffixed_utc_parses(self):
@@ -96,9 +115,7 @@ class TestGlHostStarvationSignature(unittest.TestCase):
     for "queue ... GL-host-starved" phrasing (first match wins)."""
 
     def _sig(self, headline, body=""):
-        e = Entry(ts="2026-07-14", role="worker-4", headline=headline,
-                  body=[body] if body else [])
-        return _mod.signature_for(e)
+        return _sig(headline, body)
 
     def test_observed_starvation_headlines_cluster(self):
         for h in (
@@ -121,6 +138,201 @@ class TestGlHostStarvationSignature(unittest.TestCase):
         self.assertEqual(
             self._sig("queue starved: fleet:queued diverged, ingest never ran"),
             "queue-staleness")
+
+
+
+class TestEntryHeaderShapes(unittest.TestCase):
+    """Role files carry a few header shapes beyond `## <date>`. A header the
+    regex misses is not dropped — its lines fold into the PREVIOUS entry, so
+    the snag is attributed to the wrong day and the wrong cluster."""
+
+    HEAD = None
+
+    def _parse(self, line):
+        m = _mod.ENTRY_HEAD_FILE.match(line)
+        return (m.group(1), (m.group(2) or "").strip()) if m else None
+
+    def test_legacy_shapes_unchanged(self):
+        for line, ts in (
+            ("## 2026-05-26 14:15", "2026-05-26 14:15"),
+            ("## 2026-05-08T17:34Z — headline", "2026-05-08T17:34"),
+            ("## 2026-05-13 — headline", "2026-05-13"),
+            ("## 2026-05-19 opus-worker-1: a thing", "2026-05-19"),
+        ):
+            got = self._parse(line)
+            self.assertIsNotNone(got, line)
+            self.assertEqual(got[0], ts, line)
+
+    def test_role_prefixed_shapes_parse(self):
+        # Observed in sonnet-reviewer.md, pool-7.md, pool-1.md, pool-5.md.
+        for line, ts, head in (
+            ("## pool-5, 2026-09-14: stale fleet:changes-made re-dispatch",
+             "2026-09-14", "stale fleet:changes-made re-dispatch"),
+            ("## pool-9 2026-09-27 15:05 UTC — PR #3855 flapping",
+             "2026-09-27 15:05", "PR #3855 flapping"),
+            ("# pool-7 feedback — 2026-10-01 (#4011)", "2026-10-01", "(#4011)"),
+            ("# pool-1 — 2026-09-11 (opus, feedback AMEND on PR #3417)",
+             "2026-09-11", "(opus, feedback AMEND on PR #3417)"),
+        ):
+            got = self._parse(line)
+            self.assertIsNotNone(got, line)
+            self.assertEqual(got, (ts, head), line)
+
+    def test_prose_dividers_still_ignored(self):
+        for line in (
+            "### Snag 1 (RECURRENCE — first fed back 2026-09-10, still unfixed)",
+            "## Summary of the 2026-09-10 run",
+            "# pool-3 feedback",
+            "## Why this happened",
+        ):
+            self.assertIsNone(self._parse(line), line)
+
+
+class TestSeptemberSignatures(unittest.TestCase):
+    """Routing for the snag families the 2026-09-10 → 10-02 window surfaced.
+    Headlines are abridged from the role files; signature_for reads the
+    headline plus the first body line."""
+
+    def _sig(self, headline, body=""):
+        return _sig(headline, body, ts="2026-09-24", role="pool-2")
+
+    def test_wrapper_misload_bookkeeping_leaves_design_clusters(self):
+        # 80+ epic-steward entries from one install.sh symlink defect; without
+        # this signature they inflate design-escalation-gap and state-cache-lag.
+        self.assertEqual(self._sig(
+            "16:22Z — pool-1 (engine worktree, game wrapper text loaded — 34th "
+            "occurrence; engine reading taken)",
+            "No-op iteration, zero claims. Projection = the parked set; 3 design_prs "
+            "under unanswered packages"),
+            "role-wrapper-misload")
+
+    def test_ps_denied_is_process_visibility_not_permission_gate(self):
+        self.assertEqual(self._sig(
+            "permit process inspection for build diagnostics",
+            "`ps -ax -o pid=,command= | rg 'fleet-build|cmake --build'` failed with "
+            "`operation not permitted`"),
+            "sandbox-process-visibility")
+        self.assertEqual(self._sig(
+            "dispatched feedback engine PR #3692",
+            "Full fleet-suite completion could not be observed because the host denies "
+            "process inspection in the sandbox"),
+            "sandbox-process-visibility")
+
+    def test_long_job_window(self):
+        self.assertEqual(self._sig(
+            "worker (opus) — #3796 / PR #3800",
+            "the full `run_all.sh` (~20 min on macOS, 215 suites) ran as a harness "
+            "`run_in_background` task and was killed at session end"),
+            "long-job-window")
+
+    def test_codex_roots_before_permission_gate(self):
+        self.assertEqual(self._sig(
+            "Make the Codex worker's handoff directory writable or align the documented path.",
+            "The `start-next-task` skill requires writing `~/.fleet/handoff/<pool>.md`, "
+            "outside the sandbox writable roots"),
+            "codex-writable-roots")
+
+    def test_token_expiry_and_graphql_outage_are_distinct(self):
+        self.assertEqual(self._sig(
+            "worker (opus), task engine#3966",
+            "The dispatch-exported GH_TOKEN (GitHub App installation token) expired "
+            "mid-iteration — HTTP 401"),
+            "token-expiry")
+        self.assertEqual(self._sig(
+            "GraphQL rate-limit outage stranded fleet-review-verdict and review-release "
+            "mid-iteration (PR engine#3719)."),
+            "graphql-outage")
+
+    def test_tooling_traps(self):
+        self.assertEqual(self._sig(
+            "worker (conflict #3557)",
+            "`fleet-pr-amend-push` printed \"net-removed content in scripts/x.py\" "
+            "after the rebase"),
+            "amend-push-rebase-false-warning")
+        self.assertEqual(self._sig(
+            "worker, feedback PR #3482",
+            "`fleet-pr-body-lint <issue>` with no `--body-file` silently blocks on "
+            "`sys.stdin.read()`"),
+            "body-lint-input-traps")
+        self.assertEqual(self._sig(
+            "worker/opus @mac-pool-1 — PR #3763 feedback",
+            "`Parked-until:` reads one issue only (the last line); criterion 6 waits "
+            "on TWO fixes"),
+            "parked-until-list")
+
+    def test_stale_snapshot_feedback_dispatch(self):
+        self.assertEqual(self._sig(
+            "pool-3 (worker/opus, feedback PR #4000)",
+            "Re-dispatched as `feedback` onto PR #4000 27 s after this same pane parked "
+            "it: dispatcher acted on a pre-park snapshot"),
+            "amend-claim-tier-gate")
+        # A plain design-blocked escalation gap still routes to its own cluster.
+        self.assertEqual(self._sig(
+            "conflict lane on a `fleet:design-blocked` PR (#3427)"),
+            "design-escalation-gap")
+        # A steward trigger-replay no-op has no PR/feedback token: not this cluster.
+        self.assertNotEqual(self._sig(
+            "02:3xZ — epic-steward (engine pool-6, live)",
+            "Dispatched 2 min after the previous pass released; every projected trigger "
+            "was already served"),
+            "amend-claim-tier-gate")
+
+    def test_every_signature_has_a_task_title(self):
+        # file-tasks falls back to "address recurring feedback" otherwise —
+        # a title nobody can triage from the queue list.
+        for sig, _rx in _mod.SIGNATURES:
+            self.assertIn(sig, _mod.TITLE_BY_SIGNATURE, sig)
+
+
+class TestHeaderGrammarParity(unittest.TestCase):
+    """The quick CLI (fleet-feedback) and the reviewer read the same files;
+    a header one accepts and the other drops makes them disagree on which
+    entries exist."""
+
+    def test_writer_and_reader_patterns_are_identical(self):
+        writer = _load_script("fleet-feedback", "fleet_feedback_cli")
+        self.assertEqual(writer.HEADER_RE.pattern, _mod.ENTRY_HEAD_FILE.pattern)
+        self.assertEqual(writer.HEADER_RE.flags, _mod.ENTRY_HEAD_FILE.flags)
+
+
+class TestFileTasksBodyShape(unittest.TestCase):
+    """fleet-queue-ingest reads **Model:** from the body (warns and defaults
+    to opus when absent) and plan/body lints look for `## Acceptance
+    criteria`; the filed issue must carry both."""
+
+    def _row(self, sig):
+        return {"id": "fix-099", "signature": sig, "proposal": "do the thing",
+                "occurrences_at_proposal": 3, "first_seen": "2026-09-14T00:00:00",
+                "proposed_at": "2026-10-02T00:00:00"}
+
+    def test_body_carries_ingest_fields(self):
+        body = _mod.issue_body_for(self._row("parked-until-list"), None)
+        self.assertIn("**Area:** scripts/fleet", body)
+        self.assertIn("**Model:** sonnet", body)
+        self.assertIn("**Blocked by:** (none)", body)
+        self.assertIn("## Acceptance criteria", body)
+
+    def test_model_defaults_to_opus(self):
+        body = _mod.issue_body_for(self._row("sandbox-process-visibility"), None)
+        self.assertIn("**Model:** opus", body)
+
+    def test_model_routing_names_real_classes(self):
+        # fleet-queue-ingest parses the emitted value with fleet_model_field;
+        # a typo here would silently default every filed task to opus.
+        for sig, model in _mod.MODEL_BY_SIGNATURE.items():
+            self.assertIn(model, MODEL_CLASSES, sig)
+
+    def test_acceptance_section_is_a_pure_list(self):
+        # fleet-pr-body-lint exits 2 on "mixed prose and list acceptance
+        # criteria": a paragraph under the heading, before or after the
+        # bullets, blocks every PR that would close the issue.
+        body = _mod.issue_body_for(self._row("parked-until-list"), None)
+        section = body.split("## Acceptance criteria\n", 1)[1]
+        section = section.split("\n## ", 1)[0]
+        lines = [ln for ln in section.splitlines() if ln.strip()]
+        self.assertTrue(lines)
+        for ln in lines:
+            self.assertTrue(ln.startswith("- "), ln)
 
 
 if __name__ == "__main__":

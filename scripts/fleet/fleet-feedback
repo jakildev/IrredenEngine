@@ -39,25 +39,28 @@ from pathlib import Path
 FEEDBACK_DIR = Path.home() / ".fleet" / "feedback"
 ARCHIVE_DIR = FEEDBACK_DIR / ".archive"
 
-# Entry header grammar. Kept matching `ENTRY_HEAD_FILE` in
+# Entry header grammar. Byte-identical to `ENTRY_HEAD_FILE` in
 # scripts/fleet/review-fleet-feedback (the closed-loop reviewer that reads
 # the SAME ~/.fleet/feedback/*.md files) so the quick CLI and the skill never
-# disagree on which entries exist. Agents write several shapes — all accepted:
+# disagree on which entries exist; tests/test_review_feedback_parse_dt.py
+# pins the two patterns together. Agents write several shapes — all accepted:
 #   ## 2026-05-26 14:15              (date + time; headline on the next line)
 #   ## 2026-05-08T17:34Z — headline  (ISO-T date, Z/UTC suffix, inline headline)
 #   ## 2026-05-13 — headline         (date only, inline headline)
 #   ## 2026-05-19 opus-worker-1: …   (date only, inline headline, ':' separator)
+#   ## pool-5, 2026-09-14: headline  (one role-ish token before the date)
+#   # pool-7 feedback — 2026-10-01 (opus)   (level-1 header, same shape)
 # Group 1 = timestamp (date, optional time); group 2 = optional inline
-# headline (when absent, the first non-blank body line is the headline).
-# The earlier regex required a time AND a bare next-line headline, so the
-# date-only / inline-headline entries agents actually write were all dropped —
-# the CLI reported "no entries" while the files held weeks of feedback. See
-# FLEET.md "Fleet feedback channel" for the writer-facing format.
+# headline (when absent, the first non-blank body line is the headline). At
+# most one word (optionally followed by "feedback") may precede the date; a
+# header that leads with a sentence is a prose divider. See FLEET.md "Fleet
+# feedback channel" for the writer-facing format.
 HEADER_RE = re.compile(
-    r"^##\s+"
+    r"^#{1,2}\s+"
+    r"(?:[A-Za-z][\w-]*(?:\s+feedback)?[,\s—–-]*\s+)?"          # optional role-ish prefix
     r"(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?)"   # date, optional time
     r"(?:\s*(?:Z|UTC))?"                                      # optional Z / UTC suffix
-    r"(?:\s*(?:[—–:-]+\s*)?(.*?))?\s*$"                       # optional inline headline
+    r"(?:\s*(?:[—–:-]+\s*)?(.*?))?\s*$"                 # optional inline headline (sep optional)
 )
 
 
