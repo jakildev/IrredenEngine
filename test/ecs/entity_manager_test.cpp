@@ -743,4 +743,33 @@ TEST_F(IREntityTest, DeferredTreeReranksAfterHookReparentsPendingPeer) {
     EXPECT_EQ(order, (std::vector<IREntity::EntityId>{trigger, second, first, root}));
     EXPECT_EQ(parentAlive, (std::vector<bool>{true, true, true, true}));
 }
+
+// The eager verb re-ranks too: destroying in snapshot post-order would kill
+// `first` ahead of the `second` it adopted.
+TEST_F(IREntityTest, EagerDestroyTreeReranksAfterHookReparentsPendingPeer) {
+    const auto root = IREntity::createEntity();
+    const auto first = IREntity::createEntity();
+    const auto second = IREntity::createEntity();
+    const auto trigger = IREntity::createEntity();
+    IREntity::setParent(first, root);
+    IREntity::setParent(second, root);
+    IREntity::setParent(trigger, first);
+
+    std::vector<IREntity::EntityId> order;
+    std::vector<bool> parentAlive;
+    const auto hook = m_entity_manager.registerPreDestroyHook([&](IREntity::EntityId entity) {
+        const auto id = entity & IREntity::IR_ENTITY_ID_BITS;
+        order.push_back(id);
+        const auto parent = m_entity_manager.getParent(entity);
+        parentAlive.push_back(parent == IREntity::kNullEntity || IREntity::entityExists(parent));
+        if (id == trigger) {
+            IREntity::setParent(second, first);
+        }
+    });
+    m_entity_manager.destroyTree(root);
+    m_entity_manager.unregisterPreDestroyHook(hook);
+
+    EXPECT_EQ(order, (std::vector<IREntity::EntityId>{trigger, second, first, root}));
+    EXPECT_EQ(parentAlive, (std::vector<bool>{true, true, true, true}));
+}
 } // namespace

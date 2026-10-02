@@ -737,14 +737,9 @@ void EntityManager::appendTreePostOrder(EntityId root, std::vector<EntityId> &ou
 
 void EntityManager::destroyTree(EntityId root) {
     IR_ASSERT(isMainThreadForDeferred(), "EntityManager::destroyTree must run on the main thread");
-    std::vector<EntityId> doomed;
-    appendTreePostOrder(root, doomed);
-    // A pre-destroy hook may already have destroyed a later entry.
-    for (EntityId entity : doomed) {
-        if (findRecord(entity) != nullptr) {
-            destroyEntity(entity);
-        }
-    }
+    std::vector<EntityId> members;
+    appendTreePostOrder(root, members);
+    destroyTreeMembers(members, false);
 }
 
 void EntityManager::markTreeForDeletion(EntityId root) {
@@ -771,20 +766,30 @@ int EntityManager::hierarchyDepth(EntityId entity) {
 }
 
 void EntityManager::destroyMarkedTrees() {
+    destroyTreeMembers({}, true);
+}
+
+void EntityManager::destroyTreeMembers(
+    const std::vector<EntityId> &members, bool absorbMarkedTrees
+) {
     struct Doomed {
         EntityId entity_;
         int depth_;
     };
     std::vector<Doomed> doomed;
+    doomed.reserve(members.size());
+    for (EntityId entity : members) {
+        doomed.push_back({entity, 0});
+    }
     std::size_t next = 0;
     std::uint64_t rankedRevision = m_hierarchyRevision;
-    // A pre-destroy hook may queue another tree or re-parent a pending entry,
+    // A pre-destroy hook may re-parent a pending entry or queue another tree,
     // so after every destroy the queues are re-read and, when either happened,
     // the remainder is re-ranked against the hierarchy as it then stands.
     while (true) {
         bool absorbed = false;
         for (auto &staging : m_workerStaging) {
-            if (staging.markedTreesForDeletion_.empty()) {
+            if (!absorbMarkedTrees || staging.markedTreesForDeletion_.empty()) {
                 continue;
             }
             for (EntityId entity : staging.markedTreesForDeletion_) {

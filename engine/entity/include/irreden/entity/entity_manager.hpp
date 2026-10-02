@@ -390,7 +390,10 @@ class EntityManager {
     std::vector<EntityId> getChildren(EntityId parent);
     /// True when `ancestor` is on `entity`'s parent chain (not `entity` itself).
     bool isAncestor(EntityId ancestor, EntityId entity);
-    /// Destroys every descendant, children before parents, then `root`.
+    /// Destroys `root`'s current descendants, then `root`, children before
+    /// parents by the hierarchy as it stands at each destroy, so a
+    /// pre-destroy hook that re-parents a pending member still sees a live
+    /// parent. A tree a hook marks stays queued for the deferred drain.
     void destroyTree(EntityId root);
     /// Marks `root`'s current descendants and `root` for deletion. A child
     /// parented after this call is not in the set. The drain destroys every
@@ -714,6 +717,10 @@ class EntityManager {
     // Number of live ancestors above `entity`.
     int hierarchyDepth(EntityId entity);
     void destroyMarkedTrees();
+    // Destroys `members` in order, re-ranking the remainder deepest first
+    // whenever a hook changes CHILD_OF or, with `absorbMarkedTrees`, queues a
+    // tree, whose members then join the drain.
+    void destroyTreeMembers(const std::vector<EntityId> &members, bool absorbMarkedTrees);
 
     template <typename Component, typename... Args>
     int emplaceComponent(IComponentData *dest, Args &&...args) {

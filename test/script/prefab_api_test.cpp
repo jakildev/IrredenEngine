@@ -514,6 +514,43 @@ TEST_F(PrefabApi, SetupErrorDestroysShapesAndSetupAttachedDescendants) {
     EXPECT_TRUE(IREntity::entityExists(bystander));
 }
 
+// Setup moves a shape out of the root's tree before failing; the spawn still
+// owns it, so the cleanup must reach it and a descendant setup gave it.
+TEST_F(PrefabApi, SetupErrorDestroysShapeMovedOutOfTree) {
+    const IREntity::EntityId bystander = IREntity::createEntity();
+    const IREntity::EntityId adopted = IREntity::createEntity();
+    m_lua.lua()["g_adopted"] = static_cast<lua_Integer>(adopted);
+
+    PrefabFiles f = writeShapesFixture(
+        "setup_error_moved_shape",
+        std::string{"return {\n  prefab_version = 1,\n  voxel_ref = '"} + std::string{kTmpDir} +
+            "/prefab_test_shapes_setup_error_moved_shape.vxs',\n"
+            "  setup = function(entity)\n"
+            "    local moved = nil\n"
+            "    IREntity.forEachChild(entity, function(child)\n"
+            "      if moved == nil then moved = child end\n"
+            "    end)\n"
+            "    IREntity.clearParent(moved)\n"
+            "    IREntity.setParent(g_adopted, moved)\n"
+            "    error('boom')\n"
+            "  end,\n"
+            "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    EXPECT_EQ(r.entity_, IREntity::kNullEntity);
+    ASSERT_NE(r.error_.find("setup callback failed"), std::string::npos) << r.error_;
+    const IREntity::EntityId moved = m_entity_manager.getParent(adopted);
+    ASSERT_NE(moved, IREntity::kNullEntity);
+    EXPECT_EQ(m_entity_manager.getParent(moved), IREntity::kNullEntity);
+
+    m_entity_manager.destroyMarkedEntities();
+    EXPECT_EQ(IREntity::countComponents<IRComponents::C_RotationMode>(), 0);
+    EXPECT_EQ(IREntity::countComponents<IRComponents::C_ShapeDescriptor>(), 0);
+    EXPECT_FALSE(IREntity::entityExists(adopted));
+    EXPECT_TRUE(IREntity::entityExists(bystander));
+}
+
 TEST_F(PrefabApi, ComponentsErrorDestroysRootAndShapeChildren) {
     PrefabFiles f = writeShapesFixture(
         "components_error_cleanup",

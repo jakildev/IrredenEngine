@@ -297,11 +297,20 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
             );
         }
     }
+    // Setup can move a shape child out of the root's tree before it fails, so
+    // the error paths also mark each shape the spawn created as its own tree.
+    // The drain skips an entity already destroyed through another mark.
+    std::vector<IREntity::EntityId> spawnedChildren;
     auto destroySpawned = [&]() {
         if (detachedCanvasEntity != IREntity::kNullEntity) {
             IREntity::destroyEntity(detachedCanvasEntity);
         }
         IREntity::destroyTree(entity);
+        for (IREntity::EntityId child : spawnedChildren) {
+            if (IREntity::entityExists(child)) {
+                IREntity::destroyTree(child);
+            }
+        }
     };
 
     if (loadedRig) {
@@ -364,6 +373,7 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
     // `pendingVoxels_` for a later canvas-attach pass.
     if (loadedVoxels && (loadedVoxels->mode_ == IRAsset::VoxelSetMode::SHAPES ||
                          loadedVoxels->mode_ == IRAsset::VoxelSetMode::HYBRID)) {
+        spawnedChildren.reserve(loadedVoxels->shapeRecords_.size());
         for (const auto &record : loadedVoxels->shapeRecords_) {
             IRComponents::C_ShapeDescriptor descriptor{
                 static_cast<IRMath::SDF::ShapeType>(record.shapeTypeId_),
@@ -374,6 +384,7 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
             const IREntity::EntityId child =
                 IREntity::createEntity(IRComponents::C_LocalTransform{record.offset_}, descriptor);
             IREntity::setParent(child, entity);
+            spawnedChildren.push_back(child);
         }
     }
 

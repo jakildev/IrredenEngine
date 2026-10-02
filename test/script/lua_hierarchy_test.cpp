@@ -184,6 +184,39 @@ TEST_F(LuaHierarchy, DestroyRootCascades) {
     EXPECT_TRUE(IREntity::entityExists(bystander));
 }
 
+// The eager verb: a pre-destroy hook re-parents a pending peer from Lua under
+// a sibling still awaiting destruction; the peer must die before its new
+// parent.
+TEST_F(LuaHierarchy, DestroyTreeReranksAfterHookReparentsPendingPeer) {
+    const EntityId root = IREntity::createEntity();
+    const EntityId first = IREntity::createEntity();
+    const EntityId second = IREntity::createEntity();
+    const EntityId trigger = IREntity::createEntity();
+    IREntity::setParent(first, root);
+    IREntity::setParent(second, root);
+    IREntity::setParent(trigger, first);
+    bind("root", root);
+    bind("first", first);
+    bind("second", second);
+
+    std::vector<EntityId> order;
+    std::vector<bool> parentAlive;
+    const auto hook = m_entity_manager.registerPreDestroyHook([&](EntityId entity) {
+        const EntityId id = entity & IREntity::IR_ENTITY_ID_BITS;
+        order.push_back(id);
+        const EntityId parent = m_entity_manager.getParent(entity);
+        parentAlive.push_back(parent == IREntity::kNullEntity || IREntity::entityExists(parent));
+        if (id == trigger) {
+            run("IREntity.setParent(second, first)");
+        }
+    });
+    run("IREntity.destroyTree(root)");
+    m_entity_manager.unregisterPreDestroyHook(hook);
+
+    EXPECT_EQ(order, (std::vector<EntityId>{trigger, second, first, root}));
+    EXPECT_EQ(parentAlive, (std::vector<bool>{true, true, true, true}));
+}
+
 TEST_F(LuaHierarchy, DeferredDestroyTreeCascadesOnDrain) {
     const EntityId root = IREntity::createEntity();
     const EntityId child = IREntity::createEntity();
