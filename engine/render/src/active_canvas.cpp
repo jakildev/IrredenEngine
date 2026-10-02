@@ -5,9 +5,17 @@
 
 namespace IRRender {
 
+namespace {
+IREntity::EntityId g_headlessActiveCanvas = IREntity::kNullEntity;
+}
+
 IREntity::EntityId getActiveCanvasEntityOrNull() {
     return g_renderManager != nullptr ? g_renderManager->getActiveCanvasEntity()
-                                      : IREntity::kNullEntity;
+                                      : g_headlessActiveCanvas;
+}
+
+void setHeadlessActiveCanvasEntity(IREntity::EntityId canvas) {
+    g_headlessActiveCanvas = canvas;
 }
 
 } // namespace IRRender

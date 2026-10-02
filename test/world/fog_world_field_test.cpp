@@ -1,25 +1,27 @@
 #include <gtest/gtest.h>
 
+#include <irreden/ir_job.hpp>
+#include <irreden/job/job_manager.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/fog_world_field.hpp>
 #include <irreden/spatial/chunked_field.hpp>
 #include <irreden/world/field_chunk_persistence.hpp>
 
 #include "common/allocation_counter.hpp"
+#include "common/fog_save_root.hpp"
 
 #include <algorithm>
 #include <array>
-#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
-#include <filesystem>
 #include <limits>
 #include <optional>
 #include <set>
 #include <span>
+#include <stdexcept>
 #include <string>
-#include <system_error>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -103,33 +105,15 @@ void expandWholeWindow(
 
 class FogWorldFieldTest : public ::testing::Test {
   protected:
-    void SetUp() override {
-        static std::atomic<std::uint64_t> counter{0};
-        const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-        m_root = std::filesystem::temp_directory_path() /
-                 ("ir-fog-world-field-" + std::to_string(stamp) + "-" +
-                  std::to_string(counter.fetch_add(1)));
-        std::filesystem::create_directories(m_root);
-    }
-
-    void TearDown() override {
-        std::error_code ec;
-        std::filesystem::remove_all(m_root, ec);
-    }
-
     FieldChunkDiskPersistence store(const std::string &subdirectory = "") const {
-        return *FieldChunkDiskPersistence::create(
-            (m_root / subdirectory).string(),
-            IRPrefab::Fog::kFogFieldLayer,
-            IRPrefab::Fog::kFogFieldBytesPerCell
-        );
+        return m_root.store(subdirectory);
     }
 
     void persist(WorldField &field, const std::string &subdirectory = "") const {
         ASSERT_TRUE(field.setPersistence(store(subdirectory)));
     }
 
-    std::filesystem::path m_root;
+    IRTest::ScopedFogSaveRoot m_root;
 };
 
 TEST_F(FogWorldFieldTest, ExploredStateRoundTripsThroughEvictionAndReload) {
@@ -979,5 +963,31 @@ TEST_F(FogWindowTest, CrossingProbeBound) {
     EXPECT_EQ(totalProbes, 4 * columnsEntered);
     EXPECT_LE(field.stats().residentRegions_, 20) << "regions the window left behind were evicted";
 }
+
+#ifndef IR_RELEASE
+// fog-of-war-world-field.md D13: residency is serial, so a touch from a thread
+// other than the job manager's main thread asserts before it probes.
+TEST_F(FogWorldFieldTest, RegionTouchOffTheMainThreadAssertsBeforeProbing) {
+    IRJob::JobManager jobs{1};
+    WorldField field;
+    persist(field);
+    field.stats();
+
+    bool threw = false;
+    std::thread worker([&] {
+        try {
+            field.touchCell({0, 0});
+        } catch (const std::runtime_error &) {
+            threw = true;
+        }
+    });
+    worker.join();
+
+    EXPECT_TRUE(threw);
+    EXPECT_EQ(field.stats().probes_, 0) << "the assert fires before the region record";
+    field.touchCell({0, 0});
+    EXPECT_EQ(field.stats().probes_, 1) << "the same touch on the main thread probes";
+}
+#endif
 
 } // namespace

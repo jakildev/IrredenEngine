@@ -24,6 +24,16 @@ kernel void c_fog_overflow_faces(
     const uint packedCell = overflowScratch[entryBase + 0u];
     const uint colorPacked = overflowScratch[entryBase + 1u];
     const int encoded = int(overflowScratch[entryBase + 2u]);
+    const uint fogClassByte = colorPacked >> 24u;
+    if (fogClassByte != kFogOverflowFieldByte) {
+        const float bodyState = fogOverflowBodyState(fogClassByte);
+        if (bodyState < 1.0f) {
+            overflowScratch[entryBase + 1u] = packColor(
+                fogApplyBody(bodyState, unpackColor(colorPacked), fogObservers)
+            );
+        }
+        return;
+    }
     const int2 cell = int2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
     const int faceId = frameData.visibleFaceIds[decodeSlot(encoded)] ^
         decodeFlipPerAxis(encoded);
@@ -35,8 +45,6 @@ kernel void c_fog_overflow_faces(
         frameData.frameCanvasOffset,
         frameData.voxelRenderOptions
     );
-    const uint fogClassByte = colorPacked >> 24u;
-    const bool fogWholeBody = fogClassByte == 254u;
     float aaFloor = 0.0f;
     float3 losSample = pos3D;
     if (fogObservers.visionCircleCount > 0) {
@@ -58,7 +66,6 @@ kernel void c_fog_overflow_faces(
         pos3D,
         losSample,
         aaFloor,
-        fogWholeBody,
         fogObservers,
         canvasFogOfWar,
         fogLineOfSight

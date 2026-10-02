@@ -317,6 +317,15 @@ struct C_TriangleCanvasTextures {
         );
     }
 
+    // readColors after a full GPU flush, so a read issued mid-frame (a probe
+    // spliced between two render systems) observes every encoder queued
+    // before it: Metal commits and waits, OpenGL glFinish-es. A full flush
+    // per call — debug probes only.
+    void readColorsSynced(std::vector<Color> &out) const {
+        IRRender::device()->finish();
+        readColors(out);
+    }
+
     // Encoded distance texels (depth, riser flip, face slot), row-major over
     // the whole canvas — the same full-texture readback contract as
     // readEntityIdCarriers.

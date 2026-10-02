@@ -4,7 +4,7 @@
 // The CPU authority for fog-of-war state: one cell per integer world column,
 // unbounded, stored in 32×32 field chunks. GPU-free, so tests construct it
 // without a render device. Contract: docs/design/fog-of-war-world-field.md
-// (D1–D5, D11).
+// (D1–D5, D11, D13).
 //
 // With persistence set, every region (16×16 field chunks) is resident or not.
 // The first read, write or gather expansion that touches a non-resident region
@@ -12,6 +12,11 @@
 // so a write never shadows a disk copy. A changed write marks the region
 // persistence-dirty; a load does not. CPU access sets the region's access bit,
 // which `evict` reads.
+//
+// Residency is serial (D13): every probe, load, write and access bit runs on
+// the main thread. A `PARALLEL_FOR` tick reads through `peekCell` only, after
+// its system's `beginTick` made the regions it will read resident with
+// `touchCell`.
 //
 // Beside the persistent cells sits the transient vision-tier layer (D8):
 // discs stamped by vision sources past the analytic cap, cleared with the
@@ -21,6 +26,7 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/spatial/chunked_field.hpp>
+#include <irreden/system/ir_assert_main_thread.hpp>
 #include <irreden/world/field_chunk_persistence.hpp>
 
 #include <algorithm>
@@ -116,6 +122,19 @@ class WorldField {
             return std::nullopt;
         }
         return IRMath::max(state, transient);
+    }
+
+    /// Makes @p cell's region resident and sets its access bit, as `getCell`
+    /// would, without reading: the residency pre-pass of a parallel reader
+    /// (D13). A no-op without persistence.
+    void touchCell(IRMath::ivec2 cell) {
+        touchRegion(regionOfCell(cell), true);
+    }
+
+    /// The region holding @p cell: residency is per region, so two cells
+    /// with one region share every touch.
+    static IRMath::ivec2 regionOfCell(IRMath::ivec2 cell) {
+        return IRWorld::FieldChunkDiskPersistence::regionOf(IRPrefab::Spatial::fieldChunkOf(cell));
     }
 
     /// Writes the persistent layer only: under a transient disc the cell
@@ -334,10 +353,6 @@ class WorldField {
     IRWorld::FieldRegion m_regionScratch;
     WorldFieldStats m_counters;
 
-    static IRMath::ivec2 regionOfCell(IRMath::ivec2 cell) {
-        return IRWorld::FieldChunkDiskPersistence::regionOf(IRPrefab::Spatial::fieldChunkOf(cell));
-    }
-
     /// Calls @p row(firstCell, count) for each row of the disc of cells within
     /// `dy <= rowRadius` and `dx² + dy² <= radiusSquared` of @p centre, with the
     /// row bounds computed in 64 bits and the part beyond int32 skipped.
@@ -370,6 +385,7 @@ class WorldField {
     }
 
     RegionRecord *touchRegion(IRMath::ivec2 region, bool cpuAccess) {
+        IR_ASSERT_MAIN_THREAD();
         if (!m_persistence.has_value()) {
             return nullptr;
         }

@@ -259,7 +259,7 @@ bindFog(LuaScript &script, FogVisionTargetResolver resolveTarget = activeFogVisi
     };
     fog["evalReveal"] = [](sol::variadic_args args) {
         requireFogArity("evalReveal", args.size(), 3, 3);
-        return IRPrefab::Fog::evalActiveVisionReveal(
+        return IRPrefab::Fog::evalActiveReveal(
             IRMath::vec3(
                 requireFogFloat(args[0], "evalReveal", 0),
                 requireFogFloat(args[1], "evalReveal", 1),
@@ -301,9 +301,13 @@ bindFog(LuaScript &script, FogVisionTargetResolver resolveTarget = activeFogVisi
                 "IRFog.setEntityGoverned supports only the active grid canvas"
             );
         }
-        const bool alreadyGoverned =
-            IREntity::getComponentOptional<IRComponents::C_FogRevealed>(entity).has_value();
-        if (alreadyGoverned == governed) {
+        // BODY is the class an untagged entity already reads as, so the
+        // adopted state is the "already" test for it; FIELD is its marker.
+        const bool alreadyTarget =
+            governed
+                ? IREntity::getComponentOptional<IRComponents::C_FogRevealed>(entity).has_value()
+                : IRPrefab::Fog::subjectClass(entity) == IRPrefab::Fog::FogSubjectClass::FIELD;
+        if (alreadyTarget) {
             return;
         }
         IRPrefab::Fog::setEntityRevealGoverned(entity, governed);

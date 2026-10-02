@@ -131,6 +131,10 @@ namespace IRComponents {
 constexpr int kFogOfWarSize = 256;
 constexpr int kFogOfWarHalfExtent = kFogOfWarSize / 2;
 
+// The one reveal channel the engine assigns. Grid cells and every vision
+// source reveal on it; a creation's own channel bits are its own to define.
+constexpr std::uint32_t kFogChannelDefault = 1u;
+
 // Live analytic "vision circle" reveal — the smooth, render-resolution path
 // that the voxel grid above cannot express. Each circle is a world-space disc
 // (center + radius) the fog shader evaluates PER PIXEL from the continuous
@@ -424,9 +428,25 @@ struct C_CanvasFogOfWar {
         losTexture_.second->clear(PixelDataFormat::RGBA, PixelDataType::FLOAT32, emptyTexel);
     }
 
+    // Tag selecting the textureless constructor.
+    struct HeadlessInit {};
+
+    // The CPU field and observers with no GPU texture, for a headless test
+    // that drives the reveal systems without a render manager. A render
+    // system reaching `getTexture()` on this instance asserts.
+    explicit C_CanvasFogOfWar(HeadlessInit)
+        : texture_{0, nullptr}
+        , field_{std::make_shared<IRPrefab::Fog::WorldField>()}
+        , losTexture_{0, nullptr}
+        , losColumnTops_(kFogLosFieldFloatCount, kFogLosColumnEmpty) {}
+
     void onDestroy() {
-        IRRender::destroyResource<Texture2D>(texture_.first);
-        IRRender::destroyResource<Texture2D>(losTexture_.first);
+        if (texture_.second != nullptr) {
+            IRRender::destroyResource<Texture2D>(texture_.first);
+        }
+        if (losTexture_.second != nullptr) {
+            IRRender::destroyResource<Texture2D>(losTexture_.first);
+        }
         field_.reset();
     }
 
@@ -464,6 +484,22 @@ struct C_CanvasFogOfWar {
 
     std::uint8_t getCell(int wx, int wy) const {
         return field_->getCell({wx, wy});
+    }
+
+    /// The resident state of (wx, wy), an absent chunk reading unexplored.
+    /// Never loads and never sets an access bit, so a `PARALLEL_FOR` tick may
+    /// read it while no serial phase runs (fog-of-war-world-field.md D13).
+    std::uint8_t peekCell(int wx, int wy) const {
+        return field_->peekCell({wx, wy}).value_or(kFogStateUnexplored);
+    }
+
+    /// Makes (wx, wy)'s region resident for a later `peekCell`; serial only.
+    void touchCell(int wx, int wy) {
+        field_->touchCell({wx, wy});
+    }
+
+    bool hasPersistence() const {
+        return field_->hasPersistence();
     }
 
     void setCell(int wx, int wy, std::uint8_t state) {

@@ -443,7 +443,9 @@ kernel void IR_STAGE1_KERNEL_NAME(
         if (frameData.resolveMode == 3) {
             // Each record reconstructs the whole face, not one of its two trixels.
             if (any(int2(localId) != faceOffset_2x3(slot, 0))) return;
-            const uint fogClassByte = fogWholeBodyExempt ? 254u : 255u;
+            const uint fogClassByte = encodeFogOverflowClassByte(
+                fogWholeBodyExempt, (voxels[voxelIndex].reserved >> 4u) & 0xFFu
+            );
             const uint overflowColor =
                 (voxels[voxelIndex].colorPacked & 0x00FFFFFFu) | (fogClassByte << 24u);
             overflowAppendTap(

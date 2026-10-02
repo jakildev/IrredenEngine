@@ -71,6 +71,8 @@
 #include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/components/component_fog_exempt.hpp>
+#include <irreden/render/components/component_fog_field.hpp>
 #include <irreden/render/components/component_fog_reveal_settings.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
@@ -237,6 +239,11 @@ IR_SAVE_OPT_OUT(IRComponents::C_LerpEntity)
 // it. Version 1 reads via
 // SaveMigration<C_VoxelSetNew> in voxel/voxel_set_serialize.hpp (anchor CORNER).
 IR_SAVE_OPT_IN(IRComponents::C_VoxelSetNew, 2)
+
+// Class E — fog subject-class markers: OPT-IN (authored classification; a set
+// that reloads without its marker is adopted as the default BODY class)
+IR_SAVE_OPT_IN(IRComponents::C_FogField, 1)
+IR_SAVE_OPT_IN(IRComponents::C_FogExempt, 1)
 
 // Class E — C_Skeleton: OPT-IN (authored rig topology; joint EntityIds round-trip under the
 // snapshot's id-stable contract)
@@ -455,6 +462,8 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_Modifiers,
     IRComponents::C_EntityEventHandlers,
     IRComponents::C_VoxelSetNew,
+    IRComponents::C_FogField,
+    IRComponents::C_FogExempt,
     IRComponents::C_Skeleton,
     IRComponents::C_JointHierarchy,
     IRComponents::C_LocalTransform,
