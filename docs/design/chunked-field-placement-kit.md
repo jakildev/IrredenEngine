@@ -171,6 +171,10 @@ releases touched chunks without freeing their nodes (see below), and queries
 write into **caller-owned** out-vectors. ("Pattern B" is overloaded in tree — the *API
 shape* sense in `engine/prefabs/irreden/render/CLAUDE.md` is a different thing.
 Always say *allocation* Pattern B and cite `spatial_grid.hpp:13`.)
+A repeating workload is warm only after every transition, including the closing
+transition back to its first state, has run: retained storage has seen its peak,
+and caller-owned changed-key vectors have seen the largest union of consecutive
+states.
 
 **When the summaries are current.** `min_`/`max_` are refreshed by
 `ChunkedField2D::update()`, invoked for each layer as part of

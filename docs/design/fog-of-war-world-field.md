@@ -463,8 +463,11 @@ reads visible. A disc outside the window changes nothing drawn (D10 reads the
 column unexplored and nothing uploads it) but still reads visible through
 `getCell`, which is the gameplay contract. `clearVisionCircles` puts every key
 the layer held in the pending set, so the gather re-expands those chunks.
-The layer's chunks are recycled across clears, so a moving set cleared and
-re-stamped every frame allocates nothing once warm.
+The layer's chunks and the caller-owned pending vector are recycled across
+clears. A repeating moving set cleared, re-stamped and drained every frame
+allocates nothing once warm: every transition, including the closing transition
+back to the first state, has run, so pending capacity has seen the largest union
+of consecutive frames' changed chunks.
 
 Raising the analytic cap is rejected because it changes every mirrored std140
 block and remains a cap. Persisting tier stamps is rejected because a live
