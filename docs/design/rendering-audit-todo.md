@@ -44,14 +44,28 @@ Next, in order:
    also exhibits. Keep ray and raster expectations separate; do not add tolerance.
    The fine 33-view sweep still has one missing game pixel at yaw 0.38781238;
    the parent has the same miss. Native OpenGL raster precision remains unverified.
+   The [float32 GPU projection control](../pr-screenshots/codex/scatter-boundary-control/README.md)
+   agrees with the independent CPU-projected hardware reference at all 33 views.
+   Pre-dividing the projection matrix and rounding the recovered integer origin
+   both leave the engine captures unchanged; both experiments were reverted.
+   Next capture the exact engine uniforms and vertex inputs for the disputed
+   face and replay them independently. Keep the strict failing pixel visible
+   in the evidence until the transform/emission distinction is resolved.
 2. Profile conservative overflow emission on large rotating populations and high
    effective subdivisions. The scratch-layout follow-up removes the unused mask
    allocation and consolidates consumer offsets, with layout and native GPU-sort
    tests. Its [paired captures and profiles](../pr-screenshots/codex/peraxis-resolve-scratch-layout/README.md)
    preserve all 27 images and show no reliable frame-time gain in the fixed-45°
-   262,144-entity control (19.247 → 19.323 ms steady Debug frames). Moving-camera
-   and effective-density sweeps remain pending. Future occlusion must prove
-   finite-footprint coverage.
+   262,144-entity control (19.247 → 19.323 ms steady Debug frames). The
+   [54-run moving-camera/density matrix](../perf/motion-density-controls/README.md)
+   now measures the remaining gap: dense zoom-1/base-1 geometry averages 8.360 ms
+   cardinal versus 18.217 ms diagonal; zoom-4/base-4 reaches 88.733 ms cardinal
+   and a 91.804 ms sweep p99. These are Debug controls, not a scale qualification.
+   All runs have zero overflow drops. Next reduce high-density cardinal work and
+   conservative overflow processing, measuring each contribution before changing
+   defaults. Cardinal/per-axis density differs (16 versus capped 8 at zoom 4),
+   so do not call their timings parity. Future occlusion must prove finite-footprint
+   coverage; native Release and quiet-host million controls remain pending.
 3. Continue dense/incomplete sun-index and moving light/camera controls. Incomplete
    tiles still have approximate fallback; the full-pool reference is diagnostic.
 4. Extend finite receiving to cardinal GRID and remaining eligible SDF/fog routes,

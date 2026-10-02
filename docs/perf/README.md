@@ -491,6 +491,29 @@ witnesses. Use the million controls above for scale and continuous yaw.
 
 Results and the finite shadow-index follow-up: [rotation, zoom and index audit](shadow-index-audit.md).
 
+## Moving-camera density controls
+
+`rotation_controls.py --suite motion` holds 262,144 voxel entities and an
+explicit origin pivot fixed while comparing cardinal, diagonal and continuously
+yawing views. It crosses a solid block and a frozen per-cell wave with base
+subdivisions 1/4 at zoom 1 and base 4 at zoom 4. The wave changes static geometry;
+only the camera moves. The sweep samples one turn without duplicating its endpoint.
+
+```bash
+python3 scripts/perf/rotation_controls.py --suite motion --rounds 3 --frames 180 --output /tmp/motion-density
+```
+
+`budget-summary.md` reports post-warmup p95/p99, frames exceeding 1000/60 ms,
+and maximum overflow entries/drops. The usual report retains GPU scopes and
+all-frame means. Runtime binary, shaders, scripts, render experiment settings,
+and power source must agree across the matrix. Actual requested/effective
+subdivisions and overflow pressure still need interpretation from the reports
+and logs; a solid block can have no overflow despite its entity count.
+
+The [retained 54-run matrix](motion-density-controls/README.md) separates solid
+surface masks from dense overflow pressure and records the remaining rotation
+and cardinal high-density budget failures.
+
 ## Analytical-box indexing controls
 
 `python3 scripts/perf/box_shadow_controls.py --rounds 3 --output /tmp/box-controls`
