@@ -17,6 +17,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <fstream>
+#include <limits>
 #include <regex>
 #include <sstream>
 #include <stdexcept>
@@ -576,6 +577,270 @@ TEST(FogLineOfSightTest, InteriorCellVisitorMatchesBruteForce) {
             EXPECT_FALSE(tops.empty());
         }
     }
+}
+
+namespace {
+
+// The census scene: ground, the ridge, a tall tower, a sunken pit and a
+// column on the field's far edge, half of it at negative coordinates.
+std::vector<float> censusField(vec2 offset = vec2(0.0f), ivec2 fieldMin = kWorldFieldMin) {
+    std::vector<float> field = ridgeField(0.0f, offset, fieldMin);
+    const auto box = [&](vec2 minXY, vec2 maxXY, float top) {
+        IRPrefab::Fog::stampLosBox(field, fieldMin, minXY + offset, maxXY + offset, top);
+    };
+    box(vec2(-9.0f, -4.5f), vec2(-7.5f, -3.0f), -9.0f);
+    box(vec2(-23.0f, 10.0f), vec2(-21.5f, 16.5f), 1.0f);
+    box(vec2(-43.5f, -38.0f), vec2(-42.0f, -36.0f), -2.0f);
+    box(vec2(126.5f, -2.0f), vec2(128.0f, 2.0f), 0.0f);
+    for (int y = -28; y < -12; ++y) {
+        for (int x = 12; x < 32; ++x) {
+            const ivec2 cell = ivec2(x, y) + IRMath::ivec2(offset * 2.0f);
+            if (FogLosColumnField::cellInField(cell, fieldMin)) {
+                field[FogLosColumnField::columnIndex(cell, fieldMin)] = kGroundTop + 5.0f;
+            }
+        }
+    }
+    IRPrefab::Fog::buildLosPyramid(field);
+    return field;
+}
+
+struct CensusSource {
+    vec2 centre_;
+    float radius_;
+    float observerZ_;
+    float eyeHeight_;
+};
+
+// Census sources: on lattice lines and corners, beside a column (the first
+// cell entered at t = 0), low and high eyes, inside the pit, near the field
+// edge and far into negative coordinates.
+const CensusSource kCensusSources[IRComponents::kMaxFogVisionCircles] = {
+    {vec2(-6.0f, 0.0f), 20.0f, kGroundTop, 1.0f},
+    {vec2(0.0f, 0.0f), 16.0f, kRidgeTop, 1.5f},
+    {vec2(0.5f, -3.0f), 20.0f, kGroundTop, 0.25f},
+    {vec2(-20.25f, 13.75f), 18.0f, kGroundTop, 6.0f},
+    {vec2(10.3f, -11.1f), 18.0f, kGroundTop + 5.0f, 1.0f},
+    {vec2(118.0f, 0.5f), 14.0f, kGroundTop, 1.0f},
+    {vec2(1.5f, 2.25f), 20.0f, kGroundTop, 1.0f},
+    {vec2(-40.5f, -40.5f), 12.0f, kGroundTop, 2.0f},
+};
+
+FrameDataFogObservers censusObservers(vec2 offset = vec2(0.0f)) {
+    FrameDataFogObservers observers{};
+    for (const CensusSource &source : kCensusSources) {
+        const int slot = C_CanvasFogOfWar::addVisionCircle(
+            observers,
+            source.centre_.x + offset.x,
+            source.centre_.y + offset.y,
+            source.radius_,
+            0.0f,
+            source.observerZ_,
+            0.0f,
+            0.0f,
+            0.0f
+        );
+        C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, slot, source.eyeHeight_);
+    }
+    return observers;
+}
+
+struct CensusResult {
+    int compared_ = 0;
+    int mismatches_ = 0;
+    int decidedVisible_ = 0;
+    int decidedHidden_ = 0;
+    int decidedBelowEye_ = 0;
+    int bandEdges_ = 0;
+    int swept_ = 0;
+    int sweptUndecided_ = 0;
+};
+
+constexpr int kCensusSweepHeights = 25;
+
+// Every height worth probing over @p route from the eye at @p eyeZ: a sweep,
+// heights under the target's own column top (lifted onto it), and each finite
+// band edge with three representable floats either side and points inside
+// the band.
+std::vector<float> censusHeights(const IRPrefab::Fog::LosHardRoute &route, float eyeZ, int &edges) {
+    std::vector<float> heights;
+    for (int i = 0; i < kCensusSweepHeights; ++i) {
+        heights.push_back(-14.0f + 1.25f * static_cast<float>(i));
+    }
+    if (route.ownTop_ != kFogLosColumnEmpty) {
+        heights.push_back(route.ownTop_);
+        heights.push_back(route.ownTop_ + 0.5f);
+        heights.push_back(route.ownTop_ + 7.0f);
+    }
+    for (const IRPrefab::Fog::LosRiseBand &band : {route.belowEye_, route.atOrAboveEye_}) {
+        for (const float edge : {band.clearBelow_, band.blockedFrom_}) {
+            if (!(IRMath::abs(edge) < 1.0e6f)) {
+                continue;
+            }
+            ++edges;
+            float up = edge + eyeZ;
+            float down = up;
+            heights.push_back(up);
+            for (int step = 0; step < 3; ++step) {
+                up = IRMath::nextAfter(up, 1.0e30f);
+                down = IRMath::nextAfter(down, -1.0e30f);
+                heights.push_back(up);
+                heights.push_back(down);
+            }
+        }
+        if (IRMath::abs(band.clearBelow_) < 1.0e6f && IRMath::abs(band.blockedFrom_) < 1.0e6f) {
+            for (const float f : {0.25f, 0.5f, 0.75f}) {
+                heights.push_back(
+                    band.clearBelow_ + (band.blockedFrom_ - band.clearBelow_) * f + eyeZ
+                );
+            }
+        }
+    }
+    return heights;
+}
+
+// Summarize every source over a lattice of target XY (corners, lattice lines
+// and fractional pairs inside one half-cell) and compare each summarized
+// verdict, with the march standing in where it is undecided, against
+// `losVisibility`.
+CensusResult runCensus(
+    const std::vector<float> &columns,
+    ivec2 fieldMin,
+    const FrameDataFogObservers &observers,
+    vec2 offset
+) {
+    const FogLosColumnField field{columns.data(), fieldMin};
+    const vec2 subCell[] = {
+        vec2(0.0f, 0.0f),
+        vec2(0.5f, 0.25f),
+        vec2(0.13f, 0.37f),
+        vec2(0.41f, 0.02f),
+        vec2(0.26f, 0.5f),
+    };
+    CensusResult result;
+    for (int source = 0; source < observers.visionCircleCount_; ++source) {
+        const vec4 circle = observers.visionCircles_[source];
+        const float eyeZ = IRPrefab::Fog::losEye(observers, source).z;
+        const int span = static_cast<int>(IRPrefab::Fog::losReach(circle)) + 3;
+        for (int j = -span; j <= span; j += 4) {
+            for (int i = -span; i <= span; i += 4) {
+                for (const vec2 sub : subCell) {
+                    const vec2 target = vec2(IRMath::floor(circle.x), IRMath::floor(circle.y)) +
+                                        vec2(static_cast<float>(i), static_cast<float>(j)) + sub;
+                    const IRPrefab::Fog::LosHardRoute route =
+                        IRPrefab::Fog::buildLosHardRoute(field, observers, source, target);
+                    const std::vector<float> heights =
+                        censusHeights(route, eyeZ, result.bandEdges_);
+                    for (std::size_t h = 0; h < heights.size(); ++h) {
+                        const float z = heights[h];
+                        const vec3 position(target, z);
+                        const float marched =
+                            IRPrefab::Fog::losVisibility(field, observers, source, position);
+                        const int verdict = IRPrefab::Fog::losHardRouteVerdict(route, eyeZ, z);
+                        const float summarized =
+                            verdict < 0 ? marched : static_cast<float>(verdict);
+                        ++result.compared_;
+                        if (summarized != marched) {
+                            ++result.mismatches_;
+                            ADD_FAILURE() << "source " << source << " target (" << target.x << ", "
+                                          << target.y << ", " << z << ") offset (" << offset.x
+                                          << ", " << offset.y << ") marched " << marched
+                                          << " summarized " << summarized;
+                        }
+                        if (verdict == 1) {
+                            ++result.decidedVisible_;
+                        } else if (verdict == 0) {
+                            ++result.decidedHidden_;
+                        }
+                        if (verdict >= 0 && IRMath::min(z, route.ownTop_) - eyeZ > 0.0f) {
+                            ++result.decidedBelowEye_;
+                        }
+                        if (h < kCensusSweepHeights) {
+                            ++result.swept_;
+                            result.sweptUndecided_ += verdict < 0 ? 1 : 0;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    return result;
+}
+
+} // namespace
+
+// The summarized hard route is the march bit for bit: over eight sources and
+// both slope regimes, at the band edges a summary proves and the
+// representable floats beside them, every verdict the summary decides is the
+// march's, and it decides nearly all of them.
+TEST(FogLineOfSightTest, HardRouteSummaryMatchesTheMarchAtEveryHeight) {
+    const std::vector<float> field = censusField();
+    const CensusResult result = runCensus(field, kWorldFieldMin, censusObservers(), vec2(0.0f));
+    EXPECT_EQ(result.mismatches_, 0);
+    EXPECT_GT(result.decidedHidden_, 1000);
+    EXPECT_GT(result.decidedVisible_, 1000);
+    EXPECT_GT(result.decidedBelowEye_, 1000);
+    EXPECT_GT(result.bandEdges_, 1000);
+    EXPECT_LT(result.sweptUndecided_, result.swept_ / 1000)
+        << "the summary left " << result.sweptUndecided_ << " of " << result.swept_
+        << " swept heights to the march";
+}
+
+// The same census in a field anchored on a window far from the world origin.
+TEST(FogLineOfSightTest, HardRouteSummaryMatchesTheMarchOffOrigin) {
+    constexpr int kWindowEdge = 1152;
+    const vec2 offset(640.0f, -392.0f);
+    const ivec2 fieldMin = FogLosColumnField::fieldMinForWindow(
+        IRPrefab::Fog::detail::windowOriginForCentre(offset, kWindowEdge),
+        kWindowEdge
+    );
+    const std::vector<float> field = censusField(offset, fieldMin);
+    const CensusResult result = runCensus(field, fieldMin, censusObservers(offset), offset);
+    EXPECT_EQ(result.mismatches_, 0);
+    EXPECT_GT(result.decidedHidden_, 1000);
+    EXPECT_GT(result.decidedVisible_, 1000);
+}
+
+// A source whose eye stands on a lattice line beside a column taller than the
+// eye: the first cell the walk enters, at t = 0, hides every sample at or
+// above the eye's height behind it, and the summary decides those samples
+// hidden without a band. An unpublished field hides everything; past the
+// reach everything is visible.
+TEST(FogLineOfSightTest, HardRouteSummaryConstantVerdicts) {
+    const std::vector<float> columns = censusField();
+    const FogLosColumnField field{columns.data(), kWorldFieldMin};
+    const FrameDataFogObservers observers = censusObservers();
+    constexpr int kBesideRidge = 6;
+    const float eyeZ = IRPrefab::Fog::losEye(observers, kBesideRidge).z;
+    const vec2 behind(-4.0f, 2.25f);
+    const IRPrefab::Fog::LosHardRoute route =
+        IRPrefab::Fog::buildLosHardRoute(field, observers, kBesideRidge, behind);
+    EXPECT_EQ(route.atOrAboveEye_.blockedFrom_, -std::numeric_limits<float>::infinity());
+    for (const float z : {eyeZ, eyeZ - 3.0f, -40.0f}) {
+        EXPECT_EQ(IRPrefab::Fog::losHardRouteVerdict(route, eyeZ, z), 0);
+        EXPECT_EQ(
+            IRPrefab::Fog::losVisibility(field, observers, kBesideRidge, vec3(behind, z)),
+            0.0f
+        );
+    }
+
+    const IRPrefab::Fog::LosHardRoute unpublished =
+        IRPrefab::Fog::buildLosHardRoute(FogLosColumnField{}, observers, 0, behind);
+    const IRPrefab::Fog::LosHardRoute beyond =
+        IRPrefab::Fog::buildLosHardRoute(field, observers, 0, vec2(60.0f, 0.0f));
+    for (const float z : {-20.0f, 0.0f, 3.0f, 20.0f}) {
+        EXPECT_EQ(IRPrefab::Fog::losHardRouteVerdict(unpublished, 3.0f, z), 0);
+        EXPECT_EQ(IRPrefab::Fog::losHardRouteVerdict(beyond, 3.0f, z), 1);
+    }
+
+    // A band is a promise only at its edges: a rise inside it is undecided.
+    IRPrefab::Fog::LosHardRoute undecided;
+    undecided.belowEye_ = {-1.0f, 2.0f};
+    undecided.atOrAboveEye_ = {-1.0f, 2.0f};
+    EXPECT_EQ(IRPrefab::Fog::losHardRouteVerdict(undecided, 0.0f, -1.5f), 1);
+    EXPECT_EQ(IRPrefab::Fog::losHardRouteVerdict(undecided, 0.0f, -1.0f), -1);
+    EXPECT_EQ(IRPrefab::Fog::losHardRouteVerdict(undecided, 0.0f, 0.0f), -1);
+    EXPECT_EQ(IRPrefab::Fog::losHardRouteVerdict(undecided, 0.0f, 1.0f), -1);
+    EXPECT_EQ(IRPrefab::Fog::losHardRouteVerdict(undecided, 0.0f, 2.0f), 0);
 }
 
 class FogLineOfSightEcsTest : public testing::Test {

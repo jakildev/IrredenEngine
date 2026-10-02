@@ -528,6 +528,12 @@ inline double cbrt(double value) noexcept {
     return std::cbrt(value);
 }
 
+/// The representable float next to @p from in the direction of @p toward
+/// (@p toward itself when they are equal). Wraps std::nextafter.
+inline float nextAfter(float from, float toward) noexcept {
+    return std::nextafter(from, toward);
+}
+
 /// Two-argument arctangent (radians). Result is in (-π, π]; sign matches
 /// GLSL/std::atan2 convention. GLM wrapper.
 inline float atan2(float y, float x) {
