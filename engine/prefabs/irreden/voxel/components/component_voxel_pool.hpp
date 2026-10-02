@@ -154,6 +154,7 @@ struct C_VoxelPool {
             if (m_freeSpanLookup[size].empty()) {
                 m_freeSpanLookup.erase(size);
             }
+            ++m_allocatedSpanCount;
             ++m_contentGeneration;
             markCullBoundsDirty(startIndex, size);
             return IRRender::VoxelPoolAllocation{
@@ -171,6 +172,7 @@ struct C_VoxelPool {
         if (m_voxelPoolIndex + size <= m_voxelPoolSize) {
             size_t startIndex = static_cast<size_t>(m_voxelPoolIndex);
             m_voxelPoolIndex += size;
+            ++m_allocatedSpanCount;
             ++m_contentGeneration;
             markCullBoundsDirty(startIndex, size);
             IRE_LOG_DEBUG("Allocated voxels from {} to {}", startIndex, m_voxelPoolIndex - 1);
@@ -240,6 +242,9 @@ struct C_VoxelPool {
 
         m_freeVoxelSpans.push_back({startIndex, size});
         updateFreeSpanLookup(startIndex, size);
+        if (m_allocatedSpanCount > 0) {
+            --m_allocatedSpanCount;
+        }
         ++m_contentGeneration;
     }
 
@@ -255,6 +260,13 @@ struct C_VoxelPool {
 
     bool hostsCellGroups() const {
         return m_hostsCellGroups;
+    }
+
+    // Every posted group is a distinct allocated span, so a list sized to the
+    // live span count takes the frame's posts without growing. The pose
+    // producer calls it once per frame, outside its per-part tick.
+    void reserveCellGroups() {
+        m_cellGroups.reserve(m_allocatedSpanCount);
     }
 
     void postCellGroup(const VoxelCellGroup &group) {
@@ -923,6 +935,8 @@ struct C_VoxelPool {
     // Latched by the first posted group: a persistent mode of the pool, the
     // way `m_staticReVoxelizeBound` is, never cleared per frame.
     bool m_hostsCellGroups = false;
+    // Spans handed out by allocateVoxels and not yet freed.
+    std::size_t m_allocatedSpanCount = 0;
 
     int m_voxelPoolIndex = 0;
     std::uint64_t m_contentGeneration = 0;

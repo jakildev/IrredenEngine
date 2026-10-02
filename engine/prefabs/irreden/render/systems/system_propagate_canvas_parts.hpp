@@ -72,6 +72,7 @@ template <> struct System<PROPAGATE_CANVAS_PARTS> {
             for (int i = 0; i < node->length_; ++i) {
                 pools[i].clearCellGroups();
                 if (poses[i].reVoxelize_) {
+                    pools[i].reserveCellGroups();
                     hosts_.push_back(HostCanvas{node->entities_[i], &pools[i], &poses[i]});
                 }
             }

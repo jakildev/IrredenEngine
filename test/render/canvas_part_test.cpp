@@ -109,6 +109,31 @@ class CanvasPart : public testing::Test {
         return IREntity::getComponentOptional<C_CanvasPart>(entity).has_value();
     }
 
+    // A part's PROPAGATE_CANVAS_PARTS tick inputs, fetched up front so an
+    // allocation count can bracket the system's ticks alone.
+    struct PartRow {
+        const C_VoxelSetNew *set_;
+        const C_WorldTransform *world_;
+        const C_RotationMode *mode_;
+        const C_CanvasPart *part_;
+    };
+
+    static std::vector<PartRow> rowsOf(const std::vector<IREntity::EntityId> &parts) {
+        std::vector<PartRow> rows;
+        rows.reserve(parts.size());
+        for (const IREntity::EntityId part : parts) {
+            rows.push_back(
+                PartRow{
+                    &setOf(part),
+                    &IREntity::getComponent<C_WorldTransform>(part),
+                    &IREntity::getComponent<C_RotationMode>(part),
+                    &IREntity::getComponent<C_CanvasPart>(part)
+                }
+            );
+        }
+        return rows;
+    }
+
     static void expectVec3Near(vec3 actual, vec3 expected) {
         EXPECT_NEAR(actual.x, expected.x, kEps);
         EXPECT_NEAR(actual.y, expected.y, kEps);
@@ -490,28 +515,11 @@ TEST_F(CanvasPart, PostingAllocationsDoNotGrowWithTheCanvasCount) {
             );
         }
     };
-    struct PartRow {
-        const C_VoxelSetNew *set_;
-        const C_WorldTransform *world_;
-        const C_RotationMode *mode_;
-        const C_CanvasPart *part_;
-    };
-    std::vector<PartRow> rows;
     // One warm frame of the system alone, counted.
     const auto countedFrame = [&]() {
         tick();
         tick();
-        rows.clear();
-        for (const IREntity::EntityId part : parts) {
-            rows.push_back(
-                PartRow{
-                    &setOf(part),
-                    &IREntity::getComponent<C_WorldTransform>(part),
-                    &IREntity::getComponent<C_RotationMode>(part),
-                    &IREntity::getComponent<C_CanvasPart>(part)
-                }
-            );
-        }
+        const std::vector<PartRow> rows = rowsOf(parts);
         const IRTest::AllocationCounter counter;
         system->beginTick();
         for (const PartRow &row : rows) {
@@ -531,6 +539,41 @@ TEST_F(CanvasPart, PostingAllocationsDoNotGrowWithTheCanvasCount) {
     }
 }
 
+TEST_F(CanvasPart, AHostGainingPartsPostsWithoutAllocatingOnTheFirstFrame) {
+    using PartsSystem = IRSystem::System<IRSystem::PROPAGATE_CANVAS_PARTS>;
+    PartsSystem *system = m_system_manager.getSystemParams<PartsSystem>(
+        IRSystem::findSystem(IRSystem::PROPAGATE_CANVAS_PARTS)
+    );
+    ASSERT_NE(system, nullptr);
+    const Host host = makeHost(C_LocalTransform{vec3(0.0f)});
+    std::vector<IREntity::EntityId> parts;
+    const auto addPart = [&]() {
+        parts.push_back(
+            IRPrefab::CanvasPart::create(host.entity_, C_LocalTransform{}, ivec3(2, 2, 2), kColor)
+        );
+    };
+    // Warm the host at one part, so its group list holds one entry.
+    addPart();
+    tick();
+    tick();
+    ASSERT_EQ(poolOf(host.canvas_).getCellGroups().size(), 1u);
+
+    constexpr int kAddedParts = 15;
+    for (int i = 0; i < kAddedParts; ++i) {
+        addPart();
+    }
+    const std::vector<PartRow> rows = rowsOf(parts);
+    // The first frame that sees the new parts, with no warm-up between: the
+    // frame setup may size the list, the per-part posts must not.
+    system->beginTick();
+    const IRTest::AllocationCounter counter;
+    for (const PartRow &row : rows) {
+        system->tick(*row.set_, *row.world_, *row.mode_, *row.part_);
+    }
+    EXPECT_EQ(counter.allocations(), 0u);
+    EXPECT_EQ(poolOf(host.canvas_).getCellGroups().size(), parts.size());
+}
+
 // ---- the pool's cell-group registry -------------------------------------
 
 TEST(VoxelPoolCellGroups, PostedGroupsAreKeptInSpanOrder) {
@@ -544,6 +587,27 @@ TEST(VoxelPoolCellGroups, PostedGroupsAreKeptInSpanOrder) {
     EXPECT_EQ(groups[0].start_, 0u);
     EXPECT_EQ(groups[1].start_, 27u);
     EXPECT_EQ(groups[2].start_, 64u);
+}
+
+TEST(VoxelPoolCellGroups, ReserveCoversEveryLiveSpanAcrossFreeAndReuse) {
+    C_VoxelPool pool{ivec3(8, 8, 8)};
+    const std::size_t a = pool.allocateVoxels(8).startIndex_;
+    const std::size_t b = pool.allocateVoxels(27).startIndex_;
+    const std::size_t c = pool.allocateVoxels(8).startIndex_;
+    pool.deallocateVoxels(b, 27);
+    const std::size_t reused = pool.allocateVoxels(27).startIndex_;
+    ASSERT_EQ(reused, b);
+    const std::size_t tail = pool.allocateVoxels(64).startIndex_;
+
+    pool.clearCellGroups();
+    pool.reserveCellGroups();
+    const IRTest::AllocationCounter counter;
+    pool.postCellGroup(VoxelCellGroup{tail, 64});
+    pool.postCellGroup(VoxelCellGroup{reused, 27});
+    pool.postCellGroup(VoxelCellGroup{a, 8});
+    pool.postCellGroup(VoxelCellGroup{c, 8});
+    EXPECT_EQ(counter.allocations(), 0u);
+    EXPECT_EQ(pool.getCellGroups().size(), 4u);
 }
 
 TEST(VoxelPoolCellGroups, HostingLatchSurvivesTheFrameClear) {
