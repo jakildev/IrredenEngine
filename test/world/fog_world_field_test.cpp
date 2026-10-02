@@ -677,8 +677,14 @@ TEST_F(FogWorldFieldTest, MovingFieldTierAllocatesNothingOnceWarm) {
         }
         field.consumePending(pending);
     };
-    for (int index = 0; index < kPeriod; ++index) {
+    // The last-to-first transition dirties both ends of each source's orbit.
+    // Warm that union too, independent of the vector growth policy.
+    for (int index = 0; index < 2 * kPeriod; ++index) {
         frame(index);
+        if (index == kPeriod - 1) {
+            // Exercise tight capacity when the allocator honors shrinking.
+            pending.shrink_to_fit();
+        }
     }
     const IRMath::vec2 last = centreOf(kSources - 1, kPeriod - 1);
     ASSERT_EQ(
@@ -687,7 +693,7 @@ TEST_F(FogWorldFieldTest, MovingFieldTierAllocatesNothingOnceWarm) {
     ) << "the last source is field-tier";
 
     const IRTest::AllocationCounter counter;
-    for (int index = kPeriod; index < 3 * kPeriod; ++index) {
+    for (int index = 2 * kPeriod; index < 4 * kPeriod; ++index) {
         frame(index);
     }
     EXPECT_EQ(counter.allocations(), 0u);
