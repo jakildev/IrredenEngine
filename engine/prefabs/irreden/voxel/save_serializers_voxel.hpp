@@ -11,7 +11,9 @@
 
 #include <irreden/voxel/components/component_bind_points.hpp>
 #include <irreden/voxel/components/component_joint_name.hpp>
+#include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_skeleton.hpp>
+#include <irreden/world/save_migration.hpp>
 #include <irreden/world/save_serialize.hpp>
 #include <irreden/world/save_serialize_common.hpp>
 
@@ -20,6 +22,53 @@
 #include <utility>
 
 namespace IRWorld {
+
+namespace detail {
+
+struct ShapeDescriptorV1 {
+    IRMath::SDF::ShapeType shapeType_;
+    IRMath::vec4 params_;
+    IRMath::Color color_;
+    std::uint32_t flags_;
+    IRRender::LodLevel lodMin_;
+    IRRender::LodLevel lodMax_;
+    IREntity::EntityId canvasEntity_;
+};
+
+static_assert(sizeof(ShapeDescriptorV1) == sizeof(IRComponents::C_ShapeDescriptor));
+
+} // namespace detail
+
+template <> struct SaveMigration<IRComponents::C_ShapeDescriptor> {
+    static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_ShapeDescriptor>>>
+    migrators() {
+        return {
+            {1u,
+             [](IRAsset::BinaryReader &reader) -> IRAsset::Result<IRComponents::C_ShapeDescriptor> {
+                 detail::ShapeDescriptorV1 old{};
+                 IRAsset::BinaryStatus status = reader.readBytes(&old, sizeof(old));
+                 if (!status.ok()) {
+                     return IRAsset::Result<IRComponents::C_ShapeDescriptor>::error(
+                         status.code_,
+                         std::move(status.message_)
+                     );
+                 }
+
+                 IRComponents::C_ShapeDescriptor value{};
+                 value.shapeType_ = old.shapeType_;
+                 value.params_ = old.params_;
+                 value.color_ = old.color_;
+                 value.flags_ = old.flags_;
+                 value.fogBodyFactor_ =
+                     (old.flags_ & IRMath::SDF::SHAPE_FLAG_FOG_BODY) != 0u ? 255u : 0u;
+                 value.lodMin_ = old.lodMin_;
+                 value.lodMax_ = old.lodMax_;
+                 value.canvasEntity_ = old.canvasEntity_;
+                 return IRAsset::Result<IRComponents::C_ShapeDescriptor>::success(value);
+             }},
+        };
+    }
+};
 
 template <> struct SaveSerialize<IRComponents::C_JointName> {
     static void write(IRAsset::BinaryWriter &w, const IRComponents::C_JointName &value) {

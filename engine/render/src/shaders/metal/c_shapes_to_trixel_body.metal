@@ -7,7 +7,7 @@
 
 constant uint FLAG_HOLLOW       = 1u;
 constant uint FLAG_VISIBLE      = 8u;
-constant uint FLAG_FOG_WHOLE_BODY_EXEMPT = 16u;
+constant uint FLAG_FOG_BODY = 16u;
 constant uint FLAG_XRAY_OCCLUDED = 128u;
 
 // X-ray silhouette intensity. When a SHAPE_FLAG_XRAY_OCCLUDED fragment
@@ -1015,10 +1015,11 @@ kernel void IR_SHAPE_KERNEL_NAME(
     }
 
     const bool xrayOccluded = (shape.flags & FLAG_XRAY_OCCLUDED) != 0u;
-    // Shape ids are 32-bit (high word zero) plus the fog whole-body and the
-    // analytic-surface carrier bits.
-    const uint2 packedEntityId = encodeEntityIdAnalyticSurface(encodeEntityIdFogWholeBody(
-        uint2(shape.entityId, 0u), (shape.flags & FLAG_FOG_WHOLE_BODY_EXEMPT) != 0u
+    // Shape ids are 32-bit; descriptor bits 23:16 carry the BODY factor.
+    const uint2 packedEntityId = encodeEntityIdAnalyticSurface(encodeEntityIdFogBody(
+        uint2(shape.entityId, 0u),
+        (shape.flags & FLAG_FOG_BODY) != 0u,
+        (shape.flags >> 16u) & 0xFFu
     ));
 
 #endif
