@@ -148,6 +148,7 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
         float3 position = float3(0.0), normal = float3(0.0);
         if (selectedShapeBoxReceiver(int2(sampleCoord), int(textureSize.x),
                                      originRaw, receiverFrame, receiverShapes, receiverOwners, receiverTiles,
+                                     true,
                                      position, normal)) {
             float visibility = sunFrameData.shadowsEnabled == 0 ? 1.0 :
                 worldShapeSurfaceSunShadowFactor(position, normal, shapeCanvasIsoDepth(position, receiverFrame),
@@ -164,6 +165,7 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
         float3 position = float3(0.0), normal = float3(0.0);
         if (selectedShapeBoxReceiver(int2(sampleCoord), int(textureSize.x), originRaw,
                                      receiverFrame, receiverShapes, receiverOwners, receiverTiles,
+                                     true,
                                      position, normal))
             color.rgb = shapeSurfaceLighting(sampleCoord, int(textureSize.x), position, normal,
                 shapeCanvasIsoDepth(position, receiverFrame), frameData.casterViewToWorld, color.rgb, receiverShapes, receiverOwners, receiverTiles,

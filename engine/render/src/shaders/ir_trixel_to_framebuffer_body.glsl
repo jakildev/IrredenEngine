@@ -99,7 +99,8 @@ void main() {
 #if IR_SHAPE_RECEIVER && !IR_SHAPE_LIGHTING
     if (color.a >= 0.1) {
         vec3 position = vec3(0.0), normal = vec3(0.0);
-        if (selectedShapeBoxReceiver(sampleCoord, textureSize.x, originRaw, position, normal)) {
+        if (selectedShapeBoxReceiver(sampleCoord, textureSize.x, originRaw, true,
+                                     position, normal)) {
             float visibility = shadowsEnabled == 0 ? 1.0 :
                 worldShapeSurfaceSunShadowFactor(position, normal, shapeCanvasIsoDepth(position, receiverFrame),
                     casterViewToWorld);
@@ -112,7 +113,8 @@ void main() {
 #if IR_SHAPE_LIGHTING
     if (color.a >= 0.1 && lightingEnabled != 0) {
         vec3 position = vec3(0.0), normal = vec3(0.0);
-        if (selectedShapeBoxReceiver(sampleCoord, textureSize.x, originRaw, position, normal))
+        if (selectedShapeBoxReceiver(sampleCoord, textureSize.x, originRaw, true,
+                                     position, normal))
             color.rgb = shapeSurfaceLighting(sampleCoord, textureSize.x, position, normal,
                 shapeCanvasIsoDepth(position, receiverFrame), casterViewToWorld, color.rgb);
     }
