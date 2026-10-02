@@ -41,6 +41,9 @@ inline constexpr int kParkedCardinalFrames = 120;
 // frame.
 enum class LifecycleStep : int {
     KEEP = 0,
+    RESIZE_RESOLVE,
+    REPLACE_LIVE,
+    UNPARK_RESIZE_RESOLVE,
     ALLOCATE,       // rotating, nothing resident
     UNPARK,         // rotating, the parked set fits the cardinal canvas
     REPLACE_PARKED, // rotating, the parked set was sized for another canvas
@@ -53,6 +56,9 @@ struct LifecycleState {
     bool live_ = false;
     bool parked_ = false;
     bool parkedFits_ = false;
+    bool liveFits_ = true;
+    bool liveResolveFits_ = true;
+    bool parkedResolveFits_ = true;
     int parkedFrames_ = 0;
 };
 
@@ -61,12 +67,19 @@ struct LifecycleState {
 constexpr LifecycleStep lifecycleStep(LifecycleState state) {
     if (state.rotating_) {
         if (state.live_) {
-            return LifecycleStep::KEEP;
+            if (!state.liveFits_) {
+                return LifecycleStep::REPLACE_LIVE;
+            }
+            return state.liveResolveFits_ ? LifecycleStep::KEEP : LifecycleStep::RESIZE_RESOLVE;
         }
         if (!state.parked_) {
             return LifecycleStep::ALLOCATE;
         }
-        return state.parkedFits_ ? LifecycleStep::UNPARK : LifecycleStep::REPLACE_PARKED;
+        if (!state.parkedFits_) {
+            return LifecycleStep::REPLACE_PARKED;
+        }
+        return state.parkedResolveFits_ ? LifecycleStep::UNPARK
+                                        : LifecycleStep::UNPARK_RESIZE_RESOLVE;
     }
     if (state.live_) {
         return LifecycleStep::PARK;
@@ -103,18 +116,20 @@ inline void syncAllocationToCameraYaw() {
     // should be live.
     const bool rotating = residualYaw != 0.0f;
 
-    // The sizes decide between binding the parked set and allocating a new one;
-    // a frame that keeps or parks the live set never needs them.
+    // Face storage covers the logical viewport; the resolve uses the density-scaled backing.
     IRMath::ivec2 size{0, 0};
     IRMath::ivec2 mainSize{0, 0};
-    if (rotating && !axes.isAllocated()) {
+    if (rotating) {
         auto cardinal =
             IREntity::getComponentOptional<IRComponents::C_TriangleCanvasTextures>(mainCanvas);
         if (!cardinal.has_value()) {
             return;
         }
         mainSize = (*cardinal.value()).size_;
-        size = IRMath::perAxisTrixelCanvasWorstCaseSize(mainSize, kMinOnScreenTrixelSizePx);
+        size = IRMath::perAxisTrixelCanvasWorstCaseSize(
+            IRMath::ivec2(IRRender::getMainCanvasSizeTrixels()),
+            kMinOnScreenTrixelSizePx
+        );
     }
     if (!rotating && !axes.isAllocated() && axes.hasParked()) {
         ++axes.parkedFrames_;
@@ -130,10 +145,24 @@ inline void syncAllocationToCameraYaw() {
         .rotating_ = rotating,
         .live_ = axes.isAllocated(),
         .parked_ = axes.hasParked(),
-        .parkedFits_ = axes.parked_.fits(size, mainSize),
+        .parkedFits_ = axes.parked_.size_ == size,
+        .liveFits_ = axes.size_ == size,
+        .liveResolveFits_ = axes.mainSize_ == mainSize,
+        .parkedResolveFits_ = axes.parked_.mainSize_ == mainSize,
         .parkedFrames_ = axes.parkedFrames_,
     })) {
     case LifecycleStep::KEEP:
+        return;
+    case LifecycleStep::RESIZE_RESOLVE:
+        timed(witness.perAxisAllocate_, [&] { axes.resizeResolveDepth(mainSize); });
+        return;
+    case LifecycleStep::REPLACE_LIVE:
+        timed(witness.perAxisRelease_, [&] { axes.release(); });
+        timed(witness.perAxisAllocate_, [&] { axes.allocate(size, mainSize); });
+        return;
+    case LifecycleStep::UNPARK_RESIZE_RESOLVE:
+        timed(witness.perAxisUnpark_, [&] { axes.unpark(); });
+        timed(witness.perAxisAllocate_, [&] { axes.resizeResolveDepth(mainSize); });
         return;
     case LifecycleStep::ALLOCATE:
         timed(witness.perAxisAllocate_, [&] { axes.allocate(size, mainSize); });
@@ -182,7 +211,7 @@ inline int subdivisionDensity() {
         return effSub;
     }
     const int cap = IRMath::perAxisSubdivisionCap(
-        (*cardinal.value()).size_,
+        IRMath::ivec2(IRRender::getMainCanvasSizeTrixels()),
         IRRender::getCameraZoom(),
         kMinOnScreenTrixelSizePx
     );

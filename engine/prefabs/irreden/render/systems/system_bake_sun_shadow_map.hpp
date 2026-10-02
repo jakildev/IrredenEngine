@@ -27,6 +27,7 @@
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
+#include <irreden/render/canvas_coverage.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 #include <irreden/render/sun_shadow_constants.hpp>
@@ -849,7 +850,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             IRRender::updateCullViewport(
                 IRRender::getEffectiveCameraIso(),
                 IRRender::getCameraZoom(),
-                textures.value()->size_
+                IRPrefab::CanvasCoverage::logicalSize(mainCanvas, textures.value()->size_)
             );
         }
         updateSunFrameData();

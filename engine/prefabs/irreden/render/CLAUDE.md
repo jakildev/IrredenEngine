@@ -18,8 +18,12 @@ Rationale: [`docs/design/prefab-render-surface.md`](../../../../docs/design/pref
 
 - `C_TriangleCanvasTextures` (color / distance / entity-id + Hi-Z chain),
   `C_TrixelCanvasFramebuffer`, and `C_SpriteSheet`'s atlas are created in the
-  ctor and freed only in `onDestroy()`: never stack-construct one,
-  `destroyResource` it by hand, or destroy a still-referenced canvas mid-frame.
+  ctor and released by their owner: never `destroyResource` a component-owned handle
+  externally or destroy a still-referenced canvas mid-frame. Main-canvas backing
+  growth runs before producer pointers are acquired and resizes color, depth,
+  entity-id, Hi-Z and optional AO/shadow textures together. Logical viewport size
+  remains independent of this retained physical capacity; see
+  [canvas coverage](../../../../docs/design/trixel-canvas-coverage.md).
 - New canvas textures allocate through `detail::makeCanvas*Texture` in
   `component_triangle_canvas_textures.hpp`; the format triple has one owner. A
   canvas with no explicit parent renders to the engine's main framebuffer.

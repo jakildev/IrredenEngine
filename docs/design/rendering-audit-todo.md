@@ -69,8 +69,14 @@ Next, in order:
    its main-canvas scale/allocation coverage before dispatch packing: the fixed
    canvas clips density-scaled producer coordinates, while the gather's
    zoom/effective-density scale limits its footprint to a quarter in each axis.
-   Stretching that gather would distort object scale; fix the shared finite
-   storage/coverage contract. Timing equality is not full visual acceptance. Then measure greater micro-slice
+   The [logical viewport/backing split](trixel-canvas-coverage.md) now restores
+   full cardinal coverage without stretching geometry. Its [native controls](../pr-screenshots/codex/cardinal-canvas-coverage/README.md)
+   retain identical rotated beauty/albedo and cardinal interior pixels, with
+   executed texture-lifecycle tests. Logical size also owns the sun cascade and
+   fog windows. High-water physical storage preserves requested density but
+   increases memory; extreme density/resolution still needs device-limit budgeting.
+   Replace the clipped profile baseline with complete-coverage measurements.
+   Then measure greater micro-slice
    packing across all three dispatches, preserving every face sample and feeder
    contract, followed by conservative overflow processing.
    Packing remains a proposed experiment, not an implemented speedup. Measure

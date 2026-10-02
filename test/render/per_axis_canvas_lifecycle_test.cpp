@@ -52,6 +52,32 @@ TEST(PerAxisCanvasLifecycle, RotationAllocatesOnceAndThenKeeps) {
     EXPECT_EQ(lifecycleStep({.rotating_ = true, .live_ = true}), LifecycleStep::KEEP);
 }
 
+TEST(PerAxisCanvasLifecycle, DensityGrowthKeepsLiveFacesAndResizesOnlyResolve) {
+    EXPECT_EQ(
+        lifecycleStep({.rotating_ = true, .live_ = true, .liveResolveFits_ = false}),
+        LifecycleStep::RESIZE_RESOLVE
+    );
+    EXPECT_EQ(
+        lifecycleStep(
+            {.rotating_ = true, .live_ = true, .liveFits_ = false, .liveResolveFits_ = false}
+        ),
+        LifecycleStep::REPLACE_LIVE
+    );
+}
+
+TEST(PerAxisCanvasLifecycle, DensityChangeWhileParkedReusesFacesOnResume) {
+    EXPECT_EQ(
+        lifecycleStep(
+            {.rotating_ = true, .parked_ = true, .parkedFits_ = true, .parkedResolveFits_ = false}
+        ),
+        LifecycleStep::UNPARK_RESIZE_RESOLVE
+    );
+    EXPECT_EQ(
+        lifecycleStep({.parked_ = true, .parkedFits_ = true, .parkedResolveFits_ = false}),
+        LifecycleStep::KEEP
+    );
+}
+
 TEST(PerAxisCanvasLifecycle, CardinalFrameParksTheLiveSet) {
     EXPECT_EQ(lifecycleStep({.live_ = true}), LifecycleStep::PARK);
 }
@@ -112,6 +138,8 @@ struct SetModel {
         );
         switch (step) {
         case LifecycleStep::KEEP:
+        case LifecycleStep::RESIZE_RESOLVE:
+        case LifecycleStep::REPLACE_LIVE:
             break;
         case LifecycleStep::ALLOCATE:
             live_ = true;
@@ -122,6 +150,7 @@ struct SetModel {
             parkedFrames_ = 0;
             break;
         case LifecycleStep::UNPARK:
+        case LifecycleStep::UNPARK_RESIZE_RESOLVE:
             live_ = true;
             parked_ = false;
             parkedFrames_ = 0;
@@ -195,6 +224,7 @@ TEST(PerAxisCanvasLifecycle, ParkAndUnparkRefuseAnEmptySet) {
     IRComponents::C_PerAxisTrixelCanvases axes;
     EXPECT_THROW(axes.park(), std::runtime_error);
     EXPECT_THROW(axes.unpark(), std::runtime_error);
+    EXPECT_THROW(axes.resizeResolveDepth(IRMath::ivec2(8)), std::runtime_error);
     EXPECT_FALSE(axes.isAllocated());
     EXPECT_FALSE(axes.hasParked());
 }

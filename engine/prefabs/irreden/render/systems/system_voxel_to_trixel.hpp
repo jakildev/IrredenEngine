@@ -20,6 +20,7 @@
 #include <irreden/render/components/component_triangle_canvas_background.hpp>
 #include <irreden/render/canvas_clear.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
+#include <irreden/render/canvas_coverage.hpp>
 #include <irreden/render/sun_shadow_constants.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
@@ -404,6 +405,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // frame in beginTick; read by the per-canvas gate.
     vec2 lastOcclusionCameraIso_ = vec2(0.0f);
     bool hasLastOcclusionCameraIso_ = false;
+    int lastOcclusionDensity_ = 0;
+    vec2 lastOcclusionZoom_{0.0f};
     bool occlusionLagSourceStale_ = false;
     // Per-axis store list-walk split. While the main canvas's per-axis
     // trixel canvases are active (smooth camera Z-yaw), the compact pass splits
@@ -1370,7 +1373,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             auto fogOpt = IREntity::getComponentOptional<C_CanvasFogOfWar>(entity);
             if (fogOpt.has_value()) {
                 fog = fogOpt.value();
-                gatherFogWindow(*fog, triangleCanvasTextures.size_);
+                gatherFogWindow(
+                    *fog,
+                    IRPrefab::CanvasCoverage::logicalSize(entity, triangleCanvasTextures.size_)
+                );
             }
         }
 
@@ -1380,7 +1386,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         IRRender::updateCullViewport(
             IRRender::getEffectiveCameraIso(),
             IRRender::getCameraZoom(),
-            triangleCanvasTextures.size_
+            IRPrefab::CanvasCoverage::logicalSize(entity, triangleCanvasTextures.size_)
         );
 
         buildVoxelFrameData(
@@ -2192,6 +2198,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     }
 
     void beginTick() {
+        const bool mainBackingResized = IRPrefab::CanvasCoverage::syncMainBacking();
         renderRunWitness().recordPose(
             IRPrefab::Camera::getYaw(),
             IRRender::getCameraZoom().x,
@@ -2266,7 +2273,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 IREntity::getComponentOptional<C_TriangleCanvasTextures>(perAxisCanvasEntity_);
             if (worldFogOpt.has_value() && worldTextures.has_value()) {
                 worldFog_ = worldFogOpt.value();
-                gatherFogWindow(*worldFog_, worldTextures.value()->size_);
+                gatherFogWindow(*worldFog_, IRMath::ivec2(IRRender::getMainCanvasSizeTrixels()));
             }
         }
 
@@ -2287,8 +2294,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             const vec2 viewportExtent = occlusionViewport.max_ - occlusionViewport.min_;
             const float cutThreshold = 0.5f * IRMath::min(viewportExtent.x, viewportExtent.y);
             occlusionLagSourceStale_ =
-                !hasLastOcclusionCameraIso_ ||
+                mainBackingResized || !hasLastOcclusionCameraIso_ ||
+                lastOcclusionDensity_ != IRRender::getVoxelRenderEffectiveSubdivisions() ||
+                lastOcclusionZoom_ != IRRender::getCameraZoom() ||
                 IRMath::length(cameraIso - lastOcclusionCameraIso_) > cutThreshold;
+            lastOcclusionDensity_ = IRRender::getVoxelRenderEffectiveSubdivisions();
+            lastOcclusionZoom_ = IRRender::getCameraZoom();
             lastOcclusionCameraIso_ = cameraIso;
             hasLastOcclusionCameraIso_ = true;
         }

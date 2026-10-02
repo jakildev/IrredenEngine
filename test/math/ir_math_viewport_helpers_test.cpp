@@ -542,3 +542,50 @@ TEST(CameraYawPivotOffsetTest, YawZeroReturnsCameraIsoExactly) {
 }
 
 } // namespace
+
+TEST(TrixelCanvasCoverageTest, ContainsViewportWithoutChangingTexelScreenScale) {
+    const IRMath::ivec2 logical{642, 722};
+    for (float zoom : {1.0f, 2.0f, 3.0f, 4.0f, 16.0f, 64.0f}) {
+        for (int density = 1; density <= 16; ++density) {
+            const auto backing =
+                IRMath::trixelCanvasBackingSize(logical, IRMath::vec2(zoom), density);
+            for (int axis = 0; axis < 2; ++axis) {
+                const float modelSpan =
+                    static_cast<float>(backing[axis]) / logical[axis] * zoom / density;
+                EXPECT_GE(modelSpan, 1.0f);
+                EXPECT_GE(backing[axis], logical[axis]);
+                EXPECT_EQ((backing[axis] - logical[axis]) % 4, 0);
+                const float texelScreenScale = modelSpan / backing[axis];
+                EXPECT_NEAR(texelScreenScale, zoom / (density * logical[axis]), 1e-8f);
+                const int croppedBacking = backing[axis] - 4;
+                EXPECT_TRUE(
+                    croppedBacking < logical[axis] ||
+                    static_cast<float>(croppedBacking) * zoom < density * logical[axis]
+                );
+            }
+        }
+    }
+}
+
+TEST(TrixelCanvasCoverageTest, DensityAboveZoomRequiresAdditionalStorage) {
+    const IRMath::ivec2 logical{642, 722};
+    const auto backing = IRMath::trixelCanvasBackingSize(logical, IRMath::vec2(4.0f), 16);
+    EXPECT_EQ(backing, IRMath::ivec2(2570, 2890));
+    EXPECT_EQ(IRMath::trixelOriginOffsetZ1(backing) % 2, IRMath::trixelOriginOffsetZ1(logical) % 2);
+    EXPECT_EQ(IRMath::trixelCanvasBackingSize(logical, IRMath::vec2(4.0f), 4), logical);
+}
+
+TEST(TrixelCanvasCoverageTest, RejectsInvalidDensityOrZoomBeforeAllocation) {
+    EXPECT_THROW(
+        IRMath::trixelCanvasBackingSize({642, 722}, {0.0f, 1.0f}, 1),
+        std::invalid_argument
+    );
+    EXPECT_THROW(
+        IRMath::trixelCanvasBackingSize({642, 722}, {1.0f, 1.0f}, 0),
+        std::invalid_argument
+    );
+    EXPECT_THROW(
+        IRMath::trixelCanvasBackingSize({642, 722}, {1.0f, 1.0f}, 17),
+        std::invalid_argument
+    );
+}
