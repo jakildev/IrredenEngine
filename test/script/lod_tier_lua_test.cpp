@@ -10,6 +10,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_time.hpp>
+#include <irreden/common/components/component_selected.hpp>
 #include <irreden/render/components/component_lod_tier_override.hpp>
 #include <irreden/render/components/component_lod_tier_override_lua.hpp>
 #include <irreden/render/lod_tier_snapshot.hpp>
@@ -22,10 +23,13 @@
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_voxel_set_lua.hpp>
 
+#include "common/allocation_counter.hpp"
+
 #include <fstream>
 #include <stdexcept>
 #include <string>
 #include <tuple>
+#include <vector>
 
 namespace {
 
@@ -258,6 +262,43 @@ TEST_F(LodTierLua, DenseBandGatesVisibility) {
     banded().setLodCulled(true);
     banded().setLodCulled(false);
     EXPECT_FALSE(drawn(banded(), pool));
+}
+
+// GATE_VOXEL_SETS_BY_LOD (UPDATE) and SHAPES_TO_TRIXEL (RENDER) each capture a
+// snapshot every frame, so a warm capture must not touch the heap.
+TEST_F(LodTierLua, WarmCaptureAllocatesNothing) {
+    constexpr int kPinsPerArchetype = 32;
+    std::vector<IREntity::EntityId> pinned;
+    for (int i = 0; i < kPinsPerArchetype; ++i) {
+        pinned.push_back(IREntity::createEntity(C_LodTierOverride{LodLevel::LOD_0}));
+        pinned.push_back(
+            IREntity::createEntity(C_LodTierOverride{LodLevel::LOD_1}, IRComponents::C_Selected{})
+        );
+    }
+    const IREntity::EntityId free = IREntity::createEntity();
+    setZoom(4.0f);
+
+    IRPrefab::Lod::TierSnapshot updateConsumer;
+    IRPrefab::Lod::TierSnapshot renderConsumer;
+    const auto frame = [&]() {
+        updateConsumer.capture();
+        renderConsumer.capture();
+    };
+    frame();
+
+    const IRTest::AllocationCounter counter;
+    for (int i = 0; i < 64; ++i) {
+        frame();
+    }
+    EXPECT_EQ(counter.allocations(), 0u);
+
+    for (std::size_t i = 0; i < pinned.size(); ++i) {
+        const LodLevel expected = i % 2 == 0 ? LodLevel::LOD_0 : LodLevel::LOD_1;
+        EXPECT_EQ(updateConsumer.resolve(pinned[i]), expected);
+        EXPECT_EQ(renderConsumer.resolve(pinned[i]), expected);
+    }
+    EXPECT_EQ(updateConsumer.resolve(free), LodLevel::LOD_2);
+    EXPECT_EQ(renderConsumer.resolve(free), LodLevel::LOD_2);
 }
 
 } // namespace
