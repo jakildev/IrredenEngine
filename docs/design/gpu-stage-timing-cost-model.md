@@ -48,6 +48,15 @@ changes (occupied-only lists, indirect dispatch, subdivision caps).
   original four rows cover clear, compact and the two raster stages. (CPU
   `voxelStage1` stays the whole tick — an `IR_PROFILE_SCOPE` replaces the
   observer's CPU bracket.)
+- **`voxelCardinalElect` measures the single-canvas winner-election dispatch**
+  and its trailing storage barrier. It runs only when equal-depth ownership
+  requires election, after the `voxelStage1` scope closes and before
+  `voxelStage2` opens. Winner allocation, sentinel clearing and binding setup
+  precede this scope and are excluded. The per-axis election remains inside
+  `voxelPerAxisFinalize`; it never contributes to this row. The single-canvas
+  route includes eligible detached canvases, so samples are per invocation,
+  not whole-frame totals. Reports without this row do not establish a zero
+  election cost.
 - **`voxelSunFaces` measures finite voxel casting** inside the voxel producer,
   with its own CPU scope and non-nested GPU substage scope. It is not included
   in GPU `voxelStage1` or `bakeSunShadowMap`. Samples are per canvas invocation,

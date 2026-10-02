@@ -14,9 +14,8 @@ namespace IRRender {
 // Where the per-system `GpuStageTimingObserver` brackets a whole system tick
 // with one timestamp pair, `GpuSubStageScope` brackets an individual dispatch
 // group *inside* one tick, so a bundled per-system row can be split into its
-// reserved sub-rows. VOXEL_TO_TRIXEL_STAGE_1 uses four of these
-// (`canvasClear` / `voxelCompact` / `voxelStage1` / `voxelStage2`) to attribute
-// the otherwise opaque `voxelStage1` measurement.
+// reserved sub-rows. The registry documents each producer's scope boundaries;
+// dispatches outside those scopes do not contribute to their measurements.
 //
 // Mechanism: reuses the device timestamp-pair machinery unchanged
 // (`createTimestampPair` / `writeTimestamp` / `readTimestampPairMs`) at the

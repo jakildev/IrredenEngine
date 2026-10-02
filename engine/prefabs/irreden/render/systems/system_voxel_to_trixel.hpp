@@ -2084,9 +2084,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 // see the stage-2 skip's own comment
                 // (c_voxel_to_trixel_stage_2_body.glsl) for the derivation and
                 // scripts/feeder-margin-verify.py for the gate that holds it.
-                IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
-                // The winner SSBO writes must land before stage 2's guard reads.
-                IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+                {
+                    IRRender::GpuSubStageScope gpuScope("voxelCardinalElect");
+                    IRRender::device()->dispatchComputeIndirect(indirectBuf_, 0);
+                    // The winner SSBO writes must land before stage 2's guard reads.
+                    IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
+                }
             }
 
             // Stage 2 runs in the SAME per-canvas tick rather than as a separate
