@@ -18,6 +18,7 @@
 #include <irreden/render/sun_shadow_constants.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
 #include <irreden/render/camera.hpp>
+#include <irreden/render/shape_tile_domain.hpp>
 #include <irreden/render/voxel_dispatch_grid.hpp>
 
 #include <irreden/render/gpu_stage_timing.hpp>
@@ -363,24 +364,28 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 }
             }
 
-            // Tile bounds are computed at rasterYaw — same rotation
-            // the shader uses to rasterize each shape — so the
-            // per-tile iso footprint matches the SDF surface that
-            // pixel ends up writing.
             int gridX = 1;
             const int tileCount = buildAndUploadTileDescriptors(
                 gpuShapes,
                 canvasTextures.shapeGeometry_,
                 effectiveSub,
                 renderMode,
-                rasterYaw,
-                yawCos_,
-                yawSin_,
-                canvasSmoothYaw,
-                visualYaw,
-                yawCosVisual_,
-                yawSinVisual_,
+                ShapeTileYaw{
+                    rasterYaw,
+                    yawCos_,
+                    yawSin_,
+                    canvasSmoothYaw,
+                    visualYaw,
+                    yawCosVisual_,
+                    yawSinVisual_
+                },
                 entityCanvas,
+                shapeCanvasReachableIso(
+                    frameData_.trixelCanvasOffsetZ1,
+                    frameData_.cameraTrixelOffset,
+                    renderMode == SubdivisionMode::NONE ? 1 : effectiveSub,
+                    frameData_.canvasSize
+                ),
                 gridX
             );
             if (tileCount == 0) {
@@ -627,125 +632,43 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     // dispatch then runs once per pass, with gl_WorkGroupID.x indexing this
     // buffer — one workgroup per 8×8 pixel tile.
     //
-    // @p rasterYaw is the cardinal-snap Z-yaw (radians, exact multiple of
-    // pi/2). Each shape's worldPos is rotated by R_z(-rasterYaw) before iso
-    // projection, and its XY bounding half-extent is grown to cover the
-    // rotated AABB. At rasterYaw=0 both operations are identity and the
-    // tile coverage is unchanged. The shader rasterizes at rasterYaw too,
-    // so the iso footprint of each tile matches the pixels the shader
-    // writes; residualYaw is handled downstream in screen space.
-    // @p yawCos/@p yawSin are cos/sin of rasterYaw, snapshotted at frame
-    // start so the cull pass and the per-tile dispatch see byte-identical
-    // values even if a script mutates yaw mid-frame.
-    //
-    // Smooth camera Z-yaw: when @p smoothYaw is set the tile footprint
-    // is centered on the FULL-visualYaw iso projection (matching the shader's
-    // continuous originIsoScaled) and grown by the continuous |cos|,|sin| up to
-    // the sqrt(2) extent. @p visualYaw / @p yawCosVisual / @p yawSinVisual are
-    // the continuous angle and its cos/sin. At @p smoothYaw=false the cardinal
-    // rasterYaw footprint is used unchanged (byte-identical).
+    // Each shape's footprint (shapeTileIsoBounds) is computed at the yaw the
+    // shader rasterizes it at, then clipped to the iso pixels the kernel can
+    // write on this canvas (@p reachable). Every pass discards a sample outside
+    // the canvas guard, so only guaranteed-discard tiles are dropped. The clip
+    // must precede the kMaxShapeTileDescriptors cap: a zoomed-in floor's
+    // off-canvas footprint alone exceeds it, and the cap truncates the stream
+    // row-major, cutting a horizontal band out of whatever shape it lands in.
     static int buildAndUploadTileDescriptors(
         const std::vector<GPUShapeDescriptor> &gpuShapes,
         CanvasShapeGeometry &geometry,
         int effectiveSubdivisions,
         IRRender::SubdivisionMode renderMode,
-        float rasterYaw,
-        float yawCos,
-        float yawSin,
-        bool smoothYaw,
-        float visualYaw,
-        float yawCosVisual,
-        float yawSinVisual,
+        const ShapeTileYaw &yaw,
         bool latticeShapes,
+        const ShapeIsoRect &reachable,
         int &gridXOut
     ) {
         static thread_local std::vector<ShapeTileDescriptor> tiles;
         tiles.clear();
 
         const int sub = (renderMode != IRRender::SubdivisionMode::NONE) ? effectiveSubdivisions : 1;
-        const bool yawZero = (rasterYaw == 0.0f);
-        const IRMath::CardinalIndex cardinalIndex = IRMath::rasterYawCardinalIndex(rasterYaw);
 
         for (int i = 0; i < static_cast<int>(gpuShapes.size()); ++i) {
-            const auto &desc = gpuShapes[i];
-            vec3 worldPos = vec3(desc.worldPosition);
-            vec3 viewPos = IRMath::rotateCardinalZ(worldPos, cardinalIndex);
-            ivec3 origin = IRMath::roundVec3HalfUp(viewPos);
-
-            // Canonical bounding half-extent lives in IRMath::SDF (shared with
-            // the lighting / shadow pipeline). Renderer + shadow shader stay
-            // in lockstep on what each shape's footprint is.
-            vec3 boundingHalf = IRMath::SDF::boundingHalf(
-                static_cast<IRMath::SDF::ShapeType>(desc.shapeType),
-                desc.params
+            const ShapeTileSpan span = clipShapeTiles(
+                shapeTileIsoBounds(gpuShapes[i], sub, yaw, latticeShapes),
+                reachable,
+                kShapeTileSize
             );
-            const bool hasRotation = IRMath::abs(desc.rotation.w) < 0.9999f;
-            if (hasRotation) {
-                vec3 ax = IRMath::abs(
-                    IRMath::rotateVectorByQuat(vec3(boundingHalf.x, 0, 0), desc.rotation)
-                );
-                vec3 ay = IRMath::abs(
-                    IRMath::rotateVectorByQuat(vec3(0, boundingHalf.y, 0), desc.rotation)
-                );
-                vec3 az = IRMath::abs(
-                    IRMath::rotateVectorByQuat(vec3(0, 0, boundingHalf.z), desc.rotation)
-                );
-                boundingHalf = ax + ay + az;
-            }
-            // Z-yaw expands the XY AABB by |c|·hX + |s|·hY (and symmetric).
-            // Grow the iso footprint conservatively so every visible pixel
-            // of the rotated shape is inside at least one dispatched tile.
-            ivec2 isoMin;
-            ivec2 isoMax;
-            if (smoothYaw) {
-                // Continuous-yaw footprint: center on the full-visualYaw iso
-                // projection (matches the shader's originIsoScaled) and grow by
-                // the continuous |c|,|s| (sqrt(2) extent at +/-45deg). A lattice
-                // shape at density 1 anchors on its snapped view cell instead,
-                // the origin the kernel's lattice walk keys its parity on.
-                boundingHalf =
-                    IRMath::yawGrownIsoHalfExtent(boundingHalf, yawCosVisual, yawSinVisual);
-                ivec2 originIsoScaled;
-                if (latticeShapes && sub == 1) {
-                    const vec3 viewPosYawed(
-                        yawCosVisual * worldPos.x + yawSinVisual * worldPos.y,
-                        -yawSinVisual * worldPos.x + yawCosVisual * worldPos.y,
-                        worldPos.z
-                    );
-                    originIsoScaled =
-                        IRMath::pos3DtoPos2DIso(IRMath::roundVec3HalfUp(viewPosYawed));
-                } else {
-                    const vec2 originIsoF =
-                        IRMath::pos3DtoPos2DIsoYawed(worldPos * static_cast<float>(sub), visualYaw);
-                    originIsoScaled =
-                        ivec2(IRMath::roundHalfUp(originIsoF.x), IRMath::roundHalfUp(originIsoF.y));
-                }
-                const ivec2 isoHalfExtent =
-                    ivec2(IRMath::shapeIsoHalfExtent(boundingHalf * 2.0f)) * sub;
-                isoMin = originIsoScaled - isoHalfExtent - ivec2(2);
-                isoMax = originIsoScaled + isoHalfExtent + ivec2(2);
-            } else {
-                if (!yawZero) {
-                    boundingHalf = IRMath::yawGrownIsoHalfExtent(boundingHalf, yawCos, yawSin);
-                }
-                const ivec2 originIso = IRMath::pos3DtoPos2DIso(origin);
-                const ivec2 isoHalfExtent = ivec2(IRMath::shapeIsoHalfExtent(boundingHalf * 2.0f));
-                isoMin = (originIso - isoHalfExtent) * sub - ivec2(2);
-                isoMax = (originIso + isoHalfExtent) * sub + ivec2(2);
-            }
-            ivec2 isoSize = isoMax - isoMin;
-
-            const int tilesX = IRMath::divCeil(IRMath::max(isoSize.x, 1), kShapeTileSize);
-            const int tilesY = IRMath::divCeil(IRMath::max(isoSize.y, 1), kShapeTileSize);
-
-            for (int ty = 0; ty < tilesY; ++ty) {
-                for (int tx = 0; tx < tilesX; ++tx) {
+            for (int ty = span.first_.y; ty < span.end_.y; ++ty) {
+                for (int tx = span.first_.x; tx < span.end_.x; ++tx) {
                     if (static_cast<int>(tiles.size()) >= kMaxShapeTileDescriptors) {
                         goto upload;
                     }
                     ShapeTileDescriptor tile{};
                     tile.shapeIndex = i;
-                    tile.tileIsoOrigin = isoMin + ivec2(tx * kShapeTileSize, ty * kShapeTileSize);
+                    tile.tileIsoOrigin =
+                        span.isoOrigin_ + ivec2(tx * kShapeTileSize, ty * kShapeTileSize);
                     tiles.push_back(tile);
                 }
             }
