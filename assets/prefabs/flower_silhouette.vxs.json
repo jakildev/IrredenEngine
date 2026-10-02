@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "mode": "SHAPES",
+  "bounds": null,
+  "material_registry_refs": [],
+  "layer_names": [],
+  "frame_count": 0,
+  "shape_primitives_summary": {
+    "SPHERE": 1
+  }
+}

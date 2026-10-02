@@ -156,6 +156,7 @@ add_executable(IrredenEngineTest
   script/lua_spin_test.cpp
   script/lua_system_codegen_test.cpp
   script/prefab_api_test.cpp
+  script/prefab_parts_test.cpp
   script/lua_system_coexistence_test.cpp
   script/lua_entity_batch_create_test.cpp
   script/lua_system_register_test.cpp
@@ -224,6 +225,8 @@ target_compile_definitions(IrredenEngineTest PRIVATE
     IR_TEST_RENDER_SHADER_DIR="${CMAKE_SOURCE_DIR}/engine/render/src/shaders"
     IR_TEST_GPU_SHADER_DIR="${CMAKE_SOURCE_DIR}/test/render/shaders"
     IR_LUA_VOXEL_ASSET_PATH="${CMAKE_SOURCE_DIR}/assets/voxel/entities/rock.vxs"
+    IR_FLOWER_PREFAB_PATH="${CMAKE_SOURCE_DIR}/assets/prefabs/flower.prefab.lua"
+    IR_FLOWER_ASSET_ROOT="${CMAKE_SOURCE_DIR}"
 )
 
 # Build lua_component_codegen_fixtures.hpp from the sibling .lua
