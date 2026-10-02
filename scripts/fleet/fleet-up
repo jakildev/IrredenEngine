@@ -2049,7 +2049,9 @@ tmux set-environment -g IR_FLEET_WORKERS "$IR_FLEET_WORKERS"
 tmux set-environment -g FLEET_FABLE_FALLBACK "$FLEET_FABLE_FALLBACK"
 # GitHub App token: seed into the persistent tmux SERVER env
 # (not just this process) so every current and future split-window pane
-# inherits it, same rationale as IR_FLEET_WORKERS above. Keyed off
+# inherits it, same rationale as IR_FLEET_WORKERS above. The seed is a
+# one-hour token; ~/bin/gh (fleet-gh-shim) refreshes it from fleet-gh-token's
+# cache on every gh call, so a pane that outlives it keeps working. Keyed off
 # $_gh_app_token (whether THIS run's fleet-gh-token mint produced a
 # token), not the generic $GH_TOKEN truthiness, so an operator's own
 # pre-existing GH_TOKEN isn't mistaken for App configuration. On the

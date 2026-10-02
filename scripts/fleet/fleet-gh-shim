@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# fleet-gh-shim — installed as ~/bin/gh: refresh an inherited GitHub App
+# installation token per call, then exec the real gh.
+#
+# fleet-up seeds GH_TOKEN into the tmux server env at boot and
+# fleet-dispatch-wrap re-mints per dispatch, but an installation token lives
+# one hour. A persistent pane (an architect, a babysat --resume session) or a
+# dispatch that outlives the token's remaining life then fails every gh call
+# with HTTP 401: an amend session has died mid-measurement that way, and an
+# architect pane has sat without gh for a day. fleet-gh-token already
+# keeps a shared cache (~/.fleet/state/gh-app-token.json), re-minted under a
+# host-wide lock by whichever process asks near expiry, so the fix is to read
+# that cache on every call instead of once at launch.
+#
+# Scope: only an App token already in the environment (prefix ghs_) is
+# replaced — that prefix is what marks a fleet-launched process. A shell with
+# no GH_TOKEN, or an operator's own gho_/ghp_ token, passes through untouched,
+# so the shim's presence on PATH never changes a personal gh identity. On an
+# unconfigured host fleet-gh-token prints nothing and the inherited token is
+# kept. FLEET_GH_SHIM=0 is the escape hatch: plain passthrough.
+#
+# The real gh is the next `gh` on PATH that is not this file (`type -aP`
+# lists every candidate in PATH order; inode comparison makes the ~/bin
+# symlink and the repo path both count as self).
+#
+# Source of truth: scripts/fleet/fleet-gh-shim in the engine repo.
+# Installed to ~/bin/gh by scripts/fleet/install.sh.
+set -u
+
+if [[ "${FLEET_GH_SHIM:-1}" != "0" && "${GH_TOKEN:-}" == ghs_* ]] \
+    && command -v fleet-gh-token >/dev/null 2>&1; then
+    fresh="$(fleet-gh-token 2>/dev/null || true)"
+    [[ -n "$fresh" ]] && export GH_TOKEN="$fresh"
+fi
+
+self="${BASH_SOURCE[0]}"
+while IFS= read -r candidate; do
+    [[ -n "$candidate" && -x "$candidate" ]] || continue
+    [[ "$candidate" -ef "$self" ]] && continue
+    exec "$candidate" "$@"
+done < <(type -aP gh 2>/dev/null)
+
+echo "gh: fleet-gh-shim found no other gh on PATH" >&2
+exit 127

@@ -40,6 +40,7 @@ EXEMPT=(
     "fleet-codex"                        # Codex host setup; --check/--doctor are human steps
     "fleet-gh-poll"                      # the scout's internal conditional-GET seam
     "fleet-gh-token"                     # token plumbing, exported by wrappers
+    "fleet-gh-shim"                      # installed as ~/bin/gh; reached through the Bash(gh:*) entry
     "fleet-notify"                       # cron push half (FLEET.md "The push half")
     "fleet-digest-tick"                  # cron push half
     "fleet-session-track"                # hook wired by fleet-up / fleet-babysit
