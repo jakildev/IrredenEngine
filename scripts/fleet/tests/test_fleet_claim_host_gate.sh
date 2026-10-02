@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Tests for fleet-claim's pre-acquire claim gates: check_host_capability and
-# the generalized cross-lane gate.
+# Tests for fleet-claim's pre-acquire claim gates: check_host_capability,
+# _amend_live_feedback_gate, and the generalized cross-lane gate.
 #
 # The gate refuses a `fleet:needs-gl-host` claim from a host that can't run
 # the OpenGL backend. GL-capable hosts are {linux, windows}; macOS GL is 4.1
@@ -108,6 +108,8 @@ mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_HEARTBEATS_DIR" "$FLEET_RESERVATIONS_DIR"
 #   2201 — issue carrying fleet:needs-macos-host
 #   3201 — PR carrying fleet:needs-macos-host (macOS-only residual)
 #   3202 — PR carrying both host labels (contradictory; refused everywhere)
+#   3301-3311 — live amend-tier and park-precedence fixtures
+#   3312 — failed live-label fetch
 # Every label-mutating `gh api ... --method POST` is appended to $GH_POST_LOG
 # so a test can assert the refuse path mutated nothing.
 # The `api` arm emulates the cross-host fleet:claim-* lock acquire so a
@@ -191,6 +193,42 @@ case "$1 $2" in
                 ;;
             3202)
                 echo '{"state":"OPEN","labels":[{"name":"fleet:wip"},{"name":"fleet:needs-gl-host"},{"name":"fleet:needs-macos-host"}],"body":""}'
+                ;;
+            3301)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:wip"}],"body":""}'
+                ;;
+            3302)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:needs-fix"}],"body":""}'
+                ;;
+            3303)
+                echo '{"state":"OPEN","labels":[{"name":"human:needs-fix"},{"name":"fleet:design-blocked"}],"body":""}'
+                ;;
+            3304)
+                echo '{"state":"OPEN","labels":[{"name":"human:blocker"},{"name":"fleet:awaiting-infra"}],"body":""}'
+                ;;
+            3305)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:design-unblocked"},{"name":"fleet:wip"}],"body":""}'
+                ;;
+            3306)
+                echo '{"state":"OPEN","labels":[{"name":"human:re-review"}],"body":""}'
+                ;;
+            3307)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:needs-fix"},{"name":"fleet:design-blocked"}],"body":""}'
+                ;;
+            3308)
+                echo '{"state":"OPEN","labels":[{"name":"human:needs-fix"},{"name":"human:wip"}],"body":""}'
+                ;;
+            3309)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:human-amending"}],"body":""}'
+                ;;
+            3310)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:human-amending"},{"name":"fleet:amending-mac-test-agent"}],"body":""}'
+                ;;
+            3311)
+                echo '{"state":"OPEN","labels":[{"name":"fleet:amending-mac-test-agent"}],"body":""}'
+                ;;
+            3312)
+                exit 1
                 ;;
             *)
                 echo '{"state":"OPEN","labels":[],"body":""}'
@@ -500,5 +538,90 @@ actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-clai
 assert_exit "$actual" 1 "mac + both host labels → amending-claim exit 1"
 actual=0; FLEET_TEST_HOST=linux FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3202 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 1 "linux + both host labels → amending-claim exit 1"
+
+# --- live worker-feedback gate ---------------------------------------------
+
+echo "T33: a stale no-tier dispatch is refused before mutation"
+: > "$GH_POST_LOG"
+actual=0; output=$(FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3301 test-agent 2>&1) || actual=$?
+assert_exit "$actual" 1 "fleet:wip without a worker tier → amending-claim exit 1"
+assert_contains "$output" "no live worker feedback tier" "no-tier refusal has a stable reason"
+assert_no_label_post "no-tier refusal POSTed no label"
+
+echo "T34: fleet:needs-fix remains claimable"
+: > "$GH_POST_LOG"
+actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3302 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "fleet:needs-fix → amending-claim exit 0"
+if grep -q '^fleet:amending-mac-test-agent$' "$GH_POST_LOG" 2>/dev/null; then
+    ok "fleet:needs-fix grant POSTed the amend label"
+else
+    bad "fleet:needs-fix grant did not POST the amend label"
+fi
+
+echo "T35: human feedback outranks suppressible parks"
+actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3303 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "human:needs-fix + fleet:design-blocked → amending-claim exit 0"
+actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3304 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "human:blocker + fleet:awaiting-infra → amending-claim exit 0"
+
+echo "T36: design resume remains claimable through fleet:wip"
+actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3305 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "fleet:design-unblocked + fleet:wip → amending-claim exit 0"
+
+echo "T37: reviewer-only cue is not worker feedback"
+: > "$GH_POST_LOG"
+actual=0; output=$(FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3306 test-agent 2>&1) || actual=$?
+assert_exit "$actual" 1 "human:re-review alone → amending-claim exit 1"
+assert_contains "$output" "no live worker feedback tier" "reviewer-only refusal uses the no-tier reason"
+assert_no_label_post "reviewer-only refusal POSTed no label"
+
+echo "T38: suppressible parks refuse fleet-owned tiers"
+: > "$GH_POST_LOG"
+actual=0; output=$(FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3307 test-agent 2>&1) || actual=$?
+assert_exit "$actual" 1 "fleet:needs-fix + fleet:design-blocked → amending-claim exit 1"
+assert_contains "$output" "worker feedback is parked by fleet:design-blocked" "park refusal names the stable park label"
+assert_no_label_post "parked fleet-tier refusal POSTed no label"
+
+echo "T39: absolute parks refuse human feedback"
+: > "$GH_POST_LOG"
+actual=0; output=$(FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3308 test-agent 2>&1) || actual=$?
+assert_exit "$actual" 1 "human:needs-fix + human:wip → amending-claim exit 1"
+assert_contains "$output" "worker feedback is parked by human:wip" "absolute-park refusal names the stable park label"
+assert_no_label_post "absolute-park refusal POSTed no label"
+
+echo "T40: fleet:human-amending resumes as live worker work"
+: > "$GH_POST_LOG"
+actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3309 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "fleet:human-amending fresh claim → exit 0"
+if grep -q '^fleet:amending-mac-test-agent$' "$GH_POST_LOG" 2>/dev/null; then
+    ok "human-amend resume POSTed the amend label"
+else
+    bad "human-amend resume did not POST the amend label"
+fi
+
+echo "T41: a valid human-amend incumbent refreshes ownership"
+rm -f "$FLEET_AMEND_SNAPSHOTS_DIR/3310.json"
+: > "$GH_POST_LOG"
+actual=0; FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus FLEET_DISPATCH_ID=refresh-3310 "$FLEET_CLAIM" amending-claim 3310 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "fleet:human-amending incumbent → exit 0"
+assert_no_label_post "valid incumbent refreshed without a duplicate POST"
+assert_contains "$(cat "$FLEET_AMEND_SNAPSHOTS_DIR/3310.json" 2>/dev/null || true)" '"dispatch_id":"refresh-3310"' "valid incumbent refreshed its ownership record"
+
+echo "T42: a cleared incumbent cannot refresh ownership"
+printf '%s\n' "sentinel" > "$FLEET_AMEND_SNAPSHOTS_DIR/3311.json"
+: > "$GH_POST_LOG"
+actual=0; output=$(FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus FLEET_DISPATCH_ID=stale-3311 "$FLEET_CLAIM" amending-claim 3311 test-agent 2>&1) || actual=$?
+assert_exit "$actual" 1 "incumbent with no live tier → exit 1"
+assert_contains "$output" "no live worker feedback tier" "cleared incumbent uses the no-tier reason"
+assert_eq "$(cat "$FLEET_AMEND_SNAPSHOTS_DIR/3311.json")" "sentinel" "cleared incumbent did not refresh ownership"
+assert_no_label_post "cleared incumbent POSTed no label"
+
+echo "T43: failed live-label fetch has a distinct stable reason"
+: > "$GH_POST_LOG"
+actual=0; output=$(FLEET_TEST_HOST=mac FLEET_ROLE_MODEL=opus "$FLEET_CLAIM" amending-claim 3312 test-agent 2>&1) || actual=$?
+assert_exit "$actual" 1 "failed live-label fetch → exit 1"
+assert_contains "$output" "live labels unavailable" "fetch failure is distinct from a stale no-tier dispatch"
+assert_absent "$output" "no live worker feedback tier" "fetch failure does not masquerade as no-tier"
+assert_no_label_post "failed live-label fetch POSTed no label"
 
 summarize "fleet-claim pre-acquire gates"

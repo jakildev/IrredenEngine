@@ -2606,6 +2606,62 @@ _cross_lane_precheck() {
     fi
 }
 
+# Keep these label sets aligned with fleet-state-scout's worker admission
+# constants. The amend path has to repeat the decision against live labels
+# because its dispatcher candidate came from an earlier scout snapshot.
+AMEND_HUMAN_FEEDBACK_LABELS="human:needs-fix human:blocker fleet:human-amending"
+AMEND_FLEET_FEEDBACK_LABELS="fleet:needs-fix fleet:has-nits fleet:design-unblocked"
+AMEND_ABSOLUTE_PARK_LABELS="human:wip fleet:gated"
+AMEND_SUPPRESSIBLE_PARK_LABELS="fleet:needs-opus-recheck fleet:design-blocked fleet:design-proposed fleet:awaiting-infra fleet:needs-human"
+
+# _amend_live_feedback_gate <pr>
+#   Refuse a stale amend dispatch before it acquires the amend lock or mutates
+#   claim liveness. Human feedback and an in-flight human amend outrank the
+#   suppressible parks; absolute parks outrank every feedback tier.
+_amend_live_feedback_gate() {
+    local pr="$1" info="${CROSS_LANE_INFO:-}" state labels label
+    state=$(_issue_info_field state "$info")
+    if [[ -z "$state" ]]; then
+        echo "fleet-claim: amending-claim refused on PR#$pr: live labels unavailable" >&2
+        return 1
+    fi
+    labels=$(_issue_info_field labels "$info")
+
+    for label in $AMEND_ABSOLUTE_PARK_LABELS; do
+        if [[ " $labels " == *" $label "* ]]; then
+            echo "fleet-claim: amending-claim refused on PR#$pr: worker feedback is parked by $label" >&2
+            return 1
+        fi
+    done
+    for label in $labels; do
+        if [[ "$label" == fleet:claim-* ]]; then
+            echo "fleet-claim: amending-claim refused on PR#$pr: worker feedback is parked by fleet:claim-*" >&2
+            return 1
+        fi
+    done
+
+    local has_human_tier=0 has_fleet_tier=0
+    for label in $AMEND_HUMAN_FEEDBACK_LABELS; do
+        [[ " $labels " == *" $label "* ]] && has_human_tier=1
+    done
+    for label in $AMEND_FLEET_FEEDBACK_LABELS; do
+        [[ " $labels " == *" $label "* ]] && has_fleet_tier=1
+    done
+    if (( ! has_human_tier && ! has_fleet_tier )); then
+        echo "fleet-claim: amending-claim refused on PR#$pr: no live worker feedback tier" >&2
+        return 1
+    fi
+    (( has_human_tier )) && return 0
+
+    for label in $AMEND_SUPPRESSIBLE_PARK_LABELS; do
+        if [[ " $labels " == *" $label "* ]]; then
+            echo "fleet-claim: amending-claim refused on PR#$pr: worker feedback is parked by $label" >&2
+            return 1
+        fi
+    done
+    return 0
+}
+
 # _confirm_incumbent_claim <prefix> <cmd-name> <target> <agent>
 #   Refresh an already-held claim only after the caller's remaining gates pass.
 _confirm_incumbent_claim() {
@@ -2743,6 +2799,7 @@ cmd_amending_claim() {
     local cross_lane_rc=0
     _cross_lane_precheck "fleet:amending-" "amending-claim" "${1:-}" "${2:-unknown}" || cross_lane_rc=$?
     [[ "$cross_lane_rc" -eq 0 || "$cross_lane_rc" -eq 3 ]] || return "$cross_lane_rc"
+    _amend_live_feedback_gate "${1:-}" || return 1
 
     # Host-capability backstop: refuse to amend-claim a PR whose
     # remaining work is GL-host-gated (fleet:needs-gl-host) from a non-GL

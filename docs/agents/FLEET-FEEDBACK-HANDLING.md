@@ -49,13 +49,18 @@ tier is stale until `fleet:design-unblocked` re-arms it); a live
 complete — its own `Parked-until: #N` line names the open blocker, and the
 tier is stale until `fleet-claim reconcile` removes the label once that
 blocker closes; do not strip the label yourself).
-`amending-claim` refuses the reviewing/resolving/amending/opus-recheck cases
-as a backstop; its independent two-read confirmation with `review-claim` and
-`resolving-claim` closes the observed snapshot race. The scout's
-`worker_feedback_labels()` enforces the reviewing / resolving / opus-recheck
-/ design-park / awaiting-infra skips in both the worker trigger and
-`projections/worker.json`; `human:needs-fix` / `human:blocker` outrank all of
-them and keep dispatching.
+`amending-claim` re-checks the live labels before its lock, label POST, or
+incumbent ownership refresh. It refuses a PR with no worker tier, a fleet tier
+suppressed by the scout's skip labels, or an absolute `human:wip` /
+`fleet:gated` park. `human:needs-fix`, `human:blocker`, and the in-flight human
+AMEND marker `fleet:human-amending` outrank suppressible parks;
+`fleet:design-unblocked` remains actionable through `fleet:wip`. A failed live
+fetch is also refused, with a distinct reason. The cross-lane backstop still
+refuses reviewing / resolving / foreign amending claims, and its independent
+two-read confirmation with `review-claim` and `resolving-claim` closes the
+observed snapshot race. The scout's `worker_feedback_labels()` enforces the
+reviewing / resolving / opus-recheck / design-park / awaiting-infra skips in
+both the worker trigger and `projections/worker.json`.
 The reviewing skip, a live foreign `fleet:amending-*` claim, and a
 `fleet:design-blocked` / `fleet:design-proposed` park also bar the
 conflict-resolution lane (`role-worker.md` step 1c), which force-pushes too:
@@ -81,7 +86,8 @@ releases the claim if the checkout fails. There is no busy-branch filter;
 any number of worktrees may sit on the same commit, and concurrency safety
 is `--force-with-lease` at push time. A dispatched `feedback` target
 arrives with the claim held; run the command anyway for the checkout
-(re-acquiring your own label is a no-op).
+(re-acquiring your own label refreshes its ownership only while the live
+worker-tier gate still admits the PR).
 
 - **Exit 0** — you own the PR and it is checked out detached; reviewers
   skip it while the claim stands.
@@ -102,9 +108,9 @@ alone proves nothing here (`FLEET-RUNTIME.md` § "Heartbeat — step 0").
 A **reservation resume** (step 0.5) runs under a new dispatch, so its
 predecessor's claim is a confirmed orphan and is reaped. Re-run
 `fleet-pr-claim-feedback <N> <worktree>` rather than assuming you inherit
-the label; the re-run is idempotent — a label you already hold is confirmed
-without a re-POST, and either path rewrites the record under the new
-dispatch id. A
+the label; a label you already hold is confirmed without a re-POST only when
+the live worker-tier gate still admits the PR, and either successful path
+rewrites the record under the new dispatch id. A
 `--resume` continuation is the same dispatch and needs nothing.
 
 ## Reading the feedback
