@@ -177,6 +177,56 @@ TEST_F(LuaSpin, AutoSpinAdvancesRotation) {
     expectVec3Near(spin.axis_, IRMath::vec3(1, 0, 0));
 }
 
+TEST_F(LuaSpin, AngularVelocityColumnPropertiesReadAndWrite) {
+    const IREntity::EntityId id = createFromLua(R"(
+        return IREntity.createImpulseSpinner(
+            C_LocalTransform.new(vec3.new(0, 0, 0)),
+            C_AngularVelocity.new(vec3.new(0, 1, 0), 0.15, 0.05)
+        )
+    )");
+
+    // Only the Lua system runs, so the values it reads and writes are not
+    // decayed by ANGULAR_VELOCITY_DAMPED in between.
+    auto registerResult = m_lua.lua().safe_script(
+        R"(
+        readRate, readDamping, readAxisX, readAxisY, readAxisZ = nil, nil, nil, nil, nil
+        return IRSystem.registerSystem({
+            name = 'RetuneAngularVelocity',
+            components = { IRComponent.C_AngularVelocity },
+            tick = function(arch)
+                for i = 0, arch.length - 1 do
+                    local spin = arch.C_AngularVelocity:at(i)
+                    readRate = spin.radiansPerFrame
+                    readDamping = spin.dampingPerFrame
+                    local axis = spin.axis
+                    readAxisX, readAxisY, readAxisZ = axis.x, axis.y, axis.z
+                    spin.radiansPerFrame = 0.4
+                    spin.dampingPerFrame = 0.25
+                    spin.axis = { x = 1, y = 0, z = 0 }
+                end
+            end,
+        })
+    )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(registerResult.valid()) << sol::error{registerResult}.what();
+    m_system_manager.registerPipeline(
+        IRTime::Events::UPDATE,
+        {static_cast<IRSystem::SystemId>(registerResult.get<lua_Integer>())}
+    );
+    tick();
+
+    EXPECT_FLOAT_EQ(m_lua.lua()["readRate"].get<float>(), 0.15f);
+    EXPECT_FLOAT_EQ(m_lua.lua()["readDamping"].get<float>(), 0.05f);
+    EXPECT_FLOAT_EQ(m_lua.lua()["readAxisX"].get<float>(), 0.0f);
+    EXPECT_FLOAT_EQ(m_lua.lua()["readAxisY"].get<float>(), 1.0f);
+    EXPECT_FLOAT_EQ(m_lua.lua()["readAxisZ"].get<float>(), 0.0f);
+    const C_AngularVelocity &spin = IREntity::getComponent<C_AngularVelocity>(id);
+    EXPECT_FLOAT_EQ(spin.radiansPerFrame_, 0.4f);
+    EXPECT_FLOAT_EQ(spin.dampingPerFrame_, 0.25f);
+    expectVec3Near(spin.axis_, IRMath::vec3(1, 0, 0));
+}
+
 TEST_F(LuaSpin, ImpulseDecaysToRest) {
     constexpr float kImpulse = 0.2f;
     constexpr float kDamping = 0.1f;
