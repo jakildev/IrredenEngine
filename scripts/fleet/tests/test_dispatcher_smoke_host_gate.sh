@@ -21,6 +21,7 @@
 set -uo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/.." && pwd)
+REPO_ROOT=$(cd "$SCRIPT_DIR/../.." && pwd)
 source "$(dirname "$0")/lib_preflight.sh"
 DISPATCHER="$SCRIPT_DIR/fleet-dispatcher"
 [[ -x "$DISPATCHER" ]] || { echo "test setup: fleet-dispatcher not found at $DISPATCHER" >&2; exit 1; }
@@ -98,7 +99,7 @@ esac
 CLAIMEOF
 printf '#!/usr/bin/env bash\nexit 99\n' > "$STUB_BIN/gh"
 chmod +x "$STUB_BIN/fleet-claim" "$STUB_BIN/gh"
-export PATH="$STUB_BIN:$PATH"
+export PATH="$STUB_BIN:$REPO_ROOT/engine/tools/bin:$PATH"
 unset FLEET_RUNTIMES FLEET_CROSS_PROVIDER_REVIEW FLEET_WORKER_RUNTIME
 
 SLICE="$FLEET_STATE_DIR/projections/smoke-worker.json"
@@ -225,5 +226,24 @@ assert_contains "$out" "dispatching smoke-worker" "a game smoke PR wakes the pan
 # refused and the lane stands down — the T8 message, asserted absent).
 assert_contains "$out" "smoke:game:101" "the dispatch target is repo-qualified"
 assert_absent "$out" "no candidate could be claimed" "the claim went through fleet-claim --repo game"
+
+echo "T11: a quiet-window request defers dispatch without consuming the trigger"
+export IR_LOCK_ROOT="$TMPROOT/locks"
+mkdir -p "$IR_LOCK_ROOT"
+test_holder_pid="$BASHPID"
+record=$(python3 "$REPO_ROOT/engine/tools/lib/quiet_window.py" record-create \
+    --pid "$test_holder_pid" --owner benchmark --linger 0 --maximum 30 --drain 10 \
+    --settle-cpu .25 --settle-sample .05)
+write_slice "$WINDOWS"
+out=$(tick windows)
+assert_absent "$out" "dispatching smoke-worker" "quiet window grants no pane"
+if [[ -f "$TRIGGER" ]]; then
+    ok "quiet window leaves the standing trigger unconsumed"
+else
+    bad "quiet window leaves the standing trigger unconsumed"
+fi
+python3 "$REPO_ROOT/engine/tools/lib/quiet_window.py" refuse "$record"
+out=$(tick windows)
+assert_contains "$out" "dispatching smoke-worker" "dispatch resumes after the window closes"
 
 summarize "fleet-dispatcher smoke host gate"

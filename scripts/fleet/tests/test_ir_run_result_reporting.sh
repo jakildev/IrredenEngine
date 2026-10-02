@@ -46,6 +46,10 @@ release_holder() {
 }
 trap 'release_holder; rm -rf "$FAKE_BUILD"' EXIT
 export IR_LOCK_ROOT="$FAKE_BUILD/locks"
+export IR_QUIET_DRAIN=1
+export IR_QUIET_LINGER=0
+export IR_QUIET_MAX=10
+export IR_QUIET_SETTLE_SAMPLE=0.05
 
 make_exe() {
     local name="$1" body="$2"
@@ -127,6 +131,29 @@ echo "clean exit before timeout:"
 run_ir --timeout 10 clean-exit
 assert_eq "$RC" "0" "clean exit propagates rc 0"
 assert_contains "$OUT" "RESULT=CLEAN exe=clean-exit exit=0" "CLEAN verdict line"
+
+echo "guarded benchmark result:"
+run_ir clean-exit --auto-profile 1
+assert_eq "$RC" "0" "guarded auto-profile exits cleanly"
+assert_contains "$OUT" "QUIET=guarded exe=clean-exit" "guarded state is reported"
+
+echo "unguarded benchmark result:"
+"$IR_ACQUIRE" --quiet-disable test
+run_ir clean-exit --auto-profile 1
+assert_eq "$RC" "0" "disabled auto-profile preserves success"
+assert_contains "$OUT" "QUIET=unguarded exe=clean-exit" "unguarded state is reported"
+"$IR_ACQUIRE" --quiet-enable
+
+echo "refused benchmark result:"
+sleep 30 &
+HOLDER_PID=$!
+"$IR_ACQUIRE" --quiet-lease busy-session create "$HOLDER_PID"
+run_ir clean-exit --auto-profile 1
+assert_eq "$RC" "75" "quiet refusal propagates exit 75"
+assert_contains "$OUT" "RESULT=HOST-NOT-QUIET exe=clean-exit exit=75" \
+    "quiet refusal has its own result class"
+"$IR_ACQUIRE" --quiet-lease busy-session drop
+release_holder
 
 echo "plain non-zero exit:"
 run_ir --timeout 10 plain-fail

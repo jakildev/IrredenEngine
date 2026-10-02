@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Park a dispatched session while an engine benchmark quiet window is active.
+
+set -uo pipefail
+
+[[ -n "${IR_QUIET_OWNER:-}" ]] || exit 0
+[[ -n "${IR_LOCK_ROOT:-}" ]] || exit 0
+
+shopt -s nullglob
+records=("$IR_LOCK_ROOT"/quiet/records/*/record.json)
+(( ${#records[@]} > 0 )) || exit 0
+
+if command -v ir-acquire >/dev/null 2>&1; then
+    ir-acquire --quiet-park "$IR_QUIET_OWNER" >/dev/null 2>&1 || true
+fi
+exit 0

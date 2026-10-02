@@ -11,6 +11,9 @@
 #   ir-acquire perf -- <cmd...>           # take the perf lock, run cmd, release
 #   ir-acquire benchmark -- <cmd...>      # take (budget-1) CPU + GPU + perf
 #   ir-acquire --info                     # show what's currently held
+#   ir-acquire --quiet-status [--json]    # show benchmark quiet-window state
+#   ir-acquire --quiet-disable [reason]   # run benchmarks without the window
+#   ir-acquire --quiet-enable             # restore guarded benchmarks
 #
 # Flags (before the resource verb):
 #   --nonblock        fail fast if any required lock is contended
@@ -36,11 +39,21 @@ fi
 # shellcheck source=../lib/concurrency_helpers.sh
 source "$HELPERS"
 
-# Release everything we hold on any kind of exit.
-trap 'ir_release_all' EXIT INT TERM HUP
+quiet_record=""
+quiet_parker_pid=""
+
+cleanup() {
+    if [[ -n "$quiet_parker_pid" ]]; then
+        kill "$quiet_parker_pid" 2>/dev/null || true
+        wait "$quiet_parker_pid" 2>/dev/null || true
+    fi
+    ir_release_all
+}
+
+trap cleanup EXIT INT TERM HUP
 
 usage() {
-    sed -n '2,28p' "$0"
+    sed -n '2,/^$/p' "$0"
 }
 
 nonblock=false
@@ -55,6 +68,40 @@ while [[ $# -gt 0 ]]; do
             ir_print_lock_state
             exit 0
             ;;
+        --quiet-status)
+            shift
+            ir_quiet_status "$@"
+            exit $?
+            ;;
+        --quiet-lease)
+            shift
+            tag="${1:-}"
+            action="${2:-}"
+            shift 2 || true
+            case "$action" in
+                create) ir_quiet_lease_create "$tag" "${1:-$$}" ;;
+                drop) ir_quiet_lease_drop "$tag" ;;
+                *) echo "ir-acquire --quiet-lease: expected create|drop" >&2; exit 2 ;;
+            esac
+            exit 0
+            ;;
+        --quiet-park)
+            shift
+            tag="${1:-${IR_QUIET_OWNER:-}}"
+            [[ -n "$tag" ]] || exit 0
+            shift || true
+            ir_quiet_park "$tag" "$@"
+            exit 0
+            ;;
+        --quiet-disable)
+            shift
+            python3 "$IR_QUIET_HELPER" disable "${1:-operator}"
+            exit 0
+            ;;
+        --quiet-enable)
+            python3 "$IR_QUIET_HELPER" enable
+            exit 0
+            ;;
         -h|--help) usage; exit 0 ;;
         *) break ;;
     esac
@@ -67,6 +114,7 @@ fi
 
 verb="$1"
 shift
+export IR_QUIET_ACQUIRE_VERB="$verb"
 
 acquire_args=()
 $nonblock && acquire_args+=(--nonblock)
@@ -89,6 +137,19 @@ case "$verb" in
         ir_acquire_exclusive lock perf "${acquire_args[@]}"
         ;;
     benchmark)
+        quiet_record="$(python3 "$IR_QUIET_HELPER" record-create \
+            --pid "$$" --owner "${IR_QUIET_OWNER:-}" \
+            --linger "$(ir_quiet_linger)" --maximum "$(ir_quiet_max)" \
+            --drain "$(ir_quiet_drain)" --settle-cpu "$(ir_quiet_settle_cpu)" \
+            --settle-sample "$(ir_quiet_settle_sample)")"
+        if [[ "$quiet_record" == "disabled" ]]; then
+            echo "ir-acquire: QUIET-UNGUARDED (quiet window disabled)" >&2
+            [[ -n "${IR_QUIET_REPORT_FILE:-}" ]] && printf 'UNGUARDED\n' > "$IR_QUIET_REPORT_FILE"
+        elif [[ -z "${IR_QUIET_TEST_NO_QUEUE_PARK:-}" && -n "${IR_QUIET_OWNER:-}" && -d "$IR_LOCK_ROOT/quiet/leases/$IR_QUIET_OWNER" ]]; then
+            measurement_root="${IR_QUIET_MEASURE_ROOT:-$$}"
+            ir_quiet_park "$IR_QUIET_OWNER" --measurement-root "$measurement_root" &
+            quiet_parker_pid=$!
+        fi
         # The canonical heavy-measurement lock. cpu = budget-1 leaves one
         # core for the OS / shell / responsiveness so a runaway worker
         # doesn't lock up the whole box. The order matters: take cpu first
@@ -100,6 +161,24 @@ case "$verb" in
         ir_acquire_cpu "$cpu_take" "${acquire_args[@]}"
         ir_acquire_exclusive lock gpu "${acquire_args[@]}"
         ir_acquire_exclusive lock perf "${acquire_args[@]}"
+        if [[ -n "$quiet_record" && "$quiet_record" != "disabled" ]]; then
+            set +e
+            python3 "$IR_QUIET_HELPER" barrier "$quiet_record"
+            barrier_status=$?
+            set -e
+            if (( barrier_status == 75 )); then
+                refuse_args=("$quiet_record")
+                [[ -n "${IR_QUIET_REPORT_FILE:-}" ]] && refuse_args+=(--report "$IR_QUIET_REPORT_FILE")
+                python3 "$IR_QUIET_HELPER" refuse "${refuse_args[@]}"
+                exit 75
+            fi
+            if (( barrier_status == 77 )); then
+                python3 "$IR_QUIET_HELPER" refuse "$quiet_record"
+                quiet_record="disabled"
+                echo "ir-acquire: QUIET-UNGUARDED (quiet window disabled while waiting)" >&2
+                [[ -n "${IR_QUIET_REPORT_FILE:-}" ]] && printf 'UNGUARDED\n' > "$IR_QUIET_REPORT_FILE"
+            fi
+        fi
         ;;
     *)
         echo "ir-acquire: unknown verb '$verb' (cpu|gpu|perf|benchmark|--info)" >&2
@@ -125,4 +204,18 @@ fi
 export IR_ACQUIRE_HOLDER_PID="$$" IR_ACQUIRE_HELD_VERB="$verb"
 IR_ACQUIRE_HOLDER_WINPID="$(ir_self_owner_token)"
 export IR_ACQUIRE_HOLDER_WINPID
+set +e
 "$@"
+command_status=$?
+set -e
+
+if [[ "$verb" == "benchmark" && -n "$quiet_record" && "$quiet_record" != "disabled" ]]; then
+    finish_args=("$quiet_record" "$command_status")
+    [[ -n "${IR_QUIET_REPORT_FILE:-}" ]] && finish_args+=(--report "$IR_QUIET_REPORT_FILE")
+    set +e
+    python3 "$IR_QUIET_HELPER" finish "${finish_args[@]}"
+    command_status=$?
+    set -e
+fi
+
+exit "$command_status"
