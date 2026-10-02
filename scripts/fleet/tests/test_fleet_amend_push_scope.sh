@@ -12,10 +12,17 @@
 # than "sentinel missing", whose named remedy (re-run fleet-pr-checkout-detached)
 # silently discards the commit just made.
 #
-# Part 3 — print_rewrite_diagnostics: every non-fast-forward with a checkout-
-# time base prints base..HEAD's stat before push execution and warns for each
+# Part 3 — print_rewrite_diagnostics on a head-SHA-only sentinel: every
+# non-fast-forward with a checkout-time base prints base..HEAD's stat before push execution and warns for each
 # text file whose deletions exceed its insertions. Fast-forward, legacy-
 # sentinel, binary and unreadable-base behavior stays explicit.
+#
+# Part 4 — PR-owned rewrite diagnostics: a sentinel carrying the PR's base ref
+# and the old head's merge-base measures each side against its own boundary, so
+# a base branch that deleted an unrelated file, or a stacked base that was
+# rewritten, stays quiet while genuinely dropped PR content still warns. Moves
+# of identical content and binary rows stay quiet; unreadable comparison inputs
+# refuse before any push.
 #
 # Hermetic: part 1 `git init`s two sandbox repos (a "main clone" whose toplevel
 # lacks the /.claude/worktrees/ segment, and a worktree-shaped one) and drives
@@ -392,5 +399,215 @@ assert_eq "$(git -C "$DIAG_WT" rev-parse origin/diag-invalid)" "$INVALID_REMOTE"
     "invalid-base refusal leaves the remote unchanged"
 assert_absent "$(sed -n '3p' "$DIAG_SENTINEL")" "consumed" \
     "invalid-base refusal leaves the sentinel unconsumed"
+
+# ----------------------------------------------------------------------
+# Part 4 — PR-owned diagnostics against each side's own merge-base.
+# ----------------------------------------------------------------------
+
+PO_ORIGIN="$TMPROOT/po-origin.git"
+PO_WT="$TMPROOT/eng4/.claude/worktrees/worker-8"
+PO_SENTINEL="$PO_WT/.git/fleet-amend-ref"
+git init -q --bare "$PO_ORIGIN"
+mkdir -p "$(dirname "$PO_WT")"
+git clone -q "$PO_ORIGIN" "$PO_WT" 2>/dev/null
+git -C "$PO_WT" config user.email p@p
+git -C "$PO_WT" config user.name p
+git -C "$PO_WT" config rebase.autoSquash false
+echo root > "$PO_WT/root.txt"
+git -C "$PO_WT" add root.txt
+git -C "$PO_WT" commit -qm "root"
+git -C "$PO_WT" push -q origin HEAD:refs/heads/master
+
+po() { git -C "$PO_WT" "$@"; }
+
+# master_commit <file> <content> | master_delete <file>: advance origin/master.
+master_commit() {
+    po fetch -q origin
+    po checkout -q -B po-master origin/master
+    printf '%s\n' "$2" > "$PO_WT/$1"
+    po add "$1"
+    po commit -qm "master adds $1"
+    po push -q origin po-master:master
+}
+master_delete() {
+    po fetch -q origin
+    po checkout -q -B po-master origin/master
+    po rm -q "$1"
+    po commit -qm "master deletes $1"
+    po push -q origin po-master:master
+    po fetch -q origin
+}
+
+# Sentinel shapes: enhanced = head, tip, blank consumption line, base ref,
+# old merge-base; headsha = the two-line shape that predates the base fields.
+write_po_sentinel() {
+    if [[ "$1" == "enhanced" ]]; then
+        printf '%s\n%s\n\n%s\n%s\n' "$2" "$3" "$4" "$5" > "$PO_SENTINEL"
+    else
+        printf '%s\n%s\n' "$2" "$3" > "$PO_SENTINEL"
+    fi
+}
+
+po_push() {
+    ( cd "$PO_WT" && env PATH="$GIT_SHIM_DIR:$PATH" REAL_GIT="$REAL_GIT" \
+        "$WRAPPER" >"$TMPROOT/po-out" 2>&1; echo "$?" )
+}
+
+# scenario_moved_base <tag> <enhanced|headsha>: PR adds one file; master then
+# deletes an unrelated file; the PR is rebased onto it and pushed.
+scenario_moved_base() {
+    local tag="$1" mode="$2" old_mb old_tip
+    master_commit "unrelated-$tag.txt" "unrelated"
+    old_mb=$(po rev-parse origin/master)
+    po checkout -q -B po-feature "$old_mb"
+    printf 'l1\nl2\nl3\n' > "$PO_WT/feature-$tag.txt"
+    po add "feature-$tag.txt"
+    po commit -qm "feature $tag"
+    po push -q origin "HEAD:refs/heads/moved-$tag"
+    old_tip=$(po rev-parse HEAD)
+    master_delete "unrelated-$tag.txt"
+    po checkout -q --detach "$old_tip"
+    po rebase -q origin/master >/dev/null 2>&1
+    write_po_sentinel "$mode" "moved-$tag" "$old_tip" master "$old_mb"
+    PO_OLD_TIP="$old_tip"
+    PO_OLD_MB="$old_mb"
+    PO_RC=$(po_push)
+    PO_OUT=$(cat "$TMPROOT/po-out")
+}
+
+echo "moved base: an unrelated base-branch deletion is not attributed to the amend"
+scenario_moved_base enh enhanced
+assert_eq "$PO_RC" "0" "rebase onto a moved base pushes"
+assert_contains "$PO_OUT" "non-fast-forward comparison $PO_OLD_MB..$PO_OLD_TIP -> $(po merge-base HEAD origin/master)..HEAD (PR-owned content)" \
+    "heading names both sides' merge-base ranges"
+assert_contains "$PO_OUT" "feature-enh.txt" "PR-owned stat is printed"
+assert_absent "$PO_OUT" "net-removed content" \
+    "the base branch's deletion produces no removal warning"
+assert_before "$PO_OUT" "non-fast-forward comparison" "PUSH_EXECUTION_MARKER" \
+    "diagnostics are emitted before push execution"
+assert_eq "$(sed -n '3p' "$PO_SENTINEL" | cut -c1-8)" "consumed" "success consumes the sentinel on line 3"
+assert_eq "$(sed -n '4p' "$PO_SENTINEL")" "master" "consumed sentinel keeps the base ref"
+assert_eq "$(sed -n '5p' "$PO_SENTINEL")" "$PO_OLD_MB" "consumed sentinel keeps the old merge-base"
+
+echo "moved base control: the head-SHA-only sentinel does warn, so the fixture is live"
+scenario_moved_base ctl headsha
+assert_eq "$PO_RC" "0" "control rebase pushes"
+assert_contains "$PO_OUT" "net-removed content in unrelated-ctl.txt (1 more deleted line than added)" \
+    "head-SHA comparison blames the amend for the base's deletion"
+
+# scenario_stacked_rewrite <tag> <enhanced|headsha>: child PR stacked on a parent
+# branch that is force-pushed with less content, then rebased onto the new parent.
+scenario_stacked_rewrite() {
+    local tag="$1" mode="$2" parent_tip child_tip
+    master_commit "stack-$tag.txt" "stack"
+    po checkout -q -B po-parent origin/master
+    printf 'p1\np2\np3\np4\n' > "$PO_WT/parent-$tag.txt"
+    po add "parent-$tag.txt"
+    po commit -qm "parent $tag"
+    po push -q origin "HEAD:refs/heads/parent-$tag"
+    parent_tip=$(po rev-parse HEAD)
+    printf 'c1\nc2\n' > "$PO_WT/child-$tag.txt"
+    po add "child-$tag.txt"
+    po commit -qm "child $tag"
+    po push -q origin "HEAD:refs/heads/child-$tag"
+    child_tip=$(po rev-parse HEAD)
+    po checkout -q -B po-parent origin/master
+    printf 'p1\n' > "$PO_WT/parent-$tag.txt"
+    po add "parent-$tag.txt"
+    po commit -qm "parent $tag rewritten"
+    po push -q -f origin "HEAD:refs/heads/parent-$tag"
+    po fetch -q origin
+    po checkout -q --detach "$child_tip"
+    po rebase -q --onto "origin/parent-$tag" "$parent_tip" HEAD >/dev/null 2>&1
+    write_po_sentinel "$mode" "child-$tag" "$child_tip" "parent-$tag" "$parent_tip"
+    PO_RC=$(po_push)
+    PO_OUT=$(cat "$TMPROOT/po-out")
+}
+
+echo "rewritten stacked base: parent-only removals stay quiet"
+scenario_stacked_rewrite enh enhanced
+assert_eq "$PO_RC" "0" "child rebased onto a rewritten parent pushes"
+assert_contains "$PO_OUT" "child-enh.txt" "child's own content is in the stat"
+assert_absent "$PO_OUT" "net-removed content" \
+    "the parent's rewrite is not attributed to the child"
+
+echo "rewritten stacked base control: head-SHA-only comparison warns"
+scenario_stacked_rewrite ctl headsha
+assert_eq "$PO_RC" "0" "control child pushes"
+assert_contains "$PO_OUT" "net-removed content in parent-ctl.txt (3 more deleted lines than added)" \
+    "head-SHA comparison blames the child for the parent's rewrite"
+
+# amend_own_content <tag> <mutator>: PR adds files, then the amended head is built
+# by <mutator> (run in the worktree on a detached old tip) and pushed with an
+# enhanced sentinel against master.
+amend_own_content() {
+    local tag="$1" mutate="$2" old_mb old_tip
+    master_commit "anchor-$tag.txt" "anchor"
+    old_mb=$(po rev-parse origin/master)
+    po checkout -q -B po-feature "$old_mb"
+    printf 'owned one\nowned two\n' > "$PO_WT/owned-$tag.txt"
+    printf '\000one\001' > "$PO_WT/blob-$tag.bin"
+    po add .
+    po commit -qm "owned $tag"
+    po push -q origin "HEAD:refs/heads/own-$tag"
+    old_tip=$(po rev-parse HEAD)
+    po checkout -q --detach "$old_mb"
+    "$mutate" "$tag"
+    write_po_sentinel enhanced "own-$tag" "$old_tip" master "$old_mb"
+    PO_RC=$(po_push)
+    PO_OUT=$(cat "$TMPROOT/po-out")
+}
+drop_owned_file() {
+    printf '\000two\002' > "$PO_WT/blob-$1.bin"
+    po add .
+    po commit -qm "drops the owned file"
+}
+rename_owned_file() {
+    printf 'owned one\nowned two\n' > "$PO_WT/renamed-$1.txt"
+    printf '\000one\001' > "$PO_WT/blob-$1.bin"
+    po add .
+    po commit -qm "moves the owned file"
+}
+
+echo "dropped PR-owned content still warns; a changed binary does not"
+amend_own_content drop drop_owned_file
+assert_eq "$PO_RC" "0" "dropping owned content pushes"
+assert_contains "$PO_OUT" "net-removed content in owned-drop.txt (2 more deleted lines than added)" \
+    "the dropped PR-owned file is reported"
+assert_absent "$PO_OUT" "blob-drop.bin (" "the uncountable binary row does not warn"
+
+echo "a pure move of PR-owned content does not warn"
+amend_own_content move rename_owned_file
+assert_eq "$PO_RC" "0" "moving owned content pushes"
+assert_contains "$PO_OUT" "renamed-move.txt" "the new path is in the stat"
+assert_absent "$PO_OUT" "net-removed content" \
+    "identical content under a new path is not a removal"
+
+echo "unreadable enhanced comparison inputs refuse before any push"
+master_commit "anchor-bad.txt" "anchor"
+po checkout -q -B po-feature origin/master
+echo bad > "$PO_WT/bad.txt"
+po add bad.txt
+po commit -qm "bad base remote"
+po push -q origin HEAD:refs/heads/bad-merge-base
+BAD_REMOTE=$(po rev-parse HEAD)
+po checkout -q --detach "$(po rev-parse origin/master)"
+po commit -q --allow-empty -m "bad base rewrite"
+write_po_sentinel enhanced bad-merge-base "$BAD_REMOTE" master 0000000000000000000000000000000000000000
+rc=$(po_push)
+out=$(cat "$TMPROOT/po-out")
+assert_eq "$rc" "1" "an unreadable old merge-base refuses"
+assert_contains "$out" "could not measure PR-owned rewrite removals" "refusal names the failed measurement"
+assert_absent "$out" "PUSH_EXECUTION_MARKER" "the refusal never invokes git push"
+assert_eq "$(po rev-parse origin/bad-merge-base)" "$BAD_REMOTE" "the remote is unchanged"
+assert_absent "$(sed -n '3p' "$PO_SENTINEL")" "consumed" "the sentinel stays unconsumed"
+
+write_po_sentinel enhanced bad-merge-base "$BAD_REMOTE" no-such-base "$(po rev-parse origin/master)"
+rc=$(po_push)
+out=$(cat "$TMPROOT/po-out")
+assert_eq "$rc" "1" "an unfetchable base ref refuses"
+assert_contains "$out" "could not refresh base ref no-such-base" "refusal names the base ref"
+assert_absent "$out" "PUSH_EXECUTION_MARKER" "the refusal never invokes git push"
+assert_absent "$(sed -n '3p' "$PO_SENTINEL")" "consumed" "the sentinel stays unconsumed"
 
 summarize "fleet-pr-amend-push tests"
