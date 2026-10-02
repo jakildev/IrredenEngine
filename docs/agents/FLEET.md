@@ -252,16 +252,18 @@ forensics (repro, output, suspected window, what was ruled out).
 
 ### Resource coordination
 
-`ir-acquire` gates CPU-heavy builds and GPU-heavy bench runs. **Acquire
-late, release early:** hold a lock for exactly the operation (`exec
-ir-acquire cpu … -- cmake --build …`; the perf lock for the perf-grid run
-only), never across simplify, commit, comment drafting, or reading
-feedback. Applies to every role calling `ir-build`, `ir-run`, or any
-wrapper of `ir-acquire`. Launch engine executables only through `ir-run` /
-`fleet-run`, never the binary directly from a script or scratch: on native
-Windows `ir-run` holds the gpu lock for every run because a second live GL
-context on the NVIDIA driver stalls other engine processes' shader links for
-minutes ([`BUILD.md`](BUILD.md) §"`ir-build` / `ir-run`").
+`ir-acquire` gates heavy builds and benchmarks. **Acquire late, release early:** hold a lock
+for the operation only; never across simplify, commit, drafting, or feedback. This applies to every
+caller of `ir-build`, `ir-run`, or an `ir-acquire` wrapper. Launch executables
+only through `ir-run` / `fleet-run`: on native Windows it holds the gpu lock because
+a second live GL context stalls shader links for minutes ([`BUILD.md`](BUILD.md)
+§"`ir-build` / `ir-run`"). An enabled `benchmark` window prevents launches and
+parks every leased dispatch until quiet; exit 0 with `QUIET=guarded` guarantees
+coverage, 75 refuses an undrained host, and 76 rejects contamination. Claude
+sessions park at tool hooks. Until a Codex hook is confirmed, its live lease
+stays busy and makes the request refuse instead. Human sessions, daemons,
+non-fleet processes, double-forks, the measurement subtree, and sub-sample
+Windows children remain outside the guarantee; use `ir-acquire --quiet-disable [reason]` / `--quiet-enable` for the host switch and see [`engine/tools/README.md`](../../engine/tools/README.md) for tuning.
 
 ### Worktree identity
 

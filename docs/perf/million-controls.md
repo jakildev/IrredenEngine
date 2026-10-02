@@ -99,10 +99,10 @@ The largest CPU system at both poses is `SingleVoxelToCanvasFirst` (4.55 and
   and the frame series itself.
 - `repeat_profile.py` records the build tree, its `CMAKE_BUILD_TYPE`,
   `host_power`, `host_cpus`, and each run's launch and finish time, battery
-  charge and one-minute load average, read as the run returns because a run can
-  queue on the lock for minutes before it measures; the matrix summary opens
-  with the load range, because the benchmark lock excludes cooperating builds
-  and nothing else. It reads the
+  charge, quiet-window result, and one-minute load average, read as the run
+  returns because a run can queue before it measures. A reference table
+  requires every run to report `RESULT=CLEAN` with `QUIET=guarded`; the summary
+  opens with quiet-state counts and the load range. It reads the
   witness, not the log: it refuses a run whose first or last rendered frame is
   not at its `--yaw`, whose camera yawed or zoomed during a static pose, whose
   overflow list dropped an entry in any frame, whose pose is off a cardinal by
@@ -126,8 +126,8 @@ An earlier attempt the same hour had `uptime` at 19.4, and the same frozen 0°
 scene read 36.81 then 45.45 ms four minutes apart with its frame minimum
 unchanged at 33 to 34 ms (`witness-controls/load-drift-*`; the first on
 battery, the second just after the host went onto AC, so the power source
-moved with the load). The benchmark lock excludes cooperating builds and
-nothing else. Read the witness columns; do not diff the milliseconds. The
+moved with the load). This historical witness predates the guarded quiet
+window. Read the witness columns; do not diff the milliseconds. The
 steady p99 column is each report's own line; `summary.md` pools the
 three-decimal series and can differ from it in the last digit. Reports and manifests:
 [million-controls/witnessed-live-fleet/](million-controls/witnessed-live-fleet/).

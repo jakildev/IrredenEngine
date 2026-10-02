@@ -55,7 +55,7 @@ release-early rule) ships as its own follow-up PR.
 Highest specificity wins:
 
 1. **Env vars** — `IR_CPU_BUDGET`, `IR_FLEET_WORKERS`, `IR_BUILD_JOBS`,
-   `IR_GPU_EXCLUSIVE`, `IR_QUEUE_TIMEOUT`.
+   `IR_GPU_EXCLUSIVE`, `IR_QUEUE_TIMEOUT`, and the `IR_QUIET_*` tuning values.
 2. **Host overrides** at `~/.config/irreden/host.toml` — per-host
    quirks (thermal-throttling box wants `per_build_max = 6`, etc.).
 3. **Engine defaults** in this directory's `concurrency.toml`.
@@ -91,6 +91,23 @@ verb the ancestor still holds runs inside that hold instead of queueing on it.
 On native Windows it also inherits `IR_ACQUIRE_HOLDER_WINPID`, which must
 match the lock's `winpid` record: the other runtime's holder can carry the
 same pid number.
+
+`ir-acquire benchmark` also raises a quiet window under the lock root. Every
+dispatched fleet session holds a lease; the dispatcher stops launching, tool
+hooks and queued lock users park, and the benchmark waits until every live
+lease has a quiet process tree. Exit 75 means the drain deadline expired and
+the command did not run. Exit 76 means activity resumed during the hold and
+the measurement is contaminated. `ir-run` reports these as
+`RESULT=HOST-NOT-QUIET` / `RESULT=CONTAMINATED` and prints
+`QUIET=guarded|unguarded|breach|refused` for every benchmark run.
+
+The `[quiet]` values in `concurrency.toml` are stamped on each request so all
+readers sharing the lock root agree. `ir-acquire --quiet-disable [reason]`
+writes the host-wide switch and makes subsequent runs explicitly unguarded;
+`--quiet-enable` restores the guard, and `--quiet-status [--json]` reports it.
+The guarantee excludes interactive processes without leases, fleet daemons,
+non-fleet work, double-forked descendants, the measurement harness, and
+native-Windows children shorter than one sample interval.
 
 ## Acquire-late, release-early
 

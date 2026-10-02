@@ -174,6 +174,8 @@ Run mode
                                 to catch fleet agents that forgot --timeout.
     IR_QUEUE_TIMEOUT            Seconds a wrapped run may wait for its
                                 ir-acquire lock (default 600).
+    IR_QUIET_*                  Benchmark quiet-window tuning. Stop background
+                                jobs in the requesting session before profiling.
     IR_RUN_HOST_CLOSE_*         Test seams for the HOST-CLOSED check (see
                                 the comment above ir_host_closed_event).
 
@@ -196,6 +198,13 @@ Run mode
     ir-run: RESULT=LOCK-FAILED exe=<name> exit=<rc> ...
         ir-acquire never granted the lock (queue timeout), so the
         program did not run. Exit code propagated as 1.
+    ir-run: RESULT=HOST-NOT-QUIET exe=<name> exit=75
+        A dispatched session did not park before the drain deadline; the
+        program did not run.
+    ir-run: RESULT=CONTAMINATED exe=<name> exit=76
+        A successful program run overlapped dispatched-session activity and
+        its measurement is invalid. Benchmark runs also print
+        QUIET=guarded|unguarded|breach|refused.
 
   Build directory (when not using --build-dir):
     1. $IRREDEN_BUILD_DIR if set
@@ -331,6 +340,13 @@ EXE_RUN=$(basename "$EXE_PATH")
 acquire_prefix=()
 if [[ -n "$acquire_verb" ]]; then
     acquire_prefix=("$IR_ACQUIRE" "$acquire_verb" "--")
+fi
+
+QUIET_REPORT_FILE=""
+if [[ "$acquire_verb" == "benchmark" ]]; then
+    QUIET_REPORT_FILE="$(mktemp "${TMPDIR:-/tmp}/ir-run-quiet.XXXXXX")"
+    export IR_QUIET_REPORT_FILE="$QUIET_REPORT_FILE"
+    export IR_QUIET_MEASURE_ROOT="$$"
 fi
 
 # Decode an exit code into a signal name for the RESULT line (128+N =
@@ -492,6 +508,9 @@ ir_launch_cleanup() {
     if [[ -n "$LAUNCH_DIR" ]]; then
         rm -rf "$LAUNCH_DIR"
     fi
+    if [[ -n "$QUIET_REPORT_FILE" ]]; then
+        rm -f "$QUIET_REPORT_FILE"
+    fi
 }
 trap ir_launch_cleanup EXIT
 
@@ -607,6 +626,20 @@ ir_host_closed_event() {
 # failure; it asks for a re-run.
 ir_report_result() {
     local rc="$1"
+    local quiet=""
+    if [[ -n "$QUIET_REPORT_FILE" && -s "$QUIET_REPORT_FILE" ]]; then
+        read -r quiet < "$QUIET_REPORT_FILE" || true
+        quiet="$(tr '[:upper:]' '[:lower:]' <<<"$quiet")"
+        echo "ir-run: QUIET=$quiet exe=$EXE_NAME"
+    fi
+    if [[ "$quiet" == "refused" || $rc -eq 75 ]]; then
+        echo "ir-run: RESULT=HOST-NOT-QUIET exe=$EXE_NAME exit=75" >&2
+        return
+    fi
+    if [[ "$quiet" == "breach" || $rc -eq 76 ]]; then
+        echo "ir-run: RESULT=CONTAMINATED exe=$EXE_NAME exit=76" >&2
+        return
+    fi
     if [[ $rc -eq 0 ]]; then
         echo "ir-run: RESULT=CLEAN exe=$EXE_NAME exit=0"
         return
@@ -697,6 +730,10 @@ while true; do
         wait "$PID" 2>/dev/null || exit_code=$?
         ir_launch_end
         if [[ -n "$READY_FILE" && ! -s "$READY_FILE" ]]; then
+            if [[ $exit_code -eq 75 || $exit_code -eq 76 ]]; then
+                ir_report_result "$exit_code"
+                exit "$exit_code"
+            fi
             # ir-acquire gave up on the lock; the exe never started.
             echo "ir-run: RESULT=LOCK-FAILED exe=$EXE_NAME exit=$exit_code" \
                  "— ir-acquire ${acquire_verb} did not grant its lock" \
@@ -709,6 +746,9 @@ while true; do
             echo "ir-run: $EXE_NAME crashed after ${elapsed}s"
         fi
         ir_report_result "$exit_code"
+        if [[ $exit_code -eq 75 || $exit_code -eq 76 ]]; then
+            exit "$exit_code"
+        fi
         [[ $exit_code -eq 0 ]] && exit 0 || exit 1
     fi
     if [[ -n "$READY_FILE" && ! -s "$READY_FILE" ]]; then

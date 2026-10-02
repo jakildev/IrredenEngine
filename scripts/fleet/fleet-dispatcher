@@ -2118,6 +2118,29 @@ usage_gate_open() {
     [[ "$status" != closed:* ]]
 }
 
+quiet_gate_status() {
+    if ! command -v ir-acquire >/dev/null 2>&1; then
+        echo "off"
+        return
+    fi
+    local status
+    status=$(ir-acquire --quiet-status 2>/dev/null || true)
+    echo "${status:-off}"
+}
+
+quiet_gate_open() {
+    local status state gate
+    status=$(quiet_gate_status)
+    state="${status%% *}"
+    case "$state" in
+        waiting|draining|held|linger) gate="closed:$status" ;;
+        *) gate="open:$status" ;;
+    esac
+    log_gate_transition quiet "$gate" "benchmark quiet window" \
+        "deferring all dispatches" "resuming dispatch"
+    [[ "$gate" != closed:* ]]
+}
+
 # --- Per-role active-iteration count ---------------------------------------
 
 # Print the count of unique active worktrees for a role. "Active" =
@@ -3038,6 +3061,9 @@ dispatch_role() {
     LAST_ROLE_DISPATCH_COUNT=0
 
     if [[ ! -f "$trigger_file" ]]; then
+        return
+    fi
+    if ! quiet_gate_open; then
         return
     fi
 
@@ -4425,7 +4451,8 @@ case "${1:-}" in
         case "${2:-all}" in
             all|shared) usage_gate_status "${2:-all}" ;;
             claude|scoped) usage_gate_status "$2" "${3:-}" ;;
-            *) echo "usage: fleet-dispatcher --gate-status [all|claude|shared|scoped] [<model>]" >&2; exit 2 ;;
+            quiet) quiet_gate_status ;;
+            *) echo "usage: fleet-dispatcher --gate-status [all|claude|shared|scoped|quiet] [<model>]" >&2; exit 2 ;;
         esac
         exit 0
         ;;

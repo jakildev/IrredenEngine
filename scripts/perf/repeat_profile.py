@@ -403,10 +403,9 @@ def host_battery_percent() -> int | None:
 def host_load() -> float | None:
     """One-minute load average; None where the platform has none.
 
-    The benchmark lock excludes cooperating builds only, so other work on the
-    host is a condition of the measurement and is recorded with it. It is read
-    when the run returns: a run can queue on the lock for minutes before it
-    measures, and the minute before it ends is the minute it ran in.
+    The guarded benchmark window drains dispatched fleet work; other host load
+    remains a condition of the measurement and is recorded with it. The value
+    is read when the run returns, so it describes the minute in which it ran.
     """
     try:
         return round(os.getloadavg()[0], 2)
@@ -601,6 +600,9 @@ def main() -> int:
         fresh = report.exists() and report.stat().st_mtime_ns >= started
         log_text = log_path.read_text()
         clean = exit_code == 0 and "RESULT=CLEAN" in log_text
+        quiet_matches = re.findall(
+            r"ir-run: QUIET=(guarded|unguarded|breach|refused)\b", log_text
+        )
         run = {
             "index": index,
             "launched_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(started / 1e9)),
@@ -611,6 +613,7 @@ def main() -> int:
             "cpu_sampling": sampling,
             "fresh_report": fresh,
             "clean": clean,
+            "quiet": quiet_matches[-1] if quiet_matches else "unknown",
             "engine_logged": engine_logged(log_text),
         }
         manifest["runs"].append(run)

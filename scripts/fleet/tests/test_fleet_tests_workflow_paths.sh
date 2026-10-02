@@ -103,6 +103,7 @@ OUT_OF_TREE_SUBJECTS=(
     'cmake/run_clang_format_changed_standalone.cmake'
     'cmake/ir_quality_tools.cmake'
     'engine/tools/lib/concurrency_helpers.sh'
+    'engine/tools/lib/quiet_window.py'
     'docs/agents/fleet-state-machine.json'
     'docs/agents/fleet-labels-reference.md'
     'docs/agents/CLAUDE-BASELINE.md'

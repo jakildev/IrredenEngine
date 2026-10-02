@@ -211,7 +211,7 @@ class CanvasStaticPoseTest(unittest.TestCase):
                 text = text.replace("maxDropped=7", "maxDropped=0")
 
                 def capture(command, repo, log, binary, seconds, delay):
-                    log.write_text("RESULT=CLEAN\n")
+                    log.write_text("ir-run: QUIET=guarded exe=IRCanvasStress\nRESULT=CLEAN\n")
                     (demo / "save_files/profile_report.txt").write_text(text)
                     return 0, None
 
@@ -232,6 +232,7 @@ class CanvasStaticPoseTest(unittest.TestCase):
                 self.assertEqual((output / "summary.md").exists(), accepted)
                 self.assertTrue((output / "run-1.txt").exists())
                 run = json.loads((output / "manifest.json").read_text())["runs"][0]
+                self.assertEqual(run["quiet"], "guarded")
                 if reason:
                     self.assertIn(reason, run["yaw_pose_mismatch"])
                 else:

@@ -162,8 +162,9 @@ every run; missing or mismatched poses fail the predictable IRPerfGrid and
 static CanvasStress lanes described above. The manifest records the
 power source (`host_power`), `host_cpus`, the build tree and its
 `CMAKE_BUILD_TYPE`, and per run the start time, battery charge and one-minute
-load average: the benchmark lock excludes cooperating builds only, so read the
-load before believing a table.
+load average and quiet-window result. A reference table requires every run to
+be `RESULT=CLEAN` with `QUIET=guarded`; read the reported load range as the
+remaining host condition before believing it.
 
 `IRREDEN_BUILD_DIR` selects the tree, as it does for `fleet-build` and
 `fleet-run`. The `*-release` configure presets build into `build-release/`

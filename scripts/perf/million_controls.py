@@ -102,12 +102,21 @@ def conditions(output: Path, selected: dict[str, list[str]]) -> list[str]:
         if loads
         else ""
     )
+    quiet = [
+        run.get("quiet", "unknown")
+        for manifest in manifests
+        for run in manifest["runs"]
+    ]
+    quiet_counts = ", ".join(
+        f"{state} {quiet.count(state)}/{len(quiet)}" for state in sorted(set(quiet))
+    )
     heads = sorted({manifest["head"][:9] for manifest in manifests})
     binaries = sorted(
         {(manifest["build_type"], manifest["binary_sha256"][:16]) for manifest in manifests}
     )
     return [
-        f"Power source: {', '.join(power)}{battery}.{load_text} Head: {', '.join(heads)}. "
+        f"Power source: {', '.join(power)}{battery}.{load_text} Quiet: {quiet_counts}. "
+        f"Head: {', '.join(heads)}. "
         f"Shaders `{manifests[0]['shader_sha256'][:16]}`, "
         f"runtime scripts `{manifests[0]['runtime_scripts_sha256'][:16]}`. "
         + " ".join(f"{build} binary `{digest}`." for build, digest in binaries),
