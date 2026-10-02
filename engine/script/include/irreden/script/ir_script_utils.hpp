@@ -3,11 +3,13 @@
 #include <irreden/ir_math.hpp>
 #include <sol/sol.hpp>
 
+#include <string>
+
 namespace IRScript {
 
-// Every helper below matches its concrete usertype FIRST, then the EXACT Lua
-// table type, then falls through to its documented default. The order is the
-// contract, not a style choice: `sol::object::is<sol::table>()` is TRUE for
+// Every `*FromLua` helper below matches its concrete usertype FIRST, then the
+// EXACT Lua table type, then falls through to its documented default. The
+// order is the contract, not a style choice: `sol::object::is<sol::table>()` is TRUE for
 // userdata as well — sol2 treats userdata as table-like — so a table-first
 // check admits every userdata regardless of the usertype test above it. A
 // wrong-typed vector (a `vec2` where a `vec3` is wanted) then reaches the table
@@ -93,6 +95,33 @@ inline IRMath::vec4 vec4FromLua(sol::object obj) {
         };
     }
     return {0.0f, 0.0f, 0.0f, 0.0f};
+}
+
+// sol2 treats userdata as table-like, so the concrete usertype check must
+// precede the exact table check or a wrong vector type is silently accepted.
+template <typename VecT>
+inline void requireVecShape(const sol::object &obj, const char *context, const char *typeName) {
+    if (obj.is<VecT>() || obj.get_type() == sol::type::table) {
+        return;
+    }
+    throw sol::error{
+        std::string{context} + " must be an IRMath " + typeName + " userdata or a component table"
+    };
+}
+
+inline IRMath::vec2 requireVec2(const sol::object &obj, const char *context) {
+    requireVecShape<IRMath::vec2>(obj, context, "vec2");
+    return vec2FromLua(obj);
+}
+
+inline IRMath::vec3 requireVec3(const sol::object &obj, const char *context) {
+    requireVecShape<IRMath::vec3>(obj, context, "vec3");
+    return vec3FromLua(obj);
+}
+
+inline IRMath::vec4 requireVec4(const sol::object &obj, const char *context) {
+    requireVecShape<IRMath::vec4>(obj, context, "vec4");
+    return vec4FromLua(obj);
 }
 
 // `sol::object` → `IRMath::ivec3`. Mirrors `vec3FromLua` but reads integer

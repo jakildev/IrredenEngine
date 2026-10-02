@@ -72,6 +72,15 @@ IREntity::EntityId g_hoverLabel = IREntity::kNullEntity;
 // pulses, which is gone by the post-settle capture frame).
 bool g_luaOnClickFired = false;
 bool g_pollWasClickedSeen = false;
+bool g_cursorPositionHookRan = false;
+bool g_cursorWorldMatches = false;
+bool g_cursorScreenMatches = false;
+bool g_cursorPlaneMatches = false;
+IRMath::vec3 g_luaCursorWorld{0.0f};
+IRMath::vec3 g_cppCursorWorld{0.0f};
+IRMath::vec2 g_luaCursorScreen{0.0f};
+IRMath::vec2 g_cppCursorScreen{0.0f};
+IRMath::vec2 g_cursorScreenBefore{0.0f};
 // The hover label's text on the hover shot's first frame, before its MOVE.
 std::string g_hoverLabelBefore;
 
@@ -161,6 +170,11 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
         g_pollWasClickedSeen = false;
         if (shotIndex == kHoverShot) {
             g_hoverLabelBefore = hoverLabelText();
+            g_cursorPositionHookRan = false;
+            g_cursorWorldMatches = false;
+            g_cursorScreenMatches = false;
+            g_cursorPlaneMatches = false;
+            g_cursorScreenBefore = IRRender::mousePosition2DIsoScreenRender();
         }
     }
 
@@ -182,6 +196,32 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
             hoverLabelSet ? "PASS" : "FAIL",
             g_hoverLabelBefore,
             after
+        );
+        const bool cursorMoved = g_luaCursorScreen.x != g_cursorScreenBefore.x ||
+                                 g_luaCursorScreen.y != g_cursorScreenBefore.y;
+        const bool cursorPositionPass = g_cursorPositionHookRan && g_cursorWorldMatches &&
+                                        g_cursorScreenMatches && g_cursorPlaneMatches &&
+                                        cursorMoved;
+        IR_LOG_INFO(
+            "GUI-ASSERT shot={} label={} kind=LUA_CURSOR_POS target={} name=cursor_position "
+            "result={} actual=luaWorld=({},{},{}) cppWorld=({},{},{}) "
+            "luaScreen=({},{}) cppScreen=({},{}) before=({},{})",
+            shotIndex,
+            label,
+            g_onClickButton,
+            cursorPositionPass ? "PASS" : "FAIL",
+            g_luaCursorWorld.x,
+            g_luaCursorWorld.y,
+            g_luaCursorWorld.z,
+            g_cppCursorWorld.x,
+            g_cppCursorWorld.y,
+            g_cppCursorWorld.z,
+            g_luaCursorScreen.x,
+            g_luaCursorScreen.y,
+            g_cppCursorScreen.x,
+            g_cppCursorScreen.y,
+            g_cursorScreenBefore.x,
+            g_cursorScreenBefore.y
         );
     } else if (shotIndex == kOnClickShot) {
         const bool clickFired =
@@ -262,6 +302,35 @@ void registerLuaBindings() {
             };
         lua["IRTest"]["onClickFired"] = []() { IRLuaWidgets::g_luaOnClickFired = true; };
         lua["IRTest"]["onPollFired"] = []() { IRLuaWidgets::g_pollWasClickedSeen = true; };
+        lua["IRTest"]["cursorPosition"] = [](float luaWorldX,
+                                             float luaWorldY,
+                                             float luaWorldZ,
+                                             float luaScreenX,
+                                             float luaScreenY,
+                                             float refX,
+                                             float refY,
+                                             float refZ) {
+            const IRMath::vec3 reference(refX, refY, refZ);
+            const float canvasIsoDepth = IRRender::canvasIsoDepthOfWorldPos(reference);
+            IRLuaWidgets::g_luaCursorWorld = IRMath::vec3(luaWorldX, luaWorldY, luaWorldZ);
+            IRLuaWidgets::g_cppCursorWorld = IRRender::mouseWorldPos3DAtIsoDepth(canvasIsoDepth);
+            IRLuaWidgets::g_luaCursorScreen = IRMath::vec2(luaScreenX, luaScreenY);
+            IRLuaWidgets::g_cppCursorScreen = IRRender::mousePosition2DIsoScreenRender();
+            IRLuaWidgets::g_cursorWorldMatches =
+                IRLuaWidgets::g_luaCursorWorld.x == IRLuaWidgets::g_cppCursorWorld.x &&
+                IRLuaWidgets::g_luaCursorWorld.y == IRLuaWidgets::g_cppCursorWorld.y &&
+                IRLuaWidgets::g_luaCursorWorld.z == IRLuaWidgets::g_cppCursorWorld.z;
+            IRLuaWidgets::g_cursorScreenMatches =
+                IRLuaWidgets::g_luaCursorScreen.x == IRLuaWidgets::g_cppCursorScreen.x &&
+                IRLuaWidgets::g_luaCursorScreen.y == IRLuaWidgets::g_cppCursorScreen.y;
+            const IRMath::vec3 rotated = IRMath::rotateCardinalZ(
+                IRLuaWidgets::g_luaCursorWorld,
+                IRMath::rasterYawCardinalIndex(IRPrefab::Camera::getRasterYaw())
+            );
+            IRLuaWidgets::g_cursorPlaneMatches =
+                IRMath::abs(rotated.x + rotated.y + rotated.z - canvasIsoDepth) <= 0.001f;
+            IRLuaWidgets::g_cursorPositionHookRan = true;
+        };
     });
 }
 

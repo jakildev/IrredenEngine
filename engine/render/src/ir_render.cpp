@@ -241,6 +241,11 @@ IRMath::CardinalIndex rasterCardinalIndex() {
 
 } // namespace
 
+float canvasIsoDepthOfWorldPos(vec3 worldPos) {
+    const vec3 rotated = IRMath::rotateCardinalZ(worldPos, rasterCardinalIndex());
+    return static_cast<float>(IRMath::pos3DtoDistance(rotated));
+}
+
 vec3 mouseWorldPos3DAtIsoDepth(float canvasIsoDepth) {
     // Screen-to-world picking uses the raster-yaw inverse only:
     //   world = R_z(-rasterYaw) · isoPixelToPos3D · screen

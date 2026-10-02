@@ -67,8 +67,9 @@ class LuaScript {
     // createCommand, fire, fireByName, CommandName}, IRInput.{InputType,
     // ButtonStatus, Key, Modifier, GamepadButton, GamepadAxis}, and the
     // entity hover/click handlers IRInput.{onEntityHovered, onEntityUnhovered,
-    // onEntityClicked, onRightClick, removeEntityHandler, MouseButton}. Idempotent
-    // (each detail bind helper guards on its own bound-table key). Required
+    // onEntityClicked, onRightClick, removeEntityHandler, MouseButton}, and cursor
+    // readers IRInput.{mouseWorldPosAt, mouseIsoScreen}. Idempotent (each detail
+    // bind helper guards on its own bound-table key). Required
     // for any creation that wants to declare commands or bind input from
     // Lua. See docs/design/lua-input-commands.md and engine/script/CLAUDE.md
     // for the surface contract.

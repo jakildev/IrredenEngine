@@ -196,7 +196,7 @@ template <> struct System<GIZMO_DRAG> {
 
         dragStartAnchorPos_ = anchorLocal.translation_;
         dragStartAnchorRot_ = anchorLocal.rotation_;
-        dragPlaneIsoDepth_ = canvasIsoDepthOfAnchor(anchorWorld);
+        dragPlaneIsoDepth_ = IRRender::canvasIsoDepthOfWorldPos(anchorWorld);
         dragStartCursorWorld_ = IRRender::mouseWorldPos3DAtIsoDepth(dragPlaneIsoDepth_);
         dragStartCursorScreen_ = mouseScreen_;
         dragAnchorScreenIso_ = anchorIsoPosition(anchorWorld);
@@ -308,13 +308,6 @@ template <> struct System<GIZMO_DRAG> {
         default:
             return IRMath::vec3(0.0f);
         }
-    }
-
-    static float canvasIsoDepthOfAnchor(IRMath::vec3 worldPos) {
-        const IRMath::CardinalIndex idx =
-            IRMath::rasterYawCardinalIndex(IRPrefab::Camera::getRasterYaw());
-        const IRMath::vec3 rotated = IRMath::rotateCardinalZ(worldPos, idx);
-        return static_cast<float>(IRMath::pos3DtoDistance(rotated));
     }
 
     static IRMath::vec2 anchorIsoPosition(IRMath::vec3 worldPos) {
