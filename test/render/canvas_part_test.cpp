@@ -416,6 +416,36 @@ TEST_F(CanvasPart, RefusedAttachKeepsThePrivateCanvas) {
     EXPECT_TRUE(IREntity::entityExists(loner.canvas_));
 }
 
+// A refused attach records the membership while the set stays on the part's
+// private canvas. Posting it there would latch that pool into explicit groups,
+// and once the membership is dropped nothing would draw the set again.
+TEST_F(CanvasPart, PendingPartIsNotPostedToItsPrivateCanvas) {
+    const Host host =
+        makeHost(C_LocalTransform{vec3(0.0f)}, RotationMode::DETACHED_REVOXELIZE, ivec3(2, 2, 2));
+    const Host loner = makeHost(C_LocalTransform{vec3(4.0f, 0.0f, 0.0f)});
+    IREntity::setComponent(
+        loner.entity_,
+        C_VoxelSetNew{ivec3(3, 3, 3), kColor, EntityAnchor::CENTER, loner.canvas_}
+    );
+    ASSERT_FALSE(IRPrefab::CanvasPart::attach(loner.entity_, host.entity_));
+    ASSERT_TRUE(isPart(loner.entity_));
+
+    tick();
+
+    EXPECT_TRUE(poolOf(loner.canvas_).getCellGroups().empty());
+    EXPECT_FALSE(poolOf(loner.canvas_).hostsCellGroups());
+    EXPECT_TRUE(poolOf(host.canvas_).getCellGroups().empty());
+
+    IRPrefab::RotationMode::setMode(loner.entity_, RotationMode::DETACHED_REVOXELIZE);
+    tick();
+
+    EXPECT_FALSE(isPart(loner.entity_));
+    EXPECT_EQ(setOf(loner.entity_).canvasEntity_, loner.canvas_);
+    EXPECT_EQ(setOf(loner.entity_).numVoxels_, 27);
+    EXPECT_FALSE(poolOf(loner.canvas_).hostsCellGroups())
+        << "the private pool must still resample its whole live prefix";
+}
+
 TEST_F(CanvasPart, AttachToAHostWithoutACanvasOnlyRecordsMembership) {
     const IREntity::EntityId host = IREntity::createEntity(C_RotationMode{RotationMode::GRID});
     const IREntity::EntityId elsewhere = makeCanvas();

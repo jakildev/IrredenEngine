@@ -11,6 +11,7 @@
 #include <irreden/render/canvas_pose.hpp>
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/components/component_canvas_part.hpp>
+#include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
@@ -34,6 +35,12 @@
 // its owner's translation this frame) and before REBUILD_DETACHED_VOXELS. The
 // group list is rebuilt every frame: a part that left, or whose host released
 // its canvas, simply stops being posted.
+//
+// A set is posted only to the canvas its `C_CanvasPart::host_` owns. A refused
+// or pending attach records the membership while the set stays on the part's
+// own private canvas; posting it there would latch that pool into
+// explicit-group mode, and once the membership is dropped nothing would post
+// the span again.
 
 namespace IRSystem {
 
@@ -42,6 +49,8 @@ template <> struct System<PROPAGATE_CANVAS_PARTS> {
         IREntity::EntityId entity_ = IREntity::kNullEntity;
         IRComponents::C_VoxelPool *pool_ = nullptr;
         const IRComponents::C_CanvasLocalRotation *pose_ = nullptr;
+        // The entity whose `C_EntityCanvas` names this canvas.
+        IREntity::EntityId owner_ = IREntity::kNullEntity;
     };
 
     // Re-voxelize canvases sorted by entity, resolved on the main thread once
@@ -70,9 +79,20 @@ template <> struct System<PROPAGATE_CANVAS_PARTS> {
         std::sort(hosts_.begin(), hosts_.end(), [](const HostCanvas &a, const HostCanvas &b) {
             return a.entity_ < b.entity_;
         });
+        const auto owners = IREntity::queryArchetypeNodesSimple(
+            IREntity::getArchetype<IRComponents::C_EntityCanvas>()
+        );
+        for (IREntity::ArchetypeNode *node : owners) {
+            auto &canvases = IREntity::getComponentData<IRComponents::C_EntityCanvas>(node);
+            for (int i = 0; i < node->length_; ++i) {
+                if (HostCanvas *host = findHost(canvases[i].canvasEntity_)) {
+                    host->owner_ = node->entities_[i];
+                }
+            }
+        }
     }
 
-    const HostCanvas *findHost(IREntity::EntityId canvas) const {
+    HostCanvas *findHost(IREntity::EntityId canvas) {
         const auto host = std::lower_bound(
             hosts_.begin(),
             hosts_.end(),
@@ -86,16 +106,18 @@ template <> struct System<PROPAGATE_CANVAS_PARTS> {
         const IRComponents::C_VoxelSetNew &voxelSet,
         const IRComponents::C_WorldTransform &worldTransform,
         const IRComponents::C_RotationMode &rotationMode,
-        const IRComponents::C_CanvasPart &
+        const IRComponents::C_CanvasPart &part
     ) {
         if (rotationMode.mode_ != IRComponents::RotationMode::DETACHED_REVOXELIZE ||
             !voxelSet.visible_ || voxelSet.numVoxels_ <= 0) {
             return;
         }
-        // A part whose set lives anywhere but a re-voxelize canvas — the main
-        // canvas while its host is released — is drawn by that pool's own path.
+        // A part whose set lives anywhere but its host's re-voxelize canvas —
+        // the main canvas while its host is released, or its own private
+        // canvas while the attach is pending — is drawn by that pool's own path.
         const HostCanvas *host = findHost(voxelSet.canvasEntity_);
-        if (host == nullptr) {
+        if (host == nullptr || host->owner_ == IREntity::kNullEntity ||
+            host->owner_ != part.host_) {
             return;
         }
         host->pool_->postCellGroup(
