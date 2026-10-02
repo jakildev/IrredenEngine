@@ -5,6 +5,7 @@
 #include <irreden/entity/entity_manager.hpp>
 #include <irreden/job/job_manager.hpp>
 
+#include <algorithm>
 #include <memory>
 #include <unordered_set>
 
@@ -247,7 +248,8 @@ void EntityManager::destroyMarkedEntities() {
         isMainThreadForDeferred(),
         "EntityManager::destroyMarkedEntities must run on the main thread"
     );
-    // Drain the legacy main-thread list first (callers that
+    destroyMarkedTrees();
+    // The legacy main-thread list drains ahead of the worker slots (callers that
     // bypass the per-worker buffer — pre-`World` startup, e.g. — still
     // funnel through this vector).
     // The drain is set-semantics, not sequence-semantics: an id can be marked
@@ -255,12 +257,15 @@ void EntityManager::destroyMarkedEntities() {
     // between marking and draining. Skipping the already-dead ones keeps the
     // drain idempotent (mirrors destroyAllEntities' contains() guard) so the
     // named destroyEntity assert stays reserved for direct caller bugs.
+    // A pre-destroy hook may tree-mark a peer that a later plain mark also
+    // names, so the tree queues drain again after every plain destroy.
     for (std::size_t i = 0; i < m_entitiesMarkedForDeletion.size(); ++i) {
         const EntityId entity = m_entitiesMarkedForDeletion.at(i);
         if (findRecord(entity) == nullptr) {
             continue;
         }
         this->destroyEntity(entity);
+        destroyMarkedTrees();
     }
     m_entitiesMarkedForDeletion.clear();
     // Then per-worker buffers in workerId order. Deterministic order is
@@ -274,6 +279,7 @@ void EntityManager::destroyMarkedEntities() {
                 continue;
             }
             this->destroyEntity(entity);
+            destroyMarkedTrees();
         }
         staging.markedForDeletion_.clear();
     }
@@ -605,12 +611,8 @@ EntityId EntityManager::getRelatedEntityFromArchetype(Archetype type, Relation r
 }
 
 EntityId EntityManager::getParentEntityFromArchetype(const Archetype &type) {
-    for (auto relation : type) {
-        if (isChildOfRelation(relation)) {
-            return m_childOfRelations[relation];
-        }
-    }
-    return kNullEntity;
+    const RelationId relation = childOfRelationInType(type);
+    return relation == kNullRelation ? kNullEntity : m_childOfRelations.at(relation);
 }
 
 RelationId EntityManager::registerRelation(Relation relation, EntityId relatedEntity) {
@@ -636,11 +638,17 @@ RelationId EntityManager::registerRelation(Relation relation, EntityId relatedEn
 EntityId
 EntityManager::setRelation(Relation relation, EntityId subjectEntity, EntityId targetEntity) {
     if (relation == CHILD_OF) {
-
+        IR_ASSERT(
+            entityBits(subjectEntity) != entityBits(targetEntity) &&
+                !isAncestor(subjectEntity, targetEntity),
+            "setRelation CHILD_OF: parenting entity={} under entity={} would create a cycle",
+            entityBits(subjectEntity),
+            entityBits(targetEntity)
+        );
         if (!m_parentRelations.contains(entityBits(targetEntity))) {
             registerRelation(CHILD_OF, targetEntity);
         }
-        insertRelation(subjectEntity, m_parentRelations[entityBits(targetEntity)]);
+        setChildOfRelation(subjectEntity, m_parentRelations[entityBits(targetEntity)]);
         return subjectEntity;
     }
 
@@ -648,14 +656,174 @@ EntityManager::setRelation(Relation relation, EntityId subjectEntity, EntityId t
     return kNullEntity;
 }
 
-void EntityManager::insertRelation(EntityId entity, RelationId relation) {
+RelationId EntityManager::childOfRelationInType(const Archetype &type) {
+    for (auto id : type) {
+        if (isChildOfRelation(id)) {
+            return id;
+        }
+    }
+    return kNullRelation;
+}
+
+void EntityManager::setChildOfRelation(EntityId entity, RelationId relation) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
     EntityRecord &record = getRecord(entity);
-    Archetype newArchetype = record.archetypeNode->type_;
-    newArchetype.insert(relation);
-    ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(newArchetype);
-    moveEntityByArchetype(record, record.archetypeNode->type_, record.archetypeNode, toNode);
+    ArchetypeNode *fromNode = record.archetypeNode;
+    const RelationId current = childOfRelationInType(fromNode->type_);
+    if (current == relation) {
+        return;
+    }
+    // Relations carry no column, so the shared type is everything except the
+    // outgoing relation.
+    Archetype kept = fromNode->type_;
+    if (current != kNullRelation) {
+        kept.erase(current);
+    }
+    Archetype target = kept;
+    if (relation != kNullRelation) {
+        target.insert(relation);
+    }
+    ArchetypeNode *toNode = m_archetypeGraph.findCreateArchetypeNode(target);
+    moveEntityByArchetype(record, kept, fromNode, toNode);
+    ++m_hierarchyRevision;
     IRE_LOG_DEBUG("Moved entity to new archetype with relation {}", relation);
+}
+
+EntityId EntityManager::getParent(EntityId entity) {
+    return getParentEntityFromArchetype(getRecord(entity).archetypeNode->type_);
+}
+
+void EntityManager::clearParent(EntityId entity) {
+    setChildOfRelation(entity, kNullRelation);
+}
+
+std::vector<EntityId> EntityManager::getChildren(EntityId parent) {
+    std::vector<EntityId> children;
+    auto it = m_parentRelations.find(entityBits(parent));
+    if (it == m_parentRelations.end()) {
+        return children;
+    }
+    for (auto *node : m_archetypeGraph.queryArchetypeNodesSimple(Archetype{it->second})) {
+        for (int row = 0; row < node->length_; ++row) {
+            children.push_back(entityBits(node->entities_[row]));
+        }
+    }
+    return children;
+}
+
+bool EntityManager::isAncestor(EntityId ancestor, EntityId entity) {
+    // A destroyed parent ends the walk: its orphans still name it, but it has
+    // no record to read further up.
+    const EntityRecord *record = findRecord(entity);
+    while (record != nullptr && record->archetypeNode != nullptr) {
+        const EntityId parent = getParentEntityFromArchetype(record->archetypeNode->type_);
+        if (parent == kNullEntity) {
+            return false;
+        }
+        if (entityBits(parent) == entityBits(ancestor)) {
+            return true;
+        }
+        record = findRecord(parent);
+    }
+    return false;
+}
+
+void EntityManager::appendTreePostOrder(EntityId root, std::vector<EntityId> &out) {
+    for (EntityId child : getChildren(root)) {
+        appendTreePostOrder(child, out);
+    }
+    out.push_back(root);
+}
+
+void EntityManager::destroyTree(EntityId root) {
+    IR_ASSERT(isMainThreadForDeferred(), "EntityManager::destroyTree must run on the main thread");
+    std::vector<EntityId> members;
+    appendTreePostOrder(root, members);
+    destroyTreeMembers(members, false);
+}
+
+void EntityManager::markTreeForDeletion(EntityId root) {
+    appendTreePostOrder(
+        root,
+        m_workerStaging[workerSlotForCurrentThread()].markedTreesForDeletion_
+    );
+}
+
+int EntityManager::hierarchyDepth(EntityId entity) {
+    int depth = 0;
+    const EntityRecord *record = findRecord(entity);
+    while (record != nullptr && record->archetypeNode != nullptr) {
+        const EntityId parent = getParentEntityFromArchetype(record->archetypeNode->type_);
+        if (parent == kNullEntity) {
+            break;
+        }
+        record = findRecord(parent);
+        if (record != nullptr) {
+            ++depth;
+        }
+    }
+    return depth;
+}
+
+void EntityManager::destroyMarkedTrees() {
+    destroyTreeMembers({}, true);
+}
+
+void EntityManager::destroyTreeMembers(
+    const std::vector<EntityId> &members, bool absorbMarkedTrees
+) {
+    struct Doomed {
+        EntityId entity_;
+        int depth_;
+    };
+    std::vector<Doomed> doomed;
+    doomed.reserve(members.size());
+    for (EntityId entity : members) {
+        doomed.push_back({entity, 0});
+    }
+    std::size_t next = 0;
+    std::uint64_t rankedRevision = m_hierarchyRevision;
+    // A pre-destroy hook may re-parent a pending entry or queue another tree,
+    // so after every destroy the queues are re-read and, when either happened,
+    // the remainder is re-ranked against the hierarchy as it then stands.
+    while (true) {
+        bool absorbed = false;
+        for (auto &staging : m_workerStaging) {
+            if (!absorbMarkedTrees || staging.markedTreesForDeletion_.empty()) {
+                continue;
+            }
+            for (EntityId entity : staging.markedTreesForDeletion_) {
+                doomed.push_back({entity, 0});
+            }
+            staging.markedTreesForDeletion_.clear();
+            absorbed = true;
+        }
+        if (absorbed || rankedRevision != m_hierarchyRevision) {
+            rankedRevision = m_hierarchyRevision;
+            const auto pending = doomed.begin() + static_cast<std::ptrdiff_t>(next);
+            for (auto it = pending; it != doomed.end(); ++it) {
+                it->depth_ = hierarchyDepth(it->entity_);
+            }
+            // Stable, so equal depths keep worker-id then mark order and the
+            // drain stays deterministic.
+            std::stable_sort(pending, doomed.end(), [](const Doomed &a, const Doomed &b) {
+                return a.depth_ > b.depth_;
+            });
+        }
+        if (next == doomed.size()) {
+            return;
+        }
+        const EntityId entity = doomed[next++].entity_;
+        if (findRecord(entity) != nullptr) {
+            destroyEntity(entity);
+        }
+    }
+}
+
+void EntityManager::detachChildren(EntityId parent) {
+    for (EntityId child : getChildren(parent)) {
+        clearParent(child);
+    }
 }
 
 smart_ComponentData EntityManager::createComponentDataVector(ComponentId component) {

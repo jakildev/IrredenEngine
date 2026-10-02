@@ -13,6 +13,7 @@
 #include <irreden/script/lua_debug_overlay_bindings.hpp>
 #include <irreden/script/lua_input_bindings.hpp>
 #include <irreden/script/lua_fog_bindings.hpp>
+#include <irreden/script/lua_hierarchy_bindings.hpp>
 #include <irreden/script/lua_enum_def.hpp>
 #include <irreden/script/lua_modifier_bindings.hpp>
 #include <irreden/script/lua_persistence_bindings.hpp>
@@ -812,6 +813,8 @@ void LuaScript::bindLuaDrivenEcs() {
             }
         });
     };
+
+    detail::bindEntityHierarchy(*this);
 
     m_lua["IREntity"]["bindPoint"] = [](IRScript::LuaEntity self,
                                         const std::string &name,
