@@ -42,15 +42,15 @@ Next, in order:
    former projection differs at 12 game samples. The earlier 22.5° rejection
    was based on an ideal-ray disagreement that the independent hardware draw
    also exhibits. Keep ray and raster expectations separate; do not add tolerance.
-   The fine 33-view sweep still has one missing game pixel at yaw 0.38781238;
-   the parent has the same miss. Native OpenGL raster precision remains unverified.
-   The [float32 GPU projection control](../pr-screenshots/codex/scatter-boundary-control/README.md)
-   agrees with the independent CPU-projected hardware reference at all 33 views.
-   Pre-dividing the projection matrix and rounding the recovered integer origin
-   both leave the engine captures unchanged; both experiments were reverted.
-   Next capture the exact engine uniforms and vertex inputs for the disputed
-   face and replay them independently. Keep the strict failing pixel visible
-   in the evidence until the transform/emission distinction is resolved.
+   The [captured projection replay](../pr-screenshots/codex/scatter-projection-replay/README.md)
+   resolves the remaining fine-sweep discrepancy: native exposed-face triangles
+   using the actual padded, reflected framebuffer match all 33 current captures
+   with zero mismatches. The former projection still differs at 45 game pixels.
+   Direct projection onto an unpadded or unreflected target differs at one pixel;
+   preserve those discriminating controls rather than adjusting engine edges.
+   Exact matrix inputs and the disputed encoded face are retained. Native OpenGL
+   presentation/raster validation remains pending; this Metal fixture does not
+   establish a portable subpixel precision contract.
 2. Profile conservative overflow emission on large rotating populations and high
    effective subdivisions. The scratch-layout follow-up removes the unused mask
    allocation and consolidates consumer offsets, with layout and native GPU-sort

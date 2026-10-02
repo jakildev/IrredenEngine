@@ -1,7 +1,11 @@
 # Remaining finite-face boundary control
 
-This is diagnostic evidence, not a renderer fix. The current engine still
-misses game pixel `(605,454)` at actual yaw `0.38781238`, frozen orbit entity 6,
+**Follow-up:** the [captured projection replay](../scatter-projection-replay/README.md)
+resolves the discrepancy below as a reference target/presentation mismatch.
+The original observations are retained here as diagnostic history.
+
+This is diagnostic evidence, not a renderer fix. Against the earlier direct-target
+reference, the engine appeared to miss game pixel `(605,454)` at actual yaw `0.38781238`, frozen orbit entity 6,
 zoom 4, 1280×720 game output. Its signed -Y face belongs to cell `(1,-5,8)`.
 The independent projection places one corner at game Y `453.4004132696`, about
 0.000023 pixels above an eight-bit subpixel rounding threshold. The strict

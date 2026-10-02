@@ -25,7 +25,7 @@ positive values are inside. A zero belongs only to the top/left member of the
 shared edge. Vertices round to `floor(v*2^bits + 0.5)`; pixel centers are exact
 integers on this lattice. Neither operation filters or blends face colors.
 
-Eight fractional bits match the native Metal reference in the retained fixture.
+Eight fractional bits match the direct-target native Metal reference in the retained fixture.
 This is an explicitly validated raster model, not a portable precision promise.
 OpenGL needs a native reference before this model becomes its automated gate.
 The command requires both the actual settled yaw from `CaptureCamera` and the
@@ -39,7 +39,7 @@ python3 scripts/tests/test_render_orbit_raster_metric.py
 
 The fixture is frozen orbit entity 6, inverse-resampled from a 12³ cube rotated
 45° about Y, zoom 4, origin pivot, no AO or motion, normals overlay, and a
-1280×720 game framebuffer. The output may have any positive uniform integer
+1280×720 presented game image. The output may have any positive uniform integer
 scale. These checks do not certify other geometry, projection scales, lighting,
 or arbitrary camera translation.
 
@@ -55,3 +55,26 @@ margin, snapping policy, blur, visibility rejection, or fragment work.
 The shared gather has the related [centered texel sampling contract](trixel-gather-sampling.md).
 Validate both against actual geometry: two paths agreeing is useful evidence,
 but agreement alone does not establish that their common output is correct.
+
+## Match the intermediate target and presentation
+
+A native reference must reproduce the raster target, viewport and subsequent
+presentation transform, not just the ideal final screen coordinates. Padding
+and Y reflection can change finite-precision edge ownership even when their
+composed transform is algebraically identical to a direct screen projection.
+This is separate from trixel encoding and face selection.
+
+In the [33-view captured-input replay](../pr-screenshots/codex/scatter-projection-replay/README.md),
+independent exposed voxel faces rendered into the actual 1284×722 target,
+then Y-reflected and center-cropped to 1280×720, match every current engine
+pixel. Both the captured float32 matrix and a direct padded/reflected projection
+produce zero mismatches. Removing either padding or reflection produces the
+single previously disputed sample. The old engine projection still fails the
+matched-target reference, providing a positive control.
+
+The direct-target integer raster metric remains a diagnostic; its one-sample
+failure is not evidence of a missing emitted face. Do not weaken its tolerance
+or change geometry to make incompatible raster setups agree. Retain raw targets,
+actual capture poses, presentation dimensions and independently generated
+occupancy. This result covers this Metal fixture; native OpenGL, other viewports
+and translated cameras require their own controls.
