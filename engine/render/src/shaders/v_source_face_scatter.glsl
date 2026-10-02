@@ -28,6 +28,8 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     int depthPriorityMode;
     int overflowMode;
     int trixelSampleLayout;
+    uint fogBodyFactorEncoded;
+    uint fogUnexploredColorPacked;
 };
 layout(std430, binding = 25) readonly buffer SourceFaceOrder { uint sourceOrder[]; };
 flat out vec4 faceColor;

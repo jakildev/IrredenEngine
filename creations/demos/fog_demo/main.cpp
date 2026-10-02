@@ -404,6 +404,9 @@ constexpr IRVideo::AutoScreenshotShot kEdgeSdfBlockerShots[] = {
 // speckles); the cut-face code is rotation-agnostic, so the static pose
 // proves the mechanism deterministically.
 bool g_detachedEdge = false; // --detached-edge
+bool g_detachedBody = false; // --detached-body
+bool g_detachedBodyHidden = false; // --detached-body-hidden
+IREntity::EntityId g_detachedCanvasOwner = IREntity::kNullEntity;
 constexpr float kDetachedVisionRadius = 9.0f;
 constexpr IRMath::ivec2 kDetachedCanvasSize{200, 200};
 constexpr IRMath::ivec3 kDetachedPoolSize{24, 24, 24};
@@ -416,6 +419,24 @@ constexpr IRVideo::AutoScreenshotShot kDetachedEdgeShots[] = {
     {9.0f, vec2(0, 0), 0.0f, "fog_detached_edge_zoom9"},
     {5.0f, vec2(0, 0), IRMath::kHalfPi, "fog_detached_edge_yaw90_zoom5"},
 };
+constexpr IRVideo::AutoScreenshotShot kDetachedBodyShots[] = {
+    {9.0f, vec2(0, 0), 0.0f, "fog_detached_body"},
+};
+constexpr IRVideo::AutoScreenshotShot kDetachedBodySoftShots[] = {
+    {9.0f, vec2(0, 0), 0.0f, "fog_detached_body_soft"},
+};
+constexpr IRVideo::AutoScreenshotShot kDetachedBodyHiddenShots[] = {
+    {9.0f, vec2(0, 0), 0.0f, "fog_detached_body_hidden"},
+};
+
+void probeDetachedCanvas(int) {
+    const auto &canvas = IREntity::getComponent<C_EntityCanvas>(g_detachedCanvasOwner);
+    IR_LOG_INFO(
+        "FOG-CANVAS-PROBE factor={:.6f} hidden={}",
+        canvas.fogRevealFactor_,
+        canvas.fogHidden_
+    );
+}
 
 // --edge-smooth (Mode B): the SAME boundary-straddling voxel scene as
 // --edge-zoom, but the vision circle carries a wide edge softness so the reveal
@@ -1574,6 +1595,16 @@ int main(int argc, char **argv) {
         "static grid reveal"
     );
     IREngine::args().flag(
+        "--detached-body",
+        "With --detached-edge, leave the detached canvas untagged so fog adopts it as a "
+        "whole BODY at its owner's position"
+    );
+    IREngine::args().flag(
+        "--detached-body-hidden",
+        "With --detached-body, move the reveal circle away so the whole detached canvas "
+        "is omitted from the composite"
+    );
+    IREngine::args().flag(
         "--edge-smooth",
         "Like --edge-zoom but with a wide soft vision-circle band (#2126 Mode B "
         "smooth cross-section) so the cut wall follows the analytic disc edge"
@@ -1723,7 +1754,9 @@ int main(int argc, char **argv) {
     g_playerWalk = IREngine::args().getFlag("--player-walk");
     g_edgeZoom = IREngine::args().getFlag("--edge-zoom");
     g_edgeSdfBlocker = IREngine::args().getFlag("--edge-sdf-blocker");
-    g_detachedEdge = IREngine::args().getFlag("--detached-edge");
+    g_detachedBodyHidden = IREngine::args().getFlag("--detached-body-hidden");
+    g_detachedBody = IREngine::args().getFlag("--detached-body") || g_detachedBodyHidden;
+    g_detachedEdge = IREngine::args().getFlag("--detached-edge") || g_detachedBody;
     g_edgeSmooth = IREngine::args().getFlag("--edge-smooth");
     g_edgeYawSweep = IREngine::args().getFlag("--edge-yaw-sweep");
     g_edgeZCost = IREngine::args().getFlag("--edge-zcost");
@@ -1731,7 +1764,7 @@ int main(int argc, char **argv) {
     g_edgeZCostCeiling = IREngine::args().getFlag("--edge-zcost-ceiling");
     g_entityReveal = IREngine::args().getFlag("--entity-reveal");
     g_entityRevealSoftEdge = IREngine::args().getFlag("--entity-reveal-soft-edge");
-    g_entityReveal = g_entityReveal || g_entityRevealSoftEdge;
+    g_entityReveal = g_entityReveal || (g_entityRevealSoftEdge && !g_detachedBody);
     g_fogDebugColor = IREngine::args().getFlag("--fog-debug-color");
     g_perAxisOverflow = IREngine::args().getFlag("--peraxis-overflow");
     if (g_perAxisOverflow) {
@@ -2098,6 +2131,8 @@ void initSystems() {
             cfg.onCaptureFrame_ = &probeChannel;
         } else if (g_manySources) {
             cfg.onCaptureFrame_ = &probeManySources;
+        } else if (g_detachedBody) {
+            cfg.onCaptureFrame_ = &probeDetachedCanvas;
         }
         // --edge-zcost-asym / --edge-zcost-ceiling capture the asymmetric /
         // hard-ceiling height-penalty readouts; --detached-edge zooms on a
@@ -2146,7 +2181,7 @@ void initSystems() {
             }
         } else if (g_perAxisOverflow) {
             IRVideo::setAutoScreenshotShots(cfg, kPerAxisOverflowShots);
-        } else if (g_entityRevealSoftEdge) {
+        } else if (g_entityRevealSoftEdge && !g_detachedBody) {
             IRVideo::setAutoScreenshotShots(cfg, kEntityRevealSoftShots);
         } else if (g_entityReveal) {
             IRVideo::setAutoScreenshotShots(cfg, kEntityRevealShots);
@@ -2158,6 +2193,12 @@ void initSystems() {
             IRVideo::setAutoScreenshotShots(cfg, kEdgeZCostCeilingShots);
         } else if (g_edgeZCost) {
             IRVideo::setAutoScreenshotShots(cfg, kEdgeZCostShots);
+        } else if (g_detachedBodyHidden) {
+            IRVideo::setAutoScreenshotShots(cfg, kDetachedBodyHiddenShots);
+        } else if (g_detachedBody && g_entityRevealSoftEdge) {
+            IRVideo::setAutoScreenshotShots(cfg, kDetachedBodySoftShots);
+        } else if (g_detachedBody) {
+            IRVideo::setAutoScreenshotShots(cfg, kDetachedBodyShots);
         } else if (g_detachedEdge) {
             IRVideo::setAutoScreenshotShots(cfg, kDetachedEdgeShots);
         } else if (g_edgeYawSweep) {
@@ -2808,7 +2849,14 @@ void initEntities() {
     // worldCellOffset. Mirrors the GRID green slab's headline -X cut (camera-visible
     // at yaw 0) so the two scenes read against the same floor edge.
     if (g_detachedEdge) {
-        IRPrefab::Fog::setVisionCircle(0.0f, 0.0f, kDetachedVisionRadius);
+        const float visionSoftness = g_detachedBody && g_entityRevealSoftEdge
+                                         ? kEntityRevealSoftEdge
+                                         : kFogVisionEdgeDefault;
+        IRPrefab::Fog::setVisionCircle(0.0f, 0.0f, kDetachedVisionRadius, visionSoftness);
+        const float ownerX = g_detachedBodyHidden
+                                 ? -10.0f
+                                 : (g_detachedBody && g_entityRevealSoftEdge ? -8.25f : -9.0f);
+        const float solidLocalX = -9.0f - ownerX;
 
         // The same ground slab as the GRID twin, created before the detached
         // canvas so it allocates from the MAIN canvas pool.
@@ -2831,7 +2879,7 @@ void initEntities() {
             kDetachedPoolSize
         );
         IREntity::createEntity(
-            C_LocalTransform{vec3(0.0f)},
+            C_LocalTransform{vec3(solidLocalX, 0.0f, 0.0f)},
             C_VoxelSetNew{
                 kDetachedSolidSize,
                 Color{130, 230, 150, 255},
@@ -2843,11 +2891,20 @@ void initEntities() {
         // Identity rotation keeps the re-voxelize raster on its deterministic SOURCE
         // path (a spinning solid round-to-cell speckles); the cut-face code
         // is rotation-agnostic, so this static pose proves the world-column recovery.
-        IREntity::createEntity(
-            C_LocalTransform{vec3(-9.0f, 0.0f, 2.0f)},
-            C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
-            canvas
-        );
+        if (g_detachedBody) {
+            g_detachedCanvasOwner = IREntity::createEntity(
+                C_LocalTransform{vec3(ownerX, 0.0f, 2.0f)},
+                C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
+                canvas
+            );
+        } else {
+            g_detachedCanvasOwner = IREntity::createEntity(
+                C_LocalTransform{vec3(ownerX, 0.0f, 2.0f)},
+                C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
+                canvas,
+                C_FogField{}
+            );
+        }
         return;
     }
 

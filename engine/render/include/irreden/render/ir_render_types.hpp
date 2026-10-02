@@ -215,8 +215,12 @@ struct FrameDataTrixelToFramebuffer {
     int overflowMode_ = 0;
     // Sampling contract for the private canvas color, depth and priority.
     int trixelSampleLayout_ = static_cast<int>(TrixelSampleLayout::RECTANGULAR);
-    int overflowPad1_ = 0;
-    int overflowPad2_ = 0;
+    /// Zero disables BODY modulation. Otherwise this is one plus the quantized
+    /// reveal factor, leaving all zero-initialized non-entity-canvas draws on
+    /// their byte-identical path while still representing factor zero.
+    std::uint32_t fogBodyFactorEncoded_ = 0;
+    /// RGBA8 unexplored anchor consumed with fogBodyFactorEncoded_.
+    std::uint32_t fogUnexploredColorPacked_ = 0;
 };
 static_assert(
     offsetof(FrameDataTrixelToFramebuffer, visibleFaceIds_) == 128,
@@ -248,6 +252,11 @@ static_assert(
 static_assert(
     offsetof(FrameDataTrixelToFramebuffer, trixelSampleLayout_) == 212,
     "Gather sample layout must occupy the scalar slot at byte 212"
+);
+static_assert(
+    offsetof(FrameDataTrixelToFramebuffer, fogBodyFactorEncoded_) == 216 &&
+        offsetof(FrameDataTrixelToFramebuffer, fogUnexploredColorPacked_) == 220,
+    "Fog composite state must occupy the two trailing scalar slots"
 );
 static_assert(
     sizeof(FrameDataTrixelToFramebuffer) == 224,

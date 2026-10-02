@@ -1,6 +1,7 @@
 #include <metal_stdlib>
 using namespace metal;
 #include "ir_iso_common.metal"
+#include "ir_fog_color.metal"
 #include "ir_sun_shadow_sample.metal"
 #include "ir_source_face_lighting.metal"
 struct VertexIn { float2 position [[attribute(0)]]; };
@@ -27,6 +28,8 @@ struct FrameDataIsoTriangles {
     int depthPriorityMode;
     int overflowMode;
     int trixelSampleLayout;
+    uint fogBodyFactorEncoded;
+    uint fogUnexploredColorPacked;
 };
 struct SourceFaceVertex {
     float4 position [[position]];
@@ -97,6 +100,14 @@ fragment SourceFaceFragment f_source_face_scatter(
             pos3DtoDistance(in.worldPosition), frameData.viewToWorldRotation, sunFrameData, sunDepthBuf);
         out.color = sourceFaceLitColor(in.color, in.directSunAndExposure, in.ao,
             in.lightingMode, visibility);
+    }
+    if (frameData.fogBodyFactorEncoded != 0u) {
+        const float fogFactor = float(frameData.fogBodyFactorEncoded - 1u) / 255.0f;
+        out.color.rgb = fogStateColor(
+            fogFactor,
+            out.color.rgb,
+            unpackColor(frameData.fogUnexploredColorPacked).rgb
+        );
     }
     return out;
 }

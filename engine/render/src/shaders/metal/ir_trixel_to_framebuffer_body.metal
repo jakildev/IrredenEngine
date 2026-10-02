@@ -2,6 +2,7 @@
 using namespace metal;
 
 #include "ir_iso_common.metal"
+#include "ir_fog_color.metal"
 #if IR_SHAPE_RECEIVER
 #include "ir_sdf_common.metal"
 #include "ir_shape_data.metal"
@@ -50,6 +51,8 @@ struct FrameDataIsoTriangles {
     int depthPriorityMode;
     int overflowMode;
     int trixelSampleLayout;
+    uint fogBodyFactorEncoded;
+    uint fogUnexploredColorPacked;
 };
 
 // SSBO populated by the fragment shader when the mouse hovers over a
@@ -237,6 +240,14 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
     }
 
     out.color = color;
+    if (frameData.fogBodyFactorEncoded != 0u) {
+        const float fogFactor = float(frameData.fogBodyFactorEncoded - 1u) / 255.0f;
+        out.color.rgb = fogStateColor(
+            fogFactor,
+            out.color.rgb,
+            unpackColor(frameData.fogUnexploredColorPacked).rgb
+        );
+    }
     out.depth = depth;
     return out;
 }

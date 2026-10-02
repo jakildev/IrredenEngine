@@ -8,6 +8,7 @@
 #include <irreden/ir_platform.hpp>
 
 #include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
@@ -16,9 +17,11 @@
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/entity_canvas.hpp>
+#include <irreden/render/fog_of_war.hpp>
 #include <irreden/input/components/component_hitbox_2d.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <utility>
 #include <vector>
 
@@ -78,6 +81,17 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     // rescaled into these units before it can depth-sort against world geometry
     // — the world-placed depth contract.
     int effectiveSub_ = 1;
+    std::uint32_t fogUnexploredColorPacked_ = IRMath::IRColors::kBlack.toPackedRGBA();
+
+    static std::uint32_t packNormalizedColor(const vec4 &color) {
+        const auto channel = [](float value) {
+            return static_cast<std::uint8_t>(
+                IRMath::roundHalfUp(IRMath::clamp(value, 0.0f, 1.0f) * 255.0f)
+            );
+        };
+        return IRMath::Color{channel(color.r), channel(color.g), channel(color.b), channel(color.a)}
+            .toPackedRGBA();
+    }
 
     void collectHitboxes() {
         hitboxes_.clear();
@@ -146,6 +160,14 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
             vec2(1.0f, -1.0f);
 
         effectiveSub_ = IRRender::getVoxelRenderEffectiveSubdivisions();
+        fogUnexploredColorPacked_ = IRMath::IRColors::kBlack.toPackedRGBA();
+        const IREntity::EntityId activeCanvas = IRRender::getActiveCanvasEntityOrNull();
+        if (activeCanvas != IREntity::kNullEntity) {
+            if (auto fog = IREntity::getComponentOptional<C_CanvasFogOfWar>(activeCanvas)) {
+                fogUnexploredColorPacked_ =
+                    packNormalizedColor((*fog)->observers_.unexploredColor_);
+            }
+        }
     }
 
     void tick(
@@ -164,7 +186,8 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
             hitbox = hitboxIt->second;
             hitbox->screenSpaceCenter_ = true;
         }
-        if (!entityCanvas.visible_ || entityCanvas.canvasEntity_ == IREntity::kNullEntity ||
+        if (!entityCanvas.visible_ || entityCanvas.fogHidden_ ||
+            entityCanvas.canvasEntity_ == IREntity::kNullEntity ||
             static_cast<int>(instances_.size()) >= kMaxEntityCanvasInstances) {
             return;
         }
@@ -290,6 +313,11 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
 
         FrameDataTrixelToFramebuffer fd{};
         fd.trixelSampleLayout_ = static_cast<int>(canvasTextures->renderedSampleLayout_);
+        const std::uint8_t fogBodyFactor =
+            IRPrefab::Fog::quantizeRevealFactor(entityCanvas.fogRevealFactor_);
+        fd.fogBodyFactorEncoded_ =
+            fogBodyFactor == 255u ? 0u : static_cast<std::uint32_t>(fogBodyFactor) + 1u;
+        fd.fogUnexploredColorPacked_ = fogUnexploredColorPacked_;
         fd.mpMatrix_ = calcProjectionMatrix(fbRes_) * model;
         fd.canvasZoomLevel_ = densityZoom;
         // The gather's canvas offset scales with the raster density, the
