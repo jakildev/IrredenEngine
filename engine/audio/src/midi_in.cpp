@@ -85,7 +85,7 @@ int MidiIn::openPort(const std::string &portNameSubstring) {
             port->name_ = m_portNames[i];
             port->rtMidiIn_ = std::make_unique<RtMidiIn>();
             port->rtMidiIn_->openPort(i);
-            port->rtMidiIn_->setCallback(onRtMidiMessage, &port->queue_);
+            port->rtMidiIn_->setCallback(onRtMidiMessage, &port->ring_);
             m_ports.push_back(std::move(port));
             IRE_LOG_INFO("Opened MIDI In port {}: {}", i, portName);
             return i;
@@ -126,11 +126,25 @@ std::vector<int> MidiIn::getOpenPortIndices() const {
 
 void MidiIn::processMidiMessageQueue() {
     for (auto &port : m_ports) {
-        while (!port->queue_.empty()) {
-            const C_MidiMessage &message = port->queue_.front();
+        port->ring_.drain([this, &port](const C_MidiMessage &message) {
             m_frameBuffer.insertMessage(port->portIndex_, message);
-            port->queue_.pop();
+        });
+
+        const std::uint32_t droppedCount = port->ring_.takeDroppedCount();
+        if (droppedCount == 0) {
+            port->overflowing_ = false;
+            continue;
         }
+        if (!port->overflowing_) {
+            IRE_LOG_WARN(
+                "MIDI In port {} ({}) overflowed its {}-message ring; dropped {} message(s)",
+                port->portIndex_,
+                port->name_,
+                kMidiMessageRingCapacity,
+                droppedCount
+            );
+        }
+        port->overflowing_ = true;
     }
 }
 
@@ -160,24 +174,18 @@ void MidiIn::insertCCMessage(int portIndex, MidiChannel channel, const C_MidiMes
 
 //-----------Callback---------//
 
-void onRtMidiMessage(double deltaTime, std::vector<unsigned char> *message, void *userdata) {
-    // Audio messages will be processed async
-    // Game input messages will be added to synchronous queue
-
-    unsigned int messageSize = message->size();
-    IR_ASSERT(messageSize > 0, "Received size 0 midi message");
-
-    for (int i = 0; i < messageSize; i++) {
-        IRE_LOG_DEBUG("Message byte {}: {}", i, message->at(i));
+void onRtMidiMessage(double, std::vector<unsigned char> *message, void *userData) noexcept {
+    if (message == nullptr || message->empty() || userData == nullptr) {
+        return;
     }
 
-    auto messageQueue = static_cast<std::queue<IRComponents::C_MidiMessage> *>(userdata);
+    const std::size_t messageSize = message->size();
     C_MidiMessage newMessage{
-        message->at(0),
-        messageSize > 1 ? message->at(1) : (unsigned char)0,
-        messageSize > 2 ? message->at(2) : (unsigned char)0
+        (*message)[0],
+        messageSize > 1 ? (*message)[1] : static_cast<unsigned char>(0),
+        messageSize > 2 ? (*message)[2] : static_cast<unsigned char>(0)
     };
-    messageQueue->push(newMessage);
+    static_cast<MidiMessageRing *>(userData)->push(newMessage);
 }
 
 } // namespace IRAudio

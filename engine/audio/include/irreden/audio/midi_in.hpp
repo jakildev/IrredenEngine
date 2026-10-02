@@ -5,12 +5,12 @@
 
 #include <irreden/audio/ir_audio_types.hpp>
 #include <irreden/audio/midi_input_frame_buffer.hpp>
+#include <irreden/audio/midi_message_ring.hpp>
 #include <irreden/audio/components/component_midi_message.hpp>
 
 #include <RtMidi.h>
 
 #include <memory>
-#include <queue>
 #include <string>
 #include <vector>
 
@@ -20,15 +20,16 @@ namespace IRAudio {
 
 // One simultaneously-open MIDI input port. Each port owns its own RtMidiIn and
 // a single-producer (its RtMidi callback thread) / single-consumer (the main
-// thread, in processMidiMessageQueue) message queue, so two devices can feed
+// thread, in processMidiMessageQueue) message ring, so two devices can feed
 // the engine at once without one openPort replacing another.
 //
 // rtMidiIn_ is declared last so it destructs first: closing the port stops the
-// callback thread before queue_ (its write target) is torn down.
+// callback thread before ring_ (its write target) is torn down.
 struct MidiInPort {
-    std::queue<C_MidiMessage> queue_;
+    MidiMessageRing ring_;
     int portIndex_;
     std::string name_;
+    bool overflowing_{false};
     std::unique_ptr<RtMidiIn> rtMidiIn_;
 };
 
@@ -92,7 +93,9 @@ class MidiIn {
     void clearPreviousMessages();
 };
 
-void onRtMidiMessage(double deltaTime, std::vector<unsigned char> *message, void *userData);
+void onRtMidiMessage(
+    double deltaTime, std::vector<unsigned char> *message, void *userData
+) noexcept;
 
 } // namespace IRAudio
 
