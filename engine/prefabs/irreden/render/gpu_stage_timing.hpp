@@ -14,12 +14,13 @@ inline constexpr float kFrameTimeBudgetMs = 1000.0f / 60.0f;
 
 // Number of named GPU stages in `gpuStageRegistry()`. Single source of truth
 // for both the registry array and the parallel per-stage accumulator array.
-inline constexpr std::size_t kGpuStageCount = 41;
+inline constexpr std::size_t kGpuStageCount = 42;
 
 struct GpuStageTiming {
     float canvasClearMs_ = 0.0f;
     float voxelCompactMs_ = 0.0f;
     float voxelStage1Ms_ = 0.0f;
+    float voxelCardinalElectMs_ = 0.0f;
     float voxelStage2Ms_ = 0.0f;
     float voxelSunFacesMs_ = 0.0f;
     // Rotating-only per-axis burst sub-rows. Attributed by
@@ -390,16 +391,17 @@ inline void commitGpuStageSample(const GpuStageInfo &info, int registryIndex, fl
 //
 // Intra-tick sub-stage rows: VOXEL_TO_TRIXEL_STAGE_1 is NOT tagged for
 // the per-system observer. Instead its per-canvas tick brackets each of its
-// four dispatch groups with a `GpuSubStageScope` (gpu_substage_timing.hpp),
+// dispatch groups with a `GpuSubStageScope` (gpu_substage_timing.hpp),
 // so these rows are attributed individually rather than bundled:
 //   `canvasClear`  ← the per-frame distance-texture clear (blit)
 //   `voxelCompact` ← the visibility-compaction dispatch
 //   `voxelStage1`  ← the stage-1 raster dispatch only
+//   `voxelCardinalElect` ← single-canvas winner election + storage barrier;
+//                           excludes winner allocation, clear and binding setup
 //   `voxelStage2`  ← the stage-2 dispatch (runs inside STAGE_1's tick)
-// The bundled `voxelStage1` value is reconstructed as the sum of these
-// four rows. Sub-scopes are single-canvas-exact and record the last canvas's
-// sample on multi-canvas scenes (like every `*Ms_` field's last-sample
-// semantics).
+// These scopes do not reconstruct the whole tick: initialization, uploads and
+// CPU encoding between scopes are excluded. Samples describe invocations, not
+// frame totals; live fields hold the last completed sample across canvases.
 //
 // Per-axis burst sub-rows: COMPUTE_VOXEL_AO,
 // LIGHTING_TO_TRIXEL, and TRIXEL_TO_FRAMEBUFFER are likewise NOT tagged for
@@ -438,6 +440,7 @@ inline const std::array<GpuStageInfo, kGpuStageCount> &gpuStageRegistry() {
         {"canvasClear", &GpuStageTiming::canvasClearMs_, 0.05f},
         {"voxelCompact", &GpuStageTiming::voxelCompactMs_, 0.10f},
         {"voxelStage1", &GpuStageTiming::voxelStage1Ms_, 0.20f},
+        {"voxelCardinalElect", &GpuStageTiming::voxelCardinalElectMs_, 0.0f},
         {"voxelStage2", &GpuStageTiming::voxelStage2Ms_, 0.15f},
         {"voxelSunFaces", &GpuStageTiming::voxelSunFacesMs_, 0.0f},
         {"voxelPerAxisStore", &GpuStageTiming::voxelPerAxisStoreMs_, 0.10f},

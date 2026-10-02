@@ -130,6 +130,32 @@ TEST_F(GpuTimestampPollTest, ObserverReusesInvalidSlotWithoutRecordingZero) {
     EXPECT_DOUBLE_EQ(gpuStageAccumulators()[0].sumMs_, 2.5);
 }
 
+TEST_F(GpuTimestampPollTest, CardinalElectionRecordsOnlyItsOwnStage) {
+    GpuSubStageTimer timer;
+    auto *state = timer.acquire("voxelCardinalElect");
+    ASSERT_NE(state, nullptr);
+    ASSERT_NE(state->info_, nullptr);
+    EXPECT_EQ(state->info_->field_, &GpuStageTiming::voxelCardinalElectMs_);
+    gpuStageTiming().voxelStage1Ms_ = 1.0f;
+    gpuStageTiming().voxelStage2Ms_ = 3.0f;
+    gpuStageTiming().voxelPerAxisFinalizeMs_ = 4.0f;
+    timer.begin(*state);
+    timer.end(*state);
+    device_.status_ = TimestampReadStatus::READY;
+    timer.begin(*state);
+    timer.end(*state);
+    EXPECT_FLOAT_EQ(gpuStageTiming().voxelCardinalElectMs_, 2.5f);
+    EXPECT_FLOAT_EQ(gpuStageTiming().voxelStage1Ms_, 1.0f);
+    EXPECT_FLOAT_EQ(gpuStageTiming().voxelStage2Ms_, 3.0f);
+    EXPECT_FLOAT_EQ(gpuStageTiming().voxelPerAxisFinalizeMs_, 4.0f);
+    const auto &accumulators = gpuStageAccumulators();
+    for (std::size_t i = 0; i < accumulators.size(); ++i) {
+        const bool elected = i == static_cast<std::size_t>(state->registryIndex_);
+        EXPECT_EQ(accumulators[i].sampleCount_, elected ? 1u : 0u);
+        EXPECT_DOUBLE_EQ(accumulators[i].sumMs_, elected ? 2.5 : 0.0);
+    }
+}
+
 TEST_F(GpuTimestampPollTest, ExistingBooleanBackendAdaptsToPolling) {
     float ms = -1.0f;
     EXPECT_EQ(device_.RenderDevice::pollTimestampPairMs(1, ms), TimestampReadStatus::PENDING);

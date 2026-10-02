@@ -61,9 +61,20 @@ Next, in order:
    now measures the remaining gap: dense zoom-1/base-1 geometry averages 8.360 ms
    cardinal versus 18.217 ms diagonal; zoom-4/base-4 reaches 88.733 ms cardinal
    and a 91.804 ms sweep p99. These are Debug controls, not a scale qualification.
-   All runs have zero overflow drops. Next reduce high-density cardinal work and
-   conservative overflow processing, measuring each contribution before changing
-   defaults. Cardinal/per-axis density differs (16 versus capped 8 at zoom 4),
+   All runs have zero overflow drops. The [separate winner-election timer](../perf/cardinal-election-timing/README.md)
+   identifies a third full-density cardinal dispatch: 26.799 ms alongside
+   28.516 ms stage 1 and 25.545 ms stage 2 in three native Debug controls.
+   The paired captures expose a restricted central viewport at cardinal
+   zoom 4/base 4 (effective density 16), identical with timing on/off. Resolve
+   its main-canvas scale/allocation coverage before dispatch packing: the fixed
+   canvas clips density-scaled producer coordinates, while the gather's
+   zoom/effective-density scale limits its footprint to a quarter in each axis.
+   Stretching that gather would distort object scale; fix the shared finite
+   storage/coverage contract. Timing equality is not full visual acceptance. Then measure greater micro-slice
+   packing across all three dispatches, preserving every face sample and feeder
+   contract, followed by conservative overflow processing.
+   Packing remains a proposed experiment, not an implemented speedup. Measure
+   contributions before changing defaults. Cardinal/per-axis density differs (16 versus capped 8 at zoom 4),
    so do not call their timings parity. Future occlusion must prove finite-footprint
    coverage; native Release and quiet-host million controls remain pending.
 3. Continue dense/incomplete sun-index and moving light/camera controls. Incomplete

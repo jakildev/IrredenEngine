@@ -35,6 +35,21 @@ class GpuReportParserTest(unittest.TestCase):
         self.assertIsNone(rows[0].min_ms)
         self.assertIsNone(rows[0].samples)
 
+    def test_cardinal_election_stays_separate_from_raster_and_per_axis_rows(self):
+        rows = self.parse(
+            "Stage Avg(ms) Min(ms) Max(ms) Samples\n"
+            "voxelStage1 28.0 27.0 29.0 100\n"
+            "voxelCardinalElect 24.0 23.0 25.0 80\n"
+            "voxelStage2 25.0 24.0 26.0 100\n"
+            "voxelPerAxisFinalize 3.0 2.0 4.0 20"
+        )
+        self.assertEqual([(row.name, row.avg_ms, row.samples) for row in rows], [
+            ("voxelStage1", 28.0, 100),
+            ("voxelCardinalElect", 24.0, 80),
+            ("voxelStage2", 25.0, 100),
+            ("voxelPerAxisFinalize", 3.0, 20),
+        ])
+
     def test_mixed_cull_units_cannot_produce_a_delta(self):
         before = CellReport("fixture")
         after = CellReport("fixture")

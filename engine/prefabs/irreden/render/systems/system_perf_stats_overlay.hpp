@@ -201,6 +201,8 @@ template <> struct System<PERF_STATS_OVERLAY> {
             return "VOX-COMPACT";
         if (name == "voxelStage1")
             return "VOX-STAGE1";
+        if (name == "voxelCardinalElect")
+            return "VOX-ELECT";
         if (name == "voxelStage2")
             return "VOX-STAGE2";
         if (name == "voxelPerAxisStore")
