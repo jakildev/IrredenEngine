@@ -1802,6 +1802,20 @@ gameResolutionToSize2DIso(const vec2 gameResolution, const vec2 scaleFactor = ve
     return gameResolution / vec2(2, 1) / scaleFactor;
 }
 
+/// Backing extent covering a logical viewport at the requested texel density.
+/// Growth in multiples of four preserves the origin's triangle parity.
+inline ivec2 trixelCanvasBackingSize(ivec2 logicalSize, vec2 zoom, int density) {
+    if (logicalSize.x <= 0 || logicalSize.y <= 0 || !std::isfinite(zoom.x) ||
+        !std::isfinite(zoom.y) || zoom.x < 1.0f || zoom.y < 1.0f || density < 1 || density > 16) {
+        throw std::invalid_argument(
+            "canvas coverage requires positive size, zoom >= 1 and density 1..16"
+        );
+    }
+    const vec2 required = glm::ceil(vec2(logicalSize) * glm::max(vec2(density) / zoom, vec2(1.0f)));
+    const ivec2 growth = ivec2(required) - logicalSize;
+    return logicalSize + ((growth + ivec2(3)) / 4) * 4;
+}
+
 /// Worst-case texel dimensions for one per-axis trixel canvas used by the
 /// smooth camera Z-yaw path. The three axis canvases are allocated once at this
 /// size and reused — never reallocated per frame — so the cost is bounded and

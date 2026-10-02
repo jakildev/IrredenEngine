@@ -24,6 +24,7 @@
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
+#include <irreden/render/canvas_coverage.hpp>
 
 namespace IRSystem {
 
@@ -52,7 +53,10 @@ template <> struct System<FOG_LOS_BUILD> {
         // The gather writes this frame's window origin after this system runs,
         // from the same camera state; the fog pass anchors the field on it.
         const IRMath::ivec2 fieldMin = IRComponents::FogLosColumnField::fieldMinForWindow(
-            IRPrefab::Fog::detail::cameraWindowOrigin(fog.windowEdge_, textures.size_),
+            IRPrefab::Fog::detail::cameraWindowOrigin(
+                fog.windowEdge_,
+                IRPrefab::CanvasCoverage::logicalSize(canvas, textures.size_)
+            ),
             fog.windowEdge_
         );
         {

@@ -167,6 +167,34 @@ struct C_TriangleCanvasTextures {
         }
     }
 
+    void resizeBacking(ivec2 size) {
+        if (size == size_)
+            return;
+        auto colors = detail::makeCanvasColorTexture(size);
+        auto distances = detail::makeCanvasDistanceTexture(size);
+        auto ids = detail::makeCanvasEntityIdTexture(size);
+        auto mips = detail::makeHiZMipChain(size);
+        IRRender::destroyResource<Texture2D>(textureTriangleColors_.first);
+        IRRender::destroyResource<Texture2D>(textureTriangleDistances_.first);
+        IRRender::destroyResource<Texture2D>(textureTriangleEntityIds_.first);
+        for (const auto &mip : hiZMips_)
+            IRRender::destroyResource<Texture2D>(mip.first);
+        textureTriangleColors_ = colors;
+        textureTriangleDistances_ = distances;
+        textureTriangleEntityIds_ = ids;
+        hiZMips_ = std::move(mips);
+        size_ = size;
+        shapeGeometry_.reset();
+        clear();
+        for (const auto &mip : hiZMips_) {
+            mip.second->clear(
+                PixelDataFormat::RED_INTEGER,
+                PixelDataType::INT32,
+                &ivec1(IRConstants::kTrixelDistanceMaxDistance)[0]
+            );
+        }
+    }
+
     // Number of downsampled Hi-Z levels (levels 1..N). Level 0 is
     // getTextureDistances(); the cull samples whichever level's texel footprint
     // covers a pool-chunk's iso AABB.

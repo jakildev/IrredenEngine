@@ -727,6 +727,175 @@ using PositionUploadTest = MetalGpuComputeDispatchTest;
 using PositionUploadTest = GpuComputeDispatchTest;
 #endif
 
+using CanvasBackingResizeTest = PositionUploadTest;
+
+void expectEmptyCanvasDepth(const IRRender::Texture2D &texture) {
+    const IRMath::uvec2 size = texture.getSize();
+    std::vector<std::int32_t> pixels(std::size_t(size.x) * size.y, -1);
+    IRRender::device()->memoryBarrier(IRRender::BarrierType::ALL);
+    IRRender::device()->finish();
+    texture.getSubImage2D(
+        0,
+        0,
+        size.x,
+        size.y,
+        IRRender::PixelDataFormat::RED_INTEGER,
+        IRRender::PixelDataType::INT32,
+        pixels.data()
+    );
+    EXPECT_TRUE(
+        std::all_of(
+            pixels.begin(),
+            pixels.end(),
+            [](std::int32_t value) { return value == IRConstants::kTrixelDistanceMaxDistance; }
+        )
+    ) << "depth extent "
+      << size.x << "x" << size.y;
+}
+
+TEST_F(CanvasBackingResizeTest, CardinalGrowthClearsBackingAndPreservesAncillaryResources) {
+    using namespace IRRender;
+    using Canvas = IRComponents::C_TriangleCanvasTextures;
+    RenderingResourceManager resources{128};
+    const auto destroyCanvas = [](Canvas *canvas) {
+        canvas->onDestroy();
+        delete canvas;
+    };
+    std::unique_ptr<Canvas, decltype(destroyCanvas)> canvas(
+        new Canvas(IRMath::ivec2(8)),
+        destroyCanvas
+    );
+    canvas->renderedSubdivisions_ = 4;
+    canvas->sampleLayout_ = TrixelSampleLayout::LOCAL_TRIANGLES;
+    canvas->renderedSampleLayout_ = TrixelSampleLayout::SOURCE_FACES;
+    canvas->renderedCellOffset_ = IRMath::vec3(0.25f, -0.5f, 0.75f);
+    canvas->sourceFaceRotation_ = IRMath::vec4(0.0f, 0.0f, 0.6f, 0.8f);
+    canvas->anyPerTrixelPriority_ = 1;
+    const std::array<std::uint32_t, 4> sourceData{11, 22, 33, 44};
+    canvas->sourceFaces_ =
+        createResource<Buffer>(sourceData.data(), sizeof(sourceData), BUFFER_STORAGE_DYNAMIC);
+    canvas->sourceFaceCapacity_ = 1;
+    canvas->sourceFaceOrder_ =
+        createResource<Buffer>(sourceData.data(), sizeof(sourceData), BUFFER_STORAGE_DYNAMIC);
+    canvas->sourceFaceOrderCapacity_ = 4;
+    const auto sourceFaces = canvas->sourceFaces_;
+    const auto sourceOrder = canvas->sourceFaceOrder_;
+    canvas->shapeGeometry_.prepareSampleOwners(IRMath::ivec2(8));
+    const auto shapeOwners = canvas->shapeGeometry_.sampleOwners_;
+    canvas->shapeGeometry_.frameData_.shapeCount = 1;
+    canvas->shapeGeometry_.tileCount_ = 1;
+    canvas->shapeGeometry_.publishSamples(true);
+    const std::int32_t occupied = 17;
+    canvas->textureTriangleDistances_.second
+        ->clear(PixelDataFormat::RED_INTEGER, PixelDataType::INT32, &occupied);
+    for (const auto &mip : canvas->hiZMips_) {
+        mip.second->clear(PixelDataFormat::RED_INTEGER, PixelDataType::INT32, &occupied);
+    }
+
+    canvas->resizeBacking(IRMath::ivec2(32, 16));
+    EXPECT_EQ(canvas->size_, IRMath::ivec2(32, 16));
+    EXPECT_EQ(canvas->getTextureColors()->getSize(), IRMath::uvec2(32, 16));
+    EXPECT_EQ(canvas->getTextureEntityIds()->getSize(), IRMath::uvec2(32, 16));
+    expectEmptyCanvasDepth(*canvas->getTextureDistances());
+    IRMath::uvec2 expectedMipSize(32, 16);
+    for (const auto &mip : canvas->hiZMips_) {
+        expectedMipSize = IRMath::max((expectedMipSize + IRMath::uvec2(1)) / 2u, IRMath::uvec2(1));
+        EXPECT_EQ(mip.second->getSize(), expectedMipSize);
+        expectEmptyCanvasDepth(*mip.second);
+    }
+    EXPECT_EQ(expectedMipSize, IRMath::uvec2(1));
+    EXPECT_EQ(canvas->renderedSubdivisions_, 4);
+    EXPECT_EQ(canvas->sampleLayout_, TrixelSampleLayout::LOCAL_TRIANGLES);
+    EXPECT_EQ(canvas->renderedSampleLayout_, TrixelSampleLayout::SOURCE_FACES);
+    EXPECT_EQ(canvas->renderedCellOffset_, IRMath::vec3(0.25f, -0.5f, 0.75f));
+    EXPECT_EQ(canvas->sourceFaceRotation_, IRMath::vec4(0.0f, 0.0f, 0.6f, 0.8f));
+    EXPECT_EQ(canvas->anyPerTrixelPriority_, 1);
+    EXPECT_EQ(canvas->sourceFaces_, sourceFaces);
+    EXPECT_EQ(canvas->sourceFaceOrder_, sourceOrder);
+    EXPECT_EQ(canvas->sourceFaceCapacity_, 1u);
+    EXPECT_EQ(canvas->sourceFaceOrderCapacity_, 4u);
+    EXPECT_EQ(canvas->shapeGeometry_.sampleOwners_, shapeOwners);
+    EXPECT_FALSE(canvas->shapeGeometry_.samplesValid());
+    EXPECT_EQ(canvas->shapeGeometry_.ownerSize_, IRMath::ivec2(0));
+    std::array<std::uint32_t, 4> sourceReadback{};
+    sourceFaces.second->getSubData(0, sizeof(sourceReadback), sourceReadback.data());
+    EXPECT_EQ(sourceReadback, sourceData);
+    const auto colors = canvas->textureTriangleColors_;
+    const int liveResources = resources.liveResourceCount();
+    canvas->resizeBacking(IRMath::ivec2(32, 16));
+    EXPECT_EQ(canvas->textureTriangleColors_, colors);
+    EXPECT_EQ(resources.liveResourceCount(), liveResources);
+    canvas.reset();
+    EXPECT_EQ(resources.liveResourceCount(), 0);
+    EXPECT_EQ(resources.freeIdCount(), 128u);
+}
+
+TEST_F(CanvasBackingResizeTest, ResolveGrowthAndParkedResumePreserveFaceStoreAndScratch) {
+    using namespace IRRender;
+    using Axes = IRComponents::C_PerAxisTrixelCanvases;
+    RenderingResourceManager resources{128};
+    struct PoolEdgeRestore {
+        int previous_ = VoxelPoolConfig::getEdge();
+        ~PoolEdgeRestore() {
+            VoxelPoolConfig::setSize(previous_);
+        }
+    } restorePool;
+    VoxelPoolConfig::setSize(8);
+    const auto destroyAxes = [](Axes *axes) {
+        axes->onDestroy();
+        delete axes;
+    };
+    std::unique_ptr<Axes, decltype(destroyAxes)> axes(new Axes, destroyAxes);
+    axes->allocate(IRMath::ivec2(8, 16), IRMath::ivec2(8));
+    const auto faceTextures = axes->axes_;
+    const auto winners = axes->winnerIds_;
+    const auto compacted = axes->cellCompacted_;
+    const auto indirect = axes->cellIndirect_;
+    const auto layout = axes->overflowScratchLayout();
+    const int liveResources = resources.liveResourceCount();
+    const std::uint32_t scratchValue = 0x12345678u;
+    winners.second->subData(0, sizeof(scratchValue), &scratchValue);
+    const auto expectRetainedFaces = [&] {
+        for (int axis = 0; axis < Axes::kAxisCount; ++axis) {
+            EXPECT_EQ(axes->axes_[axis].colors_, faceTextures[axis].colors_);
+            EXPECT_EQ(axes->axes_[axis].distances_, faceTextures[axis].distances_);
+            EXPECT_EQ(axes->axes_[axis].entityIds_, faceTextures[axis].entityIds_);
+            EXPECT_EQ(axes->axes_[axis].ao_, faceTextures[axis].ao_);
+            EXPECT_EQ(axes->axes_[axis].sunShadow_, faceTextures[axis].sunShadow_);
+        }
+        EXPECT_EQ(axes->winnerIds_, winners);
+        EXPECT_EQ(axes->cellCompacted_, compacted);
+        EXPECT_EQ(axes->cellIndirect_, indirect);
+        EXPECT_EQ(axes->overflowScratchLayout(), layout);
+        EXPECT_EQ(resources.liveResourceCount(), liveResources);
+        std::uint32_t scratchReadback = 0;
+        winners.second->getSubData(0, sizeof(scratchReadback), &scratchReadback);
+        EXPECT_EQ(scratchReadback, scratchValue);
+    };
+    for (IRMath::ivec2 target : {IRMath::ivec2(16), IRMath::ivec2(32, 16)}) {
+        if (target.x == 32) {
+            axes->park();
+            EXPECT_FALSE(axes->isAllocated());
+            EXPECT_TRUE(axes->hasParked());
+            axes->unpark();
+        }
+        const std::int32_t occupied = 17;
+        axes->resolveDepth_.second
+            ->clear(PixelDataFormat::RED_INTEGER, PixelDataType::INT32, &occupied);
+        axes->resizeResolveDepth(target);
+        EXPECT_EQ(axes->mainSize_, target);
+        EXPECT_EQ(axes->resolveDepth_.second->getSize(), IRMath::uvec2(target));
+        expectEmptyCanvasDepth(*axes->resolveDepth_.second);
+        expectRetainedFaces();
+        const auto resolve = axes->resolveDepth_;
+        axes->resizeResolveDepth(target);
+        EXPECT_EQ(axes->resolveDepth_, resolve);
+    }
+    axes.reset();
+    EXPECT_EQ(resources.liveResourceCount(), 0);
+    EXPECT_EQ(resources.freeIdCount(), 128u);
+}
+
 TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions) {
     using namespace IRRender;
     using Axes = IRComponents::C_PerAxisTrixelCanvases;

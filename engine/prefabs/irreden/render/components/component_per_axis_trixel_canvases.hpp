@@ -141,6 +141,24 @@ struct PerAxisCanvasStore {
         return isAllocated() && size_ == size && mainSize_ == mainSize;
     }
 
+    // The face store is independent of the density-scaled cardinal resolve.
+    // Only resize between frames, before consumers acquire resource pointers.
+    void resizeResolveDepth(ivec2 mainSize) {
+        IR_ASSERT(isAllocated(), "cannot resize resolve depth without a per-axis face store");
+        if (mainSize_ == mainSize && resolveDepth_.second != nullptr) {
+            return;
+        }
+        if (resolveDepth_.second != nullptr) {
+            IRRender::destroyResource<Texture2D>(resolveDepth_.first);
+        }
+        mainSize_ = mainSize;
+        resolveDepth_ = detail::makeCanvasDistanceTexture(mainSize);
+        // A scene without a resolve pass must observe no caster, not uninitialized depth.
+        static constexpr std::int32_t kDistanceClear =
+            static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance);
+        IRRender::device()->clearTexImage(resolveDepth_.second, 0, &kDistanceClear);
+    }
+
     // VoxelPoolConfig::kMaxEdge is sized off this bound: the largest pool's
     // face demand fits the signed 2^30 field, one edge more does not.
     static_assert(
@@ -202,7 +220,6 @@ struct PerAxisCanvasStore {
             return;
         }
         size_ = size;
-        mainSize_ = mainSize;
         // Reuse the canonical canvas-texture factories so the per-axis textures
         // stay format-identical to the single canvas (detail:: in
         // component_triangle_canvas_textures.hpp).
@@ -215,7 +232,7 @@ struct PerAxisCanvasStore {
             axis.ao_ = detail::makeCanvasColorTexture(size);
             axis.sunShadow_ = detail::makeCanvasColorTexture(size);
         }
-        resolveDepth_ = detail::makeCanvasDistanceTexture(mainSize);
+        resizeResolveDepth(mainSize);
 
         // Per-axis empty-cell compaction buffers, sized to this
         // allocation's axis extent. The compacted-cell region is rounded up to a
@@ -245,15 +262,6 @@ struct PerAxisCanvasStore {
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_PerAxisCellIndirect
         );
-        // Clear to the empty sentinel so a creation that allocates per-axis
-        // canvases but does NOT register RESOLVE_PER_AXIS_SCREEN_DEPTH still
-        // reads "no per-axis caster" from BAKE rather than garbage — the
-        // feature degrades to the no-cast behavior instead of corrupting
-        // the shared sun map. When the resolve stage IS registered it
-        // overwrites every texel each frame.
-        static constexpr std::int32_t kDistanceClear =
-            static_cast<std::int32_t>(IRConstants::kTrixelDistanceMaxDistance);
-        IRRender::device()->clearTexImage(resolveDepth_.second, 0, &kDistanceClear);
         // Unified resolve scratch for the winner region, control block, and overflow entries.
         // Regions start on 256 B boundaries so bindRange windows stay SSBO-alignment-safe; the
         // whole buffer is bindBase'd at 28 during the per-axis dispatches, with region offsets

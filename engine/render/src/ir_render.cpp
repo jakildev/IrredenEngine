@@ -280,7 +280,11 @@ vec3 mainCanvasTexelWorldPos3DAtIsoDepth(ivec2 texel, float canvasIsoDepth) {
     // mouseCanvasTexelWorld() run backwards from the texel's centre.
     const float subdivisions = static_cast<float>(getVoxelRenderEffectiveSubdivisions());
     return displayedIsoToWorldPos3D(
-        (vec2(texel) - getMainCanvasSizeTrixels() / vec2(2.0f) + vec2(0.5f)) / subdivisions -
+        (vec2(texel) -
+         vec2(IREntity::getComponent<C_TriangleCanvasTextures>(getCanvas("main")).size_) /
+             vec2(2.0f) +
+         vec2(0.5f)) /
+                subdivisions -
             IRRender::getEffectiveCameraIso(),
         canvasIsoDepth
     );

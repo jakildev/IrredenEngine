@@ -16,6 +16,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
+#include <irreden/render/canvas_coverage.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
@@ -153,11 +154,15 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // voxel in the canvas carries a per-trixel priority (still read for hovered
         // fragments; byte-identical output either way).
         frameData.frameData_.anyPerTrixelPriority_ = triangleCanvasTextures.anyPerTrixelPriority_;
+        const ivec2 logicalCanvasSize =
+            IRPrefab::CanvasCoverage::logicalSize(entity, triangleCanvasTextures.size_);
+        const vec2 backingScale = vec2(triangleCanvasTextures.size_) / vec2(logicalCanvasSize);
         frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) *
                                          calcModelMatrix(
                                              framebufferResolution,
                                              frameData.frameData_.cameraTrixelOffset_,
-                                             frameData.frameData_.canvasZoomLevel_
+                                             frameData.frameData_.canvasZoomLevel_,
+                                             backingScale
                                          );
 
         if (!behavior.mouseHoverEnabled_) {
@@ -191,7 +196,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             drawPerAxisScatter(
                 frameData,
                 *perAxisCanvases_,
-                triangleCanvasTextures.size_,
+                logicalCanvasSize,
                 framebufferResolution
             );
             // Fall through (no early return) to the single-canvas gather below:
@@ -205,7 +210,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                                              calcModelMatrix(
                                                  framebufferResolution,
                                                  frameData.frameData_.cameraTrixelOffset_,
-                                                 frameData.frameData_.canvasZoomLevel_
+                                                 frameData.frameData_.canvasZoomLevel_,
+                                                 backingScale
                                              );
         }
 
@@ -792,8 +798,12 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         return projection;
     }
 
-    static mat4
-    calcModelMatrix(const vec2 &resolution, const vec2 &cameraPositionIso, const vec2 &zoomLevel) {
+    static mat4 calcModelMatrix(
+        const vec2 &resolution,
+        const vec2 &cameraPositionIso,
+        const vec2 &zoomLevel,
+        const vec2 &backingScale
+    ) {
         // Game-pixel half of the anti-vibration decomposition (see
         // `IRMath::cameraSubPixelOffsets`). `FRAMEBUFFER_TO_SCREEN` consumes
         // the matching `screenPxResidual_` from the same helper to keep the
@@ -806,7 +816,14 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             model,
             vec3(resolution.x / 2 + isoPixelOffset.x, resolution.y / 2 + isoPixelOffset.y, 0.0f)
         );
-        model = scale(model, vec3(resolution.x * zoomLevel.x, resolution.y * zoomLevel.y, 1.0f));
+        model = scale(
+            model,
+            vec3(
+                resolution.x * zoomLevel.x * backingScale.x,
+                resolution.y * zoomLevel.y * backingScale.y,
+                1.0f
+            )
+        );
         return model;
     }
 };

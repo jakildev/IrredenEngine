@@ -3,6 +3,7 @@
 
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/render/canvas_coverage.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_entity.hpp>
 
@@ -320,7 +321,10 @@ template <> struct System<DEBUG_CULLING_MINIMAP> {
                 auto texturesOptional =
                     IREntity::getComponentOptional<C_TriangleCanvasTextures>(mainCanvasEntity);
                 if (texturesOptional.has_value()) {
-                    liveCanvasSize = texturesOptional.value()->size_;
+                    liveCanvasSize = IRPrefab::CanvasCoverage::logicalSize(
+                        mainCanvasEntity,
+                        texturesOptional.value()->size_
+                    );
                 }
             }
             auto liveViewport = IRMath::visibleIsoViewport(

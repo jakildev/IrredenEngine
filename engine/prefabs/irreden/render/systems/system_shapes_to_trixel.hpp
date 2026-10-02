@@ -2,6 +2,7 @@
 #define SYSTEM_SHAPES_TO_TRIXEL_H
 
 #include <irreden/ir_render.hpp>
+#include <irreden/render/canvas_coverage.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_constants.hpp>
@@ -174,6 +175,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     }
 
     void beginTick() {
+        IRPrefab::CanvasCoverage::syncMainBacking();
         const auto bakeSystem = findSystem(BAKE_SUN_SHADOW_MAP);
         if (bakeSystem != kNullSystemId) {
             auto *baker = getSystemParams<System<BAKE_SUN_SHADOW_MAP>>(bakeSystem);
@@ -232,7 +234,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             IRRender::updateCullViewport(
                 IRRender::getEffectiveCameraIso(),
                 IRRender::getCameraZoom(),
-                texOpt.value()->size_
+                IRPrefab::CanvasCoverage::logicalSize(mainCanvas, texOpt.value()->size_)
             );
             constexpr int kMargin = 4;
             // Widen to the shadow-feeder AABB (visible ∪ swept along
