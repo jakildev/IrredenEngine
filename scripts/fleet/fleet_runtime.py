@@ -15,6 +15,13 @@ RUNTIMES = ("claude", "codex")
 CODEX_MODELS = {"fable": "gpt-6-astra", "opus": "gpt-5.6-sol", "sonnet": "gpt-5.6-terra"}
 BATCH_ROLES = ("epic-steward",)
 ROLE_CLASSES = {"sonnet-reviewer": "sonnet", "opus-reviewer": "opus", "smoke-worker": "sonnet"}
+# A review's class follows the PR, not the lane. The scout stamps each
+# first-pass candidate with `review_class` from its changed paths (a core-area
+# path reads "opus"), so a core PR gets one opus-class review that is final
+# instead of a sonnet pass plus an opus recheck of the same surface.
+# FLEET_REVIEW_FIRST_PASS_CLASS: "auto" (default) honours the stamp, "sonnet"
+# or "opus" forces every first pass to that class. The opus lane is unchanged.
+REVIEW_FIRST_PASS_POLICIES = ("auto", "sonnet", "opus")
 TARGET_RECORDS = {
     "task": ("tasks_open",), "stack": ("tasks_open",),
     "plan": ("needs_plan",), "review": ("candidate_prs", "flagged_prs"),
@@ -200,10 +207,35 @@ def resolve_assignment(runtime, role, cls, model, effort, env, explicit_effort=N
     return runtime, cls, model, effort
 
 
+def review_class(role, cls, record, env):
+    """The class a first-pass review runs at: the PR's `review_class` stamp
+    under the default policy, a forced class under "sonnet"/"opus". Only the
+    sonnet-reviewer lane is routed this way."""
+    if role != "sonnet-reviewer":
+        return cls
+    policy = env.get("FLEET_REVIEW_FIRST_PASS_CLASS", "auto")
+    if policy not in REVIEW_FIRST_PASS_POLICIES:
+        raise ValueError("FLEET_REVIEW_FIRST_PASS_CLASS must be auto, sonnet, or opus")
+    if policy != "auto":
+        return policy
+    stamped = record.get("review_class")
+    return stamped if stamped in ("sonnet", "opus") else cls
+
+
 def route(data, target, role, cls, model, effort, env, claude_gate="open"):
     kind, record = target_record(data, target)
     runtime = choose_runtime(kind, record, target, env, claude_gate)
     cls = cls or ROLE_CLASSES.get(role, "opus")
+    if kind == "review":
+        routed = review_class(role, cls, record, env)
+        if routed != cls:
+            # Codex resolves its model from the class; Claude's model is the
+            # lane's, so the class's own model knob must name a replacement.
+            class_model = env.get(f"FLEET_MODEL_{routed.upper()}", "")
+            if runtime == "codex" or class_model:
+                cls = routed
+                if runtime == "claude":
+                    model = class_model
     return resolve_assignment(runtime, role, cls, model, effort, env, record.get("effort"))
 
 

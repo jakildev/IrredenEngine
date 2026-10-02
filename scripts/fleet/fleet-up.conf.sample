@@ -466,6 +466,11 @@
 # use FLEET_RUNTIMES=claude on a host without Codex access.
 # FLEET_RUNTIMES="claude,codex"
 # FLEET_CROSS_PROVIDER_REVIEW=1
+# First-pass review class: "auto" runs a PR whose diff touches a core-area
+# path (engine/render, entity, system, world, audio, video, math, a public
+# ir_*.hpp) at opus class, so that one review is final and no opus recheck
+# follows; "sonnet" or "opus" forces every first pass to that class.
+# FLEET_REVIEW_FIRST_PASS_CLASS="auto"
 # FLEET_WORKER_RUNTIME="balanced"
 # The same policy elects target-less epic-steward launches. Merger targets
 # preserve author affinity while Claude is open and fall back to Codex when

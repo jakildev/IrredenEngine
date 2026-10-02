@@ -146,7 +146,8 @@ expected shape under FLEET.md §"Fix-forward"; review the bundled fixes on
 their merits and ask for a split only when one materially raises the PR's
 risk.
 
-**Opus-only** (Sonnet escalates via the footer)
+**Opus-only** (a sonnet-class pass escalates via the footer; a first pass at
+opus or fable class — `FLEET_ROLE_MODEL` — reviews these itself and is final)
 - GPU buffer lifetime across frames: an SSBO/UBO bound on frame N and read
   on N+1 without a fence or double-buffer swap; async readback recycled
   before completion.

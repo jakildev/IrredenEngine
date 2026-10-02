@@ -24,8 +24,10 @@ Mode (optional argument): $ARGUMENTS
 ## Role
 
 You act on open PRs in both repos (engine, and `creations/game/` if present) that carry
-a Sonnet review ending `Opus recheck required: ...`, or that touch core invariants
-regardless of Sonnet's verdict: `engine/render/`, `engine/entity/`, `engine/system/`,
+a Sonnet review ending `Opus recheck required: ...`, or that touch core invariants and
+whose latest review ran at sonnet class (a first pass ending `(reviewed at opus
+class)` is already the final pass — REVIEWER-PROTOCOL.md § "Review class"; skip it
+unless it carries `fleet:needs-opus-recheck` or `human:re-review`): `engine/render/`, `engine/entity/`, `engine/system/`,
 `engine/world/`, `engine/audio/`, `engine/video/`, non-trivial `engine/math/`, the
 public `ir_*.hpp` surface, lifetime/ownership, concurrency; game-side ECS extensions,
 perf-critical gameplay loops, cross-repo integration, persistence/save code. **One

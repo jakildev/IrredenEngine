@@ -108,6 +108,7 @@ import calendar
 import json
 import os
 import platform
+import re
 import sys
 import time
 
@@ -630,6 +631,15 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
 # claim-time gate cannot see a refusal the iteration only discovers by reading
 # the body.
 DECLINE_TTL_SECONDS = 7 * 24 * 3600
+# A decline whose reason was the host's own failure (an expired token, a
+# GitHub 5xx, a rate-limit refusal, a timeout) says nothing about the item,
+# so it expires after this much time instead of shelving the item until
+# something else touches it. Two opus rechecks once sat 19 hours behind a
+# "HTTP 401 Bad credentials" decline.
+DECLINE_TRANSIENT_TTL_SECONDS = 30 * 60
+DECLINE_TRANSIENT_RE = re.compile(
+    r"HTTP 401|Bad credentials|HTTP 5\d\d|rate limit|API rate|timed out|Could not resolve host",
+    re.IGNORECASE)
 
 
 def _declined_dir():
@@ -673,13 +683,16 @@ def _declined(kind, record, role=None):
         return False
     path = os.path.join(_declined_dir(), f"{kind}-{record.get('repo') or 'engine'}-{number}")
     try:
-        if time.time() - os.stat(path).st_mtime > DECLINE_TTL_SECONDS:
+        age = time.time() - os.stat(path).st_mtime
+        if age > DECLINE_TTL_SECONDS:
             return False
         with open(path, encoding="utf-8") as handle:
             stored = handle.readline().strip()
-            handle.readline()
+            detail = handle.readline()
             stored_role = handle.readline().strip()
     except OSError:
+        return False
+    if DECLINE_TRANSIENT_RE.search(detail) and age > DECLINE_TRANSIENT_TTL_SECONDS:
         return False
     if stored_role and role and stored_role != role:
         return False
@@ -718,6 +731,26 @@ def pick(slice_data, cls, fable_blocked, lane_default="opus"):
     return picks + plan_pick(slice_data, cls, fable_blocked)
 
 
+# Reviewer pickup order: a PR the human marked urgent first, then oldest first
+# within each repo (engine before game), so a queue drains from its tail
+# unless something was given priority.
+REVIEW_PRIORITY_LABELS = frozenset({"human:blocker", "fleet:blocker", "human:re-review"})
+
+
+def _review_order(records):
+    def key(record):
+        labels = set(record.get("labels") or [])
+        number = _record_number(record)
+        try:
+            number = int(str(number).lstrip("#"))
+        except (TypeError, ValueError):
+            number = 0
+        return (not (labels & REVIEW_PRIORITY_LABELS),
+                0 if (record.get("repo") or "engine") == "engine" else 1,
+                number)
+    return sorted(records, key=key)
+
+
 def pick_role(slice_data, role):
     """Ordered dispatch targets for a non-worker lane, from that role's own
     projection slice: reviewers get one `review:<repo>:<N>` per candidate PR
@@ -727,10 +760,12 @@ def pick_role(slice_data, role):
     doc's pickup order (engine first, oldest first)."""
     picks = []
     if role == "sonnet-reviewer":
-        picks = [_target("review", pr) for pr in slice_data.get("candidate_prs") or []
+        picks = [_target("review", pr)
+                 for pr in _review_order(slice_data.get("candidate_prs") or [])
                  if not _held_for_review(pr) and not _declined("review", pr, role)]
     elif role == "opus-reviewer":
-        picks = [_target("review", pr) for pr in slice_data.get("flagged_prs") or []
+        picks = [_target("review", pr)
+                 for pr in _review_order(slice_data.get("flagged_prs") or [])
                  if not _held_for_review(pr) and not _declined("review", pr, role)]
         picks += [_target("planreview", issue)
                   for issue in slice_data.get("plan_review") or []

@@ -121,9 +121,11 @@ and `fleet:needs-opus-recheck` and consumes the re-review triggers
 `fleet:changes-made` / `human:re-review`; the remove/add sets live in
 `fleet-state-machine.json`. `--repo <game-repo>` for game PRs.
 
-**Sonnet-reviewer, approve + "Opus recheck required"** → no verdict label
-(`fleet:approved` is the opus-reviewer's); stamp the escalation the opus
-projection wakes on (`fleet:has-nits` is still set if there are nits):
+**Sonnet-reviewer at sonnet class, approve + "Opus recheck required"** →
+no verdict label (`fleet:approved` is the opus-reviewer's); stamp the
+escalation the opus projection wakes on (`fleet:has-nits` is still set if
+there are nits). At opus or fable class there is no escalation: the pass
+is final and stamps its own verdict.
 
 ```
 fleet-review-verdict verdict-needs-opus-recheck <N> --agent <your-worktree-name>
@@ -232,14 +234,26 @@ gh pr review <N> --comment --body-file .review-body.md
 rejects formal reviews on your own PRs. Always `--comment` with a clear
 verdict line.
 
-**Sonnet-reviewer body ending**, exactly one of `Opus recheck not
-required.` or `Opus recheck required: <reason>` — required for
-`engine/render/`, `engine/entity/`, `engine/system/`, `engine/world/`,
-`engine/audio/`, `engine/video/`, non-trivial `engine/math/`, public
-`ir_*.hpp` surface across modules, lifetime/ownership decisions,
-concurrency, or any uncertainty. **Opus-reviewer body convention:** call
-out the Sonnet review explicitly ("Sonnet flagged X; on closer read I
-confirm/disagree because Y").
+**Review class.** A first pass runs at the class the dispatcher assigned,
+visible to the session as `FLEET_ROLE_MODEL` (`sonnet`, `opus`, `fable`).
+The scout stamps a candidate whose diff touches `engine/render/`,
+`engine/entity/`, `engine/system/`, `engine/world/`, `engine/audio/`,
+`engine/video/`, `engine/math/` or a public `ir_*.hpp` as opus class, so a
+core PR gets one opus-tier review that is final rather than a sonnet pass
+plus an opus recheck of the same surface; `FLEET_REVIEW_FIRST_PASS_CLASS`
+(`auto` | `sonnet` | `opus`) overrides the stamp. The lane name says who
+picked the PR up, not what model read it.
+
+**Sonnet-reviewer body ending.** At opus or fable class the first pass is
+the final pass: end with `Opus recheck not required (reviewed at opus
+class).`, stamp the verdict label yourself (`verdict-approve`,
+`verdict-approve-nits`, `verdict-needs-fix`) and never write `Opus recheck
+required:`. At sonnet class, exactly one of `Opus recheck not required.` or
+`Opus recheck required: <reason>` — required for the core paths above,
+lifetime/ownership decisions, concurrency, or any uncertainty.
+**Opus-reviewer body convention:** call out the first-pass review
+explicitly ("Sonnet flagged X; on closer read I confirm/disagree because
+Y").
 
 ---
 
