@@ -1185,6 +1185,18 @@ vec3 positionForCell(int x, int y, int z) {
     return (vec3(x, y, z) - vec3(center)) * g_settings.spacing_;
 }
 
+C_ShapeDescriptor makeFogGovernedBox(Color color) {
+    // The SDF grid belongs to the fog canvas for its whole lifetime. Declare
+    // governance in the creation bundle so profiling starts on final archetypes.
+    C_ShapeDescriptor shape{
+        IRRender::ShapeType::BOX,
+        vec4(1.0f, 1.0f, 1.0f, 0.0f),
+        color,
+    };
+    shape.flags_ |= IRRender::SHAPE_FLAG_FOG_BODY | IRRender::SHAPE_FLAG_FOG_HIDDEN;
+    return shape;
+}
+
 // Gallery mode (reduction harness). Static, no wave, no idle. Every
 // entity is far enough from its neighbors that silhouettes never overlap on
 // screen at the gallery shot zooms, so a broken cube is readable in isolation.
@@ -1394,21 +1406,15 @@ void createGridEntities() {
                     if (g_waveFreeze) {
                         IREntity::createEntity(
                             C_LocalTransform{pos},
-                            C_ShapeDescriptor{
-                                IRRender::ShapeType::BOX,
-                                vec4(1.0f, 1.0f, 1.0f, 0.0f),
-                                color
-                            },
+                            makeFogGovernedBox(color),
+                            C_FogRevealed{},
                             C_Modifiers{}
                         );
                     } else {
                         IREntity::createEntity(
                             C_LocalTransform{pos},
-                            C_ShapeDescriptor{
-                                IRRender::ShapeType::BOX,
-                                vec4(1.0f, 1.0f, 1.0f, 0.0f),
-                                color
-                            },
+                            makeFogGovernedBox(color),
+                            C_FogRevealed{},
                             makeWaveIdle(x, y, z),
                             C_Modifiers{}
                         );
