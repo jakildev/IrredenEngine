@@ -13,8 +13,10 @@
 #                       and the defer verdict) still launches the pinned pane;
 #                       a pinned pane in its usage-limit cooldown is held
 #   --complete-dispatches  an unserved pin past the claim TTL is released
+#   Codex sidecar       the pin relaunches on the reserved Codex route, and
+#                       is held while Codex is cooling down
 #
-# tmux, fleet-claim and pgrep are PATH stubs (hermetic, per
+# tmux, fleet-claim, pgrep and codex are PATH stubs (hermetic, per
 # scripts/fleet/CLAUDE.md); the clock is pinned through FLEET_TASK_CLASS_NOW.
 
 set -euo pipefail
@@ -215,5 +217,44 @@ sed -i.bak 's/"role":"worker"/"role":"sonnet-reviewer"/' "$SIDECAR" && rm -f "$S
 out=$(abandon)
 assert_contains "$out" "abandoned on first exit (no resumable session)" "a role mismatch releases"
 [[ ! -f "$PIN" ]] && ok "no pin written" || bad "a pin was written for an unresumable sidecar"
+
+# A Codex sidecar carries no session id: the reserved-resume route relaunches
+# its recorded target on the sidecar's own class, model and effort.
+CODEX_BIN="$TMPROOT/codex-bin"; mkdir -p "$CODEX_BIN"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$CODEX_BIN/codex"; chmod +x "$CODEX_BIN/codex"
+reset_codex() {
+    reset
+    printf '{"role":"worker","model":"gpt-5.6-sol","effort":"high","runtime":"codex","target":"%s","class":"opus","dispatch_id":"D1","created_epoch":1}\n' \
+        "$TARGET" > "$SIDECAR"
+}
+
+echo "=== T11: a Codex sidecar pins the pane and relaunches the target on the Codex route ==="
+reset_codex
+write_slice "$EMPTY_SLICE"
+out=$(FLEET_RUNTIMES=claude,codex abandon)
+assert_contains "$out" "retrying once — pane pinned to resume its session" "a Codex sidecar is resumable"
+assert_eq "$(sed -n 1p "$PIN" 2>/dev/null)" "$TARGET" "the pin names the abandoned target"
+out=$(PATH="$CODEX_BIN:$PATH" FLEET_RUNTIMES=claude,codex tick 1)
+assert_contains "$out" "dispatching worker -> %2 [target=$TARGET] runtime=codex" \
+    "the pinned pane is dispatched on its target through the Codex route"
+assert_eq "$(count "$out" 'dispatching ')" 1 "no free pane launched beside it"
+assert_contains "$(cat "$SEND_LOG")" \
+    "fleet-dispatch-wrap pane-2 gpt-5.6-sol high worker '' live target=$TARGET codex opus" \
+    "the wrapper gets the sidecar's model, effort, runtime and class"
+assert_contains "$(cat "$FLEET_CLAIM_LOG")" "amending-claim 3763 pool-2" "re-acquired as the incumbent"
+[[ ! -f "$PIN" ]] && ok "the pin is consumed by its dispatch" || bad "the pin outlived its dispatch"
+
+echo "=== T12: a Codex pin in the Codex cooldown is held, pin kept, nothing re-acquired ==="
+reset_codex
+write_slice "$EMPTY_SLICE"
+FLEET_RUNTIMES=claude,codex abandon >/dev/null
+mkdir -p "$FLEET_STATE_DIR/runtime-cooldown"
+printf '{"until":%s}\n' "$(( $(date +%s) + 900 ))" > "$FLEET_STATE_DIR/runtime-cooldown/codex.json"
+out=$(PATH="$CODEX_BIN:$PATH" FLEET_RUNTIMES=claude,codex tick 1)
+rm -rf "$FLEET_STATE_DIR/runtime-cooldown"
+assert_eq "$(count "$out" 'dispatching ')" 0 "nothing launched during the Codex cooldown"
+assert_contains "$out" "a reserved pane is held" "the pinned pane is held like a reserved one"
+[[ -f "$PIN" ]] && ok "the pin is kept for the resume" || bad "the pin was lost"
+assert_absent "$(cat "$FLEET_CLAIM_LOG")" "amending-claim" "no re-acquire while held"
 
 summarize "dispatcher abandon pin"
