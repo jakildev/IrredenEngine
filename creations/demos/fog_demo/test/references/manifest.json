@@ -205,6 +205,12 @@
       "capture_offset": 0
     },
     {
+      "name": "channel_probe",
+      "demo_args": ["--channel-probe", "--fog-debug-color"],
+      "shots": ["fog_channel_probe"],
+      "capture_offset": 0
+    },
+    {
       "name": "many_sources",
       "demo_args": ["--many-sources"],
       "shots": ["fog_many_sources"],

@@ -40,6 +40,7 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/fog_of_war.hpp>
+#include <irreden/render/fog_reveal_systems.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
 // Prefab systems composed into the demo's pipelines (mirrors perf_grid's
@@ -63,6 +64,7 @@
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 
 #include <algorithm>
+#include <list>
 #include <numbers>
 #include <string>
 
@@ -441,15 +443,14 @@ void registerLuaBindings() {
                 }
             );
 
-        IRSystem::registerPipeline(
-            IRTime::Events::UPDATE,
-            {
-                waveSysId,
-                luaWaveOffsetId,
-                IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
-                IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
-            }
-        );
+        std::list<IRSystem::SystemId> updatePipeline = {
+            waveSysId,
+            luaWaveOffsetId,
+            IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
+        };
+        updatePipeline.splice(updatePipeline.end(), IRPrefab::Fog::revealSystems());
+        updatePipeline.push_back(IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>());
+        IRSystem::registerPipeline(IRTime::Events::UPDATE, updatePipeline);
         IRSystem::registerPipeline(
             IRTime::Events::INPUT,
             {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}
