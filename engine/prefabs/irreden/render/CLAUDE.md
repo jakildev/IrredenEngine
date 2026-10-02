@@ -172,9 +172,7 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
 - `GRID` for world-integrated rotation with exact cell aliasing or shadows from
   thin detail; `DETACHED_REVOXELIZE` for cheap smooth SO(3) that still sorts,
   casts and receives; any `DETACHED` mode with `screenLocked_ = true` for a HUD
-  / billboard overlay ([depth default](../../../../docs/design/detached-canvas-depth-default.md)).
-- Parts sharing one re-voxelize canvas (`C_CanvasPart`), detaching them, and
-  budgeting canvases (`C_CanvasResidency`): [design](../../../../docs/design/composite-entity-canvases.md).
+  / billboard overlay ([depth default](../../../../docs/design/detached-canvas-depth-default.md)). Parts sharing a re-voxelize canvas (`C_CanvasPart`), detach, and canvas budgets (`C_CanvasResidency`): [design](../../../../docs/design/composite-entity-canvases.md).
 - `IRPrefab::EntityCanvas::createWithVoxelPool` is the detached-canvas chokepoint:
   unless `screenLocked` it attaches `C_CanvasAOTexture` + `C_TrixelCanvasRenderBehavior`,
   without which the canvas composites raw albedo.

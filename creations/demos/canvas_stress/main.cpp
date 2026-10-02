@@ -2442,17 +2442,19 @@ void initSystems() {
     updatePipeline.push_back(IRSystem::createSystem<IRSystem::AUTO_SPIN_LOCAL_TRANSFORM>());
     // The impulse arrives from its own system, ahead of the damped spin
     // tick that consumes it.
-    updatePipeline.push_back(IRSystem::createSystem<C_AngularVelocity, C_ImpulseKick>(
-        "ImpulseKick",
-        [](C_AngularVelocity &spin, C_ImpulseKick &kick) {
-            if (kick.ticksUntilKick_ < 0) {
-                return;
+    updatePipeline.push_back(
+        IRSystem::createSystem<C_AngularVelocity, C_ImpulseKick>(
+            "ImpulseKick",
+            [](C_AngularVelocity &spin, C_ImpulseKick &kick) {
+                if (kick.ticksUntilKick_ < 0) {
+                    return;
+                }
+                if (kick.ticksUntilKick_-- == 0) {
+                    spin.impulse(kick.axis_, kick.radiansPerFrame_);
+                }
             }
-            if (kick.ticksUntilKick_-- == 0) {
-                spin.impulse(kick.axis_, kick.radiansPerFrame_);
-            }
-        }
-    ));
+        )
+    );
     updatePipeline.push_back(IRSystem::createSystem<IRSystem::ANGULAR_VELOCITY_DAMPED>());
     updatePipeline.push_back(IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>());
     updatePipeline.push_back(IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>());
