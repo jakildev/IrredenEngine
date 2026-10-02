@@ -1,12 +1,13 @@
 #ifndef LOD_UTILS_H
 #define LOD_UTILS_H
 
-// Zoom-to-LOD mapping used by LOD_UPDATE and SHAPES_TO_TRIXEL. Design rationale
-// lives in docs/design/lod-strategy.md.
+// Zoom-to-LOD mapping and the band filter shared by LOD_UPDATE, SHAPES_TO_TRIXEL
+// and GATE_VOXEL_SETS_BY_LOD. Design rationale lives in
+// docs/design/lod-strategy.md.
 //
 // Tier index goes DOWN as detail goes UP: LOD_0 is the highest-detail tier
 // (zoom-in close-up), LOD_4 is the coarsest silhouette tier (always
-// rendered). A shape carries a LOD band [lodMax_ .. lodMin_]: lodMin_ is the
+// rendered). A shape or DENSE voxel set carries a LOD band [lodMax_ .. lodMin_]: lodMin_ is the
 // coarsest tier (largest index) it still draws at, lodMax_ the finest tier
 // (smallest index). The filter draws iff lodMax_ <= activeLod <= lodMin_.
 // Defaults (lodMin_ = LOD_4, lodMax_ = LOD_0) span the whole range so unmarked
@@ -15,6 +16,7 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/render/components/component_lod_tier_override.hpp>
 
 namespace IRRender {
 
@@ -39,20 +41,14 @@ inline LodLevel computeLodLevel(float zoomLevel) {
     return LodLevel::LOD_4;
 }
 
-// Per-tier voxel scale factor for content authored once at LOD_0.
-inline float lodVoxelScale(LodLevel lodLevel) {
-    switch (lodLevel) {
-    case LodLevel::LOD_0:
-        return 1.0f;
-    case LodLevel::LOD_1:
-        return 0.75f;
-    case LodLevel::LOD_2:
-        return 0.5f;
-    case LodLevel::LOD_3:
-        return 0.25f;
-    default:
-        return 0.125f;
-    }
+// The tier one entity resolves to: its pinned tier when it carries a
+// C_LodTierOverride, else the frame's zoom-derived @p active tier. Every tier
+// consumer resolves through this so an override means the same thing to all of
+// them. @p override is null for an entity without the component; callers pass
+// values captured once per tick (IRPrefab::Lod::TierSnapshot), never a
+// per-entity lookup.
+inline LodLevel resolveEntityLod(LodLevel active, const IRComponents::C_LodTierOverride *override) {
+    return override != nullptr ? override->tier_ : active;
 }
 
 // True when a shape occupying the inclusive LOD band [@p lodMax (finest tier,

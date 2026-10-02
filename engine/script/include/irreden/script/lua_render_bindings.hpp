@@ -2,7 +2,9 @@
 #define LUA_RENDER_BINDINGS_H
 
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_entity.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/render/components/component_active_lod_level.hpp>
 #include <irreden/render/entity_canvas.hpp>
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
@@ -14,8 +16,8 @@ namespace IRScript::detail {
 // IRRender + IRGui shared Lua bindings.
 //
 // Render-glue setters (sun direction / intensity / ambient, sky color /
-// intensity) and a minimal GUI-canvas shape-draw primitive (filled disc,
-// line). Bound by `bindLuaDrivenEcs()` so every creation on the Lua-first
+// intensity), the LOD tier read, and a minimal GUI-canvas shape-draw primitive
+// (filled disc, line). Bound by `bindLuaDrivenEcs()` so every creation on the Lua-first
 // authoring path gets them without re-declaring per-creation pass-throughs
 // (the duplication this issue retires). Every binding is a thin forward to an
 // existing `IRRender::` entry point — no render logic lives here.
@@ -57,6 +59,24 @@ inline void bindRenderGlue(LuaScript &script) {
         IRRender::setSkyIntensity(intensity);
     };
     lua["IRRender"]["entityCanvasCount"] = []() { return IRPrefab::EntityCanvas::count(); };
+
+    // LOD tier surface. Tier index goes down as detail goes up (LOD_0 finest,
+    // LOD_4 coarsest). `getActiveLodTier` reads the singleton LOD_UPDATE writes
+    // and reports LOD_4 when no creation registered that system, matching what
+    // the tier consumers resolve.
+    sol::table lodLevel = lua.create_table();
+#define IR_BIND_LOD(name) lodLevel[#name] = static_cast<lua_Integer>(IRRender::LodLevel::name)
+    IR_BIND_LOD(LOD_0);
+    IR_BIND_LOD(LOD_1);
+    IR_BIND_LOD(LOD_2);
+    IR_BIND_LOD(LOD_3);
+    IR_BIND_LOD(LOD_4);
+#undef IR_BIND_LOD
+    lua["IRRender"]["LodLevel"] = lodLevel;
+    lua["IRRender"]["getActiveLodTier"] = []() -> lua_Integer {
+        const auto *lod = IREntity::singletonOrNull<IRComponents::C_ActiveLodLevel>();
+        return static_cast<lua_Integer>(lod != nullptr ? lod->current_ : IRRender::LodLevel::LOD_4);
+    };
 
     if (!lua["IRGui"].valid()) {
         lua["IRGui"] = lua.create_table();

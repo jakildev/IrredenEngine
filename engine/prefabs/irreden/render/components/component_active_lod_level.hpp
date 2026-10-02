@@ -6,14 +6,12 @@
 namespace IRComponents {
 
 // Singleton row carrying the LOD tier the renderer should use this frame.
-// Written by the LOD_UPDATE system (UPDATE pipeline, reads camera zoom),
-// read by SHAPES_TO_TRIXEL in beginTick to filter shapes by lodMin_.
+// Written by the LOD_UPDATE system (UPDATE pipeline, reads camera zoom); tier
+// consumers read it once per tick through IRPrefab::Lod::TierSnapshot.
 //
-// Default is LOD_4 (coarsest tier, no culling) so a creation that doesn't
-// register LOD_UPDATE — and therefore never writes the singleton —
-// still gets the every-shape-visible behavior. The shapes filter reads
-// the singleton via singletonOrNull<>; missing row also resolves to
-// "no culling".
+// Default is LOD_4 (coarsest tier) so a creation that doesn't register
+// LOD_UPDATE — and therefore never writes the singleton — still draws every
+// default-band entity. A missing row resolves the same way.
 struct C_ActiveLodLevel {
     IRRender::LodLevel current_ = IRRender::LodLevel::LOD_4;
 };

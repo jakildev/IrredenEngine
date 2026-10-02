@@ -104,8 +104,11 @@ zoom ≥ 16, `LOD_4` = the silhouette tier, always drawn). A shape's inclusive
 band `[lodMax_ .. lodMin_]` defaults to the whole range so an unmarked shape
 renders at every zoom. Co-located variants with disjoint bands render
 exclusively — one per zoom, swapping in place — because additive co-location
-z-fights. The filter is CPU-side in `SHAPES_TO_TRIXEL::beginTick`, ahead of
-the yaw and cull-bounds math, so a culled shape costs no GPU staging.
+z-fights. The shape filter is CPU-side in the `SHAPES_TO_TRIXEL` tick, ahead of
+the yaw and cull-bounds math, so a culled shape costs no GPU staging. A DENSE
+`C_VoxelSetNew` carries the same band, enforced by `GATE_VOXEL_SETS_BY_LOD`
+through the set's render gate, and `C_LodTierOverride` pins one entity's tier
+for both ([`lod-strategy.md`](lod-strategy.md) §"Phase 1c").
 
 ## Gizmo interaction
 

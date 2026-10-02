@@ -29,6 +29,19 @@ struct C_VoxelSetNew {
     // the pool mask carries the corresponding per-voxel GPU visibility.
     bool visible_ = true;
 
+    // Second transient render gate, owned by GATE_VOXEL_SETS_BY_LOD: true while
+    // the entity's resolved LOD tier is outside [lodMax_ .. lodMin_]. Separate
+    // from `visible_` so the two owners never overwrite each other's verdict;
+    // the set draws only while `renders()`.
+    bool lodCulled_ = false;
+
+    // Inclusive LOD band this set draws in, same semantics as
+    // C_ShapeDescriptor: lodMin_ is the coarsest tier (largest index), lodMax_
+    // the finest (smallest index). The defaults span every tier, so an unmarked
+    // set is never gated; co-located sets on disjoint bands swap by zoom.
+    IRRender::LodLevel lodMin_ = IRRender::LodLevel::LOD_4;
+    IRRender::LodLevel lodMax_ = IRRender::LodLevel::LOD_0;
+
     // How this set's geometry attaches to the entity's translation.
     // The offset it implies is BAKED into `positions_` at construction, so the
     // rasterize / render / cull / occupancy / picking paths all consume it
@@ -339,6 +352,32 @@ struct C_VoxelSetNew {
         }
     }
 
+    // True while neither render gate hides the set. Every site that writes the
+    // pool active mask or does per-frame work for a drawn set asks this, never
+    // `visible_` alone.
+    bool renders() const {
+        return visible_ && !lodCulled_;
+    }
+
+    // Flip the LOD gate and bring the pool mask in line with it. A culled set
+    // keeps its span, colors and authored alpha exactly as a hidden one does,
+    // so the flip is reversible and allocation-free. A staged set has no span;
+    // the seed honours the gate when it lands.
+    void setLodCulled(bool culled) {
+        if (culled == lodCulled_) {
+            return;
+        }
+        lodCulled_ = culled;
+        if (numVoxels_ <= 0) {
+            return;
+        }
+        if (renders()) {
+            IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
+        } else {
+            IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_, canvasEntity_);
+        }
+    }
+
     // Every alpha mutator notifies, including hidden sets: visibility gates
     // active-mask writes, but bounds derive from authored alpha. A skipped
     // notification can leave a shown set rejected by stale off-screen bounds.
@@ -368,7 +407,7 @@ struct C_VoxelSetNew {
         voxels_[idx].color_ = color;
         mirrorToRotationSource(idx);
         IRPrefab::VoxelPool::markCullBoundsDirty(voxelStartIdx_ + idx, 1, canvasEntity_);
-        if (visible_) {
+        if (renders()) {
             IRPrefab::VoxelPool::markVoxelActive(
                 voxelStartIdx_,
                 idx,
@@ -384,7 +423,7 @@ struct C_VoxelSetNew {
             mirrorToRotationSource(i);
         }
         markPoolCullBoundsDirty();
-        if (!visible_) {
+        if (!renders()) {
             return;
         }
         if (color.alpha_ != 0) {
@@ -445,7 +484,7 @@ struct C_VoxelSetNew {
             mirrorToRotationSource(i);
         }
         markPoolCullBoundsDirty();
-        if (visible_) {
+        if (renders()) {
             IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
@@ -468,7 +507,7 @@ struct C_VoxelSetNew {
                     voxels_[idx].color_ = color;
                     voxels_[idx].activate();
                     mirrorToRotationSource(idx);
-                    if (visible_) {
+                    if (renders()) {
                         pool.setActiveBit(voxelStartIdx_ + idx);
                     }
                 }
@@ -489,7 +528,7 @@ struct C_VoxelSetNew {
                     }
                 }
             }
-            if (visible_) {
+            if (renders()) {
                 IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_, canvasEntity_);
             }
         }
@@ -514,7 +553,7 @@ struct C_VoxelSetNew {
             // Sphere splits the span into active interior + inactive
             // exterior — resync from per-voxel alpha rather than picking
             // bulk active/inactive.
-            if (visible_) {
+            if (renders()) {
                 IRPrefab::VoxelPool::resyncRangeFromColors(
                     voxelStartIdx_,
                     numVoxels_,
@@ -600,7 +639,7 @@ struct C_VoxelSetNew {
     void freeInvisableVoxels(bool withAnimation = false) {}
 
     // Re-derive the pool's per-slot active mask from this set's color
-    // alphas while the set is visible. Hidden sets retain their authored
+    // alphas while the set renders. Hidden or LOD-culled sets retain their authored
     // colors while their mask stays clear until their visibility owner shows
     // them. Required after any raw `voxels_` alpha write
     // (`voxels_[i].activate()`, `voxels_[i].deactivate()`, or
@@ -619,7 +658,7 @@ struct C_VoxelSetNew {
         }
         // Hidden raw alpha edits still invalidate derived cull bounds.
         markPoolCullBoundsDirty();
-        if (!visible_) {
+        if (!renders()) {
             return;
         }
         IRPrefab::VoxelPool::resyncRangeFromColors(
@@ -854,7 +893,7 @@ struct C_VoxelSetNew {
         // Dense payload is a mix of active and inactive slots, so resync from
         // per-voxel alpha rather than the fast bulk path.
         markPoolCullBoundsDirty();
-        if (visible_) {
+        if (renders()) {
             IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, extent);
@@ -892,7 +931,7 @@ struct C_VoxelSetNew {
             mirrorToRotationSource(i);
         }
         markPoolCullBoundsDirty();
-        if (visible_) {
+        if (renders()) {
             IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);

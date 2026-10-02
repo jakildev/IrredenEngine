@@ -45,6 +45,7 @@
 
 // SYSTEMS
 #include <irreden/update/systems/system_propagate_transform.hpp>
+#include <irreden/render/systems/system_gate_voxel_sets_by_lod.hpp>
 #include <irreden/render/systems/system_lod_update.hpp>
 #include <irreden/voxel/systems/system_rebuild_grid_voxels.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
@@ -469,6 +470,9 @@ bool g_guiTest = false;
 // The cull-eviction fixture replaces both the scene and capture table;
 // keep it flag-gated so the standing render references retain their scene.
 bool g_cullEvictTest = false;
+// The DENSE LOD-swap fixture replaces both the scene and capture table; keep it
+// flag-gated so the standing render references retain their scene.
+bool g_lodDenseSwap = false;
 // cursor-latch runs the same poses through the GUI-test cycler; its shots wrap
 // g_pivotVerifyShots (whose labels this table's label_ pointers still target,
 // so both vectors must outlive the game loop).
@@ -1344,6 +1348,11 @@ void registerCliArgs() {
         "Replace the scene + capture table with the #2830 cull-invalidation fixture: two "
         "occupancy poses alternated in place at a fixed cardinal camera; needs --auto-screenshot"
     );
+    args.flag(
+        "--lod-dense-swap",
+        "Replace the scene + capture table with two co-located DENSE voxel sets on disjoint LOD "
+        "bands, captured on either side of the swap; needs --auto-screenshot"
+    );
 }
 
 // Read the parsed values back into the demo's globals. Runs AFTER
@@ -1371,6 +1380,7 @@ void readCliArgs() {
     g_pivotVerifySdf = args.getFlag("--pivot-verify-sdf");
     g_guiTest = args.getFlag("--gui-test");
     g_cullEvictTest = args.getFlag("--cull-evict-test");
+    g_lodDenseSwap = args.getFlag("--lod-dense-swap");
     g_cursorPivotIndicator = args.getFlag("--cursor-pivot-indicator");
 
     if (args.wasProvided("--zoom")) {
@@ -2455,6 +2465,47 @@ void onCullEvictAssertFrame(int shotIndex, bool isCaptureFrame) {
     );
 }
 
+// --lod-dense-swap: two DENSE sets sharing one origin on disjoint LOD bands, so
+// exactly one rasterizes per zoom. The coarse cube's corners reach past the
+// fine sphere's radius and the two differ in color, so a frame that stacked
+// both — the band being ignored — shows the cube's corners through the sphere.
+//   coarse cube   band [LOD_3 .. LOD_4]  -> zoom < 4
+//   fine   sphere band [LOD_0 .. LOD_2]  -> zoom >= 4
+constexpr IRVideo::AutoScreenshotShot kLodDenseSwapShots[] = {
+    {2.0f, vec2(0, 0), 0.0f, "lod_dense_swap_z2"},
+    {8.0f, vec2(0, 0), 0.0f, "lod_dense_swap_z8"},
+};
+
+void initLodDenseSwapScene() {
+    const EntityId canvas = IRRender::getActiveCanvasEntity();
+    const EntityId coarse = IREntity::createEntity(
+        C_LocalTransform{vec3(0.0f)},
+        C_VoxelSetNew{
+            ivec3(8),
+            Color{220, 150, 70, 255},
+            IRComponents::EntityAnchor::CENTER,
+            canvas
+        }
+    );
+    C_VoxelSetNew &coarseSet = IREntity::getComponent<C_VoxelSetNew>(coarse);
+    coarseSet.lodMin_ = IRRender::LodLevel::LOD_4;
+    coarseSet.lodMax_ = IRRender::LodLevel::LOD_3;
+
+    const EntityId fine = IREntity::createEntity(
+        C_LocalTransform{vec3(0.0f)},
+        C_VoxelSetNew{
+            ivec3(12),
+            Color{90, 160, 230, 255},
+            IRComponents::EntityAnchor::CENTER,
+            canvas
+        }
+    );
+    C_VoxelSetNew &fineSet = IREntity::getComponent<C_VoxelSetNew>(fine);
+    fineSet.carve([](vec3 position) { return IRMath::length(position) > 6.0f; });
+    fineSet.lodMin_ = IRRender::LodLevel::LOD_2;
+    fineSet.lodMax_ = IRRender::LodLevel::LOD_0;
+}
+
 void initCullEvictScene() {
     const EntityId canvas = IRRender::getActiveCanvasEntity();
     g_cullEvict.canvasEntity_ = canvas;
@@ -2515,6 +2566,7 @@ void onHelpOverlayAssertFrame(int shotIndex, bool isCaptureFrame) {
 void initSystems() {
     std::list<IRSystem::SystemId> updatePipeline{
         IRSystem::createSystem<IRSystem::LOD_UPDATE>(),
+        IRSystem::createSystem<IRSystem::GATE_VOXEL_SETS_BY_LOD>(),
         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
@@ -3034,6 +3086,8 @@ void initSystems() {
                 kYawHi,
                 sweepZoom
             );
+        } else if (g_lodDenseSwap) {
+            IRVideo::setAutoScreenshotShots(cfg, kLodDenseSwapShots);
         } else {
             IRVideo::setAutoScreenshotShots(cfg, kShots);
         }
@@ -3667,6 +3721,12 @@ void initEntities() {
     if (g_cullEvictTest) {
         IR_LOG_INFO("--- #2830 cull-invalidation fixture scene ---");
         initCullEvictScene();
+        setupCanvasLighting();
+        return;
+    }
+    if (g_lodDenseSwap) {
+        IR_LOG_INFO("--- DENSE LOD-swap fixture scene ---");
+        initLodDenseSwapScene();
         setupCanvasLighting();
         return;
     }

@@ -8,12 +8,12 @@
 
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
-#include <irreden/render/components/component_active_lod_level.hpp>
 #include <irreden/render/canvas_clear.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
+#include <irreden/render/lod_tier_snapshot.hpp>
 #include <irreden/render/lod_utils.hpp>
 #include <irreden/render/sun_shadow_constants.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
@@ -96,18 +96,15 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     bool smoothYaw_ = false;
     float yawCosVisual_ = 1.0f;
     float yawSinVisual_ = 0.0f;
-    // LOD tier snapshotted at beginTick from the C_ActiveLodLevel singleton
-    // (written by LOD_UPDATE in UPDATE phase). Per-entity tick skips shapes
-    // whose [lodMax_ .. lodMin_] band does not contain activeLod_ — they want
-    // more (or less) detail than this frame's zoom provides. Defaults to LOD_4
-    // (no culling) so creations that don't register LOD_UPDATE keep their
-    // pre-LOD behavior.
-    IRRender::LodLevel activeLod_ = IRRender::LodLevel::LOD_4;
+    // Tier state captured at beginTick: the active tier LOD_UPDATE wrote in the
+    // UPDATE phase plus every pinned entity. The per-entity tick skips shapes
+    // whose [lodMax_ .. lodMin_] band does not contain their resolved tier.
+    IRPrefab::Lod::TierSnapshot lod_;
 
     void tick(
         IREntity::EntityId entityId, const C_ShapeDescriptor &shape, const C_WorldTransform &xform
     ) {
-        if (IRRender::shouldSkipAtLod(shape.lodMin_, shape.lodMax_, activeLod_)) {
+        if (IRRender::shouldSkipAtLod(shape.lodMin_, shape.lodMax_, lod_.resolve(entityId))) {
             return;
         }
         if (cullBounds_.has_value()) {
@@ -204,15 +201,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             }
         }
 
-        // Snapshot the active LOD tier from the singleton written by
-        // LOD_UPDATE in the UPDATE phase. singletonOrNull returns nullptr
-        // when no creation has registered LOD_UPDATE — in that case the
-        // default LOD_4 leaves every shape visible.
-        if (auto *lod = IREntity::singletonOrNull<C_ActiveLodLevel>()) {
-            activeLod_ = lod->current_;
-        } else {
-            activeLod_ = IRRender::LodLevel::LOD_4;
-        }
+        lod_.capture();
 
         // Snapshot camera yaw once for the whole tick so the cull
         // pass and the per-tile dispatch share the same value, even

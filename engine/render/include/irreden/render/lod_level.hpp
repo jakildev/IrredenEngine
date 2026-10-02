@@ -7,7 +7,7 @@ namespace IRRender {
 
 // LOD tier index. Goes DOWN as detail goes UP: LOD_0 is highest-detail
 // (close zoom), LOD_4 is the coarsest silhouette tier (always drawn).
-// SHAPES_TO_TRIXEL filters C_ShapeDescriptor against the active tier
+// C_ShapeDescriptor and C_VoxelSetNew are filtered against the resolved tier
 // (see engine/prefabs/irreden/render/lod_utils.hpp).
 //
 // Split out of ir_render_types.hpp so consumers (component_shape_descriptor,

@@ -140,6 +140,9 @@ enum SystemName {
     SPRITE_ANIMATION_ADVANCE,
     GIZMO_SCREEN_SPACE_SIZE,
     LOD_UPDATE,
+    // Masks DENSE voxel sets outside their LOD band; after LOD_UPDATE, before
+    // UPDATE_VOXEL_SET_CHILDREN.
+    GATE_VOXEL_SETS_BY_LOD,
     // World-space neighbour/spatial-query index. Rebuilds the
     // C_SpatialIndex singleton each frame from C_WorldTransform +
     // C_SpatialQueryable entities; a creation places it AFTER

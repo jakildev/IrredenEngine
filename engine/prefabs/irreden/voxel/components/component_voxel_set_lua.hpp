@@ -185,6 +185,9 @@ inline void bindVoxelAssetLoader(LuaScript &luaScript) {
 // actually gets (`test/script/lua_entity_anchor_test.cpp`) — the "silently
 // binds the wrong arm" failure is only observable through a constructed set's
 // baked positions.
+//
+// `lodMin` / `lodMax` are the set's LOD band as `IRRender.LodLevel` integers;
+// GATE_VOXEL_SETS_BY_LOD applies a write on its next tick.
 template <> inline void bindLuaType<IRComponents::C_VoxelSetNew>(LuaScript &luaScript) {
     auto voxelSetType = luaScript.registerType<
         IRComponents::C_VoxelSetNew,
@@ -195,7 +198,13 @@ template <> inline void bindLuaType<IRComponents::C_VoxelSetNew>(LuaScript &luaS
             IREntity::EntityId
         ),
         IRComponents::C_VoxelSetNew(IRMath::ivec3, IRMath::Color, IRComponents::EntityAnchor),
-        IRComponents::C_VoxelSetNew(IRMath::ivec3, IRMath::Color)>("C_VoxelSetNew");
+        IRComponents::C_VoxelSetNew(IRMath::ivec3, IRMath::Color)>(
+        "C_VoxelSetNew",
+        "lodMin",
+        &IRComponents::C_VoxelSetNew::lodMin_,
+        "lodMax",
+        &IRComponents::C_VoxelSetNew::lodMax_
+    );
 
     voxelSetType["setVoxel"] =
         [](IRComponents::C_VoxelSetNew &set, int x, int y, int z, IRMath::Color color) {

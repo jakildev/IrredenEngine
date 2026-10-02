@@ -39,7 +39,7 @@ Rationale: [`docs/design/prefab-render-surface.md`](../../../../docs/design/pref
 
 | System(s) | Must sit |
 |---|---|
-| `LOD_UPDATE` | UPDATE, before `PROPAGATE_TRANSFORM` |
+| `LOD_UPDATE` → `GATE_VOXEL_SETS_BY_LOD` | UPDATE, before `PROPAGATE_TRANSFORM` / `UPDATE_VOXEL_SET_CHILDREN` |
 | `FOG_SUBJECT_EXEMPT` → `FOG_SUBJECT_ADOPT` → `FOG_REVEAL_EVAL` (`IRPrefab::Fog::revealSystems()`) / `FOG_LOS_BUILD` | UPDATE after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_SET_CHILDREN` / RENDER before `FOG_TO_TRIXEL`, its own group (line-of-sight gated circles need it) |
 | `UPDATE_JOINT_MATRICES` | after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_POSITIONS_GPU`; a creation with skeletons registers the prepass too |
 | `UPDATE_VOXEL_POSITIONS_GPU` | before `VOXEL_TO_TRIXEL_STAGE_1` |
@@ -71,10 +71,10 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   with no foreign `getComponent`. Per-voxel tiers: `C_VoxelSetNew::changeVoxelPriority`;
   id reads go through `IRRender::decodeCarrierEntityId`. A per-trixel override
   arbitrates only across canvases — use separate detached units.
-- `C_ActiveLodLevel` is the singleton `LOD_UPDATE` writes; `SHAPES_TO_TRIXEL`
-  draws a `C_ShapeDescriptor` only when the active tier is inside its inclusive
-  `[lodMax_ .. lodMin_]` band (`lod_utils.hpp`); disjoint bands on co-located
-  variants swap, overlapping bands stack. Shapes only.
+- `C_ActiveLodLevel` is the singleton `LOD_UPDATE` writes. A `C_ShapeDescriptor`
+  (`SHAPES_TO_TRIXEL`) or `C_VoxelSetNew` (`GATE_VOXEL_SETS_BY_LOD`) draws only
+  inside its `[lodMax_ .. lodMin_]` band; disjoint co-located bands swap. A new
+  consumer resolves via `IRPrefab::Lod::TierSnapshot`, which honours `C_LodTierOverride`.
 - Sprites bypass the trixel pipeline ([`docs/design/sprites.md`](../../../../docs/design/sprites.md));
   `C_Sprite::screenPixelSmooth_` (no game-pixel snap) is for the avatar or a camera-locked entity only.
 - Fog subject classes: an untagged voxel set on the fog canvas is adopted as a
