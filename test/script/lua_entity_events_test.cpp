@@ -181,4 +181,37 @@ TEST_F(LuaEntityEvents, RebindKeepsACreationOverride) {
     EXPECT_EQ(result.get<std::string>(), "creation");
 }
 
+// A creation that binds `IRInput.onEntityClicked` before its first
+// `bindLuaCommands()` keeps its copy, and every key it did not set still binds.
+// No handler is registered: the singleton would outlive this local state.
+TEST_F(LuaEntityEvents, PreBindKeepsACreationOverride) {
+    IRScript::LuaScript lua;
+    auto setUp = lua.lua().safe_script(
+        "IRInput = { onEntityClicked = function() return 'creation' end }",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(setUp.valid()) << setUp.get<sol::error>().what();
+
+    lua.bindLuaCommands();
+
+    auto result = lua.lua().safe_script(
+        R"lua(
+            return IRInput.onEntityClicked(),
+                type(IRInput.onEntityHovered),
+                type(IRInput.onEntityUnhovered),
+                type(IRInput.onRightClick),
+                type(IRInput.removeEntityHandler),
+                IRInput.MouseButton.LEFT
+        )lua",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_EQ(result.get<std::string>(0), "creation");
+    EXPECT_EQ(result.get<std::string>(1), "function");
+    EXPECT_EQ(result.get<std::string>(2), "function");
+    EXPECT_EQ(result.get<std::string>(3), "function");
+    EXPECT_EQ(result.get<std::string>(4), "function");
+    EXPECT_EQ(result.get<lua_Integer>(5), static_cast<lua_Integer>(EntityClickButton::LEFT));
+}
+
 } // namespace

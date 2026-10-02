@@ -536,41 +536,47 @@ inline void bindCommandFunctions(LuaScript &script) {
 // as a `sol::protected_function` ref for the world's lifetime, and a function
 // captured on a coroutine thread would later be called through that thread.
 //
-// Idempotent — the guard checks `IRInput.MouseButton`, the one key here no
-// creation binds for itself.
+// Binds only the keys still unset, each on its own: a creation that sets any
+// of them — before or after this call — keeps its copy, and a re-run is a
+// no-op.
 inline void bindEntityEvents(LuaScript &script) {
     sol::state &lua = script.lua();
     if (!lua["IRInput"].valid()) {
         lua["IRInput"] = lua.create_table();
     }
-    if (lua["IRInput"]["MouseButton"].valid()) {
-        return;
-    }
+    sol::table input = lua["IRInput"];
 
-    sol::table mouseButton = lua.create_table();
+    if (!input["MouseButton"].valid()) {
+        sol::table mouseButton = lua.create_table();
 #define IR_BIND_CLICK_BTN(name)                                                                    \
     mouseButton[#name] = static_cast<lua_Integer>(IRComponents::EntityClickButton::name)
-    IR_BIND_CLICK_BTN(LEFT);
-    IR_BIND_CLICK_BTN(RIGHT);
+        IR_BIND_CLICK_BTN(LEFT);
+        IR_BIND_CLICK_BTN(RIGHT);
 #undef IR_BIND_CLICK_BTN
-    lua["IRInput"]["MouseButton"] = mouseButton;
+        input["MouseButton"] = mouseButton;
+    }
 
+    const auto bindUnlessSet = [&input](const char *key, auto fn) {
+        if (!input[key].valid()) {
+            input[key] = std::move(fn);
+        }
+    };
     using IRComponents::C_EntityEventHandlers;
-    lua["IRInput"]["onEntityHovered"] = [](sol::protected_function fn) -> lua_Integer {
+    bindUnlessSet("onEntityHovered", [](sol::protected_function fn) -> lua_Integer {
         return IREntity::singleton<C_EntityEventHandlers>().addOnHovered(std::move(fn));
-    };
-    lua["IRInput"]["onEntityUnhovered"] = [](sol::protected_function fn) -> lua_Integer {
+    });
+    bindUnlessSet("onEntityUnhovered", [](sol::protected_function fn) -> lua_Integer {
         return IREntity::singleton<C_EntityEventHandlers>().addOnUnhovered(std::move(fn));
-    };
-    lua["IRInput"]["onEntityClicked"] = [](sol::protected_function fn) -> lua_Integer {
+    });
+    bindUnlessSet("onEntityClicked", [](sol::protected_function fn) -> lua_Integer {
         return IREntity::singleton<C_EntityEventHandlers>().addOnClicked(std::move(fn));
-    };
-    lua["IRInput"]["onRightClick"] = [](sol::protected_function fn) -> lua_Integer {
+    });
+    bindUnlessSet("onRightClick", [](sol::protected_function fn) -> lua_Integer {
         return IREntity::singleton<C_EntityEventHandlers>().addOnRightClick(std::move(fn));
-    };
-    lua["IRInput"]["removeEntityHandler"] = [](lua_Integer handlerId) {
+    });
+    bindUnlessSet("removeEntityHandler", [](lua_Integer handlerId) {
         IREntity::singleton<C_EntityEventHandlers>().removeHandler(static_cast<int>(handlerId));
-    };
+    });
 }
 
 } // namespace IRScript::detail
