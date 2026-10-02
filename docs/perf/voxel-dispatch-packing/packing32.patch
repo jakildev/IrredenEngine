@@ -1,0 +1,59 @@
+diff --git a/engine/render/src/metal/metal_pipeline.cpp b/engine/render/src/metal/metal_pipeline.cpp
+index 89dec25a7..67f54c83a 100644
+--- a/engine/render/src/metal/metal_pipeline.cpp
++++ b/engine/render/src/metal/metal_pipeline.cpp
+@@ -41,7 +41,7 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
+         // local_size_z literal + shaders/ir_constants.{glsl,metal}. The stage-1
+         // feeder, winner-election, and winner-guarded variants are compile-time
+         // specializations of the same two bodies, so they share the (2,3,8) shape.
+-        return MTL::Size(2, 3, 8);
++        return MTL::Size(2, 3, 32);
+     }
+     if (functionName == "c_text_to_trixel") {
+         return MTL::Size(7, 11, 1);
+diff --git a/engine/render/src/shaders/c_voxel_to_trixel_stage_1_body.glsl b/engine/render/src/shaders/c_voxel_to_trixel_stage_1_body.glsl
+index 2b215b72b..60e621d26 100644
+--- a/engine/render/src/shaders/c_voxel_to_trixel_stage_1_body.glsl
++++ b/engine/render/src/shaders/c_voxel_to_trixel_stage_1_body.glsl
+@@ -27,7 +27,7 @@
+ // local_size_z MUST equal kStageMicroSlicesPerGroup (ir_constants.glsl). It stays a literal
+ // because a compute-shader layout qualifier needs a literal on every GL driver; the shared
+ // constant drives the micro-slice math and guard.
+-layout(local_size_x = 2, local_size_y = 3, local_size_z = 8) in;
++layout(local_size_x = 2, local_size_y = 3, local_size_z = 32) in;
+ 
+ // Coordinate chain: World 3D -> Iso 2D -> Canvas pixel
+ //   canvasPixel = trixelCanvasOffsetZ1 + floor(cameraIso) + pos3DtoPos2DIso(world)
+diff --git a/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl b/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl
+index 4b4ef76c5..bd9ee7f19 100644
+--- a/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl
++++ b/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl
+@@ -42,7 +42,7 @@ layout(std430, binding = 8) buffer SourceVoxelFaces {
+     SourceVoxelFace sourceFaces[];
+ };
+ 
+-layout(local_size_x = 2, local_size_y = 3, local_size_z = 8) in;
++layout(local_size_x = 2, local_size_y = 3, local_size_z = 32) in;
+ 
+ 
+ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
+diff --git a/engine/render/src/shaders/ir_constants.glsl b/engine/render/src/shaders/ir_constants.glsl
+index 36f2aca3f..280c00f57 100644
+--- a/engine/render/src/shaders/ir_constants.glsl
++++ b/engine/render/src/shaders/ir_constants.glsl
+@@ -12,4 +12,4 @@ const int kInvalidDepth = 0x7FFFFFFF;
+ // the Metal threadgroup-size map entries in metal_pipeline.cpp, and the divCeil in
+ // c_voxel_visibility_compact's writeDispatchDims — a mismatch drops or double-runs
+ // micro-slices.
+-const int kStageMicroSlicesPerGroup = 8;
++const int kStageMicroSlicesPerGroup = 32;
+diff --git a/engine/render/src/shaders/metal/ir_constants.metal b/engine/render/src/shaders/metal/ir_constants.metal
+index 0d3a78303..f8bb41d60 100644
+--- a/engine/render/src/shaders/metal/ir_constants.metal
++++ b/engine/render/src/shaders/metal/ir_constants.metal
+@@ -7,4 +7,4 @@ constant int kInvalidDepth = 0x7FFFFFFF;
+ // Metal threadgroup-size map entries for c_voxel_to_trixel_stage_{1,2} in
+ // metal_pipeline.cpp and the divCeil in c_voxel_visibility_compact's
+ // writeDispatchDims.
+-constant int kStageMicroSlicesPerGroup = 8;
++constant int kStageMicroSlicesPerGroup = 32;

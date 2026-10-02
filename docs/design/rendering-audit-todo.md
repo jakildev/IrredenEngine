@@ -75,12 +75,17 @@ Next, in order:
    executed texture-lifecycle tests. Logical size also owns the sun cascade and
    fog windows. High-water physical storage preserves requested density but
    increases memory; extreme density/resolution still needs device-limit budgeting.
-   Replace the clipped profile baseline with complete-coverage measurements.
-   Then measure greater micro-slice
-   packing across all three dispatches, preserving every face sample and feeder
-   contract, followed by conservative overflow processing.
-   Packing remains a proposed experiment, not an implemented speedup. Measure
-   contributions before changing defaults. Cardinal/per-axis density differs (16 versus capped 8 at zoom 4),
+   The [complete-coverage packing experiment](../perf/voxel-dispatch-packing/README.md)
+   measures 8 versus 32 micro-slices per group: dense cardinal steady Debug time
+   improves 101.905→82.600 ms, but low-density depth work regresses and rotated
+   frame ranges overlap. All three camera captures are RGB-identical. Keep the
+   production default at 8; grouped runs on a busy host do not qualify adoption.
+   An executable GLSL/Metal writer and lane-recovery gate now rejects dropped or
+   duplicated samples, row-offset mistakes and missing padding/count guards.
+   Next measure dense-only specialization or multiple low-density voxels per
+   group, extending coverage to actual compact-finalizer route selection before
+   changing it. Use interleaved native controls and then conservative overflow
+   processing. Cardinal/per-axis density differs (16 versus capped 8 at zoom 4),
    so do not call their timings parity. Future occlusion must prove finite-footprint
    coverage; native Release and quiet-host million controls remain pending.
 3. Continue dense/incomplete sun-index and moving light/camera controls. Incomplete
