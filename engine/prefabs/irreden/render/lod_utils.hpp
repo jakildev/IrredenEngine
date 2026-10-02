@@ -49,12 +49,9 @@ inline LodLevel computeLodLevel(float zoomLevel) {
 // (the singleton's own default, so every default-band entity still draws). A
 // singleton-cache probe; C++ tier consumers take it once per tick through
 // IRPrefab::Lod::TierSnapshot rather than per entity.
-inline LodLevel getActiveLodLevel(
-    IREntity::EntityManager &entityManager,
-    IREntity::ComponentId activeType
-) {
-    const IREntity::EntityId lodEntity =
-        entityManager.getSingletonByComponentIdOrNull(activeType);
+inline LodLevel
+getActiveLodLevel(IREntity::EntityManager &entityManager, IREntity::ComponentId activeType) {
+    const IREntity::EntityId lodEntity = entityManager.getSingletonByComponentIdOrNull(activeType);
     const IREntity::EntityRecord *lodRecord =
         lodEntity != IREntity::kNullEntity ? entityManager.findRecord(lodEntity) : nullptr;
     if (lodRecord == nullptr || lodRecord->archetypeNode == nullptr) {
@@ -64,9 +61,8 @@ inline LodLevel getActiveLodLevel(
     if (found == lodRecord->archetypeNode->components_.end()) {
         return LodLevel::LOD_4;
     }
-    const auto *lod = IREntity::castComponentDataPointer<IRComponents::C_ActiveLodLevel>(
-        found->second.get()
-    );
+    const auto *lod =
+        IREntity::castComponentDataPointer<IRComponents::C_ActiveLodLevel>(found->second.get());
     return lod->dataVector[lodRecord->row].current_;
 }
 
