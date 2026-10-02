@@ -122,8 +122,16 @@ run_shim "$INSTALLED" GH_TOKEN=ghp_x GH_REAL_RC=7 -- version >/dev/null || rc=$?
 assert_eq "$rc" "7" "real gh's exit code is preserved"
 
 echo "T8: no real gh on PATH -> exit 127 with a diagnostic, no loop"
+# A tool-only PATH: /usr/bin holds a real gh on GitHub's Linux runners, so
+# base_path cannot stand in for "no gh anywhere". Link just what the shim runs.
+TOOLS="$TMPROOT/tools"
+mkdir -p "$TOOLS"
+for tool in bash realpath python3 tr; do
+    tool_path=$(command -v "$tool" || true)
+    [[ -n "$tool_path" ]] && ln -s "$tool_path" "$TOOLS/$tool"
+done
 rc=0
-err=$(env -u GH_TOKEN PATH="$INSTALLED:$base_path" gh version 2>&1 >/dev/null) || rc=$?
+err=$(env -u GH_TOKEN PATH="$INSTALLED:$TOOLS" gh version 2>&1 >/dev/null) || rc=$?
 assert_eq "$rc" "127" "missing real gh exits 127"
 assert_contains "$err" "no real gh found" "diagnostic names the problem"
 
