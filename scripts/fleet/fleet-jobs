@@ -1,0 +1,700 @@
+#!/usr/bin/env python3
+"""fleet-jobs — pane-scoped durable jobs for builds, the fleet suite, and render-verify.
+
+A job outlives the tool call, Claude invocation, or Codex session that started
+it: a new-session supervisor owns the child, appends its output to a durable
+log, and publishes the terminal status. A later invocation reads, waits for,
+or cancels the same job without ps, pgrep, or a PID-addressed kill.
+
+Usage:
+  fleet-jobs start build [--name NAME] -- <ir-build arguments>
+  fleet-jobs start fleet-tests [--name NAME] [--only <substring>]
+  fleet-jobs start render-verify [--name NAME] -- <render-verify arguments>
+  fleet-jobs status [--json] <job-id>
+  fleet-jobs wait [--quiet] [--timeout SECONDS] <job-id>
+  fleet-jobs kill <job-id>
+  fleet-jobs list [--json]
+
+Profiles are fixed; there is no executable, path, or shell-string form.
+  build          the ir-build adjacent to this script (fleet-build --detach
+                 enters here after its format -> format-changed rewrite)
+  fleet-tests    <cwd's checkout>/scripts/fleet/tests/run_all.sh
+  render-verify  <cwd's checkout>/scripts/render-verify.py; --build-dir,
+                 --update-references and --force are rejected
+
+wait streams the job log and exits with the child's exit code; a job that is
+still running when --timeout elapses exits 124, and a lost job exits 1. The
+last stderr line always names the job's state.
+
+State: ${FLEET_STATE_DIR:-~/.fleet/state}/jobs/<pane>/<job-id>/{meta.json,job.log}.
+The pane is FLEET_ASSIGNED_WORKTREE's basename, else the basename of the
+cwd's .claude/worktrees/<name> checkout. Contract: docs/agents/FLEET-RUNTIME.md
+§ "Long-running jobs".
+"""
+
+import ctypes
+import json
+import os
+import re
+import secrets
+import shutil
+import signal
+import subprocess
+import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
+
+PROFILES = ("build", "fleet-tests", "render-verify")
+TERMINAL = ("succeeded", "failed", "killed")
+# render-verify options a detached run may pass. --build-dir selects the
+# directory the demo executable is resolved from; --update-references and
+# --force rewrite committed references behind a prompt the closed stdin
+# cannot answer.
+RENDER_VERIFY_VALUE_OPTS = {"--target": r"[A-Za-z0-9_]+", "--demo": r"[A-Za-z0-9_]+",
+                            "--warmup": r"[0-9]+", "--timeout": r"[0-9]+",
+                            "--demo-arg": None}
+RENDER_VERIFY_FLAGS = ("--all", "--no-build")
+NAME_RE = re.compile(r"[A-Za-z0-9._-]{1,40}")
+JOB_ID_RE = re.compile(r"[0-9]{8}T[0-9]{6}Z-[a-z-]+-[0-9a-f]{6}")
+STARTUP_TIMEOUT = 30.0
+CANCEL_GRACE = 10.0
+POLL = 0.2
+IS_WINDOWS = os.name == "nt"
+
+
+class UsageError(Exception):
+    pass
+
+
+def die(message, code=2):
+    print(f"fleet-jobs: {message}", file=sys.stderr)
+    sys.exit(code)
+
+
+def now_iso():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def script_repo():
+    return Path(os.path.realpath(__file__)).parents[2]
+
+
+def checkout_root(cwd):
+    try:
+        out = subprocess.run(["git", "-C", str(cwd), "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    top = out.stdout.strip()
+    return Path(top) if out.returncode == 0 and top else None
+
+
+def pane_name(cwd):
+    assigned = os.environ.get("FLEET_ASSIGNED_WORKTREE", "").rstrip("/\\")
+    if assigned:
+        name = re.split(r"[/\\]", assigned)[-1]
+    else:
+        top = checkout_root(cwd)
+        parts = top.parts if top else ()
+        if len(parts) < 3 or parts[-3:-1] != (".claude", "worktrees"):
+            raise UsageError("no pane: FLEET_ASSIGNED_WORKTREE is unset and the cwd is not "
+                             "a .claude/worktrees/<name> checkout")
+        name = parts[-1]
+    if not NAME_RE.fullmatch(name):
+        raise UsageError(f"invalid pane name {name!r}")
+    return name
+
+
+def pane_dir(cwd):
+    state = Path(os.environ.get("FLEET_STATE_DIR") or Path.home() / ".fleet" / "state")
+    return state / "jobs" / pane_name(cwd)
+
+
+def job_dir_for(job_id, cwd):
+    if not JOB_ID_RE.fullmatch(job_id):
+        raise UsageError(f"malformed job id {job_id!r}")
+    path = pane_dir(cwd) / job_id
+    if not (path / "meta.json").is_file():
+        raise UsageError(f"no job {job_id} in this pane")
+    return path
+
+
+def write_atomic(path, data):
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    with open(tmp, "w", encoding="utf-8") as handle:
+        json.dump(data, handle, indent=1, sort_keys=True)
+        handle.flush()
+        os.fsync(handle.fileno())
+    for attempt in range(50):
+        try:
+            os.replace(tmp, path)
+            return
+        except PermissionError:
+            # Native Windows refuses a replace while a reader holds the target.
+            if not IS_WINDOWS or attempt == 49:
+                raise
+            time.sleep(0.05)
+
+
+def read_meta(job_dir):
+    # A reader racing the replace on native Windows can see a sharing error.
+    for attempt in range(50):
+        try:
+            return json.loads((job_dir / "meta.json").read_text(encoding="utf-8"))
+        except PermissionError:
+            if not IS_WINDOWS or attempt == 49:
+                raise
+            time.sleep(0.05)
+    raise AssertionError("unreachable")
+
+
+# --- profiles ---------------------------------------------------------------
+
+def split_passthrough(args, profile):
+    if "--" not in args:
+        raise UsageError(f"{profile} takes its arguments after --")
+    cut = args.index("--")
+    return args[:cut], args[cut + 1:]
+
+
+def take_name(opts, profile):
+    name, rest, i = profile, [], 0
+    while i < len(opts):
+        opt = opts[i]
+        if opt == "--name" or opt.startswith("--name="):
+            value = opt[7:] if opt.startswith("--name=") else (
+                opts[i + 1] if i + 1 < len(opts) else "")
+            if not NAME_RE.fullmatch(value):
+                raise UsageError("--name needs a value matching [A-Za-z0-9._-]{1,40}")
+            name = value
+            i += 1 if opt.startswith("--name=") else 2
+        else:
+            rest.append(opt)
+            i += 1
+    return name, rest
+
+
+def interpreter_for(script):
+    # A bash script cannot be exec'd directly by native-Windows Python.
+    if IS_WINDOWS:
+        bash = shutil.which("bash")
+        if not bash:
+            raise UsageError("bash not found on PATH")
+        return [bash, str(script)]
+    return [str(script)]
+
+
+def validate_render_verify(passthrough):
+    i = 0
+    while i < len(passthrough):
+        arg = passthrough[i]
+        key, eq, inline = arg.partition("=")
+        if key in RENDER_VERIFY_FLAGS and not eq:
+            i += 1
+            continue
+        if key not in RENDER_VERIFY_VALUE_OPTS:
+            raise UsageError(f"render-verify option {arg!r} is not supported by the job profile")
+        if eq:
+            value, i = inline, i + 1
+        elif i + 1 < len(passthrough):
+            value, i = passthrough[i + 1], i + 2
+        else:
+            raise UsageError(f"{key} needs a value")
+        pattern = RENDER_VERIFY_VALUE_OPTS[key]
+        if (pattern and not re.fullmatch(pattern, value)) or (not pattern and not value):
+            raise UsageError(f"{key} value {value!r} is not allowed")
+
+
+def resolve(profile, args, cwd):
+    """Validated (argv, display name) for a profile; raises UsageError."""
+    if profile not in PROFILES:
+        raise UsageError(f"unknown profile {profile!r} (profiles: {', '.join(PROFILES)})")
+    if profile == "fleet-tests":
+        name, rest = take_name(args, profile)
+        only = []
+        i = 0
+        while i < len(rest):
+            opt = rest[i]
+            if opt == "--only" and i + 1 < len(rest) and rest[i + 1]:
+                only, i = ["--only", rest[i + 1]], i + 2
+            elif opt.startswith("--only=") and len(opt) > 7:
+                only, i = ["--only", opt[7:]], i + 1
+            else:
+                raise UsageError(f"fleet-tests option {opt!r} is not supported")
+        top = checkout_root(cwd)
+        script = top / "scripts/fleet/tests/run_all.sh" if top else None
+        if not script or not script.is_file():
+            raise UsageError("cwd is not a checkout with scripts/fleet/tests/run_all.sh")
+        bash = shutil.which("bash") or "bash"
+        return [bash, str(script), *only], name
+    opts, passthrough = split_passthrough(args, profile)
+    name, rest = take_name(opts, profile)
+    if rest:
+        raise UsageError(f"{profile} option {rest[0]!r} is not supported")
+    if profile == "build":
+        script = script_repo() / "engine/tools/bin/ir-build"
+        if not script.is_file():
+            raise UsageError(f"ir-build not found at {script}")
+        return interpreter_for(script) + passthrough, name
+    validate_render_verify(passthrough)
+    top = checkout_root(cwd)
+    script = top / "scripts/render-verify.py" if top else None
+    if not script or not script.is_file():
+        raise UsageError("cwd is not a checkout with scripts/render-verify.py")
+    return [sys.executable, str(script), *passthrough], name
+
+
+# --- process identity -------------------------------------------------------
+# Identity is PID plus process start time. A PID alone may have been recycled
+# for an unrelated process; any probe failure reports None ("cannot vouch").
+
+class _ProcBsdInfo(ctypes.Structure):
+    # struct proc_bsdinfo, the PROC_PIDTBSDINFO flavor.
+    _fields_ = [("flags", ctypes.c_uint32), ("status", ctypes.c_uint32),
+                ("xstatus", ctypes.c_uint32), ("pid", ctypes.c_uint32),
+                ("ppid", ctypes.c_uint32), ("ids", ctypes.c_uint32 * 7),
+                ("comm", ctypes.c_char * 16), ("name", ctypes.c_char * 32),
+                ("process_fields", ctypes.c_uint32 * 6),
+                ("start_tvsec", ctypes.c_uint64), ("start_tvusec", ctypes.c_uint64)]
+
+
+_DARWIN_SZOMB = 5
+_libproc = None
+
+
+def _darwin_info(pid):
+    global _libproc
+    if _libproc is None:
+        _libproc = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+    info = _ProcBsdInfo()
+    size = _libproc.proc_pidinfo(int(pid), 3, ctypes.c_uint64(0), ctypes.byref(info),
+                                 ctypes.sizeof(info))
+    if size != ctypes.sizeof(info) or int(info.pid) != int(pid):
+        return None
+    return info
+
+
+def _linux_stat(pid):
+    try:
+        text = Path(f"/proc/{int(pid)}/stat").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    # Fields after the parenthesized comm: state=0, ppid=1, starttime=19.
+    return text[text.rfind(")") + 2:].split()
+
+
+def _windows_identity(pid):
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    # Declared so a 64-bit HANDLE is not truncated to a C int.
+    kernel32.OpenProcess.restype = ctypes.c_void_p
+    kernel32.OpenProcess.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
+    kernel32.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
+    kernel32.GetProcessTimes.argtypes = [ctypes.c_void_p] + [
+        ctypes.POINTER(ctypes.c_ulonglong)] * 4
+    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+    handle = kernel32.OpenProcess(0x1000, False, int(pid))  # QUERY_LIMITED_INFORMATION
+    if not handle:
+        return None
+    try:
+        code = ctypes.c_ulong()
+        if not kernel32.GetExitCodeProcess(handle, ctypes.byref(code)) or code.value != 259:
+            return None  # 259 = STILL_ACTIVE
+        times = [ctypes.c_ulonglong() for _ in range(4)]
+        if not kernel32.GetProcessTimes(handle, *(ctypes.byref(t) for t in times)):
+            return None
+        return f"win:{times[0].value}"
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def identity(pid):
+    """Start identity of a live, non-zombie pid, or None."""
+    try:
+        if sys.platform == "darwin":
+            info = _darwin_info(pid)
+            if info is None or info.status == _DARWIN_SZOMB:
+                return None
+            return f"darwin:{info.start_tvsec}.{info.start_tvusec:06d}"
+        if sys.platform.startswith("linux"):
+            fields = _linux_stat(pid)
+            if not fields or fields[0] in ("Z", "X"):
+                return None
+            return f"linux:{fields[19]}"
+        if IS_WINDOWS:
+            return _windows_identity(pid)
+    except (OSError, ValueError, IndexError, AttributeError):
+        return None
+    return None
+
+
+def _process_parents():
+    parents = {}
+    if sys.platform.startswith("linux"):
+        for entry in Path("/proc").iterdir():
+            if entry.name.isdigit():
+                fields = _linux_stat(entry.name)
+                if fields:
+                    parents[int(entry.name)] = int(fields[1])
+    elif sys.platform == "darwin":
+        _darwin_info(os.getpid())  # loads libproc
+        count = _libproc.proc_listallpids(None, 0)
+        pids = (ctypes.c_int * max(count * 2, 1))()
+        count = _libproc.proc_listallpids(pids, ctypes.sizeof(pids))
+        for pid in pids[:max(count, 0)]:
+            info = _darwin_info(pid)
+            if info is not None:
+                parents[int(info.pid)] = int(info.ppid)
+    return parents
+
+
+def descendants(root):
+    """(pid, identity) of every live descendant of root, root excluded."""
+    try:
+        parents = _process_parents()
+    except (OSError, AttributeError):
+        return []
+    children = {}
+    for child, parent in parents.items():
+        children.setdefault(parent, []).append(child)
+    found, pending = [], [root]
+    while pending:
+        for child in children.get(pending.pop(), []):
+            ident = identity(child)
+            if ident:
+                found.append((child, ident))
+                pending.append(child)
+    return found
+
+
+# --- supervisor -------------------------------------------------------------
+
+def _signal_verified(members, sig):
+    for pid, ident in members:
+        if identity(pid) == ident:
+            try:
+                os.kill(pid, sig)
+            except OSError:
+                pass
+
+
+def _killpg(pgid, sig):
+    try:
+        os.killpg(pgid, sig)
+    except OSError:
+        pass
+
+
+def _exited_unreaped(child):
+    """True once the child has exited; it stays an unreaped zombie, so its pid
+    (and process-group id) cannot be recycled until child.wait() reaps it."""
+    if IS_WINDOWS:
+        return child.poll() is not None
+    try:
+        info = os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+    except ChildProcessError:
+        return True
+    return info is not None
+
+
+def _terminate_tree(child):
+    if IS_WINDOWS:
+        if child.poll() is None:
+            subprocess.run(["taskkill", "/T", "/F", "/PID", str(child.pid)],
+                           capture_output=True, timeout=60)
+        child.wait()
+        return
+    members = descendants(child.pid)
+    _killpg(child.pid, signal.SIGTERM)
+    _signal_verified(members, signal.SIGTERM)
+    deadline = time.monotonic() + CANCEL_GRACE
+    while time.monotonic() < deadline:
+        if _exited_unreaped(child) and not any(identity(p) == i for p, i in members):
+            break
+        time.sleep(POLL)
+    _killpg(child.pid, signal.SIGKILL)
+    _signal_verified(members, signal.SIGKILL)
+    child.wait()
+
+
+def _exit_code(returncode):
+    return 128 - returncode if returncode < 0 else returncode
+
+
+def supervise():
+    spec = json.loads(sys.stdin.read())
+    cwd = Path(spec["cwd"])
+    job_dir = job_dir_for(spec["id"], cwd)
+    meta = read_meta(job_dir)
+    if meta.get("status") != "starting":
+        raise UsageError(f"job {spec['id']} is not awaiting a supervisor")
+    # Re-validate: the spec arrives on stdin, so this verb is no wider than start.
+    argv, _ = resolve(meta["profile"], spec["args"], cwd)
+    cancelled = []
+    signal.signal(signal.SIGTERM, lambda *_: cancelled.append("supervisor signalled"))
+    if not IS_WINDOWS:
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
+    log_path = job_dir / "job.log"
+    with open(log_path, "ab", buffering=0) as log:
+        kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if IS_WINDOWS else {
+            "start_new_session": True}
+        try:
+            child = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.DEVNULL, stdout=log,
+                                     stderr=subprocess.STDOUT, **kwargs)
+        except OSError as exc:
+            meta.update(status="failed", reason=f"launch failed: {exc}", exit_code=127,
+                        finished_at=now_iso())
+            write_atomic(job_dir / "meta.json", meta)
+            return 127
+        meta.update(status="running", started_at=now_iso(),
+                    supervisor={"pid": os.getpid(), "identity": identity(os.getpid())},
+                    child={"pid": child.pid, "identity": identity(child.pid)})
+        write_atomic(job_dir / "meta.json", meta)
+        cancel_marker = job_dir / "cancel"
+        while not _exited_unreaped(child):
+            if cancelled or cancel_marker.exists():
+                _terminate_tree(child)
+                reason = cancelled[0] if cancelled else "cancelled by fleet-jobs kill"
+                meta.update(status="killed", reason=reason)
+                break
+            time.sleep(POLL)
+        else:
+            # Exited but unreaped: a leftover member of its process group
+            # still holds the log open, so stop the group before publishing.
+            if not IS_WINDOWS:
+                _killpg(child.pid, signal.SIGTERM)
+            child.wait()
+            meta.update(status="succeeded" if child.returncode == 0 else "failed",
+                        reason="exited")
+        os.fsync(log.fileno())
+    meta.update(exit_code=_exit_code(child.returncode), finished_at=now_iso())
+    write_atomic(job_dir / "meta.json", meta)
+    return 0
+
+
+# --- client verbs -----------------------------------------------------------
+
+def effective(meta):
+    """(status, reason) as a reader must report it."""
+    status = meta.get("status")
+    if status in TERMINAL:
+        return status, meta.get("reason", "")
+    sup = meta.get("supervisor")
+    if not sup:
+        age = time.time() - meta.get("created_epoch", 0)
+        if status == "starting" and age < STARTUP_TIMEOUT:
+            return "starting", ""
+        return "lost", "supervisor never reported"
+    if not sup.get("identity") or identity(sup["pid"]) != sup["identity"]:
+        return "lost", "supervisor gone or unverifiable"
+    return status, ""
+
+
+def describe(job_dir, meta):
+    status, reason = effective(meta)
+    code = meta.get("exit_code")
+    parts = [meta["id"], status, f"exit={'-' if code is None else code}",
+             f"profile={meta['profile']}", f"name={meta['name']}",
+             f"created={meta['created_at']}"]
+    if reason and status != "succeeded":
+        parts.append(f"reason={reason!r}")
+    parts.append(f"log={job_dir / 'job.log'}")
+    return "  ".join(parts)
+
+
+def cmd_start(rest, cwd):
+    if not rest:
+        raise UsageError(f"start needs a profile ({', '.join(PROFILES)})")
+    profile, args = rest[0], rest[1:]
+    _, name = resolve(profile, args, cwd)
+    root = pane_dir(cwd)
+    root.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    job_id = f"{stamp}-{profile}-{secrets.token_hex(3)}"
+    job_dir = root / job_id
+    job_dir.mkdir()
+    (job_dir / "job.log").touch()
+    meta = {"id": job_id, "pane": root.name, "profile": profile, "name": name,
+            "cwd": str(cwd), "created_at": now_iso(), "created_epoch": time.time(),
+            "status": "starting", "exit_code": None}
+    write_atomic(job_dir / "meta.json", meta)
+    if IS_WINDOWS:
+        flags = (subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+                 | 0x01000000)  # CREATE_BREAKAWAY_FROM_JOB
+        kwargs = {"creationflags": flags}
+    else:
+        kwargs = {"start_new_session": True}
+    with open(job_dir / "supervisor.log", "ab") as sup_log:
+        spawn = [sys.executable, os.path.realpath(__file__), "_supervise"]
+        try:
+            proc = subprocess.Popen(spawn, cwd=cwd, stdin=subprocess.PIPE, stdout=sup_log,
+                                    stderr=subprocess.STDOUT, **kwargs)
+        except OSError:
+            if not IS_WINDOWS:
+                raise
+            # The enclosing job object may forbid breakaway.
+            kwargs["creationflags"] &= ~0x01000000
+            proc = subprocess.Popen(spawn, cwd=cwd, stdin=subprocess.PIPE, stdout=sup_log,
+                                    stderr=subprocess.STDOUT, **kwargs)
+    proc.stdin.write(json.dumps({"id": job_id, "cwd": str(cwd), "args": args}).encode())
+    proc.stdin.close()
+    deadline = time.monotonic() + STARTUP_TIMEOUT
+    while time.monotonic() < deadline:
+        meta = read_meta(job_dir)
+        if meta.get("status") != "starting":
+            break
+        if proc.poll() is not None:
+            die(f"supervisor for {job_id} exited before starting; see "
+                f"{job_dir / 'supervisor.log'}", 1)
+        time.sleep(0.05)
+    else:
+        die(f"supervisor for {job_id} did not report within {STARTUP_TIMEOUT:.0f}s", 1)
+    print(f"started {job_id} ({meta['status']})")
+    print(f"log: {job_dir / 'job.log'}")
+    print(f"next: fleet-jobs wait {job_id}")
+    return 0
+
+
+def take_flags(rest, flags, valued=()):
+    found, positional, i = {}, [], 0
+    while i < len(rest):
+        arg = rest[i]
+        if arg in flags:
+            found[arg] = True
+            i += 1
+        elif arg in valued:
+            if i + 1 >= len(rest):
+                raise UsageError(f"{arg} needs a value")
+            found[arg] = rest[i + 1]
+            i += 2
+        elif arg.startswith("-"):
+            raise UsageError(f"unknown option {arg!r}")
+        else:
+            positional.append(arg)
+            i += 1
+    return found, positional
+
+
+def one_job(positional, verb):
+    if len(positional) != 1:
+        raise UsageError(f"{verb} takes exactly one job id")
+    return positional[0]
+
+
+def cmd_status(rest, cwd):
+    flags, positional = take_flags(rest, ("--json",))
+    job_dir = job_dir_for(one_job(positional, "status"), cwd)
+    meta = read_meta(job_dir)
+    if flags.get("--json"):
+        status, reason = effective(meta)
+        view = {k: meta.get(k) for k in ("id", "profile", "name", "cwd", "created_at",
+                                          "started_at", "finished_at", "exit_code")}
+        view.update(status=status, reason=reason or meta.get("reason", ""),
+                    log=str(job_dir / "job.log"))
+        print(json.dumps(view, sort_keys=True))
+    else:
+        print(describe(job_dir, meta))
+    return 0
+
+
+def cmd_list(rest, cwd):
+    flags, positional = take_flags(rest, ("--json",))
+    if positional:
+        raise UsageError("list takes no job id")
+    root = pane_dir(cwd)
+    jobs = sorted((p for p in root.iterdir() if (p / "meta.json").is_file()),
+                  reverse=True) if root.is_dir() else []
+    for job_dir in jobs:
+        meta = read_meta(job_dir)
+        if flags.get("--json"):
+            status, _ = effective(meta)
+            print(json.dumps({"id": meta["id"], "status": status, "profile": meta["profile"],
+                              "exit_code": meta.get("exit_code")}, sort_keys=True))
+        else:
+            print(describe(job_dir, meta))
+    return 0
+
+
+def cmd_wait(rest, cwd):
+    flags, positional = take_flags(rest, ("--quiet",), ("--timeout",))
+    job_dir = job_dir_for(one_job(positional, "wait"), cwd)
+    timeout = flags.get("--timeout")
+    if timeout is not None and not re.fullmatch(r"[0-9]+", timeout):
+        raise UsageError("--timeout takes whole seconds")
+    deadline = None if timeout is None else time.monotonic() + int(timeout)
+    out = sys.stdout.buffer
+    with open(job_dir / "job.log", "rb") as log:
+        while True:
+            # Read the status before draining: terminal status is published
+            # only after the final log bytes, so a drain after a terminal
+            # read cannot miss output.
+            meta = read_meta(job_dir)
+            status, reason = effective(meta)
+            chunk = log.read()
+            if chunk and not flags.get("--quiet"):
+                out.write(chunk)
+                out.flush()
+            if status in TERMINAL or status == "lost":
+                break
+            if deadline is not None and time.monotonic() >= deadline:
+                print(f"fleet-jobs: {meta['id']} still {status} after {timeout}s "
+                      f"(wait timed out)", file=sys.stderr)
+                return 124
+            if not chunk:
+                time.sleep(POLL)
+    if status == "lost":
+        print(f"fleet-jobs: {meta['id']} lost ({reason})", file=sys.stderr)
+        return 1
+    print(f"fleet-jobs: {meta['id']} {status} exit={meta['exit_code']}", file=sys.stderr)
+    return int(meta["exit_code"])
+
+
+def cmd_kill(rest, cwd):
+    _, positional = take_flags(rest, ())
+    job_dir = job_dir_for(one_job(positional, "kill"), cwd)
+    meta = read_meta(job_dir)
+    status, reason = effective(meta)
+    if status == "lost":
+        # Never signal a stored pid: with the supervisor gone nothing vouches
+        # that the child pid still names this job's process.
+        print(f"fleet-jobs: {meta['id']} lost ({reason}); nothing signalled", file=sys.stderr)
+        return 1
+    if status not in TERMINAL:
+        (job_dir / "cancel").touch()
+        deadline = time.monotonic() + CANCEL_GRACE + 20
+        while time.monotonic() < deadline:
+            meta = read_meta(job_dir)
+            status, reason = effective(meta)
+            if status in TERMINAL or status == "lost":
+                break
+            time.sleep(POLL)
+        else:
+            print(f"fleet-jobs: {meta['id']} still {status} after cancel request",
+                  file=sys.stderr)
+            return 1
+    print(describe(job_dir, meta))
+    return 0 if status in TERMINAL else 1
+
+
+VERBS = {"start": cmd_start, "status": cmd_status, "wait": cmd_wait, "kill": cmd_kill,
+         "list": cmd_list}
+
+
+def main(argv):
+    if not argv or argv[0] in ("-h", "--help"):
+        print(__doc__.strip())
+        return 0 if argv else 2
+    verb, rest = argv[0], argv[1:]
+    cwd = Path.cwd()
+    try:
+        if verb == "_supervise":
+            return supervise()
+        if verb not in VERBS:
+            raise UsageError(f"unknown verb {verb!r} (verbs: {', '.join(VERBS)})")
+        return VERBS[verb](rest, cwd)
+    except UsageError as exc:
+        die(str(exc))
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

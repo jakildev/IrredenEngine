@@ -49,8 +49,11 @@ def rules(worktree, role):
     # Fleet wrappers enforce their own assignment scope and network timeouts.
     settings_path = Path(__file__).resolve().parents[2] / ".claude/settings.json"
     settings = json.loads(settings_path.read_text())
+    # fleet-jobs launches a child, so a bare ["fleet-jobs"] allow would carry
+    # every profile outside the sandbox; only the display profile gets a rule.
     excluded = {"fleet-up", "fleet-down", "fleet-dispatcher", "fleet-babysit", "fleet-rebase",
-                "fleet-dispatch-wrap", "fleet-state-scout", "fleet-claude-stream", "fleet-runtime"}
+                "fleet-dispatch-wrap", "fleet-state-scout", "fleet-claude-stream", "fleet-runtime",
+                "fleet-jobs"}
     for entry in settings.get("permissions", {}).get("allow", []):
         if entry.startswith("Bash(fleet-") and entry.endswith(":*)"):
             name = entry[5:-3]
@@ -64,6 +67,10 @@ def rules(worktree, role):
         for path in (script, str(worktree / script)):
             for runner in runners:
                 rule(runner + [path], "allow")
+    # The detached render-verify profile needs the same WindowServer access as
+    # a direct DISPLAY_VALIDATORS run; build and fleet-tests profiles stay
+    # sandboxed unless entered through the already-allowed fleet-build.
+    rule(["fleet-jobs", "start", "render-verify"], "allow")
     for name in ("sudo",):
         rule([name], "forbidden")
     return "\n".join(lines) + "\n"
@@ -101,7 +108,11 @@ def check(path, role):
              (["fleet-run", "IRShapeDebug", "--auto-screenshot", "10"], "allow"),
              (["python3", "scripts/render-verify.py", "--target", "IRShapeDebug"], "allow"),
              (["python3", "scripts/perf/repeat_profile.py", "--target", "IRPerfGrid"], "allow"),
-             (["python3", "-c", "print(1)"], None)]
+             (["python3", "-c", "print(1)"], None),
+             (["fleet-jobs", "start", "render-verify", "--", "--target", "IRShapeDebug"], "allow"),
+             (["fleet-jobs", "start", "fleet-tests"], None),
+             (["fleet-jobs", "start", "--", "python3", "-c", "print(1)"], None),
+             (["fleet-jobs", "start", "build", "--", "--target", "IRShapeDebug"], None)]
     for cmd, expected in cases:
         result = subprocess.run(["codex", "execpolicy", "check", "--rules", str(path), "--", *cmd],
                                 check=True, capture_output=True, text=True, timeout=15)

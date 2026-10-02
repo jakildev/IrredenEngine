@@ -79,6 +79,14 @@ fleet workflow.
   resulting executable under `build/`, changes to its runtime directory,
   and launches it under `lldb` or `gdb`. Use `--batch` for non-interactive
   crash triage that runs once and prints all thread backtraces.
+- **`fleet-jobs`** — pane-scoped durable jobs for work that outlives the
+  tool window: `start build|fleet-tests|render-verify`, then `status`,
+  `wait` (streams the log, exits with the child's code), `kill`, `list`.
+  A new-session supervisor owns the child, so the job survives the
+  invoking tool call or Codex session; state lives under
+  `~/.fleet/state/jobs/<pane>/`. Profiles are fixed — there is no
+  arbitrary-command form. `fleet-build --detach` enters the build profile.
+  Contract: `docs/agents/FLEET-RUNTIME.md` § "Long-running jobs".
 - **`fleet-health`** — read-only report on whether the fleet is spending
   its panes on work. Per role: dispatches launched vs productive vs no-op
   (with durations and the claude/codex split), who armed each trigger
