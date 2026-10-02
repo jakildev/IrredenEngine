@@ -53,7 +53,9 @@ export PYTHONUTF8="${PYTHONUTF8:-1}"
 
 LOCK_DIR="${FLEET_QUEUE_INGEST_LOCK:-$HOME/.fleet/state/queue-ingest.lock}"
 LOG_FILE="$HOME/.fleet/logs/queue-ingest.log"
-PROJECTION_FILE="$HOME/.fleet/state/projections/queue-manager-ingest.json"
+# The scout points this at a filtered copy when one repo's fetch is degraded
+# and only the other repo's issues may be ingested this tick.
+PROJECTION_FILE="${FLEET_INGEST_PROJECTION:-$HOME/.fleet/state/projections/queue-manager-ingest.json}"
 
 mkdir -p "$(dirname "$LOG_FILE")"
 

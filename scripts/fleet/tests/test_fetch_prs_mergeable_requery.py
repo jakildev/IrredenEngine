@@ -73,7 +73,7 @@ class MergeableUnknownRequery(unittest.TestCase):
         self.calls = 0
 
     def _graphql(self, result):
-        def fake(repo):
+        def fake(repo, keep=None):
             self.calls += 1
             return result
         return fake
@@ -167,7 +167,7 @@ class StaleRowsOnReuse(unittest.TestCase):
         self.calls = 0
 
     def _graphql(self, result):
-        def fake(repo):
+        def fake(repo, keep=None):
             self.calls += 1
             return result
         return fake
@@ -289,7 +289,7 @@ class CheckStateOnReuse(unittest.TestCase):
         self.addCleanup(dir_patch.stop)
 
     def _graphql(self, result):
-        def fake(repo):
+        def fake(repo, keep=None):
             self.calls += 1
             return result
         return fake

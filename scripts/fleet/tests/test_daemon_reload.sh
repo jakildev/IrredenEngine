@@ -340,7 +340,7 @@ mkdir -p "$SCOUT_HOME/.fleet/state"
 mkdir -p "$SCOUT_HOME/src/IrredenEngine"
 env -i HOME="$SCOUT_HOME" PATH="$SANDBOX_PATH" \
     FLEET_TICK_LOG="$STICKS" FLEET_DAEMON_LOG="$SLOG" \
-    python3 "$STAGE/fleet-state-scout" --interval 1 >"$SLOG" 2>&1 &
+    python3 "$STAGE/fleet-state-scout" --interval 1 --exit-with-parent >"$SLOG" 2>&1 &
 SCOUT_PID=$!
 DAEMON_PIDS+=("$SCOUT_PID")
 
@@ -429,7 +429,7 @@ SCOUT2_HOME="$TMPROOT/home-scout-rename"
 mkdir -p "$SCOUT2_HOME/.fleet/state" "$SCOUT2_HOME/src/IrredenEngine"
 env -i HOME="$SCOUT2_HOME" PATH="$SANDBOX_PATH" \
     FLEET_TICK_LOG="$STICKS2" FLEET_DAEMON_LOG="$SLOG2" \
-    python3 "$STAGE/fleet-state-scout" --interval 1 >"$SLOG2" 2>&1 &
+    python3 "$STAGE/fleet-state-scout" --interval 1 --exit-with-parent >"$SLOG2" 2>&1 &
 SCOUT2_PID=$!
 DAEMON_PIDS+=("$SCOUT2_PID")
 
