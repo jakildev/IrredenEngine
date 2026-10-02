@@ -14,12 +14,14 @@
 /// components; never pulled by the component headers themselves.
 
 #include <irreden/render/components/component_sprite_animation.hpp>
+#include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_text_segment.hpp>
 #include <irreden/render/components/component_triangle_canvas_background.hpp>
 #include <irreden/render/components/component_triangles_only_set.hpp>
 #include <irreden/render/components/component_widget.hpp>
 #include <irreden/world/save_serialize.hpp>
 #include <irreden/world/save_serialize_common.hpp>
+#include <irreden/world/save_migration.hpp>
 
 #include <irreden/asset/binary_io.hpp>
 #include <irreden/asset/math_binary_io.hpp>
@@ -31,6 +33,48 @@
 #include <utility>
 
 namespace IRWorld {
+
+namespace detail {
+
+struct EntityCanvasV1 {
+    IREntity::EntityId canvasEntity_;
+    IRMath::ivec2 canvasSize_;
+    bool visible_;
+    bool screenLocked_;
+    int depthPriority_;
+};
+
+static_assert(sizeof(EntityCanvasV1) == 24);
+
+} // namespace detail
+
+template <> struct SaveMigration<IRComponents::C_EntityCanvas> {
+    static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_EntityCanvas>>>
+    migrators() {
+        return {
+            {1u,
+             [](IRAsset::BinaryReader &reader) -> IRAsset::Result<IRComponents::C_EntityCanvas> {
+                 detail::EntityCanvasV1 old{};
+                 IRAsset::BinaryStatus status = reader.readBytes(&old, sizeof(old));
+                 if (!status.ok()) {
+                     return IRAsset::Result<IRComponents::C_EntityCanvas>::error(
+                         status.code_,
+                         std::move(status.message_)
+                     );
+                 }
+
+                 IRComponents::C_EntityCanvas value{
+                     old.canvasEntity_,
+                     old.canvasSize_,
+                     old.visible_,
+                     old.screenLocked_,
+                     old.depthPriority_
+                 };
+                 return IRAsset::Result<IRComponents::C_EntityCanvas>::success(value);
+             }},
+        };
+    }
+};
 
 template <> struct SaveSerialize<IRComponents::C_TextSegment> {
     static void write(IRAsset::BinaryWriter &w, const IRComponents::C_TextSegment &value) {

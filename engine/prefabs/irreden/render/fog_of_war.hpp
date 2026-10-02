@@ -13,6 +13,7 @@
 
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
+#include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_fog_exempt.hpp>
 #include <irreden/render/components/component_fog_field.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
@@ -24,6 +25,7 @@
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
+#include <irreden/voxel/voxel_pool_api.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -195,6 +197,18 @@ bodyCarrierBits(IRComponents::C_VoxelPool &pool, const IRComponents::C_VoxelSetN
     return records[0].reserved_ & IRComponents::VoxelReserved::kFogCarrierMask;
 }
 
+inline void
+stampBodyCarrierRecords(std::span<IRComponents::C_Voxel> records, bool body, std::uint8_t factor) {
+    using IRComponents::VoxelReserved::kFogBody;
+    using IRComponents::VoxelReserved::kFogBodyFactorShift;
+    using IRComponents::VoxelReserved::kFogCarrierMask;
+    const std::uint32_t bits =
+        body ? (kFogBody | (static_cast<std::uint32_t>(factor) << kFogBodyFactorShift)) : 0u;
+    for (IRComponents::C_Voxel &voxel : records) {
+        voxel.reserved_ = (voxel.reserved_ & ~kFogCarrierMask) | bits;
+    }
+}
+
 /// Write the BODY class bit and the quantized factor into every record of
 /// @p voxelSet in @p pool and into the rotation-source mirror, so a rotated
 /// re-voxelization carries the same verdict. `body == false` clears both
@@ -205,17 +219,25 @@ inline void stampBodyCarrier(
     bool body,
     std::uint8_t factor = 0
 ) {
-    using IRComponents::VoxelReserved::kFogBody;
-    using IRComponents::VoxelReserved::kFogBodyFactorShift;
-    using IRComponents::VoxelReserved::kFogCarrierMask;
-    const std::uint32_t bits =
-        body ? (kFogBody | (static_cast<std::uint32_t>(factor) << kFogBodyFactorShift)) : 0u;
-    for (IRComponents::C_Voxel &voxel : poolRecords(pool, voxelSet)) {
-        voxel.reserved_ = (voxel.reserved_ & ~kFogCarrierMask) | bits;
-    }
-    for (IRComponents::C_Voxel &voxel : voxelSet.rotationSourceVoxels_) {
-        voxel.reserved_ = (voxel.reserved_ & ~kFogCarrierMask) | bits;
-    }
+    stampBodyCarrierRecords(poolRecords(pool, voxelSet), body, factor);
+    stampBodyCarrierRecords(voxelSet.rotationSourceVoxels_, body, factor);
+}
+
+inline void stampCanvasBodyCarrier(
+    const IRComponents::C_EntityCanvas &entityCanvas, bool body, std::uint8_t factor = 0
+) {
+    IRPrefab::VoxelPool::withPoolByEntity(
+        entityCanvas.canvasEntity_,
+        [body, factor](IRComponents::C_VoxelPool &pool) {
+            std::vector<IRComponents::C_Voxel> &records = pool.getColors();
+            const std::size_t liveCount = static_cast<std::size_t>(pool.getLiveVoxelCount());
+            stampBodyCarrierRecords(
+                std::span<IRComponents::C_Voxel>{records.data(), liveCount},
+                body,
+                factor
+            );
+        }
+    );
 }
 
 /// The BODY verdict kernel: the larger of the grid term and the circle term.
@@ -749,6 +771,7 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
     using IRComponents::C_FogRevealed;
     auto setOpt = IREntity::getComponentOptional<IRComponents::C_VoxelSetNew>(entity);
     auto shapeOpt = IREntity::getComponentOptional<IRComponents::C_ShapeDescriptor>(entity);
+    auto canvasOpt = IREntity::getComponentOptional<IRComponents::C_EntityCanvas>(entity);
     IREntity::EntityId canvas = IREntity::kNullEntity;
     std::size_t rangeStart = 0;
     std::size_t rangeCount = 0;
@@ -799,7 +822,19 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
         } else {
             shape.fogBodyFactor_ = 0;
         }
-    } else if (!setOpt.has_value() && subjectClass == FogSubjectClass::BODY) {
+    }
+    if (canvasOpt.has_value()) {
+        IRComponents::C_EntityCanvas &entityCanvas = **canvasOpt;
+        entityCanvas.fogRevealFactor_ = subjectClass == FogSubjectClass::BODY ? 0.0f : 1.0f;
+        entityCanvas.fogHidden_ = subjectClass == FogSubjectClass::BODY;
+        stampCanvasBodyCarrier(
+            entityCanvas,
+            subjectClass != FogSubjectClass::FIELD,
+            subjectClass == FogSubjectClass::EXEMPT ? 255u : 0u
+        );
+    } else if (
+        !setOpt.has_value() && !shapeOpt.has_value() && subjectClass == FogSubjectClass::BODY
+    ) {
         return;
     }
 

@@ -1,5 +1,6 @@
 #version 450 core
 #include "ir_iso_common.glsl"
+#include "ir_fog_color.glsl"
 #include "ir_sun_shadow_sample.glsl"
 #include "ir_source_face_lighting.glsl"
 layout(std140, binding = 1) uniform GlobalConstants {
@@ -27,6 +28,8 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     int depthPriorityMode;
     int overflowMode;
     int trixelSampleLayout;
+    uint fogBodyFactorEncoded;
+    uint fogUnexploredColorPacked;
 };
 flat in vec4 faceColor;
 flat in uint facePriority;
@@ -53,5 +56,13 @@ void main() {
             pos3DtoDistance(faceWorldPosition), viewToWorldRotation);
         FragColor = sourceFaceLitColor(faceColor, faceDirectSunAndExposure, faceAO,
             faceLightingMode, visibility);
+    }
+    if (fogBodyFactorEncoded != 0u) {
+        const float fogFactor = float(fogBodyFactorEncoded - 1u) / 255.0;
+        FragColor.rgb = fogStateColor(
+            fogFactor,
+            FragColor.rgb,
+            unpackColor(fogUnexploredColorPacked).rgb
+        );
     }
 }

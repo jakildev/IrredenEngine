@@ -104,6 +104,13 @@ const std::string kGlslFogCommonPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/ir_fog_common.glsl";
 const std::string kMetalFogCommonPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/ir_fog_common.metal";
+const std::string kGlslFogColorPath = std::string(IR_TEST_RENDER_SHADER_DIR) + "/ir_fog_color.glsl";
+const std::string kMetalFogColorPath =
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/ir_fog_color.metal";
+const std::string kGlslCompositePath =
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/ir_trixel_to_framebuffer_body.glsl";
+const std::string kMetalCompositePath =
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/ir_trixel_to_framebuffer_body.metal";
 const std::string kGlslStage2BodyPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_voxel_to_trixel_stage_2_body.glsl";
 const std::string kMetalStage2BodyPath =
@@ -437,13 +444,13 @@ TEST(FogCrossSectionShaderParity, StageOneDropExpressionsAreIdenticalAcrossBacke
 // Test E, part 5: all fog routes call one backend-parity per-sample shading
 // body, including the state-0 unexplored-colour anchor.
 TEST(FogCrossSectionShaderParity, UnexploredColourAnchorIsIdenticalAcrossBackends) {
-    const std::string glsl = readShaderSource(kGlslFogCommonPath);
-    const std::string metal = readShaderSource(kMetalFogCommonPath);
+    const std::string glsl = readShaderSource(kGlslFogColorPath);
+    const std::string metal = readShaderSource(kMetalFogColorPath);
     const std::string anchor = "const float t = state / kFogExploredValue;";
     const std::string glslAnchor = extractSpan(glsl, anchor, anchor, "}");
     const std::string metalAnchor = extractSpan(metal, anchor, anchor, "}");
-    ASSERT_FALSE(glslAnchor.empty()) << "unexplored anchor not found in " << kGlslFogCommonPath;
-    ASSERT_FALSE(metalAnchor.empty()) << "unexplored anchor not found in " << kMetalFogCommonPath;
+    ASSERT_FALSE(glslAnchor.empty()) << "unexplored anchor not found in " << kGlslFogColorPath;
+    ASSERT_FALSE(metalAnchor.empty()) << "unexplored anchor not found in " << kMetalFogColorPath;
     EXPECT_EQ(normalizeKernelMath(glslAnchor), normalizeKernelMath(metalAnchor))
         << "the unexplored-colour anchor diverged between backends";
     EXPECT_NE(glslAnchor.find("unexplored"), std::string::npos)
@@ -501,6 +508,41 @@ TEST(FogCrossSectionShaderParity, CommonFogShadingIsIdenticalAcrossBackends) {
       << glslBodyApply;
     EXPECT_EQ(glslBodyApply.find("hardDistPastRim"), std::string::npos)
         << "a BODY takes no rim fade and no cut cap";
+}
+
+TEST(FogCrossSectionShaderParity, DetachedCanvasCompositeIsIdenticalAcrossBackends) {
+    const std::string glsl = readShaderSource(kGlslCompositePath);
+    const std::string metal = readShaderSource(kMetalCompositePath);
+    const std::string glslColor = readShaderSource(kGlslFogColorPath);
+    const std::string metalColor = readShaderSource(kMetalFogColorPath);
+    const std::string glslApply = extractSpan(
+        glsl,
+        "if (fogBodyFactorEncoded != 0u)",
+        "if (fogBodyFactorEncoded != 0u)",
+        "gl_FragDepth = depth;"
+    );
+    const std::string metalApply = extractSpan(
+        metal,
+        "if (frameData.fogBodyFactorEncoded != 0u)",
+        "if (frameData.fogBodyFactorEncoded != 0u)",
+        "out.depth = depth;"
+    );
+    ASSERT_FALSE(glslApply.empty()) << "fog BODY composite not found in GLSL";
+    ASSERT_FALSE(metalApply.empty()) << "fog BODY composite not found in MSL";
+    const std::string normalizedGlsl = normalizeKernelMath(
+        std::regex_replace(glslApply, std::regex(R"(\bFragColor\b)"), "out.color")
+    );
+    EXPECT_EQ(normalizedGlsl, normalizeKernelMath(metalApply))
+        << "the detached-canvas BODY composite diverged between backends";
+    EXPECT_NE(glslApply.find("fogStateColor("), std::string::npos)
+        << "the detached composite must reuse the shared fog curve";
+
+    const std::string glslCurve = extractFunctionBody(glslColor, "vec3 fogStateColor");
+    const std::string metalCurve = extractFunctionBody(metalColor, "float3 fogStateColor");
+    ASSERT_FALSE(glslCurve.empty()) << "fogStateColor not found in GLSL";
+    ASSERT_FALSE(metalCurve.empty()) << "fogStateColor not found in MSL";
+    EXPECT_EQ(normalizeShaderMath(glslCurve), normalizeShaderMath(metalCurve))
+        << "the factored fog colour curve diverged between backends";
 }
 
 // Every route skips the colour read-modify-write for a fully revealed sample:

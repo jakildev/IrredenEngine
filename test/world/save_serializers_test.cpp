@@ -188,6 +188,37 @@ TEST(SaveSerializers, ExampleRoundTrips) {
     expectConsumesAllBytes(C_Example{"hello"});
 }
 
+// --- render/ ---------------------------------------------------------------
+
+TEST(SaveSerializers, EntityCanvasV1MigrationPreservesAuthoredStateAndDefaultsFogState) {
+    IRWorld::detail::EntityCanvasV1 old{
+        42,
+        IRMath::ivec2(320, 180),
+        false,
+        true,
+        7,
+    };
+    IRAsset::MemoryBinaryWriter writer;
+    writer.writeBytes(&old, sizeof(old));
+
+    const auto migrators = IRWorld::SaveMigration<C_EntityCanvas>::migrators();
+    ASSERT_EQ(migrators.size(), 1u);
+    ASSERT_EQ(migrators.front().first, 1u);
+    IRAsset::MemoryBinaryReader reader(writer.buffer().data(), writer.buffer().size(), "canvas-v1");
+    const IRAsset::Result<C_EntityCanvas> restored = migrators.front().second(reader);
+
+    ASSERT_TRUE(restored.ok()) << restored.status_.message_;
+    EXPECT_EQ(restored.value_.canvasEntity_, old.canvasEntity_);
+    EXPECT_EQ(restored.value_.canvasSize_, old.canvasSize_);
+    EXPECT_EQ(restored.value_.visible_, old.visible_);
+    EXPECT_EQ(restored.value_.screenLocked_, old.screenLocked_);
+    EXPECT_EQ(restored.value_.depthPriority_, old.depthPriority_);
+    EXPECT_FLOAT_EQ(restored.value_.fogRevealFactor_, 1.0f);
+    EXPECT_FALSE(restored.value_.fogHidden_);
+    EXPECT_EQ(reader.remaining(), 0u);
+    EXPECT_EQ(IRWorld::saveVersion<C_EntityCanvas>(), 2u);
+}
+
 // --- voxel/ ----------------------------------------------------------------
 
 TEST(SaveSerializers, JointNameRoundTrips) {
