@@ -4720,15 +4720,22 @@ for repo in repos:
 # actually produces, and a `$`-anchored matcher would escalate that perfectly
 # good park to a human as malformed.
 #
-# What makes the leniency safe is that exactly ONE number is taken per line (the
-# first after the marker), never every #N on it. The sibling `Blocked by:`
-# parser is the cautionary case in the other direction: it collects every ref on
-# the line, so a parenthetical aside reads as an extra blocker and strands the
-# row. Widen the trailing match, never the capture.
+# A park may name SEVERAL blockers ("Parked-until: #3923, #3926"); it ends only
+# when every one has closed, so a PR waiting on two fixes is not un-parked by
+# the first and re-parked by the worker the dispatcher then wastes on it.
+#
+# What makes the leniency safe is that the capture is only the CONTIGUOUS run of
+# `#N` tokens right after the marker, separated by a comma and/or whitespace;
+# the first token that is not another `#N` ends it. A `#N` in a trailing aside
+# ("#7001 (the build wall; see also #7002)") is therefore never a blocker. The
+# sibling `Blocked by:` parser is the cautionary case in the other direction: it
+# collects every ref on the line, so a parenthetical aside reads as an extra
+# blocker and strands the row. Widen the trailing match, never the capture.
 #
 # The line start stays anchored so a mention inside prose is not a marker.
-PARKED_UNTIL_RE = re.compile(r"^[ \t]*Parked-until:[ \t]*#(\d+)\b",
-                             re.IGNORECASE | re.MULTILINE)
+PARKED_UNTIL_RE = re.compile(
+    r"^[ \t]*Parked-until:[ \t]*(#\d+\b(?:(?:[ \t]*,[ \t]*|[ \t]+)#\d+\b)*)",
+    re.IGNORECASE | re.MULTILINE)
 
 for repo in repos:
     d = repo_data[repo]
@@ -4745,13 +4752,16 @@ for repo in repos:
                 "— add the line or drop the label",
                 "flag-only (R8)")
             continue
-        blocker = int(marks[-1])
+        blockers = [int(n) for n in re.findall(r"#(\d+)", marks[-1])]
+        named = ", ".join("#%d" % n for n in blockers)
         add("R8", repo, pr["number"], "pr", ["pr", "label"],
-            "parked behind #%d; remove fleet:awaiting-infra once that issue "
-            "closes (R7 then re-surfaces the PR)" % blocker,
-            "awaiting-infra PR with Parked-until: #%d" % blocker,
+            "parked behind %s; remove fleet:awaiting-infra once %s "
+            "closed (R7 then re-surfaces the PR)"
+            % (named, "that issue has" if len(blockers) == 1
+               else "all of those issues have"),
+            "awaiting-infra PR with Parked-until: %s" % named,
             apply={"type": "unpark_infra", "pr": pr["number"], "repo": repo,
-                   "blocker": blocker})
+                   "blockers": blockers})
 
 # ---- R9 (auto-escalate): design-parked PR on a fleet:sonnet backing issue ---
 # The design-resume tier is opus+-ONLY (FLEET-FEEDBACK-HANDLING.md tier 4;
@@ -5016,10 +5026,11 @@ PYEOF
 }
 
 # reconcile_apply_field <finding-json-line> <key>
-#   Echo apply.<key> from one finding JSONL line (apply helper for cmd_reconcile).
+#   Echo apply.<key> from one finding JSONL line (apply helper for cmd_reconcile);
+#   a list value echoes space-joined.
 reconcile_apply_field() {
     printf '%s' "$1" | KEY="$2" python3 -c \
-        'import sys,os,json; a=(json.load(sys.stdin).get("apply") or {}); print(a.get(os.environ["KEY"],""))' | tr -d '\r'
+        'import sys,os,json; a=(json.load(sys.stdin).get("apply") or {}); v=a.get(os.environ["KEY"],""); print(" ".join(map(str,v)) if isinstance(v,list) else v)' | tr -d '\r'
 }
 
 # reconcile_open_drift_trackers
@@ -5352,13 +5363,14 @@ PYEOF
 # reconcile_unpark_infra <findings-jsonl>
 #   Apply half of R8. Consumes R8 findings carrying an apply action
 #   (type == unpark_infra): an open PR labelled fleet:awaiting-infra whose body
-#   names its blocker in a `Parked-until: #N` line. Verifies that blocker LIVE
-#   — the reconcile issue surface is fetched filtered to label:"fleet:queued",
-#   so a blocker that has closed (or was never queued) is simply absent from it
-#   and cannot be distinguished from "still open" without asking. When the
-#   blocker is CLOSED, remove fleet:awaiting-infra: the PR reverts to an
-#   ordinary stranded WIP and R7 re-arms fleet:design-unblocked after its usual
-#   threshold, so the worker resume loop adopts it through the existing path.
+#   names its blockers in a `Parked-until: #N[, #M ...]` line. Verifies every
+#   blocker LIVE — the reconcile issue surface is fetched filtered to
+#   label:"fleet:queued", so a blocker that has closed (or was never queued) is
+#   simply absent from it and cannot be distinguished from "still open" without
+#   asking. When ALL blockers are CLOSED, remove fleet:awaiting-infra: the PR
+#   reverts to an ordinary stranded WIP and R7 re-arms fleet:design-unblocked
+#   after its usual threshold, so the worker resume loop adopts it through the
+#   existing path.
 #
 #   Deliberately NOT persistence-gated, unlike the R7 heal. The heal's gate
 #   exists because its trigger state (claim labels still propagating) is
@@ -5371,23 +5383,28 @@ PYEOF
 #   calls it on --apply only.
 reconcile_unpark_infra() {
     local findings="$1"
-    local line atype repo pr blocker state
+    local line atype repo pr blockers blocker state all_closed
     while IFS= read -r line; do
         [[ -z "$line" ]] && continue
         atype=$(reconcile_apply_field "$line" type)
         [[ "$atype" == "unpark_infra" ]] || continue
         repo=$(reconcile_apply_field "$line" repo)
         pr=$(reconcile_apply_field "$line" pr)
-        blocker=$(reconcile_apply_field "$line" blocker)
-        [[ -z "$repo" || -z "$pr" || -z "$blocker" ]] && continue
-        state=$(gh issue view "$blocker" --repo "$repo" --json state \
-            --jq '.state' 2>/dev/null || true)
-        # Anything other than a confirmed CLOSED (OPEN, or a lookup failure
-        # that yields an empty string) leaves the park standing; the finding
-        # recurs next tick, so a transient API failure costs nothing.
-        [[ "$state" == "CLOSED" ]] || continue
+        blockers=$(reconcile_apply_field "$line" blockers)
+        [[ -z "$repo" || -z "$pr" || -z "$blockers" ]] && continue
+        all_closed=1
+        for blocker in $blockers; do
+            state=$(gh issue view "$blocker" --repo "$repo" --json state \
+                --jq '.state' 2>/dev/null || true)
+            # Anything other than a confirmed CLOSED (OPEN, or a lookup failure
+            # that yields an empty string) leaves the park standing; the
+            # finding recurs next tick, so a transient API failure costs
+            # nothing.
+            if [[ "$state" != "CLOSED" ]]; then all_closed=0; break; fi
+        done
+        [[ $all_closed -eq 1 ]] || continue
         if gh_release_label "$repo" "$pr" "fleet:awaiting-infra"; then
-            echo "  reconcile --apply: R8 un-parked $repo #$pr — blocker #$blocker is closed; removed fleet:awaiting-infra"
+            echo "  reconcile --apply: R8 un-parked $repo #$pr — blockers #${blockers// /, #} closed; removed fleet:awaiting-infra"
         else
             echo "  reconcile --apply: R8 failed to remove fleet:awaiting-infra on $repo #$pr (retries next tick)" >&2
         fi
