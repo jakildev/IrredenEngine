@@ -70,6 +70,8 @@ systems that populate button state. The underlying polling lives in
   | `IRInput.onEntityClicked(fn)` | `fn(entityId, button)` — compare `button` against `IRInput.MouseButton.{LEFT,RIGHT}` |
   | `IRInput.onRightClick(fn)` | `fn()` — every right press, hovered entity or not |
   | `IRInput.removeEntityHandler(id)` | takes the id any registrar returned |
+  | `IRInput.mouseWorldPosAt(ref)` | returns `x, y, z` on the world reference's nearest integer canvas-iso depth plane |
+  | `IRInput.mouseIsoScreen()` | returns the screen-iso `x, y` input snapshot |
 
   Register from the main script state only (a coroutine-thread function
   would be called through that thread later). `IRInput.MouseButton` is the
@@ -77,6 +79,8 @@ systems that populate button state. The underlying polling lives in
   A handler may register or remove handlers: a removal applies within the
   running pass, a registration from the next one.
   `creations/demos/lua_widgets/main.lua` is the reference hover label.
+  Both cursor readers use the INPUT-event snapshot under which the hover was
+  resolved, so a handler sees the cursor position for its own event.
 
 ## Pipeline order
 

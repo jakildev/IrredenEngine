@@ -5,8 +5,8 @@
 // command bindings and fire them from Lua. The locked design lives at
 // `docs/design/lua-input-commands.md`.
 //
-// Four idempotent bind helpers, each populating a slice of the Lua
-// namespace. The public `LuaScript::bindLuaCommands()` calls all four.
+// Five idempotent bind helpers, each populating a slice of the Lua
+// namespace. The public `LuaScript::bindLuaCommands()` calls all five.
 // Each guard checks for the bound-table key it owns so a second call is a
 // no-op (matching the `bindIRTimeEvents` / `bindSystemNameEnum` pattern).
 //
@@ -22,10 +22,13 @@
 #include <irreden/ir_command.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_input.hpp>
+#include <irreden/ir_render.hpp>
 #include <irreden/input/components/component_entity_event_handlers.hpp>
+#include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
 
 #include <string>
+#include <tuple>
 #include <utility>
 
 namespace IRScript::detail {
@@ -577,6 +580,29 @@ inline void bindEntityEvents(LuaScript &script) {
     bindUnlessSet("removeEntityHandler", [](lua_Integer handlerId) {
         IREntity::singleton<C_EntityEventHandlers>().removeHandler(static_cast<int>(handlerId));
     });
+}
+
+inline void bindCursorPosition(LuaScript &script) {
+    sol::state &lua = script.lua();
+    if (!lua["IRInput"].valid()) {
+        lua["IRInput"] = lua.create_table();
+    }
+    sol::table input = lua["IRInput"];
+    if (input["mouseWorldPosAt"].valid()) {
+        return;
+    }
+
+    input["mouseWorldPosAt"] = [](const sol::object &reference) {
+        const IRMath::vec3 worldReference =
+            requireVec3(reference, "IRInput.mouseWorldPosAt: 'ref'");
+        const IRMath::vec3 worldPosition =
+            IRRender::mouseWorldPos3DAtIsoDepth(IRRender::canvasIsoDepthOfWorldPos(worldReference));
+        return std::make_tuple(worldPosition.x, worldPosition.y, worldPosition.z);
+    };
+    input["mouseIsoScreen"] = []() {
+        const IRMath::vec2 screenPosition = IRRender::mousePosition2DIsoScreenRender();
+        return std::make_tuple(screenPosition.x, screenPosition.y);
+    };
 }
 
 } // namespace IRScript::detail

@@ -59,53 +59,6 @@
 
 namespace IRScript::detail {
 
-// The `*FromLua` helpers zero-default on unrecognized input by contract, so a
-// typo'd argument would otherwise draw silently at the origin instead of
-// failing. Validate the shape first and raise a Lua-visible error naming the
-// offending argument.
-//
-// Two details make the order below load-bearing:
-//
-//   1. The userdata check is per-vector-type. A shared any-IRMath-vector
-//      predicate admits a `vec2` where a `vec3` is wanted, and `vec3FromLua`'s
-//      userdata branch tests only `is<vec3>()`, so the mismatch falls through
-//      to that helper's zero-default and draws silently at the origin.
-//   2. `sol::object::is<sol::table>()` is TRUE for userdata as well — sol2
-//      treats userdata as table-like — so a table-FIRST check here would admit
-//      every userdata regardless of (1), and the wrong-typed vector would reach
-//      `*FromLua` and come back as that helper's zero-default: a silent draw at
-//      the origin. The helpers carry the same ordering internally.
-//
-// Hence: match the concrete usertype first, then the EXACT Lua table type.
-//
-// Component TABLES stay arity-blind, per the documented `*FromLua` contract:
-// `{x = 1, y = 2}` passed where a vec3 is wanted zero-fills `z`. Only the
-// userdata path carries enough type information to discriminate.
-template <typename VecT>
-inline void requireVecShape(const sol::object &obj, const char *context, const char *typeName) {
-    if (obj.is<VecT>() || obj.get_type() == sol::type::table) {
-        return;
-    }
-    throw sol::error{
-        std::string{context} + " must be an IRMath " + typeName + " userdata or a component table"
-    };
-}
-
-inline IRMath::vec2 requireVec2(const sol::object &obj, const char *context) {
-    requireVecShape<IRMath::vec2>(obj, context, "vec2");
-    return vec2FromLua(obj);
-}
-
-inline IRMath::vec3 requireVec3(const sol::object &obj, const char *context) {
-    requireVecShape<IRMath::vec3>(obj, context, "vec3");
-    return vec3FromLua(obj);
-}
-
-inline IRMath::vec4 requireVec4(const sol::object &obj, const char *context) {
-    requireVecShape<IRMath::vec4>(obj, context, "vec4");
-    return vec4FromLua(obj);
-}
-
 inline void bindDebugOverlay(LuaScript &script) {
     sol::state &lua = script.lua();
 
