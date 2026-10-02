@@ -31,7 +31,8 @@ float shapeCanvasIsoDepth(vec3 position, ShapeProjectionData projection) {
 // Finite analytical geometry only: lattice, hollow and entity-rotated shapes
 // retain their sampled-cell receiver until their own finite query is available.
 bool shapeBoxReceiver(ShapeDescriptor shape, ShapeProjectionData projection,
-                      vec2 canvasPixel, out vec3 position, out vec3 normal) {
+                      vec2 canvasPixel, bool recoverMiss,
+                      out vec3 position, out vec3 normal) {
     bool smoothMode = projection.voxelRenderOptions.x != 0 &&
                       projection.voxelRenderOptions.y > 1;
     bool smoothYaw = projection.smoothYawEnabled != 0;
@@ -56,7 +57,33 @@ bool shapeBoxReceiver(ShapeDescriptor shape, ShapeProjectionData projection,
     vec3 halfExtent = (shape.params.xyz - 1.0) * (0.5 * float(density)) + vec3(0.5);
     float entry, exitDepth;
     if (!boxSurfaceIntervalYaw(relativeIso.x, relativeIso.y, halfExtent,
-                              yaw.x, yaw.y, entry, exitDepth, normal)) return false;
+                              yaw.x, yaw.y, entry, exitDepth, normal)) {
+        if (!recoverMiss) return false;
+
+        float inside = 0.0;
+        float outside = 1.0;
+        vec2 recoveredIso = vec2(0.0, 0.0);
+        if (!boxSurfaceIntervalYaw(0.0, 0.0, halfExtent,
+                                   yaw.x, yaw.y, entry, exitDepth, normal)) return false;
+        for (int iteration = 0; iteration < 12; ++iteration) {
+            float middle = 0.5 * (inside + outside);
+            vec2 candidateIso = relativeIso * middle;
+            float candidateEntry, candidateExit;
+            vec3 candidateNormal;
+            if (boxSurfaceIntervalYaw(candidateIso.x, candidateIso.y, halfExtent,
+                                      yaw.x, yaw.y, candidateEntry, candidateExit,
+                                      candidateNormal)) {
+                inside = middle;
+                recoveredIso = candidateIso;
+                entry = candidateEntry;
+                exitDepth = candidateExit;
+                normal = candidateNormal;
+            } else {
+                outside = middle;
+            }
+        }
+        relativeIso = recoveredIso;
+    }
     vec3 viewOffset = isoPositionToPos3D(relativeIso, entry);
     position = center + vec3(yaw.x * viewOffset.x - yaw.y * viewOffset.y,
                             yaw.y * viewOffset.x + yaw.x * viewOffset.y,
