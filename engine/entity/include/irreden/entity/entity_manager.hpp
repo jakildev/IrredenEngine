@@ -10,6 +10,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <cstdint>
 #include <functional>
 #include <initializer_list>
 #include <set>
@@ -53,6 +54,10 @@ struct WorkerStaging {
     std::vector<PendingComponentRemoval> componentRemovals_;
     std::vector<std::function<void()>> structuralChanges_;
     std::vector<EntityId> markedForDeletion_;
+    // Members of deferred tree cascades. Drained before every plain mark,
+    // deepest first, so no plain mark of a member can kill a parent ahead of
+    // its children.
+    std::vector<EntityId> markedTreesForDeletion_;
 };
 
 class EntityManager {
@@ -371,7 +376,34 @@ class EntityManager {
         return data->dataVector[record.row];
     }
 
+    /// `CHILD_OF` replaces the entity's current parent, if any, in one
+    /// archetype move. A parent that is the entity or one of its descendants
+    /// asserts; probe with `isAncestor` first when the pair is untrusted.
     EntityId setRelation(Relation relation, EntityId entity, EntityId relatedEntity);
+
+    // Parent/child hierarchy over `CHILD_OF`. Children are read through the
+    // inverse view (the archetype nodes carrying the parent's relation), so
+    // `getChildren` is O(archetype nodes), not O(children): keep it out of
+    // per-entity ticks. All mutators here are eager and main-thread-only.
+    EntityId getParent(EntityId entity);
+    void clearParent(EntityId entity);
+    std::vector<EntityId> getChildren(EntityId parent);
+    /// True when `ancestor` is on `entity`'s parent chain (not `entity` itself).
+    bool isAncestor(EntityId ancestor, EntityId entity);
+    /// Destroys `root`'s current descendants, then `root`, children before
+    /// parents by the hierarchy as it stands at each destroy, so a
+    /// pre-destroy hook that re-parents a pending member still sees a live
+    /// parent. A tree a hook marks stays queued for the deferred drain.
+    void destroyTree(EntityId root);
+    /// Marks `root`'s current descendants and `root` for deletion. A child
+    /// parented after this call is not in the set. The drain destroys every
+    /// tree-marked entity before any plainly marked one, children before
+    /// parents by the hierarchy as it stands at the drain, whichever worker or
+    /// order the marks came from. A tree marked by a pre-destroy hook during
+    /// the drain is destroyed before the drain's next plain mark.
+    void markTreeForDeletion(EntityId root);
+    /// Clears the relation on each direct child; grandchildren keep theirs.
+    void detachChildren(EntityId parent);
 
     template <typename... Components>
     void setComponents(EntityId entity, const Components &...components) {
@@ -603,6 +635,9 @@ class EntityManager {
     std::unordered_map<std::string, ComponentId> m_pureComponentTypes;
     std::unordered_map<EntityId, RelationId> m_parentRelations;
     std::unordered_map<RelationId, EntityId> m_childOfRelations;
+    // Bumped on every CHILD_OF change so the tree drain can tell when a hook
+    // re-parented an entry it has already ranked.
+    std::uint64_t m_hierarchyRevision = 0;
     std::unordered_map<ComponentId, smart_ComponentData> m_pureComponentVectors;
     // TODO: Remove when entity is destroyed
     std::unordered_map<std::string, EntityId> m_namedEntities;
@@ -673,7 +708,19 @@ class EntityManager {
     void destroyComponents(EntityId entity);
     void destroyComponent(ComponentId component, ArchetypeNode *node, unsigned int row);
     void updateRecord(EntityId entity, ArchetypeNode *node, unsigned int row);
-    void insertRelation(EntityId entity, RelationId relation);
+    // Replaces the entity's CHILD_OF relation with `relation`
+    // (`kNullRelation` clears it).
+    void setChildOfRelation(EntityId entity, RelationId relation);
+    RelationId childOfRelationInType(const Archetype &type);
+    // Appends every descendant of `root`, children before parents, then `root`.
+    void appendTreePostOrder(EntityId root, std::vector<EntityId> &out);
+    // Number of live ancestors above `entity`.
+    int hierarchyDepth(EntityId entity);
+    void destroyMarkedTrees();
+    // Destroys `members` in order, re-ranking the remainder deepest first
+    // whenever a hook changes CHILD_OF or, with `absorbMarkedTrees`, queues a
+    // tree, whose members then join the drain.
+    void destroyTreeMembers(const std::vector<EntityId> &members, bool absorbMarkedTrees);
 
     template <typename Component, typename... Args>
     int emplaceComponent(IComponentData *dest, Args &&...args) {

@@ -12,6 +12,10 @@ void destroyEntity(EntityId entity) {
     getEntityManager().markEntityForDeletion(entity);
 }
 
+void destroyTree(EntityId root) {
+    getEntityManager().markTreeForDeletion(root);
+}
+
 void destroyAllEntities() {
     getEntityManager().destroyAllEntities();
 }

@@ -176,6 +176,9 @@ template <PrefabTypes type, typename... Args> EntityId createEntity(Args &&...ar
 
 EntityId setParent(EntityId child, EntityId parent);
 void destroyEntity(EntityId entity);
+/// Marks `root` and its current descendants, children first; the eager form
+/// is `getEntityManager().destroyTree(root)`. `destroyEntity` never cascades.
+void destroyTree(EntityId root);
 void destroyAllEntities();
 
 /// Scene-transition teardown: destroy every live gameplay entity,

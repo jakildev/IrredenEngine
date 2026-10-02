@@ -70,6 +70,20 @@ IREntity.createVoxelEntity(C_LocalTransform.new(vec3.new(0.0, 0.0, 0.0)), voxelS
 local C_HudMarker = IRComponent.register("HudMarker", { dummy = 0 })
 IREntity.singleton(C_HudMarker)
 
+-- Composite entity: a root with two parts. The deferred creates are placed
+-- at the first structural flush, before the staged call runs, so the
+-- hierarchy verbs inside it see live entities.
+local compositeRoot = IREntity.deferredCreate()
+local compositeParts = { IREntity.deferredCreate(), IREntity.deferredCreate() }
+IREntity.deferredCall(function()
+    for _, part in ipairs(compositeParts) do
+        IREntity.setParent(part, compositeRoot)
+    end
+    local children = 0
+    IREntity.forEachChild(compositeRoot, function() children = children + 1 end)
+    print(string.format("[hierarchy] children=%d", children))
+end)
+
 local hudDrawSysId = IRSystem.registerSystem({
     name = "HudDraw",
     components = { C_HudMarker },

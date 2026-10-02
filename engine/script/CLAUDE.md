@@ -41,9 +41,9 @@ declares a component with native per-field columns in the C++ `ComponentId` spac
   `setCodegenCoexistence(false)`. `IRComponent.list()` lists the Lua-typed rest.
 - Scalar `int32`/`float`/`bool` fields expose `C.fields.<f>.bindingId` for
   `IRModifier`; others get `kInvalidFieldId`.
-- In a system tick use `deferredCreate` / `deferredDestroy`; use
-  `deferredCall(fn)` for builders or rebuilds. It runs at the next structural
-  flush on the main thread; callback errors are logged, not raised.
+- In a system tick use `deferredCreate`/`deferredDestroy`/`deferredDestroyTree`;
+  wrap builders, rebuilds, and the `setParent`-family verbs in `deferredCall(fn)`,
+  which runs at the next main-thread flush; callback errors are logged, not raised.
 
 ### Packed vec3 / ivec3 / vec4 fields
 
