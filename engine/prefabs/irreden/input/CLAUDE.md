@@ -74,6 +74,8 @@ systems that populate button state. The underlying polling lives in
   Register from the main script state only (a coroutine-thread function
   would be called through that thread later). `IRInput.MouseButton` is the
   click-dispatch code (`EntityClickButton`), not an `IRInput.Key` value.
+  A handler may register or remove handlers: a removal applies within the
+  running pass, a registration from the next one.
   `creations/demos/lua_widgets/main.lua` is the reference hover label.
 
 ## Pipeline order

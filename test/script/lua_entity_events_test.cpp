@@ -158,6 +158,82 @@ TEST_F(LuaEntityEvents, RemoveHandlerStopsDispatch) {
     EXPECT_EQ(global<int>("keptCount"), 1);
 }
 
+// A handler that removes itself mid-dispatch does not cut the pass short: the
+// sibling registered after it still fires in the same pass, and only the
+// sibling fires in the next one.
+TEST_F(LuaEntityEvents, SelfRemovalDuringDispatchKeepsSiblings) {
+    run(R"lua(
+        order = {}
+        onceHandler = IRInput.onEntityHovered(function()
+            order[#order + 1] = 'once'
+            IRInput.removeEntityHandler(onceHandler)
+        end)
+        IRInput.onEntityHovered(function() order[#order + 1] = 'sibling' end)
+    )lua");
+
+    m_hoverDetect->applyHoverTransition(IREntity::createEntity());
+    m_hoverDetect->applyHoverTransition(IREntity::createEntity());
+
+    sol::table order = global<sol::table>("order");
+    ASSERT_EQ(order.size(), 3u);
+    EXPECT_EQ(order[1].get<std::string>(), "once");
+    EXPECT_EQ(order[2].get<std::string>(), "sibling");
+    EXPECT_EQ(order[3].get<std::string>(), "sibling");
+    EXPECT_EQ(handlers().onHovered_.size(), 1u) << "the removed entry must be compacted";
+}
+
+// Removing a later sibling mid-dispatch takes effect at once: it does not fire
+// in the rest of the pass.
+TEST_F(LuaEntityEvents, RemovingALaterSiblingDuringDispatchSkipsIt) {
+    run(R"lua(
+        removerCount, removedCount, keptCount = 0, 0, 0
+        IRInput.onEntityClicked(function()
+            removerCount = removerCount + 1
+            IRInput.removeEntityHandler(removedHandler)
+        end)
+        removedHandler = IRInput.onEntityClicked(function() removedCount = removedCount + 1 end)
+        IRInput.onEntityClicked(function() keptCount = keptCount + 1 end)
+    )lua");
+
+    handlers().fireClicked(4242u, EntityClickButton::LEFT);
+
+    EXPECT_EQ(global<int>("removerCount"), 1);
+    EXPECT_EQ(global<int>("removedCount"), 0);
+    EXPECT_EQ(global<int>("keptCount"), 1);
+    EXPECT_EQ(handlers().onClicked_.size(), 2u);
+}
+
+// A handler that registers handlers mid-dispatch, enough to reallocate the
+// vector being walked, does not disturb the pass: its sibling fires once, and
+// the new handlers first fire on the next pass.
+TEST_F(LuaEntityEvents, RegistrationDuringDispatchFiresNextPass) {
+    run(R"lua(
+        registrarCount, siblingCount, addedCount = 0, 0, 0
+        IRInput.onRightClick(function()
+            registrarCount = registrarCount + 1
+            if registrarCount == 1 then
+                for _ = 1, 64 do
+                    IRInput.onRightClick(function() addedCount = addedCount + 1 end)
+                end
+            end
+        end)
+        IRInput.onRightClick(function() siblingCount = siblingCount + 1 end)
+    )lua");
+
+    handlers().fireRightClick();
+
+    EXPECT_EQ(global<int>("registrarCount"), 1);
+    EXPECT_EQ(global<int>("siblingCount"), 1);
+    EXPECT_EQ(global<int>("addedCount"), 0);
+    ASSERT_EQ(handlers().onRightClick_.size(), 66u);
+
+    handlers().fireRightClick();
+
+    EXPECT_EQ(global<int>("registrarCount"), 2);
+    EXPECT_EQ(global<int>("siblingCount"), 2);
+    EXPECT_EQ(global<int>("addedCount"), 64);
+}
+
 TEST_F(LuaEntityEvents, MouseButtonValuesMatchCpp) {
     auto result = m_lua.lua().safe_script(
         "return IRInput.MouseButton.LEFT, IRInput.MouseButton.RIGHT",

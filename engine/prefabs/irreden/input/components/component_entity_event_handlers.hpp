@@ -5,8 +5,8 @@
 #include <irreden/entity/ir_entity_types.hpp>
 
 #include <sol/sol.hpp>
+#include <cstddef>
 #include <vector>
-#include <algorithm>
 
 namespace IRComponents {
 
@@ -77,17 +77,18 @@ struct C_EntityEventHandlers {
         f(onRightClick_);
     }
 
+    // Safe to call from inside a handler: mid-dispatch, the entry is
+    // tombstoned (skipped for the rest of the pass) and erased once the
+    // outermost pass ends.
     void removeHandler(int handlerId) {
         forEachHandlerVector([handlerId](std::vector<HandlerEntry> &vec) {
-            vec.erase(
-                std::remove_if(
-                    vec.begin(),
-                    vec.end(),
-                    [handlerId](const HandlerEntry &e) { return e.id_ == handlerId; }
-                ),
-                vec.end()
-            );
+            for (auto &entry : vec) {
+                if (entry.id_ == handlerId) {
+                    entry.id_ = kRemovedId;
+                }
+            }
         });
+        compactUnlessDispatching();
     }
 
     // Drops every registered handler, destroying the sol::protected_functions
@@ -96,8 +97,14 @@ struct C_EntityEventHandlers {
     // swapping scripts mid-session.
     // nextId_ is left as-is: ids never recycle within a world, so there is no
     // id-reuse hazard to guard.
+    // Mid-dispatch it tombstones like removeHandler().
     void clear() {
-        forEachHandlerVector([](std::vector<HandlerEntry> &vec) { vec.clear(); });
+        forEachHandlerVector([](std::vector<HandlerEntry> &vec) {
+            for (auto &entry : vec) {
+                entry.id_ = kRemovedId;
+            }
+        });
+        compactUnlessDispatching();
     }
 
     void fireHovered(IREntity::EntityId entityId) {
@@ -117,8 +124,28 @@ struct C_EntityEventHandlers {
     }
 
   private:
+    // Ids start at 1, so 0 never names a live handler.
+    static constexpr int kRemovedId = 0;
+    int dispatchDepth_ = 0;
+
+    void compactUnlessDispatching() {
+        if (dispatchDepth_ > 0) {
+            return;
+        }
+        forEachHandlerVector([](std::vector<HandlerEntry> &vec) {
+            std::erase_if(vec, [](const HandlerEntry &e) { return e.id_ == kRemovedId; });
+        });
+    }
+
     // `handlerName` is the Lua-facing spelling, so an error message names the
     // callback the creation registered rather than this component's method.
+    //
+    // A handler may register or remove handlers (`IRInput.*` from Lua). The
+    // pass walks by index up to the size it started with, so an append, even
+    // one that reallocates, neither invalidates the walk nor fires before the
+    // next pass. Removals are tombstones until the outermost pass compacts.
+    // Each call goes through a copy of the function, so a handler removing
+    // itself does not destroy the ref it is running from.
     //
     // `args` is passed to each handler as an lvalue, NOT std::forward'd: the
     // pack is reused once per registered handler, so forwarding would move
@@ -126,13 +153,21 @@ struct C_EntityEventHandlers {
     // value.
     template <typename... Args>
     void fireAll(std::vector<HandlerEntry> &handlers, const char *handlerName, Args &&...args) {
-        for (auto &entry : handlers) {
-            auto result = entry.fn_(args...);
+        ++dispatchDepth_;
+        const std::size_t count = handlers.size();
+        for (std::size_t i = 0; i < count; ++i) {
+            if (handlers[i].id_ == kRemovedId) {
+                continue;
+            }
+            sol::protected_function fn = handlers[i].fn_;
+            auto result = fn(args...);
             if (!result.valid()) {
                 sol::error err = result;
                 IRE_LOG_ERROR("{} handler error: {}", handlerName, err.what());
             }
         }
+        --dispatchDepth_;
+        compactUnlessDispatching();
     }
 };
 
