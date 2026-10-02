@@ -239,6 +239,7 @@ any one missing means unconfigured. One table carries the whole contract:
 | Knob `FLEET_GH_APP_KEY_PATH` | path to the private key (`.pem`) |
 | Setup 5 — verify | `fleet-gh-token` prints a token; `fleet-gate-status` lists both identities |
 | Pool **app** | scout (re-mints per tick, quota samples included), dispatcher, `fleet-dispatch-wrap` and every agent it launches, `fleet-claim`, panes seeded by `fleet-up` — wherever `fleet-gh-token` exported `GH_TOKEN` |
+| Token refresh | `~/bin/gh` (`scripts/fleet/gh`) re-mints a stale `ghs_` `GH_TOKEN` per call, so a live interactive pane (an architect `claude`) stays on the App past the 1h expiry; the dispatcher re-seeds the tmux server's `GH_TOKEN` each tick and `fleet-babysit` re-mints before each `claude` launch, covering panes split later and relaunches. The shim leaves empty/unset and non-`ghs_` values alone (`FLEET_GH_SHIM=0` bypasses); a raw `curl` using `$GH_TOKEN` in a live pane still sees the stale token |
 | Pool **user** | a human's own shell `gh`, any host without the knobs, a personal token in `GH_TOKEN` |
 | Neither | git fetch/push over SSH (no API call) |
 

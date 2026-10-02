@@ -961,6 +961,24 @@ session_exists() {
     tmux has-session -t "$FLEET_SESSION" 2>/dev/null
 }
 
+# Re-seed the tmux server's global GH_TOKEN so panes split after launch inherit
+# a live installation token instead of the expired one fleet-up seeded. Takes
+# the freshly minted token; an empty one is a no-op (never unset or blank the
+# value — the unconfigured path keeps gh's keychain auth, and evicting a prior
+# session's token is fleet-up's job). FLEET_TMUX_SOCKET pins a private server
+# for the seed's own tmux calls, liveness check included; unset targets the
+# default server.
+_seeded_tmux_gh_token=""
+seed_tmux_gh_token() {
+    local token="${1:-}"
+    [[ -n "$token" && "$token" != "$_seeded_tmux_gh_token" ]] || return 0
+    local -a tmux_cmd=(tmux)
+    [[ -n "${FLEET_TMUX_SOCKET:-}" ]] && tmux_cmd+=(-S "$FLEET_TMUX_SOCKET")
+    "${tmux_cmd[@]}" has-session -t "$FLEET_SESSION" 2>/dev/null || return 0
+    "${tmux_cmd[@]}" set-environment -g GH_TOKEN "$token" 2>/dev/null || return 0
+    _seeded_tmux_gh_token="$token"
+}
+
 # Print one line per pane: <pane_id>|<@fleet-role>|<pane_current_command>
 # Delimiter is "|" (not a tab): tmux 3.4+ sanitizes control characters in
 # `-F` format output to "_", so a literal tab collapses every line into a
@@ -4045,6 +4063,7 @@ main() {
         # unconfigured path.
         _gh_app_token="$(fleet-gh-token 2>/dev/null || true)"
         [[ -n "$_gh_app_token" ]] && export GH_TOKEN="$_gh_app_token"
+        seed_tmux_gh_token "$_gh_app_token"
 
         cleanup_stale_dispatches
 
@@ -4291,6 +4310,11 @@ case "${1:-}" in
         CLAIM_ATTEMPTS_LEFT=$CLAIM_ATTEMPTS_PER_TICK
         assign_for_pane "$2" "$3" || true
         echo "target=$ASSIGNMENT"
+        exit 0
+        ;;
+    --seed-tmux-token)
+        # Test/operator hook: mint once and run the per-tick tmux seed.
+        seed_tmux_gh_token "$(fleet-gh-token 2>/dev/null || true)"
         exit 0
         ;;
     --rearm-merger-due)
