@@ -33,7 +33,10 @@ class ReviewClassForPaths(unittest.TestCase):
                      "engine/audio/src/midi_in.cpp",
                      "engine/video/include/irreden/video/auto_screenshot.hpp",
                      "engine/math/include/irreden/math/ir_math_core.hpp",
-                     "engine/input/include/irreden/ir_input.hpp"):
+                     "engine/input/include/irreden/ir_input.hpp",
+                     "engine/include/irreden/ir_engine.hpp",
+                     "engine/profile/include/irreden/profile/ir_profile_types.hpp",
+                     "engine/input/include/irreden/input/ir_input_types.hpp"):
             self.assertEqual(_mod.review_class_for_paths(["docs/x.md", path]), "opus", path)
 
     def test_everything_else_reads_sonnet(self):
@@ -42,6 +45,7 @@ class ReviewClassForPaths(unittest.TestCase):
                       ["engine/prefabs/irreden/render/fog_of_war.hpp"],
                       ["engine/input/src/input_manager.cpp"],
                       ["engine/script/include/irreden/script/lua_script.hpp"],
+                      ["engine/input/src/ir_input_impl.hpp"],
                       []):
             self.assertEqual(_mod.review_class_for_paths(paths), "sonnet", paths)
 

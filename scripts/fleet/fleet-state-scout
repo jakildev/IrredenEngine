@@ -4229,7 +4229,8 @@ def slice_worker(state):
 REVIEW_OPUS_PATH_PREFIXES = ("engine/render/", "engine/entity/", "engine/system/",
                              "engine/world/", "engine/audio/", "engine/video/",
                              "engine/math/")
-_REVIEW_OPUS_PUBLIC_HEADER_RE = re.compile(r"^engine/[^/]+/include/irreden/ir_[^/]+\.hpp$")
+_REVIEW_OPUS_PUBLIC_HEADER_RE = re.compile(
+    r"^engine/(?:[^/]+/)?include/irreden/(?:.+/)?ir_[^/]+\.hpp$")
 
 
 def review_class_for_paths(paths):
