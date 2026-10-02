@@ -4720,14 +4720,14 @@ for repo in repos:
 # actually produces, and a `$`-anchored matcher would escalate that perfectly
 # good park to a human as malformed.
 #
-# A park may name SEVERAL blockers ("Parked-until: #3923, #3926"); it ends only
+# A park may name SEVERAL blockers ("Parked-until: #N, #M"); it ends only
 # when every one has closed, so a PR waiting on two fixes is not un-parked by
 # the first and re-parked by the worker the dispatcher then wastes on it.
 #
 # What makes the leniency safe is that the capture is only the CONTIGUOUS run of
 # `#N` tokens right after the marker, separated by a comma and/or whitespace;
 # the first token that is not another `#N` ends it. A `#N` in a trailing aside
-# ("#7001 (the build wall; see also #7002)") is therefore never a blocker. The
+# ("#N (the build wall; see also #M)") is therefore never a blocker. The
 # sibling `Blocked by:` parser is the cautionary case in the other direction: it
 # collects every ref on the line, so a parenthetical aside reads as an extra
 # blocker and strands the row. Widen the trailing match, never the capture.
