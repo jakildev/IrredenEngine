@@ -503,6 +503,22 @@ TEST(FogCrossSectionShaderParity, CommonFogShadingIsIdenticalAcrossBackends) {
         << "a BODY takes no rim fade and no cut cap";
 }
 
+TEST(FogCrossSectionShaderParity, ChannelSourceSkipIsIdenticalAcrossBackends) {
+    const std::string glsl = readShaderSource(kGlslFogCommonPath);
+    const std::string metal = readShaderSource(kMetalFogCommonPath);
+    const std::string glslSkip =
+        extractSpan(glsl, "if ((visionCircleChannels", "if ((visionCircleChannels", "}");
+    const std::string metalSkip = extractSpan(
+        metal,
+        "if ((fogObservers.visionCircleChannels",
+        "if ((fogObservers.visionCircleChannels",
+        "}"
+    );
+    ASSERT_FALSE(glslSkip.empty());
+    ASSERT_FALSE(metalSkip.empty());
+    EXPECT_EQ(normalizeKernelMath(glslSkip), normalizeKernelMath(metalSkip));
+}
+
 // Every route skips the colour read-modify-write for a fully revealed sample:
 // the early return sits between the reveal and the colour read, on both
 // backends. The BODY branch returns ahead of the FIELD reveal, and its own

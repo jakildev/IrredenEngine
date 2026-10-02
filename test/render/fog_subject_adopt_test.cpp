@@ -172,6 +172,31 @@ TEST_F(FogSubjectAdoptTest, UntaggedSetOnAVisibleCellIsAShownBodyAfterOneFrame) 
     EXPECT_EQ(activeBitsOf(body), kSetVoxels);
 }
 
+TEST(FogSubjectAdoptPipelineTest, RevealSystemsSpliceAdoptsWhilePipelineWithoutItDoesNot) {
+    IREntity::EntityManager entityManager;
+    IRSystem::SystemManager systemManager;
+    const IREntity::EntityId canvas = IREntity::createEntity(
+        C_VoxelPool{ivec3(8, 8, 8)},
+        C_CanvasFogOfWar{C_CanvasFogOfWar::HeadlessInit{}}
+    );
+    IRRender::setHeadlessActiveCanvasEntity(canvas);
+    const IREntity::EntityId body = IREntity::createEntity(
+        C_WorldTransform{},
+        C_VoxelSetNew{ivec3(2, 2, 2), Color{200, 100, 50, 255}, true, canvas}
+    );
+
+    systemManager.registerPipeline(IRTime::Events::UPDATE, {});
+    systemManager.executePipeline(IRTime::Events::UPDATE);
+    IREntity::flushStructuralChanges();
+    EXPECT_FALSE(IREntity::getComponentOptional<C_FogRevealed>(body).has_value());
+
+    systemManager.registerPipeline(IRTime::Events::UPDATE, IRPrefab::Fog::revealSystems());
+    systemManager.executePipeline(IRTime::Events::UPDATE);
+    IREntity::flushStructuralChanges();
+    EXPECT_TRUE(IREntity::getComponentOptional<C_FogRevealed>(body).has_value());
+    IRRender::setHeadlessActiveCanvasEntity(IREntity::kNullEntity);
+}
+
 TEST_F(FogSubjectAdoptTest, UntaggedSetOnAnUnexploredCellIsAHiddenBodyWithItsMaskCleared) {
     const IREntity::EntityId body = createSet(vec3(40.0f, 40.0f, 0.0f));
     ASSERT_EQ(activeBitsOf(body), kSetVoxels);

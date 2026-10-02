@@ -17,12 +17,14 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_constants.hpp>
 #include <irreden/render/camera.hpp>
+#include <irreden/render/fog_reveal_systems.hpp>
 
 #include <irreden/asset/rig_format.hpp>
 
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <list>
 #include <string>
 #include <vector>
 
@@ -89,14 +91,18 @@ int main(int argc, char **argv) {
 }
 
 void initSystems() {
-    IRSystem::registerPipeline(
-        IRTime::Events::UPDATE,
-        {IRSystem::createSystem<IRSystem::LOD_UPDATE>(),
-         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
-         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
+    std::list<IRSystem::SystemId> updatePipeline = {
+        IRSystem::createSystem<IRSystem::LOD_UPDATE>(),
+        IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
+    };
+    updatePipeline.splice(updatePipeline.end(), IRPrefab::Fog::revealSystems());
+    updatePipeline.insert(
+        updatePipeline.end(),
+        {IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
          IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
          IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>()}
     );
+    IRSystem::registerPipeline(IRTime::Events::UPDATE, updatePipeline);
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>()}

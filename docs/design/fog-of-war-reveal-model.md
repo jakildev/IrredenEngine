@@ -117,9 +117,10 @@ available application of the FIELD verdict on a route that cannot paint.
 ## Creation-facing seams
 
 The engine defines how each seam composes with the reveal verdict; creations
-assign gameplay meaning and select policy. #3679 binds override and channel
-fields on `C_FogRevealed`; #3664's named IRFog subject-model and channel
-integration follow-up owns service-level setters after those fields land.
+assign gameplay meaning and select policy. The BODY oracle and
+`setEntityGoverned` are exposed by #3676; #3679 binds override and channel
+fields on `C_FogRevealed` and adds channel arguments to the IRFog vision and
+verdict services.
 
 ### Per-body override
 

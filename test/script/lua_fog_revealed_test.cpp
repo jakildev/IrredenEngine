@@ -20,6 +20,7 @@
 #include <irreden/voxel/components/component_voxel_set_lua.hpp>
 
 #include <cstdint>
+#include <string>
 
 namespace {
 
@@ -100,6 +101,44 @@ TEST_F(LuaFogRevealedTest, ArchetypeColumnReadsCppRevealFactor) {
     m_systemManager.registerPipeline(IRTime::Events::UPDATE, {systemId});
     m_systemManager.executePipeline(IRTime::Events::UPDATE);
     EXPECT_FLOAT_EQ(m_lua.lua()["observedReveal"].get<float>(), 0.625f);
+}
+
+TEST_F(LuaFogRevealedTest, OverrideAndChannelsAreReadWriteWithEnumTable) {
+    auto result = m_lua.lua().safe_script(
+        R"lua(
+        local value = C_FogRevealed.new()
+        value.override = IRComponent.FogOverride.FORCE_HIDDEN
+        value.channels = 6
+        assert(value.override == IRComponent.FogOverride.FORCE_HIDDEN)
+        assert(value.channels == 6)
+        return value
+    )lua",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+    const auto value = result.get<IRComponents::C_FogRevealed>();
+    EXPECT_EQ(value.override_, IRComponents::FogOverride::FORCE_HIDDEN);
+    EXPECT_EQ(value.channels_, 6u);
+
+    result = m_lua.lua().safe_script(
+        "local value = C_FogRevealed.new(); value.override = 'FORCE_HIDDEN'",
+        sol::script_pass_on_error
+    );
+    ASSERT_FALSE(result.valid());
+    EXPECT_NE(
+        std::string(sol::error{result}.what()).find("IRComponent.FogOverride"),
+        std::string::npos
+    );
+
+    result = m_lua.lua().safe_script(
+        "local value = C_FogRevealed.new(); value.override = 1.5",
+        sol::script_pass_on_error
+    );
+    EXPECT_FALSE(result.valid());
+    EXPECT_NE(
+        std::string(sol::error{result}.what()).find("IRComponent.FogOverride"),
+        std::string::npos
+    );
 }
 
 // The marker components are Lua-constructible, and an entity spawned from
