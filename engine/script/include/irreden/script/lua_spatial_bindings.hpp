@@ -34,7 +34,8 @@ inline void bindSpatialApi(LuaScript &script) {
     // captures the LuaScript referent, stable for the script's lifetime.
     lua["IRSpatial"]["queryRadius"] = statefulLuaFunction(
         [&script, hits = std::vector<IRPrefab::Spatial::SpatialHit>{}](
-            sol::object centerObj, double radius
+            sol::object centerObj,
+            double radius
         ) mutable -> sol::table {
             sol::state_view sv{script.lua().lua_state()};
             const IRMath::vec3 center = IRScript::vec3FromLua(centerObj);
