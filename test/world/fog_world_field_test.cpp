@@ -677,17 +677,17 @@ TEST_F(FogWorldFieldTest, MovingFieldTierAllocatesNothingOnceWarm) {
         }
         field.consumePending(pending);
     };
-    for (int index = 0; index < kPeriod; ++index) {
+    for (int index = 0; index <= kPeriod; ++index) {
         frame(index);
     }
-    const IRMath::vec2 last = centreOf(kSources - 1, kPeriod - 1);
+    const IRMath::vec2 last = centreOf(kSources - 1, kPeriod);
     ASSERT_EQ(
         field.peekCell({IRMath::roundHalfUp(last.x), IRMath::roundHalfUp(last.y)}),
         std::optional<std::uint8_t>{kFogStateVisible}
     ) << "the last source is field-tier";
 
     const IRTest::AllocationCounter counter;
-    for (int index = kPeriod; index < 3 * kPeriod; ++index) {
+    for (int index = kPeriod + 1; index <= 3 * kPeriod; ++index) {
         frame(index);
     }
     EXPECT_EQ(counter.allocations(), 0u);
