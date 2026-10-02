@@ -4221,6 +4221,33 @@ def slice_worker(state):
     return out
 
 
+# Review class routing (REVIEWER-PROTOCOL.md § "Review class"): a first-pass
+# candidate whose diff touches a core-area path or a public `ir_*.hpp` is
+# stamped opus class, so the dispatcher runs its one review at opus tier and
+# that review is final; everything else keeps the lane's sonnet class. The
+# path list is the protocol's own body-ending list.
+REVIEW_OPUS_PATH_PREFIXES = ("engine/render/", "engine/entity/", "engine/system/",
+                             "engine/world/", "engine/audio/", "engine/video/",
+                             "engine/math/")
+_REVIEW_OPUS_PUBLIC_HEADER_RE = re.compile(r"^engine/[^/]+/include/irreden/ir_[^/]+\.hpp$")
+
+
+def review_class_for_paths(paths):
+    """"opus" when any changed path is a core-area path or a public
+    `ir_*.hpp`, else "sonnet"."""
+    for path in paths:
+        if path.startswith(REVIEW_OPUS_PATH_PREFIXES) or _REVIEW_OPUS_PUBLIC_HEADER_RE.match(path):
+            return "opus"
+    return "sonnet"
+
+
+def _review_class(repo_key, pr):
+    """The slice's `review_class` for a PR from its cached file list, or None
+    on a detail-cache miss (the router then keeps the lane's class)."""
+    paths = _blocker_pr_files(repo_key, pr.get("number"))
+    return review_class_for_paths(paths) if paths else None
+
+
 def slice_sonnet_reviewer(state):
     out = {"candidate_prs": []}
     for repo_key, repo_state in state["repos"].items():
@@ -4228,7 +4255,11 @@ def slice_sonnet_reviewer(state):
         head_labels = _head_labels_map(prs)
         for pr in prs:
             if sonnet_review_admissible(pr, set(pr["labels"]), head_labels):
-                out["candidate_prs"].append(_slice_pr_with_repo(repo_key, pr))
+                record = _slice_pr_with_repo(repo_key, pr)
+                review_cls = _review_class(repo_key, pr)
+                if review_cls is not None:
+                    record["review_class"] = review_cls
+                out["candidate_prs"].append(record)
     return out
 
 

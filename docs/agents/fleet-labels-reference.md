@@ -213,8 +213,10 @@ lock's presumed-dead bound. Rationale: `fleet-claim`'s `_amend_lock_acquire`.
   needs-fix`](REVIEWER-PROTOCOL.md)). `auto-rereview.yml` swaps `fleet:approved`
   for `human:re-review` on any push that is neither a mechanical rebase nor a
   docs-only delta; an author never re-adds it.
-- `fleet:needs-opus-recheck` — **sonnet-reviewer**, instead of a verdict,
-  when its pass ends `Opus recheck required:`. The signal
+- `fleet:needs-opus-recheck` — **sonnet-reviewer at sonnet class**, instead
+  of a verdict, when its pass ends `Opus recheck required:` (a first pass
+  the dispatcher ran at opus class is final and never stamps it —
+  REVIEWER-PROTOCOL.md § "Review class"). The signal
   `project_opus_reviewer` wakes on; every opus-reviewer verdict edge
   removes it. Dormant under the review-skip labels. `fleet:has-nits`
   alongside it is not a verdict; the worker feedback tier skips such PRs,

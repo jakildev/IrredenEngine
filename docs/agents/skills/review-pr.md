@@ -262,8 +262,11 @@ flagged: verify the previously-flagged items against the new commits
 Every review body ends with one line:
 
 - Sonnet, approve → `Escalation: none. Safe for merge.`
-- Sonnet, approve-with-Opus-recheck → `Escalation: please Opus-recheck
-  before merge (touches: <module(s)>).`
+- Sonnet at sonnet class, approve-with-Opus-recheck → `Escalation: please
+  Opus-recheck before merge (touches: <module(s)>).` A first pass at opus
+  or fable class (`FLEET_ROLE_MODEL`) never writes this line: it is the
+  final pass and stamps its own verdict (the engine's REVIEWER-PROTOCOL.md
+  § "Review class").
 - Sonnet, needs-fix → `Escalation: author-agent to address, then
   re-request review.`
 - Opus → no escalation line; the Opus verdict stands.

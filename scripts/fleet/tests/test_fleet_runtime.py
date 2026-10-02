@@ -118,6 +118,44 @@ class Routing(unittest.TestCase):
             self.assertEqual(result[0], reviewer)
             self.assertEqual(result[1], "opus")
 
+    def test_first_pass_class_follows_the_pr(self):
+        # The scout stamps a core-path PR `review_class: opus`; the sonnet
+        # lane's first pass then runs at opus class (Codex resolves the model
+        # from the class, Claude from FLEET_MODEL_OPUS) and is the final pass.
+        def first_pass(data, number, model="sonnet", env=None, role="sonnet-reviewer"):
+            cls = "opus" if role == "opus-reviewer" else ""
+            return runtime.route(data, f"review:engine:{number}", role, cls, model,
+                                 "high", env or self.env)
+
+        core = {"number": 902, "labels": ["fleet:author-claude"], "review_class": "opus"}
+        plain = {"number": 903, "labels": ["fleet:author-claude"], "review_class": "sonnet"}
+        bare = {"number": 904, "labels": ["fleet:author-claude"]}
+        data = {"candidate_prs": [core, plain, bare]}
+        self.assertEqual(first_pass(data, 902), ("codex", "opus", "gpt-5.6-sol", "medium"))
+        self.assertEqual(first_pass(data, 903)[1:3], ("sonnet", "gpt-5.6-terra"))
+        self.assertEqual(first_pass(data, 904)[1], "sonnet", "no stamp keeps the lane's class")
+        # Claude side: a Codex-authored core PR upgrades only when the class
+        # has a model knob to name.
+        core_codex = {"number": 905, "labels": ["fleet:author-codex"], "review_class": "opus"}
+        data = {"candidate_prs": [core_codex]}
+        self.assertEqual(first_pass(data, 905, "claude-sonnet-5")[1:3],
+                         ("sonnet", "claude-sonnet-5"),
+                         "no FLEET_MODEL_OPUS: stay at the lane's model")
+        env = dict(self.env, FLEET_MODEL_OPUS="claude-opus-5[1m]")
+        self.assertEqual(first_pass(data, 905, "claude-sonnet-5", env),
+                         ("claude", "opus", "claude-opus-5[1m]", "high"))
+        # The policy knob forces a class either way; the opus lane never routes.
+        env = dict(self.env, FLEET_REVIEW_FIRST_PASS_CLASS="sonnet")
+        self.assertEqual(first_pass({"candidate_prs": [core]}, 902, env=env)[1], "sonnet")
+        env = dict(self.env, FLEET_REVIEW_FIRST_PASS_CLASS="opus")
+        self.assertEqual(first_pass({"candidate_prs": [plain]}, 903, env=env)[1], "opus")
+        flagged = {"flagged_prs": [dict(core, review_class="sonnet")]}
+        self.assertEqual(first_pass(flagged, 902, "opus", env, role="opus-reviewer")[1],
+                         "opus", "the opus lane keeps its class")
+        env = dict(self.env, FLEET_REVIEW_FIRST_PASS_CLASS="fable")
+        with self.assertRaisesRegex(ValueError, "FLEET_REVIEW_FIRST_PASS_CLASS"):
+            first_pass({"candidate_prs": [core]}, 902, env=env)
+
     def test_unstamped_author_and_no_same_provider_fallback(self):
         with self.assertRaisesRegex(ValueError, "unstamped"):
             runtime.choose_runtime("review", {}, "review:engine:9", self.env)

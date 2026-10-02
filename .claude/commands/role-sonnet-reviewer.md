@@ -83,15 +83,18 @@ apply unchanged.
       `git -C ~/src/IrredenEngine/creations/game show origin/master:<path>` or Read, and
       `~/src/IrredenEngine/creations/game/CLAUDE.md`; review for code quality, style, and
       obvious bugs.
-   d. Post the body (REVIEWER-PROTOCOL.md § "Posting the review body"). It **must end**
-      with exactly one of `Opus recheck not required.` or `Opus recheck required: <reason>`.
+   d. Post the body (REVIEWER-PROTOCOL.md § "Posting the review body"). Read
+      `FLEET_ROLE_MODEL` first: at `opus` or `fable` this pass is final — end with
+      `Opus recheck not required (reviewed at opus class).` and review the Opus-only
+      items in `review-pr/SKILL.md` yourself. At `sonnet` it **must end** with exactly
+      one of `Opus recheck not required.` or `Opus recheck required: <reason>`.
    e. The very next Bash call: `fleet-review-verdict verdict-<verdict> <N> --agent <basename>`
       (`--repo <game-repo>` for game). Exit 4 = not your claim; exit 5 = the body did
       not land on the current head — post it and retry, never stamp around it or release
       the claim. `review-pr` writes its own label through the same wrapper; if it is
       absent after the skill returns, run the wrapper — never a raw `gh pr edit`.
-      **Approve + "Opus recheck required"** → no verdict label (`fleet:approved` is
-      opus-reviewer's); instead
+      **Approve + "Opus recheck required"** (sonnet class only) → no verdict label
+      (`fleet:approved` is opus-reviewer's); instead
       `fleet-review-verdict verdict-needs-opus-recheck <N> --agent <basename>` — the
       durable escalation the scout's opus projection wakes on (the body text alone is
       invisible to it). Still set `fleet:has-nits` when there are nits; opus-reviewer
