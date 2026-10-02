@@ -40,6 +40,7 @@ add_executable(IrredenEngineTest
   ecs/modifier_runtime_test.cpp
   ecs/modifier_types_test.cpp
   ecs/modifier_vec3_runtime_test.cpp
+  ecs/pick_priority_test.cpp
   ecs/propagate_transform_test.cpp
   ecs/rebuild_detached_voxels_guard_test.cpp
   ecs/rotation_mode_set_test.cpp
@@ -78,6 +79,7 @@ add_executable(IrredenEngineTest
   render/camera_yaw_test.cpp
   render/default_pivot_latch_test.cpp
   render/detached_world_depth_test.cpp
+  render/entity_canvas_hitbox_test.cpp
   render/entity_id_carrier_test.cpp
   render/fog_cross_section_test.cpp
   render/fog_line_of_sight_test.cpp
@@ -113,6 +115,7 @@ add_executable(IrredenEngineTest
   script/lua_collision_bindings_test.cpp
   script/lua_command_test.cpp
   script/lua_input_bindings_test.cpp
+  script/lua_hitbox_2d_test.cpp
   script/lua_component_codegen_test.cpp
   # A second includer proves generated-header definitions are safe across
   # translation units.

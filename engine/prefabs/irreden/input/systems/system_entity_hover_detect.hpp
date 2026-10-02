@@ -10,6 +10,7 @@
 #include <irreden/input/components/component_entity_event_handlers.hpp>
 #include <irreden/input/components/component_hitbox_2d.hpp>
 #include <irreden/input/components/component_hitbox_2d_gui.hpp>
+#include <irreden/input/pick_priority.hpp>
 
 namespace IRSystem {
 
@@ -34,12 +35,10 @@ template <> struct System<ENTITY_HOVER_DETECT> {
     void tick(C_EntityHoverDetectTag &) {}
 
     void beginTick() {
-        // Resolve the hovered entity from three sources in priority
-        // order: GUI hitbox > world hitbox > trixel entity-id readback.
-        // The two hitbox sources scan their archetype columns once per
-        // frame here — not per-entity getComponent — and stop at the
-        // first hovered_ flag (archetype-iteration order is the
-        // deterministic tie-break). Pipeline order
+        // GUI hitboxes always own the cursor. World hitboxes and the trixel
+        // readback then share one priority/depth comparison: higher authored
+        // priority wins, followed by nearest iso depth. Equal candidates keep
+        // archetype iteration order. Pipeline order
         // HITBOX_MOUSE_TEST{,_GUI} → ENTITY_HOVER_DETECT populates the
         // flags before this read; if a creation omits either hitbox
         // system, its scan finds zero hovered entities and the priority
@@ -53,19 +52,28 @@ template <> struct System<ENTITY_HOVER_DETECT> {
             }
         );
 
-        IREntity::EntityId worldHovered = IREntity::kNullEntity;
+        IRPrefab::PickPriority::Candidate bestPick;
         IREntity::forEachComponent<C_HitBox2D>(
-            [&worldHovered](IREntity::EntityId &id, C_HitBox2D &hitbox) {
-                if (worldHovered == IREntity::kNullEntity && hitbox.hovered_) {
-                    worldHovered = id;
+            [&bestPick](IREntity::EntityId &id, C_HitBox2D &hitbox) {
+                if (hitbox.hovered_) {
+                    IRPrefab::PickPriority::select(
+                        bestPick,
+                        {id, hitbox.pickPriority_, hitbox.isoDepth_}
+                    );
                 }
             }
         );
 
-        IREntity::EntityId currentHovered = (guiHovered != IREntity::kNullEntity) ? guiHovered
-                                            : (worldHovered != IREntity::kNullEntity)
-                                                ? worldHovered
-                                                : IRRender::getEntityIdAtMouseTrixel();
+        const IRRender::MouseTrixelPick trixelPick = IRRender::getMouseTrixelPick();
+        if (trixelPick.entity_ != IREntity::kNullEntity) {
+            IRPrefab::PickPriority::select(
+                bestPick,
+                {trixelPick.entity_, trixelPick.priority_, trixelPick.isoDepth_}
+            );
+        }
+
+        const IREntity::EntityId currentHovered =
+            guiHovered != IREntity::kNullEntity ? guiHovered : bestPick.entity_;
 
         if (++logThrottleCounter_ % 600 == 0 && currentHovered != IREntity::kNullEntity) {
             IRE_LOG_DEBUG("[HoverDetect] eid={}", currentHovered);
@@ -100,6 +108,10 @@ template <> struct System<ENTITY_HOVER_DETECT> {
             }
         }
         previousHoveredEntity_ = currentHovered;
+    }
+
+    IREntity::EntityId hoveredEntity() const {
+        return previousHoveredEntity_;
     }
 
     static SystemId create() {

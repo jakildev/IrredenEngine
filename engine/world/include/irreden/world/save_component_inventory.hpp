@@ -278,7 +278,9 @@ IR_SAVE_OPT_IN(IRComponents::C_WallBounce, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WallDeath, 1)
 IR_SAVE_OPT_IN(IRComponents::C_ColliderIso3DAABB, 1)
 IR_SAVE_OPT_IN(IRComponents::C_CollisionLayer, 1)
-IR_SAVE_OPT_IN(IRComponents::C_HitBox2D, 1)
+// Version 1 was the raw {halfExtent_, hovered_} image. Version 2 writes only
+// authored configuration; save_serializers_input.hpp owns the direct migration.
+IR_SAVE_OPT_IN(IRComponents::C_HitBox2D, 2)
 IR_SAVE_OPT_IN(IRComponents::C_HitBox2DGui, 1)
 IR_SAVE_OPT_IN(IRComponents::C_HitboxCircle, 1)
 IR_SAVE_OPT_IN(IRComponents::C_HitboxRect, 1)

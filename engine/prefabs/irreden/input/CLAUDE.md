@@ -6,8 +6,11 @@ systems that populate button state. The underlying polling lives in
 
 ## Key components
 
-- `C_HitBox2D` — half-extents + `hovered_` flag. Tested against mouse
-  position per frame in **world space** (camera-transformed iso).
+- `C_HitBox2D` — screen-pixel half-extents, tunable positive padding, and a
+  `hovered_` flag. `enabled_` is authored; detached placement is transient and
+  cannot overwrite it. Ordinary owners derive their center from world space;
+  detached-canvas owners receive the exact composite center and footprint from
+  `ENTITY_CANVAS_TO_FRAMEBUFFER` one frame before input consumes it.
 - `C_HitBox2DGui` — full width/height + `hovered_` flag. AABB extends
   `[pos, pos + size_)` from a sibling `C_GuiPosition`, in
   **GUI-canvas-trixel coordinates** (top-left origin, +X right, +Y down).
@@ -54,12 +57,11 @@ systems that populate button state. The underlying polling lives in
 - `SYSTEM_ENTITY_HOVER_DETECT` (INPUT pipeline) — dispatches
   `onHovered`/`onUnhovered`/`onClicked`/`onRightClick` callbacks for
   entities whose hover state changed. Resolves the hovered entity from
-  three sources in priority order: **GUI > world > trixel**. The two
-  hitbox sources are scanned once per frame via `forEachComponent` (no
-  per-entity `getComponent`) and the first archetype-iteration entry
-  with `hovered_=true` wins; ties within a single hitbox source resolve
-  in archetype-iteration order. Callbacks are `sol::protected_function`s
-  registered from Lua.
+  three sources in priority order: **GUI > authored depth priority > nearest
+  iso depth** across world hitboxes and the trixel readback. Hitboxes are
+  scanned once per frame via `forEachComponent` (no per-entity
+  `getComponent`); exact ties retain archetype-iteration order. Callbacks are
+  `sol::protected_function`s registered from Lua.
 
 ## Pipeline order
 

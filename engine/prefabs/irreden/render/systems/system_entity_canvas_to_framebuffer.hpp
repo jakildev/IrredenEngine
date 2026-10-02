@@ -16,7 +16,10 @@
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/entity_canvas.hpp>
+#include <irreden/input/components/component_hitbox_2d.hpp>
 
+#include <algorithm>
+#include <utility>
 #include <vector>
 
 using namespace IRComponents;
@@ -38,6 +41,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     // in function-local statics.
     std::vector<CanvasInstance> instances_;
     bool capacityWarningEmitted_ = false;
+    std::vector<std::pair<IREntity::EntityId, C_HitBox2D *>> hitboxes_;
 
     // Frame constants snapshotted once in beginTick because they are constant
     // across every visible detached entity in a frame. fbRes_ comes from the
@@ -72,9 +76,38 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     // — the world-placed depth contract.
     int effectiveSub_ = 1;
 
+    void collectHitboxes() {
+        hitboxes_.clear();
+        hitboxes_.reserve(kMaxEntityCanvasInstances);
+        IREntity::forEachComponent<C_HitBox2D>([this](IREntity::EntityId &id, C_HitBox2D &hitbox) {
+            hitbox.screenSpaceCenter_ = false;
+            hitbox.screenSpacePlaced_ = false;
+            hitboxes_.emplace_back(id, &hitbox);
+        });
+        std::sort(hitboxes_.begin(), hitboxes_.end(), [](const auto &lhs, const auto &rhs) {
+            return lhs.first < rhs.first;
+        });
+    }
+
+    static void publishHitboxPlacement(
+        C_HitBox2D &hitbox,
+        float framebufferHeight,
+        const vec2 &entityFbCenter,
+        const vec2 &framebufferExtent,
+        int pickPriority,
+        int isoDepth
+    ) {
+        hitbox.centerScreen_ = vec2(entityFbCenter.x, framebufferHeight - entityFbCenter.y);
+        hitbox.halfExtent_ = framebufferExtent * 0.5f;
+        hitbox.pickPriority_ = pickPriority;
+        hitbox.isoDepth_ = isoDepth;
+        hitbox.screenSpacePlaced_ = true;
+    }
+
     void beginTick() {
         instances_.clear();
         instances_.reserve(kMaxEntityCanvasInstances);
+        collectHitboxes();
 
         const int liveCanvasCount = IRPrefab::EntityCanvas::count();
         if (IRPrefab::EntityCanvas::consumeCapacityWarning(
@@ -112,7 +145,22 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         effectiveSub_ = IRRender::getVoxelRenderEffectiveSubdivisions();
     }
 
-    void tick(const C_EntityCanvas &entityCanvas, const C_WorldTransform &worldTransform) {
+    void tick(
+        IREntity::EntityId entity,
+        const C_EntityCanvas &entityCanvas,
+        const C_WorldTransform &worldTransform
+    ) {
+        C_HitBox2D *hitbox = nullptr;
+        const auto hitboxIt = std::lower_bound(
+            hitboxes_.begin(),
+            hitboxes_.end(),
+            entity,
+            [](const auto &entry, IREntity::EntityId id) { return entry.first < id; }
+        );
+        if (hitboxIt != hitboxes_.end() && hitboxIt->first == entity) {
+            hitbox = hitboxIt->second;
+            hitbox->screenSpaceCenter_ = true;
+        }
         if (!entityCanvas.visible_ || entityCanvas.canvasEntity_ == IREntity::kNullEntity ||
             static_cast<int>(instances_.size()) >= kMaxEntityCanvasInstances) {
             return;
@@ -213,15 +261,29 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // position. The cube sits at the canvas center (the pool is centered), so
         // shrinking the quad about entityFbCenter reduces the apparent size without
         // moving the solid. At cubeSub == 1 densityZoom == cameraZoom (byte-identical).
+        const vec2 framebufferExtent{
+            fbRes_.x * densityZoom.x * entityScale.x,
+            fbRes_.y * densityZoom.y * entityScale.y
+        };
+        const bool foregroundPriority =
+            !entityCanvas.screenLocked_ && entityCanvas.depthPriority_ != 0;
         mat4 model = translate(mat4(1.0f), vec3(entityFbCenter, 0.0f));
-        model = scale(
-            model,
-            vec3(
-                fbRes_.x * densityZoom.x * entityScale.x,
-                fbRes_.y * densityZoom.y * entityScale.y,
-                1.0f
-            )
-        );
+        model = scale(model, vec3(framebufferExtent, 1.0f));
+
+        if (hitbox != nullptr) {
+            publishHitboxPlacement(
+                *hitbox,
+                fbRes_.y,
+                entityFbCenter,
+                framebufferExtent,
+                foregroundPriority ? 1 : 0,
+                IRRender::pickIsoDepthForWorldPosition(
+                    worldTransform.translation_,
+                    visualYaw_,
+                    effectiveSub_
+                )
+            );
+        }
 
         FrameDataTrixelToFramebuffer fd{};
         fd.trixelSampleLayout_ = static_cast<int>(canvasTextures->renderedSampleLayout_);
@@ -268,8 +330,6 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // independent of world extent. screenLocked_ overlays already sit at a
         // fixed near depth, so priority is meaningless there (and stays the
         // byte-identical overlay path).
-        const bool foregroundPriority =
-            !entityCanvas.screenLocked_ && entityCanvas.depthPriority_ != 0;
         float depthScale = 1.0f;
         int compositeDistanceOffset = 0;
         if (!entityCanvas.screenLocked_) {
@@ -439,9 +499,11 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
             }
         );
 
-        SystemId s = registerSystem<ENTITY_CANVAS_TO_FRAMEBUFFER, C_EntityCanvas, C_WorldTransform>(
-            "EntityCanvasToFramebuffer"
-        );
+        SystemId s = registerSystem<
+            ENTITY_CANVAS_TO_FRAMEBUFFER,
+            C_EntityCanvas,
+            C_WorldTransform,
+            AlsoWrites<C_HitBox2D>>("EntityCanvasToFramebuffer");
         IRRender::tagGpuStage(s, "entityCanvasToFb");
         return s;
     }

@@ -139,11 +139,7 @@ CompositeDepthSample readbackCompositeDepth(ivec2 px) {
     );
 
     sample.normDepth_ = windowDepth;
-    sample.rawDist_ = windowDepth * static_cast<float>(
-                                        IRConstants::kTrixelDistanceMaxDistance -
-                                        IRConstants::kTrixelDistanceMinDistance
-                                    ) +
-                      static_cast<float>(IRConstants::kTrixelDistanceMinDistance);
+    sample.rawDist_ = compositeRawDepthFromNormalized(windowDepth);
     sample.valid_ = true;
     return sample;
 }
@@ -330,7 +326,7 @@ ivec2 mouseCanvasTexelWorld() {
     return ivec2(IRMath::floor(mouseCanvasIsoScaled() + vec2(1, 1)));
 }
 
-IREntity::EntityId getEntityIdAtMouseTrixel() {
+MouseTrixelPick getMouseTrixelPick() {
     // Only TRIXEL_TO_FRAMEBUFFER creates HoveredEntityIdBuffer, so a creation
     // that composites via ENTITY_CANVAS_TO_FRAMEBUFFER has no hover readback at
     // all and "nothing hovered" is the right answer. The probing lookup is what
@@ -338,7 +334,7 @@ IREntity::EntityId getEntityIdAtMouseTrixel() {
     // dereferences an end iterator in release.
     auto *buf = IRRender::getNamedResourceOrNull<Buffer>("HoveredEntityIdBuffer");
     if (!buf)
-        return IREntity::kNullEntity;
+        return {};
 
     // Re-fetch every frame: on Metal, subData orphans the MTL::Buffer on
     // write (metal_buffer.cpp:58–79); a statically-cached pointer from
@@ -349,15 +345,26 @@ IREntity::EntityId getEntityIdAtMouseTrixel() {
         BUFFER_STORAGE_MAP_READ | BUFFER_STORAGE_MAP_PERSISTENT | BUFFER_STORAGE_MAP_COHERENT
     );
     if (!mappedPtr)
-        return IREntity::kNullEntity;
+        return {};
 
-    uvec2 packed;
-    std::memcpy(&packed, mappedPtr, sizeof(uvec2));
+    HoveredEntityIdLayout layout;
+    std::memcpy(&layout, mappedPtr, sizeof(layout));
 
     // Strip the per-trixel priority carrier from the high word before
     // reconstructing the 64-bit id — THE chokepoint so a prioritized
     // fragment never reports a corrupted picked id.
-    return static_cast<IREntity::EntityId>(IRRender::decodeCarrierEntityId(packed));
+    const IREntity::EntityId entity =
+        static_cast<IREntity::EntityId>(IRRender::decodeCarrierEntityId(layout.entityId_));
+    if (entity == IREntity::kNullEntity) {
+        return {};
+    }
+    const DecodedCompositeDepth depth =
+        decodeCompositeDepth(compositeRawDepthFromNormalized(layout.depth_));
+    return {entity, depth.tier_, depth.iso_};
+}
+
+IREntity::EntityId getEntityIdAtMouseTrixel() {
+    return getMouseTrixelPick().entity_;
 }
 
 void setCameraZoom(float zoom) {
