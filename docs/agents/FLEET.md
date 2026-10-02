@@ -88,9 +88,10 @@ standing, no record). Declined items wait under `~/.fleet/state/declined/` until
 they change (per declining role); declined and abandoned exits count as empty
 for the lane's backoff. Marker-vouched reviewing, resolving, and planning claims
 release on the first abandonment; they have no pane affinity or reservation to
-resume. Other claimed kinds retry once via the session sidecar, then release. A
-release salvages dirty worktrees to `~/.fleet/state/salvage/` and writes
-`~/.fleet/state/handoff/<kind>-<repo>-<N>.md`. At `FLEET_TARGET_DISPATCH_CAP`
+resume. Other kinds keep the claim once only when the pane can resume: a reservation, or a
+same-role, same-target sidecar, which pins the pane to that one re-dispatch for up to
+`FLEET_CLAIM_STALE_SECS`. A release salvages dirty worktrees to `~/.fleet/state/salvage/` and an
+unreachable HEAD to a `fleet-salvage/*` branch, and writes `~/.fleet/state/handoff/<kind>-<repo>-<N>.md`. At `FLEET_TARGET_DISPATCH_CAP`
 assignments (default 5, cleared on finished) it is parked `fleet:needs-human`.
 
 ### Ingestion

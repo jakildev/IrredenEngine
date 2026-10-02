@@ -479,8 +479,13 @@ unset -f _clean_pane_fail
 # — including the dispatch target. Release the pre-claim now, under the same
 # worktree basename the dispatcher claimed with, rather than stranding the
 # lock for its TTL reaper; the item re-enters assignment on a later tick once
-# this resumed iteration finishes.
-if (( RESUMED )) && [[ "$FLEET_RUNTIME" == claude && -n "${FLEET_DISPATCH_TARGET:-}" ]]; then
+# this resumed iteration finishes. A target the resumed session was itself
+# dispatched on (the dispatcher's abandon-pin re-dispatch) is the claim that
+# session holds, so it stays.
+if (( RESUMED )) && [[ "$FLEET_RUNTIME" == claude && -n "${FLEET_DISPATCH_TARGET:-}" \
+    && "$_starget" == "$FLEET_DISPATCH_TARGET" ]]; then
+    echo "fleet-dispatch-wrap: resume continues dispatch target $FLEET_DISPATCH_TARGET — assignment kept" >&2
+elif (( RESUMED )) && [[ "$FLEET_RUNTIME" == claude && -n "${FLEET_DISPATCH_TARGET:-}" ]]; then
     fleet_release_assignment "$FLEET_DISPATCH_TARGET" "$worktree_name"
     echo "fleet-dispatch-wrap: resume discards dispatch target $FLEET_DISPATCH_TARGET — released" >&2
     unset FLEET_DISPATCH_TARGET FLEET_DISPATCH_KIND FLEET_DISPATCH_REPO \

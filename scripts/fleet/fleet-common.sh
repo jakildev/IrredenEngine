@@ -279,6 +279,27 @@ FLEET_PRECLAIM_DISPATCH_ID="preclaim"
 # (dispatch counts, abandonment, decline memory, salvage, handoff).
 fleet_target_key() { printf '%s\n' "${1//:/-}"; }
 
+# The abandon pin: a first-abandoned target whose pane can resume it through
+# its session sidecar holds that pane for exactly one re-dispatch of the same
+# target (fleet-dispatcher handle_abandoned_target). One file per agent:
+# line 1 the target, line 2 the write epoch, line 3 the abandoned role.
+# keep in sync with fleet_claim_liveness.py (abandon-pin/<agent>)
+fleet_abandon_pin_file() {
+    printf '%s\n' "${FLEET_STATE_DIR:-$HOME/.fleet/state}/abandon-pin/$1"
+}
+
+# fleet_abandon_pin_target <agent> — print the pinned target; exit 1 when the
+# agent has no pin.
+fleet_abandon_pin_target() {
+    local f line=""
+    f=$(fleet_abandon_pin_file "$1")
+    [[ -f "$f" ]] || return 1
+    IFS= read -r line < "$f" || true
+    line="${line%$'\r'}"
+    [[ -n "$line" ]] || return 1
+    printf '%s\n' "$line"
+}
+
 # The worktrees a pane basename owns — the engine one and its game twin —
 # one per line, existing ones only. $1 = basename, $2 = engine root
 # (detected when omitted).
@@ -323,8 +344,12 @@ fleet_repo_ns() {
 # assignment. Best-effort by design: both callers sit on discard paths where
 # a failed release only means the claim waits for its TTL reaper instead.
 fleet_release_assignment() {
-    local target="$1" agent="$2"
+    local target="$1" agent="$2" pinned
     fleet_parse_target "$target" || return 0
+    # A pin never outlives the claim it holds the pane for.
+    if pinned=$(fleet_abandon_pin_target "$agent") && [[ "$pinned" == "$target" ]]; then
+        rm -f "$(fleet_abandon_pin_file "$agent")"
+    fi
     fleet_repo_ns "$FLEET_TARGET_REPO"
     local sub="${FLEET_TARGET_RELEASE[$FLEET_TARGET_KIND]}"
     # A claimless kind (`merge`) took nothing, so there is nothing to hand back.

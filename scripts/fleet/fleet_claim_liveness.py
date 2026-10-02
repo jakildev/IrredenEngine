@@ -27,6 +27,8 @@ Arms, first match wins:
   (iii) a live dispatch record names this owner and item
         (``task|stack:<ns>:<N>`` for a claim,
         ``feedback:<ns>:<N>`` for an amend)                   → 0
+  (iii′) the owner's abandon pin names this item: the dispatcher
+        holds the pane for one resume of it                  → 0
   (iv)  amending: the stamped dispatch id has been superseded
         in ``dispatch-current/<agent>``                       → 2
   (v)   the owner's heartbeat is younger than the calling
@@ -127,10 +129,14 @@ def live_dispatch_target(dispatch_dir, agent, kinds, ns, number):
         if (rec.get("agent") or "") != agent:
             continue
         target = rec.get("target") or ""
-        m = _TARGET_RE.match(target)
-        if m and m.group(1) in kinds and m.group(2) == ns and int(m.group(3)) == number:
+        if _target_names_item(target, kinds, ns, number):
             return target
     return ""
+
+
+def _target_names_item(target, kinds, ns, number):
+    m = _TARGET_RE.match(target)
+    return bool(m and m.group(1) in kinds and m.group(2) == ns and int(m.group(3)) == number)
 
 
 def _stamped_identity(kind, agent, ns, number, dirs):
@@ -150,6 +156,13 @@ def _stamped_identity(kind, agent, ns, number, dirs):
     if owner and owner != agent:
         return "", 0
     return _read_text(os.path.join(lock, "dispatch_id")), 0
+
+
+def pinned_target(state_dir, agent, kinds, ns, number):
+    """The target of ``agent``'s abandon pin when it names this item, or "".
+    keep in sync with fleet-common.sh fleet_abandon_pin_file"""
+    target = _read_text(os.path.join(state_dir, "abandon-pin", agent)).split("\n", 1)[0].strip()
+    return target if _target_names_item(target, kinds, ns, number) else ""
 
 
 def _reservation_names(dirs, agent, number):
@@ -186,6 +199,9 @@ def verdict(label, ns, number, *, this_host, ttl, now, dirs,
                                   agent, _DISPATCH_KINDS[kind], ns, number)
     if target:
         return LIVE, {"arm": "dispatch", "target": target, "agent": agent}
+    target = pinned_target(dirs["state"], agent, _DISPATCH_KINDS[kind], ns, number)
+    if target:
+        return LIVE, {"arm": "abandon-pin", "target": target, "agent": agent}
 
     current = _read_text(os.path.join(dirs["state"], "dispatch-current", agent))
     current = current.splitlines()[0].strip() if current else ""
