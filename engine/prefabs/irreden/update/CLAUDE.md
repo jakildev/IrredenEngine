@@ -89,7 +89,8 @@ in the `UPDATE` pipeline unless explicitly noted.
   `REBUILD_GRID_VOXELS` re-rasterization downstream.
 - `ANGULAR_VELOCITY_DAMPED` — rotates by `C_AngularVelocity`'s current rate
   (left-composed, like `AUTO_SPIN_LOCAL_TRANSFORM`), then decays the rate and
-  snaps it to 0 under `kAngularRestEpsilon`. Order: `AUTO_SPIN_LOCAL_TRANSFORM`,
+  snaps it to 0 under `kAngularRestEpsilon`; a rate already under it, or
+  non-finite, is zeroed without a turn (`effectiveRate()`). Order: `AUTO_SPIN_LOCAL_TRANSFORM`,
   then this, then `PROPAGATE_TRANSFORM`. `PARALLEL_FOR` — apply impulses from
   another system or a command handler, never from inside this tick.
 - `ROTATION_TARGET_LOCAL_TRANSFORM` — maps each `C_RotationTarget`'s

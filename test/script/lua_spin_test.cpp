@@ -2,6 +2,8 @@
 
 #include <cmath>
 #include <limits>
+#include <string>
+#include <vector>
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -87,14 +89,22 @@ class LuaSpin : public testing::Test {
     }
 
     // q and -q are the same rotation; compare by action on the basis vectors.
-    static void expectSameRotation(IRMath::vec4 actual, IRMath::vec4 expected) {
+    static void expectSameRotation(IRMath::vec4 actual, IRMath::vec4 expected, float eps = kEps) {
         for (const auto &v :
              {IRMath::vec3(1, 0, 0), IRMath::vec3(0, 1, 0), IRMath::vec3(0, 0, 1)}) {
             expectVec3Near(
                 IRMath::rotateVectorByQuat(v, actual),
-                IRMath::rotateVectorByQuat(v, expected)
+                IRMath::rotateVectorByQuat(v, expected),
+                eps
             );
         }
+    }
+
+    static void expectFinite(IRMath::vec4 q) {
+        EXPECT_TRUE(
+            std::isfinite(q.x) && std::isfinite(q.y) && std::isfinite(q.z) && std::isfinite(q.w)
+        ) << q.x
+          << " " << q.y << " " << q.z << " " << q.w;
     }
 
     // The documented time-to-rest bound (component_angular_velocity.hpp).
@@ -415,6 +425,157 @@ TEST_F(LuaSpin, NonFiniteDampingFollowsTheTicksToRestPolicy) {
     );
 }
 
+// `ticksToRest()` counts the ticks the system turns the entity: a rate just
+// under `kAngularRestEpsilon` is already at rest (0 ticks, no turn), and one at
+// the epsilon turns once before the decay snaps it to 0. The tight tolerance
+// tells a 1e-4 rad turn from none.
+TEST_F(LuaSpin, RestBoundaryMatchesTicksToRest) {
+    constexpr float kTightEps = 1e-6f;
+    constexpr float kDamping = 0.1f;
+    const IRMath::vec3 axis(0, 0, 1);
+    const IRMath::vec4 identity = IRMath::quatAxisAngle(axis, 0.0f);
+
+    const IREntity::EntityId belowId = createFromLua(R"(
+        return IREntity.createImpulseSpinner(
+            C_LocalTransform.new(vec3.new(0, 0, 0)),
+            C_AngularVelocity.new(vec3.new(0, 0, 1), 0.00005, 0.1)
+        )
+    )");
+    const IREntity::EntityId atId = createFromLua(R"(
+        return IREntity.createImpulseSpinner(
+            C_LocalTransform.new(vec3.new(0, 0, 0)),
+            C_AngularVelocity.new(vec3.new(0, 0, 1), 0.0001, 0.1)
+        )
+    )");
+    const float belowRate = IREntity::getComponent<C_AngularVelocity>(belowId).radiansPerFrame_;
+    const float atRate = IREntity::getComponent<C_AngularVelocity>(atId).radiansPerFrame_;
+    ASSERT_LT(belowRate, C_AngularVelocity::kAngularRestEpsilon);
+    ASSERT_GT(belowRate, 0.0f);
+    ASSERT_EQ(atRate, C_AngularVelocity::kAngularRestEpsilon);
+    EXPECT_EQ(C_AngularVelocity::ticksToRest(belowRate, kDamping), 0);
+    EXPECT_EQ(C_AngularVelocity::ticksToRest(atRate, kDamping), 1);
+
+    runLua(kSpinPipeline);
+    for (int i = 0; i < 3; ++i) {
+        tick();
+        EXPECT_FLOAT_EQ(IREntity::getComponent<C_AngularVelocity>(belowId).radiansPerFrame_, 0.0f);
+        EXPECT_FLOAT_EQ(IREntity::getComponent<C_AngularVelocity>(atId).radiansPerFrame_, 0.0f);
+        expectSameRotation(
+            IREntity::getComponent<C_WorldTransform>(belowId).rotation_,
+            identity,
+            kTightEps
+        );
+        expectSameRotation(
+            IREntity::getComponent<C_WorldTransform>(atId).rotation_,
+            IRMath::quatAxisAngle(axis, atRate),
+            kTightEps
+        );
+    }
+}
+
+// A non-finite rate is at rest: the system zeroes it without turning the
+// entity, and `ticksToRest()` reports 0 rather than looping. A non-finite axis
+// turns nothing while the rate decays, and a non-finite impulse is a no-op.
+TEST_F(LuaSpin, NonFiniteRateOrAxisLeavesTheTransformFinite) {
+    constexpr float kRate = 0.2f;
+    constexpr float kDamping = 0.1f;
+    constexpr int kTicks = 3;
+    const IRMath::vec4 identity = IRMath::quatAxisAngle(IRMath::vec3(0, 0, 1), 0.0f);
+
+    std::vector<IREntity::EntityId> nonFiniteRateIds;
+    for (const char *rate : {"1 / 0", "-1 / 0", "0 / 0"}) {
+        const std::string script = std::string(R"(
+            return IREntity.createImpulseSpinner(
+                C_LocalTransform.new(vec3.new(0, 0, 0)),
+                C_AngularVelocity.new(vec3.new(0, 0, 1), )") +
+                                   rate + R"(, 0.1)
+            )
+        )";
+        nonFiniteRateIds.push_back(createFromLua(script.c_str()));
+        const float stored =
+            IREntity::getComponent<C_AngularVelocity>(nonFiniteRateIds.back()).radiansPerFrame_;
+        ASSERT_FALSE(std::isfinite(stored)) << rate;
+        EXPECT_EQ(C_AngularVelocity::ticksToRest(stored, kDamping), 0) << rate;
+    }
+    std::vector<IREntity::EntityId> nonFiniteAxisIds;
+    for (const char *axis : {"vec3.new(1 / 0, 0, 0)", "vec3.new(0, 0 / 0, 1)"}) {
+        const std::string script = std::string(R"(
+            return IREntity.createImpulseSpinner(
+                C_LocalTransform.new(vec3.new(0, 0, 0)),
+                C_AngularVelocity.new()") +
+                                   axis +
+                                   R"(, 0.2, 0.1)
+            )
+        )";
+        nonFiniteAxisIds.push_back(createFromLua(script.c_str()));
+    }
+    const IREntity::EntityId impulsedId = createFromLua(R"(
+        local spin = C_AngularVelocity.new(vec3.new(0, 0, 1), 0.2, 0.1)
+        spin:impulse(vec3.new(0, 0, 1), 1 / 0)
+        spin:impulse(vec3.new(0, 0, 1), 0 / 0)
+        spin:impulse({ x = 1 / 0, y = 0, z = 0 }, 0.3)
+        return IREntity.createImpulseSpinner(C_LocalTransform.new(vec3.new(0, 0, 0)), spin)
+    )");
+    {
+        const C_AngularVelocity &spin = IREntity::getComponent<C_AngularVelocity>(impulsedId);
+        EXPECT_FLOAT_EQ(spin.radiansPerFrame_, kRate);
+        expectVec3Near(spin.axis_, IRMath::vec3(0, 0, 1));
+    }
+
+    runLua(kSpinPipeline);
+    for (int i = 0; i < kTicks; ++i) {
+        tick();
+    }
+
+    for (const IREntity::EntityId id : nonFiniteRateIds) {
+        EXPECT_FLOAT_EQ(IREntity::getComponent<C_AngularVelocity>(id).radiansPerFrame_, 0.0f);
+        const IRMath::vec4 rotation = IREntity::getComponent<C_WorldTransform>(id).rotation_;
+        expectFinite(rotation);
+        expectSameRotation(rotation, identity);
+    }
+    float decayed = kRate;
+    for (int i = 0; i < kTicks; ++i) {
+        decayed *= 1.0f - kDamping;
+    }
+    for (const IREntity::EntityId id : nonFiniteAxisIds) {
+        EXPECT_FLOAT_EQ(IREntity::getComponent<C_AngularVelocity>(id).radiansPerFrame_, decayed);
+        const IRMath::vec4 rotation = IREntity::getComponent<C_WorldTransform>(id).rotation_;
+        expectFinite(rotation);
+        expectSameRotation(rotation, identity);
+    }
+    EXPECT_FLOAT_EQ(
+        IREntity::getComponent<C_AngularVelocity>(impulsedId).radiansPerFrame_,
+        decayed
+    );
+    expectSameRotation(
+        IREntity::getComponent<C_WorldTransform>(impulsedId).rotation_,
+        IRMath::quatAxisAngle(IRMath::vec3(0, 0, 1), kRate * (1.0f + 0.9f + 0.81f))
+    );
+}
+
+TEST(AngularVelocityTicksToRest, NonFiniteRateIsAtRest) {
+    constexpr float kInf = std::numeric_limits<float>::infinity();
+    constexpr float kMax = std::numeric_limits<float>::max();
+    for (const float rate : {kInf, -kInf, std::numeric_limits<float>::quiet_NaN()}) {
+        EXPECT_EQ(C_AngularVelocity::effectiveRate(rate), 0.0f) << rate;
+        EXPECT_EQ(C_AngularVelocity::ticksToRest(rate, 0.1f), 0) << rate;
+        EXPECT_EQ(C_AngularVelocity::ticksToRest(rate, 0.0f), 0) << rate;
+    }
+    EXPECT_EQ(C_AngularVelocity::effectiveRate(-0.5f), -0.5f);
+    EXPECT_GT(C_AngularVelocity::ticksToRest(kMax, 0.5f), 0);
+
+    // An impulse whose sum overflows keeps the current spin.
+    C_AngularVelocity spin{IRMath::vec3(0, 0, 1), kMax};
+    spin.impulse(IRMath::vec3(0, 0, 1), kMax);
+    EXPECT_EQ(spin.radiansPerFrame_, kMax);
+    EXPECT_TRUE(std::isfinite(spin.axis_.x) && std::isfinite(spin.axis_.y));
+    // A non-finite current spin contributes nothing: the impulse replaces it.
+    C_AngularVelocity poisoned{IRMath::vec3(0, 0, 1), kInf};
+    poisoned.impulse(IRMath::vec3(1, 0, 0), 0.3f);
+    EXPECT_FLOAT_EQ(poisoned.radiansPerFrame_, 0.3f);
+    EXPECT_FLOAT_EQ(poisoned.axis_.x, 1.0f);
+}
+
 TEST(AngularVelocityTicksToRest, BoundsOutOfRangeDamping) {
     constexpr float kRate = 0.25f;
     // Never decays: the system would spin forever, so the helper reports -1.
@@ -425,7 +586,8 @@ TEST(AngularVelocityTicksToRest, BoundsOutOfRangeDamping) {
     // Above 1 clamps to 1: one tick, like the system.
     EXPECT_EQ(C_AngularVelocity::ticksToRest(kRate, 1.0f), 1);
     EXPECT_EQ(C_AngularVelocity::ticksToRest(kRate, 2.0f), 1);
-    // A spin already at rest takes no ticks whatever the damping.
+    // A spin already at rest, below the epsilon, takes no ticks whatever the
+    // damping; the system zeroes it without a turn (RestBoundaryMatchesTicksToRest).
     EXPECT_EQ(C_AngularVelocity::ticksToRest(0.0f, 0.0f), 0);
     EXPECT_EQ(
         C_AngularVelocity::ticksToRest(C_AngularVelocity::kAngularRestEpsilon * 0.5f, 0.0f),

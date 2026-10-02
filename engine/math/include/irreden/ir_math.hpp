@@ -291,6 +291,12 @@ template <typename T> constexpr T abs(const T &value) {
     return glm::abs(value);
 }
 
+/// True unless @p value is ±inf or NaN. Constexpr, unlike `std::isfinite`.
+constexpr bool isFinite(float value) {
+    return value >= -std::numeric_limits<float>::max() &&
+           value <= std::numeric_limits<float>::max();
+}
+
 /// Clamps @p value to [minValue, maxValue] (scalar or component-wise).
 /// GLM wrapper.
 template <typename T> constexpr T clamp(const T &value, const T &minValue, const T &maxValue) {
