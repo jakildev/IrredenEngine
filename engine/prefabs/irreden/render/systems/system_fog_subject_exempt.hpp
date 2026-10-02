@@ -45,8 +45,7 @@ template <> struct System<FOG_SUBJECT_EXEMPT> {
         if (activePool_ == nullptr) {
             return;
         }
-        if (voxelSet.canvasEntity_ != IREntity::kNullEntity &&
-            voxelSet.canvasEntity_ != activeCanvas_) {
+        if (!IRPrefab::Fog::isOnFogCanvas(voxelSet, activeCanvas_)) {
             return;
         }
         if (IRPrefab::Fog::bodyCarrierBits(*activePool_, voxelSet) == kExemptCarrier) {

@@ -425,4 +425,37 @@ TEST_F(FogSubjectParallelPersistedTest, BothSystemsReadPersistedCellsFromWorkers
     EXPECT_EQ(evaluatedVisible, kBodiesPerSystem);
 }
 
+// The residency pre-pass has the ticks' subject scope: bodies on another
+// canvas, unadopted or adopted, are skipped by both ticks, so their regions
+// are never loaded into or kept resident in the active canvas's field.
+TEST_F(FogSubjectParallelPersistedTest, ForeignCanvasBodiesLoadNoRegion) {
+    const IRMath::ivec2 ownCell = bodyCell(0, 0);
+    const IRMath::ivec2 foreignAdoptCell = bodyCell(4, 0);
+    const IRMath::ivec2 foreignEvalCell = bodyCell(-8, 0);
+    IRTest::ScopedFogSaveRoot root;
+    persistVisibleCells(root, {ownCell, foreignAdoptCell, foreignEvalCell});
+    auto &fog = IREntity::getComponent<C_CanvasFogOfWar>(m_canvas);
+    ASSERT_TRUE(fog.field_->setPersistence(root.store()));
+
+    const IREntity::EntityId otherCanvas = IREntity::createEntity(C_VoxelPool{ivec3(4, 4, 4)});
+    const auto transformAt = [](IRMath::ivec2 cell) {
+        return C_WorldTransform{vec3(cell.x, cell.y, 0.0f), vec4(0, 0, 0, 1), vec3(1.0f)};
+    };
+    const auto setOn = [](IREntity::EntityId canvas) {
+        return C_VoxelSetNew{ivec3(1, 1, 1), Color{200, 100, 50, 255}, true, canvas};
+    };
+    const IREntity::EntityId own = IREntity::createEntity(transformAt(ownCell), setOn(m_canvas));
+    IREntity::createEntity(transformAt(foreignAdoptCell), setOn(otherCanvas));
+    IREntity::createEntity(transformAt(foreignEvalCell), setOn(otherCanvas), C_FogRevealed{});
+    IRPrefab::Fog::fieldStats();
+
+    m_systemManager.executePipeline(IRTime::Events::UPDATE);
+    IREntity::flushStructuralChanges();
+
+    EXPECT_EQ(IRPrefab::Fog::fieldStats().loads_, 1) << "only the on-canvas body's region";
+    EXPECT_FLOAT_EQ(IREntity::getComponent<C_FogRevealed>(own).revealFactor_, 1.0f);
+    EXPECT_FALSE(fog.field_->peekCell(foreignAdoptCell).has_value());
+    EXPECT_FALSE(fog.field_->peekCell(foreignEvalCell).has_value());
+}
+
 } // namespace

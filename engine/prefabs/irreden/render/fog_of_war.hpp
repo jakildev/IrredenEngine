@@ -151,6 +151,15 @@ inline std::uint8_t quantizeRevealFactor(float factor) {
     );
 }
 
+/// Whether @p voxelSet is subject to @p activeCanvas's fog: a set names that
+/// canvas or none. The subject systems' ticks and their residency pre-pass
+/// share it, so the pre-pass touches only regions a tick reads.
+inline bool
+isOnFogCanvas(const IRComponents::C_VoxelSetNew &voxelSet, IREntity::EntityId activeCanvas) {
+    return voxelSet.canvasEntity_ == IREntity::kNullEntity ||
+           voxelSet.canvasEntity_ == activeCanvas;
+}
+
 /// The pool records @p voxelSet owns, addressed through the live @p pool by
 /// index rather than the set's cached span: a canvas migration copies the
 /// pool component and relocates its storage, so the span a set captured at
@@ -266,11 +275,15 @@ inline float evalReveal(
 /// The residency pre-pass of fog-of-war-world-field.md D13, run from the
 /// `beginTick` of a `PARALLEL_FOR` system whose tick takes the verdict
 /// through the snapshot overload above: touches the region of every anchor
-/// in @p nodes (each carrying `C_WorldTransform`), so the tick reads it
-/// resident. Consecutive anchors in one region cost one touch. Without
-/// persistence nothing can load, so the walk is skipped.
+/// in @p nodes (each carrying `C_WorldTransform` and `C_VoxelSetNew`) whose
+/// set is on @p activeCanvas's fog, so the tick reads it resident. A set on
+/// another canvas is skipped, as the tick skips it. Consecutive anchors in
+/// one region cost one touch. Without persistence nothing can load, so the
+/// walk is skipped.
 inline void touchAnchorRegions(
-    IRComponents::C_CanvasFogOfWar &fog, const std::vector<IREntity::ArchetypeNode *> &nodes
+    IRComponents::C_CanvasFogOfWar &fog,
+    IREntity::EntityId activeCanvas,
+    const std::vector<IREntity::ArchetypeNode *> &nodes
 ) {
     if (!fog.hasPersistence()) {
         return;
@@ -279,7 +292,11 @@ inline void touchAnchorRegions(
     IRMath::ivec2 lastRegion{};
     for (IREntity::ArchetypeNode *node : nodes) {
         const auto &transforms = IREntity::getComponentData<IRComponents::C_WorldTransform>(node);
+        const auto &voxelSets = IREntity::getComponentData<IRComponents::C_VoxelSetNew>(node);
         for (int i = 0; i < node->length_; ++i) {
+            if (!isOnFogCanvas(voxelSets[i], activeCanvas)) {
+                continue;
+            }
             const IRMath::ivec3 column = IRMath::roundVec3HalfUp(transforms[i].translation_);
             const IRMath::ivec2 region = WorldField::regionOfCell({column.x, column.y});
             if (touched && region == lastRegion) {

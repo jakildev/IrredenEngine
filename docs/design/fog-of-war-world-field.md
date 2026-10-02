@@ -299,8 +299,10 @@ parallel tick.
 
 A system whose parallel tick reads the field makes the regions it will read
 resident in its own `beginTick`: it walks its archetype's anchors and calls
-`touchCell` on each (consecutive anchors in one region cost one lookup),
-only when the field has persistence. That pre-pass is what keeps D11's "a
+`touchCell` on each one its tick will evaluate (consecutive anchors in one
+region cost one lookup), only when the field has persistence. The walk
+applies the tick's own subject filter (a set on another canvas is skipped),
+so the pre-pass never loads or keeps resident a region no tick reads. That pre-pass is what keeps D11's "a
 far region read every frame remains resident" true for those readers: the
 access bit is set every frame, so the gather's eviction keeps the region.
 `FOG_SUBJECT_ADOPT` and `FOG_REVEAL_EVAL` are the first such readers.

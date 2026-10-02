@@ -92,7 +92,7 @@ template <> struct System<FOG_REVEAL_EVAL> {
         // No stagger filter: every anchor's region keeps its access bit each
         // frame, so the gather's eviction keeps a far region a body reads.
         if (fog != nullptr) {
-            IRPrefab::Fog::touchAnchorRegions(*fog, nodes);
+            IRPrefab::Fog::touchAnchorRegions(*fog, activeCanvas_, nodes);
         }
         const std::size_t slots = static_cast<std::size_t>(IRJob::workerCount()) + 1u;
         restampedByWorker_.assign(slots, 0u);
@@ -120,8 +120,7 @@ template <> struct System<FOG_REVEAL_EVAL> {
         if ((entity + frameCounter_) % settings_.staggerPeriod_ != 0u) {
             return;
         }
-        if (voxelSet.canvasEntity_ != IREntity::kNullEntity &&
-            voxelSet.canvasEntity_ != activeCanvas_) {
+        if (!IRPrefab::Fog::isOnFogCanvas(voxelSet, activeCanvas_)) {
             return;
         }
 

@@ -85,8 +85,9 @@ template <> struct System<FOG_SUBJECT_ADOPT> {
             population += static_cast<std::size_t>(node->length_);
         }
         pending_.reset(population);
-        if (fog != nullptr) {
-            IRPrefab::Fog::touchAnchorRegions(*fog, nodes);
+        // The tick reads no grid cell without a pool, so nothing is touched.
+        if (fog != nullptr && activePool_ != nullptr) {
+            IRPrefab::Fog::touchAnchorRegions(*fog, activeCanvas_, nodes);
         }
     }
 
@@ -98,8 +99,7 @@ template <> struct System<FOG_SUBJECT_ADOPT> {
         if (fog_ == nullptr || activePool_ == nullptr) {
             return;
         }
-        if (voxelSet.canvasEntity_ != IREntity::kNullEntity &&
-            voxelSet.canvasEntity_ != activeCanvas_) {
+        if (!IRPrefab::Fog::isOnFogCanvas(voxelSet, activeCanvas_)) {
             return;
         }
 
