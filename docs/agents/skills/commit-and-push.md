@@ -96,7 +96,8 @@ In this order:
 - **Screenshots.** If `git diff --name-only <remote>/<default-branch>...HEAD`
   matches a **visual-file glob** and `docs/pr-screenshots/<branch>/` does
   not exist, run the **screenshot skill** first. Screenshots ship in the
-  same commit as the code. Docs/tests/mechanical/build-only diffs skip this.
+  same commit as the code on the Cursor path, or in the next commit on the
+  branch after a `--two-ref` capture; never in a commit after the PR opens. Docs/tests/mechanical/build-only diffs skip this.
 - **info-isolation check** over staged paths and the PR-body draft.
 - Python under `scripts/`: `ruff check --fix scripts/` then `ruff check
   scripts/` must exit 0 (CI-gated; `docs/agents/BUILD.md` §"Python

@@ -5,7 +5,8 @@ description: >-
   them under `docs/pr-screenshots/<branch>/` so the PR body can embed them
   via raw GitHub URLs — runs an auto-screenshot-capable demo (default
   `IRShapeDebug`) against origin/master and against the dirty tree, or in
-  `--two-ref` mode between two committed refs for the feedback-AMEND path,
+  `--two-ref` mode between two committed refs (the fleet default, and the
+  feedback-AMEND path),
   pairs the shots by label, and prints the markdown snippet. Use when the
   user says "attach screenshots" or a PR touches `engine/render/`,
   `engine/prefabs/irreden/render/`, any `.glsl`/`.metal` shader, or
@@ -48,7 +49,9 @@ Read it first, then apply the deltas below.
   shadow|ao|light_level --no-auto-rotate --no-spin` (overlay matching the
   effect; the freeze flags keep the pose comparable).
 - Two-ref mode's detached HEAD is the one `fleet-pr-claim-feedback` /
-  `fleet-pr-checkout-detached` leave you on.
+  `fleet-pr-checkout-detached` leave you on. A dispatched worker on its own
+  feature branch commits first and runs `--two-ref origin/master HEAD`; the
+  stash-based default mode is the Cursor path.
 - The demo picker knows only `creations/demos/*/`; game creations under
   `creations/game/` are out of scope.
 - For "show me where the drift is", pipe a pair through `tools/img_diff`
