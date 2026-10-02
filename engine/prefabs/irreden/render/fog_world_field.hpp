@@ -294,7 +294,9 @@ class WorldField {
 
     /// Replaces @p out with the field chunks either layer changed since the
     /// previous call (sorted, unique) and refreshes their summaries. The only
-    /// drain of the pending set; an undrained field grows it.
+    /// drain of the pending set; an undrained field grows it. The caller retains
+    /// capacity for the largest union of consecutive calls' changed chunks, so
+    /// a repeating workload is warm only after every transition has run.
     void consumePending(std::vector<IRPrefab::Spatial::FieldChunkKey> &out) {
         m_cells.dirtyKeys(out);
         m_cells.update();
