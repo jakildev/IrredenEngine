@@ -934,6 +934,7 @@ void LuaScript::bindLuaCommands() {
     detail::bindInputEnums(*this);
     detail::bindCommandFunctions(*this);
     detail::bindEntityEvents(*this);
+    detail::bindCursorPosition(*this);
 }
 
 void LuaScript::bindLuaFog() {
