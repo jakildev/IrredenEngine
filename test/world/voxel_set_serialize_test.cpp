@@ -1,8 +1,8 @@
 // Unit tests for SaveSerialize<C_VoxelSetNew>.
 //
 // The serializer round-trips a C_VoxelSetNew's canonical, pool-independent
-// content ({size_, boundsMin, per-voxel C_Voxel records, owning canvas id})
-// and reconstructs the set in STAGED mode (numVoxels_ == 0, pendingVoxels_
+// content ({size_, boundsMin, authored LOD band, per-voxel C_Voxel records,
+// owning canvas id}) and reconstructs the set in STAGED mode (numVoxels_ == 0, pendingVoxels_
 // populated) with zero pool interaction — the exact contract the loader's
 // mutation-free validate pass and the post-load attachToCanvas seed pass rely
 // on. These are headless: staged construction and the serializer touch no
@@ -16,7 +16,10 @@
 
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <cstring>
+#include <optional>
+#include <stdexcept>
 #include <vector>
 
 using namespace IRComponents;
@@ -85,6 +88,24 @@ TEST(VoxelSetSerialize, StagedRoundTrip) {
         EXPECT_EQ(0, std::memcmp(&out.pendingVoxels_[i], &voxels[i], sizeof(C_Voxel)))
             << "voxel record " << i << " differs after round-trip";
     }
+}
+
+TEST(VoxelSetSerialize, AuthoredLodBandRoundTripsWithoutTransientGates) {
+    const std::vector<C_Voxel> voxels = makeVoxels(1);
+    C_VoxelSetNew set{C_VoxelSetNew::StagedInit{}, IRMath::ivec3(1), IRMath::ivec3(0), voxels, 9};
+    set.lodMin_ = IRRender::LodLevel::LOD_3;
+    set.lodMax_ = IRRender::LodLevel::LOD_2;
+    set.visible_ = false;
+    set.lodCulled_ = true;
+
+    IRAsset::Result<C_VoxelSetNew> res;
+    const C_VoxelSetNew out = serializeThenRead(set, res);
+    ASSERT_TRUE(res.ok());
+
+    EXPECT_EQ(out.lodMin_, IRRender::LodLevel::LOD_3);
+    EXPECT_EQ(out.lodMax_, IRRender::LodLevel::LOD_2);
+    EXPECT_TRUE(out.visible_);
+    EXPECT_FALSE(out.lodCulled_);
 }
 
 // An empty (zero-voxel) set round-trips without reading past the buffer.
@@ -230,18 +251,16 @@ TEST(VoxelSetSerialize, TruncatedReadFails) {
 }
 
 // ---------------------------------------------------------------------------
-// EntityAnchor persistence in the current format
+// Versioned scalar persistence
 // ---------------------------------------------------------------------------
 
 namespace {
 
-// A v1 record omits the anchor byte present in the current layout.
-// Hand-built rather than produced by an old writer, because the v1 writer no
-// longer exists — this IS the on-disk shape the migrator must accept.
-std::vector<std::uint8_t> makeV1Payload(
+std::vector<std::uint8_t> makeRetiredPayload(
     IRMath::ivec3 size,
     IRMath::ivec3 boundsMin,
     IREntity::EntityId canvas,
+    std::optional<EntityAnchor> anchor,
     const std::vector<C_Voxel> &voxels
 ) {
     IRAsset::MemoryBinaryWriter w;
@@ -252,12 +271,47 @@ std::vector<std::uint8_t> makeV1Payload(
     w.writeI32(boundsMin.y);
     w.writeI32(boundsMin.z);
     w.writeU64(static_cast<std::uint64_t>(canvas));
-    // no anchor byte here — that is the whole point
+    if (anchor.has_value()) {
+        w.writeU8(static_cast<std::uint8_t>(*anchor));
+    }
     w.writeVarUInt(voxels.size());
     for (const C_Voxel &voxel : voxels) {
         w.writeBytes(&voxel, sizeof(C_Voxel));
     }
     return w.buffer();
+}
+
+bool currentLayoutFaithfullyReads(
+    const std::vector<std::uint8_t> &payload, const std::vector<C_Voxel> &voxels
+) {
+    IRAsset::MemoryBinaryReader reader(payload.data(), payload.size(), "retired-at-current");
+    IRAsset::Result<C_VoxelSetNew> res = SaveSerialize<C_VoxelSetNew>::read(reader);
+
+    if (!res.ok() || res.value_.pendingVoxels_.size() != voxels.size()) {
+        return false;
+    }
+    for (std::size_t i = 0; i < voxels.size(); ++i) {
+        if (std::memcmp(&res.value_.pendingVoxels_[i], &voxels[i], sizeof(C_Voxel)) != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
+void expectCurrentReadRejectsByteAtOffset(
+    const C_VoxelSetNew &set, std::size_t offset, std::uint8_t expected
+) {
+    IRAsset::MemoryBinaryWriter writer;
+    SaveSerialize<C_VoxelSetNew>::write(writer, set);
+    std::vector<std::uint8_t> bytes = writer.buffer();
+
+    ASSERT_GT(bytes.size(), offset);
+    ASSERT_EQ(bytes[offset], expected);
+    bytes[offset] = static_cast<std::uint8_t>(0xEE);
+
+    IRAsset::MemoryBinaryReader reader(bytes.data(), bytes.size(), "bad-tag");
+    IRAsset::Result<C_VoxelSetNew> res = SaveSerialize<C_VoxelSetNew>::read(reader);
+    EXPECT_FALSE(res.ok());
 }
 
 } // namespace
@@ -310,24 +364,32 @@ TEST(VoxelSetSerialize, CornerAnchorStillSeedsFromBoundsMin) {
 }
 
 // A v1 record has no anchor byte. The migrator must read the shorter layout
-// and default to CORNER — reading v1 bytes at the v2 layout would consume the
+// and default to CORNER — reading v1 bytes at the current layout would consume the
 // first voxel record's leading byte as the anchor and shear every record.
 TEST(VoxelSetSerialize, V1MigratorReadsPreAnchorLayoutAsCorner) {
     const IRMath::ivec3 size{2, 1, 3};
     const IRMath::ivec3 boundsMin{-4, 7, 2};
     const std::vector<C_Voxel> voxels = makeVoxels(6);
-    const std::vector<std::uint8_t> payload = makeV1Payload(size, boundsMin, 12345, voxels);
+    const std::vector<std::uint8_t> payload =
+        makeRetiredPayload(size, boundsMin, 12345, std::nullopt, voxels);
 
     const auto migrators = IRWorld::SaveMigration<C_VoxelSetNew>::migrators();
-    ASSERT_EQ(migrators.size(), 1u);
-    ASSERT_EQ(migrators[0].first, 1u);
+    ASSERT_EQ(migrators.size(), 2u);
+    EXPECT_EQ(migrators[0].first, 1u);
+    EXPECT_EQ(migrators[1].first, 2u);
 
     IRAsset::MemoryBinaryReader reader(payload.data(), payload.size(), "v1");
-    IRAsset::Result<C_VoxelSetNew> res = migrators[0].second(reader);
+    const auto v1 = std::find_if(migrators.begin(), migrators.end(), [](const auto &entry) {
+        return entry.first == 1u;
+    });
+    ASSERT_NE(v1, migrators.end());
+    IRAsset::Result<C_VoxelSetNew> res = v1->second(reader);
     ASSERT_TRUE(res.ok());
 
     const C_VoxelSetNew &out = res.value_;
     EXPECT_EQ(out.anchor_, EntityAnchor::CORNER);
+    EXPECT_EQ(out.lodMin_, IRRender::LodLevel::LOD_4);
+    EXPECT_EQ(out.lodMax_, IRRender::LodLevel::LOD_0);
     EXPECT_EQ(out.pendingBoundsMin_.x, boundsMin.x);
     EXPECT_EQ(out.pendingBoundsMin_.z, boundsMin.z);
     ASSERT_EQ(out.pendingVoxels_.size(), voxels.size());
@@ -345,25 +407,49 @@ TEST(VoxelSetSerialize, V1BytesReadAtCurrentLayoutDoNotRoundTrip) {
     const IRMath::ivec3 size{2, 1, 3};
     const std::vector<C_Voxel> voxels = makeVoxels(6);
     const std::vector<std::uint8_t> payload =
-        makeV1Payload(size, IRMath::ivec3{-4, 7, 2}, 12345, voxels);
-
-    IRAsset::MemoryBinaryReader reader(payload.data(), payload.size(), "v1-at-v2");
-    IRAsset::Result<C_VoxelSetNew> res = SaveSerialize<C_VoxelSetNew>::read(reader);
+        makeRetiredPayload(size, IRMath::ivec3{-4, 7, 2}, 12345, std::nullopt, voxels);
 
     // Either the read fails outright, or it "succeeds" with sheared records.
     // Both are the wrong answer; what must NOT happen is a faithful decode.
-    bool faithful = res.ok() && res.value_.pendingVoxels_.size() == voxels.size();
-    if (faithful) {
-        for (std::size_t i = 0; i < voxels.size(); ++i) {
-            if (std::memcmp(&res.value_.pendingVoxels_[i], &voxels[i], sizeof(C_Voxel)) != 0) {
-                faithful = false;
-                break;
-            }
-        }
+    EXPECT_FALSE(currentLayoutFaithfullyReads(payload, voxels))
+        << "v1 bytes decoded cleanly at the current layout — the migrator test proves nothing";
+}
+
+TEST(VoxelSetSerialize, V2MigratorDefaultsLodBandWithoutShearingRecords) {
+    const IRMath::ivec3 size{2, 1, 3};
+    const IRMath::ivec3 boundsMin{-4, 7, 2};
+    const std::vector<C_Voxel> voxels = makeVoxels(6);
+    const std::vector<std::uint8_t> payload =
+        makeRetiredPayload(size, boundsMin, 12345, EntityAnchor::GROUND, voxels);
+
+    const auto migrators = IRWorld::SaveMigration<C_VoxelSetNew>::migrators();
+    IRAsset::MemoryBinaryReader reader(payload.data(), payload.size(), "v2");
+    const auto v2 = std::find_if(migrators.begin(), migrators.end(), [](const auto &entry) {
+        return entry.first == 2u;
+    });
+    ASSERT_NE(v2, migrators.end());
+    IRAsset::Result<C_VoxelSetNew> res = v2->second(reader);
+    ASSERT_TRUE(res.ok());
+
+    const C_VoxelSetNew &out = res.value_;
+    EXPECT_EQ(out.anchor_, EntityAnchor::GROUND);
+    EXPECT_EQ(out.lodMin_, IRRender::LodLevel::LOD_4);
+    EXPECT_EQ(out.lodMax_, IRRender::LodLevel::LOD_0);
+    ASSERT_EQ(out.pendingVoxels_.size(), voxels.size());
+    for (std::size_t i = 0; i < voxels.size(); ++i) {
+        EXPECT_EQ(0, std::memcmp(&out.pendingVoxels_[i], &voxels[i], sizeof(C_Voxel)))
+            << "voxel record " << i << " sheared";
     }
-    EXPECT_FALSE(
-        faithful
-    ) << "v1 bytes decoded cleanly at the v2 layout — the migrator test proves nothing";
+}
+
+TEST(VoxelSetSerialize, V2BytesReadAtCurrentLayoutDoNotRoundTrip) {
+    const IRMath::ivec3 size{2, 1, 3};
+    const std::vector<C_Voxel> voxels = makeVoxels(6);
+    const std::vector<std::uint8_t> payload =
+        makeRetiredPayload(size, IRMath::ivec3{-4, 7, 2}, 12345, EntityAnchor::GROUND, voxels);
+
+    EXPECT_FALSE(currentLayoutFaithfullyReads(payload, voxels))
+        << "v2 bytes decoded cleanly at the current layout — the migrator test proves nothing";
 }
 
 // A corrupt / newer-writer anchor byte must fail the load rather than falling
@@ -373,17 +459,39 @@ TEST(VoxelSetSerialize, OutOfRangeAnchorByteFailsTheRead) {
     const std::vector<C_Voxel> voxels = makeVoxels(1);
     C_VoxelSetNew set{C_VoxelSetNew::StagedInit{}, size, IRMath::ivec3{0, 0, 0}, voxels, 1};
 
-    IRAsset::MemoryBinaryWriter writer;
-    SaveSerialize<C_VoxelSetNew>::write(writer, set);
-    std::vector<std::uint8_t> bytes = writer.buffer();
-
     // The anchor byte sits right after 6 x i32 + 1 x u64.
     constexpr std::size_t kAnchorOffset = 6u * sizeof(std::int32_t) + sizeof(std::uint64_t);
-    ASSERT_GT(bytes.size(), kAnchorOffset);
-    ASSERT_EQ(bytes[kAnchorOffset], static_cast<std::uint8_t>(EntityAnchor::CORNER));
-    bytes[kAnchorOffset] = static_cast<std::uint8_t>(0xEE);
+    expectCurrentReadRejectsByteAtOffset(
+        set,
+        kAnchorOffset,
+        static_cast<std::uint8_t>(EntityAnchor::CORNER)
+    );
+}
 
-    IRAsset::MemoryBinaryReader reader(bytes.data(), bytes.size(), "bad-anchor");
-    IRAsset::Result<C_VoxelSetNew> res = SaveSerialize<C_VoxelSetNew>::read(reader);
-    EXPECT_FALSE(res.ok());
+TEST(VoxelSetSerialize, OutOfRangeLodByteFailsTheRead) {
+    const IRMath::ivec3 size{1, 1, 1};
+    const std::vector<C_Voxel> voxels = makeVoxels(1);
+    C_VoxelSetNew set{C_VoxelSetNew::StagedInit{}, size, IRMath::ivec3(0), voxels, 1};
+
+    constexpr std::size_t kAnchorOffset = 6u * sizeof(std::int32_t) + sizeof(std::uint64_t);
+    constexpr std::size_t kLodMinOffset = kAnchorOffset + sizeof(std::uint8_t);
+    expectCurrentReadRejectsByteAtOffset(
+        set,
+        kLodMinOffset,
+        static_cast<std::uint8_t>(IRRender::LodLevel::LOD_4)
+    );
+}
+
+TEST(VoxelSetSerialize, OutOfRangeLodBandFailsTheWrite) {
+    const std::vector<C_Voxel> voxels = makeVoxels(1);
+    C_VoxelSetNew set{C_VoxelSetNew::StagedInit{}, IRMath::ivec3(1), IRMath::ivec3(0), voxels, 1};
+
+    set.lodMin_ = static_cast<IRRender::LodLevel>(5u);
+    IRAsset::MemoryBinaryWriter invalidMinWriter;
+    EXPECT_THROW(SaveSerialize<C_VoxelSetNew>::write(invalidMinWriter, set), std::runtime_error);
+
+    set.lodMin_ = IRRender::LodLevel::LOD_4;
+    set.lodMax_ = static_cast<IRRender::LodLevel>(5u);
+    IRAsset::MemoryBinaryWriter invalidMaxWriter;
+    EXPECT_THROW(SaveSerialize<C_VoxelSetNew>::write(invalidMaxWriter, set), std::runtime_error);
 }

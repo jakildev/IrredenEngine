@@ -14,12 +14,13 @@
 //                   colors fully reconstruct the geometry,
 //   - the per-voxel `C_Voxel` records (a fixed 12 B std430 POD — the same
 //     raw-image contract the primary template uses for POD components),
-//   - the owning canvas EntityId, for post-load canvas resolution, and
+//   - the owning canvas EntityId, for post-load canvas resolution,
+//   - the authored `lodMin_` / `lodMax_` render band, and
 //   - `anchor_`. For a non-CORNER set the anchor — NOT `boundsMin`
 //     — is what reconstructs the local origin on load: that origin is
 //     half-integer (always for GROUND, on even axes for CENTER) and the
-//     `ivec3` boundsMin cannot represent it. v1 records predate the field and
-//     read as CORNER via `SaveMigration<C_VoxelSetNew>`.
+//     `ivec3` boundsMin cannot represent it. v1 and v2 records read via
+//     `SaveMigration<C_VoxelSetNew>`.
 //
 // `read` reconstructs the set in STAGED mode (`numVoxels_ == 0`,
 // `pendingVoxels_` populated) via the zero-pool `C_VoxelSetNew::StagedInit`
@@ -74,6 +75,16 @@ template <> struct SaveSerialize<IRComponents::C_VoxelSetNew> {
         // and GROUND's z origin is half-integer for every size — so
         // `read` reconstructs the origin from this rather than from boundsMin.
         w.writeU8(static_cast<std::uint8_t>(set.anchor_));
+        IR_ASSERT(
+            set.lodMin_ <= IRRender::LodLevel::LOD_4,
+            "C_VoxelSetNew: lodMin value out of range"
+        );
+        IR_ASSERT(
+            set.lodMax_ <= IRRender::LodLevel::LOD_4,
+            "C_VoxelSetNew: lodMax value out of range"
+        );
+        w.writeU8(static_cast<std::uint8_t>(set.lodMin_));
+        w.writeU8(static_cast<std::uint8_t>(set.lodMax_));
 
         // `authoredRecords()` picks the pool-independent source: the staging
         // vector, or — for a GRID-mode set saved mid-rotation, whose pool span
@@ -91,15 +102,13 @@ template <> struct SaveSerialize<IRComponents::C_VoxelSetNew> {
     }
 
     static IRAsset::Result<IRComponents::C_VoxelSetNew> read(IRAsset::BinaryReader &r) {
-        return readVersioned(r, /*hasAnchor=*/true);
+        return readVersioned(r, /*version=*/3u);
     }
 
-    // Shared body for the current layout and every retired one. `hasAnchor`
-    // is the only axis the v1 -> v2 bump moved, so the two readers differ by
-    // one field rather than by a copied function — a direct per-version
-    // reader per `save_migration.hpp`'s contract, not a v1 -> v2 chain.
+    // Each disk version consumes its own scalar prefix before the shared voxel
+    // record stream. Retired readers are direct, never chained migrations.
     static IRAsset::Result<IRComponents::C_VoxelSetNew>
-    readVersioned(IRAsset::BinaryReader &r, bool hasAnchor) {
+    readVersioned(IRAsset::BinaryReader &r, std::uint32_t version) {
         using Res = IRAsset::Result<IRComponents::C_VoxelSetNew>;
 
         IRAsset::Result<std::int32_t> sx = r.readI32();
@@ -131,7 +140,7 @@ template <> struct SaveSerialize<IRComponents::C_VoxelSetNew> {
             return Res::error(canvas.status_.code_, std::move(canvas.status_.message_));
         }
         IRComponents::EntityAnchor anchor = IRComponents::EntityAnchor::CORNER;
-        if (hasAnchor) {
+        if (version >= 2u) {
             IRAsset::Result<std::uint8_t> rawAnchor = r.readU8();
             if (!rawAnchor.ok()) {
                 return Res::error(rawAnchor.status_.code_, std::move(rawAnchor.status_.message_));
@@ -149,6 +158,34 @@ template <> struct SaveSerialize<IRComponents::C_VoxelSetNew> {
             anchor = static_cast<IRComponents::EntityAnchor>(rawAnchor.value_);
         }
 
+        IRRender::LodLevel lodMin = IRRender::LodLevel::LOD_4;
+        IRRender::LodLevel lodMax = IRRender::LodLevel::LOD_0;
+        if (version >= 3u) {
+            IRAsset::Result<std::uint8_t> rawLodMin = r.readU8();
+            if (!rawLodMin.ok()) {
+                return Res::error(rawLodMin.status_.code_, std::move(rawLodMin.status_.message_));
+            }
+            if (rawLodMin.value_ > static_cast<std::uint8_t>(IRRender::LodLevel::LOD_4)) {
+                return Res::error(
+                    IRAsset::BinaryIOError::UnknownTag,
+                    "C_VoxelSetNew: lodMin value out of range"
+                );
+            }
+            lodMin = static_cast<IRRender::LodLevel>(rawLodMin.value_);
+
+            IRAsset::Result<std::uint8_t> rawLodMax = r.readU8();
+            if (!rawLodMax.ok()) {
+                return Res::error(rawLodMax.status_.code_, std::move(rawLodMax.status_.message_));
+            }
+            if (rawLodMax.value_ > static_cast<std::uint8_t>(IRRender::LodLevel::LOD_4)) {
+                return Res::error(
+                    IRAsset::BinaryIOError::UnknownTag,
+                    "C_VoxelSetNew: lodMax value out of range"
+                );
+            }
+            lodMax = static_cast<IRRender::LodLevel>(rawLodMax.value_);
+        }
+
         IRAsset::Result<std::uint64_t> count = r.readVarUInt();
         if (!count.ok()) {
             return Res::error(count.status_.code_, std::move(count.status_.message_));
@@ -162,20 +199,21 @@ template <> struct SaveSerialize<IRComponents::C_VoxelSetNew> {
             }
         }
 
-        return Res::success(
-            IRComponents::C_VoxelSetNew{
-                IRComponents::C_VoxelSetNew::StagedInit{},
-                IRMath::ivec3(sx.value_, sy.value_, sz.value_),
-                IRMath::ivec3(bx.value_, by.value_, bz.value_),
-                std::move(voxels),
-                static_cast<IREntity::EntityId>(canvas.value_),
-                anchor
-            }
-        );
+        IRComponents::C_VoxelSetNew value{
+            IRComponents::C_VoxelSetNew::StagedInit{},
+            IRMath::ivec3(sx.value_, sy.value_, sz.value_),
+            IRMath::ivec3(bx.value_, by.value_, bz.value_),
+            std::move(voxels),
+            static_cast<IREntity::EntityId>(canvas.value_),
+            anchor
+        };
+        value.lodMin_ = lodMin;
+        value.lodMax_ = lodMax;
+        return Res::success(std::move(value));
     }
 };
 
-// v1 has no anchor byte. Every v1 set comes from the bool ctor, so its
+// v1 has no anchor or LOD bytes. Every v1 set comes from the bool ctor, so its
 // origin is exactly the `boundsMin` the record carries and CORNER is the
 // faithful reading — a CENTER set round-trips through boundsMin with the v1
 // format's even-size lossiness, which this migrator reproduces rather than
@@ -184,10 +222,17 @@ template <> struct SaveMigration<IRComponents::C_VoxelSetNew> {
     static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_VoxelSetNew>>>
     migrators() {
         return {
-            {1u, [](IRAsset::BinaryReader &r) -> IRAsset::Result<IRComponents::C_VoxelSetNew> {
+            {1u,
+             [](IRAsset::BinaryReader &r) -> IRAsset::Result<IRComponents::C_VoxelSetNew> {
                  return SaveSerialize<IRComponents::C_VoxelSetNew>::readVersioned(
                      r,
-                     /*hasAnchor=*/false
+                     /*version=*/1u
+                 );
+             }},
+            {2u, [](IRAsset::BinaryReader &r) -> IRAsset::Result<IRComponents::C_VoxelSetNew> {
+                 return SaveSerialize<IRComponents::C_VoxelSetNew>::readVersioned(
+                     r,
+                     /*version=*/2u
                  );
              }},
         };

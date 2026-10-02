@@ -239,11 +239,10 @@ IR_SAVE_OPT_OUT(IRComponents::C_LerpEntity)
 
 // Class E — C_VoxelSetNew: OPT-IN, flagged provisional (custom serializer is P2/W-3+; flip to
 // OPT-OUT is one line if the slice can't absorb it)
-// The current format includes an `anchor_` byte because a non-CORNER set's
-// local origin is half-integer and the record's ivec3 boundsMin cannot carry
-// it. Version 1 reads via
-// SaveMigration<C_VoxelSetNew> in voxel/voxel_set_serialize.hpp (anchor CORNER).
-IR_SAVE_OPT_IN(IRComponents::C_VoxelSetNew, 2)
+// The current format includes `anchor_` and the authored LOD band. Versions 1
+// and 2 read directly through SaveMigration<C_VoxelSetNew> in
+// voxel/voxel_set_serialize.hpp, defaulting fields absent from their layouts.
+IR_SAVE_OPT_IN(IRComponents::C_VoxelSetNew, 3)
 
 // Class E — fog subject-class markers: OPT-IN (authored classification; a set
 // that reloads without its marker is adopted as the default BODY class)
