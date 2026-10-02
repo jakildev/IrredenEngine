@@ -196,19 +196,17 @@ inline void bindPersistenceApi(LuaScript &script) {
         }
     );
 
-    save["has"] = statefulLuaFunction(
-        [stores](const std::string &name, const std::string &key) -> bool {
+    save["has"] =
+        statefulLuaFunction([stores](const std::string &name, const std::string &key) -> bool {
             const auto it = stores->find(name);
             return it != stores->end() && it->second.has(key);
-        }
-    );
+        });
 
-    save["remove"] = statefulLuaFunction(
-        [stores](const std::string &name, const std::string &key) -> bool {
+    save["remove"] =
+        statefulLuaFunction([stores](const std::string &name, const std::string &key) -> bool {
             const auto it = stores->find(name);
             return it != stores->end() && it->second.remove(key);
-        }
-    );
+        });
 
     save["clear"] =
         statefulLuaFunction([stores](const std::string &name) { (*stores)[name].clear(); });

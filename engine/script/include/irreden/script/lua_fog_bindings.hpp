@@ -284,11 +284,10 @@ bindFog(LuaScript &script, FogVisionTargetResolver resolveTarget = activeFogVisi
         requireFogArity("captureLineOfSight", args.size(), 0, 0);
         IRPrefab::Fog::captureLineOfSight(*lineOfSightView);
     });
-    fog["lineOfSightCaptured"] = statefulLuaFunction(
-        [lineOfSightView](sol::this_state state, sol::variadic_args args) {
+    fog["lineOfSightCaptured"] =
+        statefulLuaFunction([lineOfSightView](sol::this_state state, sol::variadic_args args) {
             return queryFogLineOfSightCaptured(state, args, *lineOfSightView);
-        }
-    );
+        });
     fog["setEntityGoverned"] = [](sol::variadic_args args) {
         requireFogArity("setEntityGoverned", args.size(), 1, 2);
         const IREntity::EntityId entity = requireFogEntity(args[0], "setEntityGoverned", 0);
