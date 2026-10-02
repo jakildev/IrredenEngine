@@ -249,9 +249,6 @@ that possible without the creation re-deriving anything:
   as `IRRender.LodLevel.LOD_n`), bound in the shared render glue. It is a
   function rather than a component column because the tier is a singleton: a
   Lua system declaring it would iterate a one-row archetype to read one value.
-  A CODEGEN system reads it the same way — `IRRender.getActiveLodTier()` is a
-  whitelisted intrinsic lowered to `IRRender::getActiveLodTier()` in
-  `lod_utils.hpp`, the function the EVAL binding calls.
 - **An entity can pin its tier.** `C_LodTierOverride { tier_ }` makes the
   entity resolve to that tier at every zoom; removing it returns the entity to
   the camera's tier. Every consumer resolves through

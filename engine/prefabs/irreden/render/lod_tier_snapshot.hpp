@@ -2,6 +2,7 @@
 #define LOD_TIER_SNAPSHOT_H
 
 #include <irreden/ir_entity.hpp>
+#include <irreden/render/components/component_active_lod_level.hpp>
 #include <irreden/render/components/component_lod_tier_override.hpp>
 #include <irreden/render/lod_utils.hpp>
 
@@ -21,7 +22,8 @@ struct TierSnapshot {
     std::unordered_map<IREntity::EntityId, IRComponents::C_LodTierOverride> overrides_;
 
     void capture() {
-        active_ = IRRender::getActiveLodLevel();
+        const auto *lod = IREntity::singletonOrNull<IRComponents::C_ActiveLodLevel>();
+        active_ = lod != nullptr ? lod->current_ : IRRender::LodLevel::LOD_4;
 
         overrides_.clear();
         for (IREntity::ArchetypeNode *node : IREntity::queryArchetypeNodesSimple(

@@ -109,11 +109,11 @@ CODEGEN)` blocks in `CMakeLists.txt`. Three constraints there are deliberate:
   relative path. The engine `chdir`s to the executable directory at boot but
   the test binary does not, so a relative fixture path resolves differently
   under CTest than under a direct run.
-- **Component names stay distinct across the runs** — the `Codegen*` /
-  `Sys*` / `Coexist*` / `LodTier*` prefixes. Registry symbols are namespaced
-  per run, but `IRComponents::C_<Name>`, `bindLuaType<C_<Name>>`, and the
-  attach factory are keyed on the component name, so a name declared by two
-  runs would merge those. Since #2609 that is a `duplicate symbol
+- **Component names stay distinct across the three runs** — the `Codegen*` /
+  `Sys*` / `Coexist*` prefixes. Registry symbols are namespaced per run, but
+  `IRComponents::C_<Name>`, `bindLuaType<C_<Name>>`, and the attach factory
+  are keyed on the component name, so a name declared by two runs would merge
+  those. Since #2609 that is a `duplicate symbol
   'IRScript::CodegenClaims::C_<Name>_declared_by_more_than_one_codegen_run_in_this_binary'`
   link error naming the offender — rename the fixture component, don't relax
   the prefix convention. Since #3091 that is the error's *only* cause: the
