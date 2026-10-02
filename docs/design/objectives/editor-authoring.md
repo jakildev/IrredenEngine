@@ -22,15 +22,17 @@ routine, proven by scripted interaction rather than claimed.
   22 GUI assertions: assertion coverage grows with each authoring
   feature, and editor scenes get reference images or a structural
   oracle.
+- [ ] A composite entity — a root plus parts with per-part LOD bands and
+  attached components — is authored end to end through the GUI harness from
+  a loaded creation module and round-trips through `Prefab.spawn` (#3974).
 
 ## Non-goals
-Entity-editor epic phases 3–8 (animation timeline, IK/chain solvers,
-bind-points, procedural authoring, particles/lights/audio, multi-window
-polish — `docs/design/entity-editor-epic.md`) until the human has reviewed
-the #766 friction report (`editor-authoring-friction.md` §2g). The 2026-05
-phase epics (#606–#613) are retired; a phase revives only as a fresh,
-objective-linked decomposition. Adopting dear-imgui — the trixel-rendered
-UI is the standing bet.
+Entity-editor epic phases 3, 4, 7, and 8 (animation timeline, IK/chain
+solvers, particles/lights/audio, multi-window polish —
+`docs/design/entity-editor-epic.md`) remain out of scope. The 2026-05 phase
+epics (#606–#613) are retired; a phase revives only as a fresh,
+objective-linked decomposition. Adopting dear-imgui — the trixel-rendered UI
+is the standing bet.
 
 ## Current state
 The editor builds clean on macOS/Metal and runs green headless through the
@@ -48,6 +50,10 @@ into defects are approved (#3148 place-below modifier, #3149 widget drag).
 Open: the gui_scale space mismatch (row 3) and reference images or a
 structural oracle for editor scenes (row 4).
 
+The owner reviewed the friction report on 2026-09-30. Its picking limits are
+routed to #3982 as a fix rather than held as a blocker; #3974 is the
+objective-linked decomposition for the entity creator.
+
 ## Progress ledger
 | Date | Epic / issue | Delta |
 |---|---|---|
@@ -55,3 +61,4 @@ structural oracle for editor scenes (row 4).
 | 2026-09-14 | #766 / PRs #2472, #2558, #2577, #2593, #3151 | five entities authored end to end via scripted GUI sessions; Done-means row 1 verifies |
 | 2026-09-14 | `editor-authoring-friction.md` §Phase 0 | mechanism probes run, gate passed; Done-means row 2 verifies |
 | 2026-09-19 | #604 close-out; #608/#610/#612/#613 retired; #3148, #3149 approved | phase direction now flows from this objective plus the friction-report review |
+| 2026-09-30 | #3974 (proposal), #3982 | friction-report review done; non-goals narrowed to phases 3, 4, 7, 8; composite-entity Done-means row added |
