@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <span>
 #include <vector>
@@ -326,43 +327,48 @@ constexpr int kFogLosMaxMarchSteps = 8 * IRComponents::kFogLosFieldSize;
 /// a position on the line belongs to the cell ahead, beyond float rounding.
 constexpr float kFogLosMarchNudge = 4.0e-3f;
 
-/// The smallest clearance the segment from @p eye to @p target keeps above
-/// any column it crosses (the header comment of
-/// `component_canvas_fog_of_war.hpp` has the rule); positive means the
-/// segment passes above every column, `kFogLosColumnEmpty` when it crosses
-/// none. The eye's own half-cell never counts. Only columns whose top plane
-/// lies strictly above @p target's height enter @p bandClearance, the value
-/// @p softness grades; @p target's own surface and the ground around it
-/// therefore never soften a sample that rests on them.
-///
-/// The walk is hierarchical. At level `L` it stands in the block of `2^L`
-/// half-cells holding its position, and the block's highest top against the
-/// segment's lowest point over the block bounds every clearance inside it
-/// from below. A block whose bound cannot lower the verdict — it is at least
-/// `-kFogLosClearanceTolerance`, and at least `min(bandClearance, softness)`
-/// when the block holds band columns and the gate is soft — is stepped over
-/// whole, and the walk climbs to the coarsest level whose block ahead is new
-/// (the crossing lies on its boundary); one that might is entered a level
-/// finer. A level-0 cell is evaluated exactly. So the result is exact
-/// whenever it is below the tolerance, @p bandClearance whenever it is below
-/// @p softness, and each is otherwise at least that threshold: the gate's
-/// factor is the flat march's. Mirrors `fogLosTraceClearance` in the shader
-/// twins, step for step.
-inline float traceLosClearance(
+/// The signed height by which the segment from an eye at height @p eyeZ,
+/// rising @p rise to its target, passes over a column top @p top at segment
+/// parameter @p tLow; negative when it passes below. Every verdict, marched
+/// or summarized, evaluates this one expression, so they round (and
+/// contract a multiply-add) alike.
+inline float losSegmentClearance(float top, float eyeZ, float tLow, float rise) {
+    return top - (eyeZ + tLow * rise);
+}
+
+/// Whether the column top @p top hides the segment at @p tLow: the hard
+/// gate's test on `losSegmentClearance`. Monotone in @p rise for a fixed
+/// non-negative @p tLow — once true, true at every larger rise.
+inline bool losSegmentBlocked(float top, float eyeZ, float tLow, float rise) {
+    return losSegmentClearance(top, eyeZ, tLow, rise) < -IRComponents::kFogLosClearanceTolerance;
+}
+
+/// Walks the half-cell route of the XY segment from @p eye to @p target over
+/// @p field's pyramid. At level `L` the walk stands in the block of `2^L`
+/// half-cells holding its position; `t` and `tExit` are the segment
+/// parameters where it entered and leaves that block. A non-empty block
+/// above level 0 is entered a level finer only when @p enter(top, t, tExit)
+/// says it might matter; otherwise it is stepped over whole and the walk
+/// climbs to the coarsest level whose block ahead is new (the crossing lies
+/// on its boundary). Every non-empty level-0 cell but the eye's own goes to
+/// @p visit(top, t, tExit), which returns true to stop. A level-0 cell's
+/// `t` and `tExit` are the flat walk's whatever was stepped over before it,
+/// so an @p enter that never declines a block holding a cell @p visit cares
+/// about makes the walk exact. False when the step bound ran out first.
+template <typename EnterFn, typename VisitFn>
+inline bool walkLosRoute(
     const IRComponents::FogLosColumnField &field,
-    IRMath::vec3 eye,
-    IRMath::vec3 target,
-    float softness,
-    float &bandClearance
+    IRMath::vec2 eye,
+    IRMath::vec2 target,
+    EnterFn &&enter,
+    VisitFn &&visit
 ) {
     using IRComponents::FogLosColumnField;
-    using IRComponents::kFogLosClearanceTolerance;
-    using IRComponents::kFogLosColumnEmpty;
     constexpr float kCells = static_cast<float>(IRComponents::kFogLosCellsPerUnit);
-    constexpr float kNever = kFogLosColumnEmpty;
+    constexpr float kNever = IRComponents::kFogLosColumnEmpty;
     constexpr int kMaxLevel = IRComponents::kFogLosLevelCount - 1;
-    const IRMath::vec2 start = IRMath::vec2(eye) * kCells;
-    const IRMath::vec2 delta = IRMath::vec2(target) * kCells - start;
+    const IRMath::vec2 start = eye * kCells;
+    const IRMath::vec2 delta = target * kCells - start;
     const IRMath::ivec2 step(
         delta.x > 0.0f ? 1 : (delta.x < 0.0f ? -1 : 0),
         delta.y > 0.0f ? 1 : (delta.y < 0.0f ? -1 : 0)
@@ -375,10 +381,6 @@ inline float traceLosClearance(
         static_cast<int>(IRMath::floor(start.x)),
         static_cast<int>(IRMath::floor(start.y))
     );
-    const float rise = target.z - eye.z;
-    const float bandHorizon = target.z - kFogLosClearanceTolerance;
-    float minClearance = kNever;
-    bandClearance = kNever;
     float t = 0.0f;
     IRMath::ivec2 cell(
         static_cast<int>(IRMath::floor(start.x + nudge.x)),
@@ -404,29 +406,17 @@ inline float traceLosClearance(
                               ? kNever
                               : field.blockTop(level, blockMin.x, blockMin.y);
         if (top != kNever) {
-            const float tLow = rise > 0.0f ? tExit : t;
-            const float clearance = top - (eye.z + tLow * rise);
-            const bool inBand = top < bandHorizon;
             if (level == 0) {
-                minClearance = IRMath::min(minClearance, clearance);
-                if (inBand) {
-                    bandClearance = IRMath::min(bandClearance, clearance);
+                if (visit(top, t, tExit)) {
+                    return true;
                 }
-                if (clearance < -kFogLosClearanceTolerance) {
-                    return minClearance;
-                }
-            } else {
-                const float needed = (inBand && softness > 0.0f)
-                                         ? IRMath::min(bandClearance, softness)
-                                         : -kFogLosClearanceTolerance;
-                if (clearance < needed) {
-                    --level;
-                    continue;
-                }
+            } else if (enter(top, t, tExit)) {
+                --level;
+                continue;
             }
         }
         if (tExit >= 1.0f) {
-            break;
+            return true;
         }
         t = tExit;
         const IRMath::vec2 next = start + delta * t + nudge;
@@ -447,6 +437,60 @@ inline float traceLosClearance(
             }
         }
     }
+    return false;
+}
+
+/// The smallest clearance the segment from @p eye to @p target keeps above
+/// any column it crosses (the header comment of
+/// `component_canvas_fog_of_war.hpp` has the rule); positive means the
+/// segment passes above every column, `kFogLosColumnEmpty` when it crosses
+/// none. The eye's own half-cell never counts. Only columns whose top plane
+/// lies strictly above @p target's height enter @p bandClearance, the value
+/// @p softness grades; @p target's own surface and the ground around it
+/// therefore never soften a sample that rests on them.
+///
+/// The walk is `walkLosRoute`: a block's highest top against the segment's
+/// lowest point over the block bounds every clearance inside it from below,
+/// and a block whose bound cannot lower the verdict — it is at least
+/// `-kFogLosClearanceTolerance`, and at least `min(bandClearance, softness)`
+/// when the block holds band columns and the gate is soft — is stepped over.
+/// A level-0 cell is evaluated exactly. So the result is exact whenever it is
+/// below the tolerance, @p bandClearance whenever it is below @p softness,
+/// and each is otherwise at least that threshold: the gate's factor is the
+/// flat march's. Mirrors `fogLosTraceClearance` in the shader twins, step
+/// for step.
+inline float traceLosClearance(
+    const IRComponents::FogLosColumnField &field,
+    IRMath::vec3 eye,
+    IRMath::vec3 target,
+    float softness,
+    float &bandClearance
+) {
+    using IRComponents::kFogLosClearanceTolerance;
+    const float rise = target.z - eye.z;
+    const float bandHorizon = target.z - kFogLosClearanceTolerance;
+    float minClearance = IRComponents::kFogLosColumnEmpty;
+    bandClearance = IRComponents::kFogLosColumnEmpty;
+    walkLosRoute(
+        field,
+        IRMath::vec2(eye),
+        IRMath::vec2(target),
+        [&](float top, float t, float tExit) {
+            const float clearance = losSegmentClearance(top, eye.z, rise > 0.0f ? tExit : t, rise);
+            const float needed = (top < bandHorizon && softness > 0.0f)
+                                     ? IRMath::min(bandClearance, softness)
+                                     : -kFogLosClearanceTolerance;
+            return clearance < needed;
+        },
+        [&](float top, float t, float tExit) {
+            const float clearance = losSegmentClearance(top, eye.z, rise > 0.0f ? tExit : t, rise);
+            minClearance = IRMath::min(minClearance, clearance);
+            if (top < bandHorizon) {
+                bandClearance = IRMath::min(bandClearance, clearance);
+            }
+            return clearance < -kFogLosClearanceTolerance;
+        }
+    );
     return minClearance;
 }
 
@@ -505,6 +549,249 @@ inline float losVisibility(
         bandClearance
     );
     return losVisibilityFromClearance(minClearance, bandClearance, observers.losSoftness(source));
+}
+
+/// One slope regime of a `LosHardRoute`: a sample whose rise — its height
+/// less the eye's, +Z down — lies below `clearBelow_` is visible, and one at
+/// or above `blockedFrom_` is hidden. A rise between them is left to the
+/// march.
+struct LosRiseBand {
+    float clearBelow_ = std::numeric_limits<float>::infinity();
+    float blockedFrom_ = std::numeric_limits<float>::infinity();
+};
+
+/// A hard-gated source's verdict at every height over one exact target XY:
+/// the target column's top plane and, for each regime of
+/// `traceLosClearance`, the band a rise falls in. `belowEye_` covers a rise
+/// above 0, where the march tests each column at the segment's exit;
+/// `atOrAboveEye_` covers the rest, tested at each column's entry. The
+/// default is the out-of-reach route, visible at every height.
+struct LosHardRoute {
+    float ownTop_ = IRComponents::kFogLosColumnEmpty;
+    LosRiseBand belowEye_;
+    LosRiseBand atOrAboveEye_;
+};
+
+namespace detail {
+
+/// One regime's level-0 cells along a route, against the rises it can see,
+/// `[low_, high_]`. Each cell's `losSegmentBlocked` is monotone over that
+/// range: a cell clear at `high_` never blocks, one blocked at `low_` always
+/// does, and any other turns blocked once, near its seed (the real-valued
+/// root of the test). The earliest seed bounds the regime's transition.
+struct LosRegimeScan {
+    float low_ = 0.0f;
+    float high_ = 0.0f;
+    bool atExit_ = false;
+    bool always_ = false;
+    int transitions_ = 0;
+    float seed_ = std::numeric_limits<float>::infinity();
+    float seedTop_ = 0.0f;
+    float seedTLow_ = 0.0f;
+
+    bool mayBlock(float top, float eyeZ, float t, float tExit) const {
+        return low_ <= high_ && losSegmentBlocked(top, eyeZ, atExit_ ? tExit : t, high_);
+    }
+
+    void visit(float top, float eyeZ, float t, float tExit) {
+        if (!mayBlock(top, eyeZ, t, tExit)) {
+            return;
+        }
+        const float tLow = atExit_ ? tExit : t;
+        if (losSegmentBlocked(top, eyeZ, tLow, low_)) {
+            always_ = true;
+            return;
+        }
+        ++transitions_;
+        const float seed = (top - eyeZ + IRComponents::kFogLosClearanceTolerance) / tLow;
+        if (seed < seed_) {
+            seed_ = seed;
+            seedTop_ = top;
+            seedTLow_ = tLow;
+        }
+    }
+
+    /// The narrowest band this scan proves without another walk: `[low_,
+    /// high_]` for a transition (clear at `low_`, the seed cell blocked at
+    /// `high_`), else the regime's constant verdict.
+    LosRiseBand provenBand() const {
+        constexpr float kInf = std::numeric_limits<float>::infinity();
+        if (always_) {
+            return {-kInf, -kInf};
+        }
+        if (transitions_ == 0) {
+            return {kInf, kInf};
+        }
+        return {low_, high_};
+    }
+
+    /// Half the width of a candidate band around the earliest seed: the
+    /// rounding the seed and the test can each carry, generously, times
+    /// @p widen.
+    float candidateSpread(float eyeZ, float widen) const {
+        constexpr float kRelative = 1.0f / static_cast<float>(1 << 19);
+        const float scale =
+            (IRMath::abs(seedTop_) + IRMath::abs(eyeZ) + IRComponents::kFogLosClearanceTolerance) /
+                seedTLow_ +
+            IRMath::abs(IRMath::clamp(seed_, low_, high_));
+        return scale * kRelative * widen;
+    }
+};
+
+} // namespace detail
+
+/// Summarize source @p source's hard gate over the exact target XY @p target
+/// (`LosHardRoute`), from the same publication `losVisibility` reads. The
+/// route's cells, their `t` / `tExit` and the target column's top depend on
+/// XY alone, so one walk serves every height: the pyramid steps over blocks
+/// that cannot block at either regime's extreme rise, and the cells it enters
+/// bound each regime's transition. A band edge is kept only where
+/// `losSegmentBlocked` itself proves it — the earliest seed's cell blocked
+/// at `blockedFrom_`, every cell clear at `clearBelow_` (a second walk when
+/// more than one cell transitions) — so a verdict the summary gives is the
+/// march's bit for bit, and a rise it cannot prove is left to the march.
+/// Cost: one walk, plus one per band that needs widening.
+inline LosHardRoute buildLosHardRoute(
+    const IRComponents::FogLosColumnField &field,
+    const IRComponents::FrameDataFogObservers &observers,
+    int source,
+    IRMath::vec2 target
+) {
+    constexpr float kInf = std::numeric_limits<float>::infinity();
+    LosHardRoute route;
+    if (!field.published()) {
+        route.belowEye_ = {-kInf, -kInf};
+        route.atOrAboveEye_ = {-kInf, -kInf};
+        return route;
+    }
+    const IRMath::vec4 circle = observers.visionCircles_[source];
+    if (IRMath::length(target - IRMath::vec2(circle)) > losReach(circle)) {
+        return route;
+    }
+    route.ownTop_ = field.topPlane(
+        IRComponents::FogLosColumnField::halfCellOf(target.x),
+        IRComponents::FogLosColumnField::halfCellOf(target.y)
+    );
+    const IRMath::vec3 eye = losEye(observers, source);
+    // A sample's rise never exceeds its column top less the eye height: the
+    // march lifts it onto that top first.
+    detail::LosRegimeScan regimes[2];
+    regimes[0].low_ = std::numeric_limits<float>::denorm_min();
+    regimes[0].high_ = route.ownTop_ - eye.z;
+    regimes[0].atExit_ = true;
+    regimes[1].low_ = -std::numeric_limits<float>::max();
+    regimes[1].high_ = 0.0f;
+    const auto enter = [&](float top, float t, float tExit) {
+        return regimes[0].mayBlock(top, eye.z, t, tExit) ||
+               regimes[1].mayBlock(top, eye.z, t, tExit);
+    };
+    const bool walked =
+        walkLosRoute(field, IRMath::vec2(eye), target, enter, [&](float top, float t, float tExit) {
+            regimes[0].visit(top, eye.z, t, tExit);
+            regimes[1].visit(top, eye.z, t, tExit);
+            return false;
+        });
+    if (!walked) {
+        route.belowEye_ = {-kInf, kInf};
+        route.atOrAboveEye_ = {-kInf, kInf};
+        return route;
+    }
+
+    // Narrow each transitioning regime's proven `[low_, high_]` toward its
+    // earliest seed. A candidate edge that fails its proof is retried wider;
+    // one that reaches the regime's bound keeps the bound.
+    LosRiseBand bands[2] = {regimes[0].provenBand(), regimes[1].provenBand()};
+    bool highDone[2];
+    bool lowDone[2];
+    for (int r = 0; r < 2; ++r) {
+        highDone[r] = lowDone[r] = regimes[r].always_ || regimes[r].transitions_ == 0;
+    }
+    constexpr float kWiden[] = {1.0f, 64.0f, 4096.0f};
+    for (const float widen : kWiden) {
+        float candidateLow[2] = {0.0f, 0.0f};
+        bool verify[2] = {false, false};
+        for (int r = 0; r < 2; ++r) {
+            const detail::LosRegimeScan &scan = regimes[r];
+            const float seed = IRMath::clamp(scan.seed_, scan.low_, scan.high_);
+            const float spread =
+                highDone[r] && lowDone[r] ? 0.0f : scan.candidateSpread(eye.z, widen);
+            if (!highDone[r]) {
+                const float high = seed + spread;
+                if (high >= scan.high_) {
+                    highDone[r] = true;
+                } else if (losSegmentBlocked(scan.seedTop_, eye.z, scan.seedTLow_, high)) {
+                    bands[r].blockedFrom_ = high;
+                    highDone[r] = true;
+                }
+            }
+            if (!lowDone[r]) {
+                candidateLow[r] = seed - spread;
+                if (candidateLow[r] <= scan.low_) {
+                    lowDone[r] = true;
+                } else if (scan.transitions_ > 1) {
+                    verify[r] = true;
+                } else if (!losSegmentBlocked(
+                               scan.seedTop_,
+                               eye.z,
+                               scan.seedTLow_,
+                               candidateLow[r]
+                           )) {
+                    bands[r].clearBelow_ = candidateLow[r];
+                    lowDone[r] = true;
+                }
+            }
+        }
+        if (verify[0] || verify[1]) {
+            walkLosRoute(
+                field,
+                IRMath::vec2(eye),
+                target,
+                enter,
+                [&](float top, float t, float tExit) {
+                    for (int r = 0; r < 2; ++r) {
+                        const detail::LosRegimeScan &scan = regimes[r];
+                        if (verify[r] && losSegmentBlocked(
+                                             top,
+                                             eye.z,
+                                             scan.atExit_ ? tExit : t,
+                                             candidateLow[r]
+                                         )) {
+                            verify[r] = false;
+                        }
+                    }
+                    return !verify[0] && !verify[1];
+                }
+            );
+            for (int r = 0; r < 2; ++r) {
+                if (verify[r]) {
+                    bands[r].clearBelow_ = candidateLow[r];
+                    lowDone[r] = true;
+                }
+            }
+        }
+        if (highDone[0] && highDone[1] && lowDone[0] && lowDone[1]) {
+            break;
+        }
+    }
+    route.belowEye_ = bands[0];
+    route.atOrAboveEye_ = bands[1];
+    return route;
+}
+
+/// The hard gate's verdict over @p route for a sample at height
+/// @p positionZ seen from an eye at height @p eyeZ (`losEye(...).z`): 1
+/// visible, 0 hidden, -1 when only the march can decide. The rise is
+/// computed as `losVisibility` computes it.
+inline int losHardRouteVerdict(const LosHardRoute &route, float eyeZ, float positionZ) {
+    const float rise = IRMath::min(positionZ, route.ownTop_) - eyeZ;
+    const LosRiseBand &band = rise > 0.0f ? route.belowEye_ : route.atOrAboveEye_;
+    if (rise < band.clearBelow_) {
+        return 1;
+    }
+    if (rise >= band.blockedFrom_) {
+        return 0;
+    }
+    return -1;
 }
 
 /// Whether @p to is visible from the eye @p from over the published @p field

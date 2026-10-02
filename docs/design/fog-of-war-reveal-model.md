@@ -102,6 +102,46 @@ fully revealed, and skips a gated source that can neither raise the reveal
 nor move a rim distance the colour reads, so ground the grid already reveals
 costs the paint pass no march.
 
+### Shared hard routes (CPU)
+
+A hard gate's route depends only on the eye and the target's exact XY: the
+cells crossed, the segment parameters where it enters and leaves each, and the
+target column's top plane. Only the target's height varies between bodies
+stacked on one XY, and within each slope regime (rise above the eye's height,
+tested at a column's exit; or not, tested at its entry) every cell's test is
+monotone in that rise. `IRPrefab::Fog::buildLosHardRoute` therefore walks a
+route once and keeps, per regime, a band: a rise below it is visible, one at
+or above it hidden, and one inside it marches. Each band edge is proven by
+evaluating the march's own expression (`losSegmentClearance`, one inline
+helper, so a fused multiply-add rounds alike on both sides), never by
+rearranging it, so every verdict the summary gives is the march's bit for bit
+on every backend's compiler. The walk is the march's own pyramid walk, entering
+only blocks that could block at a regime's extreme rise.
+
+Every continuous BODY evaluator owns an `IRPrefab::Fog::LosHardRouteCache` and
+binds it to its tick's publication in `beginTick`. All workers of the
+`PARALLEL_FOR` fan-out share it: the first lookup of a (source, exact XY)
+claims a slot and builds the route, a lookup that finds it still building
+waits, and every other lookup reads it. A per-worker memo would build each
+route once per worker, because the Z-major row order spreads one stack over
+every worker's ranges. Slots are stamped with the tick's generation, so a new
+tick forgets every route without touching them, and four consecutive X cells
+share a cache line, the order a worker reads them in. Soft and ungated sources,
+an unpublished field, a lane whose probe runs out and a rise inside a band all
+take `losVisibility`. Only `begin` allocates, sizing each lane from the last
+tick's demand. `C_FogRevealSettings::staggerPeriod_` stays the knob for
+populations past what this sharing absorbs.
+
+The per-pixel FIELD march has no such sharing: each pixel's exact XY is its
+own. Its cost scales with the blocks a segment crosses, not with a texel read,
+so its budget is priced against the march it runs. For an identical fixture
+and a same-session matched merge base, let `M` be the base's `fogToTrixel`
+delta between line of sight on and off; the gate is `LOS-on <= control +
+ceil_to_10us(1.15 * M)`. On the unchanged `IRPerfGrid --fog-los-unexplored`
+reference fixture `M` is +67 µs, so the gate is control + 80 µs (#3878). A
+fixture that changes the marched pixels, the sources or the blocks crossed
+measures its own `M`.
+
 ### Unpainted-route FIELD deviations
 
 A world-placed detached canvas has no `FOG_TO_TRIXEL` paint pass. When its

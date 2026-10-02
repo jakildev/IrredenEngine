@@ -32,6 +32,7 @@ template <> struct System<FOG_REVEAL_EVAL> {
 
     IRComponents::FrameDataFogObservers observers_{};
     IRComponents::FogLosColumnField los_{};
+    IRPrefab::Fog::LosHardRouteCache losRoutes_;
     IRComponents::C_FogRevealSettings settings_{};
     IREntity::EntityId activeCanvas_ = IREntity::kNullEntity;
     // Grid taps for the verdict; null when no fog is attached, in which case
@@ -74,6 +75,7 @@ template <> struct System<FOG_REVEAL_EVAL> {
                 fogAttached_ = true;
             }
         }
+        losRoutes_.begin(observers_, los_);
         settings_ = IREntity::singleton<IRComponents::C_FogRevealSettings>();
         settings_.staggerPeriod_ = IRMath::max(settings_.staggerPeriod_, std::uint32_t{1});
         ++frameCounter_;
@@ -101,14 +103,14 @@ template <> struct System<FOG_REVEAL_EVAL> {
     // The ground-anchor verdict on this frame's snapshot: the grid term when a
     // fog component is attached, else the circle term over the observers a
     // test seeded.
-    float verdict(IRMath::vec3 worldPosition) const {
+    float verdict(IRMath::vec3 worldPosition) {
         if (!fogAttached_) {
             return 1.0f;
         }
         if (fog_ != nullptr) {
-            return IRPrefab::Fog::evalReveal(*fog_, observers_, los_, worldPosition);
+            return IRPrefab::Fog::evalReveal(*fog_, observers_, los_, losRoutes_, worldPosition);
         }
-        return IRPrefab::Fog::evalVisionReveal(observers_, los_, worldPosition);
+        return IRPrefab::Fog::evalVisionReveal(observers_, los_, losRoutes_, worldPosition);
     }
 
     void tick(
