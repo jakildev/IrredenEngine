@@ -152,13 +152,7 @@ constexpr IRVideo::GuiInputEvent kRetargetEvents[] = {
      IRInput::KeyMouseButtons::kMouseButtonLeft},
 };
 
-enum GuiTestShotIndex {
-    kHoverShot,
-    kOnClickShot,
-    kPollShot,
-    kPortraitShot,
-    kPortraitRetargetShot
-};
+enum GuiTestShotIndex { kHoverShot, kOnClickShot, kPollShot, kPortraitShot, kPortraitRetargetShot };
 
 constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_hover"},
