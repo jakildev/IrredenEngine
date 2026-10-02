@@ -98,7 +98,7 @@ TEST_F(EntityEventHandlersTest, RegisteredHandlerObservablyFires) {
     ASSERT_EQ(handlers.onClicked_.size(), 1u);
     ASSERT_EQ(m_lua.lua()["clickCount"].get<int>(), 0) << "counter must start at zero";
 
-    handlers.fireClicked(4242u, 0);
+    handlers.fireClicked(4242u, IRComponents::EntityClickButton::LEFT);
 
     EXPECT_EQ(m_lua.lua()["clickCount"].get<int>(), 1);
     EXPECT_EQ(m_lua.lua()["clickedId"].get<std::uint64_t>(), 4242u)

@@ -1,8 +1,10 @@
 // lua_widgets — proves the widget→Lua binding surface end to
-// end. A panel + label + two buttons are built ENTIRELY from `main.lua` via
+// end. A panel + labels + two buttons are built ENTIRELY from `main.lua` via
 // `IRGui.makePanel/makeLabel/makeButton`; one button carries a Lua `onClick`
 // (dispatched by the new WIDGET_LUA_DISPATCH system), the other is polled with
-// `IRGui.wasClicked` from a Lua system — no per-creation C++ widget binding.
+// `IRGui.wasClicked` from a Lua system, and a hover label is driven by the
+// engine's `IRInput.onEntityHovered` / `onEntityUnhovered` handlers (dispatched
+// by ENTITY_HOVER_DETECT) — no per-creation C++ widget or input binding.
 //
 // The C++ side only: composes the standard render + INPUT/UPDATE pipelines
 // (WIDGET_LUA_DISPATCH inserted right after WIDGET_INPUT so `fireAction_` is
@@ -13,9 +15,11 @@
 // machine-checkable.
 //
 // Headless proof (grep `GUI-ASSERT ... result=`, the gui-verify contract):
-//   * shot 0 clicks the onClick button → CLICK_FIRES(button) PASS (click
+//   * shot 0 moves the cursor over the onClick button → LUA_HOVER_LABEL PASS
+//     (the hover label was empty before the move and names the button after).
+//   * shot 1 clicks the onClick button → CLICK_FIRES(button) PASS (click
 //     reached the widget) + LUA_ONCLICK PASS (the Lua onClick handler ran).
-//   * shot 1 clicks the poll button → POLL_WASCLICKED PASS (a Lua system
+//   * shot 2 clicks the poll button → POLL_WASCLICKED PASS (a Lua system
 //     polling IRGui.wasClicked observed the click).
 
 #include <irreden/ir_engine.hpp>
@@ -28,6 +32,7 @@
 
 // Systems composed into the pipelines (visible so createSystem<N> can
 // instantiate at the call sites).
+#include <irreden/input/systems/system_entity_hover_detect.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/input/systems/system_hitbox_mouse_test_gui.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
@@ -48,6 +53,7 @@
 #include <irreden/ir_profile.hpp>
 
 #include <list>
+#include <string>
 
 namespace IRLuaWidgets {
 
@@ -59,19 +65,26 @@ IRSystem::SystemId g_dispatchId = IRSystem::kNullSystemId;
 // Widget ids, published from main.lua via IRTest.setButtons once built.
 IREntity::EntityId g_onClickButton = IREntity::kNullEntity;
 IREntity::EntityId g_pollButton = IREntity::kNullEntity;
+IREntity::EntityId g_hoverLabel = IREntity::kNullEntity;
 
 // Test-only signals, flipped by the IRTest instrumentation hooks main.lua
 // calls. Latched across a shot window (the onClick fires the frame fireAction_
 // pulses, which is gone by the post-settle capture frame).
 bool g_luaOnClickFired = false;
 bool g_pollWasClickedSeen = false;
+// The hover label's text on the hover shot's first frame, before its MOVE.
+std::string g_hoverLabelBefore;
 
 namespace {
 
-// Two assertion shots. Click coords are in screen px; the GUI canvas is
+// Three assertion shots. Click coords are in screen px; the GUI canvas is
 // 640×720 trixels at the 1280×720 / gui_scale=1 config, so a gui-trixel maps
 // to ~2 px in x and ~1 px in y (see layout.hpp mousePositionInGuiTrixels).
 // Buttons are sized generously so the click lands well inside the hitbox.
+constexpr IRVideo::GuiInputEvent kHoverEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(400, 190)},
+};
+
 constexpr IRVideo::GuiInputEvent kOnClickEvents[] = {
     {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(400, 190)},
     {1,
@@ -100,7 +113,16 @@ constexpr IRVideo::GuiInputEvent kPollEvents[] = {
      IRInput::KeyMouseButtons::kMouseButtonLeft},
 };
 
+// Must match the text main.lua's onEntityHovered handler writes for the
+// onClick button.
+constexpr const char *kExpectedHoverText = "HOVERING CLICK ME";
+
+enum GuiTestShotIndex { kHoverShot, kOnClickShot, kPollShot };
+
 constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_hover"},
+     kHoverEvents,
+     static_cast<int>(sizeof(kHoverEvents) / sizeof(kHoverEvents[0]))},
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_onclick"},
      kOnClickEvents,
      static_cast<int>(sizeof(kOnClickEvents) / sizeof(kOnClickEvents[0]))},
@@ -117,10 +139,16 @@ int g_lastAssertShot = -1;
 
 int g_autoWarmupFrames = 0;
 
+const std::string &hoverLabelText() {
+    return IREntity::getComponent<IRComponents::C_WidgetLabel>(g_hoverLabel).text_;
+}
+
 // Forwarder wired to IRVideo::GuiTestConfig::onAssertFrame_. Latches the
 // engine click pulse every frame; on the capture frame, evaluates the engine
-// CLICK_FIRES assertion AND emits the demo's own LUA_ONCLICK / POLL_WASCLICKED
-// lines in the same `GUI-ASSERT ... result=PASS|FAIL` shape gui-verify greps.
+// CLICK_FIRES assertion AND emits the demo's own LUA_HOVER_LABEL / LUA_ONCLICK /
+// POLL_WASCLICKED lines in the same `GUI-ASSERT ... result=PASS|FAIL` shape
+// gui-verify greps. The harness calls this before the frame's scripted events,
+// so a shot's first call sees the state before its first MOVE.
 void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
     if (shotIndex < 0 || shotIndex >= kNumGuiTestShots) {
         return;
@@ -131,6 +159,9 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
         g_clickLatch.firedWidgets_.clear();
         g_luaOnClickFired = false;
         g_pollWasClickedSeen = false;
+        if (shotIndex == kHoverShot) {
+            g_hoverLabelBefore = hoverLabelText();
+        }
     }
 
     IRPrefab::GuiTest::detail::latchFires(g_clickLatch);
@@ -139,7 +170,20 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
     }
 
     const char *label = kGuiTestShots[shotIndex].render_.label_;
-    if (shotIndex == 0) {
+    if (shotIndex == kHoverShot) {
+        const std::string &after = hoverLabelText();
+        const bool hoverLabelSet = g_hoverLabelBefore.empty() && after == kExpectedHoverText;
+        IR_LOG_INFO(
+            "GUI-ASSERT shot={} label={} kind=LUA_HOVER_LABEL target={} name=hover_label "
+            "result={} actual=before='{}' after='{}'",
+            shotIndex,
+            label,
+            g_hoverLabel,
+            hoverLabelSet ? "PASS" : "FAIL",
+            g_hoverLabelBefore,
+            after
+        );
+    } else if (shotIndex == kOnClickShot) {
         const bool clickFired =
             IRPrefab::GuiTest::detail::firedThisShot(g_clickLatch, g_onClickButton);
         IR_LOG_INFO(
@@ -197,6 +241,8 @@ void registerLuaBindings() {
         // Wires IRGui.make*/wasClicked, IRRender.getGuiCanvasSize, IRSystem.*,
         // IRComponent.*, etc. — the whole Lua-driven authoring surface.
         script.bindLuaDrivenEcs();
+        // IRInput.onEntityHovered / onEntityUnhovered for the hover label.
+        script.bindLuaCommands();
 
         // Register the dispatch system ONCE here so its single instance is in
         // the prefab-system-id map (the binding resolves THIS instance) and so
@@ -208,24 +254,28 @@ void registerLuaBindings() {
         // that its onClick / poll callbacks actually ran.
         sol::state &lua = script.lua();
         lua["IRTest"] = lua.create_table();
-        lua["IRTest"]["setButtons"] = [](lua_Integer onClickButton, lua_Integer pollButton) {
-            IRLuaWidgets::g_onClickButton = static_cast<IREntity::EntityId>(onClickButton);
-            IRLuaWidgets::g_pollButton = static_cast<IREntity::EntityId>(pollButton);
-        };
+        lua["IRTest"]["setButtons"] =
+            [](lua_Integer onClickButton, lua_Integer pollButton, lua_Integer hoverLabel) {
+                IRLuaWidgets::g_onClickButton = static_cast<IREntity::EntityId>(onClickButton);
+                IRLuaWidgets::g_pollButton = static_cast<IREntity::EntityId>(pollButton);
+                IRLuaWidgets::g_hoverLabel = static_cast<IREntity::EntityId>(hoverLabel);
+            };
         lua["IRTest"]["onClickFired"] = []() { IRLuaWidgets::g_luaOnClickFired = true; };
         lua["IRTest"]["onPollFired"] = []() { IRLuaWidgets::g_pollWasClickedSeen = true; };
     });
 }
 
 void initSystems() {
-    // INPUT — hover test → widget state machine → Lua click dispatch. The
-    // dispatch id is the prefab instance registered in the binding callback,
-    // placed immediately after WIDGET_INPUT (so fireAction_ is fresh).
+    // INPUT — hover test → Lua hover handlers → widget state machine → Lua
+    // click dispatch. The dispatch id is the prefab instance registered in the
+    // binding callback, placed immediately after WIDGET_INPUT (so fireAction_
+    // is fresh).
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
         {
             IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
             IRSystem::createSystem<IRSystem::HITBOX_MOUSE_TEST_GUI>(),
+            IRSystem::createSystem<IRSystem::ENTITY_HOVER_DETECT>(),
             IRSystem::createSystem<IRSystem::WIDGET_INPUT>(),
             IRLuaWidgets::g_dispatchId,
         }

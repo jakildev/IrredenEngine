@@ -7,6 +7,7 @@
 //
 //   local panel  = IRGui.makePanel(x, y, w, h, title?, drawBorder?, zOrder?)
 //   local label  = IRGui.makeLabel(x, y, text, color?)
+//   IRGui.setLabelText(label, text)
 //   local button = IRGui.makeButton(x, y, w, h, label, onClick?)   -- onClick(id)
 //   if IRGui.wasClicked(button) then ... end
 //   local gx, gy = IRGui.glyphStep()
@@ -146,6 +147,23 @@ inline void bindWidgets(LuaScript &script) {
                 ->registerClickHandler(id, std::move(onClick.value()));
         }
         return static_cast<lua_Integer>(id);
+    };
+
+    // Raises on a non-label id rather than attaching a C_WidgetLabel to it: a
+    // label needs the C_Widget / C_GuiPosition siblings makeLabel creates.
+    gui["setLabelText"] = [](lua_Integer id, std::string text) {
+        IRComponents::C_WidgetLabel *label =
+            IREntity::getComponentOptional<IRComponents::C_WidgetLabel>(
+                static_cast<IREntity::EntityId>(id)
+            )
+                .value_or(nullptr);
+        if (label == nullptr) {
+            throw sol::error{
+                "IRGui.setLabelText: entity " + std::to_string(id) +
+                " is not a label — pass the id IRGui.makeLabel returned"
+            };
+        }
+        label->text_ = std::move(text);
     };
 
     gui["wasClicked"] = [](lua_Integer id) -> bool {

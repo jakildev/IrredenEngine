@@ -3,6 +3,7 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_system.hpp>
+#include <irreden/render/components/component_widget.hpp>
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_render_bindings.hpp>
 #include <irreden/script/lua_script.hpp>
@@ -107,6 +108,39 @@ TEST_F(LuaRenderBindingsTest, ColorFromLuaNilIsOpaqueWhite) {
     EXPECT_EQ(static_cast<int>(color.green_), 255);
     EXPECT_EQ(static_cast<int>(color.blue_), 255);
     EXPECT_EQ(static_cast<int>(color.alpha_), 255);
+}
+
+// ---- IRGui.setLabelText -----------------------------------------------------
+
+// makeLabel / setLabelText only create and write ECS rows, so unlike the draw
+// primitives they are callable headless.
+TEST_F(LuaRenderBindingsTest, SetLabelTextRewritesTheLabel) {
+    auto result = m_lua.lua().safe_script(
+        R"lua(
+        local label = IRGui.makeLabel(0, 0, "")
+        IRGui.setLabelText(label, "HOVERING")
+        return label
+        )lua",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    const auto label = static_cast<IREntity::EntityId>(result.get<lua_Integer>());
+    EXPECT_EQ(IREntity::getComponent<IRComponents::C_WidgetLabel>(label).text_, "HOVERING");
+}
+
+TEST_F(LuaRenderBindingsTest, SetLabelTextRaisesOnANonLabel) {
+    const IREntity::EntityId notALabel = IREntity::createEntity();
+    m_lua.lua()["notALabel"] = static_cast<lua_Integer>(notALabel);
+    auto result =
+        m_lua.lua().safe_script("IRGui.setLabelText(notALabel, 'X')", sol::script_pass_on_error);
+    ASSERT_FALSE(result.valid());
+    EXPECT_NE(
+        std::string(result.get<sol::error>().what()).find("is not a label"),
+        std::string::npos
+    );
+    EXPECT_FALSE(
+        IREntity::getComponentOptional<IRComponents::C_WidgetLabel>(notALabel).has_value()
+    );
 }
 
 } // namespace

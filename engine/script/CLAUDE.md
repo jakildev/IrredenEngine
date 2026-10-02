@@ -187,10 +187,10 @@ softness])` gates a slot the vision calls returned; it needs `FOG_LOS_BUILD`.
 ## Commands and input (`IRCommand.*`, `IRInput.*`)
 
 `LuaScript::bindLuaCommands()`; design in [`docs/design/lua-input-commands.md`](../../docs/design/lua-input-commands.md).
-Compose modifiers with `bit.bor`. A `createCommand` body appears in the F1
-overlay only with `name`/`description`; `isButtonBound` is modifier-blind. A
-new prefab command needs an `IR_BIND_CMD` line in `lua_command_bindings.hpp`
-and a case in `ir_command.cpp`'s `fireByName`/`bindPrefabCommand`.
+It also binds the `IRInput.onEntity*` hover/click handlers ([input prefabs](../prefabs/irreden/input/CLAUDE.md)).
+Compose modifiers with `bit.bor`. A `createCommand` body appears in the F1 overlay only with
+`name`/`description`; `isButtonBound` is modifier-blind. A new prefab command needs an
+`IR_BIND_CMD` line in `lua_command_bindings.hpp` and a case in `ir_command.cpp`'s `fireByName`/`bindPrefabCommand`.
 
 ## Prefab format (`Prefab.register`, `Prefab.spawn`)
 

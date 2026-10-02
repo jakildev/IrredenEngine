@@ -933,6 +933,7 @@ void LuaScript::bindLuaCommands() {
     detail::bindCommandNameEnum(*this);
     detail::bindInputEnums(*this);
     detail::bindCommandFunctions(*this);
+    detail::bindEntityEvents(*this);
 }
 
 void LuaScript::bindLuaFog() {

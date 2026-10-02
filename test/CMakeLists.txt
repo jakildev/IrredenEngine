@@ -126,6 +126,7 @@ add_executable(IrredenEngineTest
   script/lua_component_register_test.cpp
   script/lua_deferred_entity_test.cpp
   script/lua_entity_anchor_test.cpp
+  script/lua_entity_events_test.cpp
   script/lua_voxel_seam_test.cpp
   script/lua_hierarchy_test.cpp
   script/lua_enum_register_test.cpp
