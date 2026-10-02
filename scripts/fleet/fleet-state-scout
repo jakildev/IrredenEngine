@@ -109,6 +109,13 @@ STATE_DIR = Path.home() / ".fleet" / "state"
 TRIGGERS_DIR = STATE_DIR / "triggers"
 SEEN_DIR = STATE_DIR / "seen-hashes"
 PROJECTIONS_DIR = STATE_DIR / "projections"
+# A lane the degraded gate held for ONE repo while the other repo's half ran:
+# one marker per (lane, repo) under here, settled by the next run that
+# covers the repo. The queue-manager and ingest lanes consume their edge when
+# they spawn, so without the marker the held repo's sweep would wait for the
+# next edge instead of the next healthy tick.
+DEGRADED_OWED_DIR = STATE_DIR / "degraded-owed"
+REPO_SWEEP_SLUGS = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
 PRS_DIR = STATE_DIR / "prs"
 DIFFS_DIR = STATE_DIR / "diffs"
 ISSUES_DIR = STATE_DIR / "issues"
@@ -459,7 +466,17 @@ _BOOT_SURFACE = tuple(_source_surface())
 SOURCE_REV = _surface_hash(_BOOT_SURFACE)
 
 
+# stderr of the most recent run_capture failure (empty after a success or a
+# non-exit failure), for the one caller that tells refusals apart:
+# _fetch_prs_graphql reads it to recognise the rollup permission error. A
+# recorded value rather than a second return so every existing seam that
+# patches run_capture keeps its shape.
+_last_capture_stderr = ""
+
+
 def run_capture(cmd, cwd=None):
+    global _last_capture_stderr
+    _last_capture_stderr = ""
     try:
         proc = subprocess.run(
             cmd, capture_output=True, text=True,
@@ -471,6 +488,7 @@ def run_capture(cmd, cwd=None):
     if proc.returncode != 0:
         log(f"command rc={proc.returncode}: {' '.join(cmd)}: {proc.stderr.strip()}")
         _latch_graphql_refusal(cmd, proc.stderr)
+        _last_capture_stderr = proc.stderr or ""
         return None
     return proc.stdout
 
@@ -676,19 +694,72 @@ def _reduce_checks(rollup):
     return reading
 
 
-def _fetch_prs_graphql(repo):
-    out = run_capture([
+# `statusCheckRollup` reaches into each check suite's workflow run, which a
+# GitHub App installation can read only with the Actions permission. On a
+# repo where the token lacks it, the whole list query fails with
+# "Resource not accessible by integration", the slice degrades every tick,
+# and the degraded gate parks reconcile and ingest for every repo. The list
+# is then fetched without the rollup, and each head's `checks` comes from the
+# REST check-run and status surfaces, which need only the Checks and
+# Statuses permissions (the same poll the 304 reuse path already runs). The
+# full form is retried once per window so a granted permission is picked
+# up without a restart.
+_ROLLUP_DENIED_RE = re.compile(r"Resource not accessible by integration")
+ROLLUP_DENIED_RETRY_SECONDS = 3600
+_rollup_denied_until = {}  # repo -> epoch seconds until the full query is retried
+_PR_LIST_FIELDS = (
+    # headRefOid drives the per-PR diff-cache freshness check (a changed
+    # head oid invalidates the cached detail/diff). It rides the same list
+    # poll, so requesting it costs no extra call.
+    "number,title,headRefName,headRefOid,baseRefName,author,labels,mergeable,"
+    "isDraft,reviews,updatedAt,body"
+)
+
+
+def _pr_list_argv(repo, with_rollup):
+    fields = _PR_LIST_FIELDS
+    if with_rollup:
+        fields = fields.replace("mergeable,", "mergeable,statusCheckRollup,", 1)
+    return [
         "gh", "pr", "list", "--repo", repo, "--state", "open",
-        "--limit", str(OPEN_PR_FETCH_LIMIT),
-        "--json",
-        # headRefOid drives the per-PR diff-cache freshness check (a changed
-        # head oid invalidates the cached detail/diff). It rides the same list
-        # poll, so requesting it costs no extra call.
-        "number,title,headRefName,headRefOid,baseRefName,author,labels,mergeable,"
-        "statusCheckRollup,isDraft,reviews,updatedAt,body",
-    ])
-    if out is None:
-        return None
+        "--limit", str(OPEN_PR_FETCH_LIMIT), "--json", fields,
+    ]
+
+
+def _rollup_denied(repo, now=None):
+    return _rollup_denied_until.get(repo, 0) > (time.time() if now is None else now)
+
+
+def _rest_checks_reading(repo, sha, keep):
+    """`checks` for a head whose rollup the list could not carry: the REST
+    reading, or "unread" when the head has no sha or a page was unreadable
+    (which withholds merge-ready, never grants it)."""
+    if not sha:
+        return "unread"
+    reading = _poll_head_checks(repo, sha, keep if keep is not None else set())[1]
+    return reading if reading is not None else "unread"
+
+
+def _fetch_prs_graphql(repo, keep=None):
+    global _last_capture_stderr
+    denied = _rollup_denied(repo)
+    out = None
+    if not denied:
+        _last_capture_stderr = ""
+        out = run_capture(_pr_list_argv(repo, with_rollup=True))
+        if out is None:
+            if not _ROLLUP_DENIED_RE.search(_last_capture_stderr):
+                return None
+            _rollup_denied_until[repo] = time.time() + ROLLUP_DENIED_RETRY_SECONDS
+            log(f"gh pr list {repo}: statusCheckRollup is not readable by this "
+                f"token (an installation without the Actions permission); "
+                f"listing without it and reading checks over REST for the next "
+                f"{ROLLUP_DENIED_RETRY_SECONDS}s")
+            denied = True
+    if denied:
+        out = run_capture(_pr_list_argv(repo, with_rollup=False))
+        if out is None:
+            return None
     try:
         prs = json.loads(out)
     except json.JSONDecodeError as e:
@@ -704,7 +775,10 @@ def _fetch_prs_graphql(repo):
     for pr in prs:
         pr["labels"] = sorted(label["name"] for label in pr.get("labels", []))
         pr["author"] = pr.get("author", {}).get("login", "")
-        pr["checks"] = _reduce_checks(pr.pop("statusCheckRollup", None))
+        if denied:
+            pr["checks"] = _rest_checks_reading(repo, pr.get("headRefOid"), keep)
+        else:
+            pr["checks"] = _reduce_checks(pr.pop("statusCheckRollup", None))
         # Retain a body only on the LATEST review per PR. Exactly two
         # consumers read this array: the sonnet reviewer tests reviews[].author
         # (has any fleet review landed yet), and the opus reviewer tests the
@@ -952,7 +1026,7 @@ def _fetch_prs_gated(repo, prev, keep):
                     f"— re-querying GraphQL past the 304 gate (up to "
                     f"{MERGEABLE_UNKNOWN_REQUERY_CAP} ticks, #3038)")
         if requery or checks_moved:
-            fresh = _fetch_prs_graphql(repo)
+            fresh = _fetch_prs_graphql(repo, keep)
             if fresh is None:
                 # A failed re-query is not a reason to degrade a valid cache —
                 # keep the reused list; the budget already advanced so this
@@ -968,7 +1042,7 @@ def _fetch_prs_gated(repo, prev, keep):
         return prev
     polled = _check_state_moved(repo, prev, keep)[1] if prev is not None else set()
     _mergeable_requery_ticks[repo] = 0
-    fresh = _fetch_prs_graphql(repo)
+    fresh = _fetch_prs_graphql(repo, keep)
     if fresh is None:
         _prs_refetch_pending.add(repo)
     else:
@@ -5112,6 +5186,52 @@ def _refresh_gh_token():
         os.environ["GH_TOKEN"] = token.strip()
 
 
+def _degraded_repo_keys(state):
+    """The repo keys ('engine', 'game') with at least one degraded field."""
+    return {key.split(".", 1)[0] for key in (state.get("degraded") or [])}
+
+
+def _sweep_repo_split(degraded_keys, game_present):
+    """`(healthy, held)`: the repos a degraded-gated lane may act on this
+    tick, as `(key, slug)` pairs in engine-then-game order, and the present
+    repos it must hold. A degraded repo's data may be last-known-good, so a
+    sweep over it could reap a live claim; the other repo's data is fresh and
+    its sweep is safe."""
+    present = ["engine"] + (["game"] if game_present else [])
+    healthy = [(key, REPO_SWEEP_SLUGS[key]) for key in present if key not in degraded_keys]
+    held = [key for key in present if key in degraded_keys]
+    return healthy, held
+
+
+def _owed_path(lane, repo_key):
+    return DEGRADED_OWED_DIR / f"{lane}-{repo_key}"
+
+
+def _owe_lane(lane, repo_key):
+    try:
+        DEGRADED_OWED_DIR.mkdir(parents=True, exist_ok=True)
+        _owed_path(lane, repo_key).touch()
+    except OSError as e:
+        log(f"{lane}: could not record the held sweep for {repo_key}: {e}")
+
+
+def _lane_owed(lane, repo_key):
+    return _owed_path(lane, repo_key).exists()
+
+
+def _settle_lane(lane, repo_key):
+    _owed_path(lane, repo_key).unlink(missing_ok=True)
+
+
+def _filter_ingest_projection(projection, repo_keys):
+    """The ingest slice restricted to issues of `repo_keys`."""
+    allowed = set(repo_keys)
+    return {
+        key: [item for item in items if item.get("repo", "engine") in allowed]
+        for key, items in projection.items()
+    }
+
+
 def tick_once():
     # Refresh before build_state so the token is current on every gh-calling
     # path: a leader's collect_state poll, or a follower falling back to
@@ -5195,19 +5315,31 @@ def tick_once():
             # poller runs the full, global form.
             cleanup_due = _claim_cleanup_due()
             stalled_due = authoritative and _stalled_sweep_due()
-            if projection_changed or cleanup_due or stalled_due:
-                if state.get("degraded"):
-                    # Skip reconcile/cleanup when fetch data is stale — comparing
-                    # live claims against a potentially incomplete issue list would
-                    # produce false-positive drift reports or unsafe auto-fixes.
-                    #
-                    # Leave the seen-hash and both periodic markers unwritten.
-                    # The next healthy tick must retry whichever work is pending;
-                    # recording any of them here would discard it.
+            # The degraded gate is per repo: a sweep compares live claims
+            # against the issue and PR lists, and a repo whose fetch failed
+            # this tick is serving last-known-good data a sweep could misread
+            # as drift. The other repo's data is fresh, so its half runs; the
+            # held repo's half is owed and runs on its next healthy tick,
+            # edge or no edge.
+            healthy_repos, held_repos = _sweep_repo_split(
+                _degraded_repo_keys(state), (GAME / ".git").exists())
+            owed_repos = [key for key, _slug in healthy_repos if _lane_owed(role, key)]
+            if projection_changed or cleanup_due or stalled_due or owed_repos:
+                if not healthy_repos:
+                    # Every repo is degraded. Leave the seen-hash and both
+                    # periodic markers unwritten: the next healthy tick must
+                    # retry whichever work is pending; recording any of them
+                    # here would discard it.
                     log("queue-manager: skipping reconcile+cleanup+stalled-sweep "
                         "(state degraded)")
                     triggers_fired.append("queue-manager(skipped-degraded)")
                     continue
+                for key in held_repos:
+                    _owe_lane(role, key)
+                if held_repos:
+                    log(f"queue-manager: {held_repos} degraded — sweeping "
+                        f"{[key for key, _slug in healthy_repos]} only; the rest "
+                        f"is owed to the next healthy tick")
                 # cleanup --gh is GLOBAL stale-label reaping, and
                 # fleet-stalled-sweep posts a GLOBAL human-facing comment — run
                 # both only on the authoritative poller (leader, or a follower
@@ -5222,26 +5354,22 @@ def tick_once():
                 # tick or race a live pane.
                 cleanup_scope = [] if authoritative else ["--own-host"]
                 sweep_cmds = []
-                if cleanup_due:
-                    sweep_cmds.append(
-                        ["fleet-claim", "cleanup", "--gh", *cleanup_scope,
-                         "--repo", "jakildev/IrredenEngine"])
-                # One process per sweep, both repos in one argv: fleet-stalled-sweep
-                # takes --repo repeatably and sweeps each independently.
-                stalled_cmd = ["fleet-stalled-sweep",
-                               "--repo", "jakildev/IrredenEngine"]
-                reconcile_cmd = ["fleet-claim", "reconcile", "--apply",
-                                 "--repo", "jakildev/IrredenEngine"]
-                if (GAME / ".git").exists():
+                # One process per sweep, every healthy repo in one argv:
+                # fleet-stalled-sweep and reconcile take --repo repeatably and
+                # sweep each independently. cleanup is one process per repo.
+                stalled_cmd = ["fleet-stalled-sweep"]
+                reconcile_cmd = ["fleet-claim", "reconcile", "--apply"]
+                for key, slug in healthy_repos:
                     if cleanup_due:
+                        ns = [] if key == "engine" else ["--repo", key]
                         sweep_cmds.append(
-                            ["fleet-claim", "--repo", "game", "cleanup",
-                             "--gh", *cleanup_scope, "--repo", "jakildev/irreden"])
-                    stalled_cmd += ["--repo", "jakildev/irreden"]
-                    reconcile_cmd += ["--repo", "jakildev/irreden"]
-                if stalled_due:
+                            ["fleet-claim", *ns, "cleanup", "--gh", *cleanup_scope,
+                             "--repo", slug])
+                    stalled_cmd += ["--repo", slug]
+                    reconcile_cmd += ["--repo", slug]
+                if stalled_due or owed_repos:
                     sweep_cmds.append(stalled_cmd)
-                if projection_changed:
+                if projection_changed or owed_repos:
                     sweep_cmds.append(reconcile_cmd)
                 # Partial-failure rule, stated rather than implied: this
                 # lane fires SEVERAL commands, and the seen-hash below is written
@@ -5277,6 +5405,8 @@ def tick_once():
                     triggers_fired.append("queue-manager(spawn-failed)")
                     continue
                 # Every spawn succeeded — only NOW consume the edge/deadline.
+                for key, _slug in healthy_repos:
+                    _settle_lane(role, key)
                 if projection_changed:
                     write_atomic(seen_file, new_hash + "\n")
                 if cleanup_due:
@@ -5313,8 +5443,14 @@ def tick_once():
                 old_hash = seen_file.read_text().strip()
             except FileNotFoundError:
                 old_hash = ""
-            if new_hash != old_hash:
-                if state.get("degraded"):
+            # Per-repo degraded gate, as in the queue-manager lane: a held
+            # repo's issues are cut from the projection the ingest reads and
+            # the repo is owed a run on its next healthy tick.
+            healthy_repos, held_repos = _sweep_repo_split(
+                _degraded_repo_keys(state), (GAME / ".git").exists())
+            owed_repos = [key for key, _slug in healthy_repos if _lane_owed(role, key)]
+            if new_hash != old_hash or owed_repos:
+                if not healthy_repos:
                     # Seen-hash stays unwritten so the change survives the skip —
                     # same edge-triggered no-rearm contract as the queue-manager
                     # lane above; consuming it here strands the issue unqueued
@@ -5322,12 +5458,27 @@ def tick_once():
                     log("queue-manager-ingest: skipping fleet-queue-ingest (state degraded)")
                     triggers_fired.append("queue-manager-ingest(skipped-degraded)")
                     continue
+                ingest_env = None
+                if held_repos:
+                    for key in held_repos:
+                        _owe_lane(role, key)
+                    healthy_keys = [key for key, _slug in healthy_repos]
+                    filtered_path = PROJECTIONS_DIR / f"{role}.healthy.json"
+                    write_atomic(
+                        filtered_path,
+                        json.dumps(_filter_ingest_projection(projection, healthy_keys),
+                                   indent=2, sort_keys=True) + "\n",
+                    )
+                    ingest_env = {**os.environ, "FLEET_INGEST_PROJECTION": str(filtered_path)}
+                    log(f"queue-manager-ingest: {held_repos} degraded — ingesting "
+                        f"{healthy_keys} only; the rest is owed to the next healthy tick")
                 try:
                     subprocess.Popen(
                         _fleet_script_argv(["fleet-queue-ingest"]),
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL,
                         start_new_session=True,
+                        env=ingest_env,
                     )
                 except Exception as e:
                     # Seen-hash stays unwritten so the edge survives the failed
@@ -5340,6 +5491,8 @@ def tick_once():
                     triggers_fired.append("queue-manager-ingest(spawn-failed)")
                     continue
                 # Spawn succeeded — only NOW consume the edge.
+                for key, _slug in healthy_repos:
+                    _settle_lane(role, key)
                 write_atomic(seen_file, new_hash + "\n")
                 _spawn_ok("queue-manager-ingest")
                 log("queue-manager-ingest: spawned fleet-queue-ingest (projection changed)")
@@ -5402,6 +5555,10 @@ def main():
                         help="poll interval in seconds (default 30)")
     parser.add_argument("--print-surface", action="store_true",
                         help="print the self-reload source surface and exit")
+    parser.add_argument("--exit-with-parent", action="store_true",
+                        help="stop when the parent process exits (a test "
+                             "harness that spawns a scout and may be killed "
+                             "before its own cleanup runs)")
     args = parser.parse_args()
 
     if args.print_surface:
@@ -5450,6 +5607,7 @@ def main():
 
     write_pid_file()
     log(f"started (pid={os.getpid()}, interval={args.interval}s)")
+    parent_pid = os.getppid() if args.exit_with_parent else None
 
     if POLL_CFG.is_leader:
         # Serve the state bundle to followers on the LAN. A bind failure is a
@@ -5466,6 +5624,11 @@ def main():
         while not TERMINATE.is_set():
             if SHUTDOWN_FLAG.exists():
                 log("shutdown sentinel detected; exiting")
+                break
+            if parent_pid is not None and os.getppid() != parent_pid:
+                # Re-parented: the harness that spawned this scout is gone
+                # without reaching its cleanup. Stop rather than poll forever.
+                log(f"parent {parent_pid} exited; stopping")
                 break
             # Deliberately ABOVE the try, not inside tick_once(): a tick that
             # raises (gh outage, no network) must not be able to mask the

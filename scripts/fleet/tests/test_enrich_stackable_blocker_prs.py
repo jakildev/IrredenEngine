@@ -625,7 +625,7 @@ class TestFetchPrs304Reuse(unittest.TestCase):
         self._sentinel = [{"number": 1, "headRefName": "claude/1-x",
                            "closes_issues": [],
                            "schema": _mod.PR_RECORD_SCHEMA}]
-        _mod._fetch_prs_graphql = lambda repo: self._sentinel
+        _mod._fetch_prs_graphql = lambda repo, keep=None: self._sentinel
 
     def tearDown(self):
         _mod.conditional_get = self._orig_cget
