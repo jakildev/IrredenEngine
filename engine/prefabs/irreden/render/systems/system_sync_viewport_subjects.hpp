@@ -8,6 +8,11 @@
 // entities tagged `C_ViewportSubject` into the canvas's private pool. The
 // pool is re-derived from the subjects' authored records every frame, so an
 // edit, a retarget or a destroyed subject needs no notification.
+//
+// A part draws only inside its `[lodMax_ .. lodMin_]` band at the viewport's
+// own zoom-derived tier. `C_LodTierOverride` pins the world's tier and is not
+// read here, so tagging every co-located variant of a subject shows the world
+// its coarse one and a close-up portrait its fine one.
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
@@ -19,6 +24,7 @@
 #include <irreden/render/components/component_viewport_camera.hpp>
 #include <irreden/render/components/component_viewport_subject.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
+#include <irreden/render/lod_utils.hpp>
 #include <irreden/render/viewport.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
@@ -32,6 +38,7 @@ namespace IRSystem {
 template <> struct System<SYNC_VIEWPORT_SUBJECTS> {
     struct Slot {
         IREntity::EntityId viewport_ = IREntity::kNullEntity;
+        IRRender::LodLevel tier_ = IRRender::LodLevel::LOD_4;
         std::vector<IRPrefab::Viewport::SubjectPart> parts_;
     };
 
@@ -54,10 +61,11 @@ template <> struct System<SYNC_VIEWPORT_SUBJECTS> {
                 slot.parts_.clear();
             }
         );
-        if (slotCount_ == 0) {
-            return;
+        for (std::size_t i = 0; i < slotCount_; ++i) {
+            const IRMath::vec2 zoom =
+                IREntity::getComponent<IRComponents::C_ZoomLevel>(slots_[i].viewport_).zoom_;
+            slots_[i].tier_ = IRRender::computeLodLevel(IRMath::max(zoom.x, zoom.y));
         }
-        extent_ = IRPrefab::Viewport::detail::compositeExtent();
     }
 
     void tick(
@@ -67,14 +75,22 @@ template <> struct System<SYNC_VIEWPORT_SUBJECTS> {
         const IRComponents::C_WorldTransform &worldTransform
     ) {
         for (std::size_t i = 0; i < slotCount_; ++i) {
-            if (slots_[i].viewport_ == subject.viewport_) {
-                slots_[i].parts_.push_back({entity, &voxelSet, worldTransform.translation_});
-                return;
+            Slot &slot = slots_[i];
+            if (slot.viewport_ != subject.viewport_) {
+                continue;
             }
+            if (!IRRender::shouldSkipAtLod(voxelSet.lodMin_, voxelSet.lodMax_, slot.tier_)) {
+                slot.parts_.push_back({entity, &voxelSet, worldTransform.translation_});
+            }
+            return;
         }
     }
 
     void endTick() {
+        if (slotCount_ == 0) {
+            return;
+        }
+        extent_ = IRPrefab::Viewport::detail::compositeExtent();
         for (std::size_t i = 0; i < slotCount_; ++i) {
             Slot &slot = slots_[i];
             auto &camera = IREntity::getComponent<IRComponents::C_ViewportCamera>(slot.viewport_);

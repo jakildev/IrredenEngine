@@ -402,9 +402,9 @@ without a format break. Same escape hatch as `.vxs`.
 - **Secondary viewports** (`docs/design/secondary-viewport.md`). A viewport
   rasters its subject at its own camera's zoom-derived density
   (`getVoxelRenderEffectiveSubdivisionsForZoom`), so a portrait at zoom 16 is
-  the finest tier while the world draws the same entity coarse. The
-  per-entity override and the DENSE band (#3966) resolve per viewport zoom
-  through `resolveEntityLod` once they land.
+  the finest tier while the world draws the same entity coarse. Its subjects'
+  DENSE bands are filtered at the viewport's own zoom-derived tier;
+  `C_LodTierOverride` pins the world's tier only and is not read there.
 - **Subdivision-count scaling** (`render_manager.cpp:240-253`). Existing
   per-zoom behavior: subdivision passes per voxel scale with
   `max(zoom.x, zoom.y)` in `SubdivisionMode::FULL`. This is orthogonal

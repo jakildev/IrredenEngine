@@ -494,6 +494,16 @@ constexpr IRVideo::AutoScreenshotShot kViewportPortraitShots[] = {
     {1.0f, vec2(0, 0), 0.0f, "portrait_world_z1"},
     {1.0f, vec2(0, 0), IRMath::kHalfPi, "portrait_world_z1_world_yaw90"},
 };
+// --viewport-lod-swap (with --viewport-portrait): the subject is two co-located
+// variants on disjoint LOD bands, both tagged. The world at zoom 1 draws the
+// coarse orange cube; the portrait at zoom 16 draws the fine blue ball. The
+// cube's edges reach past the ball, so a portrait that stacked both — its own
+// tier ignored — shows an orange cube with the ball's faces inset.
+bool g_viewportLodSwap = false;
+constexpr Color kPortraitCoarseColor{220, 150, 70, 255};
+constexpr IRVideo::AutoScreenshotShot kViewportLodSwapShots[] = {
+    {1.0f, vec2(0, 0), 0.0f, "portrait_lod_swap_z1"},
+};
 // cursor-latch runs the same poses through the GUI-test cycler; its shots wrap
 // g_pivotVerifyShots (whose labels this table's label_ pointers still target,
 // so both vectors must outlive the game loop).
@@ -1379,6 +1389,11 @@ void registerCliArgs() {
         "Replace the scene + capture table with the secondary-viewport fixture: a world cube at "
         "zoom 1 and its GUI-pinned portrait at zoom 16"
     );
+    args.flag(
+        "--viewport-lod-swap",
+        "With --viewport-portrait: the subject is a coarse/fine pair on disjoint LOD bands; the "
+        "world draws the coarse variant and the portrait the fine one"
+    );
     args.number(
         "--viewport-yaw",
         "Z-yaw in radians of the --viewport-portrait camera (the world camera is unaffected)",
@@ -1413,6 +1428,7 @@ void readCliArgs() {
     g_cullEvictTest = args.getFlag("--cull-evict-test");
     g_lodDenseSwap = args.getFlag("--lod-dense-swap");
     g_viewportPortrait = args.getFlag("--viewport-portrait");
+    g_viewportLodSwap = g_viewportPortrait && args.getFlag("--viewport-lod-swap");
     g_cursorPivotIndicator = args.getFlag("--cursor-pivot-indicator");
 
     if (args.wasProvided("--zoom")) {
@@ -2508,16 +2524,19 @@ constexpr IRVideo::AutoScreenshotShot kLodDenseSwapShots[] = {
     {8.0f, vec2(0, 0), 0.0f, "lod_dense_swap_z8"},
 };
 
-void initLodDenseSwapScene() {
-    const EntityId canvas = IRRender::getActiveCanvasEntity();
+struct LodVariantPair {
+    EntityId coarse_;
+    EntityId fine_;
+};
+
+// A coarse cube (band [LOD_3 .. LOD_4]) and a fine ball (band [LOD_0 .. LOD_2])
+// centered on the origin of the active canvas. The ball is inscribed in its own
+// box, so a cube at least as wide reaches past it.
+LodVariantPair
+spawnLodVariantPair(int coarseSize, Color coarseColor, int fineSize, Color fineColor) {
     const EntityId coarse = IREntity::createEntity(
         C_LocalTransform{vec3(0.0f)},
-        C_VoxelSetNew{
-            ivec3(8),
-            Color{220, 150, 70, 255},
-            IRComponents::EntityAnchor::CENTER,
-            canvas
-        }
+        C_VoxelSetNew{ivec3(coarseSize), coarseColor, IRComponents::EntityAnchor::CENTER}
     );
     C_VoxelSetNew &coarseSet = IREntity::getComponent<C_VoxelSetNew>(coarse);
     coarseSet.lodMin_ = IRRender::LodLevel::LOD_4;
@@ -2525,17 +2544,18 @@ void initLodDenseSwapScene() {
 
     const EntityId fine = IREntity::createEntity(
         C_LocalTransform{vec3(0.0f)},
-        C_VoxelSetNew{
-            ivec3(12),
-            Color{90, 160, 230, 255},
-            IRComponents::EntityAnchor::CENTER,
-            canvas
-        }
+        C_VoxelSetNew{ivec3(fineSize), fineColor, IRComponents::EntityAnchor::CENTER}
     );
     C_VoxelSetNew &fineSet = IREntity::getComponent<C_VoxelSetNew>(fine);
-    fineSet.carve([](vec3 position) { return IRMath::length(position) > 6.0f; });
+    const float radius = 0.5f * static_cast<float>(fineSize);
+    fineSet.carve([radius](vec3 position) { return IRMath::length(position) > radius; });
     fineSet.lodMin_ = IRRender::LodLevel::LOD_2;
     fineSet.lodMax_ = IRRender::LodLevel::LOD_0;
+    return {coarse, fine};
+}
+
+void initLodDenseSwapScene() {
+    spawnLodVariantPair(8, Color{220, 150, 70, 255}, 12, Color{90, 160, 230, 255});
 }
 
 void initCullEvictScene() {
@@ -3138,6 +3158,8 @@ void initSystems() {
             );
         } else if (g_lodDenseSwap) {
             IRVideo::setAutoScreenshotShots(cfg, kLodDenseSwapShots);
+        } else if (g_viewportLodSwap) {
+            IRVideo::setAutoScreenshotShots(cfg, kViewportLodSwapShots);
         } else if (g_viewportPortrait) {
             IRVideo::setAutoScreenshotShots(cfg, kViewportPortraitShots);
         } else {
@@ -3756,10 +3778,19 @@ void setupCanvasLighting() {
 
 // The --viewport-portrait scene (see g_viewportPortrait).
 void initViewportPortraitScene() {
-    const EntityId subject = IREntity::createEntity(
-        C_LocalTransform{vec3(0.0f)},
-        C_VoxelSetNew{ivec3(4), kPortraitSubjectColor, true}
-    );
+    EntityId subject = IREntity::kNullEntity;
+    EntityId fineVariant = IREntity::kNullEntity;
+    if (g_viewportLodSwap) {
+        const LodVariantPair pair =
+            spawnLodVariantPair(4, kPortraitCoarseColor, 4, kPortraitSubjectColor);
+        subject = pair.coarse_;
+        fineVariant = pair.fine_;
+    } else {
+        subject = IREntity::createEntity(
+            C_LocalTransform{vec3(0.0f)},
+            C_VoxelSetNew{ivec3(4), kPortraitSubjectColor, true}
+        );
+    }
     IREntity::createEntity(
         C_LocalTransform{vec3(12.0f, -12.0f, 0.0f)},
         C_VoxelSetNew{ivec3(4), kPortraitDecoyColor, true}
@@ -3774,6 +3805,9 @@ void initViewportPortraitScene() {
     desc.yawRadians_ = IREngine::args().getFloat("--viewport-yaw");
     const EntityId viewport = IRPrefab::Viewport::create(desc, "portrait");
     IRPrefab::Viewport::setSubject(viewport, subject);
+    if (fineVariant != IREntity::kNullEntity) {
+        IREntity::setComponent(fineVariant, IRComponents::C_ViewportSubject{viewport});
+    }
     IR_LOG_INFO(
         "Viewport-portrait: subject={} viewport={} rect=({},{} {}x{}) of gui {}x{} zoom={} yaw={}",
         subject,

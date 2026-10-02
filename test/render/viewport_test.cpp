@@ -5,15 +5,19 @@
 #include <irreden/ir_system.hpp>
 
 #include <irreden/common/components/component_size_triangles.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/components/component_canvas_camera.hpp>
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
+#include <irreden/render/components/component_lod_tier_override.hpp>
 #include <irreden/render/components/component_viewport_camera.hpp>
 #include <irreden/render/components/component_viewport_subject.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
+#include <irreden/render/systems/system_sync_viewport_subjects.hpp>
 #include <irreden/render/viewport.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
+#include <initializer_list>
 #include <vector>
 
 // Secondary-viewport layout math and the per-frame subject sync.
@@ -42,6 +46,7 @@ using IRMath::vec2;
 using IRMath::vec3;
 using IRMath::vec4;
 using IRPrefab::Viewport::SubjectPart;
+using IRRender::LodLevel;
 
 namespace Viewport = IRPrefab::Viewport;
 
@@ -91,6 +96,63 @@ class ViewportTest : public testing::Test {
             parts,
             m_box
         );
+    }
+
+    // The parts one SYNC_VIEWPORT_SUBJECTS gather hands @p viewport's pool when
+    // @p subjects are tagged to it; the camera and composite halves need a
+    // RenderManager and are left out.
+    static std::vector<SubjectPart>
+    gather(IREntity::EntityId viewport, std::initializer_list<IREntity::EntityId> subjects) {
+        IRSystem::System<IRSystem::SYNC_VIEWPORT_SUBJECTS> system;
+        system.beginTick();
+        for (const IREntity::EntityId subject : subjects) {
+            system.tick(
+                subject,
+                C_ViewportSubject{viewport},
+                IREntity::getComponent<C_VoxelSetNew>(subject),
+                IRComponents::C_WorldTransform{
+                    IREntity::getComponent<IRComponents::C_LocalTransform>(subject).translation_,
+                    kIdentity,
+                    vec3(1.0f)
+                }
+            );
+        }
+        for (std::size_t i = 0; i < system.slotCount_; ++i) {
+            if (system.slots_[i].viewport_ == viewport) {
+                return system.slots_[i].parts_;
+            }
+        }
+        return {};
+    }
+
+    // Two co-located variants on disjoint bands: a coarse red cube for zoom < 4
+    // and a fine blue one for zoom >= 4.
+    struct VariantFamily {
+        IREntity::EntityId coarse_;
+        IREntity::EntityId fine_;
+    };
+
+    VariantFamily makeVariantFamily() const {
+        const IREntity::EntityId coarse = makeSubject(ivec3(2), kRed);
+        auto &coarseSet = IREntity::getComponent<C_VoxelSetNew>(coarse);
+        coarseSet.lodMin_ = LodLevel::LOD_4;
+        coarseSet.lodMax_ = LodLevel::LOD_3;
+        const IREntity::EntityId fine = makeSubject(ivec3(3), kBlue);
+        auto &fineSet = IREntity::getComponent<C_VoxelSetNew>(fine);
+        fineSet.lodMin_ = LodLevel::LOD_2;
+        fineSet.lodMax_ = LodLevel::LOD_0;
+        return {coarse, fine};
+    }
+
+    static void expectPoolHoldsOnly(IREntity::EntityId viewport, ivec3 size, Color color) {
+        const C_VoxelPool &pool = poolOf(viewport);
+        EXPECT_EQ(pool.getVoxelPoolSize3D(), size);
+        const int count = size.x * size.y * size.z;
+        ASSERT_EQ(pool.getLiveVoxelCount(), count);
+        EXPECT_EQ(activeCount(pool), count);
+        for (int i = 0; i < count; ++i) {
+            EXPECT_EQ(pool.getColors()[i].color_.toPackedRGBA(), color.toPackedRGBA());
+        }
     }
 
     static C_VoxelPool &poolOf(IREntity::EntityId viewport) {
@@ -453,6 +515,82 @@ TEST_F(ViewportTest, NoSubjectEmptiesThePool) {
     EXPECT_EQ(poolOf(viewport).getLiveVoxelCount(), 0);
     EXPECT_EQ(Viewport::drawnSubject(viewport), IREntity::kNullEntity);
     EXPECT_FALSE(IREntity::getComponent<C_ViewportCamera>(viewport).subjectOversize_);
+}
+
+// ---------------------------------------------------------------------------
+// LOD bands
+// ---------------------------------------------------------------------------
+
+TEST_F(ViewportTest, ACloseUpViewportDrawsOnlyTheFineVariantOfABandedFamily) {
+    Viewport::Desc desc{};
+    desc.zoom_ = 16.0f;
+    const IREntity::EntityId viewport = makeViewport(desc);
+    const VariantFamily family = makeVariantFamily();
+
+    const std::vector<SubjectPart> parts = gather(viewport, {family.coarse_, family.fine_});
+    ASSERT_EQ(parts.size(), 1u);
+    EXPECT_EQ(parts[0].entity_, family.fine_);
+    sync(viewport, parts);
+
+    expectPoolHoldsOnly(viewport, ivec3(3), kBlue);
+    EXPECT_EQ(Viewport::drawnSubject(viewport), family.fine_);
+}
+
+TEST_F(ViewportTest, AWideViewportDrawsOnlyTheCoarseVariantOfABandedFamily) {
+    const IREntity::EntityId viewport = makeViewport();
+    const VariantFamily family = makeVariantFamily();
+
+    const std::vector<SubjectPart> parts = gather(viewport, {family.coarse_, family.fine_});
+    ASSERT_EQ(parts.size(), 1u);
+    EXPECT_EQ(parts[0].entity_, family.coarse_);
+    sync(viewport, parts);
+
+    expectPoolHoldsOnly(viewport, ivec3(2), kRed);
+}
+
+TEST_F(ViewportTest, EachViewportBandsAtItsOwnZoom) {
+    Viewport::Desc closeUp{};
+    closeUp.zoom_ = 16.0f;
+    const IREntity::EntityId fineView = makeViewport(closeUp);
+    const IREntity::EntityId coarseView = makeViewport();
+    const VariantFamily family = makeVariantFamily();
+
+    const std::vector<SubjectPart> fineParts = gather(fineView, {family.coarse_, family.fine_});
+    const std::vector<SubjectPart> coarseParts = gather(coarseView, {family.coarse_, family.fine_});
+
+    ASSERT_EQ(fineParts.size(), 1u);
+    EXPECT_EQ(fineParts[0].entity_, family.fine_);
+    ASSERT_EQ(coarseParts.size(), 1u);
+    EXPECT_EQ(coarseParts[0].entity_, family.coarse_);
+}
+
+// The override pins the world's tier; the portrait still resolves its own zoom.
+TEST_F(ViewportTest, ATierOverridePinsTheWorldNotTheViewport) {
+    Viewport::Desc desc{};
+    desc.zoom_ = 16.0f;
+    const IREntity::EntityId viewport = makeViewport(desc);
+    const VariantFamily family = makeVariantFamily();
+    IREntity::setComponent(family.coarse_, IRComponents::C_LodTierOverride{LodLevel::LOD_4});
+    IREntity::setComponent(family.fine_, IRComponents::C_LodTierOverride{LodLevel::LOD_4});
+
+    const std::vector<SubjectPart> parts = gather(viewport, {family.coarse_, family.fine_});
+    ASSERT_EQ(parts.size(), 1u);
+    EXPECT_EQ(parts[0].entity_, family.fine_);
+    sync(viewport, parts);
+
+    expectPoolHoldsOnly(viewport, ivec3(3), kBlue);
+}
+
+TEST_F(ViewportTest, NoVariantInBandEmptiesThePool) {
+    Viewport::Desc desc{};
+    desc.zoom_ = 16.0f;
+    const IREntity::EntityId viewport = makeViewport(desc);
+    const IREntity::EntityId coarseOnly = makeVariantFamily().coarse_;
+
+    sync(viewport, gather(viewport, {coarseOnly}));
+
+    EXPECT_EQ(poolOf(viewport).getLiveVoxelCount(), 0);
+    EXPECT_EQ(Viewport::drawnSubject(viewport), IREntity::kNullEntity);
 }
 
 // ---------------------------------------------------------------------------

@@ -76,8 +76,8 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   with no foreign `getComponent`. Per-voxel tiers: `C_VoxelSetNew::changeVoxelPriority`;
   id reads go through `IRRender::decodeCarrierEntityId`. A per-trixel override
   arbitrates only across canvases — use separate detached units.
-- A canvas carrying `C_CanvasCamera` is viewed through that camera, not the world's, by
-  every `*_TO_TRIXEL` stage; `IRPrefab::Viewport::` owns it ([design](../../../../docs/design/secondary-viewport.md)).
+- A `C_CanvasCamera` canvas is viewed through that camera by every `*_TO_TRIXEL` stage;
+  `IRPrefab::Viewport::` owns it and bands at its own zoom, not `C_LodTierOverride` ([design](../../../../docs/design/secondary-viewport.md)).
 - `C_ActiveLodLevel` is the singleton `LOD_UPDATE` writes. A `C_ShapeDescriptor`
   (`SHAPES_TO_TRIXEL`) or `C_VoxelSetNew` (`GATE_VOXEL_SETS_BY_LOD`) draws only
   inside its `[lodMax_ .. lodMin_]` band; disjoint co-located bands swap. A new

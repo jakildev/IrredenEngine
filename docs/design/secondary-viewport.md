@@ -94,11 +94,18 @@ the world's sun shadow and the fog pass never sees it.
 ### D7 — LOD
 
 The viewport rasters at its own zoom's subdivision density
-(`IRRender::getVoxelRenderEffectiveSubdivisionsForZoom`), which is the
-zoom-derived tier. The per-entity tier override and the DENSE band gate are
-#3966's surface; once it lands, the subject's resolved tier is read through
-`resolveEntityLod` with the viewport's zoom, and the portrait draws the finest
-band while the world draws the coarse one.
+(`IRRender::getVoxelRenderEffectiveSubdivisionsForZoom`) and resolves its own
+tier from that zoom (`IRRender::computeLodLevel`). `SYNC_VIEWPORT_SUBJECTS`
+drops every tagged part whose `[lodMax_ .. lodMin_]` band excludes that tier
+(`IRRender::shouldSkipAtLod`) before laying out the box, so a subject authored
+as co-located variants on disjoint bands, every variant tagged, shows the world
+its coarse variant and a close-up portrait its fine one.
+
+`C_LodTierOverride` is world tier policy and the viewport does not read it: a
+subject pinned coarse in the world still renders at the portrait's own tier,
+which is what a close-up is for. The world-side gate (`GATE_VOXEL_SETS_BY_LOD`
+setting `lodCulled_`) does not hide a part from the portrait either; the
+portrait copies authored records, which a culled set keeps.
 
 ## Lua
 
