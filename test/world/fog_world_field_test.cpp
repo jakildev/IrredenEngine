@@ -674,8 +674,10 @@ TEST_F(FogWorldFieldTest, MovingFieldTierAllocatesNothingOnceWarm) {
             static_cast<float>((source / 8) * 150) - step
         };
     };
-    const auto frame = [&](int index) {
+    const auto frame = [&](int index, const IRTest::AllocationCounter *counter = nullptr) {
+        const std::size_t beforeClear = counter == nullptr ? 0 : counter->allocations();
         C_CanvasFogOfWar::clearVisionCircles(observers, field);
+        const std::size_t afterClear = counter == nullptr ? 0 : counter->allocations();
         for (int i = 0; i < kSources; ++i) {
             const IRMath::vec2 centre = centreOf(i, index);
             C_CanvasFogOfWar::addVisionCircle(
@@ -691,7 +693,14 @@ TEST_F(FogWorldFieldTest, MovingFieldTierAllocatesNothingOnceWarm) {
                 0.0f
             );
         }
+        const std::size_t afterStamps = counter == nullptr ? 0 : counter->allocations();
         field.consumePending(pending);
+        const std::size_t afterConsume = counter == nullptr ? 0 : counter->allocations();
+        return std::array{
+            afterClear - beforeClear,
+            afterStamps - afterClear,
+            afterConsume - afterStamps
+        };
     };
     for (int index = 0; index < kPeriod; ++index) {
         frame(index);
@@ -703,10 +712,15 @@ TEST_F(FogWorldFieldTest, MovingFieldTierAllocatesNothingOnceWarm) {
     ) << "the last source is field-tier";
 
     const IRTest::AllocationCounter counter;
+    std::array<std::array<std::size_t, 3>, 2 * kPeriod> allocationSplits{};
     for (int index = kPeriod; index < 3 * kPeriod; ++index) {
-        frame(index);
+        allocationSplits[index - kPeriod] = frame(index, &counter);
     }
-    EXPECT_EQ(counter.allocations(), 0u);
+    EXPECT_EQ(counter.allocations(), 0u)
+        << "frame 16 clear/stamps/consume: " << allocationSplits[0][0] << "/"
+        << allocationSplits[0][1] << "/" << allocationSplits[0][2]
+        << "; frame 32 clear/stamps/consume: " << allocationSplits[kPeriod][0] << "/"
+        << allocationSplits[kPeriod][1] << "/" << allocationSplits[kPeriod][2];
 }
 
 class FogWindowGatherTest : public ::testing::Test {
