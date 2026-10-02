@@ -60,7 +60,10 @@ fleet-gate-status — read-only view of fleet-dispatcher gating.
 Reports:
   • fleet-wide usage gate (5h / 7d / etc. rate-limit thresholds)
   • GitHub API quota (core / graphql / search pools, gated at 90%; search is
-    surface-only and never gates)
+    surface-only and never gates); each latched sample carries the identity
+    (user = personal pool, app = GitHub App pool) the scout read it under
+  • when the GitHub App is configured (FLEET_GH_APP_*): both identities' live
+    /rate_limit readings side by side (the probe spends no quota)
   • per-pane cooldowns (15-min default after a pane's launch died at the wall)
 
 Auto-resume is automatic: the dispatcher re-opens the gate on its next
@@ -102,8 +105,24 @@ EOF
         ;;
 esac
 
+# GitHub App configured: the live probe below needs an installation token to
+# read the App pool beside the personal one. Same three-knob predicate and
+# same minter as every fleet caller (fleet-gh-token prints nothing when any
+# knob is unset); PATH first so an installed copy wins, the sibling second.
+GATE_APP_CONFIGURED=0
+GATE_APP_TOKEN=""
+if [[ -n "${FLEET_GH_APP_ID:-}" && -n "${FLEET_GH_APP_INSTALLATION_ID:-}" \
+      && -n "${FLEET_GH_APP_KEY_PATH:-}" ]]; then
+    GATE_APP_CONFIGURED=1
+    if command -v fleet-gh-token >/dev/null 2>&1; then
+        GATE_APP_TOKEN="$(fleet-gh-token 2>/dev/null || true)"
+    elif [[ -x "$(dirname "$0")/fleet-gh-token" ]]; then
+        GATE_APP_TOKEN="$("$(dirname "$0")/fleet-gh-token" 2>/dev/null || true)"
+    fi
+fi
+
 export USAGE_DIR RATE_LIMIT_DIR USAGE_STALE_SECONDS RESET_GRACE_SECONDS \
-       LIMIT_DELAY POLL_INTERVAL_SECONDS JSON
+       LIMIT_DELAY POLL_INTERVAL_SECONDS JSON GATE_APP_CONFIGURED GATE_APP_TOKEN
 
 # Pass through any per-type / global override env vars that fleet-dispatcher
 # reads, so threshold lookup matches the dispatcher's view.
@@ -118,6 +137,8 @@ python3 - <<'PY'
 import json
 import os
 import pathlib
+import shutil
+import subprocess
 import sys
 import time
 from datetime import datetime, timezone
@@ -300,6 +321,9 @@ if usage_dir.is_dir():
             # code fall back to a percent-only rendering if they're absent.
             "limit": data.get("limit"),
             "remaining": data.get("remaining"),
+            # "user" | "app": the pool the sampler read under (GitHub only;
+            # absent on a latch written before the field existed).
+            "identity": data.get("identity"),
         }
         observations.append(obs)
         if breaching:
@@ -317,6 +341,54 @@ gate_state = "closed" if breaches else "open"
 # breach still flips gate_state above; it's the same shared dispatcher gate.
 github_obs = [o for o in observations if o["rateLimitType"].startswith("github_")]
 anthropic_obs = [o for o in observations if not o["rateLimitType"].startswith("github_")]
+
+# --- GitHub identities (live) ---------------------------------------------
+
+app_configured = os.environ.get("GATE_APP_CONFIGURED") == "1"
+app_token = os.environ.get("GATE_APP_TOKEN", "")
+
+
+def probe_identity(token):
+    """Live /rate_limit core+graphql for one identity, or None on any failure.
+
+    `token` None probes the personal pool (GH_TOKEN dropped so gh falls back
+    to its own credentials); a string probes the App pool. /rate_limit does
+    not count against the quota it reports.
+    """
+    env = dict(os.environ)
+    env.pop("GITHUB_TOKEN", None)
+    if token is None:
+        env.pop("GH_TOKEN", None)
+    else:
+        env["GH_TOKEN"] = token
+    try:
+        proc = subprocess.run(
+            [shutil.which("gh") or "gh", "api", "/rate_limit"],
+            capture_output=True, text=True, timeout=15, env=env,
+        )
+        resources = json.loads(proc.stdout).get("resources", {})
+    except (subprocess.TimeoutExpired, OSError, ValueError, AttributeError):
+        return None
+    if proc.returncode != 0:
+        return None
+    pools = {}
+    for pool in ("core", "graphql"):
+        info = resources.get(pool)
+        if isinstance(info, dict) and info.get("limit"):
+            pools[pool] = {
+                "limit": info["limit"],
+                "remaining": info.get("remaining", info["limit"] - info.get("used", 0)),
+                "resetsAt": info.get("reset"),
+            }
+    return pools or None
+
+
+# Only when the App is configured: with a single identity the latched samples
+# already say everything, and an unconfigured host must not make a live call.
+identities = {}
+if app_configured:
+    identities["user"] = probe_identity(None)
+    identities["app"] = probe_identity(app_token) if app_token else None
 
 # --- Per-pane cooldowns ---------------------------------------------------
 
@@ -347,6 +419,7 @@ if emit_json:
         "scoped_breaching": scoped_breaches,
         "observations": observations,
         "github": github_obs,
+        "github_identities": identities,
         "cooldowns": cooldowns,
         "thresholds_in_effect": {
             "five_hour": threshold_for("five_hour"),
@@ -438,6 +511,8 @@ else:
         cmp_text = f"(>= {thr_pct}%)" if o["breaching"] else f"(< {thr_pct}%)"
         prefix = "breaching:" if o["breaching"] else "other:"
         pool = o["rateLimitType"].removeprefix("github_")
+        if o.get("identity"):
+            pool = f"{pool}[{o['identity']}]"
         # "rejected": the limiter refused the scout's sample (github-graphql.json)
         # or a real GraphQL call (github-graphql.rejected.json).
         status_part = " REJECTED" if o.get("status") == "rejected" else ""
@@ -457,7 +532,7 @@ else:
             )
             stale_part = f" [{reasons}]"
         return (
-            f"  {prefix:<10} {pool:<8} {quota_text}{status_part} "
+            f"  {prefix:<10} {pool:<13} {quota_text}{status_part} "
             f"{cmp_text}{resets_part}{eta}{stale_part}"
         )
 
@@ -466,6 +541,23 @@ else:
         print(fmt_github_obs(o))
 
 print()
+if identities:
+    print("GitHub identities (live /rate_limit, App configured):")
+    for name in ("user", "app"):
+        pools = identities.get(name)
+        if not pools:
+            why = ("fleet-gh-token minted no token" if name == "app" and not app_token
+                   else "probe failed")
+            print(f"  {name:<5} unavailable ({why})")
+            continue
+        parts = []
+        for pool in ("core", "graphql"):
+            if pool in pools:
+                info = pools[pool]
+                parts.append(f"{pool} remaining={info['remaining']}/{info['limit']}")
+        print(f"  {name:<5} {', '.join(parts)}")
+    print()
+
 if active_cooldowns:
     print(f"Per-pane cooldowns: {len(active_cooldowns)} active")
     for c in active_cooldowns:

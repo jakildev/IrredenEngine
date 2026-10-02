@@ -149,7 +149,7 @@ assert_eq "$out" "closed:github_graphql rejected util=100% (>= 90%) resets=$FUTU
     "dispatcher gate closes on the refused latch"
 gs=$("$GATE_STATUS")
 assert_contains "$gs" "Fleet-wide usage gate: CLOSED" "gate-status prints CLOSED"
-assert_contains "$gs" "breaching: graphql  remaining=0/5000 REJECTED (>= 90%)" \
+assert_contains "$gs" "breaching: graphql[user] remaining=0/5000 REJECTED (>= 90%)" \
     "gate-status graphql row carries REJECTED"
 
 echo "T2: refused with no prior latch => closed, no resetsAt, no limit"
@@ -194,7 +194,7 @@ assert_eq "$(latch_field status)" "<absent>" "good sample clears status"
 out=$(gate)
 assert_eq "${out%%:*}" "open" "dispatcher gate re-opens"
 gs=$("$GATE_STATUS")
-assert_contains "$gs" "other:     graphql  remaining=2942/5000 (< 90%)" "gate-status shows the true bucket"
+assert_contains "$gs" "other:     graphql[user] remaining=2942/5000 (< 90%)" "gate-status shows the true bucket"
 assert_absent "$gs" "REJECTED" "no REJECTED marker after recovery"
 log=$(cat "$TMPROOT/scout.log")
 assert_eq "$(grep -c 'github graphql quota refused' <<<"$log" || true)" "1" \
