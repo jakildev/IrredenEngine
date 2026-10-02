@@ -480,6 +480,11 @@ TEST(VoxelSetSerialize, OutOfRangeLodByteFailsTheRead) {
         kLodMinOffset,
         static_cast<std::uint8_t>(IRRender::LodLevel::LOD_4)
     );
+    expectCurrentReadRejectsByteAtOffset(
+        set,
+        kLodMinOffset + sizeof(std::uint8_t),
+        static_cast<std::uint8_t>(IRRender::LodLevel::LOD_0)
+    );
 }
 
 TEST(VoxelSetSerialize, OutOfRangeLodBandFailsTheWrite) {
