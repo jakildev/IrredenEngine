@@ -53,12 +53,17 @@ MIN_CLUSTER_SIZE_FOR_PROPOSAL = 2 # singletons never get a proposal
 #   ## 2026-05-08T17:34Z — headline (ISO-T, Z/UTC suffix, inline headline)
 #   ## 2026-05-13 — headline        (date only, inline headline)
 #   ## 2026-05-19 opus-worker-1: …  (date only, inline headline w/o em-dash)
+#   ## pool-5, 2026-09-14: headline (one role-ish token before the date)
+#   ## pool-9 2026-09-27 15:05 UTC — headline
+#   # pool-7 feedback — 2026-10-01 (opus)    (level-1 header, same shape)
 # Group 1 is the timestamp (date, optional time); group 2 is the optional
-# inline headline. Anything that doesn't lead with a date is a prose section
+# inline headline. At most ONE word (optionally followed by "feedback") may
+# precede the date — a header that leads with a sentence is a prose section
 # divider and is ignored. Keep this a strict superset of the old date+time
 # form so previously-parsed entries are unaffected.
 ENTRY_HEAD_FILE = re.compile(
-    r"^##\s+"
+    r"^#{1,2}\s+"
+    r"(?:[A-Za-z][\w-]*(?:\s+feedback)?[,\s—–-]*\s+)?"          # optional role-ish prefix
     r"(\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}(?::\d{2})?)?)"   # date, optional time
     r"(?:\s*(?:Z|UTC))?"                                      # optional Z / UTC suffix
     r"(?:\s*(?:[—–:-]+\s*)?(.*?))?\s*$"                 # optional inline headline (sep optional)
@@ -67,6 +72,71 @@ ENTRY_HEAD_FILE = re.compile(
 # Pattern bank — order matters; first match wins. Widen aggressively;
 # uncategorized noise drowns the signal otherwise.
 SIGNATURES: list[tuple[str, re.Pattern]] = [
+    # The epic-steward's game-wrapper-in-engine-worktree bookkeeping. Sits
+    # first so its "design"/"projection" prose never lands in
+    # design-escalation-gap or state-cache-lag; a cluster here means the
+    # install.sh symlink pass is linking the wrong repo's role wrapper.
+    ("role-wrapper-misload", re.compile(
+        r"(?=.*\b(game|engine)\s+wrapper\b)"
+        r"(?=.*(worktree|loaded|injected|took\s+(cwd|engine|game)))", re.I | re.S)),
+    # ps/pgrep/kill denied inside the macOS sandbox (Codex workspace-write and
+    # the Claude seatbelt alike), so a pane cannot see whether its own build
+    # or suite is still running. Must sit before permission-gate-friction,
+    # whose bare "sandbox" token would otherwise swallow these.
+    ("sandbox-process-visibility", re.compile(
+        r"(operation\s+not\s+permitted:?\s*`?ps\b"
+        r"|`?\bps\b[^\n]{0,40}(operation\s+not\s+permitted|denied|blocked|sandbox)"
+        r"|process[- ]inspection|pgrep[^\n]{0,30}(denied|blocked|not\s+permitted)"
+        r"|build[- ]status\s+helper|cannot\s+(see|observe)[^\n]{0,30}(build|suite)"
+        r"|kill[^\n]{0,30}(own|caller.s)[^\n]{0,20}build)", re.I)),
+    # A build, suite or capture longer than the tool-call window: killed at
+    # session end, re-issued and orphaned, or observed only as "still running".
+    ("long-job-window", re.compile(
+        r"(run_in_background[^\n]{0,60}(killed|cap|10[- ]min)"
+        r"|tool[- ]call\s+window|tool\s+window|command\s+(execution\s+)?window"
+        r"|exceeded\s+the\s+\d+-second|\d+-second\s+(window|limit|cap)"
+        r"|run_all\.sh[^\n]{0,80}(min\b|killed|orphan)"
+        r"|(build|suite|render-verify)[^\n]{0,40}took\s+~?\d+\s?min)", re.I)),
+    # Codex sandbox roots: a path the role contract writes (~/.fleet/handoff,
+    # the gh cache) is outside writable_roots() in fleet_codex.py. Before
+    # permission-gate-friction for the same "sandbox" reason as above.
+    ("codex-writable-roots", re.compile(
+        r"(writable[- ]roots?|not\s+writable|read-?only\s+(root|path)"
+        r"|XDG_CACHE_HOME|~/\.fleet/handoff|handoff\s+(dir|directory|path)"
+        r"|gh\s+cache|Codex[^\n]{0,40}(cache|roots?))", re.I)),
+    # The dispatch-exported GitHub App installation token outlived by the
+    # iteration — 401 Bad credentials at the publish gates.
+    ("token-expiry", re.compile(
+        r"(GH_TOKEN[^\n]{0,60}(expir|401)"
+        r"|(401|Bad\s+credentials)[^\n]{0,60}(token|expir)"
+        r"|token\s+(expired|expires|expiry)"
+        r"|installation\s+token[^\n]{0,40}(expir|1\s?h))", re.I)),
+    # GraphQL bucket exhausted or throttled while REST still answers: label
+    # ops, checkouts and publication gates fail asymmetrically.
+    ("graphql-outage", re.compile(
+        r"(GraphQL[^\n]{0,60}(rate[- ]limit|outage|quota|exhaust|throttl|stall|refus|0\s+remaining)"
+        r"|(rate[- ]limit|outage|quota)[^\n]{0,40}GraphQL"
+        r"|secondary\s+(rate\s+)?limit)", re.I)),
+    # fleet-pr-amend-push diffs old-tip..HEAD, so a rebase onto a moved master
+    # prints master's own deletions as "net-removed content".
+    ("amend-push-rebase-false-warning", re.compile(r"net-?removed", re.I)),
+    # fleet-pr-body-lint read-from-stdin hang, PR-number SKIP exit 0, and
+    # table/heading shapes it cannot see.
+    ("body-lint-input-traps", re.compile(r"fleet-pr-body-lint", re.I)),
+    # `Parked-until:` reads one issue; a PR parked on two blockers re-parks.
+    ("parked-until-list", re.compile(r"Parked-until", re.I)),
+    # A feedback/amend dispatch pre-claimed from a scout snapshot that no
+    # longer matches the PR (tier cleared, PR parked or closed seconds ago).
+    # Three lookaheads: a dispatch token, a staleness token, and a PR/feedback
+    # token so the steward's trigger-replay no-ops stay out.
+    ("amend-claim-tier-gate", re.compile(
+        r"(?=.*(pre-?claim|re-?dispatch|dispatch(ed|er)?\b|elected))"
+        r"(?=.*(snapshot|stale\s+(dispatch|re-?dispatch|label|verdict|projection|view)"
+        r"|(dispatch|re-?dispatch)[^\n]{0,40}stale|already\s+(parked|closed|verified|cleared)"
+        r"|\d+\s?s\s+(later|after)|seconds?\s+(later|after)|min(ute)?s?\s+after"
+        r"|no\s+tier|pre-park|parked\s+(it|the\s+PR)|had\s+already))"
+        r"(?=.*(feedback|amend|PR\s?#?\d+|needs-fix|design-blocked|awaiting-infra|verdict))",
+        re.I | re.S)),
     # A fleet script merged to master but the host's ~/bin symlink pass never
     # re-ran, so the tool is "command not found" / missing on PATH. Must sit
     # before label-absent-after-verdict: these entries often name the verdict
@@ -190,10 +260,9 @@ def role_files() -> list[Path]:
 def parse_role_file(path: Path) -> list[Entry]:
     """Parse a role feedback file into Entry objects.
 
-    Uses ENTRY_HEAD_FILE for entry boundaries — intentionally a superset of
-    scripts/fleet/fleet-feedback's writer regex (date-only headers, Z/UTC
-    suffixes, inline headlines), so the reviewer never drops an entry the
-    append tool or a hand-edit accepted.
+    Uses ENTRY_HEAD_FILE for entry boundaries — byte-identical to
+    scripts/fleet/fleet-feedback's HEADER_RE (pinned by the test suite), so
+    the reviewer never drops an entry the quick CLI or a hand-edit accepted.
     """
     role = path.stem
     entries: list[Entry] = []
@@ -698,6 +767,47 @@ TITLE_BY_SIGNATURE: dict[str, str] = {
         "fleet: close gaps in design-escalation handling surfaced by fleet feedback",
     "concurrent-reviewer-claim":
         "fleet/review-pr: cross-role lock so sonnet+opus don't double-review the same PR",
+    "install-symlink-lag":
+        "fleet/install: re-run the ~/bin symlink pass when a merged script is missing on PATH",
+    "simplify-reuse-coverage":
+        "fleet/simplify: reuse fan-out reads the dirty working tree, not committed state",
+    "gl-host-starvation":
+        "fleet: route GL-host-only tasks away from macOS/Metal panes",
+    "role-wrapper-misload":
+        "fleet/install: a pane loads the other repo's role wrapper — re-check the symlink pass",
+    "sandbox-process-visibility":
+        "fleet: fleet-jobs — sandbox-safe start/status/wait/kill for builds (ps is denied)",
+    "long-job-window":
+        "fleet: route builds and suites longer than the tool window through a detached job runner",
+    "codex-writable-roots":
+        "fleet_codex: add ~/.fleet/handoff and the gh cache to the Codex writable roots",
+    "token-expiry":
+        "fleet: refresh or fail fast when the dispatch GH_TOKEN expires mid-iteration",
+    "graphql-outage":
+        "fleet: REST fallback for every label/publication gate when GraphQL is throttled",
+    "amend-push-rebase-false-warning":
+        "fleet-pr-amend-push: measure net-removed content against each side's merge-base",
+    "body-lint-input-traps":
+        "fleet-pr-body-lint: no silent stdin read without --body-file; reject a PR number loudly",
+    "parked-until-list":
+        "fleet-claim: `Parked-until:` accepts a list and un-parks when all blockers close",
+    "amend-claim-tier-gate":
+        "fleet-claim: amending-claim refuses a PR with no live feedback tier, or a parked one",
+    "feedback-digest-signatures":
+        "review-fleet-feedback: signatures and header shapes for the September snag families",
+}
+
+# Ingest reads `**Model:**` from the body (fleet-queue-ingest warns and
+# defaults to opus when it is missing); `**Area:**` and `**Blocked by:**`
+# are the task-issue conventions PLANNING-PROTOCOL.md expects.
+MODEL_BY_SIGNATURE: dict[str, str] = {
+    "amend-push-rebase-false-warning": "sonnet",
+    "body-lint-input-traps": "sonnet",
+    "codex-writable-roots": "sonnet",
+    "parked-until-list": "sonnet",
+    "feedback-digest-signatures": "sonnet",
+    "install-symlink-lag": "sonnet",
+    "format-target-overreach": "sonnet",
 }
 
 
@@ -716,7 +826,11 @@ def issue_body_for(row: dict[str, Any], cluster_examples: list[dict] | None) -> 
             for e in cluster_examples[:3]
         ) + "\n"
 
+    model = MODEL_BY_SIGNATURE.get(sig, "opus")
     return (
+        f"**Area:** scripts/fleet\n"
+        f"**Model:** {model}\n"
+        f"**Blocked by:** (none)\n\n"
         f"## Context\n\n"
         f"Surfaced by `scripts/fleet/review-fleet-feedback` from aggregated fleet feedback.\n"
         f"Signature: `{sig}` · {occ} occurrence{'s' if occ != 1 else ''} since {first}.\n"
@@ -725,14 +839,14 @@ def issue_body_for(row: dict[str, Any], cluster_examples: list[dict] | None) -> 
         f"{examples_block}\n"
         f"## Proposed fix\n\n"
         f"{proposal}\n\n"
-        f"## Acceptance\n\n"
+        f"## Tracking\n\n"
+        f"Generated by `scripts/fleet/review-fleet-feedback file-tasks`. "
+        f"When this issue's PR merges with a `Closes #<N>` line, the fix-log row's "
+        f"`status` flips to `applied` on the next `digest` run.\n\n"
+        f"## Acceptance criteria\n\n"
         f"- Implementation matches the artifact called out in the proposed fix above.\n"
         f"- Subsequent `review-fleet-feedback digest` runs do not re-surface the "
-        f"`{sig}` cluster after the fix lands (verified via the 7-day quiet window).\n\n"
-        f"---\n\n"
-        f"_Generated by `scripts/fleet/review-fleet-feedback file-tasks`. "
-        f"When this issue's PR merges with a `Closes #<N>` line, the fix-log row's "
-        f"`status` will flip to `applied` automatically on the next `digest` run._\n"
+        f"`{sig}` cluster after the fix lands (verified via the 7-day quiet window).\n"
     )
 
 
