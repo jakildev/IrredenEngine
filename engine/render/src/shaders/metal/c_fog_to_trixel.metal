@@ -52,7 +52,8 @@ kernel void c_fog_to_trixel(
     texture2d<float, access::read_write> trixelColors [[texture(0)]],
     texture2d<int, access::read> trixelDistances [[texture(1)]],
     texture2d<float, access::read> canvasFogOfWar [[texture(2)]],
-    // Read only for the fog whole-body and analytic-surface carrier bits.
+    // Read only for the fog BODY carrier (decodeFogBody / decodeFogBodyFactor)
+    // and the analytic-surface carrier bit.
     texture2d<uint, access::read> triangleCanvasEntityIds [[texture(3)]],
     // Line-of-sight column field (ir_fog_los). Slot 4 is lighting's
     // sun-shadow input too; lighting rebinds it inside its own tick.
@@ -92,11 +93,22 @@ kernel void c_fog_to_trixel(
         return;
     }
 
+    const uint2 rawId = triangleCanvasEntityIds.read(uint2(pixel)).xy;
+    if (decodeFogBody(rawId)) {
+        const float bodyState = float(decodeFogBodyFactor(rawId)) / 255.0f;
+        if (bodyState < 1.0f) {
+            trixelColors.write(
+                fogApplyBody(bodyState, trixelColors.read(uint2(pixel)), fogObservers),
+                uint2(pixel)
+            );
+        }
+        return;
+    }
+
     const int slot = decodeSlot(encoded);
     const int faceId =
         frameData.visibleFaceIds[slot] ^ decodeFlipRoute(encoded, frameData.perAxisRoute);
     const int scale = effectiveTrixelSubdivisionScale(frameData.voxelRenderOptions);
-    const uint2 rawId = triangleCanvasEntityIds.read(uint2(pixel)).xy;
     const bool analyticCardinal = frameData.perAxisRoute == 0 &&
         frameData.residualYaw == 0.0f && scale > 1 && decodeAnalyticSurface(rawId);
     const int rasterDepth = decodeDepthSingle(encoded);
@@ -105,13 +117,11 @@ kernel void c_fog_to_trixel(
         : rasterDepth;
     const float3 pos3D = fogPixelToWorld(pixel, encoded, faceId, size, cardinalDepth, frameData);
     float aaFloor = 0.0f;
-    bool fogWholeBody = false;
     float3 losSample = pos3D;
     if (fogObservers.visionCircleCount > 0) {
         const float3 neighbor = fogPixelToWorld(
             pixel + int2(1, 0), encoded, faceId, size, cardinalDepth, frameData);
         aaFloor = length(neighbor.xy - pos3D.xy);
-        fogWholeBody = decodeFogWholeBody(rawId);
         if (fogObservers.losSourceMask != 0) {
             int losRoute = kFogLosRouteAnalytic;
             if (frameData.perAxisRoute != 0) {
@@ -132,7 +142,6 @@ kernel void c_fog_to_trixel(
         pos3D,
         losSample,
         aaFloor,
-        fogWholeBody,
         fogObservers,
         canvasFogOfWar,
         fogLineOfSight

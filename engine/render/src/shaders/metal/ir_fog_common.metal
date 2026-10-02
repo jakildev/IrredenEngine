@@ -87,7 +87,6 @@ inline FogReveal fogRevealSample(
     float3 pos3D,
     float3 losSample,
     float aaFloor,
-    bool fogWholeBody,
     constant FogObserverData& fogObservers,
     texture2d<float, access::read> canvasFogOfWar,
     texture2d<float, access::read> fogLineOfSight
@@ -115,13 +114,11 @@ inline FogReveal fogRevealSample(
             break;
         }
         const float4 heights = fogObservers.visionCircleHeights[i];
-        const float zCostUp = fogWholeBody ? 0.0f : heights.y;
-        const float zCostDown = fogWholeBody ? 0.0f : heights.z;
         const float dzUp = max(heights.x - pos3D.z, 0.0f);
         const float dzDown = max(pos3D.z - heights.x, 0.0f);
         const float distEff = length(pos3D.xy - fogObservers.visionCircles[i].xy) +
-            zCostUp * max(dzUp - heights.w, 0.0f) +
-            zCostDown * max(dzDown - heights.w, 0.0f);
+            heights.y * max(dzUp - heights.w, 0.0f) +
+            heights.z * max(dzDown - heights.w, 0.0f);
         const float aa = max(fogObservers.visionCircles[i].w, aaFloor);
         const float reveal = 1.0f - smoothstep(
             fogObservers.visionCircles[i].z - aa,
@@ -134,7 +131,7 @@ inline FogReveal fogRevealSample(
             continue;
         }
         float losVisibility = 1.0f;
-        if (fogLosSourceGated(fogObservers.losSourceMask, i) && !fogWholeBody &&
+        if (fogLosSourceGated(fogObservers.losSourceMask, i) &&
             (reveal > 0.0f ||
              (fogObservers.visionCircles[i].w == 0.0f && distPastRim < kFogRimFadeCells)) &&
             length(losSample.xy - fogObservers.visionCircles[i].xy) <=
@@ -188,6 +185,21 @@ inline float4 fogApplyReveal(
         }
     }
     return float4(outColor, sourceColor.a);
+}
+
+inline float4 fogApplyBody(
+    float state,
+    float4 sourceColor,
+    constant FogObserverData& fogObservers
+) {
+    return float4(
+        fogStateColor(state, sourceColor.rgb, fogObservers.unexploredColor.rgb),
+        sourceColor.a
+    );
+}
+
+inline float fogOverflowBodyState(uint classByte) {
+    return float(classByte) / 254.0f;
 }
 
 #endif // IR_FOG_COMMON_METAL_INCLUDED

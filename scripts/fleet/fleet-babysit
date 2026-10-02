@@ -572,7 +572,18 @@ wait_for_claude_gate() {
     return 0
 }
 
+# Refresh GH_TOKEN from the cache-backed minter ahead of a claude (re)launch, so
+# a relaunch never depends on the tmux seed being current. Guarded on non-empty:
+# GH_TOKEN="" would defeat gh's keychain fallback on the unconfigured path.
+refresh_gh_token() {
+    local token
+    token="$(fleet-gh-token 2>/dev/null || true)"
+    [[ -n "$token" ]] && export GH_TOKEN="$token"
+    return 0
+}
+
 stream_claude() {
+    refresh_gh_token
     # Both callers pass --print themselves (workers must one-shot exit
     # so babysit can relaunch). A caller that omits --print errors out in
     # the formatter branch (`--include-partial-messages` requires `--print`)
@@ -703,6 +714,7 @@ launch_architect_first() {
         printf '%s\n' "${cmd[*]}"
         exit 0
     fi
+    refresh_gh_token
     local started_at rc=0 elapsed
     started_at=$(date +%s)
     "${cmd[@]}" || rc=$?
@@ -771,6 +783,7 @@ resume_mid_task() {
     fi
     if [[ "$ARCHITECT_RESUME" -eq 1 && -f "$SESSION_FILE" ]]; then
         SESSION_ID=$(cat "$SESSION_FILE")
+        refresh_gh_token
         local started_at rc=0 elapsed
         started_at=$(date +%s)
         # Crash recovery — not fleet restart; the prompt signals mid-task continuity, not cold-start burn.

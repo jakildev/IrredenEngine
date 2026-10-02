@@ -49,6 +49,15 @@ void main() {
     const uint packedCell = overflowScratch[entryBase + 0u];
     const uint colorPacked = overflowScratch[entryBase + 1u];
     const int encoded = int(overflowScratch[entryBase + 2u]);
+    const uint fogClassByte = colorPacked >> 24u;
+    if (fogClassByte != kFogOverflowFieldByte) {
+        const float bodyState = fogOverflowBodyState(fogClassByte);
+        if (bodyState < 1.0) {
+            overflowScratch[entryBase + 1u] =
+                packColor(fogApplyBody(bodyState, unpackColor(colorPacked)));
+        }
+        return;
+    }
     const ivec2 cell = ivec2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
     const int faceId =
         visibleFaceIds[decodeSlot(encoded)] ^ decodeFlipPerAxis(encoded);
@@ -60,8 +69,6 @@ void main() {
         frameCanvasOffset,
         voxelRenderOptions
     );
-    const uint fogClassByte = colorPacked >> 24u;
-    const bool fogWholeBody = fogClassByte == 254u;
     float aaFloor = 0.0;
     vec3 losSample = pos3D;
     if (visionCircleCount > 0) {
@@ -79,7 +86,7 @@ void main() {
         }
     }
 
-    const FogReveal reveal = fogRevealSample(pos3D, losSample, aaFloor, fogWholeBody);
+    const FogReveal reveal = fogRevealSample(pos3D, losSample, aaFloor);
     if (reveal.state >= 1.0) {
         return;
     }

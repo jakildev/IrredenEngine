@@ -218,6 +218,44 @@ nothing.
 
 ---
 
+## GitHub App identity
+
+Fleet `gh` traffic can bill a GitHub App's rate-limit pool (its own 5000/h
+core + 5000/h GraphQL) instead of the operator's personal account. Optional:
+with the knobs unset `fleet-gh-token` prints nothing and every caller keeps
+`gh`'s keychain auth.
+
+Setup is one-time, by the operator; all three knobs set means configured,
+any one missing means unconfigured. One table carries the whole contract:
+
+| Item | What |
+|---|---|
+| Setup 1 — create | a GitHub App (Settings → Developer settings → GitHub Apps), no webhook |
+| Setup 2 — permissions | Metadata read, Contents read, Issues read & write, Pull requests read & write, Actions read, Checks read, Commit statuses read — the fleet never merges, and git pushes stay on SSH |
+| Setup 3 — install | on **both** `jakildev/IrredenEngine` and `jakildev/irreden` (an installation token only sees the repos it is installed on) |
+| Setup 4 — key | generate a private key; store it `chmod 600` outside the repo |
+| Knob `FLEET_GH_APP_ID` | the App's numeric ID, in `~/.fleet/fleet-up.conf` (sample: `scripts/fleet/fleet-up.conf.sample`) |
+| Knob `FLEET_GH_APP_INSTALLATION_ID` | the installation ID (from the installation URL) |
+| Knob `FLEET_GH_APP_KEY_PATH` | path to the private key (`.pem`) |
+| Setup 5 — verify | `fleet-gh-token` prints a token; `fleet-gate-status` lists both identities |
+| Pool **app** | scout (re-mints per tick, quota samples included), dispatcher, `fleet-dispatch-wrap` and every agent it launches, `fleet-claim`, panes seeded by `fleet-up` — wherever `fleet-gh-token` exported `GH_TOKEN` |
+| Token refresh | `~/bin/gh` (`scripts/fleet/gh`) re-mints a stale `ghs_` `GH_TOKEN` per call, so a live interactive pane (an architect `claude`) stays on the App past the 1h expiry; the dispatcher re-seeds the tmux server's `GH_TOKEN` each tick and `fleet-babysit` re-mints before each `claude` launch, covering panes split later and relaunches. The shim leaves empty/unset and non-`ghs_` values alone (`FLEET_GH_SHIM=0` bypasses); a raw `curl` using `$GH_TOKEN` in a live pane still sees the stale token |
+| Pool **user** | a human's own shell `gh`, any host without the knobs, a personal token in `GH_TOKEN` |
+| Neither | git fetch/push over SSH (no API call) |
+
+**Reading it.** `fleet-gate-status` tags each latched GitHub sample with
+`identity` (`user` or `app`: the scout and the refusal latch record the pool
+their `gh` billed, read from the token's own prefix — `ghs_` is an
+installation token, any other token or none is the operator's) — a
+rejected latch reads `graphql[user] … REJECTED` beside an App pool's
+`graphql[app]` — and, with the knobs set, a live
+`/rate_limit` section lists both pools' core and GraphQL remaining (the
+probe spends no quota). The dispatcher gate still keys on the latched
+samples, not on identity: a rejected latch taken under one identity holds
+the gate until its reset even after traffic moves to the other pool.
+
+---
+
 ## Usage-limit handling
 
 On a usage-limit error: print it and exit, and flag it in the iteration

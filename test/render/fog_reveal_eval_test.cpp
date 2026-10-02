@@ -88,6 +88,93 @@ TEST(FogRevealEvalTest, MirrorsDiscHeightPenaltyAndSoftEdge) {
     );
 }
 
+// The BODY verdict kernel: a VISIBLE grid cell reveals fully on its own, an
+// EXPLORED cell contributes nothing, and an UNEXPLORED cell inside a circle
+// reads the circle term unchanged.
+TEST(FogRevealEvalTest, GridAwareVerdictTakesTheMaxOfVisibleCellAndCircleTerm) {
+    const FogLosColumnField noLos{};
+    const FrameDataFogObservers none{};
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalReveal(
+            none,
+            noLos,
+            IRComponents::kFogStateVisible,
+            IRMath::vec3(3, 4, 0)
+        ),
+        1.0f
+    );
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalReveal(
+            none,
+            noLos,
+            IRComponents::kFogStateExplored,
+            IRMath::vec3(3, 4, 0)
+        ),
+        0.0f
+    );
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalReveal(
+            none,
+            noLos,
+            IRComponents::kFogStateUnexplored,
+            IRMath::vec3(3, 4, 0)
+        ),
+        0.0f
+    );
+
+    const FrameDataFogObservers soft = oneCircle(10.0f, 2.0f);
+    const float circleTerm = IRPrefab::Fog::evalVisionReveal(soft, IRMath::vec3(10, 0, 0));
+    ASSERT_NEAR(circleTerm, 0.5f, 1e-6f);
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalReveal(
+            soft,
+            noLos,
+            IRComponents::kFogStateUnexplored,
+            IRMath::vec3(10, 0, 0)
+        ),
+        circleTerm
+    );
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalReveal(
+            soft,
+            noLos,
+            IRComponents::kFogStateExplored,
+            IRMath::vec3(10, 0, 0)
+        ),
+        circleTerm
+    );
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalReveal(
+            soft,
+            noLos,
+            IRComponents::kFogStateVisible,
+            IRMath::vec3(10, 0, 0)
+        ),
+        1.0f
+    );
+}
+
+// The grid term reads the world field at any column, with no window test: a
+// far unexplored column reveals nothing, and a VISIBLE cell there reveals.
+TEST(FogRevealEvalTest, GridTermReadsTheWorldFieldAtAFarColumn) {
+    IRComponents::C_CanvasFogOfWar fog{IRComponents::C_CanvasFogOfWar::HeadlessInit{}};
+    const FogLosColumnField noLos{};
+    const FrameDataFogObservers none{};
+    const IRMath::vec3 far(5000.0f, -3000.0f, 0.0f);
+    EXPECT_FLOAT_EQ(IRPrefab::Fog::evalReveal(fog, none, noLos, far), 0.0f)
+        << "a far unexplored column read as revealed";
+    fog.setCell(5000, -3000, IRComponents::kFogStateVisible);
+    EXPECT_FLOAT_EQ(IRPrefab::Fog::evalReveal(fog, none, noLos, far), 1.0f);
+}
+
+TEST(FogRevealEvalTest, QuantizedFactorRoundsHalfUpAndPinsTheEnds) {
+    EXPECT_EQ(IRPrefab::Fog::quantizeRevealFactor(0.0f), 0);
+    EXPECT_EQ(IRPrefab::Fog::quantizeRevealFactor(1.0f), 255);
+    EXPECT_EQ(IRPrefab::Fog::quantizeRevealFactor(0.5f), 128);
+    EXPECT_EQ(IRPrefab::Fog::quantizeRevealFactor(1.5f), 255);
+    EXPECT_EQ(IRPrefab::Fog::quantizeRevealFactor(-0.5f), 0);
+}
+
 TEST(FogRevealEvalTest, RejectsOutsideBoundingRadiusBeforeExactCurve) {
     FrameDataFogObservers observers = oneCircle(4.0f, 1.0f, 1000.0f, 1000.0f, 1000.0f);
     EXPECT_FLOAT_EQ(
@@ -242,7 +329,7 @@ TEST(FogRevealEvalTest, SnapshotPairsPublishedSourcesWithTheirField) {
 TEST(FogRevealEvalTest, SourcesOccludeIndependently) {
     C_VoxelPool pool{IRMath::ivec3(1)};
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
-    system.pendingByWorker_.resize(1);
+    system.pending_.reset(4);
     system.fogAttached_ = true;
     system.activeCanvas_ = IREntity::kNullEntity;
     system.activePool_ = &pool;
@@ -278,10 +365,58 @@ TEST(FogRevealEvalTest, SourcesOccludeIndependently) {
     EXPECT_FALSE(verdict(IRMath::vec3(-3, 6, 0)).shown_) << "hidden from B, and outside A's disc";
 }
 
+// The BODY oracle's circle term is line-of-sight gated: an anchor behind a
+// ridge from a ground-level gated source evaluates to 0, and the same anchor
+// with line of sight off takes the circle term. The grid term is not gated. The
+// live tick with a fog component attached reads the same snapshot, so a verdict
+// that dropped the field fails here.
+TEST(FogRevealEvalTest, BodyVerdictBehindARidgeFromAGatedSourceIsZero) {
+    IRComponents::C_CanvasFogOfWar fog{IRComponents::C_CanvasFogOfWar::HeadlessInit{}};
+    FrameDataFogObservers observers = gated(oneCircle(12.0f, 0.0f));
+    std::vector<float> columns = emptyField();
+    // A ridge across the source's +X view, topped well above its eye.
+    stampWall(columns, IRMath::vec2(4.0f, -20.0f), IRMath::vec2(5.0f, 20.0f), -5.0f);
+    const FogLosColumnField field{columns.data()};
+    const IRMath::vec3 anchor(8.0f, 0.0f, 0.0f);
+
+    const float circleTerm = IRPrefab::Fog::evalVisionReveal(observers, anchor);
+    ASSERT_FLOAT_EQ(circleTerm, 1.0f);
+    EXPECT_FLOAT_EQ(IRPrefab::Fog::evalReveal(fog, observers, field, anchor), 0.0f);
+    FrameDataFogObservers losOff = observers;
+    losOff.losSourceMask_ = 0;
+    EXPECT_FLOAT_EQ(IRPrefab::Fog::evalReveal(fog, losOff, field, anchor), circleTerm);
+
+    fog.setCell(8, 0, IRComponents::kFogStateVisible);
+    EXPECT_FLOAT_EQ(IRPrefab::Fog::evalReveal(fog, observers, field, anchor), 1.0f)
+        << "a VISIBLE cell reveals whatever the line of sight";
+    fog.setCell(8, 0, IRComponents::kFogStateUnexplored);
+
+    C_VoxelPool pool{IRMath::ivec3(1)};
+    IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
+    system.pending_.reset(4);
+    system.fogAttached_ = true;
+    system.fog_ = &fog;
+    system.activeCanvas_ = IREntity::kNullEntity;
+    system.activePool_ = &pool;
+    system.settings_.staggerPeriod_ = 1;
+    system.observers_ = observers;
+    system.los_ = field;
+    IREntity::EntityId entity = 1;
+    C_FogRevealed revealed{};
+    C_WorldTransform transform{};
+    C_VoxelSetNew voxelSet{};
+    transform.translation_ = anchor;
+    system.tick(entity, revealed, transform, voxelSet);
+    EXPECT_FLOAT_EQ(revealed.revealFactor_, 0.0f);
+    system.observers_ = losOff;
+    system.tick(entity, revealed, transform, voxelSet);
+    EXPECT_FLOAT_EQ(revealed.revealFactor_, circleTerm);
+}
+
 TEST(FogRevealEvalTest, HysteresisAndStaggerControlEntityVerdict) {
     C_VoxelPool pool{IRMath::ivec3(1)};
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
-    system.pendingByWorker_.resize(1);
+    system.pending_.reset(4);
     system.fogAttached_ = true;
     system.activeCanvas_ = IREntity::kNullEntity;
     system.activePool_ = &pool;
@@ -317,7 +452,7 @@ TEST(FogRevealEvalTest, HysteresisAndStaggerControlEntityVerdict) {
 
 TEST(FogRevealEvalTest, MissingPoolDoesNotLatchAnUnappliedTransition) {
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
-    system.pendingByWorker_.resize(1);
+    system.pending_.reset(4);
     system.fogAttached_ = false;
     system.activeCanvas_ = IREntity::kNullEntity;
 
@@ -329,7 +464,7 @@ TEST(FogRevealEvalTest, MissingPoolDoesNotLatchAnUnappliedTransition) {
 
     EXPECT_FLOAT_EQ(revealed.revealFactor_, 1.0f);
     EXPECT_FALSE(revealed.shown_);
-    EXPECT_TRUE(system.pendingByWorker_[0].empty());
+    EXPECT_EQ(system.pending_.size(), 0u);
 }
 
 // The fog pass reads unexploredColor as the std140 member after
@@ -373,7 +508,7 @@ TEST(FogRevealEvalTest, ActiveMaskHideAndRestoreAreAlphaPreserving) {
     voxelSet.voxelStartIdx_ = 0;
     voxelSet.numVoxels_ = 4;
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
-    system.pendingByWorker_.resize(1);
+    system.pending_.reset(4);
     allocation.voxels_[0].color_.alpha_ = 255;
     allocation.voxels_[1].color_.alpha_ = 0;
     allocation.voxels_[2].color_.alpha_ = 255;
@@ -381,17 +516,70 @@ TEST(FogRevealEvalTest, ActiveMaskHideAndRestoreAreAlphaPreserving) {
     pool.resyncActiveMaskFromColors(0, 4);
     EXPECT_EQ(pool.getActiveMask()[0] & 0xfu, 0xdu);
 
-    system.pendingByWorker_[0].push_back({&voxelSet, &pool, false});
+    system.pending_.push({&voxelSet, &pool, false});
     system.endTick();
     EXPECT_FALSE(voxelSet.visible_);
     EXPECT_EQ(pool.getActiveMask()[0] & 0xfu, 0u);
     EXPECT_EQ(allocation.voxels_[0].color_.alpha_, 255);
     EXPECT_EQ(allocation.voxels_[1].color_.alpha_, 0);
 
-    system.pendingByWorker_[0][0].visible_ = true;
+    system.pending_.reset(1);
+    system.pending_.push({&voxelSet, &pool, true});
     system.endTick();
     EXPECT_TRUE(voxelSet.visible_);
     EXPECT_EQ(pool.getActiveMask()[0] & 0xfu, 0xdu);
+}
+
+// A shown body's carrier follows its verdict: the 8-bit factor is rewritten
+// on every voxel only when it moves, and the frame's re-stamp count is the
+// number of voxels rewritten.
+TEST(FogRevealEvalTest, ShownBodyRestampsItsCarrierOnlyWhenTheFactorMoves) {
+    using IRComponents::VoxelReserved::kFogBody;
+    using IRComponents::VoxelReserved::kFogBodyFactorShift;
+    using IRComponents::VoxelReserved::kFogCarrierMask;
+    C_VoxelPool pool{IRMath::ivec3(4, 1, 1)};
+    auto allocation = pool.allocateVoxels(4);
+    C_VoxelSetNew voxelSet{};
+    voxelSet.voxelStartIdx_ = 0;
+    voxelSet.numVoxels_ = 4;
+    voxelSet.voxels_ = allocation.voxels_;
+    pool.resyncActiveMaskFromColors(0, 4);
+
+    IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
+    system.pending_.reset(4);
+    system.restampedByWorker_.assign(1, 0u);
+    system.fogAttached_ = true;
+    system.activePool_ = &pool;
+    system.observers_ = oneCircle(10.0f, 4.0f);
+
+    IREntity::EntityId entity = 1;
+    C_FogRevealed revealed{};
+    C_WorldTransform transform{};
+    transform.translation_ = IRMath::vec3(0);
+    system.tick(entity, revealed, transform, voxelSet);
+    system.endTick();
+    ASSERT_TRUE(revealed.shown_);
+    for (const IRComponents::C_Voxel &voxel : voxelSet.voxels_) {
+        EXPECT_EQ(voxel.reserved_ & kFogCarrierMask, kFogBody | (255u << kFogBodyFactorShift));
+    }
+    EXPECT_EQ(system.restampedVoxelsLastFrame_, 4u);
+
+    system.restampedByWorker_.assign(1, 0u);
+    system.tick(entity, revealed, transform, voxelSet);
+    system.endTick();
+    EXPECT_EQ(system.restampedVoxelsLastFrame_, 0u) << "an unchanged factor is not rewritten";
+
+    transform.translation_ = IRMath::vec3(8.0f, 0.0f, 0.0f);
+    system.restampedByWorker_.assign(1, 0u);
+    system.tick(entity, revealed, transform, voxelSet);
+    system.endTick();
+    const std::uint32_t expected = IRPrefab::Fog::quantizeRevealFactor(revealed.revealFactor_);
+    ASSERT_GT(revealed.revealFactor_, system.settings_.hideThreshold_);
+    ASSERT_LT(expected, 255u);
+    for (const IRComponents::C_Voxel &voxel : voxelSet.voxels_) {
+        EXPECT_EQ(voxel.reserved_ & kFogCarrierMask, kFogBody | (expected << kFogBodyFactorShift));
+    }
+    EXPECT_EQ(system.restampedVoxelsLastFrame_, 4u);
 }
 
 } // namespace

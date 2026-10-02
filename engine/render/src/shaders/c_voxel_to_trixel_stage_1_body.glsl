@@ -548,7 +548,9 @@ void main() {
         if (resolveMode == 3) {
             // Each record reconstructs the whole face, not one of its two trixels.
             if (any(notEqual(ivec2(gl_LocalInvocationID.xy), faceOffset_2x3(slot, 0)))) return;
-            const uint fogClassByte = fogWholeBodyExempt ? 254u : 255u;
+            const uint fogClassByte = encodeFogOverflowClassByte(
+                fogWholeBodyExempt, (voxels[voxelIndex].reserved >> 4u) & 0xFFu
+            );
             const uint overflowColor =
                 (voxels[voxelIndex].colorPacked & 0x00FFFFFFu) | (fogClassByte << 24u);
             overflowAppendTap(perAxisBase, facePos, voxelDistance, overflowColor);

@@ -20,6 +20,7 @@
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
+#include <irreden/render/components/component_fog_field.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
@@ -327,6 +328,8 @@ inline void createGeometry() {
         Color{150, 150, 160, 255}
     );
     IREntity::setComponent(floor, C_LightBlocker{false, false, 0.0f});
+    // Terrain-tier: FIELD, so shape adoption never turns the floor into a BODY.
+    IREntity::setComponent(floor, C_FogField{});
 }
 
 // --hover-sweep: a single cube raised through increasing hover

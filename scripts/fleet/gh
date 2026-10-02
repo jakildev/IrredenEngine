@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# gh — fleet shim: keep a long-lived process's installation token fresh.
+#
+# fleet-up seeds one GitHub App installation token (`ghs_...`) into the tmux
+# server env; it expires after 1h, and a running interactive `claude` (an
+# architect pane) keeps its launch-time env, so an hour in every `gh` call it
+# makes fails HTTP 401. tmux cannot rewrite a live process's env, but each Bash
+# tool call execs `gh` by PATH, so this shim — installed as ~/bin/gh, ahead of
+# the real binary — re-mints per call and exec's the real `gh`.
+#
+# Rule: replace GH_TOKEN only when the incoming value starts `ghs_` AND
+# fleet-gh-token printed something. Empty/unset GH_TOKEN (keychain auth — the
+# human's own shell, an unconfigured host) and any other value (an operator
+# PAT: `ghp_`, `github_pat_`) pass through untouched, so `gh pr merge` from a
+# human terminal and fleet-gate-status's user-pool probe keep reading the user
+# pool. Never exports an empty token. FLEET_GH_SHIM=0 bypasses the refresh.
+#
+# Assumption: no `ghs_` token on this host is anything but the fleet App's. A
+# GitHub Actions GITHUB_TOKEN or another App's installation token also starts
+# `ghs_` and would be swapped for the fleet App's; acceptable on a fleet host,
+# where no self-hosted runner shares ~/bin.
+#
+# Pure env-then-exec: no output of its own, argv verbatim, exit code preserved,
+# PATH passed through unchanged (a stripped PATH would hide fleet-* from git
+# credential helpers, extensions, and `!` aliases). fleet-gh-token mints over
+# curl, never `gh`, so refreshing here cannot recurse.
+#
+# Source of truth: scripts/fleet/gh in the engine repo.
+# Installed to ~/bin/gh by scripts/fleet/install.sh.
+
+_resolve() {
+    if command -v realpath >/dev/null 2>&1; then
+        realpath "$1" 2>/dev/null && return 0
+    fi
+    python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null | tr -d '\r'
+}
+
+if [[ "${FLEET_GH_SHIM:-1}" != "0" && "${GH_TOKEN:-}" == ghs_* ]]; then
+    _fresh="$(fleet-gh-token 2>/dev/null || true)"
+    [[ -n "$_fresh" ]] && export GH_TOKEN="$_fresh"
+fi
+
+# The real gh is the first `gh` on PATH that is not this file. Compare resolved
+# paths: the shim is reached as ~/bin/gh (a symlink), as scripts/fleet/gh, and
+# under PATH spellings (~/bin, $HOME/bin, $HOME/bin/) that differ textually.
+_self="$(_resolve "${BASH_SOURCE[0]}")"
+_real=""
+while IFS= read -r _cand; do
+    [[ "$(_resolve "$_cand")" == "$_self" ]] && continue
+    _real="$_cand"
+    break
+done < <(type -ap gh 2>/dev/null)
+
+if [[ -z "$_real" ]]; then
+    echo "gh (fleet shim): no real gh found on PATH" >&2
+    exit 127
+fi
+exec "$_real" "$@"

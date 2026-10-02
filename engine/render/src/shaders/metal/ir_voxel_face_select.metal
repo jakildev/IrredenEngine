@@ -218,9 +218,11 @@ static VoxelFaceSelect selectVoxelFace(
                   roundHalfUp(detachedWorldReceiveIn.xy)
             : roundHalfUp(voxelPosition.xyz).xy;
     }
+    // A fog BODY (reserved bit 3) is never sliced: it renders whole at one
+    // factor, so its interior faces stay hidden and the cut rule is skipped.
     sel.keepFace = faceIsExposed(flagsByte, sel.faceId);
     sel.isCutFace = false;
-    if (!sel.keepFace && sel.faceId < kFaceZNeg && sel.fogActive) {
+    if (!sel.keepFace && sel.faceId < kFaceZNeg && sel.fogActive && (reserved & 8u) == 0u) {
         const int2 probeStep = isDetachedCanvasIn > 0.5f
             ? roundHalfUp(rotateByQuat(
                   float3(faceOutwardNormal6I(sel.faceId)), detachedViewToWorldIn)).xy
