@@ -904,11 +904,11 @@ class SliceHostCase(HostSeamCase):
                 "refs_issues": list(refs)}
 
     @staticmethod
-    def _state(prs, in_progress=(), open_tasks=(), game_tasks=()):
+    def _state(prs, in_progress=(), open_tasks=(), game_tasks=(), needs_plan=()):
         empty = {"prs": [], "tasks": {"open": [], "in_progress": []},
                  "needs_plan": []}
         return {"repos": {
-            "engine": {"prs": list(prs), "needs_plan": [],
+            "engine": {"prs": list(prs), "needs_plan": list(needs_plan),
                        "tasks": {"open": list(open_tasks),
                                  "in_progress": list(in_progress)}},
             "game": dict(empty, tasks={"open": [],
@@ -983,6 +983,18 @@ class FeedbackPrInheritsIssueHostPin(SliceHostCase):
         self.assertEqual(slice_worker(state)["feedback_prs"][0]["needs_host"],
                          "mac")
         self.assertEqual(self._on("linux", state), ("defer", []))
+
+    def test_needs_plan_backing_issue_gates_feedback_to_its_host(self):
+        state = self._state(
+            [self._pr(4018, [4010])],
+            needs_plan=[{"number": 4010, "body": "**Host:** windows",
+                         "blocked": True}],
+        )
+        self.assertEqual(slice_worker(state)["feedback_prs"][0]["needs_host"],
+                         "windows")
+        self.assertEqual(self._on("mac", state), ("defer", []))
+        self.assertEqual(self._on("windows", state),
+                         ("opus high 0 1 0", ["feedback:engine:4018"]))
 
     def test_branch_prefix_does_not_bleed_into_a_longer_issue_number(self):
         state = self._state([self._pr(3768, [], head="claude/37570-other")],
@@ -1077,6 +1089,21 @@ class HostPinnedOnlyMode(HostSeamCase):
         slice_data = {"feedback_prs": [unpinned, pinned]}
         self.assertEqual(self._resolve_on("windows", slice_data), "opus high 0 1 0")
         self.assertEqual(self._pick_on("windows", slice_data), ["feedback:engine:30"])
+
+    def test_parked_backing_issue_pin_elects_only_its_host(self):
+        pr = {"number": 4018, "repo": "engine",
+              "labels": ["fleet:needs-fix"], "closes_issues": [4010],
+              "closes_cross_repo": [], "refs_issues": [],
+              "headRefName": "claude/4018-feedback-host-pin"}
+        state = {"repos": {"engine": {
+            "prs": [pr], "tasks": {"open": [], "in_progress": []},
+            "needs_plan": [{"number": 4010, "body": "**Host:** windows",
+                            "blocked": True}],
+        }}}
+        slice_data = slice_worker(state)
+        self.assertEqual(self._pick_on("windows", slice_data),
+                         ["feedback:engine:4018"])
+        self.assertEqual(self._pick_on("mac", slice_data), [])
 
     def test_macos_residual_label_pins_a_pr_to_mac(self):
         pr = {"number": 32, "repo": "engine",

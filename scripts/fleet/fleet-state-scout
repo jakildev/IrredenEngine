@@ -1312,7 +1312,14 @@ def fetch_plan_review(repo):
     # then design judgment: sound -> remove the label / queue; not-sound ->
     # bounce to fleet:needs-plan). Projecting + slicing these is what WAKES the
     # reviewer to do it — nothing else triggers on issue (vs PR) state.
-    return fetch_issues_by_label(repo, "fleet:plan-review")
+    issues = fetch_issues_by_label(repo, "fleet:plan-review", with_body=True)
+    if issues is None:
+        return None
+    for issue in issues:
+        required_host = _body_required_host(issue.pop("body", "") or "")
+        if required_host:
+            issue["needs_host"] = required_host
+    return issues
 
 
 def fetch_epics(repo):
@@ -1420,20 +1427,24 @@ def fetch_closed_fleet_queued(repo, limit=100):
     # keeps the same newest-N window gh's --limit did — verified field- and
     # number-equivalent against the live snapshot. (REST has no gh-style --limit;
     # per_page is the cap, 100 matches the prior --limit 100.)
-    # number only: every consumer (_closed_issue_numbers and the resolve_*
-    # blocker chains built on it, _populate_tasks_done) reads just `number`.
-    # Trimmed here rather than in _rest_issue_summary, which
-    # fetch_issues_by_label's other callers (needs_plan, plan_review,
-    # human_approved) still need full labels/title/updatedAt from.
+    # Keep the parsed host pin beside the number. A linked feedback PR can
+    # remain actionable after its issue closes, while the full body would make
+    # this frequently-read state slice needlessly large.
     raw = _rest_list(repo, "issues", {
         "labels": "fleet:queued", "state": "closed",
         "sort": "created", "direction": "desc",
     }, per_page=min(limit, 100))
     if raw is None:
         return None
-    issues = [
-        {"number": i.get("number", 0)} for i in raw if not _is_pull_request(i)
-    ]
+    issues = []
+    for issue in raw:
+        if _is_pull_request(issue):
+            continue
+        record = {"number": issue.get("number", 0)}
+        required_host = _body_required_host(issue.get("body", "") or "")
+        if required_host:
+            record["needs_host"] = required_host
+        issues.append(record)
     issues.sort(key=lambda issue: issue.get("number", 0))
     return issues
 
@@ -2776,6 +2787,9 @@ def resolve_needs_plan_blocked_by(state, ref_cache=None):
             if "body" in issue:
                 issue["model"] = declared_class(issue["body"] or "")
             body = issue.pop("body", "") or ""
+            required_host = _body_required_host(body)
+            if required_host:
+                issue["needs_host"] = required_host
             issue["blocked"] = False
             raw = _parse_blocked_by(body)
             if not raw:
@@ -4041,9 +4055,7 @@ def _slice_issue_with_repo(repo_key, issue):
 
 
 def _task_required_hosts(repo_state):
-    """{issue number: needs_host} for every open or in-progress task whose body
-    pins it to one OS. A task stays `fleet:queued` while its PR is open, so
-    the issue a feedback PR closes is normally still in one of these sections."""
+    """{issue number: needs_host} for worker-visible backing issues."""
     hosts = {}
     tasks = repo_state.get("tasks", {})
     for key in ("open", "in_progress"):
@@ -4051,6 +4063,13 @@ def _task_required_hosts(repo_state):
             number = (task.get("issue") or "").lstrip("#")
             if task.get("needs_host") and number.isdigit():
                 hosts[int(number)] = task["needs_host"]
+    for key in ("needs_plan", "plan_review", "closed_fleet_queued"):
+        for issue in repo_state.get(key, []) or []:
+            number = issue.get("number")
+            required_host = issue.get("needs_host") or _body_required_host(
+                issue.get("body", "") or "")
+            if required_host and isinstance(number, int):
+                hosts[number] = required_host
     return hosts
 
 
