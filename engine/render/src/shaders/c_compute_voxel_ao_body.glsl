@@ -1,0 +1,291 @@
+// Four face-tangent depth samples approximate local ambient visibility.
+// Contributions require mutually facing surfaces and decay with separation.
+// A rotated GRID / REBUILD_GRID solid is real voxels, so its tilted-flat
+// surface is a true staircase whose tread and riser meet in a concave
+// corner that is locally indistinguishable from a genuine crease; the
+// tilt-aware resample on the single-canvas path suppresses it.
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+#include "ir_iso_common.glsl"
+#include "ir_per_axis_lighting.glsl"
+
+// Same threshold LIGHTING_TO_TRIXEL uses for "empty pixel" — encoded
+// distances >= 65535 mean the clear value was never overwritten.
+const int kEmptyDistanceEncoded = 65535;
+
+const float kAORadiusSquared = 4.0;
+// Rejects a neighbour decoded onto the receiver's own position (zero
+// separation has no direction to weight and would divide by zero).
+const float kAOMinDistanceSquared = 1.0e-6;
+// A monotone staircase returns to the receiver's own face one cell beyond
+// a different-face step, ~1 voxel further out along the receiver normal; a
+// coplanar same-face blip (d ~ 0) is not a staircase and keeps its AO.
+// Chosen empirically against measured staircase captures, not derived from
+// voxel geometry; any value strictly between a coplanar return (d ~ 0) and
+// the next tread (d ~ 1) works.
+const float kAOStaircaseStepHeight = 0.5;
+
+layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
+    uniform vec2 frameCanvasOffset;
+    uniform ivec2 trixelCanvasOffsetZ1;
+    uniform ivec2 voxelRenderOptions;
+    uniform ivec2 voxelDispatchGrid;
+    uniform int voxelCount;
+    // Smooth-camera-Z-yaw per-axis route selector (mirrors
+    // FrameDataVoxelToCanvas::perAxisRoute_). 0 = single-canvas raster; nonzero
+    // = lighting a per-axis canvas, so reconstruct world-pos face-locally.
+    uniform int perAxisRoute;
+    uniform ivec2 canvasSizePixels;
+    uniform ivec2 cullIsoMin;
+    uniform ivec2 cullIsoMax;
+    uniform float visualYaw;
+    uniform float rasterYaw;
+    uniform float residualYaw;
+    uniform float _yawPadding;            // isDetachedCanvas in the full UBO
+    uniform vec4 _faceDeformPadding[3];   // faceDeform[3] in the full UBO
+    // Per-slot world FaceId (0..5), the table the stage-1 raster encodes slots
+    // against. AO maps the decoded depth slot → world FaceId via this lookup so
+    // the outward-normal step uses the rotation-aware six-face normal.
+    uniform ivec4 visibleFaceIds;
+    // Members between here and perAxisStoreFrame are declared only to reach
+    // its std140 offset.
+    uniform vec4 _voxelDepthAxisPadding;
+    uniform vec4 _detachedWorldReceivePadding;
+    uniform ivec4 _visibleIsoBoundsPadding;
+    uniform ivec4 _resolveFeederPadding;
+    uniform ivec4 _overflowScratchLayoutPadding;
+    uniform ivec4 _overflowSortStepPadding;
+    uniform vec4 _detachedViewToWorldPadding;
+    // Frame the per-axis store is keyed in: .xy = store cell of the frame's iso
+    // origin, .z = cardinal index of the view the key positions are rotated
+    // into. FrameDataVoxelToCanvas::perAxisStoreFrame_ (offset 256).
+    uniform ivec4 perAxisStoreFrame;
+};
+
+// Sun lighting state. Only `aoEnabled` is read by this shader; the block
+// is kept in lockstep with `FrameDataSun` in ir_render_types.hpp so the
+// shared UBO at binding 29 matches std140 layout for every consumer
+// (BAKE_SUN_SHADOW_MAP owns the upload each frame).
+layout(std140, binding = 29) uniform FrameDataSun {
+    uniform vec4 sunDirection;
+    uniform float sunIntensity;
+    uniform float sunAmbient;
+    uniform int shadowsEnabled;
+    uniform int aoEnabled;
+    uniform vec4 sunBasisU;
+    uniform vec4 sunBasisV;
+    uniform vec2 sunBufferOriginUV;
+    uniform vec2 sunBufferTexelSize;
+    uniform vec2 cascadeOriginUV_0;
+    uniform vec2 cascadeTexelSize_0;
+    uniform vec2 cascadeOriginUV_1;
+    uniform vec2 cascadeTexelSize_1;
+    uniform float cascadeSplitDepth;
+    uniform int cascadeCount;
+    uniform float sunSplatMaxTexels;  // unused here (sun-map bake only)
+    uniform float sunMaxShadowThrow;  // unused here (receiver-only)
+};
+
+layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;
+layout(rgba8, binding = 1) writeonly uniform image2D canvasAO;
+
+// Per-axis compacted occupied-cell list + per-axis indirect-args region.
+// On the per-axis path the dispatch runs over the compacted cells and each
+// cell's canvas pixel is recovered from its linear index. Bound per axis via
+// bindRange (offsets into the three axis regions).
+layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
+    uint compactedCells[];
+};
+layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
+    uint cellDrawArgs[];
+};
+const uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
+const uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
+
+// The single canvas holds continuous-yaw SDF/text depth at a residual yaw
+// (voxels move to the per-axis canvases), so it needs the smooth-yaw inverse,
+// like the sun-shadow, lighting and fog receivers; the cardinal inverse would
+// return residual-rotated positions that read a flat face as creased.
+// IR_AO_SMOOTH_YAW selects the inverse at compile time: COMPUTE_VOXEL_AO
+// dispatches the c_compute_voxel_ao_smooth_yaw variant exactly when the
+// uploaded residualYaw is non-zero.
+vec3 singleCanvasPixelToWorld3D(ivec2 pixel, int rawDepth, int cardinalIndex) {
+#if IR_AO_SMOOTH_YAW
+    return trixelCanvasPixelToWorld3DSmoothYaw(
+        pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, visualYaw
+    );
+#else
+    return trixelCanvasPixelToWorld3D(
+        pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, cardinalIndex
+    );
+#endif
+}
+
+void main() {
+    const ivec2 size = imageSize(trixelDistances);
+    ivec2 pixel;
+    if (perAxisRoute != 0) {
+        // Indirect dispatch over the compacted occupied-cell list, folded into
+        // a capped 2-D workgroup grid by c_per_axis_cell_finalize; recover the
+        // flat group index the same way c_voxel_visibility_compact does.
+        const uint groupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
+        const uint idx = groupIndex * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
+        if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
+            return;
+        }
+        const uint linearCell = compactedCells[idx];
+        pixel = ivec2(int(linearCell) % size.x, int(linearCell) / size.x);
+    } else {
+        pixel = ivec2(gl_GlobalInvocationID.xy);
+        if (pixel.x >= size.x || pixel.y >= size.y) {
+            return;
+        }
+    }
+
+    int encoded = imageLoad(trixelDistances, pixel).x;
+    // Per-axis canvas uses INT_MAX as empty sentinel; single-canvas uses 65535.
+    const int kEmpty = (perAxisRoute != 0) ? 0x7FFFFFFF : kEmptyDistanceEncoded;
+    if (encoded >= kEmpty) {
+        imageStore(canvasAO, pixel, vec4(1.0, 0.0, 0.0, 0.0));
+        return;
+    }
+    if (aoEnabled == 0) {
+        imageStore(canvasAO, pixel, vec4(1.0, 0.0, 0.0, 0.0));
+        return;
+    }
+
+    // The rasterizer writes the visible-triplet slot (0/1/2). Slot → world
+    // FaceId via `visibleFaceIds[slot]` — single source of face metadata
+    // shared with the raster, so AO's "step out of the surface" arithmetic
+    // uses the actually-visible face's outward normal and tangents at every
+    // cardinal.
+    int slot = decodeSlot(encoded);
+    // The riser-polarity flip selects the OPPOSITE same-axis face, so the
+    // outward-normal step walks out of the true surface instead of into the
+    // solid. The tangent pair is polarity-invariant (both branches cover NEG
+    // and POS of each axis).
+    int flip = decodeFlipRoute(encoded, perAxisRoute);
+    int faceId = visibleFaceIds[slot] ^ flip;
+    // Shared decode helpers (ir_iso_common) own both encodings' bit layouts
+    // (per-axis / single-canvas, and the flip carrier).
+    int rawDepth = decodeDepthRoute(encoded, perAxisRoute);
+    int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
+    // A per-axis canvas stores the world frame face-locally (perAxisRoute != 0),
+    // so recover world-pos via isoPixelToPos3D; the single canvas stores an
+    // iso pixel recovered by singleCanvasPixelToWorld3D.
+    bool perAxis = perAxisRoute != 0;
+    vec3 pos3D = perAxis
+        ? perAxisCellToWorld3DSubCell(pixel, encoded, faceId, perAxisStoreFrame)
+        : singleCanvasPixelToWorld3D(pixel, rawDepth, cardinalIndex);
+
+    // World-frame outward normal + in-plane tangents for the camera-visible
+    // face this pixel rendered. The tangent step is rotated through
+    // R_z(-rasterYaw) before iso projection so the neighbour-sample
+    // direction lands on the canvas pixel that actually holds the
+    // +tangent neighbour at this cardinal.
+    vec3 worldOutward = vec3(faceOutwardNormal6I(faceId));
+    ivec3 t1, t2;
+    // The tangent sign doesn't matter (AO samples ±t1, ±t2), so both
+    // polarities of a face axis share one pair.
+    if (faceId == kFaceZNeg || faceId == kFaceZPos) {
+        t1 = ivec3(1, 0, 0);
+        t2 = ivec3(0, 1, 0);
+    } else if (faceId == kFaceXNeg || faceId == kFaceXPos) {
+        t1 = ivec3(0, 1, 0);
+        t2 = ivec3(0, 0, 1);
+    } else {
+        // Y_NEG or Y_POS
+        t1 = ivec3(1, 0, 0);
+        t2 = ivec3(0, 0, 1);
+    }
+
+    int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
+    ivec2 deltaT1;
+    ivec2 deltaT2;
+    if (perAxis) {
+        // Per-axis canvas is BASE-RESOLUTION: 1 cell = 1 world voxel.
+        // A +/-1 cell step along each canvas axis is the +/-1 in-plane neighbour.
+        deltaT1 = ivec2(1, 0);
+        deltaT2 = ivec2(0, 1);
+    } else {
+        ivec3 t1View = cardinalIndex == 0 ? t1 : rotateCardinalZ(t1, cardinalIndex);
+        ivec3 t2View = cardinalIndex == 0 ? t2 : rotateCardinalZ(t2, cardinalIndex);
+        deltaT1 = pos3DtoPos2DIso(t1View) * scale;
+        deltaT2 = pos3DtoPos2DIso(t2View) * scale;
+    }
+
+    float occlusion = 0.0;
+    for (int dir = 0; dir < 4; ++dir) {
+        ivec2 delta;
+        if (dir == 0) delta = deltaT1;
+        else if (dir == 1) delta = -deltaT1;
+        else if (dir == 2) delta = deltaT2;
+        else delta = -deltaT2;
+        ivec2 samplePixel = pixel + delta;
+        if (samplePixel.x < 0 || samplePixel.x >= size.x ||
+            samplePixel.y < 0 || samplePixel.y >= size.y) continue;
+
+        int neighbourEncoded = imageLoad(trixelDistances, samplePixel).x;
+        if (neighbourEncoded >= kEmpty) continue;
+
+        int neighbourFaceId = visibleFaceIds[decodeSlot(neighbourEncoded)] ^
+            decodeFlipRoute(neighbourEncoded, perAxisRoute);
+        if (neighbourFaceId == faceId) continue;
+
+        int neighbourRawDepth = decodeDepthRoute(neighbourEncoded, perAxisRoute);
+        vec3 neighbourPos3D;
+        if (perAxis) {
+            neighbourPos3D = perAxisCellToWorld3DSubCell(samplePixel, neighbourEncoded, neighbourFaceId, perAxisStoreFrame);
+        } else {
+            neighbourPos3D = singleCanvasPixelToWorld3D(samplePixel, neighbourRawDepth, cardinalIndex);
+        }
+
+        vec3 separation = neighbourPos3D - pos3D;
+        float distanceSquared = dot(separation, separation);
+        if (distanceSquared <= kAOMinDistanceSquared || distanceSquared >= kAORadiusSquared) continue;
+
+        // Both faces must look into the shared cavity: a convex edge (tread
+        // top meeting its own riser) has one facing term <= 0 and drops out.
+        float receiverFacing = max(dot(separation, worldOutward), 0.0);
+        float occluderFacing = max(
+            dot(-separation, vec3(faceOutwardNormal6I(neighbourFaceId))), 0.0
+        );
+        float facing = receiverFacing * occluderFacing;
+        if (facing <= 0.0) continue;
+
+        // Tilt-aware same-face resample. The concave corner where a
+        // staircase tread meets the next riser and a genuine crease (the
+        // L-prism notch) are locally identical — same normals, same relative
+        // position — so the only screen-space signal is whether the surface
+        // RETURNS to the receiver's own face one cell beyond the step: a
+        // monotone staircase continues as the next tread (same slot, still in
+        // front), whereas a real crease meets a multi-cell perpendicular wall
+        // that does not. Single-canvas path only — a per-axis canvas holds a
+        // single face, so its stair-step neighbours already fail the
+        // different-face test, and the GRID solids this targets raster
+        // cardinal (perAxisRoute == 0).
+        if (!perAxis) {
+            ivec2 beyondPixel = pixel + 2 * delta;
+            if (beyondPixel.x >= 0 && beyondPixel.x < size.x &&
+                beyondPixel.y >= 0 && beyondPixel.y < size.y) {
+                int beyondEncoded = imageLoad(trixelDistances, beyondPixel).x;
+                // "Returns to the receiver's own face" compares (slot, flip) —
+                // a flipped cell one step beyond is not the receiver's surface.
+                if (beyondEncoded < kEmpty && decodeSlot(beyondEncoded) == slot &&
+                    decodeFlipSingle(beyondEncoded) == flip) {
+                    vec3 beyondPos3D = singleCanvasPixelToWorld3D(
+                        beyondPixel, decodeDepthSingle(beyondEncoded), cardinalIndex
+                    );
+                    if (dot(beyondPos3D - pos3D, worldOutward) > kAOStaircaseStepHeight) continue;
+                }
+            }
+        }
+
+        float rangeWeight = 1.0 - distanceSquared / kAORadiusSquared;
+        occlusion += facing / distanceSquared * rangeWeight * rangeWeight;
+    }
+
+    float ao = 1.0 - occlusion * 0.25;
+    imageStore(canvasAO, pixel, vec4(ao, 0.0, 0.0, 0.0));
+}
