@@ -712,6 +712,27 @@ TEST_F(IREntityTest, FacadeDestroyTreeMarksUntilDrain) {
     EXPECT_TRUE(IREntity::entityExists(bystander));
 }
 
+// Both mark kinds count until the drain clears them; a tree mark covers the
+// descendants it listed.
+TEST_F(IREntityTest, IsMarkedForDeletionTracksUndrainedMarks) {
+    const auto root = IREntity::createEntity();
+    const auto child = IREntity::createEntity();
+    const auto plain = IREntity::createEntity();
+    const auto bystander = IREntity::createEntity();
+    IREntity::setParent(child, root);
+
+    IREntity::destroyTree(root);
+    IREntity::destroyEntity(plain);
+    EXPECT_TRUE(m_entity_manager.isMarkedForDeletion(root));
+    EXPECT_TRUE(m_entity_manager.isMarkedForDeletion(child));
+    EXPECT_TRUE(m_entity_manager.isMarkedForDeletion(plain));
+    EXPECT_FALSE(m_entity_manager.isMarkedForDeletion(bystander));
+
+    m_entity_manager.destroyMarkedEntities();
+    EXPECT_FALSE(m_entity_manager.isMarkedForDeletion(root));
+    EXPECT_FALSE(m_entity_manager.isMarkedForDeletion(plain));
+}
+
 // Children die before their parents, so a pre-destroy hook can still read
 // the parent of the entity it sees.
 TEST_F(IREntityTest, DestroyTreeDestroysChildrenBeforeParents) {
