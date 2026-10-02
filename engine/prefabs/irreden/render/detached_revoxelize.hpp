@@ -127,56 +127,64 @@ inline IRComponents::RevoxelizeGroupSeed scanGroupSpan(
     return seed;
 }
 
-// The pool spans a re-voxelize fill resamples: the posted cell groups, or one
-// implicit group over the live prefix for a pool that never hosted any.
+// Visit the pool spans a re-voxelize fill resamples, as `fn(start, count)`:
+// the posted cell groups, or one implicit group over the live prefix for a
+// pool that never hosted any.
+template <typename Fn>
+void forEachGroupSpan(const IRComponents::C_VoxelPool &pool, int liveCount, Fn &&fn) {
+    if (!pool.hostsCellGroups()) {
+        if (liveCount > 0) {
+            fn(std::size_t{0}, static_cast<std::size_t>(liveCount));
+        }
+        return;
+    }
+    for (const IRComponents::VoxelCellGroup &group : pool.getCellGroups()) {
+        fn(group.start_, group.count_);
+    }
+}
+
 inline void collectGroupSpans(
     const IRComponents::C_VoxelPool &pool,
     int liveCount,
     std::vector<std::pair<std::size_t, std::size_t>> &spans
 ) {
     spans.clear();
-    if (!pool.hostsCellGroups()) {
-        if (liveCount > 0) {
-            spans.emplace_back(0u, static_cast<std::size_t>(liveCount));
-        }
-        return;
-    }
-    for (const IRComponents::VoxelCellGroup &group : pool.getCellGroups()) {
-        spans.emplace_back(group.start_, group.count_);
-    }
+    forEachGroupSpan(pool, liveCount, [&](std::size_t start, std::size_t count) {
+        spans.emplace_back(start, count);
+    });
 }
 
-// True when @p buffer was seeded from exactly @p spans. The span set changes
-// only when a hosted set joins or leaves the pool, so a steady pool never
-// re-seeds.
+// True when @p buffer was seeded from exactly the spans @p pool resamples now.
+// The span set changes only when a hosted set joins or leaves the pool, so a
+// steady pool never re-seeds. Compares in place: this runs for every
+// re-voxelize canvas every frame, so it must not materialize the span list.
 inline bool seededFromSpans(
     const IRComponents::C_DetachedRevoxelizeBuffer &buffer,
-    const std::vector<std::pair<std::size_t, std::size_t>> &spans
+    const IRComponents::C_VoxelPool &pool,
+    int liveCount
 ) {
-    if (buffer.groups_.size() != spans.size()) {
-        return false;
-    }
-    for (std::size_t i = 0; i < spans.size(); ++i) {
-        if (buffer.groups_[i].spanStart_ != spans[i].first ||
-            buffer.groups_[i].spanCount_ != spans[i].second) {
-            return false;
-        }
-    }
-    return true;
+    std::size_t seeded = 0;
+    bool matches = true;
+    forEachGroupSpan(pool, liveCount, [&](std::size_t start, std::size_t count) {
+        matches = matches && seeded < buffer.groups_.size() &&
+                  buffer.groups_[seeded].spanStart_ == start &&
+                  buffer.groups_[seeded].spanCount_ == count;
+        ++seeded;
+    });
+    return matches && seeded == buffer.groups_.size();
 }
 
-// True when @p buffer still holds @p pool's content over @p spans. The span set
-// alone is not enough: a part replaced by a same-sized one reuses the freed
-// span, and a recolor or carve rewrites voxels in place, so the set is
-// unchanged while the voxels in it are not — the pool's content generation
-// catches both.
+// True when @p buffer still holds @p pool's content. The span set alone is not
+// enough: a part replaced by a same-sized one reuses the freed span, and a
+// recolor or carve rewrites voxels in place, so the set is unchanged while the
+// voxels in it are not — the pool's content generation catches both.
 inline bool seedIsCurrent(
     const IRComponents::C_DetachedRevoxelizeBuffer &buffer,
     const IRComponents::C_VoxelPool &pool,
-    const std::vector<std::pair<std::size_t, std::size_t>> &spans
+    int liveCount
 ) {
     return buffer.seededContentGeneration_ == pool.getContentGeneration() &&
-           seededFromSpans(buffer, spans);
+           seededFromSpans(buffer, pool, liveCount);
 }
 
 // Seed (or re-seed) the per-pool GPU buffers the re-voxelize fill reads, from
@@ -199,11 +207,11 @@ inline bool seedIsCurrent(
 //      dest-slot range it fills; their total is what the inverse fill
 //      dispatches + the shared compact walks.
 inline void seedResidentLocals(
-    IRComponents::C_DetachedRevoxelizeBuffer &buffer,
-    IRComponents::C_VoxelPool &pool,
-    int liveCount,
-    const std::vector<std::pair<std::size_t, std::size_t>> &spans
+    IRComponents::C_DetachedRevoxelizeBuffer &buffer, IRComponents::C_VoxelPool &pool, int liveCount
 ) {
+    std::vector<std::pair<std::size_t, std::size_t>> spans;
+    collectGroupSpans(pool, liveCount, spans);
+
     const std::vector<IRRender::VoxelGpuPosition> &locals = pool.getPositions();
     const std::vector<IRMath::vec3> &offsets = pool.getPositionOffsets();
     const std::vector<IRComponents::C_Voxel> &colors = pool.getColors();
@@ -373,7 +381,6 @@ inline void syncResidentBuffers(
             IRComponents::C_DetachedRevoxelizeBuffer>()
     );
 
-    std::vector<std::pair<std::size_t, std::size_t>> spans;
     for (IREntity::ArchetypeNode *node : nodes) {
         std::vector<IRComponents::C_CanvasLocalRotation> &rotations =
             IREntity::getComponentData<IRComponents::C_CanvasLocalRotation>(node);
@@ -413,9 +420,8 @@ inline void syncResidentBuffers(
             // voxel records change, never per frame — a per-frame re-seed would
             // revert the path to O(authored voxels), the exact trap the
             // resource model exists to avoid.
-            detail::collectGroupSpans(pool, liveCount, spans);
-            if (!detail::seedIsCurrent(buffer, pool, spans)) {
-                detail::seedResidentLocals(buffer, pool, liveCount, spans);
+            if (!detail::seedIsCurrent(buffer, pool, liveCount)) {
+                detail::seedResidentLocals(buffer, pool, liveCount);
             }
 
             if (out != nullptr) {

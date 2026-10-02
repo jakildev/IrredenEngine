@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include "common/allocation_counter.hpp"
+
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 
@@ -157,6 +159,20 @@ class RevoxelizeGroupSeeds : public testing::Test {
         return IREntity::getComponent<C_VoxelSetNew>(entity);
     }
 
+    // Stand-in for seedResidentLocals' group bookkeeping, without the GPU upload.
+    static void seedSpans(
+        C_DetachedRevoxelizeBuffer &buffer,
+        const std::vector<std::pair<std::size_t, std::size_t>> &spans
+    ) {
+        buffer.groups_.clear();
+        for (const auto &[start, count] : spans) {
+            RevoxelizeGroupSeed seed{};
+            seed.spanStart_ = start;
+            seed.spanCount_ = count;
+            buffer.groups_.push_back(seed);
+        }
+    }
+
     IREntity::EntityManager m_entity_manager;
     IREntity::EntityId m_canvas;
 };
@@ -222,24 +238,77 @@ TEST_F(RevoxelizeGroupSeeds, GroupedPoolSpansAreExactlyThePostedGroups) {
 }
 
 TEST_F(RevoxelizeGroupSeeds, ReseedGateTracksTheSeededSpanSet) {
+    const std::size_t first = makeSet(ivec3(2, 2, 2)).voxelStartIdx_;
+    const std::size_t second = makeSet(ivec3(3, 3, 3)).voxelStartIdx_;
+    const int liveCount = pool().getLiveVoxelCount();
     C_DetachedRevoxelizeBuffer buffer{};
-    std::vector<std::pair<std::size_t, std::size_t>> spans{{0u, 8u}, {8u, 27u}};
-    EXPECT_FALSE(IRPrefab::DetachedRevoxelize::detail::seededFromSpans(buffer, spans));
+    const auto seededFromSpans = [&] {
+        return IRPrefab::DetachedRevoxelize::detail::seededFromSpans(buffer, pool(), liveCount);
+    };
 
-    for (const auto &[start, count] : spans) {
-        RevoxelizeGroupSeed seed{};
-        seed.spanStart_ = start;
-        seed.spanCount_ = count;
-        buffer.groups_.push_back(seed);
-    }
-    EXPECT_TRUE(IRPrefab::DetachedRevoxelize::detail::seededFromSpans(buffer, spans));
+    // An ungrouped pool is seeded from one implicit span over its live prefix.
+    EXPECT_FALSE(seededFromSpans());
+    seedSpans(buffer, {{0u, static_cast<std::size_t>(liveCount)}});
+    EXPECT_TRUE(seededFromSpans());
+
+    pool().postCellGroup(VoxelCellGroup{first, 8});
+    pool().postCellGroup(VoxelCellGroup{second, 27});
+    EXPECT_FALSE(seededFromSpans());
+    seedSpans(buffer, {{first, 8u}, {second, 27u}});
+    EXPECT_TRUE(seededFromSpans());
 
     // A part leaving, and a different part taking a span of another size, both
     // change the set.
-    spans.pop_back();
-    EXPECT_FALSE(IRPrefab::DetachedRevoxelize::detail::seededFromSpans(buffer, spans));
-    spans.emplace_back(8u, 64u);
-    EXPECT_FALSE(IRPrefab::DetachedRevoxelize::detail::seededFromSpans(buffer, spans));
+    pool().clearCellGroups();
+    pool().postCellGroup(VoxelCellGroup{first, 8});
+    EXPECT_FALSE(seededFromSpans());
+    pool().postCellGroup(VoxelCellGroup{second, 64});
+    EXPECT_FALSE(seededFromSpans());
+}
+
+// syncResidentBuffers() runs the re-seed gate for every re-voxelize canvas
+// every RENDER frame, so a steady canvas must pass it without allocating —
+// with its one implicit group and with several hosted groups.
+TEST_F(RevoxelizeGroupSeeds, SteadyReseedGateDoesNotAllocate) {
+    C_DetachedRevoxelizeBuffer buffer{};
+    const auto seedNow = [&] {
+        const int liveCount = pool().getLiveVoxelCount();
+        std::vector<std::pair<std::size_t, std::size_t>> spans;
+        IRPrefab::DetachedRevoxelize::detail::collectGroupSpans(pool(), liveCount, spans);
+        seedSpans(buffer, spans);
+        buffer.seededContentGeneration_ = pool().getContentGeneration();
+        return liveCount;
+    };
+    // The component lookup allocates; only the gate is counted.
+    const auto countedFrames = [&](int liveCount, bool &current) {
+        const C_VoxelPool &steadyPool = pool();
+        const IRTest::AllocationCounter counter;
+        current = true;
+        for (int frame = 0; frame < 8; ++frame) {
+            current =
+                current &&
+                IRPrefab::DetachedRevoxelize::detail::seedIsCurrent(buffer, steadyPool, liveCount);
+        }
+        return counter.allocations();
+    };
+
+    makeSet(ivec3(2, 2, 2));
+    bool current = false;
+    const std::size_t implicitGroup = countedFrames(seedNow(), current);
+    EXPECT_TRUE(current);
+    EXPECT_EQ(buffer.groups_.size(), 1u);
+    EXPECT_EQ(implicitGroup, 0u);
+
+    for (const ivec3 size : {ivec3(2, 2, 2), ivec3(3, 3, 3), ivec3(4, 4, 4)}) {
+        const C_VoxelSetNew &set = makeSet(size);
+        pool().postCellGroup(
+            VoxelCellGroup{set.voxelStartIdx_, static_cast<std::size_t>(size.x * size.y * size.z)}
+        );
+    }
+    const std::size_t hostedGroups = countedFrames(seedNow(), current);
+    EXPECT_TRUE(current);
+    EXPECT_EQ(buffer.groups_.size(), 3u);
+    EXPECT_EQ(hostedGroups, 0u);
 }
 
 // A part replaced by a same-sized one reuses the freed span: the span set and
@@ -253,26 +322,20 @@ TEST_F(RevoxelizeGroupSeeds, ReseedGateCatchesASameSizedSetReusingAFreedSpan) {
     const std::size_t start = IREntity::getComponent<C_VoxelSetNew>(departing).voxelStartIdx_;
     pool().postCellGroup(VoxelCellGroup{start, 27});
     const int liveCount = pool().getLiveVoxelCount();
-    std::vector<std::pair<std::size_t, std::size_t>> spans;
-    IRPrefab::DetachedRevoxelize::detail::collectGroupSpans(pool(), liveCount, spans);
 
     C_DetachedRevoxelizeBuffer buffer{};
-    RevoxelizeGroupSeed seed{};
-    seed.spanStart_ = start;
-    seed.spanCount_ = 27;
-    buffer.groups_.push_back(seed);
+    seedSpans(buffer, {{start, 27u}});
     buffer.seededContentGeneration_ = pool().getContentGeneration();
-    ASSERT_TRUE(IRPrefab::DetachedRevoxelize::detail::seedIsCurrent(buffer, pool(), spans));
+    ASSERT_TRUE(IRPrefab::DetachedRevoxelize::detail::seedIsCurrent(buffer, pool(), liveCount));
 
     IREntity::getEntityManager().destroyEntity(departing);
     const C_VoxelSetNew &arriving = makeSet(ivec3(3, 3, 3), IRMath::Color{240, 60, 30, 255});
     ASSERT_EQ(arriving.voxelStartIdx_, start) << "the freed span must be reused";
     pool().postCellGroup(VoxelCellGroup{start, 27});
     ASSERT_EQ(pool().getLiveVoxelCount(), liveCount);
-    IRPrefab::DetachedRevoxelize::detail::collectGroupSpans(pool(), liveCount, spans);
-    ASSERT_TRUE(IRPrefab::DetachedRevoxelize::detail::seededFromSpans(buffer, spans));
+    ASSERT_TRUE(IRPrefab::DetachedRevoxelize::detail::seededFromSpans(buffer, pool(), liveCount));
 
-    EXPECT_FALSE(IRPrefab::DetachedRevoxelize::detail::seedIsCurrent(buffer, pool(), spans));
+    EXPECT_FALSE(IRPrefab::DetachedRevoxelize::detail::seedIsCurrent(buffer, pool(), liveCount));
 }
 
 // An in-place edit of a hosted part allocates nothing and keeps its span, but
@@ -285,33 +348,25 @@ TEST_F(RevoxelizeGroupSeeds, ReseedGateCatchesAnInPlaceEditOfAHostedPart) {
     );
     const std::size_t start = IREntity::getComponent<C_VoxelSetNew>(part).voxelStartIdx_;
     pool().postCellGroup(VoxelCellGroup{start, 27});
-    std::vector<std::pair<std::size_t, std::size_t>> spans;
-    IRPrefab::DetachedRevoxelize::detail::collectGroupSpans(
-        pool(),
-        pool().getLiveVoxelCount(),
-        spans
-    );
+    const int liveCount = pool().getLiveVoxelCount();
 
     C_DetachedRevoxelizeBuffer buffer{};
-    RevoxelizeGroupSeed seed{};
-    seed.spanStart_ = start;
-    seed.spanCount_ = 27;
-    buffer.groups_.push_back(seed);
+    seedSpans(buffer, {{start, 27u}});
     const auto seedNow = [&] {
         buffer.seededContentGeneration_ = pool().getContentGeneration();
-        ASSERT_TRUE(IRPrefab::DetachedRevoxelize::detail::seedIsCurrent(buffer, pool(), spans));
+        ASSERT_TRUE(IRPrefab::DetachedRevoxelize::detail::seedIsCurrent(buffer, pool(), liveCount));
     };
     const auto set = [&]() -> C_VoxelSetNew & {
         return IREntity::getComponent<C_VoxelSetNew>(part);
     };
     const auto expectStale = [&](const char *edit) {
-        EXPECT_FALSE(IRPrefab::DetachedRevoxelize::detail::seedIsCurrent(buffer, pool(), spans))
+        EXPECT_FALSE(IRPrefab::DetachedRevoxelize::detail::seedIsCurrent(buffer, pool(), liveCount))
             << edit;
     };
 
     seedNow();
     pool().queuePositionRange(start, 27);
-    EXPECT_TRUE(IRPrefab::DetachedRevoxelize::detail::seedIsCurrent(buffer, pool(), spans))
+    EXPECT_TRUE(IRPrefab::DetachedRevoxelize::detail::seedIsCurrent(buffer, pool(), liveCount))
         << "position upload";
 
     seedNow();
