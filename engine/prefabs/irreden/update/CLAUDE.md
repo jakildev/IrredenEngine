@@ -28,7 +28,7 @@ in the `UPDATE` pipeline unless explicitly noted.
   column view; `axis_` + easing stay constructor-only config.
 - `C_AngularVelocity` — a spin that decays to rest (axis + radians-per-frame +
   damping-per-frame). `impulse(axis, rate)` adds to the current spin as an
-  angular-velocity vector; the header documents the time to rest (`ticksToRest`, -1 when it never decays). Lua-bound
+  angular-velocity vector; the header documents the time to rest (`ticksToRest`, -1 when it never decays or outlasts `kMaxTicksToRest`). Lua-bound
   (`component_angular_velocity_lua.hpp`): `radiansPerFrame` / `dampingPerFrame`
   / `axis` read-write, plus `spin:impulse({x,y,z}, rate)`. Stacks with
   `C_AutoSpin` (Lua-bound via `common/components/component_auto_spin_lua.hpp`)

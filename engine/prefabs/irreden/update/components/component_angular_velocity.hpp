@@ -15,7 +15,8 @@
 // the system snaps it to exactly 0 once it falls below `kAngularRestEpsilon`,
 // so an impulse of `r0` is at rest within
 // `ceil(ln(kAngularRestEpsilon / r0) / ln(1 - dampingPerFrame_))` ticks —
-// `ticksToRest()` returns the exact count, or -1 when the spin never decays.
+// `ticksToRest()` returns the exact count, or -1 when the spin never decays
+// or takes more than `kMaxTicksToRest` ticks to.
 // The system clamps `dampingPerFrame_` to [0, 1] (`effectiveDamping()`): 0 or
 // NaN never decays, 1 stops after a single tick. A rate under
 // `kAngularRestEpsilon` or non-finite is already at rest (`effectiveRate()`):
@@ -65,11 +66,15 @@ struct C_AngularVelocity {
         return radiansPerFrame;
     }
 
+    // The horizon `ticksToRest()` simulates: 2^20 ticks, about 4.9 hours at
+    // 60 Hz. Without it, a Lua-writable FLT_MAX rate under the smallest damping
+    // that moves a float (2^-24) takes ~1.2e9 multiplies to settle.
+    static constexpr int kMaxTicksToRest = 1 << 20;
+
     // Ticks ANGULAR_VELOCITY_DAMPED turns a spin of `radiansPerFrame` before it
     // is at rest, under `effectiveRate()` and `effectiveDamping()`; -1 when the
-    // rate would never fall (damping 0, NaN, or too small to move a float).
-    // The loop ends for every input: the rate is finite, and a decay under 1
-    // lowers it on every multiply.
+    // rate would never fall (damping 0, NaN, or too small to move a float) or
+    // is still turning after `kMaxTicksToRest` ticks.
     static constexpr int ticksToRest(float radiansPerFrame, float dampingPerFrame) {
         float rate = IRMath::abs(effectiveRate(radiansPerFrame));
         if (rate == 0.0f) {
@@ -79,11 +84,13 @@ struct C_AngularVelocity {
         if (!(decay < 1.0f)) {
             return -1;
         }
-        int ticks = 0;
-        for (; rate >= kAngularRestEpsilon; rate *= decay) {
-            ++ticks;
+        for (int ticks = 1; ticks <= kMaxTicksToRest; ++ticks) {
+            rate *= decay;
+            if (rate < kAngularRestEpsilon) {
+                return ticks;
+            }
         }
-        return ticks;
+        return -1;
     }
 
     // Adds `radiansPerFrame` about `axis` to the current spin as angular

@@ -600,4 +600,27 @@ TEST(AngularVelocityTicksToRest, BoundsOutOfRangeDamping) {
     );
 }
 
+// Finite, Lua-writable inputs whose rest is ~1.2e9 ticks away return -1 after
+// at most `kMaxTicksToRest` multiplies; a slow decay inside the horizon still
+// gets its count.
+TEST(AngularVelocityTicksToRest, CapsTheSimulatedHorizon) {
+    constexpr float kMax = std::numeric_limits<float>::max();
+    // The smallest damping that moves `1 - damping` off 1.
+    constexpr float kSmallestDamping = 1.0f / (1 << 24);
+    static_assert(1.0f - kSmallestDamping < 1.0f);
+    EXPECT_EQ(C_AngularVelocity::ticksToRest(kMax, kSmallestDamping), -1);
+    EXPECT_EQ(C_AngularVelocity::ticksToRest(-kMax, kSmallestDamping), -1);
+    // ln(1e4) / 2e-6 ≈ 4.6e6 ticks: past the horizon.
+    EXPECT_EQ(C_AngularVelocity::ticksToRest(1.0f, 2.0e-6f), -1);
+
+    // ln(1e4) / 2e-5 ≈ 4.6e5 ticks: inside it, near the closed form.
+    constexpr float kSlowDamping = 2.0e-5f;
+    const int ticks = C_AngularVelocity::ticksToRest(1.0f, kSlowDamping);
+    const float closedForm =
+        IRMath::log2(C_AngularVelocity::kAngularRestEpsilon) / IRMath::log2(1.0f - kSlowDamping);
+    EXPECT_GT(ticks, 0);
+    EXPECT_LE(ticks, C_AngularVelocity::kMaxTicksToRest);
+    EXPECT_NEAR(static_cast<float>(ticks), closedForm, closedForm * 0.01f);
+}
+
 } // namespace
