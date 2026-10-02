@@ -1,8 +1,7 @@
 # LOD strategy — artist-driven detail tiers, prefab-manifest composition
 
-**Status:** Phase 1 in queue (#708). Phase 2 design sketched here, no
-implementation ticket yet. Phase 3 (cross-tier interpolation) deferred to
-its own design pass when Phase 2 ships.
+**Status:** Phase 1 (#708, #1467, #3966) and Phase 2 (#3975) shipped.
+Phase 3 (cross-tier interpolation) is deferred to its own design pass.
 
 **Decision:** LOD lives at two layers — runtime selection (Phase 1) and
 prefab-manifest composition (Phase 2). It deliberately does **not** live
@@ -300,51 +299,85 @@ What Phase 1 explicitly does **not** do:
 
 ---
 
-## Phase 2 — prefab-manifest composition (sketched, no ticket yet)
+## Phase 2 — prefab-manifest composition (#3975)
 
-Once the prefab format (T-173) lands, extend its DSL with an optional
-per-`.vxs` LOD table:
+A composite entity is a prefab root plus **parts**. Schema v2
+(`prefab_version = 2`) adds a `parts` list; v1 manifests load unchanged (a
+v1 `parts` key is ignored with a warning). The root keeps its own `voxel_ref`
+(the flower's stem), drawn at every tier.
 
 ```lua
--- flower.prefab.lua
+-- assets/prefabs/flower.prefab.lua (abridged)
+local L = IRRender.LodLevel
 return {
-    vxs = {
-        [LOD_0] = "flower_stamen.vxs",       -- loaded only at activeLod == LOD_0
-        [LOD_2] = "flower_petals.vxs",       -- loaded when activeLod <= LOD_2
-        [LOD_4] = "flower_silhouette.vxs",   -- always loaded (activeLod <= LOD_4)
+    prefab_version = 2,
+    voxel_ref = "assets/prefabs/flower_stem.vxs",
+    parts = {
+        { id = "silhouette", voxel_ref = "assets/prefabs/flower_silhouette.vxs",
+          transform = { translation = { 0, 0, -7 } },
+          lod = { fine = L.LOD_3, coarse = L.LOD_4 } },
+        { id = "petals", voxel_ref = "assets/prefabs/flower_petals.vxs",
+          transform = { translation = { 0, 0, -7 } },
+          lod = { fine = L.LOD_0, coarse = L.LOD_2 } },
+        { id = "stamen",
+          shape = { type = IRShape.SPHERE, params = { 1.5, 1.5, 1.5, 0 },
+                    color = { r = 250, g = 210, b = 60 } },
+          transform = { translation = { 0, 0, -8 } },
+          lod = { fine = L.LOD_0, coarse = L.LOD_0 } },
     },
-    rig = "flower.rig",                       -- one rig, all tiers share it
-    components = { ... },
 }
 ```
 
-The manifest key reads the same way as Phase 1's per-shape `lodMin_`:
-the key is the **minimum-detail tier (largest index)** at which the
-entry is still loaded. `[LOD_0]` is "high-zoom-only," `[LOD_4]` is
-"always loaded." The selector tests `activeLod <= key` per entry —
-the silhouette stays loaded as the camera zooms in and the stamen
-fades in on top.
+A part takes:
 
-Open design questions for Phase 2:
+| Field | Meaning |
+|---|---|
+| `id` | Required, unique within the manifest. |
+| `voxel_ref` **or** `shape` | At most one. `voxel_ref` attaches like the root's (SHAPES records as children of the part, DENSE data on the part); `shape = { type = IRShape.*, params, color, flags }` is one `C_ShapeDescriptor` on the part. Neither = a bare node. |
+| `transform` | `{ translation, rotation (quat), scale }`, relative to the root. |
+| `rotation_mode` / `canvas_size` | As on the root; a canvas-owning mode allocates the part's own canvas. |
+| `lod = { fine, coarse }` | Inclusive band, indexed the engine way: `fine` is the finest tier (smallest index), `coarse` the coarsest. Defaults `LOD_0` / `LOD_4`. `{ fine = LOD_0, coarse = LOD_2 }` means "zoom 4× and up". |
+| `resident` | `true` keeps the part alive (hidden) outside its band instead of destroying it. |
+| `components` | The root's `components = {}` form, applied to the part. |
 
-- **Lazy vs eager load.** Load all referenced `.vxs` at prefab spawn, or
-  only the active tier? Eager is simpler but uses more memory; lazy
-  needs a "swap content on tier change" mechanism. Lean lazy with a
-  prefetch hint when a zoom-in animation crosses a threshold.
-- **Tier transition.** When `activeLod` increases (zoom in), do we keep
-  the lower-tier content drawn alongside the new tier (additive), or
-  swap (replace)? Both are valid; "additive composition" makes the
-  Phase 1 per-shape filter and Phase 2 per-file selection compatible.
-  Lean additive — `flower_petals.vxs` adds petals on top of the
-  silhouette; the silhouette stays loaded.
-- **Entity layout.** The prefab spawns a parent entity with one child
-  per loaded `.vxs` tier? Or a single entity with merged content? Lean
-  parent-with-children — it matches the existing `Relation::CHILD_OF`
-  pattern (`engine/entity/include/irreden/entity/ir_entity_types.hpp:39`)
-  and lets each tier be hidden/shown independently as the tier changes.
+The original sketch's root-level `lod = { [LOD_n] = ... }` table is
+**rejected**: the band lives on the part, so there is one way to say it, and
+it reads the same as a shape's or a DENSE set's band.
 
-These decisions don't need to be locked until Phase 2 starts. They're
-listed here so the next pass has a starting point.
+### Locked decisions
+
+- **Layout: parent with children.** Each live part is a `CHILD_OF` child of
+  the root, so the root's cascade destroy (`destroyTree`) removes it with its
+  own children. A part is rebuilt from the same manifest slot every time it
+  re-enters its band.
+- **Composition: additive by band.** Overlapping bands stack (the petals stay
+  while the stamen appears); disjoint bands replace (the silhouette leaves when
+  the petals arrive). The Phase 1 shape filter composes the same way.
+- **Load: lazy.** A part's `.vxs` is loaded on the part's first spawn and kept
+  by the root's parsed manifest; every live root of one prefab shares the copy.
+  The file's existence is checked at `Prefab.spawn`, so a bad path fails the
+  spawn rather than a later zoom.
+- **Existence is engine-owned.** `Prefab.spawn` creates the parts whose band
+  holds the root's resolved tier (`resolveEntityLod`, so a declared
+  `C_LodTierOverride` pin decides it). `PREFAB_LOD_PARTS` (UPDATE, after
+  `LOD_UPDATE`) then keeps the live set equal to the in-band set: a tier must
+  hold for `kPrefabPartsTierSettleTicks` before the parts follow, at most
+  `kPrefabPartSpawnBudgetPerTick` parts spawn per tick across all roots (the
+  rest on later ticks), and a part leaving its band is destroyed. A creation
+  that wants its own policy leaves the system out; parts then stay as spawned.
+- **Resident parts** stay alive out of band. Their content (the part and any
+  SHAPES children) takes the part's band and a `C_LodTierOverride` mirroring
+  the root's settled tier, so the Phase 1 shape filter and
+  `GATE_VOXEL_SETS_BY_LOD` hide them at exactly the tier the other parts swap.
+
+Not persisted: `C_PrefabParts` is save-opted-out (it holds live ids and the
+manifest's Lua tables); a creation re-spawns the prefab after a load.
+
+The `shape_debug --load-prefab assets/prefabs/flower.prefab.lua` pass is the
+reference: render-verify captures it at zoom 1× / 4× / 16× (stem +
+silhouette, stem + petals, stem + petals + stamen). `PrefabParts` covers the
+schema, the tier-driven spawn / destroy, the settle window, the spawn budget,
+resident parts and v1 compatibility headlessly.
 
 ---
 
@@ -424,22 +457,9 @@ without a format break. Same escape hatch as `.vxs`.
   used for picking sees whatever shapes the renderer drew. If a shape
   is culled by the LOD filter, it's also un-pickable, which is
   arguably correct (the user can't click on what they can't see).
-  Verify this assumption holds for the editor before shipping Phase 2.
+  The same holds for a Phase 2 part outside its band: destroyed or, when
+  resident, culled, so it is un-pickable too.
 - **Singleton-component infrastructure** (T-162). The `C_ActiveLodLevel`
   singleton uses the same pattern as `C_LayoutState` (T-174).
 
 ---
-
-## What to file when Phase 2 starts
-
-When T-173 (`.prefab.lua`) is ready to absorb the LOD addition, file a
-follow-up ticket covering:
-
-1. DSL syntax for the `lod = { ... }` table.
-2. Lazy-vs-eager `.vxs` loading decision.
-3. Additive-vs-replace tier composition decision.
-4. Parent-with-children entity layout.
-5. Sample `.prefab.lua` for the flower test case from this doc.
-6. Render-verify shots covering tier-transition correctness.
-
-Until then, Phase 1 (#708) is the only LOD work in flight.

@@ -2,9 +2,9 @@
 #define IR_SCRIPT_PREFAB_COMPONENT_FACTORY_H
 
 // Per-component "construct from Lua table" factory registry for the declarative
-// `components = { C_Name = { field = value, ... } }` block in prefab files.
-// See engine/script/CLAUDE.md "Prefab format → declarative components" for
-// the v1 schema and acceptance contract.
+// `components = { C_Name = { field = value, ... } }` block a prefab root and
+// each of its parts carry. See engine/script/CLAUDE.md "Prefab format" for the
+// schema and acceptance contract.
 
 #include <irreden/ir_entity.hpp>
 

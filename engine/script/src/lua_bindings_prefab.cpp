@@ -8,6 +8,7 @@
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
+#include <irreden/voxel/components/component_voxel_set_lua.hpp>
 
 #include <sol/sol.hpp>
 
@@ -25,6 +26,8 @@ void bindPrefabApi(LuaScript &script) {
     lua["Prefab"]["register"] = [](const std::string &id, const std::string &path) {
         IRPrefab::Prefab::registerPrefab(id, path);
     };
+    // A manifest part's `shape.type` spells IRShape.*.
+    detail::bindShapeTable(script);
 
     // Accepts vec3 or {x,y,z}/{1,2,3} table; returns LuaEntity+nil on success, nil+error on failure.
     lua["Prefab"]["spawn"] = [&script](
