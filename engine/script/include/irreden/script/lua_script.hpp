@@ -25,6 +25,19 @@
 
 namespace IRScript {
 
+struct LuaTypedComponentField {
+    std::string name_;
+    LuaFieldType type_;
+};
+
+// One `IRComponent.register`ed component. Holds no sol objects: LuaScript
+// closes its state before its other members destruct.
+struct LuaTypedComponentInfo {
+    std::string name_;
+    IREntity::ComponentId componentId_;
+    std::vector<LuaTypedComponentField> fields_;
+};
+
 class LuaScript {
   public:
     LuaScript();
@@ -90,6 +103,16 @@ class LuaScript {
         return m_ecsDefaultMode;
     }
 
+    // On (the default), `IRComponent.register` for a name a C++ component
+    // binds returns that component's handle — the codegen coexistence path,
+    // where the build-time tool and the runtime read the same `.lua` file.
+    // Off, the call raises instead. A host whose scripts the codegen never
+    // consumes turns it off so a script cannot silently adopt an engine
+    // component under its own schema.
+    void setCodegenCoexistence(bool enabled) {
+        m_codegenCoexistence = enabled;
+    }
+
     // Register a prefab system NAME so the Lua side's
     // `IRSystem.systemId(SystemName.NAME)` can return its SystemId.
     // Calls `IRSystem::createSystem<NAME>()` once and caches the
@@ -150,6 +173,14 @@ class LuaScript {
             return IREntity::kNullComponent;
         }
         return it->second;
+    }
+
+    // Every component `IRComponent.register` created on this state, in
+    // registration order — the C++ side of `IRComponent.list()`. C++-typed
+    // components, including a codegen'd name the register call hands back,
+    // are absent.
+    const std::vector<LuaTypedComponentInfo> &luaTypedComponents() const {
+        return m_luaTypedComponents;
     }
 
     // Default-construct a C++-typed component, apply the optional
@@ -312,6 +343,11 @@ class LuaScript {
     // Excludes the coexistence carve-out's early-return (that path returns
     // an existing C++-typed handle and registers no Lua-typed impl).
     std::unordered_set<IREntity::ComponentId> m_luaTypedComponentIds;
+
+    bool m_codegenCoexistence = true;
+
+    // Ordered record of the same components, with their field schemas.
+    std::vector<LuaTypedComponentInfo> m_luaTypedComponents;
 
     // ComponentId → attach factory for C++-typed components,
     // populated by the codegen-emitted `registerCodegenComponents()`.

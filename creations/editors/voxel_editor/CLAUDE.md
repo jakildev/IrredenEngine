@@ -9,7 +9,8 @@ Design log, findings and the authoring-session history:
 - `python3 scripts/gui-verify.py IRVoxelEditor` — the standing GUI shot table.
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --gui-session <name>` — one
   scripted session: `face_pick` and `drag_probe` prove the picking contract
-  against the full reference scene, `place_below` the Alt modifier.
+  against the full reference scene, `place_below` the Alt modifier,
+  `module_loaded` (with `--module test/module`) the creation-module seam.
 - `python3 scripts/author-entity.py <entity>` — replays an entity session twice
   and byte-compares the saved `.vxs` (rock, mushroom, bird at the default
   scene; `ant --scene-size 20 20 20`; `tree --scene-size 16 16 26`). A clean
@@ -53,3 +54,20 @@ render, because the aim and the pick share one screen mapping.
 - Entity sessions author on a bare stage; a session opts into the reference
   furniture with `Builder::withReferenceFurniture()` and then keeps its own
   aims off gizmo pixels (the model does not know where handles are drawn).
+- A new session is four edits: `Session::Id`, `idFromName`, `Session::build`,
+  and the `--gui-session` enum list in `main()`.
+
+## Creation modules (`--module <dir>`)
+
+- `ModuleHost` (`editor_lua_host.hpp`, whose header comment is the contract)
+  runs `<dir>/init.lua` in the world's Lua VM in EVAL mode. A module registers
+  components (`IRComponent.register`), recipes and panels (`IREditor.*`). A
+  missing `init.lua`, a Lua error, or a component name already registered (a
+  C++ one included) exits 2.
+- A recipe is a pure function of `(values, size)`. APPLY writes its cells
+  through `applyEditRaw` and one `commitStroke`, so one Ctrl+Z undoes it.
+- A module may call `IRSystem.registerSystem`, but the editor places no module
+  system in a pipeline yet.
+- Editor source names no module content: `module_loaded` reads its
+  expectations from `<dir>/session_expect.lua`. `test/module/` is the neutral
+  fixture; `test/module_cpp_collision/` must exit 2.

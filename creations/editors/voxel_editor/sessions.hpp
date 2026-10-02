@@ -1,9 +1,11 @@
 #ifndef IR_VOXEL_EDITOR_SESSIONS_H
 #define IR_VOXEL_EDITOR_SESSIONS_H
 
+#include "recipes_panel.hpp"
 #include "session_builder.hpp"
 
 #include <string>
+#include <vector>
 
 // Registered authoring sessions. Each one is a recipe of editor
 // gestures replayed against the live UI by the GUI-test harness; selected at
@@ -45,6 +47,12 @@
 // pairs, authored at `--scene-size 20 20 20`. It is the first recipe to enable
 // the mirror *before* the ground clear, so the silhouette is carved from half
 // the erase drags, and the first to walk the layer selection (`[` / `]`).
+//
+// `module_loaded` proves the `--module <dir>` seam against whatever module is
+// loaded: its expectations come from `<dir>/session_expect.lua` (resolved into
+// a ModuleSessionSpec in main.cpp), so no module content is named here. It
+// reads the registry enumeration and the docked panels, then applies one recipe
+// through the RECIPES panel and undoes it.
 namespace IRVoxelEditor::Session {
 
 enum class Id {
@@ -57,6 +65,7 @@ enum class Id {
     ANT,
     BIRD,
     TREE,
+    MODULE_LOADED,
 };
 
 // CLI name -> id. The accepted set is declared to IRArgs as an enum arg, so an
@@ -80,8 +89,42 @@ inline Id idFromName(const std::string &name) {
         return Id::BIRD;
     if (name == "tree")
         return Id::TREE;
+    if (name == "module_loaded")
+        return Id::MODULE_LOADED;
     return Id::NONE;
 }
+
+// What module_loaded asserts, resolved in main.cpp from the loaded module and
+// its session_expect.lua. Cells are set-local, already evaluated through the
+// recipe — a recipe is pure, so the prediction is the cells Apply will write.
+struct ModuleSessionSpec {
+    struct Component {
+        std::string name_;
+        int fieldCount_ = 0;
+    };
+    struct Panel {
+        std::string name_;
+        std::string label_;
+    };
+    struct ParamDrag {
+        int index_ = 0;
+        float min_ = 0.0f;
+        float max_ = 1.0f;
+        float value_ = 0.0f;
+    };
+    std::vector<Component> components_;
+    std::vector<Panel> panels_;
+    int recipeRow_ = -1;
+    std::vector<ParamDrag> params_;
+    // The recipe's cells at the session's values.
+    std::vector<IRMath::ivec3> appliedCells_;
+    // Cells the recipe writes at its default values but not at the session's:
+    // empty after Apply only if the slider drags reached the recipe.
+    std::vector<IRMath::ivec3> defaultOnlyCells_;
+    // Spec problems (no --module, a bad session_expect.lua), reported as
+    // recipe errors.
+    std::vector<std::string> errors_;
+};
 
 namespace detail {
 
@@ -1225,12 +1268,66 @@ inline Recipe buildTree(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
     return builder.finish();
 }
 
+inline Recipe buildModuleLoaded(
+    IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin, const ModuleSessionSpec &spec
+) {
+    Builder builder("module_loaded", sceneSize, sceneOrigin);
+    for (const std::string &error : spec.errors_)
+        builder.recordError(error);
+    if (!spec.errors_.empty())
+        return builder.finish();
+
+    builder.segment("registry");
+    for (const ModuleSessionSpec::Component &component : spec.components_) {
+        builder.expectComponentRegistered(
+            component.name_,
+            component.fieldCount_,
+            "component_registered_" + component.name_
+        );
+    }
+
+    builder.segment("panel");
+    for (const ModuleSessionSpec::Panel &panel : spec.panels_)
+        builder.expectPanelLabel(panel.name_, panel.label_, "panel_label_" + panel.name_);
+
+    // Positive fire: the recipe's cells are empty before Apply.
+    builder.segment("recipe_arm");
+    for (const IRMath::ivec3 &cell : spec.appliedCells_)
+        builder.expectOccupancy(cell, false, "recipe_cell_empty_before_apply");
+
+    builder.segment("recipe_apply");
+    builder.clickGui(recipeListRowCenterGuiTrixel(spec.recipeRow_));
+    for (const ModuleSessionSpec::ParamDrag &drag : spec.params_) {
+        builder.dragGuiSlider(
+            recipeParamSliderGeometry(drag.index_),
+            drag.min_,
+            drag.max_,
+            drag.value_
+        );
+    }
+    builder.clickGui(recipeApplyCenterGuiTrixel());
+    for (const IRMath::ivec3 &cell : spec.appliedCells_)
+        builder.expectOccupancy(cell, true, "recipe_cell_filled");
+    for (const IRMath::ivec3 &cell : spec.defaultOnlyCells_)
+        builder.expectOccupancy(cell, false, "recipe_default_only_cell_empty");
+
+    // Apply is one stroke, so one Ctrl+Z empties every cell it wrote.
+    builder.segment("undo");
+    builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+    for (const IRMath::ivec3 &cell : spec.appliedCells_)
+        builder.expectOccupancy(cell, false, "recipe_cell_empty_after_undo");
+
+    return builder.finish();
+}
+
 } // namespace detail
 
 // Build the named session's recipe against the live scene dimensions. Returns
 // an empty (not-ok) recipe for Id::NONE so callers can treat "no session" and
 // "unbuildable session" the same way.
-inline Recipe build(Id id, IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
+inline Recipe build(
+    Id id, IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin, const ModuleSessionSpec &moduleSpec
+) {
     switch (id) {
     case Id::DRAG_PROBE:
         return detail::buildDragProbe(sceneSize, sceneOrigin);
@@ -1248,6 +1345,8 @@ inline Recipe build(Id id, IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
         return detail::buildBird(sceneSize, sceneOrigin);
     case Id::TREE:
         return detail::buildTree(sceneSize, sceneOrigin);
+    case Id::MODULE_LOADED:
+        return detail::buildModuleLoaded(sceneSize, sceneOrigin, moduleSpec);
     case Id::NONE:
         break;
     }

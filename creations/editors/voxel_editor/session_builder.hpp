@@ -324,6 +324,22 @@ struct SliderCheck {
     std::string name_;
 };
 
+// Registry expectation for a module-registered component: present in the
+// Lua-typed component enumeration with this many fields.
+struct ComponentCheck {
+    std::string componentName_;
+    int fieldCount_ = 0;
+    std::string name_;
+};
+
+// Module-panel expectation: the docked panel named panelName_ holds exactly
+// one label, reading label_.
+struct PanelLabelCheck {
+    std::string panelName_;
+    std::string label_;
+    std::string name_;
+};
+
 // One shot's worth of session: a camera framing, the events that fire under it,
 // their aim fixups, and the assertions evaluated once it settles.
 struct Segment {
@@ -349,6 +365,9 @@ struct Recipe {
     std::deque<SliderCheck> sliderChecks_;
     // Same stable-storage contract as checks_, for expectPick.
     std::deque<PickCheck> pickChecks_;
+    // Same contract, for the module checks.
+    std::deque<ComponentCheck> componentChecks_;
+    std::deque<PanelLabelCheck> panelLabelChecks_;
     // Build the editor's reference furniture (floor slab, axis bars, centre
     // cube, perimeter gizmos, starter rig, satellite sets) around the editable
     // set instead of the bare stage entity recipes author on.
@@ -400,6 +419,11 @@ bool evaluatePickMatchesRender(const void *context, std::string &actual);
 // widget entity ids don't exist at recipe-build time. Defined in main.cpp,
 // where the ANIM panel's slider entity handles live.
 bool evaluateSliderCheck(const void *context, std::string &actual);
+
+// Reads one ComponentCheck / PanelLabelCheck against the loaded module.
+// Defined in main.cpp, where the module host and its docked panels live.
+bool evaluateComponentCheck(const void *context, std::string &actual);
+bool evaluatePanelLabelCheck(const void *context, std::string &actual);
 
 // Builds a Recipe from editor gestures. Every op appends to the current
 // segment; segment(label) closes the current one and starts the next. Ops that
@@ -642,7 +666,12 @@ class Builder {
             );
             return;
         }
-        emitGuiMove(paletteSwatchCenterGuiTrixel(index));
+        clickGui(paletteSwatchCenterGuiTrixel(index));
+    }
+
+    // Left click on a GUI-canvas point (a list row, a button).
+    void clickGui(IRMath::vec2 guiTrixel) {
+        emitGuiMove(guiTrixel);
         emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
     }
@@ -660,7 +689,16 @@ class Builder {
         const IRVoxelEditor::SliderGeometry &geom, float minValue, float maxValue, float value
     ) {
         const float farValue = (value > (minValue + maxValue) * 0.5f) ? minValue : maxValue;
-        emitGuiMove(IRVoxelEditor::sliderValueGuiTrixel(geom, minValue, maxValue, farValue));
+        // GUI hitboxes are half-open ([pos, pos + size)), so the max end of the
+        // track lies one trixel outside it: press one trixel inside either end.
+        IRMath::vec2 press =
+            IRVoxelEditor::sliderValueGuiTrixel(geom, minValue, maxValue, farValue);
+        press.x = IRMath::clamp(
+            press.x,
+            static_cast<float>(geom.pos_.x) + 1.0f,
+            static_cast<float>(geom.pos_.x + geom.size_.x) - 1.0f
+        );
+        emitGuiMove(press);
         emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
         emitGuiMove(IRVoxelEditor::sliderValueGuiTrixel(geom, minValue, maxValue, value));
         // One idle frame so the editor's HELD branch samples the moved cursor
@@ -812,6 +850,30 @@ class Builder {
         const SliderCheck &check = m_recipe.sliderChecks_.back();
         m_current.assertions_.push_back(
             IRPrefab::GuiTest::predicate(&evaluateSliderCheck, &check, check.name_.c_str())
+        );
+    }
+
+    // Assert the loaded module registered `componentName` with `fieldCount`
+    // fields, read through the registry enumeration.
+    void expectComponentRegistered(std::string componentName, int fieldCount, std::string name) {
+        m_recipe.componentChecks_.push_back(
+            ComponentCheck{std::move(componentName), fieldCount, std::move(name)}
+        );
+        const ComponentCheck &check = m_recipe.componentChecks_.back();
+        m_current.assertions_.push_back(
+            IRPrefab::GuiTest::predicate(&evaluateComponentCheck, &check, check.name_.c_str())
+        );
+    }
+
+    // Assert the docked module panel `panelName` built exactly one label,
+    // reading `label`.
+    void expectPanelLabel(std::string panelName, std::string label, std::string name) {
+        m_recipe.panelLabelChecks_.push_back(
+            PanelLabelCheck{std::move(panelName), std::move(label), std::move(name)}
+        );
+        const PanelLabelCheck &check = m_recipe.panelLabelChecks_.back();
+        m_current.assertions_.push_back(
+            IRPrefab::GuiTest::predicate(&evaluatePanelLabelCheck, &check, check.name_.c_str())
         );
     }
 

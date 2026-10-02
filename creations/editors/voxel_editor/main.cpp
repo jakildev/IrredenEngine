@@ -10,6 +10,7 @@
 
 // Components
 #include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/common/components/component_local_transform_lua.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
@@ -66,6 +67,7 @@
 #include <irreden/render/systems/system_update_joint_matrices.hpp>
 #include <irreden/render/systems/system_update_voxel_positions_gpu.hpp>
 #include <irreden/render/systems/system_widget_input.hpp>
+#include <irreden/render/systems/system_widget_lua_dispatch.hpp>
 #include <irreden/render/systems/system_widget_render_panel.hpp>
 #include <irreden/render/systems/system_widget_render_label.hpp>
 #include <irreden/render/systems/system_widget_render_color_swatch.hpp>
@@ -98,7 +100,12 @@
 // with the session builder so a scripted swatch click aims at the live layout.
 #include "palette.hpp"
 
+// Creation-module host (--module) and the RECIPES / module-panel geometry.
+#include "editor_lua_host.hpp"
+#include "recipes_panel.hpp"
+
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <deque>
@@ -260,6 +267,25 @@ AnimationState g_anim;
 // per-frame assert callback reads them back.
 Session::Id g_sessionId = Session::Id::NONE;
 Session::Recipe g_session;
+
+// The creation module --module loaded, and the editor UI built for it: the
+// RECIPES panel and one docked panel per IREditor.registerPanel. All empty
+// without --module.
+ModuleHost g_moduleHost;
+IRSystem::SystemId g_widgetLuaDispatchId = IRSystem::kNullSystemId;
+
+struct DockedModulePanel {
+    IREntity::EntityId panel_ = IREntity::kNullEntity;
+    ivec2 pos_ = ivec2(0);
+};
+std::vector<DockedModulePanel> g_dockedModulePanels;
+
+IREntity::EntityId g_recipesPanel = IREntity::kNullEntity;
+IREntity::EntityId g_recipeList = IREntity::kNullEntity;
+IREntity::EntityId g_recipeApplyBtn = IREntity::kNullEntity;
+std::array<IREntity::EntityId, kMaxRecipeParams> g_recipeSliders{};
+// Recipe the parameter sliders currently describe; -1 before the first sync.
+int g_slidersRecipe = -1;
 
 namespace {
 
@@ -1656,7 +1682,175 @@ void seedDemoSkeleton() {
     }
 }
 
+// Points the parameter sliders at recipe @p recipeIndex: one per declared
+// param, at its range and default; the rest disabled. -1 disables all.
+void configureRecipeSliders(int recipeIndex) {
+    g_slidersRecipe = recipeIndex;
+    const std::vector<ModuleRecipe> &recipes = g_moduleHost.recipes();
+    const bool valid = recipeIndex >= 0 && recipeIndex < static_cast<int>(recipes.size());
+    for (int i = 0; i < kMaxRecipeParams; ++i) {
+        auto &slider = IREntity::getComponent<C_WidgetSlider>(g_recipeSliders[i]);
+        const bool used =
+            valid &&
+            i < static_cast<int>(recipes[static_cast<std::size_t>(recipeIndex)].params_.size());
+        if (used) {
+            const RecipeParam &param =
+                recipes[static_cast<std::size_t>(recipeIndex)].params_[static_cast<std::size_t>(i)];
+            slider.label_ = param.name_;
+            slider.minValue_ = param.min_;
+            slider.maxValue_ = param.max_;
+            slider.currentValue_ = param.default_;
+        } else {
+            slider.label_.clear();
+            slider.minValue_ = 0.0f;
+            slider.maxValue_ = 1.0f;
+            slider.currentValue_ = 0.0f;
+        }
+        IRPrefab::Widget::setDisabled(g_recipeSliders[i], !used);
+    }
+}
+
+// Evaluates recipe @p recipeIndex at the slider values and writes its cells
+// into the editable set as one stroke, so one Ctrl+Z removes them all. Cells
+// outside the set are skipped and counted.
+void applyRecipe(int recipeIndex) {
+    if (g_sceneVoxelSetEntity == IREntity::kNullEntity)
+        return;
+    const ModuleRecipe &recipe = g_moduleHost.recipes()[static_cast<std::size_t>(recipeIndex)];
+    std::vector<float> values;
+    values.reserve(recipe.params_.size());
+    for (std::size_t i = 0; i < recipe.params_.size(); ++i)
+        values.push_back(IRPrefab::Widget::sliderValue(g_recipeSliders[i]));
+    auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sceneVoxelSetEntity);
+    std::vector<RecipeCell> cells;
+    std::string error;
+    if (!g_moduleHost
+             .evaluate(static_cast<std::size_t>(recipeIndex), values, set.size_, cells, error)) {
+        IR_LOG_ERROR("Recipe apply failed: {}", error);
+        return;
+    }
+    const Color fallbackColor = kPaletteColors[g_editor.activeSwatchIdx_];
+    int written = 0;
+    int skipped = 0;
+    for (const RecipeCell &cell : cells) {
+        const ivec3 local = cell.local_;
+        if (local.x < 0 || local.x >= set.size_.x || local.y < 0 || local.y >= set.size_.y ||
+            local.z < 0 || local.z >= set.size_.z) {
+            ++skipped;
+            continue;
+        }
+        const std::size_t flat =
+            static_cast<std::size_t>(IRMath::index3DtoIndex1D(local, set.size_));
+        applyEditRaw(
+            g_sceneVoxelSetEntity,
+            set,
+            local,
+            flat,
+            true,
+            cell.color_.value_or(fallbackColor),
+            0
+        );
+        ++written;
+    }
+    commitStroke();
+    std::string valueText;
+    for (std::size_t i = 0; i < values.size(); ++i)
+        valueText +=
+            (i == 0 ? "" : ",") + recipe.params_[i].name_ + "=" + std::to_string(values[i]);
+    IR_LOG_INFO(
+        "recipe_applied name={} values={} cells={} skipped={}",
+        recipe.name_,
+        valueText,
+        written,
+        skipped
+    );
+}
+
+void updateRecipesPanel() {
+    if (g_recipesPanel == IREntity::kNullEntity)
+        return;
+    const int selected = IRPrefab::Widget::listSelectedIndex(g_recipeList);
+    if (selected != g_slidersRecipe)
+        configureRecipeSliders(selected);
+    if (selected >= 0 && IRPrefab::Widget::wasClicked(g_recipeApplyBtn))
+        applyRecipe(selected);
+}
+
+bool cursorInRect(vec2 cursor, ivec2 pos, ivec2 size) {
+    return cursor.x >= static_cast<float>(pos.x) && cursor.y >= static_cast<float>(pos.y) &&
+           cursor.x < static_cast<float>(pos.x + size.x) &&
+           cursor.y < static_cast<float>(pos.y + size.y);
+}
+
+// True while the cursor is over the module UI. A rectangle test rather than
+// widget hover: a docked panel holds widgets the module built, and a click on
+// any of them must not fall through to the scene.
+bool cursorOverModuleUi() {
+    if (g_recipesPanel == IREntity::kNullEntity)
+        return false;
+    const vec2 cursor = IRPrefab::Layout::mousePositionInGuiTrixels();
+    if (cursorInRect(cursor, kRecipesPanelPos, kRecipesPanelSize))
+        return true;
+    for (const DockedModulePanel &docked : g_dockedModulePanels) {
+        if (cursorInRect(cursor, docked.pos_, kModulePanelSize))
+            return true;
+    }
+    return false;
+}
+
 } // namespace
+
+// Builds the RECIPES panel and docks one panel per IREditor.registerPanel
+// below it. A no-op without --module; false when a panel's build function
+// raises, which fails the launch the same way a module load error does.
+bool initModuleUi() {
+    if (!g_moduleHost.loaded())
+        return true;
+    g_recipesPanel = IRPrefab::Widget::makePanel(kRecipesPanelPos, kRecipesPanelSize, "RECIPES");
+    IREntity::setComponent(g_recipesPanel, IRComponents::C_HitBox2DGui{kRecipesPanelSize});
+    IREntity::getComponent<IRComponents::C_Widget>(g_recipesPanel).zOrder_ = -1;
+    std::vector<std::string> names;
+    for (const ModuleRecipe &recipe : g_moduleHost.recipes())
+        names.push_back(recipe.name_);
+    const int initialRecipe = names.empty() ? -1 : 0;
+    g_recipeList = IRPrefab::Widget::makeList(
+        kRecipeListPos,
+        kRecipeListSize,
+        std::move(names),
+        initialRecipe,
+        kRecipeListItemHeight
+    );
+    for (int i = 0; i < kMaxRecipeParams; ++i) {
+        const SliderGeometry geom = recipeParamSliderGeometry(i);
+        g_recipeSliders[i] =
+            IRPrefab::Widget::makeSlider(geom.pos_, geom.size_, "", 0.0f, 1.0f, 0.0f);
+    }
+    g_recipeApplyBtn = IRPrefab::Widget::makeButton(kRecipeApplyPos, kRecipeApplySize, "APPLY");
+    configureRecipeSliders(initialRecipe);
+    g_helpEntries.push_back(
+        {g_recipesPanel, "RECIPES: pick a module recipe, set its params, APPLY."}
+    );
+    g_helpEntries.push_back({g_recipeList, "RECIPE: choose the module recipe to apply."});
+    g_helpEntries.push_back(
+        {g_recipeApplyBtn, "APPLY: write the recipe's cells into the set (Ctrl+Z undoes)."}
+    );
+
+    const std::vector<std::string> &panelNames = g_moduleHost.panelNames();
+    for (std::size_t i = 0; i < panelNames.size(); ++i) {
+        const ivec2 pos = modulePanelPos(static_cast<int>(i));
+        const IREntity::EntityId panel =
+            IRPrefab::Widget::makePanel(pos, kModulePanelSize, panelNames[i]);
+        IREntity::setComponent(panel, IRComponents::C_HitBox2DGui{kModulePanelSize});
+        IREntity::getComponent<IRComponents::C_Widget>(panel).zOrder_ = -1;
+        g_dockedModulePanels.push_back(DockedModulePanel{panel, pos});
+        std::string error;
+        if (!g_moduleHost.buildPanel(i, pos, kModulePanelSize, error)) {
+            IR_LOG_ERROR("Module panel build failed: {}", error);
+            return false;
+        }
+    }
+    return true;
+}
 
 namespace Session {
 
@@ -1825,7 +2019,147 @@ bool evaluateSliderCheck(const void *context, std::string &actual) {
     return IRMath::abs(value - check.expected_) <= check.tolerance_;
 }
 
+bool evaluateComponentCheck(const void *context, std::string &actual) {
+    const ComponentCheck &check = *static_cast<const ComponentCheck *>(context);
+    for (const IRScript::LuaTypedComponentInfo &info : g_moduleHost.script().luaTypedComponents()) {
+        if (info.name_ != check.componentName_)
+            continue;
+        actual = "component=" + info.name_ + " fields=" + std::to_string(info.fields_.size()) +
+                 " want=" + std::to_string(check.fieldCount_);
+        return static_cast<int>(info.fields_.size()) == check.fieldCount_;
+    }
+    actual = "component=" + check.componentName_ + " not enumerated";
+    return false;
+}
+
+// Counts the label widgets positioned inside the docked panel's rectangle —
+// the panel's build function places them, so there is no other handle to
+// them.
+bool evaluatePanelLabelCheck(const void *context, std::string &actual) {
+    const PanelLabelCheck &check = *static_cast<const PanelLabelCheck *>(context);
+    const std::vector<std::string> &names = g_moduleHost.panelNames();
+    const auto it = std::find(names.begin(), names.end(), check.panelName_);
+    const std::size_t index = static_cast<std::size_t>(it - names.begin());
+    if (it == names.end() || index >= g_dockedModulePanels.size()) {
+        actual = "panel=" + check.panelName_ + " not docked";
+        return false;
+    }
+    const ivec2 lo = g_dockedModulePanels[index].pos_;
+    const ivec2 hi = lo + kModulePanelSize;
+    int labels = 0;
+    std::string text;
+    IREntity::forEachComponent<C_WidgetLabel>([&](IREntity::EntityId &id, C_WidgetLabel &label) {
+        const ivec2 pos = IREntity::getComponent<C_GuiPosition>(id).pos_;
+        if (pos.x < lo.x || pos.y < lo.y || pos.x >= hi.x || pos.y >= hi.y)
+            return;
+        ++labels;
+        text = label.text_;
+    });
+    actual = "labels=" + std::to_string(labels) + " text=\"" + text + "\"";
+    return labels == 1 && text == check.label_;
+}
+
 } // namespace Session
+
+// Resolves module_loaded's expectations from <module dir>/session_expect.lua
+// against the loaded module: the recipe's list row and slider ranges, and its
+// cells at the session's values and at its defaults.
+Session::ModuleSessionSpec resolveModuleSessionSpec() {
+    Session::ModuleSessionSpec spec;
+    if (!g_moduleHost.loaded()) {
+        spec.errors_.push_back("module_loaded needs --module <dir>");
+        return spec;
+    }
+    const std::string path =
+        (std::filesystem::path(g_moduleHost.dir()) / "session_expect.lua").string();
+    auto fail = [&spec, &path](const std::string &why) {
+        spec.errors_.push_back(path + ": " + why);
+        return spec;
+    };
+    sol::state &lua = g_moduleHost.script().lua();
+    sol::protected_function_result result = lua.safe_script_file(path, sol::script_pass_on_error);
+    if (!result.valid()) {
+        const sol::error err = result;
+        return fail(err.what());
+    }
+    const sol::object returned = result;
+    if (returned.get_type() != sol::type::table)
+        return fail("must return a table");
+    const sol::table expect = returned.as<sol::table>();
+
+    if (const sol::optional<sol::table> components = expect["components"]) {
+        for (std::size_t i = 1; i <= components->size(); ++i) {
+            const sol::table entry = (*components)[i];
+            const sol::optional<std::string> name = entry["name"];
+            const sol::optional<int> fieldCount = entry["fieldCount"];
+            if (!name || !fieldCount)
+                return fail("each components entry needs name and fieldCount");
+            spec.components_.push_back({*name, *fieldCount});
+        }
+    }
+    if (const sol::optional<sol::table> panels = expect["panels"]) {
+        for (std::size_t i = 1; i <= panels->size(); ++i) {
+            const sol::table entry = (*panels)[i];
+            const sol::optional<std::string> name = entry["name"];
+            const sol::optional<std::string> label = entry["label"];
+            if (!name || !label)
+                return fail("each panels entry needs name and label");
+            spec.panels_.push_back({*name, *label});
+        }
+    }
+
+    const sol::optional<sol::table> recipeExpect = expect["recipe"];
+    const sol::optional<std::string> recipeName =
+        recipeExpect ? (*recipeExpect)["name"] : sol::optional<std::string>{};
+    if (!recipeName)
+        return fail("needs recipe = { name, values }");
+    const std::vector<ModuleRecipe> &recipes = g_moduleHost.recipes();
+    const auto recipeIt = std::find_if(recipes.begin(), recipes.end(), [&](const ModuleRecipe &r) {
+        return r.name_ == *recipeName;
+    });
+    if (recipeIt == recipes.end())
+        return fail("recipe '" + *recipeName + "' is not registered by the module");
+    const std::size_t recipeIndex = static_cast<std::size_t>(recipeIt - recipes.begin());
+    spec.recipeRow_ = static_cast<int>(recipeIndex);
+
+    const sol::optional<sol::table> values = (*recipeExpect)["values"];
+    std::vector<float> sessionValues;
+    std::vector<float> defaultValues;
+    for (std::size_t i = 0; i < recipeIt->params_.size(); ++i) {
+        const RecipeParam &param = recipeIt->params_[i];
+        defaultValues.push_back(param.default_);
+        const sol::optional<float> value = values ? (*values)[param.name_] : sol::optional<float>{};
+        if (!value) {
+            sessionValues.push_back(param.default_);
+            continue;
+        }
+        if (*value < param.min_ || *value > param.max_)
+            return fail("value for param '" + param.name_ + "' is outside its range");
+        if (*value == param.default_)
+            return fail("value for param '" + param.name_ + "' equals its default");
+        spec.params_.push_back({static_cast<int>(i), param.min_, param.max_, *value});
+        sessionValues.push_back(*value);
+    }
+    if (spec.params_.empty())
+        return fail("recipe.values must move at least one param off its default");
+
+    std::vector<RecipeCell> applied;
+    std::vector<RecipeCell> atDefaults;
+    std::string error;
+    if (!g_moduleHost.evaluate(recipeIndex, sessionValues, g_editableSceneSize, applied, error) ||
+        !g_moduleHost.evaluate(recipeIndex, defaultValues, g_editableSceneSize, atDefaults, error))
+        return fail(error);
+    for (const RecipeCell &cell : applied)
+        spec.appliedCells_.push_back(cell.local_);
+    for (const RecipeCell &cell : atDefaults) {
+        if (std::find(spec.appliedCells_.begin(), spec.appliedCells_.end(), cell.local_) ==
+            spec.appliedCells_.end())
+            spec.defaultOnlyCells_.push_back(cell.local_);
+    }
+    if (spec.appliedCells_.empty())
+        return fail("recipe '" + *recipeName + "' writes no cells at the session's values");
+    return spec;
+}
 
 } // namespace IRVoxelEditor
 
@@ -1833,8 +2167,25 @@ void initSystems();
 void initCommands();
 void initEntities();
 
+// Lua host for --module, in EVAL mode (hot reload matters here, per-tick cost
+// does not). Must register before IREngine::init, which runs the callbacks; a
+// registration after init never runs.
+void registerLuaBindings() {
+    IREngine::registerLuaBindings([](IRScript::LuaScript &script) {
+        script.bindLuaDrivenEcs();
+        script.registerTypeFromTraits<C_LocalTransform>();
+        // initSystems places this instance right after WIDGET_INPUT, where a
+        // module's IRGui onClick handlers need it.
+        IRVoxelEditor::g_widgetLuaDispatchId =
+            script.registerPrefabSystem<IRSystem::WIDGET_LUA_DISPATCH>();
+        script.setEcsDefaultMode(IRScript::EcsMode::EVAL);
+        IRVoxelEditor::g_moduleHost.bind(script);
+    });
+}
+
 int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: voxel_editor");
+    registerLuaBindings();
     IR_LOG_INFO("  Left-drag: AABB box-fill between drag-start and drag-end");
     IR_LOG_INFO("  Shift + left-drag: line-fill along dominant axis");
     IR_LOG_INFO("  Ctrl + left-click: face-fill (flood-fill axis-plane of hit face)");
@@ -1869,7 +2220,7 @@ int main(int argc, char **argv) {
     IREngine::args().enumValue(
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
-        "face_pick | rock | mushroom | ant | bird | tree",
+        "face_pick | rock | mushroom | ant | bird | tree | module_loaded",
         {"none",
          "drag_probe",
          "place_below",
@@ -1878,8 +2229,14 @@ int main(int argc, char **argv) {
          "mushroom",
          "ant",
          "bird",
-         "tree"},
+         "tree",
+         "module_loaded"},
         "none"
+    );
+    IREngine::args().string(
+        "--module",
+        "load a creation module: runs <dir>/init.lua in the editor's Lua VM",
+        ""
     );
     IREngine::init(argc, argv);
     {
@@ -1903,6 +2260,23 @@ int main(int argc, char **argv) {
             IRVoxelEditor::g_editableSceneOrigin.z
         );
     }
+    // A module loads before the session builds: module_loaded resolves its
+    // expectations against what the module registered.
+    const std::string moduleDir = IREngine::args().getString("--module");
+    if (!moduleDir.empty()) {
+        std::string error;
+        if (!IRVoxelEditor::g_moduleHost.load(moduleDir, error)) {
+            IR_LOG_ERROR("Module load failed: {}", error);
+            return 2;
+        }
+        IR_LOG_INFO(
+            "module_loaded dir={} components={} recipes={} panels={}",
+            moduleDir,
+            IRVoxelEditor::g_moduleHost.componentCount(),
+            IRVoxelEditor::g_moduleHost.recipes().size(),
+            IRVoxelEditor::g_moduleHost.panelNames().size()
+        );
+    }
     // Build the session recipe before the systems are wired — initSystems hands
     // its shot table to the harness. A recipe that cannot aim one of its
     // gestures is a hard error rather than a partial replay: a session that
@@ -1910,10 +2284,15 @@ int main(int argc, char **argv) {
     IRVoxelEditor::g_sessionId =
         IRVoxelEditor::Session::idFromName(IREngine::args().getEnum("--gui-session"));
     if (IRVoxelEditor::g_sessionId != IRVoxelEditor::Session::Id::NONE) {
+        const IRVoxelEditor::Session::ModuleSessionSpec moduleSpec =
+            IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::MODULE_LOADED
+                ? IRVoxelEditor::resolveModuleSessionSpec()
+                : IRVoxelEditor::Session::ModuleSessionSpec{};
         IRVoxelEditor::g_session = IRVoxelEditor::Session::build(
             IRVoxelEditor::g_sessionId,
             IRVoxelEditor::g_editableSceneSize,
-            IRVoxelEditor::g_editableSceneOrigin
+            IRVoxelEditor::g_editableSceneOrigin,
+            moduleSpec
         );
         if (!IRVoxelEditor::g_session.ok()) {
             for (const std::string &error : IRVoxelEditor::g_session.errors_)
@@ -1933,6 +2312,8 @@ int main(int argc, char **argv) {
     initSystems();
     initCommands();
     initEntities();
+    if (!IRVoxelEditor::initModuleUi())
+        return 2;
     IREngine::gameLoop();
     return 0;
 }
@@ -2262,7 +2643,8 @@ void initSystems() {
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_layerPanel) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_bakePanel) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_bonePaint.bonePanel_) ||
-                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_skeletonPanel);
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_skeletonPanel) ||
+                              IRVoxelEditor::cursorOverModuleUi();
             if (!overWidget) {
                 const int n = static_cast<int>(IRVoxelEditor::g_editor.paletteSwatches_.size());
                 for (int i = 0; i < n; ++i) {
@@ -2721,6 +3103,16 @@ void initSystems() {
         }
     );
 
+    // RECIPES panel: a list click re-targets the parameter sliders, APPLY
+    // writes the selected recipe's cells. Runs after WIDGET_APPLY_LIST /
+    // WIDGET_APPLY_SLIDER so this frame's selection and values are committed.
+    auto recipesSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorRecipes",
+        [](const C_GuiElement &) {},
+        []() {},
+        []() { IRVoxelEditor::updateRecipesPanel(); }
+    );
+
     // Joint-authoring bind-pose sync (placement-vs-posing split). A
     // TRANSLATE_ARROW drag on a rig joint is authoring: recapture
     // the bind pose once at gesture end so bindPose_ tracks the authored
@@ -2869,6 +3261,7 @@ void initSystems() {
         {IRSystem::createSystem<IRSystem::INPUT_KEY_MOUSE>(),
          IRSystem::createSystem<IRSystem::HITBOX_MOUSE_TEST_GUI>(),
          IRSystem::createSystem<IRSystem::WIDGET_INPUT>(),
+         IRVoxelEditor::g_widgetLuaDispatchId,
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_SLIDER>(),
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_LIST>(),
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_TEXT_INPUT>(),
@@ -2877,6 +3270,7 @@ void initSystems() {
          layerSyncSystem,
          loftInputSystem,
          bakeSystem,
+         recipesSystem,
          paletteUpdateSystem,
          bonePaintUpdateSystem,
          placeEraseSystem,

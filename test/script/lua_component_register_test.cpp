@@ -849,4 +849,91 @@ TEST_F(LuaComponentTest, SingletonInteropsWithCppApi) {
     EXPECT_EQ(value.as<lua_Integer>(), 17);
 }
 
+// ---- Registry enumeration (IRComponent.list / luaTypedComponents) ---------
+
+class LuaComponentRegister : public LuaComponentTest {};
+
+TEST_F(LuaComponentRegister, ListEnumeratesLuaTypedComponents) {
+    IRScript::bindLuaType<IRComponents::C_ZoomLevel>(m_lua);
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        "IRComponent.register('Alpha', { count = 0, scale = { type = 'float', default = 1 } })\n"
+        "IRComponent.register('Beta', { flag = true })\n"
+        "local list = IRComponent.list()\n"
+        "local alphaTypes = {}\n"
+        "for _, f in ipairs(list[1].fields) do alphaTypes[f.name] = f.type end\n"
+        "return #list, list[1].name, #list[1].fields, list[2].name, #list[2].fields,\n"
+        "       list[2].fields[1].name, alphaTypes.count, alphaTypes.scale",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+    auto
+        [count, firstName, firstFields, secondName, secondFields, betaField, countType, scaleType] =
+            result.get<std::tuple<
+                int,
+                std::string,
+                int,
+                std::string,
+                int,
+                std::string,
+                std::string,
+                std::string>>();
+    EXPECT_EQ(count, 2);
+    EXPECT_EQ(firstName, "Alpha");
+    EXPECT_EQ(firstFields, 2);
+    EXPECT_EQ(secondName, "Beta");
+    EXPECT_EQ(secondFields, 1);
+    EXPECT_EQ(betaField, "flag");
+    EXPECT_EQ(countType, "int32");
+    EXPECT_EQ(scaleType, "float");
+
+    const auto &components = m_lua.luaTypedComponents();
+    ASSERT_EQ(components.size(), 2u);
+    EXPECT_EQ(components[0].name_, "Alpha");
+    EXPECT_EQ(components[0].componentId_, m_entity_manager.getComponentTypeByName("Alpha"));
+    EXPECT_EQ(components[1].name_, "Beta");
+    ASSERT_EQ(components[1].fields_.size(), 1u);
+    EXPECT_EQ(components[1].fields_[0].type_, IRScript::LuaFieldType::BOOL);
+    for (const auto &component : components) {
+        EXPECT_NE(component.name_, "C_ZoomLevel");
+    }
+}
+
+TEST_F(LuaComponentRegister, DuplicateNameRaises) {
+    auto &lua = m_lua.lua();
+    ASSERT_TRUE(lua.safe_script("IRComponent.register('Twice', { x = 0, y = 0 })").valid());
+    auto result =
+        lua.safe_script("IRComponent.register('Twice', { z = 0 })", sol::script_pass_on_error);
+    ASSERT_FALSE(result.valid());
+    const sol::error err = result;
+    EXPECT_NE(std::string{err.what()}.find("'Twice'"), std::string::npos);
+
+    const auto &components = m_lua.luaTypedComponents();
+    ASSERT_EQ(components.size(), 1u);
+    EXPECT_EQ(components[0].name_, "Twice");
+    EXPECT_EQ(components[0].fields_.size(), 2u);
+}
+
+TEST_F(LuaComponentRegister, CoexistenceOffRejectsCppBoundName) {
+    IRScript::bindLuaType<IRComponents::C_ZoomLevel>(m_lua);
+    auto &lua = m_lua.lua();
+    auto adopted = lua.safe_script(
+        "return IRComponent.register('C_ZoomLevel', {}) == IRComponent.C_ZoomLevel",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(adopted.valid()) << sol::error{adopted}.what();
+    EXPECT_TRUE(adopted.get<bool>());
+
+    m_lua.setCodegenCoexistence(false);
+    auto result = lua.safe_script(
+        "IRComponent.register('C_ZoomLevel', { weight = 1 })",
+        sol::script_pass_on_error
+    );
+    ASSERT_FALSE(result.valid());
+    const sol::error err = result;
+    EXPECT_NE(std::string{err.what()}.find("'C_ZoomLevel'"), std::string::npos);
+    EXPECT_NE(std::string{err.what()}.find("C++ component"), std::string::npos);
+    EXPECT_TRUE(m_lua.luaTypedComponents().empty());
+}
+
 } // namespace
