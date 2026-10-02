@@ -25,6 +25,7 @@ struct Scene {
 } scene;
 int findSystem(int name){return (name==COMPUTE_SUN_SHADOW?scene.compute:scene.shapes)?name:-1;}
 int uniforms[32]{},storage[32]{},binds=0,used=0,lookups=0,surfaceBinds=0;
+int scatterCanvasSize=-1;
 struct Buffer {
  int id;
  void bindBase(BufferTarget target,int slot){
@@ -62,7 +63,7 @@ template<class T> T* getNamedResource(const char* name){
 }
 }
 struct Axes {bool allocated;bool isAllocated()const{return allocated;}};
-struct Canvas {int size_=0;};
+struct Canvas {int size_=2568;};
 struct Adapter {
  Buffer *sunFrameBuf_=nullptr,*sunDepthBuf_=nullptr,*shapeProbeFrameBuf_=nullptr;
  Buffer *shapeProbeFallbackBuf_=nullptr,*shapeProducerFrameBuf_=nullptr;
@@ -97,9 +98,11 @@ int main(){
   for(bool allocated:{false,true})for(bool main:{false,true})for(bool present:{false,true}){
    Axes axes{allocated};adapter.perAxisCanvases_=present?&axes:nullptr;
    uniforms[29]=-29;storage[28]=-28;uniforms[23]=123;storage[25]=125;
+   scatterCanvasSize=-1;
    used=binds=surfaceBinds=0;adapter.draw(main&&canvas?scene.canvas:9);
    const bool drawn=canvas&&main&&present&&allocated;
    if(used!=(drawn?(expected?2:1):0)||binds!=(drawn&&expected?2:0)||surfaceBinds)return 4;
+   if(scatterCanvasSize!=(drawn?642:-1))return 24;
    if(uniforms[23]!=123||storage[25]!=125)return 5;
    if(!(drawn&&expected)&&(uniforms[29]!=-29||storage[28]!=-28))return 6;
   }
@@ -140,8 +143,10 @@ def adapter_source():
     if route is None:
         raise ValueError("missing main-canvas per-axis draw gate")
     return (HARNESS + "void resolve(){\n" + gates + resources + "}\n" + binding
-            + "\nvoid drawPerAxisScatter(int,Axes&,int,int){\n" + selection + "}\n"
+            + "\nvoid drawPerAxisScatter(int,Axes&,int mainCanvasSize,int){\n"
+            + "scatterCanvasSize=mainCanvasSize;\n" + selection + "}\n"
             + "void draw(int entity){int frameData=0,framebufferResolution=0;"
+            + "const int logicalCanvasSize=642;"
             + "Canvas triangleCanvasTextures;\n" + route[0] + "\n}}\n" + CASES)
 
 
@@ -170,6 +175,9 @@ class PerAxisProbeRoutingTest(unittest.TestCase):
             "lost_cache": (r"\bsunFrameBuf_\s*==\s*nullptr\b", "true"),
             "lost_cardinal_gate": (r"\bperAxisCanvases_\s*->\s*isAllocated\(\s*\)", "true"),
             "foreign_canvas": (r"\bentity\s*==\s*perAxisCanvasEntity_\s*&&\s*", ""),
+            "backing_extent": (
+                r"(\bframeData\s*,\s*\*perAxisCanvases_\s*,\s*)logicalCanvasSize\b",
+                r"\g<1>triangleCanvasTextures.size_"),
         }
         for name, mutation in variants.items():
             with self.subTest(variant=name), tempfile.TemporaryDirectory() as tmp:
@@ -189,6 +197,8 @@ class PerAxisProbeRoutingTest(unittest.TestCase):
                 run = subprocess.run([str(executable)], capture_output=True, text=True)
                 if name == "production":
                     self.assertEqual(run.returncode, 0, run.stderr)
+                elif name == "backing_extent":
+                    self.assertEqual(run.returncode, 24, run.stderr)
                 else:
                     self.assertIn(run.returncode, (1, 2, 3, 4, 5, 6, 7, 20, 21, 22, 23, 24))
 
