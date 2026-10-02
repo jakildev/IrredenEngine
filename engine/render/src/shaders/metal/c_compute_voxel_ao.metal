@@ -42,6 +42,33 @@ struct FrameDataSun {
     float sunMaxShadowThrow;  // unused here (receiver-only)
 };
 
+// Mirrors singleCanvasPixelToWorld3D in c_compute_voxel_ao.glsl: a residual
+// yaw needs the smooth-yaw inverse on the single canvas.
+inline float3 singleCanvasPixelToWorld3D(
+    constant FrameDataVoxelToTrixel &frameData,
+    int2 pixel,
+    int rawDepth,
+    int cardinalIndex
+) {
+    return frameData.residualYaw != 0.0
+        ? trixelCanvasPixelToWorld3DSmoothYaw(
+              pixel,
+              rawDepth,
+              frameData.trixelCanvasOffsetZ1,
+              frameData.frameCanvasOffset,
+              frameData.voxelRenderOptions,
+              frameData.visualYaw
+          )
+        : trixelCanvasPixelToWorld3D(
+              pixel,
+              rawDepth,
+              frameData.trixelCanvasOffsetZ1,
+              frameData.frameCanvasOffset,
+              frameData.voxelRenderOptions,
+              cardinalIndex
+          );
+}
+
 kernel void c_compute_voxel_ao(
     constant FrameDataVoxelToTrixel &frameData [[buffer(7)]],
     constant FrameDataSun &sunFrameData [[buffer(29)]],
@@ -99,21 +126,14 @@ kernel void c_compute_voxel_ao(
     int rawDepth = decodeDepthRoute(encoded, frameData.perAxisRoute);
     int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
     // A per-axis canvas stores the world frame face-locally (perAxisRoute != 0),
-    // recovered via isoPixelToPos3D; the single canvas uses the cardinal-snap
-    // reconstruction.
+    // recovered via isoPixelToPos3D; the single canvas stores an iso pixel
+    // recovered by singleCanvasPixelToWorld3D.
     bool perAxis = frameData.perAxisRoute != 0;
     float3 pos3D = perAxis
         ? perAxisCellToWorld3DSubCell(
             pixel, encoded, faceId, frameData.perAxisStoreFrame
         )
-        : trixelCanvasPixelToWorld3D(
-              pixel,
-              rawDepth,
-              frameData.trixelCanvasOffsetZ1,
-              frameData.frameCanvasOffset,
-              frameData.voxelRenderOptions,
-              cardinalIndex
-          );
+        : singleCanvasPixelToWorld3D(frameData, pixel, rawDepth, cardinalIndex);
 
     // World-frame outward normal + in-plane tangents for the camera-visible
     // face this pixel rendered. Tangents are rotated through R_z(-rasterYaw)
@@ -173,13 +193,8 @@ kernel void c_compute_voxel_ao(
                 samplePixel, neighbourEncoded, neighbourFaceId, frameData.perAxisStoreFrame
             );
         } else {
-            neighbourPos3D = trixelCanvasPixelToWorld3D(
-                samplePixel,
-                neighbourRawDepth,
-                frameData.trixelCanvasOffsetZ1,
-                frameData.frameCanvasOffset,
-                frameData.voxelRenderOptions,
-                cardinalIndex
+            neighbourPos3D = singleCanvasPixelToWorld3D(
+                frameData, samplePixel, neighbourRawDepth, cardinalIndex
             );
         }
 
@@ -204,13 +219,8 @@ kernel void c_compute_voxel_ao(
                 int beyondEncoded = trixelDistances.read(uint2(beyondPixel)).x;
                 if (beyondEncoded < kEmpty && decodeSlot(beyondEncoded) == slot &&
                     decodeFlipSingle(beyondEncoded) == flip) {
-                    float3 beyondPos3D = trixelCanvasPixelToWorld3D(
-                        beyondPixel,
-                        decodeDepthSingle(beyondEncoded),
-                        frameData.trixelCanvasOffsetZ1,
-                        frameData.frameCanvasOffset,
-                        frameData.voxelRenderOptions,
-                        cardinalIndex
+                    float3 beyondPos3D = singleCanvasPixelToWorld3D(
+                        frameData, beyondPixel, decodeDepthSingle(beyondEncoded), cardinalIndex
                     );
                     if (dot(beyondPos3D - pos3D, worldOutward) > kAOStaircaseStepHeight) continue;
                 }

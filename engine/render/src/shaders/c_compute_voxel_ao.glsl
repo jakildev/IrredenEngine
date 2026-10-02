@@ -105,6 +105,20 @@ layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
 const uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
 const uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
 
+// The single canvas holds continuous-yaw SDF/text depth at a residual yaw
+// (voxels move to the per-axis canvases), so it needs the smooth-yaw inverse,
+// like the sun-shadow, lighting and fog receivers; the cardinal inverse would
+// return residual-rotated positions that read a flat face as creased.
+vec3 singleCanvasPixelToWorld3D(ivec2 pixel, int rawDepth, int cardinalIndex) {
+    return residualYaw != 0.0
+        ? trixelCanvasPixelToWorld3DSmoothYaw(
+              pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, visualYaw
+          )
+        : trixelCanvasPixelToWorld3D(
+              pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, cardinalIndex
+          );
+}
+
 void main() {
     const ivec2 size = imageSize(trixelDistances);
     ivec2 pixel;
@@ -155,14 +169,12 @@ void main() {
     int rawDepth = decodeDepthRoute(encoded, perAxisRoute);
     int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
     // A per-axis canvas stores the world frame face-locally (perAxisRoute != 0),
-    // so recover world-pos via isoPixelToPos3D; the single canvas stores the
-    // cardinal-snapped iso pixel, recovered via trixelCanvasPixelToWorld3D.
+    // so recover world-pos via isoPixelToPos3D; the single canvas stores an
+    // iso pixel recovered by singleCanvasPixelToWorld3D.
     bool perAxis = perAxisRoute != 0;
     vec3 pos3D = perAxis
         ? perAxisCellToWorld3DSubCell(pixel, encoded, faceId, perAxisStoreFrame)
-        : trixelCanvasPixelToWorld3D(
-              pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, cardinalIndex
-          );
+        : singleCanvasPixelToWorld3D(pixel, rawDepth, cardinalIndex);
 
     // World-frame outward normal + in-plane tangents for the camera-visible
     // face this pixel rendered. The tangent step is rotated through
@@ -223,10 +235,7 @@ void main() {
         if (perAxis) {
             neighbourPos3D = perAxisCellToWorld3DSubCell(samplePixel, neighbourEncoded, neighbourFaceId, perAxisStoreFrame);
         } else {
-            neighbourPos3D = trixelCanvasPixelToWorld3D(
-                samplePixel, neighbourRawDepth, trixelCanvasOffsetZ1,
-                frameCanvasOffset, voxelRenderOptions, cardinalIndex
-            );
+            neighbourPos3D = singleCanvasPixelToWorld3D(samplePixel, neighbourRawDepth, cardinalIndex);
         }
 
         vec3 separation = neighbourPos3D - pos3D;
@@ -262,9 +271,8 @@ void main() {
                 // a flipped cell one step beyond is not the receiver's surface.
                 if (beyondEncoded < kEmpty && decodeSlot(beyondEncoded) == slot &&
                     decodeFlipSingle(beyondEncoded) == flip) {
-                    vec3 beyondPos3D = trixelCanvasPixelToWorld3D(
-                        beyondPixel, decodeDepthSingle(beyondEncoded), trixelCanvasOffsetZ1,
-                        frameCanvasOffset, voxelRenderOptions, cardinalIndex
+                    vec3 beyondPos3D = singleCanvasPixelToWorld3D(
+                        beyondPixel, decodeDepthSingle(beyondEncoded), cardinalIndex
                     );
                     if (dot(beyondPos3D - pos3D, worldOutward) > kAOStaircaseStepHeight) continue;
                 }
