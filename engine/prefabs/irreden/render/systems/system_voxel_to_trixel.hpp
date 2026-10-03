@@ -149,8 +149,12 @@ inline const std::vector<std::uint32_t> &buildChunkVisibilityMask(
 // (shared with COMPUTE_VOXEL_AO + LIGHTING_TO_TRIXEL, which re-author the
 // iterating canvas's frame data per dispatch for re-voxelized canvases).
 
-inline void syncEntityIds(C_VoxelPool &pool, int liveCount, Buffer *entityIdBuf) {
-    if (!pool.isEntityIdsDirty()) {
+// Every pool canvas rasters through the one entity-id buffer, so a pool whose
+// ids are unchanged still re-uploads when another canvas wrote the buffer
+// since this one did (@p bufferHoldsPool false).
+inline void
+syncEntityIds(C_VoxelPool &pool, int liveCount, Buffer *entityIdBuf, bool bufferHoldsPool) {
+    if (bufferHoldsPool && !pool.isEntityIdsDirty()) {
         return;
     }
     entityIdBuf->subData(0, liveCount * sizeof(IREntity::EntityId), pool.getEntityIds().data());
@@ -383,6 +387,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     Buffer *voxelColorBuf_ = nullptr;
     Buffer *voxelActiveMaskBuf_ = nullptr;
     Buffer *voxelEntityIdBuf_ = nullptr;
+    // The canvas whose pool ids voxelEntityIdBuf_ last received.
+    IREntity::EntityId voxelEntityIdBufCanvas_ = IREntity::kNullEntity;
     Buffer *chunkVisBuf_ = nullptr;
     Buffer *indirectBuf_ = nullptr;
     Buffer *compactedBuf_ = nullptr;
@@ -1838,7 +1844,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 );
             }
         }
-        syncEntityIds(voxelPool, liveVoxelCount, voxelEntityIdBuf_);
+        syncEntityIds(
+            voxelPool,
+            liveVoxelCount,
+            voxelEntityIdBuf_,
+            voxelEntityIdBufCanvas_ == entity
+        );
+        voxelEntityIdBufCanvas_ = entity;
         // Per-axis scatter owns the main canvas's voxel geometry during smooth
         // yaw; the single canvas retains only shapes and overlays. The caster
         // must use the same position quantization as the active raster path.
