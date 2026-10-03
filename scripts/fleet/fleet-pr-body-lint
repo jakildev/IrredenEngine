@@ -253,18 +253,22 @@ def issue_evidence_lines(body, issue_number, closing_numbers):
 
 def evidence_rows(body, issue_number, closing_numbers):
     rows = 0
-    saw_header = False
+    previous = None
+    in_table = False
     for line in issue_evidence_lines(body, issue_number, closing_numbers):
         cells = split_table_row(line)
         if not cells:
+            previous = None
+            in_table = False
             continue
         if is_separator(cells):
+            # The row above a separator is the header, whatever its cells say.
+            in_table = previous is not None
+            previous = None
             continue
-        if cells[0].strip().lower() == "criterion":
-            saw_header = True
-            continue
-        if saw_header and cells[0].strip():
+        if in_table and cells[0].strip():
             rows += 1
+        previous = cells
     return rows
 
 
@@ -302,18 +306,41 @@ def validate_snapshot(data, issue_number):
     return data
 
 
-def fetch_issue(issue_number, repo):
+def fetch_issue_record(issue_number, repo):
     # REST only: the GraphQL pool is the one that runs dry under fleet load,
     # and this lint gates every PR publication.
     gh = shutil.which("gh") or "gh"
     try:
-        issue_result = subprocess.run(
+        result = subprocess.run(
             [gh, "api", f"repos/{repo}/issues/{issue_number}"],
             capture_output=True,
             text=True,
             check=True,
             timeout=20,
         )
+        issue = json.loads(result.stdout)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
+        raise LintInputError(f"GitHub issue fetch failed: {exc}") from exc
+    if not isinstance(issue, dict):
+        raise LintInputError("GitHub issue fetch returned an invalid shape")
+    return issue
+
+
+def reject_pull_request(issue_number, issue, closings):
+    # The issues endpoint answers for a PR number too, with a `pull_request` key.
+    if "pull_request" not in issue:
+        return
+    named = ", ".join(f"#{number}" for number in closings)
+    hint = f" (this body closes {named})" if named else ""
+    raise LintInputError(
+        f"#{issue_number} is a pull request, not an issue; "
+        f"pass the issue number from its Closes line{hint}"
+    )
+
+
+def fetch_issue(issue_number, repo, issue):
+    gh = shutil.which("gh") or "gh"
+    try:
         comments_result = subprocess.run(
             [
                 gh,
@@ -327,12 +354,9 @@ def fetch_issue(issue_number, repo):
             check=True,
             timeout=20,
         )
-        issue = json.loads(issue_result.stdout)
         pages = json.loads(comments_result.stdout)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
         raise LintInputError(f"GitHub issue fetch failed: {exc}") from exc
-    if not isinstance(issue, dict):
-        raise LintInputError("GitHub issue fetch returned an invalid shape")
     # REST sends an empty body as null.
     data = {
         "number": issue.get("number"),
@@ -346,13 +370,18 @@ def fetch_issue(issue_number, repo):
     return validate_snapshot(data, issue_number)
 
 
-def read_body(args):
-    if args.body_file:
-        try:
-            return Path(args.body_file).read_text(encoding="utf-8")
-        except OSError as exc:
-            raise LintInputError(f"cannot read PR body: {exc}") from exc
-    return sys.stdin.read()
+def read_body(body_file):
+    # Stdin is opt-in: an agent shell's stdin is an open pipe that never
+    # reaches EOF, so an implicit read hangs instead of failing.
+    if body_file == "-":
+        body = sys.stdin.read()
+        if not body.strip():
+            raise LintInputError("PR body from stdin is empty")
+        return body
+    try:
+        return Path(body_file).read_text(encoding="utf-8")
+    except OSError as exc:
+        raise LintInputError(f"cannot read PR body: {exc}") from exc
 
 
 def main():
@@ -361,10 +390,15 @@ def main():
     )
     parser.add_argument("issue_number", type=int)
     parser.add_argument("--repo", default="engine")
-    parser.add_argument("--body-file")
+    parser.add_argument(
+        "--body-file", metavar="PATH|-", help="drafted PR body file; '-' reads it from stdin"
+    )
     parser.add_argument("--issue-json")
     parser.add_argument("--write-issue-json")
     args = parser.parse_args()
+
+    if not args.body_file:
+        parser.error("--body-file PATH|- is required (stdin is read only via --body-file -)")
 
     if args.issue_json and args.write_issue_json:
         parser.error("--issue-json and --write-issue-json are mutually exclusive")
@@ -377,8 +411,18 @@ def main():
         parser.error("--repo must be engine, game, or owner/repo")
 
     try:
-        body = read_body(args)
+        body = read_body(args.body_file)
         closings = closing_issues(body)
+        issue_record = None
+        if not args.issue_json:
+            try:
+                issue_record = fetch_issue_record(args.issue_number, repo)
+            except LintInputError:
+                # The SKIP arm was fail-open before the PR-number check.
+                if args.issue_number in closings:
+                    raise
+        if issue_record is not None:
+            reject_pull_request(args.issue_number, issue_record, closings)
         if args.issue_number not in closings:
             print(f"SKIP #{args.issue_number}: no standalone Closes line")
             return 0
@@ -389,7 +433,7 @@ def main():
                 raise LintInputError(f"cannot read issue JSON: {exc}") from exc
             issue = validate_snapshot(snapshot, args.issue_number)
         else:
-            issue = fetch_issue(args.issue_number, repo)
+            issue = fetch_issue(args.issue_number, repo, issue_record)
             if args.write_issue_json:
                 try:
                     Path(args.write_issue_json).write_text(

@@ -416,6 +416,21 @@ out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high sonne
 grep -q -- '^review-release 3074 worker-1$' "$FLEET_CLAIM_LOG" \
   && ok "resume: review target released via review-release under the basename" \
   || bad "resume: no review-release call: $(cat "$FLEET_CLAIM_LOG")"
+
+echo "T10e: a resume dispatched on its own sidecar's target keeps the assignment"
+# The dispatcher's abandon pin re-dispatches the abandoned target to the pane
+# whose sidecar resumes it; that claim is the resumed session's to finish.
+printf '{"session_id":"SID-80","role":"worker","model":"sonnet","effort":"high","target":"feedback:engine:3763","created_epoch":1}\n' > "$SIDECAR"
+: > "$FLEET_CLAIM_LOG"
+out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high worker "" live "target=feedback:engine:3763" 2>/dev/null)
+[[ "$out" == resumed=1* && "$out" == *" target=feedback:engine:3763 "* ]] \
+  && ok "matching target: resumed with the target still exported" || bad "matching target handling: $out"
+assert_eq "$(cat "$FLEET_CLAIM_LOG")" "" "matching target: no release invoked"
+: > "$FLEET_CLAIM_LOG"
+out=$(cd "$WT" && FLEET_DISPATCH_PRINT_LAUNCH=1 "$WRAP" pane-3 sonnet high worker "" live "target=feedback:engine:4012" 2>/dev/null)
+grep -q -- '^amending-release 4012 worker-1$' "$FLEET_CLAIM_LOG" \
+  && ok "control: a different target is still released" \
+  || bad "control: no amending-release for the mismatched target: $(cat "$FLEET_CLAIM_LOG")"
 unset FLEET_CLAIM_LOG
 rm -f "$SIDECAR"
 

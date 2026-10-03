@@ -28,6 +28,14 @@ template <> struct System<REBUILD_DETACHED_VOXELS> {
         if (liveCount <= 0) {
             return; // pool not filled yet — try again next frame
         }
+        if (pool.hostsCellGroups()) {
+            // Hosted parts turn about their own origins and translate inside
+            // the canvas, so no per-set extent bounds them; the pool's authored
+            // extent is the union the canvas was sized for. Each hosted set's
+            // own centering is asserted where its group is seeded.
+            pool.setStaticReVoxelizeBound(IRMath::vec3(pool.getVoxelPoolSize3D()) * 0.5f);
+            return;
+        }
 
         const std::vector<IRRender::VoxelGpuPosition> &localPositions = pool.getPositions();
         const std::vector<IRMath::vec3> &localOffsets = pool.getPositionOffsets();

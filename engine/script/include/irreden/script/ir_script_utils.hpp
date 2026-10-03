@@ -3,6 +3,9 @@
 #include <irreden/ir_math.hpp>
 #include <sol/sol.hpp>
 
+#include <functional>
+#include <utility>
+
 namespace IRScript {
 
 // Every helper below matches its concrete usertype FIRST, then the EXACT Lua
@@ -170,5 +173,27 @@ inline IRMath::vec4 quatFromLua(sol::object obj) {
     }
     return {0.0f, 0.0f, 0.0f, 1.0f};
 }
+
+namespace detail {
+
+/// Wraps a capturing callable as a `std::function` before it is bound to a Lua
+/// key. Use it for every bound callable whose captures have a non-trivial
+/// destructor (`std::function`, `std::shared_ptr`, containers).
+///
+/// sol2 stores a stateful functor as userdata and finds its `__gc` finalizer
+/// in a metatable keyed by the demangled type name, reusing the first
+/// metatable registered under a name. GCC names a lambda
+/// `Enclosing(args)::<lambda(params)>` with no discriminator, so two capturing
+/// lambdas with one parameter list in one function share a name, and the
+/// second one's captures are destroyed as the first one's type at `lua_close`.
+/// After wrapping, equal names mean equal `std::function` types, so the shared
+/// finalizer is always the right one. Captureless lambdas bind as function
+/// pointers, and trivially destructible captures need no finalizer, so neither
+/// needs this. CTAD needs a single non-template `operator()`.
+template <typename F> auto statefulLuaFunction(F &&fn) {
+    return std::function{std::forward<F>(fn)};
+}
+
+} // namespace detail
 
 } // namespace IRScript

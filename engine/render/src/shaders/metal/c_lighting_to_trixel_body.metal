@@ -199,6 +199,9 @@ kernel void IR_LIGHTING_KERNEL_NAME(
         worldReceivePos = rotateByQuat(worldReceivePos, frameData.detachedViewToWorld)
                         + voxelFrameData.detachedWorldReceive.xyz;
         worldNormal = rotateByQuat(worldNormal, frameData.detachedViewToWorld);
+    } else if (detachedCanvas && voxelFrameData.visibleFaceIds.w != 0) {
+        // Resampled cells sit in the canvas's view frame; the sun is a world direction.
+        worldNormal = rotateByQuat(worldNormal, frameData.detachedViewToWorld);
     }
 
     // World receiver relative to its canvas raster origin, encoded over [-2, 2].

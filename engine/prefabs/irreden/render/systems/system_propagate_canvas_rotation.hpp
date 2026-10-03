@@ -6,24 +6,26 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/render/camera.hpp>
 
-#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
+#include <irreden/render/canvas_pose.hpp>
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
 
 // PROPAGATE_CANVAS_ROTATION — UPDATE pipeline.
 //
 // Composes the inverse world-camera rotation with each DETACHED entity's
-// `C_LocalTransform` rotation and writes the result onto the per-entity
-// canvas as `C_CanvasLocalRotation`, so the RENDER pipeline's
+// WORLD rotation and writes the result onto the per-entity canvas as
+// `C_CanvasLocalRotation`, so the RENDER pipeline's
 // VOXEL_TO_TRIXEL_STAGE_1 bakes the result into the canvas's voxel emit
-// via IRMath::faceDeformationMatrixSO3. The camera composition
-// cancels the camera basis the world canvas already applies to
-// the composited per-entity canvas, so a DETACHED entity at identity
-// rotation stays stationary in camera-space as the world camera spins
-// — matching GRID-mode behavior. The camera surface is just Z-yaw today;
-// a full SO(3) camera implementation would flow through
+// via IRMath::faceDeformationMatrixSO3. The world rotation, not the local
+// one: a detached child under a rotating parent must turn with the parent,
+// exactly as its composited translation already follows the parent. The
+// camera composition cancels the camera basis the world canvas already
+// applies to the composited per-entity canvas, so a DETACHED entity at
+// identity rotation stays stationary in camera-space as the world camera
+// spins — matching GRID-mode behavior. The camera surface is just Z-yaw
+// today; a full SO(3) camera implementation would flow through
 // `IRPrefab::Camera::getRotationQuat()`.
 //
 // The canvas child carries `C_CanvasLocalRotation` (attached at creation
@@ -33,7 +35,8 @@
 // reaches them through the rasterYaw / faceDeform residual path).
 //
 // Register in the UPDATE pipeline after PROPAGATE_TRANSFORM; it must run
-// before the RENDER pipeline reads the value.
+// before PROPAGATE_CANVAS_PARTS and before the RENDER pipeline reads the
+// value.
 
 namespace IRSystem {
 
@@ -48,60 +51,34 @@ template <> struct System<PROPAGATE_CANVAS_ROTATION> {
     }
 
     void tick(
-        const IRComponents::C_LocalTransform &localTransform,
         const IRComponents::C_WorldTransform &worldTransform,
         const IRComponents::C_RotationMode &rotationMode,
         const IRComponents::C_EntityCanvas &entityCanvas
     ) {
-        // Both detached strategies need the camera-composed rotation on the
-        // canvas: DETACHED bakes it as a per-face SO(3) deform, DETACHED_REVOXELIZE
-        // bakes it into the private pool's cell positions
-        // (SYSTEM_REBUILD_DETACHED_VOXELS). GRID is skipped (the camera basis
-        // reaches it through the rasterYaw / faceDeform residual path).
-        const bool reVoxelize =
-            rotationMode.mode_ == IRComponents::RotationMode::DETACHED_REVOXELIZE;
-        if (rotationMode.mode_ != IRComponents::RotationMode::DETACHED && !reVoxelize) {
+        // GRID is skipped (the camera basis reaches it through the rasterYaw /
+        // faceDeform residual path); both detached strategies need the
+        // camera-composed pose on the canvas.
+        if (rotationMode.mode_ != IRComponents::RotationMode::DETACHED &&
+            rotationMode.mode_ != IRComponents::RotationMode::DETACHED_REVOXELIZE) {
             return;
         }
         auto canvasRotation = IREntity::getComponentOptional<IRComponents::C_CanvasLocalRotation>(
             entityCanvas.canvasEntity_
         );
         if (canvasRotation.has_value()) {
-            // Compose in camera space: apply entity rotation first, then
-            // un-rotate by the camera. When the world canvas later re-applies
-            // the camera basis to the composited per-entity canvas, the two
-            // camera factors cancel and only the entity rotation remains in
-            // camera-space — DETACHED entities track the world like GRID does.
-            canvasRotation.value()->rotation_ =
-                IRMath::quatMul(cameraRotationInverse_, localTransform.rotation_);
-            // Route the canvas to the re-voxelize render path (cardinal frame
-            // data + SYSTEM_REBUILD_DETACHED_VOXELS) vs the forward-scatter deform.
-            canvasRotation.value()->reVoxelize_ = reVoxelize;
-            // World placement defaults on;
-            // the canvas mirror is the inverse of the owner's screenLocked_
-            // opt-out: worldPlaced_ = !screenLocked_, set just below).
-            // Mirror the resolved world-placement + the world cell
-            // origin onto the canvas so the screen-space lighting passes
-            // (which iterate the canvas, not the owner) can recover each
-            // detached voxel's WORLD position and sample the shared world
-            // sun-shadow map + light volume (re-voxelize only — the
-            // forward-scatter branch of buildVoxelFrameData never publishes
-            // it). The rounding matches the composite depth offset
-            // (pos3DtoDistance(roundVec3HalfUp(translation))) so depth and
-            // receive stay on one convention. screenLocked_ → byte-identical
-            // overlay.
-            canvasRotation.value()->worldPlaced_ = !entityCanvas.screenLocked_;
-            canvasRotation.value()->castsWorldShadow_ =
-                !entityCanvas.screenLocked_ && entityCanvas.visible_;
-            canvasRotation.value()->worldCellOffset_ =
-                IRMath::vec3(IRMath::roundVec3HalfUp(worldTransform.translation_));
+            IRPrefab::CanvasPose::write(
+                *canvasRotation.value(),
+                cameraRotationInverse_,
+                worldTransform,
+                rotationMode.mode_,
+                entityCanvas
+            );
         }
     }
 
     static SystemId create() {
         return registerSystem<
             PROPAGATE_CANVAS_ROTATION,
-            IRComponents::C_LocalTransform,
             IRComponents::C_WorldTransform,
             IRComponents::C_RotationMode,
             IRComponents::C_EntityCanvas>("PropagateCanvasRotation");

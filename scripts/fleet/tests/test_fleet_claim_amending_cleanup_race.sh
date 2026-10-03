@@ -200,7 +200,7 @@ export PATH="$TMPROOT/bin:$PATH"
 reset_fixture() {
     rm -rf "$CLAIM_RUN" "${CLAIM_STATE}.lock" "$FLEET_AMEND_SNAPSHOTS_DIR"/* \
         "$FLEET_HEARTBEATS_DIR"/* "$FLEET_ORPHANS_DIR"/*
-    printf '%s\n' "fleet:wip" "$LABEL" > "$CLAIM_STATE"
+    printf '%s\n' "fleet:wip" "fleet:needs-fix" "$LABEL" > "$CLAIM_STATE"
     : > "$CLAIM_POST_LOG"
     : > "$REMOVED_LOG"
     printf '{"pr":%s,"agent":"%s","acquired_epoch":%s,"dispatch_id":"D1"}\n' \
@@ -344,7 +344,7 @@ fi
 
 echo "T5: a stale holder that resumes after its lock was stolen neither releases nor overrides the successor"
 reset_fixture
-printf '%s\n' "fleet:wip" > "$CLAIM_STATE"
+printf '%s\n' "fleet:wip" "fleet:needs-fix" > "$CLAIM_STATE"
 mkdir -p "$CLAIM_RUN"
 : > "$CLAIM_RUN/gate-remove"
 stalled_out="$TMPROOT/stalled.out"
@@ -420,7 +420,7 @@ rm -rf "$CLAIM_RUN"
 
 echo "T5b: a stale holder of ANOTHER agent that resumes after the successor finished drops its label"
 reset_fixture
-printf '%s\n' "fleet:wip" > "$CLAIM_STATE"
+printf '%s\n' "fleet:wip" "fleet:needs-fix" > "$CLAIM_STATE"
 mkdir -p "$CLAIM_RUN"
 : > "$CLAIM_RUN/gate-remove"
 OTHER=poolB
@@ -549,7 +549,7 @@ rm -rf "$CLAIM_RUN"
 echo "T7: a dead writer's dangling intent is retired by the next lock holder, never acted on"
 reset_fixture
 # The writer removed the label and died before retiring its intent.
-printf '%s\n' "fleet:wip" > "$CLAIM_STATE"
+printf '%s\n' "fleet:wip" "fleet:needs-fix" > "$CLAIM_STATE"
 dead_pid=$(bash -c 'echo $$')
 printf '{"pr":%s,"repo":"jakildev/IrredenEngine","label":"%s","pid":%s}\n' \
     "$PR" "$LABEL" "$dead_pid" > "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-dead-1-1"
@@ -728,7 +728,7 @@ rm -rf "$CLAIM_RUN" "$foreign_snap" "$TMPROOT/heartbeats-linux"
 
 echo "T11: an unreadable intent fails closed only inside the presumed-dead bound; past it the next holder retires it"
 reset_fixture
-printf '%s\n' "fleet:wip" > "$CLAIM_STATE"
+printf '%s\n' "fleet:wip" "fleet:needs-fix" > "$CLAIM_STATE"
 : > "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-torn-1-1"
 rc=0
 FLEET_DISPATCH_ID=D4 "$FLEET_CLAIM" amending-claim "$PR" "$AGENT" > "$claim_out" 2>&1 || rc=$?
@@ -736,11 +736,11 @@ assert_eq "$rc" "1" "a fresh unreadable intent refuses the claim"
 assert_contains "$(cat "$claim_out")" "unreadable intent" "the refusal names it"
 if grep -qxF "$LABEL" "$CLAIM_STATE"; then bad "the refused claim posted its label"; else ok "the refused claim posted nothing"; fi
 [[ -f "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-torn-1-1" ]] && ok "the fresh unreadable intent is kept" || bad "the fresh unreadable intent was deleted"
-printf '%s\n' "fleet:wip" "$LABEL" > "$CLAIM_STATE"
+printf '%s\n' "fleet:wip" "fleet:needs-fix" "$LABEL" > "$CLAIM_STATE"
 STUB_AGE=2000 "$FLEET_CLAIM" cleanup --gh --repo jakildev/IrredenEngine > "$cleanup_out" 2>&1 || true
 assert_contains "$(cat "$cleanup_out")" "still in flight" "cleanup skips the label under an unreadable intent"
 if label_present; then ok "cleanup left the label alone"; else bad "cleanup swept under an unreadable intent"; fi
-printf '%s\n' "fleet:wip" > "$CLAIM_STATE"
+printf '%s\n' "fleet:wip" "fleet:needs-fix" > "$CLAIM_STATE"
 touch -t 202001010000 "$FLEET_AMEND_SNAPSHOTS_DIR/$PR.sweep-torn-1-1"
 rc=0
 FLEET_DISPATCH_ID=D4 "$FLEET_CLAIM" amending-claim "$PR" "$AGENT" > "$claim_out" 2>&1 || rc=$?

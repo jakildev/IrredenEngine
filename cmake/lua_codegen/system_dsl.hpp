@@ -337,6 +337,11 @@ struct Intrinsic {
     // collects the union of these across a codegen run. nullptr → declared by
     // an always-included core header (ir_math.hpp etc.).
     const char *requiredInclude_ = nullptr;
+
+    // Value-returning intrinsics type their result as float unless this is
+    // set; an integer engine read (`IRRender.getActiveLodTier()`) sets it so
+    // the result compares and stores as int32 without a float round-trip.
+    bool returnsInt32_ = false;
 };
 
 const std::vector<Intrinsic> &intrinsicRegistry();

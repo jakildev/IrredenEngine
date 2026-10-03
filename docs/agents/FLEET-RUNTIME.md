@@ -27,11 +27,13 @@ item is the whole iteration: skip the cache read and every candidate scan
 and go to the step your role's kind table names; claim nothing else (if
 the item falls through, the dispatcher elects the next one); check
 `~/.fleet/state/handoff/<kind>-<repo>-<N>.md` first and follow it.
-Re-taking your own label claim (`fleet-pr-claim-feedback`, `review-claim`)
-is a no-op even if another lane's label appeared after yours — the incumbent
-keeps the item — while `fleet-claim claim` on your assigned task would fail
-because its FS lock is already yours. Release as the lane's steps say, under
-your basename. New label admission uses [`FLEET.md § Claims`](FLEET.md#claims)'s bounded two-read contract. If you cannot work it
+Re-taking your own review claim is a no-op even if another lane's label
+appeared after yours — the incumbent keeps the item. Re-taking an amend claim
+first re-checks the live worker feedback tier and park state; refusal leaves
+the existing label untouched, and the dispatched worker declines the target.
+`fleet-claim claim` on your assigned task would fail because its FS lock is
+already yours. Release as the lane's steps say, under your basename. New label
+admission uses [`FLEET.md § Claims`](FLEET.md#claims)'s bounded two-read contract. If you cannot work it
 (needs a host you are not on,
 labels moved, a `Blocked by:` is live again, the verdict already stands):
 

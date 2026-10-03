@@ -3,6 +3,7 @@
 
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/script/ir_script_types.hpp>
+#include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
 
 #include <sol/sol.hpp>
@@ -241,22 +242,22 @@ bindFog(LuaScript &script, FogVisionTargetResolver resolveTarget = activeFogVisi
     sol::table fog =
         existing.get_type() == sol::type::table ? existing.as<sol::table>() : lua.create_table();
 
-    fog["setVision"] = [resolveTarget](sol::variadic_args args) {
+    fog["setVision"] = statefulLuaFunction([resolveTarget](sol::variadic_args args) {
         return applyFogVision(args, true, resolveTarget());
-    };
-    fog["addVision"] = [resolveTarget](sol::variadic_args args) {
+    });
+    fog["addVision"] = statefulLuaFunction([resolveTarget](sol::variadic_args args) {
         return applyFogVision(args, false, resolveTarget());
-    };
-    fog["setVisionLineOfSight"] = [resolveTarget](sol::variadic_args args) {
+    });
+    fog["setVisionLineOfSight"] = statefulLuaFunction([resolveTarget](sol::variadic_args args) {
         applyFogVisionLineOfSight(args, resolveTarget().observers_);
-    };
-    fog["clearVisions"] = [resolveTarget](sol::variadic_args args) {
+    });
+    fog["clearVisions"] = statefulLuaFunction([resolveTarget](sol::variadic_args args) {
         requireFogArity("clearVisions", args.size(), 0, 0);
         const FogVisionTarget target = resolveTarget();
         if (target.observers_ != nullptr) {
             IRComponents::C_CanvasFogOfWar::clearVisionCircles(*target.observers_, *target.field_);
         }
-    };
+    });
     fog["evalReveal"] = [](sol::variadic_args args) {
         requireFogArity("evalReveal", args.size(), 3, 3);
         return IRPrefab::Fog::evalActiveReveal(
@@ -279,13 +280,14 @@ bindFog(LuaScript &script, FogVisionTargetResolver resolveTarget = activeFogVisi
         );
     };
     auto lineOfSightView = std::make_shared<IRPrefab::Fog::LineOfSightView>();
-    fog["captureLineOfSight"] = [lineOfSightView](sol::variadic_args args) {
+    fog["captureLineOfSight"] = statefulLuaFunction([lineOfSightView](sol::variadic_args args) {
         requireFogArity("captureLineOfSight", args.size(), 0, 0);
         IRPrefab::Fog::captureLineOfSight(*lineOfSightView);
-    };
-    fog["lineOfSightCaptured"] = [lineOfSightView](sol::this_state state, sol::variadic_args args) {
-        return queryFogLineOfSightCaptured(state, args, *lineOfSightView);
-    };
+    });
+    fog["lineOfSightCaptured"] =
+        statefulLuaFunction([lineOfSightView](sol::this_state state, sol::variadic_args args) {
+            return queryFogLineOfSightCaptured(state, args, *lineOfSightView);
+        });
     fog["setEntityGoverned"] = [](sol::variadic_args args) {
         requireFogArity("setEntityGoverned", args.size(), 1, 2);
         const IREntity::EntityId entity = requireFogEntity(args[0], "setEntityGoverned", 0);

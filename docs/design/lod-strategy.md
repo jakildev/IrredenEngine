@@ -249,6 +249,9 @@ that possible without the creation re-deriving anything:
   as `IRRender.LodLevel.LOD_n`), bound in the shared render glue. It is a
   function rather than a component column because the tier is a singleton: a
   Lua system declaring it would iterate a one-row archetype to read one value.
+  A CODEGEN system reads it the same way — `IRRender.getActiveLodTier()` is a
+  whitelisted intrinsic lowered to `IRRender::getActiveLodTier()` in
+  `lod_utils.hpp`, the function the EVAL binding calls.
 - **An entity can pin its tier.** `C_LodTierOverride { tier_ }` makes the
   entity resolve to that tier at every zoom; removing it returns the entity to
   the camera's tier. Every consumer resolves through
@@ -277,10 +280,11 @@ no hysteresis; a creation's policy owns any debounce. `computeLodLevel`'s
 thresholds are unchanged. `lodVoxelScale` is removed: it had no callers, and
 sub-world voxel pitch is ruled out.
 
-Not persisted: `C_LodTierOverride` is save-opted-out (a policy output, the
-policy re-applies it), and a `C_VoxelSetNew` band is not in the set's
-serialized form — a reloaded set comes back on the default band until its
-author re-applies it.
+`C_VoxelSetNew` persists its authored `lodMin_` / `lodMax_` band in snapshot
+format version 3, so a reloaded set retains its inclusive LOD range.
+`C_LodTierOverride` stays save-opted-out because it is a policy output that
+the policy reapplies, and `lodCulled_` stays transient because the LOD gate
+recomputes it.
 
 The `shape_debug --lod-dense-swap` fixture (two co-located DENSE sets on
 disjoint bands) is the reference; render-verify covers it at zoom 2× / 8×, and
@@ -399,6 +403,12 @@ without a format break. Same escape hatch as `.vxs`.
 
 ## How this interacts with other systems
 
+- **Secondary viewports** (`docs/design/secondary-viewport.md`). A viewport
+  rasters its subject at its own camera's zoom-derived density
+  (`getVoxelRenderEffectiveSubdivisionsForZoom`), so a portrait at zoom 16 is
+  the finest tier while the world draws the same entity coarse. Its subjects'
+  DENSE bands are filtered at the viewport's own zoom-derived tier;
+  `C_LodTierOverride` pins the world's tier only and is not read there.
 - **Subdivision-count scaling** (`render_manager.cpp:240-253`). Existing
   per-zoom behavior: subdivision passes per voxel scale with
   `max(zoom.x, zoom.y)` in `SubdivisionMode::FULL`. This is orthogonal

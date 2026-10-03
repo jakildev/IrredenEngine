@@ -93,12 +93,11 @@ loop.
   `test/ecs/grid_rotation_test.cpp` whenever adding public grid-rotation math.
 - DETACHED entities bypass GRID rebuild and rotate through their canvas TRS.
   `REBUILD_DETACHED_VOXELS`, after `PROPAGATE_CANVAS_ROTATION`, only seeds the
-  pool's conservative origin-centered static bound once. The GPU compute owns
-  per-frame revoxelization and uses the same round-half-up inverse mapping as
-  CPU GRID rotation. The private pool must remain one centered set; a future
-  multi-set or off-origin design needs per-set pivots and bounds. The static
-  bound is rotation-independent, but the pool still culls when the camera
-  pans away from its canvas origin.
+  pool's rotation-independent static cull bound once; the GPU compute owns
+  per-frame revoxelization with the same round-half-up inverse mapping as CPU
+  GRID rotation. A pool resamples one CENTER set, or the cell groups
+  `PROPAGATE_CANVAS_PARTS` posts for its hosted parts, each about its own
+  origin ([design](../../../../docs/design/composite-entity-canvases.md)).
 - Temporal spin flicker is an accepted lattice-resampling limitation: occupied
   cells change discontinuously at half-integer crossings. Do not add sticky
   cells or hysteresis, which cache last-frame state as a dirty flag.
@@ -176,9 +175,9 @@ with `test/ecs/chunk_bounds_eviction_test.cpp` and
 - Runtime rotation-mode switches are staged structural operations. Entering a
   detached mode creates a private voxel-pool canvas sized from the set extent,
   re-stages the entity's single `C_VoxelSetNew`, and seeds it into that pool.
-  Leaving the detached family synchronously re-stages the same set onto the
-  named main canvas before destroying the private canvas; the teardown hook then
-  finds no resident set to recover.
+  Leaving the detached family synchronously re-homes every set on the private
+  canvas (the owner's and its parts') before destroying it; the teardown hook
+  then finds no resident set to recover.
   `DETACHED` ↔ `DETACHED_REVOXELIZE` retains the existing private pool.
 
 ## Entity-based joints

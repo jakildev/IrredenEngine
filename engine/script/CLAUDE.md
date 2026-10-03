@@ -98,7 +98,7 @@ Anything outside this DSL is a file:line build error:
   components of the same run; `C.new(...)`; arithmetic except `^`;
   comparisons; `and`/`or`/`not`; `if`; single-target `local`.
 - `kIntrinsicRegistry` (`cmake/lua_codegen/system_dsl.cpp`) intrinsics:
-  value-returning (`math.*` → `IRMath::*`) inside expressions only;
+  value-returning (`math.*`, `IRRender.getActiveLodTier`) inside expressions only;
   `isStatement_` setters (`IRRender.setSunIntensity`) as statements only.
 - No C++-bound component types, upvalues, metatables, dynamic dispatch,
   `require`, varargs, `nil`, `..`/`string.format`; use `mode = "eval"`.
@@ -152,8 +152,7 @@ voxel mutation is main-thread setup work, never `PARALLEL_FOR` tick work.
 
 ### IRFog
 
-`LuaScript::bindLuaFog()` installs the opt-in engine table, preserves custom
-keys, and stays separate from `bindLuaDrivenEcs()`.
+`LuaScript::bindLuaFog()` installs the opt-in table, keeping custom keys, apart from `bindLuaDrivenEcs()`.
 
 - `setVision` replaces sources; `addVision` appends (past the analytic cap, a plain XY
   disc in the field that `getCell` reads); `clearVisions` clears both. Defaults: `edge =
@@ -168,10 +167,8 @@ keys, and stays separate from `bindLuaDrivenEcs()`.
 - `setCell`, `getCell`, and `revealRadius` edit/query the grid; `clear()` clears
   only that grid. States are `UNEXPLORED`, `EXPLORED`, and `VISIBLE`.
 
-The tested examples are [`fog_binding_selftest.lua`](../../creations/demos/fog_demo/scripts/fog_binding_selftest.lua)
-and its [cap/governance companion](../../creations/demos/fog_demo/scripts/fog_binding_cap_selftest.lua).
-These are setup/EVAL APIs, not tick intrinsics. `setVisionLineOfSight(slot, eye[,
-softness])` gates a slot the vision calls returned; it needs `FOG_LOS_BUILD`.
+The tested examples are [`fog_binding_selftest.lua`](../../creations/demos/fog_demo/scripts/fog_binding_selftest.lua) and its [cap/governance companion](../../creations/demos/fog_demo/scripts/fog_binding_cap_selftest.lua).
+These are setup/EVAL APIs, not tick intrinsics. `setVisionLineOfSight(slot, eye[, softness])` gates a slot the vision calls returned; it needs `FOG_LOS_BUILD`.
 
 - **`IRModifier`:** `add*` writes `C_Modifiers`; resolved values need
   `registerResolverPipeline()` in UPDATE. Wrong types no-op; cache ids hot.
@@ -183,6 +180,8 @@ softness])` gates a slot the vision calls returned; it needs `FOG_LOS_BUILD`.
   `TEXT_TO_TRIXEL` / before `DEBUG_OVERLAY` respectively.
 - **Widgets:** Lua `onClick` raises unless `WIDGET_LUA_DISPATCH` follows
   `WIDGET_INPUT` in INPUT.
+- **`IRRender.createViewport` family:** `LuaScript::bindLuaViewport()`, opt-in like `IRFog`;
+  every setter takes the id `createViewport` returned ([design](../../docs/design/secondary-viewport.md)).
 
 ## Commands and input (`IRCommand.*`, `IRInput.*`)
 
@@ -201,10 +200,9 @@ need `canvas_size`; declarative components need `registerComponentFactoryFor`.
 
 ## Script output
 
-`LuaScript` binds `print` to `ScriptLog`: one flushed, timestamped line per call,
-arguments tab-joined verbatim and ordered with engine/client logs. Flushing is
-load-bearing under redirected stdout and signal death. `io.write` and a bare
-`sol::state` keep stock buffered behavior.
+`LuaScript` binds `print` to `ScriptLog`: one timestamped line per call, arguments
+tab-joined verbatim, ordered with engine/client logs, and flushed (load-bearing under
+redirected stdout and signal death). `io.write` and a bare `sol::state` stay buffered.
 
 ## Script resolution
 
@@ -218,3 +216,5 @@ cwd ([`BUILD.md`](../../docs/agents/BUILD.md) §"Running an executable").
   check the type first; `sol::object::is<sol::table>()` is true for userdata.
 - Batch-create factories must match C++ arity ([`cpp-ecs-smells.md`](../../.claude/rules/cpp-ecs-smells.md)).
 - `LuaScript` lifetime is absolute: its destruction invalidates every Lua handle.
+- Bind a lambda whose captures need destruction through `detail::statefulLuaFunction`
+  (`ir_script_utils.hpp`): sol2 keys `__gc` by type name, and GCC lambda names collide.

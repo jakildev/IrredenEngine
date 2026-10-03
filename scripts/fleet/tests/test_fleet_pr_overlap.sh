@@ -11,8 +11,9 @@
 #
 # Covers:
 #   1  two shared files whose only conflicting regions are adjacent lines and
-#      a same-line edit: exactly 2 rows, both conflicts, overlap, exit 1
-#   2  a clean intersection on a block tree: VERDICT block, exit 3
+#      a same-line edit: exactly 2 rows, both conflicts, block, exit 3
+#   2  clean and conflicting intersections on docs/agents/VALIDATION.md:
+#      clean is informational; conflicts block
 #   3  overlap without conflict (unchanged line between, and identical edits)
 #      is a clean row, overlap, exit 1 — never 0
 #   4  an unresolvable head and unrelated histories both land on exit 2
@@ -25,7 +26,7 @@
 #   8  --repo slug mismatch fails closed
 #   9  snapshot coherence: head moved, population moved, identical proceeds
 #   10 a stacked sibling's own delta excludes paths inherited from its base;
-#      the sibling's own edit to the same block-tree path still blocks
+#      its clean edit to the same docs path remains informational
 #   11 a competitor whose base is gone or unrelated drops a path whose blob
 #      already matches the caller's base tip, and keeps one that differs
 #   12 the missing-subject guard skips with exit 3 and no tally
@@ -262,7 +263,7 @@ g config "url.$ORIGIN.insteadOf" "https://github.com/$SLUG.git"
 
 write_file src/y.txt "$(numbered_file y)"
 write_file src/z.txt "$(numbered_file z)"
-write_file docs/agents/x.md "$(numbered_file x)"
+write_file docs/agents/VALIDATION.md "$(numbered_file x)"
 commit_all base
 g push -q origin HEAD:master
 MASTER=$(oid master)
@@ -282,26 +283,36 @@ publish_pr 101 pr-101
 g checkout -q feature-1
 pr_json "$TMP/prs-1.json" "$(pr_row 101 pr-101 master false - src/y.txt src/z.txt)"
 run_tool --pr-json "$TMP/prs-1.json"
-assert_rc 1 "T1 adjacent-line + same-line conflicts exit 1"
+assert_rc 3 "T1 adjacent-line + same-line conflicts exit 3"
 assert_eq "$(row_count)" "2" "T1 exactly 2 rows"
 assert_contains "$OUT" "#101 src/y.txt conflicts" "T1 adjacent-line file is conflicts"
 assert_contains "$OUT" "#101 src/z.txt conflicts" "T1 same-line file is conflicts"
-assert_eq "$(verdict_line)" "VERDICT: overlap" "T1 verdict overlap"
+assert_eq "$(verdict_line)" "VERDICT: block" "T1 verdict block"
 
-echo "=== 2: a clean intersection on a block tree ==="
+echo "=== 2: docs/agents/VALIDATION.md blocks only on a trial-merge conflict ==="
 branch_from feature-2 master
-edit_line docs/agents/x.md 25 "x line 25 ours"
+edit_line docs/agents/VALIDATION.md 25 "x line 25 ours"
 commit_all ours-2
 branch_from pr-102 master
-edit_line docs/agents/x.md 5 "x line 5 theirs"
+edit_line docs/agents/VALIDATION.md 5 "x line 5 theirs"
 commit_all theirs-102
 publish_pr 102 pr-102
 g checkout -q feature-2
-pr_json "$TMP/prs-2.json" "$(pr_row 102 pr-102 master false - docs/agents/x.md)"
+pr_json "$TMP/prs-2.json" "$(pr_row 102 pr-102 master false - docs/agents/VALIDATION.md)"
 run_tool --pr-json "$TMP/prs-2.json"
-assert_rc 3 "T2 block-tree overlap exits 3"
-assert_contains "$OUT" "#102 docs/agents/x.md clean" "T2 the row is clean"
-assert_eq "$(verdict_line)" "VERDICT: block" "T2 verdict block"
+assert_rc 1 "T2a a clean docs overlap exits 1"
+assert_contains "$OUT" "#102 docs/agents/VALIDATION.md clean" "T2a the row is clean"
+assert_eq "$(verdict_line)" "VERDICT: overlap" "T2a verdict overlap"
+branch_from pr-112 master
+edit_line docs/agents/VALIDATION.md 25 "x line 25 conflicting"
+commit_all theirs-112
+publish_pr 112 pr-112
+g checkout -q feature-2
+pr_json "$TMP/prs-2b.json" "$(pr_row 112 pr-112 master false - docs/agents/VALIDATION.md)"
+run_tool --pr-json "$TMP/prs-2b.json"
+assert_rc 3 "T2b a conflicting docs overlap exits 3"
+assert_contains "$OUT" "#112 docs/agents/VALIDATION.md conflicts" "T2b the row conflicts"
+assert_eq "$(verdict_line)" "VERDICT: block" "T2b verdict block"
 
 echo "=== 3: overlap without conflict is reported, never exit 0 ==="
 branch_from feature-3 master
@@ -408,20 +419,20 @@ assert_eq "$stub_rc" "1" "stub: an unknown --json field fails the way gh fails"
 echo "=== 6: self-identification and the same-head inversion ==="
 branch_from feature-6 master
 edit_line src/y.txt 3 "y line 3 ours"
-edit_line docs/agents/x.md 25 "x line 25 ours"
+edit_line docs/agents/VALIDATION.md 25 "x line 25 ours"
 commit_all ours-6
 g push -q origin "refs/heads/feature-6:refs/pull/108/head" "refs/heads/feature-6:refs/pull/109/head" "refs/heads/feature-6:refs/pull/110/head"
 pr_json "$TMP/prs-6.json" \
     "$(pr_row 108 feature-6 master false - src/y.txt)" \
     "$(pr_row 109 feature-6 master true - src/y.txt)" \
-    "$(pr_row 110 twin-branch master false - src/y.txt docs/agents/x.md)"
+    "$(pr_row 110 twin-branch master false - src/y.txt docs/agents/VALIDATION.md)"
 run_tool --pr-json "$TMP/prs-6.json"
-assert_rc 3 "T6 a same-head twin on a block tree exits 3"
+assert_rc 1 "T6 a same-head docs twin exits 1"
 assert_absent "$OUT" "#108" "T6 the same-repo row on the current branch is self, skipped"
 assert_contains "$OUT" "#109 src/y.txt clean (same head)" "T6 the cross-repo row on the same branch name is retained"
 assert_contains "$OUT" "#110 src/y.txt clean (same head)" "T6 the same-head twin prints its rows with the note"
-assert_contains "$OUT" "#110 docs/agents/x.md clean (same head)" "T6 the twin's block-tree row prints"
-assert_eq "$(verdict_line)" "VERDICT: block" "T6 verdict block"
+assert_contains "$OUT" "#110 docs/agents/VALIDATION.md clean (same head)" "T6 the twin's docs row prints"
+assert_eq "$(verdict_line)" "VERDICT: overlap" "T6 verdict overlap"
 pr_json "$TMP/prs-6b.json" "$(pr_row 108 feature-6 master false - src/y.txt)" "$(pr_row 110 feature-6 master false - src/y.txt)"
 run_tool --pr-json "$TMP/prs-6b.json"
 assert_rc 2 "T6b two same-repo rows on the current branch are ambiguous self"
@@ -436,11 +447,11 @@ edit_line src/y.txt 1 "y line 1 grandparent"
 commit_all grandparent
 publish_pr 203 g
 branch_from p g
-edit_line docs/agents/x.md 1 "x line 1 parent"
+edit_line docs/agents/VALIDATION.md 1 "x line 1 parent"
 commit_all parent
 publish_pr 201 p
 branch_from c p
-edit_line docs/agents/x.md 28 "x line 28 child"
+edit_line docs/agents/VALIDATION.md 28 "x line 28 child"
 edit_line src/z.txt 10 "z line 10 child"
 edit_line src/y.txt 30 "y line 30 child"
 commit_all child
@@ -459,19 +470,19 @@ publish_pr 205 pr-205
 g checkout -q c
 STACK_ROWS=(
     "$(pr_row 203 g master false - src/y.txt)"
-    "$(pr_row 201 p g false - docs/agents/x.md)"
+    "$(pr_row 201 p g false - docs/agents/VALIDATION.md)"
     "$(pr_row 202 q master false - src/z.txt)"
     "$(pr_row 205 pr-205 r false - src/w.txt)"
 )
 pr_json "$TMP/prs-7.json" "${STACK_ROWS[@]}"
 run_tool --pr-json "$TMP/prs-7.json" --base p
-assert_rc 1 "T7 a stack graded against its base exits 1"
-assert_contains "$OUT" "#201 docs/agents/x.md upstream" "T7 the parent is upstream"
+assert_rc 3 "T7 a conflicting stack competitor exits 3"
+assert_contains "$OUT" "#201 docs/agents/VALIDATION.md upstream" "T7 the parent is upstream"
 assert_contains "$OUT" "#203 src/y.txt upstream" "T7c the grandparent is upstream"
 assert_contains "$OUT" "#202 src/z.txt clean" "T7 the unrelated competitor is clean"
 assert_contains "$OUT" "#205 src/z.txt conflicts" "T7d the inherited-branch edit is found from git"
 assert_contains "$ERR" "#205 path set widened from git (2 paths; GitHub files 1 of 1, base r)" "T7d the widening is noted"
-assert_eq "$(verdict_line)" "VERDICT: overlap" "T7 upstream block-tree rows do not block"
+assert_eq "$(verdict_line)" "VERDICT: block" "T7 the non-upstream conflict blocks"
 run_tool --pr-json "$TMP/prs-7.json" --base master
 assert_rc 2 "T7b the accidental-fork condition exits 2"
 assert_contains "$ERR" "#201 (p) is in HEAD but not in --base master; pass --base p or rebase" "T7b the error names the parent and its branch"
@@ -496,14 +507,14 @@ git -C "$TMP/other" push -q origin "$R2_OID:refs/heads/master"
 assert_eq "$(oid origin/master)" "$MASTER" "T7e the local default ref is stale before the run"
 pr_json "$TMP/prs-7e.json" "$(pr_row 206 pr-206 r2 false - src/w2.txt)"
 run_tool --pr-json "$TMP/prs-7e.json" --base master
-assert_rc 1 "T7e a competitor on an absorbed branch is graded"
+assert_rc 3 "T7e a conflicting competitor on an absorbed branch blocks"
 assert_contains "$OUT" "#206 src/w2.txt conflicts" "T7e the competitor's own delta prints"
 assert_absent "$OUT" "#206 src/v.txt" "T7e the path already on the default branch is not reported"
 assert_contains "$ERR" "#206 path set widened from git (1 paths" "T7e the widened set has one path"
 echo "--- 7a: a stale stack base blocks ---"
 g checkout -q c
 branch_from p-amend p
-edit_line docs/agents/x.md 2 "x line 2 parent amended"
+edit_line docs/agents/VALIDATION.md 2 "x line 2 parent amended"
 commit_all parent-amended
 g push -q origin refs/heads/p-amend:refs/heads/p
 g checkout -q c
@@ -534,15 +545,15 @@ assert_rc 2 "T9a a head that differs from the snapshot exits 2"
 assert_contains "$ERR" "#103 head moved during the run ($(oid pr-104) → $(oid pr-103)); re-run" "T9a the error names both OIDs"
 assert_absent "$OUT" "VERDICT:" "T9a no verdict"
 reset_stub
-pr_json "$GH_STUB_DIR/prs.1.json" "$(pr_row 103 pr-103 master false - src/y.txt)" "$(pr_row 102 pr-102 master false - docs/agents/x.md)"
-pr_json "$GH_STUB_DIR/prs.2.json" "$(pr_row 103 pr-103 master false - src/y.txt)" "$(PR_ROW_OID=$(oid pr-104) pr_row 102 pr-102 master false - docs/agents/x.md)"
+pr_json "$GH_STUB_DIR/prs.1.json" "$(pr_row 103 pr-103 master false - src/y.txt)" "$(pr_row 102 pr-102 master false - docs/agents/VALIDATION.md)"
+pr_json "$GH_STUB_DIR/prs.2.json" "$(pr_row 103 pr-103 master false - src/y.txt)" "$(PR_ROW_OID=$(oid pr-104) pr_row 102 pr-102 master false - docs/agents/VALIDATION.md)"
 run_tool
 assert_rc 2 "T9b a non-overlapping PR amended mid-run exits 2"
 assert_contains "$ERR" "#102 $(oid pr-102) → $(oid pr-104)" "T9b the delta names the amended head"
 assert_absent "$OUT" "VERDICT:" "T9b no verdict"
 reset_stub
 pr_json "$GH_STUB_DIR/prs.1.json" "$(pr_row 103 pr-103 master false - src/y.txt)"
-pr_json "$GH_STUB_DIR/prs.2.json" "$(pr_row 103 pr-103 master false - src/y.txt)" "$(pr_row 102 pr-102 master false - docs/agents/x.md)"
+pr_json "$GH_STUB_DIR/prs.2.json" "$(pr_row 103 pr-103 master false - src/y.txt)" "$(pr_row 102 pr-102 master false - docs/agents/VALIDATION.md)"
 run_tool
 assert_rc 2 "T9c a PR opened mid-run exits 2"
 assert_contains "$ERR" "+#102" "T9c the delta names the new PR"
@@ -556,11 +567,11 @@ assert_eq "$(cat "$GH_STUB_DIR/calls")" "2" "T9d the run took exactly two pr lis
 
 echo "=== 10: a stacked sibling's own delta excludes paths inherited from the shared base ==="
 branch_from stack-base master
-edit_line docs/agents/x.md 1 "x line 1 stack-base"
+edit_line docs/agents/VALIDATION.md 1 "x line 1 stack-base"
 commit_all stack-base-edit
 g push -q origin refs/heads/stack-base:refs/heads/stack-base
 branch_from self-10 stack-base
-edit_line docs/agents/x.md 15 "x line 15 self"
+edit_line docs/agents/VALIDATION.md 15 "x line 15 self"
 edit_line src/y.txt 7 "y line 7 self"
 commit_all self-10-edit
 branch_from sib-10 stack-base
@@ -575,18 +586,18 @@ assert_eq "$(row_count)" "0" "T10a no competitor rows"
 assert_eq "$(verdict_line)" "VERDICT: clean" "T10a verdict clean"
 
 g checkout -q sib-10
-edit_line docs/agents/x.md 20 "x line 20 sibling"
+edit_line docs/agents/VALIDATION.md 20 "x line 20 sibling"
 commit_all sib-10-edit-2
 publish_pr 301 sib-10
 g checkout -q self-10
-pr_json "$TMP/prs-10b.json" "$(pr_row 301 sib-10 stack-base false - src/z.txt docs/agents/x.md)"
+pr_json "$TMP/prs-10b.json" "$(pr_row 301 sib-10 stack-base false - src/z.txt docs/agents/VALIDATION.md)"
 run_tool --pr-json "$TMP/prs-10b.json" --base stack-base
-assert_rc 3 "T10b the sibling's own edit to the block tree still blocks"
-assert_contains "$OUT" "#301 docs/agents/x.md" "T10b the block-tree row prints"
-assert_eq "$(verdict_line)" "VERDICT: block" "T10b verdict block"
+assert_rc 1 "T10b the sibling's clean docs edit is informational"
+assert_contains "$OUT" "#301 docs/agents/VALIDATION.md clean" "T10b the clean docs row prints"
+assert_eq "$(verdict_line)" "VERDICT: overlap" "T10b verdict overlap"
 
 echo "=== 11: a competitor off the ancestor arm drops a path already at the caller's base tip ==="
-# pr-302 carries stack-base's docs/agents/x.md blob but names a base origin
+# pr-302 carries stack-base's docs/agents/VALIDATION.md blob but names a base origin
 # never had; pr-303 names other-base, which is not upstream of stack-base.
 branch_from pr-302 stack-base
 edit_line src/y.txt 28 "y line 28 gone-base child"
@@ -605,14 +616,14 @@ pr_json "$TMP/prs-11a.json" "$(pr_row 302 pr-302 gone-base false - src/y.txt)"
 run_tool --pr-json "$TMP/prs-11a.json" --base stack-base
 assert_rc 1 "T11a a competitor on a base origin lacks is graded from the default tip"
 assert_contains "$OUT" "#302 src/y.txt clean" "T11a the path whose blob differs from the base tip is kept"
-assert_absent "$OUT" "#302 docs/agents/x.md" "T11a the path whose blob matches the base tip is dropped"
+assert_absent "$OUT" "#302 docs/agents/VALIDATION.md" "T11a the path whose blob matches the base tip is dropped"
 assert_contains "$ERR" "#302 path set widened from git (1 paths; GitHub files 1 of 1, base gone-base)" "T11a the widened set counts the drop"
 assert_eq "$(verdict_line)" "VERDICT: overlap" "T11a verdict overlap, not block"
 pr_json "$TMP/prs-11b.json" "$(pr_row 303 pr-303 other-base false - src/y.txt)"
 run_tool --pr-json "$TMP/prs-11b.json" --base stack-base
 assert_rc 1 "T11b a competitor on an unrelated base is graded from the default tip"
 assert_contains "$OUT" "#303 src/y.txt clean" "T11b the path whose blob differs from the base tip is kept"
-assert_absent "$OUT" "#303 docs/agents/x.md" "T11b the path whose blob matches the base tip is dropped"
+assert_absent "$OUT" "#303 docs/agents/VALIDATION.md" "T11b the path whose blob matches the base tip is dropped"
 assert_contains "$ERR" "#303 path set widened from git (1 paths; GitHub files 1 of 1, base other-base)" "T11b the widened set counts the drop"
 assert_eq "$(verdict_line)" "VERDICT: overlap" "T11b verdict overlap, not block"
 

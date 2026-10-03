@@ -32,6 +32,7 @@
 #include <irreden/render/ir_render_types.hpp>
 
 #include <irreden/common/components/component_world_transform.hpp>
+#include <irreden/render/components/component_canvas_camera.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
@@ -383,10 +384,13 @@ template <> struct System<BUILD_LIGHT_OCCLUSION_GRID> {
             kBufferIndex_LightOcclusionGrid
         );
 
-        SystemId systemId =
-            registerSystem<BUILD_LIGHT_OCCLUSION_GRID, C_VoxelPool, C_TrixelCanvasRenderBehavior>(
-                "BuildLightOcclusionGrid"
-            );
+        // A canvas with its own camera holds a private model-space pool, never
+        // world occluders.
+        SystemId systemId = registerSystem<
+            BUILD_LIGHT_OCCLUSION_GRID,
+            C_VoxelPool,
+            C_TrixelCanvasRenderBehavior,
+            Exclude<C_CanvasCamera>>("BuildLightOcclusionGrid");
         auto *p = getSystemParams<System<BUILD_LIGHT_OCCLUSION_GRID>>(systemId);
         p->ssbo_ = IRRender::getNamedResource<Buffer>("LightOcclusionGridBuffer");
         p->voxelBitfield_.assign(kLightOcclusionBitfieldUintCount, 0u);

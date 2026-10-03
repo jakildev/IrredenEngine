@@ -3,6 +3,7 @@
 
 #include <irreden/asset/key_value_store.hpp>
 #include <irreden/ir_utility.hpp>
+#include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
 
 #include <sol/sol.hpp>
@@ -152,7 +153,7 @@ inline void bindPersistenceApi(LuaScript &script) {
 
     auto stores = std::make_shared<std::unordered_map<std::string, IRAsset::KeyValueStore>>();
 
-    save["load"] = [stores](const std::string &name) -> bool {
+    save["load"] = statefulLuaFunction([stores](const std::string &name) -> bool {
         auto loaded = IRAsset::loadKeyValueStore(keyValueStorePath(name));
         if (!loaded.ok()) {
             (*stores)[name] = IRAsset::KeyValueStore{};
@@ -160,48 +161,55 @@ inline void bindPersistenceApi(LuaScript &script) {
         }
         (*stores)[name] = std::move(loaded.value_);
         return true;
-    };
+    });
 
-    save["save"] = [stores](const std::string &name) -> bool {
+    save["save"] = statefulLuaFunction([stores](const std::string &name) -> bool {
         const auto it = stores->find(name);
         if (it == stores->end()) {
             return false;
         }
         return IRAsset::saveKeyValueStore(keyValueStorePath(name), it->second).ok();
-    };
+    });
 
-    save["set"] = [stores](const std::string &name, const std::string &key, sol::object value) {
-        (*stores)[name].set(key, luaToValue(value, "IRSave.set"));
-    };
+    save["set"] = statefulLuaFunction(
+        [stores](const std::string &name, const std::string &key, sol::object value) {
+            (*stores)[name].set(key, luaToValue(value, "IRSave.set"));
+        }
+    );
 
     // sol injects `ts` (this_state) without consuming a Lua arg, so the Lua
     // call is IRSave.get(name, key[, default]).
-    save["get"] = [stores](
-                      const std::string &name,
-                      const std::string &key,
-                      sol::object def,
-                      sol::this_state ts
-                  ) -> sol::object {
-        const auto it = stores->find(name);
-        if (it != stores->end()) {
-            if (const IRAsset::Value *v = it->second.get(key)) {
-                return luaFromValue(sol::state_view{ts}, *v);
+    save["get"] = statefulLuaFunction(
+        [stores](
+            const std::string &name,
+            const std::string &key,
+            sol::object def,
+            sol::this_state ts
+        ) -> sol::object {
+            const auto it = stores->find(name);
+            if (it != stores->end()) {
+                if (const IRAsset::Value *v = it->second.get(key)) {
+                    return luaFromValue(sol::state_view{ts}, *v);
+                }
             }
+            return def;
         }
-        return def;
-    };
+    );
 
-    save["has"] = [stores](const std::string &name, const std::string &key) -> bool {
-        const auto it = stores->find(name);
-        return it != stores->end() && it->second.has(key);
-    };
+    save["has"] =
+        statefulLuaFunction([stores](const std::string &name, const std::string &key) -> bool {
+            const auto it = stores->find(name);
+            return it != stores->end() && it->second.has(key);
+        });
 
-    save["remove"] = [stores](const std::string &name, const std::string &key) -> bool {
-        const auto it = stores->find(name);
-        return it != stores->end() && it->second.remove(key);
-    };
+    save["remove"] =
+        statefulLuaFunction([stores](const std::string &name, const std::string &key) -> bool {
+            const auto it = stores->find(name);
+            return it != stores->end() && it->second.remove(key);
+        });
 
-    save["clear"] = [stores](const std::string &name) { (*stores)[name].clear(); };
+    save["clear"] =
+        statefulLuaFunction([stores](const std::string &name) { (*stores)[name].clear(); });
 }
 
 } // namespace IRScript::detail

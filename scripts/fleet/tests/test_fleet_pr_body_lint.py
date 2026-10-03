@@ -53,6 +53,8 @@ class FleetPrBodyLintTests(unittest.TestCase):
                 str(issue_number or issue_data.get("number", ISSUE)),
                 "--issue-json",
                 str(issue_path),
+                "--body-file",
+                "-",
             ]
             command.extend(args or [])
             return subprocess.run(
@@ -340,6 +342,173 @@ class FleetPrBodyLintTests(unittest.TestCase):
                 2,
             )
 
+    def stub_gh_env(self, temp, reply):
+        """Install a `gh` stub that models only `gh api repos/<slug>/issues/<N>`."""
+        gh = Path(temp) / "gh"
+        route = f"repos/jakildev/IrredenEngine/issues/{ISSUE}"
+        gh.write_text(
+            "#!/usr/bin/env python3\n"
+            "import sys\n"
+            f"if sys.argv[1:] == ['api', {route!r}]:\n"
+            f"    print({json.dumps(reply)!r})\n"
+            "else:\n"
+            "    sys.stderr.write('stub: unmodelled call ' + ' '.join(sys.argv[1:]) + '\\n')\n"
+            "    raise SystemExit(2)\n",
+            encoding="utf-8",
+        )
+        gh.chmod(gh.stat().st_mode | stat.S_IXUSR)
+        env = os.environ.copy()
+        env["PATH"] = f"{temp}:{env['PATH']}"
+        return env
+
+    def test_missing_body_file_exits_two_without_reading_stdin(self):
+        # An open pipe the test never writes or closes: a stdin read would hang.
+        process = subprocess.Popen(
+            [str(LINT), str(ISSUE)],
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            _stdout, stderr = process.communicate(timeout=10)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()
+            self.fail("lint blocked reading stdin without --body-file")
+        finally:
+            process.stdin.close()
+        self.assertEqual(process.returncode, 2, stderr)
+        self.assertIn("--body-file", stderr)
+
+    def test_body_file_dash_reads_stdin_and_rejects_an_empty_body(self):
+        self.assertEqual(self.run_lint(evidence_body()).returncode, 0)
+        for empty in ("", "\n  \n"):
+            result = self.run_lint(empty)
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn("empty", result.stderr)
+
+    def test_body_file_path_reads_the_file(self):
+        with tempfile.TemporaryDirectory() as temp:
+            body_path = Path(temp) / "body.md"
+            body_path.write_text(evidence_body(), encoding="utf-8")
+            issue_path = Path(temp) / "issue.json"
+            issue_path.write_text(json.dumps(snapshot()), encoding="utf-8")
+            result = subprocess.run(
+                [
+                    str(LINT),
+                    str(ISSUE),
+                    "--issue-json",
+                    str(issue_path),
+                    "--body-file",
+                    str(body_path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_pr_number_is_rejected_naming_the_closing_issue(self):
+        pr_reply = {"number": ISSUE, "title": "x", "body": "", "pull_request": {"url": "u"}}
+        with tempfile.TemporaryDirectory() as temp:
+            env = self.stub_gh_env(temp, pr_reply)
+            # The PR number is not among the body's Closes lines: the SKIP arm.
+            skipped = subprocess.run(
+                [str(LINT), str(ISSUE), "--body-file", "-"],
+                input=evidence_body(number=4071),
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(skipped.returncode, 2, skipped.stdout + skipped.stderr)
+            self.assertIn(f"#{ISSUE} is a pull request, not an issue", skipped.stderr)
+            self.assertIn("#4071", skipped.stderr)
+            self.assertNotIn("SKIP", skipped.stdout)
+            # A PR whose number a Closes line also names is rejected on the normal path.
+            normal = subprocess.run(
+                [str(LINT), str(ISSUE), "--body-file", "-"],
+                input=evidence_body(),
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(normal.returncode, 2, normal.stdout + normal.stderr)
+            self.assertIn("is a pull request", normal.stderr)
+
+    def test_issue_without_a_closes_line_still_skips(self):
+        issue_reply = {"number": ISSUE, "title": "x", "body": ""}
+        with tempfile.TemporaryDirectory() as temp:
+            env = self.stub_gh_env(temp, issue_reply)
+            result = subprocess.run(
+                [str(LINT), str(ISSUE), "--body-file", "-"],
+                input=evidence_body(number=4071),
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn(f"SKIP #{ISSUE}: no standalone Closes line", result.stdout)
+
+    def test_skip_arm_stays_fail_open_when_the_detection_fetch_fails(self):
+        with tempfile.TemporaryDirectory() as temp:
+            gh = Path(temp) / "gh"
+            gh.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+            gh.chmod(gh.stat().st_mode | stat.S_IXUSR)
+            env = os.environ.copy()
+            env["PATH"] = f"{temp}:{env['PATH']}"
+            result = subprocess.run(
+                [str(LINT), str(ISSUE), "--body-file", "-"],
+                input=evidence_body(number=4071),
+                text=True,
+                capture_output=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("SKIP", result.stdout)
+
+    def test_gh_stub_rejects_an_unmodelled_endpoint(self):
+        # Fidelity: the stub answers only the issues route a PR-number check uses.
+        with tempfile.TemporaryDirectory() as temp:
+            env = self.stub_gh_env(temp, {"number": ISSUE})
+            result = subprocess.run(
+                ["gh", "api", "--paginate", "--slurp", "x"],
+                capture_output=True,
+                text=True,
+                env=env,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 2)
+
+    def test_evidence_header_is_recognised_by_position_not_by_cell_text(self):
+        issue = snapshot(comments=[{"body": "## Plan\n\n### Acceptance criteria\n- a\n- b"}])
+        numbered = (
+            "## Acceptance evidence\n"
+            "| # | Criterion | Check |\n|---|---|---|\n"
+            "| 1 | a | run |\n| 2 | b | run |\n\nCloses #2563\n"
+        )
+        result = self.run_lint(numbered, issue=issue)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("present=2", result.stdout)
+        renamed = numbered.replace("Criterion", "Requirement").replace("| # |", "| Item |")
+        self.assertIn("present=2", self.run_lint(renamed, issue=issue).stdout)
+        headerless = "## Acceptance evidence\n| x | y |\n\n| a | b |\n\nCloses #2563\n"
+        self.assertIn("present=0", self.run_lint(headerless, issue=issue).stdout)
+        # Rows before any separator never count.
+        before = (
+            "## Acceptance evidence\n| stray | row |\n| Criterion | Check |\n"
+            "|---|---|\n| 1 | a |\n\nCloses #2563\n"
+        )
+        self.assertIn("present=1", self.run_lint(before, issue=issue).stdout)
+
+    def test_lint_source_has_no_literal_criterion_header_match(self):
+        source = LINT.read_text(encoding="utf-8")
+        self.assertNotIn('== "criterion"', source)
+
     def run_live_fetch(self, issue_reply):
         """Run the live fetch against a stub whose GraphQL `issue view` is refused.
 
@@ -370,7 +539,14 @@ class FleetPrBodyLintTests(unittest.TestCase):
             env = os.environ.copy()
             env["PATH"] = f"{temp}:{env['PATH']}"
             result = subprocess.run(
-                [str(LINT), str(ISSUE), "--write-issue-json", str(temp_path / "snapshot.json")],
+                [
+                    str(LINT),
+                    str(ISSUE),
+                    "--body-file",
+                    "-",
+                    "--write-issue-json",
+                    str(temp_path / "snapshot.json"),
+                ],
                 input=evidence_body(),
                 text=True,
                 capture_output=True,
@@ -414,7 +590,7 @@ class FleetPrBodyLintTests(unittest.TestCase):
             env = os.environ.copy()
             env["PATH"] = f"{temp}:{env['PATH']}"
             result = subprocess.run(
-                [str(LINT), str(ISSUE)],
+                [str(LINT), str(ISSUE), "--body-file", "-"],
                 input=evidence_body(),
                 text=True,
                 capture_output=True,

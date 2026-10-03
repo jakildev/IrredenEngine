@@ -266,6 +266,23 @@ class AmendingVerdicts(unittest.TestCase):
         self.fx.heartbeat("pool-2", TTL + 5)
         self.assertEqual(self.fx.verdict("fleet:amending-mac-pool-2", 900)[0], lv.CANNOT_VOUCH)
 
+    def test_an_abandon_pin_naming_the_pr_is_live(self):
+        # The pin window: the dead session's id is still current, its heartbeat
+        # stale, and the label older than any TTL — only the pin vouches.
+        self.fx.snapshot(900, "pool-2", "D1")
+        self.fx.current("pool-2", "D1")
+        self.fx.heartbeat("pool-2", TTL * 10)
+        pin = self.fx.root / "state" / "abandon-pin"
+        pin.mkdir()
+        (pin / "pool-2").write_text(f"feedback:engine:900\n{NOW - 60}\nworker\n")
+        code, detail = self.fx.verdict("fleet:amending-mac-pool-2", 900)
+        self.assertEqual((code, detail["arm"], detail["target"]),
+                         (lv.LIVE, "abandon-pin", "feedback:engine:900"))
+        for other in ("feedback:engine:901\n", "feedback:game:900\n", "task:engine:900\n"):
+            (pin / "pool-2").write_text(other)
+            self.assertEqual(self.fx.verdict("fleet:amending-mac-pool-2", 900)[0],
+                             lv.CANNOT_VOUCH, f"control: a pin on {other.strip()}")
+
 
 class Cli(unittest.TestCase):
     """The bash seam: one LF-terminated tab line, exit 0; misuse prints

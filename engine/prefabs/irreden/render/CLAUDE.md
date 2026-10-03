@@ -1,9 +1,8 @@
 # engine/prefabs/irreden/render/ — canvases, framebuffers, cameras, text
 
 The ECS surface the trixel pipeline reads and writes. Engine-side state and
-device drivers: [`engine/render/CLAUDE.md`](../../../render/CLAUDE.md) (§"The
-pipeline, one frame" is the diagram). Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md).
-Rationale: [`docs/design/prefab-render-surface.md`](../../../../docs/design/prefab-render-surface.md).
+device drivers: [`engine/render/CLAUDE.md`](../../../render/CLAUDE.md) (§"The pipeline, one frame" is the diagram).
+Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md). Rationale: [`docs/design/prefab-render-surface.md`](../../../../docs/design/prefab-render-surface.md).
 
 ## Validators
 
@@ -43,6 +42,7 @@ Rationale: [`docs/design/prefab-render-surface.md`](../../../../docs/design/pref
 
 | System(s) | Must sit |
 |---|---|
+| `CANVAS_RESIDENCY` · `PROPAGATE_CANVAS_ROTATION` → `PROPAGATE_CANVAS_PARTS` → `REBUILD_DETACHED_VOXELS` | UPDATE: residency first (its staged switches land before the transform chain); the canvas chain after `PROPAGATE_TRANSFORM` |
 | `LOD_UPDATE` → `GATE_VOXEL_SETS_BY_LOD` | UPDATE, before `PROPAGATE_TRANSFORM` / `UPDATE_VOXEL_SET_CHILDREN` |
 | `FOG_SUBJECT_EXEMPT` → `FOG_SUBJECT_ADOPT` → `FOG_REVEAL_EVAL` (`IRPrefab::Fog::revealSystems()`) / `FOG_LOS_BUILD` | UPDATE after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_SET_CHILDREN` / RENDER before `FOG_TO_TRIXEL`, its own group (line-of-sight gated circles need it) |
 | `UPDATE_JOINT_MATRICES` | after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_POSITIONS_GPU`; a creation with skeletons registers the prepass too |
@@ -55,6 +55,7 @@ Rationale: [`docs/design/prefab-render-surface.md`](../../../../docs/design/pref
 | `TEXT_TO_TRIXEL` → `LAYOUT_COMPUTE` → `WIDGET_RENDER_*` | RENDER, before `TRIXEL_TO_FRAMEBUFFER`; `WIDGET_RENDER_DROPDOWN` last among the renderers |
 | `HelpOverlay::systems()`, `SettingsMenu::renderSystems()` / `inputSystems()` | RENDER after `TEXT_TO_TRIXEL`, before the composite / INPUT after `INPUT_KEY_MOUSE` |
 | `SPRITE_TO_SCREEN` | after the main canvas's `FRAMEBUFFER_TO_SCREEN` |
+| `SYNC_VIEWPORT_SUBJECTS` / `VIEWPORT_TO_FRAMEBUFFER` | RENDER before `VOXEL_TO_TRIXEL_STAGE_1` / after `TRIXEL_TO_FRAMEBUFFER`, before `FRAMEBUFFER_TO_SCREEN` |
 
 `VOXEL_TO_TRIXEL_STAGE_1` runs compact + stage 1 + stage 2 per canvas in one
 tick; never split them. `TEXT_TO_TRIXEL` clears the GUI canvas in `beginTick`
@@ -75,6 +76,8 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   with no foreign `getComponent`. Per-voxel tiers: `C_VoxelSetNew::changeVoxelPriority`;
   id reads go through `IRRender::decodeCarrierEntityId`. A per-trixel override
   arbitrates only across canvases — use separate detached units.
+- A `C_CanvasCamera` canvas is viewed through that camera by every `*_TO_TRIXEL` stage;
+  `IRPrefab::Viewport::` owns it and bands at its own zoom, not `C_LodTierOverride` ([design](../../../../docs/design/secondary-viewport.md)).
 - `C_ActiveLodLevel` is the singleton `LOD_UPDATE` writes. A `C_ShapeDescriptor`
   (`SHAPES_TO_TRIXEL`) or `C_VoxelSetNew` (`GATE_VOXEL_SETS_BY_LOD`) draws only
   inside its `[lodMax_ .. lodMin_]` band; disjoint co-located bands swap. A new
@@ -172,7 +175,7 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
 - `GRID` for world-integrated rotation with exact cell aliasing or shadows from
   thin detail; `DETACHED_REVOXELIZE` for cheap smooth SO(3) that still sorts,
   casts and receives; any `DETACHED` mode with `screenLocked_ = true` for a HUD
-  / billboard overlay ([depth default](../../../../docs/design/detached-canvas-depth-default.md)).
+  / billboard overlay ([depth default](../../../../docs/design/detached-canvas-depth-default.md)). Parts sharing a re-voxelize canvas (`C_CanvasPart`), detach, and canvas budgets (`C_CanvasResidency`): [design](../../../../docs/design/composite-entity-canvases.md).
 - `IRPrefab::EntityCanvas::createWithVoxelPool` is the detached-canvas chokepoint:
   unless `screenLocked` it attaches `C_CanvasAOTexture` + `C_TrixelCanvasRenderBehavior`,
   without which the canvas composites raw albedo.
@@ -198,5 +201,4 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
 | `IRPrefab::JointTransform::setSystem(SystemId)` | none — `system()` resolves via `IRSystem::findSystem(UPDATE_JOINT_MATRICES)` |
 | `IRPrefab::VoxelTransform::setAllocatorSystem(SystemId)` | none — `allocator()` resolves via `IRSystem::findSystem(UPDATE_VOXEL_POSITIONS_GPU)` |
 
-No-ops kept for out-of-tree creations (engine API removal rule); the pattern
-is banned by `.claude/rules/cpp-ecs.md` §"System-owned invariants".
+No-ops kept for out-of-tree creations (engine API removal rule); the pattern is banned by `.claude/rules/cpp-ecs.md` §"System-owned invariants".

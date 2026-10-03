@@ -321,23 +321,34 @@ def claim_guarded(claim_path: Path, family: Family, held: str) -> bool:
     foreign = f"fleet:{held}-mac-probeB"
     cross_host = f"fleet:{held}-linux-probeB"
     own = f"fleet:{held}-mac-probeA"
-    free, _, free_posts = run_claim(claim_path, family.command, [], "probeA")
+    live_tier = ["fleet:needs-fix"] if family.name == "amending" else []
+    free, _, free_posts = run_claim(claim_path, family.command, live_tier, "probeA")
     blocked, blocked_labels, blocked_posts = run_claim(
-        claim_path, family.command, [foreign], "probeA"
+        claim_path, family.command, live_tier + [foreign], "probeA"
     )
-    same, same_labels, _ = run_claim(claim_path, family.command, [own], "probeA")
-    cross, cross_labels, cross_posts = run_claim(claim_path, family.command, [cross_host], "probeA")
-    reentered, _, _ = run_claim(claim_path, family.command, [], "probeA")
+    same, same_labels, same_posts = run_claim(
+        claim_path, family.command, live_tier + [own], "probeA"
+    )
+    cross, cross_labels, cross_posts = run_claim(
+        claim_path, family.command, live_tier + [cross_host], "probeA"
+    )
+    reentered, _, _ = run_claim(claim_path, family.command, live_tier, "probeA")
+    same_suffix_admitted = same.returncode == 0 and own in same_labels
+    if family.name == "amending" and held == "claim":
+        same_suffix_admitted = (
+            same.returncode == 1
+            and same_labels == live_tier + [own]
+            and not same_posts
+        )
     passed = (
         free.returncode == 0
         and len(free_posts) == 1
         and blocked.returncode == 1
-        and blocked_labels == [foreign]
+        and blocked_labels == live_tier + [foreign]
         and not blocked_posts
-        and same.returncode == 0
-        and own in same_labels
+        and same_suffix_admitted
         and cross.returncode == 1
-        and cross_labels == [cross_host]
+        and cross_labels == live_tier + [cross_host]
         and not cross_posts
         and reentered.returncode == 0
     )
@@ -352,12 +363,12 @@ def claim_guarded(claim_path: Path, family: Family, held: str) -> bool:
 
     incumbent = f"{family.prefix}mac-probeA"
     replay, replay_labels, replay_posts = run_claim(
-        claim_path, family.command, [incumbent, foreign], "probeA"
+        claim_path, family.command, live_tier + [incumbent, foreign], "probeA"
     )
     return (
         passed
         and replay.returncode == 0
-        and replay_labels == [incumbent, foreign]
+        and replay_labels == live_tier + [incumbent, foreign]
         and not replay_posts
     )
 

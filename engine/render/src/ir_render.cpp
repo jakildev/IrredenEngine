@@ -431,6 +431,10 @@ int getVoxelRenderEffectiveSubdivisions() {
     return getRenderManager().getVoxelRenderEffectiveSubdivisions();
 }
 
+int getVoxelRenderEffectiveSubdivisionsForZoom(vec2 zoom) {
+    return getRenderManager().getVoxelRenderEffectiveSubdivisionsForZoom(zoom);
+}
+
 void zoomMainBackgroundPatternIn() {
     getRenderManager().zoomMainBackgroundPatternIn();
 }

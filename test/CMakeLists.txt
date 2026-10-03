@@ -78,7 +78,11 @@ add_executable(IrredenEngineTest
   render/camera_mouse_rotate_reset_test.cpp
   render/camera_pan_pivot_test.cpp
   render/camera_yaw_test.cpp
+  render/canvas_part_test.cpp
+  render/canvas_residency_test.cpp
+  render/canvas_rotation_test.cpp
   render/default_pivot_latch_test.cpp
+  render/detached_revoxelize_groups_test.cpp
   render/detached_world_depth_test.cpp
   render/entity_canvas_hitbox_test.cpp
   render/entity_id_carrier_test.cpp
@@ -109,6 +113,7 @@ add_executable(IrredenEngineTest
   render/sun_direction_test.cpp
   render/sun_lighting_test.cpp
   render/sun_shadow_feeder_ring_test.cpp
+  render/viewport_test.cpp
   render/voxel_pool_config_test.cpp
   render/sprite_animation_test.cpp
   render/sprite_components_test.cpp
@@ -140,6 +145,7 @@ add_executable(IrredenEngineTest
   script/lua_fog_revealed_test.cpp
   script/lua_fog_bindings_test.cpp
   script/lua_script_get_table_test.cpp
+  script/lua_viewport_bindings_test.cpp
   script/lua_script_utils_test.cpp
   script/lua_local_transform_lua_test.cpp
   script/lua_rotation_target_lua_test.cpp
@@ -253,6 +259,15 @@ add_dependencies(IrredenEngineTest ir_lua_codegen)
 irreden_lua_codegen(IrredenEngineTest
     SOURCES script/lua_system_codegen_fixtures.lua
     OUTPUT_HPP ${CMAKE_CURRENT_BINARY_DIR}/codegen/lua_system_codegen_fixtures.hpp
+    DEFAULT_MODE CODEGEN
+)
+
+# LodTierLua's CODEGEN fixture: a system reading the active LOD tier through
+# the `IRRender.getActiveLodTier()` intrinsic. Pinned to CODEGEN like the
+# fixture above so the case exercises the lowered C++ read, never EVAL.
+irreden_lua_codegen(IrredenEngineTest
+    SOURCES script/lod_tier_codegen_fixtures.lua
+    OUTPUT_HPP ${CMAKE_CURRENT_BINARY_DIR}/codegen/lod_tier_codegen_fixtures.hpp
     DEFAULT_MODE CODEGEN
 )
 

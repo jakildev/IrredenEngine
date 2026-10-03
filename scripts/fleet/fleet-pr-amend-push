@@ -108,13 +108,17 @@ if [[ ! -f "$sentinel" ]]; then
     exit 1
 fi
 
-# Sentinel is two lines: head ref (line 1) + checkout-time base SHA (line 2;
-# absent on a legacy one-line sentinel). The
-# base SHA is what makes the lease safe — see the push below. A third
-# `consumed <iso8601>` line, written by mark_consumed on every success path,
-# means a prior push already spent this sentinel. A two-line reader ignores it
-# by construction, so legacy sentinels need no migration.
-{ read -r head_ref; read -r base_sha; read -r consumed_line; } < "$sentinel" 2>/dev/null || true
+# Sentinel lines: head ref (1), checkout-time head SHA (2; absent on a legacy
+# one-line sentinel), a `consumed <iso8601>` marker or blank (3), then the PR's
+# base ref (4) and the old head's merge-base with it (5), both absent on a
+# sentinel written before the diagnostics measured PR-owned content. The head
+# SHA is what makes the lease safe — see the push below. Line 3 stays the
+# consumption slot because fleet-reconcile-amendments reads it by position; a
+# marker there means a prior push already spent this sentinel.
+{
+    read -r head_ref; read -r base_sha; read -r consumed_line
+    read -r pr_base_ref; read -r old_merge_base
+} < "$sentinel" 2>/dev/null || true
 if [[ -z "$head_ref" ]]; then
     echo "fleet-pr-amend-push: sentinel $sentinel is empty" >&2
     exit 1
@@ -131,15 +135,93 @@ fi
 # instead of sending the operator at fleet-pr-checkout-detached, which
 # discards the not-yet-pushed commit. base_sha may be empty on a
 # legacy sentinel — writing it back blank keeps the legacy-lease path intact.
+# The comparison fields ride along so a `--continue` push keeps them.
 mark_consumed() {
     printf '%s\n%s\nconsumed %s\n' \
         "$head_ref" "$base_sha" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$sentinel"
+    if [[ -n "$pr_base_ref" && -n "$old_merge_base" ]]; then
+        printf '%s\n%s\n' "$pr_base_ref" "$old_merge_base" >>"$sentinel"
+    fi
+}
+
+warn_net_removed() {
+    local path="$1" net_removed="$2" line_word="lines"
+    if [[ "$net_removed" -eq 1 ]]; then
+        line_word="line"
+    fi
+    printf 'WARNING: net-removed content in %s (%d more deleted %s than added)\n' \
+        "$path" "$net_removed" "$line_word"
+}
+
+# Measures each side of the rewrite from its own merge-base with the PR's base
+# branch, so changes the base branch made between the two merge-bases are not
+# attributed to the amendment. The old side's boundary is the one recorded at
+# checkout: a rebased or force-pushed stacked base no longer yields it.
+print_pr_owned_rewrite_diagnostics() {
+    local new_merge_base old_numstat new_numstat new_blobs removals net_removed path blob
+
+    if ! git fetch origin "$pr_base_ref" >/dev/null 2>&1 \
+        || ! new_merge_base=$(git merge-base HEAD "origin/$pr_base_ref"); then
+        echo "fleet-pr-amend-push: REFUSING — could not refresh base ref $pr_base_ref to find the amended merge-base; nothing was pushed." >&2
+        return 1
+    fi
+
+    printf 'fleet-pr-amend-push: non-fast-forward comparison %s..%s -> %s..HEAD (PR-owned content)\n' \
+        "$old_merge_base" "$base_sha" "$new_merge_base"
+    if ! git diff --stat "$new_merge_base" HEAD; then
+        echo "fleet-pr-amend-push: REFUSING — could not read rewrite comparison $new_merge_base..HEAD; nothing was pushed." >&2
+        return 1
+    fi
+    if ! old_numstat=$(git diff --numstat --no-renames "$old_merge_base" "$base_sha") \
+        || ! new_numstat=$(git diff --numstat --no-renames "$new_merge_base" HEAD) \
+        || ! new_blobs=$(git diff --raw --no-renames --no-abbrev "$new_merge_base" HEAD | awk '$5 != "D" {print $4}'); then
+        echo "fleet-pr-amend-push: REFUSING — could not measure PR-owned rewrite removals against $pr_base_ref; nothing was pushed." >&2
+        return 1
+    fi
+
+    # Net lines the PR adds per path on each side; a path warns when the amended
+    # side adds fewer than the old tip did. A binary row on either side is
+    # uncountable and skipped.
+    removals=$({
+        printf '%s\n' "$old_numstat" | awk '{print "O\t" $0}'
+        printf '%s\n' "$new_numstat" | awk '{print "N\t" $0}'
+    } | awk -F'\t' '
+        NF < 4 { next }
+        {
+            path = $4
+            if (!(path in seen)) { seen[path] = 1; order[++n] = path }
+            if ($2 ~ /^[0-9]+$/ && $3 ~ /^[0-9]+$/) net[$1, path] = $2 - $3
+            else binary[path] = 1
+        }
+        END {
+            for (i = 1; i <= n; i++) {
+                p = order[i]
+                if (p in binary) continue
+                k = net["O", p] - net["N", p]
+                if (k > 0) print k "\t" p
+            }
+        }')
+
+    while IFS=$'\t' read -r net_removed path; do
+        [[ -n "$path" ]] || continue
+        # A path whose old content now lives under another path was moved, not dropped.
+        blob=$(git rev-parse --verify --quiet "$base_sha:$path" 2>/dev/null || true)
+        if [[ -n "$blob" && $'\n'"$new_blobs"$'\n' == *$'\n'"$blob"$'\n'* ]]; then
+            continue
+        fi
+        warn_net_removed "$path" "$net_removed"
+    done <<< "$removals"
 }
 
 print_rewrite_diagnostics() {
     local comparison="$base_sha..HEAD"
     local numstat
-    local insertions deletions path net_removed line_word
+    local insertions deletions path net_removed
+
+    if [[ -n "$pr_base_ref" && -n "$old_merge_base" ]]; then
+        print_pr_owned_rewrite_diagnostics
+        return
+    fi
 
     printf 'fleet-pr-amend-push: non-fast-forward comparison %s\n' "$comparison"
     if ! git diff --stat "$comparison"; then
@@ -155,12 +237,7 @@ print_rewrite_diagnostics() {
         [[ "$insertions" =~ ^[0-9]+$ && "$deletions" =~ ^[0-9]+$ ]] || continue
         (( deletions > insertions )) || continue
         net_removed=$((deletions - insertions))
-        line_word="lines"
-        if [[ "$net_removed" -eq 1 ]]; then
-            line_word="line"
-        fi
-        printf 'WARNING: net-removed content in %s (%d more deleted %s than added)\n' \
-            "$path" "$net_removed" "$line_word"
+        warn_net_removed "$path" "$net_removed"
     done <<< "$numstat"
 }
 

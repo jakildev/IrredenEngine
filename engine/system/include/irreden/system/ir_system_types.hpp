@@ -125,6 +125,13 @@ enum SystemName {
     REBUILD_DETACHED_VOXELS,
     SEED_STAGED_VOXELS,
     PROPAGATE_CANVAS_ROTATION,
+    // Posts each hosted canvas part to its host canvas's pool as a cell
+    // group. After PROPAGATE_CANVAS_ROTATION, before REBUILD_DETACHED_VOXELS.
+    PROPAGATE_CANVAS_PARTS,
+    // Entity-canvas residency policy: releases canvases outside the interest
+    // region and re-creates them on re-entry, under a live-canvas budget.
+    // First in UPDATE, so the transform chain sees the frame's switches.
+    CANVAS_RESIDENCY,
     VOXEL_SET_RESHAPER,
     VOXEL_POOL,
     LIFETIME,
@@ -234,6 +241,12 @@ enum SystemName {
     // reads. Its widgets are drawn by the standard WIDGET_RENDER_* systems.
     SETTINGS_MENU,
     ENTITY_CANVAS_TO_FRAMEBUFFER,
+    // Secondary viewports (engine/prefabs/irreden/render/viewport.hpp).
+    // SYNC_VIEWPORT_SUBJECTS sits in RENDER before VOXEL_TO_TRIXEL_STAGE_1;
+    // VIEWPORT_TO_FRAMEBUFFER after TRIXEL_TO_FRAMEBUFFER and before
+    // FRAMEBUFFER_TO_SCREEN.
+    SYNC_VIEWPORT_SUBJECTS,
+    VIEWPORT_TO_FRAMEBUFFER,
     WIDGET_INPUT,
     WIDGET_LUA_DISPATCH,
     WIDGET_APPLY_SLIDER,

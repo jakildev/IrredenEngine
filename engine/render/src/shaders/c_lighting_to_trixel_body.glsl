@@ -258,6 +258,9 @@ void main() {
         worldReceivePos = rotateByQuat(worldReceivePos, detachedViewToWorld)
                         + detachedWorldReceive.xyz;
         worldNormal = rotateByQuat(worldNormal, detachedViewToWorld);
+    } else if (detachedCanvas && visibleFaceIds.w != 0) {
+        // Resampled cells sit in the canvas's view frame; the sun is a world direction.
+        worldNormal = rotateByQuat(worldNormal, detachedViewToWorld);
     }
 
     // World receiver relative to its canvas raster origin, encoded over [-2, 2].

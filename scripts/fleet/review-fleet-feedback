@@ -123,7 +123,8 @@ SIGNATURES: list[tuple[str, re.Pattern]] = [
     # fleet-pr-body-lint read-from-stdin hang, PR-number SKIP exit 0, and
     # table/heading shapes it cannot see.
     ("body-lint-input-traps", re.compile(r"fleet-pr-body-lint", re.I)),
-    # `Parked-until:` reads one issue; a PR parked on two blockers re-parks.
+    # `Parked-until:` once read one issue, so a PR parked on two blockers re-parked;
+    # it now takes a list, so a fresh hit means the list parse regressed.
     ("parked-until-list", re.compile(r"Parked-until", re.I)),
     # A feedback/amend dispatch pre-claimed from a scout snapshot that no
     # longer matches the PR (tier cleared, PR parked or closed seconds ago).

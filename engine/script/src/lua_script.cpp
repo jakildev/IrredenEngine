@@ -21,6 +21,7 @@
 #include <irreden/script/lua_render_bindings.hpp>
 #include <irreden/script/lua_sim_bindings.hpp>
 #include <irreden/script/lua_spatial_bindings.hpp>
+#include <irreden/script/lua_viewport_bindings.hpp>
 #include <irreden/script/lua_widget_bindings.hpp>
 #include <irreden/script/lua_world_snapshot_bindings.hpp>
 #include <irreden/script/prefab_api.hpp>
@@ -938,6 +939,10 @@ void LuaScript::bindLuaCommands() {
 
 void LuaScript::bindLuaFog() {
     detail::bindFog(*this);
+}
+
+void LuaScript::bindLuaViewport() {
+    detail::bindViewport(*this);
 }
 
 void LuaScript::bindLuaInput() {

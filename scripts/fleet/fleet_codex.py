@@ -116,7 +116,7 @@ def writable_roots(worktree, state):
     roots = [str(worktree), gitdir, common, str(state)]
     for name in ("sessions", "reservations", "claims", "molecules", "locks",
                  "feedback", "plans", "logs", "alerts", "heartbeats",
-                 "iteration-summaries", "amend-snapshots", "orphans"):
+                 "iteration-summaries", "amend-snapshots", "orphans", "handoff"):
         key = "FLEET_" + name.upper().replace("-", "_") + "_DIR"
         roots.append(str(Path(os.environ.get(key) or str(Path.home() / ".fleet" / name)).resolve()))
     for key in ("FLEET_CODEX_SIDECAR",):
@@ -124,6 +124,7 @@ def writable_roots(worktree, state):
             roots.append(str(Path(os.environ[key]).resolve().parent))
     cache = Path(os.environ.get("XDG_CACHE_HOME") or str(Path.home() / ".cache"))
     roots.append(str((cache / "irreden").resolve()))
+    roots.append(str((cache / "gh").resolve()))
     if os.environ.get("IRREDEN_BUILD_DIR"):
         roots.append(str(Path(os.environ["IRREDEN_BUILD_DIR"]).resolve()))
     if os.environ.get("IR_LOCK_ROOT"):

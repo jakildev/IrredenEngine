@@ -79,6 +79,13 @@ class LuaScript {
     // collision. See engine/script/CLAUDE.md "Engine service bindings".
     void bindLuaFog();
 
+    // Bind the opt-in secondary-viewport service onto IRRender
+    // (createViewport, setViewportRect/Camera/Focus/Visible/Subject,
+    // getViewportSubject, destroyViewport). Extends an existing IRRender
+    // table and rejects a non-table collision. See engine/script/CLAUDE.md
+    // "Engine service bindings".
+    void bindLuaViewport();
+
     // Bind the synthetic-input surface — IRInput.KeyMouseButtons,
     // IRInput.ButtonStatuses, and IRInput.{beginSyntheticInput,
     // isSyntheticInputActive, injectButton, injectMouseMove, injectScroll}.

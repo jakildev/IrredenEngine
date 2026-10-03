@@ -326,7 +326,7 @@ r8 = [f for f in r["findings"] if f["rule"] == "R8" and f["target"] == 1050]
 assert r8, f"no R8 for #1050: {[(f['rule'], f['target']) for f in r['findings']]}"
 a = (r8[0].get("apply") or {})
 assert a.get("type") == "unpark_infra", f"R8 apply wrong: {a}"
-assert a.get("blocker") == 7000, f"R8 parsed the wrong blocker: {a}"
+assert a.get("blockers") == [7000], f"R8 parsed the wrong blocker: {a}"
 PY
 python3 - "$REPORT" <<'PY' && ok "parked PR #1050 invisible to R7 AND R2 (park respected on both sites)" || bad "R7/R2 fired on the parked PR #1050"
 import sys, json
@@ -399,10 +399,10 @@ run_reconcile --apply
 c=$(ai_remove_count); [[ "$c" == "$before" ]] && ok "malformed park is never auto-un-parked" || bad "un-parked a malformed park (removes=$c, was $before)"
 c=$(du_adds 1050); [[ "$c" == "1" ]] && ok "malformed park still suppresses the R7 heal (no heal beyond the phase-8 one)" || bad "healed a malformed park (#1050 adds=$c, want 1)"
 
-echo "=== Phase 9b: trailing prose parses, and only the FIRST #N is the blocker ==="
+echo "=== Phase 9b: trailing prose parses, and only the contiguous #N run is the blocker ==="
 # Two contracts in one fixture. A worker WILL write the reason inline, so the
 # match must not be $-anchored — but the aside here also mentions a second
-# issue; that must not be picked up as the blocker. Widen the trailing match,
+# issue; that must not be picked up as a blocker. Widen the trailing match,
 # not the capture.
 PARKED_PR_JSON='{"number":1050,"headRefName":"claude/1000-parked-infra",
    "body":"Closes #1000\n\nParked-until: #7001 (the build wall; see also #7002)",
@@ -416,15 +416,54 @@ r8 = [f for f in r["findings"] if f["rule"] == "R8" and f["target"] == 1050]
 assert r8, "no R8 finding at all"
 a = (r8[0].get("apply") or {})
 assert a.get("type") == "unpark_infra", f"parsed as malformed/flag-only: {r8[0]}"
-assert a.get("blocker") == 7001, f"wrong blocker parsed (over-matched the aside?): {a}"
+assert a.get("blockers") == [7001], f"wrong blocker parsed (over-matched the aside?): {a}"
 PY
-# The capture is one-per-line, so the aside cannot un-park the PR either: a
+# The capture ends at the first non-`#N` token, so the aside cannot un-park the PR either: a
 # second issue mentioned only in the aside is canned CLOSED, and the park
 # must still stand on the real blocker being open.
 set_blocker 7002 CLOSED
 before=$(ai_remove_count)
 run_reconcile --apply
 c=$(ai_remove_count); [[ "$c" == "$before" ]] && ok "a CLOSED issue mentioned only in the aside does not un-park" || bad "the aside's issue drove an un-park (removes=$c, was $before)"
+
+echo "=== Phase 9c: a multi-blocker park un-parks only when EVERY blocker has closed ==="
+# The list shapes a worker writes: comma, bare whitespace, comma with a trailing
+# aside that names a further issue, and a re-park whose last marker wins.
+parse_blockers() {
+    PARKED_PR_JSON=$(python3 -c 'import json,sys; print(json.dumps({"number":1050,"headRefName":"claude/1000-parked-infra","body":sys.argv[1].replace("\\n","\n"),"labels":[{"name":"fleet:wip"},{"name":"fleet:awaiting-infra"}]}))' "$1")
+    healed_prs
+    run_reconcile
+    python3 - "$REPORT" "$2" <<'PY'
+import sys, json
+r = json.load(open(sys.argv[1]))
+r8 = [f for f in r["findings"] if f["rule"] == "R8" and f["target"] == 1050]
+assert r8, "no R8 finding"
+a = (r8[0].get("apply") or {})
+assert a.get("type") == "unpark_infra", f"parsed as malformed/flag-only: {r8[0]}"
+assert a.get("blockers") == json.loads(sys.argv[2]), f"wrong blockers: {a}"
+PY
+}
+parse_blockers 'Closes #1000\n\nParked-until: #7003, #7004' '[7003, 7004]' && ok "comma-separated list parses to both blockers" || bad "comma list mis-parsed"
+parse_blockers 'Closes #1000\n\nParked-until: #7003 #7004' '[7003, 7004]' && ok "whitespace-separated list parses to both blockers" || bad "whitespace list mis-parsed"
+parse_blockers 'Closes #1000\n\nParked-until: #7003,#7004 (the fmt wall; see also #7005)' '[7003, 7004]' && ok "list plus trailing aside: the aside's #7005 is not a blocker" || bad "list + aside mis-parsed"
+parse_blockers 'Closes #1000\n\nParked-until: #7006\nParked-until: #7003, #7004' '[7003, 7004]' && ok "a re-park's last marker (a list) wins over an earlier single" || bad "last-marker-wins broke for a list"
+parse_blockers 'Closes #1000\n\nParked-until: #7003#7004' '[7003]' && ok "glued refs are not a list (only the first is taken)" || bad "glued refs over-matched"
+
+# Arrange the two-blocker park; the parse itself is asserted above, so a
+# failure here must not abort the suite before its tally prints.
+parse_blockers 'Closes #1000\n\nParked-until: #7003, #7004' '[7003, 7004]' || true
+before=$(ai_remove_count)
+run_reconcile --apply
+c=$(ai_remove_count); [[ "$c" == "$before" ]] && ok "both blockers open → park stands" || bad "un-parked with both blockers open (removes=$c, was $before)"
+set_blocker 7003 CLOSED
+run_reconcile --apply
+c=$(ai_remove_count); [[ "$c" == "$before" ]] && ok "one of two blockers closed → park still stands" || bad "un-parked on the first blocker closing (removes=$c, was $before)"
+set_blocker 7003 OPEN; set_blocker 7004 CLOSED
+run_reconcile --apply
+c=$(ai_remove_count); [[ "$c" == "$before" ]] && ok "only the second blocker closed → park still stands" || bad "un-parked with the first blocker open (removes=$c, was $before)"
+set_blocker 7003 CLOSED
+run_reconcile --apply
+c=$(ai_remove_count); [[ "$c" == "$((before + 1))" ]] && ok "every blocker closed → exactly one remove-label fleet:awaiting-infra" || bad "all-closed did not un-park exactly once (removes=$c, was $before)"
 
 echo "=== Phase 10: fleet:blocked backing issue suppresses R7 (not R2) ==="
 # Non-vacuity: the PR is a bare claimless wip PR with neither design label —
