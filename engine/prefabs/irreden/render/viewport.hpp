@@ -378,12 +378,13 @@ inline void syncSubjectPool(
             );
         }
         // A rotated canvas resamples a GPU copy of the pool that is otherwise
-        // seeded once; these records can change every frame.
+        // seeded once per pool content generation; these records can change
+        // every frame, so a generation of 0 (never seeded) forces the re-seed.
         const auto *rotation = componentOrNull<IRComponents::C_CanvasLocalRotation>(canvas);
         const bool rotated =
             rotation != nullptr && rotation->rotation_ != IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f);
         if (resample != nullptr && rotated) {
-            resample->seededVoxelCount_ = -1;
+            resample->seededContentGeneration_ = 0;
         }
     }
     camera.drawnSubject_ = subject;
