@@ -293,8 +293,9 @@ Protocol: [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md).
 - `fleet:awaiting-infra` — **worker** park on a PR that is complete but
   unverifiable on any host until another issue lands: remove
   `fleet:design-unblocked`, add this, append `Parked-until: #<issue>` to
-  the PR body on its own line (reconcile reads the last occurrence and its
-  first `#N`; same-repo only, a cross-repo spelling surfaces as
+  the PR body on its own line (reconcile reads the last occurrence and the
+  contiguous comma/space-separated `#N` run after the marker, un-parking only
+  when all have closed; same-repo only, a cross-repo spelling surfaces as
   malformed), comment the rationale, keep `fleet:wip`, release the claim.
   Reconcile R7/R2 skip it; R8 removes it when the blocker closes, after
   which R7 re-arms `fleet:design-unblocked`. A park with no parsable line
