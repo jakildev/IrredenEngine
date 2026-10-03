@@ -68,6 +68,16 @@ struct ChunkWorldBounds {
     }
 };
 
+// One independently posed span of a detached re-voxelize pool: a hosted voxel
+// set resampled into the pool's shared dest lattice under its own rotation and
+// translation, both in the owning canvas's model frame.
+struct VoxelCellGroup {
+    std::size_t start_ = 0;
+    std::size_t count_ = 0;
+    vec4 rotation_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    vec3 translation_ = vec3(0.0f);
+};
+
 struct C_VoxelPool {
   public:
     // Cardinal store tie-possibility signal. TRUE when the single-
@@ -144,6 +154,8 @@ struct C_VoxelPool {
             if (m_freeSpanLookup[size].empty()) {
                 m_freeSpanLookup.erase(size);
             }
+            ++m_allocatedSpanCount;
+            ++m_contentGeneration;
             markCullBoundsDirty(startIndex, size);
             return IRRender::VoxelPoolAllocation{
                 startIndex,
@@ -160,6 +172,8 @@ struct C_VoxelPool {
         if (m_voxelPoolIndex + size <= m_voxelPoolSize) {
             size_t startIndex = static_cast<size_t>(m_voxelPoolIndex);
             m_voxelPoolIndex += size;
+            ++m_allocatedSpanCount;
+            ++m_contentGeneration;
             markCullBoundsDirty(startIndex, size);
             IRE_LOG_DEBUG("Allocated voxels from {} to {}", startIndex, m_voxelPoolIndex - 1);
             return IRRender::VoxelPoolAllocation{
@@ -219,8 +233,70 @@ struct C_VoxelPool {
             setTransformIndexForRange(startIndex, size, IRRender::kVoxelTransformStatic);
         }
 
+        // A freed span stops being a cell group in the same call: the pose was
+        // posted earlier this frame, and a group left behind would resample a
+        // set that now lives elsewhere, drawing it twice.
+        std::erase_if(m_cellGroups, [startIndex](const VoxelCellGroup &group) {
+            return group.start_ == startIndex;
+        });
+
         m_freeVoxelSpans.push_back({startIndex, size});
         updateFreeSpanLookup(startIndex, size);
+        if (m_allocatedSpanCount > 0) {
+            --m_allocatedSpanCount;
+        }
+        ++m_contentGeneration;
+    }
+
+    // Cell groups of a detached re-voxelize pool. The pose producer clears the
+    // list and posts every hosted set's span and pose once per frame. A pool
+    // that has never been posted to is one implicit group over its whole live
+    // prefix, posed by the canvas rotation; once a group is posted the pool
+    // resamples exactly the posted spans, so a host whose last part left draws
+    // nothing instead of resampling the freed slots.
+    void clearCellGroups() {
+        m_cellGroups.clear();
+    }
+
+    bool hostsCellGroups() const {
+        return m_hostsCellGroups;
+    }
+
+    // Every posted group is a distinct allocated span, so a list sized to the
+    // live span count takes the frame's posts without growing. The pose
+    // producer calls it once per frame, outside its per-part tick.
+    void reserveCellGroups() {
+        m_cellGroups.reserve(m_allocatedSpanCount);
+    }
+
+    void postCellGroup(const VoxelCellGroup &group) {
+        IR_ASSERT(
+            group.count_ > 0 &&
+                group.start_ + group.count_ <= static_cast<std::size_t>(m_voxelPoolSize),
+            "postCellGroup out of bounds: start={}, count={}, poolSize={}",
+            group.start_,
+            group.count_,
+            m_voxelPoolSize
+        );
+        const auto position = std::lower_bound(
+            m_cellGroups.begin(),
+            m_cellGroups.end(),
+            group.start_,
+            [](const VoxelCellGroup &existing, std::size_t start) {
+                return existing.start_ < start;
+            }
+        );
+        IR_ASSERT(
+            position == m_cellGroups.end() || position->start_ != group.start_,
+            "postCellGroup: span starting at {} was posted twice this frame",
+            group.start_
+        );
+        m_cellGroups.insert(position, group);
+        m_hostsCellGroups = true;
+    }
+
+    const std::vector<VoxelCellGroup> &getCellGroups() const {
+        return m_cellGroups;
     }
 
     std::vector<IRRender::VoxelGpuPosition> &getPositions() {
@@ -257,6 +333,20 @@ struct C_VoxelPool {
     }
     int getLiveVoxelCount() const {
         return m_voxelPoolIndex;
+    }
+    // Advances on every allocateVoxels / deallocateVoxels and every
+    // markRecordsChanged. A consumer caching slot content keys on this: a freed
+    // span is reused whole by the next allocation of the same size, so a
+    // different set can take over an identical (start, count) without the live
+    // count moving, and an in-place edit moves neither.
+    std::uint64_t getContentGeneration() const {
+        return m_contentGeneration;
+    }
+    // Notify an in-place rewrite of resident voxel records (color, alpha,
+    // material, flags, bone, layer, reserved). `C_VoxelSetNew`'s mutators call
+    // it; a raw writer to getColors() owns the call.
+    void markRecordsChanged() {
+        ++m_contentGeneration;
     }
     ivec3 getVoxelPoolSize3D() const {
         return m_voxelPoolSize3D;
@@ -840,8 +930,16 @@ struct C_VoxelPool {
     // into the .w lane of binding 17 (kBufferIndex_LocalVoxelPositions);
     // mirrors `m_pendingPositionRanges`. Empty for static scenes.
     std::vector<std::pair<size_t, size_t>> m_pendingTransformIndexRanges;
+    // Sorted by span start. Capacity is retained across the per-frame clear.
+    std::vector<VoxelCellGroup> m_cellGroups;
+    // Latched by the first posted group: a persistent mode of the pool, the
+    // way `m_staticReVoxelizeBound` is, never cleared per frame.
+    bool m_hostsCellGroups = false;
+    // Spans handed out by allocateVoxels and not yet freed.
+    std::size_t m_allocatedSpanCount = 0;
 
     int m_voxelPoolIndex = 0;
+    std::uint64_t m_contentGeneration = 0;
 
     // Count of voxels in this pool carrying a non-zero per-trixel priority.
     // Maintained push-at-mutation via adjustPerTrixelPriorityVoxelCount (called by

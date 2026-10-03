@@ -378,19 +378,26 @@ struct C_VoxelSetNew {
         }
     }
 
-    // Every alpha mutator notifies, including hidden sets: visibility gates
-    // active-mask writes, but bounds derive from authored alpha. A skipped
-    // notification can leave a shown set rejected by stale off-screen bounds.
-    // Visible sets coalesce this with their active-mask notification.
-    void markPoolCullBoundsDirty() {
-        if (numVoxels_ <= 0) {
+    // Every record mutator notifies, including hidden sets: visibility gates
+    // active-mask writes, but bounds derive from authored alpha, and a cached
+    // copy of the records (a re-voxelize seed) keys on the pool's content
+    // generation. A skipped notification can leave a shown set rejected by
+    // stale off-screen bounds, or a hosted part drawing its old voxels.
+    void markPoolRecordsChanged() {
+        markPoolRecordsChanged(0, numVoxels_);
+    }
+
+    void markPoolRecordsChanged(int first, int count) {
+        if (count <= 0) {
             return;
         }
-        IRPrefab::VoxelPool::markCullBoundsDirty(
-            voxelStartIdx_,
-            static_cast<std::size_t>(numVoxels_),
-            canvasEntity_
-        );
+        IRPrefab::VoxelPool::withPoolByEntity(canvasEntity_, [&](C_VoxelPool &pool) {
+            pool.markCullBoundsDirty(
+                voxelStartIdx_ + static_cast<std::size_t>(first),
+                static_cast<std::size_t>(count)
+            );
+            pool.markRecordsChanged();
+        });
     }
 
     // Mirror one slot's record into the rotation-source snapshot, if it
@@ -406,7 +413,7 @@ struct C_VoxelSetNew {
         const int idx = index3DtoIndex1D(index, size_);
         voxels_[idx].color_ = color;
         mirrorToRotationSource(idx);
-        IRPrefab::VoxelPool::markCullBoundsDirty(voxelStartIdx_ + idx, 1, canvasEntity_);
+        markPoolRecordsChanged(idx, 1);
         if (renders()) {
             IRPrefab::VoxelPool::markVoxelActive(
                 voxelStartIdx_,
@@ -422,7 +429,7 @@ struct C_VoxelSetNew {
             voxels_[i].color_ = color;
             mirrorToRotationSource(i);
         }
-        markPoolCullBoundsDirty();
+        markPoolRecordsChanged();
         if (!renders()) {
             return;
         }
@@ -451,6 +458,10 @@ struct C_VoxelSetNew {
             IRPrefab::VoxelPool::adjustPerTrixelPriorityVoxelCount(delta, canvasEntity_);
         }
         mirrorToRotationSource(idx);
+        // Priority is not a cull-bounds input; only the content generation moves.
+        IRPrefab::VoxelPool::withPoolByEntity(canvasEntity_, [](C_VoxelPool &pool) {
+            pool.markRecordsChanged();
+        });
     }
 
     void changeVoxelPriorityAll(std::uint8_t priority) {
@@ -466,6 +477,9 @@ struct C_VoxelSetNew {
             static_cast<int>(newCount) - static_cast<int>(perTrixelPriorityVoxelCount_);
         IRPrefab::VoxelPool::adjustPerTrixelPriorityVoxelCount(delta, canvasEntity_);
         perTrixelPriorityVoxelCount_ = newCount;
+        IRPrefab::VoxelPool::withPoolByEntity(canvasEntity_, [](C_VoxelPool &pool) {
+            pool.markRecordsChanged();
+        });
     }
 
     void deactivateAll() {
@@ -473,7 +487,7 @@ struct C_VoxelSetNew {
             voxels_[i].deactivate();
             mirrorToRotationSource(i);
         }
-        markPoolCullBoundsDirty();
+        markPoolRecordsChanged();
         IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_, canvasEntity_);
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
     }
@@ -483,7 +497,7 @@ struct C_VoxelSetNew {
             voxels_[i].activate();
             mirrorToRotationSource(i);
         }
-        markPoolCullBoundsDirty();
+        markPoolRecordsChanged();
         if (renders()) {
             IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
@@ -513,7 +527,7 @@ struct C_VoxelSetNew {
                 }
             }
         });
-        markPoolCullBoundsDirty();
+        markPoolRecordsChanged();
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, sz);
     }
 
@@ -561,7 +575,7 @@ struct C_VoxelSetNew {
                 );
             }
         }
-        markPoolCullBoundsDirty();
+        markPoolRecordsChanged();
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
     }
 
@@ -657,7 +671,7 @@ struct C_VoxelSetNew {
             return;
         }
         // Hidden raw alpha edits still invalidate derived cull bounds.
-        markPoolCullBoundsDirty();
+        markPoolRecordsChanged();
         if (!renders()) {
             return;
         }
@@ -892,7 +906,7 @@ struct C_VoxelSetNew {
         }
         // Dense payload is a mix of active and inactive slots, so resync from
         // per-voxel alpha rather than the fast bulk path.
-        markPoolCullBoundsDirty();
+        markPoolRecordsChanged();
         if (renders()) {
             IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
@@ -930,7 +944,7 @@ struct C_VoxelSetNew {
         for (int i = 0; i < numVoxels_; ++i) {
             mirrorToRotationSource(i);
         }
-        markPoolCullBoundsDirty();
+        markPoolRecordsChanged();
         if (renders()) {
             IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
         }

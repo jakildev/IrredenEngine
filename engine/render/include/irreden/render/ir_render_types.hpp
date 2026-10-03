@@ -6,6 +6,7 @@
 #include <irreden/math/sdf.hpp>
 #include <irreden/render/lod_level.hpp>
 
+#include <cstddef>
 #include <cstdint>
 
 using namespace IRMath;
@@ -801,10 +802,44 @@ struct GPUUpdateParams {
     int padding_[3] = {};
 };
 
-/// Per-frame params for the detached re-voxelize GPU scatter compute. Carries
-/// the detached canvas's composed rotation quaternion and the dispatch-domain
-/// descriptor. The quaternion is the only per-frame upload, so upload cost is
-/// O(entities). Its layout matches `C_LocalTransform`/`IRMath` —
+/// Cell groups one detached re-voxelize dispatch can resample. A pool hosting
+/// more runs `ceil(groups / this)` dispatches; the kernels size their group
+/// array from the same number.
+constexpr int kRevoxelizeGroupsPerDispatch = 32;
+
+/// One cell group of a detached re-voxelize pool: a rigid voxel set resampled
+/// into the pool's shared dest lattice under its own pose. Its dest cells
+/// occupy the contiguous slot range `[srcGridMin_.w, srcGridMin_.w +
+/// destBase_.w³)`, and its source occupancy+color grid starts at word
+/// `srcGridDims_.w` of the pool's concatenated source-grid buffer.
+///
+/// std140 array element: six 16 B vectors, 96 B.
+struct RevoxelizeGroupParams {
+    // Group rotation in the canvas's model frame, `(qx, qy, qz, qw)`.
+    vec4 rotation_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    // xyz = dest cell → group-centered point: `point = cell + destOffset`
+    // (the canvas lattice phase minus the group's translation in the canvas).
+    vec4 destOffset_ = vec4(0.0f, 0.0f, 0.0f, 0.0f);
+    // xyz = the group's per-axis half-cell anchor: composed local minus its
+    // roundHalfUp cell (-0.5 on even-sized centered axes, 0 on odd). The
+    // resample rotates anchored POINTS, never raw lattice cells.
+    vec4 anchor_ = vec4(0.0f, 0.0f, 0.0f, 0.0f);
+    // xyz = dest cell of the group's first slot; w = dest cube side.
+    ivec4 destBase_ = ivec4(0, 0, 0, 0);
+    // xyz = source occupancy grid min cell; w = the group's first dest slot.
+    ivec4 srcGridMin_ = ivec4(0, 0, 0, 0);
+    // xyz = source occupancy grid dims; w = the grid's first word.
+    ivec4 srcGridDims_ = ivec4(0, 0, 0, 0);
+};
+static_assert(
+    sizeof(RevoxelizeGroupParams) == 96,
+    "RevoxelizeGroupParams must mirror its std140 GLSL/Metal array element: six "
+    "16 B vec4/ivec4 = 96 B."
+);
+
+/// Per-frame params for the detached re-voxelize GPU scatter compute. Poses
+/// are the only per-frame upload, so upload cost is O(cell groups).
+/// Quaternion layout matches `C_LocalTransform`/`IRMath` —
 /// `vec4(qx, qy, qz, qw)`, identity `(0,0,0,1)`.
 ///
 /// Two dispatch modes (`dest_.w`):
@@ -812,34 +847,38 @@ struct GPUUpdateParams {
 ///       `position[slot]` from its
 ///       resident composed local. The CPU still uploads color + active for these
 ///       source-indexed slots, so only binding 5 is authored here.
-///   1 — INVERSE-RESAMPLE path. One thread per DEST cell of the rotated-AABB
-///       cube (`dest_.y³` cells, center `dest_.z`). Each thread
-///       inverse-maps its dest cell `roundHalfUp(R⁻¹·c)` into the per-pool source
-///       occupancy+color grid (`srcGridMin_`/`srcGridDims_`); on a hit it authors
-///       `position`/`color`/`active` for that dest slot. Surjective over the dest
-///       lattice → hole-free (the forward scatter was not). The CPU skips the
-///       color + active uploads in this mode (the GPU fill owns them).
+///   1 — INVERSE-RESAMPLE path. One thread per DEST cell of the dispatch's cell
+///       groups. Each thread finds its group from its slot, inverse-maps its
+///       dest cell into that group's source occupancy+color grid, and on a hit
+///       authors `position`/`color`/`active` for the dest slot. Surjective over
+///       the dest lattice → hole-free (the forward scatter was not). The CPU
+///       skips the color + active uploads in this mode (the GPU fill owns them).
 ///
-/// std140 UBO at `kBufferIndex_RevoxelizeDetachedParams`: five 16 B vectors, 80 B.
+/// std140 UBO at `kBufferIndex_RevoxelizeDetachedParams`: three 16 B vectors
+/// then `kRevoxelizeGroupsPerDispatch` group elements.
 struct RevoxelizeDetachedParams {
+    // Mode 0 only: the canvas rotation the source path forward-rotates by.
     vec4 canvasRotation_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
-    // x = dispatch count (dest-cell count D in mode 1, live source count in mode 0)
-    // y = dest cube side (cells per axis); z = dest cube center; w = inverse mode (0/1)
+    // x = thread count of this dispatch (dest slots in mode 1, live source
+    // voxels in mode 0); y = cell groups in `groups_`; z = the dispatch's first
+    // dest slot; w = inverse mode (0/1).
     ivec4 dest_ = ivec4(0, 0, 0, 0);
-    ivec4 srcGridMin_ = ivec4(0, 0, 0, 0);  // xyz = source occupancy grid min cell
-    ivec4 srcGridDims_ = ivec4(0, 0, 0, 0); // xyz = source occupancy grid dims
-    // xyz = the solid's per-axis half-cell anchor: composed local minus its
-    // roundHalfUp cell (-0.5 on even-sized centered axes, 0 on odd). The inverse
-    // resample maps between LATTICE cells; the solid's true points sit at
-    // cell + anchor, and ignoring that shifted the rotated raster by a constant
-    // half cell per even axis. w is unused.
-    vec4 anchor_ = vec4(0.0f, 0.0f, 0.0f, 0.0f);
+    // xyz = the canvas lattice phase: a dest cell rasters at `cell + phase`.
+    vec4 phase_ = vec4(0.0f, 0.0f, 0.0f, 0.0f);
+    RevoxelizeGroupParams groups_[kRevoxelizeGroupsPerDispatch] = {};
 };
 static_assert(
-    sizeof(RevoxelizeDetachedParams) == 80,
-    "RevoxelizeDetachedParams must mirror its std140 GLSL/Metal UBO block: five "
-    "16 B vec4/ivec4 = 80 B. A silent reorder or resize would corrupt the "
-    "re-voxelize fill's dispatch descriptor with no compile diagnostic."
+    sizeof(RevoxelizeDetachedParams) ==
+        48 + kRevoxelizeGroupsPerDispatch * sizeof(RevoxelizeGroupParams),
+    "RevoxelizeDetachedParams must mirror its std140 GLSL/Metal UBO block: three "
+    "16 B vec4/ivec4 then the group array. A silent reorder or resize would "
+    "corrupt the re-voxelize fill's dispatch descriptor with no compile "
+    "diagnostic."
+);
+static_assert(
+    offsetof(RevoxelizeDetachedParams, groups_) == 48,
+    "RevoxelizeDetachedParams::groups_ must start on the 48 B boundary the "
+    "kernels' group array starts on."
 );
 
 /// SDF primitive type dispatched to the shapes→trixel compute shader.

@@ -12,11 +12,15 @@
 #include <irreden/common/components/component_auto_spin.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
+#include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/components/component_camera.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
+#include <irreden/render/components/component_canvas_part.hpp>
+#include <irreden/render/components/component_canvas_residency.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_detached_canvas.hpp>
+#include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
@@ -34,6 +38,7 @@
 #include <irreden/render/sun_shadow_probe.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/systems/system_camera_scroll_zoom.hpp>
+#include <irreden/render/systems/system_canvas_residency.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
@@ -41,6 +46,7 @@
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_lod_update.hpp>
+#include <irreden/render/systems/system_propagate_canvas_parts.hpp>
 #include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
 #include <irreden/render/systems/system_resolve_per_axis_screen_depth.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
@@ -58,7 +64,10 @@
 // Prefab helpers
 #include <irreden/render/camera.hpp>
 #include <irreden/render/camera_controls.hpp>
+#include <irreden/render/canvas_part.hpp>
+#include <irreden/render/canvas_residency.hpp>
 #include <irreden/render/depth_probe.hpp>
+#include <irreden/common/rotation_mode.hpp>
 #include <irreden/render/entity_canvas.hpp>
 #include <irreden/render/gui_test_assertions.hpp>
 #include <irreden/render/trixel_text.hpp>
@@ -67,6 +76,7 @@
 #include <irreden/common/command_suite_capture.hpp>
 
 #include <limits>
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <memory>
@@ -226,6 +236,11 @@ struct CanvasStressSettings {
     // config only supplies defaults when the corresponding flag is absent.
     bool initialZoomSetByCli_ = false;
     bool autoRotateSetByCli_ = false;
+    // `--probe-assert`: run the requested opt-in group's scripted probe and exit
+    // nonzero on failure. Each of modeswitch, detach and residency owns one.
+    bool probeAssert_ = false;
+    // Set by the detach and residency probes on any failed frame.
+    bool compositeProbeFailed_ = false;
     bool modeSwitchProbe_ = false;
     bool modeSwitchProbeFailed_ = false;
     bool modeSwitchCaptureProbePending_ = false;
@@ -257,6 +272,9 @@ enum SpawnGroup : std::uint32_t {
     kGroupRigid = 1u << 15,
     kGroupModeSwitch = 1u << 16,
     kGroupImpulse = 1u << 17,
+    kGroupSharedParts = 1u << 18,
+    kGroupDetach = 1u << 19,
+    kGroupResidency = 1u << 20,
 };
 
 // 0.5 degrees per frame → full revolution in ~720 frames (~12 s at 60 fps)
@@ -541,6 +559,9 @@ std::uint32_t parseSpawnGroups(const char *arg) {
         {"rigid", kGroupRigid},
         {"modeswitch", kGroupModeSwitch},
         {"impulse", kGroupImpulse},
+        {"sharedparts", kGroupSharedParts},
+        {"detach", kGroupDetach},
+        {"residency", kGroupResidency},
     };
     std::uint32_t bits = 0u;
     const std::string list{arg};
@@ -651,6 +672,20 @@ IRSystem::SystemId createModeSwitchProbeSystem() {
     );
     IRSystem::setSystemParams(system, std::move(state));
     return system;
+}
+
+// The composite-entity groups are OPT-IN only, like `compare`: none spawns in
+// the default scene, so every existing manifest shot stays byte-identical.
+bool sharedPartsGroupRequested() {
+    return (g_settings.onlyGroups_ & kGroupSharedParts) != 0u;
+}
+
+bool detachGroupRequested() {
+    return (g_settings.onlyGroups_ & kGroupDetach) != 0u;
+}
+
+bool residencyGroupRequested() {
+    return (g_settings.onlyGroups_ & kGroupResidency) != 0u;
 }
 
 // Combined shot table (base SO(3) suite + the re-voxelize framing shots),
@@ -1260,6 +1295,644 @@ void spawnPerEntityPrioritySwap() {
     spawnPerEntityPriorityUnit(1, vec3(6.0f, 6.0f, 6.0f), Color{235, 80, 80, 255}, 1, true);
 }
 
+// ── Composite entities ──────────────────────────────────────────────
+// One detached canvas hosting several voxel sets, each posed by its own
+// transform (C_CanvasPart → PROPAGATE_CANVAS_PARTS → one cell group per part in
+// the host's pool). Three opt-in groups share the fixtures below:
+// `sharedparts` is the render regression and the revox-face twin, `detach`
+// walks parts out of their host, `residency` treats entity canvases as a
+// budgeted resource across a pan.
+
+constexpr ivec2 kSharedCanvasSize{256, 256};
+// Extent the parts move through, not their voxel count: x/y span the spread
+// plus a rotated solid, z only a rotated solid.
+constexpr ivec3 kSharedPoolSize{88, 88, 24};
+// World step between neighbouring parts along the screen-horizontal (-x, +y):
+// 64 iso units, so at the revox-face metric's zoom 8 (80 iso units across)
+// only the focused part is on screen.
+constexpr float kSharedPartStep = 32.0f;
+static_assert(
+    kSharedPartStep + static_cast<float>(kReVoxSolidSize.x) <=
+        0.5f * static_cast<float>(kSharedPoolSize.x),
+    "The outer parts, at any rotation, must stay inside the shared pool extent"
+);
+static_assert(
+    3 * kReVoxSolidSize.x * kReVoxSolidSize.x <= kSharedPoolSize.z * kSharedPoolSize.z,
+    "A rotated proof solid must fit the shared pool's depth"
+);
+
+Color compositePaletteColor(int index) {
+    constexpr Color kPalette[]{
+        {230, 70, 70, 255},
+        {70, 210, 90, 255},
+        {80, 110, 230, 255},
+        {230, 200, 60, 255},
+        {210, 90, 220, 255},
+        {70, 210, 210, 255},
+    };
+    return kPalette[index % 6];
+}
+
+struct SharedPartFixture {
+    vec3 offset_;
+    vec3 rotationAxis_;
+    float rotationAngle_;
+    vec3 spinAxis_;
+    float spinRateScale_;
+    Color color_;
+    bool carve_;
+};
+
+// Pose and carve of each part match the `lprism`, `cube` and `grounded`
+// fixtures of scripts/render_revox_lattice.py, in that order, so
+// render-revox-face-metric.py gates a hosted part with the oracle of its
+// single-canvas twin. Distinct spin rates: the parts visibly de-sync.
+constexpr int kSharedPartCount = 3;
+constexpr SharedPartFixture kSharedParts[kSharedPartCount]{
+    {{kSharedPartStep, -kSharedPartStep, 0.0f},
+     {1.0f, 0.6f, 0.3f},
+     IRMath::kPi / 4.5f,
+     {1.0f, 1.0f, 0.4f},
+     1.0f,
+     {255, 150, 60, 255},
+     true},
+    {{0.0f, 0.0f, 0.0f},
+     {0.3f, 1.0f, 0.5f},
+     IRMath::kPi / 5.0f,
+     {0.4f, 1.0f, 0.6f},
+     1.7f,
+     {70, 210, 210, 255},
+     false},
+    {{-kSharedPartStep, kSharedPartStep, 0.0f},
+     {0.5f, 1.0f, 0.2f},
+     IRMath::kPi / 4.2f,
+     {0.7f, 0.3f, 1.0f},
+     2.6f,
+     {210, 120, 255, 255},
+     false},
+};
+
+struct CompositeHost {
+    EntityId entity_ = kNullEntity;
+    EntityId canvas_ = kNullEntity;
+};
+
+CompositeHost
+spawnCompositeHost(const std::string &name, const C_LocalTransform &local, float yawRate) {
+    C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
+        name,
+        kSharedCanvasSize,
+        kSharedPoolSize,
+        g_settings.screenLockDetached_
+    );
+    const EntityId host = IREntity::createEntity(
+        local,
+        C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
+        C_AutoSpin{vec3(0.0f, 0.0f, 1.0f), yawRate},
+        canvas
+    );
+    return {host, canvas.canvasEntity_};
+}
+
+EntityId spawnCanvasPart(
+    EntityId host,
+    const C_LocalTransform &local,
+    ivec3 size,
+    Color color,
+    vec3 spinAxis,
+    float spinRate
+) {
+    const EntityId part = IRPrefab::CanvasPart::create(host, local, size, color);
+    IREntity::setComponent(part, C_AutoSpin{spinAxis, spinRate});
+    return part;
+}
+
+// Phase-0 measurement fixture (`--parts-count N`): N spinning cubes on a ring,
+// hosted in ONE canvas, or — with `--separate-canvases` — each on a canvas of
+// its own, the shape a composite had before parts could share one. Same
+// solids, same poses, same spin; `--auto-profile` reports the difference.
+void spawnPartsBench(int count, bool separateCanvases, float spin) {
+    constexpr ivec3 kBenchCube{8, 8, 8};
+    constexpr float kBenchRadius = 30.0f;
+    constexpr vec3 kBenchAxes[]{
+        {0.0f, 0.0f, 1.0f},
+        {1.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f},
+        {1.0f, 1.0f, 1.0f},
+    };
+    CompositeHost host{};
+    if (!separateCanvases) {
+        host = spawnCompositeHost("parts_bench", C_LocalTransform{vec3(0.0f)}, 0.0f);
+    }
+    for (int i = 0; i < count; ++i) {
+        const float angle = IRMath::kTwoPi * static_cast<float>(i) / static_cast<float>(count);
+        // Whole cells: every cube resamples onto the same lattice either way.
+        const vec3 world = vec3(
+            IRMath::roundVec3HalfUp(
+                vec3(kBenchRadius * IRMath::cos(angle), kBenchRadius * IRMath::sin(angle), 0.0f)
+            )
+        );
+        const vec3 axis = kBenchAxes[i % 4];
+        const vec4 rotation = IRMath::quatAxisAngle(IRMath::normalize(axis), IRMath::kQuarterPi);
+        const float rate = spin * (1.0f + 0.25f * static_cast<float>(i % 4));
+        const Color color = compositePaletteColor(i);
+        if (!separateCanvases) {
+            spawnCanvasPart(
+                host.entity_,
+                C_LocalTransform{world, rotation},
+                kBenchCube,
+                color,
+                axis,
+                rate
+            );
+            continue;
+        }
+        C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
+            "parts_bench_" + std::to_string(i),
+            ivec2(64, 64),
+            ivec3(14, 14, 14),
+            g_settings.screenLockDetached_
+        );
+        IREntity::createEntity(
+            C_LocalTransform{vec3(0.0f)},
+            C_VoxelSetNew{kBenchCube, color, true, canvas.canvasEntity_}
+        );
+        IREntity::createEntity(
+            C_LocalTransform{world, rotation},
+            C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
+            C_AutoSpin{axis, rate},
+            canvas
+        );
+    }
+    IR_LOG_INFO(
+        "canvas_stress: parts bench — {} cubes on {}",
+        count,
+        separateCanvases ? "separate canvases" : "one shared canvas"
+    );
+}
+
+// `--only sharedparts`: three proof solids spinning at distinct rates in one
+// canvas, plus a bar spinning through the centre cube — two groups authoring
+// the same dest cells, the overlap the shared lattice has to resolve.
+// `--focus-part <i>` centres part i alone on screen for the revox-face metric.
+void spawnSharedParts() {
+    const IRArgs::Parser &args = IREngine::args();
+    const float spin = g_settings.noSpin_ ? 0.0f : kReVoxSpinPerFrame;
+    const int benchCount = args.getInt("--parts-count");
+    if (benchCount > 0) {
+        spawnPartsBench(IRMath::min(benchCount, 48), args.getFlag("--separate-canvases"), spin);
+        return;
+    }
+    const int focusPart = IRMath::clamp(args.getInt("--focus-part"), -1, kSharedPartCount - 1);
+    // Whole-cell host offset: the focused part lands on the world origin on
+    // the same lattice its single-canvas twin rasters on.
+    const vec3 hostWorld = focusPart >= 0 ? -kSharedParts[focusPart].offset_ : vec3(0.0f);
+    const CompositeHost host =
+        spawnCompositeHost("shared_parts", C_LocalTransform{hostWorld}, 0.0f);
+    for (int i = 0; i < kSharedPartCount; ++i) {
+        const SharedPartFixture &fixture = kSharedParts[i];
+        const EntityId part = spawnCanvasPart(
+            host.entity_,
+            C_LocalTransform{
+                hostWorld + fixture.offset_,
+                IRMath::quatAxisAngle(
+                    IRMath::normalize(fixture.rotationAxis_),
+                    fixture.rotationAngle_
+                )
+            },
+            kReVoxSolidSize,
+            fixture.color_,
+            fixture.spinAxis_,
+            spin * fixture.spinRateScale_
+        );
+        if (fixture.carve_) {
+            C_VoxelSetNew &voxelSet = IREntity::getComponent<C_VoxelSetNew>(part);
+            voxelSet.carve([](vec3 pos) { return pos.x > 0.0f && pos.y > 0.0f; });
+        }
+    }
+    if (focusPart < 0) {
+        spawnCanvasPart(
+            host.entity_,
+            C_LocalTransform{
+                hostWorld,
+                IRMath::quatAxisAngle(IRMath::normalize(vec3(0.2f, 0.3f, 1.0f)), 0.6f)
+            },
+            ivec3(20, 4, 4),
+            Color{235, 235, 240, 255},
+            vec3(0.0f, 0.0f, 1.0f),
+            spin * 3.4f
+        );
+    }
+}
+
+// ── `--only detach` ─────────────────────────────────────────────────
+// A slowly yawing host carries parented parts. Three of them leave it one at
+// a time — to a canvas of their own, or to GRID — and keep riding the parent's
+// transform. The probe counts, on every rendered frame, how many times each
+// leaving part is drawn; exactly once is the only passing answer.
+
+constexpr int kDetachPartCount = 3;
+// UPDATE tick each part leaves on. The middle one is requested AFTER
+// PROPAGATE_CANVAS_PARTS has posted the frame's cell groups, so the host pool
+// still lists the part when it leaves: the arm that draws it twice unless the
+// pool drops a freed span's group itself.
+constexpr int kDetachEarlyOwnCanvasTick = 20;
+constexpr int kDetachLateOwnCanvasTick = 40;
+constexpr int kDetachEarlyGridTick = 60;
+constexpr int kDetachProbeEndTick = 90;
+constexpr RotationMode kDetachTargets[kDetachPartCount]{
+    RotationMode::DETACHED_REVOXELIZE,
+    RotationMode::DETACHED_REVOXELIZE,
+    RotationMode::GRID,
+};
+
+struct DetachPart {
+    EntityId entity_ = kNullEntity;
+    // Last span the part held in the host pool. A host still resampling it
+    // after the part left is the double draw.
+    std::size_t hostedStart_ = 0;
+    std::size_t hostedCount_ = 0;
+    int hostedFrames_ = 0;
+    int freeFrames_ = 0;
+};
+
+struct CompositeProbeState {
+    CompositeHost detachHost_{};
+    DetachPart detachParts_[kDetachPartCount]{};
+    int updateTick_ = 0;
+    int renderFrames_ = 0;
+    bool finished_ = false;
+
+    std::vector<EntityId> residents_;
+    int liveMin_ = std::numeric_limits<int>::max();
+    int liveMax_ = 0;
+    int onScreenChecks_ = 0;
+    int onScreenResidentChecks_ = 0;
+    int onScreenGridChecks_ = 0;
+};
+
+CompositeProbeState g_composite{};
+
+void spawnDetachScene() {
+    const float spin = g_settings.noSpin_ ? 0.0f : kReVoxSpinPerFrame;
+    g_composite.detachHost_ = spawnCompositeHost(
+        "detach_host",
+        C_LocalTransform{vec3(0.0f), IRMath::quatAxisAngle(vec3(0.0f, 0.0f, 1.0f), 0.5f)},
+        spin * 0.5f
+    );
+    const EntityId host = g_composite.detachHost_.entity_;
+    // The body stays hosted throughout: the host canvas keeps drawing while
+    // its other parts come and go.
+    const EntityId body = spawnCanvasPart(
+        host,
+        C_LocalTransform{vec3(0.0f)},
+        ivec3(8, 8, 8),
+        Color{150, 160, 175, 255},
+        vec3(0.0f, 0.0f, 1.0f),
+        0.0f
+    );
+    IREntity::setParent(body, host);
+    constexpr vec3 kOffsets[kDetachPartCount]{
+        {18.0f, 0.0f, 0.0f},
+        {-18.0f, 0.0f, 0.0f},
+        {0.0f, 18.0f, 0.0f},
+    };
+    constexpr vec3 kAxes[kDetachPartCount]{
+        {1.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f},
+        {1.0f, 1.0f, 1.0f},
+    };
+    constexpr Color kColors[kDetachPartCount]{
+        {235, 110, 90, 255},
+        {110, 215, 120, 255},
+        {110, 150, 240, 255},
+    };
+    for (int i = 0; i < kDetachPartCount; ++i) {
+        const EntityId part = spawnCanvasPart(
+            host,
+            C_LocalTransform{
+                kOffsets[i],
+                IRMath::quatAxisAngle(IRMath::normalize(kAxes[i]), IRMath::kQuarterPi)
+            },
+            ivec3(6, 6, 6),
+            kColors[i],
+            kAxes[i],
+            spin * (1.0f + 0.5f * static_cast<float>(i))
+        );
+        IREntity::setParent(part, host);
+        g_composite.detachParts_[i].entity_ = part;
+    }
+}
+
+// Structural, so staged: it lands at the requesting system's group boundary.
+void requestDetach(int partIndex) {
+    const EntityId part = g_composite.detachParts_[partIndex].entity_;
+    const RotationMode target = kDetachTargets[partIndex];
+    IREntity::getEntityManager().stageStructuralChange([part, target]() {
+        IRPrefab::RotationMode::setMode(part, target);
+    });
+}
+
+void advanceDetachCapture(int shotIndex) {
+    if (shotIndex == 0) {
+        requestDetach(0);
+        requestDetach(1);
+    } else if (shotIndex == 1) {
+        requestDetach(2);
+    }
+}
+
+// The canvas `owner` wraps rastered a voxel pool this frame and composites.
+bool ownCanvasDrew(EntityId owner) {
+    auto canvas = IREntity::getComponentOptional<C_EntityCanvas>(owner);
+    if (!canvas || !canvas.value()->visible_) {
+        return false;
+    }
+    auto textures =
+        IREntity::getComponentOptional<C_TriangleCanvasTextures>(canvas.value()->canvasEntity_);
+    return textures && textures.value()->renderedSubdivisions_ > 0;
+}
+
+// The set is resident in the main canvas's pool, where the world raster draws it.
+bool mainCanvasDraws(EntityId entity) {
+    auto voxelSet = IREntity::getComponentOptional<C_VoxelSetNew>(entity);
+    return voxelSet && voxelSet.value()->visible_ && voxelSet.value()->numVoxels_ > 0 &&
+           voxelSet.value()->canvasEntity_ == IRRender::getActiveCanvasEntity();
+}
+
+// The host's fill this frame resampled the span [start, start + count).
+bool hostResampledSpan(EntityId hostCanvas, std::size_t start, std::size_t count) {
+    auto buffer = IREntity::getComponentOptional<C_DetachedRevoxelizeBuffer>(hostCanvas);
+    auto textures = IREntity::getComponentOptional<C_TriangleCanvasTextures>(hostCanvas);
+    if (!buffer || !textures || textures.value()->renderedSubdivisions_ <= 0 || count == 0) {
+        return false;
+    }
+    for (const RevoxelizeGroupSeed &seed : buffer.value()->groups_) {
+        if (seed.spanStart_ == start && seed.spanCount_ == count) {
+            return true;
+        }
+    }
+    return false;
+}
+
+IRSystem::SystemId createDetachEarlyDriver() {
+    return IRSystem::createSystem<C_Camera>(
+        "DetachProbeEarly",
+        [](C_Camera &) {},
+        []() {
+            ++g_composite.updateTick_;
+            if (g_composite.updateTick_ == kDetachEarlyOwnCanvasTick) {
+                requestDetach(0);
+            } else if (g_composite.updateTick_ == kDetachEarlyGridTick) {
+                requestDetach(2);
+            }
+        }
+    );
+}
+
+IRSystem::SystemId createDetachLateDriver() {
+    return IRSystem::createSystem<C_Camera>(
+        "DetachProbeLate",
+        [](C_Camera &) {},
+        []() {
+            if (g_composite.updateTick_ == kDetachLateOwnCanvasTick) {
+                requestDetach(1);
+            }
+        }
+    );
+}
+
+// RENDER, after the composite: this frame's draw census for each leaving part.
+IRSystem::SystemId createDetachCensus() {
+    return IRSystem::createSystem<C_Camera>(
+        "DetachProbeCensus",
+        [](C_Camera &) {},
+        []() {
+            if (g_composite.finished_) {
+                return;
+            }
+            ++g_composite.renderFrames_;
+            const EntityId hostCanvas = g_composite.detachHost_.canvas_;
+            for (int i = 0; i < kDetachPartCount; ++i) {
+                DetachPart &part = g_composite.detachParts_[i];
+                const bool member = IRPrefab::CanvasPart::isHosted(part.entity_);
+                if (member) {
+                    const C_VoxelSetNew &voxelSet =
+                        IREntity::getComponent<C_VoxelSetNew>(part.entity_);
+                    part.hostedStart_ = voxelSet.voxelStartIdx_;
+                    part.hostedCount_ = static_cast<std::size_t>(voxelSet.numVoxels_);
+                }
+                const bool hosted =
+                    hostResampledSpan(hostCanvas, part.hostedStart_, part.hostedCount_);
+                const bool standalone =
+                    !member && (ownCanvasDrew(part.entity_) || mainCanvasDraws(part.entity_));
+                part.hostedFrames_ += hosted ? 1 : 0;
+                part.freeFrames_ += standalone ? 1 : 0;
+                const int draws = (hosted ? 1 : 0) + (standalone ? 1 : 0);
+                if (draws != 1) {
+                    g_settings.compositeProbeFailed_ = true;
+                    IR_LOG_ERROR(
+                        "[detach] frame={} tick={} part={} hosted={} standalone={} draws={}",
+                        g_composite.renderFrames_,
+                        g_composite.updateTick_,
+                        i,
+                        hosted,
+                        standalone,
+                        draws
+                    );
+                }
+            }
+            if (g_composite.updateTick_ < kDetachProbeEndTick) {
+                return;
+            }
+            g_composite.finished_ = true;
+            // Not vacuous: every part was seen hosted, then free, and ended in the
+            // mode it was sent to.
+            for (int i = 0; i < kDetachPartCount; ++i) {
+                const DetachPart &part = g_composite.detachParts_[i];
+                const bool landed =
+                    IREntity::getComponent<C_RotationMode>(part.entity_).mode_ ==
+                        kDetachTargets[i] &&
+                    !IREntity::getComponentOptional<C_CanvasPart>(part.entity_).has_value();
+                if (part.hostedFrames_ == 0 || part.freeFrames_ == 0 || !landed) {
+                    g_settings.compositeProbeFailed_ = true;
+                    IR_LOG_ERROR(
+                        "[detach] part={} hosted_frames={} free_frames={} landed={}",
+                        i,
+                        part.hostedFrames_,
+                        part.freeFrames_,
+                        landed
+                    );
+                }
+            }
+            IR_LOG_INFO(
+                "[detach] frames={} parts={} result={}",
+                g_composite.renderFrames_,
+                kDetachPartCount,
+                g_settings.compositeProbeFailed_ ? "FAIL" : "PASS"
+            );
+            IRWindow::closeWindow();
+        }
+    );
+}
+
+// ── `--only residency` ──────────────────────────────────────────────
+// Twice the live-canvas budget of managed entities stand in a row; the camera
+// pans along it. CANVAS_RESIDENCY hands canvases to the ones near the view and
+// takes them back as they fall behind. The probe holds every frame to the
+// budget and requires every on-screen entity to be drawn, with or without a
+// canvas.
+
+constexpr int kResidencyBudget = 6;
+constexpr int kResidencyEntityCount = 2 * kResidencyBudget;
+// 128 iso units between neighbours along the screen-horizontal: about five
+// fit the 640-unit view at zoom 1, inside the budget.
+constexpr float kResidencyStep = 64.0f;
+constexpr int kResidencyPanTicks = 300;
+constexpr int kResidencySettleTicks = 20;
+
+float residencyRowIso(int index) {
+    return 2.0f * kResidencyStep *
+           (static_cast<float>(index) - 0.5f * static_cast<float>(kResidencyEntityCount - 1));
+}
+
+void spawnResidencyScene() {
+    IRComponents::C_CanvasResidencySettings &settings = IRPrefab::CanvasResidency::settings();
+    settings.liveCanvasBudget_ = kResidencyBudget;
+    settings.promotionsPerFrame_ = 2;
+    const float spin = g_settings.noSpin_ ? 0.0f : kReVoxSpinPerFrame;
+    constexpr vec3 kAxes[]{
+        {0.0f, 0.0f, 1.0f},
+        {1.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f},
+        {1.0f, 1.0f, 1.0f},
+    };
+    g_composite.residents_.reserve(kResidencyEntityCount);
+    for (int i = 0; i < kResidencyEntityCount; ++i) {
+        const float along = 0.5f * residencyRowIso(i);
+        const vec3 axis = kAxes[i % 4];
+        g_composite.residents_.push_back(
+            IREntity::createEntity(
+                C_LocalTransform{
+                    vec3(-along, along, 0.0f),
+                    IRMath::quatAxisAngle(IRMath::normalize(axis), IRMath::kQuarterPi)
+                },
+                C_RotationMode{RotationMode::GRID},
+                C_AutoSpin{axis, spin * (1.0f + 0.25f * static_cast<float>(i % 4))},
+                C_VoxelSetNew{ivec3(8, 8, 8), compositePaletteColor(i), true},
+                C_CanvasResidency{}
+            )
+        );
+    }
+}
+
+// Pan the camera from the row's first entity to its last, then hold.
+IRSystem::SystemId createResidencyPanDriver() {
+    return IRSystem::createSystem<C_Camera>(
+        "ResidencyProbePan",
+        [](C_Camera &) {},
+        []() {
+            ++g_composite.updateTick_;
+            const float t = IRMath::clamp(
+                static_cast<float>(g_composite.updateTick_) /
+                    static_cast<float>(kResidencyPanTicks),
+                0.0f,
+                1.0f
+            );
+            const float first = residencyRowIso(0);
+            const float last = residencyRowIso(kResidencyEntityCount - 1);
+            // The camera offset is the negated iso position it centres on.
+            IRRender::setCameraPosition2DIso(vec2(-(first + t * (last - first)), 0.0f));
+        }
+    );
+}
+
+IRSystem::SystemId createResidencyCensus() {
+    return IRSystem::createSystem<C_Camera>(
+        "ResidencyProbeCensus",
+        [](C_Camera &) {},
+        []() {
+            if (g_composite.finished_) {
+                return;
+            }
+            ++g_composite.renderFrames_;
+            const int live = IRPrefab::EntityCanvas::count();
+            g_composite.liveMin_ = IRMath::min(g_composite.liveMin_, live);
+            g_composite.liveMax_ = IRMath::max(g_composite.liveMax_, live);
+            if (live > kResidencyBudget) {
+                g_settings.compositeProbeFailed_ = true;
+                IR_LOG_ERROR(
+                    "[residency] frame={} live_canvases={} budget={}",
+                    g_composite.renderFrames_,
+                    live,
+                    kResidencyBudget
+                );
+            }
+            const IsoBounds2D view = IRRender::getCullViewport().isoViewportForCanvas(
+                ivec2(IRRender::getMainCanvasSizeTrixels())
+            );
+            const float yaw = IRPrefab::Camera::getYaw();
+            for (const EntityId entity : g_composite.residents_) {
+                const vec3 world = IREntity::getComponent<C_WorldTransform>(entity).translation_;
+                if (!view.contains(IRMath::pos3DtoPos2DIsoYawed(world, yaw))) {
+                    continue;
+                }
+                const bool onCanvas = ownCanvasDrew(entity);
+                const bool onGrid = mainCanvasDraws(entity);
+                ++g_composite.onScreenChecks_;
+                g_composite.onScreenResidentChecks_ += onCanvas ? 1 : 0;
+                g_composite.onScreenGridChecks_ += onGrid ? 1 : 0;
+                if ((onCanvas ? 1 : 0) + (onGrid ? 1 : 0) != 1) {
+                    g_settings.compositeProbeFailed_ = true;
+                    IR_LOG_ERROR(
+                        "[residency] frame={} entity={} on_screen canvas={} grid={}",
+                        g_composite.renderFrames_,
+                        entity,
+                        onCanvas,
+                        onGrid
+                    );
+                }
+            }
+            if (g_composite.updateTick_ < kResidencyPanTicks + kResidencySettleTicks) {
+                return;
+            }
+            g_composite.finished_ = true;
+            // Guards against a vacuous pass: the pan must have run the policy in
+            // both directions (the live count moved), reached the budget's
+            // neighbourhood, and the drawn check must have had entities to check
+            // in both states.
+            const bool engaged = g_composite.liveMin_ < g_composite.liveMax_ &&
+                                 g_composite.liveMax_ > 0 && g_composite.onScreenChecks_ > 0 &&
+                                 g_composite.onScreenResidentChecks_ > 0;
+            if (!engaged) {
+                g_settings.compositeProbeFailed_ = true;
+                IR_LOG_ERROR(
+                    "[residency] probe not engaged: live_min={} live_max={} on_screen_checks={} "
+                    "on_screen_resident={}",
+                    g_composite.liveMin_,
+                    g_composite.liveMax_,
+                    g_composite.onScreenChecks_,
+                    g_composite.onScreenResidentChecks_
+                );
+            }
+            IR_LOG_INFO(
+                "[residency] frames={} entities={} budget={} live_min={} live_max={} "
+                "on_screen_checks={} on_screen_resident={} on_screen_grid={} result={}",
+                g_composite.renderFrames_,
+                kResidencyEntityCount,
+                kResidencyBudget,
+                g_composite.liveMin_,
+                g_composite.liveMax_,
+                g_composite.onScreenChecks_,
+                g_composite.onScreenResidentChecks_,
+                g_composite.onScreenGridChecks_,
+                g_settings.compositeProbeFailed_ ? "FAIL" : "PASS"
+            );
+            IRWindow::closeWindow();
+        }
+    );
+}
+
 Color gridColor(int x, int y, int gridSize) {
     const float denom = static_cast<float>(IRMath::max(gridSize - 1, 1));
     return Color{
@@ -1526,7 +2199,21 @@ void registerArgs() {
     );
     args.flag(
         "--probe-assert",
-        "Run the modeswitch canvas-allocation round trip and exit nonzero on failure"
+        "Run the scripted probe of --only modeswitch, detach or residency; exit nonzero on failure"
+    );
+    args.integer(
+        "--focus-part",
+        "Centre one sharedparts part (0=lprism, 1=cube, 2=grounded) alone on screen",
+        -1
+    );
+    args.integer(
+        "--parts-count",
+        "sharedparts measurement fixture: N spinning cubes in one canvas (max 48)",
+        0
+    );
+    args.flag(
+        "--separate-canvases",
+        "With --parts-count: give every cube a canvas of its own instead"
     );
     args.enumValue(
         "--debug-overlay",
@@ -1570,7 +2257,7 @@ void applyArgs() {
     // Force base subdivisions when requested. 0 leaves the engine
     // default (1) untouched, so a flagless run stays byte-identical.
     g_settings.subdivisions_ = args.getInt("--subdivisions");
-    g_settings.modeSwitchProbe_ = args.getFlag("--probe-assert");
+    g_settings.probeAssert_ = args.getFlag("--probe-assert");
     g_settings.initialZoom_ = args.getFloat("--zoom");
     g_settings.initialZoomSetByCli_ = args.wasProvided("--zoom");
     if (args.wasProvided("--auto-rotate")) {
@@ -1604,10 +2291,22 @@ void applyArgs() {
     if (args.wasProvided("--only")) {
         g_settings.onlyGroups_ |= parseSpawnGroups(args.getString("--only").c_str());
     }
+    g_settings.modeSwitchProbe_ = g_settings.probeAssert_ && modeSwitchGroupRequested();
     IR_ASSERT(
-        !g_settings.modeSwitchProbe_ || modeSwitchGroupRequested(),
-        "--probe-assert requires --only modeswitch"
+        !g_settings.probeAssert_ || modeSwitchGroupRequested() || detachGroupRequested() ||
+            residencyGroupRequested(),
+        "--probe-assert requires --only modeswitch, detach or residency"
     );
+    IR_ASSERT(
+        !(detachGroupRequested() && residencyGroupRequested()),
+        "--only detach and --only residency each own the probe clock; run them separately"
+    );
+    if (sharedPartsGroupRequested() || detachGroupRequested() || residencyGroupRequested()) {
+        // The composite fixtures are framed for a fixed camera: the shots are
+        // references, the residency pan runs along the screen-horizontal.
+        g_settings.autoRotate_ = false;
+        g_settings.autoRotateSetByCli_ = true;
+    }
     g_settings.autoProfile_ = args.getFlag("--auto-profile");
     if (args.wasProvided("--debug-overlay")) {
         g_settings.debugOverlay_ =
@@ -1716,43 +2415,67 @@ int main(int argc, char **argv) {
     }
 
     IREngine::gameLoop();
-    return g_settings.modeSwitchProbeFailed_ ? 1 : 0;
+    return (g_settings.modeSwitchProbeFailed_ || g_settings.compositeProbeFailed_) ? 1 : 0;
 }
 
 void initSystems() {
-    IRSystem::registerPipeline(
-        IRTime::Events::UPDATE,
-        {// LOD_UPDATE writes the C_ActiveLodLevel singleton that SHAPES_TO_TRIXEL
-         // reads at beginTick (the floor SDF box renders through that pass).
-         IRSystem::createSystem<IRSystem::LOD_UPDATE>(),
-         IRSystem::createSystem<IRSystem::AUTO_SPIN_LOCAL_TRANSFORM>(),
-         // The impulse arrives from its own system, ahead of the damped spin
-         // tick that consumes it.
-         IRSystem::createSystem<C_AngularVelocity, C_ImpulseKick>(
-             "ImpulseKick",
-             [](C_AngularVelocity &spin, C_ImpulseKick &kick) {
-                 if (kick.ticksUntilKick_ < 0) {
-                     return;
-                 }
-                 if (kick.ticksUntilKick_-- == 0) {
-                     spin.impulse(kick.axis_, kick.radiansPerFrame_);
-                 }
-             }
-         ),
-         IRSystem::createSystem<IRSystem::ANGULAR_VELOCITY_DAMPED>(),
-         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
-         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
-         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
-         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>(),
-         IRSystem::createSystem<IRSystem::PROPAGATE_CANVAS_ROTATION>(),
-         // Detached re-voxelize: fills each DETACHED_REVOXELIZE canvas's
-         // private pool at the full-rotation cell positions. Must run AFTER
-         // PROPAGATE_CANVAS_ROTATION (needs the camera-composed rotation) and
-         // UPDATE_VOXEL_SET_CHILDREN (overwrites its translate-only baseline).
-         IRSystem::createSystem<IRSystem::REBUILD_DETACHED_VOXELS>(),
-         IRSystem::createSystem<IRSystem::LIFETIME>()
-        }
+    const bool compositeGroups =
+        sharedPartsGroupRequested() || detachGroupRequested() || residencyGroupRequested();
+    const bool detachProbe = g_settings.probeAssert_ && detachGroupRequested();
+    const bool residencyProbe = g_settings.probeAssert_ && residencyGroupRequested();
+    std::list<IRSystem::SystemId> updatePipeline;
+    // Mode switches are structural and land at the requesting system's group
+    // boundary. Requested from the head of UPDATE, the transform chain below
+    // runs over the switched entities the same frame.
+    if (detachProbe) {
+        updatePipeline.push_back(createDetachEarlyDriver());
+    }
+    if (residencyProbe) {
+        updatePipeline.push_back(createResidencyPanDriver());
+    }
+    if (residencyGroupRequested()) {
+        updatePipeline.push_back(IRSystem::createSystem<IRSystem::CANVAS_RESIDENCY>());
+    }
+    // LOD_UPDATE writes the C_ActiveLodLevel singleton that SHAPES_TO_TRIXEL
+    // reads at beginTick (the floor SDF box renders through that pass).
+    updatePipeline.push_back(IRSystem::createSystem<IRSystem::LOD_UPDATE>());
+    updatePipeline.push_back(IRSystem::createSystem<IRSystem::AUTO_SPIN_LOCAL_TRANSFORM>());
+    // The impulse arrives from its own system, ahead of the damped spin
+    // tick that consumes it.
+    updatePipeline.push_back(
+        IRSystem::createSystem<C_AngularVelocity, C_ImpulseKick>(
+            "ImpulseKick",
+            [](C_AngularVelocity &spin, C_ImpulseKick &kick) {
+                if (kick.ticksUntilKick_ < 0) {
+                    return;
+                }
+                if (kick.ticksUntilKick_-- == 0) {
+                    spin.impulse(kick.axis_, kick.radiansPerFrame_);
+                }
+            }
+        )
     );
+    updatePipeline.push_back(IRSystem::createSystem<IRSystem::ANGULAR_VELOCITY_DAMPED>());
+    updatePipeline.push_back(IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>());
+    updatePipeline.push_back(IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>());
+    updatePipeline.push_back(IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>());
+    updatePipeline.push_back(IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>());
+    updatePipeline.push_back(IRSystem::createSystem<IRSystem::PROPAGATE_CANVAS_ROTATION>());
+    if (compositeGroups) {
+        // Posts each hosted part's pose to its host canvas; needs the owner
+        // translation PROPAGATE_CANVAS_ROTATION just stamped.
+        updatePipeline.push_back(IRSystem::createSystem<IRSystem::PROPAGATE_CANVAS_PARTS>());
+    }
+    // Detached re-voxelize: fills each DETACHED_REVOXELIZE canvas's
+    // private pool at the full-rotation cell positions. Must run AFTER
+    // PROPAGATE_CANVAS_ROTATION (needs the camera-composed rotation) and
+    // UPDATE_VOXEL_SET_CHILDREN (overwrites its translate-only baseline).
+    updatePipeline.push_back(IRSystem::createSystem<IRSystem::REBUILD_DETACHED_VOXELS>());
+    updatePipeline.push_back(IRSystem::createSystem<IRSystem::LIFETIME>());
+    if (detachProbe) {
+        updatePipeline.push_back(createDetachLateDriver());
+    }
+    IRSystem::registerPipeline(IRTime::Events::UPDATE, updatePipeline);
     if (g_settings.modeSwitchProbe_) {
         IRSystem::appendToPipeline(IRTime::Events::UPDATE, createModeSwitchProbeSystem());
     }
@@ -1891,6 +2614,15 @@ void initSystems() {
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>());
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
 
+    // Per-frame draw census of the composite probes: what the frame that just
+    // composited actually drew.
+    if (detachProbe) {
+        renderPipeline.push_back(createDetachCensus());
+    }
+    if (residencyProbe) {
+        renderPipeline.push_back(createResidencyCensus());
+    }
+
     // Composite-depth probe — registered only with --depth-probe so a
     // flagless run adds no system. Runs last (after the framebuffer composite is
     // complete) and logs the depth-test winner at the requested pixel each frame.
@@ -2009,6 +2741,33 @@ void initSystems() {
             g_allShots.push_back({kImpulseZoom, vec2(0.0f), 0.0f, "impulse_midspin"});
             g_allShots.push_back({kImpulseZoom, vec2(0.0f), 0.0f, "impulse_settled"});
             settleFrames = kImpulseSettleFrames;
+        } else if (detachGroupRequested()) {
+            // One pose, three ways of drawing it: every part hosted, two on
+            // canvases of their own, the third on GRID as well. The capture
+            // callback requests each step after its shot.
+            constexpr IRVideo::AutoScreenshotShot kDetachShots[]{
+                {3.0f, vec2(0.0f), 0.0f, "detach_hosted"},
+                {3.0f, vec2(0.0f), 0.0f, "detach_own_canvas"},
+                {3.0f, vec2(0.0f), 0.0f, "detach_grid"},
+            };
+            g_allShots.assign(
+                kDetachShots,
+                kDetachShots + sizeof(kDetachShots) / sizeof(kDetachShots[0])
+            );
+            settleFrames = 6;
+        } else if (sharedPartsGroupRequested()) {
+            // The settle frames between the first two shots let the parts'
+            // distinct spin rates pull their poses apart; the third looks at the
+            // same canvas through a non-cardinal camera yaw.
+            constexpr IRVideo::AutoScreenshotShot kSharedPartsShots[]{
+                {2.5f, vec2(0.0f), 0.0f, "sharedparts_spin_a"},
+                {2.5f, vec2(0.0f), 0.0f, "sharedparts_spin_b"},
+                {2.5f, vec2(0.0f), IRMath::kPi / 6.0f, "sharedparts_yaw"},
+            };
+            g_allShots.assign(
+                kSharedPartsShots,
+                kSharedPartsShots + sizeof(kSharedPartsShots) / sizeof(kSharedPartsShots[0])
+            );
         } else {
             // Base SO(3) suite + dedicated re-voxelize framing shots. Detached
             // canvases rasterize their canvas-local pool against the MAIN camera's
@@ -2089,6 +2848,8 @@ void initSystems() {
         cfg.numShots_ = static_cast<int>(g_allShots.size());
         if (modeSwitchGroupRequested()) {
             cfg.onCaptureFrame_ = &advanceModeSwitchCapture;
+        } else if (detachGroupRequested()) {
+            cfg.onCaptureFrame_ = &advanceDetachCapture;
         } else if (IREngine::args().getFlag("--sun-face-index-probe")) {
             cfg.onCaptureFrame_ = [](int shotIndex) {
                 const std::string path = "sun-face-index-" + std::to_string(shotIndex) + ".csv";
@@ -2148,6 +2909,16 @@ void initEntities() {
         );
         IREntity::getComponent<C_VoxelSetNew>(g_settings.modeSwitchEntity_)
             .carve([](vec3 position) { return position.x > 0.0f && position.y > 0.0f; });
+    }
+
+    if (sharedPartsGroupRequested()) {
+        spawnSharedParts();
+    }
+    if (detachGroupRequested()) {
+        spawnDetachScene();
+    }
+    if (residencyGroupRequested()) {
+        spawnResidencyScene();
     }
 
     // Lighting wiring. The lighting pipeline writes per-canvas

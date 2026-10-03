@@ -28,7 +28,10 @@ using namespace IRMath;
 
 namespace IRSystem {
 
-constexpr int kMaxEntityCanvasInstances = 512;
+// The composite's per-frame instance capacity is the live entity-canvas
+// budget: CANVAS_RESIDENCY holds a world to it, so a creation running that
+// policy never reaches the drop below.
+constexpr int kMaxEntityCanvasInstances = IRConstants::kEntityCanvasLiveBudget;
 
 template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     struct CanvasInstance {

@@ -1,9 +1,8 @@
 # engine/prefabs/irreden/render/ — canvases, framebuffers, cameras, text
 
 The ECS surface the trixel pipeline reads and writes. Engine-side state and
-device drivers: [`engine/render/CLAUDE.md`](../../../render/CLAUDE.md) (§"The
-pipeline, one frame" is the diagram). Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md).
-Rationale: [`docs/design/prefab-render-surface.md`](../../../../docs/design/prefab-render-surface.md).
+device drivers: [`engine/render/CLAUDE.md`](../../../render/CLAUDE.md) (§"The pipeline, one frame" is the diagram).
+Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md). Rationale: [`docs/design/prefab-render-surface.md`](../../../../docs/design/prefab-render-surface.md).
 
 ## Validators
 
@@ -43,6 +42,7 @@ Rationale: [`docs/design/prefab-render-surface.md`](../../../../docs/design/pref
 
 | System(s) | Must sit |
 |---|---|
+| `CANVAS_RESIDENCY` · `PROPAGATE_CANVAS_ROTATION` → `PROPAGATE_CANVAS_PARTS` → `REBUILD_DETACHED_VOXELS` | UPDATE: residency first (its staged switches land before the transform chain); the canvas chain after `PROPAGATE_TRANSFORM` |
 | `LOD_UPDATE` → `GATE_VOXEL_SETS_BY_LOD` | UPDATE, before `PROPAGATE_TRANSFORM` / `UPDATE_VOXEL_SET_CHILDREN` |
 | `FOG_SUBJECT_EXEMPT` → `FOG_SUBJECT_ADOPT` → `FOG_REVEAL_EVAL` (`IRPrefab::Fog::revealSystems()`) / `FOG_LOS_BUILD` | UPDATE after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_SET_CHILDREN` / RENDER before `FOG_TO_TRIXEL`, its own group (line-of-sight gated circles need it) |
 | `UPDATE_JOINT_MATRICES` | after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_POSITIONS_GPU`; a creation with skeletons registers the prepass too |
@@ -175,7 +175,7 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
 - `GRID` for world-integrated rotation with exact cell aliasing or shadows from
   thin detail; `DETACHED_REVOXELIZE` for cheap smooth SO(3) that still sorts,
   casts and receives; any `DETACHED` mode with `screenLocked_ = true` for a HUD
-  / billboard overlay ([depth default](../../../../docs/design/detached-canvas-depth-default.md)).
+  / billboard overlay ([depth default](../../../../docs/design/detached-canvas-depth-default.md)). Parts sharing a re-voxelize canvas (`C_CanvasPart`), detach, and canvas budgets (`C_CanvasResidency`): [design](../../../../docs/design/composite-entity-canvases.md).
 - `IRPrefab::EntityCanvas::createWithVoxelPool` is the detached-canvas chokepoint:
   unless `screenLocked` it attaches `C_CanvasAOTexture` + `C_TrixelCanvasRenderBehavior`,
   without which the canvas composites raw albedo.

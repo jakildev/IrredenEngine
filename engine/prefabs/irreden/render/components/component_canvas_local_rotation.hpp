@@ -66,6 +66,11 @@ struct C_CanvasLocalRotation {
     // position stays consistent with the world depth the canvas composites at.
     // Only meaningful when worldPlaced_ is true.
     IRMath::vec3 worldCellOffset_{0.0f};
+    // The owner's unrounded world translation: the origin a hosted part's pose
+    // is measured from. Unrounded because the composite places the canvas at
+    // the continuous translation, so a part offset taken from the rounded cell
+    // would drift against its host by the rounding residual.
+    IRMath::vec3 ownerWorldTranslation_{0.0f};
 
     C_CanvasLocalRotation() = default;
     explicit C_CanvasLocalRotation(IRMath::vec4 rotation)

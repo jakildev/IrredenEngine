@@ -125,6 +125,13 @@ enum SystemName {
     REBUILD_DETACHED_VOXELS,
     SEED_STAGED_VOXELS,
     PROPAGATE_CANVAS_ROTATION,
+    // Posts each hosted canvas part to its host canvas's pool as a cell
+    // group. After PROPAGATE_CANVAS_ROTATION, before REBUILD_DETACHED_VOXELS.
+    PROPAGATE_CANVAS_PARTS,
+    // Entity-canvas residency policy: releases canvases outside the interest
+    // region and re-creates them on re-entry, under a live-canvas budget.
+    // First in UPDATE, so the transform chain sees the frame's switches.
+    CANVAS_RESIDENCY,
     VOXEL_SET_RESHAPER,
     VOXEL_POOL,
     LIFETIME,
