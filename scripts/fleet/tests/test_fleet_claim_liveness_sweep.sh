@@ -270,7 +270,7 @@ assert_eq "$(removed 830 fleet:sweep-cooldown)" 1 "a cooldown quiet for 40 min i
 assert_eq "$(removed 831 fleet:sweep-cooldown)" 0 "a cooldown 5 min old stays"
 
 echo "=== 9. a won amending/resolving claim clears fleet:sweep-cooldown ==="
-fixture '[{"number":850,"labels":[{"name":"fleet:sweep-cooldown"}]},
+fixture '[{"number":850,"labels":[{"name":"fleet:sweep-cooldown"},{"name":"fleet:needs-fix"}]},
           {"number":851,"labels":[{"name":"fleet:sweep-cooldown"}]},
           {"number":852,"labels":[]}]' '[]' '{}'
 FLEET_DISPATCH_ID=D5 "$FLEET_CLAIM" amending-claim 850 pool-2 >/dev/null 2>&1 || bad "amending-claim 850 failed"

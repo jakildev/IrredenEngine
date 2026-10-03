@@ -44,8 +44,8 @@ mkdir -p "$HOME/.fleet" "$FLEET_CLAIMS_DIR" "$FLEET_STATE_DIR" "$FLEET_ORPHANS_D
 SNAP="$HOME/.fleet/amend-snapshots/804.json"
 
 # gh stub. `issue view --json state,labels,body` feeds the two pre-acquire
-# gates (host capability, foreign review claim) — an unlabelled OPEN PR passes
-# both. The labels POST echoes only the posted label and the paginated
+# gates (live worker tier, host capability, foreign review claim). The labels
+# POST echoes only the posted label and the paginated
 # --slurp verification GET returns one page holding the exported candidate,
 # so the claimant is the sole holder and wins. remove-label succeeds.
 STUB_DIR="$TMPROOT/bin"; mkdir -p "$STUB_DIR"
@@ -54,7 +54,12 @@ cat > "$STUB_DIR/gh" <<'GHSTUB'
 case "$1" in
     issue)
         case "$2" in
-            view) printf '{"state":"OPEN","labels":[%s],"body":""}\n' "${STUB_VIEW_LABELS:-}"; exit 0 ;;
+            view)
+                labels="${STUB_VIEW_LABELS:-}"
+                [[ -n "$labels" ]] || labels='{"name":"fleet:needs-fix"}'
+                printf '{"state":"OPEN","labels":[%s],"body":""}\n' "$labels"
+                exit 0
+                ;;
             edit) exit 0 ;;
             *) exit 0 ;;
         esac ;;
@@ -149,7 +154,7 @@ echo "=== T5b: the re-acquire still replaces the sentinel when the label is alre
 # back onto the pane heartbeat for the rest of the iteration.
 rm -f "$SNAP"
 FLEET_DISPATCH_ID=preclaim "$FLEET_CLAIM" amending-claim 804 pool-2 >/dev/null 2>&1 || true
-_held_out=$(STUB_VIEW_LABELS='{"name":"fleet:amending-mac-pool-2"}' FLEET_DISPATCH_ID=D10 \
+_held_out=$(STUB_VIEW_LABELS='{"name":"fleet:needs-fix"},{"name":"fleet:amending-mac-pool-2"}' FLEET_DISPATCH_ID=D10 \
     "$FLEET_CLAIM" amending-claim 804 pool-2 2>&1) || true
 assert_contains "$_held_out" "already held" "the re-acquire took the incumbent path"
 assert_eq "$(snap_field "$SNAP" dispatch_id)" "D10" \

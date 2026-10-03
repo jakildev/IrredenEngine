@@ -59,11 +59,21 @@ emit_labels() {
     printf ']\n'
 }
 
+emit_issue_labels() {
+    local stored
+    stored=$(emit_labels)
+    if [[ "$stored" == "[]" ]]; then
+        printf '[{"name":"fleet:needs-fix"}]\n'
+    else
+        printf '[{"name":"fleet:needs-fix"},%s\n' "${stored#\[}"
+    fi
+}
+
 case "${1:-} ${2:-}" in
     "issue view")
         lock_state
         printf '{"state":"OPEN","labels":'
-        emit_labels
+        emit_issue_labels
         printf ',"body":""}\n'
         unlock_state
         ;;
