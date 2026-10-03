@@ -61,7 +61,8 @@ Reports:
   • fleet-wide usage gate (5h / 7d / etc. rate-limit thresholds)
   • GitHub API quota (core / graphql / search pools, gated at 90%; search is
     surface-only and never gates); each latched sample carries the identity
-    (user = personal pool, app = GitHub App pool) the scout read it under
+    (user = personal pool, app = GitHub App pool) the scout read it under;
+    compatible GraphQL samples include points spent since the prior scout tick
   • when the GitHub App is configured (FLEET_GH_APP_*): both identities' live
     /rate_limit readings side by side (the probe spends no quota)
   • per-pane cooldowns (15-min default after a pane's launch died at the wall)
@@ -324,6 +325,11 @@ if usage_dir.is_dir():
             # "user" | "app": the pool the sampler read under (GitHub only;
             # absent on a latch written before the field existed).
             "identity": data.get("identity"),
+            # Consecutive compatible GraphQL samples only. These stay absent
+            # across identities, reset windows, rejections and regressions.
+            "interval_points": data.get("interval_points"),
+            "interval_seconds": data.get("interval_seconds"),
+            "interval_points_per_minute": data.get("interval_points_per_minute"),
         }
         observations.append(obs)
         if breaching:
@@ -518,6 +524,12 @@ else:
         status_part = " REJECTED" if o.get("status") == "rejected" else ""
         remaining, limit = o.get("remaining"), o.get("limit")
         quota_text = f"remaining={remaining}/{limit}" if limit else f"util={pct}%"
+        interval_text = ""
+        if o.get("interval_points") is not None:
+            interval_text = (
+                f" interval={o['interval_points']} points/{o['interval_seconds']}s"
+                f" ({o['interval_points_per_minute']:.2f}/min)"
+            )
         eta = (
             f" (in {fmt_duration(o['etaSeconds'])})"
             if o["etaSeconds"] is not None and o["etaSeconds"] > 0
@@ -532,7 +544,7 @@ else:
             )
             stale_part = f" [{reasons}]"
         return (
-            f"  {prefix:<10} {pool:<13} {quota_text}{status_part} "
+            f"  {prefix:<10} {pool:<13} {quota_text}{interval_text}{status_part} "
             f"{cmp_text}{resets_part}{eta}{stale_part}"
         )
 

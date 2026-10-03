@@ -1087,10 +1087,11 @@ def sample_github_rate_limit():
     _sample_github_graphql()
 
 
-def _latch_github_pool(pool, payload):
+def _latch_github_pool(pool, payload, identity=None):
     # `identity` (user|app) says which pool the sample was read under, so
     # fleet-gate-status can tell the personal pool from the App's.
-    payload = {**payload, "identity": fleet_gh_fallback.gh_identity()}
+    identity = identity or fleet_gh_fallback.gh_identity()
+    payload = {**payload, "identity": identity}
     try:
         USAGE_DIR.mkdir(parents=True, exist_ok=True)
         write_atomic(USAGE_DIR / f"github-{pool}.json", json.dumps(payload))
@@ -1143,6 +1144,35 @@ _GITHUB_GRAPHQL_RATE_QUERY = "{rateLimit{limit used remaining resetAt}}"
 _RATE_LIMIT_REFUSAL_RE = re.compile(r"rate[ _]limit", re.IGNORECASE)
 
 
+def _graphql_interval(prior, used, observed_at, resets_at, identity):
+    if prior.get("status") == "rejected":
+        return {}
+    if prior.get("identity") != identity:
+        return {}
+    if resets_at is None or prior.get("resetsAt") != resets_at:
+        return {}
+
+    prior_used = prior.get("used")
+    if not isinstance(prior_used, int):
+        limit = prior.get("limit")
+        remaining = prior.get("remaining")
+        if isinstance(limit, int) and isinstance(remaining, int):
+            prior_used = limit - remaining
+    prior_observed_at = prior.get("observed_at")
+    if not isinstance(prior_used, int) or not isinstance(prior_observed_at, int):
+        return {}
+
+    points = used - prior_used
+    seconds = observed_at - prior_observed_at
+    if points < 0 or seconds <= 0:
+        return {}
+    return {
+        "interval_points": points,
+        "interval_seconds": seconds,
+        "interval_points_per_minute": round(points * 60 / seconds, 2),
+    }
+
+
 def _sample_github_graphql():
     """Latch the graphql pool from GraphQL's `rateLimit` self-report.
 
@@ -1173,6 +1203,7 @@ def _sample_github_graphql():
         prior = {}
     was_rejected = prior.get("status") == "rejected"
     now = int(time.time())
+    identity = fleet_gh_fallback.gh_identity()
 
     info = None
     if proc.returncode == 0:
@@ -1189,14 +1220,17 @@ def _sample_github_graphql():
             resets_at = None
         if was_rejected:
             log(f"github graphql quota recovered: used={used}/{limit}")
+        interval = _graphql_interval(prior, used, now, resets_at, identity)
         _latch_github_pool("graphql", {
             "rateLimitType": "github_graphql",
             "utilization": used / limit,
             "resetsAt": resets_at,
             "observed_at": now,
             "limit": limit,
+            "used": used,
             "remaining": info.get("remaining", limit - used),
-        })
+            **interval,
+        }, identity=identity)
         return
 
     output = f"{proc.stdout}\n{proc.stderr}".strip()
@@ -1220,7 +1254,7 @@ def _sample_github_graphql():
     prior_reset = prior.get("resetsAt")
     if isinstance(prior_reset, int) and prior_reset > now:
         payload["resetsAt"] = prior_reset
-    _latch_github_pool("graphql", payload)
+    _latch_github_pool("graphql", payload, identity=identity)
 
 
 _ALREADY_QUEUED_LABELS = frozenset({
