@@ -6,8 +6,12 @@
 #                          dispatch, read off the target's issue object and
 #                          comments since dispatch (+ open PRs for the kinds
 #                          whose label rides a PR — fetched once per pass)
-#   --handle-abandoned     the abandonment fold: first a logged retry, second a
-#                          release + worktree salvage + handoff + sidecar clear
+#   --handle-abandoned     the abandonment fold: a first abandon the pane can
+#                          resume (a reserved worktree) is a logged retry; any
+#                          other abandon is a release + worktree salvage (a
+#                          dirty tree to a patch, an unreachable HEAD to a
+#                          fleet-salvage/* branch) + handoff + sidecar clear.
+#                          The sidecar-backed pin is test_dispatcher_abandon_pin.sh
 #   --complete-dispatches  one cleanup pass folding each verdict into the
 #                          outcome bookkeeping — `finished` clears the target's
 #                          ledgers, `declined` writes the decline memory the
@@ -170,12 +174,18 @@ printf 'new work\n' > "$WT/untracked.txt"
 printf '{"session":"abc"}\n' > "$FLEET_SESSIONS_DIR/pool-3.session.json"
 handle() { : > "$CLAIM_LOG"; "$DISPATCHER" --handle-abandoned "$@" 2>&1 >/dev/null | tr -d '\r' || true; }
 
-echo "T4: the first abandonment is a logged retry — nothing released, nothing touched"
-assert_contains "$(handle task:engine:42 pool-3)" "retrying once" "retry logged"
+RESERVATION="$FLEET_RESERVATIONS_DIR/pool-3.json"
+reserve() { printf '{"task_id":"%s","created_epoch":1}\n' "$1" > "$RESERVATION"; }
+
+echo "T4: a reserved pane's first abandonment is a logged retry — nothing released, nothing touched"
+reserve 42
+assert_contains "$(handle task:engine:42 pool-3)" "retrying once — the reserved worktree resumes it" "retry logged"
 assert_eq "$(cat "$FLEET_STATE_DIR/abandoned/task-engine-42")" "1" "abandonment counter = 1"
 assert_eq "$(cat "$CLAIM_LOG")" "" "claim left standing"
 [[ -f "$WT/untracked.txt" && -f "$FLEET_SESSIONS_DIR/pool-3.session.json" ]] \
     && ok "worktree and sidecar untouched" || bad "worktree/sidecar touched on the first abandonment"
+[[ ! -e "$FLEET_STATE_DIR/abandon-pin/pool-3" ]] \
+    && ok "a reservation needs no abandon pin" || bad "a reserved keep wrote a pin"
 
 echo "T5: the second abandonment releases, salvages the worktree, hands off, clears the sidecar"
 assert_contains "$(handle task:engine:42 pool-3)" "abandoned twice" "second abandonment logged"
@@ -219,7 +229,8 @@ echo "T6: marker-vouched lane claims release on their first abandonment"
 while IFS='|' read -r target expected_release; do
     printf '{"session":"dead"}\n' > "$FLEET_SESSIONS_DIR/pool-3.session.json"
     out=$(handle "$target" pool-3)
-    assert_contains "$out" "first-abandon claim released" "$target logs immediate release"
+    assert_contains "$out" "abandoned on first exit (marker-vouched lane claim) by pool-3 — claim released" \
+        "$target logs immediate release"
     assert_eq "$(cat "$CLAIM_LOG")" "$expected_release" "$target routes to its release arm"
     key=${target//:/-}
     [[ ! -f "$FLEET_STATE_DIR/abandoned/$key" ]] \
@@ -234,13 +245,40 @@ conflict:engine:53|resolving-release 53 pool-3
 plan:engine:54|planning-release 54 pool-3
 EOF
 
-echo "T6b: feedback keeps retry-once and releases through its own lane"
-handle feedback:game:7 pool-3 >/dev/null
-assert_contains "$(cat "$FLEET_STATE_DIR/abandoned/feedback-game-7")" "1" "feedback keeps its first-abandon counter"
-handle feedback:game:7 pool-3 >/dev/null
+echo "T6b: an unreserved feedback abandon with no resumable session releases at once, through its own lane"
+rm -f "$RESERVATION"
+out=$(handle feedback:game:7 pool-3)
+assert_contains "$out" "abandoned on first exit (no resumable session) by pool-3 — claim released" \
+    "the first abandon releases"
 assert_eq "$(cat "$CLAIM_LOG")" "--repo game amending-release 7 pool-3" "amending-release under --repo game"
 assert_contains "$(cat "$FLEET_STATE_DIR/handoff/feedback-game-7.md")" "salvage: none" \
     "a clean worktree hands off with no patch"
+[[ ! -f "$FLEET_STATE_DIR/abandoned/feedback-game-7" ]] \
+    && ok "no abandon counter left behind" || bad "abandon counter left after the release"
+
+echo "T6c: a dead amend's commits on a detached HEAD are kept on a named branch and handed off"
+git -C "$WT" checkout -q --detach
+printf 'amend wip\n' > "$WT/amend.txt"
+git -C "$WT" add amend.txt
+git -C "$WT" -c user.name=t -c user.email=t@t commit -q -m 'amend wip'
+orphan_sha=$(git -C "$WT" rev-parse HEAD)
+unreached() { git -C "$WT" rev-list --count HEAD --not --branches --remotes | tr -d '\r'; }
+assert_eq "$(unreached)" "1" "fixture: HEAD carries a commit no branch or remote reaches"
+printf '{"session_id":"S-OTHER","role":"worker","target":"feedback:engine:4012"}\n' \
+    > "$FLEET_SESSIONS_DIR/pool-3.session.json"
+: > "$CLAIM_LOG"
+"$DISPATCHER" --handle-abandoned feedback:engine:3763 pool-3 worker >/dev/null 2>&1 || true
+assert_eq "$(cat "$CLAIM_LOG")" "amending-release 3763 pool-3" "a sidecar for another target cannot resume it: released"
+handoff=$(cat "$FLEET_STATE_DIR/handoff/feedback-engine-3763.md" 2>&1 || true)
+assert_contains "$handoff" "abandoned on first exit (no resumable session)" "handoff names the reason"
+assert_contains "$handoff" "- commits (engine): fleet-salvage/feedback-engine-3763-" "handoff names the salvage branch"
+assert_contains "$handoff" "at $orphan_sha (" "handoff names the salvaged sha"
+assert_eq "$(unreached)" "0" "the salvage branch makes the commit reachable"
+assert_eq "$(git -C "$WT" for-each-ref --format='%(objectname)' 'refs/heads/fleet-salvage/' | tr -d '\r')" \
+    "$orphan_sha" "the fleet-salvage branch points at the dead HEAD"
+[[ ! -f "$FLEET_SESSIONS_DIR/pool-3.session.json" && ! -f "$FLEET_STATE_DIR/abandoned/feedback-engine-3763" ]] \
+    && ok "sidecar and abandon counter cleared" || bad "sidecar or counter left after the release"
+git -C "$WT" checkout -q claude/42-work
 
 # --- The cleanup pass -----------------------------------------------------------
 record() {  # $1 = pane  $2 = target (empty for legacy)  $3 = optional pid  $4 = optional epoch
@@ -288,11 +326,13 @@ assert_eq "$declined_py" "True False" "the resolver reads that memory for the de
 echo "T9: abandoned folds through the abandonment counter"
 rm -f "$FLEET_STATE_DIR/abandoned/task-engine-42"
 issue "$CLAIM"
+reserve 42
 record 1 task:engine:42
 out=$(complete)
 assert_contains "$out" "retrying once" "first abandonment logged as a retry"
 assert_contains "$out" "verdict=abandoned" "verdict logged"
 assert_eq "$(cat "$FLEET_STATE_DIR/abandoned/task-engine-42")" "1" "abandonment counter = 1"
+rm -f "$RESERVATION"
 
 echo "T10: two task panes exiting in one pass share one PR-list fetch"
 record 1 task:engine:42

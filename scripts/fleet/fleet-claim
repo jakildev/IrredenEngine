@@ -3369,6 +3369,36 @@ _cleanup_sweep_label() {
     esac
 }
 
+# _cleanup_sweep_amend_label <repo> <surface> <pr> <label>
+#   _cleanup_sweep_label for a fleet:amending-* label, run under the per-PR
+#   amend lock with the sweep's intent declared beside it. Every sweep of an
+#   amending label goes through here (cmd_cleanup_gh's first pass, reconcile
+#   R10). Reads and bumps the same caller-scope names _cleanup_sweep_label
+#   does.
+_cleanup_sweep_amend_label() {
+    local repo="$1" target_surface="$2" target_num="$3" label_name="$4" _amend_intent
+    if ! _amend_lock_acquire "$target_num"; then
+        echo "cleanup --gh: skipping '$label_name' on $repo PR#$target_num this pass — amend lock held"
+        return 0
+    fi
+    if [[ -n "$_AMEND_PENDING_SWEEP" ]]; then
+        echo "cleanup --gh: skipping '$label_name' on $repo PR#$target_num this pass — a stalled sweep's removal of '$_AMEND_PENDING_SWEEP' is still in flight"
+        _amend_lock_release "$target_num"
+        return 0
+    fi
+    # Declared before the age lookup: the section's gh calls are where a
+    # holder stalls, and a stealer must read the label as a removal in flight
+    # from the first one, not just from the removal itself.
+    if ! _amend_intent=$(_amend_sweep_intent_write "$repo" "$target_num" "$label_name"); then
+        echo "cleanup --gh: skipping '$label_name' on $repo PR#$target_num this pass — could not declare the sweep beside the amend lock"
+        _amend_lock_release "$target_num"
+        return 0
+    fi
+    _cleanup_sweep_label "$repo" "$target_surface" "$target_num" "$label_name"
+    rm -f "$_amend_intent" 2>/dev/null || true
+    _amend_lock_release "$target_num"
+}
+
 # claim_labels_from_json <label-prefix> <listing-limit> <item-name>
 #   Read an issue/PR-list JSON document and emit `<number><TAB><label>` matches.
 claim_labels_from_json() {
@@ -3507,28 +3537,7 @@ for issue in issues:
                 continue
             fi
             if [[ "$label_name" == fleet:amending-* ]]; then
-                if ! _amend_lock_acquire "$target_num"; then
-                    echo "cleanup --gh: skipping '$label_name' on $repo PR#$target_num this pass — amend lock held"
-                    continue
-                fi
-                if [[ -n "$_AMEND_PENDING_SWEEP" ]]; then
-                    echo "cleanup --gh: skipping '$label_name' on $repo PR#$target_num this pass — a stalled sweep's removal of '$_AMEND_PENDING_SWEEP' is still in flight"
-                    _amend_lock_release "$target_num"
-                    continue
-                fi
-                # Declared before the age lookup: the section's gh calls are
-                # where a holder stalls, and a stealer must read the label as
-                # a removal in flight from the first one, not just from the
-                # removal itself.
-                local _amend_intent
-                if ! _amend_intent=$(_amend_sweep_intent_write "$repo" "$target_num" "$label_name"); then
-                    echo "cleanup --gh: skipping '$label_name' on $repo PR#$target_num this pass — could not declare the sweep beside the amend lock"
-                    _amend_lock_release "$target_num"
-                    continue
-                fi
-                _cleanup_sweep_label "$repo" "$target_surface" "$target_num" "$label_name"
-                rm -f "$_amend_intent" 2>/dev/null || true
-                _amend_lock_release "$target_num"
+                _cleanup_sweep_amend_label "$repo" "$target_surface" "$target_num" "$label_name"
             else
                 _cleanup_sweep_label "$repo" "$target_surface" "$target_num" "$label_name"
             fi
@@ -4153,8 +4162,9 @@ cmd_check_stale() {
 # provably-unactionable PRs); R8 is the exit half of the fleet:awaiting-infra
 # park; R9 class-escalates a fleet:sonnet backing issue while any of its PRs
 # is parked in the design lane, so the opus+-only resume tier has a
-# permitted class to dispatch. The periodic scout spawn lives in
-# fleet-state-scout.
+# permitted class to dispatch; R10 removes this host's fleet:amending-* label
+# whose owner is provably gone or unvouched past the TTL. The periodic scout
+# spawn lives in fleet-state-scout.
 
 # reconcile_fs_claims_json
 #   Emit the host-local FS claim set as a JSON array, one object per claim
@@ -4223,7 +4233,7 @@ cmd_reconcile() {
     # Usage: fleet-claim reconcile [--apply] [--repo <owner/repo>] ...
     # Report-only by default (detect + report, mutate nothing). With --apply,
     # perform only the host-local, TTL/corroboration-gated auto-fixes
-    # (R1/R3/R4/R5); R2 stays report-only.
+    # (R1/R3/R4/R5/R10); R2 stays report-only.
     local do_apply=0
     local -a repos=()
     while [[ $# -gt 0 ]]; do
@@ -4818,6 +4828,45 @@ for repo in repos:
                    "issue": issue_n, "pr": parked["number"],
                    "from": "fleet:sonnet", "to": "fleet:opus"})
 
+# ---- R10: this host's dead amending label ----
+# The amend claim consumed the PR's feedback tier, so once its owner dies the
+# label is the only mark on the PR, and every lane reads it as a live owner:
+# the amend lane never projects the PR and the review lane skips it. Only
+# `cleanup --gh` reaps it otherwise, and that runs on the authoritative poller
+# alone; reconcile runs on every host. Same-host labels only — every liveness
+# input is host-local. The verdict is a pre-filter: the apply arm re-judges the
+# label under the amend lock with its real age (_cleanup_sweep_amend_label), so
+# a finding the locked pass finds live or too young is kept there.
+REPO_NS = {"jakildev/IrredenEngine": "engine", "jakildev/irreden": "game"}
+own_amending = "fleet:amending-%s-" % host
+for repo in repos:
+    ns = REPO_NS.get(repo)
+    if ns is None:
+        continue
+    for pr in repo_data[repo]["prs"]:
+        for lab in sorted(labelset(pr)):
+            if not lab.startswith(own_amending):
+                continue
+            code, detail = liveness.verdict(lab, ns, pr.get("number"), this_host=host,
+                                            ttl=ttl, now=now, dirs=liveness_dirs)
+            if code == liveness.LIVE:
+                continue
+            if code == liveness.CANNOT_VOUCH:
+                snap = load(os.path.join(liveness_dirs["amend_snapshots"],
+                                         "%s.json" % pr.get("number")), {})
+                if (isinstance(snap, dict) and lab == own_amending + str(snap.get("agent"))
+                        and now - int(snap.get("acquired_epoch") or 0) < ttl):
+                    continue
+                why = "no live owner (%s) past TTL %dm" % (detail["arm"], ttl // 60)
+            else:
+                why = "owning dispatch %s superseded by %s" % (
+                    detail.get("owner_dispatch"), detail.get("superseded_by"))
+            add("R10", repo, pr.get("number"), "pr", ["label", "dispatch", "heartbeat"],
+                "this host's '%s' has no live owner; remove it (re-judged under "
+                "the amend lock)" % lab, why,
+                apply={"type": "dead_amend_label", "repo": repo,
+                       "pr": pr.get("number"), "label": lab})
+
 for f in findings:
     print(json.dumps(f))
 PYEOF
@@ -4938,6 +4987,21 @@ PYEOF
                         echo "  reconcile --apply: R9 escalated $e_repo #$e_issue sonnet → opus (design-parked PR #$e_pr)"
                     else
                         echo "  reconcile --apply: R9 failed to escalate $e_repo #$e_issue sonnet → opus (retries next tick)" >&2
+                    fi
+                    ;;
+                dead_amend_label)
+                    # R10: the cleanup sweep's own locked re-judge decides —
+                    # the age rule, the amend lock, the fenced removal and
+                    # fleet:sweep-cooldown live there once.
+                    local a_repo a_pr a_label stale_secs="$claim_ttl" this_host="$host" total_removed=0
+                    a_repo=$(reconcile_apply_field "$line" repo)
+                    a_pr=$(reconcile_apply_field "$line" pr)
+                    a_label=$(reconcile_apply_field "$line" label)
+                    _cleanup_sweep_amend_label "$a_repo" PR "$a_pr" "$a_label"
+                    if (( total_removed )); then
+                        echo "  reconcile --apply: R10 removed '$a_label' on $a_repo PR#$a_pr"
+                    else
+                        echo "  reconcile --apply: R10 kept '$a_label' on $a_repo PR#$a_pr (the locked re-judge found its owner live or the label too young)"
                     fi
                     ;;
                 # heal_design_unblock (R7) is deliberately NOT applied here — it

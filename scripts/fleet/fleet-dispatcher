@@ -1069,6 +1069,12 @@ worktree_is_reserved() {
     [[ -f "$RESERVATIONS_DIR/$1.json" ]]
 }
 
+# True when a worktree is held for the worker lane's resume: a reservation, or
+# an abandon pin (handle_abandoned_target), which holds its pane the same way.
+worktree_is_held() {
+    worktree_is_reserved "$1" || [[ -f "$(fleet_abandon_pin_file "$1")" ]]
+}
+
 find_idle_panes_for_role() {
     local role="$1"
     # For the worker lane, reserved-worktree panes print FIRST so a
@@ -1090,11 +1096,11 @@ find_idle_panes_for_role() {
                 wt_name=""
                 wt_path=$(tmux display-message -t "$pane_id" -p '#{pane_current_path}' 2>/dev/null || true)
                 [[ -n "$wt_path" ]] && wt_name=$(basename "$wt_path")
-                if [[ -n "$wt_name" ]] && worktree_is_reserved "$wt_name"; then
+                if [[ -n "$wt_name" ]] && worktree_is_held "$wt_name"; then
                     if [[ "$role" == "worker" ]]; then
                         reserved_panes+=("$pane_id")
                     fi
-                    # Non-worker roles never land on a reserved worktree.
+                    # Non-worker roles never land on a held worktree.
                     continue
                 fi
                 free_panes+=("$pane_id")
@@ -1595,13 +1601,17 @@ remember_decline() {
 }
 
 # An abandoned target: the pane exited with its claim label standing and no
-# record of why. Reservation-backed work retries once under the same pane;
-# marker-vouched lane claims release immediately because another idle pane is
-# their recovery path. Release salvages dirty worktrees, writes a handoff, and
-# clears the sidecar so a later assignment cannot resume the dead session.
-# $1 = target, $2 = agent.
+# record of why. Marker-vouched lane claims release at once: another idle pane
+# is their recovery path. Any other kind keeps its claim on the first abandon
+# only when the pane can resume it — its worktree is reserved (the worker's
+# step 0.5 resumes the task), or its session sidecar would resume this very
+# dispatch, in which case the pane is pinned to that one re-dispatch. Without
+# either, a kept claim strands: nothing re-dispatches the target, and a
+# feedback target's tier was consumed by the claim, so no lane projects it.
+# The second abandon always releases. $1 = target, $2 = agent, $3 = the
+# abandoned dispatch's role (default worker, the only lane that keeps).
 handle_abandoned_target() {
-    local target="$1" agent="$2"
+    local target="$1" agent="$2" role="${3:-worker}"
     local key f n
     key=$(fleet_target_key "$target")
     f="$STATE_DIR/abandoned/$key"
@@ -1609,46 +1619,141 @@ handle_abandoned_target() {
     n=$(( $(ttl_counter_read "$f" "$TARGET_DISPATCH_COUNT_TTL") + 1 ))
     echo "$n" > "$f" 2>/dev/null || true
     fleet_parse_target "$target" || return 0
-    local first_abandon_release=0
-    fleet_target_releases_on_first_abandon "$FLEET_TARGET_KIND" \
-        && first_abandon_release=1
-    if (( n < 2 && ! first_abandon_release )); then
-        log "$target: abandoned by $agent (claim standing, no record); retrying once — a hard-killed session resumes via its sidecar"
-        return 0
+    if fleet_target_releases_on_first_abandon "$FLEET_TARGET_KIND"; then
+        abandon_release "$target" "$agent" "abandoned on first exit (marker-vouched lane claim)"
+    elif (( n >= 2 )); then
+        abandon_release "$target" "$agent" "abandoned twice"
+    elif worktree_is_reserved "$agent"; then
+        log "$target: abandoned by $agent (claim standing, no record); retrying once — the reserved worktree resumes it"
+    elif [[ "$role" == worker ]] && sidecar_resumes_target "$agent" "$role" "$target"; then
+        abandon_pin_write "$agent" "$target" "$role"
+        mkdir -p "$TRIGGERS_DIR" && touch "$TRIGGERS_DIR/$role" || true
+        log "$target: abandoned by $agent (claim standing, no record); retrying once — pane pinned to resume its session"
+    else
+        abandon_release "$target" "$agent" "abandoned on first exit (no resumable session)"
     fi
-    local salvage="" wt which patch stamp
+}
+
+# True when <agent>'s session sidecar would resume the abandoned dispatch: the
+# same role and the same target (fleet-dispatch-wrap keeps a resumed Claude
+# session's assignment only when the targets match), with a conversation to
+# continue — a Claude session id, or a Codex sidecar, which the reserved-resume
+# route re-launches on its recorded target. Keep the conditions in sync with
+# the wrapper's resume branch. $1 = agent, $2 = role, $3 = target.
+sidecar_resumes_target() {
+    python3 - "${FLEET_SESSIONS_DIR:-$HOME/.fleet/sessions}/$1.session.json" "$2" "$3" <<'PY' 2>/dev/null \
+        | tr -d '\r' | grep -qx yes
+import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+except (OSError, ValueError):
+    sys.exit(0)
+if (isinstance(data, dict) and data.get("role") == sys.argv[2]
+        and data.get("target") == sys.argv[3]
+        and ((data.get("runtime") or "claude") == "codex" or data.get("session_id"))):
+    print("yes")
+PY
+}
+
+# $1 = agent, $2 = target, $3 = role, $4 = write epoch (default now). The
+# epoch survives a restore so the pin's expiry is measured from the abandon.
+abandon_pin_write() {
+    local f
+    f=$(fleet_abandon_pin_file "$1")
+    mkdir -p "${f%/*}" 2>/dev/null || true
+    printf '%s\n%s\n%s\n' "$2" "${4:-$(date +%s)}" "$3" > "$f" 2>/dev/null || true
+}
+
+# The pin's write epoch, or 0. $1 = agent.
+abandon_pin_epoch() {
+    local epoch=""
+    epoch=$(sed -n '2p' "$(fleet_abandon_pin_file "$1")" 2>/dev/null | tr -d '\r') || true
+    [[ "$epoch" =~ ^[0-9]+$ ]] || epoch=0
+    printf '%s\n' "$epoch"
+}
+
+# Resolve every pin older than the claim TTL through the release path: a pane
+# that never got its resume (a cooldown that outlasted it, a lane that never
+# woke) must not hold the claim, which the pin vouches for, past the window
+# any other dead claim gets.
+expire_abandon_pins() {
+    local pin agent target now ttl
+    [[ -d "$STATE_DIR/abandon-pin" ]] || return 0
+    now=$(date +%s)
+    ttl="${FLEET_CLAIM_STALE_SECS:-1800}"
+    for pin in "$STATE_DIR/abandon-pin"/*; do
+        [[ -f "$pin" ]] || continue
+        agent="${pin##*/}"
+        (( now - $(abandon_pin_epoch "$agent") >= ttl )) || continue
+        if target=$(fleet_abandon_pin_target "$agent"); then
+            abandon_release "$target" "$agent" "pinned resume not served within ${ttl}s"
+        else
+            rm -f "$pin"
+        fi
+    done
+}
+
+# Release an abandoned target and everything that would let a later dispatch
+# trip over the dead session. Each pane worktree is salvaged — a dirty tree to
+# a patch (then reset clean), its unpushed commits named, and a HEAD that no
+# branch or remote reaches kept by a new fleet-salvage/* branch (the predicate
+# fleet-pr-checkout-detached's orphan guard refuses on) — then the claim, the
+# sidecar, the pin and the abandon counter go, and a handoff names the
+# salvage. $1 = target, $2 = agent, $3 = reason, $4 = 1 to leave the claim
+# label to the holder that refused this agent's re-acquire.
+abandon_release() {
+    local target="$1" agent="$2" detail="$3" keep_label="${4:-0}"
+    local key salvage="" commits="" wt which patch stamp head unpushed orphaned br branches
+    key=$(fleet_target_key "$target")
     stamp=$(date -u '+%Y-%m-%dT%H-%M-%SZ')
     mkdir -p "$STATE_DIR/salvage" "$STATE_DIR/handoff" 2>/dev/null || true
     while IFS= read -r wt; do
         [[ -n "$wt" ]] || continue
-        [[ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]] || continue
         case "$wt" in */creations/game/*) which=game ;; *) which=engine ;; esac
-        patch="$STATE_DIR/salvage/$key-$which-$stamp.patch"
-        git -C "$wt" add -A --intent-to-add >/dev/null 2>&1 || true
-        if git -C "$wt" diff HEAD > "$patch" 2>/dev/null; then
-            salvage="${salvage:+$salvage }$patch"
-            git -C "$wt" rebase --abort >/dev/null 2>&1 \
-                || git -C "$wt" merge --abort >/dev/null 2>&1 \
-                || true
-            git -C "$wt" reset --hard HEAD >/dev/null 2>&1 || true
-            git -C "$wt" clean -fd >/dev/null 2>&1 || true
-        else
-            rm -f "$patch"
+        if [[ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]]; then
+            patch="$STATE_DIR/salvage/$key-$which-$stamp.patch"
+            git -C "$wt" add -A --intent-to-add >/dev/null 2>&1 || true
+            if git -C "$wt" diff HEAD > "$patch" 2>/dev/null; then
+                salvage="${salvage:+$salvage }$patch"
+                git -C "$wt" rebase --abort >/dev/null 2>&1 \
+                    || git -C "$wt" merge --abort >/dev/null 2>&1 \
+                    || true
+                git -C "$wt" reset --hard HEAD >/dev/null 2>&1 || true
+                git -C "$wt" clean -fd >/dev/null 2>&1 || true
+            else
+                rm -f "$patch"
+            fi
         fi
+        # Read after the reset: an aborted rebase moves HEAD back to its branch.
+        head=$(git -C "$wt" rev-parse --verify --quiet HEAD 2>/dev/null | tr -d '\r') || true
+        [[ -n "$head" ]] || continue
+        unpushed=$(git -C "$wt" rev-list --count HEAD --not --remotes 2>/dev/null | tr -d '\r') || true
+        [[ "$unpushed" =~ ^[1-9][0-9]*$ ]] || continue
+        orphaned=$(git -C "$wt" rev-list --count HEAD --not --branches --remotes 2>/dev/null | tr -d '\r') || true
+        if [[ "$orphaned" =~ ^[1-9][0-9]*$ ]]; then
+            git -C "$wt" branch "fleet-salvage/$key-$stamp" HEAD >/dev/null 2>&1 || true
+        fi
+        branches=""
+        while IFS= read -r br; do
+            br="${br%$'\r'}"
+            [[ -n "$br" ]] && branches="${branches:+$branches, }$br"
+        done < <(git -C "$wt" for-each-ref --points-at HEAD --format='%(refname:short)' refs/heads/ 2>/dev/null)
+        commits+=$'\n'"- commits ($which): ${branches:-none (no branch could be created)} at $head ($unpushed unpushed)"
     done < <(fleet_pane_worktrees "$agent" "$ENGINE")
-    fleet_release_assignment "$target" "$agent"
-    rm -f "${FLEET_SESSIONS_DIR:-$HOME/.fleet/sessions}/$agent.session.json"
-    local release_detail="abandoned twice"
-    (( first_abandon_release )) && release_detail="abandoned on first exit (marker-vouched lane claim)"
-    printf '# Handoff — %s\n\n- %s by %s on this host (%s); claim released\n- salvage: %s\n\nApply the patch onto a fresh branch for this target (`git apply <path>`), then delete this file — it is consumed once.\n' \
-        "$target" "$release_detail" "$agent" "$stamp" "${salvage:-none (worktrees were clean)}" \
-        > "$STATE_DIR/handoff/$key.md" 2>/dev/null || true
-    rm -f "$f"
-    if (( first_abandon_release )); then
-        log "$target: abandoned by $agent — first-abandon claim released, worktrees salvaged (${salvage:-nothing dirty}), handoff at $STATE_DIR/handoff/$key.md"
+    local claim_note="claim released"
+    if (( keep_label )); then
+        claim_note="claim left to its current holder"
+        rm -f "$(fleet_abandon_pin_file "$agent")"
     else
-        log "$target: abandoned twice by $agent — claim released, worktrees salvaged (${salvage:-nothing dirty}), handoff at $STATE_DIR/handoff/$key.md"
+        fleet_release_assignment "$target" "$agent"
     fi
+    rm -f "${FLEET_SESSIONS_DIR:-$HOME/.fleet/sessions}/$agent.session.json"
+    printf '# Handoff — %s\n\n- %s by %s on this host (%s); %s\n- salvage: %s%s\n\nApply a patch onto a fresh branch for this target (`git apply <path>`). Cherry-pick a commits line'"'"'s unpushed commits onto it (`git cherry-pick <upstream>..<branch>`), then delete a `fleet-salvage/*` branch (`git branch -D <branch>`). Delete this file once consumed.\n' \
+        "$target" "$detail" "$agent" "$stamp" "$claim_note" \
+        "${salvage:-none (worktrees were clean)}" "$commits" \
+        > "$STATE_DIR/handoff/$key.md" 2>/dev/null || true
+    rm -f "$STATE_DIR/abandoned/$key"
+    log "$target: $detail by $agent — $claim_note, worktrees salvaged (${salvage:-nothing dirty}${commits:+; unpushed commits named}), handoff at $STATE_DIR/handoff/$key.md"
 }
 
 # --- Usage-wall verdict --------------------------------------------------------
@@ -1776,7 +1881,7 @@ cleanup_stale_dispatches() {
                     remember_decline "$target" "$updated" "$detail" "$role"
                     rm -f "$STATE_DIR/abandoned/$(fleet_target_key "$target")"
                     ;;
-                abandoned) claimed=no; handle_abandoned_target "$target" "$agent" ;;
+                abandoned) claimed=no; handle_abandoned_target "$target" "$agent" "$role" ;;
             esac
         fi
         # Fold the just-finished dispatch into the role's empty-exit streak.
@@ -1790,6 +1895,7 @@ cleanup_stale_dispatches() {
         rm -f "$file"
     done
     assess_pass_end
+    expire_abandon_pins
 }
 
 # --- Rate-limit cooldown ---------------------------------------------------
@@ -2707,6 +2813,67 @@ claim_target() {
     return 0
 }
 
+# Serve <agent>'s abandon pin: re-acquire the pinned target as the incumbent
+# claim and hand it back to the pane, whose sidecar resumes the dead session.
+# The resume launches on the sidecar's provider and model, so those gate it,
+# not the lane's election. Exit 0 = assigned (ASSIGNMENT, ASSIGN_PINNED,
+# ASSIGN_PIN_EPOCH, and ASSIGN_PIN_MODEL or the ASSIGN_* Codex route set);
+# 4 = that provider or model is closed — the pin stands and the pane is held
+# like a reserved one; 1 = no pin, or the pin could not be served: the target
+# is released (salvaged, handed off) and the pane takes normal assignment.
+ASSIGN_PINNED="" ASSIGN_PIN_MODEL="" ASSIGN_PIN_EPOCH=""
+assign_pinned_target() {
+    local agent="$1" target sidecar route rc=0 class gate
+    target=$(fleet_abandon_pin_target "$agent") || return 1
+    sidecar="${FLEET_SESSIONS_DIR:-$HOME/.fleet/sessions}/$agent.session.json"
+    if ! sidecar_resumes_target "$agent" worker "$target"; then
+        abandon_release "$target" "$agent" "pinned resume lost its session sidecar"
+        return 1
+    fi
+    route=$(python3 "$FLEET_LIB_DIR/fleet_runtime.py" resume-route "$sidecar" 2>/dev/null) || rc=$?
+    route="${route//$'\r'/}"
+    if (( rc == 0 )); then
+        command -v codex >/dev/null 2>&1 || return 4
+        python3 "$FLEET_LIB_DIR/fleet_runtime.py" ready "$STATE_DIR" || return 4
+        read -r ASSIGN_RUNTIME ASSIGN_CLASS ASSIGN_MODEL ASSIGN_EFFORT _ <<< "$route"
+        class="$ASSIGN_CLASS"
+    elif (( rc == 2 )); then
+        ASSIGN_PIN_MODEL=$(reserved_claude_model "$sidecar" worker)
+        if [[ "${FLEET_RUNTIMES:-claude}" == *codex* ]]; then
+            gate=$(usage_gate_status claude "$ASSIGN_PIN_MODEL")
+        else
+            gate=$(usage_gate_status scoped "$ASSIGN_PIN_MODEL")
+        fi
+        [[ "$gate" == open* ]] || return 4
+        class=$(sidecar_field "$sidecar" class)
+    else
+        abandon_release "$target" "$agent" "pinned resume has no launchable route"
+        return 1
+    fi
+    ASSIGN_PIN_EPOCH=$(abandon_pin_epoch "$agent")
+    if ! DISPATCH_CLASS="${class:-$DISPATCH_CLASS}" claim_target "$target" "$agent"; then
+        log "worker: pinned re-acquire of $target under $agent refused: $CLAIM_TARGET_ERROR"
+        ASSIGN_RUNTIME="" ASSIGN_CLASS="" ASSIGN_MODEL="" ASSIGN_EFFORT="" ASSIGN_PIN_MODEL=""
+        abandon_release "$target" "$agent" "pinned re-acquire refused ($CLAIM_TARGET_ERROR)" 1
+        return 1
+    fi
+    rm -f "$(fleet_abandon_pin_file "$agent")"
+    ASSIGNMENT="$target"
+    ASSIGN_PINNED=1
+    return 0
+}
+
+# One field of a session sidecar, or empty. $1 = sidecar path, $2 = key.
+sidecar_field() {
+    python3 -c 'import json, sys
+try:
+    data = json.load(open(sys.argv[1]))
+except (OSError, ValueError):
+    data = {}
+print(data.get(sys.argv[2], "") if isinstance(data, dict) else "")' "$1" "$2" 2>/dev/null \
+        | tr -d '\r' || true
+}
+
 # Bind the pane about to be dispatched to one target: walk the lane's
 # ordered candidates and take the first claim that is granted. $1 = role,
 # $2 = the pane's worktree basename (the claim agent name — see
@@ -2716,14 +2883,22 @@ claim_target() {
 # flight, refused, or none listed), 2 (no projection slice for the role — the
 # scout may not have written it yet; the caller keeps the legacy plain
 # launch), or 3 (this tick's claim budget ran out mid-walk — the caller keeps
-# the trigger). Never claims outside live mode: dry-run/review-only
+# the trigger), or 4 (the pane's abandon pin waits on a closed provider or
+# model — the caller holds the pane, see assign_pinned_target). A worker
+# pane's pin is served before any election: it is not a lane candidate and
+# costs no claim attempt. Never claims outside live mode: dry-run/review-only
 # iterations do no lane work, so a claim there would only strand a lock.
 assign_for_pane() {
-    local role="$1" agent="$2"
+    local role="$1" agent="$2" pin_rc=0
     ASSIGNMENT=""
     ASSIGN_RUNTIME="" ASSIGN_MODEL="" ASSIGN_EFFORT="" ASSIGN_CLASS=""
+    ASSIGN_PINNED="" ASSIGN_PIN_MODEL="" ASSIGN_PIN_EPOCH=""
     [[ "$DISPATCH_MODE" == "live" ]] || return 1
     [[ -n "${ROLE_TARGET_BOUND[$role]+x}" ]] || return 1
+    if [[ "$role" == worker ]]; then
+        assign_pinned_target "$agent" || pin_rc=$?
+        (( pin_rc == 1 )) || return "$pin_rc"
+    fi
     local slice="$STATE_DIR/projections/$role.json"
     [[ -f "$slice" ]] || return 2
     local key="$role:$DISPATCH_CLASS"
@@ -2874,6 +3049,18 @@ role_has_reservation() {
         [[ -e "$rfile" ]] || continue
         rrole=$(fleet-claim reservation-role "$(basename "$rfile" .json)" 2>/dev/null || true)
         [[ "$rrole" == "$role" ]] && return 0
+    done
+    return 1
+}
+
+# True when an abandon pin is waiting on the worker lane — like a reservation,
+# a resume no other lane state announces: the claim took the target out of the
+# projection, so the lane's '' and defer verdicts cannot see it.
+role_has_abandon_pin() {
+    local pin
+    [[ "$1" == worker && -d "$STATE_DIR/abandon-pin" ]] || return 1
+    for pin in "$STATE_DIR/abandon-pin"/*; do
+        [[ -f "$pin" ]] && return 0
     done
     return 1
 }
@@ -3193,9 +3380,17 @@ dispatch_role() {
     # finds a class with headroom, hits the uncapped path, or defers.
     local claim_headroom=-1   # -1 = uncapped
     local _sat_excluded="" _passes=0
+    # pin_only: the lane has nothing to elect, but an abandon pin waits — run
+    # the fan-out for the pinned panes alone and keep the deferral's trigger.
+    local pin_only=""
     note_sweep_cooldowns "$role"
     while : ; do
         resolve_worker_class "$role" "$_sat_excluded"
+        if (( DISPATCH_DEFER )) && role_has_abandon_pin "$role"; then
+            pin_only=1
+            claim_headroom=-1
+            break
+        fi
         if (( DISPATCH_DEFER )); then
             # Nothing a fresh worker can claim right now: cap-blocked fable only,
             # the queue's only items already have open PRs (inflight_pr),
@@ -3223,7 +3418,8 @@ dispatch_role() {
             # projection change, which is exactly when claimable work appears.
             if [[ -n "${WORKER_LANE_DEFAULT_CLASS[$role]+x}" ]] \
                 && [[ -f "$STATE_DIR/projections/$role.json" ]] \
-                && ! role_has_reservation "$role"; then
+                && ! role_has_reservation "$role" \
+                && ! role_has_abandon_pin "$role"; then
                 rm -f "$trigger_file"
                 log "$role: slice routed no claimable work and no reservation pending; standing down — scout re-arms on new work"
                 return
@@ -3299,6 +3495,10 @@ dispatch_role() {
         if [[ -f "$(dispatch_record "$pane_id")" ]]; then
             continue
         fi
+        if [[ -n "$pin_only" ]] \
+            && [[ ! -f "$(fleet_abandon_pin_file "$(pane_worktree_basename "$pane_id" || true)")" ]]; then
+            continue
+        fi
         # Skip panes that hit a usage-limit recently. The per-pane
         # rate-limit marker is written by fleet-dispatch-wrap when its
         # launch died at the wall. Log the skip once per cooldown window
@@ -3311,7 +3511,7 @@ dispatch_role() {
                 RATE_LIMIT_COOLDOWN_LOGGED["$pane_key"]=1
             fi
             if [[ "$role" == "worker" ]] \
-                && worktree_is_reserved "$(pane_worktree_basename "$pane_id" || true)"; then
+                && worktree_is_held "$(pane_worktree_basename "$pane_id" || true)"; then
                 reserved_held=1
             fi
             continue
@@ -3350,6 +3550,7 @@ dispatch_role() {
         # fan-out stops here.
         local target_arg="" pane_basename="" resume_model="" claude_resume=""
         ASSIGN_RUNTIME="" ASSIGN_MODEL="" ASSIGN_EFFORT="" ASSIGN_CLASS=""
+        ASSIGN_PINNED="" ASSIGN_PIN_MODEL="" ASSIGN_PIN_EPOCH=""
         if [[ -n "${ROLE_TARGET_BOUND[$role]+x}" && "$DISPATCH_MODE" == "live" ]]; then
             if ! pane_basename=$(pane_worktree_basename "$pane_id"); then
                 continue
@@ -3371,7 +3572,14 @@ dispatch_role() {
                     assign_for_pane "$role" "$pane_basename" && assign_rc=0 || assign_rc=$?
                 done
                 case "$assign_rc" in
-                    0) target_arg="$ASSIGNMENT" ;;
+                    0)
+                        target_arg="$ASSIGNMENT"
+                        if [[ -n "$ASSIGN_PINNED" && -z "$ASSIGN_RUNTIME" ]]; then
+                            claude_resume=1
+                            resume_model="$ASSIGN_PIN_MODEL"
+                        fi
+                        ;;
+                    4) reserved_held=1; continue ;; # the pin's resume gate is closed
                     2) ASSIGN_BLOCK_REASON="no-projection-slice"; assign_budget_hit=1; break ;; # wait for a target-bearing projection
                     3) assign_budget_hit=1; break ;; # ASSIGN_BLOCK_REASON already set by assign_for_pane
                     *) assign_exhausted=1; break ;;
@@ -3441,6 +3649,10 @@ dispatch_role() {
             if [[ "$claude_gate_now" != open* ]]; then
                 if [[ -n "$claude_resume" ]]; then
                     reserved_held=1
+                    # A pin served this pass keeps its claim; restoring the
+                    # pin keeps the pane held for it.
+                    [[ -z "$ASSIGN_PINNED" ]] \
+                        || abandon_pin_write "$pane_basename" "$target_arg" worker "$ASSIGN_PIN_EPOCH"
                     continue
                 fi
                 ASSIGN_BLOCK_REASON="claude-quota-closed"; assign_budget_hit=1; break
@@ -3500,20 +3712,26 @@ dispatch_role() {
             rm -f "$(dispatch_record "$pane_id")"
             # Error-path release: the launch failed AFTER a successful
             # pre-claim. Release under the same basename (any other name
-            # would no-op) and let the next pane re-attempt the claim.
-            if [[ -n "$target_arg" ]]; then
+            # would no-op) and let the next pane re-attempt the claim. A
+            # pinned target also loses the session it was held for.
+            if [[ -n "$ASSIGN_PINNED" ]]; then
+                abandon_release "$target_arg" "$pane_basename" "pinned resume failed to launch"
+            elif [[ -n "$target_arg" ]]; then
                 fleet_release_assignment "$target_arg" "$pane_basename"
             fi
             continue
         fi
         LAST_DISPATCH_EPOCH=$now_epoch
         dispatched=$((dispatched + 1))
-        dispatched_class=$((dispatched_class + 1))
+        # A pinned resume is not a pick of the elected class.
+        [[ -n "$ASSIGN_PINNED" ]] || dispatched_class=$((dispatched_class + 1))
     done <<< "$idle_panes"
 
     # Publish this call's pane count for the dry-run gate in main(). `dispatched`
     # is final here; every post-loop return path below carries this value.
     LAST_ROLE_DISPATCH_COUNT=$dispatched
+    # The lane deferred and ran only for its pins; the deferral keeps the trigger.
+    [[ -z "$pin_only" ]] || return
 
     # Assignment exhausted: every remaining candidate is held elsewhere,
     # already in flight, or refused by its claim gate live. Nothing a fresh
@@ -4406,16 +4624,18 @@ case "${1:-}" in
         exit 0
         ;;
     --handle-abandoned)
-        # Test/debug: fold one `abandoned` verdict for <target> by <agent> —
-        # the first is a logged retry, the second releases, salvages the
+        # Test/debug: fold one `abandoned` verdict for <target> by <agent>
+        # dispatched as [role] (default worker) — a first abandon the pane can
+        # resume keeps the claim (a reserved worktree, or a pin when the
+        # session sidecar resumes it); any other abandon releases, salvages the
         # pane's worktrees (under FLEET_ENGINE_ROOT and its game twin) and
-        # writes the handoff. Ledgers, salvage and handoff live under
+        # writes the handoff. Ledgers, pins, salvage and handoff live under
         # FLEET_STATE_DIR.
         if [[ -z "${2:-}" || -z "${3:-}" ]]; then
-            echo "usage: fleet-dispatcher --handle-abandoned <target> <agent>" >&2
+            echo "usage: fleet-dispatcher --handle-abandoned <target> <agent> [role]" >&2
             exit 2
         fi
-        handle_abandoned_target "$2" "$3"
+        handle_abandoned_target "$2" "$3" "${4:-}"
         exit 0
         ;;
     --complete-dispatches)
