@@ -34,12 +34,18 @@ using namespace IRRender;
 
 namespace IRSystem {
 
-// Matches local_size_{x,y} in c_compute_voxel_ao.glsl.
+// Matches local_size_{x,y} in c_compute_voxel_ao_body.glsl.
 constexpr int kComputeVoxelAOGroupSize = 16;
 
 template <> struct System<COMPUTE_VOXEL_AO> {
     ShaderProgram *program_ = nullptr;
+    // Same kernel with the smooth-yaw single-canvas inverse compiled in.
+    ShaderProgram *smoothYawProgram_ = nullptr;
     Buffer *voxelFrameDataBuf_ = nullptr;
+    // residualYaw of the voxel frame resident in the shared UBO, which picks
+    // the program per canvas. Seeded with the world frame's split in beginTick
+    // and updated whenever tick authors a canvas's frame.
+    float residentResidualYaw_ = 0.0f;
     // `ComputeSunShadowFrameData` is created by COMPUTE_SUN_SHADOW,
     // which is constructed AFTER AO in pipeline registration order.
     // Resolved lazily on the first beginTick (which fires before any
@@ -95,12 +101,17 @@ template <> struct System<COMPUTE_VOXEL_AO> {
         // getComponentOptional on the iterating canvas is the canvas-iteration
         // pattern (few canvases; cf. system_trixel_to_framebuffer.hpp:63), not
         // the per-voxel ECS footgun.
-        authorIteratingCanvasVoxelFrame(
-            scratchVoxelFrame_,
-            voxelFrameDataBuf_,
-            entity,
-            canvasTextures
-        );
+        if (authorIteratingCanvasVoxelFrame(
+                scratchVoxelFrame_,
+                voxelFrameDataBuf_,
+                entity,
+                canvasTextures
+            )) {
+            residentResidualYaw_ = scratchVoxelFrame_.residualYaw_;
+        }
+        // The per-axis AO dispatch reads no single-canvas position, so it runs
+        // under whichever variant the main canvas selected.
+        (residentResidualYaw_ != 0.0f ? smoothYawProgram_ : program_)->use();
 
         {
             // Sub-scope: the main-canvas AO dispatch only — the system
@@ -173,7 +184,7 @@ template <> struct System<COMPUTE_VOXEL_AO> {
     }
 
     void beginTick() {
-        program_->use();
+        residentResidualYaw_ = IRPrefab::Camera::getResidualYaw();
         // AO only writes `aoEnabled_` into the shared FrameDataSun
         // buffer. All other fields carry the previous frame's values
         // written by BAKE_SUN_SHADOW_MAP's tick — AO must not read
@@ -230,6 +241,12 @@ template <> struct System<COMPUTE_VOXEL_AO> {
             "ComputeVoxelAOProgram",
             std::vector{ShaderStage{IRRender::kFileCompComputeVoxelAO, ShaderType::COMPUTE}}
         );
+        IRRender::createNamedResource<ShaderProgram>(
+            "ComputeVoxelAOSmoothYawProgram",
+            std::vector{
+                ShaderStage{IRRender::kFileCompComputeVoxelAOSmoothYaw, ShaderType::COMPUTE}
+            }
+        );
 
         SystemId systemId = registerSystem<
             COMPUTE_VOXEL_AO,
@@ -238,6 +255,8 @@ template <> struct System<COMPUTE_VOXEL_AO> {
             C_TrixelCanvasRenderBehavior>("ComputeVoxelAO");
         auto *p = getSystemParams<System<COMPUTE_VOXEL_AO>>(systemId);
         p->program_ = IRRender::getNamedResource<ShaderProgram>("ComputeVoxelAOProgram");
+        p->smoothYawProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("ComputeVoxelAOSmoothYawProgram");
         p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
         // NOT observer-tagged: the tick owns GpuSubStageScopes, which
         // reuse the observer's timestamp attachment slot.

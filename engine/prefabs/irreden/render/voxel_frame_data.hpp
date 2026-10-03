@@ -229,10 +229,10 @@ inline void buildVoxelFrameData(
 // (visible triplet, detached flag, yaw split) instead of whatever canvas
 // VOXEL_TO_TRIXEL_STAGE_1 left resident. No-op for a
 // canvas with no voxel pool: the UBO keeps its prior state, so a pure-SDF lit
-// canvas is unchanged. `getComponentOptional` on the iterating canvas is the
-// canvas-iteration pattern (few canvases; cf.
+// canvas is unchanged. Returns whether it authored. `getComponentOptional` on
+// the iterating canvas is the canvas-iteration pattern (few canvases; cf.
 // system_trixel_to_framebuffer.hpp:63), not the per-voxel ECS footgun.
-inline void authorIteratingCanvasVoxelFrame(
+inline bool authorIteratingCanvasVoxelFrame(
     FrameDataVoxelToCanvas &scratch,
     Buffer *voxelFrameDataBuf,
     IREntity::EntityId entity,
@@ -241,7 +241,7 @@ inline void authorIteratingCanvasVoxelFrame(
     auto pool = IREntity::getComponentOptional<C_VoxelPool>(entity);
     auto rotation = IREntity::getComponentOptional<C_CanvasLocalRotation>(entity);
     if (!pool.has_value() || !rotation.has_value()) {
-        return;
+        return false;
     }
     buildVoxelFrameData(
         scratch,
@@ -255,6 +255,7 @@ inline void authorIteratingCanvasVoxelFrame(
         scratch.voxelRenderOptions_.y = IRMath::max(canvasTextures.renderedSubdivisions_, 1);
     }
     voxelFrameDataBuf->subData(0, sizeof(FrameDataVoxelToCanvas), &scratch);
+    return true;
 }
 
 // Resolve the main world canvas's voxel-frame inputs (textures + pool +
