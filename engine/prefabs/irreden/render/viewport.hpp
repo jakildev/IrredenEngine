@@ -254,7 +254,6 @@ inline void fillPoolBox(
         );
     }
     pool.resyncActiveMaskFromColors(0, count);
-    pool.markRecordsChanged();
 }
 
 inline IRComponents::C_ViewportCamera *cameraOrNull(IREntity::EntityId viewport) {
@@ -377,6 +376,15 @@ inline void syncSubjectPool(
                 static_cast<std::size_t>(pool->getLiveVoxelCount()),
                 subject
             );
+        }
+        // A rotated canvas resamples a GPU copy of the pool that re-seeds only
+        // when the pool's content generation moves; fillPoolBox rewrites the
+        // records in place every frame, so the sync notifies the pool.
+        const auto *rotation = componentOrNull<IRComponents::C_CanvasLocalRotation>(canvas);
+        const bool rotated =
+            rotation != nullptr && rotation->rotation_ != IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        if (resample != nullptr && rotated) {
+            pool->markRecordsChanged();
         }
     }
     camera.drawnSubject_ = subject;

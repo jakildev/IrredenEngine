@@ -8,6 +8,7 @@
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/components/component_canvas_camera.hpp>
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
+#include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 #include <irreden/render/components/component_lod_tier_override.hpp>
 #include <irreden/render/components/component_viewport_camera.hpp>
 #include <irreden/render/components/component_viewport_subject.hpp>
@@ -417,6 +418,32 @@ TEST_F(ViewportTest, SourceOnlyVoxelStateIsNotCarriedIntoThePool) {
     EXPECT_NE(voxel.flags_ & IRComponents::VoxelFlags::kAoContrib, 0);
 }
 
+// A rotated canvas's GPU resample re-seeds only when the pool's content
+// generation moves, and the sync rewrites the records in place every frame: a
+// rotated sync advances the generation each frame, an unrotated one leaves a
+// steady pool alone.
+TEST_F(ViewportTest, ARotatedSyncAdvancesThePoolContentGenerationEveryFrame) {
+    const IREntity::EntityId viewport = makeViewport();
+    const IREntity::EntityId canvas = Viewport::canvasOf(viewport);
+    IREntity::setComponent(canvas, IRComponents::C_DetachedRevoxelizeBuffer{});
+    auto &rotation = IREntity::getComponent<C_CanvasLocalRotation>(canvas);
+    rotation.rotation_ = kIdentity;
+    const IREntity::EntityId subject = makeSubject(ivec3(2, 2, 2), kRed);
+    const C_VoxelPool &pool = poolOf(viewport);
+
+    sync(viewport, {partOf(subject)});
+    const std::uint64_t steady = pool.getContentGeneration();
+    sync(viewport, {partOf(subject)});
+    EXPECT_EQ(pool.getContentGeneration(), steady);
+
+    rotation.rotation_ = IRMath::quatAxisAngle(vec3(0.0f, 0.0f, 1.0f), IRMath::kHalfPi);
+    sync(viewport, {partOf(subject)});
+    const std::uint64_t rotated = pool.getContentGeneration();
+    EXPECT_GT(rotated, steady);
+    sync(viewport, {partOf(subject)});
+    EXPECT_GT(pool.getContentGeneration(), rotated);
+}
+
 TEST_F(ViewportTest, RetargetRebuildsThePoolAndRestampsTheEntityId) {
     const IREntity::EntityId viewport = makeViewport();
     const IREntity::EntityId first = makeSubject(ivec3(2, 2, 2), kRed);
@@ -441,12 +468,10 @@ TEST_F(ViewportTest, SameSizeRetargetRestampsWithoutRebuilding) {
     const IREntity::EntityId second = makeSubject(ivec3(2, 2, 2), kBlue);
 
     sync(viewport, {partOf(first)});
-    const auto contentGeneration = poolOf(viewport).getContentGeneration();
     sync(viewport, {partOf(second)});
 
     const C_VoxelPool &pool = poolOf(viewport);
     ASSERT_EQ(pool.getLiveVoxelCount(), 8);
-    EXPECT_GT(pool.getContentGeneration(), contentGeneration);
     for (int i = 0; i < 8; ++i) {
         EXPECT_EQ(pool.getColors()[i].color_.toPackedRGBA(), kBlue.toPackedRGBA());
         EXPECT_EQ(pool.getEntityIds()[i], second);
@@ -457,13 +482,11 @@ TEST_F(ViewportTest, SubjectEditsReachThePoolOnTheNextSync) {
     const IREntity::EntityId viewport = makeViewport();
     const IREntity::EntityId subject = makeSubject(ivec3(2, 1, 1), kRed);
     sync(viewport, {partOf(subject)});
-    const auto contentGeneration = poolOf(viewport).getContentGeneration();
 
     IREntity::getComponent<C_VoxelSetNew>(subject).changeVoxelColor(ivec3(1, 0, 0), kBlue);
     sync(viewport, {partOf(subject)});
 
     const C_VoxelPool &pool = poolOf(viewport);
-    EXPECT_GT(pool.getContentGeneration(), contentGeneration);
     EXPECT_EQ(pool.getColors()[0].color_.toPackedRGBA(), kRed.toPackedRGBA());
     EXPECT_EQ(pool.getColors()[1].color_.toPackedRGBA(), kBlue.toPackedRGBA());
 }
