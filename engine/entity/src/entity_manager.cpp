@@ -749,6 +749,21 @@ void EntityManager::markTreeForDeletion(EntityId root) {
     );
 }
 
+bool EntityManager::isMarkedForDeletion(EntityId entity) const {
+    const auto names = [entity](const std::vector<EntityId> &marks) {
+        return std::find(marks.begin(), marks.end(), entity) != marks.end();
+    };
+    if (names(m_entitiesMarkedForDeletion)) {
+        return true;
+    }
+    for (const WorkerStaging &staging : m_workerStaging) {
+        if (names(staging.markedForDeletion_) || names(staging.markedTreesForDeletion_)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 int EntityManager::hierarchyDepth(EntityId entity) {
     int depth = 0;
     const EntityRecord *record = findRecord(entity);

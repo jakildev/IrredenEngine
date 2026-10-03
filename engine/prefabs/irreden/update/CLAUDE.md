@@ -44,9 +44,15 @@ in the `UPDATE` pipeline unless explicitly noted.
   `singletonOrNull<...>()`, which is how the producer and consumer share the
   vector without a cross-system SystemId handoff. `ContactPair` is co-located in
   `component_overlap_contact_batch.hpp`.
+- `C_PrefabParts` — on a schema-v2 composite prefab root: the parsed parts
+  manifest plus one slot per part (live entity, band, resident flag) and the
+  tier-settle state. Written by `Prefab.spawn` and `PREFAB_LOD_PARTS` only.
 
 ## Key systems (all UPDATE pipeline)
 
+- `PREFAB_LOD_PARTS` — spawns and destroys composite prefab parts as the
+  root's resolved tier enters and leaves their bands; `MAIN_THREAD`, after
+  `LOD_UPDATE`. Contract: `docs/design/lod-strategy.md` §"Phase 2 — prefab-manifest composition".
 - `VELOCITY_3D` — applies `velocity * deltaTime(UPDATE)` to position.
 - `GRAVITY_3D` — accumulates gravity into velocity.
 - `VELOCITY_DRAG` — applies drag, hover damping, post-hover reset.
