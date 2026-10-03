@@ -1,0 +1,438 @@
+ir-run: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/perf_grid/IRPerfGrid --mode voxel_set --wave-freeze --auto-profile 120 --grid-size 64 --zoom 1 --subdivision-mode full --base-subdivisions 5 --wave-amplitude 5 --pivot-origin --no-overlay --yaw 0 --config-preset configs/perf/million.lua (timeout: 120s)
+[2026-10-03 09:20:07.520] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-03 09:20:07.520] [EngineLog] [info] Lua script loaded successfully: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/perf_grid/scripts/config.lua
+[2026-10-03 09:20:07.520] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-03 09:20:07.520] [EngineLog] [info] Lua script loaded successfully: configs/perf/million.lua
+[2026-10-03 09:20:07.520] [EngineLog] [info] voxel_pool_edge from configs/perf/million.lua: 128
+[2026-10-03 09:20:07.521] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-03 09:20:07.521] [EngineLog] [info] Lua script loaded successfully: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/perf_grid/scripts/config.lua
+[2026-10-03 09:20:07.521] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-03 09:20:07.521] [EngineLog] [info] Lua script loaded successfully: configs/perf/million.lua
+[2026-10-03 09:20:07.521] [EngineLog] [info] Config preset overlay: configs/perf/million.lua
+[2026-10-03 09:20:07.553] [EngineLog] [info] Discovered 1 display monitors
+[2026-10-03 09:20:07.553] [EngineLog] [info] Monitor 0: 'Built-in Retina Display' @ (0, 0), mode=1800x1169 120Hz
+[2026-10-03 09:20:07.600] [EngineLog] [info] Created IRGLFWWindow.
+[2026-10-03 09:20:07.600] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-03 09:20:07.651] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-03 09:20:07.651] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-03 09:20:07.651] [EngineLog] [info] Created SystemManager
+[2026-10-03 09:20:07.651] [EngineLog] [info] JobManager: capping worker count 12 -> 10 (Apple Silicon P-core limit)
+[2026-10-03 09:20:07.651] [EngineLog] [info] JobManager: started with 10 worker threads
+[2026-10-03 09:20:07.651] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-03 09:20:07.651] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-03 09:20:07.651] [EngineLog] [info] Regestered component type=N12IRComponents16C_KeyMouseButtonE, sizeof=4 with id=258
+[2026-10-03 09:20:07.651] [EngineLog] [info] Regestered component type=N12IRComponents11C_KeyStatusE, sizeof=12 with id=259
+[2026-10-03 09:20:07.651] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-03 09:20:07.651] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-03 09:20:07.651] [EngineLog] [info] Created archetype node with components: [ 256 257 258 ], id=3
+[2026-10-03 09:20:07.652] [EngineLog] [info] Created archetype node with components: [ 256 257 258 259 ], id=4
+[2026-10-03 09:20:07.652] [EngineLog] [info] Joystick 0 not present
+[2026-10-03 09:20:07.652] [EngineLog] [info] Joystick 1 not present
+[2026-10-03 09:20:07.652] [EngineLog] [info] Joystick 2 not present
+[2026-10-03 09:20:07.652] [EngineLog] [info] Joystick 3 not present
+[2026-10-03 09:20:07.652] [EngineLog] [info] Joystick 4 not present
+[2026-10-03 09:20:07.652] [EngineLog] [info] Joystick 5 not present
+[2026-10-03 09:20:07.652] [EngineLog] [info] Joystick 6 not present
+[2026-10-03 09:20:07.652] [EngineLog] [info] Joystick 7 not present
+[2026-10-03 09:20:07.652] [EngineLog] [info] Joystick 8 not present
+[2026-10-03 09:20:07.652] [EngineLog] [info] Joystick 9 not present
+[2026-10-03 09:20:07.652] [EngineLog] [info] Joystick 10 not present
+[2026-10-03 09:20:07.652] [EngineLog] [info] Joystick 11 not present
+[2026-10-03 09:20:07.652] [EngineLog] [info] Joystick 12 not present
+[2026-10-03 09:20:07.652] [EngineLog] [info] Joystick 13 not present
+[2026-10-03 09:20:07.652] [EngineLog] [info] Joystick 14 not present
+[2026-10-03 09:20:07.652] [EngineLog] [info] Joystick 15 not present
+[2026-10-03 09:20:07.652] [EngineLog] [info] Created InputManager
+[2026-10-03 09:20:07.652] [EngineLog] [info] Created CommandManager
+[2026-10-03 09:20:07.652] [EngineLog] [info] Creating an resource id pool. idCapacity=1048575
+[2026-10-03 09:20:07.653] [EngineLog] [info] Registered resource type N8IRRender11ShaderStageE with ID=0
+[2026-10-03 09:20:07.653] [EngineLog] [info] Registered resource type N8IRRender9Texture2DE with ID=1
+[2026-10-03 09:20:07.653] [EngineLog] [info] Registered resource type N8IRRender9Texture3DE with ID=2
+[2026-10-03 09:20:07.653] [EngineLog] [info] Registered resource type N8IRRender11FramebufferE with ID=3
+[2026-10-03 09:20:07.653] [EngineLog] [info] Registered resource type N8IRRender14ShaderPipelineE with ID=4
+[2026-10-03 09:20:07.653] [EngineLog] [info] Registered resource type N8IRRender6BufferE with ID=5
+[2026-10-03 09:20:07.653] [EngineLog] [info] Registered resource type N8IRRender12VertexLayoutE with ID=6
+[2026-10-03 09:20:07.653] [EngineLog] [info] Created RenderingResourceManager
+[2026-10-03 09:20:07.653] [EngineLog] [info] Initializing Metal render implementation.
+[2026-10-03 09:20:07.653] [EngineLog] [info] Created ResourceId=0, type=3
+[2026-10-03 09:20:07.653] [EngineLog] [info] Regestered component type=N12IRComponents6C_NameE, sizeof=24 with id=385
+[2026-10-03 09:20:07.653] [EngineLog] [info] Regestered component type=N12IRComponents25C_TrixelCanvasFramebufferE, sizeof=16 with id=386
+[2026-10-03 09:20:07.653] [EngineLog] [info] Regestered component type=N12IRComponents30C_FrameDataTrixelToFramebufferE, sizeof=224 with id=387
+[2026-10-03 09:20:07.653] [EngineLog] [info] Regestered component type=N12IRComponents11C_ZoomLevelE, sizeof=8 with id=388
+[2026-10-03 09:20:07.653] [EngineLog] [info] Created archetype node with components: [ 256 257 385 ], id=5
+[2026-10-03 09:20:07.653] [EngineLog] [info] Created archetype node with components: [ 256 257 385 386 ], id=6
+[2026-10-03 09:20:07.653] [EngineLog] [info] Created archetype node with components: [ 256 257 385 386 387 ], id=7
+[2026-10-03 09:20:07.653] [EngineLog] [info] Created archetype node with components: [ 256 257 385 386 387 388 ], id=8
+[2026-10-03 09:20:07.653] [EngineLog] [info] Regestered component type=N12IRComponents23C_VoxelPoolTeardownHookE, sizeof=4 with id=389
+[2026-10-03 09:20:07.653] [EngineLog] [info] Created archetype node with components: [ 389 ], id=9
+[2026-10-03 09:20:07.662] [EngineLog] [info] Created ResourceId=1, type=1
+[2026-10-03 09:20:07.662] [EngineLog] [info] Created ResourceId=2, type=1
+[2026-10-03 09:20:07.662] [EngineLog] [info] Created ResourceId=3, type=1
+[2026-10-03 09:20:07.662] [EngineLog] [info] Created ResourceId=4, type=1
+[2026-10-03 09:20:07.662] [EngineLog] [info] Created ResourceId=5, type=1
+[2026-10-03 09:20:07.662] [EngineLog] [info] Created ResourceId=6, type=1
+[2026-10-03 09:20:07.662] [EngineLog] [info] Created ResourceId=7, type=1
+[2026-10-03 09:20:07.662] [EngineLog] [info] Created ResourceId=8, type=1
+[2026-10-03 09:20:07.662] [EngineLog] [info] Created ResourceId=9, type=1
+[2026-10-03 09:20:07.662] [EngineLog] [info] Created ResourceId=10, type=1
+[2026-10-03 09:20:07.662] [EngineLog] [info] Created ResourceId=11, type=1
+[2026-10-03 09:20:07.662] [EngineLog] [info] Created ResourceId=12, type=1
+[2026-10-03 09:20:07.662] [EngineLog] [info] Created ResourceId=13, type=1
+[2026-10-03 09:20:07.662] [EngineLog] [info] Regestered component type=N12IRComponents11C_VoxelPoolE, sizeof=504 with id=392
+[2026-10-03 09:20:07.662] [EngineLog] [info] Regestered component type=N12IRComponents15C_SizeTrianglesE, sizeof=8 with id=393
+[2026-10-03 09:20:07.662] [EngineLog] [info] Regestered component type=N12IRComponents24C_TriangleCanvasTexturesE, sizeof=400 with id=394
+[2026-10-03 09:20:07.662] [EngineLog] [info] Regestered component type=N12IRComponents21C_CanvasLocalRotationE, sizeof=32 with id=395
+[2026-10-03 09:20:07.662] [EngineLog] [info] Regestered component type=N12IRComponents23C_PerAxisTrixelCanvasesE, sizeof=696 with id=396
+[2026-10-03 09:20:07.662] [EngineLog] [info] Regestered component type=N12IRComponents26C_DetachedRevoxelizeBufferE, sizeof=96 with id=397
+[2026-10-03 09:20:07.662] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 ], id=10
+[2026-10-03 09:20:07.662] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 ], id=11
+[2026-10-03 09:20:07.662] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 ], id=12
+[2026-10-03 09:20:07.662] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 ], id=13
+[2026-10-03 09:20:07.662] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 ], id=14
+[2026-10-03 09:20:07.662] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 ], id=15
+[2026-10-03 09:20:07.670] [EngineLog] [info] Regestered relation type=1 id=398 related to entity=384
+[2026-10-03 09:20:07.670] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 ], id=16
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created voxel pool canvas 391 with framebuffer parent 384, size 642,722
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=14, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=15, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=16, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=17, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=18, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=19, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=20, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=21, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=22, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=23, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=24, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=25, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=26, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 ], id=17
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 ], id=18
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 398 ], id=19
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created trixel canvas 399 with framebuffer parent 384, size 642,722
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=27, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=28, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=29, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=30, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=31, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=32, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=33, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=34, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=35, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=36, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=37, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=38, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created ResourceId=39, type=1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created trixel canvas 400 with framebuffer parent 384, size 642,722
+[2026-10-03 09:20:07.672] [EngineLog] [info] Regestered component type=N12IRComponents8C_CameraE, sizeof=1 with id=402
+[2026-10-03 09:20:07.672] [EngineLog] [info] Regestered component type=N12IRComponents15C_Position2DIsoE, sizeof=8 with id=403
+[2026-10-03 09:20:07.672] [EngineLog] [info] Regestered component type=N12IRComponents15C_Velocity2DIsoE, sizeof=8 with id=404
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created archetype node with components: [ 256 257 388 ], id=20
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 ], id=21
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 403 ], id=22
+[2026-10-03 09:20:07.672] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 403 404 ], id=23
+[2026-10-03 09:20:07.672] [EngineLog] [info] Fit mode: 1
+[2026-10-03 09:20:07.672] [EngineLog] [info] Voxel pool: edge=128 (2097152 voxels)
+[2026-10-03 09:20:07.673] [EngineLog] [info] Metal surface attached to window.
+[2026-10-03 09:20:07.674] [EngineLog] [info] Regestered component type=N12IRComponents12C_PersistentE, sizeof=1 with id=405
+[2026-10-03 09:20:07.674] [EngineLog] [info] Created archetype node with components: [ 256 257 388 402 403 404 405 ], id=24
+[2026-10-03 09:20:07.674] [EngineLog] [info] Created archetype node with components: [ 256 257 385 386 387 388 405 ], id=25
+[2026-10-03 09:20:07.674] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 405 ], id=26
+[2026-10-03 09:20:07.676] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 398 405 ], id=27
+[2026-10-03 09:20:07.676] [EngineLog] [info] Regestered component type=N12IRComponents28C_TrixelCanvasRenderBehaviorE, sizeof=24 with id=406
+[2026-10-03 09:20:07.676] [EngineLog] [info] Created archetype node with components: [ 256 257 385 393 394 398 405 406 ], id=28
+[2026-10-03 09:20:07.676] [EngineLog] [info] Created ResourceId=40, type=5
+[2026-10-03 09:20:07.676] [EngineLog] [info] Created ResourceId=41, type=5
+[2026-10-03 09:20:07.676] [EngineLog] [info] Created ResourceId=42, type=6
+[2026-10-03 09:20:07.676] [EngineLog] [info]  Resource 42 named QuadVAO
+[2026-10-03 09:20:07.676] [EngineLog] [info] Created ResourceId=43, type=5
+[2026-10-03 09:20:07.676] [EngineLog] [info] Created ResourceId=44, type=6
+[2026-10-03 09:20:07.676] [EngineLog] [info]  Resource 44 named QuadVAOArrays
+[2026-10-03 09:20:07.676] [EngineLog] [info] Created renderer.
+[2026-10-03 09:20:07.702] [EngineLog] [info] Number of devices found: 2
+[2026-10-03 09:20:07.702] [EngineLog] [info] Device: Apple Inc.: MacBook Pro Speakers
+[2026-10-03 09:20:07.702] [EngineLog] [info] Output channels: 2
+[2026-10-03 09:20:07.702] [EngineLog] [info] This is default output device
+[2026-10-03 09:20:07.702] [EngineLog] [info] Native formats: 16
+[2026-10-03 09:20:07.702] [EngineLog] [info] Sample rates:
+[2026-10-03 09:20:07.702] [EngineLog] [info] 44100, 48000, 88200, 96000,
+[2026-10-03 09:20:07.702] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-03 09:20:07.702] [EngineLog] [info] Device: Apple Inc.: MacBook Pro Microphone
+[2026-10-03 09:20:07.702] [EngineLog] [info] Input channels: 1
+[2026-10-03 09:20:07.702] [EngineLog] [info] This is default input device
+[2026-10-03 09:20:07.702] [EngineLog] [info] Native formats: 16
+[2026-10-03 09:20:07.702] [EngineLog] [info] Sample rates:
+[2026-10-03 09:20:07.702] [EngineLog] [info] 44100, 48000, 88200, 96000,
+[2026-10-03 09:20:07.702] [EngineLog] [info] Preferred sample rate: 48000
+[2026-10-03 09:20:07.724] [EngineLog] [info] Descovered 0 MIDI input sources
+[2026-10-03 09:20:07.724] [EngineLog] [info] Created MidiIn
+[2026-10-03 09:20:07.724] [EngineLog] [info] Descovered 0 MIDI output sources
+[2026-10-03 09:20:07.724] [EngineLog] [info] Created MidiOut
+[2026-10-03 09:20:07.762] [EngineLog] [info] AudioPlayback: file playback engine up (5 buses)
+[2026-10-03 09:20:07.762] [EngineLog] [info] Created AudioManager
+[2026-10-03 09:20:07.762] [EngineLog] [info] TimeManager initalized
+[2026-10-03 09:20:07.762] [EngineLog] [info] Created VideoRecorder instance.
+[2026-10-03 09:20:07.765] [EngineLog] [info] Loaded image width=1024, height=1053, channels=4
+[2026-10-03 09:20:07.765] [EngineLog] [info] Freeing image data
+[2026-10-03 09:20:07.766] [EngineLog] [info] Metal device: Apple M4 Max
+[2026-10-03 09:20:07.766] [EngineLog] [info] Regestered component type=N12IRComponents21C_EntityEventHandlersE, sizeof=104 with id=407
+[2026-10-03 09:20:07.766] [EngineLog] [info] Created archetype node with components: [ 407 ], id=29
+[2026-10-03 09:20:07.766] [EngineLog] [info] Initalized game world
+[2026-10-03 09:20:07.766] [ClientLog] [info] Starting creation: perf_grid
+[2026-10-03 09:20:07.766] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-03 09:20:07.766] [EngineLog] [info] Lua script loaded successfully: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/perf_grid/scripts/config.lua
+[2026-10-03 09:20:07.766] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-03 09:20:07.766] [EngineLog] [info] Lua script loaded successfully: configs/perf/million.lua
+[2026-10-03 09:20:07.766] [ClientLog] [info] Applying config preset: configs/perf/million.lua
+[2026-10-03 09:20:07.766] [EngineLog] [info] Regestered component type=N12IRComponents14C_PeriodicIdleE, sizeof=88 with id=409
+[2026-10-03 09:20:07.766] [EngineLog] [info] Regestered component type=N12IRComponents11C_ModifiersE, sizeof=72 with id=410
+[2026-10-03 09:20:07.766] [EngineLog] [info] Regestered component type=N12IRComponents13C_FogRevealedE, sizeof=8 with id=411
+[2026-10-03 09:20:07.766] [EngineLog] [info] Regestered component type=N12IRComponents13C_VoxelSetNewE, sizeof=192 with id=412
+[2026-10-03 09:20:07.766] [EngineLog] [info] Regestered component type=N12IRComponents11C_FogExemptE, sizeof=1 with id=413
+[2026-10-03 09:20:07.766] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogFieldE, sizeof=1 with id=414
+[2026-10-03 09:20:07.766] [EngineLog] [info] Created ResourceId=45, type=5
+[2026-10-03 09:20:07.766] [EngineLog] [info]  Resource 45 named LightOcclusionGridBuffer
+[2026-10-03 09:20:07.766] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=960 with id=415
+[2026-10-03 09:20:07.769] [EngineLog] [info] Created ResourceId=46, type=4
+[2026-10-03 09:20:07.769] [EngineLog] [info]  Resource 46 named VoxelCompactProgram
+[2026-10-03 09:20:07.770] [EngineLog] [info] Created ResourceId=47, type=4
+[2026-10-03 09:20:07.770] [EngineLog] [info]  Resource 47 named SingleVoxelProgram1
+[2026-10-03 09:20:07.771] [EngineLog] [info] Created ResourceId=48, type=4
+[2026-10-03 09:20:07.771] [EngineLog] [info]  Resource 48 named SingleVoxelProgram1Feeder
+[2026-10-03 09:20:07.772] [EngineLog] [info] Created ResourceId=49, type=4
+[2026-10-03 09:20:07.772] [EngineLog] [info]  Resource 49 named SingleVoxel2
+[2026-10-03 09:20:07.773] [EngineLog] [info] Created ResourceId=50, type=4
+[2026-10-03 09:20:07.773] [EngineLog] [info]  Resource 50 named SingleVoxelWinnerResolve
+[2026-10-03 09:20:07.774] [EngineLog] [info] Created ResourceId=51, type=4
+[2026-10-03 09:20:07.774] [EngineLog] [info]  Resource 51 named SingleVoxel2Winner
+[2026-10-03 09:20:07.774] [EngineLog] [info] Created ResourceId=52, type=4
+[2026-10-03 09:20:07.774] [EngineLog] [info]  Resource 52 named ChunkOcclusionProgram
+[2026-10-03 09:20:07.774] [EngineLog] [info] Created ResourceId=53, type=4
+[2026-10-03 09:20:07.774] [EngineLog] [info]  Resource 53 named PerAxisCellCompactProgram
+[2026-10-03 09:20:07.774] [EngineLog] [info] Created ResourceId=54, type=4
+[2026-10-03 09:20:07.774] [EngineLog] [info]  Resource 54 named PerAxisCellFinalizeProgram
+[2026-10-03 09:20:07.775] [EngineLog] [info] Created ResourceId=55, type=4
+[2026-10-03 09:20:07.775] [EngineLog] [info]  Resource 55 named PerAxisOverflowSortProgram
+[2026-10-03 09:20:07.775] [EngineLog] [info] Created ResourceId=56, type=4
+[2026-10-03 09:20:07.775] [EngineLog] [info]  Resource 56 named RevoxelizeDetachedProgram
+[2026-10-03 09:20:07.776] [EngineLog] [info] Created ResourceId=57, type=5
+[2026-10-03 09:20:07.776] [EngineLog] [info]  Resource 57 named RevoxelizeDetachedParamsBuffer
+[2026-10-03 09:20:07.776] [EngineLog] [info] Created ResourceId=58, type=5
+[2026-10-03 09:20:07.776] [EngineLog] [info]  Resource 58 named SingleVoxelFrameData
+[2026-10-03 09:20:07.776] [EngineLog] [info] Created ResourceId=59, type=5
+[2026-10-03 09:20:07.776] [EngineLog] [info]  Resource 59 named PerAxisWinnerPlaceholder
+[2026-10-03 09:20:07.776] [EngineLog] [info] Created ResourceId=60, type=5
+[2026-10-03 09:20:07.776] [EngineLog] [info]  Resource 60 named VoxelPositionBuffer
+[2026-10-03 09:20:07.776] [EngineLog] [info] Created ResourceId=61, type=5
+[2026-10-03 09:20:07.776] [EngineLog] [info]  Resource 61 named VoxelColorBuffer
+[2026-10-03 09:20:07.776] [EngineLog] [info] Created ResourceId=62, type=5
+[2026-10-03 09:20:07.776] [EngineLog] [info]  Resource 62 named VoxelActiveMaskBuffer
+[2026-10-03 09:20:07.776] [EngineLog] [info] Created ResourceId=63, type=5
+[2026-10-03 09:20:07.776] [EngineLog] [info]  Resource 63 named VoxelEntityIdBuffer
+[2026-10-03 09:20:07.776] [EngineLog] [info] Created ResourceId=64, type=5
+[2026-10-03 09:20:07.776] [EngineLog] [info]  Resource 64 named ChunkVisibilityBuffer
+[2026-10-03 09:20:07.776] [EngineLog] [info] Created ResourceId=65, type=5
+[2026-10-03 09:20:07.776] [EngineLog] [info]  Resource 65 named CompactedVoxelIndices
+[2026-10-03 09:20:07.776] [EngineLog] [info] Created ResourceId=66, type=5
+[2026-10-03 09:20:07.776] [EngineLog] [info]  Resource 66 named IndirectDispatchParams
+[2026-10-03 09:20:07.776] [EngineLog] [info] Created ResourceId=67, type=5
+[2026-10-03 09:20:07.776] [EngineLog] [info]  Resource 67 named PerAxisCompactedVoxelIndices
+[2026-10-03 09:20:07.776] [EngineLog] [info] Created ResourceId=68, type=5
+[2026-10-03 09:20:07.776] [EngineLog] [info]  Resource 68 named PerAxisIndirectDispatchParams
+[2026-10-03 09:20:07.776] [EngineLog] [info] Created ResourceId=69, type=1
+[2026-10-03 09:20:07.776] [EngineLog] [info]  Resource 69 named FogCullVisiblePlaceholder
+[2026-10-03 09:20:07.776] [EngineLog] [info] Created ResourceId=70, type=5
+[2026-10-03 09:20:07.776] [EngineLog] [info]  Resource 70 named FogCullObservers
+[2026-10-03 09:20:07.776] [EngineLog] [info] Created ResourceId=71, type=5
+[2026-10-03 09:20:07.776] [EngineLog] [info]  Resource 71 named ChunkOcclusionQueryBuffer
+[2026-10-03 09:20:07.777] [EngineLog] [info] Created ResourceId=72, type=4
+[2026-10-03 09:20:07.777] [EngineLog] [info]  Resource 72 named ShapesToTrixelDepthProgram
+[2026-10-03 09:20:07.778] [EngineLog] [info] Created ResourceId=73, type=4
+[2026-10-03 09:20:07.778] [EngineLog] [info]  Resource 73 named ShapesToTrixelPublishProgram
+[2026-10-03 09:20:07.779] [EngineLog] [info] Created ResourceId=74, type=4
+[2026-10-03 09:20:07.779] [EngineLog] [info]  Resource 74 named ShapesToTrixelCasterProgram
+[2026-10-03 09:20:07.780] [EngineLog] [info] Created ResourceId=75, type=4
+[2026-10-03 09:20:07.780] [EngineLog] [info]  Resource 75 named ShapesToTrixelOwnerProgram
+[2026-10-03 09:20:07.780] [EngineLog] [info] Created ResourceId=76, type=5
+[2026-10-03 09:20:07.780] [EngineLog] [info]  Resource 76 named ShapesFrameDataBuffer
+[2026-10-03 09:20:07.780] [EngineLog] [info] Created ResourceId=77, type=5
+[2026-10-03 09:20:07.780] [EngineLog] [info]  Resource 77 named JointTransformBuffer
+[2026-10-03 09:20:07.780] [EngineLog] [info] Created ResourceId=78, type=5
+[2026-10-03 09:20:07.780] [EngineLog] [info]  Resource 78 named AnimationParamsBuffer
+[2026-10-03 09:20:07.780] [EngineLog] [info] Regestered component type=N12IRComponents17C_ShapeDescriptorE, sizeof=48 with id=416
+[2026-10-03 09:20:07.781] [EngineLog] [info] Created ResourceId=79, type=4
+[2026-10-03 09:20:07.781] [EngineLog] [info]  Resource 79 named ComputeVoxelAOProgram
+[2026-10-03 09:20:07.781] [EngineLog] [info] Regestered component type=N12IRComponents17C_CanvasAOTextureE, sizeof=16 with id=417
+[2026-10-03 09:20:07.782] [EngineLog] [info] Created ResourceId=80, type=4
+[2026-10-03 09:20:07.782] [EngineLog] [info]  Resource 80 named ResolvePerAxisScreenDepthProgram
+[2026-10-03 09:20:07.782] [EngineLog] [info] Created ResourceId=81, type=4
+[2026-10-03 09:20:07.782] [EngineLog] [info]  Resource 81 named ResolvePerAxisBlitProgram
+[2026-10-03 09:20:07.782] [EngineLog] [info] Created ResourceId=82, type=4
+[2026-10-03 09:20:07.782] [EngineLog] [info]  Resource 82 named BuildDistanceHiZProgram
+[2026-10-03 09:20:07.782] [EngineLog] [info] Created ResourceId=83, type=4
+[2026-10-03 09:20:07.782] [EngineLog] [info]  Resource 83 named ClearSunShadowMapProgram
+[2026-10-03 09:20:07.783] [EngineLog] [info] Created ResourceId=84, type=4
+[2026-10-03 09:20:07.783] [EngineLog] [info]  Resource 84 named BakeSunShadowMapProgram
+[2026-10-03 09:20:07.784] [EngineLog] [info] Created ResourceId=85, type=4
+[2026-10-03 09:20:07.784] [EngineLog] [info]  Resource 85 named ResolveWorldPlacedDepthProgram
+[2026-10-03 09:20:07.784] [EngineLog] [info] Created ResourceId=86, type=4
+[2026-10-03 09:20:07.784] [EngineLog] [info]  Resource 86 named WorldPlacedDepthBlitProgram
+[2026-10-03 09:20:07.784] [EngineLog] [info] Created ResourceId=87, type=5
+[2026-10-03 09:20:07.784] [EngineLog] [info]  Resource 87 named SunShadowDepthMap
+[2026-10-03 09:20:07.784] [EngineLog] [info] Regestered component type=N12IRComponents17C_CanvasSunShadowE, sizeof=16 with id=418
+[2026-10-03 09:20:07.784] [EngineLog] [info] Created ResourceId=88, type=5
+[2026-10-03 09:20:07.784] [EngineLog] [info]  Resource 88 named AnalyticCasterFrameBuffer
+[2026-10-03 09:20:07.785] [EngineLog] [info] Created ResourceId=89, type=4
+[2026-10-03 09:20:07.785] [EngineLog] [info]  Resource 89 named BoxSunShadowProgram
+[2026-10-03 09:20:07.786] [EngineLog] [info] Created ResourceId=90, type=4
+[2026-10-03 09:20:07.786] [EngineLog] [info]  Resource 90 named VoxelSunFacesProgram
+[2026-10-03 09:20:07.786] [EngineLog] [info] Created ResourceId=91, type=5
+[2026-10-03 09:20:07.786] [EngineLog] [info]  Resource 91 named VoxelSunFaceFrameBuffer
+[2026-10-03 09:20:07.786] [EngineLog] [info] Created ResourceId=92, type=5
+[2026-10-03 09:20:07.786] [EngineLog] [info]  Resource 92 named DetachedShadowFrameBuffer
+[2026-10-03 09:20:07.787] [EngineLog] [info] Created ResourceId=93, type=4
+[2026-10-03 09:20:07.787] [EngineLog] [info]  Resource 93 named ComputeSunShadowProgram
+[2026-10-03 09:20:07.789] [EngineLog] [info] Created ResourceId=94, type=4
+[2026-10-03 09:20:07.789] [EngineLog] [info]  Resource 94 named ComputeSunShadowShapesProgram
+[2026-10-03 09:20:07.789] [EngineLog] [info] Created ResourceId=95, type=5
+[2026-10-03 09:20:07.789] [EngineLog] [info]  Resource 95 named ComputeSunShadowFrameData
+[2026-10-03 09:20:07.789] [EngineLog] [info] Created ResourceId=96, type=5
+[2026-10-03 09:20:07.789] [EngineLog] [info]  Resource 96 named ShapeReceiverFrameData
+[2026-10-03 09:20:07.789] [EngineLog] [info] Created ResourceId=97, type=5
+[2026-10-03 09:20:07.789] [EngineLog] [info]  Resource 97 named ShapeReceiverFallback
+[2026-10-03 09:20:07.789] [EngineLog] [info] Created ResourceId=98, type=4
+[2026-10-03 09:20:07.789] [EngineLog] [info]  Resource 98 named ClearLightVolumeProgram
+[2026-10-03 09:20:07.789] [EngineLog] [info] Created ResourceId=99, type=4
+[2026-10-03 09:20:07.789] [EngineLog] [info]  Resource 99 named SeedLightVolumeProgram
+[2026-10-03 09:20:07.789] [EngineLog] [info] Created ResourceId=100, type=4
+[2026-10-03 09:20:07.789] [EngineLog] [info]  Resource 100 named PropagateLightVolumeProgram
+[2026-10-03 09:20:07.789] [EngineLog] [info] Created ResourceId=101, type=5
+[2026-10-03 09:20:07.789] [EngineLog] [info]  Resource 101 named LightSourceBuffer
+[2026-10-03 09:20:07.789] [EngineLog] [info] Created ResourceId=102, type=5
+[2026-10-03 09:20:07.789] [EngineLog] [info]  Resource 102 named LightVolumeParamsBuffer
+[2026-10-03 09:20:07.789] [EngineLog] [info] Regestered component type=N12IRComponents19C_CanvasLightVolumeE, sizeof=80 with id=419
+[2026-10-03 09:20:07.791] [EngineLog] [info] Created ResourceId=103, type=4
+[2026-10-03 09:20:07.791] [EngineLog] [info]  Resource 103 named LightingToTrixelProgram
+[2026-10-03 09:20:07.792] [EngineLog] [info] Created ResourceId=104, type=4
+[2026-10-03 09:20:07.792] [EngineLog] [info]  Resource 104 named LightingToTrixelShapesProgram
+[2026-10-03 09:20:07.793] [EngineLog] [info] Created ResourceId=105, type=4
+[2026-10-03 09:20:07.793] [EngineLog] [info]  Resource 105 named LightOverflowFacesProgram
+[2026-10-03 09:20:07.793] [EngineLog] [info] Created ResourceId=106, type=5
+[2026-10-03 09:20:07.793] [EngineLog] [info]  Resource 106 named LightingToTrixelFrameData
+[2026-10-03 09:20:07.793] [EngineLog] [info] Created ResourceId=107, type=1
+[2026-10-03 09:20:07.793] [EngineLog] [info]  Resource 107 named PaletteLUT_Nearest
+[2026-10-03 09:20:07.793] [EngineLog] [info] Created ResourceId=108, type=1
+[2026-10-03 09:20:07.793] [EngineLog] [info]  Resource 108 named PaletteLUT_Linear
+[2026-10-03 09:20:07.794] [EngineLog] [info] Created ResourceId=109, type=4
+[2026-10-03 09:20:07.794] [EngineLog] [info]  Resource 109 named FogToTrixelProgram
+[2026-10-03 09:20:07.795] [EngineLog] [info] Created ResourceId=110, type=4
+[2026-10-03 09:20:07.795] [EngineLog] [info]  Resource 110 named FogOverflowFacesProgram
+[2026-10-03 09:20:07.795] [EngineLog] [info] Created ResourceId=111, type=5
+[2026-10-03 09:20:07.795] [EngineLog] [info]  Resource 111 named FogObserverData
+[2026-10-03 09:20:07.796] [EngineLog] [info] Created ResourceId=112, type=4
+[2026-10-03 09:20:07.796] [EngineLog] [info]  Resource 112 named TextToTrixelProgram
+[2026-10-03 09:20:07.796] [EngineLog] [info] Created ResourceId=113, type=5
+[2026-10-03 09:20:07.796] [EngineLog] [info]  Resource 113 named FontDataBuffer
+[2026-10-03 09:20:07.796] [EngineLog] [info] Created ResourceId=114, type=5
+[2026-10-03 09:20:07.796] [EngineLog] [info]  Resource 114 named GlyphDrawCommandBuffer
+[2026-10-03 09:20:07.796] [EngineLog] [info] Regestered component type=N12IRComponents13C_TextSegmentE, sizeof=24 with id=420
+[2026-10-03 09:20:07.796] [EngineLog] [info] Regestered component type=N12IRComponents13C_GuiPositionE, sizeof=8 with id=421
+[2026-10-03 09:20:07.796] [EngineLog] [info] Regestered component type=N12IRComponents12C_GuiElementE, sizeof=1 with id=422
+[2026-10-03 09:20:07.796] [EngineLog] [info] Regestered component type=N12IRComponents11C_TextStyleE, sizeof=28 with id=423
+[2026-10-03 09:20:07.799] [EngineLog] [info] Created ResourceId=115, type=4
+[2026-10-03 09:20:07.799] [EngineLog] [info]  Resource 115 named CanvasShapeLightingProgram
+[2026-10-03 09:20:07.799] [EngineLog] [info] Created ResourceId=116, type=4
+[2026-10-03 09:20:07.799] [EngineLog] [info]  Resource 116 named CanvasToFramebufferProgram
+[2026-10-03 09:20:07.800] [EngineLog] [info] Created ResourceId=117, type=4
+[2026-10-03 09:20:07.800] [EngineLog] [info]  Resource 117 named CanvasSurfaceShadowProbeProgram
+[2026-10-03 09:20:07.801] [EngineLog] [info] Created ResourceId=118, type=4
+[2026-10-03 09:20:07.801] [EngineLog] [info]  Resource 118 named PerAxisScatterProgram
+[2026-10-03 09:20:07.802] [EngineLog] [info] Created ResourceId=119, type=4
+[2026-10-03 09:20:07.802] [EngineLog] [info]  Resource 119 named PerAxisSurfaceShadowProbeProgram
+[2026-10-03 09:20:07.804] [EngineLog] [info] Created ResourceId=120, type=4
+[2026-10-03 09:20:07.804] [EngineLog] [info]  Resource 120 named PerAxisSurfaceLightingProgram
+[2026-10-03 09:20:07.805] [EngineLog] [info] Created ResourceId=121, type=4
+[2026-10-03 09:20:07.805] [EngineLog] [info]  Resource 121 named PerAxisVisibleLightingProgram
+[2026-10-03 09:20:07.805] [EngineLog] [info] Created ResourceId=122, type=5
+[2026-10-03 09:20:07.805] [EngineLog] [info]  Resource 122 named TrixelToFramebufferFrameData
+[2026-10-03 09:20:07.805] [EngineLog] [info] Created ResourceId=123, type=5
+[2026-10-03 09:20:07.805] [EngineLog] [info]  Resource 123 named HoveredEntityIdBuffer
+[2026-10-03 09:20:07.805] [EngineLog] [info] Regestered component type=N12IRComponents16C_DetachedCanvasE, sizeof=1 with id=424
+[2026-10-03 09:20:07.805] [EngineLog] [info] Created ResourceId=124, type=4
+[2026-10-03 09:20:07.805] [EngineLog] [info]  Resource 124 named FramebufferToScreenProgram
+[2026-10-03 09:20:07.805] [EngineLog] [info] Created ResourceId=125, type=5
+[2026-10-03 09:20:07.805] [EngineLog] [info]  Resource 125 named FramebufferToScreenFrameData
+[2026-10-03 09:20:07.805] [ClientLog] [info] Creating perf_grid mode=voxel_set grid_size=64 entity_count=262144 spacing=1 wave_mode=per_cell wave_amplitude=5 wave_period=4
+[2026-10-03 09:20:07.805] [EngineLog] [info] Created archetype node with components: [ 256 257 410 ], id=30
+[2026-10-03 09:20:07.805] [EngineLog] [info] Created archetype node with components: [ 256 257 410 412 ], id=31
+[2026-10-03 09:20:08.528] [EngineLog] [info] Created ResourceId=126, type=1
+[2026-10-03 09:20:08.529] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 405 417 ], id=32
+[2026-10-03 09:20:08.532] [EngineLog] [info] Created ResourceId=127, type=1
+[2026-10-03 09:20:08.532] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 405 417 418 ], id=33
+[2026-10-03 09:20:08.534] [EngineLog] [info] Created ResourceId=128, type=2
+[2026-10-03 09:20:08.534] [EngineLog] [info] Created ResourceId=129, type=2
+[2026-10-03 09:20:08.534] [EngineLog] [info] Created ResourceId=130, type=2
+[2026-10-03 09:20:08.534] [EngineLog] [info] Created ResourceId=131, type=2
+[2026-10-03 09:20:08.534] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 405 417 418 419 ], id=34
+[2026-10-03 09:20:08.537] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 405 406 ], id=35
+[2026-10-03 09:20:08.537] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 405 406 417 ], id=36
+[2026-10-03 09:20:08.537] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 405 406 417 418 ], id=37
+[2026-10-03 09:20:08.537] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 405 406 417 418 419 ], id=38
+[2026-10-03 09:20:08.539] [ClientLog] [info] FOG-WINDOW edge=1152 canvas=642x722 coveredRadius=543
+[2026-10-03 09:20:08.539] [EngineLog] [info] Created ResourceId=132, type=1
+[2026-10-03 09:20:08.539] [EngineLog] [info] Created ResourceId=133, type=1
+[2026-10-03 09:20:08.540] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 405 406 415 ], id=39
+[2026-10-03 09:20:08.540] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 405 406 415 417 ], id=40
+[2026-10-03 09:20:08.540] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 405 406 415 417 418 ], id=41
+[2026-10-03 09:20:08.540] [EngineLog] [info] Created archetype node with components: [ 256 257 385 392 393 394 395 396 397 398 405 406 415 417 418 419 ], id=42
+[2026-10-03 09:20:08.542] [EngineLog] [info] Regestered component type=N12IRComponents13C_LightSourceE, sizeof=36 with id=262570
+[2026-10-03 09:20:08.542] [EngineLog] [info] Created archetype node with components: [ 256 257 262570 ], id=43
+[2026-10-03 09:20:08.542] [ClientLog] [info] Initial camera zoom: requested=1, actual=1
+[2026-10-03 09:20:08.542] [ClientLog] [info] Initial camera yaw: requested_rad=0.000000 yaw_deg=0.000 residual_deg=0.0000
+[2026-10-03 09:20:08.570] [EngineLog] [info] Regestered component type=N12IRComponents16C_ResolvedFieldsE, sizeof=72 with id=262571
+[2026-10-03 09:20:08.571] [EngineLog] [info] Regestered component type=N12IRComponents19C_FogRevealSettingsE, sizeof=12 with id=262572
+[2026-10-03 09:20:08.571] [EngineLog] [info] Created archetype node with components: [ 262572 ], id=44
+[2026-10-03 09:20:08.577] [EngineLog] [info] Created archetype node with components: [ 256 257 410 411 ], id=45
+[2026-10-03 09:20:08.577] [EngineLog] [info] Created archetype node with components: [ 256 257 410 411 412 ], id=46
+[2026-10-03 09:20:09.156] [EngineLog] [warning] Update took 586.217083 ms
+[2026-10-03 09:20:09.158] [EngineLog] [info] Regestered component type=N12IRComponents14C_LightBlockerE, sizeof=8 with id=262574
+[2026-10-03 09:20:09.158] [EngineLog] [info] Created ResourceId=134, type=1
+[2026-10-03 09:20:09.158] [EngineLog] [info] Created ResourceId=135, type=1
+[2026-10-03 09:20:09.158] [EngineLog] [info] Created ResourceId=136, type=1
+[2026-10-03 09:20:09.158] [EngineLog] [info] Created ResourceId=137, type=1
+[2026-10-03 09:20:09.158] [EngineLog] [info] Created ResourceId=138, type=1
+[2026-10-03 09:20:09.158] [EngineLog] [info] Created ResourceId=139, type=1
+[2026-10-03 09:20:09.158] [EngineLog] [info] Created ResourceId=140, type=1
+[2026-10-03 09:20:09.158] [EngineLog] [info] Created ResourceId=141, type=1
+[2026-10-03 09:20:09.158] [EngineLog] [info] Created ResourceId=142, type=1
+[2026-10-03 09:20:09.158] [EngineLog] [info] Created ResourceId=143, type=1
+[2026-10-03 09:20:09.158] [EngineLog] [info] Created ResourceId=144, type=1
+[2026-10-03 09:20:09.158] [EngineLog] [info] Created ResourceId=145, type=1
+[2026-10-03 09:20:09.158] [EngineLog] [info] Created ResourceId=146, type=1
+[2026-10-03 09:20:09.158] [EngineLog] [info] Created ResourceId=147, type=1
+[2026-10-03 09:20:09.158] [EngineLog] [info] Created ResourceId=148, type=1
+[2026-10-03 09:20:09.243] [EngineLog] [info] Created ResourceId=149, type=1
+[2026-10-03 09:20:09.243] [EngineLog] [info] Created ResourceId=150, type=1
+[2026-10-03 09:20:09.243] [EngineLog] [info] Regestered component type=N12IRComponents26C_TriangleCanvasBackgroundE, sizeof=240 with id=262575
+[2026-10-03 09:20:09.271] [EngineLog] [info] Voxel render mode=2, base_subdivisions=5, zoom_scale=1, effective_subdivisions=5
+[2026-10-03 09:20:09.273] [EngineLog] [info] Created ResourceId=151, type=5
+[2026-10-03 09:20:09.273] [EngineLog] [info] Regestered component type=N12IRComponents14C_EntityCanvasE, sizeof=24 with id=262576
+[2026-10-03 09:20:09.273] [EngineLog] [info] Regestered component type=N12IRComponents16C_ActiveLodLevelE, sizeof=4 with id=262577
+[2026-10-03 09:20:09.273] [EngineLog] [info] Regestered component type=N12IRComponents17C_LodTierOverrideE, sizeof=4 with id=262578
+[2026-10-03 09:20:11.751] [ClientLog] [info] Auto-profile: 120 frames collected, exiting
+[2026-10-03 09:20:11.751] [ClientLog] [info] Auto-profile stats — FPS:50.0 frame:19.666ms
+[2026-10-03 09:20:11.751] [ClientLog] [info] Auto-profile mean — frame:20.233ms sd:0.845 n:90
+[2026-10-03 09:20:11.751] [ClientLog] [info] FOG-RESTAMP voxels=0.0 sd=0.0 max=0 n=90
+[2026-10-03 09:20:11.751] [ClientLog] [info] Auto-profile mean CPU — voxelStage1:0.000ms sd:0.000 n:90
+[2026-10-03 09:20:11.751] [ClientLog] [info] Auto-profile mean CPU — voxelStage2:0.000ms sd:0.000 n:90
+[2026-10-03 09:20:11.751] [ClientLog] [info] Auto-profile mean CPU — voxelCompact:0.000ms sd:0.000 n:90
+[2026-10-03 09:20:11.751] [ClientLog] [info] Auto-profile mean CPU — input:0.000ms sd:0.000 n:90
+[2026-10-03 09:20:11.751] [ClientLog] [info] Auto-profile mean CPU — update:0.000ms sd:0.000 n:90
+[2026-10-03 09:20:11.751] [ClientLog] [info] Auto-profile mean CPU — render:0.000ms sd:0.000 n:90
+[2026-10-03 09:20:11.751] [ClientLog] [info] Auto-profile CPU — voxelStage1:0.000 voxelStage2:0.000 voxelCompact:0.000 input:0.000 update:0.000 render:0.000
+[2026-10-03 09:20:11.751] [ClientLog] [info] Auto-profile GPU — canvasClear:0.263 voxelCompact:0.046 voxelStage1:4.764 voxelCardinalElect:3.203 voxelStage2:3.050
+[2026-10-03 09:20:11.767] [EngineLog] [info] Profile report written to save_files/profile_report.txt (120 frames)
+[2026-10-03 09:20:13.077] [EngineLog] [info] Dumped profiling blocks, result=8975895
+[2026-10-03 09:20:13.077] [EngineLog] [info] Clean shutdown complete.
+ir-run: IRPerfGrid exited cleanly after 6s
+ir-run: RESULT=CLEAN exe=IRPerfGrid exit=0

@@ -15,6 +15,7 @@
 // twin is c_voxel_to_trixel_stage_1.metal.
 #include "ir_iso_common.metal"
 #include "ir_constants.metal"
+#include "ir_voxel_dispatch.metal"
 
 #define IR_FEEDER_PASS 0
 #define IR_STORE_WINNER_ELECTION 1

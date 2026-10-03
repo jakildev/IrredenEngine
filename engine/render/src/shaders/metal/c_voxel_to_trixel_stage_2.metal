@@ -6,6 +6,7 @@
 // winner-guarded variant is c_voxel_to_trixel_stage_2_winner.metal.
 #include "ir_iso_common.metal"
 #include "ir_constants.metal"
+#include "ir_voxel_dispatch.metal"
 
 #define IR_STORE_WINNER_ELECTION 0
 #define IR_STAGE2_KERNEL_NAME c_voxel_to_trixel_stage_2

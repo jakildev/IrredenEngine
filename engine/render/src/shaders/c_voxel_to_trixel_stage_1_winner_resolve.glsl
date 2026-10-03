@@ -28,5 +28,6 @@
 #include "ir_iso_common.glsl"
 #define IR_VOXEL_FOG_GRID_BINDING 0
 #include "ir_constants.glsl"
+#include "ir_voxel_dispatch.glsl"
 #include "ir_voxel_face_select.glsl"
 #include "c_voxel_to_trixel_stage_1_body.glsl"

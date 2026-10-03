@@ -79,13 +79,21 @@ Next, in order:
    measures 8 versus 32 micro-slices per group: dense cardinal steady Debug time
    improves 101.905→82.600 ms, but low-density depth work regresses and rotated
    frame ranges overlap. All three camera captures are RGB-identical. Keep the
-   production default at 8; grouped runs on a busy host do not qualify adoption.
+   production default at 8 in that experiment; its grouped runs did not qualify adoption.
    An executable GLSL/Metal writer and lane-recovery gate now rejects dropped or
    duplicated samples, row-offset mistakes and missing padding/count guards.
-   Next measure dense-only specialization or multiple low-density voxels per
-   group, extending coverage to actual compact-finalizer route selection before
-   changing it. Use interleaved native controls and then conservative overflow
-   processing. Cardinal/per-axis density differs (16 versus capped 8 at zoom 4),
+   The [occupancy follow-up](../perf/voxel-workgroup-occupancy/README.md) instead
+   packs whole low-density voxels into 32-lane groups, preserving every sample.
+   Actual finalizer/list selection joins the executable tests. Return controls
+   improve dense cardinal 100.145→83.755 ms and rotated 22.370→16.875 ms;
+   all 24 CanvasStress checks pass and reference RGB is unchanged. Low-density
+   frame ranges overlap and the first subdivision-3 batch regresses before the
+   repeat improves, so do not generalize the gains. Native OpenGL, feeder-heavy
+   timing and moving-camera/density controls remain pending. Next profile
+   conservative overflow, shared lighting and submission/readback stalls. The
+   low-density fixture retains every pool candidate; any new occlusion must prove
+   finite-face, fog and off-screen caster coverage. Cardinal/per-axis density
+   differs (16 versus capped 8 at zoom 4),
    so do not call their timings parity. Future occlusion must prove finite-footprint
    coverage; native Release and quiet-host million controls remain pending.
 3. Continue dense/incomplete sun-index and moving light/camera controls. Incomplete

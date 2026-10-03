@@ -1,0 +1,50 @@
+# Voxel dispatch occupancy
+
+The voxel stages have six XY lanes per sample, preserving the two halves of
+each visible face. Z lanes can share a group across several whole low-density
+voxels. This changes dispatch occupancy, not voxel subdivision, face orientation,
+depth arbitration, or shadow geometry.
+
+Let `P` be the Z lane count, `S >= 1` the samples per voxel, `N` the compacted
+voxel count, and `V = max(floor(P / S), 1)` the voxels per XY group. The compact
+writer dispatches `G = ceil(N / V)` XY groups, capped at 1024 in X with overflow
+in Y, and `ceil(S / P)` Z groups. Empty lists retain one guarded XY group.
+
+For flattened XY group `h`, Z group `g`, and local Z lane `l`, define
+`L = min(S, P)`, `q = floor(l / L)`, and `r = l mod L`. The lane addresses
+voxel `h * V + q` and sample `g * P + r`. When `q >= V`, the lane is padding;
+its sample is marked outside the domain and the ordinary sample guard rejects
+it. The voxel-count guard also rejects padded XY rows and partial final groups.
+
+For `S <= P`, each group contains `V` disjoint ranges of `S` lanes. Each pair
+`(voxel, sample)` has the unique inverse `h = floor(voxel / V)`,
+`q = voxel mod V`, `l = q * S + sample`. Remaining lanes cannot start another
+voxel: for `P = 32, S = 9`, lanes 27–31 are padding, not a fourth voxel.
+For `S > P`, `V = 1`; the unique sample inverse is `g = floor(sample / P)`,
+`l = sample mod P`. The final Z group rejects its unused tail.
+
+`ir_voxel_dispatch` owns the slice domain and lane recovery in each shader
+backend. Cardinal visible lists use effective subdivision squared; the feeder
+uses its capped edge squared; per-axis lists use one stored sample per face.
+The compact finalizer and both voxel stages use the same domain helper. Feeder
+list indexing remains reversed and per-axis list bindings remain independent.
+No CPU count readback or extra dispatch is needed to select the packing.
+
+`test_render_voxel_dispatch_packing.py` executes the actual compact finalizer,
+writer, helpers and consumer prefixes as scalar C++ adapters for both backends.
+It checks distinct visible/feeder/axis counts, all modes and axis routes, density
+clamping, non-divisor densities, empty lists, partial groups and the 1024-group
+row boundary. Mutations remove index strides and guards or select the wrong
+list count/sample domain; the controls must reject each one. Native rendering
+remains necessary: these scalar adapters do not execute the raster or GPU memory
+ordering, and equivalent coverage alone does not establish visual correctness.
+
+Packing selection requires native timing across dense and low-density cardinal
+work, rotation and intermediate densities. Integer division, register pressure
+and partial groups can offset fewer dispatch groups. Keep sample identity and
+requested fidelity fixed when measuring; the earlier global packing experiment
+is recorded in [the baseline report](../perf/voxel-dispatch-packing/README.md).
+
+The [native occupancy controls](../perf/voxel-workgroup-occupancy/README.md)
+support the 32-lane implementation with return-to-baseline measurements and
+unchanged image checks. Backend performance and scale limits remain explicit.

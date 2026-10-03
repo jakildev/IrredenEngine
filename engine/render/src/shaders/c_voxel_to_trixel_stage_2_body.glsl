@@ -42,7 +42,7 @@ layout(std430, binding = 8) buffer SourceVoxelFaces {
     SourceVoxelFace sourceFaces[];
 };
 
-layout(local_size_x = 2, local_size_y = 3, local_size_z = 8) in;
+layout(local_size_x = 2, local_size_y = 3, local_size_z = 32) in;
 
 
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
@@ -280,17 +280,14 @@ void emitDeformedFace(
 }
 
 void main() {
-    uint compactedIdx = gl_WorkGroupID.x + gl_WorkGroupID.y * numGroupsX;
+    const int microSliceCount = voxelDispatchMicroSliceCount(
+        voxelRenderOptions.x, voxelRenderOptions.y, perAxisRoute);
+    const uvec2 dispatchLane = voxelDispatchLane(
+        gl_WorkGroupID.x + gl_WorkGroupID.y * numGroupsX,
+        gl_WorkGroupID.z, gl_LocalInvocationID.z, uint(microSliceCount));
+    const uint compactedIdx = dispatchLane.x;
     if (compactedIdx >= visibleCount) return;
-
-    // Micro-slice packing — MUST mirror stage 1's zIdx recovery + guard so the
-    // color/entity-id tap runs on exactly the micro-slices stage 1 wrote
-    // distances for.
-    const int zIdx = int(gl_WorkGroupID.z) * kStageMicroSlicesPerGroup + int(gl_LocalInvocationID.z);
-    const int microSliceCount =
-        (voxelRenderOptions.x != 0 && perAxisRoute == 0)
-            ? (max(voxelRenderOptions.y, 1) * max(voxelRenderOptions.y, 1))
-            : 1;
+    const int zIdx = int(dispatchLane.y);
     if (zIdx >= microSliceCount) return;
 
     uint voxelIndex = compactedVoxelIndices[compactedIdx];

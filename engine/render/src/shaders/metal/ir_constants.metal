@@ -1,10 +1,6 @@
-// Mirrors shaders/ir_constants.glsl.
-
 constant int VOXEL_CHUNK_SIZE = 256;
 constant int kInvalidDepth = 0x7FFFFFFF;
 
-// Micro-slice packing factor for the voxel→trixel stage dispatch. Must equal the
-// Metal threadgroup-size map entries for c_voxel_to_trixel_stage_{1,2} in
-// metal_pipeline.cpp and the divCeil in c_voxel_visibility_compact's
-// writeDispatchDims.
-constant int kStageMicroSlicesPerGroup = 8;
+// Must match the voxel stage GLSL layouts and Metal threadgroup registry;
+// ir_voxel_dispatch owns the matching indirect-grid and lane-recovery math.
+constant int kStageMicroSlicesPerGroup = 32;

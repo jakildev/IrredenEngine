@@ -4,6 +4,7 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
 #include "ir_constants.glsl"
+#include "ir_voxel_dispatch.glsl"
 
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec2 frameCanvasOffset;
@@ -223,16 +224,11 @@ bool fogColumnInVisionCircle(ivec3 voxelPosRaw) {
 // count is read atomically so the last group sees every other group's appends.
 void writeDispatchDims(uint base, uint microSliceCount) {
     uint count = atomicAdd(params[base + 3u], 0u);
-    uint gx = max(min(count, 1024u), 1u);
+    uint voxelsPerGroup = voxelDispatchVoxelsPerGroup(microSliceCount);
+    uint groups = (count + voxelsPerGroup - 1u) / voxelsPerGroup;
+    uint gx = max(min(groups, 1024u), 1u);
     params[base + 0u] = gx;
-    params[base + 1u] = max((count + gx - 1u) / gx, 1u);
-    // The stage kernels raster `microSliceCount` micro-cells per voxel face.
-    // Packing kStageMicroSlicesPerGroup of them into each z-workgroup
-    // (local_size_z in the stage kernels) means the launched z-workgroup count
-    // is the ceil-divided slice count; the stage re-derives its micro-slice as
-    // gl_WorkGroupID.z * kStageMicroSlicesPerGroup + gl_LocalInvocationID.z and
-    // early-returns the tail past microSliceCount, so the padding emits nothing.
-    // The feeder struct passes feederSubCap² here instead of effSub².
+    params[base + 1u] = max((groups + gx - 1u) / gx, 1u);
     params[base + 2u] = (microSliceCount + uint(kStageMicroSlicesPerGroup) - 1u) /
         uint(kStageMicroSlicesPerGroup);
 }
@@ -330,6 +326,35 @@ bool voxelOccludedByHiZ(ivec3 voxelPos, ivec2 isoPos) {
 }
 
 shared uint groupUniqueSurvivors[64];
+
+void finalizeDispatchDims() {
+    const uint visibleSlices = uint(voxelDispatchMicroSliceCount(
+        voxelRenderOptions.x, voxelRenderOptions.y, 0
+    ));
+    if (perAxisSplitStride == 0) {
+        writeDispatchDims(0u, visibleSlices);
+        // Struct 1 = the feeder dispatch, strided to
+        // feederSubCap² micro-cells per face (vs effSub² for visible).
+        // Empty when no survivor was classified feeder (shadows off / all
+        // on-screen) ⇒ its stage-1 dispatch early-returns every workgroup.
+        const uint feederSlices = uint(voxelDispatchMicroSliceCount(
+            voxelRenderOptions.x, feederSubCap, 0
+        ));
+        writeDispatchDims(kPerAxisIndirectStrideUints, feederSlices);
+    } else {
+        // Unrolled, not a loop over axis 0..2: NVIDIA's link-time
+        // optimizer dies with "C5025 lvalue in array access too
+        // complex" + a C9999 ICE when a loop-variant base mixes
+        // with the constant-base call sites in the single-list branch;
+        // constant bases at every call site keep the inlined stores
+        // foldable.
+        // Face-local stores carry one sample; the scatter reconstructs
+        // their footprint independently of presentation subdivisions.
+        writeDispatchDims(0u, 1u);
+        writeDispatchDims(kPerAxisIndirectStrideUints, 1u);
+        writeDispatchDims(2u * kPerAxisIndirectStrideUints, 1u);
+    }
+}
 
 void main() {
     groupUniqueSurvivors[gl_LocalInvocationIndex] = 0u;
@@ -473,31 +498,7 @@ void main() {
         uint finished = atomicAdd(params[4], 1u) + 1u;
         uint totalGroups = gl_NumWorkGroups.x * gl_NumWorkGroups.y;
         if (finished == totalGroups) {
-            int subdivisions = max(voxelRenderOptions.y, 1);
-            uint visibleSlices =
-                (voxelRenderOptions.x != 0) ? uint(subdivisions * subdivisions) : 1u;
-            if (perAxisSplitStride == 0) {
-                writeDispatchDims(0u, visibleSlices);
-                // Struct 1 = the feeder dispatch, strided to
-                // feederSubCap² micro-cells per face (vs effSub² for visible).
-                // Empty when no survivor was classified feeder (shadows off / all
-                // on-screen) ⇒ its stage-1 dispatch early-returns every workgroup.
-                int cap = max(feederSubCap, 1);
-                uint feederSlices = (voxelRenderOptions.x != 0) ? uint(cap * cap) : 1u;
-                writeDispatchDims(kPerAxisIndirectStrideUints, feederSlices);
-            } else {
-                // Unrolled, not a loop over axis 0..2: NVIDIA's link-time
-                // optimizer dies with "C5025 lvalue in array access too
-                // complex" + a C9999 ICE when a loop-variant base mixes
-                // with the constant-base call sites in the single-list branch;
-                // constant bases at every call site keep the inlined stores
-                // foldable.
-                // Face-local stores carry one sample; the scatter reconstructs
-                // their footprint independently of presentation subdivisions.
-                writeDispatchDims(0u, 1u);
-                writeDispatchDims(kPerAxisIndirectStrideUints, 1u);
-                writeDispatchDims(2u * kPerAxisIndirectStrideUints, 1u);
-            }
+            finalizeDispatchDims();
         }
     }
 }

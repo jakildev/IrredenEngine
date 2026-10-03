@@ -266,34 +266,24 @@ kernel void IR_STAGE1_KERNEL_NAME(
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 localId3 [[thread_position_in_threadgroup]]
 ) {
-    const uint compactedIdx = groupId.x + groupId.y * indirectParams.numGroupsX;
-    if (compactedIdx >= indirectParams.visibleCount) {
-        return;
-    }
-
-    // Micro-slice packing — mirrors the GLSL twin. The threadgroup z-size is
-    // kStageMicroSlicesPerGroup (metal_pipeline.cpp map); recover this
-    // invocation's flat micro-slice index and discard the tail past
-    // microSliceCount.
-    const int zIdx =
-        int(groupId.z) * kStageMicroSlicesPerGroup + int(localId3.z);
+    const int microSliceCount = voxelDispatchMicroSliceCount(
+        frameData.voxelRenderOptions.x,
 #if IR_FEEDER_PASS
-    // The feeder dispatch (struct 1) rasters feederSubCap² micro-cells per face
-    // instead of effSub²; the guard must match the compact's writeDispatchDims
-    // z-count for this pass.
-    const int feederCap = max(frameData.feederSubCap, 1);
-    const int microSliceCount =
-        (frameData.voxelRenderOptions.x != 0) ? (feederCap * feederCap) : 1;
+        frameData.feederSubCap, 0
 #else
-    const int microSliceCount = (frameData.voxelRenderOptions.x != 0 && frameData.perAxisRoute == 0)
-        ? (max(frameData.voxelRenderOptions.y, 1) * max(frameData.voxelRenderOptions.y, 1))
-        : 1;
+        frameData.voxelRenderOptions.y, frameData.perAxisRoute
 #endif
-    if (zIdx >= microSliceCount) {
-        return;
-    }
+    );
+    const uint2 dispatchLane = voxelDispatchLane(
+        groupId.x + groupId.y * indirectParams.numGroupsX,
+        groupId.z, localId3.z, uint(microSliceCount));
+    const uint compactedIdx = dispatchLane.x;
+    if (compactedIdx >= indirectParams.visibleCount) return;
+    const int zIdx = int(dispatchLane.y);
+    if (zIdx >= microSliceCount) return;
 
 #if IR_FEEDER_PASS
+    const int feederCap = max(frameData.feederSubCap, 1);
     // Feeders were tail-appended by the compact (slot i at feederPassTailBase-1-i);
     // binding 26 is bound to struct 1 for this feeder dispatch, so the
     // numGroupsX/visibleCount this kernel reads are the feeder struct's.

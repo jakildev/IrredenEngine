@@ -35,13 +35,9 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         functionName == "c_voxel_to_trixel_stage_1_winner_resolve" ||
         functionName == "c_voxel_to_trixel_stage_2" ||
         functionName == "c_voxel_to_trixel_stage_2_winner") {
-        // Both stage kernels pack kStageMicroSlicesPerGroup micro-cell z-slices
-        // per threadgroup and re-derive their slice as
-        // groupId.z * kStageMicroSlicesPerGroup + localId.z. MUST match the GLSL
-        // local_size_z literal + shaders/ir_constants.{glsl,metal}. The stage-1
-        // feeder, winner-election, and winner-guarded variants are compile-time
-        // specializations of the same two bodies, so they share the (2,3,8) shape.
-        return MTL::Size(2, 3, 8);
+        // Must match the GLSL local_size_z and kStageMicroSlicesPerGroup;
+        // voxelDispatchLane shares this packing with the compact writer.
+        return MTL::Size(2, 3, 32);
     }
     if (functionName == "c_text_to_trixel") {
         return MTL::Size(7, 11, 1);
