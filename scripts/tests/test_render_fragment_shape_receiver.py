@@ -30,9 +30,10 @@ vec2 originRaw{1.25f,2.75f},displayOrigin=originRaw,textureSize{8,6};
 ivec2 sampleCoord{floor(displayOrigin)}, expectedOwner{1,2};
 int shadowsEnabled=1,queryCalls=0,shadowCalls=0;
 bool hit=true;
-bool selectedShapeBoxReceiver(ivec2 owner,int width,vec2 query,vec3& p,vec3& n){
+bool selectedShapeBoxReceiver(ivec2 owner,int width,vec2 query,bool recover,
+                              vec3& p,vec3& n){
  ++queryCalls;
- if(owner.x!=expectedOwner.x||owner.y!=expectedOwner.y||width!=8||query.x!=originRaw.x||query.y!=originRaw.y)std::exit(11);
+ if(owner.x!=expectedOwner.x||owner.y!=expectedOwner.y||width!=8||query.x!=originRaw.x||query.y!=originRaw.y||!recover)std::exit(11);
  p={query.x,query.y,1};n={0,0,-1};return hit;
 }
 float pos3DtoDistance(vec3 p){return p.x+p.y+p.z;}
@@ -161,6 +162,9 @@ int main(int argc,char**){
                     "casterViewToWorld", "vec4{0,0,0,1}"),
                 "snapped_query": block.replace("originRaw,", "floor(originRaw),"),
                 "wrong_owner": block.replace("sampleCoord", "ivec2(vec2(0,0))"),
+                "recovery_disabled": re.sub(
+                    r"(selectedShapeBoxReceiver\([^;]+?originRaw,\s*)true,",
+                    r"\1false,", block, count=1),
                 "lost_miss_fallback": block.replace(
                     "if (selectedShapeBoxReceiver", "if (true || selectedShapeBoxReceiver"),
                 "world_cascade_depth": block.replace(
