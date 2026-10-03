@@ -277,10 +277,11 @@ no hysteresis; a creation's policy owns any debounce. `computeLodLevel`'s
 thresholds are unchanged. `lodVoxelScale` is removed: it had no callers, and
 sub-world voxel pitch is ruled out.
 
-Not persisted: `C_LodTierOverride` is save-opted-out (a policy output, the
-policy re-applies it), and a `C_VoxelSetNew` band is not in the set's
-serialized form — a reloaded set comes back on the default band until its
-author re-applies it.
+`C_VoxelSetNew` persists its authored `lodMin_` / `lodMax_` band in snapshot
+format version 3, so a reloaded set retains its inclusive LOD range.
+`C_LodTierOverride` stays save-opted-out because it is a policy output that
+the policy reapplies, and `lodCulled_` stays transient because the LOD gate
+recomputes it.
 
 The `shape_debug --lod-dense-swap` fixture (two co-located DENSE sets on
 disjoint bands) is the reference; render-verify covers it at zoom 2× / 8×, and
