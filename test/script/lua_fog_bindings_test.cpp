@@ -12,6 +12,7 @@
 
 #include <gtest/gtest.h>
 
+#include <memory>
 #include <string>
 
 namespace {
@@ -393,6 +394,54 @@ TEST_F(LuaFogBindingsActiveCanvasTest, EvalRevealReadsAVisibleCellWithNoCircles)
         assert(IRFog.evalReveal(3, 4, 0) == 1)
         assert(IRFog.evalReveal(30, 40, 0) == 0)
     )lua"));
+}
+
+// The `__gc` metatable on the functor userdata sol2 holds as upvalue 2 of a
+// bound stateful entry, or null when the entry carries no such userdata.
+const void *boundFunctorMetatable(sol::state &lua, const char *entry) {
+    lua_State *state = lua.lua_state();
+    const int top = lua_gettop(state);
+    sol::function function = lua["IRFog"][entry];
+    function.push(state);
+    const void *metatable = nullptr;
+    if (lua_getupvalue(state, -1, 2) != nullptr && lua_type(state, -1) == LUA_TUSERDATA &&
+        lua_getmetatable(state, -1) != 0) {
+        metatable = lua_topointer(state, -1);
+    }
+    lua_settop(state, top);
+    return metatable;
+}
+
+TEST(LuaFogBindingTeardownTest, DefaultResolverBindingClosesTheState) {
+    auto lua = std::make_unique<IRScript::LuaScript>();
+    lua->bindLuaFog();
+    lua.reset();
+}
+
+TEST(LuaFogBindingTeardownTest, CapturingResolverIsReleasedWithTheScript) {
+    auto sentinel = std::make_shared<int>(0);
+    const std::weak_ptr<int> watch = sentinel;
+    auto lua = std::make_unique<IRScript::LuaScript>();
+    IRScript::detail::bindFog(*lua, [sentinel]() { return IRScript::detail::FogVisionTarget{}; });
+    sentinel.reset();
+    ASSERT_FALSE(watch.expired()) << "the bound vision entries own the resolver";
+    lua.reset();
+    EXPECT_TRUE(watch.expired());
+}
+
+// sol2 finds a functor's finalizer by demangled type name, and GCC names both
+// raw `(sol::variadic_args)` lambdas here identically, so `captureLineOfSight`'s
+// `shared_ptr` capture would be destroyed as `setVision`'s `std::function`. The
+// pair discriminates because their wrapped types differ (`int` vs `void`
+// return); entries that wrap to one `std::function` type share a metatable.
+TEST(LuaFogBindingTeardownTest, DifferentlyTypedStatefulEntriesHaveDistinctFinalizers) {
+    IRScript::LuaScript lua;
+    lua.bindLuaFog();
+    const void *setVision = boundFunctorMetatable(lua.lua(), "setVision");
+    const void *captureLineOfSight = boundFunctorMetatable(lua.lua(), "captureLineOfSight");
+    ASSERT_NE(setVision, nullptr);
+    ASSERT_NE(captureLineOfSight, nullptr);
+    EXPECT_NE(setVision, captureLineOfSight);
 }
 
 } // namespace

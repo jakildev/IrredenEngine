@@ -32,26 +32,27 @@ inline void bindSpatialApi(LuaScript &script) {
     // allocation-free after warm-up; the only unavoidable per-call cost is
     // the Lua result table sol2 must build at the boundary. `&script`
     // captures the LuaScript referent, stable for the script's lifetime.
-    lua["IRSpatial"]["queryRadius"] =
-        [&script,
-         hits = std::vector<IRPrefab::Spatial::SpatialHit>{}](
-            sol::object centerObj, double radius
+    lua["IRSpatial"]["queryRadius"] = statefulLuaFunction(
+        [&script, hits = std::vector<IRPrefab::Spatial::SpatialHit>{}](
+            sol::object centerObj,
+            double radius
         ) mutable -> sol::table {
-        sol::state_view sv{script.lua().lua_state()};
-        const IRMath::vec3 center = IRScript::vec3FromLua(centerObj);
-        IRPrefab::Spatial::queryRadius(center, static_cast<float>(radius), hits);
+            sol::state_view sv{script.lua().lua_state()};
+            const IRMath::vec3 center = IRScript::vec3FromLua(centerObj);
+            IRPrefab::Spatial::queryRadius(center, static_cast<float>(radius), hits);
 
-        sol::table result = sv.create_table(static_cast<int>(hits.size()), 0);
-        for (std::size_t i = 0; i < hits.size(); ++i) {
-            sol::table record = sv.create_table(0, 4);
-            record["id"] = static_cast<lua_Integer>(hits[i].id_);
-            record["x"] = hits[i].pos_.x;
-            record["y"] = hits[i].pos_.y;
-            record["z"] = hits[i].pos_.z;
-            result[static_cast<lua_Integer>(i + 1)] = record; // Lua arrays 1-indexed
+            sol::table result = sv.create_table(static_cast<int>(hits.size()), 0);
+            for (std::size_t i = 0; i < hits.size(); ++i) {
+                sol::table record = sv.create_table(0, 4);
+                record["id"] = static_cast<lua_Integer>(hits[i].id_);
+                record["x"] = hits[i].pos_.x;
+                record["y"] = hits[i].pos_.y;
+                record["z"] = hits[i].pos_.z;
+                result[static_cast<lua_Integer>(i + 1)] = record; // Lua arrays 1-indexed
+            }
+            return result;
         }
-        return result;
-    };
+    );
 }
 
 } // namespace IRScript::detail

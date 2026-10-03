@@ -152,8 +152,7 @@ voxel mutation is main-thread setup work, never `PARALLEL_FOR` tick work.
 
 ### IRFog
 
-`LuaScript::bindLuaFog()` installs the opt-in engine table, preserves custom
-keys, and stays separate from `bindLuaDrivenEcs()`.
+`LuaScript::bindLuaFog()` installs the opt-in table, keeping custom keys, apart from `bindLuaDrivenEcs()`.
 
 - `setVision` replaces sources; `addVision` appends (past the analytic cap, a plain XY
   disc in the field that `getCell` reads); `clearVisions` clears both. Defaults: `edge =
@@ -201,10 +200,9 @@ need `canvas_size`; declarative components need `registerComponentFactoryFor`.
 
 ## Script output
 
-`LuaScript` binds `print` to `ScriptLog`: one flushed, timestamped line per call,
-arguments tab-joined verbatim and ordered with engine/client logs. Flushing is
-load-bearing under redirected stdout and signal death. `io.write` and a bare
-`sol::state` keep stock buffered behavior.
+`LuaScript` binds `print` to `ScriptLog`: one timestamped line per call, arguments
+tab-joined verbatim, ordered with engine/client logs, and flushed (load-bearing under
+redirected stdout and signal death). `io.write` and a bare `sol::state` stay buffered.
 
 ## Script resolution
 
@@ -218,3 +216,5 @@ cwd ([`BUILD.md`](../../docs/agents/BUILD.md) §"Running an executable").
   check the type first; `sol::object::is<sol::table>()` is true for userdata.
 - Batch-create factories must match C++ arity ([`cpp-ecs-smells.md`](../../.claude/rules/cpp-ecs-smells.md)).
 - `LuaScript` lifetime is absolute: its destruction invalidates every Lua handle.
+- Bind a lambda whose captures need destruction through `detail::statefulLuaFunction`
+  (`ir_script_utils.hpp`): sol2 keys `__gc` by type name, and GCC lambda names collide.
