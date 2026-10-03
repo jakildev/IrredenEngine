@@ -96,6 +96,12 @@ Next, in order:
    differs (16 versus capped 8 at zoom 4),
    so do not call their timings parity. Future occlusion must prove finite-footprint
    coverage; native Release and quiet-host million controls remain pending.
+   The latest-master viewport integration now notifies pool content generation
+   after raw record rewrites, replacing its removed count-cache invalidation.
+   Correct same-size retarget/recolor updates require reseeding, but the viewport
+   currently rewrites even unchanged subjects every frame. Profile eliminating
+   those no-op rewrites/uploads separately, with complete content and pose
+   invalidation coverage; this is not the frozen main-canvas benchmark path.
 3. Continue dense/incomplete sun-index and moving light/camera controls. Incomplete
    tiles still have approximate fallback; the full-pool reference is diagnostic.
 4. Extend finite receiving to cardinal GRID and remaining eligible SDF/fog routes,

@@ -86,3 +86,22 @@ populations, and native OpenGL validation. The low-density control retains all
 262,144 candidates. Measure shared lighting work, submission/readback stalls and
 conservative occlusion before further dispatch tuning; culling must preserve
 finite-face, fog and off-screen shadow coverage.
+
+## Latest-master integration
+
+Integrated master `b3e3d1c35d3eb6cad44da12777510400b6a37f00` after measuring.
+Its viewport writer still referenced the count-based resample cache removed by
+the shared-canvas change, so it did not compile. `Viewport::detail::fillPoolBox`
+now calls the pool's `markRecordsChanged()` after raw writes; the obsolete
+rotation-specific cache write is removed. Same-size retarget and recolor tests
+check that the destination generation advances. All 27 viewport tests pass.
+Unchanged subjects still rewrite/reseed every frame; reducing that work is a
+separate tracked optimization, not part of these main-canvas timings.
+
+IRCanvasStress, IRPerfGrid and IrredenEngineTest build on the integrated tree.
+All 65 render-tooling suites pass, and header checks pass for 646 headers,
+40 Metal kernels and 98 GLSL files. The expanded native CanvasStress suite passes
+all 30 checks: 20 exact RGB comparisons, including shared parts and detach, and
+10 structural checks. [Complete integration log](../../pr-screenshots/codex/voxel-workgroup-occupancy/integration-render-verify.log).
+The matched timing controls above remain tied to their earlier measured base;
+they were not rerun against the viewport/LOD integration.

@@ -31,3 +31,9 @@ The full harness's intermediate captures were overwritten by its later passes;
 its 24-check result is recorded in the [performance report](../../../perf/voxel-workgroup-occupancy/README.md).
 This is native Metal evidence. OpenGL execution, feeder-heavy stress timing and
 quiet-host Release/million-entity controls remain pending.
+
+After integrating master `b3e3d1c35`, the expanded suite passes all **30** checks,
+including 20 exact RGB comparisons and the new shared-part/detach fixtures.
+The [integration log](integration-render-verify.log) records this later run.
+The six embedded default captures remain representative: those same default
+references still match exactly. Timing data retains its earlier measured base.

@@ -441,10 +441,12 @@ TEST_F(ViewportTest, SameSizeRetargetRestampsWithoutRebuilding) {
     const IREntity::EntityId second = makeSubject(ivec3(2, 2, 2), kBlue);
 
     sync(viewport, {partOf(first)});
+    const auto contentGeneration = poolOf(viewport).getContentGeneration();
     sync(viewport, {partOf(second)});
 
     const C_VoxelPool &pool = poolOf(viewport);
     ASSERT_EQ(pool.getLiveVoxelCount(), 8);
+    EXPECT_GT(pool.getContentGeneration(), contentGeneration);
     for (int i = 0; i < 8; ++i) {
         EXPECT_EQ(pool.getColors()[i].color_.toPackedRGBA(), kBlue.toPackedRGBA());
         EXPECT_EQ(pool.getEntityIds()[i], second);
@@ -455,11 +457,13 @@ TEST_F(ViewportTest, SubjectEditsReachThePoolOnTheNextSync) {
     const IREntity::EntityId viewport = makeViewport();
     const IREntity::EntityId subject = makeSubject(ivec3(2, 1, 1), kRed);
     sync(viewport, {partOf(subject)});
+    const auto contentGeneration = poolOf(viewport).getContentGeneration();
 
     IREntity::getComponent<C_VoxelSetNew>(subject).changeVoxelColor(ivec3(1, 0, 0), kBlue);
     sync(viewport, {partOf(subject)});
 
     const C_VoxelPool &pool = poolOf(viewport);
+    EXPECT_GT(pool.getContentGeneration(), contentGeneration);
     EXPECT_EQ(pool.getColors()[0].color_.toPackedRGBA(), kRed.toPackedRGBA());
     EXPECT_EQ(pool.getColors()[1].color_.toPackedRGBA(), kBlue.toPackedRGBA());
 }
