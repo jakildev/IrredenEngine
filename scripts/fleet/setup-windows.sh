@@ -95,6 +95,18 @@ else
     echo "  WARN: ruff not installed — 'ruff check scripts/fleet/' (the fleet" >&2
     echo "        Python lint) won't run locally. Try: pacman -S mingw-w64-x86_64-ruff" >&2
 fi
+# clang-format backs `fleet-build --target format-changed` (commit-and-push
+# step 3). Same soft-dependency shape as ruff: the MSYS2 clang-tools-extra
+# package carries the binary; without it every Windows-authored PR ships the
+# format gate unverified.
+if command -v clang-format >/dev/null 2>&1; then
+    echo "  ok: clang-format ($(command -v clang-format))"
+elif pacman -S --needed --noconfirm mingw-w64-x86_64-clang-tools-extra >/dev/null 2>&1; then
+    echo "  ok: installed clang-format via pacman (mingw-w64-x86_64-clang-tools-extra)"
+else
+    echo "  WARN: clang-format not installed — 'fleet-build --target format-changed'" >&2
+    echo "        fails with 'clang-format not found'. Try: pacman -S mingw-w64-x86_64-clang-tools-extra" >&2
+fi
 case "$(uname -s)" in
     MINGW*|MSYS*) : ;;
     *) echo "  ERROR: not a Windows MSYS2/Git-Bash shell (uname=$(uname -s))." >&2; exit 1 ;;

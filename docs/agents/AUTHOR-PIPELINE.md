@@ -35,7 +35,7 @@ Verdict per [`FLEET.md § Clean-exit policy`](FLEET.md).
 **both** skills before `optimize` and `commit-and-push`, so fixes land in
 the same commit:
 
-a. **`attach-screenshots`** — before/after pairs (master vs working tree)
+a. **`attach-screenshots`** — before/after pairs (master vs the committed head in `--two-ref` mode; master vs working tree on the Cursor path)
    under `docs/pr-screenshots/<branch>/`, embedded in the PR body; skip if
    that directory already has this branch's screenshots.
 b. **`render-debug-loop`** — drives an `--auto-screenshot` creation, reads

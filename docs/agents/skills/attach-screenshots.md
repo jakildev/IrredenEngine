@@ -45,6 +45,13 @@ cheaper than a reviewer without evidence.
 
 - A capturable delta: a dirty working tree (default mode) or two distinct
   committed refs (`--two-ref`). A clean tree in default mode means stop.
+- **Pick the mode by who is running.** A dispatched fleet session never
+  stashes (`refs/stash` is shared across every worktree on the host —
+  `CLAUDE-BASELINE.md` §"Hard rules for autonomous fleet roles"): commit
+  the change first and run `--two-ref origin/<default-branch> HEAD`; the
+  PNGs go into the branch's next commit, before the PR opens. The
+  stash-based default mode is the human / Cursor path for a tree that is
+  not ready to commit.
 - A host with a display (WSLg, native Linux X/Wayland, native macOS);
   headless hosts cannot capture GLFW screenshots — report and exit.
 - The build preset is already configured; never reconfigure from inside
@@ -236,10 +243,11 @@ attach-screenshots: <demo-name> (<N> shots)
   markdown snippet printed above — paste into PR body
 ```
 
-## Two-ref mode (feedback-AMEND)
+## Two-ref mode (fleet default; feedback-AMEND)
 
-On the feedback-AMEND path the change is already committed and the worker
-sits on a clean detached HEAD, so there is nothing to stash:
+The fleet path: the change is already committed — a worker that committed
+first, or the feedback-AMEND worker on its clean detached HEAD — so there
+is nothing to stash:
 
 ```bash
 attach-screenshots --two-ref [<before-ref>] [<after-ref>]
