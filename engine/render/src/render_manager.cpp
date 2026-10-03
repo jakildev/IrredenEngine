@@ -382,14 +382,17 @@ int RenderManager::getVoxelRenderSubdivisions() const {
 }
 
 int RenderManager::getVoxelRenderEffectiveSubdivisions() const {
+    return getVoxelRenderEffectiveSubdivisionsForZoom(getCameraZoom());
+}
+
+int RenderManager::getVoxelRenderEffectiveSubdivisionsForZoom(vec2 zoom) const {
     switch (m_subdivisionMode) {
     case SubdivisionMode::NONE:
         return 1;
     case SubdivisionMode::POSITION_ONLY:
         return IRMath::clamp(m_voxelRenderSubdivisions, 1, 16);
     case SubdivisionMode::FULL: {
-        const int zoomScale =
-            static_cast<int>(IRMath::round(IRMath::max(getCameraZoom().x, getCameraZoom().y)));
+        const int zoomScale = static_cast<int>(IRMath::round(IRMath::max(zoom.x, zoom.y)));
         return IRMath::clamp(m_voxelRenderSubdivisions * IRMath::max(1, zoomScale), 1, 16);
     }
     }

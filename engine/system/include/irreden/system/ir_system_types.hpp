@@ -234,6 +234,12 @@ enum SystemName {
     // reads. Its widgets are drawn by the standard WIDGET_RENDER_* systems.
     SETTINGS_MENU,
     ENTITY_CANVAS_TO_FRAMEBUFFER,
+    // Secondary viewports (engine/prefabs/irreden/render/viewport.hpp).
+    // SYNC_VIEWPORT_SUBJECTS sits in RENDER before VOXEL_TO_TRIXEL_STAGE_1;
+    // VIEWPORT_TO_FRAMEBUFFER after TRIXEL_TO_FRAMEBUFFER and before
+    // FRAMEBUFFER_TO_SCREEN.
+    SYNC_VIEWPORT_SUBJECTS,
+    VIEWPORT_TO_FRAMEBUFFER,
     WIDGET_INPUT,
     WIDGET_LUA_DISPATCH,
     WIDGET_APPLY_SLIDER,

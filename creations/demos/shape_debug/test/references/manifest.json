@@ -54,6 +54,31 @@
       "demo_args": ["--lod-dense-swap"],
       "shots": ["lod_dense_swap_z2", "lod_dense_swap_z8"],
       "capture_offset": 0
+    },
+    {
+      "name": "viewport_portrait",
+      "demo_args": ["--viewport-portrait", "--no-ao", "--no-shadows"],
+      "warmup": 10,
+      "shots": [
+        "portrait_world_z1",
+        "portrait_world_z1_world_yaw90"
+      ],
+      "capture_offset": 0,
+      "structural": {
+        "portrait_world_z1": [
+          { "metric": "clip", "roi": [1604, 360, 640, 722], "roi_at": [2560, 1440], "min_occupancy": 0.3 }
+        ],
+        "portrait_world_z1_world_yaw90": [
+          { "metric": "clip", "roi": [1604, 360, 640, 722], "roi_at": [2560, 1440], "min_occupancy": 0.3 }
+        ]
+      }
+    },
+    {
+      "name": "viewport_portrait_lod_swap",
+      "demo_args": ["--viewport-portrait", "--viewport-lod-swap", "--no-ao", "--no-shadows"],
+      "warmup": 10,
+      "shots": ["portrait_lod_swap_z1"],
+      "capture_offset": 0
     }
   ],
   "structural": {

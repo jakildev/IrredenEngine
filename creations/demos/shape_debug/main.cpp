@@ -77,6 +77,9 @@
 #include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_auto_yaw_rotate.hpp>
+#include <irreden/render/systems/system_sync_viewport_subjects.hpp>
+#include <irreden/render/systems/system_viewport_to_framebuffer.hpp>
+#include <irreden/render/viewport.hpp>
 
 // COMMAND SUITES
 #include <irreden/common/command_suite_capture.hpp>
@@ -473,6 +476,34 @@ bool g_cullEvictTest = false;
 // The DENSE LOD-swap fixture replaces both the scene and capture table; keep it
 // flag-gated so the standing render references retain their scene.
 bool g_lodDenseSwap = false;
+
+// --viewport-portrait: a secondary-viewport fixture. One blue voxel cube and
+// one orange decoy sit in the world at zoom 1; a viewport pinned to a GUI
+// rectangle on the right views only the blue cube, through its own camera at
+// zoom 16. The second shot yaws the WORLD camera a quarter turn — the portrait
+// must not move. The sun, ambient and albedo are the values
+// scripts/render-detached-lighting-metric.py computes its expected face
+// colours from, so that oracle reads the portrait region directly.
+bool g_viewportPortrait = false;
+constexpr vec3 kPortraitSunDirection = vec3(-0.42f, -0.60f, -0.55f);
+constexpr float kPortraitSunAmbient = 0.30f;
+constexpr Color kPortraitSubjectColor{80, 120, 240, 255};
+constexpr Color kPortraitDecoyColor{240, 160, 70, 255};
+constexpr float kPortraitZoom = 16.0f;
+constexpr IRVideo::AutoScreenshotShot kViewportPortraitShots[] = {
+    {1.0f, vec2(0, 0), 0.0f, "portrait_world_z1"},
+    {1.0f, vec2(0, 0), IRMath::kHalfPi, "portrait_world_z1_world_yaw90"},
+};
+// --viewport-lod-swap (with --viewport-portrait): the subject is two co-located
+// variants on disjoint LOD bands, both tagged. The world at zoom 1 draws the
+// coarse orange cube; the portrait at zoom 16 draws the fine blue ball. The
+// cube's edges reach past the ball, so a portrait that stacked both — its own
+// tier ignored — shows an orange cube with the ball's faces inset.
+bool g_viewportLodSwap = false;
+constexpr Color kPortraitCoarseColor{220, 150, 70, 255};
+constexpr IRVideo::AutoScreenshotShot kViewportLodSwapShots[] = {
+    {1.0f, vec2(0, 0), 0.0f, "portrait_lod_swap_z1"},
+};
 // cursor-latch runs the same poses through the GUI-test cycler; its shots wrap
 // g_pivotVerifyShots (whose labels this table's label_ pointers still target,
 // so both vectors must outlive the game loop).
@@ -1353,6 +1384,21 @@ void registerCliArgs() {
         "Replace the scene + capture table with two co-located DENSE voxel sets on disjoint LOD "
         "bands, captured on either side of the swap; needs --auto-screenshot"
     );
+    args.flag(
+        "--viewport-portrait",
+        "Replace the scene + capture table with the secondary-viewport fixture: a world cube at "
+        "zoom 1 and its GUI-pinned portrait at zoom 16"
+    );
+    args.flag(
+        "--viewport-lod-swap",
+        "With --viewport-portrait: the subject is a coarse/fine pair on disjoint LOD bands; the "
+        "world draws the coarse variant and the portrait the fine one"
+    );
+    args.number(
+        "--viewport-yaw",
+        "Z-yaw in radians of the --viewport-portrait camera (the world camera is unaffected)",
+        0.0f
+    );
 }
 
 // Read the parsed values back into the demo's globals. Runs AFTER
@@ -1381,6 +1427,8 @@ void readCliArgs() {
     g_guiTest = args.getFlag("--gui-test");
     g_cullEvictTest = args.getFlag("--cull-evict-test");
     g_lodDenseSwap = args.getFlag("--lod-dense-swap");
+    g_viewportPortrait = args.getFlag("--viewport-portrait");
+    g_viewportLodSwap = g_viewportPortrait && args.getFlag("--viewport-lod-swap");
     g_cursorPivotIndicator = args.getFlag("--cursor-pivot-indicator");
 
     if (args.wasProvided("--zoom")) {
@@ -2476,16 +2524,19 @@ constexpr IRVideo::AutoScreenshotShot kLodDenseSwapShots[] = {
     {8.0f, vec2(0, 0), 0.0f, "lod_dense_swap_z8"},
 };
 
-void initLodDenseSwapScene() {
-    const EntityId canvas = IRRender::getActiveCanvasEntity();
+struct LodVariantPair {
+    EntityId coarse_;
+    EntityId fine_;
+};
+
+// A coarse cube (band [LOD_3 .. LOD_4]) and a fine ball (band [LOD_0 .. LOD_2])
+// centered on the origin of the active canvas. The ball is inscribed in its own
+// box, so a cube at least as wide reaches past it.
+LodVariantPair
+spawnLodVariantPair(int coarseSize, Color coarseColor, int fineSize, Color fineColor) {
     const EntityId coarse = IREntity::createEntity(
         C_LocalTransform{vec3(0.0f)},
-        C_VoxelSetNew{
-            ivec3(8),
-            Color{220, 150, 70, 255},
-            IRComponents::EntityAnchor::CENTER,
-            canvas
-        }
+        C_VoxelSetNew{ivec3(coarseSize), coarseColor, IRComponents::EntityAnchor::CENTER}
     );
     C_VoxelSetNew &coarseSet = IREntity::getComponent<C_VoxelSetNew>(coarse);
     coarseSet.lodMin_ = IRRender::LodLevel::LOD_4;
@@ -2493,17 +2544,18 @@ void initLodDenseSwapScene() {
 
     const EntityId fine = IREntity::createEntity(
         C_LocalTransform{vec3(0.0f)},
-        C_VoxelSetNew{
-            ivec3(12),
-            Color{90, 160, 230, 255},
-            IRComponents::EntityAnchor::CENTER,
-            canvas
-        }
+        C_VoxelSetNew{ivec3(fineSize), fineColor, IRComponents::EntityAnchor::CENTER}
     );
     C_VoxelSetNew &fineSet = IREntity::getComponent<C_VoxelSetNew>(fine);
-    fineSet.carve([](vec3 position) { return IRMath::length(position) > 6.0f; });
+    const float radius = 0.5f * static_cast<float>(fineSize);
+    fineSet.carve([radius](vec3 position) { return IRMath::length(position) > radius; });
     fineSet.lodMin_ = IRRender::LodLevel::LOD_2;
     fineSet.lodMax_ = IRRender::LodLevel::LOD_0;
+    return {coarse, fine};
+}
+
+void initLodDenseSwapScene() {
+    spawnLodVariantPair(8, Color{220, 150, 70, 255}, 12, Color{90, 160, 230, 255});
 }
 
 void initCullEvictScene() {
@@ -2692,6 +2744,24 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
         }
     );
+    if (g_viewportPortrait) {
+        // The sync feeds the viewport's pool before the voxel raster reads it;
+        // the composite lands on top of the world + GUI composite.
+        renderPipeline.insert(
+            std::find(
+                renderPipeline.begin(),
+                renderPipeline.end(),
+                IRSystem::findSystem(IRSystem::VOXEL_TO_TRIXEL_STAGE_1)
+            ),
+            IRSystem::createSystem<IRSystem::SYNC_VIEWPORT_SUBJECTS>()
+        );
+        renderPipeline.insert(
+            std::next(
+                std::find(renderPipeline.begin(), renderPipeline.end(), trixelToFramebufferId)
+            ),
+            IRSystem::createSystem<IRSystem::VIEWPORT_TO_FRAMEBUFFER>()
+        );
+    }
     // Off during --auto-screenshot / --auto-record captures — the minimap is
     // a live debug aid, not part of the render-verify golden image or a
     // reviewer clip. Interactive / --auto-profile runs default it visible;
@@ -3088,6 +3158,10 @@ void initSystems() {
             );
         } else if (g_lodDenseSwap) {
             IRVideo::setAutoScreenshotShots(cfg, kLodDenseSwapShots);
+        } else if (g_viewportLodSwap) {
+            IRVideo::setAutoScreenshotShots(cfg, kViewportLodSwapShots);
+        } else if (g_viewportPortrait) {
+            IRVideo::setAutoScreenshotShots(cfg, kViewportPortraitShots);
         } else {
             IRVideo::setAutoScreenshotShots(cfg, kShots);
         }
@@ -3702,7 +3776,62 @@ void setupCanvasLighting() {
     IRRender::setSunShadowsEnabled(!IREngine::args().getFlag("--no-shadows"));
 }
 
+// The --viewport-portrait scene (see g_viewportPortrait).
+void initViewportPortraitScene() {
+    EntityId subject = IREntity::kNullEntity;
+    EntityId fineVariant = IREntity::kNullEntity;
+    if (g_viewportLodSwap) {
+        const LodVariantPair pair =
+            spawnLodVariantPair(4, kPortraitCoarseColor, 4, kPortraitSubjectColor);
+        subject = pair.coarse_;
+        fineVariant = pair.fine_;
+    } else {
+        subject = IREntity::createEntity(
+            C_LocalTransform{vec3(0.0f)},
+            C_VoxelSetNew{ivec3(4), kPortraitSubjectColor, true}
+        );
+    }
+    IREntity::createEntity(
+        C_LocalTransform{vec3(12.0f, -12.0f, 0.0f)},
+        C_VoxelSetNew{ivec3(4), kPortraitDecoyColor, true}
+    );
+
+    // Right third of the screen, in GUI trixels whatever the GUI scale.
+    const ivec2 guiSize = IREntity::getComponent<C_SizeTriangles>(IRRender::getCanvas("gui")).size_;
+    IRPrefab::Viewport::Desc desc{};
+    desc.rectOrigin_ = ivec2(guiSize.x * 5 / 8, guiSize.y / 4);
+    desc.rectSize_ = ivec2(guiSize.x / 4, guiSize.y / 2);
+    desc.zoom_ = kPortraitZoom;
+    desc.yawRadians_ = IREngine::args().getFloat("--viewport-yaw");
+    const EntityId viewport = IRPrefab::Viewport::create(desc, "portrait");
+    IRPrefab::Viewport::setSubject(viewport, subject);
+    if (fineVariant != IREntity::kNullEntity) {
+        IREntity::setComponent(fineVariant, IRComponents::C_ViewportSubject{viewport});
+    }
+    IR_LOG_INFO(
+        "Viewport-portrait: subject={} viewport={} rect=({},{} {}x{}) of gui {}x{} zoom={} yaw={}",
+        subject,
+        viewport,
+        desc.rectOrigin_.x,
+        desc.rectOrigin_.y,
+        desc.rectSize_.x,
+        desc.rectSize_.y,
+        guiSize.x,
+        guiSize.y,
+        desc.zoom_,
+        desc.yawRadians_
+    );
+}
+
 void initEntities() {
+    if (g_viewportPortrait) {
+        IR_LOG_INFO("--- Secondary-viewport portrait fixture scene ---");
+        initViewportPortraitScene();
+        setupCanvasLighting();
+        IRRender::setSunDirection(kPortraitSunDirection);
+        IRRender::setSunAmbient(kPortraitSunAmbient);
+        return;
+    }
     if (IREngine::args().getFlag("--ao-contact-probe")) {
         const EntityId corner = IREntity::createEntity(
             C_LocalTransform{vec3(0.0f)},

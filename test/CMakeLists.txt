@@ -109,6 +109,7 @@ add_executable(IrredenEngineTest
   render/sun_direction_test.cpp
   render/sun_lighting_test.cpp
   render/sun_shadow_feeder_ring_test.cpp
+  render/viewport_test.cpp
   render/voxel_pool_config_test.cpp
   render/sprite_animation_test.cpp
   render/sprite_components_test.cpp
@@ -140,6 +141,7 @@ add_executable(IrredenEngineTest
   script/lua_fog_revealed_test.cpp
   script/lua_fog_bindings_test.cpp
   script/lua_script_get_table_test.cpp
+  script/lua_viewport_bindings_test.cpp
   script/lua_script_utils_test.cpp
   script/lua_local_transform_lua_test.cpp
   script/lua_rotation_target_lua_test.cpp

@@ -1383,23 +1383,31 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         if (liveVoxelCount == 0)
             return;
 
-        IRRender::updateCullViewport(
-            IRRender::getEffectiveCameraIso(),
-            IRRender::getCameraZoom(),
-            IRPrefab::CanvasCoverage::logicalSize(entity, triangleCanvasTextures.size_)
-        );
+        // A canvas with its own camera holds no world-space geometry, so it
+        // never moves the shared world cull viewport.
+        const C_CanvasCamera *canvasCamera = canvasCameraOrNull(entity);
+        if (canvasCamera == nullptr) {
+            IRRender::updateCullViewport(
+                IRRender::getEffectiveCameraIso(),
+                IRRender::getCameraZoom(),
+                IRPrefab::CanvasCoverage::logicalSize(entity, triangleCanvasTextures.size_)
+            );
+        }
 
         buildVoxelFrameData(
             frameData_,
             triangleCanvasTextures,
             liveVoxelCount,
-            canvasLocalRotation
+            canvasLocalRotation,
+            canvasCamera
         );
 
         // Canvas density is bounded by its projected pool extent. The composite
         // compensates using renderedSubdivisions_, so zoom changes display size
-        // without overflowing the fixed texture.
-        if (canvasLocalRotation.isDetached()) {
+        // without overflowing the fixed texture. A canvas with its own camera
+        // is a window onto its pool: its density follows that camera's zoom and
+        // content past the canvas edge clips.
+        if (canvasLocalRotation.isDetached() && canvasCamera == nullptr) {
             int cap = IRPrefab::DetachedRevoxelize::subdivisionCap(
                 triangleCanvasTextures.size_,
                 voxelPool.getVoxelPoolSize3D()
@@ -1514,7 +1522,10 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 anchor - vec3(roundVec3HalfUp(anchor * density)) / density;
         }
 
-        if (renderMode != previousRenderMode_ || effectiveSub != previousEffectiveSubdivisions_) {
+        // The world camera's density only: a canvas with its own camera would
+        // otherwise flip this change log every frame.
+        if (canvasCamera == nullptr &&
+            (renderMode != previousRenderMode_ || effectiveSub != previousEffectiveSubdivisions_)) {
             const vec2 zoom = IRRender::getCameraZoom();
             IRE_LOG_INFO(
                 "Voxel render mode={}, base_subdivisions={}, zoom_scale={}, "
