@@ -40,7 +40,13 @@ case "$1" in
 esac
 """
 RUN_ALL = '#!/usr/bin/env bash\necho "run_all $*"\nexit 0\n'
-RENDER_VERIFY = 'import sys\nprint("render-verify", *sys.argv[1:])\nsys.exit(3)\n'
+RENDER_VERIFY = r"""import os, sys, time
+hold = [a[5:] for a in sys.argv if a.startswith("hold=")]
+while hold and not os.path.exists(hold[0]):
+    time.sleep(0.05)
+print("render-verify", *sys.argv[1:])
+sys.exit(3)
+"""
 
 
 def load_subject():
@@ -194,6 +200,25 @@ class Lifecycle(JobsCase):
                 waited = self.jobs(["wait", job])
                 self.assertEqual(waited.returncode, code, waited.stderr)
                 self.assertEqual(waited.stdout.strip(), line)
+
+    def test_one_live_render_verify_per_pane(self):
+        release = self.root / "release"
+        held = ["render-verify", "--", "--target", "IRAnalyticOracle",
+                "--demo-arg", f"hold={release}"]
+        first = self.start(held)
+        self.assertEqual(self.status(first)["status"], "running")
+        refused = self.jobs(["start", *held])
+        self.assertEqual(refused.returncode, 1, refused.stdout)
+        self.assertIn(f"render-verify job {first} is still running", refused.stderr)
+        self.assertEqual(len(self.job_dirs()), 1)
+        other_pane = self.start(held, pane=self.pane_b)
+        build = self.start(["build", "--", "plain"])
+        self.assertEqual(self.jobs(["wait", "--quiet", build]).returncode, 0)
+        release.touch()
+        for pane, job in ((self.pane_a, first), (self.pane_b, other_pane)):
+            self.assertEqual(self.jobs(["wait", "--quiet", job], pane=pane).returncode, 3)
+        after = self.start(["render-verify", "--", "--target", "IRAnalyticOracle"])
+        self.assertEqual(self.jobs(["wait", "--quiet", after]).returncode, 3)
 
 
 class Isolation(JobsCase):

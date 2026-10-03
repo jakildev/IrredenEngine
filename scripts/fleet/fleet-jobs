@@ -20,7 +20,8 @@ Profiles are fixed; there is no executable, path, or shell-string form.
                  enters here after its format -> format-changed rewrite)
   fleet-tests    <cwd's checkout>/scripts/fleet/tests/run_all.sh
   render-verify  <cwd's checkout>/scripts/render-verify.py; --build-dir,
-                 --update-references and --force are rejected
+                 --update-references and --force are rejected, and a pane
+                 runs one render-verify job at a time
 
 wait streams the job log and exits with the child's exit code; a job that is
 still running when --timeout elapses exits 124, and a lost job exits 1. The
@@ -502,12 +503,31 @@ def describe(job_dir, meta):
     return "  ".join(parts)
 
 
+def live_render_verify(root):
+    """Id of this pane's starting or running render-verify job, or None."""
+    if not root.is_dir():
+        return None
+    for job_dir in root.iterdir():
+        if (job_dir / "meta.json").is_file():
+            meta = read_meta(job_dir)
+            if (meta.get("profile") == "render-verify"
+                    and effective(meta)[0] in ("starting", "running")):
+                return meta["id"]
+    return None
+
+
 def cmd_start(rest, cwd):
     if not rest:
         raise UsageError(f"start needs a profile ({', '.join(PROFILES)})")
     profile, args = rest[0], rest[1:]
     _, name = resolve(profile, args, cwd)
     root = pane_dir(cwd)
+    # render-verify clears and captures into the build's shared screenshot
+    # directory, so a concurrent run in the same checkout can grade the other
+    # run's frames and report PASS for a demo that never rendered.
+    if profile == "render-verify" and (busy := live_render_verify(root)):
+        die(f"render-verify job {busy} is still running in this pane; "
+            "wait for or kill it before starting another", 1)
     root.mkdir(parents=True, exist_ok=True)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     job_id = f"{stamp}-{profile}-{secrets.token_hex(3)}"
