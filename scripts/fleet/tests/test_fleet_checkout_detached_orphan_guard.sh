@@ -34,8 +34,8 @@ BIN="$TMPROOT/bin"
 mkdir -p "$BIN"
 cat >"$BIN/gh" <<'GHEOF'
 #!/usr/bin/env bash
-# Minimal `gh` stub: models `gh pr view <N> [--repo <slug>] --json headRefName
-# -q <expr>` and nothing else. Unmodelled commands, flags and field selections
+# Minimal `gh` stub: models `gh pr view <N> [--repo <slug>] --json <field>
+# -q .<field>` for headRefName and baseRefName, and nothing else. Unmodelled commands, flags and field selections
 # exit 1 with a message on stderr, mirroring how the real binary rejects them,
 # so a wrapper edit that starts passing something gh would refuse fails here
 # instead of being silently certified.
@@ -53,9 +53,13 @@ while [[ $# -gt 0 ]]; do
         *)        echo "unknown flag: $1" >&2; exit 1 ;;
     esac
 done
-[[ "$json" == "headRefName" ]] || { echo "unmodelled --json '$json'" >&2; exit 1; }
-[[ "$jq_expr" == ".headRefName" ]] || { echo "unmodelled -q '$jq_expr'" >&2; exit 1; }
-printf '%s\n' "${FAKE_HEAD_REF:-feature-b}"
+case "$json" in
+    headRefName) fake="${FAKE_HEAD_REF:-feature-b}" ;;
+    baseRefName) fake="${FAKE_BASE_REF-master}" ;;
+    *) echo "unmodelled --json '$json'" >&2; exit 1 ;;
+esac
+[[ "$jq_expr" == ".$json" ]] || { echo "unmodelled -q '$jq_expr'" >&2; exit 1; }
+printf '%s\n' "$fake"
 GHEOF
 chmod +x "$BIN/gh"
 
@@ -65,7 +69,11 @@ assert_eq "$rc" "1" "stub rejects an unknown flag (so it cannot certify one)"
 rc=$( "$BIN/gh" pr list >/dev/null 2>&1; echo "$?" )
 assert_eq "$rc" "1" "stub rejects an unmodelled subcommand"
 rc=$( "$BIN/gh" pr view 7 --json headRefName -q .headRefName >/dev/null 2>&1; echo "$?" )
-assert_eq "$rc" "0" "stub answers the exact call the wrapper makes"
+assert_eq "$rc" "0" "stub answers the head-ref call the wrapper makes"
+rc=$( "$BIN/gh" pr view 7 --json baseRefName -q .baseRefName >/dev/null 2>&1; echo "$?" )
+assert_eq "$rc" "0" "stub answers the base-ref call the wrapper makes"
+rc=$( "$BIN/gh" pr view 7 --json baseRefName -q .headRefName >/dev/null 2>&1; echo "$?" )
+assert_eq "$rc" "1" "stub rejects a field/expression mismatch"
 
 # ----------------------------------------------------------------------
 # Sandbox: bare origin + a worktree-shaped clone with branches A and B.
@@ -114,6 +122,13 @@ assert_eq "$(git -C "$WT" rev-parse HEAD)" "$(git -C "$WT" rev-parse origin/feat
 assert_absent "$(cat "$TMPROOT/err")" "REFUSING" "no refusal on the benign path"
 if [[ -f "$WT/.git/fleet-amend-ref" ]]; then ok "sentinel written on success"; else bad "sentinel written on success"; fi
 assert_eq "$(sed -n '1p' "$WT/.git/fleet-amend-ref")" "feature-b" "sentinel names the head ref"
+assert_eq "$(sed -n '2p' "$WT/.git/fleet-amend-ref")" "$(git -C "$WT" rev-parse HEAD)" \
+    "sentinel records the checkout-time head SHA"
+assert_eq "$(sed -n '3p' "$WT/.git/fleet-amend-ref")" "" \
+    "sentinel leaves the consumption line blank"
+assert_eq "$(sed -n '4p' "$WT/.git/fleet-amend-ref")" "master" "sentinel records the PR base ref"
+assert_eq "$(sed -n '5p' "$WT/.git/fleet-amend-ref")" "$(git -C "$WT" merge-base origin/feature-b origin/master)" \
+    "sentinel records the head's merge-base with the base ref"
 [[ "$before" != "$(git -C "$WT" rev-parse HEAD)" ]] && ok "the two arms are distinguishable (HEAD actually moved)" \
     || bad "the two arms are distinguishable (HEAD actually moved)"
 
@@ -208,5 +223,13 @@ rc=$( cd "$WT" && PATH="$BIN:$PATH" "$WRAPPER" 46 --bogus >/dev/null 2>&1; echo 
 assert_eq "$rc" "2" "unknown flag is a usage error"
 rc=$( cd "$WT" && PATH="$BIN:$PATH" "$WRAPPER" 46 --repo= >/dev/null 2>&1; echo "$?" )
 assert_eq "$rc" "2" "an empty --repo= is rejected exactly as the space form is"
+
+echo "an unresolvable base ref falls back to the head-SHA-only sentinel"
+rc=$( cd "$WT" && PATH="$BIN:$PATH" FAKE_BASE_REF= "$WRAPPER" 47 >/dev/null 2>"$TMPROOT/err"; echo "$?" )
+assert_eq "$rc" "0" "checkout still succeeds without a base ref"
+assert_eq "$(wc -l < "$WT/.git/fleet-amend-ref" | tr -d ' ')" "2" \
+    "sentinel keeps the two-line shape"
+assert_contains "$(cat "$TMPROOT/err")" "could not record the PR base ref" \
+    "the fallback is announced rather than silent"
 
 summarize "fleet-pr-checkout-detached orphan-guard tests (#2734)"

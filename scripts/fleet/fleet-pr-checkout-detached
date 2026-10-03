@@ -19,9 +19,11 @@
 # and push, the loser exits clean and the next iteration retries.
 #
 # The wrapper also writes a sentinel `.git/fleet-amend-ref` containing
-# the head ref name. The sibling `fleet-pr-amend-push` script reads
-# this sentinel to know where to push the amendment, so the LLM
-# doesn't have to remember or pass the head ref name across steps.
+# the head ref name, the checkout-time head SHA, and the PR's base ref with
+# the head's merge-base against it. The sibling `fleet-pr-amend-push` script
+# reads this sentinel to know where to push the amendment, so the LLM
+# doesn't have to remember or pass the head ref name across steps, and to
+# measure what a rewrite removed from the PR rather than from its base.
 #
 # The orphan guard
 # ----------------
@@ -50,7 +52,9 @@
 #   - fetches origin/<head-ref> (or `pull/<N>/head` if the head ref is
 #     unavailable as a remote branch — happens for fork PRs)
 #   - `git checkout --detach origin/<head-ref>`
-#   - writes `.git/fleet-amend-ref` with the head ref name
+#   - fetches origin/<base-ref> and writes `.git/fleet-amend-ref` with the
+#     head ref name, the head SHA, and the base ref + old merge-base (the
+#     base fields are omitted when the base ref cannot be resolved)
 #
 # Exit status:
 #   0  on success
@@ -295,7 +299,23 @@ git_dir=$(git rev-parse --git-dir)
 # intervening `git fetch` silently refreshes to the other agent's commit —
 # defeating the protection.
 base_sha=$(git rev-parse HEAD)
-printf '%s\n%s\n' "$head_ref" "$base_sha" >"$git_dir/fleet-amend-ref"
+
+# Lines 4-5: the PR's base ref and this head's merge-base with it, so the push
+# diagnostics can measure PR-owned content after the base branch moves or is
+# rewritten — a base ref name alone cannot recover the old merge-base. Line 3 is
+# the consumption slot fleet-pr-amend-push owns, left blank here. Best-effort:
+# without both fields the sentinel stays on the head-SHA-only shape.
+pr_base_ref=$(gh pr view "$pr_number" "${repo_args[@]}" --json baseRefName -q '.baseRefName' 2>/dev/null || true)
+old_merge_base=""
+if [[ -n "$pr_base_ref" ]] && git fetch origin "$pr_base_ref" >/dev/null 2>&1; then
+    old_merge_base=$(git merge-base HEAD "origin/$pr_base_ref" 2>/dev/null || true)
+fi
+if [[ -n "$pr_base_ref" && -n "$old_merge_base" ]]; then
+    printf '%s\n%s\n\n%s\n%s\n' "$head_ref" "$base_sha" "$pr_base_ref" "$old_merge_base" >"$git_dir/fleet-amend-ref"
+else
+    printf '%s\n%s\n' "$head_ref" "$base_sha" >"$git_dir/fleet-amend-ref"
+    echo "fleet-pr-checkout-detached: could not record the PR base ref/merge-base; rewrite diagnostics will compare against the head SHA only." >&2
+fi
 
 printf 'fleet-pr-checkout-detached: PR #%s on detached HEAD at origin/%s (base %s)\n' "$pr_number" "$head_ref" "${base_sha:0:8}"
 printf '  Push the amendment with: fleet-pr-amend-push  (lease pinned to base %s)\n' "${base_sha:0:8}"
