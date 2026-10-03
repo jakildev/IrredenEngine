@@ -300,8 +300,23 @@ class Transport(unittest.TestCase):
             # when its parent .git is a writable root; it must be named itself.
             self.assertIn(str(gitdir), roots)
             self.assertNotIn(str(root / "repo"), roots)
-            for name in ("claims", "heartbeats", "molecules", "iteration-summaries"):
+            for name in ("claims", "heartbeats", "molecules", "iteration-summaries", "handoff"):
                 self.assertIn(str(root / ".fleet" / name), roots)
+            self.assertIn(str(root / ".cache" / "gh"), roots)
+
+    def test_write_roots_put_gh_cache_under_xdg_cache_home(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            worktree = root / "repo/.claude/worktrees/pool-1"
+            common = root / "repo/.git"
+            rev_parse = Mock(stdout=f"{common / 'worktrees/pool-1'}\n{common}\n")
+            xdg = root / "xdg"
+            with patch.object(codex.Path, "home", return_value=root), \
+                    patch.object(codex.subprocess, "run", return_value=rev_parse), \
+                    patch.dict(codex.os.environ, {"XDG_CACHE_HOME": str(xdg)}, clear=True):
+                roots = codex.writable_roots(worktree, root / ".fleet/state")
+            self.assertIn(str(xdg / "gh"), roots)
+            self.assertNotIn(str(root / ".cache" / "gh"), roots)
 
     def test_wrapper_help(self):
         wrapper = Path(__file__).resolve().parents[1] / "fleet-codex"
