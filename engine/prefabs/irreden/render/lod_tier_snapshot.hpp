@@ -2,7 +2,6 @@
 #define LOD_TIER_SNAPSHOT_H
 
 #include <irreden/ir_entity.hpp>
-#include <irreden/render/components/component_active_lod_level.hpp>
 #include <irreden/render/components/component_lod_tier_override.hpp>
 #include <irreden/render/lod_utils.hpp>
 
@@ -37,18 +36,7 @@ struct TierSnapshot {
             activeType_ = entityManager.getComponentType<IRComponents::C_ActiveLodLevel>();
             overrideType_ = entityManager.getComponentType<IRComponents::C_LodTierOverride>();
         }
-
-        active_ = IRRender::LodLevel::LOD_4;
-        const IREntity::EntityId lodEntity =
-            entityManager.getSingletonByComponentIdOrNull(activeType_);
-        const IREntity::EntityRecord *lodRecord =
-            lodEntity != IREntity::kNullEntity ? entityManager.findRecord(lodEntity) : nullptr;
-        if (lodRecord != nullptr && lodRecord->archetypeNode != nullptr) {
-            if (const auto *lod =
-                    column<IRComponents::C_ActiveLodLevel>(lodRecord->archetypeNode, activeType_)) {
-                active_ = (*lod)[lodRecord->row].current_;
-            }
-        }
+        active_ = IRRender::getActiveLodLevel(entityManager, activeType_);
 
         overrides_.clear();
         for (const auto &node : entityManager.getArchetypeNodes()) {

@@ -262,6 +262,15 @@ irreden_lua_codegen(IrredenEngineTest
     DEFAULT_MODE CODEGEN
 )
 
+# LodTierLua's CODEGEN fixture: a system reading the active LOD tier through
+# the `IRRender.getActiveLodTier()` intrinsic. Pinned to CODEGEN like the
+# fixture above so the case exercises the lowered C++ read, never EVAL.
+irreden_lua_codegen(IrredenEngineTest
+    SOURCES script/lod_tier_codegen_fixtures.lua
+    OUTPUT_HPP ${CMAKE_CURRENT_BINARY_DIR}/codegen/lod_tier_codegen_fixtures.hpp
+    DEFAULT_MODE CODEGEN
+)
+
 # Coexistence fixture — one .lua file declaring one CODEGEN system
 # (no mode field, follows DEFAULT_MODE) and one EVAL system (explicit
 # mode='eval'). Exercises the helper's DEFAULT_MODE param path AND the
