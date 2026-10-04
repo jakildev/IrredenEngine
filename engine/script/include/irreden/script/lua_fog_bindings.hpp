@@ -81,6 +81,28 @@ inline int requireFogInt(sol::object value, const char *function, std::size_t in
     return result;
 }
 
+inline std::uint32_t requireFogUint32(sol::object value, const char *function, std::size_t index) {
+    const double number = requireFogNumber(value, function, index);
+    constexpr double maximum = static_cast<double>(std::numeric_limits<std::uint32_t>::max());
+    if (!(number >= 0.0 && number <= maximum)) {
+        throw std::invalid_argument(fogArgumentName(function, index) + " is outside uint32 range");
+    }
+    const auto result = static_cast<std::uint32_t>(number);
+    if (static_cast<double>(result) != number) {
+        throw std::invalid_argument(fogArgumentName(function, index) + " must be an integer");
+    }
+    return result;
+}
+
+inline std::uint32_t optionalFogUint32(
+    const sol::variadic_args &args, std::size_t index, std::uint32_t fallback, const char *function
+) {
+    if (index >= args.size() || args[index].get_type() == sol::type::lua_nil) {
+        return fallback;
+    }
+    return requireFogUint32(args[index], function, index);
+}
+
 inline IREntity::EntityId
 requireFogEntity(sol::object value, const char *function, std::size_t index) {
     IREntity::EntityId entity = IREntity::kNullEntity;
@@ -127,7 +149,7 @@ inline FogVisionTarget activeFogVisionTarget() {
 inline int
 applyFogVision(const sol::variadic_args &args, bool replace, const FogVisionTarget &target) {
     const char *function = replace ? "setVision" : "addVision";
-    requireFogArity(function, args.size(), 3, 8);
+    requireFogArity(function, args.size(), 3, 9);
     const float cx = requireFogFloat(args[0], function, 0);
     const float cy = requireFogFloat(args[1], function, 1);
     const float radius = requireFogFloat(args[2], function, 2);
@@ -137,6 +159,8 @@ applyFogVision(const sol::variadic_args &args, bool replace, const FogVisionTarg
     const float zCostDown =
         optionalFogFloat(args, 6, IRComponents::kFogVisionZCostMirrorUp, function);
     const float freeBand = optionalFogFloat(args, 7, 0.0f, function);
+    const std::uint32_t channels =
+        optionalFogUint32(args, 8, IRComponents::kFogChannelDefault, function);
     if (target.observers_ == nullptr) {
         return -1;
     }
@@ -153,7 +177,8 @@ applyFogVision(const sol::variadic_args &args, bool replace, const FogVisionTarg
         observerZ,
         zCostUp,
         zCostDown,
-        freeBand
+        freeBand,
+        channels
     );
 }
 
@@ -259,13 +284,16 @@ bindFog(LuaScript &script, FogVisionTargetResolver resolveTarget = activeFogVisi
         }
     });
     fog["evalReveal"] = [](sol::variadic_args args) {
-        requireFogArity("evalReveal", args.size(), 3, 3);
+        requireFogArity("evalReveal", args.size(), 3, 4);
+        const std::uint32_t channels =
+            optionalFogUint32(args, 3, IRComponents::kFogChannelDefault, "evalReveal");
         return IRPrefab::Fog::evalActiveReveal(
             IRMath::vec3(
                 requireFogFloat(args[0], "evalReveal", 0),
                 requireFogFloat(args[1], "evalReveal", 1),
                 requireFogFloat(args[2], "evalReveal", 2)
-            )
+            ),
+            channels
         );
     };
     fog["lineOfSight"] = [](sol::variadic_args args) {

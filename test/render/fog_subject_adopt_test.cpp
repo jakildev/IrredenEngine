@@ -172,6 +172,31 @@ TEST_F(FogSubjectAdoptTest, UntaggedSetOnAVisibleCellIsAShownBodyAfterOneFrame) 
     EXPECT_EQ(activeBitsOf(body), kSetVoxels);
 }
 
+TEST(FogSubjectAdoptPipelineTest, RevealSystemsSpliceAdoptsWhilePipelineWithoutItDoesNot) {
+    IREntity::EntityManager entityManager;
+    IRSystem::SystemManager systemManager;
+    const IREntity::EntityId canvas = IREntity::createEntity(
+        C_VoxelPool{ivec3(8, 8, 8)},
+        C_CanvasFogOfWar{C_CanvasFogOfWar::HeadlessInit{}}
+    );
+    IRRender::setHeadlessActiveCanvasEntity(canvas);
+    const IREntity::EntityId body = IREntity::createEntity(
+        C_WorldTransform{},
+        C_VoxelSetNew{ivec3(2, 2, 2), Color{200, 100, 50, 255}, true, canvas}
+    );
+
+    systemManager.registerPipeline(IRTime::Events::UPDATE, {});
+    systemManager.executePipeline(IRTime::Events::UPDATE);
+    IREntity::flushStructuralChanges();
+    EXPECT_FALSE(IREntity::getComponentOptional<C_FogRevealed>(body).has_value());
+
+    systemManager.registerPipeline(IRTime::Events::UPDATE, IRPrefab::Fog::revealSystems());
+    systemManager.executePipeline(IRTime::Events::UPDATE);
+    IREntity::flushStructuralChanges();
+    EXPECT_TRUE(IREntity::getComponentOptional<C_FogRevealed>(body).has_value());
+    IRRender::setHeadlessActiveCanvasEntity(IREntity::kNullEntity);
+}
+
 TEST_F(FogSubjectAdoptTest, UntaggedSetOnAnUnexploredCellIsAHiddenBodyWithItsMaskCleared) {
     const IREntity::EntityId body = createSet(vec3(40.0f, 40.0f, 0.0f));
     ASSERT_EQ(activeBitsOf(body), kSetVoxels);
@@ -277,6 +302,58 @@ TEST_F(FogSubjectAdoptTest, SynchronousBodyAdoptionThroughTheSetterStartsHidden)
     EXPECT_EQ(carrierOf(body), bodyCarrier(0));
     EXPECT_EQ(activeBitsOf(body), 0) << "governed starts hidden until its first eval";
     EXPECT_EQ(IRPrefab::Fog::subjectClass(body), FogSubjectClass::BODY);
+}
+
+TEST_F(FogSubjectAdoptTest, GoverningAnAuthoredBodyPreservesItsFogSeams) {
+    const IREntity::EntityId body = createSet(
+        vec3(0.0f, 0.0f, 0.0f),
+        C_FogRevealed{1.0f, true, IRComponents::FogOverride::FORCE_HIDDEN, 0b10u}
+    );
+
+    IRPrefab::Fog::setEntityRevealGoverned(body);
+
+    const C_FogRevealed &revealed = IREntity::getComponent<C_FogRevealed>(body);
+    EXPECT_FLOAT_EQ(revealed.revealFactor_, 0.0f);
+    EXPECT_FALSE(revealed.shown_);
+    EXPECT_EQ(revealed.override_, IRComponents::FogOverride::FORCE_HIDDEN);
+    EXPECT_EQ(revealed.channels_, 0b10u);
+}
+
+TEST_F(FogSubjectAdoptTest, GoverningTaggedBodiesPreservesAuthoredFogSeams) {
+    const IREntity::EntityId fieldBody = createSet(
+        vec3(0.0f, 0.0f, 0.0f),
+        C_FogRevealed{1.0f, true, IRComponents::FogOverride::FORCE_HIDDEN, 0b10u},
+        C_FogField{}
+    );
+    createSet(
+        vec3(0.0f, 0.0f, 0.0f),
+        C_FogRevealed{0.0f, false, IRComponents::FogOverride::FORCE_REVEALED, 0b100u},
+        C_FogField{}
+    );
+    const IREntity::EntityId exemptBody = createSet(
+        vec3(0.0f, 0.0f, 0.0f),
+        C_FogRevealed{1.0f, true, IRComponents::FogOverride::FORCE_HIDDEN, 0b1000u},
+        C_FogExempt{}
+    );
+    createSet(
+        vec3(0.0f, 0.0f, 0.0f),
+        C_FogRevealed{0.0f, false, IRComponents::FogOverride::FORCE_REVEALED, 0b10000u},
+        C_FogExempt{}
+    );
+
+    IRPrefab::Fog::setEntityRevealGoverned(fieldBody);
+    IRPrefab::Fog::setEntityRevealGoverned(exemptBody);
+
+    const C_FogRevealed &fieldRevealed = IREntity::getComponent<C_FogRevealed>(fieldBody);
+    EXPECT_FLOAT_EQ(fieldRevealed.revealFactor_, 0.0f);
+    EXPECT_FALSE(fieldRevealed.shown_);
+    EXPECT_EQ(fieldRevealed.override_, IRComponents::FogOverride::FORCE_HIDDEN);
+    EXPECT_EQ(fieldRevealed.channels_, 0b10u);
+    const C_FogRevealed &exemptRevealed = IREntity::getComponent<C_FogRevealed>(exemptBody);
+    EXPECT_FLOAT_EQ(exemptRevealed.revealFactor_, 0.0f);
+    EXPECT_FALSE(exemptRevealed.shown_);
+    EXPECT_EQ(exemptRevealed.override_, IRComponents::FogOverride::FORCE_HIDDEN);
+    EXPECT_EQ(exemptRevealed.channels_, 0b1000u);
 }
 
 TEST_F(FogSubjectAdoptTest, SetsOffTheFogCanvasAreLeftAlone) {

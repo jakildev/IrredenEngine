@@ -69,10 +69,16 @@ inline float evalVisionCircleReveal(
 /// overload reads no line-of-sight field and ignores `losSourceMask_`. Screen-
 /// space antialiasing remains a pixel concern; gameplay uses the authored
 /// world-space edge.
-inline float
-evalVisionReveal(const IRComponents::FrameDataFogObservers &observers, IRMath::vec3 worldPosition) {
+inline float evalVisionReveal(
+    const IRComponents::FrameDataFogObservers &observers,
+    IRMath::vec3 worldPosition,
+    std::uint32_t channels = IRComponents::kFogChannelDefault
+) {
     float reveal = 0.0f;
     for (int i = 0; i < observers.visionCircleCount_; ++i) {
+        if ((observers.channels(i) & channels) == 0u) {
+            continue;
+        }
         reveal = IRMath::max(reveal, detail::evalVisionCircleReveal(observers, i, worldPosition));
     }
     return reveal;
@@ -89,11 +95,15 @@ evalVisionReveal(const IRComponents::FrameDataFogObservers &observers, IRMath::v
 inline float evalVisionReveal(
     const IRComponents::FrameDataFogObservers &observers,
     const IRComponents::FogLosColumnField &los,
-    IRMath::vec3 worldPosition
+    IRMath::vec3 worldPosition,
+    std::uint32_t channels = IRComponents::kFogChannelDefault
 ) {
     float reveal = 0.0f;
     float pending[IRComponents::kMaxFogVisionCircles] = {};
     for (int i = 0; i < observers.visionCircleCount_; ++i) {
+        if ((observers.channels(i) & channels) == 0u) {
+            continue;
+        }
         const float circleReveal = detail::evalVisionCircleReveal(observers, i, worldPosition);
         if (observers.losGated(i)) {
             pending[i] = circleReveal;
@@ -224,8 +234,7 @@ inline void stampBodyCarrier(
 /// cell reveals fully, an EXPLORED cell reveals nothing on its own. The
 /// circle term is the line-of-sight gated `evalVisionReveal` on one snapshot
 /// (@p observers + @p los, see `selectRevealSnapshot`). @p channels is
-/// accepted for the source-mask seam and is not yet consulted: every source
-/// reveals on the default channel.
+/// applied to analytic sources; the stored grid term is channel-blind.
 inline float evalReveal(
     const IRComponents::FrameDataFogObservers &observers,
     const IRComponents::FogLosColumnField &los,
@@ -233,11 +242,10 @@ inline float evalReveal(
     IRMath::vec3 worldPosition,
     std::uint32_t channels = IRComponents::kFogChannelDefault
 ) {
-    (void)channels;
     if (gridCellState == IRComponents::kFogStateVisible) {
         return 1.0f;
     }
-    return evalVisionReveal(observers, los, worldPosition);
+    return evalVisionReveal(observers, los, worldPosition, channels);
 }
 
 /// The BODY verdict at @p worldPosition against @p fog's world field and the
@@ -440,11 +448,22 @@ inline int setVisionCircle(
     float observerZ = 0.0f,
     float zCostUp = 0.0f,
     float zCostDown = IRComponents::kFogVisionZCostMirrorUp,
-    float freeBand = 0.0f
+    float freeBand = 0.0f,
+    std::uint32_t channels = IRComponents::kFogChannelDefault
 ) {
     if (auto *fog = detail::activeFogComponent()) {
         fog->clearVisionCircles();
-        return fog->addVisionCircle(cx, cy, radius, edge, observerZ, zCostUp, zCostDown, freeBand);
+        return fog->addVisionCircle(
+            cx,
+            cy,
+            radius,
+            edge,
+            observerZ,
+            zCostUp,
+            zCostDown,
+            freeBand,
+            channels
+        );
     }
     return -1;
 }
@@ -467,10 +486,21 @@ inline int addVisionCircle(
     float observerZ = 0.0f,
     float zCostUp = 0.0f,
     float zCostDown = IRComponents::kFogVisionZCostMirrorUp,
-    float freeBand = 0.0f
+    float freeBand = 0.0f,
+    std::uint32_t channels = IRComponents::kFogChannelDefault
 ) {
     if (auto *fog = detail::activeFogComponent()) {
-        return fog->addVisionCircle(cx, cy, radius, edge, observerZ, zCostUp, zCostDown, freeBand);
+        return fog->addVisionCircle(
+            cx,
+            cy,
+            radius,
+            edge,
+            observerZ,
+            zCostUp,
+            zCostDown,
+            freeBand,
+            channels
+        );
     }
     return -1;
 }
@@ -807,14 +837,21 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
 
     // Structural component changes migrate the entity's archetype, so they
     // stay last: every access through the voxel-set pointer is above.
-    const bool hadRevealed = IREntity::getComponentOptional<C_FogRevealed>(entity).has_value();
+    C_FogRevealed freshRevealed{};
+    bool hadRevealed = false;
+    if (const auto revealed = IREntity::getComponentOptional<C_FogRevealed>(entity);
+        revealed.has_value()) {
+        hadRevealed = true;
+        freshRevealed.override_ = (*revealed)->override_;
+        freshRevealed.channels_ = (*revealed)->channels_;
+    }
     if (subjectClass == FogSubjectClass::BODY) {
         if (rangeCount > 0) {
             IRPrefab::VoxelPool::markRangeInactive(rangeStart, rangeCount, canvas);
         }
         IREntity::removeComponent<C_FogField>(entity);
         IREntity::removeComponent<C_FogExempt>(entity);
-        IREntity::setComponent(entity, C_FogRevealed{});
+        IREntity::setComponent(entity, freshRevealed);
         return;
     }
     // A set its LOD band hides stays masked off; the LOD gate restores it.
