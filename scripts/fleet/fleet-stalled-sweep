@@ -61,10 +61,12 @@ import argparse
 import calendar
 import json
 import os
-import shutil
 import subprocess
 import sys
 import time
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import fleet_github  # noqa: E402
 
 STALLED_LABEL = "fleet:stalled"
 WIP_LABEL = "fleet:wip"
@@ -102,8 +104,8 @@ def log(msg: str) -> None:
     print(f"fleet-stalled-sweep: {msg}")
 
 
-def gh_bin() -> str:
-    return os.environ.get("FLEET_STALLED_SWEEP_GH_BIN") or shutil.which("gh") or "gh"
+def gh_argv(args: list[str]) -> list[str]:
+    return fleet_github.argv(args, "FLEET_STALLED_SWEEP_GH_BIN")
 
 
 def stall_seconds() -> int:
@@ -211,8 +213,8 @@ def run_gh(argv: list[str], what: str) -> bool:
 
 def list_open_prs(repo: str) -> list[dict] | None:
     """Open PRs with the three fields both halves need, or None on failure."""
-    argv = [gh_bin(), "pr", "list", "--repo", repo, "--state", "open",
-            "--json", "number,labels,updatedAt", "--limit", str(PR_LIST_LIMIT)]
+    argv = gh_argv(["pr", "list", "--repo", repo, "--state", "open",
+                    "--json", "number,labels,updatedAt", "--limit", str(PR_LIST_LIMIT)])
     try:
         out = subprocess.run(argv, capture_output=True, text=True,
                              timeout=GH_TIMEOUT_SECONDS, check=True)
@@ -248,13 +250,13 @@ def stamp_pr(repo: str, number: int, idle_seconds: int, dry_run: bool) -> bool:
     if dry_run:
         log(f"[dry-run] {repo}#{number}: idle {days}d → would add {STALLED_LABEL} + comment")
         return True
-    if not run_gh([gh_bin(), "pr", "edit", str(number), "--repo", repo,
-                   "--add-label", STALLED_LABEL],
+    if not run_gh(gh_argv(["pr", "edit", str(number), "--repo", repo,
+                           "--add-label", STALLED_LABEL]),
                   f"{repo}#{number} --add-label {STALLED_LABEL}"):
         return False
     log(f"{repo}#{number}: idle {days}d → {STALLED_LABEL}")
-    run_gh([gh_bin(), "pr", "comment", str(number), "--repo", repo,
-            "--body", COMMENT_TEMPLATE.format(days=days)],
+    run_gh(gh_argv(["pr", "comment", str(number), "--repo", repo,
+                    "--body", COMMENT_TEMPLATE.format(days=days)]),
            f"{repo}#{number} stall comment (not retried)")
     return True
 
@@ -263,8 +265,8 @@ def clear_pr(repo: str, number: int, dry_run: bool) -> bool:
     if dry_run:
         log(f"[dry-run] {repo}#{number}: no {WIP_LABEL} → would remove {STALLED_LABEL}")
         return True
-    if not run_gh([gh_bin(), "pr", "edit", str(number), "--repo", repo,
-                   "--remove-label", STALLED_LABEL],
+    if not run_gh(gh_argv(["pr", "edit", str(number), "--repo", repo,
+                           "--remove-label", STALLED_LABEL]),
                   f"{repo}#{number} --remove-label {STALLED_LABEL}"):
         return False
     log(f"{repo}#{number}: no longer {WIP_LABEL} → removed {STALLED_LABEL}")

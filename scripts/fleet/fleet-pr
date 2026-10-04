@@ -31,9 +31,12 @@ Installed to ~/bin/fleet-pr by scripts/fleet/install.sh.
 
 import argparse
 import json
-import subprocess
+import os
 import sys
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import fleet_github  # noqa: E402
 
 STATE_DIR = Path.home() / ".fleet" / "state"
 PRS_DIR = STATE_DIR / "prs"
@@ -87,12 +90,12 @@ def fallback_gh(args, gh_cmd):
     if slug is None:
         warn(f"unknown repo key: {args.repo}")
         return 2
-    return subprocess.run(gh_cmd + ["--repo", slug]).returncode
+    return fleet_github.run(gh_cmd + ["--repo", slug]).returncode
 
 
 def run_gh_json(cmd):
     """Run a JSON-emitting gh command. None on nonzero exit or bad JSON."""
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    result = fleet_github.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
         sys.stderr.write(result.stderr)
         return None
@@ -112,7 +115,7 @@ def fetch_live_pr(slug, pr_number):
     fresh review away for an inline list that is empty on every cached record.
     """
     detail = run_gh_json([
-        "gh", "pr", "view", str(pr_number), "--repo", slug,
+        "pr", "view", str(pr_number), "--repo", slug,
         "--json", "number,comments,reviews",
     ])
     if detail is None:
@@ -129,7 +132,7 @@ def fetch_live_pr(slug, pr_number):
     # run_gh_json still parses a single document. Keep in sync with the scout's
     # fetch_pr_inline_comments.
     inline = run_gh_json([
-        "gh", "api", f"repos/{slug}/pulls/{pr_number}/comments?per_page=100",
+        "api", f"repos/{slug}/pulls/{pr_number}/comments?per_page=100",
         "--paginate",
     ])
     if inline is None:
@@ -145,7 +148,7 @@ def cmd_view(args):
     if detail is None:
         warn(f"cache miss for {args.repo}#{args.pr_number}; falling back to gh")
         return fallback_gh(args, [
-            "gh", "pr", "view", str(args.pr_number), "--comments",
+            "pr", "view", str(args.pr_number), "--comments",
         ])
 
     warn(f"snapshot as of {snapshot_stamp(detail)}; {SNAPSHOT_HINT}")
@@ -205,7 +208,7 @@ def cmd_diff(args):
             return 0
 
     warn(f"diff cache miss for {args.repo}#{args.pr_number}; falling back to gh")
-    return fallback_gh(args, ["gh", "pr", "diff", str(args.pr_number)])
+    return fallback_gh(args, ["pr", "diff", str(args.pr_number)])
 
 
 def cmd_comments(args):

@@ -27,6 +27,7 @@ import subprocess
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import fleet_github  # noqa: E402
 from fleet_branch_match import (  # noqa: E402
     body_would_close_refs,
     declared_closing_refs,
@@ -114,8 +115,7 @@ def base_commits(base):
 
 
 def gh_json(args):
-    gh = shutil.which("gh") or "gh"
-    out = run([gh, *args])
+    out = run(fleet_github.argv(args))
     try:
         return json.loads(out)
     except json.JSONDecodeError as exc:

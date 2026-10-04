@@ -47,6 +47,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+import fleet_github
+
 API_ROOT = "https://api.github.com"
 DEFAULT_ACCEPT = "application/vnd.github+json"
 API_VERSION = "2022-11-28"
@@ -84,8 +86,8 @@ def auth_token(refresh=False):
         if _token_cache["value"]:
             return _token_cache["value"]
         try:
-            proc = subprocess.run(
-                ["gh", "auth", "token"],
+            proc = fleet_github.run(
+                ["auth", "token"],
                 capture_output=True, text=True, timeout=DEFAULT_TIMEOUT_SECONDS,
             )
         except (OSError, subprocess.TimeoutExpired):

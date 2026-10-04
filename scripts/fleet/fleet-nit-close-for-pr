@@ -23,6 +23,13 @@
 
 set -euo pipefail
 
+# The inline python imports fleet_github from this script's real directory.
+_nit_close_self="${BASH_SOURCE[0]}"
+while [[ -L "$_nit_close_self" ]]; do _nit_close_self="$(readlink "$_nit_close_self")"; done
+FLEET_LIB_DIR="$(cd "$(dirname "$_nit_close_self")" && pwd)"
+export FLEET_LIB_DIR
+unset _nit_close_self
+
 REPO="jakildev/IrredenEngine"
 DRY_RUN=0
 MAX_CLOSURES=10
@@ -57,7 +64,10 @@ fi
 # the JSON parsing straightforward. Pass JSON via env var so double-quotes in
 # the payload can't break the inline heredoc string literal.
 ISSUES_JSON="$issues_json" python3 - "$REPO" "$DRY_RUN" "$MAX_CLOSURES" <<PYEOF
-import json, os, re, subprocess, sys
+import json, os, re, sys
+
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+import fleet_github
 
 issues_json = os.environ["ISSUES_JSON"]
 repo = sys.argv[1]
@@ -80,8 +90,8 @@ for issue in issues:
     pr_num = m.group(1)
 
     # Check PR state
-    r = subprocess.run(
-        ["gh", "pr", "view", pr_num, "--repo", repo, "--json", "state", "--jq", ".state"],
+    r = fleet_github.run(
+        ["pr", "view", pr_num, "--repo", repo, "--json", "state", "--jq", ".state"],
         capture_output=True, text=True, timeout=15
     )
     pr_state = r.stdout.strip() if r.returncode == 0 else ""
@@ -93,13 +103,13 @@ for issue in issues:
         continue
 
     # Comment and close
-    subprocess.run(
-        ["gh", "issue", "comment", issue_num, "--repo", repo,
+    fleet_github.run(
+        ["issue", "comment", issue_num, "--repo", repo,
          "--body", f"Auto-closed: addressed by merged PR #{pr_num} (per `fleet:nit-of-pr` → PR cross-reference)."],
         check=True, timeout=15
     )
-    subprocess.run(
-        ["gh", "issue", "close", issue_num, "--repo", repo],
+    fleet_github.run(
+        ["issue", "close", issue_num, "--repo", repo],
         check=True, timeout=15
     )
     print(f"nit-close: issue #{issue_num} closed — addressing PR #{pr_num} merged")

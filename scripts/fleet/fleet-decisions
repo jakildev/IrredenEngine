@@ -50,6 +50,13 @@
 
 set -euo pipefail
 
+# The inline python imports fleet_github from this script's real directory.
+_fleet_decisions_self="${BASH_SOURCE[0]}"
+while [[ -L "$_fleet_decisions_self" ]]; do _fleet_decisions_self="$(readlink "$_fleet_decisions_self")"; done
+FLEET_LIB_DIR="$(cd "$(dirname "$_fleet_decisions_self")" && pwd)"
+export FLEET_LIB_DIR
+unset _fleet_decisions_self
+
 FLEET_HOME="${FLEET_HOME:-$HOME/.fleet}"
 REPOS=("jakildev/IrredenEngine" "jakildev/irreden")
 
@@ -148,9 +155,11 @@ import base64
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
+
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+import fleet_github  # noqa: E402
 
 SHORT = {"jakildev/IrredenEngine": "engine", "jakildev/irreden": "game"}
 
@@ -194,46 +203,6 @@ WORKFLOW_DIR = ".github/workflows"
 SUITES_ANNOTATION_TITLE = "fleet-tests failed suites"
 UNITEMIZED = "?"
 
-# Resolve gh through PATH ourselves: on a native-Windows python (os.name ==
-# "nt") CreateProcess appends only ".exe" to a bare name, so a PATH-shim
-# `gh`/`gh.bat` earlier in PATH is silently skipped in favor of the real
-# gh.exe — shutil.which honors PATH order and PATHEXT, and is a no-op
-# passthrough on POSIX.
-GH = shutil.which("gh") or "gh"
-
-
-def _gh_argv(gh):
-    """The argv vector to launch `gh` with.
-
-    A native-Windows `shutil.which()` hit on a `.bat` file is CreateProcess'd
-    through cmd.exe, which re-parses the *entire* argv for its own
-    metacharacters (`&`, `|`, `^`, ...) before the batch body's `%*` ever
-    sees it — fatal for a REST path like `...&per_page=100`, which cmd.exe
-    splits into two commands at the `&`. Real `gh.exe` is CreateProcess'd
-    directly with no such layer, so only a `.bat` resolution needs this.
-
-    The one `.bat` this can safely reach into is the hermetic test twin: a
-    `gh.bat` shipped beside an extensionless Python sibling of the same name
-    (`scripts/fleet/tests/test_decisions.sh`'s `gh`/`gh.bat` pair) — invoking
-    that sibling directly through the interpreter bypasses cmd.exe entirely.
-    Any other `.bat` (a real-world PATH shim this repo doesn't ship) falls
-    back to the original behavior unchanged.
-    """
-    if os.name == "nt" and gh.lower().endswith(".bat"):
-        sibling = gh[: -len(".bat")]
-        try:
-            with open(sibling, "r", encoding="utf-8") as f:
-                first_line = f.readline()
-        except OSError:
-            first_line = ""
-        if first_line.startswith("#!") and "python" in first_line:
-            return [sys.executable, sibling]
-    return [gh]
-
-
-GH_ARGV = _gh_argv(GH)
-
-
 class Unreadable(Exception):
     pass
 
@@ -241,7 +210,7 @@ class Unreadable(Exception):
 def gh_api(path):
     """The JSON at REST `path`; None on a 404."""
     try:
-        run = subprocess.run(GH_ARGV + ["api", path], capture_output=True, text=True, timeout=60)
+        run = fleet_github.run(["api", path], capture_output=True, text=True, timeout=60)
     except (OSError, subprocess.TimeoutExpired) as e:
         raise Unreadable(f"gh api {path.split('?')[0]}: {e}") from e
     if run.returncode != 0:

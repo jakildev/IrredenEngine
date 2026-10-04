@@ -29,10 +29,13 @@ round-trip goes through ``gh()``, the one seam the tests stub.
 
 import argparse
 import json
+import os
 import re
-import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import fleet_github  # noqa: E402
 
 DEFAULT_REPO = "jakildev/IrredenEngine"
 LEDGER_HEADING = "## Steward ledger"
@@ -44,8 +47,8 @@ PLAN_FILE_RE = re.compile(r"^issue-(\d+)\.md$")
 
 def gh(args, stdin=None):
     """Run one gh command and return its stdout; raises on a non-zero exit."""
-    proc = subprocess.run(["gh", *args], input=stdin, capture_output=True,
-                          text=True, check=False)
+    proc = fleet_github.run(args, input=stdin, capture_output=True,
+                            text=True, check=False)
     if proc.returncode != 0:
         raise RuntimeError(
             f"gh {' '.join(args)} failed ({proc.returncode}): {proc.stderr.strip()}")

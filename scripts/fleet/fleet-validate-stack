@@ -34,13 +34,13 @@ Installed to ~/bin/fleet-validate-stack by scripts/fleet/install.sh.
 import argparse
 import json
 import os
-import subprocess
 import sys
 
 # Resolve the symlink (~/bin/fleet-validate-stack) back to the repo's
 # scripts/fleet/ dir so the sibling pure-logic module imports regardless of
 # cwd — same idiom fleet-queue-ingest uses for fleet_scope_shipped.
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import fleet_github  # noqa: E402
 from fleet_validate_stack import (  # noqa: E402
     check_checklist,
     discover_children,
@@ -68,7 +68,7 @@ def repo_slug(repo_key):
 
 def _gh_json(args):
     """Run a gh command expecting JSON on stdout; return parsed value or None."""
-    proc = subprocess.run(args, capture_output=True, text=True)
+    proc = fleet_github.run(args, capture_output=True, text=True)
     if proc.returncode != 0:
         warn("gh failed: %s" % (proc.stderr or "").strip())
         return None
@@ -84,7 +84,7 @@ def fetch_bodies(slug, numbers):
     children = []
     for n in numbers:
         detail = _gh_json([
-            "gh", "issue", "view", str(n), "--repo", slug,
+            "issue", "view", str(n), "--repo", slug,
             "--json", "number,title,body,state",
         ])
         if detail is None:
@@ -134,7 +134,7 @@ def main():
     checklist_drift = []
     if args.check_checklist:
         umbrella_detail = _gh_json([
-            "gh", "issue", "view", str(args.umbrella), "--repo", slug,
+            "issue", "view", str(args.umbrella), "--repo", slug,
             "--json", "body",
         ])
         if umbrella_detail:

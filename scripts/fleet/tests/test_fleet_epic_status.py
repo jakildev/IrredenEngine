@@ -36,7 +36,8 @@ class _GhStub:
 
     def __call__(self, argv, **kwargs):
         self.calls.append(argv)
-        expected_shape = (len(argv) == 8 and argv[:3] == ["gh", "issue", "view"]
+        expected_shape = (len(argv) == 8 and Path(argv[0]).stem.lower() == "gh"
+                          and argv[1:3] == ["issue", "view"]
                           and argv[4:6] == ["--repo", SLUG]
                           and argv[6:8] == ["--json", "comments"])
         if not expected_shape:
@@ -57,7 +58,7 @@ class PlanCommentExists(unittest.TestCase):
             4: [],
             5: ["  ## Plan\nindented heading still counts"],
         })
-        with patch.object(mod.subprocess, "run", stub):
+        with patch.object(mod.fleet_github.subprocess, "run", stub):
             self.assertTrue(mod.plan_comment_exists(SLUG, 1))
             self.assertTrue(mod.plan_comment_exists(SLUG, 2), "a deeper Plan heading counts")
             self.assertFalse(mod.plan_comment_exists(SLUG, 3))
@@ -69,7 +70,8 @@ class PlanCommentExists(unittest.TestCase):
         def failing(argv, **kwargs):
             return subprocess.CompletedProcess(argv, 1, stdout="", stderr="boom")
         err = io.StringIO()
-        with patch.object(mod.subprocess, "run", failing), patch.object(mod.sys, "stderr", err):
+        with patch.object(mod.fleet_github.subprocess, "run", failing), \
+                patch.object(mod.sys, "stderr", err):
             self.assertFalse(mod.plan_comment_exists(SLUG, 9))
         self.assertIn("gh failed", err.getvalue())
 
@@ -104,7 +106,7 @@ class Dashboard(unittest.TestCase):
 
     def run_main(self, *argv):
         out = io.StringIO()
-        with patch.object(mod.subprocess, "run", self.stub), \
+        with patch.object(mod.fleet_github.subprocess, "run", self.stub), \
                 patch.object(mod, "fetch_issue", lambda slug, n: dict(self.umbrella)), \
                 patch.object(mod, "discover_children",
                              lambda slug, u, state: list(self.children)), \
