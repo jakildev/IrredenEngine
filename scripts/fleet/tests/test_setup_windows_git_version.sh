@@ -84,7 +84,10 @@ run_case() {
     if (( copy_overlap )); then
         cp "$OVERLAP_SRC" "$sandbox/scripts/fleet-pr-overlap"
         cp "$SCRIPT_DIR/../fleet_github.py" "$sandbox/scripts/fleet_github.py"
-        [[ -n "$floor" ]] && sed -i "s/^MERGE_TREE_MIN_VERSION = .*/MERGE_TREE_MIN_VERSION = \"$floor\"/" \
+        # perl, not `sed -i`: BSD sed takes the expression as a backup suffix
+        # and leaves the floor unchanged, so the floor cases pass vacuously.
+        [[ -n "$floor" ]] && FLOOR="$floor" perl -pi -e \
+            's/^MERGE_TREE_MIN_VERSION = .*/MERGE_TREE_MIN_VERSION = "$ENV{FLOOR}"/' \
             "$sandbox/scripts/fleet-pr-overlap"
     fi
     [[ -f "$TMPROOT/bashrc.$name" ]] && cp "$TMPROOT/bashrc.$name" "$sandbox/home/.bashrc"
