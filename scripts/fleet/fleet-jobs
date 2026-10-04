@@ -1011,6 +1011,10 @@ def cmd_start(rest, cwd):
         time.sleep(0.05)
     else:
         die(f"supervisor for {job_id} did not report within {STARTUP_TIMEOUT:.0f}s", 1)
+    # Only a launched child gets started_at; a terminal record without it is
+    # the supervisor refusing to run the job (anchor or launch failure).
+    if "started_at" not in meta:
+        die(f"{job_id} not started: {meta.get('reason') or meta['status']}", 1)
     print(f"started {job_id} ({meta['status']})")
     print(f"log: {job_dir / 'job.log'}")
     print(f"next: fleet-jobs wait {job_id}")

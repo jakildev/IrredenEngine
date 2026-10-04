@@ -463,6 +463,51 @@ class BreakawayRefusal(JobsCase):
         self.assertEqual(waited.returncode, 127, waited.stderr)
 
 
+@posix_only
+class StartRefusedBySupervisor(JobsCase):
+    """A supervisor that fails its anchor check is a failed start, not a started job."""
+
+    def test_anchor_failure_fails_the_start(self):
+        subject = load_subject(self.subject)
+        ran = []
+
+        class Supervisor:
+            # Runs the real supervise() in-process, once the spec is written.
+            def __init__(self, *args, **kwargs):
+                self.stdin, self.spec, self.returncode = self, b"", None
+
+            def write(self, data):
+                self.spec += data
+
+            def close(self):
+                spec = io.StringIO(self.spec.decode())
+                with mock.patch.object(subject.sys, "stdin", spec), \
+                        mock.patch.object(subject.signal, "signal"), \
+                        mock.patch.object(subject, "anchor_tree", lambda: "probe refusal"), \
+                        mock.patch.object(subject, "launch", lambda *a, **k: ran.append(a)):
+                    self.returncode = subject.supervise()
+
+            def poll(self):
+                return self.returncode
+
+        stdout, stderr = io.StringIO(), io.StringIO()
+        with mock.patch.dict(os.environ, self.env(self.pane_a), clear=True), \
+                mock.patch.object(subject, "DisclaimedSupervisor", Supervisor), \
+                mock.patch.object(subject.subprocess, "Popen", Supervisor), \
+                contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr), \
+                self.assertRaises(SystemExit) as exited:
+            subject.cmd_start(["build", "--", "x"], self.repo)
+        self.assertEqual(exited.exception.code, 1)
+        self.assertEqual(stdout.getvalue(), "", "a refused job was reported started")
+        self.assertIn("not started: cannot contain the job: probe refusal", stderr.getvalue())
+        self.assertEqual(ran, [], "the child ran unanchored")
+        [job_dir] = self.job_dirs()
+        status = self.status(job_dir.name)
+        self.assertEqual((status["status"], status["exit_code"]), ("failed", 127))
+        waited = self.jobs(["wait", job_dir.name])
+        self.assertEqual(waited.returncode, 127, waited.stderr)
+
+
 @unittest.skipUnless(sys.platform == "darwin", "macOS responsible-process anchor")
 class Unanchored(JobsCase):
     def test_supervisor_not_spawned_disclaimed_never_runs_the_child(self):
