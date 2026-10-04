@@ -319,6 +319,43 @@ TEST_F(FogSubjectAdoptTest, GoverningAnAuthoredBodyPreservesItsFogSeams) {
     EXPECT_EQ(revealed.channels_, 0b10u);
 }
 
+TEST_F(FogSubjectAdoptTest, GoverningTaggedBodiesPreservesAuthoredFogSeams) {
+    const IREntity::EntityId fieldBody = createSet(
+        vec3(0.0f, 0.0f, 0.0f),
+        C_FogRevealed{1.0f, true, IRComponents::FogOverride::FORCE_HIDDEN, 0b10u},
+        C_FogField{}
+    );
+    createSet(
+        vec3(0.0f, 0.0f, 0.0f),
+        C_FogRevealed{0.0f, false, IRComponents::FogOverride::FORCE_REVEALED, 0b100u},
+        C_FogField{}
+    );
+    const IREntity::EntityId exemptBody = createSet(
+        vec3(0.0f, 0.0f, 0.0f),
+        C_FogRevealed{1.0f, true, IRComponents::FogOverride::FORCE_HIDDEN, 0b1000u},
+        C_FogExempt{}
+    );
+    createSet(
+        vec3(0.0f, 0.0f, 0.0f),
+        C_FogRevealed{0.0f, false, IRComponents::FogOverride::FORCE_REVEALED, 0b10000u},
+        C_FogExempt{}
+    );
+
+    IRPrefab::Fog::setEntityRevealGoverned(fieldBody);
+    IRPrefab::Fog::setEntityRevealGoverned(exemptBody);
+
+    const C_FogRevealed &fieldRevealed = IREntity::getComponent<C_FogRevealed>(fieldBody);
+    EXPECT_FLOAT_EQ(fieldRevealed.revealFactor_, 0.0f);
+    EXPECT_FALSE(fieldRevealed.shown_);
+    EXPECT_EQ(fieldRevealed.override_, IRComponents::FogOverride::FORCE_HIDDEN);
+    EXPECT_EQ(fieldRevealed.channels_, 0b10u);
+    const C_FogRevealed &exemptRevealed = IREntity::getComponent<C_FogRevealed>(exemptBody);
+    EXPECT_FLOAT_EQ(exemptRevealed.revealFactor_, 0.0f);
+    EXPECT_FALSE(exemptRevealed.shown_);
+    EXPECT_EQ(exemptRevealed.override_, IRComponents::FogOverride::FORCE_HIDDEN);
+    EXPECT_EQ(exemptRevealed.channels_, 0b1000u);
+}
+
 TEST_F(FogSubjectAdoptTest, SetsOffTheFogCanvasAreLeftAlone) {
     const IREntity::EntityId otherCanvas = IREntity::createEntity(C_VoxelPool{ivec3(4, 4, 4)});
     const IREntity::EntityId elsewhere = IREntity::createEntity(

@@ -837,20 +837,21 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
 
     // Structural component changes migrate the entity's archetype, so they
     // stay last: every access through the voxel-set pointer is above.
-    const auto revealed = IREntity::getComponentOptional<C_FogRevealed>(entity);
-    const bool hadRevealed = revealed.has_value();
+    C_FogRevealed freshRevealed{};
+    bool hadRevealed = false;
+    if (const auto revealed = IREntity::getComponentOptional<C_FogRevealed>(entity);
+        revealed.has_value()) {
+        hadRevealed = true;
+        freshRevealed.override_ = (*revealed)->override_;
+        freshRevealed.channels_ = (*revealed)->channels_;
+    }
     if (subjectClass == FogSubjectClass::BODY) {
         if (rangeCount > 0) {
             IRPrefab::VoxelPool::markRangeInactive(rangeStart, rangeCount, canvas);
         }
         IREntity::removeComponent<C_FogField>(entity);
         IREntity::removeComponent<C_FogExempt>(entity);
-        C_FogRevealed fresh{};
-        if (hadRevealed) {
-            fresh.override_ = (*revealed)->override_;
-            fresh.channels_ = (*revealed)->channels_;
-        }
-        IREntity::setComponent(entity, fresh);
+        IREntity::setComponent(entity, freshRevealed);
         return;
     }
     // A set its LOD band hides stays masked off; the LOD gate restores it.
