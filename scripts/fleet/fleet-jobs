@@ -838,13 +838,17 @@ def cmd_start(rest, cwd):
         try:
             proc = subprocess.Popen(spawn, cwd=cwd, stdin=subprocess.PIPE, stdout=sup_log,
                                     stderr=subprocess.STDOUT, **kwargs)
-        except OSError:
-            if not IS_WINDOWS:
-                raise
-            # The enclosing job object may forbid breakaway.
-            kwargs["creationflags"] &= ~0x01000000
-            proc = subprocess.Popen(spawn, cwd=cwd, stdin=subprocess.PIPE, stdout=sup_log,
-                                    stderr=subprocess.STDOUT, **kwargs)
+        except OSError as exc:
+            # Never retry without breakaway: a supervisor left in an enclosing
+            # job dies when that job is terminated, so the start would claim
+            # a durability it cannot deliver.
+            reason = f"supervisor launch failed: {exc}"
+            if IS_WINDOWS and getattr(exc, "winerror", None) == 5:  # ERROR_ACCESS_DENIED
+                reason = ("the enclosing job object forbids breakaway, so no supervisor "
+                          "can outlive this invocation")
+            meta.update(status="failed", reason=reason, exit_code=127, finished_at=now_iso())
+            write_atomic(job_dir / "meta.json", meta)
+            die(f"{job_id} not started: {reason}", 1)
     proc.stdin.write(json.dumps({"id": job_id, "cwd": str(cwd), "args": args}).encode())
     proc.stdin.close()
     deadline = time.monotonic() + STARTUP_TIMEOUT

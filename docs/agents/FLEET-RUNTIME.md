@@ -163,6 +163,9 @@ new-session supervisor owns the child, so the job survives the tool call
 and the invocation that started it, and a later call reads the same job.
 Never background one in the calling shell (`&`, `nohup`): `ps` / `pgrep` /
 `kill` are denied in the sandbox, and the runtime kills orphans at exit.
+A start that cannot detach its supervisor exits 1 and records the job
+`failed` rather than run it attached (native Windows: the caller's job
+object forbids breakaway).
 
 | Work | Start | Runs in |
 |---|---|---|

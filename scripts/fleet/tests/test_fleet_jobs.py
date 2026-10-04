@@ -8,8 +8,10 @@ State lives under a temp FLEET_STATE_DIR and HOME; the live ~/.fleet is never
 read or written.
 """
 
+import contextlib
 import importlib.machinery
 import importlib.util
+import io
 import json
 import os
 import secrets
@@ -21,13 +23,15 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SUBJECT = Path(__file__).resolve().parents[1] / "fleet-jobs"
 if not SUBJECT.is_file():
     print("SKIP: scripts/fleet/fleet-jobs absent", file=sys.stderr)
     sys.exit(3)
-# Only NaturalExit and WindowsContainment run on native Windows (the
-# job-object arm); the rest of the suite drives POSIX process groups and signals.
+# Only NaturalExit, BreakawayRefusal and the Windows* classes run on native
+# Windows (the job-object arm); the rest of the suite drives POSIX process
+# groups and signals.
 posix_only = unittest.skipIf(os.name == "nt", "POSIX process-group harness")
 
 IR_BUILD = r"""#!/usr/bin/env bash
@@ -80,8 +84,8 @@ sys.exit(3)
 """
 
 
-def load_subject():
-    loader = importlib.machinery.SourceFileLoader("fleet_jobs", str(SUBJECT))
+def load_subject(path=SUBJECT):
+    loader = importlib.machinery.SourceFileLoader("fleet_jobs", str(path))
     spec = importlib.util.spec_from_loader("fleet_jobs", loader)
     module = importlib.util.module_from_spec(spec)
     loader.exec_module(module)
@@ -333,6 +337,70 @@ class WindowsContainment(unittest.TestCase):
             if survivor:
                 subprocess.run(["taskkill", "/F", "/PID", str(descendant)], capture_output=True)
             self.assertIsNone(survivor, f"descendant {descendant} outlived the job drain")
+
+
+class BreakawayRefusal(JobsCase):
+    """A start whose supervisor cannot leave the caller's job fails closed."""
+
+    def test_refused_breakaway_is_not_retried_and_records_failed(self):
+        subject = load_subject(self.subject)
+        breakaway, calls = 0x01000000, []
+
+        def popen(argv, **kwargs):
+            calls.append(kwargs.get("creationflags", 0))
+            if calls[-1] & breakaway:
+                exc = PermissionError(13, "Access is denied")
+                exc.winerror = 5
+                raise exc
+            raise AssertionError("supervisor relaunched without CREATE_BREAKAWAY_FROM_JOB")
+
+        # The patched-out admission_lock is what creates the pane directory.
+        (self.state / "jobs" / self.pane_a).mkdir(parents=True)
+        stderr = io.StringIO()
+        with mock.patch.dict(os.environ, self.env(self.pane_a), clear=True), \
+                mock.patch.object(subject, "IS_WINDOWS", True), \
+                mock.patch.object(subject, "admission_lock",
+                                  lambda root: contextlib.nullcontext()), \
+                mock.patch.object(subject.subprocess, "DETACHED_PROCESS", 0x8, create=True), \
+                mock.patch.object(subject.subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200,
+                                  create=True), \
+                mock.patch.object(subject.subprocess, "Popen", popen), \
+                contextlib.redirect_stderr(stderr), \
+                self.assertRaises(SystemExit) as exited:
+            subject.cmd_start(["build", "--", "x"], self.repo)
+        self.assertEqual(exited.exception.code, 1)
+        self.assertEqual(len(calls), 1, "the refused launch was retried")
+        self.assertTrue(calls[0] & breakaway)
+        self.assertIn("forbids breakaway", stderr.getvalue())
+        [job_dir] = self.job_dirs()
+        status = self.status(job_dir.name)
+        self.assertEqual((status["status"], status["exit_code"]), ("failed", 127))
+        self.assertIn("forbids breakaway", status["reason"])
+        waited = self.jobs(["wait", job_dir.name])
+        self.assertEqual(waited.returncode, 127, waited.stderr)
+
+
+@unittest.skipUnless(os.name == "nt", "native-Windows job-object arm")
+class WindowsBreakaway(JobsCase):
+    def test_start_inside_a_no_breakaway_job_refuses_instead_of_dying_with_it(self):
+        subject = load_subject()
+        # A fresh job object, which does not allow breakaway, holds the
+        # launcher from before it first runs.
+        launcher = subject.spawn_suspended(
+            [sys.executable, str(self.subject), "start", "build", "--", "x"], cwd=self.repo,
+            env=self.env(self.pane_a), stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, text=True)
+        enclosing = subject.contain(launcher)
+        try:
+            _, err = launcher.communicate(timeout=60)
+        finally:
+            subject._kernel32().TerminateJobObject(enclosing, 1)
+            subject._kernel32().CloseHandle(enclosing)
+        self.assertEqual(launcher.returncode, 1, err)
+        self.assertIn("forbids breakaway", err)
+        [job_dir] = self.job_dirs()
+        status = self.status(job_dir.name)
+        self.assertEqual((status["status"], status["exit_code"]), ("failed", 127))
 
 
 @posix_only
