@@ -6,6 +6,8 @@
 #include <irreden/job/job_manager.hpp>
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/systems/system_fog_reveal_eval.hpp>
+#include <irreden/render/systems/system_fog_reveal_eval_shape.hpp>
+#include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 
 #include <atomic>
@@ -381,6 +383,58 @@ TEST(FogRevealEvalTest, SourcesOccludeIndependently) {
     EXPECT_TRUE(verdict(IRMath::vec3(-3, -6, 0)).shown_);
     EXPECT_FALSE(verdict(IRMath::vec3(-3, 6, 0)).shown_);
     EXPECT_GT(system.losRoutes_.stats().builds_, 0u);
+}
+
+// The shape BODY evaluator owns its own route cache: once bound, its tick
+// reads hard routes from it, keeps every verdict of the unbound (scalar)
+// tick, and still drops sources off the body's channels.
+TEST(FogRevealEvalTest, ShapeEvaluatorReadsItsOwnRouteCache) {
+    IRComponents::C_CanvasFogOfWar fog{IRComponents::C_CanvasFogOfWar::HeadlessInit{}};
+    IRSystem::System<IRSystem::FOG_REVEAL_EVAL_SHAPE> system;
+    system.fog_ = &fog;
+    system.settings_.showThreshold_ = 0.6f;
+    system.settings_.hideThreshold_ = 0.3f;
+    system.settings_.staggerPeriod_ = 1;
+
+    FrameDataFogObservers observers{};
+    observers.visionCircles_[0] = IRMath::vec4(-6.0f, -6.0f, 10.0f, 0.0f);
+    observers.visionCircles_[1] = IRMath::vec4(7.0f, 6.0f, 10.0f, 0.0f);
+    observers.visionCircleCount_ = 2;
+    IRComponents::C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, 0, 1.0f);
+    IRComponents::C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, 1, 1.0f);
+    std::vector<float> columns = emptyField();
+    stampWall(columns, IRMath::vec2(1.0f, -20.0f), IRMath::vec2(2.0f, 20.0f), -5.0f);
+    system.observers_ = observers;
+    system.los_ = FogLosColumnField{columns.data()};
+
+    const auto verdict = [&](IRMath::vec3 position, std::uint32_t channels) {
+        IREntity::EntityId entity = 1;
+        C_FogRevealed revealed{0.0f, false, IRComponents::FogOverride::NONE, channels};
+        C_WorldTransform transform{};
+        IRComponents::C_ShapeDescriptor shape{};
+        transform.translation_ = position;
+        system.tick(entity, revealed, transform, shape);
+        return revealed.revealFactor_;
+    };
+    const IRMath::vec3 bodies[] = {
+        IRMath::vec3(3, -6, 0),
+        IRMath::vec3(3, 6, 0),
+        IRMath::vec3(-3, -6, 0),
+        IRMath::vec3(-3, 6, 0),
+    };
+    float scalar[4] = {};
+    for (int i = 0; i < 4; ++i) {
+        scalar[i] = verdict(bodies[i], IRComponents::kFogChannelDefault);
+    }
+    EXPECT_FLOAT_EQ(scalar[0], 0.0f) << "a body behind the wall from its only source revealed";
+    EXPECT_FLOAT_EQ(scalar[1], 1.0f);
+
+    system.losRoutes_.begin(system.observers_, system.los_);
+    for (int i = 0; i < 4; ++i) {
+        EXPECT_EQ(verdict(bodies[i], IRComponents::kFogChannelDefault), scalar[i]) << "body " << i;
+    }
+    EXPECT_GT(system.losRoutes_.stats().builds_, 0u);
+    EXPECT_FLOAT_EQ(verdict(bodies[1], 0b10u), 0.0f) << "a source off the body's channels";
 }
 
 // The BODY oracle's circle term is line-of-sight gated: an anchor behind a

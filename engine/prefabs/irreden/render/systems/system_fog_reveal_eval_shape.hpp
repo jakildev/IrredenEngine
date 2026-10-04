@@ -23,6 +23,7 @@ template <> struct System<FOG_REVEAL_EVAL_SHAPE> {
     const IRComponents::C_CanvasFogOfWar *fog_ = nullptr;
     IRComponents::FrameDataFogObservers observers_{};
     IRComponents::FogLosColumnField los_{};
+    IRPrefab::Fog::LosHardRouteCache losRoutes_;
     IRComponents::C_FogRevealSettings settings_{};
     std::uint64_t frameCounter_ = 0;
 
@@ -46,6 +47,7 @@ template <> struct System<FOG_REVEAL_EVAL_SHAPE> {
                 );
             }
         }
+        losRoutes_.begin(observers_, los_);
         settings_ = IREntity::singleton<IRComponents::C_FogRevealSettings>();
         settings_.staggerPeriod_ = IRMath::max(settings_.staggerPeriod_, std::uint32_t{1});
         ++frameCounter_;
@@ -65,7 +67,7 @@ template <> struct System<FOG_REVEAL_EVAL_SHAPE> {
         IRComponents::C_FogRevealed &revealed,
         const IRComponents::C_WorldTransform &worldTransform,
         IRComponents::C_ShapeDescriptor &shape
-    ) const {
+    ) {
         if (!IRPrefab::Fog::isOnFogCanvas(shape, activeCanvas_)) {
             return;
         }
@@ -86,6 +88,7 @@ template <> struct System<FOG_REVEAL_EVAL_SHAPE> {
                                                            *fog_,
                                                            observers_,
                                                            los_,
+                                                           losRoutes_,
                                                            worldTransform.translation_,
                                                            revealed.channels_
                                                        );
