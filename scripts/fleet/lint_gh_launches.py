@@ -52,11 +52,9 @@ EXCEPTIONS = {
     "scripts/fleet/lint_rules_commands.py":
         "FORBIDDEN_COMMANDS: the command prefix the doc lint bans, never launched",
     "scripts/fleet/fleet-state-scout":
-        "pending: its gh calls move onto fleet_github with the GraphQL-fallback "
-        "change that is rewriting the same call sites",
+        "pending: its gh calls move onto fleet_github in a follow-up change",
     "scripts/fleet/fleet-pr-body-lint":
-        "pending: its gh calls move onto fleet_github with the GraphQL-fallback "
-        "change that is rewriting the same call sites",
+        "pending: its gh calls move onto fleet_github in a follow-up change",
 }
 
 MESSAGE = "use fleet_github.argv()/run() (native Windows bypasses the shared resolver)"
