@@ -6,9 +6,9 @@
 // body must normalize equal to the GLSL twin (FogCrossSectionShaderParity).
 
 #include "ir_iso_common.metal"
+#include "ir_fog_color.metal"
 #include "ir_fog_los.metal"
 
-constant float kFogExploredValue = 128.0f / 255.0f;
 constant int kMaxFogVisionCircles = 8;
 constant float kFogCutTone = 0.85f;
 constant float kFogCutMaxRimCells = 2.0f;
@@ -71,17 +71,6 @@ inline float fogTap(
         return 0.0f;
     }
     return canvasFogOfWar.read(uint2(cell)).r;
-}
-
-inline float3 fogStateColor(float state, float3 sourceColor, float3 unexplored) {
-    const float luminance = dot(sourceColor, float3(0.299f, 0.587f, 0.114f));
-    const float3 exploredColor = float3(luminance) * 0.4f;
-    if (state >= kFogExploredValue) {
-        const float t = (state - kFogExploredValue) / (1.0f - kFogExploredValue);
-        return mix(exploredColor, sourceColor, t);
-    }
-    const float t = state / kFogExploredValue;
-    return mix(unexplored, exploredColor, t);
 }
 
 inline FogReveal fogRevealSample(

@@ -49,7 +49,8 @@ inline void write(
     // the composite depth offset (pos3DtoDistance(roundVec3HalfUp(translation)))
     // so depth and receive stay on one convention.
     canvas.worldPlaced_ = !entityCanvas.screenLocked_;
-    canvas.castsWorldShadow_ = !entityCanvas.screenLocked_ && entityCanvas.visible_;
+    canvas.castsWorldShadow_ =
+        !entityCanvas.screenLocked_ && entityCanvas.visible_ && !entityCanvas.fogHidden_;
     canvas.worldCellOffset_ = IRMath::vec3(IRMath::roundVec3HalfUp(ownerWorld.translation_));
     canvas.ownerWorldTranslation_ = ownerWorld.translation_;
 }

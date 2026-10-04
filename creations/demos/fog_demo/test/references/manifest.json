@@ -40,6 +40,30 @@
       "capture_offset": 0
     },
     {
+      "name": "detached_body",
+      "demo_args": ["--detached-edge", "--detached-body"],
+      "shots": ["fog_detached_body"],
+      "capture_offset": 0
+    },
+    {
+      "name": "detached_body_soft",
+      "demo_args": ["--detached-edge", "--detached-body", "--entity-reveal-soft-edge"],
+      "shots": ["fog_detached_body_soft"],
+      "capture_offset": 0
+    },
+    {
+      "name": "detached_body_hidden",
+      "demo_args": ["--detached-edge", "--detached-body-hidden"],
+      "shots": ["fog_detached_body_hidden"],
+      "capture_offset": 0
+    },
+    {
+      "name": "detached_body_no_solid",
+      "demo_args": ["--detached-body-no-solid"],
+      "shots": ["fog_detached_body_no_solid"],
+      "capture_offset": 0
+    },
+    {
       "name": "edge_smooth",
       "demo_args": [
         "--edge-smooth"

@@ -21,12 +21,9 @@
 // apply body must normalize equal (FogCrossSectionShaderParity).
 
 #include "ir_iso_common.glsl"
+#include "ir_fog_color.glsl"
 #include "ir_fog_los.glsl"
 
-// Normalized stored explored value (128/255, NOT 0.5). The two-segment lerp
-// pivots through it so the canonical stored states 0 / 128 / 255 land exactly
-// on the unexplored / explored / source anchors.
-const float kFogExploredValue = 128.0 / 255.0;
 // Mirrors kMaxFogVisionCircles in component_canvas_fog_of_war.hpp.
 const int kMaxFogVisionCircles = 8;
 // Cross-section cap: the tint applied to a hidden VERTICAL face within
@@ -114,17 +111,6 @@ float fogTap(ivec2 col, ivec2 fogSize) {
         return 0.0;
     }
     return imageLoad(canvasFogOfWar, cell).r;
-}
-
-vec3 fogStateColor(float state, vec3 sourceColor, vec3 unexplored) {
-    const float luminance = dot(sourceColor, vec3(0.299, 0.587, 0.114));
-    const vec3 exploredColor = vec3(luminance) * 0.4;
-    if (state >= kFogExploredValue) {
-        const float t = (state - kFogExploredValue) / (1.0 - kFogExploredValue);
-        return mix(exploredColor, sourceColor, t);
-    }
-    const float t = state / kFogExploredValue;
-    return mix(unexplored, exploredColor, t);
 }
 
 // The FIELD reveal. `aaFloor` (world units per canvas pixel) and `losSample`
