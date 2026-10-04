@@ -263,3 +263,19 @@ found no packing-specific race and records the pre-existing duplicate-store
 qualification. The formal Opus recheck approved implementation `f23a31aee`, and
 its Linux build, performance gate and remaining automatic checks passed. Native
 Windows smoke and final documentation-head checks remain required.
+
+### Background/offscreen master integration
+
+Master `21c38993b` adds background/hidden windows and engine-owned offscreen
+screen targets. Merge `485f0fe39` consumes them without changing the reviewed
+voxel dispatch or pipeline-limit implementation. IRCanvasStress, IRPerfGrid and
+IrredenEngineTest rebuild. Native argument/window-mode, Metal compute,
+viewport/LOD/cursor/fog and entity tests pass 288 cases with one OpenGL-only skip
+and clean exit. The additional provenance entry records the tested integration.
+
+The unattended capture default now selects offscreen rendering. All 30
+[integrated CanvasStress checks](../../pr-screenshots/codex/voxel-workgroup-occupancy/offscreen-integration-render-verify.log)
+pass, including the 20 unchanged exact RGB references. No new timing comparison
+is inferred: future A/B runs must pin window mode and account for Metal's
+display-rate pacing. This remains an integration validation, not a new
+performance qualification or Windows presentation smoke.

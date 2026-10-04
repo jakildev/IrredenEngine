@@ -114,6 +114,16 @@ Next, in order:
    eliminating no-op rewrites/uploads separately, including identity/rotation
    transitions and complete content/pose invalidation coverage; this is not the
    frozen main-canvas benchmark path.
+   Profile provenance must also capture window mode and display refresh: the
+   unattended launcher now selects an offscreen target with Metal display-rate
+   pacing. Keep mode/pacing identical within A/B controls and distinguish render
+   work from frame waiting; older timings retain their original launch policy.
+   Proposed capture-gate hardening: `render-verify.py::_run_capture` currently
+   accepts every zero launcher exit, including `RESULT=ALIVE-TIMEOUT`. Require
+   clean completion for self-terminating captures and retain the existing
+   host-closed retry behavior; prove a full screenshot set followed by watchdog
+   termination cannot pass. This is a code-observed harness gap, not a diagnosed
+   engine hang in the current captures.
    Proposed light-volume experiment: `System<COMPUTE_LIGHT_VOLUME>::tick` runs
    propagation over the full 128-cubed volume for each radius step, even when
    PerfGrid has one radius-24 emitter. Measure a conservative union of seed
