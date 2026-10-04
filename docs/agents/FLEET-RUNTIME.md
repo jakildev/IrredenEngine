@@ -182,7 +182,9 @@ before publishing it, the supervisor stops anything the child left running
 (every process it anchors, however detached: on Linux a child subreaper
 adopts each orphan, on macOS each names the supervisor as its responsible
 process, and a supervisor that cannot anchor fails the job before it runs;
-its job object on native Windows), so the log is final when `wait` returns. A pane runs one `render-verify` job at a
+its job object on native Windows), so the log is final when `wait` returns;
+a process that outlives the drain's SIGKILL fails the job with exit 125
+whatever the child returned. A pane runs one `render-verify` job at a
 time: runs share the build's screenshot directory, so a second start
 exits 1 while the first is live. Its log opens with a `[fleet-jobs]
 display:` line; `none` there means the job runs where no demo can render.

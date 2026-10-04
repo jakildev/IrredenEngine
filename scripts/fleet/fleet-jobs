@@ -25,7 +25,8 @@ Profiles are fixed; there is no executable, path, or shell-string form.
                  with the displays the job's session can reach
 
 wait streams the job log and exits with the child's exit code; a job that is
-still running when --timeout elapses exits 124, and a lost job exits 1. The
+still running when --timeout elapses exits 124, a lost job exits 1, and a
+job with a process that outlived the supervisor's SIGKILL fails with 125. The
 last stderr line always names the job's state.
 
 State: ${FLEET_STATE_DIR:-~/.fleet/state}/jobs/<pane>/<job-id>/{meta.json,job.log}.
@@ -755,37 +756,44 @@ def _exited_unreaped(child):
     return info is not None
 
 
-def _tree_alive(child, members, marks):
-    return (not _exited_unreaped(child) or any(identity(p) == i for p, i in members)
-            or bool(job_members(child.pid, marks)))
-
-
 def _drain_tree(child, job, members, marks):
     """Stop the child and everything it left running, then reap the child.
 
-    Returns only once nothing from the tree can still write the job log, so
-    terminal status published afterwards is final. members are descendants
-    sampled while the child was alive; on POSIX every pass also sweeps
-    job_members, which reaches what an exited child orphaned, however it
-    detached (anchor_tree). Native Windows terminates the
-    child's job object, which has held the child since before it first ran.
+    True once nothing from the tree is left running, so terminal status
+    published afterwards is final; False when something outlived SIGKILL's
+    grace. members are descendants sampled while the child was alive; on
+    POSIX every pass also sweeps job_members, which reaches what an exited
+    child orphaned, however it detached (anchor_tree), and signals each
+    process the first pass that finds it, so one started mid-drain is
+    stopped too. Native Windows terminates the child's job object, which has
+    held the child since before it first ran.
     """
     if IS_WINDOWS:
         _kernel32().TerminateJobObject(job, 1)
         deadline = time.monotonic() + CANCEL_GRACE
-        while _windows_job_active(job) and time.monotonic() < deadline:
+        while (active := _windows_job_active(job)) and time.monotonic() < deadline:
             time.sleep(POLL)
         child.wait()
-        return
+        return not active
     for sig in (signal.SIGTERM, signal.SIGKILL):
         _killpg(child.pid, sig)
-        _signal_verified(members + job_members(child.pid, marks), sig)
+        signalled, empty_scans = set(), 0
         deadline = time.monotonic() + CANCEL_GRACE
-        while (alive := _tree_alive(child, members, marks)) and time.monotonic() < deadline:
-            time.sleep(POLL)
-        if not alive:
-            break
+        while time.monotonic() < deadline:
+            found = {m for m in members if identity(m[0]) == m[1]}
+            found.update(job_members(child.pid, marks))
+            _signal_verified(found - signalled, sig)
+            signalled |= found
+            if found or not _exited_unreaped(child):
+                empty_scans = 0
+                time.sleep(POLL)
+            # A process that forks and then exits during a scan can leave
+            # its new child out of that scan; the next one finds it.
+            elif (empty_scans := empty_scans + 1) == 2:
+                child.wait()
+                return True
     child.wait()
+    return False
 
 
 def display_discovery():
@@ -851,7 +859,7 @@ def supervise():
         cancel_marker = job_dir / "cancel"
         while not _exited_unreaped(child):
             if cancelled or cancel_marker.exists():
-                _drain_tree(child, job, descendants(child.pid), marks)
+                drained = _drain_tree(child, job, descendants(child.pid), marks)
                 reason = cancelled[0] if cancelled else "cancelled by fleet-jobs kill"
                 meta.update(status="killed", reason=reason)
                 break
@@ -860,11 +868,17 @@ def supervise():
             time.sleep(POLL)
         else:
             # Whatever the child left running is still part of the job.
-            _drain_tree(child, job, [], marks)
+            drained = _drain_tree(child, job, [], marks)
             meta.update(status="succeeded" if child.returncode == 0 else "failed",
                         reason="exited")
+        exit_code = _exit_code(child.returncode)
+        if not drained:
+            # The child's result is not the job's while part of the job runs on.
+            meta.update(status="failed",
+                        reason=f"{meta['reason']}; a process of the job outlived SIGKILL")
+            exit_code = 125
         os.fsync(log.fileno())
-    meta.update(exit_code=_exit_code(child.returncode), finished_at=now_iso())
+    meta.update(exit_code=exit_code, finished_at=now_iso())
     write_atomic(job_dir / "meta.json", meta)
     return 0
 

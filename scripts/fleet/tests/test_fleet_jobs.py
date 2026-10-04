@@ -47,9 +47,16 @@ esac
 # drops the inherited environment, so only the log descriptor ties it to the
 # job; "quiet-session" leaves the group and closes the log, so only the
 # environment does; "daemon" drops all three, so only the supervisor's
-# anchor on its own tree does.
-ORPHAN = r"""import os, signal, sys, time
+# anchor on its own tree does. "relay" answers SIGTERM by starting a "late"
+# process, which SIGTERM ends, and exiting.
+ORPHAN = r"""import os, signal, subprocess, sys, time
 mode = sys.argv[2] if len(sys.argv) > 2 else "group"
+if mode == "relay":
+    def relay(*_):
+        subprocess.Popen([sys.executable, "-c", os.environ["ORPHAN"], sys.argv[1] + ".late",
+                          "late"])
+        os._exit(0)
+    signal.signal(signal.SIGTERM, relay)
 if mode in ("quiet-session", "daemon"):
     devnull = os.open(os.devnull, os.O_WRONLY)
     os.dup2(devnull, 1)
@@ -59,7 +66,7 @@ if mode in ("session", "quiet-session", "daemon"):
 if mode in ("session", "daemon"):
     os.execve(sys.executable, [sys.executable, "-c", os.environ["ORPHAN"], sys.argv[1],
                                "scrubbed"], {})
-if hasattr(signal, "SIGTERM"):
+if mode not in ("relay", "late") and hasattr(signal, "SIGTERM"):
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
 with open(sys.argv[1] + ".tmp", "w") as handle:
     handle.write(str(os.getpid()))
@@ -314,6 +321,81 @@ class NaturalExit(JobsCase):
                 self.assertEqual(final.decode().splitlines(), waited.stdout.splitlines())
                 time.sleep(1)
                 self.assertEqual(log.read_bytes(), final, "the log grew after the terminal status")
+
+    @posix_only
+    def test_a_process_started_mid_drain_is_signalled_when_found(self):
+        subject = load_subject()
+        pidfile = self.root / "orphan-relay"
+        began = time.monotonic()
+        job = self.start(["build", "--", "orphan", str(pidfile), sys.executable, "relay"])
+        waited = self.jobs(["wait", job])
+        elapsed = time.monotonic() - began
+        self.assertEqual(waited.returncode, 0, waited.stderr)
+        # SIGTERM can end the late process before it records itself.
+        late_file = Path(f"{pidfile}.late")
+        if late_file.exists():
+            late = int(late_file.read_text())
+            survivor = subject.identity(late)
+            if survivor:
+                os.kill(late, signal.SIGKILL)
+            self.assertIsNone(survivor, f"late process {late} outlived the terminal status")
+        # Only a SIGTERM sent when a pass finds it ends the late process
+        # before SIGKILL's grace runs out.
+        self.assertLess(elapsed, subject.CANCEL_GRACE,
+                        "the late process was left for SIGKILL instead of signalled when found")
+
+
+@posix_only
+class DrainFailsClosed(JobsCase):
+    def test_drain_is_true_only_once_the_tree_is_empty(self):
+        subject = load_subject()
+        for killable in (True, False):
+            with self.subTest(killable=killable):
+                child = subprocess.Popen([sys.executable, "-c", "pass"], start_new_session=True)
+                member = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+                try:
+                    ident = wait_for(lambda: subject.identity(member.pid))
+                    unkillable = mock.patch.object(subject, "_signal_verified",
+                                                   lambda members, sig: None)
+                    # job_members of this process would reach every child of the
+                    # test runner on Linux.
+                    with mock.patch.object(subject, "CANCEL_GRACE", 0.5), \
+                            mock.patch.object(subject, "job_members", lambda pgid, marks: []), \
+                            unkillable if not killable else contextlib.nullcontext():
+                        drained = subject._drain_tree(child, None, [(member.pid, ident)], None)
+                    self.assertIs(drained, killable)
+                    self.assertIsNotNone(child.returncode, "the drain left the child unreaped")
+                finally:
+                    member.kill()
+                    member.wait()
+
+    def test_undrained_job_is_failed_whatever_the_child_returned(self):
+        subject = load_subject(self.subject)
+        job_dir = self.state / "jobs" / self.pane_a / "20260101T000000Z-build-fedcba"
+        job_dir.mkdir(parents=True)
+        (job_dir / "job.log").touch()
+        (job_dir / "meta.json").write_text(json.dumps(
+            {"id": job_dir.name, "pane": self.pane_a, "profile": "build", "name": "build",
+             "cwd": str(self.repo), "created_at": "2026-01-01T00:00:00Z",
+             "created_epoch": time.time(), "status": "starting", "exit_code": None}))
+        spec = {"id": job_dir.name, "cwd": str(self.repo), "args": ["--", "probe"]}
+
+        def undrained(child, job, members, marks):
+            child.wait()
+            return False
+
+        with mock.patch.dict(os.environ, self.env(self.pane_a), clear=True), \
+                mock.patch.object(subject.sys, "stdin", io.StringIO(json.dumps(spec))), \
+                mock.patch.object(subject.signal, "signal"), \
+                mock.patch.object(subject, "anchor_tree", lambda: None), \
+                mock.patch.object(subject, "_drain_tree", undrained):
+            self.assertEqual(subject.supervise(), 0)
+        self.assertEqual((job_dir / "job.log").read_text(), "ir-build probe\n")
+        status = self.status(job_dir.name)
+        self.assertEqual((status["status"], status["exit_code"]), ("failed", 125))
+        self.assertIn("outlived SIGKILL", status["reason"])
+        waited = self.jobs(["wait", "--quiet", job_dir.name])
+        self.assertEqual(waited.returncode, 125, waited.stderr)
 
 
 @unittest.skipUnless(os.name == "nt", "native-Windows job-object arm")
