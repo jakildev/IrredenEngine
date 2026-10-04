@@ -2,13 +2,17 @@
 #define COMPONENT_VOXEL_SET_LUA_H
 
 #include <irreden/asset/voxel_set_format.hpp>
+#include <irreden/render/lod_level.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/dense_bridge.hpp>
 #include <irreden/voxel/sdf_fill.hpp>
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
 
+#include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
 
 namespace IRScript {
 template <> inline constexpr bool kHasLuaBinding<IRComponents::C_VoxelSetNew> = true;
@@ -57,6 +61,25 @@ requireActiveBatch(const std::shared_ptr<VoxelBatchState> &state) {
         throw sol::error{"batch handle used outside its callback"};
     }
     return *state->set_;
+}
+
+// The value is taken as a `sol::object` because a LuaJIT number is a double, and
+// an integral parameter could truncate 2.5 into a valid tier.
+inline IRRender::LodLevel lodEndpointFromLua(const sol::object &value, const char *field) {
+    if (value.get_type() == sol::type::number) {
+        const double number = value.as<double>();
+        // NaN fails the integrality test; the magnitude bound keeps the cast defined.
+        if (number == IRMath::floor(number) && IRMath::abs(number) < 0x1p62) {
+            const std::optional<IRRender::LodLevel> level =
+                IRRender::lodLevelFromIndex(static_cast<std::int64_t>(number));
+            if (level) {
+                return *level;
+            }
+        }
+    }
+    throw sol::error{
+        std::string{"C_VoxelSetNew."} + field + ": must be an IRRender.LodLevel value (0..4)"
+    };
 }
 
 inline IRMath::SDF::ShapeType shapeTypeFromLua(lua_Integer value, const char *operation) {
@@ -187,7 +210,17 @@ inline void bindVoxelAssetLoader(LuaScript &luaScript) {
 // baked positions.
 //
 // `lodMin` / `lodMax` are the set's LOD band as `IRRender.LodLevel` integers;
-// GATE_VOXEL_SETS_BY_LOD applies a write on its next tick.
+// GATE_VOXEL_SETS_BY_LOD applies a write on its next tick. They are validating
+// properties rather than raw member pointers: a write outside 0..4 (or a
+// non-integer) raises a Lua error and leaves the field unchanged. The save
+// serializer's range check is a debug-only assert, compiled out under
+// IR_RELEASE, so without this a script could put a tag in a world save that its
+// reader then rejects. Every Lua write reaches these setters: `view:at(i)`
+// hands Lua a std::ref to the row, and `setAt` copies a whole set that was
+// itself built by a bound ctor or written through them. An inverted band
+// (lodMax coarser than lodMin) is accepted, because the endpoints are written
+// one at a time; it is a valid never-drawn band. The properties are added after
+// registerType for the reason given in component_local_transform_lua.hpp.
 template <> inline void bindLuaType<IRComponents::C_VoxelSetNew>(LuaScript &luaScript) {
     auto voxelSetType = luaScript.registerType<
         IRComponents::C_VoxelSetNew,
@@ -198,12 +231,23 @@ template <> inline void bindLuaType<IRComponents::C_VoxelSetNew>(LuaScript &luaS
             IREntity::EntityId
         ),
         IRComponents::C_VoxelSetNew(IRMath::ivec3, IRMath::Color, IRComponents::EntityAnchor),
-        IRComponents::C_VoxelSetNew(IRMath::ivec3, IRMath::Color)>(
-        "C_VoxelSetNew",
-        "lodMin",
-        &IRComponents::C_VoxelSetNew::lodMin_,
-        "lodMax",
-        &IRComponents::C_VoxelSetNew::lodMax_
+        IRComponents::C_VoxelSetNew(IRMath::ivec3, IRMath::Color)>("C_VoxelSetNew");
+
+    voxelSetType["lodMin"] = sol::property(
+        [](const IRComponents::C_VoxelSetNew &set) {
+            return static_cast<lua_Integer>(set.lodMin_);
+        },
+        [](IRComponents::C_VoxelSetNew &set, sol::object value) {
+            set.lodMin_ = detail::lodEndpointFromLua(value, "lodMin");
+        }
+    );
+    voxelSetType["lodMax"] = sol::property(
+        [](const IRComponents::C_VoxelSetNew &set) {
+            return static_cast<lua_Integer>(set.lodMax_);
+        },
+        [](IRComponents::C_VoxelSetNew &set, sol::object value) {
+            set.lodMax_ = detail::lodEndpointFromLua(value, "lodMax");
+        }
     );
 
     voxelSetType["setVoxel"] =

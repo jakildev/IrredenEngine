@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#include <irreden/asset/binary_io.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_system.hpp>
@@ -22,6 +23,7 @@
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_voxel_set_lua.hpp>
+#include <irreden/voxel/voxel_set_serialize.hpp>
 
 #include "common/allocation_counter.hpp"
 
@@ -287,6 +289,61 @@ TEST_F(LodTierLua, DenseBandGatesVisibility) {
     banded().setLodCulled(true);
     banded().setLodCulled(false);
     EXPECT_FALSE(drawn(banded(), pool));
+}
+
+// A Lua write outside LOD_0..LOD_4 raises at the assignment and leaves the
+// endpoint unchanged, so a script cannot hand the save serializer an LOD tag its
+// reader rejects; the serializer's own range check is an IR_ASSERT, which
+// release builds compile out.
+TEST_F(LodTierLua, DenseBandRejectsInvalidEndpoints) {
+    m_lua.registerType<Color, Color(int, int, int, int)>("Color");
+    m_lua.registerType<ivec3, ivec3(int, int, int)>("ivec3");
+    m_lua.registerTypeFromTraits<C_VoxelSetNew>();
+
+    const IREntity::EntityId canvas = IREntity::createEntity(C_VoxelPool{ivec3(16, 16, 16)});
+    m_pinned = IREntity::createEntity(
+        C_VoxelSetNew{ivec3(2), Color{200, 100, 50, 255}, EntityAnchor::CORNER, canvas}
+    );
+    const auto banded = [this]() -> C_VoxelSetNew & {
+        return IREntity::getComponent<C_VoxelSetNew>(m_pinned);
+    };
+    m_lua.lua()["bandedSet"] = std::ref(banded());
+
+    for (const std::string field : {"lodMin", "lodMax"}) {
+        for (const std::string value : {"7", "-1", "2.5", "1e300"}) {
+            const std::string source = "bandedSet." + field + " = " + value;
+            auto result = m_lua.lua().safe_script(source, sol::script_pass_on_error);
+            EXPECT_FALSE(result.valid()) << source;
+            if (!result.valid()) {
+                EXPECT_NE(std::string{sol::error{result}.what()}.find(field), std::string::npos)
+                    << source;
+            }
+            EXPECT_EQ(banded().lodMin_, LodLevel::LOD_4) << source;
+            EXPECT_EQ(banded().lodMax_, LodLevel::LOD_0) << source;
+        }
+    }
+
+    // Reads still compare equal to the IRRender.LodLevel integers.
+    runLua(
+        "assert(bandedSet.lodMin == IRRender.LodLevel.LOD_4)\n"
+        "bandedSet.lodMin = IRRender.LodLevel.LOD_3\n"
+        "bandedSet.lodMax = IRRender.LodLevel.LOD_1\n"
+        "assert(bandedSet.lodMax == IRRender.LodLevel.LOD_1)\n"
+        "bandedSet = nil"
+    );
+
+    IRAsset::MemoryBinaryWriter writer;
+    IRWorld::SaveSerialize<C_VoxelSetNew>::write(writer, banded());
+    IRAsset::MemoryBinaryReader reader(
+        writer.buffer().data(),
+        writer.buffer().size(),
+        "lod_tier_lua_test"
+    );
+    const IRAsset::Result<C_VoxelSetNew> loaded =
+        IRWorld::SaveSerialize<C_VoxelSetNew>::read(reader);
+    ASSERT_TRUE(loaded.ok()) << loaded.status_.message_;
+    EXPECT_EQ(loaded.value_.lodMin_, LodLevel::LOD_3);
+    EXPECT_EQ(loaded.value_.lodMax_, LodLevel::LOD_1);
 }
 
 // GATE_VOXEL_SETS_BY_LOD (UPDATE) and SHAPES_TO_TRIXEL (RENDER) each capture a
