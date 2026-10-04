@@ -304,6 +304,21 @@ TEST_F(FogSubjectAdoptTest, SynchronousBodyAdoptionThroughTheSetterStartsHidden)
     EXPECT_EQ(IRPrefab::Fog::subjectClass(body), FogSubjectClass::BODY);
 }
 
+TEST_F(FogSubjectAdoptTest, GoverningAnAuthoredBodyPreservesItsFogSeams) {
+    const IREntity::EntityId body = createSet(
+        vec3(0.0f, 0.0f, 0.0f),
+        C_FogRevealed{1.0f, true, IRComponents::FogOverride::FORCE_HIDDEN, 0b10u}
+    );
+
+    IRPrefab::Fog::setEntityRevealGoverned(body);
+
+    const C_FogRevealed &revealed = IREntity::getComponent<C_FogRevealed>(body);
+    EXPECT_FLOAT_EQ(revealed.revealFactor_, 0.0f);
+    EXPECT_FALSE(revealed.shown_);
+    EXPECT_EQ(revealed.override_, IRComponents::FogOverride::FORCE_HIDDEN);
+    EXPECT_EQ(revealed.channels_, 0b10u);
+}
+
 TEST_F(FogSubjectAdoptTest, SetsOffTheFogCanvasAreLeftAlone) {
     const IREntity::EntityId otherCanvas = IREntity::createEntity(C_VoxelPool{ivec3(4, 4, 4)});
     const IREntity::EntityId elsewhere = IREntity::createEntity(

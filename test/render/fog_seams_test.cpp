@@ -21,8 +21,25 @@ using IRComponents::C_WorldTransform;
 using IRComponents::FogOverride;
 using IRComponents::FrameDataFogObservers;
 
-FrameDataFogObservers sourceWithChannels(std::uint32_t channels) {
+FrameDataFogObservers sourceWithChannels(std::uint32_t channels, int slot = 0) {
     FrameDataFogObservers observers{};
+    for (int i = 0; i < slot; ++i) {
+        EXPECT_EQ(
+            C_CanvasFogOfWar::addVisionCircle(
+                observers,
+                40.0f + static_cast<float>(i),
+                40.0f,
+                1.0f,
+                0.0f,
+                0.0f,
+                0.0f,
+                IRComponents::kFogVisionZCostMirrorUp,
+                0.0f,
+                0u
+            ),
+            i
+        );
+    }
     EXPECT_EQ(
         C_CanvasFogOfWar::addVisionCircle(
             observers,
@@ -36,13 +53,13 @@ FrameDataFogObservers sourceWithChannels(std::uint32_t channels) {
             0.0f,
             channels
         ),
-        0
+        slot
     );
     return observers;
 }
 
 TEST(FogSeamsTest, ChannelsFilterCirclesButNotTheGridTerm) {
-    const FrameDataFogObservers observers = sourceWithChannels(0b10u);
+    const FrameDataFogObservers observers = sourceWithChannels(0b10u, 5);
     const IRMath::vec3 inside(0.0f);
 
     EXPECT_FLOAT_EQ(
@@ -59,12 +76,24 @@ TEST(FogSeamsTest, ChannelsFilterCirclesButNotTheGridTerm) {
     );
 }
 
+TEST(FogSeamsTest, ClearingVisionCirclesRestoresDefaultChannelLanes) {
+    FrameDataFogObservers observers{};
+    observers.visionCircleChannels_[0] = IRMath::uvec4(0u);
+    observers.visionCircleChannels_[1] = IRMath::uvec4(0b10u);
+
+    C_CanvasFogOfWar::clearVisionCircles(observers);
+
+    for (int source = 0; source < IRComponents::kMaxFogVisionCircles; ++source) {
+        EXPECT_EQ(observers.channels(source), IRComponents::kFogChannelDefault);
+    }
+}
+
 TEST(FogSeamsTest, VoxelEvaluatorAppliesOverridesImmediatelyAndNoneUsesTheField) {
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
     C_VoxelPool pool{IRMath::ivec3(2, 2, 2)};
     system.fogAttached_ = true;
     system.activePool_ = &pool;
-    system.observers_ = sourceWithChannels(IRComponents::kFogChannelDefault);
+    system.observers_ = sourceWithChannels(0b10u);
     system.settings_.staggerPeriod_ = 100;
     system.pending_.reset(4);
 
@@ -85,12 +114,12 @@ TEST(FogSeamsTest, VoxelEvaluatorAppliesOverridesImmediatelyAndNoneUsesTheField)
     EXPECT_TRUE(forcedRevealed.shown_);
 
     IREntity::EntityId scheduledEntity = 100;
-    C_FogRevealed insideControl{};
+    C_FogRevealed insideControl{0.0f, false, FogOverride::NONE, 0b11u};
     system.tick(scheduledEntity, insideControl, inside, voxelSet);
     EXPECT_FLOAT_EQ(insideControl.revealFactor_, 1.0f);
     EXPECT_TRUE(insideControl.shown_);
 
-    C_FogRevealed outsideControl{1.0f, true};
+    C_FogRevealed outsideControl{1.0f, true, FogOverride::NONE, 0b10u};
     system.tick(scheduledEntity, outsideControl, outside, voxelSet);
     EXPECT_FLOAT_EQ(outsideControl.revealFactor_, 0.0f);
     EXPECT_FALSE(outsideControl.shown_);

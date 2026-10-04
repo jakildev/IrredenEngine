@@ -627,6 +627,9 @@ struct C_CanvasFogOfWar {
         for (IRMath::vec4 &params : observers.losParams_) {
             params = IRMath::vec4(kFogVisionLosOff, kFogLosHardGate, 0.0f, 0.0f);
         }
+        for (IRMath::uvec4 &channels : observers.visionCircleChannels_) {
+            channels = IRMath::uvec4(kFogChannelDefault);
+        }
     }
 
     /// The members' full rules on any observers / field pair: the analytic
