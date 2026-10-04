@@ -1,12 +1,12 @@
 # Voxel dispatch occupancy
 
 The voxel stages have six XY lanes per sample, preserving the two halves of
-each visible face. Z lanes can share a group across several whole low-density
+each visible face. On Metal, Z lanes can share a group across several whole low-density
 voxels. This changes dispatch occupancy, not voxel subdivision, face orientation,
 depth arbitration, or shadow geometry.
 
 Let `P` be the Z lane count, `S >= 1` the samples per voxel, `N` the compacted
-voxel count, and `V = max(floor(P / S), 1)` the voxels per XY group. The compact
+voxel count, and `V = max(floor(P / S), 1)` the Metal voxels per XY group. The compact
 writer dispatches `G = ceil(N / V)` XY groups, capped at 1024 in X with overflow
 in Y, and `ceil(S / P)` Z groups. Empty lists retain one guarded XY group.
 
@@ -20,8 +20,7 @@ For `S <= P`, each group contains `V` disjoint ranges of `S` lanes. Each pair
 `(voxel, sample)` has the unique inverse `h = floor(voxel / V)`,
 `q = voxel mod V`, `l = q * S + sample`. Remaining lanes cannot start another
 voxel: for `P = 32, S = 9`, lanes 27–31 are padding, not a fourth voxel.
-For `S >= P`, `V = 1`, `q = 0` and `r = l`; lane recovery returns this
-identity directly without runtime division or remainder. For `S > P`, the unique
+For `S >= P`, `V = 1`, `q = 0` and `r = l`. For `S > P`, the unique
 sample inverse is `g = floor(sample / P)`,
 `l = sample mod P`. The final Z group rejects its unused tail.
 
@@ -48,10 +47,13 @@ requested fidelity fixed when measuring; the earlier global packing experiment
 is recorded in [the baseline report](../perf/voxel-dispatch-packing/README.md).
 
 Physical width is backend-specific: OpenGL uses eight Z lanes and Metal uses
-32. Both execute the same mapping and preserve the same sample domain. The
+32. Both preserve the same sample domain. The
 [native occupancy controls](../perf/voxel-workgroup-occupancy/README.md) support
 Metal's 32-lane groups with return-to-baseline measurements and unchanged images.
 A same-runner Linux head/base/head diagnostic found a repeatable 17% steady-frame
 regression at effective subdivision four with 32-lane groups; eight-lane OpenGL
-groups retain low-density packing without widening the dense workgroups.
-This scheduling choice must be measured on hardware OpenGL separately.
+groups with the shared packing calculation still regress, including the direct
+dense-index variant. OpenGL therefore retains `V = 1` at every density and
+maps each lane to `(h, g * P + l)`. Its original count and sample guards reject
+padding. The helper interface and sample domain remain shared; only scheduling
+is backend-specific. Hardware OpenGL requires separate measurement.

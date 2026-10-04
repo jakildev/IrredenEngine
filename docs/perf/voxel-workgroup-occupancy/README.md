@@ -1,7 +1,8 @@
 # Voxel workgroup occupancy
 
-Pack several whole low-density voxels into each group: Metal uses 32 Z lanes,
-while OpenGL uses eight after the Linux diagnostic below. This
+Pack several whole low-density voxels into each Metal group with 32 Z lanes.
+OpenGL keeps one voxel per XY group with eight Z lanes; its packing experiments
+regressed in the Linux diagnostics below. This
 avoids the idle-lane cost of the earlier [global-32 experiment](../voxel-dispatch-packing/README.md).
 Every requested face-half sample remains present exactly once; subdivision,
 geometry, shadows and depth arbitration are unchanged. The shared writer/consumer
@@ -63,7 +64,7 @@ density, or one million entities at 60 FPS.
 - The executable GLSL/Metal test runs the actual compact finalizer, dispatch
   writer, shared helpers and stage consumer prefixes. Distinct list counts,
   empty/partial groups, XY spill, densities 0–16, all modes, axis routes and
-  feeder routing are covered. Sixteen mutations reject missing guards/strides
+  feeder routing are covered. Fifteen mutations reject missing guards/strides
   and incorrect list/domain selection; layout checks cover all five variants.
 - All 64 render harness suites pass; header checks pass for 630 headers,
   40 Metal kernels and 98 GLSL files. Native IRPerfGrid and IRCanvasStress build.
@@ -151,11 +152,34 @@ provenance are retained in [linux-small-pair](linux-small-pair/paired/provenance
 Physical width alone does not remove the regression. The next candidate uses
 the exact dense-domain identity in the shared lane helper: when `S >= P`,
 `V = 1`, `q = 0`, and `r = l`. Returning that index directly avoids the
-variable quotient/remainder work. This candidate requires measurement; the
-regression remains open until then. Coverage tests include `P-1`, `P`, and
+variable quotient/remainder work. The third diagnostic below measures this
+candidate; the regression remains open until the final policy is validated. Coverage tests include `P-1`, `P`, and
 `P+1` as well as non-divisor sample counts and the supported render domains.
 
 Latest-master native validation passes all 30 CanvasStress checks and 40
 viewport/LOD/cursor tests. The [log](../../pr-screenshots/codex/voxel-workgroup-occupancy/latest-master-render-verify.log)
 and [provenance](../../pr-screenshots/codex/voxel-workgroup-occupancy/latest-master-provenance.json)
 identify the pre-direct-index Metal assets actually tested.
+
+### Direct-index control and backend scope
+
+The [third same-runner diagnostic](https://github.com/jakildev/IrredenEngine/actions/runs/37178863947)
+compares direct-index candidate `c32b40aa7` with master `52eca06ad`.
+[Raw reports and provenance](linux-direct-pair/paired/provenance.json) retain
+both head runs.
+
+| Cell | Base steady ms | First direct-index head | Return direct-index head |
+|---|---:|---:|---:|
+| Zoom 1 | 787.72 | 742.53 (-5.7%) | 737.85 (-6.3%) |
+| Zoom 4, effective subdivision 4 | 1975.26 | 2200.99 (+11.4%) | 2200.97 (+11.4%) |
+
+The dense identity helps but does not make low-density packing acceptable on
+this OpenGL backend. The final candidate limits cross-voxel packing to Metal.
+OpenGL keeps the shared sample-domain/helper interface but uses its original
+one-voxel XY ownership and direct slice indexing at every density. The writer
+therefore folds to the original dispatch dimensions. This policy needs a final
+paired check; no OpenGL performance improvement is claimed.
+
+Metal retains the originally measured packing helper without the dense-index
+early return; that experiment is not part of the final backend policy. Native before/after
+experiment frame means overlapped, so no Metal gain from that branch is claimed.

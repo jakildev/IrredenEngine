@@ -50,7 +50,9 @@ def harness(backend):
     if backend == "metal":
         call = "finalizeDispatchDims(params, frameData);"
     helper = (folder / f"ir_voxel_dispatch.{suffix}").read_text()
-    return (PREAMBLE.replace("@PACKING@", str(packing)) + helper + "\n" + writer
+    return (PREAMBLE.replace("@PACKING@", str(packing))
+            .replace("@PACK_VOXELS@", "true" if backend == "metal" else "false")
+            + helper + "\n" + writer
             + "\n" + finalizer + "\n" + "\n".join(consumers)
             + CASES.replace("@FINALIZE@", call))
 
@@ -65,6 +67,10 @@ using std::min;using std::max;
 using std::atomic_uint;using std::atomic_load_explicit;using std::atomic_store_explicit;
 using std::memory_order_relaxed;
 constexpr int kStageMicroSlicesPerGroup=@PACKING@;
+constexpr bool packVoxels=@PACK_VOXELS@;
+uint expectedVoxelsPerGroup(uint slices){
+ return packVoxels?max(uint(kStageMicroSlicesPerGroup)/slices,1u):1u;
+}
 atomic_uint params[192]{};
 uint atomicAdd(atomic_uint& value,uint add){return value.fetch_add(add);}
 struct I2{int x,y;};struct U3{uint x,y,z;};
@@ -86,7 +92,7 @@ int main(){
  // backend's physical width divides every supported smaller square density.
  for(uint slices:{3u,5u,7u,uint(kStageMicroSlicesPerGroup)-1u,
                   uint(kStageMicroSlicesPerGroup),uint(kStageMicroSlicesPerGroup)+1u}){
-  const uint count=11,voxels=max(uint(kStageMicroSlicesPerGroup)/slices,1u);
+  const uint count=11,voxels=expectedVoxelsPerGroup(slices);
   std::vector<unsigned char> seen(count*slices);
   for(uint group=0;group<(count+voxels-1)/voxels;++group)
   for(uint z=0;z<(slices+kStageMicroSlicesPerGroup-1)/kStageMicroSlicesPerGroup;++z)
@@ -104,7 +110,7 @@ int main(){
   frameData={{mode,density},route,min(density,4)};
   const uint edge=uint(max(density,1)),cap=uint(max(feederSubCap,1));
   const uint slices=mode!=0?(feeder?cap*cap:route==0?edge*edge:1):1;
-  const uint voxels=max(uint(kStageMicroSlicesPerGroup)/slices,1u);
+  const uint voxels=expectedVoxelsPerGroup(slices);
   for(uint count:{0u,1u,voxels-1u,voxels,voxels+1u,1024u*voxels-1u,
                   1024u*voxels,1024u*voxels+1u}){
   for(auto& value:params)value=0;
@@ -112,7 +118,7 @@ int main(){
   @FINALIZE@
   for(uint list=0;list<uint(route==0?2:3);++list){
    const uint expectedSlices=mode==0||route!=0?1u:list==1?cap*cap:edge*edge;
-   const uint expectedVoxels=max(uint(kStageMicroSlicesPerGroup)/expectedSlices,1u);
+   const uint expectedVoxels=expectedVoxelsPerGroup(expectedSlices);
    const uint groups=(count+list+expectedVoxels-1u)/expectedVoxels;
    const uint gx=max(1u,min(groups,1024u));
    if(params[list*64]!=gx||params[list*64+1]!=max(1u,(groups+gx-1u)/gx)||
@@ -177,7 +183,7 @@ class VoxelDispatchPackingTest(unittest.TestCase):
             source = harness(backend)
             finalizer = extract_function(source, "finalizeDispatchDims")
             wrong_route = finalizer.replace("voxelRenderOptions.y, 0", "voxelRenderOptions.y, 1")
-            for name, candidate, expected in (
+            variants = [
                 ("production", source, 0),
                 ("wrong_visible_domain", source.replace(finalizer, wrong_route), 1),
                 ("wrong_list_count", source.replace("params[base + 3u]", "params[3u]")
@@ -185,15 +191,23 @@ class VoxelDispatchPackingTest(unittest.TestCase):
                           "indirectParams[kSlotVisibleCount]"), 1),
                 ("lost_slice_group", source.replace(
                     "groupZ * uint(kStageMicroSlicesPerGroup)", "groupZ * 0u"), 3),
-                ("lost_voxel_group", source.replace(
-                    "groupIndex * voxelsPerGroup", "groupIndex"), 3),
-                ("lost_lane_padding", source.replace("voxelOffset >= voxelsPerGroup", "false"), 3),
                 ("lost_grid_row", source.replace(".y * numGroupsX", ".y * 0")
                  .replace(".y * indirectParams.numGroupsX", ".y * 0"), 3),
                 ("lost_tail", source.replace("zIdx >= microSliceCount", "false"), 2),
                 ("lost_count", source.replace("compactedIdx >= visibleCount", "false")
                  .replace("compactedIdx >= indirectParams.visibleCount", "false"), 2),
-            ):
+            ]
+            if backend == "metal":
+                variants.extend([
+                    ("lost_voxel_group", source.replace(
+                        "groupIndex * voxelsPerGroup", "groupIndex"), 3),
+                    ("lost_lane_padding", source.replace(
+                        "voxelOffset >= voxelsPerGroup", "false"), 3),
+                ])
+            else:
+                variants.append(("lost_voxel_group", source.replace(
+                    "uvec2(groupIndex,", "uvec2(0u,"), 3))
+            for name, candidate, expected in variants:
                 with (self.subTest(backend=backend, variant=name),
                       tempfile.TemporaryDirectory() as tmp):
                     if name != "production":
