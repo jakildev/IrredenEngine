@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include <irreden/ir_args.hpp>
 
+#include "env_var.hpp"
+
 #include <string>
 #include <vector>
 
@@ -458,14 +460,91 @@ TEST(IRArgsWorkerThreadsTest, AbsentReadsBackUnsetSentinel) {
     EXPECT_EQ(p.workerThreads(), kWorkerThreadsUnset);
 }
 
-TEST(IRArgsWorkerThreadsDeathTest, StandaloneParserRejectsTheFlag) {
-    // Common::NONE drops the engine-common args, so a standalone tool's
-    // --help never advertises --worker-threads and the flag is unknown.
-    Parser p(nullptr, Common::NONE);
-    Argv a({"prog", "--worker-threads", "2"});
+// ─────────────────────────────────────────────
+// --window-mode / windowMode() — flag > IR_WINDOW_MODE env > empty
+// ─────────────────────────────────────────────
+
+using IRTest::ScopedEnv;
+
+TEST(IRArgsWindowModeTest, AbsentWithNoEnvReadsBackEmpty) {
+    ScopedEnv env("IR_WINDOW_MODE", nullptr);
+    Parser p(nullptr, Common::ENGINE);
+    Argv a({"prog"});
+    p.parse(a.argc(), a.argv());
+    EXPECT_FALSE(p.wasProvided("--window-mode"));
+    EXPECT_EQ(p.getEnum("--window-mode"), "normal");
+    EXPECT_EQ(p.windowMode(), "");
+}
+
+TEST(IRArgsWindowModeTest, EnvFillsInWhenTheFlagIsAbsent) {
+    ScopedEnv env("IR_WINDOW_MODE", "hidden");
+    Parser p(nullptr, Common::ENGINE);
+    Argv a({"prog", "--auto-screenshot"});
+    p.parse(a.argc(), a.argv());
+    EXPECT_EQ(p.windowMode(), "hidden");
+}
+
+TEST(IRArgsWindowModeTest, EnvIsPassedThroughUnvalidated) {
+    // The engine maps the string and warns on a bad spelling; the parser only
+    // relays what the launcher set.
+    ScopedEnv env("IR_WINDOW_MODE", "minimized");
+    Parser p(nullptr, Common::ENGINE);
+    Argv a({"prog"});
+    p.parse(a.argc(), a.argv());
+    EXPECT_EQ(p.windowMode(), "minimized");
+}
+
+TEST(IRArgsWindowModeTest, EmptyEnvCountsAsUnset) {
+    ScopedEnv env("IR_WINDOW_MODE", "");
+    Parser p(nullptr, Common::ENGINE);
+    Argv a({"prog"});
+    p.parse(a.argc(), a.argv());
+    EXPECT_EQ(p.windowMode(), "");
+}
+
+TEST(IRArgsWindowModeTest, FlagBeatsEnv) {
+    ScopedEnv env("IR_WINDOW_MODE", "hidden");
+    Parser p(nullptr, Common::ENGINE);
+    Argv a({"prog", "--window-mode", "background"});
+    p.parse(a.argc(), a.argv());
+    EXPECT_TRUE(p.wasProvided("--window-mode"));
+    EXPECT_EQ(p.windowMode(), "background");
+}
+
+TEST(IRArgsWindowModeTest, InlineFormParses) {
+    ScopedEnv env("IR_WINDOW_MODE", nullptr);
+    Parser p(nullptr, Common::ENGINE);
+    Argv a({"prog", "--window-mode=hidden"});
+    p.parse(a.argc(), a.argv());
+    EXPECT_EQ(p.windowMode(), "hidden");
+}
+
+TEST(IRArgsWindowModeDeathTest, RejectsAValueOutsideTheSet) {
+    Parser p(nullptr, Common::ENGINE);
+    Argv a({"prog", "--window-mode", "minimized"});
     EXPECT_EXIT(
         p.parse(a.argc(), a.argv()),
         ::testing::ExitedWithCode(2),
-        "Unknown argument: --worker-threads"
+        "expects one of \\{normal\\|background\\|hidden\\|offscreen\\}, got 'minimized'"
     );
+}
+
+// Common::NONE drops the engine-common args, so a standalone tool's --help
+// never advertises the flag and the parser rejects it as unknown.
+void expectStandaloneParserRejects(const char *flag, const char *value) {
+    Parser p(nullptr, Common::NONE);
+    Argv a({"prog", flag, value});
+    EXPECT_EXIT(
+        p.parse(a.argc(), a.argv()),
+        ::testing::ExitedWithCode(2),
+        std::string("Unknown argument: ") + flag
+    );
+}
+
+TEST(IRArgsWindowModeDeathTest, StandaloneParserRejectsTheFlag) {
+    expectStandaloneParserRejects("--window-mode", "hidden");
+}
+
+TEST(IRArgsWorkerThreadsDeathTest, StandaloneParserRejectsTheFlag) {
+    expectStandaloneParserRejects("--worker-threads", "2");
 }

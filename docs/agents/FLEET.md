@@ -267,6 +267,14 @@ stays busy and makes the request refuse instead. Human sessions, daemons,
 non-fleet processes, double-forks, the measurement subtree, and sub-sample
 Windows children remain outside the guarantee; use `ir-acquire --quiet-disable [reason]` / `--quiet-enable` for the host switch and see [`engine/tools/README.md`](../../engine/tools/README.md) for tuning.
 
+### Window mode
+
+A fleet launch never takes the host's screen: `fleet-run` and every pane mark
+launches `FLEET_UNATTENDED=1`, and a marked `ir-run` runs capture verbs `offscreen`
+and watchdog runs `background` (`FLEET_WINDOW_MODE` in `~/.fleet/fleet-up.conf`
+overrides both); a human's bare `ir-run` shows its window, no flags. Semantics
+and the `--window-mode normal` escape: `engine/window/CLAUDE.md` "Window modes".
+
 ### Worktree identity
 
 Every agent works inside its own `…/.claude/worktrees/<name>/`; the main

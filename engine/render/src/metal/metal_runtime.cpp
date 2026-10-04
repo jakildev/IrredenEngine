@@ -44,6 +44,7 @@ struct MetalRuntimeState {
 
     bool useDefaultRenderTarget_ = true;
     bool clearRenderTarget_ = false;
+    MTL::Texture *offscreenColorTexture_ = nullptr;
     MTL::Texture *colorTexture_ = nullptr;
     MTL::Texture *depthTexture_ = nullptr;
     MTL::PixelFormat colorPixelFormat_ = MTL::PixelFormatBGRA8Unorm;
@@ -316,6 +317,18 @@ void untrackMetalTexture(MTL::Texture *texture) {
     if (runtime.colorTexture_ == texture || runtime.depthTexture_ == texture) {
         bindMetalDefaultRenderTarget();
     }
+}
+
+void setMetalOffscreenColorTexture(MTL::Texture *texture) {
+    g_runtime().offscreenColorTexture_ = texture;
+}
+
+MTL::Texture *metalDefaultColorTexture() {
+    if (g_runtime().offscreenColorTexture_ != nullptr) {
+        return g_runtime().offscreenColorTexture_;
+    }
+    auto *drawable = g_runtime().drawable_;
+    return drawable != nullptr ? drawable->texture() : nullptr;
 }
 
 void bindMetalDefaultRenderTarget() {

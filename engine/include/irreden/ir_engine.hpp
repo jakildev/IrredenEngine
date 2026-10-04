@@ -70,10 +70,10 @@ void warnIfAutoCaptureNeverArmed();
 
 // The process-global engine argument parser, pre-loaded with the engine-common
 // args (--auto-screenshot, --auto-record, --config-preset, --worker-threads,
-// --help/-h) by the IRArgs::Parser ctor. A launch target registers its own flags on this parser
-// BEFORE calling init(argc, argv) — init parses it as its first action — then
-// reads results back via args(). See engine/CLAUDE.md "CLI args go through
-// IRArgs" for the no-custom-flags / custom-flags patterns. Inline so the
+// --window-mode, --help/-h) by the IRArgs::Parser ctor. A launch target
+// registers its own flags on this parser BEFORE calling init(argc, argv) — init
+// parses it as its first action — then reads results back via args(). See engine/CLAUDE.md "CLI
+// args go through IRArgs" for the no-custom-flags / custom-flags patterns. Inline so the
 // function-local static is one shared instance across every translation unit.
 inline IRArgs::Parser &args() {
     static IRArgs::Parser parser;
@@ -96,6 +96,13 @@ inline IRArgs::Parser &args() {
 // `--worker-threads` rides the same read-back and lands last, so the worker
 // pool resolves defaults < config.lua < preset < command line. A target that
 // never parsed argv reads back the absent sentinel — no override.
+//
+// `--window-mode` resolves the same way, with the IR_WINDOW_MODE env var as the
+// rung between the config files and the flag (fleet launchers set the env so
+// unattended demos never take the screen; engine/window/CLAUDE.md "Window
+// modes"). An env spelling outside the accepted set is warned about and
+// ignored rather than fatal: it is launcher plumbing, not the user's command
+// line, and the parser already rejects a bad flag value with exit 2.
 inline void init(const char *argv0, const char *configFileName = "config.lua") {
     const std::string configPreset = args().configPreset();
     const int requestedWorkerThreads = args().workerThreads();
@@ -103,6 +110,18 @@ inline void init(const char *argv0, const char *configFileName = "config.lua") {
         requestedWorkerThreads == IRArgs::kWorkerThreadsUnset
             ? std::nullopt
             : std::optional<int>{requestedWorkerThreads};
+    const std::string requestedWindowMode = args().windowMode();
+    std::optional<IRWindow::WindowMode> windowModeOverride;
+    if (!requestedWindowMode.empty()) {
+        windowModeOverride = IRWindow::parseWindowMode(requestedWindowMode);
+        if (!windowModeOverride.has_value()) {
+            IRE_LOG_WARN(
+                "Ignoring window mode '{}' (valid: normal | background | hidden | offscreen); "
+                "keeping the configured window_mode",
+                requestedWindowMode
+            );
+        }
+    }
     auto exePath = std::filesystem::weakly_canonical(std::filesystem::path(argv0));
     auto exeDir = exePath.parent_path();
     std::filesystem::current_path(exeDir);
@@ -114,7 +133,8 @@ inline void init(const char *argv0, const char *configFileName = "config.lua") {
     g_world = std::make_unique<World>(
         resolveScriptPath(configFileName).c_str(),
         configPreset.c_str(),
-        workerThreadsOverride
+        workerThreadsOverride,
+        windowModeOverride
     );
     g_world->setupLuaBindings(g_luaBindingRegistrations);
 }
@@ -124,7 +144,8 @@ inline void init(const char *argv0, const char *configFileName = "config.lua") {
 // cwd change and World (window/GL/Metal) construction — then runs the same
 // exe-dir setup as the argv0 overload. This is the entry point a no-custom-arg
 // target uses: IREngine::init(argc, argv) gives it --help / --auto-screenshot
-// / --auto-record / --config-preset / --worker-threads with no parser code.
+// / --auto-record / --config-preset / --worker-threads / --window-mode with no
+// parser code.
 inline void init(int argc, char **argv, const char *configFileName = "config.lua") {
     IR_ASSERT(argc > 0, "init(argc, argv) needs argv[0] for exe-dir resolution");
     args().parse(argc, argv);

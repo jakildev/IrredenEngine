@@ -7,8 +7,10 @@
 #define GLFW_INCLUDE_NONE
 #include <GLFW/glfw3.h>
 
+#include <optional>
 #include <queue>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -27,6 +29,40 @@ struct IRGLFWJoystickInfo {
         , joystickName_{joystickName}
         , isGamepad_{isGamepad} {}
 };
+
+/// How the engine window is presented at creation. `NORMAL` is the human
+/// default: shown, focused, placed on the preferred monitor. The other modes
+/// exist for unattended (fleet / agent) launches, so a demo never takes the
+/// screen from whoever is using the host:
+///   - `BACKGROUND`: shown but never activated or focused. The window lands
+///     behind whatever is in front, and on macOS the process runs as an
+///     accessory app (no Dock icon, no Cmd-Tab entry).
+///   - `HIDDEN`: never shown. The GL context / Metal layer, the framebuffer,
+///     synthetic input, and screenshot readback all work unchanged; only the
+///     on-screen surface is missing.
+///   - `OFFSCREEN`: `HIDDEN` plus an engine-owned screen target. The final
+///     composite renders into a framebuffer the render backend allocates at
+///     the window's framebuffer size, screenshots read that back, and nothing
+///     is ever presented: no swapchain, no drawable, no dependence on how the
+///     OS schedules an unmapped surface. Metal paces frames to the primary
+///     display's refresh so per-second cost matches a presented run. The
+///     launcher's default for capture runs.
+/// Minimizing is deliberately not a mode: a minimized window reports a 0x0
+/// framebuffer on Windows, which skips every screenshot. Resolved as
+/// `config.window_mode` < `IR_WINDOW_MODE` env var < `--window-mode`; the
+/// string spellings are shared with IRArgs through @ref windowModeName.
+enum class WindowMode {
+    NORMAL,
+    BACKGROUND,
+    HIDDEN,
+    OFFSCREEN,
+};
+
+/// The `--window-mode` / `config.window_mode` spelling of @p mode.
+const char *windowModeName(WindowMode mode);
+/// Parses a `--window-mode` / `config.window_mode` spelling (exact, lower
+/// case); `std::nullopt` for anything outside the accepted set.
+std::optional<WindowMode> parseWindowMode(std::string_view name);
 
 /// GLFW window hints for Metal / Vulkan backends (no GL context).
 inline constexpr std::pair<int, int> kNoApiWindowHints[] = {
@@ -67,8 +103,20 @@ inline const std::pair<int, int> &getWindowHint(int index) {
 /// and the per-frame event queues that `InputManager` drains each frame.
 class IRGLFWWindow {
   public:
-    IRGLFWWindow(ivec2 initWindowSize, bool fullscreen, int monitorIndex, std::string monitorName);
+    /// @p mode selects the presentation (see @ref WindowMode). Fullscreen is
+    /// only honored in NORMAL mode; the other modes log and fall back to a
+    /// window of @p initWindowSize.
+    IRGLFWWindow(
+        ivec2 initWindowSize,
+        bool fullscreen,
+        int monitorIndex,
+        std::string monitorName,
+        WindowMode mode = WindowMode::NORMAL
+    );
     ~IRGLFWWindow();
+
+    /// The presentation mode this window was created with.
+    WindowMode getWindowMode() const;
 
     /// Logical window size in screen coordinates (may differ from framebuffer under HiDPI).
     void getWindowSize(int &width, int &height);
@@ -149,6 +197,7 @@ class IRGLFWWindow {
     bool m_isFullscreen;
     int m_monitorIndex;
     std::string m_monitorName;
+    WindowMode m_windowMode;
     std::queue<int> m_keysPressedToProcess;
     std::queue<int> m_keysReleasedToProcess;
     std::queue<int> m_mouseButtonsPressedToProcess;

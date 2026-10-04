@@ -5,6 +5,7 @@
 #include <irreden/ir_script.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/job/job_manager.hpp>
+#include <irreden/window/ir_glfw_window.hpp>
 
 #include <optional>
 #include <string>
@@ -25,11 +26,14 @@ class WorldConfig {
     /// @p workerThreadsOverride is the `--worker-threads` value, applied on
     /// top of both files so precedence reads defaults < config.lua < preset
     /// < command line. `std::nullopt` (an absent flag) leaves the configured
-    /// `worker_thread_count` alone.
+    /// `worker_thread_count` alone. @p windowModeOverride is the resolved
+    /// `--window-mode` / `IR_WINDOW_MODE` value on the same footing over
+    /// `window_mode`.
     WorldConfig(
         const char *luaConfigFile,
         const char *presetFile = nullptr,
-        std::optional<int> workerThreadsOverride = std::nullopt
+        std::optional<int> workerThreadsOverride = std::nullopt,
+        std::optional<IRWindow::WindowMode> windowModeOverride = std::nullopt
     )
         : m_lua{luaConfigFile}
         , m_config{} {
@@ -74,6 +78,21 @@ class WorldConfig {
         m_config.addEntry(
             "monitor_name",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::STRING>>("")
+        );
+        m_config.addEntry(
+            "window_mode",
+            std::make_unique<IRScript::LuaValue<IRScript::ENUM, IRWindow::WindowMode>>(
+                IRWindow::WindowMode::NORMAL,
+                [](const std::string &enumString) {
+                    const auto mode = IRWindow::parseWindowMode(enumString);
+                    IR_ASSERT(
+                        mode.has_value(),
+                        "Invalid enum value for window_mode (normal | background | hidden | "
+                        "offscreen)"
+                    );
+                    return mode.value_or(IRWindow::WindowMode::NORMAL);
+                }
+            )
         );
         m_config.addEntry(
             "subdivision_mode",
@@ -211,6 +230,7 @@ class WorldConfig {
             }
         }
         applyWorkerThreadsOverride(workerThreadsOverride);
+        applyWindowModeOverride(windowModeOverride);
     }
 
     IRScript::ILuaValue &operator[](const std::string &key) {
@@ -239,6 +259,25 @@ class WorldConfig {
         m_config.addEntry(
             "worker_thread_count",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::INTEGER>>(requested)
+        );
+    }
+
+    /// Replaces the parsed `window_mode` with the command-line / environment
+    /// value; same re-add write path as the worker-thread override.
+    void applyWindowModeOverride(std::optional<IRWindow::WindowMode> windowModeOverride) {
+        if (!windowModeOverride.has_value()) {
+            return;
+        }
+        IRE_LOG_INFO(
+            "--window-mode / IR_WINDOW_MODE override: window_mode = {}",
+            IRWindow::windowModeName(*windowModeOverride)
+        );
+        m_config.addEntry(
+            "window_mode",
+            std::make_unique<IRScript::LuaValue<IRScript::ENUM, IRWindow::WindowMode>>(
+                *windowModeOverride,
+                [mode = *windowModeOverride](const std::string &) { return mode; }
+            )
         );
     }
 

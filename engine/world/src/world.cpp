@@ -18,9 +18,10 @@ namespace IREngine {
 World::World(
     const char *configFileName,
     const char *configPresetFile,
-    std::optional<int> workerThreadsOverride
+    std::optional<int> workerThreadsOverride,
+    std::optional<IRWindow::WindowMode> windowModeOverride
 )
-    : m_worldConfig{configFileName, configPresetFile, workerThreadsOverride}
+    : m_worldConfig{configFileName, configPresetFile, workerThreadsOverride, windowModeOverride}
     , m_IRGLFWWindow{
           ivec2(
               m_worldConfig["init_window_width"].get_integer(),
@@ -28,7 +29,8 @@ World::World(
           ),
           m_worldConfig["fullscreen"].get_boolean(),
           m_worldConfig["monitor_index"].get_integer(),
-          m_worldConfig["monitor_name"].get_string()
+          m_worldConfig["monitor_name"].get_string(),
+          static_cast<IRWindow::WindowMode>(m_worldConfig["window_mode"].get_enum())
       }
     , m_lua{}
     , m_entityManager{}

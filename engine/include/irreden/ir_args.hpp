@@ -17,8 +17,8 @@
 //
 // Standalone tools that don't run the engine loop construct the parser in
 // no-common-args mode (so --help doesn't advertise --auto-screenshot /
-// --auto-record / --config-preset / --worker-threads) and take positional
-// arguments:
+// --auto-record / --config-preset / --worker-threads / --window-mode) and take
+// positional arguments:
 //
 //     IRArgs::Parser args("img_diff — highlight PNG drift.", IRArgs::Common::NONE);
 //     args.integer("--threshold", "Per-channel tolerance", 0);
@@ -173,10 +173,17 @@ class Parser {
     //   - kWorkerThreadsUnset when --worker-threads is absent, else the
     //     requested worker count: -1 for auto, 0 for inline-serial, N for an
     //     N-worker pool.
+    //   - the --window-mode value when the flag was given, else the
+    //     IR_WINDOW_MODE environment variable when set and non-empty (verbatim,
+    //     unvalidated — the engine maps and warns), else the empty string so
+    //     the creation's configured `window_mode` stands. The env rung exists
+    //     for launchers (ir-run) that must keep unattended demos off the
+    //     screen without editing every call site.
     int autoScreenshotWarmupFrames() const;
     int autoRecordFrames() const;
     std::string configPreset() const;
     int workerThreads() const;
+    std::string windowMode() const;
 
     // The auto-generated usage text (exactly what --help prints).
     std::string usage() const;

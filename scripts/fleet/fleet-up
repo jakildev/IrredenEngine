@@ -340,6 +340,16 @@ export FLEET_CONCURRENCY_WORKER
 export FLEET_CONCURRENCY_OPUS_WORKER FLEET_CONCURRENCY_SONNET_AUTHOR  # deprecated
 export FLEET_CONCURRENCY_SONNET_REVIEWER FLEET_CONCURRENCY_OPUS_REVIEWER
 export FLEET_CONCURRENCY_MERGER
+# Per-run launch knobs ir-run reads in every pane (fleet-up.conf.sample
+# documents both). Sourced from the conf above; exported here so a pane's
+# `fleet-run` sees them without the operator also wiring them into shell
+# init. Unset knobs stay unset (ir-run then applies its own defaults).
+if [[ -n "${FLEET_RUN_DEFAULT_TIMEOUT:-}" ]]; then export FLEET_RUN_DEFAULT_TIMEOUT; fi
+if [[ -n "${FLEET_WINDOW_MODE:-}" ]]; then export FLEET_WINDOW_MODE; fi
+# Every launch from a pane is unattended, so a direct ir-run there (perf
+# scripts, a Codex runtime) keeps demos off the screen exactly as fleet-run
+# does; a human's own shell never carries the marker.
+export FLEET_UNATTENDED=1
 export FLEET_EFFORT_OPUS_ARCHITECT FLEET_EFFORT_GAME_ARCHITECT
 # Propagate a conf-set global FLEET_EFFORT to the dispatcher + babysit
 # (a bare `FLEET_EFFORT=` in the conf is otherwise a non-exported shell var).
@@ -2127,6 +2137,9 @@ TRANSIENT_PANE_CMD='exec $SHELL -i'
 #     and never FLEET_GH_ACTOR: a pane's ~/.bashrc re-orders PATH anyway, and
 #     a role's identity comes from FLEET_ROLE. fleet-down's
 #     clear_tmux_gh_accounting removes exactly these names.
+#   FLEET_UNATTENDED / FLEET_RUN_DEFAULT_TIMEOUT / FLEET_WINDOW_MODE — ir-run's
+#     launch knobs; without the marker a pane's direct ir-run takes the
+#     host's screen. A knob the conf no longer sets is evicted.
 seed_tmux_pane_env() {
     local name
     tmux set-environment -g IR_FLEET_WORKERS "$IR_FLEET_WORKERS"
@@ -2137,7 +2150,8 @@ seed_tmux_pane_env() {
         tmux set-environment -g -u GH_TOKEN
     fi
     for name in FLEET_GH_ACCOUNTING FLEET_GH_REAL FLEET_GH_PYTHON FLEET_GH_LAUNCHER \
-                FLEET_GH_EVENT_ROOT; do
+                FLEET_GH_EVENT_ROOT \
+                FLEET_UNATTENDED FLEET_RUN_DEFAULT_TIMEOUT FLEET_WINDOW_MODE; do
         if [[ -n "${!name:-}" ]]; then
             tmux set-environment -g "$name" "${!name}"
         else

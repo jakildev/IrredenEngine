@@ -122,6 +122,15 @@ Parser::Parser(const char *programDescription, Common common)
         "N workers",
         kWorkerThreadsUnset
     );
+    enumValue(
+        "--window-mode",
+        "Window presentation: normal (shown, focused) | background (shown, never focused or "
+        "activated) | hidden (never shown; renders and captures as usual) | offscreen (hidden, "
+        "and the engine renders into its own screen target instead of the swapchain). "
+        "Overrides the IR_WINDOW_MODE env var and config `window_mode`",
+        {"normal", "background", "hidden", "offscreen"},
+        "normal"
+    );
 }
 
 Parser::Entry &Parser::add(const char *name, const char *help, Type type, const char *shortAlias) {
@@ -514,6 +523,14 @@ std::string Parser::configPreset() const {
 
 int Parser::workerThreads() const {
     return wasProvided("--worker-threads") ? getInt("--worker-threads") : kWorkerThreadsUnset;
+}
+
+std::string Parser::windowMode() const {
+    if (wasProvided("--window-mode")) {
+        return getEnum("--window-mode");
+    }
+    const char *fromEnv = std::getenv("IR_WINDOW_MODE");
+    return (fromEnv != nullptr && fromEnv[0] != '\0') ? std::string(fromEnv) : std::string();
 }
 
 std::string Parser::usage() const {

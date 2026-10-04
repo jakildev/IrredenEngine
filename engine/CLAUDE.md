@@ -22,19 +22,22 @@ Core engine static libraries. Everything here is shared by every creation.
 `engine/include/irreden/ir_args.hpp` is the declarative argument framework, and
 the engine **owns the parse**: `IREngine::args()` is a process-global
 `IRArgs::Parser` pre-loaded with the engine-common args (`--auto-screenshot`,
-`--auto-record`, `--config-preset`, `--worker-threads`) plus a free `--help` /
-`-h`. `IREngine::init(argc, argv)`
+`--auto-record`, `--config-preset`, `--worker-threads`, `--window-mode`) plus a
+free `--help` / `-h`. `IREngine::init(argc, argv)`
 calls `args().parse(argc, argv)` as its **first action**, before any window /
 GL / Metal init, so `--help` is instant and headless-safe.
 
 - **No custom flags?** Just call `IREngine::init(argc, argv)` — the target gets
   working `--help` / `--auto-screenshot` / `--auto-record` / `--config-preset` /
-  `--worker-threads` with no parser code at all, read back via
+  `--worker-threads` / `--window-mode` with no parser code at all, read back via
   `IREngine::args().autoScreenshotWarmupFrames()` / `.autoRecordFrames()` /
-  `.configPreset()` / `.workerThreads()`. `--worker-threads` needs no read-back
-  in the target: `init` applies it to `WorldConfig::worker_thread_count` itself
-  (`-1` auto, `0` inline-serial, `N` workers; absent =
-  `IRArgs::kWorkerThreadsUnset`, config value stands).
+  `.configPreset()` / `.workerThreads()` / `.windowMode()`. `--worker-threads`
+  and `--window-mode` need no read-back in the target: `init` applies them to
+  `WorldConfig::worker_thread_count` / `window_mode` itself (`-1` auto, `0`
+  inline-serial, `N` workers; absent = `IRArgs::kWorkerThreadsUnset`, config
+  value stands; `--window-mode` falls back to the `IR_WINDOW_MODE` env var that
+  `ir-run` exports for unattended runs — `engine/window/CLAUDE.md` "Window
+  modes").
 - **Custom flags?** Register them on `IREngine::args()` (`.flag` / `.integer` /
   `.number` / `.string` / `.optionalInt` / `.numbers` for a fixed-count float
   list like `--sweep-yaw <from> <to> <n>` / `.enumValue` for a value validated

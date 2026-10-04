@@ -5,9 +5,11 @@
 #include <irreden/render/render_device.hpp>
 #include <irreden/render/texture.hpp>
 
+#include <chrono>
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -216,11 +218,10 @@ MTL::RenderCommandEncoder *createRenderEncoder() {
     MTL::PixelFormat depthPixelFormat = metalCurrentDepthPixelFormat();
 
     if (metalUsesDefaultRenderTarget()) {
-        auto *drawable = metalDrawable();
-        if (drawable == nullptr) {
+        colorTexture = metalDefaultColorTexture();
+        if (colorTexture == nullptr) {
             return nullptr;
         }
-        colorTexture = drawable->texture();
         colorPixelFormat = colorTexture->pixelFormat();
     } else {
         colorTexture = metalCurrentColorTexture();
@@ -303,6 +304,7 @@ class MetalRenderDevice final : public RenderDevice {
     }
 
     void shutdown() {
+        releaseOffscreenTarget();
         for (auto &pair : m_timestamps) {
             releaseTimestampPair(pair);
         }
@@ -348,6 +350,13 @@ class MetalRenderDevice final : public RenderDevice {
 
     void beginFrame() override {
         m_gpuFrameTiming.beginFrame();
+        if (isOffscreen()) {
+            // No swapchain: the frame renders into the engine-owned target
+            // and present() never has a drawable to show.
+            setMetalDrawable(nullptr);
+            setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
+            return;
+        }
         auto *drawable = metalLayer()->nextDrawable();
         if (drawable == nullptr) {
             setMetalDrawable(nullptr);
@@ -386,6 +395,54 @@ class MetalRenderDevice final : public RenderDevice {
         m_gpuFrameTiming.endFrame();
         setMetalDrawable(nullptr);
         setMetalCommandBuffer(nullptr);
+        paceOffscreenFrame();
+    }
+
+    // OFFSCREEN window mode: an engine-owned BGRA8 texture at the window's
+    // framebuffer size stands in for the swapchain drawable. Same pixel format
+    // and no depth attachment, so every pipeline state and the default-target
+    // clear are exactly the ones a presented frame uses.
+    void initOffscreenTarget(int width, int height, int refreshHz) {
+        releaseOffscreenTarget();
+        auto *descriptor = MTL::TextureDescriptor::texture2DDescriptor(
+            MTL::PixelFormatBGRA8Unorm,
+            static_cast<NS::UInteger>(width),
+            static_cast<NS::UInteger>(height),
+            false
+        );
+        descriptor->setUsage(
+            static_cast<MTL::TextureUsage>(
+                MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead
+            )
+        );
+        descriptor->setStorageMode(MTL::StorageModeShared);
+        m_offscreenTarget = metalDevice()->newTexture(descriptor);
+        descriptor->release();
+        IR_ASSERT(m_offscreenTarget != nullptr, "Failed to create the offscreen screen target");
+        setMetalOffscreenColorTexture(m_offscreenTarget);
+        m_offscreenRefreshHz = refreshHz;
+        m_offscreenFrameInterval =
+            std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                std::chrono::duration<double>(1.0 / static_cast<double>(refreshHz))
+            );
+        m_offscreenNextFrame = std::chrono::steady_clock::now();
+    }
+
+    void resizeOffscreenTarget(int width, int height) {
+        initOffscreenTarget(width, height, m_offscreenRefreshHz);
+    }
+
+    void releaseOffscreenTarget() {
+        if (m_offscreenTarget == nullptr) {
+            return;
+        }
+        setMetalOffscreenColorTexture(nullptr);
+        m_offscreenTarget->release();
+        m_offscreenTarget = nullptr;
+    }
+
+    bool isOffscreen() const {
+        return m_offscreenTarget != nullptr;
     }
 
     void clearDefaultFramebuffer() override {
@@ -402,12 +459,7 @@ class MetalRenderDevice final : public RenderDevice {
             return false;
         }
 
-        auto *drawable = metalDrawable();
-        if (drawable == nullptr) {
-            return false;
-        }
-
-        MTL::Texture *texture = drawable->texture();
+        MTL::Texture *texture = metalDefaultColorTexture();
         if (texture == nullptr) {
             return false;
         }
@@ -1150,12 +1202,36 @@ metalCurrentDepthPixelFormat(),
         pair.hasEnd_ = false;
     }
 
+    // A presented frame is paced by the display: nextDrawable blocks until
+    // the swapchain has a free drawable, so the loop runs at the refresh
+    // rate. OFFSCREEN has no such gate, so the same cadence is reproduced by
+    // sleeping to the next refresh-interval boundary once the GPU work is
+    // complete. Per-second CPU/GPU load — and the --auto-record sim rate —
+    // then match a visible run instead of spinning as fast as the GPU allows.
+    // A frame that overran its interval is not caught up in a burst: the
+    // deadline resets to now so the next frame gets a full interval.
+    void paceOffscreenFrame() {
+        if (!isOffscreen()) {
+            return;
+        }
+        const auto now = std::chrono::steady_clock::now();
+        if (m_offscreenNextFrame + m_offscreenFrameInterval < now) {
+            m_offscreenNextFrame = now;
+        }
+        m_offscreenNextFrame += m_offscreenFrameInterval;
+        std::this_thread::sleep_until(m_offscreenNextFrame);
+    }
+
     GpuTimestampHandle m_nextTimestampHandle = 1;
     std::vector<MetalTimestampPair> m_timestamps;
     MTL::CounterSet *m_timestampCounterSet = nullptr;
     bool m_supportsTimestampPairs = false;
     bool m_loggedTimestampAllocFailure = false;
     std::unordered_map<MTL::Texture *, MTL::Buffer *> m_clearSourceBuffers;
+    MTL::Texture *m_offscreenTarget = nullptr;
+    int m_offscreenRefreshHz = 0;
+    std::chrono::steady_clock::duration m_offscreenFrameInterval{};
+    std::chrono::steady_clock::time_point m_offscreenNextFrame{};
 };
 
 // Intentionally leaked so the device state outlives all other statics.
@@ -1220,10 +1296,43 @@ MetalRenderImpl::~MetalRenderImpl() {
     }
 }
 
+namespace {
+// What a presented frame is paced to; the OFFSCREEN pacer reproduces it.
+constexpr int kFallbackRefreshHz = 60;
+
+int primaryDisplayRefreshHz() {
+    GLFWmonitor *monitor = glfwGetPrimaryMonitor();
+    const GLFWvidmode *mode = monitor != nullptr ? glfwGetVideoMode(monitor) : nullptr;
+    return (mode != nullptr && mode->refreshRate > 0) ? mode->refreshRate : kFallbackRefreshHz;
+}
+} // namespace
+
 void MetalRenderImpl::init() {
     IR_ASSERT(m_device != nullptr, "Failed to create Metal device.");
 
-    GLFWwindow *rawWindow = IRWindow::getWindow().getRawWindow();
+    IRWindow::IRGLFWWindow &window = IRWindow::getWindow();
+    if (window.getWindowMode() == IRWindow::WindowMode::OFFSCREEN) {
+        // No CAMetalLayer at all: the engine-owned target replaces the
+        // swapchain, so nothing depends on how the OS schedules drawables for
+        // an unmapped (or occluded) surface.
+        metalRenderDevice().init(m_device, nullptr);
+        setDevice(&metalRenderDevice());
+        int width = 0;
+        int height = 0;
+        window.getFramebufferSize(width, height);
+        const int refreshHz = primaryDisplayRefreshHz();
+        metalRenderDevice().initOffscreenTarget(width, height, refreshHz);
+        window.setCallbackFramebufferSize(metalCallback_framebuffer_size);
+        IRE_LOG_INFO(
+            "Metal offscreen screen target attached ({}x{}, paced at {} Hz).",
+            width,
+            height,
+            refreshHz
+        );
+        return;
+    }
+
+    GLFWwindow *rawWindow = window.getRawWindow();
     void *layerPtr = createMetalLayerForWindow(rawWindow, m_device);
     IR_ASSERT(layerPtr != nullptr, "Failed to create CAMetalLayer");
     m_layer = reinterpret_cast<CA::MetalLayer *>(layerPtr);
@@ -1248,7 +1357,11 @@ void MetalRenderImpl::printInfo() {
 }
 
 void metalCallback_framebuffer_size(GLFWwindow *, int width, int height) {
-    resizeMetalDrawable(width, height);
+    if (metalRenderDevice().isOffscreen()) {
+        metalRenderDevice().resizeOffscreenTarget(width, height);
+    } else {
+        resizeMetalDrawable(width, height);
+    }
     IRE_LOG_INFO("Resized Metal viewport to {}x{}", width, height);
 }
 

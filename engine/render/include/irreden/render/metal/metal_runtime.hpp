@@ -97,6 +97,17 @@ MTL::Texture *boundMetalImageTexture(std::uint32_t unit);
 // handle can dereference freed storage. Call this before releasing the handle.
 void untrackMetalTexture(MTL::Texture *texture);
 
+// OFFSCREEN window mode: the engine-owned texture that stands in for the
+// swapchain drawable as the default render target (same BGRA8 / no-depth
+// shape, so every pipeline state and clear is the one a presented frame
+// uses). nullptr — the normal case — means the current drawable's texture.
+// Non-owning: MetalRenderDevice creates and releases the texture.
+void setMetalOffscreenColorTexture(MTL::Texture *texture);
+// The texture `bindMetalDefaultRenderTarget` renders into this frame: the
+// offscreen target when one is set, else the current drawable's texture,
+// else nullptr (no drawable this frame).
+MTL::Texture *metalDefaultColorTexture();
+
 void bindMetalDefaultRenderTarget();
 void bindMetalFramebufferRenderTarget(
     MTL::Texture *colorTexture,

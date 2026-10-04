@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include "../common/env_var.hpp"
+
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_system.hpp>
@@ -78,18 +80,9 @@ bool fileExists(const std::string &path) {
     return in.good();
 }
 
-// Portable IR_PERSIST_DUMP toggle so the flag-on / flag-off dump test runs on
-// Linux/macOS (setenv/unsetenv) and native Windows (_putenv_s).
+// The flag-on / flag-off dump toggle, portable across the test hosts.
 void setDumpFlag(bool on) {
-#if defined(_WIN32)
-    _putenv_s("IR_PERSIST_DUMP", on ? "1" : "");
-#else
-    if (on) {
-        setenv("IR_PERSIST_DUMP", "1", 1);
-    } else {
-        unsetenv("IR_PERSIST_DUMP");
-    }
-#endif
+    IRTest::setEnvVar("IR_PERSIST_DUMP", on ? "1" : nullptr);
 }
 
 class LuaWorldSnapshotTest : public testing::Test {

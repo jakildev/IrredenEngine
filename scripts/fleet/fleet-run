@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # fleet-run — backwards-compatible shim for ir-run.
 #
-# Execs ir-run (engine/tools/bin/ir-run) with the same arguments.
+# Execs ir-run (engine/tools/bin/ir-run) with the same arguments, after
+# marking the launch unattended (FLEET_UNATTENDED=1) so ir-run applies the
+# fleet's window-mode defaults.
 # The worktree-aware build dir, exe lookup, --timeout watchdog,
 # --targets delegation, and verb-conditional ir-acquire wrapping
 # (--auto-screenshot / --auto-record → gpu, --auto-profile → benchmark) all live
@@ -21,6 +23,12 @@ SCRIPT_PATH="${BASH_SOURCE[0]}"
 while [[ -L "$SCRIPT_PATH" ]]; do SCRIPT_PATH="$(readlink "$SCRIPT_PATH")"; done
 SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 IR_RUN="$SCRIPT_DIR/../../engine/tools/bin/ir-run"
+
+# fleet-run is ir-run plus the fleet's unattended-launch defaults: the marker
+# lets ir-run keep a demo off the host's screen (window mode by run shape;
+# ir-run --help "Window mode"). A bare ir-run in a human's shell carries no
+# marker and shows its window with no extra flags.
+export FLEET_UNATTENDED=1
 
 if [[ -x "$IR_RUN" ]]; then
     exec "$IR_RUN" "$@"
