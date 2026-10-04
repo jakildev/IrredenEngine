@@ -30,6 +30,37 @@ binary boot on every host.
 `swapBuffers()` is called by `World::gameLoop()` at the end of each
 render frame.
 
+## Window modes
+
+`IRWindow::WindowMode` (`ir_glfw_window.hpp`) selects how the window is
+presented at creation, so an unattended launch never takes the screen from
+whoever is using the host:
+
+| Mode | What GLFW does | Use |
+|---|---|---|
+| `normal` | shown, focused, placed on the preferred monitor | a human at the keyboard |
+| `background` | shown, `GLFW_FOCUSED` / `GLFW_FOCUS_ON_SHOW` off; lands behind the active window | watchdog (`--timeout`) runs a human may glance at |
+| `hidden` | `GLFW_VISIBLE` off — never mapped; context, framebuffer, synthetic input and screenshot readback all work | capture runs (`--auto-screenshot` / `--auto-record` / `--auto-profile`) |
+
+Resolution order is config `window_mode` < the `IR_WINDOW_MODE` env var <
+`--window-mode` (engine-common arg; `IRArgs::Parser::windowMode()`). `ir-run`
+exports the env rung by the run's shape (capture verb → hidden, watchdog →
+background, plain exec untouched; `FLEET_WINDOW_MODE` replaces both defaults),
+so no demo or skill names the flag. A human who wants to watch a fleet-shaped
+run passes `--window-mode normal`.
+
+Per-OS hooks live in `ir_window_platform.hpp`: on macOS both non-normal modes
+switch the process to the accessory activation policy after `glfwInit` (no
+Dock icon, no Cmd-Tab entry — and AppKit will not order an inactive app's
+window over the active app's key window, which is what makes `background`
+land behind). On Windows `background` pushes the new window to the bottom of
+the z-order with `SWP_NOACTIVATE`, since GLFW's non-activating show still
+inserts it on top. X11 needs nothing beyond the hints.
+
+Minimized is deliberately not a mode: a minimized window reports a 0x0
+framebuffer on Windows, and `VideoManager::captureScreenshot` skips every
+shot. Fullscreen is ignored (with a log line) outside `normal`.
+
 ## Framebuffer vs. window size
 
 Under HiDPI / scaling, the framebuffer is larger than the window. Use

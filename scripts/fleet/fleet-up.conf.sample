@@ -358,6 +358,19 @@
 
 # FLEET_RUN_DEFAULT_TIMEOUT=300
 
+# --- Window mode for unattended launches -----------------------------------
+#
+# ir-run exports IR_WINDOW_MODE (the engine's --window-mode fallback) for
+# runs that are unattended by shape, so a demo never activates over the
+# human's windows: capture verbs (--auto-screenshot / --auto-record /
+# --auto-profile) get `hidden`, watchdog runs (--timeout /
+# FLEET_RUN_DEFAULT_TIMEOUT) get `background`. A plain `fleet-run <demo>`
+# with neither is left alone. FLEET_WINDOW_MODE replaces both defaults with
+# one value (normal | background | hidden); engine/window/CLAUDE.md "Window
+# modes" has the per-mode behavior. Exported to every pane by fleet-up.
+
+# FLEET_WINDOW_MODE=background
+
 # --- Smoke-only worker (cross-host) ----------------------------------------
 #
 # FLEET_SMOKE_WORKER=1 tells fleet-dispatcher to serve the smoke-worker

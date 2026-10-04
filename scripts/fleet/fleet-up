@@ -340,6 +340,12 @@ export FLEET_CONCURRENCY_WORKER
 export FLEET_CONCURRENCY_OPUS_WORKER FLEET_CONCURRENCY_SONNET_AUTHOR  # deprecated
 export FLEET_CONCURRENCY_SONNET_REVIEWER FLEET_CONCURRENCY_OPUS_REVIEWER
 export FLEET_CONCURRENCY_MERGER
+# Per-run launch knobs ir-run reads in every pane (fleet-up.conf.sample
+# documents both). Sourced from the conf above; exported here so a pane's
+# `fleet-run` sees them without the operator also wiring them into shell
+# init. Unset knobs stay unset (ir-run then applies its own defaults).
+if [[ -n "${FLEET_RUN_DEFAULT_TIMEOUT:-}" ]]; then export FLEET_RUN_DEFAULT_TIMEOUT; fi
+if [[ -n "${FLEET_WINDOW_MODE:-}" ]]; then export FLEET_WINDOW_MODE; fi
 export FLEET_EFFORT_OPUS_ARCHITECT FLEET_EFFORT_GAME_ARCHITECT
 # Propagate a conf-set global FLEET_EFFORT to the dispatcher + babysit
 # (a bare `FLEET_EFFORT=` in the conf is otherwise a non-exported shell var).

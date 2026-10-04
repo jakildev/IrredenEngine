@@ -176,6 +176,7 @@ add_executable(IrredenEngineTest
   video/auto_screenshot_helpers_test.cpp
   video/capture_output_resolution_test.cpp
   video/recording_state_test.cpp
+  window/window_mode_test.cpp
   world/chunk_coord_test.cpp
   world/chunk_membership_migration_test.cpp
   world/chunk_persistence_test.cpp
@@ -189,6 +190,7 @@ add_executable(IrredenEngineTest
   world/component_migration_test.cpp
   world/voxel_set_serialize_test.cpp
   world/world_config_missing_table_test.cpp
+  world/world_config_window_mode_test.cpp
   world/save_serializers_test.cpp
 )
 
