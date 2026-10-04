@@ -34,13 +34,26 @@ IR_BUILD = r"""#!/usr/bin/env bash
 case "$1" in
   hold) echo "line one"; while [ ! -e "$2" ]; do sleep 0.05; done; echo "line two"; exit 7 ;;
   tree) sleep 300 & echo "$!" > "$2.tmp"; echo "$$" >> "$2.tmp"; mv "$2.tmp" "$2"; wait ;;
-  orphan) "$3" -c "$ORPHAN" "$2" & while [ ! -e "$2" ]; do sleep 0.05; done; exit 0 ;;
+  orphan) "$3" -c "$ORPHAN" "$2" "$4" & while [ ! -e "$2" ]; do sleep 0.05; done; exit 0 ;;
   *) echo "ir-build $*"; exit 0 ;;
 esac
 """
 # Ignores SIGTERM, records its own native pid, then writes to the job log
-# until something kills it.
+# until something kills it. "session" leaves the job's process group and
+# drops the inherited environment, so only the log descriptor ties it to the
+# job; "quiet-session" leaves the group and closes the log, so only the
+# environment does.
 ORPHAN = r"""import os, signal, sys, time
+mode = sys.argv[2] if len(sys.argv) > 2 else "group"
+if mode == "session":
+    os.setsid()
+    os.execve(sys.executable, [sys.executable, "-c", os.environ["ORPHAN"], sys.argv[1],
+                               "scrubbed"], {})
+if mode == "quiet-session":
+    os.setsid()
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    os.dup2(devnull, 1)
+    os.dup2(devnull, 2)
 if hasattr(signal, "SIGTERM"):
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
 with open(sys.argv[1] + ".tmp", "w") as handle:
@@ -94,6 +107,7 @@ class JobsCase(unittest.TestCase):
         (self.repo / "scripts/fleet/tests").mkdir(parents=True)
         (self.repo / "engine/tools/bin").mkdir(parents=True)
         shutil.copy2(SUBJECT, self.repo / "scripts/fleet/fleet-jobs")
+        shutil.copy2(SUBJECT.with_name("fleet_codex_doctor.py"), self.repo / "scripts/fleet")
         for rel, text in (("engine/tools/bin/ir-build", IR_BUILD),
                           ("scripts/fleet/tests/run_all.sh", RUN_ALL),
                           ("scripts/render-verify.py", RENDER_VERIFY)):
@@ -213,7 +227,11 @@ class Lifecycle(JobsCase):
                 job = self.start(args)
                 waited = self.jobs(["wait", job])
                 self.assertEqual(waited.returncode, code, waited.stderr)
-                self.assertEqual(waited.stdout.strip(), line)
+                lines = waited.stdout.splitlines()
+                if args[0] == "render-verify":
+                    self.assertTrue(lines[0].startswith("[fleet-jobs] display: "), lines)
+                    lines = lines[1:]
+                self.assertEqual("\n".join(lines).strip(), line)
 
     def test_one_live_render_verify_per_pane(self):
         release = self.root / "release"
@@ -261,21 +279,29 @@ class Lifecycle(JobsCase):
 
 
 class NaturalExit(JobsCase):
+    MODES = ("group",) if os.name == "nt" else ("group", "session", "quiet-session")
+
     def test_exit_drains_a_term_resistant_descendant_before_terminal_status(self):
-        pidfile = self.root / "orphan"
-        job = self.start(["build", "--", "orphan", str(pidfile), sys.executable])
-        waited = self.jobs(["wait", job])
-        self.assertEqual(waited.returncode, 0, waited.stderr)
-        self.assertIn(f"{job} succeeded exit=0", waited.stderr.splitlines()[-1])
-        self.assertIn("tick", waited.stdout)
-        descendant = int(pidfile.read_text())
-        self.assertIsNone(load_subject().identity(descendant),
-                          f"descendant {descendant} outlived the terminal status")
-        log = self.state / "jobs" / self.pane_a / job / "job.log"
-        final = log.read_bytes()
-        self.assertEqual(final.decode().splitlines(), waited.stdout.splitlines())
-        time.sleep(1)
-        self.assertEqual(log.read_bytes(), final, "the log grew after the terminal status")
+        for mode in self.MODES:
+            with self.subTest(mode=mode):
+                pidfile = self.root / f"orphan-{mode}"
+                job = self.start(["build", "--", "orphan", str(pidfile), sys.executable, mode])
+                waited = self.jobs(["wait", job])
+                self.assertEqual(waited.returncode, 0, waited.stderr)
+                self.assertIn(f"{job} succeeded exit=0", waited.stderr.splitlines()[-1])
+                if mode != "quiet-session":
+                    self.assertIn("tick", waited.stdout)
+                descendant = int(pidfile.read_text())
+                survivor = load_subject().identity(descendant)
+                if survivor:
+                    os.kill(descendant, getattr(signal, "SIGKILL", signal.SIGTERM))
+                self.assertIsNone(survivor,
+                                  f"{mode} descendant {descendant} outlived the terminal status")
+                log = self.state / "jobs" / self.pane_a / job / "job.log"
+                final = log.read_bytes()
+                self.assertEqual(final.decode().splitlines(), waited.stdout.splitlines())
+                time.sleep(1)
+                self.assertEqual(log.read_bytes(), final, "the log grew after the terminal status")
 
 
 @posix_only

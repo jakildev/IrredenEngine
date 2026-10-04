@@ -20,8 +20,9 @@ Profiles are fixed; there is no executable, path, or shell-string form.
                  enters here after its format -> format-changed rewrite)
   fleet-tests    <cwd's checkout>/scripts/fleet/tests/run_all.sh
   render-verify  <cwd's checkout>/scripts/render-verify.py; --build-dir,
-                 --update-references and --force are rejected, and a pane
-                 runs one render-verify job at a time
+                 --update-references and --force are rejected, a pane
+                 runs one render-verify job at a time, and the log opens
+                 with the displays the job's session can reach
 
 wait streams the job log and exits with the child's exit code; a job that is
 still running when --timeout elapses exits 124, and a lost job exits 1. The
@@ -47,6 +48,9 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+from fleet_codex_doctor import DISPLAY_PROBE  # noqa: E402
+
 PROFILES = ("build", "fleet-tests", "render-verify")
 TERMINAL = ("succeeded", "failed", "killed")
 # render-verify options a detached run may pass. --build-dir selects the
@@ -60,6 +64,7 @@ RENDER_VERIFY_FLAGS = ("--all", "--no-build")
 NAME_RE = re.compile(r"[A-Za-z0-9._-]{1,40}")
 JOB_ID_RE = re.compile(r"[0-9]{8}T[0-9]{6}Z-[a-z-]+-[0-9a-f]{6}")
 STARTUP_TIMEOUT = 30.0
+DISPLAY_PROBE_TIMEOUT = 10.0
 CANCEL_GRACE = 10.0
 POLL = 0.2
 IS_WINDOWS = os.name == "nt"
@@ -356,14 +361,16 @@ def identity(pid):
 
 
 def _process_table():
-    """{pid: (ppid, pgid)} for every process the platform probe can read."""
+    """{pid: (ppid, pgid, uid)} for every process the platform probe can read."""
     table = {}
     if sys.platform.startswith("linux"):
         for entry in Path("/proc").iterdir():
             if entry.name.isdigit():
                 fields = _linux_stat(entry.name)
-                if fields:
-                    table[int(entry.name)] = (int(fields[1]), int(fields[2]))
+                with contextlib.suppress(OSError):
+                    if fields:
+                        table[int(entry.name)] = (int(fields[1]), int(fields[2]),
+                                                  entry.stat().st_uid)
     elif sys.platform == "darwin":
         _darwin_info(os.getpid())  # loads libproc
         count = _libproc.proc_listallpids(None, 0)
@@ -372,7 +379,7 @@ def _process_table():
         for pid in pids[:max(count, 0)]:
             info = _darwin_info(pid)
             if info is not None:
-                table[int(info.pid)] = (int(info.ppid), int(info.pgid))
+                table[int(info.pid)] = (int(info.ppid), int(info.pgid), int(info.ids[0]))
     return table
 
 
@@ -383,7 +390,7 @@ def descendants(root):
     except (OSError, AttributeError):
         return []
     children = {}
-    for child, (parent, _) in table.items():
+    for child, (parent, *_) in table.items():
         children.setdefault(parent, []).append(child)
     found, pending = [], [root]
     while pending:
@@ -395,14 +402,110 @@ def descendants(root):
     return found
 
 
-def group_members(pgid):
-    """(pid, identity) of every live member of process group pgid but its leader."""
+_procargs = None
+
+
+def _darwin_environ(pid):
+    # KERN_PROCARGS2: argc, the exec path, argv, then the exec-time environment.
+    global _procargs
+    if _procargs is None:
+        _procargs = (ctypes.CDLL(None, use_errno=True), ctypes.create_string_buffer(1 << 20))
+    libc, buf = _procargs
+    mib = (ctypes.c_int * 3)(1, 49, int(pid))
+    size = ctypes.c_size_t(len(buf))
+    if libc.sysctl(mib, 3, buf, ctypes.byref(size), None, ctypes.c_size_t(0)):
+        return []
+    return ctypes.string_at(buf, size.value).split(b"\0")
+
+
+def _environ(pid):
+    """Exec-time environment entries of pid (with argv on macOS); [] when unreadable."""
+    try:
+        if sys.platform == "darwin":
+            return _darwin_environ(pid)
+        return Path(f"/proc/{int(pid)}/environ").read_bytes().split(b"\0")
+    except OSError:
+        return []
+
+
+class _ProcFdInfo(ctypes.Structure):
+    _fields_ = [("fd", ctypes.c_int32), ("type", ctypes.c_uint32)]
+
+
+_vnode_info = ctypes.create_string_buffer(4096)
+
+
+def _file_key(st_dev, st_ino):
+    # macOS reports a vnode's device as uint32 but os.stat as a signed dev_t.
+    return st_dev & 0xFFFFFFFF, st_ino
+
+
+def _written_files(pid):
+    """_file_key of every file pid holds open for writing; empty when unreadable.
+    A reader such as a wait client is not a writer."""
+    found = set()
+    if sys.platform == "darwin":
+        need = _libproc.proc_pidinfo(int(pid), 1, ctypes.c_uint64(0), None, 0)  # LISTFDS
+        if need <= 0:
+            return found
+        fds = (_ProcFdInfo * (need // ctypes.sizeof(_ProcFdInfo) + 32))()
+        got = _libproc.proc_pidinfo(int(pid), 1, ctypes.c_uint64(0), fds, ctypes.sizeof(fds))
+        for entry in fds[:max(got, 0) // ctypes.sizeof(_ProcFdInfo)]:
+            # PROX_FDTYPE_VNODE; struct vnode_fdinfo starts with the uint32
+            # fi_openflags (FWRITE = 2) and puts the uint32 vst_dev at byte 24
+            # and the uint64 vst_ino at byte 32.
+            if (entry.type == 1 and _libproc.proc_pidfdinfo(
+                    int(pid), entry.fd, 1, _vnode_info, len(_vnode_info)) >= 40
+                    and int.from_bytes(_vnode_info.raw[0:4], sys.byteorder) & 2):
+                found.add(_file_key(int.from_bytes(_vnode_info.raw[24:28], sys.byteorder),
+                                    int.from_bytes(_vnode_info.raw[32:40], sys.byteorder)))
+        return found
+    try:
+        for fd in Path(f"/proc/{int(pid)}/fd").iterdir():
+            with contextlib.suppress(OSError, ValueError, AttributeError):
+                info = Path(f"/proc/{int(pid)}/fdinfo/{fd.name}").read_text(encoding="utf-8")
+                flags = int(re.search(r"^flags:\s*([0-7]+)", info, re.M).group(1), 8)
+                if flags & (os.O_WRONLY | os.O_RDWR):
+                    st = fd.stat()
+                    found.add(_file_key(st.st_dev, st.st_ino))
+    except OSError:
+        pass
+    return found
+
+
+def job_marks(job_id, log_path):
+    """(environment cookie, log file key) that identify the job's processes.
+
+    Every process the child starts inherits the cookie and, unless it closes
+    it, the writable log descriptor; both survive a descendant leaving the
+    child's process group (setsid). macOS hides a platform binary's
+    environment, so the log key is what finds a /bin tool still writing it.
+    """
+    st = os.stat(log_path)
+    cookie = f"FLEET_JOB_{re.sub(r'[^A-Za-z0-9]', '_', job_id)}=1"
+    return cookie, _file_key(st.st_dev, st.st_ino)
+
+
+def job_members(pgid, marks):
+    """(pid, identity) of every live process but pgid's leader that is in
+    process group pgid, or is this user's and carries the job cookie or holds
+    the job log open for writing."""
     try:
         table = _process_table()
     except (OSError, AttributeError):
         return []
-    return [(pid, ident) for pid, (_, group) in table.items()
-            if group == pgid and pid != pgid and (ident := identity(pid))]
+    cookie, log_key = marks
+    entry, uid, found = cookie.encode(), os.getuid(), []
+    for pid, (_, group, owner) in table.items():
+        if pid in (pgid, os.getpid()):
+            continue
+        # Identity first: the kill re-checks it, so a pid recycled after the
+        # environment or descriptor read is never signalled.
+        ident = identity(pid)
+        if ident and (group == pgid or (owner == uid and (
+                entry in _environ(pid) or log_key in _written_files(pid)))):
+            found.append((pid, ident))
+    return found
 
 
 def windows_job_for(pid):
@@ -459,19 +562,20 @@ def _exited_unreaped(child):
     return info is not None
 
 
-def _tree_alive(child, members):
+def _tree_alive(child, members, marks):
     return (not _exited_unreaped(child) or any(identity(p) == i for p, i in members)
-            or bool(group_members(child.pid)))
+            or bool(job_members(child.pid, marks)))
 
 
-def _drain_tree(child, job, members):
+def _drain_tree(child, job, members, marks):
     """Stop the child and everything it left running, then reap the child.
 
     Returns only once nothing from the tree can still write the job log, so
     terminal status published afterwards is final. members are descendants
-    sampled while the child was alive; on POSIX the child's process group is
-    swept on every pass as well, which also reaches what an exited child
-    orphaned. Native Windows terminates the child's job object.
+    sampled while the child was alive; on POSIX every pass also sweeps
+    job_members, which reaches what an exited child orphaned, including a
+    descendant that moved to its own session. Native Windows terminates the
+    child's job object.
     """
     if IS_WINDOWS:
         if child.poll() is None:
@@ -486,13 +590,31 @@ def _drain_tree(child, job, members):
         return
     for sig in (signal.SIGTERM, signal.SIGKILL):
         _killpg(child.pid, sig)
-        _signal_verified(members + group_members(child.pid), sig)
+        _signal_verified(members + job_members(child.pid, marks), sig)
         deadline = time.monotonic() + CANCEL_GRACE
-        while (alive := _tree_alive(child, members)) and time.monotonic() < deadline:
+        while (alive := _tree_alive(child, members, marks)) and time.monotonic() < deadline:
             time.sleep(POLL)
         if not alive:
             break
     child.wait()
+
+
+def display_discovery():
+    """One line naming the displays this supervisor's session can reach."""
+    if sys.platform == "darwin":
+        try:
+            probe = subprocess.run([sys.executable, "-c", DISPLAY_PROBE], capture_output=True,
+                                   text=True, timeout=DISPLAY_PROBE_TIMEOUT)
+            count = int(probe.stdout.strip())
+        except (OSError, subprocess.SubprocessError, ValueError) as exc:
+            return f"none (CoreGraphics probe failed: {exc})"
+        if count < 1:
+            return f"none (CoreGraphics online displays: {count})"
+        return f"{count} online CoreGraphics display(s)"
+    if IS_WINDOWS:
+        return "native Windows desktop session (not probed)"
+    found = [f"{k}={os.environ[k]}" for k in ("DISPLAY", "WAYLAND_DISPLAY") if os.environ.get(k)]
+    return ", ".join(found) or "none (DISPLAY and WAYLAND_DISPLAY unset)"
 
 
 def _exit_code(returncode):
@@ -514,11 +636,16 @@ def supervise():
         signal.signal(signal.SIGHUP, signal.SIG_IGN)
     log_path = job_dir / "job.log"
     with open(log_path, "ab", buffering=0) as log:
+        marks = job_marks(spec["id"], log_path)
+        if meta["profile"] == "render-verify":
+            log.write(f"[fleet-jobs] display: {display_discovery()}\n".encode())
         kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if IS_WINDOWS else {
             "start_new_session": True}
+        name, _, value = marks[0].partition("=")
         try:
             child = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.DEVNULL, stdout=log,
-                                     stderr=subprocess.STDOUT, **kwargs)
+                                     stderr=subprocess.STDOUT, env={**os.environ, name: value},
+                                     **kwargs)
         except OSError as exc:
             meta.update(status="failed", reason=f"launch failed: {exc}", exit_code=127,
                         finished_at=now_iso())
@@ -532,14 +659,14 @@ def supervise():
         cancel_marker = job_dir / "cancel"
         while not _exited_unreaped(child):
             if cancelled or cancel_marker.exists():
-                _drain_tree(child, job, descendants(child.pid))
+                _drain_tree(child, job, descendants(child.pid), marks)
                 reason = cancelled[0] if cancelled else "cancelled by fleet-jobs kill"
                 meta.update(status="killed", reason=reason)
                 break
             time.sleep(POLL)
         else:
             # Whatever the child left running still holds the log open.
-            _drain_tree(child, job, [])
+            _drain_tree(child, job, [], marks)
             meta.update(status="succeeded" if child.returncode == 0 else "failed",
                         reason="exited")
         os.fsync(log.fileno())
