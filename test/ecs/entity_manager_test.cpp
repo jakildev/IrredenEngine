@@ -1,4 +1,7 @@
 #include <gtest/gtest.h>
+
+#include "common/allocation_counter.hpp"
+
 #include <irreden/ir_entity.hpp>
 
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
@@ -26,6 +29,12 @@ namespace {
 struct TestMarker {};
 
 struct TestRemovable {};
+
+struct AllocationWitnessComponentAlphaLongName {};
+struct AllocationWitnessComponentBravoLongName {};
+struct AllocationWitnessComponentCharlieLongName {};
+struct AllocationWitnessComponentDeltaLongName {};
+struct AllocationWitnessComponentAbsentLongName {};
 
 struct TestPayload {
     int value_ = 0;
@@ -267,6 +276,120 @@ TEST_F(IREntityTest, GetComponentOnDeadIdAssertsInsteadOfDerefingNull) {
 
     // Even the throwing path must not have poisoned the index.
     EXPECT_FALSE(IREntity::entityExists(entity));
+}
+
+TEST(EntityAccessorAllocation, WarmAccessorsAvoidHeapAllocations) {
+    IREntity::EntityManager manager;
+    for (int i = 0; i < 1000; ++i) {
+        manager.createEntity();
+    }
+    const auto entity = manager.createEntity(
+        AllocationWitnessComponentAlphaLongName{},
+        AllocationWitnessComponentBravoLongName{},
+        AllocationWitnessComponentCharlieLongName{},
+        AllocationWitnessComponentDeltaLongName{}
+    );
+    IREntity::ArchetypeNode *node = manager.findRecord(entity)->archetypeNode;
+
+    manager.getComponentType<AllocationWitnessComponentAlphaLongName>();
+    manager.getComponentData<AllocationWitnessComponentAlphaLongName>(node);
+    manager.getComponent<AllocationWitnessComponentAlphaLongName>(entity);
+    manager.getComponentOptional<AllocationWitnessComponentAlphaLongName>(entity);
+    manager.getComponentOptional<AllocationWitnessComponentAbsentLongName>(entity);
+    manager.getArchetype<
+        AllocationWitnessComponentAlphaLongName,
+        AllocationWitnessComponentBravoLongName>();
+
+    const IRTest::AllocationCounter typeCounter;
+    manager.getComponentType<AllocationWitnessComponentAlphaLongName>();
+    const std::size_t typeAllocations = typeCounter.allocations();
+
+    const IRTest::AllocationCounter dataCounter;
+    manager.getComponentData<AllocationWitnessComponentAlphaLongName>(node);
+    const std::size_t dataAllocations = dataCounter.allocations();
+
+    const IRTest::AllocationCounter componentCounter;
+    manager.getComponent<AllocationWitnessComponentAlphaLongName>(entity);
+    const std::size_t componentAllocations = componentCounter.allocations();
+
+    const IRTest::AllocationCounter optionalPresentCounter;
+    manager.getComponentOptional<AllocationWitnessComponentAlphaLongName>(entity);
+    const std::size_t optionalPresentAllocations = optionalPresentCounter.allocations();
+
+    const IRTest::AllocationCounter optionalAbsentCounter;
+    manager.getComponentOptional<AllocationWitnessComponentAbsentLongName>(entity);
+    const std::size_t optionalAbsentAllocations = optionalAbsentCounter.allocations();
+
+    const IRTest::AllocationCounter archetypeCounter;
+    const auto archetype = manager.getArchetype<
+        AllocationWitnessComponentAlphaLongName,
+        AllocationWitnessComponentBravoLongName>();
+    const std::size_t archetypeAllocations = archetypeCounter.allocations();
+
+    EXPECT_EQ(typeAllocations, 0u);
+    EXPECT_EQ(dataAllocations, 0u);
+    EXPECT_EQ(componentAllocations, 0u);
+    EXPECT_EQ(optionalPresentAllocations, 0u);
+    EXPECT_EQ(optionalAbsentAllocations, 0u);
+    EXPECT_EQ(archetypeAllocations, 2u);
+    EXPECT_EQ(archetype.size(), 2u);
+}
+
+TEST(EntityAccessorAllocation, ComponentTypeCacheIsCorrectAcrossSequentialManagers) {
+    IREntity::ComponentId firstAlpha = IREntity::kNullComponent;
+    {
+        IREntity::EntityManager first;
+        firstAlpha = first.registerComponent<AllocationWitnessComponentAlphaLongName>();
+        first.registerComponent<AllocationWitnessComponentBravoLongName>();
+        EXPECT_EQ(
+            first.getComponentType<AllocationWitnessComponentAlphaLongName>(),
+            first.getComponentTypeByName(typeid(AllocationWitnessComponentAlphaLongName).name())
+        );
+    }
+
+    IREntity::EntityManager second;
+    second.registerComponent<AllocationWitnessComponentBravoLongName>();
+    const auto secondAlpha = second.registerComponent<AllocationWitnessComponentAlphaLongName>();
+    EXPECT_EQ(
+        second.getComponentType<AllocationWitnessComponentAlphaLongName>(),
+        second.getComponentTypeByName(typeid(AllocationWitnessComponentAlphaLongName).name())
+    );
+    EXPECT_NE(firstAlpha, secondAlpha);
+}
+
+TEST(EntityAccessorAllocation, ComponentTypeCacheIsCorrectAcrossCoexistingManagers) {
+    IREntity::EntityManager first;
+    const auto firstAlpha = first.registerComponent<AllocationWitnessComponentAlphaLongName>();
+    first.registerComponent<AllocationWitnessComponentBravoLongName>();
+
+    IREntity::EntityManager second;
+    second.registerComponent<AllocationWitnessComponentBravoLongName>();
+    const auto secondAlpha = second.registerComponent<AllocationWitnessComponentAlphaLongName>();
+
+    EXPECT_EQ(
+        first.getComponentType<AllocationWitnessComponentAlphaLongName>(),
+        first.getComponentTypeByName(typeid(AllocationWitnessComponentAlphaLongName).name())
+    );
+    EXPECT_EQ(
+        second.getComponentType<AllocationWitnessComponentAlphaLongName>(),
+        second.getComponentTypeByName(typeid(AllocationWitnessComponentAlphaLongName).name())
+    );
+    EXPECT_NE(firstAlpha, secondAlpha);
+}
+
+TEST(EntityAccessorAllocation, MissingComponentAccessorsKeepDebugContracts) {
+    IREntity::EntityManager manager;
+    const auto entity = manager.createEntity(AllocationWitnessComponentAlphaLongName{});
+    IREntity::ArchetypeNode *node = manager.findRecord(entity)->archetypeNode;
+
+    EXPECT_THROW(
+        manager.getComponent<AllocationWitnessComponentAbsentLongName>(entity),
+        std::runtime_error
+    );
+    EXPECT_THROW(
+        manager.getComponentData<AllocationWitnessComponentAbsentLongName>(node),
+        std::runtime_error
+    );
 }
 
 TEST_F(IREntityTest, DestroyEntityOnDeadIdAssertsAndFiresNoHooks) {

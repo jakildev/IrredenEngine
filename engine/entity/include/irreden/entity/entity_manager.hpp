@@ -15,6 +15,7 @@
 #include <initializer_list>
 #include <set>
 #include <span>
+#include <type_traits>
 
 // TODO: a component should be registered with a size so it
 // can be copied around generically just as data.
@@ -253,6 +254,7 @@ class EntityManager {
 
     template <typename Component, typename... Args> ComponentId registerComponent(Args &&...args) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
+        const std::size_t slot = componentTypeSlot<std::remove_cv_t<Component>>();
         std::string typeName = typeid(Component).name();
         IR_ASSERT(
             m_pureComponentTypes.find(typeName) == m_pureComponentTypes.end(),
@@ -260,6 +262,7 @@ class EntityManager {
         );
         ComponentId componentId =
             registerComponentImpl(typeName, std::make_unique<IComponentDataImpl<Component>>());
+        cacheComponentType(slot, componentId);
         IRE_LOG_INFO(
             "Regestered component type={}, sizeof={} with id={}",
             typeName,
@@ -313,11 +316,21 @@ class EntityManager {
     bool hasComponent(EntityId entity, ComponentId componentType);
 
     template <typename Component> ComponentId getComponentType() {
-        std::string typeName = typeid(Component).name();
-        if (m_pureComponentTypes.find(typeName) == m_pureComponentTypes.end()) {
-            registerComponent<Component>();
+        const std::size_t slot = componentTypeSlot<std::remove_cv_t<Component>>();
+        if (slot < m_componentTypeCache.size()) {
+            const ComponentId cached = m_componentTypeCache[slot];
+            if (cached != kNullComponent) {
+                return cached;
+            }
         }
-        return m_pureComponentTypes[typeName];
+
+        std::string typeName = typeid(Component).name();
+        const auto registered = m_pureComponentTypes.find(typeName);
+        if (registered == m_pureComponentTypes.end()) {
+            return registerComponent<Component>();
+        }
+        cacheComponentType(slot, registered->second);
+        return registered->second;
     }
 
     // Insert (or overwrite) a component on an entity. Does NOT require the
@@ -483,11 +496,10 @@ class EntityManager {
         );
         const EntityRecord &record = getRecord(entity);
         ArchetypeNode *node = record.archetypeNode;
-        Archetype archetype = node->type_;
         ComponentId componentType = getComponentType<Component>();
 
         IR_ASSERT(
-            std::find(archetype.begin(), archetype.end(), componentType) != archetype.end(),
+            node->type_.contains(componentType),
             "Attempted to retrieve non-existant component {} from entity {}",
             componentType,
             entity
@@ -513,10 +525,9 @@ class EntityManager {
             return std::nullopt;
         }
         ArchetypeNode *node = record->archetypeNode;
-        Archetype archetype = node->type_;
         ComponentId componentType = getComponentType<Component>();
 
-        if (std::find(archetype.begin(), archetype.end(), componentType) == archetype.end()) {
+        if (!node->type_.contains(componentType)) {
             return std::nullopt;
         }
         IComponentDataImpl<Component> *data =
@@ -526,16 +537,19 @@ class EntityManager {
 
     template <typename Component> std::vector<Component> &getComponentData(ArchetypeNode *node) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
-        Archetype archetype = node->type_;
         ComponentId componentType = getComponentType<Component>();
 
-        IR_ASSERT(
-            std::find(archetype.begin(), archetype.end(), componentType) != archetype.end(),
-            "Attempted to retrieve non-existant component vector from node: archetype={}, "
-            "componentType={}",
-            makeComponentStringInternal(archetype).c_str(),
-            componentType
-        );
+#ifndef IR_RELEASE
+        if (!node->type_.contains(componentType)) {
+            IR_ASSERT(
+                false,
+                "Attempted to retrieve non-existant component vector from node: archetype={}, "
+                "componentType={}",
+                makeComponentStringInternal(node->type_).c_str(),
+                componentType
+            );
+        }
+#endif
         IComponentDataImpl<Component> *data =
             castComponentDataPointer<Component>(node->components_[componentType].get());
 
@@ -632,6 +646,7 @@ class EntityManager {
   private:
     std::unordered_map<EntityId, EntityRecord> m_entityIndex;
     ArchetypeGraph m_archetypeGraph;
+    std::vector<ComponentId> m_componentTypeCache;
     std::unordered_map<std::string, ComponentId> m_pureComponentTypes;
     std::unordered_map<EntityId, RelationId> m_parentRelations;
     std::unordered_map<RelationId, EntityId> m_childOfRelations;
@@ -681,6 +696,14 @@ class EntityManager {
     void addNewEntityToBaseNode(EntityId entity);
     void returnEntityToPool(EntityId entity);
     ComponentId registerComponentImpl(const std::string &typeName, smart_ComponentData impl);
+    static std::size_t allocateComponentTypeSlot();
+    void cacheComponentType(std::size_t slot, ComponentId componentType);
+
+    template <typename Component> static std::size_t componentTypeSlot() {
+        static const std::size_t slot = allocateComponentTypeSlot();
+        return slot;
+    }
+
     void addComponentByIdImpl(EntityRecord &record, ComponentId componentType);
     void pushCopyData(
         IComponentData *fromStructure, unsigned int fromIndex, IComponentData *toStructure
