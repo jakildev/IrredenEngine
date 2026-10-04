@@ -129,10 +129,33 @@ At zoom 4 the 32-lane path schedules the same number of invocations as the
 eight-lane parent. Stage-2 scope cost rises from 349.20 to 529.73/520.31 ms.
 The regression repeats, so this is not accepted as historical-baseline noise.
 OpenGL returns to eight-slice physical groups with the shared packing math
-retained; Metal remains at 32. The smaller OpenGL candidate still needs its
-paired measurement before performance approval. This Linux result does not
+retained; Metal remains at 32. The eight-lane paired measurement
+below tests whether that physical-width change is sufficient. This Linux result does not
 qualify hardware OpenGL performance or native OpenGL visual presentation.
 
 Master `52eca06ad` is integrated after that diagnostic. The viewport repair
 and fleet fixture registry fix are merged; the latter's subject check passes.
 IRCanvasStress, IRPerfGrid and IrredenEngineTest rebuild successfully.
+
+### Eight-lane OpenGL control
+
+The [second same-runner diagnostic](https://github.com/jakildev/IrredenEngine/actions/runs/37177793046)
+compares `8c4a5d499` with integrated master `52eca06ad`. Full reports and
+provenance are retained in [linux-small-pair](linux-small-pair/paired/provenance.json).
+
+| Cell | Base steady ms | First eight-lane head | Return eight-lane head |
+|---|---:|---:|---:|
+| Zoom 1 | 787.85 | 751.65 (-4.6%) | 764.95 (-2.9%) |
+| Zoom 4, effective subdivision 4 | 2005.48 | 2318.31 (+15.6%) | 2319.32 (+15.6%) |
+
+Physical width alone does not remove the regression. The next candidate uses
+the exact dense-domain identity in the shared lane helper: when `S >= P`,
+`V = 1`, `q = 0`, and `r = l`. Returning that index directly avoids the
+variable quotient/remainder work. This candidate requires measurement; the
+regression remains open until then. Coverage tests include `P-1`, `P`, and
+`P+1` as well as non-divisor sample counts and the supported render domains.
+
+Latest-master native validation passes all 30 CanvasStress checks and 40
+viewport/LOD/cursor tests. The [log](../../pr-screenshots/codex/voxel-workgroup-occupancy/latest-master-render-verify.log)
+and [provenance](../../pr-screenshots/codex/voxel-workgroup-occupancy/latest-master-provenance.json)
+identify the pre-direct-index Metal assets actually tested.

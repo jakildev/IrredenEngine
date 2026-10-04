@@ -1,0 +1,22 @@
+{
+  "build_source": "7e24c63a73e370df8b06594226a26e70b1b9fa78",
+  "validation_checkout": "8c4a5d499835d462b59296a40d672386749ee3a0",
+  "master": "52eca06aded8ad3a85fe532fac1d374b5f5a68bb",
+  "backend": "macos-debug / Metal",
+  "binary_sha256": "865f5228ba3f12dcf64a9eb71a7b19b1c902ff395d9000f6df756478909d872e",
+  "shader_sha256": "486787ab04d428d368a06ebe80a2a31e78944b2701de940c36d9399250be080f",
+  "command": [
+    "python3",
+    "scripts/render-verify.py",
+    "--target",
+    "IRCanvasStress",
+    "--no-build",
+    "--timeout",
+    "180"
+  ],
+  "checks_passed": 30,
+  "exact_rgb_comparisons": 20,
+  "structural_checks": 10,
+  "scope": "Latest-master Metal integration. Subsequent OpenGL workgroup sizing is measured separately on Linux; Metal changes since this build are comments only.",
+  "log": "latest-master-render-verify.log"
+}

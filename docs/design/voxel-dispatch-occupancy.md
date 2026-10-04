@@ -20,7 +20,9 @@ For `S <= P`, each group contains `V` disjoint ranges of `S` lanes. Each pair
 `(voxel, sample)` has the unique inverse `h = floor(voxel / V)`,
 `q = voxel mod V`, `l = q * S + sample`. Remaining lanes cannot start another
 voxel: for `P = 32, S = 9`, lanes 27–31 are padding, not a fourth voxel.
-For `S > P`, `V = 1`; the unique sample inverse is `g = floor(sample / P)`,
+For `S >= P`, `V = 1`, `q = 0` and `r = l`; lane recovery returns this
+identity directly without runtime division or remainder. For `S > P`, the unique
+sample inverse is `g = floor(sample / P)`,
 `l = sample mod P`. The final Z group rejects its unused tail.
 
 `ir_voxel_dispatch` owns the slice domain and lane recovery in each shader

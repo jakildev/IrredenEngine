@@ -11,6 +11,9 @@ uint voxelDispatchVoxelsPerGroup(uint microSliceCount) {
 // A partial voxel never straddles XY groups. Spare lanes in a group carry
 // whole low-density voxels; the remaining tail is outside the sample domain.
 uvec2 voxelDispatchLane(uint groupIndex, uint groupZ, uint localZ, uint microSliceCount) {
+    if (microSliceCount >= uint(kStageMicroSlicesPerGroup)) {
+        return uvec2(groupIndex, groupZ * uint(kStageMicroSlicesPerGroup) + localZ);
+    }
     uint voxelsPerGroup = voxelDispatchVoxelsPerGroup(microSliceCount);
     uint lanesPerVoxel = min(microSliceCount, uint(kStageMicroSlicesPerGroup));
     uint voxelOffset = localZ / lanesPerVoxel;

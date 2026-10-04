@@ -84,7 +84,8 @@ CASES = r"""
 int main(){
  // Arbitrary sample counts exercise spare-lane rejection even where the
  // backend's physical width divides every supported smaller square density.
- for(uint slices:{3u,5u,7u}){
+ for(uint slices:{3u,5u,7u,uint(kStageMicroSlicesPerGroup)-1u,
+                  uint(kStageMicroSlicesPerGroup),uint(kStageMicroSlicesPerGroup)+1u}){
   const uint count=11,voxels=max(uint(kStageMicroSlicesPerGroup)/slices,1u);
   std::vector<unsigned char> seen(count*slices);
   for(uint group=0;group<(count+voxels-1)/voxels;++group)

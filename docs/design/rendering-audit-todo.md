@@ -105,6 +105,15 @@ Next, in order:
    eliminating no-op rewrites/uploads separately, including identity/rotation
    transitions and complete content/pose invalidation coverage; this is not the
    frozen main-canvas benchmark path.
+   Proposed light-volume experiment: `System<COMPUTE_LIGHT_VOLUME>::tick` runs
+   propagation over the full 128-cubed volume for each radius step, even when
+   PerfGrid has one radius-24 emitter. Measure a conservative union of seed
+   bounds expanded by the propagation count, keeping every neighbor rule and
+   RGBA8 quantization step unchanged. Both ping-pong textures must be zero
+   outside the active domain; alternating buffers, odd iteration counts,
+   moving/disappearing lights and camera-boundary relocation are required
+   controls. Do not lower light radius or iteration count to claim a gain.
+   This is a code-traced candidate, not an implemented or measured optimization.
 3. Continue dense/incomplete sun-index and moving light/camera controls. Incomplete
    tiles still have approximate fallback; the full-pool reference is diagnostic.
 4. Extend finite receiving to cardinal GRID and remaining eligible SDF/fog routes,
