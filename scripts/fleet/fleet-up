@@ -1337,17 +1337,35 @@ session_track_cmd = (
 # double-fire is accepted (two identical verdicts; deny still wins).
 guard_path = f"{engine_root}/scripts/fleet/fleet-guard-worktree-edit"
 guard_cmd = f'[ -x "{guard_path}" ] && "{guard_path}" || true'
+quiet_wait_cmd = (
+    "command -v fleet-quiet-wait >/dev/null 2>&1"
+    " && fleet-quiet-wait || true"
+)
 
 # Hand-added hooks survive regeneration the same way user-granted allow
 # entries do: keep every hook group from the previous file except the fleet's
 # own (matched on either fleet-hook marker, so a stale variant of a fleet hook
 # is replaced rather than duplicated).
-FLEET_HOOK_MARKERS = ("fleet-session-track", "fleet-guard-worktree-edit")
+FLEET_HOOK_MARKERS = (
+    "fleet-session-track",
+    "fleet-guard-worktree-edit",
+    "fleet-quiet-wait",
+)
 hooks_out = {
     "SessionStart": [
         {"hooks": [{"type": "command", "command": session_track_cmd}]}
     ],
     "PreToolUse": [
+        {
+            "matcher": "*",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": quiet_wait_cmd,
+                    "timeout": 1500,
+                }
+            ],
+        },
         {
             "matcher": "Edit|Write|MultiEdit",
             "hooks": [{"type": "command", "command": guard_cmd}],

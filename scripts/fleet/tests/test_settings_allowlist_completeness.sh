@@ -43,6 +43,7 @@ EXEMPT=(
     "fleet-notify"                       # cron push half (FLEET.md "The push half")
     "fleet-digest-tick"                  # cron push half
     "fleet-session-track"                # hook wired by fleet-up / fleet-babysit
+    "fleet-quiet-wait"                   # hook wired by fleet-up / dispatch wrap
     "fleet-stalled-sweep"                # scout-invoked idle sweep
     "fleet-queue-backfill-model-labels"  # one-time human backfill
     "solo-architect"                     # human pane launcher

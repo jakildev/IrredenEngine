@@ -55,6 +55,7 @@ IR_ENGINE_ROOT="$(ir_enclosing_engine_root "$(cd "$(dirname "${BASH_SOURCE[0]}")
 IR_TOOLS_DIR="$IR_ENGINE_ROOT/engine/tools"
 IR_DEFAULTS_TOML="$IR_TOOLS_DIR/concurrency.toml"
 IR_HOST_TOML="${IR_HOST_TOML:-$HOME/.config/irreden/host.toml}"
+IR_QUIET_HELPER="$IR_TOOLS_DIR/lib/quiet_window.py"
 
 # ir_worktree_root — the *invoker's* worktree, distinct from IR_ENGINE_ROOT
 # (which resolves to the script's own checkout via symlink walk-up). The
@@ -156,8 +157,10 @@ if [[ -z "${IR_LOCK_ROOT:-}" ]]; then
     fi
 fi
 IR_CACHE_ROOT="${XDG_CACHE_HOME:-$HOME/.cache}/irreden"
+export IR_LOCK_ROOT IR_CACHE_ROOT
 
-mkdir -p "$IR_LOCK_ROOT/cpu" "$IR_LOCK_ROOT/gpu" "$IR_LOCK_ROOT/perf" "$IR_CACHE_ROOT"
+mkdir -p "$IR_LOCK_ROOT/cpu" "$IR_LOCK_ROOT/gpu" "$IR_LOCK_ROOT/perf" \
+    "$IR_LOCK_ROOT/quiet/records" "$IR_LOCK_ROOT/quiet/leases" "$IR_CACHE_ROOT"
 
 # ---------------------------------------------------------------------------
 # Tiny TOML reader (handles only the subset this repo's tomls use:
@@ -289,6 +292,57 @@ ir_queue_timeout() {
     echo "$v"
 }
 
+ir_quiet_linger() {
+    _ir_config quiet linger_seconds IR_QUIET_LINGER
+}
+
+ir_quiet_max() {
+    _ir_config quiet max_seconds IR_QUIET_MAX
+}
+
+ir_quiet_drain() {
+    _ir_config quiet drain_seconds IR_QUIET_DRAIN
+}
+
+ir_quiet_settle_cpu() {
+    _ir_config quiet settle_cpu IR_QUIET_SETTLE_CPU
+}
+
+ir_quiet_settle_sample() {
+    _ir_config quiet settle_sample_seconds IR_QUIET_SETTLE_SAMPLE
+}
+
+ir_quiet_status() {
+    python3 "$IR_QUIET_HELPER" status "$@"
+}
+
+ir_quiet_lease_create() {
+    local pid="${2:-$$}"
+    python3 "$IR_QUIET_HELPER" lease-create "$1" --pid "$pid" \
+        --owner-token "$(ir_owner_token_for_pid "$pid")"
+}
+
+ir_quiet_lease_drop() {
+    python3 "$IR_QUIET_HELPER" lease-drop "$1"
+}
+
+ir_quiet_park() {
+    local tag="$1"
+    shift
+    python3 "$IR_QUIET_HELPER" park "$tag" "$@"
+}
+
+_ir_quiet_defer_nonbenchmark() {
+    [[ -n "${IR_QUIET_OWNER:-}" ]] || return 0
+    [[ "${IR_QUIET_ACQUIRE_VERB:-}" != "benchmark" ]] || return 0
+    if ir_quiet_status --owner "$IR_QUIET_OWNER" >/dev/null 2>&1; then
+        ir_quiet_park "$IR_QUIET_OWNER"
+        # Quiet-window deferral is bounded by the window cap, not by the
+        # queued acquisition's own timeout.
+        started="$(date +%s)"
+    fi
+}
+
 # ---------------------------------------------------------------------------
 # Lock primitives — atomic mkdir, PID-death recovery
 # ---------------------------------------------------------------------------
@@ -327,8 +381,15 @@ _ir_write_winpid() {
 # ir_self_owner_token — the winpid record this process stamps on its locks;
 # empty off Windows, where a lock carries none.
 ir_self_owner_token() {
-    [[ -n "$_IR_SELF_WINPID" ]] || return 0
-    echo "$_IR_SELF_WINPID $_IR_RUNTIME_ROOT"
+    ir_owner_token_for_pid "$$"
+}
+
+ir_owner_token_for_pid() {
+    local pid="$1" winpid=""
+    [[ -r "/proc/$pid/winpid" ]] || return 0
+    read -r winpid < "/proc/$pid/winpid" || true
+    [[ -n "$winpid" ]] || return 0
+    echo "$winpid $_IR_RUNTIME_ROOT"
 }
 
 # _ir_holder_alive <pid> <winpid-file> — same-runtime holders are judged by
@@ -399,6 +460,7 @@ ir_acquire_exclusive() {
     local started
     started="$(date +%s)"
     while true; do
+        _ir_quiet_defer_nonbenchmark
         if _ir_try_lock "$lockdir"; then
             _ir_record_held "$lockdir"
             return 0
@@ -444,6 +506,7 @@ ir_acquire_cpu() {
     started="$(date +%s)"
     local got=()
     while true; do
+        _ir_quiet_defer_nonbenchmark
         local i
         for (( i=1; i<=budget; i++ )); do
             (( ${#got[@]} >= want )) && break

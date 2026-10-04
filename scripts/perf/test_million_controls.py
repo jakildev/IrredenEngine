@@ -108,6 +108,7 @@ def write_round(
                         "index": 1,
                         "host_battery_percent": 90 - index,
                         "host_load_1m": 1.5 * index,
+                        "quiet": "guarded",
                         "engine_logged": (not release) if logged is None else logged,
                     }
                 ],
@@ -142,7 +143,8 @@ class SummaryTest(unittest.TestCase):
             text = (output / "summary.md").read_text()
             self.assertIn(
                 "Power source: AC Power (battery 89% to 80%). "
-                "Host load as each run ended 1.5 to 15.0 on 14 CPUs. Head: 012345678.",
+                "Host load as each run ended 1.5 to 15.0 on 14 CPUs. "
+                "Quiet: guarded 3/3. Head: 012345678.",
                 text.splitlines()[0],
             )
             row = text.splitlines()[4]
