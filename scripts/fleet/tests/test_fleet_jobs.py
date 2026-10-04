@@ -26,8 +26,8 @@ SUBJECT = Path(__file__).resolve().parents[1] / "fleet-jobs"
 if not SUBJECT.is_file():
     print("SKIP: scripts/fleet/fleet-jobs absent", file=sys.stderr)
     sys.exit(3)
-# Only NaturalExit runs on native Windows (the job-object arm); the rest of
-# the suite drives POSIX process groups and signals.
+# Only NaturalExit and WindowsContainment run on native Windows (the
+# job-object arm); the rest of the suite drives POSIX process groups and signals.
 posix_only = unittest.skipIf(os.name == "nt", "POSIX process-group harness")
 
 IR_BUILD = r"""#!/usr/bin/env bash
@@ -62,6 +62,13 @@ os.replace(sys.argv[1] + ".tmp", sys.argv[1])
 while True:
     print("tick", flush=True)
     time.sleep(0.1)
+"""
+# Starts ORPHAN at once and exits as soon as it is running.
+SPAWNER = r"""import os, subprocess, sys, time
+subprocess.Popen([sys.executable, "-c", os.environ["ORPHAN"], sys.argv[1]],
+                 stdout=subprocess.DEVNULL, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP)
+while not os.path.exists(sys.argv[1]):
+    time.sleep(0.05)
 """
 RUN_ALL = '#!/usr/bin/env bash\necho "run_all $*"\nexit 0\n'
 RENDER_VERIFY = r"""import os, sys, time
@@ -302,6 +309,30 @@ class NaturalExit(JobsCase):
                 self.assertEqual(final.decode().splitlines(), waited.stdout.splitlines())
                 time.sleep(1)
                 self.assertEqual(log.read_bytes(), final, "the log grew after the terminal status")
+
+
+@unittest.skipUnless(os.name == "nt", "native-Windows job-object arm")
+class WindowsContainment(unittest.TestCase):
+    def test_child_starts_nothing_outside_its_job(self):
+        subject = load_subject()
+        with tempfile.TemporaryDirectory() as tmp:
+            pidfile = Path(tmp) / "descendant"
+            child = subject.spawn_suspended([sys.executable, "-c", SPAWNER, str(pidfile)],
+                                            stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                            env={**os.environ, "ORPHAN": ORPHAN})
+            # Long enough for a running child to start its descendant and exit
+            # before job assignment.
+            time.sleep(3)
+            self.assertFalse(pidfile.exists(), "the child ran before it was in its job")
+            job = subject.contain(child)
+            self.assertEqual(child.wait(timeout=30), 0)
+            descendant = int(pidfile.read_text())
+            self.assertIsNotNone(subject.identity(descendant))
+            subject._drain_tree(child, job, [], None)
+            survivor = subject.identity(descendant)
+            if survivor:
+                subprocess.run(["taskkill", "/F", "/PID", str(descendant)], capture_output=True)
+            self.assertIsNone(survivor, f"descendant {descendant} outlived the job drain")
 
 
 @posix_only

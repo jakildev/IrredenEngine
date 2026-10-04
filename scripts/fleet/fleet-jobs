@@ -299,6 +299,14 @@ class _JobAccounting(ctypes.Structure):
                 ("terminated", ctypes.c_uint32)]
 
 
+class _ThreadEntry(ctypes.Structure):
+    # THREADENTRY32
+    _fields_ = [("size", ctypes.c_uint32), ("usage", ctypes.c_uint32),
+                ("thread_id", ctypes.c_uint32), ("owner_pid", ctypes.c_uint32),
+                ("base_priority", ctypes.c_int32), ("delta_priority", ctypes.c_int32),
+                ("flags", ctypes.c_uint32)]
+
+
 _kernel32_dll = None
 
 
@@ -319,6 +327,14 @@ def _kernel32():
         k.TerminateJobObject.argtypes = [handle, ctypes.c_uint]
         k.QueryInformationJobObject.argtypes = [handle, ctypes.c_int, ctypes.c_void_p,
                                                 ctypes.c_ulong, ctypes.c_void_p]
+        k.CreateToolhelp32Snapshot.restype = handle
+        k.CreateToolhelp32Snapshot.argtypes = [ctypes.c_ulong, ctypes.c_ulong]
+        k.Thread32First.argtypes = [handle, ctypes.c_void_p]
+        k.Thread32Next.argtypes = [handle, ctypes.c_void_p]
+        k.OpenThread.restype = handle
+        k.OpenThread.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
+        k.ResumeThread.restype = ctypes.c_ulong
+        k.ResumeThread.argtypes = [handle]
         _kernel32_dll = k
     return _kernel32_dll
 
@@ -524,6 +540,59 @@ def windows_job_for(pid):
     return job
 
 
+def _windows_resume(pid):
+    """Resume the threads of a process created suspended; True if one resumed."""
+    kernel32 = _kernel32()
+    snapshot = kernel32.CreateToolhelp32Snapshot(0x4, 0)  # TH32CS_SNAPTHREAD
+    if snapshot in (None, ctypes.c_void_p(-1).value):  # INVALID_HANDLE_VALUE
+        return False
+    resumed = False
+    try:
+        entry = _ThreadEntry(size=ctypes.sizeof(_ThreadEntry))
+        more = kernel32.Thread32First(snapshot, ctypes.byref(entry))
+        while more:
+            if entry.owner_pid == pid:
+                thread = kernel32.OpenThread(0x0002, False, entry.thread_id)  # SUSPEND_RESUME
+                if thread:
+                    if kernel32.ResumeThread(thread) != 0xFFFFFFFF:
+                        resumed = True
+                    kernel32.CloseHandle(thread)
+            more = kernel32.Thread32Next(snapshot, ctypes.byref(entry))
+    finally:
+        kernel32.CloseHandle(snapshot)
+    return resumed
+
+
+def spawn_suspended(argv, **kwargs):
+    """Popen a native-Windows child that cannot run until contain() resumes it."""
+    flags = subprocess.CREATE_NEW_PROCESS_GROUP | 0x00000004  # CREATE_SUSPENDED
+    return subprocess.Popen(argv, creationflags=flags, **kwargs)
+
+
+def contain(child):
+    """Put a suspended child in a new job object, then let it run.
+
+    The child starts nothing before it runs, so its whole tree is in the job.
+    Raises OSError, with the child killed, when it cannot be contained.
+    """
+    job = windows_job_for(child.pid)
+    if job is not None and _windows_resume(child.pid):
+        return job
+    child.kill()
+    child.wait()
+    if job is not None:
+        _kernel32().CloseHandle(job)
+    raise OSError("could not hold the child in a job object")
+
+
+def launch(argv, **kwargs):
+    """The job's child, plus its job object on native Windows (else None)."""
+    if not IS_WINDOWS:
+        return subprocess.Popen(argv, start_new_session=True, **kwargs), None
+    child = spawn_suspended(argv, **kwargs)
+    return child, contain(child)
+
+
 def _windows_job_active(job):
     info = _JobAccounting()
     if not _kernel32().QueryInformationJobObject(job, 1, ctypes.byref(info),
@@ -575,17 +644,13 @@ def _drain_tree(child, job, members, marks):
     sampled while the child was alive; on POSIX every pass also sweeps
     job_members, which reaches what an exited child orphaned, including a
     descendant that moved to its own session. Native Windows terminates the
-    child's job object.
+    child's job object, which has held the child since before it first ran.
     """
     if IS_WINDOWS:
-        if child.poll() is None:
-            subprocess.run(["taskkill", "/T", "/F", "/PID", str(child.pid)],
-                           capture_output=True, timeout=60)
-        if job is not None:
-            _kernel32().TerminateJobObject(job, 1)
-            deadline = time.monotonic() + CANCEL_GRACE
-            while _windows_job_active(job) and time.monotonic() < deadline:
-                time.sleep(POLL)
+        _kernel32().TerminateJobObject(job, 1)
+        deadline = time.monotonic() + CANCEL_GRACE
+        while _windows_job_active(job) and time.monotonic() < deadline:
+            time.sleep(POLL)
         child.wait()
         return
     for sig in (signal.SIGTERM, signal.SIGKILL):
@@ -639,19 +704,15 @@ def supervise():
         marks = job_marks(spec["id"], log_path)
         if meta["profile"] == "render-verify":
             log.write(f"[fleet-jobs] display: {display_discovery()}\n".encode())
-        kwargs = {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP} if IS_WINDOWS else {
-            "start_new_session": True}
         name, _, value = marks[0].partition("=")
         try:
-            child = subprocess.Popen(argv, cwd=cwd, stdin=subprocess.DEVNULL, stdout=log,
-                                     stderr=subprocess.STDOUT, env={**os.environ, name: value},
-                                     **kwargs)
+            child, job = launch(argv, cwd=cwd, stdin=subprocess.DEVNULL, stdout=log,
+                                stderr=subprocess.STDOUT, env={**os.environ, name: value})
         except OSError as exc:
             meta.update(status="failed", reason=f"launch failed: {exc}", exit_code=127,
                         finished_at=now_iso())
             write_atomic(job_dir / "meta.json", meta)
             return 127
-        job = windows_job_for(child.pid) if IS_WINDOWS else None
         meta.update(status="running", started_at=now_iso(),
                     supervisor={"pid": os.getpid(), "identity": identity(os.getpid())},
                     child={"pid": child.pid, "identity": identity(child.pid)})
