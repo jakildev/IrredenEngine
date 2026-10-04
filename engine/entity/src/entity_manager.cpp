@@ -14,6 +14,7 @@ namespace IREntity {
 EntityManager::EntityManager()
     : m_entityIndex{}
     , m_archetypeGraph{}
+    , m_componentTypeCache{}
     , m_pureComponentTypes{}
     , m_pureComponentVectors{}
     , m_liveEntityCount{0}
@@ -25,6 +26,18 @@ EntityManager::EntityManager()
     // `IRJob::workerCount() + 1` once `JobManager` is constructed.
     g_entityManager = this;
     IRE_LOG_INFO("Created EntityManager (IR_MAX_ENTITIES={})", static_cast<int>(IR_MAX_ENTITIES));
+}
+
+std::size_t EntityManager::allocateComponentTypeSlot() {
+    static std::atomic<std::size_t> nextSlot{0};
+    return nextSlot.fetch_add(1, std::memory_order_relaxed);
+}
+
+void EntityManager::cacheComponentType(std::size_t slot, ComponentId componentType) {
+    if (slot >= m_componentTypeCache.size()) {
+        m_componentTypeCache.resize(slot + 1, kNullComponent);
+    }
+    m_componentTypeCache[slot] = componentType;
 }
 
 void EntityManager::resizeWorkerStaging(std::size_t workerSlots) {
