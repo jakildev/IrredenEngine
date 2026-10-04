@@ -297,16 +297,17 @@ EXE_NAME="$1"
 shift
 
 # Remaining "$@" is the program's args. Detect --auto-screenshot,
-# --auto-record, or --auto-profile so we know which ir-acquire verb to
-# wrap with.
+# --auto-record, or --auto-profile — bare or in the inline `=N` form the
+# engine's argument parser also accepts — so we know which ir-acquire verb
+# to wrap with.
 acquire_verb=""
 capture_verb=0
 window_mode_given=0
 for arg in "$@"; do
     case "$arg" in
-        --auto-screenshot) acquire_verb="gpu"; capture_verb=1 ;;
-        --auto-record)     acquire_verb="gpu"; capture_verb=1 ;;
-        --auto-profile)    acquire_verb="benchmark"; capture_verb=1 ;;
+        --auto-screenshot|--auto-screenshot=*) acquire_verb="gpu"; capture_verb=1 ;;
+        --auto-record|--auto-record=*)         acquire_verb="gpu"; capture_verb=1 ;;
+        --auto-profile|--auto-profile=*)       acquire_verb="benchmark"; capture_verb=1 ;;
         --window-mode|--window-mode=*) window_mode_given=1 ;;
     esac
 done

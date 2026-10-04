@@ -55,6 +55,15 @@ assert_contains "$OUT" "window-mode=hidden" "--auto-record exports hidden"
 run_ir echo-mode --auto-profile 300
 assert_contains "$OUT" "window-mode=hidden" "--auto-profile exports hidden"
 
+echo "the inline =N form of every capture verb counts:"
+run_ir echo-mode --auto-screenshot=10
+assert_contains "$OUT" "window-mode=hidden" "--auto-screenshot=N exports hidden"
+assert_contains "$OUT" "(window mode: hidden)" "inline form names the mode"
+run_ir echo-mode --auto-record=60
+assert_contains "$OUT" "window-mode=hidden" "--auto-record=N exports hidden"
+run_ir echo-mode --auto-profile=75
+assert_contains "$OUT" "window-mode=hidden" "--auto-profile=N exports hidden"
+
 echo "watchdog run defaults to background:"
 run_ir --timeout 10 echo-mode
 assert_eq "$RC" "0" "watchdog run exits 0"
@@ -68,6 +77,10 @@ assert_contains "$OUT" "window-mode=background" "default timeout exports backgro
 echo "capture verb under a watchdog stays hidden:"
 run_ir --timeout 10 echo-mode --auto-screenshot
 assert_contains "$OUT" "window-mode=hidden" "verb outranks the watchdog default"
+run_ir --timeout 10 echo-mode --auto-screenshot=4
+assert_contains "$OUT" "window-mode=hidden" "inline verb outranks the watchdog default"
+run_ir --timeout 10 echo-mode --auto-profile=75
+assert_contains "$OUT" "window-mode=hidden" "inline profile verb outranks the watchdog default"
 
 echo "plain exec is left alone:"
 run_ir echo-mode

@@ -269,16 +269,10 @@ Windows children remain outside the guarantee; use `ir-acquire --quiet-disable [
 
 ### Window mode
 
-A fleet launch never takes the host's screen. `ir-run` exports
-`IR_WINDOW_MODE` — the engine's `--window-mode` fallback — by the run's shape:
-capture verbs (`--auto-screenshot` / `--auto-record` / `--auto-profile`) run
-`hidden` (no window at all; rendering, synthetic input and screenshots are
-unchanged), watchdog runs (`--timeout` / `FLEET_RUN_DEFAULT_TIMEOUT`) run
-`background` (a window that is never focused or activated, behind the
-human's). A plain `fleet-run <demo>` with neither is a human's own launch and
-stays `normal`. `FLEET_WINDOW_MODE` in `~/.fleet/fleet-up.conf` replaces both
-defaults; `--window-mode normal` after the executable watches one run. Mode
-semantics: `engine/window/CLAUDE.md` "Window modes".
+A fleet launch never takes the host's screen: `ir-run` runs capture verbs
+`hidden` and watchdog runs `background`, and leaves a plain `fleet-run` alone
+(`FLEET_WINDOW_MODE` in `~/.fleet/fleet-up.conf` overrides both). Semantics
+and the `--window-mode normal` escape: `engine/window/CLAUDE.md` "Window modes".
 
 ### Worktree identity
 
