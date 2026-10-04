@@ -95,11 +95,15 @@ class JobsCase(unittest.TestCase):
         # prove these panes never reached it.
         tag = secrets.token_hex(3)
         self.pane_a, self.pane_b = f"zz-test-a-{tag}", f"zz-test-b-{tag}"
-        self.started = []
 
     def tearDown(self):
-        for pane, job in self.started:
-            self.jobs(["kill", job], pane=pane)
+        # Every live job, not only the ones a test expected to start: a
+        # mutated guard admits extra jobs that would otherwise outlive the run.
+        for pane in (self.pane_a, self.pane_b):
+            for line in self.jobs(["list", "--json"], pane=pane).stdout.splitlines():
+                job = json.loads(line)
+                if job["status"] in ("starting", "running"):
+                    self.jobs(["kill", job["id"]], pane=pane)
         self._tmp.cleanup()
 
     def env(self, pane):
@@ -119,9 +123,7 @@ class JobsCase(unittest.TestCase):
     def start(self, args, pane=None):
         result = self.jobs(["start", *args], pane=pane)
         self.assertEqual(result.returncode, 0, result.stderr)
-        job = result.stdout.split()[1]
-        self.started.append((pane or self.pane_a, job))
-        return job
+        return result.stdout.split()[1]
 
     def status(self, job, pane=None):
         result = self.jobs(["status", "--json", job], pane=pane)
@@ -129,7 +131,7 @@ class JobsCase(unittest.TestCase):
         return json.loads(result.stdout)
 
     def job_dirs(self):
-        return sorted(self.state.glob("jobs/*/*"))
+        return sorted(p for p in self.state.glob("jobs/*/*") if p.is_dir())
 
 
 class Lifecycle(JobsCase):
@@ -143,7 +145,6 @@ class Lifecycle(JobsCase):
         first = launcher.stdout.readline()
         self.assertTrue(first.startswith("started "), first)
         job = first.split()[1]
-        self.started.append((self.pane_a, job))
         # Runtime cleanup: the launching invocation's whole process group dies.
         os.killpg(launcher.pid, signal.SIGKILL)
         launcher.wait()
@@ -219,6 +220,31 @@ class Lifecycle(JobsCase):
             self.assertEqual(self.jobs(["wait", "--quiet", job], pane=pane).returncode, 3)
         after = self.start(["render-verify", "--", "--target", "IRAnalyticOracle"])
         self.assertEqual(self.jobs(["wait", "--quiet", after]).returncode, 3)
+
+    def test_concurrent_render_verify_starts_admit_exactly_one(self):
+        release = self.root / "release"
+        held = ["start", "render-verify", "--", "--target", "IRAnalyticOracle",
+                "--demo-arg", f"hold={release}"]
+        # Finished decoys lengthen every client's admission scan, so the
+        # clients overlap inside it rather than one finishing before the next.
+        pane = self.state / "jobs" / self.pane_a
+        for i in range(400):
+            decoy = pane / f"20250101T000000Z-render-verify-{i:06x}"
+            decoy.mkdir(parents=True)
+            (decoy / "meta.json").write_text(json.dumps(
+                {"id": decoy.name, "profile": "render-verify", "status": "succeeded",
+                 "exit_code": 0}))
+        clients = [subprocess.Popen([sys.executable, str(self.subject), *held],
+                                    cwd=self.repo, env=self.env(self.pane_a),
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                   for _ in range(8)]
+        outputs = [c.communicate(timeout=60)[0] for c in clients]
+        codes = [c.returncode for c in clients]
+        self.assertEqual(sorted(codes), [0] + [1] * 7)
+        admitted = [out.split()[1] for out, code in zip(outputs, codes) if code == 0]
+        self.assertEqual(len(self.job_dirs()), 401)
+        release.touch()
+        self.assertEqual(self.jobs(["wait", "--quiet", admitted[0]]).returncode, 3)
 
 
 class Isolation(JobsCase):
