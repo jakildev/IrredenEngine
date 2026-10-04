@@ -2,7 +2,7 @@ name: Perf Gate
 
 # Runs on push to master (updates the committed baseline), on PRs (compares
 # PR head against the last committed baseline and fails on >10% regression),
-# and on manual dispatch (seeds a baseline for a host SKU on demand).
+# and on manual dispatch (seeds a baseline, or compares a diagnostic ref).
 # Only fires when the changed paths include engine/render, engine/system,
 # engine/math, or the gate's own sources — asset-only PRs skip this entirely.
 #
@@ -29,6 +29,12 @@ on:
       - '.github/workflows/perf-gate.yml'
       - 'scripts/perf/**'
   workflow_dispatch:
+    inputs:
+      diagnostic_base:
+        description: Base commit/ref for a same-runner comparison (empty publishes a baseline)
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: write       # baseline commit on the perf-baseline branch
@@ -56,6 +62,7 @@ jobs:
       - name: Gate controls (baseline layout, exit mapping, writer, normalization)
         run: |
           python3 scripts/perf/tests/test_baseline_layouts.py
+          python3 scripts/perf/tests/test_ci_pair.py
           scripts/perf/tests/test_baseline_writer.sh
           bash test/tools/normalization_test.sh
 
@@ -130,6 +137,13 @@ jobs:
             exit 1
           fi
           echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Compare a reference on this runner without publishing a baseline
+        if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_base != ''
+        env:
+          PAIR_BASE_REF: ${{ inputs.diagnostic_base }}
+          PAIR_HEAD_DIR: ${{ steps.head.outputs.dir }}
+        run: python3 scripts/perf/ci_pair.py
 
       - name: Upload perf run diagnostics
         if: always()
@@ -229,10 +243,10 @@ jobs:
           cat /tmp/perf_gate_stderr.txt >&2
           exit 1
 
-      # ── Baseline update — master push, or manual dispatch to seed a SKU ───
+      # ── Baseline update — master push, or non-diagnostic manual dispatch ──
 
       - name: Update baseline on the perf-baseline branch
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.diagnostic_base == '')
         run: |
           # Per-host-fingerprinted baseline layout — pulls the slug from the
           # head manifest's calibration block written by ir-perf-grid.

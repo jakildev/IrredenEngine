@@ -32,6 +32,28 @@ sources:
   runner has this fingerprint, so only a run on that machine compares against
   it.
 
+## Same-runner Linux diagnostic
+
+When a historical CI comparison cannot isolate a change, dispatch `Perf Gate`
+on the candidate branch with `diagnostic_base` set to the full base commit SHA:
+
+```bash
+gh workflow run perf-gate.yml --ref <candidate-branch> -f diagnostic_base=<base-sha>
+```
+
+A nonempty `diagnostic_base` disables the baseline writer. The job captures
+head/base/head quick matrices on one hosted runner, rebuilding each ref and
+refreshing runtime assets before measurement. `perf-run-<run-id>` retains all
+raw reports plus `paired/` comparisons and full commit, binary and shader
+fingerprints. Both total and steady frame means are reported; comparisons are
+informational and do not override the PR gate. Repeated head runs expose drift,
+but one base run is not a statistical performance guarantee. Hosted Mesa results
+do not establish performance on hardware OpenGL or Metal.
+
+`ci_pair.py` only switches refs in a clean GitHub-hosted checkout and restores
+the original head on failure. It is not a local-worktree profiling command.
+An empty diagnostic input retains the existing baseline-publishing behavior.
+
 ## Windows ship-host baseline
 
 A human or the architect runs this on the ship host when cued. A fleet worker
