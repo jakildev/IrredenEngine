@@ -297,7 +297,12 @@ def iter_events(root, since, until):
         start = _hour_start(entry.name)
         if start is None or start + 3600 <= lo or start >= hi or not entry.is_dir():
             continue
-        for path in sorted(entry.iterdir()):
+        # A concurrent writer's prune() can remove the shard after the is_dir().
+        try:
+            paths = sorted(entry.iterdir())
+        except OSError:
+            continue
+        for path in paths:
             if path.name.startswith(".") or not path.name.endswith(".json"):
                 continue
             try:

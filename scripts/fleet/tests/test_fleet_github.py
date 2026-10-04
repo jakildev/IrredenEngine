@@ -237,6 +237,31 @@ class Events(Base):
         self.assertEqual(len(got), 1)
         self.assertEqual(got[0]["actor"], "worker")
 
+    def test_reader_survives_a_shard_pruned_after_discovery(self):
+        import datetime as dt
+        import shutil
+        from unittest import mock
+        now = 1790000000.0
+        for hours_ago in (72, 0):
+            fleet_github.record(["pr", "view", "1"], self.env(FLEET_ROLE="worker"),
+                                now=now - hours_ago * 3600)
+        old = min(p for p in self.events.iterdir())
+        real_iterdir = Path.iterdir
+
+        def prune_then_list(path):
+            # A concurrent writer's prune() lands between iter_events' is_dir()
+            # and its listing of this shard.
+            if path == old:
+                shutil.rmtree(path)
+            return real_iterdir(path)
+
+        since = dt.datetime.fromtimestamp(now - 100 * 3600, dt.timezone.utc)
+        until = dt.datetime.fromtimestamp(now + 60, dt.timezone.utc)
+        with mock.patch.object(Path, "iterdir", autospec=True, side_effect=prune_then_list):
+            got = list(fleet_github.iter_events(self.events, since, until))
+        self.assertFalse(old.exists())
+        self.assertEqual(len(got), 1)
+
     def test_retention_prunes_only_closed_old_hours(self):
         now = 1790000000.0
         for hours_ago in (0, 47, 49, 72):
