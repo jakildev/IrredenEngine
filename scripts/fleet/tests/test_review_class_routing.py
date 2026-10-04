@@ -25,26 +25,29 @@ _loader.exec_module(_mod)
 
 
 class ReviewClassForPaths(unittest.TestCase):
+    # Fixture paths are untracked siblings on purpose: fleet_test_subjects.py
+    # reads every tracked path literal in a suite as an out-of-tree test
+    # subject, and the classifier only looks at the directory and `ir_` prefix.
     def test_core_paths_and_public_headers_read_opus(self):
-        for path in ("engine/render/src/shaders/c_fog_to_trixel.glsl",
-                     "engine/entity/include/irreden/entity/archetype_node.hpp",
-                     "engine/system/src/system_manager.cpp",
-                     "engine/world/include/irreden/world/world_snapshot.hpp",
-                     "engine/audio/src/midi_in.cpp",
-                     "engine/video/include/irreden/video/auto_screenshot.hpp",
+        for path in ("engine/render/src/shaders/c_zz_routing_fixture.glsl",
+                     "engine/entity/include/irreden/entity/zz_routing_fixture.hpp",
+                     "engine/system/src/zz_routing_fixture.cpp",
+                     "engine/world/include/irreden/world/zz_routing_fixture.hpp",
+                     "engine/audio/src/zz_routing_fixture.cpp",
+                     "engine/video/include/irreden/video/zz_routing_fixture.hpp",
                      "engine/math/include/irreden/math/ir_math_core.hpp",
-                     "engine/input/include/irreden/ir_input.hpp",
-                     "engine/include/irreden/ir_engine.hpp",
-                     "engine/profile/include/irreden/profile/ir_profile_types.hpp",
-                     "engine/input/include/irreden/input/ir_input_types.hpp"):
+                     "engine/input/include/irreden/ir_zz_routing_fixture.hpp",
+                     "engine/include/irreden/ir_zz_routing_fixture.hpp",
+                     "engine/profile/include/irreden/profile/ir_zz_routing_fixture.hpp",
+                     "engine/input/include/irreden/input/ir_zz_routing_fixture.hpp"):
             self.assertEqual(_mod.review_class_for_paths(["docs/x.md", path]), "opus", path)
 
     def test_everything_else_reads_sonnet(self):
         for paths in (["docs/agents/FLEET.md"],
-                      ["creations/demos/fog_demo/main.cpp", "scripts/fleet/fleet-up"],
-                      ["engine/prefabs/irreden/render/fog_of_war.hpp"],
-                      ["engine/input/src/input_manager.cpp"],
-                      ["engine/script/include/irreden/script/lua_script.hpp"],
+                      ["creations/demos/fog_demo/zz_routing_fixture.cpp", "scripts/fleet/fleet-up"],
+                      ["engine/prefabs/irreden/render/zz_routing_fixture.hpp"],
+                      ["engine/input/src/zz_routing_fixture.cpp"],
+                      ["engine/script/include/irreden/script/zz_routing_fixture.hpp"],
                       ["engine/input/src/ir_input_impl.hpp"],
                       []):
             self.assertEqual(_mod.review_class_for_paths(paths), "sonnet", paths)
@@ -61,7 +64,7 @@ class SliceStampsReviewClass(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, patch.object(_mod, "PRS_DIR", Path(tmp)):
             (Path(tmp) / "engine").mkdir()
             (Path(tmp) / "engine" / "11.json").write_text(json.dumps(
-                {"files": [{"path": "engine/render/src/ir_render.cpp"}]}))
+                {"files": [{"path": "engine/render/src/ir_zz_routing_fixture.cpp"}]}))
             (Path(tmp) / "engine" / "12.json").write_text(json.dumps(
                 {"files": [{"path": "scripts/fleet/fleet-up"}]}))
             state = {"repos": {"engine": {"prs": [_pr(11), _pr(12), _pr(13)]}}}
