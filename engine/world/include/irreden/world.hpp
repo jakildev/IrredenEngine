@@ -31,10 +31,13 @@ class World {
     /// `config` table (empty = none); see @c WorldConfig.
     /// @p workerThreadsOverride: the `--worker-threads` value, applied on top
     /// of both config files; `std::nullopt` = flag absent.
+    /// @p windowModeOverride: the resolved `--window-mode` / `IR_WINDOW_MODE`
+    /// value over config `window_mode`; `std::nullopt` = neither given.
     World(
         const char *configFileName,
         const char *configPresetFile = "",
-        std::optional<int> workerThreadsOverride = std::nullopt
+        std::optional<int> workerThreadsOverride = std::nullopt,
+        std::optional<IRWindow::WindowMode> windowModeOverride = std::nullopt
     );
     virtual ~World();
     void gameLoop();

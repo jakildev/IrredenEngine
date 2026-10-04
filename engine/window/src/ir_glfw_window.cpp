@@ -4,13 +4,58 @@
 #include <irreden/ir_profile.hpp>
 // #include <irreden/ir_window_types.hpp>
 #include <irreden/window/ir_glfw_window.hpp>
+#include <irreden/window/ir_window_platform.hpp>
 
 #include <cstddef>
+#include <string_view>
 #include <utility>
 
 namespace IRWindow {
 
+const char *windowModeName(WindowMode mode) {
+    switch (mode) {
+    case WindowMode::NORMAL:
+        return "normal";
+    case WindowMode::BACKGROUND:
+        return "background";
+    case WindowMode::HIDDEN:
+        return "hidden";
+    }
+    return "normal";
+}
+
+std::optional<WindowMode> parseWindowMode(std::string_view name) {
+    for (WindowMode mode : {WindowMode::NORMAL, WindowMode::BACKGROUND, WindowMode::HIDDEN}) {
+        if (name == windowModeName(mode)) {
+            return mode;
+        }
+    }
+    return std::nullopt;
+}
+
 namespace {
+// GLFW's defaults focus a new window at creation (GLFW_FOCUSED) and again
+// whenever it is shown (GLFW_FOCUS_ON_SHOW). Each platform's focus path is
+// the screen steal: activateIgnoringOtherApps on macOS, SetForegroundWindow on
+// Windows, _NET_ACTIVE_WINDOW on X11. Both hints off is what BACKGROUND means;
+// HIDDEN additionally never maps the window, which is the pattern the GPU
+// unit tests already rely on for a real context with no surface.
+void applyWindowModeHints(WindowMode mode) {
+    switch (mode) {
+    case WindowMode::NORMAL:
+        return;
+    case WindowMode::BACKGROUND:
+        glfwWindowHint(GLFW_FOCUSED, GLFW_FALSE);
+        glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_FALSE);
+        return;
+    case WindowMode::HIDDEN:
+        glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
+        glfwWindowHint(GLFW_FOCUSED, GLFW_FALSE);
+        glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_FALSE);
+        return;
+    }
+}
+
 void logMonitors(const std::vector<GLFWmonitor *> &monitors) {
     IRE_LOG_INFO("Discovered {} display monitors", monitors.size());
     for (std::size_t i = 0; i < monitors.size(); ++i) {
@@ -71,21 +116,35 @@ GLFWmonitor *getPreferredMonitor(
 
 // TODO: implement multiple sub-windows if necessary
 IRGLFWWindow::IRGLFWWindow(
-    ivec2 windowSize, bool fullscreen, int monitorIndex, std::string monitorName
+    ivec2 windowSize, bool fullscreen, int monitorIndex, std::string monitorName, WindowMode mode
 )
     : m_initWindowSize{windowSize}
     , m_isFullscreen{fullscreen}
     , m_monitorIndex{monitorIndex}
-    , m_monitorName{std::move(monitorName)} {
+    , m_monitorName{std::move(monitorName)}
+    , m_windowMode{mode} {
     setCallbackError(irglfwCallback_error);
 
     int status = glfwInit();
     IR_ASSERT(status, "Failed to initalize glfw.");
+    platformPrepareWindowMode(m_windowMode);
+
+    if (m_isFullscreen && m_windowMode != WindowMode::NORMAL) {
+        IRE_LOG_WARN(
+            "Window mode '{}' ignores config fullscreen = true; a fullscreen surface would "
+            "take the whole screen it is meant to stay off. Using a {}x{} window.",
+            windowModeName(m_windowMode),
+            windowSize.x,
+            windowSize.y
+        );
+        m_isFullscreen = false;
+    }
 
     for (int i = 0; i < kNumWindowHints; ++i) {
         const auto &[hint, value] = getWindowHint(i);
         glfwWindowHint(hint, value);
     }
+    applyWindowModeHints(m_windowMode);
 
     int numMonitors;
     GLFWmonitor **monitors = glfwGetMonitors(&numMonitors);
@@ -128,9 +187,10 @@ IRGLFWWindow::IRGLFWWindow(
     setCallbackKey(irglfwCallback_key);
     setCallbackMouseButton(irglfwCallback_mouseButton);
     setCallbackScroll(irglfwCallback_scroll);
+    platformApplyWindowMode(m_window, m_windowMode);
 
     g_irglfwWindow = this;
-    IRE_LOG_INFO("Created IRGLFWWindow.");
+    IRE_LOG_INFO("Created IRGLFWWindow (window mode: {}).", windowModeName(m_windowMode));
 }
 
 IRGLFWWindow::~IRGLFWWindow() {
@@ -152,7 +212,17 @@ void IRGLFWWindow::setShouldClose() {
     glfwSetWindowShouldClose(m_window, true);
 }
 
+WindowMode IRGLFWWindow::getWindowMode() const {
+    return m_windowMode;
+}
+
 void IRGLFWWindow::setWindowMonitor() {
+    if (m_windowMode != WindowMode::NORMAL) {
+        // Creation already applied the size. Placing the window on the
+        // preferred monitor is what parks it over the human's work; an
+        // unattended launch keeps wherever the OS put it (or nowhere).
+        return;
+    }
     GLFWmonitor *monitor = getPreferredMonitor(m_monitors, m_monitorIndex, m_monitorName);
     if (monitor == nullptr) {
         IRE_LOG_WARN("No monitors detected, skipping monitor placement.");
