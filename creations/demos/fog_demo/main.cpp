@@ -405,7 +405,8 @@ constexpr IRVideo::AutoScreenshotShot kEdgeSdfBlockerShots[] = {
 // proves the mechanism deterministically.
 bool g_detachedEdge = false; // --detached-edge
 bool g_detachedBody = false; // --detached-body
-bool g_detachedBodyHidden = false; // --detached-body-hidden
+bool g_detachedBodyHidden = false;  // --detached-body-hidden
+bool g_detachedBodyNoSolid = false; // --detached-body-no-solid
 IREntity::EntityId g_detachedCanvasOwner = IREntity::kNullEntity;
 constexpr float kDetachedVisionRadius = 9.0f;
 constexpr IRMath::ivec2 kDetachedCanvasSize{200, 200};
@@ -427,6 +428,9 @@ constexpr IRVideo::AutoScreenshotShot kDetachedBodySoftShots[] = {
 };
 constexpr IRVideo::AutoScreenshotShot kDetachedBodyHiddenShots[] = {
     {9.0f, vec2(0, 0), 0.0f, "fog_detached_body_hidden"},
+};
+constexpr IRVideo::AutoScreenshotShot kDetachedBodyNoSolidShots[] = {
+    {9.0f, vec2(0, 0), 0.0f, "fog_detached_body_no_solid"},
 };
 
 void probeDetachedCanvas(int) {
@@ -1605,6 +1609,10 @@ int main(int argc, char **argv) {
         "is omitted from the composite"
     );
     IREngine::args().flag(
+        "--detached-body-no-solid",
+        "Capture the hidden detached BODY scene without its solid as a background control"
+    );
+    IREngine::args().flag(
         "--edge-smooth",
         "Like --edge-zoom but with a wide soft vision-circle band (#2126 Mode B "
         "smooth cross-section) so the cut wall follows the analytic disc edge"
@@ -1754,7 +1762,9 @@ int main(int argc, char **argv) {
     g_playerWalk = IREngine::args().getFlag("--player-walk");
     g_edgeZoom = IREngine::args().getFlag("--edge-zoom");
     g_edgeSdfBlocker = IREngine::args().getFlag("--edge-sdf-blocker");
-    g_detachedBodyHidden = IREngine::args().getFlag("--detached-body-hidden");
+    g_detachedBodyNoSolid = IREngine::args().getFlag("--detached-body-no-solid");
+    g_detachedBodyHidden =
+        IREngine::args().getFlag("--detached-body-hidden") || g_detachedBodyNoSolid;
     g_detachedBody = IREngine::args().getFlag("--detached-body") || g_detachedBodyHidden;
     g_detachedEdge = IREngine::args().getFlag("--detached-edge") || g_detachedBody;
     g_edgeSmooth = IREngine::args().getFlag("--edge-smooth");
@@ -2193,6 +2203,8 @@ void initSystems() {
             IRVideo::setAutoScreenshotShots(cfg, kEdgeZCostCeilingShots);
         } else if (g_edgeZCost) {
             IRVideo::setAutoScreenshotShots(cfg, kEdgeZCostShots);
+        } else if (g_detachedBodyNoSolid) {
+            IRVideo::setAutoScreenshotShots(cfg, kDetachedBodyNoSolidShots);
         } else if (g_detachedBodyHidden) {
             IRVideo::setAutoScreenshotShots(cfg, kDetachedBodyHiddenShots);
         } else if (g_detachedBody && g_entityRevealSoftEdge) {
@@ -2878,16 +2890,18 @@ void initEntities() {
             kDetachedCanvasSize,
             kDetachedPoolSize
         );
-        IREntity::createEntity(
-            C_LocalTransform{vec3(solidLocalX, 0.0f, 0.0f)},
-            C_VoxelSetNew{
-                kDetachedSolidSize,
-                Color{130, 230, 150, 255},
-                true,
-                canvas.canvasEntity_
-            },
-            C_FogField{}
-        );
+        if (!g_detachedBodyNoSolid) {
+            IREntity::createEntity(
+                C_LocalTransform{vec3(solidLocalX, 0.0f, 0.0f)},
+                C_VoxelSetNew{
+                    kDetachedSolidSize,
+                    Color{130, 230, 150, 255},
+                    true,
+                    canvas.canvasEntity_
+                },
+                C_FogField{}
+            );
+        }
         // Identity rotation keeps the re-voxelize raster on its deterministic SOURCE
         // path (a spinning solid round-to-cell speckles); the cut-face code
         // is rotation-agnostic, so this static pose proves the world-column recovery.

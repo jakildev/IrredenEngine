@@ -625,6 +625,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             for (int i = 0; i < node->length_; ++i) {
                 const C_EntityCanvas &entityCanvas = canvases[i];
                 if (entityCanvas.screenLocked_ || !entityCanvas.visible_ ||
+                    entityCanvas.fogHidden_ ||
                     entityCanvas.canvasEntity_ == IREntity::kNullEntity) {
                     continue;
                 }

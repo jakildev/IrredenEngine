@@ -4,6 +4,8 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_time.hpp>
 #include <irreden/render/active_canvas.hpp>
+#include <irreden/render/canvas_pose.hpp>
+#include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
@@ -64,6 +66,32 @@ TEST(FogRevealEvalCanvasTest, OwnerVerdictDrivesIndependentFogState) {
     EXPECT_FALSE(canvas.visible_);
 }
 
+TEST(FogRevealEvalCanvasTest, FogHiddenCanvasDoesNotCastWorldShadow) {
+    IRComponents::C_CanvasLocalRotation rotation{};
+    C_WorldTransform transform{};
+    C_EntityCanvas canvas{};
+    canvas.fogHidden_ = true;
+
+    IRPrefab::CanvasPose::write(
+        rotation,
+        IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f),
+        transform,
+        IRComponents::RotationMode::DETACHED_REVOXELIZE,
+        canvas
+    );
+
+    EXPECT_FALSE(rotation.castsWorldShadow_);
+    canvas.fogHidden_ = false;
+    IRPrefab::CanvasPose::write(
+        rotation,
+        IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f),
+        transform,
+        IRComponents::RotationMode::DETACHED_REVOXELIZE,
+        canvas
+    );
+    EXPECT_TRUE(rotation.castsWorldShadow_);
+}
+
 class FogRevealEvalCanvasAdoptTest : public testing::Test {
   protected:
     FogRevealEvalCanvasAdoptTest()
@@ -111,9 +139,13 @@ class FogRevealEvalCanvasAdoptTest : public testing::Test {
 
 TEST_F(FogRevealEvalCanvasAdoptTest, AdoptsWorldPlacedCanvasAndStampsItsPrivatePool) {
     const IREntity::EntityId body = createCanvasOwner();
+    const auto &ownerCanvas = IREntity::getComponent<C_EntityCanvas>(body);
+    auto &pool = IREntity::getComponent<C_VoxelPool>(ownerCanvas.canvasEntity_);
+    const std::uint64_t beforeAdoption = pool.getContentGeneration();
 
     runFrame();
 
+    EXPECT_GT(pool.getContentGeneration(), beforeAdoption);
     EXPECT_FALSE(IREntity::getComponentOptional<C_FogRevealed>(m_worldCanvas).has_value());
     ASSERT_TRUE(IREntity::getComponentOptional<C_FogRevealed>(body).has_value());
     const auto &canvas = IREntity::getComponent<C_EntityCanvas>(body);
@@ -122,6 +154,10 @@ TEST_F(FogRevealEvalCanvasAdoptTest, AdoptsWorldPlacedCanvasAndStampsItsPrivateP
     ASSERT_GE(records.size(), 2u);
     EXPECT_NE(records[0].reserved_ & IRComponents::VoxelReserved::kFogBody, 0u);
     EXPECT_NE(records[1].reserved_ & IRComponents::VoxelReserved::kFogBody, 0u);
+
+    const std::uint64_t beforeReclassification = pool.getContentGeneration();
+    IRPrefab::Fog::setSubjectClass(body, IRPrefab::Fog::FogSubjectClass::FIELD);
+    EXPECT_GT(pool.getContentGeneration(), beforeReclassification);
 }
 
 TEST_F(FogRevealEvalCanvasAdoptTest, FieldAndScreenLockedCanvasesStayOutsideBodyAdoption) {

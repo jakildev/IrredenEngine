@@ -58,6 +58,12 @@
       "capture_offset": 0
     },
     {
+      "name": "detached_body_no_solid",
+      "demo_args": ["--detached-body-no-solid"],
+      "shots": ["fog_detached_body_no_solid"],
+      "capture_offset": 0
+    },
+    {
       "name": "edge_smooth",
       "demo_args": [
         "--edge-smooth"

@@ -246,6 +246,7 @@ inline void stampCanvasBodyCarrier(
                 body,
                 factor
             );
+            pool.markRecordsChanged();
         }
     );
 }
