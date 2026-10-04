@@ -4,6 +4,7 @@
 #include <irreden/ir_utility.hpp>
 
 #include <filesystem>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -404,15 +405,31 @@ class MetalShaderPipelineImpl final : public ShaderPipelineImpl, public MetalPip
         }
 
         NS::Error *error = nullptr;
-        m_computeState = metalDevice()->newComputePipelineState(m_computeFunction, &error);
-        if (error != nullptr) {
+        MTL::ComputePipelineState *pipelineState =
+            metalDevice()->newComputePipelineState(m_computeFunction, &error);
+        if (pipelineState == nullptr) {
             const char *description =
-                error->localizedDescription() != nullptr ? error->localizedDescription()->utf8String()
-                                                         : "<unknown>";
-            IRE_LOG_FATAL("Metal compute pipeline creation failed: {}", description);
-            IR_ASSERT(false, "Metal compute pipeline creation failed.");
+                error != nullptr && error->localizedDescription() != nullptr
+                    ? error->localizedDescription()->utf8String()
+                    : "<unknown>";
+            throw std::runtime_error(
+                "Metal compute pipeline creation failed for '" +
+                std::string(m_computeFunction->name()->utf8String()) + "': " + description
+            );
         }
-        IR_ASSERT(m_computeState != nullptr, "Failed to create Metal compute pipeline state");
+        const auto threads = m_computeThreadsPerThreadgroup;
+        const auto threadCount = threads.width * threads.height * threads.depth;
+        const auto threadLimit = pipelineState->maxTotalThreadsPerThreadgroup();
+        if (threadCount > threadLimit) {
+            pipelineState->release();
+            // Resizing independently would invalidate the shader's lane and indirect-grid math.
+            throw std::runtime_error(
+                "Metal compute pipeline '" + std::string(m_computeFunction->name()->utf8String()) +
+                "' requires " + std::to_string(threadCount) + " threads per threadgroup, but supports " +
+                std::to_string(threadLimit)
+            );
+        }
+        m_computeState = pipelineState;
         return m_computeState;
     }
 

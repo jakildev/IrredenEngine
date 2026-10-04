@@ -93,6 +93,13 @@ Next, in order:
    Keep Metal packing and restore OpenGL one-voxel workgroup ownership. The final
    paired run reduces zoom-4 steady regression to 3.0%/4.4% (full-frame
    1.8%/3.2%, below the 10% gate); this is not exact performance parity.
+   The review follow-up validates compiled Metal threadgroup limits before
+   caching pipelines, including release-safe creation/rejection paths. All five
+   voxel kernels report 192 requested / 1024 available threads on M4 Max;
+   other devices remain unmeasured. The independent ordering audit found no
+   packing-specific race. Existing identical-value duplicate color stores from
+   half-face lanes/overlapping taps remain a separate cleanup candidate; first
+   prove unchanged coverage and payload ownership, then measure their cost.
    Hardware OpenGL, feeder-heavy
    timing and moving-camera/density controls remain pending. Next profile
    conservative overflow, shared lighting and submission/readback stalls. The
@@ -122,6 +129,13 @@ Next, in order:
    path, poison scratch buffers, and mutate offset/expansion/clearing controls.
    Include extra clear cost in measurements. Do not lower light radius or
    iteration count to claim a gain.
+   The six-neighbor kernel limits influence to one cell per iteration; retain
+   the full iteration-count expansion even for black or alpha-quantized-to-zero
+   seeds. RGB/ID bytes can still be nonzero. Clear both ID buffers when carrying
+   spotlight IDs; the no-SPOT path intentionally does not consume or propagate
+   IDs, so stale unused ID bytes are not a cross-path equality requirement.
+   Start both reference arms from the same seeded snapshot or unique seed cells:
+   independently seeding colliding lights cannot serve as a deterministic oracle.
    This is a code-traced candidate, not an implemented or measured optimization.
    Proposed correctness probe: two lights can seed the same cell with independent
    plain color/ID stores in `c_seed_light_volume`. Reproduce and define deterministic

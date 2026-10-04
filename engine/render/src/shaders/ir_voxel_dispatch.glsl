@@ -5,6 +5,7 @@ int voxelDispatchMicroSliceCount(int mode, int subdivisions, int perAxisRoute) {
 }
 
 // Each OpenGL XY workgroup owns one voxel, including low-density work.
+// Both helpers retain microSliceCount to share Metal's call signature.
 uint voxelDispatchVoxelsPerGroup(uint microSliceCount) {
     return 1u;
 }

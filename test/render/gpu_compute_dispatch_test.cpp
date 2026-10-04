@@ -245,6 +245,36 @@ class MetalGpuComputeDispatchTest : public ::testing::Test {
     IRRender::RenderDevice *device_ = nullptr;
 };
 
+TEST_F(MetalGpuComputeDispatchTest, VoxelStagesFitCompiledThreadgroupLimits) {
+    using namespace IRRender;
+    for (const char *functionName : {
+             "c_voxel_to_trixel_stage_1",
+             "c_voxel_to_trixel_stage_1_feeder",
+             "c_voxel_to_trixel_stage_1_winner_resolve",
+             "c_voxel_to_trixel_stage_2",
+             "c_voxel_to_trixel_stage_2_winner",
+         }) {
+        SCOPED_TRACE(functionName);
+        const std::string shaderPath =
+            std::string(IR_TEST_RENDER_SHADER_DIR) + "/" + functionName + ".glsl";
+        ShaderProgram shader{std::vector{ShaderStage{shaderPath.c_str(), ShaderType::COMPUTE}}};
+        shader.use();
+        auto *provider = activeMetalPipeline();
+        ASSERT_NE(provider, nullptr);
+        auto *state = provider->getComputePipelineState();
+        ASSERT_NE(state, nullptr);
+        const auto threads = provider->getThreadsPerThreadgroup();
+        const auto threadCount = threads.width * threads.height * threads.depth;
+        EXPECT_LE(threadCount, state->maxTotalThreadsPerThreadgroup());
+        RecordProperty(
+            functionName,
+            std::to_string(threadCount) + "/" +
+                std::to_string(state->maxTotalThreadsPerThreadgroup())
+        );
+        setActiveMetalPipeline(nullptr);
+    }
+}
+
 TEST_F(MetalGpuComputeDispatchTest, TextureUploadStagingAllocationsStopAfterWarmup) {
     using namespace IRRender;
     constexpr int width = 256;

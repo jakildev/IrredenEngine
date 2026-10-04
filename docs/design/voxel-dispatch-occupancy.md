@@ -57,3 +57,36 @@ dense-index variant. OpenGL therefore retains `V = 1` at every density and
 maps each lane to `(h, g * P + l)`. Its original count and sample guards reject
 padding. The helper interface and sample domain remain shared; only scheduling
 is backend-specific. Hardware OpenGL requires separate measurement.
+
+## Metal pipeline and ordering constraints
+
+The registered 2×3×32 group needs 192 threads. `getComputePipelineState` checks
+the compiled state's `maxTotalThreadsPerThreadgroup` before caching it, rejects
+an unsupported size in release builds too, and releases the rejected state.
+Pipeline creation failure also throws before any state query. It cannot resize
+the group independently: the compact writer and shader lane mapping share the
+physical width. The cached dispatch path does not repeat the limit query.
+Apple documents the [pipeline-specific limit](https://developer.apple.com/documentation/metal/mtlcomputepipelinestate/maxtotalthreadsperthreadgroup);
+a device-family headline limit is not enough to establish kernel support.
+
+`MetalGpuComputeDispatchTest.VoxelStagesFitCompiledThreadgroupLimits` compiles
+all five voxel entry points on the actual device and records requested/available
+thread counts. `test_render_metal_pipeline_limits.py` executes the production
+creation method and registry against stub devices with diagnostic assertions
+disabled. It covers the acceptance boundary, rejection/release, failed creation,
+retry and caching; mutation controls must reject a missing or off-by-one guard.
+
+The shared voxel-stage bodies have no threadgroup storage, group barriers or
+SIMD communication. Their device atomic depth minimum and winner-index minimum
+do not depend on which voxels share a group. Depth, election and color execute
+in separate compute encoders over directly bound, tracked resources. Their
+publication follows Metal's [resource synchronization contract](https://developer.apple.com/documentation/metal/resource-synchronization),
+not an assumption that relaxed atomics publish unrelated payload writes.
+Overflow/source-face append indices are atomic; later encoders consume the
+records, and source-face sorting uses stable voxel/face keys, not append order.
+
+Winner selection identifies a voxel, not necessarily a single invocation.
+Overlapping taps or per-axis half-face lanes can retain identical writes to a
+texel. Packing preserves that pre-existing write set; it does not establish a
+formally single-writer color path. Removing redundant stores needs separate
+coverage and performance controls.
