@@ -48,14 +48,22 @@ template <> struct System<FOG_REVEAL_EVAL_CANVAS> {
             )) {
             return;
         }
-        if ((entity + frameCounter_) % settings_.staggerPeriod_ != 0u) {
+        if (revealed.override_ == IRComponents::FogOverride::NONE &&
+            (entity + frameCounter_) % settings_.staggerPeriod_ != 0u) {
             return;
         }
-        if (fog_ == nullptr || entityCanvas.screenLocked_) {
+        if (revealed.override_ == IRComponents::FogOverride::FORCE_REVEALED) {
+            revealed.revealFactor_ = 1.0f;
+            revealed.shown_ = true;
+        } else if (revealed.override_ == IRComponents::FogOverride::FORCE_HIDDEN) {
+            revealed.revealFactor_ = 0.0f;
+            revealed.shown_ = false;
+        } else if (fog_ == nullptr || entityCanvas.screenLocked_) {
             revealed.revealFactor_ = 1.0f;
             revealed.shown_ = true;
         } else {
-            revealed.revealFactor_ = IRPrefab::Fog::evalReveal(*fog_, worldTransform.translation_);
+            revealed.revealFactor_ =
+                IRPrefab::Fog::evalReveal(*fog_, worldTransform.translation_, revealed.channels_);
             if (!revealed.shown_ && revealed.revealFactor_ >= settings_.showThreshold_) {
                 revealed.shown_ = true;
             } else if (revealed.shown_ && revealed.revealFactor_ <= settings_.hideThreshold_) {

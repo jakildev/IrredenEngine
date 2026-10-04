@@ -2,9 +2,12 @@
 
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
+#include <irreden/render/components/component_detached_canvas.hpp>
+#include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/systems/system_fog_reveal_eval.hpp>
+#include <irreden/render/systems/system_fog_reveal_eval_canvas.hpp>
 #include <irreden/render/systems/system_fog_reveal_eval_shape.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
@@ -13,6 +16,7 @@
 namespace {
 
 using IRComponents::C_CanvasFogOfWar;
+using IRComponents::C_EntityCanvas;
 using IRComponents::C_FogRevealed;
 using IRComponents::C_ShapeDescriptor;
 using IRComponents::C_VoxelPool;
@@ -162,6 +166,47 @@ TEST(FogSeamsTest, ShapeEvaluatorHonoursOverridesAndChannels) {
     system.tick(entity, outsideControl, outside, shape);
     EXPECT_FLOAT_EQ(outsideControl.revealFactor_, 0.0f);
     EXPECT_FALSE(outsideControl.shown_);
+}
+
+TEST(FogSeamsTest, CanvasEvaluatorHonoursOverridesAndChannels) {
+    IREntity::EntityManager entityManager;
+    C_CanvasFogOfWar fog{C_CanvasFogOfWar::HeadlessInit{}};
+    fog.observers_ = sourceWithChannels(0b10u);
+    IRSystem::System<IRSystem::FOG_REVEAL_EVAL_CANVAS> system;
+    system.fog_ = &fog;
+    system.settings_.staggerPeriod_ = 100;
+
+    const IREntity::EntityId privateCanvas =
+        IREntity::createEntity(IRComponents::C_DetachedCanvas{});
+    IREntity::EntityId entity = 1;
+    C_WorldTransform inside{};
+    C_WorldTransform outside{};
+    outside.translation_ = IRMath::vec3(40.0f, 40.0f, 0.0f);
+    C_EntityCanvas canvas{};
+    canvas.canvasEntity_ = privateCanvas;
+
+    C_FogRevealed forcedHidden{1.0f, true, FogOverride::FORCE_HIDDEN, 0b10u};
+    system.tick(entity, forcedHidden, inside, canvas);
+    EXPECT_FLOAT_EQ(forcedHidden.revealFactor_, 0.0f);
+    EXPECT_FALSE(forcedHidden.shown_);
+    EXPECT_TRUE(canvas.fogHidden_);
+
+    C_FogRevealed forcedRevealed{0.0f, false, FogOverride::FORCE_REVEALED, 0b01u};
+    system.tick(entity, forcedRevealed, outside, canvas);
+    EXPECT_FLOAT_EQ(forcedRevealed.revealFactor_, 1.0f);
+    EXPECT_TRUE(forcedRevealed.shown_);
+    EXPECT_FALSE(canvas.fogHidden_);
+
+    entity = 100;
+    C_FogRevealed disjoint{0.0f, false, FogOverride::NONE, 0b01u};
+    system.tick(entity, disjoint, inside, canvas);
+    EXPECT_FLOAT_EQ(disjoint.revealFactor_, 0.0f);
+    EXPECT_FALSE(disjoint.shown_);
+
+    C_FogRevealed intersecting{0.0f, false, FogOverride::NONE, 0b11u};
+    system.tick(entity, intersecting, inside, canvas);
+    EXPECT_FLOAT_EQ(intersecting.revealFactor_, 1.0f);
+    EXPECT_TRUE(intersecting.shown_);
 }
 
 } // namespace
