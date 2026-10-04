@@ -10,7 +10,9 @@
 # alone even when a token is mintable (keychain-auth callers stay on the user
 # pool); empty or failing mint keeps the incoming token; FLEET_GH_SHIM=0 bypass;
 # no recursion when the shim dir is first on PATH (direct, symlink-installed,
-# and trailing-slash spellings); argv/PATH/exit code pass-through.
+# and trailing-slash spellings); argv/PATH/exit code pass-through; the
+# accounting launcher ahead of the shim on PATH is never taken for the real gh
+# (exported and sibling spellings).
 
 set -euo pipefail
 
@@ -53,6 +55,11 @@ export GH_REAL_CALLS="$TMPROOT/real.calls"
 : > "$GHT_STUB_CALLS"; : > "$GH_REAL_CALLS"
 base_path="/usr/bin:/bin"
 
+# A fleet pane exports the live accounting environment; none of it may reach
+# the shim under test.
+ACCT_SCRUB=(-u FLEET_GH_ACCOUNTING -u FLEET_GH_REAL -u FLEET_GH_LAUNCHER -u FLEET_GH_PYTHON
+            -u FLEET_GH_EVENT_ROOT -u FLEET_GH_ACTOR -u FLEET_GH_LAUNCH_DEPTH)
+
 # run_shim <shim-dir-spelling> [VAR=val ...] -- <gh args> : runs the shim as
 # `gh` resolved through PATH = <shim dir>:$STUBS:$REAL:base, with exactly the
 # given env additions on top of a scrubbed GH_TOKEN/FLEET_GH_SHIM.
@@ -61,7 +68,7 @@ run_shim() {
     local -a envs=()
     while [[ "$1" != "--" ]]; do envs+=("$1"); shift; done
     shift
-    env -u GH_TOKEN -u FLEET_GH_SHIM "${envs[@]}" \
+    env -u GH_TOKEN -u FLEET_GH_SHIM "${ACCT_SCRUB[@]}" "${envs[@]}" \
         PATH="$shimdir:$STUBS:$REAL:$base_path" gh "$@"
 }
 
@@ -134,5 +141,49 @@ rc=0
 err=$(env -u GH_TOKEN PATH="$INSTALLED:$TOOLS" gh version 2>&1 >/dev/null) || rc=$?
 assert_eq "$rc" "127" "missing real gh exits 127"
 assert_contains "$err" "no real gh found" "diagnostic names the problem"
+
+echo "T9: the accounting launcher ahead of the shim on PATH is never the real gh"
+# The daemon shape: fleet-up prepends gh-accounting-bin/ to PATH and pins this
+# shim as the gh the launcher exec's, so the shim is entered by path with the
+# launcher as the first `gh` it can see. A launcher stand-in records any call.
+FAKE_LAUNCHER_DIR="$TMPROOT/launcher"
+mkdir -p "$FAKE_LAUNCHER_DIR"
+cat > "$FAKE_LAUNCHER_DIR/gh" <<'SH'
+#!/usr/bin/env bash
+echo x >> "$GH_LAUNCHER_CALLS"
+exit 99
+SH
+chmod +x "$FAKE_LAUNCHER_DIR/gh"
+export GH_LAUNCHER_CALLS="$TMPROOT/launcher.calls"
+: > "$GH_LAUNCHER_CALLS"; : > "$GH_REAL_CALLS"
+rc=0
+out=$(env -u GH_TOKEN -u FLEET_GH_SHIM "${ACCT_SCRUB[@]}" \
+        FLEET_GH_LAUNCHER="$FAKE_LAUNCHER_DIR/gh" \
+        PATH="$FAKE_LAUNCHER_DIR:$INSTALLED:$STUBS:$REAL:$base_path" \
+        "$INSTALLED/gh" pr list) || rc=$?
+assert_eq "$rc" "0" "the call succeeds with the exported launcher first on PATH"
+assert_contains "$out" "argv=pr list" "the real gh answered"
+assert_eq "$(wc -l < "$GH_REAL_CALLS" | tr -d ' ')" "1" "real gh ran exactly once"
+assert_eq "$(wc -l < "$GH_LAUNCHER_CALLS" | tr -d ' ')" "0" "the exported launcher was never chosen"
+
+# No FLEET_GH_LAUNCHER at all: the launcher is still recognised as the shim's
+# own gh-accounting-bin/ sibling. Were it chosen, the launcher would hand the
+# call back to the shim it finds next on PATH, so the run is bounded: the
+# failure this guards is a call that never returns.
+REPO_LAUNCHER_DIR="$SCRIPT_DIR/gh-accounting-bin"
+BOUND_PYTHON="$(command -v python3 || true)"
+if [[ -f "$REPO_LAUNCHER_DIR/gh" && -n "$BOUND_PYTHON" ]]; then
+    : > "$GH_REAL_CALLS"
+    rc=0
+    out=$("$BOUND_PYTHON" "$SCRIPT_DIR/timeout-shim.py" 30 \
+            env -u GH_TOKEN -u FLEET_GH_SHIM "${ACCT_SCRUB[@]}" \
+            PATH="$REPO_LAUNCHER_DIR:$INSTALLED:$STUBS:$REAL:$base_path" \
+            "$INSTALLED/gh" pr list 2>&1) || rc=$?
+    assert_eq "$rc" "0" "the call succeeds with the repo launcher first on PATH"
+    assert_contains "$out" "argv=pr list" "the real gh answered past the sibling launcher"
+    assert_eq "$(wc -l < "$GH_REAL_CALLS" | tr -d ' ')" "1" "real gh ran exactly once"
+else
+    bad "gh-accounting-bin/gh or python3 is missing; the sibling arm is unexercised"
+fi
 
 summarize "gh shim tests"

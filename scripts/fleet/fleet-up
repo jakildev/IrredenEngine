@@ -1604,6 +1604,16 @@ resolve_gh_accounting() {  # resolve_gh_accounting <launcher> — exports FLEET_
     esac
     export FLEET_GH_ACCOUNTING=1 FLEET_GH_REAL="$real" FLEET_GH_PYTHON="$py" \
            FLEET_GH_LAUNCHER="$launcher" FLEET_GH_EVENT_ROOT="$events"
+    # Fail open: accounting is observability, and a launcher that cannot hand a
+    # call to the pinned gh never goes in front of the daemons' GitHub calls.
+    # The probe runs in the daemons' PATH shape, needs no network or token, and
+    # writes no event (empty event root); a pinned gh that leads back to the
+    # launcher ends at fleet_github.py's re-entry cap, not in a hang.
+    if ! PATH="${1%/*}:$PATH" FLEET_GH_EVENT_ROOT="" "$1" --version >/dev/null 2>&1; then
+        echo "fleet-up: GitHub CLI accounting off (gh --version through the launcher failed; gh=$real)" >&2
+        unset FLEET_GH_ACCOUNTING FLEET_GH_REAL FLEET_GH_PYTHON FLEET_GH_LAUNCHER FLEET_GH_EVENT_ROOT
+        return 1
+    fi
 }
 _gh_launcher="$ENGINE/scripts/fleet/gh-accounting-bin/gh"
 # Daemon launch environment: the launcher first on PATH (no rc file runs after
