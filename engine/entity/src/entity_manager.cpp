@@ -6,6 +6,7 @@
 #include <irreden/job/job_manager.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <memory>
 #include <unordered_set>
 

@@ -15,6 +15,7 @@
 #include <initializer_list>
 #include <set>
 #include <span>
+#include <type_traits>
 
 // TODO: a component should be registered with a size so it
 // can be copied around generically just as data.
@@ -253,7 +254,7 @@ class EntityManager {
 
     template <typename Component, typename... Args> ComponentId registerComponent(Args &&...args) {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
-        const std::size_t slot = componentTypeSlot<Component>();
+        const std::size_t slot = componentTypeSlot<std::remove_cv_t<Component>>();
         std::string typeName = typeid(Component).name();
         IR_ASSERT(
             m_pureComponentTypes.find(typeName) == m_pureComponentTypes.end(),
@@ -315,7 +316,7 @@ class EntityManager {
     bool hasComponent(EntityId entity, ComponentId componentType);
 
     template <typename Component> ComponentId getComponentType() {
-        const std::size_t slot = componentTypeSlot<Component>();
+        const std::size_t slot = componentTypeSlot<std::remove_cv_t<Component>>();
         if (slot < m_componentTypeCache.size()) {
             const ComponentId cached = m_componentTypeCache[slot];
             if (cached != kNullComponent) {
@@ -538,6 +539,7 @@ class EntityManager {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);
         ComponentId componentType = getComponentType<Component>();
 
+#ifndef IR_RELEASE
         if (!node->type_.contains(componentType)) {
             IR_ASSERT(
                 false,
@@ -547,6 +549,7 @@ class EntityManager {
                 componentType
             );
         }
+#endif
         IComponentDataImpl<Component> *data =
             castComponentDataPointer<Component>(node->components_[componentType].get());
 
