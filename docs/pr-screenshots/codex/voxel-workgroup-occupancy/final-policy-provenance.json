@@ -66,5 +66,27 @@
   "framebuffer_size": [
     2560,
     1440
-  ]
+  ],
+  "additional_master_integration": {
+    "build_source": "dc3731bf98af1f87fa9c96ce829b764784781ea8",
+    "master": "12ceac85fac7a516ce8ecefbba8b1eb31a2fa4d3",
+    "binary_sha256": "3f522939be359ee0a51c15ad7a3d3af39e831ccaa80c5725f1c0b0bef53a0a9f",
+    "shader_sha256": "b3c2d75dfdeddd69f337caffce3147ad3d9acc3737676732da2cad14281901a5",
+    "command": [
+      "python3",
+      "scripts/render-verify.py",
+      "--target",
+      "IRCanvasStress",
+      "--no-build",
+      "--timeout",
+      "180"
+    ],
+    "checks_passed": 30,
+    "exact_rgb_comparisons": 20,
+    "structural_checks": 10,
+    "log": "entity-id-integration-render-verify.log",
+    "native_tests_passed": 228,
+    "native_tests_skipped": 1,
+    "native_test_filter": "ViewportTest.*:LodTierLua.*:LuaCursorPosition.*:*Fog*:IREntityTest.*:EntityAccessorAllocation.*"
+  }
 }

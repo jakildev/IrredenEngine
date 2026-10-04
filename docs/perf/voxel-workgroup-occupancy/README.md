@@ -228,3 +228,12 @@ No threshold or shared baseline was changed to accept the candidate.
 The subsequent master merge changes no dispatch writer/consumer/helper code.
 Native OpenGL presentation, hardware throughput and quiet Release/million
 qualification remain separate TODOs.
+
+The final integration includes master `12ceac85f` (shared-canvas entity-ID upload
+synchronization and allocation-free entity accessors). IRPerfGrid, IRCanvasStress
+and IrredenEngineTest rebuild. Expanded native coverage passes 228 tests with
+one OpenGL-only skip. All 30 CanvasStress checks pass again, including 20 exact
+RGB comparisons; [integration log](../../pr-screenshots/codex/voxel-workgroup-occupancy/entity-id-integration-render-verify.log)
+and the additional-integration entry in the provenance identify this build.
+The [automatic performance gate](https://github.com/jakildev/IrredenEngine/actions/runs/37217493554)
+passed on the earlier `6f9525792` integration; final-head CI remains required.
