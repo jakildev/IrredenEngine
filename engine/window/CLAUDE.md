@@ -40,17 +40,32 @@ whoever is using the host:
 |---|---|---|
 | `normal` | shown, focused, placed on the preferred monitor | a human at the keyboard |
 | `background` | shown, `GLFW_FOCUSED` / `GLFW_FOCUS_ON_SHOW` off; lands behind the active window | watchdog (`--timeout`) runs a human may glance at |
-| `hidden` | `GLFW_VISIBLE` off — never mapped; context, framebuffer, synthetic input and screenshot readback all work | capture runs (`--auto-screenshot` / `--auto-record` / `--auto-profile`) |
+| `hidden` | `GLFW_VISIBLE` off — never mapped; context, framebuffer, synthetic input and screenshot readback all work | a hidden run that must keep the real swapchain |
+| `offscreen` | `hidden` at the window level; the render backend renders the final composite into an engine-owned screen target and never presents | capture runs (`--auto-screenshot` / `--auto-record` / `--auto-profile`) |
 
 Resolution order is config `window_mode` < the `IR_WINDOW_MODE` env var <
 `--window-mode` (engine-common arg; `IRArgs::Parser::windowMode()`). The
 launcher fills the env rung only for a launch marked unattended
 (`FLEET_UNATTENDED=1`, which `fleet-run` exports before exec'ing `ir-run` and
-`fleet-up` exports to every pane), by the run's shape: capture verb → hidden,
+`fleet-up` exports to every pane), by the run's shape: capture verb → offscreen,
 watchdog → background, plain exec untouched; `FLEET_WINDOW_MODE` replaces
 both defaults. No demo or skill names the flag, and a bare `ir-run` in a
 human's shell carries no marker, so it shows its window with no flags.
 `--window-mode normal` after the executable watches a fleet-shaped run.
+
+`offscreen` exists because a hidden or occluded surface is still the OS's:
+Metal vends drawables for it on the compositor's schedule (an occluded window
+paced one capture run at half speed), and the GL spec leaves an unmapped
+window's default framebuffer undefined. The render backends own the target
+instead: `bindDefaultFramebuffer` / `clearDefaultFramebuffer` /
+`readDefaultFramebuffer` route to it, `present` shows nothing, and the Metal
+device never calls `nextDrawable` (`engine/render/CLAUDE.md` Gotchas). The
+target has the swapchain's shape (BGRA8, no depth on Metal; RGBA8 + 24/8
+depth-stencil on GL) at the window's framebuffer size, so pipeline states,
+clears and screenshots are the ones a presented frame produces. Pacing
+matches each backend's visible run: Metal sleeps to the primary display's
+refresh interval (what `presentDrawable` gated), GL stays unthrottled
+(`swapInterval 0`).
 
 Per-OS hooks live in `ir_window_platform.hpp`: on macOS both non-normal modes
 switch the process to the accessory activation policy after `glfwInit` (no

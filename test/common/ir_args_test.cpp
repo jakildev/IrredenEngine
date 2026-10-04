@@ -525,7 +525,7 @@ TEST(IRArgsWindowModeDeathTest, RejectsAValueOutsideTheSet) {
     EXPECT_EXIT(
         p.parse(a.argc(), a.argv()),
         ::testing::ExitedWithCode(2),
-        "expects one of \\{normal\\|background\\|hidden\\}, got 'minimized'"
+        "expects one of \\{normal\\|background\\|hidden\\|offscreen\\}, got 'minimized'"
     );
 }
 

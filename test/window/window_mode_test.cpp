@@ -9,7 +9,8 @@ namespace {
 using IRWindow::WindowMode;
 
 TEST(WindowModeTest, NamesRoundTrip) {
-    for (WindowMode mode : {WindowMode::NORMAL, WindowMode::BACKGROUND, WindowMode::HIDDEN}) {
+    for (WindowMode mode :
+         {WindowMode::NORMAL, WindowMode::BACKGROUND, WindowMode::HIDDEN, WindowMode::OFFSCREEN}) {
         const auto parsed = IRWindow::parseWindowMode(IRWindow::windowModeName(mode));
         ASSERT_TRUE(parsed.has_value());
         EXPECT_EQ(*parsed, mode);
@@ -20,6 +21,7 @@ TEST(WindowModeTest, SpellingsMatchTheCommandLineSet) {
     EXPECT_EQ(IRWindow::parseWindowMode("normal"), WindowMode::NORMAL);
     EXPECT_EQ(IRWindow::parseWindowMode("background"), WindowMode::BACKGROUND);
     EXPECT_EQ(IRWindow::parseWindowMode("hidden"), WindowMode::HIDDEN);
+    EXPECT_EQ(IRWindow::parseWindowMode("offscreen"), WindowMode::OFFSCREEN);
 }
 
 TEST(WindowModeTest, RejectsAnythingElse) {

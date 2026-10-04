@@ -7,7 +7,7 @@
 # and never over a caller's explicit choice:
 #
 #   no marker (a human's shell)                                       → untouched
-#   capture verb (--auto-screenshot / --auto-record / --auto-profile) → hidden
+#   capture verb (--auto-screenshot / --auto-record / --auto-profile) → offscreen
 #   watchdog run (--timeout / FLEET_RUN_DEFAULT_TIMEOUT)              → background
 #   plain exec (no verb, no timeout)                                  → untouched
 #   IR_WINDOW_MODE already set, or --window-mode in the program args → untouched
@@ -60,33 +60,33 @@ assert_contains "$OUT" "window-mode=background" "FLEET_WINDOW_MODE is an explici
 echo "the fleet-run shim marks the launch unattended:"
 OUT="$("$FLEET_RUN" --build-dir "$FAKE_BUILD" echo-mode --auto-screenshot 10 2>&1)"; RC=$?
 assert_eq "$RC" "0" "fleet-run capture run exits 0"
-assert_contains "$OUT" "window-mode=hidden" "fleet-run exports hidden for a capture verb"
+assert_contains "$OUT" "window-mode=offscreen" "fleet-run exports offscreen for a capture verb"
 OUT="$("$FLEET_RUN" --build-dir "$FAKE_BUILD" echo-mode 2>&1)"; RC=$?
 assert_contains "$OUT" "window-mode=unset" "fleet-run leaves a plain exec alone"
 
 # Every case below runs as the fleet does: marked unattended.
 export FLEET_UNATTENDED=1
 
-echo "capture verb defaults to hidden:"
+echo "capture verb defaults to offscreen:"
 run_ir echo-mode --auto-screenshot 10
 assert_eq "$RC" "0" "capture run exits 0"
-assert_contains "$OUT" "window-mode=hidden" "--auto-screenshot exports hidden"
-assert_contains "$OUT" "(window mode: hidden)" "launch line names the mode"
+assert_contains "$OUT" "window-mode=offscreen" "--auto-screenshot exports offscreen"
+assert_contains "$OUT" "(window mode: offscreen)" "launch line names the mode"
 
 echo "every capture verb counts:"
 run_ir echo-mode --auto-record
-assert_contains "$OUT" "window-mode=hidden" "--auto-record exports hidden"
+assert_contains "$OUT" "window-mode=offscreen" "--auto-record exports offscreen"
 run_ir echo-mode --auto-profile 300
-assert_contains "$OUT" "window-mode=hidden" "--auto-profile exports hidden"
+assert_contains "$OUT" "window-mode=offscreen" "--auto-profile exports offscreen"
 
 echo "the inline =N form of every capture verb counts:"
 run_ir echo-mode --auto-screenshot=10
-assert_contains "$OUT" "window-mode=hidden" "--auto-screenshot=N exports hidden"
-assert_contains "$OUT" "(window mode: hidden)" "inline form names the mode"
+assert_contains "$OUT" "window-mode=offscreen" "--auto-screenshot=N exports offscreen"
+assert_contains "$OUT" "(window mode: offscreen)" "inline form names the mode"
 run_ir echo-mode --auto-record=60
-assert_contains "$OUT" "window-mode=hidden" "--auto-record=N exports hidden"
+assert_contains "$OUT" "window-mode=offscreen" "--auto-record=N exports offscreen"
 run_ir echo-mode --auto-profile=75
-assert_contains "$OUT" "window-mode=hidden" "--auto-profile=N exports hidden"
+assert_contains "$OUT" "window-mode=offscreen" "--auto-profile=N exports offscreen"
 
 echo "watchdog run defaults to background:"
 run_ir --timeout 10 echo-mode
@@ -98,13 +98,13 @@ echo "FLEET_RUN_DEFAULT_TIMEOUT counts as a watchdog run:"
 FLEET_RUN_DEFAULT_TIMEOUT=10 run_ir echo-mode
 assert_contains "$OUT" "window-mode=background" "default timeout exports background"
 
-echo "capture verb under a watchdog stays hidden:"
+echo "capture verb under a watchdog stays offscreen:"
 run_ir --timeout 10 echo-mode --auto-screenshot
-assert_contains "$OUT" "window-mode=hidden" "verb outranks the watchdog default"
+assert_contains "$OUT" "window-mode=offscreen" "verb outranks the watchdog default"
 run_ir --timeout 10 echo-mode --auto-screenshot=4
-assert_contains "$OUT" "window-mode=hidden" "inline verb outranks the watchdog default"
+assert_contains "$OUT" "window-mode=offscreen" "inline verb outranks the watchdog default"
 run_ir --timeout 10 echo-mode --auto-profile=75
-assert_contains "$OUT" "window-mode=hidden" "inline profile verb outranks the watchdog default"
+assert_contains "$OUT" "window-mode=offscreen" "inline profile verb outranks the watchdog default"
 
 echo "plain exec is left alone:"
 run_ir echo-mode

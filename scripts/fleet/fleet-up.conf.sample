@@ -364,12 +364,13 @@
 # set by fleet-run), and ir-run then exports IR_WINDOW_MODE (the engine's
 # --window-mode fallback) by the run's shape so a demo never activates over
 # the human's windows: capture verbs (--auto-screenshot / --auto-record /
-# --auto-profile) get `hidden`, watchdog runs (--timeout /
+# --auto-profile) get `offscreen`, watchdog runs (--timeout /
 # FLEET_RUN_DEFAULT_TIMEOUT) get `background`. A plain `fleet-run <demo>`
 # with neither, and any bare ir-run in a human's own shell, is left alone.
 # FLEET_WINDOW_MODE replaces both defaults with one value (normal |
-# background | hidden) and applies marker or not; engine/window/CLAUDE.md
-# "Window modes" has the per-mode behavior. Exported to every pane.
+# background | hidden | offscreen) and applies marker or not;
+# engine/window/CLAUDE.md "Window modes" has the per-mode behavior. Exported
+# to every pane.
 
 # FLEET_WINDOW_MODE=background
 

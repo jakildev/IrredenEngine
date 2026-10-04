@@ -125,9 +125,10 @@ Parser::Parser(const char *programDescription, Common common)
     enumValue(
         "--window-mode",
         "Window presentation: normal (shown, focused) | background (shown, never focused or "
-        "activated) | hidden (never shown; renders and captures as usual). Overrides the "
-        "IR_WINDOW_MODE env var and config `window_mode`",
-        {"normal", "background", "hidden"},
+        "activated) | hidden (never shown; renders and captures as usual) | offscreen (hidden, "
+        "and the engine renders into its own screen target instead of the swapchain). "
+        "Overrides the IR_WINDOW_MODE env var and config `window_mode`",
+        {"normal", "background", "hidden", "offscreen"},
         "normal"
     );
 }

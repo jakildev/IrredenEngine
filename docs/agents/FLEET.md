@@ -270,7 +270,7 @@ Windows children remain outside the guarantee; use `ir-acquire --quiet-disable [
 ### Window mode
 
 A fleet launch never takes the host's screen: `fleet-run` and every pane mark
-launches `FLEET_UNATTENDED=1`, and a marked `ir-run` runs capture verbs `hidden`
+launches `FLEET_UNATTENDED=1`, and a marked `ir-run` runs capture verbs `offscreen`
 and watchdog runs `background` (`FLEET_WINDOW_MODE` in `~/.fleet/fleet-up.conf`
 overrides both); a human's bare `ir-run` shows its window, no flags. Semantics
 and the `--window-mode normal` escape: `engine/window/CLAUDE.md` "Window modes".

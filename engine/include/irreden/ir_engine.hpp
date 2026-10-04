@@ -116,8 +116,8 @@ inline void init(const char *argv0, const char *configFileName = "config.lua") {
         windowModeOverride = IRWindow::parseWindowMode(requestedWindowMode);
         if (!windowModeOverride.has_value()) {
             IRE_LOG_WARN(
-                "Ignoring window mode '{}' (valid: normal | background | hidden); keeping the "
-                "configured window_mode",
+                "Ignoring window mode '{}' (valid: normal | background | hidden | offscreen); "
+                "keeping the configured window_mode",
                 requestedWindowMode
             );
         }
