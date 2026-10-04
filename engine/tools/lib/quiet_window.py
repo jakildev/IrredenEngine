@@ -8,6 +8,7 @@ import ctypes
 import json
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -53,9 +54,32 @@ def read_json(path: Path) -> dict | None:
         return None
 
 
-def pid_alive(pid: int) -> bool:
+def windows_native_pid(pid: int, owner_token: str = "") -> int:
+    match = re.match(r"\s*(\d+)\b", owner_token)
+    return int(match.group(1)) if match else pid
+
+
+def windows_native_alive(pid: int) -> bool:
+    kernel32 = ctypes.windll.kernel32
+    handle = kernel32.OpenProcess(0x1000, False, pid)
+    if not handle:
+        return False
+    try:
+        code = ctypes.c_ulong()
+        return bool(kernel32.GetExitCodeProcess(handle, ctypes.byref(code))) and code.value == 259
+    finally:
+        kernel32.CloseHandle(handle)
+
+
+def windows_pid_alive(pid: int, owner_token: str = "") -> bool:
+    return windows_native_alive(windows_native_pid(pid, owner_token))
+
+
+def pid_alive(pid: int, owner_token: str = "") -> bool:
     if pid <= 0:
         return False
+    if os.name == "nt":
+        return windows_pid_alive(pid, owner_token)
     try:
         os.kill(pid, 0)
         return True
@@ -250,7 +274,7 @@ def live_parkers(path: Path) -> list[dict]:
     rows = []
     for entry in (path / "parkers").glob("*.json"):
         row = read_json(entry)
-        if row and pid_alive(int(row.get("pid", 0))):
+        if row and pid_alive(int(row.get("pid", 0)), str(row.get("owner_token", ""))):
             rows.append(row)
     return rows
 
@@ -261,7 +285,9 @@ def lease_rows() -> list[dict]:
         meta = read_json(path / "lease.json")
         if not meta:
             continue
-        if not pid_alive(int(meta.get("holder_pid", 0))):
+        if not pid_alive(
+            int(meta.get("holder_pid", 0)), str(meta.get("owner_token", ""))
+        ):
             shutil.rmtree(path, ignore_errors=True)
             continue
         parkers = live_parkers(path)
@@ -287,7 +313,7 @@ def record_rows(owner: str | None = None) -> list[dict]:
             continue
         row["path"] = str(path)
         phase = row.get("phase")
-        alive = pid_alive(int(row.get("pid", 0)))
+        alive = pid_alive(int(row.get("pid", 0)), str(row.get("owner_token", "")))
         if phase != "released" and not alive:
             shutil.rmtree(path, ignore_errors=True)
             continue
@@ -355,7 +381,12 @@ def cmd_lease_create(args: argparse.Namespace) -> int:
     path.mkdir(parents=True, exist_ok=True)
     atomic_json(
         path / "lease.json",
-        {"tag": args.tag, "holder_pid": args.pid, "created_at": now()},
+        {
+            "tag": args.tag,
+            "holder_pid": args.pid,
+            "owner_token": args.owner_token,
+            "created_at": now(),
+        },
     )
     event("lease-created", args.tag)
     return 0
@@ -385,6 +416,8 @@ def cmd_park(args: argparse.Namespace) -> int:
     if not meta:
         return 0
     measurement_root = args.measurement_root
+    if os.name == "nt":
+        measurement_root = windows_native_pid(measurement_root, args.measurement_root_token)
     if measurement_root > 0:
         parents = process_parents()
         cursor = os.getppid()
@@ -401,6 +434,7 @@ def cmd_park(args: argparse.Namespace) -> int:
     parker_path = path / "parkers" / f"{os.getpid()}.json"
     state = {
         "pid": os.getpid(),
+        "owner_token": str(os.getpid()) if os.name == "nt" else "",
         "state": "busy",
         "quiet_since": now(),
         "covered_through": now(),
@@ -434,7 +468,11 @@ def cmd_park(args: argparse.Namespace) -> int:
             threshold = min(float(row["settle_cpu"]) for row in records)
             try:
                 cores, started, finished = sample_cores(
-                    int(meta["holder_pid"]),
+                    windows_native_pid(
+                        int(meta["holder_pid"]), str(meta.get("owner_token", ""))
+                    )
+                    if os.name == "nt"
+                    else int(meta["holder_pid"]),
                     excluded_roots(path, os.getpid(), measurement_root),
                     sample,
                 )
@@ -503,6 +541,7 @@ def cmd_record_create(args: argparse.Namespace) -> int:
         {
             "id": record_id,
             "pid": args.pid,
+            "owner_token": args.owner_token,
             "owner": args.owner,
             "phase": "waiting",
             "requested_at": now(),
@@ -626,6 +665,7 @@ def parser() -> argparse.ArgumentParser:
     lease_create = sub.add_parser("lease-create")
     lease_create.add_argument("tag")
     lease_create.add_argument("--pid", type=int, required=True)
+    lease_create.add_argument("--owner-token", default="")
     lease_create.set_defaults(func=cmd_lease_create)
     lease_drop = sub.add_parser("lease-drop")
     lease_drop.add_argument("tag")
@@ -633,6 +673,7 @@ def parser() -> argparse.ArgumentParser:
     park = sub.add_parser("park")
     park.add_argument("tag")
     park.add_argument("--measurement-root", type=int, default=0)
+    park.add_argument("--measurement-root-token", default="")
     park.set_defaults(func=cmd_park)
     status = sub.add_parser("status")
     status.add_argument("--owner")
@@ -645,6 +686,7 @@ def parser() -> argparse.ArgumentParser:
     enable.set_defaults(func=cmd_enable)
     create = sub.add_parser("record-create")
     create.add_argument("--pid", type=int, required=True)
+    create.add_argument("--owner-token", default="")
     create.add_argument("--owner", default="")
     create.add_argument("--linger", type=float, required=True)
     create.add_argument("--maximum", type=float, required=True)

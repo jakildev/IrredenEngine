@@ -317,7 +317,9 @@ ir_quiet_status() {
 }
 
 ir_quiet_lease_create() {
-    python3 "$IR_QUIET_HELPER" lease-create "$1" --pid "${2:-$$}"
+    local pid="${2:-$$}"
+    python3 "$IR_QUIET_HELPER" lease-create "$1" --pid "$pid" \
+        --owner-token "$(ir_owner_token_for_pid "$pid")"
 }
 
 ir_quiet_lease_drop() {
@@ -379,8 +381,15 @@ _ir_write_winpid() {
 # ir_self_owner_token — the winpid record this process stamps on its locks;
 # empty off Windows, where a lock carries none.
 ir_self_owner_token() {
-    [[ -n "$_IR_SELF_WINPID" ]] || return 0
-    echo "$_IR_SELF_WINPID $_IR_RUNTIME_ROOT"
+    ir_owner_token_for_pid "$$"
+}
+
+ir_owner_token_for_pid() {
+    local pid="$1" winpid=""
+    [[ -r "/proc/$pid/winpid" ]] || return 0
+    read -r winpid < "/proc/$pid/winpid" || true
+    [[ -n "$winpid" ]] || return 0
+    echo "$winpid $_IR_RUNTIME_ROOT"
 }
 
 # _ir_holder_alive <pid> <winpid-file> — same-runtime holders are judged by

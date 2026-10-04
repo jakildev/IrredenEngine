@@ -139,6 +139,7 @@ case "$verb" in
     benchmark)
         quiet_record="$(python3 "$IR_QUIET_HELPER" record-create \
             --pid "$$" --owner "${IR_QUIET_OWNER:-}" \
+            --owner-token "$(ir_self_owner_token)" \
             --linger "$(ir_quiet_linger)" --maximum "$(ir_quiet_max)" \
             --drain "$(ir_quiet_drain)" --settle-cpu "$(ir_quiet_settle_cpu)" \
             --settle-sample "$(ir_quiet_settle_sample)")"
@@ -147,7 +148,8 @@ case "$verb" in
             [[ -n "${IR_QUIET_REPORT_FILE:-}" ]] && printf 'UNGUARDED\n' > "$IR_QUIET_REPORT_FILE"
         elif [[ -z "${IR_QUIET_TEST_NO_QUEUE_PARK:-}" && -n "${IR_QUIET_OWNER:-}" && -d "$IR_LOCK_ROOT/quiet/leases/$IR_QUIET_OWNER" ]]; then
             measurement_root="${IR_QUIET_MEASURE_ROOT:-$$}"
-            ir_quiet_park "$IR_QUIET_OWNER" --measurement-root "$measurement_root" &
+            ir_quiet_park "$IR_QUIET_OWNER" --measurement-root "$measurement_root" \
+                --measurement-root-token "$(ir_owner_token_for_pid "$measurement_root")" &
             quiet_parker_pid=$!
         fi
         # The canonical heavy-measurement lock. cpu = budget-1 leaves one
