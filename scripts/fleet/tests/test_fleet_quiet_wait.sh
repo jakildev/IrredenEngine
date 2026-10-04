@@ -26,18 +26,23 @@ export IR_QUIET_LINGER=0 IR_QUIET_MAX=10 IR_QUIET_DRAIN=3
 export IR_QUIET_SETTLE_CPU=.25 IR_QUIET_SETTLE_SAMPLE=.05
 export PATH="$REPO_ROOT/engine/tools/bin:$REPO_ROOT/scripts/fleet:$PATH"
 
-started=$(python3 -c 'import time; print(time.monotonic_ns())')
-OUT=$(fleet-quiet-wait 2>&1)
-RC=$?
-finished=$(python3 -c 'import time; print(time.monotonic_ns())')
-elapsed_ms=$(( (finished - started) / 1000000 ))
-assert_eq "$RC" "0" "unset owner returns successfully"
-assert_eq "$OUT" "" "unset owner writes no output"
-if (( elapsed_ms < 100 )); then
-    ok "no-record fast path stays below 100 ms (${elapsed_ms} ms)"
-else
-    bad "no-record fast path stays below 100 ms (${elapsed_ms} ms)"
-fi
+assert_quick_wait() {
+    local label="$1" limit_ms="$2" started finished elapsed_ms out rc
+    started=$(python3 -c 'import time; print(time.monotonic_ns())')
+    out=$(fleet-quiet-wait 2>&1)
+    rc=$?
+    finished=$(python3 -c 'import time; print(time.monotonic_ns())')
+    elapsed_ms=$(( (finished - started) / 1000000 ))
+    assert_eq "$rc" "0" "$label returns successfully"
+    assert_eq "$out" "" "$label writes no output"
+    if (( elapsed_ms < limit_ms )); then
+        ok "$label stays below ${limit_ms} ms (${elapsed_ms} ms)"
+    else
+        bad "$label stays below ${limit_ms} ms (${elapsed_ms} ms)"
+    fi
+}
+
+assert_quick_wait "unset-owner fast path" 100
 
 export IR_QUIET_OWNER=missing-lease
 mkdir -p "$IR_LOCK_ROOT/quiet/records/fake"
@@ -130,19 +135,16 @@ wait "$HOOK_PID"
 HOOK_PID=""
 assert_eq "$(cat "$TMP_ROOT/race-hook.out")" "" "unpark-race hook keeps stdout empty"
 
+record_expired=$(IR_QUIET_NOW=100 python3 "$REPO_ROOT/engine/tools/lib/quiet_window.py" \
+    record-create --pid "$BASHPID" --owner expired-owner --linger 0 --maximum 1 \
+    --drain 1 --settle-cpu .25 --settle-sample .05)
+export IR_QUIET_NOW=102
+assert_quick_wait "expired hook" 500
+unset IR_QUIET_NOW
+python3 "$REPO_ROOT/engine/tools/lib/quiet_window.py" refuse "$record_expired"
+
 ir-acquire --quiet-disable hook-test
-started=$(python3 -c 'import time; print(time.monotonic_ns())')
-OUT=$(fleet-quiet-wait 2>&1)
-RC=$?
-finished=$(python3 -c 'import time; print(time.monotonic_ns())')
-elapsed_ms=$(( (finished - started) / 1000000 ))
-assert_eq "$RC" "0" "disabled window returns successfully"
-assert_eq "$OUT" "" "disabled window writes no output"
-if (( elapsed_ms < 500 )); then
-    ok "disabled hook returns within one poll (${elapsed_ms} ms)"
-else
-    bad "disabled hook returns within one poll (${elapsed_ms} ms)"
-fi
+assert_quick_wait "disabled hook" 500
 ir-acquire --quiet-enable
 ir-acquire --quiet-lease "$IR_QUIET_OWNER" drop
 kill "$HOLDER_PID" 2>/dev/null || true

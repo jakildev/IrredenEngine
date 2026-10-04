@@ -154,6 +154,13 @@ tick() {  # tick <host> — one dispatch_role smoke-worker tick; prints the log
     run_dispatcher "$1" --dispatch-role smoke-worker 2>&1 >/dev/null
 }
 
+assert_windows_dispatches() {
+    local label="$1" output
+    write_slice "$WINDOWS"
+    output=$(tick windows)
+    assert_contains "$output" "dispatching smoke-worker" "$label"
+}
+
 echo "T1: a pre-boot projection is quiet and cannot grant smoke work"
 write_slice "$WINDOWS"
 export FLEET_DISPATCHER_STARTED_EPOCH=1767225601
@@ -242,8 +249,11 @@ if [[ -f "$TRIGGER" ]]; then
 else
     bad "quiet window leaves the standing trigger unconsumed"
 fi
+ir-acquire --quiet-disable test
+assert_windows_dispatches \
+    "disabled quiet window permits a dispatcher send-keys launch"
+ir-acquire --quiet-enable
 python3 "$REPO_ROOT/engine/tools/lib/quiet_window.py" refuse "$record"
-out=$(tick windows)
-assert_contains "$out" "dispatching smoke-worker" "dispatch resumes after the window closes"
+assert_windows_dispatches "dispatch resumes after the window closes"
 
 summarize "fleet-dispatcher smoke host gate"

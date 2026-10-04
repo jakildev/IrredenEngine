@@ -80,6 +80,13 @@ OUT=$("$IR_ACQUIRE" --quiet-status 2>&1)
 RC=$?
 assert_eq "$RC" "1" "an empty lock root is not gated"
 assert_contains "$OUT" "off" "empty status says off"
+mkdir -p "$IR_LOCK_ROOT/quiet/records/malformed"
+printf '{"phase":"held"}\n' > "$IR_LOCK_ROOT/quiet/records/malformed/record.json"
+OUT=$("$IR_ACQUIRE" --quiet-status 2>&1)
+RC=$?
+assert_eq "$RC" "1" "malformed record is ignored by status"
+assert_contains "$OUT" "off" "malformed record cannot crash the evaluator"
+rm -rf "$IR_LOCK_ROOT/quiet/records/malformed"
 
 "$IR_ACQUIRE" --quiet-disable test
 GATE_OUT=$(fleet-gate-status 2>&1)
@@ -268,6 +275,43 @@ assert_eq "$RECORD_COUNT" "0" "cpu, gpu, and perf acquisitions write no quiet re
 OUT=$("$IR_ACQUIRE" --quiet-status --json 2>&1)
 assert_absent "$OUT" 'dead-holder' "dead-holder leases are ignored and reaped"
 
+sleep 30 &
+HOLDER_PID=$!
+"$IR_ACQUIRE" --quiet-lease killed-parker create "$HOLDER_PID"
+mkdir -p "$IR_LOCK_ROOT/quiet/leases/killed-parker/parkers"
+printf '{"pid":999999,"state":"parked","quiet_since":0,"covered_through":9999999999}\n' \
+    > "$IR_LOCK_ROOT/quiet/leases/killed-parker/parkers/dead.json"
+OUT=$("$IR_ACQUIRE" --quiet-status --json 2>&1)
+assert_contains "$OUT" '"tag": "killed-parker"' "live lease remains visible after its parker dies"
+assert_contains "$OUT" '"state": "busy"' "killed parker makes its lease busy"
+"$IR_ACQUIRE" --quiet-lease killed-parker drop
+kill "$HOLDER_PID" 2>/dev/null || true
+wait "$HOLDER_PID" 2>/dev/null || true
+HOLDER_PID=""
+
+sleep 30 &
+HOLDER_PID=$!
+"$IR_ACQUIRE" --quiet-lease delayed-drain create "$HOLDER_PID"
+RECORD=$(python3 "$REPO_ROOT/engine/tools/lib/quiet_window.py" record-create \
+    --pid "$$" --owner delayed --linger 0 --maximum .1 --drain .1 \
+    --settle-cpu .25 --settle-sample .05)
+mkdir -p "$IR_LOCK_ROOT/quiet/leases/delayed-drain/parkers"
+printf '{"pid":%s,"state":"parked","quiet_since":0,"covered_through":9999999999}\n' \
+    "$HOLDER_PID" > "$IR_LOCK_ROOT/quiet/leases/delayed-drain/parkers/$HOLDER_PID.json"
+sleep .2
+OUT=$(python3 "$REPO_ROOT/engine/tools/lib/quiet_window.py" barrier "$RECORD" 2>&1)
+RC=$?
+assert_eq "$RC" "0" "lock-queue time does not consume the drain deadline"
+REPORT="$TMP_ROOT/delayed-drain.report"
+python3 "$REPO_ROOT/engine/tools/lib/quiet_window.py" finish "$RECORD" 0 --report "$REPORT"
+RC=$?
+assert_eq "$RC" "0" "lock-queue time does not consume the hold cap"
+assert_eq "$(head -1 "$REPORT")" "GUARDED" "post-queue hold gets its full cap"
+"$IR_ACQUIRE" --quiet-lease delayed-drain drop
+kill "$HOLDER_PID" 2>/dev/null || true
+wait "$HOLDER_PID" 2>/dev/null || true
+HOLDER_PID=""
+
 TEST_PID="$BASHPID"
 RECORD=$(IR_QUIET_NOW=100 python3 "$REPO_ROOT/engine/tools/lib/quiet_window.py" \
     record-create --pid "$TEST_PID" --owner edge --linger 0 --maximum 1 \
@@ -338,6 +382,62 @@ kill "$HOLDER_PID" 2>/dev/null || true
 wait "$HOLDER_PID" 2>/dev/null || true
 HOLDER_PID=""
 
+sleep 30 & holder_a=$!
+sleep 30 & holder_b=$!
+"$IR_ACQUIRE" --quiet-lease requester-a create "$holder_a"
+"$IR_ACQUIRE" --quiet-lease requester-b create "$holder_b"
+(
+    IR_QUIET_OWNER=requester-a IR_QUIET_DRAIN=2 "$IR_ACQUIRE" benchmark -- \
+        python3 -c "import pathlib,time; pathlib.Path('$TMP_ROOT/a.start').write_text(str(time.time())); time.sleep(.3); pathlib.Path('$TMP_ROOT/a.end').write_text(str(time.time()))"
+    a_rc=$?
+    IR_QUIET_OWNER=requester-a fleet-quiet-wait
+    exit "$a_rc"
+) >"$TMP_ROOT/a.out" 2>&1 & a_pid=$!
+for _attempt in $(seq 1 100); do
+    OUT=$("$IR_ACQUIRE" --quiet-status --json 2>&1)
+    [[ "$OUT" == *'"state": "draining"'* || "$OUT" == *'"state": "held"'* ]] && break
+    sleep .02
+done
+IR_QUIET_OWNER=requester-b IR_QUIET_DRAIN=2 "$IR_ACQUIRE" benchmark -- \
+    python3 -c "import pathlib,time; pathlib.Path('$TMP_ROOT/b.start').write_text(str(time.time())); pathlib.Path('$TMP_ROOT/b.end').write_text(str(time.time()))" \
+    >"$TMP_ROOT/b.out" 2>&1 & b_pid=$!
+wait "$b_pid"; b_rc=$?
+wait "$a_pid"; a_rc=$?
+assert_eq "$a_rc" "0" "first competing benchmark exits guarded"
+assert_eq "$b_rc" "0" "queued competing benchmark exits guarded"
+ORDERED=$(python3 - "$TMP_ROOT/a.end" "$TMP_ROOT/b.start" <<'PY'
+import pathlib, sys
+print(float(pathlib.Path(sys.argv[2]).read_text()) >= float(pathlib.Path(sys.argv[1]).read_text()))
+PY
+)
+assert_eq "$ORDERED" "True" "second benchmark starts after the first ends"
+"$IR_ACQUIRE" --quiet-lease requester-a drop
+"$IR_ACQUIRE" --quiet-lease requester-b drop
+kill "$holder_a" "$holder_b" 2>/dev/null || true
+wait "$holder_a" 2>/dev/null || true
+wait "$holder_b" 2>/dev/null || true
+
+sleep 30 & holder_a=$!
+sleep 30 & holder_b=$!
+"$IR_ACQUIRE" --quiet-lease no-park-a create "$holder_a"
+"$IR_ACQUIRE" --quiet-lease no-park-b create "$holder_b"
+IR_QUIET_OWNER=no-park-a IR_QUIET_DRAIN=.4 "$IR_ACQUIRE" benchmark -- true \
+    >"$TMP_ROOT/no-park-a.out" 2>&1 & a_pid=$!
+sleep .1
+IR_QUIET_TEST_NO_QUEUE_PARK=1 IR_QUIET_OWNER=no-park-b IR_QUIET_DRAIN=.4 \
+    "$IR_ACQUIRE" benchmark -- true >"$TMP_ROOT/no-park-b.out" 2>&1 & b_pid=$!
+wait "$a_pid"; a_rc=$?
+wait "$b_pid"; b_rc=$?
+assert_eq "$a_rc" "75" "competing requester without queue parking is bounded"
+assert_contains "$(cat "$TMP_ROOT/no-park-a.out")" "QUIET-REFUSED no-park-b" \
+    "no-queue-park control names the competing requester"
+assert_eq "$b_rc" "75" "the no-queue-park competitor also exits without deadlock"
+"$IR_ACQUIRE" --quiet-lease no-park-a drop
+"$IR_ACQUIRE" --quiet-lease no-park-b drop
+kill "$holder_a" "$holder_b" 2>/dev/null || true
+wait "$holder_a" 2>/dev/null || true
+wait "$holder_b" 2>/dev/null || true
+
 REPORT="$TMP_ROOT/mid-disable.report"
 IR_QUIET_REPORT_FILE="$REPORT" "$IR_ACQUIRE" benchmark -- \
     sh -c "touch '$TMP_ROOT/mid-disable.started'; while [ ! -f '$TMP_ROOT/mid-disable.release' ]; do sleep .05; done" \
@@ -356,5 +456,18 @@ BENCH_PID=""
 assert_eq "$RC" "76" "disabling during a guarded hold contaminates it"
 assert_contains "$(cat "$REPORT")" "disabled" "mid-hold switch reason is reported"
 "$IR_ACQUIRE" --quiet-enable
+
+sleep 30 &
+HOLDER_PID=$!
+"$IR_ACQUIRE" --quiet-lease reenabled-session create "$HOLDER_PID"
+OUT=$(IR_QUIET_DRAIN=.2 "$IR_ACQUIRE" benchmark -- true 2>&1)
+RC=$?
+assert_eq "$RC" "75" "re-enabled quiet window refuses a busy session again"
+assert_contains "$OUT" "QUIET-REFUSED reenabled-session" \
+    "re-enabled refusal names the busy lease"
+"$IR_ACQUIRE" --quiet-lease reenabled-session drop
+kill "$HOLDER_PID" 2>/dev/null || true
+wait "$HOLDER_PID" 2>/dev/null || true
+HOLDER_PID=""
 
 summarize "quiet-window tests"

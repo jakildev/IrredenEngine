@@ -20,6 +20,9 @@ ROOT = Path(os.environ["IR_LOCK_ROOT"]) / "quiet"
 RECORDS = ROOT / "records"
 LEASES = ROOT / "leases"
 DISABLED = ROOT / "disabled"
+REQUIRED_RECORD_FIELDS = frozenset(
+    {"pid", "phase", "requested_at", "linger_seconds", "max_seconds"}
+)
 
 
 def now() -> float:
@@ -279,14 +282,25 @@ def record_rows(owner: str | None = None) -> list[dict]:
         row = read_json(path / "record.json")
         if not row:
             continue
+        if not REQUIRED_RECORD_FIELDS.issubset(row):
+            shutil.rmtree(path, ignore_errors=True)
+            continue
         row["path"] = str(path)
         phase = row.get("phase")
         alive = pid_alive(int(row.get("pid", 0)))
         if phase != "released" and not alive:
             shutil.rmtree(path, ignore_errors=True)
             continue
-        age = stamp - float(row["requested_at"])
-        if age >= float(row["max_seconds"]):
+        phase_started_at = None
+        if phase == "waiting":
+            phase_started_at = row["requested_at"]
+        elif phase == "draining":
+            phase_started_at = row.get("draining_at", row["requested_at"])
+        elif phase == "held":
+            phase_started_at = row.get("barrier_at", row["requested_at"])
+        if phase_started_at is not None and stamp - float(phase_started_at) >= float(
+            row["max_seconds"]
+        ):
             row["state"] = "expired"
         elif phase == "released":
             released = float(row.get("released_at", 0))
@@ -516,9 +530,8 @@ def update_record(record_id: str, **values: object) -> dict:
 def cmd_barrier(args: argparse.Namespace) -> int:
     draining_at = now()
     record = update_record(args.record, phase="draining", draining_at=draining_at)
-    deadline = min(
-        float(record["requested_at"]) + float(record["drain_seconds"]),
-        float(record["requested_at"]) + float(record["max_seconds"]),
+    deadline = draining_at + min(
+        float(record["drain_seconds"]), float(record["max_seconds"])
     )
     while now() < deadline:
         if disabled_row():
@@ -573,7 +586,7 @@ def coverage(record: dict, released_at: float) -> list[str]:
         if row:
             detail = f"{row.get('tag', '-')} {row.get('kind')} {row.get('detail', '')}"
             failures.append(detail.strip())
-    if released_at - float(record["requested_at"]) >= float(record["max_seconds"]):
+    if released_at - float(record["barrier_at"]) >= float(record["max_seconds"]):
         failures.append("- cap")
     if disabled_row():
         failures.append("- disabled")

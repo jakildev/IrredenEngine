@@ -65,6 +65,7 @@ make_exe sleeper 'sleep 30'
 # exec so the watchdog's kill lands on the sleep itself, not a parent shell.
 make_exe hang 'exec sleep 30'
 make_exe short-run 'sleep 1; exit 0'
+make_exe breach-hold 'touch "$IR_BREACH_STARTED"; while [[ ! -f "$IR_BREACH_RELEASE" ]]; do sleep .02; done'
 # The status both Windows bashes report for a hang-closed process.
 make_exe exit127 'exit 127'
 
@@ -143,6 +144,31 @@ run_ir clean-exit --auto-profile 1
 assert_eq "$RC" "0" "disabled auto-profile preserves success"
 assert_contains "$OUT" "QUIET=unguarded exe=clean-exit" "unguarded state is reported"
 "$IR_ACQUIRE" --quiet-enable
+
+echo "contaminated benchmark result:"
+export IR_BREACH_STARTED="$FAKE_BUILD/breach.started"
+export IR_BREACH_RELEASE="$FAKE_BUILD/breach.release"
+rm -f "$IR_BREACH_STARTED" "$IR_BREACH_RELEASE"
+"$IR_RUN" --build-dir "$FAKE_BUILD" breach-hold --auto-profile 5 \
+    >"$FAKE_BUILD/breach.log" 2>&1 &
+breach_pid=$!
+for _attempt in $(seq 1 100); do
+    [[ -f "$IR_BREACH_STARTED" ]] && break
+    sleep .02
+done
+sleep 30 &
+HOLDER_PID=$!
+"$IR_ACQUIRE" --quiet-lease late-session create "$HOLDER_PID"
+touch "$IR_BREACH_RELEASE"
+wait "$breach_pid"
+RC=$?
+OUT=$(cat "$FAKE_BUILD/breach.log")
+assert_eq "$RC" "76" "quiet breach propagates exit 76"
+assert_contains "$OUT" "RESULT=CONTAMINATED exe=breach-hold exit=76" \
+    "quiet breach has its own result class"
+assert_absent "$OUT" "RESULT=CLEAN" "contaminated run never reports clean"
+"$IR_ACQUIRE" --quiet-lease late-session drop
+release_holder
 
 echo "refused benchmark result:"
 sleep 30 &
