@@ -37,11 +37,11 @@ enum ShapeFlags : std::uint32_t {
     SHAPE_FLAG_MIRROR_X = 1u << 1,
     SHAPE_FLAG_MIRROR_Y = 1u << 2,
     SHAPE_FLAG_VISIBLE = 1u << 3,
-    /// Whole-body fog exemption: every pixel this shape rasterizes carries the
-    /// entity-id fog whole-body bit, so FOG_TO_TRIXEL drops the height penalty
-    /// and fogs it on XY distance alone (rim fade and cut cap kept). Per-pixel
-    /// only — nothing hides the shape as a whole when its anchor is fogged.
-    SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT = 1u << 4,
+    /// Whole-body fog governance: every pixel this shape rasterizes carries the
+    /// entity-id BODY bit and the anchor-derived factor stored in descriptor
+    /// bits 23:16, so FOG_TO_TRIXEL applies one reveal verdict to the full body.
+    SHAPE_FLAG_FOG_BODY = 1u << 4,
+    SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT = SHAPE_FLAG_FOG_BODY,
     SHAPE_FLAG_CHECKERBOARD = 1u << 5,
     /// Color each voxel by its LOCAL iso-depth along the camera's forward axis,
     /// normalized to [0, 1] over the shape's own depth extent. Useful for
@@ -54,7 +54,15 @@ enum ShapeFlags : std::uint32_t {
     /// reads as a faint silhouette through the occluder. Generic per-shape
     /// opt-in (T-164).
     SHAPE_FLAG_XRAY_OCCLUDED = 1u << 7,
+    SHAPE_FLAG_FOG_HIDDEN = 1u << 8,
 };
+
+constexpr std::uint32_t kShapeFogBodyFactorShift = 16u;
+constexpr std::uint32_t kShapeFogBodyFactorMask = 0xFFu << kShapeFogBodyFactorShift;
+static_assert(
+    SHAPE_FLAG_FOG_HIDDEN < (1u << kShapeFogBodyFactorShift),
+    "Shape flags must not overlap the fog BODY factor"
+);
 
 constexpr float kSurfaceThreshold = 0.5f;
 

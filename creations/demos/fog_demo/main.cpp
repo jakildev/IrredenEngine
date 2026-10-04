@@ -974,14 +974,14 @@ void probeManySources(int) {
 // --entity-reveal: fog BODY subjects under the --edge-zcost-ceiling hard
 // ceiling. One screen row (x + y = 0) of equal-height bodies rising past the
 // ceiling, each pair side by side so its crops compare like for like: an
-// untagged pillar (adopted as a BODY) and a governed one, a flagged and an
-// unflagged SDF box, a governed pillar whose anchor is inside the disc while
-// its outer columns cross the XY rim, and a FIELD control column at the same
-// anchor distance whose outer columns straddle the rim too. A governed pillar
-// outside every circle stays hidden; an EXEMPT pillar outside every circle
-// renders whole. Row offsets are along (1, -1); kEntityRevealSpacing leaves a
-// 2-unit gap between the 4-wide footprints. Slot 0 lands screen-right, and
-// each crop frames one whole body (base to top) at the 2560x1440 zoom-6 shot.
+// untagged pillar (adopted as a BODY) and a governed one, two BODY SDF boxes,
+// a hidden BODY box with a co-located FIELD control, a governed pillar whose
+// anchor is inside the disc while its outer columns cross the XY rim, and a
+// FIELD control column whose outer columns straddle the rim too. A governed
+// pillar outside every circle stays hidden; an EXEMPT pillar outside every
+// circle renders whole. Row offsets are along (1, -1); kEntityRevealSpacing
+// leaves a 2-unit gap between the 4-wide footprints. Slot 0 lands screen-right,
+// and each crop frames one whole body at the 2560x1440 zoom-6 shot.
 bool g_entityReveal = false;         // --entity-reveal
 bool g_entityRevealSoftEdge = false; // --entity-reveal-soft-edge
 constexpr float kEntityRevealRadius = 20.0f;
@@ -989,7 +989,6 @@ constexpr float kEntityRevealSoftEdge = 4.0f;
 constexpr float kEntityRevealSpacing = 5.0f;
 constexpr int kEntityRevealBodyHeight = 16;
 constexpr int kEntityRevealDropColumnHeight = 6;
-constexpr std::uint32_t kEntityRevealShapeFlag = IRRender::SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT;
 IREntity::EntityId g_entityRevealProbe = IREntity::kNullEntity;
 int g_entityRevealProbeFrame = 0;
 constexpr IRVideo::RoiCrop kCropsEntityReveal[] = {
@@ -997,7 +996,7 @@ constexpr IRVideo::RoiCrop kCropsEntityReveal[] = {
     {1260, 240, 300, 680, "governed_pillar"},
     {940, 240, 300, 680, "flagged_shape"},
     {620, 240, 300, 680, "unflagged_shape"},
-    {210, 220, 410, 720, "governed_rim_pillar"},
+    {260, 220, 360, 720, "governed_rim_pillar"},
     {2040, 240, 262, 700, "field_column"},
     {2295, 40, 265, 700, "exempt_pillar"},
 };
@@ -1090,6 +1089,7 @@ void probeEntityRevealBodies() {
 
     for (const BodyProbeSubject &subject : g_bodyProbeSubjects) {
         const auto expected = static_cast<std::uint32_t>(subject.entity_);
+        const auto revealed = IREntity::getComponentOptional<C_FogRevealed>(subject.entity_);
         int texels = 0;
         int aboveCeiling = 0;
         int cutFaceTexels = 0;
@@ -1122,9 +1122,11 @@ void probeEntityRevealBodies() {
             }
         }
         IR_LOG_INFO(
-            "FOG-BODY-PROBE body={} texels={} aboveCeiling={} cutFaceTexels={} ratioMin={:.3f} "
-            "ratioMax={:.3f}",
+            "FOG-BODY-PROBE body={} factor={:.3f} shown={} texels={} aboveCeiling={} "
+            "cutFaceTexels={} ratioMin={:.3f} ratioMax={:.3f}",
             subject.label_,
+            revealed.has_value() ? (*revealed)->revealFactor_ : -1.0f,
+            revealed.has_value() && (*revealed)->shown_,
             texels,
             aboveCeiling,
             cutFaceTexels,
@@ -2481,16 +2483,17 @@ void initEntities() {
         probe("ground_slab", slab);
         // The SDF twins span the pillars' z range: box params are full extents,
         // centred half a body height above the ground surface (+Z is down).
-        const auto createBox = [](vec3 pos, Color color, std::uint32_t extraFlags) {
+        const auto createBox = [](vec3 pos, Color color, std::uint32_t extraFlags, auto... tags) {
             C_ShapeDescriptor shape{
                 IRRender::ShapeType::BOX,
                 vec4(4.0f, 4.0f, static_cast<float>(kEntityRevealBodyHeight), 0.0f),
                 color
             };
             shape.flags_ |= extraFlags;
-            IREntity::createEntity(
+            return IREntity::createEntity(
                 C_LocalTransform{pos - vec3(0.0f, 0.0f, 0.5f * kEntityRevealBodyHeight + 0.5f)},
-                shape
+                shape,
+                tags...
             );
         };
 
@@ -2498,8 +2501,22 @@ void initEntities() {
         g_entityRevealProbe =
             probe("governed_pillar", createPillar(rowPos(1, 4.0f), Color{80, 210, 245, 255}));
         IRPrefab::Fog::setEntityRevealGoverned(g_entityRevealProbe);
-        createBox(rowPos(2, 4.0f), Color{120, 235, 140, 255}, kEntityRevealShapeFlag);
-        createBox(rowPos(3, 4.0f), Color{235, 225, 110, 255}, 0u);
+        const IREntity::EntityId governedShape =
+            probe("governed_box", createBox(rowPos(2, 4.0f), Color{120, 235, 140, 255}, 0u));
+        IRPrefab::Fog::setEntityRevealGoverned(governedShape);
+        probe("unflagged_box", createBox(rowPos(3, 5.0f), Color{235, 225, 110, 255}, 0u));
+        const vec3 hiddenShapePos{18.0f, -18.0f, 4.0f};
+        const IREntity::EntityId hiddenShape =
+            probe("hidden_shape", createBox(hiddenShapePos, Color{235, 80, 170, 255}, 0u));
+        IRPrefab::Fog::setEntityRevealGoverned(hiddenShape);
+        probe(
+            "field_shape_twin",
+            createBox(hiddenShapePos, Color{245, 155, 75, 255}, 0u, C_FogField{})
+        );
+        const IREntity::EntityId authorHiddenShape =
+            probe("author_hidden_shape", createBox(rowPos(1, 4.0f), Color{255, 255, 255, 255}, 0u));
+        IREntity::getComponent<C_ShapeDescriptor>(authorHiddenShape).flags_ &=
+            ~IRRender::SHAPE_FLAG_VISIBLE;
         // A 6-wide body with its anchor ~19.1 from the observer and its outer
         // corner ~23.3: the anchor reveals the body, and as a BODY its outer
         // columns past the radius-20 rim render at the same factor.

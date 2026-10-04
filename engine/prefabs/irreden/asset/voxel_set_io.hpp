@@ -69,7 +69,7 @@ inline BinaryStatus saveVoxelSet(
         r.shapeTypeId_ = static_cast<std::uint32_t>(d.shapeType_);
         r.params_ = d.params_;
         r.color_ = d.color_;
-        r.flags_ = d.flags_;
+        r.flags_ = d.flags_ & ~IRMath::SDF::SHAPE_FLAG_FOG_HIDDEN;
         if (i < offsets.size())
             r.offset_ = offsets[i];
         if (i < rotations.size())
