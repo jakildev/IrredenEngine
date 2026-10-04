@@ -1,0 +1,92 @@
+{
+  "build_source": "6f9525792dd3a6a19e658462cb1bf16bbc5bc37d",
+  "master": "1afd24020aa885c6b93efadd2f737065cf956774",
+  "backend": "macos-debug / Metal",
+  "binary_sha256": "4a0740c41a7bf9dad737b6784c2d902b6ddfda9d4d83ebe1104bc8775185ca38",
+  "shader_sha256": "b3c2d75dfdeddd69f337caffce3147ad3d9acc3737676732da2cad14281901a5",
+  "command": [
+    "python3",
+    "scripts/render-verify.py",
+    "--target",
+    "IRCanvasStress",
+    "--no-build",
+    "--timeout",
+    "180"
+  ],
+  "checks_passed": 30,
+  "exact_rgb_comparisons": 20,
+  "structural_checks": 10,
+  "scope": "Final backend policy with latest-master SDF fog integration. OpenGL performance is measured separately on Linux; native Metal captures do not validate OpenGL presentation.",
+  "log": "final-policy-render-verify.log",
+  "default_capture": {
+    "command": [
+      "fleet-run",
+      "--timeout",
+      "180",
+      "IRCanvasStress",
+      "--auto-screenshot",
+      "120"
+    ],
+    "exit": "RESULT=CLEAN",
+    "comparisons": [
+      {
+        "name": "so3_smooth_sweep",
+        "rgb_identical": true,
+        "rgb_sha256": "c75a2a1e635130d46391e52a43872bd97cce2e315be12a047b95fcf5ac7df6a8"
+      },
+      {
+        "name": "so3_offsnap_disc",
+        "rgb_identical": true,
+        "rgb_sha256": "6fcd48c02e9d5a66be9ceb5d5cbddeb98e9c3365a0cd9be995c57db41712779a"
+      },
+      {
+        "name": "so3_wide_parity",
+        "rgb_identical": true,
+        "rgb_sha256": "9f8200eb39e7ad7dd425b3874373fc0bfeb4c3083c6437ef885a1ef17dd1e4c6"
+      },
+      {
+        "name": "so3_grid_cross",
+        "rgb_identical": true,
+        "rgb_sha256": "e049d91213a06c8f56a607136463ffd201e0936e6d8c725d70970df671c04aa9"
+      },
+      {
+        "name": "so3_offsnap_wide",
+        "rgb_identical": true,
+        "rgb_sha256": "442c5a9cc8f8688d7eedef73e5d52cb85888042070e809a13555fce5b00308c0"
+      },
+      {
+        "name": "revoxelize_solids",
+        "rgb_identical": true,
+        "rgb_sha256": "c9cc5afcd7f6b81912a4de9ffe74bafd7c64ebcf8c32579516872c9cd9950647"
+      }
+    ],
+    "images": "The existing six -after.png images are RGB-identical; retained without duplication."
+  },
+  "host_gpu": "Apple M4 Max",
+  "framebuffer_size": [
+    2560,
+    1440
+  ],
+  "additional_master_integration": {
+    "build_source": "dc3731bf98af1f87fa9c96ce829b764784781ea8",
+    "master": "12ceac85fac7a516ce8ecefbba8b1eb31a2fa4d3",
+    "binary_sha256": "3f522939be359ee0a51c15ad7a3d3af39e831ccaa80c5725f1c0b0bef53a0a9f",
+    "shader_sha256": "b3c2d75dfdeddd69f337caffce3147ad3d9acc3737676732da2cad14281901a5",
+    "command": [
+      "python3",
+      "scripts/render-verify.py",
+      "--target",
+      "IRCanvasStress",
+      "--no-build",
+      "--timeout",
+      "180"
+    ],
+    "checks_passed": 30,
+    "exact_rgb_comparisons": 20,
+    "structural_checks": 10,
+    "log": "entity-id-integration-render-verify.log",
+    "native_tests_passed": 228,
+    "native_tests_skipped": 1,
+    "native_test_filter": "ViewportTest.*:LodTierLua.*:LuaCursorPosition.*:*Fog*:IREntityTest.*:EntityAccessorAllocation.*"
+  }
+}

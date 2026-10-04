@@ -1,0 +1,20 @@
+[
+  {
+    "before": "docs/pr-screenshots/codex/cardinal-canvas-coverage/cardinal-corrected.png",
+    "after": "cardinal-after.png",
+    "rgb_identical": true,
+    "rgb_sha256": "54bb4119f38d5cdea867107fec2034eea92dd3e213d801fa99c02b6936e1473f"
+  },
+  {
+    "before": "docs/pr-screenshots/codex/cardinal-canvas-coverage/diagonal-corrected.png",
+    "after": "diagonal-after.png",
+    "rgb_identical": true,
+    "rgb_sha256": "318a9b8640f13081a33eb75bc7f2b47ec371039489f1f1c1cabb911edc8e0823"
+  },
+  {
+    "before": "docs/pr-screenshots/codex/cardinal-canvas-coverage/cardinal90-corrected.png",
+    "after": "cardinal90-after.png",
+    "rgb_identical": true,
+    "rgb_sha256": "894560a588d4598f8319692da2fd16e764ea9cab66251831501a4d8780c67277"
+  }
+]

@@ -1,0 +1,20 @@
+[
+  {
+    "sha": "4f472b6fe1f82321fd257053162286eddaab90b0",
+    "directory": "save_files/perf/4f472b6fe-ci",
+    "binary_sha256": "5a0cdae6aa599a85bd594db231ff1498285e36ea82c36e81ff6664716fdee01d",
+    "shader_sha256": "98914a57833e003c4bcb04a91463c10e2d7bbf789efed24798719f5c20408f97"
+  },
+  {
+    "sha": "52eca06aded8ad3a85fe532fac1d374b5f5a68bb",
+    "directory": "save_files/perf/52eca06ad-pair-base",
+    "binary_sha256": "5a0cdae6aa599a85bd594db231ff1498285e36ea82c36e81ff6664716fdee01d",
+    "shader_sha256": "d9c00fe1ffd8a7de3f3b92ce2cd95d99e1dd7b605595d36100b6ee71359f03d2"
+  },
+  {
+    "sha": "4f472b6fe1f82321fd257053162286eddaab90b0",
+    "directory": "save_files/perf/4f472b6fe-pair-head-return",
+    "binary_sha256": "5a0cdae6aa599a85bd594db231ff1498285e36ea82c36e81ff6664716fdee01d",
+    "shader_sha256": "98914a57833e003c4bcb04a91463c10e2d7bbf789efed24798719f5c20408f97"
+  }
+]

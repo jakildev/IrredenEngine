@@ -1,0 +1,57 @@
+{
+  "target": "IRPerfGrid",
+  "matrix": "quick",
+  "frames": 60,
+  "git_sha": "4f472b6fe",
+  "git_dirty": false,
+  "run_name": "4f472b6fe-pair-head-return",
+  "started_at": "2026-10-04T16:40:04Z",
+  "cells": [
+    {
+      "id": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1",
+      "target": "IRPerfGrid",
+      "zoom": 1,
+      "sub_mode": "full",
+      "sub_base": 1,
+      "exit_status": 0,
+      "status": "ok",
+      "report": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt"
+    },
+    {
+      "id": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1",
+      "target": "IRPerfGrid",
+      "zoom": 4,
+      "sub_mode": "full",
+      "sub_base": 1,
+      "exit_status": 0,
+      "status": "ok",
+      "report": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt"
+    }
+  ],
+  "finished_at": "2026-10-04T16:41:54Z",
+  "calibration": {
+    "ref_ms": 57.49,
+    "ref_target_ms": 50,
+    "host_slug": "linux-x86_64-epyc-9v45-96-unknown",
+    "host_fingerprint": {
+      "cpu": {
+        "cores": 2,
+        "mhz": 4508,
+        "model": "AMD EPYC 9V45 96-Core Processor",
+        "threads": 4
+      },
+      "gpu": {
+        "model": "unknown"
+      },
+      "os": {
+        "distro": "Ubuntu 24.04.5 LTS",
+        "kernel": "Linux 6.17.0-1022-azure"
+      },
+      "ram": {
+        "gb": 15
+      },
+      "slug": "linux-x86_64-epyc-9v45-96-unknown"
+    },
+    "math_sha": "43e649cb4c5382cf43e378b93929a50456d41156"
+  }
+}

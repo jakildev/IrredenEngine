@@ -261,22 +261,15 @@ kernel void IR_STAGE2_KERNEL_NAME(
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 localId3 [[thread_position_in_threadgroup]]
 ) {
-    const uint compactedIdx = groupId.x + groupId.y * indirectParams.numGroupsX;
-    if (compactedIdx >= indirectParams.visibleCount) {
-        return;
-    }
-
-    // Micro-slice packing — MUST mirror stage 1's zIdx recovery + guard so the
-    // color/entity-id tap runs on exactly the micro-slices stage 1 wrote
-    // distances for.
-    const int zIdx =
-        int(groupId.z) * kStageMicroSlicesPerGroup + int(localId3.z);
-    const int microSliceCount = (frameData.voxelRenderOptions.x != 0 && frameData.perAxisRoute == 0)
-        ? (max(frameData.voxelRenderOptions.y, 1) * max(frameData.voxelRenderOptions.y, 1))
-        : 1;
-    if (zIdx >= microSliceCount) {
-        return;
-    }
+    const int microSliceCount = voxelDispatchMicroSliceCount(
+        frameData.voxelRenderOptions.x, frameData.voxelRenderOptions.y, frameData.perAxisRoute);
+    const uint2 dispatchLane = voxelDispatchLane(
+        groupId.x + groupId.y * indirectParams.numGroupsX,
+        groupId.z, localId3.z, uint(microSliceCount));
+    const uint compactedIdx = dispatchLane.x;
+    if (compactedIdx >= indirectParams.visibleCount) return;
+    const int zIdx = int(dispatchLane.y);
+    if (zIdx >= microSliceCount) return;
 
     const uint voxelIndex = compactedVoxelIndices[compactedIdx];
     const float4 voxelPosition = positions[voxelIndex];

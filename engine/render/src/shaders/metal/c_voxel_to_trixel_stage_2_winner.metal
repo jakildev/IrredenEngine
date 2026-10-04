@@ -7,10 +7,11 @@
 // storeTiesPossible_ flag is set; lattice scenes keep the default kernel. The
 // kernel name must equal the file stem (metalFunctionNameForStage keys off it),
 // and it MUST be registered in metal_pipeline.cpp's
-// threadgroupSizeForFunctionName (2,3,8) and functionUsesImageAtomicScratch
+// threadgroupSizeForFunctionName and functionUsesImageAtomicScratch
 // lists alongside the default stage 2.
 #include "ir_iso_common.metal"
 #include "ir_constants.metal"
+#include "ir_voxel_dispatch.metal"
 
 #define IR_STORE_WINNER_ELECTION 1
 #define IR_STAGE2_KERNEL_NAME c_voxel_to_trixel_stage_2_winner

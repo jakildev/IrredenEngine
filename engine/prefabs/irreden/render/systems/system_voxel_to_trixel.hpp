@@ -2078,7 +2078,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 // range change. The feeder program is registered in
                 // metal_pipeline.cpp's functionUsesImageAtomicScratch +
                 // threadgroupSizeForFunctionName lists, so its atomic distance
-                // writes land in the same scratch at the same (2,3,8) shape. One
+                // writes land in the same scratch with the same lane layout. One
                 // image barrier covers both stage-1 dispatches before stage 2 reads
                 // the distances.
                 stage1FeederProgram_->use();

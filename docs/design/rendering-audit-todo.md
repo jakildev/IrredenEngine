@@ -79,15 +79,68 @@ Next, in order:
    measures 8 versus 32 micro-slices per group: dense cardinal steady Debug time
    improves 101.905→82.600 ms, but low-density depth work regresses and rotated
    frame ranges overlap. All three camera captures are RGB-identical. Keep the
-   production default at 8; grouped runs on a busy host do not qualify adoption.
+   production default at 8 in that experiment; its grouped runs did not qualify adoption.
    An executable GLSL/Metal writer and lane-recovery gate now rejects dropped or
    duplicated samples, row-offset mistakes and missing padding/count guards.
-   Next measure dense-only specialization or multiple low-density voxels per
-   group, extending coverage to actual compact-finalizer route selection before
-   changing it. Use interleaved native controls and then conservative overflow
-   processing. Cardinal/per-axis density differs (16 versus capped 8 at zoom 4),
+   The [occupancy follow-up](../perf/voxel-workgroup-occupancy/README.md) instead
+   packs whole low-density voxels into each Metal group, preserving every sample.
+   Actual finalizer/list selection joins the executable tests. Return controls
+   improve dense cardinal 100.145→83.755 ms and rotated 22.370→16.875 ms;
+   all 30 integrated CanvasStress checks pass and reference RGB is unchanged. Low-density
+   frame ranges overlap and the first subdivision-3 batch regresses before the
+   repeat improves, so do not generalize the gains. Same-runner Linux controls
+   confirm zoom-4 regressions with 32 lanes, eight lanes and direct dense indexing.
+   Keep Metal packing and restore OpenGL one-voxel workgroup ownership. The final
+   paired run reduces zoom-4 steady regression to 3.0%/4.4% (full-frame
+   1.8%/3.2%, below the 10% gate); this is not exact performance parity.
+   The review follow-up validates compiled Metal threadgroup limits before
+   caching pipelines, including release-safe creation/rejection paths. All five
+   voxel kernels report 192 requested / 1024 available threads on M4 Max;
+   other devices remain unmeasured. The independent ordering audit found no
+   packing-specific race. Existing identical-value duplicate color stores from
+   half-face lanes/overlapping taps remain a separate cleanup candidate; first
+   prove unchanged coverage and payload ownership, then measure their cost.
+   Hardware OpenGL, feeder-heavy
+   timing and moving-camera/density controls remain pending. Next profile
+   conservative overflow, shared lighting and submission/readback stalls. The
+   low-density fixture retains every pool candidate; any new occlusion must prove
+   finite-face, fog and off-screen caster coverage. Cardinal/per-axis density
+   differs (16 versus capped 8 at zoom 4),
    so do not call their timings parity. Future occlusion must prove finite-footprint
    coverage; native Release and quiet-host million controls remain pending.
+   The viewport build repair comes from the shared stack parent: rotated
+   viewport writes notify pool content generation instead of the removed count
+   cache. The viewport still rewrites unchanged subjects every frame. Profile
+   eliminating no-op rewrites/uploads separately, including identity/rotation
+   transitions and complete content/pose invalidation coverage; this is not the
+   frozen main-canvas benchmark path.
+   Proposed light-volume experiment: `System<COMPUTE_LIGHT_VOLUME>::tick` runs
+   propagation over the full 128-cubed volume for each radius step, even when
+   PerfGrid has one radius-24 emitter. Measure a conservative union of seed
+   bounds expanded by the propagation count, keeping every neighbor rule and
+   RGBA8 quantization step unchanged. Use actual rounded/clamped/relocated
+   staging seeds, not original light positions, and the existing maximum
+   eligible radius. Start with one fixed box aligned to the 8×8×4 workgroup;
+   avoid per-iteration uploads. Extend every shader/CPU parameter-layout mirror
+   together if adding a dispatch origin. Both ping-pong textures must be zero
+   outside the active domain; alternating buffers, odd iteration counts,
+   moving/disappearing lights and camera-boundary relocation are required
+   controls. Compare all RGBA8 bytes after each iteration against the full-volume
+   path, poison scratch buffers, and mutate offset/expansion/clearing controls.
+   Include extra clear cost in measurements. Do not lower light radius or
+   iteration count to claim a gain.
+   The six-neighbor kernel limits influence to one cell per iteration; retain
+   the full iteration-count expansion even for black or alpha-quantized-to-zero
+   seeds. RGB/ID bytes can still be nonzero. Clear both ID buffers when carrying
+   spotlight IDs; the no-SPOT path intentionally does not consume or propagate
+   IDs, so stale unused ID bytes are not a cross-path equality requirement.
+   Start both reference arms from the same seeded snapshot or unique seed cells:
+   independently seeding colliding lights cannot serve as a deterministic oracle.
+   This is a code-traced candidate, not an implemented or measured optimization.
+   Proposed correctness probe: two lights can seed the same cell with independent
+   plain color/ID stores in `c_seed_light_volume`. Reproduce and define deterministic
+   ownership before treating coincident emitters as a reference workload; this
+   audit has not established a visible failure from those writes.
 3. Continue dense/incomplete sun-index and moving light/camera controls. Incomplete
    tiles still have approximate fallback; the full-pool reference is diagnostic.
 4. Extend finite receiving to cardinal GRID and remaining eligible SDF/fog routes,

@@ -1,0 +1,107 @@
+=== PROFILE REPORT (120 frames) ===
+Frame time:   avg=90.80ms   p50=82.34ms   p95=86.28ms   p99=92.93ms   min=80.57ms   max=1036.95ms
+Steady frame time (first 30 of 120 frames excluded):   avg=82.65ms   p50=82.31ms   p95=84.74ms   p99=92.42ms   min=80.57ms   max=92.42ms
+Update ticks: avg=5.0/frame  max=8
+Entity count: 262325 (47 archetypes)
+
+--- Per-system timing (by pipeline, then total descending) ---
+Pipeline System                                Total(ms)   Avg(ms)   Min(ms)   Max(ms)   Calls   Entities
+INPUT    InputKeyMouse                              3.27     0.005     0.003     0.016     595      74375
+UPDATE   FogRevealEval                            205.66     0.346     0.283     1.270     595  155975680
+UPDATE   UpdateVoxelSetChildren                   202.93     0.341     0.282     4.486     595  155975680
+UPDATE   PropagateTransform                       149.46     0.251     0.198     0.858     595  156053625
+UPDATE   ModifierDecay                             64.89     0.109     0.093     0.426     595  155975680
+UPDATE   FogSubjectAdopt                            8.65     0.015     0.004     5.430     595     262144
+UPDATE   FogSubjectExempt                           1.49     0.003     0.002     0.018     595          0
+UPDATE   PeriodicIdlePositionOffset                 0.40     0.001     0.000     0.012     595          0
+UPDATE   PeriodicIdle                               0.34     0.001     0.000     0.010     595          0
+RENDER   SingleVoxelToCanvasFirst                 476.31     3.969     1.133   326.939     120        120
+RENDER   BuildLightOcclusionGrid                   46.47     0.387     0.350     0.609     120        120
+RENDER   ComputeLightVolume                        12.08     0.101     0.076     1.158     120        120
+RENDER   CanvasToFramebuffer                       10.45     0.087     0.059     1.220     120        360
+RENDER   ComputeVoxelAO                             4.27     0.036     0.023     1.050     120        120
+RENDER   TextToTrixel                               3.59     0.030     0.006     2.785     120          0
+RENDER   LightingToTrixel                           3.39     0.028     0.022     0.381     120        120
+RENDER   BuildDistanceHiZ                           2.68     0.022     0.016     0.496     120        240
+RENDER   FramebufferToScreen                        1.94     0.016     0.012     0.100     120        120
+RENDER   AutoProfile                                1.65     0.014     0.005     0.960     120        480
+RENDER   FogToTrixel                                1.63     0.014     0.010     0.302     120        120
+RENDER   ShapesToTrixel                             1.62     0.013     0.011     0.062     120          0
+RENDER   ComputeSunShadow                           1.58     0.013     0.009     0.338     120        120
+RENDER   BakeSunShadowMap                           1.33     0.011     0.009     0.016     120        120
+RENDER   FogLosBuild                                1.12     0.009     0.008     0.018     120        120
+RENDER   ResolvePerAxisScreenDepth                  0.74     0.006     0.005     0.011     120        240
+RENDER   CameraMousePan                             0.69     0.006     0.004     0.008     120        120
+RENDER   Camera                                     0.46     0.004     0.003     0.011     120        120
+RENDER   CameraKeyDragPan                           0.27     0.002     0.002     0.004     120        120
+RENDER   CameraMouseRotate                          0.24     0.002     0.001     0.009     120        120
+RENDER   CameraKeyDragRotate                        0.18     0.002     0.001     0.003     120        120
+
+--- GPU frame timing ---
+Envelope includes inter-submission gaps; buffer spans include GPU stalls.
+Neither is GPU busy time. commandBuffers counts valid frames only.
+Coverage: supported=1 attempted=120 valid=120 invalid=0 commandBuffers=120
+Metric Avg(ms) Min(ms) Max(ms) Samples
+envelope 74.790 73.789 100.410 120
+commandBufferSpans 74.790 73.789 100.410 120
+
+--- GPU stage timing ---
+Stage                                  Avg(ms)   Min(ms)   Max(ms) Samples
+canvasClear                              0.172     0.155     0.781     119
+voxelCompact                             0.087     0.055     0.131     119
+voxelStage1                             23.992    23.758    35.774     119
+voxelCardinalElect                      22.868    22.848    23.405     119
+voxelStage2                             22.567    22.550    22.998     119
+voxelSunFaces                            0.854     0.797     3.381     119
+computeVoxelAO                           0.552     0.535     0.559     119
+computeSunShadow                         0.322     0.320     0.326     119
+computeLightVolume                       5.607     4.979     7.827     119
+lightingToTrixel                         0.476     0.456     0.498     119
+fogToTrixel                              0.207     0.202     0.222     119
+trixelToFb                               0.415     0.106     0.668     119
+fbToScreen                               0.044     0.037     0.047     119
+
+--- Voxel cull stats ---
+                        Avg            Max    Samples
+Visible            255275.0         255275        119
+Total              262144.0         262144        119
+AxisEntries             0.0              0        119
+Feeder               4108.0           4108        119
+Ratio:               0.9895 (unique retained candidates / pool slots; includes separate feeders)
+Feeder ratio: cross-run only — this report's Avg is one config's feeder count, not a total to divide by. Compute pv-on Avg / pv-off Avg from two separate --occlusion-cull on/off invocations of the same scene.
+
+--- CPU phase timing ---
+Phase                                  Avg(ms)   Max(ms) Samples
+ComputeLightVolume::Clear                0.006     0.267     120
+ComputeLightVolume::Populate             0.066     0.839     120
+ComputeLightVolume::Upload               0.025     0.957     120
+FogWindowGather                          0.005     0.668     240
+
+--- Run witness ---
+Camera yaw: first=0.000deg last=0.000deg travel=0.000deg samples=120
+Camera zoom: first=4.000 last=4.000
+Camera zoom range: min=4.000 max=4.000
+Camera pivot: explicit focus on 120 of 120 frames
+Per-axis overflow: maxEntries=0 maxDropped=0 cap=0 samples=0
+
+--- Frame times (ms, in order) ---
+1036.949 92.928 86.283 86.713 84.084 84.342 85.372 84.809 83.286 82.992
+82.518 82.327 83.071 82.513 82.826 83.165 84.595 82.085 82.162 81.415
+82.673 82.724 82.770 82.555 81.896 82.083 81.768 81.825 82.194 81.892
+81.916 81.987 82.072 82.618 83.997 83.276 83.473 83.040 83.372 83.436
+82.607 83.630 83.249 82.819 82.141 82.996 82.474 82.837 82.432 82.173
+92.416 84.360 84.738 83.631 83.663 83.201 83.175 82.015 83.102 82.352
+82.581 82.401 82.225 81.656 83.149 83.818 85.374 86.268 83.172 81.921
+82.079 82.466 81.361 81.826 86.440 82.315 82.307 82.866 82.575 82.279
+82.200 81.939 82.171 82.227 82.301 82.300 81.951 82.313 82.129 82.266
+82.317 81.127 82.374 82.298 81.932 82.337 82.241 81.740 82.323 81.927
+82.340 81.769 81.848 81.086 81.853 81.709 81.852 81.852 81.579 82.337
+82.043 81.908 81.657 82.080 80.567 81.848 82.311 82.285 82.314 82.881
+
+--- Update ticks (per frame, in order) ---
+1 8 5 5 5 6 5 5 5 5 5 5 5 5 5 5 5 5 5 4 5 5 5 5 5 5 5 5 5 5
+5 5 5 4 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 6 5 5 5 5 5 5 5 5
+5 5 5 4 5 5 5 6 5 5 5 5 4 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5 5
+5 4 5 5 5 5 5 5 5 5 5 5 5 4 5 5 5 5 5 5 5 5 5 5 4 5 5 5 5 5
+
+=== END REPORT ===

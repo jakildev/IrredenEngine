@@ -352,31 +352,24 @@ float fogColumnRevealZ(ivec2 col, float voxelZ) {
 }
 
 void main() {
-    uint compactedIdx = gl_WorkGroupID.x + gl_WorkGroupID.y * numGroupsX;
-    if (compactedIdx >= visibleCount) return;
-
-    // Micro-slice packing: the compact launches ceil(microSliceCount /
-    // kStageMicroSlicesPerGroup) z-workgroups, each carrying kStageMicroSlicesPerGroup
-    // z-threads. Recover this invocation's flat micro-slice index and discard the
-    // tail past microSliceCount. The subdivided path maps zIdx → (u,v); the
-    // base + per-axis paths only ever run zIdx 0 (microSliceCount == 1, or an
-    // explicit `zIdx != 0` return).
-    const int zIdx = int(gl_WorkGroupID.z) * kStageMicroSlicesPerGroup + int(gl_LocalInvocationID.z);
+    const int microSliceCount = voxelDispatchMicroSliceCount(
+        voxelRenderOptions.x,
 #if IR_FEEDER_PASS
-    // The feeder dispatch (struct 1) rasters feederSubCap² micro-cells per face
-    // instead of effSub²; its guard must match the compact's writeDispatchDims
-    // z-count for this pass exactly.
-    const int feederCap = max(feederSubCap, 1);
-    const int microSliceCount = (voxelRenderOptions.x != 0) ? (feederCap * feederCap) : 1;
+        feederSubCap, 0
 #else
-    const int microSliceCount =
-        (voxelRenderOptions.x != 0 && perAxisRoute == 0)
-            ? (max(voxelRenderOptions.y, 1) * max(voxelRenderOptions.y, 1))
-            : 1;
+        voxelRenderOptions.y, perAxisRoute
 #endif
+    );
+    const uvec2 dispatchLane = voxelDispatchLane(
+        gl_WorkGroupID.x + gl_WorkGroupID.y * numGroupsX,
+        gl_WorkGroupID.z, gl_LocalInvocationID.z, uint(microSliceCount));
+    const uint compactedIdx = dispatchLane.x;
+    if (compactedIdx >= visibleCount) return;
+    const int zIdx = int(dispatchLane.y);
     if (zIdx >= microSliceCount) return;
 
 #if IR_FEEDER_PASS
+    const int feederCap = max(feederSubCap, 1);
     // Feeders were tail-appended by the compact (slot i at feederPassTailBase-1-i);
     // binding 26 is bound to struct 1 for this feeder dispatch, so the
     // `visibleCount`/`numGroupsX` this kernel reads are the feeder count.

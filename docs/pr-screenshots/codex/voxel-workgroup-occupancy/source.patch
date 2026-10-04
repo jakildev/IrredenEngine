@@ -1,0 +1,707 @@
+diff --git a/engine/render/src/metal/metal_pipeline.cpp b/engine/render/src/metal/metal_pipeline.cpp
+index 89dec25a7..ecd23ab47 100644
+--- a/engine/render/src/metal/metal_pipeline.cpp
++++ b/engine/render/src/metal/metal_pipeline.cpp
+@@ -40,8 +40,8 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
+         // groupId.z * kStageMicroSlicesPerGroup + localId.z. MUST match the GLSL
+         // local_size_z literal + shaders/ir_constants.{glsl,metal}. The stage-1
+         // feeder, winner-election, and winner-guarded variants are compile-time
+-        // specializations of the same two bodies, so they share the (2,3,8) shape.
+-        return MTL::Size(2, 3, 8);
++        // specializations of the same two bodies, so they share the same workgroup shape.
++        return MTL::Size(2, 3, 32);
+     }
+     if (functionName == "c_text_to_trixel") {
+         return MTL::Size(7, 11, 1);
+diff --git a/engine/render/src/shaders/c_voxel_to_trixel_stage_1.glsl b/engine/render/src/shaders/c_voxel_to_trixel_stage_1.glsl
+index 26b0f3b3a..d42da3dd8 100644
+--- a/engine/render/src/shaders/c_voxel_to_trixel_stage_1.glsl
++++ b/engine/render/src/shaders/c_voxel_to_trixel_stage_1.glsl
+@@ -19,5 +19,6 @@
+ #include "ir_iso_common.glsl"
+ #define IR_VOXEL_FOG_GRID_BINDING 0
+ #include "ir_constants.glsl"
++#include "ir_voxel_dispatch.glsl"
+ #include "ir_voxel_face_select.glsl"
+ #include "c_voxel_to_trixel_stage_1_body.glsl"
+diff --git a/engine/render/src/shaders/c_voxel_to_trixel_stage_1_body.glsl b/engine/render/src/shaders/c_voxel_to_trixel_stage_1_body.glsl
+index 2b215b72b..bec09fe9f 100644
+--- a/engine/render/src/shaders/c_voxel_to_trixel_stage_1_body.glsl
++++ b/engine/render/src/shaders/c_voxel_to_trixel_stage_1_body.glsl
+@@ -27,7 +27,7 @@
+ // local_size_z MUST equal kStageMicroSlicesPerGroup (ir_constants.glsl). It stays a literal
+ // because a compute-shader layout qualifier needs a literal on every GL driver; the shared
+ // constant drives the micro-slice math and guard.
+-layout(local_size_x = 2, local_size_y = 3, local_size_z = 8) in;
++layout(local_size_x = 2, local_size_y = 3, local_size_z = 32) in;
+ 
+ // Coordinate chain: World 3D -> Iso 2D -> Canvas pixel
+ //   canvasPixel = trixelCanvasOffsetZ1 + floor(cameraIso) + pos3DtoPos2DIso(world)
+@@ -352,31 +352,24 @@ float fogColumnRevealZ(ivec2 col, float voxelZ) {
+ }
+ 
+ void main() {
+-    uint compactedIdx = gl_WorkGroupID.x + gl_WorkGroupID.y * numGroupsX;
+-    if (compactedIdx >= visibleCount) return;
+-
+-    // Micro-slice packing: the compact launches ceil(microSliceCount /
+-    // kStageMicroSlicesPerGroup) z-workgroups, each carrying kStageMicroSlicesPerGroup
+-    // z-threads. Recover this invocation's flat micro-slice index and discard the
+-    // tail past microSliceCount. The subdivided path maps zIdx → (u,v); the
+-    // base + per-axis paths only ever run zIdx 0 (microSliceCount == 1, or an
+-    // explicit `zIdx != 0` return).
+-    const int zIdx = int(gl_WorkGroupID.z) * kStageMicroSlicesPerGroup + int(gl_LocalInvocationID.z);
++    const int microSliceCount = voxelDispatchMicroSliceCount(
++        voxelRenderOptions.x,
+ #if IR_FEEDER_PASS
+-    // The feeder dispatch (struct 1) rasters feederSubCap² micro-cells per face
+-    // instead of effSub²; its guard must match the compact's writeDispatchDims
+-    // z-count for this pass exactly.
+-    const int feederCap = max(feederSubCap, 1);
+-    const int microSliceCount = (voxelRenderOptions.x != 0) ? (feederCap * feederCap) : 1;
++        feederSubCap, 0
+ #else
+-    const int microSliceCount =
+-        (voxelRenderOptions.x != 0 && perAxisRoute == 0)
+-            ? (max(voxelRenderOptions.y, 1) * max(voxelRenderOptions.y, 1))
+-            : 1;
++        voxelRenderOptions.y, perAxisRoute
+ #endif
++    );
++    const uvec2 dispatchLane = voxelDispatchLane(
++        gl_WorkGroupID.x + gl_WorkGroupID.y * numGroupsX,
++        gl_WorkGroupID.z, gl_LocalInvocationID.z, uint(microSliceCount));
++    const uint compactedIdx = dispatchLane.x;
++    if (compactedIdx >= visibleCount) return;
++    const int zIdx = int(dispatchLane.y);
+     if (zIdx >= microSliceCount) return;
+ 
+ #if IR_FEEDER_PASS
++    const int feederCap = max(feederSubCap, 1);
+     // Feeders were tail-appended by the compact (slot i at feederPassTailBase-1-i);
+     // binding 26 is bound to struct 1 for this feeder dispatch, so the
+     // `visibleCount`/`numGroupsX` this kernel reads are the feeder count.
+diff --git a/engine/render/src/shaders/c_voxel_to_trixel_stage_1_feeder.glsl b/engine/render/src/shaders/c_voxel_to_trixel_stage_1_feeder.glsl
+index 6fb374c6d..12bdec2f9 100644
+--- a/engine/render/src/shaders/c_voxel_to_trixel_stage_1_feeder.glsl
++++ b/engine/render/src/shaders/c_voxel_to_trixel_stage_1_feeder.glsl
+@@ -23,5 +23,6 @@
+ #include "ir_iso_common.glsl"
+ #define IR_VOXEL_FOG_GRID_BINDING 0
+ #include "ir_constants.glsl"
++#include "ir_voxel_dispatch.glsl"
+ #include "ir_voxel_face_select.glsl"
+ #include "c_voxel_to_trixel_stage_1_body.glsl"
+diff --git a/engine/render/src/shaders/c_voxel_to_trixel_stage_1_winner_resolve.glsl b/engine/render/src/shaders/c_voxel_to_trixel_stage_1_winner_resolve.glsl
+index 854cbebb4..e75fcaade 100644
+--- a/engine/render/src/shaders/c_voxel_to_trixel_stage_1_winner_resolve.glsl
++++ b/engine/render/src/shaders/c_voxel_to_trixel_stage_1_winner_resolve.glsl
+@@ -28,5 +28,6 @@
+ #include "ir_iso_common.glsl"
+ #define IR_VOXEL_FOG_GRID_BINDING 0
+ #include "ir_constants.glsl"
++#include "ir_voxel_dispatch.glsl"
+ #include "ir_voxel_face_select.glsl"
+ #include "c_voxel_to_trixel_stage_1_body.glsl"
+diff --git a/engine/render/src/shaders/c_voxel_to_trixel_stage_2.glsl b/engine/render/src/shaders/c_voxel_to_trixel_stage_2.glsl
+index dd21feb06..95a8be6f8 100644
+--- a/engine/render/src/shaders/c_voxel_to_trixel_stage_2.glsl
++++ b/engine/render/src/shaders/c_voxel_to_trixel_stage_2.glsl
+@@ -18,5 +18,6 @@
+ #include "ir_iso_common.glsl"
+ #define IR_VOXEL_FOG_GRID_BINDING 3
+ #include "ir_constants.glsl"
++#include "ir_voxel_dispatch.glsl"
+ #include "ir_voxel_face_select.glsl"
+ #include "c_voxel_to_trixel_stage_2_body.glsl"
+diff --git a/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl b/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl
+index 4b4ef76c5..6f7d40642 100644
+--- a/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl
++++ b/engine/render/src/shaders/c_voxel_to_trixel_stage_2_body.glsl
+@@ -42,7 +42,7 @@ layout(std430, binding = 8) buffer SourceVoxelFaces {
+     SourceVoxelFace sourceFaces[];
+ };
+ 
+-layout(local_size_x = 2, local_size_y = 3, local_size_z = 8) in;
++layout(local_size_x = 2, local_size_y = 3, local_size_z = 32) in;
+ 
+ 
+ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
+@@ -280,17 +280,14 @@ void emitDeformedFace(
+ }
+ 
+ void main() {
+-    uint compactedIdx = gl_WorkGroupID.x + gl_WorkGroupID.y * numGroupsX;
++    const int microSliceCount = voxelDispatchMicroSliceCount(
++        voxelRenderOptions.x, voxelRenderOptions.y, perAxisRoute);
++    const uvec2 dispatchLane = voxelDispatchLane(
++        gl_WorkGroupID.x + gl_WorkGroupID.y * numGroupsX,
++        gl_WorkGroupID.z, gl_LocalInvocationID.z, uint(microSliceCount));
++    const uint compactedIdx = dispatchLane.x;
+     if (compactedIdx >= visibleCount) return;
+-
+-    // Micro-slice packing — MUST mirror stage 1's zIdx recovery + guard so the
+-    // color/entity-id tap runs on exactly the micro-slices stage 1 wrote
+-    // distances for.
+-    const int zIdx = int(gl_WorkGroupID.z) * kStageMicroSlicesPerGroup + int(gl_LocalInvocationID.z);
+-    const int microSliceCount =
+-        (voxelRenderOptions.x != 0 && perAxisRoute == 0)
+-            ? (max(voxelRenderOptions.y, 1) * max(voxelRenderOptions.y, 1))
+-            : 1;
++    const int zIdx = int(dispatchLane.y);
+     if (zIdx >= microSliceCount) return;
+ 
+     uint voxelIndex = compactedVoxelIndices[compactedIdx];
+diff --git a/engine/render/src/shaders/c_voxel_to_trixel_stage_2_winner.glsl b/engine/render/src/shaders/c_voxel_to_trixel_stage_2_winner.glsl
+index ef726bce0..5a67f39f6 100644
+--- a/engine/render/src/shaders/c_voxel_to_trixel_stage_2_winner.glsl
++++ b/engine/render/src/shaders/c_voxel_to_trixel_stage_2_winner.glsl
+@@ -22,5 +22,6 @@
+ #include "ir_iso_common.glsl"
+ #define IR_VOXEL_FOG_GRID_BINDING 3
+ #include "ir_constants.glsl"
++#include "ir_voxel_dispatch.glsl"
+ #include "ir_voxel_face_select.glsl"
+ #include "c_voxel_to_trixel_stage_2_body.glsl"
+diff --git a/engine/render/src/shaders/c_voxel_visibility_compact.glsl b/engine/render/src/shaders/c_voxel_visibility_compact.glsl
+index a7987a002..1b34c3bbb 100644
+--- a/engine/render/src/shaders/c_voxel_visibility_compact.glsl
++++ b/engine/render/src/shaders/c_voxel_visibility_compact.glsl
+@@ -4,6 +4,7 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
+ 
+ #include "ir_iso_common.glsl"
+ #include "ir_constants.glsl"
++#include "ir_voxel_dispatch.glsl"
+ 
+ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
+     uniform vec2 frameCanvasOffset;
+@@ -223,16 +224,11 @@ bool fogColumnInVisionCircle(ivec3 voxelPosRaw) {
+ // count is read atomically so the last group sees every other group's appends.
+ void writeDispatchDims(uint base, uint microSliceCount) {
+     uint count = atomicAdd(params[base + 3u], 0u);
+-    uint gx = max(min(count, 1024u), 1u);
++    uint voxelsPerGroup = voxelDispatchVoxelsPerGroup(microSliceCount);
++    uint groups = (count + voxelsPerGroup - 1u) / voxelsPerGroup;
++    uint gx = max(min(groups, 1024u), 1u);
+     params[base + 0u] = gx;
+-    params[base + 1u] = max((count + gx - 1u) / gx, 1u);
+-    // The stage kernels raster `microSliceCount` micro-cells per voxel face.
+-    // Packing kStageMicroSlicesPerGroup of them into each z-workgroup
+-    // (local_size_z in the stage kernels) means the launched z-workgroup count
+-    // is the ceil-divided slice count; the stage re-derives its micro-slice as
+-    // gl_WorkGroupID.z * kStageMicroSlicesPerGroup + gl_LocalInvocationID.z and
+-    // early-returns the tail past microSliceCount, so the padding emits nothing.
+-    // The feeder struct passes feederSubCap² here instead of effSub².
++    params[base + 1u] = max((groups + gx - 1u) / gx, 1u);
+     params[base + 2u] = (microSliceCount + uint(kStageMicroSlicesPerGroup) - 1u) /
+         uint(kStageMicroSlicesPerGroup);
+ }
+@@ -331,6 +327,35 @@ bool voxelOccludedByHiZ(ivec3 voxelPos, ivec2 isoPos) {
+ 
+ shared uint groupUniqueSurvivors[64];
+ 
++void finalizeDispatchDims() {
++    const uint visibleSlices = uint(voxelDispatchMicroSliceCount(
++        voxelRenderOptions.x, voxelRenderOptions.y, 0
++    ));
++    if (perAxisSplitStride == 0) {
++        writeDispatchDims(0u, visibleSlices);
++        // Struct 1 = the feeder dispatch, strided to
++        // feederSubCap² micro-cells per face (vs effSub² for visible).
++        // Empty when no survivor was classified feeder (shadows off / all
++        // on-screen) ⇒ its stage-1 dispatch early-returns every workgroup.
++        const uint feederSlices = uint(voxelDispatchMicroSliceCount(
++            voxelRenderOptions.x, feederSubCap, 0
++        ));
++        writeDispatchDims(kPerAxisIndirectStrideUints, feederSlices);
++    } else {
++        // Unrolled, not a loop over axis 0..2: NVIDIA's link-time
++        // optimizer dies with "C5025 lvalue in array access too
++        // complex" + a C9999 ICE when a loop-variant base mixes
++        // with the constant-base call sites in the single-list branch;
++        // constant bases at every call site keep the inlined stores
++        // foldable.
++        // Face-local stores carry one sample; the scatter reconstructs
++        // their footprint independently of presentation subdivisions.
++        writeDispatchDims(0u, 1u);
++        writeDispatchDims(kPerAxisIndirectStrideUints, 1u);
++        writeDispatchDims(2u * kPerAxisIndirectStrideUints, 1u);
++    }
++}
++
+ void main() {
+     groupUniqueSurvivors[gl_LocalInvocationIndex] = 0u;
+     const int cardinalIndex = rasterYawCardinalIndex(rasterYaw);
+@@ -473,31 +498,7 @@ void main() {
+         uint finished = atomicAdd(params[4], 1u) + 1u;
+         uint totalGroups = gl_NumWorkGroups.x * gl_NumWorkGroups.y;
+         if (finished == totalGroups) {
+-            int subdivisions = max(voxelRenderOptions.y, 1);
+-            uint visibleSlices =
+-                (voxelRenderOptions.x != 0) ? uint(subdivisions * subdivisions) : 1u;
+-            if (perAxisSplitStride == 0) {
+-                writeDispatchDims(0u, visibleSlices);
+-                // Struct 1 = the feeder dispatch, strided to
+-                // feederSubCap² micro-cells per face (vs effSub² for visible).
+-                // Empty when no survivor was classified feeder (shadows off / all
+-                // on-screen) ⇒ its stage-1 dispatch early-returns every workgroup.
+-                int cap = max(feederSubCap, 1);
+-                uint feederSlices = (voxelRenderOptions.x != 0) ? uint(cap * cap) : 1u;
+-                writeDispatchDims(kPerAxisIndirectStrideUints, feederSlices);
+-            } else {
+-                // Unrolled, not a loop over axis 0..2: NVIDIA's link-time
+-                // optimizer dies with "C5025 lvalue in array access too
+-                // complex" + a C9999 ICE when a loop-variant base mixes
+-                // with the constant-base call sites in the single-list branch;
+-                // constant bases at every call site keep the inlined stores
+-                // foldable.
+-                // Face-local stores carry one sample; the scatter reconstructs
+-                // their footprint independently of presentation subdivisions.
+-                writeDispatchDims(0u, 1u);
+-                writeDispatchDims(kPerAxisIndirectStrideUints, 1u);
+-                writeDispatchDims(2u * kPerAxisIndirectStrideUints, 1u);
+-            }
++            finalizeDispatchDims();
+         }
+     }
+ }
+diff --git a/engine/render/src/shaders/ir_constants.glsl b/engine/render/src/shaders/ir_constants.glsl
+index 36f2aca3f..56a3037a0 100644
+--- a/engine/render/src/shaders/ir_constants.glsl
++++ b/engine/render/src/shaders/ir_constants.glsl
+@@ -1,15 +1,6 @@
+ const int VOXEL_CHUNK_SIZE = 256;
+ const int kInvalidDepth = 0x7FFFFFFF;
+ 
+-// Micro-slice packing factor for the voxel→trixel stage dispatch. Both stage
+-// kernels raster `subdivisions²` micro-cells per visible voxel face; this
+-// constant packs that many micro-cells into the z-dimension of one workgroup
+-// (`local_size_z`), so the compact writes gz = ceil(subdivisions² / this) and
+-// each invocation recovers its flat slice as
+-// gl_WorkGroupID.z * this + gl_LocalInvocationID.z. The invocation set, and so
+-// the output, does not depend on this value; only the workgroup count does.
+-// MUST equal the `local_size_z` literal in c_voxel_to_trixel_stage_{1,2}_body.glsl,
+-// the Metal threadgroup-size map entries in metal_pipeline.cpp, and the divCeil in
+-// c_voxel_visibility_compact's writeDispatchDims — a mismatch drops or double-runs
+-// micro-slices.
+-const int kStageMicroSlicesPerGroup = 8;
++// Must match the voxel stage GLSL layouts and Metal threadgroup registry;
++// ir_voxel_dispatch owns the matching indirect-grid and lane-recovery math.
++const int kStageMicroSlicesPerGroup = 32;
+diff --git a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1.metal b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1.metal
+index 9635998dc..c4cb7ed11 100644
+--- a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1.metal
++++ b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1.metal
+@@ -6,6 +6,7 @@
+ // twin is c_voxel_to_trixel_stage_1_feeder.metal.
+ #include "ir_iso_common.metal"
+ #include "ir_constants.metal"
++#include "ir_voxel_dispatch.metal"
+ 
+ #define IR_FEEDER_PASS 0
+ #define IR_STORE_WINNER_ELECTION 0
+diff --git a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_body.metal b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_body.metal
+index 843999093..1df791e93 100644
+--- a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_body.metal
++++ b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_body.metal
+@@ -266,34 +266,24 @@ kernel void IR_STAGE1_KERNEL_NAME(
+     uint3 groupId [[threadgroup_position_in_grid]],
+     uint3 localId3 [[thread_position_in_threadgroup]]
+ ) {
+-    const uint compactedIdx = groupId.x + groupId.y * indirectParams.numGroupsX;
+-    if (compactedIdx >= indirectParams.visibleCount) {
+-        return;
+-    }
+-
+-    // Micro-slice packing — mirrors the GLSL twin. The threadgroup z-size is
+-    // kStageMicroSlicesPerGroup (metal_pipeline.cpp map); recover this
+-    // invocation's flat micro-slice index and discard the tail past
+-    // microSliceCount.
+-    const int zIdx =
+-        int(groupId.z) * kStageMicroSlicesPerGroup + int(localId3.z);
++    const int microSliceCount = voxelDispatchMicroSliceCount(
++        frameData.voxelRenderOptions.x,
+ #if IR_FEEDER_PASS
+-    // The feeder dispatch (struct 1) rasters feederSubCap² micro-cells per face
+-    // instead of effSub²; the guard must match the compact's writeDispatchDims
+-    // z-count for this pass.
+-    const int feederCap = max(frameData.feederSubCap, 1);
+-    const int microSliceCount =
+-        (frameData.voxelRenderOptions.x != 0) ? (feederCap * feederCap) : 1;
++        frameData.feederSubCap, 0
+ #else
+-    const int microSliceCount = (frameData.voxelRenderOptions.x != 0 && frameData.perAxisRoute == 0)
+-        ? (max(frameData.voxelRenderOptions.y, 1) * max(frameData.voxelRenderOptions.y, 1))
+-        : 1;
++        frameData.voxelRenderOptions.y, frameData.perAxisRoute
+ #endif
+-    if (zIdx >= microSliceCount) {
+-        return;
+-    }
++    );
++    const uint2 dispatchLane = voxelDispatchLane(
++        groupId.x + groupId.y * indirectParams.numGroupsX,
++        groupId.z, localId3.z, uint(microSliceCount));
++    const uint compactedIdx = dispatchLane.x;
++    if (compactedIdx >= indirectParams.visibleCount) return;
++    const int zIdx = int(dispatchLane.y);
++    if (zIdx >= microSliceCount) return;
+ 
+ #if IR_FEEDER_PASS
++    const int feederCap = max(frameData.feederSubCap, 1);
+     // Feeders were tail-appended by the compact (slot i at feederPassTailBase-1-i);
+     // binding 26 is bound to struct 1 for this feeder dispatch, so the
+     // numGroupsX/visibleCount this kernel reads are the feeder struct's.
+diff --git a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_feeder.metal b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_feeder.metal
+index ef94c311d..a80404f57 100644
+--- a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_feeder.metal
++++ b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_feeder.metal
+@@ -12,6 +12,7 @@
+ // is c_voxel_to_trixel_stage_1.metal.
+ #include "ir_iso_common.metal"
+ #include "ir_constants.metal"
++#include "ir_voxel_dispatch.metal"
+ 
+ #define IR_FEEDER_PASS 1
+ #define IR_STORE_WINNER_ELECTION 0
+diff --git a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_winner_resolve.metal b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_winner_resolve.metal
+index 4bada52b6..263f96148 100644
+--- a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_winner_resolve.metal
++++ b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_winner_resolve.metal
+@@ -15,6 +15,7 @@
+ // twin is c_voxel_to_trixel_stage_1.metal.
+ #include "ir_iso_common.metal"
+ #include "ir_constants.metal"
++#include "ir_voxel_dispatch.metal"
+ 
+ #define IR_FEEDER_PASS 0
+ #define IR_STORE_WINNER_ELECTION 1
+diff --git a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2.metal b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2.metal
+index debed1469..e9eba8979 100644
+--- a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2.metal
++++ b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2.metal
+@@ -6,6 +6,7 @@
+ // winner-guarded variant is c_voxel_to_trixel_stage_2_winner.metal.
+ #include "ir_iso_common.metal"
+ #include "ir_constants.metal"
++#include "ir_voxel_dispatch.metal"
+ 
+ #define IR_STORE_WINNER_ELECTION 0
+ #define IR_STAGE2_KERNEL_NAME c_voxel_to_trixel_stage_2
+diff --git a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_body.metal b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_body.metal
+index 867aa8907..78cf017b8 100644
+--- a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_body.metal
++++ b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_body.metal
+@@ -261,22 +261,15 @@ kernel void IR_STAGE2_KERNEL_NAME(
+     uint3 groupId [[threadgroup_position_in_grid]],
+     uint3 localId3 [[thread_position_in_threadgroup]]
+ ) {
+-    const uint compactedIdx = groupId.x + groupId.y * indirectParams.numGroupsX;
+-    if (compactedIdx >= indirectParams.visibleCount) {
+-        return;
+-    }
+-
+-    // Micro-slice packing — MUST mirror stage 1's zIdx recovery + guard so the
+-    // color/entity-id tap runs on exactly the micro-slices stage 1 wrote
+-    // distances for.
+-    const int zIdx =
+-        int(groupId.z) * kStageMicroSlicesPerGroup + int(localId3.z);
+-    const int microSliceCount = (frameData.voxelRenderOptions.x != 0 && frameData.perAxisRoute == 0)
+-        ? (max(frameData.voxelRenderOptions.y, 1) * max(frameData.voxelRenderOptions.y, 1))
+-        : 1;
+-    if (zIdx >= microSliceCount) {
+-        return;
+-    }
++    const int microSliceCount = voxelDispatchMicroSliceCount(
++        frameData.voxelRenderOptions.x, frameData.voxelRenderOptions.y, frameData.perAxisRoute);
++    const uint2 dispatchLane = voxelDispatchLane(
++        groupId.x + groupId.y * indirectParams.numGroupsX,
++        groupId.z, localId3.z, uint(microSliceCount));
++    const uint compactedIdx = dispatchLane.x;
++    if (compactedIdx >= indirectParams.visibleCount) return;
++    const int zIdx = int(dispatchLane.y);
++    if (zIdx >= microSliceCount) return;
+ 
+     const uint voxelIndex = compactedVoxelIndices[compactedIdx];
+     const float4 voxelPosition = positions[voxelIndex];
+diff --git a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_winner.metal b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_winner.metal
+index 6974e118f..d4de496b6 100644
+--- a/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_winner.metal
++++ b/engine/render/src/shaders/metal/c_voxel_to_trixel_stage_2_winner.metal
+@@ -11,6 +11,7 @@
+ // lists alongside the default stage 2.
+ #include "ir_iso_common.metal"
+ #include "ir_constants.metal"
++#include "ir_voxel_dispatch.metal"
+ 
+ #define IR_STORE_WINNER_ELECTION 1
+ #define IR_STAGE2_KERNEL_NAME c_voxel_to_trixel_stage_2_winner
+diff --git a/engine/render/src/shaders/metal/c_voxel_visibility_compact.metal b/engine/render/src/shaders/metal/c_voxel_visibility_compact.metal
+index 74db39a0f..2b780c46a 100644
+--- a/engine/render/src/shaders/metal/c_voxel_visibility_compact.metal
++++ b/engine/render/src/shaders/metal/c_voxel_visibility_compact.metal
+@@ -1,5 +1,6 @@
+ #include "ir_iso_common.metal"
+ #include "ir_constants.metal"
++#include "ir_voxel_dispatch.metal"
+ 
+ // The slot layout matches the GLSL std430 IndirectDispatchParams SSBO. All
+ // five slots go through a single `device atomic_uint*` so atomic_fetch_add
+@@ -48,17 +49,15 @@ static void writeDispatchDims(
+     const uint count = atomic_load_explicit(
+         &indirectParams[base + kSlotVisibleCount], memory_order_relaxed
+     );
+-    const uint gx = max(min(count, 1024u), 1u);
++    const uint voxelsPerGroup = voxelDispatchVoxelsPerGroup(microSliceCount);
++    const uint groups = (count + voxelsPerGroup - 1u) / voxelsPerGroup;
++    const uint gx = max(min(groups, 1024u), 1u);
+     atomic_store_explicit(&indirectParams[base + kSlotNumGroupsX], gx, memory_order_relaxed);
+     atomic_store_explicit(
+         &indirectParams[base + kSlotNumGroupsY],
+-        max((count + gx - 1u) / gx, 1u),
++        max((groups + gx - 1u) / gx, 1u),
+         memory_order_relaxed
+     );
+-    // Pack kStageMicroSlicesPerGroup micro-cells per z-workgroup (the
+-    // stage kernels' threadgroup z-size), so the launched z-workgroup count is
+-    // the ceil-divided micro-slice count. Mirrors c_voxel_visibility_compact.glsl.
+-    // The feeder struct passes feederSubCap² here instead of effSub².
+     const uint gz = (microSliceCount + uint(kStageMicroSlicesPerGroup) - 1u) /
+         uint(kStageMicroSlicesPerGroup);
+     atomic_store_explicit(&indirectParams[base + kSlotNumGroupsZ], gz, memory_order_relaxed);
+@@ -261,6 +260,29 @@ static bool fogColumnInVisionCircle(
+ // sync at mutation time, so inactive slots short-circuit before any 12 B
+ // voxels[] load.
+ 
++static void finalizeDispatchDims(device atomic_uint* indirectParams, constant FrameDataVoxelToTrixel& frameData) {
++    const uint visibleSlices = uint(voxelDispatchMicroSliceCount(
++        frameData.voxelRenderOptions.x, frameData.voxelRenderOptions.y, 0
++    ));
++    if (frameData.perAxisRoute == 0) {
++        writeDispatchDims(indirectParams, 0u, visibleSlices);
++        // Struct 1 = the feeder dispatch at feederSubCap²
++        // micro-cells per face (vs effSub² for visible). Empty when no
++        // survivor was classified feeder ⇒ its stage-1 dispatch
++        // early-returns every workgroup.
++        const uint feederSlices = uint(voxelDispatchMicroSliceCount(
++            frameData.voxelRenderOptions.x, frameData.feederSubCap, 0
++        ));
++        writeDispatchDims(indirectParams, kPerAxisIndirectStrideUints, feederSlices);
++    } else {
++        for (int axis = 0; axis < 3; ++axis) {
++            writeDispatchDims(
++                indirectParams, uint(axis) * kPerAxisIndirectStrideUints, 1u
++            );
++        }
++    }
++}
++
+ kernel void c_voxel_visibility_compact(
+     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
+     device const float4* positions [[buffer(5)]],
+@@ -425,26 +447,7 @@ kernel void c_voxel_visibility_compact(
+         ) + 1u;
+         const uint totalGroups = groupCount.x * groupCount.y;
+         if (finished == totalGroups) {
+-            const int subdivisions = max(frameData.voxelRenderOptions.y, 1);
+-            const uint visibleSlices = (frameData.voxelRenderOptions.x != 0)
+-                ? uint(subdivisions * subdivisions) : 1u;
+-            if (frameData.perAxisRoute == 0) {
+-                writeDispatchDims(indirectParams, 0u, visibleSlices);
+-                // Struct 1 = the feeder dispatch at feederSubCap²
+-                // micro-cells per face (vs effSub² for visible). Empty when no
+-                // survivor was classified feeder ⇒ its stage-1 dispatch
+-                // early-returns every workgroup.
+-                const int cap = max(frameData.feederSubCap, 1);
+-                const uint feederSlices = (frameData.voxelRenderOptions.x != 0)
+-                    ? uint(cap * cap) : 1u;
+-                writeDispatchDims(indirectParams, kPerAxisIndirectStrideUints, feederSlices);
+-            } else {
+-                for (int axis = 0; axis < 3; ++axis) {
+-                    writeDispatchDims(
+-                        indirectParams, uint(axis) * kPerAxisIndirectStrideUints, 1u
+-                    );
+-                }
+-            }
++            finalizeDispatchDims(indirectParams, frameData);
+         }
+     }
+ }
+diff --git a/engine/render/src/shaders/metal/ir_constants.metal b/engine/render/src/shaders/metal/ir_constants.metal
+index 0d3a78303..1520e37de 100644
+--- a/engine/render/src/shaders/metal/ir_constants.metal
++++ b/engine/render/src/shaders/metal/ir_constants.metal
+@@ -1,10 +1,6 @@
+-// Mirrors shaders/ir_constants.glsl.
+-
+ constant int VOXEL_CHUNK_SIZE = 256;
+ constant int kInvalidDepth = 0x7FFFFFFF;
+ 
+-// Micro-slice packing factor for the voxel→trixel stage dispatch. Must equal the
+-// Metal threadgroup-size map entries for c_voxel_to_trixel_stage_{1,2} in
+-// metal_pipeline.cpp and the divCeil in c_voxel_visibility_compact's
+-// writeDispatchDims.
+-constant int kStageMicroSlicesPerGroup = 8;
++// Must match the voxel stage GLSL layouts and Metal threadgroup registry;
++// ir_voxel_dispatch owns the matching indirect-grid and lane-recovery math.
++constant int kStageMicroSlicesPerGroup = 32;
+diff --git a/scripts/tests/test_render_voxel_dispatch_packing.py b/scripts/tests/test_render_voxel_dispatch_packing.py
+index 59eadc02f..df96da76b 100644
+--- a/scripts/tests/test_render_voxel_dispatch_packing.py
++++ b/scripts/tests/test_render_voxel_dispatch_packing.py
+@@ -15,11 +15,15 @@ COMPILER = shutil.which("c++")
+ 
+ 
+ def lane_prefix(source):
+-    start = re.search(r"(?:const )?uint compactedIdx\s*=", source).start()
++    start = re.search(r"const int microSliceCount\s*=", source)
++    if start is None:
++        raise ValueError("voxel stage lane-recovery start moved")
+     end = re.search(
+         r"if\s*\(zIdx >= microSliceCount\)\s*(?:\{\s*return;\s*\}|return;)",
+-        source[start:]).end() + start
+-    return source[start:end]
++        source[start.start():])
++    if end is None:
++        raise ValueError("voxel stage lane-recovery guard moved")
++    return source[start.start():start.start() + end.end()]
+ 
+ 
+ def harness(backend):
+@@ -28,8 +32,13 @@ def harness(backend):
+     packing = int(re.search(r"kStageMicroSlicesPerGroup\s*=\s*(\d+)", constants)[1])
+     compact = (folder / f"c_voxel_visibility_compact.{suffix}").read_text()
+     writer = extract_function(compact, "writeDispatchDims").replace("device ", "")
+-    slots = "\n".join(re.findall(r"constant uint kSlot\w+\s*=\s*\d+;", compact))
+-    writer = slots.replace("constant ", "constexpr ") + "\n" + writer
++    finalizer = extract_function(compact, "finalizeDispatchDims")
++    finalizer = finalizer.replace("device ", "").replace("constant ", "const ")
++    finalizer = finalizer.replace("FrameDataVoxelToTrixel", "Frame")
++    slots = "\n".join(re.findall(
++        r"(?:constant|const) uint (?:kSlot\w+|kPerAxisIndirectStrideUints)\s*=\s*\d+u?;",
++        compact))
++    writer = re.sub(r"\b(?:constant|const)\b", "constexpr", slots) + "\n" + writer
+     consumers = []
+     for stage, feeder in ((1, 0), (1, 1), (2, 0)):
+         source = (folder / f"c_voxel_to_trixel_stage_{stage}_body.{suffix}").read_text()
+@@ -37,11 +46,13 @@ def harness(backend):
+             f"#define IR_FEEDER_PASS {feeder}\nvoid lane{stage}_{feeder}(int& index,int& slice){{\n"
+             + lane_prefix(source) + "\nindex=int(compactedIdx);slice=zIdx;\n}\n"
+             + "#undef IR_FEEDER_PASS\n")
+-    call = "writeDispatchDims(0, slices);"
++    call = "finalizeDispatchDims();"
+     if backend == "metal":
+-        call = "writeDispatchDims(params, 0, slices);"
+-    return PREAMBLE.replace("@PACKING@", str(packing)) + writer + "\n" + "\n".join(consumers) + (
+-        CASES.replace("@WRITE@", call))
++        call = "finalizeDispatchDims(params, frameData);"
++    helper = (folder / f"ir_voxel_dispatch.{suffix}").read_text()
++    return (PREAMBLE.replace("@PACKING@", str(packing)) + helper + "\n" + writer
++            + "\n" + finalizer + "\n" + "\n".join(consumers)
++            + CASES.replace("@FINALIZE@", call))
+ 
+ 
+ PREAMBLE = r"""
+@@ -54,11 +65,14 @@ using std::min;using std::max;
+ using std::atomic_uint;using std::atomic_load_explicit;using std::atomic_store_explicit;
+ using std::memory_order_relaxed;
+ constexpr int kStageMicroSlicesPerGroup=@PACKING@;
+-atomic_uint params[4]{};
++atomic_uint params[192]{};
+ uint atomicAdd(atomic_uint& value,uint add){return value.fetch_add(add);}
+ struct I2{int x,y;};struct U3{uint x,y,z;};
++struct U2{uint x,y;U2(uint a,uint b):x(a),y(b){}};
++using uvec2=U2;using uint2=U2;
+ struct Frame{I2 voxelRenderOptions;int perAxisRoute,feederSubCap;}frameData;
+ auto& voxelRenderOptions=frameData.voxelRenderOptions;
++auto& perAxisSplitStride=frameData.perAxisRoute;
+ auto& perAxisRoute=frameData.perAxisRoute;auto& feederSubCap=frameData.feederSubCap;
+ struct Params{uint numGroupsX,visibleCount;}indirectParams;
+ auto& numGroupsX=indirectParams.numGroupsX;auto& visibleCount=indirectParams.visibleCount;
+@@ -68,25 +82,42 @@ auto& gl_WorkGroupID=groupId;auto& gl_LocalInvocationID=localId3;
+ 
+ CASES = r"""
+ int main(){
+- for(uint count:{0u,1u,1023u,1024u,1025u})for(int density=1;density<=16;++density)
+- for(int mode:{0,1,2})for(int route:{0,1})for(int lane=0;lane<3;++lane){
++ for(int density=0;density<=16;++density)for(int mode:{0,1,2})
++ for(int route:{0,1,2,3})for(int lane=0;lane<3;++lane){
+   const bool feeder=lane==1;
++  if(feeder&&route!=0)continue;
+   frameData={{mode,density},route,min(density,4)};
+-  const uint slices=mode!=0?(feeder?feederSubCap*feederSubCap:route==0?density*density:1):1;
+-  params[3]=count;@WRITE@
+-  const uint gx=params[0],gy=params[1],gz=params[2];
+-  if(gx!=max(1u,min(count,1024u))||gy!=max(1u,(count+gx-1u)/gx)||
+-     gz!=(slices+uint(kStageMicroSlicesPerGroup)-1u)/uint(kStageMicroSlicesPerGroup))return 1;
+-  indirectParams={gx,count};std::vector<unsigned char> seen(count*slices);
++  const uint edge=uint(max(density,1)),cap=uint(max(feederSubCap,1));
++  const uint slices=mode!=0?(feeder?cap*cap:route==0?edge*edge:1):1;
++  const uint voxels=max(uint(kStageMicroSlicesPerGroup)/slices,1u);
++  for(uint count:{0u,1u,voxels-1u,voxels,voxels+1u,1024u*voxels-1u,
++                  1024u*voxels,1024u*voxels+1u}){
++  for(auto& value:params)value=0;
++  for(uint base:{0u,64u,128u})params[base+3]=count+base/64;
++  @FINALIZE@
++  for(uint list=0;list<uint(route==0?2:3);++list){
++   const uint expectedSlices=mode==0||route!=0?1u:list==1?cap*cap:edge*edge;
++   const uint expectedVoxels=max(uint(kStageMicroSlicesPerGroup)/expectedSlices,1u);
++   const uint groups=(count+list+expectedVoxels-1u)/expectedVoxels;
++   const uint gx=max(1u,min(groups,1024u));
++   if(params[list*64]!=gx||params[list*64+1]!=max(1u,(groups+gx-1u)/gx)||
++      params[list*64+2]!=(expectedSlices+uint(kStageMicroSlicesPerGroup)-1u)/
++                         uint(kStageMicroSlicesPerGroup))return 1;
++  }
++  const uint base=route!=0?uint(route-1)*64:feeder?64:0;
++  const uint countForLane=count+base/64;
++  const uint gx=params[base],gy=params[base+1],gz=params[base+2];
++  indirectParams={gx,countForLane};std::vector<unsigned char> seen(countForLane*slices);
+   for(uint y=0;y<gy;++y)for(uint x=0;x<gx;++x)for(uint z=0;z<gz;++z)
+   for(uint local=0;local<uint(kStageMicroSlicesPerGroup);++local){
+    groupId={x,y,z};localId3={0,0,local};int index=-1,slice=-1;
+    if(lane==0)lane1_0(index,slice);else if(lane==1)lane1_1(index,slice);else lane2_0(index,slice);
+    if(index<0)continue;
+-   if(uint(index)>=count||slice<0||uint(slice)>=slices)return 2;
++   if(uint(index)>=countForLane||slice<0||uint(slice)>=slices)return 2;
+    if(++seen[uint(index)*slices+uint(slice)]!=1)return 3;
+   }
+   if(!std::all_of(seen.begin(),seen.end(),[](auto n){return n==1;}))return 4;
++  }
+  }
+ }
+ """
+@@ -94,6 +125,13 @@ int main(){
+ 
+ @unittest.skipUnless(COMPILER, "dispatch controls require a C++ compiler")
+ class VoxelDispatchPackingTest(unittest.TestCase):
++    def test_prefix_diagnostics(self):
++        source = (SHADERS / "c_voxel_to_trixel_stage_1_body.glsl").read_text()
++        with self.assertRaisesRegex(ValueError, "lane-recovery start moved"):
++            lane_prefix(source.replace("const int microSliceCount", "const int missingSlices"))
++        with self.assertRaisesRegex(ValueError, "lane-recovery guard moved"):
++            lane_prefix(source.replace("zIdx >= microSliceCount", "false"))
++
+     def test_layouts_match_recovery(self):
+         glsl = (SHADERS / "ir_constants.glsl").read_text()
+         metal = (SHADERS / "metal/ir_constants.metal").read_text()
+@@ -118,9 +156,19 @@ class VoxelDispatchPackingTest(unittest.TestCase):
+     def test_exact_once_coverage_and_positive_controls(self):
+         for backend in ("glsl", "metal"):
+             source = harness(backend)
++            finalizer = extract_function(source, "finalizeDispatchDims")
++            wrong_route = finalizer.replace("voxelRenderOptions.y, 0", "voxelRenderOptions.y, 1")
+             for name, candidate, expected in (
+                 ("production", source, 0),
+-                ("lost_slice_group", source.replace("* kStageMicroSlicesPerGroup +", "* 0 +"), 3),
++                ("wrong_visible_domain", source.replace(finalizer, wrong_route), 1),
++                ("wrong_list_count", source.replace("params[base + 3u]", "params[3u]")
++                 .replace("indirectParams[base + kSlotVisibleCount]",
++                          "indirectParams[kSlotVisibleCount]"), 1),
++                ("lost_slice_group", source.replace(
++                    "groupZ * uint(kStageMicroSlicesPerGroup)", "groupZ * 0u"), 3),
++                ("lost_voxel_group", source.replace(
++                    "groupIndex * voxelsPerGroup", "groupIndex"), 3),
++                ("lost_lane_padding", source.replace("voxelOffset >= voxelsPerGroup", "false"), 3),
+                 ("lost_grid_row", source.replace(".y * numGroupsX", ".y * 0")
+                  .replace(".y * indirectParams.numGroupsX", ".y * 0"), 3),
+                 ("lost_tail", source.replace("zIdx >= microSliceCount", "false"), 2),

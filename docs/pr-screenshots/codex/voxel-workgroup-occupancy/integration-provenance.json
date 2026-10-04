@@ -1,0 +1,15 @@
+{
+  "head": "d01b0e2e18e4df65127aff7fa6db73f78f89f560",
+  "base": "75c77de62e6fe71b971358b7eb5a0a1d0b09987a",
+  "binary_sha256": "d018ceae837c192255e361e5d5b8c8845dac512105243a74b9ef4ea0aeaba239",
+  "command": [
+    "python3",
+    "scripts/render-verify.py",
+    "--target",
+    "IRCanvasStress",
+    "--no-build",
+    "--timeout",
+    "180"
+  ],
+  "log": "integration-render-verify.log"
+}

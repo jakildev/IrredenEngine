@@ -1,5 +1,6 @@
 #include "ir_iso_common.metal"
 #include "ir_constants.metal"
+#include "ir_voxel_dispatch.metal"
 
 // The slot layout matches the GLSL std430 IndirectDispatchParams SSBO. All
 // five slots go through a single `device atomic_uint*` so atomic_fetch_add
@@ -48,17 +49,15 @@ static void writeDispatchDims(
     const uint count = atomic_load_explicit(
         &indirectParams[base + kSlotVisibleCount], memory_order_relaxed
     );
-    const uint gx = max(min(count, 1024u), 1u);
+    const uint voxelsPerGroup = voxelDispatchVoxelsPerGroup(microSliceCount);
+    const uint groups = (count + voxelsPerGroup - 1u) / voxelsPerGroup;
+    const uint gx = max(min(groups, 1024u), 1u);
     atomic_store_explicit(&indirectParams[base + kSlotNumGroupsX], gx, memory_order_relaxed);
     atomic_store_explicit(
         &indirectParams[base + kSlotNumGroupsY],
-        max((count + gx - 1u) / gx, 1u),
+        max((groups + gx - 1u) / gx, 1u),
         memory_order_relaxed
     );
-    // Pack kStageMicroSlicesPerGroup micro-cells per z-workgroup (the
-    // stage kernels' threadgroup z-size), so the launched z-workgroup count is
-    // the ceil-divided micro-slice count. Mirrors c_voxel_visibility_compact.glsl.
-    // The feeder struct passes feederSubCap² here instead of effSub².
     const uint gz = (microSliceCount + uint(kStageMicroSlicesPerGroup) - 1u) /
         uint(kStageMicroSlicesPerGroup);
     atomic_store_explicit(&indirectParams[base + kSlotNumGroupsZ], gz, memory_order_relaxed);
@@ -261,6 +260,29 @@ static bool fogColumnInVisionCircle(
 // sync at mutation time, so inactive slots short-circuit before any 12 B
 // voxels[] load.
 
+static void finalizeDispatchDims(device atomic_uint* indirectParams, constant FrameDataVoxelToTrixel& frameData) {
+    const uint visibleSlices = uint(voxelDispatchMicroSliceCount(
+        frameData.voxelRenderOptions.x, frameData.voxelRenderOptions.y, 0
+    ));
+    if (frameData.perAxisRoute == 0) {
+        writeDispatchDims(indirectParams, 0u, visibleSlices);
+        // Struct 1 = the feeder dispatch at feederSubCap²
+        // micro-cells per face (vs effSub² for visible). Empty when no
+        // survivor was classified feeder ⇒ its stage-1 dispatch
+        // early-returns every workgroup.
+        const uint feederSlices = uint(voxelDispatchMicroSliceCount(
+            frameData.voxelRenderOptions.x, frameData.feederSubCap, 0
+        ));
+        writeDispatchDims(indirectParams, kPerAxisIndirectStrideUints, feederSlices);
+    } else {
+        for (int axis = 0; axis < 3; ++axis) {
+            writeDispatchDims(
+                indirectParams, uint(axis) * kPerAxisIndirectStrideUints, 1u
+            );
+        }
+    }
+}
+
 kernel void c_voxel_visibility_compact(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
     device const float4* positions [[buffer(5)]],
@@ -425,26 +447,7 @@ kernel void c_voxel_visibility_compact(
         ) + 1u;
         const uint totalGroups = groupCount.x * groupCount.y;
         if (finished == totalGroups) {
-            const int subdivisions = max(frameData.voxelRenderOptions.y, 1);
-            const uint visibleSlices = (frameData.voxelRenderOptions.x != 0)
-                ? uint(subdivisions * subdivisions) : 1u;
-            if (frameData.perAxisRoute == 0) {
-                writeDispatchDims(indirectParams, 0u, visibleSlices);
-                // Struct 1 = the feeder dispatch at feederSubCap²
-                // micro-cells per face (vs effSub² for visible). Empty when no
-                // survivor was classified feeder ⇒ its stage-1 dispatch
-                // early-returns every workgroup.
-                const int cap = max(frameData.feederSubCap, 1);
-                const uint feederSlices = (frameData.voxelRenderOptions.x != 0)
-                    ? uint(cap * cap) : 1u;
-                writeDispatchDims(indirectParams, kPerAxisIndirectStrideUints, feederSlices);
-            } else {
-                for (int axis = 0; axis < 3; ++axis) {
-                    writeDispatchDims(
-                        indirectParams, uint(axis) * kPerAxisIndirectStrideUints, 1u
-                    );
-                }
-            }
+            finalizeDispatchDims(indirectParams, frameData);
         }
     }
 }

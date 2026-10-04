@@ -4,6 +4,7 @@
 #include <irreden/ir_utility.hpp>
 
 #include <filesystem>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -35,13 +36,9 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         functionName == "c_voxel_to_trixel_stage_1_winner_resolve" ||
         functionName == "c_voxel_to_trixel_stage_2" ||
         functionName == "c_voxel_to_trixel_stage_2_winner") {
-        // Both stage kernels pack kStageMicroSlicesPerGroup micro-cell z-slices
-        // per threadgroup and re-derive their slice as
-        // groupId.z * kStageMicroSlicesPerGroup + localId.z. MUST match the GLSL
-        // local_size_z literal + shaders/ir_constants.{glsl,metal}. The stage-1
-        // feeder, winner-election, and winner-guarded variants are compile-time
-        // specializations of the same two bodies, so they share the (2,3,8) shape.
-        return MTL::Size(2, 3, 8);
+        // Must match Metal's kStageMicroSlicesPerGroup;
+        // voxelDispatchLane shares this packing with the compact writer.
+        return MTL::Size(2, 3, 32);
     }
     if (functionName == "c_text_to_trixel") {
         return MTL::Size(7, 11, 1);
@@ -408,15 +405,31 @@ class MetalShaderPipelineImpl final : public ShaderPipelineImpl, public MetalPip
         }
 
         NS::Error *error = nullptr;
-        m_computeState = metalDevice()->newComputePipelineState(m_computeFunction, &error);
-        if (error != nullptr) {
+        MTL::ComputePipelineState *pipelineState =
+            metalDevice()->newComputePipelineState(m_computeFunction, &error);
+        if (pipelineState == nullptr) {
             const char *description =
-                error->localizedDescription() != nullptr ? error->localizedDescription()->utf8String()
-                                                         : "<unknown>";
-            IRE_LOG_FATAL("Metal compute pipeline creation failed: {}", description);
-            IR_ASSERT(false, "Metal compute pipeline creation failed.");
+                error != nullptr && error->localizedDescription() != nullptr
+                    ? error->localizedDescription()->utf8String()
+                    : "<unknown>";
+            throw std::runtime_error(
+                "Metal compute pipeline creation failed for '" +
+                std::string(m_computeFunction->name()->utf8String()) + "': " + description
+            );
         }
-        IR_ASSERT(m_computeState != nullptr, "Failed to create Metal compute pipeline state");
+        const auto threads = m_computeThreadsPerThreadgroup;
+        const auto threadCount = threads.width * threads.height * threads.depth;
+        const auto threadLimit = pipelineState->maxTotalThreadsPerThreadgroup();
+        if (threadCount > threadLimit) {
+            pipelineState->release();
+            // Resizing independently would invalidate the shader's lane and indirect-grid math.
+            throw std::runtime_error(
+                "Metal compute pipeline '" + std::string(m_computeFunction->name()->utf8String()) +
+                "' requires " + std::to_string(threadCount) + " threads per threadgroup, but supports " +
+                std::to_string(threadLimit)
+            );
+        }
+        m_computeState = pipelineState;
         return m_computeState;
     }
 

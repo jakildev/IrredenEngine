@@ -1,6 +1,6 @@
 # Voxel dispatch packing experiment
 
-The runtime keeps eight micro-slices per workgroup. A global increase to 32
+This experiment retained eight micro-slices per workgroup. A global increase to 32
 is promising for dense cardinal work but is not adopted: the low-density
 depth pass regresses, and these grouped Debug runs do not qualify a new default.
 The retained [experimental patch](packing32.patch) changes only the five packing
@@ -65,7 +65,11 @@ that their inherited geometry is universally correct.
 [45° capture](captures/diagonal-packing32.png) ·
 [90° capture](captures/cardinal90-packing32.png)
 
-## Next experiment
+## Subsequent experiment
+
+The [occupancy follow-up](../voxel-workgroup-occupancy/README.md) implements
+whole-voxel sharing, actual finalizer coverage and return controls described below.
+This report retains the measurements and decision from the earlier experiment.
 
 Retain the current default while measuring dense-only group specialization or
 packing several low-density voxels into a group. Route selection, indirect grid
