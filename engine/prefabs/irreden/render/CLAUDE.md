@@ -44,7 +44,7 @@ Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md). Rationale: [`d
 |---|---|
 | `CANVAS_RESIDENCY` · `PROPAGATE_CANVAS_ROTATION` → `PROPAGATE_CANVAS_PARTS` → `REBUILD_DETACHED_VOXELS` | UPDATE: residency first (its staged switches land before the transform chain); the canvas chain after `PROPAGATE_TRANSFORM` |
 | `LOD_UPDATE` → `GATE_VOXEL_SETS_BY_LOD` | UPDATE, before `PROPAGATE_TRANSFORM` / `UPDATE_VOXEL_SET_CHILDREN` |
-| `FOG_SUBJECT_EXEMPT` → voxel/shape adoption → voxel/shape eval (`IRPrefab::Fog::revealSystems()`) / `FOG_LOS_BUILD` | UPDATE after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_SET_CHILDREN` / RENDER before `FOG_TO_TRIXEL`, its own group (line-of-sight gated circles need it) |
+| `FOG_SUBJECT_EXEMPT` → voxel/shape/canvas adoption → voxel/shape/canvas eval (`IRPrefab::Fog::revealSystems()`) / `FOG_LOS_BUILD` | UPDATE after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_SET_CHILDREN` / RENDER before `FOG_TO_TRIXEL`, its own group (line-of-sight gated circles need it) |
 | `UPDATE_JOINT_MATRICES` | after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_POSITIONS_GPU`; a creation with skeletons registers the prepass too |
 | `UPDATE_VOXEL_POSITIONS_GPU` | before `VOXEL_TO_TRIXEL_STAGE_1` |
 | `VOXEL_PICKING` | RENDER, after the camera systems, before `VOXEL_TO_TRIXEL_STAGE_1` |
@@ -84,9 +84,9 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   consumer resolves via `IRPrefab::Lod::TierSnapshot`, which honours `C_LodTierOverride`.
 - Sprites bypass the trixel pipeline ([`docs/design/sprites.md`](../../../../docs/design/sprites.md));
   `C_Sprite::screenPixelSmooth_` (no game-pixel snap) is for the avatar or a camera-locked entity only.
-- Fog subject classes: untagged voxel sets and SDF shapes on the fog canvas are
-  adopted as BODY subjects (one ground-anchor verdict via the LOS-aware
-  `evalReveal`, state in `C_FogRevealed`, hysteresis in `C_FogRevealSettings`);
+- Fog subject classes: untagged voxel sets, SDF shapes and world-placed detached
+  canvas owners are BODY subjects (one owner/ground-anchor `evalReveal` verdict);
+  detached BODY factor + hidden state modulates/skips the whole authored composite.
   `C_FogField` / `C_FogExempt` are explicit and `revealSystems()` is the splice.
   Each raster folds its class + factor into id bit 28 + 27:20, and
   `FOG_TO_TRIXEL` paints a BODY pixel at that one factor. [Reveal model](../../../../docs/design/fog-of-war-reveal-model.md)

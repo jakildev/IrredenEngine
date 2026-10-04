@@ -48,6 +48,8 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     int depthPriorityMode;
     int overflowMode;
     int trixelSampleLayout;
+    uint fogBodyFactorEncoded;
+    uint fogUnexploredColorPacked;
 };
 
 void main() {

@@ -39,6 +39,8 @@ struct C_EntityCanvas {
     // by the composite, which already iterates C_EntityCanvas, to avoid a per-tick
     // getComponent.
     int depthPriority_ = 0;
+    float fogRevealFactor_ = 1.0f;
+    bool fogHidden_ = false;
 
     C_EntityCanvas() = default;
 
