@@ -174,7 +174,10 @@ Then, from any later call in the same pane: `fleet-jobs wait --timeout 540
 <job-id>` streams the log and exits with the child's exit code (124: still
 running, call it again; 1 with `lost` on stderr: the supervisor is gone),
 plus `status`, `kill`, and `list`. Job ids and state are pane-scoped
-(`~/.fleet/state/jobs/<pane>/`). A pane runs one `render-verify` job at a
+(`~/.fleet/state/jobs/<pane>/`). A terminal status ends the whole job:
+before publishing it, the supervisor stops anything the child left running
+(its process group; its job object on native Windows), so the log is final
+when `wait` returns. A pane runs one `render-verify` job at a
 time: runs share the build's screenshot directory, so a second start
 exits 1 while the first is live.
 

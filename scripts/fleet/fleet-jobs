@@ -257,7 +257,8 @@ class _ProcBsdInfo(ctypes.Structure):
                 ("xstatus", ctypes.c_uint32), ("pid", ctypes.c_uint32),
                 ("ppid", ctypes.c_uint32), ("ids", ctypes.c_uint32 * 7),
                 ("comm", ctypes.c_char * 16), ("name", ctypes.c_char * 32),
-                ("process_fields", ctypes.c_uint32 * 6),
+                ("nfiles", ctypes.c_uint32), ("pgid", ctypes.c_uint32),
+                ("process_fields", ctypes.c_uint32 * 4),
                 ("start_tvsec", ctypes.c_uint64), ("start_tvusec", ctypes.c_uint64)]
 
 
@@ -282,19 +283,43 @@ def _linux_stat(pid):
         text = Path(f"/proc/{int(pid)}/stat").read_text(encoding="utf-8")
     except OSError:
         return None
-    # Fields after the parenthesized comm: state=0, ppid=1, starttime=19.
+    # Fields after the parenthesized comm: state=0, ppid=1, pgrp=2, starttime=19.
     return text[text.rfind(")") + 2:].split()
 
 
+class _JobAccounting(ctypes.Structure):
+    # JOBOBJECT_BASIC_ACCOUNTING_INFORMATION
+    _fields_ = [("times", ctypes.c_int64 * 4), ("page_faults", ctypes.c_uint32),
+                ("total", ctypes.c_uint32), ("active", ctypes.c_uint32),
+                ("terminated", ctypes.c_uint32)]
+
+
+_kernel32_dll = None
+
+
+def _kernel32():
+    global _kernel32_dll
+    if _kernel32_dll is None:
+        k = ctypes.WinDLL("kernel32", use_last_error=True)
+        # Declared so a 64-bit HANDLE is not truncated to a C int.
+        handle = ctypes.c_void_p
+        k.OpenProcess.restype = handle
+        k.OpenProcess.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
+        k.GetExitCodeProcess.argtypes = [handle, ctypes.POINTER(ctypes.c_ulong)]
+        k.GetProcessTimes.argtypes = [handle] + [ctypes.POINTER(ctypes.c_ulonglong)] * 4
+        k.CloseHandle.argtypes = [handle]
+        k.CreateJobObjectW.restype = handle
+        k.CreateJobObjectW.argtypes = [ctypes.c_void_p, ctypes.c_wchar_p]
+        k.AssignProcessToJobObject.argtypes = [handle, handle]
+        k.TerminateJobObject.argtypes = [handle, ctypes.c_uint]
+        k.QueryInformationJobObject.argtypes = [handle, ctypes.c_int, ctypes.c_void_p,
+                                                ctypes.c_ulong, ctypes.c_void_p]
+        _kernel32_dll = k
+    return _kernel32_dll
+
+
 def _windows_identity(pid):
-    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
-    # Declared so a 64-bit HANDLE is not truncated to a C int.
-    kernel32.OpenProcess.restype = ctypes.c_void_p
-    kernel32.OpenProcess.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
-    kernel32.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
-    kernel32.GetProcessTimes.argtypes = [ctypes.c_void_p] + [
-        ctypes.POINTER(ctypes.c_ulonglong)] * 4
-    kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+    kernel32 = _kernel32()
     handle = kernel32.OpenProcess(0x1000, False, int(pid))  # QUERY_LIMITED_INFORMATION
     if not handle:
         return None
@@ -330,14 +355,15 @@ def identity(pid):
     return None
 
 
-def _process_parents():
-    parents = {}
+def _process_table():
+    """{pid: (ppid, pgid)} for every process the platform probe can read."""
+    table = {}
     if sys.platform.startswith("linux"):
         for entry in Path("/proc").iterdir():
             if entry.name.isdigit():
                 fields = _linux_stat(entry.name)
                 if fields:
-                    parents[int(entry.name)] = int(fields[1])
+                    table[int(entry.name)] = (int(fields[1]), int(fields[2]))
     elif sys.platform == "darwin":
         _darwin_info(os.getpid())  # loads libproc
         count = _libproc.proc_listallpids(None, 0)
@@ -346,18 +372,18 @@ def _process_parents():
         for pid in pids[:max(count, 0)]:
             info = _darwin_info(pid)
             if info is not None:
-                parents[int(info.pid)] = int(info.ppid)
-    return parents
+                table[int(info.pid)] = (int(info.ppid), int(info.pgid))
+    return table
 
 
 def descendants(root):
     """(pid, identity) of every live descendant of root, root excluded."""
     try:
-        parents = _process_parents()
+        table = _process_table()
     except (OSError, AttributeError):
         return []
     children = {}
-    for child, parent in parents.items():
+    for child, (parent, _) in table.items():
         children.setdefault(parent, []).append(child)
     found, pending = [], [root]
     while pending:
@@ -367,6 +393,40 @@ def descendants(root):
                 found.append((child, ident))
                 pending.append(child)
     return found
+
+
+def group_members(pgid):
+    """(pid, identity) of every live member of process group pgid but its leader."""
+    try:
+        table = _process_table()
+    except (OSError, AttributeError):
+        return []
+    return [(pid, ident) for pid, (_, group) in table.items()
+            if group == pgid and pid != pgid and (ident := identity(pid))]
+
+
+def windows_job_for(pid):
+    """A job object holding pid and every process it starts from now on, or None."""
+    kernel32 = _kernel32()
+    job = kernel32.CreateJobObjectW(None, None)
+    if not job:
+        return None
+    process = kernel32.OpenProcess(0x0101, False, int(pid))  # SET_QUOTA | TERMINATE
+    assigned = bool(process) and kernel32.AssignProcessToJobObject(job, process)
+    if process:
+        kernel32.CloseHandle(process)
+    if not assigned:
+        kernel32.CloseHandle(job)
+        return None
+    return job
+
+
+def _windows_job_active(job):
+    info = _JobAccounting()
+    if not _kernel32().QueryInformationJobObject(job, 1, ctypes.byref(info),
+                                                 ctypes.sizeof(info), None):
+        return 0
+    return info.active
 
 
 # --- supervisor -------------------------------------------------------------
@@ -399,23 +459,39 @@ def _exited_unreaped(child):
     return info is not None
 
 
-def _terminate_tree(child):
+def _tree_alive(child, members):
+    return (not _exited_unreaped(child) or any(identity(p) == i for p, i in members)
+            or bool(group_members(child.pid)))
+
+
+def _drain_tree(child, job, members):
+    """Stop the child and everything it left running, then reap the child.
+
+    Returns only once nothing from the tree can still write the job log, so
+    terminal status published afterwards is final. members are descendants
+    sampled while the child was alive; on POSIX the child's process group is
+    swept on every pass as well, which also reaches what an exited child
+    orphaned. Native Windows terminates the child's job object.
+    """
     if IS_WINDOWS:
         if child.poll() is None:
             subprocess.run(["taskkill", "/T", "/F", "/PID", str(child.pid)],
                            capture_output=True, timeout=60)
+        if job is not None:
+            _kernel32().TerminateJobObject(job, 1)
+            deadline = time.monotonic() + CANCEL_GRACE
+            while _windows_job_active(job) and time.monotonic() < deadline:
+                time.sleep(POLL)
         child.wait()
         return
-    members = descendants(child.pid)
-    _killpg(child.pid, signal.SIGTERM)
-    _signal_verified(members, signal.SIGTERM)
-    deadline = time.monotonic() + CANCEL_GRACE
-    while time.monotonic() < deadline:
-        if _exited_unreaped(child) and not any(identity(p) == i for p, i in members):
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        _killpg(child.pid, sig)
+        _signal_verified(members + group_members(child.pid), sig)
+        deadline = time.monotonic() + CANCEL_GRACE
+        while (alive := _tree_alive(child, members)) and time.monotonic() < deadline:
+            time.sleep(POLL)
+        if not alive:
             break
-        time.sleep(POLL)
-    _killpg(child.pid, signal.SIGKILL)
-    _signal_verified(members, signal.SIGKILL)
     child.wait()
 
 
@@ -448,6 +524,7 @@ def supervise():
                         finished_at=now_iso())
             write_atomic(job_dir / "meta.json", meta)
             return 127
+        job = windows_job_for(child.pid) if IS_WINDOWS else None
         meta.update(status="running", started_at=now_iso(),
                     supervisor={"pid": os.getpid(), "identity": identity(os.getpid())},
                     child={"pid": child.pid, "identity": identity(child.pid)})
@@ -455,17 +532,14 @@ def supervise():
         cancel_marker = job_dir / "cancel"
         while not _exited_unreaped(child):
             if cancelled or cancel_marker.exists():
-                _terminate_tree(child)
+                _drain_tree(child, job, descendants(child.pid))
                 reason = cancelled[0] if cancelled else "cancelled by fleet-jobs kill"
                 meta.update(status="killed", reason=reason)
                 break
             time.sleep(POLL)
         else:
-            # Exited but unreaped: a leftover member of its process group
-            # still holds the log open, so stop the group before publishing.
-            if not IS_WINDOWS:
-                _killpg(child.pid, signal.SIGTERM)
-            child.wait()
+            # Whatever the child left running still holds the log open.
+            _drain_tree(child, job, [])
             meta.update(status="succeeded" if child.returncode == 0 else "failed",
                         reason="exited")
         os.fsync(log.fileno())

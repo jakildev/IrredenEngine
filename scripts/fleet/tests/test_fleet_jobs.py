@@ -26,18 +26,29 @@ SUBJECT = Path(__file__).resolve().parents[1] / "fleet-jobs"
 if not SUBJECT.is_file():
     print("SKIP: scripts/fleet/fleet-jobs absent", file=sys.stderr)
     sys.exit(3)
-if os.name == "nt":
-    # The native-Windows arm (creation-time identity, taskkill tree) is
-    # covered by the Windows host smoke lane, not this POSIX harness.
-    print("fleet-jobs suite: POSIX-only; Windows arm runs in host smoke", file=sys.stderr)
-    sys.exit(0)
+# Only NaturalExit runs on native Windows (the job-object arm); the rest of
+# the suite drives POSIX process groups and signals.
+posix_only = unittest.skipIf(os.name == "nt", "POSIX process-group harness")
 
 IR_BUILD = r"""#!/usr/bin/env bash
 case "$1" in
   hold) echo "line one"; while [ ! -e "$2" ]; do sleep 0.05; done; echo "line two"; exit 7 ;;
   tree) sleep 300 & echo "$!" > "$2.tmp"; echo "$$" >> "$2.tmp"; mv "$2.tmp" "$2"; wait ;;
+  orphan) "$3" -c "$ORPHAN" "$2" & while [ ! -e "$2" ]; do sleep 0.05; done; exit 0 ;;
   *) echo "ir-build $*"; exit 0 ;;
 esac
+"""
+# Ignores SIGTERM, records its own native pid, then writes to the job log
+# until something kills it.
+ORPHAN = r"""import os, signal, sys, time
+if hasattr(signal, "SIGTERM"):
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+with open(sys.argv[1] + ".tmp", "w") as handle:
+    handle.write(str(os.getpid()))
+os.replace(sys.argv[1] + ".tmp", sys.argv[1])
+while True:
+    print("tick", flush=True)
+    time.sleep(0.1)
 """
 RUN_ALL = '#!/usr/bin/env bash\necho "run_all $*"\nexit 0\n'
 RENDER_VERIFY = r"""import os, sys, time
@@ -109,7 +120,8 @@ class JobsCase(unittest.TestCase):
     def env(self, pane):
         env = {k: v for k, v in os.environ.items()
                if not k.startswith(("FLEET_", "IRREDEN_", "IR_"))}
-        env.update(HOME=str(self.root / "home"), FLEET_STATE_DIR=str(self.state))
+        env.update(HOME=str(self.root / "home"), FLEET_STATE_DIR=str(self.state),
+                   ORPHAN=ORPHAN)
         if pane is not None:
             env["FLEET_ASSIGNED_WORKTREE"] = str(self.root / "wt" / pane)
         return env
@@ -134,6 +146,7 @@ class JobsCase(unittest.TestCase):
         return sorted(p for p in self.state.glob("jobs/*/*") if p.is_dir())
 
 
+@posix_only
 class Lifecycle(JobsCase):
     def test_job_survives_launcher_group_kill_and_wait_returns_exact_exit(self):
         release = self.root / "release"
@@ -247,6 +260,25 @@ class Lifecycle(JobsCase):
         self.assertEqual(self.jobs(["wait", "--quiet", admitted[0]]).returncode, 3)
 
 
+class NaturalExit(JobsCase):
+    def test_exit_drains_a_term_resistant_descendant_before_terminal_status(self):
+        pidfile = self.root / "orphan"
+        job = self.start(["build", "--", "orphan", str(pidfile), sys.executable])
+        waited = self.jobs(["wait", job])
+        self.assertEqual(waited.returncode, 0, waited.stderr)
+        self.assertIn(f"{job} succeeded exit=0", waited.stderr.splitlines()[-1])
+        self.assertIn("tick", waited.stdout)
+        descendant = int(pidfile.read_text())
+        self.assertIsNone(load_subject().identity(descendant),
+                          f"descendant {descendant} outlived the terminal status")
+        log = self.state / "jobs" / self.pane_a / job / "job.log"
+        final = log.read_bytes()
+        self.assertEqual(final.decode().splitlines(), waited.stdout.splitlines())
+        time.sleep(1)
+        self.assertEqual(log.read_bytes(), final, "the log grew after the terminal status")
+
+
+@posix_only
 class Isolation(JobsCase):
     def test_panes_cannot_see_or_touch_each_other(self):
         release = self.root / "release"
@@ -299,6 +331,7 @@ class Isolation(JobsCase):
         self.assertIn("no pane", unregistered.stderr)
 
 
+@posix_only
 class IdentitySafety(JobsCase):
     def forge(self, job, supervisor):
         meta_path = self.state / "jobs" / self.pane_a / job / "meta.json"
@@ -345,6 +378,7 @@ class IdentitySafety(JobsCase):
         self.assertIsNone(subject.identity(child.pid))
 
 
+@posix_only
 class ProfileBoundary(JobsCase):
     REJECTED = (
         ["start"],
