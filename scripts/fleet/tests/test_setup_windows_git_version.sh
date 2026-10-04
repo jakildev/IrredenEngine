@@ -46,6 +46,29 @@ exit 0
 EOF
 chmod +x "$STUB"/*
 
+# The soft-dependency fixture: PATH is exactly $BARE, so a host ruff or
+# clang-format can't leak in. It holds the prerequisite stubs minus ruff, a
+# symlink farm of the real tools the script runs, and pacman/pipx stubs that
+# log every call (pacman exits $STUB_PACMAN_RC).
+BARE="$TMPROOT/bare-bin"
+INSTALL_LOG="$TMPROOT/install.log"
+PYTHON_ABS="$(command -v python3)"
+mkdir -p "$BARE"
+for tool in tmux jq claude pgrep git uname; do cp "$STUB/$tool" "$BARE/$tool"; done
+for tool in cat dirname grep head mkdir sed tr; do ln -s "$(command -v "$tool")" "$BARE/$tool"; done
+ln -s "$REAL_BASH" "$BARE/bash"
+cat > "$BARE/pacman" <<EOF
+#!$REAL_BASH
+printf 'pacman %s\n' "\$*" >> "$INSTALL_LOG"
+exit "\${STUB_PACMAN_RC:-0}"
+EOF
+cat > "$BARE/pipx" <<EOF
+#!$REAL_BASH
+printf 'pipx %s\n' "\$*" >> "$INSTALL_LOG"
+exit 0
+EOF
+chmod +x "$BARE/pacman" "$BARE/pipx"
+
 # make_git <dir> <version-output> — a pane-side git that only answers --version.
 make_git() {
     mkdir -p "$1"
@@ -66,13 +89,14 @@ EOF
     chmod +x "$1"
 }
 
-# run_case <name> [--no-overlap] [--floor X.Y] [VAR=val...] -- <setup args...>
+# run_case <name> [--no-overlap] [--floor X.Y] [--bare] [VAR=val...] -- <setup args...>
 run_case() {
     local name="$1"; shift
-    local sandbox="$TMPROOT/$name" copy_overlap=1 floor="" envs=()
+    local sandbox="$TMPROOT/$name" copy_overlap=1 floor="" path="$STUB:$PATH" envs=()
     while [[ $# -gt 0 && "$1" != "--" ]]; do
         case "$1" in
             --no-overlap) copy_overlap=0 ;;
+            --bare) path="$BARE"; envs+=("FLEET_SETUP_PYTHON=$PYTHON_ABS") ;;
             --floor) floor="$2"; shift ;;
             *) envs+=("$1") ;;
         esac
@@ -92,7 +116,8 @@ run_case() {
     fi
     [[ -f "$TMPROOT/bashrc.$name" ]] && cp "$TMPROOT/bashrc.$name" "$sandbox/home/.bashrc"
     : > "$MSYS_GIT_LOG"
-    OUT="$(env PATH="$STUB:$PATH" HOME="$sandbox/home" FLEET_CLONE="$sandbox/clone" \
+    : > "$INSTALL_LOG"
+    OUT="$(env PATH="$path" HOME="$sandbox/home" FLEET_CLONE="$sandbox/clone" \
         FLEET_GIT_BASH="$sandbox/git-bash/bin/bash.exe" "${envs[@]}" \
         "$REAL_BASH" "$sandbox/scripts/setup-windows.sh" "$@" 2>&1 | tr -d '\r')"
     RC=$?
@@ -184,7 +209,45 @@ run_case raised_floor --floor 2.40 -- --check
 [[ "$RC" != "0" ]] && ok "raising the floor rejects 2.38.0 — same single owner" || bad "raised floor ignored"
 assert_contains "$OUT" ">= 2.40" "the printed floor follows fleet-pr-overlap"
 
-echo "5. usage"
+echo "5. soft dependencies install only after every check, never under --check"
+printf '%s\n' "$OLD_RC" > "$TMPROOT/bashrc.soft_too_old"
+make_git_bash "$TMPROOT/soft_too_old/git-bash/bin/bash.exe" "$PANE_NEW"
+run_case soft_too_old --bare --
+[[ "$RC" != "0" ]] && ok "missing soft tools + old pane git: non-zero" || bad "old pane git accepted (rc=0)"
+assert_contains "$OUT" "missing (soft): ruff" "missing ruff is reported"
+assert_contains "$OUT" "missing (soft): clang-format" "missing clang-format is reported"
+assert_eq "$(cat "$INSTALL_LOG")" "" "rejected host: neither pacman nor pipx ran"
+assert_no_mutation "soft_too_old" "$OLD_RC"
+
+make_git_bash "$TMPROOT/soft_check/git-bash/bin/bash.exe" "$PANE_NEW"
+run_case soft_check --bare -- --check
+assert_eq "$RC" "0" "missing soft tools: --check exits 0"
+assert_contains "$OUT" "nothing written" "--check says it wrote nothing"
+assert_eq "$(cat "$INSTALL_LOG")" "" "--check: neither pacman nor pipx ran"
+assert_no_mutation "soft_check" ""
+
+make_git_bash "$TMPROOT/soft_install/git-bash/bin/bash.exe" "$PANE_NEW"
+run_case soft_install --bare FLEET_CPU_BUDGET=8 FLEET_ROLES=pool-1 --
+assert_eq "$RC" "0" "full run with missing soft tools exits 0"
+assert_contains "$(cat "$INSTALL_LOG")" "pacman -S --needed --noconfirm mingw-w64-x86_64-ruff" \
+    "full run installs ruff via pacman"
+assert_contains "$(cat "$INSTALL_LOG")" "mingw-w64-x86_64-clang-tools-extra" \
+    "full run installs clang-format via pacman"
+assert_absent "$(cat "$INSTALL_LOG")" "pipx" "pacman success: no pipx fallback"
+gate_line="$(printf '%s\n' "$OUT" | grep -n 'ok: pane git' | cut -d: -f1)"
+install_line="$(printf '%s\n' "$OUT" | grep -n 'installed ruff via pacman' | cut -d: -f1)"
+[[ -n "$gate_line" && -n "$install_line" ]] && (( gate_line < install_line )) \
+    && ok "the install follows the pane-git gate" \
+    || bad "install not after the gate (gate line '$gate_line', install line '$install_line')"
+
+make_git_bash "$TMPROOT/soft_pipx/git-bash/bin/bash.exe" "$PANE_NEW"
+run_case soft_pipx --bare STUB_PACMAN_RC=1 FLEET_CPU_BUDGET=8 FLEET_ROLES=pool-1 --
+assert_eq "$RC" "0" "pacman failing: full run still exits 0"
+assert_contains "$(cat "$INSTALL_LOG")" "pipx install ruff" "pacman failing: ruff falls back to pipx"
+assert_contains "$OUT" "installed ruff via pipx" "pipx install is reported"
+assert_contains "$OUT" "WARN: clang-format not installed" "clang-format has no fallback: warns"
+
+echo "6. usage"
 run_case bad_arg -- --bogus
 assert_eq "$RC" "2" "an unknown argument is a usage error"
 

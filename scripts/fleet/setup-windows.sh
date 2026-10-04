@@ -11,7 +11,8 @@
 # What it does (all idempotent — safe to re-run):
 #   1. Checks prerequisites (git, tmux, jq, claude, python3, MSYS2 mingw64
 #      toolchain, and the git a Git Bash pane runs — see below). `--check`
-#      stops here, before anything is written.
+#      stops here, before anything is installed or written. A full run then
+#      installs the soft dependencies (ruff, clang-format) best-effort.
 #   2. Clones the engine to a DEDICATED fleet clone (default $HOME/src/
 #      IrredenEngine — kept separate from any interactive dev clone so fleet
 #      branch-resets / worktrees don't churn the clone you edit in), or fetches
@@ -103,30 +104,24 @@ if ! command -v pgrep >/dev/null 2>&1; then
     echo "  MISSING: pgrep — install with: pacman -S procps-ng" >&2
     missing=1
 fi
-# ruff lints the fleet Python surface (scripts/fleet/) — run before committing
-# fleet-script changes. Soft dependency (needed for the local Python lint, not
-# to run the fleet), so install best-effort: MSYS2 package first, else pipx/pip.
+# Soft dependencies: needed for local gates, not to run the fleet. Only
+# detected here; the install runs after every hard check passes and after the
+# `--check` exit, so neither a rejected host nor `--check` is ever mutated.
+# ruff lints the fleet Python surface (scripts/fleet/); clang-format backs
+# `fleet-build --target format-changed` (commit-and-push step 3).
+install_ruff=0
+install_clang_format=0
 if command -v ruff >/dev/null 2>&1; then
     echo "  ok: ruff ($(command -v ruff))"
-elif pacman -S --needed --noconfirm mingw-w64-x86_64-ruff >/dev/null 2>&1; then
-    echo "  ok: installed ruff via pacman"
-elif command -v pipx >/dev/null 2>&1 && pipx install ruff >/dev/null 2>&1; then
-    echo "  ok: installed ruff via pipx"
 else
-    echo "  WARN: ruff not installed — 'ruff check scripts/fleet/' (the fleet" >&2
-    echo "        Python lint) won't run locally. Try: pacman -S mingw-w64-x86_64-ruff" >&2
+    echo "  missing (soft): ruff — setup installs it: pacman -S mingw-w64-x86_64-ruff, else pipx" >&2
+    install_ruff=1
 fi
-# clang-format backs `fleet-build --target format-changed` (commit-and-push
-# step 3). Same soft-dependency shape as ruff: the MSYS2 clang-tools-extra
-# package carries the binary; without it every Windows-authored PR ships the
-# format gate unverified.
 if command -v clang-format >/dev/null 2>&1; then
     echo "  ok: clang-format ($(command -v clang-format))"
-elif pacman -S --needed --noconfirm mingw-w64-x86_64-clang-tools-extra >/dev/null 2>&1; then
-    echo "  ok: installed clang-format via pacman (mingw-w64-x86_64-clang-tools-extra)"
 else
-    echo "  WARN: clang-format not installed — 'fleet-build --target format-changed'" >&2
-    echo "        fails with 'clang-format not found'. Try: pacman -S mingw-w64-x86_64-clang-tools-extra" >&2
+    echo "  missing (soft): clang-format — setup installs it: pacman -S mingw-w64-x86_64-clang-tools-extra" >&2
+    install_clang_format=1
 fi
 case "$(uname -s)" in
     MINGW*|MSYS*) : ;;
@@ -189,6 +184,29 @@ check_pane_git || missing=1
 if (( CHECK_ONLY )); then
     say "Prerequisites ok (--check: nothing written)"
     exit 0
+fi
+
+# --- 1b. Soft dependencies (best-effort) -----------------------------------
+if (( install_ruff || install_clang_format )); then
+    say "Installing soft dependencies"
+fi
+if (( install_ruff )); then
+    if pacman -S --needed --noconfirm mingw-w64-x86_64-ruff >/dev/null 2>&1; then
+        echo "  ok: installed ruff via pacman"
+    elif command -v pipx >/dev/null 2>&1 && pipx install ruff >/dev/null 2>&1; then
+        echo "  ok: installed ruff via pipx"
+    else
+        echo "  WARN: ruff not installed — 'ruff check scripts/fleet/' (the fleet" >&2
+        echo "        Python lint) won't run locally. Try: pacman -S mingw-w64-x86_64-ruff" >&2
+    fi
+fi
+if (( install_clang_format )); then
+    if pacman -S --needed --noconfirm mingw-w64-x86_64-clang-tools-extra >/dev/null 2>&1; then
+        echo "  ok: installed clang-format via pacman (mingw-w64-x86_64-clang-tools-extra)"
+    else
+        echo "  WARN: clang-format not installed — 'fleet-build --target format-changed'" >&2
+        echo "        fails with 'clang-format not found'. Try: pacman -S mingw-w64-x86_64-clang-tools-extra" >&2
+    fi
 fi
 
 # --- 2. Dedicated fleet clone ----------------------------------------------
