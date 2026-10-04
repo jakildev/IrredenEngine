@@ -90,8 +90,9 @@ Next, in order:
    frame ranges overlap and the first subdivision-3 batch regresses before the
    repeat improves, so do not generalize the gains. Same-runner Linux controls
    confirm zoom-4 regressions with 32 lanes, eight lanes and direct dense indexing.
-   Keep Metal packing and restore OpenGL one-voxel workgroup ownership; validate
-   this narrowed policy in a final paired run before approval.
+   Keep Metal packing and restore OpenGL one-voxel workgroup ownership. The final
+   paired run reduces zoom-4 steady regression to 3.0%/4.4% (full-frame
+   1.8%/3.2%, below the 10% gate); this is not exact performance parity.
    Hardware OpenGL, feeder-heavy
    timing and moving-camera/density controls remain pending. Next profile
    conservative overflow, shared lighting and submission/readback stalls. The
@@ -110,11 +111,22 @@ Next, in order:
    propagation over the full 128-cubed volume for each radius step, even when
    PerfGrid has one radius-24 emitter. Measure a conservative union of seed
    bounds expanded by the propagation count, keeping every neighbor rule and
-   RGBA8 quantization step unchanged. Both ping-pong textures must be zero
+   RGBA8 quantization step unchanged. Use actual rounded/clamped/relocated
+   staging seeds, not original light positions, and the existing maximum
+   eligible radius. Start with one fixed box aligned to the 8×8×4 workgroup;
+   avoid per-iteration uploads. Extend every shader/CPU parameter-layout mirror
+   together if adding a dispatch origin. Both ping-pong textures must be zero
    outside the active domain; alternating buffers, odd iteration counts,
    moving/disappearing lights and camera-boundary relocation are required
-   controls. Do not lower light radius or iteration count to claim a gain.
+   controls. Compare all RGBA8 bytes after each iteration against the full-volume
+   path, poison scratch buffers, and mutate offset/expansion/clearing controls.
+   Include extra clear cost in measurements. Do not lower light radius or
+   iteration count to claim a gain.
    This is a code-traced candidate, not an implemented or measured optimization.
+   Proposed correctness probe: two lights can seed the same cell with independent
+   plain color/ID stores in `c_seed_light_volume`. Reproduce and define deterministic
+   ownership before treating coincident emitters as a reference workload; this
+   audit has not established a visible failure from those writes.
 3. Continue dense/incomplete sun-index and moving light/camera controls. Incomplete
    tiles still have approximate fallback; the full-pool reference is diagnostic.
 4. Extend finite receiving to cardinal GRID and remaining eligible SDF/fog routes,

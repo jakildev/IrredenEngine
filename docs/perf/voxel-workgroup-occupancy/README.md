@@ -177,9 +177,54 @@ The dense identity helps but does not make low-density packing acceptable on
 this OpenGL backend. The final candidate limits cross-voxel packing to Metal.
 OpenGL keeps the shared sample-domain/helper interface but uses its original
 one-voxel XY ownership and direct slice indexing at every density. The writer
-therefore folds to the original dispatch dimensions. This policy needs a final
-paired check; no OpenGL performance improvement is claimed.
+therefore folds to the original dispatch dimensions. The final paired check
+below measures this policy; no OpenGL performance improvement is claimed.
 
 Metal retains the originally measured packing helper without the dense-index
-early return; that experiment is not part of the final backend policy. Native before/after
-experiment frame means overlapped, so no Metal gain from that branch is claimed.
+early return; that experiment is not part of the final backend policy.
+The [native before/after experiment](metal-direct-experiment/) spanned an
+overnight interruption between batches; low/rotated ranges overlap, and it
+does not establish a Metal gain from that branch. Manifests record the actual
+run times, compiled asset hashes and checkout state.
+
+Master `1afd24020` is integrated after the final-policy diagnostic was launched.
+It adds whole-body SDF fog, fog overrides/channel masks and host quiet-window
+tooling. The voxel dispatch
+writer, consumers and helpers are unchanged by the merge. Fresh native
+integration validation is recorded separately from the pinned Linux pair.
+
+The integrated tree builds IRPerfGrid, IRCanvasStress and IrredenEngineTest.
+All 305 render-tooling tests pass; native viewport/LOD/cursor/fog coverage passes
+183 tests with one OpenGL-only skip. Header checks cover 648 headers, 40 Metal
+kernels and 98 GLSL files. The final native [CanvasStress log](../../pr-screenshots/codex/voxel-workgroup-occupancy/final-policy-render-verify.log)
+passes all 30 checks (20 exact RGB and 10 structural), without changing
+references or thresholds. A separate default capture exits cleanly and all six
+reference views remain RGB-identical; [provenance](../../pr-screenshots/codex/voxel-workgroup-occupancy/final-policy-provenance.json)
+records the integrated build and compiled asset fingerprints. Existing PR
+images are retained because their RGB data is unchanged.
+
+### Final OpenGL policy result
+
+The [final same-runner diagnostic](https://github.com/jakildev/IrredenEngine/actions/runs/37217015393)
+compares `4f472b6fe` with `52eca06ad`. The [raw archive](linux-final-pair/paired/provenance.json)
+retains every matrix, log, fingerprint and comparison. Absolute times differ
+from earlier hosted machines; compare only each run against its own base.
+
+| Cell | Base steady ms | First final-policy head | Return final-policy head |
+|---|---:|---:|---:|
+| Zoom 1 | 494.92 | 468.79 (-5.3%) | 495.36 (+0.1%) |
+| Zoom 4, effective subdivision 4 | 1140.36 | 1174.48 (+3.0%) | 1190.26 (+4.4%) |
+
+Full-frame zoom-4 means rise 1.8% and 3.2%, below the 10% frame-regression
+threshold. The large packing regression is removed, but these controls do not
+establish exact timing parity: steady zoom-4 remains 3–4% slower. Depth/color
+scope means are 233.05/200.80 ms on base, 238.52/200.25 on first head and
+244.43/204.34 on return head. Election rises from 7.12 to 10.46/10.84 ms;
+its relative stage regression remains visible in the report. The first
+zoom-1 full-frame p99 is worse (startup-inclusive measurement), while the
+return improves.
+No threshold or shared baseline was changed to accept the candidate.
+
+The subsequent master merge changes no dispatch writer/consumer/helper code.
+Native OpenGL presentation, hardware throughput and quiet Release/million
+qualification remain separate TODOs.
