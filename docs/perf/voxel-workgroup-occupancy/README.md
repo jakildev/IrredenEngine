@@ -237,3 +237,29 @@ RGB comparisons; [integration log](../../pr-screenshots/codex/voxel-workgroup-oc
 and the additional-integration entry in the provenance identify this build.
 The [automatic performance gate](https://github.com/jakildev/IrredenEngine/actions/runs/37217493554)
 passed on the earlier `6f9525792` integration; final-head CI remains required.
+
+### Compiled Metal pipeline limits and review follow-up
+
+At `f23a31aee`, all five native voxel pipelines request 192 threads and report
+a compiled limit of 1024 on Apple M4 Max. The runtime checks each compiled
+pipeline before caching it; unsupported groups and failed creation throw in
+release builds as well. This diagnoses unsupported devices rather than changing
+lane ownership to fit a smaller group. No other Apple GPU is qualified here.
+
+All nine native Metal compute tests pass with clean exit, including cross-dispatch
+scratch visibility and the new compiled-limit test. The [native XML](../../pr-screenshots/codex/voxel-workgroup-occupancy/metal-pipeline-limits.xml)
+records each kernel's requested/available count. The production-method stub test
+covers exact acceptance, rejection/release, null creation with/without an error,
+retry and caching with diagnostic assertions disabled. All three mutations fail
+as intended, and writer/lane coverage tests still pass.
+
+A fresh committed-build [CanvasStress run](../../pr-screenshots/codex/voxel-workgroup-occupancy/metal-pipeline-limits-render-verify.log)
+passes all 30 checks (20 exact RGB, ten structural). References and thresholds
+are unchanged. [Provenance](../../pr-screenshots/codex/voxel-workgroup-occupancy/metal-pipeline-limit-provenance.json)
+pins the pipeline source and compiled demo; existing screenshots remain the
+same images. No new performance measurement is claimed for this validation-only
+follow-up. The [ordering audit](../../design/voxel-dispatch-occupancy.md#metal-pipeline-and-ordering-constraints)
+found no packing-specific race and records the pre-existing duplicate-store
+qualification. The formal Opus recheck approved implementation `f23a31aee`, and
+its Linux build, performance gate and remaining automatic checks passed. Native
+Windows smoke and final documentation-head checks remain required.

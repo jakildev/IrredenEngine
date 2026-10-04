@@ -1,0 +1,9 @@
+{
+  "source_commit": "f23a31aee976e249b4271dfd0b18380efc6894c4",
+  "pipeline_sha256": "d988f815f9be3660a20ff8c7f9785b98c130f956b6eb0dee9b156ca62016e41f",
+  "canvas_stress_binary_sha256": "1123930a8b5d6d790312526df36c4eb4d1caf8c264abda506ad5f805dda2af84",
+  "native_test_command": "fleet-run --timeout 180 IrredenEngineTest --gtest_filter=MetalGpuComputeDispatchTest.* --gtest_output=xml:/tmp/codex-metal-voxel-threadgroup-limits.xml",
+  "visual_command": "python3 scripts/render-verify.py --target IRCanvasStress --no-build --timeout 180",
+  "device": "Apple M4 Max",
+  "scope": "Compiled pipeline limits and unchanged visual output; no new timing measurement or cross-device qualification"
+}
