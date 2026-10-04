@@ -46,18 +46,19 @@ esac
 # until something kills it. "session" leaves the job's process group and
 # drops the inherited environment, so only the log descriptor ties it to the
 # job; "quiet-session" leaves the group and closes the log, so only the
-# environment does.
+# environment does; "daemon" drops all three, so only the supervisor's
+# anchor on its own tree does.
 ORPHAN = r"""import os, signal, sys, time
 mode = sys.argv[2] if len(sys.argv) > 2 else "group"
-if mode == "session":
-    os.setsid()
-    os.execve(sys.executable, [sys.executable, "-c", os.environ["ORPHAN"], sys.argv[1],
-                               "scrubbed"], {})
-if mode == "quiet-session":
-    os.setsid()
+if mode in ("quiet-session", "daemon"):
     devnull = os.open(os.devnull, os.O_WRONLY)
     os.dup2(devnull, 1)
     os.dup2(devnull, 2)
+if mode in ("session", "quiet-session", "daemon"):
+    os.setsid()
+if mode in ("session", "daemon"):
+    os.execve(sys.executable, [sys.executable, "-c", os.environ["ORPHAN"], sys.argv[1],
+                               "scrubbed"], {})
 if hasattr(signal, "SIGTERM"):
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
 with open(sys.argv[1] + ".tmp", "w") as handle:
@@ -290,7 +291,7 @@ class Lifecycle(JobsCase):
 
 
 class NaturalExit(JobsCase):
-    MODES = ("group",) if os.name == "nt" else ("group", "session", "quiet-session")
+    MODES = ("group",) if os.name == "nt" else ("group", "session", "quiet-session", "daemon")
 
     def test_exit_drains_a_term_resistant_descendant_before_terminal_status(self):
         for mode in self.MODES:
@@ -300,7 +301,7 @@ class NaturalExit(JobsCase):
                 waited = self.jobs(["wait", job])
                 self.assertEqual(waited.returncode, 0, waited.stderr)
                 self.assertIn(f"{job} succeeded exit=0", waited.stderr.splitlines()[-1])
-                if mode != "quiet-session":
+                if mode not in ("quiet-session", "daemon"):
                     self.assertIn("tick", waited.stdout)
                 descendant = int(pidfile.read_text())
                 survivor = load_subject().identity(descendant)
@@ -378,6 +379,27 @@ class BreakawayRefusal(JobsCase):
         self.assertIn("forbids breakaway", status["reason"])
         waited = self.jobs(["wait", job_dir.name])
         self.assertEqual(waited.returncode, 127, waited.stderr)
+
+
+@unittest.skipUnless(sys.platform == "darwin", "macOS responsible-process anchor")
+class Unanchored(JobsCase):
+    def test_supervisor_not_spawned_disclaimed_never_runs_the_child(self):
+        job_dir = self.state / "jobs" / self.pane_a / "20260101T000000Z-build-abcdef"
+        job_dir.mkdir(parents=True)
+        (job_dir / "job.log").touch()
+        (job_dir / "meta.json").write_text(json.dumps(
+            {"id": job_dir.name, "pane": self.pane_a, "profile": "build", "name": "build",
+             "cwd": str(self.repo), "created_at": "2026-01-01T00:00:00Z",
+             "created_epoch": time.time(), "status": "starting", "exit_code": None}))
+        spec = {"id": job_dir.name, "cwd": str(self.repo), "args": ["--", "probe"]}
+        # A plain subprocess, unlike cmd_start's launch, keeps the caller's
+        # responsible process.
+        result = self.jobs(["_supervise"], stdin=json.dumps(spec))
+        self.assertEqual(result.returncode, 127, result.stderr)
+        status = self.status(job_dir.name)
+        self.assertEqual((status["status"], status["exit_code"]), ("failed", 127))
+        self.assertIn("cannot contain the job", status["reason"])
+        self.assertEqual((job_dir / "job.log").read_bytes(), b"", "the child ran unanchored")
 
 
 @unittest.skipUnless(os.name == "nt", "native-Windows job-object arm")

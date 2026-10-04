@@ -399,23 +399,36 @@ def _process_table():
     return table
 
 
+def _subtree(table, root):
+    """Every pid below root in a _process_table, root excluded."""
+    children = {}
+    for child, (parent, *_) in table.items():
+        children.setdefault(parent, []).append(child)
+    found, pending = [], [root]
+    while pending:
+        below = children.get(pending.pop(), [])
+        found += below
+        pending += below
+    return found
+
+
 def descendants(root):
     """(pid, identity) of every live descendant of root, root excluded."""
     try:
         table = _process_table()
     except (OSError, AttributeError):
         return []
-    children = {}
-    for child, (parent, *_) in table.items():
-        children.setdefault(parent, []).append(child)
-    found, pending = [], [root]
-    while pending:
-        for child in children.get(pending.pop(), []):
-            ident = identity(child)
-            if ident:
-                found.append((child, ident))
-                pending.append(child)
-    return found
+    return [(pid, ident) for pid in _subtree(table, root) if (ident := identity(pid))]
+
+
+_libc_dll = None
+
+
+def _libc():
+    global _libc_dll
+    if _libc_dll is None:
+        _libc_dll = ctypes.CDLL(None, use_errno=True)
+    return _libc_dll
 
 
 _procargs = None
@@ -425,8 +438,8 @@ def _darwin_environ(pid):
     # KERN_PROCARGS2: argc, the exec path, argv, then the exec-time environment.
     global _procargs
     if _procargs is None:
-        _procargs = (ctypes.CDLL(None, use_errno=True), ctypes.create_string_buffer(1 << 20))
-    libc, buf = _procargs
+        _procargs = ctypes.create_string_buffer(1 << 20)
+    libc, buf = _libc(), _procargs
     mib = (ctypes.c_int * 3)(1, 49, int(pid))
     size = ctypes.c_size_t(len(buf))
     if libc.sysctl(mib, 3, buf, ctypes.byref(size), None, ctypes.c_size_t(0)):
@@ -502,26 +515,137 @@ def job_marks(job_id, log_path):
     return cookie, _file_key(st.st_dev, st.st_ino)
 
 
+def _responsible(pid):
+    """macOS: the pid TCC holds responsible for pid, or None. Every process a
+    disclaimed process starts names it, through fork, exec, setsid and
+    reparenting, while it lives."""
+    if sys.platform != "darwin":
+        return None
+    return _libc().responsibility_get_pid_responsible_for_pid(int(pid))
+
+
+def spawn_disclaimed(argv, cwd, stdin_fd, stdout_fd):
+    """macOS: posix_spawn argv in a new session as its own responsible
+    process, stdin from stdin_fd, stdout and stderr to stdout_fd, no other
+    descriptor inherited. Returns the pid; raises OSError."""
+    libc = _libc()
+    attr, actions = ctypes.c_void_p(), ctypes.c_void_p()
+    libc.posix_spawnattr_init(ctypes.byref(attr))
+    libc.posix_spawn_file_actions_init(ctypes.byref(actions))
+    try:
+        setsid_cloexec = 0x0400 | 0x4000  # POSIX_SPAWN_SETSID | POSIX_SPAWN_CLOEXEC_DEFAULT
+        steps = (
+            lambda: libc.posix_spawnattr_setflags(ctypes.byref(attr),
+                                                  ctypes.c_short(setsid_cloexec)),
+            lambda: libc.responsibility_spawnattrs_setdisclaim(ctypes.byref(attr), 1),
+            lambda: libc.posix_spawn_file_actions_adddup2(ctypes.byref(actions), stdin_fd, 0),
+            lambda: libc.posix_spawn_file_actions_adddup2(ctypes.byref(actions), stdout_fd, 1),
+            lambda: libc.posix_spawn_file_actions_adddup2(ctypes.byref(actions), stdout_fd, 2),
+            lambda: libc.posix_spawn_file_actions_addchdir_np(ctypes.byref(actions),
+                                                              os.fsencode(cwd)),
+        )
+        for step in steps:
+            if rc := step():
+                raise OSError(rc, os.strerror(rc))
+        args = [os.fsencode(a) for a in argv]
+        env = [f"{k}={v}".encode() for k, v in os.environ.items()]
+        pid = ctypes.c_int()
+        rc = libc.posix_spawn(ctypes.byref(pid), args[0], ctypes.byref(actions),
+                              ctypes.byref(attr), (ctypes.c_char_p * (len(args) + 1))(*args),
+                              (ctypes.c_char_p * (len(env) + 1))(*env))
+        if rc:
+            raise OSError(rc, os.strerror(rc))
+        return pid.value
+    except AttributeError as exc:
+        raise OSError(f"posix_spawn responsibility attributes unavailable: {exc}") from exc
+    finally:
+        libc.posix_spawn_file_actions_destroy(ctypes.byref(actions))
+        libc.posix_spawnattr_destroy(ctypes.byref(attr))
+
+
+class DisclaimedSupervisor:
+    """The Popen surface cmd_start uses, over spawn_disclaimed."""
+
+    def __init__(self, argv, cwd, stdout):
+        read, write = os.pipe()
+        try:
+            self.pid = spawn_disclaimed(argv, cwd, read, stdout.fileno())
+        except OSError:
+            os.close(write)
+            raise
+        finally:
+            os.close(read)
+        self.stdin = os.fdopen(write, "wb")
+
+    def poll(self):
+        try:
+            done, _ = os.waitpid(self.pid, os.WNOHANG)
+        except ChildProcessError:
+            return 0
+        return 0 if done else None
+
+
+def anchor_tree():
+    """Make this supervisor a point every process the job starts can be
+    found from, however it detaches; None on success, else why not.
+
+    Linux: a child subreaper adopts every orphan of its own tree, so the
+    job is exactly this process's descendants. macOS: cmd_start spawned
+    this process disclaimed, so the job is every process naming it as
+    responsible; a process already naming this pid (left by a dead
+    process the pid was recycled from) would be indistinguishable.
+    """
+    if sys.platform.startswith("linux"):
+        if _libc().prctl(36, 1, 0, 0, 0):  # PR_SET_CHILD_SUBREAPER
+            return f"PR_SET_CHILD_SUBREAPER failed: {os.strerror(ctypes.get_errno())}"
+        return None
+    if sys.platform == "darwin":
+        me = os.getpid()
+        if _responsible(me) != me:
+            return "the supervisor was not spawned as its own responsible process"
+        if any(_responsible(pid) == me for pid in _process_table() if pid != me):
+            return f"another process already names pid {me} as responsible"
+        return None
+    return f"no process-tree anchor on {sys.platform}"
+
+
 def job_members(pgid, marks):
-    """(pid, identity) of every live process but pgid's leader that is in
-    process group pgid, or is this user's and carries the job cookie or holds
-    the job log open for writing."""
+    """(pid, identity) of every live process but pgid's leader and this
+    supervisor that the job started: anything anchor_tree reaches, plus
+    (defence in depth) process group pgid and this user's processes that
+    carry the job cookie or hold the job log open for writing."""
     try:
         table = _process_table()
     except (OSError, AttributeError):
         return []
     cookie, log_key = marks
-    entry, uid, found = cookie.encode(), os.getuid(), []
+    me, entry, uid, found = os.getpid(), cookie.encode(), os.getuid(), []
+    subtree = set(_subtree(table, me)) if sys.platform.startswith("linux") else set()
     for pid, (_, group, owner) in table.items():
-        if pid in (pgid, os.getpid()):
+        if pid in (pgid, me):
             continue
         # Identity first: the kill re-checks it, so a pid recycled after the
         # environment or descriptor read is never signalled.
         ident = identity(pid)
-        if ident and (group == pgid or (owner == uid and (
-                entry in _environ(pid) or log_key in _written_files(pid)))):
+        if ident and (group == pgid or pid in subtree or (owner == uid and (
+                _responsible(pid) == me or entry in _environ(pid)
+                or log_key in _written_files(pid)))):
             found.append((pid, ident))
     return found
+
+
+def _reap_adopted(child):
+    """Reap exited orphans a Linux subreaper adopted. Never the child: its
+    unreaped zombie keeps its pid and process-group id from being recycled."""
+    while True:
+        try:
+            info = os.waitid(os.P_ALL, 0, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+        except ChildProcessError:
+            return
+        if info is None or info.si_pid == child.pid:
+            return
+        with contextlib.suppress(ChildProcessError):
+            os.waitpid(info.si_pid, 0)
 
 
 def windows_job_for(pid):
@@ -642,8 +766,8 @@ def _drain_tree(child, job, members, marks):
     Returns only once nothing from the tree can still write the job log, so
     terminal status published afterwards is final. members are descendants
     sampled while the child was alive; on POSIX every pass also sweeps
-    job_members, which reaches what an exited child orphaned, including a
-    descendant that moved to its own session. Native Windows terminates the
+    job_members, which reaches what an exited child orphaned, however it
+    detached (anchor_tree). Native Windows terminates the
     child's job object, which has held the child since before it first ran.
     """
     if IS_WINDOWS:
@@ -702,6 +826,13 @@ def supervise():
     log_path = job_dir / "job.log"
     with open(log_path, "ab", buffering=0) as log:
         marks = job_marks(spec["id"], log_path)
+        # Unanchored, a descendant that detaches from every other mark could
+        # outlive the terminal status, so the job never runs.
+        if not IS_WINDOWS and (unanchored := anchor_tree()):
+            meta.update(status="failed", reason=f"cannot contain the job: {unanchored}",
+                        exit_code=127, finished_at=now_iso())
+            write_atomic(job_dir / "meta.json", meta)
+            return 127
         if meta["profile"] == "render-verify":
             log.write(f"[fleet-jobs] display: {display_discovery()}\n".encode())
         name, _, value = marks[0].partition("=")
@@ -724,9 +855,11 @@ def supervise():
                 reason = cancelled[0] if cancelled else "cancelled by fleet-jobs kill"
                 meta.update(status="killed", reason=reason)
                 break
+            if not IS_WINDOWS:
+                _reap_adopted(child)
             time.sleep(POLL)
         else:
-            # Whatever the child left running still holds the log open.
+            # Whatever the child left running is still part of the job.
             _drain_tree(child, job, [], marks)
             meta.update(status="succeeded" if child.returncode == 0 else "failed",
                         reason="exited")
@@ -827,17 +960,19 @@ def cmd_start(rest, cwd):
                 "cwd": str(cwd), "created_at": now_iso(), "created_epoch": time.time(),
                 "status": "starting", "exit_code": None}
         write_atomic(job_dir / "meta.json", meta)
-    if IS_WINDOWS:
-        flags = (subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
-                 | 0x01000000)  # CREATE_BREAKAWAY_FROM_JOB
-        kwargs = {"creationflags": flags}
-    else:
-        kwargs = {"start_new_session": True}
     with open(job_dir / "supervisor.log", "ab") as sup_log:
         spawn = [sys.executable, os.path.realpath(__file__), "_supervise"]
         try:
-            proc = subprocess.Popen(spawn, cwd=cwd, stdin=subprocess.PIPE, stdout=sup_log,
-                                    stderr=subprocess.STDOUT, **kwargs)
+            if IS_WINDOWS:
+                flags = (subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+                         | 0x01000000)  # CREATE_BREAKAWAY_FROM_JOB
+                proc = subprocess.Popen(spawn, cwd=cwd, stdin=subprocess.PIPE, stdout=sup_log,
+                                        stderr=subprocess.STDOUT, creationflags=flags)
+            elif sys.platform == "darwin":
+                proc = DisclaimedSupervisor(spawn, cwd, sup_log)
+            else:
+                proc = subprocess.Popen(spawn, cwd=cwd, stdin=subprocess.PIPE, stdout=sup_log,
+                                        stderr=subprocess.STDOUT, start_new_session=True)
         except OSError as exc:
             # Never retry without breakaway: a supervisor left in an enclosing
             # job dies when that job is terminated, so the start would claim
