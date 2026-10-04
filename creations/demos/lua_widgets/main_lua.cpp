@@ -65,6 +65,7 @@
 
 #include <list>
 #include <string>
+#include <fmt/format.h>
 
 namespace IRLuaWidgets {
 
@@ -83,6 +84,15 @@ IREntity::EntityId g_hoverLabel = IREntity::kNullEntity;
 // pulses, which is gone by the post-settle capture frame).
 bool g_luaOnClickFired = false;
 bool g_pollWasClickedSeen = false;
+bool g_cursorPositionHookRan = false;
+bool g_cursorWorldMatches = false;
+bool g_cursorScreenMatches = false;
+bool g_cursorPlaneMatches = false;
+IRMath::vec3 g_luaCursorWorld{0.0f};
+IRMath::vec3 g_cppCursorWorld{0.0f};
+IRMath::vec2 g_luaCursorScreen{0.0f};
+IRMath::vec2 g_cppCursorScreen{0.0f};
+IRMath::vec2 g_cursorScreenBefore{0.0f};
 // The hover label's text on the hover shot's first frame, before its MOVE.
 std::string g_hoverLabelBefore;
 
@@ -277,6 +287,11 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
         g_pollWasClickedSeen = false;
         if (shotIndex == kHoverShot) {
             g_hoverLabelBefore = hoverLabelText();
+            g_cursorPositionHookRan = false;
+            g_cursorWorldMatches = false;
+            g_cursorScreenMatches = false;
+            g_cursorPlaneMatches = false;
+            g_cursorScreenBefore = IRRender::mousePosition2DIsoScreenRender();
         }
     }
 
@@ -295,6 +310,34 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
             "hover_label",
             hoverLabelSet,
             "before='" + g_hoverLabelBefore + "' after='" + after + "'"
+        );
+        const bool cursorMoved = g_luaCursorScreen.x != g_cursorScreenBefore.x ||
+                                 g_luaCursorScreen.y != g_cursorScreenBefore.y;
+        const bool cursorPositionPass = g_cursorPositionHookRan && g_cursorWorldMatches &&
+                                        g_cursorScreenMatches && g_cursorPlaneMatches &&
+                                        cursorMoved;
+        logGuiAssert(
+            shotIndex,
+            "LUA_CURSOR_POS",
+            g_onClickButton,
+            "cursor_position",
+            cursorPositionPass,
+            fmt::format(
+                "luaWorld=({},{},{}) cppWorld=({},{},{}) luaScreen=({},{}) cppScreen=({},{}) "
+                "before=({},{})",
+                g_luaCursorWorld.x,
+                g_luaCursorWorld.y,
+                g_luaCursorWorld.z,
+                g_cppCursorWorld.x,
+                g_cppCursorWorld.y,
+                g_cppCursorWorld.z,
+                g_luaCursorScreen.x,
+                g_luaCursorScreen.y,
+                g_cppCursorScreen.x,
+                g_cppCursorScreen.y,
+                g_cursorScreenBefore.x,
+                g_cursorScreenBefore.y
+            )
         );
     } else if (shotIndex == kPortraitShot) {
         assertPortraitSubject(shotIndex, g_portraitFirstSubject);
@@ -410,6 +453,35 @@ void registerLuaBindings() {
                 IRLuaWidgets::g_portraitRetargetSize = IRMath::ivec2(width, height);
                 IRLuaWidgets::g_portraitRetargetZoom = zoom;
             };
+        lua["IRTest"]["cursorPosition"] = [](float luaWorldX,
+                                             float luaWorldY,
+                                             float luaWorldZ,
+                                             float luaScreenX,
+                                             float luaScreenY,
+                                             float refX,
+                                             float refY,
+                                             float refZ) {
+            const IRMath::vec3 reference(refX, refY, refZ);
+            const float canvasIsoDepth = IRRender::canvasIsoDepthOfWorldPos(reference);
+            IRLuaWidgets::g_luaCursorWorld = IRMath::vec3(luaWorldX, luaWorldY, luaWorldZ);
+            IRLuaWidgets::g_cppCursorWorld = IRRender::mouseWorldPos3DAtIsoDepth(canvasIsoDepth);
+            IRLuaWidgets::g_luaCursorScreen = IRMath::vec2(luaScreenX, luaScreenY);
+            IRLuaWidgets::g_cppCursorScreen = IRRender::mousePosition2DIsoScreenRender();
+            IRLuaWidgets::g_cursorWorldMatches =
+                IRLuaWidgets::g_luaCursorWorld.x == IRLuaWidgets::g_cppCursorWorld.x &&
+                IRLuaWidgets::g_luaCursorWorld.y == IRLuaWidgets::g_cppCursorWorld.y &&
+                IRLuaWidgets::g_luaCursorWorld.z == IRLuaWidgets::g_cppCursorWorld.z;
+            IRLuaWidgets::g_cursorScreenMatches =
+                IRLuaWidgets::g_luaCursorScreen.x == IRLuaWidgets::g_cppCursorScreen.x &&
+                IRLuaWidgets::g_luaCursorScreen.y == IRLuaWidgets::g_cppCursorScreen.y;
+            const IRMath::vec3 rotated = IRMath::rotateCardinalZ(
+                IRLuaWidgets::g_luaCursorWorld,
+                IRMath::rasterYawCardinalIndex(IRPrefab::Camera::getRasterYaw())
+            );
+            IRLuaWidgets::g_cursorPlaneMatches =
+                IRMath::abs(rotated.x + rotated.y + rotated.z - canvasIsoDepth) <= 0.001f;
+            IRLuaWidgets::g_cursorPositionHookRan = true;
+        };
     });
 }
 
