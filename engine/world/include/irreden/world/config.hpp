@@ -87,7 +87,8 @@ class WorldConfig {
                     const auto mode = IRWindow::parseWindowMode(enumString);
                     IR_ASSERT(
                         mode.has_value(),
-                        "Invalid enum value for window_mode (normal | background | hidden)"
+                        "Invalid enum value for window_mode (normal | background | hidden | "
+                        "offscreen)"
                     );
                     return mode.value_or(IRWindow::WindowMode::NORMAL);
                 }

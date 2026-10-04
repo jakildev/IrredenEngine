@@ -10,9 +10,11 @@ config = {
     fullscreen = false,
     monitor_index = -1, -- -1 means "auto/default monitor"
     monitor_name = "", -- exact monitor name match takes priority over index
-    -- "normal" (shown, focused), "background" (shown, never focused), or
-    -- "hidden" (never shown; still renders and captures). The IR_WINDOW_MODE
-    -- env var and --window-mode override it; fleet launches set those.
+    -- "normal" (shown, focused), "background" (shown, never focused),
+    -- "hidden" (never shown; still renders and captures), or "offscreen"
+    -- (hidden, rendering into an engine-owned screen target). The
+    -- IR_WINDOW_MODE env var and --window-mode override it; fleet launches
+    -- set those.
     window_mode = "normal",
     subdivision_mode = "none", -- "none", "position", or "full"
     voxel_render_subdivisions = 1, -- effective subdivisions = base * zoom

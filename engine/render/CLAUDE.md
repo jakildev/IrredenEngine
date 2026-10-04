@@ -190,6 +190,15 @@ captures.
 
 ### Gotchas
 
+- **`WindowMode::OFFSCREEN` replaces the swapchain, not the pipeline.** Each
+  backend keeps an engine-owned screen target (Metal: a BGRA8 texture handed
+  to the runtime via `setMetalOffscreenColorTexture`, read through
+  `metalDefaultColorTexture()`; GL: an RGBA8 + depth-stencil FBO bound wherever
+  `0` was). `bindDefaultFramebuffer`, `clearDefaultFramebuffer`,
+  `readDefaultFramebuffer` and `present` are the only seams; nothing above the
+  device knows. Reach the frame's colour target only through
+  `metalDefaultColorTexture()`: `metalDrawable()` is nullptr all run long in
+  this mode. Mode semantics: `engine/window/CLAUDE.md` "Window modes".
 - Compute grids cap X at `kMaxDispatchGroupsX` and spill into Y; consumers
   flatten both group dimensions consistently.
 - Hot compute-kernel mode branches use compile-time specializations of a

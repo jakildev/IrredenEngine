@@ -40,6 +40,13 @@ struct IRGLFWJoystickInfo {
 ///   - `HIDDEN`: never shown. The GL context / Metal layer, the framebuffer,
 ///     synthetic input, and screenshot readback all work unchanged; only the
 ///     on-screen surface is missing.
+///   - `OFFSCREEN`: `HIDDEN` plus an engine-owned screen target. The final
+///     composite renders into a framebuffer the render backend allocates at
+///     the window's framebuffer size, screenshots read that back, and nothing
+///     is ever presented: no swapchain, no drawable, no dependence on how the
+///     OS schedules an unmapped surface. Metal paces frames to the primary
+///     display's refresh so per-second cost matches a presented run. The
+///     launcher's default for capture runs.
 /// Minimizing is deliberately not a mode: a minimized window reports a 0x0
 /// framebuffer on Windows, which skips every screenshot. Resolved as
 /// `config.window_mode` < `IR_WINDOW_MODE` env var < `--window-mode`; the
@@ -48,6 +55,7 @@ enum class WindowMode {
     NORMAL,
     BACKGROUND,
     HIDDEN,
+    OFFSCREEN,
 };
 
 /// The `--window-mode` / `config.window_mode` spelling of @p mode.

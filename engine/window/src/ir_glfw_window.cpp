@@ -20,12 +20,15 @@ const char *windowModeName(WindowMode mode) {
         return "background";
     case WindowMode::HIDDEN:
         return "hidden";
+    case WindowMode::OFFSCREEN:
+        return "offscreen";
     }
     return "normal";
 }
 
 std::optional<WindowMode> parseWindowMode(std::string_view name) {
-    for (WindowMode mode : {WindowMode::NORMAL, WindowMode::BACKGROUND, WindowMode::HIDDEN}) {
+    for (WindowMode mode :
+         {WindowMode::NORMAL, WindowMode::BACKGROUND, WindowMode::HIDDEN, WindowMode::OFFSCREEN}) {
         if (name == windowModeName(mode)) {
             return mode;
         }
@@ -39,7 +42,8 @@ namespace {
 // the screen steal: activateIgnoringOtherApps on macOS, SetForegroundWindow on
 // Windows, _NET_ACTIVE_WINDOW on X11. Both hints off is what BACKGROUND means;
 // HIDDEN additionally never maps the window, which is the pattern the GPU
-// unit tests already rely on for a real context with no surface.
+// unit tests already rely on for a real context with no surface. OFFSCREEN is
+// HIDDEN at the window level; the render backend adds the screen target.
 void applyWindowModeHints(WindowMode mode) {
     switch (mode) {
     case WindowMode::NORMAL:
@@ -49,6 +53,7 @@ void applyWindowModeHints(WindowMode mode) {
         glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_FALSE);
         return;
     case WindowMode::HIDDEN:
+    case WindowMode::OFFSCREEN:
         glfwWindowHint(GLFW_VISIBLE, GLFW_FALSE);
         glfwWindowHint(GLFW_FOCUSED, GLFW_FALSE);
         glfwWindowHint(GLFW_FOCUS_ON_SHOW, GLFW_FALSE);

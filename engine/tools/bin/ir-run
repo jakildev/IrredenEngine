@@ -41,7 +41,7 @@
 # human's run must show its window with no extra flags. The fleet marks its
 # launches (fleet-run exports FLEET_UNATTENDED=1; fleet-up exports it to
 # every pane), and only a marked launch gets a window-mode default by the
-# run's shape: capture verbs `hidden`, watchdog runs `background`, a plain
+# run's shape: capture verbs `offscreen`, watchdog runs `background`, a plain
 # exec left alone. FLEET_WINDOW_MODE replaces both defaults (and counts as
 # the operator's explicit ask even without the marker); an IR_WINDOW_MODE
 # already set, or --window-mode in the program's args, is the caller's
@@ -185,11 +185,12 @@ Run mode
     marked launch gets IR_WINDOW_MODE — the engine's --window-mode
     fallback — by the run's shape, unless it is already set or the
     program's args carry --window-mode:
-      --auto-screenshot / --auto-record / --auto-profile  → hidden
+      --auto-screenshot / --auto-record / --auto-profile  → offscreen
       --timeout N or FLEET_RUN_DEFAULT_TIMEOUT             → background
       plain exec (no verb, no timeout)                     → untouched
-    hidden never shows a window (it still renders, injects input, and
-    captures); background shows one that is never focused or activated.
+    offscreen never shows a window and renders into an engine-owned screen
+    target (it still injects input and captures); background shows a
+    window that is never focused or activated.
     `--window-mode normal` after the executable, or IR_WINDOW_MODE=normal,
     watches a fleet-shaped run.
 
@@ -203,8 +204,9 @@ Run mode
                                 so the window-mode defaults above apply.
                                 Unset in a human's shell.
     FLEET_WINDOW_MODE           Replaces both window-mode defaults above
-                                (normal | background | hidden) and counts
-                                as an explicit ask even without the marker.
+                                (normal | background | hidden | offscreen)
+                                and counts as an explicit ask even without
+                                the marker.
                                 Set in ~/.fleet/fleet-up.conf or shell init.
     IR_WINDOW_MODE              The engine's own fallback; set it to pin a
                                 mode for every run in a shell. ir-run never
@@ -332,7 +334,7 @@ done
 # --window-mode reads IR_WINDOW_MODE when the flag is absent (engine/window/
 # CLAUDE.md "Window modes"), so one export here reaches every demo without
 # touching the call sites. Defaults by the run's shape:
-#   capture verb (--auto-screenshot / --auto-record / --auto-profile) → hidden
+#   capture verb (--auto-screenshot / --auto-record / --auto-profile) → offscreen
 #   watchdog run (--timeout / FLEET_RUN_DEFAULT_TIMEOUT)              → background
 #   plain exec (a human at the keyboard)                              → untouched
 # FLEET_WINDOW_MODE replaces both defaults with one value. An IR_WINDOW_MODE
@@ -344,7 +346,7 @@ WINDOW_MODE_NOTE=""
 if [[ -n "${FLEET_UNATTENDED:-}${FLEET_WINDOW_MODE:-}" && -z "${IR_WINDOW_MODE:-}" &&
       "$window_mode_given" == "0" ]]; then
     if (( capture_verb )); then
-        export IR_WINDOW_MODE="${FLEET_WINDOW_MODE:-hidden}"
+        export IR_WINDOW_MODE="${FLEET_WINDOW_MODE:-offscreen}"
     elif [[ -n "$TIMEOUT" ]]; then
         export IR_WINDOW_MODE="${FLEET_WINDOW_MODE:-background}"
     fi

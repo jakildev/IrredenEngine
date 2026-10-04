@@ -26,7 +26,57 @@ class OpenGLRenderDevice final : public RenderDevice {
     void beginFrame() override {}
 
     void present() override {
+        if (isOffscreen()) {
+            // Nothing to show. A flush keeps the submission cadence of an
+            // unthrottled swap (swapInterval 0) without blocking on the GPU.
+            ENG_API->glFlush();
+            return;
+        }
         IRWindow::getWindow().swapBuffers();
+    }
+
+    // OFFSCREEN window mode: an engine-owned framebuffer stands in for the
+    // default framebuffer — the same RGBA8 colour + 24/8 depth-stencil shape
+    // the window's has, at its framebuffer size — so the final composite,
+    // the overlays, and the screenshot readback never touch a surface the GL
+    // spec leaves undefined for an unmapped window.
+    void initOffscreenTarget(int width, int height) {
+        releaseOffscreenTarget();
+        ENG_API->glCreateTextures(GL_TEXTURE_2D, 1, &m_offscreenColor);
+        ENG_API->glTextureStorage2D(m_offscreenColor, 1, GL_RGBA8, width, height);
+        ENG_API->glCreateTextures(GL_TEXTURE_2D, 1, &m_offscreenDepth);
+        ENG_API->glTextureStorage2D(m_offscreenDepth, 1, GL_DEPTH24_STENCIL8, width, height);
+        ENG_API->glCreateFramebuffers(1, &m_offscreenFbo);
+        ENG_API
+            ->glNamedFramebufferTexture(m_offscreenFbo, GL_COLOR_ATTACHMENT0, m_offscreenColor, 0);
+        ENG_API->glNamedFramebufferTexture(
+            m_offscreenFbo,
+            GL_DEPTH_STENCIL_ATTACHMENT,
+            m_offscreenDepth,
+            0
+        );
+        const GLenum status =
+            ENG_API->glCheckNamedFramebufferStatus(m_offscreenFbo, GL_FRAMEBUFFER);
+        IR_ASSERT(status == GL_FRAMEBUFFER_COMPLETE, "Offscreen screen target is incomplete");
+    }
+
+    void releaseOffscreenTarget() {
+        if (m_offscreenFbo != 0) {
+            ENG_API->glDeleteFramebuffers(1, &m_offscreenFbo);
+            m_offscreenFbo = 0;
+        }
+        if (m_offscreenColor != 0) {
+            ENG_API->glDeleteTextures(1, &m_offscreenColor);
+            m_offscreenColor = 0;
+        }
+        if (m_offscreenDepth != 0) {
+            ENG_API->glDeleteTextures(1, &m_offscreenDepth);
+            m_offscreenDepth = 0;
+        }
+    }
+
+    bool isOffscreen() const {
+        return m_offscreenFbo != 0;
     }
 
     void dispatchCompute(std::uint32_t x, std::uint32_t y, std::uint32_t z) override {
@@ -130,7 +180,7 @@ class OpenGLRenderDevice final : public RenderDevice {
     }
 
     void bindDefaultFramebuffer() override {
-        ENG_API->glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        ENG_API->glBindFramebuffer(GL_FRAMEBUFFER, m_offscreenFbo);
         ENG_API->glViewport(0, 0, IRRender::getViewport().x, IRRender::getViewport().y);
         ENG_API->glEnable(GL_DEPTH_TEST);
         ENG_API->glDepthFunc(GL_LESS);
@@ -146,7 +196,7 @@ class OpenGLRenderDevice final : public RenderDevice {
             return false;
         }
 
-        ENG_API->glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+        ENG_API->glBindFramebuffer(GL_READ_FRAMEBUFFER, m_offscreenFbo);
         ENG_API->glReadPixels(x, y, width, height, GL_RGBA, GL_UNSIGNED_BYTE, rgbaData);
 
         const std::size_t rowBytes = static_cast<std::size_t>(width) * 4U;
@@ -285,6 +335,10 @@ class OpenGLRenderDevice final : public RenderDevice {
   private:
     GpuTimestampHandle m_nextTimestampHandle = 1;
     std::unordered_map<GpuTimestampHandle, OpenGLTimestampPair> m_timestamps;
+    // 0 = the window's default framebuffer (every mode but OFFSCREEN).
+    GLuint m_offscreenFbo = 0;
+    GLuint m_offscreenColor = 0;
+    GLuint m_offscreenDepth = 0;
 };
 
 OpenGLRenderDevice g_openGLRenderDevice;
@@ -306,7 +360,15 @@ void OpenGLRenderImpl::init() {
     IRE_LOG_INFO("Initializing OpenGL renderer implementation.");
     auto *renderDevice = bootstrapHeadlessRenderDevice();
     IR_ASSERT(renderDevice != nullptr, "Failed to initalize GLAD");
-    IRWindow::getWindow().setCallbackFramebufferSize(openGLCallback_framebuffer_size);
+    IRWindow::IRGLFWWindow &window = IRWindow::getWindow();
+    if (window.getWindowMode() == IRWindow::WindowMode::OFFSCREEN) {
+        int width = 0;
+        int height = 0;
+        window.getFramebufferSize(width, height);
+        g_openGLRenderDevice.initOffscreenTarget(width, height);
+        IRE_LOG_INFO("OpenGL offscreen screen target attached ({}x{}).", width, height);
+    }
+    window.setCallbackFramebufferSize(openGLCallback_framebuffer_size);
 }
 
 void OpenGLRenderImpl::printInfo() {
@@ -320,6 +382,9 @@ void OpenGLRenderImpl::printInfo() {
 }
 
 void openGLCallback_framebuffer_size(GLFWwindow *window, int width, int height) {
+    if (g_openGLRenderDevice.isOffscreen()) {
+        g_openGLRenderDevice.initOffscreenTarget(width, height);
+    }
     ENG_API->glViewport(0, 0, width, height);
     IRE_LOG_INFO("Resized viewport to {}x{}", width, height);
 }
