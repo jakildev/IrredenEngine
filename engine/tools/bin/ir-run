@@ -37,13 +37,16 @@
 # auto-screenshot) GUI executables to avoid leaving windows open and
 # stealing focus from the human.
 #
-# Window mode: an unattended run must never take the host's screen, so
-# ir-run exports IR_WINDOW_MODE (the engine's --window-mode fallback) by
-# the run's shape: capture verbs get `hidden`, watchdog runs get
-# `background`, a plain exec is left alone. FLEET_WINDOW_MODE replaces
-# both defaults; an IR_WINDOW_MODE already set, or --window-mode in the
-# program's args, is the caller's choice. See the "Window mode" block
-# below and engine/window/CLAUDE.md "Window modes".
+# Window mode: an unattended run must never take the host's screen, and a
+# human's run must show its window with no extra flags. The fleet marks its
+# launches (fleet-run exports FLEET_UNATTENDED=1; fleet-up exports it to
+# every pane), and only a marked launch gets a window-mode default by the
+# run's shape: capture verbs `hidden`, watchdog runs `background`, a plain
+# exec left alone. FLEET_WINDOW_MODE replaces both defaults (and counts as
+# the operator's explicit ask even without the marker); an IR_WINDOW_MODE
+# already set, or --window-mode in the program's args, is the caller's
+# choice. See the "Window mode" block below and engine/window/CLAUDE.md
+# "Window modes".
 #
 # Default timeout (safety net): if --timeout is not passed, the env
 # var FLEET_RUN_DEFAULT_TIMEOUT (seconds) is honored. Unset or 0 means
@@ -176,25 +179,33 @@ Run mode
                         has its own bound, IR_QUEUE_TIMEOUT, default 600 s).
 
   Window mode (unattended runs stay off the screen):
-    ir-run exports IR_WINDOW_MODE — the engine's --window-mode fallback —
-    when it is not already set and the program's args carry no
-    --window-mode:
+    A bare ir-run in your own shell always shows its window — no flags
+    needed. Fleet launches are marked (fleet-run exports FLEET_UNATTENDED=1
+    before exec'ing ir-run; fleet-up exports it to every pane), and a
+    marked launch gets IR_WINDOW_MODE — the engine's --window-mode
+    fallback — by the run's shape, unless it is already set or the
+    program's args carry --window-mode:
       --auto-screenshot / --auto-record / --auto-profile  → hidden
       --timeout N or FLEET_RUN_DEFAULT_TIMEOUT             → background
       plain exec (no verb, no timeout)                     → untouched
     hidden never shows a window (it still renders, injects input, and
     captures); background shows one that is never focused or activated.
-    Pass `--window-mode normal` after the executable, or set
-    IR_WINDOW_MODE=normal, to watch a run.
+    `--window-mode normal` after the executable, or IR_WINDOW_MODE=normal,
+    watches a fleet-shaped run.
 
   Env vars:
     FLEET_RUN_DEFAULT_TIMEOUT   Default for --timeout when not passed.
                                 Unset or 0 = no watchdog (historic behavior).
                                 Set in ~/.fleet/fleet-up.conf or shell init
                                 to catch fleet agents that forgot --timeout.
+    FLEET_UNATTENDED            Set (to 1) by fleet-run and by fleet-up for
+                                every pane: marks the launch as unattended
+                                so the window-mode defaults above apply.
+                                Unset in a human's shell.
     FLEET_WINDOW_MODE           Replaces both window-mode defaults above
-                                (normal | background | hidden). Set in
-                                ~/.fleet/fleet-up.conf or shell init.
+                                (normal | background | hidden) and counts
+                                as an explicit ask even without the marker.
+                                Set in ~/.fleet/fleet-up.conf or shell init.
     IR_WINDOW_MODE              The engine's own fallback; set it to pin a
                                 mode for every run in a shell. ir-run never
                                 overwrites a value already present.
@@ -313,7 +324,11 @@ for arg in "$@"; do
 done
 
 # --- Window mode ------------------------------------------------------------
-# An unattended run must never take the host's screen. The engine's
+# An unattended run must never take the host's screen; a human's run must
+# show its window with no extra flags. The fleet marks its launches —
+# fleet-run exports FLEET_UNATTENDED=1 before exec'ing this script, fleet-up
+# exports it to every pane — and only a marked launch (or an explicit
+# FLEET_WINDOW_MODE, the operator's own ask) gets a default. The engine's
 # --window-mode reads IR_WINDOW_MODE when the flag is absent (engine/window/
 # CLAUDE.md "Window modes"), so one export here reaches every demo without
 # touching the call sites. Defaults by the run's shape:
@@ -326,7 +341,8 @@ done
 # flag above the env anyway). Keyed on capture_verb, not acquire_verb: native
 # Windows takes the gpu lock for every run, which says nothing about shape.
 WINDOW_MODE_NOTE=""
-if [[ -z "${IR_WINDOW_MODE:-}" && "$window_mode_given" == "0" ]]; then
+if [[ -n "${FLEET_UNATTENDED:-}${FLEET_WINDOW_MODE:-}" && -z "${IR_WINDOW_MODE:-}" &&
+      "$window_mode_given" == "0" ]]; then
     if (( capture_verb )); then
         export IR_WINDOW_MODE="${FLEET_WINDOW_MODE:-hidden}"
     elif [[ -n "$TIMEOUT" ]]; then

@@ -346,6 +346,10 @@ export FLEET_CONCURRENCY_MERGER
 # init. Unset knobs stay unset (ir-run then applies its own defaults).
 if [[ -n "${FLEET_RUN_DEFAULT_TIMEOUT:-}" ]]; then export FLEET_RUN_DEFAULT_TIMEOUT; fi
 if [[ -n "${FLEET_WINDOW_MODE:-}" ]]; then export FLEET_WINDOW_MODE; fi
+# Every launch from a pane is unattended, so a direct ir-run there (perf
+# scripts, a Codex runtime) keeps demos off the screen exactly as fleet-run
+# does; a human's own shell never carries the marker.
+export FLEET_UNATTENDED=1
 export FLEET_EFFORT_OPUS_ARCHITECT FLEET_EFFORT_GAME_ARCHITECT
 # Propagate a conf-set global FLEET_EFFORT to the dispatcher + babysit
 # (a bare `FLEET_EFFORT=` in the conf is otherwise a non-exported shell var).
