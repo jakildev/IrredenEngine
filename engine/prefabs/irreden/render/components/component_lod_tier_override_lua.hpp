@@ -6,6 +6,8 @@
 #include <irreden/script/lua_script.hpp>
 #include <irreden/script/prefab_component_factory.hpp>
 
+#include <optional>
+
 namespace IRScript {
 
 template <> inline constexpr bool kHasLuaBinding<IRComponents::C_LodTierOverride> = true;
@@ -22,10 +24,11 @@ lodTierOverrideFromLua(const sol::optional<sol::table> &fields) {
     if (!tier) {
         return IRComponents::C_LodTierOverride{};
     }
-    if (*tier < 0 || *tier > static_cast<lua_Integer>(IRRender::LodLevel::LOD_4)) {
+    const std::optional<IRRender::LodLevel> level = IRRender::lodLevelFromIndex(*tier);
+    if (!level) {
         throw sol::error{"C_LodTierOverride: tier must be an IRRender.LodLevel value (0..4)"};
     }
-    return IRComponents::C_LodTierOverride{static_cast<IRRender::LodLevel>(*tier)};
+    return IRComponents::C_LodTierOverride{*level};
 }
 
 } // namespace detail

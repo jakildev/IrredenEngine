@@ -2,6 +2,7 @@
 #define IRREDEN_RENDER_LOD_LEVEL_H
 
 #include <cstdint>
+#include <optional>
 
 namespace IRRender {
 
@@ -20,6 +21,16 @@ enum class LodLevel : std::uint32_t {
     LOD_3 = 3,
     LOD_4 = 4,
 };
+
+// The tier at `index`, or nullopt outside LOD_0..LOD_4. Script bindings that
+// take a tier as a raw integer validate through this, since a bare enum cast
+// accepts any value.
+inline std::optional<LodLevel> lodLevelFromIndex(std::int64_t index) {
+    if (index < 0 || index > static_cast<std::int64_t>(LodLevel::LOD_4)) {
+        return std::nullopt;
+    }
+    return static_cast<LodLevel>(index);
+}
 
 } // namespace IRRender
 

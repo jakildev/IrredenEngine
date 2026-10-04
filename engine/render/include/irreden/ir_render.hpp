@@ -275,6 +275,10 @@ ivec2 mouseTrixelPositionWorld();
 /// display this texel and the id they report is its id (hover identity
 /// follows display identity — `docs/design/trixel-parity-shift-442-investigation.md`).
 ivec2 mouseCanvasTexelWorld();
+/// Canvas-frame iso depth of a world-frame reference point. The world point
+/// is rotated by the raster cardinal yaw before its component sum is rounded
+/// to the nearest integer iso plane.
+float canvasIsoDepthOfWorldPos(vec3 worldPos);
 /// Mouse position lifted to a 3D world point in the **unrotated world frame**
 /// at the given **canvas-frame** iso depth. The picking inverse is
 /// `R_z(-rasterYaw) · isoPixelToPos3D · screen`; no screen-space residual
@@ -290,14 +294,11 @@ ivec2 mouseCanvasTexelWorld();
 /// same frame as the iso pixel — the rotated canvas frame.
 ///
 /// To target the iso-depth plane through a known world-frame reference
-/// point (e.g. an entity's `C_WorldTransform.translation_`), rotate it into the
-/// canvas frame and take its iso depth:
+/// point (e.g. an entity's `C_WorldTransform.translation_`), use
+/// @ref canvasIsoDepthOfWorldPos:
 /// @code
-///   const ivec3 worldRef = ... ;  // e.g. entity world position
-///   const IRMath::CardinalIndex idx = IRMath::rasterYawCardinalIndex(
-///       IRPrefab::Camera::getRasterYaw());
-///   const float canvasIsoDepth = static_cast<float>(
-///       IRMath::pos3DtoDistance(IRMath::rotateCardinalZ(worldRef, idx)));
+///   const vec3 worldRef = ...;
+///   const float canvasIsoDepth = IRRender::canvasIsoDepthOfWorldPos(worldRef);
 ///   const vec3 worldClick =
 ///       IRRender::mouseWorldPos3DAtIsoDepth(canvasIsoDepth);
 /// @endcode
