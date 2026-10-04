@@ -1337,17 +1337,35 @@ session_track_cmd = (
 # double-fire is accepted (two identical verdicts; deny still wins).
 guard_path = f"{engine_root}/scripts/fleet/fleet-guard-worktree-edit"
 guard_cmd = f'[ -x "{guard_path}" ] && "{guard_path}" || true'
+quiet_wait_cmd = (
+    "command -v fleet-quiet-wait >/dev/null 2>&1"
+    " && fleet-quiet-wait || true"
+)
 
 # Hand-added hooks survive regeneration the same way user-granted allow
 # entries do: keep every hook group from the previous file except the fleet's
 # own (matched on either fleet-hook marker, so a stale variant of a fleet hook
 # is replaced rather than duplicated).
-FLEET_HOOK_MARKERS = ("fleet-session-track", "fleet-guard-worktree-edit")
+FLEET_HOOK_MARKERS = (
+    "fleet-session-track",
+    "fleet-guard-worktree-edit",
+    "fleet-quiet-wait",
+)
 hooks_out = {
     "SessionStart": [
         {"hooks": [{"type": "command", "command": session_track_cmd}]}
     ],
     "PreToolUse": [
+        {
+            "matcher": "*",
+            "hooks": [
+                {
+                    "type": "command",
+                    "command": quiet_wait_cmd,
+                    "timeout": 1500,
+                }
+            ],
+        },
         {
             "matcher": "Edit|Write|MultiEdit",
             "hooks": [{"type": "command", "command": guard_cmd}],
@@ -1535,6 +1553,58 @@ if [[ -n "$gh_token_cmd" ]]; then
 fi
 
 # ----------------------------------------------------------------------
+# GitHub CLI accounting (scripts/fleet/fleet_github.py)
+# ----------------------------------------------------------------------
+#
+# Each counted gh attempt writes one metadata-only event that
+# `fleet-health --since 1h` tallies per actor. The real gh and an absolute
+# interpreter are resolved here, before anything puts the launcher in front
+# of them — a later PATH lookup could find the launcher itself. On native
+# Windows both are pinned in mixed form with their .exe: native Python must
+# os.stat them, and MSYS's extensionless `type -P` answer names no file on
+# disk. FLEET_GH_ACCOUNTING=0 (conf or env) turns it off.
+resolve_gh_accounting() {  # resolve_gh_accounting <launcher> — exports FLEET_GH_* or returns 1
+    local launcher="$1" real="" py="" candidate events="$HOME/.fleet/state/gh-accounting"
+    unset FLEET_GH_REAL FLEET_GH_PYTHON FLEET_GH_LAUNCHER FLEET_GH_EVENT_ROOT
+    if [[ "${FLEET_GH_ACCOUNTING:-1}" == "0" ]]; then
+        unset FLEET_GH_ACCOUNTING
+        return 1
+    fi
+    while IFS= read -r candidate; do
+        if [[ -n "$candidate" && ! "$candidate" -ef "$launcher" ]]; then
+            real="$candidate"
+            break
+        fi
+    done < <(type -a -P gh 2>/dev/null)
+    py="$(type -P python3 2>/dev/null || true)"
+    if [[ -z "$real" || -z "$py" ]]; then
+        echo "fleet-up: GitHub CLI accounting off (gh=${real:-missing} python3=${py:-missing})" >&2
+        unset FLEET_GH_ACCOUNTING
+        return 1
+    fi
+    case "$(uname -s)" in
+        MINGW*|MSYS*|CYGWIN*)
+            [[ -f "$real.exe" ]] && real="$real.exe"
+            [[ -f "$py.exe" ]] && py="$py.exe"
+            real="$(cygpath -m "$real")"
+            py="$(cygpath -m "$py")"
+            launcher="$(cygpath -m "$launcher")"
+            events="$(cygpath -m "$events")"
+            ;;
+    esac
+    export FLEET_GH_ACCOUNTING=1 FLEET_GH_REAL="$real" FLEET_GH_PYTHON="$py" \
+           FLEET_GH_LAUNCHER="$launcher" FLEET_GH_EVENT_ROOT="$events"
+}
+_gh_launcher="$ENGINE/scripts/fleet/gh-accounting-bin/gh"
+# Daemon launch environment: the launcher first on PATH (no rc file runs after
+# nohup to re-order it), so their shell children's `gh` is counted too.
+_gh_daemon_env=()
+if [[ -f "$_gh_launcher" ]] && resolve_gh_accounting "$_gh_launcher"; then
+    _gh_daemon_env=(PATH="${_gh_launcher%/*}:$PATH")
+    echo "fleet-up: GitHub CLI accounting on (gh=$FLEET_GH_REAL, events=$FLEET_GH_EVENT_ROOT)"
+fi
+
+# ----------------------------------------------------------------------
 # Step 3d: launch fleet-state-scout daemon
 # ----------------------------------------------------------------------
 #
@@ -1604,7 +1674,8 @@ else
     # running merged fixes inert until someone restarts it here. Its
     # revision is in state.json's `scout_source_rev`; see
     # docs/agents/FLEET-CACHE.md §"Daemon source staleness".
-    nohup "$scout_cmd" >>"$scout_log" 2>&1 &
+    nohup env ${_gh_daemon_env[@]+"${_gh_daemon_env[@]}"} FLEET_GH_ACTOR=scout \
+        "$scout_cmd" >>"$scout_log" 2>&1 &
     disown
     echo "fleet-up: launched fleet-state-scout (pid $!, log $scout_log)"
 
@@ -1844,9 +1915,9 @@ else
     # rather than running merged fixes inert until someone restarts it here.
     # `rev=` on each `started (pid=…)` line is the running image's
     # revision; see docs/agents/FLEET-CACHE.md §"Daemon source staleness".
-    _dispatcher_env=()
+    _dispatcher_env=(FLEET_GH_ACTOR=dispatcher ${_gh_daemon_env[@]+"${_gh_daemon_env[@]}"})
     if (( _fleet_env_overrides_set )); then
-        _dispatcher_env=(FLEET_ENV_OVERRIDES="$_fleet_env_overrides")
+        _dispatcher_env+=(FLEET_ENV_OVERRIDES="$_fleet_env_overrides")
     fi
     if [[ "$HOST_PROFILE" == "satellite" ]]; then
         _dispatcher_env+=(FLEET_DISPATCH_ROLES="$FLEET_DISPATCH_ROLES"
@@ -2033,35 +2104,54 @@ TRANSIENT_PANE_CMD='exec $SHELL -i'
 # horizontally to add columns. `-P -F "#{pane_id}"` makes split-window
 # print the new pane's ID so we can target it for the next split.
 
+# Seed the pane environment into the tmux SERVER env, so every pane inherits
+# it even when this fleet-up attached to a pre-existing tmux server (fleet-down
+# kills the session, not the server, so the server's env can predate this
+# process). A pane copies the global env when it is created: on a surviving
+# server the seed therefore runs BEFORE new-session too, or pool-1 — the
+# session's first pane — starts from the previous boot's values. A fresh
+# server takes its global env from this process, so the post-new-session call
+# is what reaches it.
+#   IR_FLEET_WORKERS — panes feed it to ir-build -> ir-acquire for per-build
+#     CPU sizing.
+#   FLEET_FABLE_FALLBACK — consumed by MANUALLY-run fleet-babysit worker
+#     iterations (stream_claude); dispatched runs get the chain as an
+#     explicit fleet-dispatch-wrap argument.
+#   GH_TOKEN — keyed off $_gh_app_token (whether THIS run's fleet-gh-token
+#     mint produced a token), not the generic $GH_TOKEN truthiness, so an
+#     operator's own GH_TOKEN isn't mistaken for App configuration. On the
+#     unconfigured path, evict any App token a PRIOR boot left in the
+#     server's persistent env, or a stale bot-identity token outlives the
+#     operator un-configuring the App.
+#   FLEET_GH_* — GitHub CLI accounting (resolve_gh_accounting). Never PATH
+#     and never FLEET_GH_ACTOR: a pane's ~/.bashrc re-orders PATH anyway, and
+#     a role's identity comes from FLEET_ROLE. fleet-down's
+#     clear_tmux_gh_accounting removes exactly these names.
+seed_tmux_pane_env() {
+    local name
+    tmux set-environment -g IR_FLEET_WORKERS "$IR_FLEET_WORKERS"
+    tmux set-environment -g FLEET_FABLE_FALLBACK "$FLEET_FABLE_FALLBACK"
+    if [[ -n "$_gh_app_token" ]]; then
+        tmux set-environment -g GH_TOKEN "$_gh_app_token"
+    else
+        tmux set-environment -g -u GH_TOKEN
+    fi
+    for name in FLEET_GH_ACCOUNTING FLEET_GH_REAL FLEET_GH_PYTHON FLEET_GH_LAUNCHER \
+                FLEET_GH_EVENT_ROOT; do
+        if [[ -n "${!name:-}" ]]; then
+            tmux set-environment -g "$name" "${!name}"
+        else
+            tmux set-environment -g -u "$name"
+        fi
+    done
+}
+if tmux list-sessions >/dev/null 2>&1; then
+    seed_tmux_pane_env
+fi
 tmux new-session -d -s "$SESSION" -n fleet \
     -c "$ENGINE/.claude/worktrees/pool-1" \
     "$TRANSIENT_PANE_CMD"
-# Seed IR_FLEET_WORKERS into the tmux server env so the split-window panes
-# below inherit it even when this fleet-up attached to a pre-existing tmux
-# server (fleet-down kills the session, not the server, so the server's env
-# can predate this process). Panes feed it to ir-build -> ir-acquire for
-# correct per-build CPU sizing.
-tmux set-environment -g IR_FLEET_WORKERS "$IR_FLEET_WORKERS"
-# Same treatment for the fable-class fallback chain. Consumed by
-# MANUALLY-run fleet-babysit worker iterations (stream_claude); normal
-# dispatched runs get the chain as an explicit fleet-dispatch-wrap
-# argument and don't read this.
-tmux set-environment -g FLEET_FABLE_FALLBACK "$FLEET_FABLE_FALLBACK"
-# GitHub App token: seed into the persistent tmux SERVER env
-# (not just this process) so every current and future split-window pane
-# inherits it, same rationale as IR_FLEET_WORKERS above. Keyed off
-# $_gh_app_token (whether THIS run's fleet-gh-token mint produced a
-# token), not the generic $GH_TOKEN truthiness, so an operator's own
-# pre-existing GH_TOKEN isn't mistaken for App configuration. On the
-# unconfigured path, evict any App token a PRIOR fleet-up session left in
-# the server's persistent env (set-environment survives fleet-down, which
-# kills the session, not the server) — otherwise a stale bot-identity
-# token would outlive the operator un-configuring the App.
-if [[ -n "$_gh_app_token" ]]; then
-    tmux set-environment -g GH_TOKEN "$_gh_app_token"
-else
-    tmux set-environment -g -u GH_TOKEN
-fi
+seed_tmux_pane_env
 unset _gh_app_token gh_token_cmd
 TOP_LEFT=$(tmux display-message -t "$SESSION:fleet" -p "#{pane_id}")
 label_pane_id "$TOP_LEFT" "pool-1 [idle]"

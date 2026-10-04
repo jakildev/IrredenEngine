@@ -110,6 +110,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
 
+#include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/fog_world_field.hpp>
 #include <irreden/render/texture.hpp>
 
@@ -130,10 +131,6 @@ namespace IRComponents {
 /// anchored on the camera; nothing in the engine reads these.
 constexpr int kFogOfWarSize = 256;
 constexpr int kFogOfWarHalfExtent = kFogOfWarSize / 2;
-
-// The one reveal channel the engine assigns. Grid cells and every vision
-// source reveal on it; a creation's own channel bits are its own to define.
-constexpr std::uint32_t kFogChannelDefault = 1u;
 
 // Live analytic "vision circle" reveal — the smooth, render-resolution path
 // that the voxel grid above cannot express. Each circle is a world-space disc
@@ -341,6 +338,16 @@ struct FrameDataFogObservers {
     /// (`kFogLosHardGate` = a step). Read only for sources in `losSourceMask_`
     /// by the fog passes, which alone declare this tail.
     IRMath::vec4 losParams_[kMaxFogVisionCircles] = {};
+    /// Per-source reveal masks, packed four lanes per std140 vector. This is
+    /// the block tail so every earlier CPU and shader offset stays unchanged.
+    IRMath::uvec4 visionCircleChannels_[kMaxFogVisionCircles / 4] = {
+        IRMath::uvec4(kFogChannelDefault),
+        IRMath::uvec4(kFogChannelDefault),
+    };
+
+    std::uint32_t channels(int source) const {
+        return visionCircleChannels_[source / 4][source % 4];
+    }
 
     float losEyeHeight(int source) const {
         return losParams_[source].x;
@@ -355,9 +362,9 @@ struct FrameDataFogObservers {
     }
 };
 static_assert(
-    sizeof(FrameDataFogObservers) == 3 * kMaxFogVisionCircles * 16 + 16 + 16,
+    sizeof(FrameDataFogObservers) == 3 * kMaxFogVisionCircles * 16 + 16 + 16 + 32,
     "FrameDataFogObservers must stay std140/Metal-tight (vec4[N] + ivec4 tail + vec4[N] + vec4 + "
-    "vec4[N])"
+    "vec4[N] + uvec4[2])"
 );
 
 struct C_CanvasFogOfWar {
@@ -576,7 +583,8 @@ struct C_CanvasFogOfWar {
         float observerZ = 0.0f,
         float zCostUp = 0.0f,
         float zCostDown = kFogVisionZCostMirrorUp,
-        float freeBand = 0.0f
+        float freeBand = 0.0f,
+        std::uint32_t channels = kFogChannelDefault
     ) {
         return addVisionCircle(
             observers_,
@@ -588,7 +596,8 @@ struct C_CanvasFogOfWar {
             observerZ,
             zCostUp,
             zCostDown,
-            freeBand
+            freeBand,
+            channels
         );
     }
 
@@ -618,6 +627,9 @@ struct C_CanvasFogOfWar {
         for (IRMath::vec4 &params : observers.losParams_) {
             params = IRMath::vec4(kFogVisionLosOff, kFogLosHardGate, 0.0f, 0.0f);
         }
+        for (IRMath::uvec4 &channels : observers.visionCircleChannels_) {
+            channels = IRMath::uvec4(kFogChannelDefault);
+        }
     }
 
     /// The members' full rules on any observers / field pair: the analytic
@@ -638,7 +650,8 @@ struct C_CanvasFogOfWar {
         float observerZ,
         float zCostUp,
         float zCostDown,
-        float freeBand
+        float freeBand,
+        std::uint32_t channels = kFogChannelDefault
     ) {
         if (radius > 0.0f && observers.visionCircleCount_ >= kMaxFogVisionCircles) {
             field.stampTransientDisc(IRMath::vec2(cx, cy), radius);
@@ -653,7 +666,8 @@ struct C_CanvasFogOfWar {
             observerZ,
             zCostUp,
             zCostDown,
-            freeBand
+            freeBand,
+            channels
         );
     }
 
@@ -666,13 +680,15 @@ struct C_CanvasFogOfWar {
         float observerZ,
         float zCostUp,
         float zCostDown,
-        float freeBand
+        float freeBand,
+        std::uint32_t channels = kFogChannelDefault
     ) {
         if (radius <= 0.0f || observers.visionCircleCount_ >= kMaxFogVisionCircles)
             return -1;
         const int slot = observers.visionCircleCount_;
         observers.losSourceMask_ &= ~(1 << slot);
         observers.losParams_[slot] = IRMath::vec4(kFogVisionLosOff, kFogLosHardGate, 0.0f, 0.0f);
+        observers.visionCircleChannels_[slot / 4][slot % 4] = channels;
         observers.visionCircles_[observers.visionCircleCount_] =
             IRMath::vec4(cx, cy, radius, IRMath::max(edge, 0.0f));
         // Sentinel BEFORE clamp: zCostDown < 0 means "mirror zCostUp",

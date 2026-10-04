@@ -253,11 +253,15 @@ on PATH, creates the worktrees (no Developer Mode needed, unlike
 parity".
 
 `fleet-pr-overlap` needs git >= 2.38 (`git merge-tree --write-tree`); a
-Git for Windows install can lag this (measured 2.34.1 on one fleet host) —
-check `git --version` and update Git for Windows if it reads below 2.38.
-Below the floor, `fleet-pr-overlap` reports a diagnostic naming both the
-required and the installed version instead of a raw `git merge-tree` usage
-error.
+Git for Windows install can lag this (measured 2.34.1 on one fleet host).
+`setup-windows.sh` refuses such a host before installing or writing
+anything: it asks a
+Git Bash login shell which git a pane runs (MSYS2's own `git` is a different
+install) and grades it with `fleet-pr-overlap --check-git-version`, the one
+owner of the floor. `setup-windows.sh --check` runs only that prerequisite
+pass and installs nothing; a full run installs the soft dependencies (ruff,
+clang-format) after it. Below the floor, `fleet-pr-overlap` itself also names both versions
+instead of a raw `git merge-tree` usage error.
 
 ## Build-hygiene canary (both environments)
 

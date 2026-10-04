@@ -32,6 +32,10 @@ BIN="$TMPROOT/bin"; mkdir -p "$BIN"
 for tool in claude codex fleet-claude-stream tmux; do
   printf '#!/usr/bin/env bash\nexit 0\n' > "$BIN/$tool"
 done
+ln -s "$SCRIPT_DIR/../../engine/tools/bin/ir-acquire" "$BIN/ir-acquire"
+ln -s "$SCRIPT_DIR/fleet-quiet-wait" "$BIN/fleet-quiet-wait"
+export IR_LOCK_ROOT="$TMPROOT/locks"
+export IR_QUIET_SETTLE_SAMPLE=.05 IR_QUIET_SETTLE_CPU=.25
 export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"
 mkdir -p "$FLEET_RESERVATIONS_DIR"
 export FLEET_CLAIM_RESV_FILE="$TMPROOT/resv.txt"
@@ -371,5 +375,26 @@ echo "T14: a standalone clone named like a pool pane is never cleaned"
 LONE="$TMPROOT/pool-5"
 git clone --quiet "$ORIGIN" "$LONE"
 not_a_pool "T14" "$LONE"
+
+echo "T15: the wrap parks its lease before printing the launch decision"
+reset_pane
+record=$(python3 "$SCRIPT_DIR/../../engine/tools/lib/quiet_window.py" record-create \
+  --pid "$$" --owner foreign --linger 0 --maximum 10 --drain 3 \
+  --settle-cpu .25 --settle-sample .05)
+write_record worker claude "" pool-4
+launch_bare sonnet high worker "" live >"$TMPROOT/quiet-launch.out" &
+quiet_wrap_pid=$!
+for _attempt in $(seq 1 100); do
+  status=$(ir-acquire --quiet-status --json 2>&1)
+  [[ "$status" == *'"parked": 1'* ]] && break
+  sleep .02
+done
+assert_eq "$(cat "$TMPROOT/quiet-launch.out")" "" \
+  "T15: launch decision stays blocked during pre-launch park"
+assert_contains "$status" '"parked": 1' "T15: wrap lease reads parked"
+python3 "$SCRIPT_DIR/../../engine/tools/lib/quiet_window.py" refuse "$record"
+wait "$quiet_wrap_pid"
+assert_contains "$(cat "$TMPROOT/quiet-launch.out")" "resumed=0" \
+  "T15: launch decision prints after the quiet window closes"
 
 summarize "fleet-dispatch-wrap clean-pane pre-launch arm"

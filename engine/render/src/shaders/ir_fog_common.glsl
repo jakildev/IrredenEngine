@@ -63,6 +63,9 @@ layout(std140, binding = 27) uniform FogObserverData {
     // Per-source line of sight, (eye height above observerZ, softness, 0, 0);
     // read only for sources in losSourceMask.
     vec4 losParams[kMaxFogVisionCircles];
+    // Source reveal masks packed four per std140 vector. FIELD cells carry
+    // the engine's implicit default channel (bit 0).
+    uvec4 visionCircleChannels[2];
 };
 
 layout(rgba8, binding = 2) readonly uniform image2D canvasFogOfWar;
@@ -142,6 +145,9 @@ FogReveal fogRevealSample(vec3 pos3D, vec3 losSample, float aaFloor) {
         // Every caller returns without reading the reveal at state >= 1.0.
         if (state >= 1.0) {
             break;
+        }
+        if ((visionCircleChannels[i / 4][i % 4] & 1u) == 0u) {
+            continue;
         }
         // Height-penalized reveal.
         const vec4 heights = visionCircleHeights[i];

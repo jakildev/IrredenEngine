@@ -9,7 +9,10 @@
 # (Git Bash).
 #
 # What it does (all idempotent — safe to re-run):
-#   1. Checks prerequisites (git, tmux, jq, claude, MSYS2 mingw64 toolchain).
+#   1. Checks prerequisites (git, tmux, jq, claude, python3, MSYS2 mingw64
+#      toolchain, and the git a Git Bash pane runs — see below). `--check`
+#      stops here, before anything is installed or written. A full run then
+#      installs the soft dependencies (ruff, clang-format) best-effort.
 #   2. Clones the engine to a DEDICATED fleet clone (default $HOME/src/
 #      IrredenEngine — kept separate from any interactive dev clone so fleet
 #      branch-resets / worktrees don't churn the clone you edit in), or fetches
@@ -31,11 +34,30 @@
 # Full override set (useful when cloning from a fork or a non-default MSYS2 path):
 #   FLEET_REPO_URL=git@github.com:yourfork/IrredenEngine.git \
 #   IR_MSYS2_MINGW_DIR=/c/msys2/mingw64/bin \
+#   FLEET_GIT_BASH="/d/Git/bin/bash.exe" FLEET_SETUP_PYTHON=python \
 #   FLEET_CLONE=/c/work/IrredenEngine FLEET_CPU_BUDGET=32 bash setup-windows.sh
+#
+# The pane git check: MSYS2 does not inherit the Windows PATH, so this shell's
+# own `git` is MSYS2's pacman git, while the agent panes run Git Bash and
+# resolve Git for Windows' git — a separate install that can be years older.
+# The check therefore asks a Git Bash login shell (with the current ~/.bashrc,
+# before step 4 edits it) which git it resolves and hands that version to
+# `fleet-pr-overlap --check-git-version`, which owns the floor.
 #
 # Source of truth: scripts/fleet/setup-windows.sh in the engine repo.
 
 set -euo pipefail
+
+CHECK_ONLY=0
+case "${1:-}" in
+    --check) CHECK_ONLY=1 ;;
+    "") ;;
+    *) echo "usage: setup-windows.sh [--check]" >&2; exit 2 ;;
+esac
+
+SETUP_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FLEET_GIT_BASH="${FLEET_GIT_BASH:-/c/Program Files/Git/bin/bash.exe}"
+FLEET_SETUP_PYTHON="${FLEET_SETUP_PYTHON:-python3}"
 
 FLEET_CLONE="${FLEET_CLONE:-$HOME/src/IrredenEngine}"
 REPO_URL="${FLEET_REPO_URL:-git@github.com:jakildev/IrredenEngine.git}"
@@ -82,36 +104,110 @@ if ! command -v pgrep >/dev/null 2>&1; then
     echo "  MISSING: pgrep — install with: pacman -S procps-ng" >&2
     missing=1
 fi
-# ruff lints the fleet Python surface (scripts/fleet/) — run before committing
-# fleet-script changes. Soft dependency (needed for the local Python lint, not
-# to run the fleet), so install best-effort: MSYS2 package first, else pipx/pip.
+# Soft dependencies: needed for local gates, not to run the fleet. Only
+# detected here; the install runs after every hard check passes and after the
+# `--check` exit, so neither a rejected host nor `--check` is ever mutated.
+# ruff lints the fleet Python surface (scripts/fleet/); clang-format backs
+# `fleet-build --target format-changed` (commit-and-push step 3).
+install_ruff=0
+install_clang_format=0
 if command -v ruff >/dev/null 2>&1; then
     echo "  ok: ruff ($(command -v ruff))"
-elif pacman -S --needed --noconfirm mingw-w64-x86_64-ruff >/dev/null 2>&1; then
-    echo "  ok: installed ruff via pacman"
-elif command -v pipx >/dev/null 2>&1 && pipx install ruff >/dev/null 2>&1; then
-    echo "  ok: installed ruff via pipx"
 else
-    echo "  WARN: ruff not installed — 'ruff check scripts/fleet/' (the fleet" >&2
-    echo "        Python lint) won't run locally. Try: pacman -S mingw-w64-x86_64-ruff" >&2
+    echo "  missing (soft): ruff — setup installs it: pacman -S mingw-w64-x86_64-ruff, else pipx" >&2
+    install_ruff=1
 fi
-# clang-format backs `fleet-build --target format-changed` (commit-and-push
-# step 3). Same soft-dependency shape as ruff: the MSYS2 clang-tools-extra
-# package carries the binary; without it every Windows-authored PR ships the
-# format gate unverified.
 if command -v clang-format >/dev/null 2>&1; then
     echo "  ok: clang-format ($(command -v clang-format))"
-elif pacman -S --needed --noconfirm mingw-w64-x86_64-clang-tools-extra >/dev/null 2>&1; then
-    echo "  ok: installed clang-format via pacman (mingw-w64-x86_64-clang-tools-extra)"
 else
-    echo "  WARN: clang-format not installed — 'fleet-build --target format-changed'" >&2
-    echo "        fails with 'clang-format not found'. Try: pacman -S mingw-w64-x86_64-clang-tools-extra" >&2
+    echo "  missing (soft): clang-format — setup installs it: pacman -S mingw-w64-x86_64-clang-tools-extra" >&2
+    install_clang_format=1
 fi
 case "$(uname -s)" in
     MINGW*|MSYS*) : ;;
     *) echo "  ERROR: not a Windows MSYS2/Git-Bash shell (uname=$(uname -s))." >&2; exit 1 ;;
 esac
-(( missing == 0 )) || { echo "Install the missing tools above, then re-run." >&2; exit 1; }
+
+# The git a Git Bash pane resolves, graded by fleet-pr-overlap's own floor.
+check_pane_git() {
+    local overlap="$SETUP_DIR/fleet-pr-overlap" probe pane_git pane_version verdict rc
+    if ! command -v "$FLEET_SETUP_PYTHON" >/dev/null 2>&1; then
+        echo "  MISSING: $FLEET_SETUP_PYTHON — needed to grade the pane git (and by the fleet's" >&2
+        echo "           Python tools); install with: pacman -S mingw-w64-x86_64-python" >&2
+        return 1
+    fi
+    if [[ ! -f "$overlap" ]]; then
+        echo "  MISSING: $overlap — run setup-windows.sh from a full engine checkout" >&2
+        echo "           (it grades the pane git with its sibling fleet-pr-overlap)." >&2
+        return 1
+    fi
+    if [[ ! -x "$FLEET_GIT_BASH" ]]; then
+        echo "  MISSING: Git Bash at $FLEET_GIT_BASH — the agent panes run it." >&2
+        echo "           Install Git for Windows (https://git-scm.com/download/win)," >&2
+        echo "           or point FLEET_GIT_BASH at its bin/bash.exe." >&2
+        return 1
+    fi
+    probe="$("$FLEET_GIT_BASH" -lc '[ -f ~/.bashrc ] && . ~/.bashrc >/dev/null 2>&1
+        printf "IRPANEGIT=%s\n" "$(command -v git)"
+        command -v git >/dev/null 2>&1 && printf "IRPANEVER=%s\n" "$(git --version 2>&1)"' \
+        2>/dev/null | tr -d '\r')" || true
+    pane_git="$(printf '%s\n' "$probe" | sed -n 's/^IRPANEGIT=//p' | head -1)"
+    pane_version="$(printf '%s\n' "$probe" | sed -n 's/^IRPANEVER=//p' | head -1)"
+    if [[ -z "$pane_git" ]]; then
+        echo "  MISSING: git on the Git Bash PATH ($FLEET_GIT_BASH -l with ~/.bashrc)." >&2
+        echo "           Install or repair Git for Windows (https://git-scm.com/download/win)." >&2
+        return 1
+    fi
+    rc=0
+    verdict="$("$FLEET_SETUP_PYTHON" "$overlap" --check-git-version "$pane_version" 2>&1 | tr -d '\r')" || rc=$?
+    case "$rc" in
+        0)
+            echo "  ok: pane git $pane_version ($pane_git)"
+            return 0 ;;
+        1)
+            echo "  ERROR: the Git Bash panes run an old git ($pane_git):" >&2
+            printf '%s\n' "$verdict" | sed 's/^/           /' >&2
+            echo "           Update Git for Windows (https://git-scm.com/download/win, or" >&2
+            echo "           'winget upgrade Git.Git'), open a new Git Bash, and re-run." >&2
+            echo "           Do not put MSYS2's git or /usr/bin on the Git Bash PATH: the two" >&2
+            echo "           installs carry different msys-2.0.dll runtimes." >&2
+            return 1 ;;
+        *)
+            echo "  ERROR: could not read the pane git version ($pane_git):" >&2
+            printf '%s\n' "$verdict" | sed 's/^/           /' >&2
+            echo "           Run '$pane_git --version' in Git Bash; repair Git for Windows if it fails." >&2
+            return 1 ;;
+    esac
+}
+check_pane_git || missing=1
+(( missing == 0 )) || { echo "Fix the prerequisites above, then re-run." >&2; exit 1; }
+if (( CHECK_ONLY )); then
+    say "Prerequisites ok (--check: nothing written)"
+    exit 0
+fi
+
+# --- 1b. Soft dependencies (best-effort) -----------------------------------
+if (( install_ruff || install_clang_format )); then
+    say "Installing soft dependencies"
+fi
+if (( install_ruff )); then
+    if pacman -S --needed --noconfirm mingw-w64-x86_64-ruff >/dev/null 2>&1; then
+        echo "  ok: installed ruff via pacman"
+    elif command -v pipx >/dev/null 2>&1 && pipx install ruff >/dev/null 2>&1; then
+        echo "  ok: installed ruff via pipx"
+    else
+        echo "  WARN: ruff not installed — 'ruff check scripts/fleet/' (the fleet" >&2
+        echo "        Python lint) won't run locally. Try: pacman -S mingw-w64-x86_64-ruff" >&2
+    fi
+fi
+if (( install_clang_format )); then
+    if pacman -S --needed --noconfirm mingw-w64-x86_64-clang-tools-extra >/dev/null 2>&1; then
+        echo "  ok: installed clang-format via pacman (mingw-w64-x86_64-clang-tools-extra)"
+    else
+        echo "  WARN: clang-format not installed — 'fleet-build --target format-changed'" >&2
+        echo "        fails with 'clang-format not found'. Try: pacman -S mingw-w64-x86_64-clang-tools-extra" >&2
+    fi
+fi
 
 # --- 2. Dedicated fleet clone ----------------------------------------------
 say "Fleet clone at $FLEET_CLONE"

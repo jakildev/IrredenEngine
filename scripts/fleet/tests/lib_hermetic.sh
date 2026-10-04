@@ -16,9 +16,9 @@
 # real GitHub issues on the Windows fleet host.
 #
 # The fix has three parts:
-#   - the subject resolves `gh` once via `shutil.which("gh") or "gh"` (honors
-#     PATH order and PATHEXT; a passthrough on POSIX — fleet-plan-lint's
-#     precedent) and reuses that handle in every `subprocess.run([...])`;
+#   - the subject launches `gh` through `fleet_github.argv()` / `run()`,
+#     which resolves the first `gh` on PATH (PATH order and PATHEXT; a
+#     passthrough on POSIX) and runs a PATH stub unchanged;
 #   - the suite writes its stub as a `#!/usr/bin/env python3` script plus a
 #     `gh.bat` twin (`python3 "%~dp0gh" %*`) beside the extensionless one;
 #   - the suite calls hermetic_poison_gh_env right after creating its temp
@@ -32,7 +32,7 @@
 # commands. A subject detects the twin (`.bat` beside this exact
 # `#!/usr/bin/env python3` extensionless sibling) and execs the sibling
 # through `sys.executable` instead, bypassing cmd.exe entirely
-# (`fleet-decisions`'s `_gh_argv`).
+# (`fleet_github._launch_argv`).
 #
 # hermetic_poison_gh_env poisons the real binary's credentials, config, and
 # default host, so a call that escapes the PATH stub fails before it can

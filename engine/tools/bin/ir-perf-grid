@@ -249,13 +249,33 @@ EOF
     # extract OUT_DIR from a tee'd buffer.
     local log
     log="$stash/matrix.log"
-    "$IR_ACQUIRE" benchmark -- "$PERF_MATRIX" "$@" 2>&1 | tee "$log"
+    local quiet_report="$stash/quiet.report"
+    set +e
+    IR_QUIET_MEASURE_ROOT="$$" IR_QUIET_REPORT_FILE="$quiet_report" \
+        "$IR_ACQUIRE" benchmark -- "$PERF_MATRIX" "$@" 2>&1 | tee "$log"
+    local acquire_status=${PIPESTATUS[0]}
+    set -e
 
     local out_dir
     out_dir="$(awk '/perf_grid_matrix: done, output in / { print $NF }' "$log" | tail -1)"
+    if (( acquire_status == 75 )); then
+        echo "ir-perf-grid: host did not reach the guarded quiet state" >&2
+        exit 75
+    fi
+    if (( acquire_status == 76 )); then
+        if [[ -n "$out_dir" && -d "$out_dir" ]]; then
+            mv "$out_dir" "$out_dir.contaminated"
+        fi
+        echo "ir-perf-grid: benchmark was contaminated" >&2
+        exit 76
+    fi
+    (( acquire_status == 0 )) || exit "$acquire_status"
     if [[ -z "$out_dir" || ! -d "$out_dir" ]]; then
         echo "ir-perf-grid: could not find matrix output dir; calibration not spliced" >&2
         exit 1
+    fi
+    if [[ -s "$quiet_report" ]] && [[ "$(head -1 "$quiet_report")" == "UNGUARDED" ]]; then
+        : > "$out_dir/UNGUARDED"
     fi
 
     # Paths go in as argv, never inside the program text: MSYS converts a

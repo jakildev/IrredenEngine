@@ -20,7 +20,8 @@
 #     not duplicated
 #   - malformed JSON falls back to a clean baseline write
 #   - the FLEET_ASSIGNED_WORKTREE env key + the PreToolUse edit-guard hook are
-#     emitted, the guard command references the engine clone by absolute path,
+#     emitted, the quiet-wait hook covers every tool call, the guard command
+#     references the engine clone by absolute path,
 #     and both keys carry the same preservation contract: hand-added env
 #     entries + non-fleet PreToolUse groups survive regeneration, a stale
 #     fleet guard-hook variant is replaced not duplicated, and fleet wins
@@ -148,12 +149,16 @@ F5="$TMPROOT/t5/settings.local.json"; mkdir -p "$TMPROOT/t5"
 regen "$F5" "/eng/.claude/worktrees/worker-3" "/eng"
 assert_eq "$(q "$F5" "d['env']['FLEET_ASSIGNED_WORKTREE']")" "/eng/.claude/worktrees/worker-3" \
     "env carries the assigned worktree path (argv[3])"
-assert_eq "$(q "$F5" "d['hooks']['PreToolUse'][0]['matcher']")" "Edit|Write|MultiEdit" \
+assert_eq "$(q "$F5" "[g for g in d['hooks']['PreToolUse'] if 'fleet-guard-worktree-edit' in str(g)][0]['matcher']")" "Edit|Write|MultiEdit" \
     "PreToolUse guard matches Edit|Write|MultiEdit"
-assert_eq "$(q "$F5" "'/eng/scripts/fleet/fleet-guard-worktree-edit' in d['hooks']['PreToolUse'][0]['hooks'][0]['command']")" \
+assert_eq "$(q "$F5" "'/eng/scripts/fleet/fleet-guard-worktree-edit' in [g for g in d['hooks']['PreToolUse'] if 'fleet-guard-worktree-edit' in str(g)][0]['hooks'][0]['command']")" \
     "True" "guard command references the engine clone by absolute path (argv[4], not repo_root)"
-assert_eq "$(q "$F5" "d['hooks']['PreToolUse'][0]['hooks'][0]['command'].endswith('|| true')")" \
+assert_eq "$(q "$F5" "[g for g in d['hooks']['PreToolUse'] if 'fleet-guard-worktree-edit' in str(g)][0]['hooks'][0]['command'].endswith('|| true')")" \
     "True" "guard command is wrapped to fail OPEN on a missing script"
+assert_eq "$(q "$F5" "len([g for g in d['hooks']['PreToolUse'] if 'fleet-quiet-wait' in str(g)])")" \
+    "1" "fresh settings contain exactly one quiet-wait hook"
+assert_eq "$(q "$F5" "[g for g in d['hooks']['PreToolUse'] if 'fleet-quiet-wait' in str(g)][0]['matcher']")" "*" \
+    "quiet-wait hook covers every tool call"
 
 # --- T6: hand-added env survives; fleet wins only on its own env key ----------
 echo "T6: hand-added env entries survive regeneration; fleet key wins"
@@ -191,6 +196,8 @@ assert_eq "$(q "$F7" "len([g for g in d['hooks']['PreToolUse'] if 'fleet-guard-w
     "1" "exactly one fleet guard group after regen (stale variant replaced)"
 assert_eq "$(q "$F7" "'echo hand-added-pre' in str(d['hooks']['PreToolUse'])")" \
     "True" "hand-added non-fleet PreToolUse group preserved"
+assert_eq "$(q "$F7" "len([g for g in d['hooks']['PreToolUse'] if 'fleet-quiet-wait' in str(g)])")" \
+    "1" "quiet-wait hook remains unique after regeneration"
 
 echo
 echo "passed: $PASS  failed: $FAIL"

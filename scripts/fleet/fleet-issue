@@ -29,9 +29,12 @@ Installed to ~/bin/fleet-issue by scripts/fleet/install.sh.
 
 import argparse
 import json
-import subprocess
+import os
 import sys
 from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import fleet_github  # noqa: E402
 
 STATE_DIR = Path.home() / ".fleet" / "state"
 ISSUES_DIR = STATE_DIR / "issues"
@@ -77,9 +80,9 @@ def read_cached_issue(repo_key, issue_number):
 
 
 def fetch_live_issue(slug, issue_number):
-    result = subprocess.run(
+    result = fleet_github.run(
         [
-            "gh", "issue", "view", str(issue_number),
+            "issue", "view", str(issue_number),
             "--repo", slug,
             "--json", "number,title,state,labels,body,comments",
         ],

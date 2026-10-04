@@ -38,3 +38,10 @@ workers = "auto"
 
 # How long ir-acquire blocks before giving up on a contended lock.
 queue_timeout_seconds = 600
+
+[quiet]
+linger_seconds = 30
+max_seconds = 1200
+drain_seconds = 600
+settle_cpu = 0.25
+settle_sample_seconds = 2

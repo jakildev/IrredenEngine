@@ -26,6 +26,13 @@
 
 set -euo pipefail
 
+# The inline python imports fleet_github from this script's real directory.
+_fleet_gate_status_self="${BASH_SOURCE[0]}"
+while [[ -L "$_fleet_gate_status_self" ]]; do _fleet_gate_status_self="$(readlink "$_fleet_gate_status_self")"; done
+FLEET_LIB_DIR="$(cd "$(dirname "$_fleet_gate_status_self")" && pwd)"
+export FLEET_LIB_DIR
+unset _fleet_gate_status_self
+
 STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
 USAGE_DIR="$STATE_DIR/usage"
 RATE_LIMIT_DIR="$STATE_DIR/rate-limit"
@@ -58,6 +65,7 @@ fleet-gate-status — read-only view of fleet-dispatcher gating.
   fleet-gate-status -h|--help  this help
 
 Reports:
+  • benchmark quiet window and host-wide switch
   • fleet-wide usage gate (5h / 7d / etc. rate-limit thresholds)
   • GitHub API quota (core / graphql / search pools, gated at 90%; search is
     surface-only and never gates); each latched sample carries the identity
@@ -125,6 +133,12 @@ fi
 export USAGE_DIR RATE_LIMIT_DIR USAGE_STALE_SECONDS RESET_GRACE_SECONDS \
        LIMIT_DELAY POLL_INTERVAL_SECONDS JSON GATE_APP_CONFIGURED GATE_APP_TOKEN
 
+QUIET_WINDOW_JSON='{"state":"off","leases":[],"busy":0,"parked":0}'
+if command -v ir-acquire >/dev/null 2>&1; then
+    QUIET_WINDOW_JSON=$(ir-acquire --quiet-status --json 2>/dev/null || true)
+fi
+export QUIET_WINDOW_JSON
+
 # Pass through any per-type / global override env vars that fleet-dispatcher
 # reads, so threshold lookup matches the dispatcher's view.
 if [[ -n "${FLEET_DISPATCHER_USAGE_GATE:-}" ]]; then
@@ -138,11 +152,13 @@ python3 - <<'PY'
 import json
 import os
 import pathlib
-import shutil
 import subprocess
 import sys
 import time
 from datetime import datetime, timezone
+
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+import fleet_github
 
 usage_dir = pathlib.Path(os.environ["USAGE_DIR"])
 ratelimit_dir = pathlib.Path(os.environ["RATE_LIMIT_DIR"])
@@ -151,6 +167,10 @@ reset_grace_s = int(os.environ.get("RESET_GRACE_SECONDS", "600"))
 limit_delay = int(os.environ.get("LIMIT_DELAY", "900"))
 poll_s = int(os.environ.get("POLL_INTERVAL_SECONDS", "10"))
 emit_json = os.environ.get("JSON") == "1"
+try:
+    quiet_window = json.loads(os.environ.get("QUIET_WINDOW_JSON", ""))
+except (TypeError, ValueError):
+    quiet_window = {"state": "off", "leases": [], "busy": 0, "parked": 0}
 
 # Mirrors fleet-dispatcher's usage_gate_status() tables: threshold_for(),
 # BUILTIN_PER_TYPE_DEFAULTS, BUILTIN_MODEL_SCOPES, scope_of(). Keep in sync —
@@ -369,7 +389,7 @@ def probe_identity(token):
         env["GH_TOKEN"] = token
     try:
         proc = subprocess.run(
-            [shutil.which("gh") or "gh", "api", "/rate_limit"],
+            fleet_github.argv(["api", "/rate_limit"], env=env),
             capture_output=True, text=True, timeout=15, env=env,
         )
         resources = json.loads(proc.stdout).get("resources", {})
@@ -421,6 +441,7 @@ active_cooldowns = [c for c in cooldowns if not c["expired"]]
 if emit_json:
     out = {
         "gate": gate_state,
+        "quiet_window": quiet_window,
         "breaching": breaches,
         "scoped_breaching": scoped_breaches,
         "observations": observations,
@@ -444,6 +465,20 @@ if emit_json:
     sys.exit(0)
 
 print("fleet-gate-status — read-only view of dispatcher gating")
+print()
+
+quiet_state = quiet_window.get("state", "off")
+quiet_record = quiet_window.get("record") or {}
+quiet_switch = quiet_window.get("switch") or {}
+quiet_detail = ""
+if quiet_record:
+    quiet_detail = (
+        f" holder={quiet_record.get('pid')} owner={quiet_record.get('owner') or '-'}"
+        f" busy={quiet_window.get('busy', 0)} parked={quiet_window.get('parked', 0)}"
+    )
+elif quiet_switch:
+    quiet_detail = f" reason={quiet_switch.get('reason', '-')}"
+print(f"Quiet window: {quiet_state}{quiet_detail}")
 print()
 
 label = "CLOSED" if gate_state == "closed" else "OPEN"

@@ -25,6 +25,7 @@
 
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/render/components/component_fog_exempt.hpp>
 #include <irreden/render/components/component_gizmo_handle.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 
@@ -129,6 +130,7 @@ inline IREntity::EntityId spawnHandle(
     IREntity::EntityId handle = IREntity::createEntity(
         C_LocalTransform{localPos},
         shapeDesc,
+        IRComponents::C_FogExempt{},
         C_GizmoHandle{kind, axis, shapeParams, localPos, isAnchor, color, parent},
         C_Name{name}
     );

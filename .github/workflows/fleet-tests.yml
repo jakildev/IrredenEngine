@@ -37,7 +37,9 @@ name: Fleet Tests
 #   test_format_changed_line_scoping.sh -> cmake/run_clang_format_changed.cmake
 #   test_format_changed_standalone.sh   -> cmake/run_clang_format_changed_standalone.cmake
 #   test_format_changed_diff_root.sh    -> cmake/ir_quality_tools.cmake
+#   test_ir_perf_grid_quiet.sh          -> engine/tools/bin/ir-perf-grid
 #   test_ir_build_dir_resolution.sh     -> engine/tools/lib/concurrency_helpers.sh
+#   test_quiet_window.sh                 -> engine/tools/lib/quiet_window.py
 #   test_fleet_transition.sh            -> docs/agents/fleet-state-machine.json
 #   test_fleet_labels_check.sh          -> docs/agents/fleet-state-machine.json,
 #                                          docs/agents/fleet-labels-reference.md
@@ -106,7 +108,9 @@ on:
       - 'cmake/run_clang_format_changed.cmake'
       - 'cmake/run_clang_format_changed_standalone.cmake'
       - 'cmake/ir_quality_tools.cmake'
+      - 'engine/tools/bin/ir-perf-grid'
       - 'engine/tools/lib/concurrency_helpers.sh'
+      - 'engine/tools/lib/quiet_window.py'
       - 'docs/agents/fleet-state-machine.json'
       - 'docs/agents/fleet-labels-reference.md'
       - 'docs/agents/CLAUDE-BASELINE.md'
@@ -187,7 +191,9 @@ on:
       - 'cmake/run_clang_format_changed.cmake'
       - 'cmake/run_clang_format_changed_standalone.cmake'
       - 'cmake/ir_quality_tools.cmake'
+      - 'engine/tools/bin/ir-perf-grid'
       - 'engine/tools/lib/concurrency_helpers.sh'
+      - 'engine/tools/lib/quiet_window.py'
       - 'docs/agents/fleet-state-machine.json'
       - 'docs/agents/fleet-labels-reference.md'
       - 'docs/agents/CLAUDE-BASELINE.md'

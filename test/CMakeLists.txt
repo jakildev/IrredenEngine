@@ -89,6 +89,8 @@ add_executable(IrredenEngineTest
   render/fog_cross_section_test.cpp
   render/fog_line_of_sight_test.cpp
   render/fog_reveal_eval_test.cpp
+  render/fog_reveal_eval_shape_test.cpp
+  render/fog_seams_test.cpp
   render/fog_subject_adopt_test.cpp
   render/per_axis_canvas_lifecycle_test.cpp
   render/per_axis_canvas_size_test.cpp

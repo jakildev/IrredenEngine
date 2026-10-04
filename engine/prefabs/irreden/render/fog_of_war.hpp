@@ -23,6 +23,7 @@
 #include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
+#include <irreden/voxel/components/component_shape_descriptor.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -68,10 +69,16 @@ inline float evalVisionCircleReveal(
 /// overload reads no line-of-sight field and ignores `losSourceMask_`. Screen-
 /// space antialiasing remains a pixel concern; gameplay uses the authored
 /// world-space edge.
-inline float
-evalVisionReveal(const IRComponents::FrameDataFogObservers &observers, IRMath::vec3 worldPosition) {
+inline float evalVisionReveal(
+    const IRComponents::FrameDataFogObservers &observers,
+    IRMath::vec3 worldPosition,
+    std::uint32_t channels = IRComponents::kFogChannelDefault
+) {
     float reveal = 0.0f;
     for (int i = 0; i < observers.visionCircleCount_; ++i) {
+        if ((observers.channels(i) & channels) == 0u) {
+            continue;
+        }
         reveal = IRMath::max(reveal, detail::evalVisionCircleReveal(observers, i, worldPosition));
     }
     return reveal;
@@ -88,11 +95,15 @@ evalVisionReveal(const IRComponents::FrameDataFogObservers &observers, IRMath::v
 inline float evalVisionReveal(
     const IRComponents::FrameDataFogObservers &observers,
     const IRComponents::FogLosColumnField &los,
-    IRMath::vec3 worldPosition
+    IRMath::vec3 worldPosition,
+    std::uint32_t channels = IRComponents::kFogChannelDefault
 ) {
     float reveal = 0.0f;
     float pending[IRComponents::kMaxFogVisionCircles] = {};
     for (int i = 0; i < observers.visionCircleCount_; ++i) {
+        if ((observers.channels(i) & channels) == 0u) {
+            continue;
+        }
         const float circleReveal = detail::evalVisionCircleReveal(observers, i, worldPosition);
         if (observers.losGated(i)) {
             pending[i] = circleReveal;
@@ -160,6 +171,11 @@ isOnFogCanvas(const IRComponents::C_VoxelSetNew &voxelSet, IREntity::EntityId ac
            voxelSet.canvasEntity_ == activeCanvas;
 }
 
+inline bool
+isOnFogCanvas(const IRComponents::C_ShapeDescriptor &shape, IREntity::EntityId activeCanvas) {
+    return shape.canvasEntity_ == IREntity::kNullEntity || shape.canvasEntity_ == activeCanvas;
+}
+
 /// The pool records @p voxelSet owns, addressed through the live @p pool by
 /// index rather than the set's cached span: a canvas migration copies the
 /// pool component and relocates its storage, so the span a set captured at
@@ -218,8 +234,7 @@ inline void stampBodyCarrier(
 /// cell reveals fully, an EXPLORED cell reveals nothing on its own. The
 /// circle term is the line-of-sight gated `evalVisionReveal` on one snapshot
 /// (@p observers + @p los, see `selectRevealSnapshot`). @p channels is
-/// accepted for the source-mask seam and is not yet consulted: every source
-/// reveals on the default channel.
+/// applied to analytic sources; the stored grid term is channel-blind.
 inline float evalReveal(
     const IRComponents::FrameDataFogObservers &observers,
     const IRComponents::FogLosColumnField &los,
@@ -227,11 +242,10 @@ inline float evalReveal(
     IRMath::vec3 worldPosition,
     std::uint32_t channels = IRComponents::kFogChannelDefault
 ) {
-    (void)channels;
     if (gridCellState == IRComponents::kFogStateVisible) {
         return 1.0f;
     }
-    return evalVisionReveal(observers, los, worldPosition);
+    return evalVisionReveal(observers, los, worldPosition, channels);
 }
 
 /// The BODY verdict at @p worldPosition against @p fog's world field and the
@@ -272,6 +286,40 @@ inline float evalReveal(
     return evalReveal(observers, los, fog.getCell(column.x, column.y), worldPosition, channels);
 }
 
+namespace detail {
+
+template <typename Subject>
+inline void touchAnchorRegionsFor(
+    IRComponents::C_CanvasFogOfWar &fog,
+    IREntity::EntityId activeCanvas,
+    const std::vector<IREntity::ArchetypeNode *> &nodes
+) {
+    if (!fog.hasPersistence()) {
+        return;
+    }
+    bool touched = false;
+    IRMath::ivec2 lastRegion{};
+    for (IREntity::ArchetypeNode *node : nodes) {
+        const auto &transforms = IREntity::getComponentData<IRComponents::C_WorldTransform>(node);
+        const auto &subjects = IREntity::getComponentData<Subject>(node);
+        for (int i = 0; i < node->length_; ++i) {
+            if (!isOnFogCanvas(subjects[i], activeCanvas)) {
+                continue;
+            }
+            const IRMath::ivec3 column = IRMath::roundVec3HalfUp(transforms[i].translation_);
+            const IRMath::ivec2 region = WorldField::regionOfCell({column.x, column.y});
+            if (touched && region == lastRegion) {
+                continue;
+            }
+            fog.touchCell(column.x, column.y);
+            lastRegion = region;
+            touched = true;
+        }
+    }
+}
+
+} // namespace detail
+
 /// The residency pre-pass of fog-of-war-world-field.md D13, run from the
 /// `beginTick` of a `PARALLEL_FOR` system whose tick takes the verdict
 /// through the snapshot overload above: touches the region of every anchor
@@ -285,28 +333,15 @@ inline void touchAnchorRegions(
     IREntity::EntityId activeCanvas,
     const std::vector<IREntity::ArchetypeNode *> &nodes
 ) {
-    if (!fog.hasPersistence()) {
-        return;
-    }
-    bool touched = false;
-    IRMath::ivec2 lastRegion{};
-    for (IREntity::ArchetypeNode *node : nodes) {
-        const auto &transforms = IREntity::getComponentData<IRComponents::C_WorldTransform>(node);
-        const auto &voxelSets = IREntity::getComponentData<IRComponents::C_VoxelSetNew>(node);
-        for (int i = 0; i < node->length_; ++i) {
-            if (!isOnFogCanvas(voxelSets[i], activeCanvas)) {
-                continue;
-            }
-            const IRMath::ivec3 column = IRMath::roundVec3HalfUp(transforms[i].translation_);
-            const IRMath::ivec2 region = WorldField::regionOfCell({column.x, column.y});
-            if (touched && region == lastRegion) {
-                continue;
-            }
-            fog.touchCell(column.x, column.y);
-            lastRegion = region;
-            touched = true;
-        }
-    }
+    detail::touchAnchorRegionsFor<IRComponents::C_VoxelSetNew>(fog, activeCanvas, nodes);
+}
+
+inline void touchShapeAnchorRegions(
+    IRComponents::C_CanvasFogOfWar &fog,
+    IREntity::EntityId activeCanvas,
+    const std::vector<IREntity::ArchetypeNode *> &nodes
+) {
+    detail::touchAnchorRegionsFor<IRComponents::C_ShapeDescriptor>(fog, activeCanvas, nodes);
 }
 
 namespace detail {
@@ -413,11 +448,22 @@ inline int setVisionCircle(
     float observerZ = 0.0f,
     float zCostUp = 0.0f,
     float zCostDown = IRComponents::kFogVisionZCostMirrorUp,
-    float freeBand = 0.0f
+    float freeBand = 0.0f,
+    std::uint32_t channels = IRComponents::kFogChannelDefault
 ) {
     if (auto *fog = detail::activeFogComponent()) {
         fog->clearVisionCircles();
-        return fog->addVisionCircle(cx, cy, radius, edge, observerZ, zCostUp, zCostDown, freeBand);
+        return fog->addVisionCircle(
+            cx,
+            cy,
+            radius,
+            edge,
+            observerZ,
+            zCostUp,
+            zCostDown,
+            freeBand,
+            channels
+        );
     }
     return -1;
 }
@@ -440,10 +486,21 @@ inline int addVisionCircle(
     float observerZ = 0.0f,
     float zCostUp = 0.0f,
     float zCostDown = IRComponents::kFogVisionZCostMirrorUp,
-    float freeBand = 0.0f
+    float freeBand = 0.0f,
+    std::uint32_t channels = IRComponents::kFogChannelDefault
 ) {
     if (auto *fog = detail::activeFogComponent()) {
-        return fog->addVisionCircle(cx, cy, radius, edge, observerZ, zCostUp, zCostDown, freeBand);
+        return fog->addVisionCircle(
+            cx,
+            cy,
+            radius,
+            edge,
+            observerZ,
+            zCostUp,
+            zCostDown,
+            freeBand,
+            channels
+        );
     }
     return -1;
 }
@@ -675,13 +732,25 @@ inline void attachToCanvas(IREntity::EntityId canvas, int revealRadius = 0) {
 /// Whole-body fog governance is restricted to the active grid canvas.
 inline bool entityRevealGovernanceSupportsActiveCanvas(IREntity::EntityId entity) {
     auto setOpt = IREntity::getComponentOptional<IRComponents::C_VoxelSetNew>(entity);
-    if (!setOpt.has_value()) {
-        return true;
-    }
     const IREntity::EntityId activeCanvas = IRRender::getActiveCanvasEntityOrNull();
-    const IREntity::EntityId canvas =
-        (*setOpt)->canvasEntity_ == IREntity::kNullEntity ? activeCanvas : (*setOpt)->canvasEntity_;
-    return activeCanvas == IREntity::kNullEntity || canvas == activeCanvas;
+    if (setOpt.has_value()) {
+        const IREntity::EntityId canvas = (*setOpt)->canvasEntity_ == IREntity::kNullEntity
+                                              ? activeCanvas
+                                              : (*setOpt)->canvasEntity_;
+        if (activeCanvas != IREntity::kNullEntity && canvas != activeCanvas) {
+            return false;
+        }
+    }
+    auto shapeOpt = IREntity::getComponentOptional<IRComponents::C_ShapeDescriptor>(entity);
+    if (shapeOpt.has_value()) {
+        const IREntity::EntityId canvas = (*shapeOpt)->canvasEntity_ == IREntity::kNullEntity
+                                              ? activeCanvas
+                                              : (*shapeOpt)->canvasEntity_;
+        if (activeCanvas != IREntity::kNullEntity && canvas != activeCanvas) {
+            return false;
+        }
+    }
+    return true;
 }
 
 /// The class @p entity currently reads as. EXEMPT and FIELD are their
@@ -698,19 +767,18 @@ inline FogSubjectClass subjectClass(IREntity::EntityId entity) {
 }
 
 /// Classify @p entity synchronously. BODY stamps the carrier with factor 0,
-/// hides the set's range and attaches `C_FogRevealed`, so an entity outside
-/// every source cannot flash before its first eval. FIELD clears the carrier
-/// and restores the range. EXEMPT pins the carrier at 255 and restores the
-/// range. Each class removes the other two classes' markers and state, so a
-/// call on an already-classed entity is a reclassification. The voxel-set
-/// stamps need the set to live on the active grid canvas; markers attach to
-/// any entity, so a shape reads its class from `subjectClass` ahead of its
-/// own raster route.
+/// hides the subject and attaches `C_FogRevealed`, so an entity outside every
+/// source cannot flash before its first eval. FIELD clears the BODY carrier
+/// and restores rendering. EXEMPT pins voxel carriers at 255; shape exemption
+/// is marker-only until its dedicated bypass system runs. Each class removes
+/// the other two classes' markers and state, so a call on an already-classed
+/// entity is a reclassification.
 inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectClass) {
     using IRComponents::C_FogExempt;
     using IRComponents::C_FogField;
     using IRComponents::C_FogRevealed;
     auto setOpt = IREntity::getComponentOptional<IRComponents::C_VoxelSetNew>(entity);
+    auto shapeOpt = IREntity::getComponentOptional<IRComponents::C_ShapeDescriptor>(entity);
     IREntity::EntityId canvas = IREntity::kNullEntity;
     std::size_t rangeStart = 0;
     std::size_t rangeCount = 0;
@@ -742,20 +810,48 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
         }
         voxelSet->visible_ = subjectClass != FogSubjectClass::BODY;
         setRenders = voxelSet->renders();
-    } else if (subjectClass == FogSubjectClass::BODY) {
+    }
+    if (shapeOpt.has_value()) {
+        IRComponents::C_ShapeDescriptor &shape = **shapeOpt;
+        const IREntity::EntityId activeCanvas = IRRender::getActiveCanvasEntityOrNull();
+        const IREntity::EntityId shapeCanvas =
+            shape.canvasEntity_ == IREntity::kNullEntity ? activeCanvas : shape.canvasEntity_;
+        IR_ASSERT(
+            activeCanvas == IREntity::kNullEntity || shapeCanvas == activeCanvas,
+            "fog subject classes currently support only the active grid canvas"
+        );
+        shape.flags_ &= ~IRRender::SHAPE_FLAG_FOG_HIDDEN;
+        shape.flags_ &= ~IRRender::SHAPE_FLAG_FOG_BODY;
+        if (subjectClass == FogSubjectClass::BODY) {
+            shape.flags_ |= IRRender::SHAPE_FLAG_FOG_BODY;
+            shape.flags_ |= IRRender::SHAPE_FLAG_FOG_HIDDEN;
+            shape.fogBodyFactor_ = 0;
+        } else if (subjectClass == FogSubjectClass::EXEMPT) {
+            shape.fogBodyFactor_ = 255;
+        } else {
+            shape.fogBodyFactor_ = 0;
+        }
+    } else if (!setOpt.has_value() && subjectClass == FogSubjectClass::BODY) {
         return;
     }
 
     // Structural component changes migrate the entity's archetype, so they
     // stay last: every access through the voxel-set pointer is above.
-    const bool hadRevealed = IREntity::getComponentOptional<C_FogRevealed>(entity).has_value();
+    C_FogRevealed freshRevealed{};
+    bool hadRevealed = false;
+    if (const auto revealed = IREntity::getComponentOptional<C_FogRevealed>(entity);
+        revealed.has_value()) {
+        hadRevealed = true;
+        freshRevealed.override_ = (*revealed)->override_;
+        freshRevealed.channels_ = (*revealed)->channels_;
+    }
     if (subjectClass == FogSubjectClass::BODY) {
         if (rangeCount > 0) {
             IRPrefab::VoxelPool::markRangeInactive(rangeStart, rangeCount, canvas);
         }
         IREntity::removeComponent<C_FogField>(entity);
         IREntity::removeComponent<C_FogExempt>(entity);
-        IREntity::setComponent(entity, C_FogRevealed{});
+        IREntity::setComponent(entity, freshRevealed);
         return;
     }
     // A set its LOD band hides stays masked off; the LOD gate restores it.
@@ -773,7 +869,7 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
 }
 
 /// Synchronous BODY adoption (`governed`), or the explicit FIELD tag
-/// (`!governed`). A missing C_VoxelSetNew makes the BODY form a no-op.
+/// (`!governed`). A missing voxel set and shape makes the BODY form a no-op.
 inline void setEntityRevealGoverned(IREntity::EntityId entity, bool governed = true) {
     setSubjectClass(entity, governed ? FogSubjectClass::BODY : FogSubjectClass::FIELD);
 }

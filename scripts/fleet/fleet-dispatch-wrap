@@ -515,6 +515,28 @@ if [[ -z "$DISPATCH_ID" ]]; then
     DISPATCH_ID=$(python3 -c 'import uuid;print(uuid.uuid4())' | tr -d '\r')
 fi
 export FLEET_DISPATCH_ID="$DISPATCH_ID"
+export IR_QUIET_OWNER="$DISPATCH_ID"
+if [[ -z "${IR_LOCK_ROOT:-}" ]]; then
+    if [[ -n "${XDG_RUNTIME_DIR:-}" ]]; then
+        export IR_LOCK_ROOT="$XDG_RUNTIME_DIR/irreden/locks"
+    else
+        export IR_LOCK_ROOT="/tmp/irreden-${USER:-$(id -un)}/locks"
+    fi
+fi
+_quiet_lease_active=0
+quiet_lease_cleanup() {
+    if (( _quiet_lease_active )); then
+        ir-acquire --quiet-lease "$IR_QUIET_OWNER" drop >/dev/null 2>&1 || true
+        _quiet_lease_active=0
+    fi
+}
+trap quiet_lease_cleanup EXIT
+if command -v ir-acquire >/dev/null 2>&1; then
+    if ir-acquire --quiet-lease "$IR_QUIET_OWNER" create "$$" >/dev/null 2>&1; then
+        _quiet_lease_active=1
+        fleet-quiet-wait
+    fi
+fi
 # The worktree's CURRENT dispatch. Written at every launch and never cleared on
 # exit: the contract is "the most recent dispatch launched into this worktree",
 # which is precisely what makes a DIFFERENT id here proof that a recorded owner
@@ -594,6 +616,7 @@ else
     claude "${CLAUDE_ARGS[@]}" "$PROMPT" | fleet-claude-stream
     rc="${PIPESTATUS[0]}"
 fi
+quiet_lease_cleanup
 TRIGGERS_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}/triggers"
 QUOTA_SEEN=0
 [[ -f "$FLEET_QUOTA_FLAG" ]] && QUOTA_SEEN=1

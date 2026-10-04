@@ -472,6 +472,7 @@ TEST(FogRevealEvalTest, MissingPoolDoesNotLatchAnUnappliedTransition) {
 // is opaque black, the anchor the pass hard-coded before it became a parameter.
 TEST(FogRevealEvalTest, UnexploredColorDefaultsToBlackAtItsStd140Offset) {
     EXPECT_EQ(offsetof(FrameDataFogObservers, unexploredColor_), 272u);
+    EXPECT_EQ(offsetof(FrameDataFogObservers, visionCircleChannels_), 416u);
     const FrameDataFogObservers observers{};
     EXPECT_EQ(observers.unexploredColor_, IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f));
     EXPECT_EQ(IRMath::colorToVec4(IRMath::IRColors::kBlack), observers.unexploredColor_);

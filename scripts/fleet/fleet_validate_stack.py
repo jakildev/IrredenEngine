@@ -40,10 +40,10 @@ passes unless ``--strict`` is given.
 """
 import json
 import re
-import subprocess
 import sys
 
 import fleet_blocked_by
+import fleet_github
 from fleet_epic_membership import (
     canonical_epic_refs,
     epic_refs,
@@ -235,7 +235,7 @@ def validate_stack(children, umbrella):
 
 def _run_gh_json(args):
     """Run a gh command expecting JSON on stdout; return parsed value or None."""
-    proc = subprocess.run(args, capture_output=True, text=True)
+    proc = fleet_github.run(args, capture_output=True, text=True)
     if proc.returncode != 0:
         print("fleet_validate_stack: gh failed: %s" % (proc.stderr or "").strip(),
               file=sys.stderr)
@@ -269,7 +269,7 @@ def discover_children(slug, umbrella, state="all"):
     """
     n = int(umbrella)
     candidates = _run_gh_json([
-        "gh", "issue", "list", "--repo", slug,
+        "issue", "list", "--repo", slug,
         "--search", "in:body #%d" % n, "--state", state,
         "--limit", str(DISCOVERY_LIMIT),
         "--json", "number,title,body,state,labels",

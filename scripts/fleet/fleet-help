@@ -275,6 +275,8 @@ Parallel-agent fleet (tmux + Claude)
                                  runs one transient-role claude iteration;
                                  records rate-limit exits for fleet-dispatcher's
                                  per-pane cooldown (issue #520)
+  fleet-quiet-wait               park a dispatched session during a guarded
+                                 benchmark window (hook / wrapper helper)
   fleet-reconcile-amendments     boot-time reconciler for fleet:human-amending
                                  PRs vs worktree/reservation state; invoked by
                                  fleet-up at start
@@ -289,8 +291,8 @@ Parallel-agent fleet (tmux + Claude)
                                  stacked/conflicting PRs for zero tokens;
                                  conflicts or unhandled merger states re-arm
                                  the LLM merger pass
-  fleet-gate-status [--json]     show usage gate (Anthropic + GitHub API
-                                 pools) + per-pane cooldown state
+  fleet-gate-status [--json]     show benchmark quiet window, usage gate
+                                 (Anthropic + GitHub API pools), and cooldowns
   fleet-net-doctor [--kill-hung] TCP socket / ephemeral-port pressure report
                                  (EADDRNOTAVAIL forensics) + hung git/ssh/gh
                                  reaper; exit 0 OK / 1 WARN / 2 CRITICAL

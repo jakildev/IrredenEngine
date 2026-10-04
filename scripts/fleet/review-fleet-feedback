@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -38,6 +39,9 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import fleet_github  # noqa: E402
 
 FEEDBACK_DIR = Path.home() / ".fleet" / "feedback"
 MARKER = FEEDBACK_DIR / ".last-reviewed"
@@ -539,8 +543,8 @@ def check_tracking_issues(rows: list[dict[str, Any]]) -> list[dict]:
             continue
         repo, num = m.group(1), m.group(2)
         try:
-            result = subprocess.run(
-                ["gh", "issue", "view", num, "--repo", repo,
+            result = fleet_github.run(
+                ["issue", "view", num, "--repo", repo,
                  "--json", "state,closedAt,closedByPullRequestsReferences"],
                 capture_output=True, text=True, check=True, timeout=10,
             )
@@ -915,7 +919,7 @@ def cmd_file_tasks(args: argparse.Namespace) -> int:
             summary.append(entry)
             continue
 
-        cmd = ["gh", "issue", "create",
+        cmd = ["issue", "create",
                "--title", title,
                "--body", body,
                "--label", "human:approved"]
@@ -923,7 +927,7 @@ def cmd_file_tasks(args: argparse.Namespace) -> int:
             cmd.extend(["--repo", args.repo])
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            result = fleet_github.run(cmd, capture_output=True, text=True, check=True)
         except subprocess.CalledProcessError as e:
             entry["error"] = (e.stderr or e.stdout or str(e)).strip()
             summary.append(entry)

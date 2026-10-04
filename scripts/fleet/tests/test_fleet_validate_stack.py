@@ -400,6 +400,10 @@ class _GhIssueStub:
         return opts, positional, None
 
     def __call__(self, argv, **kwargs):
+        # argv[0] is whichever gh the shared resolver found on this host.
+        if not argv or Path(argv[0]).stem.lower() != "gh":
+            raise AssertionError("not a gh launch: %r" % (argv,))
+        argv = ["gh", *argv[1:]]
         self.calls.append(list(argv))
         if argv[:3] == ["gh", "issue", "list"]:
             opts, _pos, err = self._parse(argv, argv[3:], self._LIST_FLAGS)

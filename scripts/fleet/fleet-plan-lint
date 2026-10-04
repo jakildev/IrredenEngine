@@ -47,12 +47,20 @@
 #
 # Source of truth: scripts/fleet/fleet-plan-lint in the engine repo.
 set -euo pipefail
+# The python below imports fleet_github from this script's real directory.
+_plan_lint_self="${BASH_SOURCE[0]}"
+while [[ -L "$_plan_lint_self" ]]; do _plan_lint_self="$(readlink "$_plan_lint_self")"; done
+FLEET_LIB_DIR="$(cd "$(dirname "$_plan_lint_self")" && pwd)"
+export FLEET_LIB_DIR
 exec python3 - "$@" <<'PY'
 import json
+import os
 import re
-import shutil
 import subprocess
 import sys
+
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+import fleet_github  # noqa: E402
 
 REPO_SLUGS = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
 
@@ -91,15 +99,9 @@ if issue is None or repo_ns not in REPO_SLUGS:
     usage(2)
 repo = REPO_SLUGS[repo_ns]
 
-# Resolve gh through PATH ourselves: on a native-Windows python (os.name ==
-# "nt") CreateProcess appends only ".exe" to a bare name, so a PATH-shim
-# `gh`/`gh.bat` earlier in PATH is silently skipped in favor of the real
-# gh.exe — shutil.which honors PATH order and PATHEXT, and is a no-op
-# passthrough on POSIX.
-GH = shutil.which("gh") or "gh"
 try:
-    out = subprocess.run(
-        [GH, "issue", "view", issue, "--repo", repo, "--json", "comments,title"],
+    out = fleet_github.run(
+        ["issue", "view", issue, "--repo", repo, "--json", "comments,title"],
         capture_output=True, text=True, check=True,
     ).stdout
 except subprocess.CalledProcessError as e:
