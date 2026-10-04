@@ -39,6 +39,22 @@ static_assert(sizeof(ShapeDescriptorV1) == sizeof(IRComponents::C_ShapeDescripto
 
 } // namespace detail
 
+template <> struct SaveSerialize<IRComponents::C_ShapeDescriptor> {
+    static void write(IRAsset::BinaryWriter &w, const IRComponents::C_ShapeDescriptor &value) {
+        IRComponents::C_ShapeDescriptor authored = value;
+        authored.flags_ &= ~IRMath::SDF::SHAPE_FLAG_FOG_HIDDEN;
+        w.writeBytes(&authored, sizeof(authored));
+    }
+
+    static IRAsset::Result<IRComponents::C_ShapeDescriptor> read(IRAsset::BinaryReader &r) {
+        using Res = IRAsset::Result<IRComponents::C_ShapeDescriptor>;
+        IRComponents::C_ShapeDescriptor value{};
+        IR_SAVE_READ_STATUS(r.readBytes(&value, sizeof(value)));
+        value.flags_ &= ~IRMath::SDF::SHAPE_FLAG_FOG_HIDDEN;
+        return Res::success(value);
+    }
+};
+
 template <> struct SaveMigration<IRComponents::C_ShapeDescriptor> {
     static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_ShapeDescriptor>>>
     migrators() {

@@ -996,7 +996,7 @@ constexpr IRVideo::RoiCrop kCropsEntityReveal[] = {
     {1260, 240, 300, 680, "governed_pillar"},
     {940, 240, 300, 680, "flagged_shape"},
     {620, 240, 300, 680, "unflagged_shape"},
-    {210, 220, 410, 720, "governed_rim_pillar"},
+    {260, 220, 360, 720, "governed_rim_pillar"},
     {2040, 240, 262, 700, "field_column"},
     {2295, 40, 265, 700, "exempt_pillar"},
 };
@@ -1089,6 +1089,7 @@ void probeEntityRevealBodies() {
 
     for (const BodyProbeSubject &subject : g_bodyProbeSubjects) {
         const auto expected = static_cast<std::uint32_t>(subject.entity_);
+        const auto revealed = IREntity::getComponentOptional<C_FogRevealed>(subject.entity_);
         int texels = 0;
         int aboveCeiling = 0;
         int cutFaceTexels = 0;
@@ -1121,9 +1122,11 @@ void probeEntityRevealBodies() {
             }
         }
         IR_LOG_INFO(
-            "FOG-BODY-PROBE body={} texels={} aboveCeiling={} cutFaceTexels={} ratioMin={:.3f} "
-            "ratioMax={:.3f}",
+            "FOG-BODY-PROBE body={} factor={:.3f} shown={} texels={} aboveCeiling={} "
+            "cutFaceTexels={} ratioMin={:.3f} ratioMax={:.3f}",
             subject.label_,
+            revealed.has_value() ? (*revealed)->revealFactor_ : -1.0f,
+            revealed.has_value() && (*revealed)->shown_,
             texels,
             aboveCeiling,
             cutFaceTexels,
@@ -2499,9 +2502,9 @@ void initEntities() {
             probe("governed_pillar", createPillar(rowPos(1, 4.0f), Color{80, 210, 245, 255}));
         IRPrefab::Fog::setEntityRevealGoverned(g_entityRevealProbe);
         const IREntity::EntityId governedShape =
-            createBox(rowPos(2, 4.0f), Color{120, 235, 140, 255}, 0u);
+            probe("governed_box", createBox(rowPos(2, 4.0f), Color{120, 235, 140, 255}, 0u));
         IRPrefab::Fog::setEntityRevealGoverned(governedShape);
-        createBox(rowPos(3, 4.0f), Color{235, 225, 110, 255}, 0u);
+        probe("unflagged_box", createBox(rowPos(3, 5.0f), Color{235, 225, 110, 255}, 0u));
         const vec3 hiddenShapePos{18.0f, -18.0f, 4.0f};
         const IREntity::EntityId hiddenShape =
             probe("hidden_shape", createBox(hiddenShapePos, Color{235, 80, 170, 255}, 0u));

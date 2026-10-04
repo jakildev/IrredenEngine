@@ -229,6 +229,19 @@ TEST(SaveSerializers, ShapeDescriptorV1MigrationPreservesLayoutAndDefaultsFogFac
     EXPECT_EQ(IRWorld::saveVersion<C_ShapeDescriptor>(), 2u);
 }
 
+TEST(SaveSerializers, ShapeDescriptorRoundTripClearsTransientFogHiddenVerdict) {
+    C_ShapeDescriptor shape{};
+    shape.flags_ |= IRMath::SDF::SHAPE_FLAG_FOG_BODY | IRMath::SDF::SHAPE_FLAG_FOG_HIDDEN;
+    shape.fogBodyFactor_ = 73u;
+
+    const C_ShapeDescriptor restored = roundTrip(shape);
+
+    EXPECT_NE(restored.flags_ & IRMath::SDF::SHAPE_FLAG_FOG_BODY, 0u);
+    EXPECT_EQ(restored.flags_ & IRMath::SDF::SHAPE_FLAG_FOG_HIDDEN, 0u);
+    EXPECT_EQ(restored.fogBodyFactor_, 73u);
+    expectConsumesAllBytes(shape);
+}
+
 TEST(SaveSerializers, SkeletonRoundTrips) {
     C_Skeleton skeleton{};
     // A severance hole (kNullEntity) in the middle: slot order is the bone-id

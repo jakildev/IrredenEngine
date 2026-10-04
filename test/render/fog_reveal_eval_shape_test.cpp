@@ -112,7 +112,8 @@ class FogRevealEvalShapeAdoptTest : public testing::Test {
         m_canvas = IREntity::createEntity(C_CanvasFogOfWar{C_CanvasFogOfWar::HeadlessInit{}});
         IRRender::setHeadlessActiveCanvasEntity(m_canvas);
         m_adoptId = IRSystem::createSystem<IRSystem::FOG_SUBJECT_ADOPT_SHAPE>();
-        m_systemManager.registerPipeline(IRTime::Events::UPDATE, {m_adoptId});
+        m_evalId = IRSystem::createSystem<IRSystem::FOG_REVEAL_EVAL_SHAPE>();
+        m_systemManager.registerPipeline(IRTime::Events::UPDATE, {m_adoptId, m_evalId});
     }
 
     ~FogRevealEvalShapeAdoptTest() override {
@@ -139,6 +140,7 @@ class FogRevealEvalShapeAdoptTest : public testing::Test {
     IRSystem::SystemManager m_systemManager;
     IREntity::EntityId m_canvas = IREntity::kNullEntity;
     IRSystem::SystemId m_adoptId{};
+    IRSystem::SystemId m_evalId{};
 };
 
 TEST_F(FogRevealEvalShapeAdoptTest, AdoptsAnUntaggedShapeButNotAFieldTwin) {
@@ -173,6 +175,32 @@ TEST_F(FogRevealEvalShapeAdoptTest, PersistedFarVisibleCellRevealsAShapeOnItsFir
         << "without the residency pre-pass the non-loading read is unexplored";
     const IREntity::EntityId body = createShape(position);
     IRPrefab::Fog::fieldStats();
+
+    runFrame();
+
+    const auto &revealed = IREntity::getComponent<C_FogRevealed>(body);
+    EXPECT_FLOAT_EQ(revealed.revealFactor_, 1.0f);
+    EXPECT_EQ(IRPrefab::Fog::fieldStats().loads_, 1);
+    EXPECT_EQ(
+        fog().field_->peekCell(far),
+        std::optional<std::uint8_t>{IRComponents::kFogStateVisible}
+    );
+}
+
+TEST_F(FogRevealEvalShapeAdoptTest, PersistedFarVisibleCellReevaluatesAShapeOnItsFirstFrame) {
+    const IRMath::ivec2 far{5000, -3000};
+    IRTest::ScopedFogSaveRoot root;
+    {
+        IRPrefab::Fog::WorldField field;
+        ASSERT_TRUE(field.setPersistence(root.store()));
+        field.setCell(far, IRComponents::kFogStateVisible);
+        ASSERT_GT(field.flush(), 0);
+    }
+    ASSERT_TRUE(fog().field_->setPersistence(root.store()));
+    const IREntity::EntityId body = createShape(IRMath::vec3(far.x, far.y, 0.0f));
+    IREntity::setComponent(body, C_FogRevealed{});
+    IRPrefab::Fog::fieldStats();
+    EXPECT_FALSE(fog().field_->peekCell(far).has_value());
 
     runFrame();
 

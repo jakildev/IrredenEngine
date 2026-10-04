@@ -178,6 +178,24 @@ TEST(VoxelSetFormat, FivePrimitiveGroupRoundTrip) {
     std::remove((path + ".json").c_str());
 }
 
+TEST(VoxelSetFormat, ShapeDescriptorAdapterClearsTransientFogHiddenVerdict) {
+    IRComponents::C_ShapeDescriptor shape{};
+    shape.flags_ |= IRMath::SDF::SHAPE_FLAG_FOG_BODY | IRMath::SDF::SHAPE_FLAG_FOG_HIDDEN;
+    const std::string path = kTmpDir + "/vxs_shape_descriptor_fog_hidden.vxs";
+
+    ASSERT_TRUE(
+        saveVoxelSet(path, std::span<const IRComponents::C_ShapeDescriptor>{&shape, 1}).ok()
+    );
+    const auto loaded = loadShapeGroup(path);
+
+    ASSERT_TRUE(loaded.ok());
+    ASSERT_EQ(loaded.value_.shapeRecords_.size(), 1u);
+    EXPECT_NE(loaded.value_.shapeRecords_.front().flags_ & IRMath::SDF::SHAPE_FLAG_FOG_BODY, 0u);
+    EXPECT_EQ(loaded.value_.shapeRecords_.front().flags_ & IRMath::SDF::SHAPE_FLAG_FOG_HIDDEN, 0u);
+    std::remove(path.c_str());
+    std::remove((path + ".json").c_str());
+}
+
 TEST(VoxelSetFormat, ReSerializingLoadedFileMatchesOriginalBytes) {
     // Byte-compare: save once, load, save again — second file is byte-
     // identical to the first. Catches non-deterministic ordering in the
