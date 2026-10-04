@@ -26,6 +26,13 @@
 
 set -euo pipefail
 
+# The inline python imports fleet_github from this script's real directory.
+_fleet_gate_status_self="${BASH_SOURCE[0]}"
+while [[ -L "$_fleet_gate_status_self" ]]; do _fleet_gate_status_self="$(readlink "$_fleet_gate_status_self")"; done
+FLEET_LIB_DIR="$(cd "$(dirname "$_fleet_gate_status_self")" && pwd)"
+export FLEET_LIB_DIR
+unset _fleet_gate_status_self
+
 STATE_DIR="${FLEET_STATE_DIR:-$HOME/.fleet/state}"
 USAGE_DIR="$STATE_DIR/usage"
 RATE_LIMIT_DIR="$STATE_DIR/rate-limit"
@@ -137,11 +144,13 @@ python3 - <<'PY'
 import json
 import os
 import pathlib
-import shutil
 import subprocess
 import sys
 import time
 from datetime import datetime, timezone
+
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+import fleet_github
 
 usage_dir = pathlib.Path(os.environ["USAGE_DIR"])
 ratelimit_dir = pathlib.Path(os.environ["RATE_LIMIT_DIR"])
@@ -363,7 +372,7 @@ def probe_identity(token):
         env["GH_TOKEN"] = token
     try:
         proc = subprocess.run(
-            [shutil.which("gh") or "gh", "api", "/rate_limit"],
+            fleet_github.argv(["api", "/rate_limit"], env=env),
             capture_output=True, text=True, timeout=15, env=env,
         )
         resources = json.loads(proc.stdout).get("resources", {})

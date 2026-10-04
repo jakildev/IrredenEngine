@@ -63,13 +63,13 @@ import argparse
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import time
 import urllib.parse
 from pathlib import Path
 
+import fleet_github
 from fleet_runtime import atomic_json
 
 REFUSAL_RE = re.compile(r"GraphQL: API rate limit (already )?exceeded")
@@ -246,27 +246,6 @@ def gh_identity():
 
 # --- gh invocation -------------------------------------------------------------
 
-def _gh_argv():
-    """argv prefix that launches gh without a cmd.exe re-parse.
-
-    A native-Windows `shutil.which()` hit on a `.bat` goes through cmd.exe,
-    which splits a REST query string at its `&`. The only `.bat` reachable
-    here safely is the hermetic test twin beside an extensionless Python
-    sibling (tests/lib_hermetic.sh); run that sibling through the interpreter.
-    """
-    gh = shutil.which("gh") or "gh"
-    if os.name == "nt" and gh.lower().endswith(".bat"):
-        sibling = gh[: -len(".bat")]
-        try:
-            with open(sibling, encoding="utf-8") as f:
-                first_line = f.readline()
-        except OSError:
-            first_line = ""
-        if first_line.startswith("#!") and "python" in first_line:
-            return [sys.executable, sibling]
-    return [gh]
-
-
 def _timeout():
     try:
         return max(1, int(os.environ.get("FLEET_NET_TIMEOUT", "120")))
@@ -276,7 +255,7 @@ def _timeout():
 
 def _api(args, payload=None):
     """Run `gh api <args>`; returns (rc, stdout bytes, stderr bytes)."""
-    cmd = [*_gh_argv(), "api", *args]
+    cmd = fleet_github.argv(["api", *args])
     if payload is not None:
         cmd += ["--input", "-"]
     try:

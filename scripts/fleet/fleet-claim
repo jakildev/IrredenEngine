@@ -1259,7 +1259,7 @@ check_blockers() {
 
     BODY_B64="$body_b64" SKIP_IDS="$skip_ids" REPO=$(repo_from_ns) ISSUE_NUM="$issue_num" \
     python3 <<'PYEOF'
-import os, shutil, subprocess, sys, base64
+import os, subprocess, sys, base64
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
 import fleet_github
 # Shared blocker parser — one routine for scout/ingest/claim so the
@@ -1272,10 +1272,6 @@ issue_num = os.environ.get("ISSUE_NUM", "")
 body = base64.b64decode(os.environ["BODY_B64"]).decode("utf-8", errors="replace")
 skip_ids = set(os.environ.get("SKIP_IDS", "").split())
 repo = os.environ.get("REPO", "")
-# Resolve gh through PATH: on native-Windows python CreateProcess appends only
-# ".exe" to a bare name, skipping an extensionless PATH `gh` stub for the
-# real gh.exe. shutil.which honors PATH order and PATHEXT (POSIX passthrough).
-GH = shutil.which("gh") or "gh"
 
 # `(none)` / absent / sentinel-only → no gate.
 field_value = parse_blocked_by(body)
@@ -2102,7 +2098,7 @@ cmd_find_stackable_blockers() {
 
     local blocker
     blocker=$(BODY_B64="$body_b64" REPO="$repo" python3 <<'PYEOF'
-import base64, json, os, re, shutil, subprocess, sys
+import base64, json, os, re, subprocess, sys
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
 import fleet_github
 from fleet_branch_match import branch_matches_issue
@@ -2112,10 +2108,6 @@ from fleet_blocked_by import parse_blocked_by
 
 body = base64.b64decode(os.environ["BODY_B64"]).decode("utf-8", errors="replace")
 repo = os.environ.get("REPO", "")
-# Resolve gh through PATH: on native-Windows python CreateProcess appends only
-# ".exe" to a bare name, skipping an extensionless PATH `gh` stub for the
-# real gh.exe. shutil.which honors PATH order and PATHEXT (POSIX passthrough).
-GH = shutil.which("gh") or "gh"
 
 value = parse_blocked_by(body)
 if not value:
@@ -2180,7 +2172,7 @@ PYEOF
     # output.
 
     BLOCKER="$blocker" REPO="$repo" python3 <<'PYEOF'
-import json, os, shutil, subprocess, sys
+import json, os, subprocess, sys
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
 import fleet_github
 from fleet_branch_match import body_closes_issue_in, branch_matches_issue
@@ -2191,10 +2183,6 @@ from fleet_branch_match import body_closes_issue_in, branch_matches_issue
 from fleet_stack_base import unsafe_base_reason
 blocker = os.environ["BLOCKER"]
 repo = os.environ["REPO"]
-# Resolve gh through PATH: on native-Windows python CreateProcess appends only
-# ".exe" to a bare name, skipping an extensionless PATH `gh` stub for the
-# real gh.exe. shutil.which honors PATH order and PATHEXT (POSIX passthrough).
-GH = shutil.which("gh") or "gh"
 try:
     r = fleet_github.run(
         ["pr", "list", "--repo", repo, "--state", "open",
