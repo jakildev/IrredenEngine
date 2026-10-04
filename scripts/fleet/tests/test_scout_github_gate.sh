@@ -114,8 +114,9 @@ graphql_mode() { echo "$1" > "$STUB_DIR/graphql-mode"; }
 # repointed. Scout log lines accumulate in $TMPROOT/scout.log.
 sample() {
     GH_STUB_DIR="$STUB_DIR" GH_STUB_QUERY="$QUERY" PATH="$STUB_DIR/bin:$PATH" \
+    GH_SAMPLE_NOW="${GH_SAMPLE_NOW:-}" \
     python3 - "$SCOUT" "$USAGE" >> "$TMPROOT/scout.log" 2>&1 <<'PY'
-import importlib.machinery, importlib.util, sys
+import importlib.machinery, importlib.util, os, sys
 from pathlib import Path
 loader = importlib.machinery.SourceFileLoader("fleet_state_scout", sys.argv[1])
 spec = importlib.util.spec_from_loader("fleet_state_scout", loader)
@@ -123,6 +124,8 @@ mod = importlib.util.module_from_spec(spec)
 loader.exec_module(mod)
 mod.USAGE_DIR = Path(sys.argv[2])
 mod.GH_TIMEOUT_SECONDS = 1
+if os.environ.get("GH_SAMPLE_NOW"):
+    mod.time.time = lambda: int(os.environ["GH_SAMPLE_NOW"])
 mod.sample_github_rate_limit()
 PY
 }
@@ -144,6 +147,7 @@ assert_eq "$(latch_field status)" "rejected" "refused sample latches status=reje
 assert_eq "$(latch_field resetsAt)" "$FUTURE_RESET" "refused latch carries the last good reset"
 assert_eq "$(latch_field limit)" "5000" "refused latch carries the last good limit"
 assert_eq "$(latch_field remaining)" "0" "refused latch reports remaining=0"
+assert_eq "$(latch_field interval_points)" "<absent>" "refused sample has no interval"
 out=$(gate)
 assert_eq "$out" "closed:github_graphql rejected util=100% (>= 90%) resets=$FUTURE_RESET" \
     "dispatcher gate closes on the refused latch"
@@ -225,7 +229,61 @@ sample
 assert_eq "$(ls "$USAGE" | tr '\n' ' ')" "github-search.json " \
     "/rate_limit half writes search only"
 
-echo "T9: a refused pr list in run_capture latches github-graphql.rejected.json"
+echo "T8: compatible samples publish an identity-qualified interval"
+rm -f "$USAGE"/*.json
+graphql_good 100
+GH_SAMPLE_NOW="$NOW" sample
+assert_eq "$(latch_field interval_points)" "<absent>" "first sample has no interval"
+graphql_good 127
+GH_SAMPLE_NOW="$((NOW + 30))" sample
+assert_eq "$(latch_field used)" "127" "absolute used count remains available"
+assert_eq "$(latch_field interval_points)" "27" "interval carries points spent"
+assert_eq "$(latch_field interval_seconds)" "30" "interval carries elapsed seconds"
+assert_eq "$(latch_field interval_points_per_minute)" "54.0" "interval carries points per minute"
+json=$(FLEET_CONF=/dev/null "$GATE_STATUS" --json)
+assert_eq "$(python3 -c 'import json,sys; o=next(x for x in json.loads(sys.argv[1])["github"] if x["rateLimitType"] == "github_graphql"); print(o["interval_points"], o["interval_seconds"], o["interval_points_per_minute"])' "$json")" \
+    "27 30 54.0" "gate-status JSON exposes the interval"
+gs=$(FLEET_CONF=/dev/null "$GATE_STATUS")
+assert_contains "$gs" "graphql[user] remaining=4873/5000 interval=27 points/30s (54.00/min)" \
+    "gate-status text renders the identity-qualified interval"
+
+echo "T9: incompatible samples keep the absolute reading and omit the interval"
+prior_latch() {
+    # prior_latch <used> <observed-at> <reset> <identity> [status]
+    python3 - "$LATCH" "$1" "$2" "$3" "$4" "${5:-}" <<'PY'
+import json, sys
+used = int(sys.argv[2])
+data = {
+    "rateLimitType": "github_graphql", "utilization": used / 5000,
+    "resetsAt": int(sys.argv[4]), "observed_at": int(sys.argv[3]),
+    "limit": 5000, "used": used, "remaining": 5000 - used,
+    "identity": sys.argv[5],
+}
+if sys.argv[6]:
+    data["status"] = sys.argv[6]
+open(sys.argv[1], "w").write(json.dumps(data))
+PY
+}
+
+graphql_good 127
+prior_latch 100 "$NOW" "$((FUTURE_RESET + 1))" user
+GH_SAMPLE_NOW="$((NOW + 30))" sample
+assert_eq "$(latch_field interval_points)" "<absent>" "reset rollover has no interval"
+assert_eq "$(latch_field used)" "127" "reset rollover keeps the absolute reading"
+
+prior_latch 100 "$NOW" "$FUTURE_RESET" app
+GH_SAMPLE_NOW="$((NOW + 30))" sample
+assert_eq "$(latch_field interval_points)" "<absent>" "identity change has no interval"
+
+prior_latch 130 "$NOW" "$FUTURE_RESET" user
+GH_SAMPLE_NOW="$((NOW + 30))" sample
+assert_eq "$(latch_field interval_points)" "<absent>" "counter regression has no interval"
+
+prior_latch 100 "$NOW" "$FUTURE_RESET" user rejected
+GH_SAMPLE_NOW="$((NOW + 30))" sample
+assert_eq "$(latch_field interval_points)" "<absent>" "recovery from rejection has no interval"
+
+echo "T10: a refused pr list in run_capture latches github-graphql.rejected.json"
 REJECTED="$USAGE/github-graphql.rejected.json"
 rm -f "$USAGE"/*.json
 : > "$TMPROOT/scout.log"
@@ -265,7 +323,7 @@ assert_eq "$(cat "$REJECTED" 2>/dev/null || echo "<no latch>")" "$before" "a lat
 assert_eq "$(gate)" "closed:github_graphql rejected util=100% (>= 90%) resets=$FUTURE_RESET" \
     "dispatcher gate stays closed while the self-report reads 22%"
 
-echo "T8: every gh invocation was modelled by the stub"
+echo "T11: every gh invocation was modelled by the stub"
 assert_eq "$(cat "$STUB_DIR/misses")" "" "no unmodelled gh calls"
 
 summarize "fleet-state-scout github quota sampler"
