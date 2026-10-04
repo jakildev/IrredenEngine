@@ -42,7 +42,7 @@ layout(std430, binding = 8) buffer SourceVoxelFaces {
     SourceVoxelFace sourceFaces[];
 };
 
-layout(local_size_x = 2, local_size_y = 3, local_size_z = 32) in;
+layout(local_size_x = 2, local_size_y = 3, local_size_z = 8) in;
 
 
 layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {

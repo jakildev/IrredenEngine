@@ -27,7 +27,7 @@
 // local_size_z MUST equal kStageMicroSlicesPerGroup (ir_constants.glsl). It stays a literal
 // because a compute-shader layout qualifier needs a literal on every GL driver; the shared
 // constant drives the micro-slice math and guard.
-layout(local_size_x = 2, local_size_y = 3, local_size_z = 32) in;
+layout(local_size_x = 2, local_size_y = 3, local_size_z = 8) in;
 
 // Coordinate chain: World 3D -> Iso 2D -> Canvas pixel
 //   canvasPixel = trixelCanvasOffsetZ1 + floor(cameraIso) + pos3DtoPos2DIso(world)

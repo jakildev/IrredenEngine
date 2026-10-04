@@ -82,6 +82,20 @@ auto& gl_WorkGroupID=groupId;auto& gl_LocalInvocationID=localId3;
 
 CASES = r"""
 int main(){
+ // Arbitrary sample counts exercise spare-lane rejection even where the
+ // backend's physical width divides every supported smaller square density.
+ for(uint slices:{3u,5u,7u}){
+  const uint count=11,voxels=max(uint(kStageMicroSlicesPerGroup)/slices,1u);
+  std::vector<unsigned char> seen(count*slices);
+  for(uint group=0;group<(count+voxels-1)/voxels;++group)
+  for(uint z=0;z<(slices+kStageMicroSlicesPerGroup-1)/kStageMicroSlicesPerGroup;++z)
+  for(uint local=0;local<uint(kStageMicroSlicesPerGroup);++local){
+   auto lane=voxelDispatchLane(group,z,local,slices);
+   if(lane.x>=count||lane.y>=slices)continue;
+   if(++seen[lane.x*slices+lane.y]!=1)return 3;
+  }
+  if(!std::all_of(seen.begin(),seen.end(),[](auto n){return n==1;}))return 4;
+ }
  for(int density=0;density<=16;++density)for(int mode:{0,1,2})
  for(int route:{0,1,2,3})for(int lane=0;lane<3;++lane){
   const bool feeder=lane==1;
@@ -137,7 +151,7 @@ class VoxelDispatchPackingTest(unittest.TestCase):
         metal = (SHADERS / "metal/ir_constants.metal").read_text()
         pattern = r"kStageMicroSlicesPerGroup\s*=\s*(\d+)"
         packing = int(re.search(pattern, glsl)[1])
-        self.assertEqual(int(re.search(pattern, metal)[1]), packing)
+        metal_packing = int(re.search(pattern, metal)[1])
         for stage in (1, 2):
             body = (SHADERS / f"c_voxel_to_trixel_stage_{stage}_body.glsl").read_text()
             layout = re.search(
@@ -155,7 +169,7 @@ class VoxelDispatchPackingTest(unittest.TestCase):
             "c_voxel_to_trixel_stage_2_winner",
         })
         self.assertEqual(int(re.match(r"return MTL::Size\(2, 3, (\d+)\)", registry[end:])[1]),
-                         packing)
+                         metal_packing)
 
     def test_exact_once_coverage_and_positive_controls(self):
         for backend in ("glsl", "metal"):

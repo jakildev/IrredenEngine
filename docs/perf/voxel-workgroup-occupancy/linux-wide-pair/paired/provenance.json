@@ -1,0 +1,20 @@
+[
+  {
+    "sha": "b9a996512b32df8d6f0f34645930308b5c3c8c6d",
+    "directory": "save_files/perf/b9a996512-ci",
+    "binary_sha256": "a80af80c5ce63e968e7cf16fb4366c8afd4f33d51a5f43fffe6799bed4d350ce",
+    "shader_sha256": "608c2daf0d8923b2fe96da6776dbfeaa02a8129f88916cddb5ee73675168a544"
+  },
+  {
+    "sha": "75c77de62e6fe71b971358b7eb5a0a1d0b09987a",
+    "directory": "save_files/perf/75c77de62-pair-base",
+    "binary_sha256": "a80af80c5ce63e968e7cf16fb4366c8afd4f33d51a5f43fffe6799bed4d350ce",
+    "shader_sha256": "d9c00fe1ffd8a7de3f3b92ce2cd95d99e1dd7b605595d36100b6ee71359f03d2"
+  },
+  {
+    "sha": "b9a996512b32df8d6f0f34645930308b5c3c8c6d",
+    "directory": "save_files/perf/b9a996512-pair-head-return",
+    "binary_sha256": "a80af80c5ce63e968e7cf16fb4366c8afd4f33d51a5f43fffe6799bed4d350ce",
+    "shader_sha256": "608c2daf0d8923b2fe96da6776dbfeaa02a8129f88916cddb5ee73675168a544"
+  }
+]

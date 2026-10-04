@@ -1,6 +1,7 @@
 # Voxel workgroup occupancy
 
-Adopt 32 Z lanes with several whole low-density voxels sharing a group. This
+Pack several whole low-density voxels into each group: Metal uses 32 Z lanes,
+while OpenGL uses eight after the Linux diagnostic below. This
 avoids the idle-lane cost of the earlier [global-32 experiment](../voxel-dispatch-packing/README.md).
 Every requested face-half sample remains present exactly once; subdivision,
 geometry, shadows and depth arbitration are unchanged. The shared writer/consumer
@@ -106,3 +107,32 @@ The matched timing controls above remain tied to their earlier measured base;
 they were not rerun against the viewport/LOD integration.
 
 The final shared stack base also passes all 39 viewport/Lua binding tests.
+
+## Linux same-runner diagnostic
+
+The initial historical CI gate reported a 13.6% zoom-4 regression. A
+[head/base/head diagnostic](https://github.com/jakildev/IrredenEngine/actions/runs/37176429906)
+isolates it on one hosted Linux runner. Both revisions build the identical
+OpenGL binary; only the runtime shader fingerprints differ. The first and
+return head shader hashes match. All matrices use 262,144 entities, FULL mode,
+base subdivision one, 60 frames per cell, with 15 warm-up frames excluded from
+the steady figures below. Full-frame measurements, stage timings, calibration,
+logs and hashes are retained in [linux-wide-pair](linux-wide-pair/paired/provenance.json).
+Whitespace is stripped from retained text. The shared baseline writer was skipped.
+
+| Cell | Base steady ms | First 32-lane head | Return 32-lane head |
+|---|---:|---:|---:|
+| Zoom 1 | 795.39 | 759.60 (-4.5%) | 751.06 (-5.6%) |
+| Zoom 4, effective subdivision 4 | 1985.24 | 2330.65 (+17.4%) | 2324.68 (+17.1%) |
+
+At zoom 4 the 32-lane path schedules the same number of invocations as the
+eight-lane parent. Stage-2 scope cost rises from 349.20 to 529.73/520.31 ms.
+The regression repeats, so this is not accepted as historical-baseline noise.
+OpenGL returns to eight-slice physical groups with the shared packing math
+retained; Metal remains at 32. The smaller OpenGL candidate still needs its
+paired measurement before performance approval. This Linux result does not
+qualify hardware OpenGL performance or native OpenGL visual presentation.
+
+Master `52eca06ad` is integrated after that diagnostic. The viewport repair
+and fleet fixture registry fix are merged; the latter's subject check passes.
+IRCanvasStress, IRPerfGrid and IrredenEngineTest rebuild successfully.

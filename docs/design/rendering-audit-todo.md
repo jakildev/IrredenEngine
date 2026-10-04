@@ -83,12 +83,15 @@ Next, in order:
    An executable GLSL/Metal writer and lane-recovery gate now rejects dropped or
    duplicated samples, row-offset mistakes and missing padding/count guards.
    The [occupancy follow-up](../perf/voxel-workgroup-occupancy/README.md) instead
-   packs whole low-density voxels into 32-lane groups, preserving every sample.
+   packs whole low-density voxels into each group, preserving every sample.
    Actual finalizer/list selection joins the executable tests. Return controls
    improve dense cardinal 100.145→83.755 ms and rotated 22.370→16.875 ms;
-   all 24 CanvasStress checks pass and reference RGB is unchanged. Low-density
+   all 30 integrated CanvasStress checks pass and reference RGB is unchanged. Low-density
    frame ranges overlap and the first subdivision-3 batch regresses before the
-   repeat improves, so do not generalize the gains. Native OpenGL, feeder-heavy
+   repeat improves, so do not generalize the gains. Same-runner Linux controls
+   confirm a 17% zoom-4 regression with 32-lane groups; keep Metal at 32 and test
+   eight-lane OpenGL groups using the same packing math before approval.
+   Hardware OpenGL, feeder-heavy
    timing and moving-camera/density controls remain pending. Next profile
    conservative overflow, shared lighting and submission/readback stalls. The
    low-density fixture retains every pool candidate; any new occlusion must prove

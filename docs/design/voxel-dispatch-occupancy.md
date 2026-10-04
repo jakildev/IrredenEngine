@@ -45,6 +45,11 @@ and partial groups can offset fewer dispatch groups. Keep sample identity and
 requested fidelity fixed when measuring; the earlier global packing experiment
 is recorded in [the baseline report](../perf/voxel-dispatch-packing/README.md).
 
-The [native occupancy controls](../perf/voxel-workgroup-occupancy/README.md)
-support the 32-lane implementation with return-to-baseline measurements and
-unchanged image checks. Backend performance and scale limits remain explicit.
+Physical width is backend-specific: OpenGL uses eight Z lanes and Metal uses
+32. Both execute the same mapping and preserve the same sample domain. The
+[native occupancy controls](../perf/voxel-workgroup-occupancy/README.md) support
+Metal's 32-lane groups with return-to-baseline measurements and unchanged images.
+A same-runner Linux head/base/head diagnostic found a repeatable 17% steady-frame
+regression at effective subdivision four with 32-lane groups; eight-lane OpenGL
+groups retain low-density packing without widening the dense workgroups.
+This scheduling choice must be measured on hardware OpenGL separately.

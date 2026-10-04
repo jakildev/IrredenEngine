@@ -35,7 +35,7 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         functionName == "c_voxel_to_trixel_stage_1_winner_resolve" ||
         functionName == "c_voxel_to_trixel_stage_2" ||
         functionName == "c_voxel_to_trixel_stage_2_winner") {
-        // Must match the GLSL local_size_z and kStageMicroSlicesPerGroup;
+        // Must match Metal's kStageMicroSlicesPerGroup;
         // voxelDispatchLane shares this packing with the compact writer.
         return MTL::Size(2, 3, 32);
     }
