@@ -64,6 +64,7 @@
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_debug_culling_minimap.hpp>
+#include <irreden/render/systems/system_debug_overlay.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
@@ -2740,6 +2741,8 @@ void initSystems() {
                 .lightVolumeSystemId_ = computeLightVolumeId,
                 .bakeSunShadowSystemId_ = bakeSunShadowMapId,
             }),
+            // The minimap draws through the IRDebug queue; DEBUG_OVERLAY flushes and clears it.
+            IRSystem::createSystem<IRSystem::DEBUG_OVERLAY>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
         }
