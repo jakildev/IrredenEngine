@@ -27,6 +27,7 @@
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
 #include <irreden/render/fog_of_war.hpp>
+#include <irreden/render/fog_reveal_systems.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/systems/system_build_light_occlusion_grid.hpp>
 #include <irreden/render/systems/system_compute_light_volume.hpp>
@@ -569,11 +570,12 @@ inline void logDomainState(int shotIndex) {
 }
 
 inline void initSystems(const DemoConfig &config) {
-    IRSystem::registerPipeline(
-        IRTime::Events::UPDATE,
-        {IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
-         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}
-    );
+    std::list<IRSystem::SystemId> updatePipeline = {
+        IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
+    };
+    updatePipeline.splice(updatePipeline.end(), IRPrefab::Fog::revealSystems());
+    updatePipeline.push_back(IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>());
+    IRSystem::registerPipeline(IRTime::Events::UPDATE, updatePipeline);
 
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
