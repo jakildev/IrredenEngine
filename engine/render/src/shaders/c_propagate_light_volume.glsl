@@ -75,6 +75,7 @@ layout(std140, binding = 23) uniform LightVolumeParams {
     // that skips the winning-light-ID image ops entirely when no SPOT was
     // seeded, so no-spot scenes pay zero extra propagate bandwidth.
     ivec4 lightVolumeWorldOrigin;
+    ivec4 propagationOrigin;
 };
 
 bool voxelOcclusionGetBit(int wx, int wy, int wz) {
@@ -116,7 +117,7 @@ bool lightBlockerGetBit(int wx, int wy, int wz) {
 }
 
 void main() {
-    const ivec3 cell = ivec3(gl_GlobalInvocationID.xyz);
+    const ivec3 cell = ivec3(gl_GlobalInvocationID.xyz) + propagationOrigin.xyz;
     if (cell.x >= gridSize || cell.y >= gridSize || cell.z >= gridSize) {
         return;
     }

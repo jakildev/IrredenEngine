@@ -195,6 +195,7 @@ TEST_F(GpuComputeDispatchTest, CopyNamedBufferSubDataMatchesSourceBytes) {
 #include <irreden/render/buffer.hpp>
 #include <irreden/render/ir_render_enums.hpp>
 #include <irreden/render/metal/metal_runtime.hpp>
+#include <irreden/render/light_volume_dispatch.hpp>
 #include <irreden/render/render_device.hpp>
 #include <irreden/render/shader.hpp>
 #include <irreden/render/texture.hpp>
@@ -244,6 +245,299 @@ class MetalGpuComputeDispatchTest : public ::testing::Test {
 
     IRRender::RenderDevice *device_ = nullptr;
 };
+
+TEST_F(MetalGpuComputeDispatchTest, BoundedLightVolumeMatchesFullVolumeAfterEveryIteration) {
+    using namespace IRRender;
+    using namespace IRMath;
+
+    constexpr int size = 128;
+    constexpr int halfExtent = size / 2;
+    constexpr std::size_t byteCount = std::size_t(size) * size * size * 4;
+    constexpr int occlusionSize = 256;
+    constexpr std::size_t bitfieldWords =
+        std::size_t(occlusionSize) * occlusionSize * occlusionSize / 32;
+    const auto program = [](const char *filename) {
+        const std::string path = std::string(IR_TEST_RENDER_SHADER_DIR) + "/" + filename;
+        return ShaderProgram{std::vector{ShaderStage{path.c_str(), ShaderType::COMPUTE}}};
+    };
+    auto clear = program("c_clear_light_volume.glsl");
+    auto seed = program("c_seed_light_volume.glsl");
+    auto propagate = program("c_propagate_light_volume.glsl");
+
+    // Each arm owns color read/write followed by ID read/write. Keep these
+    // resources across frames so shrinking, moving and absent sources exercise
+    // the same ping-pong lifetime as a persistent canvas.
+    std::vector<Texture3D> textures;
+    textures.reserve(8);
+    for (int i = 0; i < 8; ++i) {
+        textures.emplace_back(TextureKind::TEXTURE_3D, size, size, size, TextureFormat::RGBA8);
+    }
+    Buffer parameters{nullptr, sizeof(LightVolumeParams), BUFFER_STORAGE_DYNAMIC};
+    Buffer sources{nullptr, 8 * sizeof(GPULightSource), BUFFER_STORAGE_DYNAMIC};
+    Buffer occlusion{
+        nullptr,
+        (4 + 2 * bitfieldWords) * sizeof(std::uint32_t),
+        BUFFER_STORAGE_DYNAMIC
+    };
+    const std::vector<std::uint8_t> poison(byteCount, 0xA5);
+    const std::vector<std::uint8_t> zero(byteCount, 0);
+    auto read = [&](int index) {
+        textures[index].bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+        auto *native = boundMetalImageTexture(0);
+        std::vector<std::uint8_t> bytes(byteCount);
+        native->getBytes(
+            bytes.data(),
+            size * 4,
+            size * size * 4,
+            MTL::Region(0, 0, 0, size, size, size),
+            0,
+            0
+        );
+        return bytes;
+    };
+    const auto byteOffset = [](ivec3 cell) {
+        return ((std::size_t(cell.z) * size + cell.y) * size + cell.x) * 4;
+    };
+    struct Seed {
+        ivec3 cell_;
+        vec3 color_;
+        float alpha_;
+    };
+    struct Frame {
+        const char *name_;
+        ivec3 origin_;
+        ivec3 occlusionOrigin_;
+        int iterations_;
+        bool carryId_;
+        bool walls_;
+        std::vector<Seed> seeds_;
+    };
+    const std::vector<Frame> frames{
+        {"interior ties and quantized residual",
+         ivec3(0),
+         ivec3(0),
+         3,
+         true,
+         false,
+         {{ivec3(33, 39, 43), vec3(1, 0, 0), 1.0f},
+          {ivec3(37, 39, 43), vec3(0, 1, 0), 1.0f},
+          {ivec3(89, 41, 42), vec3(0), 1.0f},
+          {ivec3(39, 37, 73), vec3(0, 0, 1), 0.001f}}},
+        {"discounted boundary",
+         ivec3(-97, 11, 23),
+         ivec3(-97, 11, 23),
+         4,
+         true,
+         false,
+         {{ivec3(0, 1, 126), vec3(1, 0.5f, 0), 0.61f}}},
+        {"voxel and blocker walls with shifted anchor",
+         ivec3(300, -200, 17),
+         ivec3(305, -197, 19),
+         7,
+         true,
+         true,
+         {{ivec3(54, 49, 46), vec3(1, 0, 1), 1.0f}}},
+        {"maximum radius without IDs",
+         ivec3(15, -61, 6),
+         ivec3(15, -61, 6),
+         32,
+         false,
+         false,
+         {{ivec3(65, 61, 63), vec3(0.25f, 0.75f, 1), 1.0f}}},
+        {"one iteration at upper corner",
+         ivec3(-300, 6, 22),
+         ivec3(-300, 6, 22),
+         1,
+         true,
+         false,
+         {{ivec3(127, 126, 125), vec3(0, 1, 1), 1.0f}}},
+        {"all sources disappear", ivec3(600, -30, 80), ivec3(600, -30, 80), 32, false, false, {}},
+    };
+
+    for (const Frame &frame : frames) {
+        SCOPED_TRACE(frame.name_);
+        // Texture3D::subImage3D uses CPU replaceRegion on Metal. Complete all
+        // queued work before poisoning or cloning a seeded texture.
+        device_->finish();
+        for (auto &texture : textures) {
+            texture.subImage3D(
+                size,
+                size,
+                size,
+                PixelDataFormat::RGBA,
+                PixelDataType::UNSIGNED_BYTE,
+                poison.data()
+            );
+        }
+        clear.use();
+        for (int arm : {0, 4}) {
+            for (int ping = 0; ping < (frame.seeds_.empty() ? 1 : 2); ++ping) {
+                textures[arm + ping]
+                    .bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                textures[arm + 2 + ping]
+                    .bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                device_->dispatchCompute(size / 8, size / 8, size / 8);
+            }
+        }
+        device_->finish();
+        for (int index = 0; index < 8; ++index) {
+            const auto &expected = frame.seeds_.empty() && index % 2 != 0 ? poison : zero;
+            ASSERT_EQ(read(index), expected) << "unexpected clear state in texture " << index;
+        }
+
+        std::vector<GPULightSource> lights;
+        for (const Seed &input : frame.seeds_) {
+            GPULightSource light{};
+            const ivec3 world = input.cell_ - ivec3(halfExtent) + frame.origin_;
+            light.originAndType_ = vec4(vec3(world), 0.0f);
+            light.trueOriginVoxel_ = vec4(vec3(world), 0.0f);
+            light.colorAndIntensity_ = vec4(input.color_, 1.0f);
+            light.coneAndSeedAlpha_ = vec4(0, input.alpha_, 0, 0);
+            lights.push_back(light);
+        }
+        LightVolumeParams params{};
+        params.lightCount_ = static_cast<int>(lights.size());
+        params.worldOriginVoxel_ = ivec4(frame.origin_, frame.carryId_ ? 1 : 0);
+        params.stepFalloff_ = frame.iterations_ > 0 ? 1.0f / frame.iterations_ : 1.0f;
+        params.propagationOrigin_ = ivec4(0);
+        parameters.subData(0, sizeof(params), &params);
+        parameters.bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
+        if (!lights.empty()) {
+            sources.subData(0, lights.size() * sizeof(GPULightSource), lights.data());
+            sources.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_LightSourceBuffer);
+            textures[0].bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+            textures[2].bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+            seed.use();
+            device_->dispatchCompute(1, 1, 1);
+        }
+        device_->finish();
+        const auto seedColors = read(0);
+        const auto seedIds = read(2);
+        for (std::size_t i = 0; i < frame.seeds_.size(); ++i) {
+            const auto offset = byteOffset(frame.seeds_[i].cell_);
+            for (int channel = 0; channel < 3; ++channel) {
+                EXPECT_EQ(
+                    seedColors[offset + channel],
+                    static_cast<std::uint8_t>(frame.seeds_[i].color_[channel] * 255.0f + 0.5f)
+                );
+            }
+            EXPECT_EQ(
+                seedColors[offset + 3],
+                static_cast<std::uint8_t>(frame.seeds_[i].alpha_ * 255.0f + 0.5f)
+            );
+            if (frame.carryId_)
+                EXPECT_EQ(seedIds[offset], i + 1);
+        }
+        // Seed only once: separate seed dispatches could choose different
+        // winners for coincident sources, which is unrelated to dispatch bounds.
+        textures[4].subImage3D(
+            size,
+            size,
+            size,
+            PixelDataFormat::RGBA,
+            PixelDataType::UNSIGNED_BYTE,
+            seedColors.data()
+        );
+        textures[6].subImage3D(
+            size,
+            size,
+            size,
+            PixelDataFormat::RGBA,
+            PixelDataType::UNSIGNED_BYTE,
+            seedIds.data()
+        );
+
+        std::vector<std::uint32_t> occlusionWords(4 + 2 * bitfieldWords, 0u);
+        const ivec4 occlusionOrigin(frame.occlusionOrigin_, 0);
+        std::memcpy(occlusionWords.data(), &occlusionOrigin, sizeof(occlusionOrigin));
+        if (frame.walls_) {
+            const auto setBit = [&](ivec3 cell, bool blocker) {
+                const ivec3 grid = cell - ivec3(halfExtent) + frame.origin_ -
+                                   frame.occlusionOrigin_ + ivec3(occlusionSize / 2);
+                const auto flat =
+                    (std::size_t(grid.z) * occlusionSize + grid.y) * occlusionSize + grid.x;
+                occlusionWords[4 + (blocker ? bitfieldWords : 0) + flat / 32] |= 1u << (flat % 32);
+            };
+            for (int a = 0; a < size; ++a) {
+                for (int b = 0; b < size; ++b) {
+                    setBit(ivec3(55, a, b), false);
+                    setBit(ivec3(a, 51, b), true);
+                }
+            }
+        }
+        occlusion.subData(0, occlusionWords.size() * sizeof(std::uint32_t), occlusionWords.data());
+        occlusion.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_LightOcclusionGrid);
+        const auto bounded = IRRender::detail::lightVolumePropagationDispatch(
+            lights,
+            frame.origin_,
+            frame.iterations_
+        );
+        const auto dispatchArm = [&](int arm, int readPing) {
+            params.propagationOrigin_ = arm == 0 ? ivec4(0) : ivec4(bounded.origin_, 0);
+            parameters.subData(0, sizeof(params), &params);
+            parameters.bindBase(BufferTarget::UNIFORM, kBufferIndex_LightVolumeParams);
+            textures[arm + readPing].bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+            textures[arm + 1 - readPing]
+                .bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+            textures[arm + 2 + readPing]
+                .bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+            textures[arm + 3 - readPing]
+                .bindAsImage(3, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+            propagate.use();
+            const ivec3 groups = arm == 0 ? ivec3(size / 8, size / 8, size / 4) : bounded.groups_;
+            device_->dispatchCompute(groups.x, groups.y, groups.z);
+        };
+        int readPing = 0;
+        for (int iteration = 0; !lights.empty() && iteration < frame.iterations_; ++iteration) {
+            SCOPED_TRACE(iteration);
+            dispatchArm(0, readPing);
+            if (&frame == &frames.front() && iteration == 0) {
+                // Omit the destination clear deliberately. Cropped dispatches
+                // cannot overwrite its poisoned exterior, unlike a full sweep.
+                device_->finish();
+                for (int index : {5, 7}) {
+                    textures[index].subImage3D(
+                        size,
+                        size,
+                        size,
+                        PixelDataFormat::RGBA,
+                        PixelDataType::UNSIGNED_BYTE,
+                        poison.data()
+                    );
+                }
+                dispatchArm(4, readPing);
+                device_->finish();
+                EXPECT_NE(read(5), read(1));
+                EXPECT_NE(read(7), read(3));
+                clear.use();
+                textures[5].bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                textures[7].bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                device_->dispatchCompute(size / 8, size / 8, size / 8);
+            }
+            dispatchArm(4, readPing);
+            readPing = 1 - readPing;
+            device_->finish();
+            const auto fullColors = read(readPing);
+            EXPECT_EQ(read(4 + readPing), fullColors);
+            EXPECT_EQ(read(6 + readPing), read(2 + readPing));
+            if (!frame.carryId_)
+                EXPECT_EQ(read(6 + readPing), zero);
+            if (frame.walls_) {
+                EXPECT_GT(fullColors[byteOffset(ivec3(55, 49, 46)) + 3], 0u);
+                EXPECT_EQ(fullColors[byteOffset(ivec3(56, 49, 46)) + 3], 0u);
+                if (iteration >= 1)
+                    EXPECT_GT(fullColors[byteOffset(ivec3(54, 51, 46)) + 3], 0u);
+                EXPECT_EQ(fullColors[byteOffset(ivec3(54, 52, 46)) + 3], 0u);
+            }
+        }
+        if (lights.empty()) {
+            EXPECT_EQ(read(0), zero);
+            EXPECT_EQ(read(4), zero);
+            EXPECT_EQ(bounded.groups_, ivec3(0));
+        }
+    }
+    setActiveMetalPipeline(nullptr);
+}
 
 TEST_F(MetalGpuComputeDispatchTest, VoxelStagesFitCompiledThreadgroupLimits) {
     using namespace IRRender;

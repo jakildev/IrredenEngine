@@ -68,6 +68,7 @@ struct LightVolumeParams {
     int   lightCount;
     float stepFalloff;
     int4  worldOriginVoxel;
+    int4 propagationOrigin;
 };
 
 // Analytic SPOT falloff at world position `pos3D` for the 0-based light

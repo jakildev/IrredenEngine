@@ -176,6 +176,9 @@ captures.
   applies `visibleIsoViewport`; a visibility-freeze check is not a viewport cull.
 - Light seeds include off-screen sources whose radius reaches the visible or
   camera-anchored domain. `light-verify` validates boundary clamping and fade.
+- Local light propagation bounds use staged seeds and the full iteration count;
+  both ping-pongs start with zero exterior. The [domain proof and controls](../../docs/design/light-volume-propagation-domain.md)
+  cover quantization, relocation and buffer swaps.
 - Chunk streaming must include the sun-direction shadow ring. Any world-space
   neighbor sampler also requires a one-chunk resident guard band.
 

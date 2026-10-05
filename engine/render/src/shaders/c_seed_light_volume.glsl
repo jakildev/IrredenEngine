@@ -36,6 +36,7 @@ layout(std140, binding = 23) uniform LightVolumeParams {
     // mapping the light's world origin into a local texel index.
     // `.w` carries the has-SPOT flag.
     ivec4 lightVolumeWorldOrigin;
+    ivec4 propagationOrigin;
 };
 
 layout(rgba8, binding = 0) writeonly uniform image3D lightVolume;

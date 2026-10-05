@@ -124,29 +124,21 @@ Next, in order:
    host-closed retry behavior; prove a full screenshot set followed by watchdog
    termination cannot pass. This is a code-observed harness gap, not a diagnosed
    engine hang in the current captures.
-   Proposed light-volume experiment: `System<COMPUTE_LIGHT_VOLUME>::tick` runs
-   propagation over the full 128-cubed volume for each radius step, even when
-   PerfGrid has one radius-24 emitter. Measure a conservative union of seed
-   bounds expanded by the propagation count, keeping every neighbor rule and
-   RGBA8 quantization step unchanged. Use actual rounded/clamped/relocated
-   staging seeds, not original light positions, and the existing maximum
-   eligible radius. Start with one fixed box aligned to the 8×8×4 workgroup;
-   avoid per-iteration uploads. Extend every shader/CPU parameter-layout mirror
-   together if adding a dispatch origin. Both ping-pong textures must be zero
-   outside the active domain; alternating buffers, odd iteration counts,
-   moving/disappearing lights and camera-boundary relocation are required
-   controls. Compare all RGBA8 bytes after each iteration against the full-volume
-   path, poison scratch buffers, and mutate offset/expansion/clearing controls.
-   Include extra clear cost in measurements. Do not lower light radius or
-   iteration count to claim a gain.
-   The six-neighbor kernel limits influence to one cell per iteration; retain
-   the full iteration-count expansion even for black or alpha-quantized-to-zero
-   seeds. RGB/ID bytes can still be nonzero. Clear both ID buffers when carrying
-   spotlight IDs; the no-SPOT path intentionally does not consume or propagate
-   IDs, so stale unused ID bytes are not a cross-path equality requirement.
-   Start both reference arms from the same seeded snapshot or unique seed cells:
-   independently seeding colliding lights cannot serve as a deterministic oracle.
-   This is a code-traced candidate, not an implemented or measured optimization.
+   Bounded light propagation is implemented with the full iteration radius,
+   staged seed coordinates and cleared ping-pong exteriors. Native Metal tests
+   compare all RGBA8 color/ID bytes after every iteration, including poisoned
+   destinations and independently anchored blockers; removing the origin or
+   expansion makes the checks fail. The [domain proof](light-volume-propagation-domain.md)
+   owns the invariant and cross-backend limits. Paired scene captures and measured
+   controls are recorded in [the performance evidence](../perf/bounded-light-volume/README.md).
+   Hardware OpenGL and native Release qualification remain pending.
+   The dense bounded control exposes suspicious Metal light-volume stage
+   attribution (70–75 ms while the whole GPU frame remains about 73–79 ms).
+   Audit timestamp boundaries/dependencies before using that row to prioritize
+   work; retained full-frame controls do not prove a stable dense speedup.
+   Existing lighting references still differ in 40/46 views, identically with
+   full-domain propagation. Diagnose or review those references separately;
+   matching the control does not certify all inherited geometry artifacts.
    Proposed correctness probe: two lights can seed the same cell with independent
    plain color/ID stores in `c_seed_light_volume`. Reproduce and define deterministic
    ownership before treating coincident emitters as a reference workload; this

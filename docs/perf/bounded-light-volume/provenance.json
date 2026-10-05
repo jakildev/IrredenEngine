@@ -1,0 +1,15 @@
+{
+  "base_head_before_latest_master": "1cc3b8982fbcad2f23520776d1355f78ec2762eb",
+  "integration_head": "1e8cc8029e659f5db8a3747d7a644d9d54d57625",
+  "master_at_integration": "b8a499aba",
+  "control": "original full-domain host system with propagation origin addition removed from both shader twins; 48-byte ABI retained equally",
+  "candidate": "committed production code in this evidence tree",
+  "order": [
+    "bounded-first",
+    "full-domain",
+    "bounded-return"
+  ],
+  "unrelated_integration": "bounded-first predates fog warm-allocation documentation/comment-only merge b8a499aba; remaining batches include it",
+  "resource_guard": "Each six-run batch invoked under ir-acquire benchmark; report quiet=unknown because the outer guard owns the lock",
+  "capture_pairs": 51
+}

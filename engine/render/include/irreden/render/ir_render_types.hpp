@@ -1425,8 +1425,10 @@ struct LightVolumeParams {
     /// keeps lights in-range. Stored as `ivec4` for std140 alignment;
     /// `.xyz` is the volume origin and `.w` is the has-SPOT flag.
     ivec4 worldOriginVoxel_ = ivec4(0);
+    /// Texel origin of the workgroup-aligned propagation box; w is padding.
+    ivec4 propagationOrigin_ = ivec4(0);
 };
-static_assert(sizeof(LightVolumeParams) == 32, "LightVolumeParams must match std140 layout");
+static_assert(sizeof(LightVolumeParams) == 48, "LightVolumeParams must match std140 layout");
 
 /// Camera-anchored light-occlusion SSBO header. Written to the first 16 bytes
 /// of `LightOcclusionGridBuffer` each
