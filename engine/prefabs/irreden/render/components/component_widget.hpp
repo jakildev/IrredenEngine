@@ -71,7 +71,7 @@ struct C_Widget {
 struct C_WidgetState {
     bool hovered_ = false;    // mouse currently inside hitbox
     bool pressed_ = false;    // left button held since press-on-hover
-    bool focused_ = false;    // keyboard focus; set by WIDGET_INPUT (Tab/click)
+    bool focused_ = false;    // keyboard focus; text inputs are pointer-focus-only
     bool fireAction_ = false; // true for one frame on click-released-over-widget
     float dragValue_ = 0.0f;  // slider's normalized drag value while pressed
 };
@@ -203,7 +203,7 @@ struct C_WidgetRadio {
 
 // TEXT_INPUT — single-line editable text. WIDGET_APPLY_TEXT_INPUT
 // edits the buffer only when the widget owns keyboard focus (set by
-// the generic WIDGET_INPUT click-to-focus / Tab-cycle paths). Cursor
+// the generic WIDGET_INPUT pointer-focus path). Cursor
 // is a logical character index 0..text.size(); blink phase is driven
 // by a shared frame counter held on WIDGET_APPLY_TEXT_INPUT itself.
 // `maxLength_ = 0` disables the length cap.

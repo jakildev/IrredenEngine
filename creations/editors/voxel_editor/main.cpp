@@ -2976,6 +2976,47 @@ bool evaluateRotationModeCheck(const void *context, std::string &actual) {
     return mode == check.expected_ && canvasSizeMatches;
 }
 
+bool evaluateEditorInputCheck(const void *context, std::string &actual) {
+    const EditorInputCheck &check = *static_cast<const EditorInputCheck *>(context);
+    int focusedTextInputs = 0;
+    int tabCandidates = 0;
+    IREntity::forEachComponent<C_HitBox2DGui>([&](IREntity::EntityId &id, C_HitBox2DGui &) {
+        const auto &widget = IREntity::getComponent<C_Widget>(id);
+        const auto &state = IREntity::getComponent<C_WidgetState>(id);
+        if (widget.kind_ == WidgetKind::TEXT_INPUT && state.focused_) {
+            ++focusedTextInputs;
+        }
+        if (IRPrefab::Widget::isTabFocusCandidate(widget)) {
+            ++tabCandidates;
+        }
+    });
+
+    const int selectedPart = g_entityScene.selectedIndex();
+    if (check.kind_ == EditorInputCheckKind::SELECTED_PART_NO_TEXT_FOCUS ||
+        check.kind_ == EditorInputCheckKind::TEXT_FOCUS_RELEASED) {
+        actual = "selectedPart=" + std::to_string(selectedPart) +
+                 " want=" + std::to_string(check.expectedPart_) +
+                 " focusedTextInputs=" + std::to_string(focusedTextInputs);
+        return selectedPart == check.expectedPart_ && focusedTextInputs == 0;
+    }
+    if (check.kind_ == EditorInputCheckKind::TEXT_CAPTURED_X) {
+        const std::string &text = IRPrefab::Widget::textInputValue(g_jointRenameInput);
+        actual = "text=\"" + text + "\" symmetryX=" + (g_symmetry.enableX_ ? "on" : "off") +
+                 " focusedTextInputs=" + std::to_string(focusedTextInputs);
+        return text.find('x') != std::string::npos && !g_symmetry.enableX_ &&
+               focusedTextInputs == 1;
+    }
+    if (check.kind_ == EditorInputCheckKind::X_SYMMETRY_ENABLED) {
+        actual = "symmetryX=" + std::string(g_symmetry.enableX_ ? "on" : "off") +
+                 " selectedPart=" + std::to_string(selectedPart);
+        return g_symmetry.enableX_ && selectedPart == check.expectedPart_;
+    }
+
+    actual = "walkPresses=" + std::to_string(kTabWalkPresses) +
+             " tabCandidates=" + std::to_string(tabCandidates);
+    return kTabWalkPresses > tabCandidates;
+}
+
 // Reads one SliderCheck against the live ANIM panel widget it names — the
 // positive fire for dragGuiSlider: a drag that missed the track never
 // presses the widget, so its value stays put and this fails instead of
@@ -3390,7 +3431,8 @@ int main(int argc, char **argv) {
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
         "face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | tier_scrub | "
         "radial_array | nway_symmetry | mode_preview | mode_preview_shots | module_loaded | "
-        "component_attach | component_field_page | component_field_key",
+        "component_attach | component_field_page | component_field_key | "
+        "text_input_command_capture",
         {"none",
          "drag_probe",
          "place_below",
@@ -3409,7 +3451,8 @@ int main(int argc, char **argv) {
          "module_loaded",
          "component_attach",
          "component_field_page",
-         "component_field_key"},
+         "component_field_key",
+         "text_input_command_capture"},
         "none"
     );
     IREngine::args().string(
@@ -6093,42 +6136,55 @@ void initEntities() {
     // selects that joint as the active bone (for B-chaining). The rename
     // row writes C_JointName; the reparent row rewrites the CHILD_OF
     // relation and updates parentIdx_ + bindPose_.
-    constexpr ivec2 kSkeletonPanelPos{378, 342};
-    constexpr ivec2 kSkeletonPanelSize{120, 114};
-    IRVoxelEditor::g_skeletonPanel =
-        IRPrefab::Widget::makePanel(kSkeletonPanelPos, kSkeletonPanelSize, "SKELETON");
+    IRVoxelEditor::g_skeletonPanel = IRPrefab::Widget::makePanel(
+        IRVoxelEditor::Session::kSkeletonPanelPos,
+        IRVoxelEditor::Session::kSkeletonPanelSize,
+        "SKELETON"
+    );
     IREntity::setComponent(
         IRVoxelEditor::g_skeletonPanel,
-        IRComponents::C_HitBox2DGui{kSkeletonPanelSize}
+        IRComponents::C_HitBox2DGui{IRVoxelEditor::Session::kSkeletonPanelSize}
     );
     IREntity::getComponent<IRComponents::C_Widget>(IRVoxelEditor::g_skeletonPanel).zOrder_ = -1;
 
     IRVoxelEditor::g_skeletonList = IRPrefab::Widget::makeList(
-        ivec2(kSkeletonPanelPos.x + 4, kSkeletonPanelPos.y + 18),
+        ivec2(
+            IRVoxelEditor::Session::kSkeletonPanelPos.x + 4,
+            IRVoxelEditor::Session::kSkeletonPanelPos.y + 18
+        ),
         ivec2(112, 52),
         {},
         -1,
         13
     );
     IRVoxelEditor::g_jointRenameInput = IRPrefab::Widget::makeTextInput(
-        ivec2(kSkeletonPanelPos.x + 4, kSkeletonPanelPos.y + 74),
-        ivec2(82, 14),
+        IRVoxelEditor::Session::kJointRenameInputPos,
+        IRVoxelEditor::Session::kJointRenameInputSize,
         "",
         24
     );
     IRVoxelEditor::g_jointRenameBtn = IRPrefab::Widget::makeButton(
-        ivec2(kSkeletonPanelPos.x + 90, kSkeletonPanelPos.y + 74),
+        ivec2(
+            IRVoxelEditor::Session::kSkeletonPanelPos.x + 90,
+            IRVoxelEditor::Session::kSkeletonPanelPos.y + 74
+        ),
         ivec2(26, 14),
         "REN"
     );
     IRVoxelEditor::g_jointReparentInput = IRPrefab::Widget::makeTextInput(
-        ivec2(kSkeletonPanelPos.x + 4, kSkeletonPanelPos.y + 92),
+        ivec2(
+            IRVoxelEditor::Session::kSkeletonPanelPos.x + 4,
+            IRVoxelEditor::Session::kSkeletonPanelPos.y + 92
+        ),
         ivec2(82, 14),
         "-1",
         4
     );
     IRVoxelEditor::g_jointReparentBtn = IRPrefab::Widget::makeButton(
-        ivec2(kSkeletonPanelPos.x + 90, kSkeletonPanelPos.y + 92),
+        ivec2(
+            IRVoxelEditor::Session::kSkeletonPanelPos.x + 90,
+            IRVoxelEditor::Session::kSkeletonPanelPos.y + 92
+        ),
         ivec2(26, 14),
         "PAR"
     );

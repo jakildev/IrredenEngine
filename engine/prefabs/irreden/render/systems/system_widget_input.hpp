@@ -6,6 +6,7 @@
 #include <irreden/ir_input.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_command.hpp>
 
 #include <irreden/render/components/component_widget.hpp>
 #include <irreden/render/components/component_gui_position.hpp>
@@ -13,6 +14,7 @@
 #include <irreden/input/components/component_hitbox_2d_gui.hpp>
 #include <irreden/render/layout.hpp>
 #include <irreden/render/widget_hotkeys.hpp>
+#include <irreden/render/widgets.hpp>
 
 #include <algorithm>
 #include <climits>
@@ -37,8 +39,9 @@ namespace IRSystem {
 // the hitbox. Capture is released when the mouse button is released.
 //
 // **Keyboard focus**: a single `focusedWidgetId_` is tracked.
-// Tab (forward) / Shift+Tab (backward) cycles through all non-disabled
-// interactive widgets. Clicking a widget also sets focus.
+// Tab (forward) / Shift+Tab (backward) cycles through non-disabled,
+// non-text interactive widgets. Text inputs gain focus by pointer click and
+// release it on Tab without transferring focus on that press.
 //
 // **Hotkey dispatch**: each `beginTick` fires registered callbacks from
 // `IRPrefab::Widget::getHotkeyRegistry()` for any matching PRESSED key
@@ -64,10 +67,22 @@ template <> struct System<WIDGET_INPUT> {
     IREntity::EntityId topHoveredId_ = IREntity::kNullEntity;
     IREntity::EntityId capturedWidgetId_ = IREntity::kNullEntity;
     IREntity::EntityId focusedWidgetId_ = IREntity::kNullEntity;
+    bool textInputFocusedAtStart_ = false;
 
     std::vector<IREntity::EntityId> focusableWidgets_;
 
+    bool hasFocusedTextInput() const {
+        if (focusedWidgetId_ == IREntity::kNullEntity ||
+            !IREntity::entityExists(focusedWidgetId_)) {
+            return false;
+        }
+        auto widget = IREntity::getComponentOptional<IRComponents::C_Widget>(focusedWidgetId_);
+        return widget.has_value() && !(*widget)->disabled_ &&
+               (*widget)->kind_ == IRComponents::WidgetKind::TEXT_INPUT;
+    }
+
     void beginTick() {
+        textInputFocusedAtStart_ = hasFocusedTextInput();
         mouseGuiTrixel_ = IRPrefab::Layout::mousePositionInGuiTrixels();
 
         mouseLeftPressedThisFrame_ = IRInput::checkKeyMouseButton(
@@ -135,27 +150,34 @@ template <> struct System<WIDGET_INPUT> {
             IRInput::ButtonStatuses::PRESSED
         );
         if (tabPressed) {
-            const bool shiftHeld = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift);
-            focusableWidgets_.clear();
-            IREntity::forEachComponent<IRComponents::C_HitBox2DGui>(
-                [this](IREntity::EntityId &id, IRComponents::C_HitBox2DGui &) {
-                    const auto &widget = IREntity::getComponent<IRComponents::C_Widget>(id);
-                    if (!widget.disabled_) {
-                        focusableWidgets_.push_back(id);
+            if (textInputFocusedAtStart_) {
+                focusedWidgetId_ = IREntity::kNullEntity;
+            } else {
+                const bool shiftHeld = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift);
+                focusableWidgets_.clear();
+                IREntity::forEachComponent<IRComponents::C_HitBox2DGui>(
+                    [this](IREntity::EntityId &id, IRComponents::C_HitBox2DGui &) {
+                        const auto &widget = IREntity::getComponent<IRComponents::C_Widget>(id);
+                        if (IRPrefab::Widget::isTabFocusCandidate(widget)) {
+                            focusableWidgets_.push_back(id);
+                        }
                     }
-                }
-            );
-            if (!focusableWidgets_.empty()) {
-                const int n = static_cast<int>(focusableWidgets_.size());
-                const int step = shiftHeld ? -1 : 1;
-                auto it =
-                    std::find(focusableWidgets_.begin(), focusableWidgets_.end(), focusedWidgetId_);
-                if (it == focusableWidgets_.end()) {
-                    focusedWidgetId_ = focusableWidgets_[0];
-                } else {
-                    const int idx =
-                        (static_cast<int>(it - focusableWidgets_.begin()) + step + n) % n;
-                    focusedWidgetId_ = focusableWidgets_[static_cast<size_t>(idx)];
+                );
+                if (!focusableWidgets_.empty()) {
+                    const int n = static_cast<int>(focusableWidgets_.size());
+                    const int step = shiftHeld ? -1 : 1;
+                    auto it = std::find(
+                        focusableWidgets_.begin(),
+                        focusableWidgets_.end(),
+                        focusedWidgetId_
+                    );
+                    if (it == focusableWidgets_.end()) {
+                        focusedWidgetId_ = focusableWidgets_[0];
+                    } else {
+                        const int idx =
+                            (static_cast<int>(it - focusableWidgets_.begin()) + step + n) % n;
+                        focusedWidgetId_ = focusableWidgets_[static_cast<size_t>(idx)];
+                    }
                 }
             }
         }
@@ -227,6 +249,9 @@ template <> struct System<WIDGET_INPUT> {
     // IRPrefab::Widget::hoveredWidget(); used by the headless GUI-test
     // harness to assert hover without re-scanning hitboxes.
     void endTick() {
+        IRCommand::getCommandManager().setKeyboardCaptured(
+            textInputFocusedAtStart_ || hasFocusedTextInput()
+        );
         IREntity::forEachComponent<IRComponents::C_GuiHoverState>(
             [this](IREntity::EntityId &, IRComponents::C_GuiHoverState &hoverState) {
                 hoverState.hoveredWidget_ = topHoveredId_;

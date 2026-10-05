@@ -43,6 +43,10 @@ constexpr std::uint8_t kGroupEdgePressed = 1 << 0;
 constexpr std::uint8_t kGroupEdgeReleased = 1 << 1;
 constexpr std::uint8_t kGroupEdgeBoth = kGroupEdgePressed | kGroupEdgeReleased;
 
+bool isKeyboardButton(int button) {
+    return button < static_cast<int>(IRInput::kMouseButtonNull);
+}
+
 } // namespace
 
 CommandManager::CommandManager() {
@@ -135,6 +139,9 @@ void CommandManager::executeUserKeyboardCommands(const KeyMouseInputProbe &input
 
     m_modifierSpecificButtons.clear();
     for (auto &command : m_userCommands) {
+        if (m_keyboardCaptured && isKeyboardButton(command.getButton())) {
+            continue;
+        }
         if (command.getRequiredModifiers() == kModifierNone) {
             continue;
         }
@@ -157,6 +164,9 @@ void CommandManager::executeUserKeyboardCommands(const KeyMouseInputProbe &input
             continue;
         }
         const int button = groupButton(group.key_);
+        if (m_keyboardCaptured && isKeyboardButton(button)) {
+            continue;
+        }
         if (!input.checkButton_(static_cast<IRInput::KeyMouseButtons>(button), PRESSED)) {
             continue;
         }
@@ -183,6 +193,17 @@ void CommandManager::executeUserKeyboardCommands(const KeyMouseInputProbe &input
         const bool isPaired =
             groupIndex != kNoBareGroup &&
             m_bareGroups[static_cast<std::size_t>(groupIndex)].edges_ == kGroupEdgeBoth;
+        if (m_keyboardCaptured && isKeyboardButton(command.getButton())) {
+            const bool isAdmittedRelease =
+                isPaired && command.getTriggerStatus() == RELEASED &&
+                containsValue(
+                    m_admittedPairedGroups,
+                    m_bareGroups[static_cast<std::size_t>(groupIndex)].key_
+                );
+            if (!isAdmittedRelease) {
+                continue;
+            }
+        }
         if (isPaired) {
             // A pair's masks and shadowing were settled at the press; re-reading
             // them here is exactly what let a mid-hold modifier change fire one
