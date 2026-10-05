@@ -76,8 +76,7 @@ EOF
 
 ### 3. Label the umbrella
 
-`gh issue edit <N> --repo <repo> --add-label "<epic-label>"` — the
-queue-manager skips it and the epic-steward takes it over.
+`gh issue edit <N> --repo <repo> --add-label "<epic-label>" --add-label "fleet:needs-human"` — the queue-manager skips it and the epic-steward takes it over. The park records that the filed cohort still awaits human release.
 
 ### 4. Parse the children
 
@@ -231,12 +230,15 @@ comment
 ([`PLANNING-PROTOCOL.md § Re-planning a stale queued plan`](../PLANNING-PROTOCOL.md#re-planning-a-stale-queued-plan));
 `file-epic` does not re-file it.
 
+The human removes the umbrella's `fleet:needs-human` when the cohort is
+released. That removal is the steward's re-fire edge.
+
 ### 8. Report
 
-Umbrella URL + epic-label confirmation; child URLs; links to the
-umbrella's `## Plan` and `## Steward ledger` comments and each child's
-`## Plan`; the validate-stack result; and that the human still approves
-each child individually.
+Umbrella URL + epic-label and `fleet:needs-human` confirmation; child URLs;
+links to the umbrella's `## Plan` and `## Steward ledger` comments and each
+child's `## Plan`; the validate-stack result; and that the human still
+approves each child individually.
 
 ---
 
