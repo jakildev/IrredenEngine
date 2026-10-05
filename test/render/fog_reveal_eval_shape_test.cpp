@@ -235,6 +235,13 @@ TEST_F(FogSubjectExemptShapeTest, MarkerAndSetterRealizeTheShapeCarrier) {
     const IREntity::EntityId synchronous = createShape(IRMath::vec3(40.0f));
     IREntity::getComponent<C_ShapeDescriptor>(synchronous).flags_ &= ~IRRender::SHAPE_FLAG_VISIBLE;
 
+    IRPrefab::Fog::setSubjectClass(synchronous, IRPrefab::Fog::FogSubjectClass::BODY);
+    ASSERT_TRUE(IREntity::getComponentOptional<C_FogRevealed>(synchronous).has_value());
+    const auto &bodyShape = IREntity::getComponent<C_ShapeDescriptor>(synchronous);
+    EXPECT_NE(bodyShape.flags_ & IRRender::SHAPE_FLAG_FOG_BODY, 0u);
+    EXPECT_NE(bodyShape.flags_ & IRRender::SHAPE_FLAG_FOG_HIDDEN, 0u);
+    EXPECT_EQ(bodyShape.fogBodyFactor_, 0u);
+
     IRPrefab::Fog::setSubjectClass(synchronous, IRPrefab::Fog::FogSubjectClass::EXEMPT);
 
     const auto &synchronousShape = IREntity::getComponent<C_ShapeDescriptor>(synchronous);

@@ -403,8 +403,8 @@ constexpr IRVideo::AutoScreenshotShot kEdgeSdfBlockerShots[] = {
 // raster on its deterministic SOURCE path (a spinning solid round-to-cell
 // speckles); the cut-face code is rotation-agnostic, so the static pose
 // proves the mechanism deterministically.
-bool g_detachedEdge = false;        // --detached-edge
-bool g_detachedBody = false;        // --detached-body
+bool g_detachedEdge = false; // --detached-edge
+bool g_detachedBody = false; // --detached-body
 bool g_detachedBodyHidden = false;  // --detached-body-hidden
 bool g_detachedBodyNoSolid = false; // --detached-body-no-solid
 bool g_detachedExempt = false;      // --detached-exempt
@@ -598,7 +598,7 @@ constexpr IRVideo::AutoScreenshotShot kEdgeZCostCeilingShots[] = {
 // central pillar's texels (entity-id low word) and how many carry the debug
 // colour within kFogPaintProbeTolerance per channel. A pillar whose above-ceiling
 // voxels are painted rather than dropped reads a large painted fraction.
-bool g_fogDebugColor = false;   // --fog-debug-color
+bool g_fogDebugColor = false; // --fog-debug-color
 bool g_perAxisOverflow = false; // --peraxis-overflow
 constexpr Color kFogDebugUnexploredColor{255, 0, 255, 255};
 // Same framing as kEdgeZCostCeilingShots; own labels so both variants gate.

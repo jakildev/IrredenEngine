@@ -199,6 +199,18 @@ TEST_F(FogSubjectExemptCanvasTest, PolicyCoversLaterAllocationReuseAndSeed) {
     EXPECT_EQ(pool.fogCarrierPolicy(), C_VoxelPool::FogCarrierPolicy::BODY);
     EXPECT_EQ(pool.fogBodyFactor(), 255u);
     EXPECT_FALSE(IREntity::getComponentOptional<C_FogRevealed>(exempt).has_value());
+    const std::uint32_t exemptCarrier = IRComponents::VoxelReserved::kFogBody |
+                                        (255u << IRComponents::VoxelReserved::kFogBodyFactorShift);
+    const auto &originalRecords = pool.getColors();
+    ASSERT_GE(originalRecords.size(), 2u);
+    EXPECT_EQ(
+        originalRecords[0].reserved_ & IRComponents::VoxelReserved::kFogCarrierMask,
+        exemptCarrier
+    );
+    EXPECT_EQ(
+        originalRecords[1].reserved_ & IRComponents::VoxelReserved::kFogCarrierMask,
+        exemptCarrier
+    );
     const std::uint64_t realizedGeneration = pool.getContentGeneration();
 
     runFrame();
@@ -207,15 +219,13 @@ TEST_F(FogSubjectExemptCanvasTest, PolicyCoversLaterAllocationReuseAndSeed) {
     const auto fresh = pool.allocateVoxels(1);
     EXPECT_EQ(
         fresh.voxels_[0].reserved_ & IRComponents::VoxelReserved::kFogCarrierMask,
-        IRComponents::VoxelReserved::kFogBody |
-            (255u << IRComponents::VoxelReserved::kFogBodyFactorShift)
+        exemptCarrier
     );
     pool.deallocateVoxels(fresh.startIndex_, 1);
     const auto reused = pool.allocateVoxels(1);
     EXPECT_EQ(
         reused.voxels_[0].reserved_ & IRComponents::VoxelReserved::kFogCarrierMask,
-        IRComponents::VoxelReserved::kFogBody |
-            (255u << IRComponents::VoxelReserved::kFogBodyFactorShift)
+        exemptCarrier
     );
 
     const IREntity::EntityId attached = IREntity::createEntity(
@@ -230,8 +240,7 @@ TEST_F(FogSubjectExemptCanvasTest, PolicyCoversLaterAllocationReuseAndSeed) {
     ASSERT_EQ(set.numVoxels_, 1);
     EXPECT_EQ(
         set.voxels_[0].reserved_ & IRComponents::VoxelReserved::kFogCarrierMask,
-        IRComponents::VoxelReserved::kFogBody |
-            (255u << IRComponents::VoxelReserved::kFogBodyFactorShift)
+        exemptCarrier
     );
 
     IRPrefab::Fog::setSubjectClass(exempt, IRPrefab::Fog::FogSubjectClass::FIELD);
@@ -287,6 +296,19 @@ TEST_F(FogSubjectExemptCanvasTest, CombinedDetachedOwnerSetterClassifiesTheCanva
     EXPECT_TRUE(IREntity::getComponent<C_VoxelSetNew>(owner).visible_);
     EXPECT_FLOAT_EQ(IREntity::getComponent<C_EntityCanvas>(owner).fogRevealFactor_, 1.0f);
     EXPECT_EQ(pool.fogCarrierPolicy(), C_VoxelPool::FogCarrierPolicy::FIELD);
+    for (const IRComponents::C_Voxel &voxel : pool.getColors()) {
+        EXPECT_EQ(voxel.reserved_ & IRComponents::VoxelReserved::kFogCarrierMask, 0u);
+    }
+}
+
+TEST_F(FogSubjectExemptCanvasTest, SetterLeavesNonDetachedPoolsUnmanaged) {
+    const IREntity::EntityId owner = createCanvasOwner(false, false);
+    const auto &canvas = IREntity::getComponent<C_EntityCanvas>(owner);
+    auto &pool = IREntity::getComponent<C_VoxelPool>(canvas.canvasEntity_);
+
+    IRPrefab::Fog::setSubjectClass(owner, IRPrefab::Fog::FogSubjectClass::EXEMPT);
+
+    EXPECT_EQ(pool.fogCarrierPolicy(), C_VoxelPool::FogCarrierPolicy::UNMANAGED);
     for (const IRComponents::C_Voxel &voxel : pool.getColors()) {
         EXPECT_EQ(voxel.reserved_ & IRComponents::VoxelReserved::kFogCarrierMask, 0u);
     }

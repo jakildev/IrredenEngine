@@ -13,6 +13,7 @@
 
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
+#include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_fog_exempt.hpp>
 #include <irreden/render/components/component_fog_field.hpp>
@@ -852,7 +853,11 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
     }
     if (canvasOpt.has_value()) {
         IRComponents::C_EntityCanvas &entityCanvas = **canvasOpt;
-        if (!entityCanvas.screenLocked_) {
+        const bool detached = IREntity::getComponentOptional<IRComponents::C_DetachedCanvas>(
+                                  entityCanvas.canvasEntity_
+        )
+                                  .has_value();
+        if (!entityCanvas.screenLocked_ && detached) {
             entityCanvas.fogRevealFactor_ = subjectClass == FogSubjectClass::BODY ? 0.0f : 1.0f;
             entityCanvas.fogHidden_ = subjectClass == FogSubjectClass::BODY;
             stampCanvasBodyCarrier(
