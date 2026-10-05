@@ -719,10 +719,11 @@ def launch(argv, **kwargs):
 
 
 def _windows_job_active(job):
+    """The job's active process count, or None when the query fails."""
     info = _JobAccounting()
     if not _kernel32().QueryInformationJobObject(job, 1, ctypes.byref(info),
                                                  ctypes.sizeof(info), None):
-        return 0
+        return None
     return info.active
 
 
@@ -766,15 +767,16 @@ def _drain_tree(child, job, members, marks):
     child orphaned, however it detached (anchor_tree), and signals each
     process the first pass that finds it, so one started mid-drain is
     stopped too. Native Windows terminates the child's job object, which has
-    held the child since before it first ran.
+    held the child since before it first ran; a job whose count it cannot
+    read is not proven empty.
     """
     if IS_WINDOWS:
         _kernel32().TerminateJobObject(job, 1)
         deadline = time.monotonic() + CANCEL_GRACE
-        while (active := _windows_job_active(job)) and time.monotonic() < deadline:
+        while (active := _windows_job_active(job)) != 0 and time.monotonic() < deadline:
             time.sleep(POLL)
         child.wait()
-        return not active
+        return active == 0
     for sig in (signal.SIGTERM, signal.SIGKILL):
         _killpg(child.pid, sig)
         signalled, empty_scans = set(), 0

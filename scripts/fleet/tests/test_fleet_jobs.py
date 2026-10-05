@@ -398,6 +398,39 @@ class DrainFailsClosed(JobsCase):
         self.assertEqual(waited.returncode, 125, waited.stderr)
 
 
+class WindowsDrainFailsClosed(unittest.TestCase):
+    """The job-object drain counts a failed job query as live, not as empty."""
+
+    class Kernel32:
+        def __init__(self, active):
+            self.active, self.queries = active, 0
+
+        def TerminateJobObject(self, job, code):
+            return 1
+
+        def QueryInformationJobObject(self, job, info_class, info, size, returned):
+            self.queries += 1
+            if self.active is None:
+                return 0
+            info._obj.active = self.active
+            return 1
+
+    def test_drain_is_true_only_for_a_job_read_as_empty(self):
+        subject = load_subject()
+        for active, drained in ((0, True), (2, False), (None, False)):
+            with self.subTest(active=active):
+                kernel32 = self.Kernel32(active)
+                child = subprocess.Popen([sys.executable, "-c", "pass"])
+                with mock.patch.object(subject, "IS_WINDOWS", True), \
+                        mock.patch.object(subject, "_kernel32", lambda: kernel32), \
+                        mock.patch.object(subject, "CANCEL_GRACE", 0.5), \
+                        mock.patch.object(subject, "POLL", 0.05):
+                    self.assertIs(subject._drain_tree(child, object(), [], None), drained)
+                self.assertIsNotNone(child.returncode, "the drain left the child unreaped")
+                if not drained:
+                    self.assertGreater(kernel32.queries, 1, "the drain gave up before its grace")
+
+
 @unittest.skipUnless(os.name == "nt", "native-Windows job-object arm")
 class WindowsContainment(unittest.TestCase):
     def test_child_starts_nothing_outside_its_job(self):
