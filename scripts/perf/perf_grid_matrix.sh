@@ -28,6 +28,12 @@
 # Cell ID format (preset mode):    target=<exe>,preset=<filename-without-ext>
 # Cell ID format (threading mode): target=<exe>,grid=<g>,worker_threads=<n>
 #
+# Load brackets: when IR_PERF_CELL_REF_EXE names a reference-bench executable
+# (ir-perf-grid sets it to ir_ref_bench), every cell records one reading just
+# before and one just after its run as "load_ref_ms": {"before", "after"}.
+# A probe that fails or reads non-positive fails the matrix. Unset, cells
+# carry no bracket.
+#
 # Skills/agents: for before/after comparisons invoke once per tree and diff
 # with compare_perf_runs.py. For Lua-vs-C++ parity, use --target both and
 # feed the output dir to scripts/perf/lua_cpp_parity.py.
@@ -63,6 +69,7 @@ TIMEOUT=90
 MATRIX="default"
 PRESETS_DIR=""
 THREADING_BASELINE=false
+CELL_REF_EXE="${IR_PERF_CELL_REF_EXE:-}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -194,6 +201,30 @@ FAILED_CELLS=0
     echo "  \"cells\": ["
 } > "$MANIFEST"
 
+# One reference-bench reading in ms on stdout. The executable runs directly:
+# the caller already holds the benchmark lock, and a nested acquire would
+# wait on itself.
+cell_ref_ms() {
+    local json
+    json="$("$CELL_REF_EXE")" || return 1
+    printf '%s' "$json" | python3 -c '
+import json, math, sys
+ms = float(json.loads(sys.stdin.read())["ms"])
+if not (math.isfinite(ms) and ms > 0.0):
+    sys.exit(f"non-positive reading {ms!r}")
+print(repr(ms))
+' | tr -d '\r'
+}
+
+capture_cell_ref() {
+    local ms
+    if ! ms="$(cell_ref_ms)" || [[ -z "$ms" ]]; then
+        echo "perf_grid_matrix: cell reference probe '$CELL_REF_EXE' failed ($1 $CELL_ID); aborting" >&2
+        exit 1
+    fi
+    echo "$ms"
+}
+
 run_cell() {
     local RUN_TARGET="$1"
     local CELL_ID="$2"
@@ -208,9 +239,21 @@ run_cell() {
     local MARKER="$OUT_DIR/.cell_marker"
     touch "$MARKER"
 
+    local REF_BEFORE="" REF_AFTER=""
+    if [[ -n "$CELL_REF_EXE" ]]; then
+        REF_BEFORE="$(capture_cell_ref before)" || exit 1
+    fi
+
     local STATUS=0
     fleet-run --timeout "$TIMEOUT" "$RUN_TARGET" "${CELL_ARGS[@]}" \
         > "$CELL_LOG" 2>&1 || STATUS=$?
+
+    local BRACKET=""
+    if [[ -n "$CELL_REF_EXE" ]]; then
+        REF_AFTER="$(capture_cell_ref after)" || exit 1
+        BRACKET=", \"load_ref_ms\": {\"before\": $REF_BEFORE, \"after\": $REF_AFTER}"
+        echo "  load_ref_ms before=${REF_BEFORE} after=${REF_AFTER}"
+    fi
 
     local REPORT
     REPORT="$(find_latest_report "$MARKER")"
@@ -230,7 +273,7 @@ run_cell() {
         echo "," >> "$MANIFEST"
     fi
     cat >> "$MANIFEST" <<EOF
-    {"id": "$CELL_ID", "target": "$RUN_TARGET", $CELL_META, "exit_status": $STATUS, "status": "$CELL_STATUS", "report": "${CELL_ID}.txt"}
+    {"id": "$CELL_ID", "target": "$RUN_TARGET", $CELL_META, "exit_status": $STATUS, "status": "$CELL_STATUS", "report": "${CELL_ID}.txt"$BRACKET}
 EOF
 }
 

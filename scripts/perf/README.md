@@ -76,7 +76,11 @@ satellite fleet live and desktop apps open, four back-to-back runs of one
 master SHA spread 10–43% per cell (median 25%), which is wider than the
 10% gate. One run read load factor 1.01 at its start and still ran every
 cell 10–40% slow: `ref_ms` is sampled once, before the first cell, and does
-not see load that arrives mid-matrix. So: `fleet-down`, close GPU- and
+not see load that arrives mid-matrix. Each cell's manifest entry also carries
+`load_ref_ms` (`before` / `after` `ir_ref_bench` readings taken inside the
+hold), but `check_regression.py` does not grade on them: a single reading is
+too noisy on an interactive macOS host to separate load from the cell's own
+teardown. So: `fleet-down`, close GPU- and
 CPU-heavy desktop apps, and publish only a run that passes the self-check
 below.
 

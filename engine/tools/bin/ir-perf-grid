@@ -29,6 +29,8 @@
 #     "host_fingerprint": { ... full ir-host-probe json ... },
 #     "math_sha": "abc12345"
 #   }
+# and, inside the benchmark hold, each cell bracketed by ir_ref_bench
+# readings: "load_ref_ms": {"before": <ms>, "after": <ms>}.
 #
 # Source of truth: engine/tools/bin/ir-perf-grid in the engine repo.
 # Installed to ~/bin/ir-perf-grid (as a symlink) by scripts/fleet/install.sh.
@@ -61,7 +63,7 @@ CALIBRATION_DIR="$IR_CACHE_ROOT/calibration"
 mkdir -p "$CALIBRATION_DIR"
 
 usage() {
-    sed -n '2,30p' "$0"
+    sed -n '2,33p' "$0"
 }
 
 # ---------------------------------------------------------------------------
@@ -252,6 +254,7 @@ EOF
     local quiet_report="$stash/quiet.report"
     set +e
     IR_QUIET_MEASURE_ROOT="$$" IR_QUIET_REPORT_FILE="$quiet_report" \
+        IR_PERF_CELL_REF_EXE="$BUILD_DIR/ir_ref_bench" \
         "$IR_ACQUIRE" benchmark -- "$PERF_MATRIX" "$@" 2>&1 | tee "$log"
     local acquire_status=${PIPESTATUS[0]}
     set -e
