@@ -621,10 +621,10 @@ def _run_capture(*, worktree: Path, target: str, shots_dir: Path, warmup: int,
                  pass_label: str) -> tuple[int, str, str] | None:
     """Clear ``shots_dir`` and run one ``--auto-screenshot`` capture pass.
 
-    Returns ``None`` when ``fleet-run`` exits 0 (``--timeout`` makes a clean
-    kill exit 0), else ``(returncode, tail, verdict)``: ``verdict`` is
+    Returns ``None`` only for exit 0 with ``RESULT=CLEAN``, else
+    ``(returncode, tail, verdict)``: ``verdict`` is
     ``verify_common.HOST_CLOSED`` when ir-run proved Windows' hang handling
-    closed the demo, else ``"CRASH"`` (a real early-exit crash). Each pass
+    closed the demo, else ``"CRASH"`` (failed or unproven completion). Each pass
     owns the whole ``shots_dir``, so the caller must collect this pass's
     screenshots before starting the next one.
     """
@@ -644,16 +644,18 @@ def _run_capture(*, worktree: Path, target: str, shots_dir: Path, warmup: int,
     # the whole run.
     proc = subprocess.run(verify_common.platform_launch_argv(run_cmd), cwd=str(worktree),
                           capture_output=True, text=True, errors="replace")
-    if proc.returncode != 0:
-        output = proc.stdout + proc.stderr
+    output = proc.stdout + proc.stderr
+    result = verify_common.run_result(output)
+    if proc.returncode != 0 or result != "CLEAN":
         print(f"[render-verify] ({pass_label}) fleet-run exited "
-              f"{proc.returncode}; tail of output follows (screenshot count "
+              f"{proc.returncode}, RESULT={result or 'MISSING'}; "
+              f"tail of output follows (screenshot count "
               f"will be checked against manifest below):", file=sys.stderr)
         tail = output.splitlines()[-40:]
         for line in tail:
             print(f"    {line}", file=sys.stderr)
         verdict = (verify_common.HOST_CLOSED
-                   if verify_common.run_result(output) == verify_common.HOST_CLOSED
+                   if result == verify_common.HOST_CLOSED
                    else "CRASH")
         return (proc.returncode, "\n".join(tail), verdict)
     return None
@@ -799,13 +801,8 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
             return tally(1)
 
     # ── Default pass ──────────────────────────────────────────────────────
-    # `--auto-screenshot` fires `closeWindow()` after the last shot and exits
-    # 0; a non-zero return is a real early-exit crash (e.g. a Metal static-
-    # destruction segfault landing AFTER the screenshots save, which the per-
-    # shot comparator would otherwise silently "pass"). `--timeout` also exits
-    # 0 on a clean kill, so a crash is the only non-zero path; we let it block a
-    # PASS verdict even when every shot compares clean. A pass the host closed
-    # twice (RESULT=HOST-CLOSED) has no captures worth grading and no verdict.
+    # Complete screenshots do not prove normal shutdown: a watchdog kill or
+    # teardown crash must still block a passing verdict and reference updates.
     crashes: list[tuple[int, str]] = []
     main_outcome = _capture_pass(
         worktree=worktree, target=target, shots_dir=shots_dir,
@@ -817,6 +814,10 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
     captured = None if main_closed else _collect_shots(shots_dir, len(shot_labels))
 
     if args.update_references:
+        if main_outcome is not None and not main_closed:
+            print("[render-verify] --update-references: the default pass did not "
+                  "complete cleanly; references not updated.", file=sys.stderr)
+            return tally(1)
         if captured is None:
             print("[render-verify] --update-references: the default pass was "
                   "closed twice by Windows hang handling (RESULT=HOST-CLOSED); "
@@ -837,7 +838,7 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
                 closed = outcome[2] == verify_common.HOST_CLOSED
                 what = ("was closed twice by Windows hang handling "
                         "(RESULT=HOST-CLOSED)" if closed
-                        else f"crashed (exit {outcome[0]})")
+                        else f"did not complete cleanly (exit {outcome[0]})")
                 print(
                     f"[render-verify] --update-references: extra run "
                     f"'{extra['name']}' {what}; references not updated for "
@@ -977,7 +978,9 @@ def _verify_one(*, args: argparse.Namespace, worktree: Path, build_dir: Path,
             print(f"  - {row['label']}: {reason}  diff={diff}")
 
     for rc, _ in crashes:
-        print(f"[render-verify] demo crashed at shutdown (fleet-run exit={rc}); "
+        reason = (f"demo crashed at shutdown (fleet-run exit={rc})" if rc != 0
+                  else "demo did not report clean completion (fleet-run exit=0)")
+        print(f"[render-verify] {reason}; "
               f"failing the verify run even when shots match — see tail above.",
               file=sys.stderr)
     if host_closed:

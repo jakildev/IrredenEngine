@@ -59,7 +59,7 @@ FIXTURE = ["--mode", "voxel_set", "--no-overlay"]
 
 class _FakeProc:
     returncode = 0
-    stdout = ""
+    stdout = "ir-run: RESULT=CLEAN exe=IRPerfGrid exit=0\n"
     stderr = ""
 
 

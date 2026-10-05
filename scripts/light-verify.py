@@ -172,6 +172,8 @@ def _check_domain_matrix(shots: list[dict[str, Any]]) -> list[str]:
         if cat is None:
             continue
         anchor_by_category.setdefault(cat, set()).add(s["anchor"])
+        if not s["lights"]:
+            failures.append(f"{s['shot']}: DOMAIN-STATE parsed no light entries")
         if cat in ("inwin", "band"):
             for light in s["lights"]:
                 # Both skip outcomes are defects here: residual-exhausted
@@ -189,7 +191,10 @@ def _check_domain_matrix(shots: list[dict[str, Any]]) -> list[str]:
                         f"{s['shot']}: light {light['entity']} reports {light['state']} but "
                         f"pan category 'beyond' should be out of residual reach"
                     )
-    for cat, anchors in anchor_by_category.items():
+    for cat in ("inwin", "band", "beyond"):
+        anchors = anchor_by_category.get(cat, set())
+        if not anchors:
+            failures.append(f"domain matrix has no {cat!r} DOMAIN-STATE shots")
         if len(anchors) > 1:
             failures.append(
                 f"pan category {cat!r}: light anchor varies across zoom/yaw ({sorted(anchors)}) "
@@ -205,12 +210,13 @@ def _check_boundary_sweep(shots: list[dict[str, Any]]) -> list[str]:
         (s for s in shots if s["shot"].startswith("light_boundary_d")),
         key=lambda s: int(s["shot"].removeprefix("light_boundary_d")),
     )
-    if not ordered:
-        return failures
+    if len(ordered) < 2:
+        failures.append("boundary sweep requires at least two DOMAIN-STATE shots")
     prev_residual = None
     prev_label = None
     for s in ordered:
         if not s["lights"]:
+            failures.append(f"{s['shot']}: DOMAIN-STATE parsed no light entries")
             continue
         residual = s["lights"][0]["residual"]
         if prev_residual is not None and residual > prev_residual + 1e-6:
@@ -299,7 +305,7 @@ def main(argv: list[str] | None = None) -> int:
 
     all_assertion_failures: list[str] = []
     all_image_results: list[tuple[str, str, dict[str, Any]]] = []  # (pass, label, result)
-    any_run_crashed = False
+    any_run_failed = False
     any_baselines_missing = False
     matched_state_patterns: set[str] = set()
 
@@ -322,32 +328,44 @@ def main(argv: list[str] | None = None) -> int:
             run_cmd, worktree, shots_dir, timeout=args.timeout + 30
         )
         domain_states = _parse_domain_state(output)
-        run_crash = rc if rc != 0 else None
-        if run_crash is not None:
-            any_run_crashed = True
-            print(f"[light-verify] --{flag}: fleet-run exited {run_crash}", file=sys.stderr)
+        result = verify_common.run_result(output)
+        run_completed = rc == 0 and result == "CLEAN"
+        if not run_completed:
+            any_run_failed = True
+            print(f"[light-verify] --{flag}: fleet-run exited {rc}, "
+                  f"RESULT={result or 'MISSING'}; clean completion required", file=sys.stderr)
 
-        labels = [s["shot"] for s in domain_states] or [f"shot_{i:03d}" for i in range(len(images))]
+        pass_failures = []
+        if not images:
+            pass_failures.append(f"--{flag}: captured no screenshots")
+        labels = [s["shot"] for s in domain_states]
+        if flag == "hover-sweep" and not labels:
+            labels = [f"shot_{i:03d}" for i in range(len(images))]
         if len(images) != len(labels):
-            all_assertion_failures.append(
+            pass_failures.append(
                 f"--{flag}: captured {len(images)} screenshots but parsed {len(labels)} "
                 "DOMAIN-STATE lines — counts must match 1:1"
             )
 
         if flag == "light-domain-matrix":
-            all_assertion_failures.extend(_check_domain_matrix(domain_states))
+            pass_failures.extend(_check_domain_matrix(domain_states))
         elif flag == "light-boundary-sweep":
-            all_assertion_failures.extend(_check_boundary_sweep(domain_states))
+            pass_failures.extend(_check_boundary_sweep(domain_states))
         # hover-sweep has no DOMAIN-STATE-derived assertion of its own (see
         # module docstring) — image comparison below is its only correctness
         # gate. Assertion 5 runs on every pass: its patterns are shot labels,
         # not pass names.
-        all_assertion_failures.extend(
+        pass_failures.extend(
             _check_expected_states(args.target, domain_states, matched_state_patterns)
         )
+        all_assertion_failures.extend(pass_failures)
 
         baseline_dir = baseline_root / flag
         if args.update_baselines:
+            if not run_completed or pass_failures:
+                print(f"[light-verify] --{flag}: invalid capture pass; baselines not updated",
+                      file=sys.stderr)
+                continue
             if not args.force:
                 reply = input(
                     f"[light-verify] About to write {len(images)} baselines to "
@@ -421,7 +439,7 @@ def main(argv: list[str] | None = None) -> int:
 
     print()
     if all_assertion_failures:
-        print(f"[light-verify] {len(all_assertion_failures)} DOMAIN-STATE assertion failure(s):")
+        print(f"[light-verify] {len(all_assertion_failures)} capture/domain assertion failure(s):")
         for f in all_assertion_failures:
             print(f"  - {f}")
 
@@ -433,14 +451,15 @@ def main(argv: list[str] | None = None) -> int:
                 f"match={result.get('match_pct', 0):.3f}%"
             )
 
-    ok = not all_assertion_failures and not image_failures and not any_run_crashed
+    ok = not all_assertion_failures and not image_failures and not any_run_failed
     if ok:
         suffix = " (some backends skipped — no baselines)" if any_baselines_missing else ""
         print(f"[light-verify] all checks PASS{suffix}")
         return 0
 
-    if any_run_crashed:
-        print("[light-verify] at least one pass crashed — see run output above.", file=sys.stderr)
+    if any_run_failed:
+        print("[light-verify] at least one pass did not complete cleanly — see run output above.",
+              file=sys.stderr)
     return 1
 
 

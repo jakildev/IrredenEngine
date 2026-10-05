@@ -758,6 +758,7 @@ class HostClosedRetry(unittest.TestCase):
                        "event=Application-Hang/1002 at=2026-09-25T12:00:10Z\n")
     CRASH_OUT = "ir-run: RESULT=CRASH exe=IRFake exit=139 signal=SIGSEGV\n"
     CLEAN_OUT = "ir-run: RESULT=CLEAN exe=IRFake exit=0\n"
+    TIMEOUT_OUT = "ir-run: RESULT=ALIVE-TIMEOUT exe=IRFake exit=0\n"
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -823,6 +824,12 @@ class HostClosedRetry(unittest.TestCase):
         self.assertIn("re-running the pass once", err)
         self.assertNotIn("crashed at shutdown", err)
 
+    def test_host_closed_token_retries_even_with_zero_wrapper_exit(self):
+        self._manifest()
+        tally, _, _ = self._run([(0, self.HOST_CLOSED_OUT, MAGENTA),
+                                 (0, self.CLEAN_OUT, BLACK)])
+        self.assertEqual((tally["rc"], len(self.calls)), (0, 2))
+
     def test_host_closed_twice_is_no_verdict_not_a_crash(self):
         self._manifest()
         tally, out, err = self._run([(1, self.HOST_CLOSED_OUT, BLACK),
@@ -850,6 +857,35 @@ class HostClosedRetry(unittest.TestCase):
         self.assertEqual(len(self.calls), 1)
         self.assertIn("crashed at shutdown (fleet-run exit=127)", err)
 
+    def test_zero_exit_watchdog_fails_even_when_every_image_matches(self):
+        self._manifest()
+        tally, out, err = self._run([(0, self.TIMEOUT_OUT, BLACK)])
+        self.assertEqual(len(self.calls), 1)
+        self.assertEqual((tally["rc"], tally["checked"]), (1, 1))
+        self.assertNotIn("checks PASS", out)
+        self.assertIn("RESULT=ALIVE-TIMEOUT", err)
+
+    def test_zero_exit_without_completion_token_fails(self):
+        self._manifest()
+        tally, _, err = self._run([(0, "demo output only\n", BLACK)])
+        self.assertEqual(tally["rc"], 1)
+        self.assertIn("RESULT=MISSING", err)
+
+    def test_clean_token_does_not_override_nonzero_exit(self):
+        self._manifest()
+        tally, _, _ = self._run([(1, self.CLEAN_OUT, BLACK)])
+        self.assertEqual(tally["rc"], 1)
+
+    def test_empty_capture_fails_even_after_clean_completion(self):
+        self._manifest()
+        with self.assertRaisesRegex(SystemExit, "expected 1 screenshots.*got 0"):
+            self._run([(0, self.CLEAN_OUT, None)])
+
+    def test_watchdog_without_images_fails(self):
+        self._manifest()
+        with self.assertRaisesRegex(SystemExit, "expected 1 screenshots.*got 0"):
+            self._run([(0, self.TIMEOUT_OUT, None)])
+
     def _extra_manifest(self):
         _write(self.refs / "b.png", 16, 16, lambda x, y: BLACK)
         self._manifest(extra_runs=[{"name": "compare", "demo_args": ["--only", "compare"],
@@ -874,6 +910,13 @@ class HostClosedRetry(unittest.TestCase):
         self.assertEqual(len(self.calls), 3)
         self.assertEqual(tally["rc"], 0)
 
+    def test_extra_pass_watchdog_fails_with_complete_images(self):
+        self._extra_manifest()
+        tally, out, _ = self._run([(0, self.CLEAN_OUT, BLACK),
+                                  (0, self.TIMEOUT_OUT, BLACK)])
+        self.assertEqual((tally["rc"], tally["checked"]), (1, 2))
+        self.assertNotIn("checks PASS", out)
+
     def test_update_references_blesses_only_the_retry(self):
         self._manifest()
         tally, _, _ = self._run([(1, self.HOST_CLOSED_OUT, MAGENTA),
@@ -892,6 +935,14 @@ class HostClosedRetry(unittest.TestCase):
                                    (1, self.HOST_CLOSED_OUT, WHITE)], update_references=True)
         self.assertEqual(len(self.calls), 2)
         self.assertEqual((tally["rc"], tally["host_closed"]), (1, 1))
+        self.assertEqual((self.refs / "a.png").read_bytes(), before)
+        self.assertIn("references not updated", err)
+
+    def test_update_references_watchdog_writes_nothing(self):
+        self._manifest()
+        before = (self.refs / "a.png").read_bytes()
+        tally, _, err = self._run([(0, self.TIMEOUT_OUT, WHITE)], update_references=True)
+        self.assertEqual(tally["rc"], 1)
         self.assertEqual((self.refs / "a.png").read_bytes(), before)
         self.assertIn("references not updated", err)
 

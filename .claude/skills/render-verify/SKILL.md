@@ -75,8 +75,9 @@ Resolves the demo via its manifest, detects the backend, runs
 `fleet-build --target <T>`, clears `<exe_dir>/save_files/screenshots/`, runs
 `fleet-run <T> --auto-screenshot 10`, compares each shot with
 `scripts/render-compare.py`, prints a pass/fail table, and exits non-zero on
-any failure. A run ending in `ir-run: RESULT=CRASH` fails regardless of how
-many shots saved ([`docs/agents/FLEET.md`](../../../docs/agents/FLEET.md)
+any failure. A capture requires exit zero and `ir-run: RESULT=CLEAN`; a
+watchdog timeout, missing result or crash fails regardless of how many shots
+saved and cannot update references ([`docs/agents/FLEET.md`](../../../docs/agents/FLEET.md)
 §"Clean-exit policy"). A capture pass ending `RESULT=HOST-CLOSED` (Windows hang
 handling closed the demo) is discarded and re-run once automatically. A second
 one prints a `HOST-CLOSED` row and exits 1 with no verdict: neither a render

@@ -118,12 +118,12 @@ Next, in order:
    unattended launcher now selects an offscreen target with Metal display-rate
    pacing. Keep mode/pacing identical within A/B controls and distinguish render
    work from frame waiting; older timings retain their original launch policy.
-   Proposed capture-gate hardening: `render-verify.py::_run_capture` currently
-   accepts every zero launcher exit, including `RESULT=ALIVE-TIMEOUT`. Require
-   clean completion for self-terminating captures and retain the existing
-   host-closed retry behavior; prove a full screenshot set followed by watchdog
-   termination cannot pass. This is a code-observed harness gap, not a diagnosed
-   engine hang in the current captures.
+   Capture-gate hardening is implemented: render and lighting validation
+   require exit zero plus `RESULT=CLEAN`, even when captured images match.
+   Lighting also rejects empty captures and missing domain evidence; invalid
+   passes cannot update references. The existing host-closed retry is preserved.
+   All 215 CPU harness tests pass, including zero-exit watchdog controls, and
+   the strict harness passes all 30 native CanvasStress checks.
    Bounded light propagation is implemented with the full iteration radius,
    staged seed coordinates and cleared ping-pong exteriors. Native Metal tests
    compare all RGBA8 color/ID bytes after every iteration, including poisoned
