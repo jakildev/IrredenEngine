@@ -85,6 +85,28 @@ Full-frame Metal measurements use completed command-buffer timestamps independen
 of stage attachment slots; see [GPU frame accounting](../perf/gpu-frame-accounting.md).
 Envelope and summed buffer spans include stalls, and are not GPU busy time.
 
+### Synchronized attribution control
+
+`scripts/perf/timing_controls.py` compares normal counters against the existing
+`config.gpu_stage_timing_legacy` mode at fixed low-density, dense cardinal and
+dense rotated poses. Run it through `ir-acquire benchmark`; it alternates case
+order, retains both complete Lua presets, and checks unchanged runtime artifacts,
+power source and render environment through the shared profiling runner.
+
+The synchronized mode calls `finish()` before the measured interval, then measures
+CPU wall time around system encoding and a second `finish()`. It excludes the
+initial drain, includes encoding/submission/wait costs, disables GPU substage
+sampling, and changes scheduling throughout the frame. Its whole-frame and stage
+numbers are diagnostic controls, not performance improvements or exclusive GPU
+busy time. The script requires sampled whole-system light timing in both modes
+and sampled `voxelCompact` timing only in counter mode, rejecting a silently
+ineffective preset or unavailable counter path.
+
+A large counter span that shrinks in synchronized mode warrants a dependency and
+timestamp-boundary investigation. That comparison alone cannot distinguish
+resource stalls, overlapping execution or erroneous boundary attribution. Retain
+raw timestamps and producer boundaries before choosing a timer or scheduling fix.
+
 ### Reading rules
 
 1. A **0.000 row** may be unwired, have no completed valid GPU samples, or

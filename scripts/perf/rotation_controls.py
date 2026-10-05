@@ -92,7 +92,10 @@ def cases(suite: str, frames: int = 300) -> dict[str, list[str]]:
     return result
 
 
-def summarize(output: Path, selected: dict[str, list[str]]) -> None:
+def summarize(
+    output: Path, selected: dict[str, list[str]], *,
+    gpu_note: str = "Sampled GPU invocation means; rows are not full-frame totals.",
+) -> None:
     reports_by_case = {
         name: [parse_report(p, name) for p in sorted((output / name).glob("round-*/run-1.txt"))]
         for name in selected
@@ -150,7 +153,7 @@ def summarize(output: Path, selected: dict[str, list[str]]) -> None:
     write_gpu_summary(
         output / "gpu-summary.md",
         reports_by_case,
-        "Sampled GPU invocation means; rows are not full-frame totals.",
+        gpu_note,
     )
 
 
@@ -160,7 +163,7 @@ def write_gpu_summary(path: Path, reports_by_case: dict[str, list], note: str) -
     for name, reports in reports_by_case.items():
         for stage_name in sorted({stage.name for report in reports for stage in report.gpu_stages}):
             stages = [report.gpu_by_name(stage_name) for report in reports]
-            if all(stage is not None for stage in stages):
+            if all(stage is not None and stage.samples != 0 for stage in stages):
                 values = [stage.avg_ms for stage in stages]
                 lines.append(
                     f"| {name} | {stage_name} | {statistics.mean(values):.3f} "

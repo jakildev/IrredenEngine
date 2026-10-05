@@ -9,9 +9,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from compare_perf_runs import CellReport, FrameTiming, RunWitness
+from compare_perf_runs import CellReport, FrameTiming, GpuStage, RunWitness
 from repeat_profile import frame_yaw
-from rotation_controls import cases, summarize, verify_artifacts
+from rotation_controls import cases, summarize, verify_artifacts, write_gpu_summary
 
 
 class ZoomControlsTest(unittest.TestCase):
@@ -59,6 +59,25 @@ class ArtifactIdentityTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             with self.assertRaises(ValueError):
                 verify_artifacts(Path(temporary))
+
+
+class GpuSummaryTest(unittest.TestCase):
+    def test_unsampled_rows_do_not_claim_zero_cost(self):
+        reports = [CellReport("test", gpu_stages=[
+            GpuStage("sampledZero", 0, 0, samples=10),
+            GpuStage("unwired", 0, 0, samples=0),
+            GpuStage("partial", 1, 1, samples=count),
+            GpuStage("historical", 2, 2),
+        ]) for count in (10, 0)]
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "gpu-summary.md"
+            write_gpu_summary(path, {"test": reports}, "timing semantics")
+            text = path.read_text()
+            self.assertTrue(text.startswith("timing semantics"))
+            self.assertIn("| sampledZero | 0.000 |", text)
+            self.assertIn("| historical | 2.000 |", text)
+            self.assertNotIn("unwired", text)
+            self.assertNotIn("partial", text)
 
 
 class MotionControlsTest(unittest.TestCase):
