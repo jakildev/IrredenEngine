@@ -515,6 +515,8 @@ void EntityManager::destroyAllExceptPreserved(const std::vector<ComponentId> &pr
         }
     }
 
+    destroyMarkedEntities();
+
     // Prune stale name->id entries — destroyEntity does not touch
     // m_namedEntities, so a destroyed gameplay entity's name would otherwise
     // resolve (and assert) on a dead id at the next getEntityByName.

@@ -75,6 +75,7 @@
 #include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/components/component_entity_canvas_teardown_hook.hpp>
 #include <irreden/render/components/component_fog_exempt.hpp>
 #include <irreden/render/components/component_fog_field.hpp>
 #include <irreden/render/components/component_fog_reveal_settings.hpp>
@@ -187,6 +188,8 @@ IR_SAVE_OPT_OUT(IRComponents::C_VoxelPool)
 // EntityManager hook vector. A loaded world re-arms the hook from its own
 // canvas-pool attach sites, so a persisted id would name nothing.
 IR_SAVE_OPT_OUT(IRComponents::C_VoxelPoolTeardownHook)
+// C_EntityCanvasTeardownHook stores a process-local EntityManager hook id.
+IR_SAVE_OPT_OUT(IRComponents::C_EntityCanvasTeardownHook)
 IR_SAVE_OPT_OUT(IRComponents::C_SpatialIndex)
 IR_SAVE_OPT_OUT(IRComponents::C_RenderCache)
 IR_SAVE_OPT_OUT(IRComponents::C_ActiveLodLevel)
@@ -453,6 +456,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_Sprite,
     IRComponents::C_VoxelPool,
     IRComponents::C_VoxelPoolTeardownHook,
+    IRComponents::C_EntityCanvasTeardownHook,
     IRComponents::C_SpatialIndex,
     IRComponents::C_RenderCache,
     IRComponents::C_ActiveLodLevel,

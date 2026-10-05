@@ -84,7 +84,8 @@ entity and its peers remain queryable. They do not run during
 reads may already be gone. Keep each hook at most O(world), and put
 component-local cleanup in `onDestroy()` instead. In-tree hooks that sweep
 component state: `Modifier::removeBySource` (`C_Modifiers.source_`) and
-`VoxelPool::restageSetsOnCanvas` (`C_VoxelSetNew.canvasEntity_`).
+`VoxelPool::restageSetsOnCanvas` (`C_VoxelSetNew.canvasEntity_`), plus
+`EntityCanvas::ensureOwnerTeardownHook` for owned detached canvases.
 
 During a callback:
 
@@ -132,8 +133,9 @@ watermark. Normal ECS code does not use this surface.
 `IREntity::resetGameplay()` eagerly destroys gameplay entities while
 preserving singleton entities, `C_Persistent` entities, and component-type
 backing entities. Run it only at a frame boundary, then replace pipelines,
-then create the next scene. `destroyAllEntities()` is for world teardown and
-tests, not scene transitions.
+then create the next scene. It drains marks queued by pre-destroy hooks before
+returning. `destroyAllEntities()` is for world teardown and tests, not scene
+transitions.
 
 After reset:
 
