@@ -276,9 +276,9 @@ template <> struct System<SPRITE_TO_SCREEN> {
     }
 
     void bindPipeline() {
-        // Defensive rebind: other compute passes (e.g. RENDER_STATELESS_PARTICLES_TO_TRIXEL)
-        // rebind slot 0 and slot 25 to their own resources earlier in the frame. OpenGL has
-        // a single global binding state, so we must re-assert our own before drawing.
+        // Slots 27 and 25 are transient aliases whose earlier consumers finish before
+        // SPRITE_TO_SCREEN. OpenGL has global binding state, so both resources must be
+        // re-asserted immediately before drawing.
         frameDataBuf_->bindBase(
             IRRender::BufferTarget::UNIFORM,
             IRRender::kBufferIndex_SpritesFrameData
