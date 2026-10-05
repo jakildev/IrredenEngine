@@ -5,5 +5,26 @@
   "native_test_command": "fleet-run --timeout 180 IrredenEngineTest --gtest_filter=MetalGpuComputeDispatchTest.* --gtest_output=xml:/tmp/codex-metal-voxel-threadgroup-limits.xml",
   "visual_command": "python3 scripts/render-verify.py --target IRCanvasStress --no-build --timeout 180",
   "device": "Apple M4 Max",
-  "scope": "Compiled pipeline limits and unchanged visual output; no new timing measurement or cross-device qualification"
+  "scope": "Compiled pipeline limits and unchanged visual output; no new timing measurement or cross-device qualification",
+  "offscreen_master_integration": {
+    "source_commit": "485f0fe395419a72030bd46d40aca6aac703309e",
+    "master_commit": "21c38993ba6482a73d2733a455df82ab2feb23ef",
+    "canvas_stress_binary_sha256": "6b868e14b7af346b68097e4794334ee499493c155942b6bbba9a506cb1a28988",
+    "tests": {
+      "total": 289,
+      "failed": 0,
+      "skipped": 1,
+      "xml_sha256": "81ebc06a2b4a25d15c33676805e557ad63ee8916056cfebfda5bee8965ccf49e",
+      "filter": "*WindowMode*:IRArgs*:MetalGpuComputeDispatchTest.*:ViewportTest.*:LodTierLua.*:LuaCursorPosition.*:*Fog*:IREntityTest.*:EntityAccessorAllocation.*",
+      "launcher_result": "CLEAN"
+    },
+    "capture_window_policy": "fleet-run unattended capture default: offscreen; no IR_WINDOW_MODE/FLEET_WINDOW_MODE override",
+    "visual_result": {
+      "checks": 30,
+      "exact_rgb": 20,
+      "structural": 10,
+      "references_changed": false,
+      "log": "offscreen-integration-render-verify.log"
+    }
+  }
 }
