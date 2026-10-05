@@ -796,7 +796,9 @@ def _drain_tree(child, job, members, marks):
 
     True once nothing from the tree is left running, so terminal status
     published afterwards is final; False when something outlived SIGKILL's
-    grace. members are descendants sampled while the child was alive; on
+    grace. A direct child that outlived it (uninterruptible I/O, a failed job
+    termination) is left unreaped, since waiting on it could block the
+    terminal status forever. members are descendants sampled while the child was alive; on
     POSIX every pass also sweeps job_members, which reaches what an exited
     child orphaned, however it detached (anchor_tree), and signals each
     process the first pass that finds it, so one started mid-drain is
@@ -809,6 +811,10 @@ def _drain_tree(child, job, members, marks):
         deadline = time.monotonic() + CANCEL_GRACE
         while (active := _windows_job_active(job)) != 0 and time.monotonic() < deadline:
             time.sleep(POLL)
+        # An empty job holds no live process, so this wait ends at once; the
+        # child of a job not proven empty may never exit.
+        if active != 0 and not _exited_unreaped(child):
+            return False
         child.wait()
         return active == 0
     for sig in (signal.SIGTERM, signal.SIGKILL):
@@ -828,7 +834,8 @@ def _drain_tree(child, job, members, marks):
             elif (empty_scans := empty_scans + 1) == 2:
                 child.wait()
                 return True
-    child.wait()
+    if _exited_unreaped(child):
+        child.wait()
     return False
 
 
@@ -926,9 +933,11 @@ def supervise():
             drained = _drain_tree(child, job, [], marks)
             meta.update(status="succeeded" if child.returncode == 0 else "failed",
                         reason="exited")
-        exit_code = _exit_code(child.returncode)
-        if not drained:
-            # The child's result is not the job's while part of the job runs on.
+        if drained:
+            exit_code = _exit_code(child.returncode)
+        else:
+            # The child's result is not the job's while part of the job runs
+            # on, and a child that outlived SIGKILL has none.
             meta.update(status="failed",
                         reason=f"{meta['reason']}; a process of the job outlived SIGKILL")
             exit_code = 125

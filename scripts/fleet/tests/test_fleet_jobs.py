@@ -20,6 +20,7 @@ import signal
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -138,6 +139,29 @@ def wait_for(predicate, timeout=10.0):
             return value
         time.sleep(0.05)
     return predicate()
+
+
+def returns_within(timeout, call, release):
+    """(returned in time, call()'s result); release() unblocks a call still
+    running at timeout, so a regression fails instead of hanging the suite."""
+    outcome = []
+
+    def run():
+        try:
+            outcome.append((True, call()))
+        except BaseException as exc:  # re-raised on the test's thread
+            outcome.append((False, exc))
+
+    worker = threading.Thread(target=run, daemon=True)
+    worker.start()
+    worker.join(timeout)
+    in_time = not worker.is_alive()
+    release()
+    worker.join(30)
+    ok, value = outcome[0]
+    if not ok:
+        raise value
+    return in_time, value
 
 
 def gone(pid):
@@ -449,6 +473,56 @@ class DrainFailsClosed(JobsCase):
                     member.kill()
                     member.wait()
 
+    def test_drain_returns_boundedly_when_the_direct_child_outlives_sigkill(self):
+        subject = load_subject()
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"],
+                                 start_new_session=True)
+        try:
+            # A no-op killpg stands in for a child stuck in uninterruptible I/O.
+            with mock.patch.object(subject, "CANCEL_GRACE", 0.3), \
+                    mock.patch.object(subject, "_killpg", lambda pgid, sig: None), \
+                    mock.patch.object(subject, "job_members", lambda pgid, marks: []):
+                in_time, drained = returns_within(
+                    10, lambda: subject._drain_tree(child, None, [], None), child.kill)
+            self.assertTrue(in_time, "the drain blocked on a child that outlived SIGKILL")
+            self.assertIs(drained, False)
+        finally:
+            child.kill()
+            child.wait()
+
+    def test_job_whose_child_outlives_sigkill_records_failed_125(self):
+        subject = load_subject(self.subject)
+        job_dir = self.state / "jobs" / self.pane_a / "20260101T000000Z-build-abcdef"
+        job_dir.mkdir(parents=True)
+        (job_dir / "job.log").touch()
+        (job_dir / "meta.json").write_text(json.dumps(
+            {"id": job_dir.name, "pane": self.pane_a, "profile": "build", "name": "build",
+             "cwd": str(self.repo), "created_at": "2026-01-01T00:00:00Z",
+             "created_epoch": time.time(), "status": "starting", "exit_code": None}))
+        (job_dir / "cancel").touch()
+        flag = self.root / "release"
+        spec = {"id": job_dir.name, "cwd": str(self.repo),
+                "args": ["--", "hold", str(flag)]}
+        with mock.patch.dict(os.environ, self.env(self.pane_a), clear=True), \
+                mock.patch.object(subject.sys, "stdin", io.StringIO(json.dumps(spec))), \
+                mock.patch.object(subject.signal, "signal"), \
+                mock.patch.object(subject, "anchor_tree", lambda: None), \
+                mock.patch.object(subject, "CANCEL_GRACE", 0.3), \
+                mock.patch.object(subject, "_killpg", lambda pgid, sig: None), \
+                mock.patch.object(subject, "_signal_verified", lambda members, sig: None), \
+                mock.patch.object(subject, "job_members", lambda pgid, marks: []):
+            in_time, returned = returns_within(10, subject.supervise, flag.touch)
+        flag.touch()
+        child = json.loads((job_dir / "meta.json").read_text())["child"]["pid"]
+        with contextlib.suppress(ChildProcessError):
+            os.waitpid(child, 0)
+        self.assertTrue(in_time, "the supervisor blocked on a child that outlived SIGKILL")
+        self.assertEqual(returned, 0)
+        status = self.status(job_dir.name)
+        self.assertEqual((status["status"], status["exit_code"]), ("failed", 125))
+        self.assertIn("cancelled by fleet-jobs kill", status["reason"])
+        self.assertIn("outlived SIGKILL", status["reason"])
+
     def test_undrained_job_is_failed_whatever_the_child_returned(self):
         subject = load_subject(self.subject)
         job_dir = self.state / "jobs" / self.pane_a / "20260101T000000Z-build-fedcba"
@@ -510,6 +584,23 @@ class WindowsDrainFailsClosed(unittest.TestCase):
                 if not drained:
                     self.assertGreater(kernel32.queries, 1, "the drain gave up before its grace")
 
+
+    def test_drain_returns_boundedly_when_the_direct_child_outlives_termination(self):
+        subject = load_subject()
+        kernel32 = self.Kernel32(1)  # TerminateJobObject did not end the child
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
+        try:
+            with mock.patch.object(subject, "IS_WINDOWS", True), \
+                    mock.patch.object(subject, "_kernel32", lambda: kernel32), \
+                    mock.patch.object(subject, "CANCEL_GRACE", 0.3), \
+                    mock.patch.object(subject, "POLL", 0.05):
+                in_time, drained = returns_within(
+                    10, lambda: subject._drain_tree(child, object(), [], None), child.kill)
+            self.assertTrue(in_time, "the drain blocked on a child that outlived termination")
+            self.assertIs(drained, False)
+        finally:
+            child.kill()
+            child.wait()
 
 @unittest.skipUnless(os.name == "nt", "native-Windows job-object arm")
 class WindowsContainment(unittest.TestCase):
