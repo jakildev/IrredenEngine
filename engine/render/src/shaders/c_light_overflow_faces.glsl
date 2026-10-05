@@ -68,6 +68,7 @@ layout(std140, binding = 23) uniform LightVolumeParams {
     int   _lightCount;
     float _stepFalloff;
     ivec4 lightVolumeWorldOrigin;
+    ivec4 propagationOrigin;
 };
 
 layout(binding = 3) uniform sampler2D paletteLUT;

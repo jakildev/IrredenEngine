@@ -1,0 +1,51 @@
+--- a/engine/prefabs/irreden/render/systems/system_compute_light_volume.hpp
++++ b/engine/prefabs/irreden/render/systems/system_compute_light_volume.hpp
+@@ -9 +9 @@
+-//   1. `c_clear_light_volume` zeroes both ping-pong pairs.
++//   1. `c_clear_light_volume` zeroes the read texture.
+@@ -75 +74,0 @@
+-#include <irreden/render/light_volume_dispatch.hpp>
+@@ -537,0 +537,3 @@
++        constexpr int kPropagateGroupX = 8;
++        constexpr int kPropagateGroupY = 8;
++        constexpr int kPropagateGroupZ = 4;
+@@ -540 +541,0 @@
+-        IRRender::detail::LightVolumeDispatch propagationDispatch;
+@@ -606,6 +606,0 @@
+-            propagationDispatch = IRRender::detail::lightVolumePropagationDispatch(
+-                lightStaging_,
+-                volumeOrigin,
+-                propagateIterations_
+-            );
+-            params_.propagationOrigin_ = ivec4(propagationDispatch.origin_, 0);
+@@ -636,9 +630,0 @@
+-            // Partial propagation never writes the exterior. Both ping-pongs
+-            // must start at zero or a later swap exposes last frame's light.
+-            if (params_.lightCount_ > 0) {
+-                volume.getWriteTexture()
+-                    ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+-                volume.getIdWriteTexture()
+-                    ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+-                IRRender::device()->dispatchCompute(clearGroups, clearGroups, clearGroups);
+-            }
+@@ -692,0 +679,3 @@
++                const int gx = IRMath::divCeil(kVolumeSize, kPropagateGroupX);
++                const int gy = IRMath::divCeil(kVolumeSize, kPropagateGroupY);
++                const int gz = IRMath::divCeil(kVolumeSize, kPropagateGroupZ);
+@@ -705,3 +694,3 @@
+-                        static_cast<std::uint32_t>(propagationDispatch.groups_.x),
+-                        static_cast<std::uint32_t>(propagationDispatch.groups_.y),
+-                        static_cast<std::uint32_t>(propagationDispatch.groups_.z)
++                        static_cast<std::uint32_t>(gx),
++                        static_cast<std::uint32_t>(gy),
++                        static_cast<std::uint32_t>(gz)
+--- a/engine/render/src/shaders/c_propagate_light_volume.glsl
++++ b/engine/render/src/shaders/c_propagate_light_volume.glsl
+@@ -120 +120 @@
+-    const ivec3 cell = ivec3(gl_GlobalInvocationID.xyz) + propagationOrigin.xyz;
++    const ivec3 cell = ivec3(gl_GlobalInvocationID.xyz);
+--- a/engine/render/src/shaders/metal/c_propagate_light_volume.metal
++++ b/engine/render/src/shaders/metal/c_propagate_light_volume.metal
+@@ -110 +110 @@
+-    const int3 cell = int3(globalId) + params.propagationOrigin.xyz;
++    const int3 cell = int3(globalId);

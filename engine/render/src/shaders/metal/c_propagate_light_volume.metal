@@ -36,6 +36,7 @@ struct LightVolumeParams {
     float stepFalloff;
     // World voxel the volume is centered on this frame; `.w` = has-SPOT flag.
     int4 worldOriginVoxel;
+    int4 propagationOrigin;
 };
 
 // Camera-anchored light-occlusion SSBO layout — header
@@ -106,7 +107,7 @@ kernel void c_propagate_light_volume(
     constant LightVolumeParams &params [[buffer(23)]],
     uint3 globalId [[thread_position_in_grid]]
 ) {
-    const int3 cell = int3(globalId);
+    const int3 cell = int3(globalId) + params.propagationOrigin.xyz;
     if (cell.x >= params.gridSize ||
         cell.y >= params.gridSize ||
         cell.z >= params.gridSize) {

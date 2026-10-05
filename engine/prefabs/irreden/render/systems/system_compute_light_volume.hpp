@@ -6,7 +6,7 @@
 // to a small SSBO, then dispatches three compute passes against the
 // canvas's `C_CanvasLightVolume` ping-pong 3D textures:
 //
-//   1. `c_clear_light_volume` zeroes the read texture.
+//   1. `c_clear_light_volume` zeroes both ping-pong pairs.
 //   2. `c_seed_light_volume` writes one bright texel per light at its
 //      world voxel origin: rgb = emit_color × intensity, alpha = the
 //      CPU-computed seed residual (1.0 for in-window lights; lights whose
@@ -72,6 +72,7 @@
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 #include <irreden/render/ir_render_types.hpp>
+#include <irreden/render/light_volume_dispatch.hpp>
 
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/components/component_canvas_light_volume.hpp>
@@ -534,11 +535,9 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
         auto &phaseTiming = IRRender::computeLightVolumeTiming();
 
         constexpr int kClearGroupSize = 8;
-        constexpr int kPropagateGroupX = 8;
-        constexpr int kPropagateGroupY = 8;
-        constexpr int kPropagateGroupZ = 4;
         constexpr int kSeedGroupSize = 64;
         constexpr int kVolumeSize = kLightVolumeSize;
+        IRRender::detail::LightVolumeDispatch propagationDispatch;
 
         // Phase: gather + upload light SSBO.
         {
@@ -604,6 +603,12 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
             // anyway, so the value is moot in that path).
             propagateIterations_ = (maxRadius > 0) ? maxRadius : kLightVolumePropagateIterations;
             params_.stepFalloff_ = 1.0f / static_cast<float>(propagateIterations_);
+            propagationDispatch = IRRender::detail::lightVolumePropagationDispatch(
+                lightStaging_,
+                volumeOrigin,
+                propagateIterations_
+            );
+            params_.propagationOrigin_ = ivec4(propagationDispatch.origin_, 0);
             if (count > 0) {
                 lightSourceBuf_->subData(0, sizeof(GPULightSource) * count, lightStaging_.data());
             }
@@ -628,6 +633,15 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                 ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
             const int clearGroups = IRMath::divCeil(kVolumeSize, kClearGroupSize);
             IRRender::device()->dispatchCompute(clearGroups, clearGroups, clearGroups);
+            // Partial propagation never writes the exterior. Both ping-pongs
+            // must start at zero or a later swap exposes last frame's light.
+            if (params_.lightCount_ > 0) {
+                volume.getWriteTexture()
+                    ->bindAsImage(0, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                volume.getIdWriteTexture()
+                    ->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+                IRRender::device()->dispatchCompute(clearGroups, clearGroups, clearGroups);
+            }
             IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
         }
 
@@ -676,9 +690,6 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                         kBufferIndex_LightOcclusionGrid
                     );
                 }
-                const int gx = IRMath::divCeil(kVolumeSize, kPropagateGroupX);
-                const int gy = IRMath::divCeil(kVolumeSize, kPropagateGroupY);
-                const int gz = IRMath::divCeil(kVolumeSize, kPropagateGroupZ);
                 for (int iter = 0; iter < propagateIterations_; ++iter) {
                     volume.getReadTexture()
                         ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
@@ -691,9 +702,9 @@ template <> struct System<COMPUTE_LIGHT_VOLUME> {
                     volume.getIdWriteTexture()
                         ->bindAsImage(3, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
                     IRRender::device()->dispatchCompute(
-                        static_cast<std::uint32_t>(gx),
-                        static_cast<std::uint32_t>(gy),
-                        static_cast<std::uint32_t>(gz)
+                        static_cast<std::uint32_t>(propagationDispatch.groups_.x),
+                        static_cast<std::uint32_t>(propagationDispatch.groups_.y),
+                        static_cast<std::uint32_t>(propagationDispatch.groups_.z)
                     );
                     IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
                     volume.swap();

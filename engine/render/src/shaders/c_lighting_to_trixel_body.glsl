@@ -118,6 +118,7 @@ layout(std140, binding = 23) uniform LightVolumeParams {
     int _lightCount;
     float _stepFalloff;
     ivec4 lightVolumeWorldOrigin;
+    ivec4 propagationOrigin;
 };
 
 layout(std430, binding = 8) buffer SourceVoxelFaces {

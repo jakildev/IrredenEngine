@@ -15,6 +15,7 @@ layout(std140, binding = 7) uniform SurfaceLightVolumeParams {
     int lightCount;
     float stepFalloff;
     ivec4 lightVolumeWorldOrigin;
+    ivec4 propagationOrigin;
 };
 
 bool worldSurfaceNeedsSunShadow(float lambert) {
