@@ -79,6 +79,12 @@
       "warmup": 10,
       "shots": ["portrait_lod_swap_z1"],
       "capture_offset": 0
+    },
+    {
+      "name": "prefab_flower",
+      "demo_args": ["--load-prefab", "assets/prefabs/flower.prefab.lua"],
+      "shots": ["prefab_flower_z1", "prefab_flower_z4", "prefab_flower_z16"],
+      "capture_offset": 0
     }
   ],
   "structural": {
