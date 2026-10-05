@@ -92,19 +92,15 @@ formulas. The convention is world→view = R\_z(−yaw), so view→world = R\_z(
   (residualYaw ∈ [−π/4, π/4]). GPU mirror: `faceDeformationMatrix`.
 - `IRMath::cameraMoveRelativeToYaw(isoDelta, visualYaw)` — returns the
   `cameraIso` delta that produces an on-screen shift equal to `isoDelta`
-  in `CAMERA_CENTER` pivot mode (solves the 2×2 iso-projection system;
-  identity at yaw=0; degenerate-guard at yaw=±2π/3). **CAMERA_CENTER only**
-  — in `ORIGIN` mode use `isoDelta` directly.
-  Use in pan systems (gate on pivot mode — ORIGIN mode passes `0` so the call
-  collapses to the identity and doesn't regress on non-yaw paths):
+  under the screen-center default pivot (solves the 2×2 iso-projection system;
+  identity at yaw=0; degenerate-guard at yaw=±2π/3). **Default pivot only** —
+  an explicit pivot focus and `ORIGIN` mode move the effective camera 1:1, so
+  they need the identity. A pan system never picks the yaw itself; it passes
+  `IRRender::getCameraPanYaw()` (0 outside the default pivot):
   ```cpp
-  const float panYaw =
-      IRRender::getRotationPivotMode() == IRRender::RotationPivotMode::CAMERA_CENTER
-          ? IRPrefab::Camera::getYaw()
-          : 0.0f;
-  camPos.pos_ = dragStart + cameraMoveRelativeToYaw(isoDelta, panYaw);
+  camPos.pos_ = dragStart + cameraMoveRelativeToYaw(isoDelta, IRRender::getCameraPanYaw());
   ```
-  **Second precondition: the CAMERA_CENTER focus must track `cameraIso`.** The
+  **Why the default pivot qualifies: its focus tracks `cameraIso`.** The
   pre-compensation inverts `d effCam / d cameraIso`, which equals
   `P(R_z(−yaw)·Pinv(Δ))` only while the focus is re-derived from the live
   camera each frame — at any focus *depth*, since `isoPixelToPos3D`'s depth

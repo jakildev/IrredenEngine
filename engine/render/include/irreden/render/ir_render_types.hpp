@@ -767,6 +767,18 @@ enum class SubdivisionMode { NONE = 0, POSITION_ONLY = 1, FULL = 2 };
 ///   to @c ORIGIN. Engine default.
 enum class RotationPivotMode { ORIGIN = 0, CAMERA_CENTER = 1 };
 
+/// Yaw to hand `IRMath::cameraMoveRelativeToYaw` so a camera pan shifts
+/// on-screen content by exactly the requested iso delta under a given pivot.
+/// The helper inverts `d effectiveCameraIso / d cameraIso`, which departs from
+/// the identity only for the screen-center default pivot, whose focus is
+/// derived from the camera. An explicit focus is a fixed world point and
+/// @c ORIGIN has no focus: both move the effective camera 1:1 with
+/// `cameraIso`, so they take yaw 0 (the helper's identity).
+constexpr float
+cameraPanYawForPivot(RotationPivotMode mode, bool hasExplicitFocus, float visualYaw) {
+    return mode == RotationPivotMode::CAMERA_CENTER && !hasExplicitFocus ? visualYaw : 0.0f;
+}
+
 /// Sentinel `entityTransformIndex` marking a voxel as CPU-direct (static):
 /// the GPU voxel-position prepass skips it, leaving its binding-5 slot exactly
 /// as the CPU pending-range flush wrote it. Every voxel defaults to this, so a
