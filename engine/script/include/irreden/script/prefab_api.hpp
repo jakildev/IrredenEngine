@@ -6,13 +6,18 @@
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/math/sdf.hpp>
+#include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/common/rotation_mode.hpp>
 #include <irreden/render/lod_level.hpp>
 #include <irreden/update/components/component_prefab_parts.hpp>
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace IRScript {
 class LuaScript;
@@ -39,6 +44,39 @@ struct SpawnResult {
     std::string error_;
 };
 
+struct PrefabShapeDescription {
+    IRMath::SDF::ShapeType type_ = IRMath::SDF::ShapeType::BOX;
+    IRMath::vec4 params_ = IRMath::vec4(1.0f, 1.0f, 1.0f, 0.0f);
+    IRMath::Color color_ = IRMath::Color{255, 255, 255, 255};
+    std::uint32_t flags_ = IRMath::SDF::SHAPE_FLAG_VISIBLE;
+};
+
+struct PrefabPartDescription {
+    std::string id_;
+    std::string voxelRef_;
+    std::optional<PrefabShapeDescription> shape_;
+    IRComponents::C_LocalTransform transform_;
+    IRComponents::RotationMode rotationMode_ = IRComponents::RotationMode::GRID;
+    IRMath::ivec2 canvasSize_{0};
+    IRRender::LodLevel lodMin_ = IRRender::LodLevel::LOD_4;
+    IRRender::LodLevel lodMax_ = IRRender::LodLevel::LOD_0;
+    bool resident_ = false;
+};
+
+struct PrefabDescription {
+    int version_ = kPrefabSchemaVersion;
+    std::vector<PrefabPartDescription> parts_;
+};
+
+struct ManifestResult {
+    std::optional<PrefabDescription> description_;
+    std::string error_;
+
+    bool ok() const {
+        return description_.has_value();
+    }
+};
+
 // Re-registering an id overwrites the prior path; clearPrefabs() resets between tests.
 void registerPrefab(std::string id, std::string path);
 
@@ -47,6 +85,13 @@ std::optional<std::string> prefabPath(std::string_view id);
 
 // Test helper; not exposed to Lua.
 void clearPrefabs();
+
+// Read and write the declarative portion of a prefab manifest. The writer is
+// the format owner used by authoring tools; emitted voxel_ref paths retain the
+// caller's spelling and therefore follow the same cwd-relative rule as spawn.
+ManifestResult readManifest(IRScript::LuaScript &script, const std::string &path);
+std::optional<std::string>
+writeManifest(const std::string &path, const PrefabDescription &description);
 
 // Load the prefab file registered under id, validate its schema, and instantiate at position.
 // A v2 root spawns the parts whose band holds its resolved tier as CHILD_OF children.

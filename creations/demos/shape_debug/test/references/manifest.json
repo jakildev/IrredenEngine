@@ -85,6 +85,17 @@
       "demo_args": ["--load-prefab", "assets/prefabs/flower.prefab.lua"],
       "shots": ["prefab_flower_z1", "prefab_flower_z4", "prefab_flower_z16"],
       "capture_offset": 0
+    },
+    {
+      "name": "editor_parts_z4",
+      "demo_args": [
+        "--load-prefab",
+        "assets/prefabs/editor_parts/editor_parts.prefab.lua",
+        "--zoom",
+        "4"
+      ],
+      "shots": ["prefab_editor_parts_z4"],
+      "capture_offset": 0
     }
   ],
   "structural": {

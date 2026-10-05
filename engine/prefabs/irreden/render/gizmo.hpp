@@ -29,6 +29,9 @@
 #include <irreden/render/components/component_gizmo_handle.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 
+#include <span>
+#include <vector>
+
 namespace IRPrefab::Gizmo {
 
 namespace detail {
@@ -199,6 +202,27 @@ spawnTranslateArrows(IREntity::EntityId parent, const char *shaftName, const cha
 }
 
 } // namespace detail
+
+inline void destroyForAnchors(std::span<const IREntity::EntityId> anchors) {
+    std::vector<IREntity::EntityId> handles;
+    IREntity::forEachComponent<IRComponents::C_GizmoHandle>(
+        [&](IREntity::EntityId id, IRComponents::C_GizmoHandle &handle) {
+            for (IREntity::EntityId anchor : anchors) {
+                if (handle.anchorEntity_ == anchor) {
+                    handles.push_back(id);
+                    break;
+                }
+            }
+        }
+    );
+    for (IREntity::EntityId handle : handles) {
+        IREntity::destroyEntity(handle);
+    }
+}
+
+inline void destroyForAnchor(IREntity::EntityId anchor) {
+    destroyForAnchors(std::span<const IREntity::EntityId>{&anchor, 1});
+}
 
 /// Translate gizmo — three axis arrows (CYLINDER shaft + CONE head).
 /// Returns the group entity; the three arrow shafts + heads are children.

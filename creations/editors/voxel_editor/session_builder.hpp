@@ -292,6 +292,7 @@ enum class CheckSource { VOXEL_ALPHA, POOL_ACTIVE_MASK };
 
 struct OccupancyCheck {
     IRMath::ivec3 localCell_ = IRMath::ivec3(0);
+    int partIndex_ = -1;
     bool expectOccupied_ = false;
     CheckSource source_ = CheckSource::VOXEL_ALPHA;
     // Set only by expectVoxelColor: the RGB the cell's voxel must carry on top
@@ -299,6 +300,14 @@ struct OccupancyCheck {
     // occupancy channel (layer visibility drives it), which expectOccupied_
     // already covers.
     std::optional<IRMath::Color> expectColor_;
+    std::string name_;
+};
+
+struct PartTransformCheck {
+    int partIndex_ = 0;
+    IRMath::vec3 expected_ = IRMath::vec3(0.0f);
+    float tolerance_ = 0.001f;
+    bool expectEqual_ = true;
     std::string name_;
 };
 
@@ -361,6 +370,7 @@ struct Recipe {
     // Stable storage for the assertion predicates' context. std::deque, not
     // vector: assertions hold pointers into it and it grows as ops are added.
     std::deque<OccupancyCheck> checks_;
+    std::deque<PartTransformCheck> partTransformChecks_;
     // Same stable-storage contract as checks_, for expectSliderValue.
     std::deque<SliderCheck> sliderChecks_;
     // Same stable-storage contract as checks_, for expectPick.
@@ -405,6 +415,7 @@ inline void resolveShots(Recipe &recipe) {
 // single GUI-ASSERT emitter instead of hand-rolling the log line per check.
 // Defined in main.cpp, where the editable-set entity handle lives.
 bool evaluateOccupancyCheck(const void *context, std::string &actual);
+bool evaluatePartTransformCheck(const void *context, std::string &actual);
 
 // Reads one PickCheck through the editor's edit pick. Same PREDICATE channel
 // as evaluateOccupancyCheck. Defined in main.cpp, beside the pick itself.
@@ -431,7 +442,8 @@ bool evaluatePanelLabelCheck(const void *context, std::string &actual);
 class Builder {
   public:
     Builder(std::string name, IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin)
-        : m_model(sceneSize, sceneOrigin) {
+        : m_model(sceneSize, sceneOrigin)
+        , m_sceneOrigin(sceneOrigin) {
         m_recipe.name_ = std::move(name);
         m_model.seedGroundPlane();
         segment("start");
@@ -747,13 +759,79 @@ class Builder {
         chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonO);
     }
 
+    void addVoxelPart() {
+        chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonP);
+        if (m_partModels.empty()) {
+            OccupancyModel first(m_model.size(), m_sceneOrigin);
+            first.seedGroundPlane();
+            m_partModels.push_back(first);
+            m_activePart = 0;
+            m_model = std::move(first);
+            return;
+        }
+        m_partModels[static_cast<std::size_t>(m_activePart)] = m_model;
+        OccupancyModel next(m_model.size(), m_sceneOrigin);
+        next.seedGroundPlane();
+        m_partModels.push_back(next);
+        m_activePart = static_cast<int>(m_partModels.size()) - 1;
+        m_model = std::move(next);
+    }
+
+    void nextPart() {
+        if (m_partModels.empty()) {
+            recordError("nextPart needs an entity-scene part");
+            return;
+        }
+        m_partModels[static_cast<std::size_t>(m_activePart)] = m_model;
+        tapKey(IRInput::kKeyButtonTab);
+        m_activePart = (m_activePart + 1) % static_cast<int>(m_partModels.size());
+        m_model = m_partModels[static_cast<std::size_t>(m_activePart)];
+    }
+
+    void clearEntityScene() {
+        chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonBackspace);
+    }
+
+    void dragWorld(IRMath::vec3 from, IRMath::vec3 to) {
+        emitMove(from);
+        emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
+        emitMove(to);
+        m_frame += kFramesPerClickStep;
+        emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
+    }
+
     // Assert the live editable set's occupancy at `local` when this segment
     // settles — i.e. after every event in the segment has fired, not at this
     // call's position in the op sequence (see segment()).
     void expectOccupancy(IRMath::ivec3 local, bool expectOccupied, std::string name) {
+        addOccupancyExpectation(-1, local, expectOccupied, std::move(name));
+    }
+
+    void
+    expectPartOccupancy(int partIndex, IRMath::ivec3 local, bool expectOccupied, std::string name) {
+        addOccupancyExpectation(partIndex, local, expectOccupied, std::move(name));
+    }
+
+    void expectPartTransform(
+        int partIndex, IRMath::vec3 expected, float tolerance, bool expectEqual, std::string name
+    ) {
+        m_recipe.partTransformChecks_.push_back(
+            PartTransformCheck{partIndex, expected, tolerance, expectEqual, std::move(name)}
+        );
+        const PartTransformCheck &check = m_recipe.partTransformChecks_.back();
+        m_current.assertions_.push_back(
+            IRPrefab::GuiTest::predicate(&evaluatePartTransformCheck, &check, check.name_.c_str())
+        );
+    }
+
+  private:
+    void addOccupancyExpectation(
+        int partIndex, IRMath::ivec3 local, bool expectOccupied, std::string name
+    ) {
         m_recipe.checks_.push_back(
             OccupancyCheck{
                 local,
+                partIndex,
                 expectOccupied,
                 CheckSource::VOXEL_ALPHA,
                 std::nullopt,
@@ -766,6 +844,7 @@ class Builder {
         );
     }
 
+  public:
     // Assert the POOL's active-mask bit for the cell, rather than the voxel
     // record's alpha. The two are the same fact stored twice — CPU-side and
     // GPU-side — and they can only disagree when something wrote the raw
@@ -776,6 +855,7 @@ class Builder {
         m_recipe.checks_.push_back(
             OccupancyCheck{
                 local,
+                -1,
                 expectActive,
                 CheckSource::POOL_ACTIVE_MASK,
                 std::nullopt,
@@ -802,6 +882,7 @@ class Builder {
         m_recipe.checks_.push_back(
             OccupancyCheck{
                 local,
+                -1,
                 true,
                 CheckSource::VOXEL_ALPHA,
                 kPaletteColors[paletteIndex],
@@ -979,6 +1060,9 @@ class Builder {
     }
 
     OccupancyModel m_model;
+    IRMath::vec3 m_sceneOrigin;
+    std::vector<OccupancyModel> m_partModels;
+    int m_activePart = -1;
     // The animation's non-active frames, indexed as the editor indexes them
     // with the active frame removed — m_model IS frame m_activeFrame, mirroring
     // the editor's hot-slot/cold-storage split (animation.hpp). Empty until a

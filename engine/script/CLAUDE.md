@@ -193,10 +193,9 @@ Compose modifiers with `bit.bor`. A `createCommand` body appears in the F1 overl
 
 ## Prefab format (`Prefab.register`, `Prefab.spawn`)
 
-A prefab has a version, optional refs/rotation/canvas/components/setup, and v2 `parts`
-([schema](../../docs/design/lod-strategy.md), Phase 2). `spawn(id,pos)` returns a `LuaEntity`
-or `nil,err`. Detached rotations need `canvas_size`; components need
-`registerComponentFactoryFor`. `bindPoint` is spawn-time only; tests clear the global registry.
+A prefab has optional refs/rotation/canvas/components/setup and v2 `parts`
+([schema](../../docs/design/lod-strategy.md), Phase 2). Format contracts and native
+authoring entry points live in [`prefab_api.hpp`](include/irreden/script/prefab_api.hpp).
 
 ## Script output
 

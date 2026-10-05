@@ -18,6 +18,9 @@
 #include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
+#include "../../creations/editors/voxel_editor/entity_scene.hpp"
+
+#include <filesystem>
 #include <fstream>
 #include <string>
 
@@ -130,6 +133,8 @@ class PrefabApi : public testing::Test {
     IRScript::LuaScript m_lua;
     IREntity::EntityManager m_entity_manager;
 };
+
+class PrefabWriter : public PrefabApi {};
 
 // Build a rig fixture extended with two named bind points: "root" on joint 0
 // with offset (10, 0, 0), and "tip" on joint 1 with offset (0, 0, 1). The
@@ -1229,6 +1234,118 @@ TEST_F(PrefabApi, SetRotationModeRejectsEmptyVoxelSet) {
         entity,
         "IRPrefab.setRotationMode(mode_switch_entity, IRComponent.RotationMode.DETACHED)"
     );
+}
+
+TEST_F(PrefabWriter, RoundTripsThroughReader) {
+    const std::string voxelPath = "/tmp/prefab_writer_roundtrip_part.vxs";
+    IRAsset::DenseVoxelSet dense;
+    dense.boundsMin_ = IRMath::ivec3(0);
+    dense.boundsMax_ = IRMath::ivec3(1);
+    dense.voxels_.resize(1);
+    ASSERT_TRUE(IRAsset::saveDenseVoxelSet(voxelPath, dense).ok());
+
+    IRPrefab::Prefab::PrefabDescription written;
+    IRPrefab::Prefab::PrefabPartDescription voxel;
+    voxel.id_ = "body";
+    voxel.voxelRef_ = voxelPath;
+    voxel.transform_ = IRComponents::C_LocalTransform{
+        vec3(1.25f, -2.5f, 3.75f),
+        vec4(0.0f, 0.0f, 0.70710677f, 0.70710677f),
+        vec3(1.0f, 2.0f, 1.0f)
+    };
+    voxel.rotationMode_ = IRComponents::RotationMode::DETACHED;
+    voxel.canvasSize_ = IRMath::ivec2(32, 48);
+    voxel.lodMax_ = IRRender::LodLevel::LOD_1;
+    voxel.lodMin_ = IRRender::LodLevel::LOD_3;
+    voxel.resident_ = true;
+    written.parts_.push_back(voxel);
+
+    IRPrefab::Prefab::PrefabPartDescription shape;
+    shape.id_ = "marker";
+    shape.shape_ = IRPrefab::Prefab::PrefabShapeDescription{
+        IRMath::SDF::ShapeType::SPHERE,
+        vec4(2.0f, 0.0f, 0.0f, 0.0f),
+        IRMath::Color{10, 20, 30, 255},
+        IRMath::SDF::SHAPE_FLAG_VISIBLE
+    };
+    shape.transform_.translation_ = vec3(-4.0f, 5.0f, 6.0f);
+    shape.rotationMode_ = IRComponents::RotationMode::DETACHED_REVOXELIZE;
+    shape.canvasSize_ = IRMath::ivec2(64, 80);
+    written.parts_.push_back(shape);
+
+    const std::string path = "/tmp/prefab_writer_roundtrip.prefab.lua";
+    const std::optional<std::string> writeError = IRPrefab::Prefab::writeManifest(path, written);
+    ASSERT_FALSE(writeError.has_value()) << writeError.value_or("");
+
+    const IRPrefab::Prefab::ManifestResult read = IRPrefab::Prefab::readManifest(m_lua, path);
+    ASSERT_TRUE(read.ok()) << read.error_;
+    ASSERT_EQ(read.description_->parts_.size(), 2u);
+    const auto &readVoxel = read.description_->parts_[0];
+    EXPECT_EQ(readVoxel.id_, voxel.id_);
+    EXPECT_EQ(readVoxel.voxelRef_, voxel.voxelRef_);
+    EXPECT_EQ(readVoxel.transform_.translation_, voxel.transform_.translation_);
+    EXPECT_EQ(readVoxel.transform_.rotation_, voxel.transform_.rotation_);
+    EXPECT_EQ(readVoxel.transform_.scale_, voxel.transform_.scale_);
+    EXPECT_EQ(readVoxel.rotationMode_, voxel.rotationMode_);
+    EXPECT_EQ(readVoxel.canvasSize_, voxel.canvasSize_);
+    EXPECT_EQ(readVoxel.lodMax_, voxel.lodMax_);
+    EXPECT_EQ(readVoxel.lodMin_, voxel.lodMin_);
+    EXPECT_EQ(readVoxel.resident_, voxel.resident_);
+    const auto &readShape = read.description_->parts_[1];
+    ASSERT_TRUE(readShape.shape_.has_value());
+    EXPECT_EQ(readShape.id_, shape.id_);
+    EXPECT_EQ(readShape.shape_->type_, shape.shape_->type_);
+    EXPECT_EQ(readShape.shape_->params_, shape.shape_->params_);
+    EXPECT_EQ(readShape.shape_->color_.red_, shape.shape_->color_.red_);
+    EXPECT_EQ(readShape.shape_->color_.green_, shape.shape_->color_.green_);
+    EXPECT_EQ(readShape.shape_->color_.blue_, shape.shape_->color_.blue_);
+    EXPECT_EQ(readShape.shape_->color_.alpha_, shape.shape_->color_.alpha_);
+    EXPECT_EQ(readShape.transform_.translation_, shape.transform_.translation_);
+    EXPECT_EQ(readShape.rotationMode_, shape.rotationMode_);
+    EXPECT_EQ(readShape.canvasSize_, shape.canvasSize_);
+}
+
+TEST_F(PrefabWriter, FailedEntitySceneLoadPreservesLiveScene) {
+    IRVoxelEditor::EntityScene scene;
+    const IRPrefab::Prefab::PrefabShapeDescription liveShape{
+        IRMath::SDF::ShapeType::BOX,
+        vec4(2.0f, 3.0f, 4.0f, 0.0f),
+        IRMath::Color{100, 120, 140, 255},
+        IRMath::SDF::SHAPE_FLAG_VISIBLE
+    };
+    scene.addShapePart(liveShape, IRComponents::C_LocalTransform{vec3(1.0f, 2.0f, 3.0f)});
+    const IREntity::EntityId originalRoot = scene.root();
+    const IREntity::EntityId originalPart = scene.parts().front().entity_;
+
+    IRPrefab::Prefab::PrefabDescription invalid;
+    IRPrefab::Prefab::PrefabPartDescription missing;
+    missing.id_ = "missing";
+    missing.voxelRef_ = "/tmp/prefab_writer_missing_part.vxs";
+    std::filesystem::remove(missing.voxelRef_);
+    invalid.parts_.push_back(missing);
+    const std::string path = "/tmp/prefab_writer_failed_load.prefab.lua";
+    ASSERT_FALSE(IRPrefab::Prefab::writeManifest(path, invalid).has_value());
+
+    const IRVoxelEditor::EntitySceneResult result =
+        scene.load(m_lua, "/tmp", "prefab_writer_failed_load");
+    EXPECT_FALSE(result.ok_);
+    EXPECT_EQ(scene.root(), originalRoot);
+    ASSERT_EQ(scene.parts().size(), 1u);
+    EXPECT_EQ(scene.parts().front().entity_, originalPart);
+    EXPECT_TRUE(IREntity::entityExists(originalRoot));
+    EXPECT_TRUE(IREntity::entityExists(originalPart));
+}
+
+TEST_F(PrefabWriter, V1ReadStillLoads) {
+    PrefabFiles fixture = writeFixtureSet(
+        "writer_v1_compat",
+        "return { prefab_version = 1, voxel_ref = '/tmp/prefab_test_writer_v1_compat.vxs' }\n"
+    );
+    IRPrefab::Prefab::registerPrefab("writer_v1_compat", fixture.prefab_path_);
+
+    const IRPrefab::Prefab::SpawnResult loaded =
+        IRPrefab::Prefab::spawnPrefab(m_lua, "writer_v1_compat", vec3(0.0f));
+    EXPECT_NE(loaded.entity_, IREntity::kNullEntity) << loaded.error_;
 }
 
 } // namespace

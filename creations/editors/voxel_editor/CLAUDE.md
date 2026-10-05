@@ -10,7 +10,8 @@ Design log, findings and the authoring-session history:
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --gui-session <name>` — one
   scripted session: `face_pick` and `drag_probe` prove the picking contract
   against the full reference scene, `place_below` the Alt modifier,
-  `module_loaded` (with `--module test/module`) the creation-module seam.
+  `module_loaded` (with `--module test/module`) the creation-module seam, and
+  `parts_roundtrip` authors, moves, saves, clears, and reloads a two-part entity.
 - `python3 scripts/author-entity.py <entity>` — replays an entity session twice
   and byte-compares the saved `.vxs` (rock, mushroom, bird at the default
   scene; `ant --scene-size 20 20 20`; `tree --scene-size 16 16 26`). A clean
@@ -44,6 +45,12 @@ set. An aim-based assertion alone cannot catch a pick that is offset from the
 render, because the aim and the pick share one screen mapping.
 
 ## Authoring sessions
+
+- Ctrl+P enters entity-scene mode and adds a voxel part; Ctrl+Shift+P adds the
+  BAKE panel's selected SDF primitive. Tab/Shift+Tab select parts. Ctrl+S and
+  Ctrl+O write/read the v2 prefab manifest plus one `.vxs` per voxel part.
+- `EntityScene` owns one root and its ordered part records. Only the selected
+  voxel part receives paint; other voxel parts carry `C_EditorReference`.
 
 - A recipe names cells; `Session::Builder` (`session_builder.hpp`) aims each
   click and mirrors the editable set in `OccupancyModel`, which casts the same

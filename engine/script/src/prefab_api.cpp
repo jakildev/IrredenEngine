@@ -31,10 +31,14 @@
 #include <cstdint>
 #include <exception>
 #include <filesystem>
+#include <fstream>
+#include <iomanip>
 #include <memory>
+#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -42,18 +46,11 @@
 
 namespace IRPrefab::Prefab {
 
-struct PartShape {
-    IRMath::SDF::ShapeType type_ = IRMath::SDF::ShapeType::BOX;
-    IRMath::vec4 params_ = IRMath::vec4(1.0f, 1.0f, 1.0f, 0.0f);
-    IRMath::Color color_ = IRMath::Color{255, 255, 255, 255};
-    std::uint32_t flags_ = IRMath::SDF::SHAPE_FLAG_VISIBLE;
-};
-
 struct PartSpec {
     std::string id_;
     // At most one of voxelRef_ / shape_; a part with neither is a bare node.
     std::string voxelRef_;
-    std::optional<PartShape> shape_;
+    std::optional<PrefabShapeDescription> shape_;
     IRComponents::C_LocalTransform transform_;
     IRComponents::RotationMode rotationMode_ = IRComponents::RotationMode::GRID;
     IRMath::ivec2 canvasSize_{0};
@@ -203,7 +200,8 @@ parseLodTier(const sol::table &lod, const char *key, IRRender::LodLevel &tier) {
     return std::nullopt;
 }
 
-std::optional<std::string> parsePartShape(const sol::table &shapeTable, PartShape &shape) {
+std::optional<std::string>
+parsePartShape(const sol::table &shapeTable, PrefabShapeDescription &shape) {
     sol::object typeObj = shapeTable["type"];
     if (!typeObj.is<lua_Integer>() || typeObj.get_type() == sol::type::string) {
         return std::string{"shape.type must be an IRShape value"};
@@ -252,7 +250,7 @@ std::optional<std::string> parsePart(const sol::table &partTable, PartSpec &part
         if (shapeObj.get_type() != sol::type::table) {
             return std::string{"shape must be a table"};
         }
-        PartShape shape;
+        PrefabShapeDescription shape;
         if (auto error = parsePartShape(shapeObj.as<sol::table>(), shape)) {
             return error;
         }
@@ -440,6 +438,51 @@ IRRender::LodLevel resolveSpawnTier(IREntity::EntityId root) {
     );
 }
 
+std::string luaString(std::string_view value) {
+    std::string escaped;
+    escaped.reserve(value.size() + 2);
+    escaped.push_back('"');
+    for (char c : value) {
+        switch (c) {
+        case '\\':
+            escaped += "\\\\";
+            break;
+        case '"':
+            escaped += "\\\"";
+            break;
+        case '\n':
+            escaped += "\\n";
+            break;
+        case '\r':
+            escaped += "\\r";
+            break;
+        case '\t':
+            escaped += "\\t";
+            break;
+        default:
+            escaped.push_back(c);
+            break;
+        }
+    }
+    escaped.push_back('"');
+    return escaped;
+}
+
+void writeVec3(std::ostream &out, IRMath::vec3 value) {
+    out << "{ x = " << value.x << ", y = " << value.y << ", z = " << value.z << " }";
+}
+
+void writeVec4(std::ostream &out, IRMath::vec4 value) {
+    out << "{ x = " << value.x << ", y = " << value.y << ", z = " << value.z << ", w = " << value.w
+        << " }";
+}
+
+void writeColor(std::ostream &out, IRMath::Color value) {
+    out << "{ r = " << static_cast<int>(value.red_) << ", g = " << static_cast<int>(value.green_)
+        << ", b = " << static_cast<int>(value.blue_) << ", a = " << static_cast<int>(value.alpha_)
+        << " }";
+}
+
 /// Builds manifest part `index` onto `part`, an entity with no components yet,
 /// and parents it to `root`. A resident part's content takes the part's band
 /// and a tier pin at `tier`, the root's settled tier.
@@ -549,6 +592,144 @@ std::optional<std::string> prefabPath(std::string_view id) {
 void clearPrefabs() {
     registry().clear();
     partVoxelCache().clear();
+}
+
+ManifestResult readManifest(IRScript::LuaScript &script, const std::string &path) {
+    ManifestResult result;
+    sol::object root;
+    try {
+        sol::protected_function_result eval =
+            script.lua().safe_script_file(path, sol::script_pass_on_error);
+        if (!eval.valid()) {
+            const sol::error error = eval;
+            result.error_ = "file evaluation failed: " + std::string{error.what()};
+            return result;
+        }
+        root = eval;
+    } catch (const std::exception &error) {
+        result.error_ = "file evaluation threw: " + std::string{error.what()};
+        return result;
+    }
+    if (root.get_type() != sol::type::table) {
+        result.error_ = "prefab file did not return a table";
+        return result;
+    }
+    const sol::table prefab = root.as<sol::table>();
+    const sol::optional<int> version = prefab["prefab_version"];
+    if (!version || *version != kPrefabSchemaVersion) {
+        result.error_ =
+            "editor manifests require prefab_version = " + std::to_string(kPrefabSchemaVersion);
+        return result;
+    }
+    if (sol::object rootLod = prefab["lod"];
+        rootLod.valid() && rootLod.get_type() != sol::type::lua_nil) {
+        result.error_ = "root-level lod is not supported; give each part its own lod band";
+        return result;
+    }
+
+    std::shared_ptr<PartsManifest> manifest;
+    if (auto error = parseParts(prefab, path, manifest)) {
+        result.error_ = *error;
+        return result;
+    }
+    PrefabDescription description;
+    if (manifest) {
+        description.parts_.reserve(manifest->parts_.size());
+        for (const PartSpec &spec : manifest->parts_) {
+            PrefabPartDescription part;
+            part.id_ = spec.id_;
+            part.voxelRef_ = spec.voxelRef_;
+            part.shape_ = spec.shape_;
+            part.transform_ = spec.transform_;
+            part.rotationMode_ = spec.rotationMode_;
+            part.canvasSize_ = spec.canvasSize_;
+            part.lodMin_ = spec.lodMin_;
+            part.lodMax_ = spec.lodMax_;
+            part.resident_ = spec.resident_;
+            description.parts_.push_back(std::move(part));
+        }
+    }
+    result.description_ = std::move(description);
+    return result;
+}
+
+std::optional<std::string>
+writeManifest(const std::string &path, const PrefabDescription &description) {
+    if (description.version_ != kPrefabSchemaVersion) {
+        return "writer only supports prefab_version = " + std::to_string(kPrefabSchemaVersion);
+    }
+    std::unordered_set<std::string> ids;
+    for (const PrefabPartDescription &part : description.parts_) {
+        if (part.id_.empty()) {
+            return std::string{"part id must not be empty"};
+        }
+        if (!ids.insert(part.id_).second) {
+            return "duplicate part id '" + part.id_ + "'";
+        }
+        if (!part.voxelRef_.empty() && part.shape_) {
+            return "part '" + part.id_ + "' takes voxel_ref or shape, not both";
+        }
+        if (part.voxelRef_.empty() && !part.shape_) {
+            return "part '" + part.id_ + "' needs voxel_ref or shape";
+        }
+        if (part.lodMax_ > part.lodMin_) {
+            return "part '" + part.id_ + "' has an inverted lod band";
+        }
+        if (IRPrefab::RotationMode::ownsEntityCanvas(part.rotationMode_) &&
+            (part.canvasSize_.x <= 0 || part.canvasSize_.y <= 0)) {
+            return "part '" + part.id_ + "' needs a positive canvas_size";
+        }
+    }
+
+    const std::filesystem::path outputPath(path);
+    if (const std::filesystem::path parent = outputPath.parent_path(); !parent.empty()) {
+        std::error_code error;
+        std::filesystem::create_directories(parent, error);
+        if (error) {
+            return "could not create directory '" + parent.string() + "': " + error.message();
+        }
+    }
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    if (!out) {
+        return "could not open '" + path + "' for writing";
+    }
+    out << std::setprecision(std::numeric_limits<float>::max_digits10);
+    out << "return {\n  prefab_version = " << description.version_ << ",\n  parts = {\n";
+    for (const PrefabPartDescription &part : description.parts_) {
+        out << "    {\n      id = " << luaString(part.id_) << ",\n";
+        if (!part.voxelRef_.empty()) {
+            out << "      voxel_ref = " << luaString(part.voxelRef_) << ",\n";
+        } else if (part.shape_) {
+            out << "      shape = { type = " << static_cast<int>(part.shape_->type_)
+                << ", params = ";
+            writeVec4(out, part.shape_->params_);
+            out << ", color = ";
+            writeColor(out, part.shape_->color_);
+            out << ", flags = " << part.shape_->flags_ << " },\n";
+        }
+        out << "      transform = { translation = ";
+        writeVec3(out, part.transform_.translation_);
+        out << ", rotation = ";
+        writeVec4(out, part.transform_.rotation_);
+        out << ", scale = ";
+        writeVec3(out, part.transform_.scale_);
+        out << " },\n      rotation_mode = " << static_cast<int>(part.rotationMode_) << ",\n";
+        if (IRPrefab::RotationMode::ownsEntityCanvas(part.rotationMode_)) {
+            out << "      canvas_size = { x = " << part.canvasSize_.x
+                << ", y = " << part.canvasSize_.y << " },\n";
+        }
+        out << "      lod = { fine = " << static_cast<int>(part.lodMax_)
+            << ", coarse = " << static_cast<int>(part.lodMin_) << " },\n";
+        if (part.resident_) {
+            out << "      resident = true,\n";
+        }
+        out << "    },\n";
+    }
+    out << "  },\n}\n";
+    if (!out) {
+        return "failed while writing '" + path + "'";
+    }
+    return std::nullopt;
 }
 
 SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath::vec3 position) {
