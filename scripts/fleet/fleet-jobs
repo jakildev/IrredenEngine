@@ -30,7 +30,8 @@ job with a process that outlived the supervisor's SIGKILL fails with 125. The
 last stderr line always names the job's state.
 
 State: ${FLEET_STATE_DIR:-~/.fleet/state}/jobs/<pane>/<job-id>/{meta.json,job.log}.
-The pane is the basename of the cwd's .claude/worktrees/<name> checkout; a set
+The pane is the basename of the cwd's .claude/worktrees/<name> checkout, which
+must be a linked worktree registered with the engine or game repository; a set
 FLEET_ASSIGNED_WORKTREE that names a different pane is refused. Contract:
 docs/agents/FLEET-RUNTIME.md § "Long-running jobs".
 """
@@ -88,14 +89,43 @@ def script_repo():
     return Path(os.path.realpath(__file__)).parents[2]
 
 
-def checkout_root(cwd):
+def git_lines(cwd, *args):
     try:
-        out = subprocess.run(["git", "-C", str(cwd), "rev-parse", "--show-toplevel"],
+        out = subprocess.run(["git", "-C", str(cwd), *args],
                              capture_output=True, text=True, timeout=15)
     except (OSError, subprocess.SubprocessError):
-        return None
-    top = out.stdout.strip()
-    return Path(top) if out.returncode == 0 and top else None
+        return []
+    return out.stdout.splitlines() if out.returncode == 0 else []
+
+
+def checkout_root(cwd):
+    top = git_lines(cwd, "rev-parse", "--show-toplevel")
+    return Path(top[0]) if top and top[0] else None
+
+
+def same_path(a, b):
+    return os.path.normcase(os.path.realpath(a)) == os.path.normcase(os.path.realpath(b))
+
+
+def registered_worktree(top):
+    """True when top is <repo>/.claude/worktrees/<name>, a linked worktree
+    <repo>'s own worktree list names, and <repo> is the engine repository
+    this script belongs to or its creations/game repository. A lookalike
+    path holding a standalone repository, a .git file borrowed from another
+    worktree, or a worktree of any other repository is not a pane."""
+    repo = Path(*top.parts[:-3])
+    common = git_lines(top, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    engine = git_lines(script_repo(), "rev-parse", "--path-format=absolute",
+                       "--git-common-dir")
+    if not common or not engine or not same_path(common[0], repo / ".git"):
+        return False
+    engine_repo = Path(engine[0]).parent
+    if not any(same_path(repo, fleet) for fleet in (engine_repo,
+                                                     engine_repo / "creations" / "game")):
+        return False
+    listed = git_lines(repo, "worktree", "list", "--porcelain")
+    return any(same_path(line[9:], top) for line in listed[1:]
+               if line.startswith("worktree "))
 
 
 def pane_name(cwd):
@@ -103,8 +133,11 @@ def pane_name(cwd):
     # only confirms it: an environment value alone never selects a pane.
     top = checkout_root(cwd)
     parts = top.parts if top else ()
-    if len(parts) < 3 or parts[-3:-1] != (".claude", "worktrees"):
+    if len(parts) < 4 or parts[-3:-1] != (".claude", "worktrees"):
         raise UsageError("no pane: the cwd is not a .claude/worktrees/<name> checkout")
+    if not registered_worktree(top):
+        raise UsageError(f"no pane: {top} is not a registered worktree of the engine "
+                         "or game repository")
     name = parts[-1]
     assigned = os.environ.get("FLEET_ASSIGNED_WORKTREE", "").rstrip("/\\")
     if assigned and re.split(r"[/\\]", assigned)[-1] != name:
@@ -826,10 +859,24 @@ def supervise():
     cwd = Path(spec["cwd"])
     job_dir = job_dir_for(spec["id"], cwd)
     meta = read_meta(job_dir)
-    if meta.get("status") != "starting":
-        raise UsageError(f"job {spec['id']} is not awaiting a supervisor")
     # Re-validate: the spec arrives on stdin, so this verb is no wider than start.
     argv, _ = resolve(meta["profile"], spec["args"], cwd)
+    # A supervisor takes the job only under the admission lock and inside the
+    # startup window. Past it, readers and the admission scan already count
+    # the record dead, so a late supervisor running it would overlap whatever
+    # was admitted in its place.
+    with admission_lock(job_dir.parent):
+        meta = read_meta(job_dir)
+        if meta.get("status") != "starting" or meta.get("supervisor"):
+            raise UsageError(f"job {spec['id']} is not awaiting a supervisor")
+        if time.time() - meta.get("created_epoch", 0) >= STARTUP_TIMEOUT:
+            meta.update(status="failed", exit_code=127, finished_at=now_iso(),
+                        reason=f"supervisor arrived after the {STARTUP_TIMEOUT:.0f}s "
+                               "startup window")
+            write_atomic(job_dir / "meta.json", meta)
+            return 127
+        meta["supervisor"] = {"pid": os.getpid(), "identity": identity(os.getpid())}
+        write_atomic(job_dir / "meta.json", meta)
     cancelled = []
     signal.signal(signal.SIGTERM, lambda *_: cancelled.append("supervisor signalled"))
     if not IS_WINDOWS:
@@ -856,7 +903,6 @@ def supervise():
             write_atomic(job_dir / "meta.json", meta)
             return 127
         meta.update(status="running", started_at=now_iso(),
-                    supervisor={"pid": os.getpid(), "identity": identity(os.getpid())},
                     child={"pid": child.pid, "identity": identity(child.pid)})
         write_atomic(job_dir / "meta.json", meta)
         cancel_marker = job_dir / "cancel"
@@ -895,6 +941,7 @@ def effective(meta):
         return status, meta.get("reason", "")
     sup = meta.get("supervisor")
     if not sup:
+        # Final once the window closes: supervise() refuses the record then.
         age = time.time() - meta.get("created_epoch", 0)
         if status == "starting" and age < STARTUP_TIMEOUT:
             return "starting", ""
@@ -1013,7 +1060,20 @@ def cmd_start(rest, cwd):
                 f"{job_dir / 'supervisor.log'}", 1)
         time.sleep(0.05)
     else:
-        die(f"supervisor for {job_id} did not report within {STARTUP_TIMEOUT:.0f}s", 1)
+        # Resolve the record before returning, so no supervisor can start the
+        # job after the caller was told it did not.
+        with admission_lock(root):
+            meta = read_meta(job_dir)
+            if meta.get("status") == "starting" and not meta.get("supervisor"):
+                meta.update(status="failed", exit_code=127, finished_at=now_iso(),
+                            reason=f"supervisor did not report within "
+                                   f"{STARTUP_TIMEOUT:.0f}s")
+                write_atomic(job_dir / "meta.json", meta)
+        if meta.get("status") == "starting":
+            # Its supervisor owns it and stays live, so it still blocks admission.
+            (job_dir / "cancel").touch()
+            die(f"{job_id} did not start within {STARTUP_TIMEOUT:.0f}s; cancelled "
+                f"(fleet-jobs wait {job_id})", 1)
     # Only a launched child gets started_at; a terminal record without it is
     # the supervisor refusing to run the job (anchor or launch failure).
     if "started_at" not in meta:

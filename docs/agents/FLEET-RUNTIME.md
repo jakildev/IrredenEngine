@@ -164,8 +164,9 @@ and the invocation that started it, and a later call reads the same job.
 Never background one in the calling shell (`&`, `nohup`): `ps` / `pgrep` /
 `kill` are denied in the sandbox, and the runtime kills orphans at exit.
 A start whose supervisor cannot detach (native Windows: the caller's job
-object forbids breakaway) or cannot contain the job's process tree exits 1
-and records the job `failed` without running it.
+object forbids breakaway), cannot contain the job's process tree, or does
+not take the job within 30 s exits 1 and records the job `failed` without
+running it.
 
 | Work | Start | Runs in |
 |---|---|---|
@@ -178,7 +179,8 @@ Then, from any later call in the same pane: `fleet-jobs wait --timeout 540
 running, call it again; 1 with `lost` on stderr: the supervisor is gone),
 plus `status`, `kill`, and `list`. Job ids and state are pane-scoped
 (`~/.fleet/state/jobs/<pane>/`, where `<pane>` is the
-`.claude/worktrees/<pane>` checkout the call runs in; a
+`.claude/worktrees/<pane>` checkout the call runs in, which must be a
+linked worktree registered with the engine or game repository; a
 `FLEET_ASSIGNED_WORKTREE` naming another pane is refused). A terminal status ends the whole job:
 before publishing it, the supervisor stops anything the child left running
 (every process it anchors, however detached: on Linux a child subreaper

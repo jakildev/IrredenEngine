@@ -92,6 +92,36 @@ sys.exit(3)
 """
 
 
+# Holds the first _supervise process that finds the flag file, so its job's
+# startup window closes before it can take the job.
+SLOW_SUPERVISOR = r"""import atexit, os, sys, time
+flag = os.environ.get("SLOW_SUPERVISOR", "")
+if "_supervise" in sys.argv and flag:
+    try:
+        os.remove(flag)
+    except FileNotFoundError:
+        pass
+    else:
+        time.sleep(float(os.environ["SLOW_SUPERVISOR_DELAY"]))
+        atexit.register(lambda: open(flag + ".done", "w").close())
+"""
+
+
+def git(cwd, *args, stdin=None):
+    return subprocess.run(["git", "-C", str(cwd), *args], input=stdin, check=True,
+                          capture_output=True, text=True).stdout.strip()
+
+
+def init_repo(path):
+    """A repository with one empty commit, so linked worktrees can be added."""
+    subprocess.run(["git", "init", "-q", str(path)], check=True)
+    tree = git(path, "mktree", stdin="")
+    commit = git(path, "-c", "user.name=fleet-test", "-c", "user.email=fleet-test@invalid",
+                 "commit-tree", tree, "-m", "fixture")
+    git(path, "update-ref", "HEAD", commit)
+    return path
+
+
 def load_subject(path=SUBJECT):
     loader = importlib.machinery.SourceFileLoader("fleet_jobs", str(path))
     spec = importlib.util.spec_from_loader("fleet_jobs", loader)
@@ -127,7 +157,9 @@ class JobsCase(unittest.TestCase):
         # .claude/worktrees/<pane> checkout; self.repo is pane A's.
         tag = secrets.token_hex(3)
         self.pane_a, self.pane_b = f"zz-test-a-{tag}", f"zz-test-b-{tag}"
+        self.main = init_repo(self.root / "clone")
         self.repo = self.checkout(self.pane_a)
+        git(self.main, "worktree", "add", "-q", "--detach", str(self.repo))
         (self.repo / "scripts/fleet/tests").mkdir(parents=True)
         (self.repo / "engine/tools/bin").mkdir(parents=True)
         shutil.copy2(SUBJECT, self.repo / "scripts/fleet/fleet-jobs")
@@ -137,7 +169,6 @@ class JobsCase(unittest.TestCase):
                           ("scripts/render-verify.py", RENDER_VERIFY)):
             (self.repo / rel).write_text(text)
             (self.repo / rel).chmod(0o755)
-        subprocess.run(["git", "init", "-q", str(self.repo)], check=True)
         self.clone(self.checkout(self.pane_b))
         self.state = self.root / "state"
         self.subject = self.repo / "scripts/fleet/fleet-jobs"
@@ -155,9 +186,16 @@ class JobsCase(unittest.TestCase):
     def checkout(self, pane):
         return self.root / "clone/.claude/worktrees" / pane
 
-    def clone(self, path):
-        shutil.copytree(self.repo, path, ignore=shutil.ignore_patterns(".git"))
-        subprocess.run(["git", "init", "-q", str(path)], check=True)
+    def clone(self, path, main=None):
+        """A linked worktree of main (the fixture engine repository) at path."""
+        git(main or self.main, "worktree", "add", "-q", "--detach", str(path))
+        return self.lookalike(path, init=False)
+
+    def lookalike(self, path, init=True):
+        shutil.copytree(self.repo, path, ignore=shutil.ignore_patterns(".git"),
+                        dirs_exist_ok=True)
+        if init:
+            subprocess.run(["git", "init", "-q", str(path)], check=True)
         return path
 
     def env(self, pane):
@@ -306,6 +344,37 @@ class Lifecycle(JobsCase):
         self.assertEqual(len(self.job_dirs()), 401)
         release.touch()
         self.assertEqual(self.jobs(["wait", "--quiet", admitted[0]]).returncode, 3)
+
+    def test_supervisor_past_the_startup_window_never_runs(self):
+        window = 3
+        self.subject.write_text(self.subject.read_text().replace(
+            "STARTUP_TIMEOUT = 30.0", f"STARTUP_TIMEOUT = {window}.0"))
+        site = self.root / "site"
+        site.mkdir()
+        (site / "sitecustomize.py").write_text(SLOW_SUPERVISOR)
+        slow = self.root / "slow-supervisor"
+        slow.touch()
+        env = dict(self.env(self.pane_a), PYTHONPATH=str(site), SLOW_SUPERVISOR=str(slow),
+                   SLOW_SUPERVISOR_DELAY=str(window * 2))
+        start = [sys.executable, str(self.subject), "start", "render-verify", "--",
+                 "--target", "IRAnalyticOracle"]
+        late = subprocess.run(start, cwd=self.repo, env=env, capture_output=True, text=True,
+                              timeout=60)
+        self.assertEqual((late.returncode, late.stdout), (1, ""))
+        self.assertIn(f"did not report within {window}s", late.stderr)
+        [late_dir] = self.job_dirs()
+        # Admitted while the late supervisor still sleeps.
+        admitted = subprocess.run(start, cwd=self.repo, env=env, capture_output=True,
+                                  text=True, timeout=60)
+        self.assertEqual(admitted.returncode, 0, admitted.stderr)
+        self.assertFalse(Path(f"{slow}.done").exists())
+        job = admitted.stdout.split()[1]
+        self.assertEqual(self.jobs(["wait", "--quiet", job]).returncode, 3)
+        self.assertTrue(wait_for(lambda: Path(f"{slow}.done").exists(), timeout=window * 4))
+        self.assertEqual((late_dir / "job.log").read_bytes(), b"", "the late job ran")
+        status = self.status(late_dir.name)
+        self.assertEqual((status["status"], status["exit_code"]), ("failed", 127))
+        self.assertIn("did not report", status["reason"])
 
 
 class NaturalExit(JobsCase):
@@ -492,7 +561,7 @@ class BreakawayRefusal(JobsCase):
                 mock.patch.object(subject.subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200,
                                   create=True), \
                 mock.patch.object(subject.subprocess, "Popen", popen), \
-                mock.patch.object(subject, "checkout_root", lambda cwd: self.repo), \
+                mock.patch.object(subject, "pane_name", lambda cwd: self.pane_a), \
                 contextlib.redirect_stderr(stderr), \
                 self.assertRaises(SystemExit) as exited:
             subject.cmd_start(["build", "--", "x"], self.repo)
@@ -539,7 +608,7 @@ class StartRefusedBySupervisor(JobsCase):
         with mock.patch.dict(os.environ, self.env(self.pane_a), clear=True), \
                 mock.patch.object(subject, "DisclaimedSupervisor", Supervisor), \
                 mock.patch.object(subject.subprocess, "Popen", Supervisor), \
-                mock.patch.object(subject, "checkout_root", lambda cwd: self.repo), \
+                mock.patch.object(subject, "pane_name", lambda cwd: self.pane_a), \
                 contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr), \
                 self.assertRaises(SystemExit) as exited:
             subject.cmd_start(["build", "--", "x"], self.repo)
@@ -636,13 +705,17 @@ class Isolation(JobsCase):
             self.assertFalse((live / pane).exists())
 
     def test_pane_falls_back_to_registered_worktree_only(self):
-        worktree = self.clone(self.checkout("pool-zz"))
-        result = subprocess.run([sys.executable, str(worktree / "scripts/fleet/fleet-jobs"),
-                                 "start", "fleet-tests"], cwd=worktree, env=self.env(None),
-                                capture_output=True, text=True, timeout=60)
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertTrue(list(self.state.glob("jobs/pool-zz/*/meta.json")))
-        unregistered = self.clone(self.root / "plain")
+        game = init_repo(self.main / "creations/game")
+        for worktree in (self.clone(self.checkout("pool-zz")),
+                         self.clone(game / ".claude/worktrees/pool-zg", main=game)):
+            with self.subTest(registered=worktree):
+                result = subprocess.run([sys.executable, str(self.subject), "start",
+                                         "fleet-tests"], cwd=worktree, env=self.env(None),
+                                        capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                job = result.stdout.split()[1]
+                self.assertTrue((self.state / "jobs" / worktree.name / job).is_dir())
+        unregistered = self.lookalike(self.root / "plain")
         for pane in (None, self.pane_a):
             with self.subTest(assigned=pane):
                 result = subprocess.run([sys.executable, str(self.subject), "list"],
@@ -650,6 +723,42 @@ class Isolation(JobsCase):
                                         capture_output=True, text=True, timeout=60)
                 self.assertEqual(result.returncode, 2)
                 self.assertIn("no pane", result.stderr)
+
+    def test_lookalike_checkout_cannot_select_a_pane(self):
+        release = self.root / "release"
+        job = self.start(["build", "--", "hold", str(release)], pane=self.pane_b)
+        meta = self.state / "jobs" / self.pane_b / job / "meta.json"
+        before = meta.read_bytes()
+        worktrees = ".claude/worktrees"
+        # The other pane's worktree admin dir, borrowed through a .git file.
+        borrowed = self.main / worktrees / "pool-zb"
+        borrowed.mkdir(parents=True)
+        admin = git(self.checkout(self.pane_b), "rev-parse", "--absolute-git-dir")
+        (borrowed / ".git").write_text(f"gitdir: {admin}\n")
+        other = init_repo(self.root / "other")
+        lookalikes = {
+            "standalone repository elsewhere": self.lookalike(
+                self.root / "elsewhere" / worktrees / self.pane_b),
+            "standalone repository under the engine": self.lookalike(
+                self.main / worktrees / "pool-zs"),
+            "borrowed .git file": borrowed,
+            "worktree of another repository": self.clone(other / worktrees / "pool-zo",
+                                                         main=other),
+        }
+        for case, cwd in lookalikes.items():
+            for verb in (["list"], ["status", job], ["kill", job],
+                         ["start", "build", "--", "plain"]):
+                with self.subTest(case=case, verb=verb[0]):
+                    result = subprocess.run([sys.executable, str(self.subject), *verb],
+                                            cwd=cwd, env=self.env(None), capture_output=True,
+                                            text=True, timeout=60)
+                    self.assertEqual((result.returncode, result.stdout), (2, ""))
+                    self.assertIn("is not a registered worktree", result.stderr)
+        self.assertEqual(meta.read_bytes(), before)
+        self.assertFalse((meta.parent / "cancel").exists())
+        self.assertEqual([p.name for p in self.state.glob("jobs/*")], [self.pane_b])
+        release.touch()
+        self.assertEqual(self.jobs(["wait", "--quiet", job], pane=self.pane_b).returncode, 7)
 
     def test_assignment_cannot_address_another_panes_jobs(self):
         release = self.root / "release"
