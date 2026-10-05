@@ -468,10 +468,16 @@ class DrainFailsClosed(JobsCase):
                             unkillable if not killable else contextlib.nullcontext():
                         drained = subject._drain_tree(child, None, [(member.pid, ident)], None)
                     self.assertIs(drained, killable)
-                    self.assertIsNotNone(child.returncode, "the drain left the child unreaped")
+                    if drained:
+                        self.assertIsNotNone(child.returncode, "the drain left the child unreaped")
+                    else:
+                        # Reserved for the next pass: its group id cannot be recycled.
+                        self.assertIsNone(child.returncode, "a failed drain reaped the child")
+                        self.assertTrue(subject._exited_unreaped(child))
                 finally:
                     member.kill()
                     member.wait()
+                    child.wait()
 
     def test_drain_returns_boundedly_when_the_direct_child_outlives_sigkill(self):
         subject = load_subject()
@@ -490,11 +496,12 @@ class DrainFailsClosed(JobsCase):
             child.kill()
             child.wait()
 
-    def test_job_whose_child_outlives_sigkill_records_failed_125(self):
+    def test_job_whose_child_outlives_sigkill_is_draining_until_it_ends(self):
         subject = load_subject(self.subject)
         job_dir = self.state / "jobs" / self.pane_a / "20260101T000000Z-build-abcdef"
         job_dir.mkdir(parents=True)
-        (job_dir / "job.log").touch()
+        log = job_dir / "job.log"
+        log.touch()
         (job_dir / "meta.json").write_text(json.dumps(
             {"id": job_dir.name, "pane": self.pane_a, "profile": "build", "name": "build",
              "cwd": str(self.repo), "created_at": "2026-01-01T00:00:00Z",
@@ -503,6 +510,9 @@ class DrainFailsClosed(JobsCase):
         flag = self.root / "release"
         spec = {"id": job_dir.name, "cwd": str(self.repo),
                 "args": ["--", "hold", str(flag)]}
+        returned = []
+        # No-op signals stand in for a child stuck in uninterruptible I/O; the
+        # flag lets it resume, write "line two", and exit.
         with mock.patch.dict(os.environ, self.env(self.pane_a), clear=True), \
                 mock.patch.object(subject.sys, "stdin", io.StringIO(json.dumps(spec))), \
                 mock.patch.object(subject.signal, "signal"), \
@@ -511,17 +521,33 @@ class DrainFailsClosed(JobsCase):
                 mock.patch.object(subject, "_killpg", lambda pgid, sig: None), \
                 mock.patch.object(subject, "_signal_verified", lambda members, sig: None), \
                 mock.patch.object(subject, "job_members", lambda pgid, marks: []):
-            in_time, returned = returns_within(10, subject.supervise, flag.touch)
-        flag.touch()
-        child = json.loads((job_dir / "meta.json").read_text())["child"]["pid"]
-        with contextlib.suppress(ChildProcessError):
-            os.waitpid(child, 0)
-        self.assertTrue(in_time, "the supervisor blocked on a child that outlived SIGKILL")
-        self.assertEqual(returned, 0)
+            worker = threading.Thread(target=lambda: returned.append(subject.supervise()),
+                                      daemon=True)
+            worker.start()
+            try:
+                draining = wait_for(
+                    lambda: self.status(job_dir.name)["status"] == "draining")
+                self.assertTrue(draining, "the failed drain was not published boundedly")
+                status = self.status(job_dir.name)
+                self.assertIsNone(status["exit_code"])
+                self.assertIn("outlived SIGKILL", status["reason"])
+                held = self.jobs(["wait", "--timeout", "1", job_dir.name])
+                self.assertEqual(held.returncode, 124, held.stderr)
+                self.assertIn("still draining", held.stderr)
+                self.assertEqual(log.read_text(), "line one\n")
+            finally:
+                flag.touch()
+                worker.join(30)
+        self.assertFalse(worker.is_alive(), "the supervisor never finished draining")
+        self.assertEqual(returned, [0])
         status = self.status(job_dir.name)
         self.assertEqual((status["status"], status["exit_code"]), ("failed", 125))
         self.assertIn("cancelled by fleet-jobs kill", status["reason"])
         self.assertIn("outlived SIGKILL", status["reason"])
+        waited = self.jobs(["wait", job_dir.name])
+        self.assertEqual(waited.returncode, 125, waited.stderr)
+        self.assertEqual(waited.stdout, "line one\nline two\n",
+                         "the terminal status preceded the survivor's last write")
 
     def test_undrained_job_is_failed_whatever_the_child_returned(self):
         subject = load_subject(self.subject)
@@ -534,16 +560,20 @@ class DrainFailsClosed(JobsCase):
              "created_epoch": time.time(), "status": "starting", "exit_code": None}))
         spec = {"id": job_dir.name, "cwd": str(self.repo), "args": ["--", "probe"]}
 
-        def undrained(child, job, members, marks):
+        seen = []
+
+        def drains_on_the_second_pass(child, job, members, marks):
+            seen.append(json.loads((job_dir / "meta.json").read_text())["status"])
             child.wait()
-            return False
+            return len(seen) > 1
 
         with mock.patch.dict(os.environ, self.env(self.pane_a), clear=True), \
                 mock.patch.object(subject.sys, "stdin", io.StringIO(json.dumps(spec))), \
                 mock.patch.object(subject.signal, "signal"), \
                 mock.patch.object(subject, "anchor_tree", lambda: None), \
-                mock.patch.object(subject, "_drain_tree", undrained):
+                mock.patch.object(subject, "_drain_tree", drains_on_the_second_pass):
             self.assertEqual(subject.supervise(), 0)
+        self.assertEqual(seen, ["running", "draining"])
         self.assertEqual((job_dir / "job.log").read_text(), "ir-build probe\n")
         status = self.status(job_dir.name)
         self.assertEqual((status["status"], status["exit_code"]), ("failed", 125))
@@ -580,9 +610,11 @@ class WindowsDrainFailsClosed(unittest.TestCase):
                         mock.patch.object(subject, "CANCEL_GRACE", 0.5), \
                         mock.patch.object(subject, "POLL", 0.05):
                     self.assertIs(subject._drain_tree(child, object(), [], None), drained)
-                self.assertIsNotNone(child.returncode, "the drain left the child unreaped")
-                if not drained:
+                if drained:
+                    self.assertIsNotNone(child.returncode, "the drain left the child unreaped")
+                else:
                     self.assertGreater(kernel32.queries, 1, "the drain gave up before its grace")
+                    child.wait()
 
 
     def test_drain_returns_boundedly_when_the_direct_child_outlives_termination(self):

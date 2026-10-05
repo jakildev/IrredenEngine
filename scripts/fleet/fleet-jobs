@@ -26,8 +26,9 @@ Profiles are fixed; there is no executable, path, or shell-string form.
 
 wait streams the job log and exits with the child's exit code; a job that is
 still running when --timeout elapses exits 124, a lost job exits 1, and a
-job with a process that outlived the supervisor's SIGKILL fails with 125. The
-last stderr line always names the job's state.
+job with a process that outlives the supervisor's SIGKILL stays draining (not
+terminal) until that process ends, then fails with 125. The last stderr line
+always names the job's state.
 
 State: ${FLEET_STATE_DIR:-~/.fleet/state}/jobs/<pane>/<job-id>/{meta.json,job.log}.
 The pane is the basename of the cwd's .claude/worktrees/<name> checkout, which
@@ -55,6 +56,9 @@ from fleet_codex_doctor import DISPLAY_PROBE  # noqa: E402
 
 PROFILES = ("build", "fleet-tests", "render-verify")
 TERMINAL = ("succeeded", "failed", "killed")
+# Supervisor-vouched states that still own the log; "draining" holds a process
+# that outlived SIGKILL's grace.
+LIVE = ("starting", "running", "draining")
 # render-verify options a detached run may pass. --build-dir selects the
 # directory the demo executable is resolved from; --update-references and
 # --force rewrite committed references behind a prompt the closed stdin
@@ -796,9 +800,10 @@ def _drain_tree(child, job, members, marks):
 
     True once nothing from the tree is left running, so terminal status
     published afterwards is final; False when something outlived SIGKILL's
-    grace. A direct child that outlived it (uninterruptible I/O, a failed job
-    termination) is left unreaped, since waiting on it could block the
-    terminal status forever. members are descendants sampled while the child was alive; on
+    grace (uninterruptible I/O, a failed job termination). False leaves the
+    child unreaped, so waiting on it cannot block and its pid and
+    process-group id stay reserved for the caller's next pass. members are
+    descendants sampled while the child was alive; on
     POSIX every pass also sweeps job_members, which reaches what an exited
     child orphaned, however it detached (anchor_tree), and signals each
     process the first pass that finds it, so one started mid-drain is
@@ -811,12 +816,11 @@ def _drain_tree(child, job, members, marks):
         deadline = time.monotonic() + CANCEL_GRACE
         while (active := _windows_job_active(job)) != 0 and time.monotonic() < deadline:
             time.sleep(POLL)
-        # An empty job holds no live process, so this wait ends at once; the
-        # child of a job not proven empty may never exit.
-        if active != 0 and not _exited_unreaped(child):
+        if active != 0:
             return False
+        # An empty job holds no live process, so this wait ends at once.
         child.wait()
-        return active == 0
+        return True
     for sig in (signal.SIGTERM, signal.SIGKILL):
         _killpg(child.pid, sig)
         signalled, empty_scans = set(), 0
@@ -834,8 +838,6 @@ def _drain_tree(child, job, members, marks):
             elif (empty_scans := empty_scans + 1) == 2:
                 child.wait()
                 return True
-    if _exited_unreaped(child):
-        child.wait()
     return False
 
 
@@ -919,30 +921,34 @@ def supervise():
                     child={"pid": child.pid, "identity": identity(child.pid)})
         write_atomic(job_dir / "meta.json", meta)
         cancel_marker = job_dir / "cancel"
+        cancel_reason, members = None, []
         while not _exited_unreaped(child):
             if cancelled or cancel_marker.exists():
-                drained = _drain_tree(child, job, descendants(child.pid), marks)
-                reason = cancelled[0] if cancelled else "cancelled by fleet-jobs kill"
-                meta.update(status="killed", reason=reason)
+                cancel_reason = cancelled[0] if cancelled else "cancelled by fleet-jobs kill"
+                members = descendants(child.pid)
                 break
             if not IS_WINDOWS:
                 _reap_adopted(child)
             time.sleep(POLL)
-        else:
-            # Whatever the child left running is still part of the job.
-            drained = _drain_tree(child, job, [], marks)
-            meta.update(status="succeeded" if child.returncode == 0 else "failed",
-                        reason="exited")
-        if drained:
+        reason = cancel_reason or "exited"
+        # Whatever the child left running is still part of the job.
+        if _drain_tree(child, job, members, marks):
+            status = ("killed" if cancel_reason
+                      else "succeeded" if child.returncode == 0 else "failed")
             exit_code = _exit_code(child.returncode)
         else:
-            # The child's result is not the job's while part of the job runs
-            # on, and a child that outlived SIGKILL has none.
-            meta.update(status="failed",
-                        reason=f"{meta['reason']}; a process of the job outlived SIGKILL")
-            exit_code = 125
+            # A survivor can still write the log, so no status is final until
+            # it ends; readers see the job draining, never terminal.
+            reason = f"{reason}; a process of the job outlived SIGKILL"
+            meta.update(status="draining", reason=reason)
+            write_atomic(job_dir / "meta.json", meta)
+            while not _drain_tree(child, job, members, marks):
+                pass
+            # The child's result is not the job's: part of the job ran on
+            # past it.
+            status, exit_code = "failed", 125
         os.fsync(log.fileno())
-    meta.update(exit_code=exit_code, finished_at=now_iso())
+    meta.update(status=status, reason=reason, exit_code=exit_code, finished_at=now_iso())
     write_atomic(job_dir / "meta.json", meta)
     return 0
 
@@ -963,7 +969,7 @@ def effective(meta):
         return "lost", "supervisor never reported"
     if not sup.get("identity") or identity(sup["pid"]) != sup["identity"]:
         return "lost", "supervisor gone or unverifiable"
-    return status, ""
+    return status, meta.get("reason", "")
 
 
 def describe(job_dir, meta):
@@ -1004,14 +1010,14 @@ def admission_lock(root):
 
 
 def live_render_verify(root):
-    """Id of this pane's starting or running render-verify job, or None."""
+    """Id of this pane's live render-verify job, or None."""
     if not root.is_dir():
         return None
     for job_dir in root.iterdir():
         if (job_dir / "meta.json").is_file():
             meta = read_meta(job_dir)
             if (meta.get("profile") == "render-verify"
-                    and effective(meta)[0] in ("starting", "running")):
+                    and effective(meta)[0] in LIVE):
                 return meta["id"]
     return None
 
