@@ -32,6 +32,13 @@ sys.stderr.buffer.write(b"ERR \xe2\x9c\x93\n")
 sys.exit(int(os.environ.get("STUB_EXIT", "0")))
 '''
 
+# A pinned "real gh" that is itself a wrapper finding the launcher again.
+LOOPBACK_BODY = r'''
+import os, subprocess, sys
+sys.exit(subprocess.run([sys.executable, os.environ["LAUNCH_SUBJECT"], "launch",
+                         *sys.argv[1:]]).returncode)
+'''
+
 SECRETS = ("secret-owner", "secret-repo", "4242", "TITLE-SECRET", "BODY-SECRET",
            "https://github.com/secret-owner/secret-repo/issues/4242", "ghp_TOKENSECRET")
 
@@ -322,6 +329,37 @@ class Launcher(Base):
         got = self.launch(self.env(self.root / "empty"), "pr", "view", "1")
         self.assertEqual(got.returncode, 127)
         self.assertIn(b"gh: command not found", got.stderr)
+
+    def test_pinned_gh_leading_back_to_the_launcher_is_refused_not_looped(self):
+        loop = make_gh(self.root / "loop", LOOPBACK_BODY)
+        env = self.env(Path(loop).parent, FLEET_GH_REAL=loop, LAUNCH_SUBJECT=str(SUBJECT))
+        got = self.launch(env, "pr", "view", "1")
+        self.assertEqual(got.returncode, 126)
+        self.assertIn(b"refusing to loop", got.stderr)
+        self.assertIn(os.fsencode(loop), got.stderr, "the refusal names the pinned gh")
+        self.assertEqual(len(events_in(self.events)), fleet_github.MAX_LAUNCH_DEPTH,
+                         "one event per pass, then none")
+
+    def test_call_at_the_cap_runs_nothing_and_counts_nothing(self):
+        env = self.env(self.real_dir(), FLEET_GH_LAUNCH_DEPTH=str(fleet_github.MAX_LAUNCH_DEPTH))
+        got = self.launch(env, "pr", "view", "1")
+        self.assertEqual(got.returncode, 126)
+        self.assertEqual(got.stdout, b"")
+        self.assertEqual(events_in(self.events), [])
+
+    def test_nested_call_below_the_cap_still_runs_and_is_counted(self):
+        env = self.env(self.real_dir(),
+                       FLEET_GH_LAUNCH_DEPTH=str(fleet_github.MAX_LAUNCH_DEPTH - 1))
+        got = self.launch(env, "pr", "view", "1")
+        self.assertEqual(got.returncode, 0)
+        self.assertTrue(got.stdout.startswith(b"OUT real "), got.stdout)
+        self.assertEqual(len(events_in(self.events)), 1)
+
+    def test_unreadable_depth_is_a_first_pass(self):
+        for raw in ("", "garbage", "-3"):
+            self.assertEqual(fleet_github._launch_depth({"FLEET_GH_LAUNCH_DEPTH": raw}), 0, raw)
+        self.assertEqual(fleet_github._launch_depth({}), 0)
+        self.assertEqual(fleet_github._launch_depth({"FLEET_GH_LAUNCH_DEPTH": "5"}), 5)
 
 
 if __name__ == "__main__":

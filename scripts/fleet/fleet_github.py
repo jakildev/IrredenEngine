@@ -27,6 +27,10 @@ Environment (set by fleet-up; absent = accounting off):
   FLEET_GH_PYTHON       interpreter the shell launcher runs this module under
   FLEET_GH_EVENT_ROOT   event directory
   FLEET_GH_ACTOR        explicit actor (scout, dispatcher); else FLEET_ROLE
+
+Launcher-internal (set by `launch`, never by fleet-up):
+  FLEET_GH_LAUNCH_DEPTH launcher passes one call has already made; `launch`
+                        refuses at MAX_LAUNCH_DEPTH instead of looping
 """
 
 import datetime as dt
@@ -45,7 +49,16 @@ ENV_LAUNCHER = "FLEET_GH_LAUNCHER"
 ENV_PYTHON = "FLEET_GH_PYTHON"
 ENV_EVENT_ROOT = "FLEET_GH_EVENT_ROOT"
 ENV_ACTOR = "FLEET_GH_ACTOR"
-ACCOUNTING_ENV = (ENV_ENABLED, ENV_REAL, ENV_LAUNCHER, ENV_PYTHON, ENV_EVENT_ROOT, ENV_ACTOR)
+# Not an ENV_* name: those are what fleet-up hands a pane or a daemon, and
+# nothing is ever launched with a depth.
+LAUNCH_DEPTH_VAR = "FLEET_GH_LAUNCH_DEPTH"
+ACCOUNTING_ENV = (ENV_ENABLED, ENV_REAL, ENV_LAUNCHER, ENV_PYTHON, ENV_EVENT_ROOT, ENV_ACTOR,
+                  LAUNCH_DEPTH_VAR)
+# The launcher delegates to whatever gh fleet-up pinned. When that is itself a
+# wrapper that finds the launcher first on PATH, the two exec each other until
+# the caller's timeout. A legitimate nested call (gh -> git -> credential
+# helper -> gh) is two or three passes deep.
+MAX_LAUNCH_DEPTH = 8
 
 LAUNCHER_PATH = Path(__file__).resolve().parent / "gh-accounting-bin" / "gh"
 RETENTION_HOURS = 48
@@ -342,10 +355,24 @@ def run(args, override_var=None, env=None, **kwargs):
     return subprocess.run(argv(args, override_var, env), **kwargs)
 
 
+def _launch_depth(env):
+    try:
+        return max(0, int(env.get(LAUNCH_DEPTH_VAR) or 0))
+    except ValueError:
+        return 0
+
+
 def launch(args, env=None):
     """The shell launcher: resolve, count, run with inherited stdio, return the
-    child's status. A missing gh is bash's own 127."""
+    child's status. A missing gh is bash's own 127; a call that has already
+    passed through the launcher MAX_LAUNCH_DEPTH times is refused with 126."""
     env = os.environ if env is None else env
+    depth = _launch_depth(env)
+    if depth >= MAX_LAUNCH_DEPTH:
+        print(f"gh: the fleet launcher was re-entered {depth} times for one call: the gh "
+              f"it delegates to ({env.get(ENV_REAL) or 'first on PATH'}) leads back to "
+              "the launcher; refusing to loop", file=sys.stderr)
+        return 126
     res = resolve(env=env, skip_launcher=True)
     if not res.found:
         print("gh: command not found", file=sys.stderr)
@@ -353,10 +380,11 @@ def launch(args, env=None):
     if res.accounted:
         record(args, env)
     full = res.argv + list(args)
+    child_env = {**env, LAUNCH_DEPTH_VAR: str(depth + 1)}
     if os.name != "nt":
         sys.stdout.flush()
         try:
-            os.execv(full[0], full)
+            os.execve(full[0], full, child_env)
         except OSError as exc:
             print(f"gh: {exc}", file=sys.stderr)
             return 126
@@ -364,7 +392,7 @@ def launch(args, env=None):
     # once, so the parent's status would stand in for the child's. Run the
     # child on the inherited handles and hand its exact status back.
     try:
-        return subprocess.run(full).returncode
+        return subprocess.run(full, env=child_env).returncode
     except OSError as exc:
         print(f"gh: {exc}", file=sys.stderr)
         return 126
