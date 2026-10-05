@@ -6,6 +6,7 @@
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/render/components/component_gizmo_handle.hpp>
+#include <irreden/render/components/component_lod_tier_override.hpp>
 #include <irreden/render/gizmo.hpp>
 #include <irreden/script/prefab_api.hpp>
 #include <irreden/utility/path_utils.hpp>
@@ -69,6 +70,7 @@ class EntityScene {
     void begin() {
         clear();
         m_root = IREntity::createEntity(IRComponents::C_LocalTransform{IRMath::vec3(0.0f)});
+        applyTierOverride(m_root);
     }
 
     IREntity::EntityId addVoxelPart(
@@ -104,6 +106,34 @@ class EntityScene {
             IRComponents::C_RotationMode{IRComponents::RotationMode::GRID}
         );
         return appendPart(entity, id, EditorPartKind::SHAPE);
+    }
+
+    // Sets the part's inclusive band and mirrors it onto the part's own
+    // C_VoxelSetNew / C_ShapeDescriptor, so the engine's LOD gate previews the
+    // band. Requires fine <= coarse: the manifest reader rejects an inverted band.
+    void setPartBand(int index, IRRender::LodLevel fine, IRRender::LodLevel coarse) {
+        EditorPart &part = m_parts[static_cast<std::size_t>(index)];
+        part.lodMax_ = fine;
+        part.lodMin_ = coarse;
+        applyBand(part);
+    }
+
+    // Pins every scene entity to @p tier, or with nullopt removes the pin so
+    // they follow the camera-zoom tier again. Parts added or loaded later take
+    // the same state.
+    void setTierOverride(std::optional<IRRender::LodLevel> tier) {
+        m_tierOverride = tier;
+        if (!active()) {
+            return;
+        }
+        applyTierOverride(m_root);
+        for (const EditorPart &part : m_parts) {
+            applyTierOverride(part.entity_);
+        }
+    }
+
+    std::optional<IRRender::LodLevel> tierOverride() const {
+        return m_tierOverride;
     }
 
     IREntity::EntityId select(int index, bool createGizmos = true) {
@@ -214,8 +244,7 @@ class EntityScene {
             stagedVoxelSets.emplace_back(std::move(loaded.value_.dense_));
         }
 
-        clear();
-        m_root = IREntity::createEntity(IRComponents::C_LocalTransform{IRMath::vec3(0.0f)});
+        begin();
         for (std::size_t i = 0; i < manifest.description_->parts_.size(); ++i) {
             const IRPrefab::Prefab::PrefabPartDescription &description =
                 manifest.description_->parts_[i];
@@ -254,6 +283,8 @@ class EntityScene {
                     description.resident_
                 }
             );
+            applyBand(m_parts.back());
+            applyTierOverride(entity);
             const std::string prefix = "part_";
             if (description.id_.starts_with(prefix)) {
                 const std::string_view suffix =
@@ -274,8 +305,29 @@ class EntityScene {
     IREntity::EntityId appendPart(IREntity::EntityId entity, std::string id, EditorPartKind kind) {
         IREntity::setParent(entity, m_root);
         m_parts.push_back(EditorPart{entity, std::move(id), kind});
+        applyTierOverride(entity);
         select(static_cast<int>(m_parts.size()) - 1, false);
         return entity;
+    }
+
+    static void applyBand(const EditorPart &part) {
+        if (part.kind_ == EditorPartKind::SHAPE) {
+            auto &shape = IREntity::getComponent<IRComponents::C_ShapeDescriptor>(part.entity_);
+            shape.lodMin_ = part.lodMin_;
+            shape.lodMax_ = part.lodMax_;
+            return;
+        }
+        auto &set = IREntity::getComponent<IRComponents::C_VoxelSetNew>(part.entity_);
+        set.lodMin_ = part.lodMin_;
+        set.lodMax_ = part.lodMax_;
+    }
+
+    void applyTierOverride(IREntity::EntityId entity) const {
+        if (m_tierOverride) {
+            IREntity::setComponent(entity, IRComponents::C_LodTierOverride{*m_tierOverride});
+        } else if (IREntity::getComponentOptional<IRComponents::C_LodTierOverride>(entity)) {
+            IREntity::removeComponent<IRComponents::C_LodTierOverride>(entity);
+        }
     }
 
     void destroySelectionGizmos() const {
@@ -289,6 +341,7 @@ class EntityScene {
     std::vector<EditorPart> m_parts;
     int m_selected = -1;
     int m_nextPartId = 0;
+    std::optional<IRRender::LodLevel> m_tierOverride;
 };
 
 } // namespace IRVoxelEditor
