@@ -40,13 +40,28 @@ if [[ "${FLEET_GH_SHIM:-1}" != "0" && "${GH_TOKEN:-}" == ghs_* ]]; then
     [[ -n "$_fresh" ]] && export GH_TOKEN="$_fresh"
 fi
 
-# The real gh is the first `gh` on PATH that is not this file. Compare resolved
-# paths: the shim is reached as ~/bin/gh (a symlink), as scripts/fleet/gh, and
-# under PATH spellings (~/bin, $HOME/bin, $HOME/bin/) that differ textually.
+# The real gh is the first `gh` on PATH that is neither this file nor the
+# accounting launcher. Compare resolved paths: the shim is reached as ~/bin/gh
+# (a symlink), as scripts/fleet/gh, and under PATH spellings (~/bin, $HOME/bin,
+# $HOME/bin/) that differ textually.
+#
+# The launcher (gh-accounting-bin/gh) is the other fleet wrapper: fleet-up puts
+# it first on a daemon's PATH and pins this shim as the gh it exec's. Choosing
+# it here hands the call straight back, and the two exec each other until the
+# caller's timeout. Both spellings are skipped — the one fleet-up exported and
+# the sibling of this file — so a shim copied out of the repo is covered too.
 _self="$(_resolve "${BASH_SOURCE[0]}")"
+_launcher_env=""
+_launcher_sibling=""
+[[ -n "${FLEET_GH_LAUNCHER:-}" ]] && _launcher_env="$(_resolve "$FLEET_GH_LAUNCHER")"
+[[ -e "${_self%/*}/gh-accounting-bin/gh" ]] \
+    && _launcher_sibling="$(_resolve "${_self%/*}/gh-accounting-bin/gh")"
 _real=""
 while IFS= read -r _cand; do
-    [[ "$(_resolve "$_cand")" == "$_self" ]] && continue
+    _cand_resolved="$(_resolve "$_cand")"
+    [[ "$_cand_resolved" == "$_self" ]] && continue
+    [[ -n "$_launcher_env" && "$_cand_resolved" == "$_launcher_env" ]] && continue
+    [[ -n "$_launcher_sibling" && "$_cand_resolved" == "$_launcher_sibling" ]] && continue
     _real="$_cand"
     break
 done < <(type -ap gh 2>/dev/null)

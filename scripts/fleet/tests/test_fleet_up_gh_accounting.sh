@@ -2,9 +2,11 @@
 # Tests for fleet-up's GitHub CLI accounting wiring and fleet-down's teardown:
 #
 #   resolve_gh_accounting — pins the real gh (never the launcher) and an
-#     absolute interpreter, or turns accounting off with a reason;
+#     absolute interpreter, or turns accounting off with a reason, including
+#     when the pinned gh cannot answer through the launcher;
 #   the daemon launch environment — a `gh` run from the dispatcher's env
-#     reaches the launcher first on PATH and is counted as `dispatcher`;
+#     reaches the launcher first on PATH and is counted as `dispatcher`, also
+#     with the token shim (scripts/fleet/gh) installed ahead of the real gh;
 #   seed_tmux_pane_env + the new-session block — on a PRE-EXISTING tmux
 #     server, pool-1 (the new-session pane) and split panes both start with
 #     this boot's values, never PATH and never a stale token;
@@ -109,6 +111,37 @@ out="$(PATH="$TMPROOT/nogh:$LAUNCHER_DIR" "$BASH" -c "$(extract_fn "$FLEET_UP" r
 assert_contains "$out" "rc=1 acct=unset" "a PATH holding only the launcher resolves to off, not to itself"
 assert_contains "$out" "accounting off (gh=missing" "and says why"
 
+# The failure the lead-back cases guard is a call that never returns.
+BOUNDED=("$PYTHON" "$FLEET_DIR/timeout-shim.py" 30)
+
+echo "1b. a pinned gh that cannot answer through the launcher turns accounting off"
+RESOLVE_AND_REPORT="$(extract_fn "$FLEET_UP" resolve_gh_accounting)"'
+    resolve_gh_accounting "$0"
+    echo "rc=$? acct=${FLEET_GH_ACCOUNTING-unset} real=${FLEET_GH_REAL-unset} launcher=${FLEET_GH_LAUNCHER-unset}"'
+BROKEN_DIR="$TMPROOT/broken"
+mkdir -p "$BROKEN_DIR"
+printf '#!%s\nimport sys\nsys.exit(3)\n' "$PYTHON" > "$BROKEN_DIR/gh"
+chmod +x "$BROKEN_DIR/gh"
+if (( IS_WINDOWS )); then
+    printf '@"%s" "%%~dp0gh" %%*\r\n' "$(native "$PYTHON")" > "$BROKEN_DIR/gh.bat"
+fi
+out="$(PATH="$LAUNCHER_DIR:$BROKEN_DIR:$SYS_PATH" "$BASH" -c "$RESOLVE_AND_REPORT" "$LAUNCHER" 2>&1)"
+assert_contains "$out" "rc=1 acct=unset real=unset launcher=unset" \
+    "a gh that fails --version leaves no accounting name exported"
+assert_contains "$out" "accounting off (gh --version through the launcher failed" "and says why"
+if (( IS_WINDOWS )); then
+    skip "a bash wrapper is not a pinnable gh on native Windows — the lead-back shape is POSIX-only"
+else
+    LOOP_DIR="$TMPROOT/loop"
+    mkdir -p "$LOOP_DIR"
+    printf '#!%s\nexec "%s" "$@"\n' "$BASH" "$LAUNCHER" > "$LOOP_DIR/gh"
+    chmod +x "$LOOP_DIR/gh"
+    out="$(PATH="$LAUNCHER_DIR:$LOOP_DIR:$SYS_PATH" "${BOUNDED[@]}" \
+        "$BASH" -c "$RESOLVE_AND_REPORT" "$LAUNCHER" 2>&1)"
+    assert_contains "$out" "rc=1 acct=unset real=unset launcher=unset" \
+        "a gh that leads back to the launcher is refused, not hung on"
+fi
+
 echo "2. a gh from the dispatcher's launch environment is counted as dispatcher"
 EVENTS="$TMPROOT/events"
 # What native Python's PATH walk finds there: the twin on Windows.
@@ -127,6 +160,30 @@ assert_contains "$(grep -A2 '^    nohup env' "$FLEET_UP")" "FLEET_GH_ACTOR=scout
     "fleet-up launches the scout as actor scout"
 assert_contains "$(grep '_dispatcher_env=(' "$FLEET_UP")" "FLEET_GH_ACTOR=dispatcher" \
     "fleet-up launches the dispatcher as actor dispatcher"
+
+echo "2b. the token shim ahead of the real gh: pinned, and one call reaches the real gh once"
+SHIM_SRC="$FLEET_DIR/gh"
+if (( IS_WINDOWS )); then
+    skip "native Python cannot exec the extensionless shim — the shim-pinned daemon shape is POSIX-only"
+elif [[ ! -f "$SHIM_SRC" ]]; then
+    bad "scripts/fleet/gh is missing; the shim-pinned daemon shape is unexercised"
+else
+    # install.sh's layout: ~/bin/gh -> scripts/fleet/gh, ahead of the real gh.
+    SHIM_DIR="$HOME/bin"
+    mkdir -p "$SHIM_DIR"
+    ln -s "$SHIM_SRC" "$SHIM_DIR/gh"
+    EVENTS_SHIM="$TMPROOT/events-shim"
+    out="$(PATH="$LAUNCHER_DIR:$SHIM_DIR:$REAL_DIR:$SYS_PATH" "${BOUNDED[@]}" "$BASH" -c \
+        "$(extract_fn "$FLEET_UP" resolve_gh_accounting)"'
+        resolve_gh_accounting "$0" || { echo "resolve failed"; exit 1; }
+        echo "real=$FLEET_GH_REAL"
+        FLEET_GH_EVENT_ROOT="$1" FLEET_GH_ACTOR=dispatcher FLEET_GH_SHIM=0 gh pr list --repo o/r' \
+        "$LAUNCHER" "$EVENTS_SHIM" 2>&1)"
+    assert_contains "$out" "real=$SHIM_DIR/gh" "fleet-up pins the shim, the first non-launcher gh on PATH"
+    assert_contains "$out" "REAL pr list --repo o/r" "the real gh answered through launcher and shim"
+    events="$(find "$EVENTS_SHIM" -type f -name '*.json' ! -name '.*' 2>/dev/null)"
+    assert_eq "$(printf '%s\n' "$events" | grep -c .)" "1" "exactly one event, not one per bounce"
+fi
 
 echo "3. one owned-name list across fleet-up, fleet-down and fleet_github"
 names_of() { grep -oE 'FLEET_GH_[A-Z_]+' | sort -u | tr '\n' ' '; }
