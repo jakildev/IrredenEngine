@@ -136,6 +136,11 @@ Next, in order:
    attribution (70–75 ms while the whole GPU frame remains about 73–79 ms).
    Audit timestamp boundaries/dependencies before using that row to prioritize
    work; retained full-frame controls do not prove a stable dense speedup.
+   The [counter/synchronized attribution probe](../perf/light-timing-attribution.md)
+   is implemented with paired poses and sampled-mode validation. Its native
+   attempt was refused by the benchmark quiet-window guard before any case ran;
+   rerun on a quiet host, then retain raw encoder boundaries if the discrepancy
+   persists. No attribution conclusion or new performance gain is established.
    Existing lighting references still differ in 40/46 views, identically with
    full-domain propagation. Diagnose or review those references separately;
    matching the control does not certify all inherited geometry artifacts.
