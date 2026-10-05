@@ -19,7 +19,8 @@ namespace IRSystem {
 // cursorPos_ accordingly".
 //
 // MVP keymap (T-177): printable A-Z, 0-9, space, period, comma, slash,
-// hyphen-minus and the shifted-letter case (Shift→uppercase). Editing
+// hyphen-minus, equals, square brackets (Shift→braces), apostrophe
+// (Shift→double quote) and the shifted-letter case (Shift→uppercase). Editing
 // keys: Backspace, Delete, Left, Right, Home, End. Multi-char IME and
 // the shifted-digit symbol map are deliberately out of scope for the
 // first cut; the framework can be extended without changing this
@@ -78,6 +79,30 @@ template <> struct System<WIDGET_APPLY_TEXT_INPUT> {
         if (IRInput::checkKeyMouseButton(IRInput::kKeyButtonSlash,
                                          IRInput::ButtonStatuses::PRESSED)) {
             pending_.push_back({'/', PendingKey::Control::NONE});
+        }
+        if (IRInput::checkKeyMouseButton(
+                IRInput::kKeyButtonEqual,
+                IRInput::ButtonStatuses::PRESSED
+            )) {
+            pending_.push_back({'=', PendingKey::Control::NONE});
+        }
+        if (IRInput::checkKeyMouseButton(
+                IRInput::kKeyButtonLeftBracket,
+                IRInput::ButtonStatuses::PRESSED
+            )) {
+            pending_.push_back({shift ? '{' : '[', PendingKey::Control::NONE});
+        }
+        if (IRInput::checkKeyMouseButton(
+                IRInput::kKeyButtonRightBracket,
+                IRInput::ButtonStatuses::PRESSED
+            )) {
+            pending_.push_back({shift ? '}' : ']', PendingKey::Control::NONE});
+        }
+        if (IRInput::checkKeyMouseButton(
+                IRInput::kKeyButtonApostrophe,
+                IRInput::ButtonStatuses::PRESSED
+            )) {
+            pending_.push_back({shift ? '"' : '\'', PendingKey::Control::NONE});
         }
         if (IRInput::checkKeyMouseButton(IRInput::kKeyButtonBackspace,
                                          IRInput::ButtonStatuses::PRESSED)) {

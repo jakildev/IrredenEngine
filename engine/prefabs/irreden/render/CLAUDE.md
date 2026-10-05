@@ -161,7 +161,7 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   `itemCenterOffsetY` / `itemAtOffsetY`) has one owner; authored `zOrder_` stays
   below `kWidgetDropdownOpenZBias`; two open dropdowns are unordered.
 - Radio exclusion (`makeRadio(..., groupId, value)`) runs in `WIDGET_APPLY_RADIO::endTick`;
-  text input edits only while `focused_` (owned by `WIDGET_INPUT`);
+  text input edits only while `focused_` (`WIDGET_INPUT`'s; Enter or a click off widgets drops it);
   `C_WidgetScroll` is track + thumb only — the owner positions content from `scrollPos_`.
 - `IRPrefab::GuiTest::` (`gui_test_assertions.hpp`): `hovers` / `clickFires` /
   `sliderValue` / `checkbox` / `picksVoxel` / `picksIsoColumn` / `hoveredEntityId` /

@@ -9,6 +9,7 @@
 #include <irreden/render/picking.hpp>
 
 #include "anim_panel.hpp"
+#include "component_records.hpp"
 #include "lod_panel.hpp"
 #include "palette.hpp"
 #include "symmetry.hpp"
@@ -16,6 +17,7 @@
 #include <deque>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 // Authoring sessions — compile a recipe of editor gestures into
@@ -368,6 +370,18 @@ struct PanelLabelCheck {
     std::string name_;
 };
 
+// Component expectation on an entity-scene target (a part index, or
+// kEntitySceneRootTarget), read from the live entity: field_ of component_
+// holds expected_. A nullopt expected_ asserts the component is absent.
+struct ComponentValueCheck {
+    int target_ = 0;
+    std::string component_;
+    std::string field_;
+    std::optional<ComponentFieldValue> expected_;
+    bool expectEqual_ = true;
+    std::string name_;
+};
+
 // One shot's worth of session: a camera framing, the events that fire under it,
 // their aim fixups, and the assertions evaluated once it settles.
 struct Segment {
@@ -397,6 +411,7 @@ struct Recipe {
     // Same contract, for the module checks.
     std::deque<ComponentCheck> componentChecks_;
     std::deque<PanelLabelCheck> panelLabelChecks_;
+    std::deque<ComponentValueCheck> componentValueChecks_;
     // Same contract, for the entity-scene LOD checks.
     std::deque<PartGateCheck> partGateChecks_;
     std::deque<ManifestCheck> manifestChecks_;
@@ -462,6 +477,10 @@ bool evaluatePanelLabelCheck(const void *context, std::string &actual);
 // file its last save wrote. Defined in main.cpp, where the scene lives.
 bool evaluatePartGateCheck(const void *context, std::string &actual);
 bool evaluateManifestCheck(const void *context, std::string &actual);
+
+// Reads one ComponentValueCheck against the entity scene. Defined in main.cpp,
+// where the entity scene and the module's Lua state live.
+bool evaluateComponentValueCheck(const void *context, std::string &actual);
 
 // Builds a Recipe from editor gestures. Every op appends to the current
 // segment; segment(label) closes the current one and starts the next. Ops that
@@ -713,6 +732,28 @@ class Builder {
         emitGuiMove(guiTrixel);
         emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
+    }
+
+    // Click the text input at `guiTrixel` to focus it, type `text` one key at
+    // a time, and press Enter, which commits the text and drops the focus so
+    // later key ops reach the editor's commands. `text` is limited to the
+    // glyphs WIDGET_APPLY_TEXT_INPUT types.
+    void typeText(IRMath::vec2 guiTrixel, std::string_view text) {
+        clickGui(guiTrixel);
+        for (char c : text) {
+            const std::optional<TypedKey> key = typedKey(c);
+            if (!key) {
+                recordError(
+                    std::string("typeText cannot type '") + c + "' in segment " + m_current.label_
+                );
+                return;
+            }
+            if (key->shift_)
+                chordKey(IRInput::kKeyButtonLeftShift, key->key_);
+            else
+                tapKey(key->key_);
+        }
+        tapKey(IRInput::kKeyButtonEnter);
     }
 
     // Left-drag a GUI slider's track to `value`. PRESS lands at the track's
@@ -1035,6 +1076,33 @@ class Builder {
         );
     }
 
+    // Assert component `component`'s field `field` on entity-scene `target`
+    // reads `expected` (or, with `expectEqual` false, does not), or with a
+    // nullopt `expected`, that the target lacks the component.
+    void expectComponentValue(
+        int target,
+        std::string component,
+        std::string field,
+        std::optional<ComponentFieldValue> expected,
+        bool expectEqual,
+        std::string name
+    ) {
+        m_recipe.componentValueChecks_.push_back(
+            ComponentValueCheck{
+                target,
+                std::move(component),
+                std::move(field),
+                std::move(expected),
+                expectEqual,
+                std::move(name)
+            }
+        );
+        const ComponentValueCheck &check = m_recipe.componentValueChecks_.back();
+        m_current.assertions_.push_back(
+            IRPrefab::GuiTest::predicate(&evaluateComponentValueCheck, &check, check.name_.c_str())
+        );
+    }
+
     // Reject the recipe outright. For preconditions the op vocabulary cannot
     // express — a scene too small to hold the entity, say — where the ops
     // would each still "work" and quietly author a clipped shape. Same
@@ -1051,6 +1119,51 @@ class Builder {
     }
 
   private:
+    struct TypedKey {
+        IRInput::KeyMouseButtons key_;
+        bool shift_ = false;
+    };
+
+    static std::optional<TypedKey> typedKey(char c) {
+        const auto offset = [](IRInput::KeyMouseButtons first, int index) {
+            return static_cast<IRInput::KeyMouseButtons>(static_cast<int>(first) + index);
+        };
+        if (c >= 'a' && c <= 'z')
+            return TypedKey{offset(IRInput::kKeyButtonA, c - 'a')};
+        if (c >= 'A' && c <= 'Z')
+            return TypedKey{offset(IRInput::kKeyButtonA, c - 'A'), true};
+        if (c >= '0' && c <= '9')
+            return TypedKey{offset(IRInput::kKeyButton0, c - '0')};
+        switch (c) {
+        case ' ':
+            return TypedKey{IRInput::kKeyButtonSpace};
+        case '.':
+            return TypedKey{IRInput::kKeyButtonPeriod};
+        case ',':
+            return TypedKey{IRInput::kKeyButtonComma};
+        case '-':
+            return TypedKey{IRInput::kKeyButtonMinus};
+        case '/':
+            return TypedKey{IRInput::kKeyButtonSlash};
+        case '=':
+            return TypedKey{IRInput::kKeyButtonEqual};
+        case '[':
+            return TypedKey{IRInput::kKeyButtonLeftBracket};
+        case ']':
+            return TypedKey{IRInput::kKeyButtonRightBracket};
+        case '{':
+            return TypedKey{IRInput::kKeyButtonLeftBracket, true};
+        case '}':
+            return TypedKey{IRInput::kKeyButtonRightBracket, true};
+        case '\'':
+            return TypedKey{IRInput::kKeyButtonApostrophe};
+        case '"':
+            return TypedKey{IRInput::kKeyButtonApostrophe, true};
+        default:
+            return std::nullopt;
+        }
+    }
+
     std::optional<IRMath::vec3> aimFor(IRMath::ivec3 target) const {
         return m_eraseMode ? m_model.aimAtVoxel(target) : m_model.aimToPlace(target);
     }

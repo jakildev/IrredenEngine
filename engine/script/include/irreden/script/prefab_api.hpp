@@ -51,6 +51,13 @@ struct PrefabShapeDescription {
     std::uint32_t flags_ = IRMath::SDF::SHAPE_FLAG_VISIBLE;
 };
 
+// One `components = { <name_> = <fields_> }` entry. `fields_` is the Lua
+// table-constructor source of the field overrides, e.g. `{ weight = 7 }`.
+struct PrefabComponentDescription {
+    std::string name_;
+    std::string fields_;
+};
+
 struct PrefabPartDescription {
     std::string id_;
     std::string voxelRef_;
@@ -61,10 +68,12 @@ struct PrefabPartDescription {
     IRRender::LodLevel lodMin_ = IRRender::LodLevel::LOD_4;
     IRRender::LodLevel lodMax_ = IRRender::LodLevel::LOD_0;
     bool resident_ = false;
+    std::vector<PrefabComponentDescription> components_;
 };
 
 struct PrefabDescription {
     int version_ = kPrefabSchemaVersion;
+    std::vector<PrefabComponentDescription> components_;
     std::vector<PrefabPartDescription> parts_;
 };
 
@@ -89,6 +98,10 @@ void clearPrefabs();
 // Read and write the declarative portion of a prefab manifest. The writer is
 // the format owner used by authoring tools; emitted voxel_ref paths retain the
 // caller's spelling and therefore follow the same cwd-relative rule as spawn.
+// Reading resolves every `components` entry against the factory registry, so
+// a manifest naming a Lua-registered component reads only in a process that
+// registered it. The reader serializes each entry's table with sorted keys;
+// a field holding a function or other non-data value is an error.
 ManifestResult readManifest(IRScript::LuaScript &script, const std::string &path);
 std::optional<std::string>
 writeManifest(const std::string &path, const PrefabDescription &description);

@@ -1,6 +1,7 @@
 #ifndef IR_VOXEL_EDITOR_SESSIONS_H
 #define IR_VOXEL_EDITOR_SESSIONS_H
 
+#include "components_panel.hpp"
 #include "recipes_panel.hpp"
 #include "session_builder.hpp"
 
@@ -60,6 +61,12 @@
 // a ModuleSessionSpec in main.cpp), so no module content is named here. It
 // reads the registry enumeration and the docked panels, then applies one recipe
 // through the RECIPES panel and undoes it.
+//
+// `component_attach` proves the COMPONENTS panel and the manifest's
+// `components` round trip, again naming no module content: the component, the
+// field, the value typed and the field's default come from the same sidecar.
+// It attaches the component to part 0, types the value into the field, saves,
+// clears, reloads, and reads the field back from the reloaded entity.
 namespace IRVoxelEditor::Session {
 
 enum class Id {
@@ -75,6 +82,7 @@ enum class Id {
     PARTS_ROUNDTRIP,
     TIER_SCRUB,
     MODULE_LOADED,
+    COMPONENT_ATTACH,
 };
 
 // CLI name -> id. The accepted set is declared to IRArgs as an enum arg, so an
@@ -104,6 +112,8 @@ inline Id idFromName(const std::string &name) {
         return Id::TIER_SCRUB;
     if (name == "module_loaded")
         return Id::MODULE_LOADED;
+    if (name == "component_attach")
+        return Id::COMPONENT_ATTACH;
     return Id::NONE;
 }
 
@@ -136,6 +146,22 @@ struct ModuleSessionSpec {
     std::vector<IRMath::ivec3> defaultOnlyCells_;
     // Spec problems (no --module, a bad session_expect.lua), reported as
     // recipe errors.
+    std::vector<std::string> errors_;
+};
+
+// What component_attach does, resolved in main.cpp from the loaded module and
+// its session_expect.lua `componentAttach` entry.
+struct ComponentAttachSpec {
+    std::string component_;
+    std::string field_;
+    // COMPONENTS list row of the component and field-area row of the field.
+    int listRow_ = -1;
+    int fieldRow_ = -1;
+    // What the session types, the value it must read back, and the value the
+    // field holds right after ATTACH (which the read-back must not be).
+    std::string typedText_;
+    ComponentFieldValue value_;
+    ComponentFieldValue default_;
     std::vector<std::string> errors_;
 };
 
@@ -1333,13 +1359,85 @@ inline Recipe buildModuleLoaded(
     return builder.finish();
 }
 
+inline Recipe buildComponentAttach(
+    IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin, const ComponentAttachSpec &spec
+) {
+    Builder builder("component_attach", sceneSize, sceneOrigin);
+    for (const std::string &error : spec.errors_)
+        builder.recordError(error);
+    if (!spec.errors_.empty())
+        return builder.finish();
+
+    builder.segment("enter_entity_scene");
+    builder.addVoxelPart();
+    builder.expectComponentValue(
+        0,
+        spec.component_,
+        spec.field_,
+        std::nullopt,
+        true,
+        "component_absent_before_attach"
+    );
+
+    builder.segment("attach");
+    builder.clickGui(componentListRowCenterGuiTrixel(spec.listRow_));
+    builder.clickGui(componentButtonCenterGuiTrixel(kComponentAttachPos));
+    builder.expectComponentValue(
+        0,
+        spec.component_,
+        spec.field_,
+        spec.default_,
+        true,
+        "component_default_after_attach"
+    );
+
+    builder.segment("set_field");
+    builder.typeText(componentFieldInputCenterGuiTrixel(spec.fieldRow_), spec.typedText_);
+    builder.expectComponentValue(
+        0,
+        spec.component_,
+        spec.field_,
+        spec.value_,
+        true,
+        "component_field_set"
+    );
+
+    builder.segment("save");
+    builder.save();
+    builder.segment("clear");
+    builder.clearEntityScene();
+    builder.segment("reload");
+    builder.reload();
+    builder.expectComponentValue(
+        0,
+        spec.component_,
+        spec.field_,
+        spec.value_,
+        true,
+        "component_value_survives_reload"
+    );
+    builder.expectComponentValue(
+        0,
+        spec.component_,
+        spec.field_,
+        spec.default_,
+        false,
+        "component_default_absent_after_reload"
+    );
+    return builder.finish();
+}
+
 } // namespace detail
 
 // Build the named session's recipe against the live scene dimensions. Returns
 // an empty (not-ok) recipe for Id::NONE so callers can treat "no session" and
 // "unbuildable session" the same way.
 inline Recipe build(
-    Id id, IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin, const ModuleSessionSpec &moduleSpec
+    Id id,
+    IRMath::ivec3 sceneSize,
+    IRMath::vec3 sceneOrigin,
+    const ModuleSessionSpec &moduleSpec,
+    const ComponentAttachSpec &componentSpec
 ) {
     switch (id) {
     case Id::DRAG_PROBE:
@@ -1487,6 +1585,8 @@ inline Recipe build(
     }
     case Id::MODULE_LOADED:
         return detail::buildModuleLoaded(sceneSize, sceneOrigin, moduleSpec);
+    case Id::COMPONENT_ATTACH:
+        return detail::buildComponentAttach(sceneSize, sceneOrigin, componentSpec);
     case Id::NONE:
         break;
     }
