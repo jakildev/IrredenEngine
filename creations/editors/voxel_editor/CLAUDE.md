@@ -15,7 +15,11 @@ Design log, findings and the authoring-session history:
   `component_field_page` the same on a field only the panel's pager reaches,
   `component_field_key` the same on a field whose name is not a Lua identifier,
   `parts_roundtrip` authors, moves, saves, clears, and reloads a two-part entity,
-  and `tier_scrub` proves per-part LOD bands and the tier scrubber.
+  `tier_scrub` proves per-part LOD bands and the tier scrubber, and
+  `mode_preview` proves the deferred render-mode switch allocates and releases
+  the selected part's private canvas.
+- `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
+  render reference set, discovered under this creation's `test/references/`.
 - `python3 scripts/author-entity.py <entity>` — replays an entity session twice
   and byte-compares the saved `.vxs` (rock, mushroom, bird at the default
   scene; `ant --scene-size 20 20 20`; `tree --scene-size 16 16 26`). A clean

@@ -28,6 +28,8 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_camera.hpp>
+#include <irreden/render/entity_canvas.hpp>
+#include <irreden/common/rotation_mode.hpp>
 
 // Gizmo primitives
 #include <irreden/render/gizmo.hpp>
@@ -44,6 +46,8 @@
 // Systems
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
+#include <irreden/voxel/systems/system_rebuild_grid_voxels.hpp>
+#include <irreden/voxel/systems/system_rebuild_detached_voxels.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
 #include <irreden/render/systems/system_lod_update.hpp>
 #include <irreden/render/systems/system_gate_voxel_sets_by_lod.hpp>
@@ -60,6 +64,8 @@
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
+#include <irreden/render/systems/system_entity_canvas_to_framebuffer.hpp>
+#include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
 #include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/camera_controls.hpp>
@@ -76,10 +82,12 @@
 #include <irreden/render/systems/system_widget_render_color_swatch.hpp>
 #include <irreden/render/systems/system_widget_apply_slider.hpp>
 #include <irreden/render/systems/system_widget_apply_list.hpp>
+#include <irreden/render/systems/system_widget_apply_dropdown.hpp>
 #include <irreden/render/systems/system_widget_apply_checkbox.hpp>
 #include <irreden/render/systems/system_widget_apply_text_input.hpp>
 #include <irreden/render/systems/system_widget_render_slider.hpp>
 #include <irreden/render/systems/system_widget_render_list.hpp>
+#include <irreden/render/systems/system_widget_render_dropdown.hpp>
 #include <irreden/render/systems/system_widget_render_text_input.hpp>
 #include <irreden/render/systems/system_widget_render_checkbox.hpp>
 #include <irreden/render/systems/system_widget_render_button.hpp>
@@ -1054,6 +1062,126 @@ void stepLodTierPin(int delta) {
     setLodTierPin(static_cast<IRRender::LodLevel>(stepped));
 }
 
+IREntity::EntityId g_partModeDropdown = IREntity::kNullEntity;
+int g_modePreviewBaseCanvasCount = 0;
+
+int rotationModeIndex(IRComponents::RotationMode mode) {
+    switch (mode) {
+    case IRComponents::RotationMode::GRID:
+        return 0;
+    case IRComponents::RotationMode::DETACHED:
+        return 1;
+    case IRComponents::RotationMode::DETACHED_REVOXELIZE:
+        return 2;
+    }
+    return 0;
+}
+
+IRComponents::RotationMode rotationModeFromIndex(int index) {
+    switch (index) {
+    case 1:
+        return IRComponents::RotationMode::DETACHED;
+    case 2:
+        return IRComponents::RotationMode::DETACHED_REVOXELIZE;
+    default:
+        return IRComponents::RotationMode::GRID;
+    }
+}
+
+IRComponents::RotationMode nextRotationMode(IRComponents::RotationMode mode) {
+    switch (mode) {
+    case IRComponents::RotationMode::GRID:
+        return IRComponents::RotationMode::DETACHED;
+    case IRComponents::RotationMode::DETACHED:
+        return IRComponents::RotationMode::DETACHED_REVOXELIZE;
+    case IRComponents::RotationMode::DETACHED_REVOXELIZE:
+        return IRComponents::RotationMode::GRID;
+    }
+    return IRComponents::RotationMode::GRID;
+}
+
+void syncPartModeDropdown() {
+    if (g_partModeDropdown == IREntity::kNullEntity) {
+        return;
+    }
+    const EditorPart *part = g_entityScene.selectedPart();
+    IRPrefab::Widget::setDropdownSelectedIndex(
+        g_partModeDropdown,
+        part != nullptr ? rotationModeIndex(part->mode_) : 0
+    );
+}
+
+void stageRotationMode(
+    IREntity::EntityId entity, IRComponents::RotationMode mode, bool persistPart = false
+) {
+    IREntity::getEntityManager().stageStructuralChange([entity, mode, persistPart]() {
+        if (IREntity::entityExists(entity)) {
+            IRPrefab::RotationMode::setMode(entity, mode);
+            if (persistPart) {
+                IRMath::ivec2 canvasSize{0};
+                if (auto canvas = IREntity::getComponentOptional<C_EntityCanvas>(entity)) {
+                    canvasSize = canvas.value()->canvasSize_;
+                }
+                g_entityScene.setPartRenderState(entity, mode, canvasSize);
+            }
+        }
+    });
+}
+
+void createModePreviewTwin() {
+    const EditorPart *part = g_entityScene.selectedPart();
+    if (part == nullptr || part->kind_ != EditorPartKind::VOXEL_SET) {
+        return;
+    }
+    const auto &source = IREntity::getComponent<C_VoxelSetNew>(part->entity_);
+    const IRAsset::DenseVoxelSet dense = IRPrefab::DenseVoxel::fromComponent(source);
+    C_LocalTransform transform = IREntity::getComponent<C_LocalTransform>(part->entity_);
+    transform.translation_.x += static_cast<float>(source.size_.x * 2);
+    const IREntity::EntityId preview = IREntity::createEntity(
+        transform,
+        IRPrefab::DenseVoxel::toComponent(dense),
+        C_RotationMode{RotationMode::GRID},
+        C_EditorReference{}
+    );
+    IREntity::setParent(preview, g_entityScene.root());
+    g_entityScene.setPreviewEntity(preview);
+    stageRotationMode(preview, nextRotationMode(part->mode_));
+}
+
+void setSelectedPartRotationMode(IRComponents::RotationMode mode) {
+    EditorPart *part = g_entityScene.selectedPart();
+    if (part == nullptr || part->kind_ != EditorPartKind::VOXEL_SET || part->mode_ == mode) {
+        syncPartModeDropdown();
+        return;
+    }
+    const bool refreshPreview = g_entityScene.previewEntity() != IREntity::kNullEntity;
+    g_entityScene.destroyPreview();
+    part->mode_ = mode;
+    if (!IRPrefab::RotationMode::ownsEntityCanvas(mode)) {
+        part->canvasSize_ = IRMath::ivec2{0};
+    }
+    stageRotationMode(part->entity_, mode, true);
+    syncPartModeDropdown();
+    if (refreshPreview) {
+        createModePreviewTwin();
+    }
+}
+
+void cycleSelectedPartRotationMode() {
+    const EditorPart *part = g_entityScene.selectedPart();
+    if (part != nullptr) {
+        setSelectedPartRotationMode(nextRotationMode(part->mode_));
+    }
+}
+
+void toggleModePreviewTwin() {
+    if (g_entityScene.previewEntity() != IREntity::kNullEntity) {
+        g_entityScene.destroyPreview();
+        return;
+    }
+    createModePreviewTwin();
+}
+
 void clearUndoHistory() {
     g_editor.undoRecords_.clear();
     g_editor.undoTotalBytes_ = 0;
@@ -1065,8 +1193,12 @@ void clearUndoHistory() {
     std::fill(g_editor.perFrameUndoBytes_.begin(), g_editor.perFrameUndoBytes_.end(), 0);
 }
 
-void selectEditorPart(int index) {
-    const IREntity::EntityId selected = g_entityScene.select(index);
+void selectEditorPart(int index, bool createGizmos = true) {
+    const IREntity::EntityId selected = g_entityScene.select(index, createGizmos);
+    if (g_entityScene.previewSourceEntity() != IREntity::kNullEntity &&
+        selected != g_entityScene.previewSourceEntity()) {
+        g_entityScene.destroyPreview();
+    }
     for (const EditorPart &part : g_entityScene.parts()) {
         if (part.entity_ == selected) {
             if (IREntity::getComponentOptional<C_EditorReference>(part.entity_)) {
@@ -1089,6 +1221,7 @@ void selectEditorPart(int index) {
         IRPrefab::Widget::setListSelectedIndex(g_partsList, g_entityScene.selectedIndex());
     }
     syncLodBandSliders();
+    syncPartModeDropdown();
 }
 
 void selectRelativeEditorPart(int offset) {
@@ -1127,6 +1260,7 @@ void clearEntitySceneForLoad() {
         list.selectedIndex_ = -1;
     }
     syncLodBandSliders();
+    syncPartModeDropdown();
 }
 
 // Fill-mode status label — top-left status bar updated each frame with the
@@ -2776,6 +2910,37 @@ bool evaluatePartCountCheck(const void *context, std::string &actual) {
     return count == check.expected_;
 }
 
+bool evaluateCanvasCountCheck(const void *context, std::string &actual) {
+    const CanvasCountCheck &check = *static_cast<const CanvasCountCheck *>(context);
+    const int count = IRPrefab::EntityCanvas::count();
+    const int expected = g_modePreviewBaseCanvasCount + check.expectedOffset_;
+    actual = "canvases=" + std::to_string(count) + " want=" + std::to_string(expected);
+    return count == expected;
+}
+
+bool evaluateRotationModeCheck(const void *context, std::string &actual) {
+    const RotationModeCheck &check = *static_cast<const RotationModeCheck *>(context);
+    if (check.partIndex_ < 0 ||
+        check.partIndex_ >= static_cast<int>(g_entityScene.parts().size())) {
+        actual = "part index out of range";
+        return false;
+    }
+    const EditorPart &part = g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)];
+    const IREntity::EntityId entity = part.entity_;
+    const RotationMode mode = IREntity::getComponent<C_RotationMode>(entity).mode_;
+    bool canvasSizeMatches = part.canvasSize_ == IRMath::ivec2{0};
+    if (IRPrefab::RotationMode::ownsEntityCanvas(mode)) {
+        const auto canvas = IREntity::getComponentOptional<C_EntityCanvas>(entity);
+        canvasSizeMatches = canvas && part.canvasSize_.x > 0 && part.canvasSize_.y > 0 &&
+                            part.canvasSize_ == canvas.value()->canvasSize_;
+    }
+    actual = "mode=" + std::to_string(rotationModeIndex(mode)) +
+             " want=" + std::to_string(rotationModeIndex(check.expected_)) +
+             " stored_canvas=" + std::to_string(part.canvasSize_.x) + "x" +
+             std::to_string(part.canvasSize_.y);
+    return mode == check.expected_ && canvasSizeMatches;
+}
+
 // Reads one SliderCheck against the live ANIM panel widget it names — the
 // positive fire for dragGuiSlider: a drag that missed the track never
 // presses the widget, so its value stays put and this fails instead of
@@ -2811,19 +2976,25 @@ bool evaluateSliderCheck(const void *context, std::string &actual) {
 
 bool evaluatePartGateCheck(const void *context, std::string &actual) {
     const PartGateCheck &check = *static_cast<const PartGateCheck *>(context);
-    if (check.partIndex_ < 0 ||
-        check.partIndex_ >= static_cast<int>(g_entityScene.parts().size())) {
+    IREntity::EntityId entity = g_entityScene.previewEntity();
+    if (check.partIndex_ >= 0 &&
+        check.partIndex_ < static_cast<int>(g_entityScene.parts().size())) {
+        entity = g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)].entity_;
+    } else if (check.partIndex_ != -1) {
         actual = "part index out of range";
         return false;
     }
-    const EditorPart &part = g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)];
-    const auto set = IREntity::getComponentOptional<C_VoxelSetNew>(part.entity_);
+    if (entity == IREntity::kNullEntity || !IREntity::entityExists(entity)) {
+        actual = "target entity does not exist";
+        return false;
+    }
+    const auto set = IREntity::getComponentOptional<C_VoxelSetNew>(entity);
     if (!set) {
         actual = "part has no voxel set";
         return false;
     }
     const bool gated = (*set)->lodCulled_;
-    const auto pin = IREntity::getComponentOptional<C_LodTierOverride>(part.entity_);
+    const auto pin = IREntity::getComponentOptional<C_LodTierOverride>(entity);
     const int pinnedTier = pin ? static_cast<int>((*pin)->tier_) : -1;
     actual = "band=[" + std::to_string(static_cast<int>((*set)->lodMax_)) + "," +
              std::to_string(static_cast<int>((*set)->lodMin_)) +
@@ -3183,8 +3354,8 @@ int main(int argc, char **argv) {
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
         "face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | tier_scrub | "
-        "radial_array | nway_symmetry | module_loaded | component_attach | "
-        "component_field_page | component_field_key",
+        "radial_array | nway_symmetry | mode_preview | mode_preview_shots | module_loaded | "
+        "component_attach | component_field_page | component_field_key",
         {"none",
          "drag_probe",
          "place_below",
@@ -3195,13 +3366,15 @@ int main(int argc, char **argv) {
          "bird",
          "tree",
          "parts_roundtrip",
-         "tier_scrub",
-         "radial_array",
-         "nway_symmetry",
-         "module_loaded",
-         "component_attach",
-         "component_field_page",
-         "component_field_key"},
+        "tier_scrub",
+        "radial_array",
+        "nway_symmetry",
+        "mode_preview",
+        "mode_preview_shots",
+        "module_loaded",
+        "component_attach",
+        "component_field_page",
+        "component_field_key"},
         "none"
     );
     IREngine::args().string(
@@ -3830,6 +4003,10 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::GIZMO_SCREEN_SPACE_SIZE>(),
          IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
+         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
+         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>(),
+         IRSystem::createSystem<IRSystem::PROPAGATE_CANVAS_ROTATION>(),
+         IRSystem::createSystem<IRSystem::REBUILD_DETACHED_VOXELS>(),
          IRSystem::createSystem<IRSystem::LIFETIME>()}
     );
 
@@ -3986,6 +4163,12 @@ void initSystems() {
                     selected != g_entityScene.selectedIndex()) {
                     selectEditorPart(selected);
                 }
+            }
+            if (g_entitySceneMode && g_partModeDropdown != IREntity::kNullEntity &&
+                IRPrefab::Widget::wasClicked(g_partModeDropdown)) {
+                setSelectedPartRotationMode(rotationModeFromIndex(
+                    IRPrefab::Widget::dropdownSelectedIndex(g_partModeDropdown)
+                ));
             }
             if (g_layerList == IREntity::kNullEntity)
                 return;
@@ -4322,6 +4505,7 @@ void initSystems() {
          IRVoxelEditor::g_widgetLuaDispatchId,
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_SLIDER>(),
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_LIST>(),
+         IRSystem::createSystem<IRSystem::WIDGET_APPLY_DROPDOWN>(),
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_TEXT_INPUT>(),
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_CHECKBOX>(),
          scrubberSystem,
@@ -4388,6 +4572,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_LIST>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_TEXT_INPUT>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_COLOR_SWATCH>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_DROPDOWN>(),
             helpRenderSystem,
         }
     );
@@ -4400,6 +4585,7 @@ void initSystems() {
         renderPipeline.end(),
         {
             IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+            IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
         }
@@ -5075,6 +5261,28 @@ void initCommands() {
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonM,
+        []() { IRVoxelEditor::cycleSelectedPartRotationMode(); },
+        IRInput::kModifierNone,
+        IRInput::kModifierControl,
+        "CYCLE PART MODE",
+        "CYCLE GRID, DETACHED, AND DETACHED REVOXELIZE"
+    );
+
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonM,
+        []() { IRVoxelEditor::toggleModePreviewTwin(); },
+        IRInput::kModifierControl,
+        IRInput::kModifierNone,
+        "TOGGLE MODE PREVIEW",
+        "SHOW THE SELECTED PART BESIDE ITS NEXT RENDER MODE"
+    );
+
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonTab,
         []() { IRVoxelEditor::selectRelativeEditorPart(1); },
         IRInput::kModifierNone,
@@ -5653,10 +5861,17 @@ void initEntities() {
     IREntity::getComponent<IRComponents::C_Widget>(IRVoxelEditor::g_partsPanel).zOrder_ = -1;
     IRVoxelEditor::g_partsList = IRPrefab::Widget::makeList(
         ivec2(kPartsPanelPos.x + 4, kPartsPanelPos.y + 18),
-        ivec2(112, 70),
+        ivec2(112, 44),
         {},
         -1,
         13
+    );
+    IRVoxelEditor::g_partModeDropdown = IRPrefab::Widget::makeDropdown(
+        ivec2(kPartsPanelPos.x + 4, kPartsPanelPos.y + 66),
+        ivec2(112, 18),
+        {"GRID", "DETACHED", "DETACHED REVOX"},
+        0,
+        16
     );
 
     IRVoxelEditor::g_lodPanel = IRPrefab::Widget::makePanel(
@@ -5910,6 +6125,8 @@ void initEntities() {
         {IRVoxelEditor::g_arrayPanel,
          "ARRAY: radial or linear part copies; each remains editable."},
         {IRVoxelEditor::g_arrayApplyButton, "APPLY: create the configured part array as one undo."},
+        {IRVoxelEditor::g_partModeDropdown,
+         "MODE: preview GRID, DETACHED, or DETACHED REVOXELIZE (M cycles)."},
         {IRVoxelEditor::g_bakePanel, "BAKE: pick a shape, set P1/P2, then BAKE the active entity."},
         {IRVoxelEditor::g_bakeShapeList, "SHAPE: choose the SDF primitive to voxelize."},
         {IRVoxelEditor::g_bakeParam1Slider, "P1: primary shape parameter (size / radius)."},
@@ -5941,6 +6158,29 @@ void initEntities() {
     // by placeEraseSystem to show the active mode (BOX / LINE / FACE) and which
     // symmetry axes are active so the user can see modifier state at a glance.
     IRVoxelEditor::g_fillModeLabel = IRPrefab::Widget::makeLabel(ivec2(4, 4), "BOX");
+
+    const bool modePreviewSession =
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::MODE_PREVIEW ||
+        IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::MODE_PREVIEW_SHOTS;
+    if (modePreviewSession) {
+        IREntity::destroyEntity(g_editor.editableVoxelSet_);
+        IRVoxelEditor::g_entitySceneMode = true;
+        IRVoxelEditor::g_entityScene.begin();
+        constexpr ivec3 kPreviewSize{6, 6, 6};
+        const IREntity::EntityId part =
+            IRVoxelEditor::g_entityScene
+                .addVoxelPart(kPreviewSize, vec3(0.0f), Color{150, 205, 235, 255}, true);
+        auto &set = IREntity::getComponent<C_VoxelSetNew>(part);
+        set.carve([](vec3 local) {
+            return local.x >= 1.5f && local.y <= -0.5f && local.z <= 0.5f;
+        });
+        IREntity::getComponent<C_LocalTransform>(part).rotation_ =
+            IRMath::quatAxisAngle(vec3(0.0f, 0.0f, 1.0f), IRMath::kPi / 6.0f);
+        IRVoxelEditor::selectEditorPart(0, false);
+        g_editor.editableVoxelSet_ = part;
+        IRVoxelEditor::g_sceneVoxelSetEntity = part;
+        IRVoxelEditor::g_modePreviewBaseCanvasCount = IRPrefab::EntityCanvas::count();
+    }
 
     // GUI-test assertions — populated here (not at the constexpr
     // shot table) because they reference runtime widget EntityIds. The
