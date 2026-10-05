@@ -16,9 +16,11 @@
 
 #include "component_records.hpp"
 
+#include <algorithm>
 #include <charconv>
 #include <cstddef>
 #include <filesystem>
+#include <iterator>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -39,6 +41,9 @@ struct EditorPart {
     IRRender::LodLevel lodMax_ = IRRender::LodLevel::LOD_0;
     bool resident_ = false;
     std::vector<ComponentRecord> components_;
+    int groupId_ = 0;
+    IRMath::vec3 groupAxis_ = IRMath::vec3(0.0f, 0.0f, 1.0f);
+    int rotationalOrder_ = 0;
 };
 
 // The root as a component-attach target; a part is its index.
@@ -46,6 +51,11 @@ constexpr int kEntitySceneRootTarget = -1;
 
 struct EntitySceneResult {
     bool ok_ = false;
+    std::string error_;
+};
+
+struct EntitySceneCloneResult {
+    std::vector<IREntity::EntityId> entities_;
     std::string error_;
 };
 
@@ -159,6 +169,110 @@ class EntityScene {
         return m_tierOverride;
     }
 
+    EntitySceneCloneResult cloneSelected(
+        IRScript::LuaScript &script,
+        const std::vector<IRComponents::C_LocalTransform> &offsets,
+        IRMath::vec3 groupAxis,
+        int rotationalOrder
+    ) {
+        EntitySceneCloneResult result;
+        if (selectedEntity() == IREntity::kNullEntity || offsets.empty()) {
+            return result;
+        }
+
+        const EditorPart source = m_parts[static_cast<std::size_t>(m_selected)];
+        const auto sourceTransform =
+            IREntity::getComponent<IRComponents::C_LocalTransform>(source.entity_);
+        const int groupId = m_nextGroupId++;
+        result.entities_.reserve(offsets.size());
+        std::vector<EditorPart> clones;
+        clones.reserve(offsets.size());
+        for (const IRComponents::C_LocalTransform &offset : offsets) {
+            IRComponents::C_LocalTransform transform = sourceTransform;
+            transform.translation_ += offset.translation_;
+            transform.rotation_ = IRMath::quatMul(offset.rotation_, sourceTransform.rotation_);
+            const std::string id = "part_" + std::to_string(m_nextPartId++);
+            IREntity::EntityId entity = IREntity::kNullEntity;
+            if (source.kind_ == EditorPartKind::SHAPE) {
+                const auto shape =
+                    IREntity::getComponent<IRComponents::C_ShapeDescriptor>(source.entity_);
+                entity = IREntity::createEntity(
+                    transform,
+                    shape,
+                    IRComponents::C_RotationMode{source.mode_}
+                );
+            } else {
+                const auto &set =
+                    IREntity::getComponent<IRComponents::C_VoxelSetNew>(source.entity_);
+                entity = IREntity::createEntity(
+                    transform,
+                    IRPrefab::DenseVoxel::toComponent(IRPrefab::DenseVoxel::fromComponent(set)),
+                    IRComponents::C_RotationMode{source.mode_}
+                );
+            }
+            IREntity::setParent(entity, m_root);
+            EditorPart clone{
+                entity,
+                id,
+                source.kind_,
+                source.mode_,
+                source.canvasSize_,
+                source.lodMin_,
+                source.lodMax_,
+                source.resident_,
+                source.components_,
+                groupId,
+                groupAxis,
+                rotationalOrder
+            };
+            applyBand(clone);
+            applyTierOverride(entity);
+            for (ComponentRecord &component : clone.components_) {
+                if (const auto error = applyComponentRecord(script, entity, component)) {
+                    IREntity::destroyEntity(entity);
+                    for (IREntity::EntityId created : result.entities_) {
+                        IREntity::destroyEntity(created);
+                    }
+                    result.entities_.clear();
+                    result.error_ = *error;
+                    return result;
+                }
+            }
+            clones.push_back(std::move(clone));
+            result.entities_.push_back(entity);
+        }
+        m_parts.insert(
+            m_parts.end(),
+            std::make_move_iterator(clones.begin()),
+            std::make_move_iterator(clones.end())
+        );
+        select(static_cast<int>(m_parts.size()) - 1, false);
+        return result;
+    }
+
+    void removeParts(const std::vector<IREntity::EntityId> &entities) {
+        destroySelectionGizmos();
+        for (IREntity::EntityId entity : entities) {
+            if (IREntity::entityExists(entity)) {
+                IREntity::destroyEntity(entity);
+            }
+        }
+        m_parts.erase(
+            std::remove_if(
+                m_parts.begin(),
+                m_parts.end(),
+                [&](const EditorPart &part) {
+                    return std::find(entities.begin(), entities.end(), part.entity_) !=
+                           entities.end();
+                }
+            ),
+            m_parts.end()
+        );
+        m_selected = m_parts.empty()
+                         ? -1
+                         : IRMath::clamp(m_selected, 0, static_cast<int>(m_parts.size()) - 1);
+    }
+
     IREntity::EntityId select(int index, bool createGizmos = true) {
         destroySelectionGizmos();
         if (m_parts.empty()) {
@@ -183,6 +297,7 @@ class EntityScene {
         m_parts.clear();
         m_selected = -1;
         m_nextPartId = 0;
+        m_nextGroupId = 1;
     }
 
     EntitySceneResult save(const std::string &dir, const std::string &baseName) const {
@@ -452,6 +567,7 @@ class EntityScene {
     int m_selected = -1;
     int m_nextPartId = 0;
     std::optional<IRRender::LodLevel> m_tierOverride;
+    int m_nextGroupId = 1;
 };
 
 } // namespace IRVoxelEditor
