@@ -34,6 +34,7 @@
 #include <irreden/render/systems/system_compute_sun_shadow.hpp>
 #include <irreden/render/systems/system_compute_voxel_ao.hpp>
 #include <irreden/render/systems/system_debug_culling_minimap.hpp>
+#include <irreden/render/systems/system_debug_overlay.hpp>
 #include <irreden/render/systems/system_fog_to_trixel.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
@@ -633,6 +634,8 @@ inline void initSystems(const DemoConfig &config) {
             .bakeSunShadowSystemId_ = IRSystem::findSystem(IRSystem::BAKE_SUN_SHADOW_MAP),
         })
     );
+    // The minimap draws through the IRDebug queue; DEBUG_OVERLAY flushes and clears it.
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::DEBUG_OVERLAY>());
     // Off during --auto-screenshot captures — the minimap is a live debug
     // aid, not part of the render-verify golden image. Interactive runs
     // (sceneState().autoWarmupFrames_ == 0) default it visible; F11 toggles it either way.

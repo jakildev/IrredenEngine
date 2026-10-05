@@ -141,6 +141,7 @@
 #include <irreden/update/components/component_particle_burst.hpp>
 #include <irreden/update/components/component_particle_spawner.hpp>
 #include <irreden/update/components/component_periodic_idle.hpp>
+#include <irreden/update/components/component_prefab_parts.hpp>
 #include <irreden/update/components/component_procedural_animation.hpp>
 #include <irreden/update/components/component_reactive_return_3d.hpp>
 #include <irreden/update/components/component_rhythmic_launch.hpp>
@@ -192,6 +193,9 @@ IR_SAVE_OPT_OUT(IRComponents::C_ActiveLodLevel)
 // A tier pin is the output of a creation's LOD policy, which re-applies it
 // from its own state after a load.
 IR_SAVE_OPT_OUT(IRComponents::C_LodTierOverride)
+// A composite prefab root's part slots hold live entity ids and a manifest whose
+// Lua tables do not serialize; a creation re-spawns the prefab after a load.
+IR_SAVE_OPT_OUT(IRComponents::C_PrefabParts)
 IR_SAVE_OPT_OUT(IRComponents::C_ChunkVisibleThisFrame)
 IR_SAVE_OPT_OUT(IRComponents::C_FrameDataTrixelToFramebuffer)
 IR_SAVE_OPT_OUT(IRComponents::C_CanvasLocalRotation)
@@ -453,6 +457,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_RenderCache,
     IRComponents::C_ActiveLodLevel,
     IRComponents::C_LodTierOverride,
+    IRComponents::C_PrefabParts,
     IRComponents::C_ChunkVisibleThisFrame,
     IRComponents::C_FrameDataTrixelToFramebuffer,
     IRComponents::C_CanvasLocalRotation,

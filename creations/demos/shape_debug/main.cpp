@@ -13,6 +13,8 @@
 
 #include <irreden/asset/voxel_set_format.hpp>
 #include <irreden/voxel/dense_bridge.hpp>
+#include <irreden/script/lua_script.hpp>
+#include <irreden/script/prefab_api.hpp>
 
 #include <algorithm>
 #include <array>
@@ -20,10 +22,12 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <iterator>
 #include <numbers>
 #include <optional>
 #include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 // COMPONENTS
 #include <irreden/common/components/component_local_transform.hpp>
@@ -44,6 +48,7 @@
 #include <irreden/render/camera.hpp>
 
 // SYSTEMS
+#include <irreden/update/systems/system_prefab_lod_parts.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/render/systems/system_gate_voxel_sets_by_lod.hpp>
 #include <irreden/render/systems/system_lod_update.hpp>
@@ -64,6 +69,7 @@
 #include <irreden/render/systems/system_compute_light_volume.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_debug_culling_minimap.hpp>
+#include <irreden/render/systems/system_debug_overlay.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
@@ -504,6 +510,15 @@ constexpr Color kPortraitCoarseColor{220, 150, 70, 255};
 constexpr IRVideo::AutoScreenshotShot kViewportLodSwapShots[] = {
     {1.0f, vec2(0, 0), 0.0f, "portrait_lod_swap_z1"},
 };
+
+// --load-prefab <path>: the scene is the prefab manifest at <path> (exe-relative)
+// spawned at the origin, so each shot shows the parts its LOD bands select at
+// that zoom. Empty = not requested. The manifest is evaluated in the World's
+// Lua state, which the binding registration in main() hands over at init.
+std::string g_loadPrefabPath;
+IRScript::LuaScript *g_prefabLua = nullptr;
+std::vector<IRVideo::AutoScreenshotShot> g_loadPrefabShots;
+std::vector<std::array<char, 40>> g_loadPrefabShotLabels;
 // cursor-latch runs the same poses through the GUI-test cycler; its shots wrap
 // g_pivotVerifyShots (whose labels this table's label_ pointers still target,
 // so both vectors must outlive the game loop).
@@ -1346,6 +1361,12 @@ void registerCliArgs() {
     args.flag("--pivot-origin", "Force the legacy world-origin Z-yaw pivot (#1352 A/B)");
     args.flag("--cull-validate", "Frozen-cull free-fly validation sweep (#1438)");
     args.string(
+        "--load-prefab",
+        "Replace the scene + capture table with this prefab manifest (exe-relative path) "
+        "spawned at the origin, captured at zoom 1x / 4x / 16x; needs --auto-screenshot",
+        ""
+    );
+    args.string(
         "--load-vxs",
         "Path to a DENSE-mode .vxs to load and render alongside fixtures (a "
         "<base>_frame_<N>.vxs path loads the whole animation)",
@@ -1449,6 +1470,9 @@ void readCliArgs() {
     }
     g_pivotOrigin = args.getFlag("--pivot-origin");
     g_cullValidate = args.getFlag("--cull-validate");
+    if (args.wasProvided("--load-prefab")) {
+        g_loadPrefabPath = args.getString("--load-prefab");
+    }
     if (args.wasProvided("--load-vxs")) {
         g_loadVxsPath = args.getString("--load-vxs");
     }
@@ -1477,6 +1501,12 @@ int main(int argc, char **argv) {
     // Register custom flags, then let init parse common + custom in one pass
     // (--help exits here, pre-window). Read the parsed values back afterwards.
     registerCliArgs();
+    IREngine::registerLuaBindings([](IRScript::LuaScript &lua) {
+        if (IREngine::args().wasProvided("--load-prefab")) {
+            lua.bindLuaDrivenEcs();
+            g_prefabLua = &lua;
+        }
+    });
     IREngine::init(argc, argv);
     readCliArgs();
 
@@ -2558,6 +2588,44 @@ void initLodDenseSwapScene() {
     spawnLodVariantPair(8, Color{220, 150, 70, 255}, 12, Color{90, 160, 230, 255});
 }
 
+// --load-prefab: one shot per tier family a composite prefab's bands key on
+// (LOD_4, LOD_2, LOD_0), labeled after the manifest's file stem.
+void buildLoadPrefabShots() {
+    std::string stem = std::filesystem::path(g_loadPrefabPath).filename().string();
+    constexpr std::string_view kSuffix = ".prefab.lua";
+    if (stem.size() > kSuffix.size() &&
+        stem.compare(stem.size() - kSuffix.size(), kSuffix.size(), kSuffix) == 0) {
+        stem.resize(stem.size() - kSuffix.size());
+    }
+    constexpr int kZooms[] = {1, 4, 16};
+    emitSweepShots(
+        g_loadPrefabShots,
+        g_loadPrefabShotLabels,
+        static_cast<int>(std::size(kZooms)),
+        [&](auto &label, int i) {
+            std::snprintf(label.data(), label.size(), "prefab_%s_z%d", stem.c_str(), kZooms[i]);
+        },
+        [&](int i) {
+            IRVideo::AutoScreenshotShot shot{};
+            shot.zoom_ = static_cast<float>(kZooms[i]);
+            shot.cameraIso_ = vec2(0.0f, 0.0f);
+            return shot;
+        }
+    );
+}
+
+void initLoadPrefabScene() {
+    IR_ASSERT(g_prefabLua != nullptr, "--load-prefab: the World's Lua state was never bound");
+    IRPrefab::Prefab::registerPrefab("load_prefab", g_loadPrefabPath);
+    const IRPrefab::Prefab::SpawnResult spawned =
+        IRPrefab::Prefab::spawnPrefab(*g_prefabLua, "load_prefab", vec3(0.0f));
+    if (spawned.entity_ == IREntity::kNullEntity) {
+        IR_LOG_ERROR("--load-prefab: '{}' failed to spawn: {}", g_loadPrefabPath, spawned.error_);
+        std::exit(EXIT_FAILURE);
+    }
+    IR_LOG_INFO("--load-prefab: spawned '{}' -> entity {}", g_loadPrefabPath, spawned.entity_);
+}
+
 void initCullEvictScene() {
     const EntityId canvas = IRRender::getActiveCanvasEntity();
     g_cullEvict.canvasEntity_ = canvas;
@@ -2624,6 +2692,14 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>()
     };
+    if (!g_loadPrefabPath.empty()) {
+        // After LOD_UPDATE, so the parts follow this tick's tier, and before
+        // PROPAGATE_TRANSFORM, so a part spawned this tick is placed this tick.
+        updatePipeline.insert(
+            std::next(updatePipeline.begin(), 2),
+            IRSystem::createSystem<IRSystem::PREFAB_LOD_PARTS>()
+        );
+    }
     // --load-vxs animation playback: swap the next frame's voxels
     // into the loaded set on a fixed tick cadence derived from the asset's own
     // FPS. Registered whenever a set was requested for playback — the entity
@@ -2740,6 +2816,8 @@ void initSystems() {
                 .lightVolumeSystemId_ = computeLightVolumeId,
                 .bakeSunShadowSystemId_ = bakeSunShadowMapId,
             }),
+            // The minimap draws through the IRDebug queue; DEBUG_OVERLAY flushes and clears it.
+            IRSystem::createSystem<IRSystem::DEBUG_OVERLAY>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
         }
@@ -3162,6 +3240,13 @@ void initSystems() {
             IRVideo::setAutoScreenshotShots(cfg, kViewportLodSwapShots);
         } else if (g_viewportPortrait) {
             IRVideo::setAutoScreenshotShots(cfg, kViewportPortraitShots);
+        } else if (!g_loadPrefabPath.empty()) {
+            buildLoadPrefabShots();
+            cfg.shots_ = g_loadPrefabShots.data();
+            cfg.numShots_ = static_cast<int>(g_loadPrefabShots.size());
+            // A shot's zoom changes the tier on its first frame; the parts
+            // follow once the tier has settled and their spawns flushed.
+            cfg.settleFrames_ = IRConstants::kPrefabPartsTierSettleTicks + 3;
         } else {
             IRVideo::setAutoScreenshotShots(cfg, kShots);
         }
@@ -3856,6 +3941,12 @@ void initEntities() {
     if (g_lodDenseSwap) {
         IR_LOG_INFO("--- DENSE LOD-swap fixture scene ---");
         initLodDenseSwapScene();
+        setupCanvasLighting();
+        return;
+    }
+    if (!g_loadPrefabPath.empty()) {
+        IR_LOG_INFO("--- Prefab manifest scene ---");
+        initLoadPrefabScene();
         setupCanvasLighting();
         return;
     }

@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <irreden/ir_math.hpp>
+#include <irreden/render/ir_render_types.hpp>
 
 // ---------------------------------------------------------------------------
 // The CAMERA_CENTER pan invariant.
@@ -75,6 +76,19 @@ vec2 screenShiftUnderLiveFocus(
                visualYaw,
                viewOffsetIso
            );
+}
+
+// The same shift when the focus is a world point that does not follow the
+// camera: an explicit `setRotationPivotFocus`.
+vec2 screenShiftUnderFixedFocus(
+    const vec2 cameraIso,
+    const vec2 delta,
+    const vec3 focusWorld,
+    const float visualYaw,
+    const vec2 viewOffsetIso = vec2(0.0f)
+) {
+    return effectiveCameraIso(cameraIso + delta, focusWorld, visualYaw, viewOffsetIso) -
+           effectiveCameraIso(cameraIso, focusWorld, visualYaw, viewOffsetIso);
 }
 
 // Yaws to sweep. 2pi/3 is excluded deliberately: the iso projection is
@@ -203,6 +217,54 @@ TEST(CameraPanPivot, WorldPointLatchBreaksThePanIdentity) {
     EXPECT_NEAR(shift.x, 20.0f, kTolerance);
     EXPECT_NEAR(shift.y, 30.0f, kTolerance);
     EXPECT_GT(IRMath::length(shift - isoDelta), 1.0f);
+}
+
+// ---------------------------------------------------------------------------
+// The pivot decides the pre-compensation. Pan systems read the yaw from
+// `IRRender::cameraPanYawForPivot`; with it, a pan shifts content by exactly the
+// requested delta under every pivot, not just the default one.
+// ---------------------------------------------------------------------------
+
+TEST(CameraPanPivot, PanYawFollowsThePivot) {
+    using IRRender::RotationPivotMode;
+    const float visualYaw = 1.25f;
+    EXPECT_EQ(
+        IRRender::cameraPanYawForPivot(RotationPivotMode::CAMERA_CENTER, false, visualYaw),
+        visualYaw
+    );
+    EXPECT_EQ(
+        IRRender::cameraPanYawForPivot(RotationPivotMode::CAMERA_CENTER, true, visualYaw),
+        0.0f
+    );
+    EXPECT_EQ(IRRender::cameraPanYawForPivot(RotationPivotMode::ORIGIN, false, visualYaw), 0.0f);
+    EXPECT_EQ(IRRender::cameraPanYawForPivot(RotationPivotMode::ORIGIN, true, visualYaw), 0.0f);
+}
+
+TEST(CameraPanPivot, ExplicitFocusPanShiftsContentByTheDragAtEveryYaw) {
+    const vec2 cameraIso = vec2(64.0f, -12.0f);
+    const vec3 explicitFocus = vec3(8.0f, -8.0f, 10.0f);
+    const vec2 viewOffsetIso = vec2(-6.341f, 11.5f);
+    const vec2 isoDeltas[] = {vec2(10.0f, 0.0f), vec2(0.0f, 10.0f), vec2(-7.5f, 3.25f)};
+
+    for (const float visualYaw : kYaws) {
+        const float panYaw = IRRender::cameraPanYawForPivot(
+            IRRender::RotationPivotMode::CAMERA_CENTER,
+            true,
+            visualYaw
+        );
+        for (const vec2 isoDelta : isoDeltas) {
+            const vec2 delta = IRMath::cameraMoveRelativeToYaw(isoDelta, panYaw);
+            const vec2 shift = screenShiftUnderFixedFocus(
+                cameraIso,
+                delta,
+                explicitFocus,
+                visualYaw,
+                viewOffsetIso
+            );
+            EXPECT_NEAR(shift.x, isoDelta.x, kTolerance) << "yaw=" << visualYaw;
+            EXPECT_NEAR(shift.y, isoDelta.y, kTolerance) << "yaw=" << visualYaw;
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

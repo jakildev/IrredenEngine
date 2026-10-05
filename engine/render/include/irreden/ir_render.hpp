@@ -191,6 +191,11 @@ vec2 getCameraPosition2DIso();
 /// returns the raw camera plus the default pivot's view offset, which is zero
 /// until a rotation gesture acquires at non-zero yaw.
 vec2 getEffectiveCameraIso();
+/// Yaw every camera-pan system passes to `IRMath::cameraMoveRelativeToYaw` so
+/// the pan follows the screen axes under the active rotation pivot
+/// (@ref cameraPanYawForPivot): the camera yaw for the screen-center default
+/// pivot, 0 for an explicit focus or @c ORIGIN mode.
+float getCameraPanYaw();
 /// Current zoom factor as a 2-D scale (x and y may differ for anisotropic zoom).
 vec2 getCameraZoom();
 /// Size of one trixel in screen pixels at the current zoom level.

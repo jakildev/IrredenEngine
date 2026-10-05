@@ -151,6 +151,8 @@ enum SystemName {
     // Masks DENSE voxel sets outside their LOD band; after LOD_UPDATE, before
     // UPDATE_VOXEL_SET_CHILDREN.
     GATE_VOXEL_SETS_BY_LOD,
+    // Spawns and destroys composite prefab parts by LOD band; after LOD_UPDATE.
+    PREFAB_LOD_PARTS,
     // World-space neighbour/spatial-query index. Rebuilds the
     // C_SpatialIndex singleton each frame from C_WorldTransform +
     // C_SpatialQueryable entities; a creation places it AFTER
@@ -215,6 +217,8 @@ enum SystemName {
     COMPUTE_LIGHT_VOLUME,
     LIGHTING_TO_TRIXEL,
     FOG_SUBJECT_EXEMPT,
+    FOG_SUBJECT_EXEMPT_SHAPE,
+    FOG_SUBJECT_EXEMPT_CANVAS,
     FOG_SUBJECT_ADOPT,
     FOG_SUBJECT_ADOPT_SHAPE,
     FOG_SUBJECT_ADOPT_CANVAS,

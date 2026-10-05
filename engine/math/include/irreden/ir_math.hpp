@@ -1238,13 +1238,16 @@ cameraYawPivotOffset(const vec2 cameraIso, const vec3 focusWorld, const float vi
 /// @p isoDelta — so dragging the camera moves content parallel to the
 /// drag direction on screen at every yaw.
 ///
-/// **Precondition — `CAMERA_CENTER` only.**  In `ORIGIN` mode
-/// `getEffectiveCameraIso()` returns `cameraIso` directly, so a delta
-/// `Δ = isoDelta` already produces the correct on-screen shift; the pan
-/// systems must use `isoDelta` unchanged (or pass `visualYaw = 0`) in that
-/// mode.
+/// **Precondition — the screen-center default pivot only.**  In `ORIGIN`
+/// mode, and in `CAMERA_CENTER` mode with an explicit pivot focus (a fixed
+/// world point), `getEffectiveCameraIso()` moves 1:1 with `cameraIso`, so a
+/// delta `Δ = isoDelta` already produces the correct on-screen shift and this
+/// pre-compensation would skew the pan. Pan systems therefore never choose
+/// @p visualYaw themselves: they pass `IRRender::getCameraPanYaw()`, which is
+/// the camera yaw for the default pivot and 0 (this helper's identity)
+/// otherwise.
 ///
-/// **Precondition — the focus must track `cameraIso`.**  The identity above
+/// **Why the default pivot qualifies — its focus tracks `cameraIso`.**  The identity above
 /// holds only because `getEffectiveCameraIso`'s focus is re-derived from the
 /// live camera every frame: with `F = Pinv(canvasCenterIso − cameraIso,
 /// depth)`, `d effCam / d cameraIso` is exactly `P(R_z(−yaw)·Pinv(Δ))` — the
@@ -1265,11 +1268,7 @@ cameraYawPivotOffset(const vec2 cameraIso, const vec3 focusWorld, const float vi
 /// (`det = 1 + 2·cos(yaw) ≈ 0`); the helper returns @p isoDelta unchanged.
 ///
 /// ```cpp
-///   const float panYaw =
-///       IRRender::getRotationPivotMode() == IRRender::RotationPivotMode::CAMERA_CENTER
-///           ? IRPrefab::Camera::getYaw()
-///           : 0.0f;
-///   camPos.pos_ = dragStart + cameraMoveRelativeToYaw(deltaIso, panYaw);
+///   camPos.pos_ = dragStart + cameraMoveRelativeToYaw(deltaIso, IRRender::getCameraPanYaw());
 /// ```
 constexpr vec2 cameraMoveRelativeToYaw(const vec2 isoDelta, const float visualYaw) {
     const float c = cos(visualYaw);

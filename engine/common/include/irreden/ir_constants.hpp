@@ -79,6 +79,14 @@ static_assert(
     kEntityCanvasDemoteMarginIso > kEntityCanvasPromoteMarginIso,
     "the demote margin must lie outside the promote margin to form a hysteresis band"
 );
+/// Ticks a composite prefab root's resolved LOD tier must hold before
+/// PREFAB_LOD_PARTS spawns or destroys parts for it, so a zoom gesture that
+/// sweeps through tiers does not churn the parts of the tiers it passes.
+constexpr int kPrefabPartsTierSettleTicks = 6;
+/// Parts PREFAB_LOD_PARTS spawns per tick across all roots. A part on a
+/// detached rotation mode allocates a canvas, so this also bounds per-tick
+/// canvas allocations. Destroys are not budgeted.
+constexpr int kPrefabPartSpawnBudgetPerTick = 16;
 
 // Voxel pool sizing lives at runtime in
 // engine/render/include/irreden/render/voxel_pool_config.hpp

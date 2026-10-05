@@ -5,7 +5,10 @@ target_link_libraries(IRShapeDebug PUBLIC IrredenEngine)
 
 # Exe-relative runtime layout (data/ shaders/ scripts/ + Windows DLLs) and the
 # one-command bundle target IRShapeDebugPackage. See cmake/ir_functions.cmake.
-irreden_bundle_assets(IRShapeDebug SCRIPTS config.lua)
+irreden_bundle_assets(IRShapeDebug
+    SCRIPTS config.lua
+    EXTRA_DIRS ${PROJECT_SOURCE_DIR}/assets/prefabs assets/prefabs
+)
 irreden_package_target(IRShapeDebug)
 
 # Build + launch from the exe directory (assets land via IRShapeDebugAssets).

@@ -904,6 +904,10 @@ struct C_VoxelSetNew {
                 }
             }
         }
+        if (IRComponents::C_VoxelPool *pool =
+                IRPrefab::VoxelPool::detail::poolForCanvas(canvasEntity_)) {
+            pool->applyFogCarrierPolicy(voxels_);
+        }
         // Dense payload is a mix of active and inactive slots, so resync from
         // per-voxel alpha rather than the fast bulk path.
         markPoolRecordsChanged();

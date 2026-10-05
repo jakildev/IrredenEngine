@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
+#include <irreden/utility/file_utils.hpp>
 
 #include <algorithm>
+#include <string>
 #include <vector>
 
 namespace {
@@ -18,6 +20,28 @@ SpriteRenderEntry makeEntry(ResourceId tex, int isoDepth) {
     e.textureHandle_ = tex;
     e.isoDepth_ = isoDepth;
     return e;
+}
+
+std::string readShaderSource(const std::string &relativePath) {
+    const std::string path = std::string(IR_TEST_RENDER_SHADER_DIR) + "/" + relativePath;
+    return IRUtility::readFileAsString(path);
+}
+
+TEST(SpritesToScreenBinding, FrameDataAvoidsMetalVertexStreamSlot) {
+    EXPECT_EQ(IRRender::kBufferIndex_SpritesFrameData, 27u);
+    EXPECT_EQ(
+        IRRender::kBufferIndex_SpritesFrameData,
+        IRRender::kBufferIndex_FrameDataLightingToTrixel
+    );
+    EXPECT_NE(IRRender::kBufferIndex_SpritesFrameData, 0u);
+
+    const std::string glsl = readShaderSource("v_sprites_to_screen.glsl");
+    const std::string metal = readShaderSource("metal/sprites_to_screen.metal");
+    EXPECT_NE(glsl.find("layout (std140, binding = 27) uniform FrameData"), std::string::npos);
+    EXPECT_NE(
+        metal.find("constant FrameDataSpritesToScreen &frame [[buffer(27)]]"),
+        std::string::npos
+    );
 }
 
 // CPU sort rule: sprites group by texture (so each texture's run packs into
