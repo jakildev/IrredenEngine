@@ -12,6 +12,8 @@
 #include <irreden/render/systems/system_fog_subject_adopt_canvas.hpp>
 #include <irreden/render/systems/system_fog_subject_adopt_shape.hpp>
 #include <irreden/render/systems/system_fog_subject_exempt.hpp>
+#include <irreden/render/systems/system_fog_subject_exempt_canvas.hpp>
+#include <irreden/render/systems/system_fog_subject_exempt_shape.hpp>
 
 #include <list>
 
@@ -25,6 +27,8 @@ namespace IRPrefab::Fog {
 inline std::list<IRSystem::SystemId> revealSystems() {
     return {
         IRSystem::createSystem<IRSystem::FOG_SUBJECT_EXEMPT>(),
+        IRSystem::createSystem<IRSystem::FOG_SUBJECT_EXEMPT_SHAPE>(),
+        IRSystem::createSystem<IRSystem::FOG_SUBJECT_EXEMPT_CANVAS>(),
         IRSystem::createSystem<IRSystem::FOG_SUBJECT_ADOPT>(),
         IRSystem::createSystem<IRSystem::FOG_SUBJECT_ADOPT_SHAPE>(),
         IRSystem::createSystem<IRSystem::FOG_SUBJECT_ADOPT_CANVAS>(),

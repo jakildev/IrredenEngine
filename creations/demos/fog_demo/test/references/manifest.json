@@ -64,6 +64,18 @@
       "capture_offset": 0
     },
     {
+      "name": "detached_exempt",
+      "demo_args": ["--detached-exempt"],
+      "shots": ["fog_detached_exempt"],
+      "capture_offset": 0
+    },
+    {
+      "name": "detached_field_hidden",
+      "demo_args": ["--detached-field-hidden"],
+      "shots": ["fog_detached_field_hidden"],
+      "capture_offset": 0
+    },
+    {
       "name": "edge_smooth",
       "demo_args": [
         "--edge-smooth"

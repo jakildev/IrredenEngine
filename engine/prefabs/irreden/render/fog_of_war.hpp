@@ -209,13 +209,8 @@ bodyCarrierBits(IRComponents::C_VoxelPool &pool, const IRComponents::C_VoxelSetN
 
 inline void
 stampBodyCarrierRecords(std::span<IRComponents::C_Voxel> records, bool body, std::uint8_t factor) {
-    using IRComponents::VoxelReserved::kFogBody;
-    using IRComponents::VoxelReserved::kFogBodyFactorShift;
-    using IRComponents::VoxelReserved::kFogCarrierMask;
-    const std::uint32_t bits =
-        body ? (kFogBody | (static_cast<std::uint32_t>(factor) << kFogBodyFactorShift)) : 0u;
     for (IRComponents::C_Voxel &voxel : records) {
-        voxel.reserved_ = (voxel.reserved_ & ~kFogCarrierMask) | bits;
+        IRComponents::VoxelReserved::setFogCarrier(voxel, body, factor);
     }
 }
 
@@ -239,14 +234,11 @@ inline void stampCanvasBodyCarrier(
     IRPrefab::VoxelPool::withPoolByEntity(
         entityCanvas.canvasEntity_,
         [body, factor](IRComponents::C_VoxelPool &pool) {
-            std::vector<IRComponents::C_Voxel> &records = pool.getColors();
-            const std::size_t liveCount = static_cast<std::size_t>(pool.getLiveVoxelCount());
-            stampBodyCarrierRecords(
-                std::span<IRComponents::C_Voxel>{records.data(), liveCount},
-                body,
+            pool.setFogCarrierPolicy(
+                body ? IRComponents::C_VoxelPool::FogCarrierPolicy::BODY
+                     : IRComponents::C_VoxelPool::FogCarrierPolicy::FIELD,
                 factor
             );
-            pool.markRecordsChanged();
         }
     );
 }
@@ -792,8 +784,7 @@ inline FogSubjectClass subjectClass(IREntity::EntityId entity) {
 /// Classify @p entity synchronously. BODY stamps the carrier with factor 0,
 /// hides the subject and attaches `C_FogRevealed`, so an entity outside every
 /// source cannot flash before its first eval. FIELD clears the BODY carrier
-/// and restores rendering. EXEMPT pins voxel carriers at 255; shape exemption
-/// is marker-only until its dedicated bypass system runs. Each class removes
+/// and restores rendering. EXEMPT pins every raster carrier at 255. Each class removes
 /// the other two classes' markers and state, so a call on an already-classed
 /// entity is a reclassification.
 inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectClass) {
@@ -807,19 +798,21 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
     std::size_t rangeStart = 0;
     std::size_t rangeCount = 0;
     bool setRenders = false;
+    const bool combinedCanvasOwner = setOpt.has_value() && canvasOpt.has_value() &&
+                                     (*setOpt)->canvasEntity_ == (*canvasOpt)->canvasEntity_;
     if (setOpt.has_value()) {
         IRComponents::C_VoxelSetNew *voxelSet = *setOpt;
         const IREntity::EntityId activeCanvas = IRRender::getActiveCanvasEntityOrNull();
         canvas = voxelSet->canvasEntity_ == IREntity::kNullEntity ? activeCanvas
                                                                   : voxelSet->canvasEntity_;
         IR_ASSERT(
-            activeCanvas == IREntity::kNullEntity || canvas == activeCanvas,
-            "fog subject classes currently support only the active grid canvas"
+            combinedCanvasOwner || activeCanvas == IREntity::kNullEntity || canvas == activeCanvas,
+            "fog subject classes support the active grid canvas or its detached owner"
         );
         rangeStart = voxelSet->voxelStartIdx_;
         rangeCount = static_cast<std::size_t>(voxelSet->numVoxels_);
         IRComponents::C_VoxelPool *pool = IRPrefab::VoxelPool::detail::poolForCanvas(canvas);
-        if (pool != nullptr) {
+        if (pool != nullptr && !combinedCanvasOwner) {
             switch (subjectClass) {
             case FogSubjectClass::BODY:
                 stampBodyCarrier(*pool, *voxelSet, true, 0);
@@ -851,6 +844,7 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
             shape.flags_ |= IRRender::SHAPE_FLAG_FOG_HIDDEN;
             shape.fogBodyFactor_ = 0;
         } else if (subjectClass == FogSubjectClass::EXEMPT) {
+            shape.flags_ |= IRRender::SHAPE_FLAG_FOG_BODY;
             shape.fogBodyFactor_ = 255;
         } else {
             shape.fogBodyFactor_ = 0;
@@ -858,13 +852,15 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
     }
     if (canvasOpt.has_value()) {
         IRComponents::C_EntityCanvas &entityCanvas = **canvasOpt;
-        entityCanvas.fogRevealFactor_ = subjectClass == FogSubjectClass::BODY ? 0.0f : 1.0f;
-        entityCanvas.fogHidden_ = subjectClass == FogSubjectClass::BODY;
-        stampCanvasBodyCarrier(
-            entityCanvas,
-            subjectClass != FogSubjectClass::FIELD,
-            subjectClass == FogSubjectClass::EXEMPT ? 255u : 0u
-        );
+        if (!entityCanvas.screenLocked_) {
+            entityCanvas.fogRevealFactor_ = subjectClass == FogSubjectClass::BODY ? 0.0f : 1.0f;
+            entityCanvas.fogHidden_ = subjectClass == FogSubjectClass::BODY;
+            stampCanvasBodyCarrier(
+                entityCanvas,
+                subjectClass != FogSubjectClass::FIELD,
+                subjectClass == FogSubjectClass::EXEMPT ? 255u : 0u
+            );
+        }
     } else if (
         !setOpt.has_value() && !shapeOpt.has_value() && subjectClass == FogSubjectClass::BODY
     ) {

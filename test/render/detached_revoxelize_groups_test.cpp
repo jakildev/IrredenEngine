@@ -177,6 +177,41 @@ class RevoxelizeGroupSeeds : public testing::Test {
     IREntity::EntityId m_canvas;
 };
 
+class DetachedRevoxelizeFogCarrierTest : public RevoxelizeGroupSeeds {};
+
+TEST_F(DetachedRevoxelizeFogCarrierTest, ManagedPoolReseedsWithNormalizedReservedWords) {
+    const C_VoxelSetNew &first = makeSet(ivec3(2, 2, 2));
+    C_DetachedRevoxelizeBuffer buffer{};
+    seedSpans(buffer, {{0u, static_cast<std::size_t>(pool().getLiveVoxelCount())}});
+    buffer.seededContentGeneration_ = pool().getContentGeneration();
+    ASSERT_TRUE(
+        IRPrefab::DetachedRevoxelize::detail::seedIsCurrent(
+            buffer,
+            pool(),
+            pool().getLiveVoxelCount()
+        )
+    );
+
+    pool().setFogCarrierPolicy(C_VoxelPool::FogCarrierPolicy::BODY, 255);
+    EXPECT_FALSE(
+        IRPrefab::DetachedRevoxelize::detail::seedIsCurrent(
+            buffer,
+            pool(),
+            pool().getLiveVoxelCount()
+        )
+    );
+    const std::uint32_t exemptCarrier = IRComponents::VoxelReserved::kFogBody |
+                                        (255u << IRComponents::VoxelReserved::kFogBodyFactorShift);
+    for (const IRComponents::C_Voxel &voxel : first.voxels_) {
+        EXPECT_EQ(voxel.reserved_ & IRComponents::VoxelReserved::kFogCarrierMask, exemptCarrier);
+    }
+
+    const C_VoxelSetNew &attached = makeSet(ivec3(2, 2, 2), IRMath::Color{220, 80, 60, 255});
+    for (const IRComponents::C_Voxel &voxel : attached.voxels_) {
+        EXPECT_EQ(voxel.reserved_ & IRComponents::VoxelReserved::kFogCarrierMask, exemptCarrier);
+    }
+}
+
 TEST_F(RevoxelizeGroupSeeds, EachSpanIsScannedInItsOwnFrame) {
     const std::size_t evenStart = makeSet(ivec3(4, 4, 4)).voxelStartIdx_;
     const std::size_t oddStart = makeSet(ivec3(3, 3, 3)).voxelStartIdx_;
