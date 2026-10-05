@@ -579,11 +579,19 @@ class BreakawayRefusal(JobsCase):
 
 @posix_only
 class StartRefusedBySupervisor(JobsCase):
-    """A supervisor that fails its anchor check is a failed start, not a started job."""
+    """A supervisor that refuses its job is a failed start, not a started job."""
 
-    def test_anchor_failure_fails_the_start(self):
+    def refused_start(self, args, **patches):
+        """cmd_start(args) with the real supervise() run in-process under patches.
+
+        Returns (stderr, the job dir, the argvs launch was called with).
+        """
         subject = load_subject(self.subject)
         ran = []
+
+        def launch(argv, **kwargs):
+            ran.append(argv)
+            raise OSError("probe: the child was launched")
 
         class Supervisor:
             # Runs the real supervise() in-process, once the spec is written.
@@ -595,32 +603,56 @@ class StartRefusedBySupervisor(JobsCase):
 
             def close(self):
                 spec = io.StringIO(self.spec.decode())
-                with mock.patch.object(subject.sys, "stdin", spec), \
-                        mock.patch.object(subject.signal, "signal"), \
-                        mock.patch.object(subject, "anchor_tree", lambda: "probe refusal"), \
-                        mock.patch.object(subject, "launch", lambda *a, **k: ran.append(a)):
+                with contextlib.ExitStack() as stack:
+                    for name, value in {"launch": launch, **patches}.items():
+                        stack.enter_context(mock.patch.object(subject, name, value))
+                    stack.enter_context(mock.patch.object(subject.sys, "stdin", spec))
+                    stack.enter_context(mock.patch.object(subject.signal, "signal"))
                     self.returncode = subject.supervise()
 
             def poll(self):
                 return self.returncode
 
+        real_popen = subprocess.Popen
+
+        def popen(argv, *args, **kwargs):
+            if "_supervise" in argv:
+                return Supervisor()
+            return real_popen(argv, *args, **kwargs)
+
         stdout, stderr = io.StringIO(), io.StringIO()
         with mock.patch.dict(os.environ, self.env(self.pane_a), clear=True), \
                 mock.patch.object(subject, "DisclaimedSupervisor", Supervisor), \
-                mock.patch.object(subject.subprocess, "Popen", Supervisor), \
+                mock.patch.object(subject.subprocess, "Popen", popen), \
                 mock.patch.object(subject, "pane_name", lambda cwd: self.pane_a), \
                 contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr), \
                 self.assertRaises(SystemExit) as exited:
-            subject.cmd_start(["build", "--", "x"], self.repo)
+            subject.cmd_start(args, self.repo)
         self.assertEqual(exited.exception.code, 1)
         self.assertEqual(stdout.getvalue(), "", "a refused job was reported started")
-        self.assertIn("not started: cannot contain the job: probe refusal", stderr.getvalue())
-        self.assertEqual(ran, [], "the child ran unanchored")
         [job_dir] = self.job_dirs()
         status = self.status(job_dir.name)
         self.assertEqual((status["status"], status["exit_code"]), ("failed", 127))
         waited = self.jobs(["wait", job_dir.name])
         self.assertEqual(waited.returncode, 127, waited.stderr)
+        return stderr.getvalue(), job_dir, ran
+
+    def test_anchor_failure_fails_the_start(self):
+        stderr, _, ran = self.refused_start(["build", "--", "x"],
+                                            anchor_tree=lambda: "probe refusal")
+        self.assertIn("not started: cannot contain the job: probe refusal", stderr)
+        self.assertEqual(ran, [], "the child ran unanchored")
+
+    def test_unreadable_own_identity_fails_the_start(self):
+        real = load_subject(self.subject).identity
+        stderr, job_dir, ran = self.refused_start(
+            ["render-verify", "--", "--target", "IRAnalyticOracle"],
+            anchor_tree=lambda: None,
+            identity=lambda pid: None if pid == os.getpid() else real(pid))
+        self.assertEqual(ran, [], "the child ran under a supervisor no reader can verify")
+        self.assertIn("not started: supervisor cannot read its own start identity", stderr)
+        self.assertNotIn("supervisor", json.loads((job_dir / "meta.json").read_text()))
+        self.assertEqual((job_dir / "job.log").read_bytes(), b"")
 
 
 @unittest.skipUnless(sys.platform == "darwin", "macOS responsible-process anchor")

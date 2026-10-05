@@ -869,13 +869,19 @@ def supervise():
         meta = read_meta(job_dir)
         if meta.get("status") != "starting" or meta.get("supervisor"):
             raise UsageError(f"job {spec['id']} is not awaiting a supervisor")
+        refusal = None
         if time.time() - meta.get("created_epoch", 0) >= STARTUP_TIMEOUT:
-            meta.update(status="failed", exit_code=127, finished_at=now_iso(),
-                        reason=f"supervisor arrived after the {STARTUP_TIMEOUT:.0f}s "
-                               "startup window")
+            refusal = f"supervisor arrived after the {STARTUP_TIMEOUT:.0f}s startup window"
+        elif not (own := identity(os.getpid())):
+            # Readers vouch for the supervisor by this identity alone; without
+            # it the job would run while every client and the admission scan
+            # count it lost.
+            refusal = "supervisor cannot read its own start identity"
+        if refusal:
+            meta.update(status="failed", exit_code=127, finished_at=now_iso(), reason=refusal)
             write_atomic(job_dir / "meta.json", meta)
             return 127
-        meta["supervisor"] = {"pid": os.getpid(), "identity": identity(os.getpid())}
+        meta["supervisor"] = {"pid": os.getpid(), "identity": own}
         write_atomic(job_dir / "meta.json", meta)
     cancelled = []
     signal.signal(signal.SIGTERM, lambda *_: cancelled.append("supervisor signalled"))
