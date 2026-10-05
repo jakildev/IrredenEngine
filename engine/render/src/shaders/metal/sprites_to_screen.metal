@@ -8,7 +8,7 @@ struct VertexIn {
     float2 texCoords [[attribute(1)]];
 };
 
-// Mirrors C++ FrameDataSpritesToScreen / GLSL FrameData. Bound to slot 0.
+// Mirrors C++ FrameDataSpritesToScreen / GLSL FrameData. Bound to slot 27.
 struct FrameDataSpritesToScreen {
     float4x4 projection;
 };
@@ -30,7 +30,7 @@ struct VertexOut {
 vertex VertexOut v_sprites_to_screen(
     VertexIn in [[stage_in]],
     uint instanceId [[instance_id]],
-    constant FrameDataSpritesToScreen &frame [[buffer(0)]],
+    constant FrameDataSpritesToScreen &frame [[buffer(27)]],
     const device SpriteInstance *instances [[buffer(25)]]
 ) {
     SpriteInstance s = instances[instanceId];

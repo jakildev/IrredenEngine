@@ -238,6 +238,29 @@ An explicit focus set by any caller (`setRotationPivotFocus`, #1921/#1927)
 overrides the default — used by the cursor mode and by `shape_debug
 --pivot-focus-demo`.
 
+## Panning under a pivot
+
+A pan must shift on-screen content by exactly the requested iso delta at every
+yaw. Content sits at `pos3DtoPos2DIsoYawed(W, yaw) + getEffectiveCameraIso()`,
+so the pan systems need the `cameraIso` delta whose image under
+`d effCam / d cameraIso` is the requested shift. That derivative depends on the
+pivot:
+
+| pivot | `d effCam / d cameraIso` | pan delta |
+|---|---|---|
+| `ORIGIN` | identity (`effCam == cameraIso`) | the iso delta |
+| explicit focus (`setRotationPivotFocus`) | identity (`F` is a fixed world point) | the iso delta |
+| screen-center default | `P(R_z(−yaw)·Pinv(Δ))` (`F` is derived from the camera) | `IRMath::cameraMoveRelativeToYaw(Δ, yaw)` |
+
+The choice has one owner, `IRRender::cameraPanYawForPivot`, read through
+`IRRender::getCameraPanYaw()`: every pan system (`CAMERA_MOUSE_PAN`,
+`CAMERA_KEY_DRAG_PAN`, `RENDERING_VELOCITY_2D_ISO`) passes that yaw to
+`cameraMoveRelativeToYaw` and none inspects the pivot itself. Applying the
+default pivot's pre-compensation under an explicit focus skews the pan — at
+yaw 90° a `(10, 0)` drag moves content `(20, 30)` — which is the case a
+creation that pins its own focus and orbits hits on every keyboard pan.
+`test/render/camera_pan_pivot_test.cpp` guards all three rows.
+
 ## Empirically verified
 
 The **explicit-focus** path: `shape_debug --pivot-focus-demo` pins an explicit

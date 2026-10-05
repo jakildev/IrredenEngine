@@ -83,6 +83,13 @@ vec2 getEffectiveCameraIso() {
     const vec3 cameraFocusWorld = getRenderManager().getDefaultRotationPivotFocus();
     return IRMath::cameraYawPivotOffset(pivotCameraIso, cameraFocusWorld, visualYaw);
 }
+float getCameraPanYaw() {
+    return cameraPanYawForPivot(
+        getRenderManager().getRotationPivotMode(),
+        getRenderManager().hasRotationPivotFocus(),
+        IRPrefab::Camera::getYaw()
+    );
+}
 vec2 getCameraZoom() {
     return getRenderManager().getCameraZoom();
 }

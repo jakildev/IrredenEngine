@@ -19,6 +19,7 @@ assert_eq "$DEFAULT_ROOT_EXPORTED" "true" \
     "the default lock root is exported to quiet helper children"
 export IR_LOCK_ROOT="$TMP_ROOT/locks"
 export FLEET_STATE_DIR="$TMP_ROOT/fleet-state"
+export FLEET_CONF=/dev/null
 export IR_QUIET_LINGER=0
 export IR_QUIET_MAX=10
 export IR_QUIET_DRAIN=1
@@ -89,10 +90,22 @@ assert_contains "$OUT" "off" "malformed record cannot crash the evaluator"
 rm -rf "$IR_LOCK_ROOT/quiet/records/malformed"
 
 "$IR_ACQUIRE" --quiet-disable test
+SECONDS=0
+GATE_JSON=$(fleet-gate-status --json)
+GATE_STATUS_SECONDS=$SECONDS
+GATE_STATUS_FAST=false
+if (( GATE_STATUS_SECONDS < 10 )); then
+    GATE_STATUS_FAST=true
+fi
+assert_eq "$GATE_STATUS_FAST" "true" \
+    "fleet-gate-status avoids host GitHub probes"
+GATE_IDENTITIES=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["github_identities"])' <<< "$GATE_JSON")
+assert_eq "$GATE_IDENTITIES" "{}" \
+    "fleet-gate-status has no configured GitHub identities"
 GATE_OUT=$(fleet-gate-status 2>&1)
 assert_contains "$GATE_OUT" "Quiet window: disabled reason=test" \
     "fleet-gate-status human output shows the disabled switch"
-GATE_STATE=$(fleet-gate-status --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["quiet_window"]["state"])' | tr -d '\r')
+GATE_STATE=$(python3 -c 'import json,sys; print(json.load(sys.stdin)["quiet_window"]["state"])' <<< "$GATE_JSON")
 assert_eq "$GATE_STATE" "disabled" "fleet-gate-status JSON embeds the switch state"
 REPORT="$TMP_ROOT/unguarded.report"
 OUT=$(IR_QUIET_REPORT_FILE="$REPORT" "$IR_ACQUIRE" benchmark -- true 2>&1)

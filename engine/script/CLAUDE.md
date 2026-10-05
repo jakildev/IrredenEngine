@@ -193,10 +193,10 @@ Compose modifiers with `bit.bor`. A `createCommand` body appears in the F1 overl
 
 ## Prefab format (`Prefab.register`, `Prefab.spawn`)
 
-A prefab has a version plus optional refs, rotation, canvas, components, and
-setup. `spawn(id,pos)` returns a `LuaEntity` or `nil,err`. Detached rotations
-need `canvas_size`; declarative components need `registerComponentFactoryFor`.
-`bindPoint` is spawn-time only. The registry is process-global; tests clear it.
+A prefab has a version, optional refs/rotation/canvas/components/setup, and v2 `parts`
+([schema](../../docs/design/lod-strategy.md), Phase 2). `spawn(id,pos)` returns a `LuaEntity`
+or `nil,err`. Detached rotations need `canvas_size`; components need
+`registerComponentFactoryFor`. `bindPoint` is spawn-time only; tests clear the global registry.
 
 ## Script output
 
