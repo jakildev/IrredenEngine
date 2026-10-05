@@ -30,9 +30,9 @@ job with a process that outlived the supervisor's SIGKILL fails with 125. The
 last stderr line always names the job's state.
 
 State: ${FLEET_STATE_DIR:-~/.fleet/state}/jobs/<pane>/<job-id>/{meta.json,job.log}.
-The pane is FLEET_ASSIGNED_WORKTREE's basename, else the basename of the
-cwd's .claude/worktrees/<name> checkout. Contract: docs/agents/FLEET-RUNTIME.md
-§ "Long-running jobs".
+The pane is the basename of the cwd's .claude/worktrees/<name> checkout; a set
+FLEET_ASSIGNED_WORKTREE that names a different pane is refused. Contract:
+docs/agents/FLEET-RUNTIME.md § "Long-running jobs".
 """
 
 import contextlib
@@ -99,16 +99,17 @@ def checkout_root(cwd):
 
 
 def pane_name(cwd):
+    # The pane is the registered checkout the caller runs in. The assignment
+    # only confirms it: an environment value alone never selects a pane.
+    top = checkout_root(cwd)
+    parts = top.parts if top else ()
+    if len(parts) < 3 or parts[-3:-1] != (".claude", "worktrees"):
+        raise UsageError("no pane: the cwd is not a .claude/worktrees/<name> checkout")
+    name = parts[-1]
     assigned = os.environ.get("FLEET_ASSIGNED_WORKTREE", "").rstrip("/\\")
-    if assigned:
-        name = re.split(r"[/\\]", assigned)[-1]
-    else:
-        top = checkout_root(cwd)
-        parts = top.parts if top else ()
-        if len(parts) < 3 or parts[-3:-1] != (".claude", "worktrees"):
-            raise UsageError("no pane: FLEET_ASSIGNED_WORKTREE is unset and the cwd is not "
-                             "a .claude/worktrees/<name> checkout")
-        name = parts[-1]
+    if assigned and re.split(r"[/\\]", assigned)[-1] != name:
+        raise UsageError(f"FLEET_ASSIGNED_WORKTREE {assigned!r} is not this checkout's "
+                         f"pane {name!r}")
     if not NAME_RE.fullmatch(name):
         raise UsageError(f"invalid pane name {name!r}")
     return name

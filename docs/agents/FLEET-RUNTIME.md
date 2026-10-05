@@ -177,7 +177,9 @@ Then, from any later call in the same pane: `fleet-jobs wait --timeout 540
 <job-id>` streams the log and exits with the child's exit code (124: still
 running, call it again; 1 with `lost` on stderr: the supervisor is gone),
 plus `status`, `kill`, and `list`. Job ids and state are pane-scoped
-(`~/.fleet/state/jobs/<pane>/`). A terminal status ends the whole job:
+(`~/.fleet/state/jobs/<pane>/`, where `<pane>` is the
+`.claude/worktrees/<pane>` checkout the call runs in; a
+`FLEET_ASSIGNED_WORKTREE` naming another pane is refused). A terminal status ends the whole job:
 before publishing it, the supervisor stops anything the child left running
 (every process it anchors, however detached: on Linux a child subreaper
 adopts each orphan, on macOS each names the supervisor as its responsible

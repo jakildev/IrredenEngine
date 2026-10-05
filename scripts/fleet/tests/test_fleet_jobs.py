@@ -122,7 +122,12 @@ class JobsCase(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name).resolve()
-        self.repo = self.root / "repo"
+        # Synthetic, unique pane names, so a check of the real ~/.fleet can
+        # prove these panes never reached it. Each pane is a registered
+        # .claude/worktrees/<pane> checkout; self.repo is pane A's.
+        tag = secrets.token_hex(3)
+        self.pane_a, self.pane_b = f"zz-test-a-{tag}", f"zz-test-b-{tag}"
+        self.repo = self.checkout(self.pane_a)
         (self.repo / "scripts/fleet/tests").mkdir(parents=True)
         (self.repo / "engine/tools/bin").mkdir(parents=True)
         shutil.copy2(SUBJECT, self.repo / "scripts/fleet/fleet-jobs")
@@ -133,12 +138,9 @@ class JobsCase(unittest.TestCase):
             (self.repo / rel).write_text(text)
             (self.repo / rel).chmod(0o755)
         subprocess.run(["git", "init", "-q", str(self.repo)], check=True)
+        self.clone(self.checkout(self.pane_b))
         self.state = self.root / "state"
         self.subject = self.repo / "scripts/fleet/fleet-jobs"
-        # Synthetic, unique pane names, so a check of the real ~/.fleet can
-        # prove these panes never reached it.
-        tag = secrets.token_hex(3)
-        self.pane_a, self.pane_b = f"zz-test-a-{tag}", f"zz-test-b-{tag}"
 
     def tearDown(self):
         # Every live job, not only the ones a test expected to start: a
@@ -150,18 +152,27 @@ class JobsCase(unittest.TestCase):
                     self.jobs(["kill", job["id"]], pane=pane)
         self._tmp.cleanup()
 
+    def checkout(self, pane):
+        return self.root / "clone/.claude/worktrees" / pane
+
+    def clone(self, path):
+        shutil.copytree(self.repo, path, ignore=shutil.ignore_patterns(".git"))
+        subprocess.run(["git", "init", "-q", str(path)], check=True)
+        return path
+
     def env(self, pane):
         env = {k: v for k, v in os.environ.items()
                if not k.startswith(("FLEET_", "IRREDEN_", "IR_"))}
         env.update(HOME=str(self.root / "home"), FLEET_STATE_DIR=str(self.state),
                    ORPHAN=ORPHAN)
         if pane is not None:
-            env["FLEET_ASSIGNED_WORKTREE"] = str(self.root / "wt" / pane)
+            env["FLEET_ASSIGNED_WORKTREE"] = str(self.checkout(pane))
         return env
 
     def jobs(self, args, pane=None, cwd=None, stdin=None):
         pane = self.pane_a if pane is None else pane
-        return subprocess.run([sys.executable, str(self.subject), *args], cwd=cwd or self.repo,
+        return subprocess.run([sys.executable, str(self.subject), *args],
+                              cwd=cwd or self.checkout(pane),
                               env=self.env(pane), capture_output=True, text=True, timeout=60,
                               input=stdin)
 
@@ -481,6 +492,7 @@ class BreakawayRefusal(JobsCase):
                 mock.patch.object(subject.subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200,
                                   create=True), \
                 mock.patch.object(subject.subprocess, "Popen", popen), \
+                mock.patch.object(subject, "checkout_root", lambda cwd: self.repo), \
                 contextlib.redirect_stderr(stderr), \
                 self.assertRaises(SystemExit) as exited:
             subject.cmd_start(["build", "--", "x"], self.repo)
@@ -527,6 +539,7 @@ class StartRefusedBySupervisor(JobsCase):
         with mock.patch.dict(os.environ, self.env(self.pane_a), clear=True), \
                 mock.patch.object(subject, "DisclaimedSupervisor", Supervisor), \
                 mock.patch.object(subject.subprocess, "Popen", Supervisor), \
+                mock.patch.object(subject, "checkout_root", lambda cwd: self.repo), \
                 contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr), \
                 self.assertRaises(SystemExit) as exited:
             subject.cmd_start(["build", "--", "x"], self.repo)
@@ -623,19 +636,43 @@ class Isolation(JobsCase):
             self.assertFalse((live / pane).exists())
 
     def test_pane_falls_back_to_registered_worktree_only(self):
-        worktree = self.root / "clone/.claude/worktrees/pool-zz"
-        shutil.copytree(self.repo, worktree, ignore=shutil.ignore_patterns(".git"))
-        subprocess.run(["git", "init", "-q", str(worktree)], check=True)
+        worktree = self.clone(self.checkout("pool-zz"))
         result = subprocess.run([sys.executable, str(worktree / "scripts/fleet/fleet-jobs"),
                                  "start", "fleet-tests"], cwd=worktree, env=self.env(None),
                                 capture_output=True, text=True, timeout=60)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue(list(self.state.glob("jobs/pool-zz/*/meta.json")))
-        unregistered = subprocess.run([sys.executable, str(self.subject), "list"],
-                                      cwd=self.repo, env=self.env(None),
-                                      capture_output=True, text=True, timeout=60)
-        self.assertEqual(unregistered.returncode, 2)
-        self.assertIn("no pane", unregistered.stderr)
+        unregistered = self.clone(self.root / "plain")
+        for pane in (None, self.pane_a):
+            with self.subTest(assigned=pane):
+                result = subprocess.run([sys.executable, str(self.subject), "list"],
+                                        cwd=unregistered, env=self.env(pane),
+                                        capture_output=True, text=True, timeout=60)
+                self.assertEqual(result.returncode, 2)
+                self.assertIn("no pane", result.stderr)
+
+    def test_assignment_cannot_address_another_panes_jobs(self):
+        release = self.root / "release"
+        job = self.start(["build", "--", "hold", str(release)], pane=self.pane_b)
+        meta = self.state / "jobs" / self.pane_b / job / "meta.json"
+        before = meta.read_bytes()
+        # Pane A's checkout, assigned pane B by path and by bare name.
+        for assigned in (str(self.checkout(self.pane_b)), self.pane_b):
+            env = dict(self.env(self.pane_a), FLEET_ASSIGNED_WORKTREE=assigned)
+            for verb in (["list"], ["status", job], ["wait", "--timeout", "1", job],
+                         ["kill", job], ["start", "build", "--", "plain"]):
+                with self.subTest(assigned=assigned, verb=verb[0]):
+                    result = subprocess.run([sys.executable, str(self.subject), *verb],
+                                            cwd=self.repo, env=env, capture_output=True,
+                                            text=True, timeout=60)
+                    self.assertEqual((result.returncode, result.stdout), (2, ""))
+                    self.assertIn(f"is not this checkout's pane {self.pane_a!r}",
+                                  result.stderr)
+        self.assertEqual(meta.read_bytes(), before)
+        self.assertFalse((meta.parent / "cancel").exists())
+        self.assertEqual([p.name for p in self.state.glob("jobs/*")], [self.pane_b])
+        release.touch()
+        self.assertEqual(self.jobs(["wait", "--quiet", job], pane=self.pane_b).returncode, 7)
 
 
 @posix_only
