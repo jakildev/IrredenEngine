@@ -15,6 +15,9 @@
 #include <irreden/ir_time.hpp>
 #include <irreden/render/components/component_lod_tier_override.hpp>
 #include <irreden/render/components/component_lod_tier_override_lua.hpp>
+#include <irreden/render/components/component_detached_canvas.hpp>
+#include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/entity_canvas.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/components/component_zoom_level_lua.hpp>
 #include <irreden/render/lod_tier_snapshot.hpp>
@@ -35,6 +38,7 @@
 
 namespace {
 
+using IRComponents::C_EntityCanvas;
 using IRComponents::C_PrefabParts;
 using IRComponents::C_ShapeDescriptor;
 using IREntity::EntityId;
@@ -257,6 +261,56 @@ TEST_F(PrefabParts, DestroyRootRemovesParts) {
     }
     EXPECT_TRUE(IREntity::entityExists(bystander));
     EXPECT_EQ(IREntity::countComponents<C_ShapeDescriptor>(), 0);
+}
+
+TEST_F(PrefabParts, DestroyRootRemovesRootAndPartCanvases) {
+    setZoom(1.0f);
+    const EntityId root = spawn(
+        "destroy_canvases",
+        "return {\n"
+        "  prefab_version = 2,\n"
+        "  parts = { { id = 'part', shape = { type = IRShape.BOX } } },\n"
+        "}\n"
+    );
+    ASSERT_NE(root, IREntity::kNullEntity);
+    const EntityId part = partsOf(root).slots_[0].entity_;
+    ASSERT_NE(part, IREntity::kNullEntity);
+    const EntityId rootCanvas = IREntity::createEntity(IRComponents::C_DetachedCanvas{});
+    const EntityId partCanvas = IREntity::createEntity(IRComponents::C_DetachedCanvas{});
+    IREntity::setComponent(root, C_EntityCanvas{rootCanvas, IRMath::ivec2(16)});
+    IREntity::setComponent(part, C_EntityCanvas{partCanvas, IRMath::ivec2(16)});
+    IRPrefab::EntityCanvas::ensureOwnerTeardownHook();
+
+    IREntity::destroyTree(root);
+    m_entityManager.destroyMarkedEntities();
+
+    EXPECT_FALSE(IREntity::entityExists(rootCanvas));
+    EXPECT_FALSE(IREntity::entityExists(partCanvas));
+}
+
+TEST_F(PrefabParts, OutOfBandDespawnRemovesPartCanvas) {
+    setZoom(1.0f);
+    const EntityId root = spawn(
+        "despawn_canvas",
+        "return {\n"
+        "  prefab_version = 2,\n"
+        "  parts = { { id = 'coarse', shape = { type = IRShape.BOX },\n"
+        "    lod = { fine = IRRender.LodLevel.LOD_4,\n"
+        "            coarse = IRRender.LodLevel.LOD_4 } } },\n"
+        "}\n"
+    );
+    ASSERT_NE(root, IREntity::kNullEntity);
+    const EntityId part = partsOf(root).slots_[0].entity_;
+    ASSERT_NE(part, IREntity::kNullEntity);
+    const EntityId canvas = IREntity::createEntity(IRComponents::C_DetachedCanvas{});
+    IREntity::setComponent(part, C_EntityCanvas{canvas, IRMath::ivec2(16)});
+    IRPrefab::EntityCanvas::ensureOwnerTeardownHook();
+
+    setZoom(16.0f);
+    settle();
+
+    EXPECT_FALSE(IREntity::entityExists(part));
+    EXPECT_FALSE(IREntity::entityExists(canvas));
 }
 
 TEST_F(PrefabParts, TierChangeSpawnsAndDestroysParts) {

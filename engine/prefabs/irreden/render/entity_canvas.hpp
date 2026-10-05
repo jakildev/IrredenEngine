@@ -18,10 +18,13 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 
+#include <irreden/common/components/component_persistent.hpp>
+#include <irreden/render/canvas_part.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/components/component_entity_canvas_teardown_hook.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/entities/entity_trixel_canvas.hpp>
@@ -46,12 +49,50 @@ inline bool consumeCapacityWarning(int liveCount, int capacity, bool &warningEmi
     return true;
 }
 
+/// Idempotently installs the owner-canvas lifetime hook for the active world.
+/// Call only where singleton creation and ECS structural mutation are legal.
+/// Deferred owner teardown destroys its detached canvas in the same drain;
+/// eager teardown leaves the canvas marked until the next drain. Hook ids are
+/// manager-local and are not restored from snapshots, so a loaded world must
+/// re-arm through a canvas creation path before destroying restored owners.
+inline void ensureOwnerTeardownHook() {
+    IRComponents::C_EntityCanvasTeardownHook &record =
+        IREntity::singleton<IRComponents::C_EntityCanvasTeardownHook>();
+    if (record.hookId_ != IREntity::kInvalidPreDestroyHookId) {
+        return;
+    }
+    record.hookId_ =
+        IREntity::getEntityManager().registerPreDestroyHook([](IREntity::EntityId destroyed) {
+            const auto wrapper =
+                IREntity::getComponentOptional<IRComponents::C_EntityCanvas>(destroyed);
+            if (!wrapper) {
+                return;
+            }
+            const IREntity::EntityId canvas = wrapper.value()->canvasEntity_;
+            if (canvas == IREntity::kNullEntity || !IREntity::entityExists(canvas) ||
+                !IREntity::getComponentOptional<IRComponents::C_DetachedCanvas>(canvas)) {
+                return;
+            }
+            if (IREntity::getComponentOptional<IRComponents::C_Persistent>(canvas)) {
+                IRE_LOG_WARN(
+                    "entity canvas owner {} cannot destroy persistent canvas {}",
+                    destroyed,
+                    canvas
+                );
+                return;
+            }
+            IRPrefab::CanvasPart::releaseSets(destroyed, canvas, /*partsOnly=*/true);
+            IREntity::destroyTree(canvas);
+        });
+}
+
 /// Spawn a child canvas entity (textures + size + name) parented to
 /// `mainFramebuffer`, and return a `C_EntityCanvas` that wraps it. Add
 /// the returned component to the parent entity that should host the
 /// sub-canvas. The name lets debug tooling and entity-by-name lookup
 /// find the child later.
 inline IRComponents::C_EntityCanvas create(std::string canvasName, IRMath::ivec2 canvasSize) {
+    ensureOwnerTeardownHook();
     IREntity::EntityId canvas =
         IREntity::Prefab<IREntity::PrefabTypes::kTrixelCanvas>::create(canvasName, canvasSize);
     IREntity::setComponent(canvas, IRComponents::C_DetachedCanvas{});
@@ -87,6 +128,7 @@ inline IRComponents::C_EntityCanvas createWithVoxelPool(
     IRMath::ivec3 voxelPoolSize,
     bool screenLocked = false
 ) {
+    ensureOwnerTeardownHook();
     IREntity::EntityId canvas = IREntity::Prefab<IREntity::PrefabTypes::kVoxelPoolCanvas>::create(
         canvasName,
         voxelPoolSize,

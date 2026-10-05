@@ -8,6 +8,11 @@ using namespace IRMath;
 
 namespace IRComponents {
 
+/// Owns the detached canvas named by `canvasEntity_`. A canvas may have only
+/// one owner; sharing the id between wrappers is a caller bug. Destroying the
+/// owner re-homes hosted sets and destroys the canvas. Removing the wrapper
+/// performs no cleanup and transfers responsibility for the canvas to the
+/// caller.
 struct C_EntityCanvas {
     IREntity::EntityId canvasEntity_ = IREntity::kNullEntity;
     ivec2 canvasSize_{0};

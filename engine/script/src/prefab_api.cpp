@@ -409,8 +409,7 @@ void attachVoxelContent(
 /// Allocates the per-entity canvas a canvas-owning rotation mode needs. In a
 /// headless context (no RenderManager) the entity stays tagged with the mode
 /// so a later `IRPrefab::RotationMode::setMode` call picks the canvas up.
-/// Returns the canvas entity, or kNullEntity when none was allocated.
-IREntity::EntityId attachEntityCanvas(
+void attachEntityCanvas(
     IREntity::EntityId entity,
     IRComponents::RotationMode mode,
     const std::string &canvasName,
@@ -418,7 +417,7 @@ IREntity::EntityId attachEntityCanvas(
     const std::string &prefabId
 ) {
     if (!IRPrefab::RotationMode::ownsEntityCanvas(mode)) {
-        return IREntity::kNullEntity;
+        return;
     }
     if (IRRender::g_renderManager == nullptr) {
         IRE_LOG_WARN(
@@ -427,11 +426,9 @@ IREntity::EntityId attachEntityCanvas(
             "skipping canvas allocation.",
             prefabId.c_str()
         );
-        return IREntity::kNullEntity;
+        return;
     }
-    IRComponents::C_EntityCanvas wrapper = IRPrefab::EntityCanvas::create(canvasName, canvasSize);
-    IREntity::setComponent(entity, wrapper);
-    return wrapper.canvasEntity_;
+    IREntity::setComponent(entity, IRPrefab::EntityCanvas::create(canvasName, canvasSize));
 }
 
 IRRender::LodLevel resolveSpawnTier(IREntity::EntityId root) {
@@ -465,7 +462,7 @@ void buildPart(
     IREntity::setComponent(part, IRComponents::C_RotationMode{spec.rotationMode_});
     IREntity::setParent(part, root);
 
-    slot.canvas_ = attachEntityCanvas(
+    attachEntityCanvas(
         part,
         spec.rotationMode_,
         manifest.prefabId_ + "_" + spec.id_ + "_canvas",
@@ -708,25 +705,12 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
         IREntity::getComponent<IRComponents::C_LocalTransform>(entity).unbounded_ = true;
     }
 
-    // The error paths tear canvases down by hand: they are CHILD_OF
-    // mainFramebuffer, not the spawned root, so the root's tree teardown
-    // does not reach them. Name the root canvas after the prefab id so
-    // entity-by-name lookup and debug tooling can find it; the suffix keeps
-    // it distinct from the root entity name the setup callback typically owns.
-    std::vector<IREntity::EntityId> spawnedCanvases;
-    if (const IREntity::EntityId canvas =
-            attachEntityCanvas(entity, rotationMode, idStr + "_canvas", canvasSize, idStr);
-        canvas != IREntity::kNullEntity) {
-        spawnedCanvases.push_back(canvas);
-    }
+    attachEntityCanvas(entity, rotationMode, idStr + "_canvas", canvasSize, idStr);
     // Setup can move a shape child out of the root's tree before it fails, so
     // the error paths also mark each shape the spawn created as its own tree.
     // The drain skips an entity already destroyed through another mark.
     std::vector<IREntity::EntityId> spawnedChildren;
     auto destroySpawned = [&]() {
-        for (IREntity::EntityId canvas : spawnedCanvases) {
-            IREntity::destroyEntity(canvas);
-        }
         IREntity::destroyTree(entity);
         for (IREntity::EntityId child : spawnedChildren) {
             if (IREntity::entityExists(child)) {
@@ -814,9 +798,6 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
             }
             slot.entity_ = IREntity::createEntity();
             buildPart(entity, slot.entity_, *partsManifest, i, tier, slot);
-            if (slot.canvas_ != IREntity::kNullEntity) {
-                spawnedCanvases.push_back(slot.canvas_);
-            }
         }
         parts.manifest_ = std::move(partsManifest);
         IREntity::setComponent(entity, std::move(parts));
@@ -873,19 +854,14 @@ void stagePartSpawn(
             // buildPart moved archetypes, so the root's column may have moved.
             IRComponents::PrefabPartSlot &slot =
                 IREntity::getComponent<IRComponents::C_PrefabParts>(root).slots_[index];
-            slot.canvas_ = built.canvas_;
             slot.pinned_ = std::move(built.pinned_);
         }
     );
 }
 
 void despawnPart(IRComponents::PrefabPartSlot &slot) {
-    if (slot.canvas_ != IREntity::kNullEntity) {
-        IREntity::destroyEntity(slot.canvas_);
-    }
     IREntity::destroyTree(slot.entity_);
     slot.entity_ = IREntity::kNullEntity;
-    slot.canvas_ = IREntity::kNullEntity;
     slot.pinned_.clear();
 }
 

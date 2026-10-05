@@ -4,6 +4,7 @@
 
 #include <irreden/ir_entity.hpp>
 
+#include <irreden/common/components/component_persistent.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 
@@ -567,6 +568,22 @@ TEST_F(IREntityTest, ResetGameplayDestroysGameplayPreservesTagged) {
     EXPECT_TRUE(IREntity::entityExists(keep));
     EXPECT_FALSE(IREntity::entityExists(doomedA));
     EXPECT_FALSE(IREntity::entityExists(doomedB));
+}
+
+TEST_F(IREntityTest, ResetDrainsMarksQueuedByPreDestroyHooks) {
+    const auto persistent = IREntity::createEntity(TestMarker{});
+    IREntity::setComponent(persistent, IRComponents::C_Persistent{});
+    const auto trigger = IREntity::createEntity(TestPayload{});
+    m_entity_manager.registerPreDestroyHook([trigger, persistent](IREntity::EntityId destroyed) {
+        if (destroyed == trigger) {
+            IREntity::destroyTree(persistent);
+        }
+    });
+
+    IREntity::resetGameplay();
+
+    EXPECT_FALSE(IREntity::entityExists(persistent));
+    EXPECT_FALSE(m_entity_manager.isMarkedForDeletion(persistent));
 }
 
 TEST_F(IREntityTest, ResetGameplayPreservesSingletonValueUnlikeDestroyAll) {

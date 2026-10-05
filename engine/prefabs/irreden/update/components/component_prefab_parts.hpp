@@ -20,10 +20,6 @@ namespace IRComponents {
 struct PrefabPartSlot {
     // kNullEntity while the part does not exist.
     IREntity::EntityId entity_ = IREntity::kNullEntity;
-    // The detached canvas a canvas-owning rotation mode allocated for the
-    // part. It is CHILD_OF mainFramebuffer, so the part's tree teardown does
-    // not reach it.
-    IREntity::EntityId canvas_ = IREntity::kNullEntity;
     // A resident part's content entities (the part and its SHAPES children),
     // each carrying a C_LodTierOverride that mirrors the root's settled tier.
     std::vector<IREntity::EntityId> pinned_;

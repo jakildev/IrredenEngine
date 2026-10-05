@@ -184,9 +184,11 @@ void destroyAllEntities();
 /// Scene-transition teardown: destroy every live gameplay entity,
 /// preserving singletons and any entity tagged `C_Persistent`. The renderer's
 /// camera + canvas entities are stamped `C_Persistent` at construction so the
-/// render context survives. Call at a frame boundary (eager + snapshot-based,
-/// like `destroyAllEntities`); the scene machine then re-registers pipelines
-/// and spawns the next scene. Lua: `IRWorld.resetGameplay()`.
+/// render context survives. Pre-destroy hooks may explicitly mark preserved
+/// peers; those marks override preservation and are drained before reset
+/// returns. Call at a frame boundary (eager + snapshot-based, like
+/// `destroyAllEntities`); the scene machine then re-registers pipelines and
+/// spawns the next scene. Lua: `IRWorld.resetGameplay()`.
 void resetGameplay();
 
 // Returns the first EntityId of the batch
