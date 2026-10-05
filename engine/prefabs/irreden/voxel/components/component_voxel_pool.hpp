@@ -80,6 +80,12 @@ struct VoxelCellGroup {
 
 struct C_VoxelPool {
   public:
+    enum class FogCarrierPolicy : std::uint8_t {
+        UNMANAGED = 0,
+        FIELD,
+        BODY,
+    };
+
     // Cardinal store tie-possibility signal. TRUE when the single-
     // canvas store's (iso pixel, encoded depth) key may stop being a bijection
     // of this pool's live voxels — any live voxel off the integer lattice
@@ -157,7 +163,7 @@ struct C_VoxelPool {
             ++m_allocatedSpanCount;
             ++m_contentGeneration;
             markCullBoundsDirty(startIndex, size);
-            return IRRender::VoxelPoolAllocation{
+            IRRender::VoxelPoolAllocation allocation{
                 startIndex,
                 std::span<IRRender::VoxelGpuPosition>{m_voxelPositions.data() + startIndex, size},
                 std::span<vec3>{m_voxelPositionsOffset.data() + startIndex, size},
@@ -167,6 +173,8 @@ struct C_VoxelPool {
                 },
                 std::span<C_Voxel>{m_voxelColors.data() + startIndex, size}
             };
+            applyFogCarrierPolicy(allocation.voxels_);
+            return allocation;
         }
 
         if (m_voxelPoolIndex + size <= m_voxelPoolSize) {
@@ -176,7 +184,7 @@ struct C_VoxelPool {
             ++m_contentGeneration;
             markCullBoundsDirty(startIndex, size);
             IRE_LOG_DEBUG("Allocated voxels from {} to {}", startIndex, m_voxelPoolIndex - 1);
-            return IRRender::VoxelPoolAllocation{
+            IRRender::VoxelPoolAllocation allocation{
                 startIndex,
                 std::span<IRRender::VoxelGpuPosition>{m_voxelPositions.data() + startIndex, size},
                 std::span<vec3>{m_voxelPositionsOffset.data() + startIndex, size},
@@ -186,6 +194,8 @@ struct C_VoxelPool {
                 },
                 std::span<C_Voxel>{m_voxelColors.data() + startIndex, size}
             };
+            applyFogCarrierPolicy(allocation.voxels_);
+            return allocation;
         }
 
         IR_ASSERT(false, "Ran out of voxels");
@@ -347,6 +357,43 @@ struct C_VoxelPool {
     // it; a raw writer to getColors() owns the call.
     void markRecordsChanged() {
         ++m_contentGeneration;
+    }
+
+    void setFogCarrierPolicy(FogCarrierPolicy policy, std::uint8_t bodyFactor = 0) {
+        const std::uint8_t factor = policy == FogCarrierPolicy::BODY ? bodyFactor : 0;
+        if (m_fogCarrierPolicy == policy && m_fogBodyFactor == factor) {
+            return;
+        }
+        m_fogCarrierPolicy = policy;
+        m_fogBodyFactor = factor;
+        applyFogCarrierPolicy(
+            std::span<C_Voxel>{
+                m_voxelColors.data(),
+                static_cast<std::size_t>(m_voxelPoolIndex),
+            }
+        );
+        markRecordsChanged();
+    }
+
+    void applyFogCarrierPolicy(std::span<C_Voxel> records) const {
+        if (m_fogCarrierPolicy == FogCarrierPolicy::UNMANAGED) {
+            return;
+        }
+        for (C_Voxel &voxel : records) {
+            VoxelReserved::setFogCarrier(
+                voxel,
+                m_fogCarrierPolicy == FogCarrierPolicy::BODY,
+                m_fogBodyFactor
+            );
+        }
+    }
+
+    FogCarrierPolicy fogCarrierPolicy() const {
+        return m_fogCarrierPolicy;
+    }
+
+    std::uint8_t fogBodyFactor() const {
+        return m_fogBodyFactor;
     }
     ivec3 getVoxelPoolSize3D() const {
         return m_voxelPoolSize3D;
@@ -940,6 +987,8 @@ struct C_VoxelPool {
 
     int m_voxelPoolIndex = 0;
     std::uint64_t m_contentGeneration = 0;
+    FogCarrierPolicy m_fogCarrierPolicy = FogCarrierPolicy::UNMANAGED;
+    std::uint8_t m_fogBodyFactor = 0;
 
     // Count of voxels in this pool carrying a non-zero per-trixel priority.
     // Maintained push-at-mutation via adjustPerTrixelPriorityVoxelCount (called by

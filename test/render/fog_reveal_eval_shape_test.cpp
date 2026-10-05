@@ -14,6 +14,7 @@
 #include <irreden/render/picking.hpp>
 #include <irreden/render/systems/system_fog_reveal_eval_shape.hpp>
 #include <irreden/render/systems/system_fog_subject_adopt_shape.hpp>
+#include <irreden/render/systems/system_fog_subject_exempt_shape.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 
@@ -111,9 +112,10 @@ class FogRevealEvalShapeAdoptTest : public testing::Test {
         , m_systemManager{} {
         m_canvas = IREntity::createEntity(C_CanvasFogOfWar{C_CanvasFogOfWar::HeadlessInit{}});
         IRRender::setHeadlessActiveCanvasEntity(m_canvas);
+        m_exemptId = IRSystem::createSystem<IRSystem::FOG_SUBJECT_EXEMPT_SHAPE>();
         m_adoptId = IRSystem::createSystem<IRSystem::FOG_SUBJECT_ADOPT_SHAPE>();
         m_evalId = IRSystem::createSystem<IRSystem::FOG_REVEAL_EVAL_SHAPE>();
-        m_systemManager.registerPipeline(IRTime::Events::UPDATE, {m_adoptId, m_evalId});
+        m_systemManager.registerPipeline(IRTime::Events::UPDATE, {m_exemptId, m_adoptId, m_evalId});
     }
 
     ~FogRevealEvalShapeAdoptTest() override {
@@ -139,6 +141,7 @@ class FogRevealEvalShapeAdoptTest : public testing::Test {
     IREntity::EntityManager m_entityManager;
     IRSystem::SystemManager m_systemManager;
     IREntity::EntityId m_canvas = IREntity::kNullEntity;
+    IRSystem::SystemId m_exemptId{};
     IRSystem::SystemId m_adoptId{};
     IRSystem::SystemId m_evalId{};
 };
@@ -224,6 +227,44 @@ TEST_F(FogRevealEvalShapeAdoptTest, SynchronousGovernanceStartsHiddenThenEvaluat
     EXPECT_NE(shape.flags_ & IRRender::SHAPE_FLAG_FOG_HIDDEN, 0u);
 }
 
+class FogSubjectExemptShapeTest : public FogRevealEvalShapeAdoptTest {};
+
+TEST_F(FogSubjectExemptShapeTest, MarkerAndSetterRealizeTheShapeCarrier) {
+    const IREntity::EntityId marked = createShape(IRMath::vec3(40.0f));
+    IREntity::setComponent(marked, C_FogExempt{});
+    const IREntity::EntityId synchronous = createShape(IRMath::vec3(40.0f));
+    IREntity::getComponent<C_ShapeDescriptor>(synchronous).flags_ &= ~IRRender::SHAPE_FLAG_VISIBLE;
+
+    IRPrefab::Fog::setSubjectClass(synchronous, IRPrefab::Fog::FogSubjectClass::BODY);
+    ASSERT_TRUE(IREntity::getComponentOptional<C_FogRevealed>(synchronous).has_value());
+    const auto &bodyShape = IREntity::getComponent<C_ShapeDescriptor>(synchronous);
+    EXPECT_NE(bodyShape.flags_ & IRRender::SHAPE_FLAG_FOG_BODY, 0u);
+    EXPECT_NE(bodyShape.flags_ & IRRender::SHAPE_FLAG_FOG_HIDDEN, 0u);
+    EXPECT_EQ(bodyShape.fogBodyFactor_, 0u);
+
+    IRPrefab::Fog::setSubjectClass(synchronous, IRPrefab::Fog::FogSubjectClass::EXEMPT);
+
+    const auto &synchronousShape = IREntity::getComponent<C_ShapeDescriptor>(synchronous);
+    EXPECT_NE(synchronousShape.flags_ & IRRender::SHAPE_FLAG_FOG_BODY, 0u);
+    EXPECT_EQ(synchronousShape.flags_ & IRRender::SHAPE_FLAG_FOG_HIDDEN, 0u);
+    EXPECT_EQ(synchronousShape.flags_ & IRRender::SHAPE_FLAG_VISIBLE, 0u);
+    EXPECT_EQ(synchronousShape.fogBodyFactor_, 255u);
+    EXPECT_FALSE(IREntity::getComponentOptional<C_FogRevealed>(synchronous).has_value());
+
+    runFrame();
+
+    const auto &markedShape = IREntity::getComponent<C_ShapeDescriptor>(marked);
+    EXPECT_NE(markedShape.flags_ & IRRender::SHAPE_FLAG_FOG_BODY, 0u);
+    EXPECT_EQ(markedShape.flags_ & IRRender::SHAPE_FLAG_FOG_HIDDEN, 0u);
+    EXPECT_EQ(markedShape.fogBodyFactor_, 255u);
+    EXPECT_FALSE(IREntity::getComponentOptional<C_FogRevealed>(marked).has_value());
+
+    IRPrefab::Fog::setSubjectClass(synchronous, IRPrefab::Fog::FogSubjectClass::FIELD);
+    const auto &fieldShape = IREntity::getComponent<C_ShapeDescriptor>(synchronous);
+    EXPECT_EQ(fieldShape.flags_ & IRRender::SHAPE_FLAG_FOG_BODY, 0u);
+    EXPECT_EQ(fieldShape.fogBodyFactor_, 0u);
+}
+
 TEST_F(FogRevealEvalShapeAdoptTest, SynchronousGovernanceRejectsAnotherCanvas) {
     const IREntity::EntityId otherCanvas = IREntity::createEntity();
     const IREntity::EntityId body = createShape(IRMath::vec3(0.0f));
@@ -243,6 +284,12 @@ TEST_F(FogRevealEvalShapeAdoptTest, EngineOverlaysStayExemptFromAdoption) {
     EXPECT_TRUE(IREntity::getComponentOptional<C_FogExempt>(handle).has_value());
     EXPECT_FALSE(IREntity::getComponentOptional<C_FogRevealed>(indicator).has_value());
     EXPECT_FALSE(IREntity::getComponentOptional<C_FogRevealed>(handle).has_value());
+    const auto &indicatorShape = IREntity::getComponent<C_ShapeDescriptor>(indicator);
+    const auto &handleShape = IREntity::getComponent<C_ShapeDescriptor>(handle);
+    EXPECT_NE(indicatorShape.flags_ & IRRender::SHAPE_FLAG_FOG_BODY, 0u);
+    EXPECT_EQ(indicatorShape.fogBodyFactor_, 255u);
+    EXPECT_NE(handleShape.flags_ & IRRender::SHAPE_FLAG_FOG_BODY, 0u);
+    EXPECT_EQ(handleShape.fogBodyFactor_, 255u);
     EXPECT_TRUE(IREntity::getComponentOptional<C_FogRevealed>(control).has_value());
 }
 

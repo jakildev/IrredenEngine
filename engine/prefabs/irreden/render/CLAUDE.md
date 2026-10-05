@@ -44,7 +44,7 @@ Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md). Rationale: [`d
 |---|---|
 | `CANVAS_RESIDENCY` · `PROPAGATE_CANVAS_ROTATION` → `PROPAGATE_CANVAS_PARTS` → `REBUILD_DETACHED_VOXELS` | UPDATE: residency first (its staged switches land before the transform chain); the canvas chain after `PROPAGATE_TRANSFORM` |
 | `LOD_UPDATE` → `GATE_VOXEL_SETS_BY_LOD` | UPDATE, before `PROPAGATE_TRANSFORM` / `UPDATE_VOXEL_SET_CHILDREN` |
-| `FOG_SUBJECT_EXEMPT` → voxel/shape/canvas adoption → voxel/shape/canvas eval (`IRPrefab::Fog::revealSystems()`) / `FOG_LOS_BUILD` | UPDATE after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_SET_CHILDREN` / RENDER before `FOG_TO_TRIXEL`, its own group (line-of-sight gated circles need it) |
+| voxel/shape/canvas `FOG_SUBJECT_EXEMPT_*` → matching adoption → matching eval (`IRPrefab::Fog::revealSystems()`) / `FOG_LOS_BUILD` | UPDATE after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_SET_CHILDREN` / RENDER before `FOG_TO_TRIXEL`, its own group (line-of-sight gated circles need it) |
 | `UPDATE_JOINT_MATRICES` | after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_POSITIONS_GPU`; a creation with skeletons registers the prepass too |
 | `UPDATE_VOXEL_POSITIONS_GPU` | before `VOXEL_TO_TRIXEL_STAGE_1` |
 | `VOXEL_PICKING` | RENDER, after the camera systems, before `VOXEL_TO_TRIXEL_STAGE_1` |
@@ -88,6 +88,9 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   canvas owners are BODY subjects (one owner/ground-anchor `evalReveal` verdict);
   detached BODY factor + hidden state modulates/skips the whole authored composite.
   `C_FogField` / `C_FogExempt` are explicit and `revealSystems()` is the splice.
+  EXEMPT uses the matching BODY carrier at factor 255; a detached owner-private
+  pool holds the uniform carrier policy so later allocations and whole-record
+  seeds inherit the class without a recurring scan.
   Each raster folds its class + factor into id bit 28 + 27:20, and
   `FOG_TO_TRIXEL` paints a BODY pixel at that one factor. [Reveal model](../../../../docs/design/fog-of-war-reveal-model.md)
   owns FIELD / BODY / EXEMPT; [world field](../../../../docs/design/fog-of-war-world-field.md)

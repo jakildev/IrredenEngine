@@ -386,18 +386,26 @@ TEST(LuaFogPipelineTest, RevealSystemsResolveFromALuaPipeline) {
     lua.bindLuaDrivenEcs();
     lua.registerPrefabSystems<
         IRSystem::FOG_SUBJECT_EXEMPT,
+        IRSystem::FOG_SUBJECT_EXEMPT_SHAPE,
+        IRSystem::FOG_SUBJECT_EXEMPT_CANVAS,
         IRSystem::FOG_SUBJECT_ADOPT,
         IRSystem::FOG_SUBJECT_ADOPT_SHAPE,
+        IRSystem::FOG_SUBJECT_ADOPT_CANVAS,
         IRSystem::FOG_REVEAL_EVAL,
-        IRSystem::FOG_REVEAL_EVAL_SHAPE>();
+        IRSystem::FOG_REVEAL_EVAL_SHAPE,
+        IRSystem::FOG_REVEAL_EVAL_CANVAS>();
     sol::protected_function_result result = lua.lua().safe_script(
         R"lua(
         local systems = {
             IRSystem.systemId(IRSystem.SystemName.FOG_SUBJECT_EXEMPT),
+            IRSystem.systemId(IRSystem.SystemName.FOG_SUBJECT_EXEMPT_SHAPE),
+            IRSystem.systemId(IRSystem.SystemName.FOG_SUBJECT_EXEMPT_CANVAS),
             IRSystem.systemId(IRSystem.SystemName.FOG_SUBJECT_ADOPT),
             IRSystem.systemId(IRSystem.SystemName.FOG_SUBJECT_ADOPT_SHAPE),
+            IRSystem.systemId(IRSystem.SystemName.FOG_SUBJECT_ADOPT_CANVAS),
             IRSystem.systemId(IRSystem.SystemName.FOG_REVEAL_EVAL),
             IRSystem.systemId(IRSystem.SystemName.FOG_REVEAL_EVAL_SHAPE),
+            IRSystem.systemId(IRSystem.SystemName.FOG_REVEAL_EVAL_CANVAS),
         }
         IRSystem.registerPipeline(IRTime.UPDATE, systems)
         return #systems
@@ -405,7 +413,7 @@ TEST(LuaFogPipelineTest, RevealSystemsResolveFromALuaPipeline) {
         sol::script_pass_on_error
     );
     ASSERT_TRUE(result.valid()) << sol::error{result}.what();
-    EXPECT_EQ(result.get<lua_Integer>(), 5);
+    EXPECT_EQ(result.get<lua_Integer>(), 9);
 }
 
 // `setEntityGoverned(e, false)` compares against the FIELD class, not

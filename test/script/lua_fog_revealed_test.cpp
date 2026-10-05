@@ -18,6 +18,8 @@
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_voxel_set_lua.hpp>
+#include <irreden/voxel/components/component_shape_descriptor.hpp>
+#include <irreden/voxel/components/component_shape_descriptor_lua.hpp>
 
 #include <cstdint>
 #include <string>
@@ -229,6 +231,56 @@ TEST_F(LuaFogRevealedTest, MarkerAttachedFromLuaIsRealizedAsExemptAndItsTwinIsAd
     EXPECT_EQ(uniformCarrierOf(twin), IRComponents::VoxelReserved::kFogBody)
         << "the twin is a BODY at factor 0 on the unexplored cell";
     EXPECT_EQ(activeBitsOf(twin), 0) << "the twin's hidden verdict clears its mask";
+}
+
+TEST_F(LuaFogRevealedTest, ShapeCreatedFromLuaIsRealizedAsExemptAndItsTwinIsAdopted) {
+    using IRComponents::C_FogExempt;
+    using IRComponents::C_ShapeDescriptor;
+    const IREntity::EntityId canvas = IREntity::createEntity(
+        IRComponents::C_CanvasFogOfWar{IRComponents::C_CanvasFogOfWar::HeadlessInit{}}
+    );
+    IRRender::setHeadlessActiveCanvasEntity(canvas);
+    const IRSystem::SystemId exemptId =
+        IRSystem::createSystem<IRSystem::FOG_SUBJECT_EXEMPT_SHAPE>();
+    const IRSystem::SystemId adoptId = IRSystem::createSystem<IRSystem::FOG_SUBJECT_ADOPT_SHAPE>();
+    m_systemManager.registerPipeline(IRTime::Events::UPDATE, {exemptId, adoptId});
+
+    m_lua.registerTypeFromTraits<C_ShapeDescriptor>();
+    m_lua.registerCreateEntityFunction<C_ShapeDescriptor, C_FogExempt>("createExemptShape");
+    m_lua.registerCreateEntityFunction<C_ShapeDescriptor>("createPlainShape");
+    m_lua.lua()["shape"] = C_ShapeDescriptor{
+        IRMath::SDF::ShapeType::BOX,
+        IRMath::vec4(2.0f, 2.0f, 2.0f, 0.0f),
+        IRMath::Color{200, 100, 50, 255},
+    };
+    auto result = m_lua.lua().safe_script(
+        R"lua(
+        local exempt = IREntity.createExemptShape(shape, C_FogExempt.new())
+        local twin = IREntity.createPlainShape(shape)
+        return exempt.entity, twin.entity
+    )lua",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+    auto [exemptRaw, twinRaw] = result.get<std::tuple<lua_Integer, lua_Integer>>();
+    const auto exempt = static_cast<IREntity::EntityId>(exemptRaw);
+    const auto twin = static_cast<IREntity::EntityId>(twinRaw);
+
+    m_systemManager.executePipeline(IRTime::Events::UPDATE);
+    IREntity::flushStructuralChanges();
+
+    const auto &exemptShape = IREntity::getComponent<C_ShapeDescriptor>(exempt);
+    EXPECT_NE(exemptShape.flags_ & IRRender::SHAPE_FLAG_FOG_BODY, 0u);
+    EXPECT_EQ(exemptShape.flags_ & IRRender::SHAPE_FLAG_FOG_HIDDEN, 0u);
+    EXPECT_EQ(exemptShape.fogBodyFactor_, 255u);
+    EXPECT_FALSE(hasRevealed(exempt));
+    EXPECT_EQ(IRPrefab::Fog::subjectClass(exempt), IRPrefab::Fog::FogSubjectClass::EXEMPT);
+
+    const auto &twinShape = IREntity::getComponent<C_ShapeDescriptor>(twin);
+    EXPECT_NE(twinShape.flags_ & IRRender::SHAPE_FLAG_FOG_BODY, 0u);
+    EXPECT_NE(twinShape.flags_ & IRRender::SHAPE_FLAG_FOG_HIDDEN, 0u);
+    EXPECT_EQ(twinShape.fogBodyFactor_, 0u);
+    EXPECT_TRUE(hasRevealed(twin));
 }
 
 } // namespace

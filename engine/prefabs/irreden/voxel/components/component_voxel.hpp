@@ -135,6 +135,14 @@ struct C_Voxel {
     }
 };
 
+namespace VoxelReserved {
+inline void setFogCarrier(C_Voxel &voxel, bool body, std::uint8_t factor) {
+    const std::uint32_t bits =
+        body ? (kFogBody | (static_cast<std::uint32_t>(factor) << kFogBodyFactorShift)) : 0u;
+    voxel.reserved_ = (voxel.reserved_ & ~kFogCarrierMask) | bits;
+}
+} // namespace VoxelReserved
+
 static_assert(sizeof(C_Voxel) == 12, "C_Voxel must be 12 bytes to match GPU std430 layout");
 static_assert(alignof(C_Voxel) == 4, "C_Voxel must be 4-byte aligned for std430 stride");
 static_assert(offsetof(C_Voxel, color_) == 0, "C_Voxel::color_ must be at offset 0");

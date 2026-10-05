@@ -407,6 +407,8 @@ bool g_detachedEdge = false; // --detached-edge
 bool g_detachedBody = false; // --detached-body
 bool g_detachedBodyHidden = false;  // --detached-body-hidden
 bool g_detachedBodyNoSolid = false; // --detached-body-no-solid
+bool g_detachedExempt = false;      // --detached-exempt
+bool g_detachedFieldHidden = false; // --detached-field-hidden
 IREntity::EntityId g_detachedCanvasOwner = IREntity::kNullEntity;
 constexpr float kDetachedVisionRadius = 9.0f;
 constexpr IRMath::ivec2 kDetachedCanvasSize{200, 200};
@@ -431,6 +433,12 @@ constexpr IRVideo::AutoScreenshotShot kDetachedBodyHiddenShots[] = {
 };
 constexpr IRVideo::AutoScreenshotShot kDetachedBodyNoSolidShots[] = {
     {9.0f, vec2(0, 0), 0.0f, "fog_detached_body_no_solid"},
+};
+constexpr IRVideo::AutoScreenshotShot kDetachedExemptShots[] = {
+    {9.0f, vec2(0, 0), 0.0f, "fog_detached_exempt"},
+};
+constexpr IRVideo::AutoScreenshotShot kDetachedFieldHiddenShots[] = {
+    {9.0f, vec2(0, 0), 0.0f, "fog_detached_field_hidden"},
 };
 
 void probeDetachedCanvas(int) {
@@ -1613,6 +1621,14 @@ int main(int argc, char **argv) {
         "Capture the hidden detached BODY scene without its solid as a background control"
     );
     IREngine::args().flag(
+        "--detached-exempt",
+        "At the hidden BODY placement, tag the detached canvas EXEMPT so its whole solid renders"
+    );
+    IREngine::args().flag(
+        "--detached-field-hidden",
+        "At the hidden BODY placement, tag the detached canvas FIELD as the z-aware clip control"
+    );
+    IREngine::args().flag(
         "--edge-smooth",
         "Like --edge-zoom but with a wide soft vision-circle band (#2126 Mode B "
         "smooth cross-section) so the cut wall follows the analytic disc edge"
@@ -1763,10 +1779,13 @@ int main(int argc, char **argv) {
     g_edgeZoom = IREngine::args().getFlag("--edge-zoom");
     g_edgeSdfBlocker = IREngine::args().getFlag("--edge-sdf-blocker");
     g_detachedBodyNoSolid = IREngine::args().getFlag("--detached-body-no-solid");
+    g_detachedExempt = IREngine::args().getFlag("--detached-exempt");
+    g_detachedFieldHidden = IREngine::args().getFlag("--detached-field-hidden");
     g_detachedBodyHidden =
         IREngine::args().getFlag("--detached-body-hidden") || g_detachedBodyNoSolid;
     g_detachedBody = IREngine::args().getFlag("--detached-body") || g_detachedBodyHidden;
-    g_detachedEdge = IREngine::args().getFlag("--detached-edge") || g_detachedBody;
+    g_detachedEdge = IREngine::args().getFlag("--detached-edge") || g_detachedBody ||
+                     g_detachedExempt || g_detachedFieldHidden;
     g_edgeSmooth = IREngine::args().getFlag("--edge-smooth");
     g_edgeYawSweep = IREngine::args().getFlag("--edge-yaw-sweep");
     g_edgeZCost = IREngine::args().getFlag("--edge-zcost");
@@ -2141,7 +2160,7 @@ void initSystems() {
             cfg.onCaptureFrame_ = &probeChannel;
         } else if (g_manySources) {
             cfg.onCaptureFrame_ = &probeManySources;
-        } else if (g_detachedBody) {
+        } else if (g_detachedBody || g_detachedExempt || g_detachedFieldHidden) {
             cfg.onCaptureFrame_ = &probeDetachedCanvas;
         }
         // --edge-zcost-asym / --edge-zcost-ceiling capture the asymmetric /
@@ -2203,6 +2222,10 @@ void initSystems() {
             IRVideo::setAutoScreenshotShots(cfg, kEdgeZCostCeilingShots);
         } else if (g_edgeZCost) {
             IRVideo::setAutoScreenshotShots(cfg, kEdgeZCostShots);
+        } else if (g_detachedExempt) {
+            IRVideo::setAutoScreenshotShots(cfg, kDetachedExemptShots);
+        } else if (g_detachedFieldHidden) {
+            IRVideo::setAutoScreenshotShots(cfg, kDetachedFieldHiddenShots);
         } else if (g_detachedBodyNoSolid) {
             IRVideo::setAutoScreenshotShots(cfg, kDetachedBodyNoSolidShots);
         } else if (g_detachedBodyHidden) {
@@ -2696,6 +2719,14 @@ void initEntities() {
             "exempt_pillar",
             createPillar(vec3(-12.0f, 24.0f, 4.0f), Color{120, 235, 140, 255}, 4, C_FogExempt{})
         );
+        probe(
+            "exempt_shape",
+            createBox(vec3(-15.0f, 15.0f, 4.0f), Color{110, 235, 155, 255}, 0u, C_FogExempt{})
+        );
+        probe(
+            "field_shape_outside",
+            createBox(vec3(15.0f, 15.0f, 4.0f), Color{245, 155, 75, 255}, 0u, C_FogField{})
+        );
         // Stage 1 keeps kFogHiddenKeepCells fog-hidden columns past the rim
         // for the fog pass to paint, so a cut face toward a kept column sits
         // behind that column and never reaches the id texture. Cut-face
@@ -2865,7 +2896,7 @@ void initEntities() {
                                          ? kEntityRevealSoftEdge
                                          : kFogVisionEdgeDefault;
         IRPrefab::Fog::setVisionCircle(0.0f, 0.0f, kDetachedVisionRadius, visionSoftness);
-        const float ownerX = g_detachedBodyHidden
+        const float ownerX = (g_detachedBodyHidden || g_detachedExempt || g_detachedFieldHidden)
                                  ? -10.0f
                                  : (g_detachedBody && g_entityRevealSoftEdge ? -8.25f : -9.0f);
         const float solidLocalX = -9.0f - ownerX;
@@ -2905,7 +2936,14 @@ void initEntities() {
         // Identity rotation keeps the re-voxelize raster on its deterministic SOURCE
         // path (a spinning solid round-to-cell speckles); the cut-face code
         // is rotation-agnostic, so this static pose proves the world-column recovery.
-        if (g_detachedBody) {
+        if (g_detachedExempt) {
+            g_detachedCanvasOwner = IREntity::createEntity(
+                C_LocalTransform{vec3(ownerX, 0.0f, 2.0f)},
+                C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
+                canvas,
+                C_FogExempt{}
+            );
+        } else if (g_detachedBody) {
             g_detachedCanvasOwner = IREntity::createEntity(
                 C_LocalTransform{vec3(ownerX, 0.0f, 2.0f)},
                 C_RotationMode{RotationMode::DETACHED_REVOXELIZE},

@@ -9,20 +9,25 @@
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/components/component_fog_exempt.hpp>
 #include <irreden/render/components/component_fog_field.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/systems/system_fog_reveal_eval_canvas.hpp>
 #include <irreden/render/systems/system_fog_subject_adopt_canvas.hpp>
+#include <irreden/render/systems/system_fog_subject_exempt_canvas.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
+#include <irreden/voxel/components/component_voxel_set.hpp>
 
 namespace {
 
 using IRComponents::C_CanvasFogOfWar;
 using IRComponents::C_EntityCanvas;
+using IRComponents::C_FogExempt;
 using IRComponents::C_FogField;
 using IRComponents::C_FogRevealed;
 using IRComponents::C_VoxelPool;
+using IRComponents::C_VoxelSetNew;
 using IRComponents::C_WorldTransform;
 
 C_CanvasFogOfWar fogWithCircle(float radius, float edge) {
@@ -103,7 +108,9 @@ class FogRevealEvalCanvasAdoptTest : public testing::Test {
         IRRender::setHeadlessActiveCanvasEntity(m_worldCanvas);
         const IRSystem::SystemId adopt =
             IRSystem::createSystem<IRSystem::FOG_SUBJECT_ADOPT_CANVAS>();
-        m_systemManager.registerPipeline(IRTime::Events::UPDATE, {adopt});
+        const IRSystem::SystemId exempt =
+            IRSystem::createSystem<IRSystem::FOG_SUBJECT_EXEMPT_CANVAS>();
+        m_systemManager.registerPipeline(IRTime::Events::UPDATE, {exempt, adopt});
     }
 
     ~FogRevealEvalCanvasAdoptTest() override {
@@ -113,10 +120,10 @@ class FogRevealEvalCanvasAdoptTest : public testing::Test {
     IREntity::EntityId createCanvasOwner(bool screenLocked = false, bool detached = true) {
         const IREntity::EntityId privateCanvas =
             detached ? IREntity::createEntity(
-                           C_VoxelPool{IRMath::ivec3(2, 1, 1)},
+                           C_VoxelPool{IRMath::ivec3(8, 1, 1)},
                            IRComponents::C_DetachedCanvas{}
                        )
-                     : IREntity::createEntity(C_VoxelPool{IRMath::ivec3(2, 1, 1)});
+                     : IREntity::createEntity(C_VoxelPool{IRMath::ivec3(8, 1, 1)});
         auto &pool = IREntity::getComponent<C_VoxelPool>(privateCanvas);
         const IRRender::VoxelPoolAllocation allocation = pool.allocateVoxels(2);
         allocation.voxels_[0].color_ = IRMath::IRColors::kWhite;
@@ -175,6 +182,152 @@ TEST_F(FogRevealEvalCanvasAdoptTest, FieldAndScreenLockedCanvasesStayOutsideBody
     const auto &fieldRecords =
         IREntity::getComponent<C_VoxelPool>(fieldCanvas.canvasEntity_).getColors();
     EXPECT_EQ(fieldRecords[0].reserved_ & IRComponents::VoxelReserved::kFogBody, 0u);
+}
+
+class FogSubjectExemptCanvasTest : public FogRevealEvalCanvasAdoptTest {};
+
+TEST_F(FogSubjectExemptCanvasTest, PolicyCoversLaterAllocationReuseAndSeed) {
+    const IREntity::EntityId exempt = createCanvasOwner();
+    IREntity::setComponent(exempt, C_FogExempt{});
+    auto &canvas = IREntity::getComponent<C_EntityCanvas>(exempt);
+    auto &pool = IREntity::getComponent<C_VoxelPool>(canvas.canvasEntity_);
+
+    runFrame();
+
+    EXPECT_FLOAT_EQ(canvas.fogRevealFactor_, 1.0f);
+    EXPECT_FALSE(canvas.fogHidden_);
+    EXPECT_EQ(pool.fogCarrierPolicy(), C_VoxelPool::FogCarrierPolicy::BODY);
+    EXPECT_EQ(pool.fogBodyFactor(), 255u);
+    EXPECT_FALSE(IREntity::getComponentOptional<C_FogRevealed>(exempt).has_value());
+    const std::uint32_t exemptCarrier = IRComponents::VoxelReserved::kFogBody |
+                                        (255u << IRComponents::VoxelReserved::kFogBodyFactorShift);
+    const auto &originalRecords = pool.getColors();
+    ASSERT_GE(originalRecords.size(), 2u);
+    EXPECT_EQ(
+        originalRecords[0].reserved_ & IRComponents::VoxelReserved::kFogCarrierMask,
+        exemptCarrier
+    );
+    EXPECT_EQ(
+        originalRecords[1].reserved_ & IRComponents::VoxelReserved::kFogCarrierMask,
+        exemptCarrier
+    );
+    const std::uint64_t realizedGeneration = pool.getContentGeneration();
+
+    runFrame();
+    EXPECT_EQ(pool.getContentGeneration(), realizedGeneration);
+
+    const auto fresh = pool.allocateVoxels(1);
+    EXPECT_EQ(
+        fresh.voxels_[0].reserved_ & IRComponents::VoxelReserved::kFogCarrierMask,
+        exemptCarrier
+    );
+    pool.deallocateVoxels(fresh.startIndex_, 1);
+    const auto reused = pool.allocateVoxels(1);
+    EXPECT_EQ(
+        reused.voxels_[0].reserved_ & IRComponents::VoxelReserved::kFogCarrierMask,
+        exemptCarrier
+    );
+
+    const IREntity::EntityId attached = IREntity::createEntity(
+        C_VoxelSetNew{
+            IRMath::ivec3(1),
+            IRMath::Color{10, 20, 30, 255},
+            true,
+            canvas.canvasEntity_,
+        }
+    );
+    const auto &set = IREntity::getComponent<C_VoxelSetNew>(attached);
+    ASSERT_EQ(set.numVoxels_, 1);
+    EXPECT_EQ(
+        set.voxels_[0].reserved_ & IRComponents::VoxelReserved::kFogCarrierMask,
+        exemptCarrier
+    );
+
+    IRPrefab::Fog::setSubjectClass(exempt, IRPrefab::Fog::FogSubjectClass::FIELD);
+    EXPECT_EQ(pool.fogCarrierPolicy(), C_VoxelPool::FogCarrierPolicy::FIELD);
+    for (const IRComponents::C_Voxel &voxel : pool.getColors()) {
+        EXPECT_EQ(voxel.reserved_ & IRComponents::VoxelReserved::kFogCarrierMask, 0u);
+    }
+}
+
+TEST_F(FogSubjectExemptCanvasTest, CombinedDetachedOwnerSetterClassifiesTheCanvas) {
+    const IREntity::EntityId privateCanvas = IREntity::createEntity(
+        C_VoxelPool{IRMath::ivec3(4, 1, 1)},
+        IRComponents::C_DetachedCanvas{}
+    );
+    const IREntity::EntityId owner = IREntity::createEntity(
+        C_VoxelSetNew{
+            IRMath::ivec3(2, 1, 1),
+            IRMath::Color{40, 80, 120, 255},
+            true,
+            privateCanvas,
+        },
+        C_EntityCanvas{privateCanvas, IRMath::ivec2(16), false, false}
+    );
+
+    IRPrefab::Fog::setSubjectClass(owner, IRPrefab::Fog::FogSubjectClass::BODY);
+    ASSERT_TRUE(IREntity::getComponentOptional<C_FogRevealed>(owner).has_value());
+    auto &bodySet = IREntity::getComponent<C_VoxelSetNew>(owner);
+    auto &bodyPool = IREntity::getComponent<C_VoxelPool>(privateCanvas);
+    EXPECT_TRUE(bodySet.visible_);
+    EXPECT_EQ(bodyPool.getActiveMask()[0] & 0x3u, 0x3u);
+
+    C_CanvasFogOfWar fog = fogWithCircle(10.0f, 2.0f);
+    IRSystem::System<IRSystem::FOG_REVEAL_EVAL_CANVAS> eval;
+    eval.fog_ = &fog;
+    eval.tick(
+        owner,
+        IREntity::getComponent<C_FogRevealed>(owner),
+        IREntity::getComponent<C_WorldTransform>(owner),
+        IREntity::getComponent<C_EntityCanvas>(owner)
+    );
+    EXPECT_FALSE(IREntity::getComponent<C_EntityCanvas>(owner).fogHidden_);
+    EXPECT_TRUE(IREntity::getComponent<C_VoxelSetNew>(owner).visible_);
+    EXPECT_EQ(bodyPool.getActiveMask()[0] & 0x3u, 0x3u);
+
+    IRPrefab::Fog::setSubjectClass(owner, IRPrefab::Fog::FogSubjectClass::EXEMPT);
+
+    const auto &exemptCanvas = IREntity::getComponent<C_EntityCanvas>(owner);
+    const auto &exemptSet = IREntity::getComponent<C_VoxelSetNew>(owner);
+    const auto &pool = IREntity::getComponent<C_VoxelPool>(privateCanvas);
+    EXPECT_FALSE(exemptCanvas.visible_);
+    EXPECT_FLOAT_EQ(exemptCanvas.fogRevealFactor_, 1.0f);
+    EXPECT_FALSE(exemptCanvas.fogHidden_);
+    EXPECT_TRUE(exemptSet.visible_);
+    EXPECT_EQ(pool.fogCarrierPolicy(), C_VoxelPool::FogCarrierPolicy::BODY);
+    EXPECT_EQ(pool.fogBodyFactor(), 255u);
+    EXPECT_FALSE(IREntity::getComponentOptional<C_FogRevealed>(owner).has_value());
+    for (const IRComponents::C_Voxel &voxel : IRPrefab::Fog::poolRecords(
+             IREntity::getComponent<C_VoxelPool>(privateCanvas),
+             IREntity::getComponent<C_VoxelSetNew>(owner)
+         )) {
+        EXPECT_EQ(
+            voxel.reserved_ & IRComponents::VoxelReserved::kFogCarrierMask,
+            IRComponents::VoxelReserved::kFogBody |
+                (255u << IRComponents::VoxelReserved::kFogBodyFactorShift)
+        );
+    }
+
+    IRPrefab::Fog::setSubjectClass(owner, IRPrefab::Fog::FogSubjectClass::FIELD);
+    EXPECT_TRUE(IREntity::getComponent<C_VoxelSetNew>(owner).visible_);
+    EXPECT_FLOAT_EQ(IREntity::getComponent<C_EntityCanvas>(owner).fogRevealFactor_, 1.0f);
+    EXPECT_EQ(pool.fogCarrierPolicy(), C_VoxelPool::FogCarrierPolicy::FIELD);
+    for (const IRComponents::C_Voxel &voxel : pool.getColors()) {
+        EXPECT_EQ(voxel.reserved_ & IRComponents::VoxelReserved::kFogCarrierMask, 0u);
+    }
+}
+
+TEST_F(FogSubjectExemptCanvasTest, SetterLeavesNonDetachedPoolsUnmanaged) {
+    const IREntity::EntityId owner = createCanvasOwner(false, false);
+    const auto &canvas = IREntity::getComponent<C_EntityCanvas>(owner);
+    auto &pool = IREntity::getComponent<C_VoxelPool>(canvas.canvasEntity_);
+
+    IRPrefab::Fog::setSubjectClass(owner, IRPrefab::Fog::FogSubjectClass::EXEMPT);
+
+    EXPECT_EQ(pool.fogCarrierPolicy(), C_VoxelPool::FogCarrierPolicy::UNMANAGED);
+    for (const IRComponents::C_Voxel &voxel : pool.getColors()) {
+        EXPECT_EQ(voxel.reserved_ & IRComponents::VoxelReserved::kFogCarrierMask, 0u);
+    }
 }
 
 } // namespace

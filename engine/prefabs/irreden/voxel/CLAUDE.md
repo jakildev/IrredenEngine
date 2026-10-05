@@ -25,6 +25,10 @@ API contracts; this file owns cross-header and pipeline constraints.
   `rotationSourceVoxels_`; the identity frame restores that source span and
   clears the snapshot. Direct raw-span writes are safe only before the first
   rotated frame unless they use the encapsulated edit API.
+- An owner-private detached pool may carry a uniform fog-carrier policy.
+  Allocation and reuse apply it before returning a span; `seedIntoPool`
+  reapplies it after copying authored records. Shared world pools stay
+  unmanaged because their sets can mix FIELD, BODY, and EXEMPT classes.
 - `C_VoxelSetNew` reserves its span during construction when a canvas is
   active; a temporary made only to inspect dense data leaks because cleanup is
   `onDestroy()`, not a destructor. Attach it to an entity or use
