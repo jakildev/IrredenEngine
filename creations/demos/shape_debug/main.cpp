@@ -2597,17 +2597,24 @@ void buildLoadPrefabShots() {
         stem.compare(stem.size() - kSuffix.size(), kSuffix.size(), kSuffix) == 0) {
         stem.resize(stem.size() - kSuffix.size());
     }
-    constexpr int kZooms[] = {1, 4, 16};
+    constexpr int kDefaultZooms[] = {1, 4, 16};
+    const int requestedZoom = static_cast<int>(g_initialZoom);
+    const int *zooms = kDefaultZooms;
+    int numZooms = static_cast<int>(std::size(kDefaultZooms));
+    if (g_initialZoom > 0.0f) {
+        zooms = &requestedZoom;
+        numZooms = 1;
+    }
     emitSweepShots(
         g_loadPrefabShots,
         g_loadPrefabShotLabels,
-        static_cast<int>(std::size(kZooms)),
+        numZooms,
         [&](auto &label, int i) {
-            std::snprintf(label.data(), label.size(), "prefab_%s_z%d", stem.c_str(), kZooms[i]);
+            std::snprintf(label.data(), label.size(), "prefab_%s_z%d", stem.c_str(), zooms[i]);
         },
         [&](int i) {
             IRVideo::AutoScreenshotShot shot{};
-            shot.zoom_ = static_cast<float>(kZooms[i]);
+            shot.zoom_ = static_cast<float>(zooms[i]);
             shot.cameraIso_ = vec2(0.0f, 0.0f);
             return shot;
         }

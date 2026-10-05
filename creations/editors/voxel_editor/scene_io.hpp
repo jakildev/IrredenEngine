@@ -67,14 +67,7 @@ inline std::string framePath(const std::string &dir, const std::string &baseName
 }
 
 inline IRAsset::VoxelRecord toVoxelRecord(const IRComponents::C_Voxel &v) {
-    IRAsset::VoxelRecord r;
-    r.color_ = v.color_;
-    r.material_id_ = v.material_id_;
-    r.flags_ = v.flags_;
-    r.bone_id_ = v.bone_id_;
-    r.layer_id_ = v.layer_id_;
-
-    return r;
+    return IRPrefab::DenseVoxel::toRecord(v);
 }
 
 inline IRComponents::C_Voxel toCVoxel(const IRAsset::VoxelRecord &r) {

@@ -7,7 +7,10 @@ target_link_libraries(IRShapeDebug PUBLIC IrredenEngine)
 # one-command bundle target IRShapeDebugPackage. See cmake/ir_functions.cmake.
 irreden_bundle_assets(IRShapeDebug
     SCRIPTS config.lua
-    EXTRA_DIRS ${PROJECT_SOURCE_DIR}/assets/prefabs assets/prefabs
+    EXTRA_DIRS
+        ${PROJECT_SOURCE_DIR}/assets/prefabs assets/prefabs
+        ${PROJECT_SOURCE_DIR}/creations/editors/voxel_editor/test/fixtures/editor_parts
+        assets/prefabs/editor_parts
 )
 irreden_package_target(IRShapeDebug)
 

@@ -27,6 +27,28 @@
 
 namespace IRPrefab::DenseVoxel {
 
+inline IRAsset::VoxelRecord toRecord(const IRComponents::C_Voxel &voxel) {
+    IRAsset::VoxelRecord record;
+    record.color_ = voxel.color_;
+    record.material_id_ = voxel.material_id_;
+    record.flags_ = voxel.flags_;
+    record.bone_id_ = voxel.bone_id_;
+    record.layer_id_ = voxel.layer_id_;
+    return record;
+}
+
+inline IRAsset::DenseVoxelSet fromComponent(const IRComponents::C_VoxelSetNew &set) {
+    IRAsset::DenseVoxelSet dense;
+    dense.boundsMin_ = set.localOriginMin();
+    dense.boundsMax_ = dense.boundsMin_ + set.size_;
+    const std::span<const IRComponents::C_Voxel> voxels = set.authoredRecords();
+    dense.voxels_.reserve(voxels.size());
+    for (const IRComponents::C_Voxel &voxel : voxels) {
+        dense.voxels_.push_back(toRecord(voxel));
+    }
+    return dense;
+}
+
 /// Translate an asset `IRAsset::DenseVoxelSet` into plain runtime
 /// `C_Voxel` records — the CPU-side half of `toComponent`, with no pool
 /// involvement.

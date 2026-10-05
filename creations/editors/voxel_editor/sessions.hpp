@@ -65,6 +65,7 @@ enum class Id {
     ANT,
     BIRD,
     TREE,
+    PARTS_ROUNDTRIP,
     MODULE_LOADED,
 };
 
@@ -89,6 +90,8 @@ inline Id idFromName(const std::string &name) {
         return Id::BIRD;
     if (name == "tree")
         return Id::TREE;
+    if (name == "parts_roundtrip")
+        return Id::PARTS_ROUNDTRIP;
     if (name == "module_loaded")
         return Id::MODULE_LOADED;
     return Id::NONE;
@@ -1345,6 +1348,51 @@ inline Recipe build(
         return detail::buildBird(sceneSize, sceneOrigin);
     case Id::TREE:
         return detail::buildTree(sceneSize, sceneOrigin);
+    case Id::PARTS_ROUNDTRIP: {
+        Builder builder("parts_roundtrip", sceneSize, sceneOrigin);
+        const int z = sceneSize.z - 2;
+        const IRMath::ivec3 first(sceneSize.x / 2, sceneSize.y / 2, z);
+        const IRMath::ivec3 second(sceneSize.x / 2 - 2, sceneSize.y / 2, z);
+
+        builder.segment("add_parts");
+        builder.addVoxelPart();
+        builder.addVoxelPart();
+
+        builder.segment("paint_second");
+        builder.click(second);
+        builder.expectPartOccupancy(1, second, true, "second_part_cell_painted");
+
+        builder.segment("paint_first");
+        builder.nextPart();
+        builder.click(first);
+        builder.expectPartOccupancy(0, first, true, "first_part_cell_painted");
+
+        builder.segment("move_second");
+        builder.nextPart();
+        const IRMath::vec3 dragStart = sceneOrigin + IRMath::vec3(0.75f, 0.0f, 0.0f);
+        const IRMath::vec3 dragEnd = dragStart + IRMath::vec3(4.0f, 0.0f, 0.0f);
+        const IRMath::vec3 movedOrigin = sceneOrigin + IRMath::vec3(8.0f / 3.0f, 0.0f, 0.0f);
+        builder.dragWorld(dragStart, dragEnd);
+        builder.expectPartTransform(1, movedOrigin, 0.25f, true, "second_part_moved_by_gizmo");
+
+        builder.segment("save");
+        builder.save();
+        builder.segment("clear");
+        builder.clearEntityScene();
+        builder.segment("load");
+        builder.reload();
+        builder.expectPartOccupancy(0, first, true, "first_part_survives_reload");
+        builder.expectPartOccupancy(1, second, true, "second_part_survives_reload");
+        builder.expectPartTransform(
+            1,
+            sceneOrigin,
+            0.25f,
+            false,
+            "pre_move_transform_fails_after_reload"
+        );
+        builder.expectPartTransform(1, movedOrigin, 0.25f, true, "moved_transform_survives_reload");
+        return builder.finish();
+    }
     case Id::MODULE_LOADED:
         return detail::buildModuleLoaded(sceneSize, sceneOrigin, moduleSpec);
     case Id::NONE:

@@ -121,6 +121,7 @@
 // Authoring sessions — recipes of editor gestures compiled into
 // scripted input and replayed against the live UI by the GUI-test harness.
 #include "editor_picking.hpp"
+#include "entity_scene.hpp"
 #include "sessions.hpp"
 
 // Scene save/load
@@ -932,6 +933,71 @@ IREntity::EntityId g_layerVisCheckbox = IREntity::kNullEntity;
 IREntity::EntityId g_layerAddBtn = IREntity::kNullEntity;
 IREntity::EntityId g_layerDelBtn = IREntity::kNullEntity;
 
+EntityScene g_entityScene;
+bool g_entitySceneMode = false;
+IREntity::EntityId g_partsPanel = IREntity::kNullEntity;
+IREntity::EntityId g_partsList = IREntity::kNullEntity;
+
+void selectEditorPart(int index) {
+    const IREntity::EntityId selected = g_entityScene.select(index);
+    for (const EditorPart &part : g_entityScene.parts()) {
+        if (part.entity_ == selected) {
+            if (IREntity::getComponentOptional<C_EditorReference>(part.entity_)) {
+                IREntity::removeComponent<C_EditorReference>(part.entity_);
+            }
+        } else if (!IREntity::getComponentOptional<C_EditorReference>(part.entity_)) {
+            IREntity::setComponent(part.entity_, C_EditorReference{});
+        }
+    }
+    const bool voxelPart = selected != IREntity::kNullEntity &&
+                           IREntity::getComponentOptional<C_VoxelSetNew>(selected).has_value();
+    g_editor.editableVoxelSet_ = voxelPart ? selected : IREntity::kNullEntity;
+    g_sceneVoxelSetEntity = voxelPart ? selected : IREntity::kNullEntity;
+    if (g_partsList != IREntity::kNullEntity) {
+        auto &list = IREntity::getComponent<C_WidgetList>(g_partsList);
+        list.items_.clear();
+        for (const EditorPart &part : g_entityScene.parts()) {
+            list.items_.push_back(part.id_);
+        }
+        IRPrefab::Widget::setListSelectedIndex(g_partsList, g_entityScene.selectedIndex());
+    }
+}
+
+void selectRelativeEditorPart(int offset) {
+    if (!g_entitySceneMode || g_entityScene.parts().empty()) {
+        return;
+    }
+    const int count = static_cast<int>(g_entityScene.parts().size());
+    selectEditorPart((g_entityScene.selectedIndex() + offset + count) % count);
+}
+
+void addEditorVoxelPart() {
+    if (!g_entitySceneMode) {
+        g_entitySceneMode = true;
+        if (g_editor.editableVoxelSet_ != IREntity::kNullEntity) {
+            IREntity::destroyEntity(g_editor.editableVoxelSet_);
+        }
+        g_entityScene.begin();
+    }
+    const IREntity::EntityId part =
+        g_entityScene.addVoxelPart(g_editableSceneSize, g_editableSceneOrigin);
+    auto &set = IREntity::getComponent<C_VoxelSetNew>(part);
+    set.deactivateAll();
+    set.fillPlane(2, set.size_.z - 1, Color{120, 120, 130, 255});
+    selectEditorPart(g_entityScene.selectedIndex());
+}
+
+void clearEntitySceneForLoad() {
+    g_entityScene.clear();
+    g_editor.editableVoxelSet_ = IREntity::kNullEntity;
+    g_sceneVoxelSetEntity = IREntity::kNullEntity;
+    if (g_partsList != IREntity::kNullEntity) {
+        auto &list = IREntity::getComponent<C_WidgetList>(g_partsList);
+        list.items_.clear();
+        list.selectedIndex_ = -1;
+    }
+}
+
 // Fill-mode status label — top-left status bar updated each frame with the
 // active fill mode (BOX / LINE / FACE), the erase-mode prefix, and active
 // symmetry axes.
@@ -951,6 +1017,67 @@ IREntity::EntityId g_bakeShapeList = IREntity::kNullEntity;
 IREntity::EntityId g_bakeParam1Slider = IREntity::kNullEntity;
 IREntity::EntityId g_bakeParam2Slider = IREntity::kNullEntity;
 IREntity::EntityId g_bakeButton = IREntity::kNullEntity;
+constexpr IRMath::SDF::ShapeType kBakeShapeTypes[] = {
+    IRMath::SDF::ShapeType::BOX,
+    IRMath::SDF::ShapeType::SPHERE,
+    IRMath::SDF::ShapeType::CYLINDER,
+    IRMath::SDF::ShapeType::TORUS,
+    IRMath::SDF::ShapeType::CONE,
+    IRMath::SDF::ShapeType::ELLIPSOID,
+};
+
+IRPrefab::Prefab::PrefabShapeDescription selectedShapeDescription() {
+    const int selected = g_bakeShapeList != IREntity::kNullEntity
+                             ? IRPrefab::Widget::listSelectedIndex(g_bakeShapeList)
+                             : 1;
+    const int index =
+        selected >= 0 && selected < static_cast<int>(std::size(kBakeShapeTypes)) ? selected : 1;
+    const float p1 = g_bakeParam1Slider != IREntity::kNullEntity
+                         ? IRPrefab::Widget::sliderValue(g_bakeParam1Slider)
+                         : 5.0f;
+    const float p2 = g_bakeParam2Slider != IREntity::kNullEntity
+                         ? IRPrefab::Widget::sliderValue(g_bakeParam2Slider)
+                         : 3.0f;
+    IRMath::vec4 params{};
+    switch (kBakeShapeTypes[index]) {
+    case IRMath::SDF::ShapeType::SPHERE:
+        params = IRMath::vec4(p1, 0.0f, 0.0f, 0.0f);
+        break;
+    case IRMath::SDF::ShapeType::TORUS:
+        params = IRMath::vec4(p1, p2, 0.0f, 0.0f);
+        break;
+    case IRMath::SDF::ShapeType::BOX:
+    case IRMath::SDF::ShapeType::ELLIPSOID:
+        params = IRMath::vec4(p1 * 2.0f, p1 * 2.0f, p2 * 2.0f, 0.0f);
+        break;
+    case IRMath::SDF::ShapeType::CYLINDER:
+    case IRMath::SDF::ShapeType::CONE:
+    default:
+        params = IRMath::vec4(p1, p1, p2 * 2.0f, 0.0f);
+        break;
+    }
+    return {
+        kBakeShapeTypes[index],
+        params,
+        kPaletteColors[g_editor.activeSwatchIdx_],
+        IRMath::SDF::SHAPE_FLAG_VISIBLE
+    };
+}
+
+void addEditorShapePart() {
+    if (!g_entitySceneMode) {
+        g_entitySceneMode = true;
+        if (g_editor.editableVoxelSet_ != IREntity::kNullEntity) {
+            IREntity::destroyEntity(g_editor.editableVoxelSet_);
+        }
+        g_entityScene.begin();
+    }
+    g_entityScene.addShapePart(
+        selectedShapeDescription(),
+        IRComponents::C_LocalTransform{g_editableSceneOrigin}
+    );
+    selectEditorPart(g_entityScene.selectedIndex());
+}
 
 // Skeleton tree panel widget entity IDs.
 IREntity::EntityId g_skeletonPanel = IREntity::kNullEntity;
@@ -1075,6 +1202,15 @@ void commitStroke(bool derivedStateAlreadySynced = false) {
     if (g_editor.pendingStroke_.edits_.empty()) {
         return;
     }
+    std::vector<IREntity::EntityId> touchedSets;
+    if (!derivedStateAlreadySynced) {
+        for (const UndoEdit &edit : g_editor.pendingStroke_.edits_) {
+            if (std::find(touchedSets.begin(), touchedSets.end(), edit.voxelSet_) ==
+                touchedSets.end()) {
+                touchedSets.push_back(edit.voxelSet_);
+            }
+        }
+    }
     g_editor.undoTotalBytes_ += g_editor.pendingStroke_.byteSize();
     g_editor.undoRecords_.push_back(std::move(g_editor.pendingStroke_));
     g_editor.pendingStroke_.edits_.clear();
@@ -1087,9 +1223,8 @@ void commitStroke(bool derivedStateAlreadySynced = false) {
         g_editor.undoTotalBytes_ -= g_editor.undoRecords_.front().byteSize();
         g_editor.undoRecords_.pop_front();
     }
-    if (!derivedStateAlreadySynced && g_sceneVoxelSetEntity != IREntity::kNullEntity) {
-        auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sceneVoxelSetEntity);
-        set.resyncAfterRawEdits();
+    for (IREntity::EntityId entity : touchedSets) {
+        IREntity::getComponent<C_VoxelSetNew>(entity).resyncAfterRawEdits();
     }
 }
 
@@ -1945,13 +2080,19 @@ bool evaluatePickCheck(const void *context, std::string &actual) {
 bool evaluateOccupancyCheck(const void *context, std::string &actual) {
     const OccupancyCheck &check = *static_cast<const OccupancyCheck *>(context);
     const IRMath::ivec3 cell = check.localCell_;
-    const std::string where = "cell=(" + std::to_string(cell.x) + "," + std::to_string(cell.y) +
-                              "," + std::to_string(cell.z) + ")";
-    if (g_sceneVoxelSetEntity == IREntity::kNullEntity) {
+    const std::string where =
+        (check.partIndex_ >= 0 ? "part=" + std::to_string(check.partIndex_) + " " : "") + "cell=(" +
+        std::to_string(cell.x) + "," + std::to_string(cell.y) + "," + std::to_string(cell.z) + ")";
+    IREntity::EntityId voxelSetEntity = g_sceneVoxelSetEntity;
+    if (check.partIndex_ >= 0 &&
+        check.partIndex_ < static_cast<int>(g_entityScene.parts().size())) {
+        voxelSetEntity = g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)].entity_;
+    }
+    if (voxelSetEntity == IREntity::kNullEntity) {
         actual = where + " no-editable-set";
         return false;
     }
-    const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sceneVoxelSetEntity);
+    const auto &set = IREntity::getComponent<C_VoxelSetNew>(voxelSetEntity);
     if (cell.x < 0 || cell.x >= set.size_.x || cell.y < 0 || cell.y >= set.size_.y || cell.z < 0 ||
         cell.z >= set.size_.z) {
         actual = where + " out-of-bounds";
@@ -2000,6 +2141,25 @@ bool evaluateOccupancyCheck(const void *context, std::string &actual) {
     actual += " color=" + rgb(color) + " wantColor=" + rgb(want);
     return occupied && color.red_ == want.red_ && color.green_ == want.green_ &&
            color.blue_ == want.blue_;
+}
+
+bool evaluatePartTransformCheck(const void *context, std::string &actual) {
+    const PartTransformCheck &check = *static_cast<const PartTransformCheck *>(context);
+    if (check.partIndex_ < 0 ||
+        check.partIndex_ >= static_cast<int>(g_entityScene.parts().size())) {
+        actual = "part index out of range";
+        return false;
+    }
+    const IREntity::EntityId entity =
+        g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)].entity_;
+    const vec3 translation = IREntity::getComponent<C_LocalTransform>(entity).translation_;
+    const vec3 delta = translation - check.expected_;
+    const bool equal = IRMath::abs(delta.x) <= check.tolerance_ &&
+                       IRMath::abs(delta.y) <= check.tolerance_ &&
+                       IRMath::abs(delta.z) <= check.tolerance_;
+    actual = "translation=(" + std::to_string(translation.x) + "," + std::to_string(translation.y) +
+             "," + std::to_string(translation.z) + ")";
+    return equal == check.expectEqual_;
 }
 
 // Reads one SliderCheck against the live ANIM panel widget it names — the
@@ -2220,7 +2380,7 @@ int main(int argc, char **argv) {
     IREngine::args().enumValue(
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
-        "face_pick | rock | mushroom | ant | bird | tree | module_loaded",
+        "face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | module_loaded",
         {"none",
          "drag_probe",
          "place_below",
@@ -2230,6 +2390,7 @@ int main(int argc, char **argv) {
          "ant",
          "bird",
          "tree",
+         "parts_roundtrip",
          "module_loaded"},
         "none"
     );
@@ -2641,6 +2802,7 @@ void initSystems() {
 
             bool overWidget = IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.palettePanel_) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_layerPanel) ||
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_partsPanel) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_bakePanel) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_bonePaint.bonePanel_) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_skeletonPanel) ||
@@ -2934,6 +3096,14 @@ void initSystems() {
         []() {},
         []() {
             using namespace IRVoxelEditor;
+            if (g_entitySceneMode && g_partsList != IREntity::kNullEntity &&
+                IRPrefab::Widget::wasClicked(g_partsList)) {
+                const int selected = IRPrefab::Widget::listSelectedIndex(g_partsList);
+                if (selected >= 0 && selected < static_cast<int>(g_entityScene.parts().size()) &&
+                    selected != g_entityScene.selectedIndex()) {
+                    selectEditorPart(selected);
+                }
+            }
             if (g_layerList == IREntity::kNullEntity)
                 return;
 
@@ -3040,21 +3210,12 @@ void initSystems() {
             if (g_editor.editableVoxelSet_ == IREntity::kNullEntity)
                 return;
 
-            static constexpr IRMath::SDF::ShapeType kShapeTypes[] = {
-                IRMath::SDF::ShapeType::BOX,
-                IRMath::SDF::ShapeType::SPHERE,
-                IRMath::SDF::ShapeType::CYLINDER,
-                IRMath::SDF::ShapeType::TORUS,
-                IRMath::SDF::ShapeType::CONE,
-                IRMath::SDF::ShapeType::ELLIPSOID,
-            };
-            static constexpr int kNumShapes = 6;
-
             const int sel = (g_bakeShapeList != IREntity::kNullEntity)
                                 ? IRPrefab::Widget::listSelectedIndex(g_bakeShapeList)
                                 : 1;
-            const int idx = (sel >= 0 && sel < kNumShapes) ? sel : 1;
-            const IRMath::SDF::ShapeType shapeType = kShapeTypes[idx];
+            const int idx =
+                (sel >= 0 && sel < static_cast<int>(std::size(kBakeShapeTypes))) ? sel : 1;
+            const IRPrefab::Prefab::PrefabShapeDescription shape = selectedShapeDescription();
 
             const float p1 = (g_bakeParam1Slider != IREntity::kNullEntity)
                                  ? IRPrefab::Widget::sliderValue(g_bakeParam1Slider)
@@ -3063,34 +3224,12 @@ void initSystems() {
                                  ? IRPrefab::Widget::sliderValue(g_bakeParam2Slider)
                                  : 3.0f;
 
-            // Build SDF params for evaluate(): semantics depend on shape type.
-            // evaluate() computes halfSize = vec3(params)*0.5 for box-family shapes.
-            vec4 sdfParams{};
-            switch (shapeType) {
-            case IRMath::SDF::ShapeType::SPHERE:
-                sdfParams = vec4(p1, 0.0f, 0.0f, 0.0f);
-                break;
-            case IRMath::SDF::ShapeType::TORUS:
-                sdfParams = vec4(p1, p2, 0.0f, 0.0f);
-                break;
-            case IRMath::SDF::ShapeType::BOX:
-            case IRMath::SDF::ShapeType::ELLIPSOID:
-                sdfParams = vec4(p1 * 2.0f, p1 * 2.0f, p2 * 2.0f, 0.0f);
-                break;
-            case IRMath::SDF::ShapeType::CYLINDER:
-            case IRMath::SDF::ShapeType::CONE:
-            default:
-                sdfParams = vec4(p1, p1, p2 * 2.0f, 0.0f);
-                break;
-            }
-
-            const Color placeColor = kPaletteColors[g_editor.activeSwatchIdx_];
             auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
             IRPrefab::Voxel::fillSdf(
                 set,
-                shapeType,
-                sdfParams,
-                placeColor,
+                shape.type_,
+                shape.params_,
+                shape.color_,
                 true,
                 [&](ivec3 local, std::size_t flat, bool place, Color color) {
                     if (flat < set.voxels_.size()) {
@@ -3568,7 +3707,7 @@ void initCommands() {
             );
         },
         IRInput::kModifierNone,
-        IRInput::kModifierNone,
+        IRInput::kModifierControl,
         "PLAY/PAUSE",
         "TOGGLE FRAME PLAYBACK"
     );
@@ -3688,7 +3827,7 @@ void initCommands() {
             IR_LOG_INFO("Deleted frame (now {} / {})", anim.activeFrame_ + 1, anim.frameCount());
         },
         IRInput::kModifierNone,
-        IRInput::kModifierNone,
+        IRInput::kModifierControl,
         "DELETE FRAME",
         "DELETE THE CURRENT FRAME"
     );
@@ -3959,6 +4098,65 @@ void initCommands() {
         "TOGGLE ACTIVE LAYER VISIBILITY"
     );
 
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonP,
+        []() { IRVoxelEditor::addEditorVoxelPart(); },
+        IRInput::kModifierControl,
+        IRInput::kModifierShift,
+        "ADD PART",
+        "ENTER ENTITY SCENE MODE AND ADD A VOXEL PART"
+    );
+
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonP,
+        []() { IRVoxelEditor::addEditorShapePart(); },
+        IRInput::kModifierControl | IRInput::kModifierShift,
+        IRInput::kModifierNone,
+        "ADD SHAPE PART",
+        "ADD THE BAKE PANEL'S SDF PRIMITIVE AS AN ENTITY-SCENE PART"
+    );
+
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonTab,
+        []() { IRVoxelEditor::selectRelativeEditorPart(1); },
+        IRInput::kModifierNone,
+        IRInput::kModifierShift,
+        "NEXT PART",
+        "SELECT THE NEXT ENTITY-SCENE PART"
+    );
+
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonTab,
+        []() { IRVoxelEditor::selectRelativeEditorPart(-1); },
+        IRInput::kModifierShift,
+        IRInput::kModifierNone,
+        "PREVIOUS PART",
+        "SELECT THE PREVIOUS ENTITY-SCENE PART"
+    );
+
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonBackspace,
+        []() {
+            if (IRVoxelEditor::g_entitySceneMode) {
+                IRVoxelEditor::clearEntitySceneForLoad();
+            }
+        },
+        IRInput::kModifierControl,
+        IRInput::kModifierNone,
+        "CLEAR ENTITY SCENE",
+        "CLEAR PARTS WHILE KEEPING ENTITY-SCENE MODE"
+    );
+
     // Ctrl+S — save scene (all frames + layer metadata) to disk.
     // Snapshots the live voxels into the active frame before writing.
     IRCommand::createCommand(
@@ -3966,6 +4164,22 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonS,
         []() {
+            if (IRVoxelEditor::g_entitySceneMode) {
+                const auto result = IRVoxelEditor::g_entityScene.save(
+                    std::string(IRVoxelEditor::kSceneSaveDir),
+                    std::string(IRVoxelEditor::kSceneBaseName)
+                );
+                if (result.ok_) {
+                    IR_LOG_INFO(
+                        "Entity scene saved to {}/{}.prefab.lua",
+                        IRVoxelEditor::kSceneSaveDir,
+                        IRVoxelEditor::kSceneBaseName
+                    );
+                } else {
+                    IR_LOG_ERROR("Entity scene save failed: {}", result.error_);
+                }
+                return;
+            }
             auto &anim = IRVoxelEditor::g_anim;
             IRVoxelEditor::snapshotLiveToFrame(anim.activeFrame_);
             std::vector<std::vector<IRComponents::C_Voxel>> snapshots;
@@ -4033,6 +4247,23 @@ void initCommands() {
         IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonO,
         []() {
+            if (IRVoxelEditor::g_entitySceneMode) {
+                const auto loaded = IRVoxelEditor::g_entityScene.load(
+                    IRVoxelEditor::g_moduleHost.script(),
+                    std::string(IRVoxelEditor::kSceneSaveDir),
+                    std::string(IRVoxelEditor::kSceneBaseName)
+                );
+                if (!loaded.ok_) {
+                    IR_LOG_ERROR("Entity scene load failed: {}", loaded.error_);
+                    return;
+                }
+                IRVoxelEditor::selectEditorPart(IRVoxelEditor::g_entityScene.selectedIndex());
+                IR_LOG_INFO(
+                    "Entity scene loaded: {} parts",
+                    IRVoxelEditor::g_entityScene.parts().size()
+                );
+                return;
+            }
             auto loaded = IRVoxelEditor::loadEditorScene(
                 std::string(IRVoxelEditor::kSceneSaveDir),
                 std::string(IRVoxelEditor::kSceneBaseName)
@@ -4115,19 +4346,7 @@ void initCommands() {
             // Collect gizmo handles anchored to those joints, then destroy
             // gizmos first so no child tries to read a destroyed parent.
             {
-                std::vector<IREntity::EntityId> oldGizmoIds;
-                IREntity::forEachComponent<IRComponents::C_GizmoHandle>(
-                    [&](IREntity::EntityId id, IRComponents::C_GizmoHandle &h) {
-                        for (const auto jid : oldJointIds) {
-                            if (h.anchorEntity_ == jid) {
-                                oldGizmoIds.push_back(id);
-                                break;
-                            }
-                        }
-                    }
-                );
-                for (const auto id : oldGizmoIds)
-                    IREntity::destroyEntity(id);
+                IRPrefab::Gizmo::destroyForAnchors(oldJointIds);
             }
             for (const auto id : oldJointIds)
                 IREntity::destroyEntity(id);
@@ -4448,6 +4667,23 @@ void initEntities() {
         "-"
     );
 
+    constexpr ivec2 kPartsPanelPos{254, 240};
+    constexpr ivec2 kPartsPanelSize{120, 96};
+    IRVoxelEditor::g_partsPanel =
+        IRPrefab::Widget::makePanel(kPartsPanelPos, kPartsPanelSize, "PARTS");
+    IREntity::setComponent(
+        IRVoxelEditor::g_partsPanel,
+        IRComponents::C_HitBox2DGui{kPartsPanelSize}
+    );
+    IREntity::getComponent<IRComponents::C_Widget>(IRVoxelEditor::g_partsPanel).zOrder_ = -1;
+    IRVoxelEditor::g_partsList = IRPrefab::Widget::makeList(
+        ivec2(kPartsPanelPos.x + 4, kPartsPanelPos.y + 18),
+        ivec2(112, 70),
+        {},
+        -1,
+        13
+    );
+
     // Parametric shape bake panel. Sits below the LAYERS panel.
     // Shape list selects the SDF primitive; P1/P2 sliders set the primary and
     // secondary params; BAKE writes DENSE voxels into the active entity.
@@ -4589,6 +4825,9 @@ void initEntities() {
         {IRVoxelEditor::g_layerVisCheckbox, "VISIBLE: toggle the active layer's visibility (H)."},
         {IRVoxelEditor::g_layerAddBtn, "ADD: create a new edit layer."},
         {IRVoxelEditor::g_layerDelBtn, "DEL: remove the active edit layer."},
+        {IRVoxelEditor::g_partsPanel,
+         "PARTS: Ctrl+P adds voxels; Ctrl+Shift+P adds an SDF; Tab selects."},
+        {IRVoxelEditor::g_partsList, "PARTS: select the voxel set or shape edited in place."},
         {IRVoxelEditor::g_bakePanel, "BAKE: pick a shape, set P1/P2, then BAKE the active entity."},
         {IRVoxelEditor::g_bakeShapeList, "SHAPE: choose the SDF primitive to voxelize."},
         {IRVoxelEditor::g_bakeParam1Slider, "P1: primary shape parameter (size / radius)."},
