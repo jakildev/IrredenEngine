@@ -17,7 +17,7 @@ layout (location = 1) in vec2 aTexCoords;
 out vec2 vTexCoords;
 out vec4 vTint;
 
-layout (std140, binding = 0) uniform FrameData {
+layout (std140, binding = 27) uniform FrameData {
     mat4 projection;
 };
 

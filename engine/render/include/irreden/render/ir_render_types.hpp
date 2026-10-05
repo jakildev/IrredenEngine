@@ -1316,11 +1316,11 @@ constexpr std::uint32_t kBufferIndex_PerAxisCellIndirect = kBufferIndex_Indirect
 // sprite draw. Safety is enforced by a defensive rebind in
 // `SPRITE_TO_SCREEN::bindPipeline()` — both slots are re-asserted to the
 // sprite resources immediately before each draw call, displacing any earlier
-// occupant. Slot 0 (FrameDataUniform) is also used by the stateless particle
-// UBO; slot 25 (CompactedVoxelIndices) is written by
+// occupant. Slot 27 (FrameDataLightingToTrixel) is also used by fog observers;
+// slot 25 (CompactedVoxelIndices) is written by
 // VOXEL_TO_TRIXEL_STAGE_1 and consumed by STAGE_2. Same Metal 0–30 cap
 // rationale as `kBufferIndex_SunShadowDepthMap`.
-constexpr std::uint32_t kBufferIndex_SpritesFrameData = kBufferIndex_FrameDataUniform;
+constexpr std::uint32_t kBufferIndex_SpritesFrameData = kBufferIndex_FrameDataLightingToTrixel;
 constexpr std::uint32_t kBufferIndex_SpritesInstances = kBufferIndex_CompactedVoxelIndices;
 // GPU particle bindings alias the particle SSBO and UBO onto slots whose other
 // consumers run on non-overlapping compute encoders. Both `LightSourceBuffer` (slot 4) and
@@ -1342,14 +1342,9 @@ constexpr std::uint32_t kBufferIndex_FrameDataGpuParticles = kBufferIndex_LightV
 // `constant` (UBO) buffer at this size class — the SSBO path uses
 // straightforward `device` storage with no implicit layout assumptions.
 //
-// UBO slot: aliases the long-reserved-but-unused `FrameDataUniform` slot 0
-// — same slot the sprite pipeline borrows for `SpritesFrameData`. The
-// aliasing is safe because `SPRITE_TO_SCREEN::bindPipeline()` defensively
-// rebinds slot 0 to `SpritesFrameData` immediately before each draw call,
-// so any prior stateless-particle UBO occupying slot 0 is always displaced
-// before the sprite vertex shader reads it (OpenGL has global binding
-// state; Metal compute and render encoders maintain independent argument
-// tables, so the alias is inherently safe there).
+// UBO slot: aliases the long-reserved-but-unused `FrameDataUniform` slot 0.
+// The sprite frame UBO cannot share this index because Metal vertex streams
+// and vertex-stage buffers occupy the same binding namespace.
 // SSBO slot: aliases `kBufferIndex_LightSourceBuffer` (slot 4), already
 // shared with `kBufferIndex_GpuParticleData`. Each particle pass rebinds slot 4
 // to its own SSBO immediately before dispatch
