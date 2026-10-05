@@ -109,7 +109,7 @@ enum class DrawMode : std::uint8_t { TRIANGLES, LINES };
 ///                        untouched, so the winner is exactly the real
 ///                        composite's winner.
 /// - @c PER_AXIS_ORIGIN — per-axis scatter recovered-origin field: scattered
-///                        face color encodes the recovered un-yawed depth key
+///                        face color encodes the recovered store-frame depth key
 ///                        (@c rawDepth = x+y+z from @c isoPixelToPos3D)
 ///                        on a long-period hue wheel, so a clean face reads as
 ///                        a smooth hue progression and a wrong-cell winner as

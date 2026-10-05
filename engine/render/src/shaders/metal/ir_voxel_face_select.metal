@@ -233,10 +233,11 @@ static VoxelFaceSelect selectVoxelFace(
     return sel;
 }
 
-// Per-axis base-resolution store position + encoded key (un-yawed cardinal iso
-// key). Returns the face-plane position whose
-// projection `perAxisBase + pos3DtoPos2DIso(facePos)` is the store cell;
-// writes the encoded distance key through `encodedDistance`. Stage 1's and
+// Per-axis base-resolution store position + encoded key. Returns the
+// face-plane position in the STORE FRAME — the world lattice position rotated
+// into the cardinal view `storeCardinal` — whose projection
+// `storeOrigin + pos3DtoPos2DIso(.)` is the store cell; writes the encoded
+// distance key, the store-frame iso depth, through `encodedDistance`. Stage 1's and
 // stage 2's store taps both derive the cell + key here, so stage 2's store
 // matches stage 1's exactly. Sub-cell fracs ride the encoding at 4-bit
 // quantization, so two offsets in one 1/16 bucket encode equal keys — what the
@@ -247,11 +248,13 @@ static int3 perAxisStoreFacePos(
     const int slot,
     const int axis,
     const int riserFlip,
+    const int storeCardinal,
     thread int& encodedDistance
 ) {
     const float3 worldAligned = snapNearIntegerVoxelPosition(voxelPosition.xyz);
     const int3 worldPos = roundHalfUp(worldAligned);
-    const int3 facePos = faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1);
+    const int3 facePos =
+        rotateCardinalZ(faceMicroPositionFixed6(faceId, worldPos, 0, 0, 1), storeCardinal);
     const float3 fracInCell = worldAligned - float3(worldPos);
     encodedDistance =
         encodeDepthWithFaceFrac(pos3DtoDistance(facePos), slot, axis, fracInCell, riserFlip);

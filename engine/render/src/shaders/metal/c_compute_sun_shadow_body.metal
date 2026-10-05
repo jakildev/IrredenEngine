@@ -88,7 +88,7 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
     if (frameData.perAxisRoute != 0) {
         const int faceId = frameData.visibleFaceIds[face] ^ flip;
         const float3 faceOrigin = perAxisCellToWorld3DSubCell(
-            pixel, encoded, faceId, size, frameData.frameCanvasOffset, frameData.voxelRenderOptions
+            pixel, encoded, faceId, frameData.perAxisStoreFrame
         );
         const float factor = sunFrameData.shadowsEnabled == 0 ? 1.0
             : perAxisSunShadowFactor(faceOrigin, faceId, sunFrameData, sunDepthBuf);

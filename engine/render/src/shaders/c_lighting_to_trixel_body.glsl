@@ -69,6 +69,17 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // opts into world placement, else 0.0. Recovers each detached voxel's world
     // pos as (model pos + .xyz) for the shared sun-shadow + light-volume sample.
     uniform vec4 detachedWorldReceive;
+    // Members between here and perAxisStoreFrame are declared only to reach
+    // its std140 offset.
+    uniform ivec4 _visibleIsoBoundsPadding;
+    uniform ivec4 _resolveFeederPadding;
+    uniform ivec4 _overflowScratchLayoutPadding;
+    uniform ivec4 _overflowSortStepPadding;
+    uniform vec4 _detachedViewToWorldPadding;
+    // Frame the per-axis store is keyed in: .xy = store cell of the frame's iso
+    // origin, .z = cardinal index of the view the key positions are rotated
+    // into. FrameDataVoxelToCanvas::perAxisStoreFrame_ (offset 256).
+    uniform ivec4 perAxisStoreFrame;
 };
 
 layout(rgba8, binding = 0) uniform image2D trixelColors;
@@ -376,7 +387,7 @@ void main() {
         vec3 pos3D = worldReceive
             ? worldReceivePos
             : (perAxisRoute != 0
-                ? perAxisCellToWorld3DSubCell(pixel, encoded, faceId, size, frameCanvasOffset, voxelRenderOptions)
+                ? perAxisCellToWorld3DSubCell(pixel, encoded, faceId, perAxisStoreFrame)
                 : (residualYaw != 0.0
                     ? trixelCanvasPixelToWorld3DSmoothYaw(
                           pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset,

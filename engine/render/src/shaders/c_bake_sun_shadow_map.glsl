@@ -38,6 +38,19 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec4 _faceDeformPadding[3];   // faceDeform[3] in the full UBO
     // Per-slot world FaceId (0..5); used only on the per-axis path.
     uniform ivec4 visibleFaceIds;
+    // Members between here and perAxisStoreFrame are declared only to reach
+    // its std140 offset.
+    uniform vec4 _voxelDepthAxisPadding;
+    uniform vec4 _detachedWorldReceivePadding;
+    uniform ivec4 _visibleIsoBoundsPadding;
+    uniform ivec4 _resolveFeederPadding;
+    uniform ivec4 _overflowScratchLayoutPadding;
+    uniform ivec4 _overflowSortStepPadding;
+    uniform vec4 _detachedViewToWorldPadding;
+    // Frame the per-axis store is keyed in: .xy = store cell of the frame's iso
+    // origin, .z = cardinal index of the view the key positions are rotated
+    // into. FrameDataVoxelToCanvas::perAxisStoreFrame_ (offset 256).
+    uniform ivec4 perAxisStoreFrame;
 };
 
 layout(std140, binding = 29) uniform FrameDataSun {
@@ -139,10 +152,7 @@ void main() {
         // route STAGE_1 resets to 0 before BAKE runs). That resolve bridge is where
         // the sub-cell frac is applied. A raw per-axis canvas routed into this bake
         // must recover with perAxisCellToWorld3DSubCell.
-        pos3D = perAxisCellToWorld3D(
-            pixel, rawDepth, visibleFaceIds[decodeSlot(encoded)], size,
-            frameCanvasOffset, voxelRenderOptions
-        );
+        pos3D = perAxisCellToWorld3D(pixel, rawDepth, visibleFaceIds[decodeSlot(encoded)], perAxisStoreFrame);
     } else if (residualYaw != 0.0) {
         // Smooth-yaw cast. While rotating, the single canvas's remaining SDF/text
         // content is stored at the FULL visualYaw with view-frame depth — recover

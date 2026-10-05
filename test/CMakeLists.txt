@@ -96,6 +96,7 @@ add_executable(IrredenEngineTest
   render/per_axis_canvas_lifecycle_test.cpp
   render/per_axis_canvas_size_test.cpp
   render/per_axis_cast_subcell_test.cpp
+  render/per_axis_store_frame_test.cpp
   render/frame_data_sun_layout_test.cpp
   render/gizmo_drag_reset_test.cpp
   render/gpu_compute_dispatch_test.cpp

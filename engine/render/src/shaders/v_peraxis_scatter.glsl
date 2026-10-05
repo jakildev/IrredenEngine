@@ -72,6 +72,9 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     int _overflowPad0;
     int _overflowPad1;
     int _overflowPad2;
+    // Frame the store is keyed in: .xy = store cell of the frame's iso origin,
+    // .z = cardinal index of its view. std140 offset 224.
+    ivec4 perAxisStoreFrame;
 };
 
 flat out vec4 vColor;
@@ -186,16 +189,21 @@ void main() {
     const int faceId = visibleFaceIds[slot] ^ flip;
     const int axis = faceId >> 1;
 
-    // Recover the exact face origin from the un-yawed (cardinal) iso store. The
-    // store (c_voxel_to_trixel_stage_1.glsl) files this face at
-    // `perAxisBase + pos3DtoPos2DIso(facePos)`, so the cardinal iso pixel is
-    // `ij - perAxisBase` and isoPixelToPos3D inverts it exactly against rawDepth
-    // (= x+y+z of the face plane). Non-singular at every yaw because the recovered
-    // index is UN-yawed; the live yaw is applied only at projection.
+    // Recover the exact face origin from the store frame. The store
+    // (c_voxel_to_trixel_stage_1.glsl) files this face at
+    // `perAxisStoreFrame.xy + pos3DtoPos2DIso(rotateCardinalZ(facePos,
+    // perAxisStoreFrame.z))`, so the store-frame iso pixel is
+    // `ij - perAxisStoreFrame.xy`, isoPixelToPos3D inverts it exactly against
+    // rawDepth (the rotated face plane's x+y+z), and the inverse cardinal
+    // rotation returns the world lattice origin. Non-singular at every yaw
+    // because the store frame is a cardinal view; the live yaw is applied only
+    // at projection.
     vec3 eu, ev;
     faceInPlaneUnitAxes(axis, eu, ev);
-    const ivec2 isoPix = ij - perAxisBase;
-    const vec3 baseOrigin = isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth));
+    const ivec2 isoPix = ij - perAxisStoreFrame.xy;
+    const vec3 baseOrigin = rotateCardinalZInv(
+        isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth)), perAxisStoreFrame.z
+    );
     // Apply the sub-cell offsets packed in the encoding: u/v shift
     // within the face plane; w moves the plane itself along the face axis —
     // without it every fractionally-positioned face snaps to the integer
@@ -217,11 +225,10 @@ void main() {
     // authored position instead of orbiting it by the half cell.
     const vec2 cornerSel = aPos + vec2(0.5);
     const vec3 worldCorner = faceSpanCorner(axis, origin, cornerSel);
-    // Screen re-projection anchor. `perAxisBase` is the STORE anchor —
-    // trixelOriginOffsetZ1(canvasSize) (== canvasSize/2 - (1,1)) + floor(cameraIso).
-    // Its (-1,-1) is the trixel grid's sub-pixel LATTICE alignment: a
-    // canvas-STORAGE convention the `ij - perAxisBase` recovery depends on,
-    // but NOT a screen offset. The forward scatter emits true face quads (no
+    // Screen re-projection anchor. `perAxisBase` is the camera-anchored canvas
+    // origin — trixelOriginOffsetZ1(canvasSize) (== canvasSize/2 - (1,1)) +
+    // floor(cameraIso). Its (-1,-1) is the trixel grid's sub-pixel LATTICE
+    // alignment: a canvas-STORAGE convention, NOT a screen offset. The forward scatter emits true face quads (no
     // trixel-grid gather), so that lattice alignment must not ride into the
     // on-screen placement — anchor the re-projection on the canvas geometric
     // CENTER (canvasSize/2), which the model matrix maps to screen center. The
@@ -268,7 +275,7 @@ void main() {
     vQuadParam = cornerSel;
 
     // Yaw-consistent composite depth, per-fragment PLANAR + exact. The stored
-    // `rawDepth` (= un-yawed world x+y+z) is the face-local origin-recovery KEY
+    // `rawDepth` (= store-frame x+y+z) is the face-local origin-recovery KEY
     // and must not change. Each corner emits the continuous yawed camera-space
     // depth of its finite corner point — yawedIsoDistanceCellAnchor, the
     // shared composite depth metric in ir_iso_common.glsl, so it co-sorts with

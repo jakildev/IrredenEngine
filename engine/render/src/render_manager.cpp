@@ -317,6 +317,13 @@ vec2 RenderManager::getDefaultPivotViewOffsetIso() const {
     return m_defaultPivotLatch.viewOffsetIso();
 }
 
+float RenderManager::getViewReferenceHeight() const {
+    if (m_rotationPivotMode == RotationPivotMode::ORIGIN) {
+        return 0.0f;
+    }
+    return m_hasRotationPivotFocus ? m_rotationPivotFocus.z : m_defaultPivotLatch.surfaceHeight();
+}
+
 void RenderManager::stampDefaultPivotSourceFrame() {
     const vec2 cameraIso = getCameraPosition2DIso();
     const float visualYaw = IRPrefab::Camera::getYaw();
