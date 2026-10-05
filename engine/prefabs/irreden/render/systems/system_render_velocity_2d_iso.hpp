@@ -15,17 +15,15 @@ using namespace IRComponents;
 
 namespace IRSystem {
 
-// Snapshot yaw in beginTick so the PARALLEL_FOR tick stays free of getComponent;
-// panYaw_=0 in ORIGIN mode preserves raw-iso behaviour.
+// Snapshot the pan yaw in beginTick so the PARALLEL_FOR tick stays free of
+// getComponent.
 template <> struct System<RENDERING_VELOCITY_2D_ISO> {
     static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
 
     float panYaw_ = 0.0f;
 
     void beginTick() {
-        panYaw_ = IRRender::getRotationPivotMode() == IRRender::RotationPivotMode::CAMERA_CENTER
-                      ? IRPrefab::Camera::getYaw()
-                      : 0.0f;
+        panYaw_ = IRRender::getCameraPanYaw();
     }
 
     void tick(C_Position2DIso &position, const C_Velocity2DIso &velocity) {
