@@ -762,8 +762,11 @@ class Builder {
     void addVoxelPart() {
         chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonP);
         if (m_partModels.empty()) {
-            m_partModels.push_back(m_model);
+            OccupancyModel first(m_model.size(), m_sceneOrigin);
+            first.seedGroundPlane();
+            m_partModels.push_back(first);
             m_activePart = 0;
+            m_model = std::move(first);
             return;
         }
         m_partModels[static_cast<std::size_t>(m_activePart)] = m_model;

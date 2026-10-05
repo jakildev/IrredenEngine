@@ -1354,8 +1354,12 @@ inline Recipe build(
         const IRMath::ivec3 first(sceneSize.x / 2, sceneSize.y / 2, z);
         const IRMath::ivec3 second(sceneSize.x / 2 - 2, sceneSize.y / 2, z);
 
-        builder.segment("add_parts");
+        builder.segment("prime_single_set_undo");
+        builder.click(first);
+
+        builder.segment("enter_entity_scene");
         builder.addVoxelPart();
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
         builder.addVoxelPart();
 
         builder.segment("paint_second");
@@ -1379,6 +1383,7 @@ inline Recipe build(
         builder.save();
         builder.segment("clear");
         builder.clearEntityScene();
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
         builder.segment("load");
         builder.reload();
         builder.expectPartOccupancy(0, first, true, "first_part_survives_reload");

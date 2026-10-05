@@ -938,6 +938,17 @@ bool g_entitySceneMode = false;
 IREntity::EntityId g_partsPanel = IREntity::kNullEntity;
 IREntity::EntityId g_partsList = IREntity::kNullEntity;
 
+void clearUndoHistory() {
+    g_editor.undoRecords_.clear();
+    g_editor.undoTotalBytes_ = 0;
+    g_editor.pendingStroke_.edits_.clear();
+    g_editor.pendingStroke_.edits_.reserve(kUndoStrokeReserve);
+    for (std::deque<UndoRecord> &records : g_editor.perFrameUndoStacks_) {
+        records.clear();
+    }
+    std::fill(g_editor.perFrameUndoBytes_.begin(), g_editor.perFrameUndoBytes_.end(), 0);
+}
+
 void selectEditorPart(int index) {
     const IREntity::EntityId selected = g_entityScene.select(index);
     for (const EditorPart &part : g_entityScene.parts()) {
@@ -974,6 +985,7 @@ void selectRelativeEditorPart(int offset) {
 void addEditorVoxelPart() {
     if (!g_entitySceneMode) {
         g_entitySceneMode = true;
+        clearUndoHistory();
         if (g_editor.editableVoxelSet_ != IREntity::kNullEntity) {
             IREntity::destroyEntity(g_editor.editableVoxelSet_);
         }
@@ -988,6 +1000,7 @@ void addEditorVoxelPart() {
 }
 
 void clearEntitySceneForLoad() {
+    clearUndoHistory();
     g_entityScene.clear();
     g_editor.editableVoxelSet_ = IREntity::kNullEntity;
     g_sceneVoxelSetEntity = IREntity::kNullEntity;
@@ -1067,6 +1080,7 @@ IRPrefab::Prefab::PrefabShapeDescription selectedShapeDescription() {
 void addEditorShapePart() {
     if (!g_entitySceneMode) {
         g_entitySceneMode = true;
+        clearUndoHistory();
         if (g_editor.editableVoxelSet_ != IREntity::kNullEntity) {
             IREntity::destroyEntity(g_editor.editableVoxelSet_);
         }
@@ -4257,6 +4271,7 @@ void initCommands() {
                     IR_LOG_ERROR("Entity scene load failed: {}", loaded.error_);
                     return;
                 }
+                IRVoxelEditor::clearUndoHistory();
                 IRVoxelEditor::selectEditorPart(IRVoxelEditor::g_entityScene.selectedIndex());
                 IR_LOG_INFO(
                     "Entity scene loaded: {} parts",

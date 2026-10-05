@@ -31,9 +31,10 @@ struct EditorPart {
     std::string id_;
     EditorPartKind kind_ = EditorPartKind::VOXEL_SET;
     IRComponents::RotationMode mode_ = IRComponents::RotationMode::GRID;
+    IRMath::ivec2 canvasSize_{0};
     IRRender::LodLevel lodMin_ = IRRender::LodLevel::LOD_4;
     IRRender::LodLevel lodMax_ = IRRender::LodLevel::LOD_0;
-    std::vector<std::string> components_;
+    bool resident_ = false;
 };
 
 struct EntitySceneResult {
@@ -44,30 +45,30 @@ struct EntitySceneResult {
 class EntityScene {
   public:
     bool active() const {
-        return root_ != IREntity::kNullEntity;
+        return m_root != IREntity::kNullEntity;
     }
 
     IREntity::EntityId root() const {
-        return root_;
+        return m_root;
     }
 
     const std::vector<EditorPart> &parts() const {
-        return parts_;
+        return m_parts;
     }
 
     int selectedIndex() const {
-        return selected_;
+        return m_selected;
     }
 
     IREntity::EntityId selectedEntity() const {
-        return selected_ >= 0 && selected_ < static_cast<int>(parts_.size())
-                   ? parts_[static_cast<std::size_t>(selected_)].entity_
+        return m_selected >= 0 && m_selected < static_cast<int>(m_parts.size())
+                   ? m_parts[static_cast<std::size_t>(m_selected)].entity_
                    : IREntity::kNullEntity;
     }
 
     void begin() {
         clear();
-        root_ = IREntity::createEntity(IRComponents::C_LocalTransform{IRMath::vec3(0.0f)});
+        m_root = IREntity::createEntity(IRComponents::C_LocalTransform{IRMath::vec3(0.0f)});
     }
 
     IREntity::EntityId addVoxelPart(
@@ -107,11 +108,11 @@ class EntityScene {
 
     IREntity::EntityId select(int index, bool createGizmos = true) {
         destroySelectionGizmos();
-        if (parts_.empty()) {
-            selected_ = -1;
+        if (m_parts.empty()) {
+            m_selected = -1;
             return IREntity::kNullEntity;
         }
-        selected_ = IRMath::clamp(index, 0, static_cast<int>(parts_.size()) - 1);
+        m_selected = IRMath::clamp(index, 0, static_cast<int>(m_parts.size()) - 1);
         const IREntity::EntityId selected = selectedEntity();
         if (createGizmos) {
             IRPrefab::Gizmo::createTranslateGizmoForAnchor(selected);
@@ -121,12 +122,12 @@ class EntityScene {
     }
 
     void clear() {
-        if (root_ != IREntity::kNullEntity && IREntity::entityExists(root_)) {
-            IREntity::destroyTree(root_);
+        if (m_root != IREntity::kNullEntity && IREntity::entityExists(m_root)) {
+            IREntity::destroyTree(m_root);
         }
-        root_ = IREntity::kNullEntity;
-        parts_.clear();
-        selected_ = -1;
+        m_root = IREntity::kNullEntity;
+        m_parts.clear();
+        m_selected = -1;
         m_nextPartId = 0;
     }
 
@@ -141,15 +142,17 @@ class EntityScene {
         }
 
         IRPrefab::Prefab::PrefabDescription description;
-        description.parts_.reserve(parts_.size());
-        for (const EditorPart &editorPart : parts_) {
+        description.parts_.reserve(m_parts.size());
+        for (const EditorPart &editorPart : m_parts) {
             IRPrefab::Prefab::PrefabPartDescription part;
             part.id_ = editorPart.id_;
             part.transform_ =
                 IREntity::getComponent<IRComponents::C_LocalTransform>(editorPart.entity_);
             part.rotationMode_ = editorPart.mode_;
+            part.canvasSize_ = editorPart.canvasSize_;
             part.lodMin_ = editorPart.lodMin_;
             part.lodMax_ = editorPart.lodMax_;
+            part.resident_ = editorPart.resident_;
 
             if (editorPart.kind_ == EditorPartKind::SHAPE) {
                 const auto &shape =
@@ -164,7 +167,7 @@ class EntityScene {
                 const auto &set =
                     IREntity::getComponent<IRComponents::C_VoxelSetNew>(editorPart.entity_);
                 IRAsset::DenseVoxelSet dense = IRPrefab::DenseVoxel::fromComponent(set);
-                const std::string filename = baseName + "_part_" + editorPart.id_ + ".vxs";
+                const std::string filename = baseName + "_" + editorPart.id_ + ".vxs";
                 const std::string voxelPath = IRUtility::joinPath(dir, filename, "");
                 if (const IRAsset::BinaryStatus status =
                         IRAsset::saveDenseVoxelSet(voxelPath, dense);
@@ -193,10 +196,29 @@ class EntityScene {
             return {false, manifest.error_};
         }
 
-        clear();
-        root_ = IREntity::createEntity(IRComponents::C_LocalTransform{IRMath::vec3(0.0f)});
+        std::vector<std::optional<IRAsset::DenseVoxelSet>> stagedVoxelSets;
+        stagedVoxelSets.reserve(manifest.description_->parts_.size());
         for (const IRPrefab::Prefab::PrefabPartDescription &description :
              manifest.description_->parts_) {
+            if (description.shape_) {
+                stagedVoxelSets.emplace_back(std::nullopt);
+                continue;
+            }
+            if (description.voxelRef_.empty()) {
+                return {false, "part '" + description.id_ + "' needs voxel_ref or shape"};
+            }
+            auto loaded = IRAsset::loadDenseVoxelSet(description.voxelRef_);
+            if (!loaded.ok()) {
+                return {false, "failed to load voxel part '" + description.id_ + "'"};
+            }
+            stagedVoxelSets.emplace_back(std::move(loaded.value_.dense_));
+        }
+
+        clear();
+        m_root = IREntity::createEntity(IRComponents::C_LocalTransform{IRMath::vec3(0.0f)});
+        for (std::size_t i = 0; i < manifest.description_->parts_.size(); ++i) {
+            const IRPrefab::Prefab::PrefabPartDescription &description =
+                manifest.description_->parts_[i];
             IREntity::EntityId entity = IREntity::kNullEntity;
             EditorPartKind kind = EditorPartKind::VOXEL_SET;
             if (description.shape_) {
@@ -213,26 +235,23 @@ class EntityScene {
                 );
                 kind = EditorPartKind::SHAPE;
             } else {
-                auto loaded = IRAsset::loadDenseVoxelSet(description.voxelRef_);
-                if (!loaded.ok()) {
-                    clear();
-                    return {false, "failed to load voxel part '" + description.id_ + "'"};
-                }
                 entity = IREntity::createEntity(
                     description.transform_,
-                    IRPrefab::DenseVoxel::toComponent(loaded.value_.dense_),
+                    IRPrefab::DenseVoxel::toComponent(*stagedVoxelSets[i]),
                     IRComponents::C_RotationMode{description.rotationMode_}
                 );
             }
-            IREntity::setParent(entity, root_);
-            parts_.push_back(
+            IREntity::setParent(entity, m_root);
+            m_parts.push_back(
                 EditorPart{
                     entity,
                     description.id_,
                     kind,
                     description.rotationMode_,
+                    description.canvasSize_,
                     description.lodMin_,
-                    description.lodMax_
+                    description.lodMax_,
+                    description.resident_
                 }
             );
             const std::string prefix = "part_";
@@ -253,9 +272,9 @@ class EntityScene {
 
   private:
     IREntity::EntityId appendPart(IREntity::EntityId entity, std::string id, EditorPartKind kind) {
-        IREntity::setParent(entity, root_);
-        parts_.push_back(EditorPart{entity, std::move(id), kind});
-        select(static_cast<int>(parts_.size()) - 1, false);
+        IREntity::setParent(entity, m_root);
+        m_parts.push_back(EditorPart{entity, std::move(id), kind});
+        select(static_cast<int>(m_parts.size()) - 1, false);
         return entity;
     }
 
@@ -266,9 +285,9 @@ class EntityScene {
         IRPrefab::Gizmo::destroyForAnchor(selectedEntity());
     }
 
-    IREntity::EntityId root_ = IREntity::kNullEntity;
-    std::vector<EditorPart> parts_;
-    int selected_ = -1;
+    IREntity::EntityId m_root = IREntity::kNullEntity;
+    std::vector<EditorPart> m_parts;
+    int m_selected = -1;
     int m_nextPartId = 0;
 };
 
