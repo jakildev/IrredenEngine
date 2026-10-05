@@ -810,10 +810,10 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
             combinedCanvasOwner || activeCanvas == IREntity::kNullEntity || canvas == activeCanvas,
             "fog subject classes support the active grid canvas or its detached owner"
         );
-        rangeStart = voxelSet->voxelStartIdx_;
-        rangeCount = static_cast<std::size_t>(voxelSet->numVoxels_);
         IRComponents::C_VoxelPool *pool = IRPrefab::VoxelPool::detail::poolForCanvas(canvas);
         if (pool != nullptr && !combinedCanvasOwner) {
+            rangeStart = voxelSet->voxelStartIdx_;
+            rangeCount = static_cast<std::size_t>(voxelSet->numVoxels_);
             switch (subjectClass) {
             case FogSubjectClass::BODY:
                 stampBodyCarrier(*pool, *voxelSet, true, 0);
@@ -825,9 +825,9 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
                 stampBodyCarrier(*pool, *voxelSet, true, 255);
                 break;
             }
+            voxelSet->visible_ = subjectClass != FogSubjectClass::BODY;
+            setRenders = voxelSet->renders();
         }
-        voxelSet->visible_ = subjectClass != FogSubjectClass::BODY;
-        setRenders = voxelSet->renders();
     }
     if (shapeOpt.has_value()) {
         IRComponents::C_ShapeDescriptor &shape = **shapeOpt;

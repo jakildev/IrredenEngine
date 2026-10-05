@@ -267,7 +267,23 @@ TEST_F(FogSubjectExemptCanvasTest, CombinedDetachedOwnerSetterClassifiesTheCanva
 
     IRPrefab::Fog::setSubjectClass(owner, IRPrefab::Fog::FogSubjectClass::BODY);
     ASSERT_TRUE(IREntity::getComponentOptional<C_FogRevealed>(owner).has_value());
-    EXPECT_FALSE(IREntity::getComponent<C_VoxelSetNew>(owner).visible_);
+    auto &bodySet = IREntity::getComponent<C_VoxelSetNew>(owner);
+    auto &bodyPool = IREntity::getComponent<C_VoxelPool>(privateCanvas);
+    EXPECT_TRUE(bodySet.visible_);
+    EXPECT_EQ(bodyPool.getActiveMask()[0] & 0x3u, 0x3u);
+
+    C_CanvasFogOfWar fog = fogWithCircle(10.0f, 2.0f);
+    IRSystem::System<IRSystem::FOG_REVEAL_EVAL_CANVAS> eval;
+    eval.fog_ = &fog;
+    eval.tick(
+        owner,
+        IREntity::getComponent<C_FogRevealed>(owner),
+        IREntity::getComponent<C_WorldTransform>(owner),
+        IREntity::getComponent<C_EntityCanvas>(owner)
+    );
+    EXPECT_FALSE(IREntity::getComponent<C_EntityCanvas>(owner).fogHidden_);
+    EXPECT_TRUE(IREntity::getComponent<C_VoxelSetNew>(owner).visible_);
+    EXPECT_EQ(bodyPool.getActiveMask()[0] & 0x3u, 0x3u);
 
     IRPrefab::Fog::setSubjectClass(owner, IRPrefab::Fog::FogSubjectClass::EXEMPT);
 
