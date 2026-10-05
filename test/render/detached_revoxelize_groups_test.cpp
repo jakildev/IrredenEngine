@@ -210,6 +210,22 @@ TEST_F(DetachedRevoxelizeFogCarrierTest, ManagedPoolReseedsWithNormalizedReserve
     for (const IRComponents::C_Voxel &voxel : attached.voxels_) {
         EXPECT_EQ(voxel.reserved_ & IRComponents::VoxelReserved::kFogCarrierMask, exemptCarrier);
     }
+
+    buffer.seededContentGeneration_ = pool().getContentGeneration();
+    pool().setFogCarrierPolicy(C_VoxelPool::FogCarrierPolicy::FIELD);
+    EXPECT_FALSE(
+        IRPrefab::DetachedRevoxelize::detail::seedIsCurrent(
+            buffer,
+            pool(),
+            pool().getLiveVoxelCount()
+        )
+    );
+    for (const IRComponents::C_Voxel &voxel : first.voxels_) {
+        EXPECT_EQ(voxel.reserved_ & IRComponents::VoxelReserved::kFogCarrierMask, 0u);
+    }
+    for (const IRComponents::C_Voxel &voxel : attached.voxels_) {
+        EXPECT_EQ(voxel.reserved_ & IRComponents::VoxelReserved::kFogCarrierMask, 0u);
+    }
 }
 
 TEST_F(RevoxelizeGroupSeeds, EachSpanIsScannedInItsOwnFrame) {

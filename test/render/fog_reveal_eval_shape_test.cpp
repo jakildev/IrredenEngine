@@ -227,7 +227,9 @@ TEST_F(FogRevealEvalShapeAdoptTest, SynchronousGovernanceStartsHiddenThenEvaluat
     EXPECT_NE(shape.flags_ & IRRender::SHAPE_FLAG_FOG_HIDDEN, 0u);
 }
 
-TEST_F(FogRevealEvalShapeAdoptTest, ExemptMarkerAndSetterRealizeTheShapeCarrier) {
+class FogSubjectExemptShapeTest : public FogRevealEvalShapeAdoptTest {};
+
+TEST_F(FogSubjectExemptShapeTest, MarkerAndSetterRealizeTheShapeCarrier) {
     const IREntity::EntityId marked = createShape(IRMath::vec3(40.0f));
     IREntity::setComponent(marked, C_FogExempt{});
     const IREntity::EntityId synchronous = createShape(IRMath::vec3(40.0f));

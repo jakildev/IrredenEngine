@@ -184,7 +184,9 @@ TEST_F(FogRevealEvalCanvasAdoptTest, FieldAndScreenLockedCanvasesStayOutsideBody
     EXPECT_EQ(fieldRecords[0].reserved_ & IRComponents::VoxelReserved::kFogBody, 0u);
 }
 
-TEST_F(FogRevealEvalCanvasAdoptTest, ExemptCanvasPolicyCoversLaterAllocationReuseAndSeed) {
+class FogSubjectExemptCanvasTest : public FogRevealEvalCanvasAdoptTest {};
+
+TEST_F(FogSubjectExemptCanvasTest, PolicyCoversLaterAllocationReuseAndSeed) {
     const IREntity::EntityId exempt = createCanvasOwner();
     IREntity::setComponent(exempt, C_FogExempt{});
     auto &canvas = IREntity::getComponent<C_EntityCanvas>(exempt);
@@ -239,7 +241,7 @@ TEST_F(FogRevealEvalCanvasAdoptTest, ExemptCanvasPolicyCoversLaterAllocationReus
     }
 }
 
-TEST_F(FogRevealEvalCanvasAdoptTest, CombinedDetachedOwnerSetterClassifiesTheCanvas) {
+TEST_F(FogSubjectExemptCanvasTest, CombinedDetachedOwnerSetterClassifiesTheCanvas) {
     const IREntity::EntityId privateCanvas = IREntity::createEntity(
         C_VoxelPool{IRMath::ivec3(4, 1, 1)},
         IRComponents::C_DetachedCanvas{}
