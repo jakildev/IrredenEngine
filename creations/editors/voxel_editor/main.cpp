@@ -3236,7 +3236,9 @@ void initSystems() {
     // LOD panel sync. Runs in INPUT after WIDGET_APPLY_SLIDER and
     // WIDGET_APPLY_CHECKBOX so this frame's drag or click is committed. A slider
     // acts while pressed and on its release frame; the band sliders keep
-    // fine <= coarse by moving the slider not being dragged.
+    // fine <= coarse by moving the slider not being dragged. The tier pin is
+    // staged and flushes at this system's group boundary, before the UPDATE
+    // LOD gate reads it.
     auto lodPanelSyncSystem = IRSystem::createSystem<C_GuiElement>(
         "EditorLodPanelSync",
         [](const C_GuiElement &) {},

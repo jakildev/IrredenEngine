@@ -119,16 +119,17 @@ class EntityScene {
     }
 
     // Pins every scene entity to @p tier, or with nullopt removes the pin so
-    // they follow the camera-zoom tier again. Parts added or loaded later take
-    // the same state.
+    // they follow the camera-zoom tier again. Callable from a system tick: the
+    // pins are staged and land at the next structural flush. Parts added or
+    // loaded later take the same state.
     void setTierOverride(std::optional<IRRender::LodLevel> tier) {
         m_tierOverride = tier;
         if (!active()) {
             return;
         }
-        applyTierOverride(m_root);
+        stageTierOverride(m_root);
         for (const EditorPart &part : m_parts) {
-            applyTierOverride(part.entity_);
+            stageTierOverride(part.entity_);
         }
     }
 
@@ -327,6 +328,19 @@ class EntityScene {
             IREntity::setComponent(entity, IRComponents::C_LodTierOverride{*m_tierOverride});
         } else if (IREntity::getComponentOptional<IRComponents::C_LodTierOverride>(entity)) {
             IREntity::removeComponent<IRComponents::C_LodTierOverride>(entity);
+        }
+    }
+
+    // A flush drains removals before sets, so stage at most one change per
+    // entity between flushes.
+    void stageTierOverride(IREntity::EntityId entity) const {
+        if (m_tierOverride) {
+            IREntity::setComponentDeferred(
+                entity,
+                IRComponents::C_LodTierOverride{*m_tierOverride}
+            );
+        } else {
+            IREntity::removeComponentDeferred<IRComponents::C_LodTierOverride>(entity);
         }
     }
 
