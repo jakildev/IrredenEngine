@@ -600,6 +600,15 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
     // Parsed before the root exists, so a bad part leaves nothing to tear down.
     std::shared_ptr<PartsManifest> partsManifest;
     if (*versionOpt >= 2) {
+        // A band belongs to a part; a root-level table would be silently dropped.
+        if (sol::object rootLod = prefab["lod"];
+            rootLod.valid() && rootLod.get_type() != sol::type::lua_nil) {
+            return makeError(
+                idStr,
+                path,
+                "root-level lod is not supported; give each part its own lod band"
+            );
+        }
         if (auto error = parseParts(prefab, idStr, partsManifest)) {
             return makeError(idStr, path, *error);
         }

@@ -537,6 +537,30 @@ TEST_F(PrefabParts, RejectsMalformedParts) {
     EXPECT_EQ(IREntity::countComponents<C_PrefabParts>(), 0) << "a rejected spawn leaves no root";
 }
 
+TEST_F(PrefabParts, RejectsRootLevelLod) {
+    const auto rejects = [&](const std::string &tag, const std::string &body) {
+        const int entitiesBefore = IREntity::countComponents<IRComponents::C_LocalTransform>();
+        const IRPrefab::Prefab::SpawnResult result = spawnResult(tag, body);
+        tick();
+        EXPECT_EQ(result.entity_, IREntity::kNullEntity) << tag;
+        EXPECT_NE(result.error_.find("root-level lod"), std::string::npos)
+            << tag << ": " << result.error_;
+        EXPECT_EQ(IREntity::countComponents<IRComponents::C_LocalTransform>(), entitiesBefore)
+            << tag << ": a rejected spawn leaves no entity";
+    };
+    rejects(
+        "root_lod_with_parts",
+        "return { prefab_version = 2,\n"
+        "  lod = { [IRRender.LodLevel.LOD_0] = 'fine' },\n" +
+            std::string{kTieredParts} + "}\n"
+    );
+    rejects(
+        "root_lod_band",
+        "return { prefab_version = 2, lod = { fine = IRRender.LodLevel.LOD_0 } }\n"
+    );
+    EXPECT_EQ(IREntity::countComponents<C_PrefabParts>(), 0);
+}
+
 TEST_F(PrefabParts, CheckedInFlowerFixtureSpawns) {
     IRPrefab::Prefab::registerPrefab("flower", IR_FLOWER_PREFAB_PATH);
     // The fixture's voxel_ref paths are relative to the demo's exe dir.
