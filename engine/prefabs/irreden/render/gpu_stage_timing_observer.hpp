@@ -2,42 +2,25 @@
 #define GPU_STAGE_TIMING_OBSERVER_H
 
 #include <irreden/ir_system.hpp>
-#include <irreden/ir_math.hpp>
 #include <irreden/ir_profile.hpp>
-#include <irreden/render/render_device.hpp>
+#include <irreden/render/gpu_timestamp_ring.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/profile/scope_timer.hpp>
 
-#include <algorithm>
 #include <memory>
-#include <array>
 #include <string_view>
 #include <unordered_map>
 
 namespace IRRender {
 
-// Observer that brackets every system tick with GPU `device()->finish()`
-// samples and writes the elapsed time into a `GpuStageTiming` field for
-// systems that have been tagged via `tagGpuStage`. Centralizes what used
-// to be 14 inlined `if (timing.enabled_) { device()->finish(); ... }`
-// blocks scattered across `engine/prefabs/irreden/render/systems/*.hpp`.
-//
-// Untagged systems pay nothing: the `m_stages.find(system)` returns end
-// and both fires return immediately. When `gpuStageTiming().enabled_` is
-// false (the default), even tagged systems pay only one bool check per
-// fire.
+// Tagged systems collect CPU time independently of GPU timing. GPU counters
+// bracket the whole tick; legacy timing instead measures CPU wall time around
+// encoding and a finish(), after draining earlier GPU work.
 class GpuStageTimingObserver : public IRSystem::TickObserver {
   public:
     ~GpuStageTimingObserver() override {
         for (auto &[_, state] : m_stages) {
-            if (state.device_ == nullptr) {
-                continue;
-            }
-            for (GpuTimestampHandle handle : state.handles_) {
-                if (handle != kInvalidGpuTimestampHandle) {
-                    state.device_->destroyTimestampPair(handle);
-                }
-            }
+            state.release(state.device_);
         }
     }
 
@@ -49,14 +32,7 @@ class GpuStageTimingObserver : public IRSystem::TickObserver {
         // against its base gives the matching accumulator slot.
         state.registryIndex_ = static_cast<int>(&info - gpuStageRegistry().data());
         state.device_ = IRRender::device();
-        if (state.device_ != nullptr && state.device_->supportsGpuTimestampPairs()) {
-            const int pairsInFlight = IRMath::clamp(
-                state.device_->recommendedTimestampPairsInFlight(), 1, kSamplesInFlight
-            );
-            for (int i = 0; i < pairsInFlight; ++i) {
-                state.handles_[i] = state.device_->createTimestampPair();
-            }
-        }
+        state.initialize(state.device_);
         m_stages[system] = state;
     }
 
@@ -65,9 +41,7 @@ class GpuStageTimingObserver : public IRSystem::TickObserver {
         if (it == m_stages.end())
             return;
 
-        // CPU side is independent of GPU support / enable state — the histogram
-        // gates itself when disabled. The wall-clock cost (two `now()` calls
-        // + a hashmap lookup at scope exit) is well under a microsecond.
+        // CPU collection is independent of GPU support and timing mode.
         if (IRProfile::cpuFrameHistogram().enabled_) {
             it->second.cpuT0_ = IRProfile::SteadyClock::now();
             it->second.cpuActive_ = true;
@@ -84,14 +58,9 @@ class GpuStageTimingObserver : public IRSystem::TickObserver {
         }
 
         StageState &state = it->second;
-        resolveReadySamples(state);
-        const int slot = nextAvailableSlot(state);
-        if (slot < 0) {
-            state.activeSlot_ = -1;
-            return;
-        }
-        state.activeSlot_ = slot;
-        IRRender::device()->writeTimestamp(state.handles_[slot], TimestampSlot::START);
+        state.begin(*IRRender::device(), [&state](float ms) {
+            commitGpuStageSample(*state.info_, state.registryIndex_, ms);
+        });
     }
 
     void onAfterTick(IRSystem::SystemId system) override {
@@ -117,25 +86,14 @@ class GpuStageTimingObserver : public IRSystem::TickObserver {
         }
 
         StageState &state = it->second;
-        if (state.activeSlot_ < 0) {
-            return;
-        }
-        IRRender::device()->writeTimestamp(state.handles_[state.activeSlot_], TimestampSlot::END);
-        state.pending_[state.activeSlot_] = true;
-        state.activeSlot_ = -1;
+        state.end(*IRRender::device());
     }
 
   private:
-    static constexpr int kSamplesInFlight = 3;
-
-    struct StageState {
+    struct StageState : detail::GpuTimestampRing {
         const GpuStageInfo *info_ = nullptr;
         int registryIndex_ = -1;
-        std::array<GpuTimestampHandle, kSamplesInFlight> handles_{};
-        std::array<bool, kSamplesInFlight> pending_{};
         RenderDevice *device_ = nullptr;
-        int nextSlot_ = 0;
-        int activeSlot_ = -1;
 
         // CPU sibling for the matching stage. Captured at `onBeforeTick`,
         // committed at `onAfterTick` regardless of `gpuStageTiming().enabled_`
@@ -149,42 +107,14 @@ class GpuStageTimingObserver : public IRSystem::TickObserver {
                !IRRender::device()->supportsGpuTimestampPairs();
     }
 
-    static void resolveReadySamples(StageState &state) {
-        float ms = 0.0f;
-        for (int i = 0; i < kSamplesInFlight; ++i) {
-            if (!state.pending_[i])
-                continue;
-            const auto status = IRRender::device()->pollTimestampPairMs(state.handles_[i], ms);
-            if (status == TimestampReadStatus::READY) {
-                commitGpuStageSample(*state.info_, state.registryIndex_, ms);
-            }
-            if (status != TimestampReadStatus::PENDING) {
-                state.pending_[i] = false;
-            }
-        }
-    }
-
-    static int nextAvailableSlot(StageState &state) {
-        for (int attempt = 0; attempt < kSamplesInFlight; ++attempt) {
-            const int slot = (state.nextSlot_ + attempt) % kSamplesInFlight;
-            if (state.handles_[slot] != kInvalidGpuTimestampHandle && !state.pending_[slot]) {
-                state.nextSlot_ = (slot + 1) % kSamplesInFlight;
-                return slot;
-            }
-        }
-        return -1;
-    }
-
     std::unordered_map<IRSystem::SystemId, StageState> m_stages;
     TimePoint m_t0;
 };
 
 namespace detail {
 
-// Lazy install: the first `tagGpuStage` call creates the observer,
-// transfers ownership to SystemManager via `registerTickObserver`, and
-// caches a raw pointer for subsequent tagging. The observer lives as
-// long as the SystemManager (program-bound; see engine/world/CLAUDE.md).
+// The SystemManager owns the observer. This process-lifetime cache assumes
+// registration belongs to one World; it is invalid after that manager dies.
 inline GpuStageTimingObserver *installAndGetObserver() {
     static GpuStageTimingObserver *cached = []() {
         auto owner = std::make_unique<GpuStageTimingObserver>();

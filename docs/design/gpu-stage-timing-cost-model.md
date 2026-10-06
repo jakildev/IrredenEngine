@@ -204,8 +204,9 @@ workload before applying them to a new optimization:
   `voxelStage2` rows and narrow `voxelStage1` to stage-1-only, on both
   backends. `VOXEL_TO_TRIXEL_STAGE_1` is untagged from the per-system observer
   (the sub-scopes reuse the freed attachment slot; Metal's clear blit is timed
-  via a timestamp-aware `createBlitEncoder`). Coverage delta: the rotating-only
-  per-axis voxel dispatch is not sub-scoped.
+  via a timestamp-aware `createBlitEncoder`). The rotating path now also has
+  separate store, overflow, finalize, lighting, fog and scatter subscopes;
+  the registry documents their current producer boundaries.
 - **#2258** — unblocked by #2280; the lever keys on the attribution table
   (stage-1 + stage-2 dispatch-grid cost, ~evenly split) posted there.
 - **#2281** — per-stage cardinal-vs-yaw delta table with existing timers
@@ -216,7 +217,9 @@ workload before applying them to a new optimization:
 
 - Timing-only changes must be render-byte-identical with timing enabled and
   disabled.
-- The timers-off cost stays one bool check per observer fire.
+- Disabling GPU timing skips timestamp operations. Tagged observers still look
+  up their stage and may collect CPU time independently; disabled substage scopes
+  return before acquiring a timer.
 - After wiring sub-stage scopes, compare with the former bundle at a static
   pose on both backends. Record excluded commands and inter-encoder gaps:
   the sum need not equal the old envelope, and the difference is not by

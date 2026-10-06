@@ -23,9 +23,8 @@ struct GpuStageTiming {
     float voxelCardinalElectMs_ = 0.0f;
     float voxelStage2Ms_ = 0.0f;
     float voxelSunFacesMs_ = 0.0f;
-    // Rotating-only per-axis burst sub-rows. Attributed by
-    // GpuSubStageScope brackets inside the owning ticks; 0.0 at cardinal
-    // (the per-axis canvases are released, none of the dispatches run).
+    // Per-axis rows retain the latest resolved invocation, including while
+    // cardinal rendering parks their producers. No new sample is not zero cost.
     float voxelPerAxisStoreMs_ = 0.0f;
     float voxelPerAxisOverflowMs_ = 0.0f;
     float voxelPerAxisFinalizeMs_ = 0.0f;
@@ -326,15 +325,9 @@ inline RenderRunWitness &renderRunWitness() {
     return instance;
 }
 
-// Per-stage running GPU-timing accumulator. The `gpu_stage_timing_observer`
-// records one sample per resolved timestamp pair per stage; the world's
-// profile-report builder drains the array (indexed parallel to
-// `gpuStageRegistry()` order) at shutdown for true avg / min / max across the
-// run. The single `GpuStageTiming::*Ms_` field only ever holds the *last*
-// frame's sample, so without this accumulator the report can only echo that
-// one value, so Avg and Max intentionally match in that mode.
-// `enableFrameTiming(true)` calls `resetGpuStageAccumulators()` so each
-// measurement run starts from zero.
+// Per-registry sampled-invocation statistics, reset when frame timing is enabled.
+// Live fields retain only the latest resolved sample; these accumulators preserve
+// the run's sampled mean/range and count. Neither is a sum over all frame work.
 struct GpuStageAccumulator {
     double sumMs_ = 0.0;
     float maxMs_ = 0.0f;
@@ -425,9 +418,8 @@ inline void commitGpuStageSample(const GpuStageInfo &info, int registryIndex, fl
 //   `voxelPerAxisFinalize`  ← winner election + stage-2 ×3
 //   `perAxisCellCompact`    ← the occupied-cell compaction + finalize
 //                             dispatches feeding every per-axis consumer
-// Every per-axis row reads 0.0 at cardinal (the canvases are released and
-// none of those dispatches run), so cardinal-vs-yaw row deltas ARE the
-// per-axis burst attribution.
+// Cardinal frames produce no per-axis samples. Live fields retain earlier
+// resolved values; compare sampled counts and scopes before attributing a yaw delta.
 //
 // SDF scopes are non-nested and per canvas: owner clear, depth, owner election,
 // publication and separate analytic clear/box/fallback/resolve/bake scopes.

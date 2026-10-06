@@ -2,6 +2,9 @@
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 #include <irreden/render/gpu_substage_timing.hpp>
 
+#include <unordered_map>
+#include <vector>
+
 #if defined(IR_GRAPHICS_OPENGL)
 #include <irreden/render/opengl/opengl_types.hpp>
 #endif
@@ -41,31 +44,119 @@ class TimestampDevice : public RenderDevice {
     void setDepthWrite(bool) override {}
     void clearTexImage(const Texture2D *, int, const void *) override {}
     void fillBuffer(const Buffer *, std::size_t, std::uint8_t) override {}
-    void finish() override {}
+    void finish() override {
+        ++finishes_;
+    }
     bool supportsGpuTimestampPairs() const override {
-        return true;
+        return supported_;
     }
     int recommendedTimestampPairsInFlight() const override {
-        return 1;
+        return recommended_;
     }
     GpuTimestampHandle createTimestampPair() override {
-        return 1;
+        ++allocations_;
+        return allocations_ <= allocationLimit_ ? allocations_ : kInvalidGpuTimestampHandle;
     }
-    void writeTimestamp(GpuTimestampHandle, TimestampSlot slot) override {
-        if (slot == TimestampSlot::START)
+    void destroyTimestampPair(GpuTimestampHandle handle) override {
+        destroyed_.push_back(handle);
+    }
+    void writeTimestamp(GpuTimestampHandle handle, TimestampSlot slot) override {
+        if (slot == TimestampSlot::START) {
             ++starts_;
+            startHandles_.push_back(handle);
+        } else {
+            endHandles_.push_back(handle);
+        }
     }
     bool readTimestampPairMs(GpuTimestampHandle, float &ms) override {
         ms = 2.5f;
         return status_ == TimestampReadStatus::READY;
     }
-    TimestampReadStatus pollTimestampPairMs(GpuTimestampHandle, float &ms) override {
+    TimestampReadStatus pollTimestampPairMs(GpuTimestampHandle handle, float &ms) override {
         ms = 2.5f;
-        return status_;
+        const auto found = statuses_.find(handle);
+        return found == statuses_.end() ? status_ : found->second;
     }
     TimestampReadStatus status_ = TimestampReadStatus::PENDING;
+    std::unordered_map<GpuTimestampHandle, TimestampReadStatus> statuses_;
+    std::vector<GpuTimestampHandle> startHandles_;
+    std::vector<GpuTimestampHandle> endHandles_;
+    std::vector<GpuTimestampHandle> destroyed_;
+    GpuTimestampHandle allocations_ = 0;
+    GpuTimestampHandle allocationLimit_ = 3;
+    int recommended_ = 1;
+    bool supported_ = true;
     int starts_ = 0;
+    int finishes_ = 0;
 };
+
+TEST(GpuTimestampRingTest, BusySlotsSurviveUntilTheirOwnResultsComplete) {
+    TimestampDevice device;
+    device.recommended_ = 3;
+    IRRender::detail::GpuTimestampRing ring;
+    ring.initialize(&device);
+    std::vector<float> samples;
+    auto cycle = [&] {
+        ring.begin(device, [&](float ms) { samples.push_back(ms); });
+        ring.end(device);
+    };
+    for (int i = 0; i < 4; ++i) {
+        cycle();
+    }
+    EXPECT_EQ(device.startHandles_, (std::vector<GpuTimestampHandle>{1, 2, 3}));
+    EXPECT_EQ(device.endHandles_, device.startHandles_);
+    EXPECT_TRUE(samples.empty());
+    device.statuses_[2] = TimestampReadStatus::READY;
+    cycle();
+    EXPECT_EQ(device.startHandles_.back(), 2u);
+    EXPECT_EQ(samples, (std::vector<float>{2.5f}));
+    device.statuses_[2] = TimestampReadStatus::PENDING;
+    device.statuses_[1] = TimestampReadStatus::INVALID;
+    cycle();
+    EXPECT_EQ(device.startHandles_.back(), 1u);
+    EXPECT_EQ(samples.size(), 1u);
+    EXPECT_EQ(device.finishes_, 0);
+}
+
+TEST(GpuTimestampRingTest, AllocationFailuresStayInertAndAreNotDestroyed) {
+    for (GpuTimestampHandle limit : {0u, 1u, 2u}) {
+        TimestampDevice device;
+        device.recommended_ = 3;
+        device.allocationLimit_ = limit;
+        IRRender::detail::GpuTimestampRing ring;
+        ring.initialize(&device);
+        for (int i = 0; i < 4; ++i) {
+            ring.begin(device, [](float) { FAIL() << "Pending samples cannot be recorded"; });
+            ring.end(device);
+        }
+        EXPECT_EQ(device.starts_, static_cast<int>(limit));
+        EXPECT_EQ(device.startHandles_, device.endHandles_);
+        ring.release(&device);
+        EXPECT_EQ(device.destroyed_, device.startHandles_);
+    }
+}
+
+TEST(GpuTimestampRingTest, DeviceRecommendationIsClampedAndUnsupportedIsInert) {
+    for (int recommended : {0, 1, 2, 3, 10}) {
+        TimestampDevice device;
+        device.recommended_ = recommended;
+        IRRender::detail::GpuTimestampRing ring;
+        ring.initialize(&device);
+        EXPECT_EQ(device.allocations_, static_cast<unsigned>(IRMath::clamp(recommended, 1, 3)));
+        ring.release(&device);
+        EXPECT_EQ(device.destroyed_.size(), device.allocations_);
+    }
+    TimestampDevice device;
+    device.supported_ = false;
+    IRRender::detail::GpuTimestampRing ring;
+    ring.initialize(nullptr);
+    ring.initialize(&device);
+    ring.begin(device, [](float) { FAIL() << "Unsupported devices cannot record samples"; });
+    ring.end(device);
+    ring.release(nullptr);
+    EXPECT_EQ(device.allocations_, 0u);
+    EXPECT_EQ(device.starts_, 0);
+}
 
 class GpuTimestampPollTest : public testing::Test {
   protected:
@@ -162,6 +253,54 @@ TEST_F(GpuTimestampPollTest, ExistingBooleanBackendAdaptsToPolling) {
     device_.status_ = TimestampReadStatus::READY;
     EXPECT_EQ(device_.RenderDevice::pollTimestampPairMs(1, ms), TimestampReadStatus::READY);
     EXPECT_FLOAT_EQ(ms, 2.5f);
+}
+
+TEST_F(GpuTimestampPollTest, LegacyObserverStillFinishesAndSubstageRemainsDisabled) {
+    gpuStageTiming().legacyFinishTiming_ = true;
+    {
+        GpuSubStageScope scope(gpuStageRegistry()[0].name_);
+    }
+    EXPECT_EQ(device_.allocations_, 0u);
+    GpuStageTimingObserver observer;
+    observer.tagStage(0, gpuStageRegistry()[0]);
+    observer.onBeforeTick(0);
+    observer.onAfterTick(0);
+    EXPECT_EQ(device_.finishes_, 2);
+    EXPECT_EQ(device_.starts_, 0);
+    EXPECT_EQ(gpuStageAccumulators()[0].sampleCount_, 1u);
+}
+
+TEST_F(GpuTimestampPollTest, DisabledGpuTimingDoesNotWriteOrFinish) {
+    gpuStageTiming().enabled_ = false;
+    GpuStageTimingObserver observer;
+    observer.tagStage(0, gpuStageRegistry()[0]);
+    observer.onBeforeTick(0);
+    observer.onAfterTick(0);
+    {
+        GpuSubStageScope scope(gpuStageRegistry()[0].name_);
+    }
+    EXPECT_EQ(device_.starts_, 0);
+    EXPECT_EQ(device_.finishes_, 0);
+    EXPECT_EQ(gpuStageAccumulators()[0].sampleCount_, 0u);
+}
+
+TEST_F(GpuTimestampPollTest, ObserverOwnsOnlySuccessfulAllocations) {
+    device_.recommended_ = 3;
+    device_.allocationLimit_ = 2;
+    {
+        GpuStageTimingObserver observer;
+        observer.tagStage(0, gpuStageRegistry()[0]);
+    }
+    EXPECT_EQ(device_.destroyed_, (std::vector<GpuTimestampHandle>{1, 2}));
+}
+
+TEST_F(GpuTimestampPollTest, SubstageDestructionDoesNotTouchDevice) {
+    {
+        GpuSubStageTimer timer;
+        EXPECT_NE(timer.acquire(gpuStageRegistry()[0].name_), nullptr);
+    }
+    EXPECT_EQ(device_.allocations_, 1u);
+    EXPECT_TRUE(device_.destroyed_.empty());
 }
 
 #if defined(IR_GRAPHICS_OPENGL)
