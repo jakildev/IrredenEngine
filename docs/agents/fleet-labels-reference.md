@@ -270,7 +270,8 @@ Protocol: [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md).
 ## Escalation and parks
 
 - `fleet:design-blocked` / `fleet:design-unblocked` — the worker escalates
-  (`design-block`), the architect or steward answers (`design-unblock`), the
+  (`design-block`), the architect, the steward or the dispatched
+  design-answerer answers (`design-unblock`), the
   worker clears on resume or re-escalates with `design-block`. Mutually
   exclusive; coexist with `fleet:wip`. Reviewers skip design-blocked PRs. The
   resume tier is opus+-only, so a design-parked PR must have an opus+ backing
@@ -280,8 +281,11 @@ Protocol: [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md).
   — **epic steward**. `design-propose` parks a design-blocked epic child
   whose question is novel; reviewer, merger and reconcile skip it;
   `design-unblock` clears it. The umbrella label is the pending-answer
-  queue: the human answers inline and removes it, which re-fires the
-  steward. [`epic-steward-protocol.md`](epic-steward-protocol.md).
+  queue: the dispatched **design-answerer** (`FLEET_DESIGN_ANSWERER=1`,
+  [`design-answerer-protocol.md`](design-answerer-protocol.md)) or the human
+  answers inline and removes it, which re-fires the steward; a product call
+  the answerer will not make gains `fleet:needs-human` beside it and waits
+  for the human. [`epic-steward-protocol.md`](epic-steward-protocol.md).
 - `fleet:gated` — **whichever agent first hits the auto-mode self-edit
   gate**: the merger (a conflict whose whole surface is gated, instead of
   `fleet:semantic-conflict`) or a worker (a gated semantic conflict; a

@@ -1,7 +1,7 @@
 # FLEET-RUNTIME.md — per-iteration runtime ceremonies
 
 What every transient fleet role (worker, merger, both reviewers,
-smoke-worker, epic-steward) does at startup and exit; role files point
+smoke-worker, epic-steward, design-answerer) does at startup and exit; role files point
 here. The architect (`role-opus-architect.md`) is interactive and skips
 the loop ceremonies (heartbeat, reservation check, per-iteration
 shutdown) but shares the cache read and the feedback file.
@@ -61,7 +61,7 @@ for the claimless kind too — the comment is the whole record.
 
 **Target unset** — a manual `/role-<role>`, a `dry-run` / `review-only`
 boot, a reserved worktree resuming its own task, or a target-less batch role
-(`epic-steward`) running on the provider elected by the dispatcher — run the
+(`epic-steward`, `design-answerer`) on the provider the dispatcher elected — run the
 role's discovery flow, starting with the cache read. The merger is
 target-bound; each launch carries one `merge:<repo>:<N>` item.
 

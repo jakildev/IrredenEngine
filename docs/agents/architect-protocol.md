@@ -226,7 +226,11 @@ when the human explicitly assigns game-side work, use
 
 Workers escalate mid-task by labeling their PR `fleet:design-blocked` and
 posting a `## NEEDS-DESIGN` comment; those PRs wait for you (startup step 4
-lists them).
+lists them). When the fleet serves the design-answerer lane
+(`FLEET_DESIGN_ANSWERER=1`, [`design-answerer-protocol.md`](design-answerer-protocol.md)),
+a dispatched fable session works this section and the steward-proposal
+answers for you between cues; it escalates product calls with
+`fleet:needs-human` rather than deciding them.
 
 **Steward-first for epic children.** When the backing issue belongs to an
 epic (`**Part of epic:** #U`, or the umbrella's `## Children` checklist),
