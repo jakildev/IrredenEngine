@@ -201,9 +201,9 @@ recheck for anything in the opus/fable lists.
 
 Hosts: WSL2 (`linux-debug`, OpenGL), macOS (`macos-debug`, Metal), native
 Windows (`windows-debug`, OpenGL; MSYS2 bash + tmux). Two verification tiers:
-OpenGL `{linux, windows}` (either satisfies the merge gate; the representative
-routes to `windows`, the ship platform) and Metal `{macos}`
-([`FLEET-CROSS-HOST-SMOKE.md`](FLEET-CROSS-HOST-SMOKE.md)). After a render PR
+OpenGL `{linux, windows}` (either covers the tier; minted as `windows`, the ship
+platform) and Metal `{macos}`. A smoke label is post-merge debt, never a merge
+gate ([`FLEET-CROSS-HOST-SMOKE.md`](FLEET-CROSS-HOST-SMOKE.md)). After a render PR
 that touched one backend, run `backend-parity` on the lagging host: a port is
 complete only when it builds clean on the lagging preset and the target demo
 renders at functional parity; one logical feature per parity PR; parity touching
