@@ -6,15 +6,74 @@
 #include <sstream>
 #include <utility>
 
+namespace {
+
+class RtAudioInputBackend final : public IRAudio::detail::IAudioInputBackend {
+  public:
+    std::vector<unsigned int> getDeviceIds() override {
+        return m_rtAudio.getDeviceIds();
+    }
+
+    RtAudio::DeviceInfo getDeviceInfo(unsigned int deviceId) override {
+        return m_rtAudio.getDeviceInfo(deviceId);
+    }
+
+    RtAudioErrorType openInputStream(
+        RtAudio::StreamParameters &parameters,
+        unsigned int sampleRate,
+        unsigned int &bufferFrames,
+        RtAudioCallback callback
+    ) override {
+        return m_rtAudio.openStream(
+            nullptr,
+            &parameters,
+            RTAUDIO_FLOAT32,
+            sampleRate,
+            &bufferFrames,
+            std::move(callback),
+            nullptr
+        );
+    }
+
+    RtAudioErrorType startStream() override {
+        return m_rtAudio.startStream();
+    }
+
+    RtAudioErrorType stopStream() override {
+        return m_rtAudio.stopStream();
+    }
+
+    void closeStream() override {
+        m_rtAudio.closeStream();
+    }
+
+    const std::string &getErrorText() override {
+        return m_rtAudio.getErrorText();
+    }
+
+    long getStreamLatency() override {
+        return m_rtAudio.getStreamLatency();
+    }
+
+  private:
+    RtAudio m_rtAudio;
+};
+
+} // namespace
+
 namespace IRAudio {
 
 Audio::Audio()
-    : m_rtAudio()
-    , m_numDevices(m_rtAudio.getDeviceCount()) {
+    : Audio(std::make_unique<RtAudioInputBackend>()) {}
+
+Audio::Audio(std::unique_ptr<detail::IAudioInputBackend> backend)
+    : m_backend(std::move(backend)) {
+    IR_ASSERT(m_backend != nullptr, "Audio requires an input backend");
+    const std::vector<unsigned int> deviceIds = m_backend->getDeviceIds();
+    m_numDevices = static_cast<int>(deviceIds.size());
     IRE_LOG_INFO("Number of devices found: {}", m_numDevices);
-    std::vector<unsigned int> deviceIds = m_rtAudio.getDeviceIds();
-    for (auto &id : deviceIds) {
-        m_deviceInfo.insert({id, m_rtAudio.getDeviceInfo(id)});
+    for (const unsigned int id : deviceIds) {
+        m_deviceInfo.insert({id, m_backend->getDeviceInfo(id)});
     }
     logDeviceInfoAll();
 }
@@ -30,7 +89,6 @@ bool Audio::openStreamIn(
     AudioInputCallback callback
 ) {
     closeStreamIn();
-    m_inputCallback = std::move(callback);
     unsigned int deviceId = 0;
     if (!deviceName.empty()) {
         const int requestedDeviceId = getDeviceIndexByName(deviceName);
@@ -47,7 +105,7 @@ bool Audio::openStreamIn(
         }
     }
 
-    RtAudio::DeviceInfo deviceInfo = m_rtAudio.getDeviceInfo(deviceId);
+    RtAudio::DeviceInfo deviceInfo = m_backend->getDeviceInfo(deviceId);
     const unsigned int requestedChannels =
         static_cast<unsigned int>(IRMath::clamp(channels, 1, 2));
     const unsigned int availableInputChannels = static_cast<unsigned int>(deviceInfo.inputChannels);
@@ -70,6 +128,10 @@ bool Audio::openStreamIn(
         static_cast<unsigned int>(IRMath::max(sampleRate, 8'000));
     unsigned int bufferFrames = kAudioInputDefaultBufferFrames;
 
+    // In place before the backend can deliver a buffer; a failed open clears
+    // it again so a rejected callback is never retained.
+    m_inputCallback = std::move(callback);
+    RtAudioErrorType openResult = RTAUDIO_NO_ERROR;
     try {
         RtAudioCallback rtAudioCallback = [this](void *,
                                                  void *inputBuffer,
@@ -87,17 +149,26 @@ bool Audio::openStreamIn(
             }
             return 0;
         };
-        m_rtAudio.openStream(
-            nullptr,
-            &parameters,
-            RTAUDIO_FLOAT32,
+        openResult = m_backend->openInputStream(
+            parameters,
             requestedSampleRate,
-            &bufferFrames,
-            std::move(rtAudioCallback),
-            nullptr
+            bufferFrames,
+            std::move(rtAudioCallback)
         );
     } catch (...) {
+        m_inputCallback = {};
         IRE_LOG_ERROR("Failed to open audio input stream.");
+        return false;
+    }
+    if (openResult != RTAUDIO_NO_ERROR) {
+        m_inputCallback = {};
+        IRE_LOG_ERROR(
+            "Failed to open audio input stream: device='{}' sampleRate={} channels={}: {}",
+            deviceInfo.name.c_str(),
+            requestedSampleRate,
+            requestedChannels,
+            m_backend->getErrorText().c_str()
+        );
         return false;
     }
     m_streamInOpen = true;
@@ -121,10 +192,15 @@ bool Audio::startStreamIn() {
         IRE_LOG_WARN("Audio input stream start requested, but stream is already running.");
         return true;
     }
+    RtAudioErrorType startResult = RTAUDIO_NO_ERROR;
     try {
-        m_rtAudio.startStream();
+        startResult = m_backend->startStream();
     } catch (...) {
         IRE_LOG_ERROR("Failed to start audio input stream.");
+        return false;
+    }
+    if (startResult != RTAUDIO_NO_ERROR) {
+        IRE_LOG_ERROR("Failed to start audio input stream: {}", m_backend->getErrorText().c_str());
         return false;
     }
     m_streamInRunning = true;
@@ -140,10 +216,16 @@ void Audio::stopStreamIn() {
         IRE_LOG_WARN("Audio input stream stop requested, but stream is not running.");
         return;
     }
+    RtAudioErrorType stopResult = RTAUDIO_NO_ERROR;
     try {
-        m_rtAudio.stopStream();
+        stopResult = m_backend->stopStream();
     } catch (...) {
         IRE_LOG_ERROR("Failed to stop audio input stream.");
+        return;
+    }
+    if (stopResult != RTAUDIO_NO_ERROR) {
+        IRE_LOG_ERROR("Failed to stop audio input stream: {}", m_backend->getErrorText().c_str());
+        return;
     }
     m_streamInRunning = false;
 }
@@ -152,13 +234,18 @@ void Audio::closeStreamIn() {
     if (!m_streamInOpen) {
         return;
     }
-    stopStreamIn();
+    if (m_streamInRunning) {
+        stopStreamIn();
+    }
+    // closeStream() returns no status and tears down a stream that is still
+    // running, so both flags clear even when the stop failed.
     try {
-        m_rtAudio.closeStream();
+        m_backend->closeStream();
     } catch (...) {
         IRE_LOG_ERROR("Failed to close audio input stream.");
     }
     m_streamInOpen = false;
+    m_streamInRunning = false;
     m_inputCallback = {};
 }
 
@@ -193,7 +280,7 @@ double Audio::getInputLatencyMs() const {
     if (!m_streamInOpen || m_streamSampleRate <= 0) {
         return 0.0;
     }
-    const long latencyFrames = m_rtAudio.getStreamLatency();
+    const long latencyFrames = m_backend->getStreamLatency();
     return 1000.0 * static_cast<double>(latencyFrames) / static_cast<double>(m_streamSampleRate);
 }
 
