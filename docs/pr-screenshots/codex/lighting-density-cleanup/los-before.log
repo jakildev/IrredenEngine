@@ -1,0 +1,7 @@
+[2026-10-06 09:30:29.585] [ClientLog] [info] CaptureCamera: label=fog_lighting_density_rotated yaw=0.3499999 zoom=(4,4) effectiveIso=(-0.60007095,0.1060977) subdivisions=16 gameResolution=(1280,720)
+LIGHTING-DENSITY-CHECK shot=0 effective=16 capped=8 live=1 parked=0 overflowAvailable=1 overflow=32 PASS
+[2026-10-06 09:30:29.802] [ClientLog] [info] CaptureCamera: label=fog_lighting_density_cardinal yaw=0 zoom=(4,4) effectiveIso=(0.05282867,0.009340644) subdivisions=16 gameResolution=(1280,720)
+LIGHTING-DENSITY-CHECK shot=1 effective=16 capped=8 live=0 parked=1 overflowAvailable=0 overflow=0 PASS
+[2026-10-06 09:30:30.022] [ClientLog] [info] CaptureCamera: label=fog_lighting_density_resumed yaw=0.3499999 zoom=(4,4) effectiveIso=(-0.62081456,0.10976541) subdivisions=16 gameResolution=(1280,720)
+LIGHTING-DENSITY-CHECK shot=2 effective=16 capped=8 live=1 parked=0 overflowAvailable=1 overflow=32 PASS
+ir-run: RESULT=CLEAN exe=IRFogDemo exit=0

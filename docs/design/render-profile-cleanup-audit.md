@@ -55,34 +55,43 @@ Native shader execution and captures remain necessary to cover compilation,
 binding and rendering behavior. This extraction preserves the merged store-frame
 work and does not consolidate distinct face coordinate spaces.
 
+## Implemented slice: lighting-route density state
+
+`LightingRouteScope` changes the route and canvas size and restores borrowed
+bindings. It leaves subdivision density untouched: AO, sun shadow, lighting and
+fog recover per-axis positions from the store frame and encoded sub-cell fraction.
+Fog LOS uses its scale argument only on the cardinal route; overflow lighting
+does not read subdivision options, and overflow fog passes scale one.
+
+Store, scatter and screen-depth resolve retain their density handling. In
+particular, resolve still needs density for view positions, frame offsets and
+microcell footprints; its patch/restore and the shared setter remain.
+
+`IRFogDemo --lighting-density-check` requires either `--peraxis-overflow` or
+`--occlusion=high-ground` with `--auto-screenshot`. Its rotated/cardinal/resumed
+shots check effective subdivisions above the store cap, parked/live transitions,
+and nonempty overflow in the overflow fixture. Fog registration ensures compute
+lighting runs instead of presentation lighting. The opt-in diagnostic readback
+blocks for GPU completion and is unsuitable for performance measurements.
+
+The [capture evidence](../pr-screenshots/codex/lighting-density-cleanup/README.md)
+compares these controls and mixed main/detached canvases before and after the
+two-write removal. These are end-to-end regression checks, not isolated kernel
+proofs or a claim that every inherited visual artifact is resolved.
+
 ## Next cleanup slices
 
 | Priority | Finding | Bounded change and required proof |
 |---|---|---|
-| 3 | Lighting-route density patching is redundant in the traced consumers | Remove only the two density writes in `LightingRouteScope`; preserve its other UBO/binding changes and all density handling in store/scatter/resolve. Prove density-independent output before removal. |
+| 1 | Broad native verification exceeds reference max-delta in two CanvasStress off-cardinal shots and the fog explored-decay yaw shot | Master `a08e0a44a` reproduces all three failures byte-for-byte (17-frame attribution control). Investigate floor/panel edge geometry before changing code or references; preserve thresholds. |
 | 3 | Fallback sun bake retains a raw per-axis branch its driver does not use | Prove route-zero dispatches, then remove the branch and redundant include while preserving ABI and live fallback casting. Exercise detached casting and splat-enabled cases. |
 | 3 | Source-face shadow-debug palette repeats an existing helper | Delegate to `surfaceShadowDebugColor` in both shader backends; compare diagnostic captures. |
 
-Shader edits must account for SDF receiver/normal work before choosing a base.
-The per-axis cleanup includes merged PRs #4135 and #4048; open PRs #4058 and
-#4040 still overlap its shader paths. Consolidating integer addressing is
-distinct from merging view/model/world-space transforms or changing quantization
-and binding restoration.
-
-The density audit includes both shader backends and the merged fog LOS path.
-AO, sun shadow, lighting and fog recover per-axis positions from the store frame;
-fog LOS uses its scale argument only on the cardinal route. Overflow lighting
-does not read subdivision options, and overflow fog passes scale one. In contrast,
-screen-depth resolve still uses density for view positions, frame offsets and
-microcell footprints, so its patch/restore and the shared setter must remain.
-
-The removal needs a before/after case with effective subdivisions above the
-capped store density, rotating/cardinal transitions, nonempty overflow, AO and
-shadows, FIELD fog with LOS, and mixed main/detached canvases. Fog registration
-ensures compute lighting is exercised instead of bypassed by presentation
-lighting. A focused GPU control should run each occupied-cell/overflow consumer
-with identical inputs and differing density values, requiring identical output.
-The integer-addressing tests alone do not prove that invariant.
+The cleanup incorporates the merged store-frame, fog LOS, SDF receiver/normal
+and explored-state work through master `a08e0a44a`. The shared dispatch helper
+lives in both new AO bodies, preserving their smooth-yaw specialization.
+Consolidating integer addressing is distinct from merging view/model/world-space
+transforms or changing quantization and binding restoration.
 
 ## Lifecycle investigations requiring their own fixes
 
