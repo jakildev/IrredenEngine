@@ -8,6 +8,7 @@
 // canvas is fully wired without crashing.
 
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_job.hpp>
 #include <irreden/ir_profile.hpp>
 #include <irreden/ir_render.hpp>
 
@@ -28,11 +29,15 @@
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/voxel_pool_api.hpp>
 
+#include <atomic>
+#include <bit>
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <span>
 #include <string>
+#include <thread>
 #include <utility>
 #include <vector>
 
@@ -87,19 +92,17 @@ inline float evalVisionReveal(
     return reveal;
 }
 
-/// The authoritative reveal: the cost curve above, each source gated in
-/// @p observers' `losSourceMask_` scaled by its line-of-sight factor at
-/// @p worldPosition over @p los (`losVisibility`). @p observers and @p los
-/// must come from one publication (`C_CanvasFogOfWar::losPublishedObservers_`
-/// + `losField()`); an unpublished field reveals nothing through a gated
-/// source. The march is the cost, so gated sources are marched strongest
-/// curve first and only while one could still raise the maximum: a source
-/// whose ungated reveal is already covered cannot change it.
-inline float evalVisionReveal(
+namespace detail {
+
+/// The gated reveal composition over the sources on @p channels, with
+/// @p visibilityOf(source) supplying each gated source's line-of-sight
+/// factor at @p worldPosition.
+template <typename VisibilityFn>
+inline float evalGatedVisionReveal(
     const IRComponents::FrameDataFogObservers &observers,
-    const IRComponents::FogLosColumnField &los,
     IRMath::vec3 worldPosition,
-    std::uint32_t channels = IRComponents::kFogChannelDefault
+    std::uint32_t channels,
+    VisibilityFn &&visibilityOf
 ) {
     float reveal = 0.0f;
     float pending[IRComponents::kMaxFogVisionCircles] = {};
@@ -124,10 +127,302 @@ inline float evalVisionReveal(
         if (strongest < 0) {
             return reveal;
         }
-        const float visibility = losVisibility(los, observers, strongest, worldPosition);
-        reveal = IRMath::max(reveal, visibility * pending[strongest]);
+        reveal = IRMath::max(reveal, visibilityOf(strongest) * pending[strongest]);
         pending[strongest] = 0.0f;
     }
+}
+
+} // namespace detail
+
+/// The authoritative reveal: the cost curve above, each source gated in
+/// @p observers' `losSourceMask_` scaled by its line-of-sight factor at
+/// @p worldPosition over @p los (`losVisibility`). @p observers and @p los
+/// must come from one publication (`C_CanvasFogOfWar::losPublishedObservers_`
+/// + `losField()`); an unpublished field reveals nothing through a gated
+/// source. The march is the cost, so gated sources are marched strongest
+/// curve first and only while one could still raise the maximum: a source
+/// whose ungated reveal is already covered cannot change it.
+inline float evalVisionReveal(
+    const IRComponents::FrameDataFogObservers &observers,
+    const IRComponents::FogLosColumnField &los,
+    IRMath::vec3 worldPosition,
+    std::uint32_t channels = IRComponents::kFogChannelDefault
+) {
+    return detail::evalGatedVisionReveal(observers, worldPosition, channels, [&](int source) {
+        return losVisibility(los, observers, source, worldPosition);
+    });
+}
+
+/// The hard-gated sources' route summaries (`LosHardRoute`) for one tick of
+/// one continuous reveal evaluator, shared by every worker of its fan-out:
+/// many bodies sharing an exact XY (a stacked column) read one route built
+/// once. Each hard-gated source has a lane, an open-addressed table keyed by
+/// the exact float bits of the target XY, so two samples share a route only
+/// when the march would walk the same cells. The first lookup of a key
+/// claims its slot and builds the route; a lookup that finds the key still
+/// building waits for it. A full lane, an unpublished field, a soft or
+/// ungated source and a rise the route leaves undecided all take
+/// `losVisibility` instead, so every answer is the march's.
+///
+/// `begin` runs on one thread before the fan-out and is the only call that
+/// allocates: it forgets the last tick's routes and sizes each live lane
+/// from the last tick's demand (at least `kInitialLaneCapacity`).
+/// `visibility` may then run on any number of threads until the next
+/// `begin`.
+class LosHardRouteCache {
+  public:
+    static constexpr std::uint32_t kInitialLaneCapacity = 1024;
+    /// Slots a lookup probes before it marches instead.
+    static constexpr std::uint32_t kMaxProbes = 32;
+    /// Coordinates past this magnitude are never keyed; they march.
+    static constexpr float kMaxKeyedCoordinate = 1.0e9f;
+
+    struct Stats {
+        /// Routes built since `begin`: one per distinct (source, exact XY).
+        std::uint32_t builds_ = 0;
+        /// Lookups that found a route still being built and waited for it.
+        std::uint32_t waits_ = 0;
+        /// Lookups that marched because their lane's probe ran out.
+        std::uint32_t capacityFallbacks_ = 0;
+        /// Lookups that marched because the rise fell inside a band.
+        std::uint32_t bandFallbacks_ = 0;
+    };
+
+    LosHardRouteCache() = default;
+    LosHardRouteCache(const LosHardRouteCache &) = delete;
+    LosHardRouteCache &operator=(const LosHardRouteCache &) = delete;
+
+    /// Forget every route and serve @p observers' hard-gated sources over
+    /// @p field, one publication, until the next call.
+    void begin(
+        const IRComponents::FrameDataFogObservers &observers,
+        const IRComponents::FogLosColumnField &field
+    ) {
+        const std::size_t workers = static_cast<std::size_t>(IRJob::workerCount()) + 1u;
+        std::uint32_t demand[IRComponents::kMaxFogVisionCircles] = {};
+        for (std::size_t worker = 0; worker < m_workerCount; ++worker) {
+            for (int source = 0; source < IRComponents::kMaxFogVisionCircles; ++source) {
+                demand[source] +=
+                    m_buildsByWorker[worker].lanes_[source].exchange(0u, std::memory_order_relaxed);
+            }
+        }
+        if (m_workerCount < workers) {
+            m_buildsByWorker = std::make_unique<WorkerBuilds[]>(workers);
+            m_workerCount = workers;
+        }
+        // A slot is filled only when its stamp carries the current
+        // generation; before the stamp could wrap, every slot is reset.
+        if (++m_generation == kGenerationLimit) {
+            for (Lane &lane : m_lanes) {
+                for (std::uint32_t i = 0; i < lane.capacity_; ++i) {
+                    lane.slot(i).stamp_.store(0u, std::memory_order_relaxed);
+                }
+            }
+            m_generation = 1u;
+        }
+        for (int source = 0; source < IRComponents::kMaxFogVisionCircles; ++source) {
+            Lane &lane = m_lanes[source];
+            // Every overflowed lookup may have been a route of its own.
+            const std::uint32_t overflow = lane.capacityFallbacks_.load(std::memory_order_relaxed);
+            demand[source] += overflow;
+            lane.waits_.store(0u, std::memory_order_relaxed);
+            lane.capacityFallbacks_.store(0u, std::memory_order_relaxed);
+            lane.bandFallbacks_.store(0u, std::memory_order_relaxed);
+            lane.live_ = field.published() && source < observers.visionCircleCount_ &&
+                         observers.losGated(source) &&
+                         observers.losSoftness(source) <= IRComponents::kFogLosHardGate;
+            if (!lane.live_) {
+                continue;
+            }
+            lane.eyeZ_ = losEye(observers, source).z;
+            std::uint32_t capacity = IRMath::max(kInitialLaneCapacity, lane.capacity_);
+            capacity = IRMath::max(capacity, IRMath::nextPowerOfTwo(2u * demand[source]));
+            if (overflow != 0u && capacity == lane.capacity_) {
+                capacity *= 2u;
+            }
+            if (capacity != lane.capacity_) {
+                lane.buckets_ = std::make_unique<Bucket[]>(capacity / kSlotsPerBucket);
+                lane.capacity_ = capacity;
+                lane.bucketShift_ = 64 - std::countr_zero(capacity / kSlotsPerBucket);
+            }
+        }
+    }
+
+    /// `losVisibility(field, observers, source, position)`; @p observers and
+    /// @p field must be the publication the last `begin` bound.
+    float visibility(
+        const IRComponents::FrameDataFogObservers &observers,
+        const IRComponents::FogLosColumnField &field,
+        int source,
+        IRMath::vec3 position
+    ) {
+        Lane &lane = m_lanes[source];
+        if (!lane.live_ || !(IRMath::abs(position.x) < kMaxKeyedCoordinate) ||
+            !(IRMath::abs(position.y) < kMaxKeyedCoordinate)) {
+            return losVisibility(field, observers, source, position);
+        }
+        const Slot *slot = findOrBuild(lane, observers, field, source, IRMath::vec2(position));
+        if (slot == nullptr) {
+            lane.capacityFallbacks_.fetch_add(1u, std::memory_order_relaxed);
+            return losVisibility(field, observers, source, position);
+        }
+        const int verdict = losHardRouteVerdict(slot->route_, lane.eyeZ_, position.z);
+        if (verdict < 0) {
+            lane.bandFallbacks_.fetch_add(1u, std::memory_order_relaxed);
+            return losVisibility(field, observers, source, position);
+        }
+        return static_cast<float>(verdict);
+    }
+
+    /// The counts since the last `begin`; any thread, at any time.
+    Stats stats() const {
+        Stats stats;
+        for (std::size_t worker = 0; worker < m_workerCount; ++worker) {
+            for (const std::atomic<std::uint32_t> &lane : m_buildsByWorker[worker].lanes_) {
+                stats.builds_ += lane.load(std::memory_order_relaxed);
+            }
+        }
+        for (const Lane &lane : m_lanes) {
+            stats.waits_ += lane.waits_.load(std::memory_order_relaxed);
+            stats.capacityFallbacks_ += lane.capacityFallbacks_.load(std::memory_order_relaxed);
+            stats.bandFallbacks_ += lane.bandFallbacks_.load(std::memory_order_relaxed);
+        }
+        return stats;
+    }
+
+    /// Slots source @p source's lane holds; 0 until `begin` first finds the
+    /// source hard-gated over a published field.
+    std::uint32_t laneCapacity(int source) const {
+        return m_lanes[source].capacity_;
+    }
+
+    /// Test seam: every elected builder calls @p hook(@p context) after it
+    /// claims its slot and before it builds, so a test can hold a build
+    /// open. Null clears it.
+    void setBuildHookForTesting(void (*hook)(void *), void *context) {
+        m_buildHook = hook;
+        m_buildHookContext = context;
+    }
+
+  private:
+    static constexpr std::uint32_t kGenerationLimit = 1u << 30;
+    /// A bucket of consecutive slots holds keys from consecutive integer X
+    /// cells of one row, so the neighbours a worker visits in turn share a
+    /// cache line.
+    static constexpr std::uint32_t kSlotsPerBucket = 4;
+
+    /// `stamp_` is `2 * generation + ready`: claimed for the current
+    /// generation by the builder's compare-exchange, ready once the release
+    /// store sets the low bit. `key_` and `route_` are read only after an
+    /// acquire load sees it ready.
+    struct alignas(32) Slot {
+        std::atomic<std::uint32_t> stamp_{0u};
+        std::uint64_t key_ = 0u;
+        LosHardRoute route_{};
+    };
+
+    struct alignas(128) Bucket {
+        Slot slots_[kSlotsPerBucket];
+    };
+
+    struct Lane {
+        std::unique_ptr<Bucket[]> buckets_;
+        std::uint32_t capacity_ = 0u;
+        int bucketShift_ = 64;
+        float eyeZ_ = 0.0f;
+        bool live_ = false;
+        std::atomic<std::uint32_t> waits_{0u};
+        std::atomic<std::uint32_t> capacityFallbacks_{0u};
+        std::atomic<std::uint32_t> bandFallbacks_{0u};
+
+        Slot &slot(std::uint32_t index) {
+            return buckets_[index / kSlotsPerBucket].slots_[index % kSlotsPerBucket];
+        }
+    };
+
+    /// Each worker counts its own builds on its own cache line.
+    struct alignas(128) WorkerBuilds {
+        std::atomic<std::uint32_t> lanes_[IRComponents::kMaxFogVisionCircles] = {};
+    };
+
+    const Slot *findOrBuild(
+        Lane &lane,
+        const IRComponents::FrameDataFogObservers &observers,
+        const IRComponents::FogLosColumnField &field,
+        int source,
+        IRMath::vec2 target
+    ) {
+        const std::uint64_t key =
+            (static_cast<std::uint64_t>(std::bit_cast<std::uint32_t>(target.x)) << 32) |
+            std::bit_cast<std::uint32_t>(target.y);
+        const auto cellX =
+            static_cast<std::uint32_t>(static_cast<std::int32_t>(IRMath::floor(target.x)));
+        const auto cellY =
+            static_cast<std::uint32_t>(static_cast<std::int32_t>(IRMath::floor(target.y)));
+        const std::uint64_t tile =
+            (static_cast<std::uint64_t>(cellX / kSlotsPerBucket) << 32) | cellY;
+        const std::uint32_t mask = lane.capacity_ - 1u;
+        std::uint32_t index =
+            static_cast<std::uint32_t>((tile * 0x9E3779B97F4A7C15ull) >> lane.bucketShift_) *
+                kSlotsPerBucket +
+            cellX % kSlotsPerBucket;
+        const std::uint32_t filled = 2u * m_generation;
+        const std::uint32_t probes = IRMath::min(kMaxProbes, lane.capacity_);
+        for (std::uint32_t probe = 0; probe < probes; ++probe, index = (index + 1u) & mask) {
+            Slot &slot = lane.slot(index);
+            std::uint32_t stamp = slot.stamp_.load(std::memory_order_acquire);
+            if ((stamp & ~1u) != filled && slot.stamp_.compare_exchange_strong(
+                                               stamp,
+                                               filled,
+                                               std::memory_order_acquire,
+                                               std::memory_order_acquire
+                                           )) {
+                slot.key_ = key;
+                m_buildsByWorker[static_cast<std::size_t>(IRJob::workerId())]
+                    .lanes_[source]
+                    .fetch_add(1u, std::memory_order_relaxed);
+                if (m_buildHook != nullptr) {
+                    m_buildHook(m_buildHookContext);
+                }
+                slot.route_ = buildLosHardRoute(field, observers, source, target);
+                slot.stamp_.store(filled | 1u, std::memory_order_release);
+                return &slot;
+            }
+            if (stamp == filled) {
+                lane.waits_.fetch_add(1u, std::memory_order_relaxed);
+                do {
+                    std::this_thread::yield();
+                    stamp = slot.stamp_.load(std::memory_order_acquire);
+                } while (stamp == filled);
+            }
+            if (slot.key_ == key) {
+                return &slot;
+            }
+        }
+        return nullptr;
+    }
+
+    Lane m_lanes[IRComponents::kMaxFogVisionCircles];
+    std::unique_ptr<WorkerBuilds[]> m_buildsByWorker;
+    std::size_t m_workerCount = 0u;
+    std::uint32_t m_generation = 0u;
+    void (*m_buildHook)(void *) = nullptr;
+    void *m_buildHookContext = nullptr;
+};
+
+/// `evalVisionReveal(observers, los, worldPosition, channels)` with every
+/// hard-gated source's march served from @p routes, which `begin` bound to
+/// this @p observers + @p los publication. The same reveal, bit for bit.
+inline float evalVisionReveal(
+    const IRComponents::FrameDataFogObservers &observers,
+    const IRComponents::FogLosColumnField &los,
+    LosHardRouteCache &routes,
+    IRMath::vec3 worldPosition,
+    std::uint32_t channels = IRComponents::kFogChannelDefault
+) {
+    return detail::evalGatedVisionReveal(observers, worldPosition, channels, [&](int source) {
+        return routes.visibility(observers, los, source, worldPosition);
+    });
 }
 
 /// The observers and field a reveal evaluates. With a gated live source: the
@@ -264,6 +559,23 @@ inline float evalReveal(
     return evalVisionReveal(observers, los, worldPosition, channels);
 }
 
+/// The kernel above with every hard-gated source's march served from
+/// @p routes, which `begin` bound to this @p observers + @p los publication.
+/// The same verdict, bit for bit.
+inline float evalReveal(
+    const IRComponents::FrameDataFogObservers &observers,
+    const IRComponents::FogLosColumnField &los,
+    LosHardRouteCache &routes,
+    std::uint8_t gridCellState,
+    IRMath::vec3 worldPosition,
+    std::uint32_t channels = IRComponents::kFogChannelDefault
+) {
+    if (gridCellState == IRComponents::kFogStateVisible) {
+        return 1.0f;
+    }
+    return evalVisionReveal(observers, los, routes, worldPosition, channels);
+}
+
 /// The BODY verdict at @p worldPosition against @p fog's world field and the
 /// @p observers + @p los snapshot a caller captured once per frame: the
 /// parallel reveal ticks' overload. The grid term reads the field's resident
@@ -279,6 +591,27 @@ inline float evalReveal(
 ) {
     const IRMath::ivec3 column = IRMath::roundVec3HalfUp(worldPosition);
     return evalReveal(observers, los, fog.peekCell(column.x, column.y), worldPosition, channels);
+}
+
+/// The parallel overload above with every hard-gated source's march served
+/// from @p routes (FOG_REVEAL_EVAL's per-tick `LosHardRouteCache`).
+inline float evalReveal(
+    const IRComponents::C_CanvasFogOfWar &fog,
+    const IRComponents::FrameDataFogObservers &observers,
+    const IRComponents::FogLosColumnField &los,
+    LosHardRouteCache &routes,
+    IRMath::vec3 worldPosition,
+    std::uint32_t channels = IRComponents::kFogChannelDefault
+) {
+    const IRMath::ivec3 column = IRMath::roundVec3HalfUp(worldPosition);
+    return evalReveal(
+        observers,
+        los,
+        routes,
+        fog.peekCell(column.x, column.y),
+        worldPosition,
+        channels
+    );
 }
 
 /// The BODY verdict at @p worldPosition against @p fog, on the snapshot the
