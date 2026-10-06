@@ -469,21 +469,10 @@ class MetalRenderDevice final : public RenderDevice {
             return false;
         }
 
-        // World::render() calls videoManager.render() (which lands here for
-        // screenshots) BEFORE presentFrame, so the current command buffer
-        // still has the entire frame's render work merely encoded — the GPU
-        // has not executed it yet. Reading texture->getBytes() at this point
-        // would return stale content from a previous frame, producing an
-        // off-by-one screenshot. Flush the encoded work synchronously here
-        // and start a fresh command buffer so present() can still encode the
-        // drawable presentation on top.
-        if (auto *commandBuffer = metalCommandBuffer(); commandBuffer != nullptr) {
-            commandBuffer->commit();
-            commandBuffer->waitUntilCompleted();
-            recordCompletedFrameBuffer(commandBuffer);
-            releaseDeferredMetalBuffers();
-            setMetalCommandBuffer(metalCommandQueue()->commandBuffer());
-        }
+        // Readback precedes presentation, so encoded work must complete before
+        // getBytes() can observe this frame. finish() also renews the command
+        // buffer for subsequent encoders and presentation.
+        finish();
 
         const std::size_t rowBytes = static_cast<std::size_t>(width) * 4U;
         std::vector<std::uint8_t> bgraData(static_cast<std::size_t>(height) * rowBytes);
@@ -994,8 +983,7 @@ metalCurrentDepthPixelFormat(),
         // buffer for subsequent encoders. Mirrors OpenGL glFinish(). The
         // fresh-buffer step is required because Metal encoders cannot
         // record into a committed buffer; without it, the next dispatch
-        // or draw silently no-ops. Same pattern as readDefaultFramebuffer()
-        // above.
+        // or draw silently no-ops.
         auto *commandBuffer = metalCommandBuffer();
         if (commandBuffer == nullptr) {
             return;
