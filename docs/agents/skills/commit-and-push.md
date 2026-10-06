@@ -261,7 +261,7 @@ and verify the number independently before proceeding.
   |---|---|---|
   | 0 | `VERDICT: clean` | proceed |
   | 1 | `VERDICT: overlap` — shared paths whose trial merges are clean | proceed; quote the rows in the PR body so the reviewer checks clean docs and instruction edits for semantic disagreement |
-  | 3 | `VERDICT: block` — a trial-merge conflict in any tree, or a stale stack base | do not publish: base the branch on the overlapping PR and re-run with `--base <its head branch>`, or leave the PR `fleet:wip`, comment the rows on it, and re-run `commit-and-push` once it merges |
+  | 3 | `VERDICT: block` — a trial-merge conflict in any tree, or a stale stack base | do not publish. When the overlapping PR is a sibling of your epic or carries `fleet:approved`, base the branch on it (`--base <its head branch>`, a native stack) and re-run. Otherwise leave the PR `fleet:wip`, comment the rows on it, park it `fleet:awaiting-infra` with `Parked-until:` naming the overlapping PRs' **backing issues** (never PR numbers), and re-run `commit-and-push` once they merge |
   | 2 | could not grade | fix the invocation or environment; after `head moved` or a population delta, re-run |
 
 #### 8b. Host label

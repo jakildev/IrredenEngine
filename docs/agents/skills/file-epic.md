@@ -36,7 +36,9 @@ tickets. Never before the user has approved the plan.
 
 - The plan exists in the **architect plans dir** (or a path the user
   names) with: the umbrella issue number; one section per child with a
-  title, model tag, and acceptance criteria; a dependency chain.
+  title, model tag, and acceptance criteria; a dependency chain that
+  chains siblings sharing an integration surface rather than leaving
+  them flat ([TASK-FILING.md § Multi-issue stacks](../TASK-FILING.md)).
 - `gh auth status` succeeds; the **repo** is confirmed from the plan header
   or asked once.
 
