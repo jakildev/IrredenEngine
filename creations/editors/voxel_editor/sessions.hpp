@@ -205,6 +205,13 @@ struct ComponentAttachSpec {
 
 namespace detail {
 
+// An entity-scene part starts clear, so a click has nothing to pick until BAKE
+// writes a blob. Radius 1.9 keeps every cell's squared distance off the
+// sphere's surface threshold, so a slider landing a trixel off still bakes the
+// same cells. In cells relative to (size / 2), the blob's front face is at
+// z = -2 and a paint cell one further forward, at z = -3, is empty.
+constexpr float kFirstWriteBlobRadius = 1.9f;
+
 // The four gestures, on the seeded ground plane at the scene's centre — clear
 // of the left-column GUI panels in screen space and clear of the ground's edges
 // so every anchor face is exposed.
@@ -1538,24 +1545,37 @@ inline Recipe build(
         return detail::buildTree(sceneSize, sceneOrigin);
     case Id::PARTS_ROUNDTRIP: {
         Builder builder("parts_roundtrip", sceneSize, sceneOrigin);
-        const int z = sceneSize.z - 2;
-        const IRMath::ivec3 first(sceneSize.x / 2, sceneSize.y / 2, z);
-        const IRMath::ivec3 second(sceneSize.x / 2 - 2, sceneSize.y / 2, z);
+        const IRMath::ivec3 center(sceneSize.x / 2, sceneSize.y / 2, sceneSize.z / 2);
+        const IRMath::ivec3 blobFront = center + IRMath::ivec3(0, 0, -2);
+        const IRMath::ivec3 first = center + IRMath::ivec3(0, 0, -3);
+        const IRMath::ivec3 second = center + IRMath::ivec3(-1, 0, -3);
+        const IRMath::ivec3 prime(center.x, center.y, sceneSize.z - 2);
 
         builder.segment("prime_single_set_undo");
-        builder.click(first);
+        builder.click(prime);
 
         builder.segment("enter_entity_scene");
         builder.addVoxelPart();
         builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
         builder.addVoxelPart();
+        builder.expectPartAuthoredCount(0, 0, "first_part_starts_clear");
+        builder.expectPartAuthoredCount(1, 0, "second_part_starts_clear");
+
+        builder.segment("bake_second");
+        builder.bakeSphere(detail::kFirstWriteBlobRadius);
+        builder.expectPartOccupancy(1, blobFront, true, "second_part_blob_baked");
+        builder.expectPartOccupancy(1, first, false, "second_part_paint_cell_empty");
 
         builder.segment("paint_second");
         builder.click(second);
         builder.expectPartOccupancy(1, second, true, "second_part_cell_painted");
 
-        builder.segment("paint_first");
+        builder.segment("bake_first");
         builder.nextPart();
+        builder.bakeSphere(detail::kFirstWriteBlobRadius);
+        builder.expectPartOccupancy(0, blobFront, true, "first_part_blob_baked");
+
+        builder.segment("paint_first");
         builder.click(first);
         builder.expectPartOccupancy(0, first, true, "first_part_cell_painted");
 
@@ -1694,16 +1714,25 @@ inline Recipe build(
     }
     case Id::NWAY_SYMMETRY: {
         Builder builder("nway_symmetry", sceneSize, sceneOrigin);
-        const IRMath::ivec3 source(sceneSize.x / 2 + 2, sceneSize.y / 2, sceneSize.z - 2);
+        // The array copies the source's baked blob into every copy, so the
+        // stroke has a face to pick on the selected copy. The three rotated
+        // paint cells are distinct cells in front of that blob.
+        const IRMath::ivec3 center(sceneSize.x / 2, sceneSize.y / 2, sceneSize.z / 2);
+        const IRMath::ivec3 blobFront = center + IRMath::ivec3(0, 0, -2);
+        const IRMath::ivec3 source = center + IRMath::ivec3(0, 0, -3);
         const IRMath::vec3 axis(0.0f, 0.0f, 1.0f);
         const IRMath::ivec3 onPart1 = rotateCell(source, sceneSize, axis, -2, 3);
         const IRMath::ivec3 onPart2 = rotateCell(source, sceneSize, axis, -1, 3);
 
-        builder.segment("array");
+        builder.segment("bake_source");
         builder.addVoxelPart();
+        builder.bakeSphere(detail::kFirstWriteBlobRadius);
+
+        builder.segment("array");
         builder.applyRadialArray(3);
         builder.toggleRotationalSymmetry();
         builder.expectPartCount(4, "three_copy_rotation_group");
+        builder.expectPartOccupancy(3, blobFront, true, "copy_carries_baked_blob");
 
         builder.segment("arm");
         builder.expectPartOccupancy(1, onPart1, false, "first_sibling_empty_before_stroke");

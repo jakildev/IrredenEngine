@@ -58,6 +58,10 @@ render, because the aim and the pick share one screen mapping.
 - Ctrl+P enters entity-scene mode and adds a voxel part; Ctrl+Shift+P adds the
   BAKE panel's selected SDF primitive. Tab/Shift+Tab select parts. Ctrl+S and
   Ctrl+O write/read the v2 prefab manifest plus one `.vxs` per voxel part.
+- A voxel part starts clear (the single-set editor keeps its seeded ground
+  plane), so a click has nothing to pick until a first write that needs no
+  pick: BAKE, or a module recipe APPLY. Sessions author that write with
+  `Builder::bakeSphere` (panel geometry in `bake_panel.hpp`).
 - `EntityScene` owns one root and its ordered part records. Only the selected
   voxel part receives paint; other voxel parts carry `C_EditorReference`.
 - A part's LOD band (`EditorPart::lodMax_` fine .. `lodMin_` coarse) is
