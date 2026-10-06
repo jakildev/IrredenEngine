@@ -59,7 +59,7 @@ work and does not consolidate distinct face coordinate spaces.
 
 | Priority | Finding | Bounded change and required proof |
 |---|---|---|
-| 3 | Lighting-route density patching may be redundant | Audit every consumer before removing UBO patch/restore; preserve density in store/scatter/resolve. Verify cardinal transitions, high density, overflow lighting and fog. |
+| 3 | Lighting-route density patching is redundant in the traced consumers | Remove only the two density writes in `LightingRouteScope`; preserve its other UBO/binding changes and all density handling in store/scatter/resolve. Prove density-independent output before removal. |
 | 3 | Fallback sun bake retains a raw per-axis branch its driver does not use | Prove route-zero dispatches, then remove the branch and redundant include while preserving ABI and live fallback casting. Exercise detached casting and splat-enabled cases. |
 | 3 | Source-face shadow-debug palette repeats an existing helper | Delegate to `surfaceShadowDebugColor` in both shader backends; compare diagnostic captures. |
 
@@ -68,6 +68,21 @@ The per-axis cleanup includes merged PRs #4135 and #4048; open PRs #4058 and
 #4040 still overlap its shader paths. Consolidating integer addressing is
 distinct from merging view/model/world-space transforms or changing quantization
 and binding restoration.
+
+The density audit includes both shader backends and the merged fog LOS path.
+AO, sun shadow, lighting and fog recover per-axis positions from the store frame;
+fog LOS uses its scale argument only on the cardinal route. Overflow lighting
+does not read subdivision options, and overflow fog passes scale one. In contrast,
+screen-depth resolve still uses density for view positions, frame offsets and
+microcell footprints, so its patch/restore and the shared setter must remain.
+
+The removal needs a before/after case with effective subdivisions above the
+capped store density, rotating/cardinal transitions, nonempty overflow, AO and
+shadows, FIELD fog with LOS, and mixed main/detached canvases. Fog registration
+ensures compute lighting is exercised instead of bypassed by presentation
+lighting. A focused GPU control should run each occupied-cell/overflow consumer
+with identical inputs and differing density values, requiring identical output.
+The integer-addressing tests alone do not prove that invariant.
 
 ## Lifecycle investigations requiring their own fixes
 
