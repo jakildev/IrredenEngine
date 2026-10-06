@@ -1,9 +1,21 @@
--- Neutral fixture for IRVoxelEditor --module: one component, one recipe and
+-- Neutral fixture for IRVoxelEditor --module: two components, one recipe and
 -- one panel, so every registration path the editor hosts is exercised.
 
 IRComponent.register("TestModuleTag", {
     weight = 1,
     offset = { type = "vec3" },
+})
+
+-- More fields than one page of the COMPONENTS field area, every one an integer
+-- with the same default, so whichever field reflects last can be edited.
+IRComponent.register("TestModuleWide", {
+    a = 1,
+    b = 1,
+    c = 1,
+    d = 1,
+    e = 1,
+    f = 1,
+    g = 1,
 })
 
 -- A 1x1 column standing on the seeded ground plane (local z == size.z - 1)

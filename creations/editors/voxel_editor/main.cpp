@@ -323,6 +323,12 @@ struct ComponentFieldRow {
 std::vector<ComponentFieldRow> g_componentFieldRows;
 // The record and entity the field rows were built for; a change rebuilds them.
 std::string g_componentFieldRowsKey;
+// The page of that record's fields the rows show, and the pager that turns it;
+// the pager exists only while the record has more than one page.
+int g_componentFieldPage = 0;
+IREntity::EntityId g_componentPagePrevBtn = IREntity::kNullEntity;
+IREntity::EntityId g_componentPageNextBtn = IREntity::kNullEntity;
+IREntity::EntityId g_componentPageLabel = IREntity::kNullEntity;
 
 namespace {
 
@@ -2068,8 +2074,15 @@ void destroyComponentFieldRows() {
             IREntity::destroyEntity(row.input_);
     }
     g_componentFieldRows.clear();
+    for (IREntity::EntityId *pager :
+         {&g_componentPagePrevBtn, &g_componentPageNextBtn, &g_componentPageLabel}) {
+        if (*pager != IREntity::kNullEntity)
+            IREntity::destroyEntity(*pager);
+        *pager = IREntity::kNullEntity;
+    }
 }
 
+// Builds page g_componentFieldPage of @p record's fields.
 void buildComponentFieldRows(const ComponentRecord &record) {
     if (record.source_ == ComponentSource::ENGINE) {
         ComponentFieldRow note;
@@ -2088,16 +2101,16 @@ void buildComponentFieldRows(const ComponentRecord &record) {
         return;
     }
     const int fieldCount = static_cast<int>(record.fields_.size());
-    const int shown = fieldCount > kMaxComponentFieldRows ? kMaxComponentFieldRows - 1 : fieldCount;
-    for (int i = 0; i < shown; ++i) {
+    const int pageCount = componentFieldPageCount(fieldCount);
+    const int first = g_componentFieldPage * kComponentFieldRowsPerPage;
+    const int last = IRMath::min(first + kComponentFieldRowsPerPage, fieldCount);
+    for (int i = first; i < last; ++i) {
         const ComponentField &field = record.fields_[static_cast<std::size_t>(i)];
-        const ivec2 inputPos(kComponentFieldInputX, componentFieldRowY(i));
+        const int rowY = componentFieldRowY(i - first);
+        const ivec2 inputPos(kComponentFieldInputX, rowY);
         ComponentFieldRow row;
         row.field_ = i;
-        row.label_ = IRPrefab::Widget::makeLabel(
-            ivec2(kComponentFieldLabelX, componentFieldRowY(i)),
-            field.name_
-        );
+        row.label_ = IRPrefab::Widget::makeLabel(ivec2(kComponentFieldLabelX, rowY), field.name_);
         switch (field.type_) {
         case IRScript::LuaFieldType::BOOL:
             row.checkbox_ = true;
@@ -2127,13 +2140,20 @@ void buildComponentFieldRows(const ComponentRecord &record) {
         }
         g_componentFieldRows.push_back(row);
     }
-    if (shown < fieldCount) {
-        ComponentFieldRow more;
-        more.label_ = IRPrefab::Widget::makeLabel(
-            ivec2(kComponentFieldLabelX, componentFieldRowY(shown)),
-            "+" + std::to_string(fieldCount - shown) + " MORE FIELDS"
+    if (pageCount > 1) {
+        g_componentPagePrevBtn =
+            IRPrefab::Widget::makeButton(kComponentPagePrevPos, kComponentButtonSize, "PREV");
+        g_componentPageNextBtn =
+            IRPrefab::Widget::makeButton(kComponentPageNextPos, kComponentButtonSize, "NEXT");
+        g_componentPageLabel = IRPrefab::Widget::makeLabel(
+            kComponentPageLabelPos,
+            std::to_string(g_componentFieldPage + 1) + "/" + std::to_string(pageCount)
         );
-        g_componentFieldRows.push_back(more);
+        IRPrefab::Widget::setDisabled(g_componentPagePrevBtn, g_componentFieldPage == 0);
+        IRPrefab::Widget::setDisabled(
+            g_componentPageNextBtn,
+            g_componentFieldPage == pageCount - 1
+        );
     }
 }
 
@@ -2269,12 +2289,30 @@ void updateComponentsPanel() {
         record != nullptr ? record->name_ + "@" + std::to_string(entity) : std::string{};
     if (key != g_componentFieldRowsKey) {
         destroyComponentFieldRows();
+        g_componentFieldPage = 0;
         if (record != nullptr)
             buildComponentFieldRows(*record);
         g_componentFieldRowsKey = key;
     }
-    if (record != nullptr)
-        syncComponentFieldRows(*record, entity);
+    if (record == nullptr)
+        return;
+    // Synced before a page turn: pressing the pager took the focus from a
+    // text input, and its typed text commits here while its row still exists.
+    syncComponentFieldRows(*record, entity);
+    if (g_componentPageNextBtn == IREntity::kNullEntity)
+        return;
+    const int lastPage = componentFieldPageCount(static_cast<int>(record->fields_.size())) - 1;
+    const int turned = IRMath::clamp(
+        g_componentFieldPage + (IRPrefab::Widget::wasClicked(g_componentPageNextBtn) ? 1 : 0) -
+            (IRPrefab::Widget::wasClicked(g_componentPagePrevBtn) ? 1 : 0),
+        0,
+        lastPage
+    );
+    if (turned != g_componentFieldPage) {
+        destroyComponentFieldRows();
+        g_componentFieldPage = turned;
+        buildComponentFieldRows(*record);
+    }
 }
 
 } // namespace
@@ -2730,13 +2768,21 @@ bool evaluateComponentValueCheck(const void *context, std::string &actual) {
 
 } // namespace Session
 
-// Resolves component_attach from <module dir>/session_expect.lua's
-// `componentAttach = { component, field, value, default }` against the loaded
-// module and the COMPONENTS panel layout.
-Session::ComponentAttachSpec resolveComponentAttachSpec() {
+// Resolves a component session from <module dir>/session_expect.lua against
+// the loaded module and the COMPONENTS panel layout. component_attach reads
+// `componentAttach = { component, field, value, default }`.
+// component_field_page reads `componentFieldPage = { component, value,
+// default }` and takes the component's last reflected field, which must lie
+// past the first page: reflection order is the registering Lua table's
+// iteration order, which differs between runs, so the sidecar cannot name a
+// field on a given page.
+Session::ComponentAttachSpec resolveComponentAttachSpec(Session::Id id) {
+    const bool paged = id == Session::Id::COMPONENT_FIELD_PAGE;
+    const std::string entryKey = paged ? "componentFieldPage" : "componentAttach";
     Session::ComponentAttachSpec spec;
+    spec.session_ = paged ? "component_field_page" : "component_attach";
     if (!g_moduleHost.loaded()) {
-        spec.errors_.push_back("component_attach needs --module <dir>");
+        spec.errors_.push_back(spec.session_ + " needs --module <dir>");
         return spec;
     }
     const std::string path =
@@ -2755,20 +2801,24 @@ Session::ComponentAttachSpec resolveComponentAttachSpec() {
     const sol::object returned = result;
     if (returned.get_type() != sol::type::table)
         return fail("must return a table");
-    const sol::optional<sol::table> entry = returned.as<sol::table>()["componentAttach"];
+    const sol::optional<sol::table> entry = returned.as<sol::table>()[entryKey];
     const sol::optional<std::string> component =
         entry ? (*entry)["component"] : sol::optional<std::string>{};
     const sol::optional<std::string> fieldName =
-        entry ? (*entry)["field"] : sol::optional<std::string>{};
-    if (!component || !fieldName)
-        return fail("needs componentAttach = { component, field, value, default }");
+        entry && !paged ? (*entry)["field"] : sol::optional<std::string>{};
+    if (!component || (!paged && !fieldName))
+        return fail(
+            "needs " + entryKey + " = { component, " + (paged ? "" : "field, ") + "value, default }"
+        );
     spec.component_ = *component;
-    spec.field_ = *fieldName;
 
     const IRScript::LuaTypedComponentInfo *info =
         IRVoxelEditor::detail::findModuleComponent(script, spec.component_);
     if (info == nullptr)
         return fail("component '" + spec.component_ + "' is not registered by the module");
+    if (paged && info->fields_.empty())
+        return fail("component '" + spec.component_ + "' has no fields");
+    spec.field_ = paged ? info->fields_.back().name_ : *fieldName;
     const std::vector<std::string> names = componentPaletteNames();
     spec.listRow_ =
         static_cast<int>(std::find(names.begin(), names.end(), spec.component_) - names.begin());
@@ -2781,12 +2831,13 @@ Session::ComponentAttachSpec resolveComponentAttachSpec() {
         });
     if (field == info->fields_.end())
         return fail("component '" + spec.component_ + "' has no field '" + spec.field_ + "'");
-    spec.fieldRow_ = static_cast<int>(field - info->fields_.begin());
-    const int editableRows = static_cast<int>(info->fields_.size()) > kMaxComponentFieldRows
-                                 ? kMaxComponentFieldRows - 1
-                                 : kMaxComponentFieldRows;
-    if (spec.fieldRow_ >= editableRows)
-        return fail("field '" + spec.field_ + "' has no row in the COMPONENTS field area");
+    const int fieldIndex = static_cast<int>(field - info->fields_.begin());
+    spec.fieldPage_ = fieldIndex / kComponentFieldRowsPerPage;
+    spec.fieldRow_ = fieldIndex % kComponentFieldRowsPerPage;
+    if (paged && spec.fieldPage_ == 0)
+        return fail(
+            "component '" + spec.component_ + "' fits one page of the COMPONENTS field area"
+        );
 
     spec.value_ = IRVoxelEditor::detail::fieldValueFromRow(field->type_, (*entry)["value"]);
     spec.default_ = IRVoxelEditor::detail::fieldValueFromRow(field->type_, (*entry)["default"]);
@@ -2964,7 +3015,7 @@ int main(int argc, char **argv) {
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
         "face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | tier_scrub | "
-        "module_loaded | component_attach",
+        "module_loaded | component_attach | component_field_page",
         {"none",
          "drag_probe",
          "place_below",
@@ -2977,7 +3028,8 @@ int main(int argc, char **argv) {
          "parts_roundtrip",
          "tier_scrub",
          "module_loaded",
-         "component_attach"},
+         "component_attach",
+         "component_field_page"},
         "none"
     );
     IREngine::args().string(
@@ -3036,8 +3088,9 @@ int main(int argc, char **argv) {
                 ? IRVoxelEditor::resolveModuleSessionSpec()
                 : IRVoxelEditor::Session::ModuleSessionSpec{};
         const IRVoxelEditor::Session::ComponentAttachSpec componentSpec =
-            IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::COMPONENT_ATTACH
-                ? IRVoxelEditor::resolveComponentAttachSpec()
+            IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::COMPONENT_ATTACH ||
+                    IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::COMPONENT_FIELD_PAGE
+                ? IRVoxelEditor::resolveComponentAttachSpec(IRVoxelEditor::g_sessionId)
                 : IRVoxelEditor::Session::ComponentAttachSpec{};
         IRVoxelEditor::g_session = IRVoxelEditor::Session::build(
             IRVoxelEditor::g_sessionId,

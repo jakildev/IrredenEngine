@@ -12,6 +12,7 @@ Design log, findings and the authoring-session history:
   against the full reference scene, `place_below` the Alt modifier,
   `module_loaded` (with `--module test/module`) the creation-module seam,
   `component_attach` (same module) the COMPONENTS panel's manifest round trip,
+  `component_field_page` the same on a field only the panel's pager reaches,
   `parts_roundtrip` authors, moves, saves, clears, and reloads a two-part entity,
   and `tier_scrub` proves per-part LOD bands and the tier scrubber.
 - `python3 scripts/author-entity.py <entity>` — replays an entity session twice
@@ -83,7 +84,8 @@ render, because the aim and the pick share one screen mapping.
   through `applyEditRaw` and one `commitStroke`, so one Ctrl+Z undoes it.
 - A module may call `IRSystem.registerSystem`, but the editor places no module
   system in a pipeline yet.
-- COMPONENTS attaches a module component (fields edited by type) or a C++
+- COMPONENTS attaches a module component (fields edited by type, paged five
+  to a page in reflection order, which varies per run) or a C++
   one with a prefab factory (a Lua table literal) to the selected part or, with
   ROOT, the root. Its records (`component_records.hpp`) hold no sol objects;
   each apply goes through the factory, and Ctrl+S writes them as `components`.

@@ -6,21 +6,22 @@
 #include "lod_panel.hpp"
 
 // GUI-canvas geometry of the COMPONENTS panel: the attachable-component list,
-// the ROOT target toggle, ATTACH / DETACH, a status line, and one row per
-// field of the selected attached component. Shared by the editor, which builds
-// the widgets from it, and the component_attach session, which aims at them.
+// the ROOT target toggle, ATTACH / DETACH, a status line, one row per field of
+// the selected attached component, and a PREV / NEXT pager under the rows when
+// the fields outnumber one page. Shared by the editor, which builds the widgets
+// from it, and the component sessions, which aim at them.
 //
 // The panel sits under LOD, in the column right of RECIPES, so it overlaps no
 // panel a session drives.
 
 namespace IRVoxelEditor {
 
-// The panel builds this many field rows; further fields are listed as a count
-// and are not editable here.
-constexpr int kMaxComponentFieldRows = 5;
+// Field rows on one page of the field area; field f is row
+// f % kComponentFieldRowsPerPage of page f / kComponentFieldRowsPerPage.
+constexpr int kComponentFieldRowsPerPage = 5;
 
 constexpr IRMath::ivec2 kComponentsPanelPos{kLodPanelPos.x, kLodPanelPos.y + kLodPanelSize.y + 6};
-constexpr IRMath::ivec2 kComponentsPanelSize{170, 206};
+constexpr IRMath::ivec2 kComponentsPanelSize{170, 220};
 
 constexpr IRMath::ivec2 kComponentListPos{kComponentsPanelPos.x + 4, kComponentsPanelPos.y + 18};
 constexpr IRMath::ivec2 kComponentListSize{162, 52};
@@ -46,6 +47,17 @@ constexpr IRMath::ivec2 kComponentOverridesInputSize{162, 14};
 constexpr int componentFieldRowY(int row) {
     return kComponentFieldTop + row * kComponentFieldPitch;
 }
+
+// A component with no fields still has its one, empty, page.
+constexpr int componentFieldPageCount(int fieldCount) {
+    return IRMath::max(1, IRMath::divCeil(fieldCount, kComponentFieldRowsPerPage));
+}
+
+// The pager takes the row under a full page of fields.
+constexpr int kComponentPagerY = componentFieldRowY(kComponentFieldRowsPerPage);
+constexpr IRMath::ivec2 kComponentPagePrevPos{kComponentsPanelPos.x + 4, kComponentPagerY};
+constexpr IRMath::ivec2 kComponentPageNextPos{kComponentDetachPos.x, kComponentPagerY};
+constexpr IRMath::ivec2 kComponentPageLabelPos{kComponentsPanelPos.x + 73, kComponentPagerY};
 
 constexpr IRMath::vec2 componentListRowCenterGuiTrixel(int row) {
     return IRMath::vec2(

@@ -67,6 +67,10 @@
 // field, the value typed and the field's default come from the same sidecar.
 // It attaches the component to part 0, types the value into the field, saves,
 // clears, reloads, and reads the field back from the reloaded entity.
+//
+// `component_field_page` is the same round trip on a component whose fields
+// outnumber one page of the field area (the sidecar's `componentFieldPage`):
+// it edits the last reflected field, which only the pager reaches.
 namespace IRVoxelEditor::Session {
 
 enum class Id {
@@ -83,6 +87,7 @@ enum class Id {
     TIER_SCRUB,
     MODULE_LOADED,
     COMPONENT_ATTACH,
+    COMPONENT_FIELD_PAGE,
 };
 
 // CLI name -> id. The accepted set is declared to IRArgs as an enum arg, so an
@@ -114,6 +119,8 @@ inline Id idFromName(const std::string &name) {
         return Id::MODULE_LOADED;
     if (name == "component_attach")
         return Id::COMPONENT_ATTACH;
+    if (name == "component_field_page")
+        return Id::COMPONENT_FIELD_PAGE;
     return Id::NONE;
 }
 
@@ -149,13 +156,16 @@ struct ModuleSessionSpec {
     std::vector<std::string> errors_;
 };
 
-// What component_attach does, resolved in main.cpp from the loaded module and
-// its session_expect.lua `componentAttach` entry.
+// What component_attach and component_field_page do, resolved in main.cpp from
+// the loaded module and the session's session_expect.lua entry.
 struct ComponentAttachSpec {
+    std::string session_;
     std::string component_;
     std::string field_;
-    // COMPONENTS list row of the component and field-area row of the field.
+    // COMPONENTS list row of the component, then the field's page of the
+    // field area and its row on that page.
     int listRow_ = -1;
+    int fieldPage_ = 0;
     int fieldRow_ = -1;
     // What the session types, the value it must read back, and the value the
     // field holds right after ATTACH (which the read-back must not be).
@@ -1362,7 +1372,7 @@ inline Recipe buildModuleLoaded(
 inline Recipe buildComponentAttach(
     IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin, const ComponentAttachSpec &spec
 ) {
-    Builder builder("component_attach", sceneSize, sceneOrigin);
+    Builder builder(spec.session_, sceneSize, sceneOrigin);
     for (const std::string &error : spec.errors_)
         builder.recordError(error);
     if (!spec.errors_.empty())
@@ -1390,6 +1400,13 @@ inline Recipe buildComponentAttach(
         true,
         "component_default_after_attach"
     );
+
+    // A page turn rebuilds the field rows, so the typing gets its own segment.
+    if (spec.fieldPage_ > 0) {
+        builder.segment("turn_page");
+        for (int page = 0; page < spec.fieldPage_; ++page)
+            builder.clickGui(componentButtonCenterGuiTrixel(kComponentPageNextPos));
+    }
 
     builder.segment("set_field");
     builder.typeText(componentFieldInputCenterGuiTrixel(spec.fieldRow_), spec.typedText_);
@@ -1586,6 +1603,7 @@ inline Recipe build(
     case Id::MODULE_LOADED:
         return detail::buildModuleLoaded(sceneSize, sceneOrigin, moduleSpec);
     case Id::COMPONENT_ATTACH:
+    case Id::COMPONENT_FIELD_PAGE:
         return detail::buildComponentAttach(sceneSize, sceneOrigin, componentSpec);
     case Id::NONE:
         break;
