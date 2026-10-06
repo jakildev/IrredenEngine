@@ -289,15 +289,8 @@ class WorldField {
     int fillRow(IRMath::ivec2 firstCell, int count, std::uint8_t state) {
         int changed = 0;
         forEachRegionRun(firstCell, count, [&](IRMath::ivec2 runFirst, int run) {
-            RegionRecord *record = touchRegion(regionOfCell(runFirst), true);
-            if (decays() && writeAgeRow(runFirst, run, state)) {
-                markPersistenceDirty(record);
-            }
-            const int runChanged = m_cells.fillRow(runFirst, run, state);
-            if (runChanged > 0) {
-                markPersistenceDirty(record);
-            }
-            changed += runChanged;
+            changed +=
+                writeAdmittedRun(touchRegion(regionOfCell(runFirst), true), runFirst, run, state);
         });
         return changed;
     }

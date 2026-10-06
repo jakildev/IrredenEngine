@@ -131,18 +131,8 @@ template <typename T> class ChunkedField2D {
     /// inserted field chunk counts as changed. Requires `count >= 0` and the
     /// whole run representable in int32 — callers clip.
     int fillRow(IRMath::ivec2 firstCell, int count, T value) {
-        int changed = 0;
-        int x = firstCell.x;
-        int remaining = count;
-        while (remaining > 0) {
-            const IRMath::ivec2 cell{x, firstCell.y};
-            const int localX = fieldChunkLocal(cell).x;
-            const int run = IRMath::min(remaining, kFieldChunkEdge - localX);
-            const FieldChunkKey key = packFieldChunkKey(fieldChunkOf(cell));
-            auto [fieldChunk, inserted] = acquireChunk(key);
-
-            T *row = fieldChunk.m_cells.get() + fieldChunkLocalIndex(fieldChunkLocal(cell));
-            int runChanged = 0;
+        return writeRow(firstCell, count, [value](T *row, int run, FieldChunk &fieldChunk) {
+            int changed = 0;
             for (int i = 0; i < run; ++i) {
                 if (row[i] == value) {
                     continue;
@@ -154,21 +144,10 @@ template <typename T> class ChunkedField2D {
                     ++fieldChunk.nonZeroCount_;
                 }
                 row[i] = value;
-                ++runChanged;
+                ++changed;
             }
-            if (inserted) {
-                runChanged = run;
-            }
-            if (runChanged > 0) {
-                markDirty(key, fieldChunk);
-            }
-            changed += runChanged;
-            remaining -= run;
-            if (remaining > 0) {
-                x += run;
-            }
-        }
-        return changed;
+            return changed;
+        });
     }
 
     /// ORs @p bits into @p count cells along +x from @p firstCell and returns
@@ -178,18 +157,8 @@ template <typename T> class ChunkedField2D {
         if (bits == T{}) {
             return 0;
         }
-        int changed = 0;
-        int x = firstCell.x;
-        int remaining = count;
-        while (remaining > 0) {
-            const IRMath::ivec2 cell{x, firstCell.y};
-            const int localX = fieldChunkLocal(cell).x;
-            const int run = IRMath::min(remaining, kFieldChunkEdge - localX);
-            const FieldChunkKey key = packFieldChunkKey(fieldChunkOf(cell));
-            auto [fieldChunk, inserted] = acquireChunk(key);
-
-            T *row = fieldChunk.m_cells.get() + fieldChunkLocalIndex(fieldChunkLocal(cell));
-            int runChanged = 0;
+        return writeRow(firstCell, count, [bits](T *row, int run, FieldChunk &fieldChunk) {
+            int changed = 0;
             for (int i = 0; i < run; ++i) {
                 const T merged = static_cast<T>(row[i] | bits);
                 if (row[i] == merged) {
@@ -199,21 +168,10 @@ template <typename T> class ChunkedField2D {
                     ++fieldChunk.nonZeroCount_;
                 }
                 row[i] = merged;
-                ++runChanged;
+                ++changed;
             }
-            if (inserted) {
-                runChanged = run;
-            }
-            if (runChanged > 0) {
-                markDirty(key, fieldChunk);
-            }
-            changed += runChanged;
-            remaining -= run;
-            if (remaining > 0) {
-                x += run;
-            }
-        }
-        return changed;
+            return changed;
+        });
     }
 
     void clear() {
@@ -318,6 +276,38 @@ template <typename T> class ChunkedField2D {
         recycled.nonZeroCount_ = 0;
         recycled.dirty_ = false;
         return {m_fieldChunks.insert(std::move(node)).position->second, true};
+    }
+
+    /// The +x run walk `fillRow` and `orRow` share: splits the run at field
+    /// chunk edges, resolves each touched chunk once and calls
+    /// @p write(row, run, fieldChunk) -> changed count on it, counting every
+    /// cell of a run into an inserted chunk as changed.
+    template <typename WriteFn> int writeRow(IRMath::ivec2 firstCell, int count, WriteFn &&write) {
+        int changed = 0;
+        int x = firstCell.x;
+        int remaining = count;
+        while (remaining > 0) {
+            const IRMath::ivec2 cell{x, firstCell.y};
+            const int localX = fieldChunkLocal(cell).x;
+            const int run = IRMath::min(remaining, kFieldChunkEdge - localX);
+            const FieldChunkKey key = packFieldChunkKey(fieldChunkOf(cell));
+            auto [fieldChunk, inserted] = acquireChunk(key);
+
+            T *row = fieldChunk.m_cells.get() + fieldChunkLocalIndex(fieldChunkLocal(cell));
+            int runChanged = write(row, run, fieldChunk);
+            if (inserted) {
+                runChanged = run;
+            }
+            if (runChanged > 0) {
+                markDirty(key, fieldChunk);
+            }
+            changed += runChanged;
+            remaining -= run;
+            if (remaining > 0) {
+                x += run;
+            }
+        }
+        return changed;
     }
 
     void markDirty(FieldChunkKey key, FieldChunk &fieldChunk) {

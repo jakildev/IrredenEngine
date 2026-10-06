@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
 #include <irreden/asset/binary_io.hpp>
+#include <irreden/ir_job.hpp>
+#include <irreden/job/job_manager.hpp>
 #include <irreden/asset/chunk_header.hpp>
 #include <irreden/profile/logger_spd.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
@@ -13,6 +15,7 @@
 
 #include "common/allocation_counter.hpp"
 #include "common/fog_save_root.hpp"
+#include "common/fog_window_image.hpp"
 
 #include <algorithm>
 #include <array>
@@ -25,7 +28,9 @@
 #include <optional>
 #include <span>
 #include <sstream>
+#include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -80,31 +85,14 @@ class EngineLogCapture {
     std::shared_ptr<spdlog::sinks::sink> m_sink;
 };
 
-// Expands the whole window at @p origin into @p image (edge² texels).
 void expandWholeWindow(
     WorldField &field, IRMath::ivec2 origin, int edge, std::vector<FogWindowTexel> &image
 ) {
-    WindowGatherPlan plan;
-    planWindowGather(std::nullopt, origin, edge, {}, plan);
-    image.assign(static_cast<std::size_t>(edge) * static_cast<std::size_t>(edge), FogWindowTexel{});
-    std::vector<FogWindowTexel> strip;
-    for (const WindowUploadRect &rect : plan.rects_) {
-        strip.assign(static_cast<std::size_t>(rect.size_.x * rect.size_.y), FogWindowTexel{});
-        expandWindowChunks(field, origin, edge, rect, strip);
-        for (int y = 0; y < rect.size_.y; ++y) {
-            std::copy_n(
-                strip.begin() + static_cast<std::ptrdiff_t>(y * rect.size_.x),
-                rect.size_.x,
-                image.begin() +
-                    static_cast<std::ptrdiff_t>((rect.texel_.y + y) * edge + rect.texel_.x)
-            );
-        }
-    }
+    IRTest::expandWholeFogWindow(field, origin, edge, image);
 }
 
 FogWindowTexel texelOf(const std::vector<FogWindowTexel> &image, IRMath::ivec2 column, int edge) {
-    const IRMath::ivec2 texel = IRPrefab::Fog::detail::windowTexel(column, edge);
-    return image[static_cast<std::size_t>(texel.y * edge + texel.x)];
+    return IRTest::fogWindowTexelOf(image, column, edge);
 }
 
 std::int64_t discCellCount(std::int64_t radius) {
@@ -824,6 +812,34 @@ TEST_F(FogWorldFieldDecayTest, CrossingsAndTeleportsExpireConsistently) {
     EXPECT_EQ(field.peekCell(kept), std::optional<std::uint8_t>{kFogStateUnexplored});
     EXPECT_EQ(field.stats().expired_, 2);
 }
+
+#ifndef IR_RELEASE
+// Expiry is serial field work: a clock advance from a worker thread asserts
+// before any cell changes.
+TEST_F(FogWorldFieldDecayTest, ClockAdvanceOffTheMainThreadAssertsBeforeExpiring) {
+    IRJob::JobManager jobs{1};
+    WorldField field = decaying();
+    field.setCell({2, 2}, kFogStateExplored);
+    field.stats();
+
+    bool threw = false;
+    std::thread worker([&] {
+        try {
+            field.setExploredTimeMs(kDuration);
+        } catch (const std::runtime_error &) {
+            threw = true;
+        }
+    });
+    worker.join();
+
+    EXPECT_TRUE(threw);
+    EXPECT_EQ(field.exploredTimeMs(), 0u) << "the assert fires before the clock moves";
+    EXPECT_EQ(field.peekCell({2, 2}), std::optional<std::uint8_t>{kFogStateExplored});
+    EXPECT_EQ(field.stats().expired_, 0);
+    EXPECT_TRUE(field.setExploredTimeMs(kDuration));
+    EXPECT_EQ(field.stats().expired_, 1) << "the same advance on the main thread expires";
+}
+#endif
 
 // The phase-0 cost gate for the widened texel and the conditional metadata:
 // dense whole-window gathers over default/persistent and over

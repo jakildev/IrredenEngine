@@ -1099,6 +1099,34 @@ inline int windowEdge() {
     return 0;
 }
 
+/// The window texel @p fog's texture currently holds for world column
+/// @p cell, read back from the GPU; nullopt before the first gather or when
+/// the column is outside the window. One single-texel readback: for probes
+/// and tests, never per frame.
+inline std::optional<FogWindowTexel>
+readWindowTexel(const IRComponents::C_CanvasFogOfWar &fog, IRMath::ivec2 cell) {
+    if (!fog.windowOrigin_.has_value()) {
+        return std::nullopt;
+    }
+    const IRMath::ivec2 relative = cell - *fog.windowOrigin_;
+    if (relative.x < 0 || relative.x >= fog.windowEdge_ || relative.y < 0 ||
+        relative.y >= fog.windowEdge_) {
+        return std::nullopt;
+    }
+    FogWindowTexel texel{};
+    const IRMath::ivec2 address = detail::windowTexel(cell, fog.windowEdge_);
+    fog.getTexture()->getSubImage2D(
+        address.x,
+        address.y,
+        1,
+        1,
+        IRRender::PixelDataFormat::RG_INTEGER,
+        IRRender::PixelDataType::UINT32,
+        &texel
+    );
+    return texel;
+}
+
 /// The field column at texel (0, 0) of the window the active canvas's fog
 /// texture currently shows; nullopt without an active fog canvas or before
 /// the first gather.

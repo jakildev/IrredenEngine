@@ -9,6 +9,7 @@
 
 #include "common/allocation_counter.hpp"
 #include "common/fog_save_root.hpp"
+#include "common/fog_window_image.hpp"
 
 #include <algorithm>
 #include <array>
@@ -85,32 +86,14 @@ std::set<FieldChunkKey> discRegions(IRMath::ivec2 centre, int radius) {
 
 const FogWindowTexel kUnwrittenTexel{0xABABABABu, 0xABABABABu};
 
-// Expands the whole window at @p origin into @p image (edge² texels).
+// Expands the whole window at @p origin into @p image (edge² texels), poisoned
+// so a texel the expansion skips is unmistakable.
 void expandWholeWindow(
     WorldField &field, IRMath::ivec2 origin, int edge, std::vector<FogWindowTexel> &image
 ) {
-    WindowGatherPlan plan;
-    planWindowGather(std::nullopt, origin, edge, {}, plan);
-    image.assign(static_cast<std::size_t>(edge) * static_cast<std::size_t>(edge), kUnwrittenTexel);
-    std::vector<FogWindowTexel> strip;
-    for (const WindowUploadRect &rect : plan.rects_) {
-        strip.assign(
-            static_cast<std::size_t>(rect.size_.x * rect.size_.y),
-            FogWindowTexel{0xCDCDCDCDu, 0xCDCDCDCDu}
-        );
-        expandWindowChunks(field, origin, edge, rect, strip);
-        for (int y = 0; y < rect.size_.y; ++y) {
-            std::copy_n(
-                strip.begin() + static_cast<std::ptrdiff_t>(y * rect.size_.x),
-                rect.size_.x,
-                image.begin() +
-                    static_cast<std::ptrdiff_t>((rect.texel_.y + y) * edge + rect.texel_.x)
-            );
-        }
-    }
+    IRTest::expandWholeFogWindow(field, origin, edge, image, kUnwrittenTexel);
 }
 
-// The texel of world @p column in a whole-window @p image of @p edge.
 const FogWindowTexel &
 texelOf(const std::vector<FogWindowTexel> &image, IRMath::ivec2 column, int edge) {
     const IRMath::ivec2 texel = IRPrefab::Fog::detail::windowTexel(column, edge);

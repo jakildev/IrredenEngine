@@ -687,30 +687,12 @@ void probePerAxisPaint() {
     int pillarPainted = 0;
     int painted = 0;
     const C_PerAxisTrixelCanvases &axes = *perAxis.value();
-    const std::size_t cellCount =
-        static_cast<std::size_t>(axes.size_.x) * static_cast<std::size_t>(axes.size_.y);
+    std::vector<IRMath::uvec2> carriers;
+    std::vector<Color> colors;
     for (const auto &axis : axes.axes_) {
-        std::vector<IRMath::uvec2> carriers(cellCount);
-        std::vector<Color> colors(cellCount);
-        axis.entityIds_.second->getSubImage2D(
-            0,
-            0,
-            axes.size_.x,
-            axes.size_.y,
-            PixelDataFormat::RG_INTEGER,
-            PixelDataType::UINT32,
-            carriers.data()
-        );
-        axis.colors_.second->getSubImage2D(
-            0,
-            0,
-            axes.size_.x,
-            axes.size_.y,
-            PixelDataFormat::RGBA,
-            PixelDataType::UNSIGNED_BYTE,
-            colors.data()
-        );
-        for (std::size_t i = 0; i < cellCount; ++i) {
+        axis.readEntityIdCarriers(axes.size_, carriers);
+        axis.readColors(axes.size_, colors);
+        for (std::size_t i = 0; i < carriers.size(); ++i) {
             const bool isPainted = matchesFogDebugColor(colors[i]);
             if (isPainted) {
                 ++painted;
@@ -1360,30 +1342,12 @@ ExploredDecayPanelCount
 countExploredDecayPerAxis(const C_PerAxisTrixelCanvases &axes, IREntity::EntityId entity) {
     ExploredDecayPanelCount count;
     const auto expected = static_cast<std::uint32_t>(entity);
-    const std::size_t cellCount =
-        static_cast<std::size_t>(axes.size_.x) * static_cast<std::size_t>(axes.size_.y);
-    std::vector<IRMath::uvec2> carriers(cellCount);
-    std::vector<Color> colors(cellCount);
+    std::vector<IRMath::uvec2> carriers;
+    std::vector<Color> colors;
     for (const auto &axis : axes.axes_) {
-        axis.entityIds_.second->getSubImage2D(
-            0,
-            0,
-            axes.size_.x,
-            axes.size_.y,
-            PixelDataFormat::RG_INTEGER,
-            PixelDataType::UINT32,
-            carriers.data()
-        );
-        axis.colors_.second->getSubImage2D(
-            0,
-            0,
-            axes.size_.x,
-            axes.size_.y,
-            PixelDataFormat::RGBA,
-            PixelDataType::UNSIGNED_BYTE,
-            colors.data()
-        );
-        for (std::size_t i = 0; i < cellCount; ++i) {
+        axis.readEntityIdCarriers(axes.size_, carriers);
+        axis.readColors(axes.size_, colors);
+        for (std::size_t i = 0; i < carriers.size(); ++i) {
             if (carriers[i].x != expected) {
                 continue;
             }
@@ -1394,23 +1358,6 @@ countExploredDecayPerAxis(const C_PerAxisTrixelCanvases &axes, IREntity::EntityI
         }
     }
     return count;
-}
-
-// The uploaded window texel of @p cell, read back from the GPU.
-IRPrefab::Fog::FogWindowTexel
-readExploredDecayTexel(const C_CanvasFogOfWar &fog, IRMath::ivec2 cell) {
-    IRPrefab::Fog::FogWindowTexel texel{};
-    const IRMath::ivec2 address = IRPrefab::Fog::detail::windowTexel(cell, fog.windowEdge_);
-    fog.getTexture()->getSubImage2D(
-        address.x,
-        address.y,
-        1,
-        1,
-        PixelDataFormat::RG_INTEGER,
-        PixelDataType::UINT32,
-        &texel
-    );
-    return texel;
 }
 
 void probeExploredDecay(int shotIndex) {
@@ -1427,22 +1374,22 @@ void probeExploredDecay(int shotIndex) {
         IRPrefab::Fog::getCell(kExploredDecayShieldedCell.x, kExploredDecayShieldedCell.y);
     const std::uint32_t shieldedChannels =
         IRPrefab::Fog::getCellChannels(kExploredDecayShieldedCell.x, kExploredDecayShieldedCell.y);
-    const std::optional<IRMath::ivec2> origin = IRPrefab::Fog::windowOrigin();
     const bool originShot = shotIndex != 2;
-    if (originShot && origin.has_value()) {
-        const IRPrefab::Fog::FogWindowTexel memoryTexel =
-            readExploredDecayTexel(fog, kExploredDecayMemoryCell);
-        const IRPrefab::Fog::FogWindowTexel shieldedTexel =
-            readExploredDecayTexel(fog, kExploredDecayShieldedCell);
+    if (originShot) {
+        const std::optional<IRPrefab::Fog::FogWindowTexel> memoryTexel =
+            IRPrefab::Fog::readWindowTexel(fog, kExploredDecayMemoryCell);
+        const std::optional<IRPrefab::Fog::FogWindowTexel> shieldedTexel =
+            IRPrefab::Fog::readWindowTexel(fog, kExploredDecayShieldedCell);
         requireFogProbe(
             kTag,
-            memoryTexel.state_ == memoryState && memoryTexel.channels_ == kFogChannelDefault,
+            memoryTexel.has_value() && memoryTexel->state_ == memoryState &&
+                memoryTexel->channels_ == kFogChannelDefault,
             "the uploaded memory texel must carry the CPU state and the default mask"
         );
         requireFogProbe(
             kTag,
-            shieldedTexel.state_ == shieldedState &&
-                shieldedTexel.channels_ == kExploredDecayChannel &&
+            shieldedTexel.has_value() && shieldedTexel->state_ == shieldedState &&
+                shieldedTexel->channels_ == kExploredDecayChannel &&
                 shieldedChannels == kExploredDecayChannel,
             "the uploaded shielded texel must carry the CPU state and channel 2"
         );

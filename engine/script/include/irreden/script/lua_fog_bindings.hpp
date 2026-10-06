@@ -82,17 +82,34 @@ inline int requireFogInt(sol::object value, const char *function, std::size_t in
     return result;
 }
 
-inline std::uint32_t requireFogUint32(sol::object value, const char *function, std::size_t index) {
+/// A finite, exact integer in `[0, maximum]`; @p rangeMessage names the
+/// range in the error.
+inline std::uint64_t requireFogBoundedInteger(
+    sol::object value,
+    const char *function,
+    std::size_t index,
+    double maximum,
+    const char *rangeMessage
+) {
     const double number = requireFogNumber(value, function, index);
-    constexpr double maximum = static_cast<double>(std::numeric_limits<std::uint32_t>::max());
     if (!(number >= 0.0 && number <= maximum)) {
-        throw std::invalid_argument(fogArgumentName(function, index) + " is outside uint32 range");
+        throw std::invalid_argument(fogArgumentName(function, index) + " " + rangeMessage);
     }
-    const auto result = static_cast<std::uint32_t>(number);
+    const auto result = static_cast<std::uint64_t>(number);
     if (static_cast<double>(result) != number) {
         throw std::invalid_argument(fogArgumentName(function, index) + " must be an integer");
     }
     return result;
+}
+
+inline std::uint32_t requireFogUint32(sol::object value, const char *function, std::size_t index) {
+    return static_cast<std::uint32_t>(requireFogBoundedInteger(
+        value,
+        function,
+        index,
+        static_cast<double>(std::numeric_limits<std::uint32_t>::max()),
+        "is outside uint32 range"
+    ));
 }
 
 inline std::uint32_t optionalFogUint32(
@@ -107,20 +124,13 @@ inline std::uint32_t optionalFogUint32(
 /// A simulation time or duration: a finite, exact integer in
 /// `[0, kFogTimeMsMax]`, the range a Lua number carries exactly.
 inline std::uint64_t requireFogTimeMs(sol::object value, const char *function, std::size_t index) {
-    const double number = requireFogNumber(value, function, index);
-    constexpr double maximum = static_cast<double>(IRPrefab::Fog::kFogTimeMsMax);
-    if (!(number >= 0.0 && number <= maximum)) {
-        throw std::invalid_argument(
-            fogArgumentName(function, index) + " must be in [0, 2^53 - 1] milliseconds"
-        );
-    }
-    const auto result = static_cast<std::uint64_t>(number);
-    if (static_cast<double>(result) != number) {
-        throw std::invalid_argument(
-            fogArgumentName(function, index) + " must be an integer millisecond count"
-        );
-    }
-    return result;
+    return requireFogBoundedInteger(
+        value,
+        function,
+        index,
+        static_cast<double>(IRPrefab::Fog::kFogTimeMsMax),
+        "must be in [0, 2^53 - 1] milliseconds"
+    );
 }
 
 inline IRPrefab::Fog::ExploredPolicy
