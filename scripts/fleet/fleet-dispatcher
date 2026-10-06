@@ -896,6 +896,7 @@ unset _knob _knob_name
 # window, not every 10-second tick. Keyed by pane_key (e.g. "pane-3").
 declare -A RATE_LIMIT_COOLDOWN_LOGGED=()
 declare -A PANE_REGISTRATION_WARNED=()
+declare -A PANE_MODE_WARNED=()
 
 _pane_registration_alert_path() {
     echo "${FLEET_ALERTS_DIR:-$HOME/.fleet/alerts}/dispatch-pane-$1"
@@ -918,6 +919,29 @@ pane_registration_all_clear() {
     local name="$1"
     unset "PANE_REGISTRATION_WARNED[$name]"
     rm -f "$(_pane_registration_alert_path "$name")" 2>/dev/null || true
+}
+
+_pane_mode_alert_path() {
+    echo "${FLEET_ALERTS_DIR:-$HOME/.fleet/alerts}/dispatch-pane-mode-$1"
+}
+
+pane_mode_warn() {
+    local pane="$1" path="$2" name alert
+    name=$(basename "$path")
+    alert=$(_pane_mode_alert_path "$name")
+    if [[ -z "${PANE_MODE_WARNED[$name]+x}" ]]; then
+        log "skipping pane $pane ($name): tmux mode persisted after cancel"
+        PANE_MODE_WARNED["$name"]=1
+    fi
+    mkdir -p "$(dirname "$alert")" 2>/dev/null || true
+    printf 'dispatch skipped: pane=%s path=%s error=tmux-mode-persisted remedy=exit tmux mode\n' \
+        "$name" "$path" > "$alert" 2>/dev/null || true
+}
+
+pane_mode_all_clear() {
+    local name="$1"
+    unset "PANE_MODE_WARNED[$name]"
+    rm -f "$(_pane_mode_alert_path "$name")" 2>/dev/null || true
 }
 
 # --- Logging ---------------------------------------------------------------
@@ -1144,6 +1168,16 @@ dispatch_send_keys() {
     else
         tmux send-keys "$@"
     fi
+}
+
+# Returns false when a pane remains in a tmux mode after cancellation.
+pane_is_dispatchable() {
+    local pane_id="$1" mode
+    mode=$(tmux display-message -t "$pane_id" -p '#{pane_in_mode}' 2>/dev/null || true)
+    [[ "$mode" == "1" ]] || return 0
+    dispatch_send_keys -t "$pane_id" -X cancel || return 1
+    mode=$(tmux display-message -t "$pane_id" -p '#{pane_in_mode}' 2>/dev/null || true)
+    [[ "$mode" != "1" ]]
 }
 
 # Returns 0 if the pane is occupied (non-shell cmd OR fleet-dispatch-wrap
@@ -3497,6 +3531,7 @@ dispatch_role() {
     local dispatched=0 dispatched_class=0
     local gap_blocked=""
     local registration_skipped=""
+    local mode_skipped=""
     # assign_exhausted: the lane's candidates were all held elsewhere, in
     # flight, or refused live — nothing else is claimable this tick, so the
     # fan-out stops and the trigger is consumed below rather than re-walked
@@ -3557,7 +3592,7 @@ dispatch_role() {
             fi
             continue
         fi
-        local pane_path pane_name
+        local pane_path pane_name=""
         pane_path=$(tmux display-message -t "$pane_id" -p '#{pane_current_path}' 2>/dev/null || true)
         if [[ -d "$pane_path" ]]; then
             pane_name=$(basename "$pane_path")
@@ -3568,6 +3603,12 @@ dispatch_role() {
             fi
             pane_registration_all_clear "$pane_name"
         fi
+        if ! pane_is_dispatchable "$pane_id"; then
+            pane_mode_warn "$pane_id" "$pane_path"
+            mode_skipped=1
+            continue
+        fi
+        [[ -z "$pane_name" ]] || pane_mode_all_clear "$pane_name"
         # Global min-gap stagger. Stop fanning out once the most recent launch
         # is younger than the gap, so a single tick can't fire every idle pane
         # at once (the fleet-up 429 burst). `break` (not `continue`) — the gap
@@ -3897,7 +3938,7 @@ dispatch_role() {
         fi
         unset "CAP_DEFER_LOGGED[$role-uncovered]"
         rm -f "$trigger_file"
-    elif [[ -z "$registration_skipped" ]]; then
+    elif [[ -z "$registration_skipped" && -z "$mode_skipped" ]]; then
         # Every idle pane already had a record (still settling in
         # from the last dispatch) or every send-keys failed. Leave
         # the trigger for the next tick.

@@ -57,7 +57,15 @@ case "$sub" in
     has-session) exit 0 ;;
     list-panes) printf '%%1|pool|zsh\n%%2|pool|zsh\n' ;;
     display-message)
-        if [[ "$*" == *pane_current_path* ]]; then
+        if [[ "$*" == *pane_in_mode* ]]; then
+            case "${STUB_PANE_MODE:-off}" in
+                clears)
+                    [[ -e "$MODE_CANCEL_LOG" ]] && printf '0\n' || printf '1\n'
+                    ;;
+                stuck) printf '1\n' ;;
+                *) printf '0\n' ;;
+            esac
+        elif [[ "$*" == *pane_current_path* ]]; then
             if [[ "$*" == *%1* && -n "${STUB_FAKE:-}" ]]; then
                 printf '/fake/.claude/worktrees/pool-fake\n'
             elif [[ "$*" == *%1* ]]; then
@@ -70,6 +78,7 @@ case "$sub" in
         ;;
     send-keys)
         printf '%s\n' "$*" >> "$SEND_LOG"
+        [[ "$*" == *"-X cancel"* ]] && : > "$MODE_CANCEL_LOG"
         : > "$TRIGGER"
         ;;
 esac
@@ -84,6 +93,7 @@ printf '#!/usr/bin/env bash\nexit 1\n' > "$BIN/pgrep"
 printf '#!/usr/bin/env bash\nexit 99\n' > "$BIN/gh"
 chmod +x "$BIN"/*
 export BROKEN HEALTHY SEND_LOG CLAIM_LOG
+export MODE_CANCEL_LOG="$TMPROOT/mode-cancel.log"
 export TRIGGER="$FLEET_STATE_DIR/triggers/epic-steward"
 export PATH="$BIN:$PATH"
 
@@ -118,10 +128,38 @@ tick >/dev/null
 [[ ! -e "$FLEET_ALERTS_DIR/dispatch-pane-pool-broken" ]] \
     && ok "healthy pass clears the alert" || bad "healed pane alert survived"
 
-echo "T4: a non-existent pane path keeps the existing dispatch behavior"
+echo "T4: a non-existent pane path bypasses the registration gate"
 : > "$SEND_LOG"
 rm -f "$FLEET_STATE_DIR/dispatch"/*.json
-STUB_FAKE=1 tick >/dev/null
-assert_contains "$(<"$SEND_LOG")" "-t %1" "non-existent path is still dispatched"
+export STUB_FAKE=1
+out=$(tick)
+unset STUB_FAKE
+assert_absent "$out" "skipping pane %1" "non-existent path bypasses registration gate"
+
+echo "T5: copy mode is cancelled before a pane launches"
+: > "$SEND_LOG"
+rm -f "$MODE_CANCEL_LOG"
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json
+export STUB_PANE_MODE=clears
+tick >/dev/null
+unset STUB_PANE_MODE
+assert_contains "$(<"$SEND_LOG")" "-t %1 -X cancel" "copy mode is cancelled"
+assert_contains "$(<"$SEND_LOG")" "-t %1 C-u" "pane launches after copy mode clears"
+
+echo "T6: a persistent copy mode is skipped without dispatch side effects"
+: > "$SEND_LOG"
+rm -f "$MODE_CANCEL_LOG"
+rm -f "$FLEET_STATE_DIR/dispatch"/*.json
+export STUB_PANE_MODE=stuck
+out=$(tick)
+unset STUB_PANE_MODE
+assert_contains "$(<"$SEND_LOG")" "-t %1 -X cancel" "persistent copy mode receives cancel"
+assert_absent "$(<"$SEND_LOG")" "C-u" "persistent copy modes receive no launch"
+[[ ! -e "$FLEET_STATE_DIR/dispatch/pane-1.json" && ! -e "$FLEET_STATE_DIR/dispatch/pane-2.json" ]] \
+    && ok "persistent copy modes create no dispatch records" || bad "persistent copy modes created dispatch records"
+assert_eq "$(<"$CLAIM_LOG")" "" "persistent copy modes perform no claim operation"
+assert_contains "$out" "tmux mode persisted after cancel" "persistent copy mode is logged"
+[[ -f "$FLEET_ALERTS_DIR/dispatch-pane-mode-pool-broken" ]] \
+    && ok "persistent copy mode writes an operator alert" || bad "persistent copy mode alert missing"
 
 summarize "dispatcher pane registration gate"
