@@ -23,7 +23,10 @@ the touched code has an executable for: `--auto-screenshot` demos with
 `fleet-run <name> --auto-screenshot 10` (no `--timeout`; the run ends at
 `closeWindow()`), other GUI and test executables with `fleet-run --timeout
 15 <name>`. Never `cd <dir> && ./<exe>` (compound-command security gate).
-Verdict per [`FLEET.md § Clean-exit policy`](FLEET.md).
+Verdict per [`FLEET.md § Clean-exit policy`](FLEET.md). A build, fleet
+suite, or `render-verify` run expected to outlive the tool window runs
+detached per [`FLEET-RUNTIME.md § Long-running jobs`](FLEET-RUNTIME.md#long-running-jobs);
+its evidence is the later terminal `wait`.
 
 ---
 
