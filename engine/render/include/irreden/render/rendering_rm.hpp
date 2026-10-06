@@ -1,5 +1,3 @@
-// Generic resource manager for rendering stuff
-
 #ifndef RENDERING_RM_H
 #define RENDERING_RM_H
 
@@ -39,18 +37,6 @@ template <typename T> class ResourceDataImpl : public ResourceData {
 
 class RenderingResourceManager {
   public:
-    // static RenderingResourceManager& instance() {
-    //     IR_ASSERT(m_initalized, "RenderingResourceManager not initalized");
-    //     return m_instance;
-    // }
-
-    // static RenderingResourceManager& init() {
-    //     if(!m_initalized) {
-    //         m_instance = RenderingResourceManager{};
-    //         m_initalized = true;
-    //     }
-    //     return m_instance;
-    // }
     // `idCapacity` is the number of ids the pool is seeded with, and so the
     // ceiling on simultaneously live resources.
     explicit RenderingResourceManager(ResourceId idCapacity = IR_MAX_RESOURCES);
@@ -155,10 +141,6 @@ class RenderingResourceManager {
     std::unordered_map<std::string, ResourceType> m_resourceTypes;
     std::unordered_map<std::string, ResourceId> m_namedResources;
     ResourceType m_nextResourceType = 0;
-
-    // Singleton
-    static RenderingResourceManager m_instance;
-    static bool m_initalized;
 
     template <typename T> void registerResource() {
         IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_ENTITY_OPS);

@@ -151,9 +151,6 @@ function(irreden_collect_quality_files out_var)
         if(normalized_path MATCHES "/engine/render/third_party/metal-cpp/")
             continue()
         endif()
-        if(normalized_path MATCHES "/engine/prefabs/irreden/render/systems/copilot_nonesense\\.cpp$")
-            continue()
-        endif()
         # The generated GL wrapper and the Metal backend are first-party, but
         # the STYLE tools skip them: clang-format rewrites generated code and
         # clang-tidy trips on metal-cpp idioms. That exemption is about style,

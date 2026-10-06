@@ -27,15 +27,24 @@ that statistic unavailable instead of silently excluding a potentially slower ru
 Complete reports retain the same per-report warmup exclusion and pooling. A
 mixed complete/missing regression test fails on the previous implementation.
 
+## Implemented slice: renderer resource cleanup
+
+Canvas destruction and backing growth share the texture/Hi-Z release sequence;
+growth still allocates replacements first and preserves ancillary buffers. Metal
+framebuffer readback delegates its existing synchronous submission to `finish()`,
+retaining validation before submission and completed-frame accounting before the
+command buffer is renewed. Presentation remains a separate operation.
+
+The resource manager's unused private singleton declarations and commented
+accessors are removed. The uncompiled scratch file
+`systems/copilot_nonesense.cpp` and its quality-tool exclusion are removed too;
+neither provided an engine API.
+
 ## Next cleanup slices
 
 | Priority | Finding | Bounded change and required proof |
 |---|---|---|
-| 1 | Invalid scratch source and its quality-tool exception | Delete `systems/copilot_nonesense.cpp` and its explicit exclusion; it defines no usable engine API. Run format/header checks. |
 | 2 | Repeated per-axis occupied-cell decoding in five shader pairs | Share integer group flattening, active-count and cell decoding; keep bindings and distinct face spaces explicit. Prove finalize/list coverage and unchanged AO/shadow/lit captures on both backends. |
-| 2 | Metal framebuffer readback repeats `finish()` | Reuse the identical submission/wait/accounting sequence; preserve readback validation and keep `present()` separate. Test frame accounting and screenshot bytes. |
-| 2 | Canvas destruction repeats backing cleanup | Share only the color/depth/id/Hi-Z release sequence; preserve allocate-before-release and ancillary resources. Run canvas growth/lifecycle tests. |
-| 2 | Abandoned resource-manager singleton scaffolding | Remove unused private declarations and commented accessors while retaining the actual manager lifecycle. Run resource-manager tests/header checks. |
 | 3 | Lighting-route density patching may be redundant | Audit every consumer before removing UBO patch/restore; preserve density in store/scatter/resolve. Verify cardinal transitions, high density, overflow lighting and fog. |
 | 3 | Fallback sun bake retains a raw per-axis branch its driver does not use | Prove route-zero dispatches, then remove the branch and redundant include while preserving ABI and live fallback casting. Exercise detached casting and splat-enabled cases. |
 | 3 | Source-face shadow-debug palette repeats an existing helper | Delegate to `surfaceShadowDebugColor` in both shader backends; compare diagnostic captures. |

@@ -159,12 +159,7 @@ struct C_TriangleCanvasTextures {
             IRRender::destroyResource<Buffer>(sourceFaces_.first);
         if (sourceFaceOrder_.second != nullptr)
             IRRender::destroyResource<Buffer>(sourceFaceOrder_.first);
-        IRRender::destroyResource<Texture2D>(textureTriangleColors_.first);
-        IRRender::destroyResource<Texture2D>(textureTriangleDistances_.first);
-        IRRender::destroyResource<Texture2D>(textureTriangleEntityIds_.first);
-        for (const auto &mip : hiZMips_) {
-            IRRender::destroyResource<Texture2D>(mip.first);
-        }
+        destroyBackingTextures();
     }
 
     void resizeBacking(ivec2 size) {
@@ -174,11 +169,7 @@ struct C_TriangleCanvasTextures {
         auto distances = detail::makeCanvasDistanceTexture(size);
         auto ids = detail::makeCanvasEntityIdTexture(size);
         auto mips = detail::makeHiZMipChain(size);
-        IRRender::destroyResource<Texture2D>(textureTriangleColors_.first);
-        IRRender::destroyResource<Texture2D>(textureTriangleDistances_.first);
-        IRRender::destroyResource<Texture2D>(textureTriangleEntityIds_.first);
-        for (const auto &mip : hiZMips_)
-            IRRender::destroyResource<Texture2D>(mip.first);
+        destroyBackingTextures();
         textureTriangleColors_ = colors;
         textureTriangleDistances_ = distances;
         textureTriangleEntityIds_ = ids;
@@ -382,6 +373,15 @@ struct C_TriangleCanvasTextures {
     void saveAsPNG() {}
 
   private:
+    void destroyBackingTextures() {
+        IRRender::destroyResource<Texture2D>(textureTriangleColors_.first);
+        IRRender::destroyResource<Texture2D>(textureTriangleDistances_.first);
+        IRRender::destroyResource<Texture2D>(textureTriangleEntityIds_.first);
+        for (const auto &mip : hiZMips_) {
+            IRRender::destroyResource<Texture2D>(mip.first);
+        }
+    }
+
     // Clears to kTrixelDistanceMaxDistance - 1 (= 65534) rather than
     // kTrixelDistanceMaxDistance (= 65535). This predates the introduction of
     // the public clearDistances() helper; the shader's "empty pixel" sentinel
