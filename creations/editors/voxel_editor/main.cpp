@@ -44,6 +44,8 @@
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/update/systems/system_lifetime.hpp>
+#include <irreden/render/systems/system_lod_update.hpp>
+#include <irreden/render/systems/system_gate_voxel_sets_by_lod.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/input/systems/system_hitbox_mouse_test_gui.hpp>
 #include <irreden/render/systems/system_gizmo_screen_space_size.hpp>
@@ -93,6 +95,7 @@
 // The ANIM panel's slider geometry, shared with the session builder so a
 // scripted drag aims at the live layout.
 #include "anim_panel.hpp"
+#include "lod_panel.hpp"
 
 #include "editor_layer_manager.hpp"
 
@@ -109,9 +112,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <deque>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <list>
 #include <memory>
+#include <optional>
 #include <queue>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -934,9 +942,70 @@ IREntity::EntityId g_layerAddBtn = IREntity::kNullEntity;
 IREntity::EntityId g_layerDelBtn = IREntity::kNullEntity;
 
 EntityScene g_entityScene;
+// Process start on the filesystem clock: a session's manifest check accepts
+// only a file written after it.
+const std::filesystem::file_time_type g_runStartFileTime =
+    std::filesystem::file_time_type::clock::now();
 bool g_entitySceneMode = false;
 IREntity::EntityId g_partsPanel = IREntity::kNullEntity;
 IREntity::EntityId g_partsList = IREntity::kNullEntity;
+
+// LOD panel widgets (lod_panel.hpp). The band sliders edit the selected part;
+// the tier slider and FOLLOW ZOOM drive EntityScene::setTierOverride and never
+// the camera zoom.
+IREntity::EntityId g_lodPanel = IREntity::kNullEntity;
+IREntity::EntityId g_lodFineSlider = IREntity::kNullEntity;
+IREntity::EntityId g_lodCoarseSlider = IREntity::kNullEntity;
+IREntity::EntityId g_lodTierSlider = IREntity::kNullEntity;
+IREntity::EntityId g_lodFollowCheckbox = IREntity::kNullEntity;
+
+IRRender::LodLevel lodLevelFromSlider(IREntity::EntityId slider) {
+    const float value =
+        IRMath::clamp(IRPrefab::Widget::sliderValue(slider), kLodTierSliderMin, kLodTierSliderMax);
+    return static_cast<IRRender::LodLevel>(IRMath::roundHalfUp(value));
+}
+
+void syncLodBandSliders() {
+    if (g_lodFineSlider == IREntity::kNullEntity) {
+        return;
+    }
+    const int selected = g_entityScene.selectedIndex();
+    const bool hasPart = selected >= 0;
+    IRPrefab::Widget::setDisabled(g_lodFineSlider, !hasPart);
+    IRPrefab::Widget::setDisabled(g_lodCoarseSlider, !hasPart);
+    if (!hasPart) {
+        return;
+    }
+    const EditorPart &part = g_entityScene.parts()[static_cast<std::size_t>(selected)];
+    IRPrefab::Widget::setSliderValue(g_lodFineSlider, static_cast<float>(part.lodMax_));
+    IRPrefab::Widget::setSliderValue(g_lodCoarseSlider, static_cast<float>(part.lodMin_));
+}
+
+// nullopt follows the camera-zoom tier. The panel mirrors the state so a
+// hotkey and the widgets never disagree.
+void setLodTierPin(std::optional<IRRender::LodLevel> tier) {
+    g_entityScene.setTierOverride(tier);
+    if (g_lodFollowCheckbox == IREntity::kNullEntity) {
+        return;
+    }
+    IRPrefab::Widget::setCheckboxState(g_lodFollowCheckbox, !tier.has_value());
+    if (tier) {
+        IRPrefab::Widget::setSliderValue(g_lodTierSlider, static_cast<float>(*tier));
+    }
+}
+
+// Steps the pinned tier by @p delta (negative = finer). From follow-zoom the
+// step starts at the live zoom tier.
+void stepLodTierPin(int delta) {
+    const IRRender::LodLevel from =
+        g_entityScene.tierOverride().value_or(IRRender::getActiveLodLevel());
+    const int stepped = IRMath::clamp(
+        static_cast<int>(from) + delta,
+        static_cast<int>(kLodTierSliderMin),
+        static_cast<int>(kLodTierSliderMax)
+    );
+    setLodTierPin(static_cast<IRRender::LodLevel>(stepped));
+}
 
 void clearUndoHistory() {
     g_editor.undoRecords_.clear();
@@ -972,6 +1041,7 @@ void selectEditorPart(int index) {
         }
         IRPrefab::Widget::setListSelectedIndex(g_partsList, g_entityScene.selectedIndex());
     }
+    syncLodBandSliders();
 }
 
 void selectRelativeEditorPart(int offset) {
@@ -1009,6 +1079,7 @@ void clearEntitySceneForLoad() {
         list.items_.clear();
         list.selectedIndex_ = -1;
     }
+    syncLodBandSliders();
 }
 
 // Fill-mode status label — top-left status bar updated each frame with the
@@ -2182,8 +2253,24 @@ bool evaluatePartTransformCheck(const void *context, std::string &actual) {
 // quietly passing.
 bool evaluateSliderCheck(const void *context, std::string &actual) {
     const SliderCheck &check = *static_cast<const SliderCheck *>(context);
-    const IREntity::EntityId widget =
-        check.target_ == SliderTarget::FPS ? g_fpsSlider : g_scrubberSlider;
+    IREntity::EntityId widget = IREntity::kNullEntity;
+    switch (check.target_) {
+    case SliderTarget::FPS:
+        widget = g_fpsSlider;
+        break;
+    case SliderTarget::SCRUBBER:
+        widget = g_scrubberSlider;
+        break;
+    case SliderTarget::LOD_FINE:
+        widget = g_lodFineSlider;
+        break;
+    case SliderTarget::LOD_COARSE:
+        widget = g_lodCoarseSlider;
+        break;
+    case SliderTarget::LOD_TIER:
+        widget = g_lodTierSlider;
+        break;
+    }
     if (widget == IREntity::kNullEntity) {
         actual = "widget not built";
         return false;
@@ -2191,6 +2278,50 @@ bool evaluateSliderCheck(const void *context, std::string &actual) {
     const float value = IRPrefab::Widget::sliderValue(widget);
     actual = "value=" + std::to_string(value);
     return IRMath::abs(value - check.expected_) <= check.tolerance_;
+}
+
+bool evaluatePartGateCheck(const void *context, std::string &actual) {
+    const PartGateCheck &check = *static_cast<const PartGateCheck *>(context);
+    if (check.partIndex_ < 0 ||
+        check.partIndex_ >= static_cast<int>(g_entityScene.parts().size())) {
+        actual = "part index out of range";
+        return false;
+    }
+    const EditorPart &part = g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)];
+    const auto set = IREntity::getComponentOptional<C_VoxelSetNew>(part.entity_);
+    if (!set) {
+        actual = "part has no voxel set";
+        return false;
+    }
+    const bool gated = (*set)->lodCulled_;
+    const auto pin = IREntity::getComponentOptional<C_LodTierOverride>(part.entity_);
+    const int pinnedTier = pin ? static_cast<int>((*pin)->tier_) : -1;
+    actual = "band=[" + std::to_string(static_cast<int>((*set)->lodMax_)) + "," +
+             std::to_string(static_cast<int>((*set)->lodMin_)) +
+             "] gated=" + (gated ? "yes" : "no") + " pinned=" + std::to_string(pinnedTier) +
+             " active=" + std::to_string(static_cast<int>(IRRender::getActiveLodLevel()));
+    return gated == check.expectGated_ && pinnedTier == check.expectPinnedTier_;
+}
+
+bool evaluateManifestCheck(const void *context, std::string &actual) {
+    const ManifestCheck &check = *static_cast<const ManifestCheck *>(context);
+    const std::filesystem::path path =
+        IRUtility::joinPath(std::string(kSceneSaveDir), std::string(kSceneBaseName), ".prefab.lua");
+    std::error_code error;
+    const std::filesystem::file_time_type written = std::filesystem::last_write_time(path, error);
+    if (error) {
+        actual = "no manifest at " + path.string();
+        return false;
+    }
+    if (written < g_runStartFileTime) {
+        actual = "manifest predates this run";
+        return false;
+    }
+    std::ifstream in(path);
+    const std::string text{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+    const bool found = text.find(check.text_) != std::string::npos;
+    actual = std::string(found ? "found" : "missing") + " in " + path.string();
+    return found;
 }
 
 bool evaluateComponentCheck(const void *context, std::string &actual) {
@@ -2394,7 +2525,8 @@ int main(int argc, char **argv) {
     IREngine::args().enumValue(
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
-        "face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | module_loaded",
+        "face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | tier_scrub | "
+        "module_loaded",
         {"none",
          "drag_probe",
          "place_below",
@@ -2405,6 +2537,7 @@ int main(int argc, char **argv) {
          "bird",
          "tree",
          "parts_roundtrip",
+         "tier_scrub",
          "module_loaded"},
         "none"
     );
@@ -2817,6 +2950,7 @@ void initSystems() {
             bool overWidget = IRPrefab::Widget::isHovered(IRVoxelEditor::g_editor.palettePanel_) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_layerPanel) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_partsPanel) ||
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_lodPanel) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_bakePanel) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_bonePaint.bonePanel_) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_skeletonPanel) ||
@@ -3008,7 +3142,9 @@ void initSystems() {
 
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
-        {IRSystem::createSystem<IRSystem::GIZMO_SCREEN_SPACE_SIZE>(),
+        {IRSystem::createSystem<IRSystem::LOD_UPDATE>(),
+         IRSystem::createSystem<IRSystem::GATE_VOXEL_SETS_BY_LOD>(),
+         IRSystem::createSystem<IRSystem::GIZMO_SCREEN_SPACE_SIZE>(),
          IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
          IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
          IRSystem::createSystem<IRSystem::LIFETIME>()}
@@ -3094,6 +3230,56 @@ void initSystems() {
             int next = 0;
             if (IRVoxelEditor::tickPlayback(IRVoxelEditor::g_anim, dt, next))
                 IRVoxelEditor::switchToFrame(next);
+        }
+    );
+
+    // LOD panel sync. Runs in INPUT after WIDGET_APPLY_SLIDER and
+    // WIDGET_APPLY_CHECKBOX so this frame's drag or click is committed. A slider
+    // acts while pressed and on its release frame; the band sliders keep
+    // fine <= coarse by moving the slider not being dragged. The tier pin is
+    // staged and flushes at this system's group boundary, before the UPDATE
+    // LOD gate reads it.
+    auto lodPanelSyncSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorLodPanelSync",
+        [](const C_GuiElement &) {},
+        []() {},
+        []() {
+            using namespace IRVoxelEditor;
+            if (g_lodPanel == IREntity::kNullEntity)
+                return;
+            const auto active = [](IREntity::EntityId widget) {
+                return IRPrefab::Widget::isPressed(widget) || IRPrefab::Widget::wasClicked(widget);
+            };
+
+            if (IRPrefab::Widget::wasClicked(g_lodFollowCheckbox)) {
+                setLodTierPin(
+                    IRPrefab::Widget::checkboxState(g_lodFollowCheckbox)
+                        ? std::nullopt
+                        : std::optional{lodLevelFromSlider(g_lodTierSlider)}
+                );
+            } else if (active(g_lodTierSlider)) {
+                setLodTierPin(lodLevelFromSlider(g_lodTierSlider));
+            } else if (!g_entityScene.tierOverride()) {
+                IRPrefab::Widget::setSliderValue(
+                    g_lodTierSlider,
+                    static_cast<float>(IRRender::getActiveLodLevel())
+                );
+            }
+
+            const int selected = g_entityScene.selectedIndex();
+            const bool finePressed = active(g_lodFineSlider);
+            if (selected < 0 || (!finePressed && !active(g_lodCoarseSlider)))
+                return;
+            IRRender::LodLevel fine = lodLevelFromSlider(g_lodFineSlider);
+            IRRender::LodLevel coarse = lodLevelFromSlider(g_lodCoarseSlider);
+            if (fine > coarse) {
+                if (finePressed)
+                    coarse = fine;
+                else
+                    fine = coarse;
+            }
+            g_entityScene.setPartBand(selected, fine, coarse);
+            syncLodBandSliders();
         }
     );
 
@@ -3421,6 +3607,7 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::WIDGET_APPLY_CHECKBOX>(),
          scrubberSystem,
          layerSyncSystem,
+         lodPanelSyncSystem,
          loftInputSystem,
          bakeSystem,
          recipesSystem,
@@ -4159,6 +4346,28 @@ void initCommands() {
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonComma,
+        []() { IRVoxelEditor::stepLodTierPin(-1); },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "FINER TIER",
+        "PIN THE LOD PREVIEW ONE TIER FINER"
+    );
+
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonPeriod,
+        []() { IRVoxelEditor::stepLodTierPin(1); },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "COARSER TIER",
+        "PIN THE LOD PREVIEW ONE TIER COARSER"
+    );
+
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonBackspace,
         []() {
             if (IRVoxelEditor::g_entitySceneMode) {
@@ -4699,6 +4908,42 @@ void initEntities() {
         13
     );
 
+    IRVoxelEditor::g_lodPanel = IRPrefab::Widget::makePanel(
+        IRVoxelEditor::kLodPanelPos,
+        IRVoxelEditor::kLodPanelSize,
+        "LOD"
+    );
+    IREntity::setComponent(
+        IRVoxelEditor::g_lodPanel,
+        IRComponents::C_HitBox2DGui{IRVoxelEditor::kLodPanelSize}
+    );
+    IREntity::getComponent<IRComponents::C_Widget>(IRVoxelEditor::g_lodPanel).zOrder_ = -1;
+    const auto makeLodSlider = [](const IRVoxelEditor::SliderGeometry &geom,
+                                  std::string label,
+                                  IRRender::LodLevel initial) {
+        return IRPrefab::Widget::makeSlider(
+            geom.pos_,
+            geom.size_,
+            std::move(label),
+            IRVoxelEditor::kLodTierSliderMin,
+            IRVoxelEditor::kLodTierSliderMax,
+            static_cast<float>(initial)
+        );
+    };
+    IRVoxelEditor::g_lodFineSlider =
+        makeLodSlider(IRVoxelEditor::kLodFineSliderGeometry, "FINE", IRRender::LodLevel::LOD_0);
+    IRVoxelEditor::g_lodCoarseSlider =
+        makeLodSlider(IRVoxelEditor::kLodCoarseSliderGeometry, "COARSE", IRRender::LodLevel::LOD_4);
+    IRVoxelEditor::g_lodTierSlider =
+        makeLodSlider(IRVoxelEditor::kLodTierSliderGeometry, "TIER", IRRender::LodLevel::LOD_4);
+    IRVoxelEditor::g_lodFollowCheckbox = IRPrefab::Widget::makeCheckbox(
+        IRVoxelEditor::kLodFollowCheckboxPos,
+        IRVoxelEditor::kLodFollowCheckboxSize,
+        "FOLLOW ZOOM",
+        true
+    );
+    IRVoxelEditor::syncLodBandSliders();
+
     // Parametric shape bake panel. Sits below the LAYERS panel.
     // Shape list selects the SDF primitive; P1/P2 sliders set the primary and
     // secondary params; BAKE writes DENSE voxels into the active entity.
@@ -4843,6 +5088,11 @@ void initEntities() {
         {IRVoxelEditor::g_partsPanel,
          "PARTS: Ctrl+P adds voxels; Ctrl+Shift+P adds an SDF; Tab selects."},
         {IRVoxelEditor::g_partsList, "PARTS: select the voxel set or shape edited in place."},
+        {IRVoxelEditor::g_lodPanel, "LOD: the selected part's tier band and the tier preview."},
+        {IRVoxelEditor::g_lodFineSlider, "FINE: finest tier (0..4) the selected part exists at."},
+        {IRVoxelEditor::g_lodCoarseSlider, "COARSE: coarsest tier the selected part exists at."},
+        {IRVoxelEditor::g_lodTierSlider, "TIER: preview the parts at a tier (, and . step it)."},
+        {IRVoxelEditor::g_lodFollowCheckbox, "FOLLOW ZOOM: preview the camera zoom's own tier."},
         {IRVoxelEditor::g_bakePanel, "BAKE: pick a shape, set P1/P2, then BAKE the active entity."},
         {IRVoxelEditor::g_bakeShapeList, "SHAPE: choose the SDF primitive to voxelize."},
         {IRVoxelEditor::g_bakeParam1Slider, "P1: primary shape parameter (size / radius)."},
