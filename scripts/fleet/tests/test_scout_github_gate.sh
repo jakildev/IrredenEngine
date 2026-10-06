@@ -15,7 +15,7 @@
 #   - a timeout or a non-rate-limit failure => prior latch byte-identical
 #   - the refused latch carries the last good reset only while it is ahead
 #   - refusal logging is transition-only
-#   - a refused GraphQL call in run_capture latches github-graphql.rejected.json
+#   - a refused GraphQL call in run_capture latches github-user-graphql.rejected.json
 #     at the sampled reset, and a later good self-report leaves it untouched
 
 set -euo pipefail
@@ -42,7 +42,7 @@ trap cleanup EXIT
 
 export FLEET_STATE_DIR="$TMPROOT/state"
 USAGE="$FLEET_STATE_DIR/usage"
-LATCH="$USAGE/github-graphql.json"
+LATCH="$USAGE/github-user-graphql.json"
 STUB_DIR="$TMPROOT/stub"
 mkdir -p "$USAGE" "$STUB_DIR/bin"
 
@@ -65,6 +65,10 @@ QUERY='{rateLimit{limit used remaining resetAt}}'
 cat > "$STUB_DIR/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 d="$GH_STUB_DIR"
+if [[ "$*" == "api --include repos/jakildev/IrredenEngine" ]]; then
+    echo "HTTP/2.0 502 Bad Gateway"
+    exit 1
+fi
 if [[ "$#" -eq 2 && "$1" == api && "$2" == /rate_limit ]]; then
     cat "$d/rest.json"
     exit 0
@@ -112,6 +116,10 @@ graphql_mode() { echo "$1" > "$STUB_DIR/graphql-mode"; }
 
 # One scout sample: the real module, with only its usage dir and gh timeout
 # repointed. Scout log lines accumulate in $TMPROOT/scout.log.
+healthy_core() {
+    printf '{"identity":"user","rateLimitType":"github_core","utilization":0.1,"observed_at":%s,"resetsAt":%s}\n' \
+        "$NOW" "$FUTURE_RESET" > "$USAGE/github-user-core.json"
+}
 sample() {
     GH_STUB_DIR="$STUB_DIR" GH_STUB_QUERY="$QUERY" PATH="$STUB_DIR/bin:$PATH" \
     GH_SAMPLE_NOW="${GH_SAMPLE_NOW:-}" \
@@ -134,7 +142,7 @@ latch_field() {
     python3 -c 'import json, sys; v = json.load(open(sys.argv[1])).get(sys.argv[2]); print("<absent>" if v is None else v)' "$LATCH" "$1"
 }
 
-gate() { "$DISPATCHER" --gate-status; }
+gate() { healthy_core; "$DISPATCHER" --gate-status; }
 
 echo "T1: refused GraphQL sample => gate closed, graphql REJECTED"
 rm -f "$USAGE"/*.json
@@ -149,7 +157,7 @@ assert_eq "$(latch_field limit)" "5000" "refused latch carries the last good lim
 assert_eq "$(latch_field remaining)" "0" "refused latch reports remaining=0"
 assert_eq "$(latch_field interval_points)" "<absent>" "refused sample has no interval"
 out=$(gate)
-assert_eq "$out" "closed:github_graphql rejected util=100% (>= 90%) resets=$FUTURE_RESET" \
+assert_eq "$out" "closed:github_graphql[user] rejected" \
     "dispatcher gate closes on the refused latch"
 gs=$("$GATE_STATUS")
 assert_contains "$gs" "Fleet-wide usage gate: CLOSED" "gate-status prints CLOSED"
@@ -163,7 +171,7 @@ sample
 assert_eq "$(latch_field resetsAt)" "<absent>" "no prior reset => resetsAt omitted"
 assert_eq "$(latch_field limit)" "<absent>" "no prior limit => limit omitted"
 out=$(gate)
-assert_eq "${out%% *}" "closed:github_graphql" "gate closes on observed_at alone"
+assert_eq "${out%% *}" "closed:github_graphql[user]" "gate closes on observed_at alone"
 
 echo "T3: refused after a latch whose reset has passed => resetsAt omitted"
 printf '{"rateLimitType":"github_graphql","utilization":0.4,"resetsAt":%s,"observed_at":%s,"limit":5000,"remaining":3000}\n' \
@@ -173,7 +181,7 @@ sample
 assert_eq "$(latch_field resetsAt)" "<absent>" "past reset is not carried into the refused latch"
 assert_eq "$(latch_field limit)" "5000" "limit still carried"
 out=$(gate)
-assert_eq "${out%% *}" "closed:github_graphql" "gate still closes"
+assert_eq "${out%% *}" "closed:github_graphql[user]" "gate still closes"
 
 echo "T4: phantom /rate_limit graphql (used=0) vs self-report 4600/5000 => closed"
 rm -f "$USAGE"/*.json
@@ -181,7 +189,7 @@ rest_fixture 0
 graphql_good 4600
 sample
 out=$(gate)
-assert_eq "$out" "closed:github_graphql util=92% (>= 90%) resets=$FUTURE_RESET" \
+assert_eq "$out" "closed:github_graphql[user] util=92%" \
     "gate reads the self-report, not the phantom bucket"
 assert_eq "$(latch_field remaining)" "400" "latch remaining from the self-report"
 
@@ -226,7 +234,7 @@ rm -f "$USAGE"/*.json
 rest_fixture 4900
 graphql_mode error
 sample
-assert_eq "$(ls "$USAGE" | tr '\n' ' ')" "github-search.json " \
+assert_eq "$(ls "$USAGE" | tr '\n' ' ')" "github-user-search.json " \
     "/rate_limit half writes search only"
 
 echo "T8: compatible samples publish an identity-qualified interval"
@@ -283,8 +291,8 @@ prior_latch 100 "$NOW" "$FUTURE_RESET" user rejected
 GH_SAMPLE_NOW="$((NOW + 30))" sample
 assert_eq "$(latch_field interval_points)" "<absent>" "recovery from rejection has no interval"
 
-echo "T10: a refused pr list in run_capture latches github-graphql.rejected.json"
-REJECTED="$USAGE/github-graphql.rejected.json"
+echo "T10: a refused pr list in run_capture latches github-user-graphql.rejected.json"
+REJECTED="$USAGE/github-user-graphql.rejected.json"
 rm -f "$USAGE"/*.json
 : > "$TMPROOT/scout.log"
 rest_fixture 0
@@ -320,7 +328,7 @@ sleep 1
 graphql_good 1100
 sample
 assert_eq "$(cat "$REJECTED" 2>/dev/null || echo "<no latch>")" "$before" "a later good self-report leaves the refusal latch byte-unchanged"
-assert_eq "$(gate)" "closed:github_graphql rejected util=100% (>= 90%) resets=$FUTURE_RESET" \
+assert_eq "$(gate)" "closed:github_graphql[user] rejected" \
     "dispatcher gate stays closed while the self-report reads 22%"
 
 echo "T11: every gh invocation was modelled by the stub"

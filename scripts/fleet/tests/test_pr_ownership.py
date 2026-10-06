@@ -31,7 +31,7 @@ class PrOwnership(unittest.TestCase):
                     TEST_COMMAND=command,
                 )
                 script = r"""
-fleet-gh-token() { return 1; }
+fleet-gh-token() { return 0; }
 source "$1"
 sleep() { :; }
 gh() {
@@ -135,7 +135,7 @@ cmd_pr_claim 990001 probeA
                         TEST_LANE=lane,
                     )
                     script = r"""
-fleet-gh-token() { return 1; }; source "$1"
+fleet-gh-token() { return 0; }; source "$1"
 gh() { [[ "$*" == *"--method POST"* ]]; }
 gh_release_label() { echo "released:$3"; }
 _fetch_live_labels() {
@@ -171,7 +171,7 @@ _acquire_label_on example/repo 990001 "fleet:${TEST_LANE}-mac-probeA" "fleet:${T
                 [
                     "bash",
                     "-c",
-                    'fleet-gh-token() { return 1; }; source "$1"; '
+                    'fleet-gh-token() { return 0; }; source "$1"; '
                     "gh() { echo unexpected-network; return 99; }; "
                     "_sweep_stale_prefix_holders example/repo 990001 "
                     "fleet:claim- fleet:claim-mac-probeA",

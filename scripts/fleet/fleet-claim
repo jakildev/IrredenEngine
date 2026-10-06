@@ -172,12 +172,7 @@ if [[ -f "$FLEET_LIB_DIR/fleet-net.sh" ]]; then
     source "$FLEET_LIB_DIR/fleet-net.sh"
 fi
 
-# GitHub App token: guarded export so this invocation's gh call sites draw
-# from the App pool. Never export GH_TOKEN="" — that would
-# defeat gh's keychain fallback on the unconfigured path.
-_gh_app_token="$(fleet-gh-token 2>/dev/null || true)"
-[[ -n "$_gh_app_token" ]] && export GH_TOKEN="$_gh_app_token"
-unset _gh_app_token
+fleet_select_github_identity "${FLEET_GH_IDENTITY:-app}" || exit 1
 
 # --- input validation -----------------------------------------------------
 

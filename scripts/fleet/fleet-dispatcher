@@ -191,6 +191,7 @@ FLEET_UP_RESOLVED_KNOBS=(
     FLEET_EFFORT
     FLEET_MODEL_FABLE FLEET_MODEL_OPUS FLEET_MODEL_SONNET
     FLEET_MODEL_MERGER FLEET_MODEL_OPUS_REVIEWER FLEET_FABLE_FALLBACK
+    FLEET_GH_IDENTITY
     OPUS_MODEL SONNET_MODEL
 )
 if [[ -v FLEET_ENV_OVERRIDES ]]; then
@@ -362,6 +363,7 @@ declare -A HARD_CAP_ROLES=(
 # doesn't spam every 10s tick while the cap is held. Cleared whenever a
 # role drops back below cap.
 declare -A CAP_DEFER_LOGGED=()
+GITHUB_APP_AUTH_FAILURES=0
 
 # Seconds to back off a pane whose launch died at the usage wall — the
 # wrap's `<pane>.ts` marker, written when the stream flagged a rejected
@@ -976,22 +978,15 @@ session_exists() {
     tmux has-session -t "$FLEET_SESSION" 2>/dev/null
 }
 
-# Re-seed the tmux server's global GH_TOKEN so panes split after launch inherit
-# a live installation token instead of the expired one fleet-up seeded. Takes
-# the freshly minted token; an empty one is a no-op (never unset or blank the
-# value — the unconfigured path keeps gh's keychain auth, and evicting a prior
-# session's token is fleet-up's job). FLEET_TMUX_SOCKET pins a private server
-# for the seed's own tmux calls, liveness check included; unset targets the
-# default server.
-_seeded_tmux_gh_token=""
-seed_tmux_gh_token() {
-    local token="${1:-}"
-    [[ -n "$token" && "$token" != "$_seeded_tmux_gh_token" ]] || return 0
+# Credentials stay process-local; tmux survives individual fleet sessions.
+clear_tmux_github_identity() {
     local -a tmux_cmd=(tmux)
     [[ -n "${FLEET_TMUX_SOCKET:-}" ]] && tmux_cmd+=(-S "$FLEET_TMUX_SOCKET")
     "${tmux_cmd[@]}" has-session -t "$FLEET_SESSION" 2>/dev/null || return 0
-    "${tmux_cmd[@]}" set-environment -g GH_TOKEN "$token" 2>/dev/null || return 0
-    _seeded_tmux_gh_token="$token"
+    local name
+    for name in GH_TOKEN GITHUB_TOKEN FLEET_GH_IDENTITY; do
+        "${tmux_cmd[@]}" set-environment -g -u "$name" 2>/dev/null || return 0
+    done
 }
 
 # Print one line per pane: <pane_id>|<@fleet-role>|<pane_current_command>
@@ -1957,8 +1952,8 @@ pane_in_rate_limit_cooldown() {
 # closed when at least one observation breaches its own threshold; the
 # highest-utilization breach wins the report when several are over.
 #
-# $1 = scope: all (account-wide Anthropic windows + GitHub pools), claude
-# (account-wide Anthropic windows), shared (GitHub pools), or scoped
+# $1 = scope: all (account-wide Anthropic windows + user GitHub pools), claude
+# (account-wide Anthropic windows), shared (user GitHub), daemon (daemon GitHub), or scoped
 # (model-scoped Anthropic windows only). $2 = optional model string: with
 # claude it adds, and with scoped it narrows to, the windows that meter that
 # model's family. A model-scoped window (scope_of below) never reaches all or
@@ -1969,16 +1964,25 @@ pane_in_rate_limit_cooldown() {
 # without adding a shell dep. Same pattern rearm_periodic_meta_triggers
 # uses below. fleet-gate-status mirrors the tables; change both.
 usage_gate_status() {
+    local daemon_identity=user
+    if [[ -n "${FLEET_GH_APP_ID:-}" && -n "${FLEET_GH_APP_INSTALLATION_ID:-}" \
+          && -n "${FLEET_GH_APP_KEY_PATH:-}" ]] || [[ "${GH_TOKEN:-}" == ghs_* ]]; then
+        daemon_identity=app
+    fi
     FLEET_USAGE_RUNTIME="${1:-all}" FLEET_USAGE_MODEL="${2:-}" USAGE_DIR="$USAGE_DIR" \
+    FLEET_DAEMON_GH_IDENTITY="$daemon_identity" \
     USAGE_STALE_SECONDS="$USAGE_STALE_SECONDS" \
     RESET_GRACE_SECONDS="$RESET_GRACE_SECONDS" \
-    python3 - <<'PY'
+    FLEET_LIB_DIR="$FLEET_LIB_DIR" python3 - <<'PY'
 import json
 import os
 import pathlib
 import sys
 import time
 from datetime import datetime
+
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+from fleet_github_identity import quota_gate
 
 usage_dir = pathlib.Path(os.environ["USAGE_DIR"])
 stale_s = int(os.environ.get("USAGE_STALE_SECONDS", "3600"))
@@ -2077,8 +2081,13 @@ def threshold_for(rate_limit_type):
     return BUILTIN_FALLBACK, True
 
 
-if not usage_dir.is_dir():
-    print("open")
+scope = os.environ.get("FLEET_USAGE_RUNTIME", "all")
+if scope in ("shared", "daemon"):
+    identity = "user" if scope == "shared" else os.environ["FLEET_DAEMON_GH_IDENTITY"]
+    gate = quota_gate(usage_dir, identity, lambda t: threshold_for(t)[0],
+                      stale_s=stale_s, reset_grace_s=reset_grace_s)
+    detail = "; ".join(gate["reasons"]) or f"github[{identity}]"
+    print(f"{gate['state']}:{detail}")
     sys.exit(0)
 
 now = int(time.time())
@@ -2096,9 +2105,7 @@ for path in sorted(usage_dir.glob("*.json")):
         continue
     raw_type = str(data.get("rateLimitType", path.stem))
     is_github = raw_type.startswith("github")
-    if scope == "shared" and not is_github:
-        continue
-    if scope in ("claude", "scoped") and is_github:
+    if is_github:
         continue
     bucket_scope = scope_of(raw_type)
     if bucket_scope == "account":
@@ -2170,6 +2177,8 @@ for path in sorted(usage_dir.glob("*.json")):
     if top_observation is None or util_f > top_observation[0]:
         top_observation = (util_f, th, rl_type, resets_at, note, scope_note)
 
+pane_gate = quota_gate(usage_dir, "user", lambda t: threshold_for(t)[0], now=now,
+                       stale_s=stale_s, reset_grace_s=reset_grace_s) if scope == "all" else None
 if breaches:
     # Multiple breaches: report the highest utilization. That's the
     # most pressing one and what the operator will care about first.
@@ -2179,6 +2188,8 @@ if breaches:
     thr_pct = int(round(th * 100))
     resets_part = f" resets={resets}" if resets else ""
     print(f"closed:{rl_type} util={pct}% (>= {thr_pct}%{note}){scope_note}{resets_part}")
+elif pane_gate and pane_gate["state"] == "closed":
+    print("closed:" + "; ".join(pane_gate["reasons"]))
 elif top_observation is not None:
     util_f, th, rl_type, _resets, note, scope_note = top_observation
     pct = int(round(util_f * 100))
@@ -2252,7 +2263,10 @@ PY
 # Side effect: the one-shot transition log above.
 usage_gate_open() {
     local status
-    status=$(usage_gate_status "${FLEET_USAGE_RUNTIME:-all}")
+    status=$(usage_gate_status shared) || status="closed:GitHub quota evaluator failed"
+    if [[ "$status" == open* && "${FLEET_RUNTIMES:-claude}" != *codex* ]]; then
+        status=$(usage_gate_status claude)
+    fi
     log_gate_transition fleet "$status" "usage gate" "deferring all dispatches" "resuming dispatch"
     [[ "$status" != closed:* ]]
 }
@@ -4273,6 +4287,7 @@ PY
 }
 
 main() {
+    local auth_alert
     # Preserved for the self-reload exec so a reloaded daemon keeps the
     # arguments it was launched with. The daemon boot path passes none; the
     # `${x[@]+...}` guard is what makes expanding the empty array safe.
@@ -4314,15 +4329,27 @@ main() {
             break
         fi
 
-        # GitHub App token: guarded per-tick refresh so this
-        # long-lived daemon's gh calls stay authenticated past the
-        # installation token's 1h expiry. Cache makes this a cheap file read
-        # on all but the ~once-per-hour re-mint tick. Never export
-        # GH_TOKEN="" — that would defeat gh's keychain fallback on the
-        # unconfigured path.
-        _gh_app_token="$(fleet-gh-token 2>/dev/null || true)"
-        [[ -n "$_gh_app_token" ]] && export GH_TOKEN="$_gh_app_token"
-        seed_tmux_gh_token "$_gh_app_token"
+        if ! fleet_select_github_identity app; then
+            GITHUB_APP_AUTH_FAILURES=$((GITHUB_APP_AUTH_FAILURES + 1))
+            if (( GITHUB_APP_AUTH_FAILURES == 1 )); then
+                log "GitHub App authentication unavailable; skipping tick"
+            fi
+            if (( GITHUB_APP_AUTH_FAILURES >= 3 )); then
+                auth_alert="${FLEET_ALERTS_DIR:-$HOME/.fleet/alerts}/dispatcher-app-auth"
+                mkdir -p "$(dirname "$auth_alert")" 2>/dev/null || true
+                printf 'GitHub App authentication unavailable for %s consecutive ticks\n' \
+                    "$GITHUB_APP_AUTH_FAILURES" > "$auth_alert" 2>/dev/null || true
+            fi
+            sleep "$POLL_INTERVAL_SECONDS"
+            continue
+        fi
+        if (( GITHUB_APP_AUTH_FAILURES > 0 )); then
+            log "GitHub App authentication restored"
+            rm -f "${FLEET_ALERTS_DIR:-$HOME/.fleet/alerts}/dispatcher-app-auth" \
+                2>/dev/null || true
+            GITHUB_APP_AUTH_FAILURES=0
+        fi
+        clear_tmux_github_identity
 
         cleanup_stale_dispatches
 
@@ -4572,8 +4599,8 @@ case "${1:-}" in
         exit 0
         ;;
     --seed-tmux-token)
-        # Test/operator hook: mint once and run the per-tick tmux seed.
-        seed_tmux_gh_token "$(fleet-gh-token 2>/dev/null || true)"
+        # Test/operator hook: remove inherited GitHub credentials from tmux.
+        clear_tmux_github_identity
         exit 0
         ;;
     --rearm-merger-due)
@@ -4708,10 +4735,10 @@ case "${1:-}" in
         # optional model: `claude <model>` is what a Claude launch on that
         # model is gated on.
         case "${2:-all}" in
-            all|shared) usage_gate_status "${2:-all}" ;;
+            all|shared|daemon) usage_gate_status "${2:-all}" ;;
             claude|scoped) usage_gate_status "$2" "${3:-}" ;;
             quiet) quiet_gate_status ;;
-            *) echo "usage: fleet-dispatcher --gate-status [all|claude|shared|scoped|quiet] [<model>]" >&2; exit 2 ;;
+            *) echo "usage: fleet-dispatcher --gate-status [all|claude|shared|daemon|scoped|quiet] [<model>]" >&2; exit 2 ;;
         esac
         exit 0
         ;;

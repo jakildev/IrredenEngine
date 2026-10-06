@@ -65,7 +65,7 @@ per_timeout=""
 
 # `env -u` arguments naming the clone roots and every FLEET_* variable the
 # dispatch wrapper assigns.
-scrub_args=(-u FLEET_ENGINE_ROOT -u FLEET_GAME_ROOT)
+scrub_args=(-u FLEET_ENGINE_ROOT -u FLEET_GAME_ROOT -u FLEET_GH_IDENTITY)
 dispatch_wrap="$TESTS_DIR/../fleet-dispatch-wrap"
 if [[ -f "$dispatch_wrap" ]]; then
     while IFS= read -r scrub_name; do

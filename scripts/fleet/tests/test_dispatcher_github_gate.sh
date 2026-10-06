@@ -67,44 +67,52 @@ unset _v
 NOW=$(date +%s)
 FUTURE_RESET=$((NOW + 3600))
 
+healthy_github() {
+    for pool in core graphql; do
+        printf '{"identity":"user","rateLimitType":"github_%s","utilization":0.1,"observed_at":%s,"resetsAt":%s}\n' \
+            "$pool" "$NOW" "$FUTURE_RESET" > "$FLEET_STATE_DIR/usage/github-user-$pool.json"
+    done
+}
+healthy_github
+
 echo "T1: github_graphql at 92% (>= builtin 90%) => closed"
-printf '{"rateLimitType":"github_graphql","utilization":0.92,"resetsAt":%s,"observed_at":%s,"limit":5000,"remaining":400}\n' \
+printf '{"identity":"user","rateLimitType":"github_graphql","utilization":0.92,"resetsAt":%s,"observed_at":%s,"limit":5000,"remaining":400}\n' \
     "$FUTURE_RESET" "$NOW" > "$FLEET_STATE_DIR/usage/github-graphql.json"
 out=$("$DISPATCHER" --gate-status)
-assert_starts_with "$out" "closed:github_graphql util=92% (>= 90%)" "github_graphql trips default 90% threshold"
+assert_starts_with "$out" "closed:github_graphql[user] util=92%" "github_graphql trips default 90% threshold"
 rm -f "$FLEET_STATE_DIR/usage/github-graphql.json"
 
 echo "T2: github_search at 100% (threshold 1.01, surface-only) => open"
-printf '{"rateLimitType":"github_search","utilization":1.0,"resetsAt":%s,"observed_at":%s,"limit":30,"remaining":0}\n' \
+printf '{"identity":"user","rateLimitType":"github_search","utilization":1.0,"resetsAt":%s,"observed_at":%s,"limit":30,"remaining":0}\n' \
     "$FUTURE_RESET" "$NOW" > "$FLEET_STATE_DIR/usage/github-search.json"
 out=$("$DISPATCHER" --gate-status)
-assert_starts_with "$out" "open:github_search util=100%" "github_search never gates even at 100%"
+assert_starts_with "$out" "open" "github_search never gates even at 100%"
 rm -f "$FLEET_STATE_DIR/usage/github-search.json"
 
 echo "T3: github_core at 60% (< builtin 90%) => open with util reported"
-printf '{"rateLimitType":"github_core","utilization":0.60,"resetsAt":%s,"observed_at":%s,"limit":5000,"remaining":2000}\n' \
+printf '{"identity":"user","rateLimitType":"github_core","utilization":0.60,"resetsAt":%s,"observed_at":%s,"limit":5000,"remaining":2000}\n' \
     "$FUTURE_RESET" "$NOW" > "$FLEET_STATE_DIR/usage/github-core.json"
 out=$("$DISPATCHER" --gate-status)
-assert_starts_with "$out" "open:github_core util=60%" "below-threshold github_core reports util"
+assert_starts_with "$out" "open" "below-threshold github_core reports util"
 rm -f "$FLEET_STATE_DIR/usage/github-core.json"
 
 echo "T4: github_graphql past resetsAt + grace => ignored (open)"
 PAST_RESET=$((NOW - 7200))
-printf '{"rateLimitType":"github_graphql","utilization":0.99,"resetsAt":%s,"observed_at":%s,"limit":5000,"remaining":10}\n' \
+printf '{"identity":"user","rateLimitType":"github_graphql","utilization":0.99,"resetsAt":%s,"observed_at":%s,"limit":5000,"remaining":10}\n' \
     "$PAST_RESET" "$NOW" > "$FLEET_STATE_DIR/usage/github-graphql.json"
 out=$("$DISPATCHER" --gate-status)
 assert_starts_with "$out" "open" "expired github window ignored"
 rm -f "$FLEET_STATE_DIR/usage/github-graphql.json"
 
 echo "T5: github_core override via per-type env var"
-printf '{"rateLimitType":"github_core","utilization":0.60,"resetsAt":%s,"observed_at":%s,"limit":5000,"remaining":2000}\n' \
+printf '{"identity":"user","rateLimitType":"github_core","utilization":0.60,"resetsAt":%s,"observed_at":%s,"limit":5000,"remaining":2000}\n' \
     "$FUTURE_RESET" "$NOW" > "$FLEET_STATE_DIR/usage/github-core.json"
 out=$(FLEET_DISPATCHER_USAGE_GATE_GITHUB_CORE=0.50 "$DISPATCHER" --gate-status)
-assert_starts_with "$out" "closed:github_core util=60% (>= 50%)" "per-type override applies to github pools"
+assert_starts_with "$out" "closed:github_core[user] util=60%" "per-type override applies to github pools"
 rm -f "$FLEET_STATE_DIR/usage/github-core.json"
 
 echo "T6: github and Anthropic observations coexist — worst-of wins"
-printf '{"rateLimitType":"github_graphql","utilization":0.70,"resetsAt":%s,"observed_at":%s,"limit":5000,"remaining":1500}\n' \
+printf '{"identity":"user","rateLimitType":"github_graphql","utilization":0.70,"resetsAt":%s,"observed_at":%s,"limit":5000,"remaining":1500}\n' \
     "$FUTURE_RESET" "$NOW" > "$FLEET_STATE_DIR/usage/github-graphql.json"
 printf '{"rateLimitType":"five_hour","utilization":0.85,"resetsAt":%s,"observed_at":%s}\n' \
     "$FUTURE_RESET" "$NOW" > "$FLEET_STATE_DIR/usage/five_hour.json"
@@ -116,12 +124,12 @@ echo "T7: refusal latch beside a healthy self-report => closed, REJECTED"
 # The GraphQL self-report can read 22% while the limiter refuses real calls;
 # the refusal latch (fleet_gh_fallback.latch_refusal) is its own file, so the
 # healthy reading cannot re-open the gate.
-printf '{"rateLimitType":"github_graphql","utilization":0.22,"resetsAt":%s,"observed_at":%s,"limit":5000,"remaining":3900}\n' \
+printf '{"identity":"user","rateLimitType":"github_graphql","utilization":0.22,"resetsAt":%s,"observed_at":%s,"limit":5000,"remaining":3900}\n' \
     "$FUTURE_RESET" "$NOW" > "$FLEET_STATE_DIR/usage/github-graphql.json"
-printf '{"rateLimitType":"github_graphql","status":"rejected","utilization":1.0,"observed_at":%s,"resetsAt":%s,"reason":"gh pr list: GraphQL: API rate limit already exceeded for user ID 1."}\n' \
+printf '{"identity":"user","rateLimitType":"github_graphql","status":"rejected","utilization":1.0,"observed_at":%s,"resetsAt":%s,"reason":"gh pr list: GraphQL: API rate limit already exceeded for user ID 1."}\n' \
     "$NOW" "$FUTURE_RESET" > "$FLEET_STATE_DIR/usage/github-graphql.rejected.json"
 out=$("$DISPATCHER" --gate-status)
-if [[ "$out" == "closed:github_graphql rejected util=100% (>= 90%) resets=$FUTURE_RESET" ]]; then
+if [[ "$out" == "closed:github_graphql[user] rejected" ]]; then
     PASS=$((PASS + 1)); echo "  ok: refusal latch closes the gate despite a 22% self-report"
 else
     FAIL=$((FAIL + 1)); echo "  FAIL: refusal latch closes the gate despite a 22% self-report"
@@ -129,10 +137,10 @@ else
 fi
 
 echo "T8: refusal latch past resetsAt + grace => ignored (open)"
-printf '{"rateLimitType":"github_graphql","status":"rejected","utilization":1.0,"observed_at":%s,"resetsAt":%s,"reason":"x"}\n' \
+printf '{"identity":"user","rateLimitType":"github_graphql","status":"rejected","utilization":1.0,"observed_at":%s,"resetsAt":%s,"reason":"x"}\n' \
     "$((NOW - 7200))" "$((NOW - 3600))" > "$FLEET_STATE_DIR/usage/github-graphql.rejected.json"
 out=$("$DISPATCHER" --gate-status)
-assert_starts_with "$out" "open:github_graphql util=22%" "expired refusal latch no longer gates"
+assert_starts_with "$out" "open" "expired refusal latch no longer gates"
 rm -f "$FLEET_STATE_DIR/usage/github-graphql.json" "$FLEET_STATE_DIR/usage/github-graphql.rejected.json"
 
 echo

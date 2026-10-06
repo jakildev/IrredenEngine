@@ -46,6 +46,8 @@ if (( $# > 0 )); then
     exit 2
 fi
 
+[[ "${FLEET_GH_IDENTITY:-}" == user ]] && exit 0
+
 CONF="${FLEET_UP_CONF:-$HOME/.fleet/fleet-up.conf}"
 if [[ -f "$CONF" ]]; then
     # shellcheck source=/dev/null

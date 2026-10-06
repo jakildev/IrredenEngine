@@ -16,7 +16,7 @@
 #       POST, removing an absent label is a no-op
 #   T4  a --jq list whose first page is not the whole result fails closed;
 #       a REST failure surfaces its own error
-#   T5  a refusal latches github-graphql.rejected.json for the usage gate;
+#   T5  a refusal latches github-user-graphql.rejected.json for the usage gate;
 #       a non-refusal failure latches nothing and replays gh verbatim
 #   T6  the fallback still runs when a timeout runner wraps gh
 
@@ -64,7 +64,7 @@ export PATH="$BIN:$PATH"
 
 export FLEET_STATE_DIR="$TMPROOT/state"
 USAGE="$FLEET_STATE_DIR/usage"
-LATCH="$USAGE/github-graphql.rejected.json"
+LATCH="$USAGE/github-user-graphql.rejected.json"
 export GH_STUB_STATE="$TMPROOT/stub-state.json"
 export GH_STUB_LOG="$TMPROOT/stub.log"
 export GH_STUB_MISSES="$TMPROOT/stub-misses"
@@ -301,15 +301,17 @@ assert_eq "$(head -1 "$OUT/latch-check")" "github_graphql rejected 1.0 fallback-
 assert_eq "$(tail -1 "$OUT/latch-check")" "gh issue view: $REFUSAL" "latch reason names the call and the refusal"
 cp "$SEED" "$GH_STUB_STATE"
 mkdir -p "$USAGE"
-printf '{"rateLimitType":"github_graphql","utilization":0.22,"resetsAt":%s,"observed_at":%s,"limit":5000,"remaining":3900}\n' \
-    "$FUTURE" "$NOW" > "$USAGE/github-graphql.json"
+printf '{"identity":"user","rateLimitType":"github_graphql","utilization":0.22,"resetsAt":%s,"observed_at":%s,"limit":5000,"remaining":3900}\n' \
+    "$FUTURE" "$NOW" > "$USAGE/github-user-graphql.json"
 export GH_STUB_THROTTLE=1
 gh pr list --json number > /dev/null 2>&1 || true
 unset GH_STUB_THROTTLE
 assert_eq "$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["resetsAt"])' "$LATCH")" "$FUTURE" \
     "sampled future reset: latch carries it"
 if [[ -x "$DISPATCHER" ]]; then
-    assert_eq "$("$DISPATCHER" --gate-status)" "closed:github_graphql rejected util=100% (>= 90%) resets=$FUTURE" \
+    printf '{"identity":"user","rateLimitType":"github_core","utilization":0.1,"resetsAt":%s,"observed_at":%s}\n' \
+        "$FUTURE" "$NOW" > "$USAGE/github-user-core.json"
+    assert_eq "$("$DISPATCHER" --gate-status)" "closed:github_graphql[user] rejected" \
         "dispatcher gate closes on the shim's latch despite a 22% self-report"
 fi
 arm gql 0 pr view 131 --json number

@@ -1543,15 +1543,8 @@ fi
 # GitHub App token plumbing
 # ----------------------------------------------------------------------
 #
-# Mint (or reuse the cached) installation token once, here, so both the
-# scout daemon below (which inherits this process's env via nohup) and the
-# tmux server env seed further down (which every current and future
-# split-window pane inherits) start from the same authenticated identity.
-# Guarded — an empty result (FLEET_GH_APP_* unconfigured) must never export
-# GH_TOKEN="", which would defeat gh's keychain fallback. $_gh_app_token is
-# kept (not unset) so the tmux seed below can distinguish "no App configured"
-# from "GH_TOKEN happened to already be set in this shell" when deciding
-# whether to evict a stale token from the tmux server's persistent env.
+# Daemons inherit the App credential. Pane launch selects user auth explicitly;
+# neither token belongs in the tmux server's persistent global environment.
 gh_token_cmd=""
 if command -v fleet-gh-token >/dev/null 2>&1; then
     gh_token_cmd="fleet-gh-token"
@@ -1560,8 +1553,8 @@ elif [[ -x "$ENGINE/scripts/fleet/fleet-gh-token" ]]; then
 fi
 _gh_app_token=""
 if [[ -n "$gh_token_cmd" ]]; then
-    _gh_app_token="$("$gh_token_cmd" 2>/dev/null || true)"
-    [[ -n "$_gh_app_token" ]] && export GH_TOKEN="$_gh_app_token"
+    _gh_app_token="$(FLEET_GH_IDENTITY=app "$gh_token_cmd" 2>/dev/null || true)"
+    [[ -n "$_gh_app_token" ]] && export GH_TOKEN="$_gh_app_token" FLEET_GH_IDENTITY=app
 fi
 
 # ----------------------------------------------------------------------
@@ -2143,12 +2136,8 @@ TRANSIENT_PANE_CMD='exec $SHELL -i'
 #   FLEET_FABLE_FALLBACK — consumed by MANUALLY-run fleet-babysit worker
 #     iterations (stream_claude); dispatched runs get the chain as an
 #     explicit fleet-dispatch-wrap argument.
-#   GH_TOKEN — keyed off $_gh_app_token (whether THIS run's fleet-gh-token
-#     mint produced a token), not the generic $GH_TOKEN truthiness, so an
-#     operator's own GH_TOKEN isn't mistaken for App configuration. On the
-#     unconfigured path, evict any App token a PRIOR boot left in the
-#     server's persistent env, or a stale bot-identity token outlives the
-#     operator un-configuring the App.
+#   GH_TOKEN / GITHUB_TOKEN / FLEET_GH_IDENTITY — removed, so no credential
+#     or daemon selector survives into a newly split pane.
 #   FLEET_GH_* — GitHub CLI accounting (resolve_gh_accounting). Never PATH
 #     and never FLEET_GH_ACTOR: a pane's ~/.bashrc re-orders PATH anyway, and
 #     a role's identity comes from FLEET_ROLE. fleet-down's
@@ -2160,11 +2149,9 @@ seed_tmux_pane_env() {
     local name
     tmux set-environment -g IR_FLEET_WORKERS "$IR_FLEET_WORKERS"
     tmux set-environment -g FLEET_FABLE_FALLBACK "$FLEET_FABLE_FALLBACK"
-    if [[ -n "$_gh_app_token" ]]; then
-        tmux set-environment -g GH_TOKEN "$_gh_app_token"
-    else
-        tmux set-environment -g -u GH_TOKEN
-    fi
+    for name in GH_TOKEN GITHUB_TOKEN FLEET_GH_IDENTITY; do
+        tmux set-environment -g -u "$name"
+    done
     for name in FLEET_GH_ACCOUNTING FLEET_GH_REAL FLEET_GH_PYTHON FLEET_GH_LAUNCHER \
                 FLEET_GH_EVENT_ROOT \
                 FLEET_UNATTENDED FLEET_RUN_DEFAULT_TIMEOUT FLEET_WINDOW_MODE; do
