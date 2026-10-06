@@ -39,19 +39,22 @@ whoever is using the host:
 | Mode | What GLFW does | Use |
 |---|---|---|
 | `normal` | shown, focused, placed on the preferred monitor | a human at the keyboard |
-| `background` | shown, `GLFW_FOCUSED` / `GLFW_FOCUS_ON_SHOW` off; lands behind the active window | watchdog (`--timeout`) runs a human may glance at |
+| `background` | shown, `GLFW_FOCUSED` / `GLFW_FOCUS_ON_SHOW` off; lands behind the active window | every unattended non-capture run (watchdog runs, probes, GUI sessions) a human may glance at |
 | `hidden` | `GLFW_VISIBLE` off — never mapped; context, framebuffer, synthetic input and screenshot readback all work | a hidden run that must keep the real swapchain |
 | `offscreen` | `hidden` at the window level; the render backend renders the final composite into an engine-owned screen target and never presents | capture runs (`--auto-screenshot` / `--auto-record` / `--auto-profile`) |
 
 Resolution order is config `window_mode` < the `IR_WINDOW_MODE` env var <
 `--window-mode` (engine-common arg; `IRArgs::Parser::windowMode()`). The
-launcher fills the env rung only for a launch marked unattended
-(`FLEET_UNATTENDED=1`, which `fleet-run` exports before exec'ing `ir-run` and
-`fleet-up` exports to every pane), by the run's shape: capture verb → offscreen,
-watchdog → background, plain exec untouched; `FLEET_WINDOW_MODE` replaces
-both defaults. No demo or skill names the flag, and a bare `ir-run` in a
-human's shell carries no marker, so it shows its window with no flags.
-`--window-mode normal` after the executable watches a fleet-shaped run.
+launcher fills the env rung only for an unattended launch — marked
+`FLEET_UNATTENDED=1` (which `fleet-run` exports before exec'ing `ir-run` and
+`fleet-up` exports to every pane) or run from an agent harness (Claude Code's
+`CLAUDECODE` / `AI_AGENT`, Codex CLI's `CODEX_SANDBOX` / `CODEX_THREAD_ID`) —
+by the run's shape: capture verb → offscreen, anything else (a watchdog run
+or a plain exec such as a probe or a GUI session) → background;
+`FLEET_WINDOW_MODE` replaces every default. No demo or skill names the flag,
+and a bare `ir-run` in a human's own shell carries no marker, so it shows its
+window with no flags. `--window-mode normal` after the executable watches an
+unattended-shaped run, from a harness too.
 
 `offscreen` exists because a hidden or occluded surface is still the OS's:
 Metal vends drawables for it on the compositor's schedule (an occluded window
