@@ -5,6 +5,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -38,6 +39,7 @@ class Routing(unittest.TestCase):
                         GH_TOKEN="ghs_synthetic-inherited", GITHUB_TOKEN="ghs_synthetic-other",
                         PATH=str(self.bin) + os.pathsep + self.env["PATH"])
         self.stub("fleet-gh-token", "printf 'ghs_synthetic-fresh\\n'")
+        self.env["FLEET_GH_TOKEN_BIN"] = str(self.bin / "fleet-gh-token")
         self.stub("gh", '''case "${GH_TOKEN:-${GITHUB_TOKEN:-}}" in
   ghs_*) echo app ;; *) echo user ;;
 esac''')
@@ -102,6 +104,26 @@ printf '%s\\n' "$FLEET_DISPATCH_ID"
                           FLEET_GH_IDENTITY="user")
         self.assertEqual(user.returncode, 0, user.stderr)
         self.assertEqual(user.stdout.strip(), "user")
+
+    def test_app_minter_defaults_to_sibling_outside_path(self):
+        lib = self.root / "lib"
+        lib.mkdir()
+        shutil.copy2(SCRIPTS / "fleet-common.sh", lib / "fleet-common.sh")
+        token_bin = lib / "fleet-gh-token"
+        token_bin.write_text("#!/usr/bin/env bash\nprintf 'ghs_sibling\\n'\n")
+        token_bin.chmod(0o755)
+        env = dict(self.env)
+        env.pop("FLEET_GH_TOKEN_BIN")
+        env["PATH"] = os.pathsep.join(p for p in env["PATH"].split(os.pathsep)
+                                      if p != str(self.bin))
+        command = ('source "$COMMON"; fleet_select_github_identity app; '
+                   'printf "%s\\n" "$GH_TOKEN"')
+        proc = subprocess.run(
+            ["bash", "-c", command],
+            env={**env, "COMMON": str(lib / "fleet-common.sh")}, capture_output=True,
+            text=True, timeout=30, cwd=self.root)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(proc.stdout.strip(), "ghs_sibling")
 
     def test_app_wall_does_not_close_user_gate(self):
         for pool in ("core", "graphql"):

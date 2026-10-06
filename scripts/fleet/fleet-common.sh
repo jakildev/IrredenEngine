@@ -15,14 +15,15 @@
 # Authentication routing is independent of the dispatch/reservation identity
 # used by fleet_claim_liveness.py. Never put a credential in a pane record.
 fleet_select_github_identity() {
-    local identity="${1:?missing GitHub identity}" token
+    local identity="${1:?missing GitHub identity}" token token_bin
     case "$identity" in
         user)
             unset GH_TOKEN GITHUB_TOKEN
             export FLEET_GH_IDENTITY=user
             ;;
         app)
-            token=$(FLEET_GH_IDENTITY=app fleet-gh-token) || return 1
+            token_bin="${FLEET_GH_TOKEN_BIN:-$(dirname "${BASH_SOURCE[0]}")/fleet-gh-token}"
+            token=$(FLEET_GH_IDENTITY=app "$token_bin") || return 1
             if [[ -n "$token" ]]; then
                 export GH_TOKEN="$token" FLEET_GH_IDENTITY=app
             else
