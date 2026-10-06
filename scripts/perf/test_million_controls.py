@@ -172,6 +172,17 @@ class SummaryTest(unittest.TestCase):
             summarize(output, {name: []})
             self.assertIn("| 30.00 | — | 34.00–34.00 |", (output / "summary.md").read_text())
 
+    def test_one_missing_series_does_not_disappear_from_pooled_tail(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            output = Path(temporary)
+            name = "release-profiling-off-yaw0"
+            write_round(output, name, 1, 30.0)
+            write_round(output, name, 2, 80.0, witnessed=False)
+            summarize(output, {name: []})
+            row = (output / "summary.md").read_text().splitlines()[4]
+            self.assertIn("| 30.00 / 80.00 | — | 34.00–84.00 |", row)
+            self.assertNotIn("32.00 (3)", row)
+
 
 class FingerprintTest(unittest.TestCase):
     def verify(self, **second):
