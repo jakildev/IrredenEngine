@@ -19,11 +19,18 @@ The accompanying comments distinguish latest resolved invocation from frame tota
 and absent samples from zero duration. The [timing contract](gpu-stage-timing-cost-model.md)
 remains the canonical interpretation of those rows.
 
+## Implemented slice: complete pooled profiling evidence
+
+The million-control summary reports pooled steady mean and tail percentiles only
+when every included report supplies a valid steady series. A missing series marks
+that statistic unavailable instead of silently excluding a potentially slower run.
+Complete reports retain the same per-report warmup exclusion and pooling. A
+mixed complete/missing regression test fails on the previous implementation.
+
 ## Next cleanup slices
 
 | Priority | Finding | Bounded change and required proof |
 |---|---|---|
-| 1 | Million summary silently omits missing steady series | Require complete series before reporting pooled steady mean/tails; test a mixed complete/missing pair and retain per-report warmup slicing. |
 | 1 | Invalid scratch source and its quality-tool exception | Delete `systems/copilot_nonesense.cpp` and its explicit exclusion; it defines no usable engine API. Run format/header checks. |
 | 2 | Repeated per-axis occupied-cell decoding in five shader pairs | Share integer group flattening, active-count and cell decoding; keep bindings and distinct face spaces explicit. Prove finalize/list coverage and unchanged AO/shadow/lit captures on both backends. |
 | 2 | Metal framebuffer readback repeats `finish()` | Reuse the identical submission/wait/accounting sequence; preserve readback validation and keep `present()` separate. Test frame accounting and screenshot bytes. |

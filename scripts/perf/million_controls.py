@@ -145,11 +145,12 @@ def summarize(output: Path, selected: dict[str, list[str]]) -> None:
             if metric.name == "envelope"
         ]
         ticks = [report.update_ticks_avg for report in reports]
-        steady = [ms for r in reports for ms in r.steady_frame_times_ms()]
+        steady_series = [report.steady_frame_times_ms() for report in reports]
+        steady = [ms for series in steady_series for ms in series]
         steady_text = (
             f"{statistics.mean(steady):.2f} / {percentile(steady, 95):.2f} / "
             f"{percentile(steady, 99):.2f} ({len(steady)})"
-            if steady
+            if all(steady_series)
             else "—"
         )
         witnesses = [r.witness for r in reports]
