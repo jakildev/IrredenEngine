@@ -66,3 +66,11 @@ in that merged master renderer and are not introduced by either cleanup PR.
 [Attribution hashes and comparisons](attribution/captures.json) cover all 17
 frames. The three failing full-frame pairs are retained in `attribution/`.
 The committed cleanup sources were restored after the experiment.
+
+Follow-up hypotheses, not correctness verdicts: the floor brightening is
+consistent with the merged finite-box silhouette-miss recovery. Compare strict
+and recovered ray/slab hits and normals at the two affected samples, with
+shadow and no-AO controls. The fog change is exactly the explored-state gray
+mapping (`230 × 0.4 = 92`); inspect the selected carrier, decoded surface and
+rounded world column against the authored visible-disc radius before attributing
+it to lighting or refreshing its reference.
