@@ -23,17 +23,25 @@ template<class T> struct V2 {
  template<class U> explicit V2(V2<U> v):x(T(v.x)),y(T(v.y)){}
  V2 operator+(V2 b)const{return {x+b.x,y+b.y};}
  V2 operator-(V2 b)const{return {x-b.x,y-b.y};}
+ V2 operator*(T b)const{return {x*b,y*b};}
 };
 template<class T> struct V3 {
  T x,y,z; V3():x(0),y(0),z(0){} explicit V3(T a):x(a),y(a),z(a){}
  V3(T a,T b,T c):x(a),y(b),z(c){}
  template<class U> explicit V3(V3<U> v):x(T(v.x)),y(T(v.y)),z(T(v.z)){}
  V3 operator+(V3 b)const{return {x+b.x,y+b.y,z+b.z};}
+ V3 operator-(V3 b)const{return {x-b.x,y-b.y,z-b.z};}
  V3 operator-(T b)const{return {x-b,y-b,z-b};}
  V3 operator*(T b)const{return {x*b,y*b,z*b};}
+ V3 operator*(V3 b)const{return {x*b.x,y*b.y,z*b.z};}
  V3 operator/(T b)const{return {x/b,y/b,z/b};}
+ V3 operator/(V3 b)const{return {x/b.x,y/b.y,z/b.z};}
+ V3 operator-()const{return {-x,-y,-z};}
 };
 using vec2=V2<float>; using ivec2=V2<int>; using vec3=V3<float>; using ivec3=V3<int>;
+float dot(vec3 a,vec3 b){return a.x*b.x+a.y*b.y+a.z*b.z;}
+vec3 clamp(vec3 v,vec3 lo,vec3 hi){return {
+ std::clamp(v.x,lo.x,hi.x),std::clamp(v.y,lo.y,hi.y),std::clamp(v.z,lo.z,hi.z)};}
 struct vec4 {vec3 xyz; float w=1;};
 struct ShapeDescriptor {vec4 worldPosition,params,rotation; uint shapeType=0,flags=0;};
 struct ShapeProjectionData {
@@ -51,7 +59,7 @@ ivec2 trixelFrameOffset(ivec2 origin,vec2 camera,ivec2 options){
 """
 CHECKS = r"""
 int main(){
- int hits=0,misses=0;
+ int hits=0,misses=0,recoveredHits=0;
  for(int smooth:{0,1}) for(int density:{1,2,4,8})
  for(int step=0;step<32;++step) for(float phase:{-.37f,.19f}){
   ShapeProjectionData f;
@@ -77,8 +85,10 @@ int main(){
    vec2 pixel{float(51+floor(f.frameCanvasOffset.x*density)+ox+x+.25),
               float(83+floor(f.frameCanvasOffset.y*density)+oy+y-.125)};
    vec3 position{999},normal{999};
-   bool actual=shapeBoxReceiver(shape,f,pixel,position,normal);
-   if(!smooth && density==1){if(actual)return 1;continue;}
+   bool actual=shapeBoxReceiver(shape,f,pixel,false,position,normal);
+   vec3 recoveredPosition{999},recoveredNormal{999};
+   bool recovered=shapeBoxReceiver(shape,f,pixel,true,recoveredPosition,recoveredNormal);
+   if(!smooth && density==1){if(actual||recovered)return 1;continue;}
    double ix=x+.25,iy=y-.125;
    double vx0=-ix/2-iy/6,vy0=ix/2-iy/6;
    double origin[]={c*vx0-s*vy0,s*vx0+c*vy0,iy/3};
@@ -87,30 +97,87 @@ int main(){
                   (shape.params.xyz.y-1)*density*.5+.5,
                   (shape.params.xyz.z-1)*density*.5+.5};
    Hit expected=intersect(origin,direction,half);
-   if(actual!=expected.valid)return 2;
-   if(!actual){++misses;continue;}++hits;
+   if(actual!=expected.valid||!recovered)return 2;
+   if(!actual){
+    ++misses;++recoveredHits;
+    float p[]={recoveredPosition.x,recoveredPosition.y,recoveredPosition.z};
+    float n[]={recoveredNormal.x,recoveredNormal.y,recoveredNormal.z};
+    double ctr[]={cx,cy,cz};
+    int boundaries=0,normalAxes=0;
+    for(int a=0;a<3;++a){
+     double local=(p[a]-ctr[a])*density;
+     if(abs(local)>half[a]+1.e-4)return 12;
+     boundaries+=abs(abs(local)-half[a])<1.e-4;
+     normalAxes+=abs(n[a])==1.f;
+     if(n[a]!=-1.f&&n[a]!=0.f&&n[a]!=1.f)return 13;
+    }
+    if(!boundaries||normalAxes!=1)return 14;
+    continue;
+   }
+   ++hits;
    float p[]={position.x,position.y,position.z},n[]={normal.x,normal.y,normal.z};
+   float rp[]={recoveredPosition.x,recoveredPosition.y,recoveredPosition.z};
+   float rn[]={recoveredNormal.x,recoveredNormal.y,recoveredNormal.z};
    double ctr[]={cx,cy,cz};
    for(int a=0;a<3;++a){
     double wanted=ctr[a]+(origin[a]+direction[a]*expected.entry)/density;
     if(abs(p[a]-wanted)>1.e-4)return 3;
     double wn=expected.face/2==a?(expected.face%2?1:-1):0;
     if(n[a]!=wn)return 4;
+    if(rp[a]!=p[a]||rn[a]!=n[a])return 15;
    }
   }
  }
  ShapeProjectionData f;f.voxelRenderOptions={1,3};f.smoothYawEnabled=1;
  ShapeDescriptor shape;shape.params.xyz={5,5,5};vec3 p,n;
- if(!shapeBoxReceiver(shape,f,{0,0},p,n))return 5;
- shape.flags=1;if(shapeBoxReceiver(shape,f,{0,0},p,n))return 6;shape.flags=0;
- shape.shapeType=1;if(shapeBoxReceiver(shape,f,{0,0},p,n))return 7;shape.shapeType=0;
- shape.rotation.w=.5;if(shapeBoxReceiver(shape,f,{0,0},p,n))return 8;shape.rotation.w=1;
+ if(!shapeBoxReceiver(shape,f,{0,0},false,p,n))return 5;
+ shape.flags=1;if(shapeBoxReceiver(shape,f,{0,0},true,p,n))return 6;shape.flags=0;
+ shape.shapeType=1;if(shapeBoxReceiver(shape,f,{0,0},true,p,n))return 7;shape.shapeType=0;
+ shape.rotation.w=.5;if(shapeBoxReceiver(shape,f,{0,0},true,p,n))return 8;shape.rotation.w=1;
  f.voxelRenderOptions={1,1};f.latticeShapes=1;
- if(shapeBoxReceiver(shape,f,{0,0},p,n))return 9;
+ if(shapeBoxReceiver(shape,f,{0,0},true,p,n))return 9;
  f.voxelRenderOptions={1,3};f.smoothYawEnabled=0;f.residualYaw=.1;
- if(shapeBoxReceiver(shape,f,{0,0},p,n))return 10;
- if(!hits||!misses)return 11;
- printf("receiver_hits=%d misses=%d\n",hits,misses);return 0;
+ if(shapeBoxReceiver(shape,f,{0,0},true,p,n))return 10;
+ if(!hits||!misses||recoveredHits!=misses)return 11;
+ int nearbyMisses=0;double maxRecoveryShift=0;
+ for(vec3 dimensions:{vec3(64,1,1),vec3(1,1,32)}) for(int density:{1,4})
+ for(int step=0;step<32;++step){
+  f={};f.smoothYawEnabled=1;f.voxelRenderOptions={1,density};
+  f.visualYaw=float(step*acos(-1.0)/16.0);
+  shape={};shape.params.xyz=dimensions;
+  const double c=cos(f.visualYaw),s=sin(f.visualYaw);
+  double half[]={(dimensions.x-1)*density*.5+.5,
+                 (dimensions.y-1)*density*.5+.5,
+                 (dimensions.z-1)*density*.5+.5};
+  double direction[]={(c-s)/3,(s+c)/3,1.0/3};
+  auto query=[&](double ix,double iy){
+   double vx=-ix/2-iy/6,vy=ix/2-iy/6;
+   double origin[]={c*vx-s*vy,s*vx+c*vy,iy/3};
+   return intersect(origin,direction,half).valid;
+  };
+  int radius=int(2*(half[0]+half[1]+half[2]))+4;
+  for(int x=-radius;x<=radius;++x)for(int y=-radius;y<=radius;++y){
+   double ix=x+.25,iy=y-.125;
+   if(query(ix,iy))continue;
+   bool withinDilation=false;
+   for(int dx=0;dx<=2;++dx)for(int dy=0;dy<=3;++dy)
+    withinDilation|=(dx||dy)&&query(ix-dx,iy-dy);
+   if(!withinDilation)continue;
+   vec3 recoveredPosition,recoveredNormal;
+   if(!shapeBoxReceiver(shape,f,{float(ix),float(iy)},true,
+                        recoveredPosition,recoveredNormal))return 16;
+   double viewX=c*recoveredPosition.x*density+s*recoveredPosition.y*density;
+   double viewY=-s*recoveredPosition.x*density+c*recoveredPosition.y*density;
+   double recoveredX=-viewX+viewY;
+   double recoveredY=-viewX-viewY+2*recoveredPosition.z*density;
+   double shift=hypot(recoveredX-ix,recoveredY-iy);
+   if(shift>5.0)return 17;
+   maxRecoveryShift=max(maxRecoveryShift,shift);++nearbyMisses;
+  }
+ }
+ if(!nearbyMisses)return 18;
+ printf("receiver_hits=%d misses=%d recovered_hits=%d nearby_misses=%d max_shift=%.3f\n",
+        hits,misses,recoveredHits,nearbyMisses,maxRecoveryShift);return 0;
 }
 """
 
@@ -264,9 +331,9 @@ Checked<Tile> receiverTiles{{{0},{2}}}; Checked<int> receiverShapes{{11,22,33}};
 vec3 pos3D{7},normal{8}; bool finiteHit=true;
 float receiverFace=0;
 float encodeReceiverFace(vec3 n){return float(n.value);}
-vec2 lastQuery{0,0};
-bool shapeBoxReceiver(int shape,Frame,vec2 query,vec3& p,vec3& n){
- lastQuery=query;p.value=shape;n.value=-shape;return finiteHit;
+vec2 lastQuery{0,0};bool lastRecover=false;
+bool shapeBoxReceiver(int shape,Frame,vec2 query,bool recover,vec3& p,vec3& n){
+ lastQuery=query;lastRecover=recover;p.value=shape;n.value=-shape;return finiteHit;
 }
 """
             main = r"""
@@ -274,7 +341,7 @@ int main(){
  for(uint local=0;local<64;++local)for(uint face=0;face<3;++face)
  for(uint half=0;half<2;++half){
   receiverOwners.data[4]=((1u*64u+local)*3u+face)*2u+half;
-  run();if(pos3D.value!=33||normal.value!=-33||receiverFace!=-33)return 1;
+  run();if(lastRecover||pos3D.value!=33||normal.value!=-33||receiverFace!=-33)return 1;
  }
  for(int kind=0;kind<4;++kind){
   perAxisRoute=kind==0;receiverFrame.shapeCount=kind==1?0:3;
@@ -289,10 +356,10 @@ int main(){
  perAxisRoute=0;receiverFrame.shapeCount=3;finiteHit=true;
  receiverOwners.data[4]=384u;
  vec3 p{7},n{8};
- if(!selectedShapeBoxReceiver(pixel,size.x,vec2(1.25f,-.75f),p,n))return 5;
- if(lastQuery.x!=1.25f||lastQuery.y!=-.75f||p.value!=33||n.value!=-33)return 5;
+ if(!selectedShapeBoxReceiver(pixel,size.x,vec2(1.25f,-.75f),false,p,n))return 5;
+ if(lastQuery.x!=1.25f||lastQuery.y!=-.75f||lastRecover||p.value!=33||n.value!=-33)return 5;
  finiteHit=false;p.value=7;n.value=8;
- if(selectedShapeBoxReceiver(pixel,size.x,vec2(100.f,100.f),p,n))return 6;
+ if(selectedShapeBoxReceiver(pixel,size.x,vec2(100.f,100.f),false,p,n))return 6;
  if(p.value!=7||n.value!=8)return 6;
  return 0;
 }
@@ -315,7 +382,11 @@ int main(){
                 "lost_axis_gate": block.replace("perAxisRoute != 0", "false"),
                 "lost_axis_return": block.replace("        return;", ""),
                 "snapped_query": block.replace(
-                    "queryPixel, exactPosition", "vec2(ownerPixel), exactPosition"),
+                    "queryPixel, recoverMiss, exactPosition",
+                    "vec2(ownerPixel), recoverMiss, exactPosition"),
+                "sun_recovery_enabled": re.sub(
+                    r"(selectedShapeBoxReceiver\([^;]+?vec2\(pixel\),\s*)false,",
+                    r"\1true,", block, count=1),
                 "lost_finite_fallback": block.replace(
                     "if (!shapeBoxReceiver", "if (false && !shapeBoxReceiver"),
             }
@@ -383,6 +454,9 @@ int main(){
                 "lost_density": functions.replace("viewOffset.z) / float(density)",
                                                  "viewOffset.z) / 1.0"),
                 "lattice_accepted": functions.replace("projection.latticeShapes != 0", "false"),
+                "center_anchor": re.sub(
+                    r"vec2 anchorIso = vec2\([^;]+;",
+                    "vec2 anchorIso = vec2(0.0, 0.0);", functions, count=1),
             }
             for name, body in variants.items():
                 with (
@@ -401,7 +475,8 @@ int main(){
                         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
                         print(suffix, run.stdout.strip())
                     else:
-                        self.assertIn(run.returncode, (2, 3, 4, 9), name)
+                        self.assertIn(run.returncode,
+                                      (2, 3, 4, 9, 12, 13, 14, 15, 16, 17, 18), name)
 
 
 if __name__ == "__main__":

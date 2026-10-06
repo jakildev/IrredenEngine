@@ -31,7 +31,8 @@ inline float shapeCanvasIsoDepth(float3 position, ShapeProjectionData projection
 // Finite analytical geometry only: lattice, hollow and entity-rotated shapes
 // retain their sampled-cell receiver until their own finite query is available.
 inline bool shapeBoxReceiver(ShapeDescriptor shape, ShapeProjectionData projection,
-                      float2 canvasPixel, thread float3& position, thread float3& normal) {
+                      float2 canvasPixel, bool recoverMiss,
+                      thread float3& position, thread float3& normal) {
     bool smoothMode = projection.voxelRenderOptions.x != 0 &&
                       projection.voxelRenderOptions.y > 1;
     bool smoothYaw = projection.smoothYawEnabled != 0;
@@ -56,7 +57,54 @@ inline bool shapeBoxReceiver(ShapeDescriptor shape, ShapeProjectionData projecti
     float3 halfExtent = (shape.params.xyz - 1.0) * (0.5 * float(density)) + float3(0.5);
     float entry, exitDepth;
     if (!boxSurfaceIntervalYaw(relativeIso.x, relativeIso.y, halfExtent,
-                              yaw.x, yaw.y, entry, exitDepth, normal)) return false;
+                              yaw.x, yaw.y, entry, exitDepth, normal)) {
+        if (!recoverMiss) return false;
+
+        // An inset anchor keeps recovery local on elongated boxes while still
+        // guaranteeing that the anchor ray intersects the finite box.
+        float3 rayDirection = float3(yaw.x - yaw.y, yaw.x + yaw.y, 1.0) / 3.0;
+        float3 rayOrigin = float3(
+            -(yaw.x + yaw.y) * 0.5 * relativeIso.x -
+                (yaw.x - yaw.y) * relativeIso.y / 6.0,
+            (yaw.x - yaw.y) * 0.5 * relativeIso.x -
+                (yaw.x + yaw.y) * relativeIso.y / 6.0,
+            relativeIso.y / 3.0);
+        float3 weightedDirection = rayDirection / (halfExtent * halfExtent);
+        float nearestDepth = -dot(weightedDirection, rayOrigin) /
+                             dot(weightedDirection, rayDirection);
+        float inset = min(halfExtent.x, min(halfExtent.y, halfExtent.z));
+        float3 interiorHalfExtent = halfExtent - float3(inset);
+        float3 localAnchor = clamp(rayDirection * nearestDepth + rayOrigin,
+                                   -interiorHalfExtent, interiorHalfExtent);
+        float2 viewAnchor = float2(yaw.x * localAnchor.x + yaw.y * localAnchor.y,
+                                   -yaw.y * localAnchor.x + yaw.x * localAnchor.y);
+        float2 anchorIso = float2(-viewAnchor.x + viewAnchor.y,
+                                  -viewAnchor.x - viewAnchor.y + 2.0 * localAnchor.z);
+
+        float inside = 0.0;
+        float outside = 1.0;
+        float2 recoveredIso = anchorIso;
+        if (!boxSurfaceIntervalYaw(anchorIso.x, anchorIso.y, halfExtent,
+                                   yaw.x, yaw.y, entry, exitDepth, normal)) return false;
+        for (int iteration = 0; iteration < 12; ++iteration) {
+            float middle = 0.5 * (inside + outside);
+            float2 candidateIso = anchorIso + (relativeIso - anchorIso) * middle;
+            float candidateEntry, candidateExit;
+            float3 candidateNormal;
+            if (boxSurfaceIntervalYaw(candidateIso.x, candidateIso.y, halfExtent,
+                                      yaw.x, yaw.y, candidateEntry, candidateExit,
+                                      candidateNormal)) {
+                inside = middle;
+                recoveredIso = candidateIso;
+                entry = candidateEntry;
+                exitDepth = candidateExit;
+                normal = candidateNormal;
+            } else {
+                outside = middle;
+            }
+        }
+        relativeIso = recoveredIso;
+    }
     float3 viewOffset = isoPositionToPos3D(relativeIso, entry);
     position = center + float3(yaw.x * viewOffset.x - yaw.y * viewOffset.y,
                             yaw.y * viewOffset.x + yaw.x * viewOffset.y,

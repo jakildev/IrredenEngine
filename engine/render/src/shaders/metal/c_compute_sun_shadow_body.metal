@@ -137,6 +137,7 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
 #if IR_SHAPE_RECEIVER
     if (selectedShapeBoxReceiver(pixel, size.x, float2(pixel),
             receiverFrame, receiverShapes, receiverOwners, receiverTiles,
+            false,
             pos3D, normal)) {
         receiverFace = encodeReceiverFace(normal);
     }
