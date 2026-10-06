@@ -5,6 +5,10 @@ changed paths and other bottlenecks, consolidating logic and improving robustnes
 against measured costs and the visual controls. Keep the agreed work in this order. A diagnostic experiment is not an implemented
 fix, and a small native scene does not establish fleet-scale rendering throughput.
 
+The [rendering/profiling cleanup audit](render-profile-cleanup-audit.md) records
+the parallel audit findings and bounded follow-ups after the timing-control stack.
+Keep behavior-preserving consolidation separate from visual or scheduling fixes.
+
 ## Current follow-up: finite GRID face coverage
 
 The [cardinal gather follow-up](../pr-screenshots/codex/scatter-boundary-ownership/README.md)
