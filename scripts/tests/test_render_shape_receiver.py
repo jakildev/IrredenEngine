@@ -30,11 +30,18 @@ template<class T> struct V3 {
  V3(T a,T b,T c):x(a),y(b),z(c){}
  template<class U> explicit V3(V3<U> v):x(T(v.x)),y(T(v.y)),z(T(v.z)){}
  V3 operator+(V3 b)const{return {x+b.x,y+b.y,z+b.z};}
+ V3 operator-(V3 b)const{return {x-b.x,y-b.y,z-b.z};}
  V3 operator-(T b)const{return {x-b,y-b,z-b};}
  V3 operator*(T b)const{return {x*b,y*b,z*b};}
+ V3 operator*(V3 b)const{return {x*b.x,y*b.y,z*b.z};}
  V3 operator/(T b)const{return {x/b,y/b,z/b};}
+ V3 operator/(V3 b)const{return {x/b.x,y/b.y,z/b.z};}
+ V3 operator-()const{return {-x,-y,-z};}
 };
 using vec2=V2<float>; using ivec2=V2<int>; using vec3=V3<float>; using ivec3=V3<int>;
+float dot(vec3 a,vec3 b){return a.x*b.x+a.y*b.y+a.z*b.z;}
+vec3 clamp(vec3 v,vec3 lo,vec3 hi){return {
+ std::clamp(v.x,lo.x,hi.x),std::clamp(v.y,lo.y,hi.y),std::clamp(v.z,lo.z,hi.z)};}
 struct vec4 {vec3 xyz; float w=1;};
 struct ShapeDescriptor {vec4 worldPosition,params,rotation; uint shapeType=0,flags=0;};
 struct ShapeProjectionData {
@@ -132,7 +139,45 @@ int main(){
  f.voxelRenderOptions={1,3};f.smoothYawEnabled=0;f.residualYaw=.1;
  if(shapeBoxReceiver(shape,f,{0,0},true,p,n))return 10;
  if(!hits||!misses||recoveredHits!=misses)return 11;
- printf("receiver_hits=%d misses=%d recovered_hits=%d\n",hits,misses,recoveredHits);return 0;
+ int nearbyMisses=0;double maxRecoveryShift=0;
+ for(vec3 dimensions:{vec3(64,1,1),vec3(1,1,32)}) for(int density:{1,4})
+ for(int step=0;step<32;++step){
+  f={};f.smoothYawEnabled=1;f.voxelRenderOptions={1,density};
+  f.visualYaw=float(step*acos(-1.0)/16.0);
+  shape={};shape.params.xyz=dimensions;
+  const double c=cos(f.visualYaw),s=sin(f.visualYaw);
+  double half[]={(dimensions.x-1)*density*.5+.5,
+                 (dimensions.y-1)*density*.5+.5,
+                 (dimensions.z-1)*density*.5+.5};
+  double direction[]={(c-s)/3,(s+c)/3,1.0/3};
+  auto query=[&](double ix,double iy){
+   double vx=-ix/2-iy/6,vy=ix/2-iy/6;
+   double origin[]={c*vx-s*vy,s*vx+c*vy,iy/3};
+   return intersect(origin,direction,half).valid;
+  };
+  int radius=int(2*(half[0]+half[1]+half[2]))+4;
+  for(int x=-radius;x<=radius;++x)for(int y=-radius;y<=radius;++y){
+   double ix=x+.25,iy=y-.125;
+   if(query(ix,iy))continue;
+   bool withinDilation=false;
+   for(int dx=0;dx<=2;++dx)for(int dy=0;dy<=3;++dy)
+    withinDilation|=(dx||dy)&&query(ix-dx,iy-dy);
+   if(!withinDilation)continue;
+   vec3 recoveredPosition,recoveredNormal;
+   if(!shapeBoxReceiver(shape,f,{float(ix),float(iy)},true,
+                        recoveredPosition,recoveredNormal))return 16;
+   double viewX=c*recoveredPosition.x*density+s*recoveredPosition.y*density;
+   double viewY=-s*recoveredPosition.x*density+c*recoveredPosition.y*density;
+   double recoveredX=-viewX+viewY;
+   double recoveredY=-viewX-viewY+2*recoveredPosition.z*density;
+   double shift=hypot(recoveredX-ix,recoveredY-iy);
+   if(shift>5.0)return 17;
+   maxRecoveryShift=max(maxRecoveryShift,shift);++nearbyMisses;
+  }
+ }
+ if(!nearbyMisses)return 18;
+ printf("receiver_hits=%d misses=%d recovered_hits=%d nearby_misses=%d max_shift=%.3f\n",
+        hits,misses,recoveredHits,nearbyMisses,maxRecoveryShift);return 0;
 }
 """
 
@@ -410,6 +455,9 @@ int main(){
                 "lost_density": functions.replace("viewOffset.z) / float(density)",
                                                  "viewOffset.z) / 1.0"),
                 "lattice_accepted": functions.replace("projection.latticeShapes != 0", "false"),
+                "center_anchor": re.sub(
+                    r"vec2 anchorIso = vec2\([^;]+;",
+                    "vec2 anchorIso = vec2(0.0, 0.0);", functions, count=1),
             }
             for name, body in variants.items():
                 with (
@@ -428,7 +476,8 @@ int main(){
                         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
                         print(suffix, run.stdout.strip())
                     else:
-                        self.assertIn(run.returncode, (2, 3, 4, 9, 12, 13, 14, 15), name)
+                        self.assertIn(run.returncode,
+                                      (2, 3, 4, 9, 12, 13, 14, 15, 16, 17, 18), name)
 
 
 if __name__ == "__main__":

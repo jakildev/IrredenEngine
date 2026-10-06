@@ -60,14 +60,35 @@ bool shapeBoxReceiver(ShapeDescriptor shape, ShapeProjectionData projection,
                               yaw.x, yaw.y, entry, exitDepth, normal)) {
         if (!recoverMiss) return false;
 
+        // An inset anchor keeps recovery local on elongated boxes while still
+        // guaranteeing that the anchor ray intersects the finite box.
+        vec3 rayDirection = vec3(yaw.x - yaw.y, yaw.x + yaw.y, 1.0) / 3.0;
+        vec3 rayOrigin = vec3(
+            -(yaw.x + yaw.y) * 0.5 * relativeIso.x -
+                (yaw.x - yaw.y) * relativeIso.y / 6.0,
+            (yaw.x - yaw.y) * 0.5 * relativeIso.x -
+                (yaw.x + yaw.y) * relativeIso.y / 6.0,
+            relativeIso.y / 3.0);
+        vec3 weightedDirection = rayDirection / (halfExtent * halfExtent);
+        float nearestDepth = -dot(weightedDirection, rayOrigin) /
+                             dot(weightedDirection, rayDirection);
+        float inset = min(halfExtent.x, min(halfExtent.y, halfExtent.z));
+        vec3 interiorHalfExtent = halfExtent - vec3(inset);
+        vec3 localAnchor = clamp(rayDirection * nearestDepth + rayOrigin,
+                                 -interiorHalfExtent, interiorHalfExtent);
+        vec2 viewAnchor = vec2(yaw.x * localAnchor.x + yaw.y * localAnchor.y,
+                               -yaw.y * localAnchor.x + yaw.x * localAnchor.y);
+        vec2 anchorIso = vec2(-viewAnchor.x + viewAnchor.y,
+                              -viewAnchor.x - viewAnchor.y + 2.0 * localAnchor.z);
+
         float inside = 0.0;
         float outside = 1.0;
-        vec2 recoveredIso = vec2(0.0, 0.0);
-        if (!boxSurfaceIntervalYaw(0.0, 0.0, halfExtent,
+        vec2 recoveredIso = anchorIso;
+        if (!boxSurfaceIntervalYaw(anchorIso.x, anchorIso.y, halfExtent,
                                    yaw.x, yaw.y, entry, exitDepth, normal)) return false;
         for (int iteration = 0; iteration < 12; ++iteration) {
             float middle = 0.5 * (inside + outside);
-            vec2 candidateIso = relativeIso * middle;
+            vec2 candidateIso = anchorIso + (relativeIso - anchorIso) * middle;
             float candidateEntry, candidateExit;
             vec3 candidateNormal;
             if (boxSurfaceIntervalYaw(candidateIso.x, candidateIso.y, halfExtent,

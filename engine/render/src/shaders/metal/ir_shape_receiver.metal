@@ -60,14 +60,35 @@ inline bool shapeBoxReceiver(ShapeDescriptor shape, ShapeProjectionData projecti
                               yaw.x, yaw.y, entry, exitDepth, normal)) {
         if (!recoverMiss) return false;
 
+        // An inset anchor keeps recovery local on elongated boxes while still
+        // guaranteeing that the anchor ray intersects the finite box.
+        float3 rayDirection = float3(yaw.x - yaw.y, yaw.x + yaw.y, 1.0) / 3.0;
+        float3 rayOrigin = float3(
+            -(yaw.x + yaw.y) * 0.5 * relativeIso.x -
+                (yaw.x - yaw.y) * relativeIso.y / 6.0,
+            (yaw.x - yaw.y) * 0.5 * relativeIso.x -
+                (yaw.x + yaw.y) * relativeIso.y / 6.0,
+            relativeIso.y / 3.0);
+        float3 weightedDirection = rayDirection / (halfExtent * halfExtent);
+        float nearestDepth = -dot(weightedDirection, rayOrigin) /
+                             dot(weightedDirection, rayDirection);
+        float inset = min(halfExtent.x, min(halfExtent.y, halfExtent.z));
+        float3 interiorHalfExtent = halfExtent - float3(inset);
+        float3 localAnchor = clamp(rayDirection * nearestDepth + rayOrigin,
+                                   -interiorHalfExtent, interiorHalfExtent);
+        float2 viewAnchor = float2(yaw.x * localAnchor.x + yaw.y * localAnchor.y,
+                                   -yaw.y * localAnchor.x + yaw.x * localAnchor.y);
+        float2 anchorIso = float2(-viewAnchor.x + viewAnchor.y,
+                                  -viewAnchor.x - viewAnchor.y + 2.0 * localAnchor.z);
+
         float inside = 0.0;
         float outside = 1.0;
-        float2 recoveredIso = float2(0.0, 0.0);
-        if (!boxSurfaceIntervalYaw(0.0, 0.0, halfExtent,
+        float2 recoveredIso = anchorIso;
+        if (!boxSurfaceIntervalYaw(anchorIso.x, anchorIso.y, halfExtent,
                                    yaw.x, yaw.y, entry, exitDepth, normal)) return false;
         for (int iteration = 0; iteration < 12; ++iteration) {
             float middle = 0.5 * (inside + outside);
-            float2 candidateIso = relativeIso * middle;
+            float2 candidateIso = anchorIso + (relativeIso - anchorIso) * middle;
             float candidateEntry, candidateExit;
             float3 candidateNormal;
             if (boxSurfaceIntervalYaw(candidateIso.x, candidateIso.y, halfExtent,

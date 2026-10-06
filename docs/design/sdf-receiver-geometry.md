@@ -137,11 +137,13 @@ the same normal. Fog, AO and local-light semantics must remain explicit.
 
 Winner metadata needs a lifecycle covering empty-SDF frames, canvas clears,
 unsupported winners and later same-depth overwrites. A failed finite query must
-not silently discard the producer's splatted coverage or change depth. The
-initial integration should preserve that legacy coverage while accepting exact
-receiving only where the finite intersection succeeds. The lifecycle is guarded conservatively by whole-canvas invalidation below;
-finite per-fragment queries also feed eligible analytical-box beauty lighting as described below. The shared
-helper and scalar checks do not accept floor edges.
+not silently discard the producer's splatted coverage or change depth. Eligible
+presentation fragments recover a nearby finite-box surface point from an inset
+interior anchor; strict compute-shadow queries and unsupported geometry preserve
+the sampled-cell receiver. The lifecycle is guarded conservatively by
+whole-canvas invalidation below; finite per-fragment queries also feed eligible
+analytical-box beauty lighting as described below. The shared helper and scalar
+checks do not accept floor edges.
 
 ## Canvas-owned descriptor uploads
 
@@ -394,8 +396,9 @@ The diagnostic uses `worldShapeSurfaceSunShadowFactor` with the actual camera-to
 quaternion and the canvas cascade depth described under fragment lighting below. Its initial sampled-caster control is retained in the linked evidence.
 
 A successful opaque query writes only diagnostic RGB. Alpha, stored depth,
-identity, hover and coverage remain unchanged. Misses and unsupported winners
-retain the existing SHADOW output. Disabled shadows skip sampling. Whole-canvas
+identity, hover and coverage remain unchanged. Eligible finite-box misses recover
+from a nearby interior anchor; unsupported winners retain the existing SHADOW
+output. Disabled shadows skip sampling. Whole-canvas
 validity, sun-system presence and main-canvas eligibility guard the specialized
 gather; ordinary variants preprocess out its resources. Compute and gather share
 binding/restoration helpers for the retained buffers. No dense payload, additional
@@ -509,7 +512,7 @@ frame are not consumed. CPU component and system pointers refresh in beginTick.
 
 Eligibility is deliberately bounded: any registered fog pass keeps the sampled
 lighting route, as do diagnostic overlays, depth-color mode, missing resources,
-invalid owners and finite-query misses. Checkerboard/depth-color materials keep
+invalid owners and unrecoverable finite-query misses. Checkerboard/depth-color materials keep
 their raster-generated color. The producer already invalidates any submission
 containing X-ray blending. Hollow, rotated, lattice and non-box receivers retain
 the finite-query fallback. Fog composition, procedural material reconstruction
