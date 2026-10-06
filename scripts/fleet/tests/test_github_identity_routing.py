@@ -119,14 +119,14 @@ printf '%s\\n' "$FLEET_DISPATCH_ID"
             self.assertTrue(self.gate("daemon").startswith("open:"))
             self.sample("user", pool)
 
-    def test_real_dispatch_loop_uses_user_admission(self):
+    def dispatch_loop_command(self):
         source = (SCRIPTS / "fleet-dispatcher").read_text()
         functions = []
         for name in ("usage_gate_open", "main"):
             match = re.search(rf"^{name}\(\) \{{\n.*?^\}}", source, re.M | re.S)
             self.assertIsNotNone(match, name)
             functions.append(match.group())
-        command = 'source "$COMMON"\n' + "\n".join(functions) + '''
+        return 'source "$COMMON"\n' + "\n".join(functions) + '''
 log() { :; }
 log_gate_transition() { :; }
 describe_config() { :; }
@@ -145,7 +145,13 @@ read_dispatch_mode() { echo live; }
 session_exists() { return 0; }
 usage_gate_status() { "$SUBJECT" --gate-status "$@"; }
 dispatch_role() { echo "$1" >> "$LAUNCH_LOG"; }
-sleep() { touch "$SHUTDOWN_FLAG"; }
+SLEEP_COUNT=0
+sleep() {
+    SLEEP_COUNT=$((SLEEP_COUNT + 1))
+    if (( SLEEP_COUNT >= ${STOP_AFTER_SLEEPS:-1} )); then
+        touch "$SHUTDOWN_FLAG"
+    fi
+}
 STATE_DIR="$FLEET_STATE_DIR"
 USAGE_DIR="$STATE_DIR/usage"
 LOG_FILE="$STATE_DIR/dispatcher.log"
@@ -161,21 +167,37 @@ PERIODIC_REARM_INTERVAL_SECONDS=60
 DISPATCHED_ROLES=(worker)
 main
 '''
+
+    def run_dispatch_loop(self, **env):
+        log = self.root / "launches"
+        log.write_text("")
+        shutdown = self.root / "shutdown"
+        shutdown.unlink(missing_ok=True)
+        proc = self.shell(self.dispatch_loop_command(),
+                          SUBJECT=str(SCRIPTS / "fleet-dispatcher"),
+                          COMMON=str(SCRIPTS / "fleet-common.sh"),
+                          FLEET_LIB_DIR=str(SCRIPTS), FLEET_RUNTIMES="codex",
+                          FLEET_ALERTS_DIR=str(self.root / "alerts"),
+                          LAUNCH_LOG=str(log), SHUTDOWN_FLAG=str(shutdown), **env)
+        return proc, log
+
+    def test_real_dispatch_loop_uses_user_admission(self):
         cases = ((identity, pool, count) for identity, count in (("app", 1), ("user", 0))
                  for pool in ("core", "graphql"))
         for identity, pool, count in cases:
             self.sample(identity, pool, 1.0)
-            log = self.root / "launches"
-            log.write_text("")
-            shutdown = self.root / "shutdown"
-            shutdown.unlink(missing_ok=True)
-            proc = self.shell(command, SUBJECT=str(SCRIPTS / "fleet-dispatcher"),
-                              COMMON=str(SCRIPTS / "fleet-common.sh"),
-                              FLEET_LIB_DIR=str(SCRIPTS), FLEET_RUNTIMES="codex",
-                              LAUNCH_LOG=str(log), SHUTDOWN_FLAG=str(shutdown))
+            proc, log = self.run_dispatch_loop()
             self.assertEqual(proc.returncode, 0, proc.stderr)
             self.assertEqual(len(log.read_text().splitlines()), count, identity)
             self.sample(identity, pool)
+
+    def test_failed_app_mint_skips_tick_without_stopping_dispatcher(self):
+        self.stub("fleet-gh-token", "exit 1")
+        proc, log = self.run_dispatch_loop(STOP_AFTER_SLEEPS="3")
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(log.read_text(), "")
+        alert = self.root / "alerts" / "dispatcher-app-auth"
+        self.assertIn("3 consecutive ticks", alert.read_text())
 
     def test_missing_stale_wrong_identity_fail_only_their_lane(self):
         for fields in ({"observed_at": self.now - 7200}, {"identity": "app"}):

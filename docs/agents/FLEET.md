@@ -397,14 +397,8 @@ implementation and thresholds: `scripts/fleet/fleet-dispatcher`
   wipes them after an account switch). A type metering one model family (Fable's weekly
   `seven_day_overage_included`, `seven_day_<family>`; `FLEET_DISPATCHER_USAGE_SCOPE_<TYPE>`)
   defers only launches on that family (a reserved resume is gated on its own session's model and, walled, holds only its pane); a walled fable model serves as a saturated fable cap.
-- **GitHub API quota** — `github-<identity>-{core,graphql,search}.json`: graphql
-  from its own `rateLimit` self-report, core from enforcement headers on REST
-  reads (including a metadata probe when local reads are unavailable), search
-  from `/rate_limit`. Core and graphql gate at 90 %
-  (`FLEET_DISPATCHER_USAGE_GATE_GITHUB_{CORE,GRAPHQL}`), search never. Daemon
-  work consumes the App pool when configured; panes consume the user pool.
-  Missing or stale observations close only the consuming identity's gate
-  ([`FLEET-RUNTIME.md § GitHub App identity`](FLEET-RUNTIME.md)).
+- **GitHub API quota** — identity-qualified core and GraphQL observations gate their
+  consuming lanes; see [`FLEET-RUNTIME.md § GitHub App identity`](FLEET-RUNTIME.md).
 - **GraphQL refusal** — a `gh pr|issue` refusal (`GraphQL: API rate limit already
   exceeded`, self-report healthy, REST answering) seen by the scout or `fleet-net.sh`'s
   `gh()` latches `github-<identity>-graphql.rejected.json` at 100 % until that identity's graphql reset (else
@@ -418,10 +412,9 @@ implementation and thresholds: `scripts/fleet/fleet-dispatcher`
   the gate is closed ([`FLEET-RUNTIME.md § Usage-limit handling`](FLEET-RUNTIME.md));
   Codex twin: 15-minute `runtime-cooldown/codex.json` ([`CODEX.md`](CODEX.md)).
 
-`fleet-gate-status [--json]` prints gate state, breaching observation (`REJECTED`
-on the wall), reset ETA, cooldowns, GitHub lane identities and pool `remaining/limit`;
-`fleet-dispatcher --gate-status [all|claude|shared|daemon|scoped] [<model>]` is the
-one-liner (`shared` checks user admission; `daemon` checks daemon admission).
+`fleet-gate-status [--json]` prints gate state, wall, reset ETA, cooldowns, and GitHub
+lanes; `fleet-dispatcher --gate-status [all|claude|shared|daemon|scoped] [<model>]`
+is the one-liner (`shared` is pane admission; `daemon` is daemon admission).
 `fleet-health [--since 24h|7d|ISO] [--json]` is the first read after
 autonomous running: per-role productive vs empty iterations, trigger
 sources, merger tier-0 vs LLM hand-offs, provider readiness, unstamped

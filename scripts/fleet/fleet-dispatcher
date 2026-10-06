@@ -363,6 +363,7 @@ declare -A HARD_CAP_ROLES=(
 # doesn't spam every 10s tick while the cap is held. Cleared whenever a
 # role drops back below cap.
 declare -A CAP_DEFER_LOGGED=()
+GITHUB_APP_AUTH_FAILURES=0
 
 # Seconds to back off a pane whose launch died at the usage wall — the
 # wrap's `<pane>.ts` marker, written when the stream flagged a rejected
@@ -4286,6 +4287,7 @@ PY
 }
 
 main() {
+    local auth_alert
     # Preserved for the self-reload exec so a reloaded daemon keeps the
     # arguments it was launched with. The daemon boot path passes none; the
     # `${x[@]+...}` guard is what makes expanding the empty array safe.
@@ -4327,7 +4329,26 @@ main() {
             break
         fi
 
-        fleet_select_github_identity app || { log "GitHub App authentication unavailable"; return 1; }
+        if ! fleet_select_github_identity app; then
+            GITHUB_APP_AUTH_FAILURES=$((GITHUB_APP_AUTH_FAILURES + 1))
+            if (( GITHUB_APP_AUTH_FAILURES == 1 )); then
+                log "GitHub App authentication unavailable; skipping tick"
+            fi
+            if (( GITHUB_APP_AUTH_FAILURES >= 3 )); then
+                auth_alert="${FLEET_ALERTS_DIR:-$HOME/.fleet/alerts}/dispatcher-app-auth"
+                mkdir -p "$(dirname "$auth_alert")" 2>/dev/null || true
+                printf 'GitHub App authentication unavailable for %s consecutive ticks\n' \
+                    "$GITHUB_APP_AUTH_FAILURES" > "$auth_alert" 2>/dev/null || true
+            fi
+            sleep "$POLL_INTERVAL_SECONDS"
+            continue
+        fi
+        if (( GITHUB_APP_AUTH_FAILURES > 0 )); then
+            log "GitHub App authentication restored"
+            rm -f "${FLEET_ALERTS_DIR:-$HOME/.fleet/alerts}/dispatcher-app-auth" \
+                2>/dev/null || true
+            GITHUB_APP_AUTH_FAILURES=0
+        fi
         clear_tmux_github_identity
 
         cleanup_stale_dispatches
