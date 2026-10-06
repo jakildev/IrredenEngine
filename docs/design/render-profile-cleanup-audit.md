@@ -52,8 +52,8 @@ route-specific coordinate recovery.
 adapter, enumerates multirow dispatches beyond 65,535 workgroups, checks row-major
 pixels and CPU/shader constants, and rejects lost-row/wrong-column mutations.
 Native shader execution and captures remain necessary to cover compilation,
-binding and rendering behavior. This extraction does not replace the active
-store-frame work or consolidate distinct face coordinate spaces.
+binding and rendering behavior. This extraction preserves the merged store-frame
+work and does not consolidate distinct face coordinate spaces.
 
 ## Next cleanup slices
 
@@ -63,10 +63,11 @@ store-frame work or consolidate distinct face coordinate spaces.
 | 3 | Fallback sun bake retains a raw per-axis branch its driver does not use | Prove route-zero dispatches, then remove the branch and redundant include while preserving ABI and live fallback casting. Exercise detached casting and splat-enabled cases. |
 | 3 | Source-face shadow-debug palette repeats an existing helper | Delegate to `surfaceShadowDebugColor` in both shader backends; compare diagnostic captures. |
 
-Shader edits must account for the active store-frame, SDF receiver/normal and fog
-work before choosing a base. The initial overlap inventory includes PRs #4135,
-#4058, #4040 and #4048. Consolidating integer addressing is distinct from merging
-view/model/world-space transforms or changing quantization and binding restoration.
+Shader edits must account for SDF receiver/normal work before choosing a base.
+The per-axis cleanup includes merged PRs #4135 and #4048; open PRs #4058 and
+#4040 still overlap its shader paths. Consolidating integer addressing is
+distinct from merging view/model/world-space transforms or changing quantization
+and binding restoration.
 
 ## Lifecycle investigations requiring their own fixes
 

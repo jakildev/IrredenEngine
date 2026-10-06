@@ -116,11 +116,11 @@ jobs:
       - name: Assert the Pillow-dependent suite executed
         run: grep -a -E '^PASS  test_render_shadow_box_edges\.py \([1-9][0-9]* tests\)$' run_all.log
 
+      - name: Assert the per-axis dispatch contract executed
+        run: grep -a -E '^PASS  test_render_per_axis_cell_dispatch\.py \([1-9][0-9]* tests\)$' run_all.log
+
       - name: Assert the SDF shader contract executed
         run: grep -a -E '^PASS  test_render_sdf_surface_contract\.py \([1-9][0-9]* tests\)$' run_all.log
 
       - name: Assert the SDF winner contract executed
         run: grep -a -E '^PASS  test_render_sdf_winner\.py \([1-9][0-9]* tests\)$' run_all.log
-
-      - name: Assert the per-axis dispatch contract executed
-        run: grep -a -E '^PASS  test_render_per_axis_cell_dispatch\.py \([1-9][0-9]* tests\)$' run_all.log
