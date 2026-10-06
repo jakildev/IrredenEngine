@@ -156,8 +156,17 @@ IRAudio::clearOutboundMidiObserver();
 
 ## Audio capture model
 
-- `Audio::openStreamIn(sampleRate, channels, framesPerBuffer)` →
-  `startStreamIn(callback)`.
+- `Audio::openStreamIn(deviceName, sampleRate, channels, callback)` →
+  `startStreamIn()`.
+- **RtAudio 6 reports failure by return value, not by throwing.** Open, start,
+  and stop return `RtAudioErrorType`; `RTAUDIO_NO_ERROR` is the only success
+  (`RTAUDIO_WARNING`, a wrong-state call, is a failure). `Audio` reaches
+  RtAudio only through `detail::IAudioInputBackend`, so each status gates the
+  state flags in one place and `test/audio/audio_capture_test.cpp` fires every
+  failure with a fake backend. A failed stop keeps the stream reported as
+  running until `closeStreamIn()`.
+- A sample rate the device does not offer fails the open: no fallback to the
+  preferred rate, no resampling.
 - Callback signature:
   `void(const float* samples, int frameCount, double streamTime, bool overflow)`.
 - Default buffer is 1024 frames.

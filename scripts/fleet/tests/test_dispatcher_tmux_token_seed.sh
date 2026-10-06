@@ -1,19 +1,6 @@
 #!/usr/bin/env bash
-# Tests for fleet-dispatcher's per-tick tmux GH_TOKEN seed (seed_tmux_gh_token),
-# exercised through the --seed-tmux-token hook.
-#
-# fleet-up seeds the tmux server's global GH_TOKEN once; the dispatcher re-seeds
-# it each tick so a pane split an hour later inherits a live installation token.
-# A private tmux server (-S socket, TMUX unset) carries the whole run: tmux
-# follows $TMUX ahead of TMUX_TMPDIR, so a run from inside a fleet pane would
-# otherwise write into the live server's global GH_TOKEN. The suite also asserts
-# the live server's value is unchanged by the run, without ever printing it.
-#
-#   T1: first seed -> a NEW pane reads tok-1 (printenv) and show-environment agrees
-#   T2: second invocation -> a later new pane reads tok-2 (the refresh)
-#   T3: an empty mint leaves the seeded value untouched (never blank, never unset)
-#   T4: no session on the pinned socket -> nothing is written
-#   T5: the live (default) server's GH_TOKEN is unchanged by the whole run
+# Credentials must not survive in tmux global state. The private server
+# isolates this test from the live fleet, whose token is compared but never printed.
 
 set -uo pipefail
 
@@ -69,11 +56,11 @@ ptmux() { tmux -S "$TMPROOT/sock" "$@"; }
 # pane_token — GH_TOKEN as a freshly spawned pane process sees it.
 pane_token() {
     local out="$TMPROOT/pane.out"
-    rm -f "$out"
-    ptmux new-window -d -t "$FLEET_SESSION" "printenv GH_TOKEN > '$out' 2>&1; true"
+    rm -f "$out" "$out.done"
+    ptmux new-window -d -t "$FLEET_SESSION" "printenv GH_TOKEN > '$out' 2>&1; echo done > '$out.done'"
     local i
     for i in $(seq 1 50); do
-        [[ -s "$out" ]] && break
+        [[ -f "$out.done" ]] && break
         sleep 0.1
     done
     tr -d '\n' < "$out" 2>/dev/null
@@ -92,19 +79,21 @@ rm -f "$GHT_STUB_COUNTER"   # T4's mint was spent on a seed that had nowhere to 
 ptmux -f /dev/null new-session -d -s "$FLEET_SESSION" "sleep 300"
 sleep 0.2
 
-echo "T1: first seed reaches a new pane"
+echo "T1: a stale App token is removed before a new pane"
+ptmux set-environment -g GH_TOKEN ghs_synthetic-old
 seed
-assert_eq "$(pane_token)" "tok-1" "a new pane's GH_TOKEN reads tok-1"
-assert_eq "$(ptmux show-environment -g GH_TOKEN)" "GH_TOKEN=tok-1" "show-environment -g reads tok-1"
+assert_eq "$(pane_token)" "" "a new pane inherits no token"
+assert_eq "$(ptmux show-environment -g GH_TOKEN 2>/dev/null || true)" "" "global GH_TOKEN removed"
 
-echo "T2: second invocation refreshes the value a later pane reads"
+echo "T2: another credential cannot survive the next clear"
+ptmux set-environment -g GH_TOKEN synthetic-user-credential
+ptmux set-environment -g GITHUB_TOKEN ghs_synthetic-other
 seed
-assert_eq "$(pane_token)" "tok-2" "a later new pane's GH_TOKEN reads tok-2"
+assert_eq "$(pane_token)" "" "a later pane inherits no credential"
+assert_eq "$(ptmux show-environment -g GITHUB_TOKEN 2>/dev/null || true)" "" "fallback token removed"
 
-echo "T3: an empty mint leaves the seeded value untouched"
-GHT_STUB_EMPTY=1 seed
-assert_eq "$(ptmux show-environment -g GH_TOKEN)" "GH_TOKEN=tok-2" "empty mint did not blank or unset GH_TOKEN"
-assert_eq "$(pane_token)" "tok-2" "a new pane after the empty mint still reads tok-2"
+echo "T3: clearing credentials does not mint a token"
+[[ ! -f "$GHT_STUB_COUNTER" ]] && ok "no token mint" || bad "unneeded token mint"
 
 echo "T5: the live default server's GH_TOKEN is unchanged by the run"
 live_after=$(env -u TMUX tmux show-environment -g GH_TOKEN 2>&1 || true)

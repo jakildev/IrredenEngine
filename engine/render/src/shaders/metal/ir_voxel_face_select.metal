@@ -29,6 +29,9 @@
 // `fogColumnReveal` short-circuits to "fully visible".
 constant float kFogExploredThreshold = 0.25f;
 constant int kMaxFogVisionCircles = 8; // mirror of component_canvas_fog_of_war.hpp kMaxFogVisionCircles
+// The fog window is RG32UI: .r the state integer (fogTexelState decodes it),
+// .g the cell's channel mask. The cull and cut-face taps read the state alone,
+// a channel-blind conservative superset of the paint pass's admission.
 struct FogObserverData {
     float4 visionCircles[kMaxFogVisionCircles]; // (centerX, centerY, radius, edgeSoftness)
     int visionCircleCount;
@@ -98,14 +101,14 @@ static int2 fogWindowTexel(int2 col, int2 origin, int2 fogSize) {
 // state, so only the circles can reveal it. GLSL twin: fogColumnReveal in
 // ../ir_voxel_face_select.glsl.
 static float fogColumnReveal(
-    texture2d<float, access::read> fog, constant FogObserverData& obs, int2 col
+    texture2d<uint, access::read> fog, constant FogObserverData& obs, int2 col
 ) {
     const int2 fogSize = int2(int(fog.get_width()), int(fog.get_height()));
     if (fogSize.x <= 1) {
         return 1.0f; // 1×1 all-visible placeholder (non-fog / detached canvas)
     }
     const int2 cell = fogWindowTexel(col, int2(obs.windowOriginX, obs.windowOriginY), fogSize);
-    if (cell.x >= 0 && fog.read(uint2(cell)).r >= kFogExploredThreshold) {
+    if (cell.x >= 0 && fogTexelState(fog.read(uint2(cell)).r) >= kFogExploredThreshold) {
         return 1.0f; // explored / visible grid memory — keep
     }
     float reveal = 0.0f;
@@ -133,14 +136,14 @@ constant float kFogColumnCellHalf = 0.5f;
 constant float kFogColumnKeepAa = 0.5f;
 constant float kFogHiddenKeepCells = 8.0f;
 static float fogColumnRevealNearest(
-    texture2d<float, access::read> fog, constant FogObserverData& obs, int2 col
+    texture2d<uint, access::read> fog, constant FogObserverData& obs, int2 col
 ) {
     const int2 fogSize = int2(int(fog.get_width()), int(fog.get_height()));
     if (fogSize.x <= 1) {
         return 1.0f;
     }
     const int2 cell = fogWindowTexel(col, int2(obs.windowOriginX, obs.windowOriginY), fogSize);
-    if (cell.x >= 0 && fog.read(uint2(cell)).r >= kFogExploredThreshold) {
+    if (cell.x >= 0 && fogTexelState(fog.read(uint2(cell)).r) >= kFogExploredThreshold) {
         return 1.0f;
     }
     float reveal = 0.0f;
@@ -182,7 +185,7 @@ struct VoxelFaceSelect {
 // `perAxisRouteIn <= 2` comparison term is load-bearing beyond its logic:
 // restructuring it reshuffles the per-axis tie-winner resolution.
 static VoxelFaceSelect selectVoxelFace(
-    texture2d<float, access::read> fog,
+    texture2d<uint, access::read> fog,
     constant FogObserverData& obs,
     const int faceIdIn,
     const bool reVoxelize,

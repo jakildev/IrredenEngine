@@ -107,6 +107,9 @@
 #include "editor_lua_host.hpp"
 #include "recipes_panel.hpp"
 
+// COMPONENTS panel geometry; the records it edits live on the entity scene.
+#include "components_panel.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -295,6 +298,37 @@ IREntity::EntityId g_recipeApplyBtn = IREntity::kNullEntity;
 std::array<IREntity::EntityId, kMaxRecipeParams> g_recipeSliders{};
 // Recipe the parameter sliders currently describe; -1 before the first sync.
 int g_slidersRecipe = -1;
+
+// The COMPONENTS panel (initComponentsUi). Not built when the process has no
+// component to offer: no module component and no engine prefab factory.
+IREntity::EntityId g_componentsPanel = IREntity::kNullEntity;
+IREntity::EntityId g_componentList = IREntity::kNullEntity;
+IREntity::EntityId g_componentRootToggle = IREntity::kNullEntity;
+IREntity::EntityId g_componentAttachBtn = IREntity::kNullEntity;
+IREntity::EntityId g_componentDetachBtn = IREntity::kNullEntity;
+IREntity::EntityId g_componentStatusLabel = IREntity::kNullEntity;
+// Component list row r attaches g_componentNames[r].
+std::vector<std::string> g_componentNames;
+
+// One row of the field area. `input_` is a text input, a checkbox
+// (`checkbox_`), or null for a read-only field; `field_` indexes the record's
+// fields, or is -1 for an ENGINE record's overrides.
+struct ComponentFieldRow {
+    IREntity::EntityId label_ = IREntity::kNullEntity;
+    IREntity::EntityId input_ = IREntity::kNullEntity;
+    bool checkbox_ = false;
+    int field_ = -1;
+    bool wasFocused_ = false;
+};
+std::vector<ComponentFieldRow> g_componentFieldRows;
+// The record and entity the field rows were built for; a change rebuilds them.
+std::string g_componentFieldRowsKey;
+// The page of that record's fields the rows show, and the pager that turns it;
+// the pager exists only while the record has more than one page.
+int g_componentFieldPage = 0;
+IREntity::EntityId g_componentPagePrevBtn = IREntity::kNullEntity;
+IREntity::EntityId g_componentPageNextBtn = IREntity::kNullEntity;
+IREntity::EntityId g_componentPageLabel = IREntity::kNullEntity;
 
 namespace {
 
@@ -2006,9 +2040,12 @@ bool cursorInRect(vec2 cursor, ivec2 pos, ivec2 size) {
 // widget hover: a docked panel holds widgets the module built, and a click on
 // any of them must not fall through to the scene.
 bool cursorOverModuleUi() {
+    const vec2 cursor = IRPrefab::Layout::mousePositionInGuiTrixels();
+    if (g_componentsPanel != IREntity::kNullEntity &&
+        cursorInRect(cursor, kComponentsPanelPos, kComponentsPanelSize))
+        return true;
     if (g_recipesPanel == IREntity::kNullEntity)
         return false;
-    const vec2 cursor = IRPrefab::Layout::mousePositionInGuiTrixels();
     if (cursorInRect(cursor, kRecipesPanelPos, kRecipesPanelSize))
         return true;
     for (const DockedModulePanel &docked : g_dockedModulePanels) {
@@ -2018,7 +2055,332 @@ bool cursorOverModuleUi() {
     return false;
 }
 
+// What ATTACH targets: the root while ROOT is checked, else the selected part.
+// Nullopt outside entity-scene mode or with no part selected.
+std::optional<int> componentTarget() {
+    if (!g_entitySceneMode || !g_entityScene.active())
+        return std::nullopt;
+    if (IRPrefab::Widget::checkboxState(g_componentRootToggle))
+        return kEntitySceneRootTarget;
+    const int selected = g_entityScene.selectedIndex();
+    return selected >= 0 ? std::optional<int>{selected} : std::nullopt;
+}
+
+void destroyComponentFieldRows() {
+    for (const ComponentFieldRow &row : g_componentFieldRows) {
+        if (row.label_ != IREntity::kNullEntity)
+            IREntity::destroyEntity(row.label_);
+        if (row.input_ != IREntity::kNullEntity)
+            IREntity::destroyEntity(row.input_);
+    }
+    g_componentFieldRows.clear();
+    for (IREntity::EntityId *pager :
+         {&g_componentPagePrevBtn, &g_componentPageNextBtn, &g_componentPageLabel}) {
+        if (*pager != IREntity::kNullEntity)
+            IREntity::destroyEntity(*pager);
+        *pager = IREntity::kNullEntity;
+    }
+}
+
+// Builds page g_componentFieldPage of @p record's fields.
+void buildComponentFieldRows(const ComponentRecord &record) {
+    if (record.source_ == ComponentSource::ENGINE) {
+        ComponentFieldRow note;
+        note.label_ = IRPrefab::Widget::makeLabel(
+            ivec2(kComponentFieldLabelX, componentFieldRowY(0)),
+            "NO FIELD REFLECTION"
+        );
+        g_componentFieldRows.push_back(note);
+        ComponentFieldRow overrides;
+        overrides.input_ = IRPrefab::Widget::makeTextInput(
+            ivec2(kComponentFieldLabelX, componentFieldRowY(1)),
+            kComponentOverridesInputSize,
+            record.overrides_
+        );
+        g_componentFieldRows.push_back(overrides);
+        return;
+    }
+    const int fieldCount = static_cast<int>(record.fields_.size());
+    const int pageCount = componentFieldPageCount(fieldCount);
+    const int first = g_componentFieldPage * kComponentFieldRowsPerPage;
+    const int last = IRMath::min(first + kComponentFieldRowsPerPage, fieldCount);
+    for (int i = first; i < last; ++i) {
+        const ComponentField &field = record.fields_[static_cast<std::size_t>(i)];
+        const int rowY = componentFieldRowY(i - first);
+        const ivec2 inputPos(kComponentFieldInputX, rowY);
+        ComponentFieldRow row;
+        row.field_ = i;
+        row.label_ = IRPrefab::Widget::makeLabel(ivec2(kComponentFieldLabelX, rowY), field.name_);
+        switch (field.type_) {
+        case IRScript::LuaFieldType::BOOL:
+            row.checkbox_ = true;
+            row.input_ = IRPrefab::Widget::makeCheckbox(
+                inputPos,
+                ivec2(kComponentFieldInputSize.y),
+                "",
+                std::holds_alternative<bool>(field.value_) && std::get<bool>(field.value_)
+            );
+            break;
+        case IRScript::LuaFieldType::FUNCTION:
+        case IRScript::LuaFieldType::TABLE:
+            g_componentFieldRows.push_back(row);
+            row = ComponentFieldRow{};
+            row.label_ = IRPrefab::Widget::makeLabel(
+                inputPos,
+                std::string("(") + IRScript::toString(field.type_) + ")"
+            );
+            break;
+        default:
+            row.input_ = IRPrefab::Widget::makeTextInput(
+                inputPos,
+                kComponentFieldInputSize,
+                formatFieldValue(field.value_)
+            );
+            break;
+        }
+        g_componentFieldRows.push_back(row);
+    }
+    if (pageCount > 1) {
+        g_componentPagePrevBtn =
+            IRPrefab::Widget::makeButton(kComponentPagePrevPos, kComponentButtonSize, "PREV");
+        g_componentPageNextBtn =
+            IRPrefab::Widget::makeButton(kComponentPageNextPos, kComponentButtonSize, "NEXT");
+        g_componentPageLabel = IRPrefab::Widget::makeLabel(
+            kComponentPageLabelPos,
+            std::to_string(g_componentFieldPage + 1) + "/" + std::to_string(pageCount)
+        );
+        IRPrefab::Widget::setDisabled(g_componentPagePrevBtn, g_componentFieldPage == 0);
+        IRPrefab::Widget::setDisabled(
+            g_componentPageNextBtn,
+            g_componentFieldPage == pageCount - 1
+        );
+    }
+}
+
+// Applies what the author typed into @p row. Text the field's type cannot
+// hold, or an apply the factory rejects, leaves the record as it was; the
+// next sync puts its value back in the input.
+void commitComponentFieldText(
+    const ComponentFieldRow &row, ComponentRecord &record, IREntity::EntityId entity
+) {
+    const std::string text = IRPrefab::Widget::textInputValue(row.input_);
+    if (text.empty())
+        return;
+    IRScript::LuaScript &script = g_moduleHost.script();
+    std::optional<std::string> error;
+    if (row.field_ < 0) {
+        error = applyComponentLiteral(script, entity, record, text);
+    } else {
+        ComponentRecord edited = record;
+        ComponentField &field = edited.fields_[static_cast<std::size_t>(row.field_)];
+        const std::optional<ComponentFieldValue> parsed = parseFieldText(field.type_, text);
+        if (!parsed) {
+            error = "'" + text + "' is not a " + IRScript::toString(field.type_);
+        } else {
+            field.value_ = *parsed;
+            error = applyComponentRecord(script, entity, edited);
+            if (!error)
+                record = std::move(edited);
+        }
+    }
+    if (error) {
+        IR_LOG_WARN("Component field not set: {}", *error);
+        return;
+    }
+    IR_LOG_INFO("component_field_set name={} value={}", record.name_, componentLiteral(record));
+}
+
+// Keeps each field widget showing its record value, except a text input
+// being typed into: focusing one clears it for the new value, and losing
+// focus (Enter, or a click elsewhere) commits it.
+void syncComponentFieldRows(ComponentRecord &record, IREntity::EntityId entity) {
+    for (ComponentFieldRow &row : g_componentFieldRows) {
+        if (row.input_ == IREntity::kNullEntity)
+            continue;
+        if (row.checkbox_) {
+            if (IRPrefab::Widget::wasClicked(row.input_)) {
+                ComponentRecord edited = record;
+                edited.fields_[static_cast<std::size_t>(row.field_)].value_ =
+                    IRPrefab::Widget::checkboxState(row.input_);
+                if (auto error = applyComponentRecord(g_moduleHost.script(), entity, edited))
+                    IR_LOG_WARN("Component field not set: {}", *error);
+                else
+                    record = std::move(edited);
+            }
+            const ComponentFieldValue &value =
+                record.fields_[static_cast<std::size_t>(row.field_)].value_;
+            IRPrefab::Widget::setCheckboxState(
+                row.input_,
+                std::holds_alternative<bool>(value) && std::get<bool>(value)
+            );
+            continue;
+        }
+        const bool focused = IREntity::getComponent<C_WidgetState>(row.input_).focused_;
+        if (focused && !row.wasFocused_)
+            IRPrefab::Widget::setTextInputValue(row.input_, "");
+        else if (!focused && row.wasFocused_)
+            commitComponentFieldText(row, record, entity);
+        row.wasFocused_ = focused;
+        if (focused)
+            continue;
+        const std::string shown =
+            row.field_ < 0
+                ? record.overrides_
+                : formatFieldValue(record.fields_[static_cast<std::size_t>(row.field_)].value_);
+        if (IRPrefab::Widget::textInputValue(row.input_) != shown)
+            IRPrefab::Widget::setTextInputValue(row.input_, shown);
+    }
+}
+
+void updateComponentsPanel() {
+    if (g_componentsPanel == IREntity::kNullEntity)
+        return;
+    const int row = IRPrefab::Widget::listSelectedIndex(g_componentList);
+    const std::string *name = row >= 0 && row < static_cast<int>(g_componentNames.size())
+                                  ? &g_componentNames[static_cast<std::size_t>(row)]
+                                  : nullptr;
+    const std::optional<int> target = componentTarget();
+    const IREntity::EntityId entity =
+        target ? g_entityScene.targetEntity(*target) : IREntity::kNullEntity;
+    std::vector<ComponentRecord> *records =
+        target ? g_entityScene.targetComponents(*target) : nullptr;
+    auto findRecord = [&]() -> ComponentRecord * {
+        if (records == nullptr || name == nullptr)
+            return nullptr;
+        for (ComponentRecord &record : *records) {
+            if (record.name_ == *name)
+                return &record;
+        }
+        return nullptr;
+    };
+    ComponentRecord *record = findRecord();
+    IRScript::LuaScript &script = g_moduleHost.script();
+
+    if (IRPrefab::Widget::wasClicked(g_componentAttachBtn) && name != nullptr &&
+        records != nullptr && record == nullptr) {
+        ComponentRecord attached = makeComponentRecord(script, *name);
+        if (auto error = applyComponentRecord(script, entity, attached)) {
+            IR_LOG_WARN("Component not attached: {}", *error);
+        } else {
+            IR_LOG_INFO("component_attached name={} target={}", *name, *target);
+            records->push_back(std::move(attached));
+            record = &records->back();
+        }
+    }
+    if (IRPrefab::Widget::wasClicked(g_componentDetachBtn) && record != nullptr) {
+        detachComponentRecord(script, entity, *record);
+        IR_LOG_INFO("component_detached name={} target={}", record->name_, *target);
+        records->erase(records->begin() + (record - records->data()));
+        record = nullptr;
+    }
+
+    std::string status = "PICK A COMPONENT";
+    if (!target) {
+        status = "NO TARGET (CTRL+P)";
+    } else if (name != nullptr) {
+        status = (*target == kEntitySceneRootTarget
+                      ? std::string("ROOT")
+                      : g_entityScene.parts()[static_cast<std::size_t>(*target)].id_) +
+                 (record != nullptr ? " ATTACHED" : " NOT ATTACHED");
+    }
+    IRPrefab::Widget::setLabelText(g_componentStatusLabel, std::move(status));
+
+    const std::string key =
+        record != nullptr ? record->name_ + "@" + std::to_string(entity) : std::string{};
+    if (key != g_componentFieldRowsKey) {
+        destroyComponentFieldRows();
+        g_componentFieldPage = 0;
+        if (record != nullptr)
+            buildComponentFieldRows(*record);
+        g_componentFieldRowsKey = key;
+    }
+    if (record == nullptr)
+        return;
+    // Synced before a page turn: pressing the pager took the focus from a
+    // text input, and its typed text commits here while its row still exists.
+    syncComponentFieldRows(*record, entity);
+    if (g_componentPageNextBtn == IREntity::kNullEntity)
+        return;
+    const int lastPage = componentFieldPageCount(static_cast<int>(record->fields_.size())) - 1;
+    const int turned = IRMath::clamp(
+        g_componentFieldPage + (IRPrefab::Widget::wasClicked(g_componentPageNextBtn) ? 1 : 0) -
+            (IRPrefab::Widget::wasClicked(g_componentPagePrevBtn) ? 1 : 0),
+        0,
+        lastPage
+    );
+    if (turned != g_componentFieldPage) {
+        destroyComponentFieldRows();
+        g_componentFieldPage = turned;
+        buildComponentFieldRows(*record);
+    }
+}
+
 } // namespace
+
+// The COMPONENTS panel's list: the module's components in registration order,
+// then every other component with a prefab factory, by name.
+std::vector<std::string> componentPaletteNames() {
+    std::vector<std::string> names;
+    for (const IRScript::LuaTypedComponentInfo &info : g_moduleHost.script().luaTypedComponents())
+        names.push_back(info.name_);
+    const std::size_t moduleCount = names.size();
+    for (std::string &factory : IRPrefab::Prefab::listComponentFactories()) {
+        if (std::find(
+                names.begin(),
+                names.begin() + static_cast<std::ptrdiff_t>(moduleCount),
+                factory
+            ) == names.begin() + static_cast<std::ptrdiff_t>(moduleCount))
+            names.push_back(std::move(factory));
+    }
+    return names;
+}
+
+// Builds the COMPONENTS panel when there is anything to attach.
+void initComponentsUi() {
+    g_componentNames = componentPaletteNames();
+    if (g_componentNames.empty())
+        return;
+    const std::size_t moduleCount = g_moduleHost.script().luaTypedComponents().size();
+    std::vector<std::string> rows;
+    for (std::size_t i = 0; i < g_componentNames.size(); ++i)
+        rows.push_back(i < moduleCount ? g_componentNames[i] : "C++ " + g_componentNames[i]);
+
+    g_componentsPanel =
+        IRPrefab::Widget::makePanel(kComponentsPanelPos, kComponentsPanelSize, "COMPONENTS");
+    IREntity::setComponent(g_componentsPanel, IRComponents::C_HitBox2DGui{kComponentsPanelSize});
+    IREntity::getComponent<IRComponents::C_Widget>(g_componentsPanel).zOrder_ = -1;
+    g_componentList = IRPrefab::Widget::makeList(
+        kComponentListPos,
+        kComponentListSize,
+        std::move(rows),
+        0,
+        kComponentListItemHeight
+    );
+    g_componentRootToggle = IRPrefab::Widget::makeCheckbox(
+        kComponentRootTogglePos,
+        kComponentRootToggleSize,
+        "ROOT",
+        false
+    );
+    g_componentAttachBtn =
+        IRPrefab::Widget::makeButton(kComponentAttachPos, kComponentButtonSize, "ATTACH");
+    g_componentDetachBtn =
+        IRPrefab::Widget::makeButton(kComponentDetachPos, kComponentButtonSize, "DETACH");
+    g_componentStatusLabel = IRPrefab::Widget::makeLabel(kComponentStatusPos, "");
+    g_helpEntries.push_back(
+        {g_componentsPanel, "COMPONENTS: attach to the selected part, or the root with ROOT."}
+    );
+    g_helpEntries.push_back(
+        {g_componentList, "COMPONENT: module components first, then C++ ones with a factory."}
+    );
+    g_helpEntries.push_back(
+        {g_componentAttachBtn, "ATTACH: add the component; its fields appear below."}
+    );
+    g_helpEntries.push_back({g_componentDetachBtn, "DETACH: remove the component."});
+    g_helpEntries.push_back(
+        {g_componentRootToggle, "ROOT: target the entity root instead of the selected part."}
+    );
+}
 
 // Builds the RECIPES panel and docks one panel per IREditor.registerPanel
 // below it. A no-op without --module; false when a panel's build function
@@ -2364,7 +2726,135 @@ bool evaluatePanelLabelCheck(const void *context, std::string &actual) {
     return labels == 1 && text == check.label_;
 }
 
+// Reads the component's field straight from the target's live entity row, so
+// a reloaded scene is checked against what the manifest spawned, not against
+// the panel's record of it.
+bool evaluateComponentValueCheck(const void *context, std::string &actual) {
+    const ComponentValueCheck &check = *static_cast<const ComponentValueCheck *>(context);
+    const std::string where =
+        "target=" + std::to_string(check.target_) + " " + check.component_ + "." + check.field_;
+    const IREntity::EntityId entity = g_entityScene.targetEntity(check.target_);
+    if (entity == IREntity::kNullEntity) {
+        actual = where + " no-target";
+        return false;
+    }
+    IRScript::LuaScript &script = g_moduleHost.script();
+    const IRScript::LuaTypedComponentInfo *info =
+        IRVoxelEditor::detail::findModuleComponent(script, check.component_);
+    const sol::object row =
+        info ? script.readLuaTypedComponent(entity, info->componentId_) : sol::object{};
+    if (row.get_type() != sol::type::table) {
+        actual = where + " absent";
+        return !check.expected_.has_value();
+    }
+    if (!check.expected_) {
+        actual = where + " attached";
+        return false;
+    }
+    const auto field =
+        std::find_if(info->fields_.begin(), info->fields_.end(), [&check](const auto &f) {
+            return f.name_ == check.field_;
+        });
+    if (field == info->fields_.end()) {
+        actual = where + " no-such-field";
+        return false;
+    }
+    const ComponentFieldValue value =
+        IRVoxelEditor::detail::fieldValueFromRow(field->type_, row.as<sol::table>()[check.field_]);
+    actual = where + " value=" + formatFieldValue(value) +
+             (check.expectEqual_ ? " want=" : " want!=") + formatFieldValue(*check.expected_);
+    return (value == *check.expected_) == check.expectEqual_;
+}
+
 } // namespace Session
+
+// Resolves a component session from <module dir>/session_expect.lua's
+// `<key> = { component, field, value, default }` against the loaded module and
+// the COMPONENTS panel layout: `componentAttach` for component_attach,
+// `componentFieldPage` for component_field_page, whose field must lie past the
+// first page of the field area, and `componentFieldKey` for
+// component_field_key, whose field name must not be a Lua identifier.
+Session::ComponentAttachSpec resolveComponentAttachSpec(Session::Id id) {
+    const bool paged = id == Session::Id::COMPONENT_FIELD_PAGE;
+    const bool keyed = id == Session::Id::COMPONENT_FIELD_KEY;
+    const std::string entryKey = paged   ? "componentFieldPage"
+                                 : keyed ? "componentFieldKey"
+                                         : "componentAttach";
+    Session::ComponentAttachSpec spec;
+    spec.session_ = paged   ? "component_field_page"
+                    : keyed ? "component_field_key"
+                            : "component_attach";
+    if (!g_moduleHost.loaded()) {
+        spec.errors_.push_back(spec.session_ + " needs --module <dir>");
+        return spec;
+    }
+    const std::string path =
+        (std::filesystem::path(g_moduleHost.dir()) / "session_expect.lua").string();
+    auto fail = [&spec, &path](const std::string &why) {
+        spec.errors_.push_back(path + ": " + why);
+        return spec;
+    };
+    IRScript::LuaScript &script = g_moduleHost.script();
+    sol::protected_function_result result =
+        script.lua().safe_script_file(path, sol::script_pass_on_error);
+    if (!result.valid()) {
+        const sol::error err = result;
+        return fail(err.what());
+    }
+    const sol::object returned = result;
+    if (returned.get_type() != sol::type::table)
+        return fail("must return a table");
+    const sol::optional<sol::table> entry = returned.as<sol::table>()[entryKey];
+    const sol::optional<std::string> component =
+        entry ? (*entry)["component"] : sol::optional<std::string>{};
+    const sol::optional<std::string> fieldName =
+        entry ? (*entry)["field"] : sol::optional<std::string>{};
+    if (!component || !fieldName)
+        return fail("needs " + entryKey + " = { component, field, value, default }");
+    spec.component_ = *component;
+    spec.field_ = *fieldName;
+
+    const IRScript::LuaTypedComponentInfo *info =
+        IRVoxelEditor::detail::findModuleComponent(script, spec.component_);
+    if (info == nullptr)
+        return fail("component '" + spec.component_ + "' is not registered by the module");
+    const std::vector<std::string> names = componentPaletteNames();
+    spec.listRow_ =
+        static_cast<int>(std::find(names.begin(), names.end(), spec.component_) - names.begin());
+    if (spec.listRow_ * kComponentListItemHeight >= kComponentListSize.y)
+        return fail("component '" + spec.component_ + "' is below the list's visible rows");
+
+    // The panel lays a record's fields out in the record's order.
+    const ComponentRecord layout = makeComponentRecord(script, spec.component_);
+    const auto field =
+        std::find_if(layout.fields_.begin(), layout.fields_.end(), [&spec](const auto &f) {
+            return f.name_ == spec.field_;
+        });
+    if (field == layout.fields_.end())
+        return fail("component '" + spec.component_ + "' has no field '" + spec.field_ + "'");
+    const int fieldIndex = static_cast<int>(field - layout.fields_.begin());
+    spec.fieldPage_ = fieldIndex / kComponentFieldRowsPerPage;
+    spec.fieldRow_ = fieldIndex % kComponentFieldRowsPerPage;
+    if (paged && spec.fieldPage_ == 0)
+        return fail("field '" + spec.field_ + "' is on the first page of the field area");
+    if (keyed && IRScript::isLuaIdentifier(spec.field_))
+        return fail("field '" + spec.field_ + "' is a Lua identifier");
+
+    spec.value_ = IRVoxelEditor::detail::fieldValueFromRow(field->type_, (*entry)["value"]);
+    spec.default_ = IRVoxelEditor::detail::fieldValueFromRow(field->type_, (*entry)["default"]);
+    if (std::holds_alternative<std::monostate>(spec.value_) ||
+        std::holds_alternative<std::monostate>(spec.default_))
+        return fail(
+            "value and default must be " + std::string(IRScript::toString(field->type_)) +
+            " values the panel can type"
+        );
+    if (spec.value_ == spec.default_)
+        return fail("value equals the field's default");
+    spec.typedText_ = formatFieldValue(spec.value_);
+    if (parseFieldText(field->type_, spec.typedText_) != std::optional{spec.value_})
+        return fail("value '" + spec.typedText_ + "' does not type back to itself");
+    return spec;
+}
 
 // Resolves module_loaded's expectations from <module dir>/session_expect.lua
 // against the loaded module: the recipe's list row and slider ranges, and its
@@ -2526,7 +3016,7 @@ int main(int argc, char **argv) {
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
         "face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | tier_scrub | "
-        "module_loaded",
+        "module_loaded | component_attach | component_field_page | component_field_key",
         {"none",
          "drag_probe",
          "place_below",
@@ -2538,7 +3028,10 @@ int main(int argc, char **argv) {
          "tree",
          "parts_roundtrip",
          "tier_scrub",
-         "module_loaded"},
+         "module_loaded",
+         "component_attach",
+         "component_field_page",
+         "component_field_key"},
         "none"
     );
     IREngine::args().string(
@@ -2596,11 +3089,16 @@ int main(int argc, char **argv) {
             IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::MODULE_LOADED
                 ? IRVoxelEditor::resolveModuleSessionSpec()
                 : IRVoxelEditor::Session::ModuleSessionSpec{};
+        const IRVoxelEditor::Session::ComponentAttachSpec componentSpec =
+            IRVoxelEditor::Session::isComponentSession(IRVoxelEditor::g_sessionId)
+                ? IRVoxelEditor::resolveComponentAttachSpec(IRVoxelEditor::g_sessionId)
+                : IRVoxelEditor::Session::ComponentAttachSpec{};
         IRVoxelEditor::g_session = IRVoxelEditor::Session::build(
             IRVoxelEditor::g_sessionId,
             IRVoxelEditor::g_editableSceneSize,
             IRVoxelEditor::g_editableSceneOrigin,
-            moduleSpec
+            moduleSpec,
+            componentSpec
         );
         if (!IRVoxelEditor::g_session.ok()) {
             for (const std::string &error : IRVoxelEditor::g_session.errors_)
@@ -2622,6 +3120,7 @@ int main(int argc, char **argv) {
     initEntities();
     if (!IRVoxelEditor::initModuleUi())
         return 2;
+    IRVoxelEditor::initComponentsUi();
     IREngine::gameLoop();
     return 0;
 }
@@ -3443,13 +3942,18 @@ void initSystems() {
     );
 
     // RECIPES panel: a list click re-targets the parameter sliders, APPLY
-    // writes the selected recipe's cells. Runs after WIDGET_APPLY_LIST /
-    // WIDGET_APPLY_SLIDER so this frame's selection and values are committed.
+    // writes the selected recipe's cells. COMPONENTS: ATTACH / DETACH and the
+    // field edits. Runs after WIDGET_APPLY_LIST / WIDGET_APPLY_SLIDER /
+    // WIDGET_APPLY_TEXT_INPUT so this frame's selection and values are
+    // committed.
     auto recipesSystem = IRSystem::createSystem<C_GuiElement>(
         "EditorRecipes",
         [](const C_GuiElement &) {},
         []() {},
-        []() { IRVoxelEditor::updateRecipesPanel(); }
+        []() {
+            IRVoxelEditor::updateRecipesPanel();
+            IRVoxelEditor::updateComponentsPanel();
+        }
     );
 
     // Joint-authoring bind-pose sync (placement-vs-posing split). A

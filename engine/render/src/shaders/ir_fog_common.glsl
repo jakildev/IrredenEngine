@@ -60,12 +60,13 @@ layout(std140, binding = 27) uniform FogObserverData {
     // Per-source line of sight, (eye height above observerZ, softness, 0, 0);
     // read only for sources in losSourceMask.
     vec4 losParams[kMaxFogVisionCircles];
-    // Source reveal masks packed four per std140 vector. FIELD cells carry
-    // the engine's implicit default channel (bit 0).
+    // Source reveal masks packed four per std140 vector. A source reveals a
+    // FIELD sample only where its mask intersects the sampled cell's mask
+    // (the window's .g lane).
     uvec4 visionCircleChannels[2];
 };
 
-layout(rgba8, binding = 2) readonly uniform image2D canvasFogOfWar;
+layout(rg32ui, binding = 2) readonly uniform uimage2D canvasFogOfWar;
 
 struct FogReveal {
     float state;
@@ -101,16 +102,17 @@ ivec2 fogWindowTexel(ivec2 col, ivec2 origin, ivec2 fogSize) {
     return texel;
 }
 
-// Grid state of world column `col`: the window texel's .r, or 0.0
-// (unexplored) for a column outside the window. imageLoad has no sampler
-// wrap mode, so the window test is load-bearing; the vision circles still
-// max-compose over an out-of-window column.
-float fogTap(ivec2 col, ivec2 fogSize) {
+// Grid texel of world column `col`: (state integer, channel mask), or
+// (0, kFogChannelDefault) — unexplored on the default channel — for a column
+// outside the window. imageLoad has no sampler wrap mode, so the window test
+// is load-bearing; the vision circles still max-compose over an out-of-window
+// column.
+uvec2 fogTapTexel(ivec2 col, ivec2 fogSize) {
     const ivec2 cell = fogWindowTexel(col, ivec2(windowOriginX, windowOriginY), fogSize);
     if (cell.x < 0) {
-        return 0.0;
+        return uvec2(0u, kFogChannelDefault);
     }
-    return imageLoad(canvasFogOfWar, cell).r;
+    return imageLoad(canvasFogOfWar, cell).rg;
 }
 
 // The FIELD reveal. `aaFloor` (world units per canvas pixel) and `losSample`
@@ -121,7 +123,9 @@ float fogTap(ivec2 col, ivec2 fogSize) {
 FogReveal fogRevealSample(vec3 pos3D, vec3 losSample, float aaFloor) {
     const ivec3 surfaceVoxel = roundHalfUp(pos3D);
     const ivec2 fogSize = imageSize(canvasFogOfWar);
-    const float gridState = fogTap(surfaceVoxel.xy, fogSize);
+    const uvec2 gridTexel = fogTapTexel(surfaceVoxel.xy, fogSize);
+    const float gridState = fogTexelState(gridTexel.x);
+    const uint cellChannels = gridTexel.y;
     // The line-of-sight field is anchored with the window this texture shows.
     const ivec2 losFieldMin = fogLosFieldMin(ivec2(windowOriginX, windowOriginY), fogSize.x);
     float state = gridState;
@@ -132,7 +136,7 @@ FogReveal fogRevealSample(vec3 pos3D, vec3 losSample, float aaFloor) {
         if (state >= 1.0) {
             break;
         }
-        if ((visionCircleChannels[i / 4][i % 4] & 1u) == 0u) {
+        if ((visionCircleChannels[i / 4][i % 4] & cellChannels) == 0u) {
             continue;
         }
         // Height-penalized reveal.

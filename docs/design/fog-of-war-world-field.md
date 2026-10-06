@@ -58,6 +58,7 @@ The generic storage surface has four mutation operations:
 | `eraseChunk(chunkCoord) -> bool` | Explicitly removes a present chunk, retains its buffer for reuse and records the key dirty. |
 | `assignChunk(chunkCoord, cells) -> bool` | Inserts or replaces exactly 1024 cells, recounts non-zero cells and reports whether anything changed. |
 | `fillRow(firstCell, count, value) -> int` | Writes along +x across chunk boundaries, resolves each touched field chunk once and returns the number of changed cells. |
+| `orRow(firstCell, count, bits) -> int` | ORs `bits` into the cells along +x with `fillRow`'s contract; zero bits change and insert nothing. The transient source-tier layer unions overlapping sources' masks through it. |
 
 Every mutation path keeps `nonZeroCount_` exact and marks a field chunk dirty
 if and only if its presence or contents changed. `min_` and `max_` retain their
@@ -81,10 +82,12 @@ the field kit's signed floor mapping and key packing.
 constructor. ECS copies alias the field just as they alias the texture;
 `onDestroy()` releases both. No destructor performs disk I/O.
 
-`WorldField` owns the persistent layer, the transient source-tier layer, region
-residency bookkeeping and an optional persistence handle. Tests construct it
-without a render device. The component owns the GPU window texture, observer
-data and the origin that describes the texture's current contents.
+`WorldField` owns the persistent layer, the per-cell channel masks and
+exploration times (D14), the transient source-tier layer, region residency
+bookkeeping, the explored-state policy and simulation clock, and an optional
+persistence handle. Tests construct it without a render device. The component
+owns the GPU window texture, observer data and the origin that describes the
+texture's current contents.
 
 The legacy `cpuBuffer_`, `dirty_` and `allUnexplored_` leave the component.
 Change tracking becomes the pending set in D5, so the fog exception to the
@@ -119,10 +122,12 @@ Persistence is opt-in and stores one file per 16x16 field chunks. A region is
 `(rx, ry) = (IRMath::floorDiv(cx, 16), IRMath::floorDiv(cy, 16))`, where
 `(cx, cy)` is a field chunk coordinate.
 
-`IRWorld::FieldChunkDiskPersistence::create(saveRoot, layer, bytesPerCell)` is
-the only constructor. It rejects an empty root and accepts a layer only when it
-matches `[a-z][a-z0-9_]{0,31}`. The layer is one safe path segment; fog uses
-`fog` with one byte per cell.
+`IRWorld::FieldChunkDiskPersistence::create(saveRoot, layer, bytesPerCell,
+auxiliary)` is the only constructor. It rejects an empty root and accepts a
+layer only when it matches `[a-z][a-z0-9_]{0,31}`. The layer is one safe path
+segment; fog uses `fog` with one byte of state per cell and two auxiliary
+schemas (`IRPrefab::Fog::createFieldPersistence`). The transport validates
+and carries auxiliary payloads; only the layer's owner gives them meaning.
 
 The path is:
 
@@ -141,14 +146,22 @@ The container uses the engine's chunked asset format.
 | Field | Bytes / layout | Contract |
 |---|---|---|
 | Magic | `IRFD` | Identifies a field-region asset. |
-| Version | 1 | Unknown future versions are rejected by the normal asset-version contract. |
+| Version | 1 or 2 | A layer without auxiliary schemas writes 1; one with them writes 2. Both load; unknown future versions are rejected by the normal asset-version contract. |
 | `FHDR` | `int32 rx`, `int32 ry`, `uint8 chunkEdge`, `uint8 regionEdge`, `uint8 bytesPerCell` | Edges are 32 and 16. The requested region key and configured schema must match. The layer is represented by the validated path, not by header bytes. |
-| `CMSK` | 32 bytes | Region-local chunk `(lx, ly)` is bit `i = ly * 16 + lx`, stored in byte `i / 8`, bit `i % 8`, LSB first. |
+| `CMSK` | 32 bytes | Region-local chunk `(lx, ly)` is bit `i = ly * 16 + lx`, stored in byte `i / 8`, bit `i % 8`, LSB first. A metadata-only chunk is present here with all-zero `CELL` bytes. |
 | `CELL` | `popcount(CMSK) * 1024 * bytesPerCell` | Present chunks appear in ascending mask-bit order; each chunk is row-major `y * 32 + x`. |
+| auxiliary (fog: `FMAS`, `FAGE`) | 32-byte chunk mask, then `popcount(mask) * 1024 * schemaBytesPerCell` | Optional, one per declared schema. The mask is a subset of `CMSK`; selected chunks follow in ascending bit order. `FMAS` holds little-endian uint32 channel masks and is written only for chunks holding a non-default mask; an omitted chunk is `kFogChannelDefault` in every cell. `FAGE` holds little-endian uint64 last-exploration milliseconds, written only under the DECAY policy for chunks holding a non-zero time; an omitted chunk is epoch zero, and a non-EXPLORED cell's time is zero. |
 
 Unknown chunks are skipped. A missing file is a quiet absence. Bad magic,
-truncation, a mismatched region key or configured schema, and a `CELL` size
-that disagrees with the mask are malformed and return absence with a warning.
+truncation, a mismatched region key or configured schema, a `CELL` size that
+disagrees with the mask, and an auxiliary payload whose mask leaves `CMSK` or
+whose size disagrees with its own mask are malformed and return absence with a
+warning; nothing of a malformed region is installed. A version-1 file loaded
+by the fog layer under DECAY takes the restored clock as every EXPLORED
+cell's first known exploration time and is marked dirty, so the next save
+rewrites it as version 2 and a later reload does not renew it. A recorded
+time beyond the restored clock is a recoverable diagnostic: the region reads
+empty with a warning and nothing of it is installed.
 
 `loadRegion` is the single probe: one quiet `fopen`, one in-memory read and
 parsing through `MemoryBinaryReader`. It does not preflight with `exists()` and
@@ -339,7 +352,10 @@ texture-space upload rectangles.
   strip splits into at most two rectangles. Pending chunks coalesce into one
   span per texture field-chunk-row run. A whole-window gather uploads in
   32-row strips.
-- CPU scratch is one `32 * W * 4` strip retained as a system high-water buffer.
+- CPU scratch is one `32 * W * 8` strip of `FogWindowTexel`s retained as a
+  system high-water buffer. The pending set is the union of the state,
+  transient and channel-mask layers' dirty keys; exploration times never
+  reach the texture.
 
 An unchanged origin with no pending keys performs no upload and no probe. A
 crossing issues at most four strip uploads plus one per pending span and at
@@ -372,18 +388,29 @@ the canvas has a column within `R + sqrt(2) * abs(z)` of the centre; rotation
 preserves that length. The snapped window covers a Chebyshev radius of
 `W / 2 - 33`, proving coverage for D10's slab until the cap applies.
 
-| Game resolution | Canvas | `R` | Formula / `W` | RGBA8 |
+| Game resolution | Canvas | `R` | Formula / `W` | RG32UI |
 |---|---|---:|---:|---:|
-| 1280x720 | 642x722 | 341.6 | 1152 | 5.1 MiB |
-| 1920x1080 | 962x1082 | 511.9 | 1472 | 8.3 MiB |
-| 2560x1440 | 1282x1442 | 682.2 | 1856 | 13.1 MiB |
-| 3840x2160 | 1922x2162 | 1022.8 | 2496 | 23.8 MiB |
-| 5120x2880 | 2562x2882 | 1363.3 | 3200 | 39.1 MiB |
-| 7680x4320 | 3842x4322 | 2044.5 | 4544 / 4096 cap | 64 MiB |
+| 1280x720 | 642x722 | 341.6 | 1152 | 10.1 MiB |
+| 1920x1080 | 962x1082 | 511.9 | 1472 | 16.5 MiB |
+| 2560x1440 | 1282x1442 | 682.2 | 1856 | 26.3 MiB |
+| 3840x2160 | 1922x2162 | 1022.8 | 2496 | 47.5 MiB |
+| 5120x2880 | 2562x2882 | 1363.3 | 3200 | 78.1 MiB |
+| 7680x4320 | 3842x4322 | 2044.5 | 4544 / 4096 cap | 128 MiB |
 
 When capped, the uncovered periphery follows D10 and reads unexplored. Canvas
 attachment logs one warning with the canvas size, formula result and covered
 radius.
+
+The window texel is RG32UI (`IRPrefab::Fog::FogWindowTexel`): red is the
+effective state integer (0–255; every shader consumer decodes it through one
+shared `fogTexelState`, dividing by 255), green the cell's exact 32-bit
+channel mask. The no-fog placeholder a canvas without fog binds is one
+`(255, kFogChannelDefault)` texel, and every tap returns
+`(0, kFogChannelDefault)` for a column outside the window, so analytic
+default-channel reveal still composes there. The format doubles the window's
+bytes; a reduced-width mask, a float-packed mask and a second texture are
+rejected because the mask must survive exactly and every tap family already
+binds the one image slot.
 
 The origin is `snap32(round(centre)) - W / 2`. World column `c` lives at
 texture texel `floorMod(c, W)`. A shader first proves
@@ -443,35 +470,101 @@ gated.
 
 The first `kMaxFogVisionCircles` sources added are analytic and evaluated per
 pixel. Later sources stamp their XY discs into the transient field layer with
-`fillRow`. A disc contains cells whose centres lie within its radius, matching
-`revealRadius`.
+`orRow`, carrying their channel masks: the layer holds the union of the masks
+of every source whose disc covers the cell. A disc contains cells whose centres
+lie within its radius, matching `revealRadius`.
 
-`WorldField::getCell` and the gather take the maximum of persistent and
-transient state. `clearVisionCircles` clears the transient layer. That layer
-never persists, probes or evicts, and leaves no explored memory. It deliberately
-does not provide analytic edge softness, height cost, line of sight or
-channels: a source past the cap ignores its channel mask and reveals every
-body in its disc, whatever channels that body carries. Callers add their
-highest-priority sources first.
+Both tiers obey FIELD-cell admission (D14): the analytic paint reveals a
+sample only where the source's mask intersects the sampled cell's mask, and
+`WorldField::getCell`, `peekCell` and the gather read a cell visible through
+the transient layer only where the union intersects the cell's own mask,
+resolved at read and gather time rather than by discarding stamps. Stamping
+therefore performs no persistence probe, and a mask edit under a live disc
+takes effect without restamping. `clearVisionCircles` clears the transient
+layer. That layer never persists, probes or evicts, and leaves no explored
+memory. It deliberately does not provide analytic edge softness, height cost
+or line of sight. Callers add their highest-priority sources first.
 
 The tier boundary is call order since the last `clearVisionCircles`; an
 admitted field-tier source returns no analytic slot (-1), so it cannot be
 gated by line of sight. A disc stamps cells whose centres lie within the
-radius of `roundHalfUp(centre)`, the radius clamped to `kFogRevealRadiusMax`.
-`setCell` writes the persistent layer only, so a cell under a tier disc still
-reads visible. A disc outside the window changes nothing drawn (D10 reads the
-column unexplored and nothing uploads it) but still reads visible through
-`getCell`, which is the gameplay contract. `clearVisionCircles` puts every key
-the layer held in the pending set, so the gather re-expands those chunks.
-The layer's chunks and the caller-owned pending vector are recycled across
-clears. A repeating moving set cleared, re-stamped and drained every frame
-allocates nothing once warm: every transition, including the closing transition
-back to the first state, has run, so pending capacity has seen the largest union
-of consecutive frames' changed chunks.
+radius of `roundHalfUp(centre)`, the radius clamped to `kFogRevealRadiusMax`;
+a zero source mask stamps nothing. `setCell` writes the persistent layer only,
+so a cell under an admitted tier disc still reads visible. A disc outside the
+window changes nothing drawn (D10 reads the column unexplored and nothing
+uploads it) but still reads visible through `getCell`, which is the gameplay
+contract. `clearVisionCircles` puts every key the layer held in the pending
+set, so the gather re-expands those chunks. The layer's chunks and the
+caller-owned pending vector are recycled across clears. A repeating moving set
+cleared, re-stamped and drained every frame allocates nothing once warm: every
+transition, including the closing transition back to the first state, has run,
+so pending capacity has seen the largest union of consecutive frames' changed
+chunks.
 
 Raising the analytic cap is rejected because it changes every mirrored std140
 block and remains a cap. Persisting tier stamps is rejected because a live
-source expresses visibility now, not explored memory.
+source expresses visibility now, not explored memory. The column cull and the
+cut-face test (`c_voxel_visibility_compact`, `ir_voxel_face_select`) keep
+their channel-blind source loops as a conservative superset: they decide
+which matter rasterizes, and the paint pass owns admission.
+
+## D14 — Explored-state policy and per-cell channels
+
+Every cell carries a 32-bit channel mask; an absent mask reads
+`kFogChannelDefault` (bit 0), including in a chunk that stores other cells'
+masks. Zero admits no source; all 32 bits survive storage and transport. A
+mask set on an UNEXPLORED cell is metadata the field keeps through save and
+eviction. `setCell` changes state without touching the mask. `revealRadius`
+and `exploreRadius` take a source mask (default `kFogChannelDefault`) and
+write only cells whose mask intersects it; `exploreRadius` authors EXPLORED
+memory and retains cells already VISIBLE, and explicit `setCell` remains the
+demotion route. Authoritative `setCell` is a state override, not a source,
+and is never filtered.
+
+The field has one explored-state policy, `ExploredPolicy::PERSISTENT`
+(default) or `DECAY` with a positive duration and a policy mask. It is
+initialization-only: accepted while the field holds no cell and no region
+record, a repeat of the current settings is harmless, any other change is
+refused without mutation, and `clear()` permits reconfiguration. A creation
+restores the same policy before reopening a save.
+
+The clock is the creation's: `setExploredTimeMs` supplies monotonic
+simulation milliseconds (exact integers in `[0, 2^53 - 1]`, initially zero)
+from a serial phase before the frame's fog readers; equal time is a no-op,
+backwards or out-of-range time is refused. No wall clock, render delta or
+engine system advances it; time outside the application counts only if the
+creation advances the clock, and it restores its saved epoch before loading
+cells.
+
+Under DECAY an EXPLORED write records the clock as the cell's exploration
+time, refreshing it even when the state byte is unchanged; any other write
+clears it. A cell whose mask intersects the policy mask becomes UNEXPLORED
+exactly when `now - lastExplored >= duration`; a cell outside the policy mask,
+or under PERSISTENT, keeps its memory. There is no alpha fade, no demotion of
+VISIBLE and no decay of VISIBLE; the policy targets exactly
+`kFogStateExplored`. A multibit cell has one state and one time. Changing a
+mask does not refresh the time: the edit first resolves expiry under the old
+mask, then under the new one, so removing a bit cannot resurrect expired
+memory and a newly eligible old cell expires at once.
+
+Expiry is serial field work. The clock advance expires every due resident
+cell: the field keeps, per chunk that may hold an eligible EXPLORED cell, a
+lower bound on the earliest exploration time, and visits only chunks whose
+bound is due, so a persistent field and a decaying field before its first
+deadline pay nothing per frame. Expired chunks join the existing pending set
+and dirty their region. Off-window cells age on the same clock: a region
+reloaded by any read, write or gather expiry-scans each loaded chunk before
+any reader sees it, with no probe of the on-disk world. `peekCell` stays
+const and non-loading for parallel readers; a second gather at the same time
+and origin remains a no-op.
+
+Under PERSISTENT no exploration time is tracked or saved; a DECAY save
+reopened under PERSISTENT keeps its memory and drops the times at the next
+save, and a PERSISTENT save reopened under DECAY reads every EXPLORED cell as
+explored at epoch zero. A continuous fade, per-faction history planes,
+automatic source trails and wall-time decay are rejected: the first changes
+the three-state contract the paint pass and the BODY verdict read, the rest
+are creation policy over this seam.
 
 ## Consumer audit
 
@@ -523,8 +616,11 @@ rendering every voxel under D10.
 | CPU field | D1-D5, D11, D12's cold-gather arm and D3's world-space API, initially gathered into the legacy fixed texture. | Docs |
 | Window | D6, D7, D10, D12's frame budgets, all shader consumers, eviction and visual/perf fixtures. | CPU field and the line-of-sight / field-paint layouts it composes with |
 | Source tier | D8 and its positive-fire coverage. | Window |
+| Explored policy | D14, the RG32UI window texel, the version-2 region payloads and both tiers' cell admission. | Source tier |
 
 The split keeps storage, persistence and cold-I/O proof GPU-free before the
 shader convention changes. The window phase changes the out-of-window contract
 and every shader tap atomically. The source tier then builds only on the
-settled world field.
+settled world field, and the explored-policy phase widens the texel and the
+save in one step so the CPU authority, the saved metadata, the GPU format and
+every reader agree.

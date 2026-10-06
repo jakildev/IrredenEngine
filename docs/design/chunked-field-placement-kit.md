@@ -161,6 +161,7 @@ Four mutation operations preserve those summaries and dirty semantics:
 | `eraseChunk(chunkCoord) -> bool` | Explicitly removes a present chunk to the free list and records its key dirty; false when absent. |
 | `assignChunk(chunkCoord, cells) -> bool` | Inserts or replaces all 1024 cells, recounts `nonZeroCount_`, and reports a change. |
 | `fillRow(firstCell, count, value) -> int` | Writes along +x, resolves each touched chunk once and returns the changed-cell count. |
+| `orRow(firstCell, count, bits) -> int` | ORs `bits` into the cells along +x with `fillRow`'s insertion, counting and clipping contract; zero bits change and insert nothing. |
 
 A raw mutable span is deliberately absent: it cannot keep `nonZeroCount_`
 exact without a recount and can silently skip the dirty mark.
@@ -996,7 +997,8 @@ edits and carry a value ⇒ this kit.
 
 The fog-field extension to C2's storage surface — `setCell -> bool`,
 `eraseChunk`, `assignChunk` and `fillRow` — shipped with the fog CPU-field
-phase; the C2 row describes the original placement-kit child.
+phase, and `orRow` with the fog source-tier channels; the C2 row describes
+the original placement-kit child.
 
 Each child is `**Blocked by:**` its predecessor. Tests live in **`test/ecs/`**,
 beside `spatial_grid_test.cpp` — the kit's composing sibling — and every new

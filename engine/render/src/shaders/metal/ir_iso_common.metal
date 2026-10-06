@@ -1089,6 +1089,14 @@ inline float fogVisionCircleReveal(float2 worldXY, float4 circle, float aa) {
     return 1.0f - smoothstep(circle.z - a, circle.z + a, dist);
 }
 
+// The fog window is RG32UI: .r is the cell state integer (0 unexplored, 128
+// explored, 255 visible), .g the cell's channel mask. GLSL twin:
+// fogTexelState in ../ir_iso_common.glsl.
+constant uint kFogChannelDefault = 1u;
+inline float fogTexelState(uint state) {
+    return float(state) / 255.0f;
+}
+
 
 constant int kDetachedFaceMissDepth = 2147483647;
 

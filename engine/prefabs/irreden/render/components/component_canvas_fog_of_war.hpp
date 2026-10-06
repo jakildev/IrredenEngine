@@ -17,11 +17,12 @@
 //     observer's "currently visible" disc is crisp at render resolution and
 //     reveals partial voxels — what the grid cannot express. See that struct.
 //
-// Format is RGBA8 rather than R8 so the Metal backend's rgba8 image
-// binding path can share a single binding-layout with the AO and sun-
-// shadow textures (see C_CanvasSunShadow for the same trade-off). Only
-// the .r channel carries fog state; the other channels are written 0
-// and unused.
+// The window is RG32UI (`IRPrefab::Fog::FogWindowTexel`): red is the cell's
+// effective state integer (0–255; shader consumers divide by 255), green its
+// exact 32-bit channel mask. An analytic source reveals a FIELD sample only
+// where its mask intersects the sampled cell's mask; the no-fog placeholder
+// holds `(255, kFogChannelDefault)` and a column outside the window reads
+// `(0, kFogChannelDefault)`.
 //
 // The CPU state is `IRPrefab::Fog::WorldField` (`render/fog_world_field.hpp`):
 // unbounded, world-space, optionally persisted, held through a shared handle
@@ -32,8 +33,9 @@
 // window move exposes) and uploads one rectangle per run, before using fog to
 // cull unexplored columns. FOG_TO_TRIXEL is a read-only consumer. Population
 // is driver-side: gameplay calls `IRPrefab::Fog::setCell` /
-// `IRPrefab::Fog::revealRadius` (see `render/fog_of_war.hpp`) to drive the
-// visibility set directly.
+// `IRPrefab::Fog::revealRadius` / `IRPrefab::Fog::exploreRadius` (see
+// `render/fog_of_war.hpp`) to drive the visibility set directly, and owns the
+// explored-state policy and simulation clock the field decays on.
 //
 // The window is `windowEdge_` texels square, one texel per integer voxel
 // column, sized at construction from the canvas footprint
@@ -412,7 +414,7 @@ struct C_CanvasFogOfWar {
               TextureKind::TEXTURE_2D,
               IRPrefab::Fog::detail::windowEdgeForCanvas(canvasSize),
               IRPrefab::Fog::detail::windowEdgeForCanvas(canvasSize),
-              TextureFormat::RGBA8,
+              TextureFormat::RG32UI,
               TextureWrap::CLAMP_TO_EDGE,
               TextureFilter::NEAREST
           )}
@@ -513,15 +515,58 @@ struct C_CanvasFogOfWar {
         field_->setCell({wx, wy}, state);
     }
 
+    /// The channel mask of column (wx, wy); absent metadata reads
+    /// `kFogChannelDefault`. Loads the region.
+    std::uint32_t getCellChannels(int wx, int wy) const {
+        return field_->getCellChannels({wx, wy});
+    }
+
+    /// Replaces column (wx, wy)'s channel mask: it admits a source only where
+    /// the two masks intersect, and decays only where it intersects the
+    /// policy's mask. Zero admits nothing.
+    bool setCellChannels(int wx, int wy, std::uint32_t channels) {
+        return field_->setCellChannels({wx, wy}, channels);
+    }
+
     /// Mark every cell within `radius` (Euclidean distance, clamped to
-    /// `IRPrefab::Fog::kFogRevealRadiusMax`) of `(cx,cy)` as visible. Cells
-    /// previously visible but now outside the radius are NOT downgraded —
-    /// that lifecycle belongs to the deferred `fadeExplored` pass, since
-    /// downgrade requires knowing every vision source's union
-    /// (game-state-specific). v1 callers that want a single moving observer
-    /// can wipe the field themselves before each `revealRadius` call.
-    void revealRadius(int cx, int cy, int radius) {
-        field_->revealRadius({cx, cy}, radius);
+    /// `IRPrefab::Fog::kFogRevealRadiusMax`) of `(cx,cy)` whose mask
+    /// intersects @p channels as visible. Cells previously visible but now
+    /// outside the radius are NOT downgraded: a creation that wants explored
+    /// memory behind a moving reveal authors it with `exploreRadius`, or
+    /// wipes the field before each call.
+    void revealRadius(int cx, int cy, int radius, std::uint32_t channels = kFogChannelDefault) {
+        field_->revealRadius({cx, cy}, radius, channels);
+    }
+
+    /// Author explored memory over the disc: every non-VISIBLE cell whose mask
+    /// intersects @p channels becomes EXPLORED with its exploration time
+    /// refreshed; VISIBLE cells are retained. Returns the changed-cell count.
+    int exploreRadius(int cx, int cy, int radius, std::uint32_t channels = kFogChannelDefault) {
+        return field_->exploreRadius({cx, cy}, radius, channels);
+    }
+
+    /// The explored-state policy (`IRPrefab::Fog::WorldField::setExploredPolicy`):
+    /// initialization-only, false and unchanged when rejected.
+    bool setExploredPolicy(
+        IRPrefab::Fog::ExploredPolicy policy,
+        std::uint64_t durationMs,
+        std::uint32_t channels = kFogChannelDefault
+    ) {
+        return field_->setExploredPolicy(policy, durationMs, channels);
+    }
+
+    IRPrefab::Fog::ExploredPolicySettings getExploredPolicy() const {
+        return field_->exploredPolicy();
+    }
+
+    /// Advances the creation-owned simulation clock the DECAY policy ages on;
+    /// false and unchanged for a backwards or out-of-range time. Serial.
+    bool setExploredTimeMs(std::uint64_t nowMs) {
+        return field_->setExploredTimeMs(nowMs);
+    }
+
+    std::uint64_t getExploredTimeMs() const {
+        return field_->exploredTimeMs();
     }
 
     /// Drop all live vision sources, analytic and field-tier, returning to
@@ -549,9 +594,11 @@ struct C_CanvasFogOfWar {
     /// `clearVisionCircles`, in call order, are analytic; add the
     /// highest-priority sources first. Every later source is field-tier: its
     /// XY disc (cells whose centres lie within @p radius of
-    /// `roundHalfUp(cx, cy)`, the `revealRadius` metric) is stamped visible
-    /// into the world field's transient layer until `clearVisionCircles`. The
-    /// tier ignores @p edge, the height terms, line of sight and channels, and
+    /// `roundHalfUp(cx, cy)`, the `revealRadius` metric) stamps @p channels
+    /// into the world field's transient layer until `clearVisionCircles`, and
+    /// a cell reads visible through it only where that union intersects the
+    /// cell's own mask — the same admission the analytic FIELD paint applies.
+    /// The tier ignores @p edge, the height terms and line of sight, and
     /// leaves no explored memory; it is never persisted. `getCell` reads it
     /// (so a cell under a tier disc reads visible even after `setCell` wrote
     /// it lower), and it reaches the screen only inside the fog window — a
@@ -654,7 +701,7 @@ struct C_CanvasFogOfWar {
         std::uint32_t channels = kFogChannelDefault
     ) {
         if (radius > 0.0f && observers.visionCircleCount_ >= kMaxFogVisionCircles) {
-            field.stampTransientDisc(IRMath::vec2(cx, cy), radius);
+            field.stampTransientDisc(IRMath::vec2(cx, cy), radius, channels);
             return -1;
         }
         return addVisionCircle(

@@ -93,8 +93,8 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   seeds inherit the class without a recurring scan.
   Each raster folds its class + factor into id bit 28 + 27:20, and
   `FOG_TO_TRIXEL` paints a BODY pixel at that one factor. [Reveal model](../../../../docs/design/fog-of-war-reveal-model.md)
-  owns FIELD / BODY / EXEMPT; [world field](../../../../docs/design/fog-of-war-world-field.md)
-  owns chunked storage, persistence and the GPU window.
+  owns FIELD / BODY / EXEMPT; [world field](../../../../docs/design/fog-of-war-world-field.md) owns chunked
+  storage, per-cell channels, the explored-state policy and clock, persistence and the RG32UI window.
 - GPU transforms: a voxel set opts in with `C_VoxelSetNew::gpuTransformSlot_
   != kVoxelTransformStatic` (the default is CPU-direct, dispatch-free). Joints
   share binding 18 — set slots grow up from 0, joint blocks are carved down from
@@ -161,7 +161,7 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   `itemCenterOffsetY` / `itemAtOffsetY`) has one owner; authored `zOrder_` stays
   below `kWidgetDropdownOpenZBias`; two open dropdowns are unordered.
 - Radio exclusion (`makeRadio(..., groupId, value)`) runs in `WIDGET_APPLY_RADIO::endTick`;
-  text input edits only while `focused_` (owned by `WIDGET_INPUT`);
+  text input edits only while `focused_` (`WIDGET_INPUT`'s; Enter or a click off widgets drops it);
   `C_WidgetScroll` is track + thumb only — the owner positions content from `scrollPos_`.
 - `IRPrefab::GuiTest::` (`gui_test_assertions.hpp`): `hovers` / `clickFires` /
   `sliderValue` / `checkbox` / `picksVoxel` / `picksIsoColumn` / `hoveredEntityId` /

@@ -24,7 +24,7 @@ def selection_source(suffix, directory, remove_route_guard=False):
         selector = selector.replace(site, "")
     if suffix == "metal":
         selector, count = re.subn(
-            r"texture2d<float, access::read> fog,\s*constant FogObserverData& obs,\s*",
+            r"texture2d<uint, access::read> fog,\s*constant FogObserverData& obs,\s*",
             "", selector)
         if count != 1:
             raise ValueError("missing Metal fog arguments")

@@ -292,21 +292,31 @@ any one missing means unconfigured. One table carries the whole contract:
 | Knob `FLEET_GH_APP_INSTALLATION_ID` | the installation ID (from the installation URL) |
 | Knob `FLEET_GH_APP_KEY_PATH` | path to the private key (`.pem`) |
 | Setup 5 — verify | `fleet-gh-token` prints a token; `fleet-gate-status` lists both identities |
-| Pool **app** | scout (re-mints per tick, quota samples included), dispatcher, `fleet-dispatch-wrap` and every agent it launches, `fleet-claim`, panes seeded by `fleet-up` — wherever `fleet-gh-token` exported `GH_TOKEN` |
-| Token refresh | `~/bin/gh` (`scripts/fleet/gh`) re-mints a stale `ghs_` `GH_TOKEN` per call, so a live interactive pane (an architect `claude`) stays on the App past the 1h expiry; the dispatcher re-seeds the tmux server's `GH_TOKEN` each tick and `fleet-babysit` re-mints before each `claude` launch, covering panes split later and relaunches. The shim leaves empty/unset and non-`ghs_` values alone (`FLEET_GH_SHIM=0` bypasses); a raw `curl` using `$GH_TOKEN` in a live pane still sees the stale token |
-| Pool **user** | a human's own shell `gh`, any host without the knobs, a personal token in `GH_TOKEN` |
-| Neither | git fetch/push over SSH (no API call) |
+| Pool **app** | Scout polling and detail refresh; dispatcher polling, pre-claims, and target-completion bookkeeping; recurring queue ingest, cleanup, reconcile, and stalled sweep. Without App configuration these lanes use the user's keychain login. |
+| Pool **user** | Every dispatched Codex/Claude pane, including resumed iterations; its GitHub reads, comments, reviews, and task/review/feedback/conflict/planning claim mutations and releases; the human shell. |
+| Boundary | `fleet-dispatch-wrap` selects `FLEET_GH_IDENTITY=user` and removes both `GH_TOKEN` and `GITHUB_TOKEN` before any pane-side operation. `fleet-claim` preserves the selected lane; an unselected standalone invocation selects the daemon lane. The `gh` shim cannot refresh an App token into an explicitly user-routed call. |
+| Credential storage | No GitHub token is seeded into tmux global state. App tokens remain process-local or in the minter's existing cache; user auth stays in `gh`'s credential store. Projections, dispatch records, and session sidecars carry no credential. |
+| Ownership | Authentication selection does not change the dispatch ID, reservation, host-agent label, or claim namespace. A dispatcher App pre-claim remains the same claim when its user-routed pane resumes, mutates, or releases it. |
+| Neither | Git fetch/push over SSH; human-only merge authority is unchanged. |
 
-**Reading it.** `fleet-gate-status` tags each latched GitHub sample with
-`identity` (`user` or `app`: the scout and the refusal latch record the pool
-their `gh` billed, read from the token's own prefix — `ghs_` is an
-installation token, any other token or none is the operator's) — a
-rejected latch reads `graphql[user] … REJECTED` beside an App pool's
-`graphql[app]` — and, with the knobs set, a live
-`/rate_limit` section lists both pools' core and GraphQL remaining (the
-probe spends no quota). The dispatcher gate still keys on the latched
-samples, not on identity: a rejected latch taken under one identity holds
-the gate until its reset even after traffic moves to the other pool.
+**Admission.** The scout samples both identities, using actual REST response
+headers for core and GraphQL's `rateLimit` for GraphQL. Samples and refusal
+latches are separate `github-<identity>-<pool>[.rejected].json` files. A
+legacy unqualified latch is accepted only for its recorded identity.
+Rejections remain binding through that identity's reset plus grace; missing
+or stale core/GraphQL observations close only the consuming lane. A healthy
+self-report does not clear a refusal from real traffic.
+
+Pane admission reads the user pool, independently of provider quota gates.
+On an App-configured host the scout gates daemon polling and recurring
+maintenance on the App pool, while continuing quota probes for recovery.
+A pane launch still needs its pre-claim to succeed; separating admission
+budgets does not bypass a failed App-side claim or stale scout state.
+`fleet-dispatcher --gate-status shared` reports pane GitHub admission;
+`--gate-status daemon` reports daemon admission. `fleet-gate-status` names
+every lane's identity and both gate states in text and JSON. Its optional
+live `/rate_limit` display is diagnostic, not admission evidence, since
+that endpoint can report a different core bucket from enforcement headers.
 
 ---
 

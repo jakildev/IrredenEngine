@@ -89,6 +89,9 @@ const char *const kFileCompLightOverflowFaces = "shaders/c_light_overflow_faces.
 const char *const kFileCompFogToTrixel = "shaders/c_fog_to_trixel.glsl";
 const char *const kFileCompFogOverflowFaces = "shaders/c_fog_overflow_faces.glsl";
 const char *const kFileCompComputeVoxelAO = "shaders/c_compute_voxel_ao.glsl";
+// Same body with the smooth-yaw single-canvas inverse; dispatched while the
+// uploaded residualYaw is non-zero.
+const char *const kFileCompComputeVoxelAOSmoothYaw = "shaders/c_compute_voxel_ao_smooth_yaw.glsl";
 // Hi-Z (max-depth) distance mip-chain build for voxel occlusion culling.
 const char *const kFileCompBuildDistanceHiZ = "shaders/c_build_distance_hiz.glsl";
 // Chunk-occlusion pre-pass: HZB-tests each pool-chunk's iso AABB against the

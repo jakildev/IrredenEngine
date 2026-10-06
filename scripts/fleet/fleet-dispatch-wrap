@@ -74,6 +74,7 @@ if [[ -f "$_FLEET_COMMON_SH" ]]; then
     # shellcheck source=/dev/null
     source "$_FLEET_COMMON_SH"
 else
+    fleet_select_github_identity() { echo "GitHub identity helper unavailable" >&2; return 1; }
     fleet_install_maybe_refresh() { :; }  # helpers not installed yet — no-op
     # No-op release degrades a discarded dispatch target to its claim's TTL
     # reaper — the same failure budget as the dispatcher's copy; an
@@ -85,6 +86,8 @@ else
     fleet_worktree_registered() { return 0; }
 fi
 unset _FLEET_COMMON_SH
+
+fleet_select_github_identity user || exit 1
 
 # Optional 7th arg: the dispatcher's pre-claimed dispatch target,
 # `target=<kind>:<repo>:<N>[:<extra>]` — the one item this iteration works,
@@ -182,14 +185,6 @@ record_wrapper_pid() {
 }
 
 record_wrapper_pid || echo "fleet-dispatch-wrap: could not record wrapper PID for $PANE_KEY" >&2
-
-# GitHub App token: guarded per-iteration refresh so every claude
-# iteration starts with a fresh token (cache makes this a cheap file read
-# most calls). Never export GH_TOKEN="" — that would defeat gh's keychain
-# fallback on the unconfigured path.
-_gh_app_token="$(fleet-gh-token 2>/dev/null || true)"
-[[ -n "$_gh_app_token" ]] && export GH_TOKEN="$_gh_app_token"
-unset _gh_app_token
 
 # Re-tag the pane border label with the model this iteration actually
 # runs (the worker lane flexes per task), e.g. "worker [fable 1m]".

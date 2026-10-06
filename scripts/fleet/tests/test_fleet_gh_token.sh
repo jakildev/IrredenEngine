@@ -176,4 +176,23 @@ set -e
 assert_eq "$rc" "0" "loose-perm key -> still exit 0 (warn, not fail)"
 case "$err" in *"group/other-readable"*) ok "loose-perm key -> warns on stderr";; *) bad "loose-perm key -> missing warning: [$err]";; esac
 
+# --- Case 8: any argument -> usage on stderr, exit 2, stdout empty, never mints ---
+for arg in --help -h bogus; do
+    sd="$TMPROOT/s8"; rm -rf "$sd"; mkdir -p "$sd"
+    write_cache "$sd" "ghs_MUSTNOTPRINT" 100000   # a live cache a leak would serve
+    export CURL_STUB_ARGS="$TMPROOT/args_c8"
+    export CURL_STUB_BODY='{"token":"ghs_MUSTNOTMINT","expires_at":"2099-01-01T00:00:00Z"}'
+    rm -f "$CURL_STUB_ARGS"
+    set +e
+    out=$(FLEET_UP_CONF="$EMPTY_CONF" FLEET_STATE_DIR="$sd" \
+          FLEET_GH_APP_ID="$APP_ID" FLEET_GH_APP_INSTALLATION_ID="$INSTALL_ID" \
+          FLEET_GH_APP_KEY_PATH="$KEY" PATH="$TMPROOT/bin:$PATH" \
+          "$GHT" "$arg" 2>"$TMPROOT/err8"); rc=$?
+    set -e
+    assert_eq "$out" "" "arg '$arg' -> stdout empty"
+    assert_eq "$rc" "2" "arg '$arg' -> exit 2"
+    case "$(cat "$TMPROOT/err8")" in *usage:*) ok "arg '$arg' -> usage on stderr";; *) bad "arg '$arg' -> no usage on stderr";; esac
+    assert_no_path "$CURL_STUB_ARGS" "arg '$arg' -> no mint"
+done
+
 summarize "fleet-gh-token tests"

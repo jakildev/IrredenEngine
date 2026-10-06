@@ -164,7 +164,7 @@ stdout=$(FAKE_GH_RC=5 gh issue view 5 --json state 2>"$TMPROOT/err") && rc=0 || 
 [[ "$rc" == "5" ]] && ok "exit status 5 preserved" || fail "expected 5, got $rc"
 [[ "$(order "$stdout")" == "OUT-1 OUT-3" ]] && ok "stdout replayed" || fail "stdout: $stdout"
 grep -q "ERR-2" "$TMPROOT/err" && ok "stderr replayed" || fail "stderr: $(cat "$TMPROOT/err")"
-[[ ! -e "$FLEET_STATE_DIR/usage/github-graphql.rejected.json" ]] && ok "no refusal latch written" \
+[[ ! -e "$FLEET_STATE_DIR/usage/github-user-graphql.rejected.json" ]] && ok "no refusal latch written" \
     || fail "a non-refusal failure latched the gate"
 
 echo ""

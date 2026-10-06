@@ -41,7 +41,7 @@ trap cleanup EXIT
 
 export FLEET_STATE_DIR="$TMPROOT/state"
 USAGE="$FLEET_STATE_DIR/usage"
-LATCH="$USAGE/github-core.json"
+LATCH="$USAGE/github-user-core.json"
 STUB_DIR="$TMPROOT/stub"
 mkdir -p "$USAGE" "$STUB_DIR/bin"
 
@@ -64,6 +64,10 @@ QUERY='{rateLimit{limit used remaining resetAt}}'
 cat > "$STUB_DIR/bin/gh" <<'STUB'
 #!/usr/bin/env bash
 d="$GH_STUB_DIR"
+if [[ "$*" == "api --include repos/jakildev/IrredenEngine" ]]; then
+    echo "HTTP/2.0 502 Bad Gateway"
+    exit 1
+fi
 echo "$*" >> "$d/calls"
 if [[ "$#" -eq 2 && "$1" == api && "$2" == /rate_limit ]]; then
     cat "$d/rest.json"
@@ -87,7 +91,7 @@ printf '{"data":{"rateLimit":{"limit":5000,"used":100,"remaining":4900,"resetAt"
 
 # One scout process running a step list. `fetch=<mode>` drives one real
 # `_rest_list` read through the fake urlopen; `sample` runs the sampler and
-# copies github-core.json (or "<absent>") to $TMPROOT/snap.<n>; `sleep`
+# copies github-user-core.json (or "<absent>") to $TMPROOT/snap.<n>; `sleep`
 # waits a second so a rewrite's fresh observed_at would be visible.
 # Per-sample urlopen counts land in $TMPROOT/sample-requests.
 drive() {
@@ -180,7 +184,7 @@ for step in sys.argv[4:]:
         samples += 1
         with open(OUT / "sample-requests", "a") as f:
             f.write(f"{len(requests) - before}\n")
-        latch = mod.USAGE_DIR / "github-core.json"
+        latch = mod.USAGE_DIR / "github-user-core.json"
         snap = OUT / f"snap.{samples}"
         if latch.exists():
             shutil.copyfile(latch, snap)
@@ -211,7 +215,7 @@ assert_eq "$(latch_field limit)" "5000" "latch limit comes from the headers"
 assert_eq "$(latch_field resetsAt)" "$FUTURE_RESET" "latch resetsAt is X-RateLimit-Reset"
 assert_eq "$(latch_field rateLimitType)" "github_core" "latch type is github_core"
 out=$(gate)
-assert_eq "${out%% resets=*}" "closed:github_core util=92% (>= 90%)" \
+assert_eq "${out%% resets=*}" "closed:github_core[user] util=92%" \
     "dispatcher gate closes on the header reading, not the phantom bucket"
 gs=$("$GATE_STATUS")
 assert_contains "$gs" "Fleet-wide usage gate: CLOSED" "gate-status prints CLOSED"
@@ -233,15 +237,15 @@ assert_eq "$(snap 3)" "$(snap 1)" "header-less response leaves the latch untouch
 assert_eq "$(snap 4)" "$(snap 1)" "401 leaves the latch untouched"
 assert_eq "$(tr '\n' ' ' < "$TMPROOT/sample-requests")" "0 0 0 0 " "no sample issued an HTTP request"
 
-echo "T4: no header observation => no core file, gate names no github_core"
+echo "T4: no header observation => no core file, gate fails closed"
 rm -f "$USAGE"/*.json
 rm -rf "$TMPROOT/etag"
 drive sample fetch=urlerror fetch=noheaders fetch=401 sample
 assert_eq "$(snap 1)" "<absent>" "cold start writes no core file"
 assert_eq "$(snap 2)" "<absent>" "failed and 401 fetches write no core file"
 out=$(gate)
-assert_eq "${out%%:*}" "open" "dispatcher gate stays open"
-assert_absent "$out" "github_core" "gate output names no github_core"
+assert_eq "${out%%:*}" "closed" "dispatcher gate fails closed"
+assert_contains "$out" "github_core[user] missing or stale" "gate names the missing core prerequisite"
 assert_absent "$("$GATE_STATUS")" " core " "gate-status shows no core row"
 
 echo "T5: every stub invocation was modelled"

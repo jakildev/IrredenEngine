@@ -14,6 +14,7 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 
 namespace IRScript::detail {
 
@@ -81,17 +82,34 @@ inline int requireFogInt(sol::object value, const char *function, std::size_t in
     return result;
 }
 
-inline std::uint32_t requireFogUint32(sol::object value, const char *function, std::size_t index) {
+/// A finite, exact integer in `[0, maximum]`; @p rangeMessage names the
+/// range in the error.
+inline std::uint64_t requireFogBoundedInteger(
+    sol::object value,
+    const char *function,
+    std::size_t index,
+    double maximum,
+    const char *rangeMessage
+) {
     const double number = requireFogNumber(value, function, index);
-    constexpr double maximum = static_cast<double>(std::numeric_limits<std::uint32_t>::max());
     if (!(number >= 0.0 && number <= maximum)) {
-        throw std::invalid_argument(fogArgumentName(function, index) + " is outside uint32 range");
+        throw std::invalid_argument(fogArgumentName(function, index) + " " + rangeMessage);
     }
-    const auto result = static_cast<std::uint32_t>(number);
+    const auto result = static_cast<std::uint64_t>(number);
     if (static_cast<double>(result) != number) {
         throw std::invalid_argument(fogArgumentName(function, index) + " must be an integer");
     }
     return result;
+}
+
+inline std::uint32_t requireFogUint32(sol::object value, const char *function, std::size_t index) {
+    return static_cast<std::uint32_t>(requireFogBoundedInteger(
+        value,
+        function,
+        index,
+        static_cast<double>(std::numeric_limits<std::uint32_t>::max()),
+        "is outside uint32 range"
+    ));
 }
 
 inline std::uint32_t optionalFogUint32(
@@ -101,6 +119,60 @@ inline std::uint32_t optionalFogUint32(
         return fallback;
     }
     return requireFogUint32(args[index], function, index);
+}
+
+/// A simulation time or duration: a finite, exact integer in
+/// `[0, kFogTimeMsMax]`, the range a Lua number carries exactly.
+inline std::uint64_t requireFogTimeMs(sol::object value, const char *function, std::size_t index) {
+    return requireFogBoundedInteger(
+        value,
+        function,
+        index,
+        static_cast<double>(IRPrefab::Fog::kFogTimeMsMax),
+        "must be in [0, 2^53 - 1] milliseconds"
+    );
+}
+
+inline IRPrefab::Fog::ExploredPolicy
+requireFogExploredPolicy(sol::object value, const char *function, std::size_t index) {
+    if (value.get_type() != sol::type::number) {
+        throw std::invalid_argument(
+            fogArgumentName(function, index) + " must be an IRFog.ExploredPolicy value"
+        );
+    }
+    const double number = value.as<double>();
+    switch (static_cast<int>(number)) {
+    case static_cast<int>(IRPrefab::Fog::ExploredPolicy::PERSISTENT):
+        if (number == static_cast<double>(IRPrefab::Fog::ExploredPolicy::PERSISTENT)) {
+            return IRPrefab::Fog::ExploredPolicy::PERSISTENT;
+        }
+        break;
+    case static_cast<int>(IRPrefab::Fog::ExploredPolicy::DECAY):
+        if (number == static_cast<double>(IRPrefab::Fog::ExploredPolicy::DECAY)) {
+            return IRPrefab::Fog::ExploredPolicy::DECAY;
+        }
+        break;
+    default:
+        break;
+    }
+    throw std::invalid_argument(
+        fogArgumentName(function, index) + " must be an IRFog.ExploredPolicy value"
+    );
+}
+
+/// The preflight `IRFog.revealRadius` and `IRFog.exploreRadius` share: the
+/// disc's bounding square must stay inside int32.
+inline void requireFogDiscInRange(int cx, int cy, int radius, const char *function) {
+    const std::int64_t minX = static_cast<std::int64_t>(cx) - radius;
+    const std::int64_t maxX = static_cast<std::int64_t>(cx) + radius;
+    const std::int64_t minY = static_cast<std::int64_t>(cy) - radius;
+    const std::int64_t maxY = static_cast<std::int64_t>(cy) + radius;
+    if (minX < std::numeric_limits<int>::min() || maxX > std::numeric_limits<int>::max() ||
+        minY < std::numeric_limits<int>::min() || maxY > std::numeric_limits<int>::max()) {
+        throw std::invalid_argument(
+            std::string("IRFog.") + function + " arguments overflow integer bounds"
+        );
+    }
 }
 
 inline IREntity::EntityId
@@ -365,19 +437,85 @@ bindFog(LuaScript &script, FogVisionTargetResolver resolveTarget = activeFogVisi
         ));
     };
     fog["revealRadius"] = [](sol::variadic_args args) {
-        requireFogArity("revealRadius", args.size(), 3, 3);
+        requireFogArity("revealRadius", args.size(), 3, 4);
         const int cx = requireFogInt(args[0], "revealRadius", 0);
         const int cy = requireFogInt(args[1], "revealRadius", 1);
         const int radius = requireFogInt(args[2], "revealRadius", 2);
-        const std::int64_t minX = static_cast<std::int64_t>(cx) - radius;
-        const std::int64_t maxX = static_cast<std::int64_t>(cx) + radius;
-        const std::int64_t minY = static_cast<std::int64_t>(cy) - radius;
-        const std::int64_t maxY = static_cast<std::int64_t>(cy) + radius;
-        if (minX < std::numeric_limits<int>::min() || maxX > std::numeric_limits<int>::max() ||
-            minY < std::numeric_limits<int>::min() || maxY > std::numeric_limits<int>::max()) {
-            throw std::invalid_argument("IRFog.revealRadius arguments overflow integer bounds");
+        const std::uint32_t channels =
+            optionalFogUint32(args, 3, IRComponents::kFogChannelDefault, "revealRadius");
+        requireFogDiscInRange(cx, cy, radius, "revealRadius");
+        IRPrefab::Fog::revealRadius(cx, cy, radius, channels);
+    };
+    fog["exploreRadius"] = [](sol::variadic_args args) {
+        requireFogArity("exploreRadius", args.size(), 3, 4);
+        const int cx = requireFogInt(args[0], "exploreRadius", 0);
+        const int cy = requireFogInt(args[1], "exploreRadius", 1);
+        const int radius = requireFogInt(args[2], "exploreRadius", 2);
+        const std::uint32_t channels =
+            optionalFogUint32(args, 3, IRComponents::kFogChannelDefault, "exploreRadius");
+        requireFogDiscInRange(cx, cy, radius, "exploreRadius");
+        return static_cast<lua_Integer>(IRPrefab::Fog::exploreRadius(cx, cy, radius, channels));
+    };
+    fog["setCellChannels"] = [](sol::variadic_args args) {
+        requireFogArity("setCellChannels", args.size(), 3, 3);
+        const int x = requireFogInt(args[0], "setCellChannels", 0);
+        const int y = requireFogInt(args[1], "setCellChannels", 1);
+        const std::uint32_t channels = requireFogUint32(args[2], "setCellChannels", 2);
+        IRPrefab::Fog::setCellChannels(x, y, channels);
+    };
+    fog["getCellChannels"] = [](sol::variadic_args args) {
+        requireFogArity("getCellChannels", args.size(), 2, 2);
+        return static_cast<lua_Integer>(IRPrefab::Fog::getCellChannels(
+            requireFogInt(args[0], "getCellChannels", 0),
+            requireFogInt(args[1], "getCellChannels", 1)
+        ));
+    };
+    fog["setExploredPolicy"] = [](sol::variadic_args args) {
+        requireFogArity("setExploredPolicy", args.size(), 2, 3);
+        const IRPrefab::Fog::ExploredPolicy policy =
+            requireFogExploredPolicy(args[0], "setExploredPolicy", 0);
+        const std::uint64_t durationMs = requireFogTimeMs(args[1], "setExploredPolicy", 1);
+        const std::uint32_t channels =
+            optionalFogUint32(args, 2, IRComponents::kFogChannelDefault, "setExploredPolicy");
+        if (policy == IRPrefab::Fog::ExploredPolicy::DECAY && durationMs == 0) {
+            throw std::invalid_argument(
+                "IRFog.setExploredPolicy argument 2 must be positive for DECAY"
+            );
         }
-        IRPrefab::Fog::revealRadius(cx, cy, radius);
+        if (IRPrefab::Fog::detail::activeFogComponent() == nullptr) {
+            return;
+        }
+        if (!IRPrefab::Fog::setExploredPolicy(policy, durationMs, channels)) {
+            throw std::invalid_argument(
+                "IRFog.setExploredPolicy refused: the policy is initialization-only and the "
+                "field already holds cells"
+            );
+        }
+    };
+    fog["getExploredPolicy"] = [](sol::variadic_args args) {
+        requireFogArity("getExploredPolicy", args.size(), 0, 0);
+        const IRPrefab::Fog::ExploredPolicySettings settings = IRPrefab::Fog::getExploredPolicy();
+        return std::make_tuple(
+            static_cast<lua_Integer>(settings.policy_),
+            static_cast<double>(settings.durationMs_),
+            static_cast<lua_Integer>(settings.channels_)
+        );
+    };
+    fog["setExploredTimeMs"] = [](sol::variadic_args args) {
+        requireFogArity("setExploredTimeMs", args.size(), 1, 1);
+        const std::uint64_t nowMs = requireFogTimeMs(args[0], "setExploredTimeMs", 0);
+        if (IRPrefab::Fog::detail::activeFogComponent() == nullptr) {
+            return;
+        }
+        if (!IRPrefab::Fog::setExploredTimeMs(nowMs)) {
+            throw std::invalid_argument(
+                "IRFog.setExploredTimeMs argument 1 must not move the clock backwards"
+            );
+        }
+    };
+    fog["getExploredTimeMs"] = [](sol::variadic_args args) {
+        requireFogArity("getExploredTimeMs", args.size(), 0, 0);
+        return static_cast<double>(IRPrefab::Fog::getExploredTimeMs());
     };
     fog["clear"] = [](sol::variadic_args args) {
         requireFogArity("clear", args.size(), 0, 0);
@@ -391,6 +529,16 @@ bindFog(LuaScript &script, FogVisionTargetResolver resolveTarget = activeFogVisi
     IR_BIND_FOG_STATE(VISIBLE, IRComponents::kFogStateVisible);
 #undef IR_BIND_FOG_STATE
     fog["State"] = state;
+    sol::table exploredPolicy = lua.create_table();
+#define IR_BIND_FOG_POLICY(name)                                                                   \
+    exploredPolicy[#name] = static_cast<lua_Integer>(IRPrefab::Fog::ExploredPolicy::name)
+    IR_BIND_FOG_POLICY(PERSISTENT);
+    IR_BIND_FOG_POLICY(DECAY);
+#undef IR_BIND_FOG_POLICY
+    fog["ExploredPolicy"] = exploredPolicy;
+    sol::table channel = lua.create_table();
+    channel["DEFAULT"] = static_cast<lua_Integer>(IRComponents::kFogChannelDefault);
+    fog["Channel"] = channel;
     lua["IRFog"] = fog;
 }
 

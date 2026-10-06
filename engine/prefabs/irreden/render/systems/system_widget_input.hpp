@@ -16,6 +16,7 @@
 
 #include <algorithm>
 #include <climits>
+#include <optional>
 #include <vector>
 
 namespace IRSystem {
@@ -106,6 +107,26 @@ template <> struct System<WIDGET_INPUT> {
         // Release capture when the mouse button comes up.
         if (mouseLeftReleasedThisFrame_) {
             capturedWidgetId_ = IREntity::kNullEntity;
+        }
+
+        // Focus ends with its widget, with a click that lands on no widget, and
+        // with Enter in a text input, so typed text never outlives the edit.
+        if (focusedWidgetId_ != IREntity::kNullEntity) {
+            const auto focusedWidget =
+                IREntity::entityExists(focusedWidgetId_)
+                    ? IREntity::getComponentOptional<IRComponents::C_Widget>(focusedWidgetId_)
+                    : std::nullopt;
+            const bool submitted =
+                focusedWidget && (*focusedWidget)->kind_ == IRComponents::WidgetKind::TEXT_INPUT &&
+                IRInput::checkKeyMouseButton(
+                    IRInput::KeyMouseButtons::kKeyButtonEnter,
+                    IRInput::ButtonStatuses::PRESSED
+                );
+            const bool clickedAway =
+                mouseLeftPressedThisFrame_ && topHoveredId_ == IREntity::kNullEntity;
+            if (!focusedWidget || submitted || clickedAway) {
+                focusedWidgetId_ = IREntity::kNullEntity;
+            }
         }
 
         // Tab / Shift+Tab: cycle focus through all non-disabled interactive widgets.

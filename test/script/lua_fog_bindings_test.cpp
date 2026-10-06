@@ -60,7 +60,9 @@ TEST_F(LuaFogBindingsTest, ExposesCompleteSurfaceAndCppStateValues) {
             'setVision', 'addVision', 'setVisionLineOfSight', 'clearVisions', 'evalReveal',
             'lineOfSight', 'captureLineOfSight', 'lineOfSightCaptured',
             'setEntityGoverned', 'getEntityReveal', 'setCell', 'getCell',
-            'revealRadius', 'clear'
+            'revealRadius', 'exploreRadius', 'setCellChannels', 'getCellChannels',
+            'setExploredPolicy', 'getExploredPolicy', 'setExploredTimeMs',
+            'getExploredTimeMs', 'clear'
         }
         for _, name in ipairs(names) do
             assert(type(IRFog[name]) == 'function', name)
@@ -68,7 +70,101 @@ TEST_F(LuaFogBindingsTest, ExposesCompleteSurfaceAndCppStateValues) {
         assert(IRFog.State.UNEXPLORED == 0)
         assert(IRFog.State.EXPLORED == 128)
         assert(IRFog.State.VISIBLE == 255)
+        assert(IRFog.ExploredPolicy.PERSISTENT == 0)
+        assert(IRFog.ExploredPolicy.DECAY == 1)
+        assert(IRFog.Channel.DEFAULT == 1)
     )lua"));
+    EXPECT_EQ(
+        static_cast<int>(IRPrefab::Fog::ExploredPolicy::PERSISTENT),
+        m_lua.lua()["IRFog"]["ExploredPolicy"]["PERSISTENT"].get<int>()
+    );
+    EXPECT_EQ(
+        static_cast<int>(IRPrefab::Fog::ExploredPolicy::DECAY),
+        m_lua.lua()["IRFog"]["ExploredPolicy"]["DECAY"].get<int>()
+    );
+    EXPECT_EQ(
+        IRComponents::kFogChannelDefault,
+        m_lua.lua()["IRFog"]["Channel"]["DEFAULT"].get<std::uint32_t>()
+    );
+}
+
+// Without an active canvas the new services validate and then take the
+// existing no-op / default convention.
+TEST_F(LuaFogBindingsTest, ExploredPolicyServicesDefaultWithoutACanvas) {
+    EXPECT_TRUE(scriptSucceeds(R"lua(
+        IRFog.setExploredPolicy(IRFog.ExploredPolicy.DECAY, 5000)
+        IRFog.setExploredPolicy(IRFog.ExploredPolicy.PERSISTENT, 0, 3)
+        local policy, duration, channels = IRFog.getExploredPolicy()
+        assert(policy == IRFog.ExploredPolicy.PERSISTENT and duration == 0 and channels == 1)
+        IRFog.setExploredTimeMs(2^53 - 1)
+        assert(IRFog.getExploredTimeMs() == 0)
+        IRFog.setCellChannels(1, 2, 2^32 - 1)
+        assert(IRFog.getCellChannels(1, 2) == IRFog.Channel.DEFAULT)
+        assert(IRFog.exploreRadius(0, 0, 3) == 0)
+        assert(IRFog.exploreRadius(0, 0, 3, 2) == 0)
+        IRFog.revealRadius(0, 0, 3, 2)
+    )lua"));
+}
+
+TEST_F(LuaFogBindingsTest, ExploredPolicyServicesRejectInvalidArgumentsWithNamedErrors) {
+    constexpr const char *kBadCalls[] = {
+        "IRFog.setExploredPolicy()",
+        "IRFog.setExploredPolicy(IRFog.ExploredPolicy.DECAY)",
+        "IRFog.setExploredPolicy(IRFog.ExploredPolicy.DECAY, 1, 1, 1)",
+        "IRFog.setExploredPolicy('DECAY', 1000)",
+        "IRFog.setExploredPolicy(2, 1000)",
+        "IRFog.setExploredPolicy(0.5, 1000)",
+        "IRFog.setExploredPolicy(IRFog.ExploredPolicy.DECAY, 0)",
+        "IRFog.setExploredPolicy(IRFog.ExploredPolicy.DECAY, -1)",
+        "IRFog.setExploredPolicy(IRFog.ExploredPolicy.DECAY, 1.5)",
+        "IRFog.setExploredPolicy(IRFog.ExploredPolicy.DECAY, 0/0)",
+        "IRFog.setExploredPolicy(IRFog.ExploredPolicy.DECAY, math.huge)",
+        "IRFog.setExploredPolicy(IRFog.ExploredPolicy.DECAY, 2^53)",
+        "IRFog.setExploredPolicy(IRFog.ExploredPolicy.DECAY, 1000, -1)",
+        "IRFog.setExploredPolicy(IRFog.ExploredPolicy.DECAY, 1000, 2^32)",
+        "IRFog.setExploredPolicy(IRFog.ExploredPolicy.DECAY, 1000, 'all')",
+        "IRFog.getExploredPolicy(1)",
+        "IRFog.setExploredTimeMs()",
+        "IRFog.setExploredTimeMs(1, 2)",
+        "IRFog.setExploredTimeMs(-1)",
+        "IRFog.setExploredTimeMs(0.25)",
+        "IRFog.setExploredTimeMs(0/0)",
+        "IRFog.setExploredTimeMs(-math.huge)",
+        "IRFog.setExploredTimeMs(2^53)",
+        "IRFog.setExploredTimeMs('now')",
+        "IRFog.getExploredTimeMs(0)",
+        "IRFog.setCellChannels(0, 0)",
+        "IRFog.setCellChannels(0, 0, 1, 1)",
+        "IRFog.setCellChannels(0, 0, -1)",
+        "IRFog.setCellChannels(0, 0, 2^32)",
+        "IRFog.setCellChannels(0, 0, 1.5)",
+        "IRFog.setCellChannels(0.5, 0, 1)",
+        "IRFog.getCellChannels(0)",
+        "IRFog.getCellChannels(0, 0, 0)",
+        "IRFog.getCellChannels('0', 0)",
+        "IRFog.exploreRadius(0, 0)",
+        "IRFog.exploreRadius(0, 0, 1, 1, 1)",
+        "IRFog.exploreRadius(2147483647, 0, 1)",
+        "IRFog.exploreRadius(0, 0, 1, -1)",
+        "IRFog.exploreRadius(0, 0, 1, 2^32)",
+        "IRFog.exploreRadius(0, 0, '1')",
+    };
+    expectScriptsFail(kBadCalls);
+    expectScriptFailsWith("IRFog.setExploredPolicy(2, 1000)", "IRFog.setExploredPolicy argument 1");
+    expectScriptFailsWith(
+        "IRFog.setExploredPolicy(IRFog.ExploredPolicy.DECAY, 2^53)",
+        "IRFog.setExploredPolicy argument 2"
+    );
+    expectScriptFailsWith(
+        "IRFog.setExploredPolicy(IRFog.ExploredPolicy.DECAY, 0)",
+        "IRFog.setExploredPolicy argument 2 must be positive for DECAY"
+    );
+    expectScriptFailsWith("IRFog.setExploredTimeMs(0.25)", "IRFog.setExploredTimeMs argument 1");
+    expectScriptFailsWith("IRFog.setCellChannels(0, 0, 2^32)", "IRFog.setCellChannels argument 3");
+    expectScriptFailsWith(
+        "IRFog.exploreRadius(2147483647, 0, 1)",
+        "IRFog.exploreRadius arguments overflow"
+    );
 }
 
 TEST_F(LuaFogBindingsTest, RegistrationIsOptInExtendingAndRepeatable) {
@@ -173,7 +269,9 @@ TEST_F(LuaFogBindingsTest, RejectsWrongArityTypesAndNonFiniteNumbers) {
         "IRFog.revealRadius(2147483647, 0, 1)",
         "IRFog.revealRadius(0, 0)",
         "IRFog.revealRadius(0, 0, '1')",
-        "IRFog.revealRadius(0, 0, 1, 0)",
+        "IRFog.revealRadius(0, 0, 1, 0, 0)",
+        "IRFog.revealRadius(0, 0, 1, -1)",
+        "IRFog.revealRadius(0, 0, 1, 1.5)",
         "IRFog.clear(false)",
         "IRFog.setVision(0, 0, 0/0)",
         "IRFog.addVision(0, 0, math.huge)",
@@ -450,6 +548,69 @@ class LuaFogBindingsActiveCanvasTest : public LuaFogBindingsTest {
 
     IREntity::EntityId m_canvas = IREntity::kNullEntity;
 };
+
+// The new services drive a real headless field: exploration, expiry on the
+// Lua-advanced clock, the bit-31 mask round trip, and the admission masks on
+// the disc services, read back through both Lua and C++.
+TEST_F(LuaFogBindingsActiveCanvasTest, ExploredPolicyServicesDriveTheField) {
+    EXPECT_TRUE(scriptSucceeds(R"lua(
+        local policy, duration, channels = IRFog.getExploredPolicy()
+        assert(policy == IRFog.ExploredPolicy.PERSISTENT and duration == 0 and channels == 1)
+        IRFog.setExploredPolicy(IRFog.ExploredPolicy.DECAY, 1000, 3)
+        policy, duration, channels = IRFog.getExploredPolicy()
+        assert(policy == IRFog.ExploredPolicy.DECAY and duration == 1000 and channels == 3)
+        assert(IRFog.getExploredTimeMs() == 0)
+        IRFog.setExploredTimeMs(250)
+        assert(IRFog.getExploredTimeMs() == 250)
+
+        IRFog.setCell(5, 5, IRFog.State.EXPLORED)
+        IRFog.setCellChannels(6, 6, 2^31)
+        assert(IRFog.getCellChannels(6, 6) == 2^31)
+        assert(IRFog.getCellChannels(7, 7) == IRFog.Channel.DEFAULT)
+        IRFog.setCellChannels(8, 8, 2)
+        IRFog.setCell(8, 8, IRFog.State.EXPLORED)
+        IRFog.setCellChannels(9, 9, 4)
+        IRFog.setCell(9, 9, IRFog.State.EXPLORED)
+        -- A disjoint source skips the default cell; a matching one admits it.
+        IRFog.revealRadius(20, 20, 0, 2)
+        assert(IRFog.getCell(20, 20) == IRFog.State.UNEXPLORED)
+        IRFog.revealRadius(20, 20, 0)
+        assert(IRFog.getCell(20, 20) == IRFog.State.VISIBLE)
+        assert(IRFog.exploreRadius(30, 30, 1) == 5)
+        assert(IRFog.exploreRadius(30, 30, 1) == 0)
+        assert(IRFog.getCell(30, 30) == IRFog.State.EXPLORED)
+
+        IRFog.setExploredTimeMs(1249)
+        assert(IRFog.getCell(5, 5) == IRFog.State.EXPLORED)
+        assert(IRFog.getCell(30, 30) == IRFog.State.EXPLORED, 'explored at 250, due at 1250')
+        IRFog.setExploredTimeMs(1250)
+        assert(IRFog.getCell(5, 5) == IRFog.State.UNEXPLORED)
+        assert(IRFog.getCell(8, 8) == IRFog.State.UNEXPLORED, 'bit 1 is in the policy mask')
+        assert(IRFog.getCell(9, 9) == IRFog.State.EXPLORED, 'bit 2 is not')
+        assert(IRFog.getCell(30, 30) == IRFog.State.UNEXPLORED)
+
+        -- Rejected calls leave the field untouched.
+        assert(not pcall(IRFog.setExploredTimeMs, 1000))
+        assert(IRFog.getExploredTimeMs() == 1250)
+        assert(not pcall(IRFog.setExploredPolicy, IRFog.ExploredPolicy.PERSISTENT, 0))
+        assert(not pcall(IRFog.setExploredPolicy, IRFog.ExploredPolicy.DECAY, 2000, 3))
+        policy, duration, channels = IRFog.getExploredPolicy()
+        assert(policy == IRFog.ExploredPolicy.DECAY and duration == 1000 and channels == 3)
+        IRFog.setExploredPolicy(IRFog.ExploredPolicy.DECAY, 1000, 3)
+        IRFog.setExploredTimeMs(1250)
+    )lua"));
+    const auto &fog = IREntity::getComponent<IRComponents::C_CanvasFogOfWar>(m_canvas);
+    EXPECT_EQ(fog.getExploredTimeMs(), 1250u);
+    EXPECT_EQ(fog.getExploredPolicy().policy_, IRPrefab::Fog::ExploredPolicy::DECAY);
+    EXPECT_EQ(fog.getExploredPolicy().durationMs_, 1000u);
+    EXPECT_EQ(fog.getExploredPolicy().channels_, 3u);
+    EXPECT_EQ(fog.getCellChannels(6, 6), 1u << 31u);
+    EXPECT_EQ(fog.getCell(5, 5), IRComponents::kFogStateUnexplored);
+    EXPECT_EQ(fog.getCell(9, 9), IRComponents::kFogStateExplored);
+    EXPECT_EQ(fog.getCell(30, 30), IRComponents::kFogStateUnexplored);
+    EXPECT_EQ(fog.getCell(20, 20), IRComponents::kFogStateVisible);
+    EXPECT_EQ(fog.field_->stats().expired_, 7) << "(5,5), (8,8) and the five-cell disc";
+}
 
 TEST_F(LuaFogBindingsActiveCanvasTest, EvalRevealReadsAVisibleCellWithNoCircles) {
     EXPECT_TRUE(scriptSucceeds(R"lua(
