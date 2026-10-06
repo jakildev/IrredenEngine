@@ -213,6 +213,7 @@ _env_queue_manager="${FLEET_CONCURRENCY_QUEUE_MANAGER:-}"
 _env_merger="${FLEET_CONCURRENCY_MERGER:-}"
 _env_smoke_worker="${FLEET_CONCURRENCY_SMOKE_WORKER:-}"
 _env_epic_steward="${FLEET_CONCURRENCY_EPIC_STEWARD:-}"
+_env_design_answerer="${FLEET_CONCURRENCY_DESIGN_ANSWERER:-}"
 # Same capture-before-source guard for per-role effort (FLEET_EFFORT_<ROLE>),
 # consumed by the ROLE_EFFORT map further down. Caller env wins over conf.
 _env_effort_worker="${FLEET_EFFORT_WORKER:-}"
@@ -224,6 +225,7 @@ _env_effort_opus_reviewer="${FLEET_EFFORT_OPUS_REVIEWER:-}"
 _env_effort_merger="${FLEET_EFFORT_MERGER:-}"
 _env_effort_smoke_worker="${FLEET_EFFORT_SMOKE_WORKER:-}"
 _env_effort_epic_steward="${FLEET_EFFORT_EPIC_STEWARD:-}"
+_env_effort_design_answerer="${FLEET_EFFORT_DESIGN_ANSWERER:-}"
 # Same guard for the model-class knobs (consumed by the class table and
 # ROLE_MODEL map further down) and the fable concurrency cap.
 # INVARIANT: every FLEET_MODEL_<ROLE> knob must appear in all THREE sites —
@@ -237,6 +239,7 @@ _env_model_sonnet="${FLEET_MODEL_SONNET:-}"
 _env_model_merger="${FLEET_MODEL_MERGER:-}"
 _env_model_opus_reviewer="${FLEET_MODEL_OPUS_REVIEWER:-}"
 _env_model_epic_steward="${FLEET_MODEL_EPIC_STEWARD:-}"
+_env_model_design_answerer="${FLEET_MODEL_DESIGN_ANSWERER:-}"
 # `-`, not `:-`: an explicit empty FLEET_MODEL_FABLE_FALLBACK disables the
 # fallback chain, the same spelling fleet-up honors.
 _env_model_fable_fallback="${FLEET_MODEL_FABLE_FALLBACK-__unset__}"
@@ -275,6 +278,7 @@ FLEET_MODEL_SONNET="${_env_model_sonnet:-${FLEET_MODEL_SONNET:-}}"
 FLEET_MODEL_MERGER="${_env_model_merger:-${FLEET_MODEL_MERGER:-}}"
 FLEET_MODEL_OPUS_REVIEWER="${_env_model_opus_reviewer:-${FLEET_MODEL_OPUS_REVIEWER:-}}"
 FLEET_MODEL_EPIC_STEWARD="${_env_model_epic_steward:-${FLEET_MODEL_EPIC_STEWARD:-}}"
+FLEET_MODEL_DESIGN_ANSWERER="${_env_model_design_answerer:-${FLEET_MODEL_DESIGN_ANSWERER:-}}"
 if [[ "$_env_model_fable_fallback" != "__unset__" ]]; then
     FLEET_MODEL_FABLE_FALLBACK="$_env_model_fable_fallback"
 fi
@@ -294,7 +298,7 @@ if [[ "$FLEET_WORKER_HOST_PINNED_ONLY" != "1" ]]; then
 fi
 export FLEET_WORKER_HOST_PINNED_ONLY
 unset _env_model_fable _env_model_opus _env_model_sonnet \
-      _env_model_merger _env_model_opus_reviewer _env_model_epic_steward \
+      _env_model_merger _env_model_opus_reviewer _env_model_epic_steward _env_model_design_answerer \
       _env_model_fable_fallback _env_fable_cap _env_dispatch_roles _env_pinned_only
 # Unified worker cap (P2). FLEET_CONCURRENCY_WORKER wins (env > conf); when
 # it's unset, sum the deprecated per-lane caps if an operator set either
@@ -318,11 +322,12 @@ declare -A ROLE_CONCURRENCY=(
     ["merger"]="${_env_merger:-${FLEET_CONCURRENCY_MERGER:-1}}"
     ["smoke-worker"]="${_env_smoke_worker:-${FLEET_CONCURRENCY_SMOKE_WORKER:-1}}"
     ["epic-steward"]="${_env_epic_steward:-${FLEET_CONCURRENCY_EPIC_STEWARD:-1}}"
+    ["design-answerer"]="${_env_design_answerer:-${FLEET_CONCURRENCY_DESIGN_ANSWERER:-1}}"
 )
 unset _env_worker _worker_cap _dep_opus _dep_sonnet \
       _env_opus_worker _env_sonnet_author _env_sonnet_reviewer \
       _env_opus_reviewer _env_queue_manager _env_merger _env_smoke_worker \
-      _env_epic_steward
+      _env_epic_steward _env_design_answerer
 # How a per-role cap binds. `elastic` (default): the cap is a reservation —
 # every launch holds back one free pane for each OTHER role with a standing
 # trigger and headroom under its own cap, and a role at its cap may take
@@ -348,6 +353,7 @@ unset _env_cap_mode
 declare -A HARD_CAP_ROLES=(
     ["epic-steward"]=1
     ["merger"]=1
+    ["design-answerer"]=1
 )
 
 # Tracks per-role "deferred-by-cap" log throttling so the at-cap message
@@ -718,6 +724,11 @@ fi
 if [[ "${FLEET_EPIC_STEWARD:-0}" == "1" ]]; then
     DISPATCHED_ROLES+=("epic-steward")
 fi
+# The design-answerer (fleet:steward-proposal packages and non-epic
+# fleet:design-blocked PRs, fable class) is opt-in the same way.
+if [[ "${FLEET_DESIGN_ANSWERER:-0}" == "1" ]]; then
+    DISPATCHED_ROLES+=("design-answerer")
+fi
 # Host profile: FLEET_DISPATCH_ROLES (conf or env; space- or comma-separated)
 # is the EXACT set of roles this host serves, replacing the default list and
 # the two opt-in flags above — naming smoke-worker here enables it, omitting
@@ -729,7 +740,7 @@ fi
 # `roles=none` on every `config:` line rather than failing the boot. A cap
 # of 0 means UNCAPPED (dispatch_role), so this list — not a zero cap — is
 # how a lane is switched off.
-ALL_DISPATCHABLE_ROLES=(merger sonnet-reviewer opus-reviewer worker smoke-worker epic-steward)
+ALL_DISPATCHABLE_ROLES=(merger sonnet-reviewer opus-reviewer worker smoke-worker epic-steward design-answerer)
 if [[ -n "${FLEET_DISPATCH_ROLES:-}" ]]; then
     _wanted=" ${FLEET_DISPATCH_ROLES//,/ } "
     _kept=()
@@ -791,6 +802,7 @@ declare -A ROLE_MODEL=(
     ["merger"]="${FLEET_MODEL_MERGER:-$SONNET_MODEL}"
     ["smoke-worker"]="$SONNET_MODEL"
     ["epic-steward"]="${FLEET_MODEL_EPIC_STEWARD:-$OPUS_MODEL}"
+    ["design-answerer"]="${FLEET_MODEL_DESIGN_ANSWERER:-$FABLE_MODEL}"
 )
 # The worker lane resolves a per-task class from its projection slice,
 # mapped to the class assumed when a task carries no model tag.
@@ -816,11 +828,12 @@ declare -A ROLE_EFFORT=(
     ["merger"]="${_env_effort_merger:-${FLEET_EFFORT_MERGER:-${FLEET_EFFORT:-high}}}"
     ["smoke-worker"]="${_env_effort_smoke_worker:-${FLEET_EFFORT_SMOKE_WORKER:-${FLEET_EFFORT:-high}}}"
     ["epic-steward"]="${_env_effort_epic_steward:-${FLEET_EFFORT_EPIC_STEWARD:-${FLEET_EFFORT:-xhigh}}}"
+    ["design-answerer"]="${_env_effort_design_answerer:-${FLEET_EFFORT_DESIGN_ANSWERER:-${FLEET_EFFORT:-xhigh}}}"
 )
 unset _env_effort_worker _env_effort_opus_worker _env_effort_sonnet_author \
       _env_effort_sonnet_reviewer _env_effort_opus_reviewer \
       _env_effort_merger _env_effort_smoke_worker \
-      _env_effort_epic_steward
+      _env_effort_epic_steward _env_effort_design_answerer
 
 # --- Self-reload source surface --------------------------------------------
 #
@@ -925,7 +938,7 @@ log() {
 # --print-config.
 describe_config() {
     local role caps=""
-    for role in worker sonnet-reviewer opus-reviewer merger smoke-worker epic-steward queue-manager; do
+    for role in worker sonnet-reviewer opus-reviewer merger smoke-worker epic-steward design-answerer queue-manager; do
         caps+=" $role=${ROLE_CONCURRENCY[$role]}"
     done
     local roles="${DISPATCHED_ROLES[*]:-}"

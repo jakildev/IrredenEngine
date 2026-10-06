@@ -4103,6 +4103,56 @@ def project_epic_steward(state):
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 
 
+
+def _non_epic_design_blocked_prs(repo_key, repo_state):
+    """Open fleet:design-blocked PRs that branch-match no checklist child of
+    an open epic. An epic child's block is the steward's (_epic_design_prs);
+    everything else is the architect's lane, served by the design-answerer."""
+    children = {
+        str(entry.get("number", ""))
+        for epic in repo_state.get("epics", [])
+        for entry in epic.get("checklist", [])
+    }
+    out = []
+    for pr in repo_state.get("prs", []):
+        if "fleet:design-blocked" not in set(pr.get("labels", [])):
+            continue
+        head = pr.get("headRefName", "")
+        if any(branch_matches_issue(head, child, repo_key) for child in children):
+            continue
+        out.append(pr)
+    return out
+
+
+def project_design_answerer(state):
+    """Hash-input projection for the design-answerer role.
+
+    Edge-triggered by the answerer's own writes, the project_epic_steward
+    discipline (stable fields only):
+
+    - proposal — open umbrella carrying fleet:steward-proposal and not
+                 fleet:needs-human; gone when the answer removes the label,
+                 or when the answerer escalates a product call by adding
+                 fleet:needs-human.
+    - design   — open fleet:design-blocked PR matched to no epic child (the
+                 epic-steward triages those) and not fleet:needs-human; gone
+                 on design-unblock or on the same escalation.
+    """
+    items = []
+    for repo, repo_state in state["repos"].items():
+        for epic in repo_state.get("epics", []):
+            labels = set(epic.get("labels", []))
+            if ("fleet:steward-proposal" in labels
+                    and "fleet:needs-human" not in labels):
+                items.append({"kind": "proposal", "repo": repo,
+                              "epic": epic.get("number")})
+        for pr in _non_epic_design_blocked_prs(repo, repo_state):
+            if "fleet:needs-human" in set(pr.get("labels", [])):
+                continue
+            items.append({"kind": "design", "repo": repo, "pr": pr.get("number")})
+    return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
+
+
 PROJECTORS = {
     "worker": project_worker,
     "sonnet-reviewer": project_sonnet_reviewer,
@@ -4112,6 +4162,7 @@ PROJECTORS = {
     "merger": project_merger,
     "smoke-worker": project_smoke_worker,
     "epic-steward": project_epic_steward,
+    "design-answerer": project_design_answerer,
 }
 
 # Roles whose wake suppression is evaluated PER SUB-LANE instead of over the
@@ -4466,6 +4517,26 @@ def slice_epic_steward(state):
     return out
 
 
+
+def slice_design_answerer(state):
+    """Full-record slice for the design-answerer role.
+
+    - `proposals`  — every open umbrella carrying fleet:steward-proposal,
+      repo-tagged (a human-parked one is listed, not triggered).
+    - `design_prs` — open design-blocked PRs matched to no epic child.
+    - `triggers`   — the projector's items verbatim.
+    """
+    out = {"proposals": [], "design_prs": []}
+    for repo_key, repo_state in state["repos"].items():
+        for epic in repo_state.get("epics", []):
+            if "fleet:steward-proposal" in set(epic.get("labels", [])):
+                out["proposals"].append(_slice_issue_with_repo(repo_key, epic))
+        for pr in _non_epic_design_blocked_prs(repo_key, repo_state):
+            out["design_prs"].append(_slice_pr_with_repo(repo_key, pr))
+    out["triggers"] = project_design_answerer(state)
+    return out
+
+
 SLICERS = {
     "worker": slice_worker,
     "sonnet-reviewer": slice_sonnet_reviewer,
@@ -4475,6 +4546,7 @@ SLICERS = {
     "smoke-worker": slice_smoke_worker,
     "merger": slice_merger,
     "epic-steward": slice_epic_steward,
+    "design-answerer": slice_design_answerer,
 }
 
 

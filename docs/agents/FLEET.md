@@ -146,7 +146,10 @@ pr create` / `edit` from a cursor-flow skill need the `all` permission.
    (keeping `fleet:wip`), commits in-progress work, releases its claim and
    any reservation, and `start-next-task`s away.
 2. Architect answers in a PR comment and applies `design-unblock` — no
-   push to the branch, no rewrite of the issue's `## Plan`. For an epic
+   push to the branch, no rewrite of the issue's `## Plan`. With
+   `FLEET_DESIGN_ANSWERER=1` the dispatched **design-answerer** does this
+   for non-epic blocks and answers umbrella proposals
+   ([`design-answerer-protocol.md`](design-answerer-protocol.md)). For an epic
    child (`**Part of epic:** #U`) the **epic-steward** does this step:
    derivable questions get `## Steward direction` + the same swap; novel
    ones go `design-propose` into the umbrella's `## STEWARD PROPOSAL`
@@ -179,7 +182,8 @@ logs the resolved ids — a lagging alias means `claude update` and re-run.
   cross-backend algorithm work, open-ended problems, long-horizon multi-system
   work filed with an intent plan, epic decomposition, design-blocked
   resolutions, invariant-heavy refactors, approach-is-wrong feedback fixes (the
-  reviewer adds `fleet:fable`), and the architect panes. A plan inherits its
+  reviewer adds `fleet:fable`), the architect panes, and the dispatched
+  design-answerer lane. A plan inherits its
   issue's class (label, else `**Model:**`). Rendering is not automatically fable
   — implementing against a vetted plan is opus or sonnet.
 - **opus** — the default when `Model:` is absent (choose deliberately

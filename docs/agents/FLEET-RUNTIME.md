@@ -1,7 +1,7 @@
 # FLEET-RUNTIME.md — per-iteration runtime ceremonies
 
 What every transient fleet role (worker, merger, both reviewers,
-smoke-worker, epic-steward) does at startup and exit; role files point
+smoke-worker, epic-steward, design-answerer) does at startup and exit; role files point
 here. The architect (`role-opus-architect.md`) is interactive and skips
 the loop ceremonies (heartbeat, reservation check, per-iteration
 shutdown) but shares the cache read and the feedback file.

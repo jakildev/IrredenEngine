@@ -125,6 +125,11 @@ printf 'FLEET_SMOKE_WORKER=1\nFLEET_EPIC_STEWARD=1\n' > "$FLEET_CONF"
 assert_eq "$(roles_field)" "merger sonnet-reviewer opus-reviewer worker smoke-worker epic-steward" \
     "FLEET_SMOKE_WORKER / FLEET_EPIC_STEWARD append their roles"
 
+echo "T1c: FLEET_DESIGN_ANSWERER appends the design-answerer lane after the steward"
+printf 'FLEET_EPIC_STEWARD=1\nFLEET_DESIGN_ANSWERER=1\n' > "$FLEET_CONF"
+assert_eq "$(roles_field)" "merger sonnet-reviewer opus-reviewer worker epic-steward design-answerer" \
+    "FLEET_DESIGN_ANSWERER appends its role in canonical order"
+
 echo "T2: FLEET_DISPATCH_ROLES is the exact served set, in canonical order"
 printf 'FLEET_DISPATCH_ROLES="worker, smoke-worker"\n' > "$FLEET_CONF"
 assert_eq "$(roles_field)" "worker smoke-worker" "comma/space list, canonical order, no opt-in flag needed"

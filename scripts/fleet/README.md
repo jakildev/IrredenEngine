@@ -14,7 +14,7 @@ fleet workflow.
   (queue-manager scratch, pool panes 7–9, witness, terminal). The
   architect panes auto-launch `claude`; pool panes sit at bash and
   `fleet-dispatcher` routes transient roles (worker, reviewers,
-  merger, smoke-worker, epic-steward) into whichever pool pane is
+  merger, smoke-worker, epic-steward, design-answerer) into whichever pool pane is
   idle. Per-role `FLEET_CONCURRENCY_<ROLE>` caps reserve each role's
   share of the pool: elastic by default (every launch leaves a free pane
   for each other pending under-cap role, so a role at cap can still take

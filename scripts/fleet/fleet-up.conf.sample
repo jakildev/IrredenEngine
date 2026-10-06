@@ -461,6 +461,27 @@
 # FLEET_CONCURRENCY_EPIC_STEWARD=1
 # FLEET_EFFORT_EPIC_STEWARD=xhigh   # umbrella triage needs heavier reasoning
 
+# --- Design-answerer (dispatched architect for parked design questions) ----
+#
+# FLEET_DESIGN_ANSWERER=1 tells fleet-dispatcher to serve the design-answerer
+# role (dispatched to any idle pool pane, fable class, hard cap 1). It
+# answers what used to wait for the human to cue the architect pane: an
+# umbrella's pending STEWARD PROPOSAL (`fleet:steward-proposal`) and a
+# non-epic `fleet:design-blocked` PR, in either repo. Engine-level answers
+# land as the architect protocol prescribes (inline answer, design-unblock,
+# a docs/design/ capture task for a durable invariant); a product or
+# direction call is escalated to the human with `fleet:needs-human` and a
+# one-paragraph framing instead of a guess
+# (docs/agents/design-answerer-protocol.md).
+#
+# When unset or 0, proposals and non-epic design blocks wait for the human
+# or the interactive architect, as before.
+
+# FLEET_DESIGN_ANSWERER=0
+# FLEET_CONCURRENCY_DESIGN_ANSWERER=1
+# FLEET_EFFORT_DESIGN_ANSWERER=xhigh
+# FLEET_MODEL_DESIGN_ANSWERER=       # defaults to the fable class model
+
 # --- Campaigns (persistent per-objective fable panes) -----------------------
 #
 # FLEET_CAMPAIGNS lists objective slugs (space- or comma-separated). For each,

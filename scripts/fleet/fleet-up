@@ -817,10 +817,11 @@ migrate_legacy_worker_worktrees "$ENGINE" \
     "${ENGINE_MIGRATE_OLD[@]}" "${ENGINE_MIGRATE_NEW[@]}"
 # Generic pane pool: pool-1..pool-9 are role-agnostic worktrees, each
 # reserved for its pane, not for a role. The dispatcher routes ANY
-# transient role (worker, reviewers, merger, smoke, epic-steward) to any
-# idle pool pane; per-role parallelism is bounded by the
-# FLEET_CONCURRENCY_<ROLE> caps, not by pane topology. FLEET_SMOKE_WORKER /
-# FLEET_EPIC_STEWARD (or the FLEET_DISPATCH_ROLES allowlist) gate whether
+# transient role (worker, reviewers, merger, smoke, epic-steward,
+# design-answerer) to any idle pool pane; per-role parallelism is bounded
+# by the FLEET_CONCURRENCY_<ROLE> caps, not by pane topology.
+# FLEET_SMOKE_WORKER / FLEET_EPIC_STEWARD / FLEET_DESIGN_ANSWERER (or the
+# FLEET_DISPATCH_ROLES allowlist) gate whether
 # the dispatcher SERVES a role, not whether its panes exist.
 for _p in 1 2 3 4 5 6 7 8 9; do
     ensure_worktree "$ENGINE" ".claude/worktrees/pool-$_p" "fleet/pool-$_p" "claude/pool-$_p-scratch"
@@ -1831,6 +1832,9 @@ def smoke_worker_actionable(p):
 def epic_steward_actionable(p):
     return bool(p.get("triggers"))
 
+def design_answerer_actionable(p):
+    return bool(p.get("triggers"))
+
 # Host profile: the dispatcher serves only FLEET_DISPATCH_ROLES when it is
 # set, so a bootstrap trigger for any other role would sit unread forever.
 served = os.environ.get("FLEET_DISPATCH_ROLES", "").replace(",", " ").split()
@@ -1842,6 +1846,7 @@ for role, predicate in [
     ("opus-reviewer", opus_reviewer_actionable),
     ("smoke-worker", smoke_worker_actionable),
     ("epic-steward", epic_steward_actionable),
+    ("design-answerer", design_answerer_actionable),
 ]:
     if served and role not in served:
         continue
@@ -1878,7 +1883,7 @@ seed_sidecar_resume_triggers() {
         [[ -f "$sc" ]] || continue
         sc_role=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("role",""))' "$sc" 2>/dev/null | tr -d '\r' || true)
         case "$sc_role" in
-            worker|sonnet-reviewer|opus-reviewer|merger|smoke-worker|epic-steward)
+            worker|sonnet-reviewer|opus-reviewer|merger|smoke-worker|epic-steward|design-answerer)
                 mkdir -p "$trig_dir"
                 touch "$trig_dir/$sc_role"
                 echo "fleet-up: bootstrap-triggered $sc_role (session sidecar $(basename "$sc") pending resume)"
@@ -2280,8 +2285,9 @@ label_pane_id "$OPS_BR" "terminal"
 
 # Pool overflow panes — pool-8 and pool-9 stack below pool-7 in the ops
 # window's right column. Same generic pool as the fleet-window panes;
-# whether the smoke-worker / epic-steward ROLES dispatch is gated by
-# FLEET_SMOKE_WORKER / FLEET_EPIC_STEWARD (or FLEET_DISPATCH_ROLES) in the
+# whether the smoke-worker / epic-steward / design-answerer ROLES dispatch
+# is gated by FLEET_SMOKE_WORKER / FLEET_EPIC_STEWARD / FLEET_DESIGN_ANSWERER
+# (or FLEET_DISPATCH_ROLES) in the
 # dispatcher, not by pane existence.
 OPS_P8=$(tmux split-window -v -t "$OPS_TR" -l 50% -P -F "#{pane_id}" \
     -c "$ENGINE/.claude/worktrees/pool-8" \
@@ -2357,13 +2363,13 @@ layout (two windows):
   window 3 "campaigns" (only when FLEET_CAMPAIGNS is set):
     one persistent fable pane per slug — campaigns: ${FLEET_CAMPAIGN_SLUGS[*]:-none}
   pool panes run ANY transient role (worker, reviewers, merger, smoke,
-  epic-steward) and any model class per dispatch; per-role parallelism
+  epic-steward, design-answerer) and any model class per dispatch; per-role parallelism
   is bounded by FLEET_CONCURRENCY_<ROLE>, not pane topology. Labels
   start [idle]; per-dispatch re-tag shows the live role + model.
 
 effort levels (per-role; override with FLEET_EFFORT_<ROLE> in env or
 ~/.fleet/fleet-up.conf, or FLEET_EFFORT=<level> to force all panes):
-  xhigh — opus-architect, game-architect, worker, epic-steward
+  xhigh — opus-architect, game-architect, worker, epic-steward, design-answerer
   high  — opus-reviewer, merger, sonnet-reviewer, smoke-worker
 
 permission mode: auto (model decides when to ask vs proceed)

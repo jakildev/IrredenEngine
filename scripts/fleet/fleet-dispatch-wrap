@@ -262,7 +262,7 @@ SIDECAR="$SESSIONS_DIR/$worktree_name.session.json"
 # a continuation of finished work.
 _resume_role=0
 case "$ROLE" in
-    worker|sonnet-reviewer|opus-reviewer|merger|epic-steward|smoke-worker) _resume_role=1 ;;
+    worker|sonnet-reviewer|opus-reviewer|merger|epic-steward|design-answerer|smoke-worker) _resume_role=1 ;;
 esac
 
 # Is there genuine unfinished work in this worktree that a resumed session should
@@ -636,7 +636,7 @@ if [[ "$FLEET_RUNTIME" == claude ]] && { [[ "$rc" == "2" ]] || (( rc != 0 && QUO
     date +%s > "$RATE_LIMIT_DIR/$PANE_KEY.ts"
     touch "$TRIGGERS_DIR/$ROLE"
     echo "fleet-dispatch-wrap: usage limit on $ROLE ($PANE_KEY, rc=$rc); wrote usage-limit cooldown + re-armed $ROLE" >&2
-elif [[ "$FLEET_RUNTIME" == codex && "$ROLE" =~ ^(merger|epic-steward)$ ]] \
+elif [[ "$FLEET_RUNTIME" == codex && "$ROLE" =~ ^(merger|epic-steward|design-answerer)$ ]] \
     && { [[ "$ROLE" == merger && "$rc" != "0" ]] || [[ "$rc" == "2" ]] \
         || ! fleet-runtime ready "$STATE_DIR" >/dev/null 2>&1; }; then
     mkdir -p "$TRIGGERS_DIR"
