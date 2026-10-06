@@ -35,6 +35,19 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     float _isDetachedCanvas;
     vec4 _faceDeform[3];
     ivec4 visibleFaceIds;
+    // Members between here and perAxisStoreFrame are declared only to reach
+    // its std140 offset.
+    vec4 _voxelDepthAxisPadding;
+    vec4 _detachedWorldReceivePadding;
+    ivec4 _visibleIsoBoundsPadding;
+    ivec4 _resolveFeederPadding;
+    ivec4 _overflowScratchLayoutPadding;
+    ivec4 _overflowSortStepPadding;
+    vec4 _detachedViewToWorldPadding;
+    // Frame the per-axis store is keyed in: .xy = store cell of the frame's iso
+    // origin, .z = cardinal index of the view the key positions are rotated
+    // into. FrameDataVoxelToCanvas::perAxisStoreFrame_ (offset 256).
+    ivec4 perAxisStoreFrame;
 };
 
 layout(rgba8, binding = 0) uniform image2D trixelColors;
@@ -65,14 +78,7 @@ vec3 fogPixelToWorld(
     int cardinalDepth
 ) {
     if (perAxisRoute != 0) {
-        return perAxisCellToWorld3DSubCell(
-            pixel,
-            encoded,
-            faceId,
-            size,
-            frameCanvasOffset,
-            voxelRenderOptions
-        );
+        return perAxisCellToWorld3DSubCell(pixel, encoded, faceId, perAxisStoreFrame);
     }
     if (residualYaw != 0.0) {
         return trixelCanvasPixelToWorld3DSmoothYaw(

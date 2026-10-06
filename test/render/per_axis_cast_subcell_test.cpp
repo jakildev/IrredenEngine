@@ -102,46 +102,55 @@ struct Case {
     CardinalIndex cardinal = CardinalIndex::k0;
     int subdivisions = 1;      // effSub; 1 == the integer world-cell layout
     ivec2 perAxisSize{512, 512};
-    vec2 frameCanvasOffset{0.0f, 0.0f};
+    ivec2 storeAnchor{0, 0}; // IRMath::perAxisStoreAnchor for the frame
 };
+
+// FrameDataVoxelToCanvas::perAxisStoreFrame_.xy: the store cell of the store
+// frame's iso origin.
+ivec2 storeOrigin(const Case &c) {
+    return IRMath::trixelOriginOffsetZ1(c.perAxisSize) + c.storeAnchor;
+}
+
+// The face position in the store frame — the cardinal view the key is taken in.
+ivec3 storeFramePos(const Case &c) {
+    return IRMath::rotateCardinalZ(c.facePos, c.cardinal);
+}
 
 ivec2 voxelRenderOptions(const Case &c) {
     return ivec2(c.subdivisions > 1 ? 1 : 0, c.subdivisions);
 }
 
-// The store cell this face was filed at: `perAxisBase + pos3DtoPos2DIso(facePos)`
+// The store cell this face was filed at:
+// `storeOrigin + pos3DtoPos2DIso(rotateCardinalZ(facePos, storeCardinal))`
 // (c_voxel_to_trixel_stage_1_body.glsl, via perAxisStoreFacePos).
 ivec2 storeCell(const Case &c) {
-    const ivec2 perAxisBase =
-        IRMath::trixelOriginOffsetZ1(c.perAxisSize) +
-        ivec2(
-            static_cast<int>(IRMath::floor(c.frameCanvasOffset.x)),
-            static_cast<int>(IRMath::floor(c.frameCanvasOffset.y))
-        );
-    return perAxisBase + IRMath::pos3DtoPos2DIso(c.facePos);
+    return storeOrigin(c) + IRMath::pos3DtoPos2DIso(storeFramePos(c));
 }
 
 int storeEncoded(const Case &c) {
     return encodeDepthWithFaceFrac(
-        IRMath::pos3DtoDistance(c.facePos), /*slot=*/c.axis, c.uFrac4, c.vFrac4,
-        c.wFrac4, /*flip=*/0
+        IRMath::pos3DtoDistance(storeFramePos(c)),
+        /*slot=*/c.axis,
+        c.uFrac4,
+        c.vFrac4,
+        c.wFrac4,
+        /*flip=*/0
     );
 }
 
-// The lattice origin both recoveries start from — the exact iso inverse
-// (`perAxisCellToWorld3D`, ir_per_axis_lighting.glsl:32-34, byte-for-byte the
-// block c_resolve_per_axis_screen_depth.glsl inlines).
+// The world lattice origin both recoveries start from — the exact inverse of
+// the store key (`perAxisCellToWorld3D`, ir_per_axis_lighting.glsl): the iso
+// inverse in the store frame, then out of the frame. The resolve bridge
+// (c_resolve_per_axis_screen_depth.glsl) stops at the store-frame position,
+// which is the cardinal view position `rotateCardinalZ` of this one.
 vec3 latticeOrigin(const Case &c) {
-    const ivec2 perAxisBase =
-        IRMath::trixelOriginOffsetZ1(c.perAxisSize) +
-        ivec2(
-            static_cast<int>(IRMath::floor(c.frameCanvasOffset.x)),
-            static_cast<int>(IRMath::floor(c.frameCanvasOffset.y))
-        );
-    const ivec2 isoPix = storeCell(c) - perAxisBase;
-    return IRMath::isoPixelToPos3D(
-        isoPix.x, isoPix.y, static_cast<float>(IRMath::pos3DtoDistance(c.facePos))
+    const ivec2 isoPix = storeCell(c) - storeOrigin(c);
+    const vec3 storeFrameOrigin = IRMath::isoPixelToPos3D(
+        isoPix.x,
+        isoPix.y,
+        static_cast<float>(IRMath::pos3DtoDistance(storeFramePos(c)))
     );
+    return IRMath::rotateCardinalZInv(storeFrameOrigin, c.cardinal);
 }
 
 // ---------------------------------------------------------------------------
@@ -485,12 +494,18 @@ TEST(PerAxisCastSubCell, BothBackendsDefineTheSharedFracDecodeOnce) {
 // measuring the wrong thing.
 TEST(PerAxisCastSubCell, StoreCellAndKeyInvertToTheFacePosition) {
     Case c;
-    c.frameCanvasOffset = vec2(37.75f, -12.25f);
-    for (const ivec3 facePos :
-         {ivec3(0, 0, 0), ivec3(4, -3, 7), ivec3(-11, 9, -2), ivec3(31, 31, 31)}) {
-        c.facePos = facePos;
-        EXPECT_EQ(IRMath::roundVec3HalfUp(latticeOrigin(c)), facePos);
-        EXPECT_EQ(storeEncoded(c) >> 15, IRMath::pos3DtoDistance(facePos));
+    c.storeAnchor = ivec2(37, -77);
+    for (const CardinalIndex cardinal :
+         {CardinalIndex::k0, CardinalIndex::k90, CardinalIndex::k180, CardinalIndex::k270}) {
+        c.cardinal = cardinal;
+        for (const ivec3 facePos :
+             {ivec3(0, 0, 0), ivec3(4, -3, 7), ivec3(-11, 9, -2), ivec3(31, 31, 31)}) {
+            c.facePos = facePos;
+            EXPECT_EQ(IRMath::roundVec3HalfUp(latticeOrigin(c)), facePos)
+                << "cardinal=" << static_cast<int>(cardinal);
+            EXPECT_EQ(storeEncoded(c) >> 15, IRMath::pos3DtoDistance(storeFramePos(c)))
+                << "cardinal=" << static_cast<int>(cardinal);
+        }
     }
 }
 

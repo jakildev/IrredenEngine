@@ -67,8 +67,7 @@ kernel void c_light_overflow_faces(
         return;
     }
     const float3 pos3D = perAxisCellToWorld3DSubCell(
-        cell, rawDist, faceId, voxelFrameData.canvasSizePixels,
-        voxelFrameData.frameCanvasOffset, voxelFrameData.voxelRenderOptions
+        cell, rawDist, faceId, voxelFrameData.perAxisStoreFrame
     );
 
     const float ao = 1.0f;

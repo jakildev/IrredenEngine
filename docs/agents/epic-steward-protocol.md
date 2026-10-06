@@ -45,9 +45,14 @@ artifacts — umbrella bodies, comments, labels — and never pushes code.
 - **Never claim child tasks.** The `steward-claim` lock is on the umbrella
   and covers bookkeeping only.
 - **Never edit child-issue scope prose.** The only body lines the steward
-  fixes are the three machine-parsed ones (`**Model:**`,
-  `**Part of epic:**`, `**Blocked by:**`), and only when
-  `fleet-validate-stack` flags them.
+  writes are the three machine-parsed ones (`**Model:**`,
+  `**Part of epic:**`, `**Blocked by:**`): when `fleet-validate-stack`
+  flags them, and — for `**Blocked by:**` only — when a recorded Decision
+  or a `## Plan corrections` entry adds, removes or re-sequences a gate
+  between children of a claimed umbrella (human ruling, 2026-10-06). Edit
+  the line to match the recorded gate, one `#N` per line, and record the
+  edit as a ledger event citing the Decision. Never add a gate no recorded
+  decision names, and never touch a child of an unclaimed umbrella.
 - **Never commit anything.** **Never touch `human:*` labels.**
 - **Never answer non-epic design blocks** — a `fleet:design-blocked` PR
   whose backing issue is not on a claimed umbrella's checklist is the

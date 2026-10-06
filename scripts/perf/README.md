@@ -80,6 +80,18 @@ not see load that arrives mid-matrix. So: `fleet-down`, close GPU- and
 CPU-heavy desktop apps, and publish only a run that passes the self-check
 below.
 
+**`load_ref_ms`.** Each cell's manifest entry carries two `ir_ref_bench`
+readings taken inside the hold: `before`, just ahead of the cell's run, and
+`after`, as soon as the run returns. Both are records, not gate inputs:
+`check_regression.py` reads neither.
+
+- `after` is not a load reading. It is sampled the moment the run returns,
+  when the cell's own process can still be tearing down, so a high value
+  there says nothing about the host. No consumer may grade on it.
+- `before` is the only endpoint a future check may use. A single sample has
+  not been shown to tell a loaded host from a quiet one, which is why nothing
+  reads it yet.
+
 **Wall time** on the ship host: about 220 s per matrix run (12 cells at
 ~18 s each, plus the calibration probe). A seed plus its self-check is
 under 8 minutes.

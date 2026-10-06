@@ -48,14 +48,15 @@ int main(int argc,char** argv){
         const int axis=faceId/2,slot=(axis+1)%3;
         const vec3 center((x&1?-16.f:8.f)+x/16.f-.5f,-3+y/16.f-.5f,4+z/16.f-.5f);
         int encoded=0;
-        const ivec3 stored=perAxisStoreFacePos({center,1},faceId,slot,axis,flip,encoded);
+        const ivec3 stored=perAxisStoreFacePos({center,1},faceId,slot,axis,flip,0,encoded);
         const ivec2 cell=base+pos3DtoPos2DIso(stored);
         int visibleFaceIds[]={5,0,3};visibleFaceIds[slot]=faceId^flip;
         const vec4 rotation=rotations[(x+y+z+faceId+flip)%3];
         sunCasterViewToWorld=rotation;sunFrameData.sunCasterViewToWorld=rotation;
         vec3 normal(0);normal[axis]=(faceId&1)?1.f:-1.f;
         for(bool overflow:{false,true}){
-            const FaceFields face=scatterFace(overflow,cell,encoded,canvasSize,base,visibleFaceIds);
+            const FaceFields face=scatterFace(overflow,cell,encoded,canvasSize,
+                                              ivec4(base,0,0),visibleFaceIds);
             const ivec2 expectedOwner=overflow?ivec2(-1):cell;
             if(face.ownerPixel.x!=expectedOwner.x||face.ownerPixel.y!=expectedOwner.y){
                 std::fprintf(stderr,"owner pixel forwarding\n");return 1;

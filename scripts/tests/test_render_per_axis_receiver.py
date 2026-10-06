@@ -99,6 +99,7 @@ int main(int argc,char** argv) {
     const ivec2 size(512,768);
     const vec2 camera(37.75f,-12.25f);
     const ivec2 base=trixelOriginOffsetZ1(size)+ivec2(floor(camera));
+    const ivec4 frame(base,0,0);
     for(int x=0;x<16;++x)for(int y=0;y<16;++y)for(int z=0;z<16;++z)
     for(int faceId=0;faceId<6;++faceId)for(int flip:{0,1}) {
         const int axis=faceId/2,slot=(axis+1)%3;
@@ -107,11 +108,19 @@ int main(int argc,char** argv) {
         vec3 normal(0);normal[axis]=(faceId&1)?1.f:-1.f;
         const vec3 expected=center+normal*.5f;
         int encoded=0;
-        const ivec3 stored=perAxisStoreFacePos({center,1},faceId,slot,axis,flip,encoded);
+        const ivec3 stored=perAxisStoreFacePos({center,1},faceId,slot,axis,flip,0,encoded);
         const ivec2 cell=base+pos3DtoPos2DIso(stored);
-        const ivec2 options(1,1<<((x+y+z)%5));
-        const vec3 origin=perAxisCellToWorld3DSubCell(cell,encoded,faceId,size,camera,options);
-        const vec3 scatter=storedScatterOrigin(cell-base,encoded,axis);
+        const vec3 origin=perAxisCellToWorld3DSubCell(cell,encoded,faceId,frame);
+        // Every store cardinal recovers the same world origin.
+        for(int cardinal=1;cardinal<4;++cardinal) {
+            int turnedEncoded=0;
+            const ivec3 turned=perAxisStoreFacePos(
+                {center,1},faceId,slot,axis,flip,cardinal,turnedEncoded);
+            const vec3 recovered=perAxisCellToWorld3DSubCell(
+                base+pos3DtoPos2DIso(turned),turnedEncoded,faceId,ivec4(base,cardinal,0));
+            if(!same(recovered,origin))return fail("store cardinal",recovered,origin);
+        }
+        const vec3 scatter=storedScatterOrigin(cell-base,encoded,axis,0);
         const vec3 displayed=faceSpanCorner(axis,scatter,vec2(.5f))-kVoxelRasterCellAnchor;
         if(!same(displayed,expected))
             return fail("explicit cube/scatter midpoint",displayed,expected);
@@ -124,9 +133,8 @@ int main(int argc,char** argv) {
             calls=0;sampledFrame=nullptr;sampledBuffer=nullptr;
             float result;
             if(route==0)result=directReceiver(origin,faceId);
-            else if(route==1)
-                result=regularReceiver(cell,encoded,visibleFaceIds,size,camera,options);
-            else result=overflowReceiver(cell,encoded,visibleFaceIds,size,camera,options);
+            else if(route==1)result=regularReceiver(cell,encoded,visibleFaceIds,frame);
+            else result=overflowReceiver(cell,encoded,visibleFaceIds,frame);
             if(verifySample("per-axis",result,expected,normal,quaternion))return 1;
         }
         const float depth=expected.x+expected.y+expected.z;
@@ -138,19 +146,17 @@ int main(int argc,char** argv) {
     shadowsEnabled=0;sunFrameData.shadowsEnabled=0;
     for(int flip:{0,1}) {
         int encoded=0;
-        const ivec3 stored=perAxisStoreFacePos({vec3(0),1},1,0,0,flip,encoded);
+        const ivec3 stored=perAxisStoreFacePos({vec3(0),1},1,0,0,flip,0,encoded);
         int visibleFaceIds[]={1^flip,2,4};
         const ivec2 cell=base+pos3DtoPos2DIso(stored);
         calls=0;
-        if(regularReceiver(cell,encoded,visibleFaceIds,size,camera,ivec2(1))!=1.f || calls)
-            return 2;
-        if(overflowReceiver(cell,encoded,visibleFaceIds,size,camera,ivec2(1))!=1.f || calls)
-            return 3;
+        if(regularReceiver(cell,encoded,visibleFaceIds,frame)!=1.f || calls)return 2;
+        if(overflowReceiver(cell,encoded,visibleFaceIds,frame)!=1.f || calls)return 3;
     }
     if(!fractionalDepths || !rawDepthDifferences)return 4;
     calls=0;
     const int visibleFaceIds[]={0,2,4};
-    if(regularReceiver(base,0,visibleFaceIds,size,camera,ivec2(1),0)!=-1.f || calls)return 5;
+    if(regularReceiver(base,0,visibleFaceIds,frame,0)!=-1.f || calls)return 5;
     std::printf("faces=%d receiver_calls=%d fractional_depths=%d raw_depth_differences=%d\n",
         faces,faces*3,fractionalDepths,rawDepthDifferences);
 }
@@ -181,13 +187,12 @@ def call_sites(root, suffix):
     decode = "\n".join(statement(regular, name) for name in ("face", "flip"))
     regular_header = """
 float regularReceiver(ivec2 pixel,int encoded,const int* visibleFaceIds,
-                      ivec2 size,vec2 frameCanvasOffset,ivec2 voxelRenderOptions,
-                      int perAxisRoute=1) {
+                      ivec4 perAxisStoreFrame,int perAxisRoute=1) {
 """
     regular_body = decode + "\n" + body + "\nreturn -1.f;\n}\n"
     overflow_header = """
 float overflowReceiver(ivec2 inputCell,int rawDist,const int* visibleFaceIds,
-                       ivec2 canvasSizePixels,vec2 frameCanvasOffset,ivec2 voxelRenderOptions) {
+                       ivec4 perAxisStoreFrame) {
     const uint packedCell=uint(inputCell.x)|(uint(inputCell.y)<<16u);
 """
     overflow_body = "\n".join(statement(overflow, name) for name in (
@@ -199,10 +204,9 @@ float overflowReceiver(ivec2 inputCell,int rawDist,const int* visibleFaceIds,
         bad = replace_once(body, " ^ flip", "")
         header_bad = header.replace(name + "Receiver", name + "UnflippedReceiver")
         result += header_bad + bad
-        args = ("pixel,encoded,visibleFaceIds,size,frameCanvasOffset,"
-                "voxelRenderOptions,perAxisRoute"
+        args = ("pixel,encoded,visibleFaceIds,perAxisStoreFrame,perAxisRoute"
                 if name == "regular" else
-                "inputCell,rawDist,visibleFaceIds,canvasSizePixels,frameCanvasOffset,voxelRenderOptions")
+                "inputCell,rawDist,visibleFaceIds,perAxisStoreFrame")
         select = (f'if(std::strcmp(mutation,"{name}-flip")==0)'
                   f"return {name}UnflippedReceiver({args});\n")
         result += header + select + body

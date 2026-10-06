@@ -26,7 +26,10 @@ import importlib.machinery
 import importlib.util
 import json
 import math
+import re
+import struct
 import sys
+import zlib
 from array import array
 from collections import deque
 from pathlib import Path
@@ -66,6 +69,50 @@ MAX_FLOOD_PX = 4_000_000
 SHADOW_MIN_RB = 180   # magenta: high red AND blue
 SHADOW_MAX_G = 90     # magenta: low green
 LIT_MAX = 70          # lit: all channels near zero
+
+
+_CAPTURE = re.compile(r"screenshot_(\d+)\.png$")
+
+
+def newest_captures(directory: Path, count: int) -> list[Path]:
+    """The newest ``count`` auto-screenshot captures in ``directory``, in shot order."""
+    found = sorted((int(m.group(1)), path) for path in directory.iterdir()
+                   if (m := _CAPTURE.search(path.name)))
+    if len(found) < count:
+        raise ValueError(f"{directory}: {len(found)} captures, sweep needs {count}")
+    return [path for _, path in found[-count:]]
+
+
+def color_share(path: Path, colors) -> float:
+    """Percentage of pixels exactly matching one of ``colors`` (RGB; alpha ignored)."""
+    width, height, bpp, pixels = read_png(str(path))
+    count = width * height
+    rgba = bytearray(pixels) if bpp == 4 else bytearray(count * 4)
+    if bpp == 3:
+        for channel in range(3):
+            rgba[channel::4] = pixels[channel::3]
+    elif bpp != 4:
+        raise ValueError(f"{path}: unsupported {bpp} bytes per pixel")
+    rgba[3::4] = b"\xff" * count
+    words = array("I")
+    if words.itemsize != 4:
+        raise ValueError("array 'I' is not 32-bit on this interpreter")
+    words.frombytes(bytes(rgba))
+    hits = sum(words.count(int.from_bytes(bytes((*rgb, 255)), sys.byteorder))
+               for rgb in colors)
+    return 100.0 * hits / count
+
+
+def run_sweep_metric(measure) -> int:
+    """Run a capture-sweep metric: print ``measure()``'s JSON result and return
+    0 when it passes, 1 when it fails, 2 when the sweep could not be read."""
+    try:
+        result = measure()
+    except (OSError, ValueError, struct.error, IndexError, zlib.error) as error:
+        print(json.dumps({"error": str(error)}))
+        return 2
+    print(json.dumps(result))
+    return 0 if result["pass"] else 1
 
 
 def parse_roi(s: str | None) -> tuple[int, int, int, int] | None:

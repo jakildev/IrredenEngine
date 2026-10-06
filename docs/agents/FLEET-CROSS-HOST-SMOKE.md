@@ -11,7 +11,8 @@ one author-side lane clears both — the scout's smoke projection and slice
 span every repo in `state["repos"]`, each record tagged with its `repo`
 (#2865). Labels:
 [`fleet-labels-reference.md § Cross-host smoke`](fleet-labels-reference.md);
-an outstanding `fleet:needs-<host>-smoke` label is not safe to merge.
+an outstanding `fleet:needs-<host>-smoke` label is **smoke debt** — a
+post-merge ledger entry, never a merge gate (§ "Ledger, not a gate").
 
 **Dedicated smoke-only host.** `FLEET_SMOKE_WORKER=1` in
 `~/.fleet/fleet-up.conf` (then restart `fleet-up`) dispatches
@@ -39,7 +40,10 @@ idempotent across the sonnet pass and the opus recheck).
 Two tiers: OpenGL `{linux, windows}` (either host satisfies it; `windows`,
 the ship platform, is the canonical representative) and Metal `{macos}`.
 `fleet:authored-on-<host>` covers the author's tier, so add only the tier
-the author did not cover:
+the author did not cover. **The OpenGL tier is always minted as
+`fleet:needs-windows-smoke`.** `fleet:needs-linux-smoke` is retired for
+minting (no Linux host has cleared one since 2026-06); the copies already
+on merged PRs are ledger entries a Windows run clears:
 
 ```
 # fleet:authored-on-linux or -windows (OpenGL covered):
@@ -53,10 +57,11 @@ gh pr edit <N> --add-label "fleet:needs-windows-smoke"
 gh pr edit <N> --add-label "fleet:needs-macos-smoke"
 ```
 
-Merge gate: OpenGL is satisfied by an OpenGL author or by either
-`fleet:verified-windows` / `fleet:verified-linux`. To require Windows on
-every render PR, also add `fleet:needs-windows-smoke` to linux-authored
-PRs.
+Not a merge gate. OpenGL coverage is *recorded* by an OpenGL author or by
+either `fleet:verified-windows` / `fleet:verified-linux`; the human merges
+on the review verdict alone (§ "Ledger, not a gate"). To record Windows
+debt on every render PR, also add `fleet:needs-windows-smoke` to
+linux-authored PRs.
 
 `fleet:verified-<host>` means the PR **builds and runs clean** on that host:
 it compiled, linked its shaders, and exited clean with its screenshots
@@ -64,6 +69,39 @@ captured. It does **not** mean the PR **renders as the references say**:
 that is the separate parity verdict, `render-verify` against the host's
 `test/references/<preset>/` sets. A red parity result is reported and
 holds the PRs touching that demo; no label carries it.
+
+---
+
+## Ledger, not a gate
+
+Cross-host verification never blocks implementation (human ruling,
+2026-10-06). A `fleet:needs-<host>-smoke` label records smoke debt the
+other backend owes: the PR merges on its review verdict, the label rides
+onto the merged PR, and the debt is repaid later by the smoke lane or
+`platform-catchup`. Consequences:
+
+- A reviewer grades a criterion only the other backend can produce (a
+  `windows-debug` reference re-bless, a GL-only reading) as *deferred to
+  #<the host-pinned child>*, never *unmet*; that child stays queued with
+  its `**Host:**` pin and is the ledger's pointer.
+- A worker never parks a PR `fleet:awaiting-infra` on a smoke label or a
+  host-only verification child.
+- `fleet-decisions` lists the label on an approved PR as a note, not a
+  hold.
+- An epic's close-out criterion of the form "every render child carries
+  `fleet:verified-<host>` for both backends" is discharged on what the
+  fleet executes today (CI parity arms, perf-gate's Mesa GLSL compile, the
+  authoring backend's runs); the labels stay as debt.
+
+### Catch-up order
+
+Debt is repaid in **merge order, oldest first** — never newest-first and
+never by label date. `platform-catchup` builds master once, then walks the
+merged PRs carrying the host's label from the oldest, so every reference
+that moves is attributed to the first PR that moved it and parity is
+re-established feature by feature. A red parity result holds that PR and
+every later PR touching the same demo; earlier PRs still clear. The
+skill's newest-first walk is for a master build break only.
 
 ---
 

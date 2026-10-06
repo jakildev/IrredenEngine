@@ -35,7 +35,8 @@ def functions(source, name):
 
 def cpp(source):
     for shader, host in (("float2", "vec2"), ("float3", "vec3"), ("float4", "vec4"),
-                         ("int2", "ivec2"), ("int3", "ivec3"), ("bool3", "bvec3")):
+                         ("int2", "ivec2"), ("int3", "ivec3"), ("int4", "ivec4"),
+                         ("bool3", "bvec3")):
         source = re.sub(r"\b" + shader + r"\b", host, source)
     source = re.sub(r"\bout\s+(\w+)\s+(\w+)", r"\1& \2", source)
     return source.replace("thread ", "").replace("faceFrame.", "")
@@ -75,6 +76,7 @@ template<class T> struct V3 {
 using vec2=V2<float>; using ivec2=V2<int>;
 using vec3=V3<float>; using ivec3=V3<int>; using bvec3=V3<bool>;
 struct vec4 {vec3 xyz; float w;};
+struct ivec4 {ivec2 xy; int z,w; ivec4(ivec2 a,int b,int c):xy(a),z(b),w(c){}};
 vec2 floor(vec2 a){return {std::floor(a.x),std::floor(a.y)};}
 vec3 floor(vec3 a){return {std::floor(a.x),std::floor(a.y),std::floor(a.z)};}
 vec3 round(vec3 a){return {std::round(a.x),std::round(a.y),std::round(a.z)};}
@@ -124,15 +126,26 @@ int main(int argc,char** argv) {
             buckets[(phase+7)%23][0]-3,buckets[(phase+13)%23][0]+4);
         const vec3 center=cast(authored,subdivisions,0,true);
         int encoded=0;
-        const ivec3 facePos=perAxisStoreFacePos({authored,1},faceId,axis,axis,flip,encoded);
+        const ivec3 facePos=perAxisStoreFacePos({authored,1},faceId,axis,axis,flip,0,encoded);
         const ivec2 size(512,768);
         const vec2 camera(37.75f,-12.25f);
         const ivec2 base=trixelOriginOffsetZ1(size)+ivec2(floor(camera));
         const ivec2 cell=base+pos3DtoPos2DIso(facePos);
-        const vec3 origin=perAxisCellToWorld3DSubCell(
-            cell,encoded,faceId,size,camera,ivec2(1,subdivisions));
-        const vec3 scatter=storedScatterOrigin(cell-base,encoded,axis);
+        const vec3 origin=perAxisCellToWorld3DSubCell(cell,encoded,faceId,ivec4(base,0,0));
+        const vec3 scatter=storedScatterOrigin(cell-base,encoded,axis,0);
         if(!same(origin,scatter))return fail("scatter decode",origin,scatter);
+        // Every store cardinal recovers the same world origin.
+        for(int cardinal=1;cardinal<4;++cardinal) {
+            int turnedEncoded=0;
+            const ivec3 turned=perAxisStoreFacePos(
+                {authored,1},faceId,axis,axis,flip,cardinal,turnedEncoded);
+            const ivec2 turnedCell=base+pos3DtoPos2DIso(turned);
+            const vec3 recovered=perAxisCellToWorld3DSubCell(
+                turnedCell,turnedEncoded,faceId,ivec4(base,cardinal,0));
+            if(!same(recovered,origin))return fail("store cardinal",recovered,origin);
+            const vec3 mirrored=storedScatterOrigin(turnedCell-base,turnedEncoded,axis,cardinal);
+            if(!same(mirrored,origin))return fail("scatter cardinal",mirrored,origin);
+        }
         const vec3 corner=casterCorner(center,faceId);
         vec3 expectedCorner=center-vec3(.5f);
         expectedCorner[axis]+=float(faceId&1);
@@ -153,8 +166,8 @@ int main(int argc,char** argv) {
         if(!same(perAxisRenderedVoxelCenter(authored),authored))return 2;
         for(int face=0;face<6;++face) {
             int encoded;
-            const ivec3 pos=perAxisStoreFacePos({authored,1},face,face/2,face/2,0,encoded);
-            const vec3 origin=storedScatterOrigin(pos3DtoPos2DIso(pos),encoded,face/2);
+            const ivec3 pos=perAxisStoreFacePos({authored,1},face,face/2,face/2,0,0,encoded);
+            const vec3 origin=storedScatterOrigin(pos3DtoPos2DIso(pos),encoded,face/2,0);
             const vec3 corner=casterCorner(cast(authored,1,0,true),face);
             const vec3 displayed=faceSpanCorner(face/2,origin,vec2(0))-kVoxelRasterCellAnchor;
             if(!same(corner,displayed))return fail("frac triple",corner,displayed);
@@ -207,6 +220,7 @@ def harness(suffix, directory):
         "encodeDepthWithFaceFrac", "decodeDepthPerAxis", "decodeUFrac4PerAxis",
         "decodeVFrac4PerAxis", "decodeWFrac4PerAxis", "faceInPlaneUnitAxes",
         "faceOutOfPlaneUnitAxis", "trixelOriginOffsetX1", "trixelOriginOffsetZ1",
+        "rotateCardinalZ", "rotateCardinalZInv",
     )
     helpers = constants + "\n" + "\n".join(functions(common, name) for name in names)
     helpers += "\n" + functions(store, "perAxisStoreFacePos")
@@ -222,8 +236,9 @@ def harness(suffix, directory):
     scatter_origin = re.search(
         r"const (?:vec3|float3) origin = baseOrigin\b[^;]+;", scatter)[0]
     decode = """
-vec3 storedScatterOrigin(ivec2 iso,int encoded,int axis) {
-    const vec3 baseOrigin=isoPixelToPos3D(iso.x,iso.y,float(decodeDepthPerAxis(encoded)));
+vec3 storedScatterOrigin(ivec2 iso,int encoded,int axis,int cardinal) {
+    const vec3 baseOrigin=rotateCardinalZInv(
+        isoPixelToPos3D(iso.x,iso.y,float(decodeDepthPerAxis(encoded))),cardinal);
     const int uFrac4=decodeUFrac4PerAxis(encoded),vFrac4=decodeVFrac4PerAxis(encoded);
     const int wFrac4=decodeWFrac4PerAxis(encoded);
     vec3 eu,ev;faceInPlaneUnitAxes(axis,eu,ev);

@@ -93,6 +93,10 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec4 overflowScratchLayout;
     uniform ivec4 overflowSortStep;
     uniform vec4 detachedViewToWorld;
+    // Frame the per-axis store is keyed in: .xy = store cell of the frame's iso
+    // origin, .z = cardinal index of the view the key positions are rotated
+    // into. FrameDataVoxelToCanvas::perAxisStoreFrame_ (offset 256).
+    uniform ivec4 perAxisStoreFrame;
 };
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
@@ -394,18 +398,19 @@ void main() {
     if (perAxisRoute != 0) {
         const int axis = perAxisRoute - 1;
         if ((faceId >> 1) != axis) return;
-        // Un-yawed (cardinal) iso store — mirrors stage 1's re-key so the color /
-        // entity-id tap lands on the same cardinal iso cell + depth the distance
-        // tap did. The whole-iso base anchor MUST match stage 1's per-axis anchor
-        // exactly, or color/id taps land on a different cell than the distance.
-        const ivec2 perAxisBase = trixelOriginOffsetZ1(canvasSizePixels) + ivec2(floor(frameCanvasOffset));
+        // Store-frame iso store — mirrors stage 1's key so the color / entity-id
+        // tap lands on the same store cell + depth the distance tap did. Both
+        // read the one perAxisStoreFrame, so they cannot land on different cells.
+        const ivec2 perAxisBase = perAxisStoreFrame.xy;
         // Store at BASE (world-unit) resolution regardless of effSub —
         // on the subdivided path only the z=0 invocation writes. The cell + key
         // derive through the SAME shared helper stage 1's taps used.
         if (voxelRenderOptions.x != 0 && zIdx != 0) return;
         int voxelDistance;
         const ivec3 facePos =
-            perAxisStoreFacePos(voxelPosition, faceId, slot, axis, riserFlip, voxelDistance);
+            perAxisStoreFacePos(
+                voxelPosition, faceId, slot, axis, riserFlip, perAxisStoreFrame.z, voxelDistance
+            );
         writeColorTapPerAxis(
             perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance,
             voxelColor, packedEntityId, voxelIndex

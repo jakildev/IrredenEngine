@@ -18,19 +18,16 @@
 #include "ir_iso_common.metal"
 
 // Reconstruct the uncentered world-unit face origin of a per-axis canvas cell.
-// rawDepth is in world units (base-resolution encoding); no subdivision-scale
-// division. `faceId` and `voxelRenderOptions` are unused by the recovery.
-inline float3 perAxisCellToWorld3D(
-    int2 cell, int rawDepth, int faceId,
-    int2 canvasSize, float2 frameCanvasOffset, int2 voxelRenderOptions
-) {
-    // Whole-iso base anchor — per-axis canvases are base-resolution, so the
-    // anchor is NOT density-scaled.
-    const int2 perAxisBase = trixelOriginOffsetZ1(canvasSize) + int2(floor(frameCanvasOffset));
-    // Un-yawed iso recovery — mirror of the scatter + stage 1/2 store, which
-    // filed this face at `perAxisBase + pos3DtoPos2DIso(facePos)`.
-    const int2 isoPix = cell - perAxisBase;
-    return isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth));
+// rawDepth is the store-frame iso depth in world units (base-resolution
+// encoding); no subdivision-scale division. `storeFrame` is the frame data's
+// perAxisStoreFrame; `faceId` is unused by the recovery.
+inline float3 perAxisCellToWorld3D(int2 cell, int rawDepth, int faceId, int4 storeFrame) {
+    // Mirror of the scatter + stage 1/2 store, which filed this face at
+    // `storeFrame.xy + pos3DtoPos2DIso(rotateCardinalZ(facePos, storeFrame.z))`
+    // with the rotated position's iso depth: invert the iso projection in the
+    // store frame, then leave the frame.
+    const int2 isoPix = cell - storeFrame.xy;
+    return rotateCardinalZInv(isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth)), storeFrame.z);
 }
 
 // The encoding's three 4-bit sub-cell offsets, decoded and re-centred to
@@ -53,14 +50,9 @@ inline float3 perAxisSubCellFrac(int encoded) {
 // Decode the face origin O, including signed sixteenth-cell phase. Scatter
 // centers its displayed square by subtracting (0.5,0.5,0.5) from each corner;
 // a sun receiver uses perAxisFaceCenter rather than treating O as that center.
-inline float3 perAxisCellToWorld3DSubCell(
-    int2 cell, int encoded, int faceId,
-    int2 canvasSize, float2 frameCanvasOffset, int2 voxelRenderOptions
-) {
-    const float3 origin = perAxisCellToWorld3D(
-        cell, decodeDepthPerAxis(encoded), faceId,
-        canvasSize, frameCanvasOffset, voxelRenderOptions
-    );
+inline float3 perAxisCellToWorld3DSubCell(int2 cell, int encoded, int faceId, int4 storeFrame) {
+    const float3 origin =
+        perAxisCellToWorld3D(cell, decodeDepthPerAxis(encoded), faceId, storeFrame);
     const float3 frac = perAxisSubCellFrac(encoded);
     float3 eu;
     float3 ev;

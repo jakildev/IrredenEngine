@@ -159,6 +159,13 @@ immediately under the header bullet, before `## Scope`:
 **Model:** <opus|sonnet>
 ```
 
+- **Siblings that share an integration surface are chained, not flat.**
+  Children whose `**Area:**` lines name the same files (one creation's
+  `main.cpp`, one system header, one shader twin) collide at the open-PR
+  overlap gate: each parks behind the others and the set lands one
+  rebase-and-re-review cycle at a time. Decide the land order at filing
+  time and write it as `**Blocked by:**` lines, or fold the children into
+  one.
 - **One `#N` per `**Blocked by:**` line.** A multi-blocker line
   (`#1299, #1300`) does not stack-claim; the child projects as blocked
   until an upstream merges and the satisfied ref is stripped.
