@@ -142,6 +142,16 @@ helper.
    anchoring) read the effective camera. Applying `o` to the explicit branch as
    well keeps an explicit focus set/clear at yaw 0 jump-free.
 
+   **The acquired surface's height is kept too.** `DefaultPivotLatch::surfaceHeight`
+   is the world z of the point an acquisition landed on, 0 before the first. It
+   does not ride the camera: a pan moves the focus along its iso-depth plane and
+   off the surface, so the focus's own z is no guide to the height of what the
+   camera is looking at. `IRRender::getViewReferenceHeight()` returns it for the
+   default pivot (the explicit focus's z otherwise, 0 in `ORIGIN` mode); the
+   per-axis store anchors its window on the view-center point of that plane
+   ([`per-axis-trixel-canvas-rotation.md`](per-axis-trixel-canvas-rotation.md)
+   §"Store frame").
+
    The live point is required, not stylistic: `IRMath::cameraMoveRelativeToYaw`
    (the pan pre-compensation every pan system goes through) inverts
    `d effCam / d cameraIso`, which equals `P(R_z(−yaw)·Pinv(Δ))` only while the

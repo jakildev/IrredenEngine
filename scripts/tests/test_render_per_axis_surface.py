@@ -61,7 +61,8 @@ bool same(vec2 a,vec2 b){return a.x==b.x && a.y==b.y;}
 CHECKS = r"""
 int main(int argc,char** argv) {
     if(argc>1)mutation=argv[1];
-    const ivec2 canvasSize(512,768),perAxisBase(293,370);
+    const ivec2 canvasSize(512,768),storeOrigin(293,370);
+    const ivec4 storeFrame(storeOrigin,0,0);
     const vec2 points[]={vec2(0,0),vec2(1,0),vec2(0,1),vec2(1,1),
         vec2(.5f,.5f),vec2(.125f,.75f),vec2(.625f,.25f),vec2(-.25f,.5f),vec2(1.25f,.5f)};
     const vec2 selectors[]={vec2(0,0),vec2(1,0),vec2(0,1),vec2(1,1)};
@@ -76,13 +77,13 @@ int main(int argc,char** argv) {
         const int axis=faceId/2,slot=(axis+1)%3;
         const vec3 center((x&1?-16.f:8.f)+x/16.f-.5f,-3+y/16.f-.5f,4+z/16.f-.5f);
         int encoded=0;
-        const ivec3 stored=perAxisStoreFacePos({center,1},faceId,slot,axis,flip,encoded);
-        const ivec2 cell=perAxisBase+pos3DtoPos2DIso(stored);
+        const ivec3 stored=perAxisStoreFacePos({center,1},faceId,slot,axis,flip,0,encoded);
+        const ivec2 cell=storeOrigin+pos3DtoPos2DIso(stored);
         int visibleFaceIds[]={5,0,3};visibleFaceIds[slot]=faceId^flip;
         const FaceFields regular=scatterFace(false,cell,encoded,canvasSize,
-                                             perAxisBase,visibleFaceIds);
+                                             storeFrame,visibleFaceIds);
         const FaceFields overflow=scatterFace(true,cell,encoded,canvasSize,
-                                              perAxisBase,visibleFaceIds);
+                                              storeFrame,visibleFaceIds);
         if(regular.faceId!=faceId || overflow.faceId!=faceId) {
             std::fprintf(stderr,"signed face identity\n");return 1;
         }
@@ -91,6 +92,16 @@ int main(int argc,char** argv) {
             return fail("regular origin",regular.faceOrigin,expectedOrigin);
         if(!same(overflow.faceOrigin,expectedOrigin))
             return fail("overflow origin",overflow.faceOrigin,expectedOrigin);
+        // Every store cardinal scatters the same world origin.
+        for(int cardinal=1;cardinal<4;++cardinal)for(bool overflowMode:{false,true}) {
+            int turnedEncoded=0;
+            const ivec3 turned=perAxisStoreFacePos(
+                {center,1},faceId,slot,axis,flip,cardinal,turnedEncoded);
+            const FaceFields face=scatterFace(overflowMode,storeOrigin+pos3DtoPos2DIso(turned),
+                turnedEncoded,canvasSize,ivec4(storeOrigin,cardinal,0),visibleFaceIds);
+            if(!same(face.faceOrigin,expectedOrigin))
+                return fail("store cardinal",face.faceOrigin,expectedOrigin);
+        }
         vec3 normal(0);normal[axis]=(faceId&1)?1.f:-1.f;
         const vec4 quaternion=quaternions[(x+y+z+faceId+flip)%4];
         sunCasterViewToWorld=quaternion;sunFrameData.sunCasterViewToWorld=quaternion;
@@ -152,7 +163,7 @@ def vertex_decode(vertex):
         outputs.append(match[0].replace(varying, "out." + field))
     return r"""
 FaceFields scatterFace(bool overflowMode,ivec2 cell,int encoded,ivec2 canvasSize,
-                       ivec2 perAxisBase,const int* visibleFaceIds) {
+                       ivec4 perAxisStoreFrame,const int* visibleFaceIds) {
     const uint instanceId=1;
     const uint linear=uint(cell.y*canvasSize.x+cell.x);
     const uint packed=uint(cell.x)|(uint(cell.y)<<16u);

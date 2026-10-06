@@ -1821,19 +1821,44 @@ inline ivec2 trixelCanvasBackingSize(ivec2 logicalSize, vec2 zoom, int density) 
     return logicalSize + ((growth + ivec2(3)) / 4) * 4;
 }
 
+/// Whole-cell step the per-axis store window moves in (@ref perAxisStoreAnchor).
+/// The window re-centers on the view only when the view center drifts half a
+/// step from it, so a camera that stays near where a cardinal view would put
+/// the window keeps the camera-anchored cells exactly.
+inline constexpr int kPerAxisStoreAnchorQuantum = 64;
+
+/// Cells kept clear along each edge of the per-axis store window: a face is
+/// keyed at its lattice origin, a cell off the point that is on screen, and the
+/// store origin sits one cell off the store's geometric center.
+inline constexpr int kPerAxisStoreEdgePad = 4;
+
+/// Height above or below the view's reference plane the per-axis store is
+/// sized to hold at zoom 1 and every residual yaw. Content farther from the
+/// plane than this can leave the store near a screen edge at zoom 1; any
+/// higher zoom shrinks the on-screen footprint and widens the margin.
+inline constexpr float kPerAxisStoreHeightHeadroom = 64.0f;
+
 /// Worst-case texel dimensions for one per-axis trixel canvas used by the
 /// smooth camera Z-yaw path. The three axis canvases are allocated once at this
 /// size and reused — never reallocated per frame — so the cost is bounded and
 /// only paid while the camera rotates.
 ///
-/// Per dimension the size is the larger of two bounds:
-///   • Footprint — derived from the per-face deformation matrix D_φ at the
-///     residual-yaw bound ±π/4. Horizontal: the in-plane stretch gives √2·W
-///     (D_φ row-0 column magnitude is √2 there). Vertical: the Y/X-face row-1
-///     `(c−s−1, 1)` at ±π/4 gives `(−1, 1)`, so the worst-case AABB height is
-///     |−1|·W + 1·H = W + H, which exceeds √2·H for any W > (√2−1)·H. The
-///     full stretched column is (√2, −1) with length √3, not √2; √2 is only its
-///     horizontal component.
+/// The store is keyed in the nearest-cardinal view frame with its window
+/// centered on the view (@ref perAxisStoreAnchor), so what it must hold is the
+/// screen rectangle as that frame sees it at a residual yaw `r` in
+/// `[-π/4, π/4]`. Per dimension the size is the largest of three bounds:
+///   • Rotated view — a horizontal plane's iso coordinates rotate rigidly with
+///     yaw, so a `W × H` view spans `W·cos r + H·|sin r|` cells across and
+///     `W·|sin r| + H·cos r` down. Over the residual range each peaks at the
+///     diagonal `√(W² + H²)` when the other extent is the smaller one (the
+///     peak angle is then inside the range) and at `(W + H)/√2` otherwise.
+///     On top of that, content @ref kPerAxisStoreHeightHeadroom off the
+///     reference plane shifts by up to `(√2, 2 − √2)` cells per unit height,
+///     the window sits up to half a @ref kPerAxisStoreAnchorQuantum off
+///     center, and @ref kPerAxisStoreEdgePad stays clear at each edge.
+///   • Face deformation — the per-face matrix D_φ at ±π/4 stretches the
+///     in-plane column to √2·W across and shears the Y/X-face row to W + H
+///     down.
 ///   • Density — a face going edge-on would otherwise need unbounded trixels
 ///     along the skinny axis; the minimum on-screen trixel size floors it. The
 ///     cardinal iso canvas packs 2 framebuffer px per trixel horizontally and 1
@@ -1848,20 +1873,58 @@ inline ivec2 perAxisTrixelCanvasWorstCaseSize(
     const float floorPx = max(minOnScreenTrixelPx, 1.0f);
     const float W = static_cast<float>(cardinalExtent.x);
     const float H = static_cast<float>(cardinalExtent.y);
-    // Horizontal: √2 in-plane stretch vs. 2px/trixel density floor.
-    const float scaleX = max(kSqrt2, 2.0f / floorPx);
-    // Vertical: Y/X-face row-1 shear at ±π/4 gives AABB height W + H, which
-    // exceeds the density floor H/floorPx (≤ H ≤ W + H) for any W ≥ 0.
-    const float boundsY = max(W + H, H / floorPx);
-    return ivec2{static_cast<int>(ceil(W * scaleX)), static_cast<int>(ceil(boundsY))};
+    const float diagonal = static_cast<float>(planarLength(W, H));
+    const float bisector = (W + H) / kSqrt2;
+    const float windowSlack =
+        static_cast<float>(kPerAxisStoreAnchorQuantum / 2 + kPerAxisStoreEdgePad);
+    const float viewX = (H <= W ? diagonal : bisector) +
+                        2.0f * (kSqrt2 * kPerAxisStoreHeightHeadroom + windowSlack);
+    const float viewY = (W <= H ? diagonal : bisector) +
+                        2.0f * ((2.0f - kSqrt2) * kPerAxisStoreHeightHeadroom + windowSlack);
+    const float boundsX = max(W * max(kSqrt2, 2.0f / floorPx), viewX);
+    const float boundsY = max(max(W + H, H / floorPx), viewY);
+    return ivec2{static_cast<int>(ceil(boundsX)), static_cast<int>(ceil(boundsY))};
+}
+
+/// Whole-cell anchor of the per-axis face store's window: the store files a
+/// face at `trixelOriginOffsetZ1(storeSize) + anchor +
+/// pos3DtoPos2DIso(rotateCardinalZ(facePos, storeCardinal))`.
+///
+/// A camera-anchored window (`floor(effectiveCameraIso)`) is centered on what
+/// the cardinal view at that camera offset would show. Under a residual yaw the
+/// screen shows something else: the view pivots about a point that can be far
+/// from the world origin, and the two views drift apart by
+/// `P(v) − P_r(v)` for the view-center point `v` — unbounded in `|v|`. The
+/// anchor removes that drift in whole @ref kPerAxisStoreAnchorQuantum steps, so
+/// the window follows the content on screen while staying identical to the
+/// camera-anchored one whenever the drift is under half a step.
+///
+/// @p referenceHeight is the world z of the horizontal plane the view-center
+/// point is taken on — the height of the content the camera is looking at.
+/// The anchor is a pure function of its arguments: the store, every consumer
+/// that inverts a store cell, and the framebuffer scatter evaluate it from the
+/// same camera state and must agree to the cell.
+inline ivec2 perAxisStoreAnchor(
+    const vec2 effectiveCameraIso,
+    const float visualYaw,
+    const CardinalIndex storeCardinal,
+    const float referenceHeight
+) {
+    const vec3 viewCenterWorld =
+        pos2DIsoToPos3DAtZLevelYawed(-effectiveCameraIso, referenceHeight, visualYaw);
+    const vec2 drift =
+        pos3DtoPos2DIso(rotateCardinalZ(viewCenterWorld, storeCardinal)) + effectiveCameraIso;
+    const float quantum = static_cast<float>(kPerAxisStoreAnchorQuantum);
+    const ivec2 steps = ivec2(glm::floor(drift / quantum + vec2(0.5f)));
+    return ivec2(glm::floor(effectiveCameraIso)) - steps * kPerAxisStoreAnchorQuantum;
 }
 
 /// Per-axis lattice-density cap for the smooth-camera-Z-yaw store.
 ///
 /// The per-axis store (`c_voxel_to_trixel_stage_1`, `perAxisRoute != 0`) writes
-/// each voxel face into a per-axis canvas keyed by its un-yawed (cardinal) iso
-/// pixel `perAxisBase + pos3DtoPos2DIso(facePos)` (see `ir_iso_common.glsl`
-/// `pos3DtoPos2DIso`/`isoPixelToPos3D`). The canvas is
+/// each voxel face into a per-axis canvas keyed by the iso pixel of its
+/// position in the store frame (@ref perAxisStoreAnchor; see
+/// `ir_iso_common.glsl` `pos3DtoPos2DIso`/`isoPixelToPos3D`). The canvas is
 /// sized once to the base-resolution rotated footprint
 /// (@ref perAxisTrixelCanvasWorstCaseSize) and does NOT scale with
 /// `subPerAxis`, so a large `subPerAxis` (high `voxel_render_subdivisions`, or

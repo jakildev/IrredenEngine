@@ -115,8 +115,7 @@ kernel void c_bake_sun_shadow_map(
         // sub-cell frac is applied. A raw per-axis canvas routed into this bake
         // must recover with perAxisCellToWorld3DSubCell.
         pos3D = perAxisCellToWorld3D(
-            pixel, rawDepth, frameData.visibleFaceIds[decodeSlot(encoded)], size,
-            frameData.frameCanvasOffset, frameData.voxelRenderOptions
+            pixel, rawDepth, frameData.visibleFaceIds[decodeSlot(encoded)], frameData.perAxisStoreFrame
         );
     } else if (frameData.residualYaw != 0.0) {
         // Smooth-yaw cast. While rotating, the single canvas's remaining SDF/text

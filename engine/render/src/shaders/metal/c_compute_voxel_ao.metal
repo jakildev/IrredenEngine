@@ -104,9 +104,8 @@ kernel void c_compute_voxel_ao(
     bool perAxis = frameData.perAxisRoute != 0;
     float3 pos3D = perAxis
         ? perAxisCellToWorld3DSubCell(
-              pixel, encoded, faceId, size,
-              frameData.frameCanvasOffset, frameData.voxelRenderOptions
-          )
+            pixel, encoded, faceId, frameData.perAxisStoreFrame
+        )
         : trixelCanvasPixelToWorld3D(
               pixel,
               rawDepth,
@@ -171,8 +170,7 @@ kernel void c_compute_voxel_ao(
         float3 neighbourPos3D;
         if (perAxis) {
             neighbourPos3D = perAxisCellToWorld3DSubCell(
-                samplePixel, neighbourEncoded, neighbourFaceId, size,
-                frameData.frameCanvasOffset, frameData.voxelRenderOptions
+                samplePixel, neighbourEncoded, neighbourFaceId, frameData.perAxisStoreFrame
             );
         } else {
             neighbourPos3D = trixelCanvasPixelToWorld3D(

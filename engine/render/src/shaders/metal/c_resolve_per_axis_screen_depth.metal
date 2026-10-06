@@ -56,37 +56,27 @@ kernel void c_resolve_per_axis_screen_depth(
     const int faceId = frameData.visibleFaceIds[slot] ^ flip;
     const int axis = faceId >> 1;
 
-    // Recover the face-plane LATTICE origin (canvas-native units) — exact integer
-    // inverse, identical to perAxisCellToWorld3D / peraxis_scatter.metal.
-    // The base anchor is whole-iso and must match the store/recovery anchor; the
-    // re-projection `scale` stays density-scaled (subdivided main layout).
+    // Recover the face-plane LATTICE origin (canvas-native units) in the store
+    // frame — exact integer inverse of the store key, the same one
+    // perAxisCellToWorld3D / peraxis_scatter.metal invert. The store frame is
+    // the cardinal view the MAIN-canvas distance layout is keyed in, so the
+    // recovered position is already the view position that layout needs: plain
+    // cardinal rotation, no lower-corner shift, as c_voxel_to_trixel_stage_1's
+    // cardinal store and the BAKE recovery (trixelCanvasPixelToWorld3D) use.
+    // The BAKE inverts it exactly and agrees with the per-axis RECEIVE
+    // (perAxisCellToWorld3DSubCell — the SUB-CELL form, not the lattice one) up
+    // to the destination layout's own quantization.
     // The encoding's sub-cell frac rides separately, folded into `viewPos` in
     // the view frame — rounding it in here would quantize it away before the
     // layout that can carry it is reached.
-    const int2 perAxisBase =
-        trixelOriginOffsetZ1(perAxisSize) + int2(floor(frameData.frameCanvasOffset));
-    // Un-yawed iso recovery: the store filed this face at
-    // `perAxisBase + pos3DtoPos2DIso(facePos)`; invert via isoPixelToPos3D
-    // (exact integer facePos for integer cell + rawDepth).
-    const int2 isoPix = cell - perAxisBase;
-    const int3 origin = roundHalfUp(isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth)));
+    const int2 isoPix = cell - frameData.perAxisStoreFrame.xy;
+    int3 viewPos = roundHalfUp(isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth)));
 
-    // Re-project into the MAIN-canvas cardinal distance layout, mirroring
-    // c_voxel_to_trixel_stage_1.metal's cardinal store, so the BAKE cardinal
-    // recovery (trixelCanvasPixelToWorld3D) inverts it exactly and agrees with
-    // the per-axis RECEIVE (perAxisCellToWorld3DSubCell — the SUB-CELL form,
-    // not the lattice one) up to the destination layout's own quantization.
-    const int cardinalIndex = rasterYawCardinalIndex(frameData.rasterYaw);
+    const int cardinalIndex = frameData.perAxisStoreFrame.z;
     const int scale = effectiveTrixelSubdivisionScale(frameData.voxelRenderOptions);
-    // origin is in world units; scale up to subdivision units for the
-    // main-canvas layout so BAKE's trixelCanvasPixelToWorld3D recovers correctly.
-    int3 viewPos = origin;
-    if (cardinalIndex != 0) {
-        // Plain cardinal rotation with no lower-corner shift, mirroring the
-        // stage-1 cardinal store and the BAKE recovery (trixelCanvasPixelToWorld3D).
-        viewPos = rotateCardinalZ(origin, cardinalIndex);
-    }
-    viewPos *= scale;  // face-plane origin in subdivision units
+    // The store is in world units; scale up to subdivision units for the
+    // main-canvas layout (the re-projection stays density-scaled).
+    viewPos *= scale;
 
     const int2 canvasSize = frameData.canvasSizePixels; // MAIN canvas size
     const int2 mainBase = trixelFrameOffset(

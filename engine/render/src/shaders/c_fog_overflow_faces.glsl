@@ -31,6 +31,14 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     int _feederSubCap;
     int _feederPassTailBase;
     ivec4 overflowScratchLayout;
+    // Members between here and perAxisStoreFrame are declared only to reach
+    // its std140 offset.
+    ivec4 _overflowSortStepPadding;
+    vec4 _detachedViewToWorldPadding;
+    // Frame the per-axis store is keyed in: .xy = store cell of the frame's iso
+    // origin, .z = cardinal index of the view the key positions are rotated
+    // into. FrameDataVoxelToCanvas::perAxisStoreFrame_ (offset 256).
+    ivec4 perAxisStoreFrame;
 };
 
 layout(std430, binding = 8) buffer OverflowFogScratch {
@@ -61,25 +69,11 @@ void main() {
     const ivec2 cell = ivec2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
     const int faceId =
         visibleFaceIds[decodeSlot(encoded)] ^ decodeFlipPerAxis(encoded);
-    const vec3 pos3D = perAxisCellToWorld3DSubCell(
-        cell,
-        encoded,
-        faceId,
-        canvasSizePixels,
-        frameCanvasOffset,
-        voxelRenderOptions
-    );
+    const vec3 pos3D = perAxisCellToWorld3DSubCell(cell, encoded, faceId, perAxisStoreFrame);
     float aaFloor = 0.0;
     vec3 losSample = pos3D;
     if (visionCircleCount > 0) {
-        const vec3 neighbor = perAxisCellToWorld3DSubCell(
-            cell + ivec2(1, 0),
-            encoded,
-            faceId,
-            canvasSizePixels,
-            frameCanvasOffset,
-            voxelRenderOptions
-        );
+        const vec3 neighbor = perAxisCellToWorld3DSubCell(cell + ivec2(1, 0), encoded, faceId, perAxisStoreFrame);
         aaFloor = length(neighbor.xy - pos3D.xy);
         if (losSourceMask != 0) {
             losSample = fogLosCanonicalSample(pos3D, faceId, kFogLosRoutePerAxis, 1);

@@ -152,6 +152,11 @@ class DefaultPivotLatch {
             // pos3DtoPos2DIso, which is not a float identity — and yaw-0
             // frames depend on the offset alone, so it must not drift.
             m_isoDepth = yawedIsoDepth;
+            m_surfaceHeight = IRMath::isoPixelToPos3D(
+                                  source.canvasCenterIso_ - source.effectiveCameraIso_,
+                                  yawedIsoDepth
+            )
+                                  .z;
             return;
         }
         const IRMath::vec3 world = IRMath::isoPixelToPos3DYawed(
@@ -160,6 +165,7 @@ class DefaultPivotLatch {
             source.visualYaw_
         );
         m_isoDepth = world.x + world.y + world.z;
+        m_surfaceHeight = world.z;
         m_viewOffsetIso =
             source.canvasCenterIso_ - source.cameraIso_ - IRMath::pos3DtoPos2DIso(world);
     }
@@ -180,12 +186,20 @@ class DefaultPivotLatch {
     IRMath::vec2 viewOffsetIso() const {
         return m_viewOffsetIso;
     }
+    // World z of the surface point the last acquisition landed on; 0 before
+    // the first. Unlike the focus, it does not ride the camera: a pan moves the
+    // focus along its iso-depth plane and off the surface, while the height of
+    // what the camera looks at stays near this.
+    float surfaceHeight() const {
+        return m_surfaceHeight;
+    }
     bool hasAcquired() const {
         return m_hasAcquired;
     }
 
   private:
     float m_isoDepth = 0.0f;
+    float m_surfaceHeight = 0.0f;
     IRMath::vec2 m_viewOffsetIso = IRMath::vec2(0.0f);
     bool m_hasAcquired = false;
 

@@ -431,6 +431,10 @@ vec3 getDefaultRotationPivotFocus() {
     return getRenderManager().getDefaultRotationPivotFocus();
 }
 
+float getViewReferenceHeight() {
+    return getRenderManager().getViewReferenceHeight();
+}
+
 void setVoxelRenderSubdivisions(int subdivisions) {
     getRenderManager().setVoxelRenderSubdivisions(subdivisions);
 }

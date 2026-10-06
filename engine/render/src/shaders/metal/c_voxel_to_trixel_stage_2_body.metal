@@ -382,19 +382,21 @@ kernel void IR_STAGE2_KERNEL_NAME(
     if (frameData.perAxisRoute != 0) {
         const int axis = frameData.perAxisRoute - 1;
         if ((faceId >> 1) != axis) return;
-        // Un-yawed (cardinal) iso store — mirrors stage 1's re-key.
-        // Color tap lands on the same cardinal iso cell + depth the distance tap
-        // did, so the per-axis depth re-test paints the occlusion winner.
-        // The whole-iso base anchor MUST match stage 1's per-axis anchor.
-        const int2 perAxisBase = trixelOriginOffsetZ1(frameData.canvasSizePixels) +
-                                 int2(floor(frameData.frameCanvasOffset));
+        // Store-frame iso store — mirrors stage 1's key. Color tap lands on the
+        // same store cell + depth the distance tap did, so the per-axis depth
+        // re-test paints the occlusion winner. Both read the one
+        // perAxisStoreFrame.
+        const int2 perAxisBase = frameData.perAxisStoreFrame.xy;
         // Store at BASE (world-unit) resolution regardless of effSub —
         // on the subdivided path only the z=0 invocation writes. The cell + key
         // derive through the SAME shared helper stage 1's taps used.
         if (frameData.voxelRenderOptions.x != 0 && zIdx != 0) return;
         int voxelDistance;
         const int3 facePos =
-            perAxisStoreFacePos(voxelPosition, faceId, slot, axis, riserFlip, voxelDistance);
+            perAxisStoreFacePos(
+                voxelPosition, faceId, slot, axis, riserFlip, frameData.perAxisStoreFrame.z,
+                voxelDistance
+            );
         writeColorTapPerAxis(
             perAxisBase + pos3DtoPos2DIso(facePos), voxelDistance, voxelColor,
             packedEntityId, voxelIndex, canvasSize, distanceScratch, perAxisWinnerIds,

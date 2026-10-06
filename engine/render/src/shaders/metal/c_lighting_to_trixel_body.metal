@@ -311,9 +311,8 @@ kernel void IR_LIGHTING_KERNEL_NAME(
             ? worldReceivePos
             : (voxelFrameData.perAxisRoute != 0
                 ? perAxisCellToWorld3DSubCell(
-                      pixel, encoded, faceId, size,
-                      voxelFrameData.frameCanvasOffset, voxelFrameData.voxelRenderOptions
-                  )
+                    pixel, encoded, faceId, voxelFrameData.perAxisStoreFrame
+                )
                 : (voxelFrameData.residualYaw != 0.0
                     ? trixelCanvasPixelToWorld3DSmoothYaw(
                           pixel,
