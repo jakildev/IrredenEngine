@@ -7,9 +7,21 @@
 --   panels:     panel name + the one label its build function makes
 --   recipe:     the recipe to apply and the slider values to drag first; every
 --               value must differ from its default so the drag is proven
+--
+-- component_attach reads componentAttach: the component to attach to part 0,
+-- the field to type into, the value typed, and the field's default, which the
+-- value must differ from so the typing is proven.
+--
+-- component_field_page reads componentFieldPage, the same shape, for a field
+-- past the first page of the field area (fields are listed by name).
+--
+-- component_field_key reads componentFieldKey, the same shape, for a field
+-- whose name is not a Lua identifier.
 return {
     components = {
         { name = "TestModuleTag", fieldCount = 2 },
+        { name = "TestModuleWide", fieldCount = 7 },
+        { name = "TestModuleKeys", fieldCount = 2 },
     },
     panels = {
         { name = "TestModulePanel", label = "MODULE LOADED" },
@@ -17,5 +29,23 @@ return {
     recipe = {
         name = "test_column",
         values = { height = 3 },
+    },
+    componentAttach = {
+        component = "TestModuleTag",
+        field = "weight",
+        value = 7,
+        default = 1,
+    },
+    componentFieldPage = {
+        component = "TestModuleWide",
+        field = "g",
+        value = 7,
+        default = 1,
+    },
+    componentFieldKey = {
+        component = "TestModuleKeys",
+        field = "end",
+        value = 7,
+        default = 1,
     },
 }

@@ -28,6 +28,7 @@
 
 #include <sol/sol.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <exception>
 #include <filesystem>
@@ -46,6 +47,13 @@
 
 namespace IRPrefab::Prefab {
 
+// One `components` entry, resolved to its factory at parse.
+struct ComponentSpec {
+    std::string name_;
+    const ComponentFactory *factory_ = nullptr;
+    sol::table fields_;
+};
+
 struct PartSpec {
     std::string id_;
     // At most one of voxelRef_ / shape_; a part with neither is a bare node.
@@ -59,7 +67,7 @@ struct PartSpec {
     bool resident_ = false;
     // Resolved at parse, so a part spawned on a later tier change cannot fail
     // on an unknown component name.
-    std::vector<std::pair<const ComponentFactory *, sol::table>> components_;
+    std::vector<ComponentSpec> components_;
 };
 
 // The sol::table references die with the last C_PrefabParts (or staged part
@@ -152,12 +160,10 @@ std::optional<std::string> parseRotationMode(
     return std::nullopt;
 }
 
-/// Resolves a `components = { C_Foo = { ... } }` block to its factories
-/// without applying them.
-std::optional<std::string> parseComponents(
-    const sol::table &table,
-    std::vector<std::pair<const ComponentFactory *, sol::table>> &components
-) {
+/// Resolves a `components = { C_Foo = { ... } }` block to its factories and
+/// validates each entry's fields without applying them.
+std::optional<std::string>
+parseComponents(const sol::table &table, std::vector<ComponentSpec> &components) {
     sol::optional<sol::table> componentsOpt = table["components"];
     if (!componentsOpt) {
         return std::nullopt;
@@ -176,7 +182,11 @@ std::optional<std::string> parseComponents(
                    "' (the binding's *_lua.hpp must call "
                    "IRScript::registerComponentFactoryFor and the creation must include it)";
         }
-        components.emplace_back(factory, kv.second.as<sol::table>());
+        sol::table fields = kv.second.as<sol::table>();
+        if (auto error = validateComponentFields(*nameOpt, fields)) {
+            return std::string{"components['"} + *nameOpt + "']: " + *error;
+        }
+        components.push_back(ComponentSpec{*nameOpt, factory, std::move(fields)});
     }
     return std::nullopt;
 }
@@ -438,36 +448,6 @@ IRRender::LodLevel resolveSpawnTier(IREntity::EntityId root) {
     );
 }
 
-std::string luaString(std::string_view value) {
-    std::string escaped;
-    escaped.reserve(value.size() + 2);
-    escaped.push_back('"');
-    for (char c : value) {
-        switch (c) {
-        case '\\':
-            escaped += "\\\\";
-            break;
-        case '"':
-            escaped += "\\\"";
-            break;
-        case '\n':
-            escaped += "\\n";
-            break;
-        case '\r':
-            escaped += "\\r";
-            break;
-        case '\t':
-            escaped += "\\t";
-            break;
-        default:
-            escaped.push_back(c);
-            break;
-        }
-    }
-    escaped.push_back('"');
-    return escaped;
-}
-
 void writeVec3(std::ostream &out, IRMath::vec3 value) {
     out << "{ x = " << value.x << ", y = " << value.y << ", z = " << value.z << " }";
 }
@@ -481,6 +461,155 @@ void writeColor(std::ostream &out, IRMath::Color value) {
     out << "{ r = " << static_cast<int>(value.red_) << ", g = " << static_cast<int>(value.green_)
         << ", b = " << static_cast<int>(value.blue_) << ", a = " << static_cast<int>(value.alpha_)
         << " }";
+}
+
+std::optional<std::string> writeLuaNumber(std::ostream &out, double value) {
+    if (!(IRMath::abs(value) <= std::numeric_limits<double>::max())) {
+        return std::string{"holds a non-finite number"};
+    }
+    constexpr double kExactIntegerLimit = 9007199254740992.0;
+    if (value == IRMath::floor(value) && IRMath::abs(value) < kExactIntegerLimit) {
+        out << static_cast<long long>(value);
+    } else {
+        out << value;
+    }
+    return std::nullopt;
+}
+
+/// Writes `value` as Lua constructor source: tables with numeric keys first
+/// (ascending), then string keys (sorted); IRMath vector userdata as
+/// `{ x, y, z[, w] }` tables.
+std::optional<std::string> writeLuaValue(std::ostream &out, const sol::object &value, int depth) {
+    constexpr int kMaxDepth = 16;
+    switch (value.get_type()) {
+    case sol::type::boolean:
+        out << (value.as<bool>() ? "true" : "false");
+        return std::nullopt;
+    case sol::type::number:
+        return writeLuaNumber(out, value.as<double>());
+    case sol::type::string:
+        out << IRScript::luaStringLiteral(value.as<std::string>());
+        return std::nullopt;
+    case sol::type::userdata:
+        if (value.is<IRMath::vec3>()) {
+            writeVec3(out, value.as<IRMath::vec3>());
+            return std::nullopt;
+        }
+        if (value.is<IRMath::ivec3>()) {
+            const IRMath::ivec3 v = value.as<IRMath::ivec3>();
+            out << "{ x = " << v.x << ", y = " << v.y << ", z = " << v.z << " }";
+            return std::nullopt;
+        }
+        if (value.is<IRMath::vec4>()) {
+            writeVec4(out, value.as<IRMath::vec4>());
+            return std::nullopt;
+        }
+        return std::string{"holds userdata that is not an IRMath vector"};
+    case sol::type::table:
+        break;
+    default:
+        return "holds a " + sol::type_name(value.lua_state(), value.get_type()) +
+               " value, which a manifest cannot store";
+    }
+    if (depth >= kMaxDepth) {
+        return std::string{"nests tables deeper than the manifest writer allows"};
+    }
+    std::vector<std::pair<double, sol::object>> indexed;
+    std::vector<std::pair<std::string, sol::object>> named;
+    for (const auto &kv : value.as<sol::table>()) {
+        if (kv.first.get_type() == sol::type::number) {
+            indexed.emplace_back(kv.first.as<double>(), kv.second);
+        } else if (kv.first.get_type() == sol::type::string) {
+            named.emplace_back(kv.first.as<std::string>(), kv.second);
+        } else {
+            return std::string{"has a table key that is neither a number nor a string"};
+        }
+    }
+    if (indexed.empty() && named.empty()) {
+        out << "{}";
+        return std::nullopt;
+    }
+    std::sort(indexed.begin(), indexed.end(), [](const auto &a, const auto &b) {
+        return a.first < b.first;
+    });
+    std::sort(named.begin(), named.end(), [](const auto &a, const auto &b) {
+        return a.first < b.first;
+    });
+    out << "{ ";
+    bool first = true;
+    for (const auto &[key, entry] : indexed) {
+        out << (first ? "" : ", ") << '[';
+        if (auto error = writeLuaNumber(out, key)) {
+            return error;
+        }
+        out << "] = ";
+        if (auto error = writeLuaValue(out, entry, depth + 1)) {
+            return error;
+        }
+        first = false;
+    }
+    for (const auto &[key, entry] : named) {
+        out << (first ? "" : ", ") << IRScript::luaTableKey(key) << " = ";
+        if (auto error = writeLuaValue(out, entry, depth + 1)) {
+            return error;
+        }
+        first = false;
+    }
+    out << " }";
+    return std::nullopt;
+}
+
+std::optional<std::string> describeComponents(
+    const std::vector<ComponentSpec> &specs, std::vector<PrefabComponentDescription> &out
+) {
+    out.reserve(specs.size());
+    for (const ComponentSpec &spec : specs) {
+        std::ostringstream fields;
+        fields << std::setprecision(std::numeric_limits<double>::max_digits10);
+        if (auto error = writeLuaValue(fields, spec.fields_, 0)) {
+            return "components['" + spec.name_ + "'] " + *error;
+        }
+        out.push_back(PrefabComponentDescription{spec.name_, fields.str()});
+    }
+    return std::nullopt;
+}
+
+std::optional<std::string> checkComponents(
+    const std::vector<PrefabComponentDescription> &components, const std::string &where
+) {
+    std::unordered_set<std::string> names;
+    for (const PrefabComponentDescription &component : components) {
+        if (component.name_.empty()) {
+            return where + " has a component with an empty name";
+        }
+        if (!names.insert(component.name_).second) {
+            return where + " names component '" + component.name_ + "' twice";
+        }
+        const std::size_t open = component.fields_.find_first_not_of(" \t\n");
+        const std::size_t close = component.fields_.find_last_not_of(" \t\n");
+        if (open == std::string::npos || component.fields_[open] != '{' ||
+            component.fields_[close] != '}') {
+            return where + " component '" + component.name_ +
+                   "' fields must be a Lua table constructor";
+        }
+    }
+    return std::nullopt;
+}
+
+void writeComponents(
+    std::ostream &out,
+    const std::vector<PrefabComponentDescription> &components,
+    std::string_view indent
+) {
+    if (components.empty()) {
+        return;
+    }
+    out << indent << "components = {\n";
+    for (const PrefabComponentDescription &component : components) {
+        out << indent << "  " << IRScript::luaTableKey(component.name_) << " = "
+            << component.fields_ << ",\n";
+    }
+    out << indent << "},\n";
 }
 
 /// Builds manifest part `index` onto `part`, an entity with no components yet,
@@ -538,8 +667,8 @@ void buildPart(
         }
     }
 
-    for (const auto &[factory, fields] : spec.components_) {
-        (*factory)(part, fields);
+    for (const ComponentSpec &component : spec.components_) {
+        (*component.factory_)(part, component.fields_);
     }
 
     slot.pinned_.clear();
@@ -633,6 +762,15 @@ ManifestResult readManifest(IRScript::LuaScript &script, const std::string &path
         return result;
     }
     PrefabDescription description;
+    std::vector<ComponentSpec> rootComponents;
+    if (auto error = parseComponents(prefab, rootComponents)) {
+        result.error_ = *error;
+        return result;
+    }
+    if (auto error = describeComponents(rootComponents, description.components_)) {
+        result.error_ = *error;
+        return result;
+    }
     if (manifest) {
         description.parts_.reserve(manifest->parts_.size());
         for (const PartSpec &spec : manifest->parts_) {
@@ -646,6 +784,10 @@ ManifestResult readManifest(IRScript::LuaScript &script, const std::string &path
             part.lodMin_ = spec.lodMin_;
             part.lodMax_ = spec.lodMax_;
             part.resident_ = spec.resident_;
+            if (auto error = describeComponents(spec.components_, part.components_)) {
+                result.error_ = "part '" + spec.id_ + "' " + *error;
+                return result;
+            }
             description.parts_.push_back(std::move(part));
         }
     }
@@ -657,6 +799,9 @@ std::optional<std::string>
 writeManifest(const std::string &path, const PrefabDescription &description) {
     if (description.version_ != kPrefabSchemaVersion) {
         return "writer only supports prefab_version = " + std::to_string(kPrefabSchemaVersion);
+    }
+    if (auto error = checkComponents(description.components_, "the root")) {
+        return error;
     }
     std::unordered_set<std::string> ids;
     for (const PrefabPartDescription &part : description.parts_) {
@@ -679,6 +824,9 @@ writeManifest(const std::string &path, const PrefabDescription &description) {
             (part.canvasSize_.x <= 0 || part.canvasSize_.y <= 0)) {
             return "part '" + part.id_ + "' needs a positive canvas_size";
         }
+        if (auto error = checkComponents(part.components_, "part '" + part.id_ + "'")) {
+            return error;
+        }
     }
 
     const std::filesystem::path outputPath(path);
@@ -694,11 +842,13 @@ writeManifest(const std::string &path, const PrefabDescription &description) {
         return "could not open '" + path + "' for writing";
     }
     out << std::setprecision(std::numeric_limits<float>::max_digits10);
-    out << "return {\n  prefab_version = " << description.version_ << ",\n  parts = {\n";
+    out << "return {\n  prefab_version = " << description.version_ << ",\n";
+    writeComponents(out, description.components_, "  ");
+    out << "  parts = {\n";
     for (const PrefabPartDescription &part : description.parts_) {
-        out << "    {\n      id = " << luaString(part.id_) << ",\n";
+        out << "    {\n      id = " << IRScript::luaStringLiteral(part.id_) << ",\n";
         if (!part.voxelRef_.empty()) {
-            out << "      voxel_ref = " << luaString(part.voxelRef_) << ",\n";
+            out << "      voxel_ref = " << IRScript::luaStringLiteral(part.voxelRef_) << ",\n";
         } else if (part.shape_) {
             out << "      shape = { type = " << static_cast<int>(part.shape_->type_)
                 << ", params = ";
@@ -723,6 +873,7 @@ writeManifest(const std::string &path, const PrefabDescription &description) {
         if (part.resident_) {
             out << "      resident = true,\n";
         }
+        writeComponents(out, part.components_, "      ");
         out << "    },\n";
     }
     out << "  },\n}\n";
@@ -952,13 +1103,13 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
     // before the parts so a declared C_LodTierOverride pin decides which
     // parts spawn, and before `setup` so the callback observes the
     // declarative components and may freely overwrite or extend them.
-    std::vector<std::pair<const ComponentFactory *, sol::table>> rootComponents;
+    std::vector<ComponentSpec> rootComponents;
     if (auto error = parseComponents(prefab, rootComponents)) {
         destroySpawned();
         return makeError(idStr, path, *error);
     }
-    for (const auto &[factory, fields] : rootComponents) {
-        (*factory)(entity, fields);
+    for (const ComponentSpec &component : rootComponents) {
+        (*component.factory_)(entity, component.fields_);
     }
 
     if (partsManifest) {

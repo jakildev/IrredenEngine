@@ -193,6 +193,11 @@ class LuaScript {
         return m_luaTypedComponents;
     }
 
+    // `entity`'s row of an `IRComponent.register`ed component as a
+    // field-name-keyed table — the C++ side of `IREntity.getLuaComponent`.
+    // Nil when the entity lacks it or `componentId` is not Lua-typed.
+    sol::object readLuaTypedComponent(IREntity::EntityId entity, IREntity::ComponentId componentId);
+
     // Default-construct a C++-typed component, apply the optional
     // Lua overrides table field-by-field, and attach it via the templated
     // `IREntity::setComponent<T>`. The entity core deliberately refuses to
@@ -358,6 +363,11 @@ class LuaScript {
 
     // Ordered record of the same components, with their field schemas.
     std::vector<LuaTypedComponentInfo> m_luaTypedComponents;
+
+    // Prefab component factories registered for those components; the
+    // process-wide factory registry outlives this script, so the destructor
+    // unregisters them.
+    std::vector<std::string> m_prefabFactoryNames;
 
     // ComponentId → attach factory for C++-typed components,
     // populated by the codegen-emitted `registerCodegenComponents()`.
