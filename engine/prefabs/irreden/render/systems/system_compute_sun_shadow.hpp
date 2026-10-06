@@ -112,11 +112,7 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
         }
     }
 
-    // Resolve the sun-shadow factor for each per-axis canvas. The
-    // LightingRouteScope flips the shared UBO onto the per-axis decode route
-    // (the shader reconstructs world-pos face-locally) and restores route /
-    // density / compaction slots on exit. The sun depth map (binding 28) and
-    // FrameDataSun stay bound.
+    // The sun depth map and FrameDataSun stay bound across per-axis dispatches.
     void dispatchPerAxisSunShadow(
         C_PerAxisTrixelCanvases &axes,
         const C_TriangleCanvasTextures &mainTextures,

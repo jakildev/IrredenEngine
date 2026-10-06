@@ -1944,9 +1944,9 @@ inline ivec2 perAxisStoreAnchor(
 /// CPU-side: `effSub = clamp(m_vrs × round(zoom), 1, 16)` conflates subdivision
 /// and zoom, so a shader given only `effSub` + `canvasSize` cannot recover the
 /// zoom-dependent on-screen extent — the host knows `zoom` and feeds the capped
-/// value through `voxelRenderOptions.y` so the store, the framebuffer scatter,
-/// and the per-axis AO/lighting recovery all share one consistent world↔cell
-/// scale. Pass the same @p minOnScreenTrixelPx used to allocate the canvas
+/// value through `voxelRenderOptions.y` for store, scatter and screen-depth
+/// resolve. Lighting recovers positions from the store frame independently of
+/// density. Pass the same @p minOnScreenTrixelPx used to allocate the canvas
 /// (e.g. `kMinOnScreenTrixelSizePx`) so the cap is sized against the actual
 /// allocated canvas rather than the default. Returns ≥ 1.
 inline int perAxisSubdivisionCap(
