@@ -48,6 +48,13 @@
 // the mirror *before* the ground clear, so the silhouette is carved from half
 // the erase drags, and the first to walk the layer selection (`[` / `]`).
 //
+// `tier_scrub` proves per-part LOD bands and the tier scrubber: two parts
+// banded {0,1} and {3,4} through the LOD panel's sliders, each read through
+// the engine's own DENSE gate while the scrubber pins tier 0, tier 4, a hotkey
+// step, and back to the zoom tier (zoom 4 is tier 2, inside neither band).
+// The bands then survive a save, clear and reload into the manifest, the
+// parts' gate and the sliders.
+//
 // `module_loaded` proves the `--module <dir>` seam against whatever module is
 // loaded: its expectations come from `<dir>/session_expect.lua` (resolved into
 // a ModuleSessionSpec in main.cpp), so no module content is named here. It
@@ -66,6 +73,7 @@ enum class Id {
     BIRD,
     TREE,
     PARTS_ROUNDTRIP,
+    TIER_SCRUB,
     MODULE_LOADED,
 };
 
@@ -92,6 +100,8 @@ inline Id idFromName(const std::string &name) {
         return Id::TREE;
     if (name == "parts_roundtrip")
         return Id::PARTS_ROUNDTRIP;
+    if (name == "tier_scrub")
+        return Id::TIER_SCRUB;
     if (name == "module_loaded")
         return Id::MODULE_LOADED;
     return Id::NONE;
@@ -1396,6 +1406,83 @@ inline Recipe build(
             "pre_move_transform_fails_after_reload"
         );
         builder.expectPartTransform(1, movedOrigin, 0.25f, true, "moved_transform_survives_reload");
+        return builder.finish();
+    }
+    case Id::TIER_SCRUB: {
+        Builder builder("tier_scrub", sceneSize, sceneOrigin);
+        constexpr int kPartA = 0;
+        constexpr int kPartB = 1;
+        constexpr int kFollowsZoom = -1;
+        constexpr float kTolerance = 0.01f;
+
+        builder.segment("enter_entity_scene");
+        builder.addVoxelPart();
+        builder.addVoxelPart();
+        builder.expectPartGated(kPartB, false, kFollowsZoom, "default_band_drawn_at_zoom_tier");
+
+        builder.segment("band_b");
+        builder.dragLodSlider(SliderTarget::LOD_FINE, 3);
+        builder.expectSliderValue(SliderTarget::LOD_FINE, 3.0f, kTolerance, "b_fine_dragged");
+        builder.expectSliderValue(SliderTarget::LOD_COARSE, 4.0f, kTolerance, "b_coarse_kept");
+
+        builder.segment("band_a");
+        builder.nextPart();
+        builder.dragLodSlider(SliderTarget::LOD_COARSE, 1);
+        builder.expectSliderValue(SliderTarget::LOD_FINE, 0.0f, kTolerance, "a_fine_kept");
+        builder.expectSliderValue(SliderTarget::LOD_COARSE, 1.0f, kTolerance, "a_coarse_dragged");
+        builder.expectPartGated(kPartA, true, kFollowsZoom, "a_gated_out_at_zoom_tier");
+        builder.expectPartGated(kPartB, true, kFollowsZoom, "b_gated_out_at_zoom_tier");
+
+        builder.segment("scrub_tier0");
+        builder.dragLodSlider(SliderTarget::LOD_TIER, 0);
+        builder.expectPartGated(kPartA, false, 0, "a_drawn_at_tier0");
+        builder.expectPartGated(kPartB, true, 0, "b_gated_at_tier0");
+
+        builder.segment("scrub_tier4");
+        builder.dragLodSlider(SliderTarget::LOD_TIER, 4);
+        builder.expectPartGated(kPartA, true, 4, "a_gated_at_tier4");
+        builder.expectPartGated(kPartB, false, 4, "b_drawn_at_tier4");
+
+        builder.segment("follow_zoom");
+        builder.toggleLodFollowZoom();
+        builder.expectPartGated(kPartA, true, kFollowsZoom, "a_follows_zoom_tier");
+        builder.expectPartGated(kPartB, true, kFollowsZoom, "b_follows_zoom_tier");
+
+        builder.segment("hotkey_coarser");
+        builder.tapKey(IRInput::kKeyButtonPeriod);
+        builder.expectSliderValue(SliderTarget::LOD_TIER, 3.0f, kTolerance, "tier_stepped_coarser");
+        builder.expectPartGated(kPartA, true, 3, "a_gated_at_tier3");
+        builder.expectPartGated(kPartB, false, 3, "b_drawn_at_tier3");
+
+        builder.segment("hotkey_finer");
+        builder.tapKey(IRInput::kKeyButtonComma);
+        builder.tapKey(IRInput::kKeyButtonComma);
+        builder.expectPartGated(kPartA, false, 1, "a_drawn_at_tier1");
+        builder.expectPartGated(kPartB, true, 1, "b_gated_at_tier1");
+
+        builder.segment("follow_zoom_again");
+        builder.toggleLodFollowZoom();
+        builder.expectPartGated(kPartA, true, kFollowsZoom, "a_released_to_zoom_tier");
+
+        builder.segment("save");
+        builder.save();
+        builder.expectManifestContains("lod = { fine = 0, coarse = 1 }", "a_band_saved");
+        builder.expectManifestContains("lod = { fine = 3, coarse = 4 }", "b_band_saved");
+
+        builder.segment("clear");
+        builder.clearEntityScene();
+
+        builder.segment("load");
+        builder.reload();
+        builder.expectSliderValue(SliderTarget::LOD_FINE, 0.0f, kTolerance, "a_fine_reloaded");
+        builder.expectSliderValue(SliderTarget::LOD_COARSE, 1.0f, kTolerance, "a_coarse_reloaded");
+        builder.expectPartGated(kPartA, true, kFollowsZoom, "a_band_gates_after_reload");
+        builder.expectPartGated(kPartB, true, kFollowsZoom, "b_band_gates_after_reload");
+
+        builder.segment("reload_b");
+        builder.nextPart();
+        builder.expectSliderValue(SliderTarget::LOD_FINE, 3.0f, kTolerance, "b_fine_reloaded");
+        builder.expectSliderValue(SliderTarget::LOD_COARSE, 4.0f, kTolerance, "b_coarse_reloaded");
         return builder.finish();
     }
     case Id::MODULE_LOADED:

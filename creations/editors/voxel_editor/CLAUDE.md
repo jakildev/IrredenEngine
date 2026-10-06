@@ -11,7 +11,8 @@ Design log, findings and the authoring-session history:
   scripted session: `face_pick` and `drag_probe` prove the picking contract
   against the full reference scene, `place_below` the Alt modifier,
   `module_loaded` (with `--module test/module`) the creation-module seam, and
-  `parts_roundtrip` authors, moves, saves, clears, and reloads a two-part entity.
+  `parts_roundtrip` authors, moves, saves, clears, and reloads a two-part entity,
+  and `tier_scrub` proves per-part LOD bands and the tier scrubber.
 - `python3 scripts/author-entity.py <entity>` — replays an entity session twice
   and byte-compares the saved `.vxs` (rock, mushroom, bird at the default
   scene; `ant --scene-size 20 20 20`; `tree --scene-size 16 16 26`). A clean
@@ -51,6 +52,12 @@ render, because the aim and the pick share one screen mapping.
   Ctrl+O write/read the v2 prefab manifest plus one `.vxs` per voxel part.
 - `EntityScene` owns one root and its ordered part records. Only the selected
   voxel part receives paint; other voxel parts carry `C_EditorReference`.
+- A part's LOD band (`EditorPart::lodMax_` fine .. `lodMin_` coarse) is
+  mirrored onto its own `C_VoxelSetNew` / `C_ShapeDescriptor`, so the engine's
+  LOD gate previews which parts exist at a tier. Parts stay resident; the
+  editor never runs `PREFAB_LOD_PARTS`. The LOD panel's TIER slider and `,` /
+  `.` pin `C_LodTierOverride` on the root and every part; FOLLOW ZOOM removes
+  it. Neither touches the camera zoom.
 
 - A recipe names cells; `Session::Builder` (`session_builder.hpp`) aims each
   click and mirrors the editable set in `OccupancyModel`, which casts the same
