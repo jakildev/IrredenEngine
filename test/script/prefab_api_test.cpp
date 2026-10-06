@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -1459,8 +1460,8 @@ TEST_F(PrefabWriter, RejectsComponentFieldsThatAreNotATable) {
     );
 }
 
-TEST_F(PrefabWriter, FailedEntitySceneLoadPreservesLiveScene) {
-    IRVoxelEditor::EntityScene scene;
+// The live scene a failed load must leave alone.
+void addLiveShapePart(IRVoxelEditor::EntityScene &scene) {
     const IRPrefab::Prefab::PrefabShapeDescription liveShape{
         IRMath::SDF::ShapeType::BOX,
         vec4(2.0f, 3.0f, 4.0f, 0.0f),
@@ -1468,6 +1469,11 @@ TEST_F(PrefabWriter, FailedEntitySceneLoadPreservesLiveScene) {
         IRMath::SDF::SHAPE_FLAG_VISIBLE
     };
     scene.addShapePart(liveShape, IRComponents::C_LocalTransform{vec3(1.0f, 2.0f, 3.0f)});
+}
+
+TEST_F(PrefabWriter, FailedEntitySceneLoadPreservesLiveScene) {
+    IRVoxelEditor::EntityScene scene;
+    addLiveShapePart(scene);
     const IREntity::EntityId originalRoot = scene.root();
     const IREntity::EntityId originalPart = scene.parts().front().entity_;
 
@@ -1488,6 +1494,52 @@ TEST_F(PrefabWriter, FailedEntitySceneLoadPreservesLiveScene) {
     EXPECT_EQ(scene.parts().front().entity_, originalPart);
     EXPECT_TRUE(IREntity::entityExists(originalRoot));
     EXPECT_TRUE(IREntity::entityExists(originalPart));
+}
+
+TEST_F(PrefabWriter, EntitySceneLoadWithThrowingComponentFactoryPreservesLiveScene) {
+    IRVoxelEditor::EntityScene scene;
+    addLiveShapePart(scene);
+    const IREntity::EntityId originalRoot = scene.root();
+    const IREntity::EntityId originalPart = scene.parts().front().entity_;
+
+    // No validator, so the manifest read accepts the entry and the factory
+    // refuses it only when the load applies it.
+    m_lua.lua().safe_script("IRComponent.register('AcceptedTag', { count = 1 })");
+    IRPrefab::Prefab::registerComponentFactory(
+        "RefusingTag",
+        [](IREntity::EntityId, const sol::table &) {
+            throw std::runtime_error("refuses every table");
+        }
+    );
+
+    IRPrefab::Prefab::PrefabDescription refused;
+    refused.components_.push_back({"AcceptedTag", "{ count = 3 }"});
+    for (const char *id : {"first", "second"}) {
+        IRPrefab::Prefab::PrefabPartDescription part;
+        part.id_ = id;
+        part.shape_ = IRPrefab::Prefab::PrefabShapeDescription{};
+        refused.parts_.push_back(part);
+    }
+    refused.parts_.back().components_.push_back({"RefusingTag", "{}"});
+    const std::string path = "/tmp/prefab_writer_refused_component.prefab.lua";
+    ASSERT_FALSE(IRPrefab::Prefab::writeManifest(path, refused).has_value());
+    ASSERT_TRUE(IRPrefab::Prefab::readManifest(m_lua, path).ok());
+
+    const IRVoxelEditor::EntitySceneResult result =
+        scene.load(m_lua, "/tmp", "prefab_writer_refused_component");
+    EXPECT_FALSE(result.ok_);
+    EXPECT_NE(result.error_.find("'RefusingTag' factory failed"), std::string::npos)
+        << result.error_;
+    EXPECT_EQ(scene.root(), originalRoot);
+    ASSERT_EQ(scene.parts().size(), 1u);
+    EXPECT_EQ(scene.parts().front().entity_, originalPart);
+    EXPECT_TRUE(scene.targetComponents(IRVoxelEditor::kEntitySceneRootTarget)->empty());
+
+    // The refused replacement is marked; the drain leaves only the live scene.
+    m_entity_manager.destroyMarkedEntities();
+    EXPECT_TRUE(IREntity::entityExists(originalRoot));
+    EXPECT_TRUE(IREntity::entityExists(originalPart));
+    EXPECT_EQ(IREntity::countComponents<IRComponents::C_ShapeDescriptor>(), 1);
 }
 
 TEST_F(PrefabWriter, V1ReadStillLoads) {

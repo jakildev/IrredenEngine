@@ -92,8 +92,7 @@ class EntityScene {
 
     void begin() {
         clear();
-        m_root = IREntity::createEntity(IRComponents::C_LocalTransform{IRMath::vec3(0.0f)});
-        applyTierOverride(m_root);
+        m_root = createRoot();
     }
 
     IREntity::EntityId addVoxelPart(
@@ -244,6 +243,7 @@ class EntityScene {
         return {true, {}};
     }
 
+    // A failed load leaves the live scene as it was.
     EntitySceneResult
     load(IRScript::LuaScript &script, const std::string &dir, const std::string &baseName) {
         const std::string manifestPath = IRUtility::joinPath(dir, baseName, ".prefab.lua");
@@ -271,7 +271,13 @@ class EntityScene {
             stagedVoxelSets.emplace_back(std::move(loaded.value_.dense_));
         }
 
-        begin();
+        // The replacement is built beside the live scene and takes its place
+        // only once every component factory has run: reading the manifest
+        // proves each factory exists, not that it accepts its fields.
+        const IREntity::EntityId stagedRoot = createRoot();
+        std::vector<EditorPart> stagedParts;
+        stagedParts.reserve(manifest.description_->parts_.size());
+        int stagedNextPartId = 0;
         for (std::size_t i = 0; i < manifest.description_->parts_.size(); ++i) {
             const IRPrefab::Prefab::PrefabPartDescription &description =
                 manifest.description_->parts_[i];
@@ -297,8 +303,8 @@ class EntityScene {
                     IRComponents::C_RotationMode{description.rotationMode_}
                 );
             }
-            IREntity::setParent(entity, m_root);
-            m_parts.push_back(
+            IREntity::setParent(entity, stagedRoot);
+            stagedParts.push_back(
                 EditorPart{
                     entity,
                     description.id_,
@@ -310,7 +316,7 @@ class EntityScene {
                     description.resident_
                 }
             );
-            applyBand(m_parts.back());
+            applyBand(stagedParts.back());
             applyTierOverride(entity);
             const std::string prefix = "part_";
             if (description.id_.starts_with(prefix)) {
@@ -320,31 +326,37 @@ class EntityScene {
                 const auto parsed =
                     std::from_chars(suffix.data(), suffix.data() + suffix.size(), numericId);
                 if (parsed.ec == std::errc{} && parsed.ptr == suffix.data() + suffix.size()) {
-                    m_nextPartId = IRMath::max(m_nextPartId, numericId + 1);
+                    stagedNextPartId = IRMath::max(stagedNextPartId, numericId + 1);
                 }
             }
         }
-        select(0, false);
 
-        // Every entry already resolved to a factory when the manifest was
-        // read, so an apply fails only on a factory that throws.
         std::string componentErrors;
-        restoreComponents(
+        std::vector<ComponentRecord> stagedRootComponents = restoreComponents(
             script,
-            kEntitySceneRootTarget,
+            stagedRoot,
             manifest.description_->components_,
             componentErrors
         );
-        for (std::size_t i = 0; i < manifest.description_->parts_.size(); ++i) {
-            restoreComponents(
+        for (std::size_t i = 0; i < stagedParts.size(); ++i) {
+            stagedParts[i].components_ = restoreComponents(
                 script,
-                static_cast<int>(i),
+                stagedParts[i].entity_,
                 manifest.description_->parts_[i].components_,
                 componentErrors
             );
         }
-        if (!componentErrors.empty())
+        if (!componentErrors.empty()) {
+            IREntity::destroyTree(stagedRoot);
             return {false, componentErrors};
+        }
+
+        clear();
+        m_root = stagedRoot;
+        m_rootComponents = std::move(stagedRootComponents);
+        m_parts = std::move(stagedParts);
+        m_nextPartId = stagedNextPartId;
+        select(0, false);
         return {true, {}};
     }
 
@@ -358,26 +370,32 @@ class EntityScene {
         return described;
     }
 
-    void restoreComponents(
+    // Applies @p described to @p entity and returns the records that attached;
+    // each one that did not appends its reason to @p errors.
+    static std::vector<ComponentRecord> restoreComponents(
         IRScript::LuaScript &script,
-        int target,
+        IREntity::EntityId entity,
         const std::vector<IRPrefab::Prefab::PrefabComponentDescription> &described,
         std::string &errors
     ) {
-        std::vector<ComponentRecord> &records = *targetComponents(target);
+        std::vector<ComponentRecord> records;
+        records.reserve(described.size());
         for (const IRPrefab::Prefab::PrefabComponentDescription &component : described) {
             ComponentRecord record = makeComponentRecord(script, component.name_);
-            if (auto error = applyComponentLiteral(
-                    script,
-                    targetEntity(target),
-                    record,
-                    component.fields_
-                )) {
+            if (auto error = applyComponentLiteral(script, entity, record, component.fields_)) {
                 errors += (errors.empty() ? "" : "; ") + *error;
                 continue;
             }
             records.push_back(std::move(record));
         }
+        return records;
+    }
+
+    IREntity::EntityId createRoot() const {
+        const IREntity::EntityId root =
+            IREntity::createEntity(IRComponents::C_LocalTransform{IRMath::vec3(0.0f)});
+        applyTierOverride(root);
+        return root;
     }
 
     IREntity::EntityId appendPart(IREntity::EntityId entity, std::string id, EditorPartKind kind) {
