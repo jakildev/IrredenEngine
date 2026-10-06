@@ -192,8 +192,9 @@ SCOUT_STARTUP_TIMEOUT_SECONDS=30
 # under its own cap, so a role at cap still takes the panes none of them
 # needs (a role under its cap is held to the same reservation, but never
 # below one pane). FLEET_CAP_MODE=strict makes every cap a hard ceiling.
-# The fable cap, and the merger's and epic steward's caps (single-claim
-# lanes; HARD_CAP_ROLES in fleet-dispatcher), are hard in both modes.
+# The fable cap, and the merger's, epic steward's and design answerer's
+# caps (single-claim lanes; HARD_CAP_ROLES in fleet-dispatcher), are hard in
+# both modes.
 #
 # Override priority (highest first):
 #   1. Env var: FLEET_CONCURRENCY_<ROLE_UPPERCASE> (e.g. FLEET_CONCURRENCY_WORKER=4)
@@ -2080,10 +2081,10 @@ launch_cmd() {
 #
 # Pool panes are role- AND model-class-agnostic: the dispatcher routes
 # any transient role (worker, sonnet-reviewer, opus-reviewer, merger,
-# smoke-worker, epic-steward) to any idle pool pane and passes the role
-# + model class as arguments. All nine pool panes are equivalent; role
-# and model/effort routing happens at dispatch time, not at
-# pane-creation time. Per-role parallelism is bounded only by the
+# smoke-worker, epic-steward, design-answerer) to any idle pool pane and
+# passes the role + model class as arguments. All nine pool panes are
+# equivalent; role and model/effort routing happens at dispatch time, not
+# at pane-creation time. Per-role parallelism is bounded only by the
 # FLEET_CONCURRENCY_<ROLE> caps.
 #
 # The "ops" window holds the meta panes — the queue-manager scratch
@@ -2407,11 +2408,13 @@ scheduling (live mode): each transient-role iteration is a fresh \`claude\`
   process (no context carry-over between tasks), dispatcher-routed to any
   idle pool pane when the scout triggers its role. Per-role concurrency:
   FLEET_CONCURRENCY_WORKER (default 4), _SONNET_REVIEWER (default 4),
-  _OPUS_REVIEWER / _MERGER / _SMOKE_WORKER / _EPIC_STEWARD (default 1).
+  _OPUS_REVIEWER / _MERGER / _SMOKE_WORKER / _EPIC_STEWARD /
+  _DESIGN_ANSWERER (default 1).
   Caps are elastic by default (FLEET_CAP_MODE=elastic): every launch leaves
   a free pane for each other pending under-cap role, so a role at cap still
   takes the panes none of them needs; strict makes them hard ceilings. The
-  fable, merger and epic-steward caps are hard in both modes.
+  fable, merger, epic-steward and design-answerer caps are hard in both
+  modes.
   opus-architect, game-architect — interactive, persistent session
                                    (--resume across crashes + fleet-down/up)
 

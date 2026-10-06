@@ -35,6 +35,10 @@ class Routing(unittest.TestCase):
              "closed", ("claude", "opus", "opus", "xhigh")),
             ({"FLEET_RUNTIMES": "codex"}, "epic-steward", "opus", "opus", "xhigh",
              "open", ("codex", "opus", "gpt-5.6-sol", "medium")),
+            ({}, "design-answerer", "fable", "fable", "xhigh", "open",
+             ("claude", "fable", "fable", "xhigh")),
+            ({"FLEET_WORKER_RUNTIME": "codex"}, "design-answerer", "fable", "fable",
+             "xhigh", "open", ("codex", "fable", "gpt-6-astra", "xhigh")),
         )
         for overrides, role, cls, model, effort, gate, expected in cases:
             with self.subTest(role=role, gate=gate, overrides=overrides):

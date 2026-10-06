@@ -348,8 +348,10 @@ unset _env_cap_mode
 # steward holds one `steward-claim` per umbrella for its whole iteration,
 # so a second steward launched over the cap finds every umbrella held and
 # exits with nothing done; the merger is bound to one target per launch
-# and single-flights the same way. Consulted by dispatch_role in place of
-# CAP_MODE for these roles.
+# and single-flights the same way; the design answerer is a batch lane of
+# the steward's shape, one iteration walking its whole trigger list under
+# per-item claims. Consulted by dispatch_role in place of CAP_MODE for
+# these roles.
 declare -A HARD_CAP_ROLES=(
     ["epic-steward"]=1
     ["merger"]=1
@@ -731,7 +733,7 @@ if [[ "${FLEET_DESIGN_ANSWERER:-0}" == "1" ]]; then
 fi
 # Host profile: FLEET_DISPATCH_ROLES (conf or env; space- or comma-separated)
 # is the EXACT set of roles this host serves, replacing the default list and
-# the two opt-in flags above — naming smoke-worker here enables it, omitting
+# the opt-in flags above — naming smoke-worker here enables it, omitting
 # worker disables it. A satellite host (the native-Windows box that only
 # smokes and takes `**Host:** windows` tasks) sets "smoke-worker worker" so
 # the merger and reviewer lanes stay on the primary fleet. The canonical

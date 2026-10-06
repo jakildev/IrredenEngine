@@ -216,7 +216,7 @@ profile"):
 
 | Knob | Effect |
 |---|---|
-| `FLEET_DISPATCH_ROLES="smoke-worker worker"` | the exact set of roles the dispatcher serves; replaces the default list and the `FLEET_SMOKE_WORKER` / `FLEET_EPIC_STEWARD` opt-ins. The only way to switch a lane off — a zero cap means *uncapped*. |
+| `FLEET_DISPATCH_ROLES="smoke-worker worker"` | the exact set of roles the dispatcher serves; replaces the default list and the `FLEET_SMOKE_WORKER` / `FLEET_EPIC_STEWARD` / `FLEET_DESIGN_ANSWERER` opt-ins. The only way to switch a lane off — a zero cap means *uncapped*. |
 | `FLEET_WORKER_HOST_PINNED_ONLY=1` | the worker lane elects only items pinned to this host (`needs_host`, inherited by feedback PRs; `fleet:needs-macos-host` on mac); conflicts and plans are never elected; with nothing pinned it stands down rather than launching an unassigned worker. |
 
 `fleet-up` writes the profile to `~/.fleet/state/host-profile` (`full` or

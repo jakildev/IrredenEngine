@@ -15,7 +15,7 @@ import fleet_github
 
 RUNTIMES = ("claude", "codex")
 CODEX_MODELS = {"fable": "gpt-6-astra", "opus": "gpt-5.6-sol", "sonnet": "gpt-5.6-terra"}
-BATCH_ROLES = ("epic-steward",)
+BATCH_ROLES = ("epic-steward", "design-answerer")
 ROLE_CLASSES = {"sonnet-reviewer": "sonnet", "opus-reviewer": "opus", "smoke-worker": "sonnet"}
 # A review's class follows the PR, not the lane. The scout stamps each
 # first-pass candidate with `review_class` from its changed paths (a core-area

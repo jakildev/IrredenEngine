@@ -106,6 +106,7 @@ CANONICAL = [
     "merger",
     "smoke-worker",
     "epic-steward",
+    "design-answerer",
     "queue-manager",
     "queue-manager-ingest",
 ]
