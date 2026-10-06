@@ -1,5 +1,6 @@
 #include "ir_iso_common.metal"
 #include "ir_per_axis_lighting.metal"
+#include "ir_per_axis_cell_dispatch.metal"
 
 // Mirrors shaders/c_compute_voxel_ao.glsl.
 
@@ -16,8 +17,6 @@ constant float kAOMinDistanceSquared = 1.0e-6;
 // the next tread (d ~ 1) works.
 constant float kAOStaircaseStepHeight = 0.5;
 
-constant uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
-constant uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
 
 // Mirrors `FrameDataSun` from ir_render_types.hpp. Only `aoEnabled` is
 // consumed here; the layout must match so the shared UBO at binding 29
@@ -57,15 +56,13 @@ kernel void c_compute_voxel_ao(
     int2 size = int2(int(trixelDistances.get_width()), int(trixelDistances.get_height()));
     int2 pixel;
     if (frameData.perAxisRoute != 0) {
-        // The compacted-cell dispatch is folded into a capped 2-D threadgroup
-        // grid by c_per_axis_cell_finalize (groupsX capped, remainder in groupsY).
-        const uint groupIndex = groupId.x + groupId.y * numGroups.x;
-        const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
+        const uint idx = perAxisCellInvocationIndex(
+            groupId.x, groupId.y, numGroups.x, localIndex
+        );
         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
             return;
         }
-        const uint linearCell = compactedCells[idx];
-        pixel = int2(int(linearCell) % size.x, int(linearCell) / size.x);
+        pixel = perAxisCellPixel(compactedCells[idx], size.x);
     } else {
         pixel = int2(globalId.xy);
         if (pixel.x >= size.x || pixel.y >= size.y) {

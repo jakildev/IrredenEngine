@@ -19,6 +19,7 @@ that pipes the runner (`run_all.sh | tee`) must run with pipefail, or the
 job goes green on any suite failure.
 """
 import re
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -210,6 +211,20 @@ def masked_runner_steps(workflow: str) -> list[str]:
 
 
 class WorkflowKeepsRunnerStatusTest(unittest.TestCase):
+
+    def test_compiler_contract_gates_reject_skipped_or_empty_results(self):
+        workflow = _WORKFLOW.read_text(encoding="utf-8")
+        for suite in ("test_render_sdf_surface_contract", "test_render_sdf_winner",
+                      "test_render_per_axis_cell_dispatch"):
+            match = re.search(r"run: (grep[^\n]+" + suite + r"[^\n]+run_all.log)", workflow)
+            self.assertIsNotNone(match, f"missing execution gate for {suite}")
+            command = shlex.split(match[1])
+            for result, expected in (("1 tests", 0), ("0 tests", 1),
+                                     ("1 tests, 1 skipped", 1)):
+                with self.subTest(suite=suite, result=result), tempfile.TemporaryDirectory() as tmp:
+                    (Path(tmp) / "run_all.log").write_text(f"PASS  {suite}.py ({result})\n")
+                    completed = subprocess.run(command, cwd=tmp, capture_output=True, text=True)
+                    self.assertEqual(completed.returncode, expected, completed.stderr)
 
     def test_workflow_invokes_the_runner(self):
         # Non-vacuity: the check below passes trivially if no step runs it.

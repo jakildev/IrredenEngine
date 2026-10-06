@@ -3,6 +3,7 @@
 #include "ir_receiver_face.metal"
 #endif
 #include "ir_per_axis_lighting.metal"
+#include "ir_per_axis_cell_dispatch.metal"
 // FrameDataSun + the sun-depth buffer cascade lookup (worldSunShadowFactor) —
 // for the opt-in detached re-voxelize world-receive path. Shared with
 // c_compute_sun_shadow.
@@ -21,8 +22,6 @@
 // OCCUPIED cells (compacted by the STAGE_1 per-axis pre-pass). compactedCells
 // holds the occupied linear cell indices; cellDrawArgs carries visibleCount at
 // [kDispatchArgsBaseUint + 3] for the 1-D bound guard. GLSL twin's bindings 25/26.
-constant uint kDispatchArgsBaseUint = 8u;
-constant uint kPerAxisCellComputeTile = 256u;
 
 void writeLitTrixel(texture2d<float, access::read_write> canvas,
     device SourceVoxelFaces& faces, bool sourceMode, uint index, uint2 pixel, float4 color) {
@@ -117,15 +116,13 @@ kernel void IR_LIGHTING_KERNEL_NAME(
             }
         }
     } else if (voxelFrameData.perAxisRoute != 0) {
-        // The compacted-cell dispatch is folded into a capped 2-D threadgroup
-        // grid by c_per_axis_cell_finalize (groupsX capped, remainder in groupsY).
-        const uint groupIndex = groupId.x + groupId.y * numGroups.x;
-        const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
+        const uint idx = perAxisCellInvocationIndex(
+            groupId.x, groupId.y, numGroups.x, localIndex
+        );
         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
             return;
         }
-        const uint linearCell = compactedCells[idx];
-        pixel = int2(int(linearCell) % size.x, int(linearCell) / size.x);
+        pixel = perAxisCellPixel(compactedCells[idx], size.x);
     } else {
         pixel = int2(globalId.xy);
         if (pixel.x >= size.x || pixel.y >= size.y) {

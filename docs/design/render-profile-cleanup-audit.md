@@ -40,11 +40,25 @@ accessors are removed. The uncompiled scratch file
 `systems/copilot_nonesense.cpp` and its quality-tool exclusion are removed too;
 neither provided an engine API.
 
+## Implemented slice: per-axis integer addressing
+
+The AO, sun-shadow, lighting, fog and depth-resolve shader pairs share
+`ir_per_axis_cell_dispatch`: workgroup-row flattening and linear-cell pixel
+decoding. The finalizer shares their argument offset and tile size. Bounds checks
+remain before compacted-list reads, and each wrapper retains its bindings and
+route-specific coordinate recovery.
+
+`test_render_per_axis_cell_dispatch.py` executes both helpers through a C++
+adapter, enumerates multirow dispatches beyond 65,535 workgroups, checks row-major
+pixels and CPU/shader constants, and rejects lost-row/wrong-column mutations.
+Native shader execution and captures remain necessary to cover compilation,
+binding and rendering behavior. This extraction does not replace the active
+store-frame work or consolidate distinct face coordinate spaces.
+
 ## Next cleanup slices
 
 | Priority | Finding | Bounded change and required proof |
 |---|---|---|
-| 2 | Repeated per-axis occupied-cell decoding in five shader pairs | Share integer group flattening, active-count and cell decoding; keep bindings and distinct face spaces explicit. Prove finalize/list coverage and unchanged AO/shadow/lit captures on both backends. |
 | 3 | Lighting-route density patching may be redundant | Audit every consumer before removing UBO patch/restore; preserve density in store/scatter/resolve. Verify cardinal transitions, high density, overflow lighting and fog. |
 | 3 | Fallback sun bake retains a raw per-axis branch its driver does not use | Prove route-zero dispatches, then remove the branch and redundant include while preserving ABI and live fallback casting. Exercise detached casting and splat-enabled cases. |
 | 3 | Source-face shadow-debug palette repeats an existing helper | Delegate to `surfaceShadowDebugColor` in both shader backends; compare diagnostic captures. |

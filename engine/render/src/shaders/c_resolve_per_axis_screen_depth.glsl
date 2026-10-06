@@ -23,6 +23,7 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 // perAxisSubCellFrac — the shared sub-cell frac decode this bridge composes in
 // the VIEW frame and the per-axis RECEIVE composes in the world frame.
 #include "ir_per_axis_lighting.glsl"
+#include "ir_per_axis_cell_dispatch.glsl"
 
 // Per-axis canvases clear to INT_MAX (the per-axis encoding's empty sentinel).
 const int kEmptyDistanceEncoded = 0x7FFFFFFF;
@@ -82,21 +83,16 @@ layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
 layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
     uint cellDrawArgs[];
 };
-const uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
-const uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
 
 void main() {
-    // Recover the flat list index — the capped 2-D workgroup grid
-    // c_per_axis_cell_finalize wrote (kPerAxisCellComputeTile occupied cells per
-    // group) — and decode the cell from the compacted list.
-    const uint groupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
-    const uint idx = groupIndex * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
+    const uint idx = perAxisCellInvocationIndex(
+        gl_WorkGroupID.x, gl_WorkGroupID.y, gl_NumWorkGroups.x, gl_LocalInvocationIndex
+    );
     if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
         return;
     }
     const ivec2 perAxisSize = imageSize(perAxisDistances);
-    const uint linearCell = compactedCells[idx];
-    const ivec2 cell = ivec2(int(linearCell) % perAxisSize.x, int(linearCell) / perAxisSize.x);
+    const ivec2 cell = perAxisCellPixel(compactedCells[idx], perAxisSize.x);
 
     const int rawDist = imageLoad(perAxisDistances, cell).x;
     if (rawDist >= kEmptyDistanceEncoded) {

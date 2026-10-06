@@ -1,5 +1,6 @@
 #include "ir_iso_common.metal"
 #include "ir_per_axis_lighting.metal"
+#include "ir_per_axis_cell_dispatch.metal"
 #if IR_SHAPE_RECEIVER
 #include "ir_sdf_common.metal"
 #include "ir_shape_data.metal"
@@ -21,8 +22,6 @@ constant int kEmptyDistanceEncoded = 65535;
 // OCCUPIED cells (compacted by the STAGE_1 per-axis pre-pass). compactedCells
 // holds the occupied linear cell indices; cellDrawArgs carries visibleCount at
 // [kDispatchArgsBaseUint + 3]. Unused on the single-canvas 2D path.
-constant uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
-constant uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
 
 kernel void IR_SUN_SHADOW_KERNEL_NAME(
 #if IR_SHAPE_RECEIVER
@@ -49,15 +48,13 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
     );
     int2 pixel;
     if (frameData.perAxisRoute != 0) {
-        // The compacted-cell dispatch is folded into a capped 2-D threadgroup
-        // grid by c_per_axis_cell_finalize (groupsX capped, remainder in groupsY).
-        const uint groupIndex = groupId.x + groupId.y * numGroups.x;
-        const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
+        const uint idx = perAxisCellInvocationIndex(
+            groupId.x, groupId.y, numGroups.x, localIndex
+        );
         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
             return;
         }
-        const uint linearCell = compactedCells[idx];
-        pixel = int2(int(linearCell) % size.x, int(linearCell) / size.x);
+        pixel = perAxisCellPixel(compactedCells[idx], size.x);
     } else {
         pixel = int2(globalId.xy);
         if (pixel.x >= size.x || pixel.y >= size.y) {

@@ -11,6 +11,7 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
 #include "ir_per_axis_lighting.glsl"
+#include "ir_per_axis_cell_dispatch.glsl"
 
 // Same threshold LIGHTING_TO_TRIXEL uses for "empty pixel" — encoded
 // distances >= 65535 mean the clear value was never overwritten.
@@ -102,23 +103,18 @@ layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
 layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
     uint cellDrawArgs[];
 };
-const uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
-const uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
 
 void main() {
     const ivec2 size = imageSize(trixelDistances);
     ivec2 pixel;
     if (perAxisRoute != 0) {
-        // Indirect dispatch over the compacted occupied-cell list, folded into
-        // a capped 2-D workgroup grid by c_per_axis_cell_finalize; recover the
-        // flat group index the same way c_voxel_visibility_compact does.
-        const uint groupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
-        const uint idx = groupIndex * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
+        const uint idx = perAxisCellInvocationIndex(
+            gl_WorkGroupID.x, gl_WorkGroupID.y, gl_NumWorkGroups.x, gl_LocalInvocationIndex
+        );
         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
             return;
         }
-        const uint linearCell = compactedCells[idx];
-        pixel = ivec2(int(linearCell) % size.x, int(linearCell) / size.x);
+        pixel = perAxisCellPixel(compactedCells[idx], size.x);
     } else {
         pixel = ivec2(gl_GlobalInvocationID.xy);
         if (pixel.x >= size.x || pixel.y >= size.y) {

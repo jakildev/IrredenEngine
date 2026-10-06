@@ -18,6 +18,7 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 #include "ir_receiver_face.glsl"
 #endif
 #include "ir_per_axis_lighting.glsl"
+#include "ir_per_axis_cell_dispatch.glsl"
 // Shared caster/receiver sun-space projection.
 #include "ir_sun_projection.glsl"
 // FrameDataSun UBO (29), sun-depth SSBO (28), and worldSunShadowFactor() — for
@@ -112,8 +113,6 @@ layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
 layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
     uint cellDrawArgs[];
 };
-const uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
-const uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
 
 // The light volume is camera-anchored. The CPU uploads
 // `lightVolumeWorldOrigin` (the world voxel that maps to the volume's
@@ -188,17 +187,13 @@ void main() {
             }
         }
     } else if (perAxisRoute != 0) {
-        // Indirect dispatch over the compacted occupied-cell list, folded
-        // into a capped 2-D workgroup grid by c_per_axis_cell_finalize —
-        // idx = flat group index * tile + local flat index, guarded by the axis's
-        // visibleCount, then decode the pixel from its linear cell.
-        const uint groupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
-        const uint idx = groupIndex * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
+        const uint idx = perAxisCellInvocationIndex(
+            gl_WorkGroupID.x, gl_WorkGroupID.y, gl_NumWorkGroups.x, gl_LocalInvocationIndex
+        );
         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
             return;
         }
-        const uint linearCell = compactedCells[idx];
-        pixel = ivec2(int(linearCell) % size.x, int(linearCell) / size.x);
+        pixel = perAxisCellPixel(compactedCells[idx], size.x);
     } else {
         pixel = ivec2(gl_GlobalInvocationID.xy);
         if (pixel.x >= size.x || pixel.y >= size.y) {
