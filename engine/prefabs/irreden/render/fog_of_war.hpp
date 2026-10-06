@@ -765,13 +765,94 @@ inline std::uint8_t getCell(int worldX, int worldY) {
     return IRComponents::kFogStateUnexplored;
 }
 
-/// Mark every cell within @p radius (Euclidean distance) of
-/// @p (cx, cy) as visible. See `C_CanvasFogOfWar::revealRadius` for the v1
-/// contract around the cells that are NOT downgraded.
-inline void revealRadius(int cx, int cy, int radius) {
+/// Mark every cell within @p radius (Euclidean distance) of @p (cx, cy) whose
+/// mask intersects @p channels as visible. See
+/// `C_CanvasFogOfWar::revealRadius` for the contract around the cells that
+/// are NOT downgraded.
+inline void revealRadius(
+    int cx, int cy, int radius, std::uint32_t channels = IRComponents::kFogChannelDefault
+) {
     if (auto *fog = detail::activeFogComponent()) {
-        fog->revealRadius(cx, cy, radius);
+        fog->revealRadius(cx, cy, radius, channels);
     }
+}
+
+/// Author explored memory over the disc of @p radius around @p (cx, cy):
+/// every non-VISIBLE cell whose mask intersects @p channels becomes EXPLORED
+/// and its exploration time is refreshed; VISIBLE cells are retained. Returns
+/// the changed-cell count; 0 without an active fog canvas.
+inline int exploreRadius(
+    int cx, int cy, int radius, std::uint32_t channels = IRComponents::kFogChannelDefault
+) {
+    if (auto *fog = detail::activeFogComponent()) {
+        return fog->exploreRadius(cx, cy, radius, channels);
+    }
+    return 0;
+}
+
+/// The channel mask of column @p (worldX, worldY); `kFogChannelDefault` for
+/// an unset cell and without an active fog canvas.
+inline std::uint32_t getCellChannels(int worldX, int worldY) {
+    if (auto *fog = detail::activeFogComponent()) {
+        return fog->getCellChannels(worldX, worldY);
+    }
+    return IRComponents::kFogChannelDefault;
+}
+
+/// Replace column @p (worldX, worldY)'s channel mask (zero admits no source);
+/// the state and its exploration time stand. No-op without an active fog
+/// canvas.
+inline void setCellChannels(int worldX, int worldY, std::uint32_t channels) {
+    if (auto *fog = detail::activeFogComponent()) {
+        fog->setCellChannels(worldX, worldY, channels);
+    }
+}
+
+/// Select the explored-state policy of the active canvas's fog: PERSISTENT
+/// keeps EXPLORED memory forever; DECAY returns an EXPLORED cell whose mask
+/// intersects @p channels to UNEXPLORED once `now - explored >= durationMs`
+/// on the clock `setExploredTimeMs` advances. Initialization-only: accepted
+/// before the field holds a cell (or after `clear`), repeating the current
+/// settings is harmless, a change after use is refused. A creation restores
+/// the same policy when it reopens a save. False and unchanged when refused
+/// or without an active fog canvas.
+inline bool setExploredPolicy(
+    ExploredPolicy policy,
+    std::uint64_t durationMs,
+    std::uint32_t channels = IRComponents::kFogChannelDefault
+) {
+    if (auto *fog = detail::activeFogComponent()) {
+        return fog->setExploredPolicy(policy, durationMs, channels);
+    }
+    return false;
+}
+
+/// The active canvas's explored-state policy; the defaults without one.
+inline ExploredPolicySettings getExploredPolicy() {
+    if (auto *fog = detail::activeFogComponent()) {
+        return fog->getExploredPolicy();
+    }
+    return {};
+}
+
+/// Advance the fog's monotonic simulation clock (milliseconds, exact integers
+/// in `[0, kFogTimeMsMax]`) from a serial phase before the frame's fog readers;
+/// DECAY expiry runs here. Equal time is a no-op; a backwards or out-of-range
+/// time is refused without mutation. A creation restores its saved epoch
+/// before loading cells. False when refused or without an active fog canvas.
+inline bool setExploredTimeMs(std::uint64_t nowMs) {
+    if (auto *fog = detail::activeFogComponent()) {
+        return fog->setExploredTimeMs(nowMs);
+    }
+    return false;
+}
+
+/// The fog's simulation clock; 0 without an active fog canvas.
+inline std::uint64_t getExploredTimeMs() {
+    if (auto *fog = detail::activeFogComponent()) {
+        return fog->getExploredTimeMs();
+    }
+    return 0;
 }
 
 /// Replace the live vision set with a single analytic disc centered at the
@@ -968,23 +1049,21 @@ inline void clear() {
 }
 
 /// Persist the active canvas's fog under @p saveRoot (one region file per
-/// 512×512 columns; docs/design/fog-of-war-world-field.md D4): cells load on
-/// first touch and save through `flushToDisk`. False without an active fog
-/// canvas, for an empty root, or once the field holds any cell — set it after
-/// `attachToCanvas(canvas, 0)` and before the first reveal. Accepting a root
-/// makes the next gather re-upload the whole window, so saved state reaches
-/// the texture even when frames rendered first. Destruction never saves.
+/// 512×512 columns; docs/design/fog-of-war-world-field.md D4): cells, channel
+/// masks and exploration times load on first touch and save through
+/// `flushToDisk`. False without an active fog canvas, for an empty root, or
+/// once the field holds any cell — set it after `attachToCanvas(canvas, 0)`,
+/// `setExploredPolicy` and the restored `setExploredTimeMs`, before the first
+/// reveal. Accepting a root makes the next gather re-upload the whole window,
+/// so saved state reaches the texture even when frames rendered first.
+/// Destruction never saves.
 inline bool setPersistenceRoot(std::string saveRoot) {
     auto *fog = detail::activeFogComponent();
     if (fog == nullptr) {
         return false;
     }
     std::optional<IRWorld::FieldChunkDiskPersistence> persistence =
-        IRWorld::FieldChunkDiskPersistence::create(
-            std::move(saveRoot),
-            kFogFieldLayer,
-            kFogFieldBytesPerCell
-        );
+        createFieldPersistence(std::move(saveRoot));
     if (!persistence.has_value() || !fog->field_->setPersistence(std::move(*persistence))) {
         return false;
     }

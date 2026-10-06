@@ -403,8 +403,8 @@ constexpr IRVideo::AutoScreenshotShot kEdgeSdfBlockerShots[] = {
 // raster on its deterministic SOURCE path (a spinning solid round-to-cell
 // speckles); the cut-face code is rotation-agnostic, so the static pose
 // proves the mechanism deterministically.
-bool g_detachedEdge = false; // --detached-edge
-bool g_detachedBody = false; // --detached-body
+bool g_detachedEdge = false;        // --detached-edge
+bool g_detachedBody = false;        // --detached-body
 bool g_detachedBodyHidden = false;  // --detached-body-hidden
 bool g_detachedBodyNoSolid = false; // --detached-body-no-solid
 bool g_detachedExempt = false;      // --detached-exempt
@@ -598,7 +598,7 @@ constexpr IRVideo::AutoScreenshotShot kEdgeZCostCeilingShots[] = {
 // central pillar's texels (entity-id low word) and how many carry the debug
 // colour within kFogPaintProbeTolerance per channel. A pillar whose above-ceiling
 // voxels are painted rather than dropped reads a large painted fraction.
-bool g_fogDebugColor = false; // --fog-debug-color
+bool g_fogDebugColor = false;   // --fog-debug-color
 bool g_perAxisOverflow = false; // --peraxis-overflow
 constexpr Color kFogDebugUnexploredColor{255, 0, 255, 255};
 // Same framing as kEdgeZCostCeilingShots; own labels so both variants gate.
@@ -1076,6 +1076,534 @@ void probeChannel(int) {
         fieldTexels,
         fieldUnexplored
     );
+}
+
+// --explored-decay: the explored-state policy and per-cell channels over a
+// persisted field. Five FIELD panels sit on a floor at the origin and one at
+// (2400, 0): explored memory on the default channel (decays), explored memory
+// shielded on channel 2 (the policy mask never intersects it), a VISIBLE disc
+// (never decays), and two source panels under the eighth (analytic) and
+// ninth (field-tier) sources, each split into a half whose cells carry the
+// sources' channel 2 and a half left on the default channel. The clock is the
+// creation's: a render-front tick sets it from a per-shot table, so shot 1
+// captures the memory before expiry, shot 2 the same pose one duration later,
+// shot 3 the far panel (explored at t = 0, expired as its region reloads), shot
+// 4 the return, and shot 5 a non-cardinal yaw over the source panels with a
+// fog-hidden box outside the eighth disc's rim for the per-axis routes.
+// Unexplored matter is painted the debug colour so the probe can count it.
+bool g_exploredDecay = false;
+constexpr std::uint64_t kExploredDecayDurationMs = 10000;
+constexpr const char *kExploredDecaySaveRoot = "save_files/fog_explored_decay";
+constexpr std::uint32_t kExploredDecayChannel = 1u << 1u;
+// Panels stand on the floor's top plane (the floor box spans z 3..7).
+constexpr float kExploredDecayPanelZ = 2.0f;
+constexpr int kExploredDecayPanelHalf = 4;
+constexpr int kExploredDecayDiscRadius = 6;
+constexpr float kExploredDecaySourceRadius = 10.0f;
+constexpr IRMath::ivec2 kExploredDecayMemoryCell{0, 40};
+constexpr IRMath::ivec2 kExploredDecayShieldedCell{0, -40};
+constexpr IRMath::ivec2 kExploredDecayVisibleCell{40, 0};
+constexpr IRMath::ivec2 kExploredDecayEighthCell{-40, 20};
+constexpr IRMath::ivec2 kExploredDecayNinthCell{-40, -20};
+constexpr IRMath::ivec2 kExploredDecayFarCell{2400, 0};
+constexpr IRMath::ivec2 kExploredDecayOverflowCell{-40, 34};
+constexpr vec2 kExploredDecayFarIso{2400.0f, 2400.0f};
+constexpr float kExploredDecayTiersYaw = 0.35f;
+constexpr IRVideo::AutoScreenshotShot kExploredDecayShots[] = {
+    {2.0f, vec2(0, 0), 0.0f, "fog_explored_decay_before"},
+    {2.0f, vec2(0, 0), 0.0f, "fog_explored_decay_after"},
+    {2.0f, kExploredDecayFarIso, 0.0f, "fog_explored_decay_far"},
+    {2.0f, vec2(0, 0), 0.0f, "fog_explored_decay_return"},
+    {4.0f, vec2(0, 0), kExploredDecayTiersYaw, "fog_explored_decay_tiers_yaw"},
+};
+// The simulation clock each shot is captured at; the probe advances the clock
+// to the next entry after capturing a shot.
+constexpr std::uint64_t kExploredDecayShotClocks[] = {
+    0,
+    kExploredDecayDurationMs,
+    kExploredDecayDurationMs,
+    kExploredDecayDurationMs,
+    kExploredDecayDurationMs,
+};
+static_assert(
+    sizeof(kExploredDecayShotClocks) / sizeof(kExploredDecayShotClocks[0]) ==
+        sizeof(kExploredDecayShots) / sizeof(kExploredDecayShots[0]),
+    "one clock per explored-decay shot"
+);
+std::uint64_t g_exploredDecayClockMs = 0;
+IREntity::EntityId g_exploredDecayMemory = IREntity::kNullEntity;
+IREntity::EntityId g_exploredDecayShielded = IREntity::kNullEntity;
+IREntity::EntityId g_exploredDecayVisible = IREntity::kNullEntity;
+IREntity::EntityId g_exploredDecayEighthMatch = IREntity::kNullEntity;
+IREntity::EntityId g_exploredDecayEighthDisjoint = IREntity::kNullEntity;
+IREntity::EntityId g_exploredDecayNinthMatch = IREntity::kNullEntity;
+IREntity::EntityId g_exploredDecayNinthDisjoint = IREntity::kNullEntity;
+IREntity::EntityId g_exploredDecayFar = IREntity::kNullEntity;
+IREntity::EntityId g_exploredDecayOverflow = IREntity::kNullEntity;
+
+// An SDF FIELD panel standing on the floor's top plane: its surface spans
+// exactly the columns `centre ± half`, so every texel reads one authored cell
+// and the memory probes count exactly.
+IREntity::EntityId createExploredDecayPanel(IRMath::ivec2 centre, int halfX, Color color) {
+    return IREntity::createEntity(
+        C_LocalTransform{
+            vec3(static_cast<float>(centre.x), static_cast<float>(centre.y), kExploredDecayPanelZ)
+        },
+        C_ShapeDescriptor{
+            IRRender::ShapeType::BOX,
+            vec4(
+                static_cast<float>(halfX),
+                static_cast<float>(kExploredDecayPanelHalf),
+                1.0f,
+                0.0f
+            ),
+            color
+        },
+        C_FogField{}
+    );
+}
+
+// A voxel FIELD panel of `2 * halfX + 1` by `2 * kExploredDecayPanelHalf + 1`
+// columns, two voxels thick, on the floor's top plane. Voxel sets ride the
+// cardinal, per-axis and overflow raster routes alike, which the source
+// panels need for the rotated shot; their boundary faces recover positions in
+// the neighbouring columns, so their probes compare counts, not exact totals.
+IREntity::EntityId createExploredDecayVoxelPanel(IRMath::ivec2 centre, int halfX, Color color) {
+    return IREntity::createEntity(
+        C_LocalTransform{
+            vec3(static_cast<float>(centre.x), static_cast<float>(centre.y), kExploredDecayPanelZ)
+        },
+        C_VoxelSetNew{
+            IRMath::ivec3{2 * halfX + 1, 2 * kExploredDecayPanelHalf + 1, 2},
+            color,
+            true
+        },
+        C_FogField{}
+    );
+}
+
+// Gives every cell of a panel's footprint the sources' channel, plus the
+// column past each positive edge that a voxel panel's boundary faces recover.
+void channelExploredDecayPanel(IRMath::ivec2 centre, int halfX, int positiveMargin) {
+    for (int dy = -kExploredDecayPanelHalf; dy <= kExploredDecayPanelHalf + positiveMargin; ++dy) {
+        for (int dx = -halfX; dx <= halfX + positiveMargin; ++dx) {
+            IRPrefab::Fog::setCellChannels(centre.x + dx, centre.y + dy, kExploredDecayChannel);
+        }
+    }
+}
+
+// The source panels: a matching half (channel 2 cells) left of the source
+// column and a disjoint half (default cells) right of it.
+void createExploredDecaySourcePanels(
+    IRMath::ivec2 source, IREntity::EntityId &match, IREntity::EntityId &disjoint
+) {
+    constexpr int kHalfWidth = 3;
+    const IRMath::ivec2 matchCentre = source - IRMath::ivec2{kHalfWidth + 2, 0};
+    const IRMath::ivec2 disjointCentre = source + IRMath::ivec2{kHalfWidth + 2, 0};
+    match = createExploredDecayVoxelPanel(matchCentre, kHalfWidth, Color{90, 210, 120, 255});
+    disjoint = createExploredDecayVoxelPanel(disjointCentre, kHalfWidth, Color{210, 110, 90, 255});
+    channelExploredDecayPanel(matchCentre, kHalfWidth, 1);
+}
+
+void driveExploredDecayClock() {
+    IRPrefab::Fog::setExploredTimeMs(g_exploredDecayClockMs);
+}
+
+void initExploredDecayScene() {
+    // The policy and root are initialization-only: they precede every cell
+    // write, channel masks included.
+    const bool policyAccepted = IRPrefab::Fog::setExploredPolicy(
+        IRPrefab::Fog::ExploredPolicy::DECAY,
+        kExploredDecayDurationMs
+    );
+    IR_ASSERT(policyAccepted, "the --explored-decay policy was refused");
+    const bool rootAccepted = IRPrefab::Fog::setPersistenceRoot(kExploredDecaySaveRoot);
+    IR_ASSERT(rootAccepted, "the --explored-decay persistence root was refused");
+    IRPrefab::Fog::clear();
+    IRPrefab::Fog::setExploredTimeMs(0);
+
+    constexpr float kFloorZ = 5.0f;
+    for (const IRMath::ivec2 centre : {IRMath::ivec2{0, 0}, kExploredDecayFarCell}) {
+        IREntity::createEntity(
+            C_LocalTransform{
+                vec3(static_cast<float>(centre.x), static_cast<float>(centre.y), kFloorZ)
+            },
+            C_ShapeDescriptor{
+                IRRender::ShapeType::BOX,
+                vec4(96.0f, 96.0f, 2.0f, 0.0f),
+                Color{150, 150, 160, 255}
+            },
+            C_FogField{}
+        );
+    }
+    g_exploredDecayMemory = createExploredDecayPanel(
+        kExploredDecayMemoryCell,
+        kExploredDecayPanelHalf,
+        Color{120, 180, 240, 255}
+    );
+    g_exploredDecayShielded = createExploredDecayPanel(
+        kExploredDecayShieldedCell,
+        kExploredDecayPanelHalf,
+        Color{240, 200, 110, 255}
+    );
+    g_exploredDecayVisible = createExploredDecayPanel(
+        kExploredDecayVisibleCell,
+        kExploredDecayPanelHalf,
+        Color{230, 230, 230, 255}
+    );
+    g_exploredDecayFar = createExploredDecayPanel(
+        kExploredDecayFarCell,
+        kExploredDecayPanelHalf,
+        Color{120, 180, 240, 255}
+    );
+    createExploredDecaySourcePanels(
+        kExploredDecayEighthCell,
+        g_exploredDecayEighthMatch,
+        g_exploredDecayEighthDisjoint
+    );
+    createExploredDecaySourcePanels(
+        kExploredDecayNinthCell,
+        g_exploredDecayNinthMatch,
+        g_exploredDecayNinthDisjoint
+    );
+    // Fog-hidden matter just outside the eighth disc's rim, inside the keep
+    // ring, so the rotated shot's per-axis and overflow lanes paint it.
+    g_exploredDecayOverflow = IREntity::createEntity(
+        C_LocalTransform{vec3(
+            static_cast<float>(kExploredDecayOverflowCell.x),
+            static_cast<float>(kExploredDecayOverflowCell.y),
+            2.0f
+        )},
+        C_VoxelSetNew{IRMath::ivec3{4, 4, 4}, Color{220, 180, 70, 255}, true},
+        C_FogField{}
+    );
+
+    channelExploredDecayPanel(kExploredDecayShieldedCell, kExploredDecayPanelHalf, 0);
+    IRPrefab::Fog::exploreRadius(
+        kExploredDecayMemoryCell.x,
+        kExploredDecayMemoryCell.y,
+        kExploredDecayDiscRadius
+    );
+    IRPrefab::Fog::exploreRadius(
+        kExploredDecayShieldedCell.x,
+        kExploredDecayShieldedCell.y,
+        kExploredDecayDiscRadius,
+        kExploredDecayChannel
+    );
+    IRPrefab::Fog::revealRadius(
+        kExploredDecayVisibleCell.x,
+        kExploredDecayVisibleCell.y,
+        kExploredDecayDiscRadius
+    );
+    IRPrefab::Fog::exploreRadius(
+        kExploredDecayFarCell.x,
+        kExploredDecayFarCell.y,
+        kExploredDecayDiscRadius
+    );
+
+    // Seven analytic fillers far off-screen, then the eighth (analytic) and
+    // ninth (field-tier) sources, all on channel 2.
+    IRPrefab::Fog::clearVisionCircles();
+    for (int i = 0; i < kMaxFogVisionCircles - 1; ++i) {
+        IRPrefab::Fog::addVisionCircle(
+            -1000.0f - static_cast<float>(i) * 10.0f,
+            -1000.0f,
+            1.0f,
+            kFogVisionEdgeDefault,
+            0.0f,
+            0.0f,
+            kFogVisionZCostMirrorUp,
+            0.0f,
+            kExploredDecayChannel
+        );
+    }
+    const int eighth = IRPrefab::Fog::addVisionCircle(
+        static_cast<float>(kExploredDecayEighthCell.x),
+        static_cast<float>(kExploredDecayEighthCell.y),
+        kExploredDecaySourceRadius,
+        kFogVisionEdgeDefault,
+        0.0f,
+        0.0f,
+        kFogVisionZCostMirrorUp,
+        0.0f,
+        kExploredDecayChannel
+    );
+    const int ninth = IRPrefab::Fog::addVisionCircle(
+        static_cast<float>(kExploredDecayNinthCell.x),
+        static_cast<float>(kExploredDecayNinthCell.y),
+        kExploredDecaySourceRadius,
+        kFogVisionEdgeDefault,
+        0.0f,
+        0.0f,
+        kFogVisionZCostMirrorUp,
+        0.0f,
+        kExploredDecayChannel
+    );
+    IR_ASSERT(eighth == kMaxFogVisionCircles - 1 && ninth == -1, "the tier boundary moved");
+}
+
+struct ExploredDecayPanelCount {
+    int texels_ = 0;
+    int unexplored_ = 0;
+};
+
+ExploredDecayPanelCount countExploredDecayPanel(IREntity::EntityId entity) {
+    ExploredDecayPanelCount count;
+    const std::array entities{entity};
+    countEntityTexels(entities, count.texels_, count.unexplored_);
+    return count;
+}
+
+// The per-axis canvases' cells of @p entity and how many carry the debug
+// colour, for the rotated shot the main canvas does not composite.
+ExploredDecayPanelCount
+countExploredDecayPerAxis(const C_PerAxisTrixelCanvases &axes, IREntity::EntityId entity) {
+    ExploredDecayPanelCount count;
+    const auto expected = static_cast<std::uint32_t>(entity);
+    const std::size_t cellCount =
+        static_cast<std::size_t>(axes.size_.x) * static_cast<std::size_t>(axes.size_.y);
+    std::vector<IRMath::uvec2> carriers(cellCount);
+    std::vector<Color> colors(cellCount);
+    for (const auto &axis : axes.axes_) {
+        axis.entityIds_.second->getSubImage2D(
+            0,
+            0,
+            axes.size_.x,
+            axes.size_.y,
+            PixelDataFormat::RG_INTEGER,
+            PixelDataType::UINT32,
+            carriers.data()
+        );
+        axis.colors_.second->getSubImage2D(
+            0,
+            0,
+            axes.size_.x,
+            axes.size_.y,
+            PixelDataFormat::RGBA,
+            PixelDataType::UNSIGNED_BYTE,
+            colors.data()
+        );
+        for (std::size_t i = 0; i < cellCount; ++i) {
+            if (carriers[i].x != expected) {
+                continue;
+            }
+            ++count.texels_;
+            if (matchesFogDebugColor(colors[i])) {
+                ++count.unexplored_;
+            }
+        }
+    }
+    return count;
+}
+
+// The uploaded window texel of @p cell, read back from the GPU.
+IRPrefab::Fog::FogWindowTexel
+readExploredDecayTexel(const C_CanvasFogOfWar &fog, IRMath::ivec2 cell) {
+    IRPrefab::Fog::FogWindowTexel texel{};
+    const IRMath::ivec2 address = IRPrefab::Fog::detail::windowTexel(cell, fog.windowEdge_);
+    fog.getTexture()->getSubImage2D(
+        address.x,
+        address.y,
+        1,
+        1,
+        PixelDataFormat::RG_INTEGER,
+        PixelDataType::UINT32,
+        &texel
+    );
+    return texel;
+}
+
+void probeExploredDecay(int shotIndex) {
+    constexpr const char *kTag = "FOG-EXPLORED-DECAY";
+    const auto &fog = IREntity::getComponent<C_CanvasFogOfWar>(IRRender::getActiveCanvasEntity());
+    const IRPrefab::Fog::WorldFieldStats stats = IRPrefab::Fog::fieldStats();
+    const char *label = kExploredDecayShots[shotIndex].label_;
+    const bool rotated = shotIndex == 4;
+
+    // Exact CPU and uploaded state of the memory and shielded centres.
+    const std::uint8_t memoryState =
+        IRPrefab::Fog::getCell(kExploredDecayMemoryCell.x, kExploredDecayMemoryCell.y);
+    const std::uint8_t shieldedState =
+        IRPrefab::Fog::getCell(kExploredDecayShieldedCell.x, kExploredDecayShieldedCell.y);
+    const std::uint32_t shieldedChannels =
+        IRPrefab::Fog::getCellChannels(kExploredDecayShieldedCell.x, kExploredDecayShieldedCell.y);
+    const std::optional<IRMath::ivec2> origin = IRPrefab::Fog::windowOrigin();
+    const bool originShot = shotIndex != 2;
+    if (originShot && origin.has_value()) {
+        const IRPrefab::Fog::FogWindowTexel memoryTexel =
+            readExploredDecayTexel(fog, kExploredDecayMemoryCell);
+        const IRPrefab::Fog::FogWindowTexel shieldedTexel =
+            readExploredDecayTexel(fog, kExploredDecayShieldedCell);
+        requireFogProbe(
+            kTag,
+            memoryTexel.state_ == memoryState && memoryTexel.channels_ == kFogChannelDefault,
+            "the uploaded memory texel must carry the CPU state and the default mask"
+        );
+        requireFogProbe(
+            kTag,
+            shieldedTexel.state_ == shieldedState &&
+                shieldedTexel.channels_ == kExploredDecayChannel &&
+                shieldedChannels == kExploredDecayChannel,
+            "the uploaded shielded texel must carry the CPU state and channel 2"
+        );
+    }
+
+    ExploredDecayPanelCount memory;
+    ExploredDecayPanelCount shielded;
+    ExploredDecayPanelCount visible;
+    ExploredDecayPanelCount eighthMatch;
+    ExploredDecayPanelCount eighthDisjoint;
+    ExploredDecayPanelCount ninthMatch;
+    ExploredDecayPanelCount ninthDisjoint;
+    ExploredDecayPanelCount far;
+    ExploredDecayPanelCount overflow;
+    std::uint32_t overflowEntries = 0;
+    if (rotated) {
+        auto perAxis =
+            IREntity::getComponentOptional<C_PerAxisTrixelCanvases>(IRRender::getCanvas("main"));
+        requireFogProbe(
+            kTag,
+            perAxis.has_value() && perAxis.value()->isAllocated(),
+            "the yaw shot must take the per-axis route"
+        );
+        const C_PerAxisTrixelCanvases &axes = *perAxis.value();
+        eighthMatch = countExploredDecayPerAxis(axes, g_exploredDecayEighthMatch);
+        eighthDisjoint = countExploredDecayPerAxis(axes, g_exploredDecayEighthDisjoint);
+        ninthMatch = countExploredDecayPerAxis(axes, g_exploredDecayNinthMatch);
+        ninthDisjoint = countExploredDecayPerAxis(axes, g_exploredDecayNinthDisjoint);
+        overflow = countExploredDecayPerAxis(axes, g_exploredDecayOverflow);
+        overflowEntries = axes.laggedOverflowCount_;
+    } else {
+        memory = countExploredDecayPanel(g_exploredDecayMemory);
+        shielded = countExploredDecayPanel(g_exploredDecayShielded);
+        visible = countExploredDecayPanel(g_exploredDecayVisible);
+        eighthMatch = countExploredDecayPanel(g_exploredDecayEighthMatch);
+        eighthDisjoint = countExploredDecayPanel(g_exploredDecayEighthDisjoint);
+        ninthMatch = countExploredDecayPanel(g_exploredDecayNinthMatch);
+        ninthDisjoint = countExploredDecayPanel(g_exploredDecayNinthDisjoint);
+        far = countExploredDecayPanel(g_exploredDecayFar);
+    }
+    IR_LOG_INFO(
+        "{} shot={} clock={} expired={} loads={} evictions={} memoryState={} shieldedState={} "
+        "memory={}/{} shielded={}/{} visible={}/{} eighthMatch={}/{} eighthDisjoint={}/{} "
+        "ninthMatch={}/{} ninthDisjoint={}/{} far={}/{} overflowBox={}/{} overflowEntries={}",
+        kTag,
+        label,
+        g_exploredDecayClockMs,
+        stats.expired_,
+        stats.loads_,
+        stats.evictions_,
+        memoryState,
+        shieldedState,
+        memory.unexplored_,
+        memory.texels_,
+        shielded.unexplored_,
+        shielded.texels_,
+        visible.unexplored_,
+        visible.texels_,
+        eighthMatch.unexplored_,
+        eighthMatch.texels_,
+        eighthDisjoint.unexplored_,
+        eighthDisjoint.texels_,
+        ninthMatch.unexplored_,
+        ninthMatch.texels_,
+        ninthDisjoint.unexplored_,
+        ninthDisjoint.texels_,
+        far.unexplored_,
+        far.texels_,
+        overflow.unexplored_,
+        overflow.texels_,
+        overflowEntries
+    );
+
+    // Source admission holds on every route the origin poses render: the
+    // matching halves reveal (lit texels exist), the disjoint halves show no
+    // lit texel — painted whole, or culled whole as unexplored matter outside
+    // every analytic keep ring, which is the ninth source's half.
+    const bool farShot = shotIndex == 2;
+    if (!farShot) {
+        requireFogProbe(
+            kTag,
+            eighthMatch.texels_ > 0 && eighthMatch.unexplored_ < eighthMatch.texels_,
+            "eighth source must reveal its channel-2 half"
+        );
+        requireFogProbe(
+            kTag,
+            eighthDisjoint.texels_ > 0 && eighthDisjoint.unexplored_ == eighthDisjoint.texels_,
+            "eighth source must not reveal a default cell"
+        );
+        requireFogProbe(
+            kTag,
+            ninthMatch.texels_ > 0 && ninthMatch.unexplored_ < ninthMatch.texels_,
+            "ninth source must reveal its channel-2 half through the field tier"
+        );
+        requireFogProbe(
+            kTag,
+            ninthDisjoint.unexplored_ == ninthDisjoint.texels_,
+            "ninth source must not reveal a default cell"
+        );
+    }
+    if (rotated) {
+        requireFogProbe(
+            kTag,
+            overflow.texels_ > 0 && overflow.unexplored_ == overflow.texels_,
+            "the hidden box must be painted on the per-axis route"
+        );
+        requireFogProbe(
+            kTag,
+            overflowEntries > 0,
+            "the rotated shot must exercise the overflow lane"
+        );
+    } else if (!farShot) {
+        requireFogProbe(
+            kTag,
+            shielded.texels_ > 0 && shielded.unexplored_ == 0 && shieldedState == kFogStateExplored,
+            "channel-2 memory never decays under the default policy mask"
+        );
+        requireFogProbe(
+            kTag,
+            visible.texels_ > 0 && visible.unexplored_ == 0,
+            "a VISIBLE disc never decays"
+        );
+    }
+    switch (shotIndex) {
+    case 0:
+        requireFogProbe(
+            kTag,
+            memory.texels_ > 0 && memory.unexplored_ == 0 && memoryState == kFogStateExplored,
+            "memory must read explored before the deadline"
+        );
+        break;
+    case 1:
+        requireFogProbe(
+            kTag,
+            memory.texels_ > 0 && memory.unexplored_ == memory.texels_ &&
+                memoryState == kFogStateUnexplored && stats.expired_ > 0,
+            "memory must have expired whole at the deadline"
+        );
+        break;
+    case 2:
+        requireFogProbe(
+            kTag,
+            far.texels_ > 0 && far.unexplored_ == far.texels_ && stats.evictions_ > 0,
+            "the far panel must read expired after the window moved"
+        );
+        break;
+    case 3:
+        requireFogProbe(
+            kTag,
+            memory.texels_ > 0 && memory.unexplored_ == memory.texels_ &&
+                memoryState == kFogStateUnexplored,
+            "returning must not resurrect expired memory"
+        );
+        break;
+    default:
+        break;
+    }
+    if (shotIndex + 1 <
+        static_cast<int>(sizeof(kExploredDecayShotClocks) / sizeof(kExploredDecayShotClocks[0]))) {
+        g_exploredDecayClockMs = kExploredDecayShotClocks[shotIndex + 1];
+    }
 }
 
 // --entity-reveal: fog BODY subjects under the --edge-zcost-ceiling hard
@@ -1736,6 +2264,13 @@ int main(int argc, char **argv) {
         "One channel-2 source over matching/default BODY subjects and a FIELD slab; logs "
         "FOG-CHANNEL-PROBE and overrides every other reveal mode"
     );
+    IREngine::args().flag(
+        "--explored-decay",
+        "Explored-state decay and per-cell channels over a persisted field: memory panels "
+        "before and after the clock passes the duration, a far panel expired on reload, and "
+        "eighth/ninth-source panels split by cell channel; logs FOG-EXPLORED-DECAY per shot and "
+        "overrides every other reveal mode"
+    );
     IREngine::registerLuaBindings([](IRScript::LuaScript &script) {
         script.bindLuaFog();
         script.lua()["fogSelftestEntity"] = []() {
@@ -1806,33 +2341,34 @@ int main(int argc, char **argv) {
     g_luaFogSelftest = IREngine::args().getFlag("--lua-fog-selftest");
     g_worldPan = IREngine::args().getFlag("--world-pan");
     g_depthSlab = IREngine::args().getFlag("--depth-slab") && !g_worldPan;
+    g_exploredDecay = IREngine::args().getFlag("--explored-decay") && !g_worldPan && !g_depthSlab &&
+                      !g_luaFogSelftest;
     g_channelProbe = IREngine::args().getFlag("--channel-probe") && !g_worldPan && !g_depthSlab &&
-                     !g_luaFogSelftest;
+                     !g_exploredDecay && !g_luaFogSelftest;
     g_manySources = IREngine::args().getFlag("--many-sources") && !g_worldPan && !g_depthSlab &&
-                    !g_channelProbe && !g_luaFogSelftest;
-    if (g_channelProbe) {
-        g_fogDebugColor = true;
-    }
-    if (g_worldPan) {
+                    !g_exploredDecay && !g_channelProbe && !g_luaFogSelftest;
+    if (g_channelProbe || g_worldPan || g_exploredDecay) {
         g_fogDebugColor = true;
     }
     g_occlusion = parseOcclusionScene(IREngine::args().getEnum("--occlusion"));
     g_losQueryBench = IREngine::args().getFlag("--los-query-bench") && !g_luaFogSelftest &&
-                      !g_worldPan && !g_depthSlab && !g_channelProbe && !g_manySources;
+                      !g_worldPan && !g_depthSlab && !g_exploredDecay && !g_channelProbe &&
+                      !g_manySources;
     if (g_losQueryBench) {
         g_occlusion = OcclusionScene::GROUND;
     }
     g_occlusionLosSoftness = IREngine::args().getFloat("--los-softness");
-    if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_channelProbe || g_manySources) {
+    if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_exploredDecay || g_channelProbe ||
+        g_manySources) {
         g_occlusion = OcclusionScene::NONE;
     }
-    if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_channelProbe || g_manySources ||
-        g_occlusion != OcclusionScene::NONE) {
+    if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_exploredDecay || g_channelProbe ||
+        g_manySources || g_occlusion != OcclusionScene::NONE) {
         g_entityReveal = false;
         g_perAxisOverflow = false;
     }
-    if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_channelProbe || g_manySources ||
-        g_entityReveal || g_occlusion != OcclusionScene::NONE) {
+    if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_exploredDecay || g_channelProbe ||
+        g_manySources || g_entityReveal || g_occlusion != OcclusionScene::NONE) {
         g_movingObserver = false;
         g_playerWalk = false;
         g_edgeZoom = false;
@@ -2148,6 +2684,18 @@ void initSystems() {
         );
     }
 
+    // --explored-decay advances the fog's simulation clock at the render
+    // front, a serial phase ahead of the frame's gather and fog readers.
+    if (g_exploredDecay) {
+        renderPipeline.push_front(
+            IRSystem::createSystem<C_Name>(
+                "FogExploredDecayClock",
+                [](C_Name &) {},
+                []() { driveExploredDecayClock(); }
+            )
+        );
+    }
+
     if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
@@ -2156,6 +2704,8 @@ void initSystems() {
             cfg.onCaptureFrame_ = &probeWorldPan;
         } else if (g_depthSlab) {
             cfg.onCaptureFrame_ = &probeDepthSlab;
+        } else if (g_exploredDecay) {
+            cfg.onCaptureFrame_ = &probeExploredDecay;
         } else if (g_channelProbe) {
             cfg.onCaptureFrame_ = &probeChannel;
         } else if (g_manySources) {
@@ -2174,6 +2724,8 @@ void initSystems() {
             IRVideo::setAutoScreenshotShots(cfg, kWorldPanShots);
         } else if (g_depthSlab) {
             IRVideo::setAutoScreenshotShots(cfg, kDepthSlabShots);
+        } else if (g_exploredDecay) {
+            IRVideo::setAutoScreenshotShots(cfg, kExploredDecayShots);
         } else if (g_channelProbe) {
             IRVideo::setAutoScreenshotShots(cfg, kChannelProbeShots);
         } else if (g_manySources) {
@@ -2473,7 +3025,7 @@ void initEntities() {
     // cut colour.
     constexpr float kFloorZ = 5.0f;
     const bool occlusionScene = g_occlusion != OcclusionScene::NONE;
-    const bool windowScene = g_worldPan || g_depthSlab || g_channelProbe;
+    const bool windowScene = g_worldPan || g_depthSlab || g_exploredDecay || g_channelProbe;
     if (!occlusionScene && !windowScene && !g_entityReveal && !g_edgeZoom && !g_edgeSmooth &&
         !g_edgeSdfBlocker && !g_detachedEdge && !g_edgeZCost && !g_edgeZCostAsym &&
         !g_edgeZCostCeiling) {
@@ -2598,6 +3150,10 @@ void initEntities() {
     }
     if (g_depthSlab) {
         initDepthSlabScene();
+        return;
+    }
+    if (g_exploredDecay) {
+        initExploredDecayScene();
         return;
     }
     if (g_channelProbe) {

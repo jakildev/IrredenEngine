@@ -171,6 +171,51 @@ template <typename T> class ChunkedField2D {
         return changed;
     }
 
+    /// ORs @p bits into @p count cells along +x from @p firstCell and returns
+    /// the number of changed cells, with `fillRow`'s insertion, counting and
+    /// clipping contract. A zero @p bits changes nothing and inserts nothing.
+    int orRow(IRMath::ivec2 firstCell, int count, T bits) {
+        if (bits == T{}) {
+            return 0;
+        }
+        int changed = 0;
+        int x = firstCell.x;
+        int remaining = count;
+        while (remaining > 0) {
+            const IRMath::ivec2 cell{x, firstCell.y};
+            const int localX = fieldChunkLocal(cell).x;
+            const int run = IRMath::min(remaining, kFieldChunkEdge - localX);
+            const FieldChunkKey key = packFieldChunkKey(fieldChunkOf(cell));
+            auto [fieldChunk, inserted] = acquireChunk(key);
+
+            T *row = fieldChunk.m_cells.get() + fieldChunkLocalIndex(fieldChunkLocal(cell));
+            int runChanged = 0;
+            for (int i = 0; i < run; ++i) {
+                const T merged = static_cast<T>(row[i] | bits);
+                if (row[i] == merged) {
+                    continue;
+                }
+                if (row[i] == T{}) {
+                    ++fieldChunk.nonZeroCount_;
+                }
+                row[i] = merged;
+                ++runChanged;
+            }
+            if (inserted) {
+                runChanged = run;
+            }
+            if (runChanged > 0) {
+                markDirty(key, fieldChunk);
+            }
+            changed += runChanged;
+            remaining -= run;
+            if (remaining > 0) {
+                x += run;
+            }
+        }
+        return changed;
+    }
+
     void clear() {
         while (!m_fieldChunks.empty()) {
             auto it = m_fieldChunks.begin();

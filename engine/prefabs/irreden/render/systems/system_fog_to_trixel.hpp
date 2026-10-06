@@ -73,7 +73,7 @@ template <> struct System<FOG_TO_TRIXEL> {
             ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
         canvasTextures.getTextureDistances()
             ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
-        fog.getTexture()->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+        fog.getTexture()->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
         // The fog whole-body carrier bit rides the entity-id channel. On Metal
         // this evicts whatever was resident in slot 3; every later unit-3 user
         // rebinds it inside its own tick.
@@ -144,7 +144,7 @@ template <> struct System<FOG_TO_TRIXEL> {
             ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
         mainTextures.getTextureDistances()
             ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
-        fog.getTexture()->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+        fog.getTexture()->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
         mainTextures.getTextureEntityIds()
             ->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
     }

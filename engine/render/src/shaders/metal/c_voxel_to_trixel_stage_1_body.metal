@@ -228,14 +228,14 @@ struct Voxel {
 // cut-face rule resolve a column on a hard disc's rim the same way. All-zero
 // heights make this return exactly fogColumnReveal's value.
 static float fogColumnRevealZ(
-    texture2d<float, access::read> fog, constant FogObserverData& obs, int2 col, float voxelZ
+    texture2d<uint, access::read> fog, constant FogObserverData& obs, int2 col, float voxelZ
 ) {
     const int2 fogSize = int2(int(fog.get_width()), int(fog.get_height()));
     if (fogSize.x <= 1) {
         return 1.0f;
     }
     const int2 cell = fogWindowTexel(col, int2(obs.windowOriginX, obs.windowOriginY), fogSize);
-    if (cell.x >= 0 && fog.read(uint2(cell)).r >= kFogExploredThreshold) {
+    if (cell.x >= 0 && fogTexelState(fog.read(uint2(cell)).r) >= kFogExploredThreshold) {
         return 1.0f;
     }
     float reveal = 0.0f;
@@ -260,7 +260,7 @@ kernel void IR_STAGE1_KERNEL_NAME(
     device const uint* compactedVoxelIndices [[buffer(25)]],
     device const IndirectDispatchParamsRO& indirectParams [[buffer(26)]],
     device atomic_int* distanceScratch [[buffer(16)]],
-    texture2d<float, access::read> canvasFogOfWar [[texture(0)]],
+    texture2d<uint, access::read> canvasFogOfWar [[texture(0)]],
     constant FogObserverData& fogObservers [[buffer(27)]],
     device atomic_uint* perAxisWinnerIds [[buffer(28)]],
     uint3 groupId [[threadgroup_position_in_grid]],

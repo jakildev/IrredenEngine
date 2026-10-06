@@ -93,8 +93,8 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   seeds inherit the class without a recurring scan.
   Each raster folds its class + factor into id bit 28 + 27:20, and
   `FOG_TO_TRIXEL` paints a BODY pixel at that one factor. [Reveal model](../../../../docs/design/fog-of-war-reveal-model.md)
-  owns FIELD / BODY / EXEMPT; [world field](../../../../docs/design/fog-of-war-world-field.md)
-  owns chunked storage, persistence and the GPU window.
+  owns FIELD / BODY / EXEMPT; [world field](../../../../docs/design/fog-of-war-world-field.md) owns chunked
+  storage, per-cell channels, the explored-state policy and clock, persistence and the RG32UI window.
 - GPU transforms: a voxel set opts in with `C_VoxelSetNew::gpuTransformSlot_
   != kVoxelTransformStatic` (the default is CPU-direct, dispatch-free). Joints
   share binding 18 — set slots grow up from 0, joint blocks are carved down from

@@ -6,7 +6,7 @@ kernel void c_fog_overflow_faces(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
     constant FogObserverData& fogObservers [[buffer(27)]],
     device uint* overflowScratch [[buffer(8)]],
-    texture2d<float, access::read> canvasFogOfWar [[texture(2)]],
+    texture2d<uint, access::read> canvasFogOfWar [[texture(2)]],
     texture2d<float, access::read> fogLineOfSight [[texture(4)]],
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 groupCount [[threadgroups_per_grid]],

@@ -510,6 +510,9 @@ TEST(FogCrossSectionShaderParity, CommonFogShadingIsIdenticalAcrossBackends) {
         << "a BODY takes no rim fade and no cut cap";
 }
 
+// The paint pass admits an analytic source only where its mask intersects the
+// sampled cell's mask (the window's green lane), on both backends; the old
+// literal default-channel test is gone.
 TEST(FogCrossSectionShaderParity, ChannelSourceSkipIsIdenticalAcrossBackends) {
     const std::string glsl = readShaderSource(kGlslFogCommonPath);
     const std::string metal = readShaderSource(kMetalFogCommonPath);
@@ -524,6 +527,110 @@ TEST(FogCrossSectionShaderParity, ChannelSourceSkipIsIdenticalAcrossBackends) {
     ASSERT_FALSE(glslSkip.empty());
     ASSERT_FALSE(metalSkip.empty());
     EXPECT_EQ(normalizeKernelMath(glslSkip), normalizeKernelMath(metalSkip));
+    EXPECT_NE(glslSkip.find("& cellChannels) == 0u"), std::string::npos)
+        << "the skip must intersect the sampled cell's mask: " << glslSkip;
+    for (const std::string *source : {&glsl, &metal}) {
+        EXPECT_EQ(source->find("& 1u) == 0u"), std::string::npos)
+            << "no literal default-channel admission remains";
+        EXPECT_NE(source->find("fogTexelState(gridTexel.x)"), std::string::npos);
+        EXPECT_NE(source->find("cellChannels = gridTexel.y"), std::string::npos);
+    }
+}
+
+// The fog window is RG32UI on both backends: every tap family declares the
+// integer image, the shared decode of the red lane normalizes equal, every
+// threshold comparison routes through it, and the out-of-window read is
+// (unexplored, default channel) in both twins.
+TEST(FogCrossSectionShaderParity, IntegerFogWindowReadsAreIdenticalAcrossBackends) {
+    const std::string kGlslCompactPath =
+        std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_voxel_visibility_compact.glsl";
+    const std::string kMetalCompactPath =
+        std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_voxel_visibility_compact.metal";
+    const std::string kMetalCompactPathCopy = kMetalCompactPath;
+
+    for (const std::string &path : {kGlslFogCommonPath, kGlslFaceSelectPath, kGlslCompactPath}) {
+        const std::string source = readShaderSource(path);
+        ASSERT_FALSE(source.empty()) << "could not read " << path;
+        EXPECT_TRUE(
+            std::regex_search(
+                source,
+                std::regex(
+                    R"(layout\(rg32ui, binding = [A-Za-z_0-9]+\) readonly uniform uimage2D canvasFogOfWar;)"
+                )
+            )
+        ) << path
+          << " must declare the fog window as an rg32ui uimage2D";
+        EXPECT_EQ(source.find("uniform image2D canvasFogOfWar"), std::string::npos)
+            << path << " still declares a normalized fog image";
+    }
+    for (const std::string &path :
+         {kMetalFogCommonPath,
+          kMetalCompactPathCopy,
+          kMetalStage1BodyPath,
+          kMetalStage2BodyPath,
+          kMetalFogPassPath,
+          kMetalFogOverflowPath}) {
+        const std::string source = readShaderSource(path);
+        ASSERT_FALSE(source.empty()) << "could not read " << path;
+        EXPECT_EQ(source.find("texture2d<float, access::read> canvasFogOfWar"), std::string::npos)
+            << path << " still takes a float fog texture";
+        EXPECT_NE(source.find("texture2d<uint, access::read> canvasFogOfWar"), std::string::npos)
+            << path << " must take the fog window as texture2d<uint>";
+    }
+    {
+        const std::string source = readShaderSource(kMetalFaceSelectPath);
+        EXPECT_EQ(source.find("texture2d<float, access::read> fog"), std::string::npos);
+        EXPECT_NE(source.find("texture2d<uint, access::read> fog"), std::string::npos);
+    }
+
+    const std::string glslDecode =
+        extractFunctionBody(readShaderSource(kGlslIsoCommonPath), "float fogTexelState");
+    const std::string metalDecode =
+        extractFunctionBody(readShaderSource(kMetalIsoCommonPath), "float fogTexelState");
+    ASSERT_FALSE(glslDecode.empty()) << "fogTexelState not found in ir_iso_common.glsl";
+    ASSERT_FALSE(metalDecode.empty()) << "fogTexelState not found in ir_iso_common.metal";
+    EXPECT_EQ(normalizeShaderMath(glslDecode), normalizeShaderMath(metalDecode));
+    EXPECT_NE(normalizeShaderMath(glslDecode).find("/ 255.0"), std::string::npos)
+        << "state consumers divide the red lane by 255: " << glslDecode;
+
+    // Every threshold comparison decodes the red lane first.
+    for (const std::string &path :
+         {kGlslFaceSelectPath,
+          kMetalFaceSelectPath,
+          kGlslCompactPath,
+          kMetalCompactPathCopy,
+          kGlslStage1BodyPath,
+          kMetalStage1BodyPath}) {
+        std::istringstream lines(readShaderSource(path));
+        std::string line;
+        int comparisons = 0;
+        while (std::getline(lines, line)) {
+            const bool compares = line.find(">= kFogExploredThreshold") != std::string::npos ||
+                                  line.find("< kFogExploredThreshold") != std::string::npos;
+            const bool comment = line.find("//") != std::string::npos &&
+                                 line.find("//") < line.find("kFogExploredThreshold");
+            if (!compares || comment) {
+                continue;
+            }
+            ++comparisons;
+            EXPECT_NE(line.find("fogTexelState("), std::string::npos)
+                << path << " compares an undecoded fog lane: " << line;
+        }
+        EXPECT_GT(comparisons, 0) << path << " has no threshold comparison to check";
+    }
+
+    // The out-of-window read and the two-lane fetch.
+    const std::string glslTap =
+        extractFunctionBody(readShaderSource(kGlslFogCommonPath), "fogTapTexel");
+    const std::string metalTap =
+        extractFunctionBody(readShaderSource(kMetalFogCommonPath), "fogTapTexel");
+    ASSERT_FALSE(glslTap.empty());
+    ASSERT_FALSE(metalTap.empty());
+    EXPECT_NE(glslTap.find("return uvec2(0u, kFogChannelDefault);"), std::string::npos) << glslTap;
+    EXPECT_NE(metalTap.find("return uint2(0u, kFogChannelDefault);"), std::string::npos)
+        << metalTap;
+    EXPECT_NE(glslTap.find(".rg;"), std::string::npos);
+    EXPECT_NE(metalTap.find(".rg;"), std::string::npos);
 }
 
 TEST(FogCrossSectionShaderParity, DetachedCanvasCompositeIsIdenticalAcrossBackends) {
@@ -937,9 +1044,9 @@ constexpr int kProbeWindowEdge = 256;
 const IRMath::ivec2 kProbeDefaultWindowOrigin{-kProbeWindowEdge / 2, -kProbeWindowEdge / 2};
 const IRMath::ivec2 kProbeDefaultOrigin{-kProbeHalfExtent, -kProbeHalfExtent};
 
-constexpr std::uint32_t kBindingFogGridImage = 0; // IR_VOXEL_FOG_GRID_BINDING in the probe
-constexpr std::uint32_t kBindingProbeOut = 1;     // std430 binding in the probe
-constexpr std::uint32_t kBindingProbeIn = 2;      // std430 binding in the probe
+constexpr std::uint32_t kBindingFogGridImage = 0;  // IR_VOXEL_FOG_GRID_BINDING in the probe
+constexpr std::uint32_t kBindingProbeOut = 1;      // std430 binding in the probe
+constexpr std::uint32_t kBindingProbeIn = 2;       // std430 binding in the probe
 constexpr std::uint32_t kBindingFogObservers = 27; // std140 binding in ir_voxel_face_select.glsl
 
 // The probe uploads the ENGINE's own observer struct rather than a hand-rolled
@@ -1002,26 +1109,28 @@ class FogCrossSectionTest : public ::testing::Test {
             TextureKind::TEXTURE_2D,
             kProbeWindowEdge,
             kProbeWindowEdge,
-            TextureFormat::RGBA8
+            TextureFormat::RG32UI
         );
-        const std::vector<std::uint8_t> unexplored(
-            static_cast<std::size_t>(kProbeWindowEdge) * kProbeWindowEdge * 4,
-            0u
+        const std::vector<IRPrefab::Fog::FogWindowTexel> unexplored(
+            static_cast<std::size_t>(kProbeWindowEdge) * kProbeWindowEdge
         );
         m_fogGrid->subImage2D(
             0,
             0,
             kProbeWindowEdge,
             kProbeWindowEdge,
-            PixelDataFormat::RGBA,
-            PixelDataType::UNSIGNED_BYTE,
+            PixelDataFormat::RG_INTEGER,
+            PixelDataType::UINT32,
             unexplored.data()
         );
 
         const FrameDataFogObservers seedObservers{};
         m_observers = std::make_unique<Buffer>(
-            &seedObservers, sizeof(FrameDataFogObservers), BUFFER_STORAGE_DYNAMIC,
-            BufferTarget::UNIFORM, kBindingFogObservers
+            &seedObservers,
+            sizeof(FrameDataFogObservers),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::UNIFORM,
+            kBindingFogObservers
         );
 
         const IRMath::ivec2 seedProbeOrigin = kProbeDefaultOrigin;
@@ -1038,8 +1147,11 @@ class FogCrossSectionTest : public ::testing::Test {
         // ("fully hidden") and quietly satisfying half the assertions.
         const std::vector<FogColumnProbe> seedProbes(kProbeColumnCount, kUnwrittenProbe);
         m_probeOut = std::make_unique<Buffer>(
-            seedProbes.data(), seedProbes.size() * sizeof(FogColumnProbe), BUFFER_STORAGE_DYNAMIC,
-            BufferTarget::SHADER_STORAGE, kBindingProbeOut
+            seedProbes.data(),
+            seedProbes.size() * sizeof(FogColumnProbe),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBindingProbeOut
         );
     }
 
@@ -1082,14 +1194,11 @@ class FogCrossSectionTest : public ::testing::Test {
         m_probeIn->subData(0, sizeof(probeOrigin), &probeOrigin);
 
         const std::vector<FogColumnProbe> seedProbes(kProbeColumnCount, kUnwrittenProbe);
-        m_probeOut->subData(
-            0, seedProbes.size() * sizeof(FogColumnProbe), seedProbes.data()
-        );
+        m_probeOut->subData(0, seedProbes.size() * sizeof(FogColumnProbe), seedProbes.data());
 
         m_probeProgram->use();
-        m_fogGrid->bindAsImage(
-            kBindingFogGridImage, TextureAccess::READ_ONLY, TextureFormat::RGBA8
-        );
+        m_fogGrid
+            ->bindAsImage(kBindingFogGridImage, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
         m_observers->bindBase(BufferTarget::UNIFORM, kBindingFogObservers);
         m_probeIn->bindBase(BufferTarget::SHADER_STORAGE, kBindingProbeIn);
         m_probeOut->bindBase(BufferTarget::SHADER_STORAGE, kBindingProbeOut);
@@ -1100,9 +1209,7 @@ class FogCrossSectionTest : public ::testing::Test {
         ENG_API->glFinish(); // a test, not a hot path — block for the readback
 
         std::vector<FogColumnProbe> readback(kProbeColumnCount, kUnwrittenProbe);
-        m_probeOut->getSubData(
-            0, readback.size() * sizeof(FogColumnProbe), readback.data()
-        );
+        m_probeOut->getSubData(0, readback.size() * sizeof(FogColumnProbe), readback.data());
         return readback;
     }
 
@@ -1111,15 +1218,15 @@ class FogCrossSectionTest : public ::testing::Test {
     void writeGridTexel(IRMath::ivec2 column, std::uint8_t state) {
         using namespace IRRender;
         const IRMath::ivec2 texel = IRPrefab::Fog::detail::windowTexel(column, kProbeWindowEdge);
-        const std::uint8_t rgba[4] = {state, 0u, 0u, 0u};
+        const IRPrefab::Fog::FogWindowTexel value{state, IRComponents::kFogChannelDefault};
         m_fogGrid->subImage2D(
             texel.x,
             texel.y,
             1,
             1,
-            PixelDataFormat::RGBA,
-            PixelDataType::UNSIGNED_BYTE,
-            rgba
+            PixelDataFormat::RG_INTEGER,
+            PixelDataType::UINT32,
+            &value
         );
     }
 
@@ -1136,7 +1243,9 @@ class FogCrossSectionTest : public ::testing::Test {
     }
 
     static IRMath::vec2 columnCentre(int record) {
-        return IRMath::vec2(static_cast<float>(columnX(record)), static_cast<float>(columnY(record))
+        return IRMath::vec2(
+            static_cast<float>(columnX(record)),
+            static_cast<float>(columnY(record))
         );
     }
 
@@ -1227,8 +1336,7 @@ const IRMath::vec4 kHardDisc{kDiscCentre.x, kDiscCentre.y, kDiscRadius, 0.0f};
 // analytic edge. Under a centre-only clip the object instead ended
 // on the voxel lattice and the faces past it were hard-blacked.
 TEST_F(FogCrossSectionTest, PartiallyRevealedColumnsAreNeverDropped) {
-    const std::vector<FogColumnProbe> probes =
-        runProbe(kHardDisc);
+    const std::vector<FogColumnProbe> probes = runProbe(kHardDisc);
 
     int reachedColumns = 0;
     int droppedReached = 0;
@@ -1258,8 +1366,7 @@ TEST_F(FogCrossSectionTest, PartiallyRevealedColumnsAreNeverDropped) {
 // `PartiallyRevealedColumnsAreNeverDropped` would pass against a clip that
 // simply never drops anything.
 TEST_F(FogCrossSectionTest, CentreOnlyClipWouldDropReachedColumns) {
-    const std::vector<FogColumnProbe> probes =
-        runProbe(kHardDisc);
+    const std::vector<FogColumnProbe> probes = runProbe(kHardDisc);
 
     int reachedButCentreHidden = 0;
     for (const FogColumnProbe &probe : probes) {
@@ -1331,8 +1438,7 @@ TEST_F(FogCrossSectionTest, RevealIsContinuousUnderAnObserverSweep) {
 // closer to the observer than a kept one. An interior hole is exactly that
 // inversion.
 TEST_F(FogCrossSectionTest, KeptColumnsFormAHoleFreeRadialRegion) {
-    const std::vector<FogColumnProbe> probes =
-        runProbe(kHardDisc);
+    const std::vector<FogColumnProbe> probes = runProbe(kHardDisc);
 
     float farthestKept = -1.0f;
     float nearestDropped = std::numeric_limits<float>::max();
@@ -1365,8 +1471,7 @@ TEST_F(FogCrossSectionTest, KeptColumnsFormAHoleFreeRadialRegion) {
 // evaluations), which is stronger than the ±1px tolerance the property is
 // usually stated with.
 TEST_F(FogCrossSectionTest, ObjectClipAndFloorRevealTraceOneCurve) {
-    const std::vector<FogColumnProbe> probes =
-        runProbe(kHardDisc);
+    const std::vector<FogColumnProbe> probes = runProbe(kHardDisc);
 
     for (int record = 0; record < kProbeColumnCount; ++record) {
         ASSERT_FLOAT_EQ(probes[record].revealCenter, probes[record].revealFloorCenter)
@@ -1415,12 +1520,13 @@ TEST_F(FogCrossSectionTest, GpuRevealMatchesTheCpuOracle) {
         EXPECT_NEAR(
             probes[record].revealNearest,
             visionCircleReveal(
-                nearestCellPoint(record, kDiscCentre), kHardDisc,
+                nearestCellPoint(record, kDiscCentre),
+                kHardDisc,
                 kFogColumnKeepAa + kFogHiddenKeepCells
             ),
             1e-5f
-        ) << "GPU keep metric diverged from the CPU oracle at (" << column.x << ", " << column.y
-          << ")";
+        ) << "GPU keep metric diverged from the CPU oracle at ("
+          << column.x << ", " << column.y << ")";
     }
 }
 

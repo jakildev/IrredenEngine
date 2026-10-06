@@ -338,7 +338,7 @@ float fogColumnRevealZ(ivec2 col, float voxelZ) {
         return 1.0;
     }
     const ivec2 cell = fogWindowTexel(col, ivec2(windowOriginX, windowOriginY), fogSize);
-    if (cell.x >= 0 && imageLoad(canvasFogOfWar, cell).r >= kFogExploredThreshold) {
+    if (cell.x >= 0 && fogTexelState(imageLoad(canvasFogOfWar, cell).r) >= kFogExploredThreshold) {
         return 1.0;
     }
     float reveal = 0.0;
