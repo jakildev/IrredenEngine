@@ -76,13 +76,21 @@ satellite fleet live and desktop apps open, four back-to-back runs of one
 master SHA spread 10–43% per cell (median 25%), which is wider than the
 10% gate. One run read load factor 1.01 at its start and still ran every
 cell 10–40% slow: `ref_ms` is sampled once, before the first cell, and does
-not see load that arrives mid-matrix. Each cell's manifest entry also carries
-`load_ref_ms` (`before` / `after` `ir_ref_bench` readings taken inside the
-hold), but `check_regression.py` does not grade on them: a single reading is
-too noisy on an interactive macOS host to separate load from the cell's own
-teardown. So: `fleet-down`, close GPU- and
+not see load that arrives mid-matrix. So: `fleet-down`, close GPU- and
 CPU-heavy desktop apps, and publish only a run that passes the self-check
 below.
+
+**`load_ref_ms`.** Each cell's manifest entry carries two `ir_ref_bench`
+readings taken inside the hold: `before`, just ahead of the cell's run, and
+`after`, as soon as the run returns. Both are records, not gate inputs:
+`check_regression.py` reads neither.
+
+- `after` is not a load reading. It is sampled the moment the run returns,
+  when the cell's own process can still be tearing down, so a high value
+  there says nothing about the host. No consumer may grade on it.
+- `before` is the only endpoint a future check may use. A single sample has
+  not been shown to tell a loaded host from a quiet one, which is why nothing
+  reads it yet.
 
 **Wall time** on the ship host: about 220 s per matrix run (12 cells at
 ~18 s each, plus the calibration probe). A seed plus its self-check is
