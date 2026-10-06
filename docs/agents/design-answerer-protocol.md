@@ -31,7 +31,7 @@ epic steward does.
 
 [`CLAUDE-BASELINE.md § Bash tool rules`](CLAUDE-BASELINE.md#bash-tool-rules) ·
 [`FLEET-CACHE.md`](FLEET-CACHE.md) · [`FLEET-RUNTIME.md`](FLEET-RUNTIME.md)
-(heartbeat, transient exit, feedback) ·
+(heartbeat, transient exit, per-iteration shutdown, feedback) ·
 [`architect-protocol.md § Out of scope`](architect-protocol.md#out-of-scope)
 and [`§ Hard rules`](architect-protocol.md#hard-rules) apply unchanged.
 
@@ -113,7 +113,18 @@ paragraph, `fleet:needs-human` on the PR, the design label left as is.
 
 ## Exit
 
-Release every claim, write the **feedback-file** entry per
-`FLEET-RUNTIME.md § End-of-iteration feedback`, and exit on the final
-turn. The projection re-arms the lane only when a new umbrella or PR
-enters the queue, or a human removes `fleet:needs-human`.
+Release every claim, then run
+[`FLEET-RUNTIME.md § Per-iteration shutdown`](FLEET-RUNTIME.md#per-iteration-shutdown--final-step)
+before the final turn:
+
+1. `fleet-iteration-summary <agent> "<each item answered, escalated, or skipped — under 100 words, no backticks>"`,
+   so `fleet-down --summary` covers the iteration.
+2. The **feedback-file** entry per
+   [`§ End-of-iteration feedback`](FLEET-RUNTIME.md#end-of-iteration-feedback).
+3. Print `[design-answerer] Iteration complete. Will re-fire on next dispatcher trigger.`
+   and exit.
+
+That section's worktree-reservation and `start-next-task` steps are
+worker-only: this role reserves nothing and checks nothing out. The
+projection re-arms the lane only when a new umbrella or PR enters the
+queue, or a human removes `fleet:needs-human`.
