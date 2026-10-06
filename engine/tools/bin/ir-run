@@ -38,15 +38,17 @@
 # stealing focus from the human.
 #
 # Window mode: an unattended run must never take the host's screen, and a
-# human's run must show its window with no extra flags. The fleet marks its
-# launches (fleet-run exports FLEET_UNATTENDED=1; fleet-up exports it to
-# every pane), and only a marked launch gets a window-mode default by the
-# run's shape: capture verbs `offscreen`, watchdog runs `background`, a plain
-# exec left alone. FLEET_WINDOW_MODE replaces both defaults (and counts as
-# the operator's explicit ask even without the marker); an IR_WINDOW_MODE
-# already set, or --window-mode in the program's args, is the caller's
-# choice. See the "Window mode" block below and engine/window/CLAUDE.md
-# "Window modes".
+# human's run must show its window with no extra flags. A launch is
+# unattended when the fleet marks it (fleet-run exports FLEET_UNATTENDED=1;
+# fleet-up exports it to every pane) or when an agent harness is in the
+# environment (Claude Code sets CLAUDECODE and AI_AGENT; Codex CLI sets
+# CODEX_SANDBOX / CODEX_THREAD_ID): nobody is at that window's keyboard
+# either way. An unattended launch gets a window-mode default by the run's
+# shape: capture verbs `offscreen`, everything else `background`.
+# FLEET_WINDOW_MODE replaces every default (and counts as the operator's
+# explicit ask even without a marker); an IR_WINDOW_MODE already set, or
+# --window-mode in the program's args, is the caller's choice. See the
+# "Window mode" block below and engine/window/CLAUDE.md "Window modes".
 #
 # Default timeout (safety net): if --timeout is not passed, the env
 # var FLEET_RUN_DEFAULT_TIMEOUT (seconds) is honored. Unset or 0 means
@@ -180,14 +182,15 @@ Run mode
 
   Window mode (unattended runs stay off the screen):
     A bare ir-run in your own shell always shows its window — no flags
-    needed. Fleet launches are marked (fleet-run exports FLEET_UNATTENDED=1
-    before exec'ing ir-run; fleet-up exports it to every pane), and a
-    marked launch gets IR_WINDOW_MODE — the engine's --window-mode
-    fallback — by the run's shape, unless it is already set or the
-    program's args carry --window-mode:
+    needed. A launch is unattended when the fleet marks it (fleet-run
+    exports FLEET_UNATTENDED=1 before exec'ing ir-run; fleet-up exports it
+    to every pane) or when an agent harness is in the environment
+    (CLAUDECODE / AI_AGENT from Claude Code, CODEX_SANDBOX / CODEX_THREAD_ID
+    from Codex CLI). An unattended launch gets IR_WINDOW_MODE — the
+    engine's --window-mode fallback — by the run's shape, unless it is
+    already set or the program's args carry --window-mode:
       --auto-screenshot / --auto-record / --auto-profile  → offscreen
-      --timeout N or FLEET_RUN_DEFAULT_TIMEOUT             → background
-      plain exec (no verb, no timeout)                     → untouched
+      anything else (watchdog run or plain exec)           → background
     offscreen never shows a window and renders into an engine-owned screen
     target (it still injects input and captures); background shows a
     window that is never focused or activated.
@@ -202,11 +205,13 @@ Run mode
     FLEET_UNATTENDED            Set (to 1) by fleet-run and by fleet-up for
                                 every pane: marks the launch as unattended
                                 so the window-mode defaults above apply.
-                                Unset in a human's shell.
-    FLEET_WINDOW_MODE           Replaces both window-mode defaults above
+                                Unset in a human's shell; an agent harness
+                                (CLAUDECODE, AI_AGENT, CODEX_SANDBOX,
+                                CODEX_THREAD_ID) marks the launch the same way.
+    FLEET_WINDOW_MODE           Replaces every window-mode default above
                                 (normal | background | hidden | offscreen)
                                 and counts as an explicit ask even without
-                                the marker.
+                                a marker.
                                 Set in ~/.fleet/fleet-up.conf or shell init.
     IR_WINDOW_MODE              The engine's own fallback; set it to pin a
                                 mode for every run in a shell. ir-run never
@@ -327,27 +332,34 @@ done
 
 # --- Window mode ------------------------------------------------------------
 # An unattended run must never take the host's screen; a human's run must
-# show its window with no extra flags. The fleet marks its launches —
-# fleet-run exports FLEET_UNATTENDED=1 before exec'ing this script, fleet-up
-# exports it to every pane — and only a marked launch (or an explicit
-# FLEET_WINDOW_MODE, the operator's own ask) gets a default. The engine's
-# --window-mode reads IR_WINDOW_MODE when the flag is absent (engine/window/
-# CLAUDE.md "Window modes"), so one export here reaches every demo without
-# touching the call sites. Defaults by the run's shape:
+# show its window with no extra flags. A launch is unattended when the fleet
+# marks it — fleet-run exports FLEET_UNATTENDED=1 before exec'ing this
+# script, fleet-up exports it to every pane — or when an agent harness is in
+# the environment: Claude Code's Bash tool sets CLAUDECODE and AI_AGENT, and
+# Codex CLI sets CODEX_SANDBOX / CODEX_THREAD_ID, in a human's own agent
+# session as much as in a fleet pane, and no one is at that window's
+# keyboard. Only an unattended launch (or an explicit FLEET_WINDOW_MODE, the
+# operator's own ask) gets a default. The engine's --window-mode reads
+# IR_WINDOW_MODE when the flag is absent (engine/window/CLAUDE.md "Window
+# modes"), so one export here reaches every demo without touching the call
+# sites. Defaults by the run's shape:
 #   capture verb (--auto-screenshot / --auto-record / --auto-profile) → offscreen
-#   watchdog run (--timeout / FLEET_RUN_DEFAULT_TIMEOUT)              → background
-#   plain exec (a human at the keyboard)                              → untouched
-# FLEET_WINDOW_MODE replaces both defaults with one value. An IR_WINDOW_MODE
+#   anything else: watchdog run or plain exec (a probe, a GUI session)   → background
+# A plain exec is not a human at the keyboard once the launch is unattended:
+# the game's --tier-probe / --input-test probes are plain execs, and left
+# untouched they opened a focused window over the human's screen.
+# FLEET_WINDOW_MODE replaces every default with one value. An IR_WINDOW_MODE
 # already in the environment, or --window-mode among the program's args, is
 # the caller's explicit choice and is never overridden (the engine ranks the
 # flag above the env anyway). Keyed on capture_verb, not acquire_verb: native
 # Windows takes the gpu lock for every run, which says nothing about shape.
 WINDOW_MODE_NOTE=""
-if [[ -n "${FLEET_UNATTENDED:-}${FLEET_WINDOW_MODE:-}" && -z "${IR_WINDOW_MODE:-}" &&
+unattended_marker="${FLEET_UNATTENDED:-}${CLAUDECODE:-}${AI_AGENT:-}${CODEX_SANDBOX:-}${CODEX_THREAD_ID:-}"
+if [[ -n "${unattended_marker}${FLEET_WINDOW_MODE:-}" && -z "${IR_WINDOW_MODE:-}" &&
       "$window_mode_given" == "0" ]]; then
     if (( capture_verb )); then
         export IR_WINDOW_MODE="${FLEET_WINDOW_MODE:-offscreen}"
-    elif [[ -n "$TIMEOUT" ]]; then
+    else
         export IR_WINDOW_MODE="${FLEET_WINDOW_MODE:-background}"
     fi
 fi
