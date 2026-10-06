@@ -6,6 +6,7 @@ an umbrella's pending `## STEWARD PROPOSAL` (`fleet:steward-proposal`) and a
 non-epic `fleet:design-blocked` PR. It decides engine- and game-level
 design the way [`architect-protocol.md`](architect-protocol.md) prescribes
 and escalates product or direction calls to the human instead of guessing.
+Opt-in: `FLEET_DESIGN_ANSWERER=1` in `~/.fleet/fleet-up.conf`.
 
 Each repo's `.claude/commands/role-design-answerer.md` is a thin wrapper:
 harness frontmatter, a pointer here, a `## Deltas` table answering every

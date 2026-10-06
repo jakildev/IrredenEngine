@@ -145,15 +145,12 @@ pr create` / `edit` from a cursor-flow skill need the `all` permission.
 1. Worker posts `## NEEDS-DESIGN` on the open PR, applies `design-block`
    (keeping `fleet:wip`), commits in-progress work, releases its claim and
    any reservation, and `start-next-task`s away.
-2. Architect answers in a PR comment and applies `design-unblock` — no
-   push to the branch, no rewrite of the issue's `## Plan`. With
-   `FLEET_DESIGN_ANSWERER=1` the dispatched **design-answerer** does this
-   for non-epic blocks and answers umbrella proposals
-   ([`design-answerer-protocol.md`](design-answerer-protocol.md)). For an epic
-   child (`**Part of epic:** #U`) the **epic-steward** does this step:
-   derivable questions get `## Steward direction` + the same swap; novel
-   ones go `design-propose` into the umbrella's `## STEWARD PROPOSAL`
-   ([`epic-steward-protocol.md`](epic-steward-protocol.md)).
+2. Architect answers in a PR comment and applies `design-unblock` — no push, no
+   `## Plan` rewrite. The opt-in [design-answerer](design-answerer-protocol.md)
+   does this for non-epic blocks and answers umbrella proposals. For an epic
+   child (`**Part of epic:** #U`) the [epic-steward](epic-steward-protocol.md)
+   does it: derivable questions get `## Steward direction` + the same swap;
+   novel ones go `design-propose` into the umbrella's `## STEWARD PROPOSAL`.
 3. Any **opus+** worker resumes from the `fleet:design-unblocked` PR via its
    feedback loop: reads the reply, the issue's `## Plan` and any `## Plan
    corrections`, addresses the direction, removes the label, pushes via
@@ -182,10 +179,9 @@ logs the resolved ids — a lagging alias means `claude update` and re-run.
   cross-backend algorithm work, open-ended problems, long-horizon multi-system
   work filed with an intent plan, epic decomposition, design-blocked
   resolutions, invariant-heavy refactors, approach-is-wrong feedback fixes (the
-  reviewer adds `fleet:fable`), the architect panes, and the dispatched
-  design-answerer lane. A plan inherits its
-  issue's class (label, else `**Model:**`). Rendering is not automatically fable
-  — implementing against a vetted plan is opus or sonnet.
+  reviewer adds `fleet:fable`), the architect panes, and the design-answerer. A
+  plan inherits its issue's class (label, else `**Model:**`). Rendering is not
+  automatically fable — implementing against a vetted plan is opus or sonnet.
 - **opus** — the default when `Model:` is absent (choose deliberately
   anyway): core engine work against an existing plan (ECS,
   ownership/lifetime, `engine/{render,entity,system,world,audio,video,math}`),
