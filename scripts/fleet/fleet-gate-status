@@ -83,7 +83,7 @@ reset). This command only visualises state — it does NOT trigger resume.
 State sources (read-only):
   ~/.fleet/state/usage/*.json         (Anthropic: fleet-claude-stream;
                                         GitHub: fleet-state-scout, plus
-                                        github-graphql.rejected.json from any
+                                        github-<identity>-graphql.rejected.json from any
                                         refused GraphQL call)
   ~/.fleet/state/rate-limit/*.ts      (written by fleet-dispatch-wrap)
 
@@ -124,9 +124,9 @@ if [[ -n "${FLEET_GH_APP_ID:-}" && -n "${FLEET_GH_APP_INSTALLATION_ID:-}" \
       && -n "${FLEET_GH_APP_KEY_PATH:-}" ]]; then
     GATE_APP_CONFIGURED=1
     if command -v fleet-gh-token >/dev/null 2>&1; then
-        GATE_APP_TOKEN="$(fleet-gh-token 2>/dev/null || true)"
+        GATE_APP_TOKEN="$(FLEET_GH_IDENTITY=app fleet-gh-token 2>/dev/null || true)"
     elif [[ -x "$(dirname "$0")/fleet-gh-token" ]]; then
-        GATE_APP_TOKEN="$("$(dirname "$0")/fleet-gh-token" 2>/dev/null || true)"
+        GATE_APP_TOKEN="$(FLEET_GH_IDENTITY=app "$(dirname "$0")/fleet-gh-token" 2>/dev/null || true)"
     fi
 fi
 
@@ -159,6 +159,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
 import fleet_github
+from fleet_github_identity import LANES, quota_gate, user_environment
 
 usage_dir = pathlib.Path(os.environ["USAGE_DIR"])
 ratelimit_dir = pathlib.Path(os.environ["RATE_LIMIT_DIR"])
@@ -359,12 +360,19 @@ if usage_dir.is_dir():
 # never closes the fleet-wide verdict.
 scoped_breaches = [o for o in breaches if o["scope"] != "account"]
 breaches = [o for o in breaches if o["scope"] == "account"]
-gate_state = "closed" if breaches else "open"
+daemon_identity = "app" if os.environ.get("GATE_APP_CONFIGURED") == "1" else "user"
+lane_identities = {lane: daemon_identity if identity == "daemon" else identity
+                   for lane, identity in LANES.items()}
+lane_gates = {lane: quota_gate(usage_dir, identity, threshold_for, now=now,
+                               stale_s=stale_s, reset_grace_s=reset_grace_s)
+              for lane, identity in (("daemon", daemon_identity), ("pane", "user"))}
+breaches = [o for o in breaches if not o["rateLimitType"].startswith("github")]
+gate_state = "closed" if breaches or lane_gates["pane"]["state"] == "closed" else "open"
 
 # GitHub pools are surfaced in their own section (below) rather than mixed
 # into the Anthropic "Fleet-wide usage gate" list — different unit (request
-# pools vs model-usage windows), different operator audience. A github
-# breach still flips gate_state above; it's the same shared dispatcher gate.
+# pools vs model-usage windows), different operator audience. Only the user
+# lane's admission result closes the shared pane gate above.
 github_obs = [o for o in observations if o["rateLimitType"].startswith("github_")]
 anthropic_obs = [o for o in observations if not o["rateLimitType"].startswith("github_")]
 
@@ -384,9 +392,10 @@ def probe_identity(token):
     env = dict(os.environ)
     env.pop("GITHUB_TOKEN", None)
     if token is None:
-        env.pop("GH_TOKEN", None)
+        env = user_environment(env)
     else:
         env["GH_TOKEN"] = token
+        env["FLEET_GH_IDENTITY"] = "app"
     try:
         proc = subprocess.run(
             fleet_github.argv(["api", "/rate_limit"], env=env),
@@ -447,6 +456,8 @@ if emit_json:
         "observations": observations,
         "github": github_obs,
         "github_identities": identities,
+        "github_lane_identities": lane_identities,
+        "github_lane_gates": lane_gates,
         "cooldowns": cooldowns,
         "thresholds_in_effect": {
             "five_hour": threshold_for("five_hour"),
@@ -465,6 +476,10 @@ if emit_json:
     sys.exit(0)
 
 print("fleet-gate-status — read-only view of dispatcher gating")
+print("GitHub routing: " + ", ".join(f"{lane}={identity}" for lane, identity in lane_identities.items()))
+for lane, gate in lane_gates.items():
+    detail = "; ".join(gate["reasons"])
+    print(f"GitHub {lane} gate [{gate['identity']}]: {gate['state']}" + (f" ({detail})" if detail else ""))
 print()
 
 quiet_state = quiet_window.get("state", "off")
@@ -555,7 +570,7 @@ else:
         if o.get("identity"):
             pool = f"{pool}[{o['identity']}]"
         # "rejected": the limiter refused the scout's sample (github-graphql.json)
-        # or a real GraphQL call (github-graphql.rejected.json).
+        # or an identity-qualified refusal from a real GraphQL call.
         status_part = " REJECTED" if o.get("status") == "rejected" else ""
         remaining, limit = o.get("remaining"), o.get("limit")
         quota_text = f"remaining={remaining}/{limit}" if limit else f"util={pct}%"

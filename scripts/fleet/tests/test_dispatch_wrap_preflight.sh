@@ -95,13 +95,17 @@ assert_contains "$out" "resumed=0" "healthy worktree reaches launch selection"
 [[ ! -e "$FLEET_ALERTS_DIR/dispatch-wrap-pool-healthy" ]] \
     && ok "healthy worktree clears the alert" || bad "healthy alert survived"
 
-echo "T4: a staged wrapper without fleet-common fails open"
+echo "T4: a staged wrapper without fleet-common refuses identity-ambiguous launch"
 STAGED="$TMPROOT/staged"
 mkdir -p "$STAGED"
 cp "$WRAP" "$STAGED/fleet-dispatch-wrap"
 chmod +x "$STAGED/fleet-dispatch-wrap"
+set +e
 out=$(cd "$HEALTHY" && FLEET_DISPATCH_PRINT_LAUNCH=1 \
-    "$STAGED/fleet-dispatch-wrap" pane-4 opus high worker "" live 2>/dev/null)
-assert_contains "$out" "resumed=0" "missing common helper does not refuse a healthy pane"
+    "$STAGED/fleet-dispatch-wrap" pane-4 opus high worker "" live 2>&1)
+rc=$?
+set -e
+assert_eq "$rc" "1" "missing identity helper refuses launch"
+assert_absent "$out" "resumed=0" "no ambiguous-auth role starts"
 
 summarize "fleet-dispatch-wrap worktree preflight"

@@ -8,10 +8,10 @@ work over REST instead of stalling until the hourly reset.
 
 Two jobs, both keyed on one predicate (`is_refusal`, REFUSAL_RE):
 
-- `latch_refusal()` records a refusal as `github-graphql.rejected.json` in the
+- `latch_refusal()` records a refusal as `github-<identity>-graphql.rejected.json` in the
   dispatcher's usage dir: `status:"rejected"` at 100% until `resetsAt`, which
   the dispatcher's usage gate reads as closed. The GraphQL self-report sampler
-  (fleet-state-scout) keeps `github-graphql.json` and never touches this file,
+  (fleet-state-scout) keeps `github-<identity>-graphql.json` and never touches this file,
   so a healthy-looking self-report cannot re-open the gate mid-refusal. The
   file expires through the evaluator's own `resetsAt + RESET_GRACE_SECONDS`.
 - `rest -- <gh argv>` re-runs one refused call over REST and prints what the
@@ -70,11 +70,10 @@ import urllib.parse
 from pathlib import Path
 
 import fleet_github
+from fleet_github_identity import current_identity, quota_path, read_quota
 from fleet_runtime import atomic_json
 
 REFUSAL_RE = re.compile(r"GraphQL: API rate limit (already )?exceeded")
-REJECTED_LATCH = "github-graphql.rejected.json"
-SAMPLED_LATCH = "github-graphql.json"
 # Used when no future hourly reset has been sampled: long enough to span a
 # refusal burst, short enough that a wrong guess costs one gate window.
 FALLBACK_WINDOW_SECONDS = 900
@@ -195,14 +194,6 @@ def default_usage_dir():
     return Path(state) / "usage"
 
 
-def _json_file(path):
-    try:
-        data = json.loads(Path(path).read_text())
-    except (OSError, ValueError):
-        return {}
-    return data if isinstance(data, dict) else {}
-
-
 def latch_refusal(reason, usage_dir=None, now=None):
     """Write the rejected latch; True when no live latch existed before.
 
@@ -212,21 +203,25 @@ def latch_refusal(reason, usage_dir=None, now=None):
     """
     usage = Path(usage_dir) if usage_dir is not None else default_usage_dir()
     now = int(time.time()) if now is None else int(now)
-    prior_reset = _json_file(usage / REJECTED_LATCH).get("resetsAt")
-    was_live = isinstance(prior_reset, int) and prior_reset > now
-    sampled_reset = _json_file(usage / SAMPLED_LATCH).get("resetsAt")
+    identity = gh_identity()
+    prior = read_quota(usage, "graphql", identity, rejected=True)
+    was_live = any(isinstance(p.get("resetsAt"), int) and p["resetsAt"] > now
+                   for p in prior)
+    samples = read_quota(usage, "graphql", identity)
+    sampled = max(samples, key=lambda p: p.get("observed_at", 0), default={})
+    sampled_reset = sampled.get("resetsAt")
     if isinstance(sampled_reset, int) and sampled_reset > now:
         resets_at = sampled_reset
     else:
         resets_at = now + FALLBACK_WINDOW_SECONDS
-    atomic_json(usage / REJECTED_LATCH, {
+    atomic_json(quota_path(usage, "graphql", identity, rejected=True), {
         "rateLimitType": "github_graphql",
         "status": "rejected",
         "utilization": 1.0,
         "observed_at": now,
         "resetsAt": resets_at,
         "reason": reason,
-        "identity": gh_identity(),
+        "identity": identity,
     })
     return not was_live
 
@@ -240,8 +235,7 @@ def gh_identity():
     `ghp_` / `github_pat_` / `gho_`. gh reads GH_TOKEN before GITHUB_TOKEN,
     and with neither set falls back to the keychain's personal login.
     """
-    token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or ""
-    return "app" if token.startswith("ghs_") else "user"
+    return current_identity()
 
 
 # --- gh invocation -------------------------------------------------------------

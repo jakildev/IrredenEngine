@@ -136,8 +136,8 @@ usage = Path(os.environ["USAGE_PATH"])
 mod.USAGE_DIR = usage
 mod._latch_github_pool("core", {"rateLimitType": "github_core", "utilization": 0.1})
 mod.fleet_gh_fallback.latch_refusal("synthetic", usage)
-print(json.loads((usage / "github-core.json").read_text())["identity"],
-      json.loads((usage / "github-graphql.rejected.json").read_text())["identity"])
+print(json.loads((usage / f"github-{mod.fleet_gh_fallback.gh_identity()}-core.json").read_text())["identity"],
+      json.loads((usage / f"github-{mod.fleet_gh_fallback.gh_identity()}-graphql.rejected.json").read_text())["identity"])
 PY
 }
 assert_eq "$(ident "$APP_TOKEN")" "app app" "installation token in GH_TOKEN => app"

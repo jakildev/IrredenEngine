@@ -12,6 +12,27 @@
 # via a ~/bin symlink, because all fleet scripts are symlinked into the
 # same directory and fleet-common.sh is also symlinked there.
 
+# Authentication routing is independent of the dispatch/reservation identity
+# used by fleet_claim_liveness.py. Never put a credential in a pane record.
+fleet_select_github_identity() {
+    local identity="${1:?missing GitHub identity}" token
+    case "$identity" in
+        user)
+            unset GH_TOKEN GITHUB_TOKEN
+            export FLEET_GH_IDENTITY=user
+            ;;
+        app)
+            token=$(FLEET_GH_IDENTITY=app fleet-gh-token) || return 1
+            if [[ -n "$token" ]]; then
+                export GH_TOKEN="$token" FLEET_GH_IDENTITY=app
+            else
+                fleet_select_github_identity user
+            fi
+            ;;
+        *) echo "invalid GitHub identity: $identity" >&2; return 1 ;;
+    esac
+}
+
 # detect_engine_root — walk up from the git root to find the directory
 # that contains CMakePresets.json (handles linked worktrees where the
 # git root is a nested .claude/worktrees/… path).

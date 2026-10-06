@@ -2,7 +2,7 @@
 # Tests for fleet-dispatcher's 5-hour-window usage gate.
 #
 # Covers:
-#   - empty usage dir => gate open
+#   - empty usage dir => user quota admission closed
 #   - utilization >= threshold + fresh + future reset => gate closed
 #   - threshold override via env var (FLEET_DISPATCHER_USAGE_GATE)
 #   - stale observation (older than USAGE_STALE_SECONDS) w/o resetsAt => ignored
@@ -79,9 +79,17 @@ NOW=$(date +%s)
 # Future ISO-8601 timestamp; portable across BSD/GNU date.
 RESETS=$(python3 -c "import datetime,time; print(datetime.datetime.fromtimestamp(time.time()+3600,tz=datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ'))")
 
-echo "T1: empty usage dir => open"
+healthy_github() {
+    for pool in core graphql; do
+        printf '{"identity":"user","rateLimitType":"github_%s","utilization":0.1,"observed_at":%s,"resetsAt":"%s"}\n' \
+            "$pool" "$NOW" "$RESETS" > "$FLEET_STATE_DIR/usage/github-user-$pool.json"
+    done
+}
+
+echo "T1: empty usage dir => closed for missing user telemetry"
 out=$("$DISPATCHER" --gate-status)
-assert_starts_with "$out" "open" "empty state reports open"
+assert_starts_with "$out" "closed:github_core[user] missing or stale" "empty state fails closed"
+healthy_github
 
 echo "T2: utilization 0.85, fresh, future reset => closed"
 printf '{"rateLimitType":"five_hour","utilization":0.85,"resetsAt":"%s","observed_at":%s}\n' "$RESETS" "$NOW" \
@@ -229,7 +237,7 @@ printf '{"rateLimitType":"five_hour","utilization":1.0,"resetsAt":"%s","observed
 printf '{"rateLimitType":"github_core","utilization":0.10,"resetsAt":"%s","observed_at":%s}\n' "$RESETS" "$NOW" \
     > "$FLEET_STATE_DIR/usage/github-core.json"
 assert_starts_with "$("$DISPATCHER" --gate-status claude)" "closed:five_hour rejected" "claude scope: closed on the wall"
-assert_starts_with "$("$DISPATCHER" --gate-status shared)" "open:github_core util=10%" "shared scope: the GitHub pool alone, open"
+assert_starts_with "$("$DISPATCHER" --gate-status shared)" "open:github[user]" "shared scope: the GitHub pool alone, open"
 assert_starts_with "$("$DISPATCHER" --gate-status all)" "closed:five_hour rejected" "all: closed"
 out=$("$DISPATCHER" --gate-status bogus 2>&1 || true)
 assert_starts_with "$out" "usage: fleet-dispatcher --gate-status" "an unknown scope is a usage error"
@@ -249,6 +257,7 @@ RESETS_EPOCH=$(( NOW + 3600 ))
 
 echo "T18: a later allowed_warning from another pane cannot reopen a latched rejection"
 rm -f "$FLEET_STATE_DIR/usage"/*.json
+healthy_github
 feed_stream "{\"status\":\"rejected\",\"resetsAt\":$RESETS_EPOCH,\"rateLimitType\":\"seven_day\"}"
 assert_starts_with "$("$DISPATCHER" --gate-status claude)" "closed:seven_day rejected util=100%" "the wall closes the gate"
 feed_stream "{\"status\":\"allowed_warning\",\"utilization\":0.85,\"resetsAt\":$RESETS_EPOCH,\"rateLimitType\":\"seven_day\"}"
@@ -270,6 +279,7 @@ else
     FAIL=$((FAIL + 1)); echo "  FAIL: no rejection record to age (T18's fixture missing)"
 fi
 rm -f "$FLEET_STATE_DIR/usage"/*.json
+healthy_github
 
 echo "T20: a result-only wall (no rate_limit_event) closes the claude gate on its own record"
 # The CLI's wall result text without the rejected event that normally
@@ -293,6 +303,7 @@ else
     FAIL=$((FAIL + 1)); echo "  FAIL: no fallback record to age"
 fi
 rm -f "$FLEET_STATE_DIR/usage"/*.json
+healthy_github
 
 check_contains() {  # $1 = haystack, $2 = needle, $3 = message
     if [[ "$1" == *"$2"* ]]; then
@@ -342,6 +353,7 @@ assert_starts_with "$out" "closed:seven_day_overage_included rejected util=100% 
 assert_starts_with "$(FLEET_CONF="$SCOPE_CONF" "$DISPATCHER" --gate-status)" \
     "closed:seven_day_overage_included rejected" "all: closed"
 rm -f "$FLEET_STATE_DIR/usage"/*.json
+healthy_github
 
 echo "T23: seven_day_<family> is scoped to that family without a table row"
 feed_stream "{\"status\":\"rejected\",\"resetsAt\":$RESETS_EPOCH,\"rateLimitType\":\"seven_day_opus\"}"
@@ -350,6 +362,7 @@ assert_starts_with "$("$DISPATCHER" --gate-status claude 'claude-opus-4-8[1m]')"
 assert_starts_with "$("$DISPATCHER" --gate-status claude sonnet)" "open" "claude sonnet: open"
 assert_starts_with "$("$DISPATCHER" --gate-status)" "open" "all: open"
 rm -f "$FLEET_STATE_DIR/usage"/*.json
+healthy_github
 
 echo "T24: unlisted types — weekly threshold for seven_day*, a named fallback otherwise"
 printf '{"rateLimitType":"seven_day_foo","utilization":0.89,"resetsAt":"%s","observed_at":%s}\n' "$RESETS" "$NOW" \
@@ -361,12 +374,14 @@ printf '{"rateLimitType":"seven_day_foo","utilization":0.96,"resetsAt":"%s","obs
 assert_starts_with "$("$DISPATCHER" --gate-status claude)" "closed:seven_day_foo util=96% (>= 95%)" \
     "an unlisted weekly type at 96% closes"
 rm -f "$FLEET_STATE_DIR/usage"/*.json
+healthy_github
 printf '{"rateLimitType":"daily_tokens","utilization":0.85,"resetsAt":"%s","observed_at":%s}\n' "$RESETS" "$NOW" \
     > "$FLEET_STATE_DIR/usage/daily_tokens.json"
 assert_starts_with "$("$DISPATCHER" --gate-status claude)" \
     "closed:daily_tokens util=85% (>= 80%, unlisted type, fallback threshold)" \
     "a closed line resting on the generic fallback says so"
 rm -f "$FLEET_STATE_DIR/usage"/*.json
+healthy_github
 
 echo "T25: fleet-gate-status keeps the scoped wall out of the fleet-wide verdict"
 GATE_STATUS_TOOL="$SCRIPT_DIR/fleet-gate-status"
@@ -385,6 +400,7 @@ text=$("$GATE_STATUS_TOOL")
 check_contains "$text" "Fleet-wide usage gate: OPEN" "text: fleet-wide gate OPEN"
 check_contains "$text" "Model-scoped usage gate: CLOSED for fable" "text: the scoped gate names fable"
 rm -f "$FLEET_STATE_DIR/usage"/*.json
+healthy_github
 
 echo "T26: fleet-gate-status's mirror of the gate tables agrees with the dispatcher's"
 # Both heredocs define the tables and helpers inline (a heredoc cannot import).
@@ -460,6 +476,7 @@ assert_starts_with "$(FLEET_CONF="$THRESHOLD_CONF" "$DISPATCHER" --gate-status)"
 assert_starts_with "$(gate_summary "$THRESHOLD_CONF")" "open [] 0" \
     "threshold conf: fleet-gate-status open too"
 rm -f "$FLEET_STATE_DIR/usage"/*.json
+healthy_github
 
 echo
 echo "PASS: $PASS  FAIL: $FAIL"

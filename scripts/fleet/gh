@@ -1,32 +1,13 @@
 #!/usr/bin/env bash
-# gh — fleet shim: keep a long-lived process's installation token fresh.
+# gh — enforce a selected pane identity and refresh daemon installation tokens.
 #
-# fleet-up seeds one GitHub App installation token (`ghs_...`) into the tmux
-# server env; it expires after 1h, and a running interactive `claude` (an
-# architect pane) keeps its launch-time env, so an hour in every `gh` call it
-# makes fails HTTP 401. tmux cannot rewrite a live process's env, but each Bash
-# tool call execs `gh` by PATH, so this shim — installed as ~/bin/gh, ahead of
-# the real binary — re-mints per call and exec's the real `gh`.
+# FLEET_GH_IDENTITY=user removes inherited GitHub tokens so gh uses its own
+# credential store. Unselected callers retain their environment; a ghs_ token
+# is refreshed through fleet-gh-token unless FLEET_GH_SHIM=0. The minter uses
+# curl, never gh, so refreshing cannot recurse. No token is printed here.
 #
-# Rule: replace GH_TOKEN only when the incoming value starts `ghs_` AND
-# fleet-gh-token printed something. Empty/unset GH_TOKEN (keychain auth — the
-# human's own shell, an unconfigured host) and any other value (an operator
-# PAT: `ghp_`, `github_pat_`) pass through untouched, so `gh pr merge` from a
-# human terminal and fleet-gate-status's user-pool probe keep reading the user
-# pool. Never exports an empty token. FLEET_GH_SHIM=0 bypasses the refresh.
-#
-# Assumption: no `ghs_` token on this host is anything but the fleet App's. A
-# GitHub Actions GITHUB_TOKEN or another App's installation token also starts
-# `ghs_` and would be swapped for the fleet App's; acceptable on a fleet host,
-# where no self-hosted runner shares ~/bin.
-#
-# Pure env-then-exec: no output of its own, argv verbatim, exit code preserved,
-# PATH passed through unchanged (a stripped PATH would hide fleet-* from git
-# credential helpers, extensions, and `!` aliases). fleet-gh-token mints over
-# curl, never `gh`, so refreshing here cannot recurse.
-#
-# Source of truth: scripts/fleet/gh in the engine repo.
-# Installed to ~/bin/gh by scripts/fleet/install.sh.
+# An unselected ghs_ token is assumed to belong to the fleet App; do not share
+# this shim with a self-hosted Actions runner or another installation token.
 
 _resolve() {
     if command -v realpath >/dev/null 2>&1; then
@@ -35,7 +16,9 @@ _resolve() {
     python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$1" 2>/dev/null | tr -d '\r'
 }
 
-if [[ "${FLEET_GH_SHIM:-1}" != "0" && "${GH_TOKEN:-}" == ghs_* ]]; then
+if [[ "${FLEET_GH_IDENTITY:-}" == user ]]; then
+    unset GH_TOKEN GITHUB_TOKEN
+elif [[ "${FLEET_GH_SHIM:-1}" != "0" && "${GH_TOKEN:-}" == ghs_* ]]; then
     _fresh="$(fleet-gh-token 2>/dev/null || true)"
     [[ -n "$_fresh" ]] && export GH_TOKEN="$_fresh"
 fi
