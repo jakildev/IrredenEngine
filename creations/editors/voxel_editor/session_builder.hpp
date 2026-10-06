@@ -9,6 +9,7 @@
 #include <irreden/render/picking.hpp>
 
 #include "anim_panel.hpp"
+#include "lod_panel.hpp"
 #include "palette.hpp"
 #include "symmetry.hpp"
 
@@ -318,11 +319,12 @@ struct PickCheck {
     std::string name_;
 };
 
-// Which ANIM panel slider a SliderCheck reads. Named rather than carrying the
-// widget's EntityId directly: Session::build runs well before initEntities
-// creates the widgets, so the id isn't known yet at recipe-build time — the
-// check can only name which slider and defer the lookup to evaluateSliderCheck.
-enum class SliderTarget { FPS, SCRUBBER };
+// Which ANIM or LOD panel slider a SliderCheck reads. Named rather than
+// carrying the widget's EntityId directly: Session::build runs well before
+// initEntities creates the widgets, so the id isn't known yet at recipe-build
+// time — the check can only name which slider and defer the lookup to
+// evaluateSliderCheck.
+enum class SliderTarget { FPS, SCRUBBER, LOD_FINE, LOD_COARSE, LOD_TIER };
 
 // Slider-value expectation evaluated against the live widget at a shot's
 // capture frame.
@@ -338,6 +340,23 @@ struct SliderCheck {
 struct ComponentCheck {
     std::string componentName_;
     int fieldCount_ = 0;
+    std::string name_;
+};
+
+// LOD-gate expectation on one entity-scene part: whether the engine's DENSE
+// LOD gate holds the part out of the draw, and the tier the part is pinned to
+// (-1: no C_LodTierOverride, so it follows the camera-zoom tier).
+struct PartGateCheck {
+    int partIndex_ = 0;
+    bool expectGated_ = false;
+    int expectPinnedTier_ = -1;
+    std::string name_;
+};
+
+// The last-saved entity-scene manifest contains text_ and was written by this
+// run, so a manifest left by an earlier run cannot satisfy it.
+struct ManifestCheck {
+    std::string text_;
     std::string name_;
 };
 
@@ -378,6 +397,9 @@ struct Recipe {
     // Same contract, for the module checks.
     std::deque<ComponentCheck> componentChecks_;
     std::deque<PanelLabelCheck> panelLabelChecks_;
+    // Same contract, for the entity-scene LOD checks.
+    std::deque<PartGateCheck> partGateChecks_;
+    std::deque<ManifestCheck> manifestChecks_;
     // Build the editor's reference furniture (floor slab, axis bars, centre
     // cube, perimeter gizmos, starter rig, satellite sets) around the editable
     // set instead of the bare stage entity recipes author on.
@@ -435,6 +457,11 @@ bool evaluateSliderCheck(const void *context, std::string &actual);
 // Defined in main.cpp, where the module host and its docked panels live.
 bool evaluateComponentCheck(const void *context, std::string &actual);
 bool evaluatePanelLabelCheck(const void *context, std::string &actual);
+
+// Read one PartGateCheck / ManifestCheck against the live entity scene and the
+// file its last save wrote. Defined in main.cpp, where the scene lives.
+bool evaluatePartGateCheck(const void *context, std::string &actual);
+bool evaluateManifestCheck(const void *context, std::string &actual);
 
 // Builds a Recipe from editor gestures. Every op appends to the current
 // segment; segment(label) closes the current one and starts the next. Ops that
@@ -788,6 +815,36 @@ class Builder {
         m_model = m_partModels[static_cast<std::size_t>(m_activePart)];
     }
 
+    // Drag one LOD panel slider to tier @p tier (0 finest .. 4 coarsest).
+    void dragLodSlider(SliderTarget target, int tier) {
+        const IRVoxelEditor::SliderGeometry *geom = nullptr;
+        switch (target) {
+        case SliderTarget::LOD_FINE:
+            geom = &IRVoxelEditor::kLodFineSliderGeometry;
+            break;
+        case SliderTarget::LOD_COARSE:
+            geom = &IRVoxelEditor::kLodCoarseSliderGeometry;
+            break;
+        case SliderTarget::LOD_TIER:
+            geom = &IRVoxelEditor::kLodTierSliderGeometry;
+            break;
+        case SliderTarget::FPS:
+        case SliderTarget::SCRUBBER:
+            recordError("dragLodSlider needs a LOD panel slider in segment " + m_current.label_);
+            return;
+        }
+        dragGuiSlider(
+            *geom,
+            IRVoxelEditor::kLodTierSliderMin,
+            IRVoxelEditor::kLodTierSliderMax,
+            static_cast<float>(tier)
+        );
+    }
+
+    void toggleLodFollowZoom() {
+        clickGui(IRVoxelEditor::lodFollowCheckboxCenterGuiTrixel());
+    }
+
     void clearEntityScene() {
         chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonBackspace);
     }
@@ -931,6 +988,26 @@ class Builder {
         const SliderCheck &check = m_recipe.sliderChecks_.back();
         m_current.assertions_.push_back(
             IRPrefab::GuiTest::predicate(&evaluateSliderCheck, &check, check.name_.c_str())
+        );
+    }
+
+    // Assert part @p partIndex's LOD-gate verdict and pin when this segment
+    // settles. @p pinnedTier -1 asserts the part carries no override.
+    void expectPartGated(int partIndex, bool expectGated, int pinnedTier, std::string name) {
+        m_recipe.partGateChecks_.push_back(
+            PartGateCheck{partIndex, expectGated, pinnedTier, std::move(name)}
+        );
+        const PartGateCheck &check = m_recipe.partGateChecks_.back();
+        m_current.assertions_.push_back(
+            IRPrefab::GuiTest::predicate(&evaluatePartGateCheck, &check, check.name_.c_str())
+        );
+    }
+
+    void expectManifestContains(std::string text, std::string name) {
+        m_recipe.manifestChecks_.push_back(ManifestCheck{std::move(text), std::move(name)});
+        const ManifestCheck &check = m_recipe.manifestChecks_.back();
+        m_current.assertions_.push_back(
+            IRPrefab::GuiTest::predicate(&evaluateManifestCheck, &check, check.name_.c_str())
         );
     }
 
