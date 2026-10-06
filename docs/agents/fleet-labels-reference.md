@@ -293,10 +293,13 @@ Protocol: [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md).
 - `fleet:awaiting-infra` — **worker** park on a PR that is complete but
   unverifiable on any host until another issue lands: remove
   `fleet:design-unblocked`, add this, append `Parked-until: #<issue>` to
-  the PR body on its own line (reconcile reads the last occurrence and the
+  the PR body on its own line — the **backing issue** of the blocking PR,
+  never the PR number (reconcile reads the last occurrence and the
   contiguous comma/space-separated `#N` run after the marker, un-parking only
-  when all have closed; same-repo only, a cross-repo spelling surfaces as
-  malformed), comment the rationale, keep `fleet:wip`, release the claim.
+  when all read CLOSED or MERGED; same-repo only, a cross-repo spelling
+  surfaces as malformed), comment the rationale, keep `fleet:wip`, release
+  the claim. Never park on a smoke label or a host-only verification child
+  ([`FLEET-CROSS-HOST-SMOKE.md § Ledger, not a gate`](FLEET-CROSS-HOST-SMOKE.md)).
   Reconcile R7/R2 skip it; R8 removes it when the blocker closes, after
   which R7 re-arms `fleet:design-unblocked`. A park with no parsable line
   accrues to `fleet:state-drift`. Not needed when the backing issue is
@@ -343,7 +346,11 @@ Protocol: [`FLEET-CROSS-HOST-SMOKE.md`](FLEET-CROSS-HOST-SMOKE.md).
   (`linux` or `windows`, never both); Metal (`macos`) is another. Cleared
   by `smoke-verify-<host>` on success (Windows: the native fleet, or
   `platform-catchup`); on failure the label stays and the verdict drops to
-  `needs-fix`. An outstanding smoke label means not safe to merge.
+  `needs-fix`. Not a merge gate: the label is smoke debt that rides onto
+  the merged PR and is repaid in merge order
+  ([`FLEET-CROSS-HOST-SMOKE.md § Ledger, not a gate`](FLEET-CROSS-HOST-SMOKE.md)).
+  The OpenGL tier is minted as `windows`; `fleet:needs-linux-smoke` is
+  retired for minting and survives only as ledger on older PRs.
 - `fleet:verified-{linux,macos,windows}` — **smoking agent**; permanent
   audit trail, not read by the merge gate.
 

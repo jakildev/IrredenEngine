@@ -5508,11 +5508,14 @@ reconcile_unpark_infra() {
         for blocker in $blockers; do
             state=$(gh issue view "$blocker" --repo "$repo" --json state \
                 --jq '.state' 2>/dev/null || true)
-            # Anything other than a confirmed CLOSED (OPEN, or a lookup failure
-            # that yields an empty string) leaves the park standing; the
-            # finding recurs next tick, so a transient API failure costs
-            # nothing.
-            if [[ "$state" != "CLOSED" ]]; then all_closed=0; break; fi
+            # Anything other than a confirmed CLOSED or MERGED (OPEN, or a
+            # lookup failure that yields an empty string) leaves the park
+            # standing; the finding recurs next tick, so a transient API
+            # failure costs nothing. MERGED is accepted because `gh issue
+            # view` resolves a PR number too and reports a merged PR as
+            # MERGED, never CLOSED: a park that named a PR instead of its
+            # backing issue (the documented form) must not strand forever.
+            if [[ "$state" != "CLOSED" && "$state" != "MERGED" ]]; then all_closed=0; break; fi
         done
         [[ $all_closed -eq 1 ]] || continue
         if gh_release_label "$repo" "$pr" "fleet:awaiting-infra"; then

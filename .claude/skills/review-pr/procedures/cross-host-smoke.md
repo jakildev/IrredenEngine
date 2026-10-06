@@ -31,10 +31,13 @@ gh pr edit <N> --add-label "fleet:needs-windows-smoke"
 ```
 
 Each host's worker polls for its label, runs a clean-checkout build +
-`IRShapeDebug` smoke, and removes the label on success; the human holds
-the merge while any smoke label persists. The OpenGL requirement is
-satisfied by either `fleet:verified-windows` or `fleet:verified-linux` (or
-an OpenGL author), never both.
+`IRShapeDebug` smoke, and removes the label on success. The label is
+smoke debt, not a merge gate: the human merges on the verdict and the
+label rides onto the merged PR for the catch-up lane
+(`docs/agents/FLEET-CROSS-HOST-SMOKE.md` § "Ledger, not a gate"). The
+OpenGL requirement is recorded by either `fleet:verified-windows` or
+`fleet:verified-linux` (or an OpenGL author), never both; mint the OpenGL
+tier as `fleet:needs-windows-smoke` only.
 
 Skip game-repo PRs (the game repo's own `review-pr` procedure tags them)
 and engine PRs matching none of the paths. Then return to step 6.

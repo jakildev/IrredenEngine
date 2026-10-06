@@ -8,7 +8,7 @@
 # FLEET_HOME points at a temp dir for the feedback-channel check.
 #
 # Covers:
-#   - merge queue: approved PR listed; +nits annotation; smoke-hold sub-line
+#   - merge queue: approved PR listed; +nits annotation; smoke-debt note sub-line
 #   - merge queue: an approved PR whose title still carries [WIP] with no
 #     fleet:wip label gets a warn sub-line; clean approved PRs get none
 #   - decisions: gated / design-blocked PRs and fleet:needs-human issues
@@ -278,7 +278,8 @@ assert_contains "$out" "Merge queue (3)" "merge queue counts all three approved 
 assert_contains "$out" "engine PR #101" "clean approved PR listed"
 assert_contains "$out" "#102" "approved-with-nits PR listed"
 assert_contains "$out" "[approved+nits]" "has-nits annotated"
-assert_contains "$out" "hold: fleet:needs-linux-smoke outstanding" "smoke hold sub-line"
+assert_contains "$out" "note: fleet:needs-linux-smoke rides onto the merged PR as smoke debt (not a gate)" "smoke debt note sub-line"
+assert_not_contains "$out" "hold: fleet:needs-linux-smoke" "smoke label is never a hold"
 assert_contains "$out" "engine PR #106" "approved PR with a stale [WIP] title is listed"
 assert_contains "$out" "warn: title still carries [WIP] with no fleet:wip label" "wip-title/label mismatch is flagged"
 warn_lines=$(grep -c "warn: title still carries \[WIP\]" "$TMP/out.txt")

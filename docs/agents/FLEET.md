@@ -471,7 +471,7 @@ merger`; `--headlines`; `--clear` archives to
 ## The decision digest (`fleet-decisions`)
 
 `fleet-decisions [--repo engine|game]` is a read-only report of what waits on
-the human: the merge queue (`fleet:approved`, with `+nits` and any smoke hold),
+the human: the merge queue (`fleet:approved`, with `+nits`, CI holds and smoke-debt notes),
 decisions parked on human-only labels (`fleet:needs-human`, `fleet:gated`,
 `fleet:human-deferred`, `fleet:design-blocked`, `fleet:steward-proposal`,
 `fleet:state-drift`), cues (`fleet:coding-improvement` backlog →
