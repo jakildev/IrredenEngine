@@ -1422,6 +1422,34 @@ TEST_F(PrefabWriter, RoundTripsComponents) {
     );
 }
 
+TEST_F(PrefabWriter, ComponentRecordBracketsNonIdentifierFieldNames) {
+    m_lua.lua().safe_script("IRComponent.register('KeyedTag', { ['end'] = 1, ['max-value'] = 2 })");
+    const IREntity::EntityId entity = IREntity::createEntity();
+    IRVoxelEditor::ComponentRecord record = IRVoxelEditor::makeComponentRecord(m_lua, "KeyedTag");
+    const std::optional<std::string> attachError =
+        IRVoxelEditor::applyComponentRecord(m_lua, entity, record);
+    ASSERT_FALSE(attachError.has_value()) << attachError.value_or("");
+    ASSERT_EQ(record.fields_.size(), 2u);
+    ASSERT_EQ(record.fields_[0].name_, "end");
+
+    record.fields_[0].value_ = std::int32_t{7};
+    const std::optional<std::string> editError =
+        IRVoxelEditor::applyComponentRecord(m_lua, entity, record);
+    ASSERT_FALSE(editError.has_value()) << editError.value_or("");
+    const std::string literal = IRVoxelEditor::componentLiteral(record);
+    EXPECT_EQ(literal, "{ [\"end\"] = 7, [\"max-value\"] = 2 }");
+
+    IRPrefab::Prefab::PrefabDescription written;
+    written.components_.push_back({"KeyedTag", literal});
+    const std::string path = "/tmp/prefab_writer_keyed_components.prefab.lua";
+    const std::optional<std::string> writeError = IRPrefab::Prefab::writeManifest(path, written);
+    ASSERT_FALSE(writeError.has_value()) << writeError.value_or("");
+    const IRPrefab::Prefab::ManifestResult read = IRPrefab::Prefab::readManifest(m_lua, path);
+    ASSERT_TRUE(read.ok()) << read.error_;
+    ASSERT_EQ(read.description_->components_.size(), 1u);
+    EXPECT_EQ(read.description_->components_[0].fields_, literal);
+}
+
 TEST_F(PrefabWriter, RejectsComponentFieldsThatAreNotATable) {
     IRPrefab::Prefab::PrefabDescription written;
     written.components_.push_back({"WrittenTag", "count = 3"});

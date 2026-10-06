@@ -6,6 +6,7 @@
 #include <sol/sol.hpp>
 
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -215,6 +216,30 @@ TEST_F(LuaScriptUtilsTest, Vec4UserdataStillReachesBothVec4AndQuat) {
     EXPECT_FLOAT_EQ(m_vec4.w, 4.0f);
     run("probeQuat(ud)");
     EXPECT_FLOAT_EQ(m_quat.w, 4.0f);
+}
+
+TEST(LuaSourceText, TableKeyIsBareOnlyForAnIdentifier) {
+    EXPECT_EQ(IRScript::luaTableKey("weight"), "weight");
+    EXPECT_EQ(IRScript::luaTableKey("_w2"), "_w2");
+    EXPECT_EQ(IRScript::luaTableKey("end"), "[\"end\"]");
+    EXPECT_EQ(IRScript::luaTableKey("max-value"), "[\"max-value\"]");
+    EXPECT_EQ(IRScript::luaTableKey("2nd"), "[\"2nd\"]");
+    EXPECT_EQ(IRScript::luaTableKey(""), "[\"\"]");
+}
+
+TEST(LuaSourceText, TableKeysReadBackAsTheStringsWritten) {
+    const std::vector<std::string> keys =
+        {"weight", "end", "max-value", "2nd", "", "a b", "say \"hi\"", "back\\slash", "tab\there"};
+    sol::state lua;
+    for (std::size_t i = 0; i < keys.size(); ++i) {
+        const std::string source =
+            "return { " + IRScript::luaTableKey(keys[i]) + " = " + std::to_string(i + 1) + " }";
+        const sol::protected_function_result result =
+            lua.safe_script(source, sol::script_pass_on_error);
+        ASSERT_TRUE(result.valid()) << source;
+        const sol::table table = result;
+        EXPECT_EQ(table.get_or(keys[i], 0), static_cast<int>(i + 1)) << source;
+    }
 }
 
 } // namespace

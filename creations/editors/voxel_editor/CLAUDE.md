@@ -13,6 +13,7 @@ Design log, findings and the authoring-session history:
   `module_loaded` (with `--module test/module`) the creation-module seam,
   `component_attach` (same module) the COMPONENTS panel's manifest round trip,
   `component_field_page` the same on a field only the panel's pager reaches,
+  `component_field_key` the same on a field whose name is not a Lua identifier,
   `parts_roundtrip` authors, moves, saves, clears, and reloads a two-part entity,
   and `tier_scrub` proves per-part LOD bands and the tier scrubber.
 - `python3 scripts/author-entity.py <entity>` — replays an entity session twice

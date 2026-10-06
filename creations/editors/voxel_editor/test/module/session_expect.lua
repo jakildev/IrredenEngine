@@ -14,10 +14,14 @@
 --
 -- component_field_page reads componentFieldPage, the same shape, for a field
 -- past the first page of the field area (fields are listed by name).
+--
+-- component_field_key reads componentFieldKey, the same shape, for a field
+-- whose name is not a Lua identifier.
 return {
     components = {
         { name = "TestModuleTag", fieldCount = 2 },
         { name = "TestModuleWide", fieldCount = 7 },
+        { name = "TestModuleKeys", fieldCount = 2 },
     },
     panels = {
         { name = "TestModulePanel", label = "MODULE LOADED" },
@@ -35,6 +39,12 @@ return {
     componentFieldPage = {
         component = "TestModuleWide",
         field = "g",
+        value = 7,
+        default = 1,
+    },
+    componentFieldKey = {
+        component = "TestModuleKeys",
+        field = "end",
         value = 7,
         default = 1,
     },

@@ -1,4 +1,4 @@
--- Neutral fixture for IRVoxelEditor --module: two components, one recipe and
+-- Neutral fixture for IRVoxelEditor --module: three components, one recipe and
 -- one panel, so every registration path the editor hosts is exercised.
 
 IRComponent.register("TestModuleTag", {
@@ -16,6 +16,13 @@ IRComponent.register("TestModuleWide", {
     e = 1,
     f = 1,
     g = 1,
+})
+
+-- Field names a table constructor cannot spell bare: a reserved word and a
+-- punctuated name.
+IRComponent.register("TestModuleKeys", {
+    ["end"] = 1,
+    ["max-value"] = 1,
 })
 
 -- A 1x1 column standing on the seeded ground plane (local z == size.z - 1)

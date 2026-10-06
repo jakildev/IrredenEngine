@@ -2770,14 +2770,20 @@ bool evaluateComponentValueCheck(const void *context, std::string &actual) {
 
 // Resolves a component session from <module dir>/session_expect.lua's
 // `<key> = { component, field, value, default }` against the loaded module and
-// the COMPONENTS panel layout: `componentAttach` for component_attach, and
+// the COMPONENTS panel layout: `componentAttach` for component_attach,
 // `componentFieldPage` for component_field_page, whose field must lie past the
-// first page of the field area.
+// first page of the field area, and `componentFieldKey` for
+// component_field_key, whose field name must not be a Lua identifier.
 Session::ComponentAttachSpec resolveComponentAttachSpec(Session::Id id) {
     const bool paged = id == Session::Id::COMPONENT_FIELD_PAGE;
-    const std::string entryKey = paged ? "componentFieldPage" : "componentAttach";
+    const bool keyed = id == Session::Id::COMPONENT_FIELD_KEY;
+    const std::string entryKey = paged   ? "componentFieldPage"
+                                 : keyed ? "componentFieldKey"
+                                         : "componentAttach";
     Session::ComponentAttachSpec spec;
-    spec.session_ = paged ? "component_field_page" : "component_attach";
+    spec.session_ = paged   ? "component_field_page"
+                    : keyed ? "component_field_key"
+                            : "component_attach";
     if (!g_moduleHost.loaded()) {
         spec.errors_.push_back(spec.session_ + " needs --module <dir>");
         return spec;
@@ -2831,6 +2837,8 @@ Session::ComponentAttachSpec resolveComponentAttachSpec(Session::Id id) {
     spec.fieldRow_ = fieldIndex % kComponentFieldRowsPerPage;
     if (paged && spec.fieldPage_ == 0)
         return fail("field '" + spec.field_ + "' is on the first page of the field area");
+    if (keyed && IRScript::isLuaIdentifier(spec.field_))
+        return fail("field '" + spec.field_ + "' is a Lua identifier");
 
     spec.value_ = IRVoxelEditor::detail::fieldValueFromRow(field->type_, (*entry)["value"]);
     spec.default_ = IRVoxelEditor::detail::fieldValueFromRow(field->type_, (*entry)["default"]);
@@ -3008,7 +3016,7 @@ int main(int argc, char **argv) {
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
         "face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | tier_scrub | "
-        "module_loaded | component_attach | component_field_page",
+        "module_loaded | component_attach | component_field_page | component_field_key",
         {"none",
          "drag_probe",
          "place_below",
@@ -3022,7 +3030,8 @@ int main(int argc, char **argv) {
          "tier_scrub",
          "module_loaded",
          "component_attach",
-         "component_field_page"},
+         "component_field_page",
+         "component_field_key"},
         "none"
     );
     IREngine::args().string(
@@ -3081,8 +3090,7 @@ int main(int argc, char **argv) {
                 ? IRVoxelEditor::resolveModuleSessionSpec()
                 : IRVoxelEditor::Session::ModuleSessionSpec{};
         const IRVoxelEditor::Session::ComponentAttachSpec componentSpec =
-            IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::COMPONENT_ATTACH ||
-                    IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::COMPONENT_FIELD_PAGE
+            IRVoxelEditor::Session::isComponentSession(IRVoxelEditor::g_sessionId)
                 ? IRVoxelEditor::resolveComponentAttachSpec(IRVoxelEditor::g_sessionId)
                 : IRVoxelEditor::Session::ComponentAttachSpec{};
         IRVoxelEditor::g_session = IRVoxelEditor::Session::build(

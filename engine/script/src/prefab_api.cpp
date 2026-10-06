@@ -29,7 +29,6 @@
 #include <sol/sol.hpp>
 
 #include <algorithm>
-#include <cctype>
 #include <cstdint>
 #include <exception>
 #include <filesystem>
@@ -449,36 +448,6 @@ IRRender::LodLevel resolveSpawnTier(IREntity::EntityId root) {
     );
 }
 
-std::string luaString(std::string_view value) {
-    std::string escaped;
-    escaped.reserve(value.size() + 2);
-    escaped.push_back('"');
-    for (char c : value) {
-        switch (c) {
-        case '\\':
-            escaped += "\\\\";
-            break;
-        case '"':
-            escaped += "\\\"";
-            break;
-        case '\n':
-            escaped += "\\n";
-            break;
-        case '\r':
-            escaped += "\\r";
-            break;
-        case '\t':
-            escaped += "\\t";
-            break;
-        default:
-            escaped.push_back(c);
-            break;
-        }
-    }
-    escaped.push_back('"');
-    return escaped;
-}
-
 void writeVec3(std::ostream &out, IRMath::vec3 value) {
     out << "{ x = " << value.x << ", y = " << value.y << ", z = " << value.z << " }";
 }
@@ -492,37 +461,6 @@ void writeColor(std::ostream &out, IRMath::Color value) {
     out << "{ r = " << static_cast<int>(value.red_) << ", g = " << static_cast<int>(value.green_)
         << ", b = " << static_cast<int>(value.blue_) << ", a = " << static_cast<int>(value.alpha_)
         << " }";
-}
-
-bool isLuaIdentifier(std::string_view name) {
-    static constexpr std::string_view kReserved[] = {
-        "and", "break",    "do",     "else", "elseif", "end",   "false",
-        "for", "function", "if",     "in",   "local",  "nil",   "not",
-        "or",  "repeat",   "return", "then", "true",   "until", "while",
-    };
-    if (name.empty() ||
-        (std::isalpha(static_cast<unsigned char>(name[0])) == 0 && name[0] != '_')) {
-        return false;
-    }
-    for (char c : name) {
-        if (std::isalnum(static_cast<unsigned char>(c)) == 0 && c != '_') {
-            return false;
-        }
-    }
-    for (std::string_view reserved : kReserved) {
-        if (name == reserved) {
-            return false;
-        }
-    }
-    return true;
-}
-
-void writeLuaKey(std::ostream &out, std::string_view key) {
-    if (isLuaIdentifier(key)) {
-        out << key;
-    } else {
-        out << '[' << luaString(key) << ']';
-    }
 }
 
 std::optional<std::string> writeLuaNumber(std::ostream &out, double value) {
@@ -550,7 +488,7 @@ std::optional<std::string> writeLuaValue(std::ostream &out, const sol::object &v
     case sol::type::number:
         return writeLuaNumber(out, value.as<double>());
     case sol::type::string:
-        out << luaString(value.as<std::string>());
+        out << IRScript::luaStringLiteral(value.as<std::string>());
         return std::nullopt;
     case sol::type::userdata:
         if (value.is<IRMath::vec3>()) {
@@ -611,9 +549,7 @@ std::optional<std::string> writeLuaValue(std::ostream &out, const sol::object &v
         first = false;
     }
     for (const auto &[key, entry] : named) {
-        out << (first ? "" : ", ");
-        writeLuaKey(out, key);
-        out << " = ";
+        out << (first ? "" : ", ") << IRScript::luaTableKey(key) << " = ";
         if (auto error = writeLuaValue(out, entry, depth + 1)) {
             return error;
         }
@@ -670,9 +606,8 @@ void writeComponents(
     }
     out << indent << "components = {\n";
     for (const PrefabComponentDescription &component : components) {
-        out << indent << "  ";
-        writeLuaKey(out, component.name_);
-        out << " = " << component.fields_ << ",\n";
+        out << indent << "  " << IRScript::luaTableKey(component.name_) << " = "
+            << component.fields_ << ",\n";
     }
     out << indent << "},\n";
 }
@@ -911,9 +846,9 @@ writeManifest(const std::string &path, const PrefabDescription &description) {
     writeComponents(out, description.components_, "  ");
     out << "  parts = {\n";
     for (const PrefabPartDescription &part : description.parts_) {
-        out << "    {\n      id = " << luaString(part.id_) << ",\n";
+        out << "    {\n      id = " << IRScript::luaStringLiteral(part.id_) << ",\n";
         if (!part.voxelRef_.empty()) {
-            out << "      voxel_ref = " << luaString(part.voxelRef_) << ",\n";
+            out << "      voxel_ref = " << IRScript::luaStringLiteral(part.voxelRef_) << ",\n";
         } else if (part.shape_) {
             out << "      shape = { type = " << static_cast<int>(part.shape_->type_)
                 << ", params = ";

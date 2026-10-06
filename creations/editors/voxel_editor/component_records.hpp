@@ -67,28 +67,6 @@ inline std::string formatNumber(float value) {
     return std::string(buffer, result.ptr);
 }
 
-inline std::string luaQuoted(std::string_view text) {
-    std::string quoted = "\"";
-    for (char c : text) {
-        switch (c) {
-        case '\\':
-            quoted += "\\\\";
-            break;
-        case '"':
-            quoted += "\\\"";
-            break;
-        case '\n':
-            quoted += "\\n";
-            break;
-        default:
-            quoted.push_back(c);
-            break;
-        }
-    }
-    quoted.push_back('"');
-    return quoted;
-}
-
 // Splits on spaces and commas, the separators the text input can type.
 inline std::vector<std::string_view> splitComponents(std::string_view text) {
     std::vector<std::string_view> parts;
@@ -263,7 +241,7 @@ inline std::string componentLiteral(const ComponentRecord &record) {
                 if constexpr (std::is_same_v<V, std::monostate>)
                     return {};
                 else if constexpr (std::is_same_v<V, std::string>)
-                    return detail::luaQuoted(v);
+                    return IRScript::luaStringLiteral(v);
                 else if constexpr (std::is_same_v<V, bool> || std::is_arithmetic_v<V>)
                     return formatFieldValue(v);
                 else
@@ -273,7 +251,8 @@ inline std::string componentLiteral(const ComponentRecord &record) {
         );
         if (value.empty())
             continue;
-        literal += (literal.empty() ? "{ " : ", ") + field.name_ + " = " + value;
+        literal +=
+            (literal.empty() ? "{ " : ", ") + IRScript::luaTableKey(field.name_) + " = " + value;
     }
     return literal.empty() ? "{}" : literal + " }";
 }

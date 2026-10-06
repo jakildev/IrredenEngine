@@ -71,6 +71,10 @@
 // `component_field_page` is the same round trip on the sidecar's
 // `componentFieldPage`: a field past the first page of the field area, which
 // only the pager reaches.
+//
+// `component_field_key` is the same round trip on the sidecar's
+// `componentFieldKey`: a field whose name is not a Lua identifier, which the
+// record's table constructor and the manifest must spell as a bracketed key.
 namespace IRVoxelEditor::Session {
 
 enum class Id {
@@ -88,6 +92,7 @@ enum class Id {
     MODULE_LOADED,
     COMPONENT_ATTACH,
     COMPONENT_FIELD_PAGE,
+    COMPONENT_FIELD_KEY,
 };
 
 // CLI name -> id. The accepted set is declared to IRArgs as an enum arg, so an
@@ -121,7 +126,15 @@ inline Id idFromName(const std::string &name) {
         return Id::COMPONENT_ATTACH;
     if (name == "component_field_page")
         return Id::COMPONENT_FIELD_PAGE;
+    if (name == "component_field_key")
+        return Id::COMPONENT_FIELD_KEY;
     return Id::NONE;
+}
+
+// The sessions that run on a ComponentAttachSpec.
+constexpr bool isComponentSession(Id id) {
+    return id == Id::COMPONENT_ATTACH || id == Id::COMPONENT_FIELD_PAGE ||
+           id == Id::COMPONENT_FIELD_KEY;
 }
 
 // What module_loaded asserts, resolved in main.cpp from the loaded module and
@@ -156,8 +169,8 @@ struct ModuleSessionSpec {
     std::vector<std::string> errors_;
 };
 
-// What component_attach and component_field_page do, resolved in main.cpp from
-// the loaded module and the session's session_expect.lua entry.
+// What a component session does, resolved in main.cpp from the loaded module
+// and the session's session_expect.lua entry.
 struct ComponentAttachSpec {
     std::string session_;
     std::string component_;
@@ -1604,6 +1617,7 @@ inline Recipe build(
         return detail::buildModuleLoaded(sceneSize, sceneOrigin, moduleSpec);
     case Id::COMPONENT_ATTACH:
     case Id::COMPONENT_FIELD_PAGE:
+    case Id::COMPONENT_FIELD_KEY:
         return detail::buildComponentAttach(sceneSize, sceneOrigin, componentSpec);
     case Id::NONE:
         break;
