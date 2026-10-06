@@ -68,9 +68,9 @@
 // It attaches the component to part 0, types the value into the field, saves,
 // clears, reloads, and reads the field back from the reloaded entity.
 //
-// `component_field_page` is the same round trip on a component whose fields
-// outnumber one page of the field area (the sidecar's `componentFieldPage`):
-// it edits the last reflected field, which only the pager reaches.
+// `component_field_page` is the same round trip on the sidecar's
+// `componentFieldPage`: a field past the first page of the field area, which
+// only the pager reaches.
 namespace IRVoxelEditor::Session {
 
 enum class Id {

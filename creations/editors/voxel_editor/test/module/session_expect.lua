@@ -12,9 +12,8 @@
 -- the field to type into, the value typed, and the field's default, which the
 -- value must differ from so the typing is proven.
 --
--- component_field_page reads componentFieldPage: a component with more fields
--- than one page of the field area, the value typed into its last reflected
--- field, and the default every field of it shares.
+-- component_field_page reads componentFieldPage, the same shape, for a field
+-- past the first page of the field area (fields are listed by name).
 return {
     components = {
         { name = "TestModuleTag", fieldCount = 2 },
@@ -35,6 +34,7 @@ return {
     },
     componentFieldPage = {
         component = "TestModuleWide",
+        field = "g",
         value = 7,
         default = 1,
     },

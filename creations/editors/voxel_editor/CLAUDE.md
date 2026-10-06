@@ -84,8 +84,8 @@ render, because the aim and the pick share one screen mapping.
   through `applyEditRaw` and one `commitStroke`, so one Ctrl+Z undoes it.
 - A module may call `IRSystem.registerSystem`, but the editor places no module
   system in a pipeline yet.
-- COMPONENTS attaches a module component (fields edited by type, paged five
-  to a page in reflection order, which varies per run) or a C++
+- COMPONENTS attaches a module component (fields edited by type, listed by
+  name and paged five to a page) or a C++
   one with a prefab factory (a Lua table literal) to the selected part or, with
   ROOT, the root. Its records (`component_records.hpp`) hold no sol objects;
   each apply goes through the factory, and Ctrl+S writes them as `components`.

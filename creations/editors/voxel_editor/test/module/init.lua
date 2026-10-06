@@ -6,8 +6,8 @@ IRComponent.register("TestModuleTag", {
     offset = { type = "vec3" },
 })
 
--- More fields than one page of the COMPONENTS field area, every one an integer
--- with the same default, so whichever field reflects last can be edited.
+-- More fields than one page of the COMPONENTS field area, which lists them by
+-- name.
 IRComponent.register("TestModuleWide", {
     a = 1,
     b = 1,

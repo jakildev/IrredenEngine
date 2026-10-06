@@ -7,6 +7,7 @@
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/prefab_component_factory.hpp>
 
+#include <algorithm>
 #include <charconv>
 #include <cstdint>
 #include <cstdlib>
@@ -279,12 +280,21 @@ inline std::string componentLiteral(const ComponentRecord &record) {
 
 // A fresh record for @p name: MODULE when the loaded module registered it,
 // otherwise ENGINE. Field values are filled by the first apply.
+//
+// Fields are ordered by name. The registry lists them in the registering Lua
+// table's iteration order, which differs between runs, and a record's order is
+// the panel's row order and the manifest's key order.
 inline ComponentRecord makeComponentRecord(const IRScript::LuaScript &script, std::string name) {
     ComponentRecord record;
     if (const auto *info = detail::findModuleComponent(script, name)) {
         record.source_ = ComponentSource::MODULE;
         for (const IRScript::LuaTypedComponentField &field : info->fields_)
             record.fields_.push_back(ComponentField{field.name_, field.type_, {}});
+        std::sort(
+            record.fields_.begin(),
+            record.fields_.end(),
+            [](const ComponentField &a, const ComponentField &b) { return a.name_ < b.name_; }
+        );
     } else {
         record.source_ = ComponentSource::ENGINE;
     }

@@ -2768,14 +2768,11 @@ bool evaluateComponentValueCheck(const void *context, std::string &actual) {
 
 } // namespace Session
 
-// Resolves a component session from <module dir>/session_expect.lua against
-// the loaded module and the COMPONENTS panel layout. component_attach reads
-// `componentAttach = { component, field, value, default }`.
-// component_field_page reads `componentFieldPage = { component, value,
-// default }` and takes the component's last reflected field, which must lie
-// past the first page: reflection order is the registering Lua table's
-// iteration order, which differs between runs, so the sidecar cannot name a
-// field on a given page.
+// Resolves a component session from <module dir>/session_expect.lua's
+// `<key> = { component, field, value, default }` against the loaded module and
+// the COMPONENTS panel layout: `componentAttach` for component_attach, and
+// `componentFieldPage` for component_field_page, whose field must lie past the
+// first page of the field area.
 Session::ComponentAttachSpec resolveComponentAttachSpec(Session::Id id) {
     const bool paged = id == Session::Id::COMPONENT_FIELD_PAGE;
     const std::string entryKey = paged ? "componentFieldPage" : "componentAttach";
@@ -2805,39 +2802,35 @@ Session::ComponentAttachSpec resolveComponentAttachSpec(Session::Id id) {
     const sol::optional<std::string> component =
         entry ? (*entry)["component"] : sol::optional<std::string>{};
     const sol::optional<std::string> fieldName =
-        entry && !paged ? (*entry)["field"] : sol::optional<std::string>{};
-    if (!component || (!paged && !fieldName))
-        return fail(
-            "needs " + entryKey + " = { component, " + (paged ? "" : "field, ") + "value, default }"
-        );
+        entry ? (*entry)["field"] : sol::optional<std::string>{};
+    if (!component || !fieldName)
+        return fail("needs " + entryKey + " = { component, field, value, default }");
     spec.component_ = *component;
+    spec.field_ = *fieldName;
 
     const IRScript::LuaTypedComponentInfo *info =
         IRVoxelEditor::detail::findModuleComponent(script, spec.component_);
     if (info == nullptr)
         return fail("component '" + spec.component_ + "' is not registered by the module");
-    if (paged && info->fields_.empty())
-        return fail("component '" + spec.component_ + "' has no fields");
-    spec.field_ = paged ? info->fields_.back().name_ : *fieldName;
     const std::vector<std::string> names = componentPaletteNames();
     spec.listRow_ =
         static_cast<int>(std::find(names.begin(), names.end(), spec.component_) - names.begin());
     if (spec.listRow_ * kComponentListItemHeight >= kComponentListSize.y)
         return fail("component '" + spec.component_ + "' is below the list's visible rows");
 
+    // The panel lays a record's fields out in the record's order.
+    const ComponentRecord layout = makeComponentRecord(script, spec.component_);
     const auto field =
-        std::find_if(info->fields_.begin(), info->fields_.end(), [&spec](const auto &f) {
+        std::find_if(layout.fields_.begin(), layout.fields_.end(), [&spec](const auto &f) {
             return f.name_ == spec.field_;
         });
-    if (field == info->fields_.end())
+    if (field == layout.fields_.end())
         return fail("component '" + spec.component_ + "' has no field '" + spec.field_ + "'");
-    const int fieldIndex = static_cast<int>(field - info->fields_.begin());
+    const int fieldIndex = static_cast<int>(field - layout.fields_.begin());
     spec.fieldPage_ = fieldIndex / kComponentFieldRowsPerPage;
     spec.fieldRow_ = fieldIndex % kComponentFieldRowsPerPage;
     if (paged && spec.fieldPage_ == 0)
-        return fail(
-            "component '" + spec.component_ + "' fits one page of the COMPONENTS field area"
-        );
+        return fail("field '" + spec.field_ + "' is on the first page of the field area");
 
     spec.value_ = IRVoxelEditor::detail::fieldValueFromRow(field->type_, (*entry)["value"]);
     spec.default_ = IRVoxelEditor::detail::fieldValueFromRow(field->type_, (*entry)["default"]);
