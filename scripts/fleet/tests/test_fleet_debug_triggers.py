@@ -77,10 +77,10 @@ class FleetDebugTriggers(unittest.TestCase):
         r = self._run()
         self.assertEqual(r.returncode, 0, r.stderr)
         lines = {ln.split()[0]: ln for ln in r.stdout.splitlines() if ln.strip()}
-        # All 8 canonical roles present.
+        # All 9 canonical roles present.
         for role in ("worker", "sonnet-reviewer", "opus-reviewer", "merger",
-                     "smoke-worker", "epic-steward", "queue-manager",
-                     "queue-manager-ingest"):
+                     "smoke-worker", "epic-steward", "design-answerer",
+                     "queue-manager", "queue-manager-ingest"):
             self.assertIn(role, lines)
         # worker: suppressed marker present, 4 projection items, generated_at.
         self._assert_suppressed(lines["worker"], "yes")
@@ -110,7 +110,7 @@ class FleetDebugTriggers(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stderr)
         # Still one line per canonical role even with an empty state tree.
         roles = [ln.split()[0] for ln in r.stdout.splitlines() if ln.strip()]
-        self.assertEqual(len(roles), 8)
+        self.assertEqual(len(roles), 9)
 
     def test_discovers_unlisted_role(self):
         # A future role's files should surface rather than hide.

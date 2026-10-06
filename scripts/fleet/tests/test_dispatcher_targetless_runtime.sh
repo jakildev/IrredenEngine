@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Provider election for target-less dispatches. The epic steward is the
-# target-less role; the merger is target-bound and routes through `route`.
+# Provider election for target-less dispatches. The epic steward and the
+# design answerer are the target-less roles; the merger is target-bound and
+# routes through `route`.
 
 set -uo pipefail
 
@@ -26,6 +27,7 @@ export FLEET_DISPATCH_MIN_GAP_SECONDS=0
 export BOOT_FANOUT_WINDOW_SECONDS=0
 export FLEET_CONCURRENCY_MERGER=1
 export FLEET_CONCURRENCY_EPIC_STEWARD=1
+export FLEET_CONCURRENCY_DESIGN_ANSWERER=1
 mkdir -p "$FLEET_STATE_DIR/dispatch" "$FLEET_STATE_DIR/triggers" \
   "$FLEET_STATE_DIR/projections" \
   "$FLEET_STATE_DIR/usage" "$FLEET_STATE_DIR/runtime-cooldown" \
@@ -35,12 +37,15 @@ for name in FLEET_DISPATCHER_USAGE_GATE FLEET_DISPATCHER_USAGE_GATE_FIVE_HOUR \
   FLEET_WORKER_RUNTIME FLEET_CODEX_MODEL_FABLE FLEET_CODEX_MODEL_OPUS \
   FLEET_CODEX_MODEL_SONNET FLEET_CODEX_EFFORT_FABLE FLEET_CODEX_EFFORT_OPUS \
   FLEET_CODEX_EFFORT_SONNET FLEET_EFFORT FLEET_EFFORT_MERGER \
-  FLEET_EFFORT_EPIC_STEWARD FLEET_MODEL_MERGER FLEET_MODEL_EPIC_STEWARD; do
+  FLEET_EFFORT_EPIC_STEWARD FLEET_MODEL_MERGER FLEET_MODEL_EPIC_STEWARD \
+  FLEET_EFFORT_DESIGN_ANSWERER FLEET_MODEL_DESIGN_ANSWERER \
+  FLEET_MODEL_FABLE_PROBED FLEET_FABLE_FALLBACK FLEET_MODEL_FABLE_FALLBACK; do
     unset "$name"
 done
 export FLEET_RUNTIMES=claude,codex
 export FLEET_MODEL_SONNET=sonnet
 export FLEET_MODEL_OPUS=opus
+export FLEET_MODEL_FABLE=fable
 
 BIN="$TMPROOT/bin"
 mkdir -p "$BIN"
@@ -179,5 +184,24 @@ assert_contains "$out" "dispatching merger -> %1 [target=merge:engine:77] runtim
 assert_contains "$(<"$SEND_LOG")" \
   "fleet-dispatch-wrap pane-1 sonnet high merger '' live target=merge:engine:77 claude sonnet" \
   "open gate keeps the targeted Claude launch"
+
+echo "T11: the design answerer is a target-less role the election serves"
+open_gate
+out=$(tick design-answerer "")
+assert_contains "$out" "dispatching design-answerer -> %1 runtime=claude" \
+  "open gate launches the design answerer on Claude"
+assert_contains "$(<"$SEND_LOG")" \
+  "fleet-dispatch-wrap pane-1 fable xhigh design-answerer opus live" \
+  "open gate keeps the legacy six-argument launch, fable with its opus fallback"
+assert_absent "$(<"$SEND_LOG")" "target=" "legacy launch carries no target argument"
+assert_absent "$out" "route-failed" "the election knows the design answerer"
+close_gate
+out=$(tick design-answerer "")
+assert_contains "$out" "dispatching design-answerer -> %1 runtime=codex" \
+  "closed gate launches the design answerer on Codex"
+assert_contains "$(<"$SEND_LOG")" \
+  "design-answerer '' live target= codex fable" \
+  "Codex design answerer uses the target-less launch at the fable class"
+open_gate
 
 summarize "target-less runtime dispatcher tests"

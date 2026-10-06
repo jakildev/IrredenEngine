@@ -174,8 +174,12 @@ Any novel →
 3. `fleet-transition design-propose <PR-#>` — the PR leaves the
    review/merger/reconcile surfaces until the proposal resolves.
 
-The responder (the human, or **escalation-target**) answers inline on the
-umbrella and removes `fleet:steward-proposal`. That removal re-fires the
+The responder answers inline on the umbrella and removes
+`fleet:steward-proposal`: the dispatched design-answerer lane when the
+fleet serves it ([`design-answerer-protocol.md`](design-answerer-protocol.md)),
+otherwise the human or **escalation-target**. A product call the answerer
+will not make gains `fleet:needs-human` beside the proposal label and waits
+for the human. That removal re-fires the
 projection: the umbrella's `fleet:design-proposed` PRs resurface, the
 questions are now derivable (the answers are the deciding sentences), and
 distribution is the all-derivable path — amend each child plan citing the

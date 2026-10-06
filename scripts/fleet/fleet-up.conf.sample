@@ -148,9 +148,10 @@
 #     role). A role UNDER its cap is bound by the same reservation, but never
 #     below one pane: it is within budget, so it is always entitled to launch.
 #   strict — the cap is a hard ceiling; a role at cap defers its trigger.
-# FLEET_CONCURRENCY_MODEL_FABLE, the pool size, and the merger's and epic
-# steward's caps (single-claim lanes: a second iteration over the cap finds
-# every item held and exits empty) are hard in both modes.
+# FLEET_CONCURRENCY_MODEL_FABLE, the pool size, and the merger's, epic
+# steward's and design answerer's caps (single-claim lanes: a second
+# iteration over the cap finds every item held and exits empty) are hard in
+# both modes.
 # FLEET_CAP_MODE=elastic
 
 # FLEET_CONCURRENCY_WORKER=4         # unified worker lane (any model class)
@@ -160,6 +161,7 @@
 # FLEET_CONCURRENCY_MERGER=1
 # FLEET_CONCURRENCY_SMOKE_WORKER=1   # concurrent cap for the smoke-only worker role
 # FLEET_CONCURRENCY_EPIC_STEWARD=1   # concurrent cap for the epic-steward role
+# FLEET_CONCURRENCY_DESIGN_ANSWERER=1   # concurrent cap for the design-answerer role
 #
 # Deprecated (pre-P2 per-lane caps). Still honored: when
 # FLEET_CONCURRENCY_WORKER is unset, the worker cap is the sum of these
@@ -208,6 +210,7 @@
 # FLEET_EFFORT_SONNET_REVIEWER=high
 # FLEET_EFFORT_SMOKE_WORKER=high
 # FLEET_EFFORT_EPIC_STEWARD=xhigh
+# FLEET_EFFORT_DESIGN_ANSWERER=xhigh
 #
 # Deprecated (pre-P2): FLEET_EFFORT_OPUS_WORKER is still honored as a
 # fallthrough for the worker lane when FLEET_EFFORT_WORKER is unset.
@@ -404,12 +407,13 @@
 #
 # FLEET_DISPATCH_ROLES — the EXACT set of roles this host's dispatcher
 # serves (space- or comma-separated; known names: merger sonnet-reviewer
-# opus-reviewer worker smoke-worker epic-steward). It replaces the default
-# list AND the FLEET_SMOKE_WORKER / FLEET_EPIC_STEWARD opt-ins: naming
-# smoke-worker enables it, omitting merger disables it. This is the only way
-# to switch a lane off — a FLEET_CONCURRENCY_<ROLE>=0 cap means UNCAPPED,
-# not disabled. Unknown names are dropped with a warning; the served set is
-# on every `config:` line in the dispatcher log (`roles=...`).
+# opus-reviewer worker smoke-worker epic-steward design-answerer). It
+# replaces the default list AND the FLEET_SMOKE_WORKER / FLEET_EPIC_STEWARD /
+# FLEET_DESIGN_ANSWERER opt-ins: naming smoke-worker enables it, omitting
+# merger disables it. This is the only way to switch a lane off — a
+# FLEET_CONCURRENCY_<ROLE>=0 cap means UNCAPPED, not disabled. Unknown names
+# are dropped with a warning; the served set is on every `config:` line in
+# the dispatcher log (`roles=...`).
 #
 # FLEET_WORKER_HOST_PINNED_ONLY=1 — the worker lane elects only items pinned
 # to this host (`needs_host` from the issue's `**Host:**` field, inherited
@@ -462,6 +466,27 @@
 # FLEET_EPIC_STEWARD=0
 # FLEET_CONCURRENCY_EPIC_STEWARD=1
 # FLEET_EFFORT_EPIC_STEWARD=xhigh   # umbrella triage needs heavier reasoning
+
+# --- Design-answerer (dispatched architect for parked design questions) ----
+#
+# FLEET_DESIGN_ANSWERER=1 tells fleet-dispatcher to serve the design-answerer
+# role (dispatched to any idle pool pane, fable class, hard cap 1). It
+# answers what used to wait for the human to cue the architect pane: an
+# umbrella's pending STEWARD PROPOSAL (`fleet:steward-proposal`) and a
+# non-epic `fleet:design-blocked` PR, in either repo. Engine-level answers
+# land as the architect protocol prescribes (inline answer, design-unblock,
+# a docs/design/ capture task for a durable invariant); a product or
+# direction call is escalated to the human with `fleet:needs-human` and a
+# one-paragraph framing instead of a guess
+# (docs/agents/design-answerer-protocol.md).
+#
+# When unset or 0, proposals and non-epic design blocks wait for the human
+# or the interactive architect, as before.
+
+# FLEET_DESIGN_ANSWERER=0
+# FLEET_CONCURRENCY_DESIGN_ANSWERER=1
+# FLEET_EFFORT_DESIGN_ANSWERER=xhigh
+# FLEET_MODEL_DESIGN_ANSWERER=       # defaults to the fable class model
 
 # --- Campaigns (persistent per-objective fable panes) -----------------------
 #
