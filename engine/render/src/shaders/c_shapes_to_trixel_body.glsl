@@ -691,6 +691,29 @@ int findSurfaceDepth(ivec2 isoRel, uint shapeType, vec4 params, uint flags,
                                 yawC, yawS);
 }
 
+// Depth slot of the box face a sample's view ray enters through, so all three
+// diamonds of an analytic box sample carry the face AO and lighting read as
+// its identity instead of whichever diamond won the atomicMin tie. The entry
+// face comes from the same slab solve the depth does: the stored depth is
+// ceil(dEntry), a point just inside the box, where the largest |offset| -
+// halfSize names an edge-on face (its excess does not fall along the ray)
+// over the visible one beside it. Slot k is the store canvas's cardinal-view
+// axis k, so world X and Y trade slots at an odd cardinal
+// (visibleFaceTripletCardinal). -1 on a slab miss keeps the per-diamond slots.
+int shapeBoxFaceSlot(ivec2 isoRel, vec3 halfSize, float yawC, float yawS,
+                     int cardinalIndex) {
+    float dEntry, dExit;
+    vec3 entryNormal;
+    if (!boxSurfaceIntervalYaw(float(isoRel.x), float(isoRel.y),
+                               halfSize + vec3(0.5), yawC, yawS,
+                               dEntry, dExit, entryNormal)) {
+        return -1;
+    }
+    if (entryNormal.z != 0.0) return 2;
+    int axis = (entryNormal.x != 0.0) ? 0 : 1;
+    return ((cardinalIndex & 1) != 0) ? 1 - axis : axis;
+}
+
 void main() {
     int tileIdx = int(gl_WorkGroupID.x) + int(gl_WorkGroupID.y) * tileGridX;
     ShapeTileDescriptor tile = tiles[tileIdx];
@@ -858,12 +881,18 @@ void main() {
     // snapped integer origin (surfaceD is the local iso depth). Smooth path:
     // yawedIsoDistance of the subdivided world surface point.
     int baseDepth;
+    // -1: each diamond keeps its own face index as its depth slot.
+    int boxFaceSlot = -1;
     if (smoothYaw && !latticeWalk) {
         vec3 viewOffset = isoToLocal3D(isoPixelRel, float(surfaceD));
         // worldOffset = R_z(+visualYaw) * viewOffset (view -> world).
         vec3 worldOffset = vec3(yawC * viewOffset.x - yawS * viewOffset.y,
                                 yawS * viewOffset.x + yawC * viewOffset.y,
                                 viewOffset.z);
+        if (shape.shapeType == SHAPE_BOX && !hollow && !hasEntityRotation) {
+            boxFaceSlot = shapeBoxFaceSlot(isoPixelRel, paramsScaled.xyz * 0.5,
+                                           yawC, yawS, cardinalIndex);
+        }
         vec3 worldSurface = worldPos * float(sub) + worldOffset;
         // The framebuffer depth test must order by the depth that matches the
         // YAWED iso projection (pos3DtoPos2DIsoYawed = iso of R_z(-visualYaw)*world),
@@ -972,7 +1001,8 @@ void main() {
 #endif
 
     for (int face = 0; face < 3; face++) {
-        int depthEncoded = encodeDepthWithFace(baseDepth, face);
+        int depthEncoded = encodeDepthWithFace(
+            baseDepth, boxFaceSlot >= 0 ? boxFaceSlot : face);
         // mat2 D = faceDeformationMatrix(face, residualYaw) applied to the
         // un-yawed iso-pixel offset. Identity at residualYaw==0; otherwise
         // deforms the trixel pair geometrically. Smooth-yaw emits the
