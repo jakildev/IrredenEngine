@@ -263,6 +263,11 @@ On top of
 [`CLAUDE-BASELINE.md § Hard rules for autonomous fleet roles`](CLAUDE-BASELINE.md#hard-rules-for-autonomous-fleet-roles):
 
 - Never commit, push, or open PRs during a reviewer iteration.
+- Never report a build, fleet suite, or `render-verify` run as passing
+  without its terminal result. One expected to outlive the tool window
+  runs detached per [`FLEET-RUNTIME.md § Long-running jobs`](FLEET-RUNTIME.md#long-running-jobs),
+  and the review cites the later `wait` exit; an unfinished run is
+  reported as not run.
 - Never `cd` into or run mutating git in a shared main clone (§ Scratch
   reset & main-clone cwd discipline).
 - Never `gh pr review --approve` / `--request-changes`.

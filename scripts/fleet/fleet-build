@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # fleet-build — backwards-compatible shim for ir-build.
 #
-# Execs ir-build (engine/tools/bin/ir-build) with the same arguments.
+# Execs ir-build (engine/tools/bin/ir-build) with the same arguments, or
+# with --detach (before any "--") starts it as a `fleet-jobs` build job.
 # The worktree-aware build dir, auto-configure, parallelism injection,
 # and ir-acquire cpu lock wrapping all live in ir-build.
 #
@@ -34,12 +35,24 @@ IR_BUILD="$SCRIPT_DIR/../../engine/tools/bin/ir-build"
 # fleet builds only reformat branch-touched files, not the entire tree.
 # The bare "format" target is whole-tree; reserve it for intentional
 # cleanup PRs invoked via ir-build or cmake directly.
+#
+# --detach is a wrapper option only before CMake's "--"; after it, the word
+# belongs to the native build tool and is forwarded untouched.
 args=("$@")
 new_args=()
+detach=0
+passthrough=0
 i=0
 while (( i < ${#args[@]} )); do
     arg="${args[i]}"
-    if [[ ("$arg" == "--target" || "$arg" == "-t") && "${args[i+1]:-}" == "format" ]]; then
+    if [[ "$arg" == "--" ]]; then
+        passthrough=1
+        new_args+=("$arg")
+        i=$(( i + 1 ))
+    elif [[ "$arg" == "--detach" ]] && (( ! passthrough )); then
+        detach=1
+        i=$(( i + 1 ))
+    elif [[ ("$arg" == "--target" || "$arg" == "-t") && "${args[i+1]:-}" == "format" ]]; then
         new_args+=("$arg" "format-changed")
         i=$(( i + 2 ))
     elif [[ "$arg" == "--target=format" || "$arg" == "-t=format" ]]; then
@@ -50,6 +63,18 @@ while (( i < ${#args[@]} )); do
         i=$(( i + 1 ))
     fi
 done
+
+# A detached build runs the same adjacent ir-build under a fleet-jobs
+# supervisor that outlives this tool call (docs/agents/FLEET-RUNTIME.md
+# § "Long-running jobs").
+if (( detach )); then
+    FLEET_JOBS="$SCRIPT_DIR/fleet-jobs"
+    if [[ ! -x "$FLEET_JOBS" ]]; then
+        echo "fleet-build: --detach needs fleet-jobs beside this script ($FLEET_JOBS)" >&2
+        exit 1
+    fi
+    exec "$FLEET_JOBS" start build --name fleet-build -- "${new_args[@]}"
+fi
 
 if [[ -x "$IR_BUILD" ]]; then
     exec "$IR_BUILD" "${new_args[@]}"
