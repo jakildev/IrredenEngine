@@ -2337,6 +2337,7 @@ int main(int argc, char **argv) {
               "--depth-slab",
               "--many-sources",
               "--channel-probe",
+              "--explored-decay",
               "--auto-profile"}) {
             compatible = compatible && !args.wasProvided(flag);
         }
