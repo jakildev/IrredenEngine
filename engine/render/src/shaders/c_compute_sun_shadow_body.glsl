@@ -164,6 +164,7 @@ void main() {
     float receiverFace = 0.0;
 #if IR_SHAPE_RECEIVER
     if (selectedShapeBoxReceiver(pixel, size.x, vec2(pixel),
+            false,
             pos3D, normal)) {
         receiverFace = encodeReceiverFace(normal);
     }
