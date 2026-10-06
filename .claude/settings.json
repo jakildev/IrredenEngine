@@ -57,6 +57,7 @@
       "Bash(fleet-pr-overlap:*)", "Bash(fleet-pr-closes-lint:*)",
       "Bash(fleet-campaign-status:*)", "Bash(fleet-start-next-task:*)",
       "Bash(fleet-clip:*)",
+      "Bash(fleet-jobs:*)",
       "Bash(witness:*)",
 
       "Bash(tmux list-:*)", "Bash(tmux display-message:*)",
