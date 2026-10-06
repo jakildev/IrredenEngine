@@ -12,6 +12,7 @@ add_executable(IrredenEngineTest
   asset/voxel_set_hybrid_test.cpp
   asset/voxel_set_rle_test.cpp
   asset/voxel_set_shapes_test.cpp
+  audio/audio_capture_test.cpp
   audio/audio_playback_test.cpp
   audio/midi_in_tick_test.cpp
   audio/midi_message_ring_test.cpp
@@ -186,6 +187,7 @@ add_executable(IrredenEngineTest
   world/chunk_membership_migration_test.cpp
   world/chunk_persistence_test.cpp
   world/field_chunk_persistence_test.cpp
+  world/fog_explored_decay_test.cpp
   world/fog_world_field_test.cpp
   world/chunk_residency_manager_test.cpp
   world/save_trait_test.cpp

@@ -9,6 +9,7 @@
 
 #include "common/allocation_counter.hpp"
 #include "common/fog_save_root.hpp"
+#include "common/fog_window_image.hpp"
 
 #include <algorithm>
 #include <array>
@@ -31,6 +32,8 @@ using IRComponents::FrameDataFogObservers;
 using IRComponents::kFogStateExplored;
 using IRComponents::kFogStateUnexplored;
 using IRComponents::kFogStateVisible;
+using IRPrefab::Fog::ExploredPolicy;
+using IRPrefab::Fog::FogWindowTexel;
 using IRPrefab::Fog::WorldField;
 using IRPrefab::Fog::detail::expandWindowChunks;
 using IRPrefab::Fog::detail::planWindowGather;
@@ -81,26 +84,20 @@ std::set<FieldChunkKey> discRegions(IRMath::ivec2 centre, int radius) {
     return regions;
 }
 
-// Expands the whole window at @p origin into @p image (edge² RGBA8 texels).
+const FogWindowTexel kUnwrittenTexel{0xABABABABu, 0xABABABABu};
+
+// Expands the whole window at @p origin into @p image (edge² texels), poisoned
+// so a texel the expansion skips is unmistakable.
 void expandWholeWindow(
-    WorldField &field, IRMath::ivec2 origin, int edge, std::vector<std::uint8_t> &image
+    WorldField &field, IRMath::ivec2 origin, int edge, std::vector<FogWindowTexel> &image
 ) {
-    WindowGatherPlan plan;
-    planWindowGather(std::nullopt, origin, edge, {}, plan);
-    image.assign(static_cast<std::size_t>(edge) * static_cast<std::size_t>(edge) * 4, 0xAB);
-    std::vector<std::uint8_t> strip;
-    for (const WindowUploadRect &rect : plan.rects_) {
-        strip.assign(static_cast<std::size_t>(rect.size_.x * rect.size_.y) * 4, 0xCD);
-        expandWindowChunks(field, origin, edge, rect, strip);
-        for (int y = 0; y < rect.size_.y; ++y) {
-            std::copy_n(
-                strip.begin() + static_cast<std::ptrdiff_t>(y * rect.size_.x * 4),
-                rect.size_.x * 4,
-                image.begin() +
-                    static_cast<std::ptrdiff_t>(((rect.texel_.y + y) * edge + rect.texel_.x) * 4)
-            );
-        }
-    }
+    IRTest::expandWholeFogWindow(field, origin, edge, image, kUnwrittenTexel);
+}
+
+const FogWindowTexel &
+texelOf(const std::vector<FogWindowTexel> &image, IRMath::ivec2 column, int edge) {
+    const IRMath::ivec2 texel = IRPrefab::Fog::detail::windowTexel(column, edge);
+    return image[static_cast<std::size_t>(texel.y * edge + texel.x)];
 }
 
 class FogWorldFieldTest : public ::testing::Test {
@@ -188,7 +185,7 @@ TEST_F(FogWorldFieldTest, RegionIsProbedOnce) {
 
     WorldField field;
     persist(field);
-    std::vector<std::uint8_t> image;
+    std::vector<FogWindowTexel> image;
     expandWholeWindow(field, kLegacyOrigin, kLegacyEdge, image);
     IRPrefab::Fog::WorldFieldStats stats = field.stats();
     EXPECT_EQ(stats.probes_, 4);
@@ -201,8 +198,8 @@ TEST_F(FogWorldFieldTest, RegionIsProbedOnce) {
     stats = field.stats();
     EXPECT_EQ(stats.probes_, 4);
     EXPECT_EQ(stats.loads_, 0);
-    EXPECT_TRUE(std::all_of(image.begin(), image.end(), [](std::uint8_t byte) {
-        return byte == 0;
+    EXPECT_TRUE(std::all_of(image.begin(), image.end(), [](const FogWindowTexel &texel) {
+        return texel == FogWindowTexel{};
     }));
 }
 
@@ -328,7 +325,7 @@ TEST_F(FogWorldFieldTest, WindowExpansionUsesTheToroidalLayout) {
     field.setCell({0, -129}, kFogStateVisible);
 
     for (const IRMath::ivec2 origin : {kLegacyOrigin, IRMath::ivec2{0, -256}}) {
-        std::vector<std::uint8_t> image;
+        std::vector<FogWindowTexel> image;
         expandWholeWindow(field, origin, kLegacyEdge, image);
         int visible = 0;
         for (int ty = 0; ty < kLegacyEdge; ++ty) {
@@ -340,26 +337,24 @@ TEST_F(FogWorldFieldTest, WindowExpansionUsesTheToroidalLayout) {
                 ASSERT_EQ(IRMath::floorMod(column.y, kLegacyEdge), ty);
                 const std::size_t i = static_cast<std::size_t>(ty * kLegacyEdge + tx);
                 const std::uint8_t expected = field.peekCell(column).value_or(kFogStateUnexplored);
-                ASSERT_EQ(image[i * 4], expected) << "texel " << tx << "," << ty;
-                ASSERT_EQ(image[i * 4 + 1], 0);
-                ASSERT_EQ(image[i * 4 + 2], 0);
-                ASSERT_EQ(image[i * 4 + 3], 0);
+                ASSERT_EQ(image[i].state_, expected) << "texel " << tx << "," << ty;
+                ASSERT_EQ(image[i].channels_, IRComponents::kFogChannelDefault);
                 visible += expected == kFogStateVisible ? 1 : 0;
             }
         }
         EXPECT_GT(visible, 0) << "origin " << origin.x << "," << origin.y;
     }
 
-    std::vector<std::uint8_t> image;
+    std::vector<FogWindowTexel> image;
     expandWholeWindow(field, kLegacyOrigin, kLegacyEdge, image);
     // Column (0, 0) is at texel (0, 0), not (128, 128); column (-128, -128)
     // at (128, 128); column (127, 127) at (127, 127).
-    EXPECT_EQ(image[0], kFogStateVisible);
-    EXPECT_EQ(image[static_cast<std::size_t>(128 * kLegacyEdge + 128) * 4], kFogStateExplored);
-    EXPECT_EQ(image[static_cast<std::size_t>(127 * kLegacyEdge + 127) * 4], kFogStateExplored);
-    EXPECT_EQ(image[static_cast<std::size_t>(255 * kLegacyEdge + 0) * 4], kFogStateVisible)
+    EXPECT_EQ(image[0].state_, kFogStateVisible);
+    EXPECT_EQ(image[static_cast<std::size_t>(128 * kLegacyEdge + 128)].state_, kFogStateExplored);
+    EXPECT_EQ(image[static_cast<std::size_t>(127 * kLegacyEdge + 127)].state_, kFogStateExplored);
+    EXPECT_EQ(image[static_cast<std::size_t>(255 * kLegacyEdge + 0)].state_, kFogStateVisible)
         << "texel row 255 shows column (0, -1), inside the disc";
-    EXPECT_EQ(image[static_cast<std::size_t>(127 * kLegacyEdge + 0) * 4], kFogStateUnexplored)
+    EXPECT_EQ(image[static_cast<std::size_t>(127 * kLegacyEdge + 0)].state_, kFogStateUnexplored)
         << "texel row 127 shows column (0, 127), not the visible column (0, -129) that shares "
            "its address outside the window";
 }
@@ -434,7 +429,7 @@ TEST_F(FogWorldFieldTest, ColdWholeWindowGather) {
         WorldField reader;
         persist(reader, subdirectory);
         WindowGatherPlan plan;
-        std::vector<std::uint8_t> strip(static_cast<std::size_t>(row.edge_) * kFieldChunkEdge * 4);
+        std::vector<FogWindowTexel> strip(static_cast<std::size_t>(row.edge_) * kFieldChunkEdge);
         const auto planStart = std::chrono::steady_clock::now();
         planWindowGather(std::nullopt, origin, row.edge_, {}, plan);
         std::chrono::steady_clock::duration elapsed = std::chrono::steady_clock::now() - planStart;
@@ -452,7 +447,7 @@ TEST_F(FogWorldFieldTest, ColdWholeWindowGather) {
                         windowColumnOfTexel(origin, row.edge_, rect.texel_ + IRMath::ivec2{x, y});
                     const IRMath::ivec2 chunk = fieldChunkOf(cell);
                     const std::uint8_t expected = written(chunk) ? chunkValue(chunk, y) : 0;
-                    if (strip[static_cast<std::size_t>(y * row.edge_ + x) * 4] != expected) {
+                    if (strip[static_cast<std::size_t>(y * row.edge_ + x)].state_ != expected) {
                         readBack = false;
                         break;
                     }
@@ -591,10 +586,9 @@ TEST_F(FogWorldFieldTest, FieldTierDiscReachesTheWindowGather) {
         std::binary_search(pending.begin(), pending.end(), packFieldChunkKey(fieldChunkOf(centre)))
     );
 
-    std::vector<std::uint8_t> image;
+    std::vector<FogWindowTexel> image;
     const auto texelState = [&](IRMath::ivec2 column) {
-        const IRMath::ivec2 texel = IRPrefab::Fog::detail::windowTexel(column, kLegacyEdge);
-        return image[static_cast<std::size_t>((texel.y * kLegacyEdge + texel.x) * 4)];
+        return texelOf(image, column, kLegacyEdge).state_;
     };
     expandWholeWindow(field, kLegacyOrigin, kLegacyEdge, image);
     EXPECT_EQ(texelState(centre), kFogStateVisible);
@@ -915,7 +909,9 @@ TEST_F(FogWindowTest, CrossingProbeBound) {
     IRPrefab::Fog::detail::WindowGatherScratch scratch;
     std::optional<IRMath::ivec2> windowOrigin;
     int uploads = 0;
-    const auto upload = [&](const WindowUploadRect &, std::span<const std::uint8_t>) { ++uploads; };
+    const auto upload = [&](const WindowUploadRect &, std::span<const FogWindowTexel>) {
+        ++uploads;
+    };
 
     // Region-local chunk index 15 on both axes: the worst-case alignment.
     const IRMath::ivec2 originChunk{15, 15};

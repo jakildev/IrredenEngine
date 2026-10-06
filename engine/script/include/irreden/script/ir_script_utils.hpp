@@ -3,8 +3,10 @@
 #include <irreden/ir_math.hpp>
 #include <sol/sol.hpp>
 
+#include <cctype>
 #include <functional>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace IRScript {
@@ -200,6 +202,72 @@ inline IRMath::vec4 quatFromLua(sol::object obj) {
         };
     }
     return {0.0f, 0.0f, 0.0f, 1.0f};
+}
+
+// `value` as a double-quoted Lua string literal.
+inline std::string luaStringLiteral(std::string_view value) {
+    std::string escaped;
+    escaped.reserve(value.size() + 2);
+    escaped.push_back('"');
+    for (char c : value) {
+        switch (c) {
+        case '\\':
+            escaped += "\\\\";
+            break;
+        case '"':
+            escaped += "\\\"";
+            break;
+        case '\n':
+            escaped += "\\n";
+            break;
+        case '\r':
+            escaped += "\\r";
+            break;
+        case '\t':
+            escaped += "\\t";
+            break;
+        default:
+            escaped.push_back(c);
+            break;
+        }
+    }
+    escaped.push_back('"');
+    return escaped;
+}
+
+// Whether `name` can be written bare as a table-constructor key or after a
+// dot: a Lua 5.1 name that is not a reserved word.
+inline bool isLuaIdentifier(std::string_view name) {
+    static constexpr std::string_view kReserved[] = {
+        "and", "break",    "do",     "else", "elseif", "end",   "false",
+        "for", "function", "if",     "in",   "local",  "nil",   "not",
+        "or",  "repeat",   "return", "then", "true",   "until", "while",
+    };
+    if (name.empty() ||
+        (std::isalpha(static_cast<unsigned char>(name[0])) == 0 && name[0] != '_')) {
+        return false;
+    }
+    for (char c : name) {
+        if (std::isalnum(static_cast<unsigned char>(c)) == 0 && c != '_') {
+            return false;
+        }
+    }
+    for (std::string_view reserved : kReserved) {
+        if (name == reserved) {
+            return false;
+        }
+    }
+    return true;
+}
+
+// `key` as the left side of a table-constructor field: bare when it is an
+// identifier, `["..."]` otherwise. Every writer of Lua table source spells a
+// string key through this, so any string a table can hold round-trips.
+inline std::string luaTableKey(std::string_view key) {
+    if (isLuaIdentifier(key)) {
+        return std::string(key);
+    }
+    return "[" + luaStringLiteral(key) + "]";
 }
 
 namespace detail {

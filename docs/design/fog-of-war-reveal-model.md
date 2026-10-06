@@ -64,7 +64,7 @@ this contract.
 | Shape BODY apply route | `SHAPE_FLAG_FOG_HIDDEN` suppresses a hidden shape before raster work, independently of the author's `SHAPE_FLAG_VISIBLE`. Shown pixels carry and use the uniform BODY factor. | #3677 (P4) |
 | Detached-canvas BODY apply route | The canvas owner carries `fogHidden_` and `fogRevealFactor_`. `ENTITY_CANVAS_TO_FRAMEBUFFER` suppresses a hidden canvas or applies the uniform factor to the whole composite; private-pool voxels carry the BODY exemption. | #3680 (P6) |
 | EXEMPT apply routes | For a voxel set, explicit EXEMPT classification stamps factor 255 without `C_FogRevealed`. Shape and detached-canvas EXEMPT bypasses require explicit raster-route realization; exclusion from BODY adoption alone is insufficient. | #3676 (P3) for voxel sets; #3696 for shapes and detached canvases |
-| Creation seams | Override and source/BODY channel data live with `C_FogRevealed` and feed every BODY evaluator; the FIELD loop accepts only sources on the implicit default cell channel. | #3679 (P5) |
+| Creation seams | Override and source/BODY channel data live with `C_FogRevealed` and feed every BODY evaluator; the FIELD paint admits a source only where its mask intersects the sampled cell's mask (the world field's per-cell channels), on both source tiers. | #3679 (P5), per-cell masks #3687 |
 
 Only FIELD matter and shapes with `C_LightBlocker::blocksLOS_` occlude the
 reveal field; BODY matter does not. BODY pixels skip the per-pixel LOS gate
@@ -177,9 +177,12 @@ visibility. #3679 lands the component state and evaluator behavior.
 
 Sources and subjects carry bitmasks. A source can reveal a BODY only when the
 two masks intersect; the engine assigns no gameplay meaning to creation-owned
-bits. The default channel is bit 0 (`kFogChannelDefault = 1`). FIELD cells use
-that implicit default until the world field stores per-cell masks. #3679 lands
-source/BODY masks; per-cell masks are tracked with explored decay in #3687.
+bits. The default channel is bit 0 (`kFogChannelDefault = 1`). FIELD cells
+carry their own masks in the world field (default bit 0): an analytic or
+field-tier source reveals a FIELD cell only where the two masks intersect
+(world field D8, D14). The grid term stays channel-blind for BODY subjects:
+an admitted VISIBLE cell reveals a BODY whatever mask the BODY carries, and
+an EXPLORED cell reveals no BODY.
 
 ### Hidden-body policy
 
@@ -191,9 +194,14 @@ tracked by #3686.
 ### Explored-state policy
 
 The field distinguishes unexplored, explored, and currently visible cells.
-Persistent policy keeps explored memory indefinitely. Decay policy returns it
-to unexplored according to creation-owned timing. The subject-class epic uses
-persistent explored state; decay and per-cell channels are tracked by #3687.
+Persistent policy keeps explored memory indefinitely. Decay policy returns an
+explored cell whose mask intersects the policy mask to unexplored exactly
+when the creation's simulation clock passes the cell's last exploration by
+the configured duration. The policy, the clock, the per-cell masks and the
+`exploreRadius` authoring service are the world field's D14; the C++ surface
+is `IRPrefab::Fog::setExploredPolicy` / `setExploredTimeMs` /
+`setCellChannels` / `exploreRadius`, the Lua surface the matching `IRFog`
+entries.
 
 ## Creation migration
 

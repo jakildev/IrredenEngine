@@ -186,7 +186,7 @@ else
 fi
 
 echo "3. one owned-name list across fleet-up, fleet-down and fleet_github"
-names_of() { grep -oE 'FLEET_GH_[A-Z_]+' | sort -u | tr '\n' ' '; }
+names_of() { grep -oE 'FLEET_GH_[A-Z_]+' | grep -v '^FLEET_GH_IDENTITY$' | sort -u | tr '\n' ' '; }
 up_names="$(extract_fn "$FLEET_UP" seed_tmux_pane_env | names_of)"
 down_names="$(extract_fn "$FLEET_DOWN" clear_tmux_gh_accounting | names_of)"
 module_names="$(grep -E '^ENV_[A-Z_]+ = "FLEET_GH_' "$FLEET_DIR/fleet_github.py" \
@@ -205,6 +205,8 @@ else
     tmux new-session -d -s previous "sleep 600"
     tmux set-environment -g FLEET_GH_REAL "/stale/gh"
     tmux set-environment -g GH_TOKEN "stale-app-token"
+    tmux set-environment -g GITHUB_TOKEN "stale-other-token"
+    tmux set-environment -g FLEET_GH_IDENTITY app
     tmux set-environment -g FLEET_GH_LAUNCHER "/stale/launcher"
 
     ENGINE="$TMPROOT/engine"
@@ -232,6 +234,8 @@ else
         assert_contains "$envf" "FLEET_GH_LAUNCHER=/new/launcher" "$pane: this boot's launcher"
         assert_contains "$envf" "IR_FLEET_WORKERS=6" "$pane: IR_FLEET_WORKERS"
         assert_absent "$envf" "stale-app-token" "$pane: the stale App token is evicted"
+        assert_absent "$envf" "stale-other-token" "$pane: the alternate token is evicted"
+        assert_absent "$envf" "FLEET_GH_IDENTITY" "$pane: the daemon identity is evicted"
         assert_absent "$envf" "FLEET_GH_ACTOR" "$pane: no daemon actor leaks into a pane"
     done
     global="$(tmux show-environment -g)"

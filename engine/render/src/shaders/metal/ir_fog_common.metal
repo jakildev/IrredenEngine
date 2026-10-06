@@ -58,19 +58,20 @@ inline int2 fogWindowTexel(int2 col, int2 origin, int2 fogSize) {
     return texel;
 }
 
-// Grid state of world column `col`: the window texel's .r, or 0.0
-// (unexplored) for a column outside the window.
-inline float fogTap(
+// Grid texel of world column `col`: (state integer, channel mask), or
+// (0, kFogChannelDefault) for a column outside the window. GLSL twin:
+// fogTapTexel in ../ir_fog_common.glsl.
+inline uint2 fogTapTexel(
     int2 col,
     int2 origin,
     int2 fogSize,
-    texture2d<float, access::read> canvasFogOfWar
+    texture2d<uint, access::read> canvasFogOfWar
 ) {
     const int2 cell = fogWindowTexel(col, origin, fogSize);
     if (cell.x < 0) {
-        return 0.0f;
+        return uint2(0u, kFogChannelDefault);
     }
-    return canvasFogOfWar.read(uint2(cell)).r;
+    return canvasFogOfWar.read(uint2(cell)).rg;
 }
 
 inline FogReveal fogRevealSample(
@@ -78,7 +79,7 @@ inline FogReveal fogRevealSample(
     float3 losSample,
     float aaFloor,
     constant FogObserverData& fogObservers,
-    texture2d<float, access::read> canvasFogOfWar,
+    texture2d<uint, access::read> canvasFogOfWar,
     texture2d<float, access::read> fogLineOfSight
 ) {
     const int3 surfaceVoxel = roundHalfUp(pos3D);
@@ -86,12 +87,14 @@ inline FogReveal fogRevealSample(
         int(canvasFogOfWar.get_width()),
         int(canvasFogOfWar.get_height())
     );
-    const float gridState = fogTap(
+    const uint2 gridTexel = fogTapTexel(
         surfaceVoxel.xy,
         int2(fogObservers.windowOriginX, fogObservers.windowOriginY),
         fogSize,
         canvasFogOfWar
     );
+    const float gridState = fogTexelState(gridTexel.x);
+    const uint cellChannels = gridTexel.y;
     const int2 losFieldMin = fogLosFieldMin(
         int2(fogObservers.windowOriginX, fogObservers.windowOriginY),
         fogSize.x
@@ -103,7 +106,7 @@ inline FogReveal fogRevealSample(
         if (state >= 1.0f) {
             break;
         }
-        if ((fogObservers.visionCircleChannels[i / 4][i % 4] & 1u) == 0u) {
+        if ((fogObservers.visionCircleChannels[i / 4][i % 4] & cellChannels) == 0u) {
             continue;
         }
         const float4 heights = fogObservers.visionCircleHeights[i];

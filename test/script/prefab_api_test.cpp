@@ -20,9 +20,12 @@
 
 #include "../../creations/editors/voxel_editor/entity_scene.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -1049,6 +1052,90 @@ TEST_F(PrefabApi, ComponentsRunBeforeSetupCallback) {
 
 // ---- additivity: unknown top-level keys do not break the load -------------
 
+// ---- Lua-registered components in manifests -------------------------
+
+TEST_F(PrefabApi, SpawnsLuaRegisteredComponentFromManifest) {
+    m_lua.lua().safe_script(
+        "SpawnedTag = IRComponent.register('SpawnedTag', {\n"
+        "  count = 1,\n"
+        "  offset = { type = 'vec3' },\n"
+        "})\n"
+    );
+    PrefabFiles f = writeFixtureSet(
+        "components_lua_typed",
+        "return {\n"
+        "  prefab_version = 1,\n"
+        "  components = { SpawnedTag = { count = 7, offset = { x = 1, y = -2, z = 3.5 } } },\n"
+        "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    m_lua.lua()["spawned"] = IRScript::LuaEntity{r.entity_};
+    const sol::table row =
+        m_lua.lua().safe_script("return IREntity.getLuaComponent(spawned, SpawnedTag)");
+    EXPECT_EQ(row.get<int>("count"), 7);
+    const sol::table offset = row["offset"];
+    EXPECT_FLOAT_EQ(offset.get<float>("x"), 1.0f);
+    EXPECT_FLOAT_EQ(offset.get<float>("y"), -2.0f);
+    EXPECT_FLOAT_EQ(offset.get<float>("z"), 3.5f);
+}
+
+TEST_F(PrefabApi, LuaRegisteredComponentRejectsUnknownField) {
+    m_lua.lua().safe_script("IRComponent.register('StrictTag', { count = 1 })");
+    PrefabFiles f = writeFixtureSet(
+        "components_lua_typed_unknown",
+        "return {\n"
+        "  prefab_version = 1,\n"
+        "  components = { StrictTag = { cuont = 7 } },\n"
+        "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    EXPECT_EQ(r.entity_, IREntity::kNullEntity);
+    EXPECT_NE(r.error_.find("has no field 'cuont'"), std::string::npos) << r.error_;
+}
+
+TEST_F(PrefabApi, LuaRegisteredComponentRejectsWrongFieldType) {
+    m_lua.lua().safe_script("IRComponent.register('TypedTag', { count = 1 })");
+    PrefabFiles f = writeFixtureSet(
+        "components_lua_typed_wrong_type",
+        "return {\n"
+        "  prefab_version = 1,\n"
+        "  components = { TypedTag = { count = 2.5 } },\n"
+        "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    EXPECT_EQ(r.entity_, IREntity::kNullEntity);
+    EXPECT_NE(r.error_.find("expects a int32 value"), std::string::npos) << r.error_;
+}
+
+TEST_F(PrefabApi, ListsComponentFactories) {
+    IRScript::bindLuaType<IRComponents::C_ZoomLevel>(m_lua);
+    m_lua.lua().safe_script("IRComponent.register('ListedTag', { count = 1 })");
+
+    const std::vector<std::string> names = IRPrefab::Prefab::listComponentFactories();
+    EXPECT_NE(std::find(names.begin(), names.end(), "C_ZoomLevel"), names.end());
+    EXPECT_NE(std::find(names.begin(), names.end(), "ListedTag"), names.end());
+    EXPECT_TRUE(std::is_sorted(names.begin(), names.end()));
+}
+
+TEST(PrefabComponentFactory, LuaScriptUnregistersItsFactoriesOnDestruction) {
+    IRPrefab::Prefab::clearComponentFactories();
+    {
+        // Declared first so it outlives the entity manager, whose Lua-typed
+        // component data holds references into the script's state.
+        IRScript::LuaScript script;
+        IREntity::EntityManager entityManager;
+        script.bindLuaDrivenEcs();
+        script.lua().safe_script("IRComponent.register('ScopedTag', { count = 1 })");
+        EXPECT_NE(IRPrefab::Prefab::findComponentFactory("ScopedTag"), nullptr);
+    }
+    EXPECT_EQ(IRPrefab::Prefab::findComponentFactory("ScopedTag"), nullptr);
+}
+
 TEST_F(PrefabApi, UnknownTopLevelFieldsIgnored) {
     PrefabFiles f = writeFixtureSet(
         "additive",
@@ -1305,8 +1392,76 @@ TEST_F(PrefabWriter, RoundTripsThroughReader) {
     EXPECT_EQ(readShape.canvasSize_, shape.canvasSize_);
 }
 
-TEST_F(PrefabWriter, FailedEntitySceneLoadPreservesLiveScene) {
-    IRVoxelEditor::EntityScene scene;
+TEST_F(PrefabWriter, RoundTripsComponents) {
+    m_lua.lua().safe_script(
+        "IRComponent.register('WrittenTag', { count = 1, label = 'a', offset = { type = 'vec3' } })"
+    );
+    IRPrefab::Prefab::PrefabDescription written;
+    written.components_.push_back({"WrittenTag", "{ count = 3 }"});
+    IRPrefab::Prefab::PrefabPartDescription part;
+    part.id_ = "marker";
+    part.shape_ = IRPrefab::Prefab::PrefabShapeDescription{};
+    part.components_.push_back(
+        {"WrittenTag", "{ label = \"x y\", offset = { x = 0.5, y = 2, z = -1 }, count = 9 }"}
+    );
+    written.parts_.push_back(part);
+
+    const std::string path = "/tmp/prefab_writer_components.prefab.lua";
+    const std::optional<std::string> writeError = IRPrefab::Prefab::writeManifest(path, written);
+    ASSERT_FALSE(writeError.has_value()) << writeError.value_or("");
+
+    const IRPrefab::Prefab::ManifestResult read = IRPrefab::Prefab::readManifest(m_lua, path);
+    ASSERT_TRUE(read.ok()) << read.error_;
+    ASSERT_EQ(read.description_->components_.size(), 1u);
+    EXPECT_EQ(read.description_->components_[0].name_, "WrittenTag");
+    EXPECT_EQ(read.description_->components_[0].fields_, "{ count = 3 }");
+    ASSERT_EQ(read.description_->parts_.size(), 1u);
+    ASSERT_EQ(read.description_->parts_[0].components_.size(), 1u);
+    EXPECT_EQ(
+        read.description_->parts_[0].components_[0].fields_,
+        "{ count = 9, label = \"x y\", offset = { x = 0.5, y = 2, z = -1 } }"
+    );
+}
+
+TEST_F(PrefabWriter, ComponentRecordBracketsNonIdentifierFieldNames) {
+    m_lua.lua().safe_script("IRComponent.register('KeyedTag', { ['end'] = 1, ['max-value'] = 2 })");
+    const IREntity::EntityId entity = IREntity::createEntity();
+    IRVoxelEditor::ComponentRecord record = IRVoxelEditor::makeComponentRecord(m_lua, "KeyedTag");
+    const std::optional<std::string> attachError =
+        IRVoxelEditor::applyComponentRecord(m_lua, entity, record);
+    ASSERT_FALSE(attachError.has_value()) << attachError.value_or("");
+    ASSERT_EQ(record.fields_.size(), 2u);
+    ASSERT_EQ(record.fields_[0].name_, "end");
+
+    record.fields_[0].value_ = std::int32_t{7};
+    const std::optional<std::string> editError =
+        IRVoxelEditor::applyComponentRecord(m_lua, entity, record);
+    ASSERT_FALSE(editError.has_value()) << editError.value_or("");
+    const std::string literal = IRVoxelEditor::componentLiteral(record);
+    EXPECT_EQ(literal, "{ [\"end\"] = 7, [\"max-value\"] = 2 }");
+
+    IRPrefab::Prefab::PrefabDescription written;
+    written.components_.push_back({"KeyedTag", literal});
+    const std::string path = "/tmp/prefab_writer_keyed_components.prefab.lua";
+    const std::optional<std::string> writeError = IRPrefab::Prefab::writeManifest(path, written);
+    ASSERT_FALSE(writeError.has_value()) << writeError.value_or("");
+    const IRPrefab::Prefab::ManifestResult read = IRPrefab::Prefab::readManifest(m_lua, path);
+    ASSERT_TRUE(read.ok()) << read.error_;
+    ASSERT_EQ(read.description_->components_.size(), 1u);
+    EXPECT_EQ(read.description_->components_[0].fields_, literal);
+}
+
+TEST_F(PrefabWriter, RejectsComponentFieldsThatAreNotATable) {
+    IRPrefab::Prefab::PrefabDescription written;
+    written.components_.push_back({"WrittenTag", "count = 3"});
+    EXPECT_TRUE(
+        IRPrefab::Prefab::writeManifest("/tmp/prefab_writer_bad_components.prefab.lua", written)
+            .has_value()
+    );
+}
+
+// The live scene a failed load must leave alone.
+void addLiveShapePart(IRVoxelEditor::EntityScene &scene) {
     const IRPrefab::Prefab::PrefabShapeDescription liveShape{
         IRMath::SDF::ShapeType::BOX,
         vec4(2.0f, 3.0f, 4.0f, 0.0f),
@@ -1314,6 +1469,11 @@ TEST_F(PrefabWriter, FailedEntitySceneLoadPreservesLiveScene) {
         IRMath::SDF::SHAPE_FLAG_VISIBLE
     };
     scene.addShapePart(liveShape, IRComponents::C_LocalTransform{vec3(1.0f, 2.0f, 3.0f)});
+}
+
+TEST_F(PrefabWriter, FailedEntitySceneLoadPreservesLiveScene) {
+    IRVoxelEditor::EntityScene scene;
+    addLiveShapePart(scene);
     const IREntity::EntityId originalRoot = scene.root();
     const IREntity::EntityId originalPart = scene.parts().front().entity_;
 
@@ -1334,6 +1494,52 @@ TEST_F(PrefabWriter, FailedEntitySceneLoadPreservesLiveScene) {
     EXPECT_EQ(scene.parts().front().entity_, originalPart);
     EXPECT_TRUE(IREntity::entityExists(originalRoot));
     EXPECT_TRUE(IREntity::entityExists(originalPart));
+}
+
+TEST_F(PrefabWriter, EntitySceneLoadWithThrowingComponentFactoryPreservesLiveScene) {
+    IRVoxelEditor::EntityScene scene;
+    addLiveShapePart(scene);
+    const IREntity::EntityId originalRoot = scene.root();
+    const IREntity::EntityId originalPart = scene.parts().front().entity_;
+
+    // No validator, so the manifest read accepts the entry and the factory
+    // refuses it only when the load applies it.
+    m_lua.lua().safe_script("IRComponent.register('AcceptedTag', { count = 1 })");
+    IRPrefab::Prefab::registerComponentFactory(
+        "RefusingTag",
+        [](IREntity::EntityId, const sol::table &) {
+            throw std::runtime_error("refuses every table");
+        }
+    );
+
+    IRPrefab::Prefab::PrefabDescription refused;
+    refused.components_.push_back({"AcceptedTag", "{ count = 3 }"});
+    for (const char *id : {"first", "second"}) {
+        IRPrefab::Prefab::PrefabPartDescription part;
+        part.id_ = id;
+        part.shape_ = IRPrefab::Prefab::PrefabShapeDescription{};
+        refused.parts_.push_back(part);
+    }
+    refused.parts_.back().components_.push_back({"RefusingTag", "{}"});
+    const std::string path = "/tmp/prefab_writer_refused_component.prefab.lua";
+    ASSERT_FALSE(IRPrefab::Prefab::writeManifest(path, refused).has_value());
+    ASSERT_TRUE(IRPrefab::Prefab::readManifest(m_lua, path).ok());
+
+    const IRVoxelEditor::EntitySceneResult result =
+        scene.load(m_lua, "/tmp", "prefab_writer_refused_component");
+    EXPECT_FALSE(result.ok_);
+    EXPECT_NE(result.error_.find("'RefusingTag' factory failed"), std::string::npos)
+        << result.error_;
+    EXPECT_EQ(scene.root(), originalRoot);
+    ASSERT_EQ(scene.parts().size(), 1u);
+    EXPECT_EQ(scene.parts().front().entity_, originalPart);
+    EXPECT_TRUE(scene.targetComponents(IRVoxelEditor::kEntitySceneRootTarget)->empty());
+
+    // The refused replacement is marked; the drain leaves only the live scene.
+    m_entity_manager.destroyMarkedEntities();
+    EXPECT_TRUE(IREntity::entityExists(originalRoot));
+    EXPECT_TRUE(IREntity::entityExists(originalPart));
+    EXPECT_EQ(IREntity::countComponents<IRComponents::C_ShapeDescriptor>(), 1);
 }
 
 TEST_F(PrefabWriter, V1ReadStillLoads) {

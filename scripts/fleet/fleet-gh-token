@@ -34,6 +34,20 @@
 
 set -euo pipefail
 
+# The bare invocation is the only contract. Any argument — `--help` included —
+# is refused before the conf is read, so a caller reading the usage can never
+# mint (and print) a live token into a transcript.
+if (( $# > 0 )); then
+    {
+        echo "usage: fleet-gh-token   (takes no arguments)"
+        echo "  Prints a GitHub App installation token on stdout. Capture it into GH_TOKEN"
+        echo "  (as fleet-up does); never run it bare where its output lands in a transcript."
+    } >&2
+    exit 2
+fi
+
+[[ "${FLEET_GH_IDENTITY:-}" == user ]] && exit 0
+
 CONF="${FLEET_UP_CONF:-$HOME/.fleet/fleet-up.conf}"
 if [[ -f "$CONF" ]]; then
     # shellcheck source=/dev/null

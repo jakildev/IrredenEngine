@@ -48,6 +48,7 @@ if sys.platform == "win32" and not os.environ.get("PYTHONUTF8"):
 # scout is run directly or loaded by-path in the unit tests.
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import fleet_gh_fallback
+import fleet_github
 import fleet_poll_topology
 from fleet_blocked_by import (
     is_no_blocker_value,
@@ -67,6 +68,7 @@ from fleet_epic_membership import epic_refs
 # drift; it's mkdir'd in main() and the fetchers rely on that default cache_dir.
 from fleet_gh_poll import DEFAULT_CACHE_DIR as ETAG_DIR
 from fleet_gh_poll import cache_entry_path, conditional_get, last_rate_limit
+from fleet_github_identity import current_identity, quota_gate, quota_path, user_environment
 from fleet_model_field import MODEL_CLASSES, declared_class
 from fleet_stack_base import unsafe_base_reason
 
@@ -123,12 +125,7 @@ PID_FILE = STATE_DIR / "scout.pid"
 STATE_FILE = STATE_DIR / "state.json"
 SHUTDOWN_FLAG = Path.home() / ".fleet" / "shutdown-in-progress"
 
-# Where GitHub API rate-limit observations are latched for the dispatcher's
-# usage gate — same directory + payload shape as fleet-claude-stream's
-# Anthropic-side USAGE_DIR (one file per rateLimitType, overwritten each
-# sample). fleet-dispatcher globs this whole dir with zero per-source
-# special-casing, so dropping github-<pool>.json files here is enough to
-# make GitHub quota gate dispatch the same way Anthropic quota does.
+# Identity-qualified GitHub quota and provider usage share this directory.
 USAGE_DIR = STATE_DIR / "usage"
 
 # Canonical short keys used in the cache layout. The keys match the
@@ -1052,39 +1049,24 @@ def _fetch_prs_gated(repo, prev, keep):
 
 
 def sample_github_rate_limit():
-    """Latch GitHub API pool utilization into USAGE_DIR.
+    """Sample each lane's quota even while ordinary polling is gated.
 
-    Writes one github-<pool>.json per pool (core, graphql, search). The
-    base {rateLimitType, utilization, resetsAt, observed_at} fields match
-    the shape fleet-claude-stream's latch_usage_observation writes for
-    Anthropic types, so fleet-dispatcher's usage-gate evaluator globs the
-    whole dir and gates on these with zero per-source special-casing.
-    `limit`/`remaining` are extra fields the evaluator ignores but
-    fleet-gate-status's GitHub display section reads (a bare utilization
-    fraction can't reconstruct "remaining=3527/5000"). Called at the top
-    of tick_once, before build_state, so quota stays fresh every tick
-    (leader or follower) even on a degraded tick.
-
-    `gh api /rate_limit` can report a phantom near-empty bucket for the
-    same identity whose real calls are counting against a different one,
-    so neither core nor graphql reads it. core comes from the
-    `X-RateLimit-*` headers on the conditional REST responses the
-    previous tick's fetchers received (fleet_gh_poll.last_rate_limit);
-    graphql comes from GraphQL's own `rateLimit` self-report; search
-    alone stays on `/rate_limit`. None of the three spends the quota it
-    reports. A host that sent no REST traffic (a follower served by its
-    leader) has no core reading and writes no core file.
-
-    Best-effort: a failed sample (gh error, bad JSON, no header reading,
-    unwritable state dir) is logged and swallowed, leaving the prior
-    file (if any) in place — a wedged sampler must never crash the
-    scout tick. The one exception is a graphql sample refused by the
-    rate limiter itself, which latches the pool as rejected (see
-    _sample_github_graphql).
+    Core enforcement headers come from REST traffic, or a metadata probe
+    when no current header is available. GraphQL uses its own rateLimit
+    query; /rate_limit is diagnostic only. Explicit user probes run with
+    both inherited token variables removed, without changing the daemon env.
+    A failed probe leaves its prior sample to age out and close that lane.
     """
     _sample_github_search()
     _sample_github_core()
     _sample_github_graphql()
+    core = last_rate_limit("core")
+    if not core or core["reset"] <= time.time():
+        _sample_identity_core(dict(os.environ))
+    if fleet_gh_fallback.gh_identity() == "app":
+        pane_env = user_environment()
+        _sample_identity_core(pane_env)
+        _sample_github_graphql(env=pane_env)
 
 
 def _latch_github_pool(pool, payload, identity=None):
@@ -1094,7 +1076,7 @@ def _latch_github_pool(pool, payload, identity=None):
     payload = {**payload, "identity": identity}
     try:
         USAGE_DIR.mkdir(parents=True, exist_ok=True)
-        write_atomic(USAGE_DIR / f"github-{pool}.json", json.dumps(payload))
+        write_atomic(quota_path(USAGE_DIR, pool, identity), json.dumps(payload))
     except OSError as e:
         log(f"github rate-limit latch failed for {pool}: {e}")
 
@@ -1173,7 +1155,40 @@ def _graphql_interval(prior, used, observed_at, resets_at, identity):
     }
 
 
-def _sample_github_graphql():
+def _sample_identity_core(env):
+    identity = current_identity(env)
+    # /rate_limit can report a phantom core bucket; use an authenticated
+    # resource response's enforcement headers, as fleet_gh_poll does.
+    args = ["api", "--include", "repos/jakildev/IrredenEngine"]
+    try:
+        proc = subprocess.run(fleet_github.argv(args, env=env), env=env,
+                              capture_output=True, text=True, timeout=GH_TIMEOUT_SECONDS)
+    except (OSError, subprocess.TimeoutExpired):
+        return
+    if proc.stdout.startswith("HTTP/1.1 401") or proc.stdout.startswith("HTTP/2.0 401"):
+        return
+    headers = {}
+    for line in proc.stdout.splitlines():
+        if not line.strip():
+            break
+        name, _, value = line.partition(":")
+        headers[name.lower()] = value.strip()
+    try:
+        limit = int(headers["x-ratelimit-limit"])
+        used = int(headers["x-ratelimit-used"])
+        reset = int(headers["x-ratelimit-reset"])
+    except (KeyError, ValueError):
+        return
+    if limit <= 0 or headers.get("x-ratelimit-resource") != "core":
+        return
+    _latch_github_pool("core", {
+        "rateLimitType": "github_core", "utilization": used / limit,
+        "resetsAt": reset, "observed_at": int(time.time()),
+        "limit": limit, "remaining": limit - used,
+    }, identity=identity)
+
+
+def _sample_github_graphql(env=None):
     """Latch the graphql pool from GraphQL's `rateLimit` self-report.
 
     Three outcomes. A good reply overwrites the latch with the true
@@ -1184,26 +1199,27 @@ def _sample_github_graphql():
     leaves the prior latch untouched.
 
     A refusal of any other GraphQL call latches the separate
-    github-graphql.rejected.json (_latch_graphql_refusal), which this
+    github-<identity>-graphql.rejected.json (_latch_graphql_refusal), which this
     sampler never writes or clears: the self-report can read healthy while
     the limiter still refuses real calls.
     """
-    cmd = ["gh", "api", "graphql", "-f", f"query={_GITHUB_GRAPHQL_RATE_QUERY}"]
+    identity = fleet_gh_fallback.gh_identity() if env is None else env["FLEET_GH_IDENTITY"]
+    cmd = fleet_github.argv(["api", "graphql", "-f", f"query={_GITHUB_GRAPHQL_RATE_QUERY}"],
+                            env=env)
     try:
         proc = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=GH_TIMEOUT_SECONDS,
+            cmd, capture_output=True, text=True, timeout=GH_TIMEOUT_SECONDS, env=env,
         )
     except (subprocess.TimeoutExpired, FileNotFoundError) as e:
         log(f"github graphql quota sample failed: {e}")
         return
-    path = USAGE_DIR / "github-graphql.json"
+    path = quota_path(USAGE_DIR, "graphql", identity)
     try:
         prior = json.loads(path.read_text())
     except (OSError, ValueError):
         prior = {}
     was_rejected = prior.get("status") == "rejected"
     now = int(time.time())
-    identity = fleet_gh_fallback.gh_identity()
 
     info = None
     if proc.returncode == 0:
@@ -5322,9 +5338,15 @@ def _refresh_gh_token():
     # empty string — that would defeat gh's keychain fallback on the
     # unconfigured path (an empty stdout on the unconfigured path is
     # already falsy, so the `if token` guard below is sufficient).
+    os.environ["FLEET_GH_IDENTITY"] = "app"
     token = run_capture(_fleet_script_argv(["fleet-gh-token"]))
     if token:
         os.environ["GH_TOKEN"] = token.strip()
+    elif token is not None:
+        os.environ.pop("GH_TOKEN", None)
+        os.environ.pop("GITHUB_TOKEN", None)
+        os.environ["FLEET_GH_IDENTITY"] = "user"
+    return token is not None
 
 
 def _degraded_repo_keys(state):
@@ -5379,12 +5401,24 @@ def tick_once():
     # self-poll when the leader is unreachable (both route through gh). Must
     # precede the quota sample below — that sample makes its own gh calls and
     # must report the identity the scout's reads bill against.
-    _refresh_gh_token()
+    if _refresh_gh_token() is False:
+        return
     # Runs before build_state so GitHub quota is captured every scout tick —
     # leader or follower, and even when state collection degrades. Best-effort
     # itself (see sample_github_rate_limit docstring); each host's dispatcher
     # gate reads its own host-local quota sample, so followers sample too.
     sample_github_rate_limit()
+    if fleet_gh_fallback.gh_identity() == "app":
+        gate = quota_gate(USAGE_DIR, "app",
+                          stale_s=int(os.environ.get(
+                              "FLEET_DISPATCHER_USAGE_STALE_SECONDS", "3600")),
+                          reset_grace_s=int(os.environ.get(
+                              "FLEET_DISPATCHER_RESET_GRACE_SECONDS", "600")))
+        if gate["state"] == "closed":
+            _spawn_failed("github-quota", "; ".join(gate["reasons"]),
+                          "daemon GitHub quota closed: " + "; ".join(gate["reasons"]))
+            return
+        _spawn_ok("github-quota")
     state, served = build_state()
     # A follower's bundle is already fully resolved (the leader ran the pipeline
     # before serving); re-running it would double-process body-stripped data.

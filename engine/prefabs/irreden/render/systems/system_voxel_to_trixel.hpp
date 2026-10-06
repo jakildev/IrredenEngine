@@ -530,7 +530,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // dependency and reads the CURRENT frame's circles, not a frame-stale copy.
     Buffer *fogObserverBuf_ = nullptr;
     // Fog window gather scratch: the drained pending field chunks, the plan,
-    // and the RGBA8 upload strip. System ticks are serial, so one high-water
+    // and the RG32UI upload strip. System ticks are serial, so one high-water
     // set keeps the gather allocation-free across every fog canvas.
     IRPrefab::Fog::detail::WindowGatherScratch fogGather_;
     // The MAIN canvas's fog component, resolved + uploaded once per frame in
@@ -838,9 +838,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // cardinal store, so it skips the sort entirely. The flag
     // determines eligibility; current-frame GPU counts determine the sort work.
     void dispatchPerAxisCanvases(
-        C_PerAxisTrixelCanvases &axes,
-        C_CanvasFogOfWar *fog,
-        bool sortOverflowEntries
+        C_PerAxisTrixelCanvases &axes, C_CanvasFogOfWar *fog, bool sortOverflowEntries
     ) {
         IR_PROFILE_SCOPE("vs1_per_axis");
         // Fog cut-face / own-column-clip input for the per-axis rotation route
@@ -990,7 +988,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 // byte-identical) + the live observer buffer here, not a no-op
                 // placeholder. Without the live grid a rotating boundary object would
                 // render its hidden half as black hard-fog instead of clipping + cut.
-                fogTex->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+                fogTex->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
                 fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
                 distances->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
                 IRRender::device()->dispatchComputeIndirect(
@@ -1013,7 +1011,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             for (int axis = 0; axis < C_PerAxisTrixelCanvases::kAxisCount; ++axis) {
                 uploadAxisFrameData(axis, 3);
                 const std::ptrdiff_t indirectOffsetBytes = bindAxisListRegions(axis);
-                fogTex->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+                fogTex->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
                 fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
                 axes.axes_[axis].distances_.second->bindAsImage(
                     1,
@@ -1039,8 +1037,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                     dispatchSpan
                 );
             }
-            if (overflowCountLogEnabled_ &&
-                sortDispatches != lastOverflowSortDispatchesLogged_) {
+            if (overflowCountLogEnabled_ && sortDispatches != lastOverflowSortDispatchesLogged_) {
                 IRE_LOG_INFO(
                     "[overflow-sort] canonical-sort dispatches this rotating frame: "
                     "{} (storeTiesPossible={}, laggedOverflowCount={}, dispatchSpan={}, cap {}).",
@@ -1080,7 +1077,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 stage1Program_->use();
                 uploadAxisFrameData(axis, 1);
                 const std::ptrdiff_t indirectOffsetBytes = bindAxisListRegions(axis);
-                fogTex->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+                fogTex->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
                 fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
                 distances->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
                 IRRender::device()->dispatchComputeIndirect(
@@ -1104,7 +1101,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 // colour tap lands on the same faces. Slot 0 is the colour output here,
                 // so the fog grid binds on slot 3 (slots 1/2 = distance + entity-id).
                 // Same real-grid-or-placeholder choice as STAGE_1 above.
-                fogTex->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+                fogTex->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
                 fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
                 IRRender::device()->dispatchComputeIndirect(
                     perAxisIndirectBuf_,
@@ -1331,16 +1328,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             fogGather_,
             [texture](
                 const IRPrefab::Fog::detail::WindowUploadRect &rect,
-                std::span<const std::uint8_t> rows
+                std::span<const IRPrefab::Fog::FogWindowTexel> texels
             ) {
                 texture->subImage2D(
                     rect.texel_.x,
                     rect.texel_.y,
                     rect.size_.x,
                     rect.size_.y,
-                    PixelDataFormat::RGBA,
-                    PixelDataType::UNSIGNED_BYTE,
-                    rows.data()
+                    PixelDataFormat::RG_INTEGER,
+                    PixelDataType::UINT32,
+                    texels.data()
                 );
             }
         );
@@ -1989,7 +1986,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // is only consumed by STAGE_1/STAGE_2, which apply the world-column offset
         // the compact's model-column cull cannot).
         (fog != nullptr ? fog->getTexture() : fogCullPlaceholder_)
-            ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+            ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
         // Analytic vision-circle cull input: upload the CURRENT frame's circles
         // (FOG_TO_TRIXEL runs later, so its copy would be a frame stale) and bind
         // at slot 27. A column a live circle covers is kept even when its grid
@@ -2053,7 +2050,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             // (cutSectionFog), else the 1×1 all-visible placeholder (the clip
             // no-ops, byte-identical).
             (cutSectionFog != nullptr ? cutSectionFog->getTexture() : fogCullPlaceholder_)
-                ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+                ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
             fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
             triangleCanvasTextures.getTextureDistances()
                 ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
@@ -2153,7 +2150,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 // the per-dispatch pieces for Metal's per-encoder argument
                 // table (GL state persists across the program switch).
                 (cutSectionFog != nullptr ? cutSectionFog->getTexture() : fogCullPlaceholder_)
-                    ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+                    ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
                 fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
                 triangleCanvasTextures.getTextureDistances()
                     ->bindAsImage(1, TextureAccess::READ_ONLY, TextureFormat::R32I);
@@ -2213,7 +2210,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             // byte-identical). Metal needs both bound on this dispatch since the
             // kernel declares them.
             (cutSectionFog != nullptr ? cutSectionFog->getTexture() : fogCullPlaceholder_)
-                ->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RGBA8);
+                ->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
             fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
             {
                 IRRender::GpuSubStageScope gpuScope("voxelStage2");
@@ -2588,21 +2585,21 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             TextureKind::TEXTURE_2D,
             1,
             1,
-            TextureFormat::RGBA8,
+            TextureFormat::RG32UI,
             TextureWrap::CLAMP_TO_EDGE,
             TextureFilter::NEAREST
         );
         {
-            const std::array<std::uint8_t, 4> visiblePixel = {kFogStateVisible, 0u, 0u, 0u};
+            const IRPrefab::Fog::FogWindowTexel visibleTexel{kFogStateVisible, kFogChannelDefault};
             IRRender::getNamedResource<Texture2D>("FogCullVisiblePlaceholder")
                 ->subImage2D(
                     0,
                     0,
                     1,
                     1,
-                    PixelDataFormat::RGBA,
-                    PixelDataType::UNSIGNED_BYTE,
-                    visiblePixel.data()
+                    PixelDataFormat::RG_INTEGER,
+                    PixelDataType::UINT32,
+                    &visibleTexel
                 );
         }
 

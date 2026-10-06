@@ -35,11 +35,11 @@ class ScopedFogSaveRoot {
 
     /// Fog-layer persistence rooted at @p subdirectory of this root.
     IRWorld::FieldChunkDiskPersistence store(const std::string &subdirectory = "") const {
-        return *IRWorld::FieldChunkDiskPersistence::create(
-            (m_path / subdirectory).string(),
-            IRPrefab::Fog::kFogFieldLayer,
-            IRPrefab::Fog::kFogFieldBytesPerCell
-        );
+        return *IRPrefab::Fog::createFieldPersistence((m_path / subdirectory).string());
+    }
+
+    const std::filesystem::path &path() const {
+        return m_path;
     }
 
   private:

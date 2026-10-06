@@ -64,8 +64,9 @@ static void writeDispatchDims(
 }
 
 // Fog-of-war column cull. Mirrors c_voxel_visibility_compact.glsl. The
-// fog `.r` channel reads back in normalized space: unexplored 0.0, explored
-// ≈0.5, visible 1.0. The world fog canvas binds its camera-anchored fog window
+// fog `.r` lane is the state integer, decoded through fogTexelState:
+// unexplored 0.0, explored ≈0.5, visible 1.0; the `.g` channel mask is the
+// paint pass's concern. The world fog canvas binds its camera-anchored fog window
 // texture at [[texture(0)]]; every non-fog canvas binds a 1×1 all-visible
 // placeholder, so `get_width() <= 1` short-circuits the cull.
 constant float kFogExploredThreshold = 0.25f;
@@ -117,7 +118,7 @@ static int2 fogWindowTexel(int2 col, int2 origin, int2 fogSize) {
 // (visible → no cull); a column outside the window reads unexplored (true),
 // matching every other tap, so only a live circle keeps it.
 static bool fogColumnUnexplored(
-    texture2d<float, access::read> fog, constant FogObserverData& obs, int3 voxelPosRaw
+    texture2d<uint, access::read> fog, constant FogObserverData& obs, int3 voxelPosRaw
 ) {
     const int2 fogSize = int2(int(fog.get_width()), int(fog.get_height()));
     if (fogSize.x <= 1) {
@@ -128,7 +129,7 @@ static bool fogColumnUnexplored(
     if (fogCell.x < 0) {
         return true;
     }
-    return fog.read(uint2(fogCell)).r < kFogExploredThreshold;
+    return fogTexelState(fog.read(uint2(fogCell)).r) < kFogExploredThreshold;
 }
 
 // Safety margin (cells) — mirrors kCullSafetyCells in the GLSL: covers the
@@ -291,7 +292,7 @@ kernel void c_voxel_visibility_compact(
     device const uint* chunkVisible [[buffer(24)]],
     device uint* compactedVoxelIndices [[buffer(25)]],
     device atomic_uint* indirectParams [[buffer(26)]],
-    texture2d<float, access::read> canvasFogOfWar [[texture(0)]],
+    texture2d<uint, access::read> canvasFogOfWar [[texture(0)]],
     // Finest Hi-Z level for the per-voxel occlusion cull; the C++ binds it as an
     // image at unit 1. At texture(1) so it never aliases the fog image at
     // texture(0). Read only when frameData.occlusionCullMipCount > 0; else a

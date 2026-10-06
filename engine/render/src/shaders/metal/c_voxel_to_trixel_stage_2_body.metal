@@ -255,7 +255,7 @@ kernel void IR_STAGE2_KERNEL_NAME(
     texture2d<float, access::write> triangleCanvasColors [[texture(0)]],
     texture2d<int, access::write> triangleCanvasDistances [[texture(1)]],
     texture2d<uint, access::write> triangleCanvasEntityIds [[texture(2)]],
-    texture2d<float, access::read> canvasFogOfWar [[texture(3)]],
+    texture2d<uint, access::read> canvasFogOfWar [[texture(3)]],
     constant FogObserverData& fogObservers [[buffer(27)]],
     device atomic_uint* perAxisWinnerIds [[buffer(28)]],
     uint3 groupId [[threadgroup_position_in_grid]],

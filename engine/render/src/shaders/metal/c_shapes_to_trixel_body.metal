@@ -756,6 +756,29 @@ inline int findSurfaceDepth(
                                 yawC, yawS);
 }
 
+// Mirrors shapeBoxFaceSlot in c_shapes_to_trixel_body.glsl: the slot of the
+// box face the sample's view ray enters through, mapped to the store canvas's
+// cardinal slot order; -1 on a slab miss keeps the per-diamond slots.
+inline int shapeBoxFaceSlot(
+    int2 isoRel,
+    float3 halfSize,
+    float yawC,
+    float yawS,
+    int cardinalIndex
+) {
+    float dEntry;
+    float dExit;
+    float3 entryNormal;
+    if (!boxSurfaceIntervalYaw(float(isoRel.x), float(isoRel.y),
+                               halfSize + float3(0.5), yawC, yawS,
+                               dEntry, dExit, entryNormal)) {
+        return -1;
+    }
+    if (entryNormal.z != 0.0) return 2;
+    const int axis = (entryNormal.x != 0.0) ? 0 : 1;
+    return ((cardinalIndex & 1) != 0) ? 1 - axis : axis;
+}
+
 kernel void IR_SHAPE_KERNEL_NAME(
     constant ShapeProjectionData& frameData [[buffer(23)]],
     device const ShapeDescriptor* shapes [[buffer(20)]],
@@ -933,12 +956,18 @@ kernel void IR_SHAPE_KERNEL_NAME(
     // snapped integer origin. Smooth path: yawedIsoDistance of the subdivided
     // world surface point.
     int baseDepth;
+    // -1: each diamond keeps its own face index as its depth slot.
+    int boxFaceSlot = -1;
     if (smoothYaw && !latticeWalk) {
         const float3 viewOffset = isoToLocal3D(isoPixelRel, float(surfaceD));
         // worldOffset = R_z(+visualYaw) * viewOffset (view -> world).
         const float3 worldOffset = float3(yawC * viewOffset.x - yawS * viewOffset.y,
                                           yawS * viewOffset.x + yawC * viewOffset.y,
                                           viewOffset.z);
+        if (shape.shapeType == SHAPE_BOX && !hollow && !hasEntityRotation) {
+            boxFaceSlot = shapeBoxFaceSlot(isoPixelRel, paramsScaled.xyz * 0.5,
+                                           yawC, yawS, cardinalIndex);
+        }
         const float3 worldSurface = worldPos * float(sub) + worldOffset;
         // Continuous-yaw composite depth — mirror of the GLSL. Order by
         // yawedIsoDistance, the continuous-yaw metric the per-axis voxel scatter
@@ -1025,7 +1054,8 @@ kernel void IR_SHAPE_KERNEL_NAME(
 #endif
 
     for (int face = 0; face < 3; ++face) {
-        const int depthEncoded = encodeDepthWithFace(baseDepth, face);
+        const int depthEncoded = encodeDepthWithFace(
+            baseDepth, boxFaceSlot >= 0 ? boxFaceSlot : face);
         // mat2 D = faceDeformationMatrix(face, residualYaw) applied to the
         // un-yawed iso-pixel offset. Identity at residualYaw==0; otherwise
         // deforms the trixel pair geometrically. Smooth-yaw emits the

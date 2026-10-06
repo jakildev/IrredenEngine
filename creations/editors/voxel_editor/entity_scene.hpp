@@ -14,6 +14,8 @@
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/dense_bridge.hpp>
 
+#include "component_records.hpp"
+
 #include <charconv>
 #include <cstddef>
 #include <filesystem>
@@ -36,7 +38,11 @@ struct EditorPart {
     IRRender::LodLevel lodMin_ = IRRender::LodLevel::LOD_4;
     IRRender::LodLevel lodMax_ = IRRender::LodLevel::LOD_0;
     bool resident_ = false;
+    std::vector<ComponentRecord> components_;
 };
+
+// The root as a component-attach target; a part is its index.
+constexpr int kEntitySceneRootTarget = -1;
 
 struct EntitySceneResult {
     bool ok_ = false;
@@ -61,6 +67,23 @@ class EntityScene {
         return m_selected;
     }
 
+    IREntity::EntityId targetEntity(int target) const {
+        if (target == kEntitySceneRootTarget)
+            return m_root;
+        return target >= 0 && target < static_cast<int>(m_parts.size())
+                   ? m_parts[static_cast<std::size_t>(target)].entity_
+                   : IREntity::kNullEntity;
+    }
+
+    // Nullptr for a target that does not exist.
+    std::vector<ComponentRecord> *targetComponents(int target) {
+        if (target == kEntitySceneRootTarget)
+            return active() ? &m_rootComponents : nullptr;
+        return target >= 0 && target < static_cast<int>(m_parts.size())
+                   ? &m_parts[static_cast<std::size_t>(target)].components_
+                   : nullptr;
+    }
+
     IREntity::EntityId selectedEntity() const {
         return m_selected >= 0 && m_selected < static_cast<int>(m_parts.size())
                    ? m_parts[static_cast<std::size_t>(m_selected)].entity_
@@ -69,8 +92,7 @@ class EntityScene {
 
     void begin() {
         clear();
-        m_root = IREntity::createEntity(IRComponents::C_LocalTransform{IRMath::vec3(0.0f)});
-        applyTierOverride(m_root);
+        m_root = createRoot();
     }
 
     IREntity::EntityId addVoxelPart(
@@ -157,6 +179,7 @@ class EntityScene {
             IREntity::destroyTree(m_root);
         }
         m_root = IREntity::kNullEntity;
+        m_rootComponents.clear();
         m_parts.clear();
         m_selected = -1;
         m_nextPartId = 0;
@@ -173,6 +196,7 @@ class EntityScene {
         }
 
         IRPrefab::Prefab::PrefabDescription description;
+        description.components_ = describeComponents(m_rootComponents);
         description.parts_.reserve(m_parts.size());
         for (const EditorPart &editorPart : m_parts) {
             IRPrefab::Prefab::PrefabPartDescription part;
@@ -184,6 +208,7 @@ class EntityScene {
             part.lodMin_ = editorPart.lodMin_;
             part.lodMax_ = editorPart.lodMax_;
             part.resident_ = editorPart.resident_;
+            part.components_ = describeComponents(editorPart.components_);
 
             if (editorPart.kind_ == EditorPartKind::SHAPE) {
                 const auto &shape =
@@ -218,6 +243,7 @@ class EntityScene {
         return {true, {}};
     }
 
+    // A failed load leaves the live scene as it was.
     EntitySceneResult
     load(IRScript::LuaScript &script, const std::string &dir, const std::string &baseName) {
         const std::string manifestPath = IRUtility::joinPath(dir, baseName, ".prefab.lua");
@@ -245,7 +271,13 @@ class EntityScene {
             stagedVoxelSets.emplace_back(std::move(loaded.value_.dense_));
         }
 
-        begin();
+        // The replacement is built beside the live scene and takes its place
+        // only once every component factory has run: reading the manifest
+        // proves each factory exists, not that it accepts its fields.
+        const IREntity::EntityId stagedRoot = createRoot();
+        std::vector<EditorPart> stagedParts;
+        stagedParts.reserve(manifest.description_->parts_.size());
+        int stagedNextPartId = 0;
         for (std::size_t i = 0; i < manifest.description_->parts_.size(); ++i) {
             const IRPrefab::Prefab::PrefabPartDescription &description =
                 manifest.description_->parts_[i];
@@ -271,8 +303,8 @@ class EntityScene {
                     IRComponents::C_RotationMode{description.rotationMode_}
                 );
             }
-            IREntity::setParent(entity, m_root);
-            m_parts.push_back(
+            IREntity::setParent(entity, stagedRoot);
+            stagedParts.push_back(
                 EditorPart{
                     entity,
                     description.id_,
@@ -284,7 +316,7 @@ class EntityScene {
                     description.resident_
                 }
             );
-            applyBand(m_parts.back());
+            applyBand(stagedParts.back());
             applyTierOverride(entity);
             const std::string prefix = "part_";
             if (description.id_.starts_with(prefix)) {
@@ -294,15 +326,78 @@ class EntityScene {
                 const auto parsed =
                     std::from_chars(suffix.data(), suffix.data() + suffix.size(), numericId);
                 if (parsed.ec == std::errc{} && parsed.ptr == suffix.data() + suffix.size()) {
-                    m_nextPartId = IRMath::max(m_nextPartId, numericId + 1);
+                    stagedNextPartId = IRMath::max(stagedNextPartId, numericId + 1);
                 }
             }
         }
+
+        std::string componentErrors;
+        std::vector<ComponentRecord> stagedRootComponents = restoreComponents(
+            script,
+            stagedRoot,
+            manifest.description_->components_,
+            componentErrors
+        );
+        for (std::size_t i = 0; i < stagedParts.size(); ++i) {
+            stagedParts[i].components_ = restoreComponents(
+                script,
+                stagedParts[i].entity_,
+                manifest.description_->parts_[i].components_,
+                componentErrors
+            );
+        }
+        if (!componentErrors.empty()) {
+            IREntity::destroyTree(stagedRoot);
+            return {false, componentErrors};
+        }
+
+        clear();
+        m_root = stagedRoot;
+        m_rootComponents = std::move(stagedRootComponents);
+        m_parts = std::move(stagedParts);
+        m_nextPartId = stagedNextPartId;
         select(0, false);
         return {true, {}};
     }
 
   private:
+    static std::vector<IRPrefab::Prefab::PrefabComponentDescription>
+    describeComponents(const std::vector<ComponentRecord> &records) {
+        std::vector<IRPrefab::Prefab::PrefabComponentDescription> described;
+        described.reserve(records.size());
+        for (const ComponentRecord &record : records)
+            described.push_back({record.name_, componentLiteral(record)});
+        return described;
+    }
+
+    // Applies @p described to @p entity and returns the records that attached;
+    // each one that did not appends its reason to @p errors.
+    static std::vector<ComponentRecord> restoreComponents(
+        IRScript::LuaScript &script,
+        IREntity::EntityId entity,
+        const std::vector<IRPrefab::Prefab::PrefabComponentDescription> &described,
+        std::string &errors
+    ) {
+        std::vector<ComponentRecord> records;
+        records.reserve(described.size());
+        for (const IRPrefab::Prefab::PrefabComponentDescription &component : described) {
+            ComponentRecord record = makeComponentRecord(script, component.name_);
+            if (auto error = applyComponentLiteral(script, entity, record, component.fields_)) {
+                errors += (errors.empty() ? "" : "; ") + *error;
+                continue;
+            }
+            records.push_back(std::move(record));
+        }
+        return records;
+    }
+
+    IREntity::EntityId createRoot() const {
+        const IREntity::EntityId root =
+            IREntity::createEntity(IRComponents::C_LocalTransform{IRMath::vec3(0.0f)});
+        applyTierOverride(root);
+        return root;
+    }
+
     IREntity::EntityId appendPart(IREntity::EntityId entity, std::string id, EditorPartKind kind) {
         IREntity::setParent(entity, m_root);
         m_parts.push_back(EditorPart{entity, std::move(id), kind});
@@ -352,6 +447,7 @@ class EntityScene {
     }
 
     IREntity::EntityId m_root = IREntity::kNullEntity;
+    std::vector<ComponentRecord> m_rootComponents;
     std::vector<EditorPart> m_parts;
     int m_selected = -1;
     int m_nextPartId = 0;

@@ -25,12 +25,15 @@
 #include <irreden/script/lua_widget_bindings.hpp>
 #include <irreden/script/lua_world_snapshot_bindings.hpp>
 #include <irreden/script/prefab_api.hpp>
+#include <irreden/script/prefab_component_factory.hpp>
 #include <irreden/voxel/components/component_bind_points.hpp>
 #include <irreden/voxel/components/component_joint_hierarchy.hpp>
 #include <irreden/voxel/rig_bridge.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <deque>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -72,6 +75,59 @@ std::deque<std::string> &luaFieldBindingNames() {
 // stored natively but cannot be modifier targets.
 bool isModifierTargetable(LuaFieldType t) {
     return t == LuaFieldType::INT32 || t == LuaFieldType::FLOAT || t == LuaFieldType::BOOL;
+}
+
+// The values writeFieldAt stores for `type`; anything else it would skip.
+bool fieldAcceptsValue(LuaFieldType type, const sol::object &value) {
+    switch (type) {
+    case LuaFieldType::INT32:
+        return value.get_type() == sol::type::number &&
+               value.as<double>() == IRMath::floor(value.as<double>());
+    case LuaFieldType::FLOAT:
+        return value.get_type() == sol::type::number;
+    case LuaFieldType::BOOL:
+        return value.get_type() == sol::type::boolean;
+    case LuaFieldType::STRING:
+        return value.get_type() == sol::type::string;
+    case LuaFieldType::FUNCTION:
+        return value.get_type() == sol::type::function;
+    case LuaFieldType::TABLE:
+        return value.get_type() == sol::type::table;
+    case LuaFieldType::VEC3:
+        return value.is<IRMath::vec3>() || value.get_type() == sol::type::table;
+    case LuaFieldType::IVEC3:
+        return value.is<IRMath::ivec3>() || value.get_type() == sol::type::table;
+    case LuaFieldType::VEC4:
+        return value.is<IRMath::vec4>() || value.get_type() == sol::type::table;
+    }
+    return false;
+}
+
+// Rejects a prefab `components` entry for a Lua-typed component that names a
+// field the schema lacks or gives a field a value writeFieldAt would drop.
+IRPrefab::Prefab::ComponentFieldValidator
+makeLuaTypedFieldValidator(std::string componentName, std::vector<LuaTypedComponentField> fields) {
+    return [componentName = std::move(componentName),
+            fields = std::move(fields)](const sol::table &values) -> std::optional<std::string> {
+        for (const auto &kv : values) {
+            const sol::optional<std::string> key = kv.first.as<sol::optional<std::string>>();
+            if (!key) {
+                return "'" + componentName + "' takes string field names";
+            }
+            const auto field =
+                std::find_if(fields.begin(), fields.end(), [&key](const LuaTypedComponentField &f) {
+                    return f.name_ == *key;
+                });
+            if (field == fields.end()) {
+                return "'" + componentName + "' has no field '" + *key + "'";
+            }
+            if (!fieldAcceptsValue(field->type_, kv.second)) {
+                return "'" + componentName + "." + *key + "' expects a " + toString(field->type_) +
+                       " value";
+            }
+        }
+        return std::nullopt;
+    };
 }
 
 LuaFieldType inferTypeFromDefault(const sol::object &value) {
@@ -237,6 +293,19 @@ void LuaScript::attachComponentFromLua(
         "any other C++-bound component must be attached from C++ via the templated "
         "setComponent<T>(entity, value)."
     };
+}
+
+sol::object
+LuaScript::readLuaTypedComponent(IREntity::EntityId entity, IREntity::ComponentId componentId) {
+    if (m_luaTypedComponentIds.find(componentId) == m_luaTypedComponentIds.end()) {
+        return sol::make_object(m_lua, sol::lua_nil);
+    }
+    auto [data, row] = IREntity::getEntityManager().getComponentDataAndRow(entity, componentId);
+    if (!data) {
+        return sol::make_object(m_lua, sol::lua_nil);
+    }
+    auto *typed = static_cast<IComponentDataLuaTyped *>(data);
+    return sol::make_object(m_lua, typed->readRowAsTable(row, m_lua));
 }
 
 void LuaScript::requireLuaTypedComponent(
@@ -464,6 +533,10 @@ LuaScript::~LuaScript() {
     // m_systemManager declaration order, reverse-destructed), so this
     // map is the last surviving owner of those refs.
     m_luaSystemTicks.clear();
+    // The factories IRComponent.register installed capture this script.
+    for (const std::string &name : m_prefabFactoryNames) {
+        IRPrefab::Prefab::unregisterComponentFactory(name);
+    }
 }
 
 void LuaScript::scriptFile(const char *filename) {
@@ -598,6 +671,16 @@ void LuaScript::bindLuaDrivenEcs() {
         for (const auto &f : schema) {
             info.fields_.push_back(LuaTypedComponentField{f.name_, f.type_});
         }
+        // A manifest's `components = { <name> = { ... } }` spawns this component
+        // through the same attach path as `addLuaComponent`.
+        IRPrefab::Prefab::registerComponentFactory(
+            componentName,
+            [this, componentId](IREntity::EntityId entity, const sol::table &fields) {
+                attachComponentFromLua(entity, componentId, fields);
+            },
+            makeLuaTypedFieldValidator(componentName, info.fields_)
+        );
+        m_prefabFactoryNames.push_back(componentName);
 
         sol::table handle = m_lua.create_table();
         handle["typeName"] = componentName;
@@ -701,12 +784,7 @@ void LuaScript::bindLuaDrivenEcs() {
         [this](IRScript::LuaEntity entity, sol::table componentDef) -> sol::object {
         const IREntity::ComponentId componentId = componentDef.get<lua_Integer>("componentId");
         requireLuaTypedComponent(componentId, "getLuaComponent");
-        auto &em = IREntity::getEntityManager();
-        auto [data, row] = em.getComponentDataAndRow(entity.entity, componentId);
-        if (!data)
-            return sol::make_object(m_lua, sol::lua_nil);
-        auto *typed = static_cast<IComponentDataLuaTyped *>(data);
-        return sol::make_object(m_lua, typed->readRowAsTable(row, m_lua));
+        return readLuaTypedComponent(entity.entity, componentId);
     };
 
     m_lua["IREntity"]["removeLuaComponent"] = [](IRScript::LuaEntity entity,
