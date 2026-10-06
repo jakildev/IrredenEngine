@@ -117,12 +117,14 @@ layout(std430, binding = 26) buffer IndirectDispatchParamsBuf {
 // single-list and the per-axis appends, so it never rasterizes and FOG_TO_TRIXEL has no pixel
 // of it to hard-black. The `imageSize().x <= 1` short-circuit makes the placeholder path a true
 // no-op.
-layout(rgba8, binding = 0) readonly uniform image2D canvasFogOfWar;
+layout(rg32ui, binding = 0) readonly uniform uimage2D canvasFogOfWar;
 
-// Mirrors C_CanvasFogOfWar + c_fog_to_trixel.glsl. The fog `.r` channel reads
-// back in normalized space: unexplored 0.0, explored ≈0.5, visible 1.0 — so
-// `state < kFogExploredThreshold` selects ONLY unexplored columns. Explored
-// columns still rasterize (FOG_TO_TRIXEL desaturates them as "memory").
+// Mirrors C_CanvasFogOfWar + c_fog_to_trixel.glsl. The fog `.r` lane is the
+// state integer; decoded through fogTexelState (unexplored 0.0, explored
+// ≈0.5, visible 1.0) `state < kFogExploredThreshold` selects ONLY unexplored
+// columns. Explored columns still rasterize (FOG_TO_TRIXEL desaturates them
+// as "memory"). The `.g` channel mask is the paint pass's concern: this cull
+// stays a channel-blind conservative superset.
 const float kFogExploredThreshold = 0.25;
 
 // Live analytic fog vision circles (aliases binding 27; uploaded by VOXEL_TO_TRIXEL_STAGE_1
@@ -179,7 +181,7 @@ bool fogColumnUnexplored(ivec3 voxelPosRaw) {
     if (fogCell.x < 0) {
         return true;
     }
-    return imageLoad(canvasFogOfWar, fogCell).r < kFogExploredThreshold;
+    return fogTexelState(imageLoad(canvasFogOfWar, fogCell).r) < kFogExploredThreshold;
 }
 
 // All six face-occlusion bits of the voxel flags byte (bits [2..7], the

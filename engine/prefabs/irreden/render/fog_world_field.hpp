@@ -4,7 +4,16 @@
 // The CPU authority for fog-of-war state: one cell per integer world column,
 // unbounded, stored in 32×32 field chunks. GPU-free, so tests construct it
 // without a render device. Contract: docs/design/fog-of-war-world-field.md
-// (D1–D5, D11, D13).
+// (D1–D5, D8, D11, D13, D14).
+//
+// A cell carries a state byte (unexplored / explored / visible), a 32-bit
+// channel mask (absent = `kFogChannelDefault`) and, under the DECAY policy,
+// the simulation time it was last explored. The creation owns the clock
+// (`setExploredTimeMs`); nothing here reads wall time. An EXPLORED cell whose
+// mask intersects the policy mask returns to UNEXPLORED exactly when
+// `now - lastExplored >= duration`; the persistent policy keeps it forever.
+// Every eligible resident cell is expired when the clock advances, and an
+// evicted cell is expired as its region reloads, before any reader sees it.
 //
 // With persistence set, every region (16×16 field chunks) is resident or not.
 // The first read, write or gather expansion that touches a non-resident region
@@ -13,28 +22,32 @@
 // persistence-dirty; a load does not. CPU access sets the region's access bit,
 // which `evict` reads.
 //
-// Residency is serial (D13): every probe, load, write and access bit runs on
-// the main thread. A `PARALLEL_FOR` tick reads through `peekCell` only, after
-// its system's `beginTick` made the regions it will read resident with
-// `touchCell`.
+// Residency is serial (D13): every probe, load, write, expiry and access bit
+// runs on the main thread. A `PARALLEL_FOR` tick reads through `peekCell`
+// only, after its system's `beginTick` made the regions it will read resident
+// with `touchCell`.
 //
-// Beside the persistent cells sits the transient vision-tier layer (D8):
-// discs stamped by vision sources past the analytic cap, cleared with the
-// vision set. It never persists, probes, evicts or sets an access bit, and
-// every read (`getCell`, `peekCell`, the gather) takes the per-cell maximum of
-// both layers.
+// Beside the persistent cells sits the transient vision-tier layer (D8): the
+// union of the channel masks of every source past the analytic cap whose disc
+// covers the cell, cleared with the vision set. It never persists, probes,
+// evicts or sets an access bit. A cell reads visible through it only when that
+// union intersects the cell's own mask, resolved at read and gather time.
 
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_profile.hpp>
+#include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/spatial/chunked_field.hpp>
 #include <irreden/system/ir_assert_main_thread.hpp>
 #include <irreden/world/field_chunk_persistence.hpp>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <limits>
 #include <optional>
 #include <span>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -52,13 +65,48 @@ namespace IRPrefab::Fog {
 constexpr int kFogRevealRadiusMax = 1024;
 constexpr int kFogFieldBytesPerCell = 1;
 constexpr const char *kFogFieldLayer = "fog";
+/// The fog layer's auxiliary region payloads: per-cell channel masks
+/// (little-endian uint32) and last-exploration times (little-endian uint64
+/// milliseconds), each written only for chunks that hold a non-default value.
+constexpr std::array<char, 4> kFogFieldMaskTag{'F', 'M', 'A', 'S'};
+constexpr std::array<char, 4> kFogFieldAgeTag{'F', 'A', 'G', 'E'};
+constexpr int kFogFieldMaskBytesPerCell = 4;
+constexpr int kFogFieldAgeBytesPerCell = 8;
+/// Simulation clock values and decay durations are exact integers in
+/// `[0, kFogTimeMsMax]`, the range a Lua number carries exactly.
+constexpr std::uint64_t kFogTimeMsMax = (std::uint64_t{1} << 53) - 1;
+
+/// What happens to EXPLORED memory: kept indefinitely, or returned to
+/// UNEXPLORED after a creation-owned duration on the creation's clock.
+enum class ExploredPolicy : int { PERSISTENT = 0, DECAY = 1 };
+
+struct ExploredPolicySettings {
+    ExploredPolicy policy_ = ExploredPolicy::PERSISTENT;
+    std::uint64_t durationMs_ = 0;
+    std::uint32_t channels_ = IRComponents::kFogChannelDefault;
+
+    bool operator==(const ExploredPolicySettings &) const = default;
+};
+
+/// The fog layer's region persistence under @p saveRoot; `nullopt` for an
+/// empty root.
+inline std::optional<IRWorld::FieldChunkDiskPersistence>
+createFieldPersistence(std::string saveRoot) {
+    return IRWorld::FieldChunkDiskPersistence::create(
+        std::move(saveRoot),
+        kFogFieldLayer,
+        kFogFieldBytesPerCell,
+        {IRWorld::FieldRegionAuxSchema{kFogFieldMaskTag, kFogFieldMaskBytesPerCell},
+         IRWorld::FieldRegionAuxSchema{kFogFieldAgeTag, kFogFieldAgeBytesPerCell}}
+    );
+}
 
 /// The camera depth slab the GPU window is exact for: matter at
 /// `z ∈ [-kFogWindowDepthHalfBand, kFogWindowDepthHalfBand)` that lands
 /// anywhere on the canvas has its column inside the window.
 constexpr int kFogWindowDepthHalfBand = 128;
 /// Window edges are multiples of this (two field chunks) and never exceed
-/// `kFogWindowEdgeMax` (16 MiB of RGBA8); a capped window over-fogs its
+/// `kFogWindowEdgeMax` (128 MiB of RG32UI); a capped window over-fogs its
 /// periphery.
 constexpr int kFogWindowEdgeQuantum = 64;
 constexpr int kFogWindowEdgeMax = 4096;
@@ -68,8 +116,21 @@ constexpr int kFogWindowSnapMargin = 33;
 /// Field chunks the eviction keep rectangle extends past the window.
 constexpr int kFogResidentMarginChunks = 4;
 
-/// Resident counts now; probes, loads, saves and evictions since the
-/// previous `WorldField::stats()` call.
+/// One texel of the GPU window: the effective state byte widened to 32 bits
+/// (`max(persistent, transient)`) and the cell's exact channel mask. The
+/// no-fog placeholder holds `(kFogStateVisible, kFogChannelDefault)`; a
+/// column outside the window reads `(kFogStateUnexplored, kFogChannelDefault)`
+/// in every shader tap.
+struct FogWindowTexel {
+    std::uint32_t state_ = IRComponents::kFogStateUnexplored;
+    std::uint32_t channels_ = IRComponents::kFogChannelDefault;
+
+    bool operator==(const FogWindowTexel &) const = default;
+};
+static_assert(sizeof(FogWindowTexel) == 8, "the fog window is RG32UI: two 32-bit lanes");
+
+/// Resident counts now; probes, loads, saves, evictions and expired cells
+/// since the previous `WorldField::stats()` call.
 struct WorldFieldStats {
     int residentRegions_ = 0;
     int residentChunks_ = 0;
@@ -77,16 +138,19 @@ struct WorldFieldStats {
     int loads_ = 0;
     int saves_ = 0;
     int evictions_ = 0;
+    int expired_ = 0;
 };
 
 class WorldField {
   public:
     using Cells = IRPrefab::Spatial::ChunkedField2D<std::uint8_t>;
+    using MaskCells = IRPrefab::Spatial::ChunkedField2D<std::uint32_t>;
+    using AgeCells = IRPrefab::Spatial::ChunkedField2D<std::uint64_t>;
 
     /// False once any field chunk is present: a late root would shadow disk
     /// state, and the field never merges.
     bool setPersistence(IRWorld::FieldChunkDiskPersistence persistence) {
-        if (m_cells.chunkCount() != 0) {
+        if (anyChunkPresent()) {
             return false;
         }
         m_persistence.emplace(std::move(persistence));
@@ -98,15 +162,68 @@ class WorldField {
         return m_persistence.has_value();
     }
 
+    /// Selects the explored-state policy. Initialization-only: once the field
+    /// holds a cell or a region record, only a repeat of the current settings
+    /// is accepted; `clear()` permits reconfiguration. DECAY requires a
+    /// duration in `[1, kFogTimeMsMax]`, PERSISTENT one in `[0, kFogTimeMsMax]`.
+    /// A rejected call changes nothing.
+    bool setExploredPolicy(
+        ExploredPolicy policy,
+        std::uint64_t durationMs,
+        std::uint32_t channels = IRComponents::kFogChannelDefault
+    ) {
+        if (policy != ExploredPolicy::PERSISTENT && policy != ExploredPolicy::DECAY) {
+            return false;
+        }
+        if (durationMs > kFogTimeMsMax || (policy == ExploredPolicy::DECAY && durationMs == 0)) {
+            return false;
+        }
+        const ExploredPolicySettings requested{policy, durationMs, channels};
+        if (requested == m_policy) {
+            return true;
+        }
+        if (anyChunkPresent() || !m_regions.empty()) {
+            return false;
+        }
+        m_policy = requested;
+        return true;
+    }
+
+    ExploredPolicySettings exploredPolicy() const {
+        return m_policy;
+    }
+
+    bool decays() const {
+        return m_policy.policy_ == ExploredPolicy::DECAY;
+    }
+
+    /// Advances the simulation clock to @p nowMs, expiring every resident
+    /// eligible EXPLORED cell that is due under DECAY. Equal time is a no-op;
+    /// a backwards or out-of-range time is rejected without mutation. Serial.
+    bool setExploredTimeMs(std::uint64_t nowMs) {
+        if (nowMs > kFogTimeMsMax || nowMs < m_nowMs) {
+            return false;
+        }
+        if (nowMs == m_nowMs) {
+            return true;
+        }
+        IR_ASSERT_MAIN_THREAD();
+        m_nowMs = nowMs;
+        if (decays()) {
+            expireDue();
+        }
+        return true;
+    }
+
+    std::uint64_t exploredTimeMs() const {
+        return m_nowMs;
+    }
+
     /// `max(persistent, transient)`; absent cells read `kFogStateUnexplored`.
     /// Not const: the read can load the cell's region.
     std::uint8_t getCell(IRMath::ivec2 cell) {
         touchRegion(regionOfCell(cell), true);
-        std::uint8_t state = IRComponents::kFogStateUnexplored;
-        std::uint8_t transient = IRComponents::kFogStateUnexplored;
-        m_cells.getCell(cell, state);
-        m_transient.getCell(cell, transient);
-        return IRMath::max(state, transient);
+        return composeCell(cell);
     }
 
     /// `max(persistent, transient)` over the layers whose field chunk holding
@@ -114,14 +231,23 @@ class WorldField {
     /// never sets the access bit, so a fixture can observe residency without
     /// changing what the next eviction drops.
     std::optional<std::uint8_t> peekCell(IRMath::ivec2 cell) const {
-        std::uint8_t state = IRComponents::kFogStateUnexplored;
-        std::uint8_t transient = IRComponents::kFogStateUnexplored;
-        const bool persistentPresent = m_cells.getCell(cell, state);
-        const bool transientPresent = m_transient.getCell(cell, transient);
-        if (!persistentPresent && !transientPresent) {
+        const IRMath::ivec2 chunk = IRPrefab::Spatial::fieldChunkOf(cell);
+        if (m_cells.findChunk(chunk) == nullptr && m_transient.findChunk(chunk) == nullptr) {
             return std::nullopt;
         }
-        return IRMath::max(state, transient);
+        return composeCell(cell);
+    }
+
+    /// The channel mask of @p cell; absent metadata reads
+    /// `kFogChannelDefault`. Loads the cell's region.
+    std::uint32_t getCellChannels(IRMath::ivec2 cell) {
+        touchRegion(regionOfCell(cell), true);
+        return cellChannels(cell);
+    }
+
+    /// The resident channel mask of @p cell (`peekCell`'s discipline).
+    std::uint32_t peekCellChannels(IRMath::ivec2 cell) const {
+        return cellChannels(cell);
     }
 
     /// Makes @p cell's region resident and sets its access bit, as `getCell`
@@ -138,9 +264,14 @@ class WorldField {
     }
 
     /// Writes the persistent layer only: under a transient disc the cell
-    /// still reads visible.
+    /// still reads visible. An EXPLORED write under DECAY records the clock
+    /// as the cell's exploration time even when the state byte is unchanged;
+    /// any other state clears it. Returns whether the state changed.
     bool setCell(IRMath::ivec2 cell, std::uint8_t state) {
         RegionRecord *record = touchRegion(regionOfCell(cell), true);
+        if (decays() && writeAge(cell, state)) {
+            markPersistenceDirty(record);
+        }
         if (state == IRComponents::kFogStateUnexplored &&
             m_cells.findChunk(IRPrefab::Spatial::fieldChunkOf(cell)) == nullptr) {
             return false;
@@ -153,57 +284,94 @@ class WorldField {
     }
 
     /// Writes @p state to @p count cells along +x from @p firstCell and
-    /// returns the changed-cell count. Requires `count >= 0` and the run
-    /// representable in int32.
+    /// returns the changed-cell count, with `setCell`'s age bookkeeping.
+    /// Requires `count >= 0` and the run representable in int32.
     int fillRow(IRMath::ivec2 firstCell, int count, std::uint8_t state) {
-        if (!m_persistence.has_value()) {
-            return m_cells.fillRow(firstCell, count, state);
-        }
         int changed = 0;
-        int x = firstCell.x;
-        int remaining = count;
-        while (remaining > 0) {
-            const IRMath::ivec2 cell{x, firstCell.y};
-            const int regionLocalX = cell.x & (kRegionEdgeCells - 1);
-            const int run = IRMath::min(remaining, kRegionEdgeCells - regionLocalX);
-            RegionRecord *record = touchRegion(regionOfCell(cell), true);
-            const int runChanged = m_cells.fillRow(cell, run, state);
-            if (runChanged > 0) {
-                markPersistenceDirty(record);
-            }
-            changed += runChanged;
-            remaining -= run;
-            if (remaining > 0) {
-                x += run;
+        forEachRegionRun(firstCell, count, [&](IRMath::ivec2 runFirst, int run) {
+            changed +=
+                writeAdmittedRun(touchRegion(regionOfCell(runFirst), true), runFirst, run, state);
+        });
+        return changed;
+    }
+
+    /// Replaces @p cell's channel mask and returns whether it changed. Under
+    /// DECAY the cell's pending expiry is resolved under the old mask first,
+    /// then under the new one, so removing a bit never resurrects expired
+    /// memory and a newly eligible old cell expires at once. The mask does not
+    /// refresh the cell's age. Loads the cell's region.
+    bool setCellChannels(IRMath::ivec2 cell, std::uint32_t channels) {
+        RegionRecord *record = touchRegion(regionOfCell(cell), true);
+        if (decays()) {
+            expireCellIfDue(cell);
+        }
+        const std::uint32_t encoded = channels ^ IRComponents::kFogChannelDefault;
+        const IRMath::ivec2 chunk = IRPrefab::Spatial::fieldChunkOf(cell);
+        bool changed = false;
+        if (encoded != 0 || m_masks.findChunk(chunk) != nullptr) {
+            changed = m_masks.setCell(cell, encoded);
+        }
+        if (changed) {
+            markPersistenceDirty(record);
+        }
+        if (decays()) {
+            std::uint8_t state = IRComponents::kFogStateUnexplored;
+            if (m_cells.getCell(cell, state) && state == IRComponents::kFogStateExplored) {
+                noteDecayCandidate(cell);
+                expireCellIfDue(cell);
             }
         }
         return changed;
     }
 
     /// Marks every cell whose centre lies within @p radius of @p centre
-    /// (`dx² + dy² <= r²`) visible and returns the changed-cell count. The
-    /// radius clamps to `kFogRevealRadiusMax`; the part of the disc beyond the
-    /// int32 range is skipped. Cells outside the disc are never downgraded.
-    int revealRadius(IRMath::ivec2 centre, int radius) {
+    /// (`dx² + dy² <= r²`) and whose mask intersects @p channels visible, and
+    /// returns the changed-cell count. The radius clamps to
+    /// `kFogRevealRadiusMax`; the part of the disc beyond the int32 range is
+    /// skipped. Cells outside the disc are never downgraded.
+    int revealRadius(
+        IRMath::ivec2 centre, int radius, std::uint32_t channels = IRComponents::kFogChannelDefault
+    ) {
         if (radius < 0) {
             return 0;
         }
         const std::int64_t r = IRMath::min(radius, kFogRevealRadiusMax);
         int changed = 0;
         forEachDiscRow(centre, r, r * r, [&](IRMath::ivec2 firstCell, int count) {
-            changed += fillRow(firstCell, count, IRComponents::kFogStateVisible);
+            changed += fillRowAdmitted(firstCell, count, channels, IRComponents::kFogStateVisible);
         });
         return changed;
     }
 
-    /// Stamps the vision-tier disc of a source at world point @p centre into
-    /// the transient layer: every cell whose centre lies within @p radius of
-    /// `roundHalfUp(centre)` (`dx² + dy² <= radius²`, the `revealRadius`
-    /// metric) reads visible until `clearTransient`. The radius clamps to
-    /// `kFogRevealRadiusMax`; a non-positive one stamps nothing. Returns the
-    /// changed-cell count.
-    int stampTransientDisc(IRMath::vec2 centre, float radius) {
-        if (!(radius > 0.0f)) {
+    /// Authors explored memory: every cell of the disc (`revealRadius`'s
+    /// metric) whose mask intersects @p channels and is not VISIBLE becomes
+    /// EXPLORED, refreshing its exploration time; VISIBLE cells are retained.
+    /// Returns the changed-cell count (a refresh alone is not a change).
+    int exploreRadius(
+        IRMath::ivec2 centre, int radius, std::uint32_t channels = IRComponents::kFogChannelDefault
+    ) {
+        if (radius < 0) {
+            return 0;
+        }
+        const std::int64_t r = IRMath::min(radius, kFogRevealRadiusMax);
+        int changed = 0;
+        forEachDiscRow(centre, r, r * r, [&](IRMath::ivec2 firstCell, int count) {
+            changed += fillRowAdmitted(firstCell, count, channels, IRComponents::kFogStateExplored);
+        });
+        return changed;
+    }
+
+    /// Stamps the vision-tier disc of a source carrying @p channels at world
+    /// point @p centre into the transient layer: every cell whose centre lies
+    /// within @p radius of `roundHalfUp(centre)` (`dx² + dy² <= radius²`, the
+    /// `revealRadius` metric) gains those bits until `clearTransient`, and
+    /// reads visible while they intersect its own mask. The radius clamps to
+    /// `kFogRevealRadiusMax`; a non-positive one or a zero mask stamps
+    /// nothing. Returns the changed-cell count.
+    int stampTransientDisc(
+        IRMath::vec2 centre, float radius, std::uint32_t channels = IRComponents::kFogChannelDefault
+    ) {
+        if (!(radius > 0.0f) || channels == 0u) {
             return 0;
         }
         const float clamped = IRMath::min(radius, static_cast<float>(kFogRevealRadiusMax));
@@ -212,7 +380,7 @@ class WorldField {
         const auto rowRadius = static_cast<std::int64_t>(IRMath::floor(clamped));
         int changed = 0;
         forEachDiscRow(cell, rowRadius, radiusSquared, [&](IRMath::ivec2 firstCell, int count) {
-            changed += m_transient.fillRow(firstCell, count, IRComponents::kFogStateVisible);
+            changed += m_transient.orRow(firstCell, count, channels);
         });
         return changed;
     }
@@ -223,11 +391,16 @@ class WorldField {
         m_transient.clear();
     }
 
-    /// Resets every persistent cell to unexplored; the transient layer is the
-    /// vision set's and survives. With persistence it also deletes the layer's
-    /// region files and forgets every region, so the next access probes again.
+    /// Resets every persistent cell to unexplored and drops all cell metadata;
+    /// the transient layer is the vision set's and survives, and the clock and
+    /// policy stand (the policy may now be reconfigured). With persistence it
+    /// also deletes the layer's region files and forgets every region, so the
+    /// next access probes again.
     void clear() {
         m_cells.clear();
+        m_masks.clear();
+        m_ages.clear();
+        m_decayCandidates.clear();
         if (!m_persistence.has_value()) {
             return;
         }
@@ -287,7 +460,11 @@ class WorldField {
                 IRWorld::FieldChunkDiskPersistence::regionFirstChunk(region);
             for (int ly = 0; ly < IRWorld::kFieldRegionEdgeChunks; ++ly) {
                 for (int lx = 0; lx < IRWorld::kFieldRegionEdgeChunks; ++lx) {
-                    m_cells.eraseChunk(firstChunk + IRMath::ivec2{lx, ly});
+                    const IRMath::ivec2 chunk = firstChunk + IRMath::ivec2{lx, ly};
+                    m_cells.eraseChunk(chunk);
+                    m_masks.eraseChunk(chunk);
+                    m_ages.eraseChunk(chunk);
+                    m_decayCandidates.erase(IRPrefab::Spatial::packFieldChunkKey(chunk));
                 }
             }
             m_regions.erase(key);
@@ -305,26 +482,47 @@ class WorldField {
         return m_cells.findChunk(chunkCoord);
     }
 
-    /// The transient layer's field chunk, or null when absent. Invalidated by
-    /// any later stamp or `clearTransient`.
-    const Cells::FieldChunk *findTransientChunk(IRMath::ivec2 chunkCoord) const {
+    /// The transient layer's field chunk of source-mask unions, or null when
+    /// absent. Invalidated by any later stamp or `clearTransient`.
+    const MaskCells::FieldChunk *findTransientChunk(IRMath::ivec2 chunkCoord) const {
         return m_transient.findChunk(chunkCoord);
     }
 
-    /// Replaces @p out with the field chunks either layer changed since the
-    /// previous call (sorted, unique) and refreshes their summaries. The only
-    /// drain of the pending set; an undrained field grows it. The caller retains
-    /// capacity for the largest union of consecutive calls' changed chunks, so
-    /// a repeating workload is warm only after every transition has run.
+    /// The channel-mask field chunk (cells store `mask ^ kFogChannelDefault`,
+    /// so an absent chunk or a zero cell is the default mask), or null when
+    /// absent. The region is the one `findChunkForGather` just made resident.
+    const MaskCells::FieldChunk *findMaskChunk(IRMath::ivec2 chunkCoord) const {
+        return m_masks.findChunk(chunkCoord);
+    }
+
+    /// Replaces @p out with the field chunks any layer the window shows
+    /// changed since the previous call (sorted, unique) and refreshes their
+    /// summaries. The only drain of the pending set; an undrained field grows
+    /// it. The caller retains capacity for the largest union of consecutive
+    /// calls' changed chunks, so a repeating workload is warm only after every
+    /// transition has run.
     void consumePending(std::vector<IRPrefab::Spatial::FieldChunkKey> &out) {
         m_cells.dirtyKeys(out);
         m_cells.update();
-        if (!m_transient.hasDirtyKeys()) {
+        bool merged = false;
+        if (m_transient.hasDirtyKeys()) {
+            m_transient.dirtyKeys(m_keysScratch);
+            m_transient.update();
+            out.insert(out.end(), m_keysScratch.begin(), m_keysScratch.end());
+            merged = true;
+        }
+        if (m_masks.hasDirtyKeys()) {
+            m_masks.dirtyKeys(m_keysScratch);
+            m_masks.update();
+            out.insert(out.end(), m_keysScratch.begin(), m_keysScratch.end());
+            merged = true;
+        }
+        if (m_ages.hasDirtyKeys()) {
+            m_ages.update();
+        }
+        if (!merged) {
             return;
         }
-        m_transient.dirtyKeys(m_transientKeysScratch);
-        m_transient.update();
-        out.insert(out.end(), m_transientKeysScratch.begin(), m_transientKeysScratch.end());
         std::sort(out.begin(), out.end());
         out.erase(std::unique(out.begin(), out.end()), out.end());
     }
@@ -337,9 +535,18 @@ class WorldField {
         return result;
     }
 
+    /// Field chunks holding channel masks or exploration times, for memory
+    /// accounting.
+    std::size_t metadataChunkCount() const {
+        return m_masks.chunkCount() + m_ages.chunkCount();
+    }
+
   private:
     static constexpr int kRegionEdgeCells =
         IRWorld::kFieldRegionEdgeChunks * IRPrefab::Spatial::kFieldChunkEdge;
+    static constexpr std::size_t kMaskPayload = 0;
+    static constexpr std::size_t kAgePayload = 1;
+    static constexpr std::uint64_t kNoCandidate = std::numeric_limits<std::uint64_t>::max();
 
     struct RegionRecord {
         bool accessed_ = false;
@@ -347,13 +554,48 @@ class WorldField {
     };
 
     Cells m_cells;
-    Cells m_transient;
-    std::vector<IRPrefab::Spatial::FieldChunkKey> m_transientKeysScratch;
+    MaskCells m_transient;
+    MaskCells m_masks;
+    AgeCells m_ages;
+    /// Chunks that may hold a decay-eligible EXPLORED cell, with a lower bound
+    /// on the earliest such cell's exploration time. A bound below the truth
+    /// only costs a scan, which recomputes it; the clock never has to visit a
+    /// chunk whose bound is not yet due.
+    std::unordered_map<IRPrefab::Spatial::FieldChunkKey, std::uint64_t> m_decayCandidates;
+    ExploredPolicySettings m_policy;
+    std::uint64_t m_nowMs = 0;
+    std::vector<IRPrefab::Spatial::FieldChunkKey> m_keysScratch;
     std::optional<IRWorld::FieldChunkDiskPersistence> m_persistence;
     std::unordered_map<IRPrefab::Spatial::FieldChunkKey, RegionRecord> m_regions;
     std::vector<IRPrefab::Spatial::FieldChunkKey> m_evictScratch;
     IRWorld::FieldRegion m_regionScratch;
+    std::array<std::uint32_t, IRPrefab::Spatial::kFieldChunkCells> m_maskChunkScratch{};
+    std::array<std::uint64_t, IRPrefab::Spatial::kFieldChunkCells> m_ageChunkScratch{};
     WorldFieldStats m_counters;
+
+    bool anyChunkPresent() const {
+        return m_cells.chunkCount() != 0 || m_masks.chunkCount() != 0 || m_ages.chunkCount() != 0;
+    }
+
+    std::uint32_t cellChannels(IRMath::ivec2 cell) const {
+        std::uint32_t encoded = 0;
+        if (!m_masks.getCell(cell, encoded)) {
+            return IRComponents::kFogChannelDefault;
+        }
+        return encoded ^ IRComponents::kFogChannelDefault;
+    }
+
+    /// `max(persistent, transient)` over resident data, the transient term
+    /// admitted only when its source union intersects the cell's mask.
+    std::uint8_t composeCell(IRMath::ivec2 cell) const {
+        std::uint8_t state = IRComponents::kFogStateUnexplored;
+        m_cells.getCell(cell, state);
+        std::uint32_t transient = 0;
+        if (m_transient.getCell(cell, transient) && (transient & cellChannels(cell)) != 0u) {
+            return IRComponents::kFogStateVisible;
+        }
+        return state;
+    }
 
     /// Calls @p row(firstCell, count) for each row of the disc of cells within
     /// `dy <= rowRadius` and `dx² + dy² <= radiusSquared` of @p centre, with the
@@ -380,6 +622,290 @@ class WorldField {
         }
     }
 
+    /// Splits the +x run `[firstCell.x, firstCell.x + count)` at region edges
+    /// (or passes it whole without persistence) and calls @p run per piece.
+    template <typename RunFn>
+    void forEachRegionRun(IRMath::ivec2 firstCell, int count, RunFn &&run) {
+        if (!m_persistence.has_value()) {
+            if (count > 0) {
+                run(firstCell, count);
+            }
+            return;
+        }
+        int x = firstCell.x;
+        int remaining = count;
+        while (remaining > 0) {
+            const int regionLocalX = x & (kRegionEdgeCells - 1);
+            const int piece = IRMath::min(remaining, kRegionEdgeCells - regionLocalX);
+            run(IRMath::ivec2{x, firstCell.y}, piece);
+            remaining -= piece;
+            if (remaining > 0) {
+                x += piece;
+            }
+        }
+    }
+
+    /// Splits the +x run at field-chunk edges and calls @p run(firstCell,
+    /// count, chunkCoord) per piece.
+    template <typename RunFn>
+    static void forEachChunkRun(IRMath::ivec2 firstCell, int count, RunFn &&run) {
+        int x = firstCell.x;
+        int remaining = count;
+        while (remaining > 0) {
+            const IRMath::ivec2 cell{x, firstCell.y};
+            const int localX = IRPrefab::Spatial::fieldChunkLocal(cell).x;
+            const int piece = IRMath::min(remaining, IRPrefab::Spatial::kFieldChunkEdge - localX);
+            run(cell, piece, IRPrefab::Spatial::fieldChunkOf(cell));
+            remaining -= piece;
+            if (remaining > 0) {
+                x += piece;
+            }
+        }
+    }
+
+    /// `fillRow` restricted to cells whose mask intersects @p channels; for
+    /// EXPLORED, VISIBLE cells are retained. Returns the changed-cell count.
+    int fillRowAdmitted(
+        IRMath::ivec2 firstCell, int count, std::uint32_t channels, std::uint8_t state
+    ) {
+        int changed = 0;
+        const bool exploring = state == IRComponents::kFogStateExplored;
+        forEachRegionRun(firstCell, count, [&](IRMath::ivec2 regionFirst, int regionCount) {
+            RegionRecord *record = touchRegion(regionOfCell(regionFirst), true);
+            forEachChunkRun(
+                regionFirst,
+                regionCount,
+                [&](IRMath::ivec2 chunkFirst, int run, IRMath::ivec2 chunk) {
+                    const MaskCells::FieldChunk *masks = m_masks.findChunk(chunk);
+                    const Cells::FieldChunk *states =
+                        exploring ? m_cells.findChunk(chunk) : nullptr;
+                    if (masks == nullptr && states == nullptr) {
+                        if ((channels & IRComponents::kFogChannelDefault) == 0u) {
+                            return;
+                        }
+                        changed += writeAdmittedRun(record, chunkFirst, run, state);
+                        return;
+                    }
+                    // Coalesce the admitted cells of the run into sub-runs.
+                    int subStart = -1;
+                    for (int i = 0; i <= run; ++i) {
+                        bool admitted = false;
+                        if (i < run) {
+                            const IRMath::ivec2 cell = chunkFirst + IRMath::ivec2{i, 0};
+                            const int local = IRPrefab::Spatial::fieldChunkLocalIndex(
+                                IRPrefab::Spatial::fieldChunkLocal(cell)
+                            );
+                            const std::uint32_t mask =
+                                masks == nullptr
+                                    ? IRComponents::kFogChannelDefault
+                                    : (masks->cells()[static_cast<std::size_t>(local)] ^
+                                       IRComponents::kFogChannelDefault);
+                            admitted = (mask & channels) != 0u;
+                            if (admitted && states != nullptr &&
+                                states->cells()[static_cast<std::size_t>(local)] ==
+                                    IRComponents::kFogStateVisible) {
+                                admitted = false;
+                            }
+                        }
+                        if (admitted) {
+                            if (subStart < 0) {
+                                subStart = i;
+                            }
+                            continue;
+                        }
+                        if (subStart >= 0) {
+                            changed += writeAdmittedRun(
+                                record,
+                                chunkFirst + IRMath::ivec2{subStart, 0},
+                                i - subStart,
+                                state
+                            );
+                            subStart = -1;
+                        }
+                    }
+                }
+            );
+        });
+        return changed;
+    }
+
+    int
+    writeAdmittedRun(RegionRecord *record, IRMath::ivec2 firstCell, int count, std::uint8_t state) {
+        if (decays() && writeAgeRow(firstCell, count, state)) {
+            markPersistenceDirty(record);
+        }
+        const int changed = m_cells.fillRow(firstCell, count, state);
+        if (changed > 0) {
+            markPersistenceDirty(record);
+        }
+        return changed;
+    }
+
+    /// The exploration-time bookkeeping of a @p state write at @p cell under
+    /// DECAY: an EXPLORED write records the clock (a cell explored at epoch
+    /// zero is the all-zero default) and makes its chunk a decay candidate;
+    /// any other state clears the recorded time. Never inserts a chunk to hold
+    /// a zero. Returns whether stored metadata changed.
+    bool writeAge(IRMath::ivec2 cell, std::uint8_t state) {
+        const IRMath::ivec2 chunk = IRPrefab::Spatial::fieldChunkOf(cell);
+        const bool explored = state == IRComponents::kFogStateExplored;
+        const std::uint64_t ageMs = explored ? m_nowMs : 0;
+        if (explored) {
+            noteDecayCandidate(chunk, ageMs);
+        }
+        if (ageMs == 0 && m_ages.findChunk(chunk) == nullptr) {
+            return false;
+        }
+        return m_ages.setCell(cell, ageMs);
+    }
+
+    bool writeAgeRow(IRMath::ivec2 firstCell, int count, std::uint8_t state) {
+        const bool explored = state == IRComponents::kFogStateExplored;
+        const std::uint64_t ageMs = explored ? m_nowMs : 0;
+        bool changed = false;
+        forEachChunkRun(
+            firstCell,
+            count,
+            [&](IRMath::ivec2 chunkFirst, int run, IRMath::ivec2 chunk) {
+                if (explored) {
+                    noteDecayCandidate(chunk, ageMs);
+                }
+                if (ageMs == 0 && m_ages.findChunk(chunk) == nullptr) {
+                    return;
+                }
+                changed = m_ages.fillRow(chunkFirst, run, ageMs) > 0 || changed;
+            }
+        );
+        return changed;
+    }
+
+    /// Lowers @p chunk's candidate bound to @p ageMs, entering it when absent.
+    void noteDecayCandidate(IRMath::ivec2 chunk, std::uint64_t ageMs) {
+        auto [it, inserted] =
+            m_decayCandidates.try_emplace(IRPrefab::Spatial::packFieldChunkKey(chunk), ageMs);
+        it->second = IRMath::min(it->second, ageMs);
+    }
+
+    void noteDecayCandidate(IRMath::ivec2 cell) {
+        std::uint64_t age = 0;
+        m_ages.getCell(cell, age);
+        noteDecayCandidate(IRPrefab::Spatial::fieldChunkOf(cell), age);
+    }
+
+    /// Whether an EXPLORED cell of @p mask explored at @p age is due now.
+    bool cellDue(std::uint8_t state, std::uint32_t mask, std::uint64_t age) const {
+        return state == IRComponents::kFogStateExplored && (mask & m_policy.channels_) != 0u &&
+               m_nowMs - age >= m_policy.durationMs_;
+    }
+
+    /// Expires @p cell now when it is due under its current mask.
+    void expireCellIfDue(IRMath::ivec2 cell) {
+        std::uint8_t state = IRComponents::kFogStateUnexplored;
+        if (!m_cells.getCell(cell, state)) {
+            return;
+        }
+        std::uint64_t age = 0;
+        m_ages.getCell(cell, age);
+        if (!cellDue(state, cellChannels(cell), age)) {
+            return;
+        }
+        m_cells.setCell(cell, IRComponents::kFogStateUnexplored);
+        if (age != 0) {
+            m_ages.setCell(cell, 0);
+        }
+        ++m_counters.expired_;
+        markPersistenceDirty(touchRegion(regionOfCell(cell), false));
+    }
+
+    /// Expires every due cell of every candidate chunk whose bound is due.
+    void expireDue() {
+        for (auto it = m_decayCandidates.begin(); it != m_decayCandidates.end();) {
+            if (m_nowMs - it->second < m_policy.durationMs_) {
+                ++it;
+                continue;
+            }
+            const std::uint64_t earliest =
+                expireChunk(IRPrefab::Spatial::unpackFieldChunkKey(it->first));
+            if (earliest == kNoCandidate) {
+                it = m_decayCandidates.erase(it);
+            } else {
+                it->second = earliest;
+                ++it;
+            }
+        }
+    }
+
+    /// Re-derives @p chunk's candidate entry from a scan that also expires
+    /// its due cells.
+    void rescanDecayCandidate(IRMath::ivec2 chunk) {
+        const IRPrefab::Spatial::FieldChunkKey key = IRPrefab::Spatial::packFieldChunkKey(chunk);
+        const std::uint64_t earliest = expireChunk(chunk);
+        if (earliest == kNoCandidate) {
+            m_decayCandidates.erase(key);
+        } else {
+            m_decayCandidates[key] = earliest;
+        }
+    }
+
+    /// Expires the due cells of @p chunk and returns the earliest exploration
+    /// time still eligible to decay there, or `kNoCandidate` when none
+    /// remains. A cell with no recorded time was explored at epoch zero.
+    std::uint64_t expireChunk(IRMath::ivec2 chunk) {
+        using IRPrefab::Spatial::kFieldChunkEdge;
+        const Cells::FieldChunk *states = m_cells.findChunk(chunk);
+        if (states == nullptr) {
+            return kNoCandidate;
+        }
+        const AgeCells::FieldChunk *ages = m_ages.findChunk(chunk);
+        const MaskCells::FieldChunk *masks = m_masks.findChunk(chunk);
+        const IRMath::ivec2 firstCell = chunk * kFieldChunkEdge;
+        std::uint64_t earliest = kNoCandidate;
+        int expired = 0;
+        for (int y = 0; y < kFieldChunkEdge; ++y) {
+            int runStart = -1;
+            for (int x = 0; x <= kFieldChunkEdge; ++x) {
+                bool due = false;
+                if (x < kFieldChunkEdge) {
+                    const auto i = static_cast<std::size_t>(y * kFieldChunkEdge + x);
+                    const std::uint64_t age = ages == nullptr ? 0 : ages->cells()[i];
+                    const std::uint32_t mask =
+                        masks == nullptr ? IRComponents::kFogChannelDefault
+                                         : (masks->cells()[i] ^ IRComponents::kFogChannelDefault);
+                    const std::uint8_t state = states->cells()[i];
+                    const bool eligible = state == IRComponents::kFogStateExplored &&
+                                          (mask & m_policy.channels_) != 0u;
+                    due = eligible && m_nowMs - age >= m_policy.durationMs_;
+                    if (eligible && !due) {
+                        earliest = IRMath::min(earliest, age);
+                    }
+                }
+                if (due) {
+                    if (runStart < 0) {
+                        runStart = x;
+                    }
+                    continue;
+                }
+                if (runStart >= 0) {
+                    const IRMath::ivec2 runFirst = firstCell + IRMath::ivec2{runStart, y};
+                    const int run = x - runStart;
+                    m_cells.fillRow(runFirst, run, IRComponents::kFogStateUnexplored);
+                    if (ages != nullptr) {
+                        m_ages.fillRow(runFirst, run, 0);
+                    }
+                    expired += run;
+                    runStart = -1;
+                }
+            }
+        }
+        if (expired > 0) {
+            m_counters.expired_ += expired;
+            markPersistenceDirty(
+                touchRegion(IRWorld::FieldChunkDiskPersistence::regionOf(chunk), false)
+            );
+        }
+        return earliest;
+    }
+
     static void markPersistenceDirty(RegionRecord *record) {
         if (record != nullptr) {
             record->persistenceDirty_ = true;
@@ -396,58 +922,201 @@ class WorldField {
         RegionRecord &record = it->second;
         record.accessed_ = record.accessed_ || cpuAccess;
         if (inserted) {
-            loadRegion(region);
+            loadRegion(region, record);
         }
         return &record;
     }
 
-    void loadRegion(IRMath::ivec2 region) {
+    static std::uint32_t readLittleEndian32(const std::uint8_t *bytes) {
+        return static_cast<std::uint32_t>(bytes[0]) | (static_cast<std::uint32_t>(bytes[1]) << 8) |
+               (static_cast<std::uint32_t>(bytes[2]) << 16) |
+               (static_cast<std::uint32_t>(bytes[3]) << 24);
+    }
+
+    static std::uint64_t readLittleEndian64(const std::uint8_t *bytes) {
+        return static_cast<std::uint64_t>(readLittleEndian32(bytes)) |
+               (static_cast<std::uint64_t>(readLittleEndian32(bytes + 4)) << 32);
+    }
+
+    static void writeLittleEndian32(std::vector<std::uint8_t> &out, std::uint32_t value) {
+        for (int shift = 0; shift < 32; shift += 8) {
+            out.push_back(static_cast<std::uint8_t>(value >> shift));
+        }
+    }
+
+    static void writeLittleEndian64(std::vector<std::uint8_t> &out, std::uint64_t value) {
+        writeLittleEndian32(out, static_cast<std::uint32_t>(value));
+        writeLittleEndian32(out, static_cast<std::uint32_t>(value >> 32));
+    }
+
+    static IRMath::ivec2 regionLocalChunk(int bit) {
+        return {bit % IRWorld::kFieldRegionEdgeChunks, bit / IRWorld::kFieldRegionEdgeChunks};
+    }
+
+    /// Installs a loaded region. Every payload is validated before the first
+    /// cell lands: an exploration time beyond the clock makes the whole region
+    /// read empty with a warning rather than installing part of it.
+    void loadRegion(IRMath::ivec2 region, RegionRecord &record) {
+        using IRPrefab::Spatial::kFieldChunkCells;
         ++m_counters.probes_;
         std::optional<IRWorld::FieldRegion> loaded = m_persistence->loadRegion(region);
         if (!loaded.has_value()) {
             return;
         }
+        const IRWorld::FieldRegionAux *maskPayload =
+            loaded->aux_.size() > kMaskPayload ? &loaded->aux_[kMaskPayload] : nullptr;
+        const IRWorld::FieldRegionAux *agePayload =
+            loaded->aux_.size() > kAgePayload && decays() ? &loaded->aux_[kAgePayload] : nullptr;
+        if (agePayload != nullptr) {
+            for (std::size_t i = 0; i + kFogFieldAgeBytesPerCell <= agePayload->cells_.size();
+                 i += kFogFieldAgeBytesPerCell) {
+                if (readLittleEndian64(agePayload->cells_.data() + i) > m_nowMs) {
+                    IRE_LOG_WARN(
+                        "WorldField: fog region {},{} records an exploration time beyond the "
+                        "restored clock {}; reading it as empty",
+                        region.x,
+                        region.y,
+                        m_nowMs
+                    );
+                    return;
+                }
+            }
+        }
         ++m_counters.loads_;
         const IRMath::ivec2 firstChunk =
             IRWorld::FieldChunkDiskPersistence::regionFirstChunk(region);
-        std::size_t offset = 0;
+        const bool importLegacy =
+            decays() && loaded->version_ < IRWorld::kFieldRegionVersionAuxiliary;
+        std::size_t stateOffset = 0;
         for (int bit = 0; bit < IRWorld::kFieldRegionChunks; ++bit) {
             if (!loaded->hasChunk(bit)) {
                 continue;
             }
-            const IRMath::ivec2 local{
-                bit % IRWorld::kFieldRegionEdgeChunks,
-                bit / IRWorld::kFieldRegionEdgeChunks
+            const IRMath::ivec2 chunk = firstChunk + regionLocalChunk(bit);
+            const std::span<const std::uint8_t, kFieldChunkCells> states{
+                loaded->cells_.data() + stateOffset,
+                kFieldChunkCells
             };
-            m_cells.assignChunk(
-                firstChunk + local,
-                std::span<const std::uint8_t, IRPrefab::Spatial::kFieldChunkCells>{
-                    loaded->cells_.data() + offset,
-                    IRPrefab::Spatial::kFieldChunkCells
+            stateOffset += kFieldChunkCells;
+            m_cells.assignChunk(chunk, states);
+            if (importLegacy) {
+                // A pre-metadata save never recorded exploration times: the
+                // restored clock is the first known one, saved back so a later
+                // reload does not renew it again.
+                bool explored = false;
+                for (std::size_t i = 0; i < kFieldChunkCells; ++i) {
+                    const bool isExplored = states[i] == IRComponents::kFogStateExplored;
+                    m_ageChunkScratch[i] = isExplored ? m_nowMs : 0;
+                    explored = explored || isExplored;
                 }
-            );
-            offset += IRPrefab::Spatial::kFieldChunkCells;
+                if (explored && m_nowMs != 0) {
+                    m_ages.assignChunk(chunk, m_ageChunkScratch);
+                }
+                record.persistenceDirty_ = true;
+            }
+        }
+        if (maskPayload != nullptr) {
+            std::size_t offset = 0;
+            for (int bit = 0; bit < IRWorld::kFieldRegionChunks; ++bit) {
+                if (!maskPayload->hasChunk(bit)) {
+                    continue;
+                }
+                bool nonDefault = false;
+                for (std::size_t i = 0; i < kFieldChunkCells; ++i) {
+                    const std::uint32_t mask = readLittleEndian32(
+                        maskPayload->cells_.data() + offset + i * kFogFieldMaskBytesPerCell
+                    );
+                    m_maskChunkScratch[i] = mask ^ IRComponents::kFogChannelDefault;
+                    nonDefault = nonDefault || m_maskChunkScratch[i] != 0u;
+                }
+                offset += kFieldChunkCells * kFogFieldMaskBytesPerCell;
+                if (nonDefault) {
+                    m_masks.assignChunk(firstChunk + regionLocalChunk(bit), m_maskChunkScratch);
+                }
+            }
+        }
+        if (agePayload != nullptr) {
+            std::size_t offset = 0;
+            for (int bit = 0; bit < IRWorld::kFieldRegionChunks; ++bit) {
+                if (!agePayload->hasChunk(bit)) {
+                    continue;
+                }
+                std::uint64_t earliest = 0;
+                for (std::size_t i = 0; i < kFieldChunkCells; ++i) {
+                    const std::uint64_t age = readLittleEndian64(
+                        agePayload->cells_.data() + offset + i * kFogFieldAgeBytesPerCell
+                    );
+                    m_ageChunkScratch[i] = age;
+                    if (age != 0) {
+                        earliest = earliest == 0 ? age : IRMath::min(earliest, age);
+                    }
+                }
+                offset += kFieldChunkCells * kFogFieldAgeBytesPerCell;
+                if (earliest != 0) {
+                    m_ages.assignChunk(firstChunk + regionLocalChunk(bit), m_ageChunkScratch);
+                }
+            }
+        }
+        if (!decays()) {
+            return;
+        }
+        // Age the region's cells off-camera: whatever fell due while the
+        // region was out of memory expires before any reader sees it, and
+        // each loaded chunk enters the candidate set with its true bound. An
+        // explored cell no save recorded a time for was explored at epoch
+        // zero.
+        for (int bit = 0; bit < IRWorld::kFieldRegionChunks; ++bit) {
+            if (loaded->hasChunk(bit)) {
+                rescanDecayCandidate(firstChunk + regionLocalChunk(bit));
+            }
         }
     }
 
     bool saveRegion(IRMath::ivec2 region) {
+        using IRPrefab::Spatial::kFieldChunkCells;
         IRWorld::FieldRegion &data = m_regionScratch;
         data.mask_.fill(0);
         data.cells_.clear();
+        data.aux_.resize(2);
+        for (IRWorld::FieldRegionAux &aux : data.aux_) {
+            aux.mask_.fill(0);
+            aux.cells_.clear();
+        }
         const IRMath::ivec2 firstChunk =
             IRWorld::FieldChunkDiskPersistence::regionFirstChunk(region);
         for (int bit = 0; bit < IRWorld::kFieldRegionChunks; ++bit) {
-            const IRMath::ivec2 local{
-                bit % IRWorld::kFieldRegionEdgeChunks,
-                bit / IRWorld::kFieldRegionEdgeChunks
-            };
-            const Cells::FieldChunk *fieldChunk = m_cells.findChunk(firstChunk + local);
-            if (fieldChunk == nullptr) {
+            const IRMath::ivec2 chunk = firstChunk + regionLocalChunk(bit);
+            const Cells::FieldChunk *states = m_cells.findChunk(chunk);
+            const MaskCells::FieldChunk *masks = m_masks.findChunk(chunk);
+            const AgeCells::FieldChunk *ages = decays() ? m_ages.findChunk(chunk) : nullptr;
+            const bool maskPayload = masks != nullptr && masks->nonZeroCount_ > 0;
+            const bool agePayload = ages != nullptr && ages->nonZeroCount_ > 0;
+            if (states == nullptr && !maskPayload && !agePayload) {
                 continue;
             }
             data.setChunk(bit);
-            data.cells_
-                .insert(data.cells_.end(), fieldChunk->cells().begin(), fieldChunk->cells().end());
+            if (states != nullptr) {
+                data.cells_
+                    .insert(data.cells_.end(), states->cells().begin(), states->cells().end());
+            } else {
+                data.cells_
+                    .insert(data.cells_.end(), kFieldChunkCells, IRComponents::kFogStateUnexplored);
+            }
+            if (maskPayload) {
+                data.aux_[kMaskPayload].setChunk(bit);
+                for (std::uint32_t encoded : masks->cells()) {
+                    writeLittleEndian32(
+                        data.aux_[kMaskPayload].cells_,
+                        encoded ^ IRComponents::kFogChannelDefault
+                    );
+                }
+            }
+            if (agePayload) {
+                data.aux_[kAgePayload].setChunk(bit);
+                for (std::uint64_t age : ages->cells()) {
+                    writeLittleEndian64(data.aux_[kAgePayload].cells_, age);
+                }
+            }
         }
         if (!m_persistence->saveRegion(region, data)) {
             return false;
@@ -473,7 +1142,7 @@ inline int windowEdgeUncapped(IRMath::ivec2 canvasSize) {
     return quanta * kFogWindowEdgeQuantum;
 }
 
-/// The RGBA8 window edge for a fog canvas of @p canvasSize trixels:
+/// The window edge for a fog canvas of @p canvasSize trixels:
 /// `windowEdgeUncapped` capped at `kFogWindowEdgeMax`.
 inline int windowEdgeForCanvas(IRMath::ivec2 canvasSize) {
     return IRMath::min(windowEdgeUncapped(canvasSize), kFogWindowEdgeMax);
@@ -683,24 +1352,26 @@ inline void planWindowGather(
     }
 }
 
-/// Writes @p rect's cells into @p scratch as RGBA8 rows of `rect.size_.x`
-/// texels (`max(persistent, transient)` in .r, zero elsewhere), making each
-/// covered region resident first. Each texture chunk shows the in-window
-/// field chunk at its toroidal address for the window at @p origin.
-/// @p scratch holds at least `rect.size_.x * rect.size_.y * 4` bytes.
+/// Writes @p rect's cells into @p scratch as rows of `rect.size_.x`
+/// `FogWindowTexel`s — the effective state (`max(persistent, transient)`,
+/// the transient term admitted only where its source union intersects the
+/// cell's mask) and the cell's mask — making each covered region resident
+/// first. Each texture chunk shows the in-window field chunk at its toroidal
+/// address for the window at @p origin. @p scratch holds at least
+/// `rect.size_.x * rect.size_.y` texels.
 inline void expandWindowChunks(
     WorldField &field,
     IRMath::ivec2 origin,
     int edge,
     const WindowUploadRect &rect,
-    std::span<std::uint8_t> scratch
+    std::span<FogWindowTexel> scratch
 ) {
     using IRPrefab::Spatial::kFieldChunkEdge;
     const IRMath::ivec2 originChunk = IRPrefab::Spatial::fieldChunkOf(origin);
     const int edgeChunks = edge / kFieldChunkEdge;
     const IRMath::ivec2 firstTextureChunk = rect.texel_ / kFieldChunkEdge;
     const IRMath::ivec2 chunkExtent = rect.size_ / kFieldChunkEdge;
-    const std::size_t rowBytes = static_cast<std::size_t>(rect.size_.x) * 4;
+    const auto rowTexels = static_cast<std::size_t>(rect.size_.x);
     for (int chunkRow = 0; chunkRow < chunkExtent.y; ++chunkRow) {
         for (int chunkColumn = 0; chunkColumn < chunkExtent.x; ++chunkColumn) {
             const IRMath::ivec2 chunkCoord = windowChunkOfTextureChunk(
@@ -709,30 +1380,32 @@ inline void expandWindowChunks(
                 edgeChunks
             );
             const WorldField::Cells::FieldChunk *fieldChunk = field.findChunkForGather(chunkCoord);
-            const WorldField::Cells::FieldChunk *transientChunk =
+            const WorldField::MaskCells::FieldChunk *transientChunk =
                 field.findTransientChunk(chunkCoord);
+            const WorldField::MaskCells::FieldChunk *maskChunk = field.findMaskChunk(chunkCoord);
             for (int y = 0; y < kFieldChunkEdge; ++y) {
-                std::uint8_t *texel =
+                FogWindowTexel *texel =
                     scratch.data() +
-                    static_cast<std::size_t>(chunkRow * kFieldChunkEdge + y) * rowBytes +
-                    static_cast<std::size_t>(chunkColumn * kFieldChunkEdge) * 4;
-                const std::uint8_t *cells = fieldChunk == nullptr
-                                                ? nullptr
-                                                : fieldChunk->cells().data() + y * kFieldChunkEdge;
-                const std::uint8_t *transient =
-                    transientChunk == nullptr
-                        ? nullptr
-                        : transientChunk->cells().data() + y * kFieldChunkEdge;
+                    static_cast<std::size_t>(chunkRow * kFieldChunkEdge + y) * rowTexels +
+                    static_cast<std::size_t>(chunkColumn * kFieldChunkEdge);
+                const std::size_t rowOffset = static_cast<std::size_t>(y) * kFieldChunkEdge;
+                const std::uint8_t *cells =
+                    fieldChunk == nullptr ? nullptr : fieldChunk->cells().data() + rowOffset;
+                const std::uint32_t *transient = transientChunk == nullptr
+                                                     ? nullptr
+                                                     : transientChunk->cells().data() + rowOffset;
+                const std::uint32_t *masks =
+                    maskChunk == nullptr ? nullptr : maskChunk->cells().data() + rowOffset;
                 for (int x = 0; x < kFieldChunkEdge; ++x) {
-                    std::uint8_t state =
+                    const std::uint32_t mask = masks == nullptr
+                                                   ? IRComponents::kFogChannelDefault
+                                                   : (masks[x] ^ IRComponents::kFogChannelDefault);
+                    std::uint32_t state =
                         cells == nullptr ? IRComponents::kFogStateUnexplored : cells[x];
-                    if (transient != nullptr) {
-                        state = IRMath::max(state, transient[x]);
+                    if (transient != nullptr && (transient[x] & mask) != 0u) {
+                        state = IRComponents::kFogStateVisible;
                     }
-                    texel[x * 4] = state;
-                    texel[x * 4 + 1] = 0;
-                    texel[x * 4 + 2] = 0;
-                    texel[x * 4 + 3] = 0;
+                    texel[x] = FogWindowTexel{state, mask};
                 }
             }
         }
@@ -744,18 +1417,18 @@ inline void expandWindowChunks(
 struct WindowGatherScratch {
     std::vector<IRPrefab::Spatial::FieldChunkKey> pendingKeys_;
     WindowGatherPlan plan_;
-    std::vector<std::uint8_t> upload_;
+    std::vector<FogWindowTexel> upload_;
 };
 
 /// One frame of the window gather, GPU-free: drains the field's pending set,
 /// plans the window at @p origin against @p windowOrigin (the origin the
 /// texture currently shows, updated here), expands each planned rectangle and
-/// hands it to @p upload as `(rect, rgba8Rows)`, then, on a frame whose
-/// origin changed, evicts every region outside the window's field-chunk
-/// rectangle grown by `kFogResidentMarginChunks`. The eviction runs after the
-/// expansion so an in-window region is probed once per residency epoch, and
-/// on the first frame too, which clears the access bits the initial reveals
-/// set. A second call in one frame finds nothing pending and issues nothing.
+/// hands it to @p upload as `(rect, texels)`, then, on a frame whose origin
+/// changed, evicts every region outside the window's field-chunk rectangle
+/// grown by `kFogResidentMarginChunks`. The eviction runs after the expansion
+/// so an in-window region is probed once per residency epoch, and on the
+/// first frame too, which clears the access bits the initial reveals set. A
+/// second call in one frame finds nothing pending and issues nothing.
 template <typename UploadFn>
 inline void gatherWindow(
     WorldField &field,
@@ -770,13 +1443,13 @@ inline void gatherWindow(
     planWindowGather(windowOrigin, origin, edge, scratch.pendingKeys_, scratch.plan_);
     windowOrigin = origin;
     for (const WindowUploadRect &rect : scratch.plan_.rects_) {
-        const std::size_t bytes =
-            static_cast<std::size_t>(rect.size_.x) * static_cast<std::size_t>(rect.size_.y) * 4;
-        if (scratch.upload_.size() < bytes) {
-            scratch.upload_.resize(bytes);
+        const std::size_t texels =
+            static_cast<std::size_t>(rect.size_.x) * static_cast<std::size_t>(rect.size_.y);
+        if (scratch.upload_.size() < texels) {
+            scratch.upload_.resize(texels);
         }
         expandWindowChunks(field, origin, edge, rect, scratch.upload_);
-        upload(rect, std::span<const std::uint8_t>{scratch.upload_.data(), bytes});
+        upload(rect, std::span<const FogWindowTexel>{scratch.upload_.data(), texels});
     }
     if (originChanged) {
         const IRMath::ivec2 originChunk = IRPrefab::Spatial::fieldChunkOf(origin);

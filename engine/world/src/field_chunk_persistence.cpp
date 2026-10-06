@@ -17,7 +17,6 @@ namespace IRWorld {
 
 namespace {
 
-constexpr std::uint32_t kFieldRegionVersion = 1;
 constexpr int kBucketEdgeRegions = 64;
 constexpr std::size_t kHeaderBytes = 4 + 4 + 1 + 1 + 1;
 constexpr int kMaxLayerLength = 32;
@@ -123,7 +122,7 @@ void removeIfEmptied(const std::filesystem::path &directory) {
 
 } // namespace
 
-int FieldRegion::chunkCount() const {
+int FieldRegionChunkMask::chunkCount() const {
     int count = 0;
     for (std::uint8_t byte : mask_) {
         count += std::popcount(byte);
@@ -131,20 +130,58 @@ int FieldRegion::chunkCount() const {
     return count;
 }
 
+bool FieldRegionChunkMask::isSubsetOf(const FieldRegionChunkMask &other) const {
+    for (std::size_t i = 0; i < mask_.size(); ++i) {
+        if ((mask_[i] & ~other.mask_[i]) != 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 FieldChunkDiskPersistence::FieldChunkDiskPersistence(
-    std::string saveRoot, std::string layer, int bytesPerCell
+    std::string saveRoot,
+    std::string layer,
+    int bytesPerCell,
+    std::vector<FieldRegionAuxSchema> auxiliary
 )
     : m_saveRoot{std::move(saveRoot)}
     , m_layer{std::move(layer)}
     , m_layerDir{(std::filesystem::path{m_saveRoot} / "fields" / m_layer).string()}
-    , m_bytesPerCell{bytesPerCell} {}
+    , m_bytesPerCell{bytesPerCell}
+    , m_auxiliary{std::move(auxiliary)} {}
 
-std::optional<FieldChunkDiskPersistence>
-FieldChunkDiskPersistence::create(std::string saveRoot, std::string layer, int bytesPerCell) {
+std::optional<FieldChunkDiskPersistence> FieldChunkDiskPersistence::create(
+    std::string saveRoot,
+    std::string layer,
+    int bytesPerCell,
+    std::vector<FieldRegionAuxSchema> auxiliary
+) {
     if (saveRoot.empty() || !isLayerName(layer) || bytesPerCell < 1 || bytesPerCell > 255) {
         return std::nullopt;
     }
-    return FieldChunkDiskPersistence{std::move(saveRoot), std::move(layer), bytesPerCell};
+    for (std::size_t i = 0; i < auxiliary.size(); ++i) {
+        const FieldRegionAuxSchema &schema = auxiliary[i];
+        if (schema.bytesPerCell_ < 1 || schema.bytesPerCell_ > 255) {
+            return std::nullopt;
+        }
+        for (const std::array<char, 4> &reserved : {kHeaderTag, kMaskTag, kCellTag}) {
+            if (IRAsset::tagsEqual(schema.tag_, reserved)) {
+                return std::nullopt;
+            }
+        }
+        for (std::size_t j = 0; j < i; ++j) {
+            if (IRAsset::tagsEqual(schema.tag_, auxiliary[j].tag_)) {
+                return std::nullopt;
+            }
+        }
+    }
+    return FieldChunkDiskPersistence{
+        std::move(saveRoot),
+        std::move(layer),
+        bytesPerCell,
+        std::move(auxiliary)
+    };
 }
 
 IRMath::ivec2 FieldChunkDiskPersistence::regionOf(IRMath::ivec2 chunkCoord) {
@@ -189,7 +226,8 @@ std::optional<FieldRegion> FieldChunkDiskPersistence::loadRegion(IRMath::ivec2 r
     };
 
     IRAsset::MemoryBinaryReader reader{bytes->data(), bytes->size(), path};
-    auto chunks = IRAsset::readChunks(reader, kMagicTag, kFieldRegionVersion);
+    IRAsset::AssetHeader header_;
+    auto chunks = IRAsset::readChunks(reader, kMagicTag, kFieldRegionVersionAuxiliary, &header_);
     if (!chunks.ok()) {
         return malformed(chunks.status_.message_);
     }
@@ -221,11 +259,34 @@ std::optional<FieldRegion> FieldChunkDiskPersistence::loadRegion(IRMath::ivec2 r
     }
 
     FieldRegion result;
+    result.version_ = header_.version_;
     std::copy(mask->data_.begin(), mask->data_.end(), result.mask_.begin());
     if (cells->data_.size() != regionCellBytes(result.chunkCount())) {
         return malformed("CELL size disagrees with CMSK");
     }
     result.cells_ = cells->data_;
+    result.aux_.resize(m_auxiliary.size());
+    for (std::size_t i = 0; i < m_auxiliary.size(); ++i) {
+        const FieldRegionAuxSchema &schema = m_auxiliary[i];
+        const IRAsset::LoadedChunk *aux = IRAsset::findChunk(chunks.value_, schema.tag_);
+        if (aux == nullptr) {
+            continue;
+        }
+        const std::string tag = IRAsset::tagToString(schema.tag_);
+        if (aux->data_.size() < static_cast<std::size_t>(kFieldRegionMaskBytes)) {
+            return malformed(tag + " is shorter than its chunk mask");
+        }
+        FieldRegionAux &payload = result.aux_[i];
+        std::copy_n(aux->data_.begin(), kFieldRegionMaskBytes, payload.mask_.begin());
+        if (!payload.isSubsetOf(result)) {
+            return malformed(tag + " names a chunk CMSK does not");
+        }
+        const std::size_t expected = cellBytes(payload.chunkCount(), schema.bytesPerCell_);
+        if (aux->data_.size() - static_cast<std::size_t>(kFieldRegionMaskBytes) != expected) {
+            return malformed(tag + " size disagrees with its chunk mask");
+        }
+        payload.cells_.assign(aux->data_.begin() + kFieldRegionMaskBytes, aux->data_.end());
+    }
     return result;
 }
 
@@ -257,20 +318,46 @@ bool FieldChunkDiskPersistence::saveRegion(IRMath::ivec2 region, const FieldRegi
         return false;
     }
 
+    if (data.aux_.size() > m_auxiliary.size()) {
+        IRE_LOG_ERROR(
+            "FieldChunkDiskPersistence::saveRegion: {} auxiliary payloads for {} schemas",
+            data.aux_.size(),
+            m_auxiliary.size()
+        );
+        return false;
+    }
+    std::vector<IRAsset::ChunkPayload> payloads;
+    payloads.reserve(3 + data.aux_.size());
     IRAsset::MemoryBinaryWriter headerWriter;
     headerWriter.writeI32(region.x);
     headerWriter.writeI32(region.y);
     headerWriter.writeU8(static_cast<std::uint8_t>(IRPrefab::Spatial::kFieldChunkEdge));
     headerWriter.writeU8(static_cast<std::uint8_t>(kFieldRegionEdgeChunks));
     headerWriter.writeU8(static_cast<std::uint8_t>(m_bytesPerCell));
-    const std::array<IRAsset::ChunkPayload, 3> payloads{
-        IRAsset::ChunkPayload{kHeaderTag, headerWriter.takeBuffer()},
-        IRAsset::ChunkPayload{kMaskTag, {data.mask_.begin(), data.mask_.end()}},
-        IRAsset::ChunkPayload{kCellTag, data.cells_},
-    };
+    payloads.push_back(IRAsset::ChunkPayload{kHeaderTag, headerWriter.takeBuffer()});
+    payloads.push_back(IRAsset::ChunkPayload{kMaskTag, {data.mask_.begin(), data.mask_.end()}});
+    payloads.push_back(IRAsset::ChunkPayload{kCellTag, data.cells_});
+    for (std::size_t i = 0; i < data.aux_.size(); ++i) {
+        const FieldRegionAux &aux = data.aux_[i];
+        const int auxChunks = aux.chunkCount();
+        if (auxChunks == 0) {
+            continue;
+        }
+        if (!aux.isSubsetOf(data) ||
+            aux.cells_.size() != cellBytes(auxChunks, m_auxiliary[i].bytesPerCell_)) {
+            IRE_LOG_ERROR(
+                "FieldChunkDiskPersistence::saveRegion: {} payload disagrees with its mask",
+                IRAsset::tagToString(m_auxiliary[i].tag_)
+            );
+            return false;
+        }
+        std::vector<std::uint8_t> bytes(aux.mask_.begin(), aux.mask_.end());
+        bytes.insert(bytes.end(), aux.cells_.begin(), aux.cells_.end());
+        payloads.push_back(IRAsset::ChunkPayload{m_auxiliary[i].tag_, std::move(bytes)});
+    }
     IRAsset::MemoryBinaryWriter fileWriter;
     IRAsset::BinaryStatus status =
-        IRAsset::writeChunked(fileWriter, kMagicTag, kFieldRegionVersion, payloads);
+        IRAsset::writeChunked(fileWriter, kMagicTag, version(), payloads);
     if (!status.ok()) {
         IRE_LOG_ERROR("FieldChunkDiskPersistence::saveRegion: encode failed: {}", status.message_);
         return false;

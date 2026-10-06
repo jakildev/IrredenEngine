@@ -1100,6 +1100,15 @@ float fogVisionCircleReveal(vec2 worldXY, vec4 circle, float aa) {
     return 1.0 - smoothstep(circle.z - a, circle.z + a, dist);
 }
 
+// The fog window is RG32UI: .r is the cell state integer (0 unexplored, 128
+// explored, 255 visible), .g the cell's channel mask. Every state consumer
+// decodes the red lane through this one definition. Mirrors kFogChannelDefault
+// in component_fog_revealed.hpp; Metal twin in metal/ir_iso_common.metal.
+const uint kFogChannelDefault = 1u;
+float fogTexelState(uint state) {
+    return float(state) / 255.0;
+}
+
 const int kDetachedFaceMissDepth = 2147483647;
 
 const uint kSourceLightingBaked = 0u;

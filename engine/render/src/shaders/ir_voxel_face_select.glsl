@@ -27,7 +27,11 @@
 // to "fully visible".
 const float kFogExploredThreshold = 0.25;
 const int kMaxFogVisionCircles = 8; // mirror of component_canvas_fog_of_war.hpp kMaxFogVisionCircles
-layout(rgba8, binding = IR_VOXEL_FOG_GRID_BINDING) readonly uniform image2D canvasFogOfWar;
+// RG32UI: .r the state integer (fogTexelState decodes it), .g the cell's
+// channel mask. The column cull and the cut-face test read the state alone:
+// their source loops stay a channel-blind conservative superset of the
+// paint pass's admission.
+layout(rg32ui, binding = IR_VOXEL_FOG_GRID_BINDING) readonly uniform uimage2D canvasFogOfWar;
 layout(std140, binding = 27) uniform FogObserverData {
     vec4 visionCircles[kMaxFogVisionCircles]; // (centerX, centerY, radius, edgeSoftness)
     int visionCircleCount;
@@ -101,7 +105,7 @@ float fogColumnReveal(ivec2 col) {
         return 1.0; // 1×1 all-visible placeholder (non-fog / detached canvas)
     }
     const ivec2 cell = fogWindowTexel(col, ivec2(windowOriginX, windowOriginY), fogSize);
-    if (cell.x >= 0 && imageLoad(canvasFogOfWar, cell).r >= kFogExploredThreshold) {
+    if (cell.x >= 0 && fogTexelState(imageLoad(canvasFogOfWar, cell).r) >= kFogExploredThreshold) {
         return 1.0; // explored / visible grid memory — keep (FOG_TO_TRIXEL fades it)
     }
     float reveal = 0.0;
@@ -141,7 +145,7 @@ float fogColumnRevealNearest(ivec2 col) {
         return 1.0;
     }
     const ivec2 cell = fogWindowTexel(col, ivec2(windowOriginX, windowOriginY), fogSize);
-    if (cell.x >= 0 && imageLoad(canvasFogOfWar, cell).r >= kFogExploredThreshold) {
+    if (cell.x >= 0 && fogTexelState(imageLoad(canvasFogOfWar, cell).r) >= kFogExploredThreshold) {
         return 1.0;
     }
     float reveal = 0.0;

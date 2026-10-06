@@ -46,7 +46,7 @@ kernel void c_fog_to_trixel(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
     texture2d<float, access::read_write> trixelColors [[texture(0)]],
     texture2d<int, access::read> trixelDistances [[texture(1)]],
-    texture2d<float, access::read> canvasFogOfWar [[texture(2)]],
+    texture2d<uint, access::read> canvasFogOfWar [[texture(2)]],
     // Read only for the fog BODY carrier (decodeFogBody / decodeFogBodyFactor)
     // and the analytic-surface carrier bit.
     texture2d<uint, access::read> triangleCanvasEntityIds [[texture(3)]],

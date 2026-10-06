@@ -12,6 +12,7 @@
 #include <array>
 #include <limits>
 #include <utility>
+#include <vector>
 
 using namespace IRMath;
 using namespace IRRender;
@@ -50,6 +51,37 @@ struct PerAxisCanvasStore {
         std::pair<ResourceId, Texture2D *> entityIds_{0, nullptr};
         std::pair<ResourceId, Texture2D *> ao_{0, nullptr};
         std::pair<ResourceId, Texture2D *> sunShadow_{0, nullptr};
+
+        /// Raw entity-id carriers of this axis canvas, row-major over
+        /// @p size (the component's `size_`). One full-texture GPU readback:
+        /// for probes and tests, never per frame.
+        void readEntityIdCarriers(ivec2 size, std::vector<uvec2> &out) const {
+            out.resize(static_cast<std::size_t>(size.x) * static_cast<std::size_t>(size.y));
+            entityIds_.second->getSubImage2D(
+                0,
+                0,
+                size.x,
+                size.y,
+                PixelDataFormat::RG_INTEGER,
+                PixelDataType::UINT32,
+                out.data()
+            );
+        }
+
+        /// This axis canvas's colours, row-major over @p size; the same
+        /// probe-only readback discipline as `readEntityIdCarriers`.
+        void readColors(ivec2 size, std::vector<Color> &out) const {
+            out.resize(static_cast<std::size_t>(size.x) * static_cast<std::size_t>(size.y));
+            colors_.second->getSubImage2D(
+                0,
+                0,
+                size.x,
+                size.y,
+                PixelDataFormat::RGBA,
+                PixelDataType::UNSIGNED_BYTE,
+                out.data()
+            );
+        }
     };
 
     ivec2 size_{0, 0}; // worst-case texel size shared by all axes; (0,0) while unallocated
