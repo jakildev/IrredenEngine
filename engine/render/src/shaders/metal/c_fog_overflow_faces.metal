@@ -38,23 +38,13 @@ kernel void c_fog_overflow_faces(
     const int faceId = frameData.visibleFaceIds[decodeSlot(encoded)] ^
         decodeFlipPerAxis(encoded);
     const float3 pos3D = perAxisCellToWorld3DSubCell(
-        cell,
-        encoded,
-        faceId,
-        frameData.canvasSizePixels,
-        frameData.frameCanvasOffset,
-        frameData.voxelRenderOptions
+        cell, encoded, faceId, frameData.perAxisStoreFrame
     );
     float aaFloor = 0.0f;
     float3 losSample = pos3D;
     if (fogObservers.visionCircleCount > 0) {
         const float3 neighbor = perAxisCellToWorld3DSubCell(
-            cell + int2(1, 0),
-            encoded,
-            faceId,
-            frameData.canvasSizePixels,
-            frameData.frameCanvasOffset,
-            frameData.voxelRenderOptions
+            cell + int2(1, 0), encoded, faceId, frameData.perAxisStoreFrame
         );
         aaFloor = length(neighbor.xy - pos3D.xy);
         if (fogObservers.losSourceMask != 0) {

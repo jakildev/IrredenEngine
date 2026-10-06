@@ -313,10 +313,10 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // `pos3DtoDistance`, so each non-empty cell is the occlusion winner on its
     // view ray). This pass forward-scatters each non-empty cell as its true
     // deformed face quad: instanced over the canvas grid (one instance per
-    // cell), the vertex shader recovers the face's world origin from the
-    // un-yawed (cardinal) iso pixel `isoPixelToPos3D(cell - perAxisBase,
-    // storedDepth>>10)` — an exact integer inverse, non-singular at every yaw
-    // (the index is un-yawed) — then projects the four cube-face
+    // cell), the vertex shader recovers the face's world origin from its
+    // store-frame iso pixel and depth — an exact integer inverse, non-singular
+    // at every yaw (the store frame is a cardinal view; see the design doc's
+    // §"Store frame") — then projects the four cube-face
     // corners with pos3DtoPos2DIsoYawed (which IS P(θ)·corner, the deform
     // implicit). The framebuffer GL_LESS depth test (enabled on bind) composites
     // the three canvases per pixel. No gather / parity inverse ⇒ the
@@ -324,7 +324,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // identical single-canvas gather (this path is taken only while rotating).
     //
     // The per-axis textures are sized to the bounded worst case
-    // (IRMath::perAxisTrixelCanvasWorstCaseSize → ~(2W, W+H)), larger than the
+    // (IRMath::perAxisTrixelCanvasWorstCaseSize), larger than the
     // main canvas, so the model-matrix zoom is scaled component-wise by
     // perAxisSize / mainSize — one per-axis texel maps to the same screen
     // footprint (and the canvas-center iso origin to screen center) as a
@@ -353,20 +353,19 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         const vec2 zoomEff = frameData.frameData_.canvasZoomLevel_ * static_cast<float>(effSub) *
                              vec2(axes.size_) / vec2(mainCanvasSize);
 
-        // Per-axis scatter inputs. `perAxisBase` MUST match
-        // VOXEL_TO_TRIXEL_STAGE_1's per-axis store anchor (perAxisFrameOffset:
-        // trixelOriginOffsetZ1(axisSize) + floor(cameraIso)) so the vertex
-        // shader's world-origin recovery is bit-consistent with where the cells
-        // were written. visualYaw + visibleFaceIds mirror buildVoxelFrameData.
+        // Per-axis scatter inputs. `perAxisStoreFrame_` MUST be the frame
+        // VOXEL_TO_TRIXEL_STAGE_1 keyed the store in, so the vertex shader's
+        // world-origin recovery is bit-consistent with where the cells were
+        // written. visualYaw + visibleFaceIds mirror buildVoxelFrameData.
+        frameData.frameData_.perAxisStoreFrame_ = IRPrefab::PerAxisCanvas::storeFrame(axes.size_);
         const float visualYaw = IRPrefab::Camera::getYaw();
         const auto cardinalIndex =
             IRMath::rasterYawCardinalIndex(IRPrefab::Camera::computeYawSplit(visualYaw).first);
         const auto visibleFaces = IRMath::visibleFaceTripletCardinal(cardinalIndex);
-        // Whole-iso base anchor. The per-axis canvases are base-resolution, so
-        // the camera-pan anchor is the whole-iso camera offset
+        // Whole-iso screen anchor of the recovered faces. The per-axis canvases
+        // are base-resolution, so it is the whole-iso camera offset
         // `floor(cameraIso)` — exactly the cardinal path's anchor — NOT scaled by
-        // the subdivision density (the density-scaled anchor was vestigial since
-        // made the content base-resolution).
+        // the subdivision density.
         const vec2 cameraIso = IRRender::getEffectiveCameraIso();
         const vec2 anchorFloor = IRMath::floor(cameraIso);
         frameData.frameData_.perAxisBase_ =

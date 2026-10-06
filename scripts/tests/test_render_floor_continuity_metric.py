@@ -62,10 +62,10 @@ class FloorContinuityMetricTest(unittest.TestCase):
             with self.subTest(bpp=bpp, alpha=alpha):
                 path = self.root / f"share_{bpp}_{alpha}.png"
                 write_capture(path, lit=30, shadowed=12, bpp=bpp, alpha=alpha)
-                self.assertAlmostEqual(metric.floor_share(path, metric.DEFAULT_FLOOR_COLORS), 42.0)
+                self.assertAlmostEqual(rmu.color_share(path, metric.DEFAULT_FLOOR_COLORS), 42.0)
         path = self.root / "near_miss.png"
         write_capture(path, lit=0, other=(96, 96, 103))
-        self.assertEqual(metric.floor_share(path, metric.DEFAULT_FLOOR_COLORS), 0.0)
+        self.assertEqual(rmu.color_share(path, metric.DEFAULT_FLOOR_COLORS), 0.0)
 
     def test_smooth_sweep_passes(self):
         write_sweep(self.root, [50, 0, 30, 31, 32, 33, 34, 0])

@@ -381,6 +381,26 @@ else
 fi
 c=$(ai_remove_count); [[ "$c" == "1" ]] && ok "a stale Parked-until line with no label never re-parks or re-un-parks" || bad "stale marker drove another un-park (removes=$c)"
 
+echo "=== Phase 8b: a park naming a MERGED pull request un-parks too ==="
+# `gh issue view <N> --json state` resolves a PR number as well and reports a
+# merged PR as MERGED, never CLOSED. The documented park names the backing
+# issue, but a park that named the PR must not strand forever.
+PARKED_PR_JSON='{"number":1050,"headRefName":"claude/1000-parked-infra",
+   "body":"Closes #1000\n\nParked-until: #7010",
+   "labels":[{"name":"fleet:wip"},{"name":"fleet:awaiting-infra"}]}'
+healed_prs
+before=$(ai_remove_count)
+run_reconcile --apply
+c=$(ai_remove_count); [[ "$c" == "$before" ]] && ok "an OPEN (unset) blocker still holds the park" || bad "un-parked on an open blocker (removes=$c, was $before)"
+set_blocker 7010 MERGED
+run_reconcile --apply
+c=$(ai_remove_count); [[ "$c" == "$((before + 1))" ]] && ok "MERGED blocker → exactly one more remove-label fleet:awaiting-infra" || bad "MERGED blocker did not un-park exactly once (removes=$c, was $before)"
+# Restore the post-un-park shape the later phases assume.
+PARKED_PR_JSON='{"number":1050,"headRefName":"claude/1000-parked-infra",
+   "body":"Closes #1000\n\nParked-until: #7000",
+   "labels":[{"name":"fleet:wip"}]}'
+healed_prs
+
 echo "=== Phase 9: malformed park (label, no Parked-until line) is flag-only ==="
 PARKED_PR_JSON='{"number":1050,"headRefName":"claude/1000-parked-infra",
    "body":"Closes #1000",

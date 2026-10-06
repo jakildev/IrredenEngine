@@ -145,9 +145,10 @@ struct FrameDataTrixelToFramebuffer {
     /// scatter shaders (v_/f_peraxis_scatter). The
     /// cardinal-fast-path gather shaders read only the prefix above, so these
     /// are an std140 append (existing field offsets unchanged → byte-identical
-    /// fast path preserved). `perAxisBase_` is the canvas-pixel origin of the
-    /// per-axis canvas being scattered (= trixelOriginOffsetZ1(axisSize) +
-    /// floor(cameraIso * subdivisionScale)); `visibleFaceIds_` mirrors
+    /// fast path preserved). `perAxisBase_` is the camera-anchored canvas-pixel
+    /// origin the recovered faces are placed on screen against
+    /// (= trixelOriginOffsetZ1(axisSize) + floor(cameraIso)); the store cell is
+    /// inverted through `perAxisStoreFrame_`. `visibleFaceIds_` mirrors
     /// FrameDataVoxelToCanvas (per-slot world FaceId, .w pad).
     ivec2 perAxisBase_{0, 0};
     float visualYaw_ = 0.0f;
@@ -221,6 +222,12 @@ struct FrameDataTrixelToFramebuffer {
     std::uint32_t fogBodyFactorEncoded_ = 0;
     /// RGBA8 unexplored anchor consumed with fogBodyFactorEncoded_.
     std::uint32_t fogUnexploredColorPacked_ = 0;
+    /// Frame the per-axis store being scattered is keyed in — the same value
+    /// as FrameDataVoxelToCanvas::perAxisStoreFrame_: .xy the store cell of
+    /// the frame's iso origin, .z the cardinal index of its view. The scatter
+    /// vertex shaders invert a cell through it; `perAxisBase_` only places the
+    /// recovered face on screen. std140-appended at offset 224.
+    ivec4 perAxisStoreFrame_{0, 0, 0, 0};
 };
 static_assert(
     offsetof(FrameDataTrixelToFramebuffer, visibleFaceIds_) == 128,
@@ -259,7 +266,12 @@ static_assert(
     "Fog composite state must occupy the two trailing scalar slots"
 );
 static_assert(
-    sizeof(FrameDataTrixelToFramebuffer) == 224,
+    offsetof(FrameDataTrixelToFramebuffer, perAxisStoreFrame_) == 224,
+    "perAxisStoreFrame_ must std140-append after the fog composite scalars "
+    "(end at 224); only the per-axis scatter vertex shaders read it"
+);
+static_assert(
+    sizeof(FrameDataTrixelToFramebuffer) == 240,
     "FrameDataTrixelToFramebuffer size must mirror its std140 GLSL block. The "
     "camera scatter shaders (v_/f_peraxis_scatter) read the appended "
     "perAxisBase_ / visualYaw_ / visibleFaceIds_ and scatterFbResolution_ at "
@@ -723,6 +735,13 @@ struct FrameDataVoxelToCanvas {
     // from its view-local frame before fog probes its world columns. Identity
     // preserves the world and screen-locked paths.
     vec4 detachedViewToWorld_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    // Frame the smooth-camera-Z-yaw per-axis store is keyed in: .xy is the
+    // store cell of the frame's iso origin (`trixelOriginOffsetZ1(storeSize)`
+    // plus `IRMath::perAxisStoreAnchor`), .z the cardinal index of the view the
+    // key positions are rotated into, .w unused. The store shaders and every
+    // shader that inverts a store cell read this one value, so they agree on
+    // `cell <-> world` by construction.
+    ivec4 perAxisStoreFrame_ = ivec4(0, 0, 0, 0);
 };
 
 struct FrameDataTrixelToTrixel {
@@ -1078,9 +1097,14 @@ static_assert(
     "fog face-selection shaders declare it after overflowSortStep_"
 );
 static_assert(
-    sizeof(FrameDataVoxelToCanvas) == 256,
+    offsetof(FrameDataVoxelToCanvas, perAxisStoreFrame_) == 256,
+    "FrameDataVoxelToCanvas::perAxisStoreFrame_ must land at offset 256; every "
+    "per-axis store and recovery shader declares it there, after detachedViewToWorld_"
+);
+static_assert(
+    sizeof(FrameDataVoxelToCanvas) == 272,
     "FrameDataVoxelToCanvas size must mirror its std140 GLSL block "
-    "(detachedViewToWorld_ vec4 append: 240 + 16 = 256)"
+    "(perAxisStoreFrame_ ivec4 append: 256 + 16 = 272)"
 );
 
 struct FrameDataSun {

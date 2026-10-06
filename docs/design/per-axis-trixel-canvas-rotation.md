@@ -1,8 +1,12 @@
 # Smooth camera Z-yaw via per-axis trixel canvases
 
 > **Store-key update (supersedes the #1310 in-plane store below).** The per-axis
-> store is now keyed by the **un-yawed (cardinal) iso pixel**
-> `perAxisBase + pos3DtoPos2DIso(facePos)`, recovered with `isoPixelToPos3D`.
+> store is keyed by the iso pixel of the face position **in the store frame** —
+> the nearest-cardinal view, anchored on the view center (§"Store frame") —
+> `storeOrigin + pos3DtoPos2DIso(rotateCardinalZ(facePos, storeCardinal))`,
+> recovered with `isoPixelToPos3D` and the inverse cardinal rotation. Where the
+> sections below write `perAxisBase + pos3DtoPos2DIso(facePos)` and "un-yawed",
+> read that key: they describe the quadrant-0 case, where the two coincide.
 > The #1310 **face-local in-plane** `(y,z)/(x,z)/(x,y)` index this replaced is
 > collision-free only for a *single connected surface*: it collapses **separate
 > objects stacked along the fixed axis** (same in-plane column, different depth)
@@ -22,6 +26,86 @@ visually interpolates between the 90° cardinals instead of snapping. Read
 [`voxel-face-rasterization.md`](voxel-face-rasterization.md) (which faces a
 voxel emits) and [`iso-depth-axis-invariant.md`](iso-depth-axis-invariant.md)
 first; this builds directly on both.
+
+## Store frame — the nearest-cardinal view, anchored on the view center
+
+Every producer and consumer of the per-axis stores agrees on one mapping
+between a world lattice point and a store cell, the **store frame**:
+
+```
+cell     = storeOrigin + pos3DtoPos2DIso(rotateCardinalZ(facePos, storeCardinal))
+rawDepth = pos3DtoDistance(rotateCardinalZ(facePos, storeCardinal))
+facePos  = rotateCardinalZInv(isoPixelToPos3D(cell - storeOrigin, rawDepth), storeCardinal)
+```
+
+`storeCardinal` is the raster cardinal (`computeYawSplit(visualYaw).first`) and
+`storeOrigin = trixelOriginOffsetZ1(storeSize) + IRMath::perAxisStoreAnchor(...)`.
+The CPU computes both once per frame (`IRPrefab::PerAxisCanvas::storeFrame`) and
+uploads them as `perAxisStoreFrame` — `.xy` origin, `.z` cardinal — in
+`FrameDataVoxelToCanvas` and `FrameDataTrixelToFramebuffer`. The store
+(`perAxisStoreFacePos`), the shared recovery (`perAxisCellToWorld3D`), the
+depth-resolve bridge and the framebuffer scatter read that one value and
+nothing else to place or invert a cell; none derives an origin from the camera
+offset on its own.
+
+A face whose cell falls outside the store is dropped — from the cell path and
+the overflow lane alike — so the frame has one obligation: **every face on
+screen lands inside the store.** Two properties deliver it.
+
+**The frame is the nearest-cardinal view, not the yaw-0 view.** A store cell is
+a pixel of the frame's view, so the store holds what that view would show. The
+live view differs from the nearest cardinal by the residual yaw, at most 45°;
+it differs from the yaw-0 view by the whole yaw. In the yaw-0 frame the screen
+rectangle turns by up to a quarter turn inside the store — a canvas taller than
+wide needs its long side across the store's short one — and content a height
+`h` off the reference plane shifts by `(2h·sin yaw, 2h·(1 − cos yaw))` cells,
+`4h` at a half turn. In the cardinal frame all four quadrants are quadrant 0:
+the rectangle turns by at most 45° and the shift is bounded by
+`(√2·h, (2 − √2)·h)`. The same symmetry makes the store's winner census the
+cardinal view's visible set in every quadrant, so the overflow lane carries only
+what a residual yaw reveals, never a whole quadrant's worth of faces the yaw-0
+view cannot see.
+
+**The window is anchored on the view center, not on the camera offset.** A
+window at `floor(effectiveCameraIso)` is centered on what the cardinal view *at
+that camera offset* shows. The live view pivots about a focus that can be
+anywhere, so for the view-center point `v` the two differ by
+`P(v) − P_residual(v)`: zero at the world origin, unbounded in `|v|`. A view
+panned a few hundred cells from the pivot, or pivoting about a focus that far
+from the world origin, slides out of a camera-anchored window, and past roughly
+a thousand cells the store holds nothing that is on screen.
+`perAxisStoreAnchor` removes that drift: it takes the world point at the middle
+of the screen on the horizontal plane `z = IRRender::getViewReferenceHeight()`
+(the explicit pivot focus's height, or the height of the surface the default
+pivot last acquired), and shifts the camera anchor by the drift in whole
+`kPerAxisStoreAnchorQuantum` steps. While the drift is under half a step the
+anchor *is* `floor(effectiveCameraIso)`, so a view near the world origin files
+exactly the cells a camera-anchored window would.
+
+The reference plane is horizontal because camera yaw is a rotation about the
+vertical axis: a horizontal plane's iso coordinates turn rigidly with yaw, at
+every yaw, with no degenerate angle. The default pivot's own focus is not used
+for the height — a pan moves it along its iso-depth plane and off the surface it
+was acquired on.
+
+**Sizing** (`IRMath::perAxisTrixelCanvasWorstCaseSize`). For a `W × H` main
+canvas the store holds the rotated view at the worst residual yaw —
+`√(W² + H²)` along a dimension whose own extent is the larger one, `(W + H)/√2`
+otherwise — plus `kPerAxisStoreHeightHeadroom` of content height, half an anchor
+quantum and an edge pad on each side, and never less than the face-deformation
+and density bounds `(2W, W + H)`. A 1280×720 canvas keeps `(2W, W + H)`; a
+canvas taller than about 0.9× its width grows across. The height headroom is
+the store's contract with tall scenes: at zoom 1, content farther than that from
+the reference plane can leave the store near a screen edge at residuals
+approaching 45°; any higher zoom shrinks the footprint and widens the margin.
+
+**Verification.** `test/render/per_axis_store_frame_test.cpp` asserts the
+obligation headlessly — every on-screen point within the headroom is inside the
+store at every yaw, pan and canvas aspect — and pins what a camera-anchored
+yaw-0 window loses. `IRZYawCoverage` renders a voxel floor wider than the view,
+1,700 cells from the world origin, from every yaw quadrant under each pivot, on
+a landscape and a portrait canvas; `scripts/render-view-coverage-metric.py`
+fails a sweep that shows any background.
 
 ## Current contract — finite-face scatter and cardinal-loser overflow
 

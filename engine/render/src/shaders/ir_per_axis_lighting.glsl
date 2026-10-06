@@ -20,22 +20,18 @@
 #include "ir_iso_common.glsl"
 
 // Reconstruct the uncentered world-unit face origin of a per-axis canvas cell.
-// The per-axis store (base-resolution encoding) keys each cell by its
-// un-yawed (cardinal) iso pixel `perAxisBase + pos3DtoPos2DIso(facePos)`; this
-// recovers the face origin by the exact iso inverse the forward scatter uses
-// (isoPixelToPos3D — no 2cos(yaw)+1 singularity, since the index is un-yawed).
+// The per-axis store (base-resolution encoding) keys each cell in the store
+// frame: `storeFrame.xy + pos3DtoPos2DIso(rotateCardinalZ(facePos,
+// storeFrame.z))`, with the rotated position's iso depth. This recovers the
+// face origin by the exact inverse the forward scatter uses — isoPixelToPos3D
+// in the store frame (no 2cos(yaw)+1 singularity, since the frame is a
+// cardinal view), then the inverse cardinal rotation.
 // rawDepth is already in world units — no scale division required.
-// `faceId` and `voxelRenderOptions` are unused by the recovery.
-// `canvasSize` is the per-axis canvas size (= imageSize).
-vec3 perAxisCellToWorld3D(
-    ivec2 cell, int rawDepth, int faceId,
-    ivec2 canvasSize, vec2 frameCanvasOffset, ivec2 voxelRenderOptions
-) {
-    // Whole-iso base anchor — per-axis canvases are base-resolution, so the
-    // anchor is NOT density-scaled.
-    ivec2 perAxisBase = trixelOriginOffsetZ1(canvasSize) + ivec2(floor(frameCanvasOffset));
-    ivec2 isoPix = cell - perAxisBase;
-    return isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth));
+// `storeFrame` is the frame data's perAxisStoreFrame; `faceId` is unused by the
+// recovery.
+vec3 perAxisCellToWorld3D(ivec2 cell, int rawDepth, int faceId, ivec4 storeFrame) {
+    ivec2 isoPix = cell - storeFrame.xy;
+    return rotateCardinalZInv(isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth)), storeFrame.z);
 }
 
 // The encoding's three 4-bit sub-cell offsets, decoded and re-centred to
@@ -63,14 +59,9 @@ vec3 perAxisSubCellFrac(int encoded) {
 // Decode the face origin O, including signed sixteenth-cell phase. Scatter
 // centers its displayed square by subtracting (0.5,0.5,0.5) from each corner;
 // a sun receiver uses perAxisFaceCenter rather than treating O as that center.
-vec3 perAxisCellToWorld3DSubCell(
-    ivec2 cell, int encoded, int faceId,
-    ivec2 canvasSize, vec2 frameCanvasOffset, ivec2 voxelRenderOptions
-) {
-    const vec3 origin = perAxisCellToWorld3D(
-        cell, decodeDepthPerAxis(encoded), faceId,
-        canvasSize, frameCanvasOffset, voxelRenderOptions
-    );
+vec3 perAxisCellToWorld3DSubCell(ivec2 cell, int encoded, int faceId, ivec4 storeFrame) {
+    const vec3 origin =
+        perAxisCellToWorld3D(cell, decodeDepthPerAxis(encoded), faceId, storeFrame);
     const vec3 frac = perAxisSubCellFrac(encoded);
     vec3 eu, ev;
     faceInPlaneUnitAxes(faceId >> 1, eu, ev);

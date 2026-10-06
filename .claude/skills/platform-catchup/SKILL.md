@@ -254,6 +254,10 @@ A pass Windows hang handling closed twice (`RESULT=HOST-CLOSED`, reported
 by render-verify as no verdict) is **no-verdict**: it holds like red but is
 reported apart from it.
 
+A red row is attributed by walking the backlog's merged PRs that touch the
+demo **oldest first**: the first PR whose head moves the reference is the
+owner, and the re-bless cause names it.
+
 Red and no-verdict demos are the **parity-held** demos. Each one's source
 tree joins the held-paths set exactly as a step 6 runtime failure does (the
 8b hold-back table), whatever step 7 decides. Parity never adds or removes a
@@ -271,7 +275,10 @@ label by itself, and never changes the step 7 outcome.
 ### 8a. green — full label sweep
 
 For every merged PR in the backlog whose `gh pr diff <N> --name-only` touches
-no step 6b parity-held demo's tree, serially:
+no step 6b parity-held demo's tree, serially and **in merge order, oldest
+first** (`gh pr list --state merged --label <label> --json number,mergedAt`
+sorted on `mergedAt`), so the ledger is repaid in the order the features
+landed (`docs/agents/FLEET-CROSS-HOST-SMOKE.md` § "Catch-up order"):
 
 ```bash
 gh pr edit <N> --repo <repo> \

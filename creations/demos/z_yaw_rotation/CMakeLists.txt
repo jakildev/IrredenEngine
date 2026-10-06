@@ -4,11 +4,13 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${IR_ZYAW_RUNTIME_DIR})
 set(IR_ZYAW_DEMO_TARGETS
     IRZYawStatic
     IRZYawInteractive
+    IRZYawCoverage
 )
 
 set(IR_ZYAW_DEMO_SOURCES
     main_static.cpp
     main_mouse.cpp
+    main_coverage.cpp
 )
 
 list(LENGTH IR_ZYAW_DEMO_TARGETS IR_ZYAW_DEMO_COUNT)
@@ -35,7 +37,10 @@ endforeach()
 # idempotent and cheap) — while the directory copies stay single-owner via the
 # primary's Assets target.
 list(GET IR_ZYAW_DEMO_TARGETS 0 IR_ZYAW_PRIMARY_TARGET)
-irreden_bundle_assets(${IR_ZYAW_PRIMARY_TARGET} SCRIPTS config.lua)
+irreden_bundle_assets(${IR_ZYAW_PRIMARY_TARGET}
+    SCRIPTS config.lua
+    EXTRA_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/configs configs
+)
 foreach(IR_ZYAW_DEMO_TARGET IN LISTS IR_ZYAW_DEMO_TARGETS)
     add_dependencies(${IR_ZYAW_DEMO_TARGET} ${IR_ZYAW_PRIMARY_TARGET}Assets)
     if(NOT IR_ZYAW_DEMO_TARGET STREQUAL IR_ZYAW_PRIMARY_TARGET)

@@ -50,6 +50,19 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // against. AO maps the decoded depth slot → world FaceId via this lookup so
     // the outward-normal step uses the rotation-aware six-face normal.
     uniform ivec4 visibleFaceIds;
+    // Members between here and perAxisStoreFrame are declared only to reach
+    // its std140 offset.
+    uniform vec4 _voxelDepthAxisPadding;
+    uniform vec4 _detachedWorldReceivePadding;
+    uniform ivec4 _visibleIsoBoundsPadding;
+    uniform ivec4 _resolveFeederPadding;
+    uniform ivec4 _overflowScratchLayoutPadding;
+    uniform ivec4 _overflowSortStepPadding;
+    uniform vec4 _detachedViewToWorldPadding;
+    // Frame the per-axis store is keyed in: .xy = store cell of the frame's iso
+    // origin, .z = cardinal index of the view the key positions are rotated
+    // into. FrameDataVoxelToCanvas::perAxisStoreFrame_ (offset 256).
+    uniform ivec4 perAxisStoreFrame;
 };
 
 // Sun lighting state. Only `aoEnabled` is read by this shader; the block
@@ -146,7 +159,7 @@ void main() {
     // cardinal-snapped iso pixel, recovered via trixelCanvasPixelToWorld3D.
     bool perAxis = perAxisRoute != 0;
     vec3 pos3D = perAxis
-        ? perAxisCellToWorld3DSubCell(pixel, encoded, faceId, size, frameCanvasOffset, voxelRenderOptions)
+        ? perAxisCellToWorld3DSubCell(pixel, encoded, faceId, perAxisStoreFrame)
         : trixelCanvasPixelToWorld3D(
               pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, cardinalIndex
           );
@@ -208,10 +221,7 @@ void main() {
         int neighbourRawDepth = decodeDepthRoute(neighbourEncoded, perAxisRoute);
         vec3 neighbourPos3D;
         if (perAxis) {
-            neighbourPos3D = perAxisCellToWorld3DSubCell(
-                samplePixel, neighbourEncoded, neighbourFaceId, size,
-                frameCanvasOffset, voxelRenderOptions
-            );
+            neighbourPos3D = perAxisCellToWorld3DSubCell(samplePixel, neighbourEncoded, neighbourFaceId, perAxisStoreFrame);
         } else {
             neighbourPos3D = trixelCanvasPixelToWorld3D(
                 samplePixel, neighbourRawDepth, trixelCanvasOffsetZ1,
