@@ -30,8 +30,8 @@ Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md). Rationale: [`d
   `VOXEL_TO_TRIXEL_STAGE_1::beginTick` allocates it at non-cardinal camera yaw,
   parks it (resident, `isAllocated()` false) on a cardinal frame and frees it
   `kParkedCardinalFrames` later. Camera-only: detached entities re-voxelize.
-  The store is base-resolution with the sub-cell frac in the distance; every
-  absolute-position reader decodes it via `perAxisSubCellFrac` (`engine/render/CLAUDE.md`).
+  The store is base-resolution, keyed in the one `perAxisStoreFrame_` every reader inverts;
+  an absolute-position reader also decodes the sub-cell frac via `perAxisSubCellFrac` (`engine/render/CLAUDE.md`).
 - Seed a single-byte GPU sentinel with `IRRender::device()->fillBuffer(...)`,
   a multi-byte one (`kTrixelDistanceMaxDistance`) with an owned self-resetting
   kernel or clear dispatch — never a resource-sized CPU staging vector +

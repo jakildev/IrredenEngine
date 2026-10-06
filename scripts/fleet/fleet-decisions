@@ -2,7 +2,7 @@
 # fleet-decisions — everything currently waiting on the human, in one read.
 #
 # Consolidates the fleet's human-pull surfaces into a single decision-first
-# report: the merge queue (verdict labels + smoke holds), parked decisions
+# report: the merge queue (verdict labels + CI holds; smoke debt as notes), parked decisions
 # (fleet:needs-human, fleet:gated, fleet:design-blocked, fleet:steward-proposal,
 # fleet:state-drift), backlog cues
 # (fleet:coding-improvement, untriaged issues), and unread feedback-channel
@@ -481,11 +481,16 @@ for repo, prs, issues, reader in repos:
         labels = names(pr)
         if "fleet:approved" in labels:
             gate, notes = gate_holds(reader, pr)
-            holds = [
-                f"{label} outstanding" for label in labels
+            # A smoke label is smoke debt that rides onto the merged PR, not
+            # a merge hold (FLEET-CROSS-HOST-SMOKE.md § "Ledger, not a gate").
+            smoke_debt = [
+                f"{label} rides onto the merged PR as smoke debt (not a gate)"
+                for label in labels
                 if label.startswith("fleet:needs-") and label.endswith("-smoke")
-            ] + gate
+            ]
+            holds = list(gate)
             holds += merge_box_holds(pr, holds, notes)
+            notes = list(notes) + smoke_debt
             wip_mismatch = bool(WIP_TITLE_RE.search(pr["title"])) and "fleet:wip" not in labels
             merge_queue.append((repo, pr, "fleet:has-nits" in labels, holds, notes, wip_mismatch))
         tags = [DECISION_TAGS[label] for label in labels if label in DECISION_TAGS]

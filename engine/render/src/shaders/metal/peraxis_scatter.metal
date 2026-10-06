@@ -54,6 +54,9 @@ struct FrameDataIsoTriangles {
     int _overflowPad0;
     int _overflowPad1;
     int _overflowPad2;
+    // Frame the store is keyed in: .xy = store cell of the frame's iso origin,
+    // .z = cardinal index of its view. std140 offset 224.
+    int4 perAxisStoreFrame;
 };
 
 #include "ir_peraxis_scatter_interface.metal"
@@ -147,7 +150,7 @@ vertex VertexOut v_peraxis_scatter(
     const int uFrac4 = decodeUFrac4PerAxis(rawDist);
     const int wFrac4 = decodeWFrac4PerAxis(rawDist);
     const int flip = decodeFlipPerAxis(rawDist);
-    const int rawDepth = decodeDepthPerAxis(rawDist); // pos3DtoDistance of the face origin (world units)
+    const int rawDepth = decodeDepthPerAxis(rawDist); // store-frame iso depth of the face origin (world units)
     // A flipped cell is the opposite-polarity face of its slot's axis.
     // The stored plane origin already sits on the flipped plane and the two
     // polarities share their in-plane span axes — origin recovery is
@@ -157,15 +160,17 @@ vertex VertexOut v_peraxis_scatter(
 
     float3 eu, ev;
     faceInPlaneUnitAxes(axis, eu, ev);
-    // Un-yawed iso recovery — mirror of v_peraxis_scatter.glsl. The
-    // store files this face at `perAxisBase + pos3DtoPos2DIso(facePos)`, so the
-    // cardinal iso pixel is `ij - perAxisBase` and isoPixelToPos3D inverts it
-    // exactly against rawDepth (= x+y+z of the face plane). Non-singular at every
-    // yaw because the recovered index is un-yawed; the yaw is applied only at
-    // projection.
-    const int2 isoPix = int2(ij) - frameData.perAxisBase;
-    const float3 baseOrigin =
-        isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth));
+    // Store-frame recovery — mirror of v_peraxis_scatter.glsl. The store files
+    // this face at `storeFrame.xy + pos3DtoPos2DIso(rotateCardinalZ(facePos,
+    // storeFrame.z))`, so the store-frame iso pixel is `ij - storeFrame.xy`,
+    // isoPixelToPos3D inverts it exactly against rawDepth (the rotated face
+    // plane's x+y+z), and the inverse cardinal rotation returns the world
+    // lattice origin. Non-singular at every yaw because the store frame is a
+    // cardinal view; the live yaw is applied only at projection.
+    const int2 isoPix = int2(ij) - frameData.perAxisStoreFrame.xy;
+    const float3 baseOrigin = rotateCardinalZInv(
+        isoPixelToPos3D(isoPix.x, isoPix.y, float(rawDepth)), frameData.perAxisStoreFrame.z
+    );
     // Apply the sub-cell offsets packed in the encoding: u/v shift
     // within the face plane; w moves the plane itself along the face axis —
     // without it every fractionally-positioned face snaps to the integer
@@ -187,7 +192,7 @@ vertex VertexOut v_peraxis_scatter(
     // position instead of orbiting it by the half cell. Matches the GLSL twin.
     // Screen re-projection anchor: perAxisBase carries
     // trixelOriginOffsetZ1's (-1,-1) sub-pixel LATTICE alignment (a canvas-storage
-    // convention the `ij - perAxisBase` recovery needs); the forward scatter emits
+    // convention the store-cell recovery needs); the forward scatter emits
     // true face quads, so that must not ride into the screen placement. Anchor on
     // the canvas geometric CENTER instead — the +(1,1) shift back from the storage
     // origin (canvasSize/2 - trixelOriginOffsetZ1(canvasSize)). Anchoring on

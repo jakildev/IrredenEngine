@@ -60,6 +60,14 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     int   _feederSubCap;
     int   _feederPassTailBase;
     ivec4 overflowScratchLayout;   // .x reserved, .y ctrl base, .z entry base, .w cap
+    // Members between here and perAxisStoreFrame are declared only to reach
+    // its std140 offset.
+    ivec4 _overflowSortStepPadding;
+    vec4 _detachedViewToWorldPadding;
+    // Frame the per-axis store is keyed in: .xy = store cell of the frame's iso
+    // origin, .z = cardinal index of the view the key positions are rotated
+    // into. FrameDataVoxelToCanvas::perAxisStoreFrame_ (offset 256).
+    ivec4 perAxisStoreFrame;
 };
 
 layout(std140, binding = 23) uniform LightVolumeParams {
@@ -123,9 +131,7 @@ void main() {
         overflowScratch[entryBase + 1u] = packColor(vec4(worldNormal * 0.5 + 0.5, albedo.a));
         return;
     }
-    const vec3 pos3D = perAxisCellToWorld3DSubCell(
-        cell, rawDist, faceId, canvasSizePixels, frameCanvasOffset, voxelRenderOptions
-    );
+    const vec3 pos3D = perAxisCellToWorld3DSubCell(cell, rawDist, faceId, perAxisStoreFrame);
 
     // World-space lighting — mirrors c_lighting_to_trixel's world sample.
     // AO = 1.0 (no canvas cell), sun-shadow via the shared cascade lookup at the

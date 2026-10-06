@@ -250,9 +250,8 @@ struct Point {int x,y;};
 struct Canvas {void write(vec4,Point){}} canvasSunShadow;
 void imageStore(Canvas&,Point,vec4){}
 int perAxisRoute=0,perAxisSamples=0,face=0,flip=0,encoded=0,shadowsEnabled=1;
-int visibleFaceIds[3]={0,2,4},sunFrameData=0,sunDepthBuf=0;
-vec2 frameCanvasOffset{0,0}; Point voxelRenderOptions{0,0};
-vec3 perAxisCellToWorld3DSubCell(Point,int,int,Point,vec2,Point){return {};}
+int visibleFaceIds[3]={0,2,4},sunFrameData=0,sunDepthBuf=0,perAxisStoreFrame=0;
+vec3 perAxisCellToWorld3DSubCell(Point,int,int,int){return {};}
 float perAxisSunShadowFactor(vec3,int,int=0,int=0){++perAxisSamples;return 1;}
 template<class T> struct Checked {
  std::vector<T> data;int reads=0;

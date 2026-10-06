@@ -20,6 +20,7 @@
 #include <irreden/ir_entity.hpp>
 
 #include <irreden/render/camera.hpp>
+#include <irreden/render/per_axis_canvas.hpp>
 #include <irreden/render/voxel_dispatch_grid.hpp>
 #include <irreden/render/components/component_canvas_camera.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
@@ -88,6 +89,7 @@ inline void buildVoxelFrameData(
     // offset into a world / non-opt-in frame and corrupt its lighting.
     frameData.detachedWorldReceive_ = vec4(0.0f, 0.0f, 0.0f, 0.0f);
     frameData.detachedViewToWorld_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    frameData.perAxisStoreFrame_ = ivec4(0);
 
     // A non-zero `canvasRotation` marks a detached entity canvas (the main
     // world canvas keeps the all-zero `C_CanvasLocalRotation::kSentinelNoRotation`
@@ -204,6 +206,11 @@ inline void buildVoxelFrameData(
     const auto [rasterYaw, residualYaw] = IRPrefab::Camera::computeYawSplit(frameData.visualYaw_);
     frameData.rasterYaw_ = rasterYaw;
     frameData.residualYaw_ = residualYaw;
+    // Only the main world canvas owns per-axis stores, and only while rotating.
+    if (residualYaw != 0.0f) {
+        frameData.perAxisStoreFrame_ =
+            IRPrefab::PerAxisCanvas::storeFrame(IRPrefab::PerAxisCanvas::storeSize());
+    }
     const auto cardinalIndex = IRMath::rasterYawCardinalIndex(rasterYaw);
     const auto visibleFaces = IRMath::visibleFaceTripletCardinal(cardinalIndex);
     frameData.visibleFaceIds_ = ivec4(

@@ -413,6 +413,12 @@ vec3 getRotationPivotFocus();
 /// the derived focus against an analytic ray/surface intersection
 /// (`shape_debug --pivot-verify`, `scripts/pivot-verify.py`).
 vec3 getDefaultRotationPivotFocus();
+/// World z of the horizontal plane the camera is taken to be looking at: the
+/// explicit pivot focus's height, the height of the surface the default pivot
+/// last acquired (0 before the first acquisition), or 0 in @c ORIGIN mode.
+/// A view-centered producer uses it to find the world point at the middle of
+/// the screen under any yaw (`IRMath::pos2DIsoToPos3DAtZLevelYawed`).
+float getViewReferenceHeight();
 /// @}
 
 /// @{

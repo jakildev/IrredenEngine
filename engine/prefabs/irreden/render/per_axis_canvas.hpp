@@ -37,6 +37,36 @@ inline constexpr float kMinOnScreenTrixelSizePx = 1.0f;
 // so a suite that alternates cardinal and rotated poses exercises the unpark.
 inline constexpr int kParkedCardinalFrames = 120;
 
+// Texel size of each per-axis face store for the current main canvas.
+inline IRMath::ivec2 storeSize() {
+    return IRMath::perAxisTrixelCanvasWorstCaseSize(
+        IRMath::ivec2(IRRender::getMainCanvasSizeTrixels()),
+        kMinOnScreenTrixelSizePx
+    );
+}
+
+// The frame a store of @p size is keyed in this frame
+// (FrameDataVoxelToCanvas::perAxisStoreFrame_): the nearest-cardinal view,
+// with the window anchored on the world point at the middle of the screen.
+// The store pass, every pass that inverts a store cell, and the framebuffer
+// scatter each call this from the same camera state.
+inline IRMath::ivec4 storeFrame(IRMath::ivec2 size) {
+    const float visualYaw = IRPrefab::Camera::getYaw();
+    const IRMath::CardinalIndex cardinal =
+        IRMath::rasterYawCardinalIndex(IRPrefab::Camera::computeYawSplit(visualYaw).first);
+    const IRMath::ivec2 anchor = IRMath::perAxisStoreAnchor(
+        IRRender::getEffectiveCameraIso(),
+        visualYaw,
+        cardinal,
+        IRRender::getViewReferenceHeight()
+    );
+    return IRMath::ivec4(
+        IRMath::trixelOriginOffsetZ1(size) + anchor,
+        static_cast<int>(cardinal),
+        0
+    );
+}
+
 // What syncAllocationToCameraYaw does to the main canvas's per-axis set this
 // frame.
 enum class LifecycleStep : int {
@@ -126,10 +156,7 @@ inline void syncAllocationToCameraYaw() {
             return;
         }
         mainSize = (*cardinal.value()).size_;
-        size = IRMath::perAxisTrixelCanvasWorstCaseSize(
-            IRMath::ivec2(IRRender::getMainCanvasSizeTrixels()),
-            kMinOnScreenTrixelSizePx
-        );
+        size = storeSize();
     }
     if (!rotating && !axes.isAllocated() && axes.hasParked()) {
         ++axes.parkedFrames_;

@@ -496,6 +496,49 @@ TEST(DefaultPivotLatch, ACardinalSourceLatchesTheSharedVisibleSurface) {
     }
 }
 
+TEST(DefaultPivotLatch, SurfaceHeightIsTheAcquiredSurfaceAndDoesNotRideAPan) {
+    // The view reference height is the world z of the acquired surface point.
+    // The focus rides the camera along its iso-depth plane, off that surface,
+    // so its z changes under a pan; the surface height must not.
+    constexpr int kEffSub = 4;
+    const vec2 cameraIso = vec2(64.0f, -12.0f);
+    const float yaws[] = {0.0f, 0.4f, IRMath::kHalfPi, 2.2f, kPi};
+    for (const float yaw : yaws) {
+        const vec2 effectiveCameraIso = yaw == 0.0f ? cameraIso : vec2(61.5f, -9.25f);
+        const float residualYaw = IRPrefab::Camera::computeYawSplit(yaw).second;
+        DefaultPivotLatch latch;
+        EXPECT_EQ(latch.surfaceHeight(), 0.0f);
+        latch.stampSourceFrame(
+            DefaultPivotSourceFrame{
+                yaw,
+                residualYaw,
+                cameraIso,
+                effectiveCameraIso,
+                kCanvasCenterIso,
+                kEffSub
+            },
+            true
+        );
+        latch.observeFrame(yaw, true);
+        latch.acquire(kDepthAfterPan * static_cast<float>(kEffSub));
+
+        const float lattice =
+            residualYaw == 0.0f ? DefaultPivotLatch::kCardinalStoreLatticeDepth : 0.0f;
+        const vec3 surface = IRMath::isoPixelToPos3DYawed(
+            kCanvasCenterIso - effectiveCameraIso,
+            kDepthAfterPan - lattice,
+            yaw
+        );
+        EXPECT_NEAR(latch.surfaceHeight(), surface.z, 1e-3f) << "yaw=" << yaw;
+
+        const float focusHeight = latch.focus(kCanvasCenterIso - cameraIso).z;
+        const float pannedFocusHeight =
+            latch.focus(kCanvasCenterIso - (cameraIso + vec2(0.0f, 90.0f))).z;
+        EXPECT_GT(IRMath::abs(pannedFocusHeight - focusHeight), 10.0f) << "yaw=" << yaw;
+        EXPECT_NEAR(latch.surfaceHeight(), surface.z, 1e-3f) << "yaw=" << yaw;
+    }
+}
+
 TEST(DefaultPivotLatch, ANonCardinalSourceKeepsTheStoreKey) {
     // The per-axis store keys a non-cardinal frame with no lattice shift, so
     // the latch takes its sample as-is there. Positive fire for the arm above:

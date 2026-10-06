@@ -122,6 +122,10 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec4 overflowScratchLayout;
     uniform ivec4 overflowSortStep;
     uniform vec4 detachedViewToWorld;
+    // Frame the per-axis store is keyed in: .xy = store cell of the frame's iso
+    // origin, .z = cardinal index of the view the key positions are rotated
+    // into. FrameDataVoxelToCanvas::perAxisStoreFrame_ (offset 256).
+    uniform ivec4 perAxisStoreFrame;
 };
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
@@ -512,24 +516,26 @@ void main() {
         }
         const int axis = perAxisRoute - 1;
         if ((faceId >> 1) != axis) return;
-        // Un-yawed (cardinal) iso store: key each face by its cardinal iso pixel
-        // `perAxisBase + pos3DtoPos2DIso(facePos)` rather than the in-plane
-        // (y,z)/(x,z)/(x,y) lattice. The in-plane lattice collapses faces sharing
-        // an in-plane column but differing in depth-along-the-fixed-axis (separate
-        // objects stacked along the axis) onto one cell -> the back face is
-        // dropped even though it is screen-separated. The cardinal iso key depends
-        // on all three coords, so screen-separated faces land in distinct cells
-        // and both survive; collisions occur only for genuine same-pixel cardinal
-        // occlusion (resolved by the rawDepth atomicMin). The index is UN-yawed:
-        // a yawed iso store would collapse the compressed axis and make the
-        // inverse singular, whereas here the recovery `isoPixelToPos3D` is exact
-        // at every yaw. The scatter reprojects the recovered origin under the
-        // live yaw.
-        // Whole-iso base anchor: the per-axis store is BASE-resolution, so the
-        // anchor must NOT be density-scaled like the subdivided cardinal canvas
-        // (a density-scaled anchor jitters under pan). The cardinal single-canvas
+        // Store-frame iso store: key each face by the iso pixel of its position
+        // in the nearest-cardinal view, `perAxisStoreFrame.xy +
+        // pos3DtoPos2DIso(rotateCardinalZ(facePos, perAxisStoreFrame.z))`,
+        // rather than the in-plane (y,z)/(x,z)/(x,y) lattice. The in-plane
+        // lattice collapses faces sharing an in-plane column but differing in
+        // depth-along-the-fixed-axis (separate objects stacked along the axis)
+        // onto one cell -> the back face is dropped even though it is
+        // screen-separated. The cardinal iso key depends on all three coords, so
+        // screen-separated faces land in distinct cells and both survive;
+        // collisions occur only for genuine same-pixel cardinal occlusion
+        // (resolved by the rawDepth atomicMin). The frame is a CARDINAL view, not
+        // the live one: a yawed iso store would collapse the compressed axis and
+        // make the inverse singular, whereas here the recovery `isoPixelToPos3D`
+        // is exact at every yaw. The scatter reprojects the recovered origin
+        // under the live yaw.
+        // The store origin is whole-iso: the per-axis store is BASE-resolution,
+        // so it must NOT be density-scaled like the subdivided cardinal canvas
+        // (a density-scaled origin jitters under pan). The cardinal single-canvas
         // paths keep trixelFrameOffset (their content IS subdivided).
-        const ivec2 perAxisBase = trixelOriginOffsetZ1(canvasSizePixels) + ivec2(floor(frameCanvasOffset));
+        const ivec2 perAxisBase = perAxisStoreFrame.xy;
         // Store at BASE (world-unit) resolution regardless of effSub — on the
         // subdivided path only the z=0 invocation writes (the voxel's
         // continuous sub-cell offset rides the encoding so the scatter can
@@ -537,7 +543,9 @@ void main() {
         if (voxelRenderOptions.x != 0 && zIdx != 0) return;
         int voxelDistance;
         const ivec3 facePos =
-            perAxisStoreFacePos(voxelPosition, faceId, slot, axis, riserFlip, voxelDistance);
+            perAxisStoreFacePos(
+                voxelPosition, faceId, slot, axis, riserFlip, perAxisStoreFrame.z, voxelDistance
+            );
         if (resolveMode == 3) {
             // Each record reconstructs the whole face, not one of its two trixels.
             if (any(notEqual(ivec2(gl_LocalInvocationID.xy), faceOffset_2x3(slot, 0)))) return;

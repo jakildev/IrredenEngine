@@ -74,6 +74,10 @@ class RenderManager {
     // re-anchors onto a different point of the crosshair ray. Zero until such
     // an acquisition.
     vec2 getDefaultPivotViewOffsetIso() const;
+    // World z of the content the camera is looking at, as far as the pivot
+    // knows it: the explicit focus's height, the height of the surface the
+    // default pivot last acquired, or 0 in ORIGIN mode.
+    float getViewReferenceHeight() const;
     // Stamp the pose the main composite is drawing this frame with — the
     // source a gesture starting next frame acquires from. Called once per
     // frame by TRIXEL_TO_FRAMEBUFFER.

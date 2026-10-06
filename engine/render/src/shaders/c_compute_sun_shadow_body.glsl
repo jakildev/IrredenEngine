@@ -45,6 +45,19 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform vec4 _faceDeformPadding[3];   // faceDeform[3] in the full UBO
     // Per-slot world FaceId (0..5); used only on the per-axis path.
     uniform ivec4 visibleFaceIds;
+    // Members between here and perAxisStoreFrame are declared only to reach
+    // its std140 offset.
+    uniform vec4 _voxelDepthAxisPadding;
+    uniform vec4 _detachedWorldReceivePadding;
+    uniform ivec4 _visibleIsoBoundsPadding;
+    uniform ivec4 _resolveFeederPadding;
+    uniform ivec4 _overflowScratchLayoutPadding;
+    uniform ivec4 _overflowSortStepPadding;
+    uniform vec4 _detachedViewToWorldPadding;
+    // Frame the per-axis store is keyed in: .xy = store cell of the frame's iso
+    // origin, .z = cardinal index of the view the key positions are rotated
+    // into. FrameDataVoxelToCanvas::perAxisStoreFrame_ (offset 256).
+    uniform ivec4 perAxisStoreFrame;
 };
 
 layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;
@@ -111,9 +124,7 @@ void main() {
 
     if (perAxisRoute != 0) {
         const int faceId = visibleFaceIds[face] ^ flip;
-        const vec3 faceOrigin = perAxisCellToWorld3DSubCell(
-            pixel, encoded, faceId, size, frameCanvasOffset, voxelRenderOptions
-        );
+        const vec3 faceOrigin = perAxisCellToWorld3DSubCell(pixel, encoded, faceId, perAxisStoreFrame);
         const float factor = shadowsEnabled == 0 ? 1.0
             : perAxisSunShadowFactor(faceOrigin, faceId);
         imageStore(canvasSunShadow, pixel, vec4(factor, 0.0, 0.0, 0.0));

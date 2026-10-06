@@ -625,12 +625,11 @@ inline int2 trixelFrameOffset(
     return trixelCanvasOffsetZ1 + int2(floor(frameCanvasOffset * float(scale)));
 }
 
-// The per-axis camera-pan anchor is `trixelOriginOffsetZ1(size) +
-// int2(floor(frameCanvasOffset))` — whole-iso, NOT density-scaled (per-axis
-// canvases are base-resolution, so the scaled anchor jitters under pan) — and
-// is INLINED at each per-axis site, not centralised here, so this shared header
-// gains no symbol that would perturb FP scheduling and drift the cardinal
-// SDF/voxel fast path.
+// The per-axis store origin is the frame data's `perAxisStoreFrame.xy` —
+// whole-iso, NOT density-scaled (per-axis canvases are base-resolution, so a
+// scaled origin jitters under pan) — and each per-axis site reads it directly,
+// not through a helper centralised here, so this shared header gains no symbol
+// that would perturb FP scheduling and drift the cardinal SDF/voxel fast path.
 
 inline int2 trixelCanvasPixelToIsoRel(
     int2 pixel,
@@ -1071,6 +1070,10 @@ struct FrameDataVoxelToTrixel {
     // Mirrors FrameDataVoxelToCanvas::overflowSortStep_ (offset 224).
     int4 overflowSortStep;
     float4 detachedViewToWorld;
+    // Frame the per-axis store is keyed in: .xy = store cell of the frame's iso
+    // origin, .z = cardinal index of the view the key positions are rotated
+    // into. Mirrors FrameDataVoxelToCanvas::perAxisStoreFrame_.
+    int4 perAxisStoreFrame;
 };
 
 // Smooth analytic vision-circle reveal for one fog disc at `worldXY`.

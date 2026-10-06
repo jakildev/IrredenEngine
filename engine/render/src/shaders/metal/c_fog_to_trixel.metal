@@ -19,12 +19,7 @@ static float3 fogPixelToWorld(
 ) {
     if (frameData.perAxisRoute != 0) {
         return perAxisCellToWorld3DSubCell(
-            pixel,
-            encoded,
-            faceId,
-            size,
-            frameData.frameCanvasOffset,
-            frameData.voxelRenderOptions
+            pixel, encoded, faceId, frameData.perAxisStoreFrame
         );
     }
     if (frameData.residualYaw != 0.0f) {

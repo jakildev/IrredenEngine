@@ -17,49 +17,100 @@ int ceilScale(int extent, float scale) {
     return static_cast<int>(IRMath::ceil(static_cast<float>(extent) * scale));
 }
 
-// At the default 1px floor the horizontal axis is bounded by the density term
-// (2× — the iso canvas packs 2 framebuffer px per trixel horizontally) and the
-// vertical axis by the face-shear bound W + H (Y/X-face row-1 shear at ±π/4
-// folds the horizontal span into the vertical footprint).
-TEST(PerAxisCanvasSize, DefaultFloorMatchesBoundsExactly) {
-    const ivec2 size = perAxisTrixelCanvasWorstCaseSize(ivec2{100, 80}, 1.0f);
-    EXPECT_EQ(size.x, ceilScale(100, 2.0f)); // density-bound horizontally
-    EXPECT_EQ(size.y, 100 + 80);             // face-shear bound: W + H vertically
+// The rotated-view bound: what a W x H view needs at the worst residual yaw,
+// plus the height headroom and the anchor's half-quantum slack on both sides.
+float rotatedViewAcross(ivec2 extent) {
+    const float W = static_cast<float>(extent.x);
+    const float H = static_cast<float>(extent.y);
+    const float span = H <= W ? IRMath::sqrt(W * W + H * H) : (W + H) / kSqrt2;
+    return span + 2.0f * (kSqrt2 * IRMath::kPerAxisStoreHeightHeadroom +
+                          static_cast<float>(
+                              IRMath::kPerAxisStoreAnchorQuantum / 2 + IRMath::kPerAxisStoreEdgePad
+                          ));
 }
 
-// The face-shear bound W + H is always a lower bound for Y (and √2·W for X) —
-// the per-axis canvas is never smaller than the worst-case deformed footprint.
-TEST(PerAxisCanvasSize, NeverBelowWorstCaseFootprint) {
-    const ivec2 extent{321, 217};
-    const ivec2 size = perAxisTrixelCanvasWorstCaseSize(extent, 1.0f);
-    EXPECT_GE(size.x, ceilScale(extent.x, kSqrt2)); // horizontal: √2·W
-    EXPECT_GE(size.y, extent.x + extent.y);         // vertical: W + H (face-shear)
+float rotatedViewDown(ivec2 extent) {
+    const float W = static_cast<float>(extent.x);
+    const float H = static_cast<float>(extent.y);
+    const float span = W <= H ? IRMath::sqrt(W * W + H * H) : (W + H) / kSqrt2;
+    return span + 2.0f * ((2.0f - kSqrt2) * IRMath::kPerAxisStoreHeightHeadroom +
+                          static_cast<float>(
+                              IRMath::kPerAxisStoreAnchorQuantum / 2 + IRMath::kPerAxisStoreEdgePad
+                          ));
+}
+
+// On a wide canvas the density term (2x — the iso canvas packs 2 framebuffer px
+// per trixel horizontally) bounds the horizontal axis and the face-shear bound
+// W + H (Y/X-face row-1 shear at +-pi/4) bounds the vertical one; the rotated
+// view fits inside both.
+TEST(PerAxisCanvasSize, WideCanvasMatchesTheDensityAndShearBoundsExactly) {
+    const ivec2 size = perAxisTrixelCanvasWorstCaseSize(ivec2{1000, 400}, 1.0f);
+    EXPECT_EQ(size.x, ceilScale(1000, 2.0f));
+    EXPECT_EQ(size.y, 1000 + 400);
+}
+
+// The common 1280x720 main canvas (642 x 722 trixels) keeps the allocation the
+// deformation and density bounds alone give it.
+TEST(PerAxisCanvasSize, SixteenByNineCanvasIsBoundedByDensityAndShear) {
+    const ivec2 size = perAxisTrixelCanvasWorstCaseSize(ivec2{642, 722}, 1.0f);
+    EXPECT_EQ(size.x, 2 * 642);
+    EXPECT_EQ(size.y, 642 + 722);
+}
+
+// A canvas taller than it is wide rotates its long side across the store near
+// a quarter turn; 2W no longer holds it and the rotated-view bound takes over.
+TEST(PerAxisCanvasSize, TallCanvasGrowsAcrossToHoldTheRotatedView) {
+    const ivec2 portrait{272, 962};
+    const ivec2 size = perAxisTrixelCanvasWorstCaseSize(portrait, 1.0f);
+    EXPECT_GT(size.x, 2 * portrait.x);
+    EXPECT_EQ(size.x, static_cast<int>(IRMath::ceil(rotatedViewAcross(portrait))));
+    EXPECT_EQ(size.y, portrait.x + portrait.y);
+}
+
+// Every bound is a lower bound at every aspect: the deformed footprint
+// (sqrt2*W across, W + H down) and the rotated view with its headroom.
+TEST(PerAxisCanvasSize, NeverBelowAnyBound) {
+    for (const ivec2 extent :
+         {ivec2{321, 217}, ivec2{642, 722}, ivec2{272, 962}, ivec2{362, 722}, ivec2{100, 80}}) {
+        const ivec2 size = perAxisTrixelCanvasWorstCaseSize(extent, 1.0f);
+        EXPECT_GE(size.x, ceilScale(extent.x, kSqrt2));
+        EXPECT_GE(size.y, extent.x + extent.y);
+        EXPECT_GE(static_cast<float>(size.x), rotatedViewAcross(extent));
+        EXPECT_GE(static_cast<float>(size.y), rotatedViewDown(extent));
+    }
 }
 
 // Bounded above: no unbounded growth as a face goes edge-on. Horizontal is
-// capped at 2× cardinal (density floor at 1px/trixel). Vertical is capped at
-// W + H (face-shear bound from Y/X-face row-1 at ±π/4) — never more.
-TEST(PerAxisCanvasSize, BoundedAboveByWorstCaseFootprint) {
-    const ivec2 extent{640, 360};
-    const ivec2 size = perAxisTrixelCanvasWorstCaseSize(extent, 1.0f);
-    EXPECT_LE(size.x, ceilScale(extent.x, 2.0f));
-    EXPECT_LE(size.y, extent.x + extent.y); // face-shear bound: W + H
-    // And never smaller than the cardinal canvas it must be able to represent.
-    EXPECT_GE(size.x, extent.x);
-    EXPECT_GE(size.y, extent.y);
+// capped at the larger of 2x cardinal (density floor at 1px/trixel) and the
+// rotated view; vertical at the larger of W + H and the rotated view.
+TEST(PerAxisCanvasSize, BoundedAboveByTheLargestBound) {
+    for (const ivec2 extent : {ivec2{640, 360}, ivec2{272, 962}, ivec2{100, 80}}) {
+        const ivec2 size = perAxisTrixelCanvasWorstCaseSize(extent, 1.0f);
+        EXPECT_LE(
+            static_cast<float>(size.x),
+            IRMath::max(static_cast<float>(ceilScale(extent.x, 2.0f)), rotatedViewAcross(extent)) +
+                1.0f
+        );
+        EXPECT_LE(
+            static_cast<float>(size.y),
+            IRMath::max(static_cast<float>(extent.x + extent.y), rotatedViewDown(extent)) + 1.0f
+        );
+        // And never smaller than the cardinal canvas it must be able to represent.
+        EXPECT_GE(size.x, extent.x);
+        EXPECT_GE(size.y, extent.y);
+    }
 }
 
 // A coarser minimum trixel size reduces horizontal texels (density term shrinks)
-// but leaves vertical unchanged — Y is always dominated by the face-shear bound
-// W + H, which is independent of the density floor.
+// but leaves vertical unchanged — Y never depends on the density floor.
 TEST(PerAxisCanvasSize, CoarserFloorShrinksHorizontalOnly) {
-    const ivec2 extent{200, 200};
+    const ivec2 extent{2000, 600};
     const ivec2 fine = perAxisTrixelCanvasWorstCaseSize(extent, 1.0f);
     const ivec2 coarse = perAxisTrixelCanvasWorstCaseSize(extent, 2.0f);
-    EXPECT_LE(coarse.x, fine.x);
-    // 2px floor ⇒ horizontal density term 2/2 = 1 < √2 ⇒ footprint-bound for X.
+    EXPECT_LT(coarse.x, fine.x);
+    // 2px floor => horizontal density term 2/2 = 1 < sqrt2 => footprint-bound for X.
     EXPECT_EQ(coarse.x, ceilScale(extent.x, kSqrt2));
-    // Y is face-shear-bound (W + H) regardless of the density floor.
+    EXPECT_EQ(coarse.y, fine.y);
     EXPECT_EQ(coarse.y, extent.x + extent.y);
 }
 
