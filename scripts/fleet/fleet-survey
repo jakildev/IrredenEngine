@@ -140,10 +140,10 @@ def task_title(task):
 
 
 def open_blockers(task, open_issues):
-    # `blocked_by` is the body line's text ("(none)", "#448", "#3988, #3989").
-    # The scout clears `blocked` when a blocker has a PR to stack on, but the
-    # claim gate still refuses while that PR is unreviewable, so an open
-    # blocker is reported as blocked here either way.
+    # `blocked_by` is the body line's raw text: "(none)", or issue refs
+    # separated by commas. The scout clears `blocked` when a blocker has a PR
+    # to stack on, but the claim gate still refuses while that PR is
+    # unreviewable, so an open blocker is reported as blocked here either way.
     named = BLOCKER_RE.findall(str(task.get("blocked_by") or ""))
     return [int(n) for n in named if int(n) in open_issues]
 
@@ -369,7 +369,8 @@ def render(report):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--repo", default="all", help="engine|game|all (default all)")
+    parser.add_argument("--repo", default="all", choices=(*REPO_SLUGS, "all"),
+                        help="repo to survey (default all)")
     parser.add_argument("--json", action="store_true")
     parser.add_argument("--state", help="scout cache (default ~/.fleet/state/state.json)")
     parser.add_argument("--issues", action="append", metavar="REPO=FILE",
@@ -397,9 +398,15 @@ def main(argv=None):
     issues = load_pairs(args.issues)
     prs = load_pairs(args.prs)
     if not hermetic:
+        cached = state.get("repos", {})
+        # `all` skips a repo this host does not carry; a repo asked for by
+        # name and absent would otherwise print a report with no repo in it.
+        if args.repo != "all" and args.repo not in cached:
+            print(f"fleet-survey: the scout cache has no {args.repo} repo", file=sys.stderr)
+            return 2
         keys = list(REPO_SLUGS) if args.repo == "all" else [args.repo]
         for key in keys:
-            if key not in state.get("repos", {}):
+            if key not in cached:
                 continue
             slug = REPO_SLUGS[key]
             issues[key] = gh_json(["issue", "list", "--repo", slug, "--state", "open",

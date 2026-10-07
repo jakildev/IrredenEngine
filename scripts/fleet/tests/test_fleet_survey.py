@@ -18,17 +18,22 @@ partitions a human acts on:
     ready; one with an open child is not
   - the untriaged predicate is "no fleet:/human: label"
   - idle ticks count only after the last dispatch line
+  - `--repo` takes engine, game or all and nothing else; a repo named
+    outright that the cache does not carry is an error, while `all` skips it
 
 Import the script via importlib because it has no .py extension.
 """
+import contextlib
 import importlib.machinery
 import importlib.util
+import io
 import json
 import re
 import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest import mock
 
 _SCRIPT = Path(__file__).parent.parent / "fleet-survey"
 _loader = importlib.machinery.SourceFileLoader("fleet_survey", str(_SCRIPT))
@@ -273,6 +278,68 @@ class Render(FleetSurveyFixture):
                        "## engine: stranded wip", "## engine: approval gap", "## engine: epics",
                        "close-out ready", "## engine: untriaged (1)", "fleet-triage-sweep"):
             self.assertIn(needle, text)
+
+
+class Cli(FleetSurveyFixture):
+    """main() on the live-fetch path, with gh replaced by a seam that fails closed."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.state_path = Path(cls.tmp.name) / "state.json"
+        cls.state_path.write_text(json.dumps(STATE))
+
+    def fake_gh(self, args):
+        self.gh_calls.append(args)
+        if args[:2] == ["issue", "list"]:
+            return ISSUES
+        if args[:2] == ["pr", "list"]:
+            return PRS
+        raise AssertionError(f"unmodelled gh call: {args}")
+
+    def run_main(self, *argv):
+        self.gh_calls = []
+        out, err = io.StringIO(), io.StringIO()
+        full = [*argv, "--allow-stale", "--state", str(self.state_path), "--host", "mac",
+                "--usage-dir", str(Path(self.tmp.name) / "usage"), "--log", str(self.log)]
+        with mock.patch.object(_mod, "gh_json", side_effect=self.fake_gh), \
+                contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            try:
+                code = _mod.main(full)
+            except SystemExit as exc:
+                code = exc.code
+        return code, out.getvalue(), err.getvalue()
+
+    def fetched_slugs(self):
+        return sorted({args[args.index("--repo") + 1] for args in self.gh_calls})
+
+    def test_an_unknown_repo_is_refused_before_any_report(self):
+        code, out, err = self.run_main("--repo", "bogus")
+        self.assertEqual(code, 2)
+        self.assertEqual(out, "")
+        self.assertIn("--repo", err)
+        self.assertIn("bogus", err)
+        self.assertEqual(self.gh_calls, [])
+
+    def test_a_named_repo_fetches_only_that_repo(self):
+        code, out, _ = self.run_main("--repo", "engine")
+        self.assertEqual(code, 0)
+        self.assertIn("## engine: queue", out)
+        self.assertEqual(self.fetched_slugs(), ["jakildev/IrredenEngine"])
+
+    def test_all_skips_a_repo_the_cache_does_not_carry(self):
+        code, out, _ = self.run_main("--repo", "all")
+        self.assertEqual(code, 0)
+        self.assertIn("## engine: queue", out)
+        self.assertNotIn("## game:", out)
+        self.assertEqual(self.fetched_slugs(), ["jakildev/IrredenEngine"])
+
+    def test_a_named_repo_missing_from_the_cache_is_an_error(self):
+        code, out, err = self.run_main("--repo", "game")
+        self.assertEqual(code, 2)
+        self.assertEqual(out, "")
+        self.assertIn("no game repo", err)
+        self.assertEqual(self.gh_calls, [])
 
 
 if __name__ == "__main__":
