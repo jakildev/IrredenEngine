@@ -45,6 +45,11 @@ namespace IRPrefab::Fog {
 
 namespace detail {
 
+/// The explored cell state as the fog pass reads it (`kFogExploredValue`
+/// in the shaders): the grid term of an explored cell.
+constexpr float kFogExploredStateValue =
+    static_cast<float>(IRComponents::kFogStateExplored) / 255.0f;
+
 /// A source's ceiling factor at @p dzUp world units above its observer,
 /// from its `visionCircleCeilings_` lane (ceilingHeight, fadeHeight): 1
 /// everywhere while disabled, a step at the plane for a hard ceiling, and
@@ -116,17 +121,16 @@ inline float revealSurfaceBandWeight(float surfaceVisibility) {
 /// colour at 1.
 inline IRMath::vec3
 revealStateColor(float state, IRMath::vec3 sourceColor, IRMath::vec3 unexplored) {
-    constexpr float kExploredValue = 128.0f / 255.0f;
     const float luminance = IRMath::dot(sourceColor, IRMath::vec3(0.299f, 0.587f, 0.114f));
     const IRMath::vec3 exploredColor = IRMath::vec3(luminance) * 0.4f;
-    if (state >= kExploredValue) {
+    if (state >= kFogExploredStateValue) {
         return IRMath::mix(
             exploredColor,
             sourceColor,
-            (state - kExploredValue) / (1.0f - kExploredValue)
+            (state - kFogExploredStateValue) / (1.0f - kFogExploredStateValue)
         );
     }
-    return IRMath::mix(unexplored, exploredColor, state / kExploredValue);
+    return IRMath::mix(unexplored, exploredColor, state / kFogExploredStateValue);
 }
 
 /// The cut-cap blend the radial rim cap and the reveal-surface cap share
@@ -271,8 +275,7 @@ inline RevealSurfaceSample evalRevealSurfaceComposition(
             // unexplored cell).
             const bool softDisc = observers.visionCircles_[i].w != 0.0f;
             if (ceilingReveal <= sample.state_ &&
-                (softDisc ||
-                 gridState >= static_cast<float>(IRComponents::kFogStateExplored) / 255.0f)) {
+                (softDisc || gridState >= kFogExploredStateValue)) {
                 continue;
             }
             losVisibility = visibilityOf(i);
@@ -618,6 +621,21 @@ inline void selectRevealSnapshot(
     los = {};
 }
 
+/// `selectRevealSnapshot` over @p fog's own live and published state.
+inline void selectRevealSnapshot(
+    const IRComponents::C_CanvasFogOfWar &fog,
+    IRComponents::FrameDataFogObservers &observers,
+    IRComponents::FogLosColumnField &los
+) {
+    selectRevealSnapshot(
+        fog.observers_,
+        fog.losPublishedObservers_,
+        fog.losField(),
+        observers,
+        los
+    );
+}
+
 /// The three fog subject classes. BODY is the default: an untagged voxel set
 /// on a fogged canvas is adopted by FOG_SUBJECT_ADOPT within one frame. FIELD
 /// (terrain, painted per sample) and EXEMPT (never fogged) are explicit tags.
@@ -795,13 +813,7 @@ inline float evalReveal(
 ) {
     IRComponents::FrameDataFogObservers observers;
     IRComponents::FogLosColumnField los;
-    selectRevealSnapshot(
-        fog.observers_,
-        fog.losPublishedObservers_,
-        fog.losField(),
-        observers,
-        los
-    );
+    selectRevealSnapshot(fog, observers, los);
     const IRMath::ivec3 column = IRMath::roundVec3HalfUp(worldPosition);
     return evalReveal(observers, los, fog.getCell(column.x, column.y), worldPosition, channels);
 }
@@ -815,13 +827,7 @@ inline RevealSurfaceSample evalRevealSurface(
 ) {
     IRComponents::FrameDataFogObservers observers;
     IRComponents::FogLosColumnField los;
-    selectRevealSnapshot(
-        fog.observers_,
-        fog.losPublishedObservers_,
-        fog.losField(),
-        observers,
-        los
-    );
+    selectRevealSnapshot(fog, observers, los);
     const IRMath::ivec3 column = IRMath::roundVec3HalfUp(worldPosition);
     return evalRevealSurface(
         observers,
@@ -912,13 +918,7 @@ inline float evalActiveVisionReveal(IRMath::vec3 worldPosition) {
     if (auto *fog = detail::activeFogComponent()) {
         IRComponents::FrameDataFogObservers observers;
         IRComponents::FogLosColumnField los;
-        selectRevealSnapshot(
-            fog->observers_,
-            fog->losPublishedObservers_,
-            fog->losField(),
-            observers,
-            los
-        );
+        selectRevealSnapshot(*fog, observers, los);
         return evalVisionReveal(observers, los, worldPosition);
     }
     return 1.0f;

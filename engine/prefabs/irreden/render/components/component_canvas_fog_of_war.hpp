@@ -885,19 +885,28 @@ struct C_CanvasFogOfWar {
         return slot;
     }
 
+    /// Whether @p source names a registered analytic slot; the per-slot
+    /// setters assert it and return on the release-build miss.
+    static bool
+    registeredSource(const FrameDataFogObservers &observers, int source, const char *function) {
+        const bool registered = source >= 0 && source < observers.visionCircleCount_;
+        IR_ASSERT(
+            registered,
+            "{}: source {} is not a registered vision circle (count {})",
+            function,
+            source,
+            observers.visionCircleCount_
+        );
+        return registered;
+    }
+
     static void setVisionCircleLineOfSight(
         FrameDataFogObservers &observers,
         int source,
         float losEyeHeight,
         float losSoftness = kFogLosHardGate
     ) {
-        IR_ASSERT(
-            source >= 0 && source < observers.visionCircleCount_,
-            "setVisionCircleLineOfSight: source {} is not a registered vision circle (count {})",
-            source,
-            observers.visionCircleCount_
-        );
-        if (source < 0 || source >= observers.visionCircleCount_)
+        if (!registeredSource(observers, source, "setVisionCircleLineOfSight"))
             return;
         if (losEyeHeight >= 0.0f) {
             observers.losSourceMask_ |= 1 << source;
@@ -913,13 +922,7 @@ struct C_CanvasFogOfWar {
     static void setVisionCircleCeiling(
         FrameDataFogObservers &observers, int source, float ceilingHeight, float fadeHeight = 0.0f
     ) {
-        IR_ASSERT(
-            source >= 0 && source < observers.visionCircleCount_,
-            "setVisionCircleCeiling: source {} is not a registered vision circle (count {})",
-            source,
-            observers.visionCircleCount_
-        );
-        if (source < 0 || source >= observers.visionCircleCount_)
+        if (!registeredSource(observers, source, "setVisionCircleCeiling"))
             return;
         if (ceilingHeight < 0.0f) {
             observers.visionCircleCeilings_[source] =
@@ -932,13 +935,7 @@ struct C_CanvasFogOfWar {
 
     static FogVisionCeiling
     visionCircleCeiling(const FrameDataFogObservers &observers, int source) {
-        IR_ASSERT(
-            source >= 0 && source < observers.visionCircleCount_,
-            "visionCircleCeiling: source {} is not a registered vision circle (count {})",
-            source,
-            observers.visionCircleCount_
-        );
-        if (source < 0 || source >= observers.visionCircleCount_)
+        if (!registeredSource(observers, source, "visionCircleCeiling"))
             return {};
         return {observers.ceilingHeight(source), observers.fadeHeight(source)};
     }

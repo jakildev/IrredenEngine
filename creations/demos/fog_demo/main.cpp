@@ -691,14 +691,22 @@ IREntity::EntityId g_ceilingPillar = IREntity::kNullEntity;
 int g_fogPaintProbeFrame = 0;
 bool g_fogPerAxisProbeDone = false;
 
-bool matchesFogDebugColor(Color color) {
-    const auto near = [](std::uint8_t channel, std::uint8_t target) {
-        return IRMath::abs(static_cast<int>(channel) - static_cast<int>(target)) <=
-               kFogPaintProbeTolerance;
+// Every channel of @p color within @p tolerance (in 0..255) of the
+// normalized @p expected.
+bool colorNear(Color color, vec3 expected, float tolerance) {
+    const auto near = [tolerance](std::uint8_t channel, float target) {
+        return IRMath::abs(static_cast<float>(channel) - target * 255.0f) <= tolerance;
     };
-    return near(color.red_, kFogDebugUnexploredColor.red_) &&
-           near(color.green_, kFogDebugUnexploredColor.green_) &&
-           near(color.blue_, kFogDebugUnexploredColor.blue_);
+    return near(color.red_, expected.x) && near(color.green_, expected.y) &&
+           near(color.blue_, expected.z);
+}
+
+bool matchesFogDebugColor(Color color) {
+    return colorNear(
+        color,
+        vec3(IRMath::colorToVec4(kFogDebugUnexploredColor)),
+        static_cast<float>(kFogPaintProbeTolerance)
+    );
 }
 
 // Runs at the render front, so it reads the previous frame's completed colour
@@ -1823,18 +1831,17 @@ IREntity::EntityId g_occlusionSlab = IREntity::kNullEntity;
 int g_surfaceProbeFrame = 0;
 // A readback channel within this of its prediction matches it.
 constexpr float kSurfaceProbeColorTolerance = 3.0f;
+// The fog pass's hard-disc rim lift, mirrored from ir_fog_common
+// (kFogRimFadeCells, kFogRimFadeLevel).
+constexpr float kFogRimFadeCells = 8.0f;
+constexpr float kFogRimFadeLevel = 0.75f;
 
 void requireSurfaceProbe(bool condition, const char *message) {
     requireFogProbe("FOG-SURFACE-PROBE", condition, message);
 }
 
 bool colorMatches(Color color, vec3 expected) {
-    const auto near = [](std::uint8_t channel, float target) {
-        return IRMath::abs(static_cast<float>(channel) - target * 255.0f) <=
-               kSurfaceProbeColorTolerance;
-    };
-    return near(color.red_, expected.x) && near(color.green_, expected.y) &&
-           near(color.blue_, expected.z);
+    return colorNear(color, expected, kSurfaceProbeColorTolerance);
 }
 
 bool colorEquals(Color a, Color b) {
@@ -1845,11 +1852,9 @@ bool colorEquals(Color a, Color b) {
 // unexplored: the state curve, the hard-disc rim lift at @p hardDistPastRim
 // (the soft discs here never lift), and, for a top face, no radial cap.
 vec3 predictFieldColor(float state, vec3 source, vec3 unexplored, float hardDistPastRim) {
-    constexpr float kRimFadeCells = 8.0f;
-    constexpr float kRimFadeLevel = 0.75f;
     vec3 color = IRPrefab::Fog::detail::revealStateColor(state, source, unexplored);
-    const float u = 1.0f - IRMath::smoothstep(0.0f, kRimFadeCells, hardDistPastRim);
-    return IRMath::mix(color, source, kRimFadeLevel * u * u);
+    const float u = 1.0f - IRMath::smoothstep(0.0f, kFogRimFadeCells, hardDistPastRim);
+    return IRMath::mix(color, source, kFogRimFadeLevel * u * u);
 }
 
 struct SurfaceLevelCount {
@@ -1944,7 +1949,7 @@ void probeCeilingSurface() {
                 const IRPrefab::Fog::RevealSurfaceSample treated =
                     IRPrefab::Fog::evalRevealSurface(fog, world);
                 const Color before = g_bodyProbeBeforeColors[i];
-                const bool gpuHidden = matchesFogDebugColor(colors[i]);
+                const bool gpuHidden = colorMatches(colors[i], unexplored);
                 const bool gpuLit = colorEquals(colors[i], before);
                 classify(cpuLevels[level], plain);
                 classify(treatedLevels[level], treated.state_);
@@ -2061,7 +2066,7 @@ void probeCeilingSurface() {
             const vec3 world =
                 canvasTexelToWorld(IRMath::ivec2(x, y), distances[i], stage1->frameData_);
             aboveCeiling += kCeilingObserverZ - world.z > kCeilingHeight ? 1 : 0;
-            painted += matchesFogDebugColor(colors[i]) ? 1 : 0;
+            painted += colorMatches(colors[i], unexplored) ? 1 : 0;
             partial += colorEquals(colors[i], g_bodyProbeBeforeColors[i]) ? 0 : 1;
             const float before = luminanceOf(g_bodyProbeBeforeColors[i]);
             if (before < kBodyProbeMinLuminance) {
@@ -2270,7 +2275,6 @@ void probeOcclusionSurface() {
     const vec3 unexplored(fog.observers_.unexploredColor_);
     const vec2 centre(kOcclusionRidgeObserver);
     const auto expected = static_cast<std::uint32_t>(g_occlusionSlab);
-    constexpr float kRimFadeCells = 8.0f;
 
     int slabTexels = 0;
     int hidden = 0;
@@ -2319,7 +2323,7 @@ void probeOcclusionSurface() {
             const vec3 source(IRMath::colorToVec4(before));
             const float distPastRim = IRMath::length(vec2(world) - centre) - kOcclusionRadius;
             const float hardDistPastRim =
-                plain < 1.0f ? IRMath::mix(kRimFadeCells, distPastRim, plain) : distPastRim;
+                plain < 1.0f ? IRMath::mix(kFogRimFadeCells, distPastRim, plain) : distPastRim;
             const vec3 untreated = predictFieldColor(plain, source, unexplored, hardDistPastRim);
             const vec3 toned = IRPrefab::Fog::detail::cutCapBlend(
                 untreated,

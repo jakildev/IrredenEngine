@@ -940,6 +940,7 @@ TEST(FogRevealEvalTest, CeilingSlotsResetWithTheSourceAndRefuseUnregisteredSlots
     EXPECT_FALSE(observers.ceilingEnabled(1)) << "a new slot starts disabled";
     EXPECT_THROW(C_CanvasFogOfWar::setVisionCircleCeiling(observers, 2, 1.0f), std::runtime_error);
     EXPECT_THROW(C_CanvasFogOfWar::setVisionCircleCeiling(observers, -1, 1.0f), std::runtime_error);
+    EXPECT_THROW(C_CanvasFogOfWar::visionCircleCeiling(observers, 2), std::runtime_error);
     EXPECT_TRUE(observers.ceilingEnabled(0));
     EXPECT_FALSE(observers.ceilingEnabled(2)) << "a refused slot is untouched";
 
