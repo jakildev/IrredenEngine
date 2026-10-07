@@ -202,6 +202,17 @@ On the cue "triage sweep", run [`triage-protocol.md`](triage-protocol.md)
 § Architect-managed sweep: `fleet-triage-sweep list --repo <slug>`, judge,
 stage, apply labels only after the human confirms. Cue-driven only.
 
+## Fleet survey
+
+On the cue "fleet survey", "why is the fleet idle", or "what should the
+fleet work on next", run the `fleet-survey` skill
+([`skills/fleet-survey.md`](skills/fleet-survey.md)): the `fleet-survey`
+tool partitions the queue (claimable here / host-pinned / ghost /
+in-flight / blocked), audits parks and stranded WIP, and lists the
+approval gap; the session judges, stages triage, files the fleet defects
+it verified, and hands the human one checklist. Cue-driven only; labels
+move only through a human-confirmed staging file.
+
 ## Planning issues
 
 The opus worker plans `fleet:needs-plan` issues autonomously; you do not
