@@ -96,10 +96,10 @@ edge_zcost_ceiling_paint:fog_edge_zcost_ceiling_paint_yaw9 PASS        100.0    
 peraxis_overflow:fog_peraxis_overflow_yaw9 PASS        100.0      0      inf
 entity_reveal:fog_entity_reveal          PASS        100.0      0      inf
 occlusion:fog_occlusion_ground           PASS        100.0      0      inf
-occlusion:fog_occlusion_ground:fog-los-edge PASS     
-occlusion:fog_occlusion_ground:fog-los-edge PASS     
+occlusion:fog_occlusion_ground:fog-los-edge PASS
+occlusion:fog_occlusion_ground:fog-los-edge PASS
 occlusion_high_ground:fog_occlusion_high_ground PASS        100.0      0      inf
-occlusion_high_ground:fog_occlusion_high_ground:fog-los-edge PASS     
+occlusion_high_ground:fog_occlusion_high_ground:fog-los-edge PASS
 occlusion_blocker:fog_occlusion_blocker  PASS        100.0      0      inf
 occlusion_blocker_inert:fog_occlusion_blocker_inert PASS      99.9707     54    51.03
 occlusion_two_sources:fog_occlusion_two_sources PASS        100.0      0      inf

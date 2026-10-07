@@ -49,16 +49,16 @@ compare:compare_yaw0                     PASS        100.0      0      inf
 compare:compare_yaw_q                    PASS        100.0      0      inf
 impulse:impulse_midspin                  PASS        100.0      0      inf
 impulse:impulse_settled                  PASS        100.0      0      inf
-floor_selfshadow:floor_selfshadow_offwide:shadow PASS     
-shadow_overlay_floor:shadow_overlay_floor:shadow PASS     
-world_placed_cast:shadow_overlay_floor:shadow PASS     
-gridspin_shadow_palette:gridspin_shadow_palette:shadow PASS     
-grid_orbit_facing:grid_orbit_facing:normal-facing PASS     
-grid_orbit_facing:grid_orbit_facing:orbit-geometry PASS     
-grid_orbit_cardinals:grid_orbit_cardinal_0:orbit-geometry PASS     
-grid_orbit_cardinals:grid_orbit_cardinal_90:orbit-geometry PASS     
-grid_orbit_cardinals:grid_orbit_cardinal_180:orbit-geometry PASS     
-grid_orbit_cardinals:grid_orbit_cardinal_270:orbit-geometry PASS     
+floor_selfshadow:floor_selfshadow_offwide:shadow PASS
+shadow_overlay_floor:shadow_overlay_floor:shadow PASS
+world_placed_cast:shadow_overlay_floor:shadow PASS
+gridspin_shadow_palette:gridspin_shadow_palette:shadow PASS
+grid_orbit_facing:grid_orbit_facing:normal-facing PASS
+grid_orbit_facing:grid_orbit_facing:orbit-geometry PASS
+grid_orbit_cardinals:grid_orbit_cardinal_0:orbit-geometry PASS
+grid_orbit_cardinals:grid_orbit_cardinal_90:orbit-geometry PASS
+grid_orbit_cardinals:grid_orbit_cardinal_180:orbit-geometry PASS
+grid_orbit_cardinals:grid_orbit_cardinal_270:orbit-geometry PASS
 
 [render-verify] 2 of 30 checks FAIL
   - so3_offsnap_disc: max_delta 73 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/save_files/render_verify_diffs/so3_offsnap_disc.diff.png
