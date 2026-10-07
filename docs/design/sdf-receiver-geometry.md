@@ -305,8 +305,16 @@ of the final sharp-shadow objective and no blur was added.
 
 The shadow texture remains RGBA8: R holds visibility, A holds `(FaceId + 1) / 255`
 for the six signed world-axis normals, and A=0 selects the legacy receiver.
-Only a successful finite box query writes a face code. Empty pixels, unsupported
-shapes and finite misses write zero. The specialized producer computes this code
+Successful finite box queries write a face code. A strict query miss can also
+retain the emitted world face for a solid, unrotated smooth-yaw BOX outside the
+lattice walk. Its emitter and face selector use the same slab intersection;
+a missing emitter slab writes no owner. Thus the stored slot belongs to the
+cardinal world-face triplet, even where the receiving query misses the finite
+surface. This fallback preserves the sampled receiver position and corrects
+only the normal used for bias and lighting. Other finite misses, empty pixels
+and unsupported shapes retain the legacy normal convention.
+
+The specialized producer computes this code
 even with shadows disabled, keeping Lambert/sky lighting independent of the shadow toggle.
 This exact encoding is restricted to axis-aligned analytical boxes; general curved
 or rotated normals need a different representation.
