@@ -411,9 +411,14 @@ composition they feed are defined in
 ### Hidden-body policy
 
 `HIDE` is the default: a hidden BODY contributes no pixels. `GHOST` retains a
-last-seen pose and renders that snapshot while the live body is hidden. The
-subject-class epic establishes the seam but implements only HIDE; GHOST is
-tracked by #3686.
+last-seen pose and renders that snapshot at explored-grey while the live body
+is hidden. The pose is captured only while the body is shown under GHOST; a
+never-shown body cannot create an origin ghost. Rigid and skinned voxel sets,
+SDF shapes, and detached canvases freeze placement while continuing to show
+authored content edits. Re-showing refreshes the snapshot. Seeing the remembered
+spot, forcing hidden, selecting HIDE, or reclassifying to FIELD/EXEMPT discards
+it. The policy and all route mirrors are runtime-only. C++ selects
+`FogHiddenPolicy::GHOST`; Lua uses `IRComponent.FogHiddenPolicy.GHOST`.
 
 ### Explored-state policy
 

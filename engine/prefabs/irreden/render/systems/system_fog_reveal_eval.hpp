@@ -28,6 +28,7 @@ template <> struct System<FOG_REVEAL_EVAL> {
         IRComponents::C_VoxelSetNew *voxelSet_ = nullptr;
         IRComponents::C_VoxelPool *pool_ = nullptr;
         bool visible_ = false;
+        bool ghostHeld_ = false;
     };
 
     IRComponents::FrameDataFogObservers observers_{};
@@ -135,31 +136,45 @@ template <> struct System<FOG_REVEAL_EVAL> {
         if (!IRPrefab::Fog::isOnFogCanvas(voxelSet, activeCanvas_)) {
             return;
         }
-        if (revealed.override_ == IRComponents::FogOverride::NONE &&
-            (entity + frameCounter_) % settings_.staggerPeriod_ != 0u) {
-            return;
-        }
-
-        bool shown = revealed.shown_;
-        if (revealed.override_ == IRComponents::FogOverride::FORCE_REVEALED) {
-            revealed.revealFactor_ = 1.0f;
-            shown = true;
-        } else if (revealed.override_ == IRComponents::FogOverride::FORCE_HIDDEN) {
-            revealed.revealFactor_ = 0.0f;
-            shown = false;
-        } else {
-            revealed.revealFactor_ = verdict(worldTransform.translation_, revealed.channels_);
-            if (!shown && revealed.revealFactor_ >= settings_.showThreshold_) {
+        const bool wasShown = revealed.shown_;
+        const bool evaluated = revealed.override_ != IRComponents::FogOverride::NONE ||
+                               (entity + frameCounter_) % settings_.staggerPeriod_ == 0u;
+        if (evaluated) {
+            bool shown = revealed.shown_;
+            if (revealed.override_ == IRComponents::FogOverride::FORCE_REVEALED) {
+                revealed.revealFactor_ = 1.0f;
                 shown = true;
-            } else if (shown && revealed.revealFactor_ <= settings_.hideThreshold_) {
+            } else if (revealed.override_ == IRComponents::FogOverride::FORCE_HIDDEN) {
+                revealed.revealFactor_ = 0.0f;
                 shown = false;
+            } else {
+                revealed.revealFactor_ = verdict(worldTransform.translation_, revealed.channels_);
+                if (!shown && revealed.revealFactor_ >= settings_.showThreshold_) {
+                    shown = true;
+                } else if (shown && revealed.revealFactor_ <= settings_.hideThreshold_) {
+                    shown = false;
+                }
+            }
+            if (shown != revealed.shown_ && activePool_ != nullptr) {
+                revealed.shown_ = shown;
             }
         }
-        // A shown body renders at its carrier factor, so the carrier follows
-        // the verdict whenever its 8-bit form moves; a hidden body's carrier
-        // is unobservable and left alone.
-        if (shown && activePool_ != nullptr) {
-            const std::uint8_t factor = IRPrefab::Fog::quantizeRevealFactor(revealed.revealFactor_);
+
+        IRPrefab::Fog::stepGhostLifecycle(
+            revealed,
+            worldTransform,
+            wasShown,
+            evaluated,
+            settings_.showThreshold_,
+            [this](IRMath::vec3 position, std::uint32_t channels) {
+                return verdict(position, channels);
+            }
+        );
+
+        if ((revealed.shown_ || revealed.ghostHeld_) && activePool_ != nullptr) {
+            const std::uint8_t factor =
+                revealed.ghostHeld_ ? IRComponents::kFogStateExplored
+                                    : IRPrefab::Fog::quantizeRevealFactor(revealed.revealFactor_);
             const std::uint32_t stamped = IRPrefab::Fog::bodyCarrierBits(*activePool_, voxelSet) >>
                                           IRComponents::VoxelReserved::kFogBodyFactorShift;
             if (stamped != factor) {
@@ -170,16 +185,12 @@ template <> struct System<FOG_REVEAL_EVAL> {
                 }
             }
         }
-        if (shown == revealed.shown_) {
-            return;
+        if (activePool_ != nullptr &&
+            (voxelSet.visible_ != revealed.shown_ || voxelSet.ghostHeld_ != revealed.ghostHeld_)) {
+            pending_.push(
+                PendingTransition{&voxelSet, activePool_, revealed.shown_, revealed.ghostHeld_}
+            );
         }
-        // Commit the verdict only when endTick can apply the matching mask and
-        // visibility transition; otherwise the next frame must retry it.
-        if (activePool_ == nullptr) {
-            return;
-        }
-        revealed.shown_ = shown;
-        pending_.push(PendingTransition{&voxelSet, activePool_, shown});
     }
 
     void endTick() {
@@ -193,9 +204,10 @@ template <> struct System<FOG_REVEAL_EVAL> {
             }
             IRComponents::C_VoxelSetNew &voxelSet = *transition.voxelSet_;
             voxelSet.visible_ = transition.visible_;
+            voxelSet.ghostHeld_ = transition.ghostHeld_;
             // A set its LOD band also hides stays masked off; the LOD gate
             // restores the mask when the band admits it again.
-            if (voxelSet.renders()) {
+            if (voxelSet.masksActive()) {
                 transition.pool_->resyncActiveMaskFromColors(
                     voxelSet.voxelStartIdx_,
                     static_cast<std::size_t>(voxelSet.numVoxels_)

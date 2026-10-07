@@ -143,6 +143,37 @@ TEST_F(LuaFogRevealedTest, OverrideAndChannelsAreReadWriteWithEnumTable) {
     );
 }
 
+TEST_F(LuaFogRevealedTest, HiddenPolicyIsValidatedAndGhostHeldIsReadOnly) {
+    auto result = m_lua.lua().safe_script(
+        R"lua(
+        local value = C_FogRevealed.new()
+        assert(IRComponent.FogHiddenPolicy.HIDE == 0)
+        assert(IRComponent.FogHiddenPolicy.GHOST == 1)
+        assert(value.hiddenPolicy == IRComponent.FogHiddenPolicy.HIDE)
+        value.hiddenPolicy = IRComponent.FogHiddenPolicy.GHOST
+        assert(value.ghostHeld == false)
+        return value
+    )lua",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+    EXPECT_EQ(
+        result.get<IRComponents::C_FogRevealed>().hiddenPolicy_,
+        IRComponents::FogHiddenPolicy::GHOST
+    );
+
+    for (const char *statement : {
+             "local v=C_FogRevealed.new(); v.hiddenPolicy=2",
+             "local v=C_FogRevealed.new(); v.hiddenPolicy='GHOST'",
+             "local v=C_FogRevealed.new(); v.hiddenPolicy=1.5",
+             "local v=C_FogRevealed.new(); v.hiddenPolicy=nil",
+             "local v=C_FogRevealed.new(); v.ghostHeld=true",
+         }) {
+        result = m_lua.lua().safe_script(statement, sol::script_pass_on_error);
+        EXPECT_FALSE(result.valid()) << statement;
+    }
+}
+
 // The marker components are Lua-constructible, and an entity spawned from
 // Lua with one reads that class through the C++ surface; a marker-less
 // entity reads the BODY default.

@@ -10,7 +10,9 @@
 #include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
+#include <irreden/job/worker_block_queue.hpp>
 
+#include <algorithm>
 #include <cstdint>
 #include <vector>
 
@@ -26,6 +28,12 @@ template <> struct System<FOG_REVEAL_EVAL_SHAPE> {
     IRPrefab::Fog::LosHardRouteCache losRoutes_;
     IRComponents::C_FogRevealSettings settings_{};
     std::uint64_t frameCounter_ = 0;
+    struct HeldPose {
+        IREntity::EntityId entity_ = IREntity::kNullEntity;
+        IRComponents::C_WorldTransform pose_{};
+    };
+    IRJob::WorkerBlockQueue<HeldPose> pendingHeld_;
+    std::vector<HeldPose> heldGhostPoses_;
 
     void beginTick() {
         activeCanvas_ = IRRender::getActiveCanvasEntityOrNull();
@@ -60,6 +68,11 @@ template <> struct System<FOG_REVEAL_EVAL_SHAPE> {
         if (fog != nullptr) {
             IRPrefab::Fog::touchShapeAnchorRegions(*fog, activeCanvas_, nodes);
         }
+        std::size_t population = 0;
+        for (IREntity::ArchetypeNode *node : nodes) {
+            population += static_cast<std::size_t>(node->length_);
+        }
+        pendingHeld_.reset(population);
     }
 
     void tick(
@@ -71,18 +84,16 @@ template <> struct System<FOG_REVEAL_EVAL_SHAPE> {
         if (!IRPrefab::Fog::isOnFogCanvas(shape, activeCanvas_)) {
             return;
         }
-        if (revealed.override_ == IRComponents::FogOverride::NONE &&
-            (entity + frameCounter_) % settings_.staggerPeriod_ != 0u) {
-            return;
-        }
-
-        if (revealed.override_ == IRComponents::FogOverride::FORCE_REVEALED) {
+        const bool wasShown = revealed.shown_;
+        const bool evaluated = revealed.override_ != IRComponents::FogOverride::NONE ||
+                               (entity + frameCounter_) % settings_.staggerPeriod_ == 0u;
+        if (evaluated && revealed.override_ == IRComponents::FogOverride::FORCE_REVEALED) {
             revealed.revealFactor_ = 1.0f;
             revealed.shown_ = true;
-        } else if (revealed.override_ == IRComponents::FogOverride::FORCE_HIDDEN) {
+        } else if (evaluated && revealed.override_ == IRComponents::FogOverride::FORCE_HIDDEN) {
             revealed.revealFactor_ = 0.0f;
             revealed.shown_ = false;
-        } else {
+        } else if (evaluated) {
             revealed.revealFactor_ = fog_ == nullptr ? 1.0f
                                                      : IRPrefab::Fog::evalReveal(
                                                            *fog_,
@@ -99,13 +110,53 @@ template <> struct System<FOG_REVEAL_EVAL_SHAPE> {
             }
         }
 
-        shape.fogBodyFactor_ = IRPrefab::Fog::quantizeRevealFactor(revealed.revealFactor_);
+        IRPrefab::Fog::stepGhostLifecycle(
+            revealed,
+            worldTransform,
+            wasShown,
+            evaluated,
+            settings_.showThreshold_,
+            [this](IRMath::vec3 position, std::uint32_t channels) {
+                return fog_ == nullptr ? 1.0f
+                                       : IRPrefab::Fog::evalReveal(
+                                             *fog_,
+                                             observers_,
+                                             los_,
+                                             losRoutes_,
+                                             position,
+                                             channels
+                                         );
+            }
+        );
+
+        if (revealed.ghostHeld_) {
+            pendingHeld_.push(HeldPose{entity, revealed.ghostPose_});
+        }
+        shape.fogBodyFactor_ = revealed.ghostHeld_
+                                   ? IRComponents::kFogStateExplored
+                                   : IRPrefab::Fog::quantizeRevealFactor(revealed.revealFactor_);
         shape.flags_ |= IRRender::SHAPE_FLAG_FOG_BODY;
-        if (revealed.shown_) {
+        if (revealed.shown_ || revealed.ghostHeld_) {
             shape.flags_ &= ~IRRender::SHAPE_FLAG_FOG_HIDDEN;
         } else {
             shape.flags_ |= IRRender::SHAPE_FLAG_FOG_HIDDEN;
         }
+        if (revealed.ghostHeld_) {
+            shape.flags_ |= IRMath::SDF::SHAPE_FLAG_FOG_GHOST;
+        } else {
+            shape.flags_ &= ~IRMath::SDF::SHAPE_FLAG_FOG_GHOST;
+        }
+    }
+
+    void endTick() {
+        heldGhostPoses_.clear();
+        heldGhostPoses_.reserve(pendingHeld_.size());
+        pendingHeld_.forEach([this](const HeldPose &entry) { heldGhostPoses_.push_back(entry); });
+        std::sort(
+            heldGhostPoses_.begin(),
+            heldGhostPoses_.end(),
+            [](const HeldPose &a, const HeldPose &b) { return a.entity_ < b.entity_; }
+        );
     }
 
     static SystemId create() {
@@ -119,5 +170,15 @@ template <> struct System<FOG_REVEAL_EVAL_SHAPE> {
 };
 
 } // namespace IRSystem
+
+namespace IRPrefab::Fog {
+inline const auto &heldShapeGhostPoses() {
+    using Eval = IRSystem::System<IRSystem::FOG_REVEAL_EVAL_SHAPE>;
+    static const std::vector<Eval::HeldPose> empty;
+    const auto id = IRSystem::findSystem(IRSystem::FOG_REVEAL_EVAL_SHAPE);
+    return id == IRSystem::kNullSystemId ? empty
+                                         : IRSystem::getSystemParams<Eval>(id)->heldGhostPoses_;
+}
+} // namespace IRPrefab::Fog
 
 #endif /* SYSTEM_FOG_REVEAL_EVAL_SHAPE_H */

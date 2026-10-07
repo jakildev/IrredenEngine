@@ -641,6 +641,41 @@ inline void selectRevealSnapshot(
 /// (terrain, painted per sample) and EXEMPT (never fogged) are explicit tags.
 enum class FogSubjectClass : std::uint8_t { FIELD = 0, BODY = 1, EXEMPT = 2 };
 
+template <typename GhostVerdictFn>
+inline void stepGhostLifecycle(
+    IRComponents::C_FogRevealed &revealed,
+    const IRComponents::C_WorldTransform &worldTransform,
+    bool wasShown,
+    bool evaluated,
+    float showThreshold,
+    GhostVerdictFn &&ghostVerdict
+) {
+    if (revealed.hiddenPolicy_ == IRComponents::FogHiddenPolicy::HIDE) {
+        revealed.ghostHeld_ = false;
+        revealed.ghostPoseValid_ = false;
+        return;
+    }
+    if (revealed.override_ == IRComponents::FogOverride::FORCE_HIDDEN) {
+        revealed.ghostHeld_ = false;
+        revealed.ghostPoseValid_ = false;
+        return;
+    }
+    if (revealed.shown_) {
+        revealed.ghostHeld_ = false;
+        revealed.ghostPose_ = worldTransform;
+        revealed.ghostPoseValid_ = true;
+        return;
+    }
+    if (wasShown && revealed.ghostPoseValid_) {
+        revealed.ghostHeld_ = true;
+    }
+    if (revealed.ghostHeld_ && evaluated && revealed.override_ == IRComponents::FogOverride::NONE &&
+        ghostVerdict(revealed.ghostPose_.translation_, revealed.channels_) >= showThreshold) {
+        revealed.ghostHeld_ = false;
+        revealed.ghostPoseValid_ = false;
+    }
+}
+
 /// The 8-bit carrier form of a BODY reveal factor: round half up of
 /// `factor * 255`, so 1.0 pins 255 and 0.0 pins 0.
 inline std::uint8_t quantizeRevealFactor(float factor) {
@@ -1484,6 +1519,7 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
                                      (*setOpt)->canvasEntity_ == (*canvasOpt)->canvasEntity_;
     if (setOpt.has_value()) {
         IRComponents::C_VoxelSetNew *voxelSet = *setOpt;
+        voxelSet->ghostHeld_ = false;
         const IREntity::EntityId activeCanvas = IRRender::getActiveCanvasEntityOrNull();
         canvas = voxelSet->canvasEntity_ == IREntity::kNullEntity ? activeCanvas
                                                                   : voxelSet->canvasEntity_;
@@ -1507,7 +1543,7 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
                 break;
             }
             voxelSet->visible_ = subjectClass != FogSubjectClass::BODY;
-            setRenders = voxelSet->renders();
+            setRenders = voxelSet->masksActive();
         }
     }
     if (shapeOpt.has_value()) {
@@ -1521,6 +1557,7 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
         );
         shape.flags_ &= ~IRRender::SHAPE_FLAG_FOG_HIDDEN;
         shape.flags_ &= ~IRRender::SHAPE_FLAG_FOG_BODY;
+        shape.flags_ &= ~IRMath::SDF::SHAPE_FLAG_FOG_GHOST;
         if (subjectClass == FogSubjectClass::BODY) {
             shape.flags_ |= IRRender::SHAPE_FLAG_FOG_BODY;
             shape.flags_ |= IRRender::SHAPE_FLAG_FOG_HIDDEN;
@@ -1541,6 +1578,7 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
         if (!entityCanvas.screenLocked_ && detached) {
             entityCanvas.fogRevealFactor_ = subjectClass == FogSubjectClass::BODY ? 0.0f : 1.0f;
             entityCanvas.fogHidden_ = subjectClass == FogSubjectClass::BODY;
+            entityCanvas.fogGhost_ = false;
             stampCanvasBodyCarrier(
                 entityCanvas,
                 subjectClass != FogSubjectClass::FIELD,
@@ -1562,6 +1600,7 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
         hadRevealed = true;
         freshRevealed.override_ = (*revealed)->override_;
         freshRevealed.channels_ = (*revealed)->channels_;
+        freshRevealed.hiddenPolicy_ = (*revealed)->hiddenPolicy_;
     }
     if (subjectClass == FogSubjectClass::BODY) {
         if (rangeCount > 0) {

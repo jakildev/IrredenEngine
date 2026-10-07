@@ -11,6 +11,7 @@
 #include <irreden/render/canvas_pose.hpp>
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/systems/system_fog_reveal_eval_canvas.hpp>
 
 // PROPAGATE_CANVAS_ROTATION — UPDATE pipeline.
 //
@@ -51,6 +52,7 @@ template <> struct System<PROPAGATE_CANVAS_ROTATION> {
     }
 
     void tick(
+        IREntity::EntityId entity,
         const IRComponents::C_WorldTransform &worldTransform,
         const IRComponents::C_RotationMode &rotationMode,
         const IRComponents::C_EntityCanvas &entityCanvas
@@ -62,6 +64,19 @@ template <> struct System<PROPAGATE_CANVAS_ROTATION> {
             rotationMode.mode_ != IRComponents::RotationMode::DETACHED_REVOXELIZE) {
             return;
         }
+        const IRComponents::C_WorldTransform *pose = &worldTransform;
+        if (entityCanvas.fogGhost_) {
+            const auto &held = IRPrefab::Fog::heldCanvasGhostPoses();
+            const auto it = std::lower_bound(
+                held.begin(),
+                held.end(),
+                entity,
+                [](const auto &entry, IREntity::EntityId id) { return entry.entity_ < id; }
+            );
+            if (it != held.end() && it->entity_ == entity) {
+                pose = &it->pose_;
+            }
+        }
         auto canvasRotation = IREntity::getComponentOptional<IRComponents::C_CanvasLocalRotation>(
             entityCanvas.canvasEntity_
         );
@@ -69,7 +84,7 @@ template <> struct System<PROPAGATE_CANVAS_ROTATION> {
             IRPrefab::CanvasPose::write(
                 *canvasRotation.value(),
                 cameraRotationInverse_,
-                worldTransform,
+                *pose,
                 rotationMode.mode_,
                 entityCanvas
             );

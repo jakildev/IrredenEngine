@@ -1632,6 +1632,9 @@ void probeExploredDecay(int shotIndex) {
 // and each crop frames one whole body at the 2560x1440 zoom-6 shot.
 bool g_entityReveal = false;         // --entity-reveal
 bool g_entityRevealSoftEdge = false; // --entity-reveal-soft-edge
+bool g_ghostPolicy = false;
+std::vector<IREntity::EntityId> g_ghostPolicyBodies;
+int g_ghostPolicyFrame = 0;
 constexpr float kEntityRevealRadius = 20.0f;
 constexpr float kEntityRevealSoftEdge = 4.0f;
 constexpr float kEntityRevealSpacing = 5.0f;
@@ -1781,6 +1784,23 @@ void probeEntityRevealBodies() {
             ratioMin,
             ratioMax
         );
+        if (g_ghostPolicy &&
+            std::find(g_ghostPolicyBodies.begin(), g_ghostPolicyBodies.end(), subject.entity_) !=
+                g_ghostPolicyBodies.end()) {
+            requireFogProbe(
+                "FOG-GHOST-PROBE",
+                revealed.has_value() && (*revealed)->ghostHeld_,
+                "GHOST body did not hold its last-seen pose after leaving reveal"
+            );
+            const auto &live = IREntity::getComponent<C_WorldTransform>(subject.entity_);
+            IR_LOG_INFO(
+                "FOG-GHOST-PROBE body={} held={} ghostX={:.3f} liveX={:.3f}",
+                subject.label_,
+                (*revealed)->ghostHeld_,
+                (*revealed)->ghostPose_.translation_.x,
+                live.translation_.x
+            );
+        }
     }
 }
 
@@ -2727,6 +2747,10 @@ int main(int argc, char **argv) {
         "Enable the canvas reveal-surface treatment (dissolve + cap tone) on the "
         "--ceiling-treatment rows or the --occlusion=high-ground --los-softness band"
     );
+    IREngine::args().flag(
+        "--ghost-policy",
+        "Move governed voxel and shape bodies through the fog rim with GHOST retention"
+    );
     IREngine::args().enumValue(
         "--occlusion",
         "Line-of-sight fog scene "
@@ -2892,6 +2916,9 @@ int main(int argc, char **argv) {
     g_edgeZCostCeiling = IREngine::args().getFlag("--edge-zcost-ceiling");
     g_entityReveal = IREngine::args().getFlag("--entity-reveal");
     g_entityRevealSoftEdge = IREngine::args().getFlag("--entity-reveal-soft-edge");
+    g_ghostPolicy = IREngine::args().getFlag("--ghost-policy");
+    g_entityRevealSoftEdge = g_entityRevealSoftEdge || g_ghostPolicy;
+    g_entityReveal = g_entityReveal || g_ghostPolicy;
     g_entityReveal = g_entityReveal || (g_entityRevealSoftEdge && !g_detachedBody);
     g_ceilingTreatment = IREngine::args().getFlag("--ceiling-treatment");
     g_revealTreatment = IREngine::args().getFlag("--reveal-treatment");
@@ -3106,6 +3133,26 @@ void initSystems() {
     // BEFORE TRIXEL_TO_FRAMEBUFFER — that order is the load-bearing part of the
     // fog wiring (faithful to shape_debug's pre-removal pipeline).
     std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    if (g_ghostPolicy) {
+        renderPipeline.push_front(
+            IRSystem::createSystem<C_Camera>(
+                "FogGhostPolicyDrive",
+                [](C_Camera &) {},
+                []() {
+                    ++g_ghostPolicyFrame;
+                    if (g_ghostPolicyFrame > 20 && g_ghostPolicyFrame <= 180) {
+                        for (const IREntity::EntityId entity : g_ghostPolicyBodies) {
+                            auto transform =
+                                IREntity::getComponentOptional<C_LocalTransform>(entity);
+                            if (transform.has_value()) {
+                                transform.value()->translation_.x += 0.25f;
+                            }
+                        }
+                    }
+                }
+            )
+        );
+    }
     renderPipeline.insert(
         renderPipeline.end(),
         {
@@ -3877,9 +3924,19 @@ void initEntities() {
         g_entityRevealProbe =
             probe("governed_pillar", createPillar(rowPos(1, 4.0f), Color{80, 210, 245, 255}));
         IRPrefab::Fog::setEntityRevealGoverned(g_entityRevealProbe);
+        if (g_ghostPolicy) {
+            auto &fog = IREntity::getComponent<C_FogRevealed>(g_entityRevealProbe);
+            fog.hiddenPolicy_ = FogHiddenPolicy::GHOST;
+            g_ghostPolicyBodies.push_back(g_entityRevealProbe);
+        }
         const IREntity::EntityId governedShape =
             probe("governed_box", createBox(rowPos(2, 4.0f), Color{120, 235, 140, 255}, 0u));
         IRPrefab::Fog::setEntityRevealGoverned(governedShape);
+        if (g_ghostPolicy) {
+            auto &fog = IREntity::getComponent<C_FogRevealed>(governedShape);
+            fog.hiddenPolicy_ = FogHiddenPolicy::GHOST;
+            g_ghostPolicyBodies.push_back(governedShape);
+        }
         probe("unflagged_box", createBox(rowPos(3, 5.0f), Color{235, 225, 110, 255}, 0u));
         const vec3 hiddenShapePos{18.0f, -18.0f, 4.0f};
         const IREntity::EntityId hiddenShape =

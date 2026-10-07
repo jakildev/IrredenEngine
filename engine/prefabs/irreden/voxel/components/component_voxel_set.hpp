@@ -29,6 +29,11 @@ struct C_VoxelSetNew {
     // the pool mask carries the corresponding per-voxel GPU visibility.
     bool visible_ = true;
 
+    // Fog keeps this route mirror separate from `visible_`: a held ghost
+    // remains active in the pool mask while pose writers still see
+    // `renders() == false` and preserve its last shown placement.
+    bool ghostHeld_ = false;
+
     // Second transient render gate, owned by GATE_VOXEL_SETS_BY_LOD: true while
     // the entity's resolved LOD tier is outside [lodMax_ .. lodMin_]. Separate
     // from `visible_` so the two owners never overwrite each other's verdict;
@@ -359,6 +364,10 @@ struct C_VoxelSetNew {
         return visible_ && !lodCulled_;
     }
 
+    bool masksActive() const {
+        return (visible_ || ghostHeld_) && !lodCulled_;
+    }
+
     // Flip the LOD gate and bring the pool mask in line with it. A culled set
     // keeps its span, colors and authored alpha exactly as a hidden one does,
     // so the flip is reversible and allocation-free. A staged set has no span;
@@ -371,7 +380,7 @@ struct C_VoxelSetNew {
         if (numVoxels_ <= 0) {
             return;
         }
-        if (renders()) {
+        if (masksActive()) {
             IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
         } else {
             IRPrefab::VoxelPool::markRangeInactive(voxelStartIdx_, numVoxels_, canvasEntity_);
@@ -414,7 +423,7 @@ struct C_VoxelSetNew {
         voxels_[idx].color_ = color;
         mirrorToRotationSource(idx);
         markPoolRecordsChanged(idx, 1);
-        if (renders()) {
+        if (masksActive()) {
             IRPrefab::VoxelPool::markVoxelActive(
                 voxelStartIdx_,
                 idx,
@@ -430,7 +439,7 @@ struct C_VoxelSetNew {
             mirrorToRotationSource(i);
         }
         markPoolRecordsChanged();
-        if (!renders()) {
+        if (!masksActive()) {
             return;
         }
         if (color.alpha_ != 0) {
@@ -498,7 +507,7 @@ struct C_VoxelSetNew {
             mirrorToRotationSource(i);
         }
         markPoolRecordsChanged();
-        if (renders()) {
+        if (masksActive()) {
             IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);
@@ -521,7 +530,7 @@ struct C_VoxelSetNew {
                     voxels_[idx].color_ = color;
                     voxels_[idx].activate();
                     mirrorToRotationSource(idx);
-                    if (renders()) {
+                    if (masksActive()) {
                         pool.setActiveBit(voxelStartIdx_ + idx);
                     }
                 }
@@ -542,7 +551,7 @@ struct C_VoxelSetNew {
                     }
                 }
             }
-            if (renders()) {
+            if (masksActive()) {
                 IRPrefab::VoxelPool::markRangeActive(voxelStartIdx_, numVoxels_, canvasEntity_);
             }
         }
@@ -567,7 +576,7 @@ struct C_VoxelSetNew {
             // Sphere splits the span into active interior + inactive
             // exterior — resync from per-voxel alpha rather than picking
             // bulk active/inactive.
-            if (renders()) {
+            if (masksActive()) {
                 IRPrefab::VoxelPool::resyncRangeFromColors(
                     voxelStartIdx_,
                     numVoxels_,
@@ -672,7 +681,7 @@ struct C_VoxelSetNew {
         }
         // Hidden raw alpha edits still invalidate derived cull bounds.
         markPoolRecordsChanged();
-        if (!renders()) {
+        if (!masksActive()) {
             return;
         }
         IRPrefab::VoxelPool::resyncRangeFromColors(
@@ -911,7 +920,7 @@ struct C_VoxelSetNew {
         // Dense payload is a mix of active and inactive slots, so resync from
         // per-voxel alpha rather than the fast bulk path.
         markPoolRecordsChanged();
-        if (renders()) {
+        if (masksActive()) {
             IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, extent);
@@ -949,7 +958,7 @@ struct C_VoxelSetNew {
             mirrorToRotationSource(i);
         }
         markPoolRecordsChanged();
-        if (renders()) {
+        if (masksActive()) {
             IRPrefab::VoxelPool::resyncRangeFromColors(voxelStartIdx_, numVoxels_, canvasEntity_);
         }
         IRPrefab::Voxel::recomputeFaceOccupancy(voxels_, size_);

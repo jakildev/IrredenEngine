@@ -26,6 +26,7 @@
 #include <irreden/render/canvas_pose.hpp>
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/entity_canvas.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/voxel_pool_teardown.hpp>
@@ -79,10 +80,15 @@ inline void stampCanvasPose(IREntity::EntityId entity, IRComponents::RotationMod
     if (!pose) {
         return;
     }
+    const IRComponents::C_WorldTransform *ownerPose = world.value();
+    if (auto fog = IREntity::getComponentOptional<IRComponents::C_FogRevealed>(entity);
+        fog.has_value() && fog.value()->ghostHeld_) {
+        ownerPose = &fog.value()->ghostPose_;
+    }
     IRPrefab::CanvasPose::write(
         *pose.value(),
         IRMath::quatInverse(IRPrefab::Camera::getRotationQuat()),
-        *world.value(),
+        *ownerPose,
         mode,
         *canvas.value()
     );

@@ -50,6 +50,7 @@
 #include <irreden/ir_render.hpp>
 
 #include <irreden/common/components/component_world_transform.hpp>
+#include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
@@ -258,7 +259,11 @@ gatherVisibleShapes(IRMath::CardinalIndex cardinalIndex, const RayCastOptions &o
             // every entity. Acceptable: this path fires on click frames
             // only.
             auto &xform = IREntity::getComponent<IRComponents::C_WorldTransform>(id);
-            const IRMath::vec3 worldPos = xform.translation_;
+            const auto fog = IREntity::getComponentOptional<IRComponents::C_FogRevealed>(id);
+            const IRMath::vec3 worldPos =
+                (sd.flags_ & IRMath::SDF::SHAPE_FLAG_FOG_GHOST) != 0u && fog.has_value()
+                    ? fog.value()->ghostPose_.translation_
+                    : xform.translation_;
             const IRMath::vec3 rotatedPos = IRMath::rotateCardinalZ(worldPos, cardinalIndex);
             const IRMath::vec3 boundHalf = IRMath::SDF::boundingHalf(sd.shapeType_, sd.params_);
 
