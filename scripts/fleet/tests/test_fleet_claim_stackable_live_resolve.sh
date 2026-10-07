@@ -177,6 +177,7 @@ PR_VIEW = {
     # fleet:awaiting-base - the label is deliberately still present, so
     # the accept is graded against a live carrier, not a cleaned-up one.
     "905": r'{"state":"OPEN","headRefName":"claude/905-awaiting-base","labels":[{"name":"fleet:approved"},{"name":"fleet:awaiting-base"}]}',
+    "906": r'{"state":"OPEN","headRefName":"claude/906-game-approved","labels":[{"name":"fleet:approved"}]}',
 }
 PR_VIEW_DEFAULT = r'{"state":"OPEN","headRefName":"claude/x","labels":[]}'
 
@@ -198,12 +199,20 @@ if verb == "pr list":
 if verb == "pr view":
     # $3 is the PR id passed to --stackable-on.
     pr_id = args[2] if len(args) > 2 else ""
+    if pr_id == "906" and "--repo" not in args:
+        sys.exit(1)
+    if pr_id == "906" and args[args.index("--repo") + 1] != "jakildev/irreden":
+        sys.exit(1)
     emit(PR_VIEW.get(pr_id, PR_VIEW_DEFAULT))
     sys.exit(0)
 if verb == "pr diff":
     # claim --stackable-on live diff: empty output = empty claim-commit,
     # non-empty = real diff, exit 1 = fetch failure (unverifiable base).
     pr_id = args[2] if len(args) > 2 else ""
+    if pr_id == "906" and "--repo" not in args:
+        sys.exit(1)
+    if pr_id == "906" and args[args.index("--repo") + 1] != "jakildev/irreden":
+        sys.exit(1)
     if pr_id == "902":
         pass
     elif pr_id == "903":
@@ -212,6 +221,8 @@ if verb == "pr diff":
         sys.exit(1)
     elif pr_id == "905":
         emit("scripts/fleet/witness\n")
+    elif pr_id == "906":
+        emit("scripts/fleet/game_stack_base.sh\n")
     else:
         emit("engine/x.cpp\n")
     sys.exit(0)
@@ -358,6 +369,22 @@ fi
 # to master (claim-base reads the --stackable-on sidecar).
 t9_base=$("$FLEET_CLAIM" claim-base 3004 2>/dev/null || true)
 assert_output "$t9_base" "claude/905-awaiting-base" "claim recorded the awaiting-base PR as the stack base"
+
+# The game claim is launched from this engine-rooted fixture. Requiring the
+# game slug on both live base re-verification calls proves the namespace does
+# not fall back to the current worktree's engine repository.
+echo "T10: game claim re-verifies its approved base with the game repository → accepted"
+t10_err="$TMPROOT/t10.err"
+if "$FLEET_CLAIM" --repo game claim 3004 worker-test --stackable-on 906 >/dev/null 2>"$t10_err"; then
+    PASS=$((PASS + 1))
+    echo "  ok: game base accepted with explicit repository"
+else
+    FAIL=$((FAIL + 1))
+    echo "  FAIL: game base refused:"
+    sed 's/^/        /' "$t10_err"
+fi
+t10_base=$("$FLEET_CLAIM" --repo game claim-base 3004 2>/dev/null || true)
+assert_output "$t10_base" "claude/906-game-approved" "game claim recorded its stack base"
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"

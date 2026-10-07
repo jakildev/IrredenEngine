@@ -1675,7 +1675,8 @@ cmd_claim() {
     local stackable_branch=""
     if [[ -n "$stackable_pr" ]]; then
         local pr_json pr_state pr_head
-        if ! pr_json=$(gh pr view "$stackable_pr" --json state,headRefName,labels 2>/dev/null); then
+        if ! pr_json=$(gh pr view "$stackable_pr" --repo "$(repo_from_ns)" \
+                --json state,headRefName,labels 2>/dev/null); then
             echo "fleet-claim claim: failed to fetch PR state for $stackable_pr" >&2
             return 1
         fi
@@ -1703,7 +1704,8 @@ cmd_claim() {
                 local pr_labels stack_diff stack_reject
                 pr_labels=$(printf '%s' "$pr_json" \
                     | python3 -c 'import sys, json; print("\n".join(l.get("name","") for l in json.load(sys.stdin).get("labels", [])))')
-                if ! stack_diff=$(gh pr diff "$stackable_pr" --name-only 2>/dev/null); then
+                if ! stack_diff=$(gh pr diff "$stackable_pr" \
+                        --repo "$(repo_from_ns)" --name-only 2>/dev/null); then
                     echo "fleet-claim claim: could not fetch diff for $stackable_pr — refusing to stack on an unverifiable base" >&2
                     return 1
                 fi
