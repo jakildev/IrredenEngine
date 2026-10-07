@@ -1,0 +1,65 @@
+[fleet-jobs] display: 1 online CoreGraphics display(s)
+[render-verify] target=IRCanvasStress demo=canvas_stress backend=macos-debug warmup=120
+[render-verify] 6 shots: so3_smooth_sweep, so3_offsnap_disc, so3_wide_parity, so3_grid_cross, so3_offsnap_wide, revoxelize_solids
+[render-verify] 11 extra run(s): modeswitch, sharedparts, detach, compare, impulse, floor_selfshadow, shadow_overlay_floor, world_placed_cast, gridspin_shadow_palette, grid_orbit_facing, grid_orbit_cardinals
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 120
+[render-verify] warning: captured 12 shots, manifest expects 6; ignoring extras
+[render-verify] extra run 'modeswitch': --only modeswitch --no-auto-rotate --no-spin
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 12 --only modeswitch --no-auto-rotate --no-spin
+[render-verify] extra run 'sharedparts': --only sharedparts --no-auto-rotate
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 30 --only sharedparts --no-auto-rotate
+[render-verify] extra run 'detach': --only detach --no-auto-rotate --no-spin
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 30 --only detach --no-auto-rotate --no-spin
+[render-verify] extra run 'compare': --only compare
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 120 --only compare
+[render-verify] extra run 'impulse': --only impulse --no-auto-rotate
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only impulse --no-auto-rotate
+[render-verify] extra run 'floor_selfshadow': --only floor --debug-overlay shadow
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 120 --only floor --debug-overlay shadow
+[render-verify] extra run 'shadow_overlay_floor': --only floor --no-auto-rotate --no-spin --debug-overlay shadow
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 120 --only floor --no-auto-rotate --no-spin --debug-overlay shadow
+[render-verify] extra run 'world_placed_cast': --only revox,floor --no-auto-rotate --no-spin --debug-overlay shadow
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 120 --only revox,floor --no-auto-rotate --no-spin --debug-overlay shadow
+[render-verify] extra run 'gridspin_shadow_palette': --only gridspin --frozen-pose 0.5235987756 --no-auto-rotate --no-ao --pivot-origin --zoom 4 --debug-overlay shadow --sweep-yaw 0.39269908 0.39269908 1
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only gridspin --frozen-pose 0.5235987756 --no-auto-rotate --no-ao --pivot-origin --zoom 4 --debug-overlay shadow --sweep-yaw 0.39269908 0.39269908 1
+[render-verify] extra run 'grid_orbit_facing': --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 2.35619449 2.35619449 1
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 2.35619449 2.35619449 1
+[render-verify] extra run 'grid_orbit_cardinals': --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 0 4.71238898 4
++ fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 0 4.71238898 4
+
+shot                                     result     match%  max_d     psnr
+----------------------------------------------------------------------------
+so3_smooth_sweep                         PASS      99.9372     40    50.14
+so3_offsnap_disc                         FAIL      99.9395     73    58.85
+so3_wide_parity                          PASS      99.9372     40    50.14
+so3_grid_cross                           PASS      99.9372     40    50.14
+so3_offsnap_wide                         FAIL      99.9403     73     56.2
+revoxelize_solids                        PASS      99.9372     40    50.14
+modeswitch:modeswitch_grid               PASS        100.0      0      inf
+modeswitch:modeswitch_detached           PASS        100.0      0      inf
+modeswitch:modeswitch_revox              PASS        100.0      0      inf
+modeswitch:modeswitch_grid_return        PASS        100.0      0      inf
+sharedparts:sharedparts_spin_a           PASS        100.0      0      inf
+sharedparts:sharedparts_spin_b           PASS        100.0      0      inf
+sharedparts:sharedparts_yaw              PASS        100.0      0      inf
+detach:detach_hosted                     PASS        100.0      0      inf
+detach:detach_own_canvas                 PASS        100.0      0      inf
+detach:detach_grid                       PASS        100.0      0      inf
+compare:compare_yaw0                     PASS        100.0      0      inf
+compare:compare_yaw_q                    PASS        100.0      0      inf
+impulse:impulse_midspin                  PASS        100.0      0      inf
+impulse:impulse_settled                  PASS        100.0      0      inf
+floor_selfshadow:floor_selfshadow_offwide:shadow PASS     
+shadow_overlay_floor:shadow_overlay_floor:shadow PASS     
+world_placed_cast:shadow_overlay_floor:shadow PASS     
+gridspin_shadow_palette:gridspin_shadow_palette:shadow PASS     
+grid_orbit_facing:grid_orbit_facing:normal-facing PASS     
+grid_orbit_facing:grid_orbit_facing:orbit-geometry PASS     
+grid_orbit_cardinals:grid_orbit_cardinal_0:orbit-geometry PASS     
+grid_orbit_cardinals:grid_orbit_cardinal_90:orbit-geometry PASS     
+grid_orbit_cardinals:grid_orbit_cardinal_180:orbit-geometry PASS     
+grid_orbit_cardinals:grid_orbit_cardinal_270:orbit-geometry PASS     
+
+[render-verify] 2 of 30 checks FAIL
+  - so3_offsnap_disc: max_delta 73 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/save_files/render_verify_diffs/so3_offsnap_disc.diff.png
+  - so3_offsnap_wide: max_delta 73 > 64  diff=/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/save_files/render_verify_diffs/so3_offsnap_wide.diff.png

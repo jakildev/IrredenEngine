@@ -208,13 +208,25 @@ int main(){
    ++floorCorners;
   }
  }
- f={};f.smoothYawEnabled=1;f.voxelRenderOptions={1,4};f.visualYaw=.35f;
+ f={};f.smoothYawEnabled=1;f.voxelRenderOptions={1,4};f.visualYaw=.3499999f;
  shape={};shape.params.xyz={4,4,1};shape.worldPosition.xyz={40,0,2};
  const ivec2 panelOrigin=roundHalfUp(pos3DtoPos2DIsoYawed(
      shape.worldPosition.xyz*4.f,f.visualYaw));
  for(vec2 relative:{vec2(13,-5),vec2(8,6),vec2(7,8)}){
   vec3 position,normal;
   if(shapeBoxReceiver(shape,f,vec2(panelOrigin)+relative,false,position,normal))return 25;
+  if(!shapeBoxReceiver(shape,f,vec2(panelOrigin)+relative,true,position,normal)||
+     normal.x!=-1||normal.y!=0||normal.z!=0)return 29;
+  if(abs(position.x-38.375f)>1.e-4||abs(position.y)>1.6251f||
+     position.z<1.8749f||position.z>2.1251f)return 30;
+  const double c=cos(double(f.visualYaw)),s=sin(double(f.visualYaw));
+  const double x=(position.x-40)*4,y=position.y*4,z=(position.z-2)*4;
+  const double vx=c*x+s*y,vy=-s*x+c*y,ix=-vx+vy,iy=-vx-vy+2*z;
+  double origin[]={-c*ix/2-c*iy/6-s*ix/2+s*iy/6,
+                   -s*ix/2-s*iy/6+c*ix/2-c*iy/6,iy/3};
+  double direction[]={(c-s)/3,(s+c)/3,1./3},half[]={6.5,6.5,.5};
+  Hit expected=intersect(origin,direction,half);
+  if(!expected.valid||expected.face!=0)return 31;
  }
  int emitterHits=0,emitterMisses=0;
  for(int cardinal=0;cardinal<4;++cardinal)for(int x=-20;x<=20;++x)
@@ -629,7 +641,8 @@ int main(){
                     else:
                         self.assertIn(run.returncode,
                                       (2, 3, 4, 9, 12, 13, 14, 15, 16, 17, 18,
-                                       19, 20, 21, 22, 23, 24, 25, 26, 27, 28), name)
+                                       19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+                                       29, 30, 31), name)
 
 
 if __name__ == "__main__":

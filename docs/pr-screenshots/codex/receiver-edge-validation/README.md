@@ -82,14 +82,52 @@ approximately (-cos(.35),-sin(.35),0), confirming the extra rotation.
 This panel's BOX descriptor is (4,4,1), center (40,0,2), density four: finite
 half-extents are (1.625,1.625,.125), not the larger half-size suggested by the
 demo's existing comments. All three recorded queries strictly miss the finite
-box. Their fog cells are fully visible; the gray is present before fog. The
-remaining question is emitter/display coverage at those silhouette samples,
-not the explored-state color mapping. No screenshot reference or tolerance is
-changed by this PR.
+box. Their fog cells are fully visible; the gray is present before fog.
+
+Both shader adapters' finite recovery and an independent slab calculation
+select -X for these three queries, agreeing with the stored emitter face.
+Recovered positions are (38.375,1.624952,1.982669),
+(38.375,-.203550,2.124937) and (38.375,-.598840,2.124947). The first ray reaches
+the -X/+Y silhouette; the other two reach -X/+Z, the lower edge rather than
+the -Z top. Vertical sunlight gives -X zero Lambert, so ambient gray 92 is
+consistent with the emitted and recovered surface. The test executes these
+specific recoveries and checks the signed boundary and independent ray entry.
+
+## Reference reconciliation
+
+The two floor and one fog macOS references are reconciled to the captured
+current output after the analytical and GPU checks above. The original
+references are preserved as `*-reference-before.png`; current validated frames
+are the corresponding `*-beauty-after.png`. Comparison thresholds are unchanged.
+This accepts the documented inset-anchor recovery policy at retained silhouette
+coverage, not a globally nearest-point policy or every possible edge treatment.
+
+Beyond the max-delta outliers, the floor references contain smaller side-shading
+differences and one four-pixel AO difference; the fog reference contains smaller
+ambient/AO differences. Those already pass the original per-image thresholds.
+The complete reference comparison records distinguish these from the 16/16/24
+pixels that exceeded the unchanged maximum-delta limit.
+
+## Validation results
+
+- All 71 render-harness suites passed. After adding the three fog recovery
+  assertions, all five receiver tests passed again, including both backend
+  adapters and mutation controls.
+- Header/binding checks, Ruff, comment-reference lint and whitespace checks
+  passed. Both demos executed the final Metal shader sources and exited CLEAN.
+- Full native runs against the original references passed 28/30 CanvasStress
+  and 54/55 FogDemo checks, with only the three previously attributed failures.
+  Their full logs are retained as `*-verification-before-reference-update.log`.
+- The three retained frames compare exactly to the reconciled references:
+  [reference-reconciliation.json](reference-reconciliation.json). The other 82
+  checks and their references are unchanged. The full demos were not rerun after
+  this reference-only update; these are regraded retained frames, not a claimed
+  second full native run.
 
 ## Limits
 
 This closes the demonstrated normal-frame mismatch. It does not claim all
 inherited edge artifacts are fixed, certify performance, or validate native
-OpenGL on this host. The three previously recorded reference failures remain
-tracked separately while panel coverage is investigated.
+OpenGL on this host. Fixture full-size/half-size assumptions and the compute-only
+normal overlay remain follow-up work; the three reference exceptions are limited
+to the fixtures and surface contracts established here.

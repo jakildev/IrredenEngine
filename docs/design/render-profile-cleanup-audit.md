@@ -99,11 +99,16 @@ records the probes, analytical fixtures and before/after controls.
 
 | Priority | Finding | Bounded change and required proof |
 |---|---|---|
-| 1 | Broad native verification exceeds reference max-delta in two CanvasStress off-cardinal shots and the fog explored-decay yaw shot | Master reproduces all three. Floor signed-face ownership is now analytically and GPU-verified; finish panel emitter/display coverage proof before any reference update. Preserve thresholds. |
-| 2 | Explored-decay fixture comments and placement assume half-sizes while BOX descriptors contain full sizes | Reconcile actual panel/floor bounds with the fixture's intended contact and fog-column coverage before using it as a geometry oracle. |
+| 1 | Explored-decay fixture comments and placement assume half-sizes while BOX descriptors contain full sizes | Reconcile actual panel/floor bounds with the fixture's intended contact and fog-column coverage before using it as a geometry oracle. |
 | 2 | Normal overlay bypasses finite fragment lighting | Extend diagnostics to observe the same receiver as the final lighting path, retaining a distinct compute-route view when useful. |
 | 3 | Fallback sun bake retains a raw per-axis branch its driver does not use | Prove route-zero dispatches, then remove the branch and redundant include while preserving ABI and live fallback casting. Exercise detached casting and splat-enabled cases. |
 | 3 | Source-face shadow-debug palette repeats an existing helper | Delegate to `surfaceShadowDebugColor` in both shader backends; compare diagnostic captures. |
+
+The three inherited macOS reference outliers are reconciled with the existing
+surface policy after signed-face proofs: floor edges select -Y; the fog panel's
+emitter and finite recovery both select -X. Native probes establish the actual
+normal and incoming fog color. Thresholds remain unchanged, and the original
+references remain in the receiver-edge evidence for review.
 
 The cleanup incorporates the merged store-frame, fog LOS, SDF receiver/normal
 and explored-state work through master `a08e0a44a`. The shared dispatch helper
