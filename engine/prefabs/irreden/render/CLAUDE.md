@@ -6,8 +6,8 @@ Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md). Rationale: [`d
 
 ## Validators
 
-- `python3 scripts/gui-verify.py IRShapeDebug -- --gui-test` — headless GUI
-  assertion table (GPU hover-id parity, help overlay, settings menu, picking).
+- `python3 scripts/gui-verify.py IRShapeDebug -- --gui-test` — headless GUI assertion table (GPU hover-id parity, drag-pan, help overlay, settings menu, cursor-to-pixel);
+  on a 2x display add `--config-preset configs/gui_hidpi_portrait_scale{1,2}.lua` (game resolution twice the window's points) for screen-composite placement.
 - `python3 scripts/pivot-verify.py --blocks cursor-latch` — cursor pivot;
   `IRShapeDebug --pivot-verify cursor-latch --cursor-pivot-indicator` captures the marker.
 - `scripts/depth-tier-verify.py --only orbitswap --tier 1` — foreground depth
