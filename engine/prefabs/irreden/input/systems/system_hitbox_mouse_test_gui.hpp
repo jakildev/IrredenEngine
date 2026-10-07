@@ -50,7 +50,7 @@ template <> struct System<HITBOX_MOUSE_TEST_GUI> {
         // emit shaders' faceDeform[]; the residual-rotate stage was retired by
         // T-323). The cursor's framebuffer pixel maps directly onto
         // GUI-canvas-trixel coords without an inverse rotation step.
-        const vec2 mouseFb = IRRender::getMousePositionOutputView();
+        const vec2 mouseFb = IRRender::getMousePositionMainFramebuffer();
 
         // The GUI canvas texture (size = mainCanvasSize / guiScale)
         // is composited onto a quad covering the entire framebuffer:

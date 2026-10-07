@@ -33,7 +33,7 @@ template <> struct System<HITBOX_MOUSE_TEST> {
         cardinalIndex_ = IRMath::rasterYawCardinalIndex(IRPrefab::Camera::getRasterYaw());
         visualYaw_ = IRPrefab::Camera::getYaw();
         effectiveSub_ = IRMath::max(IRRender::getVoxelRenderEffectiveSubdivisions(), 1);
-        mouseCanvas_ = IRRender::getMousePositionOutputView();
+        mouseCanvas_ = IRRender::getMousePositionMainFramebuffer();
     }
 
     void tick(C_HitBox2D &hitbox, const C_WorldTransform &worldXform) {

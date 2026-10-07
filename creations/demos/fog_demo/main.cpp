@@ -782,7 +782,7 @@ void countEntityTexels(std::span<const IREntity::EntityId> entities, int &texels
 // the background is black, so only lit matter of that hue counts.
 constexpr int kHueDominance = 40;
 int countHuePixels(int channel) {
-    const IRMath::ivec2 size = IRRender::getViewport() * IRRender::getOutputScaleFactor();
+    const IRMath::ivec2 size = IRRender::getViewport();
     std::vector<std::uint8_t> rgba(
         static_cast<std::size_t>(size.x) * static_cast<std::size_t>(size.y) * 4u
     );

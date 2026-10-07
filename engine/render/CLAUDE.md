@@ -205,6 +205,6 @@ captures.
 - Hot compute-kernel mode branches use compile-time specializations of a
   shared source body, not uniform runtime branches. Multi-dispatch cost models
   include backend fixed dispatch cost ([GPU stage timing](../../docs/design/gpu-stage-timing-cost-model.md)).
-- GUI canvas size defaults to `mainCanvasSize / guiScale`;
-  `setGuiCanvasFullResolution()` switches it (and the creation's coordinate
-  space) to native framebuffer resolution.
+- GUI canvas size defaults to `mainCanvasSize / guiScale` (`setGuiCanvasFullResolution()`: main-framebuffer resolution).
+  `getViewport()` is physical framebuffer pixels; cursors are window points until `windowPointsToFramebufferPx`,
+  and a GUI or hitbox hover test compares in `getMousePositionMainFramebuffer()` space, never the output view.

@@ -142,9 +142,9 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   via `registerStandardKeyboardCommands({.omit_ = {...}})` and gets a QUIT
   button. Register settings (`IRPrefab::Settings::register{Bool,Enum,Float}`)
   during init; the menu snapshots them at open.
-- Headless readers: `HelpOverlay::builtText()` / `lastGlyphCommandCount()`,
-  `SettingsMenu::liveRowCount()` / `*ScreenPx(...)`; a QUIT assertion
-  evaluates when the close is observed, not on the capture frame.
+- Headless readers: `HelpOverlay::builtText()` (rows wrap to the canvas) /
+  `lastGlyphCommandCount()` / `panelRect()` / `textLineRect()`, `SettingsMenu::liveRowCount()` /
+  `*ScreenPx(...)`; a QUIT assertion evaluates when the close is observed, not on the capture frame.
   `systemOrNull()` reports absent as `IRSystem::kNullSystemId`, never
   `kNullEntity` (`engine/system/CLAUDE.md` §"Hot reload and lookup";
   `test/render/prefab_system_probe_test.cpp`).

@@ -23,9 +23,14 @@ bool checkKeyMouseModifiers(
     KeyModifierMask requiredModifiers, KeyModifierMask blockedModifiers = kModifierNone
 );
 
-/// Cursor position in iso/world space for the current pipeline event's snapshot.
+/// Cursor position for the current pipeline event's snapshot, in logical window
+/// points with a top-left origin (the GLFW cursor convention). On a HiDPI
+/// display one point spans several framebuffer pixels:
+/// `IRRender::windowPointsToFramebufferPx` converts before the value meets a
+/// render-space quantity.
 IRMath::vec2 getMousePosition();
-/// Cursor position in screen (pixel) space for the current pipeline event's snapshot.
+/// @ref getMousePosition with y measured in the backend's screen direction
+/// (bottom-up on OpenGL). Still window points.
 IRMath::vec2 getMousePositionScreen();
 
 /// Returns `true` if gamepad @p button is currently in @p buttonStatus this frame.
@@ -48,7 +53,8 @@ float getGamepadAxis(GamepadAxes axis, int irGamepadId = 0);
 void beginSyntheticInput();
 /// Returns `true` when synthetic input is active.
 bool isSyntheticInputActive();
-/// Set the cursor (screen pixels) for the next frame's snapshot.
+/// Set the cursor for the next frame's snapshot, in the window points
+/// @ref getMousePosition reports.
 void injectMouseMove(IRMath::ivec2 screenPx);
 /// Enqueue a button press/release, applied at the next frame boundary.
 void injectButton(KeyMouseButtons button, ButtonStatuses status);

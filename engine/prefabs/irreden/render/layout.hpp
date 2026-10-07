@@ -405,7 +405,7 @@ inline IRMath::vec2 mousePositionInGuiTrixels() {
         IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>("mainFramebuffer");
     const IRMath::vec2 fbRes = IRMath::vec2(framebuffer.getResolutionPlusBuffer());
     const IRMath::vec2 guiSize = IRMath::vec2(canvasTextures.size_);
-    return IRRender::getMousePositionOutputView() / fbRes * guiSize;
+    return IRRender::getMousePositionMainFramebuffer() / fbRes * guiSize;
 }
 
 // -----------------------------------------------------------------------

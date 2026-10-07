@@ -107,6 +107,7 @@ add_executable(IrredenEngineTest
   render/light_volume_dispatch_test.cpp
   render/metal_sticky_untrack_test.cpp
   render/named_resource_probe_test.cpp
+  render/help_overlay_layout_test.cpp
   render/rendering_resource_manager_test.cpp
   render/opengl_shader_include_test.cpp
   render/per_canvas_light_scope_test.cpp
