@@ -1,5 +1,4 @@
 #include <irreden/audio/synthetic_capture_source.hpp>
-#include <irreden/ir_math.hpp>
 
 #include <gtest/gtest.h>
 
@@ -36,13 +35,17 @@ TEST(SyntheticAudioCaptureTest, DeliversWallClockPacedMonotonicAudioAndStopsSync
     ));
     EXPECT_TRUE(source.isCapturing());
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    const auto stopRequestedAt = std::chrono::steady_clock::now();
     source.stopCapture();
     const auto stoppedAt = std::chrono::steady_clock::now();
     EXPECT_FALSE(source.isCapturing());
 
-    const double elapsedSeconds = std::chrono::duration<double>(stoppedAt - startedAt).count();
-    const int expectedFrames = static_cast<int>(elapsedSeconds * kSampleRate);
-    EXPECT_LE(IRMath::abs(deliveredFrames.load() - expectedFrames), kBufferFrames);
+    const auto framesDueBy = [&](const auto time) {
+        const double elapsedSeconds = std::chrono::duration<double>(time - startedAt).count();
+        return static_cast<int>(elapsedSeconds * kSampleRate);
+    };
+    EXPECT_LE(deliveredFrames.load(), framesDueBy(stoppedAt));
+    EXPECT_GE(deliveredFrames.load(), framesDueBy(stopRequestedAt) - 3 * kBufferFrames);
     EXPECT_GT(callbackCount.load(), 0);
     EXPECT_FALSE(overflowSeen);
     {

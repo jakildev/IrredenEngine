@@ -222,6 +222,15 @@ IRSystem::SystemId createAutoRecordSystem(const AutoRecordConfig &config) {
         [](C_AutoRecordAnchor &) {},
         nullptr,
         [state]() {
+            const auto exitWithRecorderError = [&state](const char *reason) {
+                IR_LOG_WARN(
+                    "AutoRecord: {} ({}); exiting without a clip",
+                    reason,
+                    IRVideo::getLastError()
+                );
+                IRWindow::closeWindow();
+                state->phase_ = Phase::DONE;
+            };
             switch (state->phase_) {
             case Phase::WARMUP:
                 if (state->warmupRemaining_ > 0) {
@@ -239,17 +248,16 @@ IRSystem::SystemId createAutoRecordSystem(const AutoRecordConfig &config) {
                 return;
             case Phase::STARTING:
                 if (IRVideo::recordingState() != RecordingState::RECORDING) {
-                    IR_LOG_WARN(
-                        "AutoRecord: recorder did not start ({}); exiting without a clip",
-                        IRVideo::getLastError()
-                    );
-                    IRWindow::closeWindow();
-                    state->phase_ = Phase::DONE;
+                    exitWithRecorderError("recorder did not start");
                     return;
                 }
                 state->phase_ = Phase::RECORDING;
                 [[fallthrough]];
             case Phase::RECORDING: {
+                if (IRVideo::recordingState() != RecordingState::RECORDING) {
+                    exitWithRecorderError("recorder stopped unexpectedly");
+                    return;
+                }
                 const detail::AutoRecordWindowStep window = detail::autoRecordWindowStep(
                     state->seenTicks_,
                     IRVideo::capturedUpdateTicks(),
