@@ -1803,7 +1803,10 @@ constexpr float kCeilingVisionEdge = 2.0f;
 constexpr float kCeilingObserverZ = 4.0f;
 constexpr float kCeilingHeight = 5.0f;
 constexpr float kCeilingFade = 4.0f;
-constexpr float kRevealTreatmentDensity = 0.75f;
+// Each column must keep a voxel of the band's last level for the treated cut
+// heights to match across columns; the dissolve retains a band voxel with
+// probability at least 1 - density, and FOG-SURFACE-PROBE asserts the match.
+constexpr float kRevealTreatmentDensity = 0.5f;
 constexpr float kRevealTreatmentTone = 0.5f;
 constexpr int kCeilingColumnHeight = 16;
 constexpr int kCeilingColumnFootprint = 4;
@@ -1829,6 +1832,9 @@ IREntity::EntityId g_ceilingRimColumn = IREntity::kNullEntity;
 IREntity::EntityId g_ceilingBodyTwin = IREntity::kNullEntity;
 IREntity::EntityId g_occlusionSlab = IREntity::kNullEntity;
 int g_surfaceProbeFrame = 0;
+// The fog output of the frame ahead of the probed one, rendered with the
+// treatment off: the control half of the ceiling probe's treatment diff.
+std::vector<Color> g_surfaceControlColors;
 // A readback channel within this of its prediction matches it.
 constexpr float kSurfaceProbeColorTolerance = 3.0f;
 // The fog pass's hard-disc rim lift, mirrored from ir_fog_common
@@ -1868,6 +1874,8 @@ struct SurfaceLevelCount {
 struct SurfaceHeights {
     int firstHidden_ = -1;
     int fullyHidden_ = -1;
+
+    bool operator==(const SurfaceHeights &) const = default;
 };
 
 SurfaceHeights surfaceHeights(const std::map<int, SurfaceLevelCount> &levels) {
@@ -1890,9 +1898,12 @@ SurfaceHeights surfaceHeights(const std::map<int, SurfaceLevelCount> &levels) {
 // `cpu_` reads the untreated oracle (the ceiling alone decides the heights),
 // `treated_` the oracle with the canvas treatment, whose dissolve lowers the
 // fully-hidden edge toward the band's cut end exactly as the pass paints it.
+// `bandChanged_` counts the band texels the treatment recoloured against the
+// control frame.
 struct SurfaceColumnReading {
     int texels_ = 0;
     int partialBand_ = 0;
+    int bandChanged_ = 0;
     int dissolved_ = 0;
     int retained_ = 0;
     int capToned_ = 0;
@@ -1904,13 +1915,28 @@ struct SurfaceColumnReading {
 };
 
 // Runs at the render front on the frame after the before-fog snapshot, like
-// FOG-BODY-PROBE, so both halves describe one frame.
+// FOG-BODY-PROBE, so both halves describe one frame. The two frames ahead of
+// it stage the treatment diff: the first renders with the treatment off, the
+// second reads that frame back as the control and turns the treatment on
+// again, so the probed frame differs from the control by the treatment alone.
 void probeCeilingSurface() {
-    if (++g_surfaceProbeFrame != g_autoWarmupFrames || g_bodyProbeBeforeColors.empty()) {
-        return;
-    }
+    ++g_surfaceProbeFrame;
     const auto &textures =
         IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity());
+    if (g_surfaceProbeFrame == g_autoWarmupFrames - 2) {
+        IRPrefab::Fog::clearRevealSurfaceTreatment();
+        return;
+    }
+    if (g_surfaceProbeFrame == g_autoWarmupFrames - 1) {
+        textures.readColors(g_surfaceControlColors);
+        if (g_revealTreatment) {
+            IRPrefab::Fog::setRevealSurfaceTreatment(kRevealTreatmentDensity, kRevealTreatmentTone);
+        }
+        return;
+    }
+    if (g_surfaceProbeFrame != g_autoWarmupFrames || g_bodyProbeBeforeColors.empty()) {
+        return;
+    }
     const auto &fog = IREntity::getComponent<C_CanvasFogOfWar>(IRRender::getActiveCanvasEntity());
     std::vector<IRMath::uvec2> carriers;
     std::vector<Color> colors;
@@ -1963,6 +1989,7 @@ void probeCeilingSurface() {
                     continue;
                 }
                 ++reading.partialBand_;
+                reading.bandChanged_ += colorEquals(colors[i], g_surfaceControlColors[i]) ? 0 : 1;
                 if (gpuHidden) {
                     ++reading.dissolved_;
                     continue;
@@ -1988,13 +2015,18 @@ void probeCeilingSurface() {
         return reading;
     };
 
+    requireSurfaceProbe(
+        g_surfaceControlColors.size() == colors.size(),
+        "the control frame was not read back"
+    );
     const SurfaceColumnReading centre = readColumn(g_ceilingCentreColumn);
     const SurfaceColumnReading rim = readColumn(g_ceilingRimColumn);
     for (const auto &[label, reading] : {std::pair{"centre", &centre}, std::pair{"rim", &rim}}) {
         IR_LOG_INFO(
             "FOG-SURFACE-PROBE column={} texels={} cpuFirstHidden={} cpuFullyHidden={} "
             "treatedFirstHidden={} treatedFullyHidden={} gpuFirstHidden={} gpuFullyHidden={} "
-            "partialBand={} dissolved={} retained={} capToned={} topTexels={} topPainted={}",
+            "partialBand={} bandChanged={} dissolved={} retained={} capToned={} topTexels={} "
+            "topPainted={}",
             label,
             reading->texels_,
             reading->cpu_.firstHidden_,
@@ -2004,6 +2036,7 @@ void probeCeilingSurface() {
             reading->gpu_.firstHidden_,
             reading->gpu_.fullyHidden_,
             reading->partialBand_,
+            reading->bandChanged_,
             reading->dissolved_,
             reading->retained_,
             reading->capToned_,
@@ -2016,8 +2049,7 @@ void probeCeilingSurface() {
             "the oracle finds no ceiling cut on a FIELD column"
         );
         requireSurfaceProbe(
-            reading->treated_.firstHidden_ == reading->gpu_.firstHidden_ &&
-                reading->treated_.fullyHidden_ == reading->gpu_.fullyHidden_,
+            reading->treated_ == reading->gpu_,
             "the GPU cut heights differ from the oracle's"
         );
         requireSurfaceProbe(
@@ -2035,17 +2067,40 @@ void probeCeilingSurface() {
             requireSurfaceProbe(reading->dissolved_ > 0, "the treatment dissolved nothing");
             requireSurfaceProbe(reading->retained_ > 0, "the treatment retained nothing");
             requireSurfaceProbe(reading->capToned_ > 0, "the treatment toned nothing");
+            requireSurfaceProbe(
+                reading->bandChanged_ > 0,
+                "the treatment changed nothing in a column's band"
+            );
         } else {
             requireSurfaceProbe(
-                reading->dissolved_ == 0 && reading->capToned_ == 0,
+                reading->dissolved_ == 0 && reading->capToned_ == 0 && reading->bandChanged_ == 0,
                 "the untreated control carries treatment"
             );
         }
     }
     requireSurfaceProbe(
-        centre.cpu_.firstHidden_ == rim.cpu_.firstHidden_ &&
-            centre.cpu_.fullyHidden_ == rim.cpu_.fullyHidden_,
+        centre.cpu_ == rim.cpu_ && centre.gpu_ == rim.gpu_,
         "the centre and rim columns cut at different heights"
+    );
+
+    int changed = 0;
+    for (std::size_t i = 0; i < colors.size(); ++i) {
+        changed += colorEquals(colors[i], g_surfaceControlColors[i]) ? 0 : 1;
+    }
+    const int changedOutsideBand = changed - centre.bandChanged_ - rim.bandChanged_;
+    IR_LOG_INFO(
+        "FOG-SURFACE-PROBE roi=band canvas={}x{} changed={} centreBand={} rimBand={} "
+        "outsideBand={}",
+        textures.size_.x,
+        textures.size_.y,
+        changed,
+        centre.bandChanged_,
+        rim.bandChanged_,
+        changedOutsideBand
+    );
+    requireSurfaceProbe(
+        changedOutsideBand == 0,
+        "the treatment changed a texel outside the columns' partial band"
     );
 
     const auto twin = static_cast<std::uint32_t>(g_ceilingBodyTwin);
@@ -3179,7 +3234,7 @@ void initSystems() {
         renderPipeline.push_front(bodyProbeTickId);
     }
 
-    if (g_ceilingTreatment && g_autoWarmupFrames > 1) {
+    if (g_ceilingTreatment && g_autoWarmupFrames > 2) {
         renderPipeline.push_front(
             IRSystem::createSystem<C_Name>(
                 "FogCeilingSurfaceProbe",
