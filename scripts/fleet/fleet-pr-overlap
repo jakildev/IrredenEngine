@@ -473,6 +473,8 @@ def grade(args):
             )
         sequenced_issues = sequenced_after_self(row, self_issues)
         if sequenced_issues:
+            # Conflicts are expected until the prerequisite branch lands, so
+            # sequenced descendants deliberately bypass the trial merge.
             refs = ", ".join(f"#{issue}" for issue in sorted(sequenced_issues))
             rows.extend(
                 (number, path, "sequenced", f" (Parked-until: {refs})")

@@ -4767,7 +4767,8 @@ for repo in repos:
 # PR need not have a resolvable backing-issue mapping, and pr_by_issue entries
 # carry only number+labels (the body, which holds the marker, is dropped).
 #
-# A parsable marker yields an apply-carrying finding, which reconcile_escalate_drift
+# `parked_until_issue_numbers` owns the shared marker grammar. A parsable marker
+# yields an apply-carrying finding, which reconcile_escalate_drift
 # skips — so a legitimately long park never files a state-drift tracker. A
 # missing/malformed marker yields a FLAG-ONLY finding, so it accrues normally
 # and escalates to a human: an un-parseable park is unrecoverable state, since
@@ -4788,7 +4789,6 @@ for repo in repos:
 # sibling `Blocked by:` parser is the cautionary case in the other direction: it
 # collects every ref on the line, so a parenthetical aside reads as an extra
 # blocker and strands the row. Widen the trailing match, never the capture.
-#
 for repo in repos:
     d = repo_data[repo]
     for pr in d["prs"]:
