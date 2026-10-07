@@ -1,6 +1,8 @@
 #ifndef IR_VIDEO_TYPES_H
 #define IR_VIDEO_TYPES_H
 
+#include <cstdint>
+
 namespace IRVideo {
 
 class VideoManager;
@@ -18,6 +20,58 @@ constexpr int kDefaultCaptureFps = 60;
 /// closing the encoder, during which @c VideoManager::toggleCapture drops
 /// every toggle — a caller that restarts a capture waits for @c IDLE first.
 enum class RecordingState { IDLE, RECORDING, FINALIZING };
+
+namespace detail {
+
+enum class AutoCapturePacing {
+    FIXED_STEP,
+    FIXED_STEP_DETERMINISTIC_CAPTURE,
+    REAL_TIME_REQUESTED,
+    REAL_TIME_AUDIO_INPUT,
+};
+
+constexpr AutoCapturePacing autoCapturePacingFrom(
+    bool autoRecordActive,
+    bool screenshotOrGuiActive,
+    bool autoRecordRealTime,
+    bool commandRealTime,
+    bool audioInputArmed
+) {
+    const bool realTimeRequested = autoRecordRealTime || commandRealTime;
+    if (screenshotOrGuiActive && (realTimeRequested || audioInputArmed)) {
+        return AutoCapturePacing::FIXED_STEP_DETERMINISTIC_CAPTURE;
+    }
+    if (!autoRecordActive) {
+        return AutoCapturePacing::FIXED_STEP;
+    }
+    if (realTimeRequested) {
+        return AutoCapturePacing::REAL_TIME_REQUESTED;
+    }
+    if (audioInputArmed) {
+        return AutoCapturePacing::REAL_TIME_AUDIO_INPUT;
+    }
+    return AutoCapturePacing::FIXED_STEP;
+}
+
+constexpr bool usesFixedStep(AutoCapturePacing pacing) {
+    return pacing == AutoCapturePacing::FIXED_STEP ||
+           pacing == AutoCapturePacing::FIXED_STEP_DETERMINISTIC_CAPTURE;
+}
+
+struct AutoRecordWindowStep {
+    std::int64_t seenTicks_ = 0;
+    bool stop_ = false;
+};
+
+constexpr AutoRecordWindowStep
+autoRecordWindowStep(std::int64_t previouslySeenTicks, std::int64_t currentTicks, int targetTicks) {
+    if (previouslySeenTicks >= targetTicks) {
+        return AutoRecordWindowStep{previouslySeenTicks, true};
+    }
+    return AutoRecordWindowStep{currentTicks, false};
+}
+
+} // namespace detail
 
 /// Derives the lifecycle state from the two atomic flags @c VideoManager
 /// publishes. @c FINALIZING wins when both are set: a stop raises the

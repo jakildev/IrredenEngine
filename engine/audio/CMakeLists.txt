@@ -5,6 +5,7 @@ add_library(IrredenEngineAudio STATIC
     src/midi_in.cpp
     src/midi_out.cpp
     src/audio.cpp
+    src/synthetic_capture_source.cpp
 )
 
 target_compile_options(

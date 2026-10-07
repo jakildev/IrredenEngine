@@ -6,6 +6,7 @@
 #include <irreden/audio/audio_playback.hpp>
 #include <irreden/audio/midi_in.hpp>
 #include <irreden/audio/midi_out.hpp>
+#include <irreden/audio/synthetic_capture_source.hpp>
 
 #include <irreden/audio/components/component_midi_message.hpp>
 
@@ -36,6 +37,9 @@ class AudioManager {
     inline AudioPlayback &getAudioPlayback() {
         return m_audioPlayback;
     }
+    inline SyntheticAudioCaptureSource &getSyntheticAudioCaptureSource() {
+        return m_syntheticAudioCaptureSource;
+    }
 
     inline void setOutboundMidiObserver(OutboundMidiObserver observer) {
         m_outboundMidiObserver = std::move(observer);
@@ -55,6 +59,7 @@ class AudioManager {
 
   private:
     Audio m_audio;
+    SyntheticAudioCaptureSource m_syntheticAudioCaptureSource;
     MidiIn m_midiIn;
     MidiOut m_midiOut;
     AudioPlayback m_audioPlayback;

@@ -111,6 +111,10 @@ Parser::Parser(const char *programDescription, Common common)
         "Headless capture: record an mp4 clip then exit; optional frame count",
         kDefaultAutoRecordFrames
     );
+    flag(
+        "--auto-record-realtime",
+        "Pace auto-record against wall clock for external audio or MIDI synchronization"
+    );
     string(
         "--config-preset",
         "Path to a Lua config preset whose `config` table overlays config.lua",
@@ -515,6 +519,10 @@ int Parser::autoScreenshotWarmupFrames() const {
 
 int Parser::autoRecordFrames() const {
     return wasProvided("--auto-record") ? getInt("--auto-record") : 0;
+}
+
+bool Parser::autoRecordRealTime() const {
+    return getFlag("--auto-record-realtime");
 }
 
 std::string Parser::configPreset() const {

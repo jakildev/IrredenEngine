@@ -155,19 +155,19 @@ in `main()` after `init` (the step-1–3 order above) is unaffected.
 ## Auto-record helper
 
 `--auto-record [frames]` (bare = `IRArgs::kDefaultAutoRecordFrames`, 180) is
-the clip twin of `--auto-screenshot`, same header and wire-up: read
-`IREngine::args().autoRecordFrames()` in `main.cpp` (or inside the bindings
-callback, per the note above), then
+the clip twin of `--auto-screenshot`: read `autoRecordFrames()` in `main.cpp`
+(or inside the bindings callback), then
 `IRVideo::appendAutoRecordIfRequested(renderPipeline, frames)` before
 `registerPipeline` (no-op at 0; `createAutoRecordSystem` is the explicit
 form; `canvas_stress` and `shape_debug` are the reference callers). The
-system warms up 10 frames, starts the recorder via the toggle path, counts
-`frames` RENDER frames, stops, and closes the window on the next frame — one
-start, one stop, never a toggle during the async finalize; a recorder that
-fails to start (FFmpeg absent) warns and exits clean with no clip. It marks
-auto-capture active (fixed step), so `frames` is `frames / kFPS` seconds of
-sim time and the encoder emits `frames × video_capture_fps / kFPS` frames
-(minus PBO priming on OpenGL) to `capture.mp4` beside the exe. `ir-run`
+system warms up 10 frames, starts via the toggle path, captures `frames`
+UPDATE ticks, then stops one RENDER pass after the tick boundary so the
+stop-before-capture order drops no in-window frame. It normally selects the
+deterministic one-tick-per-render fixed step. `AutoRecordConfig::realTime_`,
+`--auto-record-realtime`, or an armed audio input selects the wall-clock
+accumulator; an armed screenshot or GUI test overrides that for determinism.
+Each start logs the pacing reason. A failed recorder exits clean with no clip.
+`ir-run`
 treats the arg as a self-terminating GPU verb (`RESULT=CLEAN`).
 
 Clip size: `video_capture_output_width` / `_height` (config keys, default 0
