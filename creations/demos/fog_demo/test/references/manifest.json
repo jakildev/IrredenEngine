@@ -218,6 +218,24 @@
       "capture_offset": 0
     },
     {
+      "name": "occlusion_high_ground_soft_treated",
+      "demo_args": ["--occlusion=high-ground", "--los-softness=1", "--reveal-treatment"],
+      "shots": ["fog_occlusion_high_ground_soft_treated"],
+      "capture_offset": 0
+    },
+    {
+      "name": "ceiling",
+      "demo_args": ["--ceiling-treatment"],
+      "shots": ["fog_ceiling9", "fog_ceiling_yaw9"],
+      "capture_offset": 0
+    },
+    {
+      "name": "ceiling_treatment",
+      "demo_args": ["--ceiling-treatment", "--reveal-treatment"],
+      "shots": ["fog_ceiling_treatment9", "fog_ceiling_treatment_yaw9"],
+      "capture_offset": 0
+    },
+    {
       "name": "world_pan",
       "demo_args": ["--world-pan"],
       "shots": [

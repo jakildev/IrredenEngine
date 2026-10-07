@@ -30,13 +30,40 @@ struct FogObserverData {
     // Per-source line of sight, (eye height above observerZ, softness, 0, 0).
     float4 losParams[kMaxFogVisionCircles];
     uint4 visionCircleChannels[2];
+    // Per-source upward ceiling, (ceilingHeight, fadeHeight, 0, 0); negative = off.
+    float4 visionCircleCeilings[kMaxFogVisionCircles];
+    // The canvas's reveal-surface treatment, (enabled, dissolveDensity, capTone, 0).
+    float4 revealSurfaceTreatment;
 };
 
 struct FogReveal {
     float state;
     float gridState;
     float hardDistPastRim;
+    float styledBand;
 };
+
+// GLSL twin: fogRevealSurfaceHash01 in ../ir_fog_common.glsl.
+inline float fogRevealSurfaceHash01(int3 voxel) {
+    uint hash = uint(voxel.x) * 0x8DA6B343u ^ uint(voxel.y) * 0xD8163841u ^
+        uint(voxel.z) * 0xCB1AB31Fu;
+    hash ^= hash >> 16u;
+    hash *= 0x7FEB352Du;
+    hash ^= hash >> 15u;
+    hash *= 0x846CA68Bu;
+    hash ^= hash >> 16u;
+    return float(hash & 0xFFFFFFu) / 16777216.0f;
+}
+
+inline float fogRevealSurfaceBandWeight(float surfaceVisibility) {
+    return 4.0f * surfaceVisibility * (1.0f - surfaceVisibility);
+}
+
+inline float3 fogCutCapBlend(
+    float3 color, float3 sourceColor, float tone, float state, float weight
+) {
+    return mix(color, mix(sourceColor * tone, sourceColor, state), weight);
+}
 
 // Texel of world column `col` in the fog window, or (-1, -1) when the column
 // is outside it. GLSL twin: fogWindowTexel in ../ir_fog_common.glsl.
@@ -101,6 +128,9 @@ inline FogReveal fogRevealSample(
     );
     float state = gridState;
     float hardDistPastRim = kFogRimFadeCells;
+    float styledBand = 0.0f;
+    const bool treated = fogObservers.revealSurfaceTreatment.x != 0.0f;
+    float hash01 = -1.0f;
 
     for (int i = 0; i < fogObservers.visionCircleCount; ++i) {
         if (state >= 1.0f) {
@@ -122,13 +152,16 @@ inline FogReveal fogRevealSample(
             distEff
         );
         const float distPastRim = distEff - fogObservers.visionCircles[i].z;
-        if (fogLosSourceGated(fogObservers.losSourceMask, i) && reveal <= state &&
+        const float ceilingVisibility =
+            fogCeilingVisibility(fogObservers.visionCircleCeilings[i], dzUp);
+        const float ceilingReveal = reveal * ceilingVisibility;
+        if (fogLosSourceGated(fogObservers.losSourceMask, i) && ceilingReveal <= state &&
             (fogObservers.visionCircles[i].w != 0.0f || gridState >= kFogExploredValue)) {
             continue;
         }
         float losVisibility = 1.0f;
         if (fogLosSourceGated(fogObservers.losSourceMask, i) &&
-            (reveal > 0.0f ||
+            (ceilingReveal > 0.0f ||
              (fogObservers.visionCircles[i].w == 0.0f && distPastRim < kFogRimFadeCells)) &&
             length(losSample.xy - fogObservers.visionCircles[i].xy) <=
                 fogLosReach(fogObservers.visionCircles[i])) {
@@ -143,7 +176,26 @@ inline FogReveal fogRevealSample(
         if (losVisibility <= 0.0f) {
             continue;
         }
-        state = max(state, losVisibility * reveal);
+        const float contribution = losVisibility * ceilingReveal;
+        float bandWeight = 0.0f;
+        if (treated && contribution > 0.0f) {
+            const float surfaceVisibility = ceilingVisibility * losVisibility;
+            if (surfaceVisibility < 1.0f) {
+                if (hash01 < 0.0f) {
+                    hash01 = fogRevealSurfaceHash01(surfaceVoxel);
+                }
+                if (hash01 > mix(1.0f, surfaceVisibility, fogObservers.revealSurfaceTreatment.y)) {
+                    continue;
+                }
+                bandWeight = fogRevealSurfaceBandWeight(surfaceVisibility);
+            }
+        }
+        if (contribution > state) {
+            state = contribution;
+            styledBand = bandWeight;
+        } else if (contribution == state && bandWeight > styledBand) {
+            styledBand = bandWeight;
+        }
         if (fogObservers.visionCircles[i].w == 0.0f) {
             hardDistPastRim = min(
                 hardDistPastRim,
@@ -152,7 +204,7 @@ inline FogReveal fogRevealSample(
             );
         }
     }
-    return FogReveal{state, gridState, hardDistPastRim};
+    return FogReveal{state, gridState, hardDistPastRim, styledBand};
 }
 
 inline float4 fogApplyReveal(
@@ -175,10 +227,17 @@ inline float4 fogApplyReveal(
                 kFogCutMaxRimCells,
                 max(reveal.hardDistPastRim, 0.0f)
             );
-            const float3 capColor =
-                mix(sourceColor.rgb * kFogCutTone, sourceColor.rgb, reveal.state);
-            outColor = mix(outColor, capColor, capBlend);
+            outColor = fogCutCapBlend(outColor, sourceColor.rgb, kFogCutTone, reveal.state, capBlend);
         }
+    }
+    if (reveal.styledBand > 0.0f) {
+        outColor = fogCutCapBlend(
+            outColor,
+            sourceColor.rgb,
+            fogObservers.revealSurfaceTreatment.z,
+            reveal.state,
+            reveal.styledBand
+        );
     }
     return float4(outColor, sourceColor.a);
 }

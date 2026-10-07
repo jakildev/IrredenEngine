@@ -166,6 +166,14 @@ constexpr float kFogVisionLosOff = -1.0f;
 // `setVisionCircleLineOfSight` softness that keeps the gate hard; a positive
 // value grades the verdict over that many world units of clearance.
 constexpr float kFogLosHardGate = 0.0f;
+// `setVisionCircleCeiling` height that disables a source's ceiling; any
+// negative height disables, any height >= 0 is a plane that many world units
+// above the source's `observerZ`.
+constexpr float kFogVisionCeilingOff = -1.0f;
+// The tone the fog pass multiplies a cut face's source colour by: the radial
+// rim cap's fixed tone, and the reveal-surface treatment's default `capTone`.
+// Mirrored as `kFogCutTone` in `ir_fog_common.glsl` / `metal/ir_fog_common.metal`.
+constexpr float kFogCutTone = 0.85f;
 
 // Half-cells per world unit of the column field: a voxel box edge lands on
 // the lattice whether its position is integer or half-integer.
@@ -346,9 +354,56 @@ struct FrameDataFogObservers {
         IRMath::uvec4(kFogChannelDefault),
         IRMath::uvec4(kFogChannelDefault),
     };
+    /// Per-source upward ceiling, `visionCircleCeilings_[i]` = (ceilingHeight,
+    /// fadeHeight, 0, 0) in world units above the source's `observerZ`. A
+    /// negative height (`kFogVisionCeilingOff`) disables the ceiling; a
+    /// `fadeHeight` of 0 is a hard plane, a positive one grades the cut over
+    /// that many units. Appended after the channel masks so no earlier
+    /// offset moves; read by the fog passes and by stage 1's unpainted-route
+    /// z-aware drop, which alone declare it.
+    IRMath::vec4 visionCircleCeilings_[kMaxFogVisionCircles] = {
+        IRMath::vec4(kFogVisionCeilingOff, 0.0f, 0.0f, 0.0f),
+        IRMath::vec4(kFogVisionCeilingOff, 0.0f, 0.0f, 0.0f),
+        IRMath::vec4(kFogVisionCeilingOff, 0.0f, 0.0f, 0.0f),
+        IRMath::vec4(kFogVisionCeilingOff, 0.0f, 0.0f, 0.0f),
+        IRMath::vec4(kFogVisionCeilingOff, 0.0f, 0.0f, 0.0f),
+        IRMath::vec4(kFogVisionCeilingOff, 0.0f, 0.0f, 0.0f),
+        IRMath::vec4(kFogVisionCeilingOff, 0.0f, 0.0f, 0.0f),
+        IRMath::vec4(kFogVisionCeilingOff, 0.0f, 0.0f, 0.0f),
+    };
+    /// The canvas-owned reveal-surface treatment, (enabled, dissolveDensity,
+    /// capTone, 0): with `x` non-zero the fog passes dissolve and cap-tone a
+    /// partial ceiling or line-of-sight cut on FIELD samples. `y` and `z`
+    /// are in [0, 1]; the tone defaults to the radial rim cap's. The block
+    /// tail; only the fog passes read it.
+    IRMath::vec4 revealSurfaceTreatment_ = IRMath::vec4(0.0f, 0.0f, kFogCutTone, 0.0f);
 
     std::uint32_t channels(int source) const {
         return visionCircleChannels_[source / 4][source % 4];
+    }
+
+    float ceilingHeight(int source) const {
+        return visionCircleCeilings_[source].x;
+    }
+
+    float fadeHeight(int source) const {
+        return visionCircleCeilings_[source].y;
+    }
+
+    bool ceilingEnabled(int source) const {
+        return visionCircleCeilings_[source].x >= 0.0f;
+    }
+
+    bool revealSurfaceTreatmentEnabled() const {
+        return revealSurfaceTreatment_.x != 0.0f;
+    }
+
+    float dissolveDensity() const {
+        return revealSurfaceTreatment_.y;
+    }
+
+    float capTone() const {
+        return revealSurfaceTreatment_.z;
     }
 
     float losEyeHeight(int source) const {
@@ -364,10 +419,27 @@ struct FrameDataFogObservers {
     }
 };
 static_assert(
-    sizeof(FrameDataFogObservers) == 3 * kMaxFogVisionCircles * 16 + 16 + 16 + 32,
+    sizeof(FrameDataFogObservers) == 4 * kMaxFogVisionCircles * 16 + 16 + 16 + 32 + 16,
     "FrameDataFogObservers must stay std140/Metal-tight (vec4[N] + ivec4 tail + vec4[N] + vec4 + "
-    "vec4[N] + uvec4[2])"
+    "vec4[N] + uvec4[2] + vec4[N] + vec4)"
 );
+
+/// One analytic source's stored ceiling (`C_CanvasFogOfWar::visionCircleCeiling`).
+struct FogVisionCeiling {
+    float ceilingHeight_ = kFogVisionCeilingOff;
+    float fadeHeight_ = 0.0f;
+
+    bool enabled() const {
+        return ceilingHeight_ >= 0.0f;
+    }
+};
+
+/// The canvas's stored reveal-surface style (`C_CanvasFogOfWar::revealSurfaceTreatment`).
+struct FogRevealSurfaceTreatment {
+    bool enabled_ = false;
+    float dissolveDensity_ = 0.0f;
+    float capTone_ = kFogCutTone;
+};
 
 struct C_CanvasFogOfWar {
     std::pair<ResourceId, Texture2D *> texture_;
@@ -665,6 +737,45 @@ struct C_CanvasFogOfWar {
         setVisionCircleLineOfSight(observers_, source, losEyeHeight, losSoftness);
     }
 
+    /// Cap registered source @p source by an upward ceiling @p ceilingHeight
+    /// world units above its `observerZ`: a sample higher than that is hidden
+    /// by this source, a sample at or below it is unaffected, and a sample at
+    /// or below the observer is never cut. A negative height
+    /// (`kFogVisionCeilingOff`) disables the ceiling; @p fadeHeight > 0
+    /// grades the cut from 1 at the plane to 0 at `ceilingHeight + fadeHeight`
+    /// (a negative fade is clamped to the hard plane). The ceiling scales this
+    /// source alone, before the maximum over sources, like line of sight; the
+    /// two multiply. @p source must name a registered slot — use
+    /// `addVisionCircle`'s return. Every slot starts disabled, both when added
+    /// and after `clearVisionCircles`.
+    void setVisionCircleCeiling(int source, float ceilingHeight, float fadeHeight = 0.0f) {
+        setVisionCircleCeiling(observers_, source, ceilingHeight, fadeHeight);
+    }
+
+    FogVisionCeiling visionCircleCeiling(int source) const {
+        return visionCircleCeiling(observers_, source);
+    }
+
+    /// Enable the canvas's reveal-surface treatment: a FIELD sample whose
+    /// winning source is partially cut by its ceiling or its line of sight
+    /// is dissolved per world voxel at @p dissolveDensity (0 retains every
+    /// voxel, 1 thins the band to empty at its fully cut edge) and the
+    /// retained voxels are toned toward their source colour times @p capTone.
+    /// Both are clamped to [0, 1]. BODY and EXEMPT pixels are never treated,
+    /// and geometry never changes. `clearRevealSurfaceTreatment` disables it;
+    /// every source keeps its ceiling either way.
+    void setRevealSurfaceTreatment(float dissolveDensity, float capTone = kFogCutTone) {
+        setRevealSurfaceTreatment(observers_, dissolveDensity, capTone);
+    }
+
+    void clearRevealSurfaceTreatment() {
+        clearRevealSurfaceTreatment(observers_);
+    }
+
+    FogRevealSurfaceTreatment revealSurfaceTreatment() const {
+        return revealSurfaceTreatment(observers_);
+    }
+
     /// The slot-authoring rules the members above apply to this component's
     /// `observers_`, on any payload. These field-free overloads author the
     /// analytic slots only: past the cap they drop.
@@ -676,6 +787,9 @@ struct C_CanvasFogOfWar {
         }
         for (IRMath::uvec4 &channels : observers.visionCircleChannels_) {
             channels = IRMath::uvec4(kFogChannelDefault);
+        }
+        for (IRMath::vec4 &ceiling : observers.visionCircleCeilings_) {
+            ceiling = IRMath::vec4(kFogVisionCeilingOff, 0.0f, 0.0f, 0.0f);
         }
     }
 
@@ -735,6 +849,8 @@ struct C_CanvasFogOfWar {
         const int slot = observers.visionCircleCount_;
         observers.losSourceMask_ &= ~(1 << slot);
         observers.losParams_[slot] = IRMath::vec4(kFogVisionLosOff, kFogLosHardGate, 0.0f, 0.0f);
+        observers.visionCircleCeilings_[slot] =
+            IRMath::vec4(kFogVisionCeilingOff, 0.0f, 0.0f, 0.0f);
         observers.visionCircleChannels_[slot / 4][slot % 4] = channels;
         observers.visionCircles_[observers.visionCircleCount_] =
             IRMath::vec4(cx, cy, radius, IRMath::max(edge, 0.0f));
@@ -792,6 +908,63 @@ struct C_CanvasFogOfWar {
             observers.losParams_[source] =
                 IRMath::vec4(kFogVisionLosOff, kFogLosHardGate, 0.0f, 0.0f);
         }
+    }
+
+    static void setVisionCircleCeiling(
+        FrameDataFogObservers &observers, int source, float ceilingHeight, float fadeHeight = 0.0f
+    ) {
+        IR_ASSERT(
+            source >= 0 && source < observers.visionCircleCount_,
+            "setVisionCircleCeiling: source {} is not a registered vision circle (count {})",
+            source,
+            observers.visionCircleCount_
+        );
+        if (source < 0 || source >= observers.visionCircleCount_)
+            return;
+        if (ceilingHeight < 0.0f) {
+            observers.visionCircleCeilings_[source] =
+                IRMath::vec4(kFogVisionCeilingOff, 0.0f, 0.0f, 0.0f);
+            return;
+        }
+        observers.visionCircleCeilings_[source] =
+            IRMath::vec4(ceilingHeight, IRMath::max(fadeHeight, 0.0f), 0.0f, 0.0f);
+    }
+
+    static FogVisionCeiling
+    visionCircleCeiling(const FrameDataFogObservers &observers, int source) {
+        IR_ASSERT(
+            source >= 0 && source < observers.visionCircleCount_,
+            "visionCircleCeiling: source {} is not a registered vision circle (count {})",
+            source,
+            observers.visionCircleCount_
+        );
+        if (source < 0 || source >= observers.visionCircleCount_)
+            return {};
+        return {observers.ceilingHeight(source), observers.fadeHeight(source)};
+    }
+
+    static void setRevealSurfaceTreatment(
+        FrameDataFogObservers &observers, float dissolveDensity, float capTone = kFogCutTone
+    ) {
+        observers.revealSurfaceTreatment_ = IRMath::vec4(
+            1.0f,
+            IRMath::clamp(dissolveDensity, 0.0f, 1.0f),
+            IRMath::clamp(capTone, 0.0f, 1.0f),
+            0.0f
+        );
+    }
+
+    static void clearRevealSurfaceTreatment(FrameDataFogObservers &observers) {
+        observers.revealSurfaceTreatment_.x = 0.0f;
+    }
+
+    static FogRevealSurfaceTreatment
+    revealSurfaceTreatment(const FrameDataFogObservers &observers) {
+        return {
+            observers.revealSurfaceTreatmentEnabled(),
+            observers.dissolveDensity(),
+            observers.capTone()
+        };
     }
 
     void clearAll() {

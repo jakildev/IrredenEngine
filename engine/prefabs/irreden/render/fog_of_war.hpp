@@ -45,7 +45,24 @@ namespace IRPrefab::Fog {
 
 namespace detail {
 
-/// Source @p source's reveal of @p worldPosition, ignoring line of sight.
+/// A source's ceiling factor at @p dzUp world units above its observer,
+/// from its `visionCircleCeilings_` lane (ceilingHeight, fadeHeight): 1
+/// everywhere while disabled, a step at the plane for a hard ceiling, and
+/// `1 - smoothstep(ceiling, ceiling + fade, dzUp)` for a soft one. Mirrors
+/// `fogCeilingVisibility` in `ir_iso_common.glsl` / `metal/ir_iso_common.metal`.
+inline float ceilingVisibility(IRMath::vec4 ceiling, float dzUp) {
+    if (ceiling.x < 0.0f) {
+        return 1.0f;
+    }
+    if (ceiling.y <= 0.0f) {
+        return dzUp <= ceiling.x ? 1.0f : 0.0f;
+    }
+    return 1.0f - IRMath::smoothstep(ceiling.x, ceiling.x + ceiling.y, dzUp);
+}
+
+/// Source @p source's reveal of @p worldPosition, ignoring line of sight: the
+/// radial curve with its additive height terms, scaled by the source's
+/// ceiling factor.
 inline float evalVisionCircleReveal(
     const IRComponents::FrameDataFogObservers &observers, int source, IRMath::vec3 worldPosition
 ) {
@@ -63,12 +80,61 @@ inline float evalVisionCircleReveal(
     const float distanceEffective = IRMath::length(delta) +
                                     height.y * IRMath::max(dzUp - height.w, 0.0f) +
                                     height.z * IRMath::max(dzDown - height.w, 0.0f);
+    const float ceiling = ceilingVisibility(observers.visionCircleCeilings_[source], dzUp);
     if (edge <= 0.0f) {
-        return distanceEffective <= circle.z ? 1.0f : 0.0f;
+        return distanceEffective <= circle.z ? ceiling : 0.0f;
     }
     const float t =
         IRMath::clamp((distanceEffective - (circle.z - edge)) / (2.0f * edge), 0.0f, 1.0f);
-    return 1.0f - t * t * (3.0f - 2.0f * t);
+    return (1.0f - t * t * (3.0f - 2.0f * t)) * ceiling;
+}
+
+/// The per-voxel dissolve key in [0, 1): fixed-width integer xor / multiply
+/// steps over the sample's integer world voxel, so every route, yaw, frame
+/// and backend reads one value per voxel. Mirrors `fogRevealSurfaceHash01`
+/// in `ir_fog_common.glsl` / `metal/ir_fog_common.metal`.
+inline float revealSurfaceHash01(IRMath::ivec3 voxel) {
+    std::uint32_t hash = static_cast<std::uint32_t>(voxel.x) * 0x8DA6B343u ^
+                         static_cast<std::uint32_t>(voxel.y) * 0xD8163841u ^
+                         static_cast<std::uint32_t>(voxel.z) * 0xCB1AB31Fu;
+    hash ^= hash >> 16;
+    hash *= 0x7FEB352Du;
+    hash ^= hash >> 15;
+    hash *= 0x846CA68Bu;
+    hash ^= hash >> 16;
+    return static_cast<float>(hash & 0xFFFFFFu) / 16777216.0f;
+}
+
+/// The cap tone's blend weight across a partial cut: 0 where the surface
+/// factor is 0 or 1, 1 at the midpoint. Mirrors `fogRevealSurfaceBandWeight`.
+inline float revealSurfaceBandWeight(float surfaceVisibility) {
+    return 4.0f * surfaceVisibility * (1.0f - surfaceVisibility);
+}
+
+/// The fog pass's state → colour curve (`fogStateColor`): unexplored colour
+/// at 0, the desaturated explored tone at the explored value, the source
+/// colour at 1.
+inline IRMath::vec3
+revealStateColor(float state, IRMath::vec3 sourceColor, IRMath::vec3 unexplored) {
+    constexpr float kExploredValue = 128.0f / 255.0f;
+    const float luminance = IRMath::dot(sourceColor, IRMath::vec3(0.299f, 0.587f, 0.114f));
+    const IRMath::vec3 exploredColor = IRMath::vec3(luminance) * 0.4f;
+    if (state >= kExploredValue) {
+        return IRMath::mix(
+            exploredColor,
+            sourceColor,
+            (state - kExploredValue) / (1.0f - kExploredValue)
+        );
+    }
+    return IRMath::mix(unexplored, exploredColor, state / kExploredValue);
+}
+
+/// The cut-cap blend the radial rim cap and the reveal-surface cap share
+/// (`fogCutCapBlend`): @p color pulled by @p weight toward the source colour
+/// toned by @p tone at state 0 and untoned at state 1.
+inline IRMath::vec3
+cutCapBlend(IRMath::vec3 color, IRMath::vec3 sourceColor, float tone, float state, float weight) {
+    return IRMath::mix(color, IRMath::mix(sourceColor * tone, sourceColor, state), weight);
 }
 
 } // namespace detail
@@ -151,6 +217,111 @@ inline float evalVisionReveal(
     return detail::evalGatedVisionReveal(observers, worldPosition, channels, [&](int source) {
         return losVisibility(los, observers, source, worldPosition);
     });
+}
+
+/// A FIELD sample's paint verdict under the reveal-surface treatment: the
+/// composed state the fog pass paints by, and the band weight of the
+/// contribution that styles the sample (0 when nothing does: the treatment is
+/// off, the grid or a fully visible source decides the sample, or the winning
+/// voxel was dissolved).
+struct RevealSurfaceSample {
+    float state_ = 0.0f;
+    float styledBand_ = 0.0f;
+};
+
+namespace detail {
+
+/// The fog pass's FIELD composition (`fogRevealSample`) in its slot order:
+/// each source's contribution is `shapeReveal * ceilingVisibility *
+/// losVisibility`, a partial surface factor dissolves the contribution per
+/// world voxel when the treatment is on, and the maximum over the grid term
+/// and the surviving contributions is the state. The band of the
+/// contribution that establishes the state is kept; equal contributions keep
+/// the larger band. @p visibilityOf(source) is a gated source's
+/// line-of-sight factor at @p worldPosition.
+template <typename VisibilityFn>
+inline RevealSurfaceSample evalRevealSurfaceComposition(
+    const IRComponents::FrameDataFogObservers &observers,
+    float gridState,
+    IRMath::vec3 worldPosition,
+    std::uint32_t channels,
+    VisibilityFn &&visibilityOf
+) {
+    RevealSurfaceSample sample{gridState, 0.0f};
+    const bool treated = observers.revealSurfaceTreatmentEnabled();
+    const float density = observers.dissolveDensity();
+    float hash01 = -1.0f;
+    for (int i = 0; i < observers.visionCircleCount_; ++i) {
+        if (sample.state_ >= 1.0f) {
+            break;
+        }
+        if ((observers.channels(i) & channels) == 0u) {
+            continue;
+        }
+        const float ceilingReveal = evalVisionCircleReveal(observers, i, worldPosition);
+        if (ceilingReveal <= 0.0f) {
+            continue;
+        }
+        const float dzUp = IRMath::max(observers.visionCircleHeights_[i].x - worldPosition.z, 0.0f);
+        const float ceiling = ceilingVisibility(observers.visionCircleCeilings_[i], dzUp);
+        float losVisibility = 1.0f;
+        if (observers.losGated(i)) {
+            // The pass's exact skip: a march that cannot raise the state is
+            // paid only where its rim distance is read (a hard disc over an
+            // unexplored cell).
+            const bool softDisc = observers.visionCircles_[i].w != 0.0f;
+            if (ceilingReveal <= sample.state_ &&
+                (softDisc ||
+                 gridState >= static_cast<float>(IRComponents::kFogStateExplored) / 255.0f)) {
+                continue;
+            }
+            losVisibility = visibilityOf(i);
+            if (losVisibility <= 0.0f) {
+                continue;
+            }
+        }
+        const float surfaceVisibility = ceiling * losVisibility;
+        const float contribution = losVisibility * ceilingReveal;
+        float bandWeight = 0.0f;
+        if (treated && surfaceVisibility > 0.0f && surfaceVisibility < 1.0f) {
+            if (hash01 < 0.0f) {
+                hash01 = revealSurfaceHash01(IRMath::roundVec3HalfUp(worldPosition));
+            }
+            if (hash01 > IRMath::mix(1.0f, surfaceVisibility, density)) {
+                continue;
+            }
+            bandWeight = revealSurfaceBandWeight(surfaceVisibility);
+        }
+        if (contribution > sample.state_) {
+            sample.state_ = contribution;
+            sample.styledBand_ = bandWeight;
+        } else if (contribution == sample.state_ && bandWeight > sample.styledBand_) {
+            sample.styledBand_ = bandWeight;
+        }
+    }
+    return sample;
+}
+
+} // namespace detail
+
+/// The FIELD paint verdict at @p worldPosition over the stored cell state
+/// @p gridCellState (the fog pass's grid term, `state / 255`) and the
+/// @p observers + @p los snapshot: what `fogRevealSample` composes for a
+/// painted FIELD sample, treatment included. The BODY verdict is `evalReveal`.
+inline RevealSurfaceSample evalRevealSurface(
+    const IRComponents::FrameDataFogObservers &observers,
+    const IRComponents::FogLosColumnField &los,
+    std::uint8_t gridCellState,
+    IRMath::vec3 worldPosition,
+    std::uint32_t channels = IRComponents::kFogChannelDefault
+) {
+    return detail::evalRevealSurfaceComposition(
+        observers,
+        static_cast<float>(gridCellState) / 255.0f,
+        worldPosition,
+        channels,
+        [&](int source) { return losVisibility(los, observers, source, worldPosition); }
+    );
 }
 
 /// The hard-gated sources' route summaries (`LosHardRoute`) for one tick of
@@ -635,6 +806,32 @@ inline float evalReveal(
     return evalReveal(observers, los, fog.getCell(column.x, column.y), worldPosition, channels);
 }
 
+/// The FIELD paint verdict at @p worldPosition against @p fog, on the
+/// snapshot the reveal systems read. Serial, like the BODY overload above.
+inline RevealSurfaceSample evalRevealSurface(
+    const IRComponents::C_CanvasFogOfWar &fog,
+    IRMath::vec3 worldPosition,
+    std::uint32_t channels = IRComponents::kFogChannelDefault
+) {
+    IRComponents::FrameDataFogObservers observers;
+    IRComponents::FogLosColumnField los;
+    selectRevealSnapshot(
+        fog.observers_,
+        fog.losPublishedObservers_,
+        fog.losField(),
+        observers,
+        los
+    );
+    const IRMath::ivec3 column = IRMath::roundVec3HalfUp(worldPosition);
+    return evalRevealSurface(
+        observers,
+        los,
+        fog.getCell(column.x, column.y),
+        worldPosition,
+        channels
+    );
+}
+
 namespace detail {
 
 template <typename Subject>
@@ -948,6 +1145,50 @@ inline void setVisionCircleLineOfSight(
     if (auto *fog = detail::activeFogComponent()) {
         fog->setVisionCircleLineOfSight(source, losEyeHeight, losSoftness);
     }
+}
+
+/// Cap vision circle @p source by an upward ceiling @p ceilingHeight world
+/// units above its `observerZ`, graded over @p fadeHeight units; a negative
+/// height (`kFogVisionCeilingOff`) disables it. The slot contract and the
+/// composition are at `C_CanvasFogOfWar::setVisionCircleCeiling`; the
+/// per-frame clear-then-add pattern re-authors it every frame.
+inline void setVisionCircleCeiling(int source, float ceilingHeight, float fadeHeight = 0.0f) {
+    if (auto *fog = detail::activeFogComponent()) {
+        fog->setVisionCircleCeiling(source, ceilingHeight, fadeHeight);
+    }
+}
+
+/// The stored ceiling of vision circle @p source; disabled without an active
+/// fog canvas.
+inline IRComponents::FogVisionCeiling visionCircleCeiling(int source) {
+    if (auto *fog = detail::activeFogComponent()) {
+        return fog->visionCircleCeiling(source);
+    }
+    return {};
+}
+
+/// Enable the active canvas's reveal-surface treatment (the dissolve and
+/// cap tone of a partial ceiling or line-of-sight cut on FIELD samples);
+/// `C_CanvasFogOfWar::setRevealSurfaceTreatment` has the contract.
+inline void
+setRevealSurfaceTreatment(float dissolveDensity, float capTone = IRComponents::kFogCutTone) {
+    if (auto *fog = detail::activeFogComponent()) {
+        fog->setRevealSurfaceTreatment(dissolveDensity, capTone);
+    }
+}
+
+inline void clearRevealSurfaceTreatment() {
+    if (auto *fog = detail::activeFogComponent()) {
+        fog->clearRevealSurfaceTreatment();
+    }
+}
+
+/// The active canvas's stored treatment; disabled without an active fog canvas.
+inline IRComponents::FogRevealSurfaceTreatment revealSurfaceTreatment() {
+    if (auto *fog = detail::activeFogComponent()) {
+        return fog->revealSurfaceTreatment();
+    }
+    return {};
 }
 
 /// Whether @p to is visible from the eye @p from under the line-of-sight model

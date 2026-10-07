@@ -159,8 +159,8 @@ source's ceiling enters this clip and nothing else from the
 
 ## Reveal-surface treatment
 
-**Landing child:** #4055. Until it lands, this section is the contract it
-implements rather than the current render path.
+**Landing child:** #4055 (landed). This section is the contract the render
+path implements.
 
 A source stops revealing a sample for one of three reasons: the sample is out
 of XY range, it is above the source's ceiling, or an occluder blocks the

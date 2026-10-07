@@ -64,6 +64,13 @@ layout(std140, binding = 27) uniform FogObserverData {
     // FIELD sample only where its mask intersects the sampled cell's mask
     // (the window's .g lane).
     uvec4 visionCircleChannels[2];
+    // Per-source upward ceiling, (ceilingHeight, fadeHeight, 0, 0) in world
+    // units above observerZ; a negative height is off (fogCeilingVisibility).
+    vec4 visionCircleCeilings[kMaxFogVisionCircles];
+    // The canvas's reveal-surface treatment, (enabled, dissolveDensity,
+    // capTone, 0): with x non-zero a partial ceiling or line-of-sight cut on
+    // a FIELD sample is dissolved per world voxel and cap-toned.
+    vec4 revealSurfaceTreatment;
 };
 
 layout(rg32ui, binding = 2) readonly uniform uimage2D canvasFogOfWar;
@@ -76,7 +83,41 @@ struct FogReveal {
     // World distance past the nearest hard disc's radius; the full fade width
     // when no hard disc reaches the sample (cap off, fade 0).
     float hardDistPastRim;
+    // The reveal-surface cap's blend weight: the band weight of the retained
+    // partial contribution that established `state`, 0 when the sample is
+    // untreated (treatment off, the grid or a full source decides it, or its
+    // winning voxel dissolved).
+    float styledBand;
 };
+
+// The per-voxel dissolve key in [0, 1): fixed-width integer xor / multiply
+// steps over the sample's integer world voxel and nothing else, so every
+// route, yaw, frame and backend decides one way per voxel. CPU twin:
+// IRPrefab::Fog::detail::revealSurfaceHash01.
+float fogRevealSurfaceHash01(ivec3 voxel) {
+    uint hash = uint(voxel.x) * 0x8DA6B343u ^ uint(voxel.y) * 0xD8163841u ^
+        uint(voxel.z) * 0xCB1AB31Fu;
+    hash ^= hash >> 16u;
+    hash *= 0x7FEB352Du;
+    hash ^= hash >> 15u;
+    hash *= 0x846CA68Bu;
+    hash ^= hash >> 16u;
+    return float(hash & 0xFFFFFFu) / 16777216.0;
+}
+
+// The cap tone's blend weight across a partial cut: 0 where the surface
+// factor is 0 or 1, 1 at the midpoint, so the cap meets the untreated colour
+// at both edges of the band.
+float fogRevealSurfaceBandWeight(float surfaceVisibility) {
+    return 4.0 * surfaceVisibility * (1.0 - surfaceVisibility);
+}
+
+// The cut-cap blend the radial rim cap and the reveal-surface cap share:
+// `color` pulled by `weight` toward the source colour toned by `tone` at
+// state 0 and untoned at state 1.
+vec3 fogCutCapBlend(vec3 color, vec3 sourceColor, float tone, float state, float weight) {
+    return mix(color, mix(sourceColor * tone, sourceColor, state), weight);
+}
 
 // Texel of world column `col` in the fog window, or (-1, -1) when the column
 // is outside it. Column `c` lives at texel floorMod(c, W) with W the window
@@ -130,6 +171,9 @@ FogReveal fogRevealSample(vec3 pos3D, vec3 losSample, float aaFloor) {
     const ivec2 losFieldMin = fogLosFieldMin(ivec2(windowOriginX, windowOriginY), fogSize.x);
     float state = gridState;
     float hardDistPastRim = kFogRimFadeCells;
+    float styledBand = 0.0;
+    const bool treated = revealSurfaceTreatment.x != 0.0;
+    float hash01 = -1.0;
 
     for (int i = 0; i < visionCircleCount; ++i) {
         // Every caller returns without reading the reveal at state >= 1.0.
@@ -150,11 +194,16 @@ FogReveal fogRevealSample(vec3 pos3D, vec3 losSample, float aaFloor) {
         const float reveal =
             1.0 - smoothstep(visionCircles[i].z - aa, visionCircles[i].z + aa, distEff);
         const float distPastRim = distEff - visionCircles[i].z;
-        // Exact skip: a gated source adds at most `reveal` to the max, and its
-        // rim distance is dead when the disc is soft (soft discs never feed
-        // it) or the grid is at least explored (fogApplyReveal reads it only
-        // below). Skipping leaves every value the caller reads bit-identical.
-        if (fogLosSourceGated(losSourceMask, i) && reveal <= state &&
+        // The ceiling scales this source alone, before the maximum; an off
+        // ceiling is exactly 1.0, so every value below stays bit-identical.
+        const float ceilingVisibility = fogCeilingVisibility(visionCircleCeilings[i], dzUp);
+        const float ceilingReveal = reveal * ceilingVisibility;
+        // Exact skip: a gated source adds at most `ceilingReveal` to the max,
+        // and its rim distance is dead when the disc is soft (soft discs
+        // never feed it) or the grid is at least explored (fogApplyReveal
+        // reads it only below). Skipping leaves every value the caller reads
+        // bit-identical.
+        if (fogLosSourceGated(losSourceMask, i) && ceilingReveal <= state &&
             (visionCircles[i].w != 0.0 || gridState >= kFogExploredValue)) {
             continue;
         }
@@ -162,7 +211,8 @@ FogReveal fogRevealSample(vec3 pos3D, vec3 losSample, float aaFloor) {
         // sample the source can reveal or rim-lift is marched.
         float losVisibility = 1.0;
         if (fogLosSourceGated(losSourceMask, i) &&
-            (reveal > 0.0 || (visionCircles[i].w == 0.0 && distPastRim < kFogRimFadeCells)) &&
+            (ceilingReveal > 0.0 ||
+             (visionCircles[i].w == 0.0 && distPastRim < kFogRimFadeCells)) &&
             length(losSample.xy - visionCircles[i].xy) <= fogLosReach(visionCircles[i])) {
             losVisibility = fogLosVisibility(
                 fogLosEye(visionCircles[i], heights.x, losParams[i].x),
@@ -177,7 +227,32 @@ FogReveal fogRevealSample(vec3 pos3D, vec3 losSample, float aaFloor) {
         if (losVisibility <= 0.0) {
             continue;
         }
-        state = max(state, losVisibility * reveal);
+        const float contribution = losVisibility * ceilingReveal;
+        // A partial surface cut (ceiling and line of sight multiplied) is
+        // dissolved per world voxel: a rejected voxel contributes nothing,
+        // so a dissolved source never lowers what the grid or another source
+        // reveals, and the retained ones carry the cap's band weight.
+        float bandWeight = 0.0;
+        if (treated && contribution > 0.0) {
+            const float surfaceVisibility = ceilingVisibility * losVisibility;
+            if (surfaceVisibility < 1.0) {
+                if (hash01 < 0.0) {
+                    hash01 = fogRevealSurfaceHash01(surfaceVoxel);
+                }
+                if (hash01 > mix(1.0, surfaceVisibility, revealSurfaceTreatment.y)) {
+                    continue;
+                }
+                bandWeight = fogRevealSurfaceBandWeight(surfaceVisibility);
+            }
+        }
+        // The band follows the contribution that establishes the state; a
+        // tie keeps the larger band.
+        if (contribution > state) {
+            state = contribution;
+            styledBand = bandWeight;
+        } else if (contribution == state && bandWeight > styledBand) {
+            styledBand = bandWeight;
+        }
         if (visionCircles[i].w == 0.0) {
             hardDistPastRim = min(
                 hardDistPastRim,
@@ -185,7 +260,7 @@ FogReveal fogRevealSample(vec3 pos3D, vec3 losSample, float aaFloor) {
             );
         }
     }
-    return FogReveal(state, gridState, hardDistPastRim);
+    return FogReveal(state, gridState, hardDistPastRim, styledBand);
 }
 
 // Only meaningful for state < 1.0; a fully revealed sample keeps its colour.
@@ -201,9 +276,15 @@ vec4 fogApplyReveal(FogReveal reveal, int faceAxis, vec4 sourceColor) {
         if (visionCircleCount > 0 && faceAxis != 2) {
             const float capBlend =
                 1.0 - smoothstep(0.0, kFogCutMaxRimCells, max(reveal.hardDistPastRim, 0.0));
-            const vec3 capColor = mix(sourceColor.rgb * kFogCutTone, sourceColor.rgb, reveal.state);
-            outColor = mix(outColor, capColor, capBlend);
+            outColor = fogCutCapBlend(outColor, sourceColor.rgb, kFogCutTone, reveal.state, capBlend);
         }
+    }
+    // The reveal-surface cap marks a retained partial cut on every face axis,
+    // in the canvas's tone; the ceiling and line-of-sight cuts share it.
+    if (reveal.styledBand > 0.0) {
+        outColor = fogCutCapBlend(
+            outColor, sourceColor.rgb, revealSurfaceTreatment.z, reveal.state, reveal.styledBand
+        );
     }
     return vec4(outColor, sourceColor.a);
 }

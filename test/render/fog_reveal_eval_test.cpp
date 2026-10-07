@@ -574,6 +574,411 @@ TEST(FogRevealEvalTest, SetUnexploredColorWithoutAnActiveCanvasIsANoOp) {
     EXPECT_EQ(IRPrefab::Fog::evalActiveVisionReveal(IRMath::vec3(0.0f)), 1.0f);
 }
 
+// The ceiling is a function of the height above the observer alone: a hard
+// plane at 3 hides the centre column and a rim column at the same dzUp,
+// keeps the plane itself, and never cuts a sample below the observer. The
+// mutation control is the additive up-cost: spelled as a cost, the hiding
+// height slopes from 10 at the centre to 1 at the rim.
+TEST(FogRevealEvalTest, HardCeilingHidesCentreAndRimAtTheSameHeight) {
+    FrameDataFogObservers observers = oneCircle(10.0f, 0.0f);
+    IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(observers, 0, 3.0f);
+    for (const IRMath::vec2 column :
+         {IRMath::vec2(0.0f, 0.0f), IRMath::vec2(9.0f, 0.0f), IRMath::vec2(6.0f, 6.0f)}) {
+        SCOPED_TRACE(testing::Message() << "column (" << column.x << ", " << column.y << ")");
+        EXPECT_FLOAT_EQ(
+            IRPrefab::Fog::evalVisionReveal(observers, IRMath::vec3(column, -3.0f)),
+            1.0f
+        ) << "the plane itself is visible";
+        EXPECT_FLOAT_EQ(
+            IRPrefab::Fog::evalVisionReveal(observers, IRMath::vec3(column, -3.001f)),
+            0.0f
+        ) << "the first sample above the plane is hidden";
+        EXPECT_FLOAT_EQ(
+            IRPrefab::Fog::evalVisionReveal(observers, IRMath::vec3(column, 5.0f)),
+            1.0f
+        ) << "a sample below the observer is never cut";
+    }
+
+    const FrameDataFogObservers coupled = oneCircle(10.0f, 0.0f, 0.0f, 1.0f);
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalVisionReveal(coupled, IRMath::vec3(0.0f, 0.0f, -9.0f)),
+        1.0f
+    );
+    EXPECT_FLOAT_EQ(IRPrefab::Fog::evalVisionReveal(coupled, IRMath::vec3(9.0f, 0.0f, -9.0f)), 0.0f)
+        << "an additive cost hides the rim lower than the centre: not a ceiling";
+}
+
+TEST(FogRevealEvalTest, CeilingFadeIsOneAtThePlaneAndZeroExactlyAtItsEnd) {
+    FrameDataFogObservers observers = oneCircle(10.0f, 0.0f);
+    IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(observers, 0, 2.0f, 4.0f);
+    for (const IRMath::vec2 column : {IRMath::vec2(0.0f, 0.0f), IRMath::vec2(9.0f, 0.0f)}) {
+        SCOPED_TRACE(testing::Message() << "column (" << column.x << ", " << column.y << ")");
+        EXPECT_FLOAT_EQ(
+            IRPrefab::Fog::evalVisionReveal(observers, IRMath::vec3(column, -1.0f)),
+            1.0f
+        );
+        EXPECT_FLOAT_EQ(
+            IRPrefab::Fog::evalVisionReveal(observers, IRMath::vec3(column, -2.0f)),
+            1.0f
+        );
+        EXPECT_FLOAT_EQ(
+            IRPrefab::Fog::evalVisionReveal(observers, IRMath::vec3(column, -4.0f)),
+            0.5f
+        );
+        EXPECT_FLOAT_EQ(
+            IRPrefab::Fog::evalVisionReveal(observers, IRMath::vec3(column, -6.0f)),
+            0.0f
+        ) << "the fade reaches zero exactly at ceiling + fade";
+        EXPECT_FLOAT_EQ(
+            IRPrefab::Fog::evalVisionReveal(observers, IRMath::vec3(column, -6.5f)),
+            0.0f
+        );
+    }
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::detail::ceilingVisibility(IRMath::vec4(2.0f, 4.0f, 0.0f, 0.0f), 3.0f),
+        1.0f - IRMath::smoothstep(2.0f, 6.0f, 3.0f)
+    );
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::detail::ceilingVisibility(IRMath::vec4(-1.0f, 4.0f, 0.0f, 0.0f), 100.0f),
+        1.0f
+    ) << "a negative height is off whatever the fade";
+}
+
+// The additive height cost and the ceiling are independent terms of one
+// source: the cost keeps its curve with the ceiling off, and both apply as a
+// product where both are partial.
+TEST(FogRevealEvalTest, CeilingMultipliesTheAdditiveHeightCostCurve) {
+    const FrameDataFogObservers costOnly = oneCircle(10.0f, 2.0f, 0.0f, 0.5f);
+    const float costReveal =
+        IRPrefab::Fog::evalVisionReveal(costOnly, IRMath::vec3(0.0f, 0.0f, -18.0f));
+    EXPECT_NEAR(costReveal, 0.84375f, 1e-6f);
+
+    FrameDataFogObservers both = costOnly;
+    IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(both, 0, 10.0f, 16.0f);
+    EXPECT_NEAR(
+        IRPrefab::Fog::evalVisionReveal(both, IRMath::vec3(0.0f, 0.0f, -18.0f)),
+        costReveal * 0.5f,
+        1e-6f
+    );
+    EXPECT_FLOAT_EQ(IRPrefab::Fog::evalVisionReveal(both, IRMath::vec3(0.0f, 0.0f, -8.0f)), 1.0f)
+        << "under the ceiling the cost curve alone decides";
+}
+
+// Each ceiling scales its own source before the maximum: a source cut by its
+// ceiling never lowers what another source or a VISIBLE cell reveals. The
+// mutation control is a post-maximum ceiling, which would cut both.
+TEST(FogRevealEvalTest, CeilingScalesItsOwnSourceBeforeTheMaximum) {
+    FrameDataFogObservers observers{};
+    IRComponents::C_CanvasFogOfWar::addVisionCircle(
+        observers,
+        0.0f,
+        0.0f,
+        10.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f
+    );
+    IRComponents::C_CanvasFogOfWar::addVisionCircle(
+        observers,
+        0.0f,
+        0.0f,
+        10.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f
+    );
+    IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(observers, 0, 1.0f);
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalVisionReveal(observers, IRMath::vec3(0.0f, 0.0f, -5.0f)),
+        1.0f
+    ) << "the unceilinged source still reveals above the other's ceiling";
+    IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(observers, 1, 3.0f);
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalVisionReveal(observers, IRMath::vec3(0.0f, 0.0f, -5.0f)),
+        0.0f
+    );
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalVisionReveal(observers, IRMath::vec3(0.0f, 0.0f, -2.0f)),
+        1.0f
+    );
+    const FogLosColumnField noLos{};
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalReveal(
+            observers,
+            noLos,
+            IRComponents::kFogStateVisible,
+            IRMath::vec3(0.0f, 0.0f, -50.0f)
+        ),
+        1.0f
+    ) << "no ceiling scales the grid term";
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalReveal(
+            observers,
+            noLos,
+            IRComponents::kFogStateUnexplored,
+            IRMath::vec3(0.0f, 0.0f, -5.0f)
+        ),
+        0.0f
+    ) << "the BODY verdict takes the ceiling at the anchor";
+}
+
+TEST(FogRevealEvalTest, LineOfSightAndCeilingFactorsMultiplyPerSource) {
+    FrameDataFogObservers observers = gated(oneCircle(10.0f, 0.0f));
+    IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(observers, 0, 2.0f, 4.0f);
+    const IRMath::vec3 sample(0.0f, 0.0f, -4.0f);
+    const auto halfVisible = [](int) { return 0.5f; };
+    EXPECT_NEAR(
+        IRPrefab::Fog::detail::evalGatedVisionReveal(
+            observers,
+            sample,
+            IRComponents::kFogChannelDefault,
+            halfVisible
+        ),
+        0.25f,
+        1e-6f
+    ) << "ceiling 0.5 times line of sight 0.5";
+    EXPECT_NEAR(
+        IRPrefab::Fog::detail::evalGatedVisionReveal(
+            observers,
+            sample,
+            IRComponents::kFogChannelDefault,
+            [](int) { return 1.0f; }
+        ),
+        0.5f,
+        1e-6f
+    );
+    IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(
+        observers,
+        0,
+        IRComponents::kFogVisionCeilingOff
+    );
+    EXPECT_NEAR(
+        IRPrefab::Fog::detail::evalGatedVisionReveal(
+            observers,
+            sample,
+            IRComponents::kFogChannelDefault,
+            halfVisible
+        ),
+        0.5f,
+        1e-6f
+    );
+}
+
+// The FIELD treatment styles a sample only when a partial contribution wins:
+// a VISIBLE cell, an explored cell above the contribution, or a fully
+// visible competing source suppresses it; density 0 retains every voxel at
+// the band's full weight; density 1 dissolves about half the voxels at a
+// surface factor of one half, and a dissolved voxel falls back to the grid
+// term rather than to a lower partial state.
+TEST(FogRevealEvalTest, TreatmentStylesOnlyARetainedPartialWinner) {
+    using IRPrefab::Fog::RevealSurfaceSample;
+    const FogLosColumnField noLos{};
+    FrameDataFogObservers observers = oneCircle(10.0f, 0.0f);
+    IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(observers, 0, 2.0f, 4.0f);
+    const IRMath::vec3 sample(0.2f, 0.3f, -4.0f);
+
+    RevealSurfaceSample off = IRPrefab::Fog::evalRevealSurface(
+        observers,
+        noLos,
+        IRComponents::kFogStateUnexplored,
+        sample
+    );
+    EXPECT_FLOAT_EQ(off.state_, 0.5f);
+    EXPECT_FLOAT_EQ(off.styledBand_, 0.0f) << "treatment off styles nothing";
+
+    IRComponents::C_CanvasFogOfWar::setRevealSurfaceTreatment(observers, 0.0f);
+    RevealSurfaceSample retained = IRPrefab::Fog::evalRevealSurface(
+        observers,
+        noLos,
+        IRComponents::kFogStateUnexplored,
+        sample
+    );
+    EXPECT_FLOAT_EQ(retained.state_, 0.5f);
+    EXPECT_FLOAT_EQ(retained.styledBand_, 1.0f) << "the band peaks at the midpoint";
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalRevealSurface(observers, noLos, IRComponents::kFogStateVisible, sample)
+            .styledBand_,
+        0.0f
+    ) << "a VISIBLE cell suppresses the treatment";
+    const RevealSurfaceSample explored =
+        IRPrefab::Fog::evalRevealSurface(observers, noLos, IRComponents::kFogStateExplored, sample);
+    EXPECT_FLOAT_EQ(explored.state_, 128.0f / 255.0f) << "the explored term wins";
+    EXPECT_FLOAT_EQ(explored.styledBand_, 0.0f);
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalRevealSurface(
+            observers,
+            noLos,
+            IRComponents::kFogStateUnexplored,
+            IRMath::vec3(0.2f, 0.3f, 1.0f)
+        )
+            .styledBand_,
+        0.0f
+    ) << "a sample below the observer is fully visible, not a band";
+
+    FrameDataFogObservers overlapped = observers;
+    IRComponents::C_CanvasFogOfWar::addVisionCircle(
+        overlapped,
+        0.0f,
+        0.0f,
+        10.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f,
+        0.0f
+    );
+    const RevealSurfaceSample covered = IRPrefab::Fog::evalRevealSurface(
+        overlapped,
+        noLos,
+        IRComponents::kFogStateUnexplored,
+        sample
+    );
+    EXPECT_FLOAT_EQ(covered.state_, 1.0f);
+    EXPECT_FLOAT_EQ(covered.styledBand_, 0.0f) << "a fully visible competitor suppresses it";
+
+    IRComponents::C_CanvasFogOfWar::setRevealSurfaceTreatment(observers, 1.0f);
+    int retainedCount = 0;
+    int dissolvedCount = 0;
+    for (int y = -8; y < 8; ++y) {
+        for (int x = -8; x < 8; ++x) {
+            const RevealSurfaceSample voxel = IRPrefab::Fog::evalRevealSurface(
+                observers,
+                noLos,
+                IRComponents::kFogStateUnexplored,
+                IRMath::vec3(static_cast<float>(x) + 0.25f, static_cast<float>(y) - 0.25f, -4.0f)
+            );
+            if (voxel.styledBand_ > 0.0f) {
+                EXPECT_FLOAT_EQ(voxel.state_, 0.5f);
+                ++retainedCount;
+            } else {
+                EXPECT_FLOAT_EQ(voxel.state_, 0.0f) << "a dissolved voxel falls back to the grid";
+                ++dissolvedCount;
+            }
+        }
+    }
+    EXPECT_GT(retainedCount, 256 * 3 / 10);
+    EXPECT_GT(dissolvedCount, 256 * 3 / 10);
+}
+
+TEST(FogRevealEvalTest, RevealSurfaceHashIsVoxelStableAndUniform) {
+    using IRPrefab::Fog::detail::revealSurfaceHash01;
+    EXPECT_EQ(
+        revealSurfaceHash01(IRMath::ivec3(3, -7, 12)),
+        revealSurfaceHash01(IRMath::ivec3(3, -7, 12))
+    );
+    double sum = 0.0;
+    int distinctFromOrigin = 0;
+    const float origin = revealSurfaceHash01(IRMath::ivec3(0));
+    for (int z = -4; z < 4; ++z) {
+        for (int y = -16; y < 16; ++y) {
+            for (int x = -16; x < 16; ++x) {
+                const float hash = revealSurfaceHash01(IRMath::ivec3(x, y, z));
+                EXPECT_GE(hash, 0.0f);
+                EXPECT_LT(hash, 1.0f);
+                sum += hash;
+                distinctFromOrigin += hash != origin ? 1 : 0;
+            }
+        }
+    }
+    EXPECT_NEAR(sum / (8.0 * 32.0 * 32.0), 0.5, 0.03);
+    EXPECT_GT(distinctFromOrigin, 8 * 32 * 32 - 16);
+}
+
+// The appended lanes sit after the channel masks (448 and 576 of 592 bytes)
+// so no earlier offset moves, and every default is the disabled state.
+TEST(FogRevealEvalTest, CeilingAndTreatmentLanesAppendAfterTheChannelMasks) {
+    EXPECT_EQ(offsetof(FrameDataFogObservers, visionCircleCeilings_), 448u);
+    EXPECT_EQ(offsetof(FrameDataFogObservers, revealSurfaceTreatment_), 576u);
+    EXPECT_EQ(sizeof(FrameDataFogObservers), 592u);
+    const FrameDataFogObservers observers{};
+    for (int source = 0; source < IRComponents::kMaxFogVisionCircles; ++source) {
+        EXPECT_EQ(
+            observers.visionCircleCeilings_[source],
+            IRMath::vec4(IRComponents::kFogVisionCeilingOff, 0.0f, 0.0f, 0.0f)
+        );
+        EXPECT_FALSE(observers.ceilingEnabled(source));
+    }
+    EXPECT_EQ(
+        observers.revealSurfaceTreatment_,
+        IRMath::vec4(0.0f, 0.0f, IRComponents::kFogCutTone, 0.0f)
+    );
+    EXPECT_FALSE(observers.revealSurfaceTreatmentEnabled());
+}
+
+TEST(FogRevealEvalTest, CeilingSlotsResetWithTheSourceAndRefuseUnregisteredSlots) {
+    using IRComponents::C_CanvasFogOfWar;
+    FrameDataFogObservers observers{};
+    ASSERT_EQ(
+        C_CanvasFogOfWar::
+            addVisionCircle(observers, 0.0f, 0.0f, 5.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f),
+        0
+    );
+    C_CanvasFogOfWar::setVisionCircleCeiling(observers, 0, 3.0f, -2.0f);
+    EXPECT_EQ(observers.visionCircleCeilings_[0], IRMath::vec4(3.0f, 0.0f, 0.0f, 0.0f))
+        << "a negative fade clamps to the hard plane";
+    C_CanvasFogOfWar::setVisionCircleCeiling(observers, 0, -5.0f, 2.0f);
+    EXPECT_EQ(
+        observers.visionCircleCeilings_[0],
+        IRMath::vec4(IRComponents::kFogVisionCeilingOff, 0.0f, 0.0f, 0.0f)
+    ) << "any negative height disables the slot";
+    C_CanvasFogOfWar::setVisionCircleCeiling(observers, 0, 2.5f, 1.5f);
+    const IRComponents::FogVisionCeiling stored =
+        C_CanvasFogOfWar::visionCircleCeiling(observers, 0);
+    EXPECT_TRUE(stored.enabled());
+    EXPECT_FLOAT_EQ(stored.ceilingHeight_, 2.5f);
+    EXPECT_FLOAT_EQ(stored.fadeHeight_, 1.5f);
+
+    ASSERT_EQ(
+        C_CanvasFogOfWar::
+            addVisionCircle(observers, 1.0f, 0.0f, 5.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f),
+        1
+    );
+    EXPECT_FALSE(observers.ceilingEnabled(1)) << "a new slot starts disabled";
+    EXPECT_THROW(C_CanvasFogOfWar::setVisionCircleCeiling(observers, 2, 1.0f), std::runtime_error);
+    EXPECT_THROW(C_CanvasFogOfWar::setVisionCircleCeiling(observers, -1, 1.0f), std::runtime_error);
+    EXPECT_TRUE(observers.ceilingEnabled(0));
+    EXPECT_FALSE(observers.ceilingEnabled(2)) << "a refused slot is untouched";
+
+    C_CanvasFogOfWar::clearVisionCircles(observers);
+    EXPECT_FALSE(observers.ceilingEnabled(0)) << "clearing the sources resets every ceiling";
+
+    C_CanvasFogOfWar::setRevealSurfaceTreatment(observers, 1.5f, -1.0f);
+    EXPECT_EQ(observers.revealSurfaceTreatment_, IRMath::vec4(1.0f, 1.0f, 0.0f, 0.0f))
+        << "the style is clamped to [0, 1]";
+    C_CanvasFogOfWar::clearRevealSurfaceTreatment(observers);
+    EXPECT_FALSE(observers.revealSurfaceTreatmentEnabled());
+    EXPECT_FLOAT_EQ(observers.dissolveDensity(), 1.0f) << "clearing keeps the stored style";
+    C_CanvasFogOfWar::setRevealSurfaceTreatment(observers, 0.25f);
+    const IRComponents::FogRevealSurfaceTreatment treatment =
+        C_CanvasFogOfWar::revealSurfaceTreatment(observers);
+    EXPECT_TRUE(treatment.enabled_);
+    EXPECT_FLOAT_EQ(treatment.dissolveDensity_, 0.25f);
+    EXPECT_FLOAT_EQ(treatment.capTone_, IRComponents::kFogCutTone);
+}
+
+// The CPU colour twins of the fog pass: the state curve and the shared cap
+// blend, which the demo probes compare readbacks against.
+TEST(FogRevealEvalTest, RevealColourMirrorsFollowTheStateCurveAndTheCapBlend) {
+    using IRPrefab::Fog::detail::cutCapBlend;
+    using IRPrefab::Fog::detail::revealStateColor;
+    const IRMath::vec3 source(1.0f, 0.5f, 0.0f);
+    const IRMath::vec3 unexplored(1.0f, 0.0f, 1.0f);
+    EXPECT_EQ(revealStateColor(0.0f, source, unexplored), unexplored);
+    EXPECT_EQ(revealStateColor(1.0f, source, unexplored), source);
+    const float luminance = 0.299f * 1.0f + 0.587f * 0.5f;
+    const IRMath::vec3 explored = IRMath::vec3(luminance) * 0.4f;
+    EXPECT_NEAR(revealStateColor(128.0f / 255.0f, source, unexplored).x, explored.x, 1e-6f);
+    EXPECT_EQ(cutCapBlend(unexplored, source, 0.5f, 0.0f, 0.0f), unexplored)
+        << "weight 0 leaves the colour";
+    EXPECT_EQ(cutCapBlend(unexplored, source, 0.5f, 0.0f, 1.0f), source * 0.5f)
+        << "weight 1 at state 0 is the toned source";
+    EXPECT_EQ(cutCapBlend(unexplored, source, 0.5f, 1.0f, 1.0f), source) << "state 1 is untoned";
+}
+
 TEST(FogRevealEvalTest, ActiveMaskHideAndRestoreAreAlphaPreserving) {
     C_VoxelPool pool{IRMath::ivec3(4, 1, 1)};
     auto allocation = pool.allocateVoxels(4);
