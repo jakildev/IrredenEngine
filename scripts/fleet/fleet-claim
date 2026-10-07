@@ -4343,7 +4343,11 @@ cmd_reconcile() {
         > "$findings" <<'PYEOF'
 import sys, os, json, re
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
-from fleet_branch_match import issue_from_branch, PARKED_PR_LABELS
+from fleet_branch_match import (
+    issue_from_branch,
+    parked_until_issue_numbers,
+    PARKED_PR_LABELS,
+)
 import fleet_claim_liveness as liveness
 
 work, host, now_s, ttl_s = sys.argv[1:5]
@@ -4785,11 +4789,6 @@ for repo in repos:
 # collects every ref on the line, so a parenthetical aside reads as an extra
 # blocker and strands the row. Widen the trailing match, never the capture.
 #
-# The line start stays anchored so a mention inside prose is not a marker.
-PARKED_UNTIL_RE = re.compile(
-    r"^[ \t]*Parked-until:[ \t]*(#\d+\b(?:(?:[ \t]*,[ \t]*|[ \t]+)#\d+\b)*)",
-    re.IGNORECASE | re.MULTILINE)
-
 for repo in repos:
     d = repo_data[repo]
     for pr in d["prs"]:
@@ -4797,15 +4796,14 @@ for repo in repos:
             continue
         # Last occurrence wins: a re-park appends a fresh line rather than
         # rewriting the body, so earlier markers are inert history.
-        marks = PARKED_UNTIL_RE.findall(pr.get("body", "") or "")
-        if not marks:
+        blockers = parked_until_issue_numbers(pr.get("body", ""))
+        if not blockers:
             add("R8", repo, pr["number"], "pr", ["pr", "label"],
                 "fleet:awaiting-infra with no parsable 'Parked-until: #N' line "
                 "in the PR body; nothing can tell reconcile when the park ends "
                 "— add the line or drop the label",
                 "flag-only (R8)")
             continue
-        blockers = [int(n) for n in re.findall(r"#(\d+)", marks[-1])]
         named = ", ".join("#%d" % n for n in blockers)
         add("R8", repo, pr["number"], "pr", ["pr", "label"],
             "parked behind %s; remove fleet:awaiting-infra once %s "
