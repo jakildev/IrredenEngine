@@ -97,6 +97,10 @@ ISSUES = [
      "body": "## Children\r\n- [X] #299\r\n- [ ] #101\r\n- [ ] #998\r\n"},
     {"number": 302, "title": "epic in-flight child", "labels": labels("fleet:epic"),
      "body": "## Children\n- [ ] #102\n"},
+    {"number": 204, "title": "child linked only by a closing ref", "labels": labels("fleet:task"),
+     "body": "**Part of epic:** #303\n"},
+    {"number": 303, "title": "epic child in flight on a hand-named branch",
+     "labels": labels("fleet:epic"), "body": "## Children\n- [ ] #204\n"},
     {"number": 400, "title": "untriaged idea", "labels": []},
 ]
 
@@ -131,6 +135,9 @@ PRS = [
     {"number": 959, "title": "steward parked", "headRefName": "claude/118-x",
      "labels": labels("fleet:wip", "fleet:design-proposed"), "mergeable": "MERGEABLE",
      "body": ""},
+    {"number": 960, "title": "hand-named branch", "headRefName": "feature/no-number-here",
+     "labels": labels("fleet:claim-mac-pool-3"), "mergeable": "MERGEABLE",
+     "body": "Some prose, then\n\nCloses #204\n"},
 ]
 
 LOG = """\
@@ -242,7 +249,8 @@ class Stranded(FleetSurveyFixture):
 class ApprovalGap(FleetSurveyFixture):
     def test_unapproved_tasks_with_epic_children_first(self):
         rows = self.run_survey()["repos"]["engine"]["approval_gap"]
-        self.assertEqual([(r["issue"], r["epic"]) for r in rows], [(202, 300), (201, None)])
+        self.assertEqual([(r["issue"], r["epic"]) for r in rows],
+                         [(202, 300), (204, 303), (201, None)])
 
 
 class Epics(FleetSurveyFixture):
@@ -255,6 +263,11 @@ class Epics(FleetSurveyFixture):
                          {101: "ghost (shadowed by PR #900)", 998: "closed, box unchecked"})
         self.assertFalse(rows[302]["close_out_ready"])
         self.assertEqual(rows[302]["left"], {102: "in flight: PR #950"})
+
+    def test_a_body_closing_ref_links_a_pr_on_a_hand_named_branch(self):
+        rows = {r["epic"]: r for r in self.run_survey()["repos"]["engine"]["epics"]}
+        self.assertEqual(rows[303]["left"], {204: "in flight: PR #960"})
+        self.assertFalse(rows[303]["close_out_ready"])
 
 
 class Untriaged(FleetSurveyFixture):

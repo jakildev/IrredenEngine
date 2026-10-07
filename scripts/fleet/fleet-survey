@@ -289,11 +289,15 @@ def survey(state, issues_by_repo, prs_by_repo, host, usage_dir, log_path, now=No
         prs = prs_by_repo.get(key, [])
         queue = queue_section(repo_state, host, open_issues)
         ghosts = {int(str(r["id"]).lstrip("#")): r["shadow_pr"] for r in queue["ghost"]}
+        # The scout's in-flight link accepts either the branch convention or a
+        # body closing ref; an epic child is in flight under both readings.
         prs_by_issue = {}
         for pr in prs:
-            issue = fleet_branch_match.issue_from_branch(pr.get("headRefName") or "")
-            if issue is not None:
-                prs_by_issue.setdefault(issue, pr["number"])
+            linked = [fleet_branch_match.issue_from_branch(pr.get("headRefName") or "")]
+            linked += fleet_branch_match.body_closed_issue_numbers(pr.get("body") or "")
+            for issue in linked:
+                if issue is not None:
+                    prs_by_issue.setdefault(issue, pr["number"])
         report["repos"][key] = {
             "queue": queue,
             "parks": parks_section(prs, open_issues, ghosts),
