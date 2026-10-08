@@ -1106,7 +1106,7 @@ void probeChannel(int) {
 }
 
 // --explored-decay: the explored-state policy and per-cell channels over a
-// persisted field. Five FIELD panels sit on a floor at the origin and one at
+// persisted field. FIELD panels float above a floor at the origin and one at
 // (2400, 0): explored memory on the default channel (decays), explored memory
 // shielded on channel 2 (the policy mask never intersects it), a VISIBLE disc
 // (never decays), and two source panels under the eighth (analytic) and
@@ -1122,7 +1122,7 @@ bool g_exploredDecay = false;
 constexpr std::uint64_t kExploredDecayDurationMs = 10000;
 constexpr const char *kExploredDecaySaveRoot = "save_files/fog_explored_decay";
 constexpr std::uint32_t kExploredDecayChannel = 1u << 1u;
-// Panels stand on the floor's top plane (the floor box spans z 3..7).
+// Raised panels isolate fog state from the floor; this is not a contact fixture.
 constexpr float kExploredDecayPanelZ = 2.0f;
 constexpr int kExploredDecayPanelHalf = 4;
 constexpr int kExploredDecayDiscRadius = 6;
@@ -1168,10 +1168,9 @@ IREntity::EntityId g_exploredDecayNinthDisjoint = IREntity::kNullEntity;
 IREntity::EntityId g_exploredDecayFar = IREntity::kNullEntity;
 IREntity::EntityId g_exploredDecayOverflow = IREntity::kNullEntity;
 
-// An SDF FIELD panel standing on the floor's top plane: its surface spans
-// exactly the columns `centre ± half`, so every texel reads one authored cell
-// and the memory probes count exactly.
-IREntity::EntityId createExploredDecayPanel(IRMath::ivec2 centre, int halfX, Color color) {
+// BOX parameters are full sizes. The authored fog square conservatively covers
+// this smaller SDF panel; it is not the voxel panel's geometric footprint.
+IREntity::EntityId createExploredDecayPanel(IRMath::ivec2 centre, int sizeX, Color color) {
     return IREntity::createEntity(
         C_LocalTransform{
             vec3(static_cast<float>(centre.x), static_cast<float>(centre.y), kExploredDecayPanelZ)
@@ -1179,7 +1178,7 @@ IREntity::EntityId createExploredDecayPanel(IRMath::ivec2 centre, int halfX, Col
         C_ShapeDescriptor{
             IRRender::ShapeType::BOX,
             vec4(
-                static_cast<float>(halfX),
+                static_cast<float>(sizeX),
                 static_cast<float>(kExploredDecayPanelHalf),
                 1.0f,
                 0.0f
@@ -1191,7 +1190,7 @@ IREntity::EntityId createExploredDecayPanel(IRMath::ivec2 centre, int halfX, Col
 }
 
 // A voxel FIELD panel of `2 * halfX + 1` by `2 * kExploredDecayPanelHalf + 1`
-// columns, two voxels thick, on the floor's top plane. Voxel sets ride the
+// columns, two voxels thick, suspended above the floor. Voxel sets ride the
 // cardinal, per-axis and overflow raster routes alike, which the source
 // panels need for the rotated shot; their boundary faces recover positions in
 // the neighbouring columns, so their probes compare counts, not exact totals.

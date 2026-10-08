@@ -92,15 +92,18 @@ GPU probes ruled out fog reveal as the cause of the three white-panel blocks:
 their grid state is fully visible and their incoming color is already 92.
 The floor's final-fragment normal is -Y, confirmed by a GPU diagnostic and an
 independent slab oracle; its Lambert factor predicts the current brighter color.
-The built-in normal overlay follows the compute route and does not by itself
-prove the normal used by finite fragment lighting.
+The original built-in normal overlay followed only the compute route and could
+disagree with finite fragment lighting. The normals diagnostic now shares the
+beauty path's eligibility and finite query; unsupported and fog paths retain
+their compute normal colors.
+The [diagnostic controls](../pr-screenshots/codex/final-surface-normal-diagnostics/README.md)
+compare normal output with the isolated final-fragment probe and preserve all
+seventeen CanvasStress/explored-fog beauty frames byte-for-byte.
 The [receiver-edge evidence](../pr-screenshots/codex/receiver-edge-validation/README.md)
 records the probes, analytical fixtures and before/after controls.
 
 | Priority | Finding | Bounded change and required proof |
 |---|---|---|
-| 1 | Explored-decay fixture comments and placement assume half-sizes while BOX descriptors contain full sizes | Reconcile actual panel/floor bounds with the fixture's intended contact and fog-column coverage before using it as a geometry oracle. |
-| 2 | Normal overlay bypasses finite fragment lighting | Extend diagnostics to observe the same receiver as the final lighting path, retaining a distinct compute-route view when useful. |
 | 3 | Fallback sun bake retains a raw per-axis branch its driver does not use | Prove route-zero dispatches, then remove the branch and redundant include while preserving ABI and live fallback casting. Exercise detached casting and splat-enabled cases. |
 | 3 | Source-face shadow-debug palette repeats an existing helper | Delegate to `surfaceShadowDebugColor` in both shader backends; compare diagnostic captures. |
 
@@ -109,6 +112,15 @@ surface policy after signed-face proofs: floor edges select -Y; the fog panel's
 emitter and finite recovery both select -X. Native probes establish the actual
 normal and incoming fog color. Thresholds remain unchanged, and the original
 references remain in the receiver-edge evidence for review.
+
+The explored-decay fixture is a fog state/channel test, not a floor-contact or
+SDF/voxel geometry-parity test. Its SDF panels use full BOX sizes (4,4,1) at z=2;
+the floor uses (96,96,2) at z=5. At density d the analytical panel bottom is
+z=2+0.5/d and the floor top is z=4.5-0.5/d, leaving a positive gap. The authored
+fog square of ±4 conservatively encloses the smaller SDF panel, while the voxel
+source panels intentionally occupy a larger footprint and include a positive
+channel margin for recovered boundary columns. Source comments state these
+contracts without changing geometry, channels, camera poses or references.
 
 The cleanup incorporates the merged store-frame, fog LOS, SDF receiver/normal
 and explored-state work through master `a08e0a44a`. The shared dispatch helper

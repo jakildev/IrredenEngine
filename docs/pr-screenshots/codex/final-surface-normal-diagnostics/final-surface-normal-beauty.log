@@ -1,0 +1,15 @@
+ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/build/creations/demos/canvas_stress/IRCanvasStress --auto-screenshot 120 (window mode: offscreen)
+[2026-10-06 22:35:39.597] [EngineLog] [info] Regestered component type=N7IRVideo12_GLOBAL__N_122C_AutoScreenshotAnchorE, sizeof=1 with id=426
+[2026-10-06 22:35:42.228] [ClientLog] [info] AutoScreenshot 1/12: so3_smooth_sweep (zoom=1, cam=(0,0), yaw=0, cull=0)
+[2026-10-06 22:35:43.629] [ClientLog] [info] AutoScreenshot 2/12: so3_offsnap_disc (zoom=1, cam=(0,0), yaw=0.7853982, cull=0)
+[2026-10-06 22:35:45.020] [ClientLog] [info] AutoScreenshot 3/12: so3_wide_parity (zoom=0.65, cam=(0,0), yaw=0, cull=0)
+[2026-10-06 22:35:46.462] [ClientLog] [info] AutoScreenshot 4/12: so3_grid_cross (zoom=0.45, cam=(0,0), yaw=0, cull=0)
+[2026-10-06 22:35:47.905] [ClientLog] [info] AutoScreenshot 5/12: so3_offsnap_wide (zoom=0.65, cam=(0,0), yaw=0.5235988, cull=0)
+[2026-10-06 22:35:49.329] [ClientLog] [info] AutoScreenshot 6/12: revoxelize_solids (zoom=1, cam=(0,0), yaw=0, cull=0)
+[2026-10-06 22:35:50.767] [ClientLog] [info] AutoScreenshot 7/12: revoxelize_solids_zoom (zoom=2.2, cam=(0,0), yaw=0, cull=0)
+[2026-10-06 22:35:52.195] [ClientLog] [info] AutoScreenshot 8/12: orbit_overview (zoom=0.32, cam=(0,0), yaw=0, cull=0)
+[2026-10-06 22:35:53.657] [ClientLog] [info] AutoScreenshot 9/12: shadow_overlay_floor (zoom=0.55, cam=(0,0), yaw=0, cull=0)
+[2026-10-06 22:35:55.108] [ClientLog] [info] AutoScreenshot 10/12: revox_coverage (zoom=2.4, cam=(0,0), yaw=0, cull=0)
+[2026-10-06 22:35:56.550] [ClientLog] [info] AutoScreenshot 11/12: smallzoom_low (zoom=0.5, cam=(0,0), yaw=0, cull=0)
+[2026-10-06 22:35:58.008] [ClientLog] [info] AutoScreenshot 12/12: smallzoom_high (zoom=2, cam=(0,0), yaw=0, cull=0)
+ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
