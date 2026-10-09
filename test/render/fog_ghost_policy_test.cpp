@@ -8,7 +8,11 @@
 #include <irreden/render/systems/system_fog_reveal_eval.hpp>
 #include <irreden/render/systems/system_fog_reveal_eval_canvas.hpp>
 #include <irreden/render/systems/system_fog_reveal_eval_shape.hpp>
+#include <irreden/render/systems/system_update_joint_matrices.hpp>
+#include <irreden/render/systems/system_update_voxel_positions_gpu.hpp>
+#include <irreden/voxel/components/component_joint.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
+#include <irreden/voxel/components/component_skeleton.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include "common/allocation_counter.hpp"
@@ -24,6 +28,14 @@ using IRComponents::C_VoxelSetNew;
 using IRComponents::C_WorldTransform;
 using IRComponents::FogHiddenPolicy;
 using IRComponents::FogOverride;
+
+void expectMat4Near(const IRMath::mat4 &actual, const IRMath::mat4 &expected) {
+    for (int column = 0; column < 4; ++column) {
+        for (int row = 0; row < 4; ++row) {
+            EXPECT_NEAR(actual[column][row], expected[column][row], 1e-4f);
+        }
+    }
+}
 
 IRComponents::C_CanvasFogOfWar fogWithCircle(float radius) {
     IRComponents::C_CanvasFogOfWar fog{IRComponents::C_CanvasFogOfWar::HeadlessInit{}};
@@ -166,19 +178,16 @@ TEST(FogGhostPolicyTest, ReshowRefreshesPoseAndForceHiddenDiscardsIt) {
 }
 
 TEST(FogGhostPolicyTest, VoxelRouteRetainsAlphaMaskAndExploredCarrier) {
-    C_VoxelPool pool{IRMath::ivec3(2, 1, 1)};
-    auto allocation = pool.allocateVoxels(2);
-    allocation.voxels_[0].color_.alpha_ = 255;
-    allocation.voxels_[1].color_.alpha_ = 0;
-
-    C_VoxelSetNew voxelSet{};
-    voxelSet.voxelStartIdx_ = 0;
-    voxelSet.numVoxels_ = 2;
-    voxelSet.voxels_ = allocation.voxels_;
-    pool.resyncActiveMaskFromColors(0, 2);
+    IREntity::EntityManager entityManager;
+    const IREntity::EntityId canvas = IREntity::createEntity(C_VoxelPool{IRMath::ivec3(2, 1, 1)});
+    auto &pool = IREntity::getComponent<C_VoxelPool>(canvas);
+    C_VoxelSetNew voxelSet{IRMath::ivec3(2, 1, 1), IRMath::Color{255, 255, 255, 255}, true, canvas};
+    voxelSet.voxels_[1].color_.alpha_ = 0;
+    voxelSet.resyncAfterRawEdits();
 
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
     system.activePool_ = &pool;
+    system.activeCanvas_ = canvas;
     system.fogAttached_ = true;
     system.observers_ = fogWithCircle(2.0f).observers_;
     system.settings_.staggerPeriod_ = 1;
@@ -204,12 +213,94 @@ TEST(FogGhostPolicyTest, VoxelRouteRetainsAlphaMaskAndExploredCarrier) {
     EXPECT_TRUE(voxelSet.ghostHeld_);
     EXPECT_FALSE(voxelSet.visible_);
     EXPECT_EQ(pool.getActiveMask()[0] & 0x3u, 0x1u);
-    for (const IRComponents::C_Voxel &voxel : allocation.voxels_) {
+    for (const IRComponents::C_Voxel &voxel : voxelSet.voxels_) {
         const std::uint32_t factor =
             (voxel.reserved_ & IRComponents::VoxelReserved::kFogBodyFactorMask) >>
             IRComponents::VoxelReserved::kFogBodyFactorShift;
         EXPECT_EQ(factor, IRComponents::kFogStateExplored);
     }
+
+    voxelSet.setLodCulled(true);
+    EXPECT_EQ(pool.getActiveMask()[0] & 0x3u, 0u);
+    voxelSet.setLodCulled(false);
+    EXPECT_EQ(pool.getActiveMask()[0] & 0x3u, 0x1u);
+
+    voxelSet.voxels_[0].color_.alpha_ = 0;
+    voxelSet.voxels_[1].color_.alpha_ = 255;
+    voxelSet.resyncAfterRawEdits();
+    EXPECT_EQ(pool.getActiveMask()[0] & 0x3u, 0x2u);
+}
+
+TEST(FogGhostPolicyTest, HeldGpuVoxelTransformRemainsInsideUploadRangeAndFrozen) {
+    IREntity::EntityManager entityManager;
+    const IREntity::EntityId canvas = IREntity::createEntity(C_VoxelPool{IRMath::ivec3(1, 1, 1)});
+    C_VoxelSetNew voxelSet{IRMath::ivec3(1), IRMath::Color{255, 255, 255, 255}, true, canvas};
+    voxelSet.gpuTransformSlot_ = 3;
+
+    IRSystem::System<IRSystem::UPDATE_VOXEL_POSITIONS_GPU> system;
+    C_WorldTransform shownPose{};
+    shownPose.translation_ = {1.0f, 2.0f, 3.0f};
+    system.beginTick();
+    system.tick(voxelSet, shownPose);
+    const IRMath::mat4 frozen = system.transforms_[3].modelToWorld_;
+
+    voxelSet.ghostHeld_ = true;
+    C_WorldTransform hiddenPose{};
+    hiddenPose.translation_ = {30.0f, 20.0f, 10.0f};
+    system.beginTick();
+    system.tick(voxelSet, hiddenPose);
+
+    EXPECT_TRUE(system.anyDynamic_);
+    EXPECT_EQ(system.maxSlotUsed_, 3);
+    expectMat4Near(system.transforms_[3].modelToWorld_, frozen);
+}
+
+TEST(FogGhostPolicyTest, HeldSkeletonRetainsJointBlockWhileLiveSiblingUpdates) {
+    IREntity::EntityManager entityManager;
+    const auto makeRig = [](float x) {
+        const IREntity::EntityId joint = IREntity::createEntity(IRComponents::C_Joint{});
+        auto &jointWorld = IREntity::getComponent<C_WorldTransform>(joint);
+        jointWorld.translation_ = {x, 0.0f, 0.0f};
+
+        IRComponents::C_Skeleton skeleton;
+        skeleton.joints_.push_back(joint);
+        skeleton.bindPose_.push_back(IRMath::SQT{});
+        const IREntity::EntityId root = IREntity::createEntity(C_VoxelSetNew{}, skeleton);
+        return std::pair{root, joint};
+    };
+    const auto heldRig = makeRig(1.0f);
+    const auto liveRig = makeRig(2.0f);
+
+    IRSystem::System<IRSystem::UPDATE_JOINT_MATRICES> system;
+    const auto runFrame = [&](const auto &rigs) {
+        system.beginTick();
+        for (const auto &[root, joint] : rigs) {
+            static_cast<void>(root);
+            IRComponents::C_Joint tag;
+            system.tick(joint, tag, IREntity::getComponent<C_WorldTransform>(joint));
+        }
+    };
+    const std::array rigs{heldRig, liveRig};
+    runFrame(rigs);
+
+    const auto heldBlock = system.skeletonBlocks_.at(heldRig.first);
+    const auto liveBlock = system.skeletonBlocks_.at(liveRig.first);
+    const IRMath::mat4 heldBefore =
+        system.jointStaging_[system.localSlot(heldBlock.base_)].modelToWorld_;
+    const IRMath::mat4 liveBefore =
+        system.jointStaging_[system.localSlot(liveBlock.base_)].modelToWorld_;
+
+    IREntity::getComponent<C_VoxelSetNew>(heldRig.first).ghostHeld_ = true;
+    IREntity::getComponent<C_WorldTransform>(heldRig.second).translation_.x = 11.0f;
+    IREntity::getComponent<C_WorldTransform>(liveRig.second).translation_.x = 12.0f;
+    runFrame(rigs);
+
+    const int heldSlot = system.localSlot(heldBlock.base_);
+    const int liveSlot = system.localSlot(liveBlock.base_);
+    expectMat4Near(system.jointStaging_[heldSlot].modelToWorld_, heldBefore);
+    EXPECT_NE(system.jointStaging_[liveSlot].modelToWorld_, liveBefore);
+    EXPECT_LE(system.usedLo_, heldSlot);
+    EXPECT_GT(system.usedHi_, heldSlot);
 }
 
 TEST(FogGhostPolicyTest, ShapeRoutePublishesFrozenPoseAndExploredFactor) {
@@ -245,8 +336,7 @@ TEST(FogGhostPolicyTest, ShapeRoutePublishesFrozenPoseAndExploredFactor) {
 
 TEST(FogGhostPolicyTest, CanvasRoutePublishesFrozenPoseAndExploredFactor) {
     IREntity::EntityManager entityManager;
-    const IREntity::EntityId detached =
-        IREntity::createEntity(IRComponents::C_DetachedCanvas{});
+    const IREntity::EntityId detached = IREntity::createEntity(IRComponents::C_DetachedCanvas{});
     auto fog = fogWithCircle(2.0f);
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL_CANVAS> system;
     system.fog_ = &fog;
