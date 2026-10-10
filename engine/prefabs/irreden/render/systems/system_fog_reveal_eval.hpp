@@ -3,7 +3,6 @@
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_job.hpp>
-#include <irreden/ir_profile.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
@@ -25,7 +24,7 @@ namespace IRSystem {
 
 namespace detail {
 
-template <bool kGhost> struct FogRevealEval {
+struct FogRevealEvalGhost {
     static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
 
     struct PendingTransition {
@@ -53,7 +52,6 @@ template <bool kGhost> struct FogRevealEval {
     std::uint32_t restampedVoxelsLastFrame_ = 0;
 
     void beginTick() {
-        IR_PROFILE_SCOPE(kGhost ? "FogRevealEvalGhost.begin" : "FogRevealEval.begin");
         activeCanvas_ = IRRender::getActiveCanvasEntityOrNull();
         activePool_ = nullptr;
         fogAttached_ = false;
@@ -102,21 +100,12 @@ template <bool kGhost> struct FogRevealEval {
     }
 
     static std::vector<IREntity::ArchetypeNode *> matchingNodes() {
-        if constexpr (kGhost) {
-            return IREntity::queryArchetypeNodesSimple(
-                IREntity::getArchetype<
-                    IRComponents::C_FogRevealed,
-                    IRComponents::C_FogGhost,
-                    IRComponents::C_WorldTransform,
-                    IRComponents::C_VoxelSetNew>()
-            );
-        }
         return IREntity::queryArchetypeNodesSimple(
             IREntity::getArchetype<
                 IRComponents::C_FogRevealed,
+                IRComponents::C_FogGhost,
                 IRComponents::C_WorldTransform,
-                IRComponents::C_VoxelSetNew>(),
-            IREntity::getArchetype<IRComponents::C_FogGhost>()
+                IRComponents::C_VoxelSetNew>()
         );
     }
 
@@ -151,7 +140,7 @@ template <bool kGhost> struct FogRevealEval {
         IRComponents::C_FogRevealed &revealed,
         const IRComponents::C_WorldTransform &worldTransform,
         IRComponents::C_VoxelSetNew &voxelSet,
-        IRComponents::C_FogGhost *ghost
+        IRComponents::C_FogGhost &ghost
     ) {
         if (!IRPrefab::Fog::isOnFogCanvas(voxelSet, activeCanvas_)) {
             return;
@@ -180,19 +169,17 @@ template <bool kGhost> struct FogRevealEval {
             }
         }
 
-        if constexpr (kGhost) {
-            IRPrefab::Fog::stepGhostLifecycle(
-                revealed,
-                *ghost,
-                worldTransform,
-                wasShown,
-                evaluated,
-                settings_.showThreshold_,
-                [this](IRMath::vec3 position, std::uint32_t channels) {
-                    return verdict(position, channels);
-                }
-            );
-        }
+        IRPrefab::Fog::stepGhostLifecycle(
+            revealed,
+            ghost,
+            worldTransform,
+            wasShown,
+            evaluated,
+            settings_.showThreshold_,
+            [this](IRMath::vec3 position, std::uint32_t channels) {
+                return verdict(position, channels);
+            }
+        );
 
         if ((revealed.shown_ || revealed.ghostHeld_) && activePool_ != nullptr) {
             const std::uint8_t factor =
@@ -214,6 +201,149 @@ template <bool kGhost> struct FogRevealEval {
                 PendingTransition{&voxelSet, activePool_, revealed.shown_, revealed.ghostHeld_}
             );
         }
+    }
+
+    void endTick() {
+        restampedVoxelsLastFrame_ = 0;
+        for (std::uint32_t count : restampedByWorker_) {
+            restampedVoxelsLastFrame_ += count;
+        }
+        pending_.forEach([](const PendingTransition &transition) {
+            if (transition.voxelSet_ == nullptr || transition.pool_ == nullptr) {
+                return;
+            }
+            IRComponents::C_VoxelSetNew &voxelSet = *transition.voxelSet_;
+            voxelSet.visible_ = transition.visible_;
+            voxelSet.ghostHeld_ = transition.ghostHeld_;
+            // A set its LOD band also hides stays masked off; the LOD gate
+            // restores the mask when the band admits it again.
+            if (voxelSet.masksActive()) {
+                transition.pool_->resyncActiveMaskFromColors(
+                    voxelSet.voxelStartIdx_,
+                    static_cast<std::size_t>(voxelSet.numVoxels_)
+                );
+            } else {
+                transition.pool_->clearActiveMaskRange(
+                    voxelSet.voxelStartIdx_,
+                    static_cast<std::size_t>(voxelSet.numVoxels_)
+                );
+            }
+        });
+    }
+
+    void tickGhost(
+        IREntity::EntityId &entity,
+        IRComponents::C_FogRevealed &revealed,
+        IRComponents::C_FogGhost &ghost,
+        const IRComponents::C_WorldTransform &worldTransform,
+        IRComponents::C_VoxelSetNew &voxelSet
+    ) {
+        tickImpl(entity, revealed, worldTransform, voxelSet, ghost);
+    }
+};
+
+} // namespace detail
+
+template <> struct System<FOG_REVEAL_EVAL> {
+    static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
+
+    struct PendingTransition {
+        IRComponents::C_VoxelSetNew *voxelSet_ = nullptr;
+        IRComponents::C_VoxelPool *pool_ = nullptr;
+        bool visible_ = false;
+        bool ghostHeld_ = false;
+    };
+
+    IRComponents::FrameDataFogObservers observers_{};
+    IRComponents::FogLosColumnField los_{};
+    IRPrefab::Fog::LosHardRouteCache losRoutes_;
+    IRComponents::C_FogRevealSettings settings_{};
+    IREntity::EntityId activeCanvas_ = IREntity::kNullEntity;
+    const IRComponents::C_CanvasFogOfWar *fog_ = nullptr;
+    IRComponents::C_VoxelPool *activePool_ = nullptr;
+    std::uint64_t frameCounter_ = 0;
+    bool fogAttached_ = false;
+    IRJob::WorkerBlockQueue<PendingTransition> pending_;
+    std::vector<std::uint32_t> restampedByWorker_;
+    std::uint32_t restampedVoxelsLastFrame_ = 0;
+
+    static std::vector<IREntity::ArchetypeNode *> matchingNodes() {
+        return IREntity::queryArchetypeNodesSimple(
+            IREntity::getArchetype<
+                IRComponents::C_FogRevealed,
+                IRComponents::C_WorldTransform,
+                IRComponents::C_VoxelSetNew>(),
+            IREntity::getArchetype<IRComponents::C_FogGhost>()
+        );
+    }
+
+    void beginTick() {
+        activeCanvas_ = IRRender::getActiveCanvasEntityOrNull();
+        activePool_ = nullptr;
+        fogAttached_ = false;
+        fog_ = nullptr;
+        observers_ = {};
+        los_ = {};
+        IRComponents::C_CanvasFogOfWar *fog = nullptr;
+
+        if (activeCanvas_ != IREntity::kNullEntity) {
+            if (auto pool =
+                    IREntity::getComponentOptional<IRComponents::C_VoxelPool>(activeCanvas_)) {
+                activePool_ = *pool;
+            }
+            if (auto attached =
+                    IREntity::getComponentOptional<IRComponents::C_CanvasFogOfWar>(activeCanvas_)) {
+                fog = *attached;
+                fog_ = fog;
+                IRPrefab::Fog::selectRevealSnapshot(
+                    fog_->observers_,
+                    fog_->losPublishedObservers_,
+                    fog_->losField(),
+                    observers_,
+                    los_
+                );
+                fogAttached_ = true;
+            }
+        }
+        losRoutes_.begin(observers_, los_);
+        settings_ = IREntity::singleton<IRComponents::C_FogRevealSettings>();
+        settings_.staggerPeriod_ = IRMath::max(settings_.staggerPeriod_, std::uint32_t{1});
+        ++frameCounter_;
+
+        const std::vector<IREntity::ArchetypeNode *> nodes = matchingNodes();
+        std::size_t population = 0;
+        for (IREntity::ArchetypeNode *node : nodes) {
+            population += static_cast<std::size_t>(node->length_);
+        }
+        pending_.reset(population);
+        if (fog != nullptr) {
+            IRPrefab::Fog::touchAnchorRegions(*fog, activeCanvas_, nodes);
+        }
+        const std::size_t slots = static_cast<std::size_t>(IRJob::workerCount()) + 1u;
+        restampedByWorker_.assign(slots, 0u);
+    }
+
+    float verdict(IRMath::vec3 worldPosition, std::uint32_t channels) {
+        if (!fogAttached_) {
+            return 1.0f;
+        }
+        if (fog_ != nullptr) {
+            return IRPrefab::Fog::evalReveal(
+                *fog_,
+                observers_,
+                los_,
+                losRoutes_,
+                worldPosition,
+                channels
+            );
+        }
+        return IRPrefab::Fog::evalVisionReveal(
+            observers_,
+            los_,
+            losRoutes_,
+            worldPosition,
+            channels
+        );
     }
 
     void tick(
@@ -265,7 +395,6 @@ template <bool kGhost> struct FogRevealEval {
     }
 
     void endTick() {
-        IR_PROFILE_SCOPE(kGhost ? "FogRevealEvalGhost.end" : "FogRevealEval.end");
         restampedVoxelsLastFrame_ = 0;
         for (std::uint32_t count : restampedByWorker_) {
             restampedVoxelsLastFrame_ += count;
@@ -277,8 +406,6 @@ template <bool kGhost> struct FogRevealEval {
             IRComponents::C_VoxelSetNew &voxelSet = *transition.voxelSet_;
             voxelSet.visible_ = transition.visible_;
             voxelSet.ghostHeld_ = transition.ghostHeld_;
-            // A set its LOD band also hides stays masked off; the LOD gate
-            // restores the mask when the band admits it again.
             if (voxelSet.masksActive()) {
                 transition.pool_->resyncActiveMaskFromColors(
                     voxelSet.voxelStartIdx_,
@@ -293,20 +420,6 @@ template <bool kGhost> struct FogRevealEval {
         });
     }
 
-    void tickGhost(
-        IREntity::EntityId &entity,
-        IRComponents::C_FogRevealed &revealed,
-        IRComponents::C_FogGhost &ghost,
-        const IRComponents::C_WorldTransform &worldTransform,
-        IRComponents::C_VoxelSetNew &voxelSet
-    ) {
-        tickImpl(entity, revealed, worldTransform, voxelSet, &ghost);
-    }
-};
-
-} // namespace detail
-
-template <> struct System<FOG_REVEAL_EVAL> : detail::FogRevealEval<false> {
     static SystemId create() {
         return registerSystem<
             FOG_REVEAL_EVAL,
@@ -318,7 +431,7 @@ template <> struct System<FOG_REVEAL_EVAL> : detail::FogRevealEval<false> {
     }
 };
 
-template <> struct System<FOG_REVEAL_EVAL_GHOST> : detail::FogRevealEval<true> {
+template <> struct System<FOG_REVEAL_EVAL_GHOST> : detail::FogRevealEvalGhost {
     void tick(
         IREntity::EntityId &entity,
         IRComponents::C_FogRevealed &revealed,

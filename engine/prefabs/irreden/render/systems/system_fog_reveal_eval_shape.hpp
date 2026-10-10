@@ -21,7 +21,7 @@ namespace IRSystem {
 
 namespace detail {
 
-template <bool kGhost> struct FogRevealEvalShape {
+struct FogRevealEvalShapeGhost {
     static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
 
     IREntity::EntityId activeCanvas_ = IREntity::kNullEntity;
@@ -31,6 +31,7 @@ template <bool kGhost> struct FogRevealEvalShape {
     IRPrefab::Fog::LosHardRouteCache losRoutes_;
     IRComponents::C_FogRevealSettings settings_{};
     std::uint64_t frameCounter_ = 0;
+
     struct HeldPose {
         IREntity::EntityId entity_ = IREntity::kNullEntity;
         IRComponents::C_WorldTransform pose_{};
@@ -66,31 +67,20 @@ template <bool kGhost> struct FogRevealEvalShape {
         if (fog != nullptr) {
             IRPrefab::Fog::touchShapeAnchorRegions(*fog, activeCanvas_, nodes);
         }
-        if constexpr (kGhost) {
-            std::size_t population = 0;
-            for (IREntity::ArchetypeNode *node : nodes) {
-                population += static_cast<std::size_t>(node->length_);
-            }
-            pendingHeld_.reset(population);
+        std::size_t population = 0;
+        for (IREntity::ArchetypeNode *node : nodes) {
+            population += static_cast<std::size_t>(node->length_);
         }
+        pendingHeld_.reset(population);
     }
 
     static std::vector<IREntity::ArchetypeNode *> matchingNodes() {
-        if constexpr (kGhost) {
-            return IREntity::queryArchetypeNodesSimple(
-                IREntity::getArchetype<
-                    IRComponents::C_FogRevealed,
-                    IRComponents::C_FogGhost,
-                    IRComponents::C_WorldTransform,
-                    IRComponents::C_ShapeDescriptor>()
-            );
-        }
         return IREntity::queryArchetypeNodesSimple(
             IREntity::getArchetype<
                 IRComponents::C_FogRevealed,
+                IRComponents::C_FogGhost,
                 IRComponents::C_WorldTransform,
-                IRComponents::C_ShapeDescriptor>(),
-            IREntity::getArchetype<IRComponents::C_FogGhost>()
+                IRComponents::C_ShapeDescriptor>()
         );
     }
 
@@ -99,7 +89,7 @@ template <bool kGhost> struct FogRevealEvalShape {
         IRComponents::C_FogRevealed &revealed,
         const IRComponents::C_WorldTransform &worldTransform,
         IRComponents::C_ShapeDescriptor &shape,
-        IRComponents::C_FogGhost *ghost
+        IRComponents::C_FogGhost &ghost
     ) {
         if (!IRPrefab::Fog::isOnFogCanvas(shape, activeCanvas_)) {
             return;
@@ -107,11 +97,6 @@ template <bool kGhost> struct FogRevealEvalShape {
         const bool wasShown = revealed.shown_;
         const bool evaluated = revealed.override_ != IRComponents::FogOverride::NONE ||
                                (entity + frameCounter_) % settings_.staggerPeriod_ == 0u;
-        if constexpr (!kGhost) {
-            if (!evaluated) {
-                return;
-            }
-        }
         if (evaluated && revealed.override_ == IRComponents::FogOverride::FORCE_REVEALED) {
             revealed.revealFactor_ = 1.0f;
             revealed.shown_ = true;
@@ -135,30 +120,28 @@ template <bool kGhost> struct FogRevealEvalShape {
             }
         }
 
-        if constexpr (kGhost) {
-            IRPrefab::Fog::stepGhostLifecycle(
-                revealed,
-                *ghost,
-                worldTransform,
-                wasShown,
-                evaluated,
-                settings_.showThreshold_,
-                [this](IRMath::vec3 position, std::uint32_t channels) {
-                    return fog_ == nullptr ? 1.0f
-                                           : IRPrefab::Fog::evalReveal(
-                                                 *fog_,
-                                                 observers_,
-                                                 los_,
-                                                 losRoutes_,
-                                                 position,
-                                                 channels
-                                             );
-                }
-            );
-        }
+        IRPrefab::Fog::stepGhostLifecycle(
+            revealed,
+            ghost,
+            worldTransform,
+            wasShown,
+            evaluated,
+            settings_.showThreshold_,
+            [this](IRMath::vec3 position, std::uint32_t channels) {
+                return fog_ == nullptr ? 1.0f
+                                       : IRPrefab::Fog::evalReveal(
+                                             *fog_,
+                                             observers_,
+                                             los_,
+                                             losRoutes_,
+                                             position,
+                                             channels
+                                         );
+            }
+        );
 
         if (revealed.ghostHeld_) {
-            pendingHeld_.push(HeldPose{entity, ghost->pose_});
+            pendingHeld_.push(HeldPose{entity, ghost.pose_});
         }
         shape.fogBodyFactor_ = revealed.ghostHeld_
                                    ? IRComponents::kFogStateExplored
@@ -176,6 +159,81 @@ template <bool kGhost> struct FogRevealEvalShape {
         }
     }
 
+    void endTick() {
+        heldGhostPoses_.clear();
+        heldGhostPoses_.reserve(pendingHeld_.size());
+        pendingHeld_.forEach([this](const HeldPose &entry) { heldGhostPoses_.push_back(entry); });
+        std::sort(
+            heldGhostPoses_.begin(),
+            heldGhostPoses_.end(),
+            [](const HeldPose &a, const HeldPose &b) { return a.entity_ < b.entity_; }
+        );
+    }
+
+    void tickGhost(
+        IREntity::EntityId &entity,
+        IRComponents::C_FogRevealed &revealed,
+        IRComponents::C_FogGhost &ghost,
+        const IRComponents::C_WorldTransform &worldTransform,
+        IRComponents::C_ShapeDescriptor &shape
+    ) {
+        tickImpl(entity, revealed, worldTransform, shape, ghost);
+    }
+};
+
+} // namespace detail
+
+template <> struct System<FOG_REVEAL_EVAL_SHAPE> {
+    static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
+
+    IREntity::EntityId activeCanvas_ = IREntity::kNullEntity;
+    const IRComponents::C_CanvasFogOfWar *fog_ = nullptr;
+    IRComponents::FrameDataFogObservers observers_{};
+    IRComponents::FogLosColumnField los_{};
+    IRPrefab::Fog::LosHardRouteCache losRoutes_;
+    IRComponents::C_FogRevealSettings settings_{};
+    std::uint64_t frameCounter_ = 0;
+
+    static std::vector<IREntity::ArchetypeNode *> matchingNodes() {
+        return IREntity::queryArchetypeNodesSimple(
+            IREntity::getArchetype<
+                IRComponents::C_FogRevealed,
+                IRComponents::C_WorldTransform,
+                IRComponents::C_ShapeDescriptor>(),
+            IREntity::getArchetype<IRComponents::C_FogGhost>()
+        );
+    }
+
+    void beginTick() {
+        activeCanvas_ = IRRender::getActiveCanvasEntityOrNull();
+        fog_ = nullptr;
+        observers_ = {};
+        los_ = {};
+        IRComponents::C_CanvasFogOfWar *fog = nullptr;
+        if (activeCanvas_ != IREntity::kNullEntity) {
+            if (auto attached =
+                    IREntity::getComponentOptional<IRComponents::C_CanvasFogOfWar>(activeCanvas_)) {
+                fog = *attached;
+                fog_ = fog;
+                IRPrefab::Fog::selectRevealSnapshot(
+                    fog_->observers_,
+                    fog_->losPublishedObservers_,
+                    fog_->losField(),
+                    observers_,
+                    los_
+                );
+            }
+        }
+        losRoutes_.begin(observers_, los_);
+        settings_ = IREntity::singleton<IRComponents::C_FogRevealSettings>();
+        settings_.staggerPeriod_ = IRMath::max(settings_.staggerPeriod_, std::uint32_t{1});
+        ++frameCounter_;
+        const std::vector<IREntity::ArchetypeNode *> nodes = matchingNodes();
+        if (fog != nullptr) {
+            IRPrefab::Fog::touchShapeAnchorRegions(*fog, activeCanvas_, nodes);
+        }
+    }
+
     void tick(
         IREntity::EntityId &entity,
         IRComponents::C_FogRevealed &revealed,
@@ -189,6 +247,7 @@ template <bool kGhost> struct FogRevealEvalShape {
             (entity + frameCounter_) % settings_.staggerPeriod_ != 0u) {
             return;
         }
+
         if (revealed.override_ == IRComponents::FogOverride::FORCE_REVEALED) {
             revealed.revealFactor_ = 1.0f;
             revealed.shown_ = true;
@@ -211,6 +270,7 @@ template <bool kGhost> struct FogRevealEvalShape {
                 revealed.shown_ = false;
             }
         }
+
         shape.fogBodyFactor_ = IRPrefab::Fog::quantizeRevealFactor(revealed.revealFactor_);
         shape.flags_ |= IRRender::SHAPE_FLAG_FOG_BODY;
         if (revealed.shown_) {
@@ -220,34 +280,6 @@ template <bool kGhost> struct FogRevealEvalShape {
         }
     }
 
-    void endTick() {
-        if constexpr (!kGhost) {
-            return;
-        }
-        heldGhostPoses_.clear();
-        heldGhostPoses_.reserve(pendingHeld_.size());
-        pendingHeld_.forEach([this](const HeldPose &entry) { heldGhostPoses_.push_back(entry); });
-        std::sort(
-            heldGhostPoses_.begin(),
-            heldGhostPoses_.end(),
-            [](const HeldPose &a, const HeldPose &b) { return a.entity_ < b.entity_; }
-        );
-    }
-
-    void tickGhost(
-        IREntity::EntityId &entity,
-        IRComponents::C_FogRevealed &revealed,
-        IRComponents::C_FogGhost &ghost,
-        const IRComponents::C_WorldTransform &worldTransform,
-        IRComponents::C_ShapeDescriptor &shape
-    ) {
-        tickImpl(entity, revealed, worldTransform, shape, &ghost);
-    }
-};
-
-} // namespace detail
-
-template <> struct System<FOG_REVEAL_EVAL_SHAPE> : detail::FogRevealEvalShape<false> {
     static SystemId create() {
         return registerSystem<
             FOG_REVEAL_EVAL_SHAPE,
@@ -259,7 +291,7 @@ template <> struct System<FOG_REVEAL_EVAL_SHAPE> : detail::FogRevealEvalShape<fa
     }
 };
 
-template <> struct System<FOG_REVEAL_EVAL_SHAPE_GHOST> : detail::FogRevealEvalShape<true> {
+template <> struct System<FOG_REVEAL_EVAL_SHAPE_GHOST> : detail::FogRevealEvalShapeGhost {
     void tick(
         IREntity::EntityId &entity,
         IRComponents::C_FogRevealed &revealed,
