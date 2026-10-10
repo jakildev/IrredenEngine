@@ -97,6 +97,7 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
         std::uint32_t slot_ = 0;
     };
     std::vector<JointTarget> jointTargets_;
+    std::vector<IREntity::EntityId> heldSkeletons_;
 
     // Persistent per-skeleton slot block, so a skeleton keeps the same slots
     // across frames (voxels are seeded against this base once) and its
@@ -261,9 +262,28 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
             jointStaging_.assign(kMaxGpuJointTransforms, GpuVoxelTransform{});
         }
         jointTargets_.clear();
+        heldSkeletons_.clear();
         seenSkeletons_.clear();
         usedLo_ = -1;
         usedHi_ = -1;
+
+        const auto heldNodes = IREntity::queryArchetypeNodesSimple(
+            IREntity::getArchetype<C_Skeleton, C_VoxelSetNew>()
+        );
+        std::size_t heldPopulation = 0;
+        for (IREntity::ArchetypeNode *node : heldNodes) {
+            heldPopulation += static_cast<std::size_t>(node->length_);
+        }
+        heldSkeletons_.reserve(heldPopulation);
+        for (IREntity::ArchetypeNode *node : heldNodes) {
+            const auto &sets = IREntity::getComponentData<C_VoxelSetNew>(node);
+            for (int i = 0; i < node->length_; ++i) {
+                if (sets[i].ghostHeld_) {
+                    heldSkeletons_.push_back(node->entities_[i]);
+                }
+            }
+        }
+        std::sort(heldSkeletons_.begin(), heldSkeletons_.end());
 
         IREntity::forEachComponent<C_Skeleton>([this](
                                                    IREntity::EntityId rigRoot,
@@ -278,7 +298,8 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
             // Reuse the skeleton's existing block; (re)allocate when it is
             // new or its joint count changed (release-then-acquire).
             SlotBlock &block = skeletonBlocks_[rigRoot];
-            if (block.count_ != jointCount) {
+            const bool blockChanged = block.count_ != jointCount;
+            if (blockChanged) {
                 if (block.count_ != 0) {
                     releaseJointBlock(block.base_, block.count_);
                 }
@@ -304,13 +325,19 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
 
             const int loLocal = localSlot(block.base_);
             const int hiLocal = loLocal + static_cast<int>(jointCount);
+            usedLo_ = (usedLo_ < 0) ? loLocal : IRMath::min(usedLo_, loLocal);
+            usedHi_ = IRMath::max(usedHi_, hiLocal);
+            const bool held =
+                std::binary_search(heldSkeletons_.begin(), heldSkeletons_.end(), rigRoot);
+            // A resized block has no retained matrices, so even a held rig must seed its live pose.
+            if (held && !blockChanged) {
+                return;
+            }
             // Identity-fill the block so severance holes (kNullEntity) and
             // not-yet-bind-posed joints upload identity (no deformation).
             for (int s = loLocal; s < hiLocal; ++s) {
                 jointStaging_[s].modelToWorld_ = IRMath::mat4(1.0f);
             }
-            usedLo_ = (usedLo_ < 0) ? loLocal : IRMath::min(usedLo_, loLocal);
-            usedHi_ = IRMath::max(usedHi_, hiLocal);
 
             // bindPose_ parallels joints_; a joint with no bind entry stays
             // identity (handled by the fill above + the skip here).

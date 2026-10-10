@@ -536,6 +536,9 @@ bool g_feederClassifyPadSet = false;
 // default -> flagless spawn path is untouched (byte-identical to master).
 bool g_waveFreeze = false;
 bool g_fogReveal = false;
+bool g_fogGhostHeavy = false;
+bool g_fogGhostSighting = false;
+bool g_fogGhostHeavyHide = false;
 // --fog-los / --fog-los-disabled: the line-of-sight perf fixture. Both move the
 // eight --fog-reveal circles onto a ring of radius kFogLosRingRadius inside the
 // fog footprint (radius 32, observers standing on a flagged SDF terrain slab
@@ -865,6 +868,15 @@ void registerCliArgs() {
         "Tag every voxel-set entity for entity-anchor fog evaluation against 8 outside circles"
     );
     args.flag(
+        "--fog-ghost-heavy",
+        "Hold every voxel BODY at its spawn pose while its live pose is far outside the view"
+    );
+    args.flag(
+        "--fog-ghost-sighting",
+        "The --fog-ghost-heavy arm with its remembered footprint inside a vision circle"
+    );
+    args.flag("--fog-ghost-heavy-hide", "Matched HIDE control for --fog-ghost-heavy");
+    args.flag(
         "--fog-los",
         "Line-of-sight perf fixture: the 8 --fog-reveal circles move into the fog footprint "
         "(radius 32) over a flagged terrain slab and wall, each gated at eye height 1.5; "
@@ -1004,6 +1016,10 @@ void readCliArgs() {
     g_noPerVoxelOcclusion = args.getFlag("--no-per-voxel-occlusion");
     g_waveFreeze = args.getFlag("--wave-freeze");
     g_fogReveal = args.getFlag("--fog-reveal");
+    g_fogGhostSighting = args.getFlag("--fog-ghost-sighting");
+    g_fogGhostHeavy = args.getFlag("--fog-ghost-heavy") || g_fogGhostSighting;
+    g_fogGhostHeavyHide = args.getFlag("--fog-ghost-heavy-hide");
+    g_fogReveal = g_fogReveal || g_fogGhostHeavy || g_fogGhostHeavyHide;
     if (args.getFlag("--fog-los")) {
         g_fogLos = FogLosFixture::ENABLED;
     } else if (args.getFlag("--fog-los-disabled")) {
@@ -1373,6 +1389,10 @@ void createGridEntities() {
                 if (g_waveFreeze) {
                     pos += waveFreezeOffset(x, y, z);
                 }
+                const vec3 ghostPose = pos;
+                if (g_fogGhostHeavy || g_fogGhostHeavyHide) {
+                    pos.x += 4096.0f;
+                }
 
                 if (g_settings.mode_ == PerfGridMode::VoxelSet) {
                     EntityId cellEntity;
@@ -1431,6 +1451,15 @@ void createGridEntities() {
                     }
                     if (g_fogReveal) {
                         IRPrefab::Fog::setEntityRevealGoverned(cellEntity);
+                        if (g_fogGhostHeavy) {
+                            IRPrefab::Fog::setHiddenPolicy(cellEntity, FogHiddenPolicy::GHOST);
+                            auto &fog = IREntity::getComponent<C_FogRevealed>(cellEntity);
+                            fog.ghostHeld_ = true;
+                            auto &ghost = IREntity::getComponent<C_FogGhost>(cellEntity);
+                            ghost.pose_.translation_ = ghostPose;
+                            ghost.valid_ = true;
+                            IREntity::getComponent<C_VoxelSetNew>(cellEntity).ghostHeld_ = true;
+                        }
                     }
                 } else {
                     if (g_waveFreeze) {
@@ -1690,6 +1719,9 @@ void configureLightingAndCanvas() {
         configureFogLosFixture();
     } else if (g_fogRevealSweep) {
         driveFogRevealSweep();
+    } else if (g_fogGhostSighting) {
+        IRPrefab::Fog::clearVisionCircles();
+        IRPrefab::Fog::addVisionCircle(0.0f, 0.0f, 8.0f);
     } else if (g_fogReveal) {
         IRPrefab::Fog::clearVisionCircles();
         addFogRevealCircles();

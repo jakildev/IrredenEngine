@@ -42,7 +42,8 @@ static_assert(sizeof(ShapeDescriptorV1) == sizeof(IRComponents::C_ShapeDescripto
 template <> struct SaveSerialize<IRComponents::C_ShapeDescriptor> {
     static void write(IRAsset::BinaryWriter &w, const IRComponents::C_ShapeDescriptor &value) {
         IRComponents::C_ShapeDescriptor authored = value;
-        authored.flags_ &= ~IRMath::SDF::SHAPE_FLAG_FOG_HIDDEN;
+        authored.flags_ &=
+            ~(IRMath::SDF::SHAPE_FLAG_FOG_HIDDEN | IRMath::SDF::SHAPE_FLAG_FOG_GHOST);
         w.writeBytes(&authored, sizeof(authored));
     }
 
@@ -50,7 +51,7 @@ template <> struct SaveSerialize<IRComponents::C_ShapeDescriptor> {
         using Res = IRAsset::Result<IRComponents::C_ShapeDescriptor>;
         IRComponents::C_ShapeDescriptor value{};
         IR_SAVE_READ_STATUS(r.readBytes(&value, sizeof(value)));
-        value.flags_ &= ~IRMath::SDF::SHAPE_FLAG_FOG_HIDDEN;
+        value.flags_ &= ~(IRMath::SDF::SHAPE_FLAG_FOG_HIDDEN | IRMath::SDF::SHAPE_FLAG_FOG_GHOST);
         return Res::success(value);
     }
 };

@@ -786,7 +786,7 @@ if [[ -d "$GAME_CMDS_DIR" ]]; then
     shopt -s nullglob
     GAME_ROLES=("$GAME_CMDS_DIR"/role-*.md)
     shopt -u nullglob
-    for src in "${GAME_ROLES[@]}"; do
+    for src in ${GAME_ROLES[@]+"${GAME_ROLES[@]}"}; do
         base="$(basename "$src")"
         # Both repos share ~/.claude/commands, and a user-level command shadows
         # the project one — a game role file with an engine twin would replace
