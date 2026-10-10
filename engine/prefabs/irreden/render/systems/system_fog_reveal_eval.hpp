@@ -133,9 +133,13 @@ template <> struct System<FOG_REVEAL_EVAL> {
         IRComponents::C_VoxelSetNew &voxelSet
     ) {
         if (!IRPrefab::Fog::isOnFogCanvas(voxelSet, activeCanvas_)) {
+            if (!voxelSet.visible_) {
+                pending_.push(PendingTransition{&voxelSet, nullptr, true});
+            }
             return;
         }
-        if (revealed.override_ == IRComponents::FogOverride::NONE &&
+        const bool fogVisibilityAgrees = voxelSet.visible_ == revealed.shown_;
+        if (revealed.override_ == IRComponents::FogOverride::NONE && fogVisibilityAgrees &&
             (entity + frameCounter_) % settings_.staggerPeriod_ != 0u) {
             return;
         }
@@ -170,7 +174,7 @@ template <> struct System<FOG_REVEAL_EVAL> {
                 }
             }
         }
-        if (shown == revealed.shown_) {
+        if (shown == revealed.shown_ && fogVisibilityAgrees) {
             return;
         }
         // Commit the verdict only when endTick can apply the matching mask and
@@ -188,24 +192,31 @@ template <> struct System<FOG_REVEAL_EVAL> {
             restampedVoxelsLastFrame_ += count;
         }
         pending_.forEach([](const PendingTransition &transition) {
-            if (transition.voxelSet_ == nullptr || transition.pool_ == nullptr) {
+            if (transition.voxelSet_ == nullptr) {
                 return;
             }
             IRComponents::C_VoxelSetNew &voxelSet = *transition.voxelSet_;
-            voxelSet.visible_ = transition.visible_;
-            // A set its LOD band also hides stays masked off; the LOD gate
-            // restores the mask when the band admits it again.
-            if (voxelSet.renders()) {
-                transition.pool_->resyncActiveMaskFromColors(
-                    voxelSet.voxelStartIdx_,
-                    static_cast<std::size_t>(voxelSet.numVoxels_)
-                );
-            } else {
-                transition.pool_->clearActiveMaskRange(
-                    voxelSet.voxelStartIdx_,
-                    static_cast<std::size_t>(voxelSet.numVoxels_)
-                );
+            const auto applyFogGateToPool = [&](IRComponents::C_VoxelPool &pool) {
+                voxelSet.visible_ = transition.visible_;
+                // A set its LOD band also hides stays masked off; the LOD gate
+                // restores the mask when the band admits it again.
+                if (voxelSet.renders()) {
+                    pool.resyncActiveMaskFromColors(
+                        voxelSet.voxelStartIdx_,
+                        static_cast<std::size_t>(voxelSet.numVoxels_)
+                    );
+                } else {
+                    pool.clearActiveMaskRange(
+                        voxelSet.voxelStartIdx_,
+                        static_cast<std::size_t>(voxelSet.numVoxels_)
+                    );
+                }
+            };
+            if (transition.pool_ != nullptr) {
+                applyFogGateToPool(*transition.pool_);
+                return;
             }
+            IRPrefab::VoxelPool::withPoolByEntity(voxelSet.canvasEntity_, applyFogGateToPool);
         });
     }
 

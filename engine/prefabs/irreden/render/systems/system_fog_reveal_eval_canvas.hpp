@@ -48,7 +48,8 @@ template <> struct System<FOG_REVEAL_EVAL_CANVAS> {
             )) {
             return;
         }
-        if (revealed.override_ == IRComponents::FogOverride::NONE &&
+        const bool fogVisibilityAgrees = entityCanvas.fogHidden_ != revealed.shown_;
+        if (revealed.override_ == IRComponents::FogOverride::NONE && fogVisibilityAgrees &&
             (entity + frameCounter_) % settings_.staggerPeriod_ != 0u) {
             return;
         }
