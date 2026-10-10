@@ -477,6 +477,10 @@ std::vector<std::array<char, 40>> g_pivotVerifyShotLabels;
 // Flag-gated so the standing render-verify tables are untouched —
 // the overlay is default-hidden and this is the only run that opens it.
 bool g_guiTest = false;
+// --continuous-zoom-gui-test: swap the capture table for the fractional-zoom
+// picking GUI test (kContinuousZoomGuiShots). Turns the continuous zoom policy
+// on for the run.
+bool g_continuousZoomGuiTest = false;
 // The cull-eviction fixture replaces both the scene and capture table;
 // keep it flag-gated so the standing render references retain their scene.
 bool g_cullEvictTest = false;
@@ -1282,6 +1286,105 @@ bool g_yawSweep = false;
 std::vector<IRVideo::AutoScreenshotShot> g_yawSweepShots;
 std::vector<std::array<char, 40>> g_yawSweepShotLabels;
 
+// --zoom-continuous: put the camera on the continuous zoom policy before any
+// zoom is applied, so --zoom and every shot's zoom land unsnapped.
+bool g_zoomContinuous = false;
+
+// --zoom-calibration: replace the fixture scene with one unlit cube whose
+// vertical silhouette edges sit a whole number of iso cells from the view
+// centre at kZoomCalibrationCamera. Flat albedo on an empty background, so a
+// metric reads the silhouette by exact colour, and far enough off-centre that
+// a zoom moves its near edge several tenths of a framebuffer pixel per 0.005
+// of zoom. Implied by --zoom-sweep; given on its own it lets --pan-sweep
+// capture the same subject.
+bool g_zoomCalibration = false;
+
+// --zoom-sweep <from> <to> <count>: hold the camera at kZoomCalibrationCamera
+// and step the requested zoom linearly across <count> shots. With
+// --zoom-continuous the subject must grow smoothly; without it the same
+// requests snap, which is the sweep's own negative control. Combined with
+// --pan-sweep the camera also pans half a cell across the sweep. Requires
+// --auto-screenshot.
+bool g_zoomSweep = false;
+float g_zoomSweepFrom = 0.0f;
+float g_zoomSweepTo = 0.0f;
+int g_zoomSweepCount = 0;
+std::vector<IRVideo::AutoScreenshotShot> g_zoomSweepShots;
+std::vector<std::array<char, 40>> g_zoomSweepShotLabels;
+
+// Off the world iso origin on purpose: with the camera on it, a split that
+// never carries its raster phase is exact, and the sweep could not tell the
+// two apart.
+constexpr vec2 kZoomCalibrationCamera = vec2(16.0f, 16.0f);
+constexpr ivec3 kZoomCalibrationBoxSize = ivec3(5);
+// CORNER-anchored: the cube spans world x in [-4, 1), y in [5, 10), so its
+// silhouette covers iso x in [4, 14] — 20 to 30 cells from the view centre at
+// the calibration camera. Ten cells wide, so every 0.1 step of zoom changes
+// the on-screen width by two framebuffer pixels.
+constexpr vec3 kZoomCalibrationBoxWorld = vec3(-4.0f, 5.0f, -8.0f);
+constexpr float kZoomCalibrationNearEdgeIsoX = 4.0f;
+constexpr float kZoomCalibrationFarEdgeIsoX = 14.0f;
+constexpr Color kZoomCalibrationColor = Color{255, 96, 0, 255};
+
+// Per-shot `[zoom-calibration]` line (AutoScreenshotConfig::onCaptureFrame_,
+// fired on the settled capture frame): the placement the composite drew this
+// frame with, in the terms scripts/render-continuous-zoom-metric.py needs to
+// predict where the calibration cube's near edge lands and how far that is
+// from a raster tie. `edge_fb` is each silhouette edge's offset from the
+// framebuffer centre in framebuffer pixels, before the pixel grid rounds it.
+void logZoomCalibrationState(int shotIndex) {
+    const vec2 cameraIso = IRRender::getEffectiveCameraIso();
+    const vec2 zoom = IRRender::getCameraZoom();
+    const ivec2 scale = IRRender::getOutputScaleFactor();
+    const int density = IRMath::max(IRRender::getVoxelRenderEffectiveSubdivisions(), 1);
+    const IRMath::CameraRasterPhase *frame = IRPrefab::Camera::zoomFrame(cameraIso, zoom);
+    const EntityId mainCanvas = IRRender::getCanvas("main");
+    const auto behaviorOpt =
+        IREntity::getComponentOptional<C_TrixelCanvasRenderBehavior>(mainCanvas);
+    const C_TrixelCanvasRenderBehavior behavior =
+        behaviorOpt.has_value() ? **behaviorOpt : C_TrixelCanvasRenderBehavior{};
+    const vec2 gather = IRSystem::System<IRSystem::TRIXEL_TO_FRAMEBUFFER>::canvasGatherTranslation(
+        frame,
+        behavior,
+        cameraIso,
+        zoom / static_cast<float>(density),
+        density
+    );
+    const ivec2 residual = IRPrefab::Camera::screenResidual(cameraIso, zoom, scale);
+    const ivec2 backing = IREntity::getComponent<C_TriangleCanvasTextures>(mainCanvas).size_;
+    const double texelPx = 2.0 * static_cast<double>(zoom.x) / density;
+    const double rasterTexels =
+        static_cast<double>(IRMath::floor(cameraIso.x * static_cast<float>(density)));
+    // The canvas store's iso frame sits one texel up-left of the raw canvas
+    // index (the same `+ (1, 1)` as `IRRender::mouseCanvasTexelWorld()`).
+    const double originTexel = static_cast<double>(IRMath::trixelOriginOffsetZ1(backing).x) + 1.0;
+    const auto edgeFramebufferPx = [&](float edgeIsoX) {
+        const double texel =
+            originTexel + rasterTexels + static_cast<double>(edgeIsoX) * density;
+        return static_cast<double>(gather.x) + (texel - 0.5 * backing.x) * texelPx;
+    };
+    IR_LOG_INFO(
+        "[zoom-calibration] index={} continuous={} zoom={:.6f} density={} "
+        "cam={:.6f},{:.6f} scale={} phase={:.9f},{:.9f} gather={:.9f},{:.9f} residual={},{} "
+        "edge_fb={:.9f},{:.9f}",
+        shotIndex,
+        IRPrefab::Camera::isZoomContinuous() ? 1 : 0,
+        zoom.x,
+        density,
+        cameraIso.x,
+        cameraIso.y,
+        scale.x,
+        frame != nullptr ? frame->phase_.x : 0.0,
+        frame != nullptr ? frame->phase_.y : 0.0,
+        gather.x,
+        gather.y,
+        residual.x,
+        residual.y,
+        edgeFramebufferPx(kZoomCalibrationNearEdgeIsoX),
+        edgeFramebufferPx(kZoomCalibrationFarEdgeIsoX)
+    );
+}
+
 // Shared shot-table emission for the sweep-flag family below (--spin-yaw,
 // --pivot-focus-demo, --pivot-verify, --pan-sweep, --yaw-sweep): reserves
 // both vectors up front — `shots`/`labels` must never reallocate mid-loop,
@@ -1356,7 +1459,30 @@ void registerCliArgs() {
         "--cursor-pivot-indicator",
         "Show the cursor-pivot marker at the latched point (--pivot-verify cursor-latch)"
     );
-    args.number("--zoom", "Initial camera zoom (snapped to nearest power of two)", 0.0f);
+    args.number(
+        "--zoom",
+        "Initial camera zoom (snapped to nearest power of two unless --zoom-continuous)",
+        0.0f
+    );
+    args.flag(
+        "--zoom-continuous",
+        "Put the camera on the continuous zoom policy: any zoom in range, no power-of-two snap"
+    );
+    args.flag(
+        "--zoom-calibration",
+        "Replace the scene with the continuous-zoom calibration cube (implied by --zoom-sweep)"
+    );
+    args.numbers(
+        "--zoom-sweep",
+        "Zoom sweep <from> <to> <count> on the calibration cube at a fixed off-origin camera; "
+        "add --pan-sweep to pan across it as well; needs --auto-screenshot",
+        3
+    );
+    args.flag(
+        "--continuous-zoom-gui-test",
+        "Replace the capture table with the fractional-zoom picking GUI test (continuous zoom "
+        "2.5); needs --auto-screenshot"
+    );
     args.string("--debug-overlay", "Debug overlay mode (e.g. none, depth, normals)", "none");
     args.number("--yaw", "Initial camera Z-yaw in radians", 0.0f);
     args.flag("--pivot-origin", "Force the legacy world-origin Z-yaw pivot (#1352 A/B)");
@@ -1452,6 +1578,16 @@ void readCliArgs() {
     g_viewportPortrait = args.getFlag("--viewport-portrait");
     g_viewportLodSwap = g_viewportPortrait && args.getFlag("--viewport-lod-swap");
     g_cursorPivotIndicator = args.getFlag("--cursor-pivot-indicator");
+    g_continuousZoomGuiTest = args.getFlag("--continuous-zoom-gui-test");
+    g_zoomContinuous = args.getFlag("--zoom-continuous") || g_continuousZoomGuiTest;
+    if (args.wasProvided("--zoom-sweep")) {
+        const std::vector<float> &sweep = args.getFloats("--zoom-sweep");
+        g_zoomSweep = true;
+        g_zoomSweepFrom = sweep[0];
+        g_zoomSweepTo = sweep[1];
+        g_zoomSweepCount = IRMath::max(2, static_cast<int>(sweep[2]));
+    }
+    g_zoomCalibration = g_zoomSweep || args.getFlag("--zoom-calibration");
 
     if (args.wasProvided("--zoom")) {
         const float zoom = args.getFloat("--zoom");
@@ -1534,13 +1670,20 @@ int main(int argc, char **argv) {
     initEntities();
     // After initEntities: the tint setters re-apply over the shapes it created.
     registerDemoSettings();
+    if (g_zoomContinuous) {
+        IRPrefab::Camera::setZoomContinuous(true);
+        IR_LOG_INFO("Camera zoom policy: continuous (--zoom-continuous)");
+    }
     if (g_initialZoom > 0.0f) {
         IRRender::setCameraZoom(g_initialZoom);
         vec2 actualZoom = IRRender::getCameraZoom();
         IR_LOG_INFO(
-            "Initial zoom: requested={}, actual={} (snapped to nearest power of two)",
+            "Initial zoom: requested={}, getCameraZoom()={}, effective_subdivisions={} ({})",
             g_initialZoom,
-            actualZoom.x
+            actualZoom.x,
+            IRRender::getVoxelRenderEffectiveSubdivisions(),
+            g_zoomContinuous ? "continuous policy, stored as requested"
+                             : "snapped to nearest power of two"
         );
     }
     if (g_debugOverlay != IRRender::DebugOverlayMode::NONE) {
@@ -2641,6 +2784,106 @@ bool g_quitAssertionsEmitted = false;
 // both the latching and the capture-frame dispatch.
 IRPrefab::GuiTest::LatchState g_helpOverlayLatch;
 
+// ---------------------------------------------------------------------------
+// Fractional-zoom picking fixture (--continuous-zoom-gui-test)
+// ---------------------------------------------------------------------------
+// The hover-parity and drag-pan targets again, at a continuous zoom of 2.5.
+// One trixel is then 5 x 2.5 game pixels, so every screen <-> iso conversion
+// in the picking chain runs on a fractional vertical step: a step truncated to
+// whole pixels moves the dragged content 2.5 / 2 as far as the cursor, and
+// aims the off-centre hover a fifth of its distance from the screen centre
+// short of the voxel.
+//
+// The three parity shots run with render subdivisions off, as in --gui-test,
+// and frame their voxel at the screen centre; there the step cancels out and
+// they prove only that the continuous placement draws what the hover reads.
+// The drag-pan shot and the off-centre shot run under FULL, where 2.5 rasters
+// at three backing texels per iso unit: they exercise the gather translation
+// and the entity-id read at a fractional backing-texel pitch, and they are the
+// two the step is load-bearing for.
+constexpr float kContinuousGuiZoom = 2.5f;
+// Iso cells between the screen centre and the voxel in the off-centre shot.
+constexpr vec2 kContinuousGuiOffCentreIso = vec2(18.0f, 26.0f);
+
+struct ContinuousZoomOffCentreShot {
+    IRVideo::GuiInputEvent events_[1]{
+        {1, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
+    };
+    IRPrefab::GuiTest::Assertion assertions_[1];
+};
+ContinuousZoomOffCentreShot g_continuousOffCentre;
+
+constexpr int kContinuousOffCentreShotIndex = kDragPanShotIndex + 1;
+
+constexpr IRVideo::GuiTestShot kContinuousZoomGuiShots[] = {
+    {{kContinuousGuiZoom,
+      -IRMath::pos3DtoPos2DIso(kHoverParityVoxelWorld),
+      0.0f,
+      "continuous_zoom_hover_above_diagonal"},
+     g_hoverParity.shots_[0].events_,
+     1},
+    {{kContinuousGuiZoom,
+      -IRMath::pos3DtoPos2DIso(kHoverParityVoxelWorld),
+      0.0f,
+      "continuous_zoom_hover_below_diagonal"},
+     g_hoverParity.shots_[1].events_,
+     1},
+    {{kContinuousGuiZoom,
+      -IRMath::pos3DtoPos2DIso(kHoverParityStackedVoxelWorld),
+      0.0f,
+      "continuous_zoom_hover_row_above_occupied"},
+     g_hoverParity.shots_[2].events_,
+     1},
+    {{kContinuousGuiZoom,
+      -IRMath::pos3DtoPos2DIso(kHoverParityVoxelWorld),
+      0.0f,
+      "continuous_zoom_drag_pan_tracks_cursor"},
+     g_dragPan.events_,
+     4},
+    {{kContinuousGuiZoom,
+      -IRMath::pos3DtoPos2DIso(kHoverParityVoxelWorld) + kContinuousGuiOffCentreIso,
+      0.0f,
+      "continuous_zoom_hover_off_centre"},
+     g_continuousOffCentre.events_,
+     1},
+};
+constexpr int kNumContinuousZoomGuiShots =
+    static_cast<int>(sizeof(kContinuousZoomGuiShots) / sizeof(kContinuousZoomGuiShots[0]));
+static_assert(
+    kContinuousZoomGuiShots[kDragPanShotIndex].inputs_ == g_dragPan.events_,
+    "kDragPanShotIndex must name the drag-pan shot in this table too — its aim hook keys on it"
+);
+static_assert(
+    kContinuousZoomGuiShots[kContinuousOffCentreShotIndex].inputs_ ==
+        g_continuousOffCentre.events_,
+    "kContinuousOffCentreShotIndex must name the off-centre shot — its aim hook keys on it"
+);
+
+const ShotAssertions kContinuousZoomShotAssertions[] = {
+    shotAssertions(g_hoverParity.shots_[0].assertions_),
+    shotAssertions(g_hoverParity.shots_[1].assertions_),
+    shotAssertions(g_hoverParity.shots_[2].assertions_),
+    shotAssertions(g_dragPan.assertions_),
+    shotAssertions(g_continuousOffCentre.assertions_),
+};
+static_assert(
+    static_cast<int>(
+        sizeof(kContinuousZoomShotAssertions) / sizeof(kContinuousZoomShotAssertions[0])
+    ) == kNumContinuousZoomGuiShots,
+    "every --continuous-zoom-gui-test shot needs an assertion row"
+);
+
+IRPrefab::GuiTest::LatchState g_continuousZoomLatch;
+
+// After initHoverParityFixture: the off-centre shot hovers its isolated voxel.
+void initContinuousZoomGuiFixture() {
+    g_continuousOffCentre.assertions_[0] = IRPrefab::GuiTest::hoveredEntityId(
+        g_hoverParity.voxelEntity_,
+        "hover_id_off_centre_is_voxel",
+        kDragPanStableFrames
+    );
+}
+
 // Cull-invalidation fixture: one allocation, a fixed cardinal camera, and
 // two poses in disjoint pool chunks. Reallocation or yaw-driven invalidation
 // would hide a missing in-place alpha notification. Edits use the public
@@ -3027,6 +3270,28 @@ void onHelpOverlayAssertFrame(int shotIndex, bool isCaptureFrame) {
     }
 }
 
+void onContinuousZoomGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
+    onHoverParityAssertFrame(shotIndex);
+    onDragPanAssertFrame(shotIndex);
+    if (shotIndex == kContinuousOffCentreShotIndex) {
+        // Re-aimed every live frame through the picking chain's own inverse:
+        // the cursor lands on the voxel only if that inverse and the composite
+        // agree on where a point this far from the centre is drawn.
+        g_continuousOffCentre.events_[0].screenPx_ = IRRender::worldPos3DToMouseScreenPx(
+            kHoverParityVoxelWorld + vec3(0.0f, 0.0f, kHoverParityBelowDiagonalZ)
+        );
+    }
+    const ShotAssertions &shot = kContinuousZoomShotAssertions[shotIndex];
+    IRPrefab::GuiTest::onFrame(
+        g_continuousZoomLatch,
+        shotIndex,
+        isCaptureFrame,
+        kContinuousZoomGuiShots[shotIndex].render_.label_,
+        shot.assertions_,
+        shot.count_
+    );
+}
+
 } // namespace
 
 void initSystems() {
@@ -3242,10 +3507,26 @@ void initSystems() {
                 []() { readScreenProbe(); }
             )
         );
+    } else if (g_autoWarmupFrames > 0 && g_continuousZoomGuiTest) {
+        IRVideo::GuiTestConfig cfg{};
+        cfg.warmupFrames_ = g_autoWarmupFrames;
+        cfg.settleFrames_ = 3;
+        cfg.shots_ = kContinuousZoomGuiShots;
+        cfg.numShots_ = kNumContinuousZoomGuiShots;
+        cfg.onAssertFrame_ = &onContinuousZoomGuiAssertFrame;
+        // Ahead of the composite for the same reason as --gui-test: the hover
+        // readback has to be taken before TRIXEL_TO_FRAMEBUFFER resets it.
+        renderPipeline.insert(
+            std::find(renderPipeline.begin(), renderPipeline.end(), trixelToFramebufferId),
+            IRVideo::createGuiTestSystem(cfg)
+        );
     } else if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
+        if (g_zoomCalibration) {
+            cfg.onCaptureFrame_ = &logZoomCalibrationState;
+        }
         // Set by the one block that needs scripted cursor input + a per-frame
         // hook (--pivot-verify cursor-latch); every other sweep stays on the
         // plain auto-screenshot cycler.
@@ -3514,6 +3795,47 @@ void initSystems() {
                 probeCenter.y,
                 probeCenter.z,
                 sweepZoom
+            );
+        } else if (g_zoomSweep) {
+            // Zoom sweep on the calibration cube. Yaw defaults to 0 (the
+            // cardinal gather); --yaw moves it onto the per-axis composite.
+            const float sweepYaw = g_initialYawSet ? g_initialYaw : 0.0f;
+            const int n = g_zoomSweepCount;
+            // Half a cell across the sweep: enough for the whole-pixel offset
+            // to tick several times while the zoom moves, and short enough that
+            // the calibration cube's near edge stays clear of a raster tie in
+            // every shot of the 2.50 -> 2.60 sweep the metric grades.
+            const vec2 pan = g_panSweep ? vec2(0.5f, 0.0f) : vec2(0.0f);
+            emitSweepShots(
+                g_zoomSweepShots,
+                g_zoomSweepShotLabels,
+                n,
+                [n](auto &label, int i) {
+                    std::snprintf(label.data(), label.size(), "zoom_sweep_%03d_of_%03d", i, n);
+                },
+                [&](int i) {
+                    const float t = static_cast<float>(i) / static_cast<float>(n - 1);
+                    IRVideo::AutoScreenshotShot shot{};
+                    shot.zoom_ = g_zoomSweepFrom + (g_zoomSweepTo - g_zoomSweepFrom) * t;
+                    shot.cameraIso_ = kZoomCalibrationCamera + pan * t;
+                    shot.yawRadians_ = sweepYaw;
+                    return shot;
+                }
+            );
+            cfg.shots_ = g_zoomSweepShots.data();
+            cfg.numShots_ = static_cast<int>(g_zoomSweepShots.size());
+            IR_LOG_INFO(
+                "Zoom-sweep: {} shots, zoom {}->{} at cameraIso ({},{})->({},{}) yaw={} rad, "
+                "policy={}",
+                cfg.numShots_,
+                g_zoomSweepFrom,
+                g_zoomSweepTo,
+                kZoomCalibrationCamera.x,
+                kZoomCalibrationCamera.y,
+                kZoomCalibrationCamera.x + pan.x,
+                kZoomCalibrationCamera.y + pan.y,
+                sweepYaw,
+                g_zoomContinuous ? "continuous" : "snapped"
             );
         } else if (g_panSweep) {
             // Fine pan sweep at a FIXED yaw (jitter diagnosis). Steps the
@@ -4309,6 +4631,20 @@ void initEntities() {
         initPivotVerifyScene();
         return;
     }
+    if (g_zoomCalibration) {
+        // No setupCanvasLighting: the cube keeps its flat albedo, so the
+        // metric can pick the silhouette out by exact colour.
+        IR_LOG_INFO("--- Continuous-zoom calibration scene ---");
+        IREntity::createEntity(
+            C_LocalTransform{kZoomCalibrationBoxWorld},
+            C_VoxelSetNew{
+                kZoomCalibrationBoxSize,
+                kZoomCalibrationColor,
+                IRComponents::EntityAnchor::CORNER
+            }
+        );
+        return;
+    }
     if (g_pivotFocusDemo) {
         IR_LOG_INFO("--- Camera pivot-focus demo scene (#1921) ---");
         initPivotFocusScene();
@@ -4584,8 +4920,11 @@ void initEntities() {
     );
     IREntity::setComponent(floorEntity, C_LightBlocker{false, false, 0.0f});
 
-    if (g_guiTest) {
+    if (g_guiTest || g_continuousZoomGuiTest) {
         initHoverParityFixture();
+    }
+    if (g_continuousZoomGuiTest) {
+        initContinuousZoomGuiFixture();
     }
 
     setupCanvasLighting();

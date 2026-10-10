@@ -3,7 +3,11 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_system.hpp>
+#include <irreden/render/camera.hpp>
+#include <irreden/render/components/component_camera.hpp>
+#include <irreden/render/components/component_camera_zoom_frame_state.hpp>
 #include <irreden/render/components/component_widget.hpp>
+#include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_render_bindings.hpp>
 #include <irreden/script/lua_script.hpp>
@@ -77,6 +81,75 @@ TEST_F(LuaRenderBindingsTest, ExtendsExistingIRRenderTable) {
     IRScript::detail::bindRenderGlue(m_lua); // re-run as a creation would after pre-populating
     EXPECT_EQ(lua["IRRender"]["creationOnly"].get<int>(), 42);
     EXPECT_TRUE(isFunction("IRRender.setSunDirection"));
+    EXPECT_TRUE(isFunction("IRRender.setCameraZoom"));
+}
+
+// ---- main-camera zoom -------------------------------------------------------
+
+TEST_F(LuaRenderBindingsTest, CameraZoomSurfaceBound) {
+    EXPECT_TRUE(isFunction("IRRender.setCameraZoom"));
+    EXPECT_TRUE(isFunction("IRRender.getCameraZoom"));
+    EXPECT_TRUE(isFunction("IRRender.setCameraZoomContinuous"));
+    EXPECT_TRUE(isFunction("IRRender.isCameraZoomContinuous"));
+}
+
+// The policy pair only touches the camera entity's components, so it is
+// callable headless against a camera stood up the way the render manager
+// builds it. The value pair reaches the render manager and is covered end to
+// end by the lua_pipeline_demo run.
+TEST_F(LuaRenderBindingsTest, CameraZoomPolicyRoundTripsThroughLua) {
+    const IREntity::EntityId camera = IREntity::createEntity(
+        IRComponents::C_Camera{},
+        IRComponents::C_ZoomLevel{2.0f},
+        IRComponents::C_CameraZoomFrameState{}
+    );
+    IREntity::setName(camera, "camera");
+
+    auto result = m_lua.lua().safe_script(
+        R"lua(
+        local before = IRRender.isCameraZoomContinuous()
+        IRRender.setCameraZoomContinuous(true)
+        local during = IRRender.isCameraZoomContinuous()
+        IRRender.setCameraZoomContinuous(false)
+        return before, during, IRRender.isCameraZoomContinuous()
+        )lua",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << result.get<sol::error>().what();
+    EXPECT_FALSE(result.get<bool>(0));
+    EXPECT_TRUE(result.get<bool>(1));
+    EXPECT_FALSE(result.get<bool>(2));
+    EXPECT_FALSE(IREntity::getComponent<IRComponents::C_Camera>(camera).continuousZoom_);
+}
+
+// Arguments are checked before any write, so a rejected call leaves the zoom
+// and the policy exactly as they were.
+TEST_F(LuaRenderBindingsTest, CameraZoomRejectsBadArgumentsWithoutChangingState) {
+    const IREntity::EntityId camera = IREntity::createEntity(
+        IRComponents::C_Camera{},
+        IRComponents::C_ZoomLevel{2.0f},
+        IRComponents::C_CameraZoomFrameState{}
+    );
+    IREntity::setName(camera, "camera");
+    IRPrefab::Camera::setZoomContinuous(true);
+
+    for (const char *call : {
+             "IRRender.setCameraZoom('fast')",
+             "IRRender.setCameraZoom(nil)",
+             "IRRender.setCameraZoom(0/0)",
+             "IRRender.setCameraZoom(math.huge)",
+             "IRRender.setCameraZoomContinuous(1)",
+             "IRRender.setCameraZoomContinuous('on')",
+         }) {
+        auto result = m_lua.lua().safe_script(call, sol::script_pass_on_error);
+        EXPECT_FALSE(result.valid()) << call << " did not raise";
+    }
+
+    EXPECT_TRUE(IREntity::getComponent<IRComponents::C_Camera>(camera).continuousZoom_);
+    EXPECT_EQ(
+        IREntity::getComponent<IRComponents::C_ZoomLevel>(camera).zoom_,
+        IRMath::vec2(2.0f)
+    );
 }
 
 // ---- colorFromLua (shared Lua → IRMath::Color helper) ---------------------

@@ -87,6 +87,11 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
     const C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
+    // This frame's continuous-zoom placement sample, copied out in beginTick.
+    // `zoomFrame_` is meaningful only while `continuousPlacement_` is set.
+    bool continuousPlacement_ = false;
+    IRMath::CameraRasterPhase zoomFrame_{};
+
     // Per-axis empty-cell compaction is run in
     // VOXEL_TO_TRIXEL_STAGE_1 (right after the per-axis stores) into the
     // component-owned cell buffers, so both the per-axis compute stages and this
@@ -130,18 +135,24 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 ? IRRender::getCameraZoom()
                 : (zoomLevel.has_value() ? (*zoomLevel.value()).zoom_ : vec2(1.0f));
 
-        frameData.frameData_.canvasZoomLevel_ = baseCanvasZoom;
-        if (behavior.applyRenderSubdivisions_ && renderMode != IRRender::SubdivisionMode::NONE) {
-            frameData.frameData_.canvasZoomLevel_ /= vec2(effectiveSubdivisions);
-        }
+        const int canvasDensity =
+            behavior.applyRenderSubdivisions_ && renderMode != IRRender::SubdivisionMode::NONE
+                ? effectiveSubdivisions
+                : 1;
+        frameData.frameData_.canvasZoomLevel_ = baseCanvasZoom / vec2(canvasDensity);
 
-        frameData.frameData_.cameraTrixelOffset_ =
+        const vec2 canvasCameraIso =
             behavior.useCameraPositionIso_ ? IRRender::getEffectiveCameraIso() : vec2(0.0f);
-        frameData.frameData_.cameraTrixelOffset_ +=
-            vec2(behavior.parityOffsetIsoX_, behavior.parityOffsetIsoY_);
-        if (behavior.applyRenderSubdivisions_ && renderMode != IRRender::SubdivisionMode::NONE) {
-            frameData.frameData_.cameraTrixelOffset_ *= vec2(effectiveSubdivisions);
-        }
+        const vec2 parityOffsetIso = vec2(behavior.parityOffsetIsoX_, behavior.parityOffsetIsoY_);
+        frameData.frameData_.cameraTrixelOffset_ =
+            (canvasCameraIso + parityOffsetIso) * vec2(canvasDensity);
+        const vec2 gatherTranslation = canvasGatherTranslation(
+            continuousPlacement_ ? &zoomFrame_ : nullptr,
+            behavior,
+            canvasCameraIso,
+            frameData.frameData_.canvasZoomLevel_,
+            canvasDensity
+        );
         frameData.frameData_.textureOffset_ = vec2(0);
         frameData.frameData_.distanceOffset_ = 0;
         // Main world gather is always WORLD content: the gather clamps it
@@ -160,7 +171,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) *
                                          calcModelMatrix(
                                              framebufferResolution,
-                                             frameData.frameData_.cameraTrixelOffset_,
+                                             gatherTranslation,
                                              frameData.frameData_.canvasZoomLevel_,
                                              backingScale
                                          );
@@ -209,7 +220,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) *
                                              calcModelMatrix(
                                                  framebufferResolution,
-                                                 frameData.frameData_.cameraTrixelOffset_,
+                                                 gatherTranslation,
                                                  frameData.frameData_.canvasZoomLevel_,
                                                  backingScale
                                              );
@@ -388,9 +399,12 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // uncompensated snap. (The cardinal single-canvas path keeps
         // calcModelMatrix: there the canvas IS the native-res blit grid, so its
         // game-px snap + the framebuffer→screen residual are the anti-vibration.)
-        const vec2 fractIso = cameraIso - anchorFloor;
         const vec2 screenPxPerCell = framebufferResolution * zoomEff / vec2(axes.size_);
-        const vec2 smoothPx = vec2(fractIso.x * screenPxPerCell.x, -fractIso.y * screenPxPerCell.y);
+        const vec2 smoothPx = perAxisScatterCameraOffset(
+            continuousPlacement_ ? &zoomFrame_ : nullptr,
+            cameraIso,
+            screenPxPerCell
+        );
         mat4 perAxisModel = translate(
             mat4(1.0f),
             vec3(
@@ -602,6 +616,20 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // here keeps the background / gui canvases from re-stamping it.
         IRRender::getRenderManager().stampDefaultPivotSourceFrame();
 
+        // The one point per frame the continuous-zoom raster phase advances:
+        // after the camera controls, ahead of every stage that places
+        // camera-following content. Those stages read the sample this
+        // publishes and never advance it themselves.
+        const vec2 cameraIso = IRRender::getEffectiveCameraIso();
+        const vec2 cameraZoom = IRRender::getCameraZoom();
+        IRPrefab::Camera::prepareZoomFrame(cameraIso, cameraZoom);
+        const IRMath::CameraRasterPhase *zoomFrame =
+            IRPrefab::Camera::zoomFrame(cameraIso, cameraZoom);
+        continuousPlacement_ = zoomFrame != nullptr;
+        if (continuousPlacement_) {
+            zoomFrame_ = *zoomFrame;
+        }
+
         // Resolve the main canvas's per-axis trixel canvases once per frame for
         // the per-entity tick to consume without a getComponent on its own
         // iterating canvas. Re-resolved every frame; never held across
@@ -799,19 +827,81 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         return projection;
     }
 
+    // Game-pixel half of the snapped-zoom anti-vibration decomposition (see
+    // `IRMath::cameraSubPixelOffsets`). `FRAMEBUFFER_TO_SCREEN` consumes the
+    // matching `screenPxResidual_` from the same helper to keep the two stages
+    // byte-for-byte consistent at game-pixel boundaries. Valid only while one
+    // backing texel spans whole framebuffer pixels; the continuous zoom policy
+    // places with `IRMath::cameraRasterGatherTranslation` instead.
+    static vec2 snappedGatherTranslation(const vec2 &cameraTrixelOffset, const vec2 &zoomLevel) {
+        const IRMath::CameraSubPixelOffsets sub =
+            IRMath::cameraSubPixelOffsets(cameraTrixelOffset, zoomLevel, ivec2(1));
+        return vec2(sub.framebufferGamePxOffset_);
+    }
+
+    // Framebuffer offset (Y-up) the per-axis scatter adds for the camera's
+    // position inside its anchor cell; the scatter's anchor has already placed
+    // `floor(cameraIso)` whole cells.
+    //
+    // Snapped policy (@p zoomFrame null): the whole sub-cell offset, unrounded.
+    // Continuous policy: the same whole-pixel offset and carried phase every
+    // other camera-following stage places with, so the upscale residual that
+    // `FRAMEBUFFER_TO_SCREEN` adds on top is the remainder of THIS offset. An
+    // unrounded offset under that residual counts the sub-pixel fraction
+    // twice, and an edge steps back a screen pixel each time the two round at
+    // different camera positions.
+    static vec2 perAxisScatterCameraOffset(
+        const IRMath::CameraRasterPhase *zoomFrame,
+        const vec2 &cameraIso,
+        const vec2 &screenPxPerCell
+    ) {
+        if (zoomFrame != nullptr) {
+            return vec2(IRMath::cameraRasterDetachedOffset(*zoomFrame));
+        }
+        const vec2 fractIso = cameraIso - IRMath::floor(cameraIso);
+        return vec2(fractIso.x * screenPxPerCell.x, -fractIso.y * screenPxPerCell.y);
+    }
+
+    // Framebuffer translation of one canvas's gather quad. @p zoomFrame is the
+    // frame's continuous-zoom sample, or null under the snapped policy.
+    // @p canvasCameraIso is the camera offset the canvas follows (zero when it
+    // ignores the camera), @p canvasZoomLevel its display zoom over
+    // @p canvasDensity.
+    //
+    // Only a canvas that follows BOTH the camera's position and its zoom is
+    // placed by the camera. Any other canvas (the GUI canvas, a fixed-zoom
+    // overlay) keeps the snapped translation at every policy: the continuous
+    // term would shift it by the carried phase each time the zoom moved.
+    static vec2 canvasGatherTranslation(
+        const IRMath::CameraRasterPhase *zoomFrame,
+        const C_TrixelCanvasRenderBehavior &behavior,
+        const vec2 &canvasCameraIso,
+        const vec2 &canvasZoomLevel,
+        int canvasDensity
+    ) {
+        const vec2 parityOffsetIso = vec2(behavior.parityOffsetIsoX_, behavior.parityOffsetIsoY_);
+        if (zoomFrame != nullptr && behavior.useCameraPositionIso_ && behavior.useCameraZoom_) {
+            return vec2(
+                IRMath::cameraRasterGatherTranslation(
+                    *zoomFrame,
+                    canvasCameraIso * static_cast<float>(canvasDensity),
+                    parityOffsetIso,
+                    canvasDensity
+                )
+            );
+        }
+        return snappedGatherTranslation(
+            (canvasCameraIso + parityOffsetIso) * vec2(canvasDensity),
+            canvasZoomLevel
+        );
+    }
+
     static mat4 calcModelMatrix(
         const vec2 &resolution,
-        const vec2 &cameraPositionIso,
+        const vec2 &isoPixelOffset,
         const vec2 &zoomLevel,
         const vec2 &backingScale
     ) {
-        // Game-pixel half of the anti-vibration decomposition (see
-        // `IRMath::cameraSubPixelOffsets`). `FRAMEBUFFER_TO_SCREEN` consumes
-        // the matching `screenPxResidual_` from the same helper to keep the
-        // two stages byte-for-byte consistent at game-pixel boundaries.
-        const IRMath::CameraSubPixelOffsets sub =
-            IRMath::cameraSubPixelOffsets(cameraPositionIso, zoomLevel, ivec2(1));
-        const vec2 isoPixelOffset = vec2(sub.framebufferGamePxOffset_);
         mat4 model = mat4(1.0f);
         model = translate(
             model,

@@ -5,15 +5,13 @@
 #include <irreden/ir_command.hpp>
 #include <irreden/ir_entity.hpp>
 
-#include <irreden/render/components/component_camera.hpp>
-#include <irreden/render/components/component_zoom_level.hpp>
+#include <irreden/render/camera.hpp>
 
 namespace IRCommand {
 
 template <> struct Command<ZOOM_IN> {
     static auto create() {
-        return
-            []() { IREntity::getComponent<C_ZoomLevel>(IREntity::getEntity("camera")).zoomIn(); };
+        return []() { IRPrefab::Camera::zoomIn(); };
     }
 };
 

@@ -197,8 +197,11 @@ vec2 getEffectiveCameraIso();
 /// pivot, 0 for an explicit focus or @c ORIGIN mode.
 float getCameraPanYaw();
 /// Current zoom factor as a 2-D scale (x and y may differ for anisotropic zoom).
+/// The display scale every iso <-> screen conversion uses; exactly the value
+/// @ref setCameraZoom stored.
 vec2 getCameraZoom();
-/// Size of one trixel in viewport pixels at the current zoom level.
+/// Size of one trixel in viewport pixels at the current zoom level. Fractional
+/// at a fractional zoom.
 vec2 getTriangleStepSizeScreen();
 /// Render viewport dimensions in physical framebuffer pixels — the window's
 /// framebuffer extent, which under HiDPI is larger than its size in points.
@@ -377,6 +380,12 @@ IREntity::EntityId getEntityIdAtMouseTrixel();
 
 /// @{
 /// @name Camera setters
+/// Set the main camera's uniform zoom, clamped to
+/// `[kTrixelCanvasZoomMin, kTrixelCanvasZoomMax]`. Under the default policy
+/// the clamped value snaps to the nearest power of two, so @ref getCameraZoom
+/// reads the snapped value back. Under the continuous policy
+/// (`IRPrefab::Camera::setZoomContinuous`) it is stored as given. Call at a
+/// frame boundary.
 void setCameraZoom(float zoom);
 void setCameraPosition2DIso(vec2 pos);
 /// Set the camera's continuous Z-yaw. Takes @p degrees in degrees (converted
@@ -442,11 +451,14 @@ float getViewReferenceHeight();
 /// in @c POSITION_ONLY it is used as-is; in @c NONE it is ignored (always 1).
 void setVoxelRenderSubdivisions(int subdivisions);
 int getVoxelRenderSubdivisions();
-/// The actual subdivisions value sent to the shader, accounting for mode and zoom.
+/// The actual subdivisions value sent to the shader, accounting for mode and
+/// the main camera's zoom. In @c FULL mode the zoom factor rounds to nearest
+/// under the snapped zoom policy and up under the continuous one
+/// (@ref ZoomDensityRounding).
 int getVoxelRenderEffectiveSubdivisions();
 /// The subdivisions a canvas viewed at @p zoom rasters at under the current
-/// mode and base count; the world camera's zoom gives
-/// @ref getVoxelRenderEffectiveSubdivisions.
+/// mode and base count, always on the round-to-nearest rule: a secondary
+/// viewport's zoom is snapped whatever the main camera's policy is.
 int getVoxelRenderEffectiveSubdivisionsForZoom(vec2 zoom);
 void zoomMainBackgroundPatternIn();
 void zoomMainBackgroundPatternOut();

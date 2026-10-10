@@ -13,6 +13,7 @@
 /// Opt-in serializer header: include it wherever a registry registers these
 /// components; never pulled by the component headers themselves.
 
+#include <irreden/render/components/component_camera.hpp>
 #include <irreden/render/components/component_sprite_animation.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_text_segment.hpp>
@@ -46,7 +47,34 @@ struct EntityCanvasV1 {
 
 static_assert(sizeof(EntityCanvasV1) == 24);
 
+// An empty marker: its raw image is the one byte an empty struct occupies,
+// with no defined value.
+struct CameraV1 {};
+
+static_assert(sizeof(CameraV1) == 1);
+
 } // namespace detail
+
+template <> struct SaveMigration<IRComponents::C_Camera> {
+    static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_Camera>>>
+    migrators() {
+        return {
+            {1u, [](IRAsset::BinaryReader &reader) -> IRAsset::Result<IRComponents::C_Camera> {
+                 // Consumed and discarded: read as the policy flag, the byte
+                 // would turn the continuous zoom on from uninitialized memory.
+                 detail::CameraV1 old{};
+                 IRAsset::BinaryStatus status = reader.readBytes(&old, sizeof(old));
+                 if (!status.ok()) {
+                     return IRAsset::Result<IRComponents::C_Camera>::error(
+                         status.code_,
+                         std::move(status.message_)
+                     );
+                 }
+                 return IRAsset::Result<IRComponents::C_Camera>::success(IRComponents::C_Camera{});
+             }},
+        };
+    }
+};
 
 template <> struct SaveMigration<IRComponents::C_EntityCanvas> {
     static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_EntityCanvas>>>

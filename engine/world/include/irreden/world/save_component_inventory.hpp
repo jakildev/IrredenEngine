@@ -61,6 +61,7 @@
 #include <irreden/render/components/component_active_lod_level.hpp>
 #include <irreden/render/components/component_camera.hpp>
 #include <irreden/render/components/component_camera_position_2d_iso.hpp>
+#include <irreden/render/components/component_camera_zoom_frame_state.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_camera.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
@@ -223,6 +224,10 @@ IR_SAVE_OPT_OUT(IRComponents::C_FogRevealSettings)
 IR_SAVE_OPT_OUT(IRComponents::C_CanvasCamera)
 IR_SAVE_OPT_OUT(IRComponents::C_ViewportCamera)
 IR_SAVE_OPT_OUT(IRComponents::C_ViewportSubject)
+// The continuous-zoom raster phase is re-derived from the camera and the zoom
+// every frame, and any starting phase places content at the same total offset,
+// so a loaded world begins a fresh history.
+IR_SAVE_OPT_OUT(IRComponents::C_CameraZoomFrameState)
 
 // Class C — transient per-frame events / device input
 IR_SAVE_OPT_OUT(IRComponents::C_ContactEvent)
@@ -357,7 +362,9 @@ IR_SAVE_OPT_IN(IRComponents::C_TriangleCanvasBackground, 1)
 IR_SAVE_OPT_IN(IRComponents::C_TrianglesOnlySet, 1)
 IR_SAVE_OPT_IN(IRComponents::C_LightSource, 1)
 IR_SAVE_OPT_IN(IRComponents::C_LightBlocker, 1)
-IR_SAVE_OPT_IN(IRComponents::C_Camera, 1)
+// Version 2 carries the authored zoom policy; version 1 was an empty marker
+// and reads back through SaveMigration<C_Camera> as policy off.
+IR_SAVE_OPT_IN(IRComponents::C_Camera, 2)
 IR_SAVE_OPT_IN(IRComponents::C_CameraPosition2DIso, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Viewport, 1)
 IR_SAVE_OPT_IN(IRComponents::C_ZoomLevel, 1)
@@ -476,6 +483,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_CanvasCamera,
     IRComponents::C_ViewportCamera,
     IRComponents::C_ViewportSubject,
+    IRComponents::C_CameraZoomFrameState,
     IRComponents::C_ContactEvent,
     IRComponents::C_OverlapContactBatch,
     IRComponents::C_CursorPosition,

@@ -54,7 +54,7 @@ Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md). Rationale: [`d
 | `HITBOX_MOUSE_TEST_GUI` → `WIDGET_INPUT` → `WIDGET_APPLY_*` | INPUT; `WIDGET_LUA_DISPATCH` immediately after `WIDGET_INPUT` |
 | `TEXT_TO_TRIXEL` → `LAYOUT_COMPUTE` → `WIDGET_RENDER_*` | RENDER, before `TRIXEL_TO_FRAMEBUFFER`; `WIDGET_RENDER_DROPDOWN` last among the renderers |
 | `HelpOverlay::systems()`, `SettingsMenu::renderSystems()` / `inputSystems()` | RENDER after `TEXT_TO_TRIXEL`, before the composite / INPUT after `INPUT_KEY_MOUSE` |
-| `SPRITE_TO_SCREEN` | after the main canvas's `FRAMEBUFFER_TO_SCREEN` |
+| `ENTITY_CANVAS_TO_FRAMEBUFFER` · `FRAMEBUFFER_TO_SCREEN` · `SPRITE_TO_SCREEN` | after `TRIXEL_TO_FRAMEBUFFER`, whose `beginTick` alone publishes the frame's [continuous-zoom sample](../../../../docs/design/continuous-camera-zoom.md) (`IRPrefab::Camera::zoomFrame`); sprites after the main canvas's `FRAMEBUFFER_TO_SCREEN` |
 | `SYNC_VIEWPORT_SUBJECTS` / `VIEWPORT_TO_FRAMEBUFFER` | RENDER before `VOXEL_TO_TRIXEL_STAGE_1` / after `TRIXEL_TO_FRAMEBUFFER`, before `FRAMEBUFFER_TO_SCREEN` |
 
 `VOXEL_TO_TRIXEL_STAGE_1` runs compact + stage 1 + stage 2 per canvas in one

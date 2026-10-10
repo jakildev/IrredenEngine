@@ -6,6 +6,7 @@
 #include <irreden/ir_render.hpp>
 
 #include <irreden/common/components/component_world_transform.hpp>
+#include <irreden/render/camera.hpp>
 #include <irreden/render/components/component_sprite.hpp>
 #include <irreden/render/texture.hpp>
 
@@ -56,7 +57,7 @@ template <> struct System<SPRITE_TO_SCREEN> {
     std::vector<IRRender::GpuSpriteInstance> gpuScratch_;
     std::vector<Group> groups_;
     /// Cached at beginTick so per-sprite ticks don't repeat the lookup or
-    /// the cameraSubPixelOffsets() call. `gameGridOrigin_` is the screen
+    /// the screen-residual call. `gameGridOrigin_` is the screen
     /// position of the framebuffer's game-pixel grid origin — sprites with
     /// `screenPixelSmooth_ = false` snap their anchor to this grid so they
     /// stay pixel-locked to the world the trixel composite paints.
@@ -108,13 +109,13 @@ template <> struct System<SPRITE_TO_SCREEN> {
         // trixel composite. One call per frame; the per-sprite snap is a
         // round/mul.
         const ivec2 scaleFactor = IRRender::getOutputScaleFactor();
-        const IRMath::CameraSubPixelOffsets sub = IRMath::cameraSubPixelOffsets(
+        const ivec2 screenResidual = IRPrefab::Camera::screenResidual(
             IRRender::getEffectiveCameraIso(),
             IRRender::getCameraZoom(),
             scaleFactor
         );
         const vec2 viewport = vec2(IRRender::getViewport());
-        gameGridOrigin_ = viewport * 0.5f + vec2(sub.screenPxResidual_);
+        gameGridOrigin_ = viewport * 0.5f + vec2(screenResidual);
         scaleFactor_ = vec2(scaleFactor);
     }
 
@@ -226,7 +227,6 @@ template <> struct System<SPRITE_TO_SCREEN> {
         return out;
     }
 
-  private:
     /// Snaps @p anchor to the framebuffer's game-pixel grid (origin =
     /// @p gridOrigin, cell size = @p cellPx). The grid origin matches the
     /// trixel composite's screen-pixel residual so the snapped sprite sits
@@ -241,14 +241,22 @@ template <> struct System<SPRITE_TO_SCREEN> {
     /// composite: iso delta from the EFFECTIVE camera (the one the composite
     /// places world content with), scaled by the per-trixel step size, with
     /// the same X-flip that `pos3DtoPos2DScreen` encodes for world-space
-    /// points.
-    static vec2 computeScreenAnchor(vec3 worldPos) {
-        const vec2 viewport = vec2(IRRender::getViewport());
-        const vec2 cameraIso = IRRender::getEffectiveCameraIso();
-        const vec2 stepSize = IRRender::getTriangleStepSizeScreen();
+    /// points. @p stepSize is the only zoom input, so the anchor follows the
+    /// world at any zoom while the quad's size never sees the zoom at all.
+    static vec2 screenAnchor(vec3 worldPos, vec2 viewport, vec2 cameraIso, vec2 stepSize) {
         const vec2 isoDelta = pos3DtoPos2DIso(worldPos) - cameraIso;
         const vec2 screenSign = vec2(-1.0f, IRPlatform::kGfx.screenYDirection_);
         return viewport * 0.5f + isoDelta * stepSize * screenSign;
+    }
+
+  private:
+    static vec2 computeScreenAnchor(vec3 worldPos) {
+        return screenAnchor(
+            worldPos,
+            vec2(IRRender::getViewport()),
+            IRRender::getEffectiveCameraIso(),
+            IRRender::getTriangleStepSizeScreen()
+        );
     }
 
     void packGroupToScratch(const Group &g) {
