@@ -7,9 +7,10 @@
 # 3.2 — and there every `fleet-run` reads LOCK-FAILED.
 #
 # Phase 1 runs the tool under /bin/bash and needs a 3.x /bin/bash to mean
-# anything; elsewhere it prints a note and skips. Phase 2 is a static check
-# that runs on every host, so a Linux CI run still catches a reintroduced
-# bare expansion of the arrays that are empty on the no-flag path.
+# anything; elsewhere it prints a note and skips. Phases 2 and 3 are static
+# checks that run on every host, so a Linux CI run still catches a
+# reintroduced bare expansion: phase 2 of the arrays that are empty on the
+# no-flag path, phase 3 of any array another site in the same file guards.
 
 set -uo pipefail
 
@@ -60,5 +61,45 @@ bare_forward=$(grep -nE '[^+]"\$\{forward_args\[@\]\}"' "$BUILD" || true)
 assert_eq "$bare_forward" "" "ir-build expands forward_args only through \${arr[@]+...}"
 bare_got=$(grep -nE '[^+]"\$\{got\[@\]\}"' "$HELPERS" || true)
 assert_eq "$bare_got" "" "concurrency_helpers expands got only through \${arr[@]+...}"
+
+# An optional `--repo` array is empty on the default-repository path of every
+# wrapper that takes one.
+OPTIONAL_REPO_ARRAYS=(
+    "fleet-transition:repo_args"
+    "fleet-review-verdict:repo_args"
+    "fleet-pr-checkout-detached:repo_args"
+    "fleet-pr-clear-feedback-labels:repo_args"
+    "fleet-pr-claim-feedback:claim_repo_args"
+    "fleet-pr-claim-feedback:checkout_repo_args"
+)
+for pair in "${OPTIONAL_REPO_ARRAYS[@]}"; do
+    tool="${pair%%:*}"
+    arr="${pair##*:}"
+    bare=$(grep -nE "[^+]\"\\\$\{${arr}\[@\]\}\"" "$REPO_ROOT/scripts/fleet/$tool" || true)
+    assert_eq "$bare" "" "$tool expands $arr only through \${arr[@]+...}"
+done
+
+echo "Phase 3: an array guarded at one site is guarded at every site in that file"
+# A `${arr[@]+"${arr[@]}"}` expansion marks arr as possibly empty; a bare
+# "${arr[@]}" of the same name in the same file aborts on that same empty
+# array.
+mixed=""
+scanned=0
+while IFS= read -r f; do
+    case "$f" in *.py|*.md|*.json) continue ;; esac
+    scanned=$((scanned + 1))
+    guarded=$(grep -IoE '\$\{[A-Za-z_][A-Za-z0-9_]*\[@\]\+"' "$f" 2>/dev/null \
+        | sed -e 's/^\${//' -e 's/\[@\]+"$//' | sort -u || true)
+    [[ -z "$guarded" ]] && continue
+    for arr in $guarded; do
+        hits=$(grep -InE "(^|[^+])\"\\\$\{${arr}\[@\]\}\"" "$f" | grep -vE '^[0-9]+:[[:space:]]*#' || true)
+        [[ -n "$hits" ]] && mixed+="${f#"$REPO_ROOT"/} [$arr] $hits"$'\n'
+    done
+done < <(find "$REPO_ROOT/engine/tools" "$REPO_ROOT/scripts/fleet" -type f | sort)
+if (( scanned == 0 )); then
+    bad "phase 3 scanned zero files under engine/tools and scripts/fleet"
+else
+    assert_eq "$mixed" "" "no array is expanded both guarded and bare in one file ($scanned files scanned)"
+fi
 
 summarize "ir-acquire bash 3.2 tests"

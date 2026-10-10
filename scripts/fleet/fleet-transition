@@ -219,7 +219,7 @@ fi
 # GitHub label eventual-consistency).
 # ----------------------------------------------------------------------
 apply_delta() {  # args: edit flag pairs
-    gh "$gh_kind" edit "$number" "${repo_args[@]}" "$@" >/dev/null 2>&1
+    gh "$gh_kind" edit "$number" ${repo_args[@]+"${repo_args[@]}"} "$@" >/dev/null 2>&1
 }
 
 if ! apply_delta ${edit_args[@]+"${edit_args[@]}"}; then
@@ -250,7 +250,7 @@ if verify_and_residual; then
         for l in ${r_del[@]+"${r_del[@]}"}; do retry+=(--remove-label "$l"); done
         apply_delta ${retry[@]+"${retry[@]}"} || true
         if verify_and_residual && { [[ ${#r_add[@]} -gt 0 || ${#r_del[@]} -gt 0 ]]; }; then
-            echo "$PROG: $describe — applied but did not converge (still off: add=${r_add[*]} remove=${r_del[*]})" >&2
+            echo "$PROG: $describe — applied but did not converge (still off: add=${r_add[*]-} remove=${r_del[*]-})" >&2
             exit 1
         fi
     fi

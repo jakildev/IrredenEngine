@@ -95,7 +95,7 @@ first_pr_entry_line() {
 mapfile -t all_workflows < <(find "$WORKFLOWS_DIR" -maxdepth 1 -name '*.yml' -type f | sort)
 
 covered_workflows=()
-for f in "${all_workflows[@]}"; do
+for f in ${all_workflows[@]+"${all_workflows[@]}"}; do
     is_covered "$f" && covered_workflows+=("$f")
 done
 
