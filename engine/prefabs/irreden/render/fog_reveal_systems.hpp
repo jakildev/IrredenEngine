@@ -33,8 +33,11 @@ inline std::list<IRSystem::SystemId> revealSystems() {
         IRSystem::createSystem<IRSystem::FOG_SUBJECT_ADOPT_SHAPE>(),
         IRSystem::createSystem<IRSystem::FOG_SUBJECT_ADOPT_CANVAS>(),
         IRSystem::createSystem<IRSystem::FOG_REVEAL_EVAL>(),
+        IRSystem::createSystem<IRSystem::FOG_REVEAL_EVAL_GHOST>(),
         IRSystem::createSystem<IRSystem::FOG_REVEAL_EVAL_SHAPE>(),
+        IRSystem::createSystem<IRSystem::FOG_REVEAL_EVAL_SHAPE_GHOST>(),
         IRSystem::createSystem<IRSystem::FOG_REVEAL_EVAL_CANVAS>(),
+        IRSystem::createSystem<IRSystem::FOG_REVEAL_EVAL_CANVAS_GHOST>(),
     };
 }
 

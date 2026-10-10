@@ -46,6 +46,8 @@ struct C_EntityCanvas {
     int depthPriority_ = 0;
     float fogRevealFactor_ = 1.0f;
     bool fogHidden_ = false;
+    // Runtime route mirror; never serialized.
+    bool fogGhost_ = false;
 
     C_EntityCanvas() = default;
 

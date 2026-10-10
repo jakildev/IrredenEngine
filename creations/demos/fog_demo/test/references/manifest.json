@@ -259,6 +259,17 @@
       "capture_offset": 0
     },
     {
+      "name": "ghost_policy",
+      "demo_args": ["--ghost-policy"],
+      "warmup": 180,
+      "shots": [
+        "fog_ghost_policy_held",
+        "fog_ghost_policy_hide",
+        "fog_ghost_policy_discarded"
+      ],
+      "capture_offset": 0
+    },
+    {
       "name": "channel_probe",
       "demo_args": ["--channel-probe", "--fog-debug-color"],
       "shots": ["fog_channel_probe"],

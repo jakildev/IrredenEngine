@@ -18,6 +18,7 @@
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_fog_exempt.hpp>
 #include <irreden/render/components/component_fog_field.hpp>
+#include <irreden/render/components/component_fog_ghost.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
@@ -640,6 +641,37 @@ inline void selectRevealSnapshot(
 /// on a fogged canvas is adopted by FOG_SUBJECT_ADOPT within one frame. FIELD
 /// (terrain, painted per sample) and EXEMPT (never fogged) are explicit tags.
 enum class FogSubjectClass : std::uint8_t { FIELD = 0, BODY = 1, EXEMPT = 2 };
+
+template <typename GhostVerdictFn>
+inline void stepGhostLifecycle(
+    IRComponents::C_FogRevealed &revealed,
+    IRComponents::C_FogGhost &ghost,
+    const IRComponents::C_WorldTransform &worldTransform,
+    bool wasShown,
+    bool evaluated,
+    float showThreshold,
+    GhostVerdictFn &&ghostVerdict
+) {
+    if (revealed.override_ == IRComponents::FogOverride::FORCE_HIDDEN) {
+        revealed.ghostHeld_ = false;
+        ghost.valid_ = false;
+        return;
+    }
+    if (revealed.shown_) {
+        revealed.ghostHeld_ = false;
+        ghost.pose_ = worldTransform;
+        ghost.valid_ = true;
+        return;
+    }
+    if (wasShown && ghost.valid_) {
+        revealed.ghostHeld_ = true;
+    }
+    if (revealed.ghostHeld_ && evaluated && revealed.override_ == IRComponents::FogOverride::NONE &&
+        ghostVerdict(ghost.pose_.translation_, revealed.channels_) >= showThreshold) {
+        revealed.ghostHeld_ = false;
+        ghost.valid_ = false;
+    }
+}
 
 /// The 8-bit carrier form of a BODY reveal factor: round half up of
 /// `factor * 255`, so 1.0 pins 255 and 0.0 pins 0.
@@ -1463,6 +1495,63 @@ inline FogSubjectClass subjectClass(IREntity::EntityId entity) {
     return FogSubjectClass::BODY;
 }
 
+inline void
+restoreHideRouteState(IREntity::EntityId entity, IRComponents::C_FogRevealed &revealed) {
+    revealed.ghostHeld_ = false;
+    if (auto voxelSet = IREntity::getComponentOptional<IRComponents::C_VoxelSetNew>(entity)) {
+        (*voxelSet)->ghostHeld_ = false;
+        const IREntity::EntityId activeCanvas = IRRender::getActiveCanvasEntityOrNull();
+        const IREntity::EntityId canvas = (*voxelSet)->canvasEntity_ == IREntity::kNullEntity
+                                              ? activeCanvas
+                                              : (*voxelSet)->canvasEntity_;
+        if (IRComponents::C_VoxelPool *pool = IRPrefab::VoxelPool::detail::poolForCanvas(canvas)) {
+            const std::size_t start = (*voxelSet)->voxelStartIdx_;
+            const std::size_t count = static_cast<std::size_t>((*voxelSet)->numVoxels_);
+            if ((*voxelSet)->masksActive()) {
+                pool->resyncActiveMaskFromColors(start, count);
+            } else {
+                pool->clearActiveMaskRange(start, count);
+            }
+        }
+    }
+    if (auto shape = IREntity::getComponentOptional<IRComponents::C_ShapeDescriptor>(entity)) {
+        (*shape)->flags_ &= ~IRMath::SDF::SHAPE_FLAG_FOG_GHOST;
+        if (revealed.shown_) {
+            (*shape)->flags_ &= ~IRRender::SHAPE_FLAG_FOG_HIDDEN;
+        } else {
+            (*shape)->flags_ |= IRRender::SHAPE_FLAG_FOG_HIDDEN;
+        }
+        (*shape)->fogBodyFactor_ = quantizeRevealFactor(revealed.revealFactor_);
+    }
+    if (auto canvas = IREntity::getComponentOptional<IRComponents::C_EntityCanvas>(entity)) {
+        (*canvas)->fogGhost_ = false;
+        (*canvas)->fogHidden_ = !revealed.shown_;
+        (*canvas)->fogRevealFactor_ = revealed.revealFactor_;
+    }
+}
+
+inline bool setHiddenPolicy(IREntity::EntityId entity, IRComponents::FogHiddenPolicy policy) {
+    auto revealed = IREntity::getComponentOptional<IRComponents::C_FogRevealed>(entity);
+    if (!revealed.has_value()) {
+        return false;
+    }
+    if (policy == IRComponents::FogHiddenPolicy::GHOST) {
+        if (!IREntity::getComponentOptional<IRComponents::C_FogGhost>(entity).has_value()) {
+            IREntity::setComponent(entity, IRComponents::C_FogGhost{});
+        }
+        return true;
+    }
+    restoreHideRouteState(entity, **revealed);
+    IREntity::removeComponent<IRComponents::C_FogGhost>(entity);
+    return true;
+}
+
+inline IRComponents::FogHiddenPolicy hiddenPolicy(IREntity::EntityId entity) {
+    return IREntity::getComponentOptional<IRComponents::C_FogGhost>(entity).has_value()
+               ? IRComponents::FogHiddenPolicy::GHOST
+               : IRComponents::FogHiddenPolicy::HIDE;
+}
+
 /// Classify @p entity synchronously. BODY stamps the carrier with factor 0,
 /// hides the subject and attaches `C_FogRevealed`, so an entity outside every
 /// source cannot flash before its first eval. FIELD clears the BODY carrier
@@ -1472,6 +1561,7 @@ inline FogSubjectClass subjectClass(IREntity::EntityId entity) {
 inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectClass) {
     using IRComponents::C_FogExempt;
     using IRComponents::C_FogField;
+    using IRComponents::C_FogGhost;
     using IRComponents::C_FogRevealed;
     auto setOpt = IREntity::getComponentOptional<IRComponents::C_VoxelSetNew>(entity);
     auto shapeOpt = IREntity::getComponentOptional<IRComponents::C_ShapeDescriptor>(entity);
@@ -1484,6 +1574,7 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
                                      (*setOpt)->canvasEntity_ == (*canvasOpt)->canvasEntity_;
     if (setOpt.has_value()) {
         IRComponents::C_VoxelSetNew *voxelSet = *setOpt;
+        voxelSet->ghostHeld_ = false;
         const IREntity::EntityId activeCanvas = IRRender::getActiveCanvasEntityOrNull();
         canvas = voxelSet->canvasEntity_ == IREntity::kNullEntity ? activeCanvas
                                                                   : voxelSet->canvasEntity_;
@@ -1507,7 +1598,7 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
                 break;
             }
             voxelSet->visible_ = subjectClass != FogSubjectClass::BODY;
-            setRenders = voxelSet->renders();
+            setRenders = voxelSet->masksActive();
         }
     }
     if (shapeOpt.has_value()) {
@@ -1521,6 +1612,7 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
         );
         shape.flags_ &= ~IRRender::SHAPE_FLAG_FOG_HIDDEN;
         shape.flags_ &= ~IRRender::SHAPE_FLAG_FOG_BODY;
+        shape.flags_ &= ~IRMath::SDF::SHAPE_FLAG_FOG_GHOST;
         if (subjectClass == FogSubjectClass::BODY) {
             shape.flags_ |= IRRender::SHAPE_FLAG_FOG_BODY;
             shape.flags_ |= IRRender::SHAPE_FLAG_FOG_HIDDEN;
@@ -1541,6 +1633,7 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
         if (!entityCanvas.screenLocked_ && detached) {
             entityCanvas.fogRevealFactor_ = subjectClass == FogSubjectClass::BODY ? 0.0f : 1.0f;
             entityCanvas.fogHidden_ = subjectClass == FogSubjectClass::BODY;
+            entityCanvas.fogGhost_ = false;
             stampCanvasBodyCarrier(
                 entityCanvas,
                 subjectClass != FogSubjectClass::FIELD,
@@ -1557,6 +1650,7 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
     // stay last: every access through the voxel-set pointer is above.
     C_FogRevealed freshRevealed{};
     bool hadRevealed = false;
+    const bool hadGhost = IREntity::getComponentOptional<C_FogGhost>(entity).has_value();
     if (const auto revealed = IREntity::getComponentOptional<C_FogRevealed>(entity);
         revealed.has_value()) {
         hadRevealed = true;
@@ -1570,12 +1664,16 @@ inline void setSubjectClass(IREntity::EntityId entity, FogSubjectClass subjectCl
         IREntity::removeComponent<C_FogField>(entity);
         IREntity::removeComponent<C_FogExempt>(entity);
         IREntity::setComponent(entity, freshRevealed);
+        if (hadGhost) {
+            IREntity::setComponent(entity, C_FogGhost{});
+        }
         return;
     }
     // A set its LOD band hides stays masked off; the LOD gate restores it.
     if (hadRevealed && setRenders && rangeCount > 0) {
         IRPrefab::VoxelPool::resyncRangeFromColors(rangeStart, rangeCount, canvas);
     }
+    IREntity::removeComponent<C_FogGhost>(entity);
     IREntity::removeComponent<C_FogRevealed>(entity);
     if (subjectClass == FogSubjectClass::FIELD) {
         IREntity::removeComponent<C_FogExempt>(entity);
