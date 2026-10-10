@@ -7,14 +7,15 @@ and each fixed camera pose is captured once with sun shadows and once with
 capture, so caster pixels and the background cannot enter the observed mask.
 
 - Source: branch `claude/4274-shadow-footprint-accuracy`, measured fixture revision
-  `ae28cc30731dc8bbbb89d59c9bdf75df4e26f2de`, parent revision
-  `01752d9aabb12245ef4dd87ab4d9aa15049f99c4`
+  `0dc489fa46085a09a9ce61a14765d2ef2ae61173`, parent revision
+  `1eefc4c632e80db9e89c85ec20b52b623230374e`
 - Backend: Metal, Apple M4 Max, macOS 26.5.2 arm64, `macos-debug`
 - Output: 2560x1440 (2x the 1280x720 logical canvas)
 - Lighting: normalized sun `(0.349128, 0.847883, -0.399004)`, receiver top
-  `z=4`, AO disabled
+  `z=4.375`, AO disabled
 - Geometry: 233 occupied cone boxes, 504 occupied torus boxes; analytic
-  expectations come directly from the cone and torus signed-distance fields
+  expectations use the renderer's effective density 4 and its corresponding
+  `SDF <= 0.125` surface threshold
 
 ## Commands
 
@@ -22,7 +23,8 @@ capture, so caster pixels and the background cannot enter the observed mask.
 fleet-run IRShapeDebug --auto-screenshot 10 --shadow-footprint-probe --no-ao
 fleet-run IRShapeDebug --auto-screenshot 10 --shadow-footprint-probe --no-ao --no-shadows
 python3 scripts/render-shape-shadow-footprint.py <shadowed.png> \
-  --unshadowed <no-shadows.png> --yaw <0-or-pi-over-4> --diagnostic <output.png>
+  --unshadowed <no-shadows.png> --yaw <0-or-pi-over-4> \
+  --effective-subdivisions 4 --diagnostic <output.png>
 python3 scripts/tests/test_render_shape_shadow_footprint.py
 ```
 
@@ -36,37 +38,45 @@ exit=0`. The four captured outputs inherit that clean-exit verdict as follows:
 | yaw 0° | off | `RESULT=CLEAN`, exit 0 |
 | yaw 45° | off | `RESULT=CLEAN`, exit 0 |
 
-The metric uses exact ray/AABB intersections for every occupied voxel box and
-independently samples the analytic surface along the sun ray. Tolerance is two
+The fixture log derives the receiver from its rendered BOX contract at capture
+time: center `z=5`, size `z=2`, effective subdivisions 4, top `z=4.375`.
+The metric uses that plane, exact ray/AABB intersections for every occupied
+voxel box, and the renderer's density-scaled analytic representation threshold
+(`0.5 / 4 = 0.125`) for both ray hits and conservative bounds. Tolerance is two
 pixels; a shape passes when both missing and excess ratios are at most 15%.
 
 | Pose | Caster | Expected px | Observed px | Missing | Excess | Result |
 | --- | --- | ---: | ---: | ---: | ---: | --- |
-| yaw 0° | cone voxel | 35,917 | 34,733 | 5.75% | 4.64% | pass |
-| yaw 0° | cone SDF | 25,696 | 58,719 | 0.00% | 53.01% | fail |
-| yaw 0° | torus voxel | 43,739 | 46,743 | 2.70% | 6.93% | pass |
-| yaw 0° | torus SDF | 16,184 | 38,769 | 0.00% | 56.22% | fail |
-| yaw 45° | cone voxel | 36,070 | 31,202 | 12.71% | 1.11% | pass |
-| yaw 45° | cone SDF | 20,260 | 23,874 | 8.41% | 20.79% | fail |
-| yaw 45° | torus voxel | 44,563 | 47,892 | 1.46% | 6.94% | pass |
-| yaw 45° | torus SDF | 7,568 | 6,352 | 26.04% | 12.96% | fail |
+| yaw 0° | cone voxel | 33,740 | 33,833 | 4.11% | 3.91% | pass |
+| yaw 0° | cone SDF | 27,673 | 59,619 | 0.78% | 51.01% | fail |
+| yaw 0° | torus voxel | 47,771 | 46,478 | 2.86% | 0.63% | pass |
+| yaw 0° | torus SDF | 19,713 | 39,034 | 0.00% | 47.32% | fail |
+| yaw 45° | cone voxel | 33,192 | 30,645 | 8.23% | 0.70% | pass |
+| yaw 45° | cone SDF | 22,866 | 24,431 | 8.29% | 16.14% | fail |
+| yaw 45° | torus voxel | 48,403 | 47,714 | 0.73% | 0.31% | pass |
+| yaw 45° | torus SDF | 9,121 | 6,530 | 24.92% | 5.21% | fail |
 
-Every expected region is nonempty. The test suite also substitutes 1.35x and
-0.65x geometry: each shape at both yaws exceeds the same 15% gate, proving the
-oracle rejects deliberately wrong-sized controls.
+Every expected region is nonempty. The focused suite pins the density-derived
+receiver plane and the nonzero analytic boundary, including a torus point with
+positive zero-level SDF that the renderer includes at density 4. It also
+substitutes 1.35x and 0.65x geometry: each shape at both yaws exceeds the same
+15% gate, and the nominal/wrong-size PNG pair returns 0/1 through the CLI.
 
 ## Classification
 
 The voxel casters pass at both cardinal and non-cardinal yaw while the SDF
-casters fail on the same receiver and filter. That paired control localizes the
-discrepancy to the analytic caster path rather than the common receiver or
-filter.
+casters fail. This remains unresolved rather than excluding the common receiver
+or filter: the representations have different silhouettes, the observed masks
+overlap, and the 15% voxel pass gate is not an identity proof. The corrected
+oracle now treats the renderer's density-expanded analytic surface as an
+intended representation difference instead of silently counting it as caster
+error.
 
-At yaw 0°, the 53.01% cone excess and 56.22% torus excess overlap the
+At yaw 0°, the 51.01% cone excess and 47.32% torus excess overlap the
 exact-cardinal analytic-caster continuity defect owned by #4193 / PR #4258.
 Those numbers are evidence for that active task, not a second continuity fix;
 the residual footprint must be measured again after #4193 lands. At yaw 45°,
-the cone has 20.79% excess while the torus has 26.04% missing coverage, so the
+the cone has 16.14% excess while the torus has 24.92% missing coverage, so the
 non-cardinal result is unresolved rather than one shared geometry failure. The
 next probe is to capture each analytic caster alone at yaw 45° and measure it
 in an isolated ROI, removing cross-caster attribution before comparing its
@@ -74,10 +84,10 @@ projected SDF surface with the observed shadow.
 
 Observed shadow pixels are currently assigned to the nearest expected centroid.
 The yaw-0 shadows overlap, so SDF excess can be redistributed between shapes;
-the voxel controls remain within 7%, but the per-SDF excess split is not an
-independent attribution. The bounded repair here is the reproducible fixture,
-independent oracle, and explicit next probe. The broader exact-receiver contract
-remains with #4231.
+the voxel controls remain within the 15% gate, but neither that result nor the
+per-SDF split is an independent attribution. The bounded repair here is the
+reproducible fixture, corrected oracle, and explicit next probe. The broader
+exact-receiver contract remains with #4231.
 
 Diagnostic colors are green for agreement, cyan for missing shadow, and red
 for excess shadow.
