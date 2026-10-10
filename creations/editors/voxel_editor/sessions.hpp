@@ -89,6 +89,8 @@ enum class Id {
     TREE,
     PARTS_ROUNDTRIP,
     TIER_SCRUB,
+    RADIAL_ARRAY,
+    NWAY_SYMMETRY,
     MODULE_LOADED,
     COMPONENT_ATTACH,
     COMPONENT_FIELD_PAGE,
@@ -120,6 +122,10 @@ inline Id idFromName(const std::string &name) {
         return Id::PARTS_ROUNDTRIP;
     if (name == "tier_scrub")
         return Id::TIER_SCRUB;
+    if (name == "radial_array")
+        return Id::RADIAL_ARRAY;
+    if (name == "nway_symmetry")
+        return Id::NWAY_SYMMETRY;
     if (name == "module_loaded")
         return Id::MODULE_LOADED;
     if (name == "component_attach")
@@ -1432,6 +1438,25 @@ inline Recipe buildComponentAttach(
         "component_field_set"
     );
 
+    builder.segment("array_copy");
+    builder.applyRadialArray(2);
+    builder.expectComponentValue(
+        1,
+        spec.component_,
+        spec.field_,
+        spec.value_,
+        true,
+        "first_array_copy_keeps_component"
+    );
+    builder.expectComponentValue(
+        2,
+        spec.component_,
+        spec.field_,
+        spec.value_,
+        true,
+        "second_array_copy_keeps_component"
+    );
+
     builder.segment("save");
     builder.save();
     builder.segment("clear");
@@ -1453,6 +1478,22 @@ inline Recipe buildComponentAttach(
         spec.default_,
         false,
         "component_default_absent_after_reload"
+    );
+    builder.expectComponentValue(
+        1,
+        spec.component_,
+        spec.field_,
+        spec.value_,
+        true,
+        "first_array_copy_component_survives_reload"
+    );
+    builder.expectComponentValue(
+        2,
+        spec.component_,
+        spec.field_,
+        spec.value_,
+        true,
+        "second_array_copy_component_survives_reload"
     );
     return builder.finish();
 }
@@ -1611,6 +1652,60 @@ inline Recipe build(
         builder.nextPart();
         builder.expectSliderValue(SliderTarget::LOD_FINE, 3.0f, kTolerance, "b_fine_reloaded");
         builder.expectSliderValue(SliderTarget::LOD_COARSE, 4.0f, kTolerance, "b_coarse_reloaded");
+        return builder.finish();
+    }
+    case Id::RADIAL_ARRAY: {
+        Builder builder("radial_array", sceneSize, sceneOrigin);
+        builder.segment("source_lod");
+        builder.addVoxelPart();
+        builder.dragLodSlider(SliderTarget::LOD_FINE, 3);
+        builder.dragLodSlider(SliderTarget::LOD_TIER, 0);
+
+        builder.segment("array");
+        builder.applyRadialArray(6);
+        builder.expectPartCount(7, "six_copies_plus_source");
+        builder.expectPartGated(1, true, 0, "copy_keeps_band_and_tier_pin");
+        for (int i = 0; i < 6; ++i) {
+            const float angle = IRMath::kTwoPi * static_cast<float>(i) / 6.0f;
+            builder.expectPartTransform(
+                i + 1,
+                sceneOrigin +
+                    IRMath::vec3(4.0f * IRMath::cos(angle), 4.0f * IRMath::sin(angle), 0.0f),
+                1.0f,
+                true,
+                "radial_copy_transform_" + std::to_string(i)
+            );
+        }
+        builder.segment("save");
+        builder.save();
+        builder.segment("undo");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.expectPartCount(1, "array_undo_restores_source_only");
+        return builder.finish();
+    }
+    case Id::NWAY_SYMMETRY: {
+        Builder builder("nway_symmetry", sceneSize, sceneOrigin);
+        const IRMath::ivec3 source(sceneSize.x / 2 + 2, sceneSize.y / 2, sceneSize.z - 2);
+        const IRMath::vec3 axis(0.0f, 0.0f, 1.0f);
+        const IRMath::ivec3 onPart1 = rotateCell(source, sceneSize, axis, -2, 3);
+        const IRMath::ivec3 onPart2 = rotateCell(source, sceneSize, axis, -1, 3);
+
+        builder.segment("array");
+        builder.addVoxelPart();
+        builder.applyRadialArray(3);
+        builder.toggleRotationalSymmetry();
+        builder.expectPartCount(4, "three_copy_rotation_group");
+
+        builder.segment("arm");
+        builder.expectPartOccupancy(1, onPart1, false, "first_sibling_empty_before_stroke");
+        builder.expectPartOccupancy(2, onPart2, false, "second_sibling_empty_before_stroke");
+        builder.expectPartOccupancy(3, source, false, "source_empty_before_stroke");
+
+        builder.segment("paint");
+        builder.click(source);
+        builder.expectPartOccupancy(1, onPart1, true, "first_sibling_receives_stroke");
+        builder.expectPartOccupancy(2, onPart2, true, "second_sibling_receives_stroke");
+        builder.expectPartOccupancy(3, source, true, "source_receives_stroke");
         return builder.finish();
     }
     case Id::MODULE_LOADED:

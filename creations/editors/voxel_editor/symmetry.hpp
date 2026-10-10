@@ -13,6 +13,8 @@ struct SymmetryState {
     float offsetX_ = 0.0f;
     float offsetY_ = 0.0f;
     float offsetZ_ = 0.0f;
+    int rotationalOrder_ = 0;
+    IRMath::vec3 rotationalAxis_ = IRMath::vec3(0.0f, 0.0f, 1.0f);
 };
 
 // The mirror-plane offset that reflects within a [0, sizeAxis) cell range: the
@@ -60,6 +62,16 @@ applyMirrors(IRMath::ivec3 pos, const SymmetryState &sym, std::vector<IRMath::iv
     expand(sym.enableX_, 0, sym.offsetX_);
     expand(sym.enableY_, 1, sym.offsetY_);
     expand(sym.enableZ_, 2, sym.offsetZ_);
+}
+
+inline IRMath::ivec3
+rotateCell(IRMath::ivec3 pos, IRMath::ivec3 size, IRMath::vec3 axis, int steps, int order) {
+    const IRMath::vec3 center = (IRMath::vec3(size) - IRMath::vec3(1.0f)) * 0.5f;
+    const float angle = IRMath::kTwoPi * static_cast<float>(steps) / static_cast<float>(order);
+    const IRMath::vec3 rotated =
+        center +
+        IRMath::rotateVectorByQuat(IRMath::vec3(pos) - center, IRMath::quatAxisAngle(axis, angle));
+    return IRMath::roundVec3HalfUp(rotated);
 }
 
 } // namespace IRVoxelEditor
