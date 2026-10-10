@@ -130,6 +130,7 @@ add_executable(IrredenEngineTest
   render/sprite_animation_test.cpp
   render/sprite_components_test.cpp
   render/sprite_render_test.cpp
+  render/widget_list_scroll_test.cpp
   render/widget_theme_singleton_test.cpp
   render/widget_tab_focus_test.cpp
   script/lua_audio_midi_observer_test.cpp

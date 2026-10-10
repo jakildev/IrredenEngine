@@ -116,16 +116,114 @@ struct C_WidgetCheckbox {
     bool checked_ = false;
 };
 
-// LIST — vertical selectable item list with an optional scroll offset.
-// itemHeight_ is the per-row pixel height; visible rows = size_.y /
-// itemHeight_. `scrollOffset_` is the index of the topmost visible
-// item; clamped by WIDGET_APPLY_LIST so a partial-content list never
-// scrolls off the bottom.
+// LIST — vertical selectable item list that scrolls by whole rows.
+// `scrollOffset_` is the requested index of the topmost visible item. It may
+// be stale: `items_` can shrink under it at any point in a frame, so every
+// reader takes the first visible item from `topIndex`, never from the field.
 struct C_WidgetList {
     std::vector<std::string> items_;
     int selectedIndex_ = -1; // -1 = nothing selected
     int scrollOffset_ = 0;
     int itemHeight_ = 18;
+
+    /// Passive position thumb, in GUI-canvas trixels below the widget's top
+    /// edge. `height_` is zero when every item fits the view.
+    struct ThumbSpan {
+        int offsetY_ = 0;
+        int height_ = 0;
+    };
+
+    // --- Scroll geometry --------------------------------------------------
+    //
+    // WIDGET_APPLY_LIST (wheel, click row), WIDGET_RENDER_LIST (rows, thumb),
+    // `IRPrefab::Widget::setListSelectedIndex` (reveal) and any headless test
+    // aiming a scripted click at a row all derive from these helpers, so the
+    // row a click resolves to is the row that was painted. `viewHeight` is
+    // the widget's `C_Widget::size_.y`; offsets are relative to its top edge.
+
+    /// `itemHeight_` floored at one trixel — the divisor every row
+    /// calculation uses, so an authored zero cannot divide by zero.
+    int rowHeight() const {
+        return IRMath::max(1, itemHeight_);
+    }
+
+    /// Whole rows that fit the view. A trailing partial row is not a row.
+    int visibleRows(int viewHeight) const {
+        return IRMath::max(0, viewHeight) / rowHeight();
+    }
+
+    /// Largest top index that still fills the view with items.
+    int maxScrollOffset(int viewHeight) const {
+        return IRMath::max(0, static_cast<int>(items_.size()) - visibleRows(viewHeight));
+    }
+
+    /// Index of the first visible item: `scrollOffset_` clamped to the content.
+    int topIndex(int viewHeight) const {
+        return IRMath::clamp(scrollOffset_, 0, maxScrollOffset(viewHeight));
+    }
+
+    /// Moves the view by @p rows (positive = toward the end), stopping at
+    /// either end of the content.
+    void scrollBy(int rows, int viewHeight) {
+        scrollOffset_ = IRMath::clamp(topIndex(viewHeight) + rows, 0, maxScrollOffset(viewHeight));
+    }
+
+    /// Brings item @p index into view with the least movement: a row above
+    /// the view lands on the top row, a row below it on the bottom row, and a
+    /// visible row moves nothing. An index outside `items_` is ignored.
+    void scrollIntoView(int index, int viewHeight) {
+        const int rows = visibleRows(viewHeight);
+        if (index < 0 || index >= static_cast<int>(items_.size()) || rows == 0) {
+            return;
+        }
+        const int top = topIndex(viewHeight);
+        if (index < top) {
+            scrollOffset_ = index;
+        } else if (index >= top + rows) {
+            scrollOffset_ = index - rows + 1;
+        } else {
+            scrollOffset_ = top;
+        }
+    }
+
+    /// Offset from the widget's top edge to the centre of visible row
+    /// @p visibleRow (0 = the top row).
+    float rowCenterOffsetY(int visibleRow) const {
+        return (static_cast<float>(visibleRow) + 0.5f) * static_cast<float>(rowHeight());
+    }
+
+    /// Item index @p offsetY trixels below the widget's top edge, or -1 when
+    /// that point is above the view, on the trailing partial row, or on a row
+    /// past the last item.
+    int itemAtOffsetY(int viewHeight, float offsetY) const {
+        if (offsetY < 0.0f) {
+            return -1;
+        }
+        const int row = static_cast<int>(offsetY / static_cast<float>(rowHeight()));
+        if (row >= visibleRows(viewHeight)) {
+            return -1;
+        }
+        const int index = topIndex(viewHeight) + row;
+        return index < static_cast<int>(items_.size()) ? index : -1;
+    }
+
+    /// Where the position thumb sits along the view's height. Its height is
+    /// the visible fraction of the content, floored at @p minHeight and capped
+    /// at the view.
+    ThumbSpan thumbSpan(int viewHeight, int minHeight) const {
+        const int rows = visibleRows(viewHeight);
+        const int count = static_cast<int>(items_.size());
+        if (rows == 0 || count <= rows) {
+            return {};
+        }
+        const int height = IRMath::clamp(
+            viewHeight * rows / count,
+            IRMath::clamp(minHeight, 1, viewHeight),
+            viewHeight
+        );
+        const int offsetY = (viewHeight - height) * topIndex(viewHeight) / (count - rows);
+        return {offsetY, height};
+    }
 };
 
 // DROPDOWN — collapsed combo expanding to a vertical list. When

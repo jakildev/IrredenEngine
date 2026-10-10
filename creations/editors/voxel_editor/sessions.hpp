@@ -63,6 +63,12 @@
 // when the selection moves between the two parts, and the scene-sized loft
 // tool refuses the 3x3x8 part instead of reading its masks at the wrong stride.
 //
+// `parts_scroll` proves the PARTS list reaches every part once an array makes
+// more parts than the list has rows: the array's selection is scrolled into
+// view, the wheel walks the list to either end, and a row click there selects
+// the first and the last part. No Tab is sent. Its last segment wheels over
+// the scene, which zooms the camera, so nothing can follow it.
+//
 // `module_loaded` proves the `--module <dir>` seam against whatever module is
 // loaded: its expectations come from `<dir>/session_expect.lua` (resolved into
 // a ModuleSessionSpec in main.cpp), so no module content is named here. It
@@ -102,6 +108,7 @@ enum class Id {
     MODE_PREVIEW_SHOTS,
     TEXT_INPUT_COMMAND_CAPTURE,
     PART_SIZES,
+    PARTS_SCROLL,
     MODULE_LOADED,
     COMPONENT_ATTACH,
     COMPONENT_FIELD_PAGE,
@@ -145,6 +152,8 @@ inline Id idFromName(const std::string &name) {
         return Id::TEXT_INPUT_COMMAND_CAPTURE;
     if (name == "part_sizes")
         return Id::PART_SIZES;
+    if (name == "parts_scroll")
+        return Id::PARTS_SCROLL;
     if (name == "module_loaded")
         return Id::MODULE_LOADED;
     if (name == "component_attach")
@@ -1966,6 +1975,48 @@ inline Recipe build(
         builder.reload();
         builder.expectPartExtent(kStem, stemSize, "stem_extent_survives_reload");
         builder.expectPartExtent(kFrame, frameSize, "frame_extent_survives_reload");
+        return builder.finish();
+    }
+    case Id::PARTS_SCROLL: {
+        Builder builder("parts_scroll", sceneSize, sceneOrigin);
+        constexpr int kCopies = 6;
+        constexpr int kParts = kCopies + 1;
+        constexpr int kLastPart = kParts - 1;
+        const int rows = partsListVisibleRows();
+        const int maxTop = kParts - rows;
+        if (maxTop < 1) {
+            builder.recordError(
+                "parts_scroll needs more parts than the PARTS list has rows (" +
+                std::to_string(kParts) + " parts, " + std::to_string(rows) + " rows)"
+            );
+            return builder.finish();
+        }
+        const IRMath::vec2 listCenter = partsListRowCenterGuiTrixel(rows / 2);
+
+        builder.segment("array");
+        builder.addVoxelPart();
+        builder.applyRadialArray(kCopies);
+        builder.expectPartCount(kParts, "array_overflows_the_list");
+        builder.expectSelectedPartVisible(kLastPart, "selected_row_visible_after_array");
+
+        builder.segment("first");
+        builder.wheelGui(listCenter, -(maxTop + 1));
+        builder.selectPartThroughList(0, 0);
+        builder.expectSelectedPartVisible(0, "first_part_selected_through_list");
+
+        builder.segment("last");
+        builder.wheelGui(listCenter, maxTop + 1);
+        builder.selectPartThroughList(rows - 1, kLastPart);
+        builder.expectSelectedPartVisible(kLastPart, "last_part_selected_through_list");
+
+        builder.segment("list_wheel");
+        builder.wheelGui(listCenter, -1);
+        builder.expectPartsListTop(maxTop - 1, "list_wheel_scrolls_one_row");
+        builder.expectCameraZoom(kSessionZoom, true, "list_wheel_keeps_zoom");
+
+        builder.segment("scene_wheel");
+        builder.wheelScene(IRMath::ivec3(sceneSize.x / 2, sceneSize.y / 2, sceneSize.z - 2), -1);
+        builder.expectCameraZoom(kSessionZoom, false, "scene_wheel_zooms");
         return builder.finish();
     }
     case Id::MODULE_LOADED:
