@@ -37,6 +37,20 @@ inline constexpr float kMinOnScreenTrixelSizePx = 1.0f;
 // so a suite that alternates cardinal and rotated poses exercises the unpark.
 inline constexpr int kParkedCardinalFrames = 120;
 
+// Diagnostic readback blocks until queued GPU work completes. Requires a live
+// allocated set; the overflow control block begins with indexed draw arguments.
+inline std::uint32_t readOverflowInstanceCount(const IRComponents::C_PerAxisTrixelCanvases &axes) {
+    IRRender::device()->finish();
+    std::uint32_t count = 0;
+    axes.winnerIds_.second->getSubData(
+        static_cast<std::ptrdiff_t>(axes.ctrlBaseUints_) * sizeof(std::uint32_t) +
+            offsetof(IRRender::PerAxisCellDrawCommand, instanceCount),
+        sizeof(count),
+        &count
+    );
+    return count;
+}
+
 // Texel size of each per-axis face store for the current main canvas.
 inline IRMath::ivec2 storeSize() {
     return IRMath::perAxisTrixelCanvasWorstCaseSize(
@@ -210,19 +224,9 @@ inline void syncAllocationToCameraYaw() {
     }
 }
 
-// Capped per-axis lattice density (`subPerAxis`) for the smooth-camera-Z-yaw
-// store. The per-axis face-local lattice is `world × density`; the
-// bounded canvas (perAxisTrixelCanvasWorstCaseSize) does NOT scale with the
-// subdivision factor, so a large density drives on-screen cells off the canvas
-// and they are silently dropped (the black-hole clip). This caps the density
-// to the canvas via IRMath::perAxisSubdivisionCap.
-//
-// It is a pure function of the main canvas cardinal size + camera zoom + render
-// subdivisions, so EVERY per-axis pass — the store, the per-axis AO/lighting
-// recovery (perAxisCellToWorld3D reads it via voxelRenderOptions.y), and the
-// framebuffer forward-scatter — computes the identical value and the world↔cell
-// scale stays consistent. Returns the uncapped effective subdivisions when not
-// subdividing (NONE mode) or when the cap doesn't bite.
+// Keep the subdivided voxel footprint inside the fixed-size per-axis store.
+// Store, scatter and screen-depth resolve share this cap. Lighting-family
+// position recovery instead uses the store frame and encoded sub-cell fraction.
 inline int subdivisionDensity() {
     const int effSub = IRRender::getVoxelRenderEffectiveSubdivisions();
     if (IRRender::getSubdivisionMode() == IRRender::SubdivisionMode::NONE) {
@@ -245,13 +249,8 @@ inline int subdivisionDensity() {
     return IRMath::clamp(effSub, 1, cap);
 }
 
-// Patch the shared voxel frame-data UBO's `voxelRenderOptions_.y` (the per-axis
-// `subPerAxis` density). Pass-scoped: a per-axis dispatch sets the capped
-// density before its loop and restores the uncapped `effSub` after, mirroring
-// the existing per-axis `perAxisRoute_` set/restore. AO / lighting / sun-shadow
-// only `subData` `perAxisRoute_`, so they reuse the UBO's `voxelRenderOptions_`
-// and must patch the density here for their face-local world recovery to match
-// the capped store.
+// Density-dependent passes own the capped-density patch and restore the
+// effective single-canvas density before returning.
 inline void setUboSubdivisionDensity(IRRender::Buffer *frameDataUbo, int density) {
     frameDataUbo->subData(
         offsetof(IRRender::FrameDataVoxelToCanvas, voxelRenderOptions_) + sizeof(int),
@@ -295,20 +294,10 @@ inline void restoreVoxelCompactionSlots(
     );
 }
 
-// RAII scope for the per-axis lighting-family dispatches (AO / sun-shadow /
-// lighting): flips the shared voxel frame-data UBO onto the per-axis decode
-// route (perAxisRoute_ = 1 — a boolean route flag on the lighting path; the
-// shader recovers the axis per-pixel from faceId, distinct from stage-1's
-// 1/2/3 axis selector) at the capped lattice density the store wrote, with
-// canvasSizePixels_ set to the per-axis store size — the overflow-entry kernels
-// derive the store's origin anchor from it, and the cell kernels read their
-// bound image's own size instead. Restores the single-canvas state on
-// destruction: route 0, the uncapped effSub density, the main canvas size, and
-// the voxel-compaction slots 25/26 (see restoreVoxelCompactionSlots — the loop
-// below borrows them). One definition
-// of the patch/restore discipline those three dispatches each hand-rolled —
-// the FrameYawRestoreGuard idiom (system_bake_sun_shadow_map.hpp) applied to
-// the lighting family, so a new consumer cannot forget a restore.
+// AO, sun shadow, lighting and fog use a boolean per-axis route; each cell's
+// face id supplies its axis. Store-frame recovery is independent of density.
+// Restore route zero, main-canvas size and borrowed voxel-compaction bindings
+// on exit so subsequent single-canvas dispatches retain their frame state.
 class LightingRouteScope {
   public:
     LightingRouteScope(
@@ -328,7 +317,6 @@ class LightingRouteScope {
             sizeof(int),
             &kPerAxisRoute
         );
-        setUboSubdivisionDensity(m_frameDataUbo, subdivisionDensity());
         setUboCanvasSize(storeCanvasSize);
     }
 
@@ -339,7 +327,6 @@ class LightingRouteScope {
             sizeof(int),
             &kSingleCanvasRoute
         );
-        setUboSubdivisionDensity(m_frameDataUbo, IRRender::getVoxelRenderEffectiveSubdivisions());
         setUboCanvasSize(m_mainCanvasSize);
         restoreVoxelCompactionSlots(m_voxelCompactedBuf, m_voxelIndirectBuf);
     }

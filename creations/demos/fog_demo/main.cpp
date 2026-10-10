@@ -627,6 +627,51 @@ constexpr IRVideo::AutoScreenshotShot kEdgeZCostCeilingPaintShots[] = {
 constexpr IRVideo::AutoScreenshotShot kPerAxisOverflowShots[] = {
     {9.0f, vec2(0, 0), kEdgeZCostCeilingPaintYaw, "fog_peraxis_overflow_yaw9"},
 };
+bool g_lightingDensityCheck = false;
+constexpr IRVideo::AutoScreenshotShot kLightingDensityShots[] = {
+    {4.0f, vec2(0, 0), 0.35f, "fog_lighting_density_rotated"},
+    {4.0f, vec2(0, 0), 0.0f, "fog_lighting_density_cardinal"},
+    {4.0f, vec2(0, 0), 0.35f, "fog_lighting_density_resumed"},
+};
+
+void probeLightingDensity(int shotIndex) {
+    const auto &shot = kLightingDensityShots[shotIndex];
+    const bool rotated = shot.yawRadians_ != 0.0f;
+    const int effective = IRRender::getVoxelRenderEffectiveSubdivisions();
+    const int capped = IRPrefab::PerAxisCanvas::subdivisionDensity();
+    const auto perAxis =
+        IREntity::getComponentOptional<C_PerAxisTrixelCanvases>(IRRender::getCanvas("main"));
+    const bool live = perAxis.has_value() && perAxis.value()->isAllocated();
+    const bool parked = perAxis.has_value() && perAxis.value()->hasParked();
+    std::uint32_t overflow = 0;
+    if (live) {
+        overflow = IRPrefab::PerAxisCanvas::readOverflowInstanceCount(*perAxis.value());
+    }
+    const vec2 zoom = IRRender::getCameraZoom();
+    const bool poseMatches = IRMath::abs(IRPrefab::Camera::getYaw() - shot.yawRadians_) < 0.001f &&
+                             IRMath::abs(zoom.x - shot.zoom_) < 0.001f &&
+                             IRMath::abs(zoom.y - shot.zoom_) < 0.001f;
+    // A cardinal hold parks the live set; resumed rotation requires live axes.
+    const bool valid =
+        poseMatches && (rotated ? live && capped < effective && (!g_perAxisOverflow || overflow > 0)
+                                : !live && parked);
+    std::printf(
+        "LIGHTING-DENSITY-CHECK shot=%d effective=%d capped=%d live=%d parked=%d "
+        "overflowAvailable=%d overflow=%u %s\n",
+        shotIndex,
+        effective,
+        capped,
+        live,
+        parked,
+        live,
+        overflow,
+        valid ? "PASS" : "FAIL"
+    );
+    if (!valid) {
+        std::exit(EXIT_FAILURE);
+    }
+}
+
 constexpr int kFogPaintProbeTolerance = 2;
 IREntity::EntityId g_ceilingPillar = IREntity::kNullEntity;
 int g_fogPaintProbeFrame = 0;
@@ -2147,6 +2192,11 @@ int main(int argc, char **argv) {
         "Add the fog-hidden keep-ring overflow fixture and capture its rotated paint shot"
     );
     IREngine::args().flag(
+        "--lighting-density-check",
+        "With --auto-screenshot and either --peraxis-overflow or --occlusion=high-ground: "
+        "check capped density at subdivisions 8 across rotated/cardinal/resumed zoom-4 shots"
+    );
+    IREngine::args().flag(
         "--entity-reveal",
         "Fog BODY subjects under the --edge-zcost-ceiling hard ceiling: untagged and "
         "governed voxel pillars and a flagged SDF box render whole at one factor beside "
@@ -2256,6 +2306,53 @@ int main(int argc, char **argv) {
     });
     IREngine::init(argc, argv);
     g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
+    g_lightingDensityCheck = IREngine::args().getFlag("--lighting-density-check");
+    if (g_lightingDensityCheck) {
+        const auto &args = IREngine::args();
+        const bool overflow = args.getFlag("--peraxis-overflow");
+        const auto occlusion = args.getEnum("--occlusion");
+        bool compatible = g_autoWarmupFrames > 0 && ((overflow && occlusion == "none") ||
+                                                     (!overflow && occlusion == "high-ground"));
+        for (const char *flag :
+             {"--moving-observer",
+              "--player-walk",
+              "--edge-zoom",
+              "--edge-sdf-blocker",
+              "--detached-edge",
+              "--detached-body",
+              "--detached-body-hidden",
+              "--detached-body-no-solid",
+              "--detached-exempt",
+              "--detached-field-hidden",
+              "--edge-smooth",
+              "--edge-yaw-sweep",
+              "--edge-zcost",
+              "--edge-zcost-asym",
+              "--edge-zcost-ceiling",
+              "--entity-reveal",
+              "--entity-reveal-soft-edge",
+              "--lua-fog-selftest",
+              "--los-query-bench",
+              "--world-pan",
+              "--depth-slab",
+              "--many-sources",
+              "--channel-probe",
+              "--explored-decay",
+              "--auto-profile"}) {
+            compatible = compatible && !args.wasProvided(flag);
+        }
+        if (!compatible) {
+            std::fprintf(
+                stderr,
+                "--lighting-density-check requires --auto-screenshot and "
+                "exactly one of --peraxis-overflow or --occlusion=high-ground, "
+                "without another scene mode or --auto-profile\n"
+            );
+            return 2;
+        }
+        IRRender::setSubdivisionMode(IRRender::SubdivisionMode::FULL);
+        IRRender::setVoxelRenderSubdivisions(8);
+    }
     g_movingObserver = IREngine::args().getFlag("--moving-observer");
     g_playerWalk = IREngine::args().getFlag("--player-walk");
     g_edgeZoom = IREngine::args().getFlag("--edge-zoom");
@@ -2647,7 +2744,9 @@ void initSystems() {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
-        if (g_worldPan) {
+        if (g_lightingDensityCheck) {
+            cfg.onCaptureFrame_ = &probeLightingDensity;
+        } else if (g_worldPan) {
             cfg.onCaptureFrame_ = &probeWorldPan;
         } else if (g_depthSlab) {
             cfg.onCaptureFrame_ = &probeDepthSlab;
@@ -2667,7 +2766,9 @@ void initSystems() {
         // --edge-smooth zoom on the GRID cross-section clip edge (hard vs smooth
         // disc); --player-walk captures the walking reveal sequence; the
         // default captures the three static fog-boundary shots.
-        if (g_worldPan) {
+        if (g_lightingDensityCheck) {
+            IRVideo::setAutoScreenshotShots(cfg, kLightingDensityShots);
+        } else if (g_worldPan) {
             IRVideo::setAutoScreenshotShots(cfg, kWorldPanShots);
         } else if (g_depthSlab) {
             IRVideo::setAutoScreenshotShots(cfg, kDepthSlabShots);

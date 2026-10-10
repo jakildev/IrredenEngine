@@ -375,12 +375,8 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         const C_CanvasAOTexture &mainAO,
         const C_CanvasSunShadow &mainShadow
     ) {
-        // The LightingRouteScope flips the shared UBO onto the per-axis decode
-        // route at the capped store density and restores route / density /
-        // compaction slots on exit; it spans the overflow relight below, which
-        // reads the same per-axis frame state. The GpuSubStageScope
-        // brackets only the 3 per-axis relight dispatches — the overflow
-        // relight owns its own row.
+        // Cell and overflow relight share per-axis frame state but have separate
+        // GPU timing rows.
         {
             IRPrefab::PerAxisCanvas::LightingRouteScope route(
                 voxelFrameDataBuf_,

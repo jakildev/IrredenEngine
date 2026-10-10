@@ -1,0 +1,4 @@
+[2026-10-06 09:31:19.597] [ClientLog] [info] CaptureCamera: label=sweep_yaw_0 yaw=-0.3499999 zoom=(4,4) effectiveIso=(0,0) subdivisions=16 gameResolution=(1280,720)
+[2026-10-06 09:31:21.115] [ClientLog] [info] CaptureCamera: label=sweep_yaw_1 yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=16 gameResolution=(1280,720)
+[2026-10-06 09:31:22.648] [ClientLog] [info] CaptureCamera: label=sweep_yaw_2 yaw=0.3499999 zoom=(4,4) effectiveIso=(0,0) subdivisions=16 gameResolution=(1280,720)
+ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0

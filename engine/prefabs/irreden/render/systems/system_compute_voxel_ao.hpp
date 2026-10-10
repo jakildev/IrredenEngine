@@ -143,12 +143,7 @@ template <> struct System<COMPUTE_VOXEL_AO> {
         }
     }
 
-    // Run the AO compute over each of the three per-axis canvases. The
-    // LightingRouteScope flips the shared UBO onto the per-axis decode route
-    // (the shader reconstructs world-pos face-locally, perAxisCellToWorld3D)
-    // and restores route / density / compaction slots on exit. The world AO
-    // band is per-axis-correct because the canvas is a same-axis cardinal-iso
-    // lattice.
+    // The world AO band uses the store-frame position recovered for each cell.
     void dispatchPerAxisAO(
         C_PerAxisTrixelCanvases &axes,
         const C_TriangleCanvasTextures &mainTextures,

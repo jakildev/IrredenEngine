@@ -1,0 +1,20 @@
+diff --git a/engine/prefabs/irreden/render/per_axis_canvas.hpp b/engine/prefabs/irreden/render/per_axis_canvas.hpp
+index cb604184f..f92e5dfd2 100644
+--- a/engine/prefabs/irreden/render/per_axis_canvas.hpp
++++ b/engine/prefabs/irreden/render/per_axis_canvas.hpp
+@@ -317,6 +317,7 @@ class LightingRouteScope {
+             sizeof(int),
+             &kPerAxisRoute
+         );
++        setUboSubdivisionDensity(m_frameDataUbo, subdivisionDensity());
+         setUboCanvasSize(storeCanvasSize);
+     }
+ 
+@@ -327,6 +328,7 @@ class LightingRouteScope {
+             sizeof(int),
+             &kSingleCanvasRoute
+         );
++        setUboSubdivisionDensity(m_frameDataUbo, IRRender::getVoxelRenderEffectiveSubdivisions());
+         setUboCanvasSize(m_mainCanvasSize);
+         restoreVoxelCompactionSlots(m_voxelCompactedBuf, m_voxelIndirectBuf);
+     }
