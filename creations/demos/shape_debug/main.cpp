@@ -4015,7 +4015,8 @@ EntityId createSDFShape(vec3 position, IRRender::ShapeType type, vec4 params, Co
 void setupCanvasLighting();
 
 void initShadowFootprintProbeScene() {
-    constexpr float kShadowProbeFloorTopZ = 4.0f;
+    constexpr vec3 kShadowProbeFloorCenter{0.0f, 0.0f, 5.0f};
+    constexpr vec4 kShadowProbeFloorParams{72.0f, 56.0f, 2.0f, 0.0f};
     constexpr vec3 kShadowProbeSunDirection{0.35f, 0.85f, -0.4f};
     constexpr vec4 kConeParams{4.0f, 4.0f, 8.0f, 0.0f};
     constexpr vec4 kTorusParams{4.0f, 2.0f, 0.0f, 0.0f};
@@ -4048,9 +4049,9 @@ void initShadowFootprintProbeScene() {
     );
 
     const EntityId floor = createSDFShape(
-        vec3(0.0f, 0.0f, 5.0f),
+        kShadowProbeFloorCenter,
         IRRender::ShapeType::BOX,
-        vec4(72.0f, 56.0f, 2.0f, 0.0f),
+        kShadowProbeFloorParams,
         Color{150, 150, 160, 255}
     );
     IREntity::setComponent(floor, C_LightBlocker{false, false, 0.0f});
@@ -4058,11 +4059,25 @@ void initShadowFootprintProbeScene() {
     setupCanvasLighting();
     IRRender::setSunDirection(kShadowProbeSunDirection);
     const vec3 sun = IRRender::getSunDirection();
+    const float captureZoom = kShadowFootprintShots[0].zoom_;
+    const int effectiveSubdivisions =
+        IRRender::getVoxelRenderEffectiveSubdivisionsForZoom(vec2(captureZoom));
+    const float receiverHalfExtentZ = (kShadowProbeFloorParams.z - 1.0f) * 0.5f +
+                                      0.5f / static_cast<float>(effectiveSubdivisions);
+    const float receiverTopZ = kShadowProbeFloorCenter.z - receiverHalfExtentZ;
+    const float analyticSurfaceThreshold = 0.5f / static_cast<float>(effectiveSubdivisions);
     IR_LOG_INFO(
-        "Shadow-footprint probe: receiver_z={} sun=({},{},{}) "
+        "Shadow-footprint probe: capture_zoom={} effective_subdivisions={} "
+        "receiver_center_z={} receiver_size_z={} receiver_top_z={} "
+        "analytic_surface_threshold={} sun=({},{},{}) "
         "cone_voxel_center=(-12,-8,0) cone_sdf_center=(-12,8,0) "
         "torus_voxel_center=(12,-8,1) torus_sdf_center=(12,8,2)",
-        kShadowProbeFloorTopZ,
+        captureZoom,
+        effectiveSubdivisions,
+        kShadowProbeFloorCenter.z,
+        kShadowProbeFloorParams.z,
+        receiverTopZ,
+        analyticSurfaceThreshold,
         sun.x,
         sun.y,
         sun.z

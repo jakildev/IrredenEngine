@@ -13,7 +13,8 @@ from pathlib import Path
 
 import render_metric_util as rmu
 
-FLOOR_Z = 4.0
+RECEIVER_CENTER_Z = 5.0
+RECEIVER_SIZE_Z = 2.0
 SUN = (0.35, 0.85, -0.4)
 GAME_RESOLUTION = (1280, 720)
 
@@ -38,6 +39,15 @@ SHAPES = (
 def normalize(value):
     length = math.sqrt(sum(component * component for component in value))
     return tuple(component / length for component in value)
+
+
+def receiver_top_z(effective_subdivisions):
+    half_extent = (RECEIVER_SIZE_Z - 1.0) * 0.5 + 0.5 / effective_subdivisions
+    return RECEIVER_CENTER_Z - half_extent
+
+
+def analytic_surface_threshold(effective_subdivisions):
+    return 0.5 / effective_subdivisions
 
 
 def sdf(shape: Shape, point, scale=1.0):
@@ -71,19 +81,23 @@ def occupied_boxes(shape: Shape, scale=1.0):
     return boxes
 
 
-def analytic_half_bounds(shape: Shape, scale=1.0):
+def analytic_half_bounds(shape: Shape, scale=1.0, surface_threshold=0.0):
     if shape.kind == "torus":
-        return ((shape.params[0] + shape.params[1]) * scale,) * 2 + (shape.params[1] * scale,)
-    return (shape.params[0] * scale, shape.params[0] * scale, shape.params[2] * 0.5 * scale)
+        radial = (shape.params[0] + shape.params[1]) * scale + surface_threshold
+        vertical = shape.params[1] * scale + surface_threshold
+        return radial, radial, vertical
+    radial = shape.params[0] * scale + surface_threshold
+    vertical = shape.params[2] * 0.5 * scale + surface_threshold
+    return radial, radial, vertical
 
 
-def bounds(shape: Shape, boxes, scale=1.0):
+def bounds(shape: Shape, boxes, scale=1.0, surface_threshold=0.0):
     if boxes:
         return tuple(
             (min(box[axis][0] for box in boxes), max(box[axis][1] for box in boxes))
             for axis in range(3)
         )
-    half = analytic_half_bounds(shape, scale)
+    half = analytic_half_bounds(shape, scale, surface_threshold)
     return tuple(
         (shape.center[axis] - half[axis], shape.center[axis] + half[axis]) for axis in range(3)
     )
@@ -101,13 +115,13 @@ def project(point, yaw, step, origin):
     return origin[0] + iso_x * step[0], origin[1] + iso_y * step[1]
 
 
-def floor_point(pixel, yaw, step, origin):
+def floor_point(pixel, yaw, step, origin, receiver_z):
     iso_x = (pixel[0] - origin[0]) / step[0]
     iso_y = (pixel[1] - origin[1]) / step[1]
-    vx = (2.0 * FLOOR_Z - iso_x - iso_y) * 0.5
-    vy = (iso_x - iso_y + 2.0 * FLOOR_Z) * 0.5
+    vx = (2.0 * receiver_z - iso_x - iso_y) * 0.5
+    vy = (iso_x - iso_y + 2.0 * receiver_z) * 0.5
     x, y = rotate_xy(vx, vy, yaw)
-    return x, y, FLOOR_Z
+    return x, y, receiver_z
 
 
 def ray_box_hit(origin, direction, box):
@@ -126,7 +140,7 @@ def ray_box_hit(origin, direction, box):
     return high >= low
 
 
-def analytic_hit(shape: Shape, origin, direction, shape_bounds, scale=1.0):
+def analytic_hit(shape: Shape, origin, direction, shape_bounds, surface_threshold, scale=1.0):
     tz0 = (shape_bounds[2][0] - origin[2]) / direction[2]
     tz1 = (shape_bounds[2][1] - origin[2]) / direction[2]
     low, high = max(0.0, min(tz0, tz1)), max(tz0, tz1)
@@ -136,18 +150,18 @@ def analytic_hit(shape: Shape, origin, direction, shape_bounds, scale=1.0):
     for index in range(steps + 1):
         t = low + (high - low) * index / steps
         point = tuple(origin[axis] + direction[axis] * t for axis in range(3))
-        if sdf(shape, point, scale) <= 0.0:
+        if sdf(shape, point, scale) <= surface_threshold / scale:
             return True
     return False
 
 
-def projected_receiver_bounds(shape_bounds, sun):
+def projected_receiver_bounds(shape_bounds, sun, receiver_z):
     points = []
     for x in shape_bounds[0]:
         for y in shape_bounds[1]:
             for z in shape_bounds[2]:
-                distance = (z - FLOOR_Z) / sun[2]
-                points.append((x - sun[0] * distance, y - sun[1] * distance, FLOOR_Z))
+                distance = (z - receiver_z) / sun[2]
+                points.append((x - sun[0] * distance, y - sun[1] * distance, receiver_z))
     return points
 
 
@@ -169,11 +183,13 @@ def near(mask, point, radius):
     return False
 
 
-def expected_mask(shape, yaw, step, origin, image_size, scale=1.0):
+def expected_mask(shape, yaw, step, origin, image_size, scale=1.0, effective_subdivisions=4):
     sun = normalize(SUN)
+    receiver_z = receiver_top_z(effective_subdivisions)
+    surface_threshold = analytic_surface_threshold(effective_subdivisions)
     boxes = occupied_boxes(shape, scale) if shape.voxel_size is not None else []
-    shape_bounds = bounds(shape, boxes, scale)
-    receiver_points = projected_receiver_bounds(shape_bounds, sun)
+    shape_bounds = bounds(shape, boxes, scale, surface_threshold if not boxes else 0.0)
+    receiver_points = projected_receiver_bounds(shape_bounds, sun, receiver_z)
     left, top, right, bottom = aabb_pixels(receiver_points, yaw, step, origin, 3)
     left, top = max(0, left), max(0, top)
     right, bottom = min(image_size[0], right), min(image_size[1], bottom)
@@ -186,11 +202,13 @@ def expected_mask(shape, yaw, step, origin, image_size, scale=1.0):
         for px in range(left, right):
             if guard[0] <= px <= guard[2] and guard[1] <= py <= guard[3]:
                 excluded.add((px, py))
-            ray_origin = floor_point((px + 0.5, py + 0.5), yaw, step, origin)
+            ray_origin = floor_point((px + 0.5, py + 0.5), yaw, step, origin, receiver_z)
             hit = (
                 any(ray_box_hit(ray_origin, sun, box) for box in boxes)
                 if boxes
-                else analytic_hit(shape, ray_origin, sun, shape_bounds, scale)
+                else analytic_hit(
+                    shape, ray_origin, sun, shape_bounds, surface_threshold, scale
+                )
             )
             if hit:
                 expected.add((px, py))
@@ -239,16 +257,26 @@ def observed_mask(path, unshadowed=None):
 
 
 def measure(
-    path, yaw, zoom, tolerance, max_missing, max_excess, scale=1.0, diagnostic=None, unshadowed=None
+    path,
+    yaw,
+    zoom,
+    tolerance,
+    max_missing,
+    max_excess,
+    scale=1.0,
+    diagnostic=None,
+    unshadowed=None,
+    effective_subdivisions=4,
 ):
     width, height, bpp, pixels, observed_all, floor = observed_mask(path, unshadowed)
     output_scale = (width / GAME_RESOLUTION[0], height / GAME_RESOLUTION[1])
     step = (2.0 * zoom * output_scale[0], zoom * output_scale[1])
     origin = (width * 0.5, height * 0.5)
+    density = effective_subdivisions
     geometry = []
     for shape in SHAPES:
         expected, excluded, roi, shape_bounds, box_count = expected_mask(
-            shape, yaw, step, origin, (width, height), scale
+            shape, yaw, step, origin, (width, height), scale, density
         )
         if floor is not None:
             expected &= floor
@@ -326,7 +354,11 @@ def measure(
         "output_scale": [round(value, 3) for value in output_scale],
         "screen_origin": [origin[0], origin[1]],
         "screen_step": list(step),
-        "receiver_z": FLOOR_Z,
+        "effective_subdivisions": density,
+        "receiver_center_z": RECEIVER_CENTER_Z,
+        "receiver_size_z": RECEIVER_SIZE_Z,
+        "receiver_z": receiver_top_z(density),
+        "analytic_surface_threshold": analytic_surface_threshold(density),
         "sun_direction": [round(value, 6) for value in normalize(SUN)],
         "control_scale": scale,
         "tolerance_px": tolerance,
@@ -344,6 +376,7 @@ def main(argv=None):
     parser.add_argument("--max-missing-ratio", type=float, default=0.15)
     parser.add_argument("--max-excess-ratio", type=float, default=0.15)
     parser.add_argument("--control-scale", type=float, default=1.0)
+    parser.add_argument("--effective-subdivisions", type=int, required=True)
     parser.add_argument("--diagnostic", type=Path)
     parser.add_argument(
         "--unshadowed",
@@ -362,6 +395,7 @@ def main(argv=None):
             args.control_scale,
             args.diagnostic,
             args.unshadowed,
+            args.effective_subdivisions,
         )
     except (OSError, ValueError) as error:
         print(json.dumps({"error": str(error)}))

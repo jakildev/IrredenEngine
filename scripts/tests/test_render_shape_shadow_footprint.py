@@ -44,11 +44,28 @@ class ShapeShadowFootprintTest(unittest.TestCase):
         origin = (640.0, 360.0)
         step = (8.0, 4.0)
         for yaw in (0.0, math.pi / 4.0):
-            for point in ((-12.0, -8.0, 4.0), (12.0, 8.0, 4.0), (1.25, -3.5, 4.0)):
+            for point in (
+                (-12.0, -8.0, 4.375),
+                (12.0, 8.0, 4.375),
+                (1.25, -3.5, 4.375),
+            ):
                 pixel = METRIC.project(point, yaw, step, origin)
-                actual = METRIC.floor_point(pixel, yaw, step, origin)
+                actual = METRIC.floor_point(pixel, yaw, step, origin, 4.375)
                 for got, want in zip(actual, point):
                     self.assertAlmostEqual(got, want)
+
+    def test_density_sets_receiver_plane_and_analytic_boundary(self):
+        self.assertAlmostEqual(METRIC.receiver_top_z(1), 4.0)
+        self.assertAlmostEqual(METRIC.receiver_top_z(4), 4.375)
+        self.assertAlmostEqual(METRIC.analytic_surface_threshold(4), 0.125)
+
+        torus = METRIC.SHAPES[3]
+        boundary_point = (torus.center[0] + 6.0625, torus.center[1], torus.center[2])
+        self.assertGreater(METRIC.sdf(torus, boundary_point), 0.0)
+        self.assertLessEqual(
+            METRIC.sdf(torus, boundary_point), METRIC.analytic_surface_threshold(4)
+        )
+        self.assertGreaterEqual(METRIC.analytic_half_bounds(torus, 1.0, 0.125)[0], 6.0625)
 
     def test_voxel_fixture_occupancy_is_nonempty_and_bounded(self):
         cone, torus = METRIC.SHAPES[0], METRIC.SHAPES[2]
@@ -95,7 +112,15 @@ class ShapeShadowFootprintTest(unittest.TestCase):
                 shadowed, unshadowed = self.write_shadow_pair(directory, scale)
                 with contextlib.redirect_stdout(io.StringIO()):
                     actual_exit = METRIC.main(
-                        [str(shadowed), "--unshadowed", str(unshadowed), "--yaw", "0"]
+                        [
+                            str(shadowed),
+                            "--unshadowed",
+                            str(unshadowed),
+                            "--yaw",
+                            "0",
+                            "--effective-subdivisions",
+                            "4",
+                        ]
                     )
                 self.assertEqual(actual_exit, expected_exit)
 
