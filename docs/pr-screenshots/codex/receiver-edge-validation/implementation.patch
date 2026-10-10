@@ -1,0 +1,128 @@
+diff --git a/engine/render/src/shaders/c_compute_sun_shadow_body.glsl b/engine/render/src/shaders/c_compute_sun_shadow_body.glsl
+index e7249e7c8..da117d27c 100644
+--- a/engine/render/src/shaders/c_compute_sun_shadow_body.glsl
++++ b/engine/render/src/shaders/c_compute_sun_shadow_body.glsl
+@@ -164,6 +164,9 @@ void main() {
+             false,
+             pos3D, normal)) {
+         receiverFace = encodeReceiverFace(normal);
++    } else if (selectedShapeBoxUsesWorldFaceSlot(pixel, size.x)) {
++        normal = faceOutwardNormal6(visibleFaceIds[face] ^ flip);
++        receiverFace = encodeReceiverFace(normal);
+     }
+ 
+ #endif
+diff --git a/engine/render/src/shaders/ir_selected_shape_receiver.glsl b/engine/render/src/shaders/ir_selected_shape_receiver.glsl
+index ccd486bdc..9f9373cb6 100644
+--- a/engine/render/src/shaders/ir_selected_shape_receiver.glsl
++++ b/engine/render/src/shaders/ir_selected_shape_receiver.glsl
+@@ -5,14 +5,19 @@ layout(std430, binding = 20) readonly buffer ReceiverShapes { ShapeDescriptor re
+ layout(std430, binding = 22) readonly buffer ReceiverOwners { uint receiverOwners[]; };
+ layout(std430, binding = 30) readonly buffer ReceiverTiles { ShapeTileDescriptor receiverTiles[]; };
+ 
++int selectedShapeIndex(ivec2 ownerPixel, int ownerWidth) {
++    if (receiverFrame.shapeCount <= 0) return -1;
++    uint key = receiverOwners[uint(ownerPixel.y * ownerWidth + ownerPixel.x)];
++    if (key == 0xffffffffu) return -1;
++    return receiverTiles[key / kShapeSamplesPerTile].shapeIndex;
++}
++
+ // The stored owner selects geometry; the query may lie anywhere on that finite surface.
+ // Owner coordinates are in bounds for the retained submission. A miss preserves outputs.
+ bool selectedShapeBoxReceiver(ivec2 ownerPixel, int ownerWidth, vec2 queryPixel,
+                               bool recoverMiss, inout vec3 position, inout vec3 normal) {
+-    if (receiverFrame.shapeCount <= 0) return false;
+-    uint key = receiverOwners[uint(ownerPixel.y * ownerWidth + ownerPixel.x)];
+-    if (key == 0xffffffffu) return false;
+-    int shapeIndex = receiverTiles[key / kShapeSamplesPerTile].shapeIndex;
++    int shapeIndex = selectedShapeIndex(ownerPixel, ownerWidth);
++    if (shapeIndex < 0) return false;
+     vec3 exactPosition, exactNormal;
+     if (!shapeBoxReceiver(receiverShapes[shapeIndex], receiverFrame,
+                           queryPixel, recoverMiss, exactPosition, exactNormal)) return false;
+@@ -20,3 +25,16 @@ bool selectedShapeBoxReceiver(ivec2 ownerPixel, int ownerWidth, vec2 queryPixel,
+     normal = exactNormal;
+     return true;
+ }
++
++// Solid smooth-yaw boxes store their entered world face in the cardinal triplet.
++// A missing emitter slab writes no owner; its legacy per-diamond slot cannot reach here.
++bool selectedShapeBoxUsesWorldFaceSlot(ivec2 ownerPixel, int ownerWidth) {
++    int shapeIndex = selectedShapeIndex(ownerPixel, ownerWidth);
++    if (shapeIndex < 0) return false;
++    ShapeDescriptor shape = receiverShapes[shapeIndex];
++    bool smoothMode = receiverFrame.voxelRenderOptions.x != 0 &&
++                      receiverFrame.voxelRenderOptions.y > 1;
++    return shape.shapeType == SHAPE_BOX && (shape.flags & 1u) == 0u &&
++           abs(shape.rotation.w) >= 0.9999 && receiverFrame.smoothYawEnabled != 0 &&
++           (smoothMode || receiverFrame.latticeShapes == 0);
++}
+diff --git a/engine/render/src/shaders/metal/c_compute_sun_shadow_body.metal b/engine/render/src/shaders/metal/c_compute_sun_shadow_body.metal
+index 1e792d5c7..b57a3bd2e 100644
+--- a/engine/render/src/shaders/metal/c_compute_sun_shadow_body.metal
++++ b/engine/render/src/shaders/metal/c_compute_sun_shadow_body.metal
+@@ -140,6 +140,10 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
+             false,
+             pos3D, normal)) {
+         receiverFace = encodeReceiverFace(normal);
++    } else if (selectedShapeBoxUsesWorldFaceSlot(pixel, size.x,
++                   receiverFrame, receiverShapes, receiverOwners, receiverTiles)) {
++        normal = faceOutwardNormal6(frameData.visibleFaceIds[face] ^ flip);
++        receiverFace = encodeReceiverFace(normal);
+     }
+ 
+ #endif
+diff --git a/engine/render/src/shaders/metal/ir_selected_shape_receiver.metal b/engine/render/src/shaders/metal/ir_selected_shape_receiver.metal
+index 1c07e07b5..136594f8c 100644
+--- a/engine/render/src/shaders/metal/ir_selected_shape_receiver.metal
++++ b/engine/render/src/shaders/metal/ir_selected_shape_receiver.metal
+@@ -1,3 +1,13 @@
++inline int selectedShapeIndex(int2 ownerPixel, int ownerWidth,
++                             constant ShapeProjectionData &receiverFrame,
++                             device const uint *receiverOwners,
++                             device const ShapeTileDescriptor *receiverTiles) {
++    if (receiverFrame.shapeCount <= 0) return -1;
++    uint key = receiverOwners[uint(ownerPixel.y * ownerWidth + ownerPixel.x)];
++    if (key == 0xffffffffu) return -1;
++    return receiverTiles[key / kShapeSamplesPerTile].shapeIndex;
++}
++
+ // The stored owner selects geometry; the query may lie anywhere on that finite surface.
+ // Owner coordinates are in bounds for the retained submission. A miss preserves outputs.
+ inline bool selectedShapeBoxReceiver(int2 ownerPixel, int ownerWidth, float2 queryPixel,
+@@ -7,10 +17,9 @@ inline bool selectedShapeBoxReceiver(int2 ownerPixel, int ownerWidth, float2 que
+                                      device const ShapeTileDescriptor *receiverTiles,
+                                      bool recoverMiss,
+                                      thread float3 &position, thread float3 &normal) {
+-    if (receiverFrame.shapeCount <= 0) return false;
+-    uint key = receiverOwners[uint(ownerPixel.y * ownerWidth + ownerPixel.x)];
+-    if (key == 0xffffffffu) return false;
+-    int shapeIndex = receiverTiles[key / kShapeSamplesPerTile].shapeIndex;
++    int shapeIndex = selectedShapeIndex(ownerPixel, ownerWidth,
++                                       receiverFrame, receiverOwners, receiverTiles);
++    if (shapeIndex < 0) return false;
+     float3 exactPosition, exactNormal;
+     if (!shapeBoxReceiver(receiverShapes[shapeIndex], receiverFrame,
+                           queryPixel, recoverMiss, exactPosition, exactNormal)) return false;
+@@ -18,3 +27,21 @@ inline bool selectedShapeBoxReceiver(int2 ownerPixel, int ownerWidth, float2 que
+     normal = exactNormal;
+     return true;
+ }
++
++// Solid smooth-yaw boxes store their entered world face in the cardinal triplet.
++// A missing emitter slab writes no owner; its legacy per-diamond slot cannot reach here.
++inline bool selectedShapeBoxUsesWorldFaceSlot(int2 ownerPixel, int ownerWidth,
++                                             constant ShapeProjectionData &receiverFrame,
++                                             device const ShapeDescriptor *receiverShapes,
++                                             device const uint *receiverOwners,
++                                             device const ShapeTileDescriptor *receiverTiles) {
++    int shapeIndex = selectedShapeIndex(ownerPixel, ownerWidth,
++                                       receiverFrame, receiverOwners, receiverTiles);
++    if (shapeIndex < 0) return false;
++    ShapeDescriptor shape = receiverShapes[shapeIndex];
++    bool smoothMode = receiverFrame.voxelRenderOptions.x != 0 &&
++                      receiverFrame.voxelRenderOptions.y > 1;
++    return shape.shapeType == SHAPE_BOX && (shape.flags & 1u) == 0u &&
++           abs(shape.rotation.w) >= 0.9999 && receiverFrame.smoothYawEnabled != 0 &&
++           (smoothMode || receiverFrame.latticeShapes == 0);
++}

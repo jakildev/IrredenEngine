@@ -164,6 +164,9 @@ void main() {
             false,
             pos3D, normal)) {
         receiverFace = encodeReceiverFace(normal);
+    } else if (selectedShapeBoxUsesWorldFaceSlot(pixel, size.x)) {
+        normal = faceOutwardNormal6(visibleFaceIds[face] ^ flip);
+        receiverFace = encodeReceiverFace(normal);
     }
 
 #endif

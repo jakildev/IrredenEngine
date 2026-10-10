@@ -140,6 +140,10 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
             false,
             pos3D, normal)) {
         receiverFace = encodeReceiverFace(normal);
+    } else if (selectedShapeBoxUsesWorldFaceSlot(pixel, size.x,
+                   receiverFrame, receiverShapes, receiverOwners, receiverTiles)) {
+        normal = faceOutwardNormal6(frameData.visibleFaceIds[face] ^ flip);
+        receiverFace = encodeReceiverFace(normal);
     }
 
 #endif
