@@ -1992,11 +1992,21 @@ inline Recipe build(
             return builder.finish();
         }
         const IRMath::vec2 listCenter = partsListRowCenterGuiTrixel(rows / 2);
+        // The array copies the source's baked blob into every copy, so the
+        // scene wheel has a face on the selected copy to park the cursor on:
+        // the empty cell in front of the blob.
+        const IRMath::ivec3 center(sceneSize.x / 2, sceneSize.y / 2, sceneSize.z / 2);
+        const IRMath::ivec3 blobFront = center + IRMath::ivec3(0, 0, -2);
+        const IRMath::ivec3 inFrontOfBlob = center + IRMath::ivec3(0, 0, -3);
+
+        builder.segment("bake_source");
+        builder.addVoxelPart();
+        builder.bakeSphere(detail::kFirstWriteBlobRadius);
 
         builder.segment("array");
-        builder.addVoxelPart();
         builder.applyRadialArray(kCopies);
         builder.expectPartCount(kParts, "array_overflows_the_list");
+        builder.expectPartOccupancy(kLastPart, blobFront, true, "copy_carries_baked_blob");
         builder.expectSelectedPartVisible(kLastPart, "selected_row_visible_after_array");
 
         builder.segment("first");
@@ -2015,7 +2025,7 @@ inline Recipe build(
         builder.expectCameraZoom(kSessionZoom, true, "list_wheel_keeps_zoom");
 
         builder.segment("scene_wheel");
-        builder.wheelScene(IRMath::ivec3(sceneSize.x / 2, sceneSize.y / 2, sceneSize.z - 2), -1);
+        builder.wheelScene(inFrontOfBlob, -1);
         builder.expectCameraZoom(kSessionZoom, false, "scene_wheel_zooms");
         return builder.finish();
     }
