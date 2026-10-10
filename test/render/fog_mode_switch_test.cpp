@@ -112,7 +112,7 @@ class FogModeSwitchTest : public testing::Test {
 
     static std::uint32_t bodyFactor(IREntity::EntityId entity) {
         const auto &set = IREntity::getComponent<C_VoxelSetNew>(entity);
-        const auto &pool = IREntity::getComponent<C_VoxelPool>(set.canvasEntity_);
+        auto &pool = IREntity::getComponent<C_VoxelPool>(set.canvasEntity_);
         return (IRPrefab::Fog::bodyCarrierBits(pool, set) &
                 IRComponents::VoxelReserved::kFogBodyFactorMask) >>
                IRComponents::VoxelReserved::kFogBodyFactorShift;
