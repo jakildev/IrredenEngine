@@ -54,6 +54,8 @@
 // segments), which is what lets the model assume the (1,1,1) ray.
 namespace IRVoxelEditor::Session {
 
+constexpr IRMath::vec2 kPartRemoveButtonCenter{314.0f, 337.0f};
+
 // The three faces whose outward normal points back at the camera — the only
 // faces a click can land on. Ordered x, y, z: the aim search prefers the side
 // faces, so a column grown upward is still reachable from the side later.
@@ -92,7 +94,9 @@ inline constexpr int kFramesPerClickStep = 1;
 // so a capture reads clearly. A face aim resolves down to zoom 1.
 inline constexpr float kSessionZoom = 4.0f;
 
-inline constexpr int kTabWalkPresses = 64;
+// Keep this above the live focus-candidate count so the capture session proves
+// that keyboard navigation wraps the complete widget cycle.
+inline constexpr int kTabWalkPresses = 80;
 inline constexpr IRMath::ivec2 kSkeletonPanelPos{378, 342};
 inline constexpr IRMath::ivec2 kSkeletonPanelSize{120, 114};
 inline constexpr IRMath::ivec2 kJointRenameInputPos{
@@ -438,6 +442,7 @@ struct PartGateCheck {
 // run, so a manifest left by an earlier run cannot satisfy it.
 struct ManifestCheck {
     std::string text_;
+    bool expectContains_ = true;
     std::string name_;
 };
 
@@ -966,6 +971,43 @@ class Builder {
         m_model = m_partModels[static_cast<std::size_t>(m_activePart)];
     }
 
+    void removeSelectedPart() {
+        if (m_partModels.empty() || m_activePart < 0) {
+            recordError("removeSelectedPart needs an entity-scene part");
+            return;
+        }
+        tapKey(IRInput::kKeyButtonDelete);
+        recordSelectedPartRemoval();
+    }
+
+    void removeSelectedPartWithButton() {
+        if (m_partModels.empty() || m_activePart < 0) {
+            recordError("removeSelectedPartWithButton needs an entity-scene part");
+            return;
+        }
+        clickGui(kPartRemoveButtonCenter);
+        recordSelectedPartRemoval();
+    }
+
+    void undoRemovedPart() {
+        if (!m_removedPartModel) {
+            recordError("undoRemovedPart needs a preceding part removal");
+            return;
+        }
+        chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        const int index = m_removedPartModel->index_;
+        m_partModels.insert(m_partModels.begin() + index, std::move(m_removedPartModel->model_));
+        m_activePart = index;
+        m_model = m_partModels[static_cast<std::size_t>(m_activePart)];
+        m_removedPartModel.reset();
+    }
+
+    void discardRemovedPart() {
+        m_removedPartModel.reset();
+        m_partModels.clear();
+        m_activePart = -1;
+    }
+
     // Drag one LOD panel slider to tier @p tier (0 finest .. 4 coarsest).
     void dragLodSlider(SliderTarget target, int tier) {
         const IRVoxelEditor::SliderGeometry *geom = nullptr;
@@ -1248,11 +1290,11 @@ class Builder {
     }
 
     void expectManifestContains(std::string text, std::string name) {
-        m_recipe.manifestChecks_.push_back(ManifestCheck{std::move(text), std::move(name)});
-        const ManifestCheck &check = m_recipe.manifestChecks_.back();
-        m_current.assertions_.push_back(
-            IRPrefab::GuiTest::predicate(&evaluateManifestCheck, &check, check.name_.c_str())
-        );
+        expectManifest(std::move(text), true, std::move(name));
+    }
+
+    void expectManifestOmits(std::string text, std::string name) {
+        expectManifest(std::move(text), false, std::move(name));
     }
 
     // Assert the loaded module registered `componentName` with `fieldCount`
@@ -1322,6 +1364,32 @@ class Builder {
     }
 
   private:
+    void expectManifest(std::string text, bool expectContains, std::string name) {
+        m_recipe.manifestChecks_.push_back(
+            ManifestCheck{std::move(text), expectContains, std::move(name)}
+        );
+        const ManifestCheck &check = m_recipe.manifestChecks_.back();
+        m_current.assertions_.push_back(
+            IRPrefab::GuiTest::predicate(&evaluateManifestCheck, &check, check.name_.c_str())
+        );
+    }
+
+    struct RemovedPartModel {
+        OccupancyModel model_;
+        int index_ = 0;
+    };
+
+    void recordSelectedPartRemoval() {
+        m_removedPartModel = RemovedPartModel{m_model, m_activePart};
+        m_partModels.erase(m_partModels.begin() + m_activePart);
+        if (m_partModels.empty()) {
+            m_activePart = -1;
+            return;
+        }
+        m_activePart = IRMath::min(m_activePart, static_cast<int>(m_partModels.size()) - 1);
+        m_model = m_partModels[static_cast<std::size_t>(m_activePart)];
+    }
+
     struct TypedKey {
         IRInput::KeyMouseButtons key_;
         bool shift_ = false;
@@ -1456,6 +1524,7 @@ class Builder {
     IRMath::vec3 m_sceneOrigin;
     std::vector<OccupancyModel> m_partModels;
     int m_activePart = -1;
+    std::optional<RemovedPartModel> m_removedPartModel;
     // The animation's non-active frames, indexed as the editor indexes them
     // with the active frame removed — m_model IS frame m_activeFrame, mirroring
     // the editor's hot-slot/cold-storage split (animation.hpp). Empty until a

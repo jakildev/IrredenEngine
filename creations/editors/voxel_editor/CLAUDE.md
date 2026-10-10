@@ -15,6 +15,8 @@ Design log, findings and the authoring-session history:
   `component_field_page` the same on a field only the panel's pager reaches,
   `component_field_key` the same on a field whose name is not a Lua identifier,
   `parts_roundtrip` authors, moves, saves, clears, and reloads a two-part entity,
+  `remove_part` removes and restores a part across hot and cold undo stacks and
+  proves the saved manifest omits the removed record,
   `tier_scrub` proves per-part LOD bands and the tier scrubber, and
   `mode_preview` proves the deferred render-mode switch allocates and releases
   the selected part's private canvas while rotated and private-canvas parts stay
@@ -74,6 +76,11 @@ render, because the aim and the pick share one screen mapping.
   one undo record; rotational symmetry replays a stroke across the radial
   copy group through the same stroke buffer. The selected source stays at the
   pivot outside the copy group.
+- Delete and the PARTS-panel REMOVE button remove the selected part as one undo
+  record. Ctrl+Z recreates its authored payload at the same ordered index and
+  rewrites older undo references to the fresh entity id. Removing a rotational
+  group member preserves the group's identity; symmetry remains inactive until
+  the group again matches its rotational order.
 
 - A recipe names cells; `Session::Builder` (`session_builder.hpp`) aims each
   click and mirrors the editable set in `OccupancyModel`, which casts the same
