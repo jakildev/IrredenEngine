@@ -90,6 +90,7 @@ enum class Id {
     PARTS_ROUNDTRIP,
     TIER_SCRUB,
     RADIAL_ARRAY,
+    LINEAR_ARRAY,
     NWAY_SYMMETRY,
     MODE_PREVIEW,
     MODE_PREVIEW_SHOTS,
@@ -126,6 +127,8 @@ inline Id idFromName(const std::string &name) {
         return Id::TIER_SCRUB;
     if (name == "radial_array")
         return Id::RADIAL_ARRAY;
+    if (name == "linear_array")
+        return Id::LINEAR_ARRAY;
     if (name == "nway_symmetry")
         return Id::NWAY_SYMMETRY;
     if (name == "mode_preview")
@@ -1687,6 +1690,32 @@ inline Recipe build(
         builder.segment("undo");
         builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
         builder.expectPartCount(1, "array_undo_restores_source_only");
+        return builder.finish();
+    }
+    case Id::LINEAR_ARRAY: {
+        Builder builder("linear_array", sceneSize, sceneOrigin);
+        builder.segment("source");
+        builder.addVoxelPart();
+
+        builder.segment("array");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonL);
+        builder.expectPartCount(4, "three_copies_plus_source");
+        for (int i = 0; i < 3; ++i) {
+            builder.expectPartTransform(
+                i + 1,
+                sceneOrigin + IRMath::vec3(static_cast<float>(i + 1) * 2.0f, 0.0f, 0.0f),
+                1.0f,
+                true,
+                "linear_copy_transform_" + std::to_string(i)
+            );
+            builder.expectPartTransform(
+                i + 1,
+                sceneOrigin,
+                1.0f,
+                false,
+                "linear_copy_not_at_source_" + std::to_string(i)
+            );
+        }
         return builder.finish();
     }
     case Id::NWAY_SYMMETRY: {
