@@ -4,7 +4,7 @@
 import argparse
 from pathlib import Path
 
-from rotation_controls import run_rounds, summarize, verify_artifacts, write_cases
+from profile_matrix import run_rounds, summarize, verify_artifacts, write_cases
 
 
 def cases(suite="span"):

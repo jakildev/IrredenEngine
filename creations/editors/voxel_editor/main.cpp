@@ -106,6 +106,8 @@
 #include "anim_panel.hpp"
 #include "array_panel.hpp"
 #include "lod_panel.hpp"
+#include "loft_panel.hpp"
+#include "part_size_panel.hpp"
 
 #include "editor_layer_manager.hpp"
 
@@ -171,21 +173,11 @@ namespace IRVoxelEditor {
 // The editable grid dimensions are runtime-configurable via --scene-size W H D
 // (the ant needs 20³, the tree ~26 tall). g_editableSceneSize /
 // g_editableSceneOrigin default to the 16³ scene and are overwritten
-// in main() after arg parse. deriveSceneOrigin keeps the scene centred in X/Y
-// and pins the seed ground plane (local z == size.z-1) at world z == 3 for any
-// height, so authoring recipes and probe cells stay height-agnostic.
+// in main() after arg parse. They describe the single-set scene and seed the
+// PART SIZE sliders. An entity-scene part carries its own extent in its
+// C_VoxelSetNew::size_, which is what an edit path sizes from; the loft tool
+// alone is scene-sized, and refuses a set of any other extent.
 constexpr ivec3 kDefaultEditableSceneSize{16, 16, 16};
-// The seed ground plane lives at local z == size.z-1; anchoring it to a fixed
-// world z keeps the camera framing and authoring recipes stable as the scene
-// grows taller (origin.z shifts down by exactly the height increase).
-constexpr int kSeedGroundPlaneWorldZ = 3;
-inline vec3 deriveSceneOrigin(ivec3 size) {
-    return vec3(
-        -static_cast<float>(size.x) / 2.0f,
-        -static_cast<float>(size.y) / 2.0f,
-        static_cast<float>(kSeedGroundPlaneWorldZ - (size.z - 1))
-    );
-}
 ivec3 g_editableSceneSize = kDefaultEditableSceneSize;
 vec3 g_editableSceneOrigin = deriveSceneOrigin(kDefaultEditableSceneSize);
 // Per-bone display colors for the bone selector panel.
@@ -380,12 +372,9 @@ struct FillToolState {
 FillToolState g_fillTool;
 
 // Loft-from-profiles tool (A2). Two 2D boolean masks — XZ (front) and YZ
-// (side) — rendered as pixel grids on the GUI canvas. Voxels land only
-// where both mask projections overlap (CSG of two extrusions).
-constexpr ivec2 kLoftGridXZPos{4, 30};  // top-left of XZ cell grid
-constexpr ivec2 kLoftGridYZPos{76, 30}; // top-left of YZ cell grid (8 px gap)
-constexpr int kLoftCellPx = 4;          // trixel pixels per mask cell
-
+// (side) — rendered as pixel grids on the GUI canvas (loft_panel.hpp). Voxels
+// land only where both mask projections overlap (CSG of two extrusions). The
+// masks are allocated, drawn and painted at g_editableSceneSize.
 struct LoftToolState {
     bool active_ = false;
     std::vector<bool> maskXZ_; // [x + z * sizeX] — front (XZ) projection
@@ -1183,6 +1172,63 @@ void toggleModePreviewTwin() {
     createModePreviewTwin();
 }
 
+// PART SIZE panel widgets (part_size_panel.hpp), indexed x / y / z.
+IREntity::EntityId g_partSizePanel = IREntity::kNullEntity;
+std::array<IREntity::EntityId, kPartSizeAxisCount> g_partSizeSliders{};
+IREntity::EntityId g_partSizeReadout = IREntity::kNullEntity;
+
+int partSizeFromSlider(int axis) {
+    const float value = IRMath::clamp(
+        IRPrefab::Widget::sliderValue(g_partSizeSliders[static_cast<std::size_t>(axis)]),
+        kPartSizeSliderMin,
+        partSizeSliderMax(g_editableSceneSize[axis])
+    );
+    return IRMath::roundHalfUp(value);
+}
+
+// Extent the next Ctrl+P voxel part is created at.
+ivec3 nextPartSize() {
+    if (g_partSizePanel == IREntity::kNullEntity) {
+        return g_editableSceneSize;
+    }
+    return ivec3(partSizeFromSlider(0), partSizeFromSlider(1), partSizeFromSlider(2));
+}
+
+// Extent of the editable voxel set; nullopt while nothing editable is selected.
+std::optional<ivec3> editableSetSize() {
+    if (g_editor.editableVoxelSet_ == IREntity::kNullEntity) {
+        return std::nullopt;
+    }
+    return IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_).size_;
+}
+
+void syncPartSizeReadout() {
+    if (g_partSizeReadout == IREntity::kNullEntity) {
+        return;
+    }
+    std::string text = "SEL -";
+    if (const std::optional<ivec3> size = editableSetSize()) {
+        text = "SEL " + std::to_string(size->x) + "x" + std::to_string(size->y) + "x" +
+               std::to_string(size->z);
+    }
+    IRPrefab::Widget::setLabelText(g_partSizeReadout, std::move(text));
+}
+
+// Mirror planes are seated on the editable set's own extent, so the reflection
+// applyEdit runs stays within [0, size). With nothing editable selected the
+// planes stay put until a voxel set is selected again.
+void seatEditorMirrorAxis(int axis) {
+    if (const std::optional<ivec3> size = editableSetSize()) {
+        seatMirrorAxis(g_symmetry, axis, *size);
+    }
+}
+
+void reseatEditorMirrorAxes() {
+    if (const std::optional<ivec3> size = editableSetSize()) {
+        seatEnabledMirrorAxes(g_symmetry, *size);
+    }
+}
+
 void clearUndoHistory() {
     g_editor.undoRecords_.clear();
     g_editor.undoTotalBytes_ = 0;
@@ -1223,6 +1269,8 @@ void selectEditorPart(int index, bool createGizmos = true) {
     }
     syncLodBandSliders();
     syncPartModeDropdown();
+    reseatEditorMirrorAxes();
+    syncPartSizeReadout();
 }
 
 void selectRelativeEditorPart(int offset) {
@@ -1242,8 +1290,8 @@ void addEditorVoxelPart() {
         }
         g_entityScene.begin();
     }
-    const IREntity::EntityId part =
-        g_entityScene.addVoxelPart(g_editableSceneSize, g_editableSceneOrigin);
+    const ivec3 size = nextPartSize();
+    const IREntity::EntityId part = g_entityScene.addVoxelPart(size, deriveSceneOrigin(size));
     auto &set = IREntity::getComponent<C_VoxelSetNew>(part);
     set.deactivateAll();
     selectEditorPart(g_entityScene.selectedIndex());
@@ -1261,6 +1309,7 @@ void clearEntitySceneForLoad() {
     }
     syncLodBandSliders();
     syncPartModeDropdown();
+    syncPartSizeReadout();
 }
 
 // Fill-mode status label — top-left status bar updated each frame with the
@@ -1890,17 +1939,32 @@ constexpr Color kLoftCellOff{35, 38, 48, 220};
 // intersection). Works entirely in local voxel indices: mask[x + z*sizeX]
 // is true when the front (XZ) profile includes column x at height z, and
 // mask[y + z*sizeY] when the side (YZ) profile includes column y at z.
-void applyLoft(Color color) {
+// The masks are indexed at the scene size's stride, so a set of any other
+// extent is refused: read at that set's stride, a painted cell would land in a
+// different column. Returns whether the stamp ran.
+bool applyLoft(Color color) {
     if (g_editor.editableVoxelSet_ == IREntity::kNullEntity)
-        return;
+        return false;
     auto &set = IREntity::getComponent<C_VoxelSetNew>(g_editor.editableVoxelSet_);
+    if (set.size_ != g_editableSceneSize) {
+        IR_LOG_WARN(
+            "Loft works on a {}x{}x{} set; the selected part is {}x{}x{}. Nothing stamped.",
+            g_editableSceneSize.x,
+            g_editableSceneSize.y,
+            g_editableSceneSize.z,
+            set.size_.x,
+            set.size_.y,
+            set.size_.z
+        );
+        return false;
+    }
     const int sx = set.size_.x;
     const int sy = set.size_.y;
     const int sz = set.size_.z;
     if (static_cast<int>(g_loftTool.maskXZ_.size()) < sx * sz)
-        return;
+        return false;
     if (static_cast<int>(g_loftTool.maskYZ_.size()) < sy * sz)
-        return;
+        return false;
     IRMath::apply3DMaskIntersection(
         g_loftTool.maskXZ_,
         {sx, sz},
@@ -1921,6 +1985,7 @@ void applyLoft(Color color) {
         }
     );
     commitStroke();
+    return true;
 }
 
 // Copy the editable target's live voxels into frames_[idx].voxels_.
@@ -2322,6 +2387,18 @@ bool cursorOverModuleUi() {
             return true;
     }
     return false;
+}
+
+// A rectangle test for the reason cursorOverModuleUi gives: hover goes to the
+// topmost widget only, so the panel does not read as hovered while the cursor
+// is on one of its sliders.
+bool cursorOverPartSizePanel() {
+    return g_partSizePanel != IREntity::kNullEntity &&
+           cursorInRect(
+               IRPrefab::Layout::mousePositionInGuiTrixels(),
+               kPartSizePanelPos,
+               kPartSizePanelSize
+           );
 }
 
 // What ATTACH targets: the root while ROOT is checked, else the selected part.
@@ -3054,6 +3131,53 @@ bool evaluatePartGateCheck(const void *context, std::string &actual) {
     return gated == check.expectGated_ && pinnedTier == check.expectPinnedTier_;
 }
 
+bool evaluatePartExtentCheck(const void *context, std::string &actual) {
+    const PartExtentCheck &check = *static_cast<const PartExtentCheck *>(context);
+    if (check.partIndex_ < 0 ||
+        check.partIndex_ >= static_cast<int>(g_entityScene.parts().size())) {
+        actual = "part index out of range";
+        return false;
+    }
+    const EditorPart &part = g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)];
+    const auto set = IREntity::getComponentOptional<C_VoxelSetNew>(part.entity_);
+    if (!set) {
+        actual = "part has no voxel set";
+        return false;
+    }
+    const ivec3 size = (*set)->size_;
+    actual = "extent=" + std::to_string(size.x) + "x" + std::to_string(size.y) + "x" +
+             std::to_string(size.z);
+    return size == check.expected_;
+}
+
+bool evaluateMirrorCheck(const void *context, std::string &actual) {
+    const MirrorCheck &check = *static_cast<const MirrorCheck *>(context);
+    const auto axis = [](const char *name, bool enabled, float offset) {
+        return std::string(name) + "=" +
+               (enabled ? "on@" + std::to_string(offset) : std::string("off"));
+    };
+    actual = axis("x", g_symmetry.enableX_, g_symmetry.offsetX_) + " " +
+             axis("y", g_symmetry.enableY_, g_symmetry.offsetY_) + " " +
+             axis("z", g_symmetry.enableZ_, g_symmetry.offsetZ_);
+    return mirrorPlanesMatch(g_symmetry, check.expected_);
+}
+
+bool evaluateLoftMaskCheck(const void *context, std::string &actual) {
+    const LoftMaskCheck &check = *static_cast<const LoftMaskCheck *>(context);
+    const bool front = check.mask_ == LoftMask::XZ;
+    const std::vector<bool> &mask = front ? g_loftTool.maskXZ_ : g_loftTool.maskYZ_;
+    const int stride = front ? g_editableSceneSize.x : g_editableSceneSize.y;
+    const std::size_t flat = static_cast<std::size_t>(check.cell_.x + check.cell_.y * stride);
+    if (check.cell_.x < 0 || check.cell_.x >= stride || check.cell_.y < 0 || flat >= mask.size()) {
+        actual = "cell outside the mask";
+        return false;
+    }
+    const bool on = mask[flat];
+    actual = std::string(front ? "XZ" : "YZ") + " cell=(" + std::to_string(check.cell_.x) + "," +
+             std::to_string(check.cell_.y) + ") " + (on ? "on" : "off");
+    return on == check.expectOn_;
+}
+
 bool evaluateManifestCheck(const void *context, std::string &actual) {
     const ManifestCheck &check = *static_cast<const ManifestCheck *>(context);
     const std::filesystem::path path =
@@ -3407,7 +3531,7 @@ int main(int argc, char **argv) {
         "face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | tier_scrub | "
         "radial_array | nway_symmetry | mode_preview | mode_preview_shots | module_loaded | "
         "component_attach | component_field_page | component_field_key | "
-        "text_input_command_capture",
+        "text_input_command_capture | part_sizes",
         {"none",
          "drag_probe",
          "place_below",
@@ -3427,7 +3551,8 @@ int main(int argc, char **argv) {
          "component_attach",
          "component_field_page",
          "component_field_key",
-         "text_input_command_capture"},
+         "text_input_command_capture",
+         "part_sizes"},
         "none"
     );
     IREngine::args().string(
@@ -3707,7 +3832,9 @@ void initSystems() {
             }
             if (!leftPressed && !leftHeld)
                 return;
-            if (!lip->painting_ && leftHeld)
+            // HELD reads true on the press frame as well, so "held with no
+            // stroke under way" has to exclude the press that starts one.
+            if (!lip->painting_ && !leftPressed)
                 return;
 
             const ivec2 mouseGui(
@@ -3863,6 +3990,7 @@ void initSystems() {
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_bakePanel) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_bonePaint.bonePanel_) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_skeletonPanel) ||
+                              IRVoxelEditor::cursorOverPartSizePanel() ||
                               IRVoxelEditor::cursorOverModuleUi();
             if (!overWidget) {
                 const int n = static_cast<int>(IRVoxelEditor::g_editor.paletteSwatches_.size());
@@ -4193,6 +4321,29 @@ void initSystems() {
             }
             g_entityScene.setPartBand(selected, fine, coarse);
             syncLodBandSliders();
+        }
+    );
+
+    // PART SIZE panel sync. Runs in INPUT after WIDGET_APPLY_SLIDER: a slider
+    // being dragged is snapped to the whole extent Ctrl+P would create, so the
+    // track reads the value that will be used.
+    auto partSizePanelSyncSystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorPartSizePanelSync",
+        [](const C_GuiElement &) {},
+        []() {},
+        []() {
+            using namespace IRVoxelEditor;
+            if (g_partSizePanel == IREntity::kNullEntity)
+                return;
+            for (int axis = 0; axis < kPartSizeAxisCount; ++axis) {
+                const IREntity::EntityId slider = g_partSizeSliders[static_cast<std::size_t>(axis)];
+                if (IRPrefab::Widget::isPressed(slider) || IRPrefab::Widget::wasClicked(slider)) {
+                    IRPrefab::Widget::setSliderValue(
+                        slider,
+                        static_cast<float>(partSizeFromSlider(axis))
+                    );
+                }
+            }
         }
     );
 
@@ -4565,6 +4716,7 @@ void initSystems() {
          scrubberSystem,
          layerSyncSystem,
          lodPanelSyncSystem,
+         partSizePanelSyncSystem,
          loftInputSystem,
          bakeSystem,
          arraySystem,
@@ -4724,8 +4876,8 @@ void initCommands() {
     );
 
     // X/Y/Z: toggle mirror-symmetry axis. When an axis turns ON, seat its mirror
-    // plane at the scene centre ((size-1)/2, pairing cell 0 with size-1) so the
-    // edit reflection (applyEdit → applyMirrors) lands within [0, size); the
+    // plane at the editable set's centre ((size-1)/2, pairing cell 0 with size-1)
+    // so the edit reflection (applyEdit → applyMirrors) lands within [0, size); the
     // default offset 0 would map cell v to -v, out of bounds, dropping every
     // mirror. There is no UI for a non-centre plane, so the centre is the only
     // meaningful position; leaving the offset alone on toggle-OFF keeps a
@@ -4745,8 +4897,7 @@ void initCommands() {
         [logSymmetry]() {
             IRVoxelEditor::g_symmetry.enableX_ = !IRVoxelEditor::g_symmetry.enableX_;
             if (IRVoxelEditor::g_symmetry.enableX_)
-                IRVoxelEditor::g_symmetry.offsetX_ =
-                    IRVoxelEditor::mirrorCenterOffset(IRVoxelEditor::g_editableSceneSize.x);
+                IRVoxelEditor::seatEditorMirrorAxis(0);
             logSymmetry();
         },
         IRInput::kModifierNone,
@@ -4761,8 +4912,7 @@ void initCommands() {
         [logSymmetry]() {
             IRVoxelEditor::g_symmetry.enableY_ = !IRVoxelEditor::g_symmetry.enableY_;
             if (IRVoxelEditor::g_symmetry.enableY_)
-                IRVoxelEditor::g_symmetry.offsetY_ =
-                    IRVoxelEditor::mirrorCenterOffset(IRVoxelEditor::g_editableSceneSize.y);
+                IRVoxelEditor::seatEditorMirrorAxis(1);
             logSymmetry();
         },
         IRInput::kModifierNone,
@@ -4792,8 +4942,7 @@ void initCommands() {
         [logSymmetry]() {
             IRVoxelEditor::g_symmetry.enableZ_ = !IRVoxelEditor::g_symmetry.enableZ_;
             if (IRVoxelEditor::g_symmetry.enableZ_)
-                IRVoxelEditor::g_symmetry.offsetZ_ =
-                    IRVoxelEditor::mirrorCenterOffset(IRVoxelEditor::g_editableSceneSize.z);
+                IRVoxelEditor::seatEditorMirrorAxis(2);
             logSymmetry();
         },
         IRInput::kModifierNone,
@@ -5103,8 +5252,8 @@ void initCommands() {
                 return;
             const Color placeColor =
                 IRVoxelEditor::kPaletteColors[IRVoxelEditor::g_editor.activeSwatchIdx_];
-            IRVoxelEditor::applyLoft(placeColor);
-            IR_LOG_INFO("Loft stamped.");
+            if (IRVoxelEditor::applyLoft(placeColor))
+                IR_LOG_INFO("Loft stamped.");
         },
         IRInput::kModifierNone,
         IRInput::kModifierNone,
@@ -6027,6 +6176,33 @@ void initEntities() {
         "APPLY"
     );
 
+    IRVoxelEditor::g_partSizePanel = IRPrefab::Widget::makePanel(
+        IRVoxelEditor::kPartSizePanelPos,
+        IRVoxelEditor::kPartSizePanelSize,
+        "PART SIZE"
+    );
+    IREntity::setComponent(
+        IRVoxelEditor::g_partSizePanel,
+        IRComponents::C_HitBox2DGui{IRVoxelEditor::kPartSizePanelSize}
+    );
+    IREntity::getComponent<IRComponents::C_Widget>(IRVoxelEditor::g_partSizePanel).zOrder_ = -1;
+    constexpr const char *kPartSizeAxisLabels[IRVoxelEditor::kPartSizeAxisCount] = {"W", "H", "D"};
+    for (int axis = 0; axis < IRVoxelEditor::kPartSizeAxisCount; ++axis) {
+        const IRVoxelEditor::SliderGeometry geom = IRVoxelEditor::partSizeSliderGeometry(axis);
+        IRVoxelEditor::g_partSizeSliders[static_cast<std::size_t>(axis)] =
+            IRPrefab::Widget::makeSlider(
+                geom.pos_,
+                geom.size_,
+                kPartSizeAxisLabels[axis],
+                IRVoxelEditor::kPartSizeSliderMin,
+                IRVoxelEditor::partSizeSliderMax(IRVoxelEditor::g_editableSceneSize[axis]),
+                static_cast<float>(IRVoxelEditor::g_editableSceneSize[axis])
+            );
+    }
+    IRVoxelEditor::g_partSizeReadout =
+        IRPrefab::Widget::makeLabel(IRVoxelEditor::kPartSizeReadoutPos, "");
+    IRVoxelEditor::syncPartSizeReadout();
+
     // Parametric shape bake panel. Sits below the LAYERS panel.
     // Shape list selects the SDF primitive; P1/P2 sliders set the primary and
     // secondary params; BAKE writes DENSE voxels into the active entity.
@@ -6194,6 +6370,11 @@ void initEntities() {
         {IRVoxelEditor::g_arrayApplyButton, "APPLY: create the configured part array as one undo."},
         {IRVoxelEditor::g_partModeDropdown,
          "MODE: preview GRID, DETACHED, or DETACHED REVOXELIZE (M cycles)."},
+        {IRVoxelEditor::g_partSizePanel,
+         "PART SIZE: extent of the next Ctrl+P voxel part; SEL is the selected part's."},
+        {IRVoxelEditor::g_partSizeSliders[0], "W: X extent of the next Ctrl+P voxel part."},
+        {IRVoxelEditor::g_partSizeSliders[1], "H: Y extent of the next Ctrl+P voxel part."},
+        {IRVoxelEditor::g_partSizeSliders[2], "D: Z extent of the next Ctrl+P voxel part."},
         {IRVoxelEditor::g_bakePanel, "BAKE: pick a shape, set P1/P2, then BAKE the active entity."},
         {IRVoxelEditor::g_bakeShapeList, "SHAPE: choose the SDF primitive to voxelize."},
         {IRVoxelEditor::g_bakeParam1Slider, "P1: primary shape parameter (size / radius)."},

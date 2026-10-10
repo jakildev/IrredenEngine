@@ -97,6 +97,7 @@ TEST(VoxelSetSerialize, AuthoredLodBandRoundTripsWithoutTransientGates) {
     set.lodMax_ = IRRender::LodLevel::LOD_2;
     set.visible_ = false;
     set.lodCulled_ = true;
+    set.ghostHeld_ = true;
 
     IRAsset::Result<C_VoxelSetNew> res;
     const C_VoxelSetNew out = serializeThenRead(set, res);
@@ -106,6 +107,7 @@ TEST(VoxelSetSerialize, AuthoredLodBandRoundTripsWithoutTransientGates) {
     EXPECT_EQ(out.lodMax_, IRRender::LodLevel::LOD_2);
     EXPECT_TRUE(out.visible_);
     EXPECT_FALSE(out.lodCulled_);
+    EXPECT_FALSE(out.ghostHeld_);
 }
 
 // An empty (zero-voxel) set round-trips without reading past the buffer.

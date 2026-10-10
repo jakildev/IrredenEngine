@@ -79,6 +79,7 @@
 #include <irreden/render/components/component_entity_canvas_teardown_hook.hpp>
 #include <irreden/render/components/component_fog_exempt.hpp>
 #include <irreden/render/components/component_fog_field.hpp>
+#include <irreden/render/components/component_fog_ghost.hpp>
 #include <irreden/render/components/component_fog_reveal_settings.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
@@ -213,10 +214,11 @@ IR_SAVE_OPT_OUT(IRComponents::C_CanvasResidencySettings)
 IR_SAVE_OPT_OUT(IRComponents::C_LayoutState)
 IR_SAVE_OPT_OUT(IRComponents::C_LayoutLeaf)
 IR_SAVE_OPT_OUT(IRComponents::C_ResolvedFields)
-// Fog governance and its thresholds are recreated by creation setup. The
-// factor/verdict are derived each eval tick and must not outlive their render
-// visibility state, which is intentionally transient on C_VoxelSetNew.
+// Fog governance and its thresholds are recreated by creation setup. The hot
+// verdict and structural GHOST policy/pose are runtime-only, so a loaded BODY
+// returns to HIDE along with its transient C_VoxelSetNew render visibility.
 IR_SAVE_OPT_OUT(IRComponents::C_FogRevealed)
+IR_SAVE_OPT_OUT(IRComponents::C_FogGhost)
 IR_SAVE_OPT_OUT(IRComponents::C_FogRevealSettings)
 // A secondary viewport is a GPU canvas plus the camera viewing it, stood up by
 // creation setup; the canvas camera is re-derived from it every frame, and a
@@ -481,6 +483,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_LayoutLeaf,
     IRComponents::C_ResolvedFields,
     IRComponents::C_FogRevealed,
+    IRComponents::C_FogGhost,
     IRComponents::C_FogRevealSettings,
     IRComponents::C_CanvasCamera,
     IRComponents::C_ViewportCamera,

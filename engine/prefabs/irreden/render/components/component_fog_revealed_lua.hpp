@@ -10,6 +10,7 @@ template <> inline constexpr bool kHasLuaBinding<IRComponents::C_FogRevealed> = 
 
 template <> inline void bindLuaType<IRComponents::C_FogRevealed>(LuaScript &luaScript) {
     using IRComponents::C_FogRevealed;
+    using IRComponents::FogHiddenPolicy;
     using IRComponents::FogOverride;
     sol::usertype<C_FogRevealed> type = luaScript.registerType<C_FogRevealed, C_FogRevealed()>(
         "C_FogRevealed",
@@ -38,6 +39,7 @@ template <> inline void bindLuaType<IRComponents::C_FogRevealed>(LuaScript &luaS
             }
         }
     );
+    type["ghostHeld"] = sol::readonly(&C_FogRevealed::ghostHeld_);
 
     sol::table overrides = luaScript.lua().create_table();
 #define IR_BIND_FOG_OVERRIDE(name) overrides[#name] = static_cast<lua_Integer>(FogOverride::name)
@@ -46,6 +48,14 @@ template <> inline void bindLuaType<IRComponents::C_FogRevealed>(LuaScript &luaS
     IR_BIND_FOG_OVERRIDE(FORCE_REVEALED);
 #undef IR_BIND_FOG_OVERRIDE
     luaScript.lua()["IRComponent"]["FogOverride"] = overrides;
+
+    sol::table policies = luaScript.lua().create_table();
+#define IR_BIND_FOG_HIDDEN_POLICY(name)                                                            \
+    policies[#name] = static_cast<lua_Integer>(FogHiddenPolicy::name)
+    IR_BIND_FOG_HIDDEN_POLICY(HIDE);
+    IR_BIND_FOG_HIDDEN_POLICY(GHOST);
+#undef IR_BIND_FOG_HIDDEN_POLICY
+    luaScript.lua()["IRComponent"]["FogHiddenPolicy"] = policies;
 }
 
 } // namespace IRScript

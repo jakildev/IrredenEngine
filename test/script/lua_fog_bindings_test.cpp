@@ -606,8 +606,11 @@ TEST(LuaFogPipelineTest, RevealSystemsResolveFromALuaPipeline) {
         IRSystem::FOG_SUBJECT_ADOPT_SHAPE,
         IRSystem::FOG_SUBJECT_ADOPT_CANVAS,
         IRSystem::FOG_REVEAL_EVAL,
+        IRSystem::FOG_REVEAL_EVAL_GHOST,
         IRSystem::FOG_REVEAL_EVAL_SHAPE,
-        IRSystem::FOG_REVEAL_EVAL_CANVAS>();
+        IRSystem::FOG_REVEAL_EVAL_SHAPE_GHOST,
+        IRSystem::FOG_REVEAL_EVAL_CANVAS,
+        IRSystem::FOG_REVEAL_EVAL_CANVAS_GHOST>();
     sol::protected_function_result result = lua.lua().safe_script(
         R"lua(
         local systems = {
@@ -618,8 +621,11 @@ TEST(LuaFogPipelineTest, RevealSystemsResolveFromALuaPipeline) {
             IRSystem.systemId(IRSystem.SystemName.FOG_SUBJECT_ADOPT_SHAPE),
             IRSystem.systemId(IRSystem.SystemName.FOG_SUBJECT_ADOPT_CANVAS),
             IRSystem.systemId(IRSystem.SystemName.FOG_REVEAL_EVAL),
+            IRSystem.systemId(IRSystem.SystemName.FOG_REVEAL_EVAL_GHOST),
             IRSystem.systemId(IRSystem.SystemName.FOG_REVEAL_EVAL_SHAPE),
+            IRSystem.systemId(IRSystem.SystemName.FOG_REVEAL_EVAL_SHAPE_GHOST),
             IRSystem.systemId(IRSystem.SystemName.FOG_REVEAL_EVAL_CANVAS),
+            IRSystem.systemId(IRSystem.SystemName.FOG_REVEAL_EVAL_CANVAS_GHOST),
         }
         IRSystem.registerPipeline(IRTime.UPDATE, systems)
         return #systems
@@ -627,7 +633,7 @@ TEST(LuaFogPipelineTest, RevealSystemsResolveFromALuaPipeline) {
         sol::script_pass_on_error
     );
     ASSERT_TRUE(result.valid()) << sol::error{result}.what();
-    EXPECT_EQ(result.get<lua_Integer>(), 9);
+    EXPECT_EQ(result.get<lua_Integer>(), 12);
 }
 
 // `setEntityGoverned(e, false)` compares against the FIELD class, not

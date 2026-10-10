@@ -11,7 +11,7 @@ import argparse
 from pathlib import Path
 
 from compare_perf_runs import parse_report
-from rotation_controls import run_rounds, summarize, verify_artifacts, write_cases
+from profile_matrix import run_rounds, summarize, verify_artifacts, write_cases
 
 
 def cases(output: Path, pose: str) -> dict[str, list[str]]:

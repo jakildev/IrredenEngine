@@ -29,10 +29,12 @@
 #include <irreden/update/components/component_prefab_parts.hpp>
 #include <irreden/update/systems/system_prefab_lod_parts.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
+#include <irreden/voxel/components/component_voxel_set.hpp>
 
 #include <algorithm>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -41,6 +43,7 @@ namespace {
 using IRComponents::C_EntityCanvas;
 using IRComponents::C_PrefabParts;
 using IRComponents::C_ShapeDescriptor;
+using IRComponents::C_VoxelSetNew;
 using IREntity::EntityId;
 using IRMath::vec2;
 using IRMath::vec3;
@@ -500,6 +503,51 @@ TEST_F(PrefabParts, VoxelRefPartLoadsOnFirstSpawn) {
     setZoom(1.0f);
     settle();
     EXPECT_EQ(IREntity::countComponents<C_ShapeDescriptor>(), 0);
+}
+
+// A voxel part's extent is its `.vxs` bounds: the manifest carries no size of
+// its own, and each part is allocated at the extent of the file it names.
+TEST_F(PrefabParts, SpawnsVoxelPartsAtTheirOwnExtent) {
+    const auto writeDense = [](const std::string &tag, IRMath::ivec3 extent) {
+        const std::string path = std::string{kTmpDir} + "/prefab_parts_extent_" + tag + ".vxs";
+        IRAsset::DenseVoxelSet dense;
+        dense.boundsMin_ = IRMath::ivec3(0);
+        dense.boundsMax_ = extent;
+        dense.voxels_.resize(dense.voxelCount());
+        EXPECT_TRUE(IRAsset::saveDenseVoxelSet(path, dense).ok());
+        return path;
+    };
+    const IRMath::ivec3 stemExtent(3, 3, 8);
+    const IRMath::ivec3 frameExtent(5, 5, 1);
+
+    IRPrefab::Prefab::PrefabDescription description;
+    IRPrefab::Prefab::PrefabPartDescription stem;
+    stem.id_ = "stem";
+    stem.voxelRef_ = writeDense("stem", stemExtent);
+    description.parts_.push_back(stem);
+    IRPrefab::Prefab::PrefabPartDescription frame;
+    frame.id_ = "frame";
+    frame.voxelRef_ = writeDense("frame", frameExtent);
+    description.parts_.push_back(frame);
+
+    const std::string manifestPath = std::string{kTmpDir} + "/prefab_parts_extent.prefab.lua";
+    const std::optional<std::string> writeError =
+        IRPrefab::Prefab::writeManifest(manifestPath, description);
+    ASSERT_FALSE(writeError.has_value()) << writeError.value_or("");
+
+    IRPrefab::Prefab::registerPrefab("extent", manifestPath);
+    const IRPrefab::Prefab::SpawnResult spawned =
+        IRPrefab::Prefab::spawnPrefab(m_lua, "extent", vec3(0.0f));
+    ASSERT_NE(spawned.entity_, IREntity::kNullEntity) << spawned.error_;
+    ASSERT_EQ(liveCount(spawned.entity_), 2);
+
+    const C_PrefabParts &parts = partsOf(spawned.entity_);
+    const auto &stemSet = IREntity::getComponent<C_VoxelSetNew>(parts.slots_[0].entity_);
+    EXPECT_EQ(stemSet.size_, stemExtent);
+    EXPECT_EQ(stemSet.recordCount(), 72u);
+    const auto &frameSet = IREntity::getComponent<C_VoxelSetNew>(parts.slots_[1].entity_);
+    EXPECT_EQ(frameSet.size_, frameExtent);
+    EXPECT_EQ(frameSet.recordCount(), 25u);
 }
 
 // A tree mark lists the root's descendants when it is taken, so a part staged

@@ -2,6 +2,7 @@
 
 import importlib.util
 import io
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -134,6 +135,88 @@ class LightVerifyCompletionTest(unittest.TestCase):
         self.assertEqual(result, 1)
         self.assertFalse(self.baselines.exists())
         self.assertIn("baselines not updated", err)
+
+
+class LightVerifyChangedGateTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        subprocess.run(["git", "init", "-q", str(self.root)], check=True)
+        subprocess.run(
+            ["git", "-C", str(self.root), "config", "user.email", "test@example.com"],
+            check=True,
+        )
+        subprocess.run(
+            ["git", "-C", str(self.root), "config", "user.name", "Test"], check=True
+        )
+        seed = self.root / "README"
+        seed.write_text("seed\n")
+        subprocess.run(["git", "-C", str(self.root), "add", "README"], check=True)
+        subprocess.run(
+            ["git", "-C", str(self.root), "commit", "-q", "-m", "seed"], check=True
+        )
+
+    def write(self, relative: str, contents: str = "changed\n") -> Path:
+        path = self.root / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(contents)
+        return path
+
+    def drive(self, against: str = "HEAD") -> tuple[int, str, int]:
+        out = io.StringIO()
+        with patch.object(lv.verify_common, "detect_worktree_root", return_value=self.root), \
+                patch.object(lv.verify_common, "detect_backend", return_value="test"), \
+                patch.object(lv.verify_common, "find_exe", return_value=self.root / "fake"), \
+                patch.object(lv.verify_common, "run_pass", return_value=(1, "", [])) as run_pass, \
+                redirect_stdout(out):
+            result = lv.main(["--no-build", "--if-changed", "--against", against])
+        return result, out.getvalue(), run_pass.call_count
+
+    def test_unstaged_engine_edit_runs_all_passes(self):
+        path = self.write("engine/example.cpp", "base\n")
+        subprocess.run(["git", "-C", str(self.root), "add", str(path)], check=True)
+        subprocess.run(
+            ["git", "-C", str(self.root), "commit", "-q", "-m", "engine file"], check=True
+        )
+        path.write_text("unstaged\n")
+        _, out, calls = self.drive()
+        self.assertEqual(calls, 3)
+        self.assertIn("1 of 1 changed path(s)", out)
+
+    def test_staged_engine_edit_runs_all_passes(self):
+        self.write("engine/staged.cpp")
+        subprocess.run(["git", "-C", str(self.root), "add", "engine/staged.cpp"], check=True)
+        _, out, calls = self.drive()
+        self.assertEqual(calls, 3)
+        self.assertIn("first: engine/staged.cpp", out)
+
+    def test_untracked_lighting_demo_file_runs_all_passes(self):
+        self.write("creations/demos/lighting/probe.txt")
+        _, out, calls = self.drive()
+        self.assertEqual(calls, 3)
+        self.assertIn("first: creations/demos/lighting/probe.txt", out)
+
+    def test_markdown_only_changes_do_not_run(self):
+        self.write("docs/x.md")
+        self.write("engine/render/CLAUDE.md")
+        result, out, calls = self.drive()
+        self.assertEqual((result, calls), (0, 0))
+        self.assertIn("0 of 2 changed path(s)", out)
+        self.assertIn("not required", out)
+
+    def test_unresolvable_against_runs_all_passes(self):
+        _, out, calls = self.drive("missing-ref")
+        self.assertEqual(calls, 3)
+        self.assertIn("cannot resolve --against 'missing-ref'", out)
+        self.assertIn("running", out)
+
+    def test_changed_path_helpers_cover_git_and_trigger_contract(self):
+        self.assertEqual(lv._changed_paths(self.root, "HEAD"), ([], ""))
+        self.assertTrue(lv._is_trigger_path("engine/example.cpp"))
+        self.assertFalse(lv._is_trigger_path("engine/render/CLAUDE.md"))
+        self.write("engine/example.cpp")
+        self.assertTrue(lv._if_changed_requires_run(self.root, "HEAD"))
 
 
 if __name__ == "__main__":

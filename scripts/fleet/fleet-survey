@@ -120,8 +120,10 @@ def dispatch_section(state, usage_dir, log_path, now):
                 idle = 0
             elif "no claimable candidate left" in line or "no candidate could be claimed" in line:
                 idle += 1
-            elif "usage gate closed" in line:
-                out["usage_gate"] = line.split("] ", 1)[-1]
+            else:
+                body = line.split("] ", 1)[-1]
+                if body.startswith(("usage gate closed", "usage gate re-opened")):
+                    out["usage_gate"] = line
         out["idle_ticks"] = idle
     return out
 
@@ -314,7 +316,13 @@ def render(report):
     out.append(f"  last dispatch: {d['last_dispatch'] or '(none in log tail)'}; "
                f"idle ticks since: {d['idle_ticks']}")
     if d["usage_gate"]:
-        out.append(f"  last usage-gate line: {d['usage_gate']}")
+        timestamp = d["usage_gate"].split(" ", 1)[0].lstrip("[")
+        gate_line = d["usage_gate"].split("] ", 1)[-1]
+        if gate_line.startswith("usage gate re-opened"):
+            out.append(f"  usage gate: open since {timestamp}")
+        else:
+            reason = gate_line.removeprefix("usage gate closed:")
+            out.append(f"  usage gate: closed since {timestamp}: {reason}")
     for name, pool in d["pools"].items():
         out.append(f"  {name}: util {pool.get('utilization')}  used {pool.get('used')}  "
                    f"rate/min {pool.get('interval_points_per_minute')}  {pool.get('status') or ''}")
