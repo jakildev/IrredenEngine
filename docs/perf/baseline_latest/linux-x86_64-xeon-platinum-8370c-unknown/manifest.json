@@ -2,10 +2,10 @@
   "target": "IRPerfGrid",
   "matrix": "quick",
   "frames": 60,
-  "git_sha": "7545841e1",
+  "git_sha": "d239f92cb",
   "git_dirty": false,
-  "run_name": "7545841e1-ci",
-  "started_at": "2026-10-05T08:24:07Z",
+  "run_name": "d239f92cb-ci",
+  "started_at": "2026-10-10T07:39:57Z",
   "cells": [
     {
       "id": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1",
@@ -15,7 +15,11 @@
       "sub_base": 1,
       "exit_status": 0,
       "status": "ok",
-      "report": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt"
+      "report": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt",
+      "load_ref_ms": {
+        "before": 115.135,
+        "after": 115.35
+      }
     },
     {
       "id": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1",
@@ -25,18 +29,22 @@
       "sub_base": 1,
       "exit_status": 0,
       "status": "ok",
-      "report": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt"
+      "report": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt",
+      "load_ref_ms": {
+        "before": 115.108,
+        "after": 115.37
+      }
     }
   ],
-  "finished_at": "2026-10-05T08:26:37Z",
+  "finished_at": "2026-10-10T07:42:29Z",
   "calibration": {
-    "ref_ms": 115.581,
+    "ref_ms": 116.368,
     "ref_target_ms": 50,
     "host_slug": "linux-x86_64-xeon-platinum-8370c-unknown",
     "host_fingerprint": {
       "cpu": {
         "cores": 2,
-        "mhz": 3491,
+        "mhz": 3492,
         "model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
         "threads": 4
       },
@@ -52,6 +60,6 @@
       },
       "slug": "linux-x86_64-xeon-platinum-8370c-unknown"
     },
-    "math_sha": "e3e97e6bad94fe1dbe969a4cc9562f4d46f421a0"
+    "math_sha": "7df12db1d95c765a18bac43a44e6a4c437ebe2cc"
   }
 }

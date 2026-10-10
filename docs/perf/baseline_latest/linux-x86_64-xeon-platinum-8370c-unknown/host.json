@@ -1,7 +1,7 @@
 {
   "cpu": {
     "cores": 2,
-    "mhz": 3491,
+    "mhz": 3492,
     "model": "Intel(R) Xeon(R) Platinum 8370C CPU @ 2.80GHz",
     "threads": 4
   },
