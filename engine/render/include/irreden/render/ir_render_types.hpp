@@ -79,8 +79,8 @@ static_assert(sizeof(GpuSpriteInstance) == 48, "GpuSpriteInstance must remain 48
 struct SpriteRenderEntry {
     ResourceId textureHandle_ = 0;
     int isoDepth_ = 0; ///< pos3DtoDistance(world); larger = farther
-    vec2 screenPos_ = vec2(0.0f);
-    vec2 size_ = vec2(0.0f);
+    vec2 screenPos_ = vec2(0.0f); ///< quad origin, viewport pixels
+    vec2 size_ = vec2(0.0f);      ///< viewport pixels: C_Sprite::size_ × output scale
     vec4 uvRect_ = vec4(0.0f, 0.0f, 1.0f, 1.0f);
     vec4 tintRgba_ = vec4(1.0f);
 };

@@ -109,7 +109,26 @@ sort voxels. Sort order is back-to-front; alpha blending requires it.
 - `{0.5, 0.5}` — center.
 - `{0.0, 0.0}` — top-left.
 
-Quad origin = `isoProject(global.pos_) - anchor * size`.
+Quad origin, in viewport pixels =
+`isoProject(global.pos_) - anchor * size * outputScaleFactor`. The offset
+uses the on-screen size (§"Size"), so the anchor stays on the same point of
+the quad at every output scale.
+
+### Size
+
+`C_Sprite.size_` is in **game pixels**: main-framebuffer pixels, each
+covering `IRRender::getOutputScaleFactor()` viewport pixels per axis. On
+screen the quad spans `size * outputScaleFactor` viewport pixels, so a
+sprite keeps its size relative to the world's game-pixel grid whatever the
+display density or window size — the same grid its anchor snaps to. Under a
+stretched fit the two axes carry different factors and the quad follows
+each.
+
+Size is independent of camera zoom: zooming scales the world around a
+sprite, and the sprite keeps its game-pixel size.
+
+`ir.sprite.create` sets `size_` from the sheet's first-frame `sizePx_`,
+which draws one atlas texel per game pixel.
 
 ### Non-iso seam
 
