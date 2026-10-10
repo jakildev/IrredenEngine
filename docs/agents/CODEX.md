@@ -98,11 +98,13 @@ environment filtering. Fresh and resumed launches use the same hook;
 interactive launches and ownerless sessions do not.
 
 The launcher also passes `--dangerously-bypass-hook-trust`. That bypass covers
-every hook visible to the session, so the fleet test suite refuses tracked
-`.codex/` configuration. The command hook waits synchronously for shell and
-in-process edit tools. Codex CLI 0.156.1 accepted `timeoutSec=1500` but did not
-enforce either `timeoutSec` or `timeout_sec` in host probes; the quiet-window
-record's own maximum ends the park.
+every hook visible to the session, so the launcher first inspects the working
+root's `.codex/` directory. Only the generated `rules/fleet.rules` is accepted;
+any other entry disables the hook and bypass and is named on stderr. The fleet
+test suite also refuses tracked `.codex/` configuration. The command hook waits
+synchronously for shell and in-process edit tools. Codex CLI 0.156.1 accepted
+`timeoutSec=1500` but did not enforce either `timeoutSec` or `timeout_sec` in
+host probes; the quiet-window record's own maximum ends the park.
 
 ## Host setup and rollout
 

@@ -93,7 +93,8 @@ def prompt(role, mode, target, worktree=None):
     )
 
 
-def command(model, effort, worktree, writable, task_prompt, resume="", interactive=False):
+def command(model, effort, worktree, writable, task_prompt, resume="", interactive=False,
+            allow_quiet_hook=True):
     if effort not in ("low", "medium", "high", "xhigh", "max"):
         raise ValueError("unsupported Codex effort")
     args = ["codex"]
@@ -105,7 +106,7 @@ def command(model, effort, worktree, writable, task_prompt, resume="", interacti
              "-c", "sandbox_workspace_write.network_access=true",
              "-c", 'forced_login_method="chatgpt"',
              "-c", "sandbox_workspace_write.writable_roots=" + json.dumps(writable)]
-    if not interactive and os.environ.get("IR_QUIET_OWNER"):
+    if not interactive and allow_quiet_hook and os.environ.get("IR_QUIET_OWNER"):
         args += ["--dangerously-bypass-hook-trust", "-c", quiet_hook_override()]
     if not interactive:
         args += ["--json"]
@@ -116,6 +117,23 @@ def command(model, effort, worktree, writable, task_prompt, resume="", interacti
     if not (interactive and resume):
         args += [task_prompt]
     return args
+
+
+def unexpected_codex_paths(worktree):
+    root = Path(worktree) / ".codex"
+    if root.is_symlink() or (root.exists() and not root.is_dir()):
+        return [root]
+    if not root.exists():
+        return []
+    allowed = {
+        Path("rules"): lambda path: path.is_dir() and not path.is_symlink(),
+        Path("rules/fleet.rules"): lambda path: path.is_file() and not path.is_symlink(),
+    }
+    return [
+        path for path in sorted(root.rglob("*"))
+        if path.relative_to(root) not in allowed
+        or not allowed[path.relative_to(root)](path)
+    ]
 
 
 def _git_dirs(checkout):
@@ -220,8 +238,14 @@ def run(args):
     if args.role not in (*BATCH_ROLES, "opus-architect") and not target:
         raise ValueError("Codex transient session requires an explicit dispatch target")
     sidecar = Path(os.environ.get("FLEET_CODEX_SIDECAR", str(state / "codex-architect.json")))
+    unexpected = unexpected_codex_paths(worktree)
+    if unexpected and not args.interactive and os.environ.get("IR_QUIET_OWNER"):
+        paths = ", ".join(str(path) for path in unexpected)
+        print(f"fleet-codex: quiet hook disabled; unexpected Codex configuration: {paths}",
+              file=sys.stderr)
     argv = command(args.model, args.effort, worktree, writable_roots(worktree, state),
-                   prompt(args.role, args.mode, target, worktree), args.resume, args.interactive)
+                   prompt(args.role, args.mode, target, worktree), args.resume, args.interactive,
+                   allow_quiet_hook=not unexpected)
     if args.print_launch:
         print(json.dumps(argv))
         return 0

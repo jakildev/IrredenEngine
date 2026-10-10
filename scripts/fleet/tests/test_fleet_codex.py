@@ -444,6 +444,45 @@ class Transport(unittest.TestCase):
             self.assertNotIn("--dangerously-bypass-hook-trust", args)
             self.assertFalse(any(value.startswith("hooks.PreToolUse=") for value in args))
 
+    def test_run_vets_worktree_codex_configuration_before_trusting_hooks(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp).resolve()
+            worktree = root / ".claude/worktrees/pool-1"
+            rules = worktree / ".codex/rules"
+            rules.mkdir(parents=True)
+            (rules / "fleet.rules").write_text("generated\n")
+            args = SimpleNamespace(prepare=False, check=False, doctor=False, role="worker",
+                                   model="gpt-6-astra", effort="xhigh", mode="live",
+                                   resume="", interactive=False, print_launch=True)
+            env = {"FLEET_STATE_DIR": str(root / "state"),
+                   "FLEET_DISPATCH_TARGET": "task:engine:901",
+                   "IR_QUIET_OWNER": "pool-1", "IR_LOCK_ROOT": str(root / "locks")}
+
+            def printed_launch():
+                stdout = io.StringIO()
+                stderr = io.StringIO()
+                with patch.object(codex.Path, "cwd", return_value=worktree), \
+                        patch.object(codex, "writable_roots", return_value=[str(worktree)]), \
+                        patch.object(codex, "prompt", return_value="task"), \
+                        patch.object(codex.sys, "stdout", stdout), \
+                        patch.object(codex.sys, "stderr", stderr), \
+                        patch.dict(codex.os.environ, env, clear=True):
+                    self.assertEqual(codex.run(args), 0)
+                return json.loads(stdout.getvalue()), stderr.getvalue()
+
+            clean, clean_stderr = printed_launch()
+            self.assertEqual(codex.unexpected_codex_paths(worktree), [])
+            self.assertIn("--dangerously-bypass-hook-trust", clean)
+            self.assertEqual(clean_stderr, "")
+
+            unexpected = worktree / ".codex/hooks.json"
+            unexpected.write_text("{}\n")
+            guarded, guarded_stderr = printed_launch()
+            self.assertEqual(codex.unexpected_codex_paths(worktree), [unexpected])
+            self.assertNotIn("--dangerously-bypass-hook-trust", guarded)
+            self.assertFalse(any(value.startswith("hooks.PreToolUse=") for value in guarded))
+            self.assertIn(str(unexpected), guarded_stderr)
+
     def test_repository_does_not_track_codex_hook_configuration(self):
         repo = Path(__file__).resolve().parents[3]
         if not (repo / ".git").exists():
