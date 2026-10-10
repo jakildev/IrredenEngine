@@ -984,7 +984,11 @@ kernel void IR_SHAPE_KERNEL_NAME(
     } else {
         const int originDistance = originScaled.x + originScaled.y + originScaled.z;
         baseDepth = cardinalShapeStoredDepth(
-            surfaceD + originDistance, smoothMode && !smoothYaw, sub
+            surfaceD + originDistance,
+            smoothMode && !smoothYaw,
+            IR_SHAPE_PASS == 2,
+            frameData.finiteCoverage != 0,
+            sub
         );
         // Store selection is per canvas, not per camera pose. Main/entity
         // canvases reach this arm at cardinals; other canvases use the

@@ -288,7 +288,6 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                     baker = getSystemParams<System<BAKE_SUN_SHADOW_MAP>>(bakeSystem);
                 }
             }
-            frameData_.finiteCoverage = baker != nullptr && baker->beginVoxelFaceCoverage() ? 1 : 0;
             if (canvasId == mainCanvas) {
                 frameData_.cameraTrixelOffset = IRRender::getEffectiveCameraIso();
             } else if (entityCanvas) {
@@ -400,6 +399,17 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             if (tileCount == 0) {
                 continue;
             }
+            const bool hasXray = std::any_of(
+                gpuShapes.begin(),
+                gpuShapes.end(),
+                [](const GPUShapeDescriptor &shape) {
+                    return (shape.flags & SHAPE_FLAG_XRAY_OCCLUDED) != 0;
+                }
+            );
+            const bool pairedCardinalShapeDepth = baker != nullptr &&
+                                                  baker->beginVoxelFaceCoverage() &&
+                                                  canvasId == mainCanvas && !hasXray;
+            frameData_.finiteCoverage = pairedCardinalShapeDepth ? 1 : 0;
             const int gridY = IRMath::divCeil(tileCount, gridX);
             frameData_.tileGridX = gridX;
             canvasTextures.shapeGeometry_.upload(gpuShapes, frameData_);
@@ -485,13 +495,6 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
             }
 
-            const bool hasXray = std::any_of(
-                gpuShapes.begin(),
-                gpuShapes.end(),
-                [](const GPUShapeDescriptor &shape) {
-                    return (shape.flags & SHAPE_FLAG_XRAY_OCCLUDED) != 0;
-                }
-            );
             canvasTextures.shapeGeometry_.publishSamples(!hasXray);
 
             if (baker != nullptr) {

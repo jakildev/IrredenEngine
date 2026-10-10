@@ -61,15 +61,18 @@ constant uint FLAG_DEPTH_COLOR = 64u;
 constant uint kShapeProceduralColorFlags = FLAG_CHECKERBOARD | FLAG_DEPTH_COLOR;
 
 inline int cardinalShapeStoredDepth(
-    int unoffsetDepth, bool carriesLatticeOffset, int subdivisions
+    int unoffsetDepth,
+    bool carriesLatticeOffset,
+    bool casterPass,
+    bool correctCardinalDepth,
+    int subdivisions
 ) {
-#if IR_SHAPE_PASS == 2
-    return unoffsetDepth;
-#else
+    if (casterPass && correctCardinalDepth) {
+        return unoffsetDepth;
+    }
     return carriesLatticeOffset
         ? unoffsetDepth + cardinalRasterLatticeDepthOffset(subdivisions)
         : unoffsetDepth;
-#endif
 }
 
 inline int cardinalShapeReceiverDepth(
