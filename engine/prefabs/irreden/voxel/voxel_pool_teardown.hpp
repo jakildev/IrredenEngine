@@ -56,11 +56,23 @@ inline void restageSet(IRComponents::C_VoxelSetNew &set) {
         set.numVoxels_ > 0 ? static_cast<std::size_t>(set.numVoxels_) : 0u;
     const std::uint32_t priorityCount = set.perTrixelPriorityVoxelCount_;
     const IREntity::EntityId canvas = set.canvasEntity_;
+    bool sourcePolicyManaged = false;
+    if (spanCount > 0) {
+        withPoolByEntity(canvas, [&](IRComponents::C_VoxelPool &pool) {
+            sourcePolicyManaged =
+                pool.fogCarrierPolicy() != IRComponents::C_VoxelPool::FogCarrierPolicy::UNMANAGED;
+        });
+    }
 
     set.detachToStaged();
 
     if (spanCount == 0) {
         return;
+    }
+    if (sourcePolicyManaged) {
+        for (IRComponents::C_Voxel &voxel : set.pendingVoxels_) {
+            IRComponents::VoxelReserved::setFogCarrier(voxel, false, 0);
+        }
     }
     if (priorityCount > 0) {
         adjustPerTrixelPriorityVoxelCount(-static_cast<int>(priorityCount), canvas);

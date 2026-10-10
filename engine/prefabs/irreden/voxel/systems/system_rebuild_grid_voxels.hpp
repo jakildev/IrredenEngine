@@ -242,6 +242,9 @@ template <> struct System<REBUILD_GRID_VOXELS> {
             for (int i = 0; i < m; ++i) {
                 poolColors[baseIdx + i] = voxelSet.rotationSourceVoxels_[i];
             }
+            pool.applyFogCarrierPolicy(
+                std::span<C_Voxel>{poolColors.data() + baseIdx, static_cast<size_t>(safeCount)}
+            );
             voxelSet.rotationSourceVoxels_.clear();
             voxelSet.rotationSourceVoxels_.shrink_to_fit();
             pool.resyncActiveMaskFromColors(baseIdx, static_cast<std::size_t>(safeCount));
@@ -309,6 +312,9 @@ template <> struct System<REBUILD_GRID_VOXELS> {
                 poolColors[baseIdx + i].reserved_ |= VoxelReserved::kRotatedEmit;
             }
         }
+        pool.applyFogCarrierPolicy(
+            std::span<C_Voxel>{poolColors.data() + baseIdx, static_cast<size_t>(safeCount)}
+        );
 
         recomputeMaskFromGlobals(pool, baseIdx, safeCount);
     }
@@ -363,6 +369,9 @@ template <> struct System<REBUILD_GRID_VOXELS> {
             for (int i = 0; i < safeCount; ++i) {
                 poolColors[baseIdx + i].deactivate();
             }
+            pool.applyFogCarrierPolicy(
+                std::span<C_Voxel>{poolColors.data() + baseIdx, static_cast<size_t>(safeCount)}
+            );
             pool.resyncActiveMaskFromColors(baseIdx, static_cast<std::size_t>(safeCount));
             return true;
         }
@@ -523,6 +532,9 @@ template <> struct System<REBUILD_GRID_VOXELS> {
         for (int i = written; i < safeCount; ++i) {
             poolColors[baseIdx + i].deactivate();
         }
+        pool.applyFogCarrierPolicy(
+            std::span<C_Voxel>{poolColors.data() + baseIdx, static_cast<size_t>(safeCount)}
+        );
 
         pool.resyncActiveMaskFromColors(baseIdx, static_cast<std::size_t>(safeCount));
         if (written > 0) {

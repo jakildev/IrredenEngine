@@ -43,10 +43,9 @@ using IRMath::ivec2;
 using IRMath::ivec3;
 using IRMath::vec3;
 
-constexpr Color kColor{200, 80, 40, 255};
-constexpr std::uint8_t kOldFactor = 40;
-constexpr std::uint8_t kNewFactor = 200;
-constexpr std::uint32_t kCarrierMask = IRComponents::VoxelReserved::kFogCarrierMask;
+constexpr Color kFogCarrierColor{200, 80, 40, 255};
+constexpr std::uint8_t kInitialBodyFactor = 40;
+constexpr std::uint8_t kChangedBodyFactor = 200;
 
 std::uint32_t bodyCarrier(std::uint8_t factor) {
     return IRComponents::VoxelReserved::kFogBody |
@@ -60,7 +59,8 @@ void expectCarrier(
     ASSERT_EQ(records.size(), static_cast<std::size_t>(set.numVoxels_)) << context;
     for (const IRComponents::C_Voxel &voxel : records) {
         if (voxel.color_.alpha_ != 0) {
-            EXPECT_EQ(voxel.reserved_ & kCarrierMask, expected) << context;
+            EXPECT_EQ(voxel.reserved_ & IRComponents::VoxelReserved::kFogCarrierMask, expected)
+                << context;
         }
     }
 }
@@ -90,7 +90,7 @@ class FogCarrierPolicyTest : public testing::Test {
         if (managed) {
             IREntity::getComponent<C_VoxelPool>(canvas).setFogCarrierPolicy(
                 C_VoxelPool::FogCarrierPolicy::BODY,
-                kOldFactor
+                kInitialBodyFactor
             );
         }
         return canvas;
@@ -134,7 +134,7 @@ TEST_F(FogCarrierPolicyTest, RebuildWritesTheManagedCarrierOnEveryArm) {
         for (const Arm arm : arms) {
             const IREntity::EntityId canvas = makeCanvas();
             const IREntity::EntityId entity = IREntity::createEntity(
-                C_VoxelSetNew{ivec3(3, 3, 3), kColor, EntityAnchor::CENTER, canvas},
+                C_VoxelSetNew{ivec3(3, 3, 3), kFogCarrierColor, EntityAnchor::CENTER, canvas},
                 C_RotationMode{RotationMode::GRID}
             );
             C_VoxelSetNew &set = setOf(entity);
@@ -146,7 +146,7 @@ TEST_F(FogCarrierPolicyTest, RebuildWritesTheManagedCarrierOnEveryArm) {
 
             rebuild.tick(set, rotated, grid);
             ASSERT_FALSE(set.rotationSourceVoxels_.empty());
-            pool.setFogCarrierPolicy(policy, kNewFactor);
+            pool.setFogCarrierPolicy(policy, kChangedBodyFactor);
 
             C_WorldTransform next = rotated;
             if (arm == Arm::IDENTITY) {
@@ -156,8 +156,9 @@ TEST_F(FogCarrierPolicyTest, RebuildWritesTheManagedCarrierOnEveryArm) {
             }
             rebuild.tick(set, next, grid);
 
-            const std::uint32_t expected =
-                policy == C_VoxelPool::FogCarrierPolicy::BODY ? bodyCarrier(kNewFactor) : 0u;
+            const std::uint32_t expected = policy == C_VoxelPool::FogCarrierPolicy::BODY
+                                               ? bodyCarrier(kChangedBodyFactor)
+                                               : 0u;
             expectCarrier(pool, set, expected, "rebuild arm must preserve the pool policy");
         }
     }
@@ -166,7 +167,7 @@ TEST_F(FogCarrierPolicyTest, RebuildWritesTheManagedCarrierOnEveryArm) {
 TEST_F(FogCarrierPolicyTest, LeavingABodyHostClearsTheCarrierUntilAdoption) {
     const IREntity::EntityId host = makeHost(makeCanvas());
     const IREntity::EntityId part =
-        IRPrefab::CanvasPart::create(host, C_LocalTransform{}, ivec3(2, 2, 2), kColor);
+        IRPrefab::CanvasPart::create(host, C_LocalTransform{}, ivec3(2, 2, 2), kFogCarrierColor);
 
     IRPrefab::RotationMode::setMode(part, RotationMode::GRID);
 
@@ -184,7 +185,7 @@ TEST_F(FogCarrierPolicyTest, LeavingABodyHostClearsTheCarrierUntilAdoption) {
 TEST_F(FogCarrierPolicyTest, FieldPartStaysClearAfterLeavingABodyHost) {
     const IREntity::EntityId host = makeHost(makeCanvas());
     const IREntity::EntityId part =
-        IRPrefab::CanvasPart::create(host, C_LocalTransform{}, ivec3(2, 2, 2), kColor);
+        IRPrefab::CanvasPart::create(host, C_LocalTransform{}, ivec3(2, 2, 2), kFogCarrierColor);
     IREntity::setComponent(part, C_FogField{});
 
     IRPrefab::RotationMode::setMode(part, RotationMode::GRID);
@@ -197,7 +198,7 @@ TEST_F(FogCarrierPolicyTest, FieldPartStaysClearAfterLeavingABodyHost) {
 TEST_F(FogCarrierPolicyTest, HostLeavingRevoxelizeClearsReleasedPartCarriers) {
     const IREntity::EntityId host = makeHost(makeCanvas());
     const IREntity::EntityId part =
-        IRPrefab::CanvasPart::create(host, C_LocalTransform{}, ivec3(2, 2, 2), kColor);
+        IRPrefab::CanvasPart::create(host, C_LocalTransform{}, ivec3(2, 2, 2), kFogCarrierColor);
 
     IRPrefab::RotationMode::setMode(host, RotationMode::GRID);
 
@@ -207,7 +208,7 @@ TEST_F(FogCarrierPolicyTest, HostLeavingRevoxelizeClearsReleasedPartCarriers) {
 TEST_F(FogCarrierPolicyTest, UnmanagedSourcesKeepTheirCarrierAcrossRestaging) {
     const IREntity::EntityId sourceCanvas = makeCanvas(false);
     const IREntity::EntityId entity = IREntity::createEntity(
-        C_VoxelSetNew{ivec3(2, 2, 2), kColor, EntityAnchor::CENTER, sourceCanvas}
+        C_VoxelSetNew{ivec3(2, 2, 2), kFogCarrierColor, EntityAnchor::CENTER, sourceCanvas}
     );
     C_VoxelSetNew &set = setOf(entity);
     C_VoxelPool &sourcePool = IREntity::getComponent<C_VoxelPool>(sourceCanvas);
