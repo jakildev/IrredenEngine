@@ -1,0 +1,17 @@
+{
+  "demo": "metal_clear_test",
+  "target": "IRMetalClearTest",
+  "screenshot_subdir": "save_files/screenshots",
+  "shots": [
+    "metal_clear_zoom1",
+    "metal_clear_zoom2",
+    "metal_clear_zoom4_offset"
+  ],
+  "thresholds": {
+    "per_pixel_tol": 8,
+    "match_pct": 99.9,
+    "max_delta": 64,
+    "psnr_db": 35.0
+  },
+  "notes": "Blend-state oracle (#3733). main.cpp seeds the main framebuffer with (128,128,128,128) and runs only FRAMEBUFFER_TO_SCREEN, so each shot is the seed RGBA verbatim while blending is off (the default). A blended blit mixes the seed into the purple default-target clear and reads (83,64,96,255) instead. macOS-only: each backend's references are captured on its own host."
+}

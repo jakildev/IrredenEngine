@@ -193,12 +193,16 @@ TEST_F(GpuComputeDispatchTest, CopyNamedBufferSubDataMatchesSourceBytes) {
 // drives the real ShaderProgram / Texture2D / dispatchCompute path.
 
 #include <irreden/render/buffer.hpp>
+#include <irreden/render/framebuffer.hpp>
 #include <irreden/render/ir_render_enums.hpp>
+#include <irreden/render/ir_render_types.hpp>
 #include <irreden/render/metal/metal_runtime.hpp>
 #include <irreden/render/light_volume_dispatch.hpp>
 #include <irreden/render/render_device.hpp>
 #include <irreden/render/shader.hpp>
+#include <irreden/render/shapes_2d.hpp>
 #include <irreden/render/texture.hpp>
+#include <irreden/render/vao.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -1024,6 +1028,97 @@ TEST_F(MetalGpuComputeDispatchTest, ResolveOnFirstTickLeavesTheClearSentinel) {
         << nonSentinel << " / " << kTexelCount
         << " texels departed from the clear sentinel after a resolve with no atomic "
            "pass in between.";
+}
+
+// Blend-state parity with GL: a draw honours enableBlending() /
+// disableBlending() the way GL_BLEND does. Blending starts off, enabling it
+// applies SourceAlpha / OneMinusSourceAlpha to RGB and alpha alike, and the
+// matching disable turns it off again. The fractional-alpha source is the
+// discriminator: an unblended draw writes it verbatim, a blended one mixes it
+// into the seeded target. Blend state is baked into the Metal pipeline state,
+// so this also proves the off and on variants are cached separately.
+TEST_F(MetalGpuComputeDispatchTest, DrawBlendingFollowsDeviceToggle) {
+    using namespace IRRender;
+    constexpr int kTargetDim = 4;
+    constexpr std::uint8_t kSource[4] = {255, 0, 0, 128};
+    constexpr std::uint8_t kDestination[4] = {0, 0, 255, 255};
+    // a = 128/255: rgb = src * a + dst * (1 - a), alpha = a * a + 1 * (1 - a).
+    constexpr std::uint8_t kBlended[4] = {128, 0, 127, 191};
+
+    Framebuffer target{
+        IRMath::ivec2(kTargetDim),
+        IRMath::ivec2(0),
+        TextureFormat::RGBA8,
+        TextureFormat::DEPTH24_STENCIL8
+    };
+    Texture2D source{TextureKind::TEXTURE_2D, kTargetDim, kTargetDim, TextureFormat::RGBA8};
+    source.clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, kSource);
+
+    // The textured quad spans [-0.5, 0.5]; doubling it covers the whole target.
+    FrameDataFramebuffer frameData{};
+    frameData.mvpMatrix = IRMath::scale(IRMath::mat4(1.0f), IRMath::vec3(2.0f, 2.0f, 1.0f));
+    Buffer frameDataBuffer{
+        &frameData,
+        sizeof(frameData),
+        BUFFER_STORAGE_DYNAMIC,
+        BufferTarget::UNIFORM,
+        kBufferIndex_FramebufferFrameDataUniform
+    };
+    Buffer quadVertices{IRShapes2D::k2DQuadTextured, sizeof(IRShapes2D::k2DQuadTextured), 0};
+    VertexLayout quad{&quadVertices, nullptr, 2, kAttrList2Float2};
+
+    const std::string vertPath =
+        std::string(IR_TEST_RENDER_SHADER_DIR) + "/v_framebuffer_to_screen.glsl";
+    const std::string fragPath =
+        std::string(IR_TEST_RENDER_SHADER_DIR) + "/f_framebuffer_to_screen.glsl";
+    ShaderProgram program{std::vector{
+        ShaderStage{vertPath.c_str(), ShaderType::VERTEX},
+        ShaderStage{fragPath.c_str(), ShaderType::FRAGMENT}
+    }};
+
+    target.bind();
+    program.use();
+    quad.bind();
+    source.bind(0);
+    device_->setDepthTest(false);
+    device_->setDepthWrite(false);
+
+    const auto drawOverDestination = [&]() {
+        device_->clearTexImage(&target.getTextureColor(), 0, kDestination);
+        device_->drawArrays(DrawMode::TRIANGLES, 0, 6);
+        device_->finish();
+        std::vector<std::uint8_t> pixels(kTargetDim * kTargetDim * 4);
+        target.getTextureColor().getSubImage2D(
+            0,
+            0,
+            kTargetDim,
+            kTargetDim,
+            PixelDataFormat::RGBA,
+            PixelDataType::UNSIGNED_BYTE,
+            pixels.data()
+        );
+        return pixels;
+    };
+    // One unit of slack per channel absorbs blend-unit rounding.
+    const auto expectEveryTexel = [](const std::vector<std::uint8_t> &pixels,
+                                     const std::uint8_t (&expected)[4],
+                                     const char *phase) {
+        for (std::size_t byte = 0; byte < pixels.size(); ++byte) {
+            ASSERT_LE(IRMath::abs(int(pixels[byte]) - int(expected[byte % 4])), 1)
+                << phase << ": texel " << byte / 4 << " channel " << byte % 4 << " = "
+                << int(pixels[byte]) << ", expected " << int(expected[byte % 4]);
+        }
+    };
+
+    expectEveryTexel(drawOverDestination(), kSource, "default (blending off)");
+    device_->enableBlending();
+    expectEveryTexel(drawOverDestination(), kBlended, "after enableBlending");
+    device_->disableBlending();
+    expectEveryTexel(drawOverDestination(), kSource, "after disableBlending");
+
+    device_->setDepthTest(true);
+    device_->setDepthWrite(true);
+    setActiveMetalPipeline(nullptr);
 }
 
 } // namespace

@@ -257,11 +257,13 @@ std::uint32_t nextMetalPipelineHandle() {
 std::string renderPipelineCacheKey(
     MTL::PixelFormat colorPixelFormat,
     MTL::PixelFormat depthPixelFormat,
-    const MTL::VertexDescriptor *vertexDescriptor
+    const MTL::VertexDescriptor *vertexDescriptor,
+    bool blendingEnabled
 ) {
     return std::to_string(static_cast<int>(colorPixelFormat)) + ":" +
            std::to_string(static_cast<int>(depthPixelFormat)) + ":" +
-           std::to_string(reinterpret_cast<std::uintptr_t>(vertexDescriptor));
+           std::to_string(reinterpret_cast<std::uintptr_t>(vertexDescriptor)) + ":" +
+           (blendingEnabled ? "1" : "0");
 }
 
 } // namespace
@@ -345,13 +347,18 @@ class MetalShaderPipelineImpl final : public ShaderPipelineImpl, public MetalPip
     MTL::RenderPipelineState *getRenderPipelineState(
         MTL::PixelFormat colorPixelFormat,
         MTL::PixelFormat depthPixelFormat,
-        const MTL::VertexDescriptor *vertexDescriptor
+        const MTL::VertexDescriptor *vertexDescriptor,
+        bool blendingEnabled
     ) override {
         if (m_vertexFunction == nullptr || m_fragmentFunction == nullptr || vertexDescriptor == nullptr) {
             return nullptr;
         }
-        const std::string key =
-            renderPipelineCacheKey(colorPixelFormat, depthPixelFormat, vertexDescriptor);
+        const std::string key = renderPipelineCacheKey(
+            colorPixelFormat,
+            depthPixelFormat,
+            vertexDescriptor,
+            blendingEnabled
+        );
         const auto cached = m_renderStates.find(key);
         if (cached != m_renderStates.end()) {
             return cached->second;
@@ -363,11 +370,15 @@ class MetalShaderPipelineImpl final : public ShaderPipelineImpl, public MetalPip
         descriptor->setVertexDescriptor(vertexDescriptor);
         auto *colorAttachment = descriptor->colorAttachments()->object(0);
         colorAttachment->setPixelFormat(colorPixelFormat);
-        colorAttachment->setBlendingEnabled(true);
-        colorAttachment->setSourceRGBBlendFactor(MTL::BlendFactorSourceAlpha);
-        colorAttachment->setDestinationRGBBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
-        colorAttachment->setSourceAlphaBlendFactor(MTL::BlendFactorOne);
-        colorAttachment->setDestinationAlphaBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
+        // Matches GL's glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA),
+        // which applies the same factors to RGB and alpha.
+        colorAttachment->setBlendingEnabled(blendingEnabled);
+        if (blendingEnabled) {
+            colorAttachment->setSourceRGBBlendFactor(MTL::BlendFactorSourceAlpha);
+            colorAttachment->setDestinationRGBBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
+            colorAttachment->setSourceAlphaBlendFactor(MTL::BlendFactorSourceAlpha);
+            colorAttachment->setDestinationAlphaBlendFactor(MTL::BlendFactorOneMinusSourceAlpha);
+        }
         // Depth-only: stencil is unused engine-wide, so `createRenderEncoder`
         // never sets a stencil attachment. Metal requires a pipeline state's
         // stencil pixel format to stay `Invalid` while no stencil texture is

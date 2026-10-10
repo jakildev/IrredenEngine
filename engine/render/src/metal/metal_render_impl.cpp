@@ -569,9 +569,10 @@ class MetalRenderDevice final : public RenderDevice {
         }
 
         auto *pipelineState = pipeline->getRenderPipelineState(
-metalCurrentColorPixelFormat(),
-metalCurrentDepthPixelFormat(),
-            layout.vertexDescriptor_
+            metalCurrentColorPixelFormat(),
+            metalCurrentDepthPixelFormat(),
+            layout.vertexDescriptor_,
+            m_blendingEnabled
         );
         IR_ASSERT(pipelineState != nullptr, "Failed to get Metal render pipeline state");
         encoder->setRenderPipelineState(pipelineState);
@@ -610,7 +611,8 @@ metalCurrentDepthPixelFormat(),
         auto *pipelineState = pipeline->getRenderPipelineState(
             metalCurrentColorPixelFormat(),
             metalCurrentDepthPixelFormat(),
-            layout.vertexDescriptor_
+            layout.vertexDescriptor_,
+            m_blendingEnabled
         );
         IR_ASSERT(pipelineState != nullptr, "Failed to get Metal render pipeline state");
         encoder->setRenderPipelineState(pipelineState);
@@ -659,7 +661,8 @@ metalCurrentDepthPixelFormat(),
         auto *pipelineState = pipeline->getRenderPipelineState(
             metalCurrentColorPixelFormat(),
             metalCurrentDepthPixelFormat(),
-            layout.vertexDescriptor_
+            layout.vertexDescriptor_,
+            m_blendingEnabled
         );
         IR_ASSERT(pipelineState != nullptr, "Failed to get Metal render pipeline state");
         encoder->setRenderPipelineState(pipelineState);
@@ -705,9 +708,10 @@ metalCurrentDepthPixelFormat(),
         }
 
         auto *pipelineState = pipeline->getRenderPipelineState(
-metalCurrentColorPixelFormat(),
-metalCurrentDepthPixelFormat(),
-            layout.vertexDescriptor_
+            metalCurrentColorPixelFormat(),
+            metalCurrentDepthPixelFormat(),
+            layout.vertexDescriptor_,
+            m_blendingEnabled
         );
         IR_ASSERT(pipelineState != nullptr, "Failed to get Metal render pipeline state");
         encoder->setRenderPipelineState(pipelineState);
@@ -745,7 +749,8 @@ metalCurrentDepthPixelFormat(),
         auto *pipelineState = pipeline->getRenderPipelineState(
             metalCurrentColorPixelFormat(),
             metalCurrentDepthPixelFormat(),
-            layout.vertexDescriptor_
+            layout.vertexDescriptor_,
+            m_blendingEnabled
         );
         IR_ASSERT(pipelineState != nullptr, "Failed to get Metal render pipeline state");
         encoder->setRenderPipelineState(pipelineState);
@@ -766,8 +771,12 @@ metalCurrentDepthPixelFormat(),
 
     void setPolygonMode(PolygonMode) override {}
 
-    void enableBlending() override {}
-    void disableBlending() override {}
+    void enableBlending() override {
+        m_blendingEnabled = true;
+    }
+    void disableBlending() override {
+        m_blendingEnabled = false;
+    }
     void setDepthTest(bool enabled) override {
         setMetalDepthTestEnabled(enabled);
     }
@@ -1210,6 +1219,9 @@ metalCurrentDepthPixelFormat(),
         std::this_thread::sleep_until(m_offscreenNextFrame);
     }
 
+    // Persists across draws, encoders, and frames until the matching
+    // disable, like GL_BLEND; starts off to match the GL default.
+    bool m_blendingEnabled = false;
     GpuTimestampHandle m_nextTimestampHandle = 1;
     std::vector<MetalTimestampPair> m_timestamps;
     MTL::CounterSet *m_timestampCounterSet = nullptr;
