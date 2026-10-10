@@ -329,6 +329,7 @@ template <> struct System<UPDATE_JOINT_MATRICES> {
             usedHi_ = IRMath::max(usedHi_, hiLocal);
             const bool held =
                 std::binary_search(heldSkeletons_.begin(), heldSkeletons_.end(), rigRoot);
+            // A resized block has no retained matrices, so even a held rig must seed its live pose.
             if (held && !blockChanged) {
                 return;
             }

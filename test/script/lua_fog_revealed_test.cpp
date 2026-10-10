@@ -174,6 +174,33 @@ TEST_F(LuaFogRevealedTest, HiddenPolicyIsValidatedAndGhostHeldIsReadOnly) {
     }
 }
 
+TEST_F(LuaFogRevealedTest, GhostHeldReadsTrueAfterEngineLifecycleHold) {
+    IRComponents::C_FogRevealed value{};
+    value.hiddenPolicy_ = IRComponents::FogHiddenPolicy::GHOST;
+    value.shown_ = true;
+    IRComponents::C_WorldTransform shownPose{};
+    shownPose.translation_ = {1.0f, 2.0f, 3.0f};
+    IRPrefab::Fog::stepGhostLifecycle(value, shownPose, false, true, 0.75f, [](auto, auto) {
+        return 0.0f;
+    });
+    value.shown_ = false;
+    IRPrefab::Fog::stepGhostLifecycle(
+        value,
+        IRComponents::C_WorldTransform{},
+        true,
+        true,
+        0.75f,
+        [](auto, auto) { return 0.0f; }
+    );
+    ASSERT_TRUE(value.ghostHeld_);
+
+    m_lua.lua()["engineHeldFog"] = value;
+    const auto result =
+        m_lua.lua().safe_script("return engineHeldFog.ghostHeld", sol::script_pass_on_error);
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+    EXPECT_TRUE(result.get<bool>());
+}
+
 // The marker components are Lua-constructible, and an entity spawned from
 // Lua with one reads that class through the C++ surface; a marker-less
 // entity reads the BODY default.
