@@ -8,10 +8,12 @@
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/render/gui_test_assertions.hpp>
 #include <irreden/render/picking.hpp>
+#include <irreden/voxel/sdf_fill.hpp>
 #include <irreden/common/array_transforms.hpp>
 
 #include "anim_panel.hpp"
 #include "array_panel.hpp"
+#include "bake_panel.hpp"
 #include "component_records.hpp"
 #include "lod_panel.hpp"
 #include "palette.hpp"
@@ -166,8 +168,20 @@ class OccupancyModel {
         m_origin = origin;
     }
 
-    // The editor seeds the editable set with a full ground plane at the far z
-    // slice so the first click has something to land on (main.cpp initEntities).
+    // Places every cell the SDF primitive covers: the same cell walk the
+    // editor's BAKE fills through.
+    void bakeShape(IRMath::SDF::ShapeType type, IRMath::vec4 params, const SymmetryState &sym) {
+        IRPrefab::Voxel::forEachSdfGridCell(
+            m_size,
+            type,
+            params,
+            [&](IRMath::ivec3 local, std::size_t) { setMirrored(local, true, sym); }
+        );
+    }
+
+    // The single-set editor seeds its editable set with a full ground plane at
+    // the far z slice so the first click has something to land on (main.cpp
+    // initEntities). An entity-scene voxel part starts clear.
     void seedGroundPlane() {
         const int z = m_size.z - 1;
         for (int y = 0; y < m_size.y; ++y)
@@ -908,7 +922,6 @@ class Builder {
         chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonP);
         if (m_partModels.empty()) {
             OccupancyModel first(m_model.size(), m_sceneOrigin);
-            first.seedGroundPlane();
             m_partModels.push_back(first);
             m_activePart = 0;
             m_model = std::move(first);
@@ -916,10 +929,30 @@ class Builder {
         }
         m_partModels[static_cast<std::size_t>(m_activePart)] = m_model;
         OccupancyModel next(m_model.size(), m_sceneOrigin);
-        next.seedGroundPlane();
         m_partModels.push_back(next);
         m_activePart = static_cast<int>(m_partModels.size()) - 1;
         m_model = std::move(next);
+    }
+
+    // Sets the BAKE panel's P1 slider to @p radius and clicks BAKE with the
+    // default shape row (a sphere): the first write into a part that has no
+    // voxel for a click to pick. Open a new segment before aiming at the
+    // result.
+    void bakeSphere(float radius) {
+        dragGuiSlider(
+            IRVoxelEditor::kBakeParam1SliderGeometry,
+            IRVoxelEditor::kBakeParamSliderMin,
+            IRVoxelEditor::kBakeParamSliderMax,
+            radius
+        );
+        clickGui(IRVoxelEditor::bakeButtonCenterGuiTrixel());
+        const IRMath::SDF::ShapeType type =
+            IRVoxelEditor::kBakeShapeTypes[IRVoxelEditor::kBakeDefaultShapeRow];
+        m_model.bakeShape(
+            type,
+            IRVoxelEditor::bakeShapeParams(type, radius, IRVoxelEditor::kBakeParam2Default),
+            m_symmetry
+        );
     }
 
     void nextPart() {

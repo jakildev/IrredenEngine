@@ -5,7 +5,8 @@ Covers:
   (a) one still-open ref → unchanged bare #NNN
   (a) two refs, one closed → bare #NNN for the remaining one
   (a) both closed → (none)
-  (a) merged-PR variant: issue open but claude/<N>-* PR in merged list → satisfied
+  (a) a merged claude/<N>-* delivery does not satisfy an open issue blocker;
+      a bare ref naming the merged PR itself remains satisfied
   (a) free-text blocked_by not touched
   (a) (none) field not touched
   (b) integration with enrich_stackable_blocker_prs: multi-blocker reduces to
@@ -59,8 +60,8 @@ def _closed_issue(number):
     return {"number": number, "title": "done", "labels": []}
 
 
-def _merged_pr(head_ref):
-    return {"number": 0, "headRefName": head_ref, "baseRefName": "master"}
+def _merged_pr(head_ref, number=0):
+    return {"number": number, "headRefName": head_ref, "baseRefName": "master"}
 
 
 def _reference_state_stub(state_map):
@@ -90,6 +91,7 @@ class TestResolveBlockedBy(unittest.TestCase):
         state = _state(engine_tasks=tasks, closed=[_closed_issue(100)])
         resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "(none)")
+        self.assertFalse(tasks[0]["has_open_blocker"])
 
     def test_in_progress_closed_ref_resolves_to_none(self):
         """A claimed task (routed to tasks.in_progress by fetch_task_queue,
@@ -109,6 +111,7 @@ class TestResolveBlockedBy(unittest.TestCase):
             state = _state(engine_tasks=tasks)
             resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "#101")
+        self.assertTrue(tasks[0]["has_open_blocker"])
 
     def test_two_refs_one_closed_one_open(self):
         tasks = [_task("#200", "#100 (done), #101 (still open)")]
@@ -145,14 +148,24 @@ class TestResolveBlockedBy(unittest.TestCase):
         resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "(none)")
 
-    def test_merged_pr_variant_satisfies_open_issue(self):
+    def test_merged_delivery_does_not_satisfy_open_issue(self):
         tasks = [_task("#200", "#101")]
         state = _state(
             engine_tasks=tasks,
             merged_prs=[_merged_pr("claude/101-rotation-fix")],
         )
+        with patch.object(_mod, "conditional_get", _reference_state_stub({"101": "OPEN"})):
+            resolve_blocked_by(state)
+        self.assertEqual(tasks[0]["blocked_by"], "#101")
+        self.assertTrue(tasks[0]["has_open_blocker"])
+
+    def test_bare_ref_naming_merged_pr_is_satisfied(self):
+        tasks = [_task("#200", "#101")]
+        state = _state(engine_tasks=tasks,
+                       merged_prs=[_merged_pr("feature/no-issue-name", number=101)])
         resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "(none)")
+        self.assertFalse(tasks[0]["has_open_blocker"])
 
     def test_merged_pr_prefix_discrimination(self):
         """claude/1011-* does NOT satisfy #101 (requires trailing dash)."""

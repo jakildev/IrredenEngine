@@ -114,6 +114,7 @@
 #include "palette.hpp"
 
 // Creation-module host (--module) and the RECIPES / module-panel geometry.
+#include "bake_panel.hpp"
 #include "editor_lua_host.hpp"
 #include "recipes_panel.hpp"
 
@@ -1245,7 +1246,6 @@ void addEditorVoxelPart() {
         g_entityScene.addVoxelPart(g_editableSceneSize, g_editableSceneOrigin);
     auto &set = IREntity::getComponent<C_VoxelSetNew>(part);
     set.deactivateAll();
-    set.fillPlane(2, set.size_.z - 1, Color{120, 120, 130, 255});
     selectEditorPart(g_entityScene.selectedIndex());
 }
 
@@ -1282,48 +1282,23 @@ IREntity::EntityId g_bakeShapeList = IREntity::kNullEntity;
 IREntity::EntityId g_bakeParam1Slider = IREntity::kNullEntity;
 IREntity::EntityId g_bakeParam2Slider = IREntity::kNullEntity;
 IREntity::EntityId g_bakeButton = IREntity::kNullEntity;
-constexpr IRMath::SDF::ShapeType kBakeShapeTypes[] = {
-    IRMath::SDF::ShapeType::BOX,
-    IRMath::SDF::ShapeType::SPHERE,
-    IRMath::SDF::ShapeType::CYLINDER,
-    IRMath::SDF::ShapeType::TORUS,
-    IRMath::SDF::ShapeType::CONE,
-    IRMath::SDF::ShapeType::ELLIPSOID,
-};
 
 IRPrefab::Prefab::PrefabShapeDescription selectedShapeDescription() {
     const int selected = g_bakeShapeList != IREntity::kNullEntity
                              ? IRPrefab::Widget::listSelectedIndex(g_bakeShapeList)
-                             : 1;
-    const int index =
-        selected >= 0 && selected < static_cast<int>(std::size(kBakeShapeTypes)) ? selected : 1;
+                             : kBakeDefaultShapeRow;
+    const int index = selected >= 0 && selected < static_cast<int>(std::size(kBakeShapeTypes))
+                          ? selected
+                          : kBakeDefaultShapeRow;
     const float p1 = g_bakeParam1Slider != IREntity::kNullEntity
                          ? IRPrefab::Widget::sliderValue(g_bakeParam1Slider)
                          : 5.0f;
     const float p2 = g_bakeParam2Slider != IREntity::kNullEntity
                          ? IRPrefab::Widget::sliderValue(g_bakeParam2Slider)
                          : 3.0f;
-    IRMath::vec4 params{};
-    switch (kBakeShapeTypes[index]) {
-    case IRMath::SDF::ShapeType::SPHERE:
-        params = IRMath::vec4(p1, 0.0f, 0.0f, 0.0f);
-        break;
-    case IRMath::SDF::ShapeType::TORUS:
-        params = IRMath::vec4(p1, p2, 0.0f, 0.0f);
-        break;
-    case IRMath::SDF::ShapeType::BOX:
-    case IRMath::SDF::ShapeType::ELLIPSOID:
-        params = IRMath::vec4(p1 * 2.0f, p1 * 2.0f, p2 * 2.0f, 0.0f);
-        break;
-    case IRMath::SDF::ShapeType::CYLINDER:
-    case IRMath::SDF::ShapeType::CONE:
-    default:
-        params = IRMath::vec4(p1, p1, p2 * 2.0f, 0.0f);
-        break;
-    }
     return {
         kBakeShapeTypes[index],
-        params,
+        bakeShapeParams(kBakeShapeTypes[index], p1, p2),
         kPaletteColors[g_editor.activeSwatchIdx_],
         IRMath::SDF::SHAPE_FLAG_VISIBLE
     };
@@ -4356,9 +4331,10 @@ void initSystems() {
 
             const int sel = (g_bakeShapeList != IREntity::kNullEntity)
                                 ? IRPrefab::Widget::listSelectedIndex(g_bakeShapeList)
-                                : 1;
-            const int idx =
-                (sel >= 0 && sel < static_cast<int>(std::size(kBakeShapeTypes))) ? sel : 1;
+                                : kBakeDefaultShapeRow;
+            const int idx = (sel >= 0 && sel < static_cast<int>(std::size(kBakeShapeTypes)))
+                                ? sel
+                                : kBakeDefaultShapeRow;
             const IRPrefab::Prefab::PrefabShapeDescription shape = selectedShapeDescription();
 
             const float p1 = (g_bakeParam1Slider != IREntity::kNullEntity)
@@ -6057,36 +6033,36 @@ void initEntities() {
     // List itemHeight is one glyph row + 2-trixel gap so the 6 shape rows
     // don't touch (itemHeight == glyph height made adjacent rows overlap). The
     // sub-controls sit below the now-taller 6-row list (18 + 6*13 = 96).
-    constexpr ivec2 kBakePanelPos{130, 342};
-    constexpr ivec2 kBakePanelSize{120, 156};
+    using IRVoxelEditor::kBakePanelPos;
+    using IRVoxelEditor::kBakePanelSize;
     IRVoxelEditor::g_bakePanel = IRPrefab::Widget::makePanel(kBakePanelPos, kBakePanelSize, "BAKE");
     IREntity::setComponent(IRVoxelEditor::g_bakePanel, IRComponents::C_HitBox2DGui{kBakePanelSize});
     IRVoxelEditor::g_bakeShapeList = IRPrefab::Widget::makeList(
         ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 18),
         ivec2(112, 78),
         {"BOX", "SPHERE", "CYLINDER", "TORUS", "CONE", "ELLIPSOID"},
-        1,
+        IRVoxelEditor::kBakeDefaultShapeRow,
         13
     );
     IRVoxelEditor::g_bakeParam1Slider = IRPrefab::Widget::makeSlider(
-        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 100),
-        ivec2(112, 14),
+        IRVoxelEditor::kBakeParam1SliderGeometry.pos_,
+        IRVoxelEditor::kBakeParam1SliderGeometry.size_,
         "P1",
-        0.5f,
-        12.0f,
-        8.0f
+        IRVoxelEditor::kBakeParamSliderMin,
+        IRVoxelEditor::kBakeParamSliderMax,
+        IRVoxelEditor::kBakeParam1Default
     );
     IRVoxelEditor::g_bakeParam2Slider = IRPrefab::Widget::makeSlider(
-        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 118),
-        ivec2(112, 14),
+        IRVoxelEditor::kBakeParam2SliderGeometry.pos_,
+        IRVoxelEditor::kBakeParam2SliderGeometry.size_,
         "P2",
-        0.5f,
-        12.0f,
-        3.0f
+        IRVoxelEditor::kBakeParamSliderMin,
+        IRVoxelEditor::kBakeParamSliderMax,
+        IRVoxelEditor::kBakeParam2Default
     );
     IRVoxelEditor::g_bakeButton = IRPrefab::Widget::makeButton(
-        ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 136),
-        ivec2(112, 12),
+        IRVoxelEditor::kBakeButtonPos,
+        IRVoxelEditor::kBakeButtonSize,
         "BAKE"
     );
 

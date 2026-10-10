@@ -79,8 +79,8 @@ static_assert(sizeof(GpuSpriteInstance) == 48, "GpuSpriteInstance must remain 48
 struct SpriteRenderEntry {
     ResourceId textureHandle_ = 0;
     int isoDepth_ = 0; ///< pos3DtoDistance(world); larger = farther
-    vec2 screenPos_ = vec2(0.0f);
-    vec2 size_ = vec2(0.0f);
+    vec2 screenPos_ = vec2(0.0f); ///< quad origin, viewport pixels
+    vec2 size_ = vec2(0.0f);      ///< viewport pixels: C_Sprite::size_ × output scale
     vec4 uvRect_ = vec4(0.0f, 0.0f, 1.0f, 1.0f);
     vec4 tintRgba_ = vec4(1.0f);
 };
@@ -488,7 +488,7 @@ constexpr std::uint32_t kEntityIdPriorityMaskInHighWord = ((1u << kEntityIdPrior
 // .glsl/.metal kEntityIdCutFaceMaskInHighWord.
 constexpr std::uint32_t kEntityIdCutFaceMaskInHighWord = 1u << 29;
 // Fog BODY carrier: bit 28 of the high word flags every pixel of a BODY-classed
-// subject (VoxelReserved::kFogBody on a voxel set, SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT
+// subject (VoxelReserved::kFogBody on a voxel set, SHAPE_FLAG_FOG_BODY
 // on a shape) and bits 27:20 carry its 8-bit reveal factor. FOG_TO_TRIXEL paints
 // a flagged pixel at factor / 255 with no per-pixel field lookup. Entity ids are
 // an allocation counter, so bits 27:20 of a live id's high word are zero. Both

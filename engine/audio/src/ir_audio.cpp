@@ -142,19 +142,15 @@ void insertCCMessage(
 bool startAudioInputCapture(
     const std::string &deviceName, int sampleRate, int channels, AudioInputCallback callback
 ) {
-    Audio &audio = getAudioManager().getAudio();
-    if (!audio.openStreamIn(deviceName, sampleRate, channels, std::move(callback))) {
-        return false;
-    }
-    if (!audio.startStreamIn()) {
-        audio.closeStreamIn();
-        return false;
-    }
-    return true;
+    AudioCaptureConfig config;
+    config.device_name_ = deviceName;
+    config.sample_rate_ = sampleRate;
+    config.channels_ = channels;
+    return getAudioManager().getAudio().startCapture(config, std::move(callback));
 }
 
 void stopAudioInputCapture() {
-    getAudioManager().getAudio().closeStreamIn();
+    getAudioManager().getAudio().stopCapture();
 }
 
 SoundHandle playSound(const std::string &path, AudioBus bus, float volume, bool loop) {

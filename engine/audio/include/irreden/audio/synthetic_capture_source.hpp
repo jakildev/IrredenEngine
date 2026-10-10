@@ -17,12 +17,14 @@ class SyntheticAudioCaptureSource : public IAudioCaptureSource {
     bool startCapture(const AudioCaptureConfig &config, AudioCaptureCallback cb) override;
     void stopCapture() override;
     [[nodiscard]] bool isCapturing() const override;
+    [[nodiscard]] int getCaptureSampleRate() const override;
     [[nodiscard]] double getInputLatencyMs() const override;
 
   private:
     void captureLoop(AudioCaptureConfig config, AudioCaptureCallback callback);
 
     std::atomic<bool> m_capturing = false;
+    std::atomic<int> m_captureSampleRate = 0;
     std::condition_variable m_wakeCondition;
     std::mutex m_wakeMutex;
     std::thread m_captureThread;

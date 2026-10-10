@@ -237,6 +237,10 @@ bool VideoManager::isAudioInputArmed() const {
     return m_audioInputArmed;
 }
 
+int VideoManager::recordingAudioSampleRate() const {
+    return m_audioSampleRate;
+}
+
 std::int64_t VideoManager::capturedUpdateTicks() const {
     return m_totalFixedUpdates;
 }
@@ -252,6 +256,9 @@ const std::string &VideoManager::getLastError() const {
 void VideoManager::armAudioInput() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_AUDIO);
     if (m_audioInputArmed) {
+        m_audioSampleRate = m_audioCaptureSource != nullptr
+                                ? m_audioCaptureSource->getCaptureSampleRate()
+                                : IRAudio::getAudioCaptureSource().getCaptureSampleRate();
         return;
     }
     IRAudio::AudioCaptureCallback audioCallback = [this](
@@ -289,6 +296,9 @@ void VideoManager::armAudioInput() {
 
     if (started) {
         m_audioInputArmed = true;
+        m_audioSampleRate = m_audioCaptureSource != nullptr
+                                ? m_audioCaptureSource->getCaptureSampleRate()
+                                : IRAudio::getAudioCaptureSource().getCaptureSampleRate();
         IRE_LOG_INFO("Audio input armed (device='{}', rate={}, ch={})",
                      m_audioInputDeviceName.c_str(),
                      m_audioSampleRate,
@@ -365,7 +375,7 @@ void VideoManager::toggleCapture() {
     config.video_bitrate_ = videoBitrate;
     config.capture_audio_input_ = m_captureAudioInput;
     config.audio_input_device_name_ = m_audioInputDeviceName;
-    config.audio_sample_rate_ = m_audioSampleRate;
+    config.audio_sample_rate_ = recordingAudioSampleRate();
     config.audio_channels_ = m_audioChannels;
     config.audio_bitrate_ = m_audioBitrate;
     config.audio_mux_enabled_ = m_audioMuxEnabled;

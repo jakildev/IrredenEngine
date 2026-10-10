@@ -74,7 +74,10 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
             textCmds_,
             canvas_->size_,
             headerText,
-            IRMath::ivec2(guiPos.pos_.x + theme_.padding_ * 2, guiPos.pos_.y),
+            IRMath::ivec2(
+                guiPos.pos_.x + IRPrefab::Widget::detail::dropdownHorizontalInset(theme_.padding_),
+                guiPos.pos_.y
+            ),
             widget.size_.y,
             IRPrefab::Widget::detail::stateText(theme_, widget)
         );
@@ -82,9 +85,10 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
         // Dropdown chevron — solid triangle approximated as a small stack of rects
         // at the right edge. Two rects suffice for visual recognizability at the
         // GUI canvas resolution this framework targets.
-        const int chevronW = 8;
-        const int chevronH = 4;
-        const int chevX = guiPos.pos_.x + widget.size_.x - chevronW - theme_.padding_ * 2;
+        const int chevronW = IRPrefab::Widget::detail::kDropdownChevronWidth;
+        const int chevronH = IRPrefab::Widget::detail::kDropdownChevronHeight;
+        const int chevX = guiPos.pos_.x + widget.size_.x - chevronW -
+                          IRPrefab::Widget::detail::dropdownHorizontalInset(theme_.padding_);
         const int chevY = guiPos.pos_.y + (widget.size_.y - chevronH) / 2;
         IRRender::fillRect(
             *canvas_,
@@ -154,7 +158,10 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
                 textCmds_,
                 canvas_->size_,
                 dd.items_[static_cast<std::size_t>(i)],
-                IRMath::ivec2(rowPos.x + theme_.padding_ * 2, rowPos.y),
+                IRMath::ivec2(
+                    rowPos.x + IRPrefab::Widget::detail::dropdownHorizontalInset(theme_.padding_),
+                    rowPos.y
+                ),
                 itemH,
                 IRPrefab::Widget::detail::stateText(theme_, widget)
             );

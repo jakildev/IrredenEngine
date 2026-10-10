@@ -2065,8 +2065,7 @@ cmd_find_stackable_blockers() {
     # Otherwise print nothing (and exit 0).
     #
     # Multi-blocker bodies are handled by resolving each #N reference live:
-    # references whose issue is CLOSED/MERGED, or whose claude/<N>-* PR is
-    # already merged, are filtered out first. If exactly one unresolved ref
+    # references whose issue/PR is CLOSED/MERGED are filtered out first. If exactly one unresolved ref
     # remains, it qualifies for single-stack (same contract as before, on
     # the effective unresolved set rather than the raw body count).
     # Two or more unresolved blockers → empty output (conservative).
@@ -2095,10 +2094,9 @@ cmd_find_stackable_blockers() {
 
     local blocker
     blocker=$(BODY_B64="$body_b64" REPO="$repo" python3 <<'PYEOF'
-import base64, json, os, re, subprocess, sys
+import base64, os, re, subprocess, sys
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
 import fleet_github
-from fleet_branch_match import branch_matches_issue
 # Shared blocker parser — same value the scout / ingest /
 # check_blockers see, including the plain `Blocked by: #N` form.
 from fleet_blocked_by import parse_blocked_by
@@ -2115,29 +2113,11 @@ pr_urls = re.findall(r"https://github\.com/[^\s,)]+/pull/\d+", value)
 if not issue_refs or pr_urls:
     sys.exit(0)
 
-# Fetch merged PR heads once for the "tracker-issue open, claude/<N>-* PR merged" case.
-merged_heads = []
-if repo:
-    try:
-        r = fleet_github.run(
-            ["pr", "list", "--repo", repo, "--state", "merged",
-             "--limit", "30", "--json", "headRefName",
-             "--jq", "[.[].headRefName]"],
-            capture_output=True, text=True, timeout=15,
-        )
-        if r.returncode == 0:
-            merged_heads = json.loads(r.stdout or "[]")
-    except Exception:
-        pass
-
 _resolve_cache = {}
 
 def is_satisfied(ref):
     if ref in _resolve_cache:
         return _resolve_cache[ref]
-    if any(branch_matches_issue(h, ref, repo) for h in merged_heads):
-        _resolve_cache[ref] = True
-        return True
     if not repo:
         _resolve_cache[ref] = False
         return False

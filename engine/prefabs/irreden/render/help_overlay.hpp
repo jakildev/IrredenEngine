@@ -27,6 +27,7 @@
 #include <irreden/ir_system.hpp>
 
 #include <irreden/render/commands/command_toggle_help_overlay.hpp>
+#include <irreden/render/gui_rect.hpp>
 #include <irreden/render/help_overlay_state.hpp>
 #include <irreden/render/systems/system_help_overlay.hpp>
 
@@ -124,11 +125,7 @@ inline int lastGlyphCommandCount() {
     return system == nullptr ? 0 : system->lastGlyphCommandCount_;
 }
 
-// An axis-aligned box on the GUI canvas, in trixels, top-left origin.
-struct GuiRect {
-    IRMath::ivec2 pos_ = IRMath::ivec2(0);
-    IRMath::ivec2 size_ = IRMath::ivec2(0);
-};
+using GuiRect = IRPrefab::GuiRect;
 
 // Line of `builtText()` holding the first command row: the header and the
 // blank line under it come first.

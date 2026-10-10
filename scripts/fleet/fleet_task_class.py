@@ -327,9 +327,16 @@ def _task_claimable(task, host):
         return False
     if task.get("inflight_pr") or _host_incompatible(task, host):
         return False
-    if task.get("blocked"):
+    if _shadowed_closeout(task):
+        return False
+    if _task_blocked(task):
         return bool(task.get("stackable_blocker_pr"))
     return True
+
+
+def _task_blocked(task):
+    """Worker-side blocked state: durable label state or this tick's resolver fact."""
+    return bool(task.get("blocked") or task.get("has_open_blocker"))
 
 
 def _terminally_unclaimable(task, host):
@@ -344,7 +351,8 @@ def _terminally_unclaimable(task, host):
     return bool(
         task.get("inflight_pr")
         or _host_incompatible(task, host)
-        or (task.get("blocked") and not task.get("stackable_blocker_pr"))
+        or _shadowed_closeout(task)
+        or (_task_blocked(task) and not task.get("stackable_blocker_pr"))
     )
 
 
@@ -596,11 +604,11 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
     if pinned_only:
         tasks = [task for task in tasks if _pinned_to_host(task, host)]
     for task in tasks:
-        if (_task_claimable(task, host) and not task.get("blocked")
+        if (_task_claimable(task, host) and not _task_blocked(task)
                 and not _declined("task", task, "worker")):
             yield (*_class_effort(task), "work", _target("task", task))
     for task in tasks:
-        if (_task_claimable(task, host) and task.get("blocked")
+        if (_task_claimable(task, host) and _task_blocked(task)
                 and not _declined("stack", task, "worker")):
             base = (task.get("stackable_blocker_pr") or {}).get("number")
             yield (*_class_effort(task), "work", _target("stack", task, base))
@@ -643,8 +651,8 @@ DECLINE_TRANSIENT_RE = re.compile(
 
 
 def _declined_dir():
-    state = (os.environ.get("FLEET_STATE_DIR")
-             or os.path.join(os.path.expanduser("~"), ".fleet", "state"))
+    fleet_home = os.environ.get("FLEET_HOME") or os.path.join(os.path.expanduser("~"), ".fleet")
+    state = os.environ.get("FLEET_STATE_DIR") or os.path.join(fleet_home, "state")
     return os.path.join(state, "declined")
 
 
@@ -655,9 +663,8 @@ def _record_number(record):
     return number
 
 
-def _declined(kind, record, role=None):
-    """True when this host's `role` declined the record and it has not
-    changed since.
+def _decline_metadata(kind, record, role=None):
+    """Validated metadata when this host's `role` declined the unchanged item.
 
     fleet-dispatcher writes `<state>/declined/<kind>-<repo>-<N>` on the
     completion contract's `declined` verdict, line 1 the item's `updated_at`
@@ -680,23 +687,62 @@ def _declined(kind, record, role=None):
     number = _record_number(record)
     current = record.get("updatedAt") or ""
     if number is None or not current:
-        return False
+        return None
     path = os.path.join(_declined_dir(), f"{kind}-{record.get('repo') or 'engine'}-{number}")
     try:
-        age = time.time() - os.stat(path).st_mtime
+        age = time.time() - os.stat(path).st_mtime  # lint: state-mtime-ok decline TTL
         if age > DECLINE_TTL_SECONDS:
-            return False
+            return None
         with open(path, encoding="utf-8") as handle:
             stored = handle.readline().strip()
-            detail = handle.readline()
+            detail = handle.readline().rstrip("\n")
             stored_role = handle.readline().strip()
+            shadow_line = handle.readline().strip()
     except OSError:
-        return False
+        return None
     if DECLINE_TRANSIENT_RE.search(detail) and age > DECLINE_TRANSIENT_TTL_SECONDS:
-        return False
+        return None
     if stored_role and role and stored_role != role:
-        return False
-    return bool(stored) and current <= stored
+        return None
+    if not stored or current > stored:
+        return None
+    shadow = None
+    if shadow_line.startswith("shadow_merged_pr="):
+        value = shadow_line.partition("=")[2]
+        if value.isdigit():
+            shadow = int(value)
+    return {
+        "updated_at": stored,
+        "reason": detail,
+        "role": stored_role,
+        "shadow_merged_pr": shadow,
+        "transient": bool(DECLINE_TRANSIENT_RE.search(detail)),
+    }
+
+
+def _declined(kind, record, role=None):
+    """True when current decline metadata exists for this lane and item."""
+    return _decline_metadata(kind, record, role) is not None
+
+
+def _shadow_number(record):
+    shadow = record.get("shadow_merged_pr") or {}
+    value = shadow.get("number") if isinstance(shadow, dict) else shadow
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _shadowed_closeout(record):
+    """Validated durable merged-delivery evidence plus a substantive worker decline."""
+    metadata = _decline_metadata("task", record, "worker")
+    if metadata is None or metadata["transient"]:
+        return None
+    shadow = metadata["shadow_merged_pr"] or _shadow_number(record)
+    if shadow is None:
+        return None
+    return {"shadow_pr": shadow, "reason": metadata["reason"]}
 
 
 def _target(kind, record, extra=None):
@@ -875,6 +921,37 @@ def _load_slice(slice_path):
         return None
 
 
+def target_shadow(slice_data, target):
+    parts = target.split(":")
+    if len(parts) < 3 or parts[0] != "task" or parts[1] not in ("engine", "game"):
+        return None
+    repo, number = parts[1], parts[2]
+    for task in (slice_data.get("tasks_open") or []):
+        if (task.get("repo") or "engine") != repo:
+            continue
+        if str(_record_number(task)) == number:
+            return _shadow_number(task)
+    return None
+
+
+def shadowed_closeouts(state, repo):
+    repo_state = (state.get("repos") or {}).get(repo) or {}
+    rows = []
+    tasks = (repo_state.get("tasks") or {}).get("open") or []
+    for source in tasks:
+        task = dict(source)
+        task["repo"] = repo
+        closeout = _shadowed_closeout(task)
+        if closeout is None:
+            continue
+        rows.append({
+            "number": _record_number(task),
+            "shadow_pr": closeout["shadow_pr"],
+            "reason": closeout["reason"],
+        })
+    return rows
+
+
 def main(argv):
     # Every CLI mode prints line-oriented output that bash consumers parse
     # (`mapfile`, `while read`, `=~ ^[0-9]+$` gates). A native-Windows
@@ -882,6 +959,29 @@ def main(argv):
     # fails those gates on every line but the last. Pin LF.
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(newline="\n")
+    if argv[1:2] == ["--target-shadow"]:
+        if len(argv) != 4:
+            print("usage: fleet_task_class.py --target-shadow <worker-slice.json> "
+                  "<task-target>", file=sys.stderr)
+            return 2
+        slice_data = _load_slice(argv[2])
+        if slice_data is None:
+            return 0
+        shadow = target_shadow(slice_data, argv[3])
+        if shadow is not None:
+            print(shadow)
+        return 0
+    if argv[1:2] == ["--shadowed-closeouts"]:
+        if len(argv) != 4 or argv[3] not in ("engine", "game"):
+            print("usage: fleet_task_class.py --shadowed-closeouts <state.json> "
+                  "<engine|game>", file=sys.stderr)
+            return 2
+        state = _load_slice(argv[2])
+        if state is None:
+            print(f"fleet_task_class.py: cannot read state: {argv[2]}", file=sys.stderr)
+            return 1
+        print(json.dumps(shadowed_closeouts(state, argv[3]), separators=(",", ":")))
+        return 0
     if argv[1:2] == ["--pick"]:
         # --pick <slice.json> <class> <fable-blocked 0|1> [lane-default]: the
         # ordered dispatch targets for one worker class (see pick). The

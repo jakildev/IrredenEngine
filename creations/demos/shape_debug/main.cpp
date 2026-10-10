@@ -2350,6 +2350,31 @@ bool settingsMenuRowsPredicate(const void *context, std::string &actual) {
     return expectRows ? rows > 0 : rows == 0;
 }
 
+std::string guiRectString(const IRPrefab::GuiRect &rect) {
+    return std::to_string(rect.pos_.x) + "," + std::to_string(rect.pos_.y) + "+" +
+           std::to_string(rect.size_.x) + "x" + std::to_string(rect.size_.y);
+}
+
+bool settingsMenuLayoutPredicate(const void *, std::string &actual) {
+    const IRPrefab::GuiRect panel = IRPrefab::SettingsMenu::panelRect();
+    bool valid = panel.size_.x > 0 && panel.size_.y > 0;
+    actual = "stacked=" + std::to_string(IRPrefab::SettingsMenu::enumRowsStacked() ? 1 : 0) +
+             " panel=" + guiRectString(panel);
+    const int rowCount = IRPrefab::SettingsMenu::liveRowCount();
+    for (int i = 0; i < rowCount; ++i) {
+        const IRPrefab::GuiRect control = IRPrefab::SettingsMenu::rowControlRect(i);
+        actual += " row" + std::to_string(i) + "-control=" + guiRectString(control);
+        valid = IRPrefab::contains(panel, control) && valid;
+    }
+    for (const int index : {kRotationPivotSettingIndex, kDebugOverlaySettingIndex}) {
+        const IRPrefab::GuiRect label = IRPrefab::SettingsMenu::rowLabelRect(index);
+        const IRPrefab::GuiRect control = IRPrefab::SettingsMenu::rowControlRect(index);
+        actual += " row" + std::to_string(index) + "-label=" + guiRectString(label);
+        valid = IRPrefab::contains(panel, label) && !IRPrefab::intersects(label, control) && valid;
+    }
+    return valid;
+}
+
 // Widget-side half of the click: the checkbox latched.
 bool pauseCheckboxPredicate(const void *context, std::string &actual) {
     const bool expected = *static_cast<const bool *>(context);
@@ -2376,6 +2401,9 @@ bool simPausedPredicate(const void *context, std::string &actual) {
 const IRPrefab::GuiTest::Assertion kMenuOpenAssertions[] = {
     IRPrefab::GuiTest::predicate(&settingsMenuOpenPredicate, &kExpectVisible, "menu_open"),
     IRPrefab::GuiTest::predicate(&settingsMenuRowsPredicate, &kExpectVisible, "rows_spawned"),
+    IRPrefab::GuiTest::predicate(
+        &settingsMenuLayoutPredicate, nullptr, "settings_rows_inside_panel"
+    ),
 };
 
 const IRPrefab::GuiTest::Assertion kMenuHoverIdleAssertions[] = {
