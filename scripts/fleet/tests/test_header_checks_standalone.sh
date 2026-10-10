@@ -206,7 +206,7 @@ struct C_FixtureSkipped {};
 EOF
     cat > "$root/engine/world/include/irreden/world/save_component_inventory.hpp" <<'EOF'
 #pragma once
-IR_SAVE_OPT_IN(IRComponents::C_FixtureSaved, 1)
+IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_FixtureSaved, 1)
 IR_SAVE_OPT_OUT(IRComponents::C_FixtureSkipped)
 using AllEngineComponents = std::tuple<
     IRComponents::C_FixtureSaved,

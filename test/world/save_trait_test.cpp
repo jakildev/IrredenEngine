@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <irreden/world/save_component_inventory.hpp>
+#include <irreden/world/save_serialize.hpp>
 #include <irreden/world/save_trait.hpp>
 
 #include <cstddef>
@@ -11,6 +12,11 @@ namespace {
 
 using namespace IRWorld;
 using namespace IRComponents;
+
+static_assert(!SaveSerializable<C_EntityCanvas>);
+static_assert(!SaveSerializable<C_HitBox2D>);
+static_assert(!SaveSerializable<C_ShapeDescriptor>);
+static_assert(SaveSerializable<C_GotoEasing3D>);
 
 // Class A — GPU-handle / ResourceId-owning bearers must opt out; W-10
 // regenerates the handle post-load, so the pre-load value is never

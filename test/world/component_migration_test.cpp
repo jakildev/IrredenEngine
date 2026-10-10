@@ -44,7 +44,7 @@ struct C_Unknown {
 };
 } // namespace MigTest
 
-IR_SAVE_OPT_IN(MigTest::C_Mig, 2)
+IR_SAVE_OPT_IN_HAND_WRITTEN(MigTest::C_Mig, 2)
 IR_SAVE_OPT_IN(MigTest::C_NoMigrator, 2)
 IR_SAVE_OPT_IN(MigTest::C_Unknown, 1)
 
