@@ -24,6 +24,7 @@ config = {
     video_capture_fps = 60,
     video_capture_bitrate = 10000000,
     video_capture_audio_input_enabled = false,
+    video_capture_audio_input_synthetic = false,
     video_capture_audio_input_device_name = "",
     video_capture_audio_sample_rate = 48000,
     video_capture_audio_channels = 2,

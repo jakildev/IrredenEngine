@@ -62,6 +62,8 @@ bool isRecording();
 /// the main thread while a stop's async finalize is still running (the
 /// window @c isRecording alone cannot distinguish from idle).
 RecordingState recordingState();
+bool isAudioInputArmed();
+std::int64_t capturedUpdateTicks();
 /// Total number of video frames submitted in the current recording session.
 std::uint64_t getFrameCount();
 /// Last error string set by FFmpeg.

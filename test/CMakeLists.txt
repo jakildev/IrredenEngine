@@ -14,6 +14,7 @@ add_executable(IrredenEngineTest
   asset/voxel_set_shapes_test.cpp
   audio/audio_capture_test.cpp
   audio/audio_playback_test.cpp
+  audio/synthetic_audio_capture_test.cpp
   audio/midi_in_tick_test.cpp
   audio/midi_message_ring_test.cpp
   audio/midi_multiport_test.cpp
@@ -182,6 +183,7 @@ add_executable(IrredenEngineTest
   job/worker_block_queue_test.cpp
   utility/ir_utility_test.cpp
   video/auto_screenshot_helpers_test.cpp
+  video/auto_record_pacing_test.cpp
   video/capture_output_resolution_test.cpp
   video/recording_state_test.cpp
   window/window_mode_test.cpp

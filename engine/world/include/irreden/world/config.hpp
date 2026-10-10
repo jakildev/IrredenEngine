@@ -141,6 +141,10 @@ class WorldConfig {
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(false)
         );
         m_config.addEntry(
+            "video_capture_audio_input_synthetic",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(false)
+        );
+        m_config.addEntry(
             "video_capture_audio_input_device_name",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::STRING>>("")
         );

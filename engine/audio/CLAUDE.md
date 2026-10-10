@@ -36,6 +36,8 @@ functions:
   to the default (first-opened) port, or to a specific port by index.
 - **`Audio`** — `RtAudio` wrapper for microphone/line-in. Implements
   `IAudioCaptureSource`. Used by `VideoManager` for recording soundtracks.
+- **`SyntheticAudioCaptureSource`** — wall-clock-paced tone source used by
+  capture validation; its worker thread joins synchronously on stop.
 - **`AudioPlayback`** — miniaudio file playback (see below). `getAudioPlayback()`.
 
 ## File playback model (`AudioPlayback`)
@@ -173,6 +175,8 @@ IRAudio::clearOutboundMidiObserver();
 - The callback is invoked on RtAudio's audio thread — **do not touch ECS
   or Lua state from inside it**. Copy samples into a lock-free buffer and
   consume on the main thread.
+- The synthetic capture source follows the same callback contract and paces
+  against accumulated deadlines so scheduler jitter cannot shorten a take.
 
 ## Gotchas
 

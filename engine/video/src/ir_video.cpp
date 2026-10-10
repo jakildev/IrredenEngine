@@ -59,6 +59,14 @@ RecordingState recordingState() {
     return getVideoManager().recordingState();
 }
 
+bool isAudioInputArmed() {
+    return getVideoManager().isAudioInputArmed();
+}
+
+std::int64_t capturedUpdateTicks() {
+    return getVideoManager().capturedUpdateTicks();
+}
+
 std::uint64_t getFrameCount() {
     return getVideoManager().getFrameCount();
 }
