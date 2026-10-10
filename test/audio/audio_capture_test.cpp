@@ -40,9 +40,12 @@ class FakeAudioInputBackend final : public IRAudio::detail::IAudioInputBackend {
     int startCalls_ = 0;
     int stopCalls_ = 0;
     int closeCalls_ = 0;
+    long streamLatencyFrames_ = 0;
+    unsigned int reportedStreamSampleRate_ = 0;
     unsigned int openedDeviceId_ = 0;
     unsigned int openedChannels_ = 0;
     unsigned int openedSampleRate_ = 0;
+    std::vector<unsigned int> sampleRates_ = {44'100};
     RtAudioCallback callback_;
 
     std::vector<unsigned int> getDeviceIds() override {
@@ -55,7 +58,7 @@ class FakeAudioInputBackend final : public IRAudio::detail::IAudioInputBackend {
         info.name = kFakeDeviceName;
         info.inputChannels = 2;
         info.isDefaultInput = true;
-        info.sampleRates = {44'100};
+        info.sampleRates = sampleRates_;
         info.preferredSampleRate = 44'100;
         return info;
     }
@@ -95,8 +98,12 @@ class FakeAudioInputBackend final : public IRAudio::detail::IAudioInputBackend {
         return m_errorText;
     }
 
+    unsigned int getStreamSampleRate() override {
+        return reportedStreamSampleRate_ == 0 ? openedSampleRate_ : reportedStreamSampleRate_;
+    }
+
     long getStreamLatency() override {
-        return 0;
+        return streamLatencyFrames_;
     }
 
   private:
@@ -158,6 +165,75 @@ TEST(AudioCaptureBackendTest, NullBackendAsserts) {
     EXPECT_THROW(Audio{std::unique_ptr<IRAudio::detail::IAudioInputBackend>{}}, std::runtime_error);
 }
 
+TEST_F(AudioCaptureTest, UnlistedRateUsesNearestListedRateAndWarnsOnce) {
+    EngineLogCapture log;
+
+    ASSERT_TRUE(m_audio->openStreamIn(kFakeDeviceName, 48'000, 2, {}));
+
+    EXPECT_EQ(m_backend->openedSampleRate_, 44'100u);
+    EXPECT_EQ(m_audio->getCaptureSampleRate(), 44'100);
+    const std::string text = log.text();
+    const std::string warning = "Audio input sample rate substituted";
+    const std::size_t first = text.find(warning);
+    ASSERT_NE(first, std::string::npos) << text;
+    EXPECT_EQ(text.find(warning, first + warning.size()), std::string::npos) << text;
+    EXPECT_TRUE(text.contains(kFakeDeviceName)) << text;
+    EXPECT_TRUE(text.contains("requestedRate=48000")) << text;
+    EXPECT_TRUE(text.contains("attemptedRate=44100")) << text;
+}
+
+TEST_F(AudioCaptureTest, NearestListedRateBreaksATieTowardTheHigherRate) {
+    m_backend->sampleRates_ = {44'100, 48'000};
+
+    ASSERT_TRUE(m_audio->openStreamIn(kFakeDeviceName, 46'050, 2, {}));
+
+    EXPECT_EQ(m_backend->openedSampleRate_, 48'000u);
+}
+
+TEST_F(AudioCaptureTest, BackendReportedRateControlsCaptureRateAndLatency) {
+    m_backend->sampleRates_ = {48'000};
+    m_backend->reportedStreamSampleRate_ = 44'100;
+    m_backend->streamLatencyFrames_ = 441;
+    EngineLogCapture log;
+
+    ASSERT_TRUE(m_audio->openStreamIn(kFakeDeviceName, 48'000, 2, {}));
+
+    EXPECT_EQ(m_audio->getCaptureSampleRate(), 44'100);
+    EXPECT_DOUBLE_EQ(m_audio->getInputLatencyMs(), 10.0);
+    const std::string text = log.text();
+    EXPECT_TRUE(text.contains("Audio input backend adjusted sample rate")) << text;
+    EXPECT_TRUE(text.contains("requestedRate=48000")) << text;
+    EXPECT_TRUE(text.contains("actualRate=44100")) << text;
+}
+
+TEST_F(AudioCaptureTest, SupportedOrUnknownRatesOpenWithoutSubstitution) {
+    {
+        EngineLogCapture log;
+        ASSERT_TRUE(m_audio->openStreamIn(kFakeDeviceName, 44'100, 2, {}));
+        EXPECT_EQ(m_backend->openedSampleRate_, 44'100u);
+        EXPECT_FALSE(log.text().contains("Audio input sample rate substituted"));
+    }
+
+    m_backend->sampleRates_.clear();
+    EngineLogCapture log;
+    ASSERT_TRUE(m_audio->openStreamIn(kFakeDeviceName, 48'000, 2, {}));
+    EXPECT_EQ(m_backend->openedSampleRate_, 48'000u);
+    EXPECT_FALSE(log.text().contains("Audio input sample rate substituted"));
+}
+
+TEST_F(AudioCaptureTest, CaptureRateIsZeroUnlessAStreamIsOpen) {
+    EXPECT_EQ(m_audio->getCaptureSampleRate(), 0);
+
+    ASSERT_TRUE(m_audio->openStreamIn(kFakeDeviceName, 44'100, 2, {}));
+    EXPECT_EQ(m_audio->getCaptureSampleRate(), 44'100);
+    m_audio->closeStreamIn();
+    EXPECT_EQ(m_audio->getCaptureSampleRate(), 0);
+
+    m_backend->openResult_ = RTAUDIO_SYSTEM_ERROR;
+    EXPECT_FALSE(m_audio->openStreamIn(kFakeDeviceName, 44'100, 2, {}));
+    EXPECT_EQ(m_audio->getCaptureSampleRate(), 0);
+}
+
 TEST_F(AudioCaptureTest, OpenErrorReturnsFalseAndNamesDeviceRateAndBackendText) {
     m_backend->openResult_ = RTAUDIO_SYSTEM_ERROR;
     EngineLogCapture log;
@@ -169,7 +245,8 @@ TEST_F(AudioCaptureTest, OpenErrorReturnsFalseAndNamesDeviceRateAndBackendText) 
     EXPECT_FALSE(m_audio->isStreamInRunning());
     const std::string text = log.text();
     EXPECT_TRUE(text.contains(kFakeDeviceName)) << text;
-    EXPECT_TRUE(text.contains("sampleRate=48000")) << text;
+    EXPECT_TRUE(text.contains("requestedRate=48000")) << text;
+    EXPECT_TRUE(text.contains("attemptedRate=44100")) << text;
     EXPECT_TRUE(text.contains(kOpenErrorText)) << text;
     EXPECT_FALSE(text.contains(kOpenedMessage)) << text;
 }

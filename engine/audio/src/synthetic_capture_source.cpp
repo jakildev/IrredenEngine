@@ -30,6 +30,7 @@ bool SyntheticAudioCaptureSource::startCapture(
     if (m_captureThread.joinable()) {
         m_captureThread.join();
     }
+    m_captureSampleRate = config.sample_rate_;
     m_capturing = true;
     m_captureThread =
         std::thread(&SyntheticAudioCaptureSource::captureLoop, this, config, std::move(callback));
@@ -42,10 +43,15 @@ void SyntheticAudioCaptureSource::stopCapture() {
     if (m_captureThread.joinable()) {
         m_captureThread.join();
     }
+    m_captureSampleRate = 0;
 }
 
 bool SyntheticAudioCaptureSource::isCapturing() const {
     return m_capturing;
+}
+
+int SyntheticAudioCaptureSource::getCaptureSampleRate() const {
+    return m_captureSampleRate;
 }
 
 double SyntheticAudioCaptureSource::getInputLatencyMs() const {

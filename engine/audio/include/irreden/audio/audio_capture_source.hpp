@@ -20,6 +20,8 @@ class IAudioCaptureSource {
     virtual bool startCapture(const AudioCaptureConfig &config, AudioCaptureCallback cb) = 0;
     virtual void stopCapture() = 0;
     [[nodiscard]] virtual bool isCapturing() const = 0;
+    /// Rate of delivered samples while capture is active, or 0 otherwise.
+    [[nodiscard]] virtual int getCaptureSampleRate() const = 0;
     [[nodiscard]] virtual double getInputLatencyMs() const = 0;
 };
 

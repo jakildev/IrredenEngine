@@ -167,8 +167,10 @@ IRAudio::clearOutboundMidiObserver();
   state flags in one place and `test/audio/audio_capture_test.cpp` fires every
   failure with a fake backend. A failed stop keeps the stream reported as
   running until `closeStreamIn()`.
-- A sample rate the device does not offer fails the open: no fallback to the
-  preferred rate, no resampling.
+- An unlisted request opens at the nearest listed rate at or above 8 kHz
+  (higher wins ties); the backend's reported open rate remains authoritative.
+- `IAudioCaptureSource::getCaptureSampleRate()` reports that delivered-sample
+  rate while active and 0 otherwise; video recording carries it downstream.
 - Callback signature:
   `void(const float* samples, int frameCount, double streamTime, bool overflow)`.
 - Default buffer is 1024 frames.
