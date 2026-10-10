@@ -48,8 +48,18 @@
 #   fleet-claim reservation-of <worktree>
 #   fleet-claim worktree-for-task <issue-number>
 #   fleet-claim list-reservations
+#
+# Exit codes (subcommand-specific meanings are documented at each subcommand):
+#   0  success
+#   1  refused: the claim is taken, blocked, or the candidate is stale
+#   2  usage error or invalid input
+#   3  planning-claim only: an existing plan, retry with --replan
+#   4  the GitHub identity could not be selected (an App-token mint failed);
+#      never contention, and never retried as another identity
 
 set -euo pipefail
+
+EXIT_IDENTITY_UNAVAILABLE=4
 
 # Force UTF-8 Mode so the embedded python reconcile helpers don't crash decoding
 # UTF-8 gh/git output under native-Windows python's cp1252 default. No-op on
@@ -172,7 +182,7 @@ if [[ -f "$FLEET_LIB_DIR/fleet-net.sh" ]]; then
     source "$FLEET_LIB_DIR/fleet-net.sh"
 fi
 
-fleet_select_github_identity "${FLEET_GH_IDENTITY:-app}" || exit 1
+fleet_select_github_identity "${FLEET_GH_IDENTITY:-app}" || exit "$EXIT_IDENTITY_UNAVAILABLE"
 
 # --- input validation -----------------------------------------------------
 

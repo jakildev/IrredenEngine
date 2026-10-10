@@ -513,6 +513,11 @@ __resolve_real_path() {
     echo "$path"
 }
 __BABYSIT_DIR="$(dirname "$(__resolve_real_path "${BASH_SOURCE[0]}")")"
+# A babysat pane is a dispatched-pane lane: it bills the user pool, as
+# fleet-dispatch-wrap does. Selecting user clears both inherited token variables,
+# so a relaunch never reuses a stale App token.
+# shellcheck source=/dev/null
+source "$__BABYSIT_DIR/fleet-common.sh"
 
 if command -v fleet-claude-stream >/dev/null 2>&1; then
     STREAM_FORMATTER="fleet-claude-stream"
@@ -572,18 +577,8 @@ wait_for_claude_gate() {
     return 0
 }
 
-# Refresh GH_TOKEN from the cache-backed minter ahead of a claude (re)launch, so
-# a relaunch never depends on the tmux seed being current. Guarded on non-empty:
-# GH_TOKEN="" would defeat gh's keychain fallback on the unconfigured path.
-refresh_gh_token() {
-    local token
-    token="$(fleet-gh-token 2>/dev/null || true)"
-    [[ -n "$token" ]] && export GH_TOKEN="$token"
-    return 0
-}
-
 stream_claude() {
-    refresh_gh_token
+    fleet_select_github_identity user
     # Both callers pass --print themselves (workers must one-shot exit
     # so babysit can relaunch). A caller that omits --print errors out in
     # the formatter branch (`--include-partial-messages` requires `--print`)
@@ -701,6 +696,7 @@ launch_architect_first() {
         cmd=(claude --model "$MODEL" --effort "$EFFORT" --session-id "$SESSION_ID" \
             "$ROLE_CMD")
     fi
+    fleet_select_github_identity user
     if [[ -n "${FLEET_BABYSIT_PRINT_LAUNCH:-}" ]]; then
         # Inspection hook (mirrors FLEET_BABYSIT_PRINT_EFFORT): print the
         # resolved launch command and exit before spawning claude. Lets
@@ -711,10 +707,11 @@ launch_architect_first() {
         # HEARTBEAT_FILE), so there's no background process to leak.
         printf 'session-track: file=%s role=%s mode=%s\n' \
             "${FLEET_SESSION_FILE:-}" "${FLEET_SESSION_ROLE:-}" "${FLEET_SESSION_MODE:-}"
+        printf 'gh-identity: identity=%s gh-token=%s github-token=%s\n' "${FLEET_GH_IDENTITY:-}" \
+            "${GH_TOKEN:+set}" "${GITHUB_TOKEN:+set}"
         printf '%s\n' "${cmd[*]}"
         exit 0
     fi
-    refresh_gh_token
     local started_at rc=0 elapsed
     started_at=$(date +%s)
     "${cmd[@]}" || rc=$?
@@ -783,7 +780,7 @@ resume_mid_task() {
     fi
     if [[ "$ARCHITECT_RESUME" -eq 1 && -f "$SESSION_FILE" ]]; then
         SESSION_ID=$(cat "$SESSION_FILE")
-        refresh_gh_token
+        fleet_select_github_identity user
         local started_at rc=0 elapsed
         started_at=$(date +%s)
         # Crash recovery — not fleet restart; the prompt signals mid-task continuity, not cold-start burn.

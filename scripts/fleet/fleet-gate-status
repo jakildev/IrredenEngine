@@ -569,7 +569,7 @@ else:
         pool = o["rateLimitType"].removeprefix("github_")
         if o.get("identity"):
             pool = f"{pool}[{o['identity']}]"
-        # "rejected": the limiter refused the scout's sample (github-graphql.json)
+        # "rejected": the limiter refused the scout's sample (github-<identity>-graphql.json)
         # or an identity-qualified refusal from a real GraphQL call.
         status_part = " REJECTED" if o.get("status") == "rejected" else ""
         remaining, limit = o.get("remaining"), o.get("limit")
