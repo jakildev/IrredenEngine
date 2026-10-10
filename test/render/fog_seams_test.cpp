@@ -118,12 +118,12 @@ TEST(FogSeamsTest, VoxelEvaluatorAppliesOverridesImmediatelyAndNoneUsesTheField)
     EXPECT_TRUE(forcedRevealed.shown_);
 
     IREntity::EntityId scheduledEntity = 100;
-    C_FogRevealed insideControl{0.0f, false, FogOverride::NONE, 0b11u};
+    C_FogRevealed insideControl{0.0f, false, FogOverride::NONE, false, 0b11u};
     system.tick(scheduledEntity, insideControl, inside, voxelSet);
     EXPECT_FLOAT_EQ(insideControl.revealFactor_, 1.0f);
     EXPECT_TRUE(insideControl.shown_);
 
-    C_FogRevealed outsideControl{1.0f, true, FogOverride::NONE, 0b10u};
+    C_FogRevealed outsideControl{1.0f, true, FogOverride::NONE, false, 0b10u};
     system.tick(scheduledEntity, outsideControl, outside, voxelSet);
     EXPECT_FLOAT_EQ(outsideControl.revealFactor_, 0.0f);
     EXPECT_FALSE(outsideControl.shown_);
@@ -142,27 +142,27 @@ TEST(FogSeamsTest, ShapeEvaluatorHonoursOverridesAndChannels) {
     outside.translation_ = IRMath::vec3(40.0f, 40.0f, 0.0f);
     C_ShapeDescriptor shape{};
 
-    C_FogRevealed forcedHidden{1.0f, true, FogOverride::FORCE_HIDDEN, 0b10u};
+    C_FogRevealed forcedHidden{1.0f, true, FogOverride::FORCE_HIDDEN, false, 0b10u};
     system.tick(entity, forcedHidden, inside, shape);
     EXPECT_FLOAT_EQ(forcedHidden.revealFactor_, 0.0f);
     EXPECT_FALSE(forcedHidden.shown_);
 
-    C_FogRevealed forcedRevealed{0.0f, false, FogOverride::FORCE_REVEALED, 0b01u};
+    C_FogRevealed forcedRevealed{0.0f, false, FogOverride::FORCE_REVEALED, false, 0b01u};
     system.tick(entity, forcedRevealed, outside, shape);
     EXPECT_FLOAT_EQ(forcedRevealed.revealFactor_, 1.0f);
     EXPECT_TRUE(forcedRevealed.shown_);
 
-    C_FogRevealed disjoint{0.0f, false, FogOverride::NONE, 0b01u};
+    C_FogRevealed disjoint{0.0f, false, FogOverride::NONE, false, 0b01u};
     system.tick(entity, disjoint, inside, shape);
     EXPECT_FLOAT_EQ(disjoint.revealFactor_, 0.0f);
     EXPECT_FALSE(disjoint.shown_);
 
-    C_FogRevealed intersecting{0.0f, false, FogOverride::NONE, 0b11u};
+    C_FogRevealed intersecting{0.0f, false, FogOverride::NONE, false, 0b11u};
     system.tick(entity, intersecting, inside, shape);
     EXPECT_FLOAT_EQ(intersecting.revealFactor_, 1.0f);
     EXPECT_TRUE(intersecting.shown_);
 
-    C_FogRevealed outsideControl{1.0f, true, FogOverride::NONE, 0b10u};
+    C_FogRevealed outsideControl{1.0f, true, FogOverride::NONE, false, 0b10u};
     system.tick(entity, outsideControl, outside, shape);
     EXPECT_FLOAT_EQ(outsideControl.revealFactor_, 0.0f);
     EXPECT_FALSE(outsideControl.shown_);
@@ -185,25 +185,25 @@ TEST(FogSeamsTest, CanvasEvaluatorHonoursOverridesAndChannels) {
     C_EntityCanvas canvas{};
     canvas.canvasEntity_ = privateCanvas;
 
-    C_FogRevealed forcedHidden{1.0f, true, FogOverride::FORCE_HIDDEN, 0b10u};
+    C_FogRevealed forcedHidden{1.0f, true, FogOverride::FORCE_HIDDEN, false, 0b10u};
     system.tick(entity, forcedHidden, inside, canvas);
     EXPECT_FLOAT_EQ(forcedHidden.revealFactor_, 0.0f);
     EXPECT_FALSE(forcedHidden.shown_);
     EXPECT_TRUE(canvas.fogHidden_);
 
-    C_FogRevealed forcedRevealed{0.0f, false, FogOverride::FORCE_REVEALED, 0b01u};
+    C_FogRevealed forcedRevealed{0.0f, false, FogOverride::FORCE_REVEALED, false, 0b01u};
     system.tick(entity, forcedRevealed, outside, canvas);
     EXPECT_FLOAT_EQ(forcedRevealed.revealFactor_, 1.0f);
     EXPECT_TRUE(forcedRevealed.shown_);
     EXPECT_FALSE(canvas.fogHidden_);
 
     entity = 100;
-    C_FogRevealed disjoint{0.0f, false, FogOverride::NONE, 0b01u};
+    C_FogRevealed disjoint{0.0f, false, FogOverride::NONE, false, 0b01u};
     system.tick(entity, disjoint, inside, canvas);
     EXPECT_FLOAT_EQ(disjoint.revealFactor_, 0.0f);
     EXPECT_FALSE(disjoint.shown_);
 
-    C_FogRevealed intersecting{0.0f, false, FogOverride::NONE, 0b11u};
+    C_FogRevealed intersecting{0.0f, false, FogOverride::NONE, false, 0b11u};
     system.tick(entity, intersecting, inside, canvas);
     EXPECT_FLOAT_EQ(intersecting.revealFactor_, 1.0f);
     EXPECT_TRUE(intersecting.shown_);

@@ -95,7 +95,7 @@ first_pr_entry_line() {
 mapfile -t all_workflows < <(find "$WORKFLOWS_DIR" -maxdepth 1 -name '*.yml' -type f | sort)
 
 covered_workflows=()
-for f in "${all_workflows[@]}"; do
+for f in ${all_workflows[@]+"${all_workflows[@]}"}; do
     is_covered "$f" && covered_workflows+=("$f")
 done
 
@@ -110,7 +110,7 @@ if [[ ${#covered_workflows[@]} -eq 0 ]]; then
 fi
 
 echo "T1: every covered workflow's push: and pull_request: paths: lists match"
-for f in "${covered_workflows[@]}"; do
+for f in ${covered_workflows[@]+"${covered_workflows[@]}"}; do
     name=$(basename "$f")
     d=$(paths_diff "$f")
     assert_eq "$d" "" "$name: push/pull_request paths: lists in sync"
@@ -119,7 +119,7 @@ done
 echo "T2: positive control — deleting one pull_request path reports that workflow, per-workflow"
 MUTATED=$(mktemp -d -t workflow-paths-sync-control.XXXXXX)
 trap 'rm -rf "$MUTATED"' EXIT
-for f in "${covered_workflows[@]}"; do
+for f in ${covered_workflows[@]+"${covered_workflows[@]}"}; do
     name=$(basename "$f")
     lineno=$(first_pr_entry_line "$f")
     if [[ -z "$lineno" ]]; then
@@ -159,7 +159,7 @@ missing_triggers() {
     local file="$1" block entries wf name
     for block in push pull_request; do
         entries=$(paths_list "$file" "$block")
-        for wf in "${covered_workflows[@]}"; do
+        for wf in ${covered_workflows[@]+"${covered_workflows[@]}"}; do
             name=$(basename "$wf")
             printf '%s' "$entries" | grep -qF -- ".github/workflows/$name" \
                 || echo "$block .github/workflows/$name"

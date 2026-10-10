@@ -307,7 +307,7 @@ TEST_F(FogSubjectAdoptTest, SynchronousBodyAdoptionThroughTheSetterStartsHidden)
 TEST_F(FogSubjectAdoptTest, GoverningAnAuthoredBodyPreservesItsFogSeams) {
     const IREntity::EntityId body = createSet(
         vec3(0.0f, 0.0f, 0.0f),
-        C_FogRevealed{1.0f, true, IRComponents::FogOverride::FORCE_HIDDEN, 0b10u}
+        C_FogRevealed{1.0f, true, IRComponents::FogOverride::FORCE_HIDDEN, false, 0b10u}
     );
 
     IRPrefab::Fog::setEntityRevealGoverned(body);
@@ -322,22 +322,22 @@ TEST_F(FogSubjectAdoptTest, GoverningAnAuthoredBodyPreservesItsFogSeams) {
 TEST_F(FogSubjectAdoptTest, GoverningTaggedBodiesPreservesAuthoredFogSeams) {
     const IREntity::EntityId fieldBody = createSet(
         vec3(0.0f, 0.0f, 0.0f),
-        C_FogRevealed{1.0f, true, IRComponents::FogOverride::FORCE_HIDDEN, 0b10u},
+        C_FogRevealed{1.0f, true, IRComponents::FogOverride::FORCE_HIDDEN, false, 0b10u},
         C_FogField{}
     );
     createSet(
         vec3(0.0f, 0.0f, 0.0f),
-        C_FogRevealed{0.0f, false, IRComponents::FogOverride::FORCE_REVEALED, 0b100u},
+        C_FogRevealed{0.0f, false, IRComponents::FogOverride::FORCE_REVEALED, false, 0b100u},
         C_FogField{}
     );
     const IREntity::EntityId exemptBody = createSet(
         vec3(0.0f, 0.0f, 0.0f),
-        C_FogRevealed{1.0f, true, IRComponents::FogOverride::FORCE_HIDDEN, 0b1000u},
+        C_FogRevealed{1.0f, true, IRComponents::FogOverride::FORCE_HIDDEN, false, 0b1000u},
         C_FogExempt{}
     );
     createSet(
         vec3(0.0f, 0.0f, 0.0f),
-        C_FogRevealed{0.0f, false, IRComponents::FogOverride::FORCE_REVEALED, 0b10000u},
+        C_FogRevealed{0.0f, false, IRComponents::FogOverride::FORCE_REVEALED, false, 0b10000u},
         C_FogExempt{}
     );
 

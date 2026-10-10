@@ -431,7 +431,7 @@ if [[ "$WANT_SUMMARY" -eq 1 ]]; then
     CURRENT_PHASE="summary"
     total_panes=${#SUMMARY_PANES[@]}
     pane_idx=0
-    for pane_id in "${SUMMARY_PANES[@]}"; do
+    for pane_id in ${SUMMARY_PANES[@]+"${SUMMARY_PANES[@]}"}; do
         role="${SUMMARY_ROLES[$pane_idx]}"
         pane_idx=$((pane_idx + 1))
         summary_file="$SUMMARY_DIR/$role.md"
