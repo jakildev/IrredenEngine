@@ -35,22 +35,6 @@
 
 namespace IRWorld {
 
-template <> struct SaveSerialize<IRComponents::C_EntityCanvas> {
-    static void write(IRAsset::BinaryWriter &w, const IRComponents::C_EntityCanvas &value) {
-        IRComponents::C_EntityCanvas authored = value;
-        authored.fogGhost_ = false;
-        w.writeBytes(&authored, sizeof(authored));
-    }
-
-    static IRAsset::Result<IRComponents::C_EntityCanvas> read(IRAsset::BinaryReader &r) {
-        using Res = IRAsset::Result<IRComponents::C_EntityCanvas>;
-        IRComponents::C_EntityCanvas value{};
-        IR_SAVE_READ_STATUS(r.readBytes(&value, sizeof(value)));
-        value.fogGhost_ = false;
-        return Res::success(value);
-    }
-};
-
 namespace detail {
 
 struct EntityCanvasV1 {
