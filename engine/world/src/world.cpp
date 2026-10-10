@@ -343,7 +343,7 @@ void World::start() {
 void World::end() {
     buildAndWriteProfileReport();
     // Release the GPU stage-timing observer's GL timestamp queries here, while
-    // the render context is guaranteed live. The observer is program-bound;
+    // the render context is guaranteed live. The observer is World-owned;
     // clearing it from ~World() instead is safe on the IREngine path, which
     // resets g_world at gameLoop's tail, but would still reach a
     // torn-down driver on any path that destructs at process exit.

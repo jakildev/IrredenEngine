@@ -7,6 +7,7 @@
 
 #include <irreden/system/ir_system_types.hpp>
 #include <irreden/system/system_access.hpp>
+#include <irreden/system/ir_assert_main_thread.hpp>
 
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/system/components/component_system_event.hpp>
@@ -20,6 +21,7 @@
 #include <memory>
 #include <string>
 #include <list>
+#include <type_traits>
 
 using namespace IRComponents;
 
@@ -308,6 +310,21 @@ class SystemManager {
     TickObserverId registerTickObserver(std::unique_ptr<TickObserver> observer);
     void unregisterTickObserver(TickObserverId id);
     void clearTickObservers();
+
+    /// First matching observer, borrowed until unregister, clear or manager teardown.
+    template <typename Observer> Observer *findTickObserver() {
+        static_assert(
+            std::is_base_of_v<TickObserver, Observer>,
+            "Observer must derive from TickObserver"
+        );
+        IR_ASSERT_MAIN_THREAD();
+        for (const auto &entry : m_observers) {
+            if (auto *observer = dynamic_cast<Observer *>(entry.second.get())) {
+                return observer;
+            }
+        }
+        return nullptr;
+    }
 
     const std::string &getSystemName(SystemId id) const {
         return m_systemNames[id].name_;
