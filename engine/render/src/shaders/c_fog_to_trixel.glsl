@@ -14,6 +14,7 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
 #include "ir_per_axis_lighting.glsl"
+#include "ir_per_axis_cell_dispatch.glsl"
 #define IR_FOG_LOS_BINDING 4
 #include "ir_fog_common.glsl"
 
@@ -62,8 +63,6 @@ layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
 layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
     uint cellDrawArgs[];
 };
-const uint kDispatchArgsBaseUint = 8u;
-const uint kPerAxisCellComputeTile = 256u;
 
 // The three pos3D-recovery shaders (AO, sun shadow, fog) must stay in
 // lockstep with the stage-2 encoding. R(-rasterYaw) recovers world coords
@@ -104,13 +103,13 @@ void main() {
     const ivec2 size = imageSize(trixelColors);
     ivec2 pixel;
     if (perAxisRoute != 0) {
-        const uint groupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
-        const uint idx = groupIndex * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
+        const uint idx = perAxisCellInvocationIndex(
+            gl_WorkGroupID.x, gl_WorkGroupID.y, gl_NumWorkGroups.x, gl_LocalInvocationIndex
+        );
         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
             return;
         }
-        const uint linearCell = compactedCells[idx];
-        pixel = ivec2(int(linearCell) % size.x, int(linearCell) / size.x);
+        pixel = perAxisCellPixel(compactedCells[idx], size.x);
     } else {
         pixel = ivec2(gl_GlobalInvocationID.xy);
         if (pixel.x >= size.x || pixel.y >= size.y) {

@@ -1,13 +1,12 @@
 #include "ir_iso_common.metal"
 #include "ir_per_axis_lighting.metal"
+#include "ir_per_axis_cell_dispatch.metal"
 #include "ir_fog_common.metal"
 
 // Mirrors shaders/c_fog_to_trixel.glsl: one kernel, main-canvas and per-axis
 // routes, shaded by the shared reveal model (ir_fog_common.metal). A fully
 // revealed pixel is never read or rewritten.
 
-constant uint kDispatchArgsBaseUint = 8u;
-constant uint kPerAxisCellComputeTile = 256u;
 
 static float3 fogPixelToWorld(
     int2 pixel,
@@ -69,13 +68,13 @@ kernel void c_fog_to_trixel(
     );
     int2 pixel;
     if (frameData.perAxisRoute != 0) {
-        const uint groupIndex = groupId.x + groupId.y * numGroups.x;
-        const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
+        const uint idx = perAxisCellInvocationIndex(
+            groupId.x, groupId.y, numGroups.x, localIndex
+        );
         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
             return;
         }
-        const uint linearCell = compactedCells[idx];
-        pixel = int2(int(linearCell) % size.x, int(linearCell) / size.x);
+        pixel = perAxisCellPixel(compactedCells[idx], size.x);
     } else {
         pixel = int2(globalId.xy);
         if (pixel.x >= size.x || pixel.y >= size.y) {

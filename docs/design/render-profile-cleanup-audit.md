@@ -40,19 +40,49 @@ accessors are removed. The uncompiled scratch file
 `systems/copilot_nonesense.cpp` and its quality-tool exclusion are removed too;
 neither provided an engine API.
 
+## Implemented slice: per-axis integer addressing
+
+The AO, sun-shadow, lighting, fog and depth-resolve shader pairs share
+`ir_per_axis_cell_dispatch`: workgroup-row flattening and linear-cell pixel
+decoding. The finalizer shares their argument offset and tile size. Bounds checks
+remain before compacted-list reads, and each wrapper retains its bindings and
+route-specific coordinate recovery.
+
+`test_render_per_axis_cell_dispatch.py` executes both helpers through a C++
+adapter, enumerates multirow dispatches beyond 65,535 workgroups, checks row-major
+pixels and CPU/shader constants, and rejects lost-row/wrong-column mutations.
+Native shader execution and captures remain necessary to cover compilation,
+binding and rendering behavior. This extraction preserves the merged store-frame
+work and does not consolidate distinct face coordinate spaces.
+
 ## Next cleanup slices
 
 | Priority | Finding | Bounded change and required proof |
 |---|---|---|
-| 2 | Repeated per-axis occupied-cell decoding in five shader pairs | Share integer group flattening, active-count and cell decoding; keep bindings and distinct face spaces explicit. Prove finalize/list coverage and unchanged AO/shadow/lit captures on both backends. |
-| 3 | Lighting-route density patching may be redundant | Audit every consumer before removing UBO patch/restore; preserve density in store/scatter/resolve. Verify cardinal transitions, high density, overflow lighting and fog. |
+| 3 | Lighting-route density patching is redundant in the traced consumers | Remove only the two density writes in `LightingRouteScope`; preserve its other UBO/binding changes and all density handling in store/scatter/resolve. Prove density-independent output before removal. |
 | 3 | Fallback sun bake retains a raw per-axis branch its driver does not use | Prove route-zero dispatches, then remove the branch and redundant include while preserving ABI and live fallback casting. Exercise detached casting and splat-enabled cases. |
 | 3 | Source-face shadow-debug palette repeats an existing helper | Delegate to `surfaceShadowDebugColor` in both shader backends; compare diagnostic captures. |
 
-Shader edits must account for the active store-frame, SDF receiver/normal and fog
-work before choosing a base. The initial overlap inventory includes PRs #4135,
-#4058, #4040 and #4048. Consolidating integer addressing is distinct from merging
-view/model/world-space transforms or changing quantization and binding restoration.
+Shader edits must account for SDF receiver/normal work before choosing a base.
+The per-axis cleanup includes merged PRs #4135 and #4048; open PRs #4058 and
+#4040 still overlap its shader paths. Consolidating integer addressing is
+distinct from merging view/model/world-space transforms or changing quantization
+and binding restoration.
+
+The density audit includes both shader backends and the merged fog LOS path.
+AO, sun shadow, lighting and fog recover per-axis positions from the store frame;
+fog LOS uses its scale argument only on the cardinal route. Overflow lighting
+does not read subdivision options, and overflow fog passes scale one. In contrast,
+screen-depth resolve still uses density for view positions, frame offsets and
+microcell footprints, so its patch/restore and the shared setter must remain.
+
+The removal needs a before/after case with effective subdivisions above the
+capped store density, rotating/cardinal transitions, nonempty overflow, AO and
+shadows, FIELD fog with LOS, and mixed main/detached canvases. Fog registration
+ensures compute lighting is exercised instead of bypassed by presentation
+lighting. A focused GPU control should run each occupied-cell/overflow consumer
+with identical inputs and differing density values, requiring identical output.
+The integer-addressing tests alone do not prove that invariant.
 
 ## Lifecycle investigations requiring their own fixes
 

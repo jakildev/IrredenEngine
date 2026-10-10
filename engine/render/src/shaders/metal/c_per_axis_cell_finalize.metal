@@ -1,6 +1,8 @@
 #include <metal_stdlib>
 using namespace metal;
 
+#include "ir_per_axis_cell_dispatch.metal"
+
 // Mirror of shaders/c_per_axis_cell_finalize.glsl. Split out of the
 // compaction to keep that hot full-grid scan barrier-free.
 //
@@ -11,8 +13,6 @@ using namespace metal;
 // bound via bindBase (the whole indirect buffer); each thread owns one axis's
 // 256-byte region (no atomics — one writer per region).
 constant uint kStrideUints = 64u;             // kPerAxisCellIndirectStrideBytes / 4
-constant uint kDispatchArgsBaseUint = 8u;     // kPerAxisCellDispatchArgsOffsetBytes / 4
-constant uint kPerAxisCellComputeTile = 256u; // kPerAxisCellComputeTile (16×16 threads)
 // numGroupsX is capped with the remainder spilled into numGroupsY, matching
 // CPU voxelDispatchGridForCount() and GPU writeDispatchDims(): uncapped,
 // >kPerAxisCellComputeTile × 65535 occupied cells overflows the X dimension.

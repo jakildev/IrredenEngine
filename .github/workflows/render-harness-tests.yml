@@ -40,6 +40,7 @@ on:
       - 'scripts/perf/compare_perf_runs.py'
       - 'scripts/tests/**'
       - 'engine/render/src/shaders/**'
+      - 'engine/render/include/irreden/render/ir_render_types.hpp'
       - 'engine/prefabs/irreden/render/systems/system_shapes_to_trixel.hpp'
       - 'creations/demos/*/test/references/manifest.json'
       - '.github/workflows/render-harness-tests.yml'
@@ -49,6 +50,7 @@ on:
       - 'scripts/perf/compare_perf_runs.py'
       - 'scripts/tests/**'
       - 'engine/render/src/shaders/**'
+      - 'engine/render/include/irreden/render/ir_render_types.hpp'
       - 'engine/prefabs/irreden/render/systems/system_shapes_to_trixel.hpp'
       - 'creations/demos/*/test/references/manifest.json'
       - '.github/workflows/render-harness-tests.yml'
@@ -113,6 +115,9 @@ jobs:
       # Pillow, and is the suite whose missing dependency turned this job red.
       - name: Assert the Pillow-dependent suite executed
         run: grep -a -E '^PASS  test_render_shadow_box_edges\.py \([1-9][0-9]* tests\)$' run_all.log
+
+      - name: Assert the per-axis dispatch contract executed
+        run: grep -a -E '^PASS  test_render_per_axis_cell_dispatch\.py \([1-9][0-9]* tests\)$' run_all.log
 
       - name: Assert the SDF shader contract executed
         run: grep -a -E '^PASS  test_render_sdf_surface_contract\.py \([1-9][0-9]* tests\)$' run_all.log

@@ -9,6 +9,7 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
 #include "ir_per_axis_lighting.glsl"
+#include "ir_per_axis_cell_dispatch.glsl"
 #if IR_SHAPE_RECEIVER
 #include "ir_sdf_common.glsl"
 #include "ir_shape_data.glsl"
@@ -74,8 +75,6 @@ layout(std430, binding = 25) readonly buffer PerAxisCellCompacted {
 layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
     uint cellDrawArgs[];
 };
-const uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
-const uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
 
 #if IR_SHAPE_RECEIVER
 #include "ir_selected_shape_receiver.glsl"
@@ -86,15 +85,13 @@ void main() {
     const ivec2 size = imageSize(trixelDistances);
     ivec2 pixel;
     if (perAxisRoute != 0) {
-        // 2-D-folded indirect dispatch — recover the flat group index
-        // (matches c_per_axis_cell_finalize's capped grid + c_voxel_visibility_compact).
-        const uint groupIndex = gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x;
-        const uint idx = groupIndex * kPerAxisCellComputeTile + gl_LocalInvocationIndex;
+        const uint idx = perAxisCellInvocationIndex(
+            gl_WorkGroupID.x, gl_WorkGroupID.y, gl_NumWorkGroups.x, gl_LocalInvocationIndex
+        );
         if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
             return;
         }
-        const uint linearCell = compactedCells[idx];
-        pixel = ivec2(int(linearCell) % size.x, int(linearCell) / size.x);
+        pixel = perAxisCellPixel(compactedCells[idx], size.x);
     } else {
         pixel = ivec2(gl_GlobalInvocationID.xy);
         if (pixel.x >= size.x || pixel.y >= size.y) {

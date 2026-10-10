@@ -5,6 +5,7 @@
 // perAxisSubCellFrac — the shared sub-cell frac decode this bridge composes in
 // the VIEW frame and the per-axis RECEIVE composes in the world frame.
 #include "ir_per_axis_lighting.metal"
+#include "ir_per_axis_cell_dispatch.metal"
 
 // Mirrors shaders/c_resolve_per_axis_screen_depth.glsl. The scratch is laid
 // out exactly like the main canvas distance texture, so BAKE_SUN_SHADOW_MAP
@@ -17,8 +18,6 @@ constant int kEmptyDistanceEncoded = 0x7FFFFFFF;
 // Dispatched indirectly over only this axis's OCCUPIED cells (compacted by the
 // STAGE_1 per-axis pre-pass). compactedCells holds the occupied linear cell
 // indices; cellDrawArgs carries visibleCount at [kDispatchArgsBaseUint + 3].
-constant uint kDispatchArgsBaseUint = 8u;      // kPerAxisCellDispatchArgsOffsetBytes / 4
-constant uint kPerAxisCellComputeTile = 256u;  // kPerAxisCellComputeTile (16×16 threads)
 
 kernel void c_resolve_per_axis_screen_depth(
     constant FrameDataVoxelToTrixel& frameData [[buffer(7)]],
@@ -30,17 +29,15 @@ kernel void c_resolve_per_axis_screen_depth(
     uint localIndex [[thread_index_in_threadgroup]],
     uint3 numGroups [[threadgroups_per_grid]]
 ) {
-    // The compacted-cell dispatch is folded into a capped 2-D threadgroup grid
-    // by c_per_axis_cell_finalize (groupsX capped, remainder in groupsY).
-    const uint groupIndex = groupId.x + groupId.y * numGroups.x;
-    const uint idx = groupIndex * kPerAxisCellComputeTile + localIndex;
+    const uint idx = perAxisCellInvocationIndex(
+        groupId.x, groupId.y, numGroups.x, localIndex
+    );
     if (idx >= cellDrawArgs[kDispatchArgsBaseUint + 3u]) {
         return;
     }
     const int2 perAxisSize =
         int2(int(perAxisDistances.get_width()), int(perAxisDistances.get_height()));
-    const uint linearCell = compactedCells[idx];
-    const int2 cell = int2(int(linearCell) % perAxisSize.x, int(linearCell) / perAxisSize.x);
+    const int2 cell = perAxisCellPixel(compactedCells[idx], perAxisSize.x);
 
     const int rawDist = perAxisDistances.read(uint2(cell)).x;
     if (rawDist >= kEmptyDistanceEncoded) {

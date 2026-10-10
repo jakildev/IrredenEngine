@@ -1,5 +1,7 @@
 #version 450 core
 
+#include "ir_per_axis_cell_dispatch.glsl"
+
 // Per-axis compute-indirect dispatch-dim finalize. After
 // c_per_axis_cell_compact scans the FULL per-axis grid and atomic-appends each
 // axis's occupied cells (leaving the count in the region's instanceCount slot),
@@ -21,8 +23,6 @@
 layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
 
 const uint kStrideUints = 64u;             // kPerAxisCellIndirectStrideBytes / 4
-const uint kDispatchArgsBaseUint = 8u;     // kPerAxisCellDispatchArgsOffsetBytes / 4
-const uint kPerAxisCellComputeTile = 256u; // kPerAxisCellComputeTile (16×16 threads)
 // Cap numGroupsX and spill the remainder into numGroupsY — matching the CPU
 // voxelDispatchGridForCount() (voxel_dispatch_grid.hpp) and the GPU-authored
 // writeDispatchDims() in c_voxel_visibility_compact.glsl, which solve the same
@@ -30,7 +30,7 @@ const uint kPerAxisCellComputeTile = 256u; // kPerAxisCellComputeTile (16×16 th
 // with more than kPerAxisCellComputeTile × 65535 (≈16.7M) occupied cells — reachable
 // at a large Lua-configured voxel-pool edge — drives numGroupsX past the
 // GL_MAX_COMPUTE_WORK_GROUP_COUNT[0] guaranteed minimum of 65535, silently
-// dropping/corrupting cells. The four consumer kernels recover the flat group
+// dropping/corrupting cells. The occupied-cell consumers recover the flat group
 // index as gl_WorkGroupID.x + gl_WorkGroupID.y * gl_NumWorkGroups.x.
 const uint kMaxDispatchGroupsX = 1024u;
 
