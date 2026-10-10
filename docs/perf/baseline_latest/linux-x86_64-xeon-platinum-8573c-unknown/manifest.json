@@ -2,10 +2,10 @@
   "target": "IRPerfGrid",
   "matrix": "quick",
   "frames": 60,
-  "git_sha": "5bdd16822",
+  "git_sha": "d1beb77d0",
   "git_dirty": false,
-  "run_name": "5bdd16822-ci",
-  "started_at": "2026-10-06T16:21:22Z",
+  "run_name": "d1beb77d0-ci",
+  "started_at": "2026-10-10T20:43:05Z",
   "cells": [
     {
       "id": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1",
@@ -17,8 +17,8 @@
       "status": "ok",
       "report": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 82.626,
-        "after": 77.529
+        "before": 76.452,
+        "after": 77.656
       }
     },
     {
@@ -31,20 +31,20 @@
       "status": "ok",
       "report": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 78.781,
-        "after": 80.206
+        "before": 77.054,
+        "after": 78.694
       }
     }
   ],
-  "finished_at": "2026-10-06T16:23:44Z",
+  "finished_at": "2026-10-10T20:45:18Z",
   "calibration": {
-    "ref_ms": 84.813,
+    "ref_ms": 77.595,
     "ref_target_ms": 50,
     "host_slug": "linux-x86_64-xeon-platinum-8573c-unknown",
     "host_fingerprint": {
       "cpu": {
         "cores": 2,
-        "mhz": 3204,
+        "mhz": 3652,
         "model": "INTEL(R) XEON(R) PLATINUM 8573C",
         "threads": 4
       },
@@ -60,6 +60,6 @@
       },
       "slug": "linux-x86_64-xeon-platinum-8573c-unknown"
     },
-    "math_sha": "b9feed398e96c4214cbbf773c00f9aea6f48ebc9"
+    "math_sha": "7df12db1d95c765a18bac43a44e6a4c437ebe2cc"
   }
 }

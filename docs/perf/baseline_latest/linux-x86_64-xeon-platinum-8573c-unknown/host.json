@@ -1,7 +1,7 @@
 {
   "cpu": {
     "cores": 2,
-    "mhz": 3204,
+    "mhz": 3652,
     "model": "INTEL(R) XEON(R) PLATINUM 8573C",
     "threads": 4
   },
