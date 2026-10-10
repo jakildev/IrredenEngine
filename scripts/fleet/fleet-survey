@@ -120,8 +120,10 @@ def dispatch_section(state, usage_dir, log_path, now):
                 idle = 0
             elif "no claimable candidate left" in line or "no candidate could be claimed" in line:
                 idle += 1
-            elif "usage gate closed" in line or "usage gate re-opened" in line:
-                out["usage_gate"] = line
+            else:
+                body = line.split("] ", 1)[-1]
+                if body.startswith(("usage gate closed", "usage gate re-opened")):
+                    out["usage_gate"] = line
         out["idle_ticks"] = idle
     return out
 

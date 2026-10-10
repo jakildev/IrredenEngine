@@ -225,10 +225,21 @@ class Dispatch(FleetSurveyFixture):
                 ("[2026-10-06T23:00:00Z dispatcher] usage gate re-opened "
                  "(open:github[user]); resuming dispatch\n"
                  "[2026-10-06T23:05:00Z dispatcher] usage gate closed:"
-                 "github_graphql[user] missing or stale\n"),
+                 "github_graphql[user] missing or stale; deferring all dispatches\n"),
                 ("  usage gate: closed since 2026-10-06T23:05:00Z: "
-                 "github_graphql[user] missing or stale"),
-                "usage gate closed:github_graphql[user] missing or stale",
+                 "github_graphql[user] missing or stale; deferring all dispatches"),
+                ("usage gate closed:github_graphql[user] missing or stale; "
+                 "deferring all dispatches"),
+            ),
+            (
+                ("[2026-10-06T23:00:00Z dispatcher] usage gate closed:"
+                 "github_graphql[user] missing or stale; deferring all dispatches\n"
+                 "[2026-10-06T23:05:00Z dispatcher] claude usage gate re-opened "
+                 "(open:five_hour util=10%); Claude dispatch resumes\n"),
+                ("  usage gate: closed since 2026-10-06T23:00:00Z: "
+                 "github_graphql[user] missing or stale; deferring all dispatches"),
+                ("usage gate closed:github_graphql[user] missing or stale; "
+                 "deferring all dispatches"),
             ),
         )
         for index, (log, expected_text, expected_event) in enumerate(transitions):
