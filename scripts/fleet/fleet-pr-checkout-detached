@@ -148,7 +148,7 @@ fi
 # Resolve the PR's head ref name. `gh pr view` queries the local
 # remote config first, so we keep the --repo argument optional for
 # the common case where the CWD's `origin` matches the PR's repo.
-head_ref=$(gh pr view "$pr_number" "${repo_args[@]}" --json headRefName -q '.headRefName' 2>/dev/null || true)
+head_ref=$(gh pr view "$pr_number" ${repo_args[@]+"${repo_args[@]}"} --json headRefName -q '.headRefName' 2>/dev/null || true)
 if [[ -z "$head_ref" ]]; then
     echo "fleet-pr-checkout-detached: could not resolve head ref for PR #$pr_number" >&2
     exit 1
@@ -305,7 +305,7 @@ base_sha=$(git rev-parse HEAD)
 # rewritten — a base ref name alone cannot recover the old merge-base. Line 3 is
 # the consumption slot fleet-pr-amend-push owns, left blank here. Best-effort:
 # without both fields the sentinel stays on the head-SHA-only shape.
-pr_base_ref=$(gh pr view "$pr_number" "${repo_args[@]}" --json baseRefName -q '.baseRefName' 2>/dev/null || true)
+pr_base_ref=$(gh pr view "$pr_number" ${repo_args[@]+"${repo_args[@]}"} --json baseRefName -q '.baseRefName' 2>/dev/null || true)
 old_merge_base=""
 if [[ -n "$pr_base_ref" ]] && git fetch origin "$pr_base_ref" >/dev/null 2>&1; then
     old_merge_base=$(git merge-base HEAD "origin/$pr_base_ref" 2>/dev/null || true)

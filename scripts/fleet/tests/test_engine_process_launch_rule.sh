@@ -252,7 +252,7 @@ run_dev() {  # run_dev <VAR=val>... <script> <args...>; the script's own output 
     local envs=()
     while [[ "$1" == *=* ]]; do envs+=("$1"); shift; done
     : > "$RUN_LOG"
-    env PATH="$STUB_BIN:$PATH" FLEET_RUN="$STUB_BIN/fleet-run-stub" "${envs[@]}" \
+    env PATH="$STUB_BIN:$PATH" FLEET_RUN="$STUB_BIN/fleet-run-stub" ${envs[@]+"${envs[@]}"} \
         bash "$REPO_ROOT/scripts/dev/$1" "${@:2}" >/dev/null 2>&1
     tr -d '\r' < "$RUN_LOG"
 }

@@ -119,7 +119,7 @@ run_case() {
     : > "$MSYS_GIT_LOG"
     : > "$INSTALL_LOG"
     OUT="$(env PATH="$path" HOME="$sandbox/home" FLEET_CLONE="$sandbox/clone" \
-        FLEET_GIT_BASH="$sandbox/git-bash/bin/bash.exe" "${envs[@]}" \
+        FLEET_GIT_BASH="$sandbox/git-bash/bin/bash.exe" ${envs[@]+"${envs[@]}"} \
         "$REAL_BASH" "$sandbox/scripts/setup-windows.sh" "$@" 2>&1 | tr -d '\r')"
     RC=$?
     SANDBOX="$sandbox"

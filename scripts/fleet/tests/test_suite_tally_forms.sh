@@ -315,7 +315,7 @@ if [[ ! -d "$TESTS_DIR" ]]; then
     echo "SKIP: tests dir not found at $TESTS_DIR" >&2
     exit 3
 fi
-OUT=$(check_tally_forms "$TESTS_DIR" "${OWN_TALLY_BASELINE[@]}") && RC=0 || RC=$?
+OUT=$(check_tally_forms "$TESTS_DIR" ${OWN_TALLY_BASELINE[@]+"${OWN_TALLY_BASELINE[@]}"}) && RC=0 || RC=$?
 if [[ "$RC" -ne 0 ]]; then
     printf '%s\n' "$OUT" | sed 's/^/    /'
 fi
