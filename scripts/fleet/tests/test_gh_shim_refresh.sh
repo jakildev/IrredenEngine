@@ -68,7 +68,7 @@ run_shim() {
     local -a envs=()
     while [[ "$1" != "--" ]]; do envs+=("$1"); shift; done
     shift
-    env -u GH_TOKEN -u FLEET_GH_SHIM "${ACCT_SCRUB[@]}" "${envs[@]}" \
+    env -u GH_TOKEN -u FLEET_GH_SHIM "${ACCT_SCRUB[@]}" ${envs[@]+"${envs[@]}"} \
         PATH="$shimdir:$STUBS:$REAL:$base_path" gh "$@"
 }
 

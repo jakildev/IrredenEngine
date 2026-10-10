@@ -156,7 +156,7 @@ mapfile -t want_add    < <(jq -r '.add[]?'    <<<"$edge" | tr -d '\r')
 
 # Typo protection: every label the edge names must be a real node.
 unknown=()
-for l in "${want_remove[@]}" "${want_add[@]}"; do
+for l in ${want_remove[@]+"${want_remove[@]}"} ${want_add[@]+"${want_add[@]}"}; do
     if [[ $(jq -r --arg l "$l" '[.labels[].name] | index($l)' "$STATE_MACHINE" | tr -d '\r') == "null" ]]; then
         unknown+=("$l")
     fi
@@ -174,13 +174,13 @@ gh_kind="pr"; [[ "$scope" == "issue" ]] && gh_kind="issue"
 other_kind="issue"; [[ "$scope" == "issue" ]] && other_kind="pr"
 
 fetch_labels() {  # echoes newline-delimited live label names for the target
-    gh "$gh_kind" view "$number" "${repo_args[@]}" --json labels --jq '.labels[].name' 2>/dev/null
+    gh "$gh_kind" view "$number" ${repo_args[@]+"${repo_args[@]}"} --json labels --jq '.labels[].name' 2>/dev/null
 }
 
 if ! current=$(fetch_labels); then
     # Could not read the target as the edge's scope. Distinguish a scope
     # mismatch (it exists as the OTHER kind) from a genuine not-found.
-    if gh "$other_kind" view "$number" "${repo_args[@]}" --json number >/dev/null 2>&1; then
+    if gh "$other_kind" view "$number" ${repo_args[@]+"${repo_args[@]}"} --json number >/dev/null 2>&1; then
         echo "$PROG: transition '$transition' is scope=$scope but #$number is a $other_kind." >&2
         exit 2
     fi
@@ -194,8 +194,8 @@ fi
 has_label() { printf '%s\n' "$current" | grep -Fxq -- "$1"; }
 
 del=(); add=()
-for l in "${want_remove[@]}"; do has_label "$l" && del+=("$l"); done
-for l in "${want_add[@]}"; do has_label "$l" || add+=("$l"); done
+for l in ${want_remove[@]+"${want_remove[@]}"}; do has_label "$l" && del+=("$l"); done
+for l in ${want_add[@]+"${want_add[@]}"}; do has_label "$l" || add+=("$l"); done
 
 describe="$gh_kind #$number: $transition"
 if [[ ${#del[@]} -eq 0 && ${#add[@]} -eq 0 ]]; then
@@ -204,8 +204,8 @@ if [[ ${#del[@]} -eq 0 && ${#add[@]} -eq 0 ]]; then
 fi
 
 edit_args=()
-for l in "${add[@]}"; do edit_args+=(--add-label "$l"); done
-for l in "${del[@]}"; do edit_args+=(--remove-label "$l"); done
+for l in ${add[@]+"${add[@]}"}; do edit_args+=(--add-label "$l"); done
+for l in ${del[@]+"${del[@]}"}; do edit_args+=(--remove-label "$l"); done
 
 if [[ "$dry_run" -eq 1 ]]; then
     echo "$PROG: [dry-run] $describe"
@@ -222,7 +222,7 @@ apply_delta() {  # args: edit flag pairs
     gh "$gh_kind" edit "$number" "${repo_args[@]}" "$@" >/dev/null 2>&1
 }
 
-if ! apply_delta "${edit_args[@]}"; then
+if ! apply_delta ${edit_args[@]+"${edit_args[@]}"}; then
     echo "$PROG: gh $gh_kind edit failed for #$number" >&2
     exit 1
 fi
@@ -233,10 +233,10 @@ verify_and_residual() {  # populates global r_add/r_del with what's still off
     live=$(fetch_labels) || return 1
     r_add=(); r_del=()
     local l
-    for l in "${want_add[@]}"; do
+    for l in ${want_add[@]+"${want_add[@]}"}; do
         printf '%s\n' "$live" | grep -Fxq -- "$l" || r_add+=("$l")
     done
-    for l in "${want_remove[@]}"; do
+    for l in ${want_remove[@]+"${want_remove[@]}"}; do
         printf '%s\n' "$live" | grep -Fxq -- "$l" && r_del+=("$l")
     done
     return 0
@@ -246,9 +246,9 @@ if verify_and_residual; then
     if [[ ${#r_add[@]} -gt 0 || ${#r_del[@]} -gt 0 ]]; then
         # One corrective re-apply for transient propagation gaps.
         retry=()
-        for l in "${r_add[@]}"; do retry+=(--add-label "$l"); done
-        for l in "${r_del[@]}"; do retry+=(--remove-label "$l"); done
-        apply_delta "${retry[@]}" || true
+        for l in ${r_add[@]+"${r_add[@]}"}; do retry+=(--add-label "$l"); done
+        for l in ${r_del[@]+"${r_del[@]}"}; do retry+=(--remove-label "$l"); done
+        apply_delta ${retry[@]+"${retry[@]}"} || true
         if verify_and_residual && { [[ ${#r_add[@]} -gt 0 || ${#r_del[@]} -gt 0 ]]; }; then
             echo "$PROG: $describe — applied but did not converge (still off: add=${r_add[*]} remove=${r_del[*]})" >&2
             exit 1

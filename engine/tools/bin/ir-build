@@ -200,7 +200,7 @@ run_build() {
         "$IR_ACQUIRE" cpu "$JOBS" -- cmd.exe //c \
             "set PATH=$IR_MSYS2_MINGW;%PATH% && cmake --build $BUILD_DIR -j$JOBS ${forward_args[*]}"
     else
-        "$IR_ACQUIRE" cpu "$JOBS" -- cmake --build "$BUILD_DIR" -j"$JOBS" "${forward_args[@]}"
+        "$IR_ACQUIRE" cpu "$JOBS" -- cmake --build "$BUILD_DIR" -j"$JOBS" ${forward_args[@]+"${forward_args[@]}"}
     fi
 }
 
