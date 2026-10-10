@@ -157,6 +157,7 @@ add_executable(IrredenEngineTest
   script/lod_tier_lua_test.cpp
   script/lua_fog_revealed_test.cpp
   script/lua_fog_bindings_test.cpp
+  script/lua_file_bindings_test.cpp
   script/lua_script_get_table_test.cpp
   script/lua_viewport_bindings_test.cpp
   script/lua_script_utils_test.cpp
