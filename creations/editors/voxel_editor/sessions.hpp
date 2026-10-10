@@ -91,6 +91,8 @@ enum class Id {
     TIER_SCRUB,
     RADIAL_ARRAY,
     NWAY_SYMMETRY,
+    MODE_PREVIEW,
+    MODE_PREVIEW_SHOTS,
     MODULE_LOADED,
     COMPONENT_ATTACH,
     COMPONENT_FIELD_PAGE,
@@ -126,6 +128,10 @@ inline Id idFromName(const std::string &name) {
         return Id::RADIAL_ARRAY;
     if (name == "nway_symmetry")
         return Id::NWAY_SYMMETRY;
+    if (name == "mode_preview")
+        return Id::MODE_PREVIEW;
+    if (name == "mode_preview_shots")
+        return Id::MODE_PREVIEW_SHOTS;
     if (name == "module_loaded")
         return Id::MODULE_LOADED;
     if (name == "component_attach")
@@ -1706,6 +1712,91 @@ inline Recipe build(
         builder.expectPartOccupancy(1, onPart1, true, "first_sibling_receives_stroke");
         builder.expectPartOccupancy(2, onPart2, true, "second_sibling_receives_stroke");
         builder.expectPartOccupancy(3, source, true, "source_receives_stroke");
+        return builder.finish();
+    }
+    case Id::MODE_PREVIEW: {
+        constexpr IRMath::ivec3 kPreviewSize{6, 6, 6};
+        const IRMath::vec3 previewOrigin =
+            IRComponents::anchorOffset(IRComponents::EntityAnchor::CENTER, kPreviewSize);
+        Builder builder("mode_preview", kPreviewSize, previewOrigin);
+        builder.segment("grid");
+        builder.expectCanvasCount(0, "grid_has_no_private_canvas");
+        builder.expectRotationMode(0, IRComponents::RotationMode::GRID, "part_starts_grid");
+
+        builder.segment("rotated_pick");
+        builder.toggleEraseMode();
+        builder.clickExpectingNoEdit(IRMath::ivec3(0, 3, 5));
+        builder.expectPartAuthoredCount(0, 192, "rotated_part_keeps_authored_occupancy");
+        builder.expectPartEditable(0, false, "rotated_part_rejected_by_edit_pick");
+        builder.toggleEraseMode();
+
+        builder.segment("detached");
+        builder.tapKey(IRInput::kKeyButtonM);
+        builder.expectCanvasCount(1, "detached_allocates_private_canvas");
+        builder
+            .expectRotationMode(0, IRComponents::RotationMode::DETACHED, "part_cycles_to_detached");
+
+        builder.segment("detached_array");
+        builder.applyRadialArrayToLiveScene(2);
+        builder.expectPartCount(3, "detached_array_copies_created");
+        builder.expectCanvasCount(3, "detached_array_copies_allocate_canvases");
+        builder.expectRotationMode(
+            2,
+            IRComponents::RotationMode::DETACHED,
+            "detached_array_copy_reconciles_canvas"
+        );
+
+        builder.segment("detached_array_undo");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.expectPartCount(1, "detached_array_undo_restores_source");
+        builder.expectCanvasCount(1, "detached_array_undo_releases_copy_canvases");
+
+        builder.segment("grid_return");
+        builder.tapKey(IRInput::kKeyButtonM);
+        builder.tapKey(IRInput::kKeyButtonM);
+        builder.expectCanvasCount(0, "grid_releases_private_canvas");
+        builder.expectRotationMode(0, IRComponents::RotationMode::GRID, "part_cycles_back_to_grid");
+
+        builder.segment("preview_twin");
+        builder.dragLodSlider(SliderTarget::LOD_FINE, 3);
+        builder.dragLodSlider(SliderTarget::LOD_TIER, 0);
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonM);
+        builder.expectCanvasCount(1, "preview_twin_owns_private_canvas");
+        builder.expectPartGated(0, true, 0, "preview_source_respects_band_and_tier_pin");
+        builder.expectPreviewGated(true, 0, "preview_twin_copies_band_and_tier_pin");
+        builder.expectRotationMode(
+            0,
+            IRComponents::RotationMode::GRID,
+            "preview_does_not_change_authored_mode"
+        );
+
+        builder.segment("preview_off");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonM);
+        builder.expectCanvasCount(0, "preview_toggle_releases_twin_canvas");
+
+        builder.segment("preview_recreated");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonM);
+        builder.expectCanvasCount(1, "preview_recreated_before_selection_change");
+
+        builder.segment("preview_selection_change");
+        builder.addVoxelPart();
+        builder.expectPartCount(2, "new_part_changes_selection");
+        builder.expectCanvasCount(0, "selection_change_releases_preview_canvas");
+        return builder.finish();
+    }
+    case Id::MODE_PREVIEW_SHOTS: {
+        Builder builder("mode_preview", sceneSize, sceneOrigin);
+        builder.segment("grid");
+        builder.expectRotationMode(0, IRComponents::RotationMode::GRID, "shot_starts_grid");
+        builder.segment("revox");
+        builder.tapKey(IRInput::kKeyButtonM);
+        builder.tapKey(IRInput::kKeyButtonM);
+        builder.expectCanvasCount(1, "revox_owns_private_canvas");
+        builder.expectRotationMode(
+            0,
+            IRComponents::RotationMode::DETACHED_REVOXELIZE,
+            "shot_cycles_to_revox"
+        );
         return builder.finish();
     }
     case Id::MODULE_LOADED:
