@@ -138,7 +138,7 @@ template <bool kGhost> struct FogRevealEvalCanvas {
         entityCanvas.fogGhost_ = revealed.ghostHeld_;
     }
 
-    void tickHide(
+    void tick(
         IREntity::EntityId entity,
         IRComponents::C_FogRevealed &revealed,
         const IRComponents::C_WorldTransform &worldTransform,
@@ -185,15 +185,6 @@ template <bool kGhost> struct FogRevealEvalCanvas {
             heldGhostPoses_.end(),
             [](const HeldPose &a, const HeldPose &b) { return a.entity_ < b.entity_; }
         );
-    }
-
-    void tick(
-        IREntity::EntityId entity,
-        IRComponents::C_FogRevealed &revealed,
-        const IRComponents::C_WorldTransform &worldTransform,
-        IRComponents::C_EntityCanvas &entityCanvas
-    ) {
-        tickHide(entity, revealed, worldTransform, entityCanvas);
     }
 
     void tickGhost(

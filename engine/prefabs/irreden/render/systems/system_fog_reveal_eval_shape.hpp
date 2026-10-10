@@ -176,7 +176,7 @@ template <bool kGhost> struct FogRevealEvalShape {
         }
     }
 
-    void tickHide(
+    void tick(
         IREntity::EntityId &entity,
         IRComponents::C_FogRevealed &revealed,
         const IRComponents::C_WorldTransform &worldTransform,
@@ -232,15 +232,6 @@ template <bool kGhost> struct FogRevealEvalShape {
             heldGhostPoses_.end(),
             [](const HeldPose &a, const HeldPose &b) { return a.entity_ < b.entity_; }
         );
-    }
-
-    void tick(
-        IREntity::EntityId &entity,
-        IRComponents::C_FogRevealed &revealed,
-        const IRComponents::C_WorldTransform &worldTransform,
-        IRComponents::C_ShapeDescriptor &shape
-    ) {
-        tickHide(entity, revealed, worldTransform, shape);
     }
 
     void tickGhost(

@@ -214,7 +214,7 @@ template <bool kGhost> struct FogRevealEval {
         }
     }
 
-    void tickHide(
+    void tick(
         IREntity::EntityId &entity,
         IRComponents::C_FogRevealed &revealed,
         const IRComponents::C_WorldTransform &worldTransform,
@@ -288,15 +288,6 @@ template <bool kGhost> struct FogRevealEval {
                 );
             }
         });
-    }
-
-    void tick(
-        IREntity::EntityId &entity,
-        IRComponents::C_FogRevealed &revealed,
-        const IRComponents::C_WorldTransform &worldTransform,
-        IRComponents::C_VoxelSetNew &voxelSet
-    ) {
-        tickHide(entity, revealed, worldTransform, voxelSet);
     }
 
     void tickGhost(
