@@ -3631,13 +3631,15 @@ void initOcclusionScene() {
         break;
     case OcclusionScene::BLOCKER:
     case OcclusionScene::BLOCKER_INERT: {
+        // FIELD: the ridge is terrain, the same tier as the voxel ridge wall.
         const IREntity::EntityId blocker = IREntity::createEntity(
             C_LocalTransform{kOcclusionBlockerCenter},
             C_ShapeDescriptor{
                 IRRender::ShapeType::BOX,
                 kOcclusionBlockerSize,
                 kOcclusionBlockerColor
-            }
+            },
+            C_FogField{}
         );
         IREntity::setComponent(
             blocker,
