@@ -90,6 +90,18 @@ inline constexpr int kFramesPerClickStep = 1;
 // so a capture reads clearly. A face aim resolves down to zoom 1.
 inline constexpr float kSessionZoom = 4.0f;
 
+inline constexpr int kTabWalkPresses = 64;
+inline constexpr IRMath::ivec2 kSkeletonPanelPos{378, 342};
+inline constexpr IRMath::ivec2 kSkeletonPanelSize{120, 114};
+inline constexpr IRMath::ivec2 kJointRenameInputPos{
+    kSkeletonPanelPos.x + 4, kSkeletonPanelPos.y + 74
+};
+inline constexpr IRMath::ivec2 kJointRenameInputSize{82, 14};
+inline constexpr IRMath::vec2 kJointRenameInputCenter{
+    static_cast<float>(kJointRenameInputPos.x) + static_cast<float>(kJointRenameInputSize.x) / 2.0f,
+    static_cast<float>(kJointRenameInputPos.y) + static_cast<float>(kJointRenameInputSize.y) / 2.0f
+};
+
 // Mirror of the editable set's occupancy, in local cell coordinates. Carries
 // the scene origin so it can convert to the world positions the aim math and
 // the picker both work in.
@@ -353,6 +365,20 @@ struct RotationModeCheck {
     std::string name_;
 };
 
+enum class EditorInputCheckKind : int {
+    SELECTED_PART_NO_TEXT_FOCUS = 0,
+    TEXT_CAPTURED_X = 1,
+    TEXT_FOCUS_RELEASED = 2,
+    X_SYMMETRY_ENABLED = 3,
+    TAB_WALK_COVERAGE = 4,
+};
+
+struct EditorInputCheck {
+    EditorInputCheckKind kind_ = EditorInputCheckKind::SELECTED_PART_NO_TEXT_FOCUS;
+    int expectedPart_ = -1;
+    std::string name_;
+};
+
 // Pick expectation evaluated through the editor's own edit pick at a shot's
 // capture frame: the world voxel the parked cursor must land on.
 struct PickCheck {
@@ -448,6 +474,7 @@ struct Recipe {
     std::deque<PartEditableCheck> partEditableChecks_;
     std::deque<CanvasCountCheck> canvasCountChecks_;
     std::deque<RotationModeCheck> rotationModeChecks_;
+    std::deque<EditorInputCheck> editorInputChecks_;
     // Same stable-storage contract as checks_, for expectSliderValue.
     std::deque<SliderCheck> sliderChecks_;
     // Same stable-storage contract as checks_, for expectPick.
@@ -502,6 +529,7 @@ bool evaluatePartAuthoredCountCheck(const void *context, std::string &actual);
 bool evaluatePartEditableCheck(const void *context, std::string &actual);
 bool evaluateCanvasCountCheck(const void *context, std::string &actual);
 bool evaluateRotationModeCheck(const void *context, std::string &actual);
+bool evaluateEditorInputCheck(const void *context, std::string &actual);
 
 // Reads one PickCheck through the editor's edit pick. Same PREDICATE channel
 // as evaluateOccupancyCheck. Defined in main.cpp, beside the pick itself.
@@ -1034,6 +1062,14 @@ class Builder {
             m_recipe.rotationModeChecks_,
             RotationModeCheck{partIndex, expected, std::move(name)},
             &evaluateRotationModeCheck
+        );
+    }
+
+    void expectEditorInput(EditorInputCheckKind kind, int expectedPart, std::string name) {
+        addPredicateCheck(
+            m_recipe.editorInputChecks_,
+            EditorInputCheck{kind, expectedPart, std::move(name)},
+            &evaluateEditorInputCheck
         );
     }
 

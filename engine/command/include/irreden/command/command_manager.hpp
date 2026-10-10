@@ -184,6 +184,18 @@ class CommandManager {
     /// bound to the real `IRInput` predicates.
     void executeUserKeyboardCommandsAll();
 
+    /// Suppresses keyboard-valued bindings during the regular input dispatch
+    /// path. Mouse bindings, MIDI dispatch, and imperative command firing are
+    /// unaffected. An admitted keyboard pair may still dispatch its RELEASED
+    /// row so state begun before capture can clean up.
+    void setKeyboardCaptured(bool captured) {
+        m_keyboardCaptured = captured;
+    }
+
+    bool isKeyboardCaptured() const {
+        return m_keyboardCaptured;
+    }
+
     /// The dispatch algorithm itself, reading input through @p input instead of
     /// calling `IRInput` directly. Command-internal: the only production caller
     /// is `executeUserKeyboardCommandsAll()`; the only other one is the headless
@@ -268,6 +280,8 @@ class CommandManager {
     /// is down — unlike the two scratch lists above it persists across frames,
     /// because that persistence is the fix. See `executeUserKeyboardCommands`.
     std::vector<std::uint32_t> m_admittedPairedGroups;
+
+    bool m_keyboardCaptured = false;
 
     /// Rebuilds `m_bareGroups` / `m_rowBareGroup` from the binding list.
     void rebuildBareGroups();

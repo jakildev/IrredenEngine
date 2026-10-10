@@ -19,6 +19,10 @@
 
 namespace IRPrefab::Widget {
 
+inline bool isTabFocusCandidate(const IRComponents::C_Widget &widget) {
+    return !widget.disabled_ && widget.kind_ != IRComponents::WidgetKind::TEXT_INPUT;
+}
+
 // Ergonomic free-function constructors for the five Phase-0 minimum
 // widgets. Each call produces a single entity carrying:
 //   - C_Widget       (header — kind + size + disabled flag)

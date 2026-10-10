@@ -93,6 +93,7 @@ enum class Id {
     NWAY_SYMMETRY,
     MODE_PREVIEW,
     MODE_PREVIEW_SHOTS,
+    TEXT_INPUT_COMMAND_CAPTURE,
     MODULE_LOADED,
     COMPONENT_ATTACH,
     COMPONENT_FIELD_PAGE,
@@ -132,6 +133,8 @@ inline Id idFromName(const std::string &name) {
         return Id::MODE_PREVIEW;
     if (name == "mode_preview_shots")
         return Id::MODE_PREVIEW_SHOTS;
+    if (name == "text_input_command_capture")
+        return Id::TEXT_INPUT_COMMAND_CAPTURE;
     if (name == "module_loaded")
         return Id::MODULE_LOADED;
     if (name == "component_attach")
@@ -1796,6 +1799,60 @@ inline Recipe build(
             0,
             IRComponents::RotationMode::DETACHED_REVOXELIZE,
             "shot_cycles_to_revox"
+        );
+        return builder.finish();
+    }
+    case Id::TEXT_INPUT_COMMAND_CAPTURE: {
+        Builder builder("text_input_command_capture", sceneSize, sceneOrigin);
+
+        builder.segment("enter_entity_scene");
+        builder.addVoxelPart();
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.addVoxelPart();
+
+        int selectedPart = 1;
+        for (int press = 0; press < kTabWalkPresses; ++press) {
+            const std::string label = "tab_walk_" + std::to_string(press + 1);
+            builder.segment(label.c_str());
+            builder.nextPart();
+            selectedPart = (selectedPart + 1) % 2;
+            builder.expectEditorInput(
+                EditorInputCheckKind::SELECTED_PART_NO_TEXT_FOCUS,
+                selectedPart,
+                label + "_advances_without_text_focus"
+            );
+            if (press == kTabWalkPresses - 1) {
+                builder.expectEditorInput(
+                    EditorInputCheckKind::TAB_WALK_COVERAGE,
+                    -1,
+                    "tab_walk_wraps_candidate_cycle"
+                );
+            }
+        }
+
+        builder.segment("focused_x");
+        builder.clickGui(kJointRenameInputCenter);
+        builder.tapKey(IRInput::kKeyButtonX);
+        builder.expectEditorInput(
+            EditorInputCheckKind::TEXT_CAPTURED_X,
+            selectedPart,
+            "focused_x_edits_text_without_toggling_symmetry"
+        );
+
+        builder.segment("tab_releases_focus");
+        builder.tapKey(IRInput::kKeyButtonTab);
+        builder.expectEditorInput(
+            EditorInputCheckKind::TEXT_FOCUS_RELEASED,
+            selectedPart,
+            "tab_releases_text_focus_without_selecting_part"
+        );
+
+        builder.segment("x_command_resumes");
+        builder.tapKey(IRInput::kKeyButtonX);
+        builder.expectEditorInput(
+            EditorInputCheckKind::X_SYMMETRY_ENABLED,
+            selectedPart,
+            "x_toggles_symmetry_after_capture_clears"
         );
         return builder.finish();
     }

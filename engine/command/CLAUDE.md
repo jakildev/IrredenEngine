@@ -81,6 +81,12 @@ Owns three registries: button commands, MIDI note commands keyed by
 `(device, note)`, and MIDI CC commands keyed by `(device, cc)`. It does not
 poll — the input systems look up matching commands each tick and invoke them.
 
+- `setKeyboardCaptured(true)` suppresses keyboard-valued rows in the regular
+  button dispatcher, including modifier chords. Mouse rows, MIDI, and direct
+  `fireUserCommand` / `fire` calls remain live. A bare pair admitted before
+  capture may dispatch only its `RELEASED` row while captured, so its state is
+  balanced; a pair pressed during capture is never admitted.
+
 - **The introspectable registry.** `getCommandRegistrations()` returns
   `CommandRegistration{name, description, button, triggerStatus,
   requiredModifiers}` rows — populated only for **named `PRESSED`** bindings;
