@@ -5,6 +5,7 @@
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_video.hpp>
 #include <irreden/input/ir_input_types.hpp>
+#include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/render/gui_test_assertions.hpp>
 #include <irreden/render/picking.hpp>
 #include <irreden/common/array_transforms.hpp>
@@ -329,6 +330,29 @@ struct PartCountCheck {
     std::string name_;
 };
 
+struct PartAuthoredCountCheck {
+    int partIndex_ = 0;
+    int expected_ = 0;
+    std::string name_;
+};
+
+struct PartEditableCheck {
+    int partIndex_ = 0;
+    bool expected_ = true;
+    std::string name_;
+};
+
+struct CanvasCountCheck {
+    int expectedOffset_ = 0;
+    std::string name_;
+};
+
+struct RotationModeCheck {
+    int partIndex_ = 0;
+    IRComponents::RotationMode expected_ = IRComponents::RotationMode::GRID;
+    std::string name_;
+};
+
 // Pick expectation evaluated through the editor's own edit pick at a shot's
 // capture frame: the world voxel the parked cursor must land on.
 struct PickCheck {
@@ -420,6 +444,10 @@ struct Recipe {
     std::deque<OccupancyCheck> checks_;
     std::deque<PartTransformCheck> partTransformChecks_;
     std::deque<PartCountCheck> partCountChecks_;
+    std::deque<PartAuthoredCountCheck> partAuthoredCountChecks_;
+    std::deque<PartEditableCheck> partEditableChecks_;
+    std::deque<CanvasCountCheck> canvasCountChecks_;
+    std::deque<RotationModeCheck> rotationModeChecks_;
     // Same stable-storage contract as checks_, for expectSliderValue.
     std::deque<SliderCheck> sliderChecks_;
     // Same stable-storage contract as checks_, for expectPick.
@@ -470,6 +498,10 @@ inline void resolveShots(Recipe &recipe) {
 bool evaluateOccupancyCheck(const void *context, std::string &actual);
 bool evaluatePartTransformCheck(const void *context, std::string &actual);
 bool evaluatePartCountCheck(const void *context, std::string &actual);
+bool evaluatePartAuthoredCountCheck(const void *context, std::string &actual);
+bool evaluatePartEditableCheck(const void *context, std::string &actual);
+bool evaluateCanvasCountCheck(const void *context, std::string &actual);
+bool evaluateRotationModeCheck(const void *context, std::string &actual);
 
 // Reads one PickCheck through the editor's edit pick. Same PREDICATE channel
 // as evaluateOccupancyCheck. Defined in main.cpp, beside the pick itself.
@@ -945,6 +977,22 @@ class Builder {
         );
     }
 
+    void expectPartAuthoredCount(int partIndex, int expected, std::string name) {
+        addPredicateCheck(
+            m_recipe.partAuthoredCountChecks_,
+            PartAuthoredCountCheck{partIndex, expected, std::move(name)},
+            &evaluatePartAuthoredCountCheck
+        );
+    }
+
+    void expectPartEditable(int partIndex, bool expected, std::string name) {
+        addPredicateCheck(
+            m_recipe.partEditableChecks_,
+            PartEditableCheck{partIndex, expected, std::move(name)},
+            &evaluatePartEditableCheck
+        );
+    }
+
     void applyRadialArray(int count) {
         dragGuiSlider(kArrayCountSliderGeometry, 2.0f, 12.0f, static_cast<float>(count));
         clickGui(kArrayApplyCenter);
@@ -964,8 +1012,29 @@ class Builder {
         m_model = m_partModels.back();
     }
 
+    void applyRadialArrayToLiveScene(int count) {
+        dragGuiSlider(kArrayCountSliderGeometry, 2.0f, 12.0f, static_cast<float>(count));
+        clickGui(kArrayApplyCenter);
+    }
+
     void toggleRotationalSymmetry() {
         chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonY);
+    }
+
+    void expectCanvasCount(int expectedOffset, std::string name) {
+        addPredicateCheck(
+            m_recipe.canvasCountChecks_,
+            CanvasCountCheck{expectedOffset, std::move(name)},
+            &evaluateCanvasCountCheck
+        );
+    }
+
+    void expectRotationMode(int partIndex, IRComponents::RotationMode expected, std::string name) {
+        addPredicateCheck(
+            m_recipe.rotationModeChecks_,
+            RotationModeCheck{partIndex, expected, std::move(name)},
+            &evaluateRotationModeCheck
+        );
     }
 
   private:
@@ -1094,12 +1163,18 @@ class Builder {
     // Assert part @p partIndex's LOD-gate verdict and pin when this segment
     // settles. @p pinnedTier -1 asserts the part carries no override.
     void expectPartGated(int partIndex, bool expectGated, int pinnedTier, std::string name) {
-        m_recipe.partGateChecks_.push_back(
-            PartGateCheck{partIndex, expectGated, pinnedTier, std::move(name)}
+        addPredicateCheck(
+            m_recipe.partGateChecks_,
+            PartGateCheck{partIndex, expectGated, pinnedTier, std::move(name)},
+            &evaluatePartGateCheck
         );
-        const PartGateCheck &check = m_recipe.partGateChecks_.back();
-        m_current.assertions_.push_back(
-            IRPrefab::GuiTest::predicate(&evaluatePartGateCheck, &check, check.name_.c_str())
+    }
+
+    void expectPreviewGated(bool expectGated, int pinnedTier, std::string name) {
+        addPredicateCheck(
+            m_recipe.partGateChecks_,
+            PartGateCheck{-1, expectGated, pinnedTier, std::move(name)},
+            &evaluatePartGateCheck
         );
     }
 

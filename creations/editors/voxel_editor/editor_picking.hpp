@@ -1,6 +1,7 @@
 #ifndef IR_VOXEL_EDITOR_PICKING_H
 #define IR_VOXEL_EDITOR_PICKING_H
 
+#include <irreden/common/rotation_mode.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/render/components/component_gizmo_handle.hpp>
@@ -26,7 +27,15 @@ struct C_EditorReference {};
 namespace IRVoxelEditor {
 
 inline bool isEditable(IREntity::EntityId entity) {
-    return !IREntity::getComponentOptional<IRComponents::C_EditorReference>(entity).has_value();
+    if (IREntity::getComponentOptional<IRComponents::C_EditorReference>(entity).has_value()) {
+        return false;
+    }
+    const auto mode = IREntity::getComponentOptional<IRComponents::C_RotationMode>(entity);
+    if (mode && IRPrefab::RotationMode::ownsEntityCanvas(mode.value()->mode_)) {
+        return false;
+    }
+    const auto world = IREntity::getComponentOptional<IRComponents::C_WorldTransform>(entity);
+    return !world || world.value()->rotation_ == IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f);
 }
 
 // What a place / erase gesture acts on this frame.
