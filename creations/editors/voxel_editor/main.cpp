@@ -106,6 +106,7 @@
 #include "anim_panel.hpp"
 #include "array_panel.hpp"
 #include "lod_panel.hpp"
+#include "panel_layout.hpp"
 
 #include "editor_layer_manager.hpp"
 
@@ -6050,23 +6051,27 @@ void initEntities() {
     // Bone selector panel. kBoneSwatchCount swatches in a 2×4
     // grid; index 0 = identity (gray), indices 1..7 cycle through distinct hues.
     // Clicking a swatch sets g_bonePaint.activeBoneIdx_; N enables bone-paint mode.
-    // Third column (x=256) atop the SKELETON panel — mirrors the LAYERS/BAKE
+    // Third column (x=378) atop the SKELETON panel — mirrors the LAYERS/BAKE
     // stack in column two so both bone panels stay on-screen.
-    constexpr ivec2 kBonePanelPos{378, 240};
-    constexpr ivec2 kBonePanelSize{120, 96};
     constexpr int kBoneSwatchSize = 20;
     constexpr int kBoneSwatchGap = 4;
-    constexpr int kBoneSwatchOriginX = kBonePanelPos.x + 8;
-    constexpr int kBoneSwatchOriginY = kBonePanelPos.y + 36;
+    constexpr int kBoneSwatchOriginX = IRVoxelEditor::kBonePanelPos.x + 8;
+    constexpr int kBoneSwatchOriginY = IRVoxelEditor::kBonePanelPos.y + 36;
     constexpr int kBoneGridCols = 4;
 
-    IRVoxelEditor::g_bonePaint.bonePanel_ =
-        IRPrefab::Widget::makePanel(kBonePanelPos, kBonePanelSize, "BONE");
+    IRVoxelEditor::g_bonePaint.bonePanel_ = IRPrefab::Widget::makePanel(
+        IRVoxelEditor::kBonePanelPos,
+        IRVoxelEditor::kBonePanelSize,
+        "BONE"
+    );
     IREntity::setComponent(
         IRVoxelEditor::g_bonePaint.bonePanel_,
-        IRComponents::C_HitBox2DGui{kBonePanelSize}
+        IRComponents::C_HitBox2DGui{IRVoxelEditor::kBonePanelSize}
     );
-    IRPrefab::Widget::makeLabel(ivec2(kBonePanelPos.x + 8, kBonePanelPos.y + 22), "N:ON/OFF");
+    IRPrefab::Widget::makeLabel(
+        ivec2(IRVoxelEditor::kBonePanelPos.x + 8, IRVoxelEditor::kBonePanelPos.y + 22),
+        "N:ON/OFF"
+    );
 
     IRVoxelEditor::g_bonePaint.boneSwatches_.reserve(IRVoxelEditor::kBoneSwatchCount);
     for (int i = 0; i < IRVoxelEditor::kBoneSwatchCount; ++i) {
@@ -6093,42 +6098,43 @@ void initEntities() {
     // selects that joint as the active bone (for B-chaining). The rename
     // row writes C_JointName; the reparent row rewrites the CHILD_OF
     // relation and updates parentIdx_ + bindPose_.
-    constexpr ivec2 kSkeletonPanelPos{378, 342};
-    constexpr ivec2 kSkeletonPanelSize{120, 114};
-    IRVoxelEditor::g_skeletonPanel =
-        IRPrefab::Widget::makePanel(kSkeletonPanelPos, kSkeletonPanelSize, "SKELETON");
+    IRVoxelEditor::g_skeletonPanel = IRPrefab::Widget::makePanel(
+        IRVoxelEditor::kSkeletonPanelPos,
+        IRVoxelEditor::kSkeletonPanelSize,
+        "SKELETON"
+    );
     IREntity::setComponent(
         IRVoxelEditor::g_skeletonPanel,
-        IRComponents::C_HitBox2DGui{kSkeletonPanelSize}
+        IRComponents::C_HitBox2DGui{IRVoxelEditor::kSkeletonPanelSize}
     );
     IREntity::getComponent<IRComponents::C_Widget>(IRVoxelEditor::g_skeletonPanel).zOrder_ = -1;
 
     IRVoxelEditor::g_skeletonList = IRPrefab::Widget::makeList(
-        ivec2(kSkeletonPanelPos.x + 4, kSkeletonPanelPos.y + 18),
+        ivec2(IRVoxelEditor::kSkeletonPanelPos.x + 4, IRVoxelEditor::kSkeletonPanelPos.y + 18),
         ivec2(112, 52),
         {},
         -1,
         13
     );
     IRVoxelEditor::g_jointRenameInput = IRPrefab::Widget::makeTextInput(
-        ivec2(kSkeletonPanelPos.x + 4, kSkeletonPanelPos.y + 74),
+        ivec2(IRVoxelEditor::kSkeletonPanelPos.x + 4, IRVoxelEditor::kSkeletonPanelPos.y + 74),
         ivec2(82, 14),
         "",
         24
     );
     IRVoxelEditor::g_jointRenameBtn = IRPrefab::Widget::makeButton(
-        ivec2(kSkeletonPanelPos.x + 90, kSkeletonPanelPos.y + 74),
+        ivec2(IRVoxelEditor::kSkeletonPanelPos.x + 90, IRVoxelEditor::kSkeletonPanelPos.y + 74),
         ivec2(26, 14),
         "REN"
     );
     IRVoxelEditor::g_jointReparentInput = IRPrefab::Widget::makeTextInput(
-        ivec2(kSkeletonPanelPos.x + 4, kSkeletonPanelPos.y + 92),
+        ivec2(IRVoxelEditor::kSkeletonPanelPos.x + 4, IRVoxelEditor::kSkeletonPanelPos.y + 92),
         ivec2(82, 14),
         "-1",
         4
     );
     IRVoxelEditor::g_jointReparentBtn = IRPrefab::Widget::makeButton(
-        ivec2(kSkeletonPanelPos.x + 90, kSkeletonPanelPos.y + 92),
+        ivec2(IRVoxelEditor::kSkeletonPanelPos.x + 90, IRVoxelEditor::kSkeletonPanelPos.y + 92),
         ivec2(26, 14),
         "PAR"
     );
