@@ -111,9 +111,23 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
         );
         normal = rotateYawZInv(faceOutwardNormal(face), frameData.visualYaw);
     } else {
+        int recoveryDepth = rawDepth;
+#if IR_SHAPE_RECEIVER
+        const bool smoothMode = receiverFrame.voxelRenderOptions.x != 0 &&
+                                receiverFrame.voxelRenderOptions.y > 1;
+        recoveryDepth = cardinalShapeReceiverDepth(
+            rawDepth,
+            receiverFrame.voxelRenderOptions.y,
+            selectedShapeIndex(
+                pixel, size.x, receiverFrame, receiverOwners, receiverTiles
+            ) >= 0,
+            smoothMode && receiverFrame.smoothYawEnabled == 0,
+            receiverFrame.finiteCoverage != 0
+        );
+#endif
         pos3D = trixelCanvasPixelToWorld3D(
             pixel,
-            rawDepth,
+            recoveryDepth,
             frameData.trixelCanvasOffsetZ1,
             frameData.frameCanvasOffset,
             frameData.voxelRenderOptions,

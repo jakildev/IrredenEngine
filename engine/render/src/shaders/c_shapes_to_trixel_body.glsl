@@ -14,7 +14,7 @@ layout(std140, binding = 23) uniform ShapesFrameData {
     uniform ivec2 trixelCanvasOffsetZ1;
     uniform ivec2 canvasSize;
     uniform int shapeCount;
-    uniform int _padding0;
+    uniform int finiteCoverage;
     uniform ivec2 voxelRenderOptions;
     uniform ivec2 cullIsoMin;
     uniform ivec2 cullIsoMax;
@@ -912,13 +912,12 @@ void main() {
         baseDepth = roundHalfUp(yawedIsoDistance(worldSurface, visualYaw));
     } else {
         int originDistance = originScaled.x + originScaled.y + originScaled.z;
-        baseDepth = surfaceD + originDistance;
+        baseDepth = cardinalShapeStoredDepth(
+            surfaceD + originDistance, smoothMode && !smoothYaw, sub
+        );
         // Store selection is per canvas, not per camera pose. Main/entity
         // canvases reach this arm at cardinals; other canvases use the
         // cardinal-snap + faceDeform raster store at every yaw.
-        if (smoothMode && !smoothYaw) {
-            baseDepth += cardinalRasterLatticeDepthOffset(sub);
-        }
     }
 #if IR_SHAPE_PASS == 1
     vec4 baseColor = unpackColor(shape.color);

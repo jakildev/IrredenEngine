@@ -277,6 +277,18 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             auto &canvasTextures = *texturesOpt.value();
 
             const bool entityCanvas = entityCanvasOrigins_.contains(canvasId);
+            const auto shadow = IREntity::getComponentOptional<C_CanvasSunShadow>(canvasId);
+            const auto behavior =
+                IREntity::getComponentOptional<C_TrixelCanvasRenderBehavior>(canvasId);
+            System<BAKE_SUN_SHADOW_MAP> *baker = nullptr;
+            if (shadow.has_value() && behavior.has_value() &&
+                behavior.value()->useCameraPositionIso_) {
+                const auto bakeSystem = findSystem(BAKE_SUN_SHADOW_MAP);
+                if (bakeSystem != kNullSystemId) {
+                    baker = getSystemParams<System<BAKE_SUN_SHADOW_MAP>>(bakeSystem);
+                }
+            }
+            frameData_.finiteCoverage = baker != nullptr && baker->beginVoxelFaceCoverage() ? 1 : 0;
             if (canvasId == mainCanvas) {
                 frameData_.cameraTrixelOffset = IRRender::getEffectiveCameraIso();
             } else if (entityCanvas) {
@@ -482,27 +494,21 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             );
             canvasTextures.shapeGeometry_.publishSamples(!hasXray);
 
-            const auto shadow = IREntity::getComponentOptional<C_CanvasSunShadow>(canvasId);
-            const auto behavior =
-                IREntity::getComponentOptional<C_TrixelCanvasRenderBehavior>(canvasId);
-            if (shadow.has_value() && behavior.has_value() &&
-                behavior.value()->useCameraPositionIso_) {
-                const auto bakeSystem = findSystem(BAKE_SUN_SHADOW_MAP);
-                if (bakeSystem != kNullSystemId) {
-                    auto *baker = getSystemParams<System<BAKE_SUN_SHADOW_MAP>>(bakeSystem);
-                    {
-                        IRRender::GpuSubStageScope timing("shapeCastBoxes");
-                        // The box bake centers each caster where this canvas drew it.
-                        shapesFrameDataBuf_->bindBase(
-                            BufferTarget::UNIFORM,
-                            kBufferIndex_ShapesFrameData
-                        );
-                        baker->bakeAnalyticBoxes(
-                            static_cast<int>(gpuShapes.size()),
-                            renderMode == SubdivisionMode::NONE ? 1 : effectiveSub
-                        );
-                    }
-                    const bool hasNonBoxCasters = std::any_of(
+            if (baker != nullptr) {
+                {
+                    IRRender::GpuSubStageScope timing("shapeCastBoxes");
+                    // The box bake centers each caster where this canvas drew it.
+                    shapesFrameDataBuf_->bindBase(
+                        BufferTarget::UNIFORM,
+                        kBufferIndex_ShapesFrameData
+                    );
+                    baker->bakeAnalyticBoxes(
+                        static_cast<int>(gpuShapes.size()),
+                        renderMode == SubdivisionMode::NONE ? 1 : effectiveSub
+                    );
+                }
+                const bool hasNonBoxCasters =
+                    std::any_of(
                         gpuShapes.begin(),
                         gpuShapes.end(),
                         [](const GPUShapeDescriptor &shape) {
@@ -510,41 +516,40 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                                    static_cast<std::uint32_t>(IRMath::SDF::ShapeType::BOX);
                         }
                     );
-                    Texture2D *casterDepth = nullptr;
-                    if (hasNonBoxCasters) {
-                        IRRender::GpuSubStageScope timing("shapeCastClear");
-                        casterDepth = baker->prepareAnalyticCasterDepth(frameData_);
+                Texture2D *casterDepth = nullptr;
+                if (hasNonBoxCasters) {
+                    IRRender::GpuSubStageScope timing("shapeCastClear");
+                    casterDepth = baker->prepareAnalyticCasterDepth(frameData_);
+                }
+                if (casterDepth) {
+                    shapeCasterProgram_->use();
+                    // Non-box analytic casters retain their separate depth input.
+                    casterDepth->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
+                    {
+                        IRRender::GpuSubStageScope timing("shapeCastFallback");
+                        shapesFrameDataBuf_->bindBase(
+                            BufferTarget::UNIFORM,
+                            kBufferIndex_ShapesFrameData
+                        );
+                        IRRender::device()->dispatchCompute(
+                            static_cast<std::uint32_t>(gridX),
+                            static_cast<std::uint32_t>(gridY),
+                            1
+                        );
+                        IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
                     }
-                    if (casterDepth) {
-                        shapeCasterProgram_->use();
-                        // Non-box analytic casters retain their separate depth input.
-                        casterDepth->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
-                        {
-                            IRRender::GpuSubStageScope timing("shapeCastFallback");
-                            shapesFrameDataBuf_->bindBase(
-                                BufferTarget::UNIFORM,
-                                kBufferIndex_ShapesFrameData
-                            );
-                            IRRender::device()->dispatchCompute(
-                                static_cast<std::uint32_t>(gridX),
-                                static_cast<std::uint32_t>(gridY),
-                                1
-                            );
-                            IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
-                        }
-                        {
-                            IRRender::GpuSubStageScope timing("shapeCastResolve");
-                            IRRender::device()->resolveImageAtomicScratch(casterDepth);
-                        }
-                        {
-                            IRRender::GpuSubStageScope timing("shapeCastBake");
-                            baker->bakeAnalyticCasterDepth();
-                        }
-                        canvasTextures.getTextureColors()
-                            ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
-                        canvasTextures.getTextureDistances()
-                            ->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
+                    {
+                        IRRender::GpuSubStageScope timing("shapeCastResolve");
+                        IRRender::device()->resolveImageAtomicScratch(casterDepth);
                     }
+                    {
+                        IRRender::GpuSubStageScope timing("shapeCastBake");
+                        baker->bakeAnalyticCasterDepth();
+                    }
+                    canvasTextures.getTextureColors()
+                        ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
+                    canvasTextures.getTextureDistances()
+                        ->bindAsImage(1, TextureAccess::READ_WRITE, TextureFormat::R32I);
                 }
             }
 

@@ -5,7 +5,7 @@ struct ShapeProjectionData {
     ivec2 trixelCanvasOffsetZ1;
     ivec2 canvasSize;
     int shapeCount;
-    int _padding0;
+    int finiteCoverage;
     ivec2 voxelRenderOptions;
     ivec2 cullIsoMin;
     ivec2 cullIsoMax;
@@ -41,3 +41,20 @@ struct ShapeTileDescriptor {
 const uint FLAG_CHECKERBOARD = 32u;
 const uint FLAG_DEPTH_COLOR = 64u;
 const uint kShapeProceduralColorFlags = FLAG_CHECKERBOARD | FLAG_DEPTH_COLOR;
+
+int cardinalShapeStoredDepth(int unoffsetDepth, bool carriesLatticeOffset, int subdivisions) {
+#if IR_SHAPE_PASS == 2
+    return unoffsetDepth;
+#else
+    return carriesLatticeOffset
+        ? unoffsetDepth + cardinalRasterLatticeDepthOffset(subdivisions)
+        : unoffsetDepth;
+#endif
+}
+
+int cardinalShapeReceiverDepth(int storedDepth, int subdivisions, bool shapeOwned,
+                              bool carriesLatticeOffset, bool finiteCoverage) {
+    return shapeOwned && carriesLatticeOffset && finiteCoverage
+        ? storedDepth - cardinalRasterLatticeDepthOffset(subdivisions)
+        : storedDepth;
+}
