@@ -86,6 +86,7 @@ on:
     branches: [master]
     paths:
       - 'scripts/**'
+      - '.codex/**'
       - '.claude/rules/**'
       - '.claude/commands/**'
       - '.claude/agents/**'
@@ -169,6 +170,7 @@ on:
   pull_request:
     paths:
       - 'scripts/**'
+      - '.codex/**'
       - '.claude/rules/**'
       - '.claude/commands/**'
       - '.claude/agents/**'

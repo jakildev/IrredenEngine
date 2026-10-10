@@ -146,6 +146,16 @@ assert_eq "$track" \
     "session-track: file=$H1/.fleet/sessions/opus-architect.session-id role=opus-architect mode=live" \
     "architect exports sidecar path, role, and mode for the hook"
 
+# --- T4b: architect launch bills the user pool ------------------------------
+# A babysat pane is a user lane: an inherited App token must not reach claude.
+echo "T4b: architect launch clears inherited tokens and selects the user identity"
+ident=$(cd "$PROJECT_CWD" && env HOME="$H1" PATH="$TMPROOT/bin:$PATH" FLEET_BABYSIT_PRINT_LAUNCH=1 \
+    GH_TOKEN=ghs_synthetic-inherited GITHUB_TOKEN=ghs_synthetic-other \
+    "$BABYSIT" 'claude-opus-4-8[1m]' opus-architect live 2>/dev/null \
+    | grep '^gh-identity: ')
+assert_eq "$ident" "gh-identity: identity=user gh-token= github-token=" \
+    "architect launch runs as the user identity with no token"
+
 # --- T5: dead session-id (no transcript) falls back to a fresh session ------
 # A saved session-id whose transcript was pruned still resolves
 # `-f "$SESSION_FILE"` but has nothing under ~/.claude/projects/ — babysit

@@ -57,6 +57,7 @@ sleep 30 &
 HOLDER_PID=$!
 export IR_QUIET_OWNER=live-lease
 ir-acquire --quiet-lease "$IR_QUIET_OWNER" create "$HOLDER_PID"
+HOOK_COMMAND=$(python3 -c "import sys; sys.path.insert(0, '$REPO_ROOT/scripts/fleet'); import fleet_codex; print(fleet_codex.quiet_hook_command())")
 IR_QUIET_REPORT_FILE="$TMP_ROOT/report" ir-acquire benchmark -- \
     sh -c "touch '$TMP_ROOT/command.started'; while [ ! -f '$TMP_ROOT/command.release' ]; do sleep .05; done" \
     >"$TMP_ROOT/benchmark.out" 2>&1 &
@@ -66,7 +67,7 @@ for _attempt in $(seq 1 100); do
     [[ "$STATUS" == *'"state": "waiting"'* || "$STATUS" == *'"state": "draining"'* ]] && break
     sleep 0.02
 done
-fleet-quiet-wait >"$TMP_ROOT/hook.out" 2>&1 &
+env -i HOME="$HOME" sh -c "$HOOK_COMMAND" >"$TMP_ROOT/hook.out" 2>&1 &
 HOOK_PID=$!
 for _attempt in $(seq 1 100); do
     STATUS=$(ir-acquire --quiet-status --json 2>&1)

@@ -13,9 +13,9 @@
 ///     fast path: any component that is `std::is_trivially_copyable`
 ///     round-trips as a raw byte image, which covers the bulk of plain
 ///     gameplay data (positions, velocities, timers, flags, small PODs);
-///   - an explicit full specialization, for a component that owns heap
-///     storage (`std::string`, `std::vector`, resource handles) and is NOT
-///     trivially copyable — a raw memcpy would persist dangling pointers.
+///   - an explicit full specialization for a component that needs a
+///     hand-written layout. Trivially-copyable components declare that layout
+///     through their inventory opt-in so a missing definition stays loud.
 ///
 /// Leaving the primary undefined is what makes serializability *detectable*:
 /// `SaveSerializable<C>` below is satisfied exactly when one of those two
@@ -57,6 +57,8 @@ template <typename C> struct SaveSerialize;
 template <typename C>
     requires std::is_trivially_copyable_v<C>
 struct SaveSerialize<C> {
+    static constexpr bool kRawImage = true;
+
     static void write(IRAsset::BinaryWriter &w, const C &value) {
         w.writeBytes(&value, sizeof(C));
     }
@@ -72,9 +74,9 @@ struct SaveSerialize<C> {
 };
 
 /// True iff `SaveSerialize<C>` is usable — the trivially-copyable arm or an
-/// explicit specialization. Self-detecting by construction: writing the
-/// serializer IS the opt-in, so there is no second bookkeeping step to
-/// forget. Used as a **gate, not a filter**: `makeDefaultSaveRegistry` hands
+/// explicit specialization. Self-detecting by construction: a declaration
+/// alone stays incomplete, while the raw arm or a definition satisfies the
+/// concept. Used as a **gate, not a filter**: `makeDefaultSaveRegistry` hands
 /// every `AllEngineComponents` entry to `SaveRegistry::registerComponent`,
 /// which `static_assert`s this — so "opted in but no serializer" is a build
 /// error, never a silent drop. Reintroducing a filter here would restore

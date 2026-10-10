@@ -318,7 +318,7 @@ IR_SAVE_OPT_IN(IRComponents::C_ColliderIso3DAABB, 1)
 IR_SAVE_OPT_IN(IRComponents::C_CollisionLayer, 1)
 // Version 1 was the raw {halfExtent_, hovered_} image. Version 2 writes only
 // authored configuration; save_serializers_input.hpp owns the direct migration.
-IR_SAVE_OPT_IN(IRComponents::C_HitBox2D, 2)
+IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_HitBox2D, 2)
 IR_SAVE_OPT_IN(IRComponents::C_HitBox2DGui, 1)
 IR_SAVE_OPT_IN(IRComponents::C_HitboxCircle, 1)
 IR_SAVE_OPT_IN(IRComponents::C_HitboxRect, 1)
@@ -352,7 +352,7 @@ IR_SAVE_OPT_IN(IRComponents::C_ColorHSV, 1)
 // the family (same one-representative-instantiation approach used for
 // any templated component with more than one concrete specialization).
 IR_SAVE_OPT_IN(IRComponents::C_GeometricShape<IRMath::Shape3D::SPHERE>, 1)
-IR_SAVE_OPT_IN(IRComponents::C_ShapeDescriptor, 2)
+IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_ShapeDescriptor, 2)
 IR_SAVE_OPT_IN(IRComponents::C_TriangleCanvasBackground, 1)
 IR_SAVE_OPT_IN(IRComponents::C_TrianglesOnlySet, 1)
 IR_SAVE_OPT_IN(IRComponents::C_LightSource, 1)
@@ -363,7 +363,9 @@ IR_SAVE_OPT_IN(IRComponents::C_Viewport, 1)
 IR_SAVE_OPT_IN(IRComponents::C_ZoomLevel, 1)
 IR_SAVE_OPT_IN(IRComponents::C_TrixelCanvasOrigin, 1)
 IR_SAVE_OPT_IN(IRComponents::C_TrixelCanvasRenderBehavior, 1)
-IR_SAVE_OPT_IN(IRComponents::C_EntityCanvas, 2)
+// Versions 1 and 2 were raw struct images. The render serializer owns their
+// direct migrations and the authored-only current layout.
+IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_EntityCanvas, 3)
 IR_SAVE_OPT_IN(IRComponents::C_CanvasTarget, 1)
 IR_SAVE_OPT_IN(IRComponents::C_DetachedCanvas, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Voxel, 1)

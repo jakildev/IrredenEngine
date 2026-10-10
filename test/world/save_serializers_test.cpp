@@ -17,13 +17,14 @@
 #include <irreden/asset/binary_io.hpp>
 #include <irreden/ir_entity.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <type_traits>
 #include <vector>
 
-// Per-component SaveSerialize<C> coverage for heap-owning components, plus the
+// Per-component SaveSerialize<C> coverage for hand-written layouts, plus the
 // membership assertion
 // that proves that registry is *derived* from the inventory rather than
 // hand-curated.
@@ -44,6 +45,17 @@
 namespace {
 
 using namespace IRComponents;
+
+template <typename C>
+concept UsesRawImageSerializer =
+    requires { IRWorld::SaveSerialize<C>::kRawImage; } && IRWorld::SaveSerialize<C>::kRawImage;
+
+static_assert(IRWorld::SaveTrait<C_EntityCanvas>::kHandWrittenLayout);
+static_assert(IRWorld::SaveTrait<C_HitBox2D>::kHandWrittenLayout);
+static_assert(IRWorld::SaveTrait<C_ShapeDescriptor>::kHandWrittenLayout);
+static_assert(!UsesRawImageSerializer<C_EntityCanvas>);
+static_assert(!UsesRawImageSerializer<C_HitBox2D>);
+static_assert(!UsesRawImageSerializer<C_ShapeDescriptor>);
 
 template <typename C> std::vector<std::uint8_t> serialize(const C &value) {
     IRAsset::MemoryBinaryWriter writer;
@@ -202,10 +214,13 @@ TEST(SaveSerializers, EntityCanvasV1MigrationPreservesAuthoredStateAndDefaultsFo
     writer.writeBytes(&old, sizeof(old));
 
     const auto migrators = IRWorld::SaveMigration<C_EntityCanvas>::migrators();
-    ASSERT_EQ(migrators.size(), 1u);
-    ASSERT_EQ(migrators.front().first, 1u);
+    ASSERT_EQ(migrators.size(), 2u);
+    const auto migrator = std::find_if(migrators.begin(), migrators.end(), [](const auto &entry) {
+        return entry.first == 1u;
+    });
+    ASSERT_NE(migrator, migrators.end());
     IRAsset::MemoryBinaryReader reader(writer.buffer().data(), writer.buffer().size(), "canvas-v1");
-    const IRAsset::Result<C_EntityCanvas> restored = migrators.front().second(reader);
+    const IRAsset::Result<C_EntityCanvas> restored = migrator->second(reader);
 
     ASSERT_TRUE(restored.ok()) << restored.status_.message_;
     EXPECT_EQ(restored.value_.canvasEntity_, old.canvasEntity_);
@@ -216,7 +231,60 @@ TEST(SaveSerializers, EntityCanvasV1MigrationPreservesAuthoredStateAndDefaultsFo
     EXPECT_FLOAT_EQ(restored.value_.fogRevealFactor_, 1.0f);
     EXPECT_FALSE(restored.value_.fogHidden_);
     EXPECT_EQ(reader.remaining(), 0u);
-    EXPECT_EQ(IRWorld::saveVersion<C_EntityCanvas>(), 2u);
+    EXPECT_EQ(IRWorld::saveVersion<C_EntityCanvas>(), 3u);
+}
+
+TEST(SaveSerializers, EntityCanvasRoundTripPreservesAuthoredStateAndDefaultsFogState) {
+    C_EntityCanvas canvas{42, IRMath::ivec2(320, 180), false, true, 7};
+    canvas.fogRevealFactor_ = 0.0f;
+    canvas.fogHidden_ = true;
+
+    const std::vector<std::uint8_t> bytes = serialize(canvas);
+    ASSERT_EQ(bytes.size(), 22u);
+    const C_EntityCanvas restored = roundTrip(canvas);
+
+    EXPECT_EQ(restored.canvasEntity_, canvas.canvasEntity_);
+    EXPECT_EQ(restored.canvasSize_, canvas.canvasSize_);
+    EXPECT_EQ(restored.visible_, canvas.visible_);
+    EXPECT_EQ(restored.screenLocked_, canvas.screenLocked_);
+    EXPECT_EQ(restored.depthPriority_, canvas.depthPriority_);
+    EXPECT_FLOAT_EQ(restored.fogRevealFactor_, 1.0f);
+    EXPECT_FALSE(restored.fogHidden_);
+    expectConsumesAllBytes(canvas);
+    expectReserializesIdentically(canvas);
+}
+
+TEST(SaveSerializers, EntityCanvasV2MigrationPreservesAuthoredStateAndDefaultsFogState) {
+    IRWorld::detail::EntityCanvasV2 old{
+        42,
+        IRMath::ivec2(320, 180),
+        false,
+        true,
+        7,
+        0.0f,
+        true,
+    };
+    IRAsset::MemoryBinaryWriter writer;
+    writer.writeBytes(&old, sizeof(old));
+
+    const auto migrators = IRWorld::SaveMigration<C_EntityCanvas>::migrators();
+    ASSERT_EQ(migrators.size(), 2u);
+    const auto migrator = std::find_if(migrators.begin(), migrators.end(), [](const auto &entry) {
+        return entry.first == 2u;
+    });
+    ASSERT_NE(migrator, migrators.end());
+    IRAsset::MemoryBinaryReader reader(writer.buffer().data(), writer.buffer().size(), "canvas-v2");
+    const IRAsset::Result<C_EntityCanvas> restored = migrator->second(reader);
+
+    ASSERT_TRUE(restored.ok()) << restored.status_.message_;
+    EXPECT_EQ(restored.value_.canvasEntity_, old.canvasEntity_);
+    EXPECT_EQ(restored.value_.canvasSize_, old.canvasSize_);
+    EXPECT_EQ(restored.value_.visible_, old.visible_);
+    EXPECT_EQ(restored.value_.screenLocked_, old.screenLocked_);
+    EXPECT_EQ(restored.value_.depthPriority_, old.depthPriority_);
+    EXPECT_FLOAT_EQ(restored.value_.fogRevealFactor_, 1.0f);
+    EXPECT_FALSE(restored.value_.fogHidden_);
+    EXPECT_EQ(reader.remaining(), 0u);
 }
 
 // --- voxel/ ----------------------------------------------------------------
@@ -892,8 +960,8 @@ TEST(SaveSerializers, EnumStoredEasingComponentsOptIn) {
 }
 
 // The raw-image arm is what makes the two components above serializable
-// without a specialization; an explicit SaveSerialize<C> on a trivially
-// copyable type is the silent ODR hazard engine/world/CLAUDE.md forbids.
+// without a specialization. Hand-written layouts declare that choice through
+// the inventory instead.
 TEST(SaveSerializers, EnumStoredEasingComponentsAreTriviallyCopyable) {
     EXPECT_TRUE(std::is_trivially_copyable_v<C_GotoEasing3D>);
     EXPECT_TRUE(std::is_trivially_copyable_v<C_RotationTarget>);

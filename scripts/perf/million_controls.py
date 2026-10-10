@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Profile the million control across build tree, stage profiling and pose.
 
-Every case runs once per round, forward then reverse (rotation_controls.py's
-ordering), so host drift lands on every case instead of on the last group; the
-summary prints each case's per-round means so the drift stays visible. Each run
+Every case runs once per round, forward then reverse, so host drift lands on
+every case instead of on the last group. The summary prints each case's
+per-round means so the drift stays visible. Each run
 goes through repeat_profile.py for freshness, fingerprints and the pose and
 overflow-drop checks, which read each report's run witness, so a Release run
 vouches for itself. No build is performed: build IRPerfGrid in every tree named
@@ -18,6 +18,7 @@ import statistics
 from pathlib import Path
 
 from compare_perf_runs import parse_report
+from profile_matrix import run_rounds, write_cases, write_gpu_summary
 from repeat_profile import (
     cmake_build_type,
     overflow_failure,
@@ -25,7 +26,6 @@ from repeat_profile import (
     pivot_mismatch,
     yaw_pose_mismatch,
 )
-from rotation_controls import run_rounds, write_cases, write_gpu_summary
 
 PRESETS = {
     "on": "configs/perf/million.lua",

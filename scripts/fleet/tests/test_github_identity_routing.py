@@ -105,6 +105,13 @@ printf '%s\\n' "$FLEET_DISPATCH_ID"
         self.assertEqual(user.returncode, 0, user.stderr)
         self.assertEqual(user.stdout.strip(), "user")
 
+    def test_failed_app_mint_exit_is_not_a_refused_claim(self):
+        self.stub("fleet-gh-token", "exit 1")
+        proc = self.shell('bash "$SUBJECT" check 9001', SUBJECT=str(SCRIPTS / "fleet-claim"),
+                          FLEET_GH_IDENTITY="app")
+        self.assertNotIn(proc.returncode, (0, 1), proc.stderr)
+        self.assertEqual(proc.returncode, 4, proc.stderr)
+
     def test_app_minter_defaults_to_sibling_outside_path(self):
         lib = self.root / "lib"
         lib.mkdir()
@@ -155,7 +162,6 @@ describe_config() { :; }
 acquire_dispatcher_lock() { return 0; }
 write_pid_file() { :; }
 clear_tmux_github_identity() { :; }
-seed_tmux_gh_token() { :; }
 cleanup_stale_dispatches() { :; }
 advance_main_clone() { :; }
 check_source_reload() { :; }
@@ -259,7 +265,7 @@ main
         for lane in ("scout", "dispatcher", "queue-ingest", "cleanup", "reconcile",
                      "stalled-sweep", "pre-claim", "completion"):
             self.assertEqual(lanes.get(lane), "app", lane)
-        for lane in ("dispatched-pane", "pane-claim-mutation", "human-shell"):
+        for lane in ("dispatched-pane", "babysit", "pane-claim-mutation", "human-shell"):
             self.assertEqual(lanes.get(lane), "user", lane)
         self.assertEqual(data["github_lane_gates"]["pane"]["state"], "open")
         proc = self.shell('bash "$SUBJECT"', SUBJECT=str(SCRIPTS / "fleet-gate-status"),
