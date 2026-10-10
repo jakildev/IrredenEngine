@@ -980,6 +980,11 @@ class Builder {
         m_model = m_partModels.back();
     }
 
+    void applyRadialArrayToLiveScene(int count) {
+        dragGuiSlider(kArrayCountSliderGeometry, 2.0f, 12.0f, static_cast<float>(count));
+        clickGui(kArrayApplyCenter);
+    }
+
     void toggleRotationalSymmetry() {
         chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonY);
     }

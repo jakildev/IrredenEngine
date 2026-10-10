@@ -603,9 +603,8 @@ class EntityScene {
         set.lodMax_ = lodMax;
     }
 
-    static void stageRotationModeReconcile(
-        IREntity::EntityId entity, IRComponents::RotationMode mode
-    ) {
+    static void
+    stageRotationModeReconcile(IREntity::EntityId entity, IRComponents::RotationMode mode) {
         IREntity::getEntityManager().stageStructuralChange([entity, mode]() {
             if (IREntity::entityExists(entity)) {
                 IRPrefab::RotationMode::setMode(entity, mode);

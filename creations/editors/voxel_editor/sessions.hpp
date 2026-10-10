@@ -1727,7 +1727,7 @@ inline Recipe build(
             .expectRotationMode(0, IRComponents::RotationMode::DETACHED, "part_cycles_to_detached");
 
         builder.segment("detached_array");
-        builder.applyRadialArray(2);
+        builder.applyRadialArrayToLiveScene(2);
         builder.expectPartCount(3, "detached_array_copies_created");
         builder.expectCanvasCount(3, "detached_array_copies_allocate_canvases");
         builder.expectRotationMode(
@@ -1764,9 +1764,11 @@ inline Recipe build(
         builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonM);
         builder.expectCanvasCount(0, "preview_toggle_releases_twin_canvas");
 
-        builder.segment("preview_selection_change");
+        builder.segment("preview_recreated");
         builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonM);
         builder.expectCanvasCount(1, "preview_recreated_before_selection_change");
+
+        builder.segment("preview_selection_change");
         builder.addVoxelPart();
         builder.expectPartCount(2, "new_part_changes_selection");
         builder.expectCanvasCount(0, "selection_change_releases_preview_canvas");
