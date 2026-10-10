@@ -1,9 +1,5 @@
 # engine/render/ — trixel render pipeline
 
-This module owns graphics primitives: the voxel-to-trixel pipeline, GPU
-resources, camera and viewport state, canvases, framebuffers, and the OpenGL
-and Metal backends.
-
 ## Working agreements
 
 - Creations include the public entry point
