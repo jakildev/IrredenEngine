@@ -193,8 +193,8 @@ per run with `--config-preset <file>` (its `config = { … }` overlays
   deadlock if the main thread is holding the recorder mutex.
 - **Partial files on crash.** Writes are not atomic. A crash during
   encoding leaves a half-written mp4 that most players refuse to open.
-- **macOS mic permission.** `IAudioCaptureSource` asks for microphone
-  access; if denied, audio is silently dropped and video is muxed mute.
+- **macOS mic permission.** Arming waits on the audio backend for at most 2 s
+  and shutdown likewise (`engine/audio/CLAUDE.md`); past that, video is muxed mute.
 - **Latency compensation is auto.** `getInputLatencyMs()` from the audio
   source is applied as a sync offset; an obvious A/V offset starts there.
 - **World flags delay recording.** `World::m_waitForFirstUpdateInput` and

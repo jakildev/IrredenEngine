@@ -2,6 +2,7 @@
 #define IR_AUDIO_TYPES_H
 
 #include <array>
+#include <chrono>
 
 #include <irreden/audio/music_theory.hpp>
 
@@ -22,6 +23,9 @@ using CCMessage = unsigned char;
 constexpr CCData kCCFalse = 0xFF;
 /// Default RtAudio input buffer size in frames (samples per callback invocation).
 constexpr unsigned int kAudioInputDefaultBufferFrames = 1024;
+/// Longest the main thread waits on the audio-input backend for one arm
+/// attempt (device lookup, open, start) or for one teardown (stop, close).
+constexpr std::chrono::milliseconds kAudioInputBackendDeadline{2'000};
 
 /// Opaque handle to a live playback sound, returned by `IRAudio::playSound` /
 /// `playMusic`. Pass back to `stop` / `setSoundVolume` / `fade*`. Values are

@@ -114,11 +114,13 @@ void insertCCMessage(
 
 /// Opens and starts an RtAudio input capture stream.
 /// @p callback is invoked on the RtAudio thread — copy data out before returning.
-/// Returns `false` if the device could not be opened.
+/// Returns `false` if the device could not be opened and started within
+/// @ref kAudioInputBackendDeadline.
 bool startAudioInputCapture(
     const std::string &deviceName, int sampleRate, int channels, AudioInputCallback callback
 );
-/// Stops the active RtAudio input stream.  Always call before `AudioManager` teardown.
+/// Stops the active RtAudio input stream; @p callback is not invoked once this
+/// returns. Waits on the backend for at most @ref kAudioInputBackendDeadline.
 void stopAudioInputCapture();
 
 /// @name File playback (miniaudio) — load + play `.wav`/`.ogg` through category buses
