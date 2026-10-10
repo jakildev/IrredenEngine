@@ -322,6 +322,45 @@ class MetalRenderDevice final : public RenderDevice {
         shutdownMetalRuntime();
     }
 
+    MTL::Buffer *ensureClearSourceBuffer(
+        MTL::Texture *texture, std::size_t pixelBytes, const void *data
+    ) {
+        const std::array<std::uint8_t, 16> zero{};
+        IR_ASSERT(texture != nullptr, "Metal clear source requires a texture");
+        IR_ASSERT(
+            pixelBytes > 0 && pixelBytes <= zero.size(),
+            "Metal clear pixel size must be between 1 and 16 bytes"
+        );
+        const std::size_t totalBytes = texture->width() * texture->height() * pixelBytes;
+        const void *pattern = data == nullptr ? zero.data() : data;
+        auto &buffer = m_clearSourceBuffers[texture];
+        if (buffer != nullptr && buffer->length() == totalBytes &&
+            std::memcmp(buffer->contents(), pattern, pixelBytes) == 0) {
+            return buffer;
+        }
+
+        auto *replacement = metalDevice()->newBuffer(totalBytes, MTL::ResourceStorageModeShared);
+        IR_ASSERT(replacement != nullptr, "Failed to create Metal texture clear buffer");
+        auto *bytes = static_cast<std::uint8_t *>(replacement->contents());
+        if (data == nullptr) {
+            std::memset(bytes, 0, totalBytes);
+        } else {
+            for (std::size_t offset = 0; offset < totalBytes; offset += pixelBytes) {
+                std::memcpy(bytes + offset, pattern, pixelBytes);
+            }
+        }
+        if (buffer != nullptr) {
+            // Earlier blits retain their pattern until the command buffer drains.
+            if (metalCommandBuffer() != nullptr) {
+                deferReleaseMetalBuffer(buffer);
+            } else {
+                buffer->release();
+            }
+        }
+        buffer = replacement;
+        return buffer;
+    }
+
     void releaseClearSourceBuffer(MTL::Texture *texture) {
         if (texture == nullptr) {
             return;
@@ -798,32 +837,7 @@ metalCurrentDepthPixelFormat(),
         const std::size_t totalBytes =
             static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * bytesPerPixel;
 
-        // Get or create a persistent SharedMode source buffer for this texture.
-        // The buffer is filled once at first call for this texture; data changes
-        // on later calls are silently ignored. Current callers always pass the
-        // same constant clear pattern, so this is benign.
-        // Blitted GPU-side every frame — no per-frame CPU allocation or stall.
-        MTL::Buffer *clearBuf = nullptr;
-        {
-            const auto it = m_clearSourceBuffers.find(texture);
-            if (it == m_clearSourceBuffers.end()) {
-                clearBuf = metalDevice()->newBuffer(
-                    totalBytes, MTL::ResourceStorageModeShared
-                );
-                IR_ASSERT(clearBuf != nullptr, "Failed to create Metal clearTexImage buffer");
-                auto *bytes = static_cast<std::uint8_t *>(clearBuf->contents());
-                if (data != nullptr) {
-                    for (std::size_t i = 0; i < totalBytes; i += bytesPerPixel) {
-                        std::memcpy(bytes + i, data, bytesPerPixel);
-                    }
-                } else {
-                    std::memset(bytes, 0, totalBytes);
-                }
-                m_clearSourceBuffers[texture] = clearBuf;
-            } else {
-                clearBuf = it->second;
-            }
-        }
+        MTL::Buffer *clearBuf = ensureClearSourceBuffer(texture, bytesPerPixel, data);
 
         auto *commandBuffer = metalCommandBuffer();
         if (commandBuffer != nullptr) {
@@ -1240,6 +1254,12 @@ MetalRenderDevice &metalRenderDevice() {
 
 MTL::BlitCommandEncoder *createMetalBlitEncoder() {
     return createBlitEncoder(metalCommandBuffer());
+}
+
+MTL::Buffer *metalTextureClearSource(
+    MTL::Texture *texture, std::size_t pixelBytes, const void *data
+) {
+    return metalRenderDevice().ensureClearSourceBuffer(texture, pixelBytes, data);
 }
 
 void removeClearSourceBuffer(MTL::Texture *texture) {

@@ -17,6 +17,7 @@
 // with no display / no GPU), so the always-run CPU suite stays green there.
 
 #include <gtest/gtest.h>
+#include <stdexcept>
 
 #if defined(IR_GRAPHICS_OPENGL)
 
@@ -245,6 +246,289 @@ class MetalGpuComputeDispatchTest : public ::testing::Test {
 
     IRRender::RenderDevice *device_ = nullptr;
 };
+
+void snapshotClearTexture(
+    const IRRender::Texture2D &texture, IRRender::Buffer &snapshot, std::size_t pixelBytes
+) {
+    auto *native = static_cast<MTL::Texture *>(texture.getNativeTexture());
+    auto *blit = IRRender::metalCommandBuffer()->blitCommandEncoder();
+    blit->copyFromTexture(
+        native,
+        0,
+        0,
+        MTL::Origin::Make(0, 0, 0),
+        MTL::Size::Make(native->width(), native->height(), 1),
+        static_cast<MTL::Buffer *>(snapshot.getNativeBuffer()),
+        0,
+        native->width() * pixelBytes,
+        native->width() * native->height() * pixelBytes
+    );
+    blit->endEncoding();
+}
+
+enum class ClearSequenceApi { DEVICE, TEXTURE, ALTERNATING };
+
+void checkQueuedClearSnapshots(IRRender::RenderDevice &device, ClearSequenceApi api) {
+    using namespace IRRender;
+    constexpr int width = 64;
+    constexpr int height = 7;
+    struct Format {
+        TextureFormat texture_;
+        PixelDataFormat pixels_;
+        PixelDataType type_;
+        std::size_t bytes_;
+    };
+    const Format formats[] = {
+        {TextureFormat::RGBA8, PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, 4},
+        {TextureFormat::RG32UI, PixelDataFormat::RG_INTEGER, PixelDataType::UINT32, 8},
+        {TextureFormat::RGBA32F, PixelDataFormat::RGBA, PixelDataType::FLOAT32, 16},
+    };
+    const std::uint32_t first[] = {0x3F000001u, 0x3E800002u, 0x3E000003u, 0x3F400004u};
+    const std::uint32_t second[] = {0x3F600005u, 0x3F200006u, 0x3EC00007u, 0x3E400008u};
+    const void *patterns[] = {first, second, nullptr, first};
+    for (const auto &format : formats) {
+        SCOPED_TRACE(format.bytes_);
+        Texture2D texture{TextureKind::TEXTURE_2D, width, height, format.texture_};
+        const std::size_t bytes = width * height * format.bytes_;
+        const std::vector<std::uint8_t> poison(bytes, 0xCD);
+        std::vector<Buffer> snapshots;
+        snapshots.reserve(4);
+        for (int step = 0; step < 4; ++step) {
+            snapshots.emplace_back(poison.data(), bytes, BUFFER_STORAGE_DYNAMIC);
+            if (api == ClearSequenceApi::DEVICE ||
+                (api == ClearSequenceApi::ALTERNATING && step % 2 == 0)) {
+                device.clearTexImage(&texture, 0, patterns[step]);
+            } else {
+                texture.clear(format.pixels_, format.type_, patterns[step]);
+            }
+            snapshotClearTexture(texture, snapshots.back(), format.bytes_);
+        }
+        // Every snapshot precedes subsequent clears on one pending command buffer.
+        device.finish();
+        for (int step = 0; step < 4; ++step) {
+            SCOPED_TRACE(step);
+            std::vector<std::uint8_t> expected(bytes, 0);
+            if (patterns[step] != nullptr) {
+                for (std::size_t offset = 0; offset < bytes; offset += format.bytes_) {
+                    std::memcpy(expected.data() + offset, patterns[step], format.bytes_);
+                }
+            }
+            std::vector<std::uint8_t> actual(bytes);
+            snapshots[step].getSubData(0, bytes, actual.data());
+            EXPECT_EQ(actual, expected);
+        }
+    }
+}
+
+TEST_F(MetalGpuComputeDispatchTest, DeviceClearPreservesQueuedPatterns) {
+    checkQueuedClearSnapshots(*device_, ClearSequenceApi::DEVICE);
+}
+
+TEST_F(MetalGpuComputeDispatchTest, TextureClearPreservesQueuedPatterns) {
+    checkQueuedClearSnapshots(*device_, ClearSequenceApi::TEXTURE);
+}
+
+TEST_F(MetalGpuComputeDispatchTest, AlternatingClearApisPreserveQueuedPatterns) {
+    checkQueuedClearSnapshots(*device_, ClearSequenceApi::ALTERNATING);
+}
+
+TEST_F(MetalGpuComputeDispatchTest, ClearSourceReusesValuesAndRetiresChangedPatternsAfterDrain) {
+    using namespace IRRender;
+    Texture2D texture{TextureKind::TEXTURE_2D, 64, 7, TextureFormat::RGBA8};
+    auto *native = static_cast<MTL::Texture *>(texture.getNativeTexture());
+    const std::uint8_t first[] = {11, 23, 37, 255};
+    const std::uint8_t second[] = {41, 53, 67, 191};
+    const std::uint8_t zero[] = {0, 0, 0, 0};
+    const auto retiredBefore = deferredMetalBufferReleaseCount();
+    device_->clearTexImage(&texture, 0, first);
+    auto *firstSource = metalTextureClearSource(native, 4, first);
+    ASSERT_NE(firstSource, nullptr);
+    texture.clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, first);
+    EXPECT_EQ(metalTextureClearSource(native, 4, first), firstSource);
+    EXPECT_EQ(deferredMetalBufferReleaseCount(), retiredBefore);
+
+    texture.clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, second);
+    auto *secondSource = metalTextureClearSource(native, 4, second);
+    EXPECT_NE(secondSource, firstSource);
+    EXPECT_EQ(std::memcmp(firstSource->contents(), first, sizeof(first)), 0);
+    EXPECT_EQ(deferredMetalBufferReleaseCount(), retiredBefore + 1);
+    device_->clearTexImage(&texture, 0, second);
+    EXPECT_EQ(metalTextureClearSource(native, 4, second), secondSource);
+    EXPECT_EQ(deferredMetalBufferReleaseCount(), retiredBefore + 1);
+
+    device_->clearTexImage(&texture, 0, nullptr);
+    auto *zeroSource = metalTextureClearSource(native, 4, nullptr);
+    EXPECT_NE(zeroSource, secondSource);
+    EXPECT_EQ(deferredMetalBufferReleaseCount(), retiredBefore + 2);
+    texture.clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, zero);
+    EXPECT_EQ(metalTextureClearSource(native, 4, zero), zeroSource);
+    EXPECT_EQ(metalTextureClearSource(native, 4, nullptr), zeroSource);
+    EXPECT_EQ(deferredMetalBufferReleaseCount(), retiredBefore + 2);
+    device_->finish();
+    EXPECT_EQ(deferredMetalBufferReleaseCount(), 0u);
+    EXPECT_EQ(metalTextureClearSource(native, 4, zero), zeroSource);
+}
+
+#ifndef IR_RELEASE
+TEST_F(MetalGpuComputeDispatchTest, ClearSourceRejectsInvalidTextureAndPixelSizes) {
+    using namespace IRRender;
+    Texture2D texture{TextureKind::TEXTURE_2D, 64, 7, TextureFormat::RGBA8};
+    auto *native = static_cast<MTL::Texture *>(texture.getNativeTexture());
+    EXPECT_THROW(metalTextureClearSource(nullptr, 4, nullptr), std::runtime_error);
+    EXPECT_THROW(metalTextureClearSource(native, 0, nullptr), std::runtime_error);
+    EXPECT_THROW(metalTextureClearSource(native, 17, nullptr), std::runtime_error);
+    EXPECT_NE(metalTextureClearSource(native, 4, nullptr), nullptr);
+}
+#endif
+
+TEST_F(MetalGpuComputeDispatchTest, BothClearApisWorkWithoutCommandBuffer) {
+    using namespace IRRender;
+    constexpr int width = 64;
+    constexpr int height = 7;
+    Texture2D texture{TextureKind::TEXTURE_2D, width, height, TextureFormat::RGBA8};
+    auto *native = static_cast<MTL::Texture *>(texture.getNativeTexture());
+    device_->finish();
+    struct RestoreCommandBuffer {
+        MTL::CommandBuffer *saved_ = metalCommandBuffer();
+        RestoreCommandBuffer() {
+            if (saved_ != nullptr)
+                saved_->retain();
+            setMetalCommandBuffer(nullptr);
+        }
+        ~RestoreCommandBuffer() {
+            setMetalCommandBuffer(saved_);
+            if (saved_ != nullptr)
+                saved_->release();
+        }
+    } restore;
+    const std::uint8_t first[] = {13, 29, 43, 251};
+    const std::uint8_t second[] = {59, 71, 89, 127};
+    const void *patterns[] = {first, second, nullptr};
+    for (const bool deviceApi : {false, true}) {
+        SCOPED_TRACE(deviceApi);
+        for (int step = 0; step < 3; ++step) {
+            SCOPED_TRACE(step);
+            if (deviceApi) {
+                device_->clearTexImage(&texture, 0, patterns[step]);
+            } else {
+                texture.clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, patterns[step]);
+            }
+            std::vector<std::uint8_t> actual(width * height * 4);
+            native->getBytes(actual.data(), width * 4, MTL::Region(0, 0, width, height), 0);
+            std::vector<std::uint8_t> expected(actual.size(), 0);
+            if (patterns[step] != nullptr) {
+                for (std::size_t offset = 0; offset < expected.size(); offset += 4) {
+                    std::memcpy(expected.data() + offset, patterns[step], 4);
+                }
+            }
+            EXPECT_EQ(actual, expected);
+            EXPECT_EQ(metalCommandBuffer(), nullptr);
+            EXPECT_EQ(deferredMetalBufferReleaseCount(), 0u);
+        }
+    }
+}
+
+TEST_F(MetalGpuComputeDispatchTest, DeviceClearSnapshotsMatchR32IAtomicScratch) {
+    using namespace IRRender;
+    constexpr int width = 64;
+    constexpr int height = 7;
+    constexpr std::size_t bytes = width * height * sizeof(std::int32_t);
+    Texture2D texture{TextureKind::TEXTURE_2D, width, height, TextureFormat::R32I};
+    const std::int32_t values[] = {65535, -12345, 0};
+    const std::vector<std::int32_t> poison(width * height, 0x12345678);
+    std::vector<Buffer> textures;
+    std::vector<Buffer> scratches;
+    textures.reserve(3);
+    scratches.reserve(3);
+    for (int step = 0; step < 3; ++step) {
+        textures.emplace_back(poison.data(), bytes, BUFFER_STORAGE_DYNAMIC);
+        scratches.emplace_back(poison.data(), bytes, BUFFER_STORAGE_DYNAMIC);
+        device_->clearTexImage(&texture, 0, step == 2 ? nullptr : &values[step]);
+        snapshotClearTexture(texture, textures.back(), sizeof(std::int32_t));
+        auto *scratch =
+            lookupImageAtomicScratchBuffer(static_cast<MTL::Texture *>(texture.getNativeTexture()));
+        ASSERT_NE(scratch, nullptr);
+        auto *blit = metalCommandBuffer()->blitCommandEncoder();
+        blit->copyFromBuffer(
+            scratch,
+            0,
+            static_cast<MTL::Buffer *>(scratches.back().getNativeBuffer()),
+            0,
+            bytes
+        );
+        blit->endEncoding();
+    }
+    device_->finish();
+    for (int step = 0; step < 3; ++step) {
+        SCOPED_TRACE(step);
+        const std::vector<std::int32_t> expected(width * height, values[step]);
+        std::vector<std::int32_t> actual(width * height);
+        textures[step].getSubData(0, bytes, actual.data());
+        EXPECT_EQ(actual, expected);
+        scratches[step].getSubData(0, bytes, actual.data());
+        EXPECT_EQ(actual, expected);
+    }
+}
+
+TEST_F(MetalGpuComputeDispatchTest, UploadsAndBothClearApisPreserveQueuedOrder) {
+    using namespace IRRender;
+    constexpr int width = 64;
+    constexpr int height = 7;
+    constexpr std::size_t bytes = width * height * 4;
+    Texture2D texture{TextureKind::TEXTURE_2D, width, height, TextureFormat::RGBA8};
+    const std::vector<std::uint8_t> poison(bytes, 0xCD);
+    std::vector<Buffer> snapshots;
+    snapshots.reserve(5);
+    std::vector<std::vector<std::uint8_t>> expected;
+    std::vector<std::uint8_t> upload(bytes);
+    for (std::size_t i = 0; i < bytes; ++i) {
+        upload[i] = static_cast<std::uint8_t>(i * 13 + 17);
+    }
+    auto snapshot = [&] {
+        snapshots.emplace_back(poison.data(), bytes, BUFFER_STORAGE_DYNAMIC);
+        snapshotClearTexture(texture, snapshots.back(), 4);
+    };
+    texture.subImage2D(
+        0,
+        0,
+        width,
+        height,
+        PixelDataFormat::RGBA,
+        PixelDataType::UNSIGNED_BYTE,
+        upload.data()
+    );
+    expected.push_back(upload);
+    snapshot();
+    const std::uint8_t clearPixel[] = {7, 23, 91, 255};
+    device_->clearTexImage(&texture, 0, clearPixel);
+    expected.emplace_back(bytes);
+    for (std::size_t i = 0; i < bytes; i += 4) {
+        std::memcpy(expected.back().data() + i, clearPixel, 4);
+    }
+    snapshot();
+    const std::uint8_t patch[] = {51, 52, 53, 54, 61, 62, 63, 64};
+    texture.subImage2D(3, 2, 2, 1, PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, patch);
+    auto patched = expected.back();
+    std::memcpy(patched.data() + (2 * width + 3) * 4, patch, sizeof(patch));
+    expected.push_back(std::move(patched));
+    snapshot();
+    texture.clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, nullptr);
+    expected.emplace_back(bytes, 0);
+    snapshot();
+    device_->clearTexImage(&texture, 0, upload.data());
+    expected.emplace_back(bytes);
+    for (std::size_t i = 0; i < bytes; i += 4) {
+        std::memcpy(expected.back().data() + i, upload.data(), 4);
+    }
+    snapshot();
+    device_->finish();
+    for (std::size_t step = 0; step < snapshots.size(); ++step) {
+        SCOPED_TRACE(step);
+        std::vector<std::uint8_t> actual(bytes);
+        snapshots[step].getSubData(0, bytes, actual.data());
+        EXPECT_EQ(actual, expected[step]);
+    }
+}
 
 TEST_F(MetalGpuComputeDispatchTest, BoundedLightVolumeMatchesFullVolumeAfterEveryIteration) {
     using namespace IRRender;
