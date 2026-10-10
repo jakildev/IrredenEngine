@@ -107,6 +107,7 @@ run_case() {
     cp "$SETUP_SRC" "$sandbox/scripts/setup-windows.sh"
     if (( copy_overlap )); then
         cp "$OVERLAP_SRC" "$sandbox/scripts/fleet-pr-overlap"
+        cp "$SCRIPT_DIR/../fleet_branch_match.py" "$sandbox/scripts/fleet_branch_match.py"
         cp "$SCRIPT_DIR/../fleet_github.py" "$sandbox/scripts/fleet_github.py"
         # perl, not `sed -i`: BSD sed takes the expression as a backup suffix
         # and leaves the floor unchanged, so the floor cases pass vacuously.

@@ -505,6 +505,25 @@ PARKED_PR_LABELS = frozenset({
     "fleet:design-proposed",
 })
 
+_PARKED_UNTIL_RE = re.compile(
+    r"^[ \t]*Parked-until:[ \t]*(#\d+\b(?:(?:[ \t]*,[ \t]*|[ \t]+)#\d+\b)*)",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+
+def parked_until_issue_numbers(body):
+    """Issue numbers from the last parsable `Parked-until:` body marker.
+
+    The issue list is the contiguous comma/whitespace-separated run after the
+    marker. Trailing prose is ignored, and an appended parsable marker makes
+    every earlier marker inert. Missing or malformed markers return an empty
+    list so callers fail closed.
+    """
+    markers = _PARKED_UNTIL_RE.findall(body or "")
+    if not markers:
+        return []
+    return [int(number) for number in re.findall(r"#(\d+)", markers[-1])]
+
 
 def issue_pr_state(prs, issue, repo):
     """Classify the open PRs whose branch matches `issue` in `repo`.

@@ -389,9 +389,10 @@ Parallel-agent fleet (tmux + Claude)
   fleet-pr-overlap [--base <branch>] [--repo engine|game|owner/repo]
                                  grade this branch against every open PR before
                                  publication: one `#<PR> <path>
-                                 conflicts|clean|upstream` row per shared path
+                                 conflicts|clean|sequenced|upstream` row per shared path
                                  (trial-merged with git merge-tree) and a
-                                 `VERDICT:` line; exits 0 clean / 1 overlap /
+                                 `VERDICT:` line; exits 0 clean / 1 overlap or
+                                 sequenced /
                                  3 block (docs/agents/**, .claude/**, or a stale
                                  stack base) / 2 could not grade
   fleet-validate-stack <umbrella> [--repo engine|game] [--children N…] [--strict]

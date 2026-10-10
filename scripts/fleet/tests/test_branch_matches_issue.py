@@ -34,10 +34,27 @@ from fleet_branch_match import (
     issue_branch_prefixes,
     issue_from_branch,
     issue_pr_state,
+    parked_until_issue_numbers,
     pr_matches_issue,
     repo_key,
     split_closed_issue_refs,
 )
+
+
+class ParkedUntilIssueNumbers(unittest.TestCase):
+    def test_last_marker_wins_and_trailing_prose_is_ignored(self):
+        body = (
+            "Parked-until: #10\n"
+            "Parked-until: #20, #30 (build wall; see also #40)"
+        )
+        self.assertEqual(parked_until_issue_numbers(body), [20, 30])
+
+    def test_whitespace_separated_issue_list(self):
+        self.assertEqual(parked_until_issue_numbers("Parked-until: #20 #30"), [20, 30])
+
+    def test_missing_or_malformed_marker_is_empty(self):
+        self.assertEqual(parked_until_issue_numbers(""), [])
+        self.assertEqual(parked_until_issue_numbers("Parked-until: later #20"), [])
 
 
 class BranchMatchesIssue(unittest.TestCase):
