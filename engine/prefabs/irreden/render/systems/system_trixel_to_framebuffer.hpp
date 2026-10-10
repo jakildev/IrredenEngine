@@ -154,6 +154,12 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // voxel in the canvas carries a per-trixel priority (still read for hovered
         // fragments; byte-identical output either way).
         frameData.frameData_.anyPerTrixelPriority_ = triangleCanvasTextures.anyPerTrixelPriority_;
+        // The gather displays whatever layout the canvas's producers stored, as
+        // the detached and viewport composites do. Voxel canvases on this path
+        // are RECTANGULAR; the GUI canvas is LOCAL_TRIANGLES, so each text and
+        // widget texel shows as its lattice triangle.
+        frameData.frameData_.trixelSampleLayout_ =
+            static_cast<int>(triangleCanvasTextures.renderedSampleLayout_);
         const ivec2 logicalCanvasSize =
             IRPrefab::CanvasCoverage::logicalSize(entity, triangleCanvasTextures.size_);
         const vec2 backingScale = vec2(triangleCanvasTextures.size_) / vec2(logicalCanvasSize);

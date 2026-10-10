@@ -15,7 +15,9 @@ display teeth are removed; those are separate correctness checks.
 
 `C_TriangleCanvasTextures::sampleLayout_` defaults to `LOCAL_TRIANGLES`. The
 request is interpreted by both detached voxel producers; main world, SDF and
-text retain their existing storage conventions. A detached voxel canvas must
+text retain their existing storage conventions. The engine GUI canvas keeps its
+one-texel-per-trixel text and widget storage and is composited as
+`LOCAL_TRIANGLES` by the main gather. A detached voxel canvas must
 not mix SDF/text writes into its local-triangle storage.
 The resampling marker stays nonzero so back-face exclusion remains active,
 but normal display disables face dilation. Rectangular sampling and its legacy
