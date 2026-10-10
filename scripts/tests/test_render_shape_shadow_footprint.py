@@ -1,8 +1,11 @@
 """Independent geometry controls for the shape shadow-footprint metric."""
 
+import contextlib
 import importlib.util
+import io
 import math
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -17,6 +20,26 @@ SPEC.loader.exec_module(METRIC)
 
 
 class ShapeShadowFootprintTest(unittest.TestCase):
+    def write_shadow_pair(self, directory, scale):
+        width, height = 320, 180
+        origin = (width * 0.5, height * 0.5)
+        step = (2.0, 1.0)
+        unshadowed = bytearray(bytes((160, 160, 160, 255)) * width * height)
+        shadowed = bytearray(unshadowed)
+        for shape in METRIC.SHAPES:
+            mask, _, _, _, _ = METRIC.expected_mask(
+                shape, 0.0, step, origin, (width, height), scale
+            )
+            for x, y in mask:
+                offset = (y * width + x) * 4
+                shadowed[offset : offset + 3] = bytes((80, 80, 80))
+
+        shadowed_path = directory / f"shadowed-{scale}.png"
+        unshadowed_path = directory / "unshadowed.png"
+        METRIC.rmu.write_png(str(shadowed_path), width, height, bytes(shadowed), 4)
+        METRIC.rmu.write_png(str(unshadowed_path), width, height, bytes(unshadowed), 4)
+        return shadowed_path, unshadowed_path
+
     def test_projection_round_trip_on_receiver_plane(self):
         origin = (640.0, 360.0)
         step = (8.0, 4.0)
@@ -64,6 +87,17 @@ class ShapeShadowFootprintTest(unittest.TestCase):
                 small_excess = {point for point in expected if not METRIC.near(too_small, point, 2)}
                 self.assertGreater(len(large_missing) / len(too_large), 0.15)
                 self.assertGreater(len(small_excess) / len(expected), 0.15)
+
+    def test_wrong_size_capture_fails_metric_exit_gate(self):
+        with tempfile.TemporaryDirectory() as temp_directory:
+            directory = Path(temp_directory)
+            for scale, expected_exit in ((1.0, 0), (1.35, 1)):
+                shadowed, unshadowed = self.write_shadow_pair(directory, scale)
+                with contextlib.redirect_stdout(io.StringIO()):
+                    actual_exit = METRIC.main(
+                        [str(shadowed), "--unshadowed", str(unshadowed), "--yaw", "0"]
+                    )
+                self.assertEqual(actual_exit, expected_exit)
 
 
 if __name__ == "__main__":

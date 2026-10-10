@@ -6,7 +6,8 @@ and each fixed camera pose is captured once with sun shadows and once with
 `--no-shadows`. The metric classifies receiver pixels darkened by the paired
 capture, so caster pixels and the background cannot enter the observed mask.
 
-- Source: branch `claude/4274-shadow-footprint-accuracy`, parent revision
+- Source: branch `claude/4274-shadow-footprint-accuracy`, measured fixture revision
+  `ae28cc30731dc8bbbb89d59c9bdf75df4e26f2de`, parent revision
   `01752d9aabb12245ef4dd87ab4d9aa15049f99c4`
 - Backend: Metal, Apple M4 Max, macOS 26.5.2 arm64, `macos-debug`
 - Output: 2560x1440 (2x the 1280x720 logical canvas)
@@ -24,6 +25,16 @@ python3 scripts/render-shape-shadow-footprint.py <shadowed.png> \
   --unshadowed <no-shadows.png> --yaw <0-or-pi-over-4> --diagnostic <output.png>
 python3 scripts/tests/test_render_shape_shadow_footprint.py
 ```
+
+Both demo invocations exited zero with `ir-run: RESULT=CLEAN exe=IRShapeDebug
+exit=0`. The four captured outputs inherit that clean-exit verdict as follows:
+
+| Pose | Shadows | Invocation result |
+| --- | --- | --- |
+| yaw 0° | on | `RESULT=CLEAN`, exit 0 |
+| yaw 45° | on | `RESULT=CLEAN`, exit 0 |
+| yaw 0° | off | `RESULT=CLEAN`, exit 0 |
+| yaw 45° | off | `RESULT=CLEAN`, exit 0 |
 
 The metric uses exact ray/AABB intersections for every occupied voxel box and
 independently samples the analytic surface along the sun ray. Tolerance is two
@@ -47,12 +58,26 @@ oracle rejects deliberately wrong-sized controls.
 ## Classification
 
 The voxel casters pass at both cardinal and non-cardinal yaw while the SDF
-casters fail on the same receiver and filter. The cardinal SDF shadows are
-especially oversized. This isolates the error to SDF caster geometry; it is not
-a receiver-position or common filtering error, and it is larger than the
-intentional smooth-SDF versus carved-voxel silhouette difference. The bounded
-repair here is the reproducible fixture and independent oracle. A shader-side
-receiver/caster contract change remains coupled to the broader receiver work.
+casters fail on the same receiver and filter. That paired control localizes the
+discrepancy to the analytic caster path rather than the common receiver or
+filter.
+
+At yaw 0°, the 53.01% cone excess and 56.22% torus excess overlap the
+exact-cardinal analytic-caster continuity defect owned by #4193 / PR #4258.
+Those numbers are evidence for that active task, not a second continuity fix;
+the residual footprint must be measured again after #4193 lands. At yaw 45°,
+the cone has 20.79% excess while the torus has 26.04% missing coverage, so the
+non-cardinal result is unresolved rather than one shared geometry failure. The
+next probe is to capture each analytic caster alone at yaw 45° and measure it
+in an isolated ROI, removing cross-caster attribution before comparing its
+projected SDF surface with the observed shadow.
+
+Observed shadow pixels are currently assigned to the nearest expected centroid.
+The yaw-0 shadows overlap, so SDF excess can be redistributed between shapes;
+the voxel controls remain within 7%, but the per-SDF excess split is not an
+independent attribution. The bounded repair here is the reproducible fixture,
+independent oracle, and explicit next probe. The broader exact-receiver contract
+remains with #4231.
 
 Diagnostic colors are green for agreement, cyan for missing shadow, and red
 for excess shadow.
