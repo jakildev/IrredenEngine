@@ -1,13 +1,17 @@
 #include <gtest/gtest.h>
 
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_system.hpp>
+#include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
+#include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/systems/system_fog_reveal_eval.hpp>
 #include <irreden/render/systems/system_fog_reveal_eval_canvas.hpp>
 #include <irreden/render/systems/system_fog_reveal_eval_shape.hpp>
+#include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
 #include <irreden/render/systems/system_update_joint_matrices.hpp>
 #include <irreden/render/systems/system_update_voxel_positions_gpu.hpp>
 #include <irreden/voxel/components/component_joint.hpp>
@@ -15,8 +19,10 @@
 #include <irreden/voxel/components/component_skeleton.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
+#include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include "common/allocation_counter.hpp"
 
+#include <cstring>
 #include <vector>
 
 namespace {
@@ -202,6 +208,12 @@ TEST(FogGhostPolicyTest, VoxelRouteRetainsAlphaMaskAndExploredCarrier) {
     system.endTick();
     ASSERT_TRUE(revealed.shown_);
 
+    IRSystem::System<IRSystem::UPDATE_VOXEL_SET_CHILDREN> positionSystem;
+    positionSystem.canvasToPool_[canvas] = &pool;
+    positionSystem.pendingByWorker_.resize(1);
+    positionSystem.tick(entity, voxelSet, transform);
+    const auto frozenPositions = pool.getPositionGlobals();
+
     transform.translation_ = {10.0f, 0.0f, 0.0f};
     system.observers_.visionCircles_[0].x = 20.0f;
     system.pending_.reset(1);
@@ -213,6 +225,16 @@ TEST(FogGhostPolicyTest, VoxelRouteRetainsAlphaMaskAndExploredCarrier) {
     EXPECT_TRUE(voxelSet.ghostHeld_);
     EXPECT_FALSE(voxelSet.visible_);
     EXPECT_EQ(pool.getActiveMask()[0] & 0x3u, 0x1u);
+    positionSystem.tick(entity, voxelSet, transform);
+    ASSERT_EQ(pool.getPositionGlobals().size(), frozenPositions.size());
+    EXPECT_EQ(
+        std::memcmp(
+            pool.getPositionGlobals().data(),
+            frozenPositions.data(),
+            frozenPositions.size() * sizeof(frozenPositions.front())
+        ),
+        0
+    );
     for (const IRComponents::C_Voxel &voxel : voxelSet.voxels_) {
         const std::uint32_t factor =
             (voxel.reserved_ & IRComponents::VoxelReserved::kFogBodyFactorMask) >>
@@ -367,6 +389,41 @@ TEST(FogGhostPolicyTest, CanvasRoutePublishesFrozenPoseAndExploredFactor) {
     ASSERT_EQ(system.heldGhostPoses_.size(), 1u);
     EXPECT_EQ(system.heldGhostPoses_[0].entity_, entity);
     EXPECT_EQ(system.heldGhostPoses_[0].pose_.translation_, IRMath::vec3(1.0f, 0.0f, 0.0f));
+}
+
+TEST(FogGhostPolicyTest, CanvasRouteStampsPlacementFromPublishedFrozenPose) {
+    IREntity::EntityManager entityManager;
+    IRSystem::SystemManager systemManager;
+    const IRSystem::SystemId evalId = IRSystem::System<IRSystem::FOG_REVEAL_EVAL_CANVAS>::create();
+    auto *eval =
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::FOG_REVEAL_EVAL_CANVAS>>(evalId);
+    const IREntity::EntityId camera = IREntity::createEntity();
+    IREntity::setName(camera, "camera");
+
+    const IREntity::EntityId detached =
+        IREntity::createEntity(IRComponents::C_CanvasLocalRotation{});
+    const IREntity::EntityId owner = IREntity::createEntity();
+    C_WorldTransform frozenPose{};
+    frozenPose.translation_ = {1.25f, -2.5f, 3.75f};
+    eval->heldGhostPoses_.push_back({owner, frozenPose});
+
+    C_WorldTransform livePose{};
+    livePose.translation_ = {20.0f, 30.0f, 40.0f};
+    IRComponents::C_EntityCanvas canvas{detached, IRMath::ivec2(64)};
+    canvas.fogGhost_ = true;
+    IRSystem::System<IRSystem::PROPAGATE_CANVAS_ROTATION> propagate;
+    propagate.beginTick();
+    propagate.tick(
+        owner,
+        livePose,
+        IRComponents::C_RotationMode{IRComponents::RotationMode::DETACHED_REVOXELIZE},
+        canvas
+    );
+
+    const auto &placement = IREntity::getComponent<IRComponents::C_CanvasLocalRotation>(detached);
+    EXPECT_EQ(placement.ownerWorldTranslation_, frozenPose.translation_);
+    EXPECT_EQ(placement.worldCellOffset_, IRMath::vec3(1.0f, -2.0f, 4.0f));
+    EXPECT_NE(placement.ownerWorldTranslation_, livePose.translation_);
 }
 
 TEST(FogGhostPolicyTest, WarmHeldLifecycleIsAllocationFreeAndLinear) {
