@@ -38,9 +38,11 @@
 #include <irreden/render/render_device.hpp>
 #include <irreden/render/components/component_text_style.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
+#include <irreden/render/gui_rect.hpp>
 
 #include <cstdint>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace IRPrefab::GuiText {
@@ -85,6 +87,21 @@ inline int glyphSpacingX(int fontSize) {
 }
 inline int glyphSpacingY(int fontSize) {
     return IRRender::kGlyphSpacingY * fontSize;
+}
+
+inline int textRunWidth(std::string_view text, int fontSize) {
+    if (text.empty()) {
+        return 0;
+    }
+    return static_cast<int>(text.size()) * glyphStepX(fontSize) - glyphSpacingX(fontSize);
+}
+
+inline GuiRect
+textBounds(IRMath::ivec2 origin, IRMath::ivec2 canvasSize, std::string_view text, int fontSize) {
+    return {
+        IRRender::parityAlignedPosition(origin, canvasSize),
+        IRMath::ivec2(textRunWidth(text, fontSize), glyphHeight(fontSize))
+    };
 }
 
 inline int nextWordWidth(const std::string &text, std::size_t i, int fontSize) {
