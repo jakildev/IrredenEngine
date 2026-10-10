@@ -97,9 +97,9 @@ for repo in "${REPOS[@]}"; do
     prs_f="$workdir/$idx-prs.json"
     issues_f="$workdir/$idx-issues.json"
     if gh pr list --repo "$repo" --state open \
-            --json number,title,labels,url,headRefOid,mergeStateStatus --limit 200 > "$prs_f" 2>/dev/null \
+            --json number,title,labels,url,headRefOid,mergeStateStatus,body,updatedAt,headRefName,baseRefName,isDraft --limit 200 > "$prs_f" 2>/dev/null \
         && gh issue list --repo "$repo" --state open \
-            --json number,title,labels,url --limit 200 > "$issues_f" 2>/dev/null; then
+            --json number,title,labels,url,body,createdAt,updatedAt --limit 200 > "$issues_f" 2>/dev/null; then
         # Only the repo slug and artifact index go in the manifest — never a
         # host absolute path. MSYS translates a POSIX path handed to a native
         # Windows python3 process at the argv/env boundary, never inside data
@@ -115,6 +115,19 @@ done
 if [[ ! -s "$manifest" ]]; then
     echo "fleet-decisions: no repo could be queried" >&2
     exit 1
+fi
+
+survey_f="$workdir/survey.json"
+survey_args=(--state "$FLEET_HOME/state/state.json" --json --require-fresh)
+while IFS=$'\t' read -r repo idx; do
+    repo_key=engine
+    [[ "$repo" == "jakildev/irreden" ]] && repo_key=game
+    survey_args+=(--issues "$repo_key=$workdir/$idx-issues.json" \
+                  --prs "$repo_key=$workdir/$idx-prs.json")
+done < "$manifest"
+if ! "$FLEET_LIB_DIR/fleet-survey" "${survey_args[@]}" > "$survey_f"; then
+    echo "fleet-decisions: warning: close-out enrichment unavailable; showing existing digest" >&2
+    printf '{}' > "$survey_f"
 fi
 
 # Feedback channel: role files newer than the .last-reviewed marker (the
@@ -150,7 +163,7 @@ fi
 
 # PYTHONIOENCODING forces UTF-8 stdout for native-Windows consoles (cp1252
 # default raises on the report's em-dash / middle-dot glyphs).
-PYTHONIOENCODING=utf-8 python3 - "$manifest" "$workdir" "$feedback_f" "$marker_age_days" << 'PYEOF'
+PYTHONIOENCODING=utf-8 python3 - "$manifest" "$workdir" "$feedback_f" "$marker_age_days" "$survey_f" << 'PYEOF'
 import base64
 import json
 import os
@@ -463,6 +476,11 @@ with open(sys.argv[3], encoding="utf-8") as f:
     unread_roles = [line.strip() for line in f if line.strip()]
 
 marker_age_days = None if sys.argv[4] == "none" else int(sys.argv[4])
+try:
+    with open(sys.argv[5], encoding="utf-8") as survey_file:
+        survey_report = json.load(survey_file)
+except (OSError, ValueError):
+    survey_report = {}
 
 
 def names(item):
@@ -516,7 +534,20 @@ for repo, prs, issues, reader in repos:
         needs_plan += "fleet:needs-plan" in labels
     status.append((repo, len(prs), queued, needs_plan))
 
-total = len(merge_queue) + len(decisions)
+closeouts = []
+for repo, report in (survey_report.get("repos") or {}).items():
+    queue = report.get("queue") or {}
+    for row in queue.get("ghost") or []:
+        number = int(str(row["id"]).lstrip("#"))
+        parks = [park["pr"] for park in report.get("parks") or []
+                 if number in {int(key) for key, value in (park.get("issues") or {}).items()
+                               if str(value).startswith("ghost") }]
+        epics = [epic["epic"] for epic in report.get("epics") or []
+                 if str((epic.get("left") or {}).get(str(number),
+                        (epic.get("left") or {}).get(number, ""))).startswith("ghost")]
+        closeouts.append((repo, number, row, parks, epics))
+
+total = len(merge_queue) + len(decisions) + len(closeouts)
 scope = "+".join(repo for repo, _, _, _ in repos)
 print(f"fleet-decisions: {total} decision(s) waiting   [{scope}]")
 
@@ -539,6 +570,20 @@ if decisions:
     print(f"\n## Decisions ({len(decisions)})")
     for repo, kind, item, tags in decisions:
         print(f"  {repo} {kind} #{item['number']}  {item['title']}  [{'; '.join(tags)}]")
+
+if closeouts:
+    print(f"\n## Shadowed queued close-outs ({len(closeouts)})")
+    for repo, number, row, parks, epics in closeouts:
+        slug = "jakildev/IrredenEngine" if repo == "engine" else "jakildev/irreden"
+        print(f"  {repo} issue #{number}  shadowed by PR #{row['shadow_pr']}  "
+              f"declined: {row['reason']}")
+        print(f"      close: gh issue close {number} --repo {slug}")
+        for dependent in row.get("blocked_by_impacts") or []:
+            print(f"      impact: issue #{dependent} declares Blocked by: #{number}")
+        for pr in parks:
+            print(f"      impact: PR #{pr} declares Parked-until: #{number}")
+        for epic in epics:
+            print(f"      impact: epic #{epic} has unchecked child #{number}")
 
 cues = []
 if coding_improvements >= CI_DRAIN_THRESHOLD:

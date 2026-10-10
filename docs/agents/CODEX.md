@@ -88,6 +88,24 @@ References:
 [permissions](https://learn.chatgpt.com/docs/sandboxing),
 [models](https://learn.chatgpt.com/docs/models).
 
+## Quiet-window hook
+
+Non-interactive launches with `IR_QUIET_OWNER` set add a matcher-less
+`hooks.PreToolUse` group that runs the absolute `fleet-quiet-wait` path before
+every tool. The command bakes in `IR_QUIET_OWNER`, `IR_LOCK_ROOT`, and a
+minimal engine/fleet/system `PATH`, so it does not depend on the model shell's
+environment filtering. Fresh and resumed launches use the same hook;
+interactive launches and ownerless sessions do not.
+
+The launcher also passes `--dangerously-bypass-hook-trust`. That bypass covers
+every hook visible to the session, so the launcher first inspects the working
+root's `.codex/` directory. Only the generated `rules/fleet.rules` is accepted;
+any other entry disables the hook and bypass and is named on stderr. The fleet
+test suite also refuses tracked `.codex/` configuration. The command hook waits
+synchronously for shell and in-process edit tools. Codex CLI 0.156.1 accepted
+`timeoutSec=1500` but did not enforce either `timeoutSec` or `timeout_sec` in
+host probes; the quiet-window record's own maximum ends the park.
+
 ## Host setup and rollout
 
 1. `scripts/fleet/install.sh`; `codex login` with ChatGPT; `codex login
@@ -147,7 +165,7 @@ host and after upgrading Codex:
 | Build and tests | `fleet-build --target <configured-target>` and the project's test command | worktree build, downstream build, cache and lock paths |
 | Screenshots and ROI inspection | the render skills, `fleet-run` auto-capture, `view_image` on frame and crop | real display/GPU session and a writable capture destination |
 | GitHub review and PR publication | read-only `gh pr view`; a real assigned review or publication | login, network, trusted rules are separate from filesystem access |
-| Skills and helpers | read the named `SKILL.md` and procedures; use equivalent tools | Claude hooks / slash commands do not run in Codex |
+| Skills and helpers | read the named `SKILL.md` and procedures; use equivalent tools | slash commands do not run in Codex; the launcher emits the supported quiet-window hook above |
 
 The macOS sandbox grants no WindowServer access: a demo launched from
 inside it logs `Discovered 0 display monitors` and idles until the

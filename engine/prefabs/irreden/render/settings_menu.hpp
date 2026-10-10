@@ -36,6 +36,9 @@
 #include <irreden/common/settings_registry.hpp>
 #include <irreden/render/commands/command_toggle_settings_menu.hpp>
 #include <irreden/render/components/component_settings_menu.hpp>
+#include <irreden/render/components/component_triangle_canvas_textures.hpp>
+#include <irreden/render/gui_rect.hpp>
+#include <irreden/render/gui_text_batch.hpp>
 #include <irreden/input/systems/system_hitbox_mouse_test_gui.hpp>
 #include <irreden/render/systems/system_settings_menu.hpp>
 #include <irreden/render/systems/system_widget_apply_checkbox.hpp>
@@ -168,14 +171,66 @@ inline IREntity::EntityId quitButton() {
 
 namespace detail {
 
+inline GuiRect widgetRect(IREntity::EntityId entity) {
+    if (entity == IREntity::kNullEntity) {
+        return {};
+    }
+    return {
+        IREntity::getComponent<IRComponents::C_GuiPosition>(entity).pos_,
+        IREntity::getComponent<IRComponents::C_Widget>(entity).size_
+    };
+}
+
+} // namespace detail
+
+inline GuiRect panelRect() {
+    const auto *system = systemOrNull();
+    return system == nullptr ? GuiRect{} : detail::widgetRect(system->panel_);
+}
+
+inline GuiRect rowControlRect(int index) {
+    return detail::widgetRect(rowWidget(index));
+}
+
+inline GuiRect rowLabelRect(int index) {
+    const auto *system = systemOrNull();
+    if (system == nullptr || index < 0 || index >= static_cast<int>(system->rows_.size())) {
+        return {};
+    }
+    const IREntity::EntityId label = system->rows_[static_cast<std::size_t>(index)].label_;
+    if (label == IREntity::kNullEntity) {
+        return {};
+    }
+    const IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
+    if (guiCanvas == IREntity::kNullEntity) {
+        return {};
+    }
+    const IRMath::ivec2 canvasSize =
+        IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas).size_;
+    const IRMath::ivec2 pos = IREntity::getComponent<IRComponents::C_GuiPosition>(label).pos_;
+    const std::string &text = IREntity::getComponent<IRComponents::C_WidgetLabel>(label).text_;
+    return IRPrefab::GuiText::textBounds(
+        pos,
+        canvasSize,
+        text,
+        IRPrefab::Widget::detail::kWidgetTextFontSize
+    );
+}
+
+inline bool enumRowsStacked() {
+    const auto *system = systemOrNull();
+    return system != nullptr && system->enumRowsStacked_;
+}
+
+namespace detail {
+
 /// Screen pixel at the center of @p widget, or `ivec2(0)` for `kNullEntity`.
 inline IRMath::ivec2 widgetCenterScreenPx(IREntity::EntityId widget) {
     if (widget == IREntity::kNullEntity) {
         return IRMath::ivec2(0);
     }
-    const IRMath::ivec2 pos = IREntity::getComponent<IRComponents::C_GuiPosition>(widget).pos_;
-    const IRMath::ivec2 size = IREntity::getComponent<IRComponents::C_Widget>(widget).size_;
-    return IRRender::guiTrixelToScreenPx(IRMath::vec2(pos) + IRMath::vec2(size) * 0.5f);
+    const GuiRect rect = widgetRect(widget);
+    return IRRender::guiTrixelToScreenPx(IRMath::vec2(rect.pos_) + IRMath::vec2(rect.size_) * 0.5f);
 }
 
 } // namespace detail

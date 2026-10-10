@@ -447,12 +447,12 @@ read_dispatch_mode() {
 # rateLimitType under $USAGE_DIR), so the gate piggybacks on every
 # transient worker's stream — no separate poller needed. GitHub API
 # pools flow through the same glob-and-evaluate loop: fleet-state-scout's
-# sample_github_rate_limit() latches github-{core,graphql,search}.json
+# sample_github_rate_limit() latches github-<identity>-{core,graphql,search}.json
 # into the same $USAGE_DIR every tick, so a near-exhausted
 # GitHub pool defers dispatch exactly like a near-exhausted Anthropic
 # window — no separate code path. A GraphQL call the limiter refused
 # (seen by the scout or fleet-net.sh's gh()) latches its own
-# github-graphql.rejected.json at 100% until the sampled reset
+# github-<identity>-graphql.rejected.json at 100% until the sampled reset
 # (fleet_gh_fallback.py), which the self-report never overwrites.
 #
 # Per-type thresholds let the operator distinguish a short-window
@@ -1254,7 +1254,7 @@ write_dispatch_record() {
     # wrapper derives its class from the model. Not `class`: that is the
     # concurrency-cap key, which a routed launch can legitimately differ from.
     local launch_class="${7:-}"
-    local ts epoch extra=""
+    local ts epoch extra="" shadow=""
     ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
     epoch=$(date +%s)   # read back by cleanup_stale_dispatches for the empty-exit streak
     extra=$(printf ',"runtime":"%s"' "$runtime")
@@ -1263,6 +1263,11 @@ write_dispatch_record() {
     if [[ -n "$target" ]]; then
         extra+=$(printf ',"target":"%s"' "$target")
         [[ "$target" == plan:* ]] && extra+=$(printf ',"plan_issue":"%s"' "${target#plan:}")
+        if [[ "$target" == task:* ]]; then
+            shadow=$(python3 "$FLEET_LIB_DIR/fleet_task_class.py" --target-shadow \
+                "$STATE_DIR/projections/worker.json" "$target" 2>/dev/null || true)
+            [[ "$shadow" =~ ^[0-9]+$ ]] && extra+=$(printf ',"shadow_merged_pr":%s' "$shadow")
+        fi
     fi
     mkdir -p "$DISPATCH_DIR"
     # claim_marker:1 asserts this dispatch's wrapper exports FLEET_CLAIM_FLAG,
@@ -1635,13 +1640,21 @@ assess_target_completion() {
 # escalation is standing"), and the sonnet and opus reviewers share the
 # `review` kind, so an unscoped record let a sonnet decline hide the same
 # PR from the opus lane it was escalated to. $1 = target, $2 = updated_at,
-# $3 = detail, $4 = role.
+# $3 = detail, $4 = role, $5 = dispatch-snapshotted shadow PR.
 remember_decline() {
-    local f
+    local f shadow="${5:-}" prior=""
     f="$STATE_DIR/declined/$(fleet_target_key "$1")"
     [[ -n "$2" ]] || return 0
     mkdir -p "${f%/*}" 2>/dev/null || true
-    printf '%s\n%s\n%s\n' "$2" "$3" "${4:-}" > "$f" 2>/dev/null || true
+    if [[ -z "$shadow" && -f "$f" ]]; then
+        prior=$(sed -n 's/^shadow_merged_pr=\([0-9][0-9]*\)$/\1/p' "$f" | head -n 1)
+        [[ "$prior" =~ ^[0-9]+$ ]] && shadow="$prior"
+    fi
+    if [[ "$shadow" =~ ^[0-9]+$ ]]; then
+        printf '%s\n%s\n%s\nshadow_merged_pr=%s\n' "$2" "$3" "${4:-}" "$shadow" > "$f" 2>/dev/null || true
+    else
+        printf '%s\n%s\n%s\n' "$2" "$3" "${4:-}" > "$f" 2>/dev/null || true
+    fi
 }
 
 # An abandoned target: the pane exited with its claim label standing and no
@@ -1872,7 +1885,7 @@ cleanup_stale_dispatches() {
     if [[ ! -d "$DISPATCH_DIR" ]]; then
         return
     fi
-    local file role pane dispatched_epoch class claimed target agent verdict updated detail runtime
+    local file role pane dispatched_epoch class claimed target agent verdict updated detail runtime shadow
     for file in "$DISPATCH_DIR"/*.json; do
         [[ -e "$file" ]] || continue
         role=$(sed -n 's/.*"role":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
@@ -1898,6 +1911,7 @@ cleanup_stale_dispatches() {
         agent=$(sed -n 's/.*"agent":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
         runtime=$(sed -n 's/.*"runtime":"\([^"]*\)".*/\1/p' "$file" | head -n 1)
         verdict=""
+        shadow=$(sed -n 's/.*"shadow_merged_pr":\([0-9][0-9]*\).*/\1/p' "$file" | head -n 1)
         if [[ "${runtime:-claude}" == claude ]] && dispatch_hit_usage_limit "$pane" "$dispatched_epoch"; then
             # Provider event: neither productive nor empty for the lane's
             # backoff, and not the target's fault (see handle_quota_target).
@@ -1922,7 +1936,7 @@ cleanup_stale_dispatches() {
                 finished)  claimed=yes; target_complete "$target" ;;
                 declined)
                     claimed=no
-                    remember_decline "$target" "$updated" "$detail" "$role"
+                    remember_decline "$target" "$updated" "$detail" "$role" "$shadow"
                     rm -f "$STATE_DIR/abandoned/$(fleet_target_key "$target")"
                     ;;
                 abandoned) claimed=no; handle_abandoned_target "$target" "$agent" "$role" ;;
@@ -4431,14 +4445,12 @@ main() {
         # rearm_periodic_meta_triggers above still runs so the trigger
         # set stays accurate for when the gate re-opens.
         if [[ "${FLEET_RUNTIMES:-claude}" == *codex* ]]; then
-            FLEET_USAGE_RUNTIME=shared
-            # The Claude pools are then gated per dispatch (assign_for_pane's
+            # `usage_gate_open` gates only the shared pools here, so the Claude
+            # pools are gated per dispatch (assign_for_pane's
             # `claude-quota-closed`), which never logs a transition — a
             # closed window would only be inferable from every launch
             # reading runtime=codex. Log it here, once per closed window.
             log_claude_gate_transition
-        else
-            FLEET_USAGE_RUNTIME=all
         fi
         log_scoped_gate_transition
         if session_exists && usage_gate_open; then
@@ -4639,7 +4651,7 @@ case "${1:-}" in
         echo "target=$ASSIGNMENT"
         exit 0
         ;;
-    --seed-tmux-token)
+    --clear-tmux-token)
         # Test/operator hook: remove inherited GitHub credentials from tmux.
         clear_tmux_github_identity
         exit 0

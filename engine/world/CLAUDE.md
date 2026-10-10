@@ -120,11 +120,11 @@ Three author-facing contracts:
 ### New-component contract
 
 `SaveTrait<C>` (`save_trait.hpp`) has no default: an engine component with
-neither `IR_SAVE_OPT_IN(Type, Version)` nor `IR_SAVE_OPT_OUT(Type)` in
+neither an `IR_SAVE_OPT_IN*` nor `IR_SAVE_OPT_OUT(Type)` decision in
 `save_component_inventory.hpp` fails the build. **Opt-out-by-omission is
 forbidden.** Adding an engine component means:
 
-- one `IR_SAVE_OPT_IN` / `IR_SAVE_OPT_OUT` line with its include, and an
+- one `IR_SAVE_OPT_IN*` / `IR_SAVE_OPT_OUT` line with its include, and an
   `AllEngineComponents` entry, in `save_component_inventory.hpp`. The include
   block sorts alphabetically by full path (`simplify` check 16).
   `cmake/run_save_inventory_population_check.cmake` (part of `header-checks`)
@@ -166,11 +166,10 @@ error. Rules for the serializer:
 - **Any TU that builds a registry includes `save_component_inventory.hpp`.**
   Without the specializations in scope every `registerComponent<C>` no-ops
   and you get an empty registry that saves an empty world without erroring.
-- **Never write an explicit `SaveSerialize<C>` for a trivially-copyable
-  component.** A TU missing the header binds silently to the raw-image arm —
-  an ODR violation with no diagnostic. Need a hand-written layout? Make the
-  component non-trivially-copyable or route the exception through the
-  inventory.
+- **A trivially-copyable component with a hand-written layout uses
+  `IR_SAVE_OPT_IN_HAND_WRITTEN`.** It declares the specialization through the
+  inventory, so a TU missing its serializer header fails instead of silently
+  binding the raw-image arm; registration enforces the pairing.
 - **Migration:** a retired `kSaveVersion` gets a `SaveMigration<C>` reader
   (`save_migration.hpp`) — direct per-version, never chained, the current
   version not listed. A disk version below current with no reader is a hard

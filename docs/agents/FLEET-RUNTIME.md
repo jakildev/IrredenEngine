@@ -293,8 +293,8 @@ any one missing means unconfigured. One table carries the whole contract:
 | Knob `FLEET_GH_APP_KEY_PATH` | path to the private key (`.pem`) |
 | Setup 5 — verify | `fleet-gh-token` prints a token; `fleet-gate-status` lists both identities |
 | Pool **app** | Scout polling and detail refresh; dispatcher polling, pre-claims, and target-completion bookkeeping; recurring queue ingest, cleanup, reconcile, and stalled sweep. Without App configuration these lanes use the user's keychain login. |
-| Pool **user** | Every dispatched Codex/Claude pane, including resumed iterations; its GitHub reads, comments, reviews, and task/review/feedback/conflict/planning claim mutations and releases; the human shell. |
-| Boundary | `fleet-dispatch-wrap` selects `FLEET_GH_IDENTITY=user` and removes both `GH_TOKEN` and `GITHUB_TOKEN` before any pane-side operation. `fleet-claim` preserves the selected lane; an unselected standalone invocation selects the daemon lane. The `gh` shim cannot refresh an App token into an explicitly user-routed call. |
+| Pool **user** | Every dispatched Codex/Claude pane, including resumed iterations; every `fleet-babysit` launch and relaunch (lane `babysit`); its GitHub reads, comments, reviews, and task/review/feedback/conflict/planning claim mutations and releases; the human shell. |
+| Boundary | `fleet-dispatch-wrap` and `fleet-babysit` select `FLEET_GH_IDENTITY=user` and remove both `GH_TOKEN` and `GITHUB_TOKEN` before any pane-side operation. `fleet-claim` preserves the selected lane; an unselected standalone invocation selects the daemon lane. The `gh` shim cannot refresh an App token into an explicitly user-routed call. |
 | Credential storage | No GitHub token is seeded into tmux global state. App tokens remain process-local or in the minter's existing cache; user auth stays in `gh`'s credential store. Projections, dispatch records, and session sidecars carry no credential. |
 | Ownership | Authentication selection does not change the dispatch ID, reservation, host-agent label, or claim namespace. A dispatcher App pre-claim remains the same claim when its user-routed pane resumes, mutates, or releases it. |
 | Neither | Git fetch/push over SSH; human-only merge authority is unchanged. |
@@ -316,7 +316,7 @@ budgets does not bypass a failed App-side claim or stale scout state.
 `--gate-status daemon` reports daemon admission. `fleet-gate-status` names
 every lane's identity and both gate states in text and JSON. Its optional
 live `/rate_limit` display is diagnostic, not admission evidence, since
-that endpoint can report a different core bucket from enforcement headers.
+that endpoint can report a different core or GraphQL bucket from enforcement headers.
 
 ---
 

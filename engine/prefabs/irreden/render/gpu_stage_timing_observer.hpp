@@ -25,7 +25,16 @@ class GpuStageTimingObserver : public IRSystem::TickObserver {
     }
 
     void tagStage(IRSystem::SystemId system, const GpuStageInfo &info) {
-        StageState state{};
+        auto [it, inserted] = m_stages.try_emplace(system);
+        StageState &state = it->second;
+        if (!inserted) {
+            if (state.info_ == &info) {
+                return;
+            }
+            // Pending results belong to the previous stage, not the new label.
+            state.release(state.device_);
+            state = StageState{};
+        }
         state.info_ = &info;
         // Index into the parallel `gpuStageAccumulators()` array — `info` is a
         // reference into the `gpuStageRegistry()` array, so pointer arithmetic
@@ -33,7 +42,6 @@ class GpuStageTimingObserver : public IRSystem::TickObserver {
         state.registryIndex_ = static_cast<int>(&info - gpuStageRegistry().data());
         state.device_ = IRRender::device();
         state.initialize(state.device_);
-        m_stages[system] = state;
     }
 
     void onBeforeTick(IRSystem::SystemId system) override {
@@ -113,16 +121,15 @@ class GpuStageTimingObserver : public IRSystem::TickObserver {
 
 namespace detail {
 
-// The SystemManager owns the observer. This process-lifetime cache assumes
-// registration belongs to one World; it is invalid after that manager dies.
 inline GpuStageTimingObserver *installAndGetObserver() {
-    static GpuStageTimingObserver *cached = []() {
-        auto owner = std::make_unique<GpuStageTimingObserver>();
-        GpuStageTimingObserver *raw = owner.get();
-        IRSystem::registerTickObserver(std::move(owner));
-        return raw;
-    }();
-    return cached;
+    auto &manager = IRSystem::getSystemManager();
+    if (auto *observer = manager.findTickObserver<GpuStageTimingObserver>()) {
+        return observer;
+    }
+    auto owner = std::make_unique<GpuStageTimingObserver>();
+    auto *observer = owner.get();
+    manager.registerTickObserver(std::move(owner));
+    return observer;
 }
 
 } // namespace detail

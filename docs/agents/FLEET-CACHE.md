@@ -60,7 +60,7 @@ section grows a field — that is the omission this table exists to close.
 | `recent_merged_prs` | `number, title, headRefName, baseRefName, mergedAt` | newest 30 merges by `mergedAt` (any PR number), from up to 3 newest-updated closed pages; a cap hit writes `${FLEET_ALERTS_DIR:-~/.fleet/alerts}/state-scout-recent-merged-<owner>-<repo>` while it holds |
 | `epics` | `number, title, labels, updatedAt, checklist, managed` | open `fleet:epic` issues, one REST page (100) |
 | `epic_backrefs` | `number, title, epics` | open issues (any labels) whose body declares epic membership (`fleet_epic_membership.py`), from up to 10 REST pages (1000 issues + PRs); a cap hit writes `${FLEET_ALERTS_DIR:-~/.fleet/alerts}/state-scout-epic-backrefs-<owner>-<repo>` while it holds |
-| `tasks.open` / `tasks.in_progress` | `status, title, summary, id, model, effort, labels, owner, area, blocked_by, blocked, needs_gl_host, needs_host, backend_symmetric, issue, updatedAt` | open `fleet:queued` issues minus `fleet:needs-human`/`fleet:plan-review`/`fleet:gated`, up to 200 (2 REST pages) |
+| `tasks.open` / `tasks.in_progress` | `status, title, summary, id, model, effort, labels, owner, area, blocked_by, blocked, has_open_blocker, needs_gl_host, needs_host, backend_symmetric, issue, updatedAt` | open `fleet:queued` issues minus `fleet:needs-human`/`fleet:plan-review`/`fleet:gated`, up to 200 (2 REST pages) |
 | `tasks.done` | `id` | one record per `closed_fleet_queued` entry — same 100-item cap, not an independent population |
 | `tasks.plan_gated` | bare issue numbers, not issue-shaped records | same pre-filter population as `tasks.open`/`tasks.in_progress` |
 
@@ -100,22 +100,29 @@ for cross-role data (a reviewer resolving an upstream PR by
 `…[truncated]…`; fetch the full body with `fleet-pr comments <N>`, not
 `fleet-pr view`.
 
-### `shadow_merged_pr` on a `tasks_open` row — read it, don't refuse it
+### Shadowed close-outs and resolved blockers
 
 A task row carrying `shadow_merged_pr` means a **recently merged** PR's head
 branch names that issue, so part of the work may already be on master under a
 `Ref` reference (which merges without closing the issue, leaving the row queued
 and owner-free). **Read that PR before you branch** — `fleet-pr view <number>` —
-and scope your change to what it left. That is the whole affordance: it saves
-the branch-then-discover round trip, and nothing more.
+and scope your change to what it left. Shadow evidence alone remains advisory:
+a `Ref` merge may be partial, so the task remains claimable.
 
-It does **not** block the claim. It is not read by `fleet_task_class`'s
-`_task_claimable` / `_terminally_unclaimable`, and must not become a refusal.
-A `Ref` reference is this repo's deliberate marker for *partial* work, so the
-residual is real queued work — and unlike an open PR, a merged master commit
-never clears, so a refusal keyed on it would strand that residual permanently,
-with nothing in the fleet able to re-queue it. Use `inflight_pr`, which does
-gate, for the open-PR case.
+When the same task also has a current, substantive worker decline at its
+current `updatedAt`, it is a **shadowed close-out**: terminal for dispatch and
+reported by `fleet-queue-list`, `fleet-survey`, and `fleet-decisions` for a
+human to close or revise. The dispatcher persists the PR number as line four
+of the existing decline record, so the evidence survives the 30-merge cache
+window; timestamp, role, seven-day TTL, and transient-reason rules still gate
+the record. Reports are read-only and never infer completion from a merge alone.
+
+`blocked` remains the ingest-owned label round-trip. `has_open_blocker` is the
+scout's separate same-repo resolution fact, and worker election treats either
+as blocked; an eligible `stackable_blocker_pr` still routes the row to the stack
+tier. Cross-repo blockers are deliberately absent from `has_open_blocker` and
+remain claim-time gated; a queued task lacking `fleet:blocked` can therefore be
+elected and refused in that residual shape.
 
 ### `inflight_pr` on a `tasks_open` row — the open-PR gate
 

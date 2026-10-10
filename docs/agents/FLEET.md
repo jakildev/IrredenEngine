@@ -262,8 +262,8 @@ a second live GL context stalls shader links for minutes ([`BUILD.md`](BUILD.md)
 §"`ir-build` / `ir-run`"). An enabled `benchmark` window prevents launches and
 parks every leased dispatch until quiet; exit 0 with `QUIET=guarded` guarantees
 coverage, 75 refuses an undrained host, and 76 rejects contamination. Claude
-sessions park at tool hooks. Until a Codex hook is confirmed, its live lease
-stays busy and makes the request refuse instead. Human sessions, daemons,
+and Codex sessions both park at tool hooks ([`CODEX.md`](CODEX.md)
+§"Quiet-window hook"). Human sessions, daemons,
 non-fleet processes, double-forks, the measurement subtree, and sub-sample
 Windows children remain outside the guarantee; use `ir-acquire --quiet-disable [reason]` / `--quiet-enable` for the host switch and see [`engine/tools/README.md`](../../engine/tools/README.md) for tuning.
 
@@ -470,15 +470,13 @@ merger`; `--headlines`; `--clear` archives to
 
 ## The decision digest (`fleet-decisions`)
 
-`fleet-decisions [--repo engine|game]` is a read-only report of what waits on
-the human: the merge queue (`fleet:approved`, with `+nits`, CI holds and smoke-debt notes),
-decisions parked on human-only labels (`fleet:needs-human`, `fleet:gated`,
-`fleet:human-deferred`, `fleet:design-blocked`, `fleet:steward-proposal`,
-`fleet:state-drift`), cues (`fleet:coding-improvement` backlog →
-`triage-coding-improvements`; untriaged issues; feedback files newer than
-`~/.fleet/feedback/.last-reviewed` → `review-fleet-feedback`), and per-repo
-counts. `fleet-digest-tick` refreshes `~/.fleet/digest/latest.md` and fires
-`fleet-notify` (desktop toast, log-first to `~/.fleet/notify.log`) only when
-decision-relevant content changed since this host's last tick; schedule it per
-host by cron (`*/30 * * * * $HOME/bin/fleet-digest-tick`; read-only, host-local,
-no coordination).
+`fleet-decisions [--repo engine|game]` read-only reports the merge queue
+(`fleet:approved`, CI holds, smoke-debt notes), human-only label decisions,
+shadowed queued close-outs and their survey-owned blocker/park/epic impacts,
+backlog and unread-feedback cues, and per-repo counts. `fleet-queue-list` keeps
+those close-outs outside Available; `fleet-survey` owns their compound
+merged-delivery-plus-current-decline predicate and reverse impacts. Reports
+offer commands but never close issues. `fleet-digest-tick` refreshes
+`~/.fleet/digest/latest.md` and fires `fleet-notify` only when relevant content
+changes; schedule it per host by cron (`*/30 * * * * $HOME/bin/fleet-digest-tick`;
+read-only, host-local, no coordination).

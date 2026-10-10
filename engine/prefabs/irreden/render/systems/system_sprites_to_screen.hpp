@@ -85,7 +85,6 @@ template <> struct System<SPRITE_TO_SCREEN> {
         IRRender::SpriteRenderEntry entry{};
         entry.textureHandle_ = sprite.textureHandle_;
         entry.isoDepth_ = static_cast<int>(pos3DtoDistance(worldPos));
-        entry.size_ = sprite.size_;
         entry.uvRect_ = sprite.uvRect_;
         entry.tintRgba_ = vec4(
             static_cast<float>(sprite.tint_.red_) / 255.0f,
@@ -97,7 +96,9 @@ template <> struct System<SPRITE_TO_SCREEN> {
         const vec2 snappedAnchor = sprite.screenPixelSmooth_
                                        ? anchor
                                        : snapToGameGrid(anchor, gameGridOrigin_, scaleFactor_);
-        entry.screenPos_ = snappedAnchor - sprite.anchor_ * sprite.size_;
+        const vec4 quad = quadScreenRect(snappedAnchor, sprite.size_, sprite.anchor_, scaleFactor_);
+        entry.screenPos_ = vec2(quad.x, quad.y);
+        entry.size_ = vec2(quad.z, quad.w);
         entries_.push_back(entry);
     }
 
@@ -227,6 +228,19 @@ template <> struct System<SPRITE_TO_SCREEN> {
         return out;
     }
 
+    /// Sprite quad as `(x, y, w, h)` in viewport pixels, the
+    /// `GpuSpriteInstance::screenPosSize_` layout. @p sizeGamePx is
+    /// `C_Sprite::size_`: one game pixel covers @p outputScale viewport
+    /// pixels per axis, and the two axes differ under a stretched fit. The
+    /// anchor offset uses the scaled size, so @p anchorScreen stays on the
+    /// quad's @p anchorUv point at every scale.
+    static vec4
+    quadScreenRect(vec2 anchorScreen, vec2 sizeGamePx, vec2 anchorUv, vec2 outputScale) {
+        const vec2 sizeScreen = sizeGamePx * outputScale;
+        const vec2 origin = anchorScreen - anchorUv * sizeScreen;
+        return vec4(origin.x, origin.y, sizeScreen.x, sizeScreen.y);
+    }
+
     /// Snaps @p anchor to the framebuffer's game-pixel grid (origin =
     /// @p gridOrigin, cell size = @p cellPx). The grid origin matches the
     /// trixel composite's screen-pixel residual so the snapped sprite sits
@@ -236,13 +250,14 @@ template <> struct System<SPRITE_TO_SCREEN> {
         return gridOrigin + IRMath::floor(deltaCells + vec2(0.5f)) * cellPx;
     }
 
-    /// Anchor-point screen position before subtracting `anchor_ * size_`.
-    /// Sprites share the same iso → screen transform as the trixel
-    /// composite: iso delta from the EFFECTIVE camera (the one the composite
-    /// places world content with), scaled by the per-trixel step size, with
-    /// the same X-flip that `pos3DtoPos2DScreen` encodes for world-space
-    /// points. @p stepSize is the only zoom input, so the anchor follows the
-    /// world at any zoom while the quad's size never sees the zoom at all.
+    /// Anchor-point screen position, before `quadScreenRect` offsets it to
+    /// the quad origin. Sprites share the same iso → screen transform as the
+    /// trixel composite: iso delta from the EFFECTIVE camera (the one the
+    /// composite places world content with), scaled by the per-trixel step
+    /// size, with the same X-flip that `pos3DtoPos2DScreen` encodes for
+    /// world-space points. @p stepSize is the only zoom input, so the anchor
+    /// follows the world at any zoom while the quad's size never sees the
+    /// zoom at all.
     static vec2 screenAnchor(vec3 worldPos, vec2 viewport, vec2 cameraIso, vec2 stepSize) {
         const vec2 isoDelta = pos3DtoPos2DIso(worldPos) - cameraIso;
         const vec2 screenSign = vec2(-1.0f, IRPlatform::kGfx.screenYDirection_);
