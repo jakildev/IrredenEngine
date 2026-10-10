@@ -229,9 +229,8 @@ inline IRMath::ivec2 widgetCenterScreenPx(IREntity::EntityId widget) {
     if (widget == IREntity::kNullEntity) {
         return IRMath::ivec2(0);
     }
-    const IRMath::ivec2 pos = IREntity::getComponent<IRComponents::C_GuiPosition>(widget).pos_;
-    const IRMath::ivec2 size = IREntity::getComponent<IRComponents::C_Widget>(widget).size_;
-    return IRRender::guiTrixelToScreenPx(IRMath::vec2(pos) + IRMath::vec2(size) * 0.5f);
+    const GuiRect rect = widgetRect(widget);
+    return IRRender::guiTrixelToScreenPx(IRMath::vec2(rect.pos_) + IRMath::vec2(rect.size_) * 0.5f);
 }
 
 } // namespace detail
