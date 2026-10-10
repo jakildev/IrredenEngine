@@ -2,7 +2,6 @@
 #include <irreden/render/metal/metal_runtime.hpp>
 #include <irreden/ir_profile.hpp>
 
-#include <array>
 #include <cstring>
 
 namespace IRRender {
@@ -111,10 +110,6 @@ class MetalTexture2DImpl final : public Texture2DImpl {
         if (m_texture != nullptr) {
             m_texture->release();
             m_texture = nullptr;
-        }
-        if (m_clearSourceBuf != nullptr) {
-            m_clearSourceBuf->release();
-            m_clearSourceBuf = nullptr;
         }
     }
 
@@ -231,44 +226,14 @@ class MetalTexture2DImpl final : public Texture2DImpl {
         const std::size_t totalSize =
             static_cast<std::size_t>(m_size.x) * static_cast<std::size_t>(m_size.y) * pixelSize;
 
-        // Lazy-allocate a persistent SharedMode source buffer (once per texture).
-        if (m_clearSourceBuf == nullptr) {
-            m_clearSourceBuf = metalDevice()->newBuffer(
-                totalSize, MTL::ResourceStorageModeShared
-            );
-            IR_ASSERT(m_clearSourceBuf != nullptr, "Failed to create Metal texture clear buffer");
-            m_clearPixelSize = 0;  // force fill on first use
-        }
-
-        // Refill the source buffer only when the per-pixel clear value changes.
-        // Constant per-frame clears (black, max-distance, zero) never trigger a refill.
-        IR_ASSERT(pixelSize <= m_clearPixelData.size(), "pixel size exceeds change-detection cache — widen m_clearPixelData");
-        const bool nullClear = (data == nullptr);
-        const bool patternChanged =
-            (pixelSize != m_clearPixelSize) ||
-            (nullClear != m_clearDataWasNull) ||
-            (!nullClear && std::memcmp(m_clearPixelData.data(), data, pixelSize) != 0);
-
-        if (patternChanged) {
-            auto *bytes = static_cast<std::uint8_t *>(m_clearSourceBuf->contents());
-            if (!nullClear) {
-                for (std::size_t i = 0; i < totalSize; i += pixelSize) {
-                    std::memcpy(bytes + i, data, pixelSize);
-                }
-                std::memcpy(m_clearPixelData.data(), data, pixelSize);
-            } else {
-                std::memset(bytes, 0, totalSize);
-            }
-            m_clearPixelSize = pixelSize;
-            m_clearDataWasNull = nullClear;
-        }
+        MTL::Buffer *clearSource = metalTextureClearSource(m_texture, pixelSize, data);
 
         auto *commandBuffer = metalCommandBuffer();
         if (commandBuffer != nullptr) {
-            // GPU-side blit: no per-frame allocation, no replaceRegion stall.
+            // Unchanged patterns reuse their source without a CPU texture-write stall.
             auto *blit = commandBuffer->blitCommandEncoder();
             blit->copyFromBuffer(
-                m_clearSourceBuf,
+                clearSource,
                 0,
                 static_cast<NS::UInteger>(m_size.x * pixelSize),
                 totalSize,
@@ -283,7 +248,7 @@ class MetalTexture2DImpl final : public Texture2DImpl {
             // No command buffer (e.g. during startup init): fall back to replaceRegion.
             uploadSubImage2D(
                 0, 0, m_size.x, m_size.y, format, type,
-                m_clearSourceBuf->contents()
+                clearSource->contents()
             );
         }
     }
@@ -300,10 +265,6 @@ class MetalTexture2DImpl final : public Texture2DImpl {
     uvec2 m_size;
     MTL::Texture *m_texture = nullptr;
     MTL::PixelFormat m_pixelFormat = MTL::PixelFormatInvalid;
-    MTL::Buffer *m_clearSourceBuf = nullptr;
-    std::array<std::uint8_t, 16> m_clearPixelData{};
-    std::size_t m_clearPixelSize = 0;
-    bool m_clearDataWasNull = true;
 };
 
 class MetalTexture3DImpl final : public Texture3DImpl {
