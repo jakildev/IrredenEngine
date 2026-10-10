@@ -2,6 +2,7 @@
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 #include <irreden/render/gpu_substage_timing.hpp>
 
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -292,6 +293,122 @@ TEST_F(GpuTimestampPollTest, ObserverOwnsOnlySuccessfulAllocations) {
         observer.tagStage(0, gpuStageRegistry()[0]);
     }
     EXPECT_EQ(device_.destroyed_, (std::vector<GpuTimestampHandle>{1, 2}));
+}
+
+TEST_F(GpuTimestampPollTest, RepeatedTagPreservesHandlesAndPendingSample) {
+    {
+        GpuStageTimingObserver observer;
+        observer.tagStage(0, gpuStageRegistry()[0]);
+        observer.onBeforeTick(0);
+        observer.onAfterTick(0);
+        observer.tagStage(0, gpuStageRegistry()[0]);
+        EXPECT_EQ(device_.allocations_, 1u);
+        EXPECT_TRUE(device_.destroyed_.empty());
+        device_.status_ = TimestampReadStatus::READY;
+        observer.onBeforeTick(0);
+        observer.onAfterTick(0);
+        EXPECT_EQ(gpuStageAccumulators()[0].sampleCount_, 1u);
+        EXPECT_EQ(device_.startHandles_, (std::vector<GpuTimestampHandle>{1, 1}));
+    }
+    EXPECT_EQ(device_.destroyed_, (std::vector<GpuTimestampHandle>{1}));
+    EXPECT_EQ(device_.finishes_, 0);
+}
+
+TEST_F(GpuTimestampPollTest, RetagReleasesOldHandlesWithoutRelabelingPendingSamples) {
+    {
+        GpuStageTimingObserver observer;
+        observer.tagStage(0, gpuStageRegistry()[0]);
+        device_.status_ = TimestampReadStatus::READY;
+        observer.onBeforeTick(0);
+        observer.onAfterTick(0);
+        observer.onBeforeTick(0);
+        observer.onAfterTick(0);
+        ASSERT_EQ(gpuStageAccumulators()[0].sampleCount_, 1u);
+
+        observer.tagStage(0, gpuStageRegistry()[1]);
+        EXPECT_EQ(device_.destroyed_, (std::vector<GpuTimestampHandle>{1}));
+        observer.onBeforeTick(0);
+        observer.onAfterTick(0);
+        EXPECT_EQ(gpuStageAccumulators()[1].sampleCount_, 0u);
+        observer.onBeforeTick(0);
+        observer.onAfterTick(0);
+        EXPECT_EQ(gpuStageAccumulators()[0].sampleCount_, 1u);
+        EXPECT_EQ(gpuStageAccumulators()[1].sampleCount_, 1u);
+        EXPECT_EQ(device_.startHandles_, (std::vector<GpuTimestampHandle>{1, 1, 2, 2}));
+    }
+    EXPECT_EQ(device_.destroyed_, (std::vector<GpuTimestampHandle>{1, 2}));
+    EXPECT_EQ(device_.finishes_, 0);
+}
+
+TEST_F(GpuTimestampPollTest, RetagAfterPartialAllocationOwnsOnlyNewValidHandles) {
+    device_.recommended_ = 3;
+    device_.allocationLimit_ = 2;
+    {
+        GpuStageTimingObserver observer;
+        observer.tagStage(0, gpuStageRegistry()[0]);
+        observer.onBeforeTick(0);
+        observer.onAfterTick(0);
+        device_.allocationLimit_ = 4;
+        observer.tagStage(0, gpuStageRegistry()[1]);
+        EXPECT_EQ(device_.destroyed_, (std::vector<GpuTimestampHandle>{1, 2}));
+        device_.status_ = TimestampReadStatus::READY;
+        observer.onBeforeTick(0);
+        observer.onAfterTick(0);
+        EXPECT_EQ(device_.startHandles_.back(), 4u);
+        EXPECT_EQ(gpuStageAccumulators()[1].sampleCount_, 0u);
+        observer.onBeforeTick(0);
+        observer.onAfterTick(0);
+        EXPECT_EQ(gpuStageAccumulators()[0].sampleCount_, 0u);
+        EXPECT_EQ(gpuStageAccumulators()[1].sampleCount_, 1u);
+    }
+    EXPECT_EQ(device_.destroyed_, (std::vector<GpuTimestampHandle>{1, 2, 4}));
+    EXPECT_EQ(device_.finishes_, 0);
+}
+
+TEST_F(GpuTimestampPollTest, RegistrationFollowsManagerClearAndSameAddressReconstruction) {
+    device_.allocationLimit_ = 20;
+    std::optional<IRSystem::SystemManager> manager;
+    for (int lifetime = 0; lifetime < 3; ++lifetime) {
+        manager.emplace();
+        for (int phase = 0; phase < 2; ++phase) {
+            auto *observer = IRRender::detail::installAndGetObserver();
+            ASSERT_NE(observer, nullptr);
+            ASSERT_EQ(manager->findTickObserver<GpuStageTimingObserver>(), observer);
+            EXPECT_EQ(IRRender::detail::installAndGetObserver(), observer);
+            tagGpuStage(0, gpuStageRegistry()[0].name_);
+            observer->onBeforeTick(0);
+            observer->onAfterTick(0);
+            if (phase == 0) {
+                manager->clearTickObservers();
+                EXPECT_EQ(manager->findTickObserver<GpuStageTimingObserver>(), nullptr);
+            }
+        }
+        manager.reset();
+        EXPECT_EQ(device_.destroyed_.size(), static_cast<std::size_t>((lifetime + 1) * 2));
+    }
+    EXPECT_EQ(device_.allocations_, 6u);
+    EXPECT_EQ(device_.destroyed_, (std::vector<GpuTimestampHandle>{1, 2, 3, 4, 5, 6}));
+    EXPECT_EQ(device_.finishes_, 0);
+}
+
+TEST_F(GpuTimestampPollTest, RegistrationUsesEachLiveManagersObserver) {
+    IRSystem::SystemManager first;
+    auto *firstObserver = IRRender::detail::installAndGetObserver();
+    ASSERT_EQ(first.findTickObserver<GpuStageTimingObserver>(), firstObserver);
+    ASSERT_NE(firstObserver, nullptr);
+    tagGpuStage(0, gpuStageRegistry()[0].name_);
+    {
+        IRSystem::SystemManager second;
+        auto *secondObserver = IRRender::detail::installAndGetObserver();
+        ASSERT_EQ(second.findTickObserver<GpuStageTimingObserver>(), secondObserver);
+        ASSERT_NE(secondObserver, nullptr);
+        EXPECT_NE(secondObserver, firstObserver);
+        EXPECT_EQ(first.findTickObserver<GpuStageTimingObserver>(), firstObserver);
+        tagGpuStage(0, gpuStageRegistry()[1].name_);
+    }
+    EXPECT_EQ(device_.destroyed_, (std::vector<GpuTimestampHandle>{2}));
+    first.clearTickObservers();
+    EXPECT_EQ(device_.destroyed_, (std::vector<GpuTimestampHandle>{2, 1}));
 }
 
 TEST_F(GpuTimestampPollTest, SubstageDestructionDoesNotTouchDevice) {

@@ -13,6 +13,20 @@ Consumers: anyone planning a `fleet:needs-plan` perf issue against the
 render pipeline, the `optimize` skill flow, and reviewers of dispatch-shape
 changes (occupied-only lists, indirect dispatch, subdivision caps).
 
+## Observer lifetime
+
+The active SystemManager owns stage observers. Registration looks up that
+manager's existing observer; no cached observer pointer survives a clear or
+manager teardown. Observer destruction releases successful timestamp allocations
+through the device that created them, while World shutdown still clears observers
+before releasing the graphics context.
+
+Tagging the same system with the same registry entry preserves handles and pending
+samples. Changing its stage releases and resets that system's ring: already
+recorded totals remain in the old accumulator, while unpublished samples are
+discarded rather than attributed to the new stage. Registration performs no GPU
+waits and adds no lookup to the per-frame timing brackets.
+
 ## 1. What the timers measure
 
 - **One measurement per tagged `SystemId`, bracketing the whole tick.**

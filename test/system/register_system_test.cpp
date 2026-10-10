@@ -1,9 +1,15 @@
 #include <gtest/gtest.h>
 
 #include <irreden/ir_entity.hpp>
+#include <irreden/ir_job.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_time.hpp>
 #include <irreden/entity/entity_manager.hpp>
+#include <irreden/job/job_manager.hpp>
+
+#include <atomic>
+#include <memory>
+#include <stdexcept>
 
 namespace {
 
@@ -67,6 +73,111 @@ template <> struct System<TEST_REGISTER_SYSTEM_B> {
 } // namespace IRSystem
 
 namespace {
+
+struct CountingTickObserver : IRSystem::TickObserver {
+    explicit CountingTickObserver(int &destructions)
+        : destructions_{destructions} {}
+
+    ~CountingTickObserver() override {
+        ++destructions_;
+    }
+    void onBeforeTick(IRSystem::SystemId) override {}
+    void onAfterTick(IRSystem::SystemId) override {}
+
+    int &destructions_;
+};
+
+struct DerivedCountingTickObserver : CountingTickObserver {
+    using CountingTickObserver::CountingTickObserver;
+};
+
+struct OtherTickObserver : IRSystem::TickObserver {
+    void onBeforeTick(IRSystem::SystemId) override {}
+    void onAfterTick(IRSystem::SystemId) override {}
+};
+
+TEST(TickObserverLookupTest, FindsFirstCastableObserverAndReportsTypeMisses) {
+    int destructions = 0;
+    IRSystem::SystemManager manager;
+    EXPECT_EQ(manager.findTickObserver<CountingTickObserver>(), nullptr);
+    auto unrelated = std::make_unique<OtherTickObserver>();
+    auto *unrelatedPointer = unrelated.get();
+    manager.registerTickObserver(std::move(unrelated));
+    EXPECT_EQ(manager.findTickObserver<CountingTickObserver>(), nullptr);
+    auto first = std::make_unique<DerivedCountingTickObserver>(destructions);
+    auto *firstPointer = first.get();
+    manager.registerTickObserver(std::move(first));
+    manager.registerTickObserver(std::make_unique<CountingTickObserver>(destructions));
+
+    EXPECT_EQ(manager.findTickObserver<IRSystem::TickObserver>(), unrelatedPointer);
+    EXPECT_EQ(manager.findTickObserver<OtherTickObserver>(), unrelatedPointer);
+    EXPECT_EQ(manager.findTickObserver<CountingTickObserver>(), firstPointer);
+    EXPECT_EQ(manager.findTickObserver<DerivedCountingTickObserver>(), firstPointer);
+}
+
+TEST(TickObserverLookupTest, SimultaneouslyLiveManagersKeepSeparateObservers) {
+    int destructions = 0;
+    IRSystem::SystemManager firstManager;
+    IRSystem::SystemManager secondManager;
+    auto first = std::make_unique<CountingTickObserver>(destructions);
+    auto second = std::make_unique<CountingTickObserver>(destructions);
+    auto *firstPointer = first.get();
+    auto *secondPointer = second.get();
+    firstManager.registerTickObserver(std::move(first));
+    EXPECT_EQ(secondManager.findTickObserver<CountingTickObserver>(), nullptr);
+    secondManager.registerTickObserver(std::move(second));
+
+    EXPECT_EQ(firstManager.findTickObserver<CountingTickObserver>(), firstPointer);
+    EXPECT_EQ(secondManager.findTickObserver<CountingTickObserver>(), secondPointer);
+    firstManager.clearTickObservers();
+    EXPECT_EQ(firstManager.findTickObserver<CountingTickObserver>(), nullptr);
+    EXPECT_EQ(secondManager.findTickObserver<CountingTickObserver>(), secondPointer);
+    EXPECT_EQ(destructions, 1);
+}
+
+TEST(TickObserverLookupTest, UnregisterAndClearRemoveOwnedMatchesAndAllowRegistration) {
+    int destructions = 0;
+    IRSystem::SystemManager manager;
+    const auto firstId =
+        manager.registerTickObserver(std::make_unique<CountingTickObserver>(destructions));
+    auto second = std::make_unique<CountingTickObserver>(destructions);
+    auto *secondPointer = second.get();
+    manager.registerTickObserver(std::move(second));
+    manager.unregisterTickObserver(firstId);
+    EXPECT_EQ(destructions, 1);
+    EXPECT_EQ(manager.findTickObserver<CountingTickObserver>(), secondPointer);
+    manager.clearTickObservers();
+    EXPECT_EQ(destructions, 2);
+    EXPECT_EQ(manager.findTickObserver<CountingTickObserver>(), nullptr);
+    manager.clearTickObservers();
+    EXPECT_EQ(destructions, 2);
+    auto replacement = std::make_unique<CountingTickObserver>(destructions);
+    auto *replacementPointer = replacement.get();
+    manager.registerTickObserver(std::move(replacement));
+    EXPECT_EQ(manager.findTickObserver<CountingTickObserver>(), replacementPointer);
+}
+
+#ifndef IR_RELEASE
+TEST(TickObserverLookupTest, RejectsWorkerLookup) {
+    IRJob::JobManager jobs(2);
+    IRSystem::SystemManager manager;
+    std::atomic<bool> rejected{false};
+    std::atomic<bool> unexpectedException{false};
+    IRJob::pinTo(1, [&] {
+        // Exceptions must not escape an enkiTS worker task.
+        try {
+            manager.findTickObserver<OtherTickObserver>();
+        } catch (const std::runtime_error &) {
+            rejected.store(true);
+        } catch (...) {
+            unexpectedException.store(true);
+        }
+    });
+    EXPECT_TRUE(rejected.load());
+    EXPECT_FALSE(unexpectedException.load());
+    EXPECT_EQ(manager.findTickObserver<OtherTickObserver>(), nullptr);
+}
+#endif
 
 class RegisterSystemTest : public testing::Test {
   protected:
