@@ -36,9 +36,11 @@ ir.sprite.playAnimation(spriteC, sheet, "spin", ir.sprite.PING_PONG, 0.5)
 -- draws from test_half_alpha.png, whose every texel is (255, 255, 255, 128),
 -- and is offset so it covers part of D and part of the bare background at
 -- both screenshot zooms. A blended SPRITE_TO_SCREEN draw shows D through E;
--- a replacing draw shows flat white.
+-- a replacing draw shows flat white. The quads are a fixed 16 px while the
+-- offset between them grows with zoom and output scale: one world unit apart
+-- they still overlap at zoom 2 on a 2x display, two apart they do not.
 local spriteD = ir.sprite.create(sheet, 0.0, 16.0, 2.0)
 ir.sprite.playAnimation(spriteD, sheet, "hold_red", ir.sprite.ONCE)
 
 local halfAlphaSheet = ir.sprite.loadSheet("test_half_alpha", ASSET_DIR)
-ir.sprite.create(halfAlphaSheet, 0.0, 14.0, 2.0)
+ir.sprite.create(halfAlphaSheet, 0.0, 15.0, 2.0)
