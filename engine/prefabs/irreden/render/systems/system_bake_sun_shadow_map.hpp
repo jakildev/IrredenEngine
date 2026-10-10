@@ -367,7 +367,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     // kBufferIndex_FrameDataSun) and re-bind — subData orphans the buffer on
     // Metal, same convention as patchFrameYawSplit. Used to zero the radius for
     // the PER-AXIS resolve dispatch. The shader's splat gate
-    // (`perAxisRoute == 0 && residualYaw == 0 && sunSplatMaxTexels > 0`) reads the
+    // (`residualYaw == 0 && sunSplatMaxTexels > 0`) reads the
     // *decode-path* predicate, not camera cardinality: the per-axis resolve
     // deliberately zeros residualYaw to reuse the cardinal recovery, so
     // it would spuriously trip the splat while rotating and change the per-axis

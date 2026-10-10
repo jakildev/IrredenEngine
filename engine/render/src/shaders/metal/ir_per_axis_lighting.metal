@@ -4,7 +4,7 @@
 // voxel / scatter shaders that share it, which perturbs their FP scheduling and
 // drifts SDF-edge pixels at the cardinal fast path (breaking the
 // residualYaw == 0 byte-identity guarantee). The lighting compute passes
-// (c_compute_voxel_ao, c_bake_sun_shadow_map,
+// (c_compute_voxel_ao,
 // c_compute_sun_shadow, c_lighting_to_trixel, c_light_overflow_faces) plus the
 // fog compute passes and per-axis sun-shadow cast/resolve bridge
 // (c_resolve_per_axis_screen_depth) include it. That set is the blast radius of

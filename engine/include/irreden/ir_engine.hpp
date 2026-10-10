@@ -55,6 +55,7 @@ namespace detail {
 // field, extend this function to read it, document under
 // `engine/world/CLAUDE.md` "Init-affecting runtime params".
 void applyPreInitLuaConfig(const char *configFile);
+void applyAutoRecordArgs();
 
 // Warns when --auto-screenshot or --auto-record was provided but no creation
 // registered a capture system. An unarmed --auto-screenshot run would
@@ -104,6 +105,7 @@ inline IRArgs::Parser &args() {
 // ignored rather than fatal: it is launcher plumbing, not the user's command
 // line, and the parser already rejects a bad flag value with exit 2.
 inline void init(const char *argv0, const char *configFileName = "config.lua") {
+    detail::applyAutoRecordArgs();
     const std::string configPreset = args().configPreset();
     const int requestedWorkerThreads = args().workerThreads();
     const std::optional<int> workerThreadsOverride =

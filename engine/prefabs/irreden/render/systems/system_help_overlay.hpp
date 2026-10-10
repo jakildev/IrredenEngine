@@ -9,6 +9,7 @@
 #include <irreden/render/components/component_help_overlay.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/gui_text_batch.hpp>
+#include <irreden/render/help_overlay_layout.hpp>
 #include <irreden/render/help_overlay_state.hpp>
 #include <irreden/render/trixel_font.hpp>
 #include <irreden/render/trixel_rect.hpp>
@@ -62,15 +63,21 @@ template <> struct System<HELP_OVERLAY> {
     IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
     IRPrefab::Widget::WidgetTheme theme_;
 
-    // Text is rebuilt only when the command registry actually grew — without
-    // that signal, a command registered after the first visible frame would
-    // never appear. `kUnbuiltGeneration` forces the first build even against a
-    // world with zero registered commands.
+    // Text is rebuilt only when one of its two inputs changed: the command
+    // registry grew — without that signal, a command registered after the
+    // first visible frame would never appear — or the GUI canvas changed
+    // width, which is what the rows are wrapped to. `kUnbuiltGeneration`
+    // forces the first build even against a world with zero registered
+    // commands.
     static constexpr std::uint32_t kUnbuiltGeneration = ~std::uint32_t{0};
     std::uint32_t cachedGeneration_ = kUnbuiltGeneration;
-    std::string text_;
-    int lineCount_ = 0;
-    int maxLineChars_ = 0;
+    int cachedCanvasWidth_ = 0;
+    IRPrefab::HelpOverlay::WrappedText layout_;
+
+    // Background panel as last painted, in GUI-canvas trixels. Zero-sized
+    // until the overlay is first drawn.
+    IRMath::ivec2 panelPos_ = IRMath::ivec2(0);
+    IRMath::ivec2 panelSize_ = IRMath::ivec2(0);
 
     bool visible_ = false;
 
@@ -112,19 +119,23 @@ template <> struct System<HELP_OVERLAY> {
         theme_ = IRPrefab::Widget::defaultTheme();
 
         const std::uint32_t generation = IRCommand::getCommandManager().getRegistrationGeneration();
-        if (generation != cachedGeneration_) {
+        if (generation != cachedGeneration_ || canvas_->size_.x != cachedCanvasWidth_) {
             buildText();
             cachedGeneration_ = generation;
+            cachedCanvasWidth_ = canvas_->size_.x;
         }
-        if (text_.empty()) {
+        if (layout_.text_.empty()) {
             return;
         }
 
         paintBackground();
 
+        // `layout_` is already wrapped to the canvas, so the batch's own
+        // wrapWidth stays at its default 0: wrapping twice would re-break
+        // lines that sit exactly at the budget.
         IRPrefab::GuiText::queueGuiText(
             textCmds_,
-            text_,
+            layout_.text_,
             kHelpOverlayPadding,
             canvas_->size_,
             theme_.textIdle_,
@@ -149,7 +160,7 @@ template <> struct System<HELP_OVERLAY> {
     }
 
   private:
-    // One line per registered PRESSED binding, key column left-aligned to a
+    // One row per registered PRESSED binding, key column left-aligned to a
     // fixed width so the descriptions form a readable second column:
     //
     //   COMMANDS
@@ -158,51 +169,54 @@ template <> struct System<HELP_OVERLAY> {
     //   W               CAMERA UP - PAN THE CAMERA UP WHILE HELD
     //   F1              TOGGLE HELP - SHOW OR HIDE THIS COMMAND LIST
     //
+    // A row wider than the canvas wraps onto continuation lines that hang at
+    // the description column, so a narrow GUI canvas (a portrait game
+    // resolution, a large gui_scale) loses no text off its right edge.
+    //
     // The header deliberately does NOT name the close key: the toggle binds
     // through the same named path as everything else, so it appears as its own
     // row above with whatever key this creation chose (F1 by default, but
     // random_voxels uses G and two others use backtick). A hardcoded
     // "(F1 TO CLOSE)" header would be wrong in three of the five adopters.
     //
-    // Built only on a registry-generation change, so this allocates at most
-    // once per registration burst rather than per frame.
+    // Built only when the registry generation or the canvas width changes, so
+    // this allocates at most once per registration burst or canvas resize
+    // rather than per frame.
     void buildText() {
         const auto &registrations = IRCommand::getCommandManager().getCommandRegistrations();
 
-        text_.clear();
-        lineCount_ = 0;
-        maxLineChars_ = 0;
+        layout_.clear();
         if (registrations.empty()) {
             return;
         }
 
-        text_.reserve(registrations.size() * 64 + 32);
-        appendLine("COMMANDS");
-        appendLine("");
+        // The panel is inset by the same margin on both sides, so the text
+        // may span the canvas less twice its left padding.
+        const int maxLineChars = IRMath::max(
+            (canvas_->size_.x - 2 * kHelpOverlayPadding.x) /
+                (IRRender::kGlyphStepX * kHelpOverlayFontSize),
+            1
+        );
 
+        layout_.text_.reserve(registrations.size() * 64 + 32);
+        layout_.appendRow("", "COMMANDS", 0, maxLineChars);
+        layout_.appendLine("");
+
+        std::string body;
         for (const auto &registration : registrations) {
-            std::string line = IRCommand::modifierString(registration.requiredModifiers) +
-                               IRCommand::keyButtonToString(registration.button);
-            // Pad to the description column. A longer binding simply pushes
-            // its own description right by one space rather than truncating.
-            while (static_cast<int>(line.size()) < kHelpOverlayBindingColumnChars - 1) {
-                line += ' ';
-            }
-            line += ' ';
-            line += registration.name;
+            body = registration.name;
             if (!registration.description.empty()) {
-                line += " - ";
-                line += registration.description;
+                body += " - ";
+                body += registration.description;
             }
-            appendLine(line);
+            layout_.appendRow(
+                IRCommand::modifierString(registration.requiredModifiers) +
+                    IRCommand::keyButtonToString(registration.button),
+                body,
+                kHelpOverlayBindingColumnChars,
+                maxLineChars
+            );
         }
-    }
-
-    void appendLine(const std::string &line) {
-        text_ += line;
-        text_ += '\n';
-        ++lineCount_;
-        maxLineChars_ = IRMath::max(maxLineChars_, static_cast<int>(line.size()));
     }
 
     // Panel behind the text. `measureText` has no fontSize parameter (it
@@ -210,34 +224,32 @@ template <> struct System<HELP_OVERLAY> {
     // counts collected during the build and scaled here — keeping the two in
     // sync through one multiply rather than a second measuring pass.
     void paintBackground() {
-        const int textW = maxLineChars_ * IRRender::kGlyphStepX * kHelpOverlayFontSize;
+        const int textW = layout_.maxLineChars_ * IRRender::kGlyphStepX * kHelpOverlayFontSize;
         // Standard N-line block height: N-1 inter-line steps plus one glyph
         // row. `kGlyphStepY` includes the line gap, so using it for the last
         // row too would pad the panel by that gap.
-        const int textH = (lineCount_ - 1) * IRRender::kGlyphStepY * kHelpOverlayFontSize +
+        const int textH = (layout_.lineCount_ - 1) * IRRender::kGlyphStepY * kHelpOverlayFontSize +
                           IRRender::kGlyphHeight * kHelpOverlayFontSize;
 
-        const IRMath::ivec2 bgPos{
+        panelPos_ = IRMath::ivec2{
             kHelpOverlayPadding.x - kHelpOverlayBgPadding.x,
             kHelpOverlayPadding.y - kHelpOverlayBgPadding.y
         };
-        const IRMath::ivec2 bgSize{
-            textW + 2 * kHelpOverlayBgPadding.x,
-            textH + 2 * kHelpOverlayBgPadding.y
-        };
+        panelSize_ =
+            IRMath::ivec2{textW + 2 * kHelpOverlayBgPadding.x, textH + 2 * kHelpOverlayBgPadding.y};
 
         IRRender::fillRect(
             *canvas_,
-            bgPos,
-            bgSize,
+            panelPos_,
+            panelSize_,
             theme_.panelBackground_,
             IRRender::kWidgetBackgroundDistance,
             bgScratch_
         );
         IRRender::drawBorder(
             *canvas_,
-            bgPos,
-            bgSize,
+            panelPos_,
+            panelSize_,
             theme_.borderIdle_,
             IRRender::kWidgetBorderDistance,
             theme_.borderThickness_,

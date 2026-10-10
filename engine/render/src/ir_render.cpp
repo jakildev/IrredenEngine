@@ -150,15 +150,39 @@ CompositeDepthSample readbackCompositeDepth(ivec2 px) {
     sample.valid_ = true;
     return sample;
 }
+vec2 windowPointsToFramebufferPx(vec2 windowPoints) {
+    return getRenderManager().windowPointsToFramebufferPx(windowPoints);
+}
+vec2 framebufferPxToWindowPoints(vec2 framebufferPx) {
+    return getRenderManager().framebufferPxToWindowPoints(framebufferPx);
+}
+
+namespace {
+
+// Viewport pixel of the output view's origin: the corner of the quad
+// FRAMEBUFFER_TO_SCREEN draws. The letterbox offset is measured to the output
+// resolution, and the quad extends half the scaled extra pixel buffer past it
+// on every side.
+vec2 outputViewOriginFramebufferPx() {
+    const vec2 bufferCorrection = vec2(IRConstants::kSizeExtraPixelBuffer) / vec2(2.0f) *
+                                  vec2(getRenderManager().getOutputScaleFactor());
+    return getRenderManager().screenToOutputWindowOffset() - bufferCorrection;
+}
+
+// Cursor position, in window points, that getMousePositionOutputView() reads
+// back as @p outputViewPx.
+vec2 outputViewPxToWindowPoints(vec2 outputViewPx) {
+    return framebufferPxToWindowPoints(outputViewPx + outputViewOriginFramebufferPx());
+}
+
+} // namespace
+
 vec2 getMousePositionOutputView() {
-    const vec2 raw = IRInput::getMousePosition();
-    const vec2 offset = getRenderManager().screenToOutputWindowOffset();
-    const ivec2 scale = getRenderManager().getOutputScaleFactor();
-    // screenToOutputOffset assumes outputResolution (game res); actual quad uses
-    // resolution+extraPixelBuffer
-    const vec2 bufferCorrection =
-        vec2(IRConstants::kSizeExtraPixelBuffer) / vec2(2.0f) * vec2(scale);
-    return raw - offset + bufferCorrection;
+    return windowPointsToFramebufferPx(IRInput::getMousePosition()) -
+           outputViewOriginFramebufferPx();
+}
+vec2 getMousePositionMainFramebuffer() {
+    return getMousePositionOutputView() / vec2(getRenderManager().getOutputScaleFactor());
 }
 ivec2 guiTrixelToScreenPx(vec2 guiTrixel) {
     const EntityId guiCanvas = getCanvas("gui");
@@ -176,15 +200,12 @@ ivec2 guiTrixelToScreenPx(vec2 guiTrixel) {
     );
 
     // Forward chain (System<HITBOX_MOUSE_TEST_GUI>::beginTick):
-    //   guiTrixel = getMousePositionOutputView() / fbRes * guiSize
-    // so the output-view pixel is guiTrixel / guiSize * fbRes, and the raw
-    // cursor position is that run back through getMousePositionOutputView.
-    const vec2 outputViewPx = guiTrixel / guiSize * fbRes;
-    const vec2 offset = getRenderManager().screenToOutputWindowOffset();
-    const ivec2 scale = getRenderManager().getOutputScaleFactor();
-    const vec2 bufferCorrection =
-        vec2(IRConstants::kSizeExtraPixelBuffer) / vec2(2.0f) * vec2(scale);
-    const vec2 screenPx = outputViewPx + offset - bufferCorrection;
+    //   guiTrixel = getMousePositionMainFramebuffer() / fbRes * guiSize
+    // so the main-framebuffer pixel is guiTrixel / guiSize * fbRes, and the
+    // cursor position is that run back through getMousePositionMainFramebuffer.
+    const vec2 outputViewPx =
+        guiTrixel / guiSize * fbRes * vec2(getRenderManager().getOutputScaleFactor());
+    const vec2 screenPx = outputViewPxToWindowPoints(outputViewPx);
     return ivec2(IRMath::round(screenPx.x), IRMath::round(screenPx.y));
 }
 vec2 getGameResolution() {
@@ -236,10 +257,7 @@ ivec2 canvasIsoToMouseScreenPx(vec2 canvasIso) {
     const vec2 isoScreen = canvasIso + IRRender::getEffectiveCameraIso() +
                            getMainCanvasSizeTrixels() / getCameraZoom() / vec2(2.0f);
     const vec2 outputView = isoScreen * IRRender::getTriangleStepSizeScreen();
-    const vec2 offset = getRenderManager().screenToOutputWindowOffset();
-    const vec2 bufferCorrection = vec2(IRConstants::kSizeExtraPixelBuffer) / vec2(2.0f) *
-                                  vec2(getRenderManager().getOutputScaleFactor());
-    return IRMath::roundVec(outputView + offset - bufferCorrection);
+    return IRMath::roundVec(outputViewPxToWindowPoints(outputView));
 }
 
 IRMath::CardinalIndex rasterCardinalIndex() {

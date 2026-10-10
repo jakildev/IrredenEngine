@@ -37,7 +37,10 @@ template <> struct System<CAMERA_MOUSE_PAN> {
 
         if (dragging_ && middleDown) {
             const vec2 currentMouse = IRInput::getMousePositionScreen();
-            const vec2 deltaPx = currentMouse - dragStartMouse_;
+            // The cursor moves in window points; the step size is in viewport
+            // pixels.
+            const vec2 deltaPx =
+                IRRender::windowPointsToFramebufferPx(currentMouse - dragStartMouse_);
             const vec2 deltaIso =
                 screenDeltaToIsoDelta(deltaPx, IRRender::getTriangleStepSizeScreen());
             camPos.pos_ = dragStartCameraPos_ +

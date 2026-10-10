@@ -8,7 +8,6 @@
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
-#include "ir_per_axis_lighting.glsl"
 // Shared caster/receiver sun-space projection + depth pack.
 #include "ir_sun_projection.glsl"
 
@@ -24,9 +23,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec2 voxelRenderOptions;
     uniform ivec2 voxelDispatchGrid;
     uniform int voxelCount;
-    // Smooth-camera-Z-yaw per-axis route selector (mirrors
-    // FrameDataVoxelToCanvas::perAxisRoute_). 0 = single canvas; nonzero = baking
-    // a per-axis voxel canvas into the shared sun map.
+    // Shared frame ABI; this pass consumes only single-canvas depth.
     uniform int perAxisRoute;
     uniform ivec2 canvasSizePixels;
     uniform ivec2 cullIsoMin;
@@ -36,10 +33,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform float residualYaw;
     uniform float _yawPadding;            // isDetachedCanvas in the full UBO
     uniform vec4 _faceDeformPadding[3];   // faceDeform[3] in the full UBO
-    // Per-slot world FaceId (0..5); used only on the per-axis path.
     uniform ivec4 visibleFaceIds;
-    // Members between here and perAxisStoreFrame are declared only to reach
-    // its std140 offset.
     uniform vec4 _voxelDepthAxisPadding;
     uniform vec4 _detachedWorldReceivePadding;
     uniform ivec4 _visibleIsoBoundsPadding;
@@ -47,9 +41,6 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     uniform ivec4 _overflowScratchLayoutPadding;
     uniform ivec4 _overflowSortStepPadding;
     uniform vec4 _detachedViewToWorldPadding;
-    // Frame the per-axis store is keyed in: .xy = store cell of the frame's iso
-    // origin, .z = cardinal index of the view the key positions are rotated
-    // into. FrameDataVoxelToCanvas::perAxisStoreFrame_ (offset 256).
     uniform ivec4 perAxisStoreFrame;
 };
 
@@ -127,39 +118,16 @@ void main() {
     }
 
     int encoded = imageLoad(trixelDistances, pixel).x;
-    // Per-axis canvas uses INT_MAX as the empty sentinel; single-canvas uses 65535.
-    if (encoded >= (perAxisRoute != 0 ? 0x7FFFFFFF : kEmptyDistanceEncoded)) {
+    if (encoded >= kEmptyDistanceEncoded) {
         return;
     }
-    // Shared decode helpers (ir_iso_common) own both encodings' bit layouts
-    // (per-axis / single-canvas, flip carrier). The bake is position-only — the
-    // flip bit never changes a caster's plane position, so it is decoded past,
-    // not consumed.
-    int rawDepth = decodeDepthRoute(encoded, perAxisRoute);
+    // Face/flip bits do not change a caster's plane position.
+    int rawDepth = decodeDepthSingle(encoded);
 
-    // Smooth camera Z-yaw: per-axis voxel content bakes into the same shared sun
-    // depth map as the main canvas (SDF/text) so voxels and shapes shadow each
-    // other under rotation. A per-axis canvas stores the world frame face-locally;
-    // the single canvas stores the cardinal-snapped iso pixel.
+    // Main SDF/text depth follows visual yaw. Per-axis and detached resolves
+    // have cardinal-layout depth; their dispatches supply zero residual yaw.
     vec3 pos3D;
-    if (perAxisRoute != 0) {
-        // LATTICE recovery, deliberately. This branch looks like an undischarged
-        // absolute-position consumer of the per-axis store, but per-axis content
-        // never arrives here: the C++ driver casts per-axis canvases through
-        // RESOLVE_PER_AXIS_SCREEN_DEPTH into a CARDINAL-layout resolve texture and
-        // bakes that with `perAxisRoute` at 0 (system_bake_sun_shadow_map.hpp — the
-        // per-axis resolve dispatch reads the main canvas's resident frame, whose
-        // route STAGE_1 resets to 0 before BAKE runs). That resolve bridge is where
-        // the sub-cell frac is applied. A raw per-axis canvas routed into this bake
-        // must recover with perAxisCellToWorld3DSubCell.
-        pos3D = perAxisCellToWorld3D(pixel, rawDepth, visibleFaceIds[decodeSlot(encoded)], perAxisStoreFrame);
-    } else if (residualYaw != 0.0) {
-        // Smooth-yaw cast. While rotating, the single canvas's remaining SDF/text
-        // content is stored at the FULL visualYaw with view-frame depth — recover
-        // with the matching smooth inverse so those casters bake at their true
-        // world positions. The CARDINAL-layout resolve textures (per-axis +
-        // world-placed) bake with residualYaw zeroed by the C++ driver, so they
-        // take the cardinal recovery.
+    if (residualYaw != 0.0) {
         pos3D = trixelCanvasPixelToWorld3DSmoothYaw(
             pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, visualYaw
         );
@@ -176,20 +144,11 @@ void main() {
         pos3D, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz
     );
 
-    // Coverage splat. The gate is a DECODE-PATH predicate, not a
-    // camera-cardinality one: the raw smooth-yaw single-canvas content
-    // (residualYaw != 0) and the per-axis face-local store (perAxisRoute != 0)
-    // skip it, so it engages for the cardinal main-canvas bake AND the two
-    // CARDINAL-layout resolve dispatches (per-axis, world-placed), which spoof
-    // residualYaw == 0 with perAxisRoute == 0 to reuse the cardinal recovery. The
-    // C++ driver disambiguates via sunSplatMaxTexels: it zeros the radius for the
-    // PER-AXIS resolve (patchSunSplatRadius) so the per-axis / smooth-yaw bakes are
-    // single-write by construction, but keeps it for the WORLD-PLACED resolve
-    // (whose cast carries the same point-scatter holes the splat fills). The
-    // atomicMin box leaves a dense bake unchanged (farther splats no-op where
-    // geometry is dense).
+    // Only cardinal-layout depth uses coverage splats. The driver suppresses
+    // them for the dense per-axis resolve, but keeps them for detached point
+    // scatter (docs/design/sun-shadow-bake-coverage.md).
     int radius = 0;
-    if (perAxisRoute == 0 && residualYaw == 0.0 && sunSplatMaxTexels > 0.0) {
+    if (residualYaw == 0.0 && sunSplatMaxTexels > 0.0) {
         radius = int(sunSplatMaxTexels);
     }
 

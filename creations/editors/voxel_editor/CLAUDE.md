@@ -15,7 +15,12 @@ Design log, findings and the authoring-session history:
   `component_field_page` the same on a field only the panel's pager reaches,
   `component_field_key` the same on a field whose name is not a Lua identifier,
   `parts_roundtrip` authors, moves, saves, clears, and reloads a two-part entity,
-  and `tier_scrub` proves per-part LOD bands and the tier scrubber.
+  `tier_scrub` proves per-part LOD bands and the tier scrubber, and
+  `mode_preview` proves the deferred render-mode switch allocates and releases
+  the selected part's private canvas while rotated and private-canvas parts stay
+  outside the axis-aligned edit pick.
+- `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
+  render reference set, discovered under this creation's `test/references/`.
 - `python3 scripts/author-entity.py <entity>` — replays an entity session twice
   and byte-compares the saved `.vxs` (rock, mushroom, bird at the default
   scene; `ant --scene-size 20 20 20`; `tree --scene-size 16 16 26`). A clean
@@ -61,6 +66,10 @@ render, because the aim and the pick share one screen mapping.
   editor never runs `PREFAB_LOD_PARTS`. The LOD panel's TIER slider and `,` /
   `.` pin `C_LodTierOverride` on the root and every part; FOLLOW ZOOM removes
   it. Neither touches the camera zoom.
+- Radial and linear arrays create independently editable parts. One array is
+  one undo record; rotational symmetry replays a stroke across the radial
+  copy group through the same stroke buffer. The selected source stays at the
+  pivot outside the copy group.
 
 - A recipe names cells; `Session::Builder` (`session_builder.hpp`) aims each
   click and mirrors the editable set in `OccupancyModel`, which casts the same

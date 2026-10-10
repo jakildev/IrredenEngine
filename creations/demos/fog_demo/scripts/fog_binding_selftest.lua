@@ -42,5 +42,30 @@ IRFog.setVisionLineOfSight(1, 1.5, 0.75)
 local losOk = pcall(IRFog.setVisionLineOfSight, 2, 1.5)
 assert(not losOk)
 
+-- Cap the first source 2.5 above its observer with a 1.5 fade: the plane
+-- stays visible, the band's end is hidden, and the second source keeps no
+-- ceiling. Invalid calls raise named errors and change nothing.
+IRFog.setVisionCeiling(0, 2.5, 1.5)
+local ceilingHeight, fadeHeight = IRFog.getVisionCeiling(0)
+assert(ceilingHeight == 2.5 and fadeHeight == 1.5)
+assert(select(1, IRFog.getVisionCeiling(1)) == -1)
+assert(IRFog.evalReveal(-10, 0, 0.5) == 1)
+assert(IRFog.evalReveal(-10, 0, -1) == 0)
+assert(not pcall(IRFog.setVisionCeiling, 2, 1))
+assert(not pcall(IRFog.setVisionCeiling, 0, 1, -1))
+assert(select(1, IRFog.getVisionCeiling(0)) == 2.5)
+
+-- The canvas treatment round-trips, clears explicitly, and rejects a
+-- density or tone outside [0, 1].
+IRFog.setRevealSurfaceTreatment(0.5, 0.6)
+local on, density, tone = IRFog.getRevealSurfaceTreatment()
+assert(on and density == 0.5 and math.abs(tone - 0.6) < 1e-6)
+IRFog.clearRevealSurfaceTreatment()
+assert(not select(1, IRFog.getRevealSurfaceTreatment()))
+assert(not pcall(IRFog.setRevealSurfaceTreatment, 2))
+assert(not pcall(IRFog.setRevealSurfaceTreatment, 0.5, -1))
+assert(not select(1, IRFog.getRevealSurfaceTreatment()))
+IRFog.setRevealSurfaceTreatment(0.25)
+
 fogSetupSelftestDone()
-print("LUA-FOG-SETUP sources=2 centers=-10,0;10,0 PASS")
+print("LUA-FOG-SETUP sources=2 centers=-10,0;10,0 ceiling=2.5,1.5 treatment=0.25 PASS")

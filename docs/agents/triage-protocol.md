@@ -200,3 +200,11 @@ single-module, defect / parity / test-debt) to stamp `fleet:agent-approved`
 directly; direction-shaped work stays recommend-only. That flip is a change
 to this protocol plus the role doc (gated self-config). Until then no
 verdict reaches a label without a human.
+
+The first granted class is the `fleet-unblock` skill's authority table
+([`skills/fleet-unblock.md`](skills/fleet-unblock.md)): within a
+human-cued run, the architect applies the approve and park verdicts for
+defect-shaped, epic-child and human-filed issues itself, through the same
+staging file and `fleet-triage-sweep apply`, and leaves direction-shaped
+entries unconfirmed for the human. The dispatched dry-run stays
+recommend-only.

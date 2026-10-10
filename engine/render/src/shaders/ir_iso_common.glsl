@@ -1100,6 +1100,23 @@ float fogVisionCircleReveal(vec2 worldXY, vec4 circle, float aa) {
     return 1.0 - smoothstep(circle.z - a, circle.z + a, dist);
 }
 
+// A source's ceiling factor at dzUp world units above its observer, from its
+// (ceilingHeight, fadeHeight, 0, 0) lane: 1 everywhere while the height is
+// negative (the ceiling is off), a step at the plane for a hard ceiling, and
+// a smoothstep fade reaching 0 at ceilingHeight + fadeHeight otherwise. It
+// scales one source before the maximum over sources, so an off ceiling leaves
+// every byte of the reveal unchanged. CPU twin: IRPrefab::Fog::detail::
+// ceilingVisibility; Metal twin in metal/ir_iso_common.metal.
+float fogCeilingVisibility(vec4 ceiling, float dzUp) {
+    if (ceiling.x < 0.0) {
+        return 1.0;
+    }
+    if (ceiling.y <= 0.0) {
+        return dzUp <= ceiling.x ? 1.0 : 0.0;
+    }
+    return 1.0 - smoothstep(ceiling.x, ceiling.x + ceiling.y, dzUp);
+}
+
 // The fog window is RG32UI: .r is the cell state integer (0 unexplored, 128
 // explored, 255 visible), .g the cell's channel mask. Every state consumer
 // decodes the red lane through this one definition. Mirrors kFogChannelDefault

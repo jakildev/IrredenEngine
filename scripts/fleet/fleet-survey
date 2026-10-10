@@ -1,0 +1,432 @@
+#!/usr/bin/env python3
+"""fleet-survey — why the fleet is idle, and what is really blocked.
+
+The read-only half of the fleet-unblock skill
+(docs/agents/skills/fleet-unblock.md). Reads the scout cache, the usage
+samples, the dispatcher log tail and one open-issue plus one open-PR listing
+per repo, and prints:
+
+  dispatch   cache age, pool utilisation, last dispatch, idle ticks since it
+  queue      per repo: claimable here / host-pinned away / ghost / in-flight /
+             blocked / in progress
+  parks      every fleet:awaiting-infra PR with its Parked-until issues resolved
+  stranded   fleet:wip PRs no label vouches for, and whether they conflict
+  approval   fleet:task issues no approval label has reached, epic children first
+  epics      fleet:epic umbrellas with children left, flagging ghost-only remainders
+  untriaged  issues with no fleet:/human: label (judge with fleet-triage-sweep)
+
+A *ghost* is a queued task the scout has stamped `shadow_merged_pr` on (a
+merged PR on its branch, usually `Refs`-only) with no open PR in flight: a
+worker that claims it finds nothing to build and declines, so it blocks a
+pane slot and reads as Available in every queue view.
+
+Read-only: never writes a label, never closes, never claims. The judgment
+layer (verdicts, staging, filing, the human checklist) is the skill's.
+
+Usage:
+  fleet-survey [--repo engine|game|all] [--json]
+  fleet-survey --state <state.json> --issues engine=<issues.json> --prs engine=<prs.json>
+               [--log <dispatcher.log>] [--usage-dir <dir>]        (hermetic; tests)
+"""
+import argparse
+import json
+import os
+import re
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import fleet_branch_match  # noqa: E402
+import fleet_completion  # noqa: E402
+import fleet_epic_membership  # noqa: E402
+import fleet_github  # noqa: E402
+import fleet_github_identity  # noqa: E402
+import fleet_poll_topology  # noqa: E402
+import fleet_task_class  # noqa: E402
+import fleet_validate_stack  # noqa: E402
+
+REPO_SLUGS = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
+ISSUE_FIELDS = "number,title,labels,body,createdAt,updatedAt"
+PR_FIELDS = "number,title,labels,body,mergeable,updatedAt,headRefName,baseRefName,isDraft"
+ISSUE_LIMIT, PR_LIMIT = "300", "100"
+LOG_TAIL_LINES = 4000
+STALE_CACHE_S = 300
+APPROVAL_LABELS = {"human:approved", "fleet:agent-approved"}
+PARK_LABELS = {"human:owned", "fleet:needs-human", "fleet:gated"}
+SKIP_TASK_LABELS = {"fleet:epic", "fleet:coding-improvement", "fleet:nit-of-pr"}
+OWNER_LABELS = fleet_branch_match.PARKED_PR_LABELS | {"fleet:awaiting-infra", "human:wip",
+                                                       "fleet:stalled"}
+OWNER_PREFIXES = ("fleet:claim-", "fleet:amending-", "fleet:reviewing-", "fleet:resolving-")
+# Byte-identical to reconcile R8's PARKED_UNTIL_RE in fleet-claim (bash-embedded,
+# so not importable); test_fleet_survey.py's drift guard holds the two together.
+# The last occurrence wins; the contiguous `#N` run after the marker is the set.
+PARKED_UNTIL_RE = re.compile(
+    r"^[ \t]*Parked-until:[ \t]*(#\d+\b(?:(?:[ \t]*,[ \t]*|[ \t]+)#\d+\b)*)",
+    re.IGNORECASE | re.MULTILINE)
+ISSUE_REF_RE = re.compile(r"#(\d+)")
+# Same-repo refs only: `owner/repo#N` is another repo's issue and stays unresolved.
+BLOCKER_RE = re.compile(r"(?<![\w/])#(\d+)")
+
+
+def cache_age_seconds(state, now):
+    # The in-file generated_at is the snapshot time (FLEET-RUNTIME.md); a
+    # missing or unparseable one reads as infinitely old, never as fresh.
+    return fleet_poll_topology.state_age_seconds(
+        state.get("generated_at"), mtime=0.0, now=now.timestamp())
+
+
+def label_set(item):
+    return set(fleet_completion.label_names(item.get("labels")))
+
+
+def gh_json(args):
+    result = fleet_github.run(args, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"gh {' '.join(args[:2])}: {result.stderr.strip()}")
+    return json.loads(result.stdout)
+
+
+def load_pairs(pairs):
+    out = {}
+    for pair in pairs or []:
+        key, _, path = pair.partition("=")
+        if not path:
+            raise SystemExit(f"fleet-survey: expected <repo>=<file>, got {pair!r}")
+        out[key] = json.loads(Path(path).read_text(encoding="utf-8"))
+    return out
+
+
+# --- sections ---------------------------------------------------------------
+
+def dispatch_section(state, usage_dir, log_path, now):
+    out = {"generated_at": state.get("generated_at"),
+           "cache_age_s": int(cache_age_seconds(state, now)),
+           "pools": {}, "last_dispatch": None, "idle_ticks": 0, "usage_gate": None}
+    # read_quota also returns the legacy unqualified file; the newest observation wins.
+    samples = {}
+    for identity in ("app", "user"):
+        records = fleet_github_identity.read_quota(usage_dir, "graphql", identity)
+        if records:
+            samples[f"github-{identity}-graphql"] = max(
+                records, key=lambda record: record.get("observed_at") or 0)
+    try:
+        samples["five_hour"] = json.loads((Path(usage_dir) / "five_hour.json").read_text())
+    except (OSError, ValueError):
+        pass
+    for name, sample in samples.items():
+        out["pools"][name] = {k: sample.get(k) for k in
+                              ("utilization", "used", "remaining", "interval_points_per_minute",
+                               "status", "observed_at")}
+    if log_path and Path(log_path).is_file():
+        lines = Path(log_path).read_text(encoding="utf-8", errors="replace").splitlines()
+        lines = lines[-LOG_TAIL_LINES:]
+        idle = 0
+        for line in lines:
+            if "] dispatching " in line:
+                out["last_dispatch"] = line.split("]", 1)[0].lstrip("[").split(" ", 1)[0]
+                idle = 0
+            elif "no claimable candidate left" in line or "no candidate could be claimed" in line:
+                idle += 1
+            elif "usage gate closed" in line:
+                out["usage_gate"] = line.split("] ", 1)[-1]
+        out["idle_ticks"] = idle
+    return out
+
+
+def task_title(task):
+    # The scout keeps the issue number in `title` and the headline in `summary`.
+    return task.get("summary") or task.get("title") or ""
+
+
+def open_blockers(task, open_issues):
+    # `blocked_by` is the body line's raw text: "(none)", or issue refs
+    # separated by commas. The scout clears `blocked` when a blocker has a PR
+    # to stack on, but the claim gate still refuses while that PR is
+    # unreviewable, so an open blocker is reported as blocked here either way.
+    named = BLOCKER_RE.findall(str(task.get("blocked_by") or ""))
+    return [int(n) for n in named if int(n) in open_issues]
+
+
+def queue_section(repo_state, host, open_issues):
+    buckets = {"claimable_here": [], "pinned_away": [], "ghost": [], "in_flight": [],
+               "blocked": [], "in_progress": []}
+    for task in repo_state.get("tasks", {}).get("in_progress", []):
+        buckets["in_progress"].append({"id": task.get("id"), "owner": task.get("owner"),
+                                       "title": task_title(task)})
+    for task in repo_state.get("tasks", {}).get("open", []):
+        row = {"id": task.get("id"), "model": task.get("model"), "title": task_title(task)}
+        inflight = task.get("inflight_pr") or {}
+        shadow = task.get("shadow_merged_pr") or {}
+        blockers = open_blockers(task, open_issues)
+        if task.get("blocked") or blockers:
+            row["blocked_by"] = task.get("blocked_by")
+            if blockers and not task.get("blocked"):
+                row["note"] = "scout: stackable, but the blocker's PR is not claimable"
+            buckets["blocked"].append(row)
+        elif inflight:
+            row["pr"] = inflight.get("number")
+            buckets["in_flight"].append(row)
+        elif shadow:
+            row["shadow_pr"] = shadow.get("number")
+            row["merged_at"] = shadow.get("mergedAt")
+            buckets["ghost"].append(row)
+        elif fleet_task_class._host_incompatible(task, host):
+            row["needs"] = fleet_task_class._required_host(task) or "gl-host"
+            buckets["pinned_away"].append(row)
+        else:
+            buckets["claimable_here"].append(row)
+    return buckets
+
+
+def parks_section(prs, open_issues, ghosts):
+    rows = []
+    for pr in prs:
+        if "fleet:awaiting-infra" not in label_set(pr):
+            continue
+        matches = PARKED_UNTIL_RE.findall(pr.get("body") or "")
+        named = [int(n) for n in ISSUE_REF_RE.findall(matches[-1])] if matches else []
+        row = {"pr": pr["number"], "title": pr.get("title"), "parked_until": named,
+               "mergeable": pr.get("mergeable"), "issues": {}}
+        verdicts = []
+        for num in named:
+            issue = open_issues.get(num)
+            if issue is None:
+                row["issues"][num] = "not open"
+            elif num in ghosts:
+                row["issues"][num] = f"ghost (shadowed by PR #{ghosts[num]})"
+                verdicts.append("ghost")
+            elif "fleet:needs-human" in label_set(issue):
+                row["issues"][num] = "open, fleet:needs-human"
+                verdicts.append("needs-human")
+            else:
+                row["issues"][num] = "open"
+                verdicts.append("open")
+        if not named:
+            row["verdict"] = "malformed: no parsable Parked-until line"
+        elif not verdicts:
+            row["verdict"] = "lifted: every named issue closed; waits on reconcile R8"
+        elif "ghost" in verdicts:
+            row["verdict"] = "parked on a delivered issue; close the ghost to lift it"
+        elif "needs-human" in verdicts:
+            row["verdict"] = "waits on a human decision"
+        else:
+            row["verdict"] = "legit: named issue still open"
+        rows.append(row)
+    return rows
+
+
+def stranded_section(prs):
+    rows = []
+    for pr in prs:
+        labels = label_set(pr)
+        if "fleet:wip" not in labels:
+            continue
+        vouched = (labels & OWNER_LABELS) or any(
+            lab.startswith(OWNER_PREFIXES) for lab in labels)
+        if vouched and "fleet:design-unblocked" not in labels:
+            continue
+        rows.append({"pr": pr["number"], "title": pr.get("title"),
+                     "mergeable": pr.get("mergeable"), "updatedAt": pr.get("updatedAt"),
+                     "state": ("resume pending (fleet:design-unblocked)"
+                               if "fleet:design-unblocked" in labels
+                               else "stranded: wip with no owner label (R7 re-arms)")})
+    return rows
+
+
+def approval_section(open_issues):
+    rows = []
+    for num, issue in sorted(open_issues.items()):
+        labels = label_set(issue)
+        decided = APPROVAL_LABELS | PARK_LABELS | SKIP_TASK_LABELS
+        if "fleet:task" not in labels or labels & decided:
+            continue
+        parents = fleet_epic_membership.canonical_epic_refs(issue.get("body") or "")
+        rows.append({"issue": num, "title": issue.get("title"),
+                     "epic": parents[0] if parents else None,
+                     "createdAt": issue.get("createdAt")})
+    rows.sort(key=lambda r: (r["epic"] is None, r["issue"]))
+    return rows
+
+
+def epics_section(open_issues, ghosts, prs_by_issue):
+    rows = []
+    for num, issue in sorted(open_issues.items()):
+        if "fleet:epic" not in label_set(issue):
+            continue
+        children = fleet_validate_stack.parse_checklist(issue.get("body") or "")
+        left = {}
+        for child, checked in children.items():
+            if checked:
+                continue
+            if child not in open_issues:
+                left[child] = "closed, box unchecked"
+            elif child in ghosts:
+                left[child] = f"ghost (shadowed by PR #{ghosts[child]})"
+            elif child in prs_by_issue:
+                left[child] = f"in flight: PR #{prs_by_issue[child]}"
+            else:
+                left[child] = "open"
+        done = all(v != "open" and not v.startswith("in flight") for v in left.values())
+        rows.append({"epic": num, "title": issue.get("title"), "children": len(children),
+                     "left": left, "close_out_ready": bool(children) and done})
+    return rows
+
+
+def untriaged_section(open_issues):
+    return [num for num, issue in sorted(open_issues.items())
+            if not any(lab.startswith(("fleet:", "human:")) for lab in label_set(issue))]
+
+
+def survey(state, issues_by_repo, prs_by_repo, host, usage_dir, log_path, now=None):
+    now = now or datetime.now(timezone.utc)
+    report = {"host": host, "dispatch": dispatch_section(state, usage_dir, log_path, now),
+              "repos": {}}
+    for key, repo_state in state.get("repos", {}).items():
+        if key not in issues_by_repo:
+            continue
+        open_issues = {int(i["number"]): i for i in issues_by_repo[key]}
+        prs = prs_by_repo.get(key, [])
+        queue = queue_section(repo_state, host, open_issues)
+        ghosts = {int(str(r["id"]).lstrip("#")): r["shadow_pr"] for r in queue["ghost"]}
+        # The scout's in-flight link accepts either the branch convention or a
+        # body closing ref; an epic child is in flight under both readings. The
+        # own-repo split keeps a qualified ref to this repo and drops a ref to
+        # the other fleet repo, as the scout's closes_issues does.
+        prs_by_issue = {}
+        for pr in prs:
+            linked = [fleet_branch_match.issue_from_branch(pr.get("headRefName") or "")]
+            linked += fleet_branch_match.split_closed_issue_refs(pr.get("body") or "", key)[0]
+            for issue in linked:
+                if issue is not None:
+                    prs_by_issue.setdefault(issue, pr["number"])
+        report["repos"][key] = {
+            "queue": queue,
+            "parks": parks_section(prs, open_issues, ghosts),
+            "stranded": stranded_section(prs),
+            "approval_gap": approval_section(open_issues),
+            "epics": epics_section(open_issues, ghosts, prs_by_issue),
+            "untriaged": untriaged_section(open_issues),
+        }
+    return report
+
+
+# --- rendering --------------------------------------------------------------
+
+def render(report):
+    out = []
+    d = report["dispatch"]
+    out.append(f"fleet-survey  host={report['host']}  cache age {d['cache_age_s']}s")
+    out.append("\n## Dispatch")
+    out.append(f"  last dispatch: {d['last_dispatch'] or '(none in log tail)'}; "
+               f"idle ticks since: {d['idle_ticks']}")
+    if d["usage_gate"]:
+        out.append(f"  last usage-gate line: {d['usage_gate']}")
+    for name, pool in d["pools"].items():
+        out.append(f"  {name}: util {pool.get('utilization')}  used {pool.get('used')}  "
+                   f"rate/min {pool.get('interval_points_per_minute')}  {pool.get('status') or ''}")
+    for key, repo in report["repos"].items():
+        q = repo["queue"]
+        out.append(f"\n## {key}: queue")
+        for bucket in ("claimable_here", "pinned_away", "ghost", "in_flight", "blocked",
+                       "in_progress"):
+            rows = q[bucket]
+            out.append(f"  {bucket} ({len(rows)})")
+            for r in rows:
+                extra = ""
+                if bucket == "ghost":
+                    extra = f"  <- merged PR #{r['shadow_pr']} ({(r.get('merged_at') or '')[:10]})"
+                elif bucket == "pinned_away":
+                    extra = f"  needs {r['needs']}"
+                elif bucket == "in_flight":
+                    extra = f"  PR #{r['pr']}"
+                elif bucket == "blocked":
+                    extra = f"  by {r.get('blocked_by')}"
+                    if r.get("note"):
+                        extra += f"  ({r['note']})"
+                elif bucket == "in_progress":
+                    extra = f"  {r.get('owner')}"
+                out.append(f"    {r['id']}  {(r.get('title') or '')[:70]}{extra}")
+        out.append(f"\n## {key}: parks (fleet:awaiting-infra)")
+        for r in repo["parks"]:
+            out.append(f"  PR #{r['pr']}  {r['verdict']}  [{r['mergeable']}]")
+            for num, status in r["issues"].items():
+                out.append(f"      #{num}: {status}")
+        out.append(f"\n## {key}: stranded wip")
+        for r in repo["stranded"]:
+            out.append(f"  PR #{r['pr']}  {r['state']}  [{r['mergeable']}]  "
+                       f"{(r.get('title') or '')[:60]}")
+        out.append(f"\n## {key}: approval gap (fleet:task, no approval)")
+        for r in repo["approval_gap"]:
+            epic = f"  (epic #{r['epic']})" if r["epic"] else ""
+            out.append(f"  #{r['issue']}  {(r.get('title') or '')[:70]}{epic}")
+        out.append(f"\n## {key}: epics")
+        for r in repo["epics"]:
+            flag = "  <- close-out ready" if r["close_out_ready"] else ""
+            out.append(f"  #{r['epic']}  {len(r['left'])} of {r['children']} left{flag}")
+            for child, status in r["left"].items():
+                out.append(f"      #{child}: {status}")
+        out.append(f"\n## {key}: untriaged ({len(repo['untriaged'])})  "
+                   f"-> fleet-triage-sweep list --repo {key}")
+        if repo["untriaged"]:
+            out.append("  " + " ".join(f"#{n}" for n in repo["untriaged"]))
+    return "\n".join(out)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    parser.add_argument("--repo", default="all", choices=(*REPO_SLUGS, "all"),
+                        help="repo to survey (default all)")
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--state", help="scout cache (default ~/.fleet/state/state.json)")
+    parser.add_argument("--issues", action="append", metavar="REPO=FILE",
+                        help="open-issue listing from a file instead of gh (tests)")
+    parser.add_argument("--prs", action="append", metavar="REPO=FILE",
+                        help="open-PR listing from a file instead of gh (tests)")
+    parser.add_argument("--log", help="dispatcher log (default ~/.fleet/logs/dispatcher.log)")
+    parser.add_argument("--usage-dir", help="usage samples dir (default ~/.fleet/state/usage)")
+    parser.add_argument("--host", help="override the host key (default: this host)")
+    parser.add_argument("--allow-stale", action="store_true",
+                        help="survey a scout cache older than the staleness bound anyway")
+    args = parser.parse_args(argv)
+
+    fleet_home = Path(os.environ.get("FLEET_HOME", Path.home() / ".fleet"))
+    state_path = Path(args.state) if args.state else fleet_home / "state" / "state.json"
+    if not state_path.is_file():
+        print("fleet-survey: scout cache missing — run fleet-up", file=sys.stderr)
+        return 2
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    hermetic = bool(args.issues)
+    if not hermetic and not args.allow_stale and (
+            cache_age_seconds(state, datetime.now(timezone.utc)) > STALE_CACHE_S):
+        print("fleet-survey: scout cache stale or missing — run fleet-up", file=sys.stderr)
+        return 2
+    issues = load_pairs(args.issues)
+    prs = load_pairs(args.prs)
+    if not hermetic:
+        cached = state.get("repos", {})
+        # `all` skips a repo this host does not carry; a repo asked for by
+        # name and absent would otherwise print a report with no repo in it.
+        if args.repo != "all" and args.repo not in cached:
+            print(f"fleet-survey: the scout cache has no {args.repo} repo", file=sys.stderr)
+            return 2
+        keys = list(REPO_SLUGS) if args.repo == "all" else [args.repo]
+        for key in keys:
+            if key not in cached:
+                continue
+            slug = REPO_SLUGS[key]
+            issues[key] = gh_json(["issue", "list", "--repo", slug, "--state", "open",
+                                   "--limit", ISSUE_LIMIT, "--json", ISSUE_FIELDS])
+            prs[key] = gh_json(["pr", "list", "--repo", slug, "--state", "open",
+                                "--limit", PR_LIMIT, "--json", PR_FIELDS])
+    log_path = args.log
+    if log_path is None and not hermetic:
+        log_path = fleet_home / "logs" / "dispatcher.log"
+    report = survey(state, issues, prs, args.host or fleet_task_class._current_host(),
+                    args.usage_dir or fleet_home / "state" / "usage", log_path)
+    print(json.dumps(report, indent=2) if args.json else render(report))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

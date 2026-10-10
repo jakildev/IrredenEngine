@@ -99,8 +99,10 @@ RenderManager::RenderManager(
             )
         }
     ,   m_viewport{0}
+    ,   m_windowExtentPoints{0}
     ,   m_gameResolution{gameResolution}
     ,   m_outputResolution{0}
+    ,   m_outputScaleFactor{1}
     ,   m_fitMode{fitMode}
     // ,   m_bufferVoxelPositions{
     //         nullptr,
@@ -201,7 +203,8 @@ RenderManager::~RenderManager() {
 void RenderManager::beginFrame() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_RENDER);
 
-    IRWindow::getWindowSize(m_viewport);
+    IRWindow::getFramebufferSize(m_viewport);
+    IRWindow::getWindowSize(m_windowExtentPoints);
     updateOutputResolution();
     updateDefaultRotationPivotFocus();
     IRRender::device()->beginFrame();
@@ -620,6 +623,20 @@ void RenderManager::updateOutputResolution() {
 
 vec2 RenderManager::screenToOutputWindowOffset() const {
     return vec2(m_viewport.x - m_outputResolution.x, m_viewport.y - m_outputResolution.y) / vec2(2);
+}
+
+vec2 RenderManager::windowPointsToFramebufferPx(vec2 windowPoints) const {
+    if (m_windowExtentPoints.x <= 0 || m_windowExtentPoints.y <= 0) {
+        return vec2(0.0f);
+    }
+    return windowPoints * vec2(m_viewport) / vec2(m_windowExtentPoints);
+}
+
+vec2 RenderManager::framebufferPxToWindowPoints(vec2 framebufferPx) const {
+    if (m_viewport.x <= 0 || m_viewport.y <= 0) {
+        return vec2(0.0f);
+    }
+    return framebufferPx * vec2(m_windowExtentPoints) / vec2(m_viewport);
 }
 
 void RenderManager::resizeGuiCanvas(ivec2 newSize) {

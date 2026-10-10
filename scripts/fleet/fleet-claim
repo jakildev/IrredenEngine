@@ -1675,7 +1675,8 @@ cmd_claim() {
     local stackable_branch=""
     if [[ -n "$stackable_pr" ]]; then
         local pr_json pr_state pr_head
-        if ! pr_json=$(gh pr view "$stackable_pr" --json state,headRefName,labels 2>/dev/null); then
+        if ! pr_json=$(gh pr view "$stackable_pr" --repo "$(repo_from_ns)" \
+                --json state,headRefName,labels 2>/dev/null); then
             echo "fleet-claim claim: failed to fetch PR state for $stackable_pr" >&2
             return 1
         fi
@@ -1703,7 +1704,8 @@ cmd_claim() {
                 local pr_labels stack_diff stack_reject
                 pr_labels=$(printf '%s' "$pr_json" \
                     | python3 -c 'import sys, json; print("\n".join(l.get("name","") for l in json.load(sys.stdin).get("labels", [])))')
-                if ! stack_diff=$(gh pr diff "$stackable_pr" --name-only 2>/dev/null); then
+                if ! stack_diff=$(gh pr diff "$stackable_pr" \
+                        --repo "$(repo_from_ns)" --name-only 2>/dev/null); then
                     echo "fleet-claim claim: could not fetch diff for $stackable_pr — refusing to stack on an unverifiable base" >&2
                     return 1
                 fi
@@ -4343,7 +4345,11 @@ cmd_reconcile() {
         > "$findings" <<'PYEOF'
 import sys, os, json, re
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
-from fleet_branch_match import issue_from_branch, PARKED_PR_LABELS
+from fleet_branch_match import (
+    issue_from_branch,
+    parked_until_issue_numbers,
+    PARKED_PR_LABELS,
+)
 import fleet_claim_liveness as liveness
 
 work, host, now_s, ttl_s = sys.argv[1:5]
@@ -4763,7 +4769,8 @@ for repo in repos:
 # PR need not have a resolvable backing-issue mapping, and pr_by_issue entries
 # carry only number+labels (the body, which holds the marker, is dropped).
 #
-# A parsable marker yields an apply-carrying finding, which reconcile_escalate_drift
+# `parked_until_issue_numbers` owns the shared marker grammar. A parsable marker
+# yields an apply-carrying finding, which reconcile_escalate_drift
 # skips — so a legitimately long park never files a state-drift tracker. A
 # missing/malformed marker yields a FLAG-ONLY finding, so it accrues normally
 # and escalates to a human: an un-parseable park is unrecoverable state, since
@@ -4784,12 +4791,6 @@ for repo in repos:
 # sibling `Blocked by:` parser is the cautionary case in the other direction: it
 # collects every ref on the line, so a parenthetical aside reads as an extra
 # blocker and strands the row. Widen the trailing match, never the capture.
-#
-# The line start stays anchored so a mention inside prose is not a marker.
-PARKED_UNTIL_RE = re.compile(
-    r"^[ \t]*Parked-until:[ \t]*(#\d+\b(?:(?:[ \t]*,[ \t]*|[ \t]+)#\d+\b)*)",
-    re.IGNORECASE | re.MULTILINE)
-
 for repo in repos:
     d = repo_data[repo]
     for pr in d["prs"]:
@@ -4797,15 +4798,14 @@ for repo in repos:
             continue
         # Last occurrence wins: a re-park appends a fresh line rather than
         # rewriting the body, so earlier markers are inert history.
-        marks = PARKED_UNTIL_RE.findall(pr.get("body", "") or "")
-        if not marks:
+        blockers = parked_until_issue_numbers(pr.get("body", ""))
+        if not blockers:
             add("R8", repo, pr["number"], "pr", ["pr", "label"],
                 "fleet:awaiting-infra with no parsable 'Parked-until: #N' line "
                 "in the PR body; nothing can tell reconcile when the park ends "
                 "— add the line or drop the label",
                 "flag-only (R8)")
             continue
-        blockers = [int(n) for n in re.findall(r"#(\d+)", marks[-1])]
         named = ", ".join("#%d" % n for n in blockers)
         add("R8", repo, pr["number"], "pr", ["pr", "label"],
             "parked behind %s; remove fleet:awaiting-infra once %s "

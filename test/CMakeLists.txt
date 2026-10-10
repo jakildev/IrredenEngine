@@ -14,6 +14,7 @@ add_executable(IrredenEngineTest
   asset/voxel_set_shapes_test.cpp
   audio/audio_capture_test.cpp
   audio/audio_playback_test.cpp
+  audio/synthetic_audio_capture_test.cpp
   audio/midi_in_tick_test.cpp
   audio/midi_message_ring_test.cpp
   audio/midi_multiport_test.cpp
@@ -22,6 +23,7 @@ add_executable(IrredenEngineTest
   command/keyboard_dispatch_test.cpp
   # Replaces the global operator new/delete for the whole binary.
   common/allocation_counter.cpp
+  common/array_transforms_test.cpp
   common/command_registry_test.cpp
   common/ir_args_test.cpp
   common/ir_platform_test.cpp
@@ -107,6 +109,7 @@ add_executable(IrredenEngineTest
   render/light_volume_dispatch_test.cpp
   render/metal_sticky_untrack_test.cpp
   render/named_resource_probe_test.cpp
+  render/help_overlay_layout_test.cpp
   render/rendering_resource_manager_test.cpp
   render/opengl_shader_include_test.cpp
   render/per_canvas_light_scope_test.cpp
@@ -180,6 +183,7 @@ add_executable(IrredenEngineTest
   job/worker_block_queue_test.cpp
   utility/ir_utility_test.cpp
   video/auto_screenshot_helpers_test.cpp
+  video/auto_record_pacing_test.cpp
   video/capture_output_resolution_test.cpp
   video/recording_state_test.cpp
   window/window_mode_test.cpp

@@ -79,7 +79,7 @@ compares these controls and mixed main/detached canvases before and after the
 two-write removal. These are end-to-end regression checks, not isolated kernel
 proofs or a claim that every inherited visual artifact is resolved.
 
-## Next cleanup slices
+## Receiver-edge validation
 
 The receiver-edge investigation found a producer/consumer mismatch: smooth-yaw
 solid BOX emissions carry world-face slots, while the strict-query miss path
@@ -102,11 +102,6 @@ seventeen CanvasStress/explored-fog beauty frames byte-for-byte.
 The [receiver-edge evidence](../pr-screenshots/codex/receiver-edge-validation/README.md)
 records the probes, analytical fixtures and before/after controls.
 
-| Priority | Finding | Bounded change and required proof |
-|---|---|---|
-| 3 | Fallback sun bake retains a raw per-axis branch its driver does not use | Prove route-zero dispatches, then remove the branch and redundant include while preserving ABI and live fallback casting. Exercise detached casting and splat-enabled cases. |
-| 3 | Source-face shadow-debug palette repeats an existing helper | Delegate to `surfaceShadowDebugColor` in both shader backends; compare diagnostic captures. |
-
 The three inherited macOS reference outliers are reconciled with the existing
 surface policy after signed-face proofs: floor edges select -Y; the fog panel's
 emitter and finite recovery both select -X. Native probes establish the actual
@@ -127,6 +122,29 @@ and explored-state work through master `a08e0a44a`. The shared dispatch helper
 lives in both new AO bodies, preserving their smooth-yaw specialization.
 Consolidating integer addressing is distinct from merging view/model/world-space
 transforms or changing quantization and binding restoration.
+
+## Implemented slice: fallback shadow and diagnostic cleanup
+
+The legacy depth bake consumes single-canvas encoded depth throughout: main
+SDF/text input follows visual yaw; per-axis and detached input first resolve to
+cardinal layout. Producer completion and lighting restoration publish route zero.
+Both shader backends therefore use `decodeDepthSingle` directly and omit raw
+per-axis reconstruction and its include. The shared frame ABI stays unchanged.
+Per-axis resolve still disables coverage splats; detached resolve retains them.
+This does not change the default finite-face caster path or shadow softness.
+
+Source-face shadow diagnostics use the existing `surfaceShadowDebugColor` helper.
+`test_render_legacy_shadow_bake.py` executes extracted producer restoration, bake
+orchestration and both shader entry bodies with recording adapters. Its poisoned
+route inputs, 256 CPU configurations, 540 shader cases per backend and 21 mutation
+controls check encoding, dispatch selection, yaw and splat restoration. Projection
+math, device bindings and real buffer ABI remain outside that adapter's proof.
+The test shares brace extraction with the existing visibility-routing controls.
+
+[Native capture evidence](../pr-screenshots/codex/shadow-fallback-cleanup/README.md)
+compares legacy beauty, legacy shadow diagnostics and default-path shadow diagnostics
+at cardinal and non-cardinal yaw. These are behavior-preservation controls;
+legacy point-scatter artifacts remain outside this cleanup.
 
 ## Lifecycle investigations requiring their own fixes
 

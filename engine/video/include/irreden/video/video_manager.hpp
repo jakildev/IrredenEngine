@@ -65,6 +65,8 @@ class VideoManager {
 
     [[nodiscard]] bool isRecording() const;
     [[nodiscard]] RecordingState recordingState() const;
+    [[nodiscard]] bool isAudioInputArmed() const;
+    [[nodiscard]] std::int64_t capturedUpdateTicks() const;
     [[nodiscard]] std::uint64_t getFrameCount() const;
     [[nodiscard]] const std::string &getLastError() const;
 

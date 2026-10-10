@@ -10,9 +10,12 @@ RENDER) so each stage sees the state relevant to its tick.
 
 - `checkKeyMouseButton(button, status)` — is this button in this state?
 - `checkKeyMouseModifiers(requiredMods, blockedMods)` — Shift/Ctrl/Alt mask check.
-- `getMousePosition()` — cursor position in iso/world space for the current
-  pipeline event's snapshot.
-- `getMousePositionScreen()` — cursor position in screen (pixel) space.
+- `getMousePosition()` — cursor position in logical window points (top-left
+  origin, the GLFW convention) for the current pipeline event's snapshot.
+- `getMousePositionScreen()` — the same, with y in the backend's screen
+  direction. Both are points, not framebuffer pixels: a HiDPI framebuffer is
+  denser than the window, and `IRRender::windowPointsToFramebufferPx` is the
+  one conversion to the pixels `IRRender::getViewport()` is in.
 - Per-button press/release frame counters.
 
 ### Synthetic input (headless GUI/mouse verification, #1793)
@@ -22,7 +25,7 @@ RENDER) so each stage sees the state relevant to its tick.
   the cursor and press buttons. Run-scoped (mirrors
   `IRVideo::isAutoCaptureActive()`'s fixed-step flip); inactive path stays
   byte-identical to GLFW-only. `isSyntheticInputActive()` reports the flag.
-- `injectMouseMove(screenPx)` / `injectButton(button, status)` /
+- `injectMouseMove(screenPx)` (window points) / `injectButton(button, status)` /
   `injectScroll(dx, dy)` — feed the same snapshot the GLFW path writes;
   applied at the next frame boundary (one batch per `tick()`). The inject
   calls assert if `beginSyntheticInput()` was not called first. Design:
@@ -46,7 +49,7 @@ IRInput.ButtonStatuses.PRESSED
 IRInput.beginSyntheticInput()
 IRInput.isSyntheticInputActive()          -- → bool
 IRInput.injectButton(button, status)      -- integers from the tables above
-IRInput.injectMouseMove(x, y)            -- screen pixels
+IRInput.injectMouseMove(x, y)            -- window points
 IRInput.injectScroll(dx, dy)
 ```
 

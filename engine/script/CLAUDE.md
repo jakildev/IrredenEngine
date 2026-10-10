@@ -169,7 +169,7 @@ voxel mutation is main-thread setup work, never `PARALLEL_FOR` tick work.
   exist); `setExploredTimeMs` is the creation's monotonic decay clock; both raise named errors, state unchanged.
 
 The tested examples are [`fog_binding_selftest.lua`](../../creations/demos/fog_demo/scripts/fog_binding_selftest.lua) and its [cap/governance companion](../../creations/demos/fog_demo/scripts/fog_binding_cap_selftest.lua).
-These are setup/EVAL APIs, not tick intrinsics. `setVisionLineOfSight(slot, eye[, softness])` gates a slot the vision calls returned; it needs `FOG_LOS_BUILD`.
+These are setup/EVAL APIs, not tick intrinsics. `setVisionLineOfSight(slot, eye[, softness])` gates a slot the vision calls returned; it needs `FOG_LOS_BUILD`. `setVisionCeiling(slot, height[, fade])` / `getVisionCeiling(slot)` cap a slot upward (negative height = off; every slot starts off); `setRevealSurfaceTreatment(density[, capTone])`, `getRevealSurfaceTreatment()` → `on, density, tone`, and `clearRevealSurfaceTreatment()` own the canvas's partial-cut dissolve and cap tone, both in [0, 1]; all raise named errors, state unchanged.
 
 - **`IRModifier`:** `add*` writes `C_Modifiers`; resolved values need
   `registerResolverPipeline()` in UPDATE. Wrong types no-op; cache ids hot.

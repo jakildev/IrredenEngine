@@ -233,6 +233,14 @@ RecordingState VideoManager::recordingState() const {
     return recordingStateFrom(m_finalizeInProgress.load(), m_captureEnabled.load());
 }
 
+bool VideoManager::isAudioInputArmed() const {
+    return m_audioInputArmed;
+}
+
+std::int64_t VideoManager::capturedUpdateTicks() const {
+    return m_totalFixedUpdates;
+}
+
 std::uint64_t VideoManager::getFrameCount() const {
     return m_videoRecorder.getVideoFrameCount();
 }

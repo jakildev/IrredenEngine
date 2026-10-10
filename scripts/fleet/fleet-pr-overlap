@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Grade this branch against every open PR before publication.
 
-Prints one `#<PR> <path> conflicts|clean|upstream` row per shared path and a
-closing `VERDICT: clean|overlap|block` line.
+Prints one `#<PR> <path> conflicts|clean|sequenced|upstream` row per shared
+path and a closing `VERDICT: clean|overlap|sequenced|block` line.
 
-Exit: 0 clean, 1 overlap (informational), 3 block (do not publish),
+Exit: 0 clean, 1 overlap or sequenced (informational), 3 block (do not publish),
 2 the tool could not grade (usage, environment, or a population that moved).
 
 `--check-git-version [TEXT]` only grades a git against the merge-tree floor
@@ -22,6 +22,10 @@ from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import fleet_github  # noqa: E402
+from fleet_branch_match import (  # noqa: E402
+    body_would_close_refs,
+    parked_until_issue_numbers,
+)
 
 REPO_SLUGS = {
     "engine": "jakildev/IrredenEngine",
@@ -29,7 +33,8 @@ REPO_SLUGS = {
 }
 DEFAULT_LIMIT = 1000
 PR_FIELDS = (
-    "number,title,headRefName,headRefOid,baseRefName,isCrossRepository,changedFiles,files"
+    "number,title,headRefName,headRefOid,baseRefName,isCrossRepository,changedFiles,"
+    "files,body,labels"
 )
 TOTAL_COUNT_QUERY = (
     "query($owner:String!,$name:String!){repository(owner:$owner,name:$name)"
@@ -174,6 +179,7 @@ def validate_rows(rows):
         try:
             number = int(row["number"])
             files = row["files"]
+            labels = row["labels"]
             entry = {
                 "number": number,
                 "headRefName": str(row["headRefName"]),
@@ -183,6 +189,8 @@ def validate_rows(rows):
                 "changedFiles": int(row["changedFiles"]),
                 "files": {str(item["path"]) for item in files},
                 "files_count": len(files),
+                "body": str(row["body"] or ""),
+                "labels": tuple(sorted(str(label["name"]) for label in labels)),
             }
         except (KeyError, TypeError, ValueError) as exc:
             raise OverlapError(f"PR row is missing a field: {row!r} ({exc})") from exc
@@ -219,10 +227,29 @@ def snapshot_delta(before, after):
     for number in sorted(set(before) - set(after)):
         delta.append(f"-#{number}")
     for number in sorted(set(before) & set(after)):
-        old, new = before[number]["headRefOid"], after[number]["headRefOid"]
-        if old != new:
-            delta.append(f"#{number} {old} → {new}")
+        old, new = before[number], after[number]
+        if old["headRefOid"] != new["headRefOid"]:
+            delta.append(f"#{number} {old['headRefOid']} → {new['headRefOid']}")
+        if old["body"] != new["body"]:
+            delta.append(f"#{number} body changed")
+        if old["labels"] != new["labels"]:
+            delta.append(f"#{number} labels changed")
     return delta
+
+
+def same_repo_closing_issues(row, slug):
+    own = slug.lower()
+    return {
+        number
+        for (repo, number), _, _ in body_would_close_refs(row["body"], slug)
+        if repo == own
+    }
+
+
+def sequenced_after_self(row, self_issues):
+    if not self_issues or "fleet:awaiting-infra" not in row["labels"]:
+        return set()
+    return self_issues & set(parked_until_issue_numbers(row["body"]))
 
 
 def resolve_self(snapshot, args):
@@ -392,6 +419,7 @@ def grade(args):
 
     opening = take_snapshot(gh)
     self_row = resolve_self(opening, args)
+    self_issues = same_repo_closing_issues(self_row, slug) if self_row else set()
     base = args.base or (self_row["baseRefName"] if self_row else default)
 
     default_tip = fetch_branch_tip(default)
@@ -443,6 +471,16 @@ def grade(args):
                 f"#{number} ({row['headRefName']}) is in HEAD but not in --base {base}; "
                 f"pass --base {row['headRefName']} or rebase"
             )
+        sequenced_issues = sequenced_after_self(row, self_issues)
+        if sequenced_issues:
+            # Conflicts are expected until the prerequisite branch lands, so
+            # sequenced descendants deliberately bypass the trial merge.
+            refs = ", ".join(f"#{issue}" for issue in sorted(sequenced_issues))
+            rows.extend(
+                (number, path, "sequenced", f" (Parked-until: {refs})")
+                for path in shared
+            )
+            continue
         conflicts = conflict_paths(number, head_oid, other, shared)
         for path in shared:
             rows.append((number, path, "conflicts" if path in conflicts else "clean", ""))
@@ -458,6 +496,9 @@ def grade(args):
         print("VERDICT: block")
         return EXIT_BLOCK
     if competitor_rows:
+        if all(verdict == "sequenced" for _, _, verdict, _ in competitor_rows):
+            print("VERDICT: sequenced")
+            return EXIT_OVERLAP
         print("VERDICT: overlap")
         return EXIT_OVERLAP
     print("VERDICT: clean")
