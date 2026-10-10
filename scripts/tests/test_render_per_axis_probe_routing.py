@@ -152,6 +152,54 @@ def adapter_source():
 
 @unittest.skipUnless(COMPILER, "probe routing controls require a C++ compiler")
 class PerAxisProbeRoutingTest(unittest.TestCase):
+    def test_finite_lighting_overlay_gate(self):
+        source = (ROOT / "engine/prefabs/irreden/render/systems/"
+                  "system_trixel_to_framebuffer.hpp").read_text()
+        match = re.search(r"if \((shapeReceiverAvailable &&.*?)\) \{\s+auto ao =",
+                          source, re.DOTALL)
+        self.assertIsNotNone(match)
+        condition = match[1]
+        preamble = r"""
+#include <initializer_list>
+enum class DebugOverlayMode {NONE=0,NORMALS=8};
+constexpr int FOG_TO_TRIXEL=1,kNullSystemId=-1;
+bool fog=false,depth=false;
+DebugOverlayMode overlay=DebugOverlayMode::NONE;
+int findSystem(int){return fog?1:kNullSystemId;}
+namespace IRRender {
+DebugOverlayMode getDebugOverlay(){return overlay;}
+bool getDepthColorDebugMode(){return depth;}
+}
+bool gate(bool shapeReceiverAvailable,int lightingId){return CONDITION;}
+int main(){
+ for(bool receiver:{false,true})for(bool lighting:{false,true})
+ for(bool hasFog:{false,true})for(bool hasDepth:{false,true})for(int mode=0;mode<=10;++mode){
+  fog=hasFog;depth=hasDepth;overlay=static_cast<DebugOverlayMode>(mode);
+  const bool expected=receiver&&lighting&&!fog&&!depth&&(mode==0||mode==8);
+  if(gate(receiver,lighting?2:kNullSystemId)!=expected)return 1;
+ }
+}
+"""
+        variants = {
+            "production": condition,
+            "lost_fragment_normals": condition.replace(
+                "IRRender::getDebugOverlay() == DebugOverlayMode::NORMALS", "false"),
+            "overwrites_fog": condition.replace(
+                "findSystem(FOG_TO_TRIXEL) == kNullSystemId", "true"),
+            "overwrites_depth": condition.replace("!IRRender::getDepthColorDebugMode()", "true"),
+        }
+        for name, candidate in variants.items():
+            with self.subTest(variant=name), tempfile.TemporaryDirectory() as tmp:
+                if name != "production":
+                    self.assertNotEqual(candidate, condition)
+                cpp, exe = Path(tmp) / "gate.cpp", Path(tmp) / "gate"
+                cpp.write_text(preamble.replace("CONDITION", candidate))
+                build = subprocess.run([COMPILER, "-std=c++17", str(cpp), "-o", str(exe)],
+                                       capture_output=True, text=True)
+                self.assertEqual(build.returncode, 0, build.stderr)
+                run = subprocess.run([str(exe)], capture_output=True, text=True)
+                self.assertEqual(run.returncode, 0 if name == "production" else 1)
+
     def test_discovery_binding_and_draw_gates(self):
         source = adapter_source()
         variants = {

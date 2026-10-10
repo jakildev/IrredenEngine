@@ -519,13 +519,22 @@ without re-authoring their frame. The canvas-specific normal options in that
 frame are not consumed. CPU component and system pointers refresh in beginTick.
 
 Eligibility is deliberately bounded: any registered fog pass keeps the sampled
-lighting route, as do diagnostic overlays, depth-color mode, missing resources,
+lighting route, as do diagnostic overlays other than normals, depth-color mode, missing resources,
 invalid owners and unrecoverable finite-query misses. Checkerboard/depth-color materials keep
 their raster-generated color. The producer already invalidates any submission
 containing X-ray blending. Hollow, rotated, lattice and non-box receivers retain
 the finite-query fallback. Fog composition, procedural material reconstruction
 and broader receiver geometry remain follow-ups; no fallback is certified as
 sharp merely because it is preserved.
+
+The `normals` overlay uses this same eligibility and finite query. For eligible
+solid-color boxes it displays the final fragment normal as `normal * 0.5 + 0.5`
+before any material, AO, shadow, local-light or display-mapping work. Unsupported
+or procedural winners retain their compute normal colors, just as their beauty
+path retains compute lighting. Fog pipelines retain compute diagnostics because
+their beauty path also skips finite fragment lighting. This overlay changes
+neither the selected owner nor coverage and does not claim a separate geometry
+oracle; the signed-face tests establish that geometry independently.
 
 [Native evidence](../pr-screenshots/codex/finite-box-fragment-lighting/README.md)
 shows eight camera angles and a straight floor-shadow boundary without blur.

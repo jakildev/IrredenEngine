@@ -20,7 +20,7 @@ uint receiverOwners[8]{0,0,0,0,0,0,0,0};
 Tile receiverTiles[1]{{1}};
 Shape receiverShapes[2]{{99,0},{7,0}};
 constexpr uint kShapeSamplesPerTile=384,kShapeProceduralColorFlags=32u|64u;
-int lutEnabled=0,shadowsEnabled=1,lightVolumeEnabled=0,hdrEnabled=0;
+int lutEnabled=0,shadowsEnabled=1,lightVolumeEnabled=0,hdrEnabled=0,debugOverlayMode=0;
 float aoInput=.4f,visibilityInput=0,sunAmbient=.25f,sunIntensity=1.5f,normalZ=-1;
 float exposure=2,skyIntensity=.7f;
 vec3 sunDirection{0,0,-1},skyColor{.2f,.4f,.6f};
@@ -103,7 +103,19 @@ int main(){
   }
   ++checks;
  }
- std::cout<<checks<<" finite lighting cases\n";
+ debugOverlayMode=8;
+ for(uint flags:{0u,32u,64u})
+ for(vec3 normal:{vec3(1,0,0),vec3(-1,0,0),vec3(0,1,0),vec3(0,-1,0),
+                  vec3(0,0,1),vec3(0,0,-1),vec3(.6f,0,-.8f)}){
+  receiverShapes[1].flags=flags;
+  shapeShadowCalls=worldShadowCalls=lightCalls=aoCalls=paletteCalls=albedoCalls=0;
+  const vec3 out=query({1,1},4,{10.25f,-20.5f,30.75f},normal,
+                       -81.f,{0,0,0,.7f},{.9f,.8f,.7f});
+  const vec3 expected=flags?vec3(.9f,.8f,.7f):normal*.5f+vec3(.5f);
+  if(!same(vec4(out,1),vec4(expected,1)))return 5;
+  if(shapeShadowCalls||worldShadowCalls||lightCalls||aoCalls||paletteCalls||albedoCalls)return 6;
+ }
+ std::cout<<checks<<" finite lighting cases and 21 normal controls\n";
 }
 """
 
@@ -179,6 +191,9 @@ class ShapeSurfaceLightingTest(unittest.TestCase):
             helpers = helpers.replace("float3", "vec3").replace("float4", "vec4")
             variants = {
                 "production": body,
+                "lost_normal_overlay": body.replace("debugOverlayMode == 8", "false"),
+                "reversed_normal_overlay": body.replace(
+                    "return normal * 0.5 + 0.5", "return normal * -0.5 + 0.5"),
                 "lost_material_owner": body.replace("receiverShapes[shapeIndex].color",
                                                     "receiverShapes[0].color"),
                 "lost_procedural_fallback": body.replace("!= 0u", "== 999u"),

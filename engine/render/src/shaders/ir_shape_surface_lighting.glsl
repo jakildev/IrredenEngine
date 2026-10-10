@@ -8,6 +8,8 @@ vec3 shapeSurfaceLighting(ivec2 ownerPixel, int ownerWidth, vec3 position, vec3 
     const int shapeIndex = receiverTiles[key / kShapeSamplesPerTile].shapeIndex;
     if ((receiverShapes[shapeIndex].flags & kShapeProceduralColorFlags) != 0u)
         return fallbackColor;
+    if (debugOverlayMode == 8)
+        return normal * 0.5 + 0.5;
     const vec3 albedo = unpackColor(receiverShapes[shapeIndex].color).rgb;
     const float ao = texelFetch(surfaceAO, ownerPixel, 0).r;
     const float lambert = max(0.0, dot(normal, sunDirection.xyz));

@@ -1,0 +1,22 @@
+{
+  "command": [
+    "fleet-run",
+    "IRCanvasStress",
+    "--auto-screenshot",
+    "120"
+  ],
+  "hashes": {
+    "0.png": "9e9682eb0709de0f9471860e4483efa60ad7aee3c34ef58efd8cdcbb65899c70",
+    "1.png": "1713a2f09abf562dcda22972adaad60f84208fd1c39f6d43f914959fd86c5d5d",
+    "2.png": "bb1abd47eec78432564a0e3d2bde91effac96dd6c15800fc1242330ffd9b886e",
+    "3.png": "bff27f103c45f1f70155e9274d463318e94ec53a9a10eb3d67b1d80c67d8e100",
+    "4.png": "116d4700b6eefb6b5e7e2ad70c31f03e75d0acb97b30ad61329619dd0f5d2c6b",
+    "5.png": "e181245c7dc6fd91c461d11a30b7b6b2e428734b2049f300786227400b0c556a",
+    "6.png": "4031ef0ecc6dc950385db906bce9a224a1513a6a725a808ce0e03b80ed92c159",
+    "7.png": "f234462870035d245c84267cd09d1d4a854617f728c268311a776aecf278acdd",
+    "8.png": "11e73ad23ac91c614b4977055483bab7639dfcb29819c12881d938f79c75a23f",
+    "9.png": "7654f9e01251ec1cabd2af06ffefec7c19410dc5698014b663a31259f74f69ec",
+    "10.png": "93c42f3aadd3eb6c9827abfcc34c1ad62279920aae8ddf6a02e2ef843a424d39",
+    "11.png": "9c3115c74b6cfa78353625d6ae54fae1bb03e9fffa2635c5f533646b882e9ac2"
+  }
+}

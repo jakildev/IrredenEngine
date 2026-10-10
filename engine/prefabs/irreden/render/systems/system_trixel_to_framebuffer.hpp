@@ -647,7 +647,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         }
         // Fog currently owns post-lighting canvas color; retain it until fragment fog composition
         // exists.
-        if (shapeReceiverAvailable && IRRender::getDebugOverlay() == DebugOverlayMode::NONE &&
+        if (shapeReceiverAvailable &&
+            (IRRender::getDebugOverlay() == DebugOverlayMode::NONE ||
+             IRRender::getDebugOverlay() == DebugOverlayMode::NORMALS) &&
             findSystem(FOG_TO_TRIXEL) == kNullSystemId && lightingId != kNullSystemId &&
             !IRRender::getDepthColorDebugMode()) {
             auto ao = IREntity::getComponentOptional<C_CanvasAOTexture>(perAxisCanvasEntity_);
