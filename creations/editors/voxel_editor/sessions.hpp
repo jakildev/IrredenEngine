@@ -88,6 +88,7 @@ enum class Id {
     BIRD,
     TREE,
     PARTS_ROUNDTRIP,
+    REMOVE_PART,
     TIER_SCRUB,
     RADIAL_ARRAY,
     NWAY_SYMMETRY,
@@ -123,6 +124,8 @@ inline Id idFromName(const std::string &name) {
         return Id::TREE;
     if (name == "parts_roundtrip")
         return Id::PARTS_ROUNDTRIP;
+    if (name == "remove_part")
+        return Id::REMOVE_PART;
     if (name == "tier_scrub")
         return Id::TIER_SCRUB;
     if (name == "radial_array")
@@ -1586,6 +1589,73 @@ inline Recipe build(
         builder.expectPartTransform(1, movedOrigin, 0.25f, true, "moved_transform_survives_reload");
         return builder.finish();
     }
+    case Id::REMOVE_PART: {
+        Builder builder("remove_part", sceneSize, sceneOrigin);
+        const IRMath::ivec3 edited(sceneSize.x / 2, sceneSize.y / 2, sceneSize.z - 2);
+
+        builder.segment("cold_undo_edit");
+        builder.addVoxelPart();
+        builder.click(edited);
+        builder.expectPartOccupancy(0, edited, true, "edit_exists_before_frame_switch");
+
+        builder.segment("remove_in_other_frame");
+        builder.duplicateFrame();
+        builder.removeSelectedPart();
+        builder.expectPartCount(0, "part_removed_in_second_frame");
+
+        builder.segment("missing_part_undo_guard");
+        builder.prevFrame();
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.expectPartCount(0, "cold_edit_undo_skips_removed_part");
+
+        builder.segment("source_setup");
+        builder.discardRemovedPart();
+        builder.addVoxelPart();
+        builder.addVoxelPart();
+        builder.dragLodSlider(SliderTarget::LOD_FINE, 2);
+
+        builder.segment("array_and_edit_source");
+        builder.applyRadialArray(3);
+        builder.nextPart();
+        builder.nextPart();
+        builder.click(edited);
+        builder.expectPartOccupancy(1, edited, true, "source_edit_before_removal");
+
+        builder.segment("move_and_preview_source");
+        const IRMath::vec3 dragStart = sceneOrigin + IRMath::vec3(0.75f, 0.0f, 0.0f);
+        const IRMath::vec3 dragEnd = dragStart + IRMath::vec3(4.0f, 0.0f, 0.0f);
+        const IRMath::vec3 movedOrigin = sceneOrigin + IRMath::vec3(8.0f / 3.0f, 0.0f, 0.0f);
+        builder.dragWorld(dragStart, dragEnd);
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonM);
+        builder.expectCanvasCount(1, "preview_owns_private_canvas");
+
+        builder.segment("remove_source");
+        builder.removeSelectedPart();
+        builder.expectPartCount(4, "source_removal_drops_part_count");
+        builder.expectCanvasCount(0, "source_removal_releases_preview_canvas");
+
+        builder.segment("undo_source_removal");
+        builder.undoRemovedPart();
+        builder.expectPartCount(5, "undo_restores_source_count");
+        builder.expectPartTransform(1, movedOrigin, 0.25f, true, "undo_restores_transform");
+        builder.expectSliderValue(SliderTarget::LOD_FINE, 2.0f, 0.01f, "undo_restores_lod_band");
+        builder.expectPartOccupancy(1, edited, true, "undo_restores_voxels");
+        builder.expectCanvasCount(0, "undo_restores_grid_mode_without_private_canvas");
+
+        builder.segment("undo_pre_removal_edit");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.expectPartOccupancy(1, edited, false, "older_edit_targets_restored_entity");
+
+        builder.segment("save_without_source");
+        builder.removeSelectedPartWithButton();
+        builder.save();
+        builder.expectManifestOmits("id = \"part_2\"", "removed_source_omitted_from_manifest");
+
+        builder.segment("reload_survivors");
+        builder.reload();
+        builder.expectPartCount(4, "reload_keeps_only_surviving_parts");
+        return builder.finish();
+    }
     case Id::TIER_SCRUB: {
         Builder builder("tier_scrub", sceneSize, sceneOrigin);
         constexpr int kPartA = 0;
@@ -1833,11 +1903,13 @@ inline Recipe build(
         builder.segment("focused_x");
         builder.clickGui(kJointRenameInputCenter);
         builder.tapKey(IRInput::kKeyButtonX);
+        builder.tapKey(IRInput::kKeyButtonDelete);
         builder.expectEditorInput(
             EditorInputCheckKind::TEXT_CAPTURED_X,
             selectedPart,
             "focused_x_edits_text_without_toggling_symmetry"
         );
+        builder.expectPartCount(2, "focused_delete_does_not_remove_part");
 
         builder.segment("tab_releases_focus");
         builder.tapKey(IRInput::kKeyButtonTab);
