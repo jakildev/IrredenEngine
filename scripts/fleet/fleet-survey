@@ -15,10 +15,8 @@ per repo, and prints:
   epics      fleet:epic umbrellas with children left, flagging ghost-only remainders
   untriaged  issues with no fleet:/human: label (judge with fleet-triage-sweep)
 
-A *ghost* is a queued task the scout has stamped `shadow_merged_pr` on (a
-merged PR on its branch, usually `Refs`-only) with no open PR in flight: a
-worker that claims it finds nothing to build and declines, so it blocks a
-pane slot and reads as Available in every queue view.
+A *ghost* is a queued task with merged-delivery evidence and a current,
+substantive worker decline at the same issue version.
 
 Read-only: never writes a label, never closes, never claims. The judgment
 layer (verdicts, staging, filing, the human checklist) is the skill's.
@@ -38,6 +36,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import fleet_branch_match  # noqa: E402
+import fleet_blocked_by  # noqa: E402
 import fleet_completion  # noqa: E402
 import fleet_epic_membership  # noqa: E402
 import fleet_github  # noqa: E402
@@ -58,13 +57,6 @@ SKIP_TASK_LABELS = {"fleet:epic", "fleet:coding-improvement", "fleet:nit-of-pr"}
 OWNER_LABELS = fleet_branch_match.PARKED_PR_LABELS | {"fleet:awaiting-infra", "human:wip",
                                                        "fleet:stalled"}
 OWNER_PREFIXES = ("fleet:claim-", "fleet:amending-", "fleet:reviewing-", "fleet:resolving-")
-# Byte-identical to reconcile R8's PARKED_UNTIL_RE in fleet-claim (bash-embedded,
-# so not importable); test_fleet_survey.py's drift guard holds the two together.
-# The last occurrence wins; the contiguous `#N` run after the marker is the set.
-PARKED_UNTIL_RE = re.compile(
-    r"^[ \t]*Parked-until:[ \t]*(#\d+\b(?:(?:[ \t]*,[ \t]*|[ \t]+)#\d+\b)*)",
-    re.IGNORECASE | re.MULTILINE)
-ISSUE_REF_RE = re.compile(r"#(\d+)")
 # Same-repo refs only: `owner/repo#N` is another repo's issue and stays unresolved.
 BLOCKER_RE = re.compile(r"(?<![\w/])#(\d+)")
 
@@ -139,16 +131,7 @@ def task_title(task):
     return task.get("summary") or task.get("title") or ""
 
 
-def open_blockers(task, open_issues):
-    # `blocked_by` is the body line's raw text: "(none)", or issue refs
-    # separated by commas. The scout clears `blocked` when a blocker has a PR
-    # to stack on, but the claim gate still refuses while that PR is
-    # unreviewable, so an open blocker is reported as blocked here either way.
-    named = BLOCKER_RE.findall(str(task.get("blocked_by") or ""))
-    return [int(n) for n in named if int(n) in open_issues]
-
-
-def queue_section(repo_state, host, open_issues):
+def queue_section(repo_key, repo_state, host):
     buckets = {"claimable_here": [], "pinned_away": [], "ghost": [], "in_flight": [],
                "blocked": [], "in_progress": []}
     for task in repo_state.get("tasks", {}).get("in_progress", []):
@@ -157,20 +140,18 @@ def queue_section(repo_state, host, open_issues):
     for task in repo_state.get("tasks", {}).get("open", []):
         row = {"id": task.get("id"), "model": task.get("model"), "title": task_title(task)}
         inflight = task.get("inflight_pr") or {}
-        shadow = task.get("shadow_merged_pr") or {}
-        blockers = open_blockers(task, open_issues)
-        if task.get("blocked") or blockers:
-            row["blocked_by"] = task.get("blocked_by")
-            if blockers and not task.get("blocked"):
-                row["note"] = "scout: stackable, but the blocker's PR is not claimable"
-            buckets["blocked"].append(row)
-        elif inflight:
+        classified = dict(task)
+        classified["repo"] = repo_key
+        closeout = fleet_task_class._shadowed_closeout(classified)
+        if inflight:
             row["pr"] = inflight.get("number")
             buckets["in_flight"].append(row)
-        elif shadow:
-            row["shadow_pr"] = shadow.get("number")
-            row["merged_at"] = shadow.get("mergedAt")
+        elif closeout:
+            row.update(closeout)
             buckets["ghost"].append(row)
+        elif fleet_task_class._task_blocked(task):
+            row["blocked_by"] = task.get("blocked_by")
+            buckets["blocked"].append(row)
         elif fleet_task_class._host_incompatible(task, host):
             row["needs"] = fleet_task_class._required_host(task) or "gl-host"
             buckets["pinned_away"].append(row)
@@ -184,8 +165,7 @@ def parks_section(prs, open_issues, ghosts):
     for pr in prs:
         if "fleet:awaiting-infra" not in label_set(pr):
             continue
-        matches = PARKED_UNTIL_RE.findall(pr.get("body") or "")
-        named = [int(n) for n in ISSUE_REF_RE.findall(matches[-1])] if matches else []
+        named = fleet_branch_match.parked_until_issue_numbers(pr.get("body") or "")
         row = {"pr": pr["number"], "title": pr.get("title"), "parked_until": named,
                "mergeable": pr.get("mergeable"), "issues": {}}
         verdicts = []
@@ -214,6 +194,16 @@ def parks_section(prs, open_issues, ghosts):
             row["verdict"] = "legit: named issue still open"
         rows.append(row)
     return rows
+
+
+def blocker_impacts(open_issues, ghosts):
+    impacts = {number: [] for number in ghosts}
+    for issue_number, issue in open_issues.items():
+        value = fleet_blocked_by.parse_blocked_by(issue.get("body") or "") or ""
+        for ref in {int(number) for number in BLOCKER_RE.findall(value)}:
+            if ref in impacts:
+                impacts[ref].append(issue_number)
+    return impacts
 
 
 def stranded_section(prs):
@@ -287,8 +277,11 @@ def survey(state, issues_by_repo, prs_by_repo, host, usage_dir, log_path, now=No
             continue
         open_issues = {int(i["number"]): i for i in issues_by_repo[key]}
         prs = prs_by_repo.get(key, [])
-        queue = queue_section(repo_state, host, open_issues)
+        queue = queue_section(key, repo_state, host)
         ghosts = {int(str(r["id"]).lstrip("#")): r["shadow_pr"] for r in queue["ghost"]}
+        impacts = blocker_impacts(open_issues, ghosts)
+        for row in queue["ghost"]:
+            row["blocked_by_impacts"] = impacts[int(str(row["id"]).lstrip("#"))]
         # The scout's in-flight link accepts either the branch convention or a
         # body closing ref; an epic child is in flight under both readings. The
         # own-repo split keeps a qualified ref to this repo and drops a ref to
@@ -335,7 +328,7 @@ def render(report):
             for r in rows:
                 extra = ""
                 if bucket == "ghost":
-                    extra = f"  <- merged PR #{r['shadow_pr']} ({(r.get('merged_at') or '')[:10]})"
+                    extra = f"  <- merged PR #{r['shadow_pr']}; declined: {r['reason']}"
                 elif bucket == "pinned_away":
                     extra = f"  needs {r['needs']}"
                 elif bucket == "in_flight":
@@ -388,6 +381,7 @@ def main(argv=None):
     parser.add_argument("--host", help="override the host key (default: this host)")
     parser.add_argument("--allow-stale", action="store_true",
                         help="survey a scout cache older than the staleness bound anyway")
+    parser.add_argument("--require-fresh", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     fleet_home = Path(os.environ.get("FLEET_HOME", Path.home() / ".fleet"))
@@ -397,7 +391,7 @@ def main(argv=None):
         return 2
     state = json.loads(state_path.read_text(encoding="utf-8"))
     hermetic = bool(args.issues)
-    if not hermetic and not args.allow_stale and (
+    if (not hermetic or args.require_fresh) and not args.allow_stale and (
             cache_age_seconds(state, datetime.now(timezone.utc)) > STALE_CACHE_S):
         print("fleet-survey: scout cache stale or missing — run fleet-up", file=sys.stderr)
         return 2

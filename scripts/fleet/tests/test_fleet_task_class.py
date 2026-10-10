@@ -721,6 +721,81 @@ class DispatchTargets(HostSeamCase):
             finally:
                 os.environ.pop("FLEET_STATE_DIR", None)
 
+    def test_shadowed_closeout_is_terminal_and_repo_scoped(self):
+        with tempfile.TemporaryDirectory() as state_dir:
+            os.environ["FLEET_STATE_DIR"] = state_dir
+            try:
+                declined = Path(state_dir) / "declined"
+                declined.mkdir()
+                task = _task("#4184", "opus")
+                task.update({"repo": "engine", "updatedAt": "2026-10-07T12:00:00Z",
+                             "shadow_merged_pr": {"number": 4199}})
+                record = declined / "task-engine-4184"
+                record.write_text("2026-10-07T12:00:00Z\nalready delivered\nworker\n"
+                                  "shadow_merged_pr=4199\n")
+                slice_data = {"tasks_open": [task]}
+                self.assertEqual(pick(slice_data, "opus", False), [])
+                self.assertEqual(resolve(slice_data, "opus", False), "defer")
+                state = {"repos": {"engine": {"tasks": {"open": [dict(task)]}},
+                                    "game": {"tasks": {"open": [dict(task)]}}}}
+                self.assertEqual(fleet_task_class.shadowed_closeouts(state, "engine"), [{
+                    "number": "4184", "shadow_pr": 4199, "reason": "already delivered"}])
+                self.assertEqual(fleet_task_class.shadowed_closeouts(state, "game"), [])
+
+                record.write_text("2026-10-07T12:00:00Z\nHTTP 503 from GitHub\nworker\n"
+                                  "shadow_merged_pr=4199\n")
+                self.assertEqual(fleet_task_class.shadowed_closeouts(state, "engine"), [])
+                self.assertEqual(pick(slice_data, "opus", False), [])
+                record.unlink()
+                self.assertEqual(pick(slice_data, "opus", False), ["task:engine:4184"])
+            finally:
+                os.environ.pop("FLEET_STATE_DIR", None)
+
+    def test_decline_metadata_helpers_keep_only_durable_worker_evidence(self):
+        self.assertTrue(fleet_task_class._task_blocked({"has_open_blocker": True}))
+        self.assertEqual(fleet_task_class._shadow_number(
+            {"shadow_merged_pr": {"number": "4199"}}), 4199)
+        with tempfile.TemporaryDirectory() as state_dir:
+            os.environ["FLEET_STATE_DIR"] = state_dir
+            try:
+                declined = Path(state_dir) / "declined"
+                declined.mkdir()
+                record = declined / "task-engine-4184"
+                record.write_text("2026-10-07T12:00:00Z\nalready delivered\nworker\n"
+                                  "shadow_merged_pr=4199\n")
+                task = {"issue": "#4184", "repo": "engine",
+                        "updatedAt": "2026-10-07T12:00:00Z"}
+                metadata = fleet_task_class._decline_metadata("task", task, "worker")
+                self.assertEqual(metadata["shadow_merged_pr"], 4199)
+                self.assertTrue(fleet_task_class._declined("task", task, "worker"))
+                self.assertEqual(fleet_task_class._shadowed_closeout(task), {
+                    "shadow_pr": 4199, "reason": "already delivered"})
+            finally:
+                os.environ.pop("FLEET_STATE_DIR", None)
+
+    def test_resolved_open_blocker_uses_stack_tier_without_label(self):
+        task = _task("#1271", "opus", blocked=False)
+        task.update({"repo": "engine", "has_open_blocker": True})
+        self.assertEqual(pick({"tasks_open": [task]}, "opus", False), [])
+        self.assertEqual(resolve({"tasks_open": [task]}, "opus", False), "defer")
+        task["stackable_blocker_pr"] = {"number": 4193}
+        self.assertEqual(pick({"tasks_open": [task]}, "opus", False),
+                         ["stack:engine:1271:4193"])
+        task["has_open_blocker"] = False
+        task["stackable_blocker_pr"] = None
+        self.assertEqual(pick({"tasks_open": [task]}, "opus", False),
+                         ["task:engine:1271"])
+
+    def test_target_shadow_is_exact_and_best_effort(self):
+        slice_data = {"tasks_open": [
+            {"issue": "#42", "repo": "engine", "shadow_merged_pr": {"number": 900}},
+            {"issue": "#42", "repo": "game", "shadow_merged_pr": {"number": 901}},
+        ]}
+        self.assertEqual(fleet_task_class.target_shadow(slice_data, "task:engine:42"), 900)
+        self.assertEqual(fleet_task_class.target_shadow(slice_data, "task:game:42"), 901)
+        self.assertIsNone(fleet_task_class.target_shadow(slice_data, "feedback:engine:42"))
+        self.assertIsNone(fleet_task_class.target_shadow({}, "task:engine:42"))
+
     def test_decline_memory_is_scoped_to_the_declining_role(self):
         # The sonnet and opus reviewers share the `review` kind. A sonnet
         # decline ("fresh approval already posted; the escalation is

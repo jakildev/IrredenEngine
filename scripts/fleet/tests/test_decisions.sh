@@ -71,23 +71,29 @@ cat > "$TMP/engine-prs.json" << 'EOF'
    "headRefOid": "aaaaaaaaa1060000000000000000000000000000",
    "labels": [{"name": "fleet:approved"}]},
   {"number": 107, "title": "fleet: feedback waits for owner", "url": "u",
-   "labels": [{"name": "fleet:claim-mac-interactive"}, {"name": "human:needs-fix"}]}
+   "labels": [{"name": "fleet:claim-mac-interactive"}, {"name": "human:needs-fix"}]},
+  {"number": 108, "title": "parked on delivered task", "url": "u",
+   "body": "Parked-until: #204\n", "labels": [{"name": "fleet:awaiting-infra"}]}
 ]
 EOF
 
 cat > "$TMP/engine-issues.json" << 'EOF'
 [
   {"number": 201, "title": "task: parked for a human decision", "url": "u",
+   "body": "**Blocked by:** #204\n",
    "labels": [{"name": "fleet:needs-human"}, {"name": "human:approved"}]},
   {"number": 202, "title": "improvement: rule tweak", "url": "u",
    "labels": [{"name": "fleet:coding-improvement"}]},
   {"number": 203, "title": "idea: untriaged thing", "url": "u", "labels": []},
   {"number": 204, "title": "task: queued", "url": "u",
+   "updatedAt": "2026-10-07T12:00:00Z",
    "labels": [{"name": "fleet:queued"}, {"name": "human:approved"}]},
   {"number": 205, "title": "task: needs plan", "url": "u",
    "labels": [{"name": "fleet:needs-plan"}, {"name": "human:approved"}]},
   {"number": 206, "title": "idea: triaged, verdict pending", "url": "u",
-   "labels": [{"name": "fleet:triage-recommend"}]}
+   "labels": [{"name": "fleet:triage-recommend"}]},
+  {"number": 208, "title": "epic with delivered child", "url": "u",
+   "body": "## Children\n- [ ] #204\n", "labels": [{"name": "fleet:epic"}]}
 ]
 EOF
 
@@ -254,6 +260,11 @@ BATEOF
 # --- feedback channel fixture ----------------------------------------------
 
 mkdir -p "$TMP/fleet-home/feedback"
+mkdir -p "$TMP/fleet-home/state/declined"
+cat > "$TMP/fleet-home/state/state.json" <<'EOF'
+{"generated_at":"2099-01-01T00:00:00Z","repos":{"engine":{"tasks":{"open":[{"id":"#204","issue":"#204","updatedAt":"2026-10-07T12:00:00Z","shadow_merged_pr":{"number":900}}]}}}}
+EOF
+printf '%s\n' '2026-10-07T12:00:00Z' 'implementation already merged' 'worker' 'shadow_merged_pr=900' > "$TMP/fleet-home/state/declined/task-engine-204"
 touch -t 202401010000 "$TMP/fleet-home/feedback/role-worker.md"
 touch -t 202401020000 "$TMP/fleet-home/feedback/.last-reviewed"
 touch -t 202401030000 "$TMP/fleet-home/feedback/merger.md"
@@ -273,7 +284,7 @@ err=$(cat "$TMP/err.txt")
 assert_eq "$status" "0" "default run exits 0 despite unreachable game repo"
 assert_contains "$err" "skipping jakildev/irreden" "unreachable repo warned on stderr"
 
-assert_contains "$out" "8 decision(s) waiting" "headline counts merge queue + decisions"
+assert_contains "$out" "9 decision(s) waiting" "headline counts merge queue + decisions and close-outs"
 assert_contains "$out" "Merge queue (3)" "merge queue counts all three approved PRs"
 assert_contains "$out" "engine PR #101" "clean approved PR listed"
 assert_contains "$out" "#102" "approved-with-nits PR listed"
@@ -294,6 +305,12 @@ assert_contains "$out" "triage verdict to review" "triage tag rendered"
 assert_contains "$out" "engine PR #107" "owned PR with feedback appears in decisions"
 assert_contains "$out" "persistent owner fleet:claim-mac-interactive with outstanding human:needs-fix" "owned feedback names the handback surface"
 assert_absent  "$out" "#105" "wip-only PR appears in no bucket"
+assert_contains "$out" "Shadowed queued close-outs (1)" "compound close-out gets a counted section"
+assert_contains "$out" "engine issue #204  shadowed by PR #900" "close-out names task and merged PR"
+assert_contains "$out" "close: gh issue close 204 --repo jakildev/IrredenEngine" "human close command rendered"
+assert_contains "$out" "issue #201 declares Blocked by: #204" "survey blocker impact rendered"
+assert_contains "$out" "PR #108 declares Parked-until: #204" "survey park impact rendered"
+assert_contains "$out" "epic #208 has unchecked child #204" "survey epic impact rendered"
 assert_contains "$out" "fleet:coding-improvement: 1 open — cue" "coding-improvement cue informational below drain threshold"
 assert_absent  "$out" "fleet:coding-improvement: 1 open — OVERDUE" "1 open never reads as overdue"
 assert_contains "$out" "stale threshold 14d" "ancient .last-reviewed marker flips feedback cue to OVERDUE"
@@ -302,7 +319,7 @@ assert_contains "$out" "engine #203" "untriaged cue names the issue"
 assert_absent  "$out" "untriaged (no state labels): 1 awaiting triage — OVERDUE" "1 untriaged never reads as overdue"
 assert_contains "$out" "merger" "feedback role newer than marker is unread"
 assert_absent  "$out" "role-worker" "feedback role older than marker is not unread"
-assert_contains "$out" "engine: 7 open PR(s) · 1 queued · 1 needs-plan" "status footer"
+assert_contains "$out" "engine: 8 open PR(s) · 1 queued · 1 needs-plan" "status footer"
 assert_absent  "$out" "has no completed run" "every gate ran on every approved head: no coverage hold"
 assert_absent  "$out" "failed on head" \
     "a failed run superseded by a later success on the same head is no hold"

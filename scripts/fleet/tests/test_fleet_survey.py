@@ -28,7 +28,7 @@ import importlib.machinery
 import importlib.util
 import io
 import json
-import re
+import os
 import tempfile
 import unittest
 from datetime import datetime, timezone
@@ -51,7 +51,7 @@ def labels(*names):
 def task(num, **kw):
     row = {"id": f"#{num}", "issue": f"#{num}", "title": f"task {num}", "model": "opus",
            "owner": "free", "blocked": False, "blocked_by": "(none)", "needs_host": None,
-           "needs_gl_host": False}
+           "needs_gl_host": False, "updatedAt": "2026-10-07T04:40:00Z"}
     row.update(kw)
     return row
 
@@ -68,7 +68,8 @@ STATE = {
             task(105, needs_host="mac"),
             task(109, needs_gl_host=True, backend_symmetric=True),
             task(106, blocked=True, blocked_by="#101"),
-            task(108, blocked=False, blocked_by="#102, jakildev/other#5"),
+            task(108, blocked=False, has_open_blocker=True,
+                 blocked_by="#102, jakildev/other#5"),
         ],
         "in_progress": [task(107, owner="pool-3")],
     }}},
@@ -174,14 +175,21 @@ class FleetSurveyFixture(unittest.TestCase):
             {"utilization": 0.01, "used": 79, "identity": "app", "observed_at": 100}))
         cls.log = Path(cls.tmp.name) / "dispatcher.log"
         cls.log.write_text(LOG)
+        state_dir = Path(cls.tmp.name) / "state"
+        (state_dir / "declined").mkdir(parents=True)
+        (state_dir / "declined" / "task-engine-101").write_text(
+            "2026-10-07T04:40:00Z\nimplementation already merged\nworker\n"
+            "shadow_merged_pr=900\n")
+        cls.state_dir = state_dir
 
     @classmethod
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
     def run_survey(self, host="mac"):
-        return _mod.survey(STATE, {"engine": ISSUES}, {"engine": PRS}, host,
-                           Path(self.tmp.name) / "usage", self.log, now=NOW)
+        with mock.patch.dict(os.environ, {"FLEET_STATE_DIR": str(self.state_dir)}):
+            return _mod.survey(STATE, {"engine": ISSUES}, {"engine": PRS}, host,
+                               Path(self.tmp.name) / "usage", self.log, now=NOW)
 
 
 class Dispatch(FleetSurveyFixture):
@@ -211,12 +219,18 @@ class Queue(FleetSurveyFixture):
         self.assertEqual(self.ids("pinned_away"), ["#103", "#104"])
         self.assertEqual(self.ids("blocked"), ["#106", "#108"])
 
-    def test_an_open_blocker_overrides_the_scouts_stackable_reading(self):
+    def test_resolved_open_blocker_is_reported_blocked(self):
         rows = self.run_survey()["repos"]["engine"]["queue"]["blocked"]
         stacked = next(r for r in rows if r["id"] == "#108")
-        self.assertIn("not claimable", stacked["note"])
-        self.assertNotIn("note", next(r for r in rows if r["id"] == "#106"))
+        self.assertEqual(stacked["blocked_by"], "#102, jakildev/other#5")
         self.assertEqual(self.ids("in_progress"), ["#107"])
+
+    def test_blocker_impacts_names_open_dependents(self):
+        ghosts = {101: {"shadow_pr": 900}}
+        self.assertEqual(_mod.blocker_impacts({
+            106: {"body": "**Blocked by:** #101, jakildev/other#5"},
+            107: {"body": "**Blocked by:** #999"},
+        }, ghosts), {101: [106]})
 
     def test_a_gl_host_claims_the_gl_pin_and_loses_the_mac_pin(self):
         self.assertEqual(self.ids("claimable_here", "linux"), ["#100", "#104", "#109"])
@@ -225,6 +239,7 @@ class Queue(FleetSurveyFixture):
     def test_ghost_row_names_the_merged_pr(self):
         ghost = self.run_survey()["repos"]["engine"]["queue"]["ghost"][0]
         self.assertEqual(ghost["shadow_pr"], 900)
+        self.assertEqual(ghost["reason"], "implementation already merged")
 
 
 class Parks(FleetSurveyFixture):
@@ -291,13 +306,12 @@ class Untriaged(FleetSurveyFixture):
         self.assertEqual(self.run_survey()["repos"]["engine"]["untriaged"], [400])
 
 
-class ParkRegexDriftGuard(unittest.TestCase):
-    def test_pattern_matches_reconcile_r8_byte_for_byte(self):
+class ParkParserDriftGuard(unittest.TestCase):
+    def test_survey_and_reconcile_share_the_parser(self):
+        survey_source = _SCRIPT.read_text(encoding="utf-8")
         source = (Path(__file__).parent.parent / "fleet-claim").read_text(encoding="utf-8")
-        self.assertIn('r"' + _mod.PARKED_UNTIL_RE.pattern + '"', source)
-        self.assertIn("re.IGNORECASE | re.MULTILINE", source)
-        self.assertTrue(_mod.PARKED_UNTIL_RE.flags & re.IGNORECASE)
-        self.assertTrue(_mod.PARKED_UNTIL_RE.flags & re.MULTILINE)
+        self.assertIn("fleet_branch_match.parked_until_issue_numbers", survey_source)
+        self.assertIn("parked_until_issue_numbers", source)
 
 
 class Render(FleetSurveyFixture):
