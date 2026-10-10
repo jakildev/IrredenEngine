@@ -39,7 +39,7 @@ inline std::vector<IRComponents::C_LocalTransform> linear(int count, IRMath::vec
         return transforms;
     }
     transforms.reserve(static_cast<std::size_t>(count));
-    for (int i = 0; i < count; ++i) {
+    for (int i = 1; i <= count; ++i) {
         transforms.emplace_back(static_cast<float>(i) * step);
     }
     return transforms;
