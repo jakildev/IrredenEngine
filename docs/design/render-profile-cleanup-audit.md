@@ -166,11 +166,32 @@ thread guard makes its worker rejection test fail. The
 [native controls](../pr-screenshots/codex/gpu-observer-lifetime/README.md) compare
 rendered frames with stage timing enabled and disabled.
 
+## Implemented slice: Metal clear-source snapshots
+
+Both texture-clear APIs share the device-owned per-texture source cache. Matching
+size and pixel bytes reuse the current source, including null versus explicit zero
+patterns. A changed pattern gets a replacement buffer; the old source retires
+through the existing deferred-release queue while a frame is active. Queued clears
+therefore retain their own values instead of reading a later CPU overwrite or the
+first value ever supplied. Texture destruction still removes its cache entry.
+
+The common helper owns pattern storage only. Device clears retain timed encoders
+and R32I atomic-scratch mirroring; texture clears retain their existing untimed
+encoder and startup upload paths. Neither path adds a GPU wait. Constant per-frame
+clears reuse their allocation; changing patterns can allocate until the frame
+drains, so this is a correctness repair and consolidation, not a measured speedup.
+
+Native tests queue distinct patterns and copy each result before submitting once.
+They cover both APIs, alternating APIs, 4/8/16-byte pixels, null clears, R32I scratch
+and partial uploads. All five ordering regressions fail against the parent backend.
+The [native captures](../pr-screenshots/codex/metal-clear-snapshots/README.md)
+retain unchanged normal and shadow-overlay output for the frozen scene.
+
 ## Remaining investigations
 
-- Metal texture clears have two pattern-buffer caches with different atomic-scratch
-  and encoder-timing behavior. Define queued pattern snapshot/order semantics and
-  test changing patterns before consolidating them.
+- Classify the striped face patterns in frozen CanvasStress at 45-degree yaw with
+  the source-face oracle. Byte-identical before/after captures rule out this
+  clear-cache change but do not establish that the inherited geometry is correct.
 - Shared profiling matrix helpers live in the rotation CLI module. A neutral
   module could clarify ownership once needed; preserve the distinct evidence
   requirements of historical summaries and strict timing controls.
