@@ -1,9 +1,10 @@
 #ifndef IR_SAVE_SERIALIZERS_RENDER_H
 #define IR_SAVE_SERIALIZERS_RENDER_H
 
-/// `SaveSerialize<C>` specializations for the heap-owning components in
-/// `engine/prefabs/irreden/render/` — text, sprite playback state,
-/// the triangle-canvas pair, and the widget family.
+/// `SaveSerialize<C>` specializations for components in
+/// `engine/prefabs/irreden/render/` that need hand-written layouts — text,
+/// sprite playback state, entity canvases, the triangle-canvas pair, and the
+/// widget family.
 ///
 /// These are all **CPU-side** render components. The GPU-handle-owning ones
 /// (`C_TrixelCanvasFramebuffer`, `C_TriangleCanvasTextures`, the canvas
@@ -46,32 +47,83 @@ struct EntityCanvasV1 {
 
 static_assert(sizeof(EntityCanvasV1) == 24);
 
+struct EntityCanvasV2 {
+    IREntity::EntityId canvasEntity_;
+    IRMath::ivec2 canvasSize_;
+    bool visible_;
+    bool screenLocked_;
+    int depthPriority_;
+    float fogRevealFactor_;
+    bool fogHidden_;
+};
+
+static_assert(sizeof(EntityCanvasV2) == 32);
+
+template <typename LegacyCanvas>
+IRAsset::Result<IRComponents::C_EntityCanvas>
+readEntityCanvasLegacy(IRAsset::BinaryReader &reader) {
+    LegacyCanvas old{};
+    IRAsset::BinaryStatus status = reader.readBytes(&old, sizeof(old));
+    if (!status.ok()) {
+        return IRAsset::Result<IRComponents::C_EntityCanvas>::error(
+            status.code_,
+            std::move(status.message_)
+        );
+    }
+
+    return IRAsset::Result<IRComponents::C_EntityCanvas>::success(
+        IRComponents::C_EntityCanvas{
+            old.canvasEntity_,
+            old.canvasSize_,
+            old.visible_,
+            old.screenLocked_,
+            old.depthPriority_,
+        }
+    );
+}
+
 } // namespace detail
+
+template <> struct SaveSerialize<IRComponents::C_EntityCanvas> {
+    static void write(IRAsset::BinaryWriter &w, const IRComponents::C_EntityCanvas &value) {
+        w.writeU64(static_cast<std::uint64_t>(value.canvasEntity_));
+        IRMath::BinaryIO::writeIVec2(w, value.canvasSize_);
+        w.writeU8(value.visible_ ? 1 : 0);
+        w.writeU8(value.screenLocked_ ? 1 : 0);
+        w.writeI32(value.depthPriority_);
+    }
+
+    static IRAsset::Result<IRComponents::C_EntityCanvas> read(IRAsset::BinaryReader &r) {
+        using Res = IRAsset::Result<IRComponents::C_EntityCanvas>;
+        std::uint64_t canvasEntity = 0;
+        IRMath::ivec2 canvasSize{};
+        bool visible = true;
+        bool screenLocked = false;
+        std::int32_t depthPriority = 0;
+
+        IR_SAVE_READ(canvasEntity, r.readU64());
+        IR_SAVE_READ(canvasSize, IRMath::BinaryIO::readIVec2(r));
+        IR_SAVE_READ_BOOL(visible, r.readU8());
+        IR_SAVE_READ_BOOL(screenLocked, r.readU8());
+        IR_SAVE_READ(depthPriority, r.readI32());
+        return Res::success(
+            IRComponents::C_EntityCanvas{
+                static_cast<IREntity::EntityId>(canvasEntity),
+                canvasSize,
+                visible,
+                screenLocked,
+                depthPriority,
+            }
+        );
+    }
+};
 
 template <> struct SaveMigration<IRComponents::C_EntityCanvas> {
     static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_EntityCanvas>>>
     migrators() {
         return {
-            {1u,
-             [](IRAsset::BinaryReader &reader) -> IRAsset::Result<IRComponents::C_EntityCanvas> {
-                 detail::EntityCanvasV1 old{};
-                 IRAsset::BinaryStatus status = reader.readBytes(&old, sizeof(old));
-                 if (!status.ok()) {
-                     return IRAsset::Result<IRComponents::C_EntityCanvas>::error(
-                         status.code_,
-                         std::move(status.message_)
-                     );
-                 }
-
-                 IRComponents::C_EntityCanvas value{
-                     old.canvasEntity_,
-                     old.canvasSize_,
-                     old.visible_,
-                     old.screenLocked_,
-                     old.depthPriority_
-                 };
-                 return IRAsset::Result<IRComponents::C_EntityCanvas>::success(value);
-             }},
+            {1u, detail::readEntityCanvasLegacy<detail::EntityCanvasV1>},
+            {2u, detail::readEntityCanvasLegacy<detail::EntityCanvasV2>},
         };
     }
 };
