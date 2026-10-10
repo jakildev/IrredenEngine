@@ -187,18 +187,48 @@ and partial uploads. All five ordering regressions fail against the parent backe
 The [native captures](../pr-screenshots/codex/metal-clear-snapshots/README.md)
 retain unchanged normal and shadow-overlay output for the frozen scene.
 
+## Investigated slice: GRID capacity and revoxelized face ownership
+
+The isolated CanvasStress orbit cube at index 6 reproduces the CPU GRID warning:
+1,740 covered cells compete for 1,728 slots. The independent half-space oracle in
+`grid_rotation_test.cpp` checks its centered 12³, +Y45 pose and a +Z45 control.
+Both have 610 surface cells. The tests require complete surface retention and
+correct six-neighbor masks against the full occupancy, including omitted interior
+neighbors. Rebuilding twice also checks that output does not replace authored input.
+
+This is a bounded proof of surface geometry, not permission to ignore span warnings.
+A 12×12×1 plate at Z45 requires 145 exposed cells and cannot fit its exact 144-slot
+allocation. A plate carved from a full 12³ allocation has room; its real rebuild
+is checked against the same oracle. A synthetic missing exposed cell is rejected.
+Growing destination capacity remains a separate design task.
+
+Detached revoxelization is a different path. Its upright and authored-rotation
+cube controls are checked against their resampled-cell face oracle at camera yaw
+0°, 22.5° and 45°. The upright 45° cube has alternating visible X/Y faces because
+its view-space voxel boundary forms a staircase. Those stripes are valid for that
+resampled geometry; they are not evidence that a rigid source-face mode should
+look the same. [Captures and proof scope](../pr-screenshots/codex/grid-span-surface-proof/README.md)
+record the commands, normal regions and limitations.
+
+The authored-rotation cube's direct-sun overlay also agrees with the resampled
+centroid-ray oracle at yaw 45° through 315° in 45° steps: zero false or missed
+interior shadow pixels with zero terminator allowance, and both lit and occluded
+interiors exercised. Its 0°/22.5° views and the upright controls are all-lit and
+therefore inconclusive for occlusion. Additional normal controls pass at 90°
+through 315°. This validates sampled self-shadow ownership for that fixture;
+continuous within-triangle boundaries and external receivers remain separate.
+
 ## Remaining investigations
 
-- Classify the striped face patterns in frozen CanvasStress at 45-degree yaw with
-  the source-face oracle. Byte-identical before/after captures rule out this
-  clear-cache change but do not establish that the inherited geometry is correct.
+- Extend lighting/shadow ownership checks to external casters, AO and other
+  striped entities from the full scene. The revoxelized cube's sampled self-shadow
+  controls do not certify every CanvasStress mode or arbitrary transforms.
 - Shared profiling matrix helpers live in the rotation CLI module. A neutral
   module could clarify ownership once needed; preserve the distinct evidence
   requirements of historical summaries and strict timing controls.
-- Investigate the revoxelized destination-span warning in CanvasStress: 12 of
-  1740 covered cells exceed a 1728-cell span. It is present in the parent and
-  timing-on/off controls. Isolate which geometry is dropped and compare it with
-  the resampled-cell oracle before changing capacity or declaring it harmless.
+- Give CPU GRID resampling enough destination capacity when exposed cells exceed
+  the authored span. The solid-cube surface proof does not cover exact-fit thin
+  plates, sparse geometry, other transforms, or interior-dependent consumers.
 
 The timing-attribution experiment remains a separate measurement task. Cleanup
 does not establish a dense-scene speedup, fix inherited visual artifacts, or
