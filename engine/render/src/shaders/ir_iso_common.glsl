@@ -229,7 +229,7 @@ const uint kEntityIdPriorityMaskInHighWord = 0x3u << kEntityIdPriorityShiftInHig
 const uint kEntityIdCutFaceMaskInHighWord = 0x1u << 29u;
 // Fog BODY carrier: bit 28 of the high word flags a pixel of a BODY-classed
 // subject (voxel reserved bit 3, or the shape flag
-// SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT) and bits 27:20 carry its 8-bit reveal
+// SHAPE_FLAG_FOG_BODY) and bits 27:20 carry its 8-bit reveal
 // factor, so FOG_TO_TRIXEL paints the pixel at factor / 255 with no field
 // lookup. Entity ids are allocation counters, so a live id never sets bits
 // 27:20. Same masking chokepoint as the bits above.
