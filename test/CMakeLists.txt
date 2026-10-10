@@ -90,6 +90,7 @@ add_executable(IrredenEngineTest
   render/entity_canvas_teardown_test.cpp
   render/entity_canvas_hitbox_test.cpp
   render/entity_id_carrier_test.cpp
+  render/fog_carrier_policy_test.cpp
   render/fog_cross_section_test.cpp
   render/fog_line_of_sight_test.cpp
   render/fog_reveal_eval_test.cpp
