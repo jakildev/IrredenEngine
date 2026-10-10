@@ -6,8 +6,8 @@ projecting as plannable, firing a planner dispatch every tick that finds
 nothing to do on arrival.
 
 Mirrors test_queue_manager_projection.py's IngestHonorsBlockedBy, which
-covers the analogous resolve_human_approved_blockers() — in-memory only
-(closed_fleet_queued + merged claude/<N>-* heads), no live gh.
+covers the analogous resolve_human_approved_blockers() — in-memory only,
+with no live gh.
 
 The subject also takes a live `_resolve_ref_satisfied` fallback for refs
 neither in-memory source covers, so these cases stub that seam rather than
@@ -85,7 +85,7 @@ class ResolveNeedsPlanBlockedBy(_ResolverCase):
         self.assertFalse(st["repos"]["engine"]["needs_plan"][0]["blocked"],
                          "predecessor in closed_fleet_queued must clear blocked")
 
-    def test_merged_head_pr_clears_blocked(self):
+    def test_merged_head_pr_does_not_clear_open_issue(self):
         st = self._resolved(
             needs_plan=[
                 {"number": 2258, "labels": ["fleet:needs-plan"],
@@ -94,8 +94,17 @@ class ResolveNeedsPlanBlockedBy(_ResolverCase):
             merged=[{"number": 999, "headRefName": "claude/2280-attribution",
                      "baseRefName": "master"}],
         )
-        self.assertFalse(st["repos"]["engine"]["needs_plan"][0]["blocked"],
-                         "a merged claude/2280-* head must clear the blocker")
+        self.assertTrue(st["repos"]["engine"]["needs_plan"][0]["blocked"],
+                        "a merged delivery does not close its tracker issue")
+
+    def test_bare_ref_naming_merged_pr_clears_blocked(self):
+        st = self._resolved(
+            needs_plan=[{"number": 2258, "labels": ["fleet:needs-plan"],
+                         "body": "**Blocked by:** #2280"}],
+            merged=[{"number": 2280, "headRefName": "feature/no-number",
+                     "baseRefName": "master"}],
+        )
+        self.assertFalse(st["repos"]["engine"]["needs_plan"][0]["blocked"])
 
     def test_no_blocker_field_is_not_blocked(self):
         st = self._resolved(needs_plan=[
