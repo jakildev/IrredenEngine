@@ -57,11 +57,10 @@ Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md). Rationale: [`d
 | `SPRITE_TO_SCREEN` | after the main canvas's `FRAMEBUFFER_TO_SCREEN` |
 | `SYNC_VIEWPORT_SUBJECTS` / `VIEWPORT_TO_FRAMEBUFFER` | RENDER before `VOXEL_TO_TRIXEL_STAGE_1` / after `TRIXEL_TO_FRAMEBUFFER`, before `FRAMEBUFFER_TO_SCREEN` |
 
-`VOXEL_TO_TRIXEL_STAGE_1` runs compact + stage 1 + stage 2 per canvas in one tick;
-never split them. `TEXT_TO_TRIXEL` clears the GUI canvas in `beginTick` and caps
-glyphs at `kMaxGlyphCommands`. Widget renderers overpaint overlay text: keep widgets
-clear of the perf-stats overlay (top-right). GUI texels display as lattice triangles;
-glyph and widget art is authored on that lattice (`engine/render/CLAUDE.md`).
+`VOXEL_TO_TRIXEL_STAGE_1` runs compact + stage 1 + stage 2 per canvas in one
+tick; never split them. `TEXT_TO_TRIXEL` clears the GUI canvas in `beginTick`
+and caps glyphs at `kMaxGlyphCommands` (`gui_text_batch.hpp`). Widget renderers
+overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right).
 
 ## Component contracts
 
@@ -144,10 +143,11 @@ glyph and widget art is authored on that lattice (`engine/render/CLAUDE.md`).
   button. Register settings (`IRPrefab::Settings::register{Bool,Enum,Float}`)
   during init; the menu snapshots them at open.
 - Headless readers: `HelpOverlay::builtText()` / `lastGlyphCommandCount()`, and
-  `SettingsMenu::liveRowCount()` / `*Rect()` / `enumRowsStacked()` / `*ScreenPx(...)`; a QUIT
-  assertion evaluates when the close is observed, not on the capture frame. `systemOrNull()`
-  reports absent as `IRSystem::kNullSystemId`, never `kNullEntity` (`engine/system/CLAUDE.md`
-  §"Hot reload and lookup"; `test/render/prefab_system_probe_test.cpp`).
+  `SettingsMenu::liveRowCount()` / `*Rect()` / `enumRowsStacked()` / `*ScreenPx(...)`; a QUIT assertion
+  evaluates when the close is observed, not on the capture frame.
+  `systemOrNull()` reports absent as `IRSystem::kNullSystemId`, never
+  `kNullEntity` (`engine/system/CLAUDE.md` §"Hot reload and lookup";
+  `test/render/prefab_system_probe_test.cpp`).
 
 ## Widget framework
 
