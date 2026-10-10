@@ -1149,9 +1149,9 @@ struct FrameDataSun {
     // covers a texel, so a saturated-bake host is byte-identical and the fill
     // concentrates on genuinely-empty hole texels; doubles as the kill switch —
     // 0 ⇒ the exact single-write path. Engaged for the cardinal main-canvas bake
-    // and the world-placed cast resolve; the C++ driver zeros it for the per-axis
-    // resolve dispatch (structural per-axis / smooth-yaw byte-identity — see
-    // system_bake_sun_shadow_map.hpp patchSunSplatRadius). See
+    // and the world-placed cast resolve; the C++ driver zeros it for the
+    // analytic-caster bake and per-axis resolve dispatches (structural parity
+    // with their smooth-yaw paths — see patchSunSplatRadius). See
     // docs/design/sun-shadow-bake-coverage.md.
     float sunSplatMaxTexels_ = 6.0f;
     // Maximum shadow-throw window in sun-Z voxels: the receiver
