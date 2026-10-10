@@ -157,21 +157,6 @@ template <bool kGhost> struct FogRevealEval {
         const bool wasShown = revealed.shown_;
         const bool evaluated = revealed.override_ != IRComponents::FogOverride::NONE ||
                                (entity + frameCounter_) % settings_.staggerPeriod_ == 0u;
-        if constexpr (!kGhost) {
-            if (revealed.ghostHeld_ || voxelSet.ghostHeld_) {
-                revealed.ghostHeld_ = false;
-                if (activePool_ != nullptr) {
-                    pending_.push(
-                        PendingTransition{&voxelSet, activePool_, revealed.shown_, false}
-                    );
-                } else {
-                    voxelSet.ghostHeld_ = false;
-                }
-            }
-            if (!evaluated) {
-                return;
-            }
-        }
         if (evaluated) {
             bool shown = revealed.shown_;
             if (revealed.override_ == IRComponents::FogOverride::FORCE_REVEALED) {
@@ -229,6 +214,54 @@ template <bool kGhost> struct FogRevealEval {
         }
     }
 
+    void tickHide(
+        IREntity::EntityId &entity,
+        IRComponents::C_FogRevealed &revealed,
+        const IRComponents::C_WorldTransform &worldTransform,
+        IRComponents::C_VoxelSetNew &voxelSet
+    ) {
+        if (!IRPrefab::Fog::isOnFogCanvas(voxelSet, activeCanvas_)) {
+            return;
+        }
+        if (revealed.override_ == IRComponents::FogOverride::NONE &&
+            (entity + frameCounter_) % settings_.staggerPeriod_ != 0u) {
+            return;
+        }
+
+        bool shown = revealed.shown_;
+        if (revealed.override_ == IRComponents::FogOverride::FORCE_REVEALED) {
+            revealed.revealFactor_ = 1.0f;
+            shown = true;
+        } else if (revealed.override_ == IRComponents::FogOverride::FORCE_HIDDEN) {
+            revealed.revealFactor_ = 0.0f;
+            shown = false;
+        } else {
+            revealed.revealFactor_ = verdict(worldTransform.translation_, revealed.channels_);
+            if (!shown && revealed.revealFactor_ >= settings_.showThreshold_) {
+                shown = true;
+            } else if (shown && revealed.revealFactor_ <= settings_.hideThreshold_) {
+                shown = false;
+            }
+        }
+        if (shown && activePool_ != nullptr) {
+            const std::uint8_t factor = IRPrefab::Fog::quantizeRevealFactor(revealed.revealFactor_);
+            const std::uint32_t stamped = IRPrefab::Fog::bodyCarrierBits(*activePool_, voxelSet) >>
+                                          IRComponents::VoxelReserved::kFogBodyFactorShift;
+            if (stamped != factor) {
+                IRPrefab::Fog::stampBodyCarrier(*activePool_, voxelSet, true, factor);
+                const auto slot = static_cast<std::size_t>(IRJob::workerId());
+                if (slot < restampedByWorker_.size()) {
+                    restampedByWorker_[slot] += static_cast<std::uint32_t>(voxelSet.numVoxels_);
+                }
+            }
+        }
+        if (shown == revealed.shown_ || activePool_ == nullptr) {
+            return;
+        }
+        revealed.shown_ = shown;
+        pending_.push(PendingTransition{&voxelSet, activePool_, shown, false});
+    }
+
     void endTick() {
         restampedVoxelsLastFrame_ = 0;
         for (std::uint32_t count : restampedByWorker_) {
@@ -263,7 +296,7 @@ template <bool kGhost> struct FogRevealEval {
         const IRComponents::C_WorldTransform &worldTransform,
         IRComponents::C_VoxelSetNew &voxelSet
     ) {
-        tickImpl(entity, revealed, worldTransform, voxelSet, nullptr);
+        tickHide(entity, revealed, worldTransform, voxelSet);
     }
 
     void tickGhost(

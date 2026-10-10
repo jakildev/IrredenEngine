@@ -108,16 +108,6 @@ template <bool kGhost> struct FogRevealEvalShape {
         const bool evaluated = revealed.override_ != IRComponents::FogOverride::NONE ||
                                (entity + frameCounter_) % settings_.staggerPeriod_ == 0u;
         if constexpr (!kGhost) {
-            if (revealed.ghostHeld_ || (shape.flags_ & IRMath::SDF::SHAPE_FLAG_FOG_GHOST) != 0u) {
-                revealed.ghostHeld_ = false;
-                shape.flags_ &= ~IRMath::SDF::SHAPE_FLAG_FOG_GHOST;
-                if (revealed.shown_) {
-                    shape.flags_ &= ~IRRender::SHAPE_FLAG_FOG_HIDDEN;
-                } else {
-                    shape.flags_ |= IRRender::SHAPE_FLAG_FOG_HIDDEN;
-                }
-                shape.fogBodyFactor_ = IRPrefab::Fog::quantizeRevealFactor(revealed.revealFactor_);
-            }
             if (!evaluated) {
                 return;
             }
@@ -186,6 +176,50 @@ template <bool kGhost> struct FogRevealEvalShape {
         }
     }
 
+    void tickHide(
+        IREntity::EntityId &entity,
+        IRComponents::C_FogRevealed &revealed,
+        const IRComponents::C_WorldTransform &worldTransform,
+        IRComponents::C_ShapeDescriptor &shape
+    ) {
+        if (!IRPrefab::Fog::isOnFogCanvas(shape, activeCanvas_)) {
+            return;
+        }
+        if (revealed.override_ == IRComponents::FogOverride::NONE &&
+            (entity + frameCounter_) % settings_.staggerPeriod_ != 0u) {
+            return;
+        }
+        if (revealed.override_ == IRComponents::FogOverride::FORCE_REVEALED) {
+            revealed.revealFactor_ = 1.0f;
+            revealed.shown_ = true;
+        } else if (revealed.override_ == IRComponents::FogOverride::FORCE_HIDDEN) {
+            revealed.revealFactor_ = 0.0f;
+            revealed.shown_ = false;
+        } else {
+            revealed.revealFactor_ = fog_ == nullptr ? 1.0f
+                                                     : IRPrefab::Fog::evalReveal(
+                                                           *fog_,
+                                                           observers_,
+                                                           los_,
+                                                           losRoutes_,
+                                                           worldTransform.translation_,
+                                                           revealed.channels_
+                                                       );
+            if (!revealed.shown_ && revealed.revealFactor_ >= settings_.showThreshold_) {
+                revealed.shown_ = true;
+            } else if (revealed.shown_ && revealed.revealFactor_ <= settings_.hideThreshold_) {
+                revealed.shown_ = false;
+            }
+        }
+        shape.fogBodyFactor_ = IRPrefab::Fog::quantizeRevealFactor(revealed.revealFactor_);
+        shape.flags_ |= IRRender::SHAPE_FLAG_FOG_BODY;
+        if (revealed.shown_) {
+            shape.flags_ &= ~IRRender::SHAPE_FLAG_FOG_HIDDEN;
+        } else {
+            shape.flags_ |= IRRender::SHAPE_FLAG_FOG_HIDDEN;
+        }
+    }
+
     void endTick() {
         if constexpr (!kGhost) {
             return;
@@ -206,7 +240,7 @@ template <bool kGhost> struct FogRevealEvalShape {
         const IRComponents::C_WorldTransform &worldTransform,
         IRComponents::C_ShapeDescriptor &shape
     ) {
-        tickImpl(entity, revealed, worldTransform, shape, nullptr);
+        tickHide(entity, revealed, worldTransform, shape);
     }
 
     void tickGhost(

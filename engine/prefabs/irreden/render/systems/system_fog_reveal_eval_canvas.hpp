@@ -90,12 +90,6 @@ template <bool kGhost> struct FogRevealEvalCanvas {
         const bool evaluated = revealed.override_ != IRComponents::FogOverride::NONE ||
                                (entity + frameCounter_) % settings_.staggerPeriod_ == 0u;
         if constexpr (!kGhost) {
-            if (revealed.ghostHeld_ || entityCanvas.fogGhost_) {
-                revealed.ghostHeld_ = false;
-                entityCanvas.fogGhost_ = false;
-                entityCanvas.fogHidden_ = !revealed.shown_;
-                entityCanvas.fogRevealFactor_ = revealed.revealFactor_;
-            }
             if (!evaluated) {
                 return;
             }
@@ -144,6 +138,44 @@ template <bool kGhost> struct FogRevealEvalCanvas {
         entityCanvas.fogGhost_ = revealed.ghostHeld_;
     }
 
+    void tickHide(
+        IREntity::EntityId entity,
+        IRComponents::C_FogRevealed &revealed,
+        const IRComponents::C_WorldTransform &worldTransform,
+        IRComponents::C_EntityCanvas &entityCanvas
+    ) {
+        if (entity == activeCanvas_ ||
+            !IREntity::getComponentOptional<IRComponents::C_DetachedCanvas>(
+                entityCanvas.canvasEntity_
+            )) {
+            return;
+        }
+        if (revealed.override_ == IRComponents::FogOverride::NONE &&
+            (entity + frameCounter_) % settings_.staggerPeriod_ != 0u) {
+            return;
+        }
+        if (revealed.override_ == IRComponents::FogOverride::FORCE_REVEALED) {
+            revealed.revealFactor_ = 1.0f;
+            revealed.shown_ = true;
+        } else if (revealed.override_ == IRComponents::FogOverride::FORCE_HIDDEN) {
+            revealed.revealFactor_ = 0.0f;
+            revealed.shown_ = false;
+        } else if (fog_ == nullptr || entityCanvas.screenLocked_) {
+            revealed.revealFactor_ = 1.0f;
+            revealed.shown_ = true;
+        } else {
+            revealed.revealFactor_ =
+                IRPrefab::Fog::evalReveal(*fog_, worldTransform.translation_, revealed.channels_);
+            if (!revealed.shown_ && revealed.revealFactor_ >= settings_.showThreshold_) {
+                revealed.shown_ = true;
+            } else if (revealed.shown_ && revealed.revealFactor_ <= settings_.hideThreshold_) {
+                revealed.shown_ = false;
+            }
+        }
+        entityCanvas.fogRevealFactor_ = revealed.revealFactor_;
+        entityCanvas.fogHidden_ = !revealed.shown_;
+    }
+
     void endTick() {
         if constexpr (!kGhost) {
             return;
@@ -161,7 +193,7 @@ template <bool kGhost> struct FogRevealEvalCanvas {
         const IRComponents::C_WorldTransform &worldTransform,
         IRComponents::C_EntityCanvas &entityCanvas
     ) {
-        tickImpl(entity, revealed, worldTransform, entityCanvas, nullptr);
+        tickHide(entity, revealed, worldTransform, entityCanvas);
     }
 
     void tickGhost(

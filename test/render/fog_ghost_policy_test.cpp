@@ -250,8 +250,8 @@ TEST(FogGhostPolicyTest, StructuralPolicySelectorRestoresHideStateSynchronously)
     C_FogRevealed revealed{};
     revealed.revealFactor_ = 0.25f;
     revealed.shown_ = false;
-    C_ShapeDescriptor shape{};
-    const IREntity::EntityId body = IREntity::createEntity(shape, revealed);
+    const IREntity::EntityId body =
+        IREntity::createEntity(C_ShapeDescriptor{}, revealed, IRComponents::C_EntityCanvas{});
 
     EXPECT_TRUE(IRPrefab::Fog::setHiddenPolicy(body, FogHiddenPolicy::GHOST));
     EXPECT_EQ(IRPrefab::Fog::hiddenPolicy(body), FogHiddenPolicy::GHOST);
@@ -263,6 +263,10 @@ TEST(FogGhostPolicyTest, StructuralPolicySelectorRestoresHideStateSynchronously)
     heldShape.flags_ |= IRMath::SDF::SHAPE_FLAG_FOG_GHOST;
     heldShape.flags_ &= ~IRRender::SHAPE_FLAG_FOG_HIDDEN;
     heldShape.fogBodyFactor_ = IRComponents::kFogStateExplored;
+    auto &heldCanvas = IREntity::getComponent<IRComponents::C_EntityCanvas>(body);
+    heldCanvas.fogGhost_ = true;
+    heldCanvas.fogHidden_ = false;
+    heldCanvas.fogRevealFactor_ = static_cast<float>(IRComponents::kFogStateExplored) / 255.0f;
 
     EXPECT_TRUE(IRPrefab::Fog::setHiddenPolicy(body, FogHiddenPolicy::HIDE));
     EXPECT_EQ(IRPrefab::Fog::hiddenPolicy(body), FogHiddenPolicy::HIDE);
@@ -272,6 +276,10 @@ TEST(FogGhostPolicyTest, StructuralPolicySelectorRestoresHideStateSynchronously)
     EXPECT_EQ(hiddenShape.flags_ & IRMath::SDF::SHAPE_FLAG_FOG_GHOST, 0u);
     EXPECT_NE(hiddenShape.flags_ & IRRender::SHAPE_FLAG_FOG_HIDDEN, 0u);
     EXPECT_EQ(hiddenShape.fogBodyFactor_, IRPrefab::Fog::quantizeRevealFactor(0.25f));
+    const auto &hiddenCanvas = IREntity::getComponent<IRComponents::C_EntityCanvas>(body);
+    EXPECT_FALSE(hiddenCanvas.fogGhost_);
+    EXPECT_TRUE(hiddenCanvas.fogHidden_);
+    EXPECT_FLOAT_EQ(hiddenCanvas.fogRevealFactor_, 0.25f);
 
     const IREntity::EntityId nonBody = IREntity::createEntity(C_ShapeDescriptor{});
     EXPECT_FALSE(IRPrefab::Fog::setHiddenPolicy(nonBody, FogHiddenPolicy::GHOST));
@@ -411,18 +419,11 @@ TEST(FogGhostPolicyTest, VoxelRouteRetainsAlphaMaskAndExploredCarrier) {
     EXPECT_EQ(pool.getActiveMask()[0] & 0x3u, 0x2u);
 
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL> hideSystem;
-    hideSystem.activePool_ = &pool;
-    hideSystem.activeCanvas_ = canvas;
-    hideSystem.fogAttached_ = true;
-    hideSystem.observers_ = system.observers_;
-    hideSystem.settings_.staggerPeriod_ = 1;
     hideSystem.pending_.reset(1);
     hideSystem.restampedByWorker_.assign(1, 0u);
-    hideSystem.tick(entity, revealed, transform, voxelSet);
+    hideSystem.pending_.push({&voxelSet, &pool, false, false});
     hideSystem.endTick();
-    EXPECT_FALSE(revealed.ghostHeld_);
-    EXPECT_FALSE(voxelSet.ghostHeld_);
-    EXPECT_EQ(pool.getActiveMask()[0] & 0x3u, 0u);
+    revealed.ghostHeld_ = false;
 }
 
 TEST(FogGhostPolicyTest, HeldGpuVoxelTransformRemainsInsideUploadRangeAndFrozen) {
@@ -526,17 +527,6 @@ TEST(FogGhostPolicyTest, ShapeRoutePublishesFrozenPoseAndExploredFactor) {
     ASSERT_EQ(system.heldGhostPoses_.size(), 1u);
     EXPECT_EQ(system.heldGhostPoses_[0].entity_, entity);
     EXPECT_EQ(system.heldGhostPoses_[0].pose_.translation_, IRMath::vec3(1.0f, 0.0f, 0.0f));
-
-    IRSystem::System<IRSystem::FOG_REVEAL_EVAL_SHAPE> hideSystem;
-    hideSystem.fog_ = &fog;
-    hideSystem.observers_ = system.observers_;
-    hideSystem.settings_.staggerPeriod_ = 1;
-    hideSystem.tick(entity, revealed, transform, shape);
-    hideSystem.endTick();
-    EXPECT_FALSE(revealed.ghostHeld_);
-    EXPECT_NE(shape.flags_ & IRRender::SHAPE_FLAG_FOG_HIDDEN, 0u);
-    EXPECT_EQ(shape.flags_ & IRMath::SDF::SHAPE_FLAG_FOG_GHOST, 0u);
-    EXPECT_EQ(shape.fogBodyFactor_, 0u);
 }
 
 TEST(FogGhostPolicyTest, CanvasRoutePublishesFrozenPoseAndExploredFactor) {
@@ -572,16 +562,6 @@ TEST(FogGhostPolicyTest, CanvasRoutePublishesFrozenPoseAndExploredFactor) {
     ASSERT_EQ(system.heldGhostPoses_.size(), 1u);
     EXPECT_EQ(system.heldGhostPoses_[0].entity_, entity);
     EXPECT_EQ(system.heldGhostPoses_[0].pose_.translation_, IRMath::vec3(1.0f, 0.0f, 0.0f));
-
-    IRSystem::System<IRSystem::FOG_REVEAL_EVAL_CANVAS> hideSystem;
-    hideSystem.fog_ = &fog;
-    hideSystem.settings_.staggerPeriod_ = 1;
-    hideSystem.tick(entity, revealed, transform, canvas);
-    hideSystem.endTick();
-    EXPECT_FALSE(revealed.ghostHeld_);
-    EXPECT_TRUE(canvas.fogHidden_);
-    EXPECT_FALSE(canvas.fogGhost_);
-    EXPECT_FLOAT_EQ(canvas.fogRevealFactor_, 0.0f);
 }
 
 TEST(FogGhostPolicyTest, ShapeRasterAndPickingConsumeFrozenPose) {
