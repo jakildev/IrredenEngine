@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import re
+import shlex
 import shutil
 import subprocess
 import sys
@@ -21,6 +22,29 @@ ROLES = ("worker", "sonnet-reviewer", "opus-reviewer", "smoke-worker", "merger",
 # Roles that launch demos. Reviewers read diffs and batch roles take no
 # target, so a missing display must not cool Codex down for them.
 DISPLAY_ROLES = ("worker", "smoke-worker", "opus-architect")
+
+
+def quiet_hook_command():
+    owner = os.environ.get("IR_QUIET_OWNER", "")
+    lock_root = os.environ.get("IR_LOCK_ROOT", "")
+    path = f"{ROOT / 'engine/tools/bin'}:{ROOT / 'scripts/fleet'}:/usr/bin:/bin"
+    values = {
+        "IR_QUIET_OWNER": owner,
+        "IR_LOCK_ROOT": lock_root,
+        "PATH": path,
+    }
+    environment = " ".join(
+        f"{name}={shlex.quote(value)}" for name, value in values.items()
+    )
+    return f"{environment} {shlex.quote(str(ROOT / 'scripts/fleet/fleet-quiet-wait'))}"
+
+
+def quiet_hook_override():
+    command = json.dumps(quiet_hook_command())
+    return (
+        "hooks.PreToolUse=[{hooks=[{type=\"command\","
+        f"command={command},timeoutSec=1500}}]}}]"
+    )
 
 
 def prompt(role, mode, target, worktree=None):
@@ -81,6 +105,8 @@ def command(model, effort, worktree, writable, task_prompt, resume="", interacti
              "-c", "sandbox_workspace_write.network_access=true",
              "-c", 'forced_login_method="chatgpt"',
              "-c", "sandbox_workspace_write.writable_roots=" + json.dumps(writable)]
+    if not interactive and os.environ.get("IR_QUIET_OWNER"):
+        args += ["--dangerously-bypass-hook-trust", "-c", quiet_hook_override()]
     if not interactive:
         args += ["--json"]
     if resume:

@@ -262,8 +262,8 @@ a second live GL context stalls shader links for minutes ([`BUILD.md`](BUILD.md)
 §"`ir-build` / `ir-run`"). An enabled `benchmark` window prevents launches and
 parks every leased dispatch until quiet; exit 0 with `QUIET=guarded` guarantees
 coverage, 75 refuses an undrained host, and 76 rejects contamination. Claude
-sessions park at tool hooks. Until a Codex hook is confirmed, its live lease
-stays busy and makes the request refuse instead. Human sessions, daemons,
+and Codex sessions both park at tool hooks ([`CODEX.md`](CODEX.md)
+§"Quiet-window hook"). Human sessions, daemons,
 non-fleet processes, double-forks, the measurement subtree, and sub-sample
 Windows children remain outside the guarantee; use `ir-acquire --quiet-disable [reason]` / `--quiet-enable` for the host switch and see [`engine/tools/README.md`](../../engine/tools/README.md) for tuning.
 

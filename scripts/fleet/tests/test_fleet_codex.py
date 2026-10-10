@@ -12,6 +12,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
+import tomllib
+
 if not (Path(__file__).resolve().parents[1] / "fleet_codex.py").is_file():
     print("SKIP: Codex adapter subject absent", file=sys.stderr)
     sys.exit(3)
@@ -401,14 +403,54 @@ class Transport(unittest.TestCase):
         self.assertIn("Wait for the human", codex.prompt("opus-architect", "live", ""))
 
     def test_launch_and_resume_flags(self):
-        args = codex.command("gpt-6-astra", "xhigh", "/work", ["/work", "/state"], "task")
-        self.assertEqual(args[:2], ["codex", "exec"])
-        self.assertIn('approval_policy="never"', args)
-        self.assertIn('sandbox_mode="workspace-write"', args)
-        self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", args)
-        args = codex.command("gpt-6-astra", "xhigh", "/work", ["/work"], "task", "abc")
-        self.assertEqual(args[-3:], ["resume", "abc", "task"])
-        self.assertNotIn("-C", args)
+        env = {"IR_QUIET_OWNER": "pool 1", "IR_LOCK_ROOT": "/locks with spaces"}
+        with patch.dict(codex.os.environ, env, clear=True):
+            fresh = codex.command("gpt-6-astra", "xhigh", "/work",
+                                  ["/work", "/state"], "task")
+            resumed = codex.command("gpt-6-astra", "xhigh", "/work",
+                                    ["/work"], "task", "abc")
+        self.assertEqual(fresh[:2], ["codex", "exec"])
+        self.assertIn('approval_policy="never"', fresh)
+        self.assertIn('sandbox_mode="workspace-write"', fresh)
+        self.assertNotIn("--dangerously-bypass-approvals-and-sandbox", fresh)
+        self.assertEqual(resumed[-3:], ["resume", "abc", "task"])
+        self.assertNotIn("-C", resumed)
+        for args in (fresh, resumed):
+            self.assertEqual(args.count("--dangerously-bypass-hook-trust"), 1)
+            overrides = [value for value in args if value.startswith("hooks.PreToolUse=")]
+            self.assertEqual(len(overrides), 1)
+            config = tomllib.loads(overrides[0])
+            group = config["hooks"]["PreToolUse"][0]
+            self.assertNotIn("matcher", group)
+            hook = group["hooks"][0]
+            self.assertEqual(hook["type"], "command")
+            self.assertEqual(hook["timeoutSec"], 1500)
+            self.assertIn("IR_QUIET_OWNER='pool 1'", hook["command"])
+            self.assertIn("IR_LOCK_ROOT='/locks with spaces'", hook["command"])
+            expected_path = f"{codex.ROOT / 'engine/tools/bin'}:{codex.ROOT / 'scripts/fleet'}"
+            self.assertIn(f"PATH={expected_path}:/usr/bin:/bin", hook["command"])
+            self.assertIn(str(codex.ROOT / "scripts/fleet/fleet-quiet-wait"),
+                          hook["command"])
+
+    def test_quiet_hook_is_absent_without_owner_or_for_interactive_launch(self):
+        with patch.dict(codex.os.environ, {}, clear=True):
+            ownerless = codex.command("gpt-6-astra", "xhigh", "/work", ["/work"], "task")
+        with patch.dict(codex.os.environ,
+                        {"IR_QUIET_OWNER": "pool-1", "IR_LOCK_ROOT": "/locks"},
+                        clear=True):
+            interactive = codex.command("gpt-6-astra", "xhigh", "/work",
+                                        ["/work"], "task", interactive=True)
+        for args in (ownerless, interactive):
+            self.assertNotIn("--dangerously-bypass-hook-trust", args)
+            self.assertFalse(any(value.startswith("hooks.PreToolUse=") for value in args))
+
+    def test_repository_does_not_track_codex_hook_configuration(self):
+        repo = Path(__file__).resolve().parents[3]
+        if not (repo / ".git").exists():
+            self.skipTest("tracked-file guard requires a Git checkout")
+        result = subprocess.run(["git", "-C", str(repo), "ls-files", ".codex"],
+                                check=True, capture_output=True, text=True, timeout=10)
+        self.assertEqual(result.stdout.splitlines(), [])
 
     def test_interactive_resume_waits_for_human(self):
         args = codex.command("gpt-6-astra", "xhigh", "/work", ["/work"], "task", "abc", True)
