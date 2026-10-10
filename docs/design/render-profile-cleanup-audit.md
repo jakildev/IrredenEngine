@@ -220,12 +220,19 @@ continuous within-triangle boundaries and external receivers remain separate.
 
 ## Remaining investigations
 
+- Check the apparently oversized floor shadows in paired voxel/SDF IRShapeDebug
+  shapes against occupied geometry, light direction and receiver height. Include
+  the ring opening and cone silhouette; compare equivalent geometry before
+  attributing a difference to the rendering mode. The fallback cleanup's unchanged
+  captures do not establish correct caster size.
 - Extend lighting/shadow ownership checks to external casters, AO and other
   striped entities from the full scene. The revoxelized cube's sampled self-shadow
   controls do not certify every CanvasStress mode or arbitrary transforms.
 - Shared profiling matrix helpers live in the rotation CLI module. A neutral
   module could clarify ownership once needed; preserve the distinct evidence
   requirements of historical summaries and strict timing controls.
+  The extraction and CI test coverage are submitted separately in
+  [PR #4266](https://github.com/jakildev/IrredenEngine/pull/4266).
 - Give CPU GRID resampling enough destination capacity when exposed cells exceed
   the authored span. The solid-cube surface proof does not cover exact-fit thin
   plates, sparse geometry, other transforms, or interior-dependent consumers.
