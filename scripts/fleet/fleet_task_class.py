@@ -608,9 +608,10 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
                 and not _declined("task", task, "worker")):
             yield (*_class_effort(task), "work", _target("task", task))
     for task in tasks:
-        if (_task_claimable(task, host) and _task_blocked(task)
-                and not _declined("stack", task, "worker")):
-            base = (task.get("stackable_blocker_pr") or {}).get("number")
+        if not (_task_claimable(task, host) and _task_blocked(task)):
+            continue
+        base = (task.get("stackable_blocker_pr") or {}).get("number")
+        if not _declined("stack", task, "worker", base):
             yield (*_class_effort(task), "work", _target("stack", task, base))
     seen_plan_classes = set()
     plans = [] if pinned_only else (slice_data.get("needs_plan") or [])
@@ -630,7 +631,8 @@ def _candidates(slice_data, lane_default, host, fable_blocked=False):
 # lines the dispatcher walks (fleet-dispatcher assign_for_pane).
 
 # Decline memory. One file per declined target under
-# $FLEET_STATE_DIR/declined/, named `<kind>-<repo>-<N>` (fleet_target_key),
+# $FLEET_STATE_DIR/declined/, named from the target key with `:` replaced by
+# `-` (including a stack target's base-PR suffix),
 # written by fleet-dispatcher on the completion contract's `declined` verdict
 # (`fleet-claim decline` posts the record; the dispatcher reads it at exit);
 # its first line is the target's post-release `updated_at`. An item declined at that
@@ -663,10 +665,10 @@ def _record_number(record):
     return number
 
 
-def _decline_metadata(kind, record, role=None):
+def _decline_metadata(kind, record, role=None, extra=None):
     """Validated metadata when this host's `role` declined the unchanged item.
 
-    fleet-dispatcher writes `<state>/declined/<kind>-<repo>-<N>` on the
+    fleet-dispatcher writes `<state>/declined/<target-key-with-colons-replaced>` on the
     completion contract's `declined` verdict, line 1 the item's `updated_at`
     as fetched AFTER the iteration's comment and release bumped it, line 3
     the role that declined. The record is skipped while its own `updatedAt`
@@ -684,11 +686,11 @@ def _decline_metadata(kind, record, role=None):
     it. A record with no role line (written before the role was recorded)
     keeps its old reach and suppresses every role.
     """
-    number = _record_number(record)
     current = record.get("updatedAt") or ""
-    if number is None or not current:
+    target = _target(kind, record, extra)
+    if target is None or not current:
         return None
-    path = os.path.join(_declined_dir(), f"{kind}-{record.get('repo') or 'engine'}-{number}")
+    path = os.path.join(_declined_dir(), target.replace(":", "-"))
     try:
         age = time.time() - os.stat(path).st_mtime  # lint: state-mtime-ok decline TTL
         if age > DECLINE_TTL_SECONDS:
@@ -720,9 +722,9 @@ def _decline_metadata(kind, record, role=None):
     }
 
 
-def _declined(kind, record, role=None):
+def _declined(kind, record, role=None, extra=None):
     """True when current decline metadata exists for this lane and item."""
-    return _decline_metadata(kind, record, role) is not None
+    return _decline_metadata(kind, record, role, extra) is not None
 
 
 def _shadow_number(record):

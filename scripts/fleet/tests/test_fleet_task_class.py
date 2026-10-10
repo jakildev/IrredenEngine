@@ -868,6 +868,31 @@ class DispatchTargets(HostSeamCase):
             finally:
                 os.environ.pop("FLEET_STATE_DIR", None)
 
+    def test_stack_decline_memory_is_scoped_to_its_base_pr(self):
+        with tempfile.TemporaryDirectory() as state_dir:
+            os.environ["FLEET_STATE_DIR"] = state_dir
+            try:
+                os.makedirs(os.path.join(state_dir, "declined"))
+                task = _task("#344", "sonnet", blocked=True,
+                             stackable_blocker_pr={"number": 397})
+                task["repo"] = "engine"
+                task["updatedAt"] = "2026-10-10T21:22:44Z"
+                target = fleet_task_class._target(
+                    "stack", task, task["stackable_blocker_pr"]["number"])
+                path = os.path.join(state_dir, "declined", target.replace(":", "-"))
+                with open(path, "w") as handle:
+                    handle.write("2026-10-10T21:22:44Z\nblocked dependency\nworker\n")
+                self.assertEqual(self._pick_on("linux", {"tasks_open": [task]}, "sonnet"), [])
+                task["updatedAt"] = "2026-10-10T21:22:45Z"
+                self.assertEqual(self._pick_on("linux", {"tasks_open": [task]}, "sonnet"),
+                                 ["stack:engine:344:397"])
+                task["updatedAt"] = "2026-10-10T21:22:44Z"
+                task["stackable_blocker_pr"] = {"number": 398}
+                self.assertEqual(self._pick_on("linux", {"tasks_open": [task]}, "sonnet"),
+                                 ["stack:engine:344:398"])
+            finally:
+                os.environ.pop("FLEET_STATE_DIR", None)
+
     def test_prs_under_another_review_claim_are_not_targets(self):
         # The reviewers skip these from cached labels at zero cost; the
         # dispatcher's walk must too, or each costs a real review-claim round
