@@ -198,12 +198,21 @@ vec2 getEffectiveCameraIso();
 float getCameraPanYaw();
 /// Current zoom factor as a 2-D scale (x and y may differ for anisotropic zoom).
 vec2 getCameraZoom();
-/// Size of one trixel in screen pixels at the current zoom level.
+/// Size of one trixel in viewport pixels at the current zoom level.
 vec2 getTriangleStepSizeScreen();
-/// Render viewport dimensions in pixels.
+/// Render viewport dimensions in physical framebuffer pixels — the window's
+/// framebuffer extent, which under HiDPI is larger than its size in points.
 ivec2 getViewport();
-/// Ratio of output framebuffer pixels to screen pixels (HiDPI scale factor).
+/// Integer upscale from the game resolution to the viewport: how many
+/// viewport pixels one main-framebuffer pixel covers on screen.
 ivec2 getOutputScaleFactor();
+/// Convert between logical window points — the unit of the GLFW cursor,
+/// @c IRInput::getMousePosition and @c IRInput::injectMouseMove — and the
+/// physical framebuffer pixels @ref getViewport is in. Pure scales, so they
+/// convert deltas as well as positions. Both return (0, 0) while the window or
+/// framebuffer extent is zero.
+vec2 windowPointsToFramebufferPx(vec2 windowPoints);
+vec2 framebufferPxToWindowPoints(vec2 framebufferPx);
 /// Copy a rectangular region from the default framebuffer into @p rgbaData (RGBA8).
 /// Returns @c false on GL error. Used by the screenshot system.
 bool readDefaultFramebuffer(int x, int y, int width, int height, void *rgbaData);
@@ -219,11 +228,17 @@ bool readDefaultFramebuffer(int x, int y, int width, int height, void *rgbaData)
 /// byte-identical at the pixel level. @see IRPrefab::DepthProbe for the
 /// diagnostic + regression-guard wrappers built on this.
 CompositeDepthSample readbackCompositeDepth(ivec2 px);
-/// Mouse position in the output view (after upscaling), in pixels.
+/// Mouse position in the output view: viewport pixels measured from the corner
+/// of the quad the main framebuffer is drawn into, so one main-framebuffer
+/// pixel spans @ref getOutputScaleFactor of them.
 vec2 getMousePositionOutputView();
-/// Inverse of the screen-pixel → GUI-canvas-trixel chain that
-/// @c getMousePositionOutputView feeds: maps a point on the GUI canvas back to
-/// the screen pixel a cursor must sit at to land on it.
+/// Mouse position in the main framebuffer's own pixels (game resolution plus
+/// the extra pixel buffer, top-left origin): the output view with the output
+/// upscale divided out. The space GUI-canvas and hitbox hover tests compare in.
+vec2 getMousePositionMainFramebuffer();
+/// Inverse of the cursor → GUI-canvas-trixel chain that
+/// @c getMousePositionMainFramebuffer feeds: maps a point on the GUI canvas
+/// back to the cursor position, in window points, that lands on it.
 ///
 /// Exists for headless GUI tests, which must click widgets whose GUI-canvas
 /// position is computed at runtime (a centered menu, a list row) and so cannot

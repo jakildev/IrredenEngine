@@ -14,6 +14,10 @@
 #   >=2  check_regression.py could not compare at all — stderr is dumped and
 #        the exit code propagates so the step goes red. No comment is posted:
 #        an infra failure must not masquerade as a perf verdict.
+#     3  the comparison finished but the PR comment could not be posted after
+#        COMMENT_ATTEMPTS tries (a transient GitHub API error outlasted the
+#        retry). stderr names the comment post, not the comparison, as what
+#        failed; a single failed post is retried, not fatal.
 #
 # Env:
 #   BASELINE_ROOT  baseline root directory (may be empty/absent -> seed-new)
@@ -26,6 +30,8 @@
 #   PERF_TMPDIR    where the comment/stderr artifacts land, default /tmp
 #   CHECK_REGRESSION  override the checker invocation (tests shim this)
 #   GH_BIN         override the gh binary (tests shim this)
+#   COMMENT_ATTEMPTS  total tries for the PR comment post, default 3
+#   COMMENT_RETRY_SLEEP  seconds between comment attempts, default 5
 
 set -euo pipefail
 
@@ -40,6 +46,8 @@ IMPROVE_PCT="${IMPROVE_PCT:-5}"
 PERF_TMPDIR="${PERF_TMPDIR:-/tmp}"
 CHECK_REGRESSION="${CHECK_REGRESSION:-python3 ${SCRIPT_DIR}/check_regression.py}"
 GH_BIN="${GH_BIN:-gh}"
+COMMENT_ATTEMPTS="${COMMENT_ATTEMPTS:-3}"
+COMMENT_RETRY_SLEEP="${COMMENT_RETRY_SLEEP:-5}"
 
 BODY="${PERF_TMPDIR}/perf_comment_body.md"
 STDERR="${PERF_TMPDIR}/perf_gate_stderr.txt"
@@ -95,7 +103,24 @@ fi
   fi
 } > "$COMMENT"
 
-"$GH_BIN" pr comment "$PR_NUMBER" --body-file "$COMMENT"
+# The verdict is already computed; one transient API error (GraphQL 5xx) must
+# not turn the check red with no verdict, so the post is retried a bounded
+# number of times.
+POSTED=0
+for ((attempt = 1; attempt <= COMMENT_ATTEMPTS; attempt++)); do
+  if "$GH_BIN" pr comment "$PR_NUMBER" --body-file "$COMMENT"; then
+    POSTED=1
+    break
+  fi
+  if ((attempt < COMMENT_ATTEMPTS)); then
+    echo "perf-gate: PR comment post failed (attempt ${attempt}/${COMMENT_ATTEMPTS}); retrying in ${COMMENT_RETRY_SLEEP}s." >&2
+    sleep "$COMMENT_RETRY_SLEEP"
+  fi
+done
+if [[ $POSTED -eq 0 ]]; then
+  echo "perf-gate: the comparison finished (exit ${STATUS}) but the PR comment post failed after ${COMMENT_ATTEMPTS} attempts; failing the step." >&2
+  exit 3
+fi
 
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   echo "status=$STATUS" >> "$GITHUB_OUTPUT"

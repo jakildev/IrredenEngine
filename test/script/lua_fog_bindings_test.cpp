@@ -62,7 +62,9 @@ TEST_F(LuaFogBindingsTest, ExposesCompleteSurfaceAndCppStateValues) {
             'setEntityGoverned', 'getEntityReveal', 'setCell', 'getCell',
             'revealRadius', 'exploreRadius', 'setCellChannels', 'getCellChannels',
             'setExploredPolicy', 'getExploredPolicy', 'setExploredTimeMs',
-            'getExploredTimeMs', 'clear'
+            'getExploredTimeMs', 'clear', 'setVisionCeiling', 'getVisionCeiling',
+            'setRevealSurfaceTreatment', 'getRevealSurfaceTreatment',
+            'clearRevealSurfaceTreatment'
         }
         for _, name in ipairs(names) do
             assert(type(IRFog[name]) == 'function', name)
@@ -214,6 +216,28 @@ TEST_F(LuaFogBindingsTest, MissingCanvasDefaultsAndOptionalValuesAreAccepted) {
         assert(#verdicts == 2 and verdicts[1] == true and verdicts[2] == true)
         assert(#IRFog.lineOfSightCaptured(0, 0, 0, {}) == 0)
     )lua"));
+}
+
+// Without an active canvas the ceiling and treatment entries validate, then
+// no-op; the getters read the disabled defaults.
+TEST_F(LuaFogBindingsTest, CeilingAndTreatmentEntriesDefaultWithoutACanvas) {
+    EXPECT_TRUE(scriptSucceeds(R"lua(
+        IRFog.setVisionCeiling(0, 2, 1)
+        local height, fade = IRFog.getVisionCeiling(0)
+        assert(height == -1 and fade == 0)
+        IRFog.setRevealSurfaceTreatment(0.5, 0.5)
+        IRFog.clearRevealSurfaceTreatment()
+        local on, density, tone = IRFog.getRevealSurfaceTreatment()
+        assert(on == false and density == 0 and math.abs(tone - 0.85) < 1e-6)
+    )lua"));
+    expectScriptFailsWith(
+        "IRFog.setVisionCeiling(0, 1, -1)",
+        "IRFog.setVisionCeiling argument 3 must not be negative"
+    );
+    expectScriptFailsWith(
+        "IRFog.setRevealSurfaceTreatment(2)",
+        "IRFog.setRevealSurfaceTreatment argument 1 must be in [0, 1]"
+    );
 }
 
 TEST_F(LuaFogBindingsTest, StoredEntityRevealAndUngovernedDefaultAreReturned) {
@@ -457,6 +481,98 @@ TEST_F(LuaFogVisionSlotsTest, LineOfSightEntryRejectsUnregisteredSlotsWithANamed
         std::string::npos
     );
     EXPECT_EQ(m_observers.losSourceMask_, 0) << "a rejected call must leave the gates untouched";
+}
+
+TEST_F(LuaFogVisionSlotsTest, CeilingEntrySetsAndReadsTheSlot) {
+    ASSERT_TRUE(m_lua.lua()
+                    .safe_script(R"lua(
+        IRFog.addVision(0, 0, 5)
+        IRFog.addVision(0, 0, 5)
+        IRFog.setVisionCeiling(1, 3.5, 1.25)
+        local height, fade = IRFog.getVisionCeiling(1)
+        assert(height == 3.5 and fade == 1.25)
+        local height0, fade0 = IRFog.getVisionCeiling(0)
+        assert(height0 == -1 and fade0 == 0, 'a fresh slot starts disabled')
+        IRFog.setVisionCeiling(0, 2)
+        assert(select(2, IRFog.getVisionCeiling(0)) == 0, 'the fade defaults to a hard plane')
+    )lua")
+                    .valid());
+    EXPECT_EQ(m_observers.visionCircleCeilings_[1], IRMath::vec4(3.5f, 1.25f, 0.0f, 0.0f));
+    EXPECT_EQ(m_observers.visionCircleCeilings_[0], IRMath::vec4(2.0f, 0.0f, 0.0f, 0.0f));
+
+    ASSERT_TRUE(m_lua.lua().safe_script("IRFog.setVisionCeiling(1, -1)").valid());
+    EXPECT_FALSE(m_observers.ceilingEnabled(1)) << "a negative height disables the ceiling";
+    EXPECT_FLOAT_EQ(m_observers.fadeHeight(1), 0.0f);
+
+    ASSERT_TRUE(m_lua.lua().safe_script("IRFog.clearVisions()").valid());
+    EXPECT_FALSE(m_observers.ceilingEnabled(0)) << "clearing the sources resets every ceiling";
+}
+
+TEST_F(LuaFogVisionSlotsTest, CeilingEntryRejectsInvalidArgumentsWithoutMutating) {
+    ASSERT_TRUE(m_lua.lua()
+                    .safe_script(R"lua(
+        IRFog.addVision(0, 0, 5)
+        IRFog.setVisionCeiling(0, 3, 1)
+    )lua")
+                    .valid());
+    for (const auto &[source, expected] :
+         {std::pair{"IRFog.setVisionCeiling(1, 1)", "IRFog.setVisionCeiling argument 1"},
+          std::pair{"IRFog.setVisionCeiling(-1, 1)", "IRFog.setVisionCeiling argument 1"},
+          std::pair{"IRFog.setVisionCeiling(0, 'high')", "argument 2 must be a number"},
+          std::pair{"IRFog.setVisionCeiling(0, 0/0)", "argument 2 must be finite"},
+          std::pair{"IRFog.setVisionCeiling(0, math.huge)", "argument 2 must be finite"},
+          std::pair{"IRFog.setVisionCeiling(0, 2, -0.5)", "argument 3 must not be negative"},
+          std::pair{"IRFog.setVisionCeiling(0, 2, math.huge)", "argument 3 must be finite"},
+          std::pair{"IRFog.setVisionCeiling(0)", "expects 2 to 3 arguments"},
+          std::pair{"IRFog.getVisionCeiling(3)", "IRFog.getVisionCeiling argument 1"},
+          std::pair{"IRFog.getVisionCeiling()", "expects 1 arguments"}}) {
+        const std::string error = scriptError(source);
+        EXPECT_NE(error.find(expected), std::string::npos) << source << ": " << error;
+    }
+    EXPECT_EQ(m_observers.visionCircleCeilings_[0], IRMath::vec4(3.0f, 1.0f, 0.0f, 0.0f))
+        << "a rejected call must leave the ceiling untouched";
+}
+
+TEST_F(LuaFogVisionSlotsTest, TreatmentEntriesRoundTripClearAndReject) {
+    ASSERT_TRUE(m_lua.lua()
+                    .safe_script(R"lua(
+        local on, density, tone = IRFog.getRevealSurfaceTreatment()
+        assert(on == false and density == 0 and math.abs(tone - 0.85) < 1e-6)
+        IRFog.setRevealSurfaceTreatment(0.5, 0.6)
+        on, density, tone = IRFog.getRevealSurfaceTreatment()
+        assert(on == true and density == 0.5 and math.abs(tone - 0.6) < 1e-6)
+        IRFog.clearRevealSurfaceTreatment()
+        on, density, tone = IRFog.getRevealSurfaceTreatment()
+        assert(on == false and density == 0.5, 'clearing keeps the stored style')
+        IRFog.setRevealSurfaceTreatment(0.25)
+        on, density, tone = IRFog.getRevealSurfaceTreatment()
+        assert(on == true and density == 0.25 and math.abs(tone - 0.85) < 1e-6)
+    )lua")
+                    .valid());
+    EXPECT_EQ(
+        m_observers.revealSurfaceTreatment_,
+        IRMath::vec4(1.0f, 0.25f, IRComponents::kFogCutTone, 0.0f)
+    );
+    for (const auto &[source, expected] :
+         {std::pair{
+              "IRFog.setRevealSurfaceTreatment(1.5)",
+              "IRFog.setRevealSurfaceTreatment argument 1 must be in [0, 1]"
+          },
+          std::pair{"IRFog.setRevealSurfaceTreatment(-0.1)", "argument 1 must be in [0, 1]"},
+          std::pair{"IRFog.setRevealSurfaceTreatment(0.5, 2)", "argument 2 must be in [0, 1]"},
+          std::pair{"IRFog.setRevealSurfaceTreatment(0/0)", "argument 1 must be finite"},
+          std::pair{"IRFog.setRevealSurfaceTreatment('x')", "argument 1 must be a number"},
+          std::pair{"IRFog.setRevealSurfaceTreatment(0.5, 'x')", "argument 2 must be a number"},
+          std::pair{"IRFog.setRevealSurfaceTreatment()", "expects 1 to 2 arguments"},
+          std::pair{"IRFog.getRevealSurfaceTreatment(1)", "expects 0 arguments"},
+          std::pair{"IRFog.clearRevealSurfaceTreatment(1)", "expects 0 arguments"}}) {
+        const std::string error = scriptError(source);
+        EXPECT_NE(error.find(expected), std::string::npos) << source << ": " << error;
+    }
+    EXPECT_EQ(
+        m_observers.revealSurfaceTreatment_,
+        IRMath::vec4(1.0f, 0.25f, IRComponents::kFogCutTone, 0.0f)
+    ) << "a rejected call must leave the treatment untouched";
 }
 
 TEST(LuaFogPipelineTest, FogLosBuildResolvesFromALuaPipeline) {

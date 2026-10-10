@@ -1,8 +1,8 @@
 # Fog-of-war reveal model
 
 **Status:** Normative design contract. The implementation is split across
-#3675–#3677 and #3679–#3680; the mapping table names the child that makes each
-part live.
+#3675–#3677 and #3679–#3680, with the reveal-surface ceiling and treatment in
+#4055; the mapping table names the child that makes each part live.
 Until a child lands, its row describes the target behavior rather than the
 current render path.
 
@@ -28,11 +28,11 @@ adopted as a BODY; FIELD and EXEMPT are explicit classifications.
 ### A BODY is never sliced
 
 A BODY shows, hides, or fades as one unit. The engine evaluates the reveal
-field once at the body's ground anchor, including the height cost at that
-anchor, then applies the one factor to every pixel. No BODY pixel performs a
-second field lookup, height clip, or rim fade. A body on higher ground may
-therefore remain hidden until its anchor is revealed, but once revealed its
-entire geometry is visible at the same factor.
+field once at the body's ground anchor, including the height cost and the
+source ceiling at that anchor, then applies the one factor to every pixel. No
+BODY pixel performs a second field lookup, height clip, or rim fade. A body on
+higher ground may therefore remain hidden until its anchor is revealed, but
+once revealed its entire geometry is visible at the same factor.
 
 ### A FIELD sample is painted, not removed
 
@@ -64,6 +64,7 @@ this contract.
 | Shape BODY apply route | `SHAPE_FLAG_FOG_HIDDEN` suppresses a hidden shape before raster work, independently of the author's `SHAPE_FLAG_VISIBLE`. Shown pixels carry and use the uniform BODY factor. | #3677 (P4) |
 | Detached-canvas BODY apply route | The canvas owner carries `fogHidden_` and `fogRevealFactor_`. `ENTITY_CANVAS_TO_FRAMEBUFFER` suppresses a hidden canvas or applies the uniform factor to the whole composite; private-pool voxels carry the BODY exemption. | #3680 (P6) |
 | EXEMPT apply routes | For a voxel set, explicit EXEMPT classification stamps factor 255 without `C_FogRevealed`. Shape and detached-canvas EXEMPT bypasses require explicit raster-route realization; exclusion from BODY adoption alone is insufficient. | #3676 (P3) for voxel sets; #3696 for shapes and detached canvases |
+| Reveal surface | A per-source ceiling (`setVisionCircleCeiling`) multiplies with `losVisibility` into one surface factor per source before the maximum over sources. A canvas-owned style (`setRevealSurfaceTreatment`) marks a partial winning cut on FIELD samples in `FOG_TO_TRIXEL` and the overflow lane. [Reveal-surface treatment](#reveal-surface-treatment) is the contract. | #4055 |
 | Creation seams | Override and source/BODY channel data live with `C_FogRevealed` and feed every BODY evaluator; the FIELD paint admits a source only where its mask intersects the sampled cell's mask (the world field's per-cell channels), on both source tiers. | #3679 (P5), per-cell masks #3687 |
 
 Only FIELD matter and shapes with `C_LightBlocker::blocksLOS_` occlude the
@@ -152,7 +153,220 @@ pool is exempt from that clip, and the result is applied at composite time
 (#3680).
 
 This exception does not create a fourth subject class. It is the closest
-available application of the FIELD verdict on a route that cannot paint.
+available application of the FIELD verdict on a route that cannot paint. A
+source's ceiling enters this clip and nothing else from the
+[reveal-surface treatment](#reveal-surface-treatment) does.
+
+## Reveal-surface treatment
+
+**Landing child:** #4055 (landed). This section is the contract the render
+path implements.
+
+A source stops revealing a sample for one of three reasons: the sample is out
+of XY range, it is above the source's ceiling, or an occluder blocks the
+source's line of sight to it. The last two cut through matter that is
+otherwise in range, and together they form the source's *reveal surface*.
+This section defines the ceiling, how the two cuts combine into one factor
+per source, and the opt-in treatment that marks a partial cut on FIELD matter
+so that it reads differently from unexplored ground beyond the range.
+
+### Ceiling
+
+Each analytic source carries a `ceilingHeight` and a `fadeHeight`, both in
+world units measured upward from the source's `observerZ`. Iso +Z points
+down, so a higher sample has a smaller Z, and a sample's height above the
+observer is
+
+```
+dzUp = max(observerZ - sampleZ, 0)
+```
+
+`sampleZ` is the position the additive height terms already read: the
+recovered world position of a FIELD sample, or the ground anchor of a BODY. A
+sample at or below the observer has `dzUp = 0`, so no enabled ceiling hides
+it.
+
+| Authoring | `ceilingVisibility` |
+|---|---|
+| `ceilingHeight < 0` (the default) | 1 everywhere. The ceiling is disabled. |
+| `ceilingHeight >= 0` and `fadeHeight == 0` | 1 where `dzUp <= ceilingHeight`, otherwise 0. The plane itself is visible and the first sample above it is hidden. |
+| `ceilingHeight >= 0` and `fadeHeight > 0` | `1 - smoothstep(ceilingHeight, ceilingHeight + fadeHeight, dzUp)`: 1 up to and including the plane, 0 at and beyond `ceilingHeight + fadeHeight`. |
+
+`ceilingVisibility` depends on `dzUp` alone. A column at the disc's centre
+and one at its rim hide at the same height above the observer, and a fade of
+`H` is fully hidden at exactly `ceilingHeight + H` in both.
+
+The additive height terms (`zCostUp`, `zCostDown`, `freeBand`) cannot express
+that shape, because they add to the radial distance. A source with a
+positive `zCostUp`, radius `radius` and edge `edge` fully hides a sample at
+XY distance `d` once it is `freeBand + (radius + edge - d) / zCostUp` above
+the observer, a height that differs between the centre and the rim for every
+finite cost. Those terms are unchanged and remain available; a source may
+author them together with a ceiling.
+
+A ceiling needs an analytic slot. A field-tier source, one added past
+`kMaxFogVisionCircles`, has no ceiling, as it has no height terms and no line
+of sight.
+
+### Composition
+
+For each analytic source whose channel mask admits the sample:
+
+```
+shapeReveal       = the radial curve with its additive height terms
+surfaceVisibility = ceilingVisibility * losVisibility
+contribution      = shapeReveal * surfaceVisibility
+```
+
+`losVisibility` is the exact march's factor, softness included, for a source
+gated by line of sight, and 1 for an ungated source. The reveal of a sample
+is the maximum of the world-field grid term and every source's contribution.
+
+Both factors scale their own source before the maximum is taken. A source cut
+off by its ceiling or by an occluder therefore never lowers what another
+source or the grid reveals, and each ceiling is measured from its own
+source's `observerZ`. The grid term is an independent input to the maximum:
+no ceiling and no line-of-sight factor scales it.
+
+The CPU oracle (`IRPrefab::Fog::evalReveal`) and the GLSL and Metal FIELD
+paint evaluate this one definition.
+
+### Treatment
+
+With the treatment disabled, a partial contribution simply stands. The sample
+blends toward the unexplored colour by its reveal, and a fully cut sample is
+the flat unexplored colour. The treatment adds a dissolve and a cap tone to
+the partial band.
+
+The style belongs to the canvas: one `dissolveDensity` and one `capTone`,
+each in [0, 1], enabled and cleared explicitly. The ceiling and fade stay per
+source. Because there is one style per canvas, two overlapping sources, or a
+ceiling cut and a line-of-sight cut, cannot disagree about how one sample
+looks.
+
+A source's contribution styles a FIELD sample only when both conditions hold:
+
+1. The contribution is partial: `0 < surfaceVisibility < 1`.
+2. The contribution wins. It raises the sample's reveal above the grid term
+   and above every other source's contribution.
+
+A fully visible competing source or a VISIBLE grid cell therefore suppresses
+the treatment, because the partial contribution no longer decides the sample.
+The ceiling and line-of-sight factors are never styled separately. Their
+product is the one factor the treatment reads, so a sample carries at most
+one treatment. Among contributions that tie, the one with the larger band
+weight (see [Cap tone](#cap-tone)) styles the sample.
+
+A hard ceiling on a source with a hard or absent line-of-sight gate has no
+partial band, so the treatment marks nothing there. A creation that wants a
+marked cut authors a `fadeHeight` or a line-of-sight softness.
+
+### Dissolve
+
+The dissolve is a colour decision and never removes geometry. Each world
+voxel has one fixed hash value in [0, 1]. A fragment of the styled
+contribution is retained when
+
+```
+hash <= mix(1, surfaceVisibility, dissolveDensity)
+```
+
+and rejected otherwise. At density 0 every fragment is retained. At density 1
+a fragment is retained only where its voxel's hash is at most
+`surfaceVisibility`, so the band thins from solid at its fully visible edge
+to empty at its fully cut edge.
+
+The source of a rejected fragment contributes nothing to that sample. The
+sample falls back to the maximum of the grid term and the remaining sources,
+which is the unexplored colour when nothing else reveals it. Its geometry is
+still drawn.
+
+The hash is integer arithmetic over the sample's integer world voxel, built
+from fixed-width xor and multiply steps and written identically in GLSL and
+Metal. Nothing else enters it: no frame counter, no camera or yaw term, and
+no floating-point transcendental. A voxel makes the same decision on every
+frame, at every camera yaw, on every painted route and on both backends.
+
+### Cap tone
+
+A retained fragment of the styled contribution is blended toward its source
+colour multiplied by `capTone`, on every face axis. The weight of that blend,
+the *band weight*, is zero where `surfaceVisibility` is 0 or 1 and peaks at
+the midpoint of the band, so the cap meets the untreated colour at both
+edges. This document fixes those three points. The implementation child
+fixes the curve between them and pins it across GLSL and Metal.
+
+The blend is the helper the radial rim cap uses, so a ceiling cut, a soft
+line-of-sight edge and a disc rim share one cap language. The radial rim cap
+is unchanged in where it applies: hard discs only, unexplored grid cells
+only, vertical faces only, and within two cells past the rim.
+
+### Routes and subject classes
+
+| Subject and route | Ceiling and line of sight | Treatment |
+|---|---|---|
+| FIELD on a painted route: the world canvas at cardinal and smooth yaw, the per-axis cells, and the overflow entries | Evaluated per sample inside the paint's per-source contribution. The geometry stays, and a sample above the ceiling is painted the unexplored colour. | Applied when enabled. |
+| FIELD on an [unpainted route](#unpainted-route-field-deviations): a world-placed detached canvas tagged FIELD | The ceiling multiplies each source inside the route's existing z-aware clip. The clip removes a voxel only where its result is zero, so a soft band is kept whole and the cut falls at `ceilingHeight + fadeHeight`. | None. The route synthesizes no dissolve and no tint. |
+| BODY, on every route | Evaluated once at the ground anchor by the same oracle, and applied as one factor to every pixel. A body anchored under the ceiling renders whole even where its geometry rises above it. A body anchored above a hard ceiling is hidden whole, and one anchored in a soft band fades whole. | None. No BODY pixel hashes, dissolves, or takes a cap. |
+| EXEMPT | Not evaluated. | None. |
+
+The ceiling does not enter the z-free keep-ring culls. They still drop a
+sample only when its column is unexplored and outside every source's keep
+radius.
+
+### Parameters and API
+
+| Parameter | Owner | Default | Rule |
+|---|---|---|---|
+| `ceilingHeight` | Analytic source | Disabled | World units above `observerZ`. Any negative value disables the ceiling. |
+| `fadeHeight` | Analytic source | 0 | World units, never negative. 0 is the hard plane. |
+| `dissolveDensity` | Canvas | 0 | In [0, 1]. |
+| `capTone` | Canvas | The radial rim cap's tone | In [0, 1]. |
+| Treatment enabled | Canvas | Off | Setting the treatment enables it; clearing it disables it. |
+
+| C++ (`C_CanvasFogOfWar` and `IRPrefab::Fog`) | Lua (`IRFog`) | Effect |
+|---|---|---|
+| `setVisionCircleCeiling` | `setVisionCeiling` | Sets `ceilingHeight` and `fadeHeight` on one analytic slot. |
+| `visionCircleCeiling` | `getVisionCeiling` | Reads the stored pair for one slot. |
+| `setRevealSurfaceTreatment` | `setRevealSurfaceTreatment` | Enables the canvas style with a `dissolveDensity` and a `capTone`. |
+| `revealSurfaceTreatment` | `getRevealSurfaceTreatment` | Reads the stored style and whether it is enabled. |
+| `clearRevealSurfaceTreatment` | `clearRevealSurfaceTreatment` | Disables the treatment. Every source keeps its ceiling. |
+
+The slot argument must name a registered analytic slot, which is
+`addVisionCircle`'s return value. Every slot starts with its ceiling
+disabled, both when it is added and after the sources are cleared, so a
+creation that re-adds its sources each frame re-authors the ceiling with
+them, as it does for line of sight.
+
+The Lua boundary raises an error naming the called function, and changes no
+state, for an unregistered slot, a non-finite value, a negative `fadeHeight`,
+or a `dissolveDensity` or `capTone` outside [0, 1]. A negative
+`ceilingHeight` is not an error; it disables the ceiling. The getters return
+the values as stored.
+
+### Defaults are byte-identical
+
+Every source starts with its ceiling disabled and every canvas starts with
+the treatment disabled. In that state nothing in this section changes a
+byte: the FIELD paint, the radial rim cap, every BODY verdict, the keep-ring
+culls and the paint pass's source skips all behave as they did before, and
+the new GPU parameters are appended after the existing observer payload so
+that no existing field moves.
+
+Authoring a ceiling while the treatment stays disabled changes only the
+reveal of the samples that ceiling cuts. The radial rim cap keeps its rule
+and its tone.
+
+### Rejected alternatives
+
+| Alternative | Why it is rejected |
+|---|---|
+| Encoding the ceiling as a large `zCostUp` | It couples the ceiling to radial distance. Only an effectively infinite cost gives a level cut, and any softer cost slopes the hiding height across the disc, so a fade of a fixed height cannot be authored. |
+| One global ceiling multiplied into the result after the maximum | It would cut the grid term and every other source. A ceiling belongs to one source and is measured from that source's `observerZ`. |
+| A dissolve or cap style per source | Overlapping sources would disagree about how one sample looks. |
+| Removing geometry above the ceiling on a painted FIELD route | It breaks [A FIELD sample is painted, not removed](#a-field-sample-is-painted-not-removed): the hole exposes what is behind it and changes the world's silhouette. |
+| Dissolving, tinting or clipping BODY or EXEMPT pixels | It breaks [A BODY is never sliced](#a-body-is-never-sliced). The anchor verdict owns a body's visibility, and EXEMPT is outside fog. |
+| A separate treatment parameter or boundary representation for line of sight | The exact march's softness already supplies the factor. A second one would allow two overlapping treatments on one sample. |
 
 ## Creation-facing seams
 
@@ -183,6 +397,16 @@ field-tier source reveals a FIELD cell only where the two masks intersect
 (world field D8, D14). The grid term stays channel-blind for BODY subjects:
 an admitted VISIBLE cell reveals a BODY whatever mask the BODY carries, and
 an EXPLORED cell reveals no BODY.
+
+### Reveal surface
+
+A source's ceiling and the canvas's cut treatment are creation-owned. The
+engine ships both disabled and assigns no look: a creation chooses each
+source's `ceilingHeight` and `fadeHeight` through `setVisionCircleCeiling`
+(`IRFog.setVisionCeiling`) and the canvas's dissolve density and cap tone
+through `setRevealSurfaceTreatment`. The parameters, their validation and the
+composition they feed are defined in
+[Reveal-surface treatment](#reveal-surface-treatment).
 
 ### Hidden-body policy
 

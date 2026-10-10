@@ -254,6 +254,28 @@ applyFogVision(const sol::variadic_args &args, bool replace, const FogVisionTarg
     );
 }
 
+/// The slot check the per-slot entries share: what the C++ setters assert,
+/// raised as a named Lua error instead of reaching the assert.
+inline void requireFogVisionSlot(
+    const IRComponents::FrameDataFogObservers &observers, int slot, const char *function
+) {
+    if (slot < 0 || slot >= observers.visionCircleCount_) {
+        throw std::invalid_argument(
+            fogArgumentName(function, 0) + " is not a registered vision slot (count " +
+            std::to_string(observers.visionCircleCount_) + ")"
+        );
+    }
+}
+
+/// A finite number in [0, 1], @p what naming the bound in the error.
+inline float requireFogUnitFloat(sol::object value, const char *function, std::size_t index) {
+    const float number = requireFogFloat(value, function, index);
+    if (!(number >= 0.0f && number <= 1.0f)) {
+        throw std::invalid_argument(fogArgumentName(function, index) + " must be in [0, 1]");
+    }
+    return number;
+}
+
 /// `IRFog.setVisionLineOfSight(slot, losEyeHeight[, losSoftness])`: validates
 /// in Lua what `C_CanvasFogOfWar::setVisionCircleLineOfSight` asserts, so an
 /// unregistered slot raises a named error instead of reaching the assert.
@@ -268,18 +290,74 @@ inline void applyFogVisionLineOfSight(
     if (observers == nullptr) {
         return;
     }
-    if (slot < 0 || slot >= observers->visionCircleCount_) {
-        throw std::invalid_argument(
-            fogArgumentName(function, 0) + " is not a registered vision slot (count " +
-            std::to_string(observers->visionCircleCount_) + ")"
-        );
-    }
+    requireFogVisionSlot(*observers, slot, function);
     IRComponents::C_CanvasFogOfWar::setVisionCircleLineOfSight(
         *observers,
         slot,
         eyeHeight,
         softness
     );
+}
+
+/// `IRFog.setVisionCeiling(slot, ceilingHeight[, fadeHeight])`: a negative
+/// height disables the slot's ceiling; a negative fade is an error.
+inline void applyFogVisionCeiling(
+    const sol::variadic_args &args, IRComponents::FrameDataFogObservers *observers
+) {
+    constexpr const char *function = "setVisionCeiling";
+    requireFogArity(function, args.size(), 2, 3);
+    const int slot = requireFogInt(args[0], function, 0);
+    const float ceilingHeight = requireFogFloat(args[1], function, 1);
+    const float fadeHeight = optionalFogFloat(args, 2, 0.0f, function);
+    if (fadeHeight < 0.0f) {
+        throw std::invalid_argument(fogArgumentName(function, 2) + " must not be negative");
+    }
+    if (observers == nullptr) {
+        return;
+    }
+    requireFogVisionSlot(*observers, slot, function);
+    IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(
+        *observers,
+        slot,
+        ceilingHeight,
+        fadeHeight
+    );
+}
+
+/// `IRFog.getVisionCeiling(slot)` → `ceilingHeight, fadeHeight` as stored;
+/// disabled without a canvas.
+inline std::tuple<double, double> queryFogVisionCeiling(
+    const sol::variadic_args &args, const IRComponents::FrameDataFogObservers *observers
+) {
+    constexpr const char *function = "getVisionCeiling";
+    requireFogArity(function, args.size(), 1, 1);
+    const int slot = requireFogInt(args[0], function, 0);
+    if (observers == nullptr) {
+        const IRComponents::FogVisionCeiling off{};
+        return {off.ceilingHeight_, off.fadeHeight_};
+    }
+    requireFogVisionSlot(*observers, slot, function);
+    const IRComponents::FogVisionCeiling ceiling =
+        IRComponents::C_CanvasFogOfWar::visionCircleCeiling(*observers, slot);
+    return {ceiling.ceilingHeight_, ceiling.fadeHeight_};
+}
+
+/// `IRFog.setRevealSurfaceTreatment(dissolveDensity[, capTone])`: both in
+/// [0, 1]; the tone defaults to the radial rim cap's.
+inline void applyFogRevealSurfaceTreatment(
+    const sol::variadic_args &args, IRComponents::FrameDataFogObservers *observers
+) {
+    constexpr const char *function = "setRevealSurfaceTreatment";
+    requireFogArity(function, args.size(), 1, 2);
+    const float dissolveDensity = requireFogUnitFloat(args[0], function, 0);
+    float capTone = IRComponents::kFogCutTone;
+    if (args.size() == 2 && args[1].get_type() != sol::type::lua_nil) {
+        capTone = requireFogUnitFloat(args[1], function, 1);
+    }
+    if (observers == nullptr) {
+        return;
+    }
+    IRComponents::C_CanvasFogOfWar::setRevealSurfaceTreatment(*observers, dissolveDensity, capTone);
 }
 
 /// `IRFog.lineOfSightCaptured(fx, fy, fz, targets)`: one verdict per target of
@@ -348,6 +426,36 @@ bindFog(LuaScript &script, FogVisionTargetResolver resolveTarget = activeFogVisi
     fog["setVisionLineOfSight"] = statefulLuaFunction([resolveTarget](sol::variadic_args args) {
         applyFogVisionLineOfSight(args, resolveTarget().observers_);
     });
+    fog["setVisionCeiling"] = statefulLuaFunction([resolveTarget](sol::variadic_args args) {
+        applyFogVisionCeiling(args, resolveTarget().observers_);
+    });
+    fog["getVisionCeiling"] = statefulLuaFunction([resolveTarget](sol::variadic_args args) {
+        return queryFogVisionCeiling(args, resolveTarget().observers_);
+    });
+    fog["setRevealSurfaceTreatment"] =
+        statefulLuaFunction([resolveTarget](sol::variadic_args args) {
+            applyFogRevealSurfaceTreatment(args, resolveTarget().observers_);
+        });
+    fog["clearRevealSurfaceTreatment"] =
+        statefulLuaFunction([resolveTarget](sol::variadic_args args) {
+            requireFogArity("clearRevealSurfaceTreatment", args.size(), 0, 0);
+            if (auto *observers = resolveTarget().observers_) {
+                IRComponents::C_CanvasFogOfWar::clearRevealSurfaceTreatment(*observers);
+            }
+        });
+    fog["getRevealSurfaceTreatment"] =
+        statefulLuaFunction([resolveTarget](sol::variadic_args args) {
+            requireFogArity("getRevealSurfaceTreatment", args.size(), 0, 0);
+            IRComponents::FogRevealSurfaceTreatment treatment{};
+            if (const auto *observers = resolveTarget().observers_) {
+                treatment = IRComponents::C_CanvasFogOfWar::revealSurfaceTreatment(*observers);
+            }
+            return std::make_tuple(
+                treatment.enabled_,
+                static_cast<double>(treatment.dissolveDensity_),
+                static_cast<double>(treatment.capTone_)
+            );
+        });
     fog["clearVisions"] = statefulLuaFunction([resolveTarget](sol::variadic_args args) {
         requireFogArity("clearVisions", args.size(), 0, 0);
         const FogVisionTarget target = resolveTarget();

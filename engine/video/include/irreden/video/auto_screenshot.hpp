@@ -5,6 +5,7 @@
 #include <irreden/ir_constants.hpp>
 #include <irreden/system/ir_system_types.hpp>
 #include <irreden/input/ir_input_types.hpp>
+#include <irreden/video/ir_video_types.hpp>
 
 #include <array>
 #include <cstddef>
@@ -159,6 +160,8 @@ template <std::size_t LabelSize = 40> struct IndexedSweepShots {
 /// the frame-counted capture window instead of being starved by the uncapped
 /// (vsync-off) headless loop.
 bool isAutoCaptureActive();
+bool isAutoCaptureFixedStep();
+void requestAutoRecordRealTime();
 
 /// Create a system that cycles through @c config.shots_ — one screenshot per
 /// shot with @c settleFrames_ between shots — then calls
@@ -207,22 +210,22 @@ void appendAutoScreenshotIfRequested(
 
 /// Declarative config for @c createAutoRecordSystem: @c warmupFrames_ render
 /// frames before the recorder starts (the same default as
-/// @c AutoScreenshotConfig), then @c frames_ render frames captured — the
+/// @c AutoScreenshotConfig), then @c frames_ UPDATE ticks captured — the
 /// `--auto-record` count the caller read back (its bare default lives in
-/// @c IRArgs, which this module cannot include); 0 stops right after the
-/// start.
+/// @c IRArgs, which this module cannot include); 0 stops immediately. Set
+/// @c realTime_ when the tick window must stay aligned with wall-clock I/O.
 ///
-/// The recorder's clock is the UPDATE tick, and auto-capture runs one UPDATE
-/// tick per render frame, so @c frames_ is @c frames_ / @c IRConstants::kFPS
-/// seconds of sim time; the encoder emits @c frames_ * @c video_capture_fps
-/// / @c kFPS frames of it (180 → 180 at the default 60 fps, 90 at 30 fps).
+/// The recorder's clock is the UPDATE tick, so @c frames_ is @c frames_ /
+/// @c IRConstants::kFPS seconds of sim time. Fixed-step capture advances one
+/// tick per render pass; real-time capture uses the wall-clock accumulator.
 struct AutoRecordConfig {
     int warmupFrames_ = 10;
     int frames_ = 0;
+    bool realTime_ = false;
 };
 
 /// Create a system that starts the recorder through the toggle path after
-/// @c config.warmupFrames_, counts @c config.frames_ render frames, stops it,
+/// @c config.warmupFrames_, observes @c config.frames_ recorder ticks, stops it,
 /// and calls @c IRWindow::closeWindow() on the following frame — exactly one
 /// start and one stop per run, so the toggle is never issued while the async
 /// finalize is in flight. A recorder that fails to start (FFmpeg absent, bad
@@ -231,7 +234,8 @@ struct AutoRecordConfig {
 /// @c registerPipeline fires. Marks auto-capture active like
 /// @c createAutoScreenshotSystem, so the sim runs the deterministic fixed
 /// step for the clip's duration. Don't combine with a screenshot cycler in
-/// one run: whichever finishes first closes the window.
+/// one run: the deterministic capture takes pacing priority and whichever
+/// finishes first closes the window.
 ///
 /// Requires @c IREngine::init() has run (so the system manager is live).
 IRSystem::SystemId createAutoRecordSystem(const AutoRecordConfig &config);

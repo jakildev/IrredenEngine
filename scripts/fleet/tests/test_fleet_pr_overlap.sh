@@ -24,12 +24,13 @@
 #   7  stacks: upstream by ancestry, stale base, accidental fork, grandparent,
 #      inherited-branch competitor, stale local default ref
 #   8  --repo slug mismatch fails closed
-#   9  snapshot coherence: head moved, population moved, identical proceeds
+#   9  snapshot coherence: head/body/labels or population moved; identical proceeds
 #   10 a stacked sibling's own delta excludes paths inherited from its base;
 #      its clean edit to the same docs path remains informational
 #   11 a competitor whose base is gone or unrelated drops a path whose blob
 #      already matches the caller's base tip, and keeps one that differs
-#   12 the missing-subject guard skips with exit 3 and no tally
+#   12 an actively parked descendant is sequenced; fail-closed and mixed cases
+#   13 the missing-subject guard skips with exit 3 and no tally
 
 set -uo pipefail
 
@@ -216,13 +217,15 @@ pr_row() {
     local n="$1" head="$2" base="$3" cross="$4" changed="$5"
     shift 5
     local head_oid="${PR_ROW_OID:-$(git -C "$ORIGIN" rev-parse "refs/pull/$n/head")}"
+    local body="${PR_ROW_BODY_JSON:-\"\"}"
+    local labels="${PR_ROW_LABELS_JSON:-[]}"
     [[ "$changed" == "-" ]] && changed=$#
     local files="" path
     for path in "$@"; do
         files+="${files:+,}{\"path\":\"$path\"}"
     done
-    printf '{"number":%s,"title":"pr %s","headRefName":"%s","headRefOid":"%s","baseRefName":"%s","isCrossRepository":%s,"changedFiles":%s,"files":[%s]}' \
-        "$n" "$n" "$head" "$head_oid" "$base" "$cross" "$changed" "$files"
+    printf '{"number":%s,"title":"pr %s","headRefName":"%s","headRefOid":"%s","baseRefName":"%s","isCrossRepository":%s,"changedFiles":%s,"files":[%s],"body":%s,"labels":%s}' \
+        "$n" "$n" "$head" "$head_oid" "$base" "$cross" "$changed" "$files" "$body" "$labels"
 }
 
 # pr_json <file> <row>... — writes a JSON array of the given rows.
@@ -564,6 +567,20 @@ run_tool
 assert_rc 1 "T9d identical snapshots proceed to a verdict"
 assert_eq "$(verdict_line)" "VERDICT: overlap" "T9d verdict overlap"
 assert_eq "$(cat "$GH_STUB_DIR/calls")" "2" "T9d the run took exactly two pr list snapshots"
+reset_stub
+pr_json "$GH_STUB_DIR/prs.1.json" "$(pr_row 103 pr-103 master false - src/y.txt)"
+pr_json "$GH_STUB_DIR/prs.2.json" "$(PR_ROW_BODY_JSON='"changed"' pr_row 103 pr-103 master false - src/y.txt)"
+run_tool
+assert_rc 2 "T9e a body edit mid-run exits 2"
+assert_contains "$ERR" "#103 body changed" "T9e the delta names the body"
+assert_absent "$OUT" "VERDICT:" "T9e no verdict"
+reset_stub
+pr_json "$GH_STUB_DIR/prs.1.json" "$(pr_row 103 pr-103 master false - src/y.txt)"
+pr_json "$GH_STUB_DIR/prs.2.json" "$(PR_ROW_LABELS_JSON='[{"name":"fleet:awaiting-infra"}]' pr_row 103 pr-103 master false - src/y.txt)"
+run_tool
+assert_rc 2 "T9f a label edit mid-run exits 2"
+assert_contains "$ERR" "#103 labels changed" "T9f the delta names the labels"
+assert_absent "$OUT" "VERDICT:" "T9f no verdict"
 
 echo "=== 10: a stacked sibling's own delta excludes paths inherited from the shared base ==="
 branch_from stack-base master
@@ -627,15 +644,87 @@ assert_absent "$OUT" "#303 docs/agents/VALIDATION.md" "T11b the path whose blob 
 assert_contains "$ERR" "#303 path set widened from git (1 paths; GitHub files 1 of 1, base other-base)" "T11b the widened set counts the drop"
 assert_eq "$(verdict_line)" "VERDICT: overlap" "T11b verdict overlap, not block"
 
-echo "=== 12: the missing-subject guard ==="
+echo "=== 12: descendants explicitly parked behind self are sequenced ==="
+branch_from feature-12 origin/master
+edit_line src/y.txt 3 "y line 3 self-12"
+commit_all self-12
+publish_pr 401 feature-12
+branch_from pr-402 origin/master
+edit_line src/y.txt 3 "y line 3 sequenced-402"
+commit_all sequenced-402
+publish_pr 402 pr-402
+branch_from pr-403 origin/master
+edit_line src/y.txt 3 "y line 3 ordinary-403"
+commit_all ordinary-403
+publish_pr 403 pr-403
+branch_from pr-404 origin/master
+edit_line src/y.txt 10 "y line 10 clean-404"
+commit_all clean-404
+publish_pr 404 pr-404
+g checkout -q feature-12
+BACKING_ISSUE_12=3988
+EARLY_ISSUE_12=111
+EXTRA_ISSUE_12=5000
+WRONG_ISSUE_12=9999
+SELF_12_BODY="\"Closes #${BACKING_ISSUE_12}\""
+SEQUENCED_12_BODY="\"Parked-until: #${EARLY_ISSUE_12}\\nParked-until: #${BACKING_ISSUE_12}, #${EXTRA_ISSUE_12} (later)\""
+SELF_12="$(PR_ROW_BODY_JSON="$SELF_12_BODY" pr_row 401 feature-12 master false - src/y.txt)"
+SEQUENCED_12="$(PR_ROW_BODY_JSON="$SEQUENCED_12_BODY" PR_ROW_LABELS_JSON='[{"name":"fleet:awaiting-infra"}]' pr_row 402 pr-402 master false - src/y.txt)"
+pr_json "$TMP/prs-12a.json" "$SELF_12" "$SEQUENCED_12"
+run_tool --pr-json "$TMP/prs-12a.json"
+assert_rc 1 "T12a a conflicting descendant parked behind self exits 1"
+assert_contains "$OUT" "#402 src/y.txt sequenced (Parked-until: #3988)" "T12a the matching self issue is named"
+assert_eq "$(verdict_line)" "VERDICT: sequenced" "T12a verdict sequenced"
+
+NO_LABEL_12_BODY="\"Parked-until: #${BACKING_ISSUE_12}\""
+NO_LABEL_12="$(PR_ROW_BODY_JSON="$NO_LABEL_12_BODY" pr_row 402 pr-402 master false - src/y.txt)"
+pr_json "$TMP/prs-12b.json" "$SELF_12" "$NO_LABEL_12"
+run_tool --pr-json "$TMP/prs-12b.json"
+assert_rc 3 "T12b a stale marker without the active label blocks"
+assert_contains "$OUT" "#402 src/y.txt conflicts" "T12b the stale marker stays an ordinary conflict"
+
+WRONG_LAST_12_BODY="\"Parked-until: #${BACKING_ISSUE_12}\\nParked-until: #${WRONG_ISSUE_12}\""
+WRONG_LAST_12="$(PR_ROW_BODY_JSON="$WRONG_LAST_12_BODY" PR_ROW_LABELS_JSON='[{"name":"fleet:awaiting-infra"}]' pr_row 402 pr-402 master false - src/y.txt)"
+pr_json "$TMP/prs-12c.json" "$SELF_12" "$WRONG_LAST_12"
+run_tool --pr-json "$TMP/prs-12c.json"
+assert_rc 3 "T12c only the last parsable marker is active"
+
+NO_CLOSE_12_BODY="\"Refs #${BACKING_ISSUE_12}\""
+NO_CLOSE_12="$(PR_ROW_BODY_JSON="$NO_CLOSE_12_BODY" pr_row 401 feature-12 master false - src/y.txt)"
+pr_json "$TMP/prs-12d.json" "$NO_CLOSE_12" "$SEQUENCED_12"
+run_tool --pr-json "$TMP/prs-12d.json"
+assert_rc 3 "T12d self without a closing reference blocks"
+
+MALFORMED_12_BODY="\"Parked-until: later #${BACKING_ISSUE_12}\""
+MALFORMED_12="$(PR_ROW_BODY_JSON="$MALFORMED_12_BODY" PR_ROW_LABELS_JSON='[{"name":"fleet:awaiting-infra"}]' pr_row 402 pr-402 master false - src/y.txt)"
+pr_json "$TMP/prs-12e.json" "$SELF_12" "$MALFORMED_12"
+run_tool --pr-json "$TMP/prs-12e.json"
+assert_rc 3 "T12e a malformed marker blocks"
+
+ORDINARY_12="$(pr_row 403 pr-403 master false - src/y.txt)"
+pr_json "$TMP/prs-12f.json" "$SELF_12" "$SEQUENCED_12" "$ORDINARY_12"
+run_tool --pr-json "$TMP/prs-12f.json"
+assert_rc 3 "T12f an unrelated conflict retains block priority"
+assert_contains "$OUT" "#402 src/y.txt sequenced" "T12f the parked descendant remains visible"
+assert_contains "$OUT" "#403 src/y.txt conflicts" "T12f the unrelated conflict remains visible"
+assert_eq "$(verdict_line)" "VERDICT: block" "T12f verdict block"
+
+CLEAN_12="$(pr_row 404 pr-404 master false - src/y.txt)"
+pr_json "$TMP/prs-12g.json" "$SELF_12" "$SEQUENCED_12" "$CLEAN_12"
+run_tool --pr-json "$TMP/prs-12g.json"
+assert_rc 1 "T12g sequenced plus ordinary clean overlap exits 1"
+assert_contains "$OUT" "#404 src/y.txt clean" "T12g the ordinary overlap remains visible"
+assert_eq "$(verdict_line)" "VERDICT: overlap" "T12g overlap outranks sequenced"
+
+echo "=== 13: the missing-subject guard ==="
 STAGE="$TMP/stage/tests"
 mkdir -p "$STAGE"
 cp "$0" "$STAGE/$(basename "$0")"
 cp "$(dirname "$0")/lib_assert.sh" "$(dirname "$0")/lib_preflight.sh" "$STAGE/"
 guard_out=$(bash "$STAGE/$(basename "$0")" 2> "$TMP/guard-err.txt"); guard_rc=$?
 guard_err=$(cat "$TMP/guard-err.txt")
-assert_eq "$guard_rc" "3" "T12 a stage with no subject exits 3"
-assert_contains "$guard_err" "SKIP: subject under test missing at $TMP/stage/fleet-pr-overlap" "T12 the SKIP line names the staged path"
-assert_absent "$guard_out" "passed:" "T12 no tally is printed"
+assert_eq "$guard_rc" "3" "T13 a stage with no subject exits 3"
+assert_contains "$guard_err" "SKIP: subject under test missing at $TMP/stage/fleet-pr-overlap" "T13 the SKIP line names the staged path"
+assert_absent "$guard_out" "passed:" "T13 no tally is printed"
 
 summarize

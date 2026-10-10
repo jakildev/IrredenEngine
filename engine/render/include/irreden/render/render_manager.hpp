@@ -24,9 +24,17 @@ class RenderManager {
     RenderManager(ivec2 gameResolution, FitMode fitMode = FitMode::FIT);
     ~RenderManager();
 
+    // Physical framebuffer extent of the screen target, in pixels.
     inline ivec2 getViewport() const {
         return m_viewport;
     }
+    // Cursor-space conversions between logical window points (GLFW cursor
+    // units) and the physical framebuffer pixels getViewport() is in. Both use
+    // the extents beginFrame cached, so a forward and an inverse mapping taken
+    // in one frame share one ratio. A zero-sized window or framebuffer
+    // (minimized, or before the first frame) maps everything to (0, 0).
+    vec2 windowPointsToFramebufferPx(vec2 windowPoints) const;
+    vec2 framebufferPxToWindowPoints(vec2 framebufferPx) const;
     inline ivec2 getGameResolution() const {
         return m_gameResolution;
     }
@@ -187,6 +195,7 @@ class RenderManager {
     // EntityId m_playerCanvas;
     EntityId m_camera;
     ivec2 m_viewport;
+    ivec2 m_windowExtentPoints;
     ivec2 m_gameResolution;
     ivec2 m_outputResolution;
     ivec2 m_outputScaleFactor;

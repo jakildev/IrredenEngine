@@ -293,6 +293,26 @@ TEST(IRArgsAutoRecordTest, AbsentReadsBackZero) {
     EXPECT_EQ(p.autoScreenshotWarmupFrames(), 25);
 }
 
+TEST(IRArgsAutoRecordTest, RealTimeFlagDefaultsFalseAndReadsTrueWhenPresent) {
+    Parser absent(nullptr, Common::ENGINE);
+    Argv absentArgs({"prog"});
+    absent.parse(absentArgs.argc(), absentArgs.argv());
+    EXPECT_FALSE(absent.autoRecordRealTime());
+
+    Parser present(nullptr, Common::ENGINE);
+    Argv presentArgs({"prog", "--auto-record-realtime"});
+    present.parse(presentArgs.argc(), presentArgs.argv());
+    EXPECT_TRUE(present.autoRecordRealTime());
+}
+
+TEST(IRArgsAutoRecordTest, BareRecordBeforeRealTimeKeepsDefaultWindow) {
+    Parser p(nullptr, Common::ENGINE);
+    Argv a({"prog", "--auto-record", "--auto-record-realtime"});
+    p.parse(a.argc(), a.argv());
+    EXPECT_EQ(p.autoRecordFrames(), kDefaultAutoRecordFrames);
+    EXPECT_TRUE(p.autoRecordRealTime());
+}
+
 // ─────────────────────────────────────────────
 // Positionals / standalone path
 // ─────────────────────────────────────────────

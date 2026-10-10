@@ -878,6 +878,139 @@ TEST(FogCrossSectionShaderParity, LosGateIsIdenticalAcrossBackends) {
     }
 }
 
+// Test E, part 10: the reveal-surface ceiling and treatment. The pure helpers
+// reduce to the same maths on both backends and take the integer-only hash
+// form, the cut tone agrees with the C++ default, both fog passes declare
+// the appended ceiling and treatment lanes after the channel masks, and the
+// stage-1 mirrors declare the ceilings at that same offset while the
+// compact pass stops before them.
+TEST(FogCrossSectionShaderParity, RevealSurfaceHelpersAreIdenticalAcrossBackends) {
+    const std::string glslIso = readShaderSource(kGlslIsoCommonPath);
+    const std::string metalIso = readShaderSource(kMetalIsoCommonPath);
+    const std::string glslCeiling = extractFunctionBody(glslIso, "fogCeilingVisibility");
+    const std::string metalCeiling = extractFunctionBody(metalIso, "fogCeilingVisibility");
+    ASSERT_FALSE(glslCeiling.empty()) << "fogCeilingVisibility not found in GLSL";
+    ASSERT_FALSE(metalCeiling.empty()) << "fogCeilingVisibility not found in MSL";
+    EXPECT_EQ(normalizeShaderMath(glslCeiling), normalizeShaderMath(metalCeiling));
+    EXPECT_NE(glslCeiling.find("if (ceiling.x < 0.0)"), std::string::npos)
+        << "a negative height must be the off sentinel: " << glslCeiling;
+    EXPECT_NE(
+        glslCeiling.find("1.0 - smoothstep(ceiling.x, ceiling.x + ceiling.y, dzUp)"),
+        std::string::npos
+    ) << "the fade must reach zero exactly at ceiling + fade: "
+      << glslCeiling;
+
+    const std::string glsl = readShaderSource(kGlslFogCommonPath);
+    const std::string metal = readShaderSource(kMetalFogCommonPath);
+    for (const char *helper :
+         {"fogRevealSurfaceHash01", "fogRevealSurfaceBandWeight", "fogCutCapBlend"}) {
+        SCOPED_TRACE(helper);
+        const std::string glslBody = extractFunctionBody(glsl, helper);
+        const std::string metalBody = extractFunctionBody(metal, helper);
+        ASSERT_FALSE(glslBody.empty()) << helper << " not found in GLSL";
+        ASSERT_FALSE(metalBody.empty()) << helper << " not found in MSL";
+        EXPECT_EQ(normalizeShaderMath(glslBody), normalizeShaderMath(metalBody))
+            << helper << " diverged between backends";
+    }
+    const std::string hash = extractFunctionBody(glsl, "fogRevealSurfaceHash01");
+    for (const char *forbidden : {"sin(", "fract(", "frameCount", "yaw"}) {
+        EXPECT_EQ(hash.find(forbidden), std::string::npos)
+            << "the dissolve hash must be integer-only over the world voxel: " << hash;
+    }
+    EXPECT_NE(hash.find("0x7FEB352Du"), std::string::npos) << hash;
+
+    double glslTone = 0.0;
+    double metalTone = 0.0;
+    ASSERT_TRUE(readShaderConstant(glsl, "kFogCutTone", glslTone));
+    ASSERT_TRUE(readShaderConstant(metal, "kFogCutTone", metalTone));
+    EXPECT_DOUBLE_EQ(glslTone, metalTone);
+    EXPECT_EQ(static_cast<float>(glslTone), IRComponents::kFogCutTone)
+        << "the shader cut tone must stay the treatment's C++ default";
+
+    const std::regex tail(
+        R"(visionCircleChannels\[2\];\s*(//[^\n]*\s*)*(vec4|float4) visionCircleCeilings\[kMaxFogVisionCircles\];)"
+        R"(\s*(//[^\n]*\s*)*(vec4|float4) revealSurfaceTreatment;\s*\};)"
+    );
+    for (const std::string &path : {kGlslFogCommonPath, kMetalFogCommonPath}) {
+        EXPECT_TRUE(std::regex_search(readShaderSource(path), tail))
+            << path << " must declare the ceilings and the treatment as the block tail";
+    }
+    const std::regex stageTail(
+        R"(visionCircleChannels\[2\];\s*(//[^\n]*\s*)*(vec4|float4) visionCircleCeilings\[kMaxFogVisionCircles\];\s*\};)"
+    );
+    for (const std::string &path : {kGlslFaceSelectPath, kMetalFaceSelectPath}) {
+        EXPECT_TRUE(std::regex_search(readShaderSource(path), stageTail))
+            << path << " must reach the ceilings through the fog passes' tail";
+    }
+    for (const char *path :
+         {"/c_voxel_visibility_compact.glsl", "/metal/c_voxel_visibility_compact.metal"}) {
+        const std::string compact = readShaderSource(std::string(IR_TEST_RENDER_SHADER_DIR) + path);
+        ASSERT_FALSE(compact.empty()) << path;
+        EXPECT_EQ(compact.find("visionCircleCeilings"), std::string::npos)
+            << path << " reads no ceiling: its cull stays a z-free superset";
+    }
+}
+
+// Test E, part 11: the ceiling scales each source before the maximum, in the
+// shared reveal and in stage 1's unpainted-route drop; the treatment reads the
+// product of the ceiling and line-of-sight factors, dissolves before the
+// state update, and caps through the helper the radial cap also uses; the
+// BODY apply stays untreated.
+TEST(FogCrossSectionShaderParity, CeilingScalesEachSourceBeforeTheMaximumOnBothBackends) {
+    for (const std::string &path : {kGlslFogCommonPath, kMetalFogCommonPath}) {
+        SCOPED_TRACE(path);
+        const std::string kernel = readShaderSource(path);
+        const std::string loop = normalizeKernelMath(
+            extractSpan(kernel, "fogRevealSample(", "float state = gridState;", "return FogReveal")
+        );
+        ASSERT_FALSE(loop.empty());
+        for (const char *expected :
+             {"ceilingVisibility = fogCeilingVisibility(visionCircleCeilings[i], dzUp);",
+              "ceilingReveal = reveal * ceilingVisibility;",
+              "contribution = losVisibility * ceilingReveal;",
+              "surfaceVisibility = ceilingVisibility * losVisibility;",
+              "if (hash01 > mix(1.0, surfaceVisibility, revealSurfaceTreatment.y)) { continue; }",
+              "if (contribution > state) { state = contribution; styledBand = bandWeight; }"}) {
+            EXPECT_NE(loop.find(expected), std::string::npos)
+                << "missing `" << expected << "` in " << loop;
+        }
+        EXPECT_EQ(loop.find("state = max("), std::string::npos)
+            << "the state update must carry the band of the winning contribution";
+        const std::string apply =
+            normalizeKernelMath(extractSpan(kernel, "fogApplyReveal(", "outColor", "return "));
+        EXPECT_NE(
+            apply.find(
+                "fogCutCapBlend(outColor, sourceColor.rgb, kFogCutTone, reveal.state, capBlend)"
+            ),
+            std::string::npos
+        ) << apply;
+        EXPECT_NE(
+            apply.find(
+                "if (reveal.styledBand > 0.0) { outColor = fogCutCapBlend(outColor, "
+                "sourceColor.rgb, revealSurfaceTreatment.z, reveal.state, reveal.styledBand); }"
+            ),
+            std::string::npos
+        ) << apply;
+        const std::string body = extractFunctionBody(kernel, "fogApplyBody");
+        EXPECT_EQ(body.find("styledBand"), std::string::npos) << "a BODY pixel takes no treatment";
+        EXPECT_EQ(body.find("revealSurfaceTreatment"), std::string::npos);
+    }
+
+    const std::string glslStage = readShaderSource(kGlslStage1BodyPath);
+    const std::string metalStage = readShaderSource(kMetalStage1BodyPath);
+    const std::string glslDrop = extractRevealAccumulation(glslStage, "float fogColumnRevealZ");
+    const std::string metalDrop = extractRevealAccumulation(metalStage, "float fogColumnRevealZ");
+    ASSERT_FALSE(glslDrop.empty()) << "fogColumnRevealZ accumulation not found in GLSL";
+    ASSERT_FALSE(metalDrop.empty()) << "fogColumnRevealZ accumulation not found in MSL";
+    EXPECT_EQ(normalizeShaderMath(glslDrop), normalizeShaderMath(metalDrop))
+        << "the unpainted-route drop diverged between backends";
+    EXPECT_NE(
+        normalizeShaderMath(glslDrop).find("* fogCeilingVisibility(visionCircleCeilings[i], dzUp)"),
+        std::string::npos
+    ) << "the drop must scale each source by its ceiling inside the max: "
+      << glslDrop;
+}
+
 // Test E, part 7: the BODY branch of the fog pass — the pixel takes the
 // carrier factor as its state and skips the field, the height terms, the rim
 // fade and the cut cap — is identical on both backends.
@@ -1915,6 +2048,327 @@ TEST_F(FogCrossSectionTest, GpuOcclusionMatchesTheCpuOracle) {
         EXPECT_EQ(counts.occludedInDisc_, 0) << "flat ground occluded itself";
         EXPECT_GT(counts.visibleInDisc_, 0);
     }
+}
+
+namespace {
+
+constexpr std::uint32_t kBindingSurfaceGridImage = 2; // canvasFogOfWar in ir_fog_common.glsl
+constexpr std::uint32_t kBindingSurfaceLosImage = 4;  // IR_FOG_LOS_BINDING in the probe
+constexpr std::uint32_t kBindingSurfaceProbeOut = 1;  // std430 binding in the probe
+constexpr std::uint32_t kBindingSurfaceProbeIn = 2;   // std430 binding in the probe
+constexpr int kSurfaceProbeLocalSize = 64;            // local_size_x in the probe
+
+// An ungated soft-edged source standing on the ground plane, so a sample's
+// lift above the ground is its dzUp.
+const LosProbeSource kSurfaceGroundSource{IRMath::vec4(0.5f, 0.0f, 14.0f, 2.0f), kLosGround};
+
+struct FogSurfaceProbeHeader {
+    std::int32_t sampleCount_;
+    std::int32_t pad_[3];
+};
+static_assert(sizeof(FogSurfaceProbeHeader) == 16, "must match the probe's std430 header");
+
+struct FogSurfaceArm {
+    const char *label_;
+    LosProbeSource source_;
+    bool gated_ = false;
+    float softness_ = IRComponents::kFogLosHardGate;
+    bool occluders_ = false;
+    float ceilingHeight_ = IRComponents::kFogVisionCeilingOff;
+    float fadeHeight_ = 0.0f;
+    bool treated_ = false;
+    float density_ = 0.0f;
+    bool fullCompetitor_ = false;
+};
+
+struct FogSurfaceCounts {
+    int hidden_ = 0;
+    int visible_ = 0;
+    int partial_ = 0;
+    int styled_ = 0;
+    int dissolved_ = 0;
+    int flips_ = 0;
+};
+
+} // namespace
+
+// The shared FIELD reveal (the real ir_fog_common.glsl) agrees with the CPU
+// paint oracle on every probed sample — the state to 1e-3 and the styled band
+// to 5e-3 — across a hard ceiling, a soft ceiling, a line-of-sight gate alone,
+// the two combined, the treatment retaining every voxel, a fully visible
+// competitor suppressing it, and a density-1 dissolve. Non-vacuity: each arm
+// asserts the sample classes it exists to exercise. A dissolve decision
+// sitting within float rounding of its threshold may flip between the two
+// evaluations; at most two such flips are tolerated and every other band
+// agrees.
+TEST_F(FogCrossSectionTest, GpuRevealSurfaceMatchesTheCpuOracle) {
+    using namespace IRRender;
+    using IRComponents::C_CanvasFogOfWar;
+    using IRComponents::FogLosColumnField;
+
+    const std::string probePath =
+        std::string(IR_TEST_GPU_SHADER_DIR) + "/c_fog_reveal_surface_probe.glsl";
+    ShaderProgram program{std::vector{ShaderStage{probePath.c_str(), ShaderType::COMPUTE}}};
+    Texture2D losTexture{
+        TextureKind::TEXTURE_2D,
+        IRComponents::kFogLosTextureSize,
+        IRComponents::kFogLosTextureHeight,
+        TextureFormat::RGBA32F
+    };
+    const IRMath::ivec2 windowOrigin = kProbeDefaultWindowOrigin;
+    const IRMath::ivec2 fieldMin =
+        FogLosColumnField::fieldMinForWindow(windowOrigin, kProbeWindowEdge);
+
+    const auto runArm = [&](const FogSurfaceArm &arm, FogSurfaceCounts &counts) {
+        counts = FogSurfaceCounts{};
+        FrameDataFogObservers observers{};
+        observers.windowOriginX_ = windowOrigin.x;
+        observers.windowOriginY_ = windowOrigin.y;
+        const int slot = C_CanvasFogOfWar::addVisionCircle(
+            observers,
+            arm.source_.circle_.x,
+            arm.source_.circle_.y,
+            arm.source_.circle_.z,
+            arm.source_.circle_.w,
+            arm.source_.observerZ_,
+            0.0f,
+            0.0f,
+            0.0f
+        );
+        ASSERT_EQ(slot, 0);
+        if (arm.gated_) {
+            C_CanvasFogOfWar::setVisionCircleLineOfSight(
+                observers,
+                slot,
+                kLosEyeHeight,
+                arm.softness_
+            );
+        }
+        C_CanvasFogOfWar::setVisionCircleCeiling(
+            observers,
+            slot,
+            arm.ceilingHeight_,
+            arm.fadeHeight_
+        );
+        if (arm.fullCompetitor_) {
+            ASSERT_EQ(
+                C_CanvasFogOfWar::addVisionCircle(
+                    observers,
+                    arm.source_.circle_.x,
+                    arm.source_.circle_.y,
+                    arm.source_.circle_.z,
+                    arm.source_.circle_.w,
+                    arm.source_.observerZ_,
+                    0.0f,
+                    0.0f,
+                    0.0f
+                ),
+                1
+            );
+        }
+        if (arm.treated_) {
+            C_CanvasFogOfWar::setRevealSurfaceTreatment(observers, arm.density_);
+        }
+        FrameDataFogObservers untreated = observers;
+        C_CanvasFogOfWar::clearRevealSurfaceTreatment(untreated);
+        m_observers->subData(0, sizeof(FrameDataFogObservers), &observers);
+
+        const std::vector<float> field = losProbeField(arm.occluders_, IRMath::ivec2(0), fieldMin);
+        uploadLosField(losTexture, field);
+        const FogLosColumnField columns{field.data(), fieldMin};
+
+        std::vector<IRMath::vec4> samples;
+        for (int lift = 0; lift < 8; ++lift) {
+            for (int y = -12; y < 12; ++y) {
+                for (int x = -12; x < 12; ++x) {
+                    for (const IRMath::vec2 frac :
+                         {IRMath::vec2(0.25f, 0.5f), IRMath::vec2(0.75f, 0.125f)}) {
+                        const IRMath::vec2 xy =
+                            IRMath::vec2(static_cast<float>(x), static_cast<float>(y)) + frac;
+                        const float ownTop = columns.topPlane(
+                            FogLosColumnField::halfCellOf(xy.x),
+                            FogLosColumnField::halfCellOf(xy.y)
+                        );
+                        samples.emplace_back(
+                            xy.x,
+                            xy.y,
+                            IRMath::min(kLosGround - static_cast<float>(lift), ownTop),
+                            0.0f
+                        );
+                    }
+                }
+            }
+        }
+
+        const FogSurfaceProbeHeader header{static_cast<std::int32_t>(samples.size()), {0, 0, 0}};
+        std::vector<std::uint8_t> input(sizeof(header) + samples.size() * sizeof(IRMath::vec4));
+        std::memcpy(input.data(), &header, sizeof(header));
+        std::memcpy(
+            input.data() + sizeof(header),
+            samples.data(),
+            samples.size() * sizeof(IRMath::vec4)
+        );
+        Buffer probeIn{
+            input.data(),
+            input.size(),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBindingSurfaceProbeIn
+        };
+        const std::vector<IRMath::vec4> seed(samples.size(), IRMath::vec4(-1.0f));
+        Buffer probeOut{
+            seed.data(),
+            seed.size() * sizeof(IRMath::vec4),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            kBindingSurfaceProbeOut
+        };
+
+        program.use();
+        m_fogGrid->bindAsImage(
+            kBindingSurfaceGridImage,
+            TextureAccess::READ_ONLY,
+            TextureFormat::RG32UI
+        );
+        losTexture
+            .bindAsImage(kBindingSurfaceLosImage, TextureAccess::READ_ONLY, TextureFormat::RGBA32F);
+        m_observers->bindBase(BufferTarget::UNIFORM, kBindingFogObservers);
+        probeIn.bindBase(BufferTarget::SHADER_STORAGE, kBindingSurfaceProbeIn);
+        probeOut.bindBase(BufferTarget::SHADER_STORAGE, kBindingSurfaceProbeOut);
+        const int groups =
+            IRMath::divCeil(static_cast<int>(samples.size()), kSurfaceProbeLocalSize);
+        ENG_API->glDispatchCompute(groups, 1, 1);
+        ENG_API->glMemoryBarrier(GL_ALL_BARRIER_BITS);
+        ENG_API->glFinish();
+
+        std::vector<IRMath::vec4> readback(samples.size(), IRMath::vec4(-1.0f));
+        probeOut.getSubData(0, readback.size() * sizeof(IRMath::vec4), readback.data());
+
+        for (std::size_t i = 0; i < samples.size(); ++i) {
+            const IRMath::vec3 position(samples[i]);
+            const IRPrefab::Fog::RevealSurfaceSample cpu = IRPrefab::Fog::evalRevealSurface(
+                observers,
+                columns,
+                IRComponents::kFogStateUnexplored,
+                position
+            );
+            const IRPrefab::Fog::RevealSurfaceSample plain = IRPrefab::Fog::evalRevealSurface(
+                untreated,
+                columns,
+                IRComponents::kFogStateUnexplored,
+                position
+            );
+            const float gpuState = readback[i].x;
+            const float gpuBand = readback[i].w;
+            const bool bandAgrees = IRMath::abs(gpuBand - cpu.styledBand_) <= 5e-3f;
+            if (!bandAgrees && arm.density_ > 0.0f &&
+                (gpuBand == 0.0f || cpu.styledBand_ == 0.0f)) {
+                ++counts.flips_;
+            } else {
+                ASSERT_NEAR(gpuState, cpu.state_, 1e-3f)
+                    << arm.label_ << ": GPU state diverged from the oracle at (" << position.x
+                    << ", " << position.y << ", " << position.z << ")";
+                EXPECT_TRUE(bandAgrees)
+                    << arm.label_ << ": GPU band " << gpuBand << " vs oracle " << cpu.styledBand_
+                    << " at (" << position.x << ", " << position.y << ", " << position.z << ")";
+            }
+            EXPECT_FLOAT_EQ(readback[i].y, 0.0f) << "the probe grid is unexplored everywhere";
+            if (plain.state_ <= 0.0f) {
+                ++counts.hidden_;
+            } else if (plain.state_ >= 1.0f) {
+                ++counts.visible_;
+            } else {
+                ++counts.partial_;
+            }
+            if (gpuBand > 0.0f) {
+                ++counts.styled_;
+            }
+            if (plain.state_ > 0.0f && plain.state_ < 1.0f && gpuBand == 0.0f &&
+                gpuState < plain.state_ - 1e-3f) {
+                ++counts.dissolved_;
+            }
+        }
+    };
+
+    FogSurfaceCounts counts;
+    runArm({"hard ceiling", kSurfaceGroundSource, false, 0.0f, false, 2.0f, 0.0f}, counts);
+    EXPECT_GT(counts.hidden_, 0) << "the hard ceiling hides nothing";
+    EXPECT_GT(counts.visible_, 0);
+    EXPECT_EQ(counts.partial_, 0) << "a hard ceiling has no partial band";
+    EXPECT_EQ(counts.styled_, 0);
+
+    runArm({"soft ceiling", kSurfaceGroundSource, false, 0.0f, false, 2.0f, 3.0f}, counts);
+    EXPECT_GT(counts.hidden_, 0);
+    EXPECT_GT(counts.visible_, 0);
+    EXPECT_GT(counts.partial_, 0) << "the fade grades no sample";
+    EXPECT_EQ(counts.styled_, 0) << "the treatment is off";
+
+    runArm({"line of sight only", kLosRidgeSource, true, 1.0f, true}, counts);
+    EXPECT_GT(counts.hidden_, 0) << "the ridge occludes nothing";
+    EXPECT_GT(counts.visible_, 0);
+    EXPECT_GT(counts.partial_, 0) << "softness 1 grades no sample past the far edge";
+    EXPECT_EQ(counts.styled_, 0);
+
+    runArm({"ceiling and line of sight", kLosRidgeSource, true, 1.0f, true, 1.0f, 3.0f}, counts);
+    EXPECT_GT(counts.hidden_, 0);
+    EXPECT_GT(counts.partial_, 0);
+    EXPECT_EQ(counts.styled_, 0);
+
+    runArm(
+        {"treatment retains every voxel",
+         kSurfaceGroundSource,
+         false,
+         0.0f,
+         false,
+         2.0f,
+         3.0f,
+         true,
+         0.0f},
+        counts
+    );
+    EXPECT_GT(counts.partial_, 0);
+    EXPECT_EQ(counts.styled_, counts.partial_) << "density 0 styles every partial sample";
+    EXPECT_EQ(counts.dissolved_, 0);
+    EXPECT_EQ(counts.flips_, 0);
+
+    runArm(
+        {"full competitor suppresses the treatment",
+         kSurfaceGroundSource,
+         false,
+         0.0f,
+         false,
+         2.0f,
+         3.0f,
+         true,
+         0.0f,
+         true},
+        counts
+    );
+    EXPECT_GT(counts.visible_, 0);
+    EXPECT_EQ(counts.partial_, 0) << "the unceilinged twin reveals every sample the band would";
+    EXPECT_EQ(counts.styled_, 0) << "a fully visible competitor suppresses the treatment";
+
+    runArm({"dissolve", kSurfaceGroundSource, false, 0.0f, false, 2.0f, 3.0f, true, 1.0f}, counts);
+    EXPECT_GT(counts.partial_, 0);
+    EXPECT_GT(counts.styled_, 0) << "density 1 retains nothing";
+    EXPECT_GT(counts.dissolved_, 0) << "density 1 dissolves nothing";
+    EXPECT_LE(counts.flips_, 2);
+
+    runArm(
+        {"ceiling, line of sight and treatment",
+         kLosRidgeSource,
+         true,
+         1.0f,
+         true,
+         1.0f,
+         3.0f,
+         true,
+         0.5f},
+        counts
+    );
+    EXPECT_GT(counts.partial_, 0);
+    EXPECT_GT(counts.styled_, 0);
+    EXPECT_LE(counts.flips_, 2);
 }
 
 #else // Metal / other backends

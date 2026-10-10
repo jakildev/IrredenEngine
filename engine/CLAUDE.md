@@ -22,15 +22,15 @@ Core engine static libraries. Everything here is shared by every creation.
 `engine/include/irreden/ir_args.hpp` is the declarative argument framework, and
 the engine **owns the parse**: `IREngine::args()` is a process-global
 `IRArgs::Parser` pre-loaded with the engine-common args (`--auto-screenshot`,
-`--auto-record`, `--config-preset`, `--worker-threads`, `--window-mode`) plus a
+`--auto-record`, `--auto-record-realtime`, `--config-preset`, `--worker-threads`, `--window-mode`) plus a
 free `--help` / `-h`. `IREngine::init(argc, argv)`
 calls `args().parse(argc, argv)` as its **first action**, before any window /
 GL / Metal init, so `--help` is instant and headless-safe.
 
 - **No custom flags?** Just call `IREngine::init(argc, argv)` — the target gets
-  working `--help` / `--auto-screenshot` / `--auto-record` / `--config-preset` /
+  working `--help` / `--auto-screenshot` / `--auto-record` / `--auto-record-realtime` / `--config-preset` /
   `--worker-threads` / `--window-mode` with no parser code at all, read back via
-  `IREngine::args().autoScreenshotWarmupFrames()` / `.autoRecordFrames()` /
+  `IREngine::args().autoScreenshotWarmupFrames()` / `.autoRecordFrames()` / `.autoRecordRealTime()` /
   `.configPreset()` / `.workerThreads()` / `.windowMode()`. `--worker-threads`
   and `--window-mode` need no read-back in the target: `init` applies them to
   `WorldConfig::worker_thread_count` / `window_mode` itself (`-1` auto, `0`

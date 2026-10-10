@@ -29,6 +29,10 @@ a gate that silently passes produce the same check mark — so they get arms:
     P  ci_compare_step.sh forwards BASELINE_HISTORY as --baseline-history
     Q  an in-band capture finished after the head started is excluded,
        even though it is the newest
+    R  the PR comment post fails once then succeeds -> retried, exit 0, one
+       comment posted, status/head_slug exported (the retry removed fails it)
+    S  the PR comment post always fails -> bounded attempts, exit 3, stderr
+       names the comment post
 
 Stdlib only, no network, no build. Wired into the perf-gate job so it
 executes rather than drifting.
@@ -558,6 +562,73 @@ def arm_q_future_capture(tmp: Path) -> None:
           "the exclusion is named")
 
 
+# --- Arms R/S: the comment post is retried, boundedly ----------------------
+
+def _flaky_gh(work: Path, fail_first: int | None) -> tuple[Path, Path]:
+    """A gh stub that counts calls and fails the first `fail_first` of them
+    (None: every call). Returns (stub, call-count file)."""
+    calls = work / "gh_calls.txt"
+    gh_stub = work / "gh"
+    limit = "-1" if fail_first is None else str(fail_first)
+    gh_stub.write_text(
+        "#!/usr/bin/env bash\n"
+        f"echo x >> {calls}\n"
+        f"n=$(wc -l < {calls})\n"
+        f"if [[ {limit} -lt 0 || $n -le {limit} ]]; then\n"
+        "  echo 'GraphQL: Something went wrong' >&2\n"
+        "  exit 1\n"
+        "fi\n"
+        f"cp \"${{@: -1}}\" {work}/posted_body.md\n"
+    )
+    gh_stub.chmod(0o755)
+    return gh_stub, calls
+
+
+def arm_r_comment_retry_recovers(tmp: Path) -> None:
+    env, work, _ = _stub_env(tmp, "r", checker_exit=0)
+    gh_stub, calls = _flaky_gh(work, fail_first=1)
+    env.update({
+        "GH_BIN": str(gh_stub),
+        "COMMENT_RETRY_SLEEP": "0",
+        "HEAD_DIR": str(write_run(work / "head", slug=HEAD_SLUG, avg_ms=10.0)),
+    })
+
+    r = subprocess.run(["bash", str(COMPARE_STEP)], env=env,
+                       capture_output=True, text=True)
+    out = Path(env["GITHUB_OUTPUT"]).read_text() if Path(env["GITHUB_OUTPUT"]).exists() else ""
+    check("R", r.returncode == 0,
+          f"one failed comment post does not fail the step (got {r.returncode})")
+    check("R", len(calls.read_text().splitlines()) == 2,
+          "the post is retried once, then lands")
+    check("R", "# fake body" in (work / "posted_body.md").read_text()
+          if (work / "posted_body.md").exists() else False,
+          "the verdict comment body is posted")
+    check("R", "status=0" in out and f"head_slug={HEAD_SLUG}" in out,
+          "status and head_slug reach GITHUB_OUTPUT")
+
+
+def arm_s_comment_retry_bounded(tmp: Path) -> None:
+    env, work, _ = _stub_env(tmp, "s", checker_exit=0)
+    gh_stub, calls = _flaky_gh(work, fail_first=None)
+    env.update({
+        "GH_BIN": str(gh_stub),
+        "COMMENT_ATTEMPTS": "4",
+        "COMMENT_RETRY_SLEEP": "0",
+        "HEAD_DIR": str(write_run(work / "head", slug=HEAD_SLUG, avg_ms=10.0)),
+    })
+
+    r = subprocess.run(["bash", str(COMPARE_STEP)], env=env,
+                       capture_output=True, text=True)
+    check("S", r.returncode == 3,
+          f"a post that never lands fails the step (got {r.returncode})")
+    check("S", len(calls.read_text().splitlines()) == 4,
+          "attempts are bounded by COMMENT_ATTEMPTS")
+    check("S", "PR comment post failed after 4 attempts" in r.stderr,
+          "stderr names the comment post as what failed")
+    check("S", "could not compare" not in r.stderr,
+          "the failure is not reported as a comparison failure")
+
+
 def main() -> int:
     print("perf-gate baseline layout + exit-mapping control")
     with tempfile.TemporaryDirectory(prefix="perfgate.") as td:
@@ -578,6 +649,8 @@ def main() -> int:
         arm_o_frames_mismatch(tmp)
         arm_p_step_forwards_history(tmp)
         arm_q_future_capture(tmp)
+        arm_r_comment_retry_recovers(tmp)
+        arm_s_comment_retry_bounded(tmp)
     arm_g_retired_literal()
 
     if _failures:

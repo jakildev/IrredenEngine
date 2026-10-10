@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -1704,11 +1705,43 @@ ClickTriple g_overlayExpandClick;
 ClickTriple g_overlayItemClick;
 ClickTriple g_quitClick;
 
+// Cursor-to-pixel oracle. A click that lands is a round trip — GUI trixel →
+// cursor → GUI trixel — and a forward and inverse mapping that are wrong by the
+// same factor pass it. This pair ties the cursor to drawn pixels instead: the
+// PAUSE checkbox box repaints in its hover colour only while the cursor's GUI
+// trixel is inside the row, and the assertion reads the screen target at the
+// cursor's own pixel, so it passes only when the row is drawn where the cursor
+// is. `_idle` parks the cursor in the canvas corner and samples the box at the
+// pixel the next shot's cursor will occupy; `_row` moves there and requires
+// that pixel to have changed.
+struct HoverPixelOracle {
+    IRVideo::GuiInputEvent awayEvents_[1]{
+        {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(1)},
+    };
+    IRVideo::GuiInputEvent hoverEvents_[1]{
+        {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
+    };
+    bool idleSampled_ = false;
+    Color idle_{};
+};
+HoverPixelOracle g_hoverPixel;
+
 void fillClickTargets() {
     const IRMath::ivec2 pausePx = IRPrefab::SettingsMenu::rowWidgetScreenPx(kPauseSettingIndex);
     if (pausePx == IRMath::ivec2(0)) {
         return; // menu not open yet this frame; the next one fills it
     }
+    // The center of the checkbox's box, not of the row: the box is the only
+    // part of an unchecked checkbox row whose fill follows the hover state.
+    const EntityId pauseWidget = IRPrefab::SettingsMenu::rowWidget(kPauseSettingIndex);
+    const IRMath::ivec2 pausePos = IREntity::getComponent<C_GuiPosition>(pauseWidget).pos_;
+    const IRMath::ivec2 pauseSize = IREntity::getComponent<C_Widget>(pauseWidget).size_;
+    const float boxHalf =
+        static_cast<float>(IRPrefab::Widget::defaultTheme().checkboxBoxSize_) * 0.5f;
+    g_hoverPixel.hoverEvents_[0].screenPx_ = IRRender::guiTrixelToScreenPx(vec2(
+        static_cast<float>(pausePos.x) + boxHalf,
+        static_cast<float>(pausePos.y) + static_cast<float>(pauseSize.y) * 0.5f
+    ));
     g_pauseOnClick.aimAt(pausePx);
     g_pauseOffClick.aimAt(pausePx);
     g_checkerboardOnClick.aimAt(
@@ -1822,6 +1855,66 @@ struct HoverParityFixture {
 };
 HoverParityFixture g_hoverParity;
 
+// ---------------------------------------------------------------------------
+// Drag-pan tracking fixture (--gui-test)
+// ---------------------------------------------------------------------------
+// A middle-drag pan is a grab: the content under the cursor at the press stays
+// under it for the whole drag. The cursor delta arrives in window points and
+// the pan divides it by a step size in viewport pixels, so on a display whose
+// framebuffer is denser than its window the two only agree through the
+// point-to-pixel conversion — without it the content travels a fraction of the
+// cursor's distance and slides out from under it.
+//
+// The shot hovers the isolated hover-parity voxel, presses, drags further than
+// the voxel is wide on screen at any content scale the fixture runs at, and
+// releases; the GPU hover readback must still name the voxel at the cursor's
+// new position. The voxel sits alone in an empty region, so a pan that falls
+// short reads no entity at all.
+constexpr IRMath::ivec2 kDragPanCursorDelta{160, 96};
+constexpr int kDragPanStableFrames = 2;
+
+struct DragPanShot {
+    // Offsets start at 1 so the hook has aimed under the shot's camera before
+    // the first event fires; the release leaves the camera where the drag put
+    // it, which is the pose the settle frames and the assertion then observe.
+    IRVideo::GuiInputEvent events_[4]{
+        {1, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
+        {2,
+         IRVideo::GuiInputEvent::Type::PRESS,
+         IRMath::ivec2(0),
+         vec2(0.0f),
+         IRInput::kMouseButtonMiddle},
+        {3, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(0)},
+        {5,
+         IRVideo::GuiInputEvent::Type::RELEASE,
+         IRMath::ivec2(0),
+         vec2(0.0f),
+         IRInput::kMouseButtonMiddle},
+    };
+    IRPrefab::GuiTest::Assertion assertions_[1];
+    bool aimed_ = false;
+};
+DragPanShot g_dragPan;
+
+constexpr int kDragPanShotIndex = kNumHoverParityShots;
+
+// Aimed once, on the shot's first live frame: the drag moves the camera, so a
+// re-aim on a later frame would chase the voxel instead of holding the cursor
+// path fixed.
+void onDragPanAssertFrame(int shotIndex) {
+    if (shotIndex != kDragPanShotIndex || g_dragPan.aimed_) {
+        return;
+    }
+    g_dragPan.aimed_ = true;
+    const IRMath::ivec2 start = IRRender::worldPos3DToMouseScreenPx(
+        kHoverParityVoxelWorld + vec3(0.0f, 0.0f, kHoverParityBelowDiagonalZ)
+    );
+    g_dragPan.events_[0].screenPx_ = start;
+    g_dragPan.events_[1].screenPx_ = start;
+    g_dragPan.events_[2].screenPx_ = start + kDragPanCursorDelta;
+    g_dragPan.events_[3].screenPx_ = start + kDragPanCursorDelta;
+}
+
 IREntity::EntityId createHoverParityVoxel(vec3 world, Color color) {
     return IREntity::createEntity(
         C_LocalTransform{world},
@@ -1849,6 +1942,11 @@ void initHoverParityFixture() {
         g_hoverParity.stackedVoxelEntity_,
         "hover_id_row_above_occupied_is_stable",
         kHoverParityStableFrames
+    );
+    g_dragPan.assertions_[0] = IRPrefab::GuiTest::hoveredEntityId(
+        g_hoverParity.voxelEntity_,
+        "hover_id_follows_drag_pan",
+        kDragPanStableFrames
     );
     IR_LOG_INFO(
         "--- hover-parity fixture: entity {} at ({},{},{}); stacked entity {} at ({},{},{}), "
@@ -1921,9 +2019,17 @@ constexpr IRVideo::GuiTestShot kHelpOverlayGuiShots[] = {
       "hover_parity_row_above_occupied"},
      g_hoverParity.shots_[2].events_,
      1},
+    {{kHoverParityZoom,
+      -IRMath::pos3DtoPos2DIso(kHoverParityVoxelWorld),
+      0.0f,
+      "drag_pan_tracks_cursor"},
+     g_dragPan.events_,
+     4},
     {{4.0f, vec2(0.0f), 0.0f, "help_overlay_open"}, kHelpOpenEvents, 2},
     {{4.0f, vec2(0.0f), 0.0f, "help_overlay_closed"}, kHelpCloseEvents, 2},
     {{4.0f, vec2(0.0f), 0.0f, "settings_menu_open"}, kMenuOpenEvents, 2},
+    {{4.0f, vec2(0.0f), 0.0f, "settings_menu_hover_idle"}, g_hoverPixel.awayEvents_, 1},
+    {{4.0f, vec2(0.0f), 0.0f, "settings_menu_hover_row"}, g_hoverPixel.hoverEvents_, 1},
     {{4.0f, vec2(0.0f), 0.0f, "settings_menu_pause_on"}, g_pauseOnClick.events_, 3},
     {{4.0f, vec2(0.0f), 0.0f, "settings_menu_pause_off"}, g_pauseOffClick.events_, 3},
     {{4.0f, vec2(0.0f), 0.0f, "settings_menu_checkerboard_on"}, g_checkerboardOnClick.events_, 3},
@@ -1950,6 +2056,10 @@ constexpr IRVideo::GuiTestShot kHelpOverlayGuiShots[] = {
 };
 constexpr int kNumHelpOverlayGuiShots =
     static_cast<int>(sizeof(kHelpOverlayGuiShots) / sizeof(kHelpOverlayGuiShots[0]));
+static_assert(
+    kHelpOverlayGuiShots[kDragPanShotIndex].inputs_ == g_dragPan.events_,
+    "kDragPanShotIndex must name the drag-pan shot — its aim hook keys on it"
+);
 
 bool helpOverlayVisiblePredicate(const void *context, std::string &actual) {
     const bool expected = *static_cast<const bool *>(context);
@@ -1968,15 +2078,219 @@ bool helpOverlayGlyphsPredicate(const void *context, std::string &actual) {
     return expectGlyphs ? count > 0 : count == 0;
 }
 
+// The overlay wraps a row to the GUI canvas, so on a narrow canvas an entry
+// spans lines, its words separated by a newline and a hanging indent.
+// Collapsing each whitespace run to one space recovers the row as registered.
+std::string collapseWhitespace(const std::string &text) {
+    std::string collapsed;
+    collapsed.reserve(text.size());
+    bool pendingSpace = false;
+    for (const char c : text) {
+        if (std::isspace(static_cast<unsigned char>(c)) != 0) {
+            pendingSpace = !collapsed.empty();
+            continue;
+        }
+        if (pendingSpace) {
+            collapsed += ' ';
+            pendingSpace = false;
+        }
+        collapsed += c;
+    }
+    return collapsed;
+}
+
 // The zero-per-demo-wiring claim: shape_debug never describes the camera keys,
 // yet the overlay must render one of them WITH the description the engine's
 // command catalog supplies.
 bool helpOverlayCameraEntryPredicate(const void *context, std::string &actual) {
     const char *needle = static_cast<const char *>(context);
-    const std::string text = IRPrefab::HelpOverlay::builtText();
+    const std::string text = collapseWhitespace(IRPrefab::HelpOverlay::builtText());
     const bool found = text.find(needle) != std::string::npos;
     actual = found ? "found" : (text.empty() ? "empty-text" : "missing");
     return found;
+}
+
+// --- Screen-target readback --------------------------------------------------
+//
+// Glyph commands batched and a panel inside the GUI canvas say the overlay was
+// laid out, not that anyone can see it: the canvas still has to reach the
+// screen target at the right place and scale. These assertions read the
+// composited frame itself.
+//
+// The image is the whole screen target, RGBA8, rows top-first. It is read by a
+// system at the RENDER tail — after the last pass that draws to the target,
+// where the readback is defined in every window mode — on each live frame of a
+// shot that asks for it. The assertion hook runs ahead of the composite, so on
+// the capture frame it reads the previous frame's image, which the settle
+// window has already made the frame being captured. Whole-target rather than a
+// sub-rectangle because the backends disagree on which edge a region's y is
+// measured from.
+struct ScreenProbe {
+    bool wanted_ = false;
+    bool valid_ = false;
+    IRMath::ivec2 size_ = IRMath::ivec2(0);
+    std::vector<std::uint8_t> rgba_;
+
+    bool contains(IRMath::ivec2 px) const {
+        return valid_ && px.x >= 0 && px.y >= 0 && px.x < size_.x && px.y < size_.y;
+    }
+
+    Color at(IRMath::ivec2 px) const {
+        const std::size_t i = (static_cast<std::size_t>(px.y) * static_cast<std::size_t>(size_.x) +
+                               static_cast<std::size_t>(px.x)) *
+                              4u;
+        return Color{rgba_[i], rgba_[i + 1], rgba_[i + 2], rgba_[i + 3]};
+    }
+};
+ScreenProbe g_screenProbe;
+
+void readScreenProbe() {
+    g_screenProbe.valid_ = false;
+    if (!g_screenProbe.wanted_) {
+        return;
+    }
+    IRWindow::getFramebufferSize(g_screenProbe.size_);
+    if (g_screenProbe.size_.x <= 0 || g_screenProbe.size_.y <= 0) {
+        return;
+    }
+    g_screenProbe.rgba_.resize(
+        static_cast<std::size_t>(g_screenProbe.size_.x) *
+        static_cast<std::size_t>(g_screenProbe.size_.y) * 4u
+    );
+    g_screenProbe.valid_ = IRRender::readDefaultFramebuffer(
+        0,
+        0,
+        g_screenProbe.size_.x,
+        g_screenProbe.size_.y,
+        g_screenProbe.rgba_.data()
+    );
+}
+
+constexpr int kScreenProbeColorTolerance = 4;
+
+bool colorsMatch(Color a, Color b, int tolerance) {
+    return IRMath::abs(static_cast<int>(a.red_) - static_cast<int>(b.red_)) <= tolerance &&
+           IRMath::abs(static_cast<int>(a.green_) - static_cast<int>(b.green_)) <= tolerance &&
+           IRMath::abs(static_cast<int>(a.blue_) - static_cast<int>(b.blue_)) <= tolerance;
+}
+
+std::string colorString(Color color) {
+    return "(" + std::to_string(color.red_) + "," + std::to_string(color.green_) + "," +
+           std::to_string(color.blue_) + ")";
+}
+
+// Screen-target pixel a GUI-canvas point is drawn at: the GUI canvas spans the
+// main framebuffer, which the screen pass draws centered in the target at the
+// output scale. Built from the target's own extent rather than through the
+// cursor mapping, so it states where the frame must put the point instead of
+// where the engine's cursor chain believes it did.
+vec2 guiTrixelToScreenTargetPx(vec2 guiTrixel, IRMath::ivec2 screenTargetSize) {
+    const vec2 guiSize =
+        vec2(IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getCanvas("gui")).size_);
+    const vec2 quadSize = vec2(
+                              IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer")
+                                  .getResolutionPlusBuffer()
+                          ) *
+                          vec2(IRRender::getOutputScaleFactor());
+    return (vec2(screenTargetSize) - quadSize) * 0.5f + guiTrixel / guiSize * quadSize;
+}
+
+// The panel the overlay painted lies wholly on the GUI canvas — the layout
+// half of "nothing is cut off".
+bool helpOverlayPanelInsideCanvasPredicate(const void *, std::string &actual) {
+    const IRPrefab::HelpOverlay::GuiRect panel = IRPrefab::HelpOverlay::panelRect();
+    const IRMath::ivec2 canvas =
+        IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getCanvas("gui")).size_;
+    actual = "panel=" + std::to_string(panel.pos_.x) + "," + std::to_string(panel.pos_.y) + "+" +
+             std::to_string(panel.size_.x) + "x" + std::to_string(panel.size_.y) +
+             " canvas=" + std::to_string(canvas.x) + "x" + std::to_string(canvas.y);
+    return panel.size_.x > 0 && panel.size_.y > 0 && panel.pos_.x >= 0 && panel.pos_.y >= 0 &&
+           panel.pos_.x + panel.size_.x <= canvas.x && panel.pos_.y + panel.size_.y <= canvas.y;
+}
+
+// The screen half: the first command row's glyph box maps inside the screen
+// target, and text-colored pixels are actually there. An overlay composited at
+// the wrong scale or offset keeps every other assertion in this shot green —
+// its glyphs are still batched and its panel still fits the canvas.
+bool helpOverlayFirstRowOnFramePredicate(const void *, std::string &actual) {
+    const IRPrefab::HelpOverlay::GuiRect row =
+        IRPrefab::HelpOverlay::textLineRect(IRPrefab::HelpOverlay::kFirstCommandLine);
+    if (!g_screenProbe.valid_ || row.size_.x <= 0) {
+        actual = g_screenProbe.valid_ ? "no-command-row" : "no-readback";
+        return false;
+    }
+    const vec2 lo = guiTrixelToScreenTargetPx(vec2(row.pos_), g_screenProbe.size_);
+    const vec2 hi = guiTrixelToScreenTargetPx(vec2(row.pos_ + row.size_), g_screenProbe.size_);
+    const IRMath::ivec2 bandLo{
+        static_cast<int>(IRMath::floor(lo.x)),
+        static_cast<int>(IRMath::floor(lo.y))
+    };
+    const IRMath::ivec2 bandHi{
+        static_cast<int>(IRMath::ceil(hi.x)),
+        static_cast<int>(IRMath::ceil(hi.y))
+    };
+    const bool onFrame =
+        g_screenProbe.contains(bandLo) && g_screenProbe.contains(bandHi - IRMath::ivec2(1));
+    int textPixels = 0;
+    if (onFrame) {
+        const Color textColor = IRPrefab::Widget::defaultTheme().textIdle_;
+        for (int y = bandLo.y; y < bandHi.y; ++y) {
+            for (int x = bandLo.x; x < bandHi.x; ++x) {
+                if (colorsMatch(
+                        g_screenProbe.at(IRMath::ivec2(x, y)),
+                        textColor,
+                        kScreenProbeColorTolerance
+                    )) {
+                    ++textPixels;
+                }
+            }
+        }
+    }
+    actual = "text_px=" + std::to_string(textPixels) + " band=" + std::to_string(bandLo.x) + "," +
+             std::to_string(bandLo.y) + "+" + std::to_string(bandHi.x - bandLo.x) + "x" +
+             std::to_string(bandHi.y - bandLo.y) +
+             " target=" + std::to_string(g_screenProbe.size_.x) + "x" +
+             std::to_string(g_screenProbe.size_.y) + (onFrame ? "" : " off-frame");
+    return onFrame && textPixels > 0;
+}
+
+// Screen-target pixel under a cursor resting at the hover oracle's row target.
+IRMath::ivec2 hoverOraclePixel() {
+    const vec2 px =
+        IRRender::windowPointsToFramebufferPx(vec2(g_hoverPixel.hoverEvents_[0].screenPx_));
+    return IRMath::ivec2{
+        static_cast<int>(IRMath::floor(px.x)),
+        static_cast<int>(IRMath::floor(px.y))
+    };
+}
+
+// A change smaller than this is not a repaint; the idle and hover fills differ
+// by 20 or more in every channel.
+constexpr int kHoverRepaintMinDelta = 8;
+
+bool hoverIdlePixelPredicate(const void *, std::string &actual) {
+    const IRMath::ivec2 px = hoverOraclePixel();
+    if (!g_screenProbe.contains(px)) {
+        actual = g_screenProbe.valid_ ? "target-off-frame" : "no-readback";
+        return false;
+    }
+    g_hoverPixel.idle_ = g_screenProbe.at(px);
+    g_hoverPixel.idleSampled_ = true;
+    actual = "rgb=" + colorString(g_hoverPixel.idle_) + " px=" + std::to_string(px.x) + "," +
+             std::to_string(px.y);
+    return true;
+}
+
+bool hoverRowPixelPredicate(const void *, std::string &actual) {
+    const IRMath::ivec2 px = hoverOraclePixel();
+    if (!g_screenProbe.contains(px) || !g_hoverPixel.idleSampled_) {
+        actual = g_screenProbe.valid_ ? "no-idle-sample" : "no-readback";
+        return false;
+    }
+    const Color hovered = g_screenProbe.at(px);
+    actual = "rgb=" + colorString(hovered) + " idle=" + colorString(g_hoverPixel.idle_) +
+             " px=" + std::to_string(px.x) + "," + std::to_string(px.y);
+    return !colorsMatch(hovered, g_hoverPixel.idle_, kHoverRepaintMinDelta - 1);
 }
 
 constexpr bool kExpectVisible = true;
@@ -1988,6 +2302,12 @@ const IRPrefab::GuiTest::Assertion kHelpOpenAssertions[] = {
     IRPrefab::GuiTest::predicate(&helpOverlayGlyphsPredicate, &kExpectVisible, "glyphs_batched"),
     IRPrefab::GuiTest::predicate(
         &helpOverlayCameraEntryPredicate, kCameraSuiteEntry, "camera_entry_described"
+    ),
+    IRPrefab::GuiTest::predicate(
+        &helpOverlayPanelInsideCanvasPredicate, nullptr, "overlay_bounds_inside_canvas"
+    ),
+    IRPrefab::GuiTest::predicate(
+        &helpOverlayFirstRowOnFramePredicate, nullptr, "first_command_row_on_frame"
     ),
 };
 
@@ -2042,6 +2362,16 @@ bool simPausedPredicate(const void *context, std::string &actual) {
 const IRPrefab::GuiTest::Assertion kMenuOpenAssertions[] = {
     IRPrefab::GuiTest::predicate(&settingsMenuOpenPredicate, &kExpectVisible, "menu_open"),
     IRPrefab::GuiTest::predicate(&settingsMenuRowsPredicate, &kExpectVisible, "rows_spawned"),
+};
+
+const IRPrefab::GuiTest::Assertion kMenuHoverIdleAssertions[] = {
+    IRPrefab::GuiTest::predicate(&hoverIdlePixelPredicate, nullptr, "row_pixel_idle_sampled"),
+};
+
+const IRPrefab::GuiTest::Assertion kMenuHoverRowAssertions[] = {
+    IRPrefab::GuiTest::predicate(
+        &hoverRowPixelPredicate, nullptr, "row_pixel_repaints_under_cursor"
+    ),
 };
 
 const IRPrefab::GuiTest::Assertion kMenuPauseOnAssertions[] = {
@@ -2228,20 +2558,27 @@ const IRPrefab::GuiTest::Assertion kMenuQuitAssertions[] = {
 struct ShotAssertions {
     const IRPrefab::GuiTest::Assertion *assertions_;
     int count_;
+    // The shot's assertions read g_screenProbe, so the RENDER-tail readback
+    // runs while it is live.
+    bool readsScreen_ = false;
 };
 
 template <std::size_t N>
-constexpr ShotAssertions shotAssertions(const IRPrefab::GuiTest::Assertion (&table)[N]) {
-    return ShotAssertions{table, static_cast<int>(N)};
+constexpr ShotAssertions
+shotAssertions(const IRPrefab::GuiTest::Assertion (&table)[N], bool readsScreen = false) {
+    return ShotAssertions{table, static_cast<int>(N), readsScreen};
 }
 
 const ShotAssertions kShotAssertions[] = {
     shotAssertions(g_hoverParity.shots_[0].assertions_),
     shotAssertions(g_hoverParity.shots_[1].assertions_),
     shotAssertions(g_hoverParity.shots_[2].assertions_),
-    shotAssertions(kHelpOpenAssertions),
+    shotAssertions(g_dragPan.assertions_),
+    shotAssertions(kHelpOpenAssertions, true),
     shotAssertions(kHelpClosedAssertions),
     shotAssertions(kMenuOpenAssertions),
+    shotAssertions(kMenuHoverIdleAssertions, true),
+    shotAssertions(kMenuHoverRowAssertions, true),
     shotAssertions(kMenuPauseOnAssertions),
     shotAssertions(kMenuPauseOffAssertions),
     shotAssertions(kMenuCheckerboardOnAssertions),
@@ -2268,7 +2605,7 @@ static_assert(
 // silently stop aiming the early menu clicks and leave them at the screen
 // corner. Identified by the events the shot carries — the label is not
 // constexpr-comparable, and kMenuOpenEvents IS what "opens the menu" means here.
-constexpr int kMenuOpenShotIndex = kNumHoverParityShots + 2;
+constexpr int kMenuOpenShotIndex = kDragPanShotIndex + 3;
 constexpr bool isFirstMenuOpeningShot(int index) {
     for (int i = 0; i < index; ++i) {
         if (kHelpOverlayGuiShots[i].inputs_ == kMenuOpenEvents) {
@@ -2292,7 +2629,7 @@ static_assert(
 // instead, through the same `GuiTest::evaluate` emitter the capture path uses —
 // gui-verify.py parses one format, and a second emitter is one drift away from
 // being unparseable.
-constexpr int kMenuQuitShotIndex = kNumHoverParityShots + 14;
+constexpr int kMenuQuitShotIndex = kMenuOpenShotIndex + 14;
 static_assert(
     kMenuQuitShotIndex == kNumHelpOverlayGuiShots - 1,
     "the QUIT shot ends the run — a shot appended after it would never execute"
@@ -2660,6 +2997,7 @@ void initCullEvictScene() {
 
 void onHelpOverlayAssertFrame(int shotIndex, bool isCaptureFrame) {
     onHoverParityAssertFrame(shotIndex);
+    onDragPanAssertFrame(shotIndex);
     // Every live frame from the first menu shot on: the panel centers itself and
     // a dropdown's item strip exists only while expanded, so the targets have to
     // be resolved continuously rather than once at first open.
@@ -2667,6 +3005,7 @@ void onHelpOverlayAssertFrame(int shotIndex, bool isCaptureFrame) {
         fillClickTargets();
     }
     const ShotAssertions &shot = kShotAssertions[shotIndex];
+    g_screenProbe.wanted_ = shot.readsScreen_;
     IRPrefab::GuiTest::onFrame(
         g_helpOverlayLatch,
         shotIndex,
@@ -2894,6 +3233,14 @@ void initSystems() {
         renderPipeline.insert(
             std::find(renderPipeline.begin(), renderPipeline.end(), trixelToFramebufferId),
             IRVideo::createGuiTestSystem(cfg)
+        );
+        // At the tail, past every pass that draws to the screen target.
+        renderPipeline.push_back(
+            IRSystem::createSystem<C_VoxelSetNew>(
+                "GuiTestScreenProbe",
+                [](C_VoxelSetNew &) {},
+                []() { readScreenProbe(); }
+            )
         );
     } else if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};

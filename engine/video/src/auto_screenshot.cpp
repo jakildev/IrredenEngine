@@ -9,13 +9,14 @@
 #include <irreden/render/camera.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
 
+#include <chrono>
 #include <memory>
 
 namespace IRVideo {
 
 namespace {
 
-// Private anchor: never attached to any entity, so the per-entity tick
+// Private anchors: never attached to any entity, so the per-entity tick
 // runs zero times. engine/system/CLAUDE.md guarantees endTick fires even
 // when zero entities match — we only care about endTick here.
 struct C_AutoScreenshotAnchor {};
@@ -75,12 +76,38 @@ struct CyclingState {
     bool screenshotPending_ = false;
 };
 
-// Set true the first time any capture-system creator (createAutoScreenshotSystem,
-// createGuiTestSystem, or createAutoRecordSystem) runs this process, i.e. a
-// headless frame-counted capture is active. Read by World via
-// isAutoCaptureActive() to switch the UPDATE loop to a deterministic fixed
-// step. Process-lifetime flag; capture is one-shot per process.
+// Capture registration and pacing requests are process-lifetime state because
+// capture systems are one-shot per process. World resolves the flags once,
+// before entering its loop.
 bool g_autoCaptureActive = false;
+bool g_deterministicCaptureActive = false;
+bool g_autoRecordActive = false;
+bool g_autoRecordRealTime = false;
+bool g_autoRecordRealTimeRequested = false;
+
+detail::AutoCapturePacing currentAutoCapturePacing() {
+    return detail::autoCapturePacingFrom(
+        g_autoRecordActive,
+        g_deterministicCaptureActive,
+        g_autoRecordRealTime,
+        g_autoRecordRealTimeRequested,
+        IRVideo::isAudioInputArmed()
+    );
+}
+
+const char *pacingDescription(detail::AutoCapturePacing pacing) {
+    switch (pacing) {
+    case detail::AutoCapturePacing::FIXED_STEP:
+        return "fixed-step";
+    case detail::AutoCapturePacing::FIXED_STEP_DETERMINISTIC_CAPTURE:
+        return "fixed-step (deterministic capture armed)";
+    case detail::AutoCapturePacing::REAL_TIME_REQUESTED:
+        return "real-time (requested)";
+    case detail::AutoCapturePacing::REAL_TIME_AUDIO_INPUT:
+        return "real-time (audio input armed)";
+    }
+    return "fixed-step";
+}
 
 } // namespace
 
@@ -88,8 +115,17 @@ bool isAutoCaptureActive() {
     return g_autoCaptureActive;
 }
 
+bool isAutoCaptureFixedStep() {
+    return detail::usesFixedStep(currentAutoCapturePacing());
+}
+
+void requestAutoRecordRealTime() {
+    g_autoRecordRealTimeRequested = true;
+}
+
 IRSystem::SystemId createAutoScreenshotSystem(const AutoScreenshotConfig &config) {
     g_autoCaptureActive = true;
+    g_deterministicCaptureActive = true;
     auto state = std::make_shared<CyclingState>();
     state->config_ = config;
     state->warmupRemaining_ = config.warmupFrames_;
@@ -159,11 +195,14 @@ IRSystem::SystemId createAutoScreenshotSystem(const AutoScreenshotConfig &config
 
 IRSystem::SystemId createAutoRecordSystem(const AutoRecordConfig &config) {
     g_autoCaptureActive = true;
+    g_autoRecordActive = true;
+    g_autoRecordRealTime = config.realTime_;
 
     struct RecordState {
         AutoRecordConfig config_;
         int warmupRemaining_ = 0;
-        int capturedFrames_ = 0;
+        std::int64_t seenTicks_ = 0;
+        std::chrono::steady_clock::time_point startedAt_{};
         enum class Phase { WARMUP, STARTING, RECORDING, STOPPING, DONE } phase_ = Phase::WARMUP;
     };
     using Phase = RecordState::Phase;
@@ -183,6 +222,15 @@ IRSystem::SystemId createAutoRecordSystem(const AutoRecordConfig &config) {
         [](C_AutoRecordAnchor &) {},
         nullptr,
         [state]() {
+            const auto exitWithRecorderError = [&state](const char *reason) {
+                IR_LOG_WARN(
+                    "AutoRecord: {} ({}); exiting without a clip",
+                    reason,
+                    IRVideo::getLastError()
+                );
+                IRWindow::closeWindow();
+                state->phase_ = Phase::DONE;
+            };
             switch (state->phase_) {
             case Phase::WARMUP:
                 if (state->warmupRemaining_ > 0) {
@@ -190,33 +238,47 @@ IRSystem::SystemId createAutoRecordSystem(const AutoRecordConfig &config) {
                     return;
                 }
                 IR_LOG_INFO(
-                    "AutoRecord: starting capture, {} frame window",
-                    state->config_.frames_
+                    "AutoRecord: starting capture, {} tick window, pacing={}",
+                    state->config_.frames_,
+                    pacingDescription(currentAutoCapturePacing())
                 );
+                state->startedAt_ = std::chrono::steady_clock::now();
                 IRVideo::toggleRecording();
                 state->phase_ = Phase::STARTING;
                 return;
             case Phase::STARTING:
                 if (IRVideo::recordingState() != RecordingState::RECORDING) {
-                    IR_LOG_WARN(
-                        "AutoRecord: recorder did not start ({}); exiting without a clip",
-                        IRVideo::getLastError()
-                    );
-                    IRWindow::closeWindow();
-                    state->phase_ = Phase::DONE;
+                    exitWithRecorderError("recorder did not start");
                     return;
                 }
                 state->phase_ = Phase::RECORDING;
                 [[fallthrough]];
-            case Phase::RECORDING:
-                if (state->capturedFrames_ < state->config_.frames_) {
-                    ++state->capturedFrames_;
+            case Phase::RECORDING: {
+                if (IRVideo::recordingState() != RecordingState::RECORDING) {
+                    exitWithRecorderError("recorder stopped unexpectedly");
                     return;
                 }
-                IR_LOG_INFO("AutoRecord: {} frames captured, stopping", state->capturedFrames_);
+                const detail::AutoRecordWindowStep window = detail::autoRecordWindowStep(
+                    state->seenTicks_,
+                    IRVideo::capturedUpdateTicks(),
+                    state->config_.frames_
+                );
+                state->seenTicks_ = window.seenTicks_;
+                if (!window.stop_) {
+                    return;
+                }
+                IR_LOG_INFO(
+                    "AutoRecord: stopping, ticks={} wall={:.2f}s",
+                    state->seenTicks_,
+                    std::chrono::duration<double>(
+                        std::chrono::steady_clock::now() - state->startedAt_
+                    )
+                        .count()
+                );
                 IRVideo::toggleRecording();
                 state->phase_ = Phase::STOPPING;
                 return;
+            }
             case Phase::STOPPING:
                 IRWindow::closeWindow();
                 state->phase_ = Phase::DONE;
@@ -230,6 +292,7 @@ IRSystem::SystemId createAutoRecordSystem(const AutoRecordConfig &config) {
 
 IRSystem::SystemId createGuiTestSystem(const GuiTestConfig &config) {
     g_autoCaptureActive = true;
+    g_deterministicCaptureActive = true;
     IRInput::beginSyntheticInput();
 
     struct GuiTestState {
