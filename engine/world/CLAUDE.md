@@ -194,7 +194,6 @@ The registry is built fresh per call (never per-frame), so its session-local
   `endEvent<UPDATE>()` decrements it unconditionally, so a priming tick before
   the reset leaves every captured frame reading `IRTime::tick()` one high
   ([`engine/time/CLAUDE.md`](../time/CLAUDE.md) §"Gotchas", the
-  `enableFixedStep()` bullet). The constraint is on the block as a whole:
-  moving only the disarm below the priming call self-cancels; hoisting the
-  priming call above `enableFixedStep()` breaks the capture contract, and no
-  test covers it.
+  `enableFixedStep()` bullet). Real-time auto-record skips that call but still
+  disarms the wait-for-input gate. Keep the whole decision and disarm above
+  the priming call; moving either side changes the capture tick origin.

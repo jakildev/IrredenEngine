@@ -125,6 +125,13 @@ PID_FILE = STATE_DIR / "scout.pid"
 STATE_FILE = STATE_DIR / "state.json"
 SHUTDOWN_FLAG = Path.home() / ".fleet" / "shutdown-in-progress"
 
+# Residual blocker/epic references are not bounded by the list-shaped state
+# slices. Their conditional REST bodies therefore have their own lifecycle:
+# every authoritative tick records the entries it touched, then prunes the
+# rest after all resolver consumers have shared one in-memory result cache.
+REF_STATE_ETAG_DIR = ETAG_DIR / "reference-state"
+_REF_STATE_KEEP_KEY = object()
+
 # Identity-qualified GitHub quota and provider usage share this directory.
 USAGE_DIR = STATE_DIR / "usage"
 
@@ -2677,30 +2684,52 @@ def _parse_blocker_refs(raw, default_key, declared_only=False, with_kind=False):
 
 
 def _resolve_ref_satisfied(repo_slug, ref_str, cache, requires_merge=False):
-    """Return whether a ref reached its required terminal state."""
+    """Return whether a ref reached its required terminal state.
+
+    Issue refs use the REST issue surface and require `state == closed`.
+    Merge-required refs use the pull surface and require a timestamped merge.
+    The conditional helper serves a valid cached body on 304; every unreadable
+    or incomplete response fails closed.
+    """
     key = (repo_slug, ref_str, requires_merge)
     if key in cache:
         return cache[key]
+
+    path = f"{'pulls' if requires_merge else 'issues'}/{ref_str}"
+    cache_path = cache_entry_path(
+        repo_slug, path, cache_dir=REF_STATE_ETAG_DIR)
+    cache.setdefault(_REF_STATE_KEEP_KEY, set()).add(cache_path)
     result = False
     try:
-        r = subprocess.run(
-            ["gh", "pr" if requires_merge else "issue", "view", ref_str,
-             "--repo", repo_slug,
-             "--json", "state", "--jq", ".state"],
-            capture_output=True, text=True, timeout=10,
+        _changed, body = conditional_get(
+            repo_slug, path, cache_dir=REF_STATE_ETAG_DIR, timeout=10,
         )
-        satisfied_states = ("MERGED",) if requires_merge else ("CLOSED", "MERGED")
-        result = r.stdout.strip() in satisfied_states
-    except (subprocess.SubprocessError, OSError):
-        pass
+        payload = json.loads(body) if body is not None else None
+        if isinstance(payload, dict):
+            if requires_merge:
+                merged_at = payload.get("merged_at")
+                result = isinstance(merged_at, str) and bool(merged_at)
+            else:
+                result = payload.get("state") == "closed"
+    except (TypeError, ValueError, OSError):
+        result = False
     cache[key] = result
     return result
+
+
+def _prune_ref_state_cache(cache):
+    keep = cache.pop(_REF_STATE_KEEP_KEY, set())
+    if not REF_STATE_ETAG_DIR.exists():
+        return
+    for entry in REF_STATE_ETAG_DIR.rglob("*.json"):
+        if entry not in keep:
+            entry.unlink(missing_ok=True)
 
 
 def _closed_issue_numbers(repo_state):
     """Issue numbers (as strings) known closed from the already-fetched
     closed_fleet_queued window — the shared in-memory closed-set every
-    resolve_* pass checks before its live fallback."""
+    resolve_* pass checks before its conditional reference read."""
     return {
         str(i.get("number", ""))
         for i in repo_state.get("closed_fleet_queued", [])
@@ -2712,8 +2741,8 @@ def resolve_blocked_by(state, ref_cache=None):
     """Resolve blocked_by fields for all open AND in-progress tasks.
 
     Uses already-fetched closed_fleet_queued and recent_merged_prs for
-    in-memory resolution; falls back to live gh issue view for refs not
-    covered by either. Mutates state in place.
+    in-memory resolution; falls back to conditional REST for refs not covered
+    by either. Mutates state in place.
 
     Covers tasks.in_progress alongside tasks.open — a task claimed
     while still blocked moves to tasks.in_progress (fetch_task_queue's
@@ -2724,7 +2753,7 @@ def resolve_blocked_by(state, ref_cache=None):
 
     `ref_cache` lets the caller share one `_resolve_ref_satisfied` cache
     across the resolvers that run in the same tick, so a ref appearing in
-    both this lane and the needs-plan lane costs one live call, not two.
+    both this lane and the needs-plan lane costs one conditional read, not two.
     """
     per_tick_cache: dict = {} if ref_cache is None else ref_cache
 
@@ -2940,12 +2969,11 @@ def resolve_needs_plan_blocked_by(state, ref_cache=None):
                 if not requires_merge and any(
                         branch_matches_issue(h, ref, repo_key) for h in merged_heads):
                     continue
-                # Live fallback for the residual. Reached only by refs
+                # Conditional fallback for the residual. Reached only by refs
                 # both in-memory sources missed, so it costs a call per *novel*
                 # unresolved ref per tick, shared with resolve_blocked_by's
-                # cache. _resolve_ref_satisfied fails closed (False on any gh
-                # error/timeout), so a flaky call leaves the issue blocked —
-                # the conservative direction.
+                # cache. _resolve_ref_satisfied fails closed, so an unreadable
+                # response leaves the issue blocked — the conservative direction.
                 if (repo_slug and requires_merge and _resolve_ref_satisfied(
                         repo_slug, ref, per_tick_cache, True)):
                     continue
@@ -2968,19 +2996,19 @@ def resolve_epic_children(state, ref_cache=None):
     - visible-open union (tasks open/in_progress, human_approved, needs_plan,
       epics) → open
     - closed_fleet_queued → closed
-    - already-checked entries → closed without the live fallback. The steward
+    - already-checked entries → closed without the conditional fallback. The steward
       only ticks a box after verifying closure (and flow d re-verifies live
-      before close-out), so trusting the tick avoids a per-tick gh call for
+      before close-out), so trusting the tick avoids a per-tick reference read for
       every checked child that has aged out of the closed_fleet_queued
       window. A reopened child re-enters the visible-open union via its
       surviving fleet:queued label, which takes precedence above.
-    - else the rare _resolve_ref_satisfied live fallback (per-tick cached) —
+    - else the rare _resolve_ref_satisfied conditional fallback (per-tick cached) —
       only unchecked children invisible to every list fetch land here (e.g.
       filed but not yet approved/queued).
 
     `ref_cache` shares the tick's `_resolve_ref_satisfied` cache with the
     blocked-by resolvers — an epic child that is also some task's
-    blocker is then one live call for the tick, not two.
+    blocker is then one conditional read for the tick, not two.
     """
     per_tick_cache: dict = {} if ref_cache is None else ref_cache
     for repo_key, repo_state in state["repos"].items():
@@ -5429,12 +5457,13 @@ def tick_once():
         _populate_done_tasks(state)
         # One shared _resolve_ref_satisfied cache across every resolver in the
         # tick, so a ref named by more than one of them (a task blocker that is
-        # also an epic child) costs a single live call.
+        # also an epic child) costs a single conditional read.
         ref_cache: dict = {}
         resolve_blocked_by(state, ref_cache)
         resolve_human_approved_blockers(state)
         resolve_needs_plan_blocked_by(state, ref_cache)
         resolve_epic_children(state, ref_cache)
+        _prune_ref_state_cache(ref_cache)
         # enrich_inflight_pr_tasks must run before enrich_stackable_blocker_prs
         # — the stackable pass reads a task's `inflight_pr` field to suppress
         # a doomed offer on a task whose own issue already has an open PR;

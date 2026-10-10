@@ -181,6 +181,7 @@ class Parser {
     //     screen without editing every call site.
     int autoScreenshotWarmupFrames() const;
     int autoRecordFrames() const;
+    bool autoRecordRealTime() const;
     std::string configPreset() const;
     int workerThreads() const;
     std::string windowMode() const;

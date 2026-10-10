@@ -50,7 +50,8 @@ systems that populate button state. The underlying polling lives in
 - `HITBOX_MOUSE_TEST_GUI` (INPUT pipeline) — tests `C_HitBox2DGui +
   C_GuiPosition` against the mouse projected into GUI-canvas-trixel
   coordinates. Computes the projection once per frame in `beginTick`
-  by scaling `mouseFb / framebufferRes * guiCanvasSize` — after T-293
+  by scaling `mouseFb / framebufferRes * guiCanvasSize`, `mouseFb` being
+  `IRRender::getMousePositionMainFramebuffer()` — after T-293
   the screen-residual-yaw rotation is gone (folded into the trixel
   emit shaders' `faceDeform[]`), so no inverse rotation step is
   needed.

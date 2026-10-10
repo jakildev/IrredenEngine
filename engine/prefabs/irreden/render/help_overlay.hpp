@@ -23,12 +23,14 @@
 
 #include <irreden/ir_command.hpp>
 #include <irreden/ir_input.hpp>
+#include <irreden/ir_math.hpp>
 #include <irreden/ir_system.hpp>
 
 #include <irreden/render/commands/command_toggle_help_overlay.hpp>
 #include <irreden/render/help_overlay_state.hpp>
 #include <irreden/render/systems/system_help_overlay.hpp>
 
+#include <cstddef>
 #include <list>
 #include <string>
 
@@ -86,12 +88,13 @@ inline IRCommand::CommandId registerToggleCommand(int button = kDefaultToggleBut
 
 // --- Headless-test introspection -------------------------------------------
 //
-// The two observables a GUI test needs to prove the overlay actually fired,
-// rather than merely believing itself visible: the text it built, and how many
-// glyph commands it batched on the last frame. Both resolve the running system
-// through the `SystemName` registry and degrade to empty / 0 when it
-// isn't registered, so a creation without the overlay reads a clean negative
-// instead of dereferencing null. The miss sentinel is `IRSystem::kNullSystemId`
+// The observables a GUI test needs to prove the overlay actually fired, rather
+// than merely believing itself visible: the text it built, how many glyph
+// commands it batched on the last frame, and where on the GUI canvas the panel
+// and its lines landed. All resolve the running system through the
+// `SystemName` registry and degrade to empty / 0 when it isn't registered, so
+// a creation without the overlay reads a clean negative instead of
+// dereferencing null. The miss sentinel is `IRSystem::kNullSystemId`
 // — NOT `IREntity::kNullEntity`, because 0 is a
 // live id (the first system a process registers gets it). Comparing against the
 // wrong one breaks the probe both ways: a genuine miss walks past the guard into
@@ -112,13 +115,64 @@ inline const IRSystem::System<IRSystem::HELP_OVERLAY> *systemOrNull() {
 // overlay has never been opened (the build is lazy) or the system is absent.
 inline std::string builtText() {
     const auto *system = systemOrNull();
-    return system == nullptr ? std::string{} : system->text_;
+    return system == nullptr ? std::string{} : system->layout_.text_;
 }
 
 // Glyph draw commands batched on the most recent frame; 0 while hidden.
 inline int lastGlyphCommandCount() {
     const auto *system = systemOrNull();
     return system == nullptr ? 0 : system->lastGlyphCommandCount_;
+}
+
+// An axis-aligned box on the GUI canvas, in trixels, top-left origin.
+struct GuiRect {
+    IRMath::ivec2 pos_ = IRMath::ivec2(0);
+    IRMath::ivec2 size_ = IRMath::ivec2(0);
+};
+
+// Line of `builtText()` holding the first command row: the header and the
+// blank line under it come first.
+inline constexpr int kFirstCommandLine = 2;
+
+// The background panel as last painted. Zero-sized when the overlay has never
+// been drawn or the system is absent.
+inline GuiRect panelRect() {
+    const auto *system = systemOrNull();
+    return system == nullptr ? GuiRect{} : GuiRect{system->panelPos_, system->panelSize_};
+}
+
+// The glyph box of line @p line of `builtText()`: where that line's text
+// lands on the GUI canvas. Zero-sized when the line is absent or blank.
+inline GuiRect textLineRect(int line) {
+    const auto *system = systemOrNull();
+    if (system == nullptr || system->canvas_ == nullptr || line < 0) {
+        return {};
+    }
+    const std::string &text = system->layout_.text_;
+    std::size_t lineStart = 0;
+    for (int i = 0; i < line; ++i) {
+        const std::size_t lineEnd = text.find('\n', lineStart);
+        if (lineEnd == std::string::npos) {
+            return {};
+        }
+        lineStart = lineEnd + 1;
+    }
+    const std::size_t lineEnd = text.find('\n', lineStart);
+    if (lineEnd == std::string::npos || lineEnd == lineStart) {
+        return {};
+    }
+    const int fontSize = IRSystem::kHelpOverlayFontSize;
+    const IRMath::ivec2 textOrigin =
+        IRRender::parityAlignedPosition(IRSystem::kHelpOverlayPadding, system->canvas_->size_);
+    return GuiRect{
+        textOrigin + IRMath::ivec2(0, line * IRRender::kGlyphStepY * fontSize),
+        IRMath::ivec2(
+            (static_cast<int>(lineEnd - lineStart) * IRRender::kGlyphStepX -
+             IRRender::kGlyphSpacingX) *
+                fontSize,
+            IRRender::kGlyphHeight * fontSize
+        )
+    };
 }
 
 } // namespace IRPrefab::HelpOverlay

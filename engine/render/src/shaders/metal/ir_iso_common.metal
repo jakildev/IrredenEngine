@@ -1089,6 +1089,18 @@ inline float fogVisionCircleReveal(float2 worldXY, float4 circle, float aa) {
     return 1.0f - smoothstep(circle.z - a, circle.z + a, dist);
 }
 
+// A source's ceiling factor at dzUp world units above its observer. GLSL
+// twin: fogCeilingVisibility in ../ir_iso_common.glsl.
+inline float fogCeilingVisibility(float4 ceiling, float dzUp) {
+    if (ceiling.x < 0.0f) {
+        return 1.0f;
+    }
+    if (ceiling.y <= 0.0f) {
+        return dzUp <= ceiling.x ? 1.0f : 0.0f;
+    }
+    return 1.0f - smoothstep(ceiling.x, ceiling.x + ceiling.y, dzUp);
+}
+
 // The fog window is RG32UI: .r is the cell state integer (0 unexplored, 128
 // explored, 255 visible), .g the cell's channel mask. GLSL twin:
 // fogTexelState in ../ir_iso_common.glsl.

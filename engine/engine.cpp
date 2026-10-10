@@ -8,6 +8,12 @@
 
 namespace IREngine::detail {
 
+void applyAutoRecordArgs() {
+    if (args().autoRecordRealTime()) {
+        IRVideo::requestAutoRecordRealTime();
+    }
+}
+
 void applyPreInitLuaConfig(const char *configFile) {
     IRScript::LuaScript script{configFile};
     sol::table config = script.getTable("config");

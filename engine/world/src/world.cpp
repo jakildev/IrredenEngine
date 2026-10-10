@@ -74,6 +74,10 @@ World::World(
     GLFWimage iconGlfw{iconData.width_, iconData.height_, iconData.pixels_.data()};
     m_IRGLFWWindow.setWindowIcon(&iconGlfw);
     m_renderer.printRenderInfo();
+    IRAudio::IAudioCaptureSource *audioCaptureSource = &IRAudio::getAudioCaptureSource();
+    if (m_worldConfig["video_capture_audio_input_synthetic"].get_boolean()) {
+        audioCaptureSource = &m_audioManager.getSyntheticAudioCaptureSource();
+    }
     m_videoManager.configureCapture(
         m_worldConfig["video_capture_output_file"].get_string(),
         m_worldConfig["video_capture_fps"].get_integer(),
@@ -86,7 +90,7 @@ World::World(
         m_worldConfig["video_capture_audio_mux_enabled"].get_boolean(),
         m_worldConfig["video_capture_audio_wav_enabled"].get_boolean(),
         m_worldConfig["video_capture_audio_sync_offset_ms"].get_number(),
-        &IRAudio::getAudioCaptureSource()
+        audioCaptureSource
     );
     m_videoManager.configureCaptureOutputResolution(
         m_worldConfig["video_capture_output_width"].get_integer(),
@@ -228,21 +232,21 @@ void World::gameLoop() {
     try {
         start();
         if (IRVideo::isAutoCaptureActive()) {
-            // Headless --auto-screenshot capture: advance the sim exactly one
-            // UPDATE tick per render frame so per-tick animation (AUTO_SPIN,
-            // etc.) is deterministic and not starved by the uncapped
-            // (vsync-off) loop racing through the frame-counted capture window.
-            m_timeManager.enableFixedStep();
-            // ...and disarm `m_waitForFirstUpdateInput`. It holds the sim at
+            // Deterministic captures advance exactly one UPDATE tick per
+            // render pass. Real-time auto-record keeps the wall-clock
+            // accumulator so its tick window stays aligned with live audio.
+            if (IRVideo::isAutoCaptureFixedStep()) {
+                m_timeManager.enableFixedStep();
+            }
+            // Auto-capture disarms `m_waitForFirstUpdateInput`. It holds the sim at
             // the single priming tick until a real key press arrives. Under
             // `--auto-screenshot` there is no input source, so the gate can
             // never open; under the GUI-test path (createGuiTestSystem also
             // sets g_autoCaptureActive and arms synthetic input) an input
             // source does exist, but the sim should still advance deterministically
             // rather than wait on the shot table's first injected press.
-            // Left armed in either case, every frame of the capture window
-            // renders that one frozen tick, defeating the fixed step this
-            // block just armed. A live run keeps the gate.
+            // Left armed, every frame of the capture window renders the same
+            // priming tick. A live run keeps the gate.
             //
             // This block must stay ABOVE the priming `update()` below.
             // `enableFixedStep()` zeroes the UPDATE lag accumulator, and
