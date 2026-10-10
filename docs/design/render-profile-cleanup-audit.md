@@ -210,10 +210,18 @@ resampled geometry; they are not evidence that a rigid source-face mode should
 look the same. [Captures and proof scope](../pr-screenshots/codex/grid-span-surface-proof/README.md)
 record the commands, normal regions and limitations.
 
+The authored-rotation cube's direct-sun overlay also agrees with the resampled
+centroid-ray oracle at yaw 45° through 315° in 45° steps: zero false or missed
+interior shadow pixels with zero terminator allowance, and both lit and occluded
+interiors exercised. Its 0°/22.5° views and the upright controls are all-lit and
+therefore inconclusive for occlusion. Additional normal controls pass at 90°
+through 315°. This validates sampled self-shadow ownership for that fixture;
+continuous within-triangle boundaries and external receivers remain separate.
+
 ## Remaining investigations
 
-- Check lighting/shadow ownership separately from the validated revoxelized normal
-  regions, then isolate other striped entities from the full scene. The six face
+- Extend lighting/shadow ownership checks to external casters, AO and other
+  striped entities from the full scene. The revoxelized cube's sampled self-shadow
   controls do not certify every CanvasStress mode or arbitrary transforms.
 - Shared profiling matrix helpers live in the rotation CLI module. A neutral
   module could clarify ownership once needed; preserve the distinct evidence

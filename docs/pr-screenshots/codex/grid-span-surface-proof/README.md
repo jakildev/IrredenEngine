@@ -54,6 +54,41 @@ This proves fidelity to the resampled lattice in these poses. It does not claim
 that revoxelization preserves the rigid source surface, that every full-scene
 stripe is correct, or that lighting and shadows agree with these normals.
 
+### Direct-sun ownership controls
+
+At revision `9dbe0fd441104ae366d1ff3862a6b13cc3433d91`, the same built Metal
+renderer was captured with `--debug-overlay shadow` and shadows enabled. The
+authored-rotation cube also has paired normal/shadow captures at yaw
+90°, 135°, 180°, 225°, 270° and 315°.
+[shadow-captures.json](shadow-captures.json) records all four additional runs;
+each exited cleanly. [shadow-metrics.json](shadow-metrics.json) retains all results,
+including intentionally inconclusive controls.
+
+| Fixture | Yaws | False / missed interior shadow pixels | Occlusion gate |
+|---|---|---|---|
+| Authored-rotation cube | 45°, 90°, 135°, 180°, 225°, 270°, 315° | 0 / 0 at each angle | Pass: both lit and shadowed interiors |
+| Authored-rotation cube | 0°, 22.5° | 0 / 0 | Inconclusive: no expected shadowed interior |
+| Upright cube | 0°, 22.5°, 45° | 0 / 0 | Inconclusive: no expected shadowed interior |
+
+All six additional normal captures have zero missing, extra or wrong-face
+interior pixels. Shadow comparisons use `--terminator-tolerance 0`; the existing
+one-pixel triangle-boundary exclusion remains unchanged. Inconclusive cases exit
+1, not 0: an entirely lit fixture cannot validate occlusion. Back-facing regions
+are excluded from the direct-sun oracle, so this is not a beauty-lighting gate.
+
+```text
+python3 scripts/render-revox-face-metric.py docs/pr-screenshots/codex/grid-span-surface-proof/revox-shadow-yaw270.png --fixture cube --yaw 270 --shadow-overlay --terminator-tolerance 0
+```
+
+![Self-shadow diagnostic at camera yaw 270 degrees](revox-shadow-yaw270.png)
+
+The magenta regions agree with rays from the displayed triangles' centroids
+through the resampled occupancy. This checks the revoxelized texture's sampled
+sun visibility; it does not prove continuous shadow boundaries within triangles,
+external caster reception, AO, arbitrary light directions, higher subdivisions,
+or another rendering mode. No sampling, filtering or bias change was needed for
+these controls.
+
 ## CPU GRID span proof
 
 The isolated orbit cube reproduces:
