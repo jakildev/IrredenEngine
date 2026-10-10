@@ -101,6 +101,12 @@ ISSUES = [
      "body": "**Part of epic:** #303\n"},
     {"number": 303, "title": "epic child in flight on a hand-named branch",
      "labels": labels("fleet:epic"), "body": "## Children\n- [ ] #204\n"},
+    {"number": 205, "title": "child closed by a qualified ref", "labels": labels("fleet:task"),
+     "body": "**Part of epic:** #304\n"},
+    {"number": 206, "title": "child named by a cross-repo ref", "labels": labels("fleet:task"),
+     "body": "**Part of epic:** #304\n"},
+    {"number": 304, "title": "epic with qualified and cross-repo refs",
+     "labels": labels("fleet:epic"), "body": "## Children\n- [ ] #205\n- [ ] #206\n"},
     {"number": 400, "title": "untriaged idea", "labels": []},
 ]
 
@@ -138,6 +144,12 @@ PRS = [
     {"number": 960, "title": "hand-named branch", "headRefName": "feature/no-number-here",
      "labels": labels("fleet:claim-mac-pool-3"), "mergeable": "MERGEABLE",
      "body": "Some prose, then\n\nCloses #204\n"},
+    {"number": 961, "title": "qualified same-repo ref", "headRefName": "feature/also-no-number",
+     "labels": labels("fleet:claim-mac-pool-4"), "mergeable": "MERGEABLE",
+     "body": "Closes jakildev/IrredenEngine#205\n"},
+    {"number": 962, "title": "cross-repo ref only", "headRefName": "feature/other-repo",
+     "labels": labels("fleet:claim-mac-pool-5"), "mergeable": "MERGEABLE",
+     "body": "Closes jakildev/irreden#206\n"},
 ]
 
 LOG = """\
@@ -250,7 +262,7 @@ class ApprovalGap(FleetSurveyFixture):
     def test_unapproved_tasks_with_epic_children_first(self):
         rows = self.run_survey()["repos"]["engine"]["approval_gap"]
         self.assertEqual([(r["issue"], r["epic"]) for r in rows],
-                         [(202, 300), (204, 303), (201, None)])
+                         [(202, 300), (204, 303), (205, 304), (206, 304), (201, None)])
 
 
 class Epics(FleetSurveyFixture):
@@ -268,6 +280,10 @@ class Epics(FleetSurveyFixture):
         rows = {r["epic"]: r for r in self.run_survey()["repos"]["engine"]["epics"]}
         self.assertEqual(rows[303]["left"], {204: "in flight: PR #960"})
         self.assertFalse(rows[303]["close_out_ready"])
+
+    def test_a_qualified_own_repo_ref_links_and_a_cross_repo_ref_does_not(self):
+        rows = {r["epic"]: r for r in self.run_survey()["repos"]["engine"]["epics"]}
+        self.assertEqual(rows[304]["left"], {205: "in flight: PR #961", 206: "open"})
 
 
 class Untriaged(FleetSurveyFixture):

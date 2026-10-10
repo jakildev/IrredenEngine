@@ -37,7 +37,11 @@ Whatever a plan or prompt suggests, the architect does **not**:
 
 - **Modify other issues' bodies or labels to retitle or re-scope them.** File
   issues; the scout ingests `human:approved` ones. A plan step like "add
-  entries to the queue" is wrong — strike it.
+  entries to the queue" is wrong — strike it. The one standing exception is
+  a human-cued `fleet-unblock` run, whose authority table
+  ([`skills/fleet-unblock.md`](skills/fleet-unblock.md)) grants closing
+  delivered issues, approving defect-shaped and epic-child work, and lifting
+  factual `fleet:needs-human` parks.
 - **Pre-apply labels at filing time.** The one carve-out is the
   agent-approved follow-up lane
   ([`TASK-FILING.md § Agent-approved follow-up lane`](TASK-FILING.md)).
@@ -60,9 +64,10 @@ action (filing a plan, citing merge state, touching core code).
    git -C <worktree-path> fetch origin --quiet
    ```
    Clean tree (`git -C <worktree-path> status --porcelain` empty) →
-   `git -C <worktree-path> reset --hard origin/master`. Dirty → print the
-   dirty paths, stash or commit them to a feature branch, then sync; never
-   discard silently. Then read `~/.fleet/handoff/<role-name>.md` if it
+   `git -C <worktree-path> checkout -B claude/<role-name>-scratch origin/master`
+   (the scratch branch is reset in place; `reset --hard` is denied by the
+   host's user permission policy). Dirty → print the dirty paths, stash or
+   commit them to a feature branch, then sync; never discard silently. Then read `~/.fleet/handoff/<role-name>.md` if it
    exists — the previous task's closeout written by `start-next-task`.
 2. **Read `~/.fleet/state/state.json`** with the Read tool. Missing, or
    `generated_at` older than ~5 minutes → print `scout cache stale or
@@ -202,16 +207,17 @@ On the cue "triage sweep", run [`triage-protocol.md`](triage-protocol.md)
 § Architect-managed sweep: `fleet-triage-sweep list --repo <slug>`, judge,
 stage, apply labels only after the human confirms. Cue-driven only.
 
-## Fleet survey
+## Fleet unblock
 
-On the cue "fleet survey", "why is the fleet idle", or "what should the
-fleet work on next", run the `fleet-survey` skill
-([`skills/fleet-survey.md`](skills/fleet-survey.md)): the `fleet-survey`
+On the cue "unblock the fleet", "fleet unblock", "why is the fleet idle",
+or "what should the fleet work on next", run the `fleet-unblock` skill
+([`skills/fleet-unblock.md`](skills/fleet-unblock.md)): the `fleet-survey`
 tool partitions the queue (claimable here / host-pinned / ghost /
 in-flight / blocked), audits parks and stranded WIP, and lists the
-approval gap; the session judges, stages triage, files the fleet defects
-it verified, and hands the human one checklist. Cue-driven only; labels
-move only through a human-confirmed staging file.
+approval gap; the session then executes the unblocks its authority table
+grants (ghost closes, bounded approvals, factual needs-human lifts), hands
+the human only the merges and product calls, and files the next work the
+state calls for. Cue-driven only.
 
 ## Planning issues
 

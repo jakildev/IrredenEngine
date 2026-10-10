@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """fleet-survey — why the fleet is idle, and what is really blocked.
 
-The deterministic half of the fleet-survey skill
-(docs/agents/skills/fleet-survey.md). Reads the scout cache, the usage
+The read-only half of the fleet-unblock skill
+(docs/agents/skills/fleet-unblock.md). Reads the scout cache, the usage
 samples, the dispatcher log tail and one open-issue plus one open-PR listing
 per repo, and prints:
 
@@ -290,11 +290,13 @@ def survey(state, issues_by_repo, prs_by_repo, host, usage_dir, log_path, now=No
         queue = queue_section(repo_state, host, open_issues)
         ghosts = {int(str(r["id"]).lstrip("#")): r["shadow_pr"] for r in queue["ghost"]}
         # The scout's in-flight link accepts either the branch convention or a
-        # body closing ref; an epic child is in flight under both readings.
+        # body closing ref; an epic child is in flight under both readings. The
+        # own-repo split keeps a qualified ref to this repo and drops a ref to
+        # the other fleet repo, as the scout's closes_issues does.
         prs_by_issue = {}
         for pr in prs:
             linked = [fleet_branch_match.issue_from_branch(pr.get("headRefName") or "")]
-            linked += fleet_branch_match.body_closed_issue_numbers(pr.get("body") or "")
+            linked += fleet_branch_match.split_closed_issue_refs(pr.get("body") or "", key)[0]
             for issue in linked:
                 if issue is not None:
                     prs_by_issue.setdefault(issue, pr["number"])
