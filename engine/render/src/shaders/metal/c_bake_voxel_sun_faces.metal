@@ -3,6 +3,7 @@
 // into the sun depth map. A revoxelized canvas therefore casts its resampled
 // lattice, the geometry its receiver reads and its display shows.
 #include "ir_iso_common.metal"
+#include "ir_fog_shadow_caster.metal"
 #include "ir_sun_projection.metal"
 #include "ir_sun_shadow_sample.metal"
 #include <metal_atomic>
@@ -48,6 +49,7 @@ kernel void c_bake_voxel_sun_faces(
     constant VoxelSunFaceFrame& faceFrame [[buffer(16)]],
     device atomic_uint* sunDepthBuf [[buffer(28)]],
     constant FrameDataSun& sunFrame [[buffer(29)]],
+    constant FogShadowObserverData& fogObservers [[buffer(27)]],
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 localId [[thread_position_in_threadgroup]]
 ) {
@@ -64,6 +66,10 @@ kernel void c_bake_voxel_sun_faces(
     const float3 position = rigidSource ? positions[index].xyz
         : faceFrame.worldOrigin.w != 0.0 ? perAxisRenderedVoxelCenter(positions[index].xyz)
         : float3(roundHalfUp(snapNearIntegerVoxelPosition(positions[index].xyz) * subdivisions)) / subdivisions;
+    const float3 worldCenter = rotateByQuat(position, faceFrame.viewToWorld) + faceFrame.worldOrigin.xyz;
+    const bool fogBody = (voxels[index].reserved & (1u << 3u)) != 0u;
+    if (!fogFieldCastsSunShadow(
+            worldCenter, fogBody, sunFrame.fogCeilingEnabled.x, fogObservers)) return;
     for (int axis = 0; axis < 3; ++axis) {
         float3 normal = float3(0.0);
         normal[axis] = 1.0;

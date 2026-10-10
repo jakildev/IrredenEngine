@@ -6,6 +6,7 @@
 // lattice, the geometry its receiver reads and its display shows.
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #include "ir_iso_common.glsl"
+#include "ir_fog_shadow_caster.glsl"
 #include "ir_sun_projection.glsl"
 #include "ir_sun_face_query_layout.glsl"
 
@@ -41,6 +42,7 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform int cascadeCount;
     uniform float sunSplatMaxTexels;
     uniform float sunMaxShadowThrow;  // Unused here (receiver-only)
+    uniform ivec4 fogCeilingEnabled;
 };
 
 void rasterSunFace(vec3 corner, vec3 edgeU, vec3 edgeV, vec2 origin, vec2 texelSize, int cascadeOffset, uint faceMarker) {
@@ -80,6 +82,9 @@ void main() {
     const vec3 position = rigidSource ? positions[index].xyz
         : worldOrigin.w != 0.0 ? perAxisRenderedVoxelCenter(positions[index].xyz)
         : vec3(roundHalfUp(snapNearIntegerVoxelPosition(positions[index].xyz) * subdivisions)) / subdivisions;
+    const vec3 worldCenter = rotateByQuat(position, viewToWorld) + worldOrigin.xyz;
+    const bool fogBody = (voxels[index].reserved & (1u << 3u)) != 0u;
+    if (!fogFieldCastsSunShadow(worldCenter, fogBody, fogCeilingEnabled.x)) return;
     for (int axis = 0; axis < 3; ++axis) {
         vec3 normal = vec3(0.0);
         normal[axis] = 1.0;
