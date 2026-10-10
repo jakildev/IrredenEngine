@@ -150,15 +150,15 @@ ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /U
 [2026-10-10 15:10:26.077] [EngineLog] [info] Output channels: 2
 [2026-10-10 15:10:26.077] [EngineLog] [info] This is default output device
 [2026-10-10 15:10:26.077] [EngineLog] [info] Native formats: 16
-[2026-10-10 15:10:26.077] [EngineLog] [info] Sample rates: 
-[2026-10-10 15:10:26.077] [EngineLog] [info] 44100, 48000, 88200, 96000, 
+[2026-10-10 15:10:26.077] [EngineLog] [info] Sample rates:
+[2026-10-10 15:10:26.077] [EngineLog] [info] 44100, 48000, 88200, 96000,
 [2026-10-10 15:10:26.077] [EngineLog] [info] Preferred sample rate: 48000
 [2026-10-10 15:10:26.077] [EngineLog] [info] Device: Apple Inc.: MacBook Pro Microphone
 [2026-10-10 15:10:26.077] [EngineLog] [info] Input channels: 1
 [2026-10-10 15:10:26.077] [EngineLog] [info] This is default input device
 [2026-10-10 15:10:26.077] [EngineLog] [info] Native formats: 16
-[2026-10-10 15:10:26.077] [EngineLog] [info] Sample rates: 
-[2026-10-10 15:10:26.077] [EngineLog] [info] 44100, 48000, 88200, 96000, 
+[2026-10-10 15:10:26.077] [EngineLog] [info] Sample rates:
+[2026-10-10 15:10:26.077] [EngineLog] [info] 44100, 48000, 88200, 96000,
 [2026-10-10 15:10:26.077] [EngineLog] [info] Preferred sample rate: 48000
 [2026-10-10 15:10:26.101] [EngineLog] [info] Descovered 0 MIDI input sources
 [2026-10-10 15:10:26.101] [EngineLog] [info] Created MidiIn

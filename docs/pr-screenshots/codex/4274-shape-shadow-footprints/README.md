@@ -7,7 +7,7 @@ Debug, 2560×1440 framebuffer. Captures use renderer baseline
 each run's `capture.json` contains its exact revision, dirty patch and command.
 
 There are 64 native frames: torus/cone × voxel/SDF × shadows on/off × eight
-yaws. Each directory includes the complete native run log. Every valid capture
+yaws. Each directory includes the complete native run log (trailing whitespace normalized). Every valid capture
 run exited cleanly. `sha256.json` records image hashes.
 
 ## Fixture and oracle
@@ -103,3 +103,8 @@ The eight unit tests include pixel-exact independent box projection at four
 yaws, a 20% enlarged shadow, a displaced equal-area shadow, an entirely absent
 shadow, and floor/caster/background classification. These positive controls
 prevent aggregate area agreement from masquerading as geometric correctness.
+
+After merging master `ff515105c`, both the isolated voxel-torus sweep and
+the floorless torus sweep exited cleanly and reproduced all eight prior RGB
+frames exactly. The `merged-master-*` manifests, comparisons and logs record
+these final checks without duplicating identical screenshots.

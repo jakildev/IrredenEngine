@@ -39,12 +39,14 @@ PILLOW_EXCEPTIONS = frozenset({
     "scripts/render-local-voxel-metric.py",
     "scripts/render-receiver-position-metric.py",
     "scripts/render-shadow-box-metric.py",
+    "scripts/render-shape-footprint-metric.py",
     "scripts/render-shadow-probes-metric.py",
     "scripts/render-sun-occlusion-metric.py",
     "scripts/render-visible-box-metric.py",
     "scripts/render_probe_geometry.py",
     "scripts/tests/test_render_detached_lighting_region.py",
     "scripts/tests/test_render_shadow_box_edges.py",
+    "scripts/tests/test_render_shape_footprint_metric.py",
 })
 
 ALLOWED_THIRD_PARTY = frozenset({"PIL"})
