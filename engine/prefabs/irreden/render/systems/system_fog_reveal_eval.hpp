@@ -8,6 +8,7 @@
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_fog_reveal_settings.hpp>
+#include <irreden/render/components/component_fog_ghost.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
@@ -21,7 +22,9 @@
 
 namespace IRSystem {
 
-template <> struct System<FOG_REVEAL_EVAL> {
+namespace detail {
+
+template <bool kGhost> struct FogRevealEval {
     static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
 
     struct PendingTransition {
@@ -81,12 +84,7 @@ template <> struct System<FOG_REVEAL_EVAL> {
         settings_.staggerPeriod_ = IRMath::max(settings_.staggerPeriod_, std::uint32_t{1});
         ++frameCounter_;
 
-        const std::vector<IREntity::ArchetypeNode *> nodes = IREntity::queryArchetypeNodesSimple(
-            IREntity::getArchetype<
-                IRComponents::C_FogRevealed,
-                IRComponents::C_WorldTransform,
-                IRComponents::C_VoxelSetNew>()
-        );
+        const std::vector<IREntity::ArchetypeNode *> nodes = matchingNodes();
         std::size_t population = 0;
         for (IREntity::ArchetypeNode *node : nodes) {
             population += static_cast<std::size_t>(node->length_);
@@ -99,6 +97,25 @@ template <> struct System<FOG_REVEAL_EVAL> {
         }
         const std::size_t slots = static_cast<std::size_t>(IRJob::workerCount()) + 1u;
         restampedByWorker_.assign(slots, 0u);
+    }
+
+    static std::vector<IREntity::ArchetypeNode *> matchingNodes() {
+        if constexpr (kGhost) {
+            return IREntity::queryArchetypeNodesSimple(
+                IREntity::getArchetype<
+                    IRComponents::C_FogRevealed,
+                    IRComponents::C_FogGhost,
+                    IRComponents::C_WorldTransform,
+                    IRComponents::C_VoxelSetNew>()
+            );
+        }
+        return IREntity::queryArchetypeNodesSimple(
+            IREntity::getArchetype<
+                IRComponents::C_FogRevealed,
+                IRComponents::C_WorldTransform,
+                IRComponents::C_VoxelSetNew>(),
+            IREntity::getArchetype<IRComponents::C_FogGhost>()
+        );
     }
 
     // The ground-anchor verdict on this frame's snapshot: the grid term when a
@@ -127,11 +144,12 @@ template <> struct System<FOG_REVEAL_EVAL> {
         );
     }
 
-    void tick(
+    void tickImpl(
         IREntity::EntityId &entity,
         IRComponents::C_FogRevealed &revealed,
         const IRComponents::C_WorldTransform &worldTransform,
-        IRComponents::C_VoxelSetNew &voxelSet
+        IRComponents::C_VoxelSetNew &voxelSet,
+        IRComponents::C_FogGhost *ghost
     ) {
         if (!IRPrefab::Fog::isOnFogCanvas(voxelSet, activeCanvas_)) {
             return;
@@ -139,6 +157,21 @@ template <> struct System<FOG_REVEAL_EVAL> {
         const bool wasShown = revealed.shown_;
         const bool evaluated = revealed.override_ != IRComponents::FogOverride::NONE ||
                                (entity + frameCounter_) % settings_.staggerPeriod_ == 0u;
+        if constexpr (!kGhost) {
+            if (revealed.ghostHeld_ || voxelSet.ghostHeld_) {
+                revealed.ghostHeld_ = false;
+                if (activePool_ != nullptr) {
+                    pending_.push(
+                        PendingTransition{&voxelSet, activePool_, revealed.shown_, false}
+                    );
+                } else {
+                    voxelSet.ghostHeld_ = false;
+                }
+            }
+            if (!evaluated) {
+                return;
+            }
+        }
         if (evaluated) {
             bool shown = revealed.shown_;
             if (revealed.override_ == IRComponents::FogOverride::FORCE_REVEALED) {
@@ -160,16 +193,19 @@ template <> struct System<FOG_REVEAL_EVAL> {
             }
         }
 
-        IRPrefab::Fog::stepGhostLifecycle(
-            revealed,
-            worldTransform,
-            wasShown,
-            evaluated,
-            settings_.showThreshold_,
-            [this](IRMath::vec3 position, std::uint32_t channels) {
-                return verdict(position, channels);
-            }
-        );
+        if constexpr (kGhost) {
+            IRPrefab::Fog::stepGhostLifecycle(
+                revealed,
+                *ghost,
+                worldTransform,
+                wasShown,
+                evaluated,
+                settings_.showThreshold_,
+                [this](IRMath::vec3 position, std::uint32_t channels) {
+                    return verdict(position, channels);
+                }
+            );
+        }
 
         if ((revealed.shown_ || revealed.ghostHeld_) && activePool_ != nullptr) {
             const std::uint8_t factor =
@@ -221,13 +257,59 @@ template <> struct System<FOG_REVEAL_EVAL> {
         });
     }
 
+    void tick(
+        IREntity::EntityId &entity,
+        IRComponents::C_FogRevealed &revealed,
+        const IRComponents::C_WorldTransform &worldTransform,
+        IRComponents::C_VoxelSetNew &voxelSet
+    ) {
+        tickImpl(entity, revealed, worldTransform, voxelSet, nullptr);
+    }
+
+    void tickGhost(
+        IREntity::EntityId &entity,
+        IRComponents::C_FogRevealed &revealed,
+        IRComponents::C_FogGhost &ghost,
+        const IRComponents::C_WorldTransform &worldTransform,
+        IRComponents::C_VoxelSetNew &voxelSet
+    ) {
+        tickImpl(entity, revealed, worldTransform, voxelSet, &ghost);
+    }
+};
+
+} // namespace detail
+
+template <> struct System<FOG_REVEAL_EVAL> : detail::FogRevealEval<false> {
     static SystemId create() {
         return registerSystem<
             FOG_REVEAL_EVAL,
             IRComponents::C_FogRevealed,
             IRComponents::C_WorldTransform,
             IRComponents::C_VoxelSetNew,
+            Exclude<IRComponents::C_FogGhost>,
             ParallelSafe>("FogRevealEval");
+    }
+};
+
+template <> struct System<FOG_REVEAL_EVAL_GHOST> : detail::FogRevealEval<true> {
+    void tick(
+        IREntity::EntityId &entity,
+        IRComponents::C_FogRevealed &revealed,
+        IRComponents::C_FogGhost &ghost,
+        const IRComponents::C_WorldTransform &worldTransform,
+        IRComponents::C_VoxelSetNew &voxelSet
+    ) {
+        tickGhost(entity, revealed, ghost, worldTransform, voxelSet);
+    }
+
+    static SystemId create() {
+        return registerSystem<
+            FOG_REVEAL_EVAL_GHOST,
+            IRComponents::C_FogRevealed,
+            IRComponents::C_FogGhost,
+            IRComponents::C_WorldTransform,
+            IRComponents::C_VoxelSetNew,
+            ParallelSafe>("FogRevealEvalGhost");
     }
 };
 

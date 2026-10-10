@@ -7,6 +7,7 @@
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/components/component_fog_ghost.hpp>
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/picking.hpp>
 #include <irreden/render/systems/system_fog_reveal_eval.hpp>
@@ -29,6 +30,7 @@
 
 namespace {
 
+using IRComponents::C_FogGhost;
 using IRComponents::C_FogRevealed;
 using IRComponents::C_ShapeDescriptor;
 using IRComponents::C_VoxelPool;
@@ -63,88 +65,79 @@ IRComponents::C_CanvasFogOfWar fogWithCircle(float radius) {
 
 TEST(FogGhostPolicyTest, CapturesHoldsRefreshesAndDiscards) {
     C_FogRevealed fog{};
-    fog.hiddenPolicy_ = FogHiddenPolicy::GHOST;
+    C_FogGhost ghost{};
     fog.shown_ = true;
     C_WorldTransform first{};
     first.translation_ = {1.0f, 2.0f, 3.0f};
-    IRPrefab::Fog::stepGhostLifecycle(fog, first, false, true, 0.75f, [](auto, auto) {
+    IRPrefab::Fog::stepGhostLifecycle(fog, ghost, first, false, true, 0.75f, [](auto, auto) {
         return 0.0f;
     });
-    ASSERT_TRUE(fog.ghostPoseValid_);
-    EXPECT_EQ(fog.ghostPose_.translation_, first.translation_);
+    ASSERT_TRUE(ghost.valid_);
+    EXPECT_EQ(ghost.pose_.translation_, first.translation_);
 
     fog.shown_ = false;
     C_WorldTransform moved{};
     moved.translation_ = {9.0f, 8.0f, 7.0f};
-    IRPrefab::Fog::stepGhostLifecycle(fog, moved, true, true, 0.75f, [](auto, auto) {
+    IRPrefab::Fog::stepGhostLifecycle(fog, ghost, moved, true, true, 0.75f, [](auto, auto) {
         return 0.0f;
     });
     ASSERT_TRUE(fog.ghostHeld_);
-    EXPECT_EQ(fog.ghostPose_.translation_, first.translation_);
+    EXPECT_EQ(ghost.pose_.translation_, first.translation_);
 
-    IRPrefab::Fog::stepGhostLifecycle(fog, moved, false, true, 0.75f, [](auto, auto) {
+    IRPrefab::Fog::stepGhostLifecycle(fog, ghost, moved, false, true, 0.75f, [](auto, auto) {
         return 1.0f;
     });
     EXPECT_FALSE(fog.ghostHeld_);
-    EXPECT_FALSE(fog.ghostPoseValid_);
+    EXPECT_FALSE(ghost.valid_);
 }
 
 TEST(FogGhostPolicyTest, PolicyAndOverridesCannotCreateGhostsFromInvalidPose) {
     C_FogRevealed fog{};
-    fog.hiddenPolicy_ = FogHiddenPolicy::GHOST;
+    C_FogGhost ghost{};
     C_WorldTransform pose{};
-    IRPrefab::Fog::stepGhostLifecycle(fog, pose, true, false, 0.75f, [](auto, auto) {
+    IRPrefab::Fog::stepGhostLifecycle(fog, ghost, pose, true, false, 0.75f, [](auto, auto) {
         return 0.0f;
     });
     EXPECT_FALSE(fog.ghostHeld_);
 
     fog.ghostHeld_ = true;
-    fog.ghostPoseValid_ = true;
+    ghost.valid_ = true;
     fog.override_ = FogOverride::FORCE_HIDDEN;
-    IRPrefab::Fog::stepGhostLifecycle(fog, pose, false, true, 0.75f, [](auto, auto) {
+    IRPrefab::Fog::stepGhostLifecycle(fog, ghost, pose, false, true, 0.75f, [](auto, auto) {
         return 0.0f;
     });
     EXPECT_FALSE(fog.ghostHeld_);
-    EXPECT_FALSE(fog.ghostPoseValid_);
-
-    fog.override_ = FogOverride::NONE;
-    fog.ghostHeld_ = true;
-    fog.ghostPoseValid_ = true;
-    fog.hiddenPolicy_ = FogHiddenPolicy::HIDE;
-    IRPrefab::Fog::stepGhostLifecycle(fog, pose, false, false, 0.75f, [](auto, auto) {
-        return 0.0f;
-    });
-    EXPECT_FALSE(fog.ghostHeld_);
-    EXPECT_FALSE(fog.ghostPoseValid_);
+    EXPECT_FALSE(ghost.valid_);
 }
 
 TEST(FogGhostPolicyTest, StaggeredCaptureMakesOnlyTheFollowingHideEligible) {
     C_FogRevealed fog{};
-    fog.hiddenPolicy_ = FogHiddenPolicy::GHOST;
+    C_FogGhost ghost{};
     fog.shown_ = true;
     C_WorldTransform shownPose{};
     shownPose.translation_ = {3.0f, 4.0f, 5.0f};
 
-    IRPrefab::Fog::stepGhostLifecycle(fog, shownPose, true, false, 0.75f, [](auto, auto) {
+    IRPrefab::Fog::stepGhostLifecycle(fog, ghost, shownPose, true, false, 0.75f, [](auto, auto) {
         return 0.0f;
     });
-    ASSERT_TRUE(fog.ghostPoseValid_);
-    EXPECT_EQ(fog.ghostPose_.translation_, shownPose.translation_);
+    ASSERT_TRUE(ghost.valid_);
+    EXPECT_EQ(ghost.pose_.translation_, shownPose.translation_);
 
     fog.shown_ = false;
     C_WorldTransform hiddenPose{};
     hiddenPose.translation_ = {30.0f, 40.0f, 50.0f};
-    IRPrefab::Fog::stepGhostLifecycle(fog, hiddenPose, true, true, 0.75f, [](auto, auto) {
+    IRPrefab::Fog::stepGhostLifecycle(fog, ghost, hiddenPose, true, true, 0.75f, [](auto, auto) {
         return 0.0f;
     });
     ASSERT_TRUE(fog.ghostHeld_);
-    EXPECT_EQ(fog.ghostPose_.translation_, shownPose.translation_);
+    EXPECT_EQ(ghost.pose_.translation_, shownPose.translation_);
 
     C_FogRevealed switchedOnHide{};
-    switchedOnHide.hiddenPolicy_ = FogHiddenPolicy::GHOST;
+    C_FogGhost uncaptured{};
     switchedOnHide.shown_ = false;
     IRPrefab::Fog::stepGhostLifecycle(
         switchedOnHide,
+        uncaptured,
         hiddenPose,
         true,
         true,
@@ -152,7 +145,7 @@ TEST(FogGhostPolicyTest, StaggeredCaptureMakesOnlyTheFollowingHideEligible) {
         [](auto, auto) { return 0.0f; }
     );
     EXPECT_FALSE(switchedOnHide.ghostHeld_);
-    EXPECT_FALSE(switchedOnHide.ghostPoseValid_);
+    EXPECT_FALSE(uncaptured.valid_);
 }
 
 TEST(FogGhostPolicyTest, EvaluatorFreezesLastShownPoseAcrossCadencesAndHiddenMoves) {
@@ -163,7 +156,7 @@ TEST(FogGhostPolicyTest, EvaluatorFreezesLastShownPoseAcrossCadencesAndHiddenMov
         auto &pool = IREntity::getComponent<C_VoxelPool>(canvas);
         C_VoxelSetNew voxelSet{IRMath::ivec3(1), IRMath::Color{255, 255, 255, 255}, true, canvas};
 
-        IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
+        IRSystem::System<IRSystem::FOG_REVEAL_EVAL_GHOST> system;
         system.activePool_ = &pool;
         system.activeCanvas_ = canvas;
         system.fogAttached_ = true;
@@ -171,13 +164,13 @@ TEST(FogGhostPolicyTest, EvaluatorFreezesLastShownPoseAcrossCadencesAndHiddenMov
         system.settings_.staggerPeriod_ = period;
         IREntity::EntityId entity = 0;
         C_FogRevealed revealed{};
-        revealed.hiddenPolicy_ = FogHiddenPolicy::GHOST;
+        C_FogGhost ghost{};
 
         const auto runTick = [&](std::uint64_t frame, C_WorldTransform &pose) {
             system.frameCounter_ = frame;
             system.pending_.reset(1);
             system.restampedByWorker_.assign(1, 0u);
-            system.tick(entity, revealed, pose, voxelSet);
+            system.tick(entity, revealed, ghost, pose, voxelSet);
             system.endTick();
         };
 
@@ -189,20 +182,20 @@ TEST(FogGhostPolicyTest, EvaluatorFreezesLastShownPoseAcrossCadencesAndHiddenMov
         C_WorldTransform lastShown{};
         lastShown.translation_ = {2.0f, 0.0f, 0.0f};
         runTick(period + 1u, lastShown);
-        ASSERT_EQ(revealed.ghostPose_.translation_, lastShown.translation_) << "period=" << period;
+        ASSERT_EQ(ghost.pose_.translation_, lastShown.translation_) << "period=" << period;
 
         C_WorldTransform hidden{};
         hidden.translation_ = {20.0f, 0.0f, 0.0f};
         system.observers_.visionCircles_[0].x = 100.0f;
         runTick(period * 2u, hidden);
         ASSERT_TRUE(revealed.ghostHeld_) << "period=" << period;
-        EXPECT_EQ(revealed.ghostPose_.translation_, lastShown.translation_) << "period=" << period;
+        EXPECT_EQ(ghost.pose_.translation_, lastShown.translation_) << "period=" << period;
 
         for (std::uint64_t move = 1; move <= 3; ++move) {
             hidden.translation_.x += 1.0f;
             runTick(period * 2u + move, hidden);
             ASSERT_TRUE(revealed.ghostHeld_) << "period=" << period << " move=" << move;
-            EXPECT_EQ(revealed.ghostPose_.translation_, lastShown.translation_)
+            EXPECT_EQ(ghost.pose_.translation_, lastShown.translation_)
                 << "period=" << period << " move=" << move;
         }
     }
@@ -212,22 +205,22 @@ TEST(FogGhostPolicyTest, ReclassificationDropsGhostAndBodyPreservesPolicy) {
     IREntity::EntityManager entityManager;
     const auto makeHeldShape = [] {
         C_FogRevealed revealed{};
-        revealed.hiddenPolicy_ = FogHiddenPolicy::GHOST;
         revealed.ghostHeld_ = true;
-        revealed.ghostPoseValid_ = true;
+        C_FogGhost ghost{};
+        ghost.valid_ = true;
         C_ShapeDescriptor shape{};
         shape.flags_ |= IRMath::SDF::SHAPE_FLAG_FOG_GHOST;
         shape.flags_ &= ~IRRender::SHAPE_FLAG_FOG_HIDDEN;
         shape.fogBodyFactor_ = IRComponents::kFogStateExplored;
-        return IREntity::createEntity(shape, revealed);
+        return IREntity::createEntity(shape, revealed, ghost);
     };
 
     const IREntity::EntityId body = makeHeldShape();
     IRPrefab::Fog::setSubjectClass(body, IRPrefab::Fog::FogSubjectClass::BODY);
     const auto &rebuilt = IREntity::getComponent<C_FogRevealed>(body);
-    EXPECT_EQ(rebuilt.hiddenPolicy_, FogHiddenPolicy::GHOST);
+    EXPECT_EQ(IRPrefab::Fog::hiddenPolicy(body), FogHiddenPolicy::GHOST);
     EXPECT_FALSE(rebuilt.ghostHeld_);
-    EXPECT_FALSE(rebuilt.ghostPoseValid_);
+    EXPECT_FALSE(IREntity::getComponent<C_FogGhost>(body).valid_);
     const auto &bodyShape = IREntity::getComponent<C_ShapeDescriptor>(body);
     EXPECT_EQ(bodyShape.flags_ & IRMath::SDF::SHAPE_FLAG_FOG_GHOST, 0u);
     EXPECT_NE(bodyShape.flags_ & IRRender::SHAPE_FLAG_FOG_HIDDEN, 0u);
@@ -236,6 +229,7 @@ TEST(FogGhostPolicyTest, ReclassificationDropsGhostAndBodyPreservesPolicy) {
     const IREntity::EntityId field = makeHeldShape();
     IRPrefab::Fog::setSubjectClass(field, IRPrefab::Fog::FogSubjectClass::FIELD);
     EXPECT_FALSE(IREntity::getComponentOptional<C_FogRevealed>(field).has_value());
+    EXPECT_FALSE(IREntity::getComponentOptional<C_FogGhost>(field).has_value());
     const auto &fieldShape = IREntity::getComponent<C_ShapeDescriptor>(field);
     EXPECT_EQ(fieldShape.flags_ & IRMath::SDF::SHAPE_FLAG_FOG_GHOST, 0u);
     EXPECT_EQ(fieldShape.flags_ & IRRender::SHAPE_FLAG_FOG_HIDDEN, 0u);
@@ -244,40 +238,107 @@ TEST(FogGhostPolicyTest, ReclassificationDropsGhostAndBodyPreservesPolicy) {
     const IREntity::EntityId exempt = makeHeldShape();
     IRPrefab::Fog::setSubjectClass(exempt, IRPrefab::Fog::FogSubjectClass::EXEMPT);
     EXPECT_FALSE(IREntity::getComponentOptional<C_FogRevealed>(exempt).has_value());
+    EXPECT_FALSE(IREntity::getComponentOptional<C_FogGhost>(exempt).has_value());
     const auto &exemptShape = IREntity::getComponent<C_ShapeDescriptor>(exempt);
     EXPECT_EQ(exemptShape.flags_ & IRMath::SDF::SHAPE_FLAG_FOG_GHOST, 0u);
     EXPECT_EQ(exemptShape.flags_ & IRRender::SHAPE_FLAG_FOG_HIDDEN, 0u);
     EXPECT_EQ(exemptShape.fogBodyFactor_, 255u);
 }
 
+TEST(FogGhostPolicyTest, StructuralPolicySelectorRestoresHideStateSynchronously) {
+    IREntity::EntityManager entityManager;
+    C_FogRevealed revealed{};
+    revealed.revealFactor_ = 0.25f;
+    revealed.shown_ = false;
+    C_ShapeDescriptor shape{};
+    const IREntity::EntityId body = IREntity::createEntity(shape, revealed);
+
+    EXPECT_TRUE(IRPrefab::Fog::setHiddenPolicy(body, FogHiddenPolicy::GHOST));
+    EXPECT_EQ(IRPrefab::Fog::hiddenPolicy(body), FogHiddenPolicy::GHOST);
+    auto &held = IREntity::getComponent<C_FogRevealed>(body);
+    held.ghostHeld_ = true;
+    auto &ghost = IREntity::getComponent<C_FogGhost>(body);
+    ghost.valid_ = true;
+    auto &heldShape = IREntity::getComponent<C_ShapeDescriptor>(body);
+    heldShape.flags_ |= IRMath::SDF::SHAPE_FLAG_FOG_GHOST;
+    heldShape.flags_ &= ~IRRender::SHAPE_FLAG_FOG_HIDDEN;
+    heldShape.fogBodyFactor_ = IRComponents::kFogStateExplored;
+
+    EXPECT_TRUE(IRPrefab::Fog::setHiddenPolicy(body, FogHiddenPolicy::HIDE));
+    EXPECT_EQ(IRPrefab::Fog::hiddenPolicy(body), FogHiddenPolicy::HIDE);
+    EXPECT_FALSE(IREntity::getComponentOptional<C_FogGhost>(body).has_value());
+    EXPECT_FALSE(IREntity::getComponent<C_FogRevealed>(body).ghostHeld_);
+    const auto &hiddenShape = IREntity::getComponent<C_ShapeDescriptor>(body);
+    EXPECT_EQ(hiddenShape.flags_ & IRMath::SDF::SHAPE_FLAG_FOG_GHOST, 0u);
+    EXPECT_NE(hiddenShape.flags_ & IRRender::SHAPE_FLAG_FOG_HIDDEN, 0u);
+    EXPECT_EQ(hiddenShape.fogBodyFactor_, IRPrefab::Fog::quantizeRevealFactor(0.25f));
+
+    const IREntity::EntityId nonBody = IREntity::createEntity(C_ShapeDescriptor{});
+    EXPECT_FALSE(IRPrefab::Fog::setHiddenPolicy(nonBody, FogHiddenPolicy::GHOST));
+    EXPECT_FALSE(IREntity::getComponentOptional<C_FogGhost>(nonBody).has_value());
+}
+
+TEST(FogGhostPolicyTest, HideOnlyPopulationNeverMatchesGhostEvaluators) {
+    IREntity::EntityManager entityManager;
+    IREntity::createEntity(C_FogRevealed{}, C_WorldTransform{}, C_VoxelSetNew{});
+    IREntity::createEntity(C_FogRevealed{}, C_WorldTransform{}, C_ShapeDescriptor{});
+    IREntity::createEntity(C_FogRevealed{}, C_WorldTransform{}, IRComponents::C_EntityCanvas{});
+
+    const auto population = [](const std::vector<IREntity::ArchetypeNode *> &nodes) {
+        std::size_t count = 0;
+        for (const IREntity::ArchetypeNode *node : nodes) {
+            count += static_cast<std::size_t>(node->length_);
+        }
+        return count;
+    };
+    EXPECT_EQ(population(IRSystem::System<IRSystem::FOG_REVEAL_EVAL>::matchingNodes()), 1u);
+    EXPECT_EQ(population(IRSystem::System<IRSystem::FOG_REVEAL_EVAL_SHAPE>::matchingNodes()), 1u);
+    EXPECT_EQ(population(IRSystem::System<IRSystem::FOG_REVEAL_EVAL_CANVAS>::matchingNodes()), 1u);
+    EXPECT_TRUE(IRSystem::System<IRSystem::FOG_REVEAL_EVAL_GHOST>::matchingNodes().empty());
+    EXPECT_TRUE(IRSystem::System<IRSystem::FOG_REVEAL_EVAL_SHAPE_GHOST>::matchingNodes().empty());
+    EXPECT_TRUE(IRSystem::System<IRSystem::FOG_REVEAL_EVAL_CANVAS_GHOST>::matchingNodes().empty());
+}
+
 TEST(FogGhostPolicyTest, ReshowRefreshesPoseAndForceHiddenDiscardsIt) {
     C_FogRevealed fog{};
-    fog.hiddenPolicy_ = FogHiddenPolicy::GHOST;
+    C_FogGhost ghost{};
     fog.override_ = FogOverride::FORCE_REVEALED;
     fog.shown_ = true;
     C_WorldTransform refreshed{};
     refreshed.translation_ = {-2.0f, 7.0f, 1.0f};
 
-    IRPrefab::Fog::stepGhostLifecycle(fog, refreshed, false, true, 0.75f, [](auto, auto) {
+    IRPrefab::Fog::stepGhostLifecycle(fog, ghost, refreshed, false, true, 0.75f, [](auto, auto) {
         return 0.0f;
     });
-    ASSERT_TRUE(fog.ghostPoseValid_);
-    EXPECT_EQ(fog.ghostPose_.translation_, refreshed.translation_);
+    ASSERT_TRUE(ghost.valid_);
+    EXPECT_EQ(ghost.pose_.translation_, refreshed.translation_);
 
     fog.override_ = FogOverride::NONE;
     fog.shown_ = false;
-    IRPrefab::Fog::stepGhostLifecycle(fog, C_WorldTransform{}, true, true, 0.75f, [](auto, auto) {
-        return 0.0f;
-    });
+    IRPrefab::Fog::stepGhostLifecycle(
+        fog,
+        ghost,
+        C_WorldTransform{},
+        true,
+        true,
+        0.75f,
+        [](auto, auto) { return 0.0f; }
+    );
     ASSERT_TRUE(fog.ghostHeld_);
-    EXPECT_EQ(fog.ghostPose_.translation_, refreshed.translation_);
+    EXPECT_EQ(ghost.pose_.translation_, refreshed.translation_);
 
     fog.override_ = FogOverride::FORCE_HIDDEN;
-    IRPrefab::Fog::stepGhostLifecycle(fog, C_WorldTransform{}, false, true, 0.75f, [](auto, auto) {
-        return 0.0f;
-    });
+    IRPrefab::Fog::stepGhostLifecycle(
+        fog,
+        ghost,
+        C_WorldTransform{},
+        false,
+        true,
+        0.75f,
+        [](auto, auto) { return 0.0f; }
+    );
     EXPECT_FALSE(fog.ghostHeld_);
-    EXPECT_FALSE(fog.ghostPoseValid_);
+    EXPECT_FALSE(ghost.valid_);
 }
 
 TEST(FogGhostPolicyTest, VoxelRouteRetainsAlphaMaskAndExploredCarrier) {
@@ -288,7 +349,7 @@ TEST(FogGhostPolicyTest, VoxelRouteRetainsAlphaMaskAndExploredCarrier) {
     voxelSet.voxels_[1].color_.alpha_ = 0;
     voxelSet.resyncAfterRawEdits();
 
-    IRSystem::System<IRSystem::FOG_REVEAL_EVAL> system;
+    IRSystem::System<IRSystem::FOG_REVEAL_EVAL_GHOST> system;
     system.activePool_ = &pool;
     system.activeCanvas_ = canvas;
     system.fogAttached_ = true;
@@ -299,9 +360,9 @@ TEST(FogGhostPolicyTest, VoxelRouteRetainsAlphaMaskAndExploredCarrier) {
 
     IREntity::EntityId entity = 1;
     C_FogRevealed revealed{};
-    revealed.hiddenPolicy_ = FogHiddenPolicy::GHOST;
+    C_FogGhost ghost{};
     C_WorldTransform transform{};
-    system.tick(entity, revealed, transform, voxelSet);
+    system.tick(entity, revealed, ghost, transform, voxelSet);
     system.endTick();
     ASSERT_TRUE(revealed.shown_);
 
@@ -315,7 +376,7 @@ TEST(FogGhostPolicyTest, VoxelRouteRetainsAlphaMaskAndExploredCarrier) {
     system.observers_.visionCircles_[0].x = 20.0f;
     system.pending_.reset(1);
     system.restampedByWorker_.assign(1, 0u);
-    system.tick(entity, revealed, transform, voxelSet);
+    system.tick(entity, revealed, ghost, transform, voxelSet);
     system.endTick();
 
     EXPECT_TRUE(revealed.ghostHeld_);
@@ -349,11 +410,16 @@ TEST(FogGhostPolicyTest, VoxelRouteRetainsAlphaMaskAndExploredCarrier) {
     voxelSet.resyncAfterRawEdits();
     EXPECT_EQ(pool.getActiveMask()[0] & 0x3u, 0x2u);
 
-    revealed.hiddenPolicy_ = FogHiddenPolicy::HIDE;
-    system.pending_.reset(1);
-    system.restampedByWorker_.assign(1, 0u);
-    system.tick(entity, revealed, transform, voxelSet);
-    system.endTick();
+    IRSystem::System<IRSystem::FOG_REVEAL_EVAL> hideSystem;
+    hideSystem.activePool_ = &pool;
+    hideSystem.activeCanvas_ = canvas;
+    hideSystem.fogAttached_ = true;
+    hideSystem.observers_ = system.observers_;
+    hideSystem.settings_.staggerPeriod_ = 1;
+    hideSystem.pending_.reset(1);
+    hideSystem.restampedByWorker_.assign(1, 0u);
+    hideSystem.tick(entity, revealed, transform, voxelSet);
+    hideSystem.endTick();
     EXPECT_FALSE(revealed.ghostHeld_);
     EXPECT_FALSE(voxelSet.ghostHeld_);
     EXPECT_EQ(pool.getActiveMask()[0] & 0x3u, 0u);
@@ -433,7 +499,7 @@ TEST(FogGhostPolicyTest, HeldSkeletonRetainsJointBlockWhileLiveSiblingUpdates) {
 
 TEST(FogGhostPolicyTest, ShapeRoutePublishesFrozenPoseAndExploredFactor) {
     auto fog = fogWithCircle(2.0f);
-    IRSystem::System<IRSystem::FOG_REVEAL_EVAL_SHAPE> system;
+    IRSystem::System<IRSystem::FOG_REVEAL_EVAL_SHAPE_GHOST> system;
     system.fog_ = &fog;
     system.observers_ = fog.observers_;
     system.settings_.staggerPeriod_ = 1;
@@ -441,16 +507,16 @@ TEST(FogGhostPolicyTest, ShapeRoutePublishesFrozenPoseAndExploredFactor) {
 
     IREntity::EntityId entity = 7;
     C_FogRevealed revealed{};
-    revealed.hiddenPolicy_ = FogHiddenPolicy::GHOST;
+    C_FogGhost ghost{};
     C_WorldTransform transform{};
     transform.translation_ = {1.0f, 0.0f, 0.0f};
     C_ShapeDescriptor shape{};
-    system.tick(entity, revealed, transform, shape);
+    system.tick(entity, revealed, ghost, transform, shape);
     ASSERT_TRUE(revealed.shown_);
 
     transform.translation_ = {10.0f, 0.0f, 0.0f};
     system.observers_.visionCircles_[0].x = 20.0f;
-    system.tick(entity, revealed, transform, shape);
+    system.tick(entity, revealed, ghost, transform, shape);
     system.endTick();
 
     ASSERT_TRUE(revealed.ghostHeld_);
@@ -461,9 +527,12 @@ TEST(FogGhostPolicyTest, ShapeRoutePublishesFrozenPoseAndExploredFactor) {
     EXPECT_EQ(system.heldGhostPoses_[0].entity_, entity);
     EXPECT_EQ(system.heldGhostPoses_[0].pose_.translation_, IRMath::vec3(1.0f, 0.0f, 0.0f));
 
-    revealed.hiddenPolicy_ = FogHiddenPolicy::HIDE;
-    system.tick(entity, revealed, transform, shape);
-    system.endTick();
+    IRSystem::System<IRSystem::FOG_REVEAL_EVAL_SHAPE> hideSystem;
+    hideSystem.fog_ = &fog;
+    hideSystem.observers_ = system.observers_;
+    hideSystem.settings_.staggerPeriod_ = 1;
+    hideSystem.tick(entity, revealed, transform, shape);
+    hideSystem.endTick();
     EXPECT_FALSE(revealed.ghostHeld_);
     EXPECT_NE(shape.flags_ & IRRender::SHAPE_FLAG_FOG_HIDDEN, 0u);
     EXPECT_EQ(shape.flags_ & IRMath::SDF::SHAPE_FLAG_FOG_GHOST, 0u);
@@ -474,23 +543,23 @@ TEST(FogGhostPolicyTest, CanvasRoutePublishesFrozenPoseAndExploredFactor) {
     IREntity::EntityManager entityManager;
     const IREntity::EntityId detached = IREntity::createEntity(IRComponents::C_DetachedCanvas{});
     auto fog = fogWithCircle(2.0f);
-    IRSystem::System<IRSystem::FOG_REVEAL_EVAL_CANVAS> system;
+    IRSystem::System<IRSystem::FOG_REVEAL_EVAL_CANVAS_GHOST> system;
     system.fog_ = &fog;
     system.settings_.staggerPeriod_ = 1;
 
     const IREntity::EntityId entity = 9;
     C_FogRevealed revealed{};
-    revealed.hiddenPolicy_ = FogHiddenPolicy::GHOST;
+    C_FogGhost ghost{};
     C_WorldTransform transform{};
     transform.translation_ = {1.0f, 0.0f, 0.0f};
     IRComponents::C_EntityCanvas canvas{};
     canvas.canvasEntity_ = detached;
-    system.tick(entity, revealed, transform, canvas);
+    system.tick(entity, revealed, ghost, transform, canvas);
     ASSERT_TRUE(revealed.shown_);
 
     transform.translation_ = {10.0f, 0.0f, 0.0f};
     fog.observers_.visionCircles_[0].x = 20.0f;
-    system.tick(entity, revealed, transform, canvas);
+    system.tick(entity, revealed, ghost, transform, canvas);
     system.endTick();
 
     ASSERT_TRUE(revealed.ghostHeld_);
@@ -504,9 +573,11 @@ TEST(FogGhostPolicyTest, CanvasRoutePublishesFrozenPoseAndExploredFactor) {
     EXPECT_EQ(system.heldGhostPoses_[0].entity_, entity);
     EXPECT_EQ(system.heldGhostPoses_[0].pose_.translation_, IRMath::vec3(1.0f, 0.0f, 0.0f));
 
-    revealed.hiddenPolicy_ = FogHiddenPolicy::HIDE;
-    system.tick(entity, revealed, transform, canvas);
-    system.endTick();
+    IRSystem::System<IRSystem::FOG_REVEAL_EVAL_CANVAS> hideSystem;
+    hideSystem.fog_ = &fog;
+    hideSystem.settings_.staggerPeriod_ = 1;
+    hideSystem.tick(entity, revealed, transform, canvas);
+    hideSystem.endTick();
     EXPECT_FALSE(revealed.ghostHeld_);
     EXPECT_TRUE(canvas.fogHidden_);
     EXPECT_FALSE(canvas.fogGhost_);
@@ -516,29 +587,31 @@ TEST(FogGhostPolicyTest, CanvasRoutePublishesFrozenPoseAndExploredFactor) {
 TEST(FogGhostPolicyTest, ShapeRasterAndPickingConsumeFrozenPose) {
     IREntity::EntityManager entityManager;
     IRSystem::SystemManager systemManager;
-    const IRSystem::SystemId evalId = IRSystem::System<IRSystem::FOG_REVEAL_EVAL_SHAPE>::create();
+    const IRSystem::SystemId evalId =
+        IRSystem::System<IRSystem::FOG_REVEAL_EVAL_SHAPE_GHOST>::create();
     auto *eval =
-        IRSystem::getSystemParams<IRSystem::System<IRSystem::FOG_REVEAL_EVAL_SHAPE>>(evalId);
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::FOG_REVEAL_EVAL_SHAPE_GHOST>>(evalId);
 
     C_FogRevealed revealed{};
-    revealed.hiddenPolicy_ = FogHiddenPolicy::GHOST;
     revealed.ghostHeld_ = true;
-    revealed.ghostPoseValid_ = true;
-    revealed.ghostPose_.translation_ = {1.0f, 2.0f, 3.0f};
+    C_FogGhost ghost{};
+    ghost.valid_ = true;
+    ghost.pose_.translation_ = {1.0f, 2.0f, 3.0f};
     C_ShapeDescriptor shape{};
     shape.flags_ |= IRMath::SDF::SHAPE_FLAG_FOG_GHOST;
     shape.flags_ &= ~IRRender::SHAPE_FLAG_FOG_HIDDEN;
     shape.canvasEntity_ = 77;
-    const IREntity::EntityId entity = IREntity::createEntity(shape, revealed);
+    const IREntity::EntityId entity = IREntity::createEntity(shape, revealed, ghost);
     auto &livePose = IREntity::getComponent<C_WorldTransform>(entity);
     livePose.translation_ = {20.0f, 30.0f, 40.0f};
-    eval->heldGhostPoses_.push_back({entity, revealed.ghostPose_});
+    eval->heldGhostPoses_.push_back({entity, ghost.pose_});
 
     IRSystem::System<IRSystem::SHAPES_TO_TRIXEL> raster;
+    raster.heldGhostPoses_ = &eval->heldGhostPoses_;
     raster.tick(entity, IREntity::getComponent<C_ShapeDescriptor>(entity), livePose);
     const auto &descriptors = raster.gpuShapesByCanvas_.at(shape.canvasEntity_);
     ASSERT_EQ(descriptors.size(), 1u);
-    EXPECT_EQ(IRMath::vec3(descriptors[0].worldPosition), revealed.ghostPose_.translation_);
+    EXPECT_EQ(IRMath::vec3(descriptors[0].worldPosition), ghost.pose_.translation_);
 
     const auto snapshots = IRPrefab::Picking::detail::gatherVisibleShapes(
         IRMath::CardinalIndex::k0,
@@ -546,16 +619,17 @@ TEST(FogGhostPolicyTest, ShapeRasterAndPickingConsumeFrozenPose) {
     );
     ASSERT_EQ(snapshots.size(), 1u);
     EXPECT_EQ(snapshots[0].entity_, entity);
-    EXPECT_EQ(snapshots[0].worldPos_, revealed.ghostPose_.translation_);
+    EXPECT_EQ(snapshots[0].worldPos_, ghost.pose_.translation_);
     EXPECT_NE(snapshots[0].worldPos_, livePose.translation_);
 }
 
 TEST(FogGhostPolicyTest, CanvasRouteStampsPlacementFromPublishedFrozenPose) {
     IREntity::EntityManager entityManager;
     IRSystem::SystemManager systemManager;
-    const IRSystem::SystemId evalId = IRSystem::System<IRSystem::FOG_REVEAL_EVAL_CANVAS>::create();
+    const IRSystem::SystemId evalId =
+        IRSystem::System<IRSystem::FOG_REVEAL_EVAL_CANVAS_GHOST>::create();
     auto *eval =
-        IRSystem::getSystemParams<IRSystem::System<IRSystem::FOG_REVEAL_EVAL_CANVAS>>(evalId);
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::FOG_REVEAL_EVAL_CANVAS_GHOST>>(evalId);
     const IREntity::EntityId camera = IREntity::createEntity();
     IREntity::setName(camera, "camera");
 
@@ -587,17 +661,23 @@ TEST(FogGhostPolicyTest, CanvasRouteStampsPlacementFromPublishedFrozenPose) {
 
 TEST(FogGhostPolicyTest, WarmHeldLifecycleIsAllocationFreeAndLinear) {
     std::vector<C_FogRevealed> fogs(262144);
+    std::vector<C_FogGhost> ghosts(262144);
     C_WorldTransform pose{};
-    for (auto &fog : fogs) {
-        fog.hiddenPolicy_ = FogHiddenPolicy::GHOST;
-        fog.ghostHeld_ = true;
-        fog.ghostPoseValid_ = true;
+    for (std::size_t i = 0; i < fogs.size(); ++i) {
+        fogs[i].ghostHeld_ = true;
+        ghosts[i].valid_ = true;
     }
     auto run = [&]() {
-        for (auto &fog : fogs) {
-            IRPrefab::Fog::stepGhostLifecycle(fog, pose, false, true, 0.75f, [](auto, auto) {
-                return 0.0f;
-            });
+        for (std::size_t i = 0; i < fogs.size(); ++i) {
+            IRPrefab::Fog::stepGhostLifecycle(
+                fogs[i],
+                ghosts[i],
+                pose,
+                false,
+                true,
+                0.75f,
+                [](auto, auto) { return 0.0f; }
+            );
         }
     };
     run();

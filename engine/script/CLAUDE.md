@@ -163,6 +163,8 @@ voxel mutation is main-thread setup work, never `PARALLEL_FOR` tick work.
   once, then `lineOfSightCaptured(eye..., {x,y,z,...})`. `setEntityGoverned(id, governed?)`
   defaults true (synchronous BODY); `false` tags FIELD, even on a never-adopted entity. It changes
   archetypes, so defer it during iteration. `getEntityReveal` is stored body reveal, or 1 when untagged.
+  `setHiddenPolicy(id, IRComponent.FogHiddenPolicy.*)` structurally selects HIDE or GHOST for a BODY;
+  `hiddenPolicy(id)` reads that selection. Both reject non-BODY entities.
 - `setCell`, `getCell`, `revealRadius(cx,cy,r[,channels])`, `exploreRadius(...)`, `set/getCellChannels`
   edit/query the grid (`IRFog.State.*`, `IRFog.Channel.DEFAULT`); `clear()` clears only that grid.
   `setExploredPolicy(IRFog.ExploredPolicy.*, durationMs[, channels])` is init-only (refused once cells

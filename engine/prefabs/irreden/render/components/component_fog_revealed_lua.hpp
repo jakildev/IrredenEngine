@@ -39,27 +39,6 @@ template <> inline void bindLuaType<IRComponents::C_FogRevealed>(LuaScript &luaS
             }
         }
     );
-    type["hiddenPolicy"] = sol::property(
-        [](const C_FogRevealed &value) { return static_cast<lua_Integer>(value.hiddenPolicy_); },
-        [](C_FogRevealed &value, sol::object policyValue) {
-            if (!policyValue.is<lua_Integer>()) {
-                throw sol::error{
-                    "C_FogRevealed.hiddenPolicy must be an IRComponent.FogHiddenPolicy value"
-                };
-            }
-            const lua_Integer raw = policyValue.as<lua_Integer>();
-            switch (raw) {
-            case static_cast<lua_Integer>(FogHiddenPolicy::HIDE):
-            case static_cast<lua_Integer>(FogHiddenPolicy::GHOST):
-                value.hiddenPolicy_ = static_cast<FogHiddenPolicy>(raw);
-                return;
-            default:
-                throw sol::error{
-                    "C_FogRevealed.hiddenPolicy must be an IRComponent.FogHiddenPolicy value"
-                };
-            }
-        }
-    );
     type["ghostHeld"] = sol::readonly(&C_FogRevealed::ghostHeld_);
 
     sol::table overrides = luaScript.lua().create_table();

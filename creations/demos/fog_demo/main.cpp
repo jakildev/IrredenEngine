@@ -1092,7 +1092,7 @@ void initChannelProbeScene() {
     g_channelMatchedBody = IREntity::createEntity(
         C_LocalTransform{vec3(-4.0f, 2.0f, 0.0f)},
         C_ShapeDescriptor{IRRender::ShapeType::BOX, vec4(4, 4, 8, 0), Color{80, 220, 100, 255}},
-        C_FogRevealed{0.0f, false, FogOverride::NONE, kChannelProbeMask}
+        C_FogRevealed{0.0f, false, FogOverride::NONE, false, kChannelProbeMask}
     );
     g_channelDefaultBody = IREntity::createEntity(
         C_LocalTransform{vec3(4.0f, -2.0f, 0.0f)},
@@ -1899,7 +1899,8 @@ void probeGhostPolicy(int shotIndex) {
             continue;
         }
         if (shotIndex < 2 && subject.ghost_) {
-            const vec3 ghostPosition = fog.ghostPose_.translation_;
+            const vec3 ghostPosition =
+                IREntity::getComponent<C_FogGhost>(subject.entity_).pose_.translation_;
             const vec3 livePosition =
                 IREntity::getComponent<C_WorldTransform>(subject.entity_).translation_;
             requireFogProbe(
@@ -4059,8 +4060,10 @@ void initEntities() {
                                          IREntity::EntityId carrier,
                                          bool ghost) {
                 IRPrefab::Fog::setEntityRevealGoverned(entity);
-                auto &fog = IREntity::getComponent<C_FogRevealed>(entity);
-                fog.hiddenPolicy_ = ghost ? FogHiddenPolicy::GHOST : FogHiddenPolicy::HIDE;
+                IRPrefab::Fog::setHiddenPolicy(
+                    entity,
+                    ghost ? FogHiddenPolicy::GHOST : FogHiddenPolicy::HIDE
+                );
                 IREntity::setComponent(entity, C_GhostPolicyMover{});
                 g_ghostPolicyProbeSubjects.push_back(
                     GhostPolicyProbeSubject{route, entity, carrier, ghost}

@@ -51,6 +51,7 @@ static_assert(
 
 template <> struct System<SHAPES_TO_TRIXEL> {
     using CanvasId = IREntity::EntityId;
+    using GhostEval = System<FOG_REVEAL_EVAL_SHAPE_GHOST>;
 
     ShaderProgram *shapeDepthProgram_ = nullptr;
     ShaderProgram *shapePublishProgram_ = nullptr;
@@ -102,6 +103,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     // UPDATE phase plus every pinned entity. The per-entity tick skips shapes
     // whose [lodMax_ .. lodMin_] band does not contain their resolved tier.
     IRPrefab::Lod::TierSnapshot lod_;
+    const std::vector<GhostEval::HeldPose> *heldGhostPoses_ = nullptr;
 
     void tick(
         IREntity::EntityId entityId, const C_ShapeDescriptor &shape, const C_WorldTransform &xform
@@ -112,7 +114,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
         }
         const C_WorldTransform *pose = &xform;
         if ((shape.flags_ & IRMath::SDF::SHAPE_FLAG_FOG_GHOST) != 0u) {
-            const auto &held = IRPrefab::Fog::heldShapeGhostPoses();
+            const auto &held = *heldGhostPoses_;
             const auto it = std::lower_bound(
                 held.begin(),
                 held.end(),
@@ -195,6 +197,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     }
 
     void beginTick() {
+        heldGhostPoses_ = &IRPrefab::Fog::heldShapeGhostPoses();
         IRPrefab::CanvasCoverage::syncMainBacking();
         const auto bakeSystem = findSystem(BAKE_SUN_SHADOW_MAP);
         if (bakeSystem != kNullSystemId) {

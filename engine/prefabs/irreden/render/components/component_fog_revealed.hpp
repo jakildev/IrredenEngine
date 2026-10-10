@@ -1,8 +1,6 @@
 #ifndef COMPONENT_FOG_REVEALED_H
 #define COMPONENT_FOG_REVEALED_H
 
-#include <irreden/common/components/component_world_transform.hpp>
-
 #include <cstdint>
 
 namespace IRComponents {
@@ -17,12 +15,11 @@ struct C_FogRevealed {
     float revealFactor_ = 0.0f;
     bool shown_ = false;
     FogOverride override_ = FogOverride::NONE;
-    std::uint32_t channels_ = kFogChannelDefault;
-    FogHiddenPolicy hiddenPolicy_ = FogHiddenPolicy::HIDE;
     bool ghostHeld_ = false;
-    bool ghostPoseValid_ = false;
-    C_WorldTransform ghostPose_{};
+    std::uint32_t channels_ = kFogChannelDefault;
 };
+
+static_assert(sizeof(C_FogRevealed) == 12);
 
 } // namespace IRComponents
 

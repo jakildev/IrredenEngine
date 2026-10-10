@@ -38,6 +38,7 @@ namespace IRSystem {
 constexpr int kMaxEntityCanvasInstances = IRConstants::kEntityCanvasLiveBudget;
 
 template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
+    using GhostEval = System<FOG_REVEAL_EVAL_CANVAS_GHOST>;
     struct CanvasInstance {
         FrameDataTrixelToFramebuffer frameData_;
         const C_TriangleCanvasTextures *textures_;
@@ -49,6 +50,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     std::vector<CanvasInstance> instances_;
     bool capacityWarningEmitted_ = false;
     std::vector<std::pair<IREntity::EntityId, C_HitBox2D *>> hitboxes_;
+    const std::vector<GhostEval::HeldPose> *heldGhostPoses_ = nullptr;
 
     // Frame constants snapshotted once in beginTick because they are constant
     // across every visible detached entity in a frame. fbRes_ comes from the
@@ -123,6 +125,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     }
 
     void beginTick() {
+        heldGhostPoses_ = &IRPrefab::Fog::heldCanvasGhostPoses();
         instances_.clear();
         instances_.reserve(kMaxEntityCanvasInstances);
         collectHitboxes();
@@ -178,7 +181,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     ) {
         const C_WorldTransform *pose = &worldTransform;
         if (entityCanvas.fogGhost_) {
-            const auto &held = IRPrefab::Fog::heldCanvasGhostPoses();
+            const auto &held = *heldGhostPoses_;
             const auto it = std::lower_bound(
                 held.begin(),
                 held.end(),

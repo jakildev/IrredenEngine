@@ -10,6 +10,7 @@
 #include <irreden/render/components/component_fog_exempt_lua.hpp>
 #include <irreden/render/components/component_fog_field.hpp>
 #include <irreden/render/components/component_fog_field_lua.hpp>
+#include <irreden/render/components/component_fog_ghost.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/components/component_fog_revealed_lua.hpp>
 #include <irreden/render/fog_of_war.hpp>
@@ -33,6 +34,7 @@ class LuaFogRevealedTest : public testing::Test {
         , m_entityManager{}
         , m_systemManager{} {
         m_lua.bindLuaDrivenEcs();
+        m_lua.bindLuaFog();
         m_lua.registerTypesFromTraits<
             IRComponents::C_FogRevealed,
             IRComponents::C_FogField,
@@ -143,30 +145,34 @@ TEST_F(LuaFogRevealedTest, OverrideAndChannelsAreReadWriteWithEnumTable) {
     );
 }
 
-TEST_F(LuaFogRevealedTest, HiddenPolicyIsValidatedAndGhostHeldIsReadOnly) {
+TEST_F(LuaFogRevealedTest, HiddenPolicyServiceIsValidatedAndGhostHeldIsReadOnly) {
+    const IREntity::EntityId body = IREntity::createEntity(IRComponents::C_FogRevealed{});
+    const IREntity::EntityId plain = IREntity::createEntity();
+    m_lua.lua()["body"] = body;
+    m_lua.lua()["plain"] = plain;
     auto result = m_lua.lua().safe_script(
         R"lua(
         local value = C_FogRevealed.new()
         assert(IRComponent.FogHiddenPolicy.HIDE == 0)
         assert(IRComponent.FogHiddenPolicy.GHOST == 1)
-        assert(value.hiddenPolicy == IRComponent.FogHiddenPolicy.HIDE)
-        value.hiddenPolicy = IRComponent.FogHiddenPolicy.GHOST
+        assert(IRFog.hiddenPolicy(body) == IRComponent.FogHiddenPolicy.HIDE)
+        IRFog.setHiddenPolicy(body, IRComponent.FogHiddenPolicy.GHOST)
+        assert(IRFog.hiddenPolicy(body) == IRComponent.FogHiddenPolicy.GHOST)
         assert(value.ghostHeld == false)
         return value
     )lua",
         sol::script_pass_on_error
     );
     ASSERT_TRUE(result.valid()) << sol::error{result}.what();
-    EXPECT_EQ(
-        result.get<IRComponents::C_FogRevealed>().hiddenPolicy_,
-        IRComponents::FogHiddenPolicy::GHOST
-    );
+    EXPECT_TRUE(IREntity::getComponentOptional<IRComponents::C_FogGhost>(body).has_value());
 
     for (const char *statement : {
-             "local v=C_FogRevealed.new(); v.hiddenPolicy=2",
-             "local v=C_FogRevealed.new(); v.hiddenPolicy='GHOST'",
-             "local v=C_FogRevealed.new(); v.hiddenPolicy=1.5",
-             "local v=C_FogRevealed.new(); v.hiddenPolicy=nil",
+             "IRFog.setHiddenPolicy(body, 2)",
+             "IRFog.setHiddenPolicy(body, 'GHOST')",
+             "IRFog.setHiddenPolicy(body, 1.5)",
+             "IRFog.setHiddenPolicy(body, nil)",
+             "IRFog.setHiddenPolicy(plain, IRComponent.FogHiddenPolicy.GHOST)",
+             "IRFog.hiddenPolicy(plain)",
              "local v=C_FogRevealed.new(); v.ghostHeld=true",
          }) {
         result = m_lua.lua().safe_script(statement, sol::script_pass_on_error);
@@ -176,16 +182,17 @@ TEST_F(LuaFogRevealedTest, HiddenPolicyIsValidatedAndGhostHeldIsReadOnly) {
 
 TEST_F(LuaFogRevealedTest, GhostHeldReadsTrueAfterEngineLifecycleHold) {
     IRComponents::C_FogRevealed value{};
-    value.hiddenPolicy_ = IRComponents::FogHiddenPolicy::GHOST;
+    IRComponents::C_FogGhost ghost{};
     value.shown_ = true;
     IRComponents::C_WorldTransform shownPose{};
     shownPose.translation_ = {1.0f, 2.0f, 3.0f};
-    IRPrefab::Fog::stepGhostLifecycle(value, shownPose, false, true, 0.75f, [](auto, auto) {
+    IRPrefab::Fog::stepGhostLifecycle(value, ghost, shownPose, false, true, 0.75f, [](auto, auto) {
         return 0.0f;
     });
     value.shown_ = false;
     IRPrefab::Fog::stepGhostLifecycle(
         value,
+        ghost,
         IRComponents::C_WorldTransform{},
         true,
         true,

@@ -13,6 +13,8 @@
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/systems/system_fog_reveal_eval_canvas.hpp>
 
+#include <vector>
+
 // PROPAGATE_CANVAS_ROTATION — UPDATE pipeline.
 //
 // Composes the inverse world-camera rotation with each DETACHED entity's
@@ -42,13 +44,16 @@
 namespace IRSystem {
 
 template <> struct System<PROPAGATE_CANVAS_ROTATION> {
+    using GhostEval = System<FOG_REVEAL_EVAL_CANVAS_GHOST>;
     // Snapshot of the world-camera rotation for the current frame. The
     // begin-tick capture keeps the per-entity tick free of global lookups
     // and guarantees every entity in this frame sees the same camera basis.
     IRMath::vec4 cameraRotationInverse_ = IRMath::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    const std::vector<GhostEval::HeldPose> *heldGhostPoses_ = nullptr;
 
     void beginTick() {
         cameraRotationInverse_ = IRMath::quatInverse(IRPrefab::Camera::getRotationQuat());
+        heldGhostPoses_ = &IRPrefab::Fog::heldCanvasGhostPoses();
     }
 
     void tick(
@@ -66,7 +71,7 @@ template <> struct System<PROPAGATE_CANVAS_ROTATION> {
         }
         const IRComponents::C_WorldTransform *pose = &worldTransform;
         if (entityCanvas.fogGhost_) {
-            const auto &held = IRPrefab::Fog::heldCanvasGhostPoses();
+            const auto &held = *heldGhostPoses_;
             const auto it = std::lower_bound(
                 held.begin(),
                 held.end(),

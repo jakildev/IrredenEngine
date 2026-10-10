@@ -417,8 +417,15 @@ never-shown body cannot create an origin ghost. Rigid and skinned voxel sets,
 SDF shapes, and detached canvases freeze placement while continuing to show
 authored content edits. Re-showing refreshes the snapshot. Seeing the remembered
 spot, forcing hidden, selecting HIDE, or reclassifying to FIELD/EXEMPT discards
-it. The policy and all route mirrors are runtime-only. C++ selects
-`FogHiddenPolicy::GHOST`; Lua uses `IRComponent.FogHiddenPolicy.GHOST`.
+it. `C_FogRevealed` remains the 12-byte hot BODY verdict; the runtime-only
+`C_FogGhost` component exists exactly when the BODY selects GHOST and owns the
+remembered pose. The policy, ghost component, and all route mirrors are omitted
+from saves, so a loaded BODY resumes as HIDE. Each route partitions its HIDE
+evaluator (which excludes `C_FogGhost` and never touches ghost state) from a
+GHOST evaluator that requires the component. C++ selects through
+`IRPrefab::Fog::setHiddenPolicy`; Lua uses `IRFog.setHiddenPolicy` with
+`IRComponent.FogHiddenPolicy.GHOST`. The corresponding `hiddenPolicy` getters
+report the structural selection; the component has no writable policy field.
 
 ### Explored-state policy
 

@@ -1452,11 +1452,12 @@ void createGridEntities() {
                     if (g_fogReveal) {
                         IRPrefab::Fog::setEntityRevealGoverned(cellEntity);
                         if (g_fogGhostHeavy) {
+                            IRPrefab::Fog::setHiddenPolicy(cellEntity, FogHiddenPolicy::GHOST);
                             auto &fog = IREntity::getComponent<C_FogRevealed>(cellEntity);
-                            fog.hiddenPolicy_ = FogHiddenPolicy::GHOST;
-                            fog.ghostPose_.translation_ = ghostPose;
-                            fog.ghostPoseValid_ = true;
                             fog.ghostHeld_ = true;
+                            auto &ghost = IREntity::getComponent<C_FogGhost>(cellEntity);
+                            ghost.pose_.translation_ = ghostPose;
+                            ghost.valid_ = true;
                             IREntity::getComponent<C_VoxelSetNew>(cellEntity).ghostHeld_ = true;
                         }
                     }
