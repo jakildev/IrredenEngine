@@ -330,6 +330,18 @@ struct PartCountCheck {
     std::string name_;
 };
 
+struct PartAuthoredCountCheck {
+    int partIndex_ = 0;
+    int expected_ = 0;
+    std::string name_;
+};
+
+struct PartEditableCheck {
+    int partIndex_ = 0;
+    bool expected_ = true;
+    std::string name_;
+};
+
 struct CanvasCountCheck {
     int expectedOffset_ = 0;
     std::string name_;
@@ -432,6 +444,8 @@ struct Recipe {
     std::deque<OccupancyCheck> checks_;
     std::deque<PartTransformCheck> partTransformChecks_;
     std::deque<PartCountCheck> partCountChecks_;
+    std::deque<PartAuthoredCountCheck> partAuthoredCountChecks_;
+    std::deque<PartEditableCheck> partEditableChecks_;
     std::deque<CanvasCountCheck> canvasCountChecks_;
     std::deque<RotationModeCheck> rotationModeChecks_;
     // Same stable-storage contract as checks_, for expectSliderValue.
@@ -484,6 +498,8 @@ inline void resolveShots(Recipe &recipe) {
 bool evaluateOccupancyCheck(const void *context, std::string &actual);
 bool evaluatePartTransformCheck(const void *context, std::string &actual);
 bool evaluatePartCountCheck(const void *context, std::string &actual);
+bool evaluatePartAuthoredCountCheck(const void *context, std::string &actual);
+bool evaluatePartEditableCheck(const void *context, std::string &actual);
 bool evaluateCanvasCountCheck(const void *context, std::string &actual);
 bool evaluateRotationModeCheck(const void *context, std::string &actual);
 
@@ -958,6 +974,22 @@ class Builder {
             m_recipe.partCountChecks_,
             PartCountCheck{expected, std::move(name)},
             &evaluatePartCountCheck
+        );
+    }
+
+    void expectPartAuthoredCount(int partIndex, int expected, std::string name) {
+        addPredicateCheck(
+            m_recipe.partAuthoredCountChecks_,
+            PartAuthoredCountCheck{partIndex, expected, std::move(name)},
+            &evaluatePartAuthoredCountCheck
+        );
+    }
+
+    void expectPartEditable(int partIndex, bool expected, std::string name) {
+        addPredicateCheck(
+            m_recipe.partEditableChecks_,
+            PartEditableCheck{partIndex, expected, std::move(name)},
+            &evaluatePartEditableCheck
         );
     }
 

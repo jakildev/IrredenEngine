@@ -2910,6 +2910,41 @@ bool evaluatePartCountCheck(const void *context, std::string &actual) {
     return count == check.expected_;
 }
 
+bool evaluatePartAuthoredCountCheck(const void *context, std::string &actual) {
+    const PartAuthoredCountCheck &check = *static_cast<const PartAuthoredCountCheck *>(context);
+    if (check.partIndex_ < 0 ||
+        check.partIndex_ >= static_cast<int>(g_entityScene.parts().size())) {
+        actual = "part index out of range";
+        return false;
+    }
+    const IREntity::EntityId entity =
+        g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)].entity_;
+    const auto &set = IREntity::getComponent<C_VoxelSetNew>(entity);
+    int count = 0;
+    for (const C_Voxel &voxel : set.authoredRecords()) {
+        if (voxel.color_.alpha_ != 0) {
+            ++count;
+        }
+    }
+    actual = "authored=" + std::to_string(count) + " want=" + std::to_string(check.expected_);
+    return count == check.expected_;
+}
+
+bool evaluatePartEditableCheck(const void *context, std::string &actual) {
+    const PartEditableCheck &check = *static_cast<const PartEditableCheck *>(context);
+    if (check.partIndex_ < 0 ||
+        check.partIndex_ >= static_cast<int>(g_entityScene.parts().size())) {
+        actual = "part index out of range";
+        return false;
+    }
+    const IREntity::EntityId entity =
+        g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)].entity_;
+    const bool editable = isEditable(entity);
+    actual = "editable=" + std::string(editable ? "yes" : "no") +
+             " want=" + (check.expected_ ? "yes" : "no");
+    return editable == check.expected_;
+}
+
 bool evaluateCanvasCountCheck(const void *context, std::string &actual) {
     const CanvasCountCheck &check = *static_cast<const CanvasCountCheck *>(context);
     const int count = IRPrefab::EntityCanvas::count();

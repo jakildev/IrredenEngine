@@ -1715,10 +1715,20 @@ inline Recipe build(
         return builder.finish();
     }
     case Id::MODE_PREVIEW: {
-        Builder builder("mode_preview", sceneSize, sceneOrigin);
+        constexpr IRMath::ivec3 kPreviewSize{6, 6, 6};
+        const IRMath::vec3 previewOrigin =
+            IRComponents::anchorOffset(IRComponents::EntityAnchor::CENTER, kPreviewSize);
+        Builder builder("mode_preview", kPreviewSize, previewOrigin);
         builder.segment("grid");
         builder.expectCanvasCount(0, "grid_has_no_private_canvas");
         builder.expectRotationMode(0, IRComponents::RotationMode::GRID, "part_starts_grid");
+
+        builder.segment("rotated_pick");
+        builder.toggleEraseMode();
+        builder.clickExpectingNoEdit(IRMath::ivec3(0, 3, 5));
+        builder.expectPartAuthoredCount(0, 192, "rotated_part_keeps_authored_occupancy");
+        builder.expectPartEditable(0, false, "rotated_part_rejected_by_edit_pick");
+        builder.toggleEraseMode();
 
         builder.segment("detached");
         builder.tapKey(IRInput::kKeyButtonM);

@@ -17,7 +17,8 @@ Design log, findings and the authoring-session history:
   `parts_roundtrip` authors, moves, saves, clears, and reloads a two-part entity,
   `tier_scrub` proves per-part LOD bands and the tier scrubber, and
   `mode_preview` proves the deferred render-mode switch allocates and releases
-  the selected part's private canvas.
+  the selected part's private canvas while rotated and private-canvas parts stay
+  outside the axis-aligned edit pick.
 - `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
   render reference set, discovered under this creation's `test/references/`.
 - `python3 scripts/author-entity.py <entity>` — replays an entity session twice
