@@ -1,5 +1,4 @@
 #include "ir_iso_common.metal"
-#include "ir_per_axis_lighting.metal"
 // Shared caster/receiver sun-space projection + depth pack.
 #include "ir_sun_projection.metal"
 #include <metal_atomic>
@@ -93,37 +92,16 @@ kernel void c_bake_sun_shadow_map(
     }
 
     int encoded = trixelDistances.read(uint2(pixel)).x;
-    // Per-axis canvas uses INT_MAX as the empty sentinel; single-canvas uses 65535.
-    if (encoded >= (frameData.perAxisRoute != 0 ? 0x7FFFFFFF : kEmptyDistanceEncoded)) {
+    if (encoded >= kEmptyDistanceEncoded) {
         return;
     }
-    // Shared decode helpers (ir_iso_common) own both encodings' bit layouts
-    // (per-axis / single-canvas, flip carrier). The bake is position-only — the
-    // flip bit never changes a caster's plane position, so it is decoded past,
-    // not consumed.
-    int rawDepth = decodeDepthRoute(encoded, frameData.perAxisRoute);
+    // Face/flip bits do not change a caster's plane position.
+    int rawDepth = decodeDepthSingle(encoded);
 
-    // Per-axis stores the world frame face-locally; the single canvas stores
-    // the cardinal-snapped iso pixel. Both bake into the same shared sun depth
-    // map, so voxels and shapes shadow each other under rotation.
+    // Main SDF/text depth follows visual yaw. Per-axis and detached resolves
+    // have cardinal-layout depth; their dispatches supply zero residual yaw.
     float3 pos3D;
-    if (frameData.perAxisRoute != 0) {
-        // LATTICE recovery, deliberately — mirrors GLSL. Per-axis content never
-        // arrives here: the C++ driver casts per-axis canvases through
-        // RESOLVE_PER_AXIS_SCREEN_DEPTH into a CARDINAL-layout resolve texture and
-        // bakes that with `perAxisRoute` at 0, and that resolve bridge is where the
-        // sub-cell frac is applied. A raw per-axis canvas routed into this bake
-        // must recover with perAxisCellToWorld3DSubCell.
-        pos3D = perAxisCellToWorld3D(
-            pixel, rawDepth, frameData.visibleFaceIds[decodeSlot(encoded)], frameData.perAxisStoreFrame
-        );
-    } else if (frameData.residualYaw != 0.0) {
-        // Smooth-yaw cast. While rotating, the single canvas's remaining SDF/text
-        // content is stored at the FULL visualYaw with view-frame depth — recover
-        // with the matching smooth inverse so those casters bake at their true
-        // world positions. The CARDINAL-layout resolve textures (per-axis +
-        // world-placed) bake with residualYaw zeroed by the C++ driver, so they
-        // take the cardinal recovery. Mirrors GLSL.
+    if (frameData.residualYaw != 0.0) {
         pos3D = trixelCanvasPixelToWorld3DSmoothYaw(
             pixel,
             rawDepth,
@@ -153,19 +131,11 @@ kernel void c_bake_sun_shadow_map(
         sunFrameData.sunDirection.xyz
     );
 
-    // Coverage splat. The gate is a DECODE-PATH predicate, not a
-    // camera-cardinality one: the raw smooth-yaw and per-axis face-local inputs
-    // skip it, so it engages for the cardinal main-canvas bake AND the two
-    // CARDINAL-layout resolve dispatches (per-axis, world-placed), which spoof
-    // residualYaw == 0 with perAxisRoute == 0. The C++ driver disambiguates via
-    // sunSplatMaxTexels: it zeros the radius for the PER-AXIS resolve
-    // (patchSunSplatRadius) so the per-axis / smooth-yaw bakes are single-write by
-    // construction, but keeps it for the WORLD-PLACED resolve (whose cast carries
-    // the same point-scatter holes the splat fills). The atomic_fetch_min box
-    // leaves a dense bake unchanged (farther splats no-op where geometry is
-    // dense). Mirrors GLSL.
+    // Only cardinal-layout depth uses coverage splats. The driver suppresses
+    // them for the dense per-axis resolve, but keeps them for detached point
+    // scatter (docs/design/sun-shadow-bake-coverage.md).
     int radius = 0;
-    if (frameData.perAxisRoute == 0 && frameData.residualYaw == 0.0 &&
+    if (frameData.residualYaw == 0.0 &&
         sunFrameData.sunSplatMaxTexels > 0.0) {
         radius = int(sunFrameData.sunSplatMaxTexels);
     }

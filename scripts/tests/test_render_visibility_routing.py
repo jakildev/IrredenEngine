@@ -7,20 +7,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from shader_contract_helpers import extract_block
+
 ROOT = Path(__file__).resolve().parents[2]
 COMPILER = shutil.which("c++")
 SOURCE = ROOT / "engine/prefabs/irreden/render/systems/system_trixel_to_framebuffer.hpp"
-
-
-def block(source, marker):
-    start = source.index(marker)
-    opening = source.index("{", start)
-    depth = 1
-    closing = opening + 1
-    while depth:
-        depth += (source[closing] == "{") - (source[closing] == "}")
-        closing += 1
-    return source[start:closing]
 
 
 PREAMBLE = r"""
@@ -223,17 +214,18 @@ int main(){
 
 def harness():
     source = SOURCE.read_text()
-    scatter = block(source, "    void drawPerAxisScatter(")
+    scatter = extract_block(source, "    void drawPerAxisScatter(")
     gate = re.search(r"const bool visibilityPrepass\s*=\s*[^;]+;", scatter)[0]
     extent = re.search(r"frameData\.frameData_\.scatterFbResolution_\s*=\s*vec4\(.*?\);",
                        scatter, re.DOTALL)[0]
     start = scatter.index("        {\n", scatter.index("scatterDebugMode_ ="))
     route = scatter[start:scatter.rfind("}")]
-    prepare = block(source, "        if (visibilityPrepassEnabled_ && scatterLightingEnabled_)")
+    prepare = extract_block(
+        source, "        if (visibilityPrepassEnabled_ && scatterLightingEnabled_)")
     flags = "\n".join(re.search(rf"sys->{name}\s*=.*?;", source, re.DOTALL)[0]
                       for name in ("visibilityPrepassEnabled_", "visibilityStatsEnabled_"))
-    return (PREAMBLE + block(source, "    void ensurePerAxisVisibilityBuffer(")
-            + block(source, "    void drawPerAxisFaces(")
+    return (PREAMBLE + extract_block(source, "    void ensurePerAxisVisibilityBuffer(")
+            + extract_block(source, "    void drawPerAxisFaces(")
             + "void readFlags(const char* visibilityPrepass,const char* visibilityStats){"
             + "auto* sys=this;" + flags + "}\n"
             + "void prepare(Framebuffer& framebuffer){\n" + prepare + "}\n"
