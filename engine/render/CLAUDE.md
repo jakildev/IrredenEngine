@@ -129,6 +129,9 @@ captures.
 - Metal `Texture2D::clear()` / `subImage2D()` writes are ordered through the
   frame command buffer; a same-frame CPU `getBytes` read still needs an
   explicit commit and wait.
+- Both Metal texture-clear APIs share immutable clear-source buffers. A changed
+  pattern replaces the source until queued work drains; unchanged patterns reuse
+  it. Encoder timing and R32I scratch mirroring remain caller-specific.
 
 ## Camera and raster contracts
 
