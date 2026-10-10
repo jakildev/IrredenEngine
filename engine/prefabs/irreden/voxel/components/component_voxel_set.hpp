@@ -965,6 +965,8 @@ struct C_VoxelSetNew {
     }
 };
 
+static_assert(sizeof(C_VoxelSetNew) == 192);
+
 } // namespace IRComponents
 
 #endif /* COMPONENT_VOXEL_SET_H */

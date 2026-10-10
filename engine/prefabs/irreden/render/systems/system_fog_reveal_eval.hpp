@@ -3,6 +3,7 @@
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_job.hpp>
+#include <irreden/ir_profile.hpp>
 #include <irreden/ir_render.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
@@ -52,6 +53,7 @@ template <bool kGhost> struct FogRevealEval {
     std::uint32_t restampedVoxelsLastFrame_ = 0;
 
     void beginTick() {
+        IR_PROFILE_SCOPE(kGhost ? "FogRevealEvalGhost.begin" : "FogRevealEval.begin");
         activeCanvas_ = IRRender::getActiveCanvasEntityOrNull();
         activePool_ = nullptr;
         fogAttached_ = false;
@@ -263,6 +265,7 @@ template <bool kGhost> struct FogRevealEval {
     }
 
     void endTick() {
+        IR_PROFILE_SCOPE(kGhost ? "FogRevealEvalGhost.end" : "FogRevealEval.end");
         restampedVoxelsLastFrame_ = 0;
         for (std::uint32_t count : restampedByWorker_) {
             restampedVoxelsLastFrame_ += count;
