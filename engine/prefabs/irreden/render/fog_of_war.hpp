@@ -760,6 +760,13 @@ inline void stampCanvasBodyCarrier(
     );
 }
 
+inline void initializeCanvasBodyCarrier(IRComponents::C_VoxelPool &pool, std::uint8_t factor) {
+    if (pool.fogCarrierPolicy() != IRComponents::C_VoxelPool::FogCarrierPolicy::UNMANAGED) {
+        return;
+    }
+    pool.setFogCarrierPolicy(IRComponents::C_VoxelPool::FogCarrierPolicy::BODY, factor);
+}
+
 /// The BODY verdict kernel: the larger of the grid term and the circle term.
 /// @p gridCellState is the stored state of the cell under @p worldPosition
 /// (the round-half-up column, the same cell the fog pass taps); a VISIBLE
