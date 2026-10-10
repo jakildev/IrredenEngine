@@ -32,7 +32,7 @@
 #   FLEET_NET_TIMEOUT   — per-call budget in seconds (default 120); also bounds
 #                         each REST call the GraphQL fallback makes.
 #   FLEET_STATE_DIR     — where the fallback latches a refusal (default
-#                         ~/.fleet/state; the latch is usage/github-graphql.rejected.json).
+#                         ~/.fleet/state; the latch is usage/github-<identity>-graphql.rejected.json).
 
 # --- Resolve a coreutils-compatible `timeout` runner, once -------------------
 # GNU coreutils ships it as `timeout` on Linux and `gtimeout` on macOS

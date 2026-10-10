@@ -447,12 +447,12 @@ read_dispatch_mode() {
 # rateLimitType under $USAGE_DIR), so the gate piggybacks on every
 # transient worker's stream — no separate poller needed. GitHub API
 # pools flow through the same glob-and-evaluate loop: fleet-state-scout's
-# sample_github_rate_limit() latches github-{core,graphql,search}.json
+# sample_github_rate_limit() latches github-<identity>-{core,graphql,search}.json
 # into the same $USAGE_DIR every tick, so a near-exhausted
 # GitHub pool defers dispatch exactly like a near-exhausted Anthropic
 # window — no separate code path. A GraphQL call the limiter refused
 # (seen by the scout or fleet-net.sh's gh()) latches its own
-# github-graphql.rejected.json at 100% until the sampled reset
+# github-<identity>-graphql.rejected.json at 100% until the sampled reset
 # (fleet_gh_fallback.py), which the self-report never overwrites.
 #
 # Per-type thresholds let the operator distinguish a short-window
@@ -4445,14 +4445,12 @@ main() {
         # rearm_periodic_meta_triggers above still runs so the trigger
         # set stays accurate for when the gate re-opens.
         if [[ "${FLEET_RUNTIMES:-claude}" == *codex* ]]; then
-            FLEET_USAGE_RUNTIME=shared
-            # The Claude pools are then gated per dispatch (assign_for_pane's
+            # `usage_gate_open` gates only the shared pools here, so the Claude
+            # pools are gated per dispatch (assign_for_pane's
             # `claude-quota-closed`), which never logs a transition — a
             # closed window would only be inferable from every launch
             # reading runtime=codex. Log it here, once per closed window.
             log_claude_gate_transition
-        else
-            FLEET_USAGE_RUNTIME=all
         fi
         log_scoped_gate_transition
         if session_exists && usage_gate_open; then
@@ -4653,7 +4651,7 @@ case "${1:-}" in
         echo "target=$ASSIGNMENT"
         exit 0
         ;;
-    --seed-tmux-token)
+    --clear-tmux-token)
         # Test/operator hook: remove inherited GitHub credentials from tmux.
         clear_tmux_github_identity
         exit 0
