@@ -1307,10 +1307,6 @@ void emitSweepShots(
     }
 }
 
-// Register shape_debug's custom flags on the engine-owned parser. --help /
-// --auto-screenshot / --config-preset are pre-registered by the Parser ctor;
-// IREngine::init(argc, argv) parses common + these in one pass, so --help lists
-// every flag and exits before any window/GL/Metal init.
 void registerCliArgs() {
     IRArgs::Parser &args = IREngine::args();
     args.optionalInt(
@@ -1424,9 +1420,8 @@ void registerCliArgs() {
     );
 }
 
-// Read the parsed values back into the demo's globals. Runs AFTER
-// IREngine::init(argc, argv) has parsed. A value flag only writes its global
-// when actually provided, preserving each global's pre-parse default.
+// Absent value flags preserve the demo defaults. This runs before World
+// construction so invalid combinations cannot leave a partially initialized engine.
 void readCliArgs() {
     const IRArgs::Parser &args = IREngine::args();
 
