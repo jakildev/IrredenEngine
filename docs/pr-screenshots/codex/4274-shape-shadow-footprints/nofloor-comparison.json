@@ -1,0 +1,58 @@
+[
+  {
+    "shot": 0,
+    "before": "screenshot_000027.png",
+    "before_sha256": "a7803173011f091f413cd85764c998f416c8db9a4575030a8abad11eb8fd7bc1",
+    "after_sha256": "a7803173011f091f413cd85764c998f416c8db9a4575030a8abad11eb8fd7bc1",
+    "rgb_identical": true
+  },
+  {
+    "shot": 1,
+    "before": "screenshot_000028.png",
+    "before_sha256": "ac93add678a9b8fab51edd294a9d28754f776cc50e258e7b9e1a5e0a16052bc9",
+    "after_sha256": "ac93add678a9b8fab51edd294a9d28754f776cc50e258e7b9e1a5e0a16052bc9",
+    "rgb_identical": true
+  },
+  {
+    "shot": 2,
+    "before": "screenshot_000029.png",
+    "before_sha256": "89f484effc471c9150b8c0a0bef91b579f6ad955cfbf86ad0f6d69c48fa15497",
+    "after_sha256": "89f484effc471c9150b8c0a0bef91b579f6ad955cfbf86ad0f6d69c48fa15497",
+    "rgb_identical": true
+  },
+  {
+    "shot": 3,
+    "before": "screenshot_000030.png",
+    "before_sha256": "4d309d7e8783d6ff3c3d3d5de477c472afe99e41a2ce7ffecb6a9928259171e0",
+    "after_sha256": "4d309d7e8783d6ff3c3d3d5de477c472afe99e41a2ce7ffecb6a9928259171e0",
+    "rgb_identical": true
+  },
+  {
+    "shot": 4,
+    "before": "screenshot_000031.png",
+    "before_sha256": "10b0a6d64436e843b511cd68829496824a33c5b62df0b8f8004eb8489bd38587",
+    "after_sha256": "10b0a6d64436e843b511cd68829496824a33c5b62df0b8f8004eb8489bd38587",
+    "rgb_identical": true
+  },
+  {
+    "shot": 5,
+    "before": "screenshot_000032.png",
+    "before_sha256": "b6ed8354bcabcd03595ffcaef50b27cf236fea1d90a2af8bb370ec3078dad8f6",
+    "after_sha256": "b6ed8354bcabcd03595ffcaef50b27cf236fea1d90a2af8bb370ec3078dad8f6",
+    "rgb_identical": true
+  },
+  {
+    "shot": 6,
+    "before": "screenshot_000033.png",
+    "before_sha256": "84902baafda50ce4a94200afd3c52fb6a527d74be482d1cce1c354db7915963b",
+    "after_sha256": "84902baafda50ce4a94200afd3c52fb6a527d74be482d1cce1c354db7915963b",
+    "rgb_identical": true
+  },
+  {
+    "shot": 7,
+    "before": "screenshot_000034.png",
+    "before_sha256": "ef2a2ff868243b47df1e6d9c0b5d77ea351019f2ca32e691c524f3d894ae01b5",
+    "after_sha256": "ef2a2ff868243b47df1e6d9c0b5d77ea351019f2ca32e691c524f3d894ae01b5",
+    "rgb_identical": true
+  }
+]
