@@ -3567,9 +3567,9 @@ int main(int argc, char **argv) {
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
         "face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | tier_scrub | "
-        "radial_array | nway_symmetry | mode_preview | mode_preview_shots | parts_scroll | "
-        "module_loaded | component_attach | component_field_page | component_field_key | "
-        "text_input_command_capture | part_sizes",
+        "radial_array | linear_array | nway_symmetry | mode_preview | mode_preview_shots | "
+        "parts_scroll | module_loaded | component_attach | component_field_page | "
+        "component_field_key | text_input_command_capture | part_sizes",
         {"none",
          "drag_probe",
          "place_below",
@@ -3582,6 +3582,7 @@ int main(int argc, char **argv) {
          "parts_roundtrip",
          "tier_scrub",
          "radial_array",
+         "linear_array",
          "nway_symmetry",
          "mode_preview",
          "mode_preview_shots",
