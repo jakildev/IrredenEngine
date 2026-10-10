@@ -1,11 +1,18 @@
 #include <gtest/gtest.h>
 
 #include <irreden/common/components/component_world_transform.hpp>
+#include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_system.hpp>
 #include <irreden/voxel/grid_rotation.hpp>
+#include <irreden/voxel/systems/system_rebuild_grid_voxels.hpp>
 
+#include <array>
+#include <cstdint>
+#include <map>
 #include <set>
 #include <tuple>
+#include <utility>
 
 namespace {
 
@@ -263,6 +270,198 @@ TEST(GridRotationTest, SourceCellForWorldCell_RoundHalfUpConventionPin) {
     const auto source = sourceCellForWorldCell(worldCell, wt, inv);
     EXPECT_NEAR(source.y, -0.5f, kEps);
     EXPECT_EQ(IRMath::roundVec3HalfUp(source), authored);
+}
+
+using GridCell = std::tuple<int, int, int>;
+using GridOccupancy = std::set<GridCell>;
+using GridRecords = std::map<GridCell, std::uint8_t>;
+
+enum class GridRotationAxis { Z, Y };
+
+// Membership in the rotated half-open source box uses analytical half-spaces,
+// independently of the production quaternion inverse, rounding and AABB walk.
+// CENTER's authored -5.5..5.5 positions quantize to source centers -5..6.
+GridOccupancy
+diagonalBoxOccupancy(int minAxial, int maxAxial, GridRotationAxis axis = GridRotationAxis::Z) {
+    constexpr double diagonal = 0.70710678118654752440;
+    GridOccupancy cells;
+    for (int z = -12; z <= 12; ++z) {
+        for (int y = -12; y <= 12; ++y) {
+            for (int x = -12; x <= 12; ++x) {
+                const double localX = (axis == GridRotationAxis::Z ? x + y : x - z) * diagonal;
+                const double localOther = (axis == GridRotationAxis::Z ? y - x : x + z) * diagonal;
+                const int axial = axis == GridRotationAxis::Z ? z : y;
+                if (localX >= -5.5 && localX < 6.5 && localOther >= -5.5 && localOther < 6.5 &&
+                    axial >= minAxial && axial <= maxAxial) {
+                    cells.emplace(x, y, z);
+                }
+            }
+        }
+    }
+    return cells;
+}
+
+std::uint8_t occupiedNeighborMask(const GridOccupancy &cells, const GridCell &cell) {
+    using namespace IRComponents::VoxelFlags;
+    const std::array<GridCell, 6>
+        directions{GridCell{-1, 0, 0}, {1, 0, 0}, {0, -1, 0}, {0, 1, 0}, {0, 0, -1}, {0, 0, 1}};
+    const std::array<std::uint8_t, 6> bits{
+        kFaceOccludedNegX,
+        kFaceOccludedPosX,
+        kFaceOccludedNegY,
+        kFaceOccludedPosY,
+        kFaceOccludedNegZ,
+        kFaceOccludedPosZ
+    };
+    const auto [x, y, z] = cell;
+    std::uint8_t mask = 0;
+    for (std::size_t face = 0; face < directions.size(); ++face) {
+        const auto [dx, dy, dz] = directions[face];
+        if (cells.contains({x + dx, y + dy, z + dz})) {
+            mask |= bits[face];
+        }
+    }
+    return mask;
+}
+
+GridOccupancy missingSurfaceCells(const GridOccupancy &expected, const GridRecords &actual) {
+    GridOccupancy missing;
+    for (const auto &cell : expected) {
+        if (occupiedNeighborMask(expected, cell) != IRComponents::VoxelFlags::kFaceOccludedMask &&
+            !actual.contains(cell)) {
+            missing.insert(cell);
+        }
+    }
+    return missing;
+}
+
+void expectGridMasksMatchOccupancy(const GridOccupancy &expected, const GridRecords &actual) {
+    for (const auto &[cell, mask] : actual) {
+        const auto [x, y, z] = cell;
+        SCOPED_TRACE(::testing::Message() << "cell=" << x << "," << y << "," << z);
+        EXPECT_TRUE(expected.contains(cell));
+        EXPECT_EQ(mask, occupiedNeighborMask(expected, cell));
+    }
+}
+
+class GridInverseSurfaceTest : public ::testing::Test {
+  protected:
+    IREntity::EntityManager m_entityManager;
+
+    GridRecords rebuildBox(
+        IRMath::ivec3 size, GridRotationAxis axis = GridRotationAxis::Z, bool carvePlate = false
+    ) {
+        using namespace IRComponents;
+        const int capacity = size.x * size.y * size.z;
+        const auto canvas = IREntity::createEntity(C_VoxelPool{IRMath::ivec3(capacity + 7, 1, 1)});
+        IREntity::getComponent<C_VoxelPool>(canvas).allocateVoxels(7);
+        const auto entity = IREntity::createEntity(
+            C_VoxelSetNew{size, IRMath::Color{90, 160, 210, 255}, EntityAnchor::CENTER, canvas}
+        );
+        auto &voxelSet = IREntity::getComponent<C_VoxelSetNew>(entity);
+        auto &pool = IREntity::getComponent<C_VoxelPool>(canvas);
+        EXPECT_EQ(voxelSet.numVoxels_, capacity);
+        EXPECT_EQ(voxelSet.voxelStartIdx_, 7u);
+        if (carvePlate) {
+            // The -0.5 authored plane rounds to source z=0, matching a centered
+            // one-cell plate while preserving the full box's allocation.
+            for (int i = 0; i < voxelSet.numVoxels_; ++i) {
+                if (voxelSet.positions_[i].pos_.z != -0.5f) {
+                    voxelSet.voxels_[i].deactivate();
+                }
+            }
+            pool.resyncActiveMaskFromColors(voxelSet.voxelStartIdx_, capacity);
+        }
+        C_WorldTransform transform;
+        transform.rotation_ = axis == GridRotationAxis::Z
+                                  ? quatRotateZ(IRMath::kQuarterPi)
+                                  : IRMath::vec4(
+                                        0.0f,
+                                        IRMath::sin(IRMath::kQuarterPi * 0.5f),
+                                        0.0f,
+                                        IRMath::cos(IRMath::kQuarterPi * 0.5f)
+                                    );
+        IRSystem::System<IRSystem::REBUILD_GRID_VOXELS> rebuild;
+        GridRecords first;
+        for (int pass = 0; pass < 2; ++pass) {
+            EXPECT_TRUE(
+                rebuild.inverseArm(voxelSet, transform, pool, voxelSet.voxelStartIdx_, capacity)
+            );
+            GridRecords actual;
+            for (int i = 0; i < capacity; ++i) {
+                const auto slot = voxelSet.voxelStartIdx_ + static_cast<std::size_t>(i);
+                if (pool.getColors()[slot].color_.alpha_ == 0) {
+                    continue;
+                }
+                const auto position = pool.getPositionGlobals()[slot].pos_;
+                const GridCell cell{int(position.x), int(position.y), int(position.z)};
+                EXPECT_FLOAT_EQ(position.x, static_cast<float>(std::get<0>(cell)));
+                EXPECT_FLOAT_EQ(position.y, static_cast<float>(std::get<1>(cell)));
+                EXPECT_FLOAT_EQ(position.z, static_cast<float>(std::get<2>(cell)));
+                EXPECT_TRUE(
+                    actual
+                        .emplace(
+                            cell,
+                            pool.getColors()[slot].flags_ & VoxelFlags::kFaceOccludedMask
+                        )
+                        .second
+                ) << "duplicate destination cell";
+            }
+            if (pass == 0) {
+                first = std::move(actual);
+            } else {
+                EXPECT_EQ(actual, first) << "repeated rebuild must use authored source records";
+            }
+        }
+        return first;
+    }
+};
+
+TEST_F(GridInverseSurfaceTest, SolidCubeOverflowRetainsEverySurfaceCellAndMask) {
+    for (const auto axis : {GridRotationAxis::Z, GridRotationAxis::Y}) {
+        SCOPED_TRACE(axis == GridRotationAxis::Z ? "Z45" : "Y45");
+        const auto expected = diagonalBoxOccupancy(-5, 6, axis);
+        ASSERT_EQ(expected.size(), 1740u);
+        ASSERT_EQ(missingSurfaceCells(expected, {}).size(), 610u);
+        const auto actual = rebuildBox(IRMath::ivec3(12), axis);
+        ASSERT_EQ(actual.size(), 1728u);
+        EXPECT_TRUE(missingSurfaceCells(expected, actual).empty());
+        expectGridMasksMatchOccupancy(expected, actual);
+        std::size_t omitted = 0;
+        for (const auto &cell : expected) {
+            if (!actual.contains(cell)) {
+                ++omitted;
+                EXPECT_EQ(
+                    occupiedNeighborMask(expected, cell),
+                    IRComponents::VoxelFlags::kFaceOccludedMask
+                );
+            }
+        }
+        EXPECT_EQ(omitted, 12u);
+    }
+}
+
+TEST(GridSurfaceOracleTest, RejectsRemovedExposedPlateCell) {
+    const auto expected = diagonalBoxOccupancy(0, 0);
+    ASSERT_EQ(expected.size(), 145u);
+    ASSERT_EQ(missingSurfaceCells(expected, {}).size(), expected.size());
+    GridRecords actual;
+    for (const auto &cell : expected) {
+        actual.emplace(cell, occupiedNeighborMask(expected, cell));
+    }
+    ASSERT_TRUE(missingSurfaceCells(expected, actual).empty());
+    const GridCell removed{0, 0, 0};
+    ASSERT_NE(occupiedNeighborMask(expected, removed), IRComponents::VoxelFlags::kFaceOccludedMask);
+    ASSERT_EQ(actual.erase(removed), 1u);
+    EXPECT_EQ(missingSurfaceCells(expected, actual), GridOccupancy{removed});
+}
+
+TEST_F(GridInverseSurfaceTest, CarvedPlateWithBoxCapacityRetainsEverySurfaceCellAndMask) {
+    const auto expected = diagonalBoxOccupancy(0, 0);
+    const auto actual = rebuildBox(IRMath::ivec3(12), GridRotationAxis::Z, true);
+    ASSERT_EQ(actual.size(), expected.size());
+    EXPECT_TRUE(missingSurfaceCells(expected, actual).empty());
+    expectGridMasksMatchOccupancy(expected, actual);
 }
 
 } // namespace
