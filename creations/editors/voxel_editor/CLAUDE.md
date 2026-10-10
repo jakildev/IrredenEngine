@@ -61,6 +61,10 @@ render, because the aim and the pick share one screen mapping.
   editor never runs `PREFAB_LOD_PARTS`. The LOD panel's TIER slider and `,` /
   `.` pin `C_LodTierOverride` on the root and every part; FOLLOW ZOOM removes
   it. Neither touches the camera zoom.
+- Radial and linear arrays create independently editable parts. One array is
+  one undo record; rotational symmetry replays a stroke across the radial
+  copy group through the same stroke buffer. The selected source stays at the
+  pivot outside the copy group.
 
 - A recipe names cells; `Session::Builder` (`session_builder.hpp`) aims each
   click and mirrors the editable set in `OccupancyModel`, which casts the same

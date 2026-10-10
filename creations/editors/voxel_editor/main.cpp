@@ -12,6 +12,7 @@
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_local_transform_lua.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
+#include <irreden/common/array_transforms.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
@@ -95,6 +96,7 @@
 // The ANIM panel's slider geometry, shared with the session builder so a
 // scripted drag aims at the live layout.
 #include "anim_panel.hpp"
+#include "array_panel.hpp"
 #include "lod_panel.hpp"
 
 #include "editor_layer_manager.hpp"
@@ -204,9 +206,10 @@ struct UndoEdit {
 
 struct UndoRecord {
     std::vector<UndoEdit> edits_;
+    std::vector<IREntity::EntityId> createdParts_;
 
     std::size_t byteSize() const {
-        return sizeof(UndoEdit) * edits_.size();
+        return sizeof(UndoEdit) * edits_.size() + sizeof(IREntity::EntityId) * createdParts_.size();
     }
 };
 
@@ -983,6 +986,16 @@ const std::filesystem::file_time_type g_runStartFileTime =
 bool g_entitySceneMode = false;
 IREntity::EntityId g_partsPanel = IREntity::kNullEntity;
 IREntity::EntityId g_partsList = IREntity::kNullEntity;
+std::vector<const EditorPart *> g_rotationGroupScratch;
+std::vector<C_VoxelSetNew *> g_rotationSetScratch;
+IREntity::EntityId g_arrayPanel = IREntity::kNullEntity;
+IREntity::EntityId g_arrayTypeList = IREntity::kNullEntity;
+IREntity::EntityId g_arrayCountSlider = IREntity::kNullEntity;
+IREntity::EntityId g_arrayDistanceSlider = IREntity::kNullEntity;
+IREntity::EntityId g_arrayStepYSlider = IREntity::kNullEntity;
+IREntity::EntityId g_arrayStepZSlider = IREntity::kNullEntity;
+IREntity::EntityId g_arrayYawSlider = IREntity::kNullEntity;
+IREntity::EntityId g_arrayApplyButton = IREntity::kNullEntity;
 
 // LOD panel widgets (lod_panel.hpp). The band sliders edit the selected part;
 // the tier slider and FOLLOW ZOOM drive EntityScene::setTierOverride and never
@@ -1198,6 +1211,69 @@ void addEditorShapePart() {
     selectEditorPart(g_entityScene.selectedIndex());
 }
 
+void commitPartCreation(std::vector<IREntity::EntityId> created) {
+    if (created.empty()) {
+        return;
+    }
+    UndoRecord record;
+    record.createdParts_ = std::move(created);
+    g_editor.undoTotalBytes_ += record.byteSize();
+    g_editor.undoRecords_.push_back(std::move(record));
+    while (g_editor.undoTotalBytes_ > kUndoByteBudget && !g_editor.undoRecords_.empty()) {
+        g_editor.undoTotalBytes_ -= g_editor.undoRecords_.front().byteSize();
+        g_editor.undoRecords_.pop_front();
+    }
+    selectEditorPart(g_entityScene.selectedIndex());
+}
+
+void commitPartClones(EntitySceneCloneResult result) {
+    if (!result.error_.empty()) {
+        IR_LOG_ERROR("Part array failed: {}", result.error_);
+        return;
+    }
+    commitPartCreation(std::move(result.entities_));
+}
+
+void applyRadialArray(int count, float radius, float perCopyYaw) {
+    if (!g_entitySceneMode || g_entityScene.selectedEntity() == IREntity::kNullEntity) {
+        return;
+    }
+    constexpr vec3 kAxis(0.0f, 0.0f, 1.0f);
+    commitPartClones(g_entityScene.cloneSelected(
+        g_moduleHost.script(),
+        IRPrefab::Arrays::radial(count, kAxis, radius, perCopyYaw),
+        kAxis,
+        count
+    ));
+}
+
+void applyLinearArray(int count, vec3 step) {
+    if (!g_entitySceneMode || g_entityScene.selectedEntity() == IREntity::kNullEntity) {
+        return;
+    }
+    commitPartClones(g_entityScene.cloneSelected(
+        g_moduleHost.script(),
+        IRPrefab::Arrays::linear(count, step),
+        vec3(0.0f, 0.0f, 1.0f),
+        0
+    ));
+}
+
+void toggleRotationalSymmetry() {
+    if (g_symmetry.rotationalOrder_ > 0) {
+        g_symmetry.rotationalOrder_ = 0;
+        return;
+    }
+    const IREntity::EntityId selected = g_entityScene.selectedEntity();
+    for (const EditorPart &part : g_entityScene.parts()) {
+        if (part.entity_ == selected && part.rotationalOrder_ > 1) {
+            g_symmetry.rotationalOrder_ = part.rotationalOrder_;
+            g_symmetry.rotationalAxis_ = part.groupAxis_;
+            return;
+        }
+    }
+}
+
 // Skeleton tree panel widget entity IDs.
 IREntity::EntityId g_skeletonPanel = IREntity::kNullEntity;
 IREntity::EntityId g_skeletonList = IREntity::kNullEntity;
@@ -1300,20 +1376,100 @@ void applyEdit(
     Color placeColor,
     std::uint8_t boneId = 0
 ) {
-    if (!g_symmetry.enableX_ && !g_symmetry.enableY_ && !g_symmetry.enableZ_) {
-        applyEditRaw(voxelSetEntity, set, localIdx, flat, place, placeColor, boneId);
-        return;
+    if (g_symmetry.enableX_ || g_symmetry.enableY_ || g_symmetry.enableZ_) {
+        applyMirrors(localIdx, g_symmetry, g_mirrorScratch);
+    } else {
+        g_mirrorScratch.clear();
+        g_mirrorScratch.push_back(localIdx);
     }
-    applyMirrors(localIdx, g_symmetry, g_mirrorScratch);
-    for (const ivec3 &cell : g_mirrorScratch) {
-        if (cell.x < 0 || cell.x >= set.size_.x || cell.y < 0 || cell.y >= set.size_.y ||
-            cell.z < 0 || cell.z >= set.size_.z)
+
+    const EditorPart *sourcePart = nullptr;
+    g_rotationGroupScratch.clear();
+    g_rotationSetScratch.clear();
+    if (g_symmetry.rotationalOrder_ > 1) {
+        for (const EditorPart &part : g_entityScene.parts()) {
+            if (part.entity_ == voxelSetEntity) {
+                sourcePart = &part;
+                break;
+            }
+        }
+        if (sourcePart != nullptr && sourcePart->groupId_ != 0) {
+            for (const EditorPart &part : g_entityScene.parts()) {
+                if (part.groupId_ == sourcePart->groupId_ &&
+                    part.kind_ == EditorPartKind::VOXEL_SET) {
+                    g_rotationGroupScratch.push_back(&part);
+                    g_rotationSetScratch.push_back(
+                        &IREntity::getComponent<C_VoxelSetNew>(part.entity_)
+                    );
+                }
+            }
+        }
+    }
+
+    if (g_rotationGroupScratch.size() != static_cast<std::size_t>(g_symmetry.rotationalOrder_)) {
+        g_rotationGroupScratch.clear();
+        g_rotationSetScratch.clear();
+    }
+    std::size_t sourceGroupIndex = 0;
+    for (std::size_t i = 0; i < g_rotationGroupScratch.size(); ++i) {
+        if (g_rotationGroupScratch[i]->entity_ == voxelSetEntity) {
+            sourceGroupIndex = i;
+            break;
+        }
+    }
+
+    for (const ivec3 &mirroredCell : g_mirrorScratch) {
+        if (g_rotationGroupScratch.empty()) {
+            if (mirroredCell.x < 0 || mirroredCell.x >= set.size_.x || mirroredCell.y < 0 ||
+                mirroredCell.y >= set.size_.y || mirroredCell.z < 0 ||
+                mirroredCell.z >= set.size_.z) {
+                continue;
+            }
+            const std::size_t mirroredFlat =
+                static_cast<std::size_t>(IRMath::index3DtoIndex1D(mirroredCell, set.size_));
+            if (mirroredFlat < set.voxels_.size()) {
+                applyEditRaw(
+                    voxelSetEntity,
+                    set,
+                    mirroredCell,
+                    mirroredFlat,
+                    place,
+                    placeColor,
+                    boneId
+                );
+            }
             continue;
-        const std::size_t cellFlat =
-            static_cast<std::size_t>(IRMath::index3DtoIndex1D(cell, set.size_));
-        if (cellFlat >= set.voxels_.size())
-            continue;
-        applyEditRaw(voxelSetEntity, set, cell, cellFlat, place, placeColor, boneId);
+        }
+
+        for (std::size_t i = 0; i < g_rotationGroupScratch.size(); ++i) {
+            C_VoxelSetNew &targetSet = *g_rotationSetScratch[i];
+            const int steps = static_cast<int>(i) - static_cast<int>(sourceGroupIndex);
+            const ivec3 targetCell = rotateCell(
+                mirroredCell,
+                targetSet.size_,
+                g_symmetry.rotationalAxis_,
+                steps,
+                g_symmetry.rotationalOrder_
+            );
+            if (targetCell.x < 0 || targetCell.x >= targetSet.size_.x || targetCell.y < 0 ||
+                targetCell.y >= targetSet.size_.y || targetCell.z < 0 ||
+                targetCell.z >= targetSet.size_.z) {
+                continue;
+            }
+            const std::size_t targetFlat =
+                static_cast<std::size_t>(IRMath::index3DtoIndex1D(targetCell, targetSet.size_));
+            if (targetFlat < targetSet.voxels_.size()) {
+                applyEditRaw(
+                    g_rotationGroupScratch[i]->entity_,
+                    targetSet,
+                    targetCell,
+                    targetFlat,
+                    place,
+                    placeColor,
+                    boneId
+                );
+            }
+        }
     }
 }
 
@@ -1354,6 +1510,10 @@ void undoOne() {
     UndoRecord rec = std::move(g_editor.undoRecords_.back());
     g_editor.undoRecords_.pop_back();
     g_editor.undoTotalBytes_ -= rec.byteSize();
+    if (!rec.createdParts_.empty()) {
+        g_entityScene.removeParts(rec.createdParts_);
+        selectEditorPart(g_entityScene.selectedIndex());
+    }
     // Replay in reverse so overlapping edits inside a stroke restore
     // in last-write-wins order — same property the forward edit chain
     // produced when authoring. Voxel-set entities are allocated once
@@ -2609,6 +2769,13 @@ bool evaluatePartTransformCheck(const void *context, std::string &actual) {
     return equal == check.expectEqual_;
 }
 
+bool evaluatePartCountCheck(const void *context, std::string &actual) {
+    const PartCountCheck &check = *static_cast<const PartCountCheck *>(context);
+    const int count = static_cast<int>(g_entityScene.parts().size());
+    actual = "parts=" + std::to_string(count) + " want=" + std::to_string(check.expected_);
+    return count == check.expected_;
+}
+
 // Reads one SliderCheck against the live ANIM panel widget it names — the
 // positive fire for dragGuiSlider: a drag that missed the track never
 // presses the widget, so its value stays put and this fails instead of
@@ -3016,7 +3183,8 @@ int main(int argc, char **argv) {
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
         "face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | tier_scrub | "
-        "module_loaded | component_attach | component_field_page | component_field_key",
+        "radial_array | nway_symmetry | module_loaded | component_attach | "
+        "component_field_page | component_field_key",
         {"none",
          "drag_probe",
          "place_below",
@@ -3028,6 +3196,8 @@ int main(int argc, char **argv) {
          "tree",
          "parts_roundtrip",
          "tier_scrub",
+         "radial_array",
+         "nway_symmetry",
          "module_loaded",
          "component_attach",
          "component_field_page",
@@ -3140,6 +3310,9 @@ static void updateSwatchSelection(const std::vector<IREntity::EntityId> &swatche
 
 void initSystems() {
     using IRVoxelEditor::RotateParams;
+
+    IRVoxelEditor::g_rotationGroupScratch.reserve(IRVoxelEditor::kArrayMaxCount);
+    IRVoxelEditor::g_rotationSetScratch.reserve(IRVoxelEditor::kArrayMaxCount);
 
     // Loft-mask render: draws the XZ and YZ mask grids onto the GUI canvas.
     // Runs in the RENDER pipeline after TEXT_TO_TRIXEL (canvas clear) so
@@ -3443,6 +3616,9 @@ void initSystems() {
                     if (sym.enableZ_)
                         status += " Z";
                 }
+                if (sym.rotationalOrder_ > 1) {
+                    status += " | ROT " + std::to_string(sym.rotationalOrder_);
+                }
                 IRPrefab::Widget::setLabelText(IRVoxelEditor::g_fillModeLabel, std::move(status));
             }
 
@@ -3450,6 +3626,14 @@ void initSystems() {
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_layerPanel) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_partsPanel) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_lodPanel) ||
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_arrayPanel) ||
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_arrayTypeList) ||
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_arrayCountSlider) ||
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_arrayDistanceSlider) ||
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_arrayStepYSlider) ||
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_arrayStepZSlider) ||
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_arrayYawSlider) ||
+                              IRPrefab::Widget::isHovered(IRVoxelEditor::g_arrayApplyButton) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_bakePanel) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_bonePaint.bonePanel_) ||
                               IRPrefab::Widget::isHovered(IRVoxelEditor::g_skeletonPanel) ||
@@ -3941,6 +4125,37 @@ void initSystems() {
         }
     );
 
+    auto arraySystem = IRSystem::createSystem<C_GuiElement>(
+        "EditorArray",
+        [](const C_GuiElement &) {},
+        []() {},
+        []() {
+            using namespace IRVoxelEditor;
+            if (g_arrayApplyButton == IREntity::kNullEntity ||
+                !IRPrefab::Widget::wasClicked(g_arrayApplyButton)) {
+                return;
+            }
+            const int count =
+                static_cast<int>(IRMath::round(IRPrefab::Widget::sliderValue(g_arrayCountSlider)));
+            const float x = IRPrefab::Widget::sliderValue(g_arrayDistanceSlider);
+            const int type = IRPrefab::Widget::listSelectedIndex(g_arrayTypeList);
+            if (type == 1) {
+                applyLinearArray(
+                    count,
+                    vec3(
+                        x,
+                        IRPrefab::Widget::sliderValue(g_arrayStepYSlider),
+                        IRPrefab::Widget::sliderValue(g_arrayStepZSlider)
+                    )
+                );
+                return;
+            }
+            const float yaw =
+                IRPrefab::Widget::sliderValue(g_arrayYawSlider) * IRMath::kPi / 180.0f;
+            applyRadialArray(count, x, yaw);
+        }
+    );
+
     // RECIPES panel: a list click re-targets the parameter sliders, APPLY
     // writes the selected recipe's cells. COMPONENTS: ATTACH / DETACH and the
     // field edits. Runs after WIDGET_APPLY_LIST / WIDGET_APPLY_SLIDER /
@@ -4114,6 +4329,7 @@ void initSystems() {
          lodPanelSyncSystem,
          loftInputSystem,
          bakeSystem,
+         arraySystem,
          recipesSystem,
          paletteUpdateSystem,
          bonePaintUpdateSystem,
@@ -4310,7 +4526,7 @@ void initCommands() {
             logSymmetry();
         },
         IRInput::kModifierNone,
-        IRInput::kModifierNone,
+        IRInput::kModifierControl,
         "MIRROR Y",
         "TOGGLE Y-AXIS MIRROR SYMMETRY"
     );
@@ -4344,6 +4560,37 @@ void initCommands() {
         IRInput::kModifierControl,
         "MIRROR Z",
         "TOGGLE Z-AXIS MIRROR SYMMETRY"
+    );
+
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonR,
+        []() { IRVoxelEditor::applyRadialArray(6, 4.0f, 0.0f); },
+        IRInput::kModifierControl,
+        IRInput::kModifierNone,
+        "RADIAL ARRAY",
+        "MAKE SIX RADIAL COPIES OF THE SELECTED PART"
+    );
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonL,
+        []() { IRVoxelEditor::applyLinearArray(3, IRMath::vec3(2.0f, 0.0f, 0.0f)); },
+        IRInput::kModifierControl,
+        IRInput::kModifierNone,
+        "LINEAR ARRAY",
+        "MAKE THREE LINEAR COPIES OF THE SELECTED PART"
+    );
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonY,
+        []() { IRVoxelEditor::toggleRotationalSymmetry(); },
+        IRInput::kModifierControl,
+        IRInput::kModifierNone,
+        "ROTATIONAL SYMMETRY",
+        "TOGGLE N-WAY SYMMETRY FOR THE SELECTED ARRAY GROUP"
     );
 
     // V — toggle erase-fill mode: the left-click place / box /
@@ -4553,7 +4800,7 @@ void initCommands() {
             );
         },
         IRInput::kModifierNone,
-        IRInput::kModifierNone,
+        IRInput::kModifierControl,
         "LOOP MODE",
         "TOGGLE LOOP / PING-PONG PLAYBACK"
     );
@@ -4741,7 +4988,7 @@ void initCommands() {
             IRVoxelEditor::resetJointChain();
         },
         IRInput::kModifierNone,
-        IRInput::kModifierNone,
+        IRInput::kModifierControl,
         "NEW CHAIN",
         "START A NEW BONE CHAIN"
     );
@@ -5448,6 +5695,69 @@ void initEntities() {
     );
     IRVoxelEditor::syncLodBandSliders();
 
+    IRVoxelEditor::g_arrayPanel = IRPrefab::Widget::makePanel(
+        IRVoxelEditor::kArrayPanelPos,
+        IRVoxelEditor::kArrayPanelSize,
+        "ARRAY"
+    );
+    IREntity::setComponent(
+        IRVoxelEditor::g_arrayPanel,
+        IRComponents::C_HitBox2DGui{IRVoxelEditor::kArrayPanelSize}
+    );
+    IREntity::getComponent<IRComponents::C_Widget>(IRVoxelEditor::g_arrayPanel).zOrder_ = -1;
+    IRVoxelEditor::g_arrayTypeList = IRPrefab::Widget::makeList(
+        ivec2(IRVoxelEditor::kArrayPanelPos.x + 4, IRVoxelEditor::kArrayPanelPos.y + 18),
+        ivec2(122, 28),
+        {"RADIAL", "LINEAR"},
+        0,
+        13
+    );
+    IRVoxelEditor::g_arrayCountSlider = IRPrefab::Widget::makeSlider(
+        IRVoxelEditor::kArrayCountSliderGeometry.pos_,
+        ivec2(122, 14),
+        "COUNT",
+        2.0f,
+        static_cast<float>(IRVoxelEditor::kArrayMaxCount),
+        6.0f
+    );
+    IRVoxelEditor::g_arrayDistanceSlider = IRPrefab::Widget::makeSlider(
+        ivec2(IRVoxelEditor::kArrayPanelPos.x + 4, IRVoxelEditor::kArrayPanelPos.y + 68),
+        ivec2(122, 14),
+        "RADIUS/X",
+        -12.0f,
+        12.0f,
+        4.0f
+    );
+    IRVoxelEditor::g_arrayStepYSlider = IRPrefab::Widget::makeSlider(
+        ivec2(IRVoxelEditor::kArrayPanelPos.x + 4, IRVoxelEditor::kArrayPanelPos.y + 86),
+        ivec2(122, 14),
+        "STEP Y",
+        -12.0f,
+        12.0f,
+        0.0f
+    );
+    IRVoxelEditor::g_arrayStepZSlider = IRPrefab::Widget::makeSlider(
+        ivec2(IRVoxelEditor::kArrayPanelPos.x + 4, IRVoxelEditor::kArrayPanelPos.y + 104),
+        ivec2(122, 14),
+        "STEP Z",
+        -12.0f,
+        12.0f,
+        0.0f
+    );
+    IRVoxelEditor::g_arrayYawSlider = IRPrefab::Widget::makeSlider(
+        ivec2(IRVoxelEditor::kArrayPanelPos.x + 4, IRVoxelEditor::kArrayPanelPos.y + 122),
+        ivec2(122, 14),
+        "COPY YAW",
+        -180.0f,
+        180.0f,
+        0.0f
+    );
+    IRVoxelEditor::g_arrayApplyButton = IRPrefab::Widget::makeButton(
+        ivec2(IRVoxelEditor::kArrayPanelPos.x + 4, IRVoxelEditor::kArrayPanelPos.y + 142),
+        ivec2(122, 14),
+        "APPLY"
+    );
+
     // Parametric shape bake panel. Sits below the LAYERS panel.
     // Shape list selects the SDF primitive; P1/P2 sliders set the primary and
     // secondary params; BAKE writes DENSE voxels into the active entity.
@@ -5492,7 +5802,7 @@ void initEntities() {
     // Clicking a swatch sets g_bonePaint.activeBoneIdx_; N enables bone-paint mode.
     // Third column (x=256) atop the SKELETON panel — mirrors the LAYERS/BAKE
     // stack in column two so both bone panels stay on-screen.
-    constexpr ivec2 kBonePanelPos{256, 240};
+    constexpr ivec2 kBonePanelPos{378, 240};
     constexpr ivec2 kBonePanelSize{120, 96};
     constexpr int kBoneSwatchSize = 20;
     constexpr int kBoneSwatchGap = 4;
@@ -5533,7 +5843,7 @@ void initEntities() {
     // selects that joint as the active bone (for B-chaining). The rename
     // row writes C_JointName; the reparent row rewrites the CHILD_OF
     // relation and updates parentIdx_ + bindPose_.
-    constexpr ivec2 kSkeletonPanelPos{256, 342};
+    constexpr ivec2 kSkeletonPanelPos{378, 342};
     constexpr ivec2 kSkeletonPanelSize{120, 114};
     IRVoxelEditor::g_skeletonPanel =
         IRPrefab::Widget::makePanel(kSkeletonPanelPos, kSkeletonPanelSize, "SKELETON");
@@ -5597,6 +5907,9 @@ void initEntities() {
         {IRVoxelEditor::g_lodCoarseSlider, "COARSE: coarsest tier the selected part exists at."},
         {IRVoxelEditor::g_lodTierSlider, "TIER: preview the parts at a tier (, and . step it)."},
         {IRVoxelEditor::g_lodFollowCheckbox, "FOLLOW ZOOM: preview the camera zoom's own tier."},
+        {IRVoxelEditor::g_arrayPanel,
+         "ARRAY: radial or linear part copies; each remains editable."},
+        {IRVoxelEditor::g_arrayApplyButton, "APPLY: create the configured part array as one undo."},
         {IRVoxelEditor::g_bakePanel, "BAKE: pick a shape, set P1/P2, then BAKE the active entity."},
         {IRVoxelEditor::g_bakeShapeList, "SHAPE: choose the SDF primitive to voxelize."},
         {IRVoxelEditor::g_bakeParam1Slider, "P1: primary shape parameter (size / radius)."},

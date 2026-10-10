@@ -22,6 +22,7 @@ add_executable(IrredenEngineTest
   command/keyboard_dispatch_test.cpp
   # Replaces the global operator new/delete for the whole binary.
   common/allocation_counter.cpp
+  common/array_transforms_test.cpp
   common/command_registry_test.cpp
   common/ir_args_test.cpp
   common/ir_platform_test.cpp
