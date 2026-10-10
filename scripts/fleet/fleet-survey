@@ -35,8 +35,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import fleet_branch_match  # noqa: E402
 import fleet_blocked_by  # noqa: E402
+import fleet_branch_match  # noqa: E402
 import fleet_completion  # noqa: E402
 import fleet_epic_membership  # noqa: E402
 import fleet_github  # noqa: E402
