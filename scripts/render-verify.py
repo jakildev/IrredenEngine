@@ -105,12 +105,17 @@ def _demos_root(worktree: Path) -> Path:
     return worktree / "creations" / "demos"
 
 
+def _manifest_roots(worktree: Path) -> list[Path]:
+    creations = worktree / "creations"
+    return [creations / "demos", creations / "editors"]
+
+
 def _manifest_path(demo_dir: Path) -> Path:
     return demo_dir / REFERENCES_SUBDIR / MANIFEST_NAME
 
 
 def _declared_targets(worktree: Path) -> dict[str, str]:
-    """Map each committed manifest's declared ``target`` to its demo dir name.
+    """Map each committed manifest's ``target`` to its creation-relative dir.
 
     The manifest is the authoritative statement of which CMake target a
     reference set gates; ``_target_to_demo_name`` is only an inference over the
@@ -122,10 +127,16 @@ def _declared_targets(worktree: Path) -> dict[str, str]:
     Insertion order follows the glob's sort, so ``--all`` sweeps demos in a
     stable, filesystem-independent order.
     """
-    demos_root = _demos_root(worktree)
+    creations_root = worktree / "creations"
     mapping: dict[str, str] = {}
-    for path in sorted(demos_root.glob(MANIFEST_GLOB)):
-        demo = path.relative_to(demos_root).parts[0]
+    paths = sorted(
+        path
+        for root in _manifest_roots(worktree)
+        for path in root.glob(MANIFEST_GLOB)
+    )
+    for path in paths:
+        creation_dir = path.parents[2]
+        creation = creation_dir.relative_to(creations_root).as_posix()
         try:
             with path.open() as f:
                 data = json.load(f)
@@ -140,13 +151,13 @@ def _declared_targets(worktree: Path) -> dict[str, str]:
         if not isinstance(target, str) or not target:
             continue
         prev = mapping.get(target)
-        if prev is not None and prev != demo:
+        if prev is not None and prev != creation:
             raise SystemExit(
                 f"two manifests declare target '{target}': "
-                f"creations/demos/{prev} and creations/demos/{demo} — a target "
+                f"creations/{prev} and creations/{creation} — a target "
                 f"must name exactly one reference set"
             )
-        mapping[target] = demo
+        mapping[target] = creation
     return mapping
 
 
@@ -161,22 +172,24 @@ def _resolve_demo_dir(worktree: Path, target: str,
          historical behavior, kept so a demo can still be run before its
          manifest declares a target.
     """
+    creations_root = worktree / "creations"
     demos_root = _demos_root(worktree)
     if explicit:
-        demo_dir = demos_root / explicit
+        demo_dir = creations_root / explicit if "/" in explicit else demos_root / explicit
         if not demo_dir.exists():
             raise SystemExit(f"demo dir not found: {demo_dir}")
         return demo_dir
 
     declared = _declared_targets(worktree).get(target)
     if declared is not None:
-        return demos_root / declared
+        return creations_root / declared
 
     demo_dir = demos_root / _target_to_demo_name(target)
     if not demo_dir.exists():
         raise SystemExit(
             f"no demo found for target '{target}': no manifest matching "
-            f"{demos_root}/{MANIFEST_GLOB} declares it, and the name-inferred "
+            f"{', '.join(str(root / MANIFEST_GLOB) for root in _manifest_roots(worktree))} "
+            f"declares it, and the name-inferred "
             f"fallback {demo_dir} does not exist. Pass --demo <dir> to name "
             f"the directory explicitly."
         )
@@ -1095,13 +1108,13 @@ def main(argv: list[str] | None = None) -> int:
     if not declared:
         raise SystemExit(
             f"--all found no manifest declaring a 'target' under "
-            f"{_demos_root(worktree)}/{MANIFEST_GLOB}"
+            f"{', '.join(str(root / MANIFEST_GLOB) for root in _manifest_roots(worktree))}"
         )
     print(f"[render-verify] --all: {len(declared)} demo(s) — "
           f"{', '.join(declared)}")
 
     results: list[dict[str, Any]] = []
-    for target, demo in declared.items():
+    for target, creation in declared.items():
         print()
         print("=" * 76)
         # One broken demo must not truncate the sweep — that would silently
@@ -1110,10 +1123,10 @@ def main(argv: list[str] | None = None) -> int:
             results.append(_verify_one(
                 args=args, worktree=worktree, build_dir=build_dir,
                 backend=backend, target=target,
-                demo_dir=_demos_root(worktree) / demo))
+                demo_dir=worktree / "creations" / creation))
         except SystemExit as e:
             print(f"[render-verify] {target}: {e}", file=sys.stderr)
-            results.append({"target": target, "demo": demo, "rc": 1,
+            results.append({"target": target, "demo": creation, "rc": 1,
                             "checked": 0, "failed": 0, "skipped": 0,
                             "error": str(e)})
 

@@ -600,6 +600,7 @@ class DemoResolution(unittest.TestCase):
         self._tmp = tempfile.TemporaryDirectory()
         self.worktree = Path(self._tmp.name)
         self.demos = self.worktree / "creations" / "demos"
+        self.editors = self.worktree / "creations" / "editors"
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -613,19 +614,35 @@ class DemoResolution(unittest.TestCase):
         (refs / "manifest.json").write_text(body)
         return d
 
+    def _editor(self, name: str, target: str):
+        d = self.editors / name
+        refs = d / "test" / "references"
+        refs.mkdir(parents=True, exist_ok=True)
+        (refs / "manifest.json").write_text(json.dumps(
+            {"demo": name, "target": target, "shots": ["s0"]}))
+        return d
+
     # ── _declared_targets ────────────────────────────────────────────────
     def test_maps_every_declaring_manifest(self):
         self._demo("shape_debug", "IRShapeDebug")
         self._demo("lighting", "IRLightingSdfBlocker")
         self.assertEqual(_declared_targets(self.worktree),
-                         {"IRLightingSdfBlocker": "lighting",
-                          "IRShapeDebug": "shape_debug"})
+                         {"IRLightingSdfBlocker": "demos/lighting",
+                          "IRShapeDebug": "demos/shape_debug"})
+
+    def test_declared_targets_include_editors_root(self):
+        editor = self._editor("voxel_editor", "IRVoxelEditor")
+        self.assertEqual(_declared_targets(self.worktree),
+                         {"IRVoxelEditor": "editors/voxel_editor"})
+        self.assertEqual(
+            _resolve_demo_dir(self.worktree, "IRVoxelEditor", None),
+            editor)
 
     def test_manifest_without_target_is_ignored_not_fatal(self):
         self._demo("legacy", None)          # "target": null
         self._demo("lighting", "IRLightingSdfBlocker")
         self.assertEqual(_declared_targets(self.worktree),
-                         {"IRLightingSdfBlocker": "lighting"})
+                         {"IRLightingSdfBlocker": "demos/lighting"})
 
     def test_unreadable_manifest_is_skipped_with_a_warning(self):
         # One malformed manifest must not make every OTHER target
@@ -635,7 +652,7 @@ class DemoResolution(unittest.TestCase):
         err = io.StringIO()
         with redirect_stderr(err):
             got = _declared_targets(self.worktree)
-        self.assertEqual(got, {"IRLightingSdfBlocker": "lighting"})
+        self.assertEqual(got, {"IRLightingSdfBlocker": "demos/lighting"})
         self.assertIn("broken", err.getvalue())
 
     def test_two_manifests_declaring_one_target_raises(self):
@@ -665,6 +682,11 @@ class DemoResolution(unittest.TestCase):
         self._demo("other", "IROther")
         got = _resolve_demo_dir(self.worktree, "IRLightingSdfBlocker", "other")
         self.assertEqual(got, self.demos / "other")
+
+    def test_explicit_editor_path_resolves(self):
+        editor = self._editor("voxel_editor", "IRVoxelEditor")
+        got = _resolve_demo_dir(self.worktree, "IRVoxelEditor", "editors/voxel_editor")
+        self.assertEqual(got, editor)
 
     def test_explicit_demo_that_does_not_exist_raises(self):
         self._demo("lighting", "IRLightingSdfBlocker")
@@ -700,8 +722,8 @@ class CommittedManifestsResolve(unittest.TestCase):
     """
 
     def _manifests(self):
-        return sorted((REPO_ROOT / "creations" / "demos")
-                      .glob(_rv.MANIFEST_GLOB))
+        return sorted(path for root in _rv._manifest_roots(REPO_ROOT)
+                      for path in root.glob(_rv.MANIFEST_GLOB))
 
     def test_every_committed_manifest_declares_a_target(self):
         missing = [str(p.relative_to(REPO_ROOT)) for p in self._manifests()
@@ -713,11 +735,11 @@ class CommittedManifestsResolve(unittest.TestCase):
         declared = _declared_targets(REPO_ROOT)
         self.assertEqual(len(declared), len(self._manifests()),
                          "a committed manifest dropped out of --all's demo set")
-        for target, demo in declared.items():
+        for target, creation in declared.items():
             with self.subTest(target=target):
                 self.assertEqual(
                     _resolve_demo_dir(REPO_ROOT, target, None),
-                    REPO_ROOT / "creations" / "demos" / demo)
+                    REPO_ROOT / "creations" / creation)
 
     def test_the_tree_still_contains_a_demo_inference_gets_wrong(self):
         # If this ever fails because every demo dir matches its target, the
@@ -725,9 +747,9 @@ class CommittedManifestsResolve(unittest.TestCase):
         # be read, not silenced: it means the fixture for this bug is gone.
         declared = _declared_targets(REPO_ROOT)
         mismatched = {t: d for t, d in declared.items()
-                      if _target_to_demo_name(t) != d}
+                      if _target_to_demo_name(t) != Path(d).name}
         self.assertIn("IRLightingSdfBlocker", mismatched)
-        self.assertEqual(mismatched["IRLightingSdfBlocker"], "lighting")
+        self.assertEqual(mismatched["IRLightingSdfBlocker"], "demos/lighting")
 
 
 class RunResultToken(unittest.TestCase):
