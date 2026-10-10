@@ -1,0 +1,323 @@
+{
+  "host": "macOS / Metal",
+  "base_commit": "3d28ef4194afbcfa1b67d6c51e4bddc7d230ade5",
+  "source": "working tree for this commit",
+  "comparisons": {
+    "beauty": {
+      "commands": {
+        "off": [
+          "fleet-run",
+          "IRCanvasStress",
+          "--auto-screenshot",
+          "120",
+          "--no-auto-rotate",
+          "--no-spin"
+        ],
+        "on": [
+          "fleet-run",
+          "IRCanvasStress",
+          "--auto-screenshot",
+          "120",
+          "--no-auto-rotate",
+          "--no-spin",
+          "--config-preset",
+          "/tmp/codex-observer-timing-on.lua"
+        ]
+      },
+      "png_sha256": {
+        "0.png": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+        "1.png": "0a007b4b30c3901be1b80da83089114c4d27f36397d505805d0d850f4699741e",
+        "2.png": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+        "3.png": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+        "4.png": "5106319650cc61139b32623160e93f0fdd69d20965d57a8b543e3fbc1e2ac077",
+        "5.png": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+        "6.png": "58f512a26410227ed02642e663c86e418d6c2c9b88de8d4d546d249aa4375129",
+        "7.png": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+        "8.png": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+        "9.png": "58f512a26410227ed02642e663c86e418d6c2c9b88de8d4d546d249aa4375129",
+        "10.png": "f2754924750f4848d54682d6cc014a0017020058eab057a862e4d7eda0b9f111",
+        "11.png": "58f512a26410227ed02642e663c86e418d6c2c9b88de8d4d546d249aa4375129"
+      },
+      "exact_pairs": 12,
+      "run_evidence": {
+        "off": [
+          "[2026-10-10 00:44:16.030] [EngineLog] [warning] REBUILD_GRID_VOXELS span cap: dropped 12 of 1740 covered dest cells (span=1728, surface=610) \u2014 new high-water for this run",
+          "[2026-10-10 00:44:18.681] [ClientLog] [info] AutoScreenshot 1/12: so3_smooth_sweep (zoom=1, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:44:20.059] [ClientLog] [info] AutoScreenshot 2/12: so3_offsnap_disc (zoom=1, cam=(0,0), yaw=0.7853982, cull=0)",
+          "[2026-10-10 00:44:21.575] [ClientLog] [info] AutoScreenshot 3/12: so3_wide_parity (zoom=0.65, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:44:22.991] [ClientLog] [info] AutoScreenshot 4/12: so3_grid_cross (zoom=0.45, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:44:24.395] [ClientLog] [info] AutoScreenshot 5/12: so3_offsnap_wide (zoom=0.65, cam=(0,0), yaw=0.5235988, cull=0)",
+          "[2026-10-10 00:44:25.856] [ClientLog] [info] AutoScreenshot 6/12: revoxelize_solids (zoom=1, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:44:27.230] [ClientLog] [info] AutoScreenshot 7/12: revoxelize_solids_zoom (zoom=2.2, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:44:28.569] [ClientLog] [info] AutoScreenshot 8/12: orbit_overview (zoom=0.32, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:44:29.952] [ClientLog] [info] AutoScreenshot 9/12: shadow_overlay_floor (zoom=0.55, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:44:31.313] [ClientLog] [info] AutoScreenshot 10/12: revox_coverage (zoom=2.4, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:44:32.616] [ClientLog] [info] AutoScreenshot 11/12: smallzoom_low (zoom=0.5, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:44:33.962] [ClientLog] [info] AutoScreenshot 12/12: smallzoom_high (zoom=2, cam=(0,0), yaw=0, cull=0)",
+          "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+        ],
+        "on": [
+          "[2026-10-10 00:44:48.770] [EngineLog] [info] Config preset overlay: /tmp/codex-observer-timing-on.lua",
+          "[2026-10-10 00:44:49.661] [EngineLog] [warning] REBUILD_GRID_VOXELS span cap: dropped 12 of 1740 covered dest cells (span=1728, surface=610) \u2014 new high-water for this run",
+          "[2026-10-10 00:44:52.349] [ClientLog] [info] AutoScreenshot 1/12: so3_smooth_sweep (zoom=1, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:44:53.747] [ClientLog] [info] AutoScreenshot 2/12: so3_offsnap_disc (zoom=1, cam=(0,0), yaw=0.7853982, cull=0)",
+          "[2026-10-10 00:44:55.292] [ClientLog] [info] AutoScreenshot 3/12: so3_wide_parity (zoom=0.65, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:44:56.668] [ClientLog] [info] AutoScreenshot 4/12: so3_grid_cross (zoom=0.45, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:44:58.043] [ClientLog] [info] AutoScreenshot 5/12: so3_offsnap_wide (zoom=0.65, cam=(0,0), yaw=0.5235988, cull=0)",
+          "[2026-10-10 00:44:59.552] [ClientLog] [info] AutoScreenshot 6/12: revoxelize_solids (zoom=1, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:45:00.927] [ClientLog] [info] AutoScreenshot 7/12: revoxelize_solids_zoom (zoom=2.2, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:45:02.257] [ClientLog] [info] AutoScreenshot 8/12: orbit_overview (zoom=0.32, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:45:03.643] [ClientLog] [info] AutoScreenshot 9/12: shadow_overlay_floor (zoom=0.55, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:45:05.067] [ClientLog] [info] AutoScreenshot 10/12: revox_coverage (zoom=2.4, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:45:06.425] [ClientLog] [info] AutoScreenshot 11/12: smallzoom_low (zoom=0.5, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:45:07.811] [ClientLog] [info] AutoScreenshot 12/12: smallzoom_high (zoom=2, cam=(0,0), yaw=0, cull=0)",
+          "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+        ]
+      }
+    },
+    "shadow": {
+      "commands": {
+        "off": [
+          "fleet-run",
+          "IRCanvasStress",
+          "--auto-screenshot",
+          "120",
+          "--no-auto-rotate",
+          "--no-spin",
+          "--debug-overlay",
+          "shadow"
+        ],
+        "on": [
+          "fleet-run",
+          "IRCanvasStress",
+          "--auto-screenshot",
+          "120",
+          "--no-auto-rotate",
+          "--no-spin",
+          "--debug-overlay",
+          "shadow",
+          "--config-preset",
+          "/tmp/codex-observer-timing-on.lua"
+        ]
+      },
+      "png_sha256": {
+        "0.png": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+        "1.png": "6d40f2d8b852f83a8a96e358cfa826a9e184f35d6569651ee2f7bd1a53f6e040",
+        "2.png": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+        "3.png": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+        "4.png": "fb0e6762e66748b6c7c784168eeb7dbb24fbd656a9f8c8878ae2046c77bfb1cd",
+        "5.png": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+        "6.png": "3537d64185b38cdcefbb64927a49614847e45d85a8a1897525375671d67a975f",
+        "7.png": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+        "8.png": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+        "9.png": "3537d64185b38cdcefbb64927a49614847e45d85a8a1897525375671d67a975f",
+        "10.png": "b7e0c74b6903a625b8c25adb604b7379d599decba3ccb404ac71a7d71314f6f0",
+        "11.png": "3537d64185b38cdcefbb64927a49614847e45d85a8a1897525375671d67a975f"
+      },
+      "exact_pairs": 12,
+      "run_evidence": {
+        "off": [
+          "[2026-10-10 00:38:23.592] [EngineLog] [warning] REBUILD_GRID_VOXELS span cap: dropped 12 of 1740 covered dest cells (span=1728, surface=610) \u2014 new high-water for this run",
+          "[2026-10-10 00:38:26.149] [ClientLog] [info] AutoScreenshot 1/12: so3_smooth_sweep (zoom=1, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:38:27.531] [ClientLog] [info] AutoScreenshot 2/12: so3_offsnap_disc (zoom=1, cam=(0,0), yaw=0.7853982, cull=0)",
+          "[2026-10-10 00:38:29.016] [ClientLog] [info] AutoScreenshot 3/12: so3_wide_parity (zoom=0.65, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:38:30.472] [ClientLog] [info] AutoScreenshot 4/12: so3_grid_cross (zoom=0.45, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:38:31.872] [ClientLog] [info] AutoScreenshot 5/12: so3_offsnap_wide (zoom=0.65, cam=(0,0), yaw=0.5235988, cull=0)",
+          "[2026-10-10 00:38:33.391] [ClientLog] [info] AutoScreenshot 6/12: revoxelize_solids (zoom=1, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:38:34.864] [ClientLog] [info] AutoScreenshot 7/12: revoxelize_solids_zoom (zoom=2.2, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:38:36.531] [ClientLog] [info] AutoScreenshot 8/12: orbit_overview (zoom=0.32, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:38:37.963] [ClientLog] [info] AutoScreenshot 9/12: shadow_overlay_floor (zoom=0.55, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:38:39.375] [ClientLog] [info] AutoScreenshot 10/12: revox_coverage (zoom=2.4, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:38:40.804] [ClientLog] [info] AutoScreenshot 11/12: smallzoom_low (zoom=0.5, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:38:42.289] [ClientLog] [info] AutoScreenshot 12/12: smallzoom_high (zoom=2, cam=(0,0), yaw=0, cull=0)",
+          "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+        ],
+        "on": [
+          "[2026-10-10 00:43:37.887] [EngineLog] [info] Config preset overlay: /tmp/codex-observer-timing-on.lua",
+          "[2026-10-10 00:43:38.203] [EngineLog] [warning] REBUILD_GRID_VOXELS span cap: dropped 12 of 1740 covered dest cells (span=1728, surface=610) \u2014 new high-water for this run",
+          "[2026-10-10 00:43:40.736] [ClientLog] [info] AutoScreenshot 1/12: so3_smooth_sweep (zoom=1, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:43:42.126] [ClientLog] [info] AutoScreenshot 2/12: so3_offsnap_disc (zoom=1, cam=(0,0), yaw=0.7853982, cull=0)",
+          "[2026-10-10 00:43:43.656] [ClientLog] [info] AutoScreenshot 3/12: so3_wide_parity (zoom=0.65, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:43:45.070] [ClientLog] [info] AutoScreenshot 4/12: so3_grid_cross (zoom=0.45, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:43:46.485] [ClientLog] [info] AutoScreenshot 5/12: so3_offsnap_wide (zoom=0.65, cam=(0,0), yaw=0.5235988, cull=0)",
+          "[2026-10-10 00:43:48.020] [ClientLog] [info] AutoScreenshot 6/12: revoxelize_solids (zoom=1, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:43:49.409] [ClientLog] [info] AutoScreenshot 7/12: revoxelize_solids_zoom (zoom=2.2, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:43:50.779] [ClientLog] [info] AutoScreenshot 8/12: orbit_overview (zoom=0.32, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:43:52.165] [ClientLog] [info] AutoScreenshot 9/12: shadow_overlay_floor (zoom=0.55, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:43:53.545] [ClientLog] [info] AutoScreenshot 10/12: revox_coverage (zoom=2.4, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:43:54.877] [ClientLog] [info] AutoScreenshot 11/12: smallzoom_low (zoom=0.5, cam=(0,0), yaw=0, cull=0)",
+          "[2026-10-10 00:43:56.257] [ClientLog] [info] AutoScreenshot 12/12: smallzoom_high (zoom=2, cam=(0,0), yaw=0, cull=0)",
+          "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+        ]
+      }
+    }
+  },
+  "prior_shadow_capture": {
+    "reference": "../shadow-fallback-cleanup/README.md",
+    "exact_pairs": 12
+  },
+  "source_sha256": {
+    "engine/prefabs/irreden/render/gpu_stage_timing_observer.hpp": "c706ae9467714d257a85594ca4a11ef05abe9945e4989cc37af4e5e1df540394",
+    "engine/system/include/irreden/system/system_manager.hpp": "ba8a2e387f20dcb2aaddd906591c54fd0d2bface8d333f65205584a840881c6a"
+  },
+  "tests": {
+    "green": {
+      "tests": 28,
+      "failures": 0,
+      "cases": [
+        {
+          "name": "GpuTimestampRingTest.BusySlotsSurviveUntilTheirOwnResultsComplete",
+          "failed": false
+        },
+        {
+          "name": "GpuTimestampRingTest.AllocationFailuresStayInertAndAreNotDestroyed",
+          "failed": false
+        },
+        {
+          "name": "GpuTimestampRingTest.DeviceRecommendationIsClampedAndUnsupportedIsInert",
+          "failed": false
+        },
+        {
+          "name": "GpuTimestampPollTest.SubstageReusesInvalidSlotWithoutRecordingZero",
+          "failed": false
+        },
+        {
+          "name": "GpuTimestampPollTest.ObserverReusesInvalidSlotWithoutRecordingZero",
+          "failed": false
+        },
+        {
+          "name": "GpuTimestampPollTest.CardinalElectionRecordsOnlyItsOwnStage",
+          "failed": false
+        },
+        {
+          "name": "GpuTimestampPollTest.ExistingBooleanBackendAdaptsToPolling",
+          "failed": false
+        },
+        {
+          "name": "GpuTimestampPollTest.LegacyObserverStillFinishesAndSubstageRemainsDisabled",
+          "failed": false
+        },
+        {
+          "name": "GpuTimestampPollTest.DisabledGpuTimingDoesNotWriteOrFinish",
+          "failed": false
+        },
+        {
+          "name": "GpuTimestampPollTest.ObserverOwnsOnlySuccessfulAllocations",
+          "failed": false
+        },
+        {
+          "name": "GpuTimestampPollTest.RepeatedTagPreservesHandlesAndPendingSample",
+          "failed": false
+        },
+        {
+          "name": "GpuTimestampPollTest.RetagReleasesOldHandlesWithoutRelabelingPendingSamples",
+          "failed": false
+        },
+        {
+          "name": "GpuTimestampPollTest.RetagAfterPartialAllocationOwnsOnlyNewValidHandles",
+          "failed": false
+        },
+        {
+          "name": "GpuTimestampPollTest.RegistrationFollowsManagerClearAndSameAddressReconstruction",
+          "failed": false
+        },
+        {
+          "name": "GpuTimestampPollTest.RegistrationUsesEachLiveManagersObserver",
+          "failed": false
+        },
+        {
+          "name": "GpuTimestampPollTest.SubstageDestructionDoesNotTouchDevice",
+          "failed": false
+        },
+        {
+          "name": "TickObserverLookupTest.FindsFirstCastableObserverAndReportsTypeMisses",
+          "failed": false
+        },
+        {
+          "name": "TickObserverLookupTest.SimultaneouslyLiveManagersKeepSeparateObservers",
+          "failed": false
+        },
+        {
+          "name": "TickObserverLookupTest.UnregisterAndClearRemoveOwnedMatchesAndAllowRegistration",
+          "failed": false
+        },
+        {
+          "name": "TickObserverLookupTest.RejectsWorkerLookup",
+          "failed": false
+        },
+        {
+          "name": "RegisterSystemTest.MemberTickFiresPerEntity",
+          "failed": false
+        },
+        {
+          "name": "RegisterSystemTest.MemberFieldsPersistAcrossTicks",
+          "failed": false
+        },
+        {
+          "name": "RegisterSystemTest.BeginAndEndFireWithZeroEntities",
+          "failed": false
+        },
+        {
+          "name": "RegisterSystemTest.DistinctSystemsHaveIndependentParams",
+          "failed": false
+        },
+        {
+          "name": "RegisterSystemTest.ParamsAccessibleAfterCreate",
+          "failed": false
+        },
+        {
+          "name": "RegisterSystemTest.FindSystemResolvesEachRegisteredName",
+          "failed": false
+        },
+        {
+          "name": "RegisterSystemTest.FindSystemReportsANameThatWasNeverCreated",
+          "failed": false
+        },
+        {
+          "name": "RegisterSystemTest.FirstRegisteredSystemIsDistinguishableFromAMiss",
+          "failed": false
+        }
+      ]
+    },
+    "red": {
+      "tests": 6,
+      "failures": 6,
+      "cases": [
+        {
+          "name": "GpuTimestampPollTest.RepeatedTagPreservesHandlesAndPendingSample",
+          "failed": true
+        },
+        {
+          "name": "GpuTimestampPollTest.RetagReleasesOldHandlesWithoutRelabelingPendingSamples",
+          "failed": true
+        },
+        {
+          "name": "GpuTimestampPollTest.RetagAfterPartialAllocationOwnsOnlyNewValidHandles",
+          "failed": true
+        },
+        {
+          "name": "GpuTimestampPollTest.RegistrationFollowsManagerClearAndSameAddressReconstruction",
+          "failed": true
+        },
+        {
+          "name": "GpuTimestampPollTest.RegistrationUsesEachLiveManagersObserver",
+          "failed": true
+        },
+        {
+          "name": "TickObserverLookupTest.RejectsWorkerLookup",
+          "failed": true
+        }
+      ]
+    },
+    "red-live": {
+      "tests": 1,
+      "failures": 1,
+      "cases": [
+        {
+          "name": "GpuTimestampPollTest.RegistrationUsesEachLiveManagersObserver",
+          "failed": true
+        }
+      ]
+    }
+  }
+}
