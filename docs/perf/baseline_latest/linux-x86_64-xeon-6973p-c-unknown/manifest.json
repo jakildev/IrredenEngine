@@ -2,10 +2,10 @@
   "target": "IRPerfGrid",
   "matrix": "quick",
   "frames": 60,
-  "git_sha": "f953f602f",
+  "git_sha": "d7495a7bc",
   "git_dirty": false,
-  "run_name": "f953f602f-ci",
-  "started_at": "2026-10-06T04:46:25Z",
+  "run_name": "d7495a7bc-ci",
+  "started_at": "2026-10-10T22:24:27Z",
   "cells": [
     {
       "id": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1",
@@ -17,8 +17,8 @@
       "status": "ok",
       "report": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 64.741,
-        "after": 68.03
+        "before": 64.688,
+        "after": 64.767
       }
     },
     {
@@ -31,20 +31,20 @@
       "status": "ok",
       "report": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 65.22,
-        "after": 65.179
+        "before": 64.84,
+        "after": 64.903
       }
     }
   ],
-  "finished_at": "2026-10-06T04:48:15Z",
+  "finished_at": "2026-10-10T22:26:15Z",
   "calibration": {
-    "ref_ms": 64.906,
+    "ref_ms": 64.839,
     "ref_target_ms": 50,
     "host_slug": "linux-x86_64-xeon-6973p-c-unknown",
     "host_fingerprint": {
       "cpu": {
         "cores": 2,
-        "mhz": 4207,
+        "mhz": 4206,
         "model": "Intel(R) Xeon(R) 6973P-C",
         "threads": 4
       },
@@ -60,6 +60,6 @@
       },
       "slug": "linux-x86_64-xeon-6973p-c-unknown"
     },
-    "math_sha": "b9feed398e96c4214cbbf773c00f9aea6f48ebc9"
+    "math_sha": "7df12db1d95c765a18bac43a44e6a4c437ebe2cc"
   }
 }

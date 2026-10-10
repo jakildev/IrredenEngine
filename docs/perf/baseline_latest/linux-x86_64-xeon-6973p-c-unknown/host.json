@@ -1,7 +1,7 @@
 {
   "cpu": {
     "cores": 2,
-    "mhz": 4207,
+    "mhz": 4206,
     "model": "Intel(R) Xeon(R) 6973P-C",
     "threads": 4
   },
