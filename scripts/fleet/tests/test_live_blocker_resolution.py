@@ -13,6 +13,7 @@ Covers:
 """
 import importlib.machinery
 import importlib.util
+import json
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -62,20 +63,20 @@ def _merged_pr(head_ref):
     return {"number": 0, "headRefName": head_ref, "baseRefName": "master"}
 
 
-def _gh_state_stub(state_map):
-    """Return a callable that stubs subprocess.run for gh state probes."""
-    import subprocess
+def _reference_state_stub(state_map):
+    """Return a conditional-REST stub for issue and pull state probes."""
+    def fake_get(repo_slug, path, **_kwargs):
+        surface, ref = path.split("/", 1)
+        state = state_map.get(ref, "OPEN")
+        if surface == "pulls":
+            body = {"merged_at": "2026-01-01T00:00:00Z" if state == "MERGED" else None}
+        elif surface == "issues":
+            body = {"state": "closed" if state in ("CLOSED", "MERGED") else "open"}
+        else:
+            raise AssertionError(f"unmodeled REST path: {repo_slug} {path}")
+        return True, json.dumps(body)
 
-    def fake_run(cmd, **kwargs):
-        if cmd[0] == "gh" and cmd[1] in ("issue", "pr") and cmd[2] == "view":
-            ref = cmd[3]
-            state = state_map.get(ref, "OPEN")
-            result = subprocess.CompletedProcess(cmd, 0, stdout=state + "\n", stderr="")
-            return result
-        result = subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
-        return result
-
-    return fake_run
+    return fake_get
 
 
 # ---------------------------------------------------------------------------
@@ -104,7 +105,7 @@ class TestResolveBlockedBy(unittest.TestCase):
 
     def test_open_ref_unchanged(self):
         tasks = [_task("#200", "#101")]
-        with patch.object(_mod.subprocess, "run", _gh_state_stub({"101": "OPEN"})):
+        with patch.object(_mod, "conditional_get", _reference_state_stub({"101": "OPEN"})):
             state = _state(engine_tasks=tasks)
             resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "#101")
@@ -112,7 +113,7 @@ class TestResolveBlockedBy(unittest.TestCase):
     def test_two_refs_one_closed_one_open(self):
         tasks = [_task("#200", "#100 (done), #101 (still open)")]
         state = _state(engine_tasks=tasks, closed=[_closed_issue(100)])
-        with patch.object(_mod.subprocess, "run", _gh_state_stub({"101": "OPEN"})):
+        with patch.object(_mod, "conditional_get", _reference_state_stub({"101": "OPEN"})):
             resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "#101")
 
@@ -123,8 +124,8 @@ class TestResolveBlockedBy(unittest.TestCase):
         it just isn't a second *declared* blocker."""
         tasks = [_task("#2780", "#2770 (PR #2772 — lands the shape this generalizes)")]
         state = _state(engine_tasks=tasks)
-        with patch.object(_mod.subprocess, "run",
-                          _gh_state_stub({"2770": "OPEN", "2772": "OPEN"})):
+        with patch.object(_mod, "conditional_get",
+                          _reference_state_stub({"2770": "OPEN", "2772": "OPEN"})):
             resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "#2770, #2772")
         self.assertEqual(tasks[0]["blocked_by_declared"], "#2770")
@@ -134,7 +135,7 @@ class TestResolveBlockedBy(unittest.TestCase):
         appears only where the prose actually inflated the count."""
         tasks = [_task("#200", "#101")]
         state = _state(engine_tasks=tasks)
-        with patch.object(_mod.subprocess, "run", _gh_state_stub({"101": "OPEN"})):
+        with patch.object(_mod, "conditional_get", _reference_state_stub({"101": "OPEN"})):
             resolve_blocked_by(state)
         self.assertNotIn("blocked_by_declared", tasks[0])
 
@@ -160,7 +161,7 @@ class TestResolveBlockedBy(unittest.TestCase):
             engine_tasks=tasks,
             merged_prs=[_merged_pr("claude/1011-unrelated")],
         )
-        with patch.object(_mod.subprocess, "run", _gh_state_stub({"101": "OPEN"})):
+        with patch.object(_mod, "conditional_get", _reference_state_stub({"101": "OPEN"})):
             resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "#101")
 
@@ -184,15 +185,17 @@ class TestResolveBlockedBy(unittest.TestCase):
 
     def test_two_unresolved_refs_stay_multi(self):
         tasks = [_task("#200", "#101, #102")]
-        with patch.object(_mod.subprocess, "run", _gh_state_stub({"101": "OPEN", "102": "OPEN"})):
+        with patch.object(
+                _mod, "conditional_get",
+                _reference_state_stub({"101": "OPEN", "102": "OPEN"})):
             state = _state(engine_tasks=tasks)
             resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "#101, #102")
 
-    def test_live_gh_fallback_closed(self):
-        """Ref not in closed_fleet_queued: falls back to live gh issue view."""
+    def test_conditional_rest_fallback_closed(self):
+        """Ref outside closed_fleet_queued resolves from the REST issue body."""
         tasks = [_task("#200", "#999")]
-        with patch.object(_mod.subprocess, "run", _gh_state_stub({"999": "CLOSED"})):
+        with patch.object(_mod, "conditional_get", _reference_state_stub({"999": "CLOSED"})):
             state = _state(engine_tasks=tasks)
             resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "(none)")
@@ -201,19 +204,28 @@ class TestResolveBlockedBy(unittest.TestCase):
         url = "https://github.com/jakildev/IrredenEngine/pull/3159"
 
         open_tasks = [_task("#3165", url)]
-        with patch.object(_mod.subprocess, "run", _gh_state_stub({"3159": "OPEN"})):
+        with patch.object(_mod, "conditional_get", _reference_state_stub({"3159": "OPEN"})):
             resolve_blocked_by(_state(engine_tasks=open_tasks))
         self.assertEqual(open_tasks[0]["blocked_by"], "#3159")
 
         merged_tasks = [_task("#3165", url)]
-        with patch.object(_mod.subprocess, "run", _gh_state_stub({"3159": "MERGED"})):
+        with patch.object(_mod, "conditional_get", _reference_state_stub({"3159": "MERGED"})):
             resolve_blocked_by(_state(engine_tasks=merged_tasks))
         self.assertEqual(merged_tasks[0]["blocked_by"], "(none)")
 
         abandoned_tasks = [_task("#3165", url)]
-        with patch.object(_mod.subprocess, "run", _gh_state_stub({"3159": "CLOSED"})):
+        with patch.object(_mod, "conditional_get", _reference_state_stub({"3159": "CLOSED"})):
             resolve_blocked_by(_state(engine_tasks=abandoned_tasks))
         self.assertEqual(abandoned_tasks[0]["blocked_by"], "#3159")
+
+    def test_pr_url_incomplete_rest_object_fails_closed(self):
+        tasks = [_task(
+            "#3165", "https://github.com/jakildev/IrredenEngine/pull/3159")]
+        with patch.object(
+                _mod, "conditional_get",
+                return_value=(False, '{"state": "closed"}')):
+            resolve_blocked_by(_state(engine_tasks=tasks))
+        self.assertEqual(tasks[0]["blocked_by"], "#3159")
 
 
 # ---------------------------------------------------------------------------
@@ -230,7 +242,7 @@ class TestResolveAndEnrichIntegration(unittest.TestCase):
             engine_prs=open_prs,
             closed=[_closed_issue(100)],
         )
-        with patch.object(_mod.subprocess, "run", _gh_state_stub({"101": "OPEN"})):
+        with patch.object(_mod, "conditional_get", _reference_state_stub({"101": "OPEN"})):
             resolve_blocked_by(state)
         enrich_stackable_blocker_prs(state)
         task = state["repos"]["engine"]["tasks"]["open"][0]
@@ -256,7 +268,9 @@ class TestResolveAndEnrichIntegration(unittest.TestCase):
             _pr(536, "claude/101-work"),
             _pr(537, "claude/102-other"),
         ]
-        with patch.object(_mod.subprocess, "run", _gh_state_stub({"101": "OPEN", "102": "OPEN"})):
+        with patch.object(
+                _mod, "conditional_get",
+                _reference_state_stub({"101": "OPEN", "102": "OPEN"})):
             state = _state(engine_tasks=tasks, engine_prs=open_prs)
             resolve_blocked_by(state)
         enrich_stackable_blocker_prs(state)
@@ -277,7 +291,7 @@ class TestResolveAndEnrichIntegration(unittest.TestCase):
             engine_prs=open_prs,
             closed=[_closed_issue(100)],
         )
-        with patch.object(_mod.subprocess, "run", _gh_state_stub({"102": "OPEN"})):
+        with patch.object(_mod, "conditional_get", _reference_state_stub({"102": "OPEN"})):
             resolve_blocked_by(state)
         enrich_stackable_blocker_prs(state)
         task = state["repos"]["engine"]["tasks"]["open"][0]
@@ -302,7 +316,7 @@ class TestCrossRepoBlocker(unittest.TestCase):
         # Even though the cross-repo ref reads OPEN, the scout never queries it
         # (no gh routed here) and must not block on it.
         tasks = [_task("#200", "jakildev/irreden#125")]
-        with patch.object(_mod.subprocess, "run", _gh_state_stub({"125": "OPEN"})):
+        with patch.object(_mod, "conditional_get", _reference_state_stub({"125": "OPEN"})):
             state = _state(engine_tasks=tasks)
             resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "(none)")
@@ -310,15 +324,15 @@ class TestCrossRepoBlocker(unittest.TestCase):
     def test_cross_repo_bare_repo_qualifier_deferred(self):
         # `irreden#N` (no owner prefix) routes to game too.
         tasks = [_task("#200", "irreden#125")]
-        with patch.object(_mod.subprocess, "run", _gh_state_stub({"125": "OPEN"})):
+        with patch.object(_mod, "conditional_get", _reference_state_stub({"125": "OPEN"})):
             state = _state(engine_tasks=tasks)
             resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "(none)")
 
     def test_cross_repo_plus_open_same_repo_keeps_same_repo(self):
         tasks = [_task("#200", "#101, jakildev/irreden#125")]
-        with patch.object(_mod.subprocess, "run",
-                          _gh_state_stub({"101": "OPEN", "125": "OPEN"})):
+        with patch.object(_mod, "conditional_get",
+                          _reference_state_stub({"101": "OPEN", "125": "OPEN"})):
             state = _state(engine_tasks=tasks)
             resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "#101")
@@ -332,7 +346,7 @@ class TestCrossRepoBlocker(unittest.TestCase):
 
     def test_same_repo_qualifier_open_stays_blocked(self):
         tasks = [_task("#200", "IrredenEngine#101")]
-        with patch.object(_mod.subprocess, "run", _gh_state_stub({"101": "OPEN"})):
+        with patch.object(_mod, "conditional_get", _reference_state_stub({"101": "OPEN"})):
             state = _state(engine_tasks=tasks)
             resolve_blocked_by(state)
         self.assertEqual(tasks[0]["blocked_by"], "#101")
