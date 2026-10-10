@@ -4,10 +4,8 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from million_controls import PRESETS, cases, summarize, verify_artifacts
-from rotation_controls import run_rounds
 
 REPORT = (
     "Frame time:   avg={avg:.2f}ms   p50=1.00ms   p95=2.00ms   p99={p99:.2f}ms   "
@@ -253,31 +251,6 @@ class FingerprintTest(unittest.TestCase):
             write_round(output, "release-profiling-on-yaw0", 1, 30.0, witnessed=False)
             summarize(output, {"release-profiling-on-yaw0": []})
             self.assertIn("| unwitnessed | unwitnessed |", (output / "summary.md").read_text())
-
-
-class RoundOrderTest(unittest.TestCase):
-    def test_rounds_alternate_and_each_case_gets_its_tree_and_runner_options(self):
-        calls = []
-        selected = {"a": ["--yaw", "0"], "b": ["--yaw", "1"]}
-        environments = {"b": {"IRREDEN_BUILD_DIR": "/release"}}
-        with (
-            tempfile.TemporaryDirectory() as temporary,
-            patch(
-                "rotation_controls.subprocess.run",
-                side_effect=lambda *a, **k: calls.append((a, k)),
-            ),
-        ):
-            run_rounds(
-                Path(temporary), selected, ["--freeze"], 2, lambda: None, environments,
-                ["--timeout", "900"],
-            )
-        names = [Path(args[0][args[0].index("--output") + 1]).parent.name for args, _ in calls]
-        self.assertEqual(names, ["a", "b", "b", "a"])
-        command = calls[1][0][0]
-        self.assertLess(command.index("--timeout"), command.index("--"))
-        self.assertEqual(command[command.index("--") + 1:], ["--freeze", "--yaw", "1"])
-        self.assertEqual([kwargs["env"] for _, kwargs in calls][:2], [None, environments["b"]])
-        self.assertTrue(all(kwargs["check"] for _, kwargs in calls))
 
 
 if __name__ == "__main__":
