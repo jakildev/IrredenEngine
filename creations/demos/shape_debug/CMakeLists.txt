@@ -8,6 +8,7 @@ target_link_libraries(IRShapeDebug PUBLIC IrredenEngine)
 irreden_bundle_assets(IRShapeDebug
     SCRIPTS config.lua
     EXTRA_DIRS
+        ${CMAKE_CURRENT_SOURCE_DIR}/configs configs
         ${PROJECT_SOURCE_DIR}/assets/prefabs assets/prefabs
         ${PROJECT_SOURCE_DIR}/creations/editors/voxel_editor/test/fixtures/editor_parts
         assets/prefabs/editor_parts
