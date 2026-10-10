@@ -188,6 +188,11 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {4.0f, vec2(16, 16), IRMath::kQuarterPi, "zoom4_pan16_yaw45_pivot"},
 };
 
+constexpr IRVideo::AutoScreenshotShot kShadowFootprintShots[] = {
+    {4.0f, vec2(0.0f), 0.0f, "shadow_footprint_yaw0"},
+    {4.0f, vec2(0.0f), IRMath::kQuarterPi, "shadow_footprint_yaw45"},
+};
+
 int g_autoWarmupFrames = 0; // 0 = --auto-screenshot not requested
 int g_autoRecordFrames = 0; // 0 = --auto-record not requested
 bool g_depthColor = false;
@@ -214,6 +219,7 @@ bool g_gpuVoxelSmoke = false;
 // bend at the bar's midpoint is direct proof the per-voxel slots route through
 // the joint skin matrices (a rigid entity transform cannot bend a set).
 bool g_skinSmoke = false;
+bool g_shadowFootprintProbe = false;
 int g_autoProfileFrames = 0; // 0 = disabled
 int g_autoProfileCount = 0;
 float g_initialZoom = 0.0f; // 0 = use engine default
@@ -1330,6 +1336,10 @@ void registerCliArgs() {
     args.flag("--gpu-voxel-smoke", "Spawn one cube routed through the GPU voxel-position prepass");
     args.flag("--pivot-focus-demo", "Yaw sweep pinning the pivot on a tall pillar (#1921)");
     args.flag("--skin-smoke", "Spawn one 2-bone rigged voxel bar skinned via binding-17 (#1605)");
+    args.flag(
+        "--shadow-footprint-probe",
+        "Isolate grounded voxel/SDF cone and torus pairs on a measured receiver plane"
+    );
     args.flag("--pan-sweep", "Fine fixed-yaw camera-pan jitter sweep (#1944)");
     args.flag("--yaw-sweep", "Fine fixed-position camera-yaw jitter sweep (#1944)");
     args.enumValue(
@@ -1442,6 +1452,7 @@ void readCliArgs() {
     g_gpuVoxelSmoke = args.getFlag("--gpu-voxel-smoke");
     g_pivotFocusDemo = args.getFlag("--pivot-focus-demo");
     g_skinSmoke = args.getFlag("--skin-smoke");
+    g_shadowFootprintProbe = args.getFlag("--shadow-footprint-probe");
     g_panSweep = args.getFlag("--pan-sweep");
     g_yawSweep = args.getFlag("--yaw-sweep");
     g_pivotVerifyBlock = args.getEnum("--pivot-verify");
@@ -1469,7 +1480,7 @@ void readCliArgs() {
         g_initialYaw = yaw;
         g_initialYawSet = true;
     }
-    g_pivotOrigin = args.getFlag("--pivot-origin");
+    g_pivotOrigin = args.getFlag("--pivot-origin") || g_shadowFootprintProbe;
     g_cullValidate = args.getFlag("--cull-validate");
     if (args.wasProvided("--load-prefab")) {
         g_loadPrefabPath = args.getString("--load-prefab");
@@ -3616,6 +3627,8 @@ void initSystems() {
                 kYawHi,
                 sweepZoom
             );
+        } else if (g_shadowFootprintProbe) {
+            IRVideo::setAutoScreenshotShots(cfg, kShadowFootprintShots);
         } else if (g_lodDenseSwap) {
             IRVideo::setAutoScreenshotShots(cfg, kLodDenseSwapShots);
         } else if (g_viewportLodSwap) {
@@ -3999,6 +4012,63 @@ EntityId createSDFShape(vec3 position, IRRender::ShapeType type, vec4 params, Co
     return entity;
 }
 
+void setupCanvasLighting();
+
+void initShadowFootprintProbeScene() {
+    constexpr float kShadowProbeFloorTopZ = 4.0f;
+    constexpr vec3 kShadowProbeSunDirection{0.35f, 0.85f, -0.4f};
+    constexpr vec4 kConeParams{4.0f, 4.0f, 8.0f, 0.0f};
+    constexpr vec4 kTorusParams{4.0f, 2.0f, 0.0f, 0.0f};
+
+    createVoxelPoolShape(
+        vec3(-12.0f, -8.0f, 0.0f),
+        IRRender::ShapeType::CONE,
+        kConeParams,
+        Color{220, 140, 100, 255},
+        ivec3(5, 5, 4)
+    );
+    createSDFShape(
+        vec3(-12.0f, 8.0f, 0.0f),
+        IRRender::ShapeType::CONE,
+        kConeParams,
+        Color{240, 175, 125, 255}
+    );
+    createVoxelPoolShape(
+        vec3(12.0f, -8.0f, 1.0f),
+        IRRender::ShapeType::TORUS,
+        kTorusParams,
+        Color{100, 180, 220, 255},
+        ivec3(7, 7, 3)
+    );
+    createSDFShape(
+        vec3(12.0f, 8.0f, 2.0f),
+        IRRender::ShapeType::TORUS,
+        kTorusParams,
+        Color{130, 205, 240, 255}
+    );
+
+    const EntityId floor = createSDFShape(
+        vec3(0.0f, 0.0f, 5.0f),
+        IRRender::ShapeType::BOX,
+        vec4(72.0f, 56.0f, 2.0f, 0.0f),
+        Color{150, 150, 160, 255}
+    );
+    IREntity::setComponent(floor, C_LightBlocker{false, false, 0.0f});
+
+    setupCanvasLighting();
+    IRRender::setSunDirection(kShadowProbeSunDirection);
+    const vec3 sun = IRRender::getSunDirection();
+    IR_LOG_INFO(
+        "Shadow-footprint probe: receiver_z={} sun=({},{},{}) "
+        "cone_voxel_center=(-12,-8,0) cone_sdf_center=(-12,8,0) "
+        "torus_voxel_center=(12,-8,1) torus_sdf_center=(12,8,2)",
+        kShadowProbeFloorTopZ,
+        sun.x,
+        sun.y,
+        sun.z
+    );
+}
+
 // Spawn one voxel cube routed through the GPU voxel-position prepass.
 // The fixed 45° SO(3) rotation can only reach the rendered voxels via the
 // prepass — UPDATE_VOXEL_SET_CHILDREN folds in translation only — so a rotated
@@ -4291,6 +4361,11 @@ void initViewportPortraitScene() {
 }
 
 void initEntities() {
+    if (g_shadowFootprintProbe) {
+        IR_LOG_INFO("--- Shape shadow-footprint probe scene ---");
+        initShadowFootprintProbeScene();
+        return;
+    }
     if (g_viewportPortrait) {
         IR_LOG_INFO("--- Secondary-viewport portrait fixture scene ---");
         initViewportPortraitScene();
