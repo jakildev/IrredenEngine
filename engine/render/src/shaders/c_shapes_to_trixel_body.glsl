@@ -8,6 +8,9 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 #include "ir_constants.glsl"
 #include "ir_sdf_common.glsl"
 #include "ir_shape_data.glsl"
+#if IR_SHAPE_PASS == 2
+#include "ir_fog_shadow_caster.glsl"
+#endif
 
 layout(std140, binding = 23) uniform ShapesFrameData {
     uniform vec2 frameCanvasOffset;
@@ -876,6 +879,18 @@ void main() {
                                     shape.flags, dExtent, yawC, yawS);
     }
     if (surfaceD == kInvalidDepth) return;
+
+#if IR_SHAPE_PASS == 2
+    const vec3 fogViewOffset = isoToLocal3D(isoPixelRel, float(surfaceD));
+    const vec3 fogWorldOffset = vec3(
+        yawC * fogViewOffset.x - yawS * fogViewOffset.y,
+        yawS * fogViewOffset.x + yawC * fogViewOffset.y,
+        fogViewOffset.z
+    );
+    const vec3 fogWorldSample = worldPos + fogWorldOffset / float(sub);
+    if (!fogFieldCastsSunShadow(
+            fogWorldSample, (shape.flags & FLAG_FOG_BODY) != 0u, 1)) return;
+#endif
 
     // Depth metric. Cardinal path: view-space x+y+z relative to the cardinal-
     // snapped integer origin (surfaceD is the local iso depth). Smooth path:

@@ -15,6 +15,8 @@
 
 #include <irreden/render/texture.hpp>
 
+#include <vector>
+
 using namespace IRMath;
 using namespace IRRender;
 
@@ -41,6 +43,23 @@ struct C_CanvasSunShadow {
 
     const Texture2D *getTexture() const {
         return textureShadow_.second;
+    }
+
+    // RGBA8 shadow-factor texels after a full GPU flush, row-major over the
+    // whole canvas. A full flush per call — debug probes only.
+    void readFactorsSynced(std::vector<Color> &out) const {
+        IRRender::device()->finish();
+        const uvec2 size = textureShadow_.second->getSize();
+        out.resize(static_cast<std::size_t>(size.x) * static_cast<std::size_t>(size.y));
+        textureShadow_.second->getSubImage2D(
+            0,
+            0,
+            size.x,
+            size.y,
+            PixelDataFormat::RGBA,
+            PixelDataType::UNSIGNED_BYTE,
+            out.data()
+        );
     }
 };
 

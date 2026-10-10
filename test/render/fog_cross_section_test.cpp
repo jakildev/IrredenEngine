@@ -127,6 +127,10 @@ const std::string kGlslFogOverflowPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_fog_overflow_faces.glsl";
 const std::string kMetalFogOverflowPath =
     std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_fog_overflow_faces.metal";
+const std::string kGlslFogShadowCasterPath =
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/ir_fog_shadow_caster.glsl";
+const std::string kMetalFogShadowCasterPath =
+    std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/ir_fog_shadow_caster.metal";
 
 // Reduces a GLSL or MSL snippet to the dialect-free math it expresses: line
 // comments dropped, MSL vector spellings folded onto the GLSL ones, float
@@ -1009,6 +1013,34 @@ TEST(FogCrossSectionShaderParity, CeilingScalesEachSourceBeforeTheMaximumOnBothB
         std::string::npos
     ) << "the drop must scale each source by its ceiling inside the max: "
       << glslDrop;
+}
+
+TEST(FogCrossSectionShaderParity, CeilingShadowCasterPolicyAndBakeRoutesStayBackendSymmetric) {
+    const std::string glsl = readShaderSource(kGlslFogShadowCasterPath);
+    const std::string metal = readShaderSource(kMetalFogShadowCasterPath);
+    const std::string glslBody = extractFunctionBody(glsl, "fogFieldCastsSunShadow");
+    const std::string metalBody = extractFunctionBody(metal, "fogFieldCastsSunShadow");
+    ASSERT_FALSE(glslBody.empty());
+    ASSERT_FALSE(metalBody.empty());
+    for (const char *policy : {"fogCeilingVisibility(", "return true", "return !covered"}) {
+        EXPECT_NE(glslBody.find(policy), std::string::npos) << policy;
+        EXPECT_NE(metalBody.find(policy), std::string::npos) << policy;
+    }
+
+    for (const char *stem :
+         {"c_bake_voxel_sun_faces",
+          "c_bake_box_sun_shadow",
+          "c_bake_sun_shadow_map",
+          "c_resolve_world_placed_depth",
+          "c_shapes_to_trixel_body"}) {
+        SCOPED_TRACE(stem);
+        const std::string glslRoute =
+            readShaderSource(std::string(IR_TEST_RENDER_SHADER_DIR) + "/" + stem + ".glsl");
+        const std::string metalRoute =
+            readShaderSource(std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/" + stem + ".metal");
+        EXPECT_NE(glslRoute.find("fogFieldCastsSunShadow("), std::string::npos);
+        EXPECT_NE(metalRoute.find("fogFieldCastsSunShadow("), std::string::npos);
+    }
 }
 
 // Test E, part 7: the BODY branch of the fog pass — the pixel takes the

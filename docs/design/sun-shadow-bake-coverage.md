@@ -184,7 +184,7 @@ does not justify. A future density-gated firing (splat only where the local
 neighbourhood is sparse) could reclaim the remaining cost; deferred (lever
 (a)'s localisation attempt shows sparse-detection is subtle).
 
-## Byte-identity regimes (the two invariants)
+## Byte-identity regimes (the three invariants)
 
 1. **Per-axis / smooth-yaw byte-identity (structural).** The raw smooth-yaw and
    per-axis face-local inputs skip the splat by the shader gate; the per-axis
@@ -200,6 +200,17 @@ neighbourhood is sparse) could reclaim the remaining cost; deferred (lever
    dense, every box `atomicMin` is a no-op (farther-or-equal depth). Kept as
    an empirical property + the `sunSplatMaxTexels_ == 0` kill switch, not a
    structural guarantee.
+3. **Fog-ceiling-off/vertical-sun byte-identity (structural).** `FrameDataSun`
+   carries a frame-level “ceiling cut can affect a footprint” flag. Every caster
+   route short-circuits to its prior write when that flag is zero, so scenes
+   that do not author a fog ceiling preserve the pre-ceiling caster set exactly.
+   A vertical sun also takes the identity path because caster height cannot
+   enlarge its XY shadow footprint. The legacy main-canvas
+   fallback decodes the BODY bit from its entity-id plane. Per-axis and
+   world-placed resolve textures have already been fog-classified and carry no
+   entity-id plane, so their bake dispatches set the scoped `precut` lane and
+   skip a second ceiling decision; the guard restores the canonical lane before
+   downstream consumers run.
 
 ## The receiver same-plane test (#2319) — removing the splat's coplanar self-acne
 

@@ -1797,6 +1797,7 @@ void probeEntityRevealBodies() {
 // --occlusion=high-ground --los-softness, --reveal-treatment instead treats
 // the soft line-of-sight band on the ground slab (FOG-SURFACE-PROBE too).
 bool g_ceilingTreatment = false; // --ceiling-treatment
+bool g_ceilingShadow = false;    // --ceiling-shadow
 bool g_revealTreatment = false;  // --reveal-treatment
 constexpr float kCeilingVisionRadius = 14.0f;
 constexpr float kCeilingVisionEdge = 2.0f;
@@ -1815,6 +1816,16 @@ constexpr int kCeilingColumnFootprint = 4;
 constexpr vec3 kCeilingCentreColumn{0.0f, 0.0f, kCeilingObserverZ};
 constexpr vec3 kCeilingRimColumn{8.0f, 0.0f, kCeilingObserverZ};
 constexpr vec3 kCeilingBodyTwin{0.0f, 8.0f, kCeilingObserverZ};
+// The angled-sun fixture spaces its four casters across the axis perpendicular
+// to the shadow ray. This keeps the footprint lanes disjoint while preserving
+// a centre FIELD and a radially-full FIELD away from the source centre.
+constexpr vec3 kCeilingShadowCentre{0.0f, 0.0f, kCeilingObserverZ};
+constexpr vec3 kCeilingShadowRim{11.10f, -4.57f, kCeilingObserverZ};
+constexpr vec3 kCeilingShadowBody{22.19f, -9.14f, kCeilingObserverZ};
+constexpr vec3 kCeilingShadowControlPosition{-11.10f, 4.57f, kCeilingObserverZ};
+// Voxel face centres at the inclusive 0.5 ceiling midpoint leave six complete
+// caster layers in the sun bake; this solid is the authored-height oracle.
+constexpr int kCeilingShadowControlHeight = 6;
 constexpr float kCeilingShotYaw = 0.35f;
 constexpr IRVideo::AutoScreenshotShot kCeilingShots[] = {
     {9.0f, vec2(0, 0), 0.0f, "fog_ceiling9"},
@@ -1824,14 +1835,20 @@ constexpr IRVideo::AutoScreenshotShot kCeilingTreatmentShots[] = {
     {9.0f, vec2(0, 0), 0.0f, "fog_ceiling_treatment9"},
     {9.0f, vec2(0, 0), kCeilingShotYaw, "fog_ceiling_treatment_yaw9"},
 };
+constexpr IRVideo::AutoScreenshotShot kCeilingShadowShots[] = {
+    {9.0f, vec2(0, 0), 0.0f, "fog_ceiling_shadow9"},
+    {9.0f, vec2(0, 0), kCeilingShotYaw, "fog_ceiling_shadow_yaw9"},
+};
 constexpr IRVideo::AutoScreenshotShot kOcclusionHighGroundSoftTreatedShots[] = {
     {6.0f, vec2(0, 0), 0.0f, "fog_occlusion_high_ground_soft_treated"},
 };
 IREntity::EntityId g_ceilingCentreColumn = IREntity::kNullEntity;
 IREntity::EntityId g_ceilingRimColumn = IREntity::kNullEntity;
 IREntity::EntityId g_ceilingBodyTwin = IREntity::kNullEntity;
+IREntity::EntityId g_ceilingShadowControl = IREntity::kNullEntity;
 IREntity::EntityId g_occlusionSlab = IREntity::kNullEntity;
 int g_surfaceProbeFrame = 0;
+int g_shadowProbeFrame = 0;
 // The fog output of the frame ahead of the probed one, rendered with the
 // treatment off: the control half of the ceiling probe's treatment diff.
 std::vector<Color> g_surfaceControlColors;
@@ -2149,6 +2166,98 @@ void probeCeilingSurface() {
     );
     requireSurfaceProbe(painted == 0 && partial == 0, "the BODY twin is sliced or treated");
     requireSurfaceProbe(rated > 0 && ratioMax - ratioMin <= 0.02f, "the BODY twin is not uniform");
+}
+
+struct ShadowFootprintReading {
+    int texels_ = 0;
+    float reach_ = -1.0f;
+};
+
+void probeCeilingShadow() {
+    if (++g_shadowProbeFrame != g_autoWarmupFrames) {
+        return;
+    }
+
+    const IREntity::EntityId canvas = IRRender::getActiveCanvasEntity();
+    const auto &textures = IREntity::getComponent<C_TriangleCanvasTextures>(canvas);
+    const auto &shadow = IREntity::getComponent<C_CanvasSunShadow>(canvas);
+    std::vector<IRMath::uvec2> carriers;
+    std::vector<int> distances;
+    std::vector<Color> factors;
+    shadow.readFactorsSynced(factors);
+    textures.readEntityIdCarriers(carriers);
+    textures.readDistances(distances);
+
+    const auto *stage1 =
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>>(
+            IRSystem::findSystem(IRSystem::VOXEL_TO_TRIXEL_STAGE_1)
+        );
+    vec2 shadowDirection = -vec2(IRRender::getSunDirection());
+    shadowDirection /= IRMath::length(shadowDirection);
+    const vec2 lateral{-shadowDirection.y, shadowDirection.x};
+    const std::uint32_t slab = static_cast<std::uint32_t>(g_occlusionSlab);
+    const auto read = [&](vec3 origin) {
+        ShadowFootprintReading reading;
+        for (int y = 0; y < textures.size_.y; ++y) {
+            for (int x = 0; x < textures.size_.x; ++x) {
+                const std::size_t i = static_cast<std::size_t>(y) * textures.size_.x + x;
+                if (carriers[i].x != slab || factors[i].red_ >= 250) {
+                    continue;
+                }
+                const vec3 world =
+                    canvasTexelToWorld(IRMath::ivec2(x, y), distances[i], stage1->frameData_);
+                const vec2 delta = vec2(world) - vec2(origin);
+                const float along = IRMath::dot(delta, shadowDirection);
+                if (along < 0.0f || IRMath::abs(IRMath::dot(delta, lateral)) > 1.5f) {
+                    continue;
+                }
+                ++reading.texels_;
+                reading.reach_ = IRMath::max(reading.reach_, along);
+            }
+        }
+        return reading;
+    };
+
+    const ShadowFootprintReading centre = read(kCeilingShadowCentre);
+    const ShadowFootprintReading rim = read(kCeilingShadowRim);
+    const ShadowFootprintReading control = read(kCeilingShadowControlPosition);
+    const ShadowFootprintReading body = read(kCeilingShadowBody);
+    const auto *baker = IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(
+        IRSystem::findSystem(IRSystem::BAKE_SUN_SHADOW_MAP)
+    );
+    const float sunTexel = IRMath::max(
+        baker->frameData_.cascadeTexelSize_0_.x,
+        baker->frameData_.cascadeTexelSize_0_.y
+    );
+    IR_LOG_INFO(
+        "FOG-SHADOW-PROBE centre={}:{:.3f} rim={}:{:.3f} control={}:{:.3f} "
+        "body=twin {}:{:.3f} sunTexel={:.3f}",
+        centre.texels_,
+        centre.reach_,
+        rim.texels_,
+        rim.reach_,
+        control.texels_,
+        control.reach_,
+        body.texels_,
+        body.reach_,
+        sunTexel
+    );
+    requireFogProbe(
+        "FOG-SHADOW-PROBE",
+        centre.texels_ > 0 && rim.texels_ > 0 && control.texels_ > 0 && body.texels_ > 0,
+        "a shadow footprint lane is empty"
+    );
+    requireFogProbe(
+        "FOG-SHADOW-PROBE",
+        IRMath::abs(centre.reach_ - control.reach_) <= sunTexel &&
+            IRMath::abs(rim.reach_ - control.reach_) <= sunTexel,
+        "a cut FIELD footprint differs from the cut-height control by more than one sun texel"
+    );
+    requireFogProbe(
+        "FOG-SHADOW-PROBE",
+        body.reach_ > control.reach_ + sunTexel,
+        "the BODY twin did not retain its full-height shadow"
+    );
 }
 
 // One-shot picking probe for the fog whole-body carrier bit: after warmup,
@@ -2723,6 +2832,11 @@ int main(int argc, char **argv) {
         "FOG-SURFACE-PROBE on the cardinal shot and parks a non-cardinal yaw for the second"
     );
     IREngine::args().flag(
+        "--ceiling-shadow",
+        "Angled-sun ceiling fixture: cut FIELD columns, a cut-height control, and the BODY "
+        "twin; logs FOG-SHADOW-PROBE and captures cardinal plus yaw shots"
+    );
+    IREngine::args().flag(
         "--reveal-treatment",
         "Enable the canvas reveal-surface treatment (dissolve + cap tone) on the "
         "--ceiling-treatment rows or the --occlusion=high-ground --los-softness band"
@@ -2893,7 +3007,8 @@ int main(int argc, char **argv) {
     g_entityReveal = IREngine::args().getFlag("--entity-reveal");
     g_entityRevealSoftEdge = IREngine::args().getFlag("--entity-reveal-soft-edge");
     g_entityReveal = g_entityReveal || (g_entityRevealSoftEdge && !g_detachedBody);
-    g_ceilingTreatment = IREngine::args().getFlag("--ceiling-treatment");
+    g_ceilingShadow = IREngine::args().getFlag("--ceiling-shadow");
+    g_ceilingTreatment = IREngine::args().getFlag("--ceiling-treatment") || g_ceilingShadow;
     g_revealTreatment = IREngine::args().getFlag("--reveal-treatment");
     g_fogDebugColor = IREngine::args().getFlag("--fog-debug-color") || g_ceilingTreatment;
     g_perAxisOverflow = IREngine::args().getFlag("--peraxis-overflow");
@@ -3234,12 +3349,21 @@ void initSystems() {
         renderPipeline.push_front(bodyProbeTickId);
     }
 
-    if (g_ceilingTreatment && g_autoWarmupFrames > 2) {
+    if (g_ceilingTreatment && !g_ceilingShadow && g_autoWarmupFrames > 2) {
         renderPipeline.push_front(
             IRSystem::createSystem<C_Name>(
                 "FogCeilingSurfaceProbe",
                 [](C_Name &) {},
                 []() { probeCeilingSurface(); }
+            )
+        );
+    }
+    if (g_ceilingShadow && g_autoWarmupFrames > 0) {
+        renderPipeline.push_front(
+            IRSystem::createSystem<C_Name>(
+                "FogCeilingShadowProbe",
+                [](C_Name &) {},
+                []() { probeCeilingShadow(); }
             )
         );
     }
@@ -3360,6 +3484,8 @@ void initSystems() {
             case OcclusionScene::NONE:
                 break;
             }
+        } else if (g_ceilingShadow) {
+            IRVideo::setAutoScreenshotShots(cfg, kCeilingShadowShots);
         } else if (g_ceilingTreatment && g_revealTreatment) {
             IRVideo::setAutoScreenshotShots(cfg, kCeilingTreatmentShots);
         } else if (g_ceilingTreatment) {
@@ -3568,11 +3694,11 @@ void initDepthSlabScene() {
 // equal-height FIELD columns at its centre and near its rim, and a governed
 // BODY twin anchored on the ground under the ceiling.
 void initCeilingTreatmentScene() {
-    createEdgeGroundSlab();
+    g_occlusionSlab = createEdgeGroundSlab();
     const int slot = IRPrefab::Fog::setVisionCircle(
         0.0f,
         0.0f,
-        kCeilingVisionRadius,
+        g_ceilingShadow ? 30.0f : kCeilingVisionRadius,
         kCeilingVisionEdge,
         kCeilingObserverZ
     );
@@ -3596,11 +3722,28 @@ void initCeilingTreatmentScene() {
             tags...
         );
     };
-    g_ceilingCentreColumn =
-        createColumn(kCeilingCentreColumn, Color{245, 155, 75, 255}, C_FogField{});
-    g_ceilingRimColumn = createColumn(kCeilingRimColumn, Color{120, 235, 140, 255}, C_FogField{});
-    g_ceilingBodyTwin = createColumn(kCeilingBodyTwin, Color{80, 210, 245, 255});
+    const vec3 centrePosition = g_ceilingShadow ? kCeilingShadowCentre : kCeilingCentreColumn;
+    const vec3 rimPosition = g_ceilingShadow ? kCeilingShadowRim : kCeilingRimColumn;
+    const vec3 bodyPosition = g_ceilingShadow ? kCeilingShadowBody : kCeilingBodyTwin;
+    g_ceilingCentreColumn = createColumn(centrePosition, Color{245, 155, 75, 255}, C_FogField{});
+    g_ceilingRimColumn = createColumn(rimPosition, Color{120, 235, 140, 255}, C_FogField{});
+    g_ceilingBodyTwin = createColumn(bodyPosition, Color{80, 210, 245, 255});
     IRPrefab::Fog::setEntityRevealGoverned(g_ceilingBodyTwin);
+    if (g_ceilingShadow) {
+        g_ceilingShadowControl = IREntity::createEntity(
+            C_LocalTransform{kCeilingShadowControlPosition},
+            C_VoxelSetNew{
+                IRMath::ivec3{
+                    kCeilingColumnFootprint,
+                    kCeilingColumnFootprint,
+                    kCeilingShadowControlHeight
+                },
+                Color{245, 220, 80, 255},
+                IRComponents::EntityAnchor::GROUND
+            },
+            C_FogField{}
+        );
+    }
 }
 
 void initOcclusionScene() {
@@ -3766,7 +3909,6 @@ void initEntities() {
 
     // High, slightly off-axis sun so each shape casts a visible shadow.
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
-
     // The BOUNDARY scenes (--edge-zoom / --edge-smooth / --edge-sdf-blocker /
     // --detached-edge) override to a STRAIGHT-DOWN sun. Their render-verify refs
     // exist to inspect the fog reveal boundary, and an angled sun drives shadow
@@ -3778,9 +3920,10 @@ void initEntities() {
     // face IS the band under test, so an angled sun's terminator across it would
     // masquerade as a cut defect. Fog x shadow composition stays covered by the
     // default grid scene's refs, which keep the angled sun.
-    if (occlusionScene || windowScene || g_manySources || g_entityReveal || g_ceilingTreatment ||
-        g_edgeZoom || g_edgeSmooth || g_edgeSdfBlocker || g_detachedEdge || g_edgeZCost ||
-        g_edgeZCostAsym || g_edgeZCostCeiling) {
+    if (occlusionScene || windowScene || g_manySources || g_entityReveal ||
+        (g_ceilingTreatment && !g_ceilingShadow) || g_edgeZoom || g_edgeSmooth ||
+        g_edgeSdfBlocker || g_detachedEdge || g_edgeZCost || g_edgeZCostAsym ||
+        g_edgeZCostCeiling) {
         IRRender::setSunDirection(vec3(0.0f, 0.0f, -1.0f));
     }
     if (g_fogDebugColor) {

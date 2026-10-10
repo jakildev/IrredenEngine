@@ -231,6 +231,25 @@ no ceiling and no line-of-sight factor scales it.
 The CPU oracle (`IRPrefab::Fog::evalReveal`) and the GLSL and Metal FIELD
 paint evaluate this one definition.
 
+### Sun-shadow caster ceiling
+
+The sun-shadow bake applies a deliberately binary version of the ceiling to
+FIELD caster samples. Among analytic sources whose authored circle covers the
+sample XY, it takes the maximum `ceilingVisibility`; the sample casts when that
+maximum is at least `0.5`. An uncovered sample casts normally. A BODY subject
+always casts whole, matching its anchor-governed reveal contract, and any
+covering source whose ceiling is disabled contributes 1 and therefore keeps the
+FIELD sample casting.
+
+For a hard ceiling the shadow cut is the authored plane. For a soft fade of
+height `H`, the cut is its midpoint (`ceilingHeight + H / 2`), inclusive on the
+casting side. This is intentionally not a translucent shadow: it gives one
+stable caster set to the bake and bounds the disagreement with the visible
+fade band to `H / 2` world units. The rule is evaluated before every sun-depth
+write in the voxel, analytic-shape, legacy canvas, and world-placed paths; when
+no source has a ceiling enabled, the driver flag makes those predicates an
+identity fast path.
+
 ### Treatment
 
 With the treatment disabled, a partial contribution simply stands. The sample

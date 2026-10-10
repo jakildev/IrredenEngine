@@ -9,6 +9,7 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
 #include "ir_per_axis_lighting.glsl"
+#include "ir_fog_shadow_caster.glsl"
 // Shared caster/receiver sun-space projection + depth pack.
 #include "ir_sun_projection.glsl"
 
@@ -74,9 +75,11 @@ layout(std140, binding = 29) uniform FrameDataSun {
     // see docs/design/sun-shadow-bake-coverage.md.
     uniform float sunSplatMaxTexels;
     uniform float sunMaxShadowThrow;  // unused here (receiver-only)
+    uniform ivec4 fogCeilingEnabled;
 };
 
 layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;
+layout(rg32ui, binding = 3) readonly uniform uimage2D trixelEntityIds;
 
 // atomicMin the packed sun depth into one texel of a cascade, if in bounds.
 // The bounds check is a buffer-bounds guard, not a culling decision: a
@@ -168,6 +171,10 @@ void main() {
             pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
         );
     }
+
+    const bool fogBodyOrPrecut =
+        fogCeilingEnabled.y != 0 || decodeFogBody(imageLoad(trixelEntityIds, pixel).xy);
+    if (!fogFieldCastsSunShadow(pos3D, fogBodyOrPrecut, fogCeilingEnabled.x)) return;
 
     // Shared caster/receiver projection — the receiver lookup
     // (ir_sun_shadow_sample.glsl worldSunShadowFactor) derives its sun UV +

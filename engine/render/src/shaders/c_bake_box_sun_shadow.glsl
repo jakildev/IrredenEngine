@@ -6,6 +6,7 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #include "ir_shape_data.glsl"
 #include "ir_shape_receiver.glsl"
 #include "ir_sun_projection.glsl"
+#include "ir_fog_shadow_caster.glsl"
 #include "ir_sun_face_query_layout.glsl"
 
 layout(std430, binding = 20) readonly buffer ShapeBuffer { ShapeDescriptor shapes[]; };
@@ -30,6 +31,7 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform int cascadeCount;
     uniform float sunSplatMaxTexels;
     uniform float sunMaxShadowThrow;  // Unused here (receiver-only)
+    uniform ivec4 fogCeilingEnabled;
 };
 
 #define IR_SUN_FACE_INDEX_COOPERATIVE
@@ -54,7 +56,8 @@ void main() {
         + abs(sunSpaceProject(axisY, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz)) * halfExtent.y
         + abs(sunSpaceProject(axisZ, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz)) * halfExtent.z;
     const vec3 direction = -vec3(dot(sunDirection.xyz, axisX), dot(sunDirection.xyz, axisY), dot(sunDirection.xyz, axisZ));
-    if (gl_WorkGroupID.z == 0u) {
+    const bool fogBody = (shape.flags & 16u) != 0u;
+    if (gl_WorkGroupID.z == 0u && (fogBody || fogCeilingEnabled.x == 0)) {
         for (int axis = 0; axis < 3; ++axis) {
             vec3 localNormal = vec3(0.0);
             localNormal[axis] = 1.0;
@@ -99,6 +102,9 @@ void main() {
                 }
             }
             if (hit && nearDepth <= farDepth) {
+                const vec3 worldSample = sunBasisU.xyz * uv.x + sunBasisV.xyz * uv.y -
+                    sunDirection.xyz * nearDepth;
+                if (!fogFieldCastsSunShadow(worldSample, fogBody, fogCeilingEnabled.x)) continue;
                 atomicMin(sunDepthBuf[kSourceFaceFallbackOffset + cascade * kCascadeTexelCount + pixel.y * kSunShadowMapDim + pixel.x], packSunSurfaceDepth(nearDepth));
             }
         }

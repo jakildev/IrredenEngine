@@ -644,6 +644,36 @@ TEST(FogRevealEvalTest, CeilingFadeIsOneAtThePlaneAndZeroExactlyAtItsEnd) {
     ) << "a negative height is off whatever the fade";
 }
 
+TEST(FogRevealEvalTest, CeilingShadowPolicyUsesHardMidpointAndMaxAcrossCoveringSources) {
+    FrameDataFogObservers observers = oneCircle(10.0f, 2.0f, 4.0f);
+    IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(observers, 0, 5.0f, 4.0f);
+
+    EXPECT_TRUE(
+        IRPrefab::Fog::detail::fieldCastsSunShadow(observers, IRMath::vec3(0.0f, 0.0f, -3.0f))
+    ) << "the fade midpoint is inclusive";
+    EXPECT_FALSE(
+        IRPrefab::Fog::detail::fieldCastsSunShadow(observers, IRMath::vec3(0.0f, 0.0f, -3.01f))
+    );
+    EXPECT_TRUE(
+        IRPrefab::Fog::detail::fieldCastsSunShadow(observers, IRMath::vec3(20.0f, 0.0f, -20.0f))
+    ) << "uncovered matter is unchanged";
+    EXPECT_TRUE(
+        IRPrefab::Fog::detail::fieldCastsSunShadow(
+            observers,
+            IRMath::vec3(0.0f, 0.0f, -20.0f),
+            true
+        )
+    ) << "BODY subjects remain whole";
+
+    observers.visionCircles_[1] = IRMath::vec4(0.0f, 0.0f, 10.0f, 0.0f);
+    observers.visionCircleHeights_[1] = IRMath::vec4(4.0f, 0.0f, 0.0f, 0.0f);
+    observers.visionCircleCeilings_[1] = IRMath::vec4(-1.0f, 0.0f, 0.0f, 0.0f);
+    observers.visionCircleCount_ = 2;
+    EXPECT_TRUE(
+        IRPrefab::Fog::detail::fieldCastsSunShadow(observers, IRMath::vec3(0.0f, 0.0f, -20.0f))
+    ) << "the maximum across covering sources wins, including a ceiling-off source";
+}
+
 // The additive height cost and the ceiling are independent terms of one
 // source: the cost keeps its curve with the ceiling off, and both apply as a
 // product where both are partial.

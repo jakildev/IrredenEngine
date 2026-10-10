@@ -1163,11 +1163,19 @@ struct FrameDataSun {
     // View-aligned caster fallback planes need the camera basis even when
     // the receiving canvas stores world-space geometry. Quaternion xyzw.
     vec4 sunCasterViewToWorld_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    // .x is non-zero when the active world fog has an enabled reveal ceiling
+    // and the sun can project caster height beyond its XY footprint. The bake
+    // shaders use it as the byte-identity fast path; .y is the scoped legacy
+    // pre-cut lane and the remaining lanes preserve std140 alignment.
+    ivec4 fogCeilingEnabled_{0};
 };
-static_assert(sizeof(FrameDataSun) == 144, "FrameDataSun must match std140 layout");
+static_assert(sizeof(FrameDataSun) == 160, "FrameDataSun must match std140 layout");
 static_assert(
     offsetof(FrameDataSun, sunCasterViewToWorld_) == 128,
     "sunCasterViewToWorld_ must align after sunMaxShadowThrow_"
+);
+static_assert(
+    offsetof(FrameDataSun, fogCeilingEnabled_) == 144, "fogCeilingEnabled_ must be the std140 tail"
 );
 static_assert(offsetof(FrameDataSun, sunBasisU_) == 32, "sunBasisU_ must align after aoEnabled_");
 static_assert(

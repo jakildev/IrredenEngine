@@ -47,6 +47,7 @@ layout(std140, binding = 29) uniform FrameDataSun {
     // two cannot drift.
     uniform float sunMaxShadowThrow;
     uniform vec4 sunCasterViewToWorld;
+    uniform ivec4 fogCeilingEnabled;
 };
 
 layout(std430, binding = 28) readonly buffer SunShadowDepthMap {

@@ -236,6 +236,12 @@
       "capture_offset": 0
     },
     {
+      "name": "ceiling_shadow",
+      "demo_args": ["--ceiling-shadow"],
+      "shots": ["fog_ceiling_shadow9", "fog_ceiling_shadow_yaw9"],
+      "capture_offset": 0
+    },
+    {
       "name": "world_pan",
       "demo_args": ["--world-pan"],
       "shots": [

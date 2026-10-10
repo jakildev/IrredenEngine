@@ -23,6 +23,7 @@
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
+#include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/camera.hpp>
@@ -30,6 +31,7 @@
 #include <irreden/render/canvas_coverage.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
+#include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/sun_shadow_constants.hpp>
 #include <irreden/render/sun_face_query_layout.hpp>
 
@@ -134,13 +136,15 @@ inline ResolvedSun resolveSun() {
 struct WorldPlacedCaster {
     const C_TriangleCanvasTextures *textures_ = nullptr;
     vec3 worldCellOffset_{0.0f};
+    bool fogBody_ = true;
 };
 
 struct DetachedShadowFrame {
     vec4 worldOriginAndDensity_;
     vec4 viewToWorld_;
+    ivec4 fogPolicy_;
 };
-static_assert(sizeof(DetachedShadowFrame) == 32, "DetachedShadowFrame must match the shader UBO");
+static_assert(sizeof(DetachedShadowFrame) == 48, "DetachedShadowFrame must match the shader UBO");
 static_assert(
     offsetof(DetachedShadowFrame, viewToWorld_) == 16, "Quaternion must begin at byte 16"
 );
@@ -192,6 +196,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         analyticCasterFrame_.rasterYaw_ = shapeFrame.rasterYaw;
         analyticCasterFrame_.residualYaw_ =
             shapeFrame.smoothYawEnabled ? shapeFrame.residualYaw : 0.0f;
+        bindFogObservers();
         analyticCasterReady_ = true;
         return analyticCasterDepth_.second;
     }
@@ -206,6 +211,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         );
         sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
         sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
+        bindFogObservers();
         bakeProgram_->use();
         analyticCasterDepth_.second->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
         IRRender::device()->dispatchCompute(
@@ -233,6 +239,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         voxelFaceFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);
         sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
         sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
+        bindFogObservers();
         boxSunProgram_->use();
         IRRender::device()->dispatchCompute(grid.x, grid.y, workgroupsPerShape);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
@@ -250,8 +257,36 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     Buffer *sunShadowFrameDataBuf_ = nullptr;
     Buffer *voxelFrameDataBuf_ = nullptr;
     Buffer *detachedShadowFrameBuf_ = nullptr;
+    Buffer *fogObserverBuf_ = nullptr;
     Buffer *revoxelizeParamsBuf_ = nullptr;
     FrameDataSun frameData_{};
+    FrameDataFogObservers fogObservers_{};
+
+    void bindFogObservers() {
+        fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
+    }
+
+    void refreshFogCeilingFrame() {
+        fogObservers_ = FrameDataFogObservers{};
+        const IREntity::EntityId mainCanvas = IRRender::getCanvas("main");
+        const auto fog = IREntity::getComponentOptional<C_CanvasFogOfWar>(mainCanvas);
+        if (fog.has_value()) {
+            fogObservers_ = fog.value()->observers_;
+        }
+        const vec2 horizontalSun = vec2(IRRender::getSunDirection());
+        // A vertical sun cannot project caster height beyond its own XY
+        // footprint, so cutting it reveals no hidden height. Preserve the
+        // established self-shadow result for that byte-identity regime.
+        const bool projectsHeight = IRMath::dot(horizontalSun, horizontalSun) > 0.0f;
+        frameData_.fogCeilingEnabled_.x =
+            IRPrefab::Fog::anyCeilingEnabled(fogObservers_) && projectsHeight ? 1 : 0;
+        if (frameData_.fogCeilingEnabled_.x == 0) {
+            // The shape caster has no FrameDataSun binding. An empty uploaded
+            // source set is its equivalent identity fast path.
+            fogObservers_.visionCircleCount_ = 0;
+        }
+        fogObserverBuf_->subData(0, sizeof(fogObservers_), &fogObservers_);
+    }
 
     // Smooth camera Z-yaw: main canvas + its per-axis voxel canvases,
     // re-resolved every frame in beginTick. Null unless allocated (rotating).
@@ -394,6 +429,27 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         }
     };
 
+    // Legacy resolve textures have already been fog-classified by their feeder
+    // pass and carry no entity-id plane of their own. Mark those dispatches as
+    // pre-cut so the common depth bake neither cuts them twice nor mistakes a
+    // BODY sample for FIELD. The main canvas leaves this zero and decodes BODY
+    // from its entity-id image.
+    void patchFogCasterPrecut(int precut) {
+        sunShadowFrameDataBuf_->subData(
+            offsetof(FrameDataSun, fogCeilingEnabled_) + sizeof(int),
+            sizeof(int),
+            &precut
+        );
+        sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
+    }
+
+    struct FogCasterPrecutRestoreGuard {
+        System<BAKE_SUN_SHADOW_MAP> &sys_;
+        ~FogCasterPrecutRestoreGuard() {
+            sys_.patchFogCasterPrecut(0);
+        }
+    };
+
     void tick(
         IREntity::EntityId entity,
         const C_TriangleCanvasTextures &canvasTextures,
@@ -425,9 +481,12 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         bakeProgram_->use();
         canvasTextures.getTextureDistances()
             ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+        canvasTextures.getTextureEntityIds()
+            ->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
         sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
         voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
         sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
+        bindFogObservers();
         const int groupsX = IRMath::divCeil(canvasTextures.size_.x, kBakeSunShadowGroupSize);
         const int groupsY = IRMath::divCeil(canvasTextures.size_.y, kBakeSunShadowGroupSize);
         IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
@@ -475,6 +534,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             // structurally for this dispatch (byte-identical to master).
             patchSunSplatRadius(0.0f);
             const SunSplatRestoreGuard splatGuard{*this, frameData_.sunSplatMaxTexels_};
+            patchFogCasterPrecut(1);
+            const FogCasterPrecutRestoreGuard fogPrecutGuard{*this};
             // resolveDepth_ is allocated at the main canvas size, so dispatch
             // over canvasTextures.size_ (same domain as the main bake above).
             perAxisCanvases_->resolveDepth_.second
@@ -524,6 +585,8 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                 IRPrefab::Camera::computeYawSplit(cameraVisualYaw);
             patchFrameYawSplit(cameraRasterYaw, 0.0f);
             const FrameYawRestoreGuard restoreGuard{*this, cameraVisualYaw, cameraResidualYaw};
+            patchFogCasterPrecut(1);
+            const FogCasterPrecutRestoreGuard fogPrecutGuard{*this};
             // NOTE: unlike the per-axis resolve above, the coverage splat
             // is left ENGAGED for pass 3's bake. The world-placed re-voxelize
             // cast's resolve texture carries the SAME screen-space point-scatter
@@ -548,13 +611,15 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                         caster.worldCellOffset_,
                         static_cast<float>(IRMath::max(caster.textures_->renderedSubdivisions_, 1))
                     ),
-                    viewToWorld
+                    viewToWorld,
+                    ivec4(caster.fogBody_ ? 1 : 0, frameData_.fogCeilingEnabled_.x, 0, 0)
                 };
                 detachedShadowFrameBuf_->subData(0, sizeof(casterFrame), &casterFrame);
                 detachedShadowFrameBuf_->bindBase(
                     BufferTarget::UNIFORM,
                     kBufferIndex_RevoxelizeDetachedParams
                 );
+                bindFogObservers();
                 caster.textures_->getTextureDistances()
                     ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
                 IRRender::device()->dispatchCompute(
@@ -595,6 +660,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                 kBufferIndex_FrameDataVoxelToCanvas
             );
             sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
+            bindFogObservers();
             worldPlacedResolveDepth_.second
                 ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
             IRRender::device()->dispatchCompute(groupsX, groupsY, 1);
@@ -650,7 +716,9 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                      rot.worldCellOffset_ + IRMath::rotateVectorByQuat(
                                                 textures.value()->renderedCellOffset_,
                                                 IRPrefab::Camera::getRotationQuat()
-                                            )}
+                                            ),
+                     IRPrefab::Fog::subjectClass(node->entities_[i]) !=
+                         IRPrefab::Fog::FogSubjectClass::FIELD}
                 );
             }
         }
@@ -838,6 +906,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             voxelFaceCoverage_ &&
             findSystem(RENDER_STATELESS_PARTICLES_TO_TRIXEL) == kNullSystemId &&
             findSystem(RENDER_GPU_PARTICLES_TO_TRIXEL) == kNullSystemId;
+        refreshFogCeilingFrame();
         if (!frameUsesFiniteCoverage_)
             return false;
         analyticCasterReady_ = false;
@@ -902,6 +971,7 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         voxelFaceFrameBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_RevoxelizeDetachedParams);
         sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
         sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
+        bindFogObservers();
         voxelFaceProgram_->use();
         IRRender::device()->dispatchCompute(grid.x, grid.y, 1);
         IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
@@ -984,6 +1054,15 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                                          kBufferIndex_RevoxelizeDetachedParams
         )
                                          .second;
+        p->fogObserverBuf_ = IRRender::createNamedResource<Buffer>(
+                                 "SunShadowFogObservers",
+                                 nullptr,
+                                 sizeof(FrameDataFogObservers),
+                                 BUFFER_STORAGE_DYNAMIC,
+                                 BufferTarget::UNIFORM,
+                                 kBufferIndex_FogObservers
+        )
+                                 .second;
         p->revoxelizeParamsBuf_ =
             IRRender::getNamedResource<Buffer>("RevoxelizeDetachedParamsBuffer");
         p->clearProgram_ = IRRender::getNamedResource<ShaderProgram>("ClearSunShadowMapProgram");

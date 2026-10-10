@@ -1,5 +1,6 @@
 #include "ir_iso_common.metal"
 #include "ir_per_axis_lighting.metal"
+#include "ir_fog_shadow_caster.metal"
 // Shared caster/receiver sun-space projection + depth pack.
 #include "ir_sun_projection.metal"
 #include <metal_atomic>
@@ -28,6 +29,7 @@ struct FrameDataSun {
     // 0 => the exact single-write path. Mirrors FrameDataSun in ir_render_types.hpp.
     float sunSplatMaxTexels;
     float sunMaxShadowThrow;  // unused here (receiver-only)
+    int4 fogCeilingEnabled;
 };
 
 // The bounds check is a buffer-bounds guard, not a culling decision:
@@ -81,6 +83,8 @@ kernel void c_bake_sun_shadow_map(
     constant FrameDataSun &sunFrameData [[buffer(29)]],
     device atomic_uint *sunDepthBuf [[buffer(28)]],
     texture2d<int, access::read> trixelDistances [[texture(0)]],
+    texture2d<uint, access::read> trixelEntityIds [[texture(3)]],
+    constant FogShadowObserverData& fogObservers [[buffer(27)]],
     uint3 globalId [[thread_position_in_grid]]
 ) {
     int2 pixel = int2(globalId.xy);
@@ -142,6 +146,11 @@ kernel void c_bake_sun_shadow_map(
             frameData.rasterYaw
         );
     }
+
+    const bool fogBodyOrPrecut = sunFrameData.fogCeilingEnabled.y != 0 ||
+        decodeFogBody(trixelEntityIds.read(uint2(pixel)).xy);
+    if (!fogFieldCastsSunShadow(
+            pos3D, fogBodyOrPrecut, sunFrameData.fogCeilingEnabled.x, fogObservers)) return;
 
     // Shared caster/receiver projection — the receiver lookup
     // (ir_sun_shadow_sample.metal worldSunShadowFactor) derives its sun UV +

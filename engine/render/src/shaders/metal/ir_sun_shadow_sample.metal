@@ -49,6 +49,7 @@ struct FrameDataSun {
     // two cannot drift.
     float sunMaxShadowThrow;
     float4 sunCasterViewToWorld;
+    int4 fogCeilingEnabled;
 };
 
 inline float sampleCascadeShadow(

@@ -43,6 +43,15 @@
 
 namespace IRPrefab::Fog {
 
+inline bool anyCeilingEnabled(const IRComponents::FrameDataFogObservers &observers) {
+    for (int source = 0; source < observers.visionCircleCount_; ++source) {
+        if (observers.ceilingEnabled(source)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 namespace detail {
 
 /// The explored cell state as the fog pass reads it (`kFogExploredValue`
@@ -63,6 +72,37 @@ inline float ceilingVisibility(IRMath::vec4 ceiling, float dzUp) {
         return dzUp <= ceiling.x ? 1.0f : 0.0f;
     }
     return 1.0f - IRMath::smoothstep(ceiling.x, ceiling.x + ceiling.y, dzUp);
+}
+
+/// Sun-shadow caster policy for fog-governed matter. FIELD samples covered by
+/// a vision source cast only when the maximum ceiling visibility is at least
+/// one half; uncovered samples and BODY subjects cast unchanged. Mirrors
+/// `fogFieldCastsSunShadow` in the GLSL and Metal bake helpers.
+inline bool fieldCastsSunShadow(
+    const IRComponents::FrameDataFogObservers &observers,
+    IRMath::vec3 worldPosition,
+    bool fogBody = false
+) {
+    if (fogBody || !anyCeilingEnabled(observers)) {
+        return true;
+    }
+    bool covered = false;
+    float visibility = 0.0f;
+    for (int source = 0; source < observers.visionCircleCount_; ++source) {
+        const IRMath::vec4 circle = observers.visionCircles_[source];
+        const IRMath::vec2 delta = IRMath::vec2(worldPosition) - IRMath::vec2(circle);
+        if (IRMath::dot(delta, delta) > circle.z * circle.z) {
+            continue;
+        }
+        covered = true;
+        const float dzUp =
+            IRMath::max(observers.visionCircleHeights_[source].x - worldPosition.z, 0.0f);
+        visibility = IRMath::max(
+            visibility,
+            ceilingVisibility(observers.visionCircleCeilings_[source], dzUp)
+        );
+    }
+    return !covered || visibility >= 0.5f;
 }
 
 /// Source @p source's reveal of @p worldPosition, ignoring line of sight: the
