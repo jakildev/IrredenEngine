@@ -107,12 +107,13 @@ provably cannot.
   before reaching for it.
 - **The shader gate is a decode-path predicate; the C++ driver disambiguates
   the two resolve dispatches.** The gate
-  (`perAxisRoute == 0 && residualYaw == 0 && sunSplatMaxTexels > 0`) is a
-  **decode-path** predicate, not a camera-cardinality one. The raw smooth-yaw
-  single-canvas content (`residualYaw != 0`) and the per-axis face-local store
-  (`perAxisRoute != 0`) skip it by that gate, but the two **CARDINAL-layout
-  resolve** bake dispatches — per-axis screen-depth (#1435) and world-placed
-  cast (P4b-3, #1596) — deliberately zero `residualYaw` to reuse the cardinal
+  (`residualYaw == 0 && sunSplatMaxTexels > 0`) is a **decode-path**
+  predicate, not a camera-cardinality one. This fallback kernel consumes only
+  single-canvas encoded depth. Raw per-axis textures are resolved before the
+  bake, and producer/restoration paths publish `perAxisRoute_ = 0` in the shared
+  frame. Smooth-yaw main-canvas content (`residualYaw != 0`) skips splatting;
+  both **CARDINAL-layout resolve** dispatches — per-axis screen depth and
+  world-placed casts — deliberately zero `residualYaw` to reuse cardinal
   recovery, so the gate **alone** would engage the splat on both. The two are
   **not** the same case, so `BAKE_SUN_SHADOW_MAP` drives them differently via
   `sunSplatMaxTexels_`:

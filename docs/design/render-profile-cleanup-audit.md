@@ -79,7 +79,7 @@ compares these controls and mixed main/detached canvases before and after the
 two-write removal. These are end-to-end regression checks, not isolated kernel
 proofs or a claim that every inherited visual artifact is resolved.
 
-## Next cleanup slices
+## Receiver-edge validation
 
 The receiver-edge investigation found a producer/consumer mismatch: smooth-yaw
 solid BOX emissions carry world-face slots, while the strict-query miss path
@@ -102,11 +102,6 @@ seventeen CanvasStress/explored-fog beauty frames byte-for-byte.
 The [receiver-edge evidence](../pr-screenshots/codex/receiver-edge-validation/README.md)
 records the probes, analytical fixtures and before/after controls.
 
-| Priority | Finding | Bounded change and required proof |
-|---|---|---|
-| 3 | Fallback sun bake retains a raw per-axis branch its driver does not use | Prove route-zero dispatches, then remove the branch and redundant include while preserving ABI and live fallback casting. Exercise detached casting and splat-enabled cases. |
-| 3 | Source-face shadow-debug palette repeats an existing helper | Delegate to `surfaceShadowDebugColor` in both shader backends; compare diagnostic captures. |
-
 The three inherited macOS reference outliers are reconciled with the existing
 surface policy after signed-face proofs: floor edges select -Y; the fog panel's
 emitter and finite recovery both select -X. Native probes establish the actual
@@ -128,17 +123,82 @@ lives in both new AO bodies, preserving their smooth-yaw specialization.
 Consolidating integer addressing is distinct from merging view/model/world-space
 transforms or changing quantization and binding restoration.
 
-## Lifecycle investigations requiring their own fixes
+## Implemented slice: fallback shadow and diagnostic cleanup
 
-- The observer registration cache retains a pointer after its SystemManager dies;
-  repeated stage registration can replace allocated handles without releasing them.
-  Test repeated registration and multiple Worlds before changing ownership.
-- Metal texture clears have two pattern-buffer caches with different atomic-scratch
-  and encoder-timing behavior. Define queued pattern snapshot/order semantics and
-  test changing patterns before consolidating them.
+The legacy depth bake consumes single-canvas encoded depth throughout: main
+SDF/text input follows visual yaw; per-axis and detached input first resolve to
+cardinal layout. Producer completion and lighting restoration publish route zero.
+Both shader backends therefore use `decodeDepthSingle` directly and omit raw
+per-axis reconstruction and its include. The shared frame ABI stays unchanged.
+Per-axis resolve still disables coverage splats; detached resolve retains them.
+This does not change the default finite-face caster path or shadow softness.
+
+Source-face shadow diagnostics use the existing `surfaceShadowDebugColor` helper.
+`test_render_legacy_shadow_bake.py` executes extracted producer restoration, bake
+orchestration and both shader entry bodies with recording adapters. Its poisoned
+route inputs, 256 CPU configurations, 540 shader cases per backend and 21 mutation
+controls check encoding, dispatch selection, yaw and splat restoration. Projection
+math, device bindings and real buffer ABI remain outside that adapter's proof.
+The test shares brace extraction with the existing visibility-routing controls.
+
+[Native capture evidence](../pr-screenshots/codex/shadow-fallback-cleanup/README.md)
+compares legacy beauty, legacy shadow diagnostics and default-path shadow diagnostics
+at cardinal and non-cardinal yaw. These are behavior-preservation controls;
+legacy point-scatter artifacts remain outside this cleanup.
+
+## Implemented slice: stage observer lifetime
+
+Stage registration finds the observer in the current SystemManager's owned list.
+Clear, unregister and manager destruction therefore invalidate lookup without a
+process-wide pointer cache. Identical tags preserve pending queries; a changed tag
+releases the old ring through its recorded device and resets unpublished samples
+before creating the new ring. Frame dispatch and timing boundaries stay unchanged.
+
+The timestamp tests cover duplicate tags, relabeling pending samples, partial
+allocations, two live managers, clearing and reconstructing the manager at the same
+address. Generic lookup tests cover derived types, first-match order, misses,
+unregistration and the main-thread guard. These isolate manager/resource lifetime;
+they do not establish a full multi-World engine restart contract or a speedup.
+
+All 28 focused timestamp/registration tests pass. Restoring the parent observer
+implementation makes the five new timestamp regressions fail; removing the lookup
+thread guard makes its worker rejection test fail. The
+[native controls](../pr-screenshots/codex/gpu-observer-lifetime/README.md) compare
+rendered frames with stage timing enabled and disabled.
+
+## Implemented slice: Metal clear-source snapshots
+
+Both texture-clear APIs share the device-owned per-texture source cache. Matching
+size and pixel bytes reuse the current source, including null versus explicit zero
+patterns. A changed pattern gets a replacement buffer; the old source retires
+through the existing deferred-release queue while a frame is active. Queued clears
+therefore retain their own values instead of reading a later CPU overwrite or the
+first value ever supplied. Texture destruction still removes its cache entry.
+
+The common helper owns pattern storage only. Device clears retain timed encoders
+and R32I atomic-scratch mirroring; texture clears retain their existing untimed
+encoder and startup upload paths. Neither path adds a GPU wait. Constant per-frame
+clears reuse their allocation; changing patterns can allocate until the frame
+drains, so this is a correctness repair and consolidation, not a measured speedup.
+
+Native tests queue distinct patterns and copy each result before submitting once.
+They cover both APIs, alternating APIs, 4/8/16-byte pixels, null clears, R32I scratch
+and partial uploads. All five ordering regressions fail against the parent backend.
+The [native captures](../pr-screenshots/codex/metal-clear-snapshots/README.md)
+retain unchanged normal and shadow-overlay output for the frozen scene.
+
+## Remaining investigations
+
+- Classify the striped face patterns in frozen CanvasStress at 45-degree yaw with
+  the source-face oracle. Byte-identical before/after captures rule out this
+  clear-cache change but do not establish that the inherited geometry is correct.
 - Shared profiling matrix helpers live in the rotation CLI module. A neutral
   module could clarify ownership once needed; preserve the distinct evidence
   requirements of historical summaries and strict timing controls.
+- Investigate the revoxelized destination-span warning in CanvasStress: 12 of
+  1740 covered cells exceed a 1728-cell span. It is present in the parent and
+  timing-on/off controls. Isolate which geometry is dropped and compare it with
+  the resampled-cell oracle before changing capacity or declaring it harmless.
 
 The timing-attribution experiment remains a separate measurement task. Cleanup
 does not establish a dense-scene speedup, fix inherited visual artifacts, or

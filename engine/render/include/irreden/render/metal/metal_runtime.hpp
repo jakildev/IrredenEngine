@@ -177,8 +177,14 @@ void releaseImageAtomicScratchBuffer(MTL::Texture *texture);
 void setCurrentImageAtomicScratch(MTL::Buffer *buffer);
 MTL::Buffer *currentImageAtomicScratch();
 
-// Called from MetalTexture2DImpl's destructor; prevents a recycled texture
-// address from aliasing a stale entry in the clear-source-buffer map.
+// Both texture-clear entry points borrow this immutable repeated-pixel source.
+// Identical values reuse it; changed values retire the old buffer after queued
+// GPU work completes. Null data denotes zero. The current source stays owned
+// until replacement, texture destruction or device shutdown.
+MTL::Buffer *metalTextureClearSource(
+    MTL::Texture *texture, std::size_t pixelBytes, const void *data
+);
+// Texture destruction removes the cache entry before its address can be reused.
 void removeClearSourceBuffer(MTL::Texture *texture);
 
 } // namespace IRRender
