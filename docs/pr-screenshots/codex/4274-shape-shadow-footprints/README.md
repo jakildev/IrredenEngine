@@ -23,7 +23,8 @@ subdivisions and pixel step are logged, not inferred from nominal shot angles.
 The nominal 180° shot is actually `-3.1414928` radians.
 
 The voxel oracle reconstructs the authored integer occupancy (504 torus cells,
-233 cone cells), projects all occupied unit boxes along sun `(0.35,0.85,-0.4)`
+233 cone cells), clips occupied unit boxes to the sunward side of the receiver,
+projects them along sun `(0.35,0.85,-0.4)`
 onto the floor's top surface, and unions their convex projected polygons at
 pixel centers. Floor height is `4.5 - 0.5/subdivisions`, accounting for the
 analytic box's subdivision-scaled surface threshold. Shared fixture helpers
@@ -56,13 +57,13 @@ tolerance.
 | Nominal yaw | Torus observed/expected area | Torus IoU | Cone observed/expected area | Cone IoU |
 |---|---:|---:|---:|---:|
 | 0° | 0.99730 | 0.97820 | 0.99960 | 0.96346 |
-| 45° | 0.99644 | 0.98372 | 0.99847 | 0.97436 |
+| 45° | 0.99644 | 0.98372 | 0.99876 | 0.97407 |
 | 90° | 0.99409 | 0.98666 | 0.99849 | 0.97881 |
-| 135° | 0.99016 | 0.97649 | 0.99635 | 0.96372 |
-| 180° | 0.99125 | 0.96854 | 0.98845 | 0.96722 |
-| 225° | 1.01744 | 0.97420 | 1.01028 | 0.97503 |
-| 270° | 1.00336 | 0.98182 | 1.00116 | 0.97770 |
-| 315° | 0.99831 | 0.97519 | 0.99832 | 0.95883 |
+| 135° | 0.99016 | 0.97649 | 0.99721 | 0.96380 |
+| 180° | 0.99125 | 0.96854 | 0.98849 | 0.96725 |
+| 225° | 1.01744 | 0.97420 | 1.01104 | 0.97575 |
+| 270° | 1.00336 | 0.98182 | 1.00117 | 0.97771 |
+| 315° | 0.99831 | 0.97519 | 0.99918 | 0.95964 |
 
 All sixteen fail strict edges. Full counts and actual yaws are in
 `voxel-metrics.json`; none of the expected footprints clips the framebuffer.
@@ -100,11 +101,27 @@ for the existing torus sweep without the new floor option. Representative
 0°/45° pairs are committed. The new optional floor leaves that mode unchanged.
 
 The eight unit tests include pixel-exact independent box projection at four
-yaws, a 20% enlarged shadow, a displaced equal-area shadow, an entirely absent
-shadow, and floor/caster/background classification. These positive controls
+yaws and three subdivision densities, with boxes above, crossing, touching
+and below the floor (48 cases), a 20% enlarged shadow, a displaced equal-area
+shadow, an entirely absent shadow, and floor/caster/background classification. These positive controls
 prevent aggregate area agreement from masquerading as geometric correctness.
 
 After merging master `ff515105c`, both the isolated voxel-torus sweep and
 the floorless torus sweep exited cleanly and reproduced all eight prior RGB
 frames exactly. The `merged-master-*` manifests, comparisons and logs record
 these final checks without duplicating identical screenshots.
+
+## Receiver-plane clipping check
+
+The oracle intersects each occupied box with `z <= receiver_z` before
+projection: geometry below the floor cannot block a ray toward the sun. A
+below-floor control previously predicted 616 shadow pixels instead of zero.
+The expanded independent ray/slab check failed 36 cases before this correction
+and passes all 48 afterward. Fractional test pixel scales avoid exact boundary
+ownership ties between the closed slab test and half-open polygon rasterizer.
+
+Re-measuring all 16 committed voxel pairs changes six cone rows by at most
+142 expected visible pixels; the torus rows are identical. Every strict-edge
+result still fails. The table, JSON and diagnostic overlays above reflect the
+clipped oracle; original engine screenshots and capture provenance are unchanged.
+This correction is measurement tooling only, not a renderer improvement.

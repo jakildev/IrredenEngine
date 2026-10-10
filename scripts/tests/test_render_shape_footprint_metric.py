@@ -18,27 +18,34 @@ spec.loader.exec_module(metric)
 
 class ShapeFootprintTest(unittest.TestCase):
     def test_box_projection_matches_independent_floor_ray_intersections(self):
-        size, scale, subdivisions = (512, 512), (11, 7), 2
-        floor_z = 4.25
-        for yaw in (0, 0.71, 2, -2.8):
-            with self.subTest(yaw=yaw):
-                actual, clipped = metric.expected_mask(size, [(0, 0, 0)], yaw, scale, subdivisions)
-                self.assertFalse(clipped)
-                expected = bytearray(size[0] * size[1])
-                for y in range(size[1]):
-                    for x in range(size[0]):
-                        ix = (x + .5 - size[0] / 2) / scale[0]
-                        iy = (y + .5 - size[1] / 2) / scale[1] - 2 * floor_z
-                        vx, vy = (-iy - ix) / 2, (-iy + ix) / 2
-                        origin = (math.cos(yaw) * vx - math.sin(yaw) * vy,
-                                  math.sin(yaw) * vx + math.cos(yaw) * vy, floor_z)
-                        near, far = 0, math.inf
-                        for coordinate, direction in zip(origin, (.35, .85, -.4)):
-                            bounds = sorted(((-.5 - coordinate) / direction,
-                                             (.5 - coordinate) / direction))
-                            near, far = max(near, bounds[0]), min(far, bounds[1])
-                        expected[y * size[0] + x] = 255 if near <= far else 0
-                self.assertEqual(actual.tobytes(), bytes(expected))
+        for subdivisions, floor_z in ((1, 4), (2, 4.25), (8, 4.4375)):
+            for center_z in (0, 4, floor_z + 0.5, 6):
+                for yaw in (0, 0.71, 2, -2.8):
+                    with self.subTest(subdivisions=subdivisions, center_z=center_z, yaw=yaw):
+                        self.check_floor_rays(subdivisions, floor_z, center_z, yaw)
+
+    def check_floor_rays(self, subdivisions, floor_z, center_z, yaw):
+        # Avoid exact pixel-edge ties between half-open raster coverage and closed slabs.
+        size, scale = (512, 512), (11.2, 7.3)
+        center = (0, 0, center_z)
+        actual, clipped = metric.expected_mask(size, [center], yaw, scale, subdivisions)
+        self.assertFalse(clipped)
+        expected = bytearray(size[0] * size[1])
+        for y in range(size[1]):
+            for x in range(size[0]):
+                ix = (x + .5 - size[0] / 2) / scale[0]
+                iy = (y + .5 - size[1] / 2) / scale[1] - 2 * floor_z
+                vx, vy = (-iy - ix) / 2, (-iy + ix) / 2
+                origin = (math.cos(yaw) * vx - math.sin(yaw) * vy,
+                          math.sin(yaw) * vx + math.cos(yaw) * vy, floor_z)
+                near, far = 0, math.inf
+                for coordinate, direction, box_center in zip(
+                        origin, (.35, .85, -.4), center):
+                    bounds = sorted(((box_center - .5 - coordinate) / direction,
+                                     (box_center + .5 - coordinate) / direction))
+                    near, far = max(near, bounds[0]), min(far, bounds[1])
+                expected[y * size[0] + x] = 255 if near <= far else 0
+        self.assertEqual(actual.tobytes(), bytes(expected))
 
     def test_native_fixture_occupancy(self):
         self.assertEqual(len(metric.occupied_cells("torus")), 504)

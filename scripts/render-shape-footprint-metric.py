@@ -53,11 +53,14 @@ def expected_mask(size, cells, yaw, scale, subdivisions):
     origin = (size[0] / 2, size[1] / 2)
     floor_z = 4.5 - 0.5 / subdivisions
     clipped = False
-    for center in cells:
+    for x, y, z in cells:
+        if z - 0.5 > floor_z:
+            continue
+        # Positive world Z points down; only the sunward part can occlude the floor.
+        z_bounds = (z - 0.5, min(z + 0.5, floor_z))
         corners = [
-            project_to_floor(tuple(c + o for c, o in zip(center, offset)),
-                             floor_z, yaw, scale, origin)
-            for offset in itertools.product((-0.5, 0.5), repeat=3)
+            project_to_floor(point, floor_z, yaw, scale, origin)
+            for point in itertools.product((x - 0.5, x + 0.5), (y - 0.5, y + 0.5), z_bounds)
         ]
         clipped |= any(x < 1 or y < 1 or x >= size[0] - 1 or y >= size[1] - 1
                        for x, y in corners)
