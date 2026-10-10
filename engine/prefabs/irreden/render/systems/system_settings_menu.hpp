@@ -13,6 +13,7 @@
 #include <irreden/common/sim_clock.hpp>
 #include <irreden/render/components/component_settings_menu.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
+#include <irreden/render/settings_menu_layout.hpp>
 #include <irreden/render/trixel_font.hpp>
 #include <irreden/render/widget_draw.hpp>
 #include <irreden/render/widget_theme.hpp>
@@ -22,23 +23,6 @@
 #include <vector>
 
 namespace IRSystem {
-
-// Panel geometry, in GUI-canvas trixels. The menu is centered rather than
-// corner-anchored: the two GUI corners are already spoken for (help overlay
-// top-left, perf stats top-right), and a pause menu reads as modal when it
-// sits in the middle.
-inline constexpr int kSettingsMenuWidth = 380;
-inline constexpr int kSettingsMenuMargin = 16;
-inline constexpr int kSettingsMenuPad = 12;
-inline constexpr int kSettingsMenuRowHeight = 24;
-inline constexpr int kSettingsMenuRowGap = 6;
-inline constexpr int kSettingsMenuTitleHeight = 26;
-inline constexpr int kSettingsMenuQuitHeight = 26;
-
-// Fraction of a row's width given to an ENUM setting's name label, leaving the
-// rest for its dropdown. Checkbox and slider carry their own label, so this
-// applies to the dropdown row only.
-inline constexpr int kSettingsMenuEnumLabelPercent = 45;
 
 // Slider round-trips its float through widget pixels, so an exact compare
 // would ping-pong a value between the widget and its setter. BOOL and ENUM
@@ -94,6 +78,7 @@ template <> struct System<SETTINGS_MENU> {
 
     bool open_ = false;
     bool built_ = false;
+    bool enumRowsStacked_ = false;
     float savedTimeScale_ = 1.0f;
 
     std::vector<Row> rows_;
@@ -172,58 +157,53 @@ template <> struct System<SETTINGS_MENU> {
 
         const auto &settings = IRPrefab::Settings::registry().settings_;
         const int rowCount = static_cast<int>(settings.size());
-
-        const int panelWidth =
-            IRMath::min(kSettingsMenuWidth, canvasSize.x - 2 * kSettingsMenuMargin);
-        const int rowStride = kSettingsMenuRowHeight + kSettingsMenuRowGap;
-        // Built once and reused for both the height reservation and the label —
-        // it scans the command registry, so calling it twice per open would
-        // double that walk for an identical answer.
         const std::string hint = controlsHintText();
-        const int hintHeight = hint.empty() ? 0 : rowStride;
-        const int panelHeight = 2 * kSettingsMenuPad + kSettingsMenuTitleHeight +
-                                rowCount * rowStride + hintHeight + kSettingsMenuQuitHeight;
-
-        // Centered, but never above the top margin — a registry long enough to
-        // overflow the canvas grows downward off the bottom rather than
-        // starting off-screen where the title would be unreachable.
-        const IRMath::ivec2 panelPos(
-            IRMath::max(kSettingsMenuMargin, (canvasSize.x - panelWidth) / 2),
-            IRMath::max(kSettingsMenuMargin, (canvasSize.y - panelHeight) / 2)
-        );
+        IRPrefab::SettingsMenu::LayoutInput layoutInput;
+        layoutInput.canvasSize_ = canvasSize;
+        layoutInput.hintTextWidth_ =
+            IRPrefab::GuiText::textRunWidth(hint, IRPrefab::Widget::detail::kWidgetTextFontSize);
+        layoutInput.rows_.reserve(settings.size());
+        const int dropdownPadding = IRPrefab::Widget::defaultTheme().padding_;
+        for (const IRComponents::SettingEntry &setting : settings) {
+            IRPrefab::SettingsMenu::LayoutRowInput rowInput;
+            rowInput.hasSeparateLabel_ = setting.kind_ == IRComponents::SettingEntry::Kind::ENUM;
+            if (rowInput.hasSeparateLabel_) {
+                rowInput.labelTextWidth_ = IRPrefab::GuiText::textRunWidth(
+                    setting.name_,
+                    IRPrefab::Widget::detail::kWidgetTextFontSize
+                );
+                for (const std::string &item : setting.enumLabels_) {
+                    rowInput.controlMinWidth_ = IRMath::max(
+                        rowInput.controlMinWidth_,
+                        IRPrefab::Widget::detail::dropdownMinimumWidth(item, dropdownPadding)
+                    );
+                }
+            }
+            layoutInput.rows_.push_back(rowInput);
+        }
+        const IRPrefab::SettingsMenu::MenuLayout layout =
+            IRPrefab::SettingsMenu::layoutMenu(layoutInput);
+        enumRowsStacked_ = layout.enumRowsStacked_;
 
         // No hitbox on the panel: `makePanel` deliberately leaves interactive
         // routing to the controls on top of it (see `widgets.hpp`), and adding
         // one at the same z-order would let the backdrop steal their hover.
-        panel_ = IRPrefab::Widget::makePanel(
-            panelPos,
-            IRMath::ivec2(panelWidth, panelHeight),
-            "SETTINGS"
-        );
-
-        const int contentX = panelPos.x + kSettingsMenuPad;
-        const int contentWidth = panelWidth - 2 * kSettingsMenuPad;
-        int y = panelPos.y + kSettingsMenuPad + kSettingsMenuTitleHeight;
+        panel_ = IRPrefab::Widget::makePanel(layout.panel_.pos_, layout.panel_.size_, "SETTINGS");
 
         rows_.reserve(static_cast<std::size_t>(rowCount));
         for (int i = 0; i < rowCount; ++i) {
-            rows_.push_back(
-                buildRow(settings[static_cast<std::size_t>(i)], i, contentX, y, contentWidth)
-            );
-            y += rowStride;
+            rows_.push_back(buildRow(
+                settings[static_cast<std::size_t>(i)],
+                i,
+                layout.rows_[static_cast<std::size_t>(i)]
+            ));
         }
 
         if (!hint.empty()) {
-            controlsLabel_ =
-                IRPrefab::Widget::makeLabel(IRMath::ivec2(contentX, textBaseline(y)), hint);
-            y += rowStride;
+            controlsLabel_ = IRPrefab::Widget::makeLabel(layout.hintOrigin_, hint);
         }
 
-        quitButton_ = IRPrefab::Widget::makeButton(
-            IRMath::ivec2(contentX, y),
-            IRMath::ivec2(contentWidth, kSettingsMenuQuitHeight),
-            "QUIT"
-        );
+        quitButton_ = IRPrefab::Widget::makeButton(layout.quit_.pos_, layout.quit_.size_, "QUIT");
 
         if (params_.pauseSimWhileOpen_) {
             savedTimeScale_ = IRSim::timeScale();
@@ -232,27 +212,30 @@ template <> struct System<SETTINGS_MENU> {
         built_ = true;
     }
 
-    Row
-    buildRow(const IRComponents::SettingEntry &setting, int settingIndex, int x, int y, int width) {
+    Row buildRow(
+        const IRComponents::SettingEntry &setting,
+        int settingIndex,
+        const IRPrefab::SettingsMenu::RowLayout &layout
+    ) {
         Row row;
         row.settingIndex_ = settingIndex;
         row.kind_ = setting.kind_;
         row.lastValue_ = setting.get_ ? setting.get_() : 0.0f;
 
-        const IRMath::ivec2 pos(x, y);
-        const IRMath::ivec2 size(width, kSettingsMenuRowHeight);
         switch (setting.kind_) {
         case IRComponents::SettingEntry::Kind::BOOL:
-            row.control_ =
-                IRPrefab::Widget::makeCheckbox(pos, size, setting.name_, row.lastValue_ != 0.0f);
+            row.control_ = IRPrefab::Widget::makeCheckbox(
+                layout.control_.pos_,
+                layout.control_.size_,
+                setting.name_,
+                row.lastValue_ != 0.0f
+            );
             break;
         case IRComponents::SettingEntry::Kind::ENUM: {
-            const int labelWidth = width * kSettingsMenuEnumLabelPercent / 100;
-            row.label_ =
-                IRPrefab::Widget::makeLabel(IRMath::ivec2(x, textBaseline(y)), setting.name_);
+            row.label_ = IRPrefab::Widget::makeLabel(layout.labelOrigin_, setting.name_);
             row.control_ = IRPrefab::Widget::makeDropdown(
-                IRMath::ivec2(x + labelWidth, y),
-                IRMath::ivec2(width - labelWidth, kSettingsMenuRowHeight),
+                layout.control_.pos_,
+                layout.control_.size_,
                 setting.enumLabels_,
                 static_cast<int>(row.lastValue_)
             );
@@ -260,8 +243,8 @@ template <> struct System<SETTINGS_MENU> {
         }
         case IRComponents::SettingEntry::Kind::FLOAT:
             row.control_ = IRPrefab::Widget::makeSlider(
-                pos,
-                size,
+                layout.control_.pos_,
+                layout.control_.size_,
                 setting.name_,
                 setting.min_,
                 setting.max_,
@@ -292,6 +275,7 @@ template <> struct System<SETTINGS_MENU> {
     // savedTimeScale_ of 0 and freeze the sim with no way back.
     void forgetBuiltState() {
         rows_.clear();
+        enumRowsStacked_ = false;
         panel_ = IREntity::kNullEntity;
         controlsLabel_ = IREntity::kNullEntity;
         quitButton_ = IREntity::kNullEntity;
@@ -399,16 +383,6 @@ template <> struct System<SETTINGS_MENU> {
             IRPrefab::Widget::setSliderValue(row.control_, value);
             return;
         }
-    }
-
-    // A bare label draws from its top-left, while checkbox / slider / dropdown
-    // labels are vertically centered within the row. Offsetting the standalone
-    // ENUM label by the same amount keeps a dropdown row's name aligned with
-    // its control instead of riding high.
-    static int textBaseline(int rowTop) {
-        const int textHeight =
-            IRRender::kGlyphHeight * IRPrefab::Widget::detail::kWidgetTextFontSize;
-        return rowTop + (kSettingsMenuRowHeight - textHeight) / 2;
     }
 
     // The Controls line links to the help overlay rather than re-rendering the

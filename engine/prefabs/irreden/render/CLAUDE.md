@@ -143,7 +143,8 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   button. Register settings (`IRPrefab::Settings::register{Bool,Enum,Float}`)
   during init; the menu snapshots them at open.
 - Headless readers: `HelpOverlay::builtText()` / `lastGlyphCommandCount()`,
-  `SettingsMenu::liveRowCount()` / `*ScreenPx(...)`; a QUIT assertion
+  `SettingsMenu::liveRowCount()` / `*Rect()` / `enumRowsStacked()` /
+  `*ScreenPx(...)`; a QUIT assertion
   evaluates when the close is observed, not on the capture frame.
   `systemOrNull()` reports absent as `IRSystem::kNullSystemId`, never
   `kNullEntity` (`engine/system/CLAUDE.md` §"Hot reload and lookup";
