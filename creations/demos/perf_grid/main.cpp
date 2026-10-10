@@ -622,6 +622,29 @@ constexpr float kFogSweepRingRadius = 20.0f;
 constexpr float kFogSweepCircleRadius = 8.0f;
 constexpr float kFogSweepCircleEdge = 1.0f;
 int g_fogSweepFrame = 0;
+// --fog-reveal-surface: every analytic source of the fixture gets a soft
+// ceiling and the canvas treatment is on, so the fog pass runs its treated
+// paint path; applied after each fixture authors its sources.
+bool g_fogRevealSurface = false;
+constexpr float kFogRevealSurfaceCeiling = 4.0f;
+constexpr float kFogRevealSurfaceFade = 4.0f;
+constexpr float kFogRevealSurfaceDensity = 0.5f;
+
+void applyFogRevealSurface() {
+    if (!g_fogRevealSurface) {
+        return;
+    }
+    const auto &fog =
+        IREntity::getComponent<IRComponents::C_CanvasFogOfWar>(IRRender::getActiveCanvasEntity());
+    for (int slot = 0; slot < fog.observers_.visionCircleCount_; ++slot) {
+        IRPrefab::Fog::setVisionCircleCeiling(
+            slot,
+            kFogRevealSurfaceCeiling,
+            kFogRevealSurfaceFade
+        );
+    }
+    IRPrefab::Fog::setRevealSurfaceTreatment(kFogRevealSurfaceDensity);
+}
 IRSystem::SystemId g_fogRevealEvalId = IRSystem::kNullSystemId;
 AutoProfileStat g_autoProfileRestamp;
 std::uint32_t g_autoProfileRestampMax = 0;
@@ -884,6 +907,12 @@ void registerCliArgs() {
         "Orbit 8 vision circles inside the grid one cell per frame on an unexplored grid, so "
         "adopted cells cross a rim every frame; logs FOG-RESTAMP"
     );
+    args.flag(
+        "--fog-reveal-surface",
+        "With a fog fixture: cap every analytic source with a soft ceiling (4 above its "
+        "observer, fading over 4) and enable the canvas reveal-surface treatment (dissolve "
+        "density 0.5), the treatment-enabled perf fixture"
+    );
     args.string(
         "--mode",
         "Scene mode: voxel_set | sdf | dense_set | hollow_set | gallery",
@@ -992,6 +1021,7 @@ void readCliArgs() {
     }
     g_fogTier = args.getFlag("--fog-tier");
     g_fogRevealSweep = args.getFlag("--fog-reveal-sweep");
+    g_fogRevealSurface = args.getFlag("--fog-reveal-surface");
     g_feederClassifyPadSet = args.wasProvided("--feeder-classify-pad");
     g_feederClassifyPad = args.getInt("--feeder-classify-pad");
 
@@ -1664,6 +1694,7 @@ void configureLightingAndCanvas() {
         IRPrefab::Fog::clearVisionCircles();
         addFogRevealCircles();
     }
+    applyFogRevealSurface();
 
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
     IREntity::createEntity(

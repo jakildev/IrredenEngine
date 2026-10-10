@@ -49,6 +49,16 @@ layout(std140, binding = 27) uniform FogObserverData {
     // named uniform block and this is it. All-zero heights (the default) make
     // those drops equal the 2D column clip.
     vec4 visionCircleHeights[kMaxFogVisionCircles];
+    // The fog passes' tail, spelled out so the ceilings land at 448: the
+    // unexplored colour, the line-of-sight parameters and the channel masks
+    // are unread by every consumer of this declaration.
+    vec4 unexploredColor;
+    vec4 losParams[kMaxFogVisionCircles];
+    uvec4 visionCircleChannels[2];
+    // Per-circle upward ceiling, (ceilingHeight, fadeHeight, 0, 0) above
+    // observerZ, negative = off; read only by stage 1's unpainted-route drop
+    // (fogColumnRevealZ), which scales each source by fogCeilingVisibility.
+    vec4 visionCircleCeilings[kMaxFogVisionCircles];
 };
 
 // Reveal in [0,1] of a column whose center is `dist` world units from a vision

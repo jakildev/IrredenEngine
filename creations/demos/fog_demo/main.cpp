@@ -223,9 +223,18 @@ void probeLuaFogUpload() {
             observers.losSoftness(1) == 0.75f && !observers.losGated(0),
         "IRFog Lua line-of-sight entry uploaded an unexpected gate"
     );
+    requireLuaFogSelftest(
+        observers.visionCircleCeilings_[0] == vec4(2.5f, 1.5f, 0.0f, 0.0f) &&
+            !observers.ceilingEnabled(1),
+        "IRFog Lua ceiling entry uploaded an unexpected ceiling"
+    );
+    requireLuaFogSelftest(
+        observers.revealSurfaceTreatment_ == vec4(1.0f, 0.25f, kFogCutTone, 0.0f),
+        "IRFog Lua treatment entry uploaded an unexpected treatment"
+    );
     IR_LOG_INFO(
         "LUA-FOG-PROBE sources={} centers={},{};{},{} observerZ={} zCostUp={} "
-        "zCostDown={} freeBand={} PASS",
+        "zCostDown={} freeBand={} ceiling={},{} treatment={},{},{} PASS",
         observers.visionCircleCount_,
         observers.visionCircles_[0].x,
         observers.visionCircles_[0].y,
@@ -234,7 +243,12 @@ void probeLuaFogUpload() {
         observers.visionCircleHeights_[0].x,
         observers.visionCircleHeights_[0].y,
         observers.visionCircleHeights_[0].z,
-        observers.visionCircleHeights_[0].w
+        observers.visionCircleHeights_[0].w,
+        observers.ceilingHeight(0),
+        observers.fadeHeight(0),
+        observers.revealSurfaceTreatmentEnabled(),
+        observers.dissolveDensity(),
+        observers.capTone()
     );
     g_luaFogProbePhase = 2;
 }
@@ -677,14 +691,22 @@ IREntity::EntityId g_ceilingPillar = IREntity::kNullEntity;
 int g_fogPaintProbeFrame = 0;
 bool g_fogPerAxisProbeDone = false;
 
-bool matchesFogDebugColor(Color color) {
-    const auto near = [](std::uint8_t channel, std::uint8_t target) {
-        return IRMath::abs(static_cast<int>(channel) - static_cast<int>(target)) <=
-               kFogPaintProbeTolerance;
+// Every channel of @p color within @p tolerance (in 0..255) of the
+// normalized @p expected.
+bool colorNear(Color color, vec3 expected, float tolerance) {
+    const auto near = [tolerance](std::uint8_t channel, float target) {
+        return IRMath::abs(static_cast<float>(channel) - target * 255.0f) <= tolerance;
     };
-    return near(color.red_, kFogDebugUnexploredColor.red_) &&
-           near(color.green_, kFogDebugUnexploredColor.green_) &&
-           near(color.blue_, kFogDebugUnexploredColor.blue_);
+    return near(color.red_, expected.x) && near(color.green_, expected.y) &&
+           near(color.blue_, expected.z);
+}
+
+bool matchesFogDebugColor(Color color) {
+    return colorNear(
+        color,
+        vec3(IRMath::colorToVec4(kFogDebugUnexploredColor)),
+        static_cast<float>(kFogPaintProbeTolerance)
+    );
 }
 
 // Runs at the render front, so it reads the previous frame's completed colour
@@ -1762,6 +1784,373 @@ void probeEntityRevealBodies() {
     }
 }
 
+// --ceiling-treatment: the reveal-surface ceiling on FIELD columns. A soft
+// disc (so the radial rim lift and cap stay off) from an observer on the
+// slab's top plane, capped by a soft ceiling kCeilingHeight above it that
+// fades over kCeilingFade; a centre and a rim FIELD column of equal height,
+// so the band falls at the same dzUp in both, and a governed BODY twin
+// anchored under the ceiling that renders whole. Unexplored matter is
+// painted the debug colour. --reveal-treatment adds the canvas treatment
+// (dissolve density kRevealTreatmentDensity, cap tone kRevealTreatmentTone);
+// without it the same rows are the untreated control. The cardinal shot runs
+// FOG-SURFACE-PROBE; the yaw shot renders through the per-axis routes. With
+// --occlusion=high-ground --los-softness, --reveal-treatment instead treats
+// the soft line-of-sight band on the ground slab (FOG-SURFACE-PROBE too).
+bool g_ceilingTreatment = false; // --ceiling-treatment
+bool g_revealTreatment = false;  // --reveal-treatment
+constexpr float kCeilingVisionRadius = 14.0f;
+constexpr float kCeilingVisionEdge = 2.0f;
+constexpr float kCeilingObserverZ = 4.0f;
+constexpr float kCeilingHeight = 5.0f;
+constexpr float kCeilingFade = 4.0f;
+// Each column must keep a voxel of the band's last level for the treated cut
+// heights to match across columns; the dissolve retains a band voxel with
+// probability at least 1 - density, and FOG-SURFACE-PROBE asserts the match.
+constexpr float kRevealTreatmentDensity = 0.5f;
+constexpr float kRevealTreatmentTone = 0.5f;
+constexpr int kCeilingColumnHeight = 16;
+constexpr int kCeilingColumnFootprint = 4;
+// The rim column's far corner stays inside radius - edge, so its reveal is
+// radially full and only the ceiling grades it.
+constexpr vec3 kCeilingCentreColumn{0.0f, 0.0f, kCeilingObserverZ};
+constexpr vec3 kCeilingRimColumn{8.0f, 0.0f, kCeilingObserverZ};
+constexpr vec3 kCeilingBodyTwin{0.0f, 8.0f, kCeilingObserverZ};
+constexpr float kCeilingShotYaw = 0.35f;
+constexpr IRVideo::AutoScreenshotShot kCeilingShots[] = {
+    {9.0f, vec2(0, 0), 0.0f, "fog_ceiling9"},
+    {9.0f, vec2(0, 0), kCeilingShotYaw, "fog_ceiling_yaw9"},
+};
+constexpr IRVideo::AutoScreenshotShot kCeilingTreatmentShots[] = {
+    {9.0f, vec2(0, 0), 0.0f, "fog_ceiling_treatment9"},
+    {9.0f, vec2(0, 0), kCeilingShotYaw, "fog_ceiling_treatment_yaw9"},
+};
+constexpr IRVideo::AutoScreenshotShot kOcclusionHighGroundSoftTreatedShots[] = {
+    {6.0f, vec2(0, 0), 0.0f, "fog_occlusion_high_ground_soft_treated"},
+};
+IREntity::EntityId g_ceilingCentreColumn = IREntity::kNullEntity;
+IREntity::EntityId g_ceilingRimColumn = IREntity::kNullEntity;
+IREntity::EntityId g_ceilingBodyTwin = IREntity::kNullEntity;
+IREntity::EntityId g_occlusionSlab = IREntity::kNullEntity;
+int g_surfaceProbeFrame = 0;
+// The fog output of the frame ahead of the probed one, rendered with the
+// treatment off: the control half of the ceiling probe's treatment diff.
+std::vector<Color> g_surfaceControlColors;
+// A readback channel within this of its prediction matches it.
+constexpr float kSurfaceProbeColorTolerance = 3.0f;
+// The fog pass's hard-disc rim lift, mirrored from ir_fog_common
+// (kFogRimFadeCells, kFogRimFadeLevel).
+constexpr float kFogRimFadeCells = 8.0f;
+constexpr float kFogRimFadeLevel = 0.75f;
+
+void requireSurfaceProbe(bool condition, const char *message) {
+    requireFogProbe("FOG-SURFACE-PROBE", condition, message);
+}
+
+bool colorMatches(Color color, vec3 expected) {
+    return colorNear(color, expected, kSurfaceProbeColorTolerance);
+}
+
+bool colorEquals(Color a, Color b) {
+    return a.red_ == b.red_ && a.green_ == b.green_ && a.blue_ == b.blue_;
+}
+
+// CPU twin of the fog pass's FIELD colour apply for a texel the grid reads
+// unexplored: the state curve, the hard-disc rim lift at @p hardDistPastRim
+// (the soft discs here never lift), and, for a top face, no radial cap.
+vec3 predictFieldColor(float state, vec3 source, vec3 unexplored, float hardDistPastRim) {
+    vec3 color = IRPrefab::Fog::detail::revealStateColor(state, source, unexplored);
+    const float u = 1.0f - IRMath::smoothstep(0.0f, kFogRimFadeCells, hardDistPastRim);
+    return IRMath::mix(color, source, kFogRimFadeLevel * u * u);
+}
+
+struct SurfaceLevelCount {
+    int lit_ = 0;
+    int partial_ = 0;
+    int hidden_ = 0;
+};
+
+// The first level (dzUp in whole voxels) that is not entirely lit, and the
+// first level above which every level is entirely hidden; -1 when absent.
+struct SurfaceHeights {
+    int firstHidden_ = -1;
+    int fullyHidden_ = -1;
+
+    bool operator==(const SurfaceHeights &) const = default;
+};
+
+SurfaceHeights surfaceHeights(const std::map<int, SurfaceLevelCount> &levels) {
+    SurfaceHeights heights;
+    for (const auto &[level, count] : levels) {
+        if (count.partial_ > 0 || count.hidden_ > 0) {
+            heights.firstHidden_ = level;
+            break;
+        }
+    }
+    for (auto it = levels.rbegin(); it != levels.rend(); ++it) {
+        if (it->second.lit_ > 0 || it->second.partial_ > 0) {
+            break;
+        }
+        heights.fullyHidden_ = it->first;
+    }
+    return heights;
+}
+
+// `cpu_` reads the untreated oracle (the ceiling alone decides the heights),
+// `treated_` the oracle with the canvas treatment, whose dissolve lowers the
+// fully-hidden edge toward the band's cut end exactly as the pass paints it.
+// `bandChanged_` counts the band texels the treatment recoloured against the
+// control frame.
+struct SurfaceColumnReading {
+    int texels_ = 0;
+    int partialBand_ = 0;
+    int bandChanged_ = 0;
+    int dissolved_ = 0;
+    int retained_ = 0;
+    int capToned_ = 0;
+    int topTexels_ = 0;
+    int topPainted_ = 0;
+    SurfaceHeights cpu_;
+    SurfaceHeights treated_;
+    SurfaceHeights gpu_;
+};
+
+// Runs at the render front on the frame after the before-fog snapshot, like
+// FOG-BODY-PROBE, so both halves describe one frame. The two frames ahead of
+// it stage the treatment diff: the first renders with the treatment off, the
+// second reads that frame back as the control and turns the treatment on
+// again, so the probed frame differs from the control by the treatment alone.
+void probeCeilingSurface() {
+    ++g_surfaceProbeFrame;
+    const auto &textures =
+        IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity());
+    if (g_surfaceProbeFrame == g_autoWarmupFrames - 2) {
+        IRPrefab::Fog::clearRevealSurfaceTreatment();
+        return;
+    }
+    if (g_surfaceProbeFrame == g_autoWarmupFrames - 1) {
+        textures.readColors(g_surfaceControlColors);
+        if (g_revealTreatment) {
+            IRPrefab::Fog::setRevealSurfaceTreatment(kRevealTreatmentDensity, kRevealTreatmentTone);
+        }
+        return;
+    }
+    if (g_surfaceProbeFrame != g_autoWarmupFrames || g_bodyProbeBeforeColors.empty()) {
+        return;
+    }
+    const auto &fog = IREntity::getComponent<C_CanvasFogOfWar>(IRRender::getActiveCanvasEntity());
+    std::vector<IRMath::uvec2> carriers;
+    std::vector<Color> colors;
+    std::vector<int> distances;
+    textures.readEntityIdCarriers(carriers);
+    textures.readColors(colors);
+    textures.readDistances(distances);
+    const auto *stage1 =
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>>(
+            IRSystem::findSystem(IRSystem::VOXEL_TO_TRIXEL_STAGE_1)
+        );
+    const vec3 unexplored(IRMath::colorToVec4(kFogDebugUnexploredColor));
+    const int topLevel = kCeilingColumnHeight - 1;
+
+    const auto readColumn = [&](IREntity::EntityId entity) {
+        SurfaceColumnReading reading;
+        std::map<int, SurfaceLevelCount> cpuLevels;
+        std::map<int, SurfaceLevelCount> treatedLevels;
+        std::map<int, SurfaceLevelCount> gpuLevels;
+        const auto classify = [](SurfaceLevelCount &count, float state) {
+            ++(state <= 0.0f ? count.hidden_ : state >= 1.0f ? count.lit_ : count.partial_);
+        };
+        const auto expected = static_cast<std::uint32_t>(entity);
+        for (int y = 0; y < textures.size_.y; ++y) {
+            for (int x = 0; x < textures.size_.x; ++x) {
+                const std::size_t i = static_cast<std::size_t>(y) * textures.size_.x + x;
+                if (carriers[i].x != expected) {
+                    continue;
+                }
+                ++reading.texels_;
+                const vec3 world =
+                    canvasTexelToWorld(IRMath::ivec2(x, y), distances[i], stage1->frameData_);
+                const int level =
+                    static_cast<int>(kCeilingObserverZ) - IRMath::roundHalfUp(world.z);
+                const float plain = IRPrefab::Fog::evalActiveVisionReveal(world);
+                const IRPrefab::Fog::RevealSurfaceSample treated =
+                    IRPrefab::Fog::evalRevealSurface(fog, world);
+                const Color before = g_bodyProbeBeforeColors[i];
+                const bool gpuHidden = colorMatches(colors[i], unexplored);
+                const bool gpuLit = colorEquals(colors[i], before);
+                classify(cpuLevels[level], plain);
+                classify(treatedLevels[level], treated.state_);
+                SurfaceLevelCount &gpuLevel = gpuLevels[level];
+                ++(gpuHidden ? gpuLevel.hidden_ : gpuLit ? gpuLevel.lit_ : gpuLevel.partial_);
+                if (level == topLevel) {
+                    ++reading.topTexels_;
+                    reading.topPainted_ += gpuHidden ? 1 : 0;
+                }
+                if (plain <= 0.0f || plain >= 1.0f) {
+                    continue;
+                }
+                ++reading.partialBand_;
+                reading.bandChanged_ += colorEquals(colors[i], g_surfaceControlColors[i]) ? 0 : 1;
+                if (gpuHidden) {
+                    ++reading.dissolved_;
+                    continue;
+                }
+                ++reading.retained_;
+                const vec3 source(IRMath::colorToVec4(before));
+                const vec3 untreated = predictFieldColor(plain, source, unexplored, 8.0f);
+                const vec3 toned = IRPrefab::Fog::detail::cutCapBlend(
+                    untreated,
+                    source,
+                    fog.observers_.capTone(),
+                    treated.state_,
+                    treated.styledBand_
+                );
+                if (!colorMatches(colors[i], untreated) && colorMatches(colors[i], toned)) {
+                    ++reading.capToned_;
+                }
+            }
+        }
+        reading.cpu_ = surfaceHeights(cpuLevels);
+        reading.treated_ = surfaceHeights(treatedLevels);
+        reading.gpu_ = surfaceHeights(gpuLevels);
+        return reading;
+    };
+
+    requireSurfaceProbe(
+        g_surfaceControlColors.size() == colors.size(),
+        "the control frame was not read back"
+    );
+    const SurfaceColumnReading centre = readColumn(g_ceilingCentreColumn);
+    const SurfaceColumnReading rim = readColumn(g_ceilingRimColumn);
+    for (const auto &[label, reading] : {std::pair{"centre", &centre}, std::pair{"rim", &rim}}) {
+        IR_LOG_INFO(
+            "FOG-SURFACE-PROBE column={} texels={} cpuFirstHidden={} cpuFullyHidden={} "
+            "treatedFirstHidden={} treatedFullyHidden={} gpuFirstHidden={} gpuFullyHidden={} "
+            "partialBand={} bandChanged={} dissolved={} retained={} capToned={} topTexels={} "
+            "topPainted={}",
+            label,
+            reading->texels_,
+            reading->cpu_.firstHidden_,
+            reading->cpu_.fullyHidden_,
+            reading->treated_.firstHidden_,
+            reading->treated_.fullyHidden_,
+            reading->gpu_.firstHidden_,
+            reading->gpu_.fullyHidden_,
+            reading->partialBand_,
+            reading->bandChanged_,
+            reading->dissolved_,
+            reading->retained_,
+            reading->capToned_,
+            reading->topTexels_,
+            reading->topPainted_
+        );
+        requireSurfaceProbe(reading->texels_ > 0, "a FIELD column has no texels");
+        requireSurfaceProbe(
+            reading->cpu_.firstHidden_ >= 0 && reading->cpu_.fullyHidden_ >= 0,
+            "the oracle finds no ceiling cut on a FIELD column"
+        );
+        requireSurfaceProbe(
+            reading->treated_ == reading->gpu_,
+            "the GPU cut heights differ from the oracle's"
+        );
+        requireSurfaceProbe(
+            reading->treated_.firstHidden_ == reading->cpu_.firstHidden_ &&
+                reading->treated_.fullyHidden_ <= reading->cpu_.fullyHidden_ &&
+                reading->treated_.fullyHidden_ > reading->cpu_.firstHidden_,
+            "the treatment moved the cut outside the ceiling's band"
+        );
+        requireSurfaceProbe(reading->partialBand_ > 0, "a FIELD column has no partial band");
+        requireSurfaceProbe(
+            reading->topTexels_ > 0 && reading->topPainted_ == reading->topTexels_,
+            "the FIELD silhouette above the band is not painted whole"
+        );
+        if (g_revealTreatment) {
+            requireSurfaceProbe(reading->dissolved_ > 0, "the treatment dissolved nothing");
+            requireSurfaceProbe(reading->retained_ > 0, "the treatment retained nothing");
+            requireSurfaceProbe(reading->capToned_ > 0, "the treatment toned nothing");
+            requireSurfaceProbe(
+                reading->bandChanged_ > 0,
+                "the treatment changed nothing in a column's band"
+            );
+        } else {
+            requireSurfaceProbe(
+                reading->dissolved_ == 0 && reading->capToned_ == 0 && reading->bandChanged_ == 0,
+                "the untreated control carries treatment"
+            );
+        }
+    }
+    requireSurfaceProbe(
+        centre.cpu_ == rim.cpu_ && centre.gpu_ == rim.gpu_,
+        "the centre and rim columns cut at different heights"
+    );
+
+    int changed = 0;
+    for (std::size_t i = 0; i < colors.size(); ++i) {
+        changed += colorEquals(colors[i], g_surfaceControlColors[i]) ? 0 : 1;
+    }
+    const int changedOutsideBand = changed - centre.bandChanged_ - rim.bandChanged_;
+    IR_LOG_INFO(
+        "FOG-SURFACE-PROBE roi=band canvas={}x{} changed={} centreBand={} rimBand={} "
+        "outsideBand={}",
+        textures.size_.x,
+        textures.size_.y,
+        changed,
+        centre.bandChanged_,
+        rim.bandChanged_,
+        changedOutsideBand
+    );
+    requireSurfaceProbe(
+        changedOutsideBand == 0,
+        "the treatment changed a texel outside the columns' partial band"
+    );
+
+    const auto twin = static_cast<std::uint32_t>(g_ceilingBodyTwin);
+    int texels = 0;
+    int aboveCeiling = 0;
+    int painted = 0;
+    int partial = 0;
+    int rated = 0;
+    float ratioMin = 0.0f;
+    float ratioMax = 0.0f;
+    for (int y = 0; y < textures.size_.y; ++y) {
+        for (int x = 0; x < textures.size_.x; ++x) {
+            const std::size_t i = static_cast<std::size_t>(y) * textures.size_.x + x;
+            if (carriers[i].x != twin) {
+                continue;
+            }
+            ++texels;
+            const vec3 world =
+                canvasTexelToWorld(IRMath::ivec2(x, y), distances[i], stage1->frameData_);
+            aboveCeiling += kCeilingObserverZ - world.z > kCeilingHeight ? 1 : 0;
+            painted += colorMatches(colors[i], unexplored) ? 1 : 0;
+            partial += colorEquals(colors[i], g_bodyProbeBeforeColors[i]) ? 0 : 1;
+            const float before = luminanceOf(g_bodyProbeBeforeColors[i]);
+            if (before < kBodyProbeMinLuminance) {
+                continue;
+            }
+            const float ratio = luminanceOf(colors[i]) / before;
+            ratioMin = rated == 0 ? ratio : IRMath::min(ratioMin, ratio);
+            ratioMax = rated == 0 ? ratio : IRMath::max(ratioMax, ratio);
+            ++rated;
+        }
+    }
+    IR_LOG_INFO(
+        "FOG-SURFACE-PROBE body=twin texels={} aboveCeiling={} painted={} partial={} "
+        "ratioMin={:.3f} ratioMax={:.3f}",
+        texels,
+        aboveCeiling,
+        painted,
+        partial,
+        ratioMin,
+        ratioMax
+    );
+    requireSurfaceProbe(
+        texels > 0 && aboveCeiling > 0,
+        "the BODY twin does not rise above the ceiling"
+    );
+    requireSurfaceProbe(painted == 0 && partial == 0, "the BODY twin is sliced or treated");
+    requireSurfaceProbe(rated > 0 && ratioMax - ratioMin <= 0.02f, "the BODY twin is not uniform");
+}
+
 // One-shot picking probe for the fog whole-body carrier bit: after warmup,
 // read the canvas entity-id channel, count the governed pillar's texels (raw
 // low word match) and how many carry the bit and decode back to the bare id,
@@ -1913,6 +2302,127 @@ void probeOcclusionLineOfSight() {
         "FOG-LOS-PROBE near={} far={}",
         IRPrefab::Fog::lineOfSight(eye, vec3(kOcclusionNearProbe)) ? 1 : 0,
         IRPrefab::Fog::lineOfSight(eye, vec3(kOcclusionFarProbe)) ? 1 : 0
+    );
+}
+
+// The soft line-of-sight band of --occlusion=high-ground --los-softness under
+// --reveal-treatment: every band texel lies on the slab's top face inside the
+// hard disc, so the untreated prediction carries the hard-disc rim lift and
+// no cap. The dissolve is graded against the oracle's own hash decision per
+// texel, and the band must stay a thin strip of the slab.
+void probeOcclusionSurface() {
+    if (++g_surfaceProbeFrame != g_autoWarmupFrames || g_bodyProbeBeforeColors.empty()) {
+        return;
+    }
+    const auto &textures =
+        IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity());
+    const auto &fog = IREntity::getComponent<C_CanvasFogOfWar>(IRRender::getActiveCanvasEntity());
+    std::vector<IRMath::uvec2> carriers;
+    std::vector<Color> colors;
+    std::vector<int> distances;
+    textures.readEntityIdCarriers(carriers);
+    textures.readColors(colors);
+    textures.readDistances(distances);
+    const auto *stage1 =
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>>(
+            IRSystem::findSystem(IRSystem::VOXEL_TO_TRIXEL_STAGE_1)
+        );
+    const vec3 unexplored(fog.observers_.unexploredColor_);
+    const vec2 centre(kOcclusionRidgeObserver);
+    const auto expected = static_cast<std::uint32_t>(g_occlusionSlab);
+
+    int slabTexels = 0;
+    int hidden = 0;
+    int lit = 0;
+    int gpuPartial = 0;
+    int partialBand = 0;
+    int dissolved = 0;
+    int retained = 0;
+    int capToned = 0;
+    int disagreements = 0;
+    IRMath::ivec2 bandMin(textures.size_);
+    IRMath::ivec2 bandMax(-1);
+    for (int y = 0; y < textures.size_.y; ++y) {
+        for (int x = 0; x < textures.size_.x; ++x) {
+            const std::size_t i = static_cast<std::size_t>(y) * textures.size_.x + x;
+            if (carriers[i].x != expected) {
+                continue;
+            }
+            ++slabTexels;
+            const Color before = g_bodyProbeBeforeColors[i];
+            const bool gpuHidden = colorMatches(colors[i], unexplored);
+            const bool gpuLit = colorEquals(colors[i], before);
+            gpuPartial += !gpuHidden && !gpuLit ? 1 : 0;
+            const vec3 world =
+                canvasTexelToWorld(IRMath::ivec2(x, y), distances[i], stage1->frameData_);
+            // The band is where line of sight alone grades a radially full sample.
+            const float radial = IRPrefab::Fog::evalVisionReveal(fog.observers_, world);
+            const float plain = IRPrefab::Fog::evalReveal(fog, world);
+            hidden += plain <= 0.0f ? 1 : 0;
+            lit += plain >= 1.0f ? 1 : 0;
+            if (radial < 1.0f || plain <= 0.0f || plain >= 1.0f) {
+                continue;
+            }
+            ++partialBand;
+            bandMin = IRMath::min(bandMin, IRMath::ivec2(x, y));
+            bandMax = IRMath::max(bandMax, IRMath::ivec2(x, y));
+            const IRPrefab::Fog::RevealSurfaceSample treated =
+                IRPrefab::Fog::evalRevealSurface(fog, world);
+            if (treated.state_ <= 0.0f) {
+                ++dissolved;
+                disagreements += gpuHidden ? 0 : 1;
+                continue;
+            }
+            ++retained;
+            disagreements += gpuHidden ? 1 : 0;
+            const vec3 source(IRMath::colorToVec4(before));
+            const float distPastRim = IRMath::length(vec2(world) - centre) - kOcclusionRadius;
+            const float hardDistPastRim =
+                plain < 1.0f ? IRMath::mix(kFogRimFadeCells, distPastRim, plain) : distPastRim;
+            const vec3 untreated = predictFieldColor(plain, source, unexplored, hardDistPastRim);
+            const vec3 toned = IRPrefab::Fog::detail::cutCapBlend(
+                untreated,
+                source,
+                fog.observers_.capTone(),
+                treated.state_,
+                treated.styledBand_
+            );
+            if (!colorMatches(colors[i], untreated) && colorMatches(colors[i], toned)) {
+                ++capToned;
+            }
+        }
+    }
+    IR_LOG_INFO(
+        "FOG-SURFACE-PROBE scene=occlusion_high_ground_soft canvas={}x{} slabTexels={} "
+        "hidden={} lit={} gpuPartial={} partialBand={} dissolved={} retained={} capToned={} "
+        "disagreements={} bandMin={},{} bandMax={},{}",
+        textures.size_.x,
+        textures.size_.y,
+        slabTexels,
+        hidden,
+        lit,
+        gpuPartial,
+        partialBand,
+        dissolved,
+        retained,
+        capToned,
+        disagreements,
+        bandMin.x,
+        bandMin.y,
+        bandMax.x,
+        bandMax.y
+    );
+    requireSurfaceProbe(partialBand > 0, "the soft line-of-sight band is empty");
+    requireSurfaceProbe(dissolved > 0, "the treatment dissolved nothing in the band");
+    requireSurfaceProbe(retained > 0, "the treatment retained nothing in the band");
+    requireSurfaceProbe(capToned > 0, "the treatment toned nothing in the band");
+    requireSurfaceProbe(
+        disagreements * 50 <= partialBand,
+        "the GPU dissolve disagrees with the oracle on more than 2% of the band"
+    );
+    requireSurfaceProbe(
+        partialBand * 10 <= slabTexels,
+        "the treated band is not a thin strip of the slab"
     );
 }
 
@@ -2206,6 +2716,17 @@ int main(int argc, char **argv) {
         "The --entity-reveal scene on a soft-edged disc (edge softness 4), so the "
         "rim pillar's verdict lands inside the hysteresis band; implies --entity-reveal"
     );
+    IREngine::args().flag(
+        "--ceiling-treatment",
+        "Reveal-surface ceiling: a soft disc with a soft ceiling over equal-height centre "
+        "and rim FIELD columns and a governed BODY twin, painted the debug colour; logs "
+        "FOG-SURFACE-PROBE on the cardinal shot and parks a non-cardinal yaw for the second"
+    );
+    IREngine::args().flag(
+        "--reveal-treatment",
+        "Enable the canvas reveal-surface treatment (dissolve + cap tone) on the "
+        "--ceiling-treatment rows or the --occlusion=high-ground --los-softness band"
+    );
     IREngine::args().enumValue(
         "--occlusion",
         "Line-of-sight fog scene "
@@ -2372,7 +2893,9 @@ int main(int argc, char **argv) {
     g_entityReveal = IREngine::args().getFlag("--entity-reveal");
     g_entityRevealSoftEdge = IREngine::args().getFlag("--entity-reveal-soft-edge");
     g_entityReveal = g_entityReveal || (g_entityRevealSoftEdge && !g_detachedBody);
-    g_fogDebugColor = IREngine::args().getFlag("--fog-debug-color");
+    g_ceilingTreatment = IREngine::args().getFlag("--ceiling-treatment");
+    g_revealTreatment = IREngine::args().getFlag("--reveal-treatment");
+    g_fogDebugColor = IREngine::args().getFlag("--fog-debug-color") || g_ceilingTreatment;
     g_perAxisOverflow = IREngine::args().getFlag("--peraxis-overflow");
     if (g_perAxisOverflow) {
         g_edgeZCostCeiling = true;
@@ -2409,9 +2932,15 @@ int main(int argc, char **argv) {
         g_manySources || g_occlusion != OcclusionScene::NONE) {
         g_entityReveal = false;
         g_perAxisOverflow = false;
+        g_ceilingTreatment = false;
+    }
+    if (g_ceilingTreatment) {
+        g_entityReveal = false;
+        g_perAxisOverflow = false;
     }
     if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_exploredDecay || g_channelProbe ||
-        g_manySources || g_entityReveal || g_occlusion != OcclusionScene::NONE) {
+        g_manySources || g_entityReveal || g_ceilingTreatment ||
+        g_occlusion != OcclusionScene::NONE) {
         g_movingObserver = false;
         g_playerWalk = false;
         g_edgeZoom = false;
@@ -2592,9 +3121,12 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::LIGHTING_TO_TRIXEL>(),
         }
     );
-    // The body probe's "before" snapshot reads the lit composite the fog pass
-    // is about to modulate, so it sits between the two.
-    if (g_entityReveal && g_autoWarmupFrames > 1) {
+    // The body and surface probes' "before" snapshot reads the lit composite
+    // the fog pass is about to modulate, so it sits between the two.
+    const bool occlusionSurfaceProbe = g_occlusion == OcclusionScene::HIGH_GROUND &&
+                                       g_occlusionLosSoftness > kFogLosHardGate &&
+                                       g_revealTreatment;
+    if ((g_entityReveal || g_ceilingTreatment || occlusionSurfaceProbe) && g_autoWarmupFrames > 1) {
         renderPipeline.push_back(
             IRSystem::createSystem<C_Name>(
                 "FogBodyProbeBeforeSnapshot",
@@ -2702,6 +3234,25 @@ void initSystems() {
         renderPipeline.push_front(bodyProbeTickId);
     }
 
+    if (g_ceilingTreatment && g_autoWarmupFrames > 2) {
+        renderPipeline.push_front(
+            IRSystem::createSystem<C_Name>(
+                "FogCeilingSurfaceProbe",
+                [](C_Name &) {},
+                []() { probeCeilingSurface(); }
+            )
+        );
+    }
+    if (occlusionSurfaceProbe && g_autoWarmupFrames > 1) {
+        renderPipeline.push_front(
+            IRSystem::createSystem<C_Name>(
+                "FogOcclusionSurfaceProbe",
+                [](C_Name &) {},
+                []() { probeOcclusionSurface(); }
+            )
+        );
+    }
+
     if (g_edgeZCostCeiling && g_fogDebugColor && g_autoWarmupFrames > 0) {
         IRSystem::SystemId probeTickId = IRSystem::createSystem<C_Name>(
             "FogPaintProbe",
@@ -2783,7 +3334,9 @@ void initSystems() {
                 IRVideo::setAutoScreenshotShots(cfg, kOcclusionGroundShots);
                 break;
             case OcclusionScene::HIGH_GROUND:
-                if (g_occlusionLosSoftness > kFogLosHardGate) {
+                if (occlusionSurfaceProbe) {
+                    IRVideo::setAutoScreenshotShots(cfg, kOcclusionHighGroundSoftTreatedShots);
+                } else if (g_occlusionLosSoftness > kFogLosHardGate) {
                     IRVideo::setAutoScreenshotShots(cfg, kOcclusionHighGroundSoftShots);
                 } else {
                     IRVideo::setAutoScreenshotShots(cfg, kOcclusionHighGroundShots);
@@ -2807,6 +3360,10 @@ void initSystems() {
             case OcclusionScene::NONE:
                 break;
             }
+        } else if (g_ceilingTreatment && g_revealTreatment) {
+            IRVideo::setAutoScreenshotShots(cfg, kCeilingTreatmentShots);
+        } else if (g_ceilingTreatment) {
+            IRVideo::setAutoScreenshotShots(cfg, kCeilingShots);
         } else if (g_perAxisOverflow) {
             IRVideo::setAutoScreenshotShots(cfg, kPerAxisOverflowShots);
         } else if (g_entityRevealSoftEdge && !g_detachedBody) {
@@ -3007,9 +3564,51 @@ void initDepthSlabScene() {
     );
 }
 
-void initOcclusionScene() {
+// The --ceiling-treatment scene: one soft disc capped by a soft ceiling,
+// equal-height FIELD columns at its centre and near its rim, and a governed
+// BODY twin anchored on the ground under the ceiling.
+void initCeilingTreatmentScene() {
     createEdgeGroundSlab();
+    const int slot = IRPrefab::Fog::setVisionCircle(
+        0.0f,
+        0.0f,
+        kCeilingVisionRadius,
+        kCeilingVisionEdge,
+        kCeilingObserverZ
+    );
+    IR_ASSERT(slot == 0, "the ceiling scene's vision circle was rejected");
+    IRPrefab::Fog::setVisionCircleCeiling(slot, kCeilingHeight, kCeilingFade);
+    if (g_revealTreatment) {
+        IRPrefab::Fog::setRevealSurfaceTreatment(kRevealTreatmentDensity, kRevealTreatmentTone);
+    }
+    const auto createColumn = [](vec3 position, Color color, auto... tags) {
+        return IREntity::createEntity(
+            C_LocalTransform{position},
+            C_VoxelSetNew{
+                IRMath::ivec3{
+                    kCeilingColumnFootprint,
+                    kCeilingColumnFootprint,
+                    kCeilingColumnHeight
+                },
+                color,
+                IRComponents::EntityAnchor::GROUND
+            },
+            tags...
+        );
+    };
+    g_ceilingCentreColumn =
+        createColumn(kCeilingCentreColumn, Color{245, 155, 75, 255}, C_FogField{});
+    g_ceilingRimColumn = createColumn(kCeilingRimColumn, Color{120, 235, 140, 255}, C_FogField{});
+    g_ceilingBodyTwin = createColumn(kCeilingBodyTwin, Color{80, 210, 245, 255});
+    IRPrefab::Fog::setEntityRevealGoverned(g_ceilingBodyTwin);
+}
+
+void initOcclusionScene() {
+    g_occlusionSlab = createEdgeGroundSlab();
     IRPrefab::Fog::clearVisionCircles();
+    if (g_revealTreatment) {
+        IRPrefab::Fog::setRevealSurfaceTreatment(kRevealTreatmentDensity, kRevealTreatmentTone);
+    }
     switch (g_occlusion) {
     case OcclusionScene::GROUND:
     case OcclusionScene::GROUND_LOS_OFF:
@@ -3073,8 +3672,8 @@ void initEntities() {
     constexpr float kFloorZ = 5.0f;
     const bool occlusionScene = g_occlusion != OcclusionScene::NONE;
     const bool windowScene = g_worldPan || g_depthSlab || g_exploredDecay || g_channelProbe;
-    if (!occlusionScene && !windowScene && !g_entityReveal && !g_edgeZoom && !g_edgeSmooth &&
-        !g_edgeSdfBlocker && !g_detachedEdge && !g_edgeZCost && !g_edgeZCostAsym &&
+    if (!occlusionScene && !windowScene && !g_entityReveal && !g_ceilingTreatment && !g_edgeZoom &&
+        !g_edgeSmooth && !g_edgeSdfBlocker && !g_detachedEdge && !g_edgeZCost && !g_edgeZCostAsym &&
         !g_edgeZCostCeiling) {
         createFieldShape(
             vec3(0.0f, 0.0f, kFloorZ),
@@ -3090,9 +3689,9 @@ void initEntities() {
     // its own content (the gliding disc + marker / the boundary-straddling voxel
     // objects) reads clearly without the tall shapes' iso-projected tops poking
     // through the disc.
-    if (!occlusionScene && !windowScene && !g_manySources && !g_entityReveal && !g_playerWalk &&
-        !g_edgeZoom && !g_edgeSmooth && !g_edgeSdfBlocker && !g_detachedEdge && !g_edgeZCost &&
-        !g_edgeZCostAsym && !g_edgeZCostCeiling) {
+    if (!occlusionScene && !windowScene && !g_manySources && !g_entityReveal &&
+        !g_ceilingTreatment && !g_playerWalk && !g_edgeZoom && !g_edgeSmooth && !g_edgeSdfBlocker &&
+        !g_detachedEdge && !g_edgeZCost && !g_edgeZCostAsym && !g_edgeZCostCeiling) {
         // A few simple SDF primitives sitting on the floor inside the visible
         // circle, so the bright (visible) region has recognizable content.
         createShape(
@@ -3179,9 +3778,9 @@ void initEntities() {
     // face IS the band under test, so an angled sun's terminator across it would
     // masquerade as a cut defect. Fog x shadow composition stays covered by the
     // default grid scene's refs, which keep the angled sun.
-    if (occlusionScene || windowScene || g_manySources || g_entityReveal || g_edgeZoom ||
-        g_edgeSmooth || g_edgeSdfBlocker || g_detachedEdge || g_edgeZCost || g_edgeZCostAsym ||
-        g_edgeZCostCeiling) {
+    if (occlusionScene || windowScene || g_manySources || g_entityReveal || g_ceilingTreatment ||
+        g_edgeZoom || g_edgeSmooth || g_edgeSdfBlocker || g_detachedEdge || g_edgeZCost ||
+        g_edgeZCostAsym || g_edgeZCostCeiling) {
         IRRender::setSunDirection(vec3(0.0f, 0.0f, -1.0f));
     }
     if (g_fogDebugColor) {
@@ -3213,6 +3812,10 @@ void initEntities() {
     }
     if (occlusionScene) {
         initOcclusionScene();
+        return;
+    }
+    if (g_ceilingTreatment) {
+        initCeilingTreatmentScene();
         return;
     }
 

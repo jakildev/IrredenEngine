@@ -218,9 +218,10 @@ struct Voxel {
 // penalty zCostUp * max(dzUp - freeBand, 0) + zCostDown * max(dzDown -
 // freeBand, 0), where dzUp = max(observerZ - voxelZ, 0) and dzDown =
 // max(voxelZ - observerZ, 0), into the effective radial distance, so a
-// height-hidden voxel is removed on the z-aware curve FOG_TO_TRIXEL reveals by.
-// The world canvas does NOT use it: its drop is z-free so a height-hidden voxel
-// keeps its geometry and the fog pass paints it unexplored. Mirror of the GLSL twin. It lives HERE
+// height-hidden voxel is removed on the z-aware curve FOG_TO_TRIXEL reveals by,
+// each source scaled by its ceiling factor. The world canvas and the per-axis
+// routes do NOT use it: their drop is z-free so a height-hidden voxel keeps
+// its geometry and the fog pass paints it unexplored. Mirror of the GLSL twin. It lives HERE
 // rather than beside the z-free twins in ir_voxel_face_select.metal because the
 // drop is STAGE-1-ONLY — stage 2 never repeats it — and the shared include
 // holds exactly the definitions both stages must agree on. The disc test itself
@@ -247,7 +248,8 @@ static float fogColumnRevealZ(
             h.y * max(dzUp - h.w, 0.0f) + h.z * max(dzDown - h.w, 0.0f);
         reveal = max(
             reveal,
-            fogDiscRevealAtDistance(distEff, obs.visionCircles[i].z, obs.visionCircles[i].w)
+            fogDiscRevealAtDistance(distEff, obs.visionCircles[i].z, obs.visionCircles[i].w) *
+                fogCeilingVisibility(obs.visionCircleCeilings[i], dzUp)
         );
     }
     return reveal;

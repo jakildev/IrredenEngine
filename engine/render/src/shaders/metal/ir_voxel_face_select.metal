@@ -49,6 +49,16 @@ struct FogObserverData {
     // selection math in this file ignores it. All-zero heights (the default)
     // make those drops equal the 2D column clip.
     float4 visionCircleHeights[kMaxFogVisionCircles];
+    // The fog passes' tail, spelled out so the ceilings land at 448; the
+    // unexplored colour, the line-of-sight parameters and the channel masks
+    // are unread by every consumer of this struct.
+    float4 unexploredColor;
+    float4 losParams[kMaxFogVisionCircles];
+    uint4 visionCircleChannels[2];
+    // Per-circle upward ceiling, (ceilingHeight, fadeHeight, 0, 0) above
+    // observerZ, negative = off; read only by stage 1's unpainted-route drop
+    // (fogColumnRevealZ).
+    float4 visionCircleCeilings[kMaxFogVisionCircles];
 };
 
 // Reveal in [0,1] of a column whose center is `dist` world units from a vision
