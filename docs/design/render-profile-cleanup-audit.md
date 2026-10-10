@@ -5,28 +5,6 @@ stack merged. Scope: rendering backend/infrastructure, voxel and lighting shader
 families, timing collectors, and profiling scripts. Priorities favor shared
 contracts with observable behavior over broad renames or a new rendering layer.
 
-## Implemented slice: shared profiling matrix ownership
-
-`scripts/perf/profile_matrix.py` owns shared round execution, case manifests,
-artifact consistency checks and generic summaries. Rotation, analytic-box,
-million-entity and timing commands import that module directly rather than
-borrowing from the rotation CLI. Matrix order, subprocess arguments, report text and failure
-behavior are unchanged. The million-entity command retains its own scene/build
-witness checks and pooled summary; strict timing controls retain their distinct
-evidence policy.
-
-The helper tests move with their implementation. The performance workflow runs
-all top-level profiling test suites before building the engine, using the existing
-isolated-process test runner. This changes tooling ownership, not engine cost.
-
-## Pending: ShapeDebug floor footprints
-
-Check the apparently oversized floor shadows in the paired voxel/SDF shapes
-against occupied geometry, light direction and receiver height. Include the
-ring opening and cone silhouette; compare equivalent geometry before attributing
-a difference to the rendering mode. The fallback cleanup’s unchanged captures
-do not establish correct caster size.
-
 ## Implemented slice: timestamp bookkeeping
 
 `detail::GpuTimestampRing` owns one implementation of allocation, asynchronous
@@ -176,6 +154,9 @@ legacy point-scatter artifacts remain outside this cleanup.
 - Metal texture clears have two pattern-buffer caches with different atomic-scratch
   and encoder-timing behavior. Define queued pattern snapshot/order semantics and
   test changing patterns before consolidating them.
+- Shared profiling matrix helpers live in the rotation CLI module. A neutral
+  module could clarify ownership once needed; preserve the distinct evidence
+  requirements of historical summaries and strict timing controls.
 
 The timing-attribution experiment remains a separate measurement task. Cleanup
 does not establish a dense-scene speedup, fix inherited visual artifacts, or
