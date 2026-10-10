@@ -40,8 +40,9 @@ Whatever a plan or prompt suggests, the architect does **not**:
   entries to the queue" is wrong — strike it. The one standing exception is
   a human-cued `fleet-unblock` run, whose authority table
   ([`skills/fleet-unblock.md`](skills/fleet-unblock.md)) grants closing
-  delivered issues, approving defect-shaped and epic-child work, and lifting
-  factual `fleet:needs-human` parks.
+  delivered issues, approving defect-shaped and epic-child work, lifting
+  factual `fleet:needs-human` parks, and adding a `**Blocked by:**` line
+  that cites a colliding open PR (never removing one).
 - **Pre-apply labels at filing time.** The one carve-out is the
   agent-approved follow-up lane
   ([`TASK-FILING.md § Agent-approved follow-up lane`](TASK-FILING.md)).
