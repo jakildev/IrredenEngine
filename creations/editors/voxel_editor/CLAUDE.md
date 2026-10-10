@@ -15,10 +15,11 @@ Design log, findings and the authoring-session history:
   `component_field_page` the same on a field only the panel's pager reaches,
   `component_field_key` the same on a field whose name is not a Lua identifier,
   `parts_roundtrip` authors, moves, saves, clears, and reloads a two-part entity,
-  `tier_scrub` proves per-part LOD bands and the tier scrubber, and
+  `tier_scrub` proves per-part LOD bands and the tier scrubber,
   `mode_preview` proves the deferred render-mode switch allocates and releases
   the selected part's private canvas while rotated and private-canvas parts stay
-  outside the axis-aligned edit pick.
+  outside the axis-aligned edit pick, and `part_sizes` creates two parts of
+  different extents and holds the mirror and loft tools to them.
 - `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
   render reference set, discovered under this creation's `test/references/`.
 - `python3 scripts/author-entity.py <entity>` — replays an entity session twice
@@ -55,13 +56,18 @@ render, because the aim and the pick share one screen mapping.
 
 ## Authoring sessions
 
-- Ctrl+P enters entity-scene mode and adds a voxel part; Ctrl+Shift+P adds the
+- Ctrl+P enters entity-scene mode and adds a voxel part at the PART SIZE
+  panel's W / H / D (initially `--scene-size`); Ctrl+Shift+P adds the
   BAKE panel's selected SDF primitive. Tab/Shift+Tab select parts. Ctrl+S and
   Ctrl+O write/read the v2 prefab manifest plus one `.vxs` per voxel part.
 - A voxel part starts clear (the single-set editor keeps its seeded ground
   plane), so a click has nothing to pick until a first write that needs no
   pick: BAKE, or a module recipe APPLY. Sessions author that write with
   `Builder::bakeSphere` (panel geometry in `bake_panel.hpp`).
+- A voxel part's extent is its `C_VoxelSetNew::size_`, saved as its `.vxs`
+  bounds; the manifest carries no size. An edit path sizes from the set it
+  edits, never from `g_editableSceneSize`. The loft tool is the exception: its
+  masks are scene-sized, so it refuses a part of any other extent.
 - `EntityScene` owns one root and its ordered part records. Only the selected
   voxel part receives paint; other voxel parts carry `C_EditorReference`.
 - A part's LOD band (`EditorPart::lodMax_` fine .. `lodMin_` coarse) is
