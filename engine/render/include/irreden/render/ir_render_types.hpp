@@ -978,7 +978,9 @@ struct GPUShapesFrameData {
     ivec2 trixelCanvasOffsetZ1;
     ivec2 canvasSize;
     int shapeCount;
-    int _padding0;
+    // The canvas casts shapes through the finite-coverage sun-shadow path.
+    // The retained frame copy lets the receiver use the same depth convention.
+    int finiteCoverage = 0;
     ivec2 voxelRenderOptions;
     ivec2 cullIsoMin;
     ivec2 cullIsoMax;

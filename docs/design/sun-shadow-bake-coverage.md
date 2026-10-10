@@ -123,6 +123,11 @@ provably cannot.
     anyway. Gating it off makes invariant #1's per-axis / smooth-yaw
     byte-identity **structural** (radius 0 = pre-#2270 master), not a fragile
     lean on the density assumption. The `yaw30` / `yaw45` acceptance is unchanged.
+  - **Finite-coverage analytic-caster bake → splat OFF.** Non-box SDF casters
+    already rasterize an analytic surface footprint into their dedicated depth
+    texture. Cardinal and rotating frames therefore bake that same unsplatted
+    footprint; coverage holes in this input are a both-path defect rather than
+    a reason to fill only the cardinal frame.
   - **World-placed resolve → splat ON (intentional).** The re-voxelize cube's
     cast (#1596) is itself a screen-space projection with the **same**
     grazing-surface undersampling as the main canvas, so its resolve texture
@@ -189,8 +194,9 @@ neighbourhood is sparse) could reclaim the remaining cost; deferred (lever
 1. **Per-axis / smooth-yaw byte-identity (structural).** The raw smooth-yaw and
    per-axis face-local inputs skip the splat by the shader gate; the per-axis
    **resolve** dispatch — whose spoofed `residualYaw == 0` would otherwise trip
-   the gate mid-rotation — has `sunSplatMaxTexels_` zeroed around it by the C++
-   driver (`patchSunSplatRadius`). So every per-axis / smooth-yaw path takes
+   the gate mid-rotation — and the finite-coverage analytic-caster bake have
+   `sunSplatMaxTexels_` zeroed around them by the C++ driver
+   (`patchSunSplatRadius`). So every per-axis / smooth-yaw path takes
    `radius == 0` → the single write, identical to pre-#2270 master, **by
    construction** rather than by relying on the decode-path predicate to track
    camera cardinality. (The world-placed cast resolve is deliberately **not**

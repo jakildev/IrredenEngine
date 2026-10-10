@@ -141,8 +141,21 @@ void main() {
         );
         normal = rotateYawZInv(faceOutwardNormal(face), visualYaw);
     } else {
+        int recoveryDepth = rawDepth;
+#if IR_SHAPE_RECEIVER
+        const bool smoothMode = receiverFrame.voxelRenderOptions.x != 0 &&
+                                receiverFrame.voxelRenderOptions.y > 1;
+        recoveryDepth = cardinalShapeReceiverDepth(
+            rawDepth,
+            receiverFrame.voxelRenderOptions.y,
+            selectedShapeIndex(pixel, size.x) >= 0,
+            smoothMode && receiverFrame.smoothYawEnabled == 0,
+            receiverFrame.finiteCoverage != 0
+        );
+#endif
         pos3D = trixelCanvasPixelToWorld3D(
-            pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
+            pixel, recoveryDepth, trixelCanvasOffsetZ1, frameCanvasOffset,
+            voxelRenderOptions, rasterYaw
         );
         // Rotate raster-frame face normal to world frame so normal bias and slope
         // bias are applied in the correct world-space direction at non-zero camera
