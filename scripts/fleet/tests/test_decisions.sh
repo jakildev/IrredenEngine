@@ -83,6 +83,7 @@ cat > "$TMP/engine-issues.json" << 'EOF'
    "body": "**Blocked by:** #204\n",
    "labels": [{"name": "fleet:needs-human"}, {"name": "human:approved"}]},
   {"number": 202, "title": "improvement: rule tweak", "url": "u",
+   "body": "Discussion only: #204 is mentioned in prose.\n",
    "labels": [{"name": "fleet:coding-improvement"}]},
   {"number": 203, "title": "idea: untriaged thing", "url": "u", "labels": []},
   {"number": 204, "title": "task: queued", "url": "u",
@@ -264,6 +265,7 @@ mkdir -p "$TMP/fleet-home/state/declined"
 cat > "$TMP/fleet-home/state/state.json" <<'EOF'
 {"generated_at":"2099-01-01T00:00:00Z","repos":{"engine":{"tasks":{"open":[{"id":"#204","issue":"#204","updatedAt":"2026-10-07T12:00:00Z","shadow_merged_pr":{"number":900}}]}}}}
 EOF
+cp "$TMP/fleet-home/state/state.json" "$TMP/state-baseline.json"
 printf '%s\n' '2026-10-07T12:00:00Z' 'implementation already merged' 'worker' 'shadow_merged_pr=900' > "$TMP/fleet-home/state/declined/task-engine-204"
 touch -t 202401010000 "$TMP/fleet-home/feedback/role-worker.md"
 touch -t 202401020000 "$TMP/fleet-home/feedback/.last-reviewed"
@@ -311,6 +313,7 @@ assert_contains "$out" "close: gh issue close 204 --repo jakildev/IrredenEngine"
 assert_contains "$out" "issue #201 declares Blocked by: #204" "survey blocker impact rendered"
 assert_contains "$out" "PR #108 declares Parked-until: #204" "survey park impact rendered"
 assert_contains "$out" "epic #208 has unchecked child #204" "survey epic impact rendered"
+assert_absent "$out" "issue #202 declares Blocked by: #204" "prose-only issue reference is not an impact"
 assert_contains "$out" "fleet:coding-improvement: 1 open — cue" "coding-improvement cue informational below drain threshold"
 assert_absent  "$out" "fleet:coding-improvement: 1 open — OVERDUE" "1 open never reads as overdue"
 assert_contains "$out" "stale threshold 14d" "ancient .last-reviewed marker flips feedback cue to OVERDUE"
@@ -324,6 +327,35 @@ assert_absent  "$out" "has no completed run" "every gate ran on every approved h
 assert_absent  "$out" "failed on head" \
     "a failed run superseded by a later success on the same head is no hold"
 assert_absent  "$out" "gate coverage unreadable" "a readable coverage answer prints no unreadable hold"
+
+decisions_source=$(cat "$FLEET_DECISIONS")
+assert_contains "$decisions_source" 'survey_args=(--state "$FLEET_HOME/state/state.json" --json --require-fresh)' \
+    "decisions requests the survey JSON contract"
+assert_contains "$decisions_source" '"$FLEET_LIB_DIR/fleet-survey" "${survey_args[@]}"' \
+    "decisions delegates close-out enrichment to fleet-survey"
+assert_absent "$decisions_source" "parked_until_issue_numbers" \
+    "decisions carries no Parked-until parser"
+parked_tokens=$(grep -c 'Parked-until' "$FLEET_DECISIONS")
+assert_eq "$parked_tokens" "1" "Parked-until appears only in the rendered survey result"
+
+rm -f "$TMP/fleet-home/state/declined/task-engine-204"
+status=$(run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "missing-decline run exits 0"
+assert_absent "$out" "Shadowed queued close-outs" "row shadow alone is not a close-out"
+
+printf '%s\n' '2026-10-07T12:00:00Z' 'implementation already merged' 'worker' 'shadow_merged_pr=900' > "$TMP/fleet-home/state/declined/task-engine-204"
+cat > "$TMP/fleet-home/state/state.json" <<'EOF'
+{"generated_at":"2099-01-01T00:00:00Z","repos":{"engine":{"tasks":{"open":[{"id":"#204","issue":"#204","updatedAt":"2026-10-07T12:00:00Z"}]}}}}
+EOF
+status=$(run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "durable-decline run exits 0"
+assert_contains "$out" "Shadowed queued close-outs (1)" \
+    "decline line four preserves the close-out after row shadow eviction"
+assert_contains "$out" "engine issue #204  shadowed by PR #900" \
+    "durable decline retains the shadowing PR"
+cp "$TMP/state-baseline.json" "$TMP/fleet-home/state/state.json"
 
 # --- drain thresholds: both arms of each cue --------------------------------
 

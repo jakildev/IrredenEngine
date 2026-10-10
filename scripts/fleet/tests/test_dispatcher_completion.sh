@@ -326,10 +326,11 @@ print(f._declined('task', {'repo': 'engine', 'issue': '#42', 'updatedAt': '2026-
 " "$SCRIPT_DIR" 2>/dev/null | tr -d '\r' || true)
 assert_eq "$declined_py" "True False" "the resolver reads that memory for the declining role only"
 
+touch -t 202001010000 "$FLEET_STATE_DIR/declined/task-engine-42"
 record 1 task:engine:42
 complete >/dev/null
 assert_eq "$(sed -n 4p "$FLEET_STATE_DIR/declined/task-engine-42")" "shadow_merged_pr=900" \
-    "a later decline with no fresh shadow preserves exact-target evidence"
+    "a post-TTL decline with no fresh shadow preserves exact-target evidence"
 
 echo "T9: abandoned folds through the abandonment counter"
 rm -f "$FLEET_STATE_DIR/abandoned/task-engine-42"

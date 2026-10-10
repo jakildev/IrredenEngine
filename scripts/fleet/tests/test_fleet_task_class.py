@@ -60,6 +60,7 @@ import importlib.util
 import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -741,6 +742,36 @@ class DispatchTargets(HostSeamCase):
                 self.assertEqual(fleet_task_class.shadowed_closeouts(state, "engine"), [{
                     "number": "4184", "shadow_pr": 4199, "reason": "already delivered"}])
                 self.assertEqual(fleet_task_class.shadowed_closeouts(state, "game"), [])
+
+                record.write_text("2026-10-07T12:00:00Z\nalready delivered\nworker\n")
+                self.assertEqual(fleet_task_class._shadowed_closeout(task), {
+                    "shadow_pr": 4199, "reason": "already delivered"})
+
+                expiry_cases = (
+                    ("already delivered", fleet_task_class.DECLINE_TTL_SECONDS),
+                    ("HTTP 503 from GitHub", fleet_task_class.DECLINE_TRANSIENT_TTL_SECONDS),
+                )
+                for reason, ttl in expiry_cases:
+                    with self.subTest(reason=reason):
+                        record.write_text(
+                            f"2026-10-07T12:00:00Z\n{reason}\nworker\n"
+                            "shadow_merged_pr=4199\n")
+                        expired = time.time() - ttl - 1
+                        os.utime(record, (expired, expired))
+                        self.assertEqual(pick(slice_data, "opus", False),
+                                         ["task:engine:4184"])
+
+                record.write_text("2026-10-07T12:00:00Z\nalready delivered\nopus-reviewer\n"
+                                  "shadow_merged_pr=4199\n")
+                self.assertIsNone(fleet_task_class._shadowed_closeout(task))
+                self.assertEqual(pick(slice_data, "opus", False), ["task:engine:4184"])
+
+                record.write_text("2026-10-07T12:00:00Z\nalready delivered\nworker\n"
+                                  "shadow_merged_pr=4199\n")
+                actionable = _task("#4185", "opus")
+                actionable["repo"] = "engine"
+                self.assertEqual(pick({"tasks_open": [task, actionable]}, "opus", False),
+                                 ["task:engine:4185"])
 
                 record.write_text("2026-10-07T12:00:00Z\nHTTP 503 from GitHub\nworker\n"
                                   "shadow_merged_pr=4199\n")

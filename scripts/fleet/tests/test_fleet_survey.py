@@ -24,6 +24,7 @@ partitions a human acts on:
 Import the script via importlib because it has no .py extension.
 """
 import contextlib
+import copy
 import importlib.machinery
 import importlib.util
 import io
@@ -177,18 +178,21 @@ class FleetSurveyFixture(unittest.TestCase):
         cls.log.write_text(LOG)
         state_dir = Path(cls.tmp.name) / "state"
         (state_dir / "declined").mkdir(parents=True)
-        (state_dir / "declined" / "task-engine-101").write_text(
-            "2026-10-07T04:40:00Z\nimplementation already merged\nworker\n"
-            "shadow_merged_pr=900\n")
         cls.state_dir = state_dir
+        cls.decline_file = state_dir / "declined" / "task-engine-101"
+        cls.decline_text = ("2026-10-07T04:40:00Z\nimplementation already merged\nworker\n"
+                            "shadow_merged_pr=900\n")
 
     @classmethod
     def tearDownClass(cls):
         cls.tmp.cleanup()
 
-    def run_survey(self, host="mac"):
+    def setUp(self):
+        self.decline_file.write_text(self.decline_text)
+
+    def run_survey(self, host="mac", state=STATE):
         with mock.patch.dict(os.environ, {"FLEET_STATE_DIR": str(self.state_dir)}):
-            return _mod.survey(STATE, {"engine": ISSUES}, {"engine": PRS}, host,
+            return _mod.survey(state, {"engine": ISSUES}, {"engine": PRS}, host,
                                Path(self.tmp.name) / "usage", self.log, now=NOW)
 
 
@@ -240,6 +244,18 @@ class Queue(FleetSurveyFixture):
         ghost = self.run_survey()["repos"]["engine"]["queue"]["ghost"][0]
         self.assertEqual(ghost["shadow_pr"], 900)
         self.assertEqual(ghost["reason"], "implementation already merged")
+
+    def test_ghost_requires_a_decline_but_not_a_fresh_row_shadow(self):
+        self.decline_file.unlink()
+        queue = self.run_survey()["repos"]["engine"]["queue"]
+        self.assertEqual(queue["ghost"], [])
+        self.assertIn("#101", [row["id"] for row in queue["claimable_here"]])
+
+        self.decline_file.write_text(self.decline_text)
+        state = copy.deepcopy(STATE)
+        state["repos"]["engine"]["tasks"]["open"][1].pop("shadow_merged_pr")
+        ghost = self.run_survey(state=state)["repos"]["engine"]["queue"]["ghost"][0]
+        self.assertEqual(ghost["shadow_pr"], 900)
 
 
 class Parks(FleetSurveyFixture):
