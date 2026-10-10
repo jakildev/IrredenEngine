@@ -186,6 +186,7 @@ add_executable(IrredenEngineTest
   utility/ir_utility_test.cpp
   video/auto_screenshot_helpers_test.cpp
   video/auto_record_pacing_test.cpp
+  video/audio_capture_rate_test.cpp
   video/capture_output_resolution_test.cpp
   video/recording_state_test.cpp
   window/window_mode_test.cpp

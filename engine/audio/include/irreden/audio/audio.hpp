@@ -38,6 +38,7 @@ class IAudioInputBackend {
     virtual RtAudioErrorType stopStream() = 0;
     virtual void closeStream() = 0;
     virtual const std::string &getErrorText() = 0;
+    virtual unsigned int getStreamSampleRate() = 0;
     virtual long getStreamLatency() = 0;
 };
 
@@ -66,6 +67,7 @@ class Audio : public IAudioCaptureSource {
     bool startCapture(const AudioCaptureConfig &config, AudioCaptureCallback cb) override;
     void stopCapture() override;
     [[nodiscard]] bool isCapturing() const override;
+    [[nodiscard]] int getCaptureSampleRate() const override;
     [[nodiscard]] double getInputLatencyMs() const override;
 
   private:

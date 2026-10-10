@@ -3,6 +3,7 @@
 #include <irreden/ir_math.hpp>
 
 #include <algorithm>
+#include <cstdint>
 #include <sstream>
 #include <utility>
 
@@ -51,6 +52,10 @@ class RtAudioInputBackend final : public IRAudio::detail::IAudioInputBackend {
         return m_rtAudio.getErrorText();
     }
 
+    unsigned int getStreamSampleRate() override {
+        return m_rtAudio.getStreamSampleRate();
+    }
+
     long getStreamLatency() override {
         return m_rtAudio.getStreamLatency();
     }
@@ -62,6 +67,49 @@ class RtAudioInputBackend final : public IRAudio::detail::IAudioInputBackend {
 } // namespace
 
 namespace IRAudio {
+
+namespace {
+
+std::string formatSampleRates(const std::vector<unsigned int> &sampleRates) {
+    std::stringstream formatted;
+    formatted << '[';
+    for (std::size_t i = 0; i < sampleRates.size(); ++i) {
+        if (i > 0) {
+            formatted << ", ";
+        }
+        formatted << sampleRates[i];
+    }
+    formatted << ']';
+    return formatted.str();
+}
+
+unsigned int
+selectSampleRate(unsigned int requestedSampleRate, const std::vector<unsigned int> &sampleRates) {
+    if (sampleRates.empty() ||
+        std::find(sampleRates.begin(), sampleRates.end(), requestedSampleRate) !=
+            sampleRates.end()) {
+        return requestedSampleRate;
+    }
+
+    unsigned int selectedSampleRate = 0;
+    std::int64_t selectedDistance = 0;
+    for (const unsigned int sampleRate : sampleRates) {
+        if (sampleRate < 8'000) {
+            continue;
+        }
+        const std::int64_t distance = IRMath::abs(
+            static_cast<std::int64_t>(sampleRate) - static_cast<std::int64_t>(requestedSampleRate)
+        );
+        if (selectedSampleRate == 0 || distance < selectedDistance ||
+            (distance == selectedDistance && sampleRate > selectedSampleRate)) {
+            selectedSampleRate = sampleRate;
+            selectedDistance = distance;
+        }
+    }
+    return selectedSampleRate == 0 ? requestedSampleRate : selectedSampleRate;
+}
+
+} // namespace
 
 Audio::Audio()
     : Audio(std::make_unique<RtAudioInputBackend>()) {}
@@ -126,6 +174,18 @@ bool Audio::openStreamIn(
 
     const unsigned int requestedSampleRate =
         static_cast<unsigned int>(IRMath::max(sampleRate, 8'000));
+    const unsigned int attemptedSampleRate =
+        selectSampleRate(requestedSampleRate, deviceInfo.sampleRates);
+    if (attemptedSampleRate != requestedSampleRate) {
+        IRE_LOG_WARN(
+            "Audio input sample rate substituted: device='{}' requestedRate={} "
+            "attemptedRate={} listedRates={}",
+            deviceInfo.name.c_str(),
+            requestedSampleRate,
+            attemptedSampleRate,
+            formatSampleRates(deviceInfo.sampleRates)
+        );
+    }
     unsigned int bufferFrames = kAudioInputDefaultBufferFrames;
 
     // In place before the backend can deliver a buffer; a failed open clears
@@ -151,32 +211,54 @@ bool Audio::openStreamIn(
         };
         openResult = m_backend->openInputStream(
             parameters,
-            requestedSampleRate,
+            attemptedSampleRate,
             bufferFrames,
             std::move(rtAudioCallback)
         );
     } catch (...) {
         m_inputCallback = {};
-        IRE_LOG_ERROR("Failed to open audio input stream.");
+        IRE_LOG_ERROR(
+            "Failed to open audio input stream: device='{}' requestedRate={} "
+            "attemptedRate={} channels={}.",
+            deviceInfo.name.c_str(),
+            requestedSampleRate,
+            attemptedSampleRate,
+            requestedChannels
+        );
         return false;
     }
     if (openResult != RTAUDIO_NO_ERROR) {
         m_inputCallback = {};
         IRE_LOG_ERROR(
-            "Failed to open audio input stream: device='{}' sampleRate={} channels={}: {}",
+            "Failed to open audio input stream: device='{}' requestedRate={} "
+            "attemptedRate={} channels={}: {}",
             deviceInfo.name.c_str(),
             requestedSampleRate,
+            attemptedSampleRate,
             requestedChannels,
             m_backend->getErrorText().c_str()
         );
         return false;
     }
     m_streamInOpen = true;
-    m_streamSampleRate = static_cast<int>(requestedSampleRate);
+    const unsigned int backendSampleRate = m_backend->getStreamSampleRate();
+    const unsigned int actualSampleRate =
+        backendSampleRate == 0 ? attemptedSampleRate : backendSampleRate;
+    m_streamSampleRate = static_cast<int>(actualSampleRate);
+    if (actualSampleRate != attemptedSampleRate) {
+        IRE_LOG_WARN(
+            "Audio input backend adjusted sample rate: device='{}' requestedRate={} "
+            "attemptedRate={} actualRate={}",
+            deviceInfo.name.c_str(),
+            requestedSampleRate,
+            attemptedSampleRate,
+            actualSampleRate
+        );
+    }
     IRE_LOG_INFO(
         "Opened audio input stream: device='{}' sampleRate={} channels={} bufferFrames={}",
         deviceInfo.name.c_str(),
-        requestedSampleRate,
+        actualSampleRate,
         requestedChannels,
         bufferFrames
     );
@@ -276,6 +358,10 @@ bool Audio::isCapturing() const {
     return isStreamInRunning();
 }
 
+int Audio::getCaptureSampleRate() const {
+    return m_streamInOpen ? m_streamSampleRate : 0;
+}
+
 double Audio::getInputLatencyMs() const {
     if (!m_streamInOpen || m_streamSampleRate <= 0) {
         return 0.0;
@@ -306,12 +392,7 @@ void Audio::logDeviceInfoAll() {
             IRE_LOG_INFO("Native formats: {}", info.nativeFormats);
         }
         if (info.sampleRates.size() > 0) {
-            IRE_LOG_INFO("Sample rates: ");
-            std::stringstream sampleRates{};
-            for (auto &sampleRate : info.sampleRates) {
-                sampleRates << sampleRate << ", ";
-            }
-            IRE_LOG_INFO("{}", sampleRates.str());
+            IRE_LOG_INFO("Sample rates: {}", formatSampleRates(info.sampleRates));
         }
         if (info.preferredSampleRate > 0) {
             IRE_LOG_INFO("Preferred sample rate: {}", info.preferredSampleRate);
