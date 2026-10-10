@@ -66,6 +66,7 @@ import argparse
 import fnmatch
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -79,6 +80,14 @@ RENDER_COMPARE = SCRIPT_DIR / "render-compare.py"
 DEMO_NAME = "lighting"
 DEFAULT_TARGET = "IRLightingEmissive"
 SCREENSHOT_SUBDIR = "save_files/screenshots"
+
+TRIGGER_FILES = {
+    "CMakeLists.txt",
+    "CMakePresets.json",
+    "scripts/light-verify.py",
+    "scripts/render-compare.py",
+    "scripts/verify_common.py",
+}
 
 # One pass per CLI flag the demo supports (see lighting_demo_scene.hpp
 # registerArgs/initSystems). Each pass captures its own shot series and gets
@@ -256,6 +265,73 @@ def _check_expected_states(
     return failures
 
 
+def _changed_paths(worktree: Path, against: str) -> tuple[list[str] | None, str]:
+    merge_base = subprocess.run(
+        ["git", "-C", str(worktree), "merge-base", against, "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    merge_bases = merge_base.stdout.splitlines()
+    if merge_base.returncode != 0 or len(merge_bases) != 1:
+        detail = merge_base.stderr.strip() or "git merge-base did not return one commit"
+        return None, detail
+
+    tracked = subprocess.run(
+        ["git", "-C", str(worktree), "diff", "--name-only", merge_bases[0]],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if tracked.returncode != 0:
+        return None, tracked.stderr.strip() or "git diff failed"
+    untracked = subprocess.run(
+        ["git", "-C", str(worktree), "ls-files", "--others", "--exclude-standard"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if untracked.returncode != 0:
+        return None, untracked.stderr.strip() or "git ls-files failed"
+    paths = tracked.stdout.splitlines() + untracked.stdout.splitlines()
+    return sorted(set(path for path in paths if path)), ""
+
+
+def _is_trigger_path(path: str) -> bool:
+    if Path(path).suffix == ".md":
+        return False
+    return (
+        path in TRIGGER_FILES
+        or path.startswith("engine/")
+        or path.startswith("creations/demos/lighting/")
+        or path.startswith("cmake/")
+    )
+
+
+def _if_changed_requires_run(worktree: Path, against: str) -> bool:
+    changed, error = _changed_paths(worktree, against)
+    if changed is None:
+        print(
+            f"[light-verify] --if-changed: cannot resolve --against {against!r} "
+            f"({error}); running"
+        )
+        return True
+
+    triggered = [path for path in changed if _is_trigger_path(path)]
+    if not triggered:
+        print(
+            f"[light-verify] --if-changed: 0 of {len(changed)} changed path(s) "
+            "in the trigger surface; not required"
+        )
+        return False
+
+    print(
+        f"[light-verify] --if-changed: {len(triggered)} of {len(changed)} changed "
+        f"path(s) in the trigger surface (first: {triggered[0]}); running"
+    )
+    return True
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--target", default=DEFAULT_TARGET,
@@ -268,6 +344,14 @@ def main(argv: list[str] | None = None) -> int:
                     help="Per-run timeout in seconds (default: 120).")
     ap.add_argument("--no-build", action="store_true",
                     help="Skip fleet-build; assume the target is already built.")
+    ap.add_argument(
+        "--if-changed", action="store_true",
+        help="Run only when the working tree contains a lighting-demo build input.",
+    )
+    ap.add_argument(
+        "--against", default="origin/master",
+        help="Git ref used to find the changed-path merge base (default: origin/master).",
+    )
     ap.add_argument(
         "--update-baselines", action="store_true",
         help="Copy each pass's shots to the committed baseline directory "
@@ -282,6 +366,8 @@ def main(argv: list[str] | None = None) -> int:
         raise SystemExit(f"render-compare.py not found at {RENDER_COMPARE}")
 
     worktree = verify_common.detect_worktree_root(Path.cwd())
+    if args.if_changed and not _if_changed_requires_run(worktree, args.against):
+        return 0
     build_dir = Path(args.build_dir) if args.build_dir else worktree / "build"
     backend = verify_common.detect_backend(build_dir)
     demo_dir = worktree / "creations" / "demos" / DEMO_NAME

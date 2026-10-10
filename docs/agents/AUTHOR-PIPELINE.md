@@ -28,6 +28,18 @@ suite, or `render-verify` run expected to outlive the tool window runs
 detached per [`FLEET-RUNTIME.md § Long-running jobs`](FLEET-RUNTIME.md#long-running-jobs);
 its evidence is the later terminal `wait`.
 
+Run `python3 scripts/light-verify.py --if-changed` unpiped before publishing
+every author change. The script includes committed, staged, unstaged, and
+untracked paths in its trigger decision and runs for engine, lighting-demo,
+render-harness, and build-system inputs. A capture/domain failure that remains
+after one rerun blocks the PR. For an image failure, compare the same row on
+the base: a row moved by the PR must be fixed or re-blessed in the same PR with
+`--update-baselines --force` and its cause recorded; an inherited row may
+proceed only when the PR body shows matching head/base metrics and names an
+open macOS re-bless issue (file one per TASK-FILING.md if none exists). A host
+without image baselines still runs the command because the domain assertions
+apply there; no display is recorded as `unverifiable on <host>`.
+
 ---
 
 ## Verify visual output (when it changed)
@@ -101,12 +113,12 @@ nor an `**Acceptance criteria**` block.
    the plan; a criterion whose literal wording the diff violates is
    *Fails*, not "met in substance".
 
-**Render-verify rows.** A render-verify criterion is met when every row
-the PR moves passes, and every other failing row fails with the same
-metrics on a master control run in the same session and is tracked by an
-open re-bless issue. The PR body shows that control row by row. A row that
-fails only on the PR head, or a tracked row whose metrics differ from the
-control, still fails.
+**Render-verify and light-verify rows.** A render-verify or light-verify
+criterion is met when every row the PR moves passes, and every other failing
+row fails with the same metrics on a master control run in the same session
+and is tracked by an open re-bless issue. The PR body shows that control row
+by row. A row that fails only on the PR head, or a tracked row whose metrics
+differ from the control, still fails.
 
 If `commit-and-push`'s simplify pass applies a behavior-affecting fix,
 re-run the affected checks before the PR opens; the reviewer grades this
