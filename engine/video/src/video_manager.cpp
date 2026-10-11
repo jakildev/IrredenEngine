@@ -39,6 +39,8 @@ void VideoManager::configureCapture(
     int videoBitrate,
     bool captureAudioInput,
     const std::string &audioInputDeviceName,
+    bool audioMonitorEnabled,
+    const std::string &audioMonitorDeviceName,
     int audioSampleRate,
     int audioChannels,
     int audioBitrate,
@@ -52,6 +54,8 @@ void VideoManager::configureCapture(
     m_videoBitrate = IRMath::max(videoBitrate, 250000);
     m_captureAudioInput = captureAudioInput;
     m_audioInputDeviceName = audioInputDeviceName;
+    m_audioMonitorEnabled = audioMonitorEnabled;
+    m_audioMonitorDeviceName = audioMonitorDeviceName;
     m_audioSampleRate = IRMath::max(audioSampleRate, 8'000);
     m_audioChannels = IRMath::clamp(audioChannels, 1, 2);
     m_audioBitrate = IRMath::max(audioBitrate, 64'000);
@@ -284,6 +288,8 @@ void VideoManager::armAudioInput() {
         captureConfig.device_name_ = m_audioInputDeviceName;
         captureConfig.sample_rate_ = m_audioSampleRate;
         captureConfig.channels_ = m_audioChannels;
+        captureConfig.monitor_enabled_ = m_audioMonitorEnabled;
+        captureConfig.monitor_device_name_ = m_audioMonitorDeviceName;
         started = m_audioCaptureSource->startCapture(captureConfig, std::move(audioCallback));
     } else {
         started = IRAudio::startAudioInputCapture(

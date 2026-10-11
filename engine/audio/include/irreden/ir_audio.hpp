@@ -119,6 +119,8 @@ void insertCCMessage(
 bool startAudioInputCapture(
     const std::string &deviceName, int sampleRate, int channels, AudioInputCallback callback
 );
+void setInputMonitorEnabled(bool enabled);
+[[nodiscard]] bool isInputMonitorEnabled();
 /// Stops the active RtAudio input stream; @p callback is not invoked once this
 /// returns. Waits on the backend for at most @ref kAudioInputBackendDeadline.
 void stopAudioInputCapture();

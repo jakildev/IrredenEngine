@@ -11,6 +11,11 @@ local ASSET_DIR = "assets/sprite_demo"
 
 -- Load the single test sheet (one entity holds C_SpriteSheet).
 local sheet = ir.sprite.loadSheet("test_sprites", ASSET_DIR)
+local anchorSheet = ir.sprite.loadSheet("test_anchor", ASSET_DIR)
+
+-- The voxel reference at the same world position makes the default
+-- bottom-center anchor visible in both screenshot layouts.
+ir.sprite.create(anchorSheet, 0.0, 0.0, 2.0)
 
 -- Three sprites at different iso-Z depths so back-to-front sort is visible.
 -- Sprite A: LOOP — spins through all 4 frames indefinitely.
@@ -18,7 +23,7 @@ local spriteA = ir.sprite.create(sheet, -4.0, 0.0, 2.0)
 ir.sprite.playAnimation(spriteA, sheet, "spin", ir.sprite.LOOP, 1.0)
 
 -- Sprite B: ONCE — holds on frame 0 (red), terminates after one play.
-local spriteB = ir.sprite.create(sheet, 0.0, 0.0, 2.0)
+local spriteB = ir.sprite.create(sheet, 0.0, -8.0, 2.0)
 ir.sprite.playAnimation(spriteB, sheet, "hold_red", ir.sprite.ONCE)
 
 -- Sprite C: PING_PONG — uses 'spin' in PING_PONG mode so the back-and-forth

@@ -29,6 +29,8 @@ class VideoManager {
         int videoBitrate,
         bool captureAudioInput,
         const std::string &audioInputDeviceName,
+        bool audioMonitorEnabled,
+        const std::string &audioMonitorDeviceName,
         int audioSampleRate,
         int audioChannels,
         int audioBitrate = 320'000,
@@ -80,6 +82,8 @@ class VideoManager {
     int m_outputHeightOverride = 0;
     bool m_captureAudioInput = false;
     std::string m_audioInputDeviceName;
+    bool m_audioMonitorEnabled = false;
+    std::string m_audioMonitorDeviceName;
     int m_audioSampleRate = 48'000;
     int m_audioChannels = 2;
     int m_audioBitrate = 320'000;
