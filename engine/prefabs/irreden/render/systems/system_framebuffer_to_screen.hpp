@@ -6,6 +6,7 @@
 #include <irreden/ir_render.hpp>
 
 #include <irreden/common/components/component_world_transform.hpp>
+#include <irreden/render/camera.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_camera_position_2d_iso.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
@@ -28,6 +29,9 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
     ShaderProgram *program_ = nullptr;
     VAO *quadVao_ = nullptr;
     FrameDataFramebuffer frameData_{};
+    // Screen-pixel half of the camera's sub-pixel decomposition for this
+    // frame; the main framebuffer's blit is the only one that carries it.
+    vec2 cameraScreenResidual_{0.0f};
 
     void tick(
         const C_TrixelCanvasFramebuffer &framebuffer,
@@ -39,7 +43,7 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
                                                             framebuffer.getResolution(),
                                                             framebuffer.getResolutionPlusBuffer(),
                                                             cameraWorldXform.translation_,
-                                                            IRRender::getEffectiveCameraIso(),
+                                                            cameraScreenResidual_,
                                                             name.name_
                                                         );
         frameDataBuf_->subData(0, sizeof(FrameDataFramebuffer), &frameData_);
@@ -48,6 +52,13 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
     }
 
     void beginTick() {
+        cameraScreenResidual_ = vec2(
+            IRPrefab::Camera::screenResidual(
+                IRRender::getEffectiveCameraIso(),
+                IRRender::getCameraZoom(),
+                IRRender::getOutputScaleFactor()
+            )
+        );
         bindDefaultFramebuffer();
         clearDefaultFramebuffer();
         program_->use();
@@ -89,7 +100,7 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
         ivec2 resolution,
         ivec2 resolutionPlusBuffer,
         vec3 cameraPosition,
-        vec2 cameraPositionIso,
+        vec2 cameraScreenResidual,
         std::string name
     ) {
         const ivec2 scaleFactor = IRRender::getOutputScaleFactor();
@@ -104,21 +115,15 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
 
         mat4 model = mat4(1.0f);
 
-        // Screen-pixel half of the anti-vibration decomposition (see
-        // `IRMath::cameraSubPixelOffsets`). `TRIXEL_TO_FRAMEBUFFER` consumes
-        // the matching `framebufferGamePxOffset_` from the same helper —
-        // both terms derive from one floor() chain so they cannot disagree
-        // at game-pixel boundaries. The name check matches the framebuffer
-        // entity created by `RenderManager` (see `kFramebuffer` prefab,
-        // `render_manager.cpp:47`); only the main framebuffer carries the
-        // camera-driven sub-pixel residual.
+        // Screen-pixel half of the anti-vibration decomposition
+        // (`IRPrefab::Camera::screenResidual`). `TRIXEL_TO_FRAMEBUFFER`
+        // consumes the matching framebuffer half of the same split, so the two
+        // cannot disagree at game-pixel boundaries. The name check matches the
+        // framebuffer entity created by `RenderManager` (see `kFramebuffer`
+        // prefab, `render_manager.cpp:47`); only the main framebuffer carries
+        // the camera-driven sub-pixel residual.
         if (name == "mainFramebuffer") {
-            const IRMath::CameraSubPixelOffsets sub = IRMath::cameraSubPixelOffsets(
-                cameraPositionIso,
-                IRRender::getCameraZoom(),
-                scaleFactor
-            );
-            offset += vec2(sub.screenPxResidual_);
+            offset += cameraScreenResidual;
         }
         model = IRMath::translate(model, vec3(offset.x, offset.y, 0.0f));
         model = IRMath::scale(

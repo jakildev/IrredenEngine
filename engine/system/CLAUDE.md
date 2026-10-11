@@ -170,6 +170,11 @@ use the tick count directly. Changing cadence re-phases from the last run;
 changing offset and re-registering a pipeline re-phase from that system's event
 clock.
 
+`getEventTickCount(event)` reads that clock. It advances once at the top of a
+pass and holds until the event's next pass, so it is the frame identity for
+state one stage publishes and a later stage reads; it never advances for an
+event with no registered pipeline.
+
 ## Gotchas
 
 - Never call component lookup APIs per entity; use the dense tick arguments or

@@ -3,6 +3,7 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_render.hpp>
+#include <irreden/render/camera.hpp>
 #include <irreden/render/entity_canvas.hpp>
 #include <irreden/render/lod_utils.hpp>
 #include <irreden/script/ir_script_utils.hpp>
@@ -10,12 +11,15 @@
 
 #include <sol/sol.hpp>
 
+#include <cmath>
+
 namespace IRScript::detail {
 
 // IRRender + IRGui shared Lua bindings.
 //
 // Render-glue setters (sun direction / intensity / ambient, sky color /
-// intensity), the LOD tier read, and a minimal GUI-canvas shape-draw primitive
+// intensity), the main-camera zoom and its policy, the LOD tier read, and a
+// minimal GUI-canvas shape-draw primitive
 // (filled disc, line). Bound by `bindLuaDrivenEcs()` so every creation on the Lua-first
 // authoring path gets them without re-declaring per-creation pass-throughs
 // (the duplication this issue retires). Every binding is a thin forward to an
@@ -58,6 +62,28 @@ inline void bindRenderGlue(LuaScript &script) {
         IRRender::setSkyIntensity(intensity);
     };
     lua["IRRender"]["entityCanvasCount"] = []() { return IRPrefab::EntityCanvas::count(); };
+
+    // Main-camera zoom. The value setter and getter forward to the core
+    // `IRRender::` pair; the policy pair forwards to `IRPrefab::Camera`, which
+    // owns what a write means under each policy. Arguments are checked here,
+    // ahead of any write, so a rejected call leaves both the zoom and the
+    // policy as they were.
+    lua["IRRender"]["setCameraZoom"] = [](sol::object zoom) {
+        if (zoom.get_type() != sol::type::number || !std::isfinite(zoom.as<double>())) {
+            throw sol::error{"IRRender.setCameraZoom: expected a finite number"};
+        }
+        IRRender::setCameraZoom(zoom.as<float>());
+    };
+    lua["IRRender"]["getCameraZoom"] = []() { return IRRender::getCameraZoom().x; };
+    lua["IRRender"]["setCameraZoomContinuous"] = [](sol::object continuous) {
+        if (continuous.get_type() != sol::type::boolean) {
+            throw sol::error{"IRRender.setCameraZoomContinuous: expected a boolean"};
+        }
+        IRPrefab::Camera::setZoomContinuous(continuous.as<bool>());
+    };
+    lua["IRRender"]["isCameraZoomContinuous"] = []() {
+        return IRPrefab::Camera::isZoomContinuous();
+    };
 
     // LOD tier surface. Tier index goes down as detail goes up (LOD_0 finest,
     // LOD_4 coarsest). `getActiveLodTier` reads the singleton LOD_UPDATE writes

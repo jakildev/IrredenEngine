@@ -300,6 +300,41 @@ TEST(SaveSerializers, EntityCanvasRoundTripClearsTransientFogGhostVerdict) {
     expectConsumesAllBytes(canvas);
 }
 
+// A version-1 camera row is the raw image of an empty struct: one byte with no
+// defined value. Set here to the value that would read as "policy on" if the
+// migrator trusted it.
+TEST(SaveSerializers, CameraV1MigrationRestoresTheSnappedZoomPolicy) {
+    const std::uint8_t undefinedMarkerByte = 0xFF;
+    IRAsset::MemoryBinaryWriter writer;
+    writer.writeBytes(&undefinedMarkerByte, sizeof(undefinedMarkerByte));
+
+    const auto migrators = IRWorld::SaveMigration<C_Camera>::migrators();
+    ASSERT_EQ(migrators.size(), 1u);
+    ASSERT_EQ(migrators.front().first, 1u);
+    IRAsset::MemoryBinaryReader reader(writer.buffer().data(), writer.buffer().size(), "camera-v1");
+    const IRAsset::Result<C_Camera> restored = migrators.front().second(reader);
+
+    ASSERT_TRUE(restored.ok()) << restored.status_.message_;
+    EXPECT_FALSE(restored.value_.continuousZoom_);
+    EXPECT_EQ(reader.remaining(), 0u);
+    EXPECT_EQ(IRWorld::saveVersion<C_Camera>(), 2u);
+}
+
+TEST(SaveSerializers, CameraZoomPolicyRoundTrips) {
+    C_Camera continuous;
+    continuous.continuousZoom_ = true;
+    EXPECT_TRUE(roundTrip(continuous).continuousZoom_);
+    EXPECT_FALSE(roundTrip(C_Camera{}).continuousZoom_);
+    expectReserializesIdentically(continuous);
+    expectConsumesAllBytes(continuous);
+}
+
+// The carried raster phase is runtime state of the frame loop. Saving it
+// would resume a history the loaded world never rendered.
+TEST(SaveSerializers, CameraZoomFrameStateStaysOptedOut) {
+    EXPECT_FALSE(IRWorld::shouldSave<C_CameraZoomFrameState>());
+}
+
 // --- voxel/ ----------------------------------------------------------------
 
 TEST(SaveSerializers, JointNameRoundTrips) {
@@ -956,6 +991,30 @@ TEST_F(DefaultRegistryTest, ResolvesEnumStoredEasingComponents) {
     for (const char *name : {"IRComponents::C_GotoEasing3D", "IRComponents::C_RotationTarget"}) {
         EXPECT_NE(registry.findByName(name), nullptr) << name << " is not registered";
     }
+}
+
+// The engine's own camera is persistent and never enters a snapshot, so the
+// policy column is exercised on a plain carrier entity: the authored flag
+// survives a save and load, and the transient phase beside it does not.
+TEST_F(DefaultRegistryTest, CameraZoomPolicySurvivesALoadAndThePhaseDoesNot) {
+    const IRWorld::SaveRegistry registry = IRWorld::makeDefaultSaveRegistry();
+    C_Camera camera;
+    camera.continuousZoom_ = true;
+    C_CameraZoomFrameState state;
+    state.published_ = true;
+    state.sample_.phase_ = IRMath::dvec2(0.25, 0.75);
+    const IREntity::EntityId carrier = IREntity::createEntity(camera, state);
+
+    const std::string path = testing::TempDir() + "/ir_camera_zoom_policy.irws";
+    ASSERT_TRUE(IRWorld::saveWorld(registry, path).ok());
+    m_entity_manager.destroyAllEntities();
+    ASSERT_EQ(m_entity_manager.getLiveEntityCount(), 0u);
+
+    const IRWorld::LoadResult result = IRWorld::loadWorld(registry, path);
+    ASSERT_TRUE(result.ok()) << result.status_.message_;
+    ASSERT_TRUE(m_entity_manager.entityExists(carrier));
+    EXPECT_TRUE(IREntity::getComponent<C_Camera>(carrier).continuousZoom_);
+    EXPECT_FALSE(IREntity::getComponentOptional<C_CameraZoomFrameState>(carrier).has_value());
 }
 
 // C_LerpEntity holds an arbitrary std::function with no authored identity to
