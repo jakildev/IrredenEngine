@@ -138,10 +138,8 @@ own. Its cost scales with the blocks a segment crosses, not with a texel read,
 so its budget is priced against the march it runs. For an identical fixture
 and a same-session matched merge base, let `M` be the base's `fogToTrixel`
 delta between line of sight on and off; the gate is `LOS-on <= control +
-ceil_to_10us(1.15 * M)`. On the unchanged `IRPerfGrid --fog-los-unexplored`
-reference fixture `M` is +67 µs, so the gate is control + 80 µs (#3878). A
-fixture that changes the marched pixels, the sources or the blocks crossed
-measures its own `M`.
+ceil_to_10us(1.15 * M)`. A fixture that changes the marched pixels, the sources
+or the blocks crossed measures its own `M`.
 
 ### Unpainted-route FIELD deviations
 
