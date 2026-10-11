@@ -101,10 +101,25 @@ desktop (no build-only downgrade) and MSYS2 ships `/usr/bin/timeout`.
 - A trailing `; echo …` masks a wrapper's exit code — make the command you
   gate on the last one, or scan the log.
 - The fleet's own smokes share the gpu lock with the run pass, and a
-  reviewer or worker run on a pre-fix tree can hold it for minutes. Export
-  `IR_QUEUE_TIMEOUT=3600` for the pass and size the bash backstop as
-  `<budget> + 15 + 3600`; at ir-acquire's default 600 s queue limit a demo
-  behind a deep queue reports `RESULT=LOCK-FAILED` without ever starting.
+  reviewer or worker run can hold it for minutes. Take the lock **once** for
+  the whole run phase: steps 6 and 6b run as one child of
+  `IR_QUEUE_TIMEOUT=3600 ir-acquire gpu --`, with `IR_RUN_GL_EXCLUSIVE=0`
+  exported inside it, so the pass queues a single time and no other pane's
+  launch lands between two targets. Every nested `fleet-run` sees the
+  ancestor's hold (`ir_inherited_lock_covers`) and runs inside it instead of
+  queueing on it. Prose claiming a phase-wide lock across separate tool calls
+  is not a hold.
+- No outer coreutils `timeout` around a native-Windows `fleet-run`. A
+  watchdog that kills `ir-run` while the engine child is parked inside the
+  driver leaves a live GL context behind, and the next target launches
+  beside it. `fleet-run --timeout <budget>` owns termination
+  (`RESULT=ALIVE-TIMEOUT`, child waited for); never advance to the next
+  target until the active `fleet-run` has returned. Keep the 30 s budget,
+  one 300 s retry for `ALIVE-TIMEOUT`, and the one re-run for `HOST-CLOSED`.
+- One Bash tool call is capped below a full cohort under one hold, so the
+  phase runs as **one background command** whose loop carries its own
+  wall-clock guard: past the budget it schedules no new target and reports
+  each one left `UNSTARTED`. The tool timeout never kills the phase.
 - `RESULT=CRASH exe=<name> exit=127 signal=none` is graded as a crash, like
   every other CRASH. A Not Responding window that someone closed while the
   demo was inside a driver compile is reported by `ir-run` as
@@ -227,6 +242,22 @@ backstop for a demo whose argv loop never arms `--auto-screenshot`. `<budget>` =
 30 s (lighting demos and `IRLuaPerfGrid` legitimately run 13–25 s);
 `<hard-budget>` = `<budget> + 15` = 45 s.
 
+On `windows-x86_64` there is no outer `timeout`, and the whole run phase (this
+step and step 6b) is one background command under a single gpu hold (Native
+Windows delta):
+
+```bash
+IR_QUEUE_TIMEOUT=3600 ir-acquire gpu -- bash <run-phase.sh> <log-dir>
+```
+
+`<run-phase.sh>` exports `IR_RUN_GL_EXCLUSIVE=0`, then per target runs
+`fleet-run --timeout <budget> <target> --auto-screenshot 30 > <log-dir>/<target>.log 2>&1`,
+classifies the `ir-run: RESULT=` line, applies the retry rules, and stops
+scheduling targets once its wall-clock guard trips; step 6b follows in the
+same script. A nested `fleet-run` under the hold runs inside it
+(`ir_inherited_lock_covers`), so the phase log shows one `gpu` acquisition
+and no `LOCK-FAILED`.
+
 Pass criteria, all required:
 
 - Wrapper verdict `ir-run: RESULT=CLEAN`
@@ -268,7 +299,7 @@ label by itself, and never changes the step 7 outcome.
 | Build | Run | Outcome |
 |---|---|---|
 | All targets build | All pass | **green** |
-| All targets build | Some hang (124) or crash | **partial-runtime** |
+| All targets build | Some hang (124; on `windows-x86_64` `ALIVE-TIMEOUT` again at the 300 s retry) or crash | **partial-runtime** |
 | Some targets fail to build | Survivors pass or fail | **partial-build** |
 | All targets fail to build | n/a | **red** |
 
@@ -386,6 +417,7 @@ platform-catchup: <repo> on <host-tag>
   outcome: <green | partial-runtime | partial-build | red>
   swept:   <N> PRs (fleet:needs-<label-host-tag>-smoke → fleet:verified-<label-host-tag>)
   held:    <N> PRs (touched <held-paths>; will sweep after <PR/issue> resolves)
+  unstarted: <targets the wall guard left unscheduled, windows-x86_64 only>
   filed:   <N> parity-fix issue(s): <#issue-list>
   fix PR:  #<N> (if step 8c opened one)
   marker:  ~/.fleet/platform-catchup/<repo>-<host-tag>.json
@@ -396,7 +428,10 @@ platform-catchup: <repo> on <host-tag>
 - Fixes go on a fresh branch off `origin/master`. `git pull --ff-only` only;
   never `--rebase` or `--force`.
 - Hard budget 60 minutes, enforced by the Bash tool's `timeout` parameter;
-  emit the report when it expires, even mid walk-back.
+  emit the report when it expires, even mid walk-back. On `windows-x86_64`
+  the run phase is a background command whose wall guard lives inside its
+  loop (Native Windows delta); the tool timeout never kills it, and the
+  report names every target the guard left unstarted.
 - Walk-back is linear newest-first; move to `git bisect run` only if backlogs
   routinely exceed 30 PRs.
 - GitHub labels are the shared state; there is no cross-host ledger. The
@@ -410,7 +445,7 @@ platform-catchup: <repo> on <host-tag>
 | Dirty tree | Refuse to run. |
 | No display | Build-only smoke; sweep only build-clean PRs; flag it in the report. |
 | `fleet-build` reconfigures (build dir gone) | Allow — auto-configure is normal. |
-| Demo hangs past hard budget | Bash `timeout` kills it (124); recorded as a run failure; 8b path. |
+| Demo hangs past hard budget | Bash `timeout` kills it (124); recorded as a run failure; 8b path. On `windows-x86_64` `fleet-run --timeout` reports `ALIVE-TIMEOUT` and the 300 s retry decides. |
 | `gh pr edit` rate-limited | Back off 60 s, retry once; on second failure write the unprocessed PR list to marker `skipped_prs` and exit. |
 | `git fetch` fails | Print and exit. |
 | Unknown repo | Print and exit. |
