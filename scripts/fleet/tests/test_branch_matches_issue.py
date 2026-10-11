@@ -56,6 +56,49 @@ class ParkedUntilIssueNumbers(unittest.TestCase):
         self.assertEqual(parked_until_issue_numbers(""), [])
         self.assertEqual(parked_until_issue_numbers("Parked-until: later #20"), [])
 
+    def test_list_bullet_before_marker_is_tolerated(self):
+        self.assertEqual(parked_until_issue_numbers("- Parked-until: #3686"), [3686])
+        self.assertEqual(parked_until_issue_numbers("  * Parked-until: #20, #30"), [20, 30])
+        self.assertEqual(
+            parked_until_issue_numbers("+ Parked-until: #20 #30 (aside #40)"), [20, 30]
+        )
+
+    def test_bold_or_backtick_marker_is_tolerated(self):
+        self.assertEqual(parked_until_issue_numbers("**Parked-until:** #20"), [20])
+        self.assertEqual(parked_until_issue_numbers("**Parked-until**: #20, #30"), [20, 30])
+        self.assertEqual(parked_until_issue_numbers("`Parked-until:` #20"), [20])
+        self.assertEqual(parked_until_issue_numbers("`Parked-until`: #20"), [20])
+        self.assertEqual(parked_until_issue_numbers("`Parked-until: #20`"), [20])
+        self.assertEqual(
+            parked_until_issue_numbers("**Parked-until: #20, #30** (the fmt wall)"), [20, 30]
+        )
+        self.assertEqual(parked_until_issue_numbers("- **Parked-until:** #20"), [20])
+        self.assertEqual(parked_until_issue_numbers("* `Parked-until`: #20"), [20])
+
+    def test_unpaired_or_mismatched_emphasis_is_malformed(self):
+        for body in (
+            "**Parked-until: #20",
+            "`Parked-until: #20",
+            "Parked-until:** #20",
+            "Parked-until**: #20",
+            "Parked-until`: #20",
+            "`Parked-until:** #20",
+            "**Parked-until:` #20",
+            "**Parked-until`: #20",
+            "`Parked-until: #20\n` closes on the next line",
+        ):
+            with self.subTest(body=body):
+                self.assertEqual(parked_until_issue_numbers(body), [])
+
+    def test_malformed_emphasis_does_not_shadow_an_earlier_marker(self):
+        self.assertEqual(
+            parked_until_issue_numbers("Parked-until: #20\n**Parked-until: #30"), [20]
+        )
+
+    def test_marker_mid_sentence_is_still_rejected(self):
+        self.assertEqual(parked_until_issue_numbers("See Parked-until: #20 above"), [])
+        self.assertEqual(parked_until_issue_numbers("the Parked-until: #20 line"), [])
+
 
 class BranchMatchesIssue(unittest.TestCase):
     # --- acceptance criteria -------------------------------------
