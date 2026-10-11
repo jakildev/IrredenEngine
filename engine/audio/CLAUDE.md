@@ -158,7 +158,9 @@ IRAudio::clearOutboundMidiObserver();
 
 ## Audio capture model
 
-- `Audio::openStreamIn(...)` → `startStreamIn()`; `startCapture` arms both at once.
+- `startCapture` keeps the recorder on an input-only RtAudio stream. Optional
+  monitoring uses a second output-only stream and a bounded SPSC frame ring;
+  drift drops or zero-fills monitor samples and never edits recorder delivery.
 - **RtAudio 6 reports failure by return value, not by throwing.** Open, start,
   and stop return `RtAudioErrorType`; `RTAUDIO_NO_ERROR` is the only success
   (`RTAUDIO_WARNING`, a wrong-state call, is a failure). `Audio` reaches
@@ -166,20 +168,18 @@ IRAudio::clearOutboundMidiObserver();
   state flags in one place and `test/audio/audio_capture_test.cpp` fires every
   failure with a fake backend. A failed stop keeps the stream reported as
   running until `closeStreamIn()`.
-- **No backend call can hold the main thread.** One control thread builds the
-  backend and makes every call; a caller waits at most
-  `kAudioInputBackendDeadline` per arm (lookup + open + start) or teardown
-  (stop + close, `~Audio`), then fails (`Audio input unavailable …`) with
-  capture closed; arms fail fast until that call returns. It is abandoned, not
-  cancelled: its task holds nothing `Audio` or a caller owns and never logs.
-- An unlisted request opens at the nearest listed rate at or above 8 kHz
-  (higher wins ties); the backend's reported open rate remains authoritative.
+- **No backend call can hold the main thread.** Input and monitor output each
+  have one owning control thread. Both share one absolute arm / teardown
+  deadline; a stuck output is quarantined independently and input stays live.
+  Abandoned tasks hold no engine or caller-owned object and never log.
+- Unlisted requests use the nearest rate above 8 kHz; the backend rate wins.
 - `IAudioCaptureSource::getCaptureSampleRate()` reports that delivered-sample
   rate while active and 0 otherwise; video recording carries it downstream.
 - Callback: `void(const float* samples, int frameCount, double streamTime,
   bool overflow)`, 1024 frames by default, on RtAudio's audio thread — **do not
   touch ECS or Lua state from inside it**; copy out, consume on the main thread.
   `stopCapture`, a timeout, and `~Audio` close its gate: none in flight after.
+- Lua toggles the monitor gate without device calls; recorder sync uses only input latency.
 - The synthetic capture source follows the same callback contract and paces
   against accumulated deadlines so scheduler jitter cannot shorten a take.
 

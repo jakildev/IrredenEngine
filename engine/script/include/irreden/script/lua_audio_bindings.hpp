@@ -106,6 +106,10 @@ inline void bindAudioApi(LuaScript &script) {
     audio["setListenerPosition"] = [](sol::object position) {
         IRAudio::setListenerPosition(vec3FromLua(position));
     };
+    audio["setInputMonitorEnabled"] = [](bool enabled) {
+        IRAudio::setInputMonitorEnabled(enabled);
+    };
+    audio["isInputMonitorEnabled"] = []() { return IRAudio::isInputMonitorEnabled(); };
 
     // Outbound-MIDI observer. A Lua monitor sees EVERY outbound
     // message, including ones the C++ ECS audio path emits — not just what Lua

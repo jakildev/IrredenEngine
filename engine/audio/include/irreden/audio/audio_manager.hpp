@@ -23,6 +23,11 @@ class AudioManager {
     using OutboundMidiObserver = std::function<void(const IRComponents::C_MidiMessage &, int)>;
 
     AudioManager();
+    AudioManager(
+        std::unique_ptr<detail::IAudioInputBackend> inputBackend,
+        std::unique_ptr<detail::IAudioInputBackend> outputBackend,
+        detail::AudioInputDeadlines deadlines = {}
+    );
     ~AudioManager();
 
     inline MidiIn &getMidiIn() {

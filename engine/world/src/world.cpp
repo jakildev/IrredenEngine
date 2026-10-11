@@ -84,6 +84,8 @@ World::World(
         m_worldConfig["video_capture_bitrate"].get_integer(),
         m_worldConfig["video_capture_audio_input_enabled"].get_boolean(),
         m_worldConfig["video_capture_audio_input_device_name"].get_string(),
+        m_worldConfig["video_capture_audio_monitor_enabled"].get_boolean(),
+        m_worldConfig["video_capture_audio_monitor_device_name"].get_string(),
         m_worldConfig["video_capture_audio_sample_rate"].get_integer(),
         m_worldConfig["video_capture_audio_channels"].get_integer(),
         m_worldConfig["video_capture_audio_bitrate"].get_integer(),

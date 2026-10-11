@@ -10,6 +10,8 @@ struct AudioCaptureConfig {
     std::string device_name_;
     int sample_rate_ = 48'000;
     int channels_ = 2;
+    bool monitor_enabled_ = false;
+    std::string monitor_device_name_;
 };
 
 using AudioCaptureCallback = std::function<void(const float *, int, double, bool)>;
