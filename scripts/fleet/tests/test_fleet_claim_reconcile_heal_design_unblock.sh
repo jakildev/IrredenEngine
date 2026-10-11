@@ -470,6 +470,7 @@ parse_blockers 'Closes #1000\n\nParked-until: #7006\nParked-until: #7003, #7004'
 parse_blockers 'Closes #1000\n\nParked-until: #7003#7004' '[7003]' && ok "glued refs are not a list (only the first is taken)" || bad "glued refs over-matched"
 parse_blockers 'Closes #1000\n\n- Parked-until: #7003' '[7003]' && ok "a list-bullet marker parses" || bad "list-bullet marker read as malformed"
 parse_blockers 'Closes #1000\n\n**Parked-until:** #7003, #7004' '[7003, 7004]' && ok "a bold marker parses" || bad "bold marker read as malformed"
+parse_blockers 'Closes #1000\n\n`Parked-until`: #7003' '[7003]' && ok "a backtick-word marker parses" || bad "backtick-word marker read as malformed"
 
 # Arrange the two-blocker park; the parse itself is asserted above, so a
 # failure here must not abort the suite before its tally prints.
