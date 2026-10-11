@@ -148,8 +148,8 @@ struct FogRevealEvalGhost {
             }
             return;
         }
-        const bool fogGatesAgree = voxelSet.visible_ == revealed.shown_ &&
-                                   voxelSet.ghostHeld_ == revealed.ghostHeld_;
+        const bool fogGatesAgree =
+            voxelSet.visible_ == revealed.shown_ && voxelSet.ghostHeld_ == revealed.ghostHeld_;
         const bool wasShown = revealed.shown_;
         const bool evaluated = revealed.override_ != IRComponents::FogOverride::NONE ||
                                !fogGatesAgree ||
@@ -364,8 +364,7 @@ template <> struct System<FOG_REVEAL_EVAL> {
             }
             return;
         }
-        const bool fogGatesAgree = voxelSet.visible_ == revealed.shown_ &&
-                                   !voxelSet.ghostHeld_;
+        const bool fogGatesAgree = voxelSet.visible_ == revealed.shown_ && !voxelSet.ghostHeld_;
         if (revealed.override_ == IRComponents::FogOverride::NONE && fogGatesAgree &&
             (entity + frameCounter_) % settings_.staggerPeriod_ != 0u) {
             return;
