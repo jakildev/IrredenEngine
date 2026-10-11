@@ -76,6 +76,8 @@ struct FakeBackendState {
     unsigned int openedSampleRate_ = 0;
     unsigned int openedBufferFrames_ = 0;
     unsigned int grantedBufferFrames_ = 0;
+    unsigned int inputDeviceId_ = kFakeDeviceId;
+    unsigned int outputDeviceId_ = kFakeOutputDeviceId;
     unsigned int inputChannels_ = 2;
     unsigned int outputChannels_ = 2;
     bool hasSeparateOutputDevice_ = false;
@@ -155,16 +157,16 @@ class FakeAudioInputBackend final : public IRAudio::detail::IAudioInputBackend {
     std::vector<unsigned int> getDeviceIds() override {
         m_state->enumerationThread_ = std::this_thread::get_id();
         if (m_state->hasSeparateOutputDevice_) {
-            return {kFakeDeviceId, kFakeOutputDeviceId};
+            return {m_state->inputDeviceId_, m_state->outputDeviceId_};
         }
-        return {kFakeDeviceId};
+        return {m_state->inputDeviceId_};
     }
 
     RtAudio::DeviceInfo getDeviceInfo(unsigned int deviceId) override {
         ++m_state->deviceInfoCalls_;
         RtAudio::DeviceInfo info;
         info.ID = deviceId;
-        if (deviceId == kFakeOutputDeviceId) {
+        if (deviceId == m_state->outputDeviceId_) {
             info.name = kFakeOutputDeviceName;
             info.outputChannels = m_state->outputChannels_;
             info.isDefaultOutput = m_state->hasDefaultOutput_;
@@ -1059,11 +1061,33 @@ TEST(AudioMonitorTest, SeparateOutputRequestIsBoundedToTenMilliseconds) {
     EXPECT_EQ(output->openedBufferFrames_, 441u);
 }
 
-TEST(AudioMonitorTest, MissingNamedAndDefaultOutputsDegradeWithoutBackendCalls) {
+TEST(AudioMonitorTest, OutputDeviceIsResolvedWithinItsOwnBackend) {
+    auto input = std::make_shared<FakeBackendState>();
+    auto output = std::make_shared<FakeBackendState>();
+    input->hasSeparateOutputDevice_ = true;
+    output->hasSeparateOutputDevice_ = true;
+    output->outputDeviceId_ = 19;
+    Audio audio{
+        std::make_unique<FakeAudioInputBackend>(input),
+        std::make_unique<FakeAudioInputBackend>(output)
+    };
+    AudioCaptureConfig config = monitoredFakeDeviceConfig();
+    config.monitor_device_name_ = kFakeOutputDeviceName;
+    int deliveredFrames = 0;
+
+    ASSERT_TRUE(audio.startCapture(config, countDeliveredFrames(deliveredFrames)));
+
+    EXPECT_TRUE(audio.isInputMonitorEnabled());
+    EXPECT_EQ(output->openedDeviceId_, 19u);
+    EXPECT_NE(output->openedDeviceId_, input->outputDeviceId_);
+    expectRecorderDelivery(input, deliveredFrames);
+}
+
+TEST(AudioMonitorTest, MissingNamedAndDefaultOutputsDegradeWithoutOpening) {
     for (int arm = 0; arm < 2; ++arm) {
         auto input = std::make_shared<FakeBackendState>();
         auto output = std::make_shared<FakeBackendState>();
-        input->hasDefaultOutput_ = arm == 0;
+        output->hasDefaultOutput_ = arm == 0;
         Audio audio{
             std::make_unique<FakeAudioInputBackend>(input),
             std::make_unique<FakeAudioInputBackend>(output)
@@ -1077,7 +1101,7 @@ TEST(AudioMonitorTest, MissingNamedAndDefaultOutputsDegradeWithoutBackendCalls) 
 
         EXPECT_TRUE(audio.isCapturing()) << "arm " << arm;
         EXPECT_FALSE(audio.isInputMonitorEnabled()) << "arm " << arm;
-        EXPECT_EQ(output->deviceInfoCalls_, 0) << "arm " << arm;
+        EXPECT_EQ(output->deviceInfoCalls_, 1) << "arm " << arm;
         EXPECT_EQ(output->openCalls_, 0) << "arm " << arm;
         expectRecorderDelivery(input, deliveredFrames);
     }

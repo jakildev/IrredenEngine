@@ -108,6 +108,9 @@ class AudioMonitorChannel {
             highWaterFrames
         );
         m_outputCallbacks.store(0, std::memory_order_relaxed);
+    }
+
+    void openAdmission() {
         m_requestedEnabled.store(true, std::memory_order_release);
         m_admitting.store(true, std::memory_order_release);
     }
@@ -146,9 +149,6 @@ class AudioMonitorChannel {
         m_admitting.store(false, std::memory_order_release);
         m_requestedEnabled.store(false, std::memory_order_release);
         m_outputRunning.store(false, std::memory_order_release);
-        if (m_ring != nullptr) {
-            m_ring->requestReset();
-        }
     }
 
     [[nodiscard]] bool effectiveEnabled() const {
@@ -475,10 +475,12 @@ struct ArmReport {
 struct MonitorArmReport {
     std::atomic<BackendOperation> operation_ = BackendOperation::DEVICE_LOOKUP;
     std::string deviceName_;
+    unsigned int deviceId_ = 0;
     unsigned int availableOutputChannels_ = 0;
     unsigned int backendSampleRate_ = 0;
     unsigned int bufferFrames_ = 0;
     bool channelsAvailable_ = false;
+    bool deviceFound_ = false;
     bool rateAvailable_ = false;
     bool backendRateMatched_ = false;
     CallReport open_;
@@ -813,7 +815,6 @@ bool Audio::armStreamIn(
     const unsigned int actualSampleRate =
         report->backendSampleRate_ == 0 ? attemptedSampleRate : report->backendSampleRate_;
     m_streamSampleRate = static_cast<int>(actualSampleRate);
-    m_streamDeviceId = deviceId;
     m_streamChannels = requestedChannels;
     m_streamBufferFrames = report->bufferFrames_;
     m_streamDeviceName = report->deviceName_;
@@ -850,76 +851,41 @@ bool Audio::armMonitorBy(
         );
         return false;
     }
-    unsigned int deviceId = 0;
-    if (!config.monitor_device_name_.empty()) {
-        const int requestedDeviceId = getDeviceIndexByName(config.monitor_device_name_);
-        if (requestedDeviceId < 0) {
-            IRE_LOG_WARN(
-                "Audio input monitoring unavailable: output device '{}' was not found; input "
-                "capture remains active.",
-                config.monitor_device_name_
-            );
-            return false;
-        }
-        deviceId = static_cast<unsigned int>(requestedDeviceId);
-    } else {
-        deviceId = getDefaultOutputDeviceId();
-        if (deviceId == 0) {
-            IRE_LOG_WARN(
-                "Audio input monitoring unavailable: no default output device; input capture "
-                "remains active."
-            );
-            return false;
-        }
-    }
-    const RtAudio::DeviceInfo &enumeratedInfo = m_deviceInfo.at(deviceId);
-    if (enumeratedInfo.outputChannels < m_streamChannels) {
-        IRE_LOG_WARN(
-            "Audio input monitoring unavailable: requested {} output channels but device '{}' "
-            "provides {}; input capture remains active.",
-            m_streamChannels,
-            enumeratedInfo.name,
-            enumeratedInfo.outputChannels
-        );
-        return false;
-    }
-    if (!enumeratedInfo.sampleRates.empty() && std::find(
-                                                   enumeratedInfo.sampleRates.begin(),
-                                                   enumeratedInfo.sampleRates.end(),
-                                                   static_cast<unsigned int>(m_streamSampleRate)
-                                               ) == enumeratedInfo.sampleRates.end()) {
-        IRE_LOG_WARN(
-            "Audio input monitoring unavailable: output device '{}' does not list input rate "
-            "{}; input capture remains active.",
-            enumeratedInfo.name,
-            m_streamSampleRate
-        );
-        return false;
-    }
-
-    unsigned int requestedBufferFrames = m_streamBufferFrames;
-    if (deviceId != m_streamDeviceId) {
-        requestedBufferFrames = IRMath::min(
-            requestedBufferFrames,
-            static_cast<unsigned int>(IRMath::max(m_streamSampleRate / 100, 1))
-        );
-    }
     auto report = std::make_shared<MonitorArmReport>();
-    report->bufferFrames_ = requestedBufferFrames;
     auto channel = m_monitorChannel;
+    const std::string requestedDeviceName = config.monitor_device_name_;
+    const std::string inputDeviceName = m_streamDeviceName;
     const auto startedAt = Clock::now();
     const Completion completion = m_monitorSession->run(
         deadline,
         [report,
          channel,
-         deviceId,
+         requestedDeviceName,
+         inputDeviceName,
          channels = m_streamChannels,
          inputBufferFrames = m_streamBufferFrames,
          sampleRate = static_cast<unsigned int>(
              m_streamSampleRate
          )](detail::AudioInputBackendStream &stream, const std::atomic<bool> &abandoned) {
             detail::IAudioInputBackend &backend = *stream.backend_;
-            const RtAudio::DeviceInfo deviceInfo = backend.getDeviceInfo(deviceId);
+            RtAudio::DeviceInfo deviceInfo;
+            for (const unsigned int id : backend.getDeviceIds()) {
+                const RtAudio::DeviceInfo candidate = backend.getDeviceInfo(id);
+                const bool matchesName =
+                    !requestedDeviceName.empty() && candidate.name == requestedDeviceName;
+                const bool matchesDefault = requestedDeviceName.empty() &&
+                                            candidate.isDefaultOutput &&
+                                            candidate.outputChannels > 0;
+                if (matchesName || matchesDefault) {
+                    report->deviceId_ = id;
+                    deviceInfo = candidate;
+                    report->deviceFound_ = true;
+                    break;
+                }
+            }
+            if (!report->deviceFound_ || abandoned) {
+                return;
+            }
             report->deviceName_ = deviceInfo.name;
             report->availableOutputChannels_ = deviceInfo.outputChannels;
             report->channelsAvailable_ = deviceInfo.outputChannels >= channels;
@@ -933,9 +899,17 @@ bool Audio::armMonitorBy(
                 return;
             }
 
+            report->bufferFrames_ = inputBufferFrames;
+            if (deviceInfo.name != inputDeviceName) {
+                report->bufferFrames_ = IRMath::min(
+                    report->bufferFrames_,
+                    static_cast<unsigned int>(IRMath::max(sampleRate / 100, 1U))
+                );
+            }
+
             report->operation_ = BackendOperation::OPEN;
             RtAudio::StreamParameters parameters;
-            parameters.deviceId = deviceId;
+            parameters.deviceId = report->deviceId_;
             parameters.nChannels = channels;
             parameters.firstChannel = 0;
             RtAudioCallback callback = [channel](
@@ -981,7 +955,6 @@ bool Audio::armMonitorBy(
             report->operation_ = BackendOperation::START;
             report->start_ = callBackend(backend, [&] { return backend.startStream(); });
             if (report->start_.outcome_ != CallOutcome::SUCCEEDED) {
-                channel->closeAdmission();
                 try {
                     backend.closeStream();
                     stream.open_ = false;
@@ -995,7 +968,11 @@ bool Audio::armMonitorBy(
 
     if (completion == Completion::TIMED_OUT) {
         m_monitorChannel->closeAdmission();
-        logMonitorTimeout(report->operation_, m_deadlines.arm_, enumeratedInfo.name);
+        logMonitorTimeout(
+            report->operation_,
+            m_deadlines.arm_,
+            report->deviceName_.empty() ? requestedDeviceName : report->deviceName_
+        );
         return false;
     }
     if (report->cleanupThrew_) {
@@ -1004,6 +981,22 @@ bool Audio::armMonitorBy(
             "the backend for teardown.",
             report->deviceName_
         );
+    }
+    if (!report->deviceFound_) {
+        m_monitorChannel->closeAdmission();
+        if (requestedDeviceName.empty()) {
+            IRE_LOG_WARN(
+                "Audio input monitoring unavailable: no default output device; input capture "
+                "remains active."
+            );
+        } else {
+            IRE_LOG_WARN(
+                "Audio input monitoring unavailable: output device '{}' was not found; input "
+                "capture remains active.",
+                requestedDeviceName
+            );
+        }
+        return false;
     }
     if (!report->channelsAvailable_ || !report->rateAvailable_) {
         m_monitorChannel->closeAdmission();
@@ -1050,6 +1043,7 @@ bool Audio::armMonitorBy(
     m_monitorStreamRunning = true;
     m_monitorDeviceName = report->deviceName_;
     m_monitorChannel->setOutputRunning(true);
+    m_monitorChannel->openAdmission();
     const long inputLatencyFrames = m_session->streamLatencyFrames();
     const long outputLatencyFrames = m_monitorSession->streamLatencyFrames();
     const double inputLatencyMs =
@@ -1247,7 +1241,6 @@ void Audio::unpublishStreamIn() {
     }
     m_streamInOpen = false;
     m_streamInRunning = false;
-    m_streamDeviceId = 0;
     m_streamChannels = 0;
     m_streamDeviceName.clear();
 }
@@ -1384,12 +1377,4 @@ unsigned int Audio::getDefaultInputDeviceId() const {
     return 0;
 }
 
-unsigned int Audio::getDefaultOutputDeviceId() const {
-    for (const auto &[id, info] : m_deviceInfo) {
-        if (info.isDefaultOutput && info.outputChannels > 0) {
-            return id;
-        }
-    }
-    return 0;
-}
 } // namespace IRAudio

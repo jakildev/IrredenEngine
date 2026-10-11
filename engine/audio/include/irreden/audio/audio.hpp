@@ -125,7 +125,6 @@ class Audio : public IAudioCaptureSource {
     bool m_streamInOpen = false;
     bool m_streamInRunning = false;
     int m_streamSampleRate = 48'000;
-    unsigned int m_streamDeviceId = 0;
     unsigned int m_streamChannels = 0;
     unsigned int m_streamBufferFrames = kAudioInputDefaultBufferFrames;
     std::string m_streamDeviceName;
@@ -151,7 +150,6 @@ class Audio : public IAudioCaptureSource {
     void logDeviceInfoAll();
     int getDeviceIndexByName(const std::string &deviceName) const;
     unsigned int getDefaultInputDeviceId() const;
-    unsigned int getDefaultOutputDeviceId() const;
 };
 
 } // namespace IRAudio
