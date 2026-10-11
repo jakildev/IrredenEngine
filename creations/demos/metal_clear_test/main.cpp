@@ -1,9 +1,12 @@
 #include <irreden/ir_engine.hpp>
+#include <irreden/ir_entity.hpp>
+#include <irreden/ir_render.hpp>
 #include <irreden/ir_video.hpp>
 #include <irreden/ir_window.hpp>
 
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/input/commands/command_close_window.hpp>
+#include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 
 namespace {
@@ -14,6 +17,18 @@ constexpr IRVideo::AutoScreenshotShot kShots[] = {
     {4.0f, vec2(4, 4), 0.0f, "metal_clear_zoom4_offset"},
 };
 
+// Nothing else writes the main framebuffer here, so FRAMEBUFFER_TO_SCREEN
+// samples exactly this seed. Its fractional alpha is the blend oracle: with
+// blending off (the default on every backend) the screen shows the seed RGB;
+// a blended draw mixes it with the purple default-target clear instead.
+constexpr u8vec4 kFramebufferSeed{128, 128, 128, 128};
+
+void seedMainFramebuffer() {
+    const auto &framebuffer =
+        IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>("mainFramebuffer");
+    IRRender::device()->clearTexImage(&framebuffer.getTextureColor(), 0, &kFramebufferSeed[0]);
+}
+
 } // namespace
 
 int main(int argc, char **argv) {
@@ -22,6 +37,7 @@ int main(int argc, char **argv) {
     int autoWarmupFrames = 0;
     IREngine::init(argc, argv, "config.lua");
     autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
+    seedMainFramebuffer();
 
     IRSystem::registerPipeline(
         IRTime::Events::INPUT,
