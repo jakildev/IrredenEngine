@@ -176,8 +176,11 @@ TEST(FogSeamsTest, CanvasEvaluatorHonoursOverridesAndChannels) {
     system.fog_ = &fog;
     system.settings_.staggerPeriod_ = 100;
 
-    const IREntity::EntityId privateCanvas =
-        IREntity::createEntity(IRComponents::C_DetachedCanvas{});
+    const IREntity::EntityId privateCanvas = IREntity::createEntity(
+        IRComponents::C_VoxelPool{IRMath::ivec3(1)},
+        IRComponents::C_DetachedCanvas{}
+    );
+    system.collectDetachedPools();
     IREntity::EntityId entity = 1;
     C_WorldTransform inside{};
     C_WorldTransform outside{};
