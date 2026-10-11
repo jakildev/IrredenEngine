@@ -308,7 +308,8 @@ force-push
 The merger labels an accidental fork (`baseRefName` `master` with commits from
 another open PR) `fleet:needs-info`. If a parent merges during claim→open,
 `claim-base` / link replay-push-retarget; review rejects misses and tier-0
-repairs or parks approved orphans. Pre-retarget checks may include master-side changes; vanished bases are human-owned.
+repairs or parks approved orphans. Pre-retarget checks may include master-side
+changes; vanished bases are human-owned.
 
 ### Cross-author stacking (scheduler)
 

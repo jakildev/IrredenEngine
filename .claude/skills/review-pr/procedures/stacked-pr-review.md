@@ -21,8 +21,9 @@ open_parent=$(jq -r '[.[] | select(.state == "OPEN")][0].number // empty' \
     <<< "$parent_rows")
 merged_parent=$(jq -r '[.[] | select(.state == "MERGED")][0].number // empty' \
     <<< "$parent_rows")
-stacked=$(gh api --paginate --slurp "repos/{owner}/{repo}/stacks" \
-    --jq "any(.[][] | select(.open) | .pull_requests[]; .number == ${child_pr})")
+stack_pages=$(gh api --paginate --slurp "repos/{owner}/{repo}/stacks")
+stacked=$(jq -r "any(.[][] | select(.open) | .pull_requests[]; .number == ${child_pr})" \
+    <<< "$stack_pages")
 if [[ -z "$open_parent" && -n "$merged_parent" && "$stacked" != "true" ]]; then
     parent_sha=$(jq -r ".[] | select(.number == ${merged_parent}) | .headRefOid" \
         <<< "$parent_rows")

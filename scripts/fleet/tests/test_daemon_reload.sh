@@ -453,8 +453,8 @@ if sys.argv[2] not in text:
     sys.exit("import line to rename not found: " + sys.argv[2])
 path.write_text(text.replace(sys.argv[2], sys.argv[3]))' \
     "$STAGE/fleet-state-scout" \
-    "from fleet_stack_base import " \
-    "from fleet_stack_base_v2 import "; then
+    "from fleet_stack_base import needs_orphan_check, unsafe_base_reason" \
+    "from fleet_stack_base_v2 import needs_orphan_check, unsafe_base_reason"; then
     mv "$STAGE/fleet_stack_base.py" "$STAGE/fleet_stack_base_v2.py"
     ok "T25b: staged a closure-module rename"
 else

@@ -29,9 +29,13 @@ way, so always resolve the base the same way and let the value decide.
    if [[ "$base" == "master" && -n "$merged_parent_sha" ]]; then
        branch=$(git branch --show-current)
        pushed_sha=$(git rev-parse "refs/remotes/origin/$branch")
-       git rebase --onto origin/master "$merged_parent_sha"
-       git push origin "HEAD:refs/heads/$branch" \
-           --force-with-lease="refs/heads/$branch:$pushed_sha"
+       if ! git rebase --onto origin/master "$merged_parent_sha"; then
+           exit 1
+       fi
+       if ! git push origin "HEAD:refs/heads/$branch" \
+               --force-with-lease="refs/heads/$branch:$pushed_sha"; then
+           exit 1
+       fi
    fi
    ```
    A no-op for normal claims (no `.meta` sidecar → prints `master`), so

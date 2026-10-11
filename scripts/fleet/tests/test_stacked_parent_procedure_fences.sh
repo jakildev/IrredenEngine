@@ -43,7 +43,7 @@ sed -i.bak 's/^base=<the child.*/base="parent"/; s/^child_pr=.*/child_pr=200/' "
 
 cat > "$TMPROOT/bin/fleet-claim" <<'STUB'
 #!/usr/bin/env bash
-if [[ "$MODE" == merged ]]; then
+if [[ "$MODE" == merged || "$MODE" == rebase-fail ]]; then
     echo "fleet-claim claim-base: blocker PR #90 merged after the claim; run: git rebase --onto origin/master abc123" >&2
     echo master
 else
@@ -57,7 +57,10 @@ cat > "$TMPROOT/bin/git" <<'STUB'
 case "$1 $2" in
     "branch --show-current") echo child ;;
     "rev-parse refs/remotes/origin/child") echo oldsha ;;
-    "rebase --onto") echo rebase >> "$EVENT_LOG" ;;
+    "rebase --onto")
+        echo rebase >> "$EVENT_LOG"
+        [[ "$MODE" != "rebase-fail" ]]
+        ;;
     "push origin") echo push >> "$EVENT_LOG" ;;
     *) exit 90 ;;
 esac
@@ -83,7 +86,7 @@ if args[:2] == ["pr", "list"]:
         merged = {"number": 90, "state": "MERGED", "headRefOid": "abc123"}
         opened = {"number": 91, "state": "OPEN", "headRefOid": "def456"}
         rows = []
-        if mode in {"merged", "both"}:
+        if mode in {"merged", "both", "rebase-fail"}:
             rows.append(merged)
         if mode in {"open", "both", "page2"}:
             rows.append(opened)
@@ -92,11 +95,18 @@ if args[:2] == ["pr", "list"]:
         pass
     raise SystemExit(0)
 if args[:1] == ["api"]:
-    query = args[args.index("--jq") + 1]
-    if query.startswith("any("):
-        print("true" if mode == "linked" else "false")
+    if "--slurp" in args and ("--jq" in args or "--template" in args):
+        print("the --slurp option is not supported with --jq or --template", file=sys.stderr)
+        raise SystemExit(1)
+    if mode == "page2":
+        pages = [[], [{"number": 77, "open": True,
+                       "pull_requests": [{"number": 91}]}]]
+    elif mode == "linked":
+        pages = [[{"number": 77, "open": True,
+                   "pull_requests": [{"number": 200}]}]]
     else:
-        print("77" if mode == "page2" else "null")
+        pages = [[]]
+    print(json.dumps(pages))
     raise SystemExit(0)
 if args[:2] == ["stack", "link"]:
     event("link:" + ":".join(args[2:]))
@@ -128,6 +138,16 @@ export MODE=open
 bash -c 'source "$1"; source "$2"' _ "$TMPROOT/stackable.sh" "$TMPROOT/open.sh" >/dev/null
 assert_eq "$(cat "$EVENT_LOG")" "create:parent" "open parent retains its feature base"
 
+echo "T2b: stackable-on stops publication when replay conflicts"
+export MODE=rebase-fail
+: > "$EVENT_LOG"
+set +e
+bash -c 'source "$1"; source "$2"' _ "$TMPROOT/stackable.sh" "$TMPROOT/open.sh" >/dev/null
+STACKABLE_FAIL_RC=$?
+set -e
+assert_eq "$STACKABLE_FAIL_RC" 1 "failed stackable replay exits non-zero"
+assert_eq "$(cat "$EVENT_LOG")" "rebase" "failed stackable replay neither pushes nor publishes"
+
 run_native() {
     export MODE="$1"
     : > "$EVENT_LOG"
@@ -140,6 +160,13 @@ assert_eq "$(cat "$EVENT_LOG")" "link:91:200" "open parent creates a stack"
 run_native merged
 assert_eq "$(cat "$EVENT_LOG")" $'rebase\npush\nretarget:master' \
     "merged parent repairs in D2 order"
+set +e
+run_native rebase-fail
+NATIVE_FAIL_RC=$?
+set -e
+assert_eq "$NATIVE_FAIL_RC" 1 "failed native replay exits non-zero"
+assert_eq "$(cat "$EVENT_LOG")" "rebase" \
+    "failed native replay neither pushes nor retargets"
 run_native both
 assert_eq "$(cat "$EVENT_LOG")" "link:91:200" "open parent wins over merged history"
 run_native none

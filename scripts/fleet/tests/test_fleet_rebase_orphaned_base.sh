@@ -109,12 +109,15 @@ if args[:2] == ["pr", "list"]:
     raise SystemExit(0)
 
 if args[:1] == ["api"]:
+    if "--slurp" in args and ("--jq" in args or "--template" in args):
+        print("the --slurp option is not supported with --jq or --template", file=sys.stderr)
+        raise SystemExit(1)
     if mode == "unreadable":
         raise SystemExit(1)
     child = int(os.environ["CHILD_PR"])
     stacks = [{"open": True, "pull_requests": [{"number": child}]}] \
         if mode == "stack" else []
-    print(json.dumps(stacks))
+    print(json.dumps([stacks]))
     raise SystemExit(0)
 
 if args[:2] == ["pr", "view"]:

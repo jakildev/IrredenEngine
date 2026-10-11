@@ -143,6 +143,9 @@ run_claim_base 8103
 assert_eq "$OUT" "" "CLOSED blocker prints no base"
 assert_eq "$RC" "1" "CLOSED blocker exits non-zero"
 assert_contains "$ERR" "closed without merging" "CLOSED blocker states the reason"
+run_claim_base 8103 --strict
+assert_eq "$OUT" "" "strict CLOSED blocker prints no base"
+assert_eq "$RC" "1" "strict CLOSED blocker exits non-zero"
 
 echo "--- live sidecar: lookup failure soft-degrades unless strict ---"
 mkdir -p "$FLEET_CLAIMS_DIR/8104"

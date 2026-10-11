@@ -206,7 +206,10 @@ class TestProspectiveRev(unittest.TestCase):
         with _staged_closure() as staged:
             scout = staged / _SCRIPT.name
             text = scout.read_text()
-            dropped = "from fleet_stack_base import "
+            dropped = (
+                "from fleet_stack_base import "
+                "needs_orphan_check, unsafe_base_reason"
+            )
             self.assertIn(dropped, text)
             scout.write_text(text.replace(
                 dropped, "def unsafe_base_reason(*_a, **_k): return None"))

@@ -21,8 +21,9 @@ parent_pr=$(jq -r '[.[] | select(.state == "OPEN")][0].number // empty' \
 merged_parent=$(jq -r '[.[] | select(.state == "MERGED")][0].number // empty' \
     <<< "$parent_rows")
 if [[ -n "$parent_pr" ]]; then
-    stack=$(gh api --paginate --slurp "repos/{owner}/{repo}/stacks" \
-        --jq "[.[][] | select(.open) | select(any(.pull_requests[]; .number == ${parent_pr}))][0].number")
+    stack_pages=$(gh api --paginate --slurp "repos/{owner}/{repo}/stacks")
+    stack=$(jq -r "[.[][] | select(.open) | select(any(.pull_requests[]; .number == ${parent_pr}))][0].number // empty" \
+        <<< "$stack_pages")
     if [[ -n "$stack" && "$stack" != "null" ]]; then
         gh stack link "$stack" "$child_pr"      # append to the parent's existing stack
     else
@@ -33,9 +34,13 @@ elif [[ -n "$merged_parent" ]]; then
         <<< "$parent_rows")
     branch=$(git branch --show-current)
     pushed_sha=$(git rev-parse "refs/remotes/origin/$branch")
-    git rebase --onto origin/master "$parent_sha"
-    git push origin "HEAD:refs/heads/$branch" \
-        --force-with-lease="refs/heads/$branch:$pushed_sha"
+    if ! git rebase --onto origin/master "$parent_sha"; then
+        exit 1
+    fi
+    if ! git push origin "HEAD:refs/heads/$branch" \
+            --force-with-lease="refs/heads/$branch:$pushed_sha"; then
+        exit 1
+    fi
     gh pr edit "$child_pr" --base master
 else
     echo "native-stack-link: no open PR for base $base — skipping link" >&2

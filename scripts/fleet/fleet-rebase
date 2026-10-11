@@ -437,12 +437,15 @@ preflight_pr() {
 # The stack list is deliberately paged: the default GitHub page is too small
 # to prove that a child has no live native-stack membership.
 classify_orphaned_base() {
-    local repo_slug="$1" pr="$2" base="$3" prs_json stacks_json
+    local repo_slug="$1" pr="$2" base="$3" prs_json stack_pages stacks_json
     prs_json=$(gh pr list --repo "$repo_slug" --head "$base" --state all \
         --limit 100 --json number,state,headRefName,headRefOid,mergeCommit 2>/dev/null) \
         || { echo unknown; return 0; }
-    stacks_json=$(gh api --paginate --slurp "repos/$repo_slug/stacks" \
-        --jq '[.[][] | select(.open)]' 2>/dev/null) \
+    stack_pages=$(gh api --paginate --slurp "repos/$repo_slug/stacks" \
+        2>/dev/null) \
+        || { echo unknown; return 0; }
+    stacks_json=$(jq -c '[.[][] | select(.open)]' <<< "$stack_pages" \
+        2>/dev/null) \
         || { echo unknown; return 0; }
     PRS_JSON="$prs_json" STACKS_JSON="$stacks_json" CHILD_PR="$pr" \
         CHILD_BASE="$base" python3 - <<'PYEOF'
