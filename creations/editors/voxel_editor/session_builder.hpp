@@ -19,6 +19,7 @@
 #include "loft_panel.hpp"
 #include "palette.hpp"
 #include "part_size_panel.hpp"
+#include "parts_panel.hpp"
 #include "symmetry.hpp"
 
 #include <deque>
@@ -395,6 +396,24 @@ struct EditorInputCheck {
     std::string name_;
 };
 
+// PARTS list expectation. expectedSelected_ >= 0: the list widget and the
+// entity scene both select that part, and its row is one the list paints.
+// expectedTop_ >= 0: that part is the list's first visible item. -1 leaves
+// either unchecked.
+struct PartsListCheck {
+    int expectedSelected_ = -1;
+    int expectedTop_ = -1;
+    std::string name_;
+};
+
+// Camera-zoom expectation: the live zoom equals zoom_, or with expectEqual_
+// false, differs from it.
+struct CameraZoomCheck {
+    float zoom_ = kSessionZoom;
+    bool expectEqual_ = true;
+    std::string name_;
+};
+
 // Pick expectation evaluated through the editor's own edit pick at a shot's
 // capture frame: the world voxel the parked cursor must land on.
 struct PickCheck {
@@ -515,6 +534,8 @@ struct Recipe {
     std::deque<CanvasCountCheck> canvasCountChecks_;
     std::deque<RotationModeCheck> rotationModeChecks_;
     std::deque<EditorInputCheck> editorInputChecks_;
+    std::deque<PartsListCheck> partsListChecks_;
+    std::deque<CameraZoomCheck> cameraZoomChecks_;
     // Same stable-storage contract as checks_, for expectSliderValue.
     std::deque<SliderCheck> sliderChecks_;
     // Same stable-storage contract as checks_, for expectPick.
@@ -574,6 +595,11 @@ bool evaluatePartEditableCheck(const void *context, std::string &actual);
 bool evaluateCanvasCountCheck(const void *context, std::string &actual);
 bool evaluateRotationModeCheck(const void *context, std::string &actual);
 bool evaluateEditorInputCheck(const void *context, std::string &actual);
+
+// Read one PartsListCheck / CameraZoomCheck. Defined in main.cpp, where the
+// PARTS list widget and the entity scene live.
+bool evaluatePartsListCheck(const void *context, std::string &actual);
+bool evaluateCameraZoomCheck(const void *context, std::string &actual);
 
 // Reads one PickCheck through the editor's edit pick. Same PREDICATE channel
 // as evaluateOccupancyCheck. Defined in main.cpp, beside the pick itself.
@@ -859,6 +885,39 @@ class Builder {
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
     }
 
+    // Park the cursor on a GUI-canvas point and turn the mouse wheel @p rows
+    // notches, one event a frame. Positive rows scroll a list toward its end
+    // (wheel down); negative rows toward its start.
+    void wheelGui(IRMath::vec2 guiTrixel, int rows) {
+        emitGuiMove(guiTrixel);
+        emitWheel(rows);
+    }
+
+    // Park the cursor on `target`'s clickable face and turn the wheel @p rows
+    // notches, signed as wheelGui signs them.
+    void wheelScene(IRMath::ivec3 target, int rows) {
+        hover(target);
+        emitWheel(rows);
+    }
+
+    // Click the PARTS list's @p visibleRow-th row from the top, which the
+    // list's scroll offset currently maps to part @p partIndex. The shadow
+    // model follows the selection as nextPart's does.
+    void selectPartThroughList(int visibleRow, int partIndex) {
+        if (partIndex < 0 || partIndex >= static_cast<int>(m_partModels.size()) || visibleRow < 0 ||
+            visibleRow >= partsListVisibleRows()) {
+            recordError(
+                "selectPartThroughList row " + std::to_string(visibleRow) + " -> part " +
+                std::to_string(partIndex) + " is out of range in segment " + m_current.label_
+            );
+            return;
+        }
+        m_partModels[static_cast<std::size_t>(m_activePart)] = m_model;
+        clickGui(partsListRowCenterGuiTrixel(visibleRow));
+        m_activePart = partIndex;
+        m_model = m_partModels[static_cast<std::size_t>(m_activePart)];
+    }
+
     // Click the text input at `guiTrixel` to focus it, type `text` one key at
     // a time, and press Enter, which commits the text and drops the focus so
     // later key ops reach the editor's commands. `text` is limited to the
@@ -1140,6 +1199,35 @@ class Builder {
             m_recipe.partEditableChecks_,
             PartEditableCheck{partIndex, expected, std::move(name)},
             &evaluatePartEditableCheck
+        );
+    }
+
+    // Assert the PARTS list and the entity scene both select part
+    // @p partIndex and the list paints that row.
+    void expectSelectedPartVisible(int partIndex, std::string name) {
+        addPredicateCheck(
+            m_recipe.partsListChecks_,
+            PartsListCheck{partIndex, -1, std::move(name)},
+            &evaluatePartsListCheck
+        );
+    }
+
+    // Assert part @p partIndex is the PARTS list's first visible item.
+    void expectPartsListTop(int partIndex, std::string name) {
+        addPredicateCheck(
+            m_recipe.partsListChecks_,
+            PartsListCheck{-1, partIndex, std::move(name)},
+            &evaluatePartsListCheck
+        );
+    }
+
+    // Assert the live camera zoom equals @p zoom when this segment settles,
+    // or with @p expectEqual false, that it does not.
+    void expectCameraZoom(float zoom, bool expectEqual, std::string name) {
+        addPredicateCheck(
+            m_recipe.cameraZoomChecks_,
+            CameraZoomCheck{zoom, expectEqual, std::move(name)},
+            &evaluateCameraZoomCheck
         );
     }
 
@@ -1549,6 +1637,20 @@ class Builder {
         m_model = m_frameModels[static_cast<std::size_t>(target)];
         m_frameModels.erase(m_frameModels.begin() + target);
         m_activeFrame = target;
+    }
+
+    // Wheel notches at the cursor's current pixel. GLFW reports a wheel-down
+    // notch as a negative y offset, so a positive row count injects negative y.
+    void emitWheel(int rows) {
+        const float notch = rows > 0 ? -1.0f : 1.0f;
+        for (int i = 0; i < IRMath::abs(rows); ++i) {
+            IRVideo::GuiInputEvent event{};
+            event.frameOffset_ = m_frame;
+            event.type_ = IRVideo::GuiInputEvent::Type::SCROLL;
+            event.scroll_ = IRMath::vec2(0.0f, notch);
+            m_current.events_.push_back(event);
+            m_frame += kFramesPerClickStep;
+        }
     }
 
     void emitButton(IRVideo::GuiInputEvent::Type type, IRInput::KeyMouseButtons button) {

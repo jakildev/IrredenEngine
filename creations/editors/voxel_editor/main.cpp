@@ -105,6 +105,7 @@
 // scripted drag aims at the live layout.
 #include "anim_panel.hpp"
 #include "array_panel.hpp"
+#include "parts_panel.hpp"
 #include "lod_panel.hpp"
 #include "loft_panel.hpp"
 #include "part_size_panel.hpp"
@@ -3069,6 +3070,43 @@ bool evaluateEditorInputCheck(const void *context, std::string &actual) {
     return kTabWalkPresses > tabCandidates;
 }
 
+// Reads one PartsListCheck against the PARTS list widget and the entity scene.
+bool evaluatePartsListCheck(const void *context, std::string &actual) {
+    const PartsListCheck &check = *static_cast<const PartsListCheck *>(context);
+    if (g_partsList == IREntity::kNullEntity) {
+        actual = "widget not built";
+        return false;
+    }
+    const auto &list = IREntity::getComponent<C_WidgetList>(g_partsList);
+    const int viewHeight = IREntity::getComponent<C_Widget>(g_partsList).size_.y;
+    const int top = list.topIndex(viewHeight);
+    const int rows = list.visibleRows(viewHeight);
+    const int sceneSelected = g_entityScene.selectedIndex();
+    actual = "listSelected=" + std::to_string(list.selectedIndex_) +
+             " sceneSelected=" + std::to_string(sceneSelected) + " top=" + std::to_string(top) +
+             " rows=" + std::to_string(rows);
+    bool pass = true;
+    if (check.expectedSelected_ >= 0) {
+        actual += " wantSelected=" + std::to_string(check.expectedSelected_);
+        pass = list.selectedIndex_ == check.expectedSelected_ &&
+               sceneSelected == check.expectedSelected_ && list.selectedIndex_ >= top &&
+               list.selectedIndex_ < top + rows;
+    }
+    if (check.expectedTop_ >= 0) {
+        actual += " wantTop=" + std::to_string(check.expectedTop_);
+        pass = pass && top == check.expectedTop_;
+    }
+    return pass;
+}
+
+bool evaluateCameraZoomCheck(const void *context, std::string &actual) {
+    const CameraZoomCheck &check = *static_cast<const CameraZoomCheck *>(context);
+    const float zoom = IRRender::getCameraZoom().x;
+    actual = "zoom=" + std::to_string(zoom) + (check.expectEqual_ ? " want=" : " wantNot=") +
+             std::to_string(check.zoom_);
+    return (IRMath::abs(zoom - check.zoom_) <= 0.001f) == check.expectEqual_;
+}
+
 // Reads one SliderCheck against the live ANIM panel widget it names — the
 // positive fire for dragGuiSlider: a drag that missed the track never
 // presses the widget, so its value stays put and this fails instead of
@@ -3529,8 +3567,8 @@ int main(int argc, char **argv) {
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
         "face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | tier_scrub | "
-        "radial_array | nway_symmetry | mode_preview | mode_preview_shots | module_loaded | "
-        "component_attach | component_field_page | component_field_key | "
+        "radial_array | nway_symmetry | mode_preview | mode_preview_shots | parts_scroll | "
+        "module_loaded | component_attach | component_field_page | component_field_key | "
         "text_input_command_capture | part_sizes",
         {"none",
          "drag_probe",
@@ -3547,6 +3585,7 @@ int main(int argc, char **argv) {
          "nway_symmetry",
          "mode_preview",
          "mode_preview_shots",
+         "parts_scroll",
          "module_loaded",
          "component_attach",
          "component_field_page",
@@ -6053,24 +6092,25 @@ void initEntities() {
         "-"
     );
 
-    constexpr ivec2 kPartsPanelPos{254, 240};
-    constexpr ivec2 kPartsPanelSize{120, 96};
-    IRVoxelEditor::g_partsPanel =
-        IRPrefab::Widget::makePanel(kPartsPanelPos, kPartsPanelSize, "PARTS");
+    IRVoxelEditor::g_partsPanel = IRPrefab::Widget::makePanel(
+        IRVoxelEditor::kPartsPanelPos,
+        IRVoxelEditor::kPartsPanelSize,
+        "PARTS"
+    );
     IREntity::setComponent(
         IRVoxelEditor::g_partsPanel,
-        IRComponents::C_HitBox2DGui{kPartsPanelSize}
+        IRComponents::C_HitBox2DGui{IRVoxelEditor::kPartsPanelSize}
     );
     IREntity::getComponent<IRComponents::C_Widget>(IRVoxelEditor::g_partsPanel).zOrder_ = -1;
     IRVoxelEditor::g_partsList = IRPrefab::Widget::makeList(
-        ivec2(kPartsPanelPos.x + 4, kPartsPanelPos.y + 18),
-        ivec2(112, 44),
+        IRVoxelEditor::kPartsListPos,
+        IRVoxelEditor::kPartsListSize,
         {},
         -1,
-        13
+        IRVoxelEditor::kPartsListItemHeight
     );
     IRVoxelEditor::g_partModeDropdown = IRPrefab::Widget::makeDropdown(
-        ivec2(kPartsPanelPos.x + 4, kPartsPanelPos.y + 66),
+        ivec2(IRVoxelEditor::kPartsPanelPos.x + 4, IRVoxelEditor::kPartsPanelPos.y + 66),
         ivec2(112, 18),
         {"GRID", "DETACHED", "DETACHED REVOX"},
         0,
