@@ -12,11 +12,15 @@ class FakeAudioCaptureSource final : public IRAudio::IAudioCaptureSource {
     bool acceptsStart_ = true;
     int deliveredSampleRate_ = 44'100;
     int requestedSampleRate_ = 0;
+    bool monitorEnabled_ = false;
+    std::string monitorDeviceName_;
 
     bool startCapture(
         const IRAudio::AudioCaptureConfig &config, IRAudio::AudioCaptureCallback callback
     ) override {
         requestedSampleRate_ = config.sample_rate_;
+        monitorEnabled_ = config.monitor_enabled_;
+        monitorDeviceName_ = config.monitor_device_name_;
         m_callback = std::move(callback);
         m_capturing = acceptsStart_;
         return m_capturing;
@@ -51,6 +55,8 @@ void configureAudioCapture(IRVideo::VideoManager &manager, IRAudio::IAudioCaptur
         10'000'000,
         true,
         "Fake Capture Device",
+        true,
+        "Fake Monitor Device",
         48'000,
         2,
         320'000,
@@ -68,6 +74,8 @@ TEST(VideoAudioCaptureRateTest, SuccessfulArmUsesTheSourcesDeliveredRate) {
     configureAudioCapture(manager, source);
 
     EXPECT_EQ(source.requestedSampleRate_, 48'000);
+    EXPECT_TRUE(source.monitorEnabled_);
+    EXPECT_EQ(source.monitorDeviceName_, "Fake Monitor Device");
     EXPECT_TRUE(manager.isAudioInputArmed());
     EXPECT_EQ(manager.recordingAudioSampleRate(), 44'100);
 

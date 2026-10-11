@@ -11,6 +11,7 @@
 #include <chrono>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -35,6 +36,12 @@ class IAudioInputBackend {
         unsigned int &bufferFrames,
         RtAudioCallback callback
     ) = 0;
+    virtual RtAudioErrorType openOutputStream(
+        RtAudio::StreamParameters &parameters,
+        unsigned int sampleRate,
+        unsigned int &bufferFrames,
+        RtAudioCallback callback
+    ) = 0;
     virtual RtAudioErrorType startStream() = 0;
     virtual RtAudioErrorType stopStream() = 0;
     virtual void closeStream() = 0;
@@ -53,6 +60,7 @@ struct AudioInputDeadlines {
 
 class AudioInputGate;
 class AudioInputSession;
+class AudioMonitorChannel;
 
 } // namespace detail
 
@@ -68,6 +76,11 @@ class Audio : public IAudioCaptureSource {
     Audio();
     explicit Audio(
         std::unique_ptr<detail::IAudioInputBackend> backend,
+        detail::AudioInputDeadlines deadlines = {}
+    );
+    Audio(
+        std::unique_ptr<detail::IAudioInputBackend> inputBackend,
+        std::unique_ptr<detail::IAudioInputBackend> outputBackend,
         detail::AudioInputDeadlines deadlines = {}
     );
     // Returns within the teardown deadline; a backend call still pending then
@@ -94,20 +107,31 @@ class Audio : public IAudioCaptureSource {
     [[nodiscard]] bool isCapturing() const override;
     [[nodiscard]] int getCaptureSampleRate() const override;
     [[nodiscard]] double getInputLatencyMs() const override;
+    void setInputMonitorEnabled(bool enabled);
+    [[nodiscard]] bool isInputMonitorEnabled() const;
 
   private:
     // Shared with the control thread, which outlives this object while a
     // backend call is still pending.
     std::shared_ptr<detail::AudioInputSession> m_session;
+    std::shared_ptr<detail::AudioInputSession> m_monitorSession;
+    std::unique_ptr<detail::IAudioInputBackend> m_pendingMonitorBackend;
     // Shared with the callback the backend stores; non-null while a stream is open.
     std::shared_ptr<detail::AudioInputGate> m_gate;
+    std::shared_ptr<detail::AudioMonitorChannel> m_monitorChannel;
     detail::AudioInputDeadlines m_deadlines;
     std::unordered_map<unsigned int, RtAudio::DeviceInfo> m_deviceInfo;
     int m_numDevices = 0;
     bool m_streamInOpen = false;
     bool m_streamInRunning = false;
     int m_streamSampleRate = 48'000;
+    unsigned int m_streamDeviceId = 0;
+    unsigned int m_streamChannels = 0;
+    unsigned int m_streamBufferFrames = kAudioInputDefaultBufferFrames;
     std::string m_streamDeviceName;
+    std::string m_monitorDeviceName;
+    bool m_monitorStreamOpen = false;
+    bool m_monitorStreamRunning = false;
 
     void enumerateDevices();
     bool armStreamIn(
@@ -115,13 +139,19 @@ class Audio : public IAudioCaptureSource {
         int sampleRate,
         int channels,
         AudioInputCallback callback,
-        bool startAfterOpen
+        bool startAfterOpen,
+        std::optional<std::chrono::steady_clock::time_point> deadline = std::nullopt
     );
+    bool
+    armMonitorBy(const AudioCaptureConfig &config, std::chrono::steady_clock::time_point deadline);
+    void closeMonitorBy(std::chrono::steady_clock::time_point deadline);
+    void unpublishMonitor();
     void closeStreamInBy(std::chrono::steady_clock::time_point deadline);
     void unpublishStreamIn();
     void logDeviceInfoAll();
     int getDeviceIndexByName(const std::string &deviceName) const;
     unsigned int getDefaultInputDeviceId() const;
+    unsigned int getDefaultOutputDeviceId() const;
 };
 
 } // namespace IRAudio

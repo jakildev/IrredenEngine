@@ -195,8 +195,8 @@ per run with `--config-preset <file>` (its `config = { … }` overlays
   encoding leaves a half-written mp4 that most players refuse to open.
 - **macOS mic permission.** Arming waits on the audio backend for at most 2 s
   and shutdown likewise (`engine/audio/CLAUDE.md`); past that, video is muxed mute.
-- **Latency compensation is auto.** `getInputLatencyMs()` from the audio
-  source is applied as a sync offset; an obvious A/V offset starts there.
+- **Latency compensation is input-only.** `getInputLatencyMs()` drives A/V
+  sync; monitor output and ring-fill latency never enter the recorder offset.
 - **World flags delay recording.** `World::m_waitForFirstUpdateInput` and
   `m_startRecordingOnFirstInput` delay recording until the first input
   arrives. If a recording isn't starting, check those flags in
