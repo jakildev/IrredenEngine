@@ -13,6 +13,7 @@
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_fog_exempt.hpp>
 #include <irreden/render/components/component_fog_field.hpp>
+#include <irreden/render/components/component_fog_reveal_settings.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/render/fog_reveal_systems.hpp>
@@ -413,6 +414,24 @@ class FogRevealEvalCanvasPromotionTest : public testing::Test {
         );
     }
 
+    IRSystem::System<IRSystem::FOG_REVEAL_EVAL_CANVAS_GHOST> &canvasGhostEval() {
+        const IRSystem::SystemId canvasGhostEval =
+            IRSystem::findSystem(IRSystem::FOG_REVEAL_EVAL_CANVAS_GHOST);
+        return *m_systemManager
+                    .getSystemParams<IRSystem::System<IRSystem::FOG_REVEAL_EVAL_CANVAS_GHOST>>(
+                        canvasGhostEval
+                    );
+    }
+
+    void skipNextCanvasEvaluation(IREntity::EntityId entity) {
+        auto &settings = IREntity::singleton<IRComponents::C_FogRevealSettings>();
+        settings.staggerPeriod_ = 4096;
+        const std::uint64_t frameCounter =
+            settings.staggerPeriod_ - (entity % settings.staggerPeriod_);
+        canvasEval().frameCounter_ = frameCounter;
+        canvasGhostEval().frameCounter_ = frameCounter;
+    }
+
     IREntity::EntityManager m_entityManager;
     IRSystem::SystemManager m_systemManager;
     IREntity::EntityId m_worldCanvas = IREntity::kNullEntity;
@@ -455,8 +474,9 @@ TEST_F(FogRevealEvalCanvasPromotionTest, PromotionPreservesHiddenFactorBeforeCad
     auto &pool = IREntity::getComponent<C_VoxelPool>(privateCanvas);
     auto &revealed = IREntity::getComponent<C_FogRevealed>(body);
     ASSERT_FLOAT_EQ(revealed.revealFactor_, 0.0f);
-    canvasEval().settings_.staggerPeriod_ = 4096;
-    canvasEval().frameCounter_ = 0;
+    IREntity::getComponent<C_CanvasFogOfWar>(m_worldCanvas)
+        .setCell(0, 0, IRComponents::kFogStateVisible);
+    skipNextCanvasEvaluation(body);
 
     runFrame();
 
@@ -466,16 +486,22 @@ TEST_F(FogRevealEvalCanvasPromotionTest, PromotionPreservesHiddenFactorBeforeCad
 }
 
 TEST_F(FogRevealEvalCanvasPromotionTest, GhostPolicyUsesTheSamePromotionRepair) {
-    const IREntity::EntityId body = createGridBody(true);
+    const IREntity::EntityId body = createGridBody(false);
     ASSERT_TRUE(IRPrefab::Fog::setHiddenPolicy(body, IRComponents::FogHiddenPolicy::GHOST));
     const IREntity::EntityId privateCanvas = promote(body);
     auto &pool = IREntity::getComponent<C_VoxelPool>(privateCanvas);
+    auto &revealed = IREntity::getComponent<C_FogRevealed>(body);
     ASSERT_EQ(pool.fogCarrierPolicy(), C_VoxelPool::FogCarrierPolicy::UNMANAGED);
+    ASSERT_FLOAT_EQ(revealed.revealFactor_, 0.0f);
+    IREntity::getComponent<C_CanvasFogOfWar>(m_worldCanvas)
+        .setCell(0, 0, IRComponents::kFogStateVisible);
+    skipNextCanvasEvaluation(body);
 
     runFrame();
 
     EXPECT_EQ(pool.fogCarrierPolicy(), C_VoxelPool::FogCarrierPolicy::BODY);
-    EXPECT_EQ(pool.fogBodyFactor(), 255u);
+    EXPECT_EQ(pool.fogBodyFactor(), 0u);
+    EXPECT_FLOAT_EQ(revealed.revealFactor_, 0.0f);
 }
 
 TEST_F(FogRevealEvalCanvasPromotionTest, ExistingAndExcludedPoolPoliciesStayUnchanged) {
