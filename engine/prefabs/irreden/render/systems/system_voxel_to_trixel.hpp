@@ -1576,11 +1576,11 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             (renderMode != previousRenderMode_ || effectiveSub != previousEffectiveSubdivisions_)) {
             const vec2 zoom = IRRender::getCameraZoom();
             IRE_LOG_INFO(
-                "Voxel render mode={}, base_subdivisions={}, zoom_scale={}, "
+                "Voxel render mode={}, base_subdivisions={}, zoom={}, "
                 "effective_subdivisions={}",
                 renderMode,
                 IRRender::getVoxelRenderSubdivisions(),
-                static_cast<int>(IRMath::round(IRMath::max(zoom.x, zoom.y))),
+                IRMath::max(zoom.x, zoom.y),
                 effectiveSub
             );
             previousRenderMode_ = renderMode;

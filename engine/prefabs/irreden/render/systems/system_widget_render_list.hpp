@@ -16,11 +16,13 @@
 namespace IRSystem {
 
 // Renders a list widget: bordered background + one row per visible item
-// from scrollOffset_ downward. Hover-row highlight comes from comparing
-// the GUI-trixel mouse Y against the row's y span; the selected row gets
-// the persistent listRowSelected_ tint. Rows clip to the widget's height
-// by simply skipping rows that exceed it.
+// from C_WidgetList::topIndex downward. The hover band is the visible row
+// WIDGET_APPLY_LIST cached in state.dragValue_; the selected row gets the
+// persistent listRowSelected_ tint. A list whose items overflow the view also
+// paints a position thumb on its right edge; the thumb is not a hit target.
 template <> struct System<WIDGET_RENDER_LIST> {
+    static constexpr int kThumbWidth = 3;
+
     IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
     IRPrefab::Widget::WidgetTheme theme_;
     IRRender::RectFillScratch scratch_;
@@ -43,8 +45,9 @@ template <> struct System<WIDGET_RENDER_LIST> {
         if (widget.size_.x <= 0 || widget.size_.y <= 0)
             return;
 
-        const int itemH = IRMath::max(1, list.itemHeight_);
-        const int rows = widget.size_.y / itemH;
+        const int itemH = list.rowHeight();
+        const int rows = list.visibleRows(widget.size_.y);
+        const int top = list.topIndex(widget.size_.y);
         const int n = static_cast<int>(list.items_.size());
 
         IRRender::fillRect(
@@ -61,8 +64,8 @@ template <> struct System<WIDGET_RENDER_LIST> {
         );
 
         for (int row = 0; row < rows; ++row) {
-            const int idx = list.scrollOffset_ + row;
-            if (idx < 0 || idx >= n)
+            const int idx = top + row;
+            if (idx >= n)
                 break;
             const IRMath::ivec2 rowPos(guiPos.pos_.x, guiPos.pos_.y + row * itemH);
             const IRMath::ivec2 rowSize(widget.size_.x, itemH);
@@ -99,6 +102,32 @@ template <> struct System<WIDGET_RENDER_LIST> {
                 IRMath::ivec2(rowPos.x + theme_.padding_ * 2, rowPos.y),
                 itemH,
                 IRPrefab::Widget::detail::stateText(theme_, widget)
+            );
+        }
+
+        const IRComponents::C_WidgetList::ThumbSpan thumb =
+            list.thumbSpan(widget.size_.y, theme_.scrollThumbMinExtent_);
+        if (thumb.height_ > 0) {
+            const int thumbWidth = IRMath::min(kThumbWidth, widget.size_.x);
+            const IRMath::ivec2 trackPos(
+                guiPos.pos_.x + widget.size_.x - theme_.borderThickness_ - thumbWidth,
+                guiPos.pos_.y
+            );
+            IRRender::fillRect(
+                *canvas_,
+                trackPos,
+                IRMath::ivec2(thumbWidth, widget.size_.y),
+                theme_.scrollTrack_,
+                IRRender::kWidgetBorderDistance,
+                scratch_
+            );
+            IRRender::fillRect(
+                *canvas_,
+                IRMath::ivec2(trackPos.x, trackPos.y + thumb.offsetY_),
+                IRMath::ivec2(thumbWidth, thumb.height_),
+                theme_.scrollThumb_,
+                IRRender::kWidgetBorderDistance,
+                scratch_
             );
         }
 

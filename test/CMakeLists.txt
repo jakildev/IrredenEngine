@@ -81,6 +81,7 @@ add_executable(IrredenEngineTest
   render/camera_mouse_rotate_reset_test.cpp
   render/camera_pan_pivot_test.cpp
   render/camera_yaw_test.cpp
+  render/camera_zoom_policy_test.cpp
   render/canvas_part_test.cpp
   render/canvas_residency_test.cpp
   render/canvas_rotation_test.cpp
@@ -130,6 +131,7 @@ add_executable(IrredenEngineTest
   render/sprite_animation_test.cpp
   render/sprite_components_test.cpp
   render/sprite_render_test.cpp
+  render/widget_list_scroll_test.cpp
   render/widget_theme_singleton_test.cpp
   render/widget_tab_focus_test.cpp
   script/lua_audio_midi_observer_test.cpp

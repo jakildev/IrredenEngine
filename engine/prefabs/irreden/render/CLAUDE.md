@@ -51,10 +51,10 @@ Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md). Rationale: [`d
 | `GIZMO_HOVER` → `GIZMO_DRAG` | INPUT, after `INPUT_KEY_MOUSE` |
 | `CAMERA_MOUSE_ROTATE` and the other camera controls | RENDER, before `SHAPES_TO_TRIXEL`, in singleton groups (`MainThread`) |
 | `SHAPES_TO_TRIXEL` | RENDER, after `VOXEL_TO_TRIXEL_STAGE_1` when an entity canvas mixes voxels and shapes; the shape rasters in the owner's model frame at the canvas's rendered density, on its half-cell lattice ([contract](../../../../docs/design/mixed-private-canvas-lifecycle.md)) |
-| `HITBOX_MOUSE_TEST_GUI` → `WIDGET_INPUT` → `WIDGET_APPLY_*` | INPUT; `WIDGET_LUA_DISPATCH` immediately after `WIDGET_INPUT` |
+| `HITBOX_MOUSE_TEST_GUI` → `WIDGET_INPUT` → `WIDGET_APPLY_*` → `CAMERA_SCROLL_ZOOM` | INPUT; `WIDGET_LUA_DISPATCH` immediately after `WIDGET_INPUT`; the zoom drops the wheel while `C_GuiHoverState` names a hovered widget |
 | `TEXT_TO_TRIXEL` → `LAYOUT_COMPUTE` → `WIDGET_RENDER_*` | RENDER, before `TRIXEL_TO_FRAMEBUFFER`; `WIDGET_RENDER_DROPDOWN` last among the renderers |
 | `HelpOverlay::systems()`, `SettingsMenu::renderSystems()` / `inputSystems()` | RENDER after `TEXT_TO_TRIXEL`, before the composite / INPUT after `INPUT_KEY_MOUSE` |
-| `SPRITE_TO_SCREEN` | after the main canvas's `FRAMEBUFFER_TO_SCREEN` |
+| `ENTITY_CANVAS_TO_FRAMEBUFFER` · `FRAMEBUFFER_TO_SCREEN` · `SPRITE_TO_SCREEN` | after `TRIXEL_TO_FRAMEBUFFER`, whose `beginTick` alone publishes the frame's [continuous-zoom sample](../../../../docs/design/continuous-camera-zoom.md) (`IRPrefab::Camera::zoomFrame`); sprites after the main canvas's `FRAMEBUFFER_TO_SCREEN` |
 | `SYNC_VIEWPORT_SUBJECTS` / `VIEWPORT_TO_FRAMEBUFFER` | RENDER before `VOXEL_TO_TRIXEL_STAGE_1` / after `TRIXEL_TO_FRAMEBUFFER`, before `FRAMEBUFFER_TO_SCREEN` |
 
 `VOXEL_TO_TRIXEL_STAGE_1` runs compact + stage 1 + stage 2 per canvas in one
@@ -157,11 +157,11 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   (`widget_theme.hpp::defaultTheme()`) once at init, before building widgets.
   Opt-in hover publication: `makeGuiHoverState()` creates the
   `C_GuiHoverState` singleton; `hoveredWidget()` reads it.
-- Dropdown strip geometry (`C_WidgetDropdown::rowHeight` / `expandedHeight` /
-  `itemCenterOffsetY` / `itemAtOffsetY`) has one owner; authored `zOrder_` stays
-  below `kWidgetDropdownOpenZBias`; two open dropdowns are unordered.
-- Radio exclusion (`makeRadio(..., groupId, value)`) runs in `WIDGET_APPLY_RADIO::endTick`;
-  text inputs edit only while pointer-focused; Enter or a click off widgets drops focus;
+- Dropdown strip and list scroll geometry have one owner each (the `C_WidgetDropdown` / `C_WidgetList` helpers); read a list's
+  first row from `topIndex`, never raw `scrollOffset_`. Authored `zOrder_` stays below `kWidgetDropdownOpenZBias`; two open dropdowns are unordered.
+- The wheel scrolls the hovered list; `setListSelectedIndex` reveals the row only when the index
+  changes, so a caller that mirrors its state into the list every frame never fights the wheel.
+- Radio exclusion (`makeRadio(..., groupId, value)`) runs in `WIDGET_APPLY_RADIO::endTick`; text inputs edit only while pointer-focused; Enter or a click off widgets drops focus;
   `isTabFocusCandidate` filters Tab; `WIDGET_INPUT` captures command keys at either text-focus tick edge independently of widget hotkeys;
   `C_WidgetScroll` is track + thumb only — the owner positions content from `scrollPos_`.
 - `IRPrefab::GuiTest::` (`gui_test_assertions.hpp`): `hovers` / `clickFires` /

@@ -177,6 +177,16 @@ class SystemManager {
         return system < m_accumulatedTicks.size() ? m_accumulatedTicks[system] : 0u;
     }
 
+    /// Number of `executePipeline(event)` passes started so far — the clock
+    /// the cadence gate runs on. It advances once at the top of a pass and
+    /// holds until the next pass of the same event begins, so a value stamped
+    /// by one system identifies that pass to every later reader. `0` before
+    /// the event's first pass; an event with no registered pipeline never
+    /// advances.
+    std::uint64_t getEventTickCount(IRTime::Events event) const {
+        return m_eventTickCounts[event];
+    }
+
     template <typename Tag> void addSystemTag(SystemId system) {
         m_ticks[system].archetype_.insert(IREntity::getComponentType<Tag>());
     }

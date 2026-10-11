@@ -116,6 +116,9 @@ jobs:
       - name: Assert the Pillow-dependent suite executed
         run: grep -a -E '^PASS  test_render_shadow_box_edges\.py \([1-9][0-9]* tests\)$' run_all.log
 
+      - name: Assert the continuous-zoom metric suite executed
+        run: grep -a -E '^PASS  test_render_continuous_zoom_metric\.py \([1-9][0-9]* tests\)$' run_all.log
+
       - name: Assert the per-axis dispatch contract executed
         run: grep -a -E '^PASS  test_render_per_axis_cell_dispatch\.py \([1-9][0-9]* tests\)$' run_all.log
 

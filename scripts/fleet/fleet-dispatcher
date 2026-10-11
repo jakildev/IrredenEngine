@@ -1632,10 +1632,11 @@ assess_target_completion() {
     esac
 }
 
-# The decline memory the resolver reads (fleet_task_class._declined): the
-# item's updated_at as fetched AFTER the iteration's comment and release
-# bumped it — the value the scout's next poll carries — so this host skips
-# the item until it changes. Line 3 is the declining ROLE: a decline is
+# The decline memory the resolver reads (fleet_task_class._declined), stored
+# under fleet_target_key's colon-to-dash form (including stack's base-PR
+# suffix): the item's updated_at as fetched AFTER the iteration's comment and
+# release bumped it — the value the scout's next poll carries — so this host
+# skips the item until it changes. Line 3 is the declining ROLE: a decline is
 # one lane's judgement ("fresh sonnet approval already posted; the
 # escalation is standing"), and the sonnet and opus reviewers share the
 # `review` kind, so an unscoped record let a sonnet decline hide the same

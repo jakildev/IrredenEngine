@@ -15,7 +15,8 @@ REVIEW_ROLES = ("sonnet-reviewer", "opus-reviewer", "smoke-worker")
 DISPLAY_VALIDATORS = (
     "scripts/author-entity.py", "scripts/cull-verify.py", "scripts/depth-tier-verify.py",
     "scripts/feeder-margin-verify.py", "scripts/gui-verify.py", "scripts/light-verify.py",
-    "scripts/occlusion-fire-verify.py", "scripts/pivot-verify.py", "scripts/render-verify.py",
+    "scripts/occlusion-fire-verify.py", "scripts/pivot-verify.py",
+    "scripts/render-continuous-zoom-metric.py", "scripts/render-verify.py",
     "scripts/perf/repeat_profile.py", "scripts/perf/perf_grid_matrix.sh")
 
 

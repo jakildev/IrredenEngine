@@ -49,6 +49,39 @@ IRRender.setSunDirection(0.4, 0.4, -1.0)
 IRRender.setSunIntensity(1.0)
 IRRender.setSkyColor(0.25, 0.3, 0.45)
 
+-- Main-camera zoom surface. Under the continuous policy a write reads back
+-- exactly; leaving it snaps the stored value to the nearest power of two. A
+-- bad argument raises before anything is written. The policy is switched back
+-- off and the zoom restored before the first frame, so the run renders at the
+-- default snapped policy.
+local initialZoom = IRRender.getCameraZoom()
+IRRender.setCameraZoomContinuous(true)
+local continuousOn = IRRender.isCameraZoomContinuous()
+IRRender.setCameraZoom(2.5)
+local continuousRead = IRRender.getCameraZoom()
+local zoomRejected = not pcall(IRRender.setCameraZoom, "wide")
+local policyRejected = not pcall(IRRender.setCameraZoomContinuous, 1)
+local stateUnchanged = IRRender.getCameraZoom() == 2.5 and IRRender.isCameraZoomContinuous()
+IRRender.setCameraZoomContinuous(false)
+local continuousOff = IRRender.isCameraZoomContinuous()
+local snappedRead = IRRender.getCameraZoom()
+print(string.format(
+    "[camera-zoom] continuous=%s, set=2.5, get=%g, continuous=%s, get=%g",
+    tostring(continuousOn), continuousRead, tostring(continuousOff), snappedRead
+))
+print(string.format(
+    "[camera-zoom] invalid_rejected=%s, state_unchanged=%s",
+    tostring(zoomRejected and policyRejected), tostring(stateUnchanged)
+))
+assert(continuousOn and continuousRead == 2.5, "continuous zoom did not read back what was set")
+assert(not continuousOff and snappedRead == 2, "leaving the continuous policy did not snap the zoom")
+assert(zoomRejected and policyRejected and stateUnchanged, "a bad argument changed camera state")
+IRRender.setCameraZoom(initialZoom)
+print(string.format(
+    "[camera-zoom] exit_continuous=%s, exit_zoom=%g",
+    tostring(IRRender.isCameraZoomContinuous()), IRRender.getCameraZoom()
+))
+
 local recipe = dofile("scripts/procedural_voxel_recipe.lua")
 local voxelSet = C_VoxelSetNew.new(
     ivec3.new(25, 25, 18),

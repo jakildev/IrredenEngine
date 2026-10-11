@@ -696,6 +696,14 @@ inline std::uint64_t getAccumulatedTicks(SystemId system) {
     return getSystemManager().getAccumulatedTicks(system);
 }
 
+// Number of `executePipeline(event)` passes started so far. Constant
+// from the top of one pass until the next pass of the same event begins,
+// so it is the frame identity for state one RENDER stage publishes and a
+// later stage reads: stamp it at the write, compare it at the read.
+inline std::uint64_t getEventTickCount(IRTime::Events event) {
+    return getSystemManager().getEventTickCount(event);
+}
+
 // Accumulated fixed-step delta since the system's previous
 // execution. UPDATE-phase-only: `IRTime::deltaTime(UPDATE)` is the constant
 // fixed step. A RENDER-phase throttled consumer must use raw
