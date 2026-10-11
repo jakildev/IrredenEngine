@@ -301,10 +301,10 @@ Protocol: [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md).
   the blocking PR, never the PR number (reconcile reads the last occurrence
   and the contiguous comma/space-separated `#N` run after the marker,
   un-parking only when all read CLOSED or MERGED; a leading list bullet or
-  bold/backtick emphasis on the marker is tolerated, a marker mid-sentence is
-  not; same-repo only, a cross-repo spelling surfaces as malformed), comment
-  the rationale, keep `fleet:wip`, release the claim. Never park on a smoke
-  label or a host-only verification child
+  paired bold/backtick emphasis on the marker is tolerated, a marker
+  mid-sentence is not; same-repo only, a cross-repo spelling surfaces as
+  malformed), comment the rationale, keep `fleet:wip`, release the claim.
+  Never park on a smoke label or a host-only verification child
   ([`FLEET-CROSS-HOST-SMOKE.md § Ledger, not a gate`](FLEET-CROSS-HOST-SMOKE.md)).
   Reconcile R7/R2 skip it; R8 removes it when the blocker closes, after
   which R7 re-arms `fleet:design-unblocked`. A park with no parsable line

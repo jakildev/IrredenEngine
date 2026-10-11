@@ -159,9 +159,9 @@ gh pr edit <N> --remove-label "fleet:design-unblocked" --add-label "fleet:awaiti
 
 then append `Parked-until: #<blocker-issue>` to the PR body — not a
 comment — on its own line (same repo; several blockers as `#A, #B`; a list
-bullet or bold/backtick emphasis is tolerated), comment the rationale, keep
-`fleet:wip`, and release the claim; reconcile un-parks it when the blocker
-(every listed blocker) closes. No park when the
+bullet or paired bold/backtick emphasis is tolerated), comment the rationale,
+keep `fleet:wip`, and release the claim; reconcile un-parks it when the
+blocker (every listed blocker) closes. No park when the
 backing issue is `fleet:blocked` (a plain label clear is terminal) or when
 the residual is host-class-only (`fleet:needs-gl-host` or
 `fleet:needs-macos-host` — stamp the one naming the residual's host if the
