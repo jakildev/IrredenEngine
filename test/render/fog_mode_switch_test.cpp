@@ -11,6 +11,7 @@
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/render/components/component_detached_canvas.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/components/component_fog_ghost.hpp>
 #include <irreden/render/components/component_fog_reveal_settings.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/fog_reveal_systems.hpp>
@@ -29,12 +30,14 @@ using IRComponents::C_CanvasFogOfWar;
 using IRComponents::C_CanvasLocalRotation;
 using IRComponents::C_DetachedCanvas;
 using IRComponents::C_EntityCanvas;
+using IRComponents::C_FogGhost;
 using IRComponents::C_FogRevealed;
 using IRComponents::C_FogRevealSettings;
 using IRComponents::C_RotationMode;
 using IRComponents::C_VoxelPool;
 using IRComponents::C_VoxelSetNew;
 using IRComponents::C_WorldTransform;
+using IRComponents::FogHiddenPolicy;
 using IRComponents::RotationMode;
 
 constexpr IRMath::ivec3 kSetSize{2, 2, 2};
@@ -153,6 +156,39 @@ TEST_F(FogModeSwitchTest, HiddenWorldBodyRepairsItsPrivatePoolAndCanvasOnPromoti
     runFrame();
 
     EXPECT_FALSE(IREntity::getComponent<C_EntityCanvas>(body).fogHidden_);
+    EXPECT_EQ(activeBits(body), kSetVoxels);
+}
+
+TEST_F(FogModeSwitchTest, GhostPolicyRepairsVoxelGatesAcrossPromotionAndDemotion) {
+    const IREntity::EntityId body = createWorldBody();
+    adoptHidden(body);
+    ASSERT_TRUE(IRPrefab::Fog::setHiddenPolicy(body, FogHiddenPolicy::GHOST));
+    const IREntity::EntityId privateCanvas = createPrivateCanvas();
+    promoteByHand(body, privateCanvas);
+
+    runFrame();
+
+    auto &promotedSet = IREntity::getComponent<C_VoxelSetNew>(body);
+    EXPECT_TRUE(promotedSet.visible_);
+    EXPECT_FALSE(promotedSet.ghostHeld_);
+    EXPECT_EQ(activeBits(body), kSetVoxels);
+
+    auto &revealed = IREntity::getComponent<C_FogRevealed>(body);
+    auto &ghost = IREntity::getComponent<C_FogGhost>(body);
+    revealed.ghostHeld_ = true;
+    ghost.valid_ = true;
+    ghost.pose_.translation_ = kHiddenPosition;
+    promotedSet.visible_ = false;
+    promotedSet.ghostHeld_ = true;
+    IREntity::getComponent<C_VoxelPool>(privateCanvas)
+        .clearActiveMaskRange(promotedSet.voxelStartIdx_, promotedSet.numVoxels_);
+
+    IRPrefab::RotationMode::setMode(body, RotationMode::GRID);
+    runFrame();
+
+    const auto &demotedSet = IREntity::getComponent<C_VoxelSetNew>(body);
+    EXPECT_FALSE(demotedSet.visible_);
+    EXPECT_TRUE(demotedSet.ghostHeld_);
     EXPECT_EQ(activeBits(body), kSetVoxels);
 }
 

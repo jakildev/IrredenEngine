@@ -24,6 +24,39 @@ namespace IRSystem {
 
 namespace detail {
 
+inline void applyFogGateToPool(
+    IRComponents::C_VoxelSetNew *voxelSet,
+    IRComponents::C_VoxelPool *pool,
+    bool visible,
+    bool ghostHeld
+) {
+    if (voxelSet == nullptr) {
+        return;
+    }
+    const auto apply = [&](IRComponents::C_VoxelPool &resolvedPool) {
+        voxelSet->visible_ = visible;
+        voxelSet->ghostHeld_ = ghostHeld;
+        // A set its LOD band also hides stays masked off; the LOD gate
+        // restores the mask when the band admits it again.
+        if (voxelSet->masksActive()) {
+            resolvedPool.resyncActiveMaskFromColors(
+                voxelSet->voxelStartIdx_,
+                static_cast<std::size_t>(voxelSet->numVoxels_)
+            );
+        } else {
+            resolvedPool.clearActiveMaskRange(
+                voxelSet->voxelStartIdx_,
+                static_cast<std::size_t>(voxelSet->numVoxels_)
+            );
+        }
+    };
+    if (pool != nullptr) {
+        apply(*pool);
+        return;
+    }
+    IRPrefab::VoxelPool::withPoolByEntity(voxelSet->canvasEntity_, apply);
+}
+
 struct FogRevealEvalGhost {
     static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
 
@@ -215,25 +248,12 @@ struct FogRevealEvalGhost {
             restampedVoxelsLastFrame_ += count;
         }
         pending_.forEach([](const PendingTransition &transition) {
-            if (transition.voxelSet_ == nullptr || transition.pool_ == nullptr) {
-                return;
-            }
-            IRComponents::C_VoxelSetNew &voxelSet = *transition.voxelSet_;
-            voxelSet.visible_ = transition.visible_;
-            voxelSet.ghostHeld_ = transition.ghostHeld_;
-            // A set its LOD band also hides stays masked off; the LOD gate
-            // restores the mask when the band admits it again.
-            if (voxelSet.masksActive()) {
-                transition.pool_->resyncActiveMaskFromColors(
-                    voxelSet.voxelStartIdx_,
-                    static_cast<std::size_t>(voxelSet.numVoxels_)
-                );
-            } else {
-                transition.pool_->clearActiveMaskRange(
-                    voxelSet.voxelStartIdx_,
-                    static_cast<std::size_t>(voxelSet.numVoxels_)
-                );
-            }
+            detail::applyFogGateToPool(
+                transition.voxelSet_,
+                transition.pool_,
+                transition.visible_,
+                transition.ghostHeld_
+            );
         });
     }
 
@@ -415,32 +435,12 @@ template <> struct System<FOG_REVEAL_EVAL> {
             restampedVoxelsLastFrame_ += count;
         }
         pending_.forEach([](const PendingTransition &transition) {
-            if (transition.voxelSet_ == nullptr) {
-                return;
-            }
-            IRComponents::C_VoxelSetNew &voxelSet = *transition.voxelSet_;
-            const auto applyFogGateToPool = [&](IRComponents::C_VoxelPool &pool) {
-                voxelSet.visible_ = transition.visible_;
-                voxelSet.ghostHeld_ = transition.ghostHeld_;
-                // A set its LOD band also hides stays masked off; the LOD gate
-                // restores the mask when the band admits it again.
-                if (voxelSet.masksActive()) {
-                    pool.resyncActiveMaskFromColors(
-                        voxelSet.voxelStartIdx_,
-                        static_cast<std::size_t>(voxelSet.numVoxels_)
-                    );
-                } else {
-                    pool.clearActiveMaskRange(
-                        voxelSet.voxelStartIdx_,
-                        static_cast<std::size_t>(voxelSet.numVoxels_)
-                    );
-                }
-            };
-            if (transition.pool_ != nullptr) {
-                applyFogGateToPool(*transition.pool_);
-                return;
-            }
-            IRPrefab::VoxelPool::withPoolByEntity(voxelSet.canvasEntity_, applyFogGateToPool);
+            detail::applyFogGateToPool(
+                transition.voxelSet_,
+                transition.pool_,
+                transition.visible_,
+                transition.ghostHeld_
+            );
         });
     }
 
