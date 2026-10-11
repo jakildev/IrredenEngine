@@ -26,6 +26,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace IRVoxelEditor {
@@ -58,6 +59,55 @@ struct EntitySceneResult {
 struct EntitySceneCloneResult {
     std::vector<IREntity::EntityId> entities_;
     std::string error_;
+};
+
+using EntityScenePartPayload =
+    std::variant<IRAsset::DenseVoxelSet, IRComponents::C_ShapeDescriptor>;
+
+struct RemovedEditorPart {
+    EditorPart part_;
+    std::size_t index_ = 0;
+    IRComponents::C_LocalTransform transform_;
+    EntityScenePartPayload payload_;
+    IRComponents::EntityAnchor voxelAnchor_ = IRComponents::EntityAnchor::CORNER;
+
+    std::size_t byteSize() const {
+        std::size_t bytes = sizeof(RemovedEditorPart) + part_.id_.size();
+        for (const ComponentRecord &component : part_.components_) {
+            bytes += sizeof(ComponentRecord) + component.name_.size() + component.overrides_.size();
+            for (const ComponentField &field : component.fields_) {
+                bytes += sizeof(ComponentField) + field.name_.size();
+                if (const auto *text = std::get_if<std::string>(&field.value_)) {
+                    bytes += text->size();
+                }
+            }
+        }
+        if (const auto *dense = std::get_if<IRAsset::DenseVoxelSet>(&payload_)) {
+            bytes += dense->voxels_.size() * sizeof(IRAsset::VoxelRecord);
+            bytes += dense->layers_.size() * sizeof(IRAsset::LayerInfo);
+            bytes += dense->frames_.size() * sizeof(IRAsset::FramePose);
+            bytes += dense->meta_.size() * sizeof(IRAsset::MetaEntry);
+            for (const IRAsset::LayerInfo &layer : dense->layers_) {
+                bytes += layer.name_.size() + layer.bitmask_.size() * sizeof(std::uint64_t);
+            }
+            for (const IRAsset::FramePose &frame : dense->frames_) {
+                bytes += frame.offsets_.size() * sizeof(IRMath::vec3);
+            }
+            for (const IRAsset::MetaEntry &entry : dense->meta_) {
+                bytes += entry.key_.size() + entry.value_.size();
+            }
+        }
+        return bytes;
+    }
+};
+
+struct EntitySceneRestoreResult {
+    IREntity::EntityId entity_ = IREntity::kNullEntity;
+    std::string error_;
+
+    bool ok() const {
+        return entity_ != IREntity::kNullEntity;
+    }
 };
 
 class EntityScene {
@@ -284,7 +334,7 @@ class EntityScene {
             };
             applyBand(clone);
             applyTierOverride(entity);
-            stageRotationModeReconcile(entity, source.mode_);
+            stageRotationModeReconcile(entity, source.mode_, source.canvasSize_);
             for (ComponentRecord &component : clone.components_) {
                 if (const auto error = applyComponentRecord(script, entity, component)) {
                     IREntity::destroyEntity(entity);
@@ -309,6 +359,9 @@ class EntityScene {
     }
 
     void removeParts(const std::vector<IREntity::EntityId> &entities) {
+        if (std::find(entities.begin(), entities.end(), m_previewSourceEntity) != entities.end()) {
+            destroyPreview();
+        }
         destroySelectionGizmos();
         for (IREntity::EntityId entity : entities) {
             if (IREntity::entityExists(entity)) {
@@ -329,6 +382,72 @@ class EntityScene {
         m_selected = m_parts.empty()
                          ? -1
                          : IRMath::clamp(m_selected, 0, static_cast<int>(m_parts.size()) - 1);
+    }
+
+    std::optional<RemovedEditorPart> removeSelectedPart() {
+        if (!active() || selectedPart() == nullptr) {
+            return std::nullopt;
+        }
+
+        const EditorPart &selected = *selectedPart();
+        RemovedEditorPart removed;
+        removed.part_ = selected;
+        removed.index_ = static_cast<std::size_t>(m_selected);
+        removed.transform_ =
+            IREntity::getComponent<IRComponents::C_LocalTransform>(selected.entity_);
+        if (selected.kind_ == EditorPartKind::SHAPE) {
+            removed.payload_ =
+                IREntity::getComponent<IRComponents::C_ShapeDescriptor>(selected.entity_);
+        } else {
+            const auto &set = IREntity::getComponent<IRComponents::C_VoxelSetNew>(selected.entity_);
+            removed.voxelAnchor_ = set.anchor_;
+            removed.payload_ = IRPrefab::DenseVoxel::fromComponent(set);
+        }
+        removeParts({selected.entity_});
+        return removed;
+    }
+
+    EntitySceneRestoreResult
+    restorePart(IRScript::LuaScript &script, const RemovedEditorPart &removed) {
+        if (!active()) {
+            return {IREntity::kNullEntity, "entity scene is not active"};
+        }
+
+        IREntity::EntityId entity = IREntity::kNullEntity;
+        if (removed.part_.kind_ == EditorPartKind::SHAPE) {
+            entity = IREntity::createEntity(
+                removed.transform_,
+                std::get<IRComponents::C_ShapeDescriptor>(removed.payload_),
+                IRComponents::C_RotationMode{removed.part_.mode_}
+            );
+        } else {
+            entity = IREntity::createEntity(
+                removed.transform_,
+                IRPrefab::DenseVoxel::toComponent(
+                    std::get<IRAsset::DenseVoxelSet>(removed.payload_),
+                    removed.voxelAnchor_
+                ),
+                IRComponents::C_RotationMode{removed.part_.mode_}
+            );
+        }
+        IREntity::setParent(entity, m_root);
+
+        EditorPart restored = removed.part_;
+        restored.entity_ = entity;
+        applyBand(restored);
+        applyTierOverride(entity);
+        for (ComponentRecord &component : restored.components_) {
+            if (const auto error = applyComponentRecord(script, entity, component)) {
+                IREntity::destroyEntity(entity);
+                return {IREntity::kNullEntity, *error};
+            }
+        }
+        stageRotationModeReconcile(entity, restored.mode_, restored.canvasSize_);
+
+        const std::size_t index = IRMath::min(removed.index_, m_parts.size());
+        m_parts.insert(m_parts.begin() + static_cast<std::ptrdiff_t>(index), std::move(restored));
+        select(static_cast<int>(index), false);
+        return {entity, {}};
     }
 
     IREntity::EntityId select(int index, bool createGizmos = true) {
@@ -493,7 +612,7 @@ class EntityScene {
             );
             applyBand(stagedParts.back());
             applyTierOverride(entity);
-            stageRotationModeReconcile(entity, description.rotationMode_);
+            stageRotationModeReconcile(entity, description.rotationMode_, description.canvasSize_);
             const std::string prefix = "part_";
             if (description.id_.starts_with(prefix)) {
                 const std::string_view suffix =
@@ -603,11 +722,12 @@ class EntityScene {
         set.lodMax_ = lodMax;
     }
 
-    static void
-    stageRotationModeReconcile(IREntity::EntityId entity, IRComponents::RotationMode mode) {
-        IREntity::getEntityManager().stageStructuralChange([entity, mode]() {
+    static void stageRotationModeReconcile(
+        IREntity::EntityId entity, IRComponents::RotationMode mode, IRMath::ivec2 canvasSize
+    ) {
+        IREntity::getEntityManager().stageStructuralChange([entity, mode, canvasSize]() {
             if (IREntity::entityExists(entity)) {
-                IRPrefab::RotationMode::setMode(entity, mode);
+                IRPrefab::RotationMode::setMode(entity, mode, {}, canvasSize);
             }
         });
     }
