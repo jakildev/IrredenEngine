@@ -535,6 +535,62 @@ TEST(CameraSubPixelRasterPhase, FreshPhaseMatchesTheSnappedSplitAtPowerOfTwoZoom
     }
 }
 
+// Snapped policy, camera a whole number of framebuffer pixels into its cell
+// (`fract(c) = k / pitch`): the detached camera term is `k` exactly, which is
+// the cardinal split's game-pixel offset and the continuous term of a phase
+// that has not been carried anywhere.
+TEST(CameraSubPixelSnappedOffset, OnLatticeCameraLandsOnItsOwnPixel) {
+    for (const float zoom : {1.0f, 2.0f, 4.0f, 8.0f}) {
+        const IRMath::vec2 pitch = IRMath::vec2(IRMath::cameraZoomPitch(IRMath::vec2(zoom)));
+        for (const float cell : {17.0f, -5.0f}) {
+            for (int kx = 0; kx < static_cast<int>(pitch.x); ++kx) {
+                for (int ky = 0; ky < static_cast<int>(pitch.y); ++ky) {
+                    const IRMath::vec2 camera = IRMath::vec2(cell) + IRMath::vec2(kx, ky) / pitch;
+                    const IRMath::vec2 offset = IRMath::cameraSnappedDetachedOffset(camera, pitch);
+                    EXPECT_EQ(offset, IRMath::vec2(kx, -ky))
+                        << "zoom=" << zoom << " cell=" << cell << " k=(" << kx << "," << ky << ")";
+                    EXPECT_EQ(
+                        IRMath::cameraSubPixelOffsets(camera, IRMath::vec2(zoom), IRMath::ivec2(1))
+                            .framebufferGamePxOffset_,
+                        IRMath::ivec2(kx, ky) * IRMath::ivec2(IRPlatform::kIsoToScreenSign)
+                    );
+                    EXPECT_EQ(
+                        IRMath::dvec2(offset),
+                        IRMath::cameraRasterDetachedOffset(freshSample(RasterFrame{camera, zoom}))
+                    );
+                }
+            }
+        }
+    }
+}
+
+// Why the pitch handed to the snapped term must be the exact zoom pitch and
+// not one rebuilt from texture extents: a pitch one ulp short puts every
+// on-lattice camera one whole framebuffer pixel behind, on the frames where
+// the upscale residual reads zero.
+TEST(CameraSubPixelSnappedOffset, APitchOneUlpShortLandsAWholePixelBehind) {
+    for (const float zoom : {1.0f, 2.0f, 4.0f, 8.0f}) {
+        const IRMath::vec2 pitch = IRMath::vec2(IRMath::cameraZoomPitch(IRMath::vec2(zoom)));
+        const IRMath::vec2 shortPitch(std::nextafter(pitch.x, 0.0f), std::nextafter(pitch.y, 0.0f));
+        for (int kx = 1; kx < static_cast<int>(pitch.x); ++kx) {
+            const IRMath::vec2 camera(17.0f + static_cast<float>(kx) / pitch.x, 17.0f);
+            EXPECT_EQ(
+                IRMath::cameraSnappedDetachedOffset(camera, shortPitch).x,
+                static_cast<float>(kx - 1)
+            ) << "zoom="
+              << zoom << " kx=" << kx;
+        }
+        for (int ky = 1; ky < static_cast<int>(pitch.y); ++ky) {
+            const IRMath::vec2 camera(17.0f, 17.0f + static_cast<float>(ky) / pitch.y);
+            EXPECT_EQ(
+                IRMath::cameraSnappedDetachedOffset(camera, shortPitch).y,
+                static_cast<float>(-(ky - 1))
+            ) << "zoom="
+              << zoom << " ky=" << ky;
+        }
+    }
+}
+
 // The world canvas and a detached canvas place from the same sample: the
 // raster's whole texels plus the gather translation, and the detached term
 // plus its whole cells, are the same framebuffer offset, and that offset is

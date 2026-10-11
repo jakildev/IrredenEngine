@@ -382,34 +382,27 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         frameData.frameData_.perAxisBase_ =
             IRMath::trixelOriginOffsetZ1(axes.size_) + ivec2(anchorFloor);
 
-        // Sub-cell camera pan. The anchor above places
-        // content in WHOLE canvas cells; the remaining fraction must move the
-        // scatter CONTINUOUSLY at the SAME screen scale as one anchor cell, or the
-        // two disagree at every cell boundary and the scene snaps back ~1 cell per
-        // crossing — the per-frame pan/rotation jitter (along the world axes; worse
-        // at higher zoom). One canvas cell maps to `screenPxPerCell`
-        // (fbRes·zoomEff/axisSize) framebuffer px through the model scale below, so
-        // the smooth term is screenPxPerCell·fract(cameraIso) — it exactly
-        // complements screenPxPerCell·floor(cameraIso) (the anchor), so their sum
-        // is screenPxPerCell·cameraIso, continuous. The y term carries the iso→
-        // screen sign flip the scatter applies to cornerIso
-        // (quadPos.y = 0.5 - cornerIso.y/size.y). This REPLACES calcModelMatrix's
-        // whole-game-px offset, which snapped to the canvas's game-px grid
-        // (zoomEff·2) — a different scale than one anchor cell — leaving the
-        // uncompensated snap. (The cardinal single-canvas path keeps
-        // calcModelMatrix: there the canvas IS the native-res blit grid, so its
-        // game-px snap + the framebuffer→screen residual are the anti-vibration.)
-        const vec2 screenPxPerCell = framebufferResolution * zoomEff / vec2(axes.size_);
-        const vec2 smoothPx = perAxisScatterCameraOffset(
+        // Sub-cell camera pan. `perAxisBase_` places content in whole store
+        // cells, and the model scale makes one cell span the zoom pitch in
+        // framebuffer pixels. The camera's offset inside its cell lands in
+        // whole framebuffer pixels here and `FRAMEBUFFER_TO_SCREEN` adds the
+        // remainder; the y term carries the iso-to-screen flip the scatter
+        // applies to cornerIso (quadPos.y = 0.5 - cornerIso.y/size.y).
+        //
+        // The pitch is the exact one every snapped stage floors against, never
+        // `framebufferResolution * zoomEff / axes.size_`: that round trip
+        // through the store extent can land one ulp under the whole number,
+        // which costs the floor a whole pixel.
+        const vec2 cameraOffsetPx = perAxisScatterCameraOffset(
             continuousPlacement_ ? &zoomFrame_ : nullptr,
             cameraIso,
-            screenPxPerCell
+            vec2(IRMath::cameraZoomPitch(IRRender::getCameraZoom()))
         );
         mat4 perAxisModel = translate(
             mat4(1.0f),
             vec3(
-                framebufferResolution.x * 0.5f + smoothPx.x,
-                framebufferResolution.y * 0.5f + smoothPx.y,
+                framebufferResolution.x * 0.5f + cameraOffsetPx.x,
+                framebufferResolution.y * 0.5f + cameraOffsetPx.y,
                 0.0f
             )
         );
@@ -843,23 +836,25 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // position inside its anchor cell; the scatter's anchor has already placed
     // `floor(cameraIso)` whole cells.
     //
-    // Snapped policy (@p zoomFrame null): the whole sub-cell offset, unrounded.
-    // Continuous policy: the same whole-pixel offset and carried phase every
-    // other camera-following stage places with, so the upscale residual that
+    // Under either policy it is the whole-pixel offset detached canvases place
+    // with (plus the carried phase when @p zoomFrame is the frame's continuous
+    // sample; null means the snapped policy), so the upscale residual that
     // `FRAMEBUFFER_TO_SCREEN` adds on top is the remainder of THIS offset. An
     // unrounded offset under that residual counts the sub-pixel fraction
     // twice, and an edge steps back a screen pixel each time the two round at
     // different camera positions.
+    //
+    // @p framebufferPxPerCell is read under the snapped policy only and must
+    // be the exact `IRMath::cameraZoomPitch` of the camera zoom.
     static vec2 perAxisScatterCameraOffset(
         const IRMath::CameraRasterPhase *zoomFrame,
         const vec2 &cameraIso,
-        const vec2 &screenPxPerCell
+        const vec2 &framebufferPxPerCell
     ) {
         if (zoomFrame != nullptr) {
             return vec2(IRMath::cameraRasterDetachedOffset(*zoomFrame));
         }
-        const vec2 fractIso = cameraIso - IRMath::floor(cameraIso);
-        return vec2(fractIso.x * screenPxPerCell.x, -fractIso.y * screenPxPerCell.y);
+        return IRMath::cameraSnappedDetachedOffset(cameraIso, framebufferPxPerCell);
     }
 
     // Framebuffer translation of one canvas's gather quad. @p zoomFrame is the

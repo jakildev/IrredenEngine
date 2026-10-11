@@ -1767,6 +1767,19 @@ inline dvec2 cameraRasterDetachedOffset(const CameraRasterPhase &sample) {
     return offset * dvec2(1.0, -1.0);
 }
 
+/// Snapped-policy counterpart of @ref cameraRasterDetachedOffset, in the same
+/// Y-up basis: the whole framebuffer pixels of the camera's offset inside its
+/// cell. The upscale residual (`CameraSubPixelOffsets::screenPxResidual_`) is
+/// the fraction this floor leaves over, so the two split one quantity.
+///
+/// @p framebufferPxPerCell must be the exact pitch (@ref cameraZoomPitch). A
+/// pitch rebuilt from texture extents can land one ulp under a whole number,
+/// and the floor then loses a whole pixel wherever the camera sits on the
+/// pixel lattice.
+inline vec2 cameraSnappedDetachedOffset(const vec2 cameraIso, const vec2 framebufferPxPerCell) {
+    return IRMath::floor(IRMath::fract(cameraIso) * framebufferPxPerCell) * vec2(1.0f, -1.0f);
+}
+
 /// Inverse iso projection selecting the 3D position at a specific Z level,
 /// reading from the bottom Z face.
 template <ivec3 size>
