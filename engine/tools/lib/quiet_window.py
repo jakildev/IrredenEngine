@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import ctypes.wintypes
+import functools
 import json
 import os
 import platform
@@ -24,6 +26,8 @@ DISABLED = ROOT / "disabled"
 REQUIRED_RECORD_FIELDS = frozenset(
     {"pid", "phase", "requested_at", "linger_seconds", "max_seconds"}
 )
+# A hung table read freezes covered_through, which reads as an uncovered lease.
+MSYS_PS_TIMEOUT_SECONDS = 5.0
 
 
 def now() -> float:
@@ -57,6 +61,12 @@ def read_json(path: Path) -> dict | None:
 def windows_native_pid(pid: int, owner_token: str = "") -> int:
     match = re.match(r"\s*(\d+)\b", owner_token)
     return int(match.group(1)) if match else pid
+
+
+def owner_token_root(owner_token: str) -> str:
+    """The runtime root of a "<windows-pid> <cygwin-root>" token; may contain spaces."""
+    match = re.match(r"\s*\d+\s+(.*\S)", owner_token)
+    return match.group(1) if match else ""
 
 
 def windows_native_alive(pid: int) -> bool:
@@ -105,7 +115,104 @@ class ProcBsdInfo(ctypes.Structure):
     ]
 
 
-def process_parents() -> dict[int, int]:
+class ProcessEntry32W(ctypes.Structure):
+    _fields_ = [
+        ("dwSize", ctypes.c_uint32),
+        ("cntUsage", ctypes.c_uint32),
+        ("th32ProcessID", ctypes.c_uint32),
+        ("th32DefaultHeapID", ctypes.c_size_t),
+        ("th32ModuleID", ctypes.c_uint32),
+        ("cntThreads", ctypes.c_uint32),
+        ("th32ParentProcessID", ctypes.c_uint32),
+        ("pcPriClassBase", ctypes.c_long),
+        ("dwFlags", ctypes.c_uint32),
+        ("szExeFile", ctypes.c_wchar * 260),
+    ]
+
+
+@functools.lru_cache(maxsize=None)
+def kernel32():
+    """A private kernel32 handle, so these prototypes never leak into ctypes.windll."""
+    library = ctypes.WinDLL("kernel32", use_last_error=True)
+    handle = ctypes.wintypes.HANDLE
+    library.CreateToolhelp32Snapshot.restype = handle
+    library.CreateToolhelp32Snapshot.argtypes = [ctypes.c_uint32, ctypes.c_uint32]
+    for name in ("Process32FirstW", "Process32NextW"):
+        function = getattr(library, name)
+        function.restype = ctypes.wintypes.BOOL
+        function.argtypes = [handle, ctypes.POINTER(ProcessEntry32W)]
+    library.OpenProcess.restype = handle
+    library.OpenProcess.argtypes = [ctypes.c_uint32, ctypes.wintypes.BOOL, ctypes.c_uint32]
+    library.GetProcessTimes.restype = ctypes.wintypes.BOOL
+    library.GetProcessTimes.argtypes = [handle] + [ctypes.POINTER(ctypes.c_uint64)] * 4
+    library.CloseHandle.restype = ctypes.wintypes.BOOL
+    library.CloseHandle.argtypes = [handle]
+    return library
+
+
+def win32_parents() -> dict[int, int]:
+    library = kernel32()
+    snapshot = library.CreateToolhelp32Snapshot(0x2, 0)
+    if snapshot in (None, ctypes.c_void_p(-1).value):
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        entry = ProcessEntry32W()
+        entry.dwSize = ctypes.sizeof(entry)
+        parents = {}
+        found = library.Process32FirstW(snapshot, ctypes.byref(entry))
+        while found:
+            parents[int(entry.th32ProcessID)] = int(entry.th32ParentProcessID)
+            found = library.Process32NextW(snapshot, ctypes.byref(entry))
+        return parents
+    finally:
+        library.CloseHandle(snapshot)
+
+
+def parse_msys_ps(text: str) -> dict[int, tuple[int, int]]:
+    """Map MSYS pid -> (MSYS ppid, Windows pid) from a runtime's bare `ps`."""
+    rows = {}
+    for line in text.splitlines():
+        fields = line.split()
+        if fields and not fields[0].isdigit():
+            fields = fields[1:]
+        if len(fields) < 4 or not all(field.isdigit() for field in fields[:4]):
+            continue
+        pid, ppid, _, winpid = (int(field) for field in fields[:4])
+        rows[pid] = (ppid, winpid)
+    return rows
+
+
+def read_msys_table(runtime_root: Path) -> dict[int, tuple[int, int]]:
+    """One runtime's process table. Raises when it cannot be read: callers fail closed."""
+    result = subprocess.run(
+        [str(Path(runtime_root) / "usr" / "bin" / "ps.exe")],
+        capture_output=True,
+        text=True,
+        timeout=MSYS_PS_TIMEOUT_SECONDS,
+        check=True,
+    )
+    return parse_msys_ps(result.stdout)
+
+
+def merge_msys_parents(
+    win32: dict[int, int], tables: list[dict[int, tuple[int, int]]]
+) -> dict[int, int]:
+    """Win32 creator links, overridden by MSYS parentage wherever the MSYS parent is live.
+
+    An MSYS exec replaces the image with a new Windows process whose creator has
+    exited, so the Win32 chain breaks there; the runtime's table still knows the
+    logical parent.
+    """
+    parents = dict(win32)
+    for table in tables:
+        for ppid, winpid in table.values():
+            parent = table.get(ppid)
+            if parent is not None and parent[1] != winpid:
+                parents[winpid] = parent[1]
+    return parents
+
+
+def process_parents(runtime_roots: tuple[Path, ...] = ()) -> dict[int, int]:
     system = platform.system()
     if system == "Linux":
         parents: dict[int, int] = {}
@@ -132,19 +239,12 @@ def process_parents() -> dict[int, int]:
                 parents[int(info.pid)] = int(info.ppid)
         return parents
     if system == "Windows":
-        command = (
-            "Get-CimInstance Win32_Process | ForEach-Object { "
-            "\"$($_.ProcessId) $($_.ParentProcessId)\" }"
+        return merge_msys_parents(
+            win32_parents(), [read_msys_table(root) for root in runtime_roots]
         )
-        output = subprocess.check_output(
-            ["powershell.exe", "-NoProfile", "-Command", command],
-            text=True,
-            stderr=subprocess.DEVNULL,
-        )
-    else:
-        output = subprocess.check_output(
-            ["ps", "-A", "-o", "pid=,ppid="], text=True, stderr=subprocess.DEVNULL
-        )
+    output = subprocess.check_output(
+        ["ps", "-A", "-o", "pid=,ppid="], text=True, stderr=subprocess.DEVNULL
+    )
     parents = {}
     for line in output.splitlines():
         fields = line.split()
@@ -207,14 +307,20 @@ def cpu_time(pid: int) -> float:
         if libsystem.mach_timebase_info(ctypes.byref(timebase)) != 0 or timebase.denom == 0:
             raise OSError("mach_timebase_info failed")
         return absolute * timebase.numer / timebase.denom / 1_000_000_000
-    command = [
-        "powershell.exe",
-        "-NoProfile",
-        "-Command",
-        f"$p=Get-CimInstance Win32_Process -Filter 'ProcessId={pid}'; "
-        "if($p){[double]($p.UserModeTime+$p.KernelModeTime)/10000000}else{exit 1}",
-    ]
-    return float(subprocess.check_output(command, text=True).strip())
+    # Own user + kernel time only: Windows never folds a reaped child into its parent.
+    # A process that cannot be opened or read is reported gone, so a member exiting
+    # mid-snapshot is skipped rather than failing the whole sample.
+    library = kernel32()
+    handle = library.OpenProcess(0x1000, False, pid)
+    if not handle:
+        raise ProcessLookupError(pid)
+    try:
+        times = [ctypes.c_uint64() for _ in range(4)]
+        if not library.GetProcessTimes(handle, *(ctypes.byref(value) for value in times)):
+            raise ProcessLookupError(pid)
+        return (times[2].value + times[3].value) / 10_000_000
+    finally:
+        library.CloseHandle(handle)
 
 
 def descendants(root: int, children: dict[int, list[int]]) -> set[int]:
@@ -228,8 +334,10 @@ def descendants(root: int, children: dict[int, list[int]]) -> set[int]:
     return result
 
 
-def tree_snapshot(holder: int, excluded_roots: set[int]) -> tuple[dict[int, float], dict[int, int]]:
-    parents = process_parents()
+def tree_snapshot(
+    holder: int, excluded_roots: set[int], runtime_roots: tuple[Path, ...] = ()
+) -> tuple[dict[int, float], dict[int, int]]:
+    parents = process_parents(runtime_roots)
     children: dict[int, list[int]] = {}
     for child, parent in parents.items():
         children.setdefault(parent, []).append(child)
@@ -247,22 +355,25 @@ def tree_snapshot(holder: int, excluded_roots: set[int]) -> tuple[dict[int, floa
     return values, parents
 
 
-def sample_cores(holder: int, excluded: set[int], duration: float) -> tuple[float, float, float]:
-    before, before_parents = tree_snapshot(holder, excluded)
+def sample_cores(
+    holder: int, excluded: set[int], duration: float, runtime_roots: tuple[Path, ...] = ()
+) -> tuple[float, float, float]:
+    before, before_parents = tree_snapshot(holder, excluded, runtime_roots)
     started = time.time()
     time.sleep(duration)
-    after, _ = tree_snapshot(holder, excluded)
+    after, _ = tree_snapshot(holder, excluded, runtime_roots)
     finished = time.time()
     used = sum(max(0.0, value - before.get(pid, 0.0)) for pid, value in after.items())
-    # A child that was visible in the first snapshot and reaped before the
-    # second is now included in its live parent's child total. Remove the
-    # child's already-observed lifetime so it is not counted twice.
-    reaped_seen = sum(
-        value
-        for pid, value in before.items()
-        if pid not in after and before_parents.get(pid) in after
-    )
-    used = max(0.0, used - reaped_seen)
+    if platform.system() != "Windows":
+        # A child that was visible in the first snapshot and reaped before the
+        # second is now included in its live parent's child total. Remove the
+        # child's already-observed lifetime so it is not counted twice.
+        reaped_seen = sum(
+            value
+            for pid, value in before.items()
+            if pid not in after and before_parents.get(pid) in after
+        )
+        used = max(0.0, used - reaped_seen)
     return used / max(finished - started, 0.001), started, finished
 
 
@@ -410,27 +521,40 @@ def excluded_roots(path: Path, own_pid: int, measurement_root: int) -> set[int]:
     return roots
 
 
+def resolve_measurement_root(measurement_root: int, runtime_roots: tuple[Path, ...]) -> int:
+    """The root itself when it is this parker's ancestor, else 0 with a warning."""
+    if measurement_root <= 0:
+        return 0
+    try:
+        parents = process_parents(runtime_roots)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        parents = {}
+    cursor = os.getppid()
+    ancestors = set()
+    while cursor > 0 and cursor not in ancestors:
+        ancestors.add(cursor)
+        cursor = parents.get(cursor, 0)
+    if measurement_root in ancestors:
+        return measurement_root
+    print(
+        f"ir-acquire: ignoring non-ancestor IR_QUIET_MEASURE_ROOT={measurement_root}",
+        file=sys.stderr,
+    )
+    return 0
+
+
 def cmd_park(args: argparse.Namespace) -> int:
     path = lease_path(args.tag)
     meta = read_json(path / "lease.json")
     if not meta:
         return 0
     measurement_root = args.measurement_root
+    runtime_roots: tuple[Path, ...] = ()
     if os.name == "nt":
         measurement_root = windows_native_pid(measurement_root, args.measurement_root_token)
-    if measurement_root > 0:
-        parents = process_parents()
-        cursor = os.getppid()
-        ancestors = set()
-        while cursor > 0 and cursor not in ancestors:
-            ancestors.add(cursor)
-            cursor = parents.get(cursor, 0)
-        if measurement_root not in ancestors:
-            print(
-                f"ir-acquire: ignoring non-ancestor IR_QUIET_MEASURE_ROOT={measurement_root}",
-                file=sys.stderr,
-            )
-            measurement_root = 0
+        named = (owner_token_root(str(meta.get("owner_token", ""))), args.runtime_root)
+        runtime_roots = tuple({Path(root) for root in named if root})
+    measurement_root = resolve_measurement_root(measurement_root, runtime_roots)
     parker_path = path / "parkers" / f"{os.getpid()}.json"
     state = {
         "pid": os.getpid(),
@@ -475,6 +599,7 @@ def cmd_park(args: argparse.Namespace) -> int:
                     else int(meta["holder_pid"]),
                     excluded_roots(path, os.getpid(), measurement_root),
                     sample,
+                    runtime_roots,
                 )
             except (OSError, ValueError, subprocess.SubprocessError):
                 cores, started, finished = threshold, time.time(), time.time()
@@ -674,6 +799,7 @@ def parser() -> argparse.ArgumentParser:
     park.add_argument("tag")
     park.add_argument("--measurement-root", type=int, default=0)
     park.add_argument("--measurement-root-token", default="")
+    park.add_argument("--runtime-root", default="")
     park.set_defaults(func=cmd_park)
     status = sub.add_parser("status")
     status.add_argument("--owner")
