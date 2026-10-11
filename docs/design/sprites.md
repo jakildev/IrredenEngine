@@ -16,7 +16,8 @@ invariants.
   voxel → trixel → framebuffer machinery.
 - One iso-projected depth per sprite. Sort order between sprites is a
   per-entity scalar, not a per-pixel depth-buffer problem.
-- Anchor defaults to `{0.5, 0.0}` — bottom-center.
+- Anchor uses screen-space quad fractions measured from bottom-left on every
+  backend. It defaults to `{0.5, 0.0}` — bottom-center.
 - v1 ships sprites composited above the main canvas and below the GUI
   canvas; cross-canvas z-sort is explicitly Part 2.
 
@@ -102,17 +103,21 @@ sort voxels. Sort order is back-to-front; alpha blending requires it.
 
 ### Anchor
 
-`C_Sprite.anchor_` is in local UV space:
+`C_Sprite.anchor_` is a quad-local fraction measured from the screen-space
+bottom-left on every backend:
 
 - `{0.5, 0.0}` — bottom-center (default; matches an iso character whose
   feet are at the world position).
 - `{0.5, 0.5}` — center.
-- `{0.0, 0.0}` — top-left.
+- `{0.0, 0.0}` — bottom-left.
+- `{0.0, 1.0}` — top-left.
 
 Quad origin, in viewport pixels =
-`isoProject(global.pos_) - anchor * size * outputScaleFactor`. The offset
-uses the on-screen size (§"Size"), so the anchor stays on the same point of
-the quad at every output scale.
+`isoProject(global.pos_) - vec2(anchor.x, originAnchorY) * size *
+outputScaleFactor`, where `originAnchorY` is `anchor.y` when viewport Y points
+up and `1 - anchor.y` when viewport Y points down. The offset uses the
+on-screen size (§"Size"), so the anchor stays on the same point of the quad at
+every output scale and graphics-backend convention.
 
 ### Size
 
