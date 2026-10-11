@@ -91,7 +91,6 @@ OWN_TALLY_BASELINE=(
     test_fleet_claim_reconcile.sh
     test_fleet_claim_reconcile_c2.sh
     test_fleet_claim_reconcile_heal_design_unblock.sh
-    test_fleet_claim_stackable_live_resolve.sh
     test_fleet_claim_steward.sh
     test_fleet_claim_symlink_lib_dir.sh
     test_fleet_net_guard.sh

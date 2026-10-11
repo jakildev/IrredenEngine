@@ -15,12 +15,29 @@ way, so always resolve the base the same way and let the value decide.
    `<N>` from a `claude/<N>-<topic>` branch name. No numeric `<N>` (a
    plain human / ad-hoc PR) → base is `master`, no label; standard step-8
    flow.
-2. Base:
+2. Base and claim→open repair:
    ```bash
-   base=$(fleet-claim claim-base "<N>")   # "master" for a normal claim; the blocker's branch for --stackable-on
+   claim_base_err=$(mktemp)
+   if ! base=$(fleet-claim claim-base "<N>" 2>"$claim_base_err"); then
+       cat "$claim_base_err" >&2
+       rm -f "$claim_base_err"
+       exit 1
+   fi
+   cat "$claim_base_err" >&2
+   merged_parent_sha=$(sed -nE 's/.*git rebase --onto origin\/master ([0-9a-f]+).*/\1/p' "$claim_base_err" | tail -n1)
+   rm -f "$claim_base_err"
+   if [[ "$base" == "master" && -n "$merged_parent_sha" ]]; then
+       branch=$(git branch --show-current)
+       pushed_sha=$(git rev-parse "refs/remotes/origin/$branch")
+       git rebase --onto origin/master "$merged_parent_sha"
+       git push origin "HEAD:refs/heads/$branch" \
+           --force-with-lease="refs/heads/$branch:$pushed_sha"
+   fi
    ```
    A no-op for normal claims (no `.meta` sidecar → prints `master`), so
-   safe to run unconditionally.
+   safe to run unconditionally. A merged blocker must replay and push here,
+   before the open/reconcile fence can retarget or create the PR on `master`.
+   A non-zero `claim-base` stops publication.
 
 ## Open (or reconcile) the PR — idempotent
 

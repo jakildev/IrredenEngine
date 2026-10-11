@@ -113,6 +113,8 @@ OUT_OF_TREE_SUBJECTS=(
     '.claude/skills/simplify/**'
     '.claude/skills/commit-and-push/procedures/pr-body.md'
     '.claude/skills/commit-and-push/procedures/stackable-on.md'
+    '.claude/skills/commit-and-push/procedures/native-stack-link.md'
+    '.claude/skills/review-pr/procedures/stacked-pr-review.md'
     'docs/agents/**'
     '.github/workflows/engine-tests.yml'
     '.github/workflows/format-check.yml'

@@ -305,10 +305,10 @@ for `gh stack rebase --continue`), and merges couple bottom-up; the
 auto-rereview classifier keeps the verdict across the content-identical
 force-push
 ([`native-stacked-prs-migration.md`](../design/native-stacked-prs-migration.md)).
-The merger rebases any feature-branch-based PR against its own base and labels
-an accidental fork (`baseRefName` `master` with commits inherited from another
-open PR) `fleet:needs-info`; a child whose base branch vanished is logged and
-skipped for a human, since GitHub retargets on merge, not close.
+The merger labels an accidental fork (`baseRefName` `master` with commits from
+another open PR) `fleet:needs-info`. If a parent merges during claim→open,
+`claim-base` / link replay-push-retarget; review rejects misses and tier-0
+repairs or parks approved orphans. Pre-retarget checks may include master-side changes; vanished bases are human-owned.
 
 ### Cross-author stacking (scheduler)
 

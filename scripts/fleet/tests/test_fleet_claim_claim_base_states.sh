@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# claim-base's three resolution states. __remove_claim deletes the claim dir
+# claim-base's local and live resolution states. __remove_claim deletes the claim dir
 # and the $CLAIMS_DIR/<slug>.meta sidecar together, so the claim dir
 # discriminates a swept --stackable-on claim from a normal one rather than
 # both silently falling through to the same "master" report:
@@ -9,7 +9,8 @@
 #   no dir          → "master" + stderr warning (exit 0), or exit 1 under
 #                     --strict
 #
-# Purely local: claim-base touches no network, so this suite needs no gh stub.
+# Legacy one-line sidecars and no-sidecar states stay network-free. A sidecar
+# carrying stackable_pr resolves that PR live through the fail-closed stub.
 
 set -euo pipefail
 
@@ -32,9 +33,28 @@ cleanup() {
 trap cleanup EXIT
 
 TMPROOT=$(mktemp -d)
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMPROOT"
 export FLEET_CLAIMS_DIR="$TMPROOT/claims"
 export FLEET_RESERVATIONS_DIR="$TMPROOT/reservations"
 mkdir -p "$FLEET_CLAIMS_DIR" "$FLEET_RESERVATIONS_DIR"
+
+STUB_DIR="$TMPROOT/bin"
+mkdir -p "$STUB_DIR"
+cat > "$STUB_DIR/gh" <<'GHSTUB'
+#!/usr/bin/env bash
+set -euo pipefail
+[[ "${1:-} ${2:-}" == "pr view" ]] || exit 97
+case "${3:-}" in
+    8101) printf '%s\n' '{"state":"OPEN","headRefName":"claude/live-open","headRefOid":"1111111"}' ;;
+    8102) printf '%s\n' '{"state":"MERGED","headRefName":"claude/live-merged","headRefOid":"2222222"}' ;;
+    8103) printf '%s\n' '{"state":"CLOSED","headRefName":"claude/live-closed","headRefOid":"3333333"}' ;;
+    8104) exit 1 ;;
+    *) exit 98 ;;
+esac
+GHSTUB
+chmod +x "$STUB_DIR/gh"
+export PATH="$STUB_DIR:$PATH"
 
 BLOCKER_BRANCH="claude/2547-depth-aware-camera-center-focus"
 
@@ -98,6 +118,42 @@ mkdir -p "$FLEET_CLAIMS_DIR/2704"
 run_claim_base 2704 --strict
 assert_eq "$OUT" "master" "--strict is transparent for an active normal claim"
 assert_eq "$RC" "0" "--strict exits 0 for an active normal claim"
+
+echo "--- live sidecar: OPEN keeps the recorded branch ---"
+mkdir -p "$FLEET_CLAIMS_DIR/8101"
+printf 'stackable_base_branch=%s\nstackable_pr=8101\n' "$BLOCKER_BRANCH" > "$FLEET_CLAIMS_DIR/8101.meta"
+run_claim_base 8101
+assert_eq "$OUT" "$BLOCKER_BRANCH" "OPEN blocker keeps the recorded base"
+assert_eq "$RC" "0" "OPEN blocker exits 0"
+assert_eq "$ERR" "" "OPEN blocker is silent"
+
+echo "--- live sidecar: MERGED repairs to master with rebase recipe ---"
+mkdir -p "$FLEET_CLAIMS_DIR/8102"
+printf 'stackable_base_branch=%s\nstackable_pr=8102\n' "$BLOCKER_BRANCH" > "$FLEET_CLAIMS_DIR/8102.meta"
+run_claim_base 8102
+assert_eq "$OUT" "master" "MERGED blocker resolves to master"
+assert_eq "$RC" "0" "MERGED blocker exits 0"
+assert_contains "$ERR" "blocker PR #8102 merged after the claim" "MERGED advisory names the blocker"
+assert_contains "$ERR" "git rebase --onto origin/master 2222222" "MERGED advisory carries the parent head sha"
+
+echo "--- live sidecar: CLOSED-unmerged fails closed ---"
+mkdir -p "$FLEET_CLAIMS_DIR/8103"
+printf 'stackable_base_branch=%s\nstackable_pr=8103\n' "$BLOCKER_BRANCH" > "$FLEET_CLAIMS_DIR/8103.meta"
+run_claim_base 8103
+assert_eq "$OUT" "" "CLOSED blocker prints no base"
+assert_eq "$RC" "1" "CLOSED blocker exits non-zero"
+assert_contains "$ERR" "closed without merging" "CLOSED blocker states the reason"
+
+echo "--- live sidecar: lookup failure soft-degrades unless strict ---"
+mkdir -p "$FLEET_CLAIMS_DIR/8104"
+printf 'stackable_base_branch=%s\nstackable_pr=8104\n' "$BLOCKER_BRANCH" > "$FLEET_CLAIMS_DIR/8104.meta"
+run_claim_base 8104
+assert_eq "$OUT" "$BLOCKER_BRANCH" "failed lookup keeps the recorded base"
+assert_eq "$RC" "0" "failed lookup is non-fatal by default"
+assert_contains "$ERR" "UNVERIFIED" "failed lookup warns"
+run_claim_base 8104 --strict
+assert_eq "$OUT" "" "strict failed lookup prints no base"
+assert_eq "$RC" "1" "strict failed lookup exits non-zero"
 
 echo "--- an unrecognized option is rejected, not ignored ---"
 run_claim_base 2704 --stict

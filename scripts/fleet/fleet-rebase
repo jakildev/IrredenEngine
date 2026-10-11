@@ -36,11 +36,10 @@
 # below are NOT bound by it: they do no branch work, so there is no branch
 # to fight over.
 #   - PR carries fleet:approved and none of the skip labels below.
-#   - Stacked PRs (base != master): plain rebase onto the updated base
-#     branch only — GitHub retargets and rebases native-stack children
-#     server-side when the parent merges, so tier-0 never retargets to
-#     master or drops an inherited prefix. A stacked PR whose base branch
-#     is gone goes to the LLM pass.
+#   - Stacked PRs (base != master): native-stack children stay on their current
+#     base. The narrow exception is an unlinked child whose parent merged in
+#     the claim→open window; tier-0 replays its own commits onto master, pushes,
+#     then retargets. A stacked PR whose base branch is gone goes to the LLM.
 #   - Conflicting PRs on master: attempt the rebase anyway — it's free;
 #     an actual conflict aborts cleanly and goes to the LLM pass. The one
 #     conflict tier-0 resolves itself is a modify/delete on a retired path
@@ -96,6 +95,7 @@ while [[ -L "$_fleet_rebase_self" ]]; do
     _fleet_rebase_self="$(readlink "$_fleet_rebase_self")"
 done
 FLEET_LIB_DIR="${FLEET_LIB_DIR:-$(cd "$(dirname "$_fleet_rebase_self")" && pwd)}"
+export FLEET_LIB_DIR
 unset _fleet_rebase_self
 if [[ -f "$FLEET_LIB_DIR/fleet-net.sh" ]]; then
     # shellcheck source=/dev/null
@@ -433,6 +433,144 @@ preflight_pr() {
     return 0
 }
 
+# Print: <state> [<parent-number> <parent-head-sha> <parent-merge-sha>].
+# The stack list is deliberately paged: the default GitHub page is too small
+# to prove that a child has no live native-stack membership.
+classify_orphaned_base() {
+    local repo_slug="$1" pr="$2" base="$3" prs_json stacks_json
+    prs_json=$(gh pr list --repo "$repo_slug" --head "$base" --state all \
+        --limit 100 --json number,state,headRefName,headRefOid,mergeCommit 2>/dev/null) \
+        || { echo unknown; return 0; }
+    stacks_json=$(gh api --paginate --slurp "repos/$repo_slug/stacks" \
+        --jq '[.[][] | select(.open)]' 2>/dev/null) \
+        || { echo unknown; return 0; }
+    PRS_JSON="$prs_json" STACKS_JSON="$stacks_json" CHILD_PR="$pr" \
+        CHILD_BASE="$base" python3 - <<'PYEOF'
+import json
+import os
+import sys
+
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+from fleet_stack_base import orphaned_merged_base
+
+try:
+    prs = json.loads(os.environ["PRS_JSON"])
+    stacks = json.loads(os.environ["STACKS_JSON"])
+    child = {
+        "number": int(os.environ["CHILD_PR"]),
+        "state": "OPEN",
+        "baseRefName": os.environ["CHILD_BASE"],
+    }
+except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+    print("unknown")
+    raise SystemExit(0)
+
+result = orphaned_merged_base(child, prs, stacks)
+if result["state"] != "orphan":
+    print(result["state"])
+    raise SystemExit(0)
+parent = result["parent"]
+merge = parent.get("mergeCommit") or {}
+print("\t".join((
+    "orphan",
+    str(parent.get("number", "")),
+    str(parent.get("headRefOid", "")),
+    str(merge.get("oid", "")),
+)))
+PYEOF
+}
+
+park_orphaned_base() {
+    local repo_key="$1" repo_slug="$2" pr="$3" reason="$4"
+    if (( DRY_RUN )); then
+        log "$repo_key#$pr: orphaned merged base — would park: $reason (dry-run)"
+        return 0
+    fi
+    if ! gh pr edit "$pr" --repo "$repo_slug" \
+            --add-label "fleet:needs-human" >/dev/null 2>&1; then
+        log "$repo_key#$pr: orphan park label failed; deferring without a verdict"
+        return 3
+    fi
+    gh pr comment "$pr" --repo "$repo_slug" --body "$reason" >/dev/null 2>&1 || \
+        log "$repo_key#$pr: parked orphan but its explanatory comment failed"
+    log "$repo_key#$pr: orphaned merged base parked for human repair"
+    return 2
+}
+
+attempt_orphaned_base() {
+    local repo_key="$1" repo_slug="$2" wt="$3" pr="$4" head="$5" base="$6"
+    local head_sha="$7" parent_number="$8" parent_head_sha="$9" parent_merge_sha="${10}"
+
+    git -C "$wt" fetch origin "+refs/heads/master:refs/remotes/origin/master" \
+        2>/dev/null || {
+        log "$repo_key#$pr: orphan repair could not fetch master; deferring"
+        return 3
+    }
+    if ! git -C "$wt" cat-file -e "${parent_head_sha}^{commit}" 2>/dev/null; then
+        git -C "$wt" fetch origin \
+            "+refs/pull/$parent_number/head:refs/remotes/origin/fleet-parent-$parent_number" \
+            2>/dev/null || {
+            log "$repo_key#$pr: merged parent head is no longer resolvable; deferring"
+            return 3
+        }
+    fi
+    if [[ -z "$parent_merge_sha" ]] || ! git -C "$wt" merge-base --is-ancestor \
+            "$parent_merge_sha" origin/master 2>/dev/null; then
+        park_orphaned_base "$repo_key" "$repo_slug" "$pr" \
+            "Orphaned from merged PR #${parent_number}, but that parent's merge commit is not on master. No branch mutation was made. Repair manually with git rebase --onto origin/master ${parent_head_sha}, push, then gh pr edit --base master."
+        return $?
+    fi
+
+    local boundary="$parent_head_sha" fork_point=""
+    if ! git -C "$wt" merge-base --is-ancestor "$parent_head_sha" "$head_sha" 2>/dev/null; then
+        fork_point=$(git -C "$wt" merge-base "$head_sha" "$parent_head_sha" 2>/dev/null || true)
+        if [[ -z "$fork_point" ]] || git -C "$wt" merge-base --is-ancestor \
+                "$fork_point" origin/master 2>/dev/null; then
+            park_orphaned_base "$repo_key" "$repo_slug" "$pr" \
+                "Orphaned from merged PR #${parent_number}, but its rewritten history has no safe boundary off master. No branch mutation was made. Repair manually with git rebase --onto origin/master ${parent_head_sha}, push, then gh pr edit --base master."
+            return $?
+        fi
+        boundary="$fork_point"
+    fi
+
+    if (( DRY_RUN )); then
+        log "$repo_key#$pr: orphan repair would rebase, push, then retarget to master (dry-run)"
+        return 0
+    fi
+
+    local pre_files post_files
+    pre_files=$(git -C "$wt" diff --name-only "$boundary..$head_sha" | sort)
+    git -C "$wt" checkout --detach "$head_sha" >/dev/null 2>&1 || return 3
+    if ! git -C "$wt" rebase --onto origin/master "$boundary" >/dev/null 2>&1; then
+        git -C "$wt" rebase --abort >/dev/null 2>&1 || true
+        park_orphaned_base "$repo_key" "$repo_slug" "$pr" \
+            "Orphaned from merged PR #${parent_number}; the child conflicts while replaying onto master. No branch mutation was made. Repair manually with git rebase --onto origin/master ${parent_head_sha}, push, then gh pr edit --base master."
+        return $?
+    fi
+    post_files=$(git -C "$wt" diff --name-only origin/master..HEAD | sort)
+    if [[ "$pre_files" != "$post_files" ]]; then
+        park_orphaned_base "$repo_key" "$repo_slug" "$pr" \
+            "Orphaned from merged PR #${parent_number}; the changed-file set drifted during replay. No branch mutation was made. Repair manually with git rebase --onto origin/master ${parent_head_sha}, push, then gh pr edit --base master."
+        return $?
+    fi
+    if ! preflight_pr "$repo_slug" "$pr" "$base"; then
+        log "$repo_key#$pr: orphan pre-push re-verify failed; deferring"
+        return 3
+    fi
+    if ! git -C "$wt" push origin "HEAD:refs/heads/$head" \
+            --force-with-lease="refs/heads/$head:$head_sha" >/dev/null 2>&1; then
+        log "$repo_key#$pr: orphan repair push refused; deferring"
+        return 3
+    fi
+    if ! gh pr edit "$pr" --repo "$repo_slug" --base master >/dev/null 2>&1; then
+        park_orphaned_base "$repo_key" "$repo_slug" "$pr" \
+            "The orphaned child head is already rebased onto master, but retargeting failed. Only gh pr edit --base master remains. The format, instruction-size, or whitespace check may reflect the old base until retargeting completes."
+        return $?
+    fi
+    log "$repo_key#$pr: repaired orphaned base from merged PR #${parent_number}; pushed before retargeting to master"
+    return 0
+}
+
 # Strip a label from a PR that is provably no longer in the state the label
 # describes. Live-reverified before touching: confirms OPEN, MERGEABLE, and
 # the label still present, so a PR that GitHub recomputed CONFLICTING between
@@ -628,12 +766,35 @@ attempt_pr() {
         return 1
     fi
 
-    # Resolve the rebase target: always the PR's CURRENT base. Retargeting
-    # a stacked child to master is not tier-0 work anymore — GitHub does it
-    # server-side for native stacks, synchronously with the parent's merge
-    # (see docs/design/native-stacked-prs-migration.md). A stacked PR whose
-    # base branch is gone is either mid-native-retarget (transient) or an
-    # orphaned child (closed-unmerged parent) — both are LLM/human calls.
+    # Anchor every subsequent read and lease to the SHA fetched above.
+    local head_sha
+    head_sha=$(git -C "$wt" rev-parse "refs/remotes/origin/$head" 2>/dev/null) || {
+        log "$repo_key#$pr: cannot resolve fetched head SHA; leaving for LLM"
+        return 1
+    }
+
+    if [[ "$base" != "master" ]]; then
+        local orphan_info orphan_state parent_number parent_head_sha parent_merge_sha
+        orphan_info=$(classify_orphaned_base "$repo_slug" "$pr" "$base")
+        IFS=$'\t' read -r orphan_state parent_number parent_head_sha parent_merge_sha <<< "$orphan_info"
+        case "$orphan_state" in
+            orphan)
+                attempt_orphaned_base "$repo_key" "$repo_slug" "$wt" "$pr" \
+                    "$head" "$base" "$head_sha" "$parent_number" \
+                    "$parent_head_sha" "$parent_merge_sha"
+                return $?
+                ;;
+            unknown)
+                log "$repo_key#$pr: orphan classification unreadable; deferring without mutation"
+                return 3
+                ;;
+        esac
+    fi
+
+    # Resolve the ordinary rebase target from the PR's current base. The
+    # unlinked merged-parent exception returned above; native-stack children
+    # remain server-managed. A gone base is transient native retargeting or a
+    # closed-unmerged parent, both LLM/human calls.
     local target="$base"
     if [[ "$base" != "master" ]]; then
         if ! git -C "$wt" fetch origin "+refs/heads/$base:refs/remotes/origin/$base" 2>/dev/null; then
@@ -663,11 +824,7 @@ attempt_pr() {
     # --force-with-lease=<ref> would then lease against a NEWER author
     # push and silently clobber it. Leasing against this exact SHA means
     # any concurrent push refuses ours instead.
-    local head_sha merge_commits
-    head_sha=$(git -C "$wt" rev-parse "refs/remotes/origin/$head" 2>/dev/null) || {
-        log "$repo_key#$pr: cannot resolve fetched head SHA; leaving for LLM"
-        return 1
-    }
+    local merge_commits
     merge_commits=$(git -C "$wt" rev-list --merges --max-count=1 "origin/$target..$head_sha" 2>/dev/null) || {
         log "$repo_key#$pr: cannot inspect rebase range for merge commits; leaving for LLM"
         return 1
@@ -927,6 +1084,10 @@ for line in "${PR_LINES[@]:-}"; do
             case "$_attempt_rc" in
                 0) CLEARED=$((CLEARED + 1)) ;;
                 2) HUMAN_REMAINING=$((HUMAN_REMAINING + 1)) ;;
+                3)
+                    UNKNOWN_SKIPPED=$((UNKNOWN_SKIPPED + 1))
+                    note_retry_at $(( $(date +%s) + UNKNOWN_GRACE_SECONDS ))
+                    ;;
                 *) LLM_REMAINING=$((LLM_REMAINING + 1)); add_llm_target "$repo_key" "$pr" ;;
             esac
             ;;
