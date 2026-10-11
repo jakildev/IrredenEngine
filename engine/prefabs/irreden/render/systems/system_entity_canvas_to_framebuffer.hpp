@@ -109,6 +109,18 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         });
     }
 
+    // Snapped-zoom camera term of a detached canvas's framebuffer centre: the
+    // whole framebuffer pixels in the camera's sub-cell offset, Y-up.
+    static vec2 snappedCameraFramebufferOffset(
+        vec2 effectiveCameraIso, vec2 framebufferResolution, vec2 cameraZoom, vec2 mainCanvasSize
+    ) {
+        return IRMath::floor(
+                   IRMath::fract(effectiveCameraIso) * framebufferResolution * cameraZoom /
+                   mainCanvasSize
+               ) *
+               vec2(1.0f, -1.0f);
+    }
+
     static void publishHitboxPlacement(
         C_HitBox2D &hitbox,
         float framebufferHeight,
@@ -157,11 +169,19 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
 
         // Private canvas transforms use Y-up coordinates on both backends.
         // Consume whole framebuffer pixels; the final upscale owns the residual.
-        cameraFramebufferOffset_ =
-            IRMath::floor(
-                IRMath::fract(effectiveCameraIso_) * fbRes_ * cameraZoom_ / mainCanvasSize_
-            ) *
-            vec2(1.0f, -1.0f);
+        // Under the continuous zoom policy the term comes from the frame's
+        // published sample, so a detached canvas lands on the same whole
+        // offset and phase as the world content around it.
+        const IRMath::CameraRasterPhase *zoomFrame =
+            IRPrefab::Camera::zoomFrame(effectiveCameraIso_, cameraZoom_);
+        cameraFramebufferOffset_ = zoomFrame != nullptr
+                                       ? vec2(IRMath::cameraRasterDetachedOffset(*zoomFrame))
+                                       : snappedCameraFramebufferOffset(
+                                             effectiveCameraIso_,
+                                             fbRes_,
+                                             cameraZoom_,
+                                             mainCanvasSize_
+                                         );
 
         effectiveSub_ = IRRender::getVoxelRenderEffectiveSubdivisions();
         fogUnexploredColorPacked_ = IRMath::IRColors::kBlack.toPackedRGBA();

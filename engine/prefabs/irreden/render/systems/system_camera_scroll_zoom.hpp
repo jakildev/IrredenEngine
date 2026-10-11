@@ -6,6 +6,7 @@
 
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/input/components/component_mouse_scroll.hpp>
+#include <irreden/render/camera.hpp>
 
 using namespace IRComponents;
 
@@ -14,7 +15,7 @@ namespace IRSystem {
 // Mouse wheel / trackpad two-finger scroll → camera zoom step.
 // Tick iterates ephemeral C_MouseScroll entities (one per scroll event)
 // and accumulates a discrete delta; endTick applies the delta once via
-// C_ZoomLevel::zoomIn / zoomOut on the named "camera" entity. Each
+// IRPrefab::Camera::zoomIn / zoomOut, which apply the camera's zoom policy. Each
 // integer step doubles or halves the zoom (clamped to engine limits).
 template <> struct System<CAMERA_SCROLL_ZOOM> {
     int scrollDelta_ = 0;
@@ -31,12 +32,12 @@ template <> struct System<CAMERA_SCROLL_ZOOM> {
     }
 
     void endTick() {
-        if (scrollDelta_ == 0 || cameraEntity_ == IREntity::kNullEntity) return;
-        auto opt = IREntity::getComponentOptional<C_ZoomLevel>(cameraEntity_);
-        if (!opt.has_value()) return;
-        C_ZoomLevel &zoom = **opt;
-        for (int i = 0; i < scrollDelta_; ++i) zoom.zoomIn();
-        for (int i = 0; i > scrollDelta_; --i) zoom.zoomOut();
+        if (scrollDelta_ == 0 || cameraEntity_ == IREntity::kNullEntity)
+            return;
+        for (int i = 0; i < scrollDelta_; ++i)
+            IRPrefab::Camera::zoomIn();
+        for (int i = 0; i > scrollDelta_; --i)
+            IRPrefab::Camera::zoomOut();
     }
 
     static SystemId create() {

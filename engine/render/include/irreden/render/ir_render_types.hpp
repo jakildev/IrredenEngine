@@ -774,6 +774,36 @@ enum class FitMode { FIT, STRETCH, UNKNOWN };
 /// @note Currently global (per-frame). Per-entity subdivision modes are future work.
 enum class SubdivisionMode { NONE = 0, POSITION_ONLY = 1, FULL = 2 };
 
+/// How FULL mode turns a display zoom into its whole-number density factor.
+/// - @c NEAREST — the snapped-zoom rule: a zoom is a power of two, and a
+///   directly written in-between value takes the nearer density.
+/// - @c UP      — the continuous-zoom rule: the density never falls below the
+///   zoom, so one backing texel never spans more than its own framebuffer
+///   pixels and a nearest fetch only ever minifies.
+enum class ZoomDensityRounding { NEAREST = 0, UP = 1 };
+
+/// Raster density (backing texels per iso unit, per axis) of a canvas viewed
+/// at @p zoom: the one whole-number consumer of the display zoom. Every other
+/// reader of the zoom takes it exactly.
+inline int voxelRenderEffectiveSubdivisions(
+    SubdivisionMode mode, int baseSubdivisions, vec2 zoom, ZoomDensityRounding rounding
+) {
+    switch (mode) {
+    case SubdivisionMode::NONE:
+        return 1;
+    case SubdivisionMode::POSITION_ONLY:
+        return IRMath::clamp(baseSubdivisions, 1, 16);
+    case SubdivisionMode::FULL: {
+        const float zoomMax = IRMath::max(zoom.x, zoom.y);
+        const int zoomScale = rounding == ZoomDensityRounding::UP
+                                  ? static_cast<int>(IRMath::ceil(zoomMax))
+                                  : static_cast<int>(IRMath::round(zoomMax));
+        return IRMath::clamp(baseSubdivisions * IRMath::max(1, zoomScale), 1, 16);
+    }
+    }
+    return 1;
+}
+
 /// Where camera Z-yaw rotation pivots.
 /// - @c ORIGIN        — yaw rotates content about the fixed world origin. A
 ///   panned-off-origin camera swings the scene in an arc. Deterministic and

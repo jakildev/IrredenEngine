@@ -81,6 +81,7 @@ add_executable(IrredenEngineTest
   render/camera_mouse_rotate_reset_test.cpp
   render/camera_pan_pivot_test.cpp
   render/camera_yaw_test.cpp
+  render/camera_zoom_policy_test.cpp
   render/canvas_part_test.cpp
   render/canvas_residency_test.cpp
   render/canvas_rotation_test.cpp

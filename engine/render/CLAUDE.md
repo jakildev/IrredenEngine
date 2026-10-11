@@ -46,8 +46,8 @@ captures.
   canvas while a registered system can still reference its entity.
 - `QuadVAO` is registered once during initialization and is required by every
   `*_to_framebuffer` system; scripts must not destroy it.
-- Changing subdivision mode, subdivision count, or zoom mid-frame can desync
-  visibility and raster scale. Apply such changes at a frame boundary.
+- Changing subdivision mode, subdivision count, zoom, or the camera's zoom policy mid-frame can desync visibility and
+  raster scale: apply at a frame boundary. Display zoom vs raster density, and the continuous policy's placement: [continuous zoom](../../docs/design/continuous-camera-zoom.md).
 
 ## Shaders and backend parity
 
