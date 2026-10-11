@@ -49,6 +49,19 @@ inline float losReach(IRMath::vec4 circle) {
     return circle.z + edge + (edge == 0.0f ? kFogLosRimFadeCells : 0.0f) + kFogLosDiscMargin;
 }
 
+/// How far a painted voxel sample steps off its face plane along the face
+/// normal: outward for the target its own march ends on, inward for its
+/// column point. Mirrors `kFogLosFaceBias` in the shader twins.
+constexpr float kFogLosFaceBias = 0.02f;
+
+/// The column point of a painted sample on face @p face: @p facePoint, the
+/// sample's point on its face plane, stepped `kFogLosFaceBias` into the face,
+/// so the half-cell holding it is the column of the matter the face bounds.
+/// Mirrors `fogLosColumnPoint`.
+inline IRMath::vec3 losColumnPoint(IRMath::vec3 facePoint, IRMath::FaceId face) {
+    return facePoint - IRMath::faceOutwardNormal(face) * kFogLosFaceBias;
+}
+
 /// How the active canvas rasterizes this frame — what the column field must
 /// reproduce so a column box lies where its voxel or shape is drawn. At a
 /// cardinal pose a voxel snaps to the `1 / subdivisions_` lattice and a shape
@@ -59,6 +72,30 @@ struct LosRasterFrame {
     int subdivisions_ = 1;
     bool rotating_ = false;
 };
+
+/// The column point of a sample the cardinal voxel raster painted under
+/// @p frame, from its recovered position @p facePoint with the face-axis
+/// coordinate on the face plane. The raster recovers a vertical face's
+/// in-plane horizontal coordinate up to a third of a micro cell either side
+/// of the lattice line through the drawn cell's view-frame lower corner, so
+/// that coordinate snaps onto the line and steps `kFogLosFaceBias` into the
+/// cell. Mirrors `fogLosColumnPoint` on its cardinal route.
+inline IRMath::vec3
+losColumnPoint(IRMath::vec3 facePoint, IRMath::FaceId face, const LosRasterFrame &frame) {
+    IR_ASSERT(!frame.rotating_, "the cardinal column point needs a cardinal raster frame");
+    IRMath::vec3 point = losColumnPoint(facePoint, face);
+    const int axis = IRMath::faceAxis(face);
+    if (axis == 2) {
+        return point;
+    }
+    const int inPlane = 1 - axis;
+    const float micro = static_cast<float>(frame.subdivisions_);
+    const IRMath::vec3 cellSide =
+        IRMath::rotateCardinalZInv(IRMath::vec3(1.0f, 1.0f, 0.0f), frame.cardinal_);
+    point[inPlane] = static_cast<float>(IRMath::roundHalfUp(facePoint[inPlane] * micro)) / micro +
+                     cellSide[inPlane] * kFogLosFaceBias;
+    return point;
+}
 
 namespace detail {
 

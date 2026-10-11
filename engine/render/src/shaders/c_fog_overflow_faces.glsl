@@ -72,15 +72,18 @@ void main() {
     const vec3 pos3D = perAxisCellToWorld3DSubCell(cell, encoded, faceId, perAxisStoreFrame);
     float aaFloor = 0.0;
     vec3 losSample = pos3D;
+    vec3 columnPoint = pos3D;
     if (visionCircleCount > 0) {
         const vec3 neighbor = perAxisCellToWorld3DSubCell(cell + ivec2(1, 0), encoded, faceId, perAxisStoreFrame);
         aaFloor = length(neighbor.xy - pos3D.xy);
         if (losSourceMask != 0) {
             losSample = fogLosCanonicalSample(pos3D, faceId, kFogLosRoutePerAxis, 1);
+            columnPoint = fogLosColumnPoint(pos3D, faceId, kFogLosRoutePerAxis, 1, 0);
         }
     }
 
-    const FogReveal reveal = fogRevealSample(pos3D, losSample, aaFloor);
+    const FogReveal reveal =
+        fogRevealSample(pos3D, losSample, columnPoint, faceId >> 1, aaFloor);
     if (reveal.state >= 1.0) {
         return;
     }

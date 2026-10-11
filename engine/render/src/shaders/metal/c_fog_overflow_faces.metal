@@ -42,6 +42,7 @@ kernel void c_fog_overflow_faces(
     );
     float aaFloor = 0.0f;
     float3 losSample = pos3D;
+    float3 columnPoint = pos3D;
     if (fogObservers.visionCircleCount > 0) {
         const float3 neighbor = perAxisCellToWorld3DSubCell(
             cell + int2(1, 0), encoded, faceId, frameData.perAxisStoreFrame
@@ -49,12 +50,15 @@ kernel void c_fog_overflow_faces(
         aaFloor = length(neighbor.xy - pos3D.xy);
         if (fogObservers.losSourceMask != 0) {
             losSample = fogLosCanonicalSample(pos3D, faceId, kFogLosRoutePerAxis, 1);
+            columnPoint = fogLosColumnPoint(pos3D, faceId, kFogLosRoutePerAxis, 1, 0);
         }
     }
 
     const FogReveal reveal = fogRevealSample(
         pos3D,
         losSample,
+        columnPoint,
+        faceId >> 1,
         aaFloor,
         fogObservers,
         canvasFogOfWar,

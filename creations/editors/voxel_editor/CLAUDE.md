@@ -15,6 +15,8 @@ Design log, findings and the authoring-session history:
   `component_field_page` the same on a field only the panel's pager reaches,
   `component_field_key` the same on a field whose name is not a Lua identifier,
   `parts_roundtrip` authors, moves, saves, clears, and reloads a two-part entity,
+  `remove_part` removes and restores a part across hot and cold undo stacks and
+  proves the saved manifest omits the removed record,
   `tier_scrub` proves per-part LOD bands and the tier scrubber,
   `parts_scroll` reaches every part of an arrayed scene through the PARTS list
   alone (reveal after the array, wheel, row click),
@@ -83,6 +85,11 @@ render, because the aim and the pick share one screen mapping.
   copy group through the same stroke buffer. The selected source stays outside
   the copy group: radial copies start at the radius, and linear copies start
   one step out.
+- Delete and the PARTS-panel REMOVE button remove the selected part as one undo
+  record. Ctrl+Z recreates its authored payload at the same ordered index and
+  rewrites older undo references to the fresh entity id. Removing a rotational
+  group member preserves the group's identity; symmetry remains inactive until
+  the group again matches its rotational order.
 
 - A recipe names cells; `Session::Builder` (`session_builder.hpp`) aims each
   click and mirrors the editable set in `OccupancyModel`, which casts the same

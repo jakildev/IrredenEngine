@@ -112,6 +112,7 @@ kernel void c_fog_to_trixel(
     const float3 pos3D = fogPixelToWorld(pixel, encoded, faceId, size, cardinalDepth, frameData);
     float aaFloor = 0.0f;
     float3 losSample = pos3D;
+    float3 columnPoint = pos3D;
     if (fogObservers.visionCircleCount > 0) {
         const float3 neighbor = fogPixelToWorld(
             pixel + int2(1, 0), encoded, faceId, size, cardinalDepth, frameData);
@@ -129,12 +130,17 @@ kernel void c_fog_to_trixel(
                 losRoute,
                 scale
             );
+            columnPoint = fogLosColumnPoint(
+                pos3D, faceId, losRoute, scale, rasterYawCardinalIndex(frameData.rasterYaw)
+            );
         }
     }
 
     const FogReveal reveal = fogRevealSample(
         pos3D,
         losSample,
+        columnPoint,
+        faceId >> 1,
         aaFloor,
         fogObservers,
         canvasFogOfWar,
