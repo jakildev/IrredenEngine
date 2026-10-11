@@ -34,7 +34,7 @@ inline constexpr IRMath::ivec2 kHelpOverlayBgPadding{8, 6};
 // harder to scan than a slightly wide gutter.
 inline constexpr int kHelpOverlayBindingColumnChars = 16;
 
-// Font scale for overlay text. The trixel font is uppercase-only and 7x11 at
+// Font scale for overlay text. The trixel font is uppercase-only and 6x11 at
 // scale 1; the GUI canvas is `mainCanvasSize / guiScale`, so scale 1 keeps a
 // ~40-command list inside a 480-trixel canvas.
 inline constexpr int kHelpOverlayFontSize = 1;

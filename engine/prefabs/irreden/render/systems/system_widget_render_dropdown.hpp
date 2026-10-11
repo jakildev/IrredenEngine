@@ -82,30 +82,30 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
             IRPrefab::Widget::detail::stateText(theme_, widget)
         );
 
-        // Dropdown chevron — solid triangle approximated as a small stack of rects
-        // at the right edge. Two rects suffice for visual recognizability at the
-        // GUI canvas resolution this framework targets.
+        // Dropdown chevron at the right edge: a "v" of lattice diamonds, two
+        // arms stepping one column per row into a shared bottom diamond. The
+        // origin is parity-aligned like text so every pair is a solid diamond.
         const int chevronW = IRPrefab::Widget::detail::kDropdownChevronWidth;
         const int chevronH = IRPrefab::Widget::detail::kDropdownChevronHeight;
-        const int chevX = guiPos.pos_.x + widget.size_.x - chevronW -
-                          IRPrefab::Widget::detail::dropdownHorizontalInset(theme_.padding_);
-        const int chevY = guiPos.pos_.y + (widget.size_.y - chevronH) / 2;
-        IRRender::fillRect(
-            *canvas_,
-            IRMath::ivec2(chevX, chevY),
-            IRMath::ivec2(chevronW, 2),
-            IRPrefab::Widget::detail::stateText(theme_, widget),
-            IRRender::kWidgetBorderDistance,
-            scratch_
+        const IRMath::ivec2 chevron = IRRender::parityAlignedPosition(
+            IRMath::ivec2(
+                guiPos.pos_.x + widget.size_.x - chevronW -
+                    IRPrefab::Widget::detail::dropdownHorizontalInset(theme_.padding_),
+                guiPos.pos_.y + (widget.size_.y - chevronH) / 2 + 1
+            ),
+            canvas_->size_
         );
-        IRRender::fillRect(
-            *canvas_,
-            IRMath::ivec2(chevX + 2, chevY + 2),
-            IRMath::ivec2(chevronW - 4, 2),
-            IRPrefab::Widget::detail::stateText(theme_, widget),
-            IRRender::kWidgetBorderDistance,
-            scratch_
-        );
+        constexpr IRMath::ivec2 kChevronDiamonds[] = {{0, 0}, {4, 0}, {1, 1}, {3, 1}, {2, 2}};
+        for (const IRMath::ivec2 &diamond : kChevronDiamonds) {
+            IRRender::fillRect(
+                *canvas_,
+                chevron + diamond,
+                IRMath::ivec2(2, 1),
+                IRPrefab::Widget::detail::stateText(theme_, widget),
+                IRRender::kWidgetBorderDistance,
+                scratch_
+            );
+        }
 
         if (!dd.isOpen_ || n == 0)
             return;
