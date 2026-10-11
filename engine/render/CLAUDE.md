@@ -30,8 +30,7 @@ Canonical commands: the [validation index](../../docs/agents/VALIDATION.md)
 commonly need `header-checks`, `render-debug-loop`, `render-verify`,
 `backend-parity`, `cull-verify`, and the relevant `scripts/*-verify.py`
 metric; Codex image evidence: [`CODEX.md` § Rendering conversations](../../docs/agents/CODEX.md#rendering-conversations).
-Changes with no visual effect (docs, tests, mechanical, build-only) need no
-captures.
+Changes with no visual effect (docs, tests, mechanical, build-only) need no captures.
 
 ## Pipeline contracts
 
@@ -96,11 +95,13 @@ captures.
   shift stays out of the hover path. Read the
   [parity-shift design](../../docs/design/trixel-parity-shift-442-investigation.md)
   before changing it; the executor is `IRShapeDebug --gui-test`'s `hover_parity_*` shots.
+- **The engine GUI canvas composites as `LOCAL_TRIANGLES`** (render-manager-stamped
+  `renderedSampleLayout_`): text, widget, disc and line texels display as lattice
+  triangles in the parity `parityAlignedPosition` aligns to. Hover is off there.
 - Gather interpolates [centered texel units](../../docs/design/trixel-gather-sampling.md);
   normalized UV rescaling can select the wrong half at integer boundaries.
-- CPU frame-data structs and shader blocks must agree on field order,
-  `std140` padding, and binding index. Every hard-coded binding has a matching
-  `kBufferIndex_*` constant.
+- CPU frame-data structs and shader blocks must agree on field order, `std140`
+  padding, and binding index; every hard-coded binding has a `kBufferIndex_*` twin.
 - Metal buffer indices 0–30 are occupied. A pass needing another buffer must
   bind an existing slot transiently and restore the prior binding itself.
 
@@ -117,11 +118,10 @@ captures.
   latest bind of either kind wins and stays resident across dispatches, so
   account for both tables. A resource type in a sticky table untracks itself
   on destruction; destroyed attachments fall back to the default render target.
-- Metal R32I image atomics land in scratch storage. For a canvas's own
-  texture, call `resolveImageAtomicScratch` after atomic passes and before its
-  first reader, having cleared it through `clearTexImage`. A later dispatch
-  consuming a foreign canvas's atomic depth resolves it into a
-  main-canvas-layout texture first.
+- Metal R32I image atomics land in scratch storage. For a canvas's own texture,
+  call `resolveImageAtomicScratch` after atomic passes and before its first reader,
+  having cleared it through `clearTexImage`. A later dispatch consuming a foreign
+  canvas's atomic depth resolves it into a main-canvas-layout texture first.
 - Metal `Texture2D::clear()` / `subImage2D()` writes are ordered through the
   frame command buffer; a same-frame CPU `getBytes` read still needs an
   explicit commit and wait.
