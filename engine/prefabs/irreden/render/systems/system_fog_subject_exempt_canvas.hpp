@@ -9,22 +9,13 @@
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_fog_exempt.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
-#include <irreden/voxel/components/component_voxel_pool.hpp>
-
-#include <algorithm>
-#include <vector>
+#include <irreden/render/detached_canvas_pool_cache.hpp>
 
 namespace IRSystem {
 
-template <> struct System<FOG_SUBJECT_EXEMPT_CANVAS> {
-    struct DetachedPool {
-        IREntity::EntityId entity_ = IREntity::kNullEntity;
-        IRComponents::C_VoxelPool *pool_ = nullptr;
-    };
-
+template <> struct System<FOG_SUBJECT_EXEMPT_CANVAS> : IRPrefab::detail::DetachedCanvasPoolCache {
     IREntity::EntityId activeCanvas_ = IREntity::kNullEntity;
     bool enabled_ = false;
-    std::vector<DetachedPool> detachedPools_;
 
     void beginTick() {
         activeCanvas_ = IRRender::getActiveCanvasEntityOrNull();
@@ -35,30 +26,7 @@ template <> struct System<FOG_SUBJECT_EXEMPT_CANVAS> {
         if (!enabled_) {
             return;
         }
-        const auto nodes = IREntity::queryArchetypeNodesSimple(
-            IREntity::getArchetype<IRComponents::C_VoxelPool, IRComponents::C_DetachedCanvas>()
-        );
-        for (IREntity::ArchetypeNode *node : nodes) {
-            auto &pools = IREntity::getComponentData<IRComponents::C_VoxelPool>(node);
-            for (int i = 0; i < node->length_; ++i) {
-                detachedPools_.push_back(DetachedPool{node->entities_[i], &pools[i]});
-            }
-        }
-        std::sort(
-            detachedPools_.begin(),
-            detachedPools_.end(),
-            [](const DetachedPool &a, const DetachedPool &b) { return a.entity_ < b.entity_; }
-        );
-    }
-
-    IRComponents::C_VoxelPool *findPool(IREntity::EntityId entity) const {
-        const auto found = std::lower_bound(
-            detachedPools_.begin(),
-            detachedPools_.end(),
-            entity,
-            [](const DetachedPool &pool, IREntity::EntityId id) { return pool.entity_ < id; }
-        );
-        return found != detachedPools_.end() && found->entity_ == entity ? found->pool_ : nullptr;
+        collectDetachedPools();
     }
 
     void tick(
@@ -69,7 +37,7 @@ template <> struct System<FOG_SUBJECT_EXEMPT_CANVAS> {
         if (!enabled_ || entity == activeCanvas_ || entityCanvas.screenLocked_) {
             return;
         }
-        IRComponents::C_VoxelPool *pool = findPool(entityCanvas.canvasEntity_);
+        IRComponents::C_VoxelPool *pool = findDetachedPool(entityCanvas.canvasEntity_);
         if (pool == nullptr) {
             return;
         }

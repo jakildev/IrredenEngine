@@ -531,9 +531,13 @@ TEST(FogGhostPolicyTest, ShapeRoutePublishesFrozenPoseAndExploredFactor) {
 
 TEST(FogGhostPolicyTest, CanvasRoutePublishesFrozenPoseAndExploredFactor) {
     IREntity::EntityManager entityManager;
-    const IREntity::EntityId detached = IREntity::createEntity(IRComponents::C_DetachedCanvas{});
+    const IREntity::EntityId detached = IREntity::createEntity(
+        IRComponents::C_VoxelPool{IRMath::ivec3(1)},
+        IRComponents::C_DetachedCanvas{}
+    );
     auto fog = fogWithCircle(2.0f);
     IRSystem::System<IRSystem::FOG_REVEAL_EVAL_CANVAS_GHOST> system;
+    system.beginTick();
     system.fog_ = &fog;
     system.settings_.staggerPeriod_ = 1;
 

@@ -11,6 +11,7 @@
 #include <irreden/render/components/component_fog_reveal_settings.hpp>
 #include <irreden/render/components/component_fog_ghost.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
+#include <irreden/render/detached_canvas_pool_cache.hpp>
 #include <irreden/render/fog_of_war.hpp>
 
 #include <algorithm>
@@ -21,7 +22,21 @@ namespace IRSystem {
 
 namespace detail {
 
-struct FogRevealEvalCanvasGhost {
+inline void repairCanvasCarrierPolicy(
+    IRComponents::C_VoxelPool &pool,
+    const IRComponents::C_FogRevealed &revealed,
+    const IRComponents::C_EntityCanvas &entityCanvas
+) {
+    if (entityCanvas.screenLocked_) {
+        return;
+    }
+    IRPrefab::Fog::initializeCanvasBodyCarrier(
+        pool,
+        IRPrefab::Fog::quantizeRevealFactor(revealed.revealFactor_)
+    );
+}
+
+struct FogRevealEvalCanvasGhost : IRPrefab::detail::DetachedCanvasPoolCache {
     const IRComponents::C_CanvasFogOfWar *fog_ = nullptr;
     IRComponents::C_FogRevealSettings settings_{};
     std::uint64_t frameCounter_ = 0;
@@ -51,6 +66,7 @@ struct FogRevealEvalCanvasGhost {
         settings_ = IREntity::singleton<IRComponents::C_FogRevealSettings>();
         settings_.staggerPeriod_ = IRMath::max(settings_.staggerPeriod_, std::uint32_t{1});
         ++frameCounter_;
+        collectDetachedPools();
     }
 
     static std::vector<IREntity::ArchetypeNode *> matchingNodes() {
@@ -70,12 +86,14 @@ struct FogRevealEvalCanvasGhost {
         IRComponents::C_EntityCanvas &entityCanvas,
         IRComponents::C_FogGhost &ghost
     ) {
-        if (entity == activeCanvas_ ||
-            !IREntity::getComponentOptional<IRComponents::C_DetachedCanvas>(
-                entityCanvas.canvasEntity_
-            )) {
+        if (entity == activeCanvas_) {
             return;
         }
+        IRComponents::C_VoxelPool *pool = findDetachedPool(entityCanvas.canvasEntity_);
+        if (pool == nullptr) {
+            return;
+        }
+        repairCanvasCarrierPolicy(*pool, revealed, entityCanvas);
         const bool wasShown = revealed.shown_;
         const bool evaluated = revealed.override_ != IRComponents::FogOverride::NONE ||
                                (entity + frameCounter_) % settings_.staggerPeriod_ == 0u;
@@ -142,7 +160,7 @@ struct FogRevealEvalCanvasGhost {
 
 } // namespace detail
 
-template <> struct System<FOG_REVEAL_EVAL_CANVAS> {
+template <> struct System<FOG_REVEAL_EVAL_CANVAS> : IRPrefab::detail::DetachedCanvasPoolCache {
     const IRComponents::C_CanvasFogOfWar *fog_ = nullptr;
     IRComponents::C_FogRevealSettings settings_{};
     std::uint64_t frameCounter_ = 0;
@@ -170,6 +188,8 @@ template <> struct System<FOG_REVEAL_EVAL_CANVAS> {
         settings_ = IREntity::singleton<IRComponents::C_FogRevealSettings>();
         settings_.staggerPeriod_ = IRMath::max(settings_.staggerPeriod_, std::uint32_t{1});
         ++frameCounter_;
+
+        collectDetachedPools();
     }
 
     void tick(
@@ -178,12 +198,14 @@ template <> struct System<FOG_REVEAL_EVAL_CANVAS> {
         const IRComponents::C_WorldTransform &worldTransform,
         IRComponents::C_EntityCanvas &entityCanvas
     ) const {
-        if (entity == activeCanvas_ ||
-            !IREntity::getComponentOptional<IRComponents::C_DetachedCanvas>(
-                entityCanvas.canvasEntity_
-            )) {
+        if (entity == activeCanvas_) {
             return;
         }
+        IRComponents::C_VoxelPool *pool = findDetachedPool(entityCanvas.canvasEntity_);
+        if (pool == nullptr) {
+            return;
+        }
+        detail::repairCanvasCarrierPolicy(*pool, revealed, entityCanvas);
         if (revealed.override_ == IRComponents::FogOverride::NONE &&
             (entity + frameCounter_) % settings_.staggerPeriod_ != 0u) {
             return;
