@@ -113,9 +113,10 @@ the author or the human, and the lane re-dispatched it every tick.
   a gated self-config edit: comment what the human must apply, remove
   `fleet:queued`, add this, release), **planner** (a `fleet:needs-plan` issue no
   planner can plan — premise refuted, target code absent, parent design-blocked,
-  direction needs a human: comment, add this, **keep** `fleet:needs-plan`,
-  release the planning claim), or the **dispatcher** at the per-target dispatch
-  cap. Keeps `human:approved`; ingest, both planning projections, `fleet-claim
+  direction needs a human: comment, add this, **keep** `fleet:needs-plan`, release
+  the planning claim), **tier-0** (an approved child orphaned from a merged
+  parent cannot be repaired), or **dispatcher** at the per-target cap. Keeps `human:approved`;
+  ingest, both planning projections, `fleet-claim
   planning-claim`, and (on a PR) the merger's own skip sets skip it too.
 - `fleet:scope-shipped` — **ingest** pre-flight: a merged PR references
   #N, so the scope landed elsewhere. Set with a comment citing the PR;

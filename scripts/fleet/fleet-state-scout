@@ -70,7 +70,7 @@ from fleet_gh_poll import DEFAULT_CACHE_DIR as ETAG_DIR
 from fleet_gh_poll import cache_entry_path, conditional_get, last_rate_limit
 from fleet_github_identity import current_identity, quota_gate, quota_path, user_environment
 from fleet_model_field import MODEL_CLASSES, declared_class
-from fleet_stack_base import unsafe_base_reason
+from fleet_stack_base import needs_orphan_check, unsafe_base_reason
 
 
 def _shebang_names_python(path):
@@ -3794,21 +3794,31 @@ def _merger_action_signal(labels, mergeable, base_ref, checks=None):
 
 
 def project_merger(state):
-    """Hash-input projection: only the `needs-resolve` rows — stable
+    """Hash-input projection: `needs-resolve` and orphan-check rows — stable
     signals, so the merger neither self-triggers on its own label toggles
     nor wakes on merge-ready churn (a PR becoming mergeable, the human
     merging it). Slicer (slice_merger) still emits the full PR record for
     the role to consume."""
     items = []
     for repo, repo_state in state["repos"].items():
-        for pr in repo_state.get("prs", []):
+        repo_prs = repo_state.get("prs", [])
+        open_parent_heads = {
+            candidate.get("headRefName")
+            for candidate in repo_prs
+            if candidate.get("state", "OPEN") == "OPEN"
+        }
+        for pr in repo_prs:
             labels = set(pr["labels"])
             signal = _merger_action_signal(
                 labels, pr.get("mergeable"), pr.get("baseRefName", "master"),
                 pr.get("checks"),
             )
             if signal != "needs-resolve":
-                continue
+                if not needs_orphan_check(
+                        pr, repo_prs, _MERGER_PROJECTION_SKIP_LABELS,
+                        open_parent_heads):
+                    continue
+                signal = "orphan-check"
             items.append({"repo": repo, "pr": pr["number"], "signal": signal})
     return sorted(items, key=lambda x: json.dumps(x, sort_keys=True))
 

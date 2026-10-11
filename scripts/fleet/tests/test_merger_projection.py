@@ -332,9 +332,9 @@ class SignalSemantics(unittest.TestCase):
         # An approved MERGEABLE PR whose base is a feature branch is a
         # native-stack child — GitHub owns its base management and the
         # human merges it from the stack UI, so the merger has no action.
-        items = project_merger(_state([_pr(101, labels=[
-            "fleet:approved",
-        ], base="claude/parent")]))
+        child = _pr(101, labels=["fleet:approved"], base="claude/parent")
+        parent = _pr(100, labels=[], head="claude/parent")
+        items = project_merger(_state([child, parent]))
         self.assertEqual(items, [])
 
     def test_unapproved_is_dropped(self):
@@ -467,6 +467,35 @@ class MergerCoversBothRepos(unittest.TestCase):
         ))
         self.assertEqual(out["prs"], [])
         self.assertEqual(out["merger_candidates"], [])
+
+
+class OrphanWakeProjection(unittest.TestCase):
+    def test_orphan_shape_adds_wake_row_and_changes_hash(self):
+        pr = _pr(101, labels=["fleet:approved"], base="claude/merged-parent")
+        state = _state([pr])
+        self.assertEqual(project_merger(state), [
+            {"repo": "engine", "pr": 101, "signal": "orphan-check"},
+        ])
+        self.assertNotEqual(_hash(_state([])), _hash(state))
+
+    def test_open_parent_suppresses_wake_row(self):
+        child = _pr(101, labels=["fleet:approved"], base="claude/parent")
+        parent = _pr(100, labels=[], head="claude/parent")
+        self.assertEqual(project_merger(_state([child, parent])), [])
+
+    def test_skip_labels_suppress_wake_row(self):
+        for label in ("fleet:needs-human", "fleet:wip", "human:needs-fix"):
+            with self.subTest(label=label):
+                pr = _pr(101, labels=["fleet:approved", label],
+                         base="claude/merged-parent")
+                self.assertEqual(project_merger(_state([pr])), [])
+
+    def test_merger_toggled_labels_do_not_move_orphan_hash(self):
+        base = _pr(101, labels=["fleet:approved"], base="claude/merged-parent")
+        toggled = _pr(101, labels=[
+            "fleet:approved", "fleet:merger-cooldown", "fleet:changes-made",
+        ], base="claude/merged-parent")
+        self.assertEqual(_hash(_state([base])), _hash(_state([toggled])))
 
 
 class MergerCandidates(unittest.TestCase):

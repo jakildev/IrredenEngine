@@ -13,6 +13,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from fleet_stack_base import (  # noqa: E402
     NOT_STACKABLE_BASE_LABELS,
     NOT_STACKABLE_BASE_PREFIXES,
+    needs_orphan_check,
+    orphaned_merged_base,
     unsafe_base_reason,
 )
 
@@ -154,6 +156,57 @@ class TestUnsafeBaseReason(unittest.TestCase):
         """labels may arrive as a list (scout) or a set (claim block)."""
         self.assertEqual(unsafe_base_reason({"fleet:wip"}), "fleet:wip")
         self.assertEqual(unsafe_base_reason(("fleet:wip",)), "fleet:wip")
+
+
+class TestOrphanedMergedBase(unittest.TestCase):
+    def setUp(self):
+        self.child = {
+            "number": 20, "state": "OPEN", "baseRefName": "claude/parent",
+            "labels": ["fleet:approved"],
+        }
+        self.parent = {
+            "number": 19, "state": "MERGED", "headRefName": "claude/parent",
+            "headRefOid": "abc123",
+        }
+
+    def test_orphan_positive_fire(self):
+        result = orphaned_merged_base(self.child, [self.parent], [])
+        self.assertEqual(result["state"], "orphan")
+        self.assertEqual(result["parent"]["number"], 19)
+
+    def test_open_parent_wins_over_merged_parent(self):
+        open_parent = dict(self.parent, number=21, state="OPEN")
+        result = orphaned_merged_base(
+            self.child, [self.parent, open_parent], [])
+        self.assertEqual(result, {"state": "clean"})
+
+    def test_open_stack_membership_is_not_orphaned(self):
+        stacks = [{"open": True, "pull_requests": [{"number": 20}]}]
+        self.assertEqual(
+            orphaned_merged_base(self.child, [self.parent], stacks),
+            {"state": "clean"},
+        )
+
+    def test_unreadable_stacks_are_unknown(self):
+        self.assertEqual(
+            orphaned_merged_base(self.child, [self.parent], None),
+            {"state": "unknown"},
+        )
+
+    def test_wake_proxy_is_a_superset(self):
+        skip = {"fleet:needs-human"}
+        self.assertTrue(needs_orphan_check(self.child, [self.child], skip))
+        result = orphaned_merged_base(self.child, [self.parent], [])
+        self.assertEqual(result["state"], "orphan")
+        self.assertTrue(needs_orphan_check(self.child, [self.child], skip))
+
+    def test_wake_proxy_excludes_open_parent_and_skip_label(self):
+        open_parent = dict(self.parent, state="OPEN")
+        self.assertFalse(needs_orphan_check(
+            self.child, [self.child, open_parent], {"fleet:needs-human"}))
+        parked = dict(self.child, labels=["fleet:approved", "fleet:needs-human"])
+        self.assertFalse(needs_orphan_check(
+            parked, [parked], {"fleet:needs-human"}))
 
 
 if __name__ == "__main__":

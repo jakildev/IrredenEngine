@@ -42,9 +42,10 @@ if [[ ! -x "$FLEET_CLAIM" ]]; then
     exit 1
 fi
 
-PASS=0
-FAIL=0
 TMPROOT=""
+
+# shellcheck source=lib_assert.sh
+source "$(dirname "$0")/lib_assert.sh"
 
 cleanup() {
     [[ -n "$TMPROOT" && -d "$TMPROOT" ]] && rm -rf "$TMPROOT"
@@ -201,7 +202,7 @@ if verb == "pr list":
     sys.exit(0)
 if verb == "pr view":
     # $3 is the PR id passed to --stackable-on.
-    pr_id = args[2] if len(args) > 2 else ""
+    pr_id = (args[2] if len(args) > 2 else "").rstrip("/").split("/")[-1]
     if pr_id == "906" and "--repo" not in args:
         sys.exit(1)
     if pr_id == "906" and args[args.index("--repo") + 1] != "jakildev/irreden":
@@ -211,7 +212,7 @@ if verb == "pr view":
 if verb == "pr diff":
     # claim --stackable-on live diff: empty output = empty claim-commit,
     # non-empty = real diff, exit 1 = fetch failure (unverifiable base).
-    pr_id = args[2] if len(args) > 2 else ""
+    pr_id = (args[2] if len(args) > 2 else "").rstrip("/").split("/")[-1]
     if pr_id == "906" and "--repo" not in args:
         sys.exit(1)
     if pr_id == "906" and args[args.index("--repo") + 1] != "jakildev/irreden":
@@ -371,7 +372,8 @@ assert_refused 904 "refusing to stack on an unverifiable base" "unverifiable bas
 # here that leaves a claim behind.
 echo "T9: claim --stackable-on an approved fleet:awaiting-base base (#905) → accepted"
 t9_err="$TMPROOT/t9.err"
-if "$FLEET_CLAIM" claim 3004 worker-test --stackable-on 905 >/dev/null 2>"$t9_err"; then
+if "$FLEET_CLAIM" claim 3004 worker-test --stackable-on \
+        https://github.com/jakildev/IrredenEngine/pull/905 >/dev/null 2>"$t9_err"; then
     PASS=$((PASS + 1))
     echo "  ok: awaiting-base base accepted"
 else
@@ -383,6 +385,7 @@ fi
 # to master (claim-base reads the --stackable-on sidecar).
 t9_base=$("$FLEET_CLAIM" claim-base 3004 2>/dev/null || true)
 assert_output "$t9_base" "claude/905-awaiting-base" "claim recorded the awaiting-base PR as the stack base"
+assert_contains "$(cat "$FLEET_CLAIMS_DIR/3004.meta")" "stackable_pr=905" "URL stackable claim records the blocker PR number"
 
 # The game claim is launched from this engine-rooted fixture. Requiring the
 # game slug on both live base re-verification calls proves the namespace does
@@ -399,7 +402,6 @@ else
 fi
 t10_base=$("$FLEET_CLAIM" --repo game claim-base 3004 2>/dev/null || true)
 assert_output "$t10_base" "claude/906-game-approved" "game claim recorded its stack base"
+assert_contains "$(cat "$FLEET_CLAIMS_DIR/game-3004.meta")" "stackable_pr=906" "bare-number stackable claim records the blocker PR number"
 
-echo ""
-echo "PASS: $PASS  FAIL: $FAIL"
-[[ "$FAIL" -eq 0 ]]
+summarize
