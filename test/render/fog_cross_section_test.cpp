@@ -882,6 +882,118 @@ TEST(FogCrossSectionShaderParity, LosGateIsIdenticalAcrossBackends) {
     }
 }
 
+// Test E, part 12: the column-top term. The term's body reduces to the same
+// maths on both backends; the shared reveal applies it only to a vertical
+// face of a sample below full reveal on a frame with a gated source, raises
+// the state alone and clears the band of a sample it raises; the column
+// point steps into the face where the canonical sample steps out of it, and
+// on the cardinal route snaps a vertical face's in-plane coordinate into the
+// drawn cell; and every paint route hands the kernel its column point and
+// face axis.
+TEST(FogCrossSectionShaderParity, ColumnTopTermIsIdenticalAcrossBackends) {
+    const std::string glsl = readShaderSource(kGlslFogCommonPath);
+    const std::string metal = readShaderSource(kMetalFogCommonPath);
+    const std::string glslTerm =
+        normalizeKernelMath(extractFunctionBody(glsl, "fogColumnTopState"));
+    const std::string metalTerm =
+        normalizeKernelMath(extractFunctionBody(metal, "fogColumnTopState"));
+    ASSERT_FALSE(glslTerm.empty()) << "fogColumnTopState not found in GLSL";
+    ASSERT_FALSE(metalTerm.empty()) << "fogColumnTopState not found in MSL";
+    EXPECT_EQ(glslTerm, metalTerm) << "the column-top term diverged between backends";
+    for (const char *expected :
+         {"const float topZ = fogLosTopPlane(fogLosHalfCellOf(columnPoint.xy), losFieldMin);",
+          "if (topZ == kFogLosColumnEmpty || topZ >= columnPoint.z - kFogLosClearanceTolerance) "
+          "{ return state; }",
+          "const vec3 top = vec3(columnPoint.xy, topZ);",
+          "if ((visionCircleChannels[i / 4][i % 4] & cellChannels) == 0u) { continue; }",
+          "fogCeilingVisibility(visionCircleCeilings[i], dzUp);",
+          "if (ceilingReveal <= state) { continue; }",
+          "losVisibility = fogLosVisibility(fogLosEye(visionCircles[i], heights.x, "
+          "losParams[i].x), top, losParams[i].y, losFieldMin);",
+          "state = max(state, losVisibility * ceilingReveal);"}) {
+        EXPECT_NE(glslTerm.find(expected), std::string::npos)
+            << "missing `" << expected << "` in " << glslTerm;
+    }
+    for (const char *forbidden : {"styledBand", "hardDistPastRim", "gridState", "hash01"}) {
+        EXPECT_EQ(glslTerm.find(forbidden), std::string::npos)
+            << "the term feeds the state alone, never `" << forbidden << "`";
+    }
+
+    for (const std::string *kernel : {&glsl, &metal}) {
+        const std::string reveal = normalizeKernelMath(
+            extractSpan(*kernel, "fogRevealSample(", "float state = gridState;", "return FogReveal")
+        );
+        ASSERT_FALSE(reveal.empty());
+        const std::size_t loopEnd = reveal.rfind("hardDistPastRim = min(");
+        const std::size_t termAt =
+            reveal.find("if (state < 1.0 && losSourceMask != 0 && faceAxis != 2) {");
+        ASSERT_NE(loopEnd, std::string::npos);
+        ASSERT_NE(termAt, std::string::npos)
+            << "the term must fire only below full reveal, with a gated source, on a "
+               "vertical face: "
+            << reveal;
+        EXPECT_LT(loopEnd, termAt) << "the term composes after the sample's own sources";
+        EXPECT_NE(
+            reveal.find(
+                "const float topState = fogColumnTopState(columnPoint, aaFloor, cellChannels, "
+                "losFieldMin, state); if (topState > state) { state = topState; styledBand = "
+                "0.0; } }",
+                termAt
+            ),
+            std::string::npos
+        ) << "a raised sample takes the top's state and no band: "
+          << reveal;
+    }
+
+    const std::string glslLos = readShaderSource(kGlslFogLosPath);
+    const std::string canonical =
+        normalizeLosMath(extractFunctionBody(glslLos, "fogLosCanonicalSample"));
+    const std::string columnPoint =
+        normalizeLosMath(extractFunctionBody(glslLos, "fogLosColumnPoint"));
+    EXPECT_NE(
+        canonical.find(
+            "return fogLosFacePoint(pos3D, worldFaceId, route, scale) + "
+            "faceOutwardNormal6(worldFaceId) * kFogLosFaceBias;"
+        ),
+        std::string::npos
+    ) << canonical;
+    for (const char *expected :
+         {"const vec3 inward = fogLosFacePoint(pos3D, worldFaceId, route, scale) - normal * "
+          "kFogLosFaceBias;",
+          "if (route != kFogLosRouteCardinal || normal.z != 0.0) { return inward; }",
+          "const float lattice = float(roundHalfUp(dot(pos3D, inPlane) * micro)) / micro;",
+          "const float cellSide = dot(rotateCardinalZInv(vec3(1.0, 1.0, 0.0), cardinalIndex), "
+          "inPlane);",
+          "return mix(inward, vec3(lattice + cellSide * kFogLosFaceBias), inPlane);"}) {
+        EXPECT_NE(columnPoint.find(expected), std::string::npos)
+            << "missing `" << expected << "` in " << columnPoint;
+    }
+    EXPECT_EQ(columnPoint.find("kFogLosRouteAnalytic"), std::string::npos)
+        << "an analytic sample steps into its face like every other route";
+
+    const char *const passColumnPoint =
+        "columnPoint = fogLosColumnPoint(pos3D, faceId, losRoute, scale, "
+        "rasterYawCardinalIndex(rasterYaw));";
+    const char *const overflowColumnPoint =
+        "columnPoint = fogLosColumnPoint(pos3D, faceId, kFogLosRoutePerAxis, 1, 0);";
+    const std::pair<std::string, const char *> routes[] = {
+        {kGlslFogPassPath, passColumnPoint},
+        {kMetalFogPassPath, passColumnPoint},
+        {kGlslFogOverflowPath, overflowColumnPoint},
+        {kMetalFogOverflowPath, overflowColumnPoint},
+    };
+    for (const auto &[path, columnPointCall] : routes) {
+        SCOPED_TRACE(path);
+        const std::string route = normalizeKernelMath(readShaderSource(path));
+        ASSERT_FALSE(route.empty());
+        EXPECT_NE(route.find(columnPointCall), std::string::npos);
+        EXPECT_NE(
+            route.find("fogRevealSample(pos3D, losSample, columnPoint, faceId >> 1, aaFloor"),
+            std::string::npos
+        ) << "the route must hand the kernel its column point and face axis";
+    }
+}
+
 // Test E, part 10: the reveal-surface ceiling and treatment. The pure helpers
 // reduce to the same maths on both backends and take the integer-only hash
 // form, the cut tone agrees with the C++ default, both fog passes declare
@@ -1013,118 +1125,6 @@ TEST(FogCrossSectionShaderParity, CeilingScalesEachSourceBeforeTheMaximumOnBothB
         std::string::npos
     ) << "the drop must scale each source by its ceiling inside the max: "
       << glslDrop;
-}
-
-// Test E, part 12: the column-top term. The term's body reduces to the same
-// maths on both backends; the shared reveal applies it only to a vertical
-// face of a sample below full reveal on a frame with a gated source, raises
-// the state alone and clears the band of a sample it raises; the column
-// point steps into the face where the canonical sample steps out of it, and
-// on the cardinal route snaps a vertical face's in-plane coordinate into the
-// drawn cell; and every paint route hands the kernel its column point and
-// face axis.
-TEST(FogCrossSectionShaderParity, ColumnTopTermIsIdenticalAcrossBackends) {
-    const std::string glsl = readShaderSource(kGlslFogCommonPath);
-    const std::string metal = readShaderSource(kMetalFogCommonPath);
-    const std::string glslTerm =
-        normalizeKernelMath(extractFunctionBody(glsl, "fogColumnTopState"));
-    const std::string metalTerm =
-        normalizeKernelMath(extractFunctionBody(metal, "fogColumnTopState"));
-    ASSERT_FALSE(glslTerm.empty()) << "fogColumnTopState not found in GLSL";
-    ASSERT_FALSE(metalTerm.empty()) << "fogColumnTopState not found in MSL";
-    EXPECT_EQ(glslTerm, metalTerm) << "the column-top term diverged between backends";
-    for (const char *expected :
-         {"const float topZ = fogLosTopPlane(fogLosHalfCellOf(columnPoint.xy), losFieldMin);",
-          "if (topZ == kFogLosColumnEmpty || topZ >= columnPoint.z - kFogLosClearanceTolerance) "
-          "{ return state; }",
-          "const vec3 top = vec3(columnPoint.xy, topZ);",
-          "if ((visionCircleChannels[i / 4][i % 4] & cellChannels) == 0u) { continue; }",
-          "fogCeilingVisibility(visionCircleCeilings[i], dzUp);",
-          "if (ceilingReveal <= state) { continue; }",
-          "losVisibility = fogLosVisibility(fogLosEye(visionCircles[i], heights.x, "
-          "losParams[i].x), top, losParams[i].y, losFieldMin);",
-          "state = max(state, losVisibility * ceilingReveal);"}) {
-        EXPECT_NE(glslTerm.find(expected), std::string::npos)
-            << "missing `" << expected << "` in " << glslTerm;
-    }
-    for (const char *forbidden : {"styledBand", "hardDistPastRim", "gridState", "hash01"}) {
-        EXPECT_EQ(glslTerm.find(forbidden), std::string::npos)
-            << "the term feeds the state alone, never `" << forbidden << "`";
-    }
-
-    for (const std::string *kernel : {&glsl, &metal}) {
-        const std::string reveal = normalizeKernelMath(
-            extractSpan(*kernel, "fogRevealSample(", "float state = gridState;", "return FogReveal")
-        );
-        ASSERT_FALSE(reveal.empty());
-        const std::size_t loopEnd = reveal.rfind("hardDistPastRim = min(");
-        const std::size_t termAt =
-            reveal.find("if (state < 1.0 && losSourceMask != 0 && faceAxis != 2) {");
-        ASSERT_NE(loopEnd, std::string::npos);
-        ASSERT_NE(termAt, std::string::npos)
-            << "the term must fire only below full reveal, with a gated source, on a "
-               "vertical face: "
-            << reveal;
-        EXPECT_LT(loopEnd, termAt) << "the term composes after the sample's own sources";
-        EXPECT_NE(
-            reveal.find(
-                "const float topState = fogColumnTopState(columnPoint, aaFloor, cellChannels, "
-                "losFieldMin, state); if (topState > state) { state = topState; styledBand = "
-                "0.0; } }",
-                termAt
-            ),
-            std::string::npos
-        ) << "a raised sample takes the top's state and no band: "
-          << reveal;
-    }
-
-    const std::string glslLos = readShaderSource(kGlslFogLosPath);
-    const std::string canonical =
-        normalizeLosMath(extractFunctionBody(glslLos, "fogLosCanonicalSample"));
-    const std::string columnPoint =
-        normalizeLosMath(extractFunctionBody(glslLos, "fogLosColumnPoint"));
-    EXPECT_NE(
-        canonical.find(
-            "return fogLosFacePoint(pos3D, worldFaceId, route, scale) + "
-            "faceOutwardNormal6(worldFaceId) * kFogLosFaceBias;"
-        ),
-        std::string::npos
-    ) << canonical;
-    for (const char *expected :
-         {"const vec3 inward = fogLosFacePoint(pos3D, worldFaceId, route, scale) - normal * "
-          "kFogLosFaceBias;",
-          "if (route != kFogLosRouteCardinal || normal.z != 0.0) { return inward; }",
-          "const float lattice = float(roundHalfUp(dot(pos3D, inPlane) * micro)) / micro;",
-          "const float cellSide = dot(rotateCardinalZInv(vec3(1.0, 1.0, 0.0), cardinalIndex), "
-          "inPlane);",
-          "return mix(inward, vec3(lattice + cellSide * kFogLosFaceBias), inPlane);"}) {
-        EXPECT_NE(columnPoint.find(expected), std::string::npos)
-            << "missing `" << expected << "` in " << columnPoint;
-    }
-    EXPECT_EQ(columnPoint.find("kFogLosRouteAnalytic"), std::string::npos)
-        << "an analytic sample steps into its face like every other route";
-
-    const char *const passColumnPoint =
-        "columnPoint = fogLosColumnPoint(pos3D, faceId, losRoute, scale, "
-        "rasterYawCardinalIndex(rasterYaw));";
-    const char *const overflowColumnPoint =
-        "columnPoint = fogLosColumnPoint(pos3D, faceId, kFogLosRoutePerAxis, 1, 0);";
-    const std::pair<std::string, const char *> routes[] = {
-        {kGlslFogPassPath, passColumnPoint},
-        {kMetalFogPassPath, passColumnPoint},
-        {kGlslFogOverflowPath, overflowColumnPoint},
-        {kMetalFogOverflowPath, overflowColumnPoint},
-    };
-    for (const auto &[path, columnPointCall] : routes) {
-        SCOPED_TRACE(path);
-        const std::string route = normalizeKernelMath(readShaderSource(path));
-        ASSERT_FALSE(route.empty());
-        EXPECT_NE(route.find(columnPointCall), std::string::npos);
-        EXPECT_NE(
-            route.find("fogRevealSample(pos3D, losSample, columnPoint, faceId >> 1, aaFloor"),
-            std::string::npos
-        ) << "the route must hand the kernel its column point and face axis";
-    }
 }
 
 // Test E, part 7: the BODY branch of the fog pass — the pixel takes the

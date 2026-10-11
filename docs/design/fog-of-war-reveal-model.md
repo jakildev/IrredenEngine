@@ -233,6 +233,76 @@ no ceiling and no line-of-sight factor scales it.
 The CPU oracle (`IRPrefab::Fog::evalReveal`) and the GLSL and Metal FIELD
 paint evaluate this one definition.
 
+### Treatment
+
+With the treatment disabled, a partial contribution simply stands. The sample
+blends toward the unexplored colour by its reveal, and a fully cut sample is
+the flat unexplored colour. The treatment adds a dissolve and a cap tone to
+the partial band.
+
+The style belongs to the canvas: one `dissolveDensity` and one `capTone`,
+each in [0, 1], enabled and cleared explicitly. The ceiling and fade stay per
+source. Because there is one style per canvas, two overlapping sources, or a
+ceiling cut and a line-of-sight cut, cannot disagree about how one sample
+looks.
+
+A source's contribution styles a FIELD sample only when both conditions hold:
+
+1. The contribution is partial: `0 < surfaceVisibility < 1`.
+2. The contribution wins. It raises the sample's reveal above the grid term
+   and above every other source's contribution.
+
+A fully visible competing source or a VISIBLE grid cell therefore suppresses
+the treatment, because the partial contribution no longer decides the sample.
+The ceiling and line-of-sight factors are never styled separately. Their
+product is the one factor the treatment reads, so a sample carries at most
+one treatment. Among contributions that tie, the one with the larger band
+weight (see [Cap tone](#cap-tone)) styles the sample.
+
+A hard ceiling on a source with a hard or absent line-of-sight gate has no
+partial band, so the treatment marks nothing there. A creation that wants a
+marked cut authors a `fadeHeight` or a line-of-sight softness.
+
+### Dissolve
+
+The dissolve is a colour decision and never removes geometry. Each world
+voxel has one fixed hash value in [0, 1]. A fragment of the styled
+contribution is retained when
+
+```
+hash <= mix(1, surfaceVisibility, dissolveDensity)
+```
+
+and rejected otherwise. At density 0 every fragment is retained. At density 1
+a fragment is retained only where its voxel's hash is at most
+`surfaceVisibility`, so the band thins from solid at its fully visible edge
+to empty at its fully cut edge.
+
+The source of a rejected fragment contributes nothing to that sample. The
+sample falls back to the maximum of the grid term and the remaining sources,
+which is the unexplored colour when nothing else reveals it. Its geometry is
+still drawn.
+
+The hash is integer arithmetic over the sample's integer world voxel, built
+from fixed-width xor and multiply steps and written identically in GLSL and
+Metal. Nothing else enters it: no frame counter, no camera or yaw term, and
+no floating-point transcendental. A voxel makes the same decision on every
+frame, at every camera yaw, on every painted route and on both backends.
+
+### Cap tone
+
+A retained fragment of the styled contribution is blended toward its source
+colour multiplied by `capTone`, on every face axis. The weight of that blend,
+the *band weight*, is zero where `surfaceVisibility` is 0 or 1 and peaks at
+the midpoint of the band, so the cap meets the untreated colour at both
+edges. This document fixes those three points. The implementation child
+fixes the curve between them and pins it across GLSL and Metal.
+
+The blend is the helper the radial rim cap uses, so a ceiling cut, a soft
+line-of-sight edge and a disc rim share one cap language. The radial rim cap
+is unchanged in where it applies: hard discs only, unexplored grid cells
+only, vertical faces only, and within two cells past the rim.
+
 ### Column top
 
 **Landing child:** #4304.
@@ -248,7 +318,7 @@ A FIELD sample on a vertical face therefore takes the larger of its own
 reveal and the reveal at the top plane of the column it belongs to:
 
 ```
-own   = the composition above, evaluated at the sample
+own   = the composition, treatment included, evaluated at the sample
 p     = facePoint - kFogLosFaceBias * n
 topZ  = the column field's top plane at p's half-cell
 T     = (p.x, p.y, topZ)
@@ -328,76 +398,6 @@ take the term.
 the term never fires and nothing changes by a byte. With a gated source, a
 sample changes only where a source reveals the top of its own column above
 it.
-
-### Treatment
-
-With the treatment disabled, a partial contribution simply stands. The sample
-blends toward the unexplored colour by its reveal, and a fully cut sample is
-the flat unexplored colour. The treatment adds a dissolve and a cap tone to
-the partial band.
-
-The style belongs to the canvas: one `dissolveDensity` and one `capTone`,
-each in [0, 1], enabled and cleared explicitly. The ceiling and fade stay per
-source. Because there is one style per canvas, two overlapping sources, or a
-ceiling cut and a line-of-sight cut, cannot disagree about how one sample
-looks.
-
-A source's contribution styles a FIELD sample only when both conditions hold:
-
-1. The contribution is partial: `0 < surfaceVisibility < 1`.
-2. The contribution wins. It raises the sample's reveal above the grid term
-   and above every other source's contribution.
-
-A fully visible competing source or a VISIBLE grid cell therefore suppresses
-the treatment, because the partial contribution no longer decides the sample.
-The ceiling and line-of-sight factors are never styled separately. Their
-product is the one factor the treatment reads, so a sample carries at most
-one treatment. Among contributions that tie, the one with the larger band
-weight (see [Cap tone](#cap-tone)) styles the sample.
-
-A hard ceiling on a source with a hard or absent line-of-sight gate has no
-partial band, so the treatment marks nothing there. A creation that wants a
-marked cut authors a `fadeHeight` or a line-of-sight softness.
-
-### Dissolve
-
-The dissolve is a colour decision and never removes geometry. Each world
-voxel has one fixed hash value in [0, 1]. A fragment of the styled
-contribution is retained when
-
-```
-hash <= mix(1, surfaceVisibility, dissolveDensity)
-```
-
-and rejected otherwise. At density 0 every fragment is retained. At density 1
-a fragment is retained only where its voxel's hash is at most
-`surfaceVisibility`, so the band thins from solid at its fully visible edge
-to empty at its fully cut edge.
-
-The source of a rejected fragment contributes nothing to that sample. The
-sample falls back to the maximum of the grid term and the remaining sources,
-which is the unexplored colour when nothing else reveals it. Its geometry is
-still drawn.
-
-The hash is integer arithmetic over the sample's integer world voxel, built
-from fixed-width xor and multiply steps and written identically in GLSL and
-Metal. Nothing else enters it: no frame counter, no camera or yaw term, and
-no floating-point transcendental. A voxel makes the same decision on every
-frame, at every camera yaw, on every painted route and on both backends.
-
-### Cap tone
-
-A retained fragment of the styled contribution is blended toward its source
-colour multiplied by `capTone`, on every face axis. The weight of that blend,
-the *band weight*, is zero where `surfaceVisibility` is 0 or 1 and peaks at
-the midpoint of the band, so the cap meets the untreated colour at both
-edges. This document fixes those three points. The implementation child
-fixes the curve between them and pins it across GLSL and Metal.
-
-The blend is the helper the radial rim cap uses, so a ceiling cut, a soft
-line-of-sight edge and a disc rim share one cap language. The radial rim cap
-is unchanged in where it applies: hard discs only, unexplored grid cells
-only, vertical faces only, and within two cells past the rim.
 
 ### Routes and subject classes
 
