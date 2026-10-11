@@ -25,8 +25,10 @@ struct C_VoxelSetNew {
     int numVoxels_;
     ivec3 size_;
 
-    // Transient render gate. Fog-governed entities flip this once per entity;
-    // the pool mask carries the corresponding per-voxel GPU visibility.
+    // Transient render gate. A fog-governed BODY matches
+    // C_FogRevealed::shown_ on the active fog canvas and stays open in any
+    // other pool, where the owning canvas carries the hide. The pool mask
+    // mirrors this gate per voxel.
     bool visible_ = true;
 
     // Fog keeps this route mirror separate from `visible_`: a held ghost
