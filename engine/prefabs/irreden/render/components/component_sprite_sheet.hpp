@@ -12,7 +12,8 @@
 namespace IRComponents {
 
 /// One frame's slot in the sheet. @c uvRect_ is the normalized [0, 1]
-/// sub-rect of the atlas texture sampled while this frame is active.
+/// sub-rect of the atlas texture sampled while this frame is active, as
+/// `(u0, v0, u1, v1)` with `v0` at the frame's top row in the atlas image.
 /// @c sizePx_ is the frame's pixel footprint — kept per-frame so sheets
 /// with non-uniform cell sizes (variable-width characters, packed atlases)
 /// can override the sprite's spawn size when the active frame changes.

@@ -23,6 +23,8 @@ namespace IRComponents {
 /// graphics backend.
 ///
 /// @c uvRect_ is `(u0, v0, u1, v1)` in normalized [0, 1] texture coords.
+/// `v0` is the frame's top row in the atlas image and is drawn on the
+/// quad's top edge on screen on every graphics backend.
 /// For a still sprite this is the whole texture; for an animated sprite
 /// driven by @c C_SpriteSheet + @c C_SpriteAnimation, it is rewritten
 /// each tick to the active frame's UV rect.
