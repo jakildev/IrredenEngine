@@ -170,7 +170,11 @@ bounded index tile. Overflow falls back to the separately ray-baked depth map.
 OpenGL native execution and broad performance acceptance remain separate from
 the Metal screenshots and executable CPU tests of both shader implementations.
 
-Next checks are native OpenGL, finite-ray reception on curved SDF surfaces,
+[The bounded sphere receiver follow-up](sphere-receiver/README.md) now reconstructs
+the retained camera-ray hit for finite shadow queries, with an independent
+eight-angle external-shadow interior check. Other curved receiver types remain open.
+
+Next checks are native OpenGL, broader finite-ray reception on curved SDF surfaces,
 surface-normal/fragment reconstruction (the torus's no-shadow striping), and
 high-overlap/overflow performance. The isolated voxel floor footprints are
 already correct under the repaired measurement convention.

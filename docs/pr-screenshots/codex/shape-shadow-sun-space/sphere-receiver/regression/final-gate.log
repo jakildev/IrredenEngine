@@ -1,0 +1,49 @@
+
+shot                                     result     match%  max_d     psnr
+----------------------------------------------------------------------------
+zoom1_origin                             PASS        100.0      0      inf
+zoom2_origin                             PASS      99.9915     53    56.87
+zoom4_origin                             PASS      99.9701     53    51.28
+zoom1_odd_offset                         PASS        100.0      0      inf
+zoom8_origin                             PASS        100.0      0      inf
+zoom4_offset_3_5                         PASS      99.9701     53    51.27
+zoom16_lod_fine_sphere                   PASS        100.0      0      inf
+lod_swap_zoom1_cube                      PASS        100.0      0      inf
+lod_swap_zoom2_cube                      PASS      99.9915     53    56.87
+lod_swap_zoom4_cone                      PASS      99.9703     53    51.29
+lod_swap_zoom8_cone                      PASS      99.9968     53    61.66
+lod_swap_zoom16_sphere                   PASS        100.0      0      inf
+zoom4_yaw90                              PASS       99.951     53    49.63
+zoom4_yaw180                             PASS      99.9797     53    53.06
+zoom4_yaw270                             PASS        100.0      0      inf
+zoom4_yaw45_inter_cardinal               PASS      99.9702     53     51.3
+zoom8_yaw180                             PASS        100.0      0      inf
+zoom4_pan16_yaw0_pivot                   PASS      99.9704     53     51.3
+zoom4_pan16_yaw90_pivot                  PASS      99.9511     53    49.66
+zoom4_pan16_yaw180_pivot                 PASS      99.9797     53    53.06
+zoom4_pan16_yaw45_pivot                  PASS      99.9703     53     51.3
+zoom4_origin:coverage                    PASS     
+zoom16_lod_fine_sphere:silhouette        PASS     
+zoom1_origin:clip                        PASS     
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_000 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_001 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_002 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_003 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_004 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_005 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_006 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_007 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_008 PASS        100.0      0      inf
+lod_dense_swap:lod_dense_swap_z2         PASS        100.0      0      inf
+lod_dense_swap:lod_dense_swap_z8         PASS        100.0      0      inf
+viewport_portrait:portrait_world_z1      PASS        100.0      0      inf
+viewport_portrait:portrait_world_z1_world_yaw90 PASS        100.0      0      inf
+viewport_portrait:portrait_world_z1:clip PASS     
+viewport_portrait:portrait_world_z1_world_yaw90:clip PASS     
+viewport_portrait_lod_swap:portrait_lod_swap_z1 PASS        100.0      0      inf
+prefab_flower:prefab_flower_z1           PASS        100.0      0      inf
+prefab_flower:prefab_flower_z4           PASS        100.0      0      inf
+prefab_flower:prefab_flower_z16          PASS        100.0      0      inf
+editor_parts_z4:prefab_editor_parts_z4   PASS        100.0      0      inf
+
+[render-verify] all 44 checks PASS

@@ -78,6 +78,7 @@ layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
 
 #if IR_SHAPE_RECEIVER
 #include "ir_selected_shape_receiver.glsl"
+#include "ir_shape_shadow_receiver.glsl"
 
 #endif
 
@@ -188,6 +189,16 @@ void main() {
     // correction applies only to reconstructed sample position so a corrected
     // receiver keeps the cascade ownership assigned by its stored pixel.
     // The cascade PCF lookup is shared with the detached world-receive path.
-    float factor = shadowsEnabled == 0 ? 1.0 : worldSunShadowFactor(pos3D, normal, float(rawDepth));
+    float factor = 1.0;
+    if (shadowsEnabled != 0) {
+#if IR_SHAPE_RECEIVER
+        vec3 shadowPosition;
+        if (selectedShapeSphereShadowReceiver(pixel, size.x, shadowPosition))
+            factor = worldSurfaceSunShadowFactor(shadowPosition, normal,
+                float(rawDepth), sunCasterViewToWorld);
+        else
+#endif
+            factor = worldSunShadowFactor(pos3D, normal, float(rawDepth));
+    }
     imageStore(canvasSunShadow, pixel, vec4(factor, 0.0, 0.0, receiverFace));
 }

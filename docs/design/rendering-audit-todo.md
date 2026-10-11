@@ -14,8 +14,11 @@ Keep behavior-preserving consolidation separate from visual or scheduling fixes.
 The [analytic caster repair](../pr-screenshots/codex/shape-shadow-sun-space/README.md)
 in #4298 gives floor receivers sharp geometric shadows from eligible cone/torus casters:
 all 16 independent edge checks pass, without blur or silhouette dilation.
-Sphere/cylinder share the tested ray path. This does not certify curved receiver
-reconstruction or incomplete-index fallback edges.
+Sphere/cylinder share the tested ray path. The
+[sphere receiver repair](../pr-screenshots/codex/shape-shadow-sun-space/sphere-receiver/README.md)
+now queries the retained sample's true sphere surface without changing its
+displayed face normal. Other curved receivers, fragment reconstruction and
+incomplete-index fallback edges remain open.
 
 1. The measured Linux CI startup regression is repaired by cascade-call consolidation.
    The retained reports isolate 93.25% of zoom 1's excess to its first frame.
@@ -47,18 +50,26 @@ reconstruction or incomplete-index fallback edges.
    the checker validates the fixture and full encoded depth. Preserve legitimate voxel steps and keep
    continuous curve geometry as a separate comparison. The cardinal AO/local-light
    depth repair in #4308 does not change this producer/gather ownership path.
-4. Measure dense tile saturation, incomplete-index fallback, and moving
+4. Continue the ground-gap investigation with contact clearances, receiver modes
+   and dense scenes. Isolated rigid and revoxelized box sweeps at effective
+   density four completed cleanly without index saturation (maximum tile
+   counts 23 and 39 respectively). Inspected projections are solid; this
+   does not certify the broader CanvasStress scene or every receiver mode.
+5. Measure dense tile saturation, incomplete-index fallback, and moving
    camera/light costs. Small native scenes and software OpenGL CI do not qualify
-   hardware throughput or the million-entity target.
+   hardware throughput or the million-entity target. Profile the new sphere
+   receiver path before extending it; check whether rejecting unsupported frame
+   modes before owner-buffer reads materially reduces its overhead.
 
 ### FOW integration checkpoint (2026-10-11)
 
-Master `acc5210d6` includes #4248's fog-gate repair across rotation-mode switches;
+Master `9e45a862e` includes #4248's fog-gate repair across rotation-mode switches
+and #4319's FIELD column-top wall reveal;
 preserve its transition coverage. The following work is already filed elsewhere:
 
 | Existing work | Implication for this rendering session |
 |---|---|
-| #4319 / #4304: FIELD column-top wall reveal | Owns the shared fog formula and reference changes. BODY and EXEMPT keep their existing semantics. Do not duplicate this implementation. |
+| #4319 / #4304: FIELD column-top wall reveal | Merged and integrated into this branch. Owns the shared fog formula and reference changes. BODY and EXEMPT keep their existing semantics. Do not duplicate this implementation. |
 | #4269 / #4246: FIELD ceiling sun-shadow filtering | Still needs fixes and native/performance evidence. Our curved caster records must obey the same eligibility as finite box records; fog evaluation must use the curved hit, not AABB entry. |
 | #4305, revision 2 plan: voxel ceiling geometry cuts | Plans retained occupancy and real exposed caps, with static retained occupancy for shadows replacing the midpoint rule. Depends on #4304 and #4246 and remains parked for a dependency/plan update. It is not a landed renderer contract. |
 | #4321: FIELD performance fixture | Repairs the slab/wall fixture's unintended BODY adoption so it actually exercises the FIELD march. Existing timings from that fixture do not measure the added FIELD work. |
