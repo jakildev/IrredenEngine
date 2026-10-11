@@ -10,6 +10,11 @@ and shader hashes, including the shared quadratic-interval cleanup and the
 latest parent GLSL fix. The baseline lacks only that GLSL-only parent repair;
 its Metal rendering is the matching control.
 
+The final integrated build at `c24b5c7db`, including master `cf1d70e10`, also
+completed both eight-angle runs cleanly. All 16 RGB frames exactly match the
+measured after images; [integrated-captures.json](integrated-captures.json)
+records commands, revisions and RGB hashes.
+
 Each shape has eight complete before/after/control frames. Controls disable
 sun shadows; AO is disabled throughout. All capture runs exited cleanly.
 `sha256.json` hashes the native PNGs; no blur or image cleanup is applied.

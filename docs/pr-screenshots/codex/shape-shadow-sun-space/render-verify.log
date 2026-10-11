@@ -38,9 +38,9 @@ zoom4_pan16_yaw0_pivot                   PASS        100.0      0      inf
 zoom4_pan16_yaw90_pivot                  PASS        100.0      0      inf
 zoom4_pan16_yaw180_pivot                 PASS        100.0      0      inf
 zoom4_pan16_yaw45_pivot                  PASS        100.0      0      inf
-zoom4_origin:coverage                    PASS     
-zoom16_lod_fine_sphere:silhouette        PASS     
-zoom1_origin:clip                        PASS     
+zoom4_origin:coverage                    PASS
+zoom16_lod_fine_sphere:silhouette        PASS
+zoom1_origin:clip                        PASS
 pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_000 PASS        100.0      0      inf
 pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_001 PASS        100.0      0      inf
 pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_002 PASS        100.0      0      inf
@@ -54,8 +54,8 @@ lod_dense_swap:lod_dense_swap_z2         PASS        100.0      0      inf
 lod_dense_swap:lod_dense_swap_z8         PASS        100.0      0      inf
 viewport_portrait:portrait_world_z1      PASS        100.0      0      inf
 viewport_portrait:portrait_world_z1_world_yaw90 PASS        100.0      0      inf
-viewport_portrait:portrait_world_z1:clip PASS     
-viewport_portrait:portrait_world_z1_world_yaw90:clip PASS     
+viewport_portrait:portrait_world_z1:clip PASS
+viewport_portrait:portrait_world_z1_world_yaw90:clip PASS
 viewport_portrait_lod_swap:portrait_lod_swap_z1 PASS        100.0      0      inf
 prefab_flower:prefab_flower_z1           PASS        100.0      0      inf
 prefab_flower:prefab_flower_z4           PASS        100.0      0      inf
@@ -63,4 +63,3 @@ prefab_flower:prefab_flower_z16          PASS      99.9028     56     50.2
 editor_parts_z4:prefab_editor_parts_z4   PASS        100.0      0      inf
 
 [render-verify] all 44 checks PASS
-

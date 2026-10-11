@@ -79,4 +79,3 @@ PASS  test_verify_common_platform_launch_argv.py (11 tests)
 PASS  test_verify_common_png_dimensions.py (4 tests)
 
 run_all.sh: 79 suite(s) — 79 passed, 0 failed
-
