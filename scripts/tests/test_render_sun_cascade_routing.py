@@ -119,7 +119,8 @@ class SunCascadeRoutingTest(unittest.TestCase):
                      + "surface,rotation,bias)")
             variants = {
                 "production": body,
-                "nonfinite_visibility": re.sub(r"return 1\.0f? - shadowAccum;", "return NAN;", body),
+                "nonfinite_visibility": re.sub(
+                    r"return 1\.0f? - shadowAccum;", "return NAN;", body),
                 "lost_covering_cascade": body.replace("!nearInterior || ", ""),
                 "lost_blend_sample": body.replace("cascadeSamples = 2", "cascadeSamples = 1"),
                 "wrong_far_offset": body.replace("cascade * kCascadeTexelCount", "0"),

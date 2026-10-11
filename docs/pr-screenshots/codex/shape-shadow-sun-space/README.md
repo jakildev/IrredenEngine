@@ -109,8 +109,18 @@ GLSL/Metal controls pass 352 cases per backend, with eight mutations rejected.
 The native ShapeDebug suite passes all 44 checks, and all 16 cone/torus frames
 remain RGB-identical to the graded after images;
 [capture provenance](cascade-loop-captures.json) includes the uncommitted shader
-patch and source hashes. Same-runner CI timing is pending; these correctness
-checks do not establish a performance improvement.
+patch and source hashes. The complete render/tooling harness now passes all
+80 suites. The unchanged Linux performance gate now passes: full-frame means
+are -2.19% and +0.46% against the same master baseline. The same-runner head/base/
+head diagnostic confirms lower first-use cost but retains about 4.4% higher
+remaining-frame means at zoom 1, higher individual shadow-stage costs, and
+cache-order limits. This clears the observed gate failure; performance neutrality
+and a stable throughput improvement are not established.
+
+The separate [torus surface probe](torus-surface-probe/README.md) pairs beauty
+and normal diagnostics with both sun shadows and AO disabled. It identifies
+face-normal classes behind the surface bands, without assuming every stepped
+face is incorrect or changing their lighting.
 
 Three guarded 300-frame runs per revision use the same full ShapeDebug scene,
 zoom 4, yaw 45° and `profiles/timing.lua` to enable GPU stage timing:

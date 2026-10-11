@@ -59,7 +59,69 @@ The reports do not establish hardware OpenGL or Metal performance. Confirm
 the cause and any fix with controlled cold captures or a compiler stack trace;
 do not remove startup from the gate to hide this cost.
 
-## Reproduce
+## Cascade-call consolidation
+
+[Run 38163741822](https://github.com/jakildev/IrredenEngine/actions/runs/38163741822)
+passes the unchanged gate after consolidating five query call sites into one.
+Its PR head is `3fe9f6cd6477976473858bda30bd0d9d2b8c73c7`, captured as merge
+`356583fac111236ff49aaa1f22393fb8a26ede18`. [Raw results](cascade-loop/) and
+[provenance](cascade-loop-provenance.json) retain the reports and hashes.
+The selected baseline is the same `df9a13e5d` capture above, with close
+calibration (103.95 versus 103.96 ms).
+
+| Measurement | Master baseline | Before consolidation | After consolidation |
+|---|---:|---:|---:|
+| Zoom 1 full mean | 545.63 | 634.49 | 533.67 |
+| Zoom 1 first frame | 7880.404 | 12852.122 | 6981.058 |
+| Zoom 1 steady mean | 421.24 | 426.69 | 424.88 |
+| Zoom 4 full mean | 1635.40 | 1639.79 | 1642.96 |
+| Zoom 4 steady mean | 1613.97 | 1617.10 | 1622.53 |
+
+The full means are now -2.19% and +0.46% relative to master. These are separate
+class-matched hosted runs; the result removes the observed gate failure but does
+not isolate compiler work or prove a hardware GPU speedup. Zoom 4 CPU
+`ComputeSunShadow` remains higher (5.874→7.220 ms), including the minimum and
+the mean excluding the maximum; its GPU stage is nearly flat (10.497→10.545 ms).
+Do not describe every stage as unchanged.
+
+## Same-runner head/base/head
+
+[Diagnostic run 38163751570](https://github.com/jakildev/IrredenEngine/actions/runs/38163751570)
+captured new head, previous PR head, then new head again on one
+`linux-x86_64-epyc-9v74-80-unknown` runner. It did not publish a baseline.
+[Raw reports, manifests, comparisons and binary/shader hashes](same-runner/)
+retain all three arms. The binaries match; the two new-head shader hashes
+match each other and differ from the previous-head shaders.
+
+| Measurement, ms | New head first | Previous head | New head return |
+|---|---:|---:|---:|
+| Zoom 1 full mean | 428.89 | 435.33 | 379.54 |
+| Zoom 1 first frame | 4324.679 | 5612.153 | 1360.089 |
+| Zoom 1 steady mean | 343.15 | 346.81 | 369.28 |
+| Zoom 1 remaining 59-frame mean | 362.856 | 347.590 | 362.923 |
+| Zoom 4 full mean | 1184.15 | 1189.77 | 1188.31 |
+| Zoom 4 steady mean | 1167.35 | 1172.67 | 1171.32 |
+
+Both new-head full-window means are below the previous head. This diagnostic
+workflow completes comparisons without applying the performance gate; the
+separate PR run above is the gate pass. However,
+shader caches are not cleared between arms: unchanged shaders can be warm in
+the previous-head arm, and the return head can reuse its first arm's compiled
+shaders. The large return-head first-frame gain is not a cold-start result.
+Zoom 1 steady time varies by 7.6% between the identical new-head arms; its
+return is 6.5% above the previous head. Both new-head remaining-frame means are
+about 4.4% higher. The first head has 13 slow frames at indices 2–14, excluded
+by the official warm-up; the return has 14 at indices 21–34, included in its
+steady statistic. Do not select the more favorable warm-up result as a speedup.
+Zoom 1 GPU `computeSunShadow` rises 14.112→16.383/16.682 ms (16–18%),
+including higher minima. Zoom 4 CPU `ComputeSunShadow` rises
+4.911→5.247/5.328 ms while its GPU stage falls 15.76→15.08/15.02 ms.
+These runs support reduced first-use cost, with unresolved runtime costs, not
+a stable throughput gain or full stage parity. Attribute the repeatable stage
+costs and frame bursts before claiming performance neutrality; dense native
+profiling and hardware GPU validation remain open.
+
+## Reproduce comparisons
 
 From the repository root, this flat capture layout reproduces the raw failing
 comparison against the already-selected baseline (expected exit status 1):

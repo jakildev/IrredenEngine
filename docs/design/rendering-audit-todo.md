@@ -9,6 +9,33 @@ The [rendering/profiling cleanup audit](render-profile-cleanup-audit.md) records
 the parallel audit findings and bounded follow-ups after the timing-control stack.
 Keep behavior-preserving consolidation separate from visual or scheduling fixes.
 
+## Active analytic-shadow follow-up
+
+The [analytic caster repair](../pr-screenshots/codex/shape-shadow-sun-space/README.md)
+in #4298 gives floor receivers sharp geometric shadows from eligible cone/torus casters:
+all 16 independent edge checks pass, without blur or silhouette dilation.
+Sphere/cylinder share the tested ray path. This does not certify curved receiver
+reconstruction or incomplete-index fallback edges.
+
+1. The measured Linux CI startup regression is repaired by cascade-call consolidation.
+   The retained reports isolate 93.25% of zoom 1's excess to its first frame.
+   All 44 native regression checks and all 16 isolated cone/torus images are
+   preserved. The unchanged CI gate passes. The same-runner diagnostic retains
+   about 4.4% higher remaining-frame means and higher shadow-stage costs despite
+   the first-use improvement. Attribute and reduce those costs before claiming
+   performance neutrality; these results do not establish a throughput gain.
+2. Integrate the overlapping fog-caster work in #4269, preserving FIELD checks
+   for curved record publication and final hit depth. Native OpenGL visual
+   smoke remains tracked validation debt, not a merge gate by itself.
+3. Classify the [torus surface bands](../pr-screenshots/codex/shape-shadow-sun-space/torus-surface-probe/README.md)
+   against independently projected occupied samples and their finite faces.
+   Paired no-shadow/no-AO captures tie them to normal classes, but do not prove
+   the faces are wrong. Preserve legitimate voxel steps; compare continuous
+   curve geometry separately before extending finite receiver reconstruction.
+4. Measure dense tile saturation, incomplete-index fallback, and moving
+   camera/light costs. Small native scenes and software OpenGL CI do not qualify
+   hardware throughput or the million-entity target.
+
 ## Current follow-up: finite GRID face coverage
 
 The [cardinal gather follow-up](../pr-screenshots/codex/scatter-boundary-ownership/README.md)
