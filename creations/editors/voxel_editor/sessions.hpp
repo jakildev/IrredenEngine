@@ -171,9 +171,8 @@ inline Id idFromName(const std::string &name) {
     return Id::NONE;
 }
 
-// The sessions that run on a ComponentAttachSpec.
-constexpr bool isComponentSession(Id id) {
-    return id == Id::COMPONENT_ATTACH || id == Id::COMPONENT_FIELD_PAGE ||
+constexpr bool usesComponentSpec(Id id) {
+    return id == Id::REMOVE_PART || id == Id::COMPONENT_ATTACH || id == Id::COMPONENT_FIELD_PAGE ||
            id == Id::COMPONENT_FIELD_KEY;
 }
 
@@ -1633,7 +1632,17 @@ inline Recipe build(
     }
     case Id::REMOVE_PART: {
         Builder builder("remove_part", sceneSize, sceneOrigin);
+        for (const std::string &error : componentSpec.errors_)
+            builder.recordError(error);
+        if (!componentSpec.errors_.empty())
+            return builder.finish();
         const IRMath::ivec3 edited(sceneSize.x / 2, sceneSize.y / 2, sceneSize.z / 2 - 3);
+        const IRMath::ivec3 center(sceneSize.x / 2, sceneSize.y / 2, sceneSize.z / 2);
+        const IRMath::ivec3 blobFront = center + IRMath::ivec3(0, 0, -2);
+        const IRMath::ivec3 groupEdit = center + IRMath::ivec3(0, 0, -3);
+        const IRMath::vec3 groupAxis(0.0f, 0.0f, 1.0f);
+        const IRMath::ivec3 groupPartA = rotateCell(groupEdit, sceneSize, groupAxis, -2, 3);
+        const IRMath::ivec3 groupPartB = rotateCell(groupEdit, sceneSize, groupAxis, -1, 3);
 
         builder.segment("cold_undo_edit");
         builder.addVoxelPart();
@@ -1660,6 +1669,26 @@ inline Recipe build(
         builder.dragLodSlider(SliderTarget::LOD_FINE, 2);
         builder.bakeSphere(detail::kFirstWriteBlobRadius);
 
+        builder.segment("attach_source_component");
+        builder.clickGui(componentListRowCenterGuiTrixel(componentSpec.listRow_));
+        builder.clickGui(componentButtonCenterGuiTrixel(kComponentAttachPos));
+        if (componentSpec.fieldPage_ > 0) {
+            for (int page = 0; page < componentSpec.fieldPage_; ++page)
+                builder.clickGui(componentButtonCenterGuiTrixel(kComponentPageNextPos));
+        }
+        builder.typeText(
+            componentFieldInputCenterGuiTrixel(componentSpec.fieldRow_),
+            componentSpec.typedText_
+        );
+        builder.expectComponentValue(
+            1,
+            componentSpec.component_,
+            componentSpec.field_,
+            componentSpec.value_,
+            true,
+            "source_component_has_distinct_value"
+        );
+
         builder.segment("array_and_edit_source");
         builder.applyRadialArray(3);
         builder.nextPart();
@@ -1675,31 +1704,109 @@ inline Recipe build(
         builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonM);
         builder.expectCanvasCount(1, "preview_owns_private_canvas");
 
-        builder.segment("remove_source");
+        builder.segment("remove_source_with_preview");
         builder.removeSelectedPart();
         builder.expectPartCount(4, "source_removal_drops_part_count");
+        builder.expectSelectedPartVisible(1, "source_removal_selects_neighbor");
         builder.expectCanvasCount(0, "source_removal_releases_preview_canvas");
 
-        builder.segment("undo_source_removal");
+        builder.segment("undo_previewed_source_removal");
         builder.undoRemovedPart();
         builder.expectPartCount(5, "undo_restores_source_count");
+        builder.expectSelectedPartVisible(1, "undo_reselects_restored_source");
+
+        builder.segment("detached_source");
+        builder.tapKey(IRInput::kKeyButtonM);
+        builder.expectCanvasCount(1, "detached_source_owns_private_canvas");
+        builder.expectRotationMode(
+            1,
+            IRComponents::RotationMode::DETACHED,
+            "source_uses_non_default_mode_and_canvas"
+        );
+
+        builder.segment("remove_detached_source");
+        builder.removeSelectedPart();
+        builder.expectPartCount(4, "detached_source_removal_drops_part_count");
+        builder.expectCanvasCount(0, "detached_source_removal_releases_canvas");
+
+        builder.segment("undo_detached_source_removal");
+        builder.undoRemovedPart();
+        builder.expectPartCount(5, "undo_restores_detached_source_count");
+        builder.expectSelectedPartVisible(1, "undo_reselects_detached_source");
+        builder.expectPartId(1, "part_2", "undo_restores_authored_part_id");
         builder.expectPartTransform(1, movedOrigin, 0.25f, true, "undo_restores_transform");
         builder.expectSliderValue(SliderTarget::LOD_FINE, 2.0f, 0.01f, "undo_restores_lod_band");
         builder.expectPartOccupancy(1, edited, true, "undo_restores_voxels");
-        builder.expectCanvasCount(0, "undo_restores_grid_mode_without_private_canvas");
+        builder.expectRotationMode(
+            1,
+            IRComponents::RotationMode::DETACHED,
+            "undo_restores_non_default_mode_and_canvas"
+        );
+        builder.expectCanvasCount(1, "undo_restores_source_private_canvas");
+        builder.expectComponentValue(
+            1,
+            componentSpec.component_,
+            componentSpec.field_,
+            componentSpec.value_,
+            true,
+            "undo_restores_component_value"
+        );
 
         builder.segment("undo_pre_removal_edit");
         builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
         builder.expectPartOccupancy(1, edited, false, "older_edit_targets_restored_entity");
 
+        builder.segment("select_rotation_group_member");
+        builder.nextPart();
+        builder.nextPart();
+        builder.nextPart();
+        builder.toggleRotationalSymmetry();
+        builder.expectSelectedPartVisible(4, "rotation_group_member_selected");
+
+        builder.segment("remove_rotation_group_member");
+        builder.removeSelectedPart();
+        builder.expectPartCount(4, "rotation_group_shrinks_by_one");
+        builder.expectSelectedPartVisible(3, "short_group_selects_surviving_neighbor");
+
+        builder.segment("short_group_edit");
+        builder.click(groupEdit);
+        builder.expectPartOccupancy(3, groupEdit, true, "short_group_edits_selected_survivor");
+        builder.expectPartOccupancy(2, groupPartA, false, "short_group_does_not_fan_out");
+
+        builder.segment("undo_short_group_edit");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.expectPartOccupancy(3, groupEdit, false, "short_group_edit_undoes_first");
+
+        builder.segment("restore_rotation_group_member");
+        builder.undoRemovedPart();
+        builder.expectPartCount(5, "rotation_group_member_restored");
+        builder.expectSelectedPartVisible(4, "restored_group_member_reselected");
+
+        builder.segment("restored_group_edit");
+        builder.click(groupEdit);
+        builder
+            .expectPartOccupancy(2, groupPartA, true, "restored_group_first_member_receives_edit");
+        builder
+            .expectPartOccupancy(3, groupPartB, true, "restored_group_second_member_receives_edit");
+        builder.expectPartOccupancy(
+            4,
+            groupEdit,
+            true,
+            "restored_group_selected_member_receives_edit"
+        );
+
         builder.segment("save_without_source");
+        builder.nextPart();
+        builder.nextPart();
         builder.removeSelectedPartWithButton();
         builder.save();
         builder.expectManifestOmits("id = \"part_2\"", "removed_source_omitted_from_manifest");
+        builder.expectManifestContains("id = \"part_3\"", "surviving_group_id_in_manifest");
 
         builder.segment("reload_survivors");
         builder.reload();
         builder.expectPartCount(4, "reload_keeps_only_surviving_parts");
+        builder.expectPartOccupancy(1, blobFront, true, "surviving_group_state_survives_reload");
         return builder.finish();
     }
     case Id::TIER_SCRUB: {

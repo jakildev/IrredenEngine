@@ -3020,6 +3020,18 @@ bool evaluatePartCountCheck(const void *context, std::string &actual) {
     return count == check.expected_;
 }
 
+bool evaluatePartIdCheck(const void *context, std::string &actual) {
+    const PartIdCheck &check = *static_cast<const PartIdCheck *>(context);
+    if (check.partIndex_ < 0 ||
+        check.partIndex_ >= static_cast<int>(g_entityScene.parts().size())) {
+        actual = "part index out of range";
+        return false;
+    }
+    const std::string &id = g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)].id_;
+    actual = "id=" + id + " want=" + check.expected_;
+    return id == check.expected_;
+}
+
 bool evaluatePartAuthoredCountCheck(const void *context, std::string &actual) {
     const PartAuthoredCountCheck &check = *static_cast<const PartAuthoredCountCheck *>(context);
     if (check.partIndex_ < 0 ||
@@ -3389,9 +3401,10 @@ Session::ComponentAttachSpec resolveComponentAttachSpec(Session::Id id) {
                                  : keyed ? "componentFieldKey"
                                          : "componentAttach";
     Session::ComponentAttachSpec spec;
-    spec.session_ = paged   ? "component_field_page"
-                    : keyed ? "component_field_key"
-                            : "component_attach";
+    spec.session_ = paged                            ? "component_field_page"
+                    : keyed                          ? "component_field_key"
+                    : id == Session::Id::REMOVE_PART ? "remove_part"
+                                                     : "component_attach";
     if (!g_moduleHost.loaded()) {
         spec.errors_.push_back(spec.session_ + " needs --module <dir>");
         return spec;
@@ -3710,7 +3723,7 @@ int main(int argc, char **argv) {
                 ? IRVoxelEditor::resolveModuleSessionSpec()
                 : IRVoxelEditor::Session::ModuleSessionSpec{};
         const IRVoxelEditor::Session::ComponentAttachSpec componentSpec =
-            IRVoxelEditor::Session::isComponentSession(IRVoxelEditor::g_sessionId)
+            IRVoxelEditor::Session::usesComponentSpec(IRVoxelEditor::g_sessionId)
                 ? IRVoxelEditor::resolveComponentAttachSpec(IRVoxelEditor::g_sessionId)
                 : IRVoxelEditor::Session::ComponentAttachSpec{};
         IRVoxelEditor::g_session = IRVoxelEditor::Session::build(

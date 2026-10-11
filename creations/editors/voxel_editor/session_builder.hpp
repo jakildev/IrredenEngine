@@ -361,6 +361,12 @@ struct PartCountCheck {
     std::string name_;
 };
 
+struct PartIdCheck {
+    int partIndex_ = 0;
+    std::string expected_;
+    std::string name_;
+};
+
 struct PartAuthoredCountCheck {
     int partIndex_ = 0;
     int expected_ = 0;
@@ -532,6 +538,7 @@ struct Recipe {
     std::deque<OccupancyCheck> checks_;
     std::deque<PartTransformCheck> partTransformChecks_;
     std::deque<PartCountCheck> partCountChecks_;
+    std::deque<PartIdCheck> partIdChecks_;
     std::deque<PartAuthoredCountCheck> partAuthoredCountChecks_;
     std::deque<PartEditableCheck> partEditableChecks_;
     std::deque<CanvasCountCheck> canvasCountChecks_;
@@ -593,6 +600,7 @@ inline void resolveShots(Recipe &recipe) {
 bool evaluateOccupancyCheck(const void *context, std::string &actual);
 bool evaluatePartTransformCheck(const void *context, std::string &actual);
 bool evaluatePartCountCheck(const void *context, std::string &actual);
+bool evaluatePartIdCheck(const void *context, std::string &actual);
 bool evaluatePartAuthoredCountCheck(const void *context, std::string &actual);
 bool evaluatePartEditableCheck(const void *context, std::string &actual);
 bool evaluateCanvasCountCheck(const void *context, std::string &actual);
@@ -1223,6 +1231,14 @@ class Builder {
             m_recipe.partCountChecks_,
             PartCountCheck{expected, std::move(name)},
             &evaluatePartCountCheck
+        );
+    }
+
+    void expectPartId(int partIndex, std::string expected, std::string name) {
+        addPredicateCheck(
+            m_recipe.partIdChecks_,
+            PartIdCheck{partIndex, std::move(expected), std::move(name)},
+            &evaluatePartIdCheck
         );
     }
 
