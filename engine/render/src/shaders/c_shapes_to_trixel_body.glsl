@@ -918,7 +918,7 @@ void main() {
             surfaceD + originDistance,
             smoothMode && !smoothYaw,
             IR_SHAPE_PASS == 2,
-            frameData.finiteCoverage != 0,
+            finiteCoverage != 0,
             sub
         );
         // Store selection is per canvas, not per camera pose. Main/entity
