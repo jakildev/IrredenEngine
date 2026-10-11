@@ -14,17 +14,36 @@ remote). Idempotent:
 ```bash
 base=<the PR's base branch>            # already resolved by the stack mode
 child_pr=<the just-opened PR number>
-parent_pr=$(gh pr list --head "$base" --state open --json number -q '.[0].number')
-if [[ -z "$parent_pr" ]]; then
-    echo "native-stack-link: no open PR for base $base — skipping link" >&2
-else
-    stack=$(gh api "repos/{owner}/{repo}/stacks" \
-        --jq "[.[] | select(.open) | select(any(.pull_requests[]; .number == ${parent_pr}))][0].number")
+parent_rows=$(gh pr list --head "$base" --state all \
+    --json number,state,headRefOid)
+parent_pr=$(jq -r '[.[] | select(.state == "OPEN")][0].number // empty' \
+    <<< "$parent_rows")
+merged_parent=$(jq -r '[.[] | select(.state == "MERGED")][0].number // empty' \
+    <<< "$parent_rows")
+if [[ -n "$parent_pr" ]]; then
+    stack_pages=$(gh api --paginate --slurp "repos/{owner}/{repo}/stacks")
+    stack=$(jq -r "[.[][] | select(.open) | select(any(.pull_requests[]; .number == ${parent_pr}))][0].number // empty" \
+        <<< "$stack_pages")
     if [[ -n "$stack" && "$stack" != "null" ]]; then
         gh stack link "$stack" "$child_pr"      # append to the parent's existing stack
     else
         gh stack link "$parent_pr" "$child_pr"  # create a new two-PR stack
     fi
+elif [[ -n "$merged_parent" ]]; then
+    parent_sha=$(jq -r ".[] | select(.number == ${merged_parent}) | .headRefOid" \
+        <<< "$parent_rows")
+    branch=$(git branch --show-current)
+    pushed_sha=$(git rev-parse "refs/remotes/origin/$branch")
+    if ! git rebase --onto origin/master "$parent_sha"; then
+        exit 1
+    fi
+    if ! git push origin "HEAD:refs/heads/$branch" \
+            --force-with-lease="refs/heads/$branch:$pushed_sha"; then
+        exit 1
+    fi
+    gh pr edit "$child_pr" --base master
+else
+    echo "native-stack-link: no open PR for base $base — skipping link" >&2
 fi
 ```
 
@@ -32,9 +51,9 @@ fi
   github/gh-stack`; `scripts/fleet/install.sh` bootstraps it). Exit code 9
   means Stacked PRs is not enabled for the repo — surface to the human,
   don't retry.
-- A skipped link (parent PR missing, extension unavailable) leaves an
-  ordinary branch-based PR the merger's legacy stacked handling services;
-  prefer fixing the link, and surface the skip in your report.
+- A merged parent is not a skipped link: replay only the child's commits,
+  push, then retarget to `master`, in that order. A genuinely missing parent
+  remains an ordinary branch-based PR and must be surfaced in the report.
 - Never write `Stacked on:` / `Full chain:` body lines and never add a
   stack label — membership is the server object (`baseRefName !=
   "master"` + the PR header's stack badge).

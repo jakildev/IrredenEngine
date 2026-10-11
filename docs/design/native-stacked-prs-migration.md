@@ -135,3 +135,7 @@ the preview being pulled or paywalled.
    always retarget to `master` before merging. The scout swap is Phase 2;
    until then the merger scoping guard keeps legacy interpretation away
    from native stacks.
+4. **Claim→open merge window** — a parent can merge after a stackable claim
+   records its branch but before the child PR is linked. The claim resolver and
+   link procedure replay/push/retarget in order; review blocks a missed repair,
+   and tier-0 checks approved unlinked children as the final safety net.

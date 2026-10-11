@@ -19,7 +19,7 @@ this README is the map back to it.
 
 | Block | Home at `pre-native-stacks` | Native replacement |
 |---|---|---|
-| Tier-0 retarget-to-master + inherited-prefix drop (#1690/#1824) | `scripts/fleet/fleet-rebase` (base-resolution + `rebase --onto` blocks) | server-side retarget+rebase on parent merge |
+| Tier-0 retarget-to-master + inherited-prefix drop (#1690/#1824) | `scripts/fleet/fleet-rebase` (base-resolution + `rebase --onto` blocks) | server-side retarget+rebase on parent merge; a narrow live check repairs an unlinked child from the claim→open window |
 | Merger label-independent base reconcile (PR #558 guard) | `.claude/commands/role-merger.md` step 2.5 | coupled merges make the failure impossible |
 | Merger cascade rebase on upstream tip move | `.claude/commands/role-merger.md` step 2.6 | `gh stack sync` / UI "Rebase stack" |
 | Merger base-merged retarget + `Stacked on:` strip (#1149/#2231) | `.claude/commands/role-merger.md` step 5a.5 ii | server-side; no body markers exist |
