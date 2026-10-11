@@ -8,7 +8,6 @@
 #include <irreden/input/commands/command_close_window.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
-#include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
 
 namespace {
 
@@ -47,7 +46,6 @@ int main(int argc, char **argv) {
 
     std::list<IRSystem::SystemId> renderPipeline = {
         IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
-        IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>(),
     };
 
     IRVideo::appendAutoScreenshotIfRequested(renderPipeline, autoWarmupFrames, kShots);
