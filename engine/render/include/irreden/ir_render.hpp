@@ -475,6 +475,14 @@ int getGuiScale();
 /// calling creation owns laying its GUI out for the finer coordinate space;
 /// overrides guiScale-based sizing. Call once at init, before building widgets.
 void setGuiCanvasFullResolution();
+/// Pixelated GUI (default off): the GUI canvas composites into the
+/// game-resolution framebuffer and upscales with it, so its lattice triangles
+/// snap to the game pixel grid. Off, GUI_CANVAS_TO_SCREEN draws the canvas at
+/// screen resolution with anti-aliased triangle edges. Readable only as a
+/// trixel display when a GUI texel spans at least four framebuffer pixels
+/// (`gui_scale` >= 2).
+void setGuiPixelated(bool pixelated);
+bool isGuiPixelated();
 /// Enable / disable the trixel hover highlight (visual ring around the trixel under
 /// the cursor). Entity-id detection continues regardless of this flag.
 void setHoveredTrixelVisible(bool visible);

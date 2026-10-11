@@ -65,4 +65,5 @@ IRSystem.registerPipeline(IRTime.UPDATE, {
 IRSystem.registerPipeline(IRTime.RENDER, {
     IRSystem.systemId(SystemName.TRIXEL_TO_FRAMEBUFFER),
     IRSystem.systemId(SystemName.FRAMEBUFFER_TO_SCREEN),
+    IRSystem.systemId(SystemName.GUI_CANVAS_TO_SCREEN),
 })

@@ -173,6 +173,7 @@
 // Class A — GPU-handle / ResourceId-owning (process-local; W-10 regenerates post-load)
 IR_SAVE_OPT_OUT(IRComponents::C_TrixelCanvasFramebuffer)
 IR_SAVE_OPT_OUT(IRComponents::C_TriangleCanvasTextures)
+IR_SAVE_OPT_OUT(IRComponents::C_GuiCanvas)
 IR_SAVE_OPT_OUT(IRComponents::C_CanvasAOTexture)
 IR_SAVE_OPT_OUT(IRComponents::C_CanvasFogOfWar)
 IR_SAVE_OPT_OUT(IRComponents::C_CanvasSunShadow)
@@ -455,6 +456,7 @@ namespace IRWorld {
 using AllEngineComponents = std::tuple<
     IRComponents::C_TrixelCanvasFramebuffer,
     IRComponents::C_TriangleCanvasTextures,
+    IRComponents::C_GuiCanvas,
     IRComponents::C_CanvasAOTexture,
     IRComponents::C_CanvasFogOfWar,
     IRComponents::C_CanvasSunShadow,

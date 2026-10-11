@@ -21,6 +21,7 @@
 #include <irreden/common/components/component_position_2d_iso.hpp>
 #include <irreden/common/components/component_size_triangles.hpp>
 #include <irreden/common/components/component_persistent.hpp>
+#include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/update/components/component_velocity_2d_iso.hpp>
 #include <irreden/render/components/component_camera.hpp>
 
@@ -28,18 +29,6 @@
 #include <cmath>
 
 namespace IRRender {
-
-namespace {
-
-// GUI producers (text, widgets, disc and line draws) store one texel per
-// trixel in canvas-lattice parity, so the gather shows each as its lattice
-// triangle. No voxel pass rasters this canvas, so nothing restamps it.
-void setGuiCanvasSampleLayout(IREntity::EntityId guiCanvas) {
-    IREntity::getComponent<C_TriangleCanvasTextures>(guiCanvas).renderedSampleLayout_ =
-        TrixelSampleLayout::LOCAL_TRIANGLES;
-}
-
-} // namespace
 
 RenderManager::RenderManager(
         ivec2 gameResolution,
@@ -175,7 +164,8 @@ RenderManager::RenderManager(
     m_canvasMap["gui"] = m_guiCanvas;
     // m_canvasMap["player"] = m_playerCanvas;
 
-    setGuiCanvasSampleLayout(m_guiCanvas);
+    IREntity::setComponent(m_guiCanvas, C_GuiCanvas{});
+    stampGuiCanvasSampleLayout();
     IREntity::setComponent(
         m_guiCanvas,
         C_TrixelCanvasRenderBehavior{
@@ -657,7 +647,12 @@ void RenderManager::resizeGuiCanvas(ivec2 newSize) {
     textures.onDestroy();
     textures = C_TriangleCanvasTextures{newSize};
     IREntity::getComponent<C_SizeTriangles>(m_guiCanvas).size_ = newSize;
-    setGuiCanvasSampleLayout(m_guiCanvas);
+    stampGuiCanvasSampleLayout();
+}
+
+void RenderManager::stampGuiCanvasSampleLayout() {
+    IREntity::getComponent<C_TriangleCanvasTextures>(m_guiCanvas).renderedSampleLayout_ =
+        m_guiFullResolution ? TrixelSampleLayout::RECTANGULAR : TrixelSampleLayout::LOCAL_TRIANGLES;
 }
 
 void RenderManager::setGuiScale(int scale) {
@@ -684,7 +679,16 @@ void RenderManager::setGuiCanvasFullResolution() {
     // makes one GUI trixel == one framebuffer pixel (1:1, no iso stretch).
     const ivec2 fbSize = m_gameResolution + IRConstants::kSizeExtraPixelBuffer;
     resizeGuiCanvas(fbSize);
+    stampGuiCanvasSampleLayout();
     IRE_LOG_INFO("GUI canvas set to full resolution ({}x{})", fbSize.x, fbSize.y);
+}
+
+void RenderManager::setGuiPixelated(bool pixelated) {
+    m_guiPixelated = pixelated;
+}
+
+bool RenderManager::isGuiPixelated() const {
+    return m_guiPixelated;
 }
 
 void RenderManager::setHoveredTrixelVisible(bool visible) {

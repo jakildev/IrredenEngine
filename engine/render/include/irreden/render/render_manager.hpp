@@ -112,6 +112,8 @@ class RenderManager {
     // resolution. A creation that enables this owns laying its GUI out for
     // the finer coordinate space. Overrides guiScale-based sizing.
     void setGuiCanvasFullResolution();
+    void setGuiPixelated(bool pixelated);
+    bool isGuiPixelated() const;
 
     void setHoveredTrixelVisible(bool visible);
     bool isHoveredTrixelVisible() const;
@@ -191,6 +193,7 @@ class RenderManager {
     EntityId m_backgroundCanvas;
     int m_guiScale = 1;
     bool m_guiFullResolution = false;
+    bool m_guiPixelated = false;
     EntityId m_guiCanvas;
     // EntityId m_playerCanvas;
     EntityId m_camera;
@@ -258,6 +261,11 @@ class RenderManager {
     // Destroy + recreate the GUI canvas textures at `newSize` and update its
     // C_SizeTriangles. Shared by setGuiScale and setGuiCanvasFullResolution.
     void resizeGuiCanvas(ivec2 newSize);
+    // Stamps the GUI canvas's display layout: lattice triangles for the iso
+    // (2:1) texels of a main-canvas-derived GUI canvas, rectangular texels at
+    // full framebuffer resolution. No voxel pass rasters this canvas, so
+    // nothing restamps it.
+    void stampGuiCanvasSampleLayout();
 };
 
 } // namespace IRRender

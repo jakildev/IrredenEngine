@@ -65,6 +65,7 @@ World::World(
     );
     IRRender::setVoxelRenderSubdivisions(m_worldConfig["voxel_render_subdivisions"].get_integer());
     IRRender::setGuiScale(m_worldConfig["gui_scale"].get_integer());
+    IRRender::setGuiPixelated(m_worldConfig["gui_pixelated"].get_boolean());
     IRRender::setHoveredTrixelVisible(m_worldConfig["hovered_trixel_visible"].get_boolean());
     IRProfile::CPUProfiler::instance().setEnabled(m_worldConfig["profiling_enabled"].get_boolean());
     IRRender::gpuStageTiming().enabled_ = m_worldConfig["gpu_stage_timing"].get_boolean();

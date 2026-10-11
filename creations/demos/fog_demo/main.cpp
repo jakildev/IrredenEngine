@@ -93,6 +93,7 @@
 #include <irreden/render/systems/system_fog_to_trixel.hpp>
 #include <irreden/render/systems/system_fog_los_build.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
+#include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_lod_update.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
@@ -3590,6 +3591,7 @@ void initSystems() {
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>());
     }
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>());
 
     if (g_autoProfileFrames > 0) {
         IRSystem::SystemId autoProfileId = IRSystem::createSystem<C_Name>(

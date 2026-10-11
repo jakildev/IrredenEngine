@@ -489,6 +489,14 @@ void setGuiCanvasFullResolution() {
     getRenderManager().setGuiCanvasFullResolution();
 }
 
+void setGuiPixelated(bool pixelated) {
+    getRenderManager().setGuiPixelated(pixelated);
+}
+
+bool isGuiPixelated() {
+    return getRenderManager().isGuiPixelated();
+}
+
 void setHoveredTrixelVisible(bool visible) {
     getRenderManager().setHoveredTrixelVisible(visible);
 }

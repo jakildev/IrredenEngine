@@ -17,6 +17,7 @@
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
 #include <irreden/render/canvas_coverage.hpp>
+#include <irreden/render/gui_canvas.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
@@ -85,6 +86,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // cardinal these are released, this is null, and the byte-identical
     // single-canvas fast path runs.
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
+    // The GUI canvas while GUI_CANVAS_TO_SCREEN composites it at screen
+    // resolution; kNullEntity when it composites here, into the framebuffer.
+    IREntity::EntityId guiCanvasOnScreen_ = IREntity::kNullEntity;
     const C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
     // This frame's continuous-zoom placement sample, copied out in beginTick.
@@ -119,6 +123,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         const C_TriangleCanvasTextures &triangleCanvasTextures,
         const C_Name &
     ) {
+        if (entity == guiCanvasOnScreen_) {
+            return;
+        }
         // CPU histogram bracket — this system is not observer-tagged.
         IR_PROFILE_SCOPE("trixelToFb");
         auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
@@ -613,6 +620,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     void beginTick() {
         HoveredEntityIdLayout resetData;
         hoveredIdBuf_->subData(0, sizeof(resetData), &resetData);
+
+        guiCanvasOnScreen_ = IRPrefab::GuiCanvas::compositesOnScreen() ? IRRender::getCanvas("gui")
+                                                                       : IREntity::kNullEntity;
 
         // The pose this frame's main composite draws with — the source a
         // rotation gesture starting next frame acquires the default pivot

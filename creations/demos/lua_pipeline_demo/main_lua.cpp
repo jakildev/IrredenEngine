@@ -26,6 +26,7 @@
 #include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/render/systems/system_debug_overlay.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
+#include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 
@@ -63,7 +64,8 @@ void registerLuaBindings() {
             IRSystem::VOXEL_TO_TRIXEL_STAGE_1,
             IRSystem::TRIXEL_TO_FRAMEBUFFER,
             IRSystem::DEBUG_OVERLAY,
-            IRSystem::FRAMEBUFFER_TO_SCREEN>();
+            IRSystem::FRAMEBUFFER_TO_SCREEN,
+            IRSystem::GUI_CANVAS_TO_SCREEN>();
 
         // Modifier resolver pipeline. `registerResolverPipeline()` does
         // three things in one call: creates the singleton globals

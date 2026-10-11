@@ -95,9 +95,12 @@ Changes with no visual effect (docs, tests, mechanical, build-only) need no capt
   shift stays out of the hover path. Read the
   [parity-shift design](../../docs/design/trixel-parity-shift-442-investigation.md)
   before changing it; the executor is `IRShapeDebug --gui-test`'s `hover_parity_*` shots.
-- **The engine GUI canvas composites as `LOCAL_TRIANGLES`** (render-manager-stamped
-  `renderedSampleLayout_`): text, widget, disc and line texels display as lattice
-  triangles in the parity `parityAlignedPosition` aligns to. Hover is off there.
+- **The engine GUI canvas displays as `LOCAL_TRIANGLES`** (render-manager-stamped;
+  `RECTANGULAR` only at full resolution): `GUI_CANVAS_TO_SCREEN` draws it at screen
+  resolution with anti-aliased triangle edges, and the gather skips it; with
+  `gui_pixelated` the gather composites it into the framebuffer instead. Hover is
+  off there. Geometry, font rules, lattice font scaling:
+  [GUI trixel display](../../docs/design/gui-trixel-display.md).
 - Gather interpolates [centered texel units](../../docs/design/trixel-gather-sampling.md);
   normalized UV rescaling can select the wrong half at integer boundaries.
 - CPU frame-data structs and shader blocks must agree on field order, `std140`

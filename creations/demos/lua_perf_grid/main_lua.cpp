@@ -57,6 +57,7 @@
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
+#include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
@@ -472,6 +473,7 @@ void registerLuaBindings() {
                 IRSystem::createSystem<IRSystem::FOG_TO_TRIXEL>(),
                 IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
                 IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
+                IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>(),
             }
         );
 
