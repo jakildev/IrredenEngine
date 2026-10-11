@@ -23,6 +23,11 @@ points here and answers the delta keys below
 | **architect plans dir** | Where the approved architect draft lives. | `~/.claude/plans/<slug>.md` |
 | **validate-stack command** | Asserts every child carries the structured fields. | `fleet-validate-stack` |
 | **title area vocabulary** | `<area>` tokens for child titles. | `engine`, `render`, `game`, module names |
+| **in-session approval** | `stamp` files children `human:approved` and leaves the umbrella un-parked; `park` leaves both to the human. | `park` |
+
+`stamp` applies only when the human confirmed the plan and its child
+inventory in the current session; a plan filed from an earlier session's
+draft, or one the human asked to hold, uses `park` whatever the wrapper says.
 
 ---
 
@@ -78,7 +83,7 @@ EOF
 
 ### 3. Label the umbrella
 
-`gh issue edit <N> --repo <repo> --add-label "<epic-label>" --add-label "fleet:needs-human"` — the queue-manager skips it and the epic-steward takes it over. The park records that the filed cohort still awaits human release.
+`gh issue edit <N> --repo <repo> --add-label "<epic-label>" --add-label "fleet:needs-human"` — the queue-manager skips it and the epic-steward takes it over. The park records that the filed cohort still awaits human release. Under `stamp`, add the **epic label** only (no `fleet:needs-human`).
 
 ### 4. Parse the children
 
@@ -121,7 +126,8 @@ rm -f .file-epic-body.md
 ```
 
 `<area>` from the **title area vocabulary**; the `(<phase-slug>)` suffix
-is optional. Capture the returned issue number.
+is optional. Capture the returned issue number. Under `stamp`, also pass
+`--label "human:approved"` to `gh issue create`.
 
 ### 5.5. Ledger comment and `## Children` checklist
 
@@ -235,12 +241,17 @@ comment
 The human removes the umbrella's `fleet:needs-human` when the cohort is
 released. That removal is the steward's re-fire edge.
 
+Under `stamp`, skip the per-child `human:approved` gate (stamped at filing)
+and the umbrella-release paragraph above (the umbrella was never parked);
+the `human:revise-plan`, hold, and stale-plan handling still apply.
+
 ### 8. Report
 
-Umbrella URL + epic-label and `fleet:needs-human` confirmation; child URLs;
+Umbrella URL + epic-label and `fleet:needs-human` confirmation (`stamp`: epic label only); child URLs;
 links to the umbrella's `## Plan` and `## Steward ledger` comments and each
 child's `## Plan`; the validate-stack result; and that the human still
-approves each child individually.
+approves each child individually (`stamp`: that the children were filed
+approved in-session).
 
 ---
 
