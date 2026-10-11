@@ -1,0 +1,106 @@
+{
+  "cone-before": {
+    "revision": "8055aeb5f94c4e1529d0b40b9070c2eee3e115e9",
+    "command": [
+      "fleet-run",
+      "IRShapeDebug",
+      "--spin-yaw",
+      "--auto-screenshot",
+      "8",
+      "--zoom",
+      "8",
+      "--no-ao",
+      "--pivot-origin",
+      "--spin-shape",
+      "cone",
+      "--spin-shape-floor"
+    ]
+  },
+  "cone-after": {
+    "revision": "8055aeb5f94c4e1529d0b40b9070c2eee3e115e9",
+    "command": [
+      "fleet-run",
+      "IRShapeDebug",
+      "--spin-yaw",
+      "--auto-screenshot",
+      "8",
+      "--zoom",
+      "8",
+      "--no-ao",
+      "--pivot-origin",
+      "--spin-shape",
+      "cone",
+      "--spin-shape-floor"
+    ]
+  },
+  "cone-control": {
+    "revision": "8055aeb5f94c4e1529d0b40b9070c2eee3e115e9",
+    "command": [
+      "fleet-run",
+      "IRShapeDebug",
+      "--spin-yaw",
+      "--auto-screenshot",
+      "8",
+      "--zoom",
+      "8",
+      "--no-ao",
+      "--pivot-origin",
+      "--spin-shape",
+      "cone",
+      "--spin-shape-floor",
+      "--no-shadows"
+    ]
+  },
+  "torus-before": {
+    "revision": "8055aeb5f94c4e1529d0b40b9070c2eee3e115e9",
+    "command": [
+      "fleet-run",
+      "IRShapeDebug",
+      "--spin-yaw",
+      "--auto-screenshot",
+      "8",
+      "--zoom",
+      "8",
+      "--no-ao",
+      "--pivot-origin",
+      "--spin-shape",
+      "torus",
+      "--spin-shape-floor"
+    ]
+  },
+  "torus-after": {
+    "revision": "8055aeb5f94c4e1529d0b40b9070c2eee3e115e9",
+    "command": [
+      "fleet-run",
+      "IRShapeDebug",
+      "--spin-yaw",
+      "--auto-screenshot",
+      "8",
+      "--zoom",
+      "8",
+      "--no-ao",
+      "--pivot-origin",
+      "--spin-shape",
+      "torus",
+      "--spin-shape-floor"
+    ]
+  },
+  "torus-control": {
+    "revision": "8055aeb5f94c4e1529d0b40b9070c2eee3e115e9",
+    "command": [
+      "fleet-run",
+      "IRShapeDebug",
+      "--spin-yaw",
+      "--auto-screenshot",
+      "8",
+      "--zoom",
+      "8",
+      "--no-ao",
+      "--pivot-origin",
+      "--spin-shape",
+      "torus",
+      "--spin-shape-floor",
+      "--no-shadows"
+    ]
+  }
+}

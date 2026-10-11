@@ -12,6 +12,7 @@
 // include of ir_sun_projection.glsl makes this a suppressed duplicate.
 #include "ir_sun_projection.glsl"
 #include "ir_sun_face_query_layout.glsl"
+#include "ir_sun_shape_query.glsl"
 
 #ifndef IR_SUN_FACE_OVERFLOW_REFERENCE
 #define IR_SUN_FACE_OVERFLOW_REFERENCE 0
@@ -82,7 +83,10 @@ float sampleCascadeShadow(
                     const vec3 corner = vec3(uintBitsToFloat(sunDepthBuf[record]), uintBitsToFloat(sunDepthBuf[record+1u]), uintBitsToFloat(sunDepthBuf[record+2u]));
                     const vec3 edgeU = vec3(uintBitsToFloat(sunDepthBuf[record+3u]), uintBitsToFloat(sunDepthBuf[record+4u]), uintBitsToFloat(sunDepthBuf[record+5u]));
                     const vec3 edgeV = vec3(uintBitsToFloat(sunDepthBuf[record+6u]), uintBitsToFloat(sunDepthBuf[record+7u]), uintBitsToFloat(sunDepthBuf[record+8u]));
-                    const float separation = sourceFaceRaySeparation(sunUV, sunZ, corner, edgeU, edgeV);
+                    const uint type = sunDepthBuf[record + 9u];
+                    const float separation = type == 0u
+                        ? sourceFaceRaySeparation(sunUV, sunZ, corner, edgeU, edgeV)
+                        : sourceShapeRaySeparation(sunUV, sunZ, type, corner, edgeU, edgeV);
                     if (separation > kShadowBiasQuantNoise && separation < maxShadowThrow) return 1.0;
                 }
             }

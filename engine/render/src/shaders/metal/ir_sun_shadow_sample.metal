@@ -14,6 +14,7 @@
 #include "ir_sun_projection.metal"
 
 #include "ir_sun_face_query_layout.metal"
+#include "ir_sun_shape_query.metal"
 
 #ifndef IR_SUN_FACE_OVERFLOW_REFERENCE
 #define IR_SUN_FACE_OVERFLOW_REFERENCE 0
@@ -81,7 +82,10 @@ inline float sampleCascadeShadow(
                     const float3 corner = float3(as_type<float>(sunDepthBuf[record]), as_type<float>(sunDepthBuf[record+1u]), as_type<float>(sunDepthBuf[record+2u]));
                     const float3 edgeU = float3(as_type<float>(sunDepthBuf[record+3u]), as_type<float>(sunDepthBuf[record+4u]), as_type<float>(sunDepthBuf[record+5u]));
                     const float3 edgeV = float3(as_type<float>(sunDepthBuf[record+6u]), as_type<float>(sunDepthBuf[record+7u]), as_type<float>(sunDepthBuf[record+8u]));
-                    const float separation = sourceFaceRaySeparation(sunUV, sunZ, corner, edgeU, edgeV);
+                    const uint type = sunDepthBuf[record + 9u];
+                    const float separation = type == 0u
+                        ? sourceFaceRaySeparation(sunUV, sunZ, corner, edgeU, edgeV)
+                        : sourceShapeRaySeparation(sunUV, sunZ, type, corner, edgeU, edgeV);
                     if (separation > kShadowBiasQuantNoise && separation < maxShadowThrow) return 1.0;
                 }
             }

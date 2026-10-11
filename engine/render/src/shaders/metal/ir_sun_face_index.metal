@@ -1,17 +1,13 @@
 // Cooperative callers provide identical geometry and cascade bounds on every lane.
 #ifdef IR_SUN_FACE_INDEX_COOPERATIVE
-inline void indexSourceSunFace(device atomic_uint* sunDepthBuf, float3 corner, float3 edgeU, float3 edgeV, constant FrameDataSun& sunFrame, uint lane, threadgroup uint& sharedFaceIndex) {
+inline void indexSourceSunGeometry(device atomic_uint* sunDepthBuf, float3 corner, float3 edgeU, float3 edgeV, uint type, float2 low, float2 high, constant FrameDataSun& sunFrame, uint lane, threadgroup uint& sharedFaceIndex) {
 #else
-inline void indexSourceSunFace(device atomic_uint* sunDepthBuf, float3 corner, float3 edgeU, float3 edgeV, constant FrameDataSun& sunFrame) {
+inline void indexSourceSunGeometry(device atomic_uint* sunDepthBuf, float3 corner, float3 edgeU, float3 edgeV, uint type, float2 low, float2 high, constant FrameDataSun& sunFrame) {
 #endif
 #ifdef IR_SUN_FACE_INDEX_COOPERATIVE
     const uint stride = 64u;
 #endif
-    const float determinant = projectedFaceDeterminant(edgeU.xy, edgeV.xy);
-    if (abs(determinant) < 0.000001) return;
     uint faceIndex = 0xFFFFFFFFu;
-    const float2 low = min(min(corner.xy, corner.xy + edgeU.xy), min(corner.xy + edgeV.xy, corner.xy + edgeU.xy + edgeV.xy));
-    const float2 high = max(max(corner.xy, corner.xy + edgeU.xy), max(corner.xy + edgeV.xy, corner.xy + edgeU.xy + edgeV.xy));
     for (uint cascade = 0u; cascade < kSourceFaceCascadeCount; ++cascade) {
         const float2 origin = cascade == 0u ? sunFrame.cascadeOriginUV_0 : sunFrame.cascadeOriginUV_1;
         const float2 cellSize = (cascade == 0u ? sunFrame.cascadeTexelSize_0 : sunFrame.cascadeTexelSize_1) * float(kSourceFaceTileEdge);
@@ -25,6 +21,7 @@ inline void indexSourceSunFace(device atomic_uint* sunDepthBuf, float3 corner, f
             faceIndex = atomic_fetch_add_explicit(&sunDepthBuf[kSourceFaceHeaderOffset], 1u, memory_order_relaxed);
             if (faceIndex < kSourceFaceCapacity) {
                 const uint record = kSourceFaceRecordOffset + faceIndex * kSourceFaceRecordWords;
+                atomic_store_explicit(&sunDepthBuf[record + 9u], type, memory_order_relaxed);
                 for (uint axis = 0; axis < 3u; ++axis) {
                     atomic_store_explicit(&sunDepthBuf[record + axis], as_type<uint>(corner[axis]), memory_order_relaxed);
                     atomic_store_explicit(&sunDepthBuf[record + 3u + axis], as_type<uint>(edgeU[axis]), memory_order_relaxed);
@@ -59,4 +56,19 @@ inline void indexSourceSunFace(device atomic_uint* sunDepthBuf, float3 corner, f
             if (slot < kSourceFaceTileCapacity) atomic_store_explicit(&sunDepthBuf[base + 1u + slot], faceIndex, memory_order_relaxed);
         }
     }
+}
+
+#ifdef IR_SUN_FACE_INDEX_COOPERATIVE
+inline void indexSourceSunFace(device atomic_uint* sunDepthBuf, float3 corner, float3 edgeU, float3 edgeV, constant FrameDataSun& sunFrame, uint lane, threadgroup uint& sharedFaceIndex) {
+#else
+inline void indexSourceSunFace(device atomic_uint* sunDepthBuf, float3 corner, float3 edgeU, float3 edgeV, constant FrameDataSun& sunFrame) {
+#endif
+    if (abs(projectedFaceDeterminant(edgeU.xy, edgeV.xy)) < 0.000001) return;
+    const float2 low = min(min(corner.xy, corner.xy + edgeU.xy), min(corner.xy + edgeV.xy, corner.xy + edgeU.xy + edgeV.xy));
+    const float2 high = max(max(corner.xy, corner.xy + edgeU.xy), max(corner.xy + edgeV.xy, corner.xy + edgeU.xy + edgeV.xy));
+#ifdef IR_SUN_FACE_INDEX_COOPERATIVE
+    indexSourceSunGeometry(sunDepthBuf, corner, edgeU, edgeV, 0u, low, high, sunFrame, lane, sharedFaceIndex);
+#else
+    indexSourceSunGeometry(sunDepthBuf, corner, edgeU, edgeV, 0u, low, high, sunFrame);
+#endif
 }

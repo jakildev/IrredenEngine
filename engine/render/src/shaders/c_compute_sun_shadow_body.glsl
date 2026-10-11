@@ -10,8 +10,8 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 #include "ir_iso_common.glsl"
 #include "ir_per_axis_lighting.glsl"
 #include "ir_per_axis_cell_dispatch.glsl"
-#if IR_SHAPE_RECEIVER
 #include "ir_sdf_common.glsl"
+#if IR_SHAPE_RECEIVER
 #include "ir_shape_data.glsl"
 #include "ir_shape_receiver.glsl"
 #include "ir_receiver_face.glsl"

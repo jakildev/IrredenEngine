@@ -1,14 +1,10 @@
 // Cooperative callers provide identical geometry and cascade bounds on every lane.
-void indexSourceSunFace(vec3 corner, vec3 edgeU, vec3 edgeV) {
+void indexSourceSunGeometry(vec3 corner, vec3 edgeU, vec3 edgeV, uint type, vec2 low, vec2 high) {
 #ifdef IR_SUN_FACE_INDEX_COOPERATIVE
     const uint lane = gl_LocalInvocationID.x;
     const uint stride = 64u;
 #endif
-    const float determinant = projectedFaceDeterminant(edgeU.xy, edgeV.xy);
-    if (abs(determinant) < 0.000001) return;
     uint faceIndex = 0xFFFFFFFFu;
-    const vec2 low = min(min(corner.xy, corner.xy + edgeU.xy), min(corner.xy + edgeV.xy, corner.xy + edgeU.xy + edgeV.xy));
-    const vec2 high = max(max(corner.xy, corner.xy + edgeU.xy), max(corner.xy + edgeV.xy, corner.xy + edgeU.xy + edgeV.xy));
     for (uint cascade = 0u; cascade < kSourceFaceCascadeCount; ++cascade) {
         const vec2 origin = cascade == 0u ? cascadeOriginUV_0 : cascadeOriginUV_1;
         const vec2 cellSize = (cascade == 0u ? cascadeTexelSize_0 : cascadeTexelSize_1) * float(kSourceFaceTileEdge);
@@ -22,6 +18,7 @@ void indexSourceSunFace(vec3 corner, vec3 edgeU, vec3 edgeV) {
             faceIndex = atomicAdd(sunDepthBuf[sourceFaceHeaderIndex(uint(sunDepthBuf.length()))], 1u);
             if (faceIndex < kSourceFaceCapacity) {
                 const uint record = kSourceFaceRecordOffset + faceIndex * kSourceFaceRecordWords;
+                sunDepthBuf[record + 9u] = type;
                 for (uint axis = 0; axis < 3u; ++axis) {
                     sunDepthBuf[record + axis] = floatBitsToUint(corner[axis]);
                     sunDepthBuf[record + 3u + axis] = floatBitsToUint(edgeU[axis]);
@@ -56,4 +53,11 @@ void indexSourceSunFace(vec3 corner, vec3 edgeU, vec3 edgeV) {
             if (slot < kSourceFaceTileCapacity) sunDepthBuf[base + 1u + slot] = faceIndex;
         }
     }
+}
+
+void indexSourceSunFace(vec3 corner, vec3 edgeU, vec3 edgeV) {
+    if (abs(projectedFaceDeterminant(edgeU.xy, edgeV.xy)) < 0.000001) return;
+    const vec2 low = min(min(corner.xy, corner.xy + edgeU.xy), min(corner.xy + edgeV.xy, corner.xy + edgeU.xy + edgeV.xy));
+    const vec2 high = max(max(corner.xy, corner.xy + edgeU.xy), max(corner.xy + edgeV.xy, corner.xy + edgeU.xy + edgeV.xy));
+    indexSourceSunGeometry(corner, edgeU, edgeV, 0u, low, high);
 }

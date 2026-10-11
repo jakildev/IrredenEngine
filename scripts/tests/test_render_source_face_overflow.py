@@ -78,6 +78,9 @@ struct BoundBuffer {
     int length() const{return int(words.size());}
 };
 BoundBuffer sunDepthBuf;
+// This fixture contains finite faces only; analytic shapes have separate ray controls.
+float sourceShapeRaySeparation(vec2,float,uint,vec3,vec3,vec3){std::abort();}
+
 """
 
 CASES = r"""
@@ -94,10 +97,11 @@ void reset(uint count,uint tileCount,uint cascade=0) {
     faces.clear();
 }
 void writeFace(Face f){
-    const uint record=kSourceFaceRecordOffset+9*uint(faces.size());
+    const uint record=kSourceFaceRecordOffset+kSourceFaceRecordWords*uint(faces.size());
     const float values[]={f.corner.x,f.corner.y,f.corner.z,f.u.x,f.u.y,f.u.z,
                           f.v.x,f.v.y,f.v.z};
     for(uint i=0;i<9;++i)sunDepthBuf.words[record+i]=floatBitsToUint(values[i]);
+    sunDepthBuf.words[record+9]=0;
     faces.push_back(f);
 }
 float sample(vec2 uv={2.9f,3.5f},float z=10,uint cascade=0,
@@ -155,7 +159,8 @@ int main(){
             fallback(cascade,empty,depth(1));
             const bool exact=count<=64 || (enabled && count<=256);
             require(sample({2.9f,3.5f},10,cascade)==(exact?0:1),"exact miss/fallback boundary");
-            require(sunDepthBuf.readCount==(exact?count*9:0),"bounded no-hit record reads");
+            require(sunDepthBuf.readCount==(exact?count*kSourceFaceRecordWords:0),
+                    "bounded no-hit record reads");
             fallback(cascade,depth(2),depth(1));
             require(sample({2.9f,3.5f},10,cascade)==1,"preserve other surface layer");
         }
@@ -170,11 +175,11 @@ int main(){
         reset(65537,64,cascade);fill(64,tapOnly);
         fallback(cascade,empty,depth(1));
         require(sample({2.9f,3.5f},10,cascade)==0,"complete tile in exhausted pool");
-        require(sunDepthBuf.readCount==64*9,"complete tile uses bounded list");
+        require(sunDepthBuf.readCount==64*kSourceFaceRecordWords,"complete tile uses bounded list");
     }
     reset(257,1);fill(63,tapOnly);writeFace(hit);
     require(sample()==1,"complete list uses stored record IDs");
-    require(sunDepthBuf.readCount==9,"ordinary tile query work unchanged");
+    require(sunDepthBuf.readCount==kSourceFaceRecordWords,"ordinary tile query work unchanged");
     reset(0,0);
     fallback(0,empty,depth(1));
     require(sample()==0 && sunDepthBuf.readCount==0,"empty index ignores indexed fallback");
@@ -209,7 +214,8 @@ int main(){
                 const bool expected=oracle(uv,10,100);
                 sunDepthBuf.readCount=0;
                 require(sample(uv)==expected,"independent triangle-ray coverage");
-                require(sunDepthBuf.readCount<=count*9,"bounded reference query work");
+                require(sunDepthBuf.readCount<=count*kSourceFaceRecordWords,
+                        "bounded reference query work");
                 ++queries;hits+=expected;misses+=!expected;
             }
         }

@@ -126,9 +126,10 @@ void emit(vec3 corner,vec3 u,vec3 v,const std::vector<uint>& tiles) {
     if(tiles.size()==0) return;
     const uint id=oracle[kSourceFaceHeaderOffset]++;
     if(id<65536) {
+        oracle[kSourceFaceRecordOffset+id*kSourceFaceRecordWords+9]=0;
         const vec3 vectors[]={corner,u,v};
         for(uint vector=0;vector<3;++vector) for(uint axis=0;axis<3;++axis)
-            oracle[kSourceFaceRecordOffset+id*9+vector*3+axis]=floatBitsToUint(vectors[vector][axis]);
+            oracle[kSourceFaceRecordOffset+id*kSourceFaceRecordWords+vector*3+axis]=floatBitsToUint(vectors[vector][axis]);
     }
     for(uint tile:tiles) {
         uint* list=oracle+kSourceFaceTileOffset+tile*65;
@@ -146,7 +147,7 @@ vec3 storedVector(uint record,uint offset) {
 }
 int main() {
     static_assert(kSourceFaceCapacity==65536 && kSourceFaceTileCapacity==64);
-    static_assert(kSourceFaceTileCount==32768 && kSourceFaceRecordWords==9);
+    static_assert(kSourceFaceTileCount==32768 && kSourceFaceRecordWords==10);
     const vec3 corner{7,7,2},u{3,0,1.5f},v{0,3,-.75f};
     reset();
     emit(corner,u,v,{0,1,128,129,16384,16385});

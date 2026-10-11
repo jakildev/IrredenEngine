@@ -10,8 +10,8 @@
 
 #include "ir_iso_common.glsl"
 #include "ir_fog_color.glsl"
-#if IR_SHAPE_RECEIVER
 #include "ir_sdf_common.glsl"
+#if IR_SHAPE_RECEIVER
 #include "ir_shape_data.glsl"
 #include "ir_shape_receiver.glsl"
 #include "ir_selected_shape_receiver.glsl"

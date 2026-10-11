@@ -1,8 +1,8 @@
 #include "ir_iso_common.metal"
 #include "ir_per_axis_lighting.metal"
 #include "ir_per_axis_cell_dispatch.metal"
-#if IR_SHAPE_RECEIVER
 #include "ir_sdf_common.metal"
+#if IR_SHAPE_RECEIVER
 #include "ir_shape_data.metal"
 #include "ir_shape_receiver.metal"
 #include "ir_selected_shape_receiver.metal"
