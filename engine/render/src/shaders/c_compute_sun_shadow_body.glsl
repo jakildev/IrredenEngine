@@ -141,8 +141,21 @@ void main() {
         );
         normal = rotateYawZInv(faceOutwardNormal(face), visualYaw);
     } else {
+        int recoveryDepth = rawDepth;
+#if IR_SHAPE_RECEIVER
+        const bool smoothMode = receiverFrame.voxelRenderOptions.x != 0 &&
+                                receiverFrame.voxelRenderOptions.y > 1;
+        recoveryDepth = cardinalShapeReceiverDepth(
+            rawDepth,
+            receiverFrame.voxelRenderOptions.y,
+            selectedShapeIndex(pixel, size.x) >= 0,
+            smoothMode && receiverFrame.smoothYawEnabled == 0,
+            receiverFrame.finiteCoverage != 0
+        );
+#endif
         pos3D = trixelCanvasPixelToWorld3D(
-            pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, rasterYaw
+            pixel, recoveryDepth, trixelCanvasOffsetZ1, frameCanvasOffset,
+            voxelRenderOptions, rasterYaw
         );
         // Rotate raster-frame face normal to world frame so normal bias and slope
         // bias are applied in the correct world-space direction at non-zero camera
@@ -171,9 +184,10 @@ void main() {
 
 #endif
 
-    // World iso depth picks the cascade; rawDepth IS the world iso depth for the
-    // world canvas this pass runs on. The cascade PCF lookup is shared with the
-    // detached world-receive path (ir_sun_shadow_sample.glsl).
+    // Stored world-iso depth selects the cascade. The finite-coverage shape
+    // correction applies only to reconstructed sample position so a corrected
+    // receiver keeps the cascade ownership assigned by its stored pixel.
+    // The cascade PCF lookup is shared with the detached world-receive path.
     float factor = shadowsEnabled == 0 ? 1.0 : worldSunShadowFactor(pos3D, normal, float(rawDepth));
     imageStore(canvasSunShadow, pixel, vec4(factor, 0.0, 0.0, receiverFace));
 }

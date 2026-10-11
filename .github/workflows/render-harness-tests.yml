@@ -127,3 +127,6 @@ jobs:
 
       - name: Assert the SDF box face-slot contract executed
         run: grep -a -E '^PASS  test_render_sdf_box_face_slot\.py \([1-9][0-9]* tests\)$' run_all.log
+
+      - name: Assert the cardinal shape-shadow depth contract executed
+        run: grep -a -E '^PASS  test_render_cardinal_shape_shadow_depth\.py \([1-9][0-9]* tests\)$' run_all.log
