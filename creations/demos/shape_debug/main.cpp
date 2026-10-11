@@ -10,6 +10,7 @@
 #include <irreden/render/camera.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
 #include <irreden/render/default_pivot_latch.hpp>
+#include <irreden/render/shape_sample_probe.hpp>
 
 #include <irreden/asset/voxel_set_format.hpp>
 #include <irreden/voxel/dense_bridge.hpp>
@@ -1305,6 +1306,13 @@ bool g_zoomContinuous = false;
 // capture the same subject.
 bool g_zoomCalibration = false;
 
+// One retained owner readback on the first settled capture, before the spin advances.
+bool g_shapeSampleProbe = false;
+bool g_shapeSampleProbeAttempted = false;
+bool g_shapeSampleProbePassed = false;
+ivec2 g_shapeSampleProbePixel{-1};
+std::string g_shapeSampleProbeOutput;
+
 // --zoom-sweep <from> <to> <count>: hold the camera at kZoomCalibrationCamera
 // and step the requested zoom linearly across <count> shots. With
 // --zoom-continuous the subject must grow smoothly; without it the same
@@ -1390,6 +1398,18 @@ void logZoomCalibrationState(int shotIndex) {
     );
 }
 
+void onShapeDebugCaptureFrame(int shotIndex) {
+    if (g_zoomCalibration)
+        logZoomCalibrationState(shotIndex);
+    if (g_shapeSampleProbe && !g_shapeSampleProbeAttempted) {
+        g_shapeSampleProbeAttempted = true;
+        g_shapeSampleProbePassed = IRPrefab::ShapeSampleProbe::writeFirstCapture(
+            g_shapeSampleProbePixel,
+            g_shapeSampleProbeOutput
+        );
+    }
+}
+
 // Shared shot-table emission for the sweep-flag family below (--spin-yaw,
 // --pivot-focus-demo, --pivot-verify, --pan-sweep, --yaw-sweep): reserves
 // both vectors up front — `shots`/`labels` must never reallocate mid-loop,
@@ -1421,6 +1441,16 @@ void registerCliArgs() {
         "--auto-profile",
         "Run N frames (default 300) with frame timing, then exit",
         300
+    );
+    args.numbers(
+        "--shape-sample-probe",
+        "Read one retained main-canvas owner at screenshot X Y on the first auto capture",
+        2
+    );
+    args.string(
+        "--shape-sample-probe-output",
+        "JSON output for the first capture only",
+        "shape-sample-probe.json"
     );
     args.flag("--ao-contact-probe", "Isolate a voxel inside corner and convex cube for AO");
     args.flag("--no-ao", "Disable ambient occlusion for lighting isolation");
@@ -1560,6 +1590,15 @@ void registerCliArgs() {
 void readCliArgs() {
     const IRArgs::Parser &args = IREngine::args();
 
+    g_shapeSampleProbe = args.wasProvided("--shape-sample-probe");
+    if (g_shapeSampleProbe) {
+        const auto &pixel = args.getFloats("--shape-sample-probe");
+        // Stay inside exactly representable integer float coordinates before conversion.
+        if (pixel[0] >= 0 && pixel[1] >= 0 && pixel[0] < 16777216 && pixel[1] < 16777216 &&
+            IRMath::floor(pixel[0]) == pixel[0] && IRMath::floor(pixel[1]) == pixel[1])
+            g_shapeSampleProbePixel = ivec2(pixel[0], pixel[1]);
+        g_shapeSampleProbeOutput = args.getString("--shape-sample-probe-output");
+    }
     g_autoWarmupFrames = args.autoScreenshotWarmupFrames();
     g_autoRecordFrames = args.autoRecordFrames();
 
@@ -1644,6 +1683,12 @@ int main(int argc, char **argv) {
     registerCliArgs();
     IREngine::args().parse(argc, argv);
     readCliArgs();
+    if (g_shapeSampleProbe && (g_shapeSampleProbePixel.x < 0 || g_autoWarmupFrames <= 0)) {
+        IR_LOG_ERROR(
+            "--shape-sample-probe requires integer screenshot coordinates and --auto-screenshot"
+        );
+        return 2;
+    }
 
     if (IREngine::args().getFlag("--spin-shape-floor")) {
         if (g_spinShapeType.empty()) {
@@ -1744,7 +1789,8 @@ int main(int argc, char **argv) {
         );
     }
     IREngine::gameLoop();
-    return 0;
+    return g_shapeSampleProbe && (!g_shapeSampleProbeAttempted || !g_shapeSampleProbePassed) ? 2
+                                                                                             : 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -3570,8 +3616,8 @@ void initSystems() {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
-        if (g_zoomCalibration) {
-            cfg.onCaptureFrame_ = &logZoomCalibrationState;
+        if (g_zoomCalibration || g_shapeSampleProbe) {
+            cfg.onCaptureFrame_ = &onShapeDebugCaptureFrame;
         }
         // Set by the one block that needs scripted cursor input + a per-frame
         // hook (--pivot-verify cursor-latch); every other sweep stays on the

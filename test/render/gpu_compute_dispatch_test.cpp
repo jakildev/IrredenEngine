@@ -1392,7 +1392,7 @@ TEST_F(CanvasBackingResizeTest, CardinalGrowthClearsBackingAndPreservesAncillary
     const auto shapeOwners = canvas->shapeGeometry_.sampleOwners_;
     canvas->shapeGeometry_.frameData_.shapeCount = 1;
     canvas->shapeGeometry_.tileCount_ = 1;
-    canvas->shapeGeometry_.publishSamples(true);
+    canvas->shapeGeometry_.publishSamples(true, 1);
     const std::int32_t occupied = 17;
     canvas->textureTriangleDistances_.second
         ->clear(PixelDataFormat::RED_INTEGER, PixelDataType::INT32, &occupied);

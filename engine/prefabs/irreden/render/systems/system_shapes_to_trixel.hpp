@@ -512,7 +512,10 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
             }
 
-            canvasTextures.shapeGeometry_.publishSamples(!hasXray);
+            canvasTextures.shapeGeometry_.publishSamples(
+                !hasXray,
+                IRSystem::getEventTickCount(IRTime::RENDER)
+            );
 
             if (baker != nullptr) {
                 {

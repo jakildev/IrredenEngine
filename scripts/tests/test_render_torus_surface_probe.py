@@ -189,6 +189,55 @@ class TorusPublisherTest(unittest.TestCase):
 
 
 class FiniteFaceDiagnosticTest(unittest.TestCase):
+    def test_native_owner_comparison_rejects_wrong_sample_and_projection(self):
+        accepted = {(-8, -74): 25}
+        record = dict(schema=1, status="ok", screenshot_pixel=[1250, 570],
+                      canvas_size=[642, 722], canvas_origin_raw=[313.75, 286.5],
+                      sample_iso=[-8, -74], surface_depth=25, face=2, half=1,
+                      raw_depth=298, stored_depth=37, owner_key=5,
+                      shape=dict(shape_type=9, params=[4, 2, 0, 0], world_position=[0, 0, 0, 0],
+                                 rotation=[0, 0, 0, 1], flags=8),
+                      projection=dict(voxel_render_options=[2, 8], shape_count=1,
+                                      camera_trixel_offset=[0, 0], visual_yaw=0, raster_yaw=0,
+                                      residual_yaw=0, smooth_yaw_enabled=0, lattice_shapes=0))
+        result = probe.classify_native_owner(accepted, record)
+        self.assertEqual(result["classification"], "publisher_face_not_on_ray")
+        self.assertEqual(result["nearest"][0]["axes"], [0])
+        self.assertEqual(result["nearest"][0]["depth"], 24.375)
+        for replacement in (dict(status="stale_publication"), dict(surface_depth=26),
+                            dict(canvas_origin_raw=[313.875, 286.75]), dict(face=0),
+                            dict(raw_depth=299), dict(raw_depth=306), dict(stored_depth=38),
+                            dict(shape=record["shape"] | dict(params=[5, 2, 0, 0])),
+                            dict(shape=record["shape"] | dict(flags=9)),
+                            dict(projection=record["projection"] |
+                                 dict(voxel_render_options=[1, 4])),
+                            dict(projection=record["projection"] |
+                                 dict(camera_trixel_offset=[1, 0])),
+                            dict(projection=record["projection"] | dict(visual_yaw=.1))):
+            with self.subTest(replacement=replacement), self.assertRaises(ValueError):
+                probe.classify_native_owner(accepted, record | replacement)
+
+    def test_native_gather_uses_one_ray_per_nearest_upscaled_block(self):
+        for y in (568, 569):
+            for x in (1252, 1253):
+                self.assertEqual(probe.fixture_ray(x, y), (-6.75, -75.5))
+        self.assertEqual(probe.fixture_ray(1254, 569), (-6.25, -75.5))
+        self.assertEqual(probe.fixture_ray(1253, 570), (-6.75, -74.5))
+        self.assertEqual(probe.fixture_ray(1253, 569, "screenshot-ray"),
+                         (-6.625, -75.25))
+        with self.assertRaises(ValueError):
+            probe.fixture_ray(1253, 569, "unknown")
+
+        accepted = {(-7, -75): 26, (-6, -75): 26}
+        options = probe.candidates(accepted)[-6, -75]
+        native = probe.classify_possible_owners(accepted, options, *probe.fixture_ray(1253, 569))
+        finer = probe.classify_possible_owners(
+            accepted, options, *probe.fixture_ray(1253, 569, "screenshot-ray"))
+        self.assertTrue(native["normal_matches_nearest"])
+        self.assertEqual(native["classification"], "owner_ambiguous")
+        self.assertFalse(finer["normal_matches_nearest"])
+        self.assertEqual(finer["classification"], "publisher_face_not_on_ray")
+
     def test_image_gate_detects_extra_foreground_and_count_preserving_move(self):
         candidates = probe.candidates({(0, 0): 0})
         data = bytearray(16 * 16 * 3)

@@ -8,6 +8,8 @@ is a diagnostic: the publisher's rectangular gather does not promise exact
 finite-triangle coverage. A disagreement alone does not prove a renderer bug.
 Candidate depths omit the common cardinal storage bias, which cannot change
 their ordering. Native same-face owner identity requires a separate owner readback.
+The native gather samples a 1284×722 padded framebuffer before 2× nearest
+presentation; four screenshot pixels therefore share one geometric ray.
 """
 
 import argparse
@@ -26,6 +28,15 @@ NORMAL_COLORS = ((0, 128, 128), (128, 0, 128), (128, 128, 0))
 ISO_X = range(-100, 101)
 ISO_Y = range(-132, 133)
 DEPTH = range(-115, 116)
+
+
+def fixture_ray(x, y, sampling="native-gather"):
+    """Yaw-zero fixture iso coordinates; screenshot pixels use top-left origin."""
+    if sampling == "native-gather":
+        return ((x // 2 + .5 - 640) / 2, y // 2 + .5 - 360)
+    if sampling == "screenshot-ray":
+        return ((x + .5 - 1280) / 4, (y + .5 - 720) / 2)
+    raise ValueError(f"unknown sampling model: {sampling}")
 
 
 def position(i, j, depth):
@@ -122,6 +133,40 @@ def classify_possible_owners(accepted, options, u, v):
                 possible_owners=classifications)
 
 
+def classify_native_owner(accepted, record):
+    """Compare an opt-in GPU readback with the fixed yaw-zero fixture model."""
+    if record["schema"] != 1 or record["status"] != "ok":
+        raise ValueError("native probe did not select a supported current-frame shape sample")
+    shape, frame = record["shape"], record["projection"]
+    if (shape["shape_type"] != 9 or shape["params"][:2] != [4, 2]
+            or shape["world_position"][:3] != [0, 0, 0]
+            or shape["rotation"][:3] != [0, 0, 0] or abs(shape["rotation"][3]) != 1
+            or shape["flags"] & 1 or frame["voxel_render_options"][:2] != [2, 8]
+            or frame["shape_count"] != 1 or frame["camera_trixel_offset"] != [0, 0]
+            or any(frame[key] != 0 for key in
+                   ("visual_yaw", "raster_yaw", "residual_yaw",
+                    "smooth_yaw_enabled", "lattice_shapes"))):
+        raise ValueError("native shape/projection differs from the fixed torus fixture")
+    u, v = fixture_ray(*record["screenshot_pixel"])
+    observed_iso = [origin - size / 2 for origin, size in
+                    zip(record["canvas_origin_raw"], record["canvas_size"], strict=True)]
+    if len(observed_iso) != 2 or any(abs(a - b) > 1e-4 for a, b in zip(observed_iso, (u, v))):
+        raise ValueError("native projection does not match the fixed capture fixture")
+    i, j = record["sample_iso"]
+    if accepted.get((i, j)) != record["surface_depth"]:
+        raise ValueError("native sample differs from independent SDF depth enumeration")
+    options = candidates(accepted).get((math.floor(u + 1), math.floor(v + 1)), [])
+    matches = [c for c in options if c[2:] == (i, j, record["face"], record["half"])]
+    if len(matches) != 1 or matches[0][0] != min(c[0] for c in options):
+        raise ValueError("native owner is not an independently eligible nearest publisher")
+    stored = record["surface_depth"] + (3 * 8 + 1) // 2
+    if record["stored_depth"] != stored or record["raw_depth"] != 8 * stored + record["face"]:
+        raise ValueError("native encoded depth disagrees with the selected sample and face")
+    return dict(pixel=record["screenshot_pixel"], iso=[u, v],
+                native_owner_key=record["owner_key"],
+                **classify(accepted, matches[0], u, v))
+
+
 def verify_origin_contract():
     """Fixed registration: Z1 storage origin is canvas center minus one texel."""
     source = (ROOT / "engine/render/src/shaders/ir_iso_common.glsl").read_text()
@@ -155,7 +200,7 @@ def compare_image(all_candidates, image):
                 observed_colors={str(color): count for color, count in observed.items()})
 
 
-def report(accepted, normal_image=None, explain=None):
+def report(accepted, normal_image=None, explain=None, sampling="native-gather"):
     verify_origin_contract()
     all_candidates = candidates(accepted)
     counts, examples = Counter(), {}
@@ -168,8 +213,8 @@ def report(accepted, normal_image=None, explain=None):
         faces[winner[4]] += 1
         for y in range(2):
             for x in range(4):
-                u, v = i - 1 + (x + .5) / 4, j - 1 + (y + .5) / 2
                 pixel = (1280 + 4 * (i - 1) + x, 720 + 2 * (j - 1) + y)
+                u, v = fixture_ray(*pixel, sampling)
                 classification = classify_possible_owners(accepted, options, u, v)
                 label = classification["classification"]
                 counts[label] += 1
@@ -192,7 +237,7 @@ def report(accepted, normal_image=None, explain=None):
         for x in range(4 * (min_i - 1), 4 * (max_i + 1)):
             if (x // 4 + 1, y // 2 + 1) in all_candidates:
                 continue
-            u, v = (x + .5) / 4, (y + .5) / 2
+            u, v = fixture_ray(1280 + x, 720 + y, sampling)
             hits = ray_hits(accepted, u, v)
             if hits:
                 missing_union_pixels += 1
@@ -200,6 +245,7 @@ def report(accepted, normal_image=None, explain=None):
                     missing_example = dict(pixel=[1280 + x, 720 + y], iso=[u, v], nearest=hits[0])
     result = dict(
         fixture="torus yaw=0 subdivision=8 R=4 r=2 origin=0",
+        ray_sampling=sampling,
         accepted_samples=len(accepted), published_texels=len(all_candidates),
         face_texels=dict(faces), finite_model_pixel_classifications=dict(counts),
         finite_union_unpublished_pixels=missing_union_pixels,
@@ -207,25 +253,29 @@ def report(accepted, normal_image=None, explain=None):
         examples=examples,
         limits=["Finite unit faces at fractional samples are a representation diagnostic.",
                 "Rectangular gather is not exact triangle coverage; discrepancies are not a gate.",
-                "All equal encoded-depth owners are classified; native tile IDs are unobserved.",
+                "Image counts classify all equal-depth owners; "
+                "explicit native probes are separate.",
+                "Counts use screenshot pixels; native-gather rays repeat in 2x2 blocks.",
                 "No continuous-torus gradient is used as a face-normal correctness oracle."])
     source_paths = [ROOT / "engine/render/src/shaders" / folder / f"{name}.{backend}"
                     for backend, folder in (("glsl", ""), ("metal", "metal"))
                     for name in ("ir_sdf_common", "ir_iso_common", "c_shapes_to_trixel_body")]
+    source_paths.append(Path(__file__).resolve())
     result["provenance"] = dict(
         source_revision=subprocess.run(["git", "-C", str(ROOT), "rev-parse", "HEAD"],
                                        check=True, capture_output=True, text=True).stdout.strip(),
         source_sha256={str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest()
                        for path in source_paths},
         capture_fixture="Assumed yaw=0, origin=0, zoom=8, subdiv=8, radii=(4,2); no AO/shadows",
-        registration="2560x1440 center=(1280,720), texel=(4,2), Z1=(-1,-1)")
+        registration="2560x1440 center=(1280,720), texel=(4,2), Z1=(-1,-1)",
+        gather="1284x722 buffer, 1280x720 game, nearest 2x presentation; pixel center sampling")
     if image:
         result["provenance"]["normals_path"] = str(normal_image.resolve())
         result["provenance"]["normals_file_sha256"] = hashlib.sha256(
             normal_image.read_bytes()).hexdigest()
         result["publisher_image_agreement"] = compare_image(all_candidates, image)
     if explain:
-        u, v = (explain[0] + .5 - 1280) / 4, (explain[1] + .5 - 720) / 2
+        u, v = fixture_ray(*explain, sampling)
         key = (math.floor(u + 1), math.floor(v + 1))
         options = all_candidates.get(key, [])
         result["explain"] = dict(pixel=explain, iso=[u, v], candidates=sorted(options),
@@ -240,8 +290,20 @@ def main():
     parser.add_argument("--normals", type=Path)
     parser.add_argument("--pixel", type=int, nargs=2, metavar=("X", "Y"))
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--native-probe", type=Path,
+                        help="classify the actual owner from a ShapeDebug shape-sample probe")
+    parser.add_argument("--sampling", choices=("native-gather", "screenshot-ray"),
+                        default="native-gather",
+                        help="native framebuffer centers, or the finer screenshot-ray comparison")
     args = parser.parse_args()
-    result = report(samples(), args.normals, tuple(args.pixel) if args.pixel else None)
+    accepted = samples()
+    result = report(accepted, args.normals, tuple(args.pixel) if args.pixel else None,
+                    args.sampling)
+    if args.native_probe:
+        result["native_owner"] = classify_native_owner(
+            accepted, json.loads(args.native_probe.read_text()))
+        result["provenance"]["native_probe_sha256"] = hashlib.sha256(
+            args.native_probe.read_bytes()).hexdigest()
     encoded = json.dumps(result, indent=2) + "\n"
     if args.output:
         args.output.write_text(encoded)
