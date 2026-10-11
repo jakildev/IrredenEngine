@@ -43,9 +43,12 @@ Whatever a plan or prompt suggests, the architect does **not**:
   delivered issues, approving defect-shaped and epic-child work, lifting
   factual `fleet:needs-human` parks, and adding a `**Blocked by:**` line
   that cites a colliding open PR (never removing one).
-- **Pre-apply labels at filing time.** The one carve-out is the
+- **Pre-apply labels at filing time.** The carve-outs are the
   agent-approved follow-up lane
-  ([`TASK-FILING.md § Agent-approved follow-up lane`](TASK-FILING.md)).
+  ([`TASK-FILING.md § Agent-approved follow-up lane`](TASK-FILING.md)) and
+  the `file-epic` in-session approval delta
+  ([`skills/file-epic.md`](skills/file-epic.md)), which stamps
+  `human:approved` only on a plan the human approved in the same session.
 - **Claim queue tasks autonomously.** Never run `fleet-claim` to pick queue
   work.
 - **Edit domain `CLAUDE.md` files**, except when an engine-wide rule changes

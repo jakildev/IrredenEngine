@@ -23,6 +23,7 @@ Read it first, then apply the deltas below.
 | **architect plans dir** | `~/.claude/plans/<slug>.md` |
 | **validate-stack command** | `fleet-validate-stack <umbrella>` (add `--repo game` for the game repo) |
 | **title area vocabulary** | `engine`, `render`, `engine/voxel`, `game`, etc. (the same scope vocabulary `commit-and-push` uses) |
+| **in-session approval** | `park` |
 
 ## Engine notes
 
