@@ -24,14 +24,25 @@ reconstruction or incomplete-index fallback edges.
    about 4.4% higher remaining-frame means and higher shadow-stage costs despite
    the first-use improvement. Attribute and reduce those costs before claiming
    performance neutrality; these results do not establish a throughput gain.
+   A [parameter-hoist experiment](../pr-screenshots/codex/shape-shadow-sun-space/profiles/cascade-hoist/README.md)
+   passes routing/PCF controls, but its native comparison was refused by the
+   fleet quiet-window guard. It is not adopted; the indexed loop and all
+   production shader behavior are preserved. Retry only with paired evidence
+   on the backend carrying the measured overhead.
 2. Integrate the overlapping fog-caster work in #4269, preserving FIELD checks
    for curved record publication and final hit depth. Native OpenGL visual
    smoke remains tracked validation debt, not a merge gate by itself.
-3. Classify the [torus surface bands](../pr-screenshots/codex/shape-shadow-sun-space/torus-surface-probe/README.md)
-   against independently projected occupied samples and their finite faces.
-   Paired no-shadow/no-AO captures tie them to normal classes, but do not prove
-   the faces are wrong. Preserve legitimate voxel steps; compare continuous
-   curve geometry separately before extending finite receiver reconstruction.
+3. The [torus surface-band investigation](../pr-screenshots/codex/shape-shadow-sun-space/torus-surface-probe/README.md)
+   now has an executable fractional-sample publisher and finite-face diagnostic.
+   Both shader adapters match the independent publisher, which reproduces every
+   pixel of the retained yaw-zero normal image. Its finite cube-union comparison
+   finds different face normals at 49,124 published pixels and 808 unpublished
+   model pixels; these are representation differences, not certified wrong
+   normals. Next establish the intended curved-surface coverage contract and
+   retain native owner/depth evidence for ambiguous ties before implementing a
+   finite reconstruction route. Preserve legitimate voxel steps and keep
+   continuous curve geometry as a separate comparison. The cardinal AO/local-light
+   depth repair in #4308 does not change this producer/gather ownership path.
 4. Measure dense tile saturation, incomplete-index fallback, and moving
    camera/light costs. Small native scenes and software OpenGL CI do not qualify
    hardware throughput or the million-entity target.

@@ -117,10 +117,17 @@ remaining-frame means at zoom 1, higher individual shadow-stage costs, and
 cache-order limits. This clears the observed gate failure; performance neutrality
 and a stable throughput improvement are not established.
 
+A subsequent [cascade-parameter hoist](profiles/cascade-hoist/README.md) passes
+the routing controls but is not adopted: the native comparison was refused by
+the fleet quiet-window guard. The production indexed loop is unchanged.
+
 The separate [torus surface probe](torus-surface-probe/README.md) pairs beauty
 and normal diagnostics with both sun shadows and AO disabled. It identifies
-face-normal classes behind the surface bands, without assuming every stepped
-face is incorrect or changing their lighting.
+face-normal classes behind the surface bands. Its executable publisher now
+reproduces the retained yaw-zero image exactly and separately reports finite
+fractional-face coverage differences, including owner ambiguity and missing
+coverage. This establishes a concrete representation comparison, without
+declaring every stepped face incorrect or changing its lighting.
 
 Three guarded 300-frame runs per revision use the same full ShapeDebug scene,
 zoom 4, yaw 45° and `profiles/timing.lua` to enable GPU stage timing:
