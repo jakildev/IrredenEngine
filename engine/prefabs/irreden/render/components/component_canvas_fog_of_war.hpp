@@ -95,6 +95,13 @@
 //     is removed. Every sample then steps a hair out along its face normal. The
 //     CPU oracle (`IRPrefab::Fog::losVisibility`) evaluates an entity at its
 //     ground anchor, lifted onto its column's top plane when it sits below it.
+//   * Column top: a painted FIELD sample on a vertical face also takes the
+//     reveal at the top plane of its own column, so a source that reveals a
+//     ground surface reveals the matter under it. The column is the one
+//     holding the sample's column point (`fogLosColumnPoint`): its face point
+//     stepped a hair into the face. The term reads this field, so it is live
+//     exactly on the frames that build it. Contract:
+//     docs/design/fog-of-war-reveal-model.md ("Column top").
 // `FOG_LOS_BUILD` rebuilds the column field each RENDER frame and uploads
 // `losTexture_` (256 × 510 RGBA32F: the four half-cells of each integer cell
 // in one texel's four channels, then the field's pyramid; `kFogLosColumnEmpty`

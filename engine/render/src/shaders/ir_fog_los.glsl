@@ -25,7 +25,7 @@
 // kFogLosLevelCount / kFogLosLevelBias / kFogLosColumnEmpty /
 // kFogLosClearanceTolerance (component_canvas_fog_of_war.hpp) and
 // kFogLosDiscMargin / kFogLosRimFadeCells / kFogLosMaxMarchSteps /
-// kFogLosMarchNudge (fog_line_of_sight.hpp).
+// kFogLosMarchNudge / kFogLosFaceBias (fog_line_of_sight.hpp).
 const int kFogLosCellsPerUnit = 2;
 const int kFogLosFieldHalfExtent = 256;
 const int kFogLosTextureSize = 256;
@@ -226,27 +226,63 @@ float fogLosVisibility(vec3 eye, vec3 target, float softness, ivec2 fieldMin) {
     return fogLosVisibilityFromClearance(minClearance, bandClearance, softness);
 }
 
-// The canonical position of a pixel: the world point of its face on the
-// lattice the column field is built on. A cardinal voxel pixel is recovered
-// up to a micro cell off its face plane, so its face-axis coordinate snaps
-// onto the micro lattice; a per-axis cell sits exactly on its plane, and an
-// analytic pixel is normalized to its authored surface by the caller. Voxel
-// routes then step kFogLosFaceBias out along the face normal; an analytic
-// sample stays on the authored surface, matching the shape-column stamp.
+// The half-cell holding world point `worldXY`. Mirrors
+// FogLosColumnField::halfCellOf.
+ivec2 fogLosHalfCellOf(vec2 worldXY) {
+    return ivec2(floor(worldXY * float(kFogLosCellsPerUnit)));
+}
+
+// The world point of a pixel's face on the lattice the column field is built
+// on. A cardinal voxel pixel is recovered up to a micro cell off its face
+// plane, so its face-axis coordinate snaps onto the micro lattice; a per-axis
+// cell sits exactly on its plane, and an analytic pixel is normalized to its
+// authored surface by the caller.
+vec3 fogLosFacePoint(vec3 pos3D, int worldFaceId, int route, int scale) {
+    if (route != kFogLosRouteCardinal) {
+        return pos3D;
+    }
+    const vec3 normal = faceOutwardNormal6(worldFaceId);
+    const vec3 axisMask = abs(normal);
+    const float outward = dot(normal, vec3(1.0));
+    const float micro = float(scale);
+    const float coordinate = dot(pos3D, axisMask);
+    const float snapped =
+        float(roundHalfUp((coordinate - outward * kFogLosFaceSnapOffset / micro) * micro)) / micro;
+    return mix(pos3D, vec3(snapped), axisMask);
+}
+
+// The canonical position of a pixel, the target its own line-of-sight march
+// ends on: a voxel route's face point stepped kFogLosFaceBias out along the
+// face normal; an analytic sample stays on the authored surface, matching the
+// shape-column stamp.
 vec3 fogLosCanonicalSample(vec3 pos3D, int worldFaceId, int route, int scale) {
     if (route == kFogLosRouteAnalytic) {
         return pos3D;
     }
+    return fogLosFacePoint(pos3D, worldFaceId, route, scale) +
+        faceOutwardNormal6(worldFaceId) * kFogLosFaceBias;
+}
+
+// The column point of a pixel: its face point stepped kFogLosFaceBias into
+// the face on every route, so the half-cell holding it is the column of the
+// matter the face bounds. The cardinal voxel raster also recovers a vertical
+// face's in-plane horizontal coordinate up to a third of a micro cell either
+// side of the lattice line through the drawn cell's view-frame lower corner,
+// so that coordinate snaps onto the line and steps the same distance into
+// the cell, which extends from the corner toward the cardinal rotation of
+// view (+1, +1). A point that still misses its column reads a lower top
+// plane, which leaves the sample its own verdict. `cardinalIndex` is read on
+// the cardinal route only.
+vec3 fogLosColumnPoint(vec3 pos3D, int worldFaceId, int route, int scale, int cardinalIndex) {
     const vec3 normal = faceOutwardNormal6(worldFaceId);
-    vec3 canonical = pos3D;
-    if (route == kFogLosRouteCardinal) {
-        const vec3 axisMask = abs(normal);
-        const float outward = dot(normal, vec3(1.0));
-        const float micro = float(scale);
-        const float coordinate = dot(pos3D, axisMask);
-        const float snapped =
-            float(roundHalfUp((coordinate - outward * kFogLosFaceSnapOffset / micro) * micro)) / micro;
-        canonical = mix(pos3D, vec3(snapped), axisMask);
+    const vec3 inward =
+        fogLosFacePoint(pos3D, worldFaceId, route, scale) - normal * kFogLosFaceBias;
+    if (route != kFogLosRouteCardinal || normal.z != 0.0) {
+        return inward;
     }
-    return canonical + normal * kFogLosFaceBias;
+    const vec3 inPlane = vec3(abs(normal.y), abs(normal.x), 0.0);
+    const float micro = float(scale);
+    const float lattice = float(roundHalfUp(dot(pos3D, inPlane) * micro)) / micro;
+    const float cellSide = dot(rotateCardinalZInv(vec3(1.0, 1.0, 0.0), cardinalIndex), inPlane);
+    return mix(inward, vec3(lattice + cellSide * kFogLosFaceBias), inPlane);
 }

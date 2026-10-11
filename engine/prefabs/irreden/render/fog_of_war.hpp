@@ -328,6 +328,68 @@ inline RevealSurfaceSample evalRevealSurface(
     );
 }
 
+namespace detail {
+
+/// The column-top term of a painted sample on a vertical face
+/// (`fogColumnTopState`): the larger of @p state and the gated reveal at the
+/// point of the top plane over @p columnPoint, the top plane being that of
+/// the column @p columnPoint lies in. @p state when @p los is unpublished or
+/// the column has no top plane above the sample. `losVisibility` evaluates a
+/// point on its own column's top plane as a body standing there, so the term
+/// is that body's verdict.
+inline float columnTopState(
+    const IRComponents::FrameDataFogObservers &observers,
+    const IRComponents::FogLosColumnField &los,
+    IRMath::vec3 columnPoint,
+    std::uint32_t channels,
+    float state
+) {
+    using IRComponents::FogLosColumnField;
+    if (!los.published()) {
+        return state;
+    }
+    const float topZ = los.topPlane(
+        FogLosColumnField::halfCellOf(columnPoint.x),
+        FogLosColumnField::halfCellOf(columnPoint.y)
+    );
+    if (topZ == IRComponents::kFogLosColumnEmpty ||
+        topZ >= columnPoint.z - IRComponents::kFogLosClearanceTolerance) {
+        return state;
+    }
+    const IRMath::vec3 top(columnPoint.x, columnPoint.y, topZ);
+    return IRMath::max(state, evalVisionReveal(observers, los, top, channels));
+}
+
+} // namespace detail
+
+/// The FIELD paint verdict of a sample on face @p face: the position-only
+/// verdict at @p worldPosition, raised to the reveal of its own column's top
+/// plane when the face is vertical and the column field is published. @p columnPoint is the
+/// sample's `losColumnPoint`. A sample the column top raises carries no styled band; a top or
+/// bottom face takes the position-only verdict.
+inline RevealSurfaceSample evalRevealSurface(
+    const IRComponents::FrameDataFogObservers &observers,
+    const IRComponents::FogLosColumnField &los,
+    std::uint8_t gridCellState,
+    IRMath::vec3 worldPosition,
+    IRMath::vec3 columnPoint,
+    IRMath::FaceId face,
+    std::uint32_t channels = IRComponents::kFogChannelDefault
+) {
+    RevealSurfaceSample sample =
+        evalRevealSurface(observers, los, gridCellState, worldPosition, channels);
+    if (sample.state_ >= 1.0f || IRMath::faceAxis(face) == 2) {
+        return sample;
+    }
+    const float topState =
+        detail::columnTopState(observers, los, columnPoint, channels, sample.state_);
+    if (topState > sample.state_) {
+        sample.state_ = topState;
+        sample.styledBand_ = 0.0f;
+    }
+    return sample;
+}
+
 /// The hard-gated sources' route summaries (`LosHardRoute`) for one tick of
 /// one continuous reveal evaluator, shared by every worker of its fan-out:
 /// many bodies sharing an exact XY (a stacked column) read one route built
@@ -873,6 +935,31 @@ inline RevealSurfaceSample evalRevealSurface(
         los,
         fog.getCell(column.x, column.y),
         worldPosition,
+        channels
+    );
+}
+
+/// The FIELD paint verdict of a sample on face @p face at @p worldPosition
+/// against @p fog, column-top term included (@p columnPoint is its
+/// `losColumnPoint`). Serial, like the position-only overload.
+inline RevealSurfaceSample evalRevealSurface(
+    const IRComponents::C_CanvasFogOfWar &fog,
+    IRMath::vec3 worldPosition,
+    IRMath::vec3 columnPoint,
+    IRMath::FaceId face,
+    std::uint32_t channels = IRComponents::kFogChannelDefault
+) {
+    IRComponents::FrameDataFogObservers observers;
+    IRComponents::FogLosColumnField los;
+    selectRevealSnapshot(fog, observers, los);
+    const IRMath::ivec3 column = IRMath::roundVec3HalfUp(worldPosition);
+    return evalRevealSurface(
+        observers,
+        los,
+        fog.getCell(column.x, column.y),
+        worldPosition,
+        columnPoint,
+        face,
         channels
     );
 }

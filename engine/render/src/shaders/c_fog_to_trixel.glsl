@@ -147,6 +147,7 @@ void main() {
     const vec3 pos3D = fogPixelToWorld(pixel, encoded, faceId, size, cardinalDepth);
     float aaFloor = 0.0;
     vec3 losSample = pos3D;
+    vec3 columnPoint = pos3D;
     if (visionCircleCount > 0) {
         // Local world-units-per-pixel from the +x neighbour at the same depth:
         // floors the disc's AA rim at ~1 canvas px at any zoom.
@@ -169,10 +170,14 @@ void main() {
                 losRoute,
                 scale
             );
+            columnPoint = fogLosColumnPoint(
+                pos3D, faceId, losRoute, scale, rasterYawCardinalIndex(rasterYaw)
+            );
         }
     }
 
-    const FogReveal reveal = fogRevealSample(pos3D, losSample, aaFloor);
+    const FogReveal reveal =
+        fogRevealSample(pos3D, losSample, columnPoint, faceId >> 1, aaFloor);
     if (reveal.state >= 1.0) {
         return;
     }
