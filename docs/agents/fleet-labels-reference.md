@@ -297,12 +297,14 @@ Protocol: [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md).
 - `fleet:awaiting-infra` — **worker** park on a PR that is complete but
   unverifiable on any host until another issue lands: remove
   `fleet:design-unblocked`, add this, append `Parked-until: #<issue>` to
-  the PR body on its own line — the **backing issue** of the blocking PR,
-  never the PR number (reconcile reads the last occurrence and the
-  contiguous comma/space-separated `#N` run after the marker, un-parking only
-  when all read CLOSED or MERGED; same-repo only, a cross-repo spelling
-  surfaces as malformed), comment the rationale, keep `fleet:wip`, release
-  the claim. Never park on a smoke label or a host-only verification child
+  the PR **body** (not a comment) on its own line — the **backing issue** of
+  the blocking PR, never the PR number (reconcile reads the last occurrence
+  and the contiguous comma/space-separated `#N` run after the marker,
+  un-parking only when all read CLOSED or MERGED; a leading list bullet or
+  bold/backtick emphasis on the marker is tolerated, a marker mid-sentence is
+  not; same-repo only, a cross-repo spelling surfaces as malformed), comment
+  the rationale, keep `fleet:wip`, release the claim. Never park on a smoke
+  label or a host-only verification child
   ([`FLEET-CROSS-HOST-SMOKE.md § Ledger, not a gate`](FLEET-CROSS-HOST-SMOKE.md)).
   Reconcile R7/R2 skip it; R8 removes it when the blocker closes, after
   which R7 re-arms `fleet:design-unblocked`. A park with no parsable line

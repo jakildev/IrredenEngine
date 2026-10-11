@@ -56,6 +56,24 @@ class ParkedUntilIssueNumbers(unittest.TestCase):
         self.assertEqual(parked_until_issue_numbers(""), [])
         self.assertEqual(parked_until_issue_numbers("Parked-until: later #20"), [])
 
+    def test_list_bullet_before_marker_is_tolerated(self):
+        self.assertEqual(parked_until_issue_numbers("- Parked-until: #3686"), [3686])
+        self.assertEqual(parked_until_issue_numbers("  * Parked-until: #20, #30"), [20, 30])
+        self.assertEqual(
+            parked_until_issue_numbers("+ Parked-until: #20 #30 (aside #40)"), [20, 30]
+        )
+
+    def test_bold_or_backtick_marker_is_tolerated(self):
+        self.assertEqual(parked_until_issue_numbers("**Parked-until:** #20"), [20])
+        self.assertEqual(parked_until_issue_numbers("**Parked-until**: #20, #30"), [20, 30])
+        self.assertEqual(parked_until_issue_numbers("`Parked-until:` #20"), [20])
+        self.assertEqual(parked_until_issue_numbers("`Parked-until: #20`"), [20])
+        self.assertEqual(parked_until_issue_numbers("- **Parked-until:** #20"), [20])
+
+    def test_marker_mid_sentence_is_still_rejected(self):
+        self.assertEqual(parked_until_issue_numbers("See Parked-until: #20 above"), [])
+        self.assertEqual(parked_until_issue_numbers("the Parked-until: #20 line"), [])
+
 
 class BranchMatchesIssue(unittest.TestCase):
     # --- acceptance criteria -------------------------------------

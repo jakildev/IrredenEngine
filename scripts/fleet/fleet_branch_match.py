@@ -505,8 +505,15 @@ PARKED_PR_LABELS = frozenset({
     "fleet:design-proposed",
 })
 
+# The marker must open its line, but a worker's markdown habits are tolerated
+# there: an unordered-list bullet (`- Parked-until: #N`) and bold or backtick
+# emphasis on the marker word (`**Parked-until:** #N`, `**Parked-until**: #N`,
+# `` `Parked-until:` #N ``). A marker that appears mid-sentence is still
+# rejected: the own-line rule is what keeps a prose mention from being read
+# as a park, and a park nothing can parse never un-parks.
 _PARKED_UNTIL_RE = re.compile(
-    r"^[ \t]*Parked-until:[ \t]*(#\d+\b(?:(?:[ \t]*,[ \t]*|[ \t]+)#\d+\b)*)",
+    r"^[ \t]*(?:[-*+][ \t]+)?(?:\*\*|`)?Parked-until(?:\*\*)?:(?:\*\*|`)?[ \t]*"
+    r"(#\d+\b(?:(?:[ \t]*,[ \t]*|[ \t]+)#\d+\b)*)",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -514,10 +521,12 @@ _PARKED_UNTIL_RE = re.compile(
 def parked_until_issue_numbers(body):
     """Issue numbers from the last parsable `Parked-until:` body marker.
 
-    The issue list is the contiguous comma/whitespace-separated run after the
-    marker. Trailing prose is ignored, and an appended parsable marker makes
-    every earlier marker inert. Missing or malformed markers return an empty
-    list so callers fail closed.
+    The marker opens its line, optionally behind a list bullet or wrapped in
+    bold / backticks (see `_PARKED_UNTIL_RE`). The issue list is the
+    contiguous comma/whitespace-separated run after the marker. Trailing
+    prose is ignored, and an appended parsable marker makes every earlier
+    marker inert. Missing or malformed markers return an empty list so
+    callers fail closed.
     """
     markers = _PARKED_UNTIL_RE.findall(body or "")
     if not markers:

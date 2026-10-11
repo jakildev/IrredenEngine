@@ -4768,7 +4768,9 @@ for repo in repos:
 # Trailing prose after the number is TOLERATED — "Parked-until: #N (the fmt
 # build wall)" parses — because writing the reason inline is the shape a worker
 # actually produces, and a `$`-anchored matcher would escalate that perfectly
-# good park to a human as malformed.
+# good park to a human as malformed. A list bullet before the marker and bold
+# or backtick emphasis on it are tolerated for the same reason: they are
+# markdown habits, not a different declaration.
 #
 # A park may name SEVERAL blockers ("Parked-until: #N, #M"); it ends only
 # when every one has closed, so a PR waiting on two fixes is not un-parked by
