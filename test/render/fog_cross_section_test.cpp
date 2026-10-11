@@ -808,6 +808,7 @@ TEST(FogCrossSectionShaderParity, LosGateIsIdenticalAcrossBackends) {
         {"kFogLosDiscMargin", static_cast<double>(IRPrefab::Fog::kFogLosDiscMargin)},
         {"kFogLosRimFadeCells", static_cast<double>(IRPrefab::Fog::kFogLosRimFadeCells)},
         {"kFogLosMarchNudge", static_cast<double>(IRPrefab::Fog::kFogLosMarchNudge)},
+        {"kFogLosFaceBias", static_cast<double>(IRPrefab::Fog::kFogLosFaceBias)},
         {"kFogLosMaxMarchSteps", 4096.0},
     };
     for (const auto &[name, mirrored] : expected) {
@@ -834,7 +835,10 @@ TEST(FogCrossSectionShaderParity, LosGateIsIdenticalAcrossBackends) {
           "fogLosTraceClearance",
           "fogLosVisibilityFromClearance",
           "fogLosVisibility",
-          "fogLosCanonicalSample"}) {
+          "fogLosHalfCellOf",
+          "fogLosFacePoint",
+          "fogLosCanonicalSample",
+          "fogLosColumnPoint"}) {
         const std::string glslBody = extractFunctionBody(glsl, helper);
         const std::string metalBody = extractFunctionBody(metal, helper);
         ASSERT_FALSE(glslBody.empty()) << helper << " not found in ir_fog_los.glsl";
@@ -1009,6 +1013,118 @@ TEST(FogCrossSectionShaderParity, CeilingScalesEachSourceBeforeTheMaximumOnBothB
         std::string::npos
     ) << "the drop must scale each source by its ceiling inside the max: "
       << glslDrop;
+}
+
+// Test E, part 12: the column-top term. The term's body reduces to the same
+// maths on both backends; the shared reveal applies it only to a vertical
+// face of a sample below full reveal on a frame with a gated source, raises
+// the state alone and clears the band of a sample it raises; the column
+// point steps into the face where the canonical sample steps out of it, and
+// on the cardinal route snaps a vertical face's in-plane coordinate into the
+// drawn cell; and every paint route hands the kernel its column point and
+// face axis.
+TEST(FogCrossSectionShaderParity, ColumnTopTermIsIdenticalAcrossBackends) {
+    const std::string glsl = readShaderSource(kGlslFogCommonPath);
+    const std::string metal = readShaderSource(kMetalFogCommonPath);
+    const std::string glslTerm =
+        normalizeKernelMath(extractFunctionBody(glsl, "fogColumnTopState"));
+    const std::string metalTerm =
+        normalizeKernelMath(extractFunctionBody(metal, "fogColumnTopState"));
+    ASSERT_FALSE(glslTerm.empty()) << "fogColumnTopState not found in GLSL";
+    ASSERT_FALSE(metalTerm.empty()) << "fogColumnTopState not found in MSL";
+    EXPECT_EQ(glslTerm, metalTerm) << "the column-top term diverged between backends";
+    for (const char *expected :
+         {"const float topZ = fogLosTopPlane(fogLosHalfCellOf(columnPoint.xy), losFieldMin);",
+          "if (topZ == kFogLosColumnEmpty || topZ >= columnPoint.z - kFogLosClearanceTolerance) "
+          "{ return state; }",
+          "const vec3 top = vec3(columnPoint.xy, topZ);",
+          "if ((visionCircleChannels[i / 4][i % 4] & cellChannels) == 0u) { continue; }",
+          "fogCeilingVisibility(visionCircleCeilings[i], dzUp);",
+          "if (ceilingReveal <= state) { continue; }",
+          "losVisibility = fogLosVisibility(fogLosEye(visionCircles[i], heights.x, "
+          "losParams[i].x), top, losParams[i].y, losFieldMin);",
+          "state = max(state, losVisibility * ceilingReveal);"}) {
+        EXPECT_NE(glslTerm.find(expected), std::string::npos)
+            << "missing `" << expected << "` in " << glslTerm;
+    }
+    for (const char *forbidden : {"styledBand", "hardDistPastRim", "gridState", "hash01"}) {
+        EXPECT_EQ(glslTerm.find(forbidden), std::string::npos)
+            << "the term feeds the state alone, never `" << forbidden << "`";
+    }
+
+    for (const std::string *kernel : {&glsl, &metal}) {
+        const std::string reveal = normalizeKernelMath(
+            extractSpan(*kernel, "fogRevealSample(", "float state = gridState;", "return FogReveal")
+        );
+        ASSERT_FALSE(reveal.empty());
+        const std::size_t loopEnd = reveal.rfind("hardDistPastRim = min(");
+        const std::size_t termAt =
+            reveal.find("if (state < 1.0 && losSourceMask != 0 && faceAxis != 2) {");
+        ASSERT_NE(loopEnd, std::string::npos);
+        ASSERT_NE(termAt, std::string::npos)
+            << "the term must fire only below full reveal, with a gated source, on a "
+               "vertical face: "
+            << reveal;
+        EXPECT_LT(loopEnd, termAt) << "the term composes after the sample's own sources";
+        EXPECT_NE(
+            reveal.find(
+                "const float topState = fogColumnTopState(columnPoint, aaFloor, cellChannels, "
+                "losFieldMin, state); if (topState > state) { state = topState; styledBand = "
+                "0.0; } }",
+                termAt
+            ),
+            std::string::npos
+        ) << "a raised sample takes the top's state and no band: "
+          << reveal;
+    }
+
+    const std::string glslLos = readShaderSource(kGlslFogLosPath);
+    const std::string canonical =
+        normalizeLosMath(extractFunctionBody(glslLos, "fogLosCanonicalSample"));
+    const std::string columnPoint =
+        normalizeLosMath(extractFunctionBody(glslLos, "fogLosColumnPoint"));
+    EXPECT_NE(
+        canonical.find(
+            "return fogLosFacePoint(pos3D, worldFaceId, route, scale) + "
+            "faceOutwardNormal6(worldFaceId) * kFogLosFaceBias;"
+        ),
+        std::string::npos
+    ) << canonical;
+    for (const char *expected :
+         {"const vec3 inward = fogLosFacePoint(pos3D, worldFaceId, route, scale) - normal * "
+          "kFogLosFaceBias;",
+          "if (route != kFogLosRouteCardinal || normal.z != 0.0) { return inward; }",
+          "const float lattice = float(roundHalfUp(dot(pos3D, inPlane) * micro)) / micro;",
+          "const float cellSide = dot(rotateCardinalZInv(vec3(1.0, 1.0, 0.0), cardinalIndex), "
+          "inPlane);",
+          "return mix(inward, vec3(lattice + cellSide * kFogLosFaceBias), inPlane);"}) {
+        EXPECT_NE(columnPoint.find(expected), std::string::npos)
+            << "missing `" << expected << "` in " << columnPoint;
+    }
+    EXPECT_EQ(columnPoint.find("kFogLosRouteAnalytic"), std::string::npos)
+        << "an analytic sample steps into its face like every other route";
+
+    const char *const passColumnPoint =
+        "columnPoint = fogLosColumnPoint(pos3D, faceId, losRoute, scale, "
+        "rasterYawCardinalIndex(rasterYaw));";
+    const char *const overflowColumnPoint =
+        "columnPoint = fogLosColumnPoint(pos3D, faceId, kFogLosRoutePerAxis, 1, 0);";
+    const std::pair<std::string, const char *> routes[] = {
+        {kGlslFogPassPath, passColumnPoint},
+        {kMetalFogPassPath, passColumnPoint},
+        {kGlslFogOverflowPath, overflowColumnPoint},
+        {kMetalFogOverflowPath, overflowColumnPoint},
+    };
+    for (const auto &[path, columnPointCall] : routes) {
+        SCOPED_TRACE(path);
+        const std::string route = normalizeKernelMath(readShaderSource(path));
+        ASSERT_FALSE(route.empty());
+        EXPECT_NE(route.find(columnPointCall), std::string::npos);
+        EXPECT_NE(
+            route.find("fogRevealSample(pos3D, losSample, columnPoint, faceId >> 1, aaFloor"),
+            std::string::npos
+        ) << "the route must hand the kernel its column point and face axis";
+    }
 }
 
 // Test E, part 7: the BODY branch of the fog pass — the pixel takes the
@@ -2068,6 +2184,14 @@ struct FogSurfaceProbeHeader {
 };
 static_assert(sizeof(FogSurfaceProbeHeader) == 16, "must match the probe's std430 header");
 
+// One probed sample as the probe reads it: the position with its face axis
+// in w, then its column point.
+struct FogSurfaceProbeSample {
+    IRMath::vec4 position_;
+    IRMath::vec4 columnPoint_;
+};
+static_assert(sizeof(FogSurfaceProbeSample) == 32, "must match the probe's std430 struct");
+
 struct FogSurfaceArm {
     const char *label_;
     LosProbeSource source_;
@@ -2079,6 +2203,10 @@ struct FogSurfaceArm {
     bool treated_ = false;
     float density_ = 0.0f;
     bool fullCompetitor_ = false;
+    // Adds samples on the ridge's two long walls, each with its column point,
+    // and top-face samples at the walls' feet handed a column point inside the
+    // ridge.
+    bool ridgeWalls_ = false;
 };
 
 struct FogSurfaceCounts {
@@ -2088,6 +2216,8 @@ struct FogSurfaceCounts {
     int styled_ = 0;
     int dissolved_ = 0;
     int flips_ = 0;
+    // Samples the column-top term lifts above their position-only verdict.
+    int raised_ = 0;
 };
 
 } // namespace
@@ -2096,8 +2226,9 @@ struct FogSurfaceCounts {
 // paint oracle on every probed sample — the state to 1e-3 and the styled band
 // to 5e-3 — across a hard ceiling, a soft ceiling, a line-of-sight gate alone,
 // the two combined, the treatment retaining every voxel, a fully visible
-// competitor suppressing it, and a density-1 dissolve. Non-vacuity: each arm
-// asserts the sample classes it exists to exercise. A dissolve decision
+// competitor suppressing it, a density-1 dissolve, and wall samples that take
+// their column top. Non-vacuity: each arm asserts the sample classes it
+// exists to exercise. A dissolve decision
 // sitting within float rounding of its threshold may flip between the two
 // evaluations; at most two such flips are tolerated and every other band
 // agrees.
@@ -2177,7 +2308,16 @@ TEST_F(FogCrossSectionTest, GpuRevealSurfaceMatchesTheCpuOracle) {
         uploadLosField(losTexture, field);
         const FogLosColumnField columns{field.data(), fieldMin};
 
-        std::vector<IRMath::vec4> samples;
+        std::vector<FogSurfaceProbeSample> samples;
+        std::vector<IRMath::FaceId> faces;
+        const auto addSample =
+            [&](IRMath::vec3 position, IRMath::vec3 columnPoint, IRMath::FaceId face) {
+                samples.push_back(
+                    {IRMath::vec4(position, static_cast<float>(IRMath::faceAxis(face))),
+                     IRMath::vec4(columnPoint, 0.0f)}
+                );
+                faces.push_back(face);
+            };
         for (int lift = 0; lift < 8; ++lift) {
             for (int y = -12; y < 12; ++y) {
                 for (int x = -12; x < 12; ++x) {
@@ -2189,24 +2329,52 @@ TEST_F(FogCrossSectionTest, GpuRevealSurfaceMatchesTheCpuOracle) {
                             FogLosColumnField::halfCellOf(xy.x),
                             FogLosColumnField::halfCellOf(xy.y)
                         );
-                        samples.emplace_back(
+                        const IRMath::vec3 position(
                             xy.x,
                             xy.y,
-                            IRMath::min(kLosGround - static_cast<float>(lift), ownTop),
-                            0.0f
+                            IRMath::min(kLosGround - static_cast<float>(lift), ownTop)
+                        );
+                        addSample(position, position, IRMath::FaceId::Z_NEG);
+                    }
+                }
+            }
+        }
+        if (arm.ridgeWalls_) {
+            const std::pair<IRMath::FaceId, float> walls[] = {
+                {IRMath::FaceId::X_NEG, -0.5f},
+                {IRMath::FaceId::X_POS, 1.5f},
+            };
+            for (const auto &[face, wallX] : walls) {
+                const IRMath::vec3 normal = IRMath::faceOutwardNormal(face);
+                for (int row = 0; row < 32; ++row) {
+                    const float y = -7.25f + 0.5f * static_cast<float>(row);
+                    for (const float z : {0.0f, 1.5f, 3.5f}) {
+                        const IRMath::vec3 facePoint(wallX, y, z);
+                        addSample(
+                            facePoint + normal * IRPrefab::Fog::kFogLosFaceBias,
+                            IRPrefab::Fog::losColumnPoint(facePoint, face),
+                            face
                         );
                     }
+                    const IRMath::vec3 footPoint(wallX, y, kLosGround);
+                    addSample(
+                        footPoint + normal * 0.3f,
+                        IRPrefab::Fog::losColumnPoint(footPoint, face),
+                        IRMath::FaceId::Z_NEG
+                    );
                 }
             }
         }
 
         const FogSurfaceProbeHeader header{static_cast<std::int32_t>(samples.size()), {0, 0, 0}};
-        std::vector<std::uint8_t> input(sizeof(header) + samples.size() * sizeof(IRMath::vec4));
+        std::vector<std::uint8_t> input(
+            sizeof(header) + samples.size() * sizeof(FogSurfaceProbeSample)
+        );
         std::memcpy(input.data(), &header, sizeof(header));
         std::memcpy(
             input.data() + sizeof(header),
             samples.data(),
-            samples.size() * sizeof(IRMath::vec4)
+            samples.size() * sizeof(FogSurfaceProbeSample)
         );
         Buffer probeIn{
             input.data(),
@@ -2245,13 +2413,26 @@ TEST_F(FogCrossSectionTest, GpuRevealSurfaceMatchesTheCpuOracle) {
         probeOut.getSubData(0, readback.size() * sizeof(IRMath::vec4), readback.data());
 
         for (std::size_t i = 0; i < samples.size(); ++i) {
-            const IRMath::vec3 position(samples[i]);
+            const IRMath::vec3 position(samples[i].position_);
             const IRPrefab::Fog::RevealSurfaceSample cpu = IRPrefab::Fog::evalRevealSurface(
+                observers,
+                columns,
+                IRComponents::kFogStateUnexplored,
+                position,
+                IRMath::vec3(samples[i].columnPoint_),
+                faces[i]
+            );
+            const IRPrefab::Fog::RevealSurfaceSample own = IRPrefab::Fog::evalRevealSurface(
                 observers,
                 columns,
                 IRComponents::kFogStateUnexplored,
                 position
             );
+            if (cpu.state_ > own.state_ + 1e-3f) {
+                ++counts.raised_;
+                EXPECT_NE(IRMath::faceAxis(faces[i]), 2)
+                    << arm.label_ << ": a top-face sample took the column-top term";
+            }
             const IRPrefab::Fog::RevealSurfaceSample plain = IRPrefab::Fog::evalRevealSurface(
                 untreated,
                 columns,
@@ -2308,6 +2489,17 @@ TEST_F(FogCrossSectionTest, GpuRevealSurfaceMatchesTheCpuOracle) {
     EXPECT_GT(counts.visible_, 0);
     EXPECT_GT(counts.partial_, 0) << "softness 1 grades no sample past the far edge";
     EXPECT_EQ(counts.styled_, 0);
+    EXPECT_EQ(counts.raised_, 0) << "no arm without wall samples takes the column-top term";
+
+    // The ridge source reveals the ridge top it stands on and, on its own,
+    // neither long wall under it; each wall sample takes the top's verdict,
+    // and the ground at each wall's foot keeps the ridge's shadow.
+    FogSurfaceArm
+        ridgeWalls{"column top", kLosRidgeSource, true, IRComponents::kFogLosHardGate, true};
+    ridgeWalls.ridgeWalls_ = true;
+    runArm(ridgeWalls, counts);
+    EXPECT_EQ(counts.raised_, 2 * 32 * 3) << "every wall sample takes its column top";
+    EXPECT_GT(counts.hidden_, 2 * 32) << "the wall samples and their feet are hidden on their own";
 
     runArm({"ceiling and line of sight", kLosRidgeSource, true, 1.0f, true, 1.0f, 3.0f}, counts);
     EXPECT_GT(counts.hidden_, 0);

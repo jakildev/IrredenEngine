@@ -101,9 +101,65 @@ inline uint2 fogTapTexel(
     return canvasFogOfWar.read(uint2(cell)).rg;
 }
 
+// GLSL twin: fogColumnTopState in ../ir_fog_common.glsl.
+inline float fogColumnTopState(
+    float3 columnPoint,
+    float aaFloor,
+    uint cellChannels,
+    int2 losFieldMin,
+    float state,
+    constant FogObserverData& fogObservers,
+    texture2d<float, access::read> fogLineOfSight
+) {
+    const float topZ =
+        fogLosTopPlane(fogLosHalfCellOf(columnPoint.xy), losFieldMin, fogLineOfSight);
+    if (topZ == kFogLosColumnEmpty || topZ >= columnPoint.z - kFogLosClearanceTolerance) {
+        return state;
+    }
+    const float3 top = float3(columnPoint.xy, topZ);
+    for (int i = 0; i < fogObservers.visionCircleCount; ++i) {
+        if ((fogObservers.visionCircleChannels[i / 4][i % 4] & cellChannels) == 0u) {
+            continue;
+        }
+        const float4 heights = fogObservers.visionCircleHeights[i];
+        const float dzUp = max(heights.x - top.z, 0.0f);
+        const float dzDown = max(top.z - heights.x, 0.0f);
+        const float distEff = length(top.xy - fogObservers.visionCircles[i].xy) +
+            heights.y * max(dzUp - heights.w, 0.0f) +
+            heights.z * max(dzDown - heights.w, 0.0f);
+        const float aa = max(fogObservers.visionCircles[i].w, aaFloor);
+        const float ceilingReveal =
+            (1.0f - smoothstep(
+                fogObservers.visionCircles[i].z - aa,
+                fogObservers.visionCircles[i].z + aa,
+                distEff
+            )) *
+            fogCeilingVisibility(fogObservers.visionCircleCeilings[i], dzUp);
+        if (ceilingReveal <= state) {
+            continue;
+        }
+        float losVisibility = 1.0f;
+        if (fogLosSourceGated(fogObservers.losSourceMask, i) &&
+            length(top.xy - fogObservers.visionCircles[i].xy) <=
+                fogLosReach(fogObservers.visionCircles[i])) {
+            losVisibility = fogLosVisibility(
+                fogLosEye(fogObservers.visionCircles[i], heights.x, fogObservers.losParams[i].x),
+                top,
+                fogObservers.losParams[i].y,
+                losFieldMin,
+                fogLineOfSight
+            );
+        }
+        state = max(state, losVisibility * ceilingReveal);
+    }
+    return state;
+}
+
 inline FogReveal fogRevealSample(
     float3 pos3D,
     float3 losSample,
+    float3 columnPoint,
+    int faceAxis,
     float aaFloor,
     constant FogObserverData& fogObservers,
     texture2d<uint, access::read> canvasFogOfWar,
@@ -202,6 +258,15 @@ inline FogReveal fogRevealSample(
                 losVisibility < 1.0f ? mix(kFogRimFadeCells, distPastRim, losVisibility)
                                      : distPastRim
             );
+        }
+    }
+    if (state < 1.0f && fogObservers.losSourceMask != 0 && faceAxis != 2) {
+        const float topState = fogColumnTopState(
+            columnPoint, aaFloor, cellChannels, losFieldMin, state, fogObservers, fogLineOfSight
+        );
+        if (topState > state) {
+            state = topState;
+            styledBand = 0.0f;
         }
     }
     return FogReveal{state, gridState, hardDistPastRim, styledBand};
