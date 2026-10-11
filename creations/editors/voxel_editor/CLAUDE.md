@@ -16,6 +16,8 @@ Design log, findings and the authoring-session history:
   `component_field_key` the same on a field whose name is not a Lua identifier,
   `parts_roundtrip` authors, moves, saves, clears, and reloads a two-part entity,
   `tier_scrub` proves per-part LOD bands and the tier scrubber,
+  `parts_scroll` reaches every part of an arrayed scene through the PARTS list
+  alone (reveal after the array, wheel, row click),
   `mode_preview` proves the deferred render-mode switch allocates and releases
   the selected part's private canvas while rotated and private-canvas parts stay
   outside the axis-aligned edit pick, and `part_sizes` creates two parts of
