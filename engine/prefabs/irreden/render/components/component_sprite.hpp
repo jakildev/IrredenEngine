@@ -18,9 +18,9 @@ namespace IRComponents {
 /// that keeps its game-pixel size. A sprite sized to its sheet frame's
 /// @c sizePx_ draws one atlas texel per game pixel.
 ///
-/// Anchor is in local UV space (`{0.5, 0.0}` = bottom-center). Quad
-/// origin in viewport pixels =
-/// `isoProject(C_WorldTransform.translation_) - anchor_ * size_ * outputScaleFactor`.
+/// Anchor is a quad-local fraction measured from the screen-space bottom-left:
+/// `{0.5, 0.0}` is bottom-center and `{0.0, 1.0}` is top-left on every
+/// graphics backend.
 ///
 /// @c uvRect_ is `(u0, v0, u1, v1)` in normalized [0, 1] texture coords.
 /// For a still sprite this is the whole texture; for an animated sprite

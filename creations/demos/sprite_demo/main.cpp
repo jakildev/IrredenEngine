@@ -8,7 +8,10 @@
 #include <list>
 
 // SYSTEMS
+#include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/input/systems/system_input_key_mouse.hpp>
+#include <irreden/voxel/components/component_voxel_set.hpp>
+#include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
@@ -37,6 +40,7 @@ int g_autoWarmupFrames = 0;
 
 void initSystems();
 void initCommands();
+void initEntities();
 
 int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: sprite_demo");
@@ -45,6 +49,7 @@ int main(int argc, char **argv) {
     g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
     initSystems();
     initCommands();
+    initEntities();
     IREngine::runScript("main.lua");
     IREngine::gameLoop();
 
@@ -55,7 +60,8 @@ void initSystems() {
     IRSystem::registerPipeline(
         IRTime::Events::UPDATE,
         {IRSystem::createSystem<IRSystem::SPRITE_ANIMATION_ADVANCE>(),
-         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>()}
+         IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
+         IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>()}
     );
 
     IRSystem::registerPipeline(
@@ -82,4 +88,11 @@ void initSystems() {
 void initCommands() {
     IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
+}
+
+void initEntities() {
+    IREntity::createEntity(
+        C_LocalTransform{vec3{0.0f, 0.0f, 2.0f}},
+        C_VoxelSetNew{ivec3{1, 1, 1}, Color{255, 0, 255, 255}, false}
+    );
 }
