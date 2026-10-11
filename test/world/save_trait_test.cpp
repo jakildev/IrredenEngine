@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <irreden/world/save_component_inventory.hpp>
+#include <irreden/world/save_serialize.hpp>
 #include <irreden/world/save_trait.hpp>
 
 #include <cstddef>
@@ -11,6 +12,11 @@ namespace {
 
 using namespace IRWorld;
 using namespace IRComponents;
+
+static_assert(!SaveSerializable<C_EntityCanvas>);
+static_assert(!SaveSerializable<C_HitBox2D>);
+static_assert(!SaveSerializable<C_ShapeDescriptor>);
+static_assert(SaveSerializable<C_GotoEasing3D>);
 
 // Class A — GPU-handle / ResourceId-owning bearers must opt out; W-10
 // regenerates the handle post-load, so the pre-load value is never
@@ -40,6 +46,8 @@ TEST(SaveTrait, SafetyCriticalOptOuts) {
     EXPECT_FALSE(shouldSave<C_ContactEvent>());
     EXPECT_FALSE(shouldSave<C_SpatialIndex>());
     EXPECT_FALSE(shouldSave<C_VoxelPool>());
+    EXPECT_FALSE(shouldSave<C_FogRevealed>());
+    EXPECT_FALSE(shouldSave<C_FogGhost>());
 }
 
 // Representative Class F gameplay data opts in with a schema version >= 1.

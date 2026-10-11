@@ -16,6 +16,7 @@ LANES = {
     "pre-claim": "daemon",
     "completion": "daemon",
     "dispatched-pane": "user",
+    "babysit": "user",
     "pane-claim-mutation": "user",
     "human-shell": "user",
 }

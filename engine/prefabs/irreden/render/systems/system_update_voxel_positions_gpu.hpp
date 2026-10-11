@@ -157,13 +157,15 @@ template <> struct System<UPDATE_VOXEL_POSITIONS_GPU> {
         // CPU mirror of the GLSL/Metal `transform * localPos`: sqtToMat4 is
         // bit-identical to the shader-side helper, so the same operands classify
         // the same on both sides (the CPU↔GPU consistency the plan flags).
-        transforms_[slot].modelToWorld_ = IRMath::sqtToMat4(
-            worldTransform.scale_,
-            worldTransform.rotation_,
-            worldTransform.translation_
-        );
         maxSlotUsed_ = IRMath::max(maxSlotUsed_, static_cast<int>(slot));
         anyDynamic_ = true;
+        if (!voxelSet.ghostHeld_) {
+            transforms_[slot].modelToWorld_ = IRMath::sqtToMat4(
+                worldTransform.scale_,
+                worldTransform.rotation_,
+                worldTransform.translation_
+            );
+        }
 
         // Resolve the set's pool via its canvas (a foreign entity, not this
         // iterating set — the allowed getComponent pattern; cached per canvas).

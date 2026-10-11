@@ -325,10 +325,7 @@ class IngestHonorsBlockedBy(unittest.TestCase):
         self.assertFalse(st["repos"]["engine"]["human_approved"][0]["blocked"],
                          "predecessor in closed_fleet_queued must clear blocked")
 
-    def test_merged_head_pr_clears_blocked(self):
-        # A merged `claude/<N>-*` head satisfies the blocker the same way
-        # resolve_blocked_by() treats it, even before the issue's CLOSED state
-        # has propagated into closed_fleet_queued.
+    def test_merged_head_pr_does_not_clear_open_issue(self):
         st = self._resolved(
             human_approved=[
                 {"number": 811, "title": "child", "labels": ["human:approved"],
@@ -337,8 +334,19 @@ class IngestHonorsBlockedBy(unittest.TestCase):
             merged=[{"number": 950, "title": "T", "headRefName": "claude/810-head",
                      "baseRefName": "master", "mergedAt": "2026-06-01T00:00:00Z"}],
         )
-        self.assertFalse(st["repos"]["engine"]["human_approved"][0]["blocked"],
-                         "a merged claude/810-* head must clear the child's blocker")
+        self.assertTrue(st["repos"]["engine"]["human_approved"][0]["blocked"],
+                        "a merged delivery does not close its tracker issue")
+
+    def test_bare_ref_naming_merged_pr_clears_blocked(self):
+        st = self._resolved(
+            human_approved=[
+                {"number": 811, "title": "child", "labels": ["human:approved"],
+                 "body": "**Blocked by:** #810"},
+            ],
+            merged=[{"number": 810, "title": "T", "headRefName": "feature/no-number",
+                     "baseRefName": "master", "mergedAt": "2026-06-01T00:00:00Z"}],
+        )
+        self.assertFalse(st["repos"]["engine"]["human_approved"][0]["blocked"])
 
     def test_no_blocker_is_not_blocked(self):
         st = self._resolved(human_approved=[

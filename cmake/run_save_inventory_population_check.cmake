@@ -70,7 +70,7 @@ file(READ "${inventory_header}" inventory_text)
 ir_strip_cpp_comments("${inventory_text}" inventory_text)
 
 string(REGEX MATCHALL
-    "IR_SAVE_OPT_(IN|OUT)\\([^)]*(IRComponents|IRSystem)::C_[A-Za-z0-9_]+"
+    "IR_SAVE_OPT_(IN(_HAND_WRITTEN)?|OUT)\\([^)]*(IRComponents|IRSystem)::C_[A-Za-z0-9_]+"
     decision_matches "${inventory_text}")
 set(decision_components "")
 foreach(decision IN LISTS decision_matches)
@@ -117,7 +117,7 @@ foreach(component IN LISTS live_components)
         string(APPEND failures
             "\n${component}: missing decision"
             "\n  declared in: ${declaring_header_${component}}"
-            "\n  remedy: add IR_SAVE_OPT_IN/OPT_OUT + AllEngineComponents "
+            "\n  remedy: add an IR_SAVE_OPT_IN* or IR_SAVE_OPT_OUT decision + AllEngineComponents "
             "entry in save_component_inventory.hpp.")
     endif()
 
@@ -126,7 +126,7 @@ foreach(component IN LISTS live_components)
         string(APPEND failures
             "\n${component}: missing tuple entry"
             "\n  declared in: ${declaring_header_${component}}"
-            "\n  remedy: add IR_SAVE_OPT_IN/OPT_OUT + AllEngineComponents "
+            "\n  remedy: add an IR_SAVE_OPT_IN* or IR_SAVE_OPT_OUT decision + AllEngineComponents "
             "entry in save_component_inventory.hpp.")
     endif()
 endforeach()

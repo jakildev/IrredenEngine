@@ -20,10 +20,14 @@ int main() {
     int failures = 0;
     for (int subdivisions : {1, 2, 3, 8}) {
         const int offset = cardinalRasterLatticeDepthOffset(subdivisions);
-        const int expectedStored = IR_SHAPE_PASS == 2 ? 100 : 100 + offset;
-        failures += cardinalShapeStoredDepth(100, true, subdivisions) != expectedStored;
-        failures += cardinalShapeStoredDepth(100, false, subdivisions) != 100;
-        checks += 2;
+        for (bool finite : {false, true}) {
+            const int expectedStored = IR_SHAPE_PASS == 2 && finite ? 100 : 100 + offset;
+            failures += cardinalShapeStoredDepth(
+                100, true, IR_SHAPE_PASS == 2, finite, subdivisions) != expectedStored;
+            failures += cardinalShapeStoredDepth(
+                100, false, IR_SHAPE_PASS == 2, finite, subdivisions) != 100;
+            checks += 2;
+        }
         for (bool owned : {false, true}) {
             for (bool carries : {false, true}) {
                 for (bool finite : {false, true}) {
@@ -82,7 +86,8 @@ class CardinalShapeShadowDepthTest(unittest.TestCase):
     def test_positive_controls_reject_either_half_reverted(self):
         for suffix, folder in (("glsl", ""), ("metal", "metal/")):
             caster, receiver, offset = self.sources(suffix, folder)
-            caster_mutant = caster.replace("#if IR_SHAPE_PASS == 2", "#if 0")
+            caster_mutant = caster.replace(
+                "casterPass && correctCardinalDepth", "false")
             receiver_mutant = receiver.replace(
                 "shapeOwned && carriesLatticeOffset && finiteCoverage",
                 "shapeOwned && carriesLatticeOffset")

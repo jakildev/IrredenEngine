@@ -128,13 +128,13 @@ case "$verb" in
         fi
         count="$1"
         shift
-        ir_acquire_cpu "$count" "${acquire_args[@]}"
+        ir_acquire_cpu "$count" ${acquire_args[@]+"${acquire_args[@]}"}
         ;;
     gpu)
-        ir_acquire_exclusive lock gpu "${acquire_args[@]}"
+        ir_acquire_exclusive lock gpu ${acquire_args[@]+"${acquire_args[@]}"}
         ;;
     perf)
-        ir_acquire_exclusive lock perf "${acquire_args[@]}"
+        ir_acquire_exclusive lock perf ${acquire_args[@]+"${acquire_args[@]}"}
         ;;
     benchmark)
         quiet_record="$(python3 "$IR_QUIET_HELPER" record-create \
@@ -160,9 +160,9 @@ case "$verb" in
         budget="$(ir_cpu_budget)"
         cpu_take=$(( budget - 1 ))
         (( cpu_take < 1 )) && cpu_take=1
-        ir_acquire_cpu "$cpu_take" "${acquire_args[@]}"
-        ir_acquire_exclusive lock gpu "${acquire_args[@]}"
-        ir_acquire_exclusive lock perf "${acquire_args[@]}"
+        ir_acquire_cpu "$cpu_take" ${acquire_args[@]+"${acquire_args[@]}"}
+        ir_acquire_exclusive lock gpu ${acquire_args[@]+"${acquire_args[@]}"}
+        ir_acquire_exclusive lock perf ${acquire_args[@]+"${acquire_args[@]}"}
         if [[ -n "$quiet_record" && "$quiet_record" != "disabled" ]]; then
             set +e
             python3 "$IR_QUIET_HELPER" barrier "$quiet_record"

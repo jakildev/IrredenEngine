@@ -1669,6 +1669,104 @@ cameraSubPixelOffsets(const vec2 cameraIso, const vec2 zoomLevel, const ivec2 sc
     };
 }
 
+/// Framebuffer pixels one iso unit spans at @p zoom: 2 horizontally, 1
+/// vertically, per zoom step.
+constexpr dvec2 cameraZoomPitch(const vec2 zoom) {
+    return dvec2(zoom) * dvec2(2.0, 1.0);
+}
+
+/// One frame's inputs to the continuous-zoom camera placement: the camera,
+/// the framebuffer pitch, and the raster phase carried from earlier frames.
+///
+/// World content composites at `floor(H) + phase_ + w * pitch_` framebuffer
+/// pixels for a world iso coordinate `w`, with `H = cameraIso_ * pitch_ -
+/// phase_`, and the final upscale adds `fract(H)`. The whole offset is the
+/// only term a pan changes, so texel edges translate rigidly at any pitch; a
+/// zoom leaves `H` where it was (@ref advanceCameraRasterPhase), so edges
+/// scale about the view centre instead of re-rounding every frame. At a
+/// pitch whose backing texel spans whole framebuffer pixels and a zero phase
+/// this is exactly the @ref cameraSubPixelOffsets split.
+///
+/// Double precision: `cameraIso_ * pitch_` passes 10^5 for a far-panned
+/// camera, where a float no longer holds the fraction the split is made of.
+struct CameraRasterPhase {
+    /// Effective camera iso, before any per-canvas parity or density scale.
+    dvec2 cameraIso_{0.0};
+    /// @ref cameraZoomPitch of the frame's display zoom.
+    dvec2 pitch_{0.0};
+    /// Offset of world content from the framebuffer pixel grid, in [0, 1).
+    dvec2 phase_{0.0};
+};
+
+/// The sample for a frame at (@p cameraIso, @p zoom) that follows @p previous.
+/// A pitch change moves the phase by `previous.cameraIso_ * (pitch delta)`,
+/// which keeps `H` fixed up to a whole pixel while the zoom moves; an axis
+/// whose pitch did not change keeps its phase.
+inline CameraRasterPhase
+advanceCameraRasterPhase(const CameraRasterPhase &previous, const vec2 cameraIso, const vec2 zoom) {
+    const dvec2 pitch = cameraZoomPitch(zoom);
+    return CameraRasterPhase{
+        dvec2(cameraIso),
+        pitch,
+        IRMath::fract(previous.phase_ + previous.cameraIso_ * (pitch - previous.pitch_)),
+    };
+}
+
+namespace detail {
+
+/// `H` of @ref CameraRasterPhase, the camera offset the two placement terms
+/// split between them.
+inline dvec2 cameraRasterOffset(const CameraRasterPhase &sample) {
+    return sample.cameraIso_ * sample.pitch_ - sample.phase_;
+}
+
+} // namespace detail
+
+/// Framebuffer translation of a camera-following canvas quad under @p sample.
+///
+/// The raster has already moved the canvas content `floor(rasterCameraTexels)`
+/// backing texels, each `pitch / density` framebuffer pixels wide; this is the
+/// remainder that lands the content on `floor(H) + phase`. It is a fraction of
+/// a pixel in `(-1, pitch / density)`, never a whole-pixel count.
+///
+/// @p rasterCameraTexels is the camera offset the raster floors, formed the
+/// way the raster forms it — `cameraIso * density` as one single-precision
+/// multiply — so both sides floor the same number. @p parityOffsetIso shifts
+/// this canvas's content by that many iso units; the raster never sees it and
+/// the shared whole offset stays the camera's.
+inline dvec2 cameraRasterGatherTranslation(
+    const CameraRasterPhase &sample,
+    const vec2 rasterCameraTexels,
+    const vec2 parityOffsetIso,
+    const int density
+) {
+    const dvec2 texelPitch = sample.pitch_ / static_cast<double>(density);
+    const dvec2 translation = IRMath::floor(detail::cameraRasterOffset(sample)) + sample.phase_ +
+                              dvec2(parityOffsetIso) * sample.pitch_ -
+                              dvec2(IRMath::floor(rasterCameraTexels)) * texelPitch;
+    return translation * dvec2(IRPlatform::kIsoToScreenSign);
+}
+
+/// Screen-pixel residual of @p sample for the framebuffer-to-screen upscale:
+/// the part of `H` the whole-pixel framebuffer placement left over. Same sign
+/// convention as `CameraSubPixelOffsets::screenPxResidual_`.
+inline ivec2 cameraRasterScreenResidual(const CameraRasterPhase &sample, const ivec2 scaleFactor) {
+    const dvec2 residual = IRMath::fract(detail::cameraRasterOffset(sample));
+    return ivec2(
+        IRMath::floor(residual * dvec2(IRPlatform::kIsoToScreenSign) * dvec2(scaleFactor))
+    );
+}
+
+/// Camera term of a detached canvas's framebuffer centre under @p sample, in
+/// the Y-up framebuffer basis those canvases are placed in. The placement adds
+/// it to a centre already offset by `floor(cameraIso)` whole cells, so the two
+/// sum to the same `floor(H) + phase` the world canvas lands on.
+inline dvec2 cameraRasterDetachedOffset(const CameraRasterPhase &sample) {
+    const dvec2 offset = IRMath::floor(detail::cameraRasterOffset(sample)) + sample.phase_ -
+                         IRMath::floor(sample.cameraIso_) * sample.pitch_;
+    return offset * dvec2(1.0, -1.0);
+}
+
 /// Inverse iso projection selecting the 3D position at a specific Z level,
 /// reading from the bottom Z face.
 template <ivec3 size>
@@ -1971,22 +2069,17 @@ inline int perAxisSubdivisionCap(
     return max(static_cast<int>(floor(min(capX, capY))), 1);
 }
 
-/// Returns the screen-pixel size of one iso triangle at the given zoom and
-/// pixel scale.  Used by the trixel-to-framebuffer stage to map iso offsets
-/// to screen offsets.
-constexpr ivec2 calcTriangleStepSizeScreen(
-    const vec2 gameResolution, const vec2 zoomLevel, const ivec2 pixelScaleFactor
-) {
-    return (
-        ivec2(gameResolution / gameResolutionToSize2DIso(gameResolution, zoomLevel)) *
-        pixelScaleFactor
-    );
+/// Screen pixels one iso unit spans at the given zoom and pixel scale: the
+/// scale every iso <-> screen conversion (picking, panning, sprite anchors,
+/// overlays) shares. Fractional at a fractional zoom, so the forward and
+/// inverse conversions stay exact inverses of each other.
+constexpr vec2 calcTriangleStepSizeScreen(const vec2 zoomLevel, const ivec2 pixelScaleFactor) {
+    return zoomLevel * vec2(2.0f, 1.0f) * vec2(pixelScaleFactor);
 }
 
 /// Same as calcTriangleStepSizeScreen with pixelScaleFactor = (1, 1).
-constexpr ivec2
-calcTriangleStepSizeGameResolution(const vec2 gameResolution, const vec2 zoomLevel) {
-    return calcTriangleStepSizeScreen(gameResolution, zoomLevel, ivec2(1));
+constexpr vec2 calcTriangleStepSizeGameResolution(const vec2 zoomLevel) {
+    return calcTriangleStepSizeScreen(zoomLevel, ivec2(1));
 }
 
 /// Converts iso-canvas pixel dimensions to game-resolution pixel dimensions

@@ -57,6 +57,7 @@ points here and answers the delta keys below
 | `fleet:awaiting-infra` park whose named blocker is a ghost | closes the ghost; reconcile R8 lifts the park | nothing |
 | Park whose blocker PR merged but whose issue stays open for a check | the factual needs-human row above | nothing |
 | Park with no parsable `Parked-until:` line | repairs the line when the park comment makes the blocker unambiguous, and says so | nothing |
+| Issue (untriaged, approved, or parked) whose fix lands in files an open PR edits, or whose planner asked for a dependency it could verify | adds `**Blocked by:** #<that PR's backing issue>` (one per line; never removes a line, never retitles or re-scopes) and comments the citation | nothing |
 | Stranded `fleet:wip` PR with no owner label | leaves it to reconcile R7; when it is a chain head and conflicts, posts the land order on it | nothing |
 | `fleet:design-blocked` PR | `architect-protocol.md` § Handling `fleet:design-blocked` PRs | nothing |
 | Orphan claim labels, a stack whose base merged | `architect-protocol.md` self-heal step | nothing |

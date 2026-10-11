@@ -27,6 +27,11 @@ that statistic unavailable instead of silently excluding a potentially slower ru
 Complete reports retain the same per-report warmup exclusion and pooling. A
 mixed complete/missing regression test fails on the previous implementation.
 
+Shared matrix execution and evidence helpers live in
+`scripts/perf/profile_matrix.py`, used by the rotation and million-entity CLIs.
+Historical summaries and strict timing controls retain their distinct evidence
+requirements.
+
 ## Implemented slice: renderer resource cleanup
 
 Canvas destruction and backing growth share the texture/Hi-Z release sequence;
@@ -187,55 +192,65 @@ and partial uploads. All five ordering regressions fail against the parent backe
 The [native captures](../pr-screenshots/codex/metal-clear-snapshots/README.md)
 retain unchanged normal and shadow-overlay output for the frozen scene.
 
-## Investigated slice: GRID capacity and revoxelized face ownership
+## GRID span-cap classification
 
-The isolated CanvasStress orbit cube at index 6 reproduces the CPU GRID warning:
-1,740 covered cells compete for 1,728 slots. The independent half-space oracle in
-`grid_rotation_test.cpp` checks its centered 12³, +Y45 pose and a +Z45 control.
-Both have 610 surface cells. The tests require complete surface retention and
-correct six-neighbor masks against the full occupancy, including omitted interior
-neighbors. Rebuilding twice also checks that output does not replace authored input.
+`GridSpanCoverageTest` drives the real GRID rebuild tick against an independent
+45-degree Y inverse-transform oracle. The frozen CanvasStress orbit-6 solid
+occupies 1740 destination cells: 610 boundary cells and 1130 interior cells.
+Its 1728-slot span retains all 610 boundary cells; the 12 omitted cells each
+have all six neighbors in the full occupancy. Every emitted face mask matches
+that full occupancy, including neighbors omitted from the span. Consequently,
+the omission neither removes exterior faces nor exposes artificial interior
+faces in this fixture. This is a geometry/mask result, not proof that volume
+sampling, AO, or arbitrary transforms are unaffected.
 
-This is a bounded proof of surface geometry, not permission to ignore span warnings.
-A 12×12×1 plate at Z45 requires 145 exposed cells and cannot fit its exact 144-slot
-allocation. A plate carved from a full 12³ allocation has room; its real rebuild
-is checked against the same oracle. A synthetic missing exposed cell is rejected.
-Growing destination capacity remains a separate design task.
+The capacity limit can still remove visible geometry. A centered 12×1×12 plate
+at the same rotation covers 145 cells, all boundary, but has only 144 slots.
+The negative control demonstrates one missing surface cell. Carving that same
+plate from a 12³ allocated box retains all 145 cells and their face masks.
+These controls distinguish surface loss from interior omission without changing
+allocation policy or treating the generic overflow warning as harmless.
 
-Detached revoxelization is a different path. Its upright and authored-rotation
-cube controls are checked against their resampled-cell face oracle at camera yaw
-0°, 22.5° and 45°. The upright 45° cube has alternating visible X/Y faces because
-its view-space voxel boundary forms a staircase. Those stripes are valid for that
-resampled geometry; they are not evidence that a rigid source-face mode should
-look the same. [Captures and proof scope](../pr-screenshots/codex/grid-span-surface-proof/README.md)
-record the commands, normal regions and limitations.
+The independent [gather sampling checks](trixel-gather-sampling.md) cover the
+frozen orbit-6 displayed normals and silhouettes at four cardinal camera yaws
+and 135 degrees. Those native checks and this CPU producer check cover different
+stages; neither substitutes for shadow-receiver or light-volume validation.
 
-The authored-rotation cube's direct-sun overlay also agrees with the resampled
-centroid-ray oracle at yaw 45° through 315° in 45° steps: zero false or missed
-interior shadow pixels with zero terminator allowance, and both lit and occluded
-interiors exercised. Its 0°/22.5° views and the upright controls are all-lit and
-therefore inconclusive for occlusion. Additional normal controls pass at 90°
-through 315°. This validates sampled self-shadow ownership for that fixture;
-continuous within-triangle boundaries and external receivers remain separate.
+## Additional GRID inverse and detached face evidence
+
+`GridInverseSurfaceTest` complements the rebuild-tick coverage above by invoking
+the real `inverseArm` with a nonzero pool allocation offset. Independent analytic
+half-spaces check both +Y45 and +Z45 solid poses, including every exposed cell and
+full-occupancy neighbor mask. Rebuilding twice checks that output does not replace
+authored input. A carved plate checks sparse-source preservation; a synthetic
+missing exposed cell checks the surface oracle's rejection path.
+
+The [retained native evidence](../pr-screenshots/codex/grid-span-surface-proof/README.md)
+records captures from `ad85ada53` and `9dbe0fd44`, before the subsequent renderer
+changes on master. These are historical measurements, not fresh validation of
+the integrated renderer. Detached revoxelization is a different path from CPU
+GRID: the upright and authored-rotation cube controls passed their resampled-cell
+face oracle at camera yaw 0°, 22.5° and 45°. The upright 45° cube's alternating
+X/Y normals belong to distinct exposed faces of its resampled staircase. That
+result does not establish rigid source-face fidelity or classify other entities.
+
+In those captures, the authored-rotation cube's direct-sun overlay agreed with
+the resampled centroid-ray oracle at yaw 45° through 315° in 45° steps: zero false
+or missed interior shadow pixels with zero terminator allowance, and both lit
+and occluded interiors exercised. Its 0°/22.5° views and the upright controls were
+all-lit and therefore inconclusive for occlusion. Additional normal controls
+passed at 90° through 315°. This evidence covers sampled self-shadow ownership
+for the recorded fixture; continuous within-triangle boundaries, external casters,
+AO and arbitrary transforms remain outside that claim.
 
 ## Remaining investigations
 
-- Check the apparently oversized floor shadows in paired voxel/SDF IRShapeDebug
-  shapes against occupied geometry, light direction and receiver height. Include
-  the ring opening and cone silhouette; compare equivalent geometry before
-  attributing a difference to the rendering mode. The fallback cleanup's unchanged
-  captures do not establish correct caster size.
-- Extend lighting/shadow ownership checks to external casters, AO and other
-  striped entities from the full scene. The revoxelized cube's sampled self-shadow
-  controls do not certify every CanvasStress mode or arbitrary transforms.
-- Shared profiling matrix helpers live in the rotation CLI module. A neutral
-  module could clarify ownership once needed; preserve the distinct evidence
-  requirements of historical summaries and strict timing controls.
-  The extraction and CI test coverage are submitted separately in
-  [PR #4266](https://github.com/jakildev/IrredenEngine/pull/4266).
-- Give CPU GRID resampling enough destination capacity when exposed cells exceed
-  the authored span. The solid-cube surface proof does not cover exact-fit thin
-  plates, sparse geometry, other transforms, or interior-dependent consumers.
+- Extend source-face classification to frozen CanvasStress at 45-degree camera
+  yaw; the gather checks cover a different set of camera angles.
+- Define a destination-capacity policy for exact-fit thin or scaled GRID sets
+  whose boundary cells exceed their authored span. The orbit-6 result above
+  resolves the observed 12-cell warning's exterior geometry, not this broader
+  allocation limit or the lighting consequences of missing interior occupancy.
 
 The timing-attribution experiment remains a separate measurement task. Cleanup
 does not establish a dense-scene speedup, fix inherited visual artifacts, or

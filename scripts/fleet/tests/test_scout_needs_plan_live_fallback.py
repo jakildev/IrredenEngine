@@ -143,14 +143,18 @@ class NeedsPlanLiveFallback(unittest.TestCase):
             ("jakildev/irreden", _GAME_BLOCKER, True),
         ]))
 
-    def test_open_blocker_still_blocks(self):
+    def test_open_blocker_still_blocks_with_or_without_merged_head(self):
         """NEGATIVE CONTROL — the fallback must not be a gate that cannot fire.
 
-        Same code path, only the live verdict differs.
+        Same code path, only the live verdict differs. A matching merged branch
+        head is not itself proof that the blocker issue is closed.
         """
-        stub = _RestStub({_BLOCKER: "OPEN"})
-        self.assertTrue(_run(_state(), stub))
-        self.assertEqual(len(stub.calls), 1)
+        cases = ([], [f"claude/{_BLOCKER}-light-volume-continuity"])
+        for merged_heads in cases:
+            with self.subTest(merged_heads=merged_heads):
+                stub = _RestStub({_BLOCKER: "OPEN"})
+                self.assertTrue(_run(_state(merged_heads=merged_heads), stub))
+                self.assertEqual(len(stub.calls), 1)
 
     def test_rest_failure_fails_closed(self):
         """A flaky/timing-out REST read leaves the issue blocked — the conservative
@@ -176,12 +180,6 @@ class NeedsPlanLiveFallback(unittest.TestCase):
         already in closed_fleet_queued short-circuits before the fallback."""
         stub = _RestStub({})  # any call at all is a fixture gap -> raises
         self.assertFalse(_run(_state(closed=[int(_BLOCKER)]), stub))
-        self.assertEqual(stub.calls, [])
-
-    def test_merged_head_hit_makes_no_live_call(self):
-        stub = _RestStub({})
-        heads = [f"claude/{_BLOCKER}-light-volume-continuity"]
-        self.assertFalse(_run(_state(merged_heads=heads), stub))
         self.assertEqual(stub.calls, [])
 
     def test_cross_repo_ref_makes_no_live_call(self):

@@ -91,7 +91,7 @@ fi
 
 # Read live labels in one call so the set is consistent against the
 # moment we decide what to remove.
-if ! live_labels=$(gh pr view "$pr_number" "${repo_args[@]}" --json labels --jq '.labels[].name' 2>&1); then
+if ! live_labels=$(gh pr view "$pr_number" ${repo_args[@]+"${repo_args[@]}"} --json labels --jq '.labels[].name' 2>&1); then
     echo "fleet-pr-clear-feedback-labels: gh pr view failed:" >&2
     echo "$live_labels" >&2
     exit 1
@@ -104,7 +104,7 @@ removed=()
 failed=()
 for label in $target_labels; do
     if printf '%s\n' "$live_labels" | grep -Fxq -- "$label"; then
-        if gh pr edit "$pr_number" "${repo_args[@]}" --remove-label "$label" >/dev/null 2>&1; then
+        if gh pr edit "$pr_number" ${repo_args[@]+"${repo_args[@]}"} --remove-label "$label" >/dev/null 2>&1; then
             removed+=("$label")
         else
             failed+=("$label")

@@ -44,10 +44,22 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
 namespace IRWorld {
+
+namespace detail {
+
+template <typename C> constexpr bool serializerUsesRawImage() {
+    if constexpr (requires { SaveSerialize<C>::kRawImage; }) {
+        return SaveSerialize<C>::kRawImage;
+    }
+    return false;
+}
+
+} // namespace detail
 
 /// The three type-erased read hooks for one on-disk *version* of a component
 /// — how its bytes turn back into a live value. The current version and each
@@ -156,6 +168,13 @@ class SaveRegistry {
     /// a caller can register defensively.
     template <typename C> void registerComponent() {
         if constexpr (shouldSave<C>()) {
+            static_assert(
+                !std::is_trivially_copyable_v<C> ||
+                    (detail::hasHandWrittenLayout<C>() != detail::serializerUsesRawImage<C>()),
+                "SaveRegistry::registerComponent<C>: a trivially-copyable component must use "
+                "the raw-image serializer with IR_SAVE_OPT_IN, or declare its explicit "
+                "serializer with IR_SAVE_OPT_IN_HAND_WRITTEN."
+            );
             static_assert(
                 SaveSerializable<C>,
                 "SaveRegistry::registerComponent<C>: C opts in to persistence but has no "

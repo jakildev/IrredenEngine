@@ -162,9 +162,10 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
 
 #endif
 
-    // World iso depth picks the cascade; rawDepth IS the world iso depth for the
-    // world canvas this pass runs on. The cascade PCF lookup is shared with the
-    // detached world-receive path (ir_sun_shadow_sample.metal).
+    // Stored world-iso depth selects the cascade. The finite-coverage shape
+    // correction applies only to reconstructed sample position so a corrected
+    // receiver keeps the cascade ownership assigned by its stored pixel.
+    // The cascade PCF lookup is shared with the detached world-receive path.
     float factor = sunFrameData.shadowsEnabled == 0 ? 1.0 : worldSunShadowFactor(pos3D, normal, float(rawDepth), sunFrameData, sunDepthBuf);
     canvasSunShadow.write(float4(factor, 0.0, 0.0, receiverFace), uint2(pixel));
 }

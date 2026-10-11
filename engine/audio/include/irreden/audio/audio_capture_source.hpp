@@ -10,6 +10,8 @@ struct AudioCaptureConfig {
     std::string device_name_;
     int sample_rate_ = 48'000;
     int channels_ = 2;
+    bool monitor_enabled_ = false;
+    std::string monitor_device_name_;
 };
 
 using AudioCaptureCallback = std::function<void(const float *, int, double, bool)>;
@@ -20,6 +22,8 @@ class IAudioCaptureSource {
     virtual bool startCapture(const AudioCaptureConfig &config, AudioCaptureCallback cb) = 0;
     virtual void stopCapture() = 0;
     [[nodiscard]] virtual bool isCapturing() const = 0;
+    /// Rate of delivered samples while capture is active, or 0 otherwise.
+    [[nodiscard]] virtual int getCaptureSampleRate() const = 0;
     [[nodiscard]] virtual double getInputLatencyMs() const = 0;
 };
 

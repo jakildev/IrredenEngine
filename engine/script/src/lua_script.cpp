@@ -15,6 +15,7 @@
 #include <irreden/script/lua_fog_bindings.hpp>
 #include <irreden/script/lua_hierarchy_bindings.hpp>
 #include <irreden/script/lua_enum_def.hpp>
+#include <irreden/script/lua_file_bindings.hpp>
 #include <irreden/script/lua_modifier_bindings.hpp>
 #include <irreden/script/lua_persistence_bindings.hpp>
 #include <irreden/script/lua_pipeline_bindings.hpp>
@@ -1022,6 +1023,10 @@ void LuaScript::bindLuaFog() {
 
 void LuaScript::bindLuaViewport() {
     detail::bindViewport(*this);
+}
+
+void LuaScript::bindLuaFiles() {
+    detail::bindFiles(*this);
 }
 
 void LuaScript::bindLuaInput() {

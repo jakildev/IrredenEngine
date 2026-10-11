@@ -12,6 +12,7 @@
 #include <irreden/render/components/component_widget.hpp>
 
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace IRPrefab::Widget::detail {
@@ -22,6 +23,21 @@ namespace IRPrefab::Widget::detail {
 // higher-resolution GUI canvas can raise this for larger body text without
 // touching call sites.
 constexpr int kWidgetTextFontSize = 1;
+
+constexpr int kDropdownChevronWidth = 8;
+constexpr int kDropdownChevronHeight = 4;
+constexpr int kDropdownTextChevronGap = 1;
+constexpr int kDropdownTextParityAllowance = 1;
+
+inline int dropdownHorizontalInset(int padding) {
+    return padding * 2;
+}
+
+inline int dropdownMinimumWidth(std::string_view text, int padding) {
+    return dropdownHorizontalInset(padding) + kDropdownTextParityAllowance +
+           IRPrefab::GuiText::textRunWidth(text, kWidgetTextFontSize) + kDropdownTextChevronGap +
+           kDropdownChevronWidth + dropdownHorizontalInset(padding);
+}
 
 // Picks the background color for a widget given its interactive state.
 // Centralized so every widget render system follows the same palette.

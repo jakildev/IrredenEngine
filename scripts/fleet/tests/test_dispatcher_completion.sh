@@ -281,12 +281,13 @@ assert_eq "$(git -C "$WT" for-each-ref --format='%(objectname)' 'refs/heads/flee
 git -C "$WT" checkout -q claude/42-work
 
 # --- The cleanup pass -----------------------------------------------------------
-record() {  # $1 = pane  $2 = target (empty for legacy)  $3 = optional pid  $4 = optional epoch
-    local extra="" pid_extra="" dispatched_epoch="${4:-$DISPATCHED}"
+record() {  # $1 = pane  $2 = target  $3 = optional pid  $4 = optional epoch  $5 = shadow PR
+    local extra="" pid_extra="" shadow_extra="" dispatched_epoch="${4:-$DISPATCHED}"
     [[ -n "$2" ]] && extra=$(printf ',"target":"%s","agent":"pool-3"' "$2")
     [[ -n "${3:-}" ]] && pid_extra=$(printf ',"wrapper_pid":%s' "$3")
-    printf '{"role":"worker","pane":"%%%s","class":"opus","dispatched_at":"x","dispatched_epoch":%s,"claim_marker":1%s%s}\n' \
-        "$1" "$dispatched_epoch" "$pid_extra" "$extra" > "$FLEET_STATE_DIR/dispatch/pane-$1.json"
+    [[ -n "${5:-}" ]] && shadow_extra=$(printf ',"shadow_merged_pr":%s' "$5")
+    printf '{"role":"worker","pane":"%%%s","class":"opus","dispatched_at":"x","dispatched_epoch":%s,"claim_marker":1%s%s%s}\n' \
+        "$1" "$dispatched_epoch" "$pid_extra" "$extra" "$shadow_extra" > "$FLEET_STATE_DIR/dispatch/pane-$1.json"
 }
 complete() { : > "$GH_LOG"; "$DISPATCHER" --complete-dispatches 2>&1 >/dev/null | tr -d '\r' || true; }
 COUNTS_DIR="$FLEET_STATE_DIR/target-dispatch-counts"
@@ -304,7 +305,7 @@ assert_contains "$out" "outcome=yes, target=task:engine:42, verdict=finished" "l
 echo "T8: declined is an empty exit that writes the decline memory; the dispatch counter stands"
 printf '3' > "$COUNTS_DIR/task-engine-42"
 comments "[{\"created_at\":\"2026-09-06T17:26:19Z\",\"body\":\"$DECLINE_BODY\"}]"
-record 1 task:engine:42
+record 1 task:engine:42 "" "" 900
 out=$(complete)
 comments '[]'
 assert_contains "$out" "outcome=no, target=task:engine:42, verdict=declined" "logged outcome=no verdict=declined"
@@ -315,6 +316,8 @@ assert_eq "$(sed -n 2p "$FLEET_STATE_DIR/declined/task-engine-42")" "declined th
     "decline memory line 2 = the detail"
 assert_eq "$(sed -n 3p "$FLEET_STATE_DIR/declined/task-engine-42")" "worker" \
     "decline memory line 3 = the declining role (the memory is role-scoped)"
+assert_eq "$(sed -n 4p "$FLEET_STATE_DIR/declined/task-engine-42")" "shadow_merged_pr=900" \
+    "decline memory line 4 = the dispatch-snapshotted shadow PR"
 declined_py=$(FLEET_STATE_DIR="$FLEET_STATE_DIR" python3 -c "
 import sys; sys.path.insert(0, sys.argv[1])
 import fleet_task_class as f
@@ -322,6 +325,12 @@ print(f._declined('task', {'repo': 'engine', 'issue': '#42', 'updatedAt': '2026-
       f._declined('task', {'repo': 'engine', 'issue': '#42', 'updatedAt': '2026-09-06T18:30:00Z'}, 'sonnet-reviewer'))
 " "$SCRIPT_DIR" 2>/dev/null | tr -d '\r' || true)
 assert_eq "$declined_py" "True False" "the resolver reads that memory for the declining role only"
+
+touch -t 202001010000 "$FLEET_STATE_DIR/declined/task-engine-42"
+record 1 task:engine:42
+complete >/dev/null
+assert_eq "$(sed -n 4p "$FLEET_STATE_DIR/declined/task-engine-42")" "shadow_merged_pr=900" \
+    "a post-TTL decline with no fresh shadow preserves exact-target evidence"
 
 echo "T9: abandoned folds through the abandonment counter"
 rm -f "$FLEET_STATE_DIR/abandoned/task-engine-42"

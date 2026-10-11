@@ -4,6 +4,7 @@
 #include <irreden/utility/file_utils.hpp>
 
 #include <algorithm>
+#include <array>
 #include <string>
 #include <vector>
 
@@ -143,6 +144,57 @@ TEST(SpritesToScreenSort, TieDepthEntriesStillGroup) {
     ASSERT_EQ(groups.size(), 2u);
     EXPECT_EQ(groups[0].count_, 3u);
     EXPECT_EQ(groups[1].count_, 2u);
+}
+
+// C_Sprite::size_ is in game pixels. The quad fixtures and every expected
+// value are exactly representable, so the comparisons are exact.
+using QuadRect = std::array<float, 4>;
+
+const IRMath::vec2 kQuadAnchorScreen{640.0f, 360.0f};
+const IRMath::vec2 kQuadSizeGamePx{16.0f, 24.0f};
+
+QuadRect quadRect(IRMath::vec2 anchorUv, IRMath::vec2 outputScale) {
+    const IRMath::vec4 quad = SpritesToScreenSystem::quadScreenRect(
+        kQuadAnchorScreen,
+        kQuadSizeGamePx,
+        anchorUv,
+        outputScale
+    );
+    return {quad.x, quad.y, quad.z, quad.w};
+}
+
+// At output scale 1 a game pixel is a viewport pixel: the quad keeps the
+// component's size and the anchor offset is the unscaled `anchor * size`.
+TEST(SpritesToScreenQuad, UnitScaleKeepsGamePixelSizeAndOffset) {
+    EXPECT_EQ(
+        quadRect(IRMath::vec2{0.5f, 0.0f}, IRMath::vec2{1.0f, 1.0f}),
+        (QuadRect{632.0f, 360.0f, 16.0f, 24.0f})
+    );
+}
+
+TEST(SpritesToScreenQuad, ScaleTwoDoublesSizeAndAnchorOffset) {
+    EXPECT_EQ(
+        quadRect(IRMath::vec2{0.5f, 0.0f}, IRMath::vec2{2.0f, 2.0f}),
+        (QuadRect{624.0f, 360.0f, 32.0f, 48.0f})
+    );
+}
+
+// A stretched fit carries a different factor per axis; anchor (1, 1) puts
+// both axes' offsets in play so a swapped or scalar factor shows up.
+TEST(SpritesToScreenQuad, UnequalScaleAppliesPerAxis) {
+    EXPECT_EQ(
+        quadRect(IRMath::vec2{1.0f, 1.0f}, IRMath::vec2{2.0f, 3.0f}),
+        (QuadRect{608.0f, 288.0f, 32.0f, 72.0f})
+    );
+}
+
+// A zero anchor has no offset to scale: the origin stays on the anchor
+// point while the size still follows the output scale.
+TEST(SpritesToScreenQuad, OriginAnchorScalesSizeOnly) {
+    EXPECT_EQ(
+        quadRect(IRMath::vec2{0.0f, 0.0f}, IRMath::vec2{2.0f, 2.0f}),
+        (QuadRect{640.0f, 360.0f, 32.0f, 48.0f})
+    );
 }
 
 } // namespace

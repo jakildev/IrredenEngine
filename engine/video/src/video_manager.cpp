@@ -39,6 +39,8 @@ void VideoManager::configureCapture(
     int videoBitrate,
     bool captureAudioInput,
     const std::string &audioInputDeviceName,
+    bool audioMonitorEnabled,
+    const std::string &audioMonitorDeviceName,
     int audioSampleRate,
     int audioChannels,
     int audioBitrate,
@@ -52,6 +54,8 @@ void VideoManager::configureCapture(
     m_videoBitrate = IRMath::max(videoBitrate, 250000);
     m_captureAudioInput = captureAudioInput;
     m_audioInputDeviceName = audioInputDeviceName;
+    m_audioMonitorEnabled = audioMonitorEnabled;
+    m_audioMonitorDeviceName = audioMonitorDeviceName;
     m_audioSampleRate = IRMath::max(audioSampleRate, 8'000);
     m_audioChannels = IRMath::clamp(audioChannels, 1, 2);
     m_audioBitrate = IRMath::max(audioBitrate, 64'000);
@@ -237,6 +241,10 @@ bool VideoManager::isAudioInputArmed() const {
     return m_audioInputArmed;
 }
 
+int VideoManager::recordingAudioSampleRate() const {
+    return m_audioSampleRate;
+}
+
 std::int64_t VideoManager::capturedUpdateTicks() const {
     return m_totalFixedUpdates;
 }
@@ -252,6 +260,9 @@ const std::string &VideoManager::getLastError() const {
 void VideoManager::armAudioInput() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_AUDIO);
     if (m_audioInputArmed) {
+        m_audioSampleRate = m_audioCaptureSource != nullptr
+                                ? m_audioCaptureSource->getCaptureSampleRate()
+                                : IRAudio::getAudioCaptureSource().getCaptureSampleRate();
         return;
     }
     IRAudio::AudioCaptureCallback audioCallback = [this](
@@ -277,6 +288,8 @@ void VideoManager::armAudioInput() {
         captureConfig.device_name_ = m_audioInputDeviceName;
         captureConfig.sample_rate_ = m_audioSampleRate;
         captureConfig.channels_ = m_audioChannels;
+        captureConfig.monitor_enabled_ = m_audioMonitorEnabled;
+        captureConfig.monitor_device_name_ = m_audioMonitorDeviceName;
         started = m_audioCaptureSource->startCapture(captureConfig, std::move(audioCallback));
     } else {
         started = IRAudio::startAudioInputCapture(
@@ -289,6 +302,9 @@ void VideoManager::armAudioInput() {
 
     if (started) {
         m_audioInputArmed = true;
+        m_audioSampleRate = m_audioCaptureSource != nullptr
+                                ? m_audioCaptureSource->getCaptureSampleRate()
+                                : IRAudio::getAudioCaptureSource().getCaptureSampleRate();
         IRE_LOG_INFO("Audio input armed (device='{}', rate={}, ch={})",
                      m_audioInputDeviceName.c_str(),
                      m_audioSampleRate,
@@ -365,7 +381,7 @@ void VideoManager::toggleCapture() {
     config.video_bitrate_ = videoBitrate;
     config.capture_audio_input_ = m_captureAudioInput;
     config.audio_input_device_name_ = m_audioInputDeviceName;
-    config.audio_sample_rate_ = m_audioSampleRate;
+    config.audio_sample_rate_ = recordingAudioSampleRate();
     config.audio_channels_ = m_audioChannels;
     config.audio_bitrate_ = m_audioBitrate;
     config.audio_mux_enabled_ = m_audioMuxEnabled;

@@ -79,8 +79,8 @@ static_assert(sizeof(GpuSpriteInstance) == 48, "GpuSpriteInstance must remain 48
 struct SpriteRenderEntry {
     ResourceId textureHandle_ = 0;
     int isoDepth_ = 0; ///< pos3DtoDistance(world); larger = farther
-    vec2 screenPos_ = vec2(0.0f);
-    vec2 size_ = vec2(0.0f);
+    vec2 screenPos_ = vec2(0.0f); ///< quad origin, viewport pixels
+    vec2 size_ = vec2(0.0f);      ///< viewport pixels: C_Sprite::size_ × output scale
     vec4 uvRect_ = vec4(0.0f, 0.0f, 1.0f, 1.0f);
     vec4 tintRgba_ = vec4(1.0f);
 };
@@ -488,7 +488,7 @@ constexpr std::uint32_t kEntityIdPriorityMaskInHighWord = ((1u << kEntityIdPrior
 // .glsl/.metal kEntityIdCutFaceMaskInHighWord.
 constexpr std::uint32_t kEntityIdCutFaceMaskInHighWord = 1u << 29;
 // Fog BODY carrier: bit 28 of the high word flags every pixel of a BODY-classed
-// subject (VoxelReserved::kFogBody on a voxel set, SHAPE_FLAG_FOG_WHOLE_BODY_EXEMPT
+// subject (VoxelReserved::kFogBody on a voxel set, SHAPE_FLAG_FOG_BODY
 // on a shape) and bits 27:20 carry its 8-bit reveal factor. FOG_TO_TRIXEL paints
 // a flagged pixel at factor / 255 with no per-pixel field lookup. Entity ids are
 // an allocation counter, so bits 27:20 of a live id's high word are zero. Both
@@ -774,6 +774,36 @@ enum class FitMode { FIT, STRETCH, UNKNOWN };
 /// @note Currently global (per-frame). Per-entity subdivision modes are future work.
 enum class SubdivisionMode { NONE = 0, POSITION_ONLY = 1, FULL = 2 };
 
+/// How FULL mode turns a display zoom into its whole-number density factor.
+/// - @c NEAREST — the snapped-zoom rule: a zoom is a power of two, and a
+///   directly written in-between value takes the nearer density.
+/// - @c UP      — the continuous-zoom rule: the density never falls below the
+///   zoom, so one backing texel never spans more than its own framebuffer
+///   pixels and a nearest fetch only ever minifies.
+enum class ZoomDensityRounding { NEAREST = 0, UP = 1 };
+
+/// Raster density (backing texels per iso unit, per axis) of a canvas viewed
+/// at @p zoom: the one whole-number consumer of the display zoom. Every other
+/// reader of the zoom takes it exactly.
+inline int voxelRenderEffectiveSubdivisions(
+    SubdivisionMode mode, int baseSubdivisions, vec2 zoom, ZoomDensityRounding rounding
+) {
+    switch (mode) {
+    case SubdivisionMode::NONE:
+        return 1;
+    case SubdivisionMode::POSITION_ONLY:
+        return IRMath::clamp(baseSubdivisions, 1, 16);
+    case SubdivisionMode::FULL: {
+        const float zoomMax = IRMath::max(zoom.x, zoom.y);
+        const int zoomScale = rounding == ZoomDensityRounding::UP
+                                  ? static_cast<int>(IRMath::ceil(zoomMax))
+                                  : static_cast<int>(IRMath::round(zoomMax));
+        return IRMath::clamp(baseSubdivisions * IRMath::max(1, zoomScale), 1, 16);
+    }
+    }
+    return 1;
+}
+
 /// Where camera Z-yaw rotation pivots.
 /// - @c ORIGIN        — yaw rotates content about the fixed world origin. A
 ///   panned-off-origin camera swings the scene in an arc. Deterministic and
@@ -978,8 +1008,8 @@ struct GPUShapesFrameData {
     ivec2 trixelCanvasOffsetZ1;
     ivec2 canvasSize;
     int shapeCount;
-    // The canvas casts shapes through the finite-coverage sun-shadow path.
-    // The retained frame copy lets the receiver use the same depth convention.
+    // The canvas's analytic caster and shape-aware receiver use the paired
+    // cardinal-depth correction. X-ray blending disables both halves.
     int finiteCoverage = 0;
     ivec2 voxelRenderOptions;
     ivec2 cullIsoMin;
@@ -1149,9 +1179,9 @@ struct FrameDataSun {
     // covers a texel, so a saturated-bake host is byte-identical and the fill
     // concentrates on genuinely-empty hole texels; doubles as the kill switch —
     // 0 ⇒ the exact single-write path. Engaged for the cardinal main-canvas bake
-    // and the world-placed cast resolve; the C++ driver zeros it for the per-axis
-    // resolve dispatch (structural per-axis / smooth-yaw byte-identity — see
-    // system_bake_sun_shadow_map.hpp patchSunSplatRadius). See
+    // and the world-placed cast resolve; the C++ driver zeros it for the
+    // analytic-caster bake and per-axis resolve dispatches (structural parity
+    // with their smooth-yaw paths — see patchSunSplatRadius). See
     // docs/design/sun-shadow-bake-coverage.md.
     float sunSplatMaxTexels_ = 6.0f;
     // Maximum shadow-throw window in sun-Z voxels: the receiver

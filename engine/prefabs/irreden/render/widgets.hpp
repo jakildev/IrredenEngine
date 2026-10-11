@@ -19,6 +19,10 @@
 
 namespace IRPrefab::Widget {
 
+inline bool isTabFocusCandidate(const IRComponents::C_Widget &widget) {
+    return !widget.disabled_ && widget.kind_ != IRComponents::WidgetKind::TEXT_INPUT;
+}
+
 // Ergonomic free-function constructors for the five Phase-0 minimum
 // widgets. Each call produces a single entity carrying:
 //   - C_Widget       (header — kind + size + disabled flag)
@@ -300,10 +304,18 @@ inline int listSelectedIndex(IREntity::EntityId widget) {
     return IREntity::getComponent<IRComponents::C_WidgetList>(widget).selectedIndex_;
 }
 
+// Scrolls the newly selected row into view when, and only when, the call
+// changes the selection. A caller that mirrors its own state into the list
+// every frame therefore never fights the mouse wheel over the scroll offset.
 inline void setListSelectedIndex(IREntity::EntityId widget, int index) {
     auto &list = IREntity::getComponent<IRComponents::C_WidgetList>(widget);
     const int n = static_cast<int>(list.items_.size());
-    list.selectedIndex_ = (n == 0) ? -1 : IRMath::clamp(index, -1, n - 1);
+    const int selected = (n == 0) ? -1 : IRMath::clamp(index, -1, n - 1);
+    if (selected == list.selectedIndex_) {
+        return;
+    }
+    list.selectedIndex_ = selected;
+    list.scrollIntoView(selected, IREntity::getComponent<IRComponents::C_Widget>(widget).size_.y);
 }
 
 inline int dropdownSelectedIndex(IREntity::EntityId widget) {

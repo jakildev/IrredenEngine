@@ -588,6 +588,97 @@ TEST_F(KeyboardDispatchTest, FreshManagerHasNoStandingAdmission) {
     EXPECT_EQ(m_ends, 0) << "the destroyed manager's admission cannot leak into this one";
 }
 
+// ---- Keyboard capture ----------------------------------------------------
+
+TEST_F(KeyboardDispatchTest, CaptureSuppressesKeyboardAndClearsForNextPress) {
+    int fires = 0;
+    m_command_manager.createCommand(
+        IRInput::KEY_MOUSE,
+        IRInput::PRESSED,
+        IRInput::kKeyButtonX,
+        [&]() { ++fires; }
+    );
+
+    m_command_manager.setKeyboardCaptured(true);
+    m_input.press(IRInput::kKeyButtonX);
+    tick();
+    m_input.release(IRInput::kKeyButtonX);
+    tick();
+    EXPECT_EQ(fires, 0);
+
+    m_command_manager.setKeyboardCaptured(false);
+    m_input.press(IRInput::kKeyButtonX);
+    tick();
+    EXPECT_EQ(fires, 1);
+}
+
+TEST_F(KeyboardDispatchTest, CaptureSuppressesModifierChord) {
+    bindChord(IRInput::kKeyButtonS, IRInput::kModifierControl);
+    m_command_manager.setKeyboardCaptured(true);
+
+    m_input.press(IRInput::kKeyButtonLeftControl);
+    tick();
+    m_input.press(IRInput::kKeyButtonS);
+    tick();
+
+    EXPECT_EQ(m_chords, 0);
+}
+
+TEST_F(KeyboardDispatchTest, CaptureLeavesMouseBindingsActive) {
+    int clicks = 0;
+    m_command_manager.createCommand(
+        IRInput::KEY_MOUSE,
+        IRInput::PRESSED,
+        IRInput::kMouseButtonLeft,
+        [&]() { ++clicks; }
+    );
+    m_command_manager.setKeyboardCaptured(true);
+
+    m_input.press(IRInput::kMouseButtonLeft);
+    tick();
+
+    EXPECT_EQ(clicks, 1);
+}
+
+TEST_F(KeyboardDispatchTest, CaptureAllowsOnlyAdmittedReleaseCleanup) {
+    bindPanPair(IRInput::kKeyButtonS);
+    int held = 0;
+    m_command_manager.createCommand(IRInput::KEY_MOUSE, IRInput::HELD, IRInput::kKeyButtonS, [&]() {
+        ++held;
+    });
+
+    m_input.press(IRInput::kKeyButtonS);
+    tick();
+    ASSERT_EQ(m_starts, 1);
+    ASSERT_EQ(held, 1);
+
+    m_command_manager.setKeyboardCaptured(true);
+    tick();
+    EXPECT_EQ(held, 1);
+    m_input.release(IRInput::kKeyButtonS);
+    tick();
+
+    EXPECT_EQ(m_starts, 1);
+    EXPECT_EQ(m_ends, 1);
+    EXPECT_EQ(held, 1);
+    EXPECT_EQ(m_velocity, 0);
+}
+
+TEST_F(KeyboardDispatchTest, PairPressedDuringCaptureNeverReceivesRelease) {
+    bindPanPair(IRInput::kKeyButtonS);
+    m_command_manager.setKeyboardCaptured(true);
+
+    m_input.press(IRInput::kKeyButtonS);
+    tick();
+    m_command_manager.setKeyboardCaptured(false);
+    m_input.release(IRInput::kKeyButtonS);
+    tick();
+
+    EXPECT_EQ(m_starts, 0);
+    EXPECT_EQ(m_ends, 0);
+    EXPECT_EQ(m_velocity, 0);
+}
+
 // ---- Compatibility: everything that is not a bare pair is unchanged --------
 
 TEST_F(KeyboardDispatchTest, UnpairedBindingsStillFireOnEveryStatus) {

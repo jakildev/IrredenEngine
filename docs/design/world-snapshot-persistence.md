@@ -85,22 +85,28 @@ tick (`C_GotoEasing3D` / `C_RotationTarget` hold `IREasingFunctions` and look
 up `kEasingFunctions`). Such a component stays trivially copyable and opts in
 through the raw-image arm with no serializer at all.
 
-## Why an explicit serializer on a trivially-copyable type is banned
+## Why a hand-written trivial layout is declared through the inventory
 
-A missing serializer header is loud today only because every explicit
-`SaveSerialize<C>` specialization is on a non-trivially-copyable component:
-the primary template is declared but never defined, so a TU that misses the
-header sees an incomplete type, `SaveSerializable<C>` is false, and the
-registry's `static_assert` fires.
+A missing serializer header is naturally loud for a non-trivially-copyable
+component: the primary `SaveSerialize<C>` template is declared but never
+defined, so `SaveSerializable<C>` is false and the registry's `static_assert`
+fires.
 
 A trivially-copyable component has the constrained partial specialization to
-fall back on. A TU that misses its explicit-specialization header binds
-**silently** to the raw-image arm: different bytes under the same save-name
-and version, no diagnostic, and formally an ODR violation between the two
-TUs. The rule is therefore structural, not stylistic. A hand-written layout
-(skip a derived field, narrow an enum, drop padding) is reached by making the
-component non-trivially-copyable, or by routing the exception through the
-inventory.
+fall back on. Without an earlier declaration, a TU that misses an explicit-
+specialization header binds **silently** to the raw-image arm: different bytes
+under the same save-name and version, no diagnostic, and formally an ODR
+violation between TUs.
+
+`IR_SAVE_OPT_IN_HAND_WRITTEN(Type, Version)` closes that fallback at the
+inventory decision. It declares the full `SaveSerialize<Type>` specialization
+without defining it and marks the trait as hand-written; the domain serializer
+header supplies the definition. A registry TU that lacks that header therefore
+sees an incomplete specialization and fails `SaveSerializable<C>` rather than
+using raw bytes. Registration also checks the converse: a trivially-copyable
+type uses the raw arm exactly when its trait does not declare a hand-written
+layout. This catches an explicit serializer paired with plain `IR_SAVE_OPT_IN`
+even in a TU that can see the specialization.
 
 ## Why the load preserves the live render context
 

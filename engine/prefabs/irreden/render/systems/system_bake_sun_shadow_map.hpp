@@ -178,8 +178,11 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     struct SunSplatRestoreGuard {
         System<BAKE_SUN_SHADOW_MAP> &sys_;
         float radiusTexels_;
+        bool active_ = true;
         ~SunSplatRestoreGuard() {
-            sys_.patchSunSplatRadius(radiusTexels_);
+            if (active_) {
+                sys_.patchSunSplatRadius(radiusTexels_);
+            }
         }
     };
 
@@ -224,8 +227,11 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
         bakeProgram_->use();
         analyticCasterDepth_.second->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
-        patchSunSplatRadius(0.0f);
-        const SunSplatRestoreGuard splatGuard{*this, frameData_.sunSplatMaxTexels_};
+        const bool cardinalFrame = analyticCasterFrame_.residualYaw_ == 0.0f;
+        if (cardinalFrame) {
+            patchSunSplatRadius(0.0f);
+        }
+        const SunSplatRestoreGuard splatGuard{*this, frameData_.sunSplatMaxTexels_, cardinalFrame};
         IRRender::device()->dispatchCompute(
             IRMath::divCeil(analyticCasterFrame_.canvasSizePixels_.x, kBakeSunShadowGroupSize),
             IRMath::divCeil(analyticCasterFrame_.canvasSizePixels_.y, kBakeSunShadowGroupSize),

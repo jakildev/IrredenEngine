@@ -55,6 +55,7 @@ enum ShapeFlags : std::uint32_t {
     /// opt-in (T-164).
     SHAPE_FLAG_XRAY_OCCLUDED = 1u << 7,
     SHAPE_FLAG_FOG_HIDDEN = 1u << 8,
+    SHAPE_FLAG_FOG_GHOST = 1u << 9,
 };
 
 constexpr std::uint32_t kShapeFogBodyFactorShift = 16u;

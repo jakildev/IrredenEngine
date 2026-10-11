@@ -17,13 +17,14 @@
 #include <irreden/asset/binary_io.hpp>
 #include <irreden/ir_entity.hpp>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <string>
 #include <type_traits>
 #include <vector>
 
-// Per-component SaveSerialize<C> coverage for heap-owning components, plus the
+// Per-component SaveSerialize<C> coverage for hand-written layouts, plus the
 // membership assertion
 // that proves that registry is *derived* from the inventory rather than
 // hand-curated.
@@ -44,6 +45,17 @@
 namespace {
 
 using namespace IRComponents;
+
+template <typename C>
+concept UsesRawImageSerializer =
+    requires { IRWorld::SaveSerialize<C>::kRawImage; } && IRWorld::SaveSerialize<C>::kRawImage;
+
+static_assert(IRWorld::SaveTrait<C_EntityCanvas>::kHandWrittenLayout);
+static_assert(IRWorld::SaveTrait<C_HitBox2D>::kHandWrittenLayout);
+static_assert(IRWorld::SaveTrait<C_ShapeDescriptor>::kHandWrittenLayout);
+static_assert(!UsesRawImageSerializer<C_EntityCanvas>);
+static_assert(!UsesRawImageSerializer<C_HitBox2D>);
+static_assert(!UsesRawImageSerializer<C_ShapeDescriptor>);
 
 template <typename C> std::vector<std::uint8_t> serialize(const C &value) {
     IRAsset::MemoryBinaryWriter writer;
@@ -202,10 +214,13 @@ TEST(SaveSerializers, EntityCanvasV1MigrationPreservesAuthoredStateAndDefaultsFo
     writer.writeBytes(&old, sizeof(old));
 
     const auto migrators = IRWorld::SaveMigration<C_EntityCanvas>::migrators();
-    ASSERT_EQ(migrators.size(), 1u);
-    ASSERT_EQ(migrators.front().first, 1u);
+    ASSERT_EQ(migrators.size(), 2u);
+    const auto migrator = std::find_if(migrators.begin(), migrators.end(), [](const auto &entry) {
+        return entry.first == 1u;
+    });
+    ASSERT_NE(migrator, migrators.end());
     IRAsset::MemoryBinaryReader reader(writer.buffer().data(), writer.buffer().size(), "canvas-v1");
-    const IRAsset::Result<C_EntityCanvas> restored = migrators.front().second(reader);
+    const IRAsset::Result<C_EntityCanvas> restored = migrator->second(reader);
 
     ASSERT_TRUE(restored.ok()) << restored.status_.message_;
     EXPECT_EQ(restored.value_.canvasEntity_, old.canvasEntity_);
@@ -216,7 +231,108 @@ TEST(SaveSerializers, EntityCanvasV1MigrationPreservesAuthoredStateAndDefaultsFo
     EXPECT_FLOAT_EQ(restored.value_.fogRevealFactor_, 1.0f);
     EXPECT_FALSE(restored.value_.fogHidden_);
     EXPECT_EQ(reader.remaining(), 0u);
-    EXPECT_EQ(IRWorld::saveVersion<C_EntityCanvas>(), 2u);
+    EXPECT_EQ(IRWorld::saveVersion<C_EntityCanvas>(), 3u);
+}
+
+TEST(SaveSerializers, EntityCanvasRoundTripPreservesAuthoredStateAndDefaultsFogState) {
+    C_EntityCanvas canvas{42, IRMath::ivec2(320, 180), false, true, 7};
+    canvas.fogRevealFactor_ = 0.0f;
+    canvas.fogHidden_ = true;
+
+    const std::vector<std::uint8_t> bytes = serialize(canvas);
+    ASSERT_EQ(bytes.size(), 22u);
+    const C_EntityCanvas restored = roundTrip(canvas);
+
+    EXPECT_EQ(restored.canvasEntity_, canvas.canvasEntity_);
+    EXPECT_EQ(restored.canvasSize_, canvas.canvasSize_);
+    EXPECT_EQ(restored.visible_, canvas.visible_);
+    EXPECT_EQ(restored.screenLocked_, canvas.screenLocked_);
+    EXPECT_EQ(restored.depthPriority_, canvas.depthPriority_);
+    EXPECT_FLOAT_EQ(restored.fogRevealFactor_, 1.0f);
+    EXPECT_FALSE(restored.fogHidden_);
+    expectConsumesAllBytes(canvas);
+    expectReserializesIdentically(canvas);
+}
+
+TEST(SaveSerializers, EntityCanvasV2MigrationPreservesAuthoredStateAndDefaultsFogState) {
+    IRWorld::detail::EntityCanvasV2 old{
+        42,
+        IRMath::ivec2(320, 180),
+        false,
+        true,
+        7,
+        0.0f,
+        true,
+    };
+    IRAsset::MemoryBinaryWriter writer;
+    writer.writeBytes(&old, sizeof(old));
+
+    const auto migrators = IRWorld::SaveMigration<C_EntityCanvas>::migrators();
+    ASSERT_EQ(migrators.size(), 2u);
+    const auto migrator = std::find_if(migrators.begin(), migrators.end(), [](const auto &entry) {
+        return entry.first == 2u;
+    });
+    ASSERT_NE(migrator, migrators.end());
+    IRAsset::MemoryBinaryReader reader(writer.buffer().data(), writer.buffer().size(), "canvas-v2");
+    const IRAsset::Result<C_EntityCanvas> restored = migrator->second(reader);
+
+    ASSERT_TRUE(restored.ok()) << restored.status_.message_;
+    EXPECT_EQ(restored.value_.canvasEntity_, old.canvasEntity_);
+    EXPECT_EQ(restored.value_.canvasSize_, old.canvasSize_);
+    EXPECT_EQ(restored.value_.visible_, old.visible_);
+    EXPECT_EQ(restored.value_.screenLocked_, old.screenLocked_);
+    EXPECT_EQ(restored.value_.depthPriority_, old.depthPriority_);
+    EXPECT_FLOAT_EQ(restored.value_.fogRevealFactor_, 1.0f);
+    EXPECT_FALSE(restored.value_.fogHidden_);
+    EXPECT_FALSE(restored.value_.fogGhost_);
+    EXPECT_EQ(reader.remaining(), 0u);
+}
+
+TEST(SaveSerializers, EntityCanvasRoundTripClearsTransientFogGhostVerdict) {
+    C_EntityCanvas canvas{};
+    canvas.canvasEntity_ = 42;
+    canvas.fogGhost_ = true;
+
+    const C_EntityCanvas restored = roundTrip(canvas);
+
+    EXPECT_EQ(restored.canvasEntity_, canvas.canvasEntity_);
+    EXPECT_FALSE(restored.fogGhost_);
+    expectConsumesAllBytes(canvas);
+}
+
+// A version-1 camera row is the raw image of an empty struct: one byte with no
+// defined value. Set here to the value that would read as "policy on" if the
+// migrator trusted it.
+TEST(SaveSerializers, CameraV1MigrationRestoresTheSnappedZoomPolicy) {
+    const std::uint8_t undefinedMarkerByte = 0xFF;
+    IRAsset::MemoryBinaryWriter writer;
+    writer.writeBytes(&undefinedMarkerByte, sizeof(undefinedMarkerByte));
+
+    const auto migrators = IRWorld::SaveMigration<C_Camera>::migrators();
+    ASSERT_EQ(migrators.size(), 1u);
+    ASSERT_EQ(migrators.front().first, 1u);
+    IRAsset::MemoryBinaryReader reader(writer.buffer().data(), writer.buffer().size(), "camera-v1");
+    const IRAsset::Result<C_Camera> restored = migrators.front().second(reader);
+
+    ASSERT_TRUE(restored.ok()) << restored.status_.message_;
+    EXPECT_FALSE(restored.value_.continuousZoom_);
+    EXPECT_EQ(reader.remaining(), 0u);
+    EXPECT_EQ(IRWorld::saveVersion<C_Camera>(), 2u);
+}
+
+TEST(SaveSerializers, CameraZoomPolicyRoundTrips) {
+    C_Camera continuous;
+    continuous.continuousZoom_ = true;
+    EXPECT_TRUE(roundTrip(continuous).continuousZoom_);
+    EXPECT_FALSE(roundTrip(C_Camera{}).continuousZoom_);
+    expectReserializesIdentically(continuous);
+    expectConsumesAllBytes(continuous);
+}
+
+// The carried raster phase is runtime state of the frame loop. Saving it
+// would resume a history the loaded world never rendered.
+TEST(SaveSerializers, CameraZoomFrameStateStaysOptedOut) {
+    EXPECT_FALSE(IRWorld::shouldSave<C_CameraZoomFrameState>());
 }
 
 // --- voxel/ ----------------------------------------------------------------
@@ -260,15 +376,17 @@ TEST(SaveSerializers, ShapeDescriptorV1MigrationPreservesLayoutAndDefaultsFogFac
     EXPECT_EQ(IRWorld::saveVersion<C_ShapeDescriptor>(), 2u);
 }
 
-TEST(SaveSerializers, ShapeDescriptorRoundTripClearsTransientFogHiddenVerdict) {
+TEST(SaveSerializers, ShapeDescriptorRoundTripClearsTransientFogVerdicts) {
     C_ShapeDescriptor shape{};
-    shape.flags_ |= IRMath::SDF::SHAPE_FLAG_FOG_BODY | IRMath::SDF::SHAPE_FLAG_FOG_HIDDEN;
+    shape.flags_ |= IRMath::SDF::SHAPE_FLAG_FOG_BODY | IRMath::SDF::SHAPE_FLAG_FOG_HIDDEN |
+                    IRMath::SDF::SHAPE_FLAG_FOG_GHOST;
     shape.fogBodyFactor_ = 73u;
 
     const C_ShapeDescriptor restored = roundTrip(shape);
 
     EXPECT_NE(restored.flags_ & IRMath::SDF::SHAPE_FLAG_FOG_BODY, 0u);
     EXPECT_EQ(restored.flags_ & IRMath::SDF::SHAPE_FLAG_FOG_HIDDEN, 0u);
+    EXPECT_EQ(restored.flags_ & IRMath::SDF::SHAPE_FLAG_FOG_GHOST, 0u);
     EXPECT_EQ(restored.fogBodyFactor_, 73u);
     expectConsumesAllBytes(shape);
 }
@@ -875,6 +993,30 @@ TEST_F(DefaultRegistryTest, ResolvesEnumStoredEasingComponents) {
     }
 }
 
+// The engine's own camera is persistent and never enters a snapshot, so the
+// policy column is exercised on a plain carrier entity: the authored flag
+// survives a save and load, and the transient phase beside it does not.
+TEST_F(DefaultRegistryTest, CameraZoomPolicySurvivesALoadAndThePhaseDoesNot) {
+    const IRWorld::SaveRegistry registry = IRWorld::makeDefaultSaveRegistry();
+    C_Camera camera;
+    camera.continuousZoom_ = true;
+    C_CameraZoomFrameState state;
+    state.published_ = true;
+    state.sample_.phase_ = IRMath::dvec2(0.25, 0.75);
+    const IREntity::EntityId carrier = IREntity::createEntity(camera, state);
+
+    const std::string path = testing::TempDir() + "/ir_camera_zoom_policy.irws";
+    ASSERT_TRUE(IRWorld::saveWorld(registry, path).ok());
+    m_entity_manager.destroyAllEntities();
+    ASSERT_EQ(m_entity_manager.getLiveEntityCount(), 0u);
+
+    const IRWorld::LoadResult result = IRWorld::loadWorld(registry, path);
+    ASSERT_TRUE(result.ok()) << result.status_.message_;
+    ASSERT_TRUE(m_entity_manager.entityExists(carrier));
+    EXPECT_TRUE(IREntity::getComponent<C_Camera>(carrier).continuousZoom_);
+    EXPECT_FALSE(IREntity::getComponentOptional<C_CameraZoomFrameState>(carrier).has_value());
+}
+
 // C_LerpEntity holds an arbitrary std::function with no authored identity to
 // recover, so no honest serializer exists for it. Pinned here so a future
 // re-opt-in has to confront the callback problem rather than silently shipping
@@ -892,8 +1034,8 @@ TEST(SaveSerializers, EnumStoredEasingComponentsOptIn) {
 }
 
 // The raw-image arm is what makes the two components above serializable
-// without a specialization; an explicit SaveSerialize<C> on a trivially
-// copyable type is the silent ODR hazard engine/world/CLAUDE.md forbids.
+// without a specialization. Hand-written layouts declare that choice through
+// the inventory instead.
 TEST(SaveSerializers, EnumStoredEasingComponentsAreTriviallyCopyable) {
     EXPECT_TRUE(std::is_trivially_copyable_v<C_GotoEasing3D>);
     EXPECT_TRUE(std::is_trivially_copyable_v<C_RotationTarget>);

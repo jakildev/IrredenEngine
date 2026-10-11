@@ -56,7 +56,7 @@ IR_SAVE_OPT_IN(WsSnap::C_WsVel, 1)
 IR_SAVE_OPT_IN(WsSnap::C_WsTag, 1)
 IR_SAVE_OPT_OUT(WsSnap::C_WsTransient)
 IR_SAVE_OPT_IN(WsSnap::C_WsSingletonState, 2)
-IR_SAVE_OPT_IN(WsSnap::C_WsChecked, 1)
+IR_SAVE_OPT_IN_HAND_WRITTEN(WsSnap::C_WsChecked, 1)
 
 namespace IRWorld {
 // Explicit specialization overriding the trivially-copyable raw-image default

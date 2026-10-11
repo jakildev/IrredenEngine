@@ -158,8 +158,9 @@ IRAudio::clearOutboundMidiObserver();
 
 ## Audio capture model
 
-- `Audio::openStreamIn(deviceName, sampleRate, channels, callback)` →
-  `startStreamIn()`.
+- `startCapture` keeps the recorder on an input-only RtAudio stream. Optional
+  monitoring uses a second output-only stream and a bounded SPSC frame ring;
+  drift drops or zero-fills monitor samples and never edits recorder delivery.
 - **RtAudio 6 reports failure by return value, not by throwing.** Open, start,
   and stop return `RtAudioErrorType`; `RTAUDIO_NO_ERROR` is the only success
   (`RTAUDIO_WARNING`, a wrong-state call, is a failure). `Audio` reaches
@@ -167,14 +168,18 @@ IRAudio::clearOutboundMidiObserver();
   state flags in one place and `test/audio/audio_capture_test.cpp` fires every
   failure with a fake backend. A failed stop keeps the stream reported as
   running until `closeStreamIn()`.
-- A sample rate the device does not offer fails the open: no fallback to the
-  preferred rate, no resampling.
-- Callback signature:
-  `void(const float* samples, int frameCount, double streamTime, bool overflow)`.
-- Default buffer is 1024 frames.
-- The callback is invoked on RtAudio's audio thread — **do not touch ECS
-  or Lua state from inside it**. Copy samples into a lock-free buffer and
-  consume on the main thread.
+- **No backend call can hold the main thread.** Input and monitor output each
+  have one owning control thread. Both share one absolute arm / teardown
+  deadline; a stuck output is quarantined independently and input stays live.
+  Abandoned tasks hold no engine or caller-owned object and never log.
+- Unlisted requests use the nearest rate above 8 kHz; the backend rate wins.
+- `IAudioCaptureSource::getCaptureSampleRate()` reports that delivered-sample
+  rate while active and 0 otherwise; video recording carries it downstream.
+- Callback: `void(const float* samples, int frameCount, double streamTime,
+  bool overflow)`, 1024 frames by default, on RtAudio's audio thread — **do not
+  touch ECS or Lua state from inside it**; copy out, consume on the main thread.
+  `stopCapture`, a timeout, and `~Audio` close its gate: none in flight after.
+- Lua toggles the monitor gate without device calls; recorder sync uses only input latency.
 - The synthetic capture source follows the same callback contract and paces
   against accumulated deadlines so scheduler jitter cannot shorten a take.
 
@@ -185,9 +190,6 @@ IRAudio::clearOutboundMidiObserver();
 - **Per-frame queue wipe.** Query MIDI state only in systems that run
   after `MidiIn::tick()` and before the next one. Holding a reference
   across frames is UB.
-- **Callback lifetime.** The input callback is a `std::function`.
-  Destroying `Audio` while a stream is running can crash; always
-  `stopStreamIn()` before teardown.
 - **Custom RtMidi/RtAudio patches.** Don't assume stock upstream behavior
   — check `patches/` before debugging driver-level issues.
 - **Single-thread `tick()` assumption.** `MidiIn::tick()` has no mutex.

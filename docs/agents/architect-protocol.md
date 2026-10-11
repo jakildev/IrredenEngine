@@ -40,8 +40,9 @@ Whatever a plan or prompt suggests, the architect does **not**:
   entries to the queue" is wrong — strike it. The one standing exception is
   a human-cued `fleet-unblock` run, whose authority table
   ([`skills/fleet-unblock.md`](skills/fleet-unblock.md)) grants closing
-  delivered issues, approving defect-shaped and epic-child work, and lifting
-  factual `fleet:needs-human` parks.
+  delivered issues, approving defect-shaped and epic-child work, lifting
+  factual `fleet:needs-human` parks, and adding a `**Blocked by:**` line
+  that cites a colliding open PR (never removing one).
 - **Pre-apply labels at filing time.** The one carve-out is the
   agent-approved follow-up lane
   ([`TASK-FILING.md § Agent-approved follow-up lane`](TASK-FILING.md)).
@@ -108,7 +109,9 @@ host — the rest is the primary fleet's):
    skip any task whose issue appears in `repos.<repo>.prs[].title` or
    `.headRefName` — the open-PR list is the cross-host claim signal.
 2. `fleet-claim claim <issue-#> <role-name>` — exit 0 claimed, exit 1 taken.
-3. `fleet-build --target <name>`; `fleet-run <executable>` when one exists.
+3. `fleet-build --target <name>`; `fleet-run <executable>` when one exists;
+   run the author-side `python3 scripts/light-verify.py --if-changed` step in
+   [`AUTHOR-PIPELINE.md § Build and run`](AUTHOR-PIPELINE.md#build-and-run).
 4. [`AUTHOR-PIPELINE.md § Optimize before commit`](AUTHOR-PIPELINE.md#optimize-before-commit)
    — skip only for pure docs or mechanical refactors. `commit-and-push`
    runs `simplify`.

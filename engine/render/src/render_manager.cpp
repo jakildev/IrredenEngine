@@ -95,7 +95,8 @@ RenderManager::RenderManager(
                 C_Velocity2DIso{
                     vec2(0.0f, 0.0f)
                 },
-                C_ZoomLevel{1.0f}
+                C_ZoomLevel{1.0f},
+                C_CameraZoomFrameState{}
             )
         }
     ,   m_viewport{0}
@@ -235,15 +236,11 @@ vec2 RenderManager::getCameraPosition2DIso() const {
 }
 
 vec2 RenderManager::getTriangleStepSizeScreen() const {
-    return IRMath::calcTriangleStepSizeScreen(
-        m_gameResolution,
-        getCameraZoom(),
-        m_outputScaleFactor
-    );
+    return IRMath::calcTriangleStepSizeScreen(getCameraZoom(), m_outputScaleFactor);
 }
 
 vec2 RenderManager::getTriangleStepSizeGameResolution() const {
-    return IRMath::calcTriangleStepSizeGameResolution(m_gameResolution, getCameraZoom());
+    return IRMath::calcTriangleStepSizeGameResolution(getCameraZoom());
 }
 
 vec2 RenderManager::getCameraZoom() const {
@@ -392,31 +389,32 @@ int RenderManager::getVoxelRenderSubdivisions() const {
 }
 
 int RenderManager::getVoxelRenderEffectiveSubdivisions() const {
-    return getVoxelRenderEffectiveSubdivisionsForZoom(getCameraZoom());
+    // The main camera alone takes the round-up rule, and only under its
+    // continuous policy; a secondary viewport's zoom stays on NEAREST below.
+    return voxelRenderEffectiveSubdivisions(
+        m_subdivisionMode,
+        m_voxelRenderSubdivisions,
+        getCameraZoom(),
+        IREntity::getComponent<C_Camera>(m_camera).continuousZoom_ ? ZoomDensityRounding::UP
+                                                                   : ZoomDensityRounding::NEAREST
+    );
 }
 
 int RenderManager::getVoxelRenderEffectiveSubdivisionsForZoom(vec2 zoom) const {
-    switch (m_subdivisionMode) {
-    case SubdivisionMode::NONE:
-        return 1;
-    case SubdivisionMode::POSITION_ONLY:
-        return IRMath::clamp(m_voxelRenderSubdivisions, 1, 16);
-    case SubdivisionMode::FULL: {
-        const int zoomScale = static_cast<int>(IRMath::round(IRMath::max(zoom.x, zoom.y)));
-        return IRMath::clamp(m_voxelRenderSubdivisions * IRMath::max(1, zoomScale), 1, 16);
-    }
-    }
-    return 1;
+    return voxelRenderEffectiveSubdivisions(
+        m_subdivisionMode,
+        m_voxelRenderSubdivisions,
+        zoom,
+        ZoomDensityRounding::NEAREST
+    );
 }
 
 void RenderManager::setCameraZoom(float zoom) {
-    float clamped = IRMath::clamp(
-        zoom,
-        IRConstants::kTrixelCanvasZoomMin.x,
-        IRConstants::kTrixelCanvasZoomMax.x
+    const bool continuous = IREntity::getComponent<C_Camera>(m_camera).continuousZoom_;
+    IREntity::setComponent(
+        m_camera,
+        C_ZoomLevel{IRPrefab::Camera::resolveZoomRequest(zoom, continuous)}
     );
-    float snapped = IRMath::snapToPowerOfTwo(clamped);
-    IREntity::setComponent(m_camera, C_ZoomLevel{snapped});
 }
 
 void RenderManager::setCameraPosition2DIso(vec2 pos) {

@@ -136,7 +136,7 @@ def emit(text):
     sys.stdout.flush()
 
 
-STATE_ONLY = {"100": "CLOSED", "101": "OPEN", "102": "OPEN"}
+STATE_ONLY = {"100": "CLOSED", "101": "OPEN", "102": "OPEN", "103": "OPEN"}
 
 ISSUE_INFO = {
     "3001": r'{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #100 (done), #101 (still open)\n"}',
@@ -156,6 +156,9 @@ ISSUE_INFO = {
     # A number-matched base is still subject to filter (b) — PR
     # 541 carries fleet:wip.
     "3008": r'{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #541\n"}',
+# A merged delivery branch exists for the tracker, but the tracker is
+    # still OPEN and has a new open PR to stack on.
+    "3009": r'{"state":"OPEN","labels":[{"name":"fleet:queued"},{"name":"fleet:sonnet"}],"body":"**Blocked by:** #103\n"}',
 }
 ISSUE_INFO_DEFAULT = r'{"state":"OPEN","labels":[],"body":""}'
 
@@ -165,7 +168,7 @@ ISSUE_INFO_DEFAULT = r'{"state":"OPEN","labels":[],"body":""}'
 # (b) can be exercised on a number-matched base. Neither matches
 # issue 101 (number, branch, and body all disagree), so the
 # single-match contract of T1/T5 is unaffected.
-OPEN_PR_LIST = r'[{"url":"https://github.com/jakildev/IrredenEngine/pull/536","headRefName":"claude/101-work-branch","author":{"login":"bot"},"number":536,"body":"Closes #101"},{"url":"https://github.com/jakildev/IrredenEngine/pull/540","headRefName":"audit/stage-select-dedup","author":{"login":"jakildev"},"number":540,"body":"Audit-driven, no backing issue."},{"url":"https://github.com/jakildev/IrredenEngine/pull/541","headRefName":"audit/wip-thing","author":{"login":"jakildev"},"number":541,"body":"No backing issue.","labels":[{"name":"fleet:wip"}]}]'
+OPEN_PR_LIST = r'[{"url":"https://github.com/jakildev/IrredenEngine/pull/536","headRefName":"claude/101-work-branch","author":{"login":"bot"},"number":536,"body":"Closes #101"},{"url":"https://github.com/jakildev/IrredenEngine/pull/537","headRefName":"claude/103-residual","author":{"login":"bot"},"number":537,"body":"Closes #103"},{"url":"https://github.com/jakildev/IrredenEngine/pull/540","headRefName":"audit/stage-select-dedup","author":{"login":"jakildev"},"number":540,"body":"Audit-driven, no backing issue."},{"url":"https://github.com/jakildev/IrredenEngine/pull/541","headRefName":"audit/wip-thing","author":{"login":"jakildev"},"number":541,"body":"No backing issue.","labels":[{"name":"fleet:wip"}]}]'
 
 # claim --stackable-on base re-verify: state + head + labels.
 PR_VIEW = {
@@ -194,7 +197,7 @@ if verb == "pr list":
     if pr_state == "open":
         emit(OPEN_PR_LIST + "\n")
     else:
-        emit("[]\n")
+        emit('["claude/103-delivered"]\n')
     sys.exit(0)
 if verb == "pr view":
     # $3 is the PR id passed to --stackable-on.
@@ -319,6 +322,17 @@ assert_output "$result" "" "unmatched PR-number ref → empty (arm is not a wild
 echo "T11: number-matched base still honors filter (b) — #541 is fleet:wip → empty"
 result=$("$FLEET_CLAIM" find-stackable-blockers 3008 2>/dev/null || true)
 assert_output "$result" "" "wip number-matched base → empty (offer/accept agree, #1751)"
+
+echo "T12: merged delivery head does not satisfy an OPEN tracker issue"
+result=$("$FLEET_CLAIM" find-stackable-blockers 3009 2>/dev/null || true)
+assert_nonempty "$result" "open tracker remains stackable despite an earlier merged delivery"
+if echo "$result" | grep -q "claude/103-residual"; then
+    PASS=$((PASS + 1))
+    echo "  ok: finder returns the residual tracker's open PR"
+else
+    FAIL=$((FAIL + 1))
+    echo "  FAIL: finder did not return the residual tracker's open PR"
+fi
 
 # --- claim --stackable-on rejects an OPEN-but-unsafe base ------------------
 # The base re-verify runs before any blocker/model/reservation gate, so an

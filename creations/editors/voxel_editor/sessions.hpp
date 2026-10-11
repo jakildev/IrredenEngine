@@ -56,6 +56,19 @@
 // The bands then survive a save, clear and reload into the manifest, the
 // parts' gate and the sliders.
 //
+// `part_sizes` proves a per-part size at creation: the PART SIZE sliders set a
+// 3x3x8 and a 5x5x1 part in one scene, each seated by its own extent, and both
+// extents survive a save, clear and reload. It also holds the two edit tools
+// that depend on the editable set's extent to it: the X mirror plane re-seats
+// when the selection moves between the two parts, and the scene-sized loft
+// tool refuses the 3x3x8 part instead of reading its masks at the wrong stride.
+//
+// `parts_scroll` proves the PARTS list reaches every part once an array makes
+// more parts than the list has rows: the array's selection is scrolled into
+// view, the wheel walks the list to either end, and a row click there selects
+// the first and the last part. No Tab is sent. Its last segment wheels over
+// the scene, which zooms the camera, so nothing can follow it.
+//
 // `module_loaded` proves the `--module <dir>` seam against whatever module is
 // loaded: its expectations come from `<dir>/session_expect.lua` (resolved into
 // a ModuleSessionSpec in main.cpp), so no module content is named here. It
@@ -93,6 +106,9 @@ enum class Id {
     NWAY_SYMMETRY,
     MODE_PREVIEW,
     MODE_PREVIEW_SHOTS,
+    TEXT_INPUT_COMMAND_CAPTURE,
+    PART_SIZES,
+    PARTS_SCROLL,
     MODULE_LOADED,
     COMPONENT_ATTACH,
     COMPONENT_FIELD_PAGE,
@@ -132,6 +148,12 @@ inline Id idFromName(const std::string &name) {
         return Id::MODE_PREVIEW;
     if (name == "mode_preview_shots")
         return Id::MODE_PREVIEW_SHOTS;
+    if (name == "text_input_command_capture")
+        return Id::TEXT_INPUT_COMMAND_CAPTURE;
+    if (name == "part_sizes")
+        return Id::PART_SIZES;
+    if (name == "parts_scroll")
+        return Id::PARTS_SCROLL;
     if (name == "module_loaded")
         return Id::MODULE_LOADED;
     if (name == "component_attach")
@@ -201,6 +223,13 @@ struct ComponentAttachSpec {
 };
 
 namespace detail {
+
+// An entity-scene part starts clear, so a click has nothing to pick until BAKE
+// writes a blob. Radius 1.9 keeps every cell's squared distance off the
+// sphere's surface threshold, so a slider landing a trixel off still bakes the
+// same cells. In cells relative to (size / 2), the blob's front face is at
+// z = -2 and a paint cell one further forward, at z = -3, is empty.
+constexpr float kFirstWriteBlobRadius = 1.9f;
 
 // The four gestures, on the seeded ground plane at the scene's centre — clear
 // of the left-column GUI panels in screen space and clear of the ground's edges
@@ -1535,24 +1564,37 @@ inline Recipe build(
         return detail::buildTree(sceneSize, sceneOrigin);
     case Id::PARTS_ROUNDTRIP: {
         Builder builder("parts_roundtrip", sceneSize, sceneOrigin);
-        const int z = sceneSize.z - 2;
-        const IRMath::ivec3 first(sceneSize.x / 2, sceneSize.y / 2, z);
-        const IRMath::ivec3 second(sceneSize.x / 2 - 2, sceneSize.y / 2, z);
+        const IRMath::ivec3 center(sceneSize.x / 2, sceneSize.y / 2, sceneSize.z / 2);
+        const IRMath::ivec3 blobFront = center + IRMath::ivec3(0, 0, -2);
+        const IRMath::ivec3 first = center + IRMath::ivec3(0, 0, -3);
+        const IRMath::ivec3 second = center + IRMath::ivec3(-1, 0, -3);
+        const IRMath::ivec3 prime(center.x, center.y, sceneSize.z - 2);
 
         builder.segment("prime_single_set_undo");
-        builder.click(first);
+        builder.click(prime);
 
         builder.segment("enter_entity_scene");
         builder.addVoxelPart();
         builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
         builder.addVoxelPart();
+        builder.expectPartAuthoredCount(0, 0, "first_part_starts_clear");
+        builder.expectPartAuthoredCount(1, 0, "second_part_starts_clear");
+
+        builder.segment("bake_second");
+        builder.bakeSphere(detail::kFirstWriteBlobRadius);
+        builder.expectPartOccupancy(1, blobFront, true, "second_part_blob_baked");
+        builder.expectPartOccupancy(1, first, false, "second_part_paint_cell_empty");
 
         builder.segment("paint_second");
         builder.click(second);
         builder.expectPartOccupancy(1, second, true, "second_part_cell_painted");
 
-        builder.segment("paint_first");
+        builder.segment("bake_first");
         builder.nextPart();
+        builder.bakeSphere(detail::kFirstWriteBlobRadius);
+        builder.expectPartOccupancy(0, blobFront, true, "first_part_blob_baked");
+
+        builder.segment("paint_first");
         builder.click(first);
         builder.expectPartOccupancy(0, first, true, "first_part_cell_painted");
 
@@ -1691,16 +1733,25 @@ inline Recipe build(
     }
     case Id::NWAY_SYMMETRY: {
         Builder builder("nway_symmetry", sceneSize, sceneOrigin);
-        const IRMath::ivec3 source(sceneSize.x / 2 + 2, sceneSize.y / 2, sceneSize.z - 2);
+        // The array copies the source's baked blob into every copy, so the
+        // stroke has a face to pick on the selected copy. The three rotated
+        // paint cells are distinct cells in front of that blob.
+        const IRMath::ivec3 center(sceneSize.x / 2, sceneSize.y / 2, sceneSize.z / 2);
+        const IRMath::ivec3 blobFront = center + IRMath::ivec3(0, 0, -2);
+        const IRMath::ivec3 source = center + IRMath::ivec3(0, 0, -3);
         const IRMath::vec3 axis(0.0f, 0.0f, 1.0f);
         const IRMath::ivec3 onPart1 = rotateCell(source, sceneSize, axis, -2, 3);
         const IRMath::ivec3 onPart2 = rotateCell(source, sceneSize, axis, -1, 3);
 
-        builder.segment("array");
+        builder.segment("bake_source");
         builder.addVoxelPart();
+        builder.bakeSphere(detail::kFirstWriteBlobRadius);
+
+        builder.segment("array");
         builder.applyRadialArray(3);
         builder.toggleRotationalSymmetry();
         builder.expectPartCount(4, "three_copy_rotation_group");
+        builder.expectPartOccupancy(3, blobFront, true, "copy_carries_baked_blob");
 
         builder.segment("arm");
         builder.expectPartOccupancy(1, onPart1, false, "first_sibling_empty_before_stroke");
@@ -1797,6 +1848,185 @@ inline Recipe build(
             IRComponents::RotationMode::DETACHED_REVOXELIZE,
             "shot_cycles_to_revox"
         );
+        return builder.finish();
+    }
+    case Id::TEXT_INPUT_COMMAND_CAPTURE: {
+        Builder builder("text_input_command_capture", sceneSize, sceneOrigin);
+
+        builder.segment("enter_entity_scene");
+        builder.addVoxelPart();
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.addVoxelPart();
+
+        int selectedPart = 1;
+        for (int press = 0; press < kTabWalkPresses; ++press) {
+            const std::string label = "tab_walk_" + std::to_string(press + 1);
+            builder.segment(label.c_str());
+            builder.nextPart();
+            selectedPart = (selectedPart + 1) % 2;
+            builder.expectEditorInput(
+                EditorInputCheckKind::SELECTED_PART_NO_TEXT_FOCUS,
+                selectedPart,
+                label + "_advances_without_text_focus"
+            );
+            if (press == kTabWalkPresses - 1) {
+                builder.expectEditorInput(
+                    EditorInputCheckKind::TAB_WALK_COVERAGE,
+                    -1,
+                    "tab_walk_wraps_candidate_cycle"
+                );
+            }
+        }
+
+        builder.segment("focused_x");
+        builder.clickGui(kJointRenameInputCenter);
+        builder.tapKey(IRInput::kKeyButtonX);
+        builder.expectEditorInput(
+            EditorInputCheckKind::TEXT_CAPTURED_X,
+            selectedPart,
+            "focused_x_edits_text_without_toggling_symmetry"
+        );
+
+        builder.segment("tab_releases_focus");
+        builder.tapKey(IRInput::kKeyButtonTab);
+        builder.expectEditorInput(
+            EditorInputCheckKind::TEXT_FOCUS_RELEASED,
+            selectedPart,
+            "tab_releases_text_focus_without_selecting_part"
+        );
+
+        builder.segment("x_command_resumes");
+        builder.tapKey(IRInput::kKeyButtonX);
+        builder.expectEditorInput(
+            EditorInputCheckKind::X_SYMMETRY_ENABLED,
+            selectedPart,
+            "x_toggles_symmetry_after_capture_clears"
+        );
+        return builder.finish();
+    }
+    case Id::PART_SIZES: {
+        Builder builder("part_sizes", sceneSize, sceneOrigin);
+        constexpr int kStem = 0;
+        constexpr int kFrame = 1;
+        const IRMath::ivec3 stemSize(3, 3, 8);
+        const IRMath::ivec3 frameSize(5, 5, 1);
+        constexpr float kTolerance = 0.001f;
+
+        builder.segment("stem");
+        builder.setPartSize(stemSize);
+        builder.addVoxelPart();
+        builder.expectPartExtent(kStem, stemSize, "stem_created_at_slider_size");
+        builder.expectPartTransform(
+            kStem,
+            IRMath::vec3(-1.5f, -1.5f, -4.0f),
+            kTolerance,
+            true,
+            "stem_seated_by_its_own_extent"
+        );
+
+        builder.segment("frame");
+        builder.setPartSize(frameSize);
+        builder.addVoxelPart();
+        builder.expectPartExtent(kFrame, frameSize, "frame_created_at_slider_size");
+        builder.expectPartTransform(
+            kFrame,
+            IRMath::vec3(-2.5f, -2.5f, 3.0f),
+            kTolerance,
+            true,
+            "frame_seated_by_its_own_extent"
+        );
+        builder.expectPartExtent(kStem, stemSize, "sliders_do_not_resize_the_stem");
+
+        builder.segment("mirror_frame");
+        builder.enableSymmetry(true, false, false);
+        builder.expectMirrorOffsets(IRMath::vec3(2.0f, 0.0f, 0.0f), "mirror_seated_on_frame");
+
+        builder.segment("mirror_stem");
+        builder.nextPart();
+        builder.expectMirrorOffsets(IRMath::vec3(1.0f, 0.0f, 0.0f), "mirror_reseated_on_stem");
+
+        // Mask index 4 is cell (4, 0) at the scene's stride and cell (1, 1) at
+        // the stem's stride of 3, in both masks: a stamp that read the masks
+        // at the stem's stride would fill stem cell (1, 1, 1).
+        const IRMath::ivec2 loftCell(4, 0);
+        const IRMath::ivec3 aliasedStemCell(1, 1, 1);
+        builder.segment("loft_paint");
+        builder.toggleLoftMode();
+        builder.clickLoftCell(LoftMask::XZ, loftCell);
+        builder.clickLoftCell(LoftMask::YZ, loftCell);
+        builder.expectLoftMask(LoftMask::XZ, loftCell, true, "loft_front_cell_painted");
+        builder.expectLoftMask(LoftMask::YZ, loftCell, true, "loft_side_cell_painted");
+
+        builder.segment("loft_stamp");
+        builder.stampLoft();
+        builder.toggleLoftMode();
+        builder.expectPartOccupancy(
+            kStem,
+            aliasedStemCell,
+            false,
+            "loft_refuses_a_part_off_the_scene_size"
+        );
+
+        builder.segment("save");
+        builder.save();
+        builder.segment("clear");
+        builder.clearEntityScene();
+        builder.segment("load");
+        builder.reload();
+        builder.expectPartExtent(kStem, stemSize, "stem_extent_survives_reload");
+        builder.expectPartExtent(kFrame, frameSize, "frame_extent_survives_reload");
+        return builder.finish();
+    }
+    case Id::PARTS_SCROLL: {
+        Builder builder("parts_scroll", sceneSize, sceneOrigin);
+        constexpr int kCopies = 6;
+        constexpr int kParts = kCopies + 1;
+        constexpr int kLastPart = kParts - 1;
+        const int rows = partsListVisibleRows();
+        const int maxTop = kParts - rows;
+        if (maxTop < 1) {
+            builder.recordError(
+                "parts_scroll needs more parts than the PARTS list has rows (" +
+                std::to_string(kParts) + " parts, " + std::to_string(rows) + " rows)"
+            );
+            return builder.finish();
+        }
+        const IRMath::vec2 listCenter = partsListRowCenterGuiTrixel(rows / 2);
+        // The array copies the source's baked blob into every copy, so the
+        // scene wheel has a face on the selected copy to park the cursor on:
+        // the empty cell in front of the blob.
+        const IRMath::ivec3 center(sceneSize.x / 2, sceneSize.y / 2, sceneSize.z / 2);
+        const IRMath::ivec3 blobFront = center + IRMath::ivec3(0, 0, -2);
+        const IRMath::ivec3 inFrontOfBlob = center + IRMath::ivec3(0, 0, -3);
+
+        builder.segment("bake_source");
+        builder.addVoxelPart();
+        builder.bakeSphere(detail::kFirstWriteBlobRadius);
+
+        builder.segment("array");
+        builder.applyRadialArray(kCopies);
+        builder.expectPartCount(kParts, "array_overflows_the_list");
+        builder.expectPartOccupancy(kLastPart, blobFront, true, "copy_carries_baked_blob");
+        builder.expectSelectedPartVisible(kLastPart, "selected_row_visible_after_array");
+
+        builder.segment("first");
+        builder.wheelGui(listCenter, -(maxTop + 1));
+        builder.selectPartThroughList(0, 0);
+        builder.expectSelectedPartVisible(0, "first_part_selected_through_list");
+
+        builder.segment("last");
+        builder.wheelGui(listCenter, maxTop + 1);
+        builder.selectPartThroughList(rows - 1, kLastPart);
+        builder.expectSelectedPartVisible(kLastPart, "last_part_selected_through_list");
+
+        builder.segment("list_wheel");
+        builder.wheelGui(listCenter, -1);
+        builder.expectPartsListTop(maxTop - 1, "list_wheel_scrolls_one_row");
+        builder.expectCameraZoom(kSessionZoom, true, "list_wheel_keeps_zoom");
+
+        builder.segment("scene_wheel");
+        builder.wheelScene(inFrontOfBlob, -1);
+        builder.expectCameraZoom(kSessionZoom, false, "scene_wheel_zooms");
         return builder.finish();
     }
     case Id::MODULE_LOADED:

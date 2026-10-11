@@ -2740,9 +2740,10 @@ def _closed_issue_numbers(repo_state):
 def resolve_blocked_by(state, ref_cache=None):
     """Resolve blocked_by fields for all open AND in-progress tasks.
 
-    Uses already-fetched closed_fleet_queued and recent_merged_prs for
+    Uses already-fetched closed_fleet_queued and merged PR numbers for
     in-memory resolution; falls back to conditional REST for refs not covered
-    by either. Mutates state in place.
+    by either. A merged branch naming an open tracker does not satisfy it.
+    Mutates state in place.
 
     Covers tasks.in_progress alongside tasks.open — a task claimed
     while still blocked moves to tasks.in_progress (fetch_task_queue's
@@ -2763,10 +2764,6 @@ def resolve_blocked_by(state, ref_cache=None):
             continue
 
         closed_nums = _closed_issue_numbers(repo_state)
-        merged_heads = [
-            pr.get("headRefName", "") or ""
-            for pr in repo_state.get("recent_merged_prs", [])
-        ]
         merged_numbers = {
             str(pr.get("number", ""))
             for pr in repo_state.get("recent_merged_prs", [])
@@ -2774,6 +2771,7 @@ def resolve_blocked_by(state, ref_cache=None):
 
         tasks = repo_state.get("tasks", {})
         for task in tasks.get("open", []) + tasks.get("in_progress", []):
+            task["has_open_blocker"] = False
             raw = (task.get("blocked_by") or "").strip()
             if not raw or raw.lower().startswith("(none"):
                 continue
@@ -2798,10 +2796,7 @@ def resolve_blocked_by(state, ref_cache=None):
                     continue
                 if not requires_merge and ref in closed_nums:
                     continue
-                if requires_merge and ref in merged_numbers:
-                    continue
-                if not requires_merge and any(
-                        branch_matches_issue(h, ref, repo_key) for h in merged_heads):
+                if ref in merged_numbers:
                     continue
                 if (requires_merge and _resolve_ref_satisfied(
                         repo_slug, ref, per_tick_cache, True)):
@@ -2810,6 +2805,8 @@ def resolve_blocked_by(state, ref_cache=None):
                         repo_slug, ref, per_tick_cache)):
                     continue
                 unresolved.append(ref)
+
+            task["has_open_blocker"] = bool(unresolved)
 
             if not unresolved:
                 task["blocked_by"] = "(none)"
@@ -2842,8 +2839,8 @@ def resolve_human_approved_blockers(state):
     _ingest_unblock_candidates (sourced from tasks.open + tasks.in_progress),
     not off this flag.
 
-    Resolution is in-memory only (closed_fleet_queued + merged `claude/<N>-*`
-    heads) — NO live gh here, so the per-tick projection stays fast. `body` is
+    Resolution is in-memory only (closed_fleet_queued + merged PR numbers) —
+    NO live gh here, so the per-tick projection stays fast. `body` is
     popped after parsing so it never bloats state.json or the per-role slices.
 
     This lane deliberately does NOT take the live `_resolve_ref_satisfied`
@@ -2860,10 +2857,6 @@ def resolve_human_approved_blockers(state):
     """
     for repo_key, repo_state in state["repos"].items():
         closed_nums = _closed_issue_numbers(repo_state)
-        merged_heads = [
-            pr.get("headRefName", "") or ""
-            for pr in repo_state.get("recent_merged_prs", [])
-        ]
         merged_numbers = {
             str(pr.get("number", ""))
             for pr in repo_state.get("recent_merged_prs", [])
@@ -2890,10 +2883,7 @@ def resolve_human_approved_blockers(state):
                     continue
                 if not requires_merge and ref in closed_nums:
                     continue
-                if requires_merge and ref in merged_numbers:
-                    continue
-                if not requires_merge and any(
-                        branch_matches_issue(h, ref, repo_key) for h in merged_heads):
+                if ref in merged_numbers:
                     continue
                 issue["blocked"] = True
                 break
@@ -2903,7 +2893,7 @@ def resolve_needs_plan_blocked_by(state, ref_cache=None):
     """Annotate each fleet:needs-plan issue with `blocked` — True when its
     `**Blocked by:**` predecessor is still open.
 
-    In-memory first (closed_fleet_queued + merged `claude/<N>-*` heads), then
+    In-memory first (closed_fleet_queued + merged PR numbers), then
     the same live `_resolve_ref_satisfied` fallback resolve_blocked_by() uses
     for refs neither source covers. The fallback is NOT optional here:
     `blocked` is a hard gate in two places — project_worker drops the issue so
@@ -2927,10 +2917,6 @@ def resolve_needs_plan_blocked_by(state, ref_cache=None):
     for repo_key, repo_state in state["repos"].items():
         repo_slug = _REPO_SLUG_MAP.get(repo_key)
         closed_nums = _closed_issue_numbers(repo_state)
-        merged_heads = [
-            pr.get("headRefName", "") or ""
-            for pr in repo_state.get("recent_merged_prs", [])
-        ]
         merged_numbers = {
             str(pr.get("number", ""))
             for pr in repo_state.get("recent_merged_prs", [])
@@ -2964,10 +2950,7 @@ def resolve_needs_plan_blocked_by(state, ref_cache=None):
                     continue
                 if not requires_merge and ref in closed_nums:
                     continue
-                if requires_merge and ref in merged_numbers:
-                    continue
-                if not requires_merge and any(
-                        branch_matches_issue(h, ref, repo_key) for h in merged_heads):
+                if ref in merged_numbers:
                     continue
                 # Conditional fallback for the residual. Reached only by refs
                 # both in-memory sources missed, so it costs a call per *novel*
@@ -3268,9 +3251,9 @@ def enrich_inflight_pr_tasks(state):
 
 
 def enrich_shadow_merged_pr_tasks(state):
-    # ADVISORY ONLY: _task_claimable / _terminally_unclaimable must never read
-    # this field. A merged commit never clears the way an open PR does, so a
-    # refusal keyed on it would strand the issue's residual work permanently.
+    # Advisory by itself: a merged commit may leave residual work. The worker
+    # classifier gates only when independent, current decline metadata forms
+    # the shadowed-close-out compound state.
     #
     # The match is on the head branch, not a `(#N)` in the merge subject — that
     # number is the PR's, not the issue's.
@@ -3314,7 +3297,8 @@ def enrich_shadow_merged_pr_tasks(state):
                 log(
                     f"{repo_key} task {task.get('id')} is shadowed by merged PR "
                     f"#{match.get('number')} ({match.get('headRefName', '')}, "
-                    f"merged {match.get('mergedAt', '')}) — advisory, still claimable"
+                    f"merged {match.get('mergedAt', '')}) — advisory without a "
+                    "current worker decline"
                 )
 
 

@@ -14,6 +14,12 @@
 
 set -euo pipefail
 
+_fleet_queue_self="${BASH_SOURCE[0]}"
+while [[ -L "$_fleet_queue_self" ]]; do _fleet_queue_self="$(readlink "$_fleet_queue_self")"; done
+FLEET_LIB_DIR="$(cd "$(dirname "$_fleet_queue_self")" && pwd)"
+unset _fleet_queue_self
+FLEET_HOME="${FLEET_HOME:-$HOME/.fleet}"
+
 REPO="jakildev/IrredenEngine"
 JSON_MODE=0
 
@@ -55,19 +61,44 @@ fi
 # length limit — `python3 - "$raw"` dies with "Argument list too long". A file
 # is bounded only by disk, so this works regardless of queue size or platform.
 queue_raw_file=$(mktemp "${TMPDIR:-/tmp}/fleet-queue-raw.XXXXXX")
-trap 'rm -f "$queue_raw_file"' EXIT
+closeouts_file=$(mktemp "${TMPDIR:-/tmp}/fleet-queue-closeouts.XXXXXX")
+trap 'rm -f "$queue_raw_file" "$closeouts_file"' EXIT
 printf '%s' "$raw" > "$queue_raw_file"
+repo_key=engine
+[[ "$REPO" == "jakildev/irreden" ]] && repo_key=game
+state_file="$FLEET_HOME/state/state.json"
+if [[ -f "$state_file" ]] && python3 "$FLEET_LIB_DIR/fleet_task_class.py" \
+        --shadowed-closeouts "$state_file" "$repo_key" > "$closeouts_file"; then
+    :
+else
+    printf '[]' > "$closeouts_file"
+fi
 
 # PYTHONIOENCODING forces UTF-8 stdout: python3 on native Windows defaults to
 # the cp1252 console codec, which raises UnicodeEncodeError on the table's
 # box-drawing / em-dash glyphs. Harmless on Linux/macOS (already UTF-8).
-PYTHONIOENCODING=utf-8 python3 - "$queue_raw_file" << 'PYEOF'
+PYTHONIOENCODING=utf-8 python3 - "$queue_raw_file" "$closeouts_file" "$state_file" << 'PYEOF'
 import json, re, sys
+from datetime import datetime, timezone
 
 raw = []
 if len(sys.argv) > 1:
     with open(sys.argv[1], encoding="utf-8") as raw_file:
         raw = json.load(raw_file)
+
+closeouts = {}
+try:
+    with open(sys.argv[2], encoding="utf-8") as closeouts_handle:
+        closeouts = {int(row["number"]): row for row in json.load(closeouts_handle)}
+    with open(sys.argv[3], encoding="utf-8") as state_handle:
+        generated = json.load(state_handle).get("generated_at") or ""
+    stamp = datetime.fromisoformat(generated.replace("Z", "+00:00"))
+    if (datetime.now(timezone.utc) - stamp).total_seconds() > 300:
+        raise ValueError("stale")
+except (OSError, ValueError, TypeError, json.JSONDecodeError):
+    print("fleet-queue-list: warning: scout cache stale, missing, or malformed; "
+          "showing live queue only", file=sys.stderr)
+    closeouts = {}
 
 def parse_field(body, field):
     if not body:
@@ -104,13 +135,16 @@ for issue in raw:
         "blocked_by": blocked_by,
         "in_progress": in_progress,
         "is_blocked": is_blocked,
+        "closeout": closeouts.get(issue["number"]),
     })
 
 entries.sort(key=lambda e: e["number"])
 
-available = [e for e in entries if not e["in_progress"] and e["owner"] == "free" and not e["is_blocked"]]
+available = [e for e in entries if not e["in_progress"] and e["owner"] == "free"
+             and not e["is_blocked"] and not e["closeout"]]
 in_prog = [e for e in entries if e["in_progress"] or e["owner"] != "free"]
-blocked = [e for e in entries if e["is_blocked"] and e not in in_prog]
+blocked = [e for e in entries if e["is_blocked"] and e not in in_prog and not e["closeout"]]
+shadowed = [e for e in entries if e["closeout"] and e not in in_prog]
 
 def print_section(title, items):
     if not items:
@@ -125,7 +159,13 @@ print(f"fleet-queue-list: {len(entries)} queued issue(s)")
 print_section("Available", available)
 print_section("In-progress", in_prog)
 print_section("Blocked", blocked)
+if shadowed:
+    print(f"\n## Shadowed close-out ({len(shadowed)})")
+    for e in shadowed:
+        evidence = e["closeout"]
+        print(f"#{e['number']}  shadowed by PR #{evidence['shadow_pr']}  "
+              f"declined: {evidence['reason']}  {e['title']}")
 
-if not available and not in_prog and not blocked:
+if not available and not in_prog and not blocked and not shadowed:
     print("  (no queued issues)")
 PYEOF

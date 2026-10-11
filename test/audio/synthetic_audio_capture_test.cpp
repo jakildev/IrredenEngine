@@ -10,6 +10,20 @@
 
 namespace {
 
+TEST(SyntheticAudioCaptureTest, ReportsConfiguredRateOnlyWhileCapturing) {
+    IRAudio::SyntheticAudioCaptureSource source;
+    EXPECT_EQ(source.getCaptureSampleRate(), 0);
+
+    ASSERT_TRUE(source.startCapture(
+        IRAudio::AudioCaptureConfig{"", 44'100, 2},
+        [](const float *, int, double, bool) {}
+    ));
+    EXPECT_EQ(source.getCaptureSampleRate(), 44'100);
+
+    source.stopCapture();
+    EXPECT_EQ(source.getCaptureSampleRate(), 0);
+}
+
 TEST(SyntheticAudioCaptureTest, DeliversWallClockPacedMonotonicAudioAndStopsSynchronously) {
     constexpr int kSampleRate = 48'000;
     constexpr int kBufferFrames = 1024;

@@ -409,7 +409,7 @@ TEST(FogRevealEvalTest, ShapeEvaluatorReadsItsOwnRouteCache) {
 
     const auto verdict = [&](IRMath::vec3 position, std::uint32_t channels) {
         IREntity::EntityId entity = 1;
-        C_FogRevealed revealed{0.0f, false, IRComponents::FogOverride::NONE, channels};
+        C_FogRevealed revealed{0.0f, false, IRComponents::FogOverride::NONE, false, channels};
         C_WorldTransform transform{};
         IRComponents::C_ShapeDescriptor shape{};
         transform.translation_ = position;

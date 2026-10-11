@@ -157,10 +157,11 @@ until another issue lands, resuming is a no-op every pane repeats
 gh pr edit <N> --remove-label "fleet:design-unblocked" --add-label "fleet:awaiting-infra"
 ```
 
-then append `Parked-until: #<blocker-issue>` to the PR body on its own
-line (same repo; several blockers as `#A, #B`), comment the rationale, keep
-`fleet:wip`, and release the claim; reconcile un-parks it when the blocker
-(every listed blocker) closes. No park when the
+then append `Parked-until: #<blocker-issue>` to the PR body — not a
+comment — on its own line (same repo; several blockers as `#A, #B`; a list
+bullet or paired bold/backtick emphasis is tolerated), comment the rationale,
+keep `fleet:wip`, and release the claim; reconcile un-parks it when the
+blocker (every listed blocker) closes. No park when the
 backing issue is `fleet:blocked` (a plain label clear is terminal) or when
 the residual is host-class-only (`fleet:needs-gl-host` or
 `fleet:needs-macos-host` — stamp the one naming the residual's host if the
@@ -275,6 +276,8 @@ fleet-claim reserve <issue-number> <your-worktree-basename> <branch>
 Edit, `fleet-build --target <name>`, run the executable if there is one
 ([`BUILD.md`](BUILD.md)). If the feedback asks for a screenshot pair, run
 `attach-screenshots --two-ref` (you are on the detached HEAD it expects);
+run `python3 scripts/light-verify.py --if-changed`, the unconditional author-side step in
+[`AUTHOR-PIPELINE.md § Build and run`](AUTHOR-PIPELINE.md#build-and-run);
 after Step d pushes, replace its `@COMMIT_SHA@` with the **post-amend**
 HEAD and append the snippet to the existing body: `gh pr view <N> --json
 body -q .body`, `git rev-parse HEAD`, **Write** `.pr-body.md`

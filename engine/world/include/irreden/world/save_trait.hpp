@@ -12,6 +12,8 @@
 
 namespace IRWorld {
 
+template <typename C> struct SaveSerialize;
+
 // Primary template = "no decision yet". Deliberately NOT "opt-out" — an
 // engine component that never specializes this trait fails the
 // completeness gate in save_component_inventory.hpp instead of silently
@@ -19,6 +21,7 @@ namespace IRWorld {
 template <typename C> struct SaveTrait {
     static constexpr bool kExplicit = false;
     static constexpr bool kSave = false;
+    static constexpr bool kHandWrittenLayout = false;
     static constexpr std::uint32_t kSaveVersion = 0;
     // Stable on-disk identity (P2). The compile-time completeness gate
     // makes the primary template unreachable for any real save decision,
@@ -73,6 +76,13 @@ template <typename Tuple> constexpr std::size_t countOptIns() {
     return countOptInsImpl<Tuple>(std::make_index_sequence<std::tuple_size_v<Tuple>>{});
 }
 
+template <typename C> constexpr bool hasHandWrittenLayout() {
+    if constexpr (requires { SaveTrait<C>::kHandWrittenLayout; }) {
+        return SaveTrait<C>::kHandWrittenLayout;
+    }
+    return false;
+}
+
 } // namespace detail
 
 } // namespace IRWorld
@@ -86,10 +96,26 @@ template <typename Tuple> constexpr std::size_t countOptIns() {
     template <> struct SaveTrait<Type> {                                                           \
         static constexpr bool kExplicit = true;                                                    \
         static constexpr bool kSave = true;                                                        \
+        static constexpr bool kHandWrittenLayout = false;                                          \
         static constexpr std::uint32_t kSaveVersion = (Version);                                   \
         static constexpr const char *kSaveName = #Type;                                            \
         static_assert(kSaveVersion >= 1, #Type " IR_SAVE_OPT_IN version must be >= 1");            \
     };                                                                                             \
+    }
+
+#define IR_SAVE_OPT_IN_HAND_WRITTEN(Type, Version)                                                 \
+    namespace IRWorld {                                                                            \
+    template <> struct SaveTrait<Type> {                                                           \
+        static constexpr bool kExplicit = true;                                                    \
+        static constexpr bool kSave = true;                                                        \
+        static constexpr bool kHandWrittenLayout = true;                                           \
+        static constexpr std::uint32_t kSaveVersion = (Version);                                   \
+        static constexpr const char *kSaveName = #Type;                                            \
+        static_assert(                                                                             \
+            kSaveVersion >= 1, #Type " IR_SAVE_OPT_IN_HAND_WRITTEN version must be >= 1"           \
+        );                                                                                         \
+    };                                                                                             \
+    template <> struct SaveSerialize<Type>;                                                        \
     }
 
 #define IR_SAVE_OPT_OUT(Type)                                                                      \
@@ -97,6 +123,7 @@ template <typename Tuple> constexpr std::size_t countOptIns() {
     template <> struct SaveTrait<Type> {                                                           \
         static constexpr bool kExplicit = true;                                                    \
         static constexpr bool kSave = false;                                                       \
+        static constexpr bool kHandWrittenLayout = false;                                          \
         static constexpr std::uint32_t kSaveVersion = 0;                                           \
         static constexpr const char *kSaveName = #Type;                                            \
     };                                                                                             \

@@ -13,6 +13,7 @@
 #include <irreden/common/components/component_position_int_3d.hpp>
 #include <irreden/common/components/component_size_int_3d.hpp>
 #include <irreden/input/components/component_hitbox_2d.hpp>
+#include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_fog_exempt.hpp>
 #include <irreden/render/components/component_fog_field.hpp>
 #include <irreden/render/components/component_widget.hpp>
@@ -46,12 +47,13 @@
 // world_snapshot_test, so a Lua `saveWorld`/`loadWorld` round-trips real engine
 // components through the process-default registry (C_LocalTransform,
 // C_PositionInt3D, C_SizeInt3D — the trivially-copyable POD members, plus
-// C_VoxelSetNew, the one component with an explicit SaveSerialize<C>).
+// components with hand-written SaveSerialize<C> layouts).
 
 namespace {
 
 using IRComponents::C_AngularVelocity;
 using IRComponents::C_BindPoints;
+using IRComponents::C_EntityCanvas;
 using IRComponents::C_FogExempt;
 using IRComponents::C_FogField;
 using IRComponents::C_GotoEasing3D;
@@ -175,6 +177,64 @@ class LuaWorldSnapshotTest : public testing::Test {
         );
     }
 
+    void writeEntityCanvasV2Snapshot(const std::string &path, EntityId entity) const {
+        struct LegacyEntityCanvas {
+            EntityId canvasEntity_;
+            IRMath::ivec2 canvasSize_;
+            bool visible_;
+            bool screenLocked_;
+            int depthPriority_;
+            float fogRevealFactor_;
+            bool fogHidden_;
+        };
+        static_assert(std::is_trivially_copyable_v<LegacyEntityCanvas>);
+        static_assert(sizeof(LegacyEntityCanvas) == 32);
+
+        IRAsset::MemoryBinaryWriter componentNames;
+        componentNames.writeVarUInt(1);
+        componentNames.writeString("IRComponents::C_EntityCanvas");
+
+        const LegacyEntityCanvas legacy{
+            42,
+            IRMath::ivec2{320, 180},
+            false,
+            true,
+            7,
+            0.0f,
+            true,
+        };
+        IRAsset::MemoryBinaryWriter archetypes;
+        archetypes.writeVarUInt(1);
+        archetypes.writeVarUInt(1);
+        archetypes.writeVarUInt(0);
+        archetypes.writeVarUInt(1);
+        archetypes.writeVarUInt(entity);
+        archetypes.writeU32(2);
+        archetypes.writeVarUInt(sizeof(legacy));
+        archetypes.writeBytes(&legacy, sizeof(legacy));
+
+        IRAsset::MemoryBinaryWriter metadata;
+        metadata.writeVarUInt(entity + 1);
+        metadata.writeVarUInt(1);
+
+        std::vector<IRAsset::ChunkPayload> chunks;
+        chunks.push_back({IRAsset::makeTag("CMPN"), componentNames.takeBuffer()});
+        chunks.push_back({IRAsset::makeTag("ARCH"), archetypes.takeBuffer()});
+        chunks.push_back({IRAsset::makeTag("META"), metadata.takeBuffer()});
+
+        IRAsset::FileBinaryWriter writer(path);
+        ASSERT_TRUE(writer.ok());
+        ASSERT_TRUE(
+            IRAsset::writeChunked(
+                writer,
+                IRWorld::kWorldSnapshotMagic,
+                IRWorld::kWorldSnapshotVersion,
+                chunks
+            )
+                .ok()
+        );
+    }
+
     IRScript::LuaScript m_lua;
     IREntity::EntityManager m_entity_manager;
     IRSystem::SystemManager m_system_manager;
@@ -221,6 +281,39 @@ TEST_F(LuaWorldSnapshotTest, MigratesHitBoxV1AndRoundTripsAuthoredState) {
     EXPECT_FALSE(restored.screenSpacePlaced_);
     EXPECT_EQ(restored.centerScreen_, IRMath::vec2(0.0f));
     EXPECT_EQ(restored.isoDepth_, 0);
+}
+
+TEST_F(LuaWorldSnapshotTest, MigratesEntityCanvasV2AndDropsDerivedFogState) {
+    const EntityId entity = 1001;
+    const std::string oldPath = tempPath("entity_canvas_v2");
+    const std::string currentPath = tempPath("entity_canvas_v3");
+    ASSERT_NO_FATAL_FAILURE(writeEntityCanvasV2Snapshot(oldPath, entity));
+
+    ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + oldPath + "'))"));
+    ASSERT_TRUE(m_entity_manager.entityExists(entity));
+    C_EntityCanvas &migrated = m_entity_manager.getComponent<C_EntityCanvas>(entity);
+    EXPECT_EQ(migrated.canvasEntity_, 42u);
+    EXPECT_EQ(migrated.canvasSize_, IRMath::ivec2(320, 180));
+    EXPECT_FALSE(migrated.visible_);
+    EXPECT_TRUE(migrated.screenLocked_);
+    EXPECT_EQ(migrated.depthPriority_, 7);
+    EXPECT_FLOAT_EQ(migrated.fogRevealFactor_, 1.0f);
+    EXPECT_FALSE(migrated.fogHidden_);
+
+    migrated.fogRevealFactor_ = 0.0f;
+    migrated.fogHidden_ = true;
+    ASSERT_TRUE(runOk("assert(IRPersist.saveWorld('" + currentPath + "'))"));
+
+    m_entity_manager.destroyAllEntities();
+    ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + currentPath + "'))"));
+    const C_EntityCanvas &restored = m_entity_manager.getComponent<C_EntityCanvas>(entity);
+    EXPECT_EQ(restored.canvasEntity_, 42u);
+    EXPECT_EQ(restored.canvasSize_, IRMath::ivec2(320, 180));
+    EXPECT_FALSE(restored.visible_);
+    EXPECT_TRUE(restored.screenLocked_);
+    EXPECT_EQ(restored.depthPriority_, 7);
+    EXPECT_FLOAT_EQ(restored.fogRevealFactor_, 1.0f);
+    EXPECT_FALSE(restored.fogHidden_);
 }
 
 // The core W-9 acceptance: a non-trivial world (multiple archetypes +

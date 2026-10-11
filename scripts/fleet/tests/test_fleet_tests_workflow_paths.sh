@@ -99,6 +99,7 @@ fi
 # included. That over-includes on purpose — the cost is an extra CI trigger,
 # and the alternative is a silent false clean.
 OUT_OF_TREE_SUBJECTS=(
+    '.codex/**'
     'cmake/run_clang_format_changed.cmake'
     'cmake/run_clang_format_changed_standalone.cmake'
     'cmake/ir_quality_tools.cmake'

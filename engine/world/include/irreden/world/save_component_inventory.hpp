@@ -61,6 +61,7 @@
 #include <irreden/render/components/component_active_lod_level.hpp>
 #include <irreden/render/components/component_camera.hpp>
 #include <irreden/render/components/component_camera_position_2d_iso.hpp>
+#include <irreden/render/components/component_camera_zoom_frame_state.hpp>
 #include <irreden/render/components/component_canvas_ao_texture.hpp>
 #include <irreden/render/components/component_canvas_camera.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
@@ -78,6 +79,7 @@
 #include <irreden/render/components/component_entity_canvas_teardown_hook.hpp>
 #include <irreden/render/components/component_fog_exempt.hpp>
 #include <irreden/render/components/component_fog_field.hpp>
+#include <irreden/render/components/component_fog_ghost.hpp>
 #include <irreden/render/components/component_fog_reveal_settings.hpp>
 #include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
@@ -212,10 +214,11 @@ IR_SAVE_OPT_OUT(IRComponents::C_CanvasResidencySettings)
 IR_SAVE_OPT_OUT(IRComponents::C_LayoutState)
 IR_SAVE_OPT_OUT(IRComponents::C_LayoutLeaf)
 IR_SAVE_OPT_OUT(IRComponents::C_ResolvedFields)
-// Fog governance and its thresholds are recreated by creation setup. The
-// factor/verdict are derived each eval tick and must not outlive their render
-// visibility state, which is intentionally transient on C_VoxelSetNew.
+// Fog governance and its thresholds are recreated by creation setup. The hot
+// verdict and structural GHOST policy/pose are runtime-only, so a loaded BODY
+// returns to HIDE along with its transient C_VoxelSetNew render visibility.
 IR_SAVE_OPT_OUT(IRComponents::C_FogRevealed)
+IR_SAVE_OPT_OUT(IRComponents::C_FogGhost)
 IR_SAVE_OPT_OUT(IRComponents::C_FogRevealSettings)
 // A secondary viewport is a GPU canvas plus the camera viewing it, stood up by
 // creation setup; the canvas camera is re-derived from it every frame, and a
@@ -223,6 +226,10 @@ IR_SAVE_OPT_OUT(IRComponents::C_FogRevealSettings)
 IR_SAVE_OPT_OUT(IRComponents::C_CanvasCamera)
 IR_SAVE_OPT_OUT(IRComponents::C_ViewportCamera)
 IR_SAVE_OPT_OUT(IRComponents::C_ViewportSubject)
+// The continuous-zoom raster phase is re-derived from the camera and the zoom
+// every frame, and any starting phase places content at the same total offset,
+// so a loaded world begins a fresh history.
+IR_SAVE_OPT_OUT(IRComponents::C_CameraZoomFrameState)
 
 // Class C — transient per-frame events / device input
 IR_SAVE_OPT_OUT(IRComponents::C_ContactEvent)
@@ -318,7 +325,7 @@ IR_SAVE_OPT_IN(IRComponents::C_ColliderIso3DAABB, 1)
 IR_SAVE_OPT_IN(IRComponents::C_CollisionLayer, 1)
 // Version 1 was the raw {halfExtent_, hovered_} image. Version 2 writes only
 // authored configuration; save_serializers_input.hpp owns the direct migration.
-IR_SAVE_OPT_IN(IRComponents::C_HitBox2D, 2)
+IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_HitBox2D, 2)
 IR_SAVE_OPT_IN(IRComponents::C_HitBox2DGui, 1)
 IR_SAVE_OPT_IN(IRComponents::C_HitboxCircle, 1)
 IR_SAVE_OPT_IN(IRComponents::C_HitboxRect, 1)
@@ -352,18 +359,22 @@ IR_SAVE_OPT_IN(IRComponents::C_ColorHSV, 1)
 // the family (same one-representative-instantiation approach used for
 // any templated component with more than one concrete specialization).
 IR_SAVE_OPT_IN(IRComponents::C_GeometricShape<IRMath::Shape3D::SPHERE>, 1)
-IR_SAVE_OPT_IN(IRComponents::C_ShapeDescriptor, 2)
+IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_ShapeDescriptor, 2)
 IR_SAVE_OPT_IN(IRComponents::C_TriangleCanvasBackground, 1)
 IR_SAVE_OPT_IN(IRComponents::C_TrianglesOnlySet, 1)
 IR_SAVE_OPT_IN(IRComponents::C_LightSource, 1)
 IR_SAVE_OPT_IN(IRComponents::C_LightBlocker, 1)
-IR_SAVE_OPT_IN(IRComponents::C_Camera, 1)
+// Version 2 carries the authored zoom policy; version 1 was an empty marker
+// and reads back through SaveMigration<C_Camera> as policy off.
+IR_SAVE_OPT_IN(IRComponents::C_Camera, 2)
 IR_SAVE_OPT_IN(IRComponents::C_CameraPosition2DIso, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Viewport, 1)
 IR_SAVE_OPT_IN(IRComponents::C_ZoomLevel, 1)
 IR_SAVE_OPT_IN(IRComponents::C_TrixelCanvasOrigin, 1)
 IR_SAVE_OPT_IN(IRComponents::C_TrixelCanvasRenderBehavior, 1)
-IR_SAVE_OPT_IN(IRComponents::C_EntityCanvas, 2)
+// Versions 1 and 2 were raw struct images. The render serializer owns their
+// direct migrations and the authored-only current layout.
+IR_SAVE_OPT_IN_HAND_WRITTEN(IRComponents::C_EntityCanvas, 3)
 IR_SAVE_OPT_IN(IRComponents::C_CanvasTarget, 1)
 IR_SAVE_OPT_IN(IRComponents::C_DetachedCanvas, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Voxel, 1)
@@ -472,10 +483,12 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_LayoutLeaf,
     IRComponents::C_ResolvedFields,
     IRComponents::C_FogRevealed,
+    IRComponents::C_FogGhost,
     IRComponents::C_FogRevealSettings,
     IRComponents::C_CanvasCamera,
     IRComponents::C_ViewportCamera,
     IRComponents::C_ViewportSubject,
+    IRComponents::C_CameraZoomFrameState,
     IRComponents::C_ContactEvent,
     IRComponents::C_OverlapContactBatch,
     IRComponents::C_CursorPosition,

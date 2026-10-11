@@ -13,6 +13,7 @@ add_executable(IrredenEngineTest
   asset/voxel_set_rle_test.cpp
   asset/voxel_set_shapes_test.cpp
   audio/audio_capture_test.cpp
+  audio/audio_monitor_ring_test.cpp
   audio/audio_playback_test.cpp
   audio/synthetic_audio_capture_test.cpp
   audio/midi_in_tick_test.cpp
@@ -37,6 +38,7 @@ add_executable(IrredenEngineTest
   ecs/field_placement_test.cpp
   ecs/field_regions_test.cpp
   ecs/grid_rotation_test.cpp
+  ecs/grid_span_coverage_test.cpp
   ecs/hitbox_2d_gui_test.cpp
   ecs/hover_detect_reset_test.cpp
   ecs/joint_matrix_upload_test.cpp
@@ -81,6 +83,7 @@ add_executable(IrredenEngineTest
   render/camera_mouse_rotate_reset_test.cpp
   render/camera_pan_pivot_test.cpp
   render/camera_yaw_test.cpp
+  render/camera_zoom_policy_test.cpp
   render/canvas_part_test.cpp
   render/canvas_residency_test.cpp
   render/canvas_rotation_test.cpp
@@ -91,6 +94,7 @@ add_executable(IrredenEngineTest
   render/entity_canvas_hitbox_test.cpp
   render/entity_id_carrier_test.cpp
   render/fog_cross_section_test.cpp
+  render/fog_ghost_policy_test.cpp
   render/fog_line_of_sight_test.cpp
   render/fog_reveal_eval_test.cpp
   render/fog_reveal_eval_canvas_test.cpp
@@ -118,6 +122,7 @@ add_executable(IrredenEngineTest
   render/picking_face_normal_test.cpp
   render/prefab_system_probe_test.cpp
   render/run_witness_test.cpp
+  render/settings_menu_layout_test.cpp
   render/settings_menu_reset_test.cpp
   render/shape_tile_bounds_test.cpp
   render/sun_direction_test.cpp
@@ -128,8 +133,11 @@ add_executable(IrredenEngineTest
   render/sprite_animation_test.cpp
   render/sprite_components_test.cpp
   render/sprite_render_test.cpp
+  render/widget_list_scroll_test.cpp
   render/widget_theme_singleton_test.cpp
+  render/widget_tab_focus_test.cpp
   script/lua_audio_midi_observer_test.cpp
+  script/lua_audio_monitor_test.cpp
   script/lua_collision_bindings_test.cpp
   script/lua_command_test.cpp
   script/lua_cursor_position_test.cpp
@@ -155,6 +163,7 @@ add_executable(IrredenEngineTest
   script/lod_tier_lua_test.cpp
   script/lua_fog_revealed_test.cpp
   script/lua_fog_bindings_test.cpp
+  script/lua_file_bindings_test.cpp
   script/lua_script_get_table_test.cpp
   script/lua_viewport_bindings_test.cpp
   script/lua_script_utils_test.cpp
@@ -184,6 +193,7 @@ add_executable(IrredenEngineTest
   utility/ir_utility_test.cpp
   video/auto_screenshot_helpers_test.cpp
   video/auto_record_pacing_test.cpp
+  video/audio_capture_rate_test.cpp
   video/capture_output_resolution_test.cpp
   video/recording_state_test.cpp
   window/window_mode_test.cpp
@@ -201,6 +211,7 @@ add_executable(IrredenEngineTest
   world/component_migration_test.cpp
   world/voxel_set_serialize_test.cpp
   world/world_config_missing_table_test.cpp
+  world/world_config_audio_monitor_test.cpp
   world/world_config_window_mode_test.cpp
   world/save_serializers_test.cpp
 )

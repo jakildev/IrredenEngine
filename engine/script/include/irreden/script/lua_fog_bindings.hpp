@@ -522,6 +522,40 @@ bindFog(LuaScript &script, FogVisionTargetResolver resolveTarget = activeFogVisi
         }
         IRPrefab::Fog::setEntityRevealGoverned(entity, governed);
     };
+    fog["setHiddenPolicy"] = [](sol::variadic_args args) {
+        requireFogArity("setHiddenPolicy", args.size(), 2, 2);
+        const IREntity::EntityId entity = requireFogEntity(args[0], "setHiddenPolicy", 0);
+        if (!args[1].is<lua_Integer>()) {
+            throw std::invalid_argument(
+                "IRFog.setHiddenPolicy argument 2 must be an IRComponent.FogHiddenPolicy value"
+            );
+        }
+        const lua_Integer raw = args[1].as<lua_Integer>();
+        IRComponents::FogHiddenPolicy policy;
+        switch (raw) {
+        case static_cast<lua_Integer>(IRComponents::FogHiddenPolicy::HIDE):
+            policy = IRComponents::FogHiddenPolicy::HIDE;
+            break;
+        case static_cast<lua_Integer>(IRComponents::FogHiddenPolicy::GHOST):
+            policy = IRComponents::FogHiddenPolicy::GHOST;
+            break;
+        default:
+            throw std::invalid_argument(
+                "IRFog.setHiddenPolicy argument 2 must be an IRComponent.FogHiddenPolicy value"
+            );
+        }
+        if (!IRPrefab::Fog::setHiddenPolicy(entity, policy)) {
+            throw std::invalid_argument("IRFog.setHiddenPolicy requires a BODY entity");
+        }
+    };
+    fog["hiddenPolicy"] = [](sol::variadic_args args) {
+        requireFogArity("hiddenPolicy", args.size(), 1, 1);
+        const IREntity::EntityId entity = requireFogEntity(args[0], "hiddenPolicy", 0);
+        if (!IREntity::getComponentOptional<IRComponents::C_FogRevealed>(entity).has_value()) {
+            throw std::invalid_argument("IRFog.hiddenPolicy requires a BODY entity");
+        }
+        return static_cast<lua_Integer>(IRPrefab::Fog::hiddenPolicy(entity));
+    };
     fog["getEntityReveal"] = [](sol::variadic_args args) {
         requireFogArity("getEntityReveal", args.size(), 1, 1);
         return IRPrefab::Fog::getEntityReveal(requireFogEntity(args[0], "getEntityReveal", 0));

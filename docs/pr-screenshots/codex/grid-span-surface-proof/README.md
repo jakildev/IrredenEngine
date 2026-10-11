@@ -3,6 +3,10 @@
 This slice adds CPU geometry tests and records native diagnostic evidence. It
 changes no renderer, shader, scene, shadow softness, or sampling policy.
 
+The captures and validation results below describe the named historical
+revisions. Integrating later master changes preserves this evidence; it does not
+constitute a new native capture or certify the current renderer.
+
 ## Native captures
 
 Built `IRCanvasStress` at `ad85ada530a2ab20badd1cb4611161fb3db081aa` on macOS

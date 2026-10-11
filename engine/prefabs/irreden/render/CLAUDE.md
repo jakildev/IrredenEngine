@@ -42,19 +42,19 @@ Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md). Rationale: [`d
 
 | System(s) | Must sit |
 |---|---|
-| `CANVAS_RESIDENCY` · `PROPAGATE_CANVAS_ROTATION` → `PROPAGATE_CANVAS_PARTS` → `REBUILD_DETACHED_VOXELS` | UPDATE: residency first (its staged switches land before the transform chain); the canvas chain after `PROPAGATE_TRANSFORM` |
+| `CANVAS_RESIDENCY` · fog reveal systems → `PROPAGATE_CANVAS_ROTATION` → `PROPAGATE_CANVAS_PARTS` → `REBUILD_DETACHED_VOXELS` | UPDATE: residency first; reveal publishes held canvas poses after `PROPAGATE_TRANSFORM`, then the canvas chain consumes them |
 | `LOD_UPDATE` → `GATE_VOXEL_SETS_BY_LOD` | UPDATE, before `PROPAGATE_TRANSFORM` / `UPDATE_VOXEL_SET_CHILDREN` |
-| voxel/shape/canvas `FOG_SUBJECT_EXEMPT_*` → matching adoption → matching eval (`IRPrefab::Fog::revealSystems()`) / `FOG_LOS_BUILD` | UPDATE after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_SET_CHILDREN` / RENDER before `FOG_TO_TRIXEL`, its own group (line-of-sight gated circles need it) |
+| voxel/shape/canvas `FOG_SUBJECT_EXEMPT_*` → adoption → HIDE/GHOST eval pairs (`FOG_REVEAL_EVAL[_GHOST]`, `FOG_REVEAL_EVAL_SHAPE[_GHOST]`, `FOG_REVEAL_EVAL_CANVAS[_GHOST]`; `revealSystems()`) / `FOG_LOS_BUILD` | UPDATE after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_SET_CHILDREN` / RENDER before `FOG_TO_TRIXEL`, its own group (line-of-sight gated circles need it) |
 | `UPDATE_JOINT_MATRICES` | after `PROPAGATE_TRANSFORM`, before `UPDATE_VOXEL_POSITIONS_GPU`; a creation with skeletons registers the prepass too |
 | `UPDATE_VOXEL_POSITIONS_GPU` | before `VOXEL_TO_TRIXEL_STAGE_1` |
 | `VOXEL_PICKING` | RENDER, after the camera systems, before `VOXEL_TO_TRIXEL_STAGE_1` |
 | `GIZMO_HOVER` → `GIZMO_DRAG` | INPUT, after `INPUT_KEY_MOUSE` |
 | `CAMERA_MOUSE_ROTATE` and the other camera controls | RENDER, before `SHAPES_TO_TRIXEL`, in singleton groups (`MainThread`) |
 | `SHAPES_TO_TRIXEL` | RENDER, after `VOXEL_TO_TRIXEL_STAGE_1` when an entity canvas mixes voxels and shapes; the shape rasters in the owner's model frame at the canvas's rendered density, on its half-cell lattice ([contract](../../../../docs/design/mixed-private-canvas-lifecycle.md)) |
-| `HITBOX_MOUSE_TEST_GUI` → `WIDGET_INPUT` → `WIDGET_APPLY_*` | INPUT; `WIDGET_LUA_DISPATCH` immediately after `WIDGET_INPUT` |
+| `HITBOX_MOUSE_TEST_GUI` → `WIDGET_INPUT` → `WIDGET_APPLY_*` → `CAMERA_SCROLL_ZOOM` | INPUT; `WIDGET_LUA_DISPATCH` immediately after `WIDGET_INPUT`; the zoom drops the wheel while `C_GuiHoverState` names a hovered widget |
 | `TEXT_TO_TRIXEL` → `LAYOUT_COMPUTE` → `WIDGET_RENDER_*` | RENDER, before `TRIXEL_TO_FRAMEBUFFER`; `WIDGET_RENDER_DROPDOWN` last among the renderers |
 | `HelpOverlay::systems()`, `SettingsMenu::renderSystems()` / `inputSystems()` | RENDER after `TEXT_TO_TRIXEL`, before the composite / INPUT after `INPUT_KEY_MOUSE` |
-| `SPRITE_TO_SCREEN` | after the main canvas's `FRAMEBUFFER_TO_SCREEN` |
+| `ENTITY_CANVAS_TO_FRAMEBUFFER` · `FRAMEBUFFER_TO_SCREEN` · `SPRITE_TO_SCREEN` | after `TRIXEL_TO_FRAMEBUFFER`, whose `beginTick` alone publishes the frame's [continuous-zoom sample](../../../../docs/design/continuous-camera-zoom.md) (`IRPrefab::Camera::zoomFrame`); sprites after the main canvas's `FRAMEBUFFER_TO_SCREEN` |
 | `SYNC_VIEWPORT_SUBJECTS` / `VIEWPORT_TO_FRAMEBUFFER` | RENDER before `VOXEL_TO_TRIXEL_STAGE_1` / after `TRIXEL_TO_FRAMEBUFFER`, before `FRAMEBUFFER_TO_SCREEN` |
 
 `VOXEL_TO_TRIXEL_STAGE_1` runs compact + stage 1 + stage 2 per canvas in one
@@ -142,8 +142,8 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   via `registerStandardKeyboardCommands({.omit_ = {...}})` and gets a QUIT
   button. Register settings (`IRPrefab::Settings::register{Bool,Enum,Float}`)
   during init; the menu snapshots them at open.
-- Headless readers: `HelpOverlay::builtText()` / `lastGlyphCommandCount()`,
-  `SettingsMenu::liveRowCount()` / `*ScreenPx(...)`; a QUIT assertion
+- Headless readers: `HelpOverlay::builtText()` / `lastGlyphCommandCount()`, and
+  `SettingsMenu::liveRowCount()` / `*Rect()` / `enumRowsStacked()` / `*ScreenPx(...)`; a QUIT assertion
   evaluates when the close is observed, not on the capture frame.
   `systemOrNull()` reports absent as `IRSystem::kNullSystemId`, never
   `kNullEntity` (`engine/system/CLAUDE.md` §"Hot reload and lookup";
@@ -157,11 +157,12 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   (`widget_theme.hpp::defaultTheme()`) once at init, before building widgets.
   Opt-in hover publication: `makeGuiHoverState()` creates the
   `C_GuiHoverState` singleton; `hoveredWidget()` reads it.
-- Dropdown strip geometry (`C_WidgetDropdown::rowHeight` / `expandedHeight` /
-  `itemCenterOffsetY` / `itemAtOffsetY`) has one owner; authored `zOrder_` stays
-  below `kWidgetDropdownOpenZBias`; two open dropdowns are unordered.
-- Radio exclusion (`makeRadio(..., groupId, value)`) runs in `WIDGET_APPLY_RADIO::endTick`;
-  text input edits only while `focused_` (`WIDGET_INPUT`'s; Enter or a click off widgets drops it);
+- Dropdown strip and list scroll geometry have one owner each (the `C_WidgetDropdown` / `C_WidgetList` helpers); read a list's
+  first row from `topIndex`, never raw `scrollOffset_`. Authored `zOrder_` stays below `kWidgetDropdownOpenZBias`; two open dropdowns are unordered.
+- The wheel scrolls the hovered list; `setListSelectedIndex` reveals the row only when the index
+  changes, so a caller that mirrors its state into the list every frame never fights the wheel.
+- Radio exclusion (`makeRadio(..., groupId, value)`) runs in `WIDGET_APPLY_RADIO::endTick`; text inputs edit only while pointer-focused; Enter or a click off widgets drops focus;
+  `isTabFocusCandidate` filters Tab; `WIDGET_INPUT` captures command keys at either text-focus tick edge independently of widget hotkeys;
   `C_WidgetScroll` is track + thumb only — the owner positions content from `scrollPos_`.
 - `IRPrefab::GuiTest::` (`gui_test_assertions.hpp`): `hovers` / `clickFires` /
   `sliderValue` / `checkbox` / `picksVoxel` / `picksIsoColumn` / `hoveredEntityId` /

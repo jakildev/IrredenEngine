@@ -34,8 +34,13 @@ classification reference is **objectives-path**.
 
 ## Hard rules
 
-- **Never close an issue, never edit a body or title.** A recommend-close
-  verdict is staged or commented, never executed.
+- **Never close an issue, never retitle or re-scope a body.** A
+  recommend-close verdict is staged or commented, never executed. The one
+  body write the architect-managed sweep may make is **adding** a standalone
+  `**Blocked by:** #<issue>` line (one `#N` per line; never removing one)
+  when the basis cites an open PR that edits the same files and names its
+  backing issue — the entry records it as `blocked_by_added` and a comment
+  on the issue carries the citation. Dispatched mode never writes a body.
 - **Never approve on the role's own judgment.** Dispatched mode adds only
   `fleet:triage-recommend`; sweep mode writes labels only from a staging
   file the human confirmed, and never `fleet:queued` / `fleet:task` /
@@ -153,11 +158,15 @@ conversation:
       "verdict": "recommend-approve",
       "labels": ["human:approved", "fleet:sonnet"],
       "basis": "2-5 lines of citations, not vibes",
+      "blocked_by_added": ["#NNN (PR #MMM edits the same files)"],
       "confirmed": false
     }
   ]
 }
 ```
+
+`blocked_by_added` is optional and informational: it records a dependency
+line the session added under § Hard rules; `apply` does not write it.
 
 Proposed labels draw from a narrow allowlist the tool enforces:
 `human:approved`, `human:no-plan`, `human:owned`, and one of `fleet:sonnet`

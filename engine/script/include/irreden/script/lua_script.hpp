@@ -87,6 +87,10 @@ class LuaScript {
     // "Engine service bindings".
     void bindLuaViewport();
 
+    // Bind run-directory-relative text file access. Absolute paths and paths
+    // that resolve outside the run directory are rejected.
+    void bindLuaFiles();
+
     // Bind the synthetic-input surface — IRInput.KeyMouseButtons,
     // IRInput.ButtonStatuses, and IRInput.{beginSyntheticInput,
     // isSyntheticInputActive, injectButton, injectMouseMove, injectScroll}.

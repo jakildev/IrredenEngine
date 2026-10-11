@@ -42,14 +42,15 @@ const uint FLAG_CHECKERBOARD = 32u;
 const uint FLAG_DEPTH_COLOR = 64u;
 const uint kShapeProceduralColorFlags = FLAG_CHECKERBOARD | FLAG_DEPTH_COLOR;
 
-int cardinalShapeStoredDepth(int unoffsetDepth, bool carriesLatticeOffset, int subdivisions) {
-#if IR_SHAPE_PASS == 2
-    return unoffsetDepth;
-#else
+int cardinalShapeStoredDepth(int unoffsetDepth, bool carriesLatticeOffset,
+                             bool casterPass, bool correctCardinalDepth,
+                             int subdivisions) {
+    if (casterPass && correctCardinalDepth) {
+        return unoffsetDepth;
+    }
     return carriesLatticeOffset
         ? unoffsetDepth + cardinalRasterLatticeDepthOffset(subdivisions)
         : unoffsetDepth;
-#endif
 }
 
 int cardinalShapeReceiverDepth(int storedDepth, int subdivisions, bool shapeOwned,

@@ -50,7 +50,7 @@ chmod +x "$TMPROOT/bin/fleet-gh-token"
 export GHT_STUB_COUNTER="$TMPROOT/counter"
 export PATH="$TMPROOT/bin:$PATH"
 
-seed() { "$DISPATCHER" --seed-tmux-token; }
+clear_token() { "$DISPATCHER" --clear-tmux-token; }
 ptmux() { tmux -S "$TMPROOT/sock" "$@"; }
 
 # pane_token — GH_TOKEN as a freshly spawned pane process sees it.
@@ -67,28 +67,28 @@ pane_token() {
 }
 
 echo "T4: no session on the pinned socket -> nothing written"
-seed
+clear_token
 if ptmux has-session -t "$FLEET_SESSION" 2>/dev/null; then
-    bad "seed created a session on the pinned socket"
+    bad "clear created a session on the pinned socket"
 else
     ok "no session appeared on the pinned socket"
 fi
 
-rm -f "$GHT_STUB_COUNTER"   # T4's mint was spent on a seed that had nowhere to land
+rm -f "$GHT_STUB_COUNTER"   # T4's mint was spent on a clear that had nowhere to land
 
 ptmux -f /dev/null new-session -d -s "$FLEET_SESSION" "sleep 300"
 sleep 0.2
 
 echo "T1: a stale App token is removed before a new pane"
 ptmux set-environment -g GH_TOKEN ghs_synthetic-old
-seed
+clear_token
 assert_eq "$(pane_token)" "" "a new pane inherits no token"
 assert_eq "$(ptmux show-environment -g GH_TOKEN 2>/dev/null || true)" "" "global GH_TOKEN removed"
 
 echo "T2: another credential cannot survive the next clear"
 ptmux set-environment -g GH_TOKEN synthetic-user-credential
 ptmux set-environment -g GITHUB_TOKEN ghs_synthetic-other
-seed
+clear_token
 assert_eq "$(pane_token)" "" "a later pane inherits no credential"
 assert_eq "$(ptmux show-environment -g GITHUB_TOKEN 2>/dev/null || true)" "" "fallback token removed"
 
@@ -103,4 +103,4 @@ else
     bad "default server's GH_TOKEN changed during the run (value withheld)"
 fi
 
-summarize "dispatcher tmux token seed tests"
+summarize "dispatcher tmux token clear tests"

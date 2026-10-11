@@ -505,8 +505,20 @@ PARKED_PR_LABELS = frozenset({
     "fleet:design-proposed",
 })
 
+# The marker must open its line, but a worker's markdown habits are tolerated
+# there: an unordered-list bullet (`- Parked-until: #N`) and bold or backtick
+# emphasis on the marker. The emphasis must be paired, and its closer may sit
+# after the colon (`**Parked-until:** #N`), before it (`` `Parked-until`: #N ``),
+# or later on the line (`` `Parked-until: #N` ``); one opener serves all three
+# so a stray or mismatched delimiter stays malformed instead of parsing by
+# accident. A marker that appears mid-sentence is still rejected: the own-line
+# rule is what keeps a prose mention from being read as a park, and a park
+# nothing can parse never un-parks.
 _PARKED_UNTIL_RE = re.compile(
-    r"^[ \t]*Parked-until:[ \t]*(#\d+\b(?:(?:[ \t]*,[ \t]*|[ \t]+)#\d+\b)*)",
+    r"^[ \t]*(?:[-*+][ \t]+)?"
+    r"(?:Parked-until:"
+    r"|(?P<em>\*\*|`)Parked-until(?::(?P=em)|(?P=em):|:(?=[^\n]*(?P=em))))"
+    r"[ \t]*(?P<issues>#\d+\b(?:(?:[ \t]*,[ \t]*|[ \t]+)#\d+\b)*)",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -514,12 +526,14 @@ _PARKED_UNTIL_RE = re.compile(
 def parked_until_issue_numbers(body):
     """Issue numbers from the last parsable `Parked-until:` body marker.
 
-    The issue list is the contiguous comma/whitespace-separated run after the
-    marker. Trailing prose is ignored, and an appended parsable marker makes
-    every earlier marker inert. Missing or malformed markers return an empty
-    list so callers fail closed.
+    The marker opens its line, optionally behind a list bullet or wrapped in
+    paired bold / backticks (see `_PARKED_UNTIL_RE`). The issue list is the
+    contiguous comma/whitespace-separated run after the marker. Trailing
+    prose is ignored, and an appended parsable marker makes every earlier
+    marker inert. Missing or malformed markers return an empty list so
+    callers fail closed.
     """
-    markers = _PARKED_UNTIL_RE.findall(body or "")
+    markers = [match.group("issues") for match in _PARKED_UNTIL_RE.finditer(body or "")]
     if not markers:
         return []
     return [int(number) for number in re.findall(r"#(\d+)", markers[-1])]

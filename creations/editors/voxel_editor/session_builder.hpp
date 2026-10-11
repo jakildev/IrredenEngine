@@ -8,13 +8,18 @@
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/render/gui_test_assertions.hpp>
 #include <irreden/render/picking.hpp>
+#include <irreden/voxel/sdf_fill.hpp>
 #include <irreden/common/array_transforms.hpp>
 
 #include "anim_panel.hpp"
 #include "array_panel.hpp"
+#include "bake_panel.hpp"
 #include "component_records.hpp"
 #include "lod_panel.hpp"
+#include "loft_panel.hpp"
 #include "palette.hpp"
+#include "part_size_panel.hpp"
+#include "parts_panel.hpp"
 #include "symmetry.hpp"
 
 #include <deque>
@@ -90,6 +95,18 @@ inline constexpr int kFramesPerClickStep = 1;
 // so a capture reads clearly. A face aim resolves down to zoom 1.
 inline constexpr float kSessionZoom = 4.0f;
 
+inline constexpr int kTabWalkPresses = 64;
+inline constexpr IRMath::ivec2 kSkeletonPanelPos{378, 342};
+inline constexpr IRMath::ivec2 kSkeletonPanelSize{120, 114};
+inline constexpr IRMath::ivec2 kJointRenameInputPos{
+    kSkeletonPanelPos.x + 4, kSkeletonPanelPos.y + 74
+};
+inline constexpr IRMath::ivec2 kJointRenameInputSize{82, 14};
+inline constexpr IRMath::vec2 kJointRenameInputCenter{
+    static_cast<float>(kJointRenameInputPos.x) + static_cast<float>(kJointRenameInputSize.x) / 2.0f,
+    static_cast<float>(kJointRenameInputPos.y) + static_cast<float>(kJointRenameInputSize.y) / 2.0f
+};
+
 // Mirror of the editable set's occupancy, in local cell coordinates. Carries
 // the scene origin so it can convert to the world positions the aim math and
 // the picker both work in.
@@ -154,8 +171,20 @@ class OccupancyModel {
         m_origin = origin;
     }
 
-    // The editor seeds the editable set with a full ground plane at the far z
-    // slice so the first click has something to land on (main.cpp initEntities).
+    // Places every cell the SDF primitive covers: the same cell walk the
+    // editor's BAKE fills through.
+    void bakeShape(IRMath::SDF::ShapeType type, IRMath::vec4 params, const SymmetryState &sym) {
+        IRPrefab::Voxel::forEachSdfGridCell(
+            m_size,
+            type,
+            params,
+            [&](IRMath::ivec3 local, std::size_t) { setMirrored(local, true, sym); }
+        );
+    }
+
+    // The single-set editor seeds its editable set with a full ground plane at
+    // the far z slice so the first click has something to land on (main.cpp
+    // initEntities). An entity-scene voxel part starts clear.
     void seedGroundPlane() {
         const int z = m_size.z - 1;
         for (int y = 0; y < m_size.y; ++y)
@@ -353,6 +382,38 @@ struct RotationModeCheck {
     std::string name_;
 };
 
+enum class EditorInputCheckKind : int {
+    SELECTED_PART_NO_TEXT_FOCUS = 0,
+    TEXT_CAPTURED_X = 1,
+    TEXT_FOCUS_RELEASED = 2,
+    X_SYMMETRY_ENABLED = 3,
+    TAB_WALK_COVERAGE = 4,
+};
+
+struct EditorInputCheck {
+    EditorInputCheckKind kind_ = EditorInputCheckKind::SELECTED_PART_NO_TEXT_FOCUS;
+    int expectedPart_ = -1;
+    std::string name_;
+};
+
+// PARTS list expectation. expectedSelected_ >= 0: the list widget and the
+// entity scene both select that part, and its row is one the list paints.
+// expectedTop_ >= 0: that part is the list's first visible item. -1 leaves
+// either unchecked.
+struct PartsListCheck {
+    int expectedSelected_ = -1;
+    int expectedTop_ = -1;
+    std::string name_;
+};
+
+// Camera-zoom expectation: the live zoom equals zoom_, or with expectEqual_
+// false, differs from it.
+struct CameraZoomCheck {
+    float zoom_ = kSessionZoom;
+    bool expectEqual_ = true;
+    std::string name_;
+};
+
 // Pick expectation evaluated through the editor's own edit pick at a shot's
 // capture frame: the world voxel the parked cursor must land on.
 struct PickCheck {
@@ -391,6 +452,30 @@ struct PartGateCheck {
     int partIndex_ = 0;
     bool expectGated_ = false;
     int expectPinnedTier_ = -1;
+    std::string name_;
+};
+
+// Extent expectation on one entity-scene voxel part: its C_VoxelSetNew::size_.
+struct PartExtentCheck {
+    int partIndex_ = 0;
+    IRMath::ivec3 expected_ = IRMath::ivec3(0);
+    std::string name_;
+};
+
+// Mirror expectation: the editor's enabled axes, and the plane each enabled
+// axis is seated at. A disabled axis's offset is not compared.
+struct MirrorCheck {
+    SymmetryState expected_;
+    std::string name_;
+};
+
+enum class LoftMask { XZ, YZ };
+
+// Loft-mask expectation: whether cell_ (h, v) of one mask is painted.
+struct LoftMaskCheck {
+    LoftMask mask_ = LoftMask::XZ;
+    IRMath::ivec2 cell_ = IRMath::ivec2(0);
+    bool expectOn_ = false;
     std::string name_;
 };
 
@@ -448,6 +533,9 @@ struct Recipe {
     std::deque<PartEditableCheck> partEditableChecks_;
     std::deque<CanvasCountCheck> canvasCountChecks_;
     std::deque<RotationModeCheck> rotationModeChecks_;
+    std::deque<EditorInputCheck> editorInputChecks_;
+    std::deque<PartsListCheck> partsListChecks_;
+    std::deque<CameraZoomCheck> cameraZoomChecks_;
     // Same stable-storage contract as checks_, for expectSliderValue.
     std::deque<SliderCheck> sliderChecks_;
     // Same stable-storage contract as checks_, for expectPick.
@@ -459,6 +547,10 @@ struct Recipe {
     // Same contract, for the entity-scene LOD checks.
     std::deque<PartGateCheck> partGateChecks_;
     std::deque<ManifestCheck> manifestChecks_;
+    // Same contract, for the part-size, mirror and loft checks.
+    std::deque<PartExtentCheck> partExtentChecks_;
+    std::deque<MirrorCheck> mirrorChecks_;
+    std::deque<LoftMaskCheck> loftMaskChecks_;
     // Build the editor's reference furniture (floor slab, axis bars, centre
     // cube, perimeter gizmos, starter rig, satellite sets) around the editable
     // set instead of the bare stage entity recipes author on.
@@ -502,6 +594,12 @@ bool evaluatePartAuthoredCountCheck(const void *context, std::string &actual);
 bool evaluatePartEditableCheck(const void *context, std::string &actual);
 bool evaluateCanvasCountCheck(const void *context, std::string &actual);
 bool evaluateRotationModeCheck(const void *context, std::string &actual);
+bool evaluateEditorInputCheck(const void *context, std::string &actual);
+
+// Read one PartsListCheck / CameraZoomCheck. Defined in main.cpp, where the
+// PARTS list widget and the entity scene live.
+bool evaluatePartsListCheck(const void *context, std::string &actual);
+bool evaluateCameraZoomCheck(const void *context, std::string &actual);
 
 // Reads one PickCheck through the editor's edit pick. Same PREDICATE channel
 // as evaluateOccupancyCheck. Defined in main.cpp, beside the pick itself.
@@ -531,6 +629,12 @@ bool evaluateManifestCheck(const void *context, std::string &actual);
 // where the entity scene and the module's Lua state live.
 bool evaluateComponentValueCheck(const void *context, std::string &actual);
 
+// Read one PartExtentCheck / MirrorCheck / LoftMaskCheck against the live
+// part, the editor's symmetry state and the loft masks. Defined in main.cpp.
+bool evaluatePartExtentCheck(const void *context, std::string &actual);
+bool evaluateMirrorCheck(const void *context, std::string &actual);
+bool evaluateLoftMaskCheck(const void *context, std::string &actual);
+
 // Builds a Recipe from editor gestures. Every op appends to the current
 // segment; segment(label) closes the current one and starts the next. Ops that
 // cannot be aimed record an error instead of emitting a bogus click.
@@ -538,7 +642,8 @@ class Builder {
   public:
     Builder(std::string name, IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin)
         : m_model(sceneSize, sceneOrigin)
-        , m_sceneOrigin(sceneOrigin) {
+        , m_sceneSize(sceneSize)
+        , m_partSize(sceneSize) {
         m_recipe.name_ = std::move(name);
         m_model.seedGroundPlane();
         segment("start");
@@ -713,27 +818,24 @@ class Builder {
 
     // Enable mirror-symmetry axes for subsequent edits. Taps
     // the editor's X/Y/Z toggles so the live editor mirrors each edit, and turns
-    // on the shadow model's mirroring against the same scene-centre planes the
-    // editor uses (SymmetryState offsets set to (size-1)/2 in main() — the
-    // editor mirrors around that plane, so the model must too). Call once with
-    // every axis to enable; assumes symmetry starts off (the editor's default).
+    // on the shadow model's mirroring against the same planes the editor uses:
+    // the centre of the editable set's own extent, (size-1)/2, re-seated
+    // whenever the editable set changes. Call once with every axis to enable;
+    // assumes symmetry starts off (the editor's default).
     void enableSymmetry(bool x, bool y, bool z) {
-        const IRMath::ivec3 size = m_model.size();
         if (x) {
             tapKey(IRInput::kKeyButtonX);
             m_symmetry.enableX_ = true;
-            m_symmetry.offsetX_ = mirrorCenterOffset(size.x);
         }
         if (y) {
             tapKey(IRInput::kKeyButtonY);
             m_symmetry.enableY_ = true;
-            m_symmetry.offsetY_ = mirrorCenterOffset(size.y);
         }
         if (z) {
             tapKey(IRInput::kKeyButtonZ);
             m_symmetry.enableZ_ = true;
-            m_symmetry.offsetZ_ = mirrorCenterOffset(size.z);
         }
+        reseatMirrors();
     }
 
     // Create a new layer (K); the editor auto-activates it, so subsequent
@@ -781,6 +883,39 @@ class Builder {
         emitGuiMove(guiTrixel);
         emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
+    }
+
+    // Park the cursor on a GUI-canvas point and turn the mouse wheel @p rows
+    // notches, one event a frame. Positive rows scroll a list toward its end
+    // (wheel down); negative rows toward its start.
+    void wheelGui(IRMath::vec2 guiTrixel, int rows) {
+        emitGuiMove(guiTrixel);
+        emitWheel(rows);
+    }
+
+    // Park the cursor on `target`'s clickable face and turn the wheel @p rows
+    // notches, signed as wheelGui signs them.
+    void wheelScene(IRMath::ivec3 target, int rows) {
+        hover(target);
+        emitWheel(rows);
+    }
+
+    // Click the PARTS list's @p visibleRow-th row from the top, which the
+    // list's scroll offset currently maps to part @p partIndex. The shadow
+    // model follows the selection as nextPart's does.
+    void selectPartThroughList(int visibleRow, int partIndex) {
+        if (partIndex < 0 || partIndex >= static_cast<int>(m_partModels.size()) || visibleRow < 0 ||
+            visibleRow >= partsListVisibleRows()) {
+            recordError(
+                "selectPartThroughList row " + std::to_string(visibleRow) + " -> part " +
+                std::to_string(partIndex) + " is out of range in segment " + m_current.label_
+            );
+            return;
+        }
+        m_partModels[static_cast<std::size_t>(m_activePart)] = m_model;
+        clickGui(partsListRowCenterGuiTrixel(visibleRow));
+        m_activePart = partIndex;
+        m_model = m_partModels[static_cast<std::size_t>(m_activePart)];
     }
 
     // Click the text input at `guiTrixel` to focus it, type `text` one key at
@@ -876,22 +1011,64 @@ class Builder {
         chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonO);
     }
 
+    // Drag the PART SIZE sliders to @p size: the extent every later
+    // addVoxelPart creates, until the next call. Each axis must lie on its
+    // track (part_size_panel.hpp).
+    void setPartSize(IRMath::ivec3 size) {
+        for (int axis = 0; axis < kPartSizeAxisCount; ++axis) {
+            const float maxValue = partSizeSliderMax(m_sceneSize[axis]);
+            if (size[axis] < static_cast<int>(kPartSizeSliderMin) ||
+                size[axis] > static_cast<int>(maxValue)) {
+                recordError(
+                    "setPartSize axis " + std::to_string(axis) + " = " +
+                    std::to_string(size[axis]) + " is off the slider track in segment " +
+                    m_current.label_
+                );
+                return;
+            }
+            dragGuiSlider(
+                partSizeSliderGeometry(axis),
+                kPartSizeSliderMin,
+                maxValue,
+                static_cast<float>(size[axis])
+            );
+        }
+        m_partSize = size;
+    }
+
+    // Ctrl+P: add a voxel part at the PART SIZE sliders' extent and select it.
+    // The editor seats the part with deriveSceneOrigin, so the model does too.
     void addVoxelPart() {
         chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonP);
-        if (m_partModels.empty()) {
-            OccupancyModel first(m_model.size(), m_sceneOrigin);
-            first.seedGroundPlane();
-            m_partModels.push_back(first);
-            m_activePart = 0;
-            m_model = std::move(first);
-            return;
+        if (!m_partModels.empty()) {
+            m_partModels[static_cast<std::size_t>(m_activePart)] = m_model;
         }
-        m_partModels[static_cast<std::size_t>(m_activePart)] = m_model;
-        OccupancyModel next(m_model.size(), m_sceneOrigin);
-        next.seedGroundPlane();
-        m_partModels.push_back(next);
+        OccupancyModel added(m_partSize, deriveSceneOrigin(m_partSize));
+        m_partModels.push_back(added);
         m_activePart = static_cast<int>(m_partModels.size()) - 1;
-        m_model = std::move(next);
+        m_model = std::move(added);
+        reseatMirrors();
+    }
+
+    // Sets the BAKE panel's P1 slider to @p radius and clicks BAKE with the
+    // default shape row (a sphere): the first write into a part that has no
+    // voxel for a click to pick. Open a new segment before aiming at the
+    // result.
+    void bakeSphere(float radius) {
+        dragGuiSlider(
+            IRVoxelEditor::kBakeParam1SliderGeometry,
+            IRVoxelEditor::kBakeParamSliderMin,
+            IRVoxelEditor::kBakeParamSliderMax,
+            radius
+        );
+        clickGui(IRVoxelEditor::bakeButtonCenterGuiTrixel());
+        const IRMath::SDF::ShapeType type =
+            IRVoxelEditor::kBakeShapeTypes[IRVoxelEditor::kBakeDefaultShapeRow];
+        m_model.bakeShape(
+            type,
+            IRVoxelEditor::bakeShapeParams(type, radius, IRVoxelEditor::kBakeParam2Default),
+            m_symmetry
+        );
     }
 
     void nextPart() {
@@ -903,6 +1080,38 @@ class Builder {
         tapKey(IRInput::kKeyButtonTab);
         m_activePart = (m_activePart + 1) % static_cast<int>(m_partModels.size());
         m_model = m_partModels[static_cast<std::size_t>(m_activePart)];
+        reseatMirrors();
+    }
+
+    // F: toggle loft mode. While it is on the scene takes no edit click.
+    void toggleLoftMode() {
+        tapKey(IRInput::kKeyButtonF);
+    }
+
+    // Click loft-mask cell @p cell (h, v), toggling it. Needs loft mode on.
+    void clickLoftCell(LoftMask mask, IRMath::ivec2 cell) {
+        const bool front = mask == LoftMask::XZ;
+        const int columns = front ? m_sceneSize.x : m_sceneSize.y;
+        // The XZ grid is hit-tested first, so a YZ click it also covers would
+        // land in the XZ mask.
+        const bool underFrontGrid = !front && kLoftGridYZPos.x + cell.x * kLoftCellPx <
+                                                  kLoftGridXZPos.x + m_sceneSize.x * kLoftCellPx;
+        if (cell.x < 0 || cell.x >= columns || cell.y < 0 || cell.y >= m_sceneSize.z ||
+            underFrontGrid) {
+            recordError(
+                "clickLoftCell (" + std::to_string(cell.x) + "," + std::to_string(cell.y) +
+                ") is not a clickable cell of that mask in segment " + m_current.label_
+            );
+            return;
+        }
+        clickGui(
+            loftCellCenterGuiTrixel(front ? kLoftGridXZPos : kLoftGridYZPos, cell, m_sceneSize.z)
+        );
+    }
+
+    // Enter: stamp the loft masks into the editable set. Needs loft mode on.
+    void stampLoft() {
+        tapKey(IRInput::kKeyButtonEnter);
     }
 
     // Drag one LOD panel slider to tier @p tier (0 finest .. 4 coarsest).
@@ -993,6 +1202,35 @@ class Builder {
         );
     }
 
+    // Assert the PARTS list and the entity scene both select part
+    // @p partIndex and the list paints that row.
+    void expectSelectedPartVisible(int partIndex, std::string name) {
+        addPredicateCheck(
+            m_recipe.partsListChecks_,
+            PartsListCheck{partIndex, -1, std::move(name)},
+            &evaluatePartsListCheck
+        );
+    }
+
+    // Assert part @p partIndex is the PARTS list's first visible item.
+    void expectPartsListTop(int partIndex, std::string name) {
+        addPredicateCheck(
+            m_recipe.partsListChecks_,
+            PartsListCheck{-1, partIndex, std::move(name)},
+            &evaluatePartsListCheck
+        );
+    }
+
+    // Assert the live camera zoom equals @p zoom when this segment settles,
+    // or with @p expectEqual false, that it does not.
+    void expectCameraZoom(float zoom, bool expectEqual, std::string name) {
+        addPredicateCheck(
+            m_recipe.cameraZoomChecks_,
+            CameraZoomCheck{zoom, expectEqual, std::move(name)},
+            &evaluateCameraZoomCheck
+        );
+    }
+
     void applyRadialArray(int count) {
         dragGuiSlider(kArrayCountSliderGeometry, 2.0f, 12.0f, static_cast<float>(count));
         clickGui(kArrayApplyCenter);
@@ -1010,6 +1248,7 @@ class Builder {
         }
         m_activePart = static_cast<int>(m_partModels.size()) - 1;
         m_model = m_partModels.back();
+        reseatMirrors();
     }
 
     void applyRadialArrayToLiveScene(int count) {
@@ -1034,6 +1273,14 @@ class Builder {
             m_recipe.rotationModeChecks_,
             RotationModeCheck{partIndex, expected, std::move(name)},
             &evaluateRotationModeCheck
+        );
+    }
+
+    void expectEditorInput(EditorInputCheckKind kind, int expectedPart, std::string name) {
+        addPredicateCheck(
+            m_recipe.editorInputChecks_,
+            EditorInputCheck{kind, expectedPart, std::move(name)},
+            &evaluateEditorInputCheck
         );
     }
 
@@ -1175,6 +1422,45 @@ class Builder {
             m_recipe.partGateChecks_,
             PartGateCheck{-1, expectGated, pinnedTier, std::move(name)},
             &evaluatePartGateCheck
+        );
+    }
+
+    // Assert part @p partIndex's voxel extent when this segment settles.
+    void expectPartExtent(int partIndex, IRMath::ivec3 expected, std::string name) {
+        addPredicateCheck(
+            m_recipe.partExtentChecks_,
+            PartExtentCheck{partIndex, expected, std::move(name)},
+            &evaluatePartExtentCheck
+        );
+    }
+
+    // Assert the editor's mirror state when this segment settles: the axes
+    // this builder enabled, each seated at its component of @p offsets (a
+    // disabled axis's component is ignored). The model reflects through the
+    // same planes, so an expectation the model disagrees with is a recipe error.
+    void expectMirrorOffsets(IRMath::vec3 offsets, std::string name) {
+        SymmetryState expected = m_symmetry;
+        expected.offsetX_ = offsets.x;
+        expected.offsetY_ = offsets.y;
+        expected.offsetZ_ = offsets.z;
+        if (!mirrorPlanesMatch(m_symmetry, expected)) {
+            recordError("mirror check " + name + " disagrees with the planes the model seats");
+            return;
+        }
+        addPredicateCheck(
+            m_recipe.mirrorChecks_,
+            MirrorCheck{expected, std::move(name)},
+            &evaluateMirrorCheck
+        );
+    }
+
+    // Assert whether loft-mask cell @p cell is painted when this segment
+    // settles: the positive fire for clickLoftCell.
+    void expectLoftMask(LoftMask mask, IRMath::ivec2 cell, bool expectOn, std::string name) {
+        addPredicateCheck(
+            m_recipe.loftMaskChecks_,
+            LoftMaskCheck{mask, cell, expectOn, std::move(name)},
+            &evaluateLoftMaskCheck
         );
     }
 
@@ -1353,6 +1639,20 @@ class Builder {
         m_activeFrame = target;
     }
 
+    // Wheel notches at the cursor's current pixel. GLFW reports a wheel-down
+    // notch as a negative y offset, so a positive row count injects negative y.
+    void emitWheel(int rows) {
+        const float notch = rows > 0 ? -1.0f : 1.0f;
+        for (int i = 0; i < IRMath::abs(rows); ++i) {
+            IRVideo::GuiInputEvent event{};
+            event.frameOffset_ = m_frame;
+            event.type_ = IRVideo::GuiInputEvent::Type::SCROLL;
+            event.scroll_ = IRMath::vec2(0.0f, notch);
+            m_current.events_.push_back(event);
+            m_frame += kFramesPerClickStep;
+        }
+    }
+
     void emitButton(IRVideo::GuiInputEvent::Type type, IRInput::KeyMouseButtons button) {
         IRVideo::GuiInputEvent event{};
         event.frameOffset_ = m_frame;
@@ -1383,8 +1683,18 @@ class Builder {
         m_current = Segment{};
     }
 
+    // The editor re-seats its mirror planes whenever its editable set changes;
+    // the model follows on every change of active model.
+    void reseatMirrors() {
+        seatEnabledMirrorAxes(m_symmetry, m_model.size());
+    }
+
     OccupancyModel m_model;
-    IRMath::vec3 m_sceneOrigin;
+    // The single-set scene's extent: the PART SIZE sliders' range and initial
+    // value, and the loft grids' cell counts.
+    IRMath::ivec3 m_sceneSize;
+    // What the PART SIZE sliders read: the extent the next addVoxelPart creates.
+    IRMath::ivec3 m_partSize;
     std::vector<OccupancyModel> m_partModels;
     int m_activePart = -1;
     // The animation's non-active frames, indexed as the editor indexes them
