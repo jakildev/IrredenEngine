@@ -29,9 +29,9 @@ TEST(ArrayTransforms, LinearOffsets) {
     const auto transforms = IRPrefab::Arrays::linear(3, IRMath::vec3(2.0f, 0.0f, 0.0f));
 
     ASSERT_EQ(transforms.size(), 3u);
-    expectVec3Near(transforms[0].translation_, IRMath::vec3(0.0f));
-    expectVec3Near(transforms[1].translation_, IRMath::vec3(2.0f, 0.0f, 0.0f));
-    expectVec3Near(transforms[2].translation_, IRMath::vec3(4.0f, 0.0f, 0.0f));
+    expectVec3Near(transforms[0].translation_, IRMath::vec3(2.0f, 0.0f, 0.0f));
+    expectVec3Near(transforms[1].translation_, IRMath::vec3(4.0f, 0.0f, 0.0f));
+    expectVec3Near(transforms[2].translation_, IRMath::vec3(6.0f, 0.0f, 0.0f));
 }
 
 } // namespace
