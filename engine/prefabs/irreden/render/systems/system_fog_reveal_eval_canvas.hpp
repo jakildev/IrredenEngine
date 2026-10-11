@@ -94,8 +94,12 @@ struct FogRevealEvalCanvasGhost : IRPrefab::detail::DetachedCanvasPoolCache {
             return;
         }
         repairCanvasCarrierPolicy(*pool, revealed, entityCanvas);
+        const bool fogGatesAgree =
+            entityCanvas.fogHidden_ == (!revealed.shown_ && !revealed.ghostHeld_) &&
+            entityCanvas.fogGhost_ == revealed.ghostHeld_;
         const bool wasShown = revealed.shown_;
         const bool evaluated = revealed.override_ != IRComponents::FogOverride::NONE ||
+                               !fogGatesAgree ||
                                (entity + frameCounter_) % settings_.staggerPeriod_ == 0u;
         if (evaluated && revealed.override_ == IRComponents::FogOverride::FORCE_REVEALED) {
             revealed.revealFactor_ = 1.0f;
@@ -206,7 +210,8 @@ template <> struct System<FOG_REVEAL_EVAL_CANVAS> : IRPrefab::detail::DetachedCa
             return;
         }
         detail::repairCanvasCarrierPolicy(*pool, revealed, entityCanvas);
-        if (revealed.override_ == IRComponents::FogOverride::NONE &&
+        const bool fogVisibilityAgrees = entityCanvas.fogHidden_ != revealed.shown_;
+        if (revealed.override_ == IRComponents::FogOverride::NONE && fogVisibilityAgrees &&
             (entity + frameCounter_) % settings_.staggerPeriod_ != 0u) {
             return;
         }
