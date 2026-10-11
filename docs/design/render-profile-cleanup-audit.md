@@ -27,6 +27,11 @@ that statistic unavailable instead of silently excluding a potentially slower ru
 Complete reports retain the same per-report warmup exclusion and pooling. A
 mixed complete/missing regression test fails on the previous implementation.
 
+Shared matrix execution and evidence helpers live in
+`scripts/perf/profile_matrix.py`, used by the rotation and million-entity CLIs.
+Historical summaries and strict timing controls retain their distinct evidence
+requirements.
+
 ## Implemented slice: renderer resource cleanup
 
 Canvas destruction and backing growth share the texture/Hi-Z release sequence;
@@ -187,18 +192,38 @@ and partial uploads. All five ordering regressions fail against the parent backe
 The [native captures](../pr-screenshots/codex/metal-clear-snapshots/README.md)
 retain unchanged normal and shadow-overlay output for the frozen scene.
 
+## GRID span-cap classification
+
+`GridSpanCoverageTest` drives the real GRID rebuild tick against an independent
+45-degree Y inverse-transform oracle. The frozen CanvasStress orbit-6 solid
+occupies 1740 destination cells: 610 boundary cells and 1130 interior cells.
+Its 1728-slot span retains all 610 boundary cells; the 12 omitted cells each
+have all six neighbors in the full occupancy. Every emitted face mask matches
+that full occupancy, including neighbors omitted from the span. Consequently,
+the omission neither removes exterior faces nor exposes artificial interior
+faces in this fixture. This is a geometry/mask result, not proof that volume
+sampling, AO, or arbitrary transforms are unaffected.
+
+The capacity limit can still remove visible geometry. A centered 12×1×12 plate
+at the same rotation covers 145 cells, all boundary, but has only 144 slots.
+The negative control demonstrates one missing surface cell. Carving that same
+plate from a 12³ allocated box retains all 145 cells and their face masks.
+These controls distinguish surface loss from interior omission without changing
+allocation policy or treating the generic overflow warning as harmless.
+
+The independent [gather sampling checks](trixel-gather-sampling.md) cover the
+frozen orbit-6 displayed normals and silhouettes at four cardinal camera yaws
+and 135 degrees. Those native checks and this CPU producer check cover different
+stages; neither substitutes for shadow-receiver or light-volume validation.
+
 ## Remaining investigations
 
-- Classify the striped face patterns in frozen CanvasStress at 45-degree yaw with
-  the source-face oracle. Byte-identical before/after captures rule out this
-  clear-cache change but do not establish that the inherited geometry is correct.
-- Shared profiling matrix helpers live in the rotation CLI module. A neutral
-  module could clarify ownership once needed; preserve the distinct evidence
-  requirements of historical summaries and strict timing controls.
-- Investigate the revoxelized destination-span warning in CanvasStress: 12 of
-  1740 covered cells exceed a 1728-cell span. It is present in the parent and
-  timing-on/off controls. Isolate which geometry is dropped and compare it with
-  the resampled-cell oracle before changing capacity or declaring it harmless.
+- Extend source-face classification to frozen CanvasStress at 45-degree camera
+  yaw; the gather checks cover a different set of camera angles.
+- Define a destination-capacity policy for exact-fit thin or scaled GRID sets
+  whose boundary cells exceed their authored span. The orbit-6 result above
+  resolves the observed 12-cell warning's exterior geometry, not this broader
+  allocation limit or the lighting consequences of missing interior occupancy.
 
 The timing-attribution experiment remains a separate measurement task. Cleanup
 does not establish a dense-scene speedup, fix inherited visual artifacts, or
