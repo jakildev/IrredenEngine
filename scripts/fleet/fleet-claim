@@ -77,9 +77,10 @@ FLEET_GITHUB_REPO="${FLEET_GITHUB_REPO:-jakildev/IrredenEngine}"
 #
 # Each claim is the directory $CLAIMS_DIR/<slug>/ (atomic mkdir-as-lock).
 # A claim made with --stackable-on additionally writes a sibling file
-# $CLAIMS_DIR/<slug>.meta containing one line:
+# $CLAIMS_DIR/<slug>.meta containing two lines:
 #
 #   stackable_base_branch=<branch>
+#   stackable_pr=<number>
 #
 # claim-base reads it to tell commit-and-push which branch to base the
 # task's PR on; release / check-stale / cleanup all delete the sidecar
@@ -1912,7 +1913,11 @@ for pr in prs:
         fi
 
         if [[ -n "$stackable_branch" ]]; then
-            echo "stackable_base_branch=$stackable_branch" > "$CLAIMS_DIR/${slug}.meta"
+            local stackable_pr_number="${stackable_pr##*/}"
+            {
+                echo "stackable_base_branch=$stackable_branch"
+                echo "stackable_pr=$stackable_pr_number"
+            } > "$CLAIMS_DIR/${slug}.meta"
             echo "claimed: #${issue_num} (slug: $slug, agent: $agent, base: $stackable_branch)"
         else
             echo "claimed: #${issue_num} (slug: $slug, agent: $agent)"
@@ -1996,12 +2001,55 @@ cmd_claim_base() {
     slug=$(slugify "$issue_num")
     local meta_file="$CLAIMS_DIR/${slug}.meta"
     if [[ -f "$meta_file" ]]; then
-        local base
+        local base stackable_pr
         base=$(grep -E '^stackable_base_branch=' "$meta_file" 2>/dev/null \
             | head -n1 | cut -d= -f2-)
+        stackable_pr=$(grep -E '^stackable_pr=' "$meta_file" 2>/dev/null \
+            | head -n1 | cut -d= -f2- || true)
         if [[ -n "$base" ]]; then
-            echo "$base"
-            return 0
+            if [[ -z "$stackable_pr" ]]; then
+                echo "$base"
+                return 0
+            fi
+
+            local pr_json pr_state pr_head pr_head_sha
+            if ! pr_json=$(gh pr view "$stackable_pr" --repo "$(repo_from_ns)" \
+                    --json state,headRefName,headRefOid 2>/dev/null); then
+                echo "fleet-claim claim-base: blocker PR #${stackable_pr} lookup failed; base is UNVERIFIED" >&2
+                if [[ "$strict" -eq 1 ]]; then
+                    return 1
+                fi
+                echo "$base"
+                return 0
+            fi
+            read -r pr_state pr_head pr_head_sha < <(printf '%s' "$pr_json" | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+print(data.get("state", ""), data.get("headRefName", ""), data.get("headRefOid", ""))
+' | tr -d '\r')
+            case "$pr_state" in
+                OPEN)
+                    echo "$base"
+                    return 0
+                    ;;
+                MERGED)
+                    echo "fleet-claim claim-base: blocker PR #${stackable_pr} merged after the claim; run: git rebase --onto origin/master ${pr_head_sha}" >&2
+                    echo "master"
+                    return 0
+                    ;;
+                CLOSED)
+                    echo "fleet-claim claim-base: blocker PR #${stackable_pr} closed without merging; refusing a dead base" >&2
+                    return 1
+                    ;;
+                *)
+                    echo "fleet-claim claim-base: blocker PR #${stackable_pr} returned an unparseable state; base is UNVERIFIED" >&2
+                    if [[ "$strict" -eq 1 ]]; then
+                        return 1
+                    fi
+                    echo "$base"
+                    return 0
+                    ;;
+            esac
         fi
     fi
     if [[ ! -d "$CLAIMS_DIR/$slug" ]]; then

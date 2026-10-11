@@ -72,13 +72,19 @@ cached candidate first; go live only on a miss.
    `gh pr list --head "<baseRefName>" --state all --json number,state,mergedAt --jq '.[0]'`
    (`--repo <game-repo>` for game PRs).
 3. If the candidate already carries `fleet:awaiting-upstream-review`:
-   upstream approved or merged → remove the gate and review; otherwise
-   skip silently, no comment.
-4. Otherwise: upstream merged, or open with `fleet:approved` /
-   `human:approved` → review the child's diff only and say so in the body
-   ("Stacked on #<U> (cross-author). Reviewing the child diff only —
-   upstream is approved separately." / "Stacked on #<U> (now merged).
-   Reviewing standalone diff."). Upstream open without approval → gate
+   upstream approved → remove the gate and review; upstream merged →
+   re-read the child's live `baseRefName`: `master` removes the gate and
+   reviews standalone, while a feature base runs `stacked-pr-review.md`
+   § "Merged-parent gate" and takes its result. Otherwise skip silently,
+   no comment.
+4. Otherwise: an open upstream with `fleet:approved` / `human:approved` →
+   review the child's diff only and say so in the body ("Stacked on #<U>
+   (cross-author). Reviewing the child diff only — upstream is approved
+   separately."). An upstream already merged requires a live base re-read:
+   `master` → review standalone and say "Stacked on #<U> (now merged).
+   Reviewing standalone diff."; still not `master` → run
+   `stacked-pr-review.md` § "Merged-parent gate" and request needs-fix when
+   it fails. Upstream open without approval → gate
    once, no verdict:
    ```
    gh pr edit <N> --add-label "fleet:awaiting-upstream-review"

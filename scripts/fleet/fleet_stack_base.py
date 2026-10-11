@@ -102,3 +102,77 @@ def unsafe_base_reason(labels, changed_files=None):
         return "empty claim-commit"
 
     return None
+
+
+def orphaned_merged_base(pr, repo_prs, open_stacks):
+    """Classify an open PR whose feature-branch base may already be merged.
+
+    Returns ``{"state": "orphan", "parent": <merged PR>}`` only when the
+    child is absent from every open native stack, no open PR owns its base
+    branch, and the newest PR on that branch is merged. Invalid or unreadable
+    inputs return ``{"state": "unknown"}``; every other shape is clean.
+    """
+    if not isinstance(pr, dict) or not isinstance(repo_prs, list) \
+            or not isinstance(open_stacks, list):
+        return {"state": "unknown"}
+
+    if pr.get("state", "OPEN") != "OPEN":
+        return {"state": "clean"}
+    base = pr.get("baseRefName") or "master"
+    if base == "master":
+        return {"state": "clean"}
+
+    child_number = pr.get("number")
+    try:
+        child_number = int(child_number)
+    except (TypeError, ValueError):
+        return {"state": "unknown"}
+
+    for stack in open_stacks:
+        if not isinstance(stack, dict):
+            return {"state": "unknown"}
+        if not stack.get("open"):
+            continue
+        members = stack.get("pull_requests")
+        if not isinstance(members, list):
+            return {"state": "unknown"}
+        if any(isinstance(member, dict)
+               and member.get("number") == child_number for member in members):
+            return {"state": "clean"}
+
+    base_prs = [candidate for candidate in repo_prs
+                if isinstance(candidate, dict)
+                and candidate.get("headRefName") == base]
+    if any(candidate.get("state") == "OPEN" for candidate in base_prs):
+        return {"state": "clean"}
+    merged = [candidate for candidate in base_prs
+              if candidate.get("state") == "MERGED"]
+    if not merged:
+        return {"state": "clean"}
+    try:
+        parent = max(merged, key=lambda candidate: int(candidate.get("number", 0)))
+    except (TypeError, ValueError):
+        return {"state": "unknown"}
+    if not parent.get("headRefOid"):
+        return {"state": "unknown"}
+    return {"state": "orphan", "parent": parent}
+
+
+def needs_orphan_check(pr, open_prs, skip_labels, open_parent_heads=None):
+    """Return whether tier-0 should live-check a possible orphaned child."""
+    if not isinstance(pr, dict) or not isinstance(open_prs, list):
+        return False
+    labels = set(pr.get("labels") or ())
+    if "fleet:approved" not in labels or labels & skip_labels:
+        return False
+    base = pr.get("baseRefName") or "master"
+    if base == "master":
+        return False
+    if open_parent_heads is not None:
+        return base not in open_parent_heads
+    return not any(
+        isinstance(candidate, dict)
+        and candidate.get("headRefName") == base
+        and candidate.get("state", "OPEN") == "OPEN"
+        for candidate in open_prs
+    )
