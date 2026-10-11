@@ -47,6 +47,7 @@ PILLOW_EXCEPTIONS = frozenset({
     "scripts/tests/test_render_detached_lighting_region.py",
     "scripts/tests/test_render_shadow_box_edges.py",
     "scripts/tests/test_render_shape_footprint_metric.py",
+    "scripts/trixel-font-preview.py",
 })
 
 ALLOWED_THIRD_PARTY = frozenset({"PIL"})

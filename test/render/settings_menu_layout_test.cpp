@@ -84,15 +84,15 @@ TEST(SettingsMenuLayoutTest, WidePortraitCanvasKeepsExistingSideBySideGeometry) 
 }
 
 TEST(SettingsMenuLayoutTest, SideBySideBoundaryReservesTextParityAndChevronGap) {
-    const MenuLayout fits = IRPrefab::SettingsMenu::layoutMenu(demoInput(IRMath::ivec2(323, 961)));
+    const MenuLayout fits = IRPrefab::SettingsMenu::layoutMenu(demoInput(IRMath::ivec2(321, 961)));
     const MenuLayout stacks =
-        IRPrefab::SettingsMenu::layoutMenu(demoInput(IRMath::ivec2(322, 961)));
+        IRPrefab::SettingsMenu::layoutMenu(demoInput(IRMath::ivec2(320, 961)));
 
     EXPECT_FALSE(fits.enumRowsStacked_);
     EXPECT_TRUE(stacks.enumRowsStacked_);
     EXPECT_EQ(
         IRPrefab::Widget::detail::dropdownMinimumWidth("PER AXIS ORIGIN", kDropdownPadding),
-        145
+        143
     );
 }
 

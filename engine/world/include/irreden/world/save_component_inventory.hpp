@@ -86,6 +86,7 @@
 #include <irreden/render/components/component_geometric_shape.hpp>
 #include <irreden/render/components/component_gizmo_handle.hpp>
 #include <irreden/render/components/component_gpu_particle_pool.hpp>
+#include <irreden/render/components/component_gui_canvas_display.hpp>
 #include <irreden/render/components/component_gui_hover_state.hpp>
 #include <irreden/render/components/component_gui_position.hpp>
 #include <irreden/render/components/component_help_overlay.hpp>
@@ -418,6 +419,9 @@ IR_SAVE_OPT_OUT(IRComponents::C_HelpOverlayState)
 // C_SettingsMenuState: OPT-OUT — same reasoning as the help overlay above. A
 // menu left open is a momentary view, not authored state.
 IR_SAVE_OPT_OUT(IRComponents::C_SettingsMenuState)
+// C_GuiCanvasDisplay: OPT-OUT — applied from the creation's world config
+// (`gui_pixelated`) on every run; a snapshot would only shadow that setting.
+IR_SAVE_OPT_OUT(IRComponents::C_GuiCanvasDisplay)
 // C_SettingsRegistry: OPT-OUT — the entries hold `std::function`s closing over
 // creation-owned state, which no snapshot can carry across a process. The
 // registry is rebuilt by the creation's init every run; the *values* the
@@ -626,6 +630,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_WidgetTheme,
     IRComponents::C_HelpOverlayState,
     IRComponents::C_SettingsMenuState,
+    IRComponents::C_GuiCanvasDisplay,
     IRComponents::C_SettingsRegistry,
     IRComponents::C_Splitter,
     IRComponents::C_VoxelSelection,

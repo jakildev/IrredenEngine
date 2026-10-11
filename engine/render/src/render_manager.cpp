@@ -683,14 +683,6 @@ void RenderManager::setGuiCanvasFullResolution() {
     IRE_LOG_INFO("GUI canvas set to full resolution ({}x{})", fbSize.x, fbSize.y);
 }
 
-void RenderManager::setGuiPixelated(bool pixelated) {
-    m_guiPixelated = pixelated;
-}
-
-bool RenderManager::isGuiPixelated() const {
-    return m_guiPixelated;
-}
-
 void RenderManager::setHoveredTrixelVisible(bool visible) {
     m_hoveredTrixelVisible = visible;
 }

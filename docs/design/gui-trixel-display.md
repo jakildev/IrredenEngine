@@ -55,8 +55,8 @@ signed screen-pixel distance to the triangle's three edges, and box-filters
 coverage along the nearest edge against the texel across it, in premultiplied
 colour. Edges are therefore anti-aliased at any output scale, and two adjacent
 texels of the same colour show no seam. The main gather skips the GUI canvas
-whenever this pass is registered (`IRPrefab::GuiCanvas::compositesOnScreen`),
-so a creation that never registers it keeps the framebuffer path below.
+whenever this pass is registered, so a creation that never registers it keeps
+the framebuffer path below.
 
 **Framebuffer composite (`gui_pixelated = true`).** The main gather
 composites the GUI canvas into the game-resolution framebuffer as
@@ -68,6 +68,14 @@ pixel diagonal dash, so this path is only a readable trixel display from
 A full-resolution GUI canvas (`setGuiCanvasFullResolution`) has square 1:1
 texels; the render manager stamps it `RECTANGULAR` and both paths display it
 as plain texels.
+
+**One owner for the choice.** `IRPrefab::GuiCanvas` (`gui_canvas.hpp`) holds the
+pixelated setting on the `C_GuiCanvasDisplay` singleton (`setPixelated` /
+`isPixelated`; `World` applies the `gui_pixelated` config key through it) and
+answers `compositesOnScreen()`: true only when the setting is off and
+`GUI_CANVAS_TO_SCREEN` is registered. The gather and the screen pass each latch
+that answer in `beginTick`, so exactly one of them draws the canvas in a frame.
+`test/render/gui_canvas_routing_test.cpp` pins the three states.
 
 ## Font size on the lattice
 

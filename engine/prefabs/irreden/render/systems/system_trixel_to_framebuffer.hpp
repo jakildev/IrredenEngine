@@ -730,6 +730,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     }
 
     static SystemId create() {
+        IRPrefab::GuiCanvas::ensureDisplaySingleton();
         IRRender::createNamedResource<ShaderProgram>(
             "CanvasShapeLightingProgram",
             std::vector{

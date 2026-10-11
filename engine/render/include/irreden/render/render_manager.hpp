@@ -112,8 +112,6 @@ class RenderManager {
     // resolution. A creation that enables this owns laying its GUI out for
     // the finer coordinate space. Overrides guiScale-based sizing.
     void setGuiCanvasFullResolution();
-    void setGuiPixelated(bool pixelated);
-    bool isGuiPixelated() const;
 
     void setHoveredTrixelVisible(bool visible);
     bool isHoveredTrixelVisible() const;
@@ -193,7 +191,6 @@ class RenderManager {
     EntityId m_backgroundCanvas;
     int m_guiScale = 1;
     bool m_guiFullResolution = false;
-    bool m_guiPixelated = false;
     EntityId m_guiCanvas;
     // EntityId m_playerCanvas;
     EntityId m_camera;

@@ -26,17 +26,23 @@ namespace IRSystem {
 // resolution the lattice triangles are rasterized at differs. The quad carries
 // no camera sub-pixel residual: the GUI is screen-locked.
 //
-// Nothing is drawn while the GUI is pixelated (`IRRender::isGuiPixelated`);
-// the main gather then composites the canvas into the framebuffer instead.
+// Nothing is drawn while the GUI is pixelated
+// (`IRPrefab::GuiCanvas::isPixelated`); the main gather then composites the
+// canvas into the framebuffer instead.
 template <> struct System<GUI_CANVAS_TO_SCREEN> {
     IRRender::Buffer *frameDataBuf_ = nullptr;
     IRRender::ShaderProgram *program_ = nullptr;
     IRRender::VAO *quadVao_ = nullptr;
     IRRender::FrameDataGuiCanvasToScreen frameData_{};
+    bool compositesOnScreen_ = false;
+
+    void beginTick() {
+        compositesOnScreen_ = IRPrefab::GuiCanvas::compositesOnScreen();
+    }
 
     void
     tick(const IRComponents::C_TriangleCanvasTextures &canvas, const IRComponents::C_GuiCanvas &) {
-        if (!IRPrefab::GuiCanvas::compositesOnScreen()) {
+        if (!compositesOnScreen_) {
             return;
         }
         IR_PROFILE_SCOPE("guiCanvasToScreen");
@@ -77,6 +83,7 @@ template <> struct System<GUI_CANVAS_TO_SCREEN> {
     }
 
     static SystemId create() {
+        IRPrefab::GuiCanvas::ensureDisplaySingleton();
         IRRender::createNamedResource<IRRender::ShaderProgram>(
             "GuiCanvasToScreenProgram",
             std::vector{
