@@ -56,6 +56,13 @@
 // The bands then survive a save, clear and reload into the manifest, the
 // parts' gate and the sliders.
 //
+// `part_sizes` proves a per-part size at creation: the PART SIZE sliders set a
+// 3x3x8 and a 5x5x1 part in one scene, each seated by its own extent, and both
+// extents survive a save, clear and reload. It also holds the two edit tools
+// that depend on the editable set's extent to it: the X mirror plane re-seats
+// when the selection moves between the two parts, and the scene-sized loft
+// tool refuses the 3x3x8 part instead of reading its masks at the wrong stride.
+//
 // `module_loaded` proves the `--module <dir>` seam against whatever module is
 // loaded: its expectations come from `<dir>/session_expect.lua` (resolved into
 // a ModuleSessionSpec in main.cpp), so no module content is named here. It
@@ -94,6 +101,7 @@ enum class Id {
     MODE_PREVIEW,
     MODE_PREVIEW_SHOTS,
     TEXT_INPUT_COMMAND_CAPTURE,
+    PART_SIZES,
     MODULE_LOADED,
     COMPONENT_ATTACH,
     COMPONENT_FIELD_PAGE,
@@ -135,6 +143,8 @@ inline Id idFromName(const std::string &name) {
         return Id::MODE_PREVIEW_SHOTS;
     if (name == "text_input_command_capture")
         return Id::TEXT_INPUT_COMMAND_CAPTURE;
+    if (name == "part_sizes")
+        return Id::PART_SIZES;
     if (name == "module_loaded")
         return Id::MODULE_LOADED;
     if (name == "component_attach")
@@ -1883,6 +1893,79 @@ inline Recipe build(
             selectedPart,
             "x_toggles_symmetry_after_capture_clears"
         );
+        return builder.finish();
+    }
+    case Id::PART_SIZES: {
+        Builder builder("part_sizes", sceneSize, sceneOrigin);
+        constexpr int kStem = 0;
+        constexpr int kFrame = 1;
+        const IRMath::ivec3 stemSize(3, 3, 8);
+        const IRMath::ivec3 frameSize(5, 5, 1);
+        constexpr float kTolerance = 0.001f;
+
+        builder.segment("stem");
+        builder.setPartSize(stemSize);
+        builder.addVoxelPart();
+        builder.expectPartExtent(kStem, stemSize, "stem_created_at_slider_size");
+        builder.expectPartTransform(
+            kStem,
+            IRMath::vec3(-1.5f, -1.5f, -4.0f),
+            kTolerance,
+            true,
+            "stem_seated_by_its_own_extent"
+        );
+
+        builder.segment("frame");
+        builder.setPartSize(frameSize);
+        builder.addVoxelPart();
+        builder.expectPartExtent(kFrame, frameSize, "frame_created_at_slider_size");
+        builder.expectPartTransform(
+            kFrame,
+            IRMath::vec3(-2.5f, -2.5f, 3.0f),
+            kTolerance,
+            true,
+            "frame_seated_by_its_own_extent"
+        );
+        builder.expectPartExtent(kStem, stemSize, "sliders_do_not_resize_the_stem");
+
+        builder.segment("mirror_frame");
+        builder.enableSymmetry(true, false, false);
+        builder.expectMirrorOffsets(IRMath::vec3(2.0f, 0.0f, 0.0f), "mirror_seated_on_frame");
+
+        builder.segment("mirror_stem");
+        builder.nextPart();
+        builder.expectMirrorOffsets(IRMath::vec3(1.0f, 0.0f, 0.0f), "mirror_reseated_on_stem");
+
+        // Mask index 4 is cell (4, 0) at the scene's stride and cell (1, 1) at
+        // the stem's stride of 3, in both masks: a stamp that read the masks
+        // at the stem's stride would fill stem cell (1, 1, 1).
+        const IRMath::ivec2 loftCell(4, 0);
+        const IRMath::ivec3 aliasedStemCell(1, 1, 1);
+        builder.segment("loft_paint");
+        builder.toggleLoftMode();
+        builder.clickLoftCell(LoftMask::XZ, loftCell);
+        builder.clickLoftCell(LoftMask::YZ, loftCell);
+        builder.expectLoftMask(LoftMask::XZ, loftCell, true, "loft_front_cell_painted");
+        builder.expectLoftMask(LoftMask::YZ, loftCell, true, "loft_side_cell_painted");
+
+        builder.segment("loft_stamp");
+        builder.stampLoft();
+        builder.toggleLoftMode();
+        builder.expectPartOccupancy(
+            kStem,
+            aliasedStemCell,
+            false,
+            "loft_refuses_a_part_off_the_scene_size"
+        );
+
+        builder.segment("save");
+        builder.save();
+        builder.segment("clear");
+        builder.clearEntityScene();
+        builder.segment("load");
+        builder.reload();
+        builder.expectPartExtent(kStem, stemSize, "stem_extent_survives_reload");
+        builder.expectPartExtent(kFrame, frameSize, "frame_extent_survives_reload");
         return builder.finish();
     }
     case Id::MODULE_LOADED:

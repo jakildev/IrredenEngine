@@ -1083,7 +1083,7 @@ _read_claim_decision() {
         mapfile -t all_labels_arr <<< "$all_labels"
     fi
     local present=0 candidate
-    for candidate in "${all_labels_arr[@]}"; do
+    for candidate in ${all_labels_arr[@]+"${all_labels_arr[@]}"}; do
         [[ "$candidate" == "$label" ]] && present=1
     done
     if [[ "$present" -ne 1 ]]; then
@@ -1092,12 +1092,12 @@ _read_claim_decision() {
     fi
 
     local matching
-    matching=$(_claim_contenders "$label" "$prefix" "${all_labels_arr[@]}")
+    matching=$(_claim_contenders "$label" "$prefix" ${all_labels_arr[@]+"${all_labels_arr[@]}"})
     local -a matching_arr=()
     if [[ -n "$matching" ]]; then
         mapfile -t matching_arr <<< "$matching"
     fi
-    _claim_decision "$label" "${matching_arr[@]}"
+    _claim_decision "$label" ${matching_arr[@]+"${matching_arr[@]}"}
 }
 
 # _acquire_label_on <repo> <pr-or-issue> <label> <label-prefix>
@@ -5550,7 +5550,7 @@ cmd_stack() {
 
         if ! check_blockers "$issue_num" "$earlier_in_stack"; then
             echo "fleet-claim stack: #${issue_num} has unresolved blockers" >&2
-            for prev in "${claimed[@]}"; do
+            for prev in ${claimed[@]+"${claimed[@]}"}; do
                 cmd_release "$prev"
             done
             return 1
@@ -5561,7 +5561,7 @@ cmd_stack() {
         # it needs its own call. Stack claiming is all-or-nothing, so one
         # gated member refuses the whole chain.
         if ! check_planning_gates "$issue_num" stack; then
-            for prev in "${claimed[@]}"; do
+            for prev in ${claimed[@]+"${claimed[@]}"}; do
                 cmd_release "$prev"
             done
             return 1
@@ -5571,7 +5571,7 @@ cmd_stack() {
         reserved_worktree=$(reservation_holder_for_task "$issue_num")
         if [[ -n "$reserved_worktree" && "$reserved_worktree" != "$agent" ]]; then
             echo "fleet-claim stack: #${issue_num} is reserved for $reserved_worktree (refusing claim by $agent) — rolling back" >&2
-            for prev in "${claimed[@]}"; do
+            for prev in ${claimed[@]+"${claimed[@]}"}; do
                 cmd_release "$prev"
             done
             return 1
@@ -5589,7 +5589,7 @@ cmd_stack() {
                 owner=$(cat "$CLAIMS_DIR/$slug/owner")
             fi
             echo "fleet-claim stack: #${issue_num} already claimed by $owner — rolling back" >&2
-            for prev in "${claimed[@]}"; do
+            for prev in ${claimed[@]+"${claimed[@]}"}; do
                 cmd_release "$prev"
             done
             return 1
@@ -6029,7 +6029,7 @@ cmd_molecule_list() {
                     # shellcheck disable=SC2206
                     local -a parts=($fields)
                     IFS="$IFS_BAK"
-                    for p in "${parts[@]}"; do
+                    for p in ${parts[@]+"${parts[@]}"}; do
                         case "$p" in
                             id=*)    id="${p#id=}" ;;
                             state=*) state="${p#state=}" ;;

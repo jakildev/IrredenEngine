@@ -284,7 +284,20 @@ TEST(SaveSerializers, EntityCanvasV2MigrationPreservesAuthoredStateAndDefaultsFo
     EXPECT_EQ(restored.value_.depthPriority_, old.depthPriority_);
     EXPECT_FLOAT_EQ(restored.value_.fogRevealFactor_, 1.0f);
     EXPECT_FALSE(restored.value_.fogHidden_);
+    EXPECT_FALSE(restored.value_.fogGhost_);
     EXPECT_EQ(reader.remaining(), 0u);
+}
+
+TEST(SaveSerializers, EntityCanvasRoundTripClearsTransientFogGhostVerdict) {
+    C_EntityCanvas canvas{};
+    canvas.canvasEntity_ = 42;
+    canvas.fogGhost_ = true;
+
+    const C_EntityCanvas restored = roundTrip(canvas);
+
+    EXPECT_EQ(restored.canvasEntity_, canvas.canvasEntity_);
+    EXPECT_FALSE(restored.fogGhost_);
+    expectConsumesAllBytes(canvas);
 }
 
 // --- voxel/ ----------------------------------------------------------------
@@ -328,15 +341,17 @@ TEST(SaveSerializers, ShapeDescriptorV1MigrationPreservesLayoutAndDefaultsFogFac
     EXPECT_EQ(IRWorld::saveVersion<C_ShapeDescriptor>(), 2u);
 }
 
-TEST(SaveSerializers, ShapeDescriptorRoundTripClearsTransientFogHiddenVerdict) {
+TEST(SaveSerializers, ShapeDescriptorRoundTripClearsTransientFogVerdicts) {
     C_ShapeDescriptor shape{};
-    shape.flags_ |= IRMath::SDF::SHAPE_FLAG_FOG_BODY | IRMath::SDF::SHAPE_FLAG_FOG_HIDDEN;
+    shape.flags_ |= IRMath::SDF::SHAPE_FLAG_FOG_BODY | IRMath::SDF::SHAPE_FLAG_FOG_HIDDEN |
+                    IRMath::SDF::SHAPE_FLAG_FOG_GHOST;
     shape.fogBodyFactor_ = 73u;
 
     const C_ShapeDescriptor restored = roundTrip(shape);
 
     EXPECT_NE(restored.flags_ & IRMath::SDF::SHAPE_FLAG_FOG_BODY, 0u);
     EXPECT_EQ(restored.flags_ & IRMath::SDF::SHAPE_FLAG_FOG_HIDDEN, 0u);
+    EXPECT_EQ(restored.flags_ & IRMath::SDF::SHAPE_FLAG_FOG_GHOST, 0u);
     EXPECT_EQ(restored.fogBodyFactor_, 73u);
     expectConsumesAllBytes(shape);
 }

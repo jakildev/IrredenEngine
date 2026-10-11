@@ -1147,7 +1147,7 @@ find_idle_panes_for_role() {
     # the version floor above nominally admits 4.0) — skip the expansion
     # entirely when both arrays are empty rather than narrow the floor.
     if (( ${#reserved_panes[@]} + ${#free_panes[@]} > 0 )); then
-        for p in "${reserved_panes[@]}" "${free_panes[@]}"; do
+        for p in ${reserved_panes[@]+"${reserved_panes[@]}"} ${free_panes[@]+"${free_panes[@]}"}; do
             printf '%s\n' "$p"
         done
     fi

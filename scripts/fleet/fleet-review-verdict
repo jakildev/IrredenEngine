@@ -191,7 +191,7 @@ if [[ -n "$agent" ]]; then
     fi
     claim_label="fleet:reviewing-${host}-${agent}"
 
-    if ! live_labels="$(gh pr view "$number" "${repo_args[@]}" --json labels --jq '.labels[].name' 2>/dev/null)"; then
+    if ! live_labels="$(gh pr view "$number" ${repo_args[@]+"${repo_args[@]}"} --json labels --jq '.labels[].name' 2>/dev/null)"; then
         echo "$PROG: could not read labels for PR #$number (not found, or gh/auth error)." >&2
         exit 1
     fi
@@ -209,7 +209,7 @@ fi
 # commit directly in reviews[].commit_id, so match that identity instead.
 # ----------------------------------------------------------------------
 if [[ "$review_check" -eq 1 ]]; then
-    if ! head_oid="$(gh pr view "$number" "${repo_args[@]}" --json headRefOid --jq '.headRefOid' 2>/dev/null)" || [[ -z "$head_oid" ]]; then
+    if ! head_oid="$(gh pr view "$number" ${repo_args[@]+"${repo_args[@]}"} --json headRefOid --jq '.headRefOid' 2>/dev/null)" || [[ -z "$head_oid" ]]; then
         echo "$PROG: could not read the current head for PR #$number (not found, or gh/auth error)." >&2
         exit 1
     fi

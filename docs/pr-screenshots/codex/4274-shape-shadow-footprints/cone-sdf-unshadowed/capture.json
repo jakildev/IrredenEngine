@@ -1,0 +1,19 @@
+{
+  "revision": "d1beb77d06b088a72bfa95f77e79235c89cf5951",
+  "patch": "diff --git a/creations/demos/shape_debug/main.cpp b/creations/demos/shape_debug/main.cpp\nindex af83552fa..507728483 100644\n--- a/creations/demos/shape_debug/main.cpp\n+++ b/creations/demos/shape_debug/main.cpp\n@@ -1391,6 +1391,7 @@ void registerCliArgs() {\n         \"\"\n     );\n     args.flag(\"--spin-shape-voxel\", \"Render the --spin-shape via the voxel-pool twin, not the SDF\");\n+    args.flag(\"--spin-shape-floor\", \"Add an isolated floor receiver to --spin-shape\");\n     args.flag(\n         \"--gui-test\",\n         \"Replace the capture table with the headless help-overlay GUI test (#2550); \"\n@@ -1511,6 +1512,11 @@ int main(int argc, char **argv) {\n     IREngine::init(argc, argv);\n     readCliArgs();\n \n+    if (IREngine::args().getFlag(\"--spin-shape-floor\") && g_spinShapeType.empty()) {\n+        IR_LOG_ERROR(\"--spin-shape-floor requires --spin-shape\");\n+        return 1;\n+    }\n+\n     // --spin-yaw + --auto-screenshot: reinterpret the screenshot value as\n     // \"shots across one rotation\", and use a small internal warmup. This is\n     // the regression-detection mode \u2014 N static frames at evenly-spaced yaws\n@@ -3372,6 +3378,20 @@ void initSystems() {\n             );\n             cfg.shots_ = g_spinYawShots.data();\n             cfg.numShots_ = static_cast<int>(g_spinYawShots.size());\n+            if (IREngine::args().getFlag(\"--spin-shape-floor\")) {\n+                cfg.onCaptureFrame_ = [](int shotIndex) {\n+                    const vec2 step = IRRender::getTriangleStepSizeScreen();\n+                    const ivec2 viewport = IRRender::getViewport();\n+                    const vec2 camera = IRRender::getEffectiveCameraIso();\n+                    IR_LOG_INFO(\n+                        \"SHADOW-FOOTPRINT shot={} subdivisions={} step={},{} viewport={},{} \"\n+                        \"camera={},{}\",\n+                        shotIndex,\n+                        IRRender::getVoxelRenderEffectiveSubdivisions(),\n+                        step.x, step.y, viewport.x, viewport.y, camera.x, camera.y\n+                    );\n+                };\n+            }\n             IR_LOG_INFO(\n                 \"Spin-yaw sweep: {} shots across one rotation at zoom={}\",\n                 cfg.numShots_,\n@@ -4381,10 +4401,17 @@ void initEntities() {\n     // --spin-shape <name>: replace the side-by-side fixture scene with\n     // ONE shape centred at the origin. Under camera Z-yaw-about-origin the shape\n     // stays screen-centred, so the whole frame is that shape \u2014 clean per-shape\n-    // isolation for the temporal-jitter sweep. No floor / point light: a black\n+    // isolation for the temporal-jitter sweep. By default no floor / point light: a black\n     // field maximises the metric's interior mask. The flag is absent in every\n     // normal run, so the fixture scene below stays byte-identical.\n     if (!g_spinShapeType.empty()) {\n+        if (IREngine::args().getFlag(\"--spin-shape-floor\")) {\n+            const EntityId floor = createSDFShape(\n+                vec3(0.0f, 0.0f, 5.0f), IRRender::ShapeType::BOX,\n+                vec4(64.0f, 64.0f, 2.0f, 0.0f), Color{150, 150, 160, 255}\n+            );\n+            IREntity::setComponent(floor, C_LightBlocker{false, false, 0.0f});\n+        }\n         // \"figure\" is the non-uniform stress case (not an SDF primitive): a\n         // directly-authored asymmetric voxel set with appendages + slanted\n         // planes, to verify analytic edge coverage under camera yaw.\n",
+  "command": [
+    "fleet-run",
+    "IRShapeDebug",
+    "--spin-yaw",
+    "--auto-screenshot",
+    "8",
+    "--zoom",
+    "8",
+    "--no-ao",
+    "--pivot-origin",
+    "--spin-shape",
+    "cone",
+    "--spin-shape-floor",
+    "--no-shadows"
+  ]
+}

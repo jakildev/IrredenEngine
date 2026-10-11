@@ -46,6 +46,8 @@ TEST(SaveTrait, SafetyCriticalOptOuts) {
     EXPECT_FALSE(shouldSave<C_ContactEvent>());
     EXPECT_FALSE(shouldSave<C_SpatialIndex>());
     EXPECT_FALSE(shouldSave<C_VoxelPool>());
+    EXPECT_FALSE(shouldSave<C_FogRevealed>());
+    EXPECT_FALSE(shouldSave<C_FogGhost>());
 }
 
 // Representative Class F gameplay data opts in with a schema version >= 1.

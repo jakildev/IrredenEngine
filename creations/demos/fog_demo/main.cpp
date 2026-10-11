@@ -73,6 +73,8 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
+#include <irreden/voxel/components/component_joint.hpp>
+#include <irreden/voxel/components/component_skeleton.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 
 // Fog driver-side API (revealRadius / setCell) and the BODY reveal systems.
@@ -96,6 +98,8 @@
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
+#include <irreden/render/systems/system_update_joint_matrices.hpp>
+#include <irreden/render/systems/system_update_voxel_positions_gpu.hpp>
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/voxel/systems/system_rebuild_detached_voxels.hpp>
@@ -1088,7 +1092,7 @@ void initChannelProbeScene() {
     g_channelMatchedBody = IREntity::createEntity(
         C_LocalTransform{vec3(-4.0f, 2.0f, 0.0f)},
         C_ShapeDescriptor{IRRender::ShapeType::BOX, vec4(4, 4, 8, 0), Color{80, 220, 100, 255}},
-        C_FogRevealed{0.0f, false, FogOverride::NONE, kChannelProbeMask}
+        C_FogRevealed{0.0f, false, FogOverride::NONE, false, kChannelProbeMask}
     );
     g_channelDefaultBody = IREntity::createEntity(
         C_LocalTransform{vec3(4.0f, -2.0f, 0.0f)},
@@ -1632,6 +1636,16 @@ void probeExploredDecay(int shotIndex) {
 // and each crop frames one whole body at the 2560x1440 zoom-6 shot.
 bool g_entityReveal = false;         // --entity-reveal
 bool g_entityRevealSoftEdge = false; // --entity-reveal-soft-edge
+bool g_ghostPolicy = false;
+struct C_GhostPolicyMover {};
+struct C_GhostPolicyElbow {};
+int g_ghostPolicyFrame = 0;
+constexpr float kGhostPolicyHiddenObserverX = -80.0f;
+constexpr IRVideo::AutoScreenshotShot kGhostPolicyShots[] = {
+    {5.0f, vec2(12.0f, 0.0f), 0.0f, "fog_ghost_policy_held"},
+    {7.0f, vec2(18.0f, 0.0f), 0.0f, "fog_ghost_policy_hide"},
+    {5.0f, vec2(18.0f, 0.0f), 0.0f, "fog_ghost_policy_discarded"},
+};
 constexpr float kEntityRevealRadius = 20.0f;
 constexpr float kEntityRevealSoftEdge = 4.0f;
 constexpr float kEntityRevealSpacing = 5.0f;
@@ -1677,8 +1691,17 @@ constexpr IRVideo::AutoScreenshotShot kEntityRevealSoftShots[] = {
 struct BodyProbeSubject {
     const char *label_;
     IREntity::EntityId entity_;
+    IREntity::EntityId carrierEntity_ = IREntity::kNullEntity;
 };
 std::vector<BodyProbeSubject> g_bodyProbeSubjects;
+enum class GhostPolicyRoute : std::uint8_t { RIGID, SKINNED, SHAPE, CANVAS };
+struct GhostPolicyProbeSubject {
+    GhostPolicyRoute route_;
+    IREntity::EntityId entity_;
+    IREntity::EntityId carrierEntity_;
+    bool ghost_;
+};
+std::vector<GhostPolicyProbeSubject> g_ghostPolicyProbeSubjects;
 std::vector<Color> g_bodyProbeBeforeColors;
 int g_bodyProbeBeforeFrame = 0;
 int g_bodyProbeFrame = 0;
@@ -1736,7 +1759,10 @@ void probeEntityRevealBodies() {
     const float zCeiling = kEdgeZCostObserverZ - kEdgeZCostCeilingFreeBand;
 
     for (const BodyProbeSubject &subject : g_bodyProbeSubjects) {
-        const auto expected = static_cast<std::uint32_t>(subject.entity_);
+        const IREntity::EntityId carrierEntity = subject.carrierEntity_ == IREntity::kNullEntity
+                                                     ? subject.entity_
+                                                     : subject.carrierEntity_;
+        const auto expected = static_cast<std::uint32_t>(carrierEntity);
         const auto revealed = IREntity::getComponentOptional<C_FogRevealed>(subject.entity_);
         int texels = 0;
         int aboveCeiling = 0;
@@ -1780,6 +1806,130 @@ void probeEntityRevealBodies() {
             cutFaceTexels,
             ratioMin,
             ratioMax
+        );
+    }
+}
+
+void probeGhostPolicy(int shotIndex) {
+    const auto &textures =
+        IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity());
+    std::vector<IRMath::uvec2> carriers;
+    std::vector<Color> colors;
+    textures.readEntityIdCarriers(carriers);
+    textures.readColors(colors);
+
+    struct ProbeStats {
+        int totalTexels = 0;
+        int exploredTexels = 0;
+    };
+    std::vector<ProbeStats> stats(g_ghostPolicyProbeSubjects.size());
+    std::uint32_t maxCarrier = 0;
+    for (const GhostPolicyProbeSubject &subject : g_ghostPolicyProbeSubjects) {
+        maxCarrier = IRMath::max(maxCarrier, static_cast<std::uint32_t>(subject.carrierEntity_));
+    }
+    std::vector<int> subjectByCarrier(static_cast<std::size_t>(maxCarrier) + 1u, -1);
+    for (std::size_t i = 0; i < g_ghostPolicyProbeSubjects.size(); ++i) {
+        const auto carrier =
+            static_cast<std::uint32_t>(g_ghostPolicyProbeSubjects[i].carrierEntity_);
+        subjectByCarrier[carrier] = static_cast<int>(i);
+    }
+    for (std::size_t pixel = 0; pixel < carriers.size(); ++pixel) {
+        const std::uint32_t carrier = carriers[pixel].x;
+        if (carrier >= subjectByCarrier.size() || subjectByCarrier[carrier] < 0) {
+            continue;
+        }
+        ProbeStats &subjectStats = stats[static_cast<std::size_t>(subjectByCarrier[carrier])];
+        ++subjectStats.totalTexels;
+        const int minChannel = IRMath::min(
+            static_cast<int>(colors[pixel].red_),
+            IRMath::min(
+                static_cast<int>(colors[pixel].green_),
+                static_cast<int>(colors[pixel].blue_)
+            )
+        );
+        const int maxChannel = IRMath::max(
+            static_cast<int>(colors[pixel].red_),
+            IRMath::max(
+                static_cast<int>(colors[pixel].green_),
+                static_cast<int>(colors[pixel].blue_)
+            )
+        );
+        if (maxChannel - minChannel <= 12 && luminanceOf(colors[pixel]) >= 5.0f) {
+            ++subjectStats.exploredTexels;
+        }
+    }
+
+    const auto routeName = [](GhostPolicyRoute route) {
+        switch (route) {
+        case GhostPolicyRoute::RIGID:
+            return "rigid";
+        case GhostPolicyRoute::SKINNED:
+            return "skinned";
+        case GhostPolicyRoute::SHAPE:
+            return "shape";
+        case GhostPolicyRoute::CANVAS:
+            return "canvas";
+        }
+        return "unknown";
+    };
+    for (std::size_t i = 0; i < g_ghostPolicyProbeSubjects.size(); ++i) {
+        const GhostPolicyProbeSubject &subject = g_ghostPolicyProbeSubjects[i];
+        const ProbeStats &subjectStats = stats[i];
+        const auto &fog = IREntity::getComponent<C_FogRevealed>(subject.entity_);
+
+        IR_LOG_INFO(
+            "FOG-GHOST-PROBE shot={} route={} policy={} held={} total={} explored={}",
+            shotIndex,
+            routeName(subject.route_),
+            subject.ghost_ ? "GHOST" : "HIDE",
+            fog.ghostHeld_,
+            subjectStats.totalTexels,
+            subjectStats.exploredTexels
+        );
+
+        if (subject.route_ == GhostPolicyRoute::CANVAS) {
+            const auto &canvas = IREntity::getComponent<C_EntityCanvas>(subject.entity_);
+            const bool expectedVisible = shotIndex < 2 && subject.ghost_;
+            requireFogProbe(
+                "FOG-GHOST-PROBE",
+                fog.ghostHeld_ == expectedVisible && canvas.fogGhost_ == expectedVisible &&
+                    canvas.fogHidden_ != expectedVisible,
+                "detached-canvas composite state did not match the hidden policy"
+            );
+            continue;
+        }
+        if (shotIndex < 2 && subject.ghost_) {
+            const vec3 ghostPosition =
+                IREntity::getComponent<C_FogGhost>(subject.entity_).pose_.translation_;
+            const vec3 livePosition =
+                IREntity::getComponent<C_WorldTransform>(subject.entity_).translation_;
+            requireFogProbe(
+                "FOG-GHOST-PROBE",
+                fog.ghostHeld_ && subjectStats.totalTexels > 0 &&
+                    subjectStats.exploredTexels == subjectStats.totalTexels &&
+                    IRMath::length(ghostPosition - livePosition) > 20.0f,
+                "GHOST route must draw explored matter while its live pose remains displaced"
+            );
+        } else {
+            requireFogProbe(
+                "FOG-GHOST-PROBE",
+                !fog.ghostHeld_ && subjectStats.totalTexels == 0,
+                shotIndex < 2 ? "HIDE route rendered after leaving visibility"
+                              : "remembered-spot sighting did not discard the route"
+            );
+        }
+    }
+
+    if (shotIndex == 1) {
+        IRPrefab::Fog::setVisionCircle(
+            0.0f,
+            0.0f,
+            20.0f,
+            kFogVisionEdgeDefault,
+            kEdgeZCostObserverZ,
+            0.0f,
+            0.0f,
+            0.0f
         );
     }
 }
@@ -2727,6 +2877,10 @@ int main(int argc, char **argv) {
         "Enable the canvas reveal-surface treatment (dissolve + cap tone) on the "
         "--ceiling-treatment rows or the --occlusion=high-ground --los-softness band"
     );
+    IREngine::args().flag(
+        "--ghost-policy",
+        "Move governed voxel and shape bodies through the fog rim with GHOST retention"
+    );
     IREngine::args().enumValue(
         "--occlusion",
         "Line-of-sight fog scene "
@@ -2892,6 +3046,9 @@ int main(int argc, char **argv) {
     g_edgeZCostCeiling = IREngine::args().getFlag("--edge-zcost-ceiling");
     g_entityReveal = IREngine::args().getFlag("--entity-reveal");
     g_entityRevealSoftEdge = IREngine::args().getFlag("--entity-reveal-soft-edge");
+    g_ghostPolicy = IREngine::args().getFlag("--ghost-policy");
+    g_entityRevealSoftEdge = g_entityRevealSoftEdge || g_ghostPolicy;
+    g_entityReveal = g_entityReveal || g_ghostPolicy;
     g_entityReveal = g_entityReveal || (g_entityRevealSoftEdge && !g_detachedBody);
     g_ceilingTreatment = IREngine::args().getFlag("--ceiling-treatment");
     g_revealTreatment = IREngine::args().getFlag("--reveal-treatment");
@@ -3090,7 +3247,7 @@ void initSystems() {
     // REBUILD_DETACHED_VOXELS fills the private pool. Must run AFTER
     // UPDATE_VOXEL_SET_CHILDREN. Added only for that scene so the other reveal
     // modes keep their committed render-verify refs byte-identical.
-    if (g_detachedEdge) {
+    if (g_detachedEdge || g_ghostPolicy) {
         updatePipeline.push_back(IRSystem::createSystem<IRSystem::PROPAGATE_CANVAS_ROTATION>());
         updatePipeline.push_back(IRSystem::createSystem<IRSystem::REBUILD_DETACHED_VOXELS>());
     }
@@ -3106,12 +3263,67 @@ void initSystems() {
     // BEFORE TRIXEL_TO_FRAMEBUFFER — that order is the load-bearing part of the
     // fog wiring (faithful to shape_debug's pre-removal pipeline).
     std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    if (g_ghostPolicy) {
+        renderPipeline.push_front(
+            IRSystem::createSystem<C_GhostPolicyElbow, C_LocalTransform>(
+                "FogGhostPolicyElbow",
+                [](C_GhostPolicyElbow &, C_LocalTransform &transform) {
+                    if (g_ghostPolicyFrame <= 20 || g_ghostPolicyFrame > 180) {
+                        return;
+                    }
+                    const float angle =
+                        0.45f * IRMath::sin(static_cast<float>(g_ghostPolicyFrame) * 0.08f);
+                    transform.rotation_ = IRMath::quatAxisAngle(vec3(0.0f, 1.0f, 0.0f), angle);
+                }
+            )
+        );
+        renderPipeline.push_front(
+            IRSystem::createSystem<C_GhostPolicyMover, C_LocalTransform>(
+                "FogGhostPolicyMove",
+                [](C_GhostPolicyMover &, C_LocalTransform &transform) {
+                    if (g_ghostPolicyFrame > 20 && g_ghostPolicyFrame <= 180) {
+                        transform.translation_.x += 0.25f;
+                    }
+                }
+            )
+        );
+        renderPipeline.push_front(
+            IRSystem::createSystem<C_Camera>(
+                "FogGhostPolicyClock",
+                [](C_Camera &) {},
+                []() {
+                    ++g_ghostPolicyFrame;
+                    if (g_ghostPolicyFrame == 21) {
+                        IRPrefab::Fog::setVisionCircle(
+                            kGhostPolicyHiddenObserverX,
+                            0.0f,
+                            14.0f,
+                            kFogVisionEdgeDefault,
+                            kEdgeZCostObserverZ,
+                            0.0f,
+                            0.0f,
+                            0.0f
+                        );
+                    }
+                }
+            )
+        );
+    }
     renderPipeline.insert(
         renderPipeline.end(),
         {
             IRSystem::createSystem<IRSystem::RENDERING_VELOCITY_2D_ISO>(),
             IRSystem::createSystem<IRSystem::BUILD_LIGHT_OCCLUSION_GRID>(),
             IRSystem::createSystem<IRSystem::FOG_LOS_BUILD>(),
+        }
+    );
+    if (g_ghostPolicy) {
+        renderPipeline.push_back(IRSystem::createSystem<IRSystem::UPDATE_JOINT_MATRICES>());
+        renderPipeline.push_back(IRSystem::createSystem<IRSystem::UPDATE_VOXEL_POSITIONS_GPU>());
+    }
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
             IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
             IRSystem::createSystem<IRSystem::SHAPES_TO_TRIXEL>(),
             IRSystem::createSystem<IRSystem::COMPUTE_VOXEL_AO>(),
@@ -3150,7 +3362,7 @@ void initSystems() {
     // cross-sectioned voxels from STAGE_1/2) onto the main framebuffer between
     // TRIXEL_TO_FRAMEBUFFER and FRAMEBUFFER_TO_SCREEN. Added only for that
     // scene so the other reveal modes keep their committed refs byte-identical.
-    if (g_detachedEdge) {
+    if (g_detachedEdge || g_ghostPolicy) {
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>());
     }
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
@@ -3219,7 +3431,7 @@ void initSystems() {
         );
     }
 
-    if (g_entityReveal && g_autoWarmupFrames > 0) {
+    if (g_entityReveal && !g_ghostPolicy && g_autoWarmupFrames > 0) {
         IRSystem::SystemId probeTickId = IRSystem::createSystem<C_Name>(
             "FogEntityRevealIdProbe",
             [](C_Name &) {},
@@ -3298,6 +3510,8 @@ void initSystems() {
             cfg.onCaptureFrame_ = &probeLightingDensity;
         } else if (g_worldPan) {
             cfg.onCaptureFrame_ = &probeWorldPan;
+        } else if (g_ghostPolicy) {
+            cfg.onCaptureFrame_ = &probeGhostPolicy;
         } else if (g_depthSlab) {
             cfg.onCaptureFrame_ = &probeDepthSlab;
         } else if (g_exploredDecay) {
@@ -3316,7 +3530,9 @@ void initSystems() {
         // --edge-smooth zoom on the GRID cross-section clip edge (hard vs smooth
         // disc); --player-walk captures the walking reveal sequence; the
         // default captures the three static fog-boundary shots.
-        if (g_lightingDensityCheck) {
+        if (g_ghostPolicy) {
+            IRVideo::setAutoScreenshotShots(cfg, kGhostPolicyShots);
+        } else if (g_lightingDensityCheck) {
             IRVideo::setAutoScreenshotShots(cfg, kLightingDensityShots);
         } else if (g_worldPan) {
             IRVideo::setAutoScreenshotShots(cfg, kWorldPanShots);
@@ -3822,6 +4038,108 @@ void initEntities() {
     }
 
     if (g_entityReveal) {
+        if (g_ghostPolicy) {
+            IRPrefab::Fog::setVisionCircle(
+                0.0f,
+                0.0f,
+                20.0f,
+                kFogVisionEdgeDefault,
+                kEdgeZCostObserverZ,
+                0.0f,
+                0.0f,
+                0.0f
+            );
+            IREntity::createEntity(
+                C_LocalTransform{vec3(10.0f, 0.0f, 5.0f)},
+                C_VoxelSetNew{IRMath::ivec3{72, 44, 1}, Color{70, 78, 92, 255}, true},
+                C_FogField{}
+            );
+
+            const auto registerBody = [](GhostPolicyRoute route,
+                                         IREntity::EntityId entity,
+                                         IREntity::EntityId carrier,
+                                         bool ghost) {
+                IRPrefab::Fog::setEntityRevealGoverned(entity);
+                IRPrefab::Fog::setHiddenPolicy(
+                    entity,
+                    ghost ? FogHiddenPolicy::GHOST : FogHiddenPolicy::HIDE
+                );
+                IREntity::setComponent(entity, C_GhostPolicyMover{});
+                g_ghostPolicyProbeSubjects.push_back(
+                    GhostPolicyProbeSubject{route, entity, carrier, ghost}
+                );
+            };
+            const auto createRigid = [&](vec3 pos, Color color, bool ghost) {
+                const IREntity::EntityId entity = IREntity::createEntity(
+                    C_LocalTransform{pos},
+                    C_VoxelSetNew{IRMath::ivec3{4, 4, 8}, color, IRComponents::EntityAnchor::GROUND}
+                );
+                registerBody(GhostPolicyRoute::RIGID, entity, entity, ghost);
+            };
+            const auto createShapeBody = [&](vec3 pos, Color color, bool ghost) {
+                const IREntity::EntityId entity = IREntity::createEntity(
+                    C_LocalTransform{pos - vec3(0.0f, 0.0f, 4.5f)},
+                    C_ShapeDescriptor{IRRender::ShapeType::BOX, vec4(4.0f, 4.0f, 8.0f, 0.0f), color}
+                );
+                registerBody(GhostPolicyRoute::SHAPE, entity, entity, ghost);
+            };
+            const auto createSkinned = [&](vec3 pos, Color color, bool ghost) {
+                const IREntity::EntityId root = IREntity::createEntity(
+                    C_LocalTransform{pos},
+                    C_VoxelSetNew{IRMath::ivec3{9, 3, 3}, color, true}
+                );
+                auto &voxels = IREntity::getComponent<C_VoxelSetNew>(root);
+                voxels.editVoxels([](int, C_Voxel &voxel, vec3 localPos) {
+                    voxel.bone_id_ = localPos.x < 0.0f ? 0 : 1;
+                });
+                const IREntity::EntityId jointRoot =
+                    IREntity::createEntity(C_Joint{}, C_LocalTransform{vec3(-4.0f, 0.0f, 0.0f)});
+                IREntity::setParent(jointRoot, root);
+                const IREntity::EntityId elbow = IREntity::createEntity(
+                    C_Joint{},
+                    C_LocalTransform{vec3(4.0f, 0.0f, 0.0f)},
+                    C_GhostPolicyElbow{}
+                );
+                IREntity::setParent(elbow, jointRoot);
+                C_Skeleton skeleton;
+                skeleton.joints_ = {jointRoot, elbow};
+                skeleton.bindPose_ = {
+                    IRMath::SQT{vec3(1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), vec3(-4.0f, 0.0f, 0.0f)},
+                    IRMath::SQT{vec3(1.0f), vec4(0.0f, 0.0f, 0.0f, 1.0f), vec3(0.0f, 0.0f, 0.0f)},
+                };
+                IREntity::setComponent(root, skeleton);
+                registerBody(GhostPolicyRoute::SKINNED, root, root, ghost);
+            };
+            const auto createCanvas = [&](vec3 pos, Color color, bool ghost) {
+                C_EntityCanvas canvas = IRPrefab::EntityCanvas::createWithVoxelPool(
+                    ghost ? "fog_ghost_canvas" : "fog_hide_canvas",
+                    IRMath::ivec2{96, 96},
+                    IRMath::ivec3{12, 12, 12}
+                );
+                const IREntity::EntityId carrier = IREntity::createEntity(
+                    C_LocalTransform{vec3(0.0f)},
+                    C_VoxelSetNew{IRMath::ivec3{6, 4, 4}, color, true, canvas.canvasEntity_},
+                    C_FogField{}
+                );
+                const IREntity::EntityId owner = IREntity::createEntity(
+                    C_LocalTransform{pos},
+                    C_RotationMode{RotationMode::DETACHED_REVOXELIZE},
+                    canvas
+                );
+                registerBody(GhostPolicyRoute::CANVAS, owner, carrier, ghost);
+            };
+
+            createRigid(vec3(-4.0f, -12.0f, 4.0f), Color{75, 205, 245, 255}, true);
+            createRigid(vec3(-1.0f, -12.0f, 4.0f), Color{245, 145, 75, 255}, false);
+            createSkinned(vec3(-4.0f, -4.0f, 1.0f), Color{225, 120, 195, 255}, true);
+            createSkinned(vec3(-1.0f, -4.0f, 1.0f), Color{245, 185, 75, 255}, false);
+            createShapeBody(vec3(-4.0f, 4.0f, 4.0f), Color{110, 230, 145, 255}, true);
+            createShapeBody(vec3(-1.0f, 4.0f, 4.0f), Color{235, 220, 90, 255}, false);
+            createCanvas(vec3(-4.0f, 12.0f, 3.0f), Color{255, 255, 255, 255}, true);
+            createCanvas(vec3(-1.0f, 12.0f, 3.0f), Color{245, 120, 115, 255}, false);
+            return;
+        }
+
         IRPrefab::Fog::setVisionCircle(
             0.0f,
             0.0f,

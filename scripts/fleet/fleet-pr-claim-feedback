@@ -142,7 +142,7 @@ fi
 
 # Step 1 — atomic claim FIRST. The sole-holder claim decides one winner;
 # the loser (or a gh outage) exits here having mutated nothing.
-if ! fleet-claim "${claim_repo_args[@]}" amending-claim "$pr_number" "$agent"; then
+if ! fleet-claim ${claim_repo_args[@]+"${claim_repo_args[@]}"} amending-claim "$pr_number" "$agent"; then
     echo "fleet-pr-claim-feedback: did not win the amending claim for PR #$pr_number — skip it." >&2
     exit 1
 fi
@@ -151,9 +151,9 @@ fi
 # unknown ref, wrong cwd caught by the worktree-identity guard), release
 # the claim so the PR is not left carrying a dangling `fleet:amending-*`
 # label, then exit non-zero.
-if ! fleet-pr-checkout-detached "$pr_number" "${checkout_repo_args[@]}"; then
+if ! fleet-pr-checkout-detached "$pr_number" ${checkout_repo_args[@]+"${checkout_repo_args[@]}"}; then
     echo "fleet-pr-claim-feedback: checkout failed for PR #$pr_number — releasing claim." >&2
-    fleet-claim "${claim_repo_args[@]}" amending-release "$pr_number" "$agent" || true
+    fleet-claim ${claim_repo_args[@]+"${claim_repo_args[@]}"} amending-release "$pr_number" "$agent" || true
     exit 1
 fi
 

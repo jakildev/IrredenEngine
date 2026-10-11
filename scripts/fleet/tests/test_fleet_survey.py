@@ -211,6 +211,48 @@ class Dispatch(FleetSurveyFixture):
         self.assertEqual(d["cache_age_s"], 60)
         self.assertEqual(d["pools"]["github-app-graphql"]["used"], 1558)
 
+    def test_usage_gate_reports_the_latest_transition(self):
+        transitions = (
+            (
+                ("[2026-10-06T23:00:00Z dispatcher] usage gate closed:"
+                 "github_graphql[user] missing or stale\n"
+                 "[2026-10-06T23:05:00Z dispatcher] usage gate re-opened "
+                 "(open:github[user]); resuming dispatch\n"),
+                "  usage gate: open since 2026-10-06T23:05:00Z",
+                "usage gate re-opened (open:github[user]); resuming dispatch",
+            ),
+            (
+                ("[2026-10-06T23:00:00Z dispatcher] usage gate re-opened "
+                 "(open:github[user]); resuming dispatch\n"
+                 "[2026-10-06T23:05:00Z dispatcher] usage gate closed:"
+                 "github_graphql[user] missing or stale; deferring all dispatches\n"),
+                ("  usage gate: closed since 2026-10-06T23:05:00Z: "
+                 "github_graphql[user] missing or stale; deferring all dispatches"),
+                ("usage gate closed:github_graphql[user] missing or stale; "
+                 "deferring all dispatches"),
+            ),
+            (
+                ("[2026-10-06T23:00:00Z dispatcher] usage gate closed:"
+                 "github_graphql[user] missing or stale; deferring all dispatches\n"
+                 "[2026-10-06T23:05:00Z dispatcher] claude usage gate re-opened "
+                 "(open:five_hour util=10%); Claude dispatch resumes\n"),
+                ("  usage gate: closed since 2026-10-06T23:00:00Z: "
+                 "github_graphql[user] missing or stale; deferring all dispatches"),
+                ("usage gate closed:github_graphql[user] missing or stale; "
+                 "deferring all dispatches"),
+            ),
+        )
+        for index, (log, expected_text, expected_event) in enumerate(transitions):
+            log_path = Path(self.tmp.name) / "gate-transition.log"
+            log_path.write_text(log)
+            report = _mod.survey(STATE, {"engine": ISSUES}, {"engine": PRS}, "mac",
+                                 Path(self.tmp.name) / "usage", log_path, now=NOW)
+            text = _mod.render(report)
+            self.assertIn(expected_text, text)
+            if index == 0:
+                self.assertNotIn("closed since", text)
+            self.assertTrue(report["dispatch"]["usage_gate"].endswith(expected_event))
+
 
 class Queue(FleetSurveyFixture):
     def ids(self, bucket, host="mac"):

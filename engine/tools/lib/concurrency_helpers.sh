@@ -520,7 +520,7 @@ ir_acquire_cpu() {
             return 0
         fi
         # Couldn't get enough — release the partials and either retry or fail.
-        for slot in "${got[@]}"; do
+        for slot in ${got[@]+"${got[@]}"}; do
             _ir_release_one "$slot"
         done
         got=()

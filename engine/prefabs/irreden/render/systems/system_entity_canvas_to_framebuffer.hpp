@@ -8,6 +8,7 @@
 #include <irreden/ir_platform.hpp>
 
 #include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/systems/system_fog_reveal_eval_canvas.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/camera.hpp>
@@ -37,6 +38,7 @@ namespace IRSystem {
 constexpr int kMaxEntityCanvasInstances = IRConstants::kEntityCanvasLiveBudget;
 
 template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
+    using GhostEval = System<FOG_REVEAL_EVAL_CANVAS_GHOST>;
     struct CanvasInstance {
         FrameDataTrixelToFramebuffer frameData_;
         const C_TriangleCanvasTextures *textures_;
@@ -48,6 +50,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     std::vector<CanvasInstance> instances_;
     bool capacityWarningEmitted_ = false;
     std::vector<std::pair<IREntity::EntityId, C_HitBox2D *>> hitboxes_;
+    const std::vector<GhostEval::HeldPose> *heldGhostPoses_ = nullptr;
 
     // Frame constants snapshotted once in beginTick because they are constant
     // across every visible detached entity in a frame. fbRes_ comes from the
@@ -122,6 +125,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     }
 
     void beginTick() {
+        heldGhostPoses_ = &IRPrefab::Fog::heldCanvasGhostPoses();
         instances_.clear();
         instances_.reserve(kMaxEntityCanvasInstances);
         collectHitboxes();
@@ -175,6 +179,19 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         const C_EntityCanvas &entityCanvas,
         const C_WorldTransform &worldTransform
     ) {
+        const C_WorldTransform *pose = &worldTransform;
+        if (entityCanvas.fogGhost_) {
+            const auto &held = *heldGhostPoses_;
+            const auto it = std::lower_bound(
+                held.begin(),
+                held.end(),
+                entity,
+                [](const auto &entry, IREntity::EntityId id) { return entry.entity_ < id; }
+            );
+            if (it != held.end() && it->entity_ == entity) {
+                pose = &it->pose_;
+            }
+        }
         C_HitBox2D *hitbox = nullptr;
         const auto hitboxIt = std::lower_bound(
             hitboxes_.begin(),
@@ -231,8 +248,8 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // (system_shapes_to_trixel via pos3DtoPos2DIsoYawed + the effective
         // offset). The two coincide at yaw == 0, so cardinal frames stay
         // byte-identical.
-        vec2 entityIso = pos3DtoPos2DIso(worldTransform.translation_);
-        vec2 entityIsoPlacement = pos3DtoPos2DIsoYawed(worldTransform.translation_, visualYaw_) +
+        vec2 entityIso = pos3DtoPos2DIso(pose->translation_);
+        vec2 entityIsoPlacement = pos3DtoPos2DIsoYawed(pose->translation_, visualYaw_) +
                                   pos3DtoPos2DIso(canvasTextures->renderedCellOffset_);
 
         ivec2 mainCanvasSizeI = ivec2(mainCanvasSize_);
@@ -304,7 +321,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 framebufferExtent,
                 foregroundPriority ? 1 : 0,
                 IRRender::pickIsoDepthForWorldPosition(
-                    worldTransform.translation_,
+                    pose->translation_,
                     visualYaw_,
                     effectiveSub_
                 )
@@ -395,10 +412,8 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
                 // with); at a cardinal pose pos3DtoDistanceYawed(cell, 0) ==
                 // pos3DtoDistance(cell) exactly, so the cardinal fast path stays
                 // byte-identical.
-                const int worldDepth = pos3DtoDistanceYawed(
-                    vec3(roundVec3HalfUp(worldTransform.translation_)),
-                    visualYaw_
-                );
+                const int worldDepth =
+                    pos3DtoDistanceYawed(vec3(roundVec3HalfUp(pose->translation_)), visualYaw_);
                 compositeDistanceOffset =
                     (cubeSub >= 1) ? worldDepth * effectiveSub_ * kDepthEncodeShift : worldDepth;
                 if (cubeSub >= 1) {

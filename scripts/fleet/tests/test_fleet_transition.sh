@@ -101,11 +101,11 @@ case "$action" in
     edit)
         # Target must exist to edit it.
         [[ -f "$file" ]] || exit 1
-        for l in "${dels[@]}"; do
+        for l in ${dels[@]+"${dels[@]}"}; do
             grep -Fxv -- "$l" "$file" >"$file.tmp" 2>/dev/null || true
             mv "$file.tmp" "$file"
         done
-        for l in "${adds[@]}"; do
+        for l in ${adds[@]+"${adds[@]}"}; do
             grep -Fxq -- "$l" "$file" 2>/dev/null || echo "$l" >>"$file"
         done
         exit 0;;

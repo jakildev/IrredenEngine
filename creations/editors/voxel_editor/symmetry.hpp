@@ -26,6 +26,50 @@ inline float mirrorCenterOffset(int sizeAxis) {
     return (sizeAxis - 1) * 0.5f;
 }
 
+// Seats mirror axis @p axis (0 x, 1 y, 2 z) at the centre of a set of @p size.
+// The offset is per set: one seated for a different extent reflects cells out
+// of bounds.
+inline void seatMirrorAxis(SymmetryState &sym, int axis, IRMath::ivec3 size) {
+    const float offset = mirrorCenterOffset(size[axis]);
+    if (axis == 0) {
+        sym.offsetX_ = offset;
+    } else if (axis == 1) {
+        sym.offsetY_ = offset;
+    } else {
+        sym.offsetZ_ = offset;
+    }
+}
+
+// Seats every enabled axis for a set of @p size: what a change of editable set
+// owes the mirror state.
+inline void seatEnabledMirrorAxes(SymmetryState &sym, IRMath::ivec3 size) {
+    if (sym.enableX_) {
+        seatMirrorAxis(sym, 0, size);
+    }
+    if (sym.enableY_) {
+        seatMirrorAxis(sym, 1, size);
+    }
+    if (sym.enableZ_) {
+        seatMirrorAxis(sym, 2, size);
+    }
+}
+
+// How far a seated plane may sit from another and still be the same plane.
+// Planes land on multiples of 0.5, so this only absorbs float noise.
+inline constexpr float kMirrorOffsetTolerance = 0.001f;
+
+// Whether two states mirror identically: the same enabled axes, each seated at
+// the same plane. A disabled axis's offset is not compared.
+inline bool mirrorPlanesMatch(const SymmetryState &a, const SymmetryState &b) {
+    const auto axisMatches = [](bool enabledA, float offsetA, bool enabledB, float offsetB) {
+        return enabledA == enabledB &&
+               (!enabledA || IRMath::abs(offsetA - offsetB) <= kMirrorOffsetTolerance);
+    };
+    return axisMatches(a.enableX_, a.offsetX_, b.enableX_, b.offsetX_) &&
+           axisMatches(a.enableY_, a.offsetY_, b.enableY_, b.offsetY_) &&
+           axisMatches(a.enableZ_, a.offsetZ_, b.enableZ_, b.offsetZ_);
+}
+
 // Fills `out` with all positions (including `pos`) where a voxel should be placed
 // or erased. For each enabled mirror axis, every accumulated position is reflected;
 // processing order is X → Y → Z (XYZ-active gives up to 8 positions). Positions

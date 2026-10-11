@@ -18,6 +18,7 @@
 #include <irreden/render/lod_utils.hpp>
 #include <irreden/render/sun_shadow_constants.hpp>
 #include <irreden/render/systems/system_bake_sun_shadow_map.hpp>
+#include <irreden/render/systems/system_fog_reveal_eval_shape.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/render/shape_tile_domain.hpp>
 #include <irreden/render/voxel_dispatch_grid.hpp>
@@ -50,6 +51,7 @@ static_assert(
 
 template <> struct System<SHAPES_TO_TRIXEL> {
     using CanvasId = IREntity::EntityId;
+    using GhostEval = System<FOG_REVEAL_EVAL_SHAPE_GHOST>;
 
     ShaderProgram *shapeDepthProgram_ = nullptr;
     ShaderProgram *shapePublishProgram_ = nullptr;
@@ -101,6 +103,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     // UPDATE phase plus every pinned entity. The per-entity tick skips shapes
     // whose [lodMax_ .. lodMin_] band does not contain their resolved tier.
     IRPrefab::Lod::TierSnapshot lod_;
+    const std::vector<GhostEval::HeldPose> *heldGhostPoses_ = nullptr;
 
     void tick(
         IREntity::EntityId entityId, const C_ShapeDescriptor &shape, const C_WorldTransform &xform
@@ -109,21 +112,34 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             (shape.flags_ & SHAPE_FLAG_FOG_HIDDEN) != 0u) {
             return;
         }
+        const C_WorldTransform *pose = &xform;
+        if ((shape.flags_ & IRMath::SDF::SHAPE_FLAG_FOG_GHOST) != 0u) {
+            const auto &held = *heldGhostPoses_;
+            const auto it = std::lower_bound(
+                held.begin(),
+                held.end(),
+                entityId,
+                [](const auto &entry, IREntity::EntityId id) { return entry.entity_ < id; }
+            );
+            if (it != held.end() && it->entity_ == entityId) {
+                pose = &it->pose_;
+            }
+        }
         if (IRRender::shouldSkipAtLod(shape.lodMin_, shape.lodMax_, lod_.resolve(entityId))) {
             return;
         }
         if (cullBounds_.has_value()) {
             vec3 sizeForExtent = vec3(shape.params_);
-            const bool hasRotation = IRMath::abs(xform.rotation_.w) < 0.9999f;
+            const bool hasRotation = IRMath::abs(pose->rotation_.w) < 0.9999f;
             if (hasRotation) {
                 vec3 ax = IRMath::abs(
-                    IRMath::rotateVectorByQuat(vec3(sizeForExtent.x, 0, 0), xform.rotation_)
+                    IRMath::rotateVectorByQuat(vec3(sizeForExtent.x, 0, 0), pose->rotation_)
                 );
                 vec3 ay = IRMath::abs(
-                    IRMath::rotateVectorByQuat(vec3(0, sizeForExtent.y, 0), xform.rotation_)
+                    IRMath::rotateVectorByQuat(vec3(0, sizeForExtent.y, 0), pose->rotation_)
                 );
                 vec3 az = IRMath::abs(
-                    IRMath::rotateVectorByQuat(vec3(0, 0, sizeForExtent.z), xform.rotation_)
+                    IRMath::rotateVectorByQuat(vec3(0, 0, sizeForExtent.z), pose->rotation_)
                 );
                 sizeForExtent = ax + ay + az;
             }
@@ -135,11 +151,11 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 // the rotated footprint survive the cardinal-snapped viewport.
                 sizeForExtent =
                     IRMath::yawGrownIsoHalfExtent(sizeForExtent, yawCosVisual_, yawSinVisual_);
-                shapeIsoPosition = IRMath::pos3DtoPos2DIsoYawed(xform.translation_, visualYaw_);
+                shapeIsoPosition = IRMath::pos3DtoPos2DIsoYawed(pose->translation_, visualYaw_);
             } else {
-                vec3 viewPos = xform.translation_;
+                vec3 viewPos = pose->translation_;
                 if (!yawZero_) {
-                    viewPos = IRMath::rotateCardinalZ(xform.translation_, cardinalIndex_);
+                    viewPos = IRMath::rotateCardinalZ(pose->translation_, cardinalIndex_);
                     sizeForExtent = IRMath::yawGrownIsoHalfExtent(sizeForExtent, yawCos_, yawSin_);
                 }
                 shapeIsoPosition = IRMath::pos3DtoPos2DIso(viewPos);
@@ -163,12 +179,12 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             return;
         }
         GPUShapeDescriptor desc{};
-        desc.worldPosition = vec4(xform.translation_, 1.0f);
+        desc.worldPosition = vec4(pose->translation_, 1.0f);
         if (auto origin = entityCanvasOrigins_.find(canvas); origin != entityCanvasOrigins_.end()) {
-            desc.worldPosition = vec4(xform.translation_ - origin->second, 1.0f);
+            desc.worldPosition = vec4(pose->translation_ - origin->second, 1.0f);
         }
         desc.params = shape.params_;
-        desc.rotation = xform.rotation_;
+        desc.rotation = pose->rotation_;
         desc.shapeType = static_cast<std::uint32_t>(shape.shapeType_);
         desc.color = shape.color_.toPackedRGBA();
         desc.entityId = entityId;
@@ -181,6 +197,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
     }
 
     void beginTick() {
+        heldGhostPoses_ = &IRPrefab::Fog::heldShapeGhostPoses();
         IRPrefab::CanvasCoverage::syncMainBacking();
         const auto bakeSystem = findSystem(BAKE_SUN_SHADOW_MAP);
         if (bakeSystem != kNullSystemId) {

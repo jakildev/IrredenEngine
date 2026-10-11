@@ -73,16 +73,16 @@ if (( detach )); then
         echo "fleet-build: --detach needs fleet-jobs beside this script ($FLEET_JOBS)" >&2
         exit 1
     fi
-    exec "$FLEET_JOBS" start build --name fleet-build -- "${new_args[@]}"
+    exec "$FLEET_JOBS" start build --name fleet-build -- ${new_args[@]+"${new_args[@]}"}
 fi
 
 if [[ -x "$IR_BUILD" ]]; then
-    exec "$IR_BUILD" "${new_args[@]}"
+    exec "$IR_BUILD" ${new_args[@]+"${new_args[@]}"}
 fi
 
 # Fall back to PATH-resolved ir-build (~/bin/ir-build after install.sh).
 if command -v ir-build >/dev/null 2>&1; then
-    exec ir-build "${new_args[@]}"
+    exec ir-build ${new_args[@]+"${new_args[@]}"}
 fi
 
 echo "fleet-build: cannot find ir-build (expected at $IR_BUILD or on PATH)" >&2

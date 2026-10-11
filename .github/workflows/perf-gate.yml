@@ -20,6 +20,7 @@ on:
       - 'engine/math/**'
       - '.github/workflows/perf-gate.yml'
       - 'scripts/perf/**'
+      - 'scripts/tests/run_all.sh'
   pull_request:
     paths:
       - 'engine/render/**'
@@ -28,6 +29,7 @@ on:
       - 'engine/math/**'
       - '.github/workflows/perf-gate.yml'
       - 'scripts/perf/**'
+      - 'scripts/tests/run_all.sh'
   workflow_dispatch:
     inputs:
       diagnostic_base:
@@ -61,6 +63,7 @@ jobs:
       # file's own baseline-update step against a local bare repo.
       - name: Gate controls (baseline layout, exit mapping, writer, normalization)
         run: |
+          bash scripts/tests/run_all.sh scripts/perf
           python3 scripts/perf/tests/test_baseline_layouts.py
           python3 scripts/perf/tests/test_ci_pair.py
           scripts/perf/tests/test_baseline_writer.sh

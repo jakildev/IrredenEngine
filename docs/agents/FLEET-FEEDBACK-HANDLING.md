@@ -275,6 +275,8 @@ fleet-claim reserve <issue-number> <your-worktree-basename> <branch>
 Edit, `fleet-build --target <name>`, run the executable if there is one
 ([`BUILD.md`](BUILD.md)). If the feedback asks for a screenshot pair, run
 `attach-screenshots --two-ref` (you are on the detached HEAD it expects);
+run `python3 scripts/light-verify.py --if-changed`, the unconditional author-side step in
+[`AUTHOR-PIPELINE.md § Build and run`](AUTHOR-PIPELINE.md#build-and-run);
 after Step d pushes, replace its `@COMMIT_SHA@` with the **post-amend**
 HEAD and append the snippet to the existing body: `gh pr view <N> --json
 body -q .body`, `git rev-parse HEAD`, **Write** `.pr-body.md`

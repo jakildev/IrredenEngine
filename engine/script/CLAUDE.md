@@ -157,12 +157,12 @@ voxel mutation is main-thread setup work, never `PARALLEL_FOR` tick work.
 - `setVision` replaces sources; `addVision` appends (past the analytic cap, an XY disc in the
   field's transient layer, admitted per cell mask); `clearVisions` clears both. Defaults: `edge =
   kFogVisionEdgeDefault`, `observerZ = zCostUp = freeBand = 0`, `zCostDown = -1` (mirror up-cost).
-- `evalReveal(x,y,z)` is the BODY verdict oracle: a VISIBLE grid cell or the circle term (LOS
-  gates included), never hysteretic body state; attached fog revealing nothing returns 0, absent
-  fog 1. `lineOfSight(from...,to...)` rebuilds per call; for many per frame, `captureLineOfSight()`
-  once, then `lineOfSightCaptured(eye..., {x,y,z,...})`. `setEntityGoverned(id, governed?)`
-  defaults true (synchronous BODY); `false` tags FIELD, even on a never-adopted entity. It changes
-  archetypes, so defer it during iteration. `getEntityReveal` is stored body reveal, or 1 when untagged.
+- `evalReveal(x,y,z)` is the BODY verdict oracle: a VISIBLE grid cell or LOS-gated circle term, never
+  hysteretic body state; attached fog revealing nothing returns 0, absent fog 1.
+  `lineOfSight` rebuilds per call; for many, capture once, then call `lineOfSightCaptured`.
+  `setEntityGoverned(id, governed?)` defaults true (synchronous BODY); `false` tags FIELD; defer during iteration.
+  `setHiddenPolicy(id, IRComponent.FogHiddenPolicy.*)` selects HIDE or GHOST; `hiddenPolicy(id)`
+  reads it, and both reject non-BODY entities. `getEntityReveal` is stored reveal, or 1 when untagged.
 - `setCell`, `getCell`, `revealRadius(cx,cy,r[,channels])`, `exploreRadius(...)`, `set/getCellChannels`
   edit/query the grid (`IRFog.State.*`, `IRFog.Channel.DEFAULT`); `clear()` clears only that grid.
   `setExploredPolicy(IRFog.ExploredPolicy.*, durationMs[, channels])` is init-only (refused once cells

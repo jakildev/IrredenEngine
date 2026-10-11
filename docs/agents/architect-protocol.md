@@ -109,7 +109,9 @@ host — the rest is the primary fleet's):
    skip any task whose issue appears in `repos.<repo>.prs[].title` or
    `.headRefName` — the open-PR list is the cross-host claim signal.
 2. `fleet-claim claim <issue-#> <role-name>` — exit 0 claimed, exit 1 taken.
-3. `fleet-build --target <name>`; `fleet-run <executable>` when one exists.
+3. `fleet-build --target <name>`; `fleet-run <executable>` when one exists;
+   run the author-side `python3 scripts/light-verify.py --if-changed` step in
+   [`AUTHOR-PIPELINE.md § Build and run`](AUTHOR-PIPELINE.md#build-and-run).
 4. [`AUTHOR-PIPELINE.md § Optimize before commit`](AUTHOR-PIPELINE.md#optimize-before-commit)
    — skip only for pure docs or mechanical refactors. `commit-and-push`
    runs `simplify`.
