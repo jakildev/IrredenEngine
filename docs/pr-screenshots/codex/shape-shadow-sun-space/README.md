@@ -97,6 +97,21 @@ torus only. Executable ray tests cover all four analytic types.
 
 ## Timing check
 
+The Linux CI performance gate subsequently found a real full-window regression:
+zoom 1's 60-frame mean increased 16.29%, with 93.25% of the excess in the first
+frame. [Raw reports and decomposition](profiles/ci-first-use/README.md) retain
+the failing comparison. This is consistent with increased first-use shader
+cost, but does not prove compiler attribution.
+
+Cascade selection now uses one exact-query call site instead of five. The
+number, order and blending of samples remain unchanged. Executable production
+GLSL/Metal controls pass 352 cases per backend, with eight mutations rejected.
+The native ShapeDebug suite passes all 44 checks, and all 16 cone/torus frames
+remain RGB-identical to the graded after images;
+[capture provenance](cascade-loop-captures.json) includes the uncommitted shader
+patch and source hashes. Same-runner CI timing is pending; these correctness
+checks do not establish a performance improvement.
+
 Three guarded 300-frame runs per revision use the same full ShapeDebug scene,
 zoom 4, yaw 45° and `profiles/timing.lua` to enable GPU stage timing:
 

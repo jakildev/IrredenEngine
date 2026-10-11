@@ -208,14 +208,10 @@ inline float worldSunShadowFactorImpl(
     float2 sunUV = sunProj.xy;
     float sunZ = sunProj.z;
 
-    float shadowAccum;
-    if (sun.cascadeCount <= 1) {
-        shadowAccum = sampleCascadeShadow(
-            sunUV, sunZ, normal, sunDir, uHat, vHat,
-            sun.sunBufferOriginUV, sun.sunBufferTexelSize, 0, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver, casterViewToWorld,
-            pcfOffset
-        );
-    } else {
+    int firstCascade = 0;
+    int cascadeSamples = 1;
+    float blend = 0.0;
+    if (sun.cascadeCount > 1) {
         float distToSplit = isoDepth - sun.cascadeSplitDepth;
         // Covering-cascade fallback: the near cascade is valid for
         // this receiver only where its PCF kernel sits interior to the map —
@@ -230,31 +226,30 @@ inline float worldSunShadowFactorImpl(
         bool nearInterior =
             sunCascadeKernelInterior(sunUV, sun.cascadeOriginUV_0, sun.cascadeTexelSize_0);
         if (nearInterior && distToSplit < -kCascadeBlendRange) {
-            shadowAccum = sampleCascadeShadow(
-                sunUV, sunZ, normal, sunDir, uHat, vHat,
-                sun.cascadeOriginUV_0, sun.cascadeTexelSize_0, 0, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver, casterViewToWorld,
-                pcfOffset
-            );
+            firstCascade = 0;
         } else if (!nearInterior || distToSplit > kCascadeBlendRange) {
-            shadowAccum = sampleCascadeShadow(
-                sunUV, sunZ, normal, sunDir, uHat, vHat,
-                sun.cascadeOriginUV_1, sun.cascadeTexelSize_1, kCascadeTexelCount, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver, casterViewToWorld,
-                pcfOffset
-            );
+            firstCascade = 1;
         } else {
-            float nearShadow = sampleCascadeShadow(
-                sunUV, sunZ, normal, sunDir, uHat, vHat,
-                sun.cascadeOriginUV_0, sun.cascadeTexelSize_0, 0, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver, casterViewToWorld,
-                pcfOffset
-            );
-            float farShadow = sampleCascadeShadow(
-                sunUV, sunZ, normal, sunDir, uHat, vHat,
-                sun.cascadeOriginUV_1, sun.cascadeTexelSize_1, kCascadeTexelCount, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver, casterViewToWorld,
-                pcfOffset
-            );
-            float t = smoothstep(-kCascadeBlendRange, kCascadeBlendRange, distToSplit);
-            shadowAccum = mix(nearShadow, farShadow, t);
+            cascadeSamples = 2;
+            blend = smoothstep(-kCascadeBlendRange, kCascadeBlendRange, distToSplit);
         }
+    }
+    // Keep cascade selection at one exact-query call site.
+    float shadowAccum = 0.0;
+    for (int sampleIndex = 0; sampleIndex < cascadeSamples; ++sampleIndex) {
+        const int cascade = firstCascade + sampleIndex;
+        float2 origin = sun.sunBufferOriginUV;
+        float2 texelSize = sun.sunBufferTexelSize;
+        if (sun.cascadeCount > 1) {
+            origin = cascade == 0 ? sun.cascadeOriginUV_0 : sun.cascadeOriginUV_1;
+            texelSize = cascade == 0 ? sun.cascadeTexelSize_0 : sun.cascadeTexelSize_1;
+        }
+        const float shadow = sampleCascadeShadow(
+            sunUV, sunZ, normal, sunDir, uHat, vHat,
+            origin, texelSize, cascade * kCascadeTexelCount, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver, casterViewToWorld,
+            pcfOffset
+        );
+        shadowAccum = sampleIndex == 0 ? shadow : mix(shadowAccum, shadow, blend);
     }
     return 1.0f - shadowAccum;
 }
