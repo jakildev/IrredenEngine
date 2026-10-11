@@ -216,6 +216,33 @@ frozen orbit-6 displayed normals and silhouettes at four cardinal camera yaws
 and 135 degrees. Those native checks and this CPU producer check cover different
 stages; neither substitutes for shadow-receiver or light-volume validation.
 
+## Additional GRID inverse and detached face evidence
+
+`GridInverseSurfaceTest` complements the rebuild-tick coverage above by invoking
+the real `inverseArm` with a nonzero pool allocation offset. Independent analytic
+half-spaces check both +Y45 and +Z45 solid poses, including every exposed cell and
+full-occupancy neighbor mask. Rebuilding twice checks that output does not replace
+authored input. A carved plate checks sparse-source preservation; a synthetic
+missing exposed cell checks the surface oracle's rejection path.
+
+The [retained native evidence](../pr-screenshots/codex/grid-span-surface-proof/README.md)
+records captures from `ad85ada53` and `9dbe0fd44`, before the subsequent renderer
+changes on master. These are historical measurements, not fresh validation of
+the integrated renderer. Detached revoxelization is a different path from CPU
+GRID: the upright and authored-rotation cube controls passed their resampled-cell
+face oracle at camera yaw 0°, 22.5° and 45°. The upright 45° cube's alternating
+X/Y normals belong to distinct exposed faces of its resampled staircase. That
+result does not establish rigid source-face fidelity or classify other entities.
+
+In those captures, the authored-rotation cube's direct-sun overlay agreed with
+the resampled centroid-ray oracle at yaw 45° through 315° in 45° steps: zero false
+or missed interior shadow pixels with zero terminator allowance, and both lit
+and occluded interiors exercised. Its 0°/22.5° views and the upright controls were
+all-lit and therefore inconclusive for occlusion. Additional normal controls
+passed at 90° through 315°. This evidence covers sampled self-shadow ownership
+for the recorded fixture; continuous within-triangle boundaries, external casters,
+AO and arbitrary transforms remain outside that claim.
+
 ## Remaining investigations
 
 - Extend source-face classification to frozen CanvasStress at 45-degree camera
