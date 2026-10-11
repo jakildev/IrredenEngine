@@ -42,7 +42,7 @@ unset IR_WINDOW_MODE FLEET_WINDOW_MODE FLEET_RUN_DEFAULT_TIMEOUT FLEET_UNATTENDE
 unset CLAUDECODE AI_AGENT CODEX_SANDBOX CODEX_THREAD_ID
 FLEET_RUN="$REPO_ROOT/scripts/fleet/fleet-run"
 
-printf '#!/usr/bin/env bash\necho "window-mode=${IR_WINDOW_MODE:-unset}"\n' > "$FAKE_BUILD/echo-mode"
+printf '#!/usr/bin/env bash\necho "window-mode=${IR_WINDOW_MODE:-unset}"\necho "probe=${IR_TEST_PROBE:-unset}"\necho "second=${IR_TEST_SECOND:-unset}"\nprintf "args="\nprintf "%%s," "$@"\necho\n' > "$FAKE_BUILD/echo-mode"
 chmod +x "$FAKE_BUILD/echo-mode"
 
 run_ir() {
@@ -67,6 +67,25 @@ assert_eq "$RC" "0" "fleet-run capture run exits 0"
 assert_contains "$OUT" "window-mode=offscreen" "fleet-run exports offscreen for a capture verb"
 OUT="$("$FLEET_RUN" --build-dir "$FAKE_BUILD" echo-mode 2>&1)"; RC=$?
 assert_contains "$OUT" "window-mode=background" "fleet-run marks a plain exec background"
+OUT="$("$FLEET_RUN" --env IR_TEST_PROBE=through-shim --build-dir "$FAKE_BUILD" echo-mode 2>&1)"; RC=$?
+assert_eq "$RC" "0" "fleet-run forwards --env"
+assert_contains "$OUT" "probe=through-shim" "fleet-run preserves --env for ir-run"
+
+echo "pre-executable --env pairs reach the child:"
+run_ir --env IR_TEST_PROBE=one echo-mode
+assert_eq "$RC" "0" "one --env pair exits 0"
+assert_contains "$OUT" "probe=one" "one --env pair reaches the child"
+run_ir --env IR_TEST_PROBE=one --env IR_TEST_SECOND=two echo-mode
+assert_eq "$RC" "0" "two --env pairs exit 0"
+assert_contains "$OUT" "probe=one" "first --env pair reaches the child"
+assert_contains "$OUT" "second=two" "second --env pair reaches the child"
+run_ir echo-mode --env IR_TEST_PROBE=program-argument
+assert_eq "$RC" "0" "post-executable --env exits 0"
+assert_contains "$OUT" "probe=unset" "post-executable --env is not exported"
+assert_contains "$OUT" "args=--env,IR_TEST_PROBE=program-argument," "post-executable --env reaches the child args"
+run_ir --env IR_TEST_PROBE echo-mode
+assert_eq "$RC" "2" "malformed --env exits 2"
+assert_contains "$OUT" "--env requires KEY=VALUE" "malformed --env reports usage"
 
 # Every case below runs as the fleet does: marked unattended.
 export FLEET_UNATTENDED=1
@@ -120,6 +139,8 @@ IR_WINDOW_MODE=normal run_ir --timeout 10 echo-mode
 assert_contains "$OUT" "window-mode=normal" "explicit env survives a watchdog run"
 IR_WINDOW_MODE=normal run_ir echo-mode --auto-screenshot
 assert_contains "$OUT" "window-mode=normal" "explicit env survives a capture verb"
+run_ir --env IR_WINDOW_MODE=normal --timeout 10 echo-mode
+assert_contains "$OUT" "window-mode=normal" "--env applies before window-mode defaults"
 
 echo "--window-mode among the program args suppresses the default:"
 run_ir --timeout 10 echo-mode --window-mode normal
