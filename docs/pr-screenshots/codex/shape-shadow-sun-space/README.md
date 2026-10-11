@@ -61,6 +61,14 @@ frames change with the corrected analytic shadows; `scene-comparison.json`
 records their raw changed-pixel counts and bounds, not a correctness score.
 Representative full frames are included below.
 
+After integration with master `c369df603`, the native `render-verify` run at
+`1fe03b342` passed all **44 checks**. The 18 changed default references were
+reviewed against the matching before/after captures and refreshed; all 21
+default shots then matched exactly. No thresholds, extra-run references or
+structural gates changed. Pivot, dense LOD, portrait and prefab runs also pass.
+The flower's highest-zoom shot retains its 99.9028% match within the unchanged
+tolerance. [render-verify.log](render-verify.log) contains the complete result.
+
 | ShapeDebug zoom 4 before | ShapeDebug zoom 4 after |
 |---|---|
 | ![](scene-2-before.png) | ![](scene-2-after.png) |

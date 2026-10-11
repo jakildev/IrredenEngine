@@ -386,13 +386,13 @@ using uint=unsigned;
 struct vec2 {float x,y; vec2(float a,float b):x(a),y(b){}
  template<class T> vec2(T v):x(v.x),y(v.y){} };
 struct vec3 {int value=0;};
-struct vec4 {vec4(float,float,float,float){}};
+struct vec4 {float w;vec4(float,float,float,float d):w(d){}};
 struct Tile {int shapeIndex;};
 struct Frame {int shapeCount;struct {int x=1,y=1;} voxelRenderOptions;
  int smoothYawEnabled=0,latticeShapes=0;};
 const uint SHAPE_BOX=0;
 struct ShapeDescriptor {int value;uint shapeType=1,flags=0;
- struct {float w=1;} rotation;operator int()const{return value;}};
+ vec4 rotation{0,0,0,1};operator int()const{return value;}};
 struct Point {int x,y;};
 struct Canvas {void write(vec4,Point){}} canvasSunShadow;
 void imageStore(Canvas&,Point,vec4){}
@@ -491,6 +491,7 @@ int main(){
             outer = re.search(r"if \((smoothYaw && !latticeWalk)\)", producer).group(1)
             inner = re.search(r"if \(([^\n]+)\) \{\s*boxFaceSlot = shapeBoxFaceSlot",
                               producer).group(1)
+            harness += extract_function(data, "shapeHasEntityRotation").replace("float4", "vec4")
             harness += (
                 "\nbool emitterUsesWorldFaceSlot(ShapeDescriptor shape,Frame receiverFrame){\n"
                 "const uint FLAG_HOLLOW=1u;\n" + "\n".join(statements)

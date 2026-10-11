@@ -1,0 +1,66 @@
+[render-verify] target=IRShapeDebug demo=shape_debug backend=macos-debug warmup=10
+[render-verify] 21 shots: zoom1_origin, zoom2_origin, zoom4_origin, zoom1_odd_offset, zoom8_origin, zoom4_offset_3_5, zoom16_lod_fine_sphere, lod_swap_zoom1_cube, lod_swap_zoom2_cube, lod_swap_zoom4_cone, lod_swap_zoom8_cone, lod_swap_zoom16_sphere, zoom4_yaw90, zoom4_yaw180, zoom4_yaw270, zoom4_yaw45_inter_cardinal, zoom8_yaw180, zoom4_pan16_yaw0_pivot, zoom4_pan16_yaw90_pivot, zoom4_pan16_yaw180_pivot, zoom4_pan16_yaw45_pivot
+[render-verify] 6 extra run(s): pivot_focus_ctr_z4, lod_dense_swap, viewport_portrait, viewport_portrait_lod_swap, prefab_flower, editor_parts_z4
++ fleet-run --timeout 90 IRShapeDebug --auto-screenshot 10
+[render-verify] extra run 'pivot_focus_ctr_z4': --pivot-verify focus-ctr --zoom 4
++ fleet-run --timeout 90 IRShapeDebug --auto-screenshot 12 --pivot-verify focus-ctr --zoom 4
+[render-verify] extra run 'lod_dense_swap': --lod-dense-swap
++ fleet-run --timeout 90 IRShapeDebug --auto-screenshot 10 --lod-dense-swap
+[render-verify] extra run 'viewport_portrait': --viewport-portrait --no-ao --no-shadows
++ fleet-run --timeout 90 IRShapeDebug --auto-screenshot 10 --viewport-portrait --no-ao --no-shadows
+[render-verify] extra run 'viewport_portrait_lod_swap': --viewport-portrait --viewport-lod-swap --no-ao --no-shadows
++ fleet-run --timeout 90 IRShapeDebug --auto-screenshot 10 --viewport-portrait --viewport-lod-swap --no-ao --no-shadows
+[render-verify] extra run 'prefab_flower': --load-prefab assets/prefabs/flower.prefab.lua
++ fleet-run --timeout 90 IRShapeDebug --auto-screenshot 10 --load-prefab assets/prefabs/flower.prefab.lua
+[render-verify] extra run 'editor_parts_z4': --load-prefab assets/prefabs/editor_parts/editor_parts.prefab.lua --zoom 4
++ fleet-run --timeout 90 IRShapeDebug --auto-screenshot 10 --load-prefab assets/prefabs/editor_parts/editor_parts.prefab.lua --zoom 4
+
+shot                                     result     match%  max_d     psnr
+----------------------------------------------------------------------------
+zoom1_origin                             PASS        100.0      0      inf
+zoom2_origin                             PASS        100.0      0      inf
+zoom4_origin                             PASS        100.0      0      inf
+zoom1_odd_offset                         PASS        100.0      0      inf
+zoom8_origin                             PASS        100.0      0      inf
+zoom4_offset_3_5                         PASS        100.0      0      inf
+zoom16_lod_fine_sphere                   PASS        100.0      0      inf
+lod_swap_zoom1_cube                      PASS        100.0      0      inf
+lod_swap_zoom2_cube                      PASS        100.0      0      inf
+lod_swap_zoom4_cone                      PASS        100.0      0      inf
+lod_swap_zoom8_cone                      PASS        100.0      0      inf
+lod_swap_zoom16_sphere                   PASS        100.0      0      inf
+zoom4_yaw90                              PASS        100.0      0      inf
+zoom4_yaw180                             PASS        100.0      0      inf
+zoom4_yaw270                             PASS        100.0      0      inf
+zoom4_yaw45_inter_cardinal               PASS        100.0      0      inf
+zoom8_yaw180                             PASS        100.0      0      inf
+zoom4_pan16_yaw0_pivot                   PASS        100.0      0      inf
+zoom4_pan16_yaw90_pivot                  PASS        100.0      0      inf
+zoom4_pan16_yaw180_pivot                 PASS        100.0      0      inf
+zoom4_pan16_yaw45_pivot                  PASS        100.0      0      inf
+zoom4_origin:coverage                    PASS     
+zoom16_lod_fine_sphere:silhouette        PASS     
+zoom1_origin:clip                        PASS     
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_000 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_001 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_002 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_003 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_004 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_005 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_006 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_007 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_008 PASS        100.0      0      inf
+lod_dense_swap:lod_dense_swap_z2         PASS        100.0      0      inf
+lod_dense_swap:lod_dense_swap_z8         PASS        100.0      0      inf
+viewport_portrait:portrait_world_z1      PASS        100.0      0      inf
+viewport_portrait:portrait_world_z1_world_yaw90 PASS        100.0      0      inf
+viewport_portrait:portrait_world_z1:clip PASS     
+viewport_portrait:portrait_world_z1_world_yaw90:clip PASS     
+viewport_portrait_lod_swap:portrait_lod_swap_z1 PASS        100.0      0      inf
+prefab_flower:prefab_flower_z1           PASS        100.0      0      inf
+prefab_flower:prefab_flower_z4           PASS        100.0      0      inf
+prefab_flower:prefab_flower_z16          PASS      99.9028     56     50.2
+editor_parts_z4:prefab_editor_parts_z4   PASS        100.0      0      inf
+
+[render-verify] all 44 checks PASS
+

@@ -7,6 +7,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from shader_contract_helpers import extract_block, extract_function
+
 ROOT = Path(__file__).resolve().parents[2]
 COMPILER = shutil.which("c++")
 
@@ -22,7 +24,8 @@ struct vec3 {
  double& operator[](int i){return i==0?x:(i==1?y:z);}
  double operator[](int i)const{return i==0?x:(i==1?y:z);}
 };
-struct vec4 {double x,y,z,w;};
+using std::abs;
+struct vec4 {double x,y,z,w;vec4(double a,double b,double c,double d):x(a),y(b),z(c),w(d){}};
 vec3 operator+(vec3 a,vec3 b){return {a.x+b.x,a.y+b.y,a.z+b.z};}
 vec3 operator-(vec3 a,vec3 b){return {a.x-b.x,a.y-b.y,a.z-b.z};}
 vec3 operator-(vec3 a){return {-a.x,-a.y,-a.z};}
@@ -33,7 +36,8 @@ vec3 unit(vec3 a){return a*(1/std::sqrt(dot(a,a)));}
 vec3 rotateByQuat(vec3 p,vec4 q){vec3 v{q.x,q.y,q.z};return p+cross(v,cross(v,p)+p*q.w)*2;}
 vec3 sunSpaceProject(vec3 p,vec3 u,vec3 v,vec3 light){return {dot(p,u),dot(p,v),-dot(p,light)};}
 struct Shape {vec4 rotation{0,0,0,1};} shape;
-vec3 boxCenter{2.25,-3.125,1.75};
+const bool box=true;
+vec3 shapeCenter{2.25,-3.125,1.75};
 vec3 halfExtent{1,2,3},sunDirection{0,0,-1},sunBasisU{1,0,0},sunBasisV{0,1,0};
 struct Face {vec3 corner,u,v;};
 std::vector<Face> faces;
@@ -62,7 +66,7 @@ int main(){
    {1-2*(q.y*q.y+q.z*q.z),2*(q.x*q.y-q.z*q.w),2*(q.x*q.z+q.y*q.w)},
    {2*(q.x*q.y+q.z*q.w),1-2*(q.x*q.x+q.z*q.z),2*(q.y*q.z-q.x*q.w)},
    {2*(q.x*q.z-q.y*q.w),2*(q.y*q.z+q.x*q.w),1-2*(q.x*q.x+q.y*q.y)}};
-  const vec3 center=sunSpaceProject(boxCenter,sunBasisU,sunBasisV,light);
+  const vec3 center=sunSpaceProject(shapeCenter,sunBasisU,sunBasisV,light);
   for(int x=-30;x<=30;++x)for(int y=-30;y<=30;++y){
    const double u=center.x+x*.137+.017,v=center.y+y*.137+.031;
    double actual=1e30;
@@ -73,7 +77,7 @@ int main(){
     double s=(du*f.v.y-dv*f.v.x)/det,t=(f.u.x*dv-f.u.y*du)/det;
     if(s>=0&&s<=1&&t>=0&&t<=1)actual=std::min(actual,f.corner.z+s*f.u.z+t*f.v.z);
    }
-   vec3 origin=sunBasisU*u+sunBasisV*v-boxCenter;
+   vec3 origin=sunBasisU*u+sunBasisV*v-shapeCenter;
    double near=-1e30,far=1e30;bool hit=true;
    for(int i=0;i<3;++i){
     double o=0,d=0;for(int j=0;j<3;++j){o+=m[j][i]*origin[j];d-=m[j][i]*light[j];}
@@ -97,13 +101,19 @@ class BoxFaceProjectionTest(unittest.TestCase):
         for suffix, folder in (("glsl", ""), ("metal", "metal/")):
             source = (ROOT / f"engine/render/src/shaders/{folder}"
                       f"c_bake_box_sun_shadow.{suffix}").read_text()
-            start = source.index("        for (int axis = 0;")
-            end = source.index("    for (int cascade", start)
-            block = source[start:end].rsplit("    }", 1)[0]
+            face_block = extract_block(source, "if (box && ")
+            gate = face_block[face_block.index("(") + 1:face_block.index(")")]
+            block = face_block[face_block.index("{") + 1:-1]
+            rotation = re.search(r"const (?:vec4|float4) rotation = [^;]+;", source).group()
+            data = (ROOT / f"engine/render/src/shaders/{folder}"
+                    f"ir_shape_data.{suffix}").read_text()
+            rotation_helper = extract_function(data, "shapeHasEntityRotation")
+            rotation_helper = rotation_helper.replace("float4", "vec4")
+            block = rotation + "\n" + block
             block = block.replace("sunFrame.", "").replace(".xyz", "")
             block = block.replace("sunDepthBuf, ", "").replace(", sunFrame", "")
             block = block.replace(", localId.x, sharedFaceIndex", "")
-            block = block.replace("float3", "vec3")
+            block = block.replace("float3", "vec3").replace("float4", "vec4")
             block = block.replace("gl_LocalInvocationID.x", "lane").replace("localId.x", "lane")
             variants = {
                 "production": block,
@@ -111,11 +121,10 @@ class BoxFaceProjectionTest(unittest.TestCase):
                 "missing_face": block.replace("axis < 3", "axis < 2"),
                 "wrong_polarity": block.replace("> 0.0", "< 0.0"),
                 "unrotated_edges": block.replace(
-                    "edgeU = rotateByQuat(edgeU, shape.rotation);", ""),
+                    "edgeU = rotateByQuat(edgeU, rotation);", ""),
                 "half_extent_edge": block.replace("2.0 * halfExtent", "halfExtent"),
-                "lost_translation": block.replace("boxCenter +", ""),
+                "lost_translation": block.replace("shapeCenter +", ""),
             }
-            gate = re.search(r"if \(((?:gl_WorkGroupID|groupId).*?)\) \{", source)[1]
             gate = gate.replace("gl_WorkGroupID.z", "group").replace("groupId.z", "group")
             gate = gate.replace("gl_LocalInvocationID.x", "lane").replace("localId.x", "lane")
             for name, body in variants.items():
@@ -128,7 +137,7 @@ class BoxFaceProjectionTest(unittest.TestCase):
                     emitter = ("void emit(){for(unsigned group=0;group<32;++group)"
                                "for(unsigned lane=0;lane<64;++lane)if("
                                + selected_gate + "){currentLane=lane;" + body + "}}")
-                    cpp.write_text(HARNESS + emitter + CASES)
+                    cpp.write_text(HARNESS + rotation_helper + emitter + CASES)
                     build = subprocess.run(
                         [COMPILER, "-std=c++17", "-O2", str(cpp), "-o", str(exe)],
                         capture_output=True, text=True)
