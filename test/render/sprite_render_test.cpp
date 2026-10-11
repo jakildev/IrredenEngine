@@ -153,12 +153,13 @@ using QuadRect = std::array<float, 4>;
 const IRMath::vec2 kQuadAnchorScreen{640.0f, 360.0f};
 const IRMath::vec2 kQuadSizeGamePx{16.0f, 24.0f};
 
-QuadRect quadRect(IRMath::vec2 anchorUv, IRMath::vec2 outputScale) {
+QuadRect quadRect(IRMath::vec2 anchorUv, IRMath::vec2 outputScale, float screenYDirection) {
     const IRMath::vec4 quad = SpritesToScreenSystem::quadScreenRect(
         kQuadAnchorScreen,
         kQuadSizeGamePx,
         anchorUv,
-        outputScale
+        outputScale,
+        screenYDirection
     );
     return {quad.x, quad.y, quad.z, quad.w};
 }
@@ -167,14 +168,14 @@ QuadRect quadRect(IRMath::vec2 anchorUv, IRMath::vec2 outputScale) {
 // component's size and the anchor offset is the unscaled `anchor * size`.
 TEST(SpritesToScreenQuad, UnitScaleKeepsGamePixelSizeAndOffset) {
     EXPECT_EQ(
-        quadRect(IRMath::vec2{0.5f, 0.0f}, IRMath::vec2{1.0f, 1.0f}),
+        quadRect(IRMath::vec2{0.5f, 0.0f}, IRMath::vec2{1.0f, 1.0f}, -1.0f),
         (QuadRect{632.0f, 360.0f, 16.0f, 24.0f})
     );
 }
 
 TEST(SpritesToScreenQuad, ScaleTwoDoublesSizeAndAnchorOffset) {
     EXPECT_EQ(
-        quadRect(IRMath::vec2{0.5f, 0.0f}, IRMath::vec2{2.0f, 2.0f}),
+        quadRect(IRMath::vec2{0.5f, 0.0f}, IRMath::vec2{2.0f, 2.0f}, -1.0f),
         (QuadRect{624.0f, 360.0f, 32.0f, 48.0f})
     );
 }
@@ -183,7 +184,7 @@ TEST(SpritesToScreenQuad, ScaleTwoDoublesSizeAndAnchorOffset) {
 // both axes' offsets in play so a swapped or scalar factor shows up.
 TEST(SpritesToScreenQuad, UnequalScaleAppliesPerAxis) {
     EXPECT_EQ(
-        quadRect(IRMath::vec2{1.0f, 1.0f}, IRMath::vec2{2.0f, 3.0f}),
+        quadRect(IRMath::vec2{1.0f, 1.0f}, IRMath::vec2{2.0f, 3.0f}, -1.0f),
         (QuadRect{608.0f, 288.0f, 32.0f, 72.0f})
     );
 }
@@ -192,8 +193,30 @@ TEST(SpritesToScreenQuad, UnequalScaleAppliesPerAxis) {
 // point while the size still follows the output scale.
 TEST(SpritesToScreenQuad, OriginAnchorScalesSizeOnly) {
     EXPECT_EQ(
-        quadRect(IRMath::vec2{0.0f, 0.0f}, IRMath::vec2{2.0f, 2.0f}),
+        quadRect(IRMath::vec2{0.0f, 0.0f}, IRMath::vec2{2.0f, 2.0f}, -1.0f),
         (QuadRect{640.0f, 360.0f, 32.0f, 48.0f})
+    );
+}
+
+TEST(SpritesToScreenQuad, BottomOriginAnchorUsesBackendVerticalDirection) {
+    EXPECT_EQ(
+        quadRect(IRMath::vec2{0.5f, 0.0f}, IRMath::vec2{1.0f, 1.0f}, -1.0f),
+        (QuadRect{632.0f, 360.0f, 16.0f, 24.0f})
+    );
+    EXPECT_EQ(
+        quadRect(IRMath::vec2{0.5f, 0.0f}, IRMath::vec2{1.0f, 1.0f}, 1.0f),
+        (QuadRect{632.0f, 336.0f, 16.0f, 24.0f})
+    );
+}
+
+TEST(SpritesToScreenQuad, TopOriginAnchorUsesBackendVerticalDirection) {
+    EXPECT_EQ(
+        quadRect(IRMath::vec2{0.5f, 1.0f}, IRMath::vec2{1.0f, 1.0f}, -1.0f),
+        (QuadRect{632.0f, 336.0f, 16.0f, 24.0f})
+    );
+    EXPECT_EQ(
+        quadRect(IRMath::vec2{0.5f, 1.0f}, IRMath::vec2{1.0f, 1.0f}, 1.0f),
+        (QuadRect{632.0f, 360.0f, 16.0f, 24.0f})
     );
 }
 
