@@ -1409,10 +1409,6 @@ void emitSweepShots(
     }
 }
 
-// Register shape_debug's custom flags on the engine-owned parser. --help /
-// --auto-screenshot / --config-preset are pre-registered by the Parser ctor;
-// IREngine::init(argc, argv) parses common + these in one pass, so --help lists
-// every flag and exits before any window/GL/Metal init.
 void registerCliArgs() {
     IRArgs::Parser &args = IREngine::args();
     args.optionalInt(
@@ -1516,6 +1512,7 @@ void registerCliArgs() {
         ""
     );
     args.flag("--spin-shape-voxel", "Render the --spin-shape via the voxel-pool twin, not the SDF");
+    args.flag("--spin-shape-floor", "Add an isolated floor receiver to --spin-shape");
     args.flag(
         "--gui-test",
         "Replace the capture table with the headless help-overlay GUI test (#2550); "
@@ -1548,9 +1545,8 @@ void registerCliArgs() {
     );
 }
 
-// Read the parsed values back into the demo's globals. Runs AFTER
-// IREngine::init(argc, argv) has parsed. A value flag only writes its global
-// when actually provided, preserving each global's pre-parse default.
+// Absent value flags preserve the demo defaults. This runs before World
+// construction so invalid combinations cannot leave a partially initialized engine.
 void readCliArgs() {
     const IRArgs::Parser &args = IREngine::args();
 
@@ -1634,17 +1630,30 @@ void initEntities();
 void registerDemoSettings();
 
 int main(int argc, char **argv) {
-    // Register custom flags, then let init parse common + custom in one pass
-    // (--help exits here, pre-window). Read the parsed values back afterwards.
     registerCliArgs();
+    IREngine::args().parse(argc, argv);
+    readCliArgs();
+
+    if (IREngine::args().getFlag("--spin-shape-floor")) {
+        if (g_spinShapeType.empty()) {
+            IR_LOG_ERROR("--spin-shape-floor requires --spin-shape");
+            return 2;
+        }
+        if (g_viewportPortrait || IREngine::args().getFlag("--ao-contact-probe") ||
+            g_cullEvictTest || g_lodDenseSwap || !g_loadPrefabPath.empty() ||
+            g_pivotVerifyBlock != "off" || g_pivotFocusDemo) {
+            IR_LOG_ERROR("--spin-shape-floor cannot be combined with another scene override");
+            return 2;
+        }
+    }
+
     IREngine::registerLuaBindings([](IRScript::LuaScript &lua) {
         if (IREngine::args().wasProvided("--load-prefab")) {
             lua.bindLuaDrivenEcs();
             g_prefabLua = &lua;
         }
     });
-    IREngine::init(argc, argv);
-    readCliArgs();
+    IREngine::init(argv[0]);
 
     // --spin-yaw + --auto-screenshot: reinterpret the screenshot value as
     // "shots across one rotation", and use a small internal warmup. This is
@@ -3679,6 +3688,25 @@ void initSystems() {
             );
             cfg.shots_ = g_spinYawShots.data();
             cfg.numShots_ = static_cast<int>(g_spinYawShots.size());
+            if (IREngine::args().getFlag("--spin-shape-floor")) {
+                cfg.onCaptureFrame_ = [](int shotIndex) {
+                    const vec2 step = IRRender::getTriangleStepSizeScreen();
+                    const ivec2 viewport = IRRender::getViewport();
+                    const vec2 camera = IRRender::getEffectiveCameraIso();
+                    IR_LOG_INFO(
+                        "SHADOW-FOOTPRINT shot={} subdivisions={} step={},{} viewport={},{} "
+                        "camera={},{}",
+                        shotIndex,
+                        IRRender::getVoxelRenderEffectiveSubdivisions(),
+                        step.x,
+                        step.y,
+                        viewport.x,
+                        viewport.y,
+                        camera.x,
+                        camera.y
+                    );
+                };
+            }
             IR_LOG_INFO(
                 "Spin-yaw sweep: {} shots across one rotation at zoom={}",
                 cfg.numShots_,
@@ -4740,13 +4768,19 @@ void initEntities() {
     };
     constexpr int kNumCases = sizeof(cases) / sizeof(cases[0]);
 
-    // --spin-shape <name>: replace the side-by-side fixture scene with
-    // ONE shape centred at the origin. Under camera Z-yaw-about-origin the shape
-    // stays screen-centred, so the whole frame is that shape — clean per-shape
-    // isolation for the temporal-jitter sweep. No floor / point light: a black
-    // field maximises the metric's interior mask. The flag is absent in every
-    // normal run, so the fixture scene below stays byte-identical.
+    // Origin-centred shapes stay screen-centred under camera yaw. The default
+    // black background isolates temporal jitter; an optional neutral floor
+    // permits shadow measurements without introducing local lights.
     if (!g_spinShapeType.empty()) {
+        if (IREngine::args().getFlag("--spin-shape-floor")) {
+            const EntityId floor = createSDFShape(
+                vec3(0.0f, 0.0f, 5.0f),
+                IRRender::ShapeType::BOX,
+                vec4(64.0f, 64.0f, 2.0f, 0.0f),
+                Color{150, 150, 160, 255}
+            );
+            IREntity::setComponent(floor, C_LightBlocker{false, false, 0.0f});
+        }
         // "figure" is the non-uniform stress case (not an SDF primitive): a
         // directly-authored asymmetric voxel set with appendages + slanted
         // planes, to verify analytic edge coverage under camera yaw.
