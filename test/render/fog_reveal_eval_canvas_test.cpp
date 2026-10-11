@@ -468,7 +468,7 @@ TEST_F(FogRevealEvalCanvasPromotionTest, PromotedBodyPolicyCoversLaterCanvasPart
     }
 }
 
-TEST_F(FogRevealEvalCanvasPromotionTest, PromotionPreservesHiddenFactorBeforeCadence) {
+TEST_F(FogRevealEvalCanvasPromotionTest, PromotionRepairsPolicyBeforeGateMismatchBypassesCadence) {
     const IREntity::EntityId body = createGridBody(false);
     const IREntity::EntityId privateCanvas = promote(body);
     auto &pool = IREntity::getComponent<C_VoxelPool>(privateCanvas);
@@ -482,10 +482,11 @@ TEST_F(FogRevealEvalCanvasPromotionTest, PromotionPreservesHiddenFactorBeforeCad
 
     EXPECT_EQ(pool.fogCarrierPolicy(), C_VoxelPool::FogCarrierPolicy::BODY);
     EXPECT_EQ(pool.fogBodyFactor(), 0u);
-    EXPECT_FLOAT_EQ(revealed.revealFactor_, 0.0f);
+    EXPECT_FLOAT_EQ(revealed.revealFactor_, 1.0f);
+    EXPECT_FALSE(IREntity::getComponent<C_EntityCanvas>(body).fogHidden_);
 }
 
-TEST_F(FogRevealEvalCanvasPromotionTest, GhostPolicyUsesTheSamePromotionRepair) {
+TEST_F(FogRevealEvalCanvasPromotionTest, GhostPromotionUsesTheSameMismatchRepair) {
     const IREntity::EntityId body = createGridBody(false);
     ASSERT_TRUE(IRPrefab::Fog::setHiddenPolicy(body, IRComponents::FogHiddenPolicy::GHOST));
     const IREntity::EntityId privateCanvas = promote(body);
@@ -501,7 +502,10 @@ TEST_F(FogRevealEvalCanvasPromotionTest, GhostPolicyUsesTheSamePromotionRepair) 
 
     EXPECT_EQ(pool.fogCarrierPolicy(), C_VoxelPool::FogCarrierPolicy::BODY);
     EXPECT_EQ(pool.fogBodyFactor(), 0u);
-    EXPECT_FLOAT_EQ(revealed.revealFactor_, 0.0f);
+    EXPECT_FLOAT_EQ(revealed.revealFactor_, 1.0f);
+    const auto &canvas = IREntity::getComponent<C_EntityCanvas>(body);
+    EXPECT_FALSE(canvas.fogHidden_);
+    EXPECT_FALSE(canvas.fogGhost_);
 }
 
 TEST_F(FogRevealEvalCanvasPromotionTest, ExistingAndExcludedPoolPoliciesStayUnchanged) {

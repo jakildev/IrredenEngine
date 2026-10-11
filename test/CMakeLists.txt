@@ -96,6 +96,7 @@ add_executable(IrredenEngineTest
   render/fog_cross_section_test.cpp
   render/fog_ghost_policy_test.cpp
   render/fog_line_of_sight_test.cpp
+  render/fog_mode_switch_test.cpp
   render/fog_reveal_eval_test.cpp
   render/fog_reveal_eval_canvas_test.cpp
   render/fog_reveal_eval_shape_test.cpp
