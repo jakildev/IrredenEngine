@@ -37,6 +37,7 @@ add_executable(IrredenEngineTest
   ecs/field_placement_test.cpp
   ecs/field_regions_test.cpp
   ecs/grid_rotation_test.cpp
+  ecs/grid_span_coverage_test.cpp
   ecs/hitbox_2d_gui_test.cpp
   ecs/hover_detect_reset_test.cpp
   ecs/joint_matrix_upload_test.cpp
