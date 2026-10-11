@@ -149,6 +149,14 @@ bool startAudioInputCapture(
     return getAudioManager().getAudio().startCapture(config, std::move(callback));
 }
 
+void setInputMonitorEnabled(bool enabled) {
+    getAudioManager().getAudio().setInputMonitorEnabled(enabled);
+}
+
+bool isInputMonitorEnabled() {
+    return getAudioManager().getAudio().isInputMonitorEnabled();
+}
+
 void stopAudioInputCapture() {
     getAudioManager().getAudio().stopCapture();
 }

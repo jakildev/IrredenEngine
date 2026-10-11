@@ -19,6 +19,19 @@ AudioManager::AudioManager()
     IRE_LOG_INFO("Created AudioManager");
 }
 
+AudioManager::AudioManager(
+    std::unique_ptr<detail::IAudioInputBackend> inputBackend,
+    std::unique_ptr<detail::IAudioInputBackend> outputBackend,
+    detail::AudioInputDeadlines deadlines
+)
+    : m_audio{std::move(inputBackend), std::move(outputBackend), deadlines}
+    , m_midiIn{}
+    , m_midiOut{}
+    , m_audioPlayback{} {
+    g_audioManager = this;
+    IRE_LOG_INFO("Created AudioManager");
+}
+
 AudioManager::~AudioManager() {
     m_midiOut.sendAllNotesOff();
     if (g_audioManager == this) {

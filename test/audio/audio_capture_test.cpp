@@ -31,7 +31,9 @@ using IRAudio::Audio;
 using IRAudio::AudioCaptureConfig;
 
 constexpr unsigned int kFakeDeviceId = 7;
+constexpr unsigned int kFakeOutputDeviceId = 8;
 constexpr const char *kFakeDeviceName = "Fake Capture Device";
+constexpr const char *kFakeOutputDeviceName = "Fake Monitor Device";
 constexpr const char *kOpenErrorText = "FakeBackend::openStream: sample rate rejected";
 constexpr const char *kStartErrorText = "FakeBackend::startStream: stream is closed";
 constexpr const char *kStopErrorText = "FakeBackend::stopStream: device refused";
@@ -57,6 +59,8 @@ struct FakeBackendState {
     RtAudioErrorType openResult_ = RTAUDIO_NO_ERROR;
     RtAudioErrorType startResult_ = RTAUDIO_NO_ERROR;
     RtAudioErrorType stopResult_ = RTAUDIO_NO_ERROR;
+    bool throwOpen_ = false;
+    bool throwStart_ = false;
 
     std::atomic<int> deviceInfoCalls_ = 0;
     std::atomic<int> openCalls_ = 0;
@@ -70,6 +74,14 @@ struct FakeBackendState {
     unsigned int openedDeviceId_ = 0;
     unsigned int openedChannels_ = 0;
     unsigned int openedSampleRate_ = 0;
+    unsigned int openedBufferFrames_ = 0;
+    unsigned int grantedBufferFrames_ = 0;
+    unsigned int inputDeviceId_ = kFakeDeviceId;
+    unsigned int outputDeviceId_ = kFakeOutputDeviceId;
+    unsigned int inputChannels_ = 2;
+    unsigned int outputChannels_ = 2;
+    bool hasSeparateOutputDevice_ = false;
+    bool hasDefaultOutput_ = true;
     std::vector<unsigned int> sampleRates_ = {44'100};
     std::thread::id enumerationThread_;
     std::thread::id openThread_;
@@ -144,32 +156,61 @@ class FakeAudioInputBackend final : public IRAudio::detail::IAudioInputBackend {
 
     std::vector<unsigned int> getDeviceIds() override {
         m_state->enumerationThread_ = std::this_thread::get_id();
-        return {kFakeDeviceId};
+        if (m_state->hasSeparateOutputDevice_) {
+            return {m_state->inputDeviceId_, m_state->outputDeviceId_};
+        }
+        return {m_state->inputDeviceId_};
     }
 
     RtAudio::DeviceInfo getDeviceInfo(unsigned int deviceId) override {
         ++m_state->deviceInfoCalls_;
         RtAudio::DeviceInfo info;
         info.ID = deviceId;
+        if (deviceId == m_state->outputDeviceId_) {
+            info.name = kFakeOutputDeviceName;
+            info.outputChannels = m_state->outputChannels_;
+            info.isDefaultOutput = m_state->hasDefaultOutput_;
+            info.sampleRates = m_state->sampleRates_;
+            info.preferredSampleRate = 44'100;
+            return info;
+        }
         info.name = kFakeDeviceName;
-        info.inputChannels = 2;
+        info.inputChannels = m_state->inputChannels_;
+        info.outputChannels = m_state->outputChannels_;
         info.isDefaultInput = true;
+        info.isDefaultOutput = m_state->hasDefaultOutput_ && !m_state->hasSeparateOutputDevice_;
         info.sampleRates = m_state->sampleRates_;
         info.preferredSampleRate = 44'100;
         return info;
     }
 
+    RtAudioErrorType openOutputStream(
+        RtAudio::StreamParameters &parameters,
+        unsigned int sampleRate,
+        unsigned int &bufferFrames,
+        RtAudioCallback callback
+    ) override {
+        return openInputStream(parameters, sampleRate, bufferFrames, std::move(callback));
+    }
+
     RtAudioErrorType openInputStream(
         RtAudio::StreamParameters &parameters,
         unsigned int sampleRate,
-        unsigned int &,
+        unsigned int &bufferFrames,
         RtAudioCallback callback
     ) override {
         ++m_state->openCalls_;
+        if (m_state->throwOpen_) {
+            throw std::runtime_error("fake open throw");
+        }
         m_state->openThread_ = std::this_thread::get_id();
         m_state->openedDeviceId_ = parameters.deviceId;
         m_state->openedChannels_ = parameters.nChannels;
         m_state->openedSampleRate_ = sampleRate;
+        m_state->openedBufferFrames_ = bufferFrames;
+        if (m_state->grantedBufferFrames_ > 0) {
+            bufferFrames = m_state->grantedBufferFrames_;
+        }
         if (m_state->openResult_ == RTAUDIO_NO_ERROR) {
             m_state->callback_ = std::move(callback);
         }
@@ -179,6 +220,9 @@ class FakeAudioInputBackend final : public IRAudio::detail::IAudioInputBackend {
 
     RtAudioErrorType startStream() override {
         ++m_state->startCalls_;
+        if (m_state->throwStart_) {
+            throw std::runtime_error("fake start throw");
+        }
         m_state->pass(m_state->holdStart_);
         return report(m_state->startResult_, kStartErrorText);
     }
@@ -261,6 +305,13 @@ AudioCaptureConfig fakeDeviceConfig() {
     return config;
 }
 
+AudioCaptureConfig monitoredFakeDeviceConfig() {
+    AudioCaptureConfig config = fakeDeviceConfig();
+    config.monitor_enabled_ = true;
+    config.monitor_device_name_ = kFakeDeviceName;
+    return config;
+}
+
 template <typename Call> std::chrono::steady_clock::duration elapsedOf(Call &&call) {
     const auto startedAt = std::chrono::steady_clock::now();
     call();
@@ -274,6 +325,18 @@ int countOf(const std::string &text, const std::string &needle) {
         ++count;
     }
     return count;
+}
+
+Audio::AudioInputCallback countDeliveredFrames(int &deliveredFrames) {
+    return
+        [&deliveredFrames](const float *, int frames, double, bool) { deliveredFrames += frames; };
+}
+
+void expectRecorderDelivery(const std::shared_ptr<FakeBackendState> &input, int &deliveredFrames) {
+    ASSERT_TRUE(static_cast<bool>(input->callback_));
+    std::array<float, 8> samples{};
+    input->callback_(nullptr, samples.data(), 4, 0.0, 0, nullptr);
+    EXPECT_EQ(deliveredFrames, 4);
 }
 
 std::string limitText(std::chrono::milliseconds limit) {
@@ -884,6 +947,298 @@ TEST_F(AudioCaptureTest, NoDeliveryReachesTheReceiverOnceStopCaptureReturns) {
         EXPECT_EQ(deliveriesAfterTeardown, 0) << "round " << round;
         EXPECT_EQ(deliveries, deliveriesAtTeardown) << "round " << round;
     }
+}
+
+TEST(AudioMonitorTest, IndependentStreamsPreserveRecorderSamplesAndToggleWithoutBackendCalls) {
+    auto input = std::make_shared<FakeBackendState>();
+    auto output = std::make_shared<FakeBackendState>();
+    input->grantedBufferFrames_ = 4;
+    output->grantedBufferFrames_ = 4;
+    input->streamLatencyFrames_ = 441;
+    output->streamLatencyFrames_ = 220;
+    Audio audio{
+        std::make_unique<FakeAudioInputBackend>(input),
+        std::make_unique<FakeAudioInputBackend>(output),
+        {kPatientDeadline, kPatientDeadline}
+    };
+    AudioCaptureConfig config = monitoredFakeDeviceConfig();
+    std::vector<float> recorded;
+    EngineLogCapture log;
+
+    ASSERT_TRUE(audio.startCapture(config, [&](const float *samples, int frames, double, bool) {
+        recorded.assign(samples, samples + frames * 2);
+    }));
+
+    EXPECT_TRUE(audio.isInputMonitorEnabled());
+    EXPECT_EQ(input->openCalls_, 1);
+    EXPECT_EQ(output->openCalls_, 1);
+    EXPECT_EQ(output->openedBufferFrames_, input->grantedBufferFrames_);
+    std::array<float, 8> first{0.25f, -0.25f, 0.5f, -0.5f, 0.75f, -0.75f, 1.0f, -1.0f};
+    ASSERT_TRUE(static_cast<bool>(input->callback_));
+    ASSERT_TRUE(static_cast<bool>(output->callback_));
+    input->callback_(nullptr, first.data(), 4, 2.0, 0, nullptr);
+    std::array<float, 8> monitored{};
+    output->callback_(monitored.data(), nullptr, 4, 0.0, 0, nullptr);
+    EXPECT_EQ(recorded, std::vector<float>(first.begin(), first.end()));
+    EXPECT_EQ(monitored, first);
+
+    std::array<float, 8> stale{9.0f, -9.0f, 8.0f, -8.0f, 7.0f, -7.0f, 6.0f, -6.0f};
+    input->callback_(nullptr, stale.data(), 4, 2.5, 0, nullptr);
+    audio.setInputMonitorEnabled(false);
+    EXPECT_FALSE(audio.isInputMonitorEnabled());
+    std::array<float, 8> muted;
+    muted.fill(1.0f);
+    output->callback_(muted.data(), nullptr, 4, 0.0, 0, nullptr);
+    const std::array<float, 8> silence{};
+    EXPECT_EQ(muted, silence);
+
+    audio.setInputMonitorEnabled(true);
+    EXPECT_TRUE(audio.isInputMonitorEnabled());
+    output->callback_(muted.data(), nullptr, 4, 0.0, 0, nullptr);
+    std::array<float, 8> fresh{-1.0f, 1.0f, -0.75f, 0.75f, -0.5f, 0.5f, -0.25f, 0.25f};
+    input->callback_(nullptr, fresh.data(), 4, 3.0, 0, nullptr);
+    output->callback_(monitored.data(), nullptr, 4, 0.0, 0, nullptr);
+    EXPECT_EQ(monitored, fresh);
+    EXPECT_EQ(input->openCalls_, 1);
+    EXPECT_EQ(output->openCalls_, 1);
+    EXPECT_EQ(input->startCalls_, 1);
+    EXPECT_EQ(output->startCalls_, 1);
+    EXPECT_EQ(input->stopCalls_, 0);
+    EXPECT_EQ(output->stopCalls_, 0);
+
+    const std::string text = log.text();
+    EXPECT_TRUE(text.contains("inputLatencyMs=10.000")) << text;
+    EXPECT_TRUE(text.contains("outputLatencyMs=4.989")) << text;
+    EXPECT_TRUE(text.contains("deviceRoundTripMs=14.989")) << text;
+    audio.stopCapture();
+    EXPECT_EQ(input->stopCalls_, 1);
+    EXPECT_EQ(output->stopCalls_, 1);
+}
+
+TEST(AudioMonitorTest, ReturnedAndThrownOutputOpenFailuresKeepInputLive) {
+    for (int arm = 0; arm < 2; ++arm) {
+        auto input = std::make_shared<FakeBackendState>();
+        auto output = std::make_shared<FakeBackendState>();
+        output->openResult_ = arm == 0 ? RTAUDIO_SYSTEM_ERROR : RTAUDIO_NO_ERROR;
+        output->throwOpen_ = arm == 1;
+        Audio audio{
+            std::make_unique<FakeAudioInputBackend>(input),
+            std::make_unique<FakeAudioInputBackend>(output),
+            {kPatientDeadline, kPatientDeadline}
+        };
+        int deliveredFrames = 0;
+
+        ASSERT_TRUE(
+            audio.startCapture(monitoredFakeDeviceConfig(), countDeliveredFrames(deliveredFrames))
+        ) << "arm "
+          << arm;
+
+        EXPECT_TRUE(audio.isCapturing()) << "arm " << arm;
+        EXPECT_FALSE(audio.isInputMonitorEnabled()) << "arm " << arm;
+        EXPECT_EQ(input->openCalls_, 1) << "arm " << arm;
+        EXPECT_EQ(output->openCalls_, 1) << "arm " << arm;
+        expectRecorderDelivery(input, deliveredFrames);
+    }
+}
+
+TEST(AudioMonitorTest, SeparateOutputRequestIsBoundedToTenMilliseconds) {
+    auto input = std::make_shared<FakeBackendState>();
+    auto output = std::make_shared<FakeBackendState>();
+    input->hasSeparateOutputDevice_ = true;
+    output->hasSeparateOutputDevice_ = true;
+    input->grantedBufferFrames_ = 1024;
+    Audio audio{
+        std::make_unique<FakeAudioInputBackend>(input),
+        std::make_unique<FakeAudioInputBackend>(output)
+    };
+    AudioCaptureConfig config = monitoredFakeDeviceConfig();
+    config.monitor_device_name_ = kFakeOutputDeviceName;
+
+    ASSERT_TRUE(audio.startCapture(config, {}));
+
+    EXPECT_TRUE(audio.isInputMonitorEnabled());
+    EXPECT_EQ(output->openedDeviceId_, kFakeOutputDeviceId);
+    EXPECT_EQ(output->openedBufferFrames_, 441u);
+}
+
+TEST(AudioMonitorTest, OutputDeviceIsResolvedWithinItsOwnBackend) {
+    auto input = std::make_shared<FakeBackendState>();
+    auto output = std::make_shared<FakeBackendState>();
+    input->hasSeparateOutputDevice_ = true;
+    output->hasSeparateOutputDevice_ = true;
+    output->outputDeviceId_ = 19;
+    Audio audio{
+        std::make_unique<FakeAudioInputBackend>(input),
+        std::make_unique<FakeAudioInputBackend>(output)
+    };
+    AudioCaptureConfig config = monitoredFakeDeviceConfig();
+    config.monitor_device_name_ = kFakeOutputDeviceName;
+    int deliveredFrames = 0;
+
+    ASSERT_TRUE(audio.startCapture(config, countDeliveredFrames(deliveredFrames)));
+
+    EXPECT_TRUE(audio.isInputMonitorEnabled());
+    EXPECT_EQ(output->openedDeviceId_, 19u);
+    EXPECT_NE(output->openedDeviceId_, input->outputDeviceId_);
+    expectRecorderDelivery(input, deliveredFrames);
+}
+
+TEST(AudioMonitorTest, MissingNamedAndDefaultOutputsDegradeWithoutOpening) {
+    for (int arm = 0; arm < 2; ++arm) {
+        auto input = std::make_shared<FakeBackendState>();
+        auto output = std::make_shared<FakeBackendState>();
+        output->hasDefaultOutput_ = arm == 0;
+        Audio audio{
+            std::make_unique<FakeAudioInputBackend>(input),
+            std::make_unique<FakeAudioInputBackend>(output)
+        };
+        AudioCaptureConfig config = monitoredFakeDeviceConfig();
+        config.monitor_device_name_ = arm == 0 ? "Missing Output" : "";
+        int deliveredFrames = 0;
+
+        EXPECT_TRUE(audio.startCapture(config, countDeliveredFrames(deliveredFrames)))
+            << "arm " << arm;
+
+        EXPECT_TRUE(audio.isCapturing()) << "arm " << arm;
+        EXPECT_FALSE(audio.isInputMonitorEnabled()) << "arm " << arm;
+        EXPECT_EQ(output->deviceInfoCalls_, 1) << "arm " << arm;
+        EXPECT_EQ(output->openCalls_, 0) << "arm " << arm;
+        expectRecorderDelivery(input, deliveredFrames);
+    }
+}
+
+TEST(AudioMonitorTest, OutputCapabilitiesAndAdjustedRateDegradeIndependently) {
+    for (int arm = 0; arm < 3; ++arm) {
+        auto input = std::make_shared<FakeBackendState>();
+        auto output = std::make_shared<FakeBackendState>();
+        if (arm == 0) {
+            output->outputChannels_ = 1;
+        } else if (arm == 1) {
+            output->sampleRates_ = {48'000};
+        } else {
+            output->reportedStreamSampleRate_ = 48'000;
+        }
+        Audio audio{
+            std::make_unique<FakeAudioInputBackend>(input),
+            std::make_unique<FakeAudioInputBackend>(output)
+        };
+        int deliveredFrames = 0;
+
+        EXPECT_TRUE(
+            audio.startCapture(monitoredFakeDeviceConfig(), countDeliveredFrames(deliveredFrames))
+        ) << "arm "
+          << arm;
+
+        EXPECT_TRUE(audio.isCapturing()) << "arm " << arm;
+        EXPECT_FALSE(audio.isInputMonitorEnabled()) << "arm " << arm;
+        if (arm < 2) {
+            EXPECT_EQ(output->openCalls_, 0) << "arm " << arm;
+        } else {
+            EXPECT_EQ(output->openCalls_, 1) << "arm " << arm;
+            EXPECT_EQ(output->closeCalls_, 1) << "arm " << arm;
+        }
+        expectRecorderDelivery(input, deliveredFrames);
+    }
+}
+
+TEST(AudioMonitorTest, ReturnedAndThrownOutputStartFailuresKeepInputLive) {
+    for (int arm = 0; arm < 2; ++arm) {
+        auto input = std::make_shared<FakeBackendState>();
+        auto output = std::make_shared<FakeBackendState>();
+        output->startResult_ = arm == 0 ? RTAUDIO_SYSTEM_ERROR : RTAUDIO_NO_ERROR;
+        output->throwStart_ = arm == 1;
+        Audio audio{
+            std::make_unique<FakeAudioInputBackend>(input),
+            std::make_unique<FakeAudioInputBackend>(output)
+        };
+        int deliveredFrames = 0;
+
+        EXPECT_TRUE(
+            audio.startCapture(monitoredFakeDeviceConfig(), countDeliveredFrames(deliveredFrames))
+        ) << "arm "
+          << arm;
+
+        EXPECT_TRUE(audio.isCapturing()) << "arm " << arm;
+        EXPECT_FALSE(audio.isInputMonitorEnabled()) << "arm " << arm;
+        EXPECT_EQ(output->openCalls_, 1) << "arm " << arm;
+        EXPECT_EQ(output->startCalls_, 1) << "arm " << arm;
+        EXPECT_EQ(output->closeCalls_, 1) << "arm " << arm;
+        expectRecorderDelivery(input, deliveredFrames);
+    }
+}
+
+TEST(AudioMonitorTest, HeldOutputOpenUsesTheRemainingArmDeadlineAndKeepsInputLive) {
+    auto input = std::make_shared<FakeBackendState>();
+    auto output = std::make_shared<FakeBackendState>();
+    output->hold(output->holdOpen_);
+    auto audio = std::make_unique<Audio>(
+        std::make_unique<FakeAudioInputBackend>(input),
+        std::make_unique<FakeAudioInputBackend>(output),
+        IRAudio::detail::AudioInputDeadlines{kShortDeadline, kPatientDeadline}
+    );
+
+    int deliveredFrames = 0;
+    bool started = false;
+    const auto elapsed = elapsedOf([&] {
+        started =
+            audio->startCapture(monitoredFakeDeviceConfig(), countDeliveredFrames(deliveredFrames));
+    });
+
+    EXPECT_TRUE(started);
+    EXPECT_GE(elapsed, kShortDeadline);
+    EXPECT_LT(elapsed, kBoundedReturn);
+    EXPECT_TRUE(audio->isCapturing());
+    EXPECT_FALSE(audio->isInputMonitorEnabled());
+    expectRecorderDelivery(input, deliveredFrames);
+    ASSERT_TRUE(output->waitUntil([&] { return output->holdOpen_.entered_.load(); }));
+    output->release(output->holdOpen_);
+    ASSERT_TRUE(output->waitUntil([&] { return output->closeCalls_ == 1; }));
+    audio->stopCapture();
+    audio.reset();
+    EXPECT_TRUE(output->waitUntil([&] { return output->destroyed_.load(); }));
+}
+
+TEST(AudioMonitorTest, HeldOutputStartIsQuarantinedWithoutASecondDeadline) {
+    auto input = std::make_shared<FakeBackendState>();
+    auto output = std::make_shared<FakeBackendState>();
+    output->hold(output->holdStart_);
+    auto audio = std::make_unique<Audio>(
+        std::make_unique<FakeAudioInputBackend>(input),
+        std::make_unique<FakeAudioInputBackend>(output),
+        IRAudio::detail::AudioInputDeadlines{kShortDeadline, kPatientDeadline}
+    );
+
+    int deliveredFrames = 0;
+    bool started = false;
+    const auto elapsed = elapsedOf([&] {
+        started =
+            audio->startCapture(monitoredFakeDeviceConfig(), countDeliveredFrames(deliveredFrames));
+    });
+
+    EXPECT_TRUE(started);
+    EXPECT_GE(elapsed, kShortDeadline);
+    EXPECT_LT(elapsed, kBoundedReturn);
+    EXPECT_TRUE(audio->isCapturing());
+    EXPECT_FALSE(audio->isInputMonitorEnabled());
+    expectRecorderDelivery(input, deliveredFrames);
+    ASSERT_TRUE(output->waitUntil([&] { return output->holdStart_.entered_.load(); }));
+    output->release(output->holdStart_);
+    ASSERT_TRUE(output->waitUntil([&] { return output->closeCalls_ == 1; }));
+    audio->stopCapture();
+    audio.reset();
+    EXPECT_TRUE(output->waitUntil([&] { return output->destroyed_.load(); }));
+}
+
+TEST(AudioMonitorTest, EnablingWithoutAnOutputWarnsPerRequestAndRemainsFalse) {
+    auto backend = std::make_shared<FakeBackendState>();
+    Audio audio{std::make_unique<FakeAudioInputBackend>(backend)};
+    EngineLogCapture log;
+
+    audio.setInputMonitorEnabled(true);
+    audio.setInputMonitorEnabled(true);
+
+    EXPECT_FALSE(audio.isInputMonitorEnabled());
+    EXPECT_EQ(countOf(log.text(), "no monitor output stream is active"), 2);
 }
 
 } // namespace

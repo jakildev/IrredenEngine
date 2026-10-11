@@ -13,6 +13,7 @@ add_executable(IrredenEngineTest
   asset/voxel_set_rle_test.cpp
   asset/voxel_set_shapes_test.cpp
   audio/audio_capture_test.cpp
+  audio/audio_monitor_ring_test.cpp
   audio/audio_playback_test.cpp
   audio/synthetic_audio_capture_test.cpp
   audio/midi_in_tick_test.cpp
@@ -133,6 +134,7 @@ add_executable(IrredenEngineTest
   render/widget_theme_singleton_test.cpp
   render/widget_tab_focus_test.cpp
   script/lua_audio_midi_observer_test.cpp
+  script/lua_audio_monitor_test.cpp
   script/lua_collision_bindings_test.cpp
   script/lua_command_test.cpp
   script/lua_cursor_position_test.cpp
@@ -206,6 +208,7 @@ add_executable(IrredenEngineTest
   world/component_migration_test.cpp
   world/voxel_set_serialize_test.cpp
   world/world_config_missing_table_test.cpp
+  world/world_config_audio_monitor_test.cpp
   world/world_config_window_mode_test.cpp
   world/save_serializers_test.cpp
 )
