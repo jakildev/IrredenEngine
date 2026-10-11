@@ -69,6 +69,13 @@ structural gates changed. Pivot, dense LOD, portrait and prefab runs also pass.
 The flower's highest-zoom shot retains its 99.9028% match within the unchanged
 tolerance. [render-verify.log](render-verify.log) contains the complete result.
 
+The complete render/tooling harness passes all 79 suites after updating the
+three executable shader adapters to the shared shape helpers. Their independent
+geometry and mutation controls remain enabled. The profiling harness passes all
+six suites after making mocked report timestamps deterministic; production
+freshness checks are unchanged. [harness-tests.log](harness-tests.log) records
+the full render/tooling suite result.
+
 | ShapeDebug zoom 4 before | ShapeDebug zoom 4 after |
 |---|---|
 | ![](scene-2-before.png) | ![](scene-2-after.png) |
