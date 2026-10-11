@@ -1359,8 +1359,7 @@ void logZoomCalibrationState(int shotIndex) {
     // index (the same `+ (1, 1)` as `IRRender::mouseCanvasTexelWorld()`).
     const double originTexel = static_cast<double>(IRMath::trixelOriginOffsetZ1(backing).x) + 1.0;
     const auto edgeFramebufferPx = [&](float edgeIsoX) {
-        const double texel =
-            originTexel + rasterTexels + static_cast<double>(edgeIsoX) * density;
+        const double texel = originTexel + rasterTexels + static_cast<double>(edgeIsoX) * density;
         return static_cast<double>(gather.x) + (texel - 0.5 * backing.x) * texelPx;
     };
     IR_LOG_INFO(
@@ -2882,8 +2881,7 @@ static_assert(
     "kDragPanShotIndex must name the drag-pan shot in this table too — its aim hook keys on it"
 );
 static_assert(
-    kContinuousZoomGuiShots[kContinuousOffCentreShotIndex].inputs_ ==
-        g_continuousOffCentre.events_,
+    kContinuousZoomGuiShots[kContinuousOffCentreShotIndex].inputs_ == g_continuousOffCentre.events_,
     "kContinuousOffCentreShotIndex must name the off-centre shot — its aim hook keys on it"
 );
 

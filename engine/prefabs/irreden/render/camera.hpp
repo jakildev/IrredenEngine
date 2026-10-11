@@ -326,9 +326,8 @@ zoomFrame(IRMath::vec2 effectiveCameraIso, IRMath::vec2 zoom) {
 /// continuous policy (@ref zoomFrame), the snapped decomposition's otherwise.
 /// The upscale blit and every screen-space stage that aligns to its pixel grid
 /// read this one value.
-inline IRMath::ivec2 screenResidual(
-    IRMath::vec2 effectiveCameraIso, IRMath::vec2 zoom, IRMath::ivec2 scaleFactor
-) {
+inline IRMath::ivec2
+screenResidual(IRMath::vec2 effectiveCameraIso, IRMath::vec2 zoom, IRMath::ivec2 scaleFactor) {
     if (const IRMath::CameraRasterPhase *frame = zoomFrame(effectiveCameraIso, zoom))
         return IRMath::cameraRasterScreenResidual(*frame, scaleFactor);
     return IRMath::cameraSubPixelOffsets(effectiveCameraIso, zoom, scaleFactor).screenPxResidual_;

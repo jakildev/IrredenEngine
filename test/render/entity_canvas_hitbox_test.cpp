@@ -87,11 +87,14 @@ TEST(EntityCanvasPlacement, ContinuousCameraTermTracksTheRawCameraWithinOnePixel
             IRMath::cameraRasterDetachedOffset(frame) * IRMath::dvec2(1.0, -1.0);
         const IRMath::dvec2 raw = frame.cameraIso_ * frame.pitch_;
         const IRMath::vec2 rasterCamera = camera * static_cast<float>(density);
-        const IRMath::dvec2 world =
-            IRMath::dvec2(IRMath::floor(rasterCamera)) * frame.pitch_ /
-                static_cast<double>(density) +
-            IRMath::cameraRasterGatherTranslation(frame, rasterCamera, IRMath::vec2(0.0f), density) *
-                IRMath::dvec2(IRPlatform::kIsoToScreenSign);
+        const IRMath::dvec2 world = IRMath::dvec2(IRMath::floor(rasterCamera)) * frame.pitch_ /
+                                        static_cast<double>(density) +
+                                    IRMath::cameraRasterGatherTranslation(
+                                        frame,
+                                        rasterCamera,
+                                        IRMath::vec2(0.0f),
+                                        density
+                                    ) * IRMath::dvec2(IRPlatform::kIsoToScreenSign);
         for (int axis = 0; axis < 2; ++axis) {
             EXPECT_LE(detached[axis], raw[axis] + 1e-9);
             EXPECT_GT(detached[axis], raw[axis] - 1.0 - 1e-9);

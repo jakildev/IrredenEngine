@@ -207,13 +207,12 @@ std::vector<IRMath::CameraRasterPhase> carriedSamples(const std::vector<RasterFr
     samples.reserve(frames.size());
     for (const RasterFrame &frame : frames) {
         samples.push_back(
-            samples.empty()
-                ? freshSample(frame)
-                : IRMath::advanceCameraRasterPhase(
-                      samples.back(),
-                      frame.cameraIso_,
-                      IRMath::vec2(frame.zoom_)
-                  )
+            samples.empty() ? freshSample(frame)
+                            : IRMath::advanceCameraRasterPhase(
+                                  samples.back(),
+                                  frame.cameraIso_,
+                                  IRMath::vec2(frame.zoom_)
+                              )
         );
     }
     return samples;
@@ -229,8 +228,7 @@ AxisSplit continuousSplit(
         IRMath::vec2(0.0f),
         density
     );
-    const IRMath::ivec2 residual =
-        IRMath::cameraRasterScreenResidual(sample, IRMath::ivec2(scale));
+    const IRMath::ivec2 residual = IRMath::cameraRasterScreenResidual(sample, IRMath::ivec2(scale));
     return AxisSplit{gather[axis], residual[axis]};
 }
 
@@ -481,10 +479,8 @@ TEST(CameraSubPixelRasterPhase, DensityScaledSplitStepsBackwardDuringAFractional
         for (const float zoom : kFractionalZooms) {
             const std::vector<RasterFrame> frames = panFrames(zoom);
             for (int axis = 0; axis < 2; ++axis) {
-                maxBackwardPx = std::max(
-                    maxBackwardPx,
-                    sweepDensityScaled(frames, axis, scale).maxBackwardPx_
-                );
+                maxBackwardPx =
+                    std::max(maxBackwardPx, sweepDensityScaled(frames, axis, scale).maxBackwardPx_);
             }
         }
         EXPECT_GT(maxBackwardPx, 0) << "scale=" << scale;
@@ -495,9 +491,8 @@ TEST(CameraSubPixelRasterPhase, DensityScaledSplitStepsBackwardDuringAFractional
 // a power-of-two zoom at one base subdivision (so a backing texel is a whole
 // 2x1 framebuffer pixels) and a phase that has not been carried anywhere.
 TEST(CameraSubPixelRasterPhase, FreshPhaseMatchesTheSnappedSplitAtPowerOfTwoZoom) {
-    const std::vector<IRMath::vec2> cameras{
-        {17.3f, 4.6f}, {-4.7f, -0.83f}, {0.37f, -12.125f}, {123.456f, -77.7f}
-    };
+    const std::vector<IRMath::vec2>
+        cameras{{17.3f, 4.6f}, {-4.7f, -0.83f}, {0.37f, -12.125f}, {123.456f, -77.7f}};
     for (const float zoom : {1.0f, 2.0f, 4.0f, 8.0f}) {
         const int density = static_cast<int>(zoom);
         for (const IRMath::vec2 camera : cameras) {
@@ -524,7 +519,8 @@ TEST(CameraSubPixelRasterPhase, FreshPhaseMatchesTheSnappedSplitAtPowerOfTwoZoom
                     IRMath::cameraRasterScreenResidual(sample, IRMath::ivec2(scale)),
                     IRMath::cameraSubPixelOffsets(camera, IRMath::vec2(zoom), IRMath::ivec2(scale))
                         .screenPxResidual_
-                ) << "zoom=" << zoom << " scale=" << scale;
+                ) << "zoom="
+                  << zoom << " scale=" << scale;
             }
 
             const IRMath::vec2 pitch = IRMath::vec2(IRMath::cameraZoomPitch(IRMath::vec2(zoom)));
@@ -533,7 +529,8 @@ TEST(CameraSubPixelRasterPhase, FreshPhaseMatchesTheSnappedSplitAtPowerOfTwoZoom
                 IRMath::dvec2(
                     IRMath::floor(IRMath::fract(camera) * pitch) * IRMath::vec2(1.0f, -1.0f)
                 )
-            ) << "zoom=" << zoom;
+            ) << "zoom="
+              << zoom;
         }
     }
 }
@@ -552,11 +549,14 @@ TEST(CameraSubPixelRasterPhase, MainAndDetachedPlacementShareOneOffset) {
         const IRMath::vec2 rasterCamera = frame.cameraIso_ * static_cast<float>(density);
         const IRMath::dvec2 sign = IRMath::dvec2(IRPlatform::kIsoToScreenSign);
 
-        const IRMath::dvec2 mainOffset =
-            IRMath::dvec2(IRMath::floor(rasterCamera)) * sample.pitch_ /
-                static_cast<double>(density) +
-            IRMath::cameraRasterGatherTranslation(sample, rasterCamera, IRMath::vec2(0.0f), density) *
-                sign;
+        const IRMath::dvec2 mainOffset = IRMath::dvec2(IRMath::floor(rasterCamera)) *
+                                             sample.pitch_ / static_cast<double>(density) +
+                                         IRMath::cameraRasterGatherTranslation(
+                                             sample,
+                                             rasterCamera,
+                                             IRMath::vec2(0.0f),
+                                             density
+                                         ) * sign;
         const IRMath::dvec2 detachedOffset =
             IRMath::floor(sample.cameraIso_) * sample.pitch_ +
             IRMath::cameraRasterDetachedOffset(sample) * IRMath::dvec2(1.0, -1.0);
@@ -600,11 +600,8 @@ TEST(CameraSubPixelRasterPhase, CarriedPhaseSurvivesAnExcursionAndStaysRigid) {
     samples.reserve(pan.size());
     IRMath::CameraRasterPhase previous = returned;
     for (const RasterFrame &frame : pan) {
-        previous = IRMath::advanceCameraRasterPhase(
-            previous,
-            frame.cameraIso_,
-            IRMath::vec2(frame.zoom_)
-        );
+        previous =
+            IRMath::advanceCameraRasterPhase(previous, frame.cameraIso_, IRMath::vec2(frame.zoom_));
         samples.push_back(previous);
     }
     for (int axis = 0; axis < 2; ++axis) {

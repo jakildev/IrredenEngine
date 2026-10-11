@@ -174,15 +174,14 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         // offset and phase as the world content around it.
         const IRMath::CameraRasterPhase *zoomFrame =
             IRPrefab::Camera::zoomFrame(effectiveCameraIso_, cameraZoom_);
-        cameraFramebufferOffset_ =
-            zoomFrame != nullptr
-                ? vec2(IRMath::cameraRasterDetachedOffset(*zoomFrame))
-                : snappedCameraFramebufferOffset(
-                      effectiveCameraIso_,
-                      fbRes_,
-                      cameraZoom_,
-                      mainCanvasSize_
-                  );
+        cameraFramebufferOffset_ = zoomFrame != nullptr
+                                       ? vec2(IRMath::cameraRasterDetachedOffset(*zoomFrame))
+                                       : snappedCameraFramebufferOffset(
+                                             effectiveCameraIso_,
+                                             fbRes_,
+                                             cameraZoom_,
+                                             mainCanvasSize_
+                                         );
 
         effectiveSub_ = IRRender::getVoxelRenderEffectiveSubdivisions();
         fogUnexploredColorPacked_ = IRMath::IRColors::kBlack.toPackedRGBA();

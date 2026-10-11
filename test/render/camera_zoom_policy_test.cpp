@@ -324,11 +324,11 @@ TEST_F(CameraZoomPolicyTest, APanKeepsThePhaseAndAZoomCarriesIt) {
 
     // The update moves the phase by `previous camera * pitch delta`, which
     // leaves `camera * pitch - phase` where it was up to a whole pixel.
-    const dvec2 offsetBefore = frameState().sample_.cameraIso_ * frameState().sample_.pitch_ -
-                               frameState().sample_.phase_;
+    const dvec2 offsetBefore =
+        frameState().sample_.cameraIso_ * frameState().sample_.pitch_ - frameState().sample_.phase_;
     IRPrefab::Camera::prepareZoomFrame(vec2(18.9f), vec2(2.7f));
-    const dvec2 offsetAfter = frameState().sample_.cameraIso_ * frameState().sample_.pitch_ -
-                              frameState().sample_.phase_;
+    const dvec2 offsetAfter =
+        frameState().sample_.cameraIso_ * frameState().sample_.pitch_ - frameState().sample_.phase_;
     EXPECT_NE(frameState().sample_.phase_, dvec2(0.0));
     for (int axis = 0; axis < 2; ++axis) {
         const double moved = offsetAfter[axis] - offsetBefore[axis];
@@ -407,7 +407,8 @@ TEST(CameraZoomCanvasPlacement, ACameraIndependentCanvasIgnoresTheFrame) {
                 canvasZoom,
                 1
             )
-        ) << "usePosition=" << usePosition << " useZoom=" << useZoom;
+        ) << "usePosition="
+          << usePosition << " useZoom=" << useZoom;
     }
 }
 
@@ -451,12 +452,10 @@ TEST(CameraZoomCanvasPlacement, ACameraFollowingCanvasPlacesFromTheFrame) {
 TEST(CameraZoomCanvasPlacement, AParityOffsetShiftsOnlyItsOwnCanvas) {
     const IRMath::CameraRasterPhase frame = carriedFrame();
     const vec2 rasterCamera = vec2(17.3f) * 3.0f;
-    const dvec2 plain =
-        IRMath::cameraRasterGatherTranslation(frame, rasterCamera, vec2(0.0f), 3);
+    const dvec2 plain = IRMath::cameraRasterGatherTranslation(frame, rasterCamera, vec2(0.0f), 3);
     const dvec2 shifted =
         IRMath::cameraRasterGatherTranslation(frame, rasterCamera, vec2(0.5f, 1.0f), 3);
-    const dvec2 expected =
-        dvec2(0.5, 1.0) * frame.pitch_ * dvec2(IRPlatform::kIsoToScreenSign);
+    const dvec2 expected = dvec2(0.5, 1.0) * frame.pitch_ * dvec2(IRPlatform::kIsoToScreenSign);
     EXPECT_NEAR(shifted.x - plain.x, expected.x, 1e-9);
     EXPECT_NEAR(shifted.y - plain.y, expected.y, 1e-9);
 }
@@ -474,16 +473,11 @@ TEST(CameraZoomCanvasPlacement, RotatedScatterSharesTheFrameOffset) {
     );
 
     const IRMath::CameraRasterPhase frame = IRMath::advanceCameraRasterPhase(
-        IRMath::CameraRasterPhase{
-            dvec2(camera),
-            IRMath::cameraZoomPitch(vec2(2.3f)),
-            dvec2(0.0)
-        },
+        IRMath::CameraRasterPhase{dvec2(camera), IRMath::cameraZoomPitch(vec2(2.3f)), dvec2(0.0)},
         camera,
         vec2(2.5f)
     );
-    const vec2 placed =
-        TrixelToFramebuffer::perAxisScatterCameraOffset(&frame, camera, pxPerCell);
+    const vec2 placed = TrixelToFramebuffer::perAxisScatterCameraOffset(&frame, camera, pxPerCell);
     EXPECT_EQ(placed, vec2(IRMath::cameraRasterDetachedOffset(frame)));
 
     // Anchor cells plus this offset, plus the residual's source fraction, is

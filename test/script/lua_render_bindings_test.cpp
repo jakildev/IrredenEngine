@@ -146,10 +146,7 @@ TEST_F(LuaRenderBindingsTest, CameraZoomRejectsBadArgumentsWithoutChangingState)
     }
 
     EXPECT_TRUE(IREntity::getComponent<IRComponents::C_Camera>(camera).continuousZoom_);
-    EXPECT_EQ(
-        IREntity::getComponent<IRComponents::C_ZoomLevel>(camera).zoom_,
-        IRMath::vec2(2.0f)
-    );
+    EXPECT_EQ(IREntity::getComponent<IRComponents::C_ZoomLevel>(camera).zoom_, IRMath::vec2(2.0f));
 }
 
 // ---- colorFromLua (shared Lua → IRMath::Color helper) ---------------------

@@ -168,13 +168,13 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         const ivec2 logicalCanvasSize =
             IRPrefab::CanvasCoverage::logicalSize(entity, triangleCanvasTextures.size_);
         const vec2 backingScale = vec2(triangleCanvasTextures.size_) / vec2(logicalCanvasSize);
-        frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) *
-                                         calcModelMatrix(
-                                             framebufferResolution,
-                                             gatherTranslation,
-                                             frameData.frameData_.canvasZoomLevel_,
-                                             backingScale
-                                         );
+        frameData.frameData_.mpMatrix_ =
+            calcProjectionMatrix(framebufferResolution) * calcModelMatrix(
+                                                              framebufferResolution,
+                                                              gatherTranslation,
+                                                              frameData.frameData_.canvasZoomLevel_,
+                                                              backingScale
+                                                          );
 
         if (!behavior.mouseHoverEnabled_) {
             frameData.frameData_.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);

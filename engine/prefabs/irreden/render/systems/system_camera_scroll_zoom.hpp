@@ -30,8 +30,10 @@ template <> struct System<CAMERA_SCROLL_ZOOM> {
     }
 
     void endTick() {
-        for (int i = 0; i < scrollDelta_; ++i) IRPrefab::Camera::zoomIn();
-        for (int i = 0; i > scrollDelta_; --i) IRPrefab::Camera::zoomOut();
+        for (int i = 0; i < scrollDelta_; ++i)
+            IRPrefab::Camera::zoomIn();
+        for (int i = 0; i > scrollDelta_; --i)
+            IRPrefab::Camera::zoomOut();
     }
 
     static SystemId create() {
