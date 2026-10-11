@@ -75,8 +75,8 @@ jobs:
       - name: Build smoke target (IRShapeDebug)
         run: cmake --build build --target IRShapeDebug -j $(nproc)
 
-      # The only fleet lane that draws a sprite on OpenGL and reads the result.
-      # The screenshot directory is empty on a fresh checkout, so every
+      # Draws the two-tone fixture sprite on OpenGL and grades which way up it
+      # is. The screenshot directory is empty on a fresh checkout, so every
       # full-frame capture in it is one of this run's shots.
       - name: Sprite frame orientation on OpenGL
         run: |
