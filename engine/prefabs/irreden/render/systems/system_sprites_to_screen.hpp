@@ -95,7 +95,13 @@ template <> struct System<SPRITE_TO_SCREEN> {
         const vec2 snappedAnchor = sprite.screenPixelSmooth_
                                        ? anchor
                                        : snapToGameGrid(anchor, gameGridOrigin_, scaleFactor_);
-        const vec4 quad = quadScreenRect(snappedAnchor, sprite.size_, sprite.anchor_, scaleFactor_);
+        const vec4 quad = quadScreenRect(
+            snappedAnchor,
+            sprite.size_,
+            sprite.anchor_,
+            scaleFactor_,
+            IRPlatform::kGfx.screenYDirection_
+        );
         entry.screenPos_ = vec2(quad.x, quad.y);
         entry.size_ = vec2(quad.z, quad.w);
         entries_.push_back(entry);
@@ -232,11 +238,14 @@ template <> struct System<SPRITE_TO_SCREEN> {
     /// `C_Sprite::size_`: one game pixel covers @p outputScale viewport
     /// pixels per axis, and the two axes differ under a stretched fit. The
     /// anchor offset uses the scaled size, so @p anchorScreen stays on the
-    /// quad's @p anchorUv point at every scale.
-    static vec4
-    quadScreenRect(vec2 anchorScreen, vec2 sizeGamePx, vec2 anchorUv, vec2 outputScale) {
+    /// quad's @p anchorUv point at every scale. @p screenYDirection adapts
+    /// bottom-origin anchor Y to the backend's viewport direction.
+    static vec4 quadScreenRect(
+        vec2 anchorScreen, vec2 sizeGamePx, vec2 anchorUv, vec2 outputScale, float screenYDirection
+    ) {
         const vec2 sizeScreen = sizeGamePx * outputScale;
-        const vec2 origin = anchorScreen - anchorUv * sizeScreen;
+        const float originAnchorY = screenYDirection > 0.0f ? 1.0f - anchorUv.y : anchorUv.y;
+        const vec2 origin = anchorScreen - vec2(anchorUv.x, originAnchorY) * sizeScreen;
         return vec4(origin.x, origin.y, sizeScreen.x, sizeScreen.y);
     }
 
