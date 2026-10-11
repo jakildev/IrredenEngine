@@ -1641,7 +1641,7 @@ int main(int argc, char **argv) {
         }
         if (g_viewportPortrait || IREngine::args().getFlag("--ao-contact-probe") ||
             g_cullEvictTest || g_lodDenseSwap || !g_loadPrefabPath.empty() ||
-            g_pivotVerifyBlock != "off" || g_pivotFocusDemo) {
+            g_pivotVerifyBlock != "off" || g_pivotFocusDemo || g_zoomCalibration) {
             IR_LOG_ERROR("--spin-shape-floor cannot be combined with another scene override");
             return 2;
         }
