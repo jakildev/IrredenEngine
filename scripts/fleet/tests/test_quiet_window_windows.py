@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 """Windows coverage for the quiet-window process model.
 
-The owner-token, MSYS process-map, CPU-time and reaped-child cases run on
-every host; the classes gated on native Windows drive real MSYS processes.
+The owner-token, MSYS process-map, park runtime-root, CPU-time and
+reaped-child cases run on every host; the classes gated on native Windows drive real MSYS processes.
 """
 
+import argparse
 import importlib.util
 import io
 import os
@@ -145,6 +146,111 @@ class MsysProcessMapTest(unittest.TestCase):
                 with self.assertRaises((OSError, subprocess.SubprocessError)):
                     self.helper.process_parents((RUNTIME,))
                 self.assertEqual(self.resolve(ROOT)[0], 0)
+
+
+SECOND_RUNTIME = Path("C:/msys64/")
+MSYS_PS_HEADER = MSYS_PS.splitlines(keepends=True)[0]
+
+
+def ps_exe(runtime_root):
+    return str(runtime_root / "usr" / "bin" / "ps.exe")
+
+
+class NativeWindowsOs:
+    """The helper's `os` as a parker sees it under the 600 shell; the rest is the real module."""
+
+    name = "nt"
+
+    @staticmethod
+    def getppid():
+        return 600
+
+    def __getattr__(self, attr):
+        return getattr(os, attr)
+
+
+class ParkRuntimeRootsTest(unittest.TestCase):
+    """cmd_park takes one runtime root from the lease owner token and one from --runtime-root."""
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.helper = load_helper(Path(temp.name))
+        self.helper.atomic_json(
+            self.helper.lease_path("pane") / "lease.json",
+            {"tag": "pane", "holder_pid": 5, "owner_token": f"{HOLDER} {RUNTIME}"},
+        )
+        for patch in (
+            mock.patch.object(self.helper, "os", NativeWindowsOs()),
+            mock.patch.object(self.helper.platform, "system", return_value="Windows"),
+            mock.patch.object(self.helper, "win32_parents", return_value=dict(WIN32_PARENTS)),
+            mock.patch.object(self.helper, "windows_native_alive", return_value=True),
+        ):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def park(self, run):
+        """One held sample then off; returns every parker state written and stderr."""
+        args = argparse.Namespace(
+            tag="pane",
+            measurement_root=20,
+            measurement_root_token=f"{ROOT} {RUNTIME}",
+            runtime_root=str(SECOND_RUNTIME),
+        )
+        held = {
+            "state": "held",
+            "records": [{"state": "held", "settle_sample_seconds": 0.0, "settle_cpu": 0.5}],
+        }
+        written = []
+        real_atomic_json = self.helper.atomic_json
+
+        def record(path, value):
+            if path.parent.name == "parkers":
+                written.append(dict(value))
+            real_atomic_json(path, value)
+
+        stderr = io.StringIO()
+        with mock.patch.object(self.helper.subprocess, "run", side_effect=run), \
+                mock.patch.object(self.helper, "status_payload",
+                                  side_effect=[held, {"state": "off"}, {"state": "off"}]), \
+                mock.patch.object(self.helper, "atomic_json", side_effect=record), \
+                mock.patch.object(self.helper.sys, "stderr", stderr):
+            self.assertEqual(self.helper.cmd_park(args), 0)
+        return written, stderr.getvalue()
+
+    def test_msys_only_ancestor_is_retained_from_either_runtime_root(self):
+        for live in (RUNTIME, SECOND_RUNTIME):
+            with self.subTest(table=str(live)):
+                calls = []
+
+                def run(argv, **kwargs):
+                    calls.append(argv[0])
+                    text = MSYS_PS if argv[0] == ps_exe(live) else MSYS_PS_HEADER
+                    return subprocess.CompletedProcess(argv, 0, stdout=text, stderr="")
+
+                sampled = mock.Mock(return_value=(0.0, 1.0, 2.0))
+                with mock.patch.object(self.helper, "sample_cores", sampled):
+                    written, warning = self.park(run)
+                self.assertEqual(warning, "")
+                self.assertEqual(written[0]["measurement_root"], ROOT)
+                self.assertEqual(sorted(calls), sorted([ps_exe(RUNTIME), ps_exe(SECOND_RUNTIME)]))
+                holder, excluded, _, runtime_roots = sampled.call_args.args
+                self.assertEqual(holder, HOLDER)
+                self.assertIn(ROOT, excluded)
+                self.assertEqual(set(runtime_roots), {RUNTIME, SECOND_RUNTIME})
+
+    def test_unreadable_runtime_table_drops_the_root_and_samples_busy(self):
+        for outcome in (
+            FileNotFoundError("ps.exe"),
+            subprocess.TimeoutExpired("ps.exe", 5),
+            subprocess.CalledProcessError(1, "ps.exe"),
+        ):
+            with self.subTest(outcome=type(outcome).__name__), \
+                    mock.patch.object(self.helper, "cpu_time", return_value=0.0):
+                written, warning = self.park(mock.Mock(side_effect=outcome))
+                self.assertIn(f"ignoring non-ancestor IR_QUIET_MEASURE_ROOT={ROOT}", warning)
+                self.assertEqual(written[0]["measurement_root"], 0)
+                self.assertEqual(written[1]["state"], "busy")
 
 
 class FakeKernel32:
