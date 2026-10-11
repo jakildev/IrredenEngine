@@ -968,11 +968,7 @@ bool Audio::armMonitorBy(
 
     if (completion == Completion::TIMED_OUT) {
         m_monitorChannel->closeAdmission();
-        logMonitorTimeout(
-            report->operation_,
-            m_deadlines.arm_,
-            report->deviceName_.empty() ? requestedDeviceName : report->deviceName_
-        );
+        logMonitorTimeout(report->operation_, m_deadlines.arm_, requestedDeviceName);
         return false;
     }
     if (report->cleanupThrew_) {
