@@ -3,6 +3,8 @@
 
 #include <irreden/ir_math.hpp>
 
+#include <cstdint>
+
 namespace IRComponents {
 
 /// Runtime state of a continuous-zoom camera: the placement sample the
@@ -15,6 +17,11 @@ namespace IRComponents {
 /// through `IRPrefab::Camera::zoomFrame`.
 struct C_CameraZoomFrameState {
     IRMath::CameraRasterPhase sample_{};
+    /// RENDER event tick (`IRSystem::getEventTickCount`) `sample_` was
+    /// published in. A reader places content from `sample_` only while that
+    /// tick is still the current one; on any later tick the sample is just the
+    /// history the next prepare advances from.
+    std::uint64_t publishedRenderTick_ = 0;
     /// False until a frame has been prepared since the last reset. A reader
     /// must not place content from `sample_` while this is false.
     bool published_ = false;

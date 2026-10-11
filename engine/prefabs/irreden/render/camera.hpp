@@ -20,6 +20,8 @@
 #include <irreden/ir_constants.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_system.hpp>
+#include <irreden/ir_time.hpp>
 
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/render/components/component_camera.hpp>
@@ -280,6 +282,11 @@ inline void zoomOut() {
 /// after the camera controls and ahead of every stage that places
 /// camera-following content. A second call in a frame with the same arguments
 /// republishes the same sample.
+///
+/// The sample is stamped with the RENDER event tick it was published in and
+/// is readable only during that tick (@ref zoomFrame). The carried phase
+/// outlives the stamp: a frame that runs no prepare leaves the history where
+/// it was, and the next prepare advances from the last frame that had one.
 inline void prepareZoomFrame(IRMath::vec2 effectiveCameraIso, IRMath::vec2 zoom) {
     auto *state = detail::cameraComponent<IRComponents::C_CameraZoomFrameState>();
     if (state == nullptr)
@@ -297,14 +304,22 @@ inline void prepareZoomFrame(IRMath::vec2 effectiveCameraIso, IRMath::vec2 zoom)
                   IRMath::dvec2(0.0)
               };
     state->published_ = true;
+    state->publishedRenderTick_ = IRSystem::getEventTickCount(IRTime::Events::RENDER);
 }
 
 /// The placement sample published for the frame being drawn, or nullptr when
-/// a stage must use the snapped placement: the policy is off, no frame has
-/// been prepared, or the published sample is for a different camera pose than
-/// the (@p effectiveCameraIso, @p zoom) the caller is about to place with.
-/// That last case is a pipeline with no `TRIXEL_TO_FRAMEBUFFER` ahead of the
-/// caller, or a camera write between the two.
+/// a stage must use the snapped placement:
+///   - the policy is off;
+///   - no sample was published in the current RENDER event tick — a pipeline
+///     with no `TRIXEL_TO_FRAMEBUFFER` ahead of the caller, including one
+///     whose camera has not moved since a frame that did publish;
+///   - the published sample is for a different camera pose than the
+///     (@p effectiveCameraIso, @p zoom) the caller is about to place with — a
+///     camera write between the prepare and the caller.
+///
+/// A sample stays readable from its prepare until the next RENDER pass
+/// begins, so a reader outside the RENDER pipeline sees the sample of the
+/// frame on screen.
 ///
 /// The pointer is into component storage; copy the sample out, never hold it
 /// past the tick.
@@ -314,6 +329,8 @@ zoomFrame(IRMath::vec2 effectiveCameraIso, IRMath::vec2 zoom) {
         return nullptr;
     const auto *state = detail::cameraComponent<IRComponents::C_CameraZoomFrameState>();
     if (state == nullptr || !state->published_)
+        return nullptr;
+    if (state->publishedRenderTick_ != IRSystem::getEventTickCount(IRTime::Events::RENDER))
         return nullptr;
     if (state->sample_.cameraIso_ != IRMath::dvec2(effectiveCameraIso) ||
         state->sample_.pitch_ != IRMath::cameraZoomPitch(zoom))

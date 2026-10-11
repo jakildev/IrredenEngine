@@ -106,6 +106,44 @@ TEST_F(SystemCadenceTest, RunsOneInNTicks) {
     EXPECT_EQ(m_system_manager.getSystemCadence(sys), 3u);
 }
 
+// The cadence clock is readable: one count per event, advanced once at the top
+// of that event's pass and constant for every system in it, so a value stamped
+// by one stage identifies the pass to a later one.
+TEST_F(SystemCadenceTest, EventTickCountAdvancesOncePerPassOfItsOwnEvent) {
+    std::vector<std::uint64_t> seen;
+    auto first = IRSystem::createSystem<C_CadA>(
+        "TickCountFirst",
+        [](C_CadA &) {},
+        [&seen]() { seen.push_back(IRSystem::getEventTickCount(IRTime::RENDER)); }
+    );
+    auto second = IRSystem::createSystem<C_CadB>(
+        "TickCountSecond",
+        [](C_CadB &) {},
+        nullptr,
+        [&seen]() { seen.push_back(IRSystem::getEventTickCount(IRTime::RENDER)); }
+    );
+    EXPECT_EQ(IRSystem::getEventTickCount(IRTime::RENDER), 0u);
+
+    m_system_manager.registerPipeline(IRTime::RENDER, {first, second});
+    EXPECT_EQ(IRSystem::getEventTickCount(IRTime::RENDER), 0u);
+
+    m_system_manager.executePipeline(IRTime::RENDER);
+    m_system_manager.executePipeline(IRTime::RENDER);
+    EXPECT_EQ(seen, (std::vector<std::uint64_t>{1u, 1u, 2u, 2u}));
+    EXPECT_EQ(IRSystem::getEventTickCount(IRTime::RENDER), 2u);
+    EXPECT_EQ(m_system_manager.getEventTickCount(IRTime::RENDER), 2u);
+
+    // UPDATE has no pipeline, so its pass runs nothing and counts nothing.
+    m_system_manager.executePipeline(IRTime::UPDATE);
+    EXPECT_EQ(IRSystem::getEventTickCount(IRTime::UPDATE), 0u);
+    EXPECT_EQ(IRSystem::getEventTickCount(IRTime::RENDER), 2u);
+
+    m_system_manager.registerPipeline(IRTime::UPDATE, {});
+    m_system_manager.executePipeline(IRTime::UPDATE);
+    EXPECT_EQ(IRSystem::getEventTickCount(IRTime::UPDATE), 1u);
+    EXPECT_EQ(IRSystem::getEventTickCount(IRTime::RENDER), 2u);
+}
+
 // Acceptance 4: the default (unset) cadence runs every tick, unchanged.
 TEST_F(SystemCadenceTest, DefaultCadenceRunsEveryTick) {
     int exec = 0;

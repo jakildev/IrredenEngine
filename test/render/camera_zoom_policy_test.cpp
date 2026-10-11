@@ -3,6 +3,8 @@
 #include <irreden/ir_constants.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_system.hpp>
+#include <irreden/ir_time.hpp>
 #include <irreden/render/camera.hpp>
 #include <irreden/render/components/component_camera.hpp>
 #include <irreden/render/components/component_camera_zoom_frame_state.hpp>
@@ -29,11 +31,19 @@ using IRRender::ZoomDensityRounding;
 
 // The named camera entity as the render manager builds it, minus everything
 // that needs a GPU: the policy, the zoom value, and the transient frame state.
+// The system manager supplies the RENDER event tick a published sample is
+// stamped with; an empty RENDER pipeline is enough for a pass to advance it.
 class CameraZoomPolicyTest : public testing::Test {
   protected:
     CameraZoomPolicyTest() {
         m_camera = IREntity::createEntity(C_Camera{}, C_ZoomLevel{1.0f}, C_CameraZoomFrameState{});
         IREntity::setName(m_camera, "camera");
+        IRSystem::registerPipeline(IRTime::Events::RENDER, {});
+    }
+
+    // One RENDER pass with no stage in it: the frame boundary alone.
+    void beginRenderFrame() {
+        IRSystem::executePipeline(IRTime::Events::RENDER);
     }
 
     vec2 &zoom() {
@@ -45,6 +55,7 @@ class CameraZoomPolicyTest : public testing::Test {
     }
 
     IREntity::EntityManager m_entity_manager;
+    IRSystem::SystemManager m_system_manager;
     IREntity::EntityId m_camera = IREntity::kNullEntity;
 };
 
@@ -294,15 +305,108 @@ TEST_F(CameraZoomPolicyTest, AConsumerGetsNoFrameUntilOneIsPrepared) {
     EXPECT_EQ(frame->phase_, dvec2(0.0));
 }
 
-// A stage that runs with no prepare ahead of it this frame — a pipeline
-// without the trixel composite, or a camera write after it — sees a sample
-// for a different pose and must fall back to the snapped placement.
+// A camera write between the prepare and a consumer leaves the sample
+// describing a pose the consumer is not placing with; it must fall back to the
+// snapped placement.
 TEST_F(CameraZoomPolicyTest, AFrameForAnotherPoseIsNotHandedOut) {
     IRPrefab::Camera::setZoomContinuous(true);
     IRPrefab::Camera::prepareZoomFrame(vec2(17.3f), vec2(2.5f));
     EXPECT_EQ(IRPrefab::Camera::zoomFrame(vec2(17.4f), vec2(2.5f)), nullptr);
     EXPECT_EQ(IRPrefab::Camera::zoomFrame(vec2(17.3f), vec2(2.6f)), nullptr);
     EXPECT_NE(IRPrefab::Camera::zoomFrame(vec2(17.3f), vec2(2.5f)), nullptr);
+}
+
+// A frame that runs no prepare must not place from the previous frame's
+// sample, even when the camera and the zoom have not moved since.
+TEST_F(CameraZoomPolicyTest, AFrameFromAnEarlierRenderTickIsNotHandedOut) {
+    const vec2 camera(17.3f);
+    const vec2 zoomValue(2.5f);
+    IRPrefab::Camera::setZoomContinuous(true);
+
+    beginRenderFrame();
+    IRPrefab::Camera::prepareZoomFrame(camera, zoomValue);
+    ASSERT_NE(IRPrefab::Camera::zoomFrame(camera, zoomValue), nullptr);
+
+    beginRenderFrame();
+    EXPECT_EQ(IRPrefab::Camera::zoomFrame(camera, zoomValue), nullptr);
+    EXPECT_TRUE(frameState().published_);
+
+    IRPrefab::Camera::prepareZoomFrame(camera, zoomValue);
+    EXPECT_NE(IRPrefab::Camera::zoomFrame(camera, zoomValue), nullptr);
+}
+
+// The same boundary through real pipeline stages: a RENDER pipeline replaced
+// by one with a consumer and no publisher, then restored.
+TEST_F(CameraZoomPolicyTest, APipelineWithoutThePublisherGetsNoFrame) {
+    const vec2 camera(17.3f);
+    const vec2 zoomValue(2.5f);
+    IRPrefab::Camera::setZoomContinuous(true);
+
+    int consumerRuns = 0;
+    bool consumerGotFrame = false;
+    const IRSystem::SystemId publisher = IRSystem::createSystem<C_Camera>(
+        "TestZoomFramePublisher",
+        [](C_Camera &) {},
+        [camera, zoomValue]() { IRPrefab::Camera::prepareZoomFrame(camera, zoomValue); }
+    );
+    const IRSystem::SystemId consumer = IRSystem::createSystem<C_Camera>(
+        "TestZoomFrameConsumer",
+        [](C_Camera &) {},
+        [camera, zoomValue, &consumerRuns, &consumerGotFrame]() {
+            ++consumerRuns;
+            consumerGotFrame = IRPrefab::Camera::zoomFrame(camera, zoomValue) != nullptr;
+        }
+    );
+
+    IRSystem::registerPipeline(IRTime::Events::RENDER, {publisher, consumer});
+    IRSystem::executePipeline(IRTime::Events::RENDER);
+    ASSERT_EQ(consumerRuns, 1);
+    EXPECT_TRUE(consumerGotFrame);
+
+    IRSystem::registerPipeline(IRTime::Events::RENDER, {consumer});
+    IRSystem::executePipeline(IRTime::Events::RENDER);
+    ASSERT_EQ(consumerRuns, 2);
+    EXPECT_FALSE(consumerGotFrame);
+
+    IRSystem::registerPipeline(IRTime::Events::RENDER, {publisher, consumer});
+    IRSystem::executePipeline(IRTime::Events::RENDER);
+    ASSERT_EQ(consumerRuns, 3);
+    EXPECT_TRUE(consumerGotFrame);
+}
+
+// A reader outside the RENDER pipeline runs between two passes and sees the
+// sample of the frame on screen.
+TEST_F(CameraZoomPolicyTest, AFrameStaysReadableUntilTheNextRenderTick) {
+    const vec2 camera(17.3f);
+    const vec2 zoomValue(2.5f);
+    IRPrefab::Camera::setZoomContinuous(true);
+    IRSystem::registerPipeline(IRTime::Events::INPUT, {});
+
+    beginRenderFrame();
+    IRPrefab::Camera::prepareZoomFrame(camera, zoomValue);
+    IRSystem::executePipeline(IRTime::Events::INPUT);
+    EXPECT_NE(IRPrefab::Camera::zoomFrame(camera, zoomValue), nullptr);
+}
+
+// The stamp gates readers only. A frame with no prepare leaves the carried
+// phase where it was, and the next prepare advances from the last frame that
+// had one.
+TEST_F(CameraZoomPolicyTest, ASkippedFrameKeepsTheCarriedPhase) {
+    const vec2 camera(17.3f);
+    IRPrefab::Camera::setZoomContinuous(true);
+
+    beginRenderFrame();
+    IRPrefab::Camera::prepareZoomFrame(camera, vec2(2.5f));
+    const IRMath::CameraRasterPhase before = frameState().sample_;
+
+    beginRenderFrame();
+    beginRenderFrame();
+    IRPrefab::Camera::prepareZoomFrame(camera, vec2(2.7f));
+    const IRMath::CameraRasterPhase expected =
+        IRMath::advanceCameraRasterPhase(before, camera, vec2(2.7f));
+    ASSERT_NE(expected.phase_, dvec2(0.0));
+    EXPECT_EQ(frameState().sample_.phase_, expected.phase_);
+    EXPECT_NE(IRPrefab::Camera::zoomFrame(camera, vec2(2.7f)), nullptr);
 }
 
 TEST_F(CameraZoomPolicyTest, ASecondPrepareInOneFrameRepublishesTheSameSample) {
@@ -350,10 +454,15 @@ TEST_F(CameraZoomPolicyTest, ScreenResidualFollowsThePublishedFrame) {
     IRPrefab::Camera::prepareZoomFrame(camera, zoomValue);
     const IRMath::CameraRasterPhase *frame = IRPrefab::Camera::zoomFrame(camera, zoomValue);
     ASSERT_NE(frame, nullptr);
-    EXPECT_EQ(
-        IRPrefab::Camera::screenResidual(camera, zoomValue, scale),
-        IRMath::cameraRasterScreenResidual(*frame, scale)
-    );
+    const ivec2 published = IRMath::cameraRasterScreenResidual(*frame, scale);
+    const ivec2 snapped = IRMath::cameraSubPixelOffsets(camera, zoomValue, scale).screenPxResidual_;
+    ASSERT_NE(published, snapped);
+    EXPECT_EQ(IRPrefab::Camera::screenResidual(camera, zoomValue, scale), published);
+
+    // A frame with no prepare: the upscale has no sample to read and takes
+    // the snapped decomposition, as it does with the policy off.
+    beginRenderFrame();
+    EXPECT_EQ(IRPrefab::Camera::screenResidual(camera, zoomValue, scale), snapped);
 }
 
 // --- which canvases the camera places ----------------------------------------

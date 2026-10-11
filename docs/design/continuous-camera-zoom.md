@@ -99,10 +99,17 @@ camera-following content. It advances the phase and publishes the frame's
 the sprite grid, and `ENTITY_CANVAS_TO_FRAMEBUFFER` read that sample through
 `IRPrefab::Camera::zoomFrame` / `screenResidual` and never advance it.
 
-`zoomFrame` hands a sample out only when it was published for the pose the
-caller is about to place with. A pipeline with no `TRIXEL_TO_FRAMEBUFFER`, or
-a camera write between the prepare and a consumer, gets `nullptr` and that
-stage places with the snapped formula.
+`zoomFrame` hands a sample out only when it was published in the current
+frame, for the pose the caller is about to place with. The frame identity is
+the RENDER event tick (`IRSystem::getEventTickCount`), which advances at the
+top of each RENDER pass: `prepareZoomFrame` stamps it on the sample and
+`zoomFrame` compares it. A pipeline with no `TRIXEL_TO_FRAMEBUFFER` therefore
+gets `nullptr` even when the camera has not moved since a frame that did
+publish, and so does a consumer that runs after a camera write. Either stage
+places with the snapped formula. The stamp gates readers only: the carried
+phase stays, and the next prepare advances from the last frame that had one. A
+reader outside the RENDER pipeline runs between two passes and sees the sample
+of the frame on screen.
 
 Only a canvas that follows **both** the camera's position and its zoom takes
 the continuous translation. The GUI canvas ignores the camera; handed the
