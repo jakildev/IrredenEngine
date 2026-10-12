@@ -61,7 +61,9 @@ using CpuScopeMap = std::unordered_map<
 // construction — the engine's tick fires on the main thread only, and a scope
 // recorded from a worker thread races these unsynchronized maps (unsupported;
 // no locking is added). `endFrame()` also folds the finished frame into a
-// run-long total that `--auto-profile` writes into the profile report.
+// run-long total that `--auto-profile` writes into the profile report; the
+// report read adds the frame in progress, so no scope exit depends on where
+// the frame boundary sits.
 class CpuFrameHistogram {
   public:
     bool enabled_ = false;
@@ -84,17 +86,8 @@ class CpuFrameHistogram {
     }
 
     void endFrame() {
-        // Merge before the swap: the swap hands the zeroed map to `m_current`.
-        for (const auto &[name, frame] : m_current) {
-            if (frame.count_ == 0)
-                continue;
-            auto &run = m_run[name];
-            run.totalMs_ += frame.totalMs_;
-            if (frame.maxMs_ > run.maxMs_) {
-                run.maxMs_ = frame.maxMs_;
-            }
-            run.count_ += frame.count_;
-        }
+        // Fold before the swap: the swap hands the zeroed map to `m_current`.
+        foldInto(m_run, m_current);
         m_lastFrame.swap(m_current);
         for (auto &[_, stats] : m_current) {
             stats = CpuScopeStats{};
@@ -108,17 +101,35 @@ class CpuFrameHistogram {
 
     const detail::CpuScopeMap &lastFrame() const { return m_lastFrame; }
 
-    /// Totals per scope name across every frame since the last `resetRun()`.
-    const detail::CpuScopeMap &runTotals() const {
-        return m_run;
+    /// Totals per scope name since the last `resetRun()`, including the frame
+    /// in progress: a scope that exits after the last `endFrame()` still counts.
+    /// Builds a map per call, so read it once per report, never per frame.
+    detail::CpuScopeMap runTotals() const {
+        detail::CpuScopeMap totals = m_run;
+        foldInto(totals, m_current);
+        return totals;
     }
 
-    /// Clears the run totals only; `enabled_` and the per-frame maps are untouched.
+    /// Clears the completed-frame totals only; `enabled_` and the per-frame maps
+    /// are untouched, so call it at a frame boundary to start a clean run.
     void resetRun() {
         m_run.clear();
     }
 
   private:
+    static void foldInto(detail::CpuScopeMap &totals, const detail::CpuScopeMap &frame) {
+        for (const auto &[name, stats] : frame) {
+            if (stats.count_ == 0)
+                continue;
+            auto &total = totals[name];
+            total.totalMs_ += stats.totalMs_;
+            if (stats.maxMs_ > total.maxMs_) {
+                total.maxMs_ = stats.maxMs_;
+            }
+            total.count_ += stats.count_;
+        }
+    }
+
     detail::CpuScopeMap m_current;
     detail::CpuScopeMap m_lastFrame;
     detail::CpuScopeMap m_run;

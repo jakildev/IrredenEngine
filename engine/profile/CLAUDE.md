@@ -69,9 +69,9 @@ void World::input() {
 
 Per-stage aggregation: when the same name is recorded multiple times
 within a frame the histogram accumulates `totalMs_`, tracks `maxMs_`,
-and bumps `count_`. Frame swap happens at the end of `World::render()`
-— `IRProfile::cpuFrameHistogram().endFrame()` rotates current → last so
-the HUD reads a stable per-frame snapshot.
+and bumps `count_`. Frame swap happens in `World::gameLoop()` right after
+`render()` returns (so `render`'s own scope lands in its frame) —
+`endFrame()` rotates current → last for a stable per-frame HUD snapshot.
 
 Cost is bounded: when `cpuFrameHistogram().enabled_` is false (the
 default), `ScopeTimer` skips `now()` entirely. When enabled the macro
@@ -81,7 +81,8 @@ the map has warmed up and the hot path is allocation-free
 (heterogeneous `string_view` lookup via transparent hash/eq).
 
 Run totals: `endFrame()` also folds each finished frame into a run-long map
-(`runTotals()`, cleared by `resetRun()`). `World::enableFrameTiming(true)`
+(`runTotals()` adds the frame in progress, so a scope exiting after the last
+boundary still counts; cleared by `resetRun()`). `World::enableFrameTiming(true)`
 enables the histogram and resets the run, and `buildAndWriteProfileReport`
 appends one `--- CPU phase timing ---` row per scope via
 `appendCpuScopePhases` (sample count = scope exits). The histogram is

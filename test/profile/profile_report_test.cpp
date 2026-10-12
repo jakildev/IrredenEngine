@@ -139,6 +139,34 @@ TEST(ProfileReportCpuScopes, ScopeRowsFollowTheFixedPhasesWithRunWideSampleCount
     EXPECT_LT(a, b) << text;
 }
 
+// A scope still open at the frame boundary exits after it, so no later
+// `endFrame()` sees its final exit; the report must count it anyway.
+TEST(ProfileReportCpuScopes, AScopeOpenAcrossTheFrameBoundaryKeepsItsFinalExit) {
+    auto &histogram = IRProfile::cpuFrameHistogram();
+    const bool wasEnabled = histogram.enabled_;
+    histogram.enabled_ = true;
+    histogram.resetRun();
+    constexpr unsigned kFrames = 3;
+    for (unsigned frame = 0; frame < kFrames; ++frame) {
+        IRProfile::ScopeTimer outer{"OpenAcrossBoundary"};
+        histogram.endFrame();
+    }
+
+    IRProfile::ProfileReport report;
+    IRProfile::appendCpuScopePhases(report, histogram);
+    histogram.endFrame();
+    histogram.resetRun();
+    histogram.enabled_ = wasEnabled;
+
+    unsigned samples = 0;
+    for (const auto &phase : report.cpuPhases_) {
+        if (phase.name_ == "OpenAcrossBoundary") {
+            samples = phase.sampleCount_;
+        }
+    }
+    EXPECT_EQ(samples, kFrames);
+}
+
 TEST(ProfileReportCpuScopes, ADisabledHistogramAppendsNothing) {
     IRProfile::CpuFrameHistogram histogram;
     histogram.record("ScopeA", 1.0);
