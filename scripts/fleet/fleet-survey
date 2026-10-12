@@ -9,7 +9,7 @@ per repo, and prints:
   dispatch   cache age, pool utilisation, last dispatch, idle ticks since it
   queue      per repo: claimable here / host-pinned away / ghost / in-flight /
              blocked / in progress
-  parks      every fleet:awaiting-infra PR with its Parked-until issues resolved
+  parks      every fleet:awaiting-infra PR with its Parked-until issues and PRs resolved
   stranded   fleet:wip PRs no label vouches for, and whether they conflict
   approval   fleet:task issues no approval label has reached, epic children first
   epics      fleet:epic umbrellas with children left, flagging ghost-only remainders
@@ -163,6 +163,7 @@ def queue_section(repo_key, repo_state, host):
 
 
 def parks_section(prs, open_issues, ghosts):
+    open_prs = {pr["number"]: pr for pr in prs}
     rows = []
     for pr in prs:
         if "fleet:awaiting-infra" not in label_set(pr):
@@ -173,7 +174,12 @@ def parks_section(prs, open_issues, ghosts):
         verdicts = []
         for num in named:
             issue = open_issues.get(num)
-            if issue is None:
+            named_pr = open_prs.get(num)
+            if named_pr is not None:
+                parked = "fleet:awaiting-infra" in label_set(named_pr)
+                row["issues"][num] = "open PR, itself parked" if parked else "open PR"
+                verdicts.append("open-pr")
+            elif issue is None:
                 row["issues"][num] = "not open"
             elif num in ghosts:
                 row["issues"][num] = f"ghost (shadowed by PR #{ghosts[num]})"
@@ -192,6 +198,8 @@ def parks_section(prs, open_issues, ghosts):
             row["verdict"] = "parked on a delivered issue; close the ghost to lift it"
         elif "needs-human" in verdicts:
             row["verdict"] = "waits on a human decision"
+        elif set(verdicts) == {"open-pr"}:
+            row["verdict"] = "legit: named PR still open"
         else:
             row["verdict"] = "legit: named issue still open"
         rows.append(row)
