@@ -18,14 +18,17 @@
 namespace IRPrefab::Widget::detail {
 
 // Widget text renders through the batched compute path (IRPrefab::GuiText)
-// at this base font size. 1 == the native 7x11 glyph (no upscale), matching
+// at this base font size. 1 == the native 6x11 glyph (no upscale), matching
 // the legacy renderText path so the migration is visually identical. A
 // higher-resolution GUI canvas can raise this for larger body text without
 // touching call sites.
 constexpr int kWidgetTextFontSize = 1;
 
-constexpr int kDropdownChevronWidth = 8;
-constexpr int kDropdownChevronHeight = 4;
+// The chevron is a 6-wide "v" of lattice diamonds; its display spans one row
+// above and below its three bitmap rows, and the width leaves room for the
+// parity-alignment shift.
+constexpr int kDropdownChevronWidth = 7;
+constexpr int kDropdownChevronHeight = 5;
 constexpr int kDropdownTextChevronGap = 1;
 constexpr int kDropdownTextParityAllowance = 1;
 

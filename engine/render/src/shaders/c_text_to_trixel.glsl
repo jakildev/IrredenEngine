@@ -1,11 +1,11 @@
 #version 450 core
 
-layout(local_size_x = 7, local_size_y = 11, local_size_z = 1) in;
+layout(local_size_x = 6, local_size_y = 11, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
 
 // Font bitmap data: fontRows[glyphIndex * 11 + row] = packed row bits
-// Bit layout: bit 6 = col 0 (left), bit 0 = col 6 (right)
+// Bit layout: bit 5 = col 0 (left), bit 0 = col 5 (right)
 layout(std430, binding = 11) buffer FontBuffer {
     uint fontRows[];
 };
@@ -15,7 +15,7 @@ struct GlyphDrawCommand {
     uint glyphIndex;      // 0-127 ASCII
     uint colorPacked;     // RGBA as uint
     uint distance;
-    uint styleFlags;      // low byte = fontSize (pixels per glyph trixel)
+    uint styleFlags;      // low byte = fontSize; bit 8 = lattice-scaled glyphs
 };
 
 layout(std430, binding = 12) buffer CommandBuffer {
@@ -35,17 +35,39 @@ void main() {
     uint col = gl_LocalInvocationID.x;
     uint row = gl_LocalInvocationID.y;
 
-    if (((rowBits >> (6u - col)) & 1u) == 0u) {
+    if (((rowBits >> (5u - col)) & 1u) == 0u) {
         return;
     }
 
     ivec2 canvasSize = imageSize(canvasColors);
     vec4 color = unpackColor(cmd.colorPacked);
-    ivec2 blockOrigin = basePos + ivec2(int(col) * int(fontSize), int(row) * int(fontSize));
+    int scale = int(fontSize);
 
-    for (uint dy = 0u; dy < fontSize; dy++) {
-        for (uint dx = 0u; dx < fontSize; dx++) {
-            ivec2 pixel = blockOrigin + ivec2(dx, dy);
+    if ((cmd.styleFlags & 0x100u) == 0u) {
+        ivec2 blockOrigin = basePos + ivec2(int(col) * scale, int(row) * scale);
+        for (int dy = 0; dy < scale; dy++) {
+            for (int dx = 0; dx < scale; dx++) {
+                ivec2 pixel = blockOrigin + ivec2(dx, dy);
+                if (!isInsideCanvas(pixel, canvasSize)) continue;
+                imageStore(canvasColors, pixel, color);
+                imageStore(canvasDistances, pixel, ivec4(int(cmd.distance)));
+            }
+        }
+        return;
+    }
+
+    // Lattice display: glyph texel (col, row) is a left-pointing triangle when
+    // col + row is even (the text origin is parity-aligned), right-pointing
+    // when odd. Scaling that triangle by `scale` about the text origin gives a
+    // lattice triangle of side `scale`, tiled by scale² unit triangles: one
+    // texel in the apex column, three in the next, 2k + 1 in the k-th column
+    // out from the apex, all centered on the source row.
+    bool left = ((col + row) & 1u) == 0u;
+    ivec2 center = basePos + ivec2(int(col), int(row)) * scale;
+    for (int k = 0; k < scale; k++) {
+        int x = left ? (center.x + k) : (center.x + scale - 1 - k);
+        for (int dy = -k; dy <= k; dy++) {
+            ivec2 pixel = ivec2(x, center.y + dy);
             if (!isInsideCanvas(pixel, canvasSize)) continue;
             imageStore(canvasColors, pixel, color);
             imageStore(canvasDistances, pixel, ivec4(int(cmd.distance)));

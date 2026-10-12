@@ -20,6 +20,7 @@
 #include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
+#include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
 
 namespace {
 
@@ -44,7 +45,8 @@ void initSystems() {
         renderPipeline.end(),
         {IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
          IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-         IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>()}
+         IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
+         IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>()}
     );
     IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
 }

@@ -41,7 +41,7 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         return MTL::Size(2, 3, 32);
     }
     if (functionName == "c_text_to_trixel") {
-        return MTL::Size(7, 11, 1);
+        return MTL::Size(6, 11, 1);
     }
     if (functionName == "c_shapes_to_trixel_depth" ||
         functionName == "c_shapes_to_trixel_publish" ||

@@ -5,7 +5,12 @@ spike's keep-and-document decision froze a real GL defect; the GL gather now
 matches Metal (raw color/depth reads, shifted hover compare). REVISED again
 2026-09-19 (#3018, architect ruling on PR #3522) — the hover **compare** and
 the hover entity-id **read** both moved onto the raw texel; the gather no
-longer uses the shift at all in RECTANGULAR display. History of all four
+longer uses the shift at all in RECTANGULAR display. REVISED 2026-10-10 — the
+engine GUI canvas displays as `LOCAL_TRIANGLES` (its text and widget art is
+authored for the lattice; [GUI trixel display](gui-trixel-display.md)), by
+default through its own screen-resolution composite and under `gui_pixelated`
+through this gather; the raw-read contract below is the main canvas's. History
+of all four
 conclusions below.
 
 Records what the parity shift (`trixelFramebufferSamplePosition`,
@@ -53,7 +58,8 @@ adjusts `.y`, never `.x`, and is byte-identical to CPU
   the buffer stays non-atomic. Form shipped: the raw-index gate (not the
   single-writer `gl_FragCoord == cursor pixel` form) — hover only runs on the
   main canvas, which is always `RECTANGULAR` (`displayOrigin == originRaw`;
-  private `LOCAL_TRIANGLES` canvases composite with hover disabled), and
+  private `LOCAL_TRIANGLES` canvases and the GUI canvas composite with hover
+  disabled), and
   the `_row_above_occupied` fixture reads the voxel under the cursor on every
   frame under both `SubdivisionMode::NONE` and `FULL`.
 - **Why the compare could not stay shifted.** `trixelFramebufferSamplePosition`

@@ -74,6 +74,7 @@
 #include <irreden/render/systems/system_debug_overlay.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
+#include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
 #include <irreden/render/camera_controls.hpp>
 #include <irreden/common/settings_registry.hpp>
@@ -3523,6 +3524,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::DEBUG_OVERLAY>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
+            IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>(),
         }
     );
     if (g_viewportPortrait) {

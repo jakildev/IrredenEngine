@@ -175,9 +175,12 @@ display-backed drivers in `DISPLAY_VALIDATORS`
 allow rules, which match only the bare form — `python3 scripts/render-verify.py …`,
 `python3 scripts/perf/repeat_profile.py …`, as relative or absolute path.
 A `VAR=value` or `env` prefix, or an interpreter flag, falls back into
-the sandbox; set a build-tree override in the launch
-environment instead. A new driver that launches a demo joins the list
-(`test_fleet_codex.py` fails until it does). A detached
+the sandbox. For a probe switch, keep the launcher bare and pass it as a
+pre-executable wrapper option, for example `fleet-run --env IR_SHAPE_PROBE=1
+IRShapeDebug --auto-screenshot 10`; `--env` also supports `IR_WINDOW_MODE`.
+Set a build-tree override in the launch environment instead. A new driver
+that launches a demo joins the list (`test_fleet_codex.py` fails until it
+does). A detached
 `fleet-jobs start render-verify …` gets the same exact-prefix rule; the
 other `fleet-jobs` profiles get none, so `fleet-tests` stays sandboxed and
 `fleet-build --detach` runs where `fleet-build` does
