@@ -353,13 +353,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         fd.fogBodyFactorEncoded_ =
             fogBodyFactor == 255u ? 0u : static_cast<std::uint32_t>(fogBodyFactor) + 1u;
         fd.fogUnexploredColorPacked_ = fogUnexploredColorPacked_;
-        placeGatherQuad(
-            fd,
-            fbRes_,
-            entityFbCenter,
-            framebufferExtent,
-            vec2(canvasTextures->size_)
-        );
+        placeGatherQuad(fd, fbRes_, entityFbCenter, framebufferExtent, vec2(canvasTextures->size_));
         fd.canvasZoomLevel_ = densityZoom;
         // The gather's canvas offset scales with the raster density, the
         // direct mirror of the main canvas's `cameraTrixelOffset_ *= effSub`
