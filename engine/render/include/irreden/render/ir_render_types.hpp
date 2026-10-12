@@ -228,6 +228,12 @@ struct FrameDataTrixelToFramebuffer {
     /// vertex shaders invert a cell through it; `perAxisBase_` only places the
     /// recovered face on screen. std140-appended at offset 224.
     ivec4 perAxisStoreFrame_{0, 0, 0, 0};
+    /// Gather pixel→canvas map: quad centre in raster-target pixels (.xy) and
+    /// canvas texels per raster pixel (.zw). The gather fragment derives its
+    /// sampled texel from this (`canvasPositionFromPixel`), so it is written
+    /// only by placeGatherQuad together with mpMatrix_; a zero map samples one
+    /// texel across the whole quad.
+    vec4 canvasFromPixel_{0.0f, 0.0f, 0.0f, 0.0f};
 };
 static_assert(
     offsetof(FrameDataTrixelToFramebuffer, visibleFaceIds_) == 128,
@@ -271,7 +277,12 @@ static_assert(
     "(end at 224); only the per-axis scatter vertex shaders read it"
 );
 static_assert(
-    sizeof(FrameDataTrixelToFramebuffer) == 240,
+    offsetof(FrameDataTrixelToFramebuffer, canvasFromPixel_) == 240,
+    "canvasFromPixel_ must std140-append after perAxisStoreFrame_ (ends at 240); "
+    "the gather vertex and fragment blocks declare both members"
+);
+static_assert(
+    sizeof(FrameDataTrixelToFramebuffer) == 256,
     "FrameDataTrixelToFramebuffer size must mirror its std140 GLSL block. The "
     "camera scatter shaders (v_/f_peraxis_scatter) read the appended "
     "perAxisBase_ / visualYaw_ / visibleFaceIds_ and scatterFbResolution_ at "
@@ -279,6 +290,24 @@ static_assert(
     "per-pixel depth-color mode for the scatter path; a silent reorder or "
     "resize would corrupt the scatter UBO with no compile diagnostic"
 );
+
+/// Places a gather quad (the unit `QuadVAO` square about the origin) at
+/// @p center with size @p extent in a raster target of @p targetSize pixels,
+/// and writes the gather fragment's pixel→canvas map for a bound canvas of
+/// @p textureSize texels. Every gather producer places through this, so the
+/// matrix and the map always describe the same quad.
+inline void placeGatherQuad(
+    FrameDataTrixelToFramebuffer &frameData,
+    const vec2 &targetSize,
+    const vec2 &center,
+    const vec2 &extent,
+    const vec2 &textureSize
+) {
+    mat4 model = translate(mat4(1.0f), vec3(center, 0.0f));
+    model = scale(model, vec3(extent, 1.0f));
+    frameData.mpMatrix_ = ortho(0.0f, targetSize.x, 0.0f, targetSize.y, -1.0f, 100.0f) * model;
+    frameData.canvasFromPixel_ = vec4(center, textureSize / extent);
+}
 
 /// Multiplier in the @c encodeDepthWithFace convention (d·8 + flip·4 + face,
 /// with the silhouette-riser polarity carrier at bit 2), shared by the

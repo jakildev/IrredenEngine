@@ -98,8 +98,8 @@ Changes with no visual effect (docs, tests, mechanical, build-only) need no capt
 - **The engine GUI canvas displays as `LOCAL_TRIANGLES`** (render-manager-stamped;
   `RECTANGULAR` at full resolution), hover off. `IRPrefab::GuiCanvas` owns which
   pass composites it: [GUI trixel display](../../docs/design/gui-trixel-display.md).
-- Gather interpolates [centered texel units](../../docs/design/trixel-gather-sampling.md);
-  normalized UV rescaling can select the wrong half at integer boundaries.
+- The gather derives its canvas position from the fragment pixel, never an
+  interpolated varying; producers place through `placeGatherQuad` ([contract](../../docs/design/trixel-gather-sampling.md)).
 - CPU frame-data structs and shader blocks must agree on field order, `std140`
   padding, and binding index; every hard-coded binding has a `kBufferIndex_*` twin.
 - Metal buffer indices 0–30 are occupied. A pass needing another buffer must

@@ -570,6 +570,26 @@ ivec2 roundHalfUp(vec2 v) {
     return ivec2(floor(v + vec2(0.5)));
 }
 
+// Unit-vector components as exact UNORM8 codes: -1 → 0, 0 → 128, +1 → 255.
+// A bare `v * 0.5 + 0.5` leaves the 0.5 midpoint to the store's float-to-unorm
+// conversion, which is implementation-defined at that tie (127 or 128), so
+// debug colours read back exactly only when the shader rounds them itself.
+vec3 encodeUnitVectorUnorm8(vec3 v) {
+    return vec3(roundHalfUp(v * 127.5 + 127.5)) / 255.0;
+}
+
+// Raw canvas position of the gather fragment at raster-target pixel
+// `fragmentPixel` (gl_FragCoord.xy). `canvasFromPixel` holds the quad centre in
+// raster-target pixels (.xy) and canvas texels per raster pixel (.zw); canvas Y
+// runs down the screen. Evaluated per fragment, never interpolated: with a
+// power-of-two scale and a centre on the half-pixel lattice every term is exact,
+// so a pixel centre on a texel boundary selects the same texel on every GPU.
+vec2 canvasPositionFromPixel(vec2 fragmentPixel, vec4 canvasFromPixel, vec2 textureOffset,
+                             vec2 textureSize) {
+    return (fragmentPixel - canvasFromPixel.xy) * vec2(1.0, -1.0) * canvasFromPixel.zw +
+           textureOffset + 0.5 * textureSize;
+}
+
 // Per-voxel iso occlusion depth of model position `pos` projected onto a
 // (possibly entity-rotated) iso depth `axis` — the SO(3) generalization of
 // pos3DtoDistance (identical to it when axis == (1,1,1)). For a rotated
