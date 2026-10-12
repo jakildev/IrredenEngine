@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from shader_contract_helpers import extract_function
+from shader_contract_helpers import extract_block, extract_function
 from test_render_sdf_surface_contract import CASES
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -250,6 +250,131 @@ int main(){
 
 @unittest.skipUnless(COMPILER, "receiver controls require a C++ compiler")
 class ShapeReceiverTest(unittest.TestCase):
+    def test_fragment_screen_ray_uses_canvas_storage_origin(self):
+        checks = r"""
+int main(){
+ int hits=0,misses=0,centers=0;
+ for(ivec2 canvas:{ivec2(642,722),ivec2(643,723),ivec2(642,723),ivec2(643,722)})
+ for(int density:{1,2,4,8})for(int smooth:{0,1})for(int step=0;step<16;++step){
+  if(!smooth&&(density==1||step%4!=0))continue;
+  ShapeProjectionData f;f.voxelRenderOptions={1,density};f.smoothYawEnabled=smooth;
+  f.visualYaw=f.rasterYaw=float(step*acos(-1.)/8);
+  f.trixelCanvasOffsetZ1=trixelOriginOffsetZ1(canvas);
+  ShapeDescriptor shape;shape.worldPosition.xyz={0,0,4};shape.params.xyz={40,40,4};
+  const double yaw=f.visualYaw,c=cos(yaw),s=sin(yaw);
+  const double half[]={19.5+.5/density,19.5+.5/density,1.5+.5/density};
+  for(double dx:{-320.,-41.,0.,57.,320.})for(double dy:{-160.,-23.,0.,35.,160.})
+  for(double phase:{0.,.5}){
+   // Screen-center rays and pixel-center rays use the declared projection,
+   // independently of the canvas's storage origin or receiver implementation.
+   const double screenX=1280.+dx+phase,screenY=720.+dy+phase;
+   const double u=(screenX-1280.)/16.,v=(screenY-720.)/8.;
+   const double viewX=-u/2-v/6,viewY=u/2-v/6;
+   const double origin[]={c*viewX-s*viewY,s*viewX+c*viewY,v/3-4};
+   const double direction[]={(c-s)/3,(s+c)/3,1./3};
+   const Hit expected=intersect(origin,direction,half);
+   // Invert the centered gather quad's scale to obtain its vertex varying.
+   // The executed vertex/fragment statements retain the backend Y adapter.
+   const vec2 quad(float((screenX-1280.)/(16./density*canvas.x)),
+                   float(-(screenY-720.)/(8./density*canvas.y)));
+   const vec2 raw=gatherRawPixel(quad,canvas);
+   vec3 position(999),normal(999);
+   const bool hit=shapeBoxReceiver(shape,f,shapeFragmentQueryPixel(raw,canvas),
+                                   false,position,normal);
+   if(hit!=expected.valid)return 1;
+   if(!hit){++misses;continue;}
+   ++hits;
+   const double actual[]={position.x,position.y,position.z-4};
+   const double normals[]={normal.x,normal.y,normal.z};
+   for(int axis=0;axis<3;++axis){
+    const double point=origin[axis]+direction[axis]*expected.entry;
+    if(abs(actual[axis]-point)>1.e-4)return 2;
+    const double outward=expected.face/2==axis?(expected.face%2?1.:-1.):0.;
+    if(normals[axis]!=outward)return 3;
+   }
+   if(dx==0&&dy==0&&phase==0){
+    ++centers;
+    if(step==0&&density==4&&(abs(position.x-2.375f)>1.e-5||
+       abs(position.y-2.375f)>1.e-5||abs(position.z-2.375f)>1.e-5))return 4;
+   }
+  }
+ }
+ printf("screen_ray_hits=%d misses=%d center_rays=%d\n",hits,misses,centers);
+ return hits&&misses&&hits+misses==15200&&centers==304?0:5;
+}
+"""
+        for suffix, folder in (("glsl", ""), ("metal", "metal/")):
+            shaders = ROOT / "engine/render/src/shaders" / folder
+            common = (shaders / f"ir_iso_common.{suffix}").read_text()
+            sdf = (shaders / f"ir_sdf_common.{suffix}").read_text()
+            selected = (shaders / f"ir_selected_shape_receiver.{suffix}").read_text()
+            fragment = (shaders / f"ir_trixel_to_framebuffer_body.{suffix}").read_text()
+            vertex = ((shaders / "v_trixel_to_framebuffer.glsl").read_text()
+                      if suffix == "glsl" else fragment)
+            functions = "\n".join(extract_function(common, name) for name in (
+                "rasterYawCardinalIndex", "cardinalYawCosSin", "pos3DtoPos2DIsoYawed",
+                "isoPositionToPos3D", "yawedIsoDistance"))
+            origin_type = "ivec2" if suffix == "glsl" else "int2"
+            functions += "\n" + "\n".join(extract_block(common, f"{origin_type} {name}")
+                                            for name in ("trixelOriginOffsetX1",
+                                                         "trixelOriginOffsetZ1"))
+            functions += "\n" + "\n".join(extract_function(sdf, name) for name in (
+                "slabFromLinear", "boxSurfaceIntervalYaw"))
+            functions += "\n" + (shaders / f"ir_shape_receiver.{suffix}").read_text()
+            conversion = extract_function(selected, "shapeFragmentQueryPixel")
+            varying = ("CanvasPositionFromCenter" if suffix == "glsl"
+                       else "out.canvasPositionFromCenter")
+            vertex_assignment = re.search(re.escape(varying) + r"\s*=[^;]+;", vertex).group()
+            raw_assignment = re.search(r"(?:const )?(?:vec2|float2) originRaw = [^;]+;",
+                                       fragment).group()
+            gather = ("\nvec2 gatherRawPixel(vec2 aPos,ivec2 canvasSize){\n"
+                      "vec2 textureSize(canvasSize),textureOffset(0,0),CanvasPositionFromCenter;\n"
+                      + vertex_assignment + "\n" + raw_assignment + "\nreturn originRaw;}\n")
+            for before, after in (("out.canvasPositionFromCenter", "CanvasPositionFromCenter"),
+                                  ("in.canvasPositionFromCenter", "CanvasPositionFromCenter"),
+                                  ("in.position", "aPos"),
+                                  ("frameData.textureOffset", "textureOffset")):
+                gather = gather.replace(before, after)
+            adapters = r"""
+ivec2 operator/(ivec2 a,ivec2 b){return {a.x/b.x,a.y/b.y};}
+vec2 operator*(vec2 a,vec2 b){return {a.x*b.x,a.y*b.y};}
+vec2 operator*(double a,vec2 b){return b*float(a);}
+"""
+            preamble = PREAMBLE.replace("V2():x(0),y(0){}",
+                                        "V2():x(0),y(0){} explicit V2(T a):x(a),y(a){}")
+            variants = {
+                "production": conversion,
+                "missing_conversion": re.sub(r"return [^;]+;",
+                                             "return rawCanvasPixel;", conversion),
+                "fixed_even_offset": re.sub(r"return [^;]+;",
+                                            "return rawCanvasPixel - vec2(1.0, 1.0);", conversion),
+            }
+            for name, helper in variants.items():
+                with (
+                    self.subTest(backend=suffix, variant=name),
+                    tempfile.TemporaryDirectory() as tmp,
+                ):
+                    if name != "production":
+                        self.assertNotEqual(helper, conversion)
+                    body = functions + "\n" + helper + gather
+                    body = re.sub(r"out (float|vec3) (\w+)", r"\1& \2", body)
+                    for before, after in (("thread ", ""), ("float3", "vec3"),
+                                          ("float2", "vec2"), ("int3", "ivec3"),
+                                          ("int2", "ivec2")):
+                        body = body.replace(before, after)
+                    cpp, exe = Path(tmp) / "screen.cpp", Path(tmp) / "screen"
+                    cpp.write_text(preamble + adapters + body
+                                   + CASES.split("int main()")[0] + checks)
+                    build = subprocess.run([COMPILER, "-std=c++17", str(cpp), "-o", str(exe)],
+                                           capture_output=True, text=True)
+                    self.assertEqual(build.returncode, 0, build.stderr)
+                    run = subprocess.run([str(exe)], capture_output=True, text=True)
+                    if name == "production":
+                        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+                        print(suffix, run.stdout.strip())
+                    else:
+                        self.assertIn(run.returncode, (1, 2, 3, 4), name)
+
     def test_receiver_face_unorm_roundtrip(self):
         harness = r"""
 #include <cmath>

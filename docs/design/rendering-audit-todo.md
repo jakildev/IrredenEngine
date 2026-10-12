@@ -13,7 +13,9 @@ Keep behavior-preserving consolidation separate from visual or scheduling fixes.
 
 The [analytic caster repair](../pr-screenshots/codex/shape-shadow-sun-space/README.md)
 in #4298 gives floor receivers sharp geometric shadows from eligible cone/torus casters:
-all 16 independent edge checks pass, without blur or silhouette dilation.
+its historical 16 edge checks used a receiver-biased origin. The
+[registration follow-up](../pr-screenshots/codex/shadow-receiver-matrix/README.md)
+corrects that origin and the fragment receiver, without blur or dilation.
 Sphere/cylinder share the tested ray path. The
 [sphere receiver repair](../pr-screenshots/codex/shape-shadow-sun-space/sphere-receiver/README.md)
 now queries the retained sample's true sphere surface without changing its
@@ -50,11 +52,17 @@ incomplete-index fallback edges remain open.
    the checker validates the fixture and full encoded depth. Preserve legitimate voxel steps and keep
    continuous curve geometry as a separate comparison. The cardinal AO/local-light
    depth repair in #4308 does not change this producer/gather ownership path.
-4. Continue the ground-gap investigation with contact clearances, receiver modes
-   and dense scenes. Isolated rigid and revoxelized box sweeps at effective
-   density four completed cleanly without index saturation (maximum tile
-   counts 23 and 39 respectively). Inspected projections are solid; this
-   does not certify the broader CanvasStress scene or every receiver mode.
+4. The [receiver-mode matrix](../pr-screenshots/codex/shadow-receiver-matrix/README.md)
+   identifies and fixes a one-storage-texel displacement in continuous SDF BOX
+   fragment queries. Rigid, near-contact and analytic caster controls now pass
+   all 24 eight-angle SDF-floor edge checks; the rigid SOURCE_FACES control
+   remains RGB-identical. Keep raw owner/depth/hover sampling separate from the
+   geometric query conversion. GRID retains coarse face lighting samples and
+   revoxelized receivers retain their own occupancy geometry; neither is
+   certified by comparing it to a continuous plane. Resolve those contracts
+   and costs before changing their sampling. The 65-overlapping-box control
+   still exposes incomplete-index fallback edge errors (592 missing / 704 excess
+   pixels across eight views); do not classify them as the repaired phase error.
 5. Measure dense tile saturation, incomplete-index fallback, and moving
    camera/light costs. Small native scenes and software OpenGL CI do not qualify
    hardware throughput or the million-entity target. Profile the new sphere

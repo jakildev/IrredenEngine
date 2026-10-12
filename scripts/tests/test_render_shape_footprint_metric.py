@@ -47,11 +47,17 @@ class ShapeFootprintTest(unittest.TestCase):
                 expected[y * size[0] + x] = 255 if near <= far else 0
         self.assertEqual(actual.tobytes(), bytes(expected))
 
-    def test_receiver_origin_accounts_for_z1_canvas_phase(self):
-        self.assertEqual(metric.receiver_screen_origin((2560, 1440), (32, 16), 8),
-                         (1276, 718))
-        self.assertEqual(metric.receiver_screen_origin((1280, 720), (8, 4), 4),
-                         (638, 359))
+    def test_analytic_origin_defaults_to_screen_center(self):
+        for shape in ("cone", "torus"):
+            options = dict(slices=256, sectors=128)
+            default, _ = metric.analytic_expected_mask((512, 512), shape, .71, (8, 4), 8,
+                                                        **options)
+            centered, _ = metric.analytic_expected_mask((512, 512), shape, .71, (8, 4), 8,
+                                                         origin=(256, 256), **options)
+            shifted, _ = metric.analytic_expected_mask((512, 512), shape, .71, (8, 4), 8,
+                                                       origin=(263, 251), **options)
+            self.assertEqual(default.tobytes(), centered.tobytes())
+            self.assertEqual(shifted.tobytes(), ImageChops.offset(centered, 7, -5).tobytes())
 
     def test_analytic_sections_match_independent_field_boundaries(self):
         for threshold in (.5, .125, .0625):
