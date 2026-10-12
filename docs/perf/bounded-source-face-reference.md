@@ -73,7 +73,12 @@ triangle-ray oracle for 61,934 rays through rotated, mirrored, edge-swapped
 and sloped overlapping faces: 4,519 hits and 57,415 misses. Seven mutations
 per backend reject disabled rescue, truncated scans, a removed budget guard,
 wrong records, sampled fallback after an exact miss, lost other-layer shadows
-and ignored tile-list IDs. These tests do not certify GPU ordering, index
+and ignored tile-list IDs. Retained-subset controls compare two legal lists
+for the same 65- and 129-record scene, with the sole blocker either retained
+in slot 63 or omitted. Both cascades and all four sampled-layer combinations
+are covered. A mutation that accepts partial exact hits fails this invariant
+on both backends. Poisoned tile IDs exercise global-pool exhaustion without
+reading unpublished records. These tests do not certify GPU ordering, index
 construction, legacy PCF, cascade selection or displayed receiver geometry.
 
 ## Rendering modes remain distinct
@@ -86,9 +91,12 @@ The GLSL symbols below have corresponding Metal implementations.
 |---|---|---|
 | Rigid detached `SOURCE_FACES` with world receive | `bakeVoxelFaces` selects rigid basis 2; `c_bake_voxel_sun_faces` transforms original finite cells. `f_source_face_scatter` calls `worldSurfaceSunShadowFactor` at interpolated face positions when continuous lighting is enabled. | Eligible incomplete tiles in a complete small pool. |
 | Revoxelized detached `LOCAL_TRIANGLES` with world receive | The voxel-face caster reads the uploaded resampled occupancy. `c_lighting_to_trixel_body` uses the displayed trixel centroid and calls `worldSurfaceSunShadowFactor` when `visibleFaceIds.w == 2`. | Eligible query overflow only; preserve actual occupancy steps and trixel sampling. |
-| Attached GRID/per-axis voxels | Voxel cells can cast finite indexed faces, but `c_compute_sun_shadow_body` and `c_light_overflow_faces` call `worldSunShadowFactor`, which uses an offset raster receiver and bypasses finite querying. | No rescue; receiver routing remains sampled. |
+| Attached single-canvas GRID voxels | Voxel cells can cast finite indexed faces, but the single-canvas branch of `c_compute_sun_shadow_body` uses an offset raster receiver through `worldSunShadowFactor`. | No rescue in this sampled branch. |
+| Attached per-axis voxels, including overflow | `perAxisSunShadowFactor` reconstructs `perAxisFaceCenter` and calls `worldSurfaceSunShadowFactor`. | Eligible incomplete tiles in a complete small pool; face-center sampling is distinct from per-fragment evaluation. |
 | Eligible analytical BOX receiver | `ir_trixel_to_framebuffer_body` calls `selectedShapeBoxReceiver`, then the finite query directly for shadow overlay or through `shapeSurfaceLighting` for normal lighting. `shapeBoxReceiver` rejects hollow, entity-rotated and unsupported lattice/mode combinations; procedural colors preserve their fallback lighting. | Only eligible continuous receivers, not every BOX display mode. |
-| Non-box SDF casters | `system_shapes_to_trixel` submits non-box shapes through `shapeCasterProgram_`, `prepareAnalyticCasterDepth` and `bakeAnalyticCasterDepth`; `c_bake_sun_shadow_map` projects sampled canvas depths. | No new finite caster geometry; these remain in the other depth layer. |
+| Eligible analytical SPHERE receiver | `selectedShapeSphereShadowReceiver` reconstructs the retained smooth sphere sample's camera ray; the shape compute shadow path calls `worldSurfaceSunShadowFactor` at that surface position. | Eligible incomplete tiles in a complete small pool; this is per-sample reception, not per-fragment shading. |
+| Eligible non-box SDF casters | `shapeUsesSunRay` selects solid smooth sphere, cylinder, cone and torus descriptors. `c_bake_box_sun_shadow` publishes typed analytic records and sun-space fallback depths. | Eligible incomplete tiles in a complete small pool; analytic ray predicates supply their geometry. |
+| Other non-box SDF casters | Shapes rejected by `shapeUsesSunRay` retain `prepareAnalyticCasterDepth` / `bakeAnalyticCasterDepth` canvas-depth projection. | These remain in the other depth layer. |
 | Legacy-depth or particle-enabled frame | `beginVoxelFaceCoverage` disables finite coverage when either particle render system is registered or `voxelFaceCoverage_` is false. `BAKE_SUN_SHADOW_MAP::tick` uses the canvas-depth bake. | No finite pool to rescue. |
 
 `c_bake_box_sun_shadow` indexes the sun-facing faces of visible BOX
@@ -100,9 +108,11 @@ The remaining-mode followup should first compare caster geometry and receiver
 world positions against what each mode displays. A continuous displayed face
 needs a clean projected boundary. Revoxelized occupancy must cast its actual
 steps; replacing that geometry with an authored smooth box is also incorrect.
-For attached GRID/per-axis faces, a finite receiver route needs a demonstrated
-surface-position contract, including sub-cell phase and overflow faces, before
-replacing the raster-origin query. For currently sampled SDF modes, establish
+For attached per-axis faces, finite queries already use reconstructed world
+face centers, including sub-cell phase and overflow faces. Per-fragment beauty
+lighting remains a separate default-off experiment with a wider-view cost
+regression; improving coarse sampling needs cost evidence. Single-canvas GRID
+retains its sampled receiver route. For currently sampled SDF modes, establish
 whether the display is continuous or lattice-based, then provide corresponding
 finite caster and receiver geometry. The small-pool reference neither supplies
 missing geometry nor justifies blur, footprint dilation or bias adjustment.
@@ -170,6 +180,26 @@ The zoom-3 synchronized visual captures above are excluded from timing
 conclusions. Sampled GPU stages in the timing reports are noisy and cannot
 be added into an end-to-end frame budget. A production design needs larger
 overlap and unrelated-caster controls before any performance claim.
+
+## Partial-list queries are not an overflow repair
+
+A valid retained face can prove that a receiver is shadowed, but an incomplete
+list is not a stable approximation of the scene. Atomic reservation determines
+which faces occupy its first 64 slots. If sampled fallback misses the true
+blocker, accepting a partial-list hit makes output depend on whether that
+blocker happened to be retained. Checking the global capacity prevents invalid
+reads but cannot prevent this coverage change. Such a query can add missing
+shadow; it cannot reject excess shadow from the indexed fallback after a miss.
+
+The [retained-subset proof and native complete-query controls](../pr-screenshots/codex/shadow-overflow-order-proof/README.md)
+keep this distinction executable. No partial-list query is enabled. The native
+complete-query diagnostic remains default-off: a fixed global small-pool limit
+is still unsuitable for production scene scaling.
+
+At global record exhaustion, `indexSourceSunGeometry` can raise a tile count
+with `atomicMax` without publishing any IDs. An incomplete count therefore does
+not even guarantee 64 initialized entries. Any future partial-record diagnostic
+needs a separately proven publication contract; clamping the count is insufficient.
 
 ## Next scalable experiment
 
