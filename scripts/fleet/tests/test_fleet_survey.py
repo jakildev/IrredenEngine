@@ -7,6 +7,7 @@ partitions a human acts on:
   - a queued task shadowed by a merged PR with no open PR is a ghost, not
     claimable; the same task with an open PR is in flight
   - a host pin on another OS (or a GL pin on a Metal host) is pinned away
+  - a blocker line that mentions the issue's own number never blocks it on itself
   - a park whose named issues all closed reads as lifted; one naming a ghost
     reads as parked on a delivered issue; one naming a needs-human issue
     waits on the human; an unparsable park is malformed
@@ -41,6 +42,12 @@ _loader = importlib.machinery.SourceFileLoader("fleet_survey", str(_SCRIPT))
 _spec = importlib.util.spec_from_loader("fleet_survey", _loader)
 _mod = importlib.util.module_from_spec(_spec)
 _loader.exec_module(_mod)
+
+_SCOUT = Path(__file__).parent.parent / "fleet-state-scout"
+_scout_loader = importlib.machinery.SourceFileLoader("fleet_state_scout", str(_SCOUT))
+_scout_spec = importlib.util.spec_from_loader("fleet_state_scout", _scout_loader)
+_scout = importlib.util.module_from_spec(_scout_spec)
+_scout_loader.exec_module(_scout)
 
 NOW = datetime(2026, 10, 7, 4, 50, tzinfo=timezone.utc)
 
@@ -285,6 +292,44 @@ class Queue(FleetSurveyFixture):
         self.assertEqual(_mod.blocker_impacts({
             106: {"body": "**Blocked by:** #101, jakildev/other#5"},
             107: {"body": "**Blocked by:** #999"},
+        }, ghosts), {101: [106]})
+
+    def test_a_blocker_line_naming_the_issue_itself_never_blocks_it(self):
+        # The scout resolves the raw value; the survey partitions what it wrote.
+        quoted = ("#3686 (PR #4204 edits the same files: component_entity_canvas.hpp "
+                  "for #4195, fog_of_war.hpp for #4197; land after it)")
+        row = task(4197, blocked_by=quoted)
+        scout_state = {"repos": {"engine": {
+            "tasks": {"open": [row], "in_progress": []},
+            "closed_fleet_queued": [{"number": 3686}, {"number": 4195}],
+            "recent_merged_prs": [{"number": 4204}],
+        }}}
+        _scout.resolve_blocked_by(scout_state)
+        state = {"generated_at": STATE["generated_at"],
+                 "repos": {"engine": {"tasks": scout_state["repos"]["engine"]["tasks"]}}}
+        queue = self.run_survey(state=state)["repos"]["engine"]["queue"]
+        self.assertEqual([r["id"] for r in queue["claimable_here"]], ["#4197"])
+        self.assertEqual(queue["blocked"], [])
+
+    def test_a_still_open_blocker_is_reported_without_the_own_number(self):
+        row = task(4197, blocked_by="#3686 (lands first; it also mentions #4197)")
+        scout_state = {"repos": {"engine": {
+            "tasks": {"open": [row], "in_progress": []},
+            "closed_fleet_queued": [], "recent_merged_prs": [],
+        }}}
+        with mock.patch.object(_scout, "_resolve_ref_satisfied", return_value=False):
+            _scout.resolve_blocked_by(scout_state)
+        state = {"generated_at": STATE["generated_at"],
+                 "repos": {"engine": {"tasks": scout_state["repos"]["engine"]["tasks"]}}}
+        blocked = self.run_survey(state=state)["repos"]["engine"]["queue"]["blocked"]
+        self.assertEqual([(r["id"], r["blocked_by"]) for r in blocked],
+                         [("#4197", "#3686")])
+
+    def test_blocker_impacts_never_names_an_issue_as_its_own_dependent(self):
+        ghosts = {101: {"shadow_pr": 900}}
+        self.assertEqual(_mod.blocker_impacts({
+            101: {"body": "**Blocked by:** #101 (itself)"},
+            106: {"body": "**Blocked by:** #101"},
         }, ghosts), {101: [106]})
 
     def test_a_gl_host_claims_the_gl_pin_and_loses_the_mac_pin(self):

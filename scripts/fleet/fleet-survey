@@ -211,7 +211,7 @@ def blocker_impacts(open_issues, ghosts):
     for issue_number, issue in open_issues.items():
         value = fleet_blocked_by.parse_blocked_by(issue.get("body") or "") or ""
         for ref in {int(number) for number in BLOCKER_RE.findall(value)}:
-            if ref in impacts:
+            if ref in impacts and ref != issue_number:
                 impacts[ref].append(issue_number)
     return impacts
 
