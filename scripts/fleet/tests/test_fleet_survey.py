@@ -152,6 +152,15 @@ PRS = [
     {"number": 962, "title": "cross-repo ref only", "headRefName": "feature/other-repo",
      "labels": labels("fleet:claim-mac-pool-5"), "mergeable": "MERGEABLE",
      "body": "Closes jakildev/irreden#206\n"},
+    {"number": 963, "title": "park on an open PR", "headRefName": "claude/119-x",
+     "labels": labels("fleet:awaiting-infra"), "mergeable": "MERGEABLE",
+     "body": "Parked-until: #964\n"},
+    {"number": 964, "title": "open PR that is itself parked", "headRefName": "claude/120-x",
+     "labels": labels("fleet:awaiting-infra"), "mergeable": "MERGEABLE",
+     "body": "Parked-until: #100\n"},
+    {"number": 965, "title": "park on a merged PR", "headRefName": "claude/121-x",
+     "labels": labels("fleet:awaiting-infra"), "mergeable": "MERGEABLE",
+     "body": "Parked-until: #899\n"},
 ]
 
 LOG = """\
@@ -321,6 +330,20 @@ class Parks(FleetSurveyFixture):
     def test_ghost_park_names_the_shadowing_pr(self):
         row = next(r for r in self.run_survey()["repos"]["engine"]["parks"] if r["pr"] == 952)
         self.assertEqual(row["issues"][101], "ghost (shadowed by PR #900)")
+
+
+    def test_a_park_naming_an_open_pr_is_legit_and_shows_that_prs_park_state(self):
+        parks = self.run_survey()["repos"]["engine"]["parks"]
+        row = next(r for r in parks if r["pr"] == 963)
+        self.assertEqual(row["issues"], {964: "open PR, itself parked"})
+        self.assertEqual(row["verdict"], "legit: named PR still open")
+        self.assertEqual(
+            next(r for r in parks if r["pr"] == 964)["verdict"], "legit: named issue still open")
+
+    def test_a_park_naming_a_merged_pr_reads_as_closed(self):
+        row = next(r for r in self.run_survey()["repos"]["engine"]["parks"] if r["pr"] == 965)
+        self.assertEqual(row["issues"], {899: "not open"})
+        self.assertTrue(row["verdict"].startswith("lifted"))
 
 
 class Stranded(FleetSurveyFixture):
