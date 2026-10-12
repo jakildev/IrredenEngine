@@ -115,7 +115,11 @@ with warmup 10. [Scene comparison](scene-comparison.json) separates changes from
 this patch from small inherited parent/reference differences around the sphere.
 The three density-one views remain RGB-identical. Eighteen affected default
 references are refreshed after the geometric checks and image review. Reference
-thresholds, structural gates and extra-run references remain unchanged.
+thresholds, structural gates and extra-run references remain unchanged. The
+subsequent native `render-verify.py --target IRShapeDebug --no-build --timeout 120`
+passes all 44 checks, with every image comparison RGB-exact. The box metric
+(16 tests), fragment adapter (2), footprint metric (11), and connected receiver
+suite (6) pass. Header/GLSL-name checks and whole-scripts Ruff also pass.
 
 | ShapeDebug before | ShapeDebug after |
 |---|---|
