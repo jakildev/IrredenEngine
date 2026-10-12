@@ -46,6 +46,9 @@ cleanup() {
     if [[ -n "$quiet_parker_pid" ]]; then
         kill "$quiet_parker_pid" 2>/dev/null || true
         wait "$quiet_parker_pid" 2>/dev/null || true
+        # On Windows the kill skips the parker's own cleanup, leaving its row behind.
+        python3 "$IR_QUIET_HELPER" park-drop "$IR_QUIET_OWNER" \
+            --launcher-token "$quiet_record" || true
     fi
     ir_release_all
 }
@@ -149,7 +152,8 @@ case "$verb" in
         elif [[ -z "${IR_QUIET_TEST_NO_QUEUE_PARK:-}" && -n "${IR_QUIET_OWNER:-}" && -d "$IR_LOCK_ROOT/quiet/leases/$IR_QUIET_OWNER" ]]; then
             measurement_root="${IR_QUIET_MEASURE_ROOT:-$$}"
             ir_quiet_park "$IR_QUIET_OWNER" --measurement-root "$measurement_root" \
-                --measurement-root-token "$(ir_owner_token_for_pid "$measurement_root")" &
+                --measurement-root-token "$(ir_owner_token_for_pid "$measurement_root")" \
+                --launcher-token "$quiet_record" &
             quiet_parker_pid=$!
         fi
         # The canonical heavy-measurement lock. cpu = budget-1 leaves one
