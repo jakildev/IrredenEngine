@@ -1285,7 +1285,7 @@ if not field_value:
     sys.exit(0)
 
 # Referenced issue numbers and PR URLs, routed to the referenced repository.
-issue_refs = blocker_ref_records(body, repo)
+issue_refs = blocker_ref_records(body, repo, issue_num or None)
 
 failed = []
 

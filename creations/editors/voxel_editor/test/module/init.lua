@@ -45,4 +45,5 @@ IREditor.registerRecipe(
 
 IREditor.registerPanel("TestModulePanel", function(x, y, w, h)
     IRGui.makeLabel(x + 4, y + 18, "MODULE LOADED")
+    IRGui.makeLabel(x + 4, y + 32, "FIELD ROW")
 end)

@@ -1,6 +1,8 @@
 #ifndef IR_PROFILE_REPORT_H
 #define IR_PROFILE_REPORT_H
 
+#include <irreden/profile/scope_timer.hpp>
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -104,6 +106,11 @@ struct ProfileReport {
     std::vector<CpuPhaseEntry> cpuPhases_;
     VoxelCullStatsSummary voxelCullStats_;
 };
+
+/// Appends one `cpuPhases_` row per `IR_PROFILE_SCOPE` name in the histogram's
+/// run totals, sorted by name. Sample count is the number of scope exits, so
+/// avg is per invocation. Main-thread scopes only (see `CpuFrameHistogram`).
+void appendCpuScopePhases(ProfileReport &report, const CpuFrameHistogram &histogram);
 
 /// Write a plain-text profile report to the given file path.
 /// Creates parent directories if they don't exist.

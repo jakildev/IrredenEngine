@@ -502,7 +502,7 @@ for issue in pending:
     # closes. The live re-check is authoritative — it's the only blocker gate
     # when ingest runs against a hand-built projection (tests, manual run).
     open_blockers = [(slug, ref) for slug, ref, requires_merge in
-                     blocker_ref_records(body, repo)
+                     blocker_ref_records(body, repo, n)
                      if _blocker_open(slug, ref, blocker_cache, requires_merge)]
 
     # Parse model from body. Classes are literal — fable | opus | sonnet —
@@ -572,7 +572,7 @@ for issue in data.get('unblock_issues', []):
     body = view.get('body', '') or ''
     has_open_blocker = any(
         _blocker_open(slug, ref, blocker_cache, requires_merge)
-        for slug, ref, requires_merge in blocker_ref_records(body, repo)
+        for slug, ref, requires_merge in blocker_ref_records(body, repo, n)
     )
     if has_open_blocker:
         unblock_still += 1

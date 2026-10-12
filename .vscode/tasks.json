@@ -1,6 +1,117 @@
 {
   "version": "2.0.0",
+  "inputs": [
+    {
+      "id": "irTarget",
+      "type": "promptString",
+      "description": "CMake target / runnable name (fleet-run --targets lists them)",
+      "default": "IRMidiPolyrhythm"
+    },
+    {
+      "id": "irRunArgs",
+      "type": "promptString",
+      "description": "Extra run flags (e.g. --midi-out \"Microsoft GS\", --auto-screenshot 10, --no-hud --record-seconds 120 --take t1)",
+      "default": ""
+    }
+  ],
   "tasks": [
+    {
+      "label": "fleet-build <target>",
+      "detail": "ir-build: CPU-budgeted cmake --build into this worktree's build/ (MSYS2 PATH fix included)",
+      "type": "process",
+      "command": "bash",
+      "osx": {
+        "command": "zsh"
+      },
+      "windows": {
+        "command": "C:\\Program Files\\Git\\bin\\bash.exe"
+      },
+      "args": [
+        "--login",
+        "-i",
+        "-c",
+        "fleet-build --target ${input:irTarget}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [
+        "$gcc"
+      ]
+    },
+    {
+      "label": "fleet-run <target>",
+      "detail": "ir-run: launches from the exe's own dir, holds the host gpu lock, prints RESULT=",
+      "type": "process",
+      "command": "bash",
+      "osx": {
+        "command": "zsh"
+      },
+      "windows": {
+        "command": "C:\\Program Files\\Git\\bin\\bash.exe"
+      },
+      "args": [
+        "--login",
+        "-i",
+        "-c",
+        "fleet-run ${input:irTarget} ${input:irRunArgs}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "fleet-build + fleet-run <target>",
+      "detail": "Build the target, then run it (Lua-only edits still go through this: the *Assets step re-syncs scripts/)",
+      "type": "process",
+      "command": "bash",
+      "osx": {
+        "command": "zsh"
+      },
+      "windows": {
+        "command": "C:\\Program Files\\Git\\bin\\bash.exe"
+      },
+      "args": [
+        "--login",
+        "-i",
+        "-c",
+        "fleet-build --target ${input:irTarget} && fleet-run ${input:irTarget} ${input:irRunArgs}"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "problemMatcher": [
+        "$gcc"
+      ]
+    },
+    {
+      "label": "fleet-run --targets",
+      "detail": "List every runnable / buildable target in this tree",
+      "type": "process",
+      "command": "bash",
+      "osx": {
+        "command": "zsh"
+      },
+      "windows": {
+        "command": "C:\\Program Files\\Git\\bin\\bash.exe"
+      },
+      "args": [
+        "--login",
+        "-i",
+        "-c",
+        "fleet-run --targets --all --plan"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    },
     {
       "label": "Configure IRGame (from root)",
       "type": "shell",
@@ -48,10 +159,7 @@
       "dependsOn": [
         "Configure IRGame (from root)"
       ],
-      "group": {
-        "kind": "build",
-        "isDefault": true
-      },
+      "group": "build",
       "problemMatcher": [
         "$gcc"
       ]
@@ -82,9 +190,7 @@
       "dependsOn": [
         "Configure IRGame (from root)"
       ],
-      "problemMatcher": [
-        "$gcc"
-      ]
+      "problemMatcher": []
     }
   ]
 }

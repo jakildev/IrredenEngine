@@ -3320,9 +3320,9 @@ bool evaluateComponentCheck(const void *context, std::string &actual) {
     return false;
 }
 
-// Counts the label widgets positioned inside the docked panel's rectangle —
+// Collects the label widgets positioned inside the docked panel's rectangle —
 // the panel's build function places them, so there is no other handle to
-// them.
+// them — and passes when any of them reads check.label_.
 bool evaluatePanelLabelCheck(const void *context, std::string &actual) {
     const PanelLabelCheck &check = *static_cast<const PanelLabelCheck *>(context);
     const std::vector<std::string> &names = g_moduleHost.panelNames();
@@ -3335,16 +3335,18 @@ bool evaluatePanelLabelCheck(const void *context, std::string &actual) {
     const ivec2 lo = g_dockedModulePanels[index].pos_;
     const ivec2 hi = lo + kModulePanelSize;
     int labels = 0;
-    std::string text;
+    bool found = false;
+    std::string texts;
     IREntity::forEachComponent<C_WidgetLabel>([&](IREntity::EntityId &id, C_WidgetLabel &label) {
         const ivec2 pos = IREntity::getComponent<C_GuiPosition>(id).pos_;
         if (pos.x < lo.x || pos.y < lo.y || pos.x >= hi.x || pos.y >= hi.y)
             return;
         ++labels;
-        text = label.text_;
+        found = found || label.text_ == check.label_;
+        texts += (texts.empty() ? "\"" : ",\"") + label.text_ + "\"";
     });
-    actual = "labels=" + std::to_string(labels) + " text=\"" + text + "\"";
-    return labels == 1 && text == check.label_;
+    actual = "labels=" + std::to_string(labels) + " texts=[" + texts + "]";
+    return found;
 }
 
 // Reads the component's field straight from the target's live entity row, so

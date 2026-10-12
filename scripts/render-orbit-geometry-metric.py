@@ -6,6 +6,13 @@ no automatic motion, 1280×720 game framebuffer at uniform integer output scale.
 The expected surface is inverse-resampled on the integer voxel lattice;
 camera rays independently choose the nearest visible voxel face. This deliberately
 does not generalize to other object poses or output sizes.
+
+Colours are compared exactly, with no per-channel tolerance. The NORMALS overlay
+writes exact UNORM8 codes on every backend (each unit-normal component rounds
+half up to 0, 128 or 255 before the store), so an axis face has exactly one
+legal colour. A pixel one code off its face colour is a backend that left the
+0.5 midpoint to the hardware float-to-unorm conversion, which is
+implementation-defined at that tie, and is a defect, not noise.
 """
 
 import argparse

@@ -2651,12 +2651,31 @@ _REPO_SLUG_MAP = {
 _REPO_NAME_TO_KEY = {"irredenengine": "engine", "irreden": "game"}
 
 
-def _parse_blocker_refs(raw, default_key, declared_only=False, with_kind=False):
+def _own_issue_number(row):
+    """The issue number a task / issue row stands for, or None."""
+    raw = (row.get("number") or str(row.get("issue") or "").lstrip("#")
+           or str(row.get("id") or "").lstrip("#"))
+    return int(raw) if str(raw).isdigit() else None
+
+
+def _blocker_is_self_only(raw, default_key, own_number):
+    """True when the value names refs and every one is the issue's own number.
+
+    Such a value declares no dependency, unlike a prose-only value that names
+    no ref at all — the callers hold the latter blocked."""
+    return (own_number is not None
+            and bool(_parse_blocker_refs(raw, default_key))
+            and not _parse_blocker_refs(raw, default_key, own_number=own_number))
+
+
+def _parse_blocker_refs(raw, default_key, declared_only=False, with_kind=False,
+                        own_number=None):
     """(repo_key, number) for every ref in a raw **Blocked by:** value.
 
     Routes `[owner/]Repo#N` qualifiers and full GitHub pull-request URLs to
     their repository. A bare ref or an unrecognized qualifier falls back to
-    default_key — the issue's own repo.
+    default_key — the issue's own repo. A same-repo issue ref equal to
+    `own_number` is dropped: an issue is never its own dependency.
 
     `declared_only` drops refs that live in the value's explanatory prose with
     no blocker verb — the "how many blockers were declared" question stackable
@@ -2668,6 +2687,8 @@ def _parse_blocker_refs(raw, default_key, declared_only=False, with_kind=False):
             continue
         name = m.group(1)
         key = _REPO_NAME_TO_KEY.get(name.lower(), default_key) if name else default_key
+        if own_number is not None and key == default_key and m.group(2) == str(own_number):
+            continue
         positioned_refs.append((m.start(), key, m.group(2), False))
     for m in _BLOCKER_PR_URL_RE.finditer(raw or ""):
         if declared_only and ref_is_decorative(raw, m.start()):
@@ -2775,8 +2796,11 @@ def resolve_blocked_by(state, ref_cache=None):
             raw = (task.get("blocked_by") or "").strip()
             if not raw or raw.lower().startswith("(none"):
                 continue
-            refs = _parse_blocker_refs(raw, repo_key, with_kind=True)
+            own = _own_issue_number(task)
+            refs = _parse_blocker_refs(raw, repo_key, with_kind=True, own_number=own)
             if not refs:
+                if _blocker_is_self_only(raw, repo_key, own):
+                    task["blocked_by"] = "(none)"
                 continue  # Free-text blocker — leave unchanged.
             # Which of those were actually *declared*, vs named only in the
             # value's prose. Normalization discards the prose, so the
@@ -2784,7 +2808,8 @@ def resolve_blocked_by(state, ref_cache=None):
             # enrich_stackable_blocker_prs needs the declared count, while
             # `blocked_by` keeps every ref for the blocking gate.
             declared = {r for _, r in
-                        _parse_blocker_refs(raw, repo_key, declared_only=True)}
+                        _parse_blocker_refs(raw, repo_key, declared_only=True,
+                                            own_number=own)}
 
             unresolved = []
             for ref_key, ref, requires_merge in refs:
@@ -2868,8 +2893,11 @@ def resolve_human_approved_blockers(state):
             raw = _parse_blocked_by(body)
             if not raw:
                 continue
-            refs = _parse_blocker_refs(raw, repo_key, with_kind=True)
+            own = _own_issue_number(issue)
+            refs = _parse_blocker_refs(raw, repo_key, with_kind=True, own_number=own)
             if not refs:
+                if _blocker_is_self_only(raw, repo_key, own):
+                    continue
                 # A prose-only blocker has no resolvable reference. Hold the
                 # child out of the trigger set — matches resolve_blocked_by
                 # leaving it blocked.
@@ -2936,8 +2964,11 @@ def resolve_needs_plan_blocked_by(state, ref_cache=None):
             raw = _parse_blocked_by(body)
             if not raw:
                 continue
-            refs = _parse_blocker_refs(raw, repo_key, with_kind=True)
+            own = _own_issue_number(issue)
+            refs = _parse_blocker_refs(raw, repo_key, with_kind=True, own_number=own)
             if not refs:
+                if _blocker_is_self_only(raw, repo_key, own):
+                    continue
                 # Blocker named only as prose with no resolvable #N — hold
                 # the issue out of the plannable set, matching
                 # resolve_human_approved_blockers.
