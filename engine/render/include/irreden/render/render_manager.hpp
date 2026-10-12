@@ -258,6 +258,11 @@ class RenderManager {
     // Destroy + recreate the GUI canvas textures at `newSize` and update its
     // C_SizeTriangles. Shared by setGuiScale and setGuiCanvasFullResolution.
     void resizeGuiCanvas(ivec2 newSize);
+    // Stamps the GUI canvas's display layout: lattice triangles for the iso
+    // (2:1) texels of a main-canvas-derived GUI canvas, rectangular texels at
+    // full framebuffer resolution. No voxel pass rasters this canvas, so
+    // nothing restamps it.
+    void stampGuiCanvasSampleLayout();
 };
 
 } // namespace IRRender

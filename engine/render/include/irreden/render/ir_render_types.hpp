@@ -751,6 +751,10 @@ struct FrameDataTrixelToTrixel {
     vec2 texturePos2DIso_;
 };
 
+// `styleFlags` low byte is the font size (canvas texels per glyph texel).
+// `kGlyphStyleLatticeScale` set: the canvas displays lattice triangles, so a
+// scaled glyph texel rasters as the exactly scaled triangle (fontSize² lattice
+// triangles) rather than a square block of texels.
 struct GlyphDrawCommand {
     uint32_t positionPacked; // x | (y << 16)
     uint32_t glyphIndex;
@@ -758,6 +762,22 @@ struct GlyphDrawCommand {
     uint32_t distance;
     uint32_t styleFlags = 0;
 };
+constexpr uint32_t kGlyphStyleLatticeScale = 0x100u;
+
+/// Per-frame UBO for the GUI_CANVAS_TO_SCREEN pass.
+struct FrameDataGuiCanvasToScreen {
+    mat4 mpMatrix_;
+    /// Screen pixels covered by one GUI canvas texel on each axis.
+    vec2 texelScreenPx_;
+    /// `TrixelSampleLayout` the GUI canvas displays with.
+    int sampleLayout_ = 0;
+    int pad_ = 0;
+};
+static_assert(
+    sizeof(FrameDataGuiCanvasToScreen) % 16 == 0,
+    "FrameDataGuiCanvasToScreen size must be a multiple of 16 to match the size MSL "
+    "rounds its constant-buffer declaration to"
+);
 
 /// How the output canvas is scaled to fill the window.
 enum class FitMode { FIT, STRETCH, UNKNOWN };
@@ -1230,6 +1250,11 @@ constexpr std::uint32_t kBufferIndex_FrameDataUniform = 0;
 constexpr std::uint32_t kBufferIndex_GlobalConstantsGLSL = 1;
 constexpr std::uint32_t kBufferIndex_FramebufferFrameDataUniform = 2;
 constexpr std::uint32_t kFramebufferFrameDataUniformBufferSize = sizeof(FrameDataFramebuffer);
+// Slot 2 is a transient alias shared by the two screen passes that read it:
+// FRAMEBUFFER_TO_SCREEN and GUI_CANVAS_TO_SCREEN each re-assert their own UBO
+// on the slot immediately before drawing.
+constexpr std::uint32_t kBufferIndex_GuiCanvasToScreenFrameData =
+    kBufferIndex_FramebufferFrameDataUniform;
 constexpr std::uint32_t kBufferIndex_FrameDataUniformIsoTriangles = 3;
 // Slot 4 was previously unused; the GPU light-volume seed pass reads
 // `LightSourceBuffer` here. Metal caps buffer bindings at 0–30, which

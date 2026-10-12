@@ -108,6 +108,7 @@ add_executable(IrredenEngineTest
   render/per_axis_store_frame_test.cpp
   render/frame_data_sun_layout_test.cpp
   render/gizmo_drag_reset_test.cpp
+  render/gui_canvas_routing_test.cpp
   render/gpu_compute_dispatch_test.cpp
   render/gpu_timestamp_poll_test.cpp
   render/light_volume_boundary_seed_test.cpp
@@ -214,6 +215,7 @@ add_executable(IrredenEngineTest
   world/voxel_set_serialize_test.cpp
   world/world_config_missing_table_test.cpp
   world/world_config_audio_monitor_test.cpp
+  world/world_config_gui_pixelated_test.cpp
   world/world_config_window_mode_test.cpp
   world/save_serializers_test.cpp
 )

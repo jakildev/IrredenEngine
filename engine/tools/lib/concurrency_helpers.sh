@@ -326,10 +326,14 @@ ir_quiet_lease_drop() {
     python3 "$IR_QUIET_HELPER" lease-drop "$1"
 }
 
+# The parker reads its own runtime's process table on Windows, so it is told
+# which runtime launched it; empty off Windows.
 ir_quiet_park() {
     local tag="$1"
     shift
-    python3 "$IR_QUIET_HELPER" park "$tag" "$@"
+    local runtime=()
+    [[ -z "$_IR_RUNTIME_ROOT" ]] || runtime=(--runtime-root "$_IR_RUNTIME_ROOT")
+    python3 "$IR_QUIET_HELPER" park "$tag" ${runtime[@]+"${runtime[@]}"} "$@"
 }
 
 _ir_quiet_defer_nonbenchmark() {

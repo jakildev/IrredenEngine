@@ -105,9 +105,15 @@ The `[quiet]` values in `concurrency.toml` are stamped on each request so all
 readers sharing the lock root agree. `ir-acquire --quiet-disable [reason]`
 writes the host-wide switch and makes subsequent runs explicitly unguarded;
 `--quiet-enable` restores the guard, and `--quiet-status [--json]` reports it.
+On native Windows a lease's process tree is the Win32 creator links overlaid
+with each runtime's own process table (`<runtime>/usr/bin/ps.exe` for the
+lease holder's runtime and the parker's). An MSYS `exec` leaves the new image
+under a Windows creator that has already exited, and only the runtime's table
+still links it to its shell. A table that cannot be read counts as activity.
 The guarantee excludes interactive processes without leases, fleet daemons,
-non-fleet work, double-forked descendants, the measurement harness, and
-native-Windows children shorter than one sample interval.
+non-fleet work, double-forked descendants, the measurement harness, and the
+CPU a native-Windows process spends in a sample interval it exits during,
+because Windows process time never absorbs an exited child.
 
 ## Acquire-late, release-early
 
