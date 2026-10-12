@@ -207,6 +207,10 @@ class WorldConfig {
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(true)
         );
         m_config.addEntry(
+            "gui_pixelated",
+            std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(false)
+        );
+        m_config.addEntry(
             "gpu_stage_timing",
             std::make_unique<IRScript::LuaValue<IRScript::LuaType::BOOLEAN>>(false)
         );

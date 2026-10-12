@@ -55,8 +55,8 @@ constexpr int kFontRowsPerGlyph = IRRender::kGlyphHeight;
 constexpr int kFontBufferSize = kFontTableEntries * kFontRowsPerGlyph;
 constexpr IRMath::ivec2 kGuiOverlayPadding = IRMath::ivec2(24, 24);
 
-// Packs the fixed 7x11 glyph bitmaps into a flat uint32 SSBO (one row per
-// uint, low 7 bits used). Uploaded once into "FontDataBuffer".
+// Packs the fixed 6x11 glyph bitmaps into a flat uint32 SSBO (one row per
+// uint, low 6 bits used). Uploaded once into "FontDataBuffer".
 inline std::vector<std::uint32_t> buildFontBuffer() {
     std::vector<std::uint32_t> buf(kFontBufferSize, 0);
     for (int ascii = 0; ascii < kFontTableEntries; ++ascii) {
@@ -273,6 +273,18 @@ inline void queueGuiText(
     );
 }
 
+// Marks every queued glyph for lattice-aware scaling when `canvas` displays
+// lattice triangles; a rectangular (full-resolution) canvas keeps block scaling.
+inline void stampGlyphLayout(
+    std::vector<IRRender::GlyphDrawCommand> &commands,
+    const IRComponents::C_TriangleCanvasTextures &canvas
+) {
+    if (canvas.renderedSampleLayout_ != IRRender::TrixelSampleLayout::LOCAL_TRIANGLES)
+        return;
+    for (auto &cmd : commands)
+        cmd.styleFlags |= IRRender::kGlyphStyleLatticeScale;
+}
+
 // Uploads `commands` to the shared glyph-command SSBO and dispatches the text
 // compute shader once, rasterizing every queued glyph onto the GUI canvas,
 // then clears `commands`. No-op (and clears) when the shared text resources
@@ -307,6 +319,7 @@ inline void dispatchGuiText(std::vector<IRRender::GlyphDrawCommand> &commands) {
         count = kMaxGlyphCommands;
     }
 
+    stampGlyphLayout(commands, canvas);
     program->use();
     cmdBuf->subData(0, count * sizeof(IRRender::GlyphDrawCommand), commands.data());
     canvas.getTextureColorsForGeometryWrite()

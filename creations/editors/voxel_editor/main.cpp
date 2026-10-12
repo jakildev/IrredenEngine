@@ -64,6 +64,7 @@
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
+#include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
 #include <irreden/render/systems/system_entity_canvas_to_framebuffer.hpp>
 #include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
@@ -4910,6 +4911,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
+            IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>(),
         }
     );
 

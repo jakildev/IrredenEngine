@@ -92,6 +92,7 @@ template <> struct System<TEXT_TO_TRIXEL> {
             count = IRPrefab::GuiText::kMaxGlyphCommands;
         }
 
+        IRPrefab::GuiText::stampGlyphLayout(drawCommands_, *canvasTextures_);
         glyphCmdBuf_->subData(0, count * sizeof(GlyphDrawCommand), drawCommands_.data());
 
         canvasTextures_->getTextureColorsForGeometryWrite()

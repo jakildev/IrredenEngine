@@ -189,6 +189,10 @@ enum SystemName {
     TEXT_TO_TRIXEL,
     FRAMEBUFFER_TO_SCREEN,
     SPRITE_TO_SCREEN,
+    // Screen-resolution GUI canvas composite with anti-aliased lattice
+    // triangles. Register after SPRITE_TO_SCREEN (or FRAMEBUFFER_TO_SCREEN
+    // when there are no sprites) so the GUI sits above everything on screen.
+    GUI_CANVAS_TO_SCREEN,
     DEBUG_OVERLAY,
     RENDERING_VELOCITY_2D_ISO,
     TEXTURE_SCROLL,
