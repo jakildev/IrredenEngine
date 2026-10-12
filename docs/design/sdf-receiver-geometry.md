@@ -527,6 +527,31 @@ the finite-query fallback. Fog composition, procedural material reconstruction
 and broader receiver geometry remain follow-ups; no fallback is certified as
 sharp merely because it is preserved.
 
+### SDF-silhouette reference movers and confinement
+
+A row moved by an SDF-silhouette change is a confined mover when its control
+capture P and head capture Q come from the same host and build session. Every
+changed pixel must lie within 3 px of a P edge pixel: a pixel with a 3x3
+neighbour more than 24 levels away on some channel. Its new colour must lie,
+per channel, within P's 11x11 neighbourhood range at that pixel, plus or
+minus 2 levels. At most 1% of changed pixels may fall outside that local range,
+and no outlier cluster may contain 4 or more adjacent pixels.
+
+"New colour equals the adjacent lit face" is not what the recovery renders.
+The recovered ring carries the face's lit shade at that point, including
+sun-shadow, point-light and sky terms, so a soft lighting edge can produce
+same-hue intermediate shades. On #4040, the four `shape_debug` rows read as
+follows; every row passed locality on both backends. The local-colour check
+passed all GL pixels and all but one Metal pixel, which is a single-pixel
+outlier in 1,376 changed pixels.
+
+| Row | `windows-debug` (GL) changed px | `macos-debug` (Metal) changed px |
+|---|---:|---:|
+| `zoom4_yaw180` | 62 / 62 local-colour | 276 / 276 local-colour |
+| `zoom4_yaw270` | 122 / 122 local-colour | 504 / 503 local-colour |
+| `zoom8_yaw180` | 74 / 74 local-colour | 316 / 316 local-colour |
+| `zoom4_pan16_yaw180_pivot` | 60 / 60 local-colour | 280 / 280 local-colour |
+
 The `normals` overlay uses this same eligibility and finite query. For eligible
 solid-color boxes it displays the final fragment normal as `normal * 0.5 + 0.5`
 before any material, AO, shadow, local-light or display-mapping work. Unsupported
