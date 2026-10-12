@@ -20,11 +20,16 @@
       "detail": "ir-build: CPU-budgeted cmake --build into this worktree's build/ (MSYS2 PATH fix included)",
       "type": "process",
       "command": "bash",
+      "osx": {
+        "command": "zsh"
+      },
       "windows": {
         "command": "C:\\Program Files\\Git\\bin\\bash.exe"
       },
       "args": [
-        "-lc",
+        "--login",
+        "-i",
+        "-c",
         "fleet-build --target ${input:irTarget}"
       ],
       "options": {
@@ -43,11 +48,16 @@
       "detail": "ir-run: launches from the exe's own dir, holds the host gpu lock, prints RESULT=",
       "type": "process",
       "command": "bash",
+      "osx": {
+        "command": "zsh"
+      },
       "windows": {
         "command": "C:\\Program Files\\Git\\bin\\bash.exe"
       },
       "args": [
-        "-lc",
+        "--login",
+        "-i",
+        "-c",
         "fleet-run ${input:irTarget} ${input:irRunArgs}"
       ],
       "options": {
@@ -60,11 +70,16 @@
       "detail": "Build the target, then run it (Lua-only edits still go through this: the *Assets step re-syncs scripts/)",
       "type": "process",
       "command": "bash",
+      "osx": {
+        "command": "zsh"
+      },
       "windows": {
         "command": "C:\\Program Files\\Git\\bin\\bash.exe"
       },
       "args": [
-        "-lc",
+        "--login",
+        "-i",
+        "-c",
         "fleet-build --target ${input:irTarget} && fleet-run ${input:irTarget} ${input:irRunArgs}"
       ],
       "options": {
@@ -80,11 +95,16 @@
       "detail": "List every runnable / buildable target in this tree",
       "type": "process",
       "command": "bash",
+      "osx": {
+        "command": "zsh"
+      },
       "windows": {
         "command": "C:\\Program Files\\Git\\bin\\bash.exe"
       },
       "args": [
-        "-lc",
+        "--login",
+        "-i",
+        "-c",
         "fleet-run --targets --all --plan"
       ],
       "options": {
