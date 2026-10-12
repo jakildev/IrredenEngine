@@ -13,6 +13,7 @@
 #include <optional>
 #include <map>
 #include <limits>
+#include <type_traits>
 
 using namespace IRMath;
 using IREntity::EntityId;
@@ -1168,6 +1169,12 @@ struct C_VoxelPool {
         return std::nullopt; // No suitable free span found
     }
 };
+
+// Every `C_VoxelSetNew` holds spans into its pool's vectors, so the archetype
+// column must relocate a pool by move: `std::vector` growth copies an element
+// whose move constructor may throw, and a copy frees the storage those spans
+// alias.
+static_assert(std::is_nothrow_move_constructible_v<C_VoxelPool>);
 } // namespace IRComponents
 
 #endif /* COMPONENT_VOXEL_POOL_H */
