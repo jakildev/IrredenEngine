@@ -72,7 +72,8 @@
 // `module_loaded` proves the `--module <dir>` seam against whatever module is
 // loaded: its expectations come from `<dir>/session_expect.lua` (resolved into
 // a ModuleSessionSpec in main.cpp), so no module content is named here. It
-// reads the registry enumeration and the docked panels, then applies one recipe
+// reads the registry enumeration and the docked panels (each must draw a
+// label with the expected text, whatever else it draws), then applies one recipe
 // through the RECIPES panel and undoes it.
 //
 // `component_attach` proves the COMPONENTS panel and the manifest's
