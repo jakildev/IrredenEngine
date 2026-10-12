@@ -216,7 +216,7 @@ kernel void IR_LIGHTING_KERNEL_NAME(
 #endif
     if (frameData.debugOverlayMode == 8) {
         const float alpha = sourceColor.a;
-        writeLitTrixel(trixelColors, sourceFaces, sourceMode, sourceIndex, uint2(pixel), float4(worldNormal * 0.5f + 0.5f, alpha));
+        writeLitTrixel(trixelColors, sourceFaces, sourceMode, sourceIndex, uint2(pixel), float4(encodeUnitVectorUnorm8(worldNormal), alpha));
         return;
     }
 

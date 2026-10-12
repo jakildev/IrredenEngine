@@ -117,7 +117,10 @@ OpenGL presentation validation.
 
 Next, in order:
 
-1. Complete native OpenGL validation of finite faces and centered gather; isolate
+1. The gather half is closed on native OpenGL: the gather now derives its canvas
+   position from the fragment pixel ([contract](trixel-gather-sampling.md)), and the
+   four cardinal and the yaw135° orbit-geometry rows read zero mismatches on
+   `windows-debug`. Complete native OpenGL validation of finite faces; isolate
    the remaining intermediate-angle boundary differences using actual capture
    poses and raster ownership rules. The prior ideal-angle diagnostic counted
    15 wrong-face and four missing game samples; do not relax a gate to bless them.

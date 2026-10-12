@@ -28,6 +28,7 @@ add_executable(IrredenEngineTest
   common/command_registry_test.cpp
   common/ir_args_test.cpp
   common/ir_platform_test.cpp
+  ecs/archetype_move_storage_test.cpp
   ecs/chunk_bounds_eviction_test.cpp
   ecs/chunked_field_test.cpp
   ecs/command_randomize_voxels_test.cpp
@@ -93,6 +94,7 @@ add_executable(IrredenEngineTest
   render/entity_canvas_teardown_test.cpp
   render/entity_canvas_hitbox_test.cpp
   render/entity_id_carrier_test.cpp
+  render/fog_carrier_policy_test.cpp
   render/fog_cross_section_test.cpp
   render/fog_ghost_policy_test.cpp
   render/fog_line_of_sight_test.cpp

@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Windows coverage for the quiet-window process model.
 
-The owner-token, MSYS process-map, park runtime-root, CPU-time and
-reaped-child cases run on every host; the classes gated on native Windows drive real MSYS processes.
+The owner-token, MSYS process-map, park runtime-root, CPU-time, parker-row
+and reaped-child cases run on every host; the classes gated on native Windows
+drive real MSYS processes.
 """
 
 import argparse
@@ -149,6 +150,7 @@ class MsysProcessMapTest(unittest.TestCase):
 
 
 SECOND_RUNTIME = Path("C:/msys64/")
+PARKER_START = 133_000_000_000_000_000
 MSYS_PS_HEADER = MSYS_PS.splitlines(keepends=True)[0]
 
 
@@ -185,6 +187,7 @@ class ParkRuntimeRootsTest(unittest.TestCase):
             mock.patch.object(self.helper.platform, "system", return_value="Windows"),
             mock.patch.object(self.helper, "win32_parents", return_value=dict(WIN32_PARENTS)),
             mock.patch.object(self.helper, "windows_native_alive", return_value=True),
+            mock.patch.object(self.helper, "windows_process_start", return_value=PARKER_START),
         ):
             patch.start()
             self.addCleanup(patch.stop)
@@ -196,6 +199,7 @@ class ParkRuntimeRootsTest(unittest.TestCase):
             measurement_root=20,
             measurement_root_token=f"{ROOT} {RUNTIME}",
             runtime_root=str(SECOND_RUNTIME),
+            launcher_token="run-a",
         )
         held = {
             "state": "held",
@@ -233,6 +237,8 @@ class ParkRuntimeRootsTest(unittest.TestCase):
                     written, warning = self.park(run)
                 self.assertEqual(warning, "")
                 self.assertEqual(written[0]["measurement_root"], ROOT)
+                self.assertEqual(written[0]["launcher_token"], "run-a")
+                self.assertEqual(written[0]["start_time"], PARKER_START)
                 self.assertEqual(sorted(calls), sorted([ps_exe(RUNTIME), ps_exe(SECOND_RUNTIME)]))
                 holder, excluded, _, runtime_roots = sampled.call_args.args
                 self.assertEqual(holder, HOLDER)
@@ -254,9 +260,10 @@ class ParkRuntimeRootsTest(unittest.TestCase):
 
 
 class FakeKernel32:
-    def __init__(self, openable, readable=None):
+    def __init__(self, openable, readable=None, starts=None):
         self.openable = openable
         self.readable = openable if readable is None else readable
+        self.starts = starts or {}
         self.closed = []
 
     def OpenProcess(self, access, inherit, pid):
@@ -265,6 +272,7 @@ class FakeKernel32:
     def GetProcessTimes(self, handle, *times):
         if handle - 1000 not in self.readable:
             return 0
+        times[0]._obj.value = self.starts.get(handle - 1000, 0)
         times[2]._obj.value = 30_000_000
         times[3]._obj.value = 20_000_000
         return 1
@@ -309,6 +317,67 @@ class WindowsCpuTimeTest(unittest.TestCase):
             self.snapshot(FakeKernel32({OUTSIDER}))
 
 
+class ParkerRowsTest(unittest.TestCase):
+    """Parker rows on a Windows host, every pid alive unless a case says otherwise."""
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.helper = load_helper(Path(temp.name))
+        self.parkers = self.helper.lease_path("pane") / "parkers"
+        self.alive = mock.Mock(return_value=True)
+        for patch in (
+            mock.patch.object(self.helper, "os", NativeWindowsOs()),
+            mock.patch.object(self.helper, "pid_alive", self.alive),
+        ):
+            patch.start()
+            self.addCleanup(patch.stop)
+
+    def write(self, pid, **fields):
+        row = {"pid": pid, "owner_token": str(pid), "state": "parked", **fields}
+        self.helper.atomic_json(self.parkers / f"{pid}.json", row)
+
+    def drop(self, token):
+        args = argparse.Namespace(tag="pane", launcher_token=token)
+        self.assertEqual(self.helper.cmd_park_drop(args), 0)
+        return sorted(int(entry.stem) for entry in self.parkers.glob("*.json"))
+
+    def test_park_drop_removes_only_the_launchers_row(self):
+        self.write(11, launcher_token="run-a")
+        self.write(12, launcher_token="run-b")
+        self.assertEqual(self.drop("run-a"), [12])
+
+    def test_park_drop_sweeps_dead_writers_whatever_their_token(self):
+        self.write(11, launcher_token="run-a")
+        self.write(12, launcher_token="run-b")
+        self.alive.side_effect = lambda pid, token="": pid != 12
+        self.assertEqual(self.drop("run-c"), [11])
+
+    def test_empty_token_drops_no_live_row(self):
+        self.write(11, launcher_token="")
+        self.write(12)
+        self.assertEqual(self.drop(""), [11, 12])
+
+    def test_park_drop_without_a_lease_is_a_no_op(self):
+        self.assertEqual(self.drop("run-a"), [])
+
+    def test_recycled_pid_is_not_a_live_parker(self):
+        self.write(11, start_time=PARKER_START)
+        self.write(12, start_time=PARKER_START)
+        self.write(13)
+        fake = FakeKernel32({11, 12, 13}, starts={11: PARKER_START, 12: PARKER_START + 1})
+        with mock.patch.object(self.helper, "kernel32", return_value=fake):
+            live = self.helper.live_parkers(self.helper.lease_path("pane"))
+        self.assertEqual(sorted(row["pid"] for row in live), [11, 13])
+
+    def test_recycled_pid_row_is_swept_by_park_drop(self):
+        self.write(11, start_time=PARKER_START)
+        self.write(12, start_time=PARKER_START)
+        fake = FakeKernel32({11, 12}, starts={11: PARKER_START, 12: PARKER_START + 1})
+        with mock.patch.object(self.helper, "kernel32", return_value=fake):
+            self.assertEqual(self.drop("run-a"), [11])
+
+
 class ReapedChildTest(unittest.TestCase):
     def sample(self, system):
         with tempfile.TemporaryDirectory() as temp:
@@ -334,6 +403,21 @@ class ReapedChildTest(unittest.TestCase):
 
 @unittest.skipUnless(os.name == "nt", "requires native Windows Python")
 class WindowsOwnerTokenTest(unittest.TestCase):
+    def test_process_start_identifies_one_process(self):
+        with tempfile.TemporaryDirectory() as temp:
+            helper = load_helper(Path(temp))
+            own = helper.windows_process_start(os.getpid())
+            self.assertTrue(own)
+            self.assertEqual(helper.windows_process_start(os.getpid()), own)
+            process = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+            try:
+                child = helper.windows_process_start(process.pid)
+            finally:
+                process.kill()
+                process.wait(timeout=30)
+            self.assertTrue(child)
+            self.assertNotEqual(child, own)
+
     def test_msys_owner_token_drives_liveness_and_tree_root(self):
         msys_bash = Path(sys.executable).parents[2] / "usr" / "bin" / "bash.exe"
         if not msys_bash.is_file():

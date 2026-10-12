@@ -53,6 +53,8 @@ struct FrameDataIsoTriangles {
     int trixelSampleLayout;
     uint fogBodyFactorEncoded;
     uint fogUnexploredColorPacked;
+    int4 perAxisStoreFrame;
+    float4 canvasFromPixel;
 };
 
 // SSBO populated by the fragment shader when the mouse hovers over a
@@ -68,7 +70,6 @@ struct HoveredEntityIdBuffer {
 
 struct VertexOut {
     float4 position [[position]];
-    float2 canvasPositionFromCenter;
 };
 
 struct FragmentOut {
@@ -83,16 +84,11 @@ float normalizeDistance(int dist, constant GlobalConstants& globals) {
 
 vertex VertexOut v_trixel_to_framebuffer(
     VertexIn in [[stage_in]],
-    texture2d<float> triangleColors [[texture(0)]],
     constant FrameDataIsoTriangles& frameData [[buffer(3)]]
 ) {
     VertexOut out;
-    const float2 textureSize = float2(triangleColors.get_width(), triangleColors.get_height());
     out.position = frameData.mpMatrix * float4(in.position, 1.0, 1.0);
     out.position.y = -out.position.y;
-    // Centered texel units avoid normalized-coordinate rescaling at cell boundaries.
-    out.canvasPositionFromCenter =
-        float2(in.position.x, -in.position.y) * textureSize + frameData.textureOffset;
     return out;
 }
 
@@ -131,7 +127,8 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
     // triangles use canvas parity. Nothing here maps onto the triangle
     // lattice (trixelFramebufferSamplePosition): hover identity follows
     // display identity — docs/design/trixel-parity-shift-442-investigation.md.
-    const float2 originRaw = in.canvasPositionFromCenter + 0.5 * textureSize;
+    const float2 originRaw = canvasPositionFromPixel(in.position.xy, frameData.canvasFromPixel,
+                                                     frameData.textureOffset, textureSize);
 
     float2 displayOrigin = originRaw;
     if (frameData.trixelSampleLayout == 1) {
