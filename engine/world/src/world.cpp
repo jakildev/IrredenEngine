@@ -423,6 +423,10 @@ void World::enableFrameTiming(bool enabled) {
         IRRender::voxelCullAccumulator().reset();
         IRRender::renderRunWitness().reset();
         IRRender::resetGpuStageAccumulators();
+        // The profiled window owns the IR_PROFILE_SCOPE histogram so its rows
+        // reach the report without the HUD. Disabling leaves `enabled_` alone.
+        IRProfile::cpuFrameHistogram().enabled_ = true;
+        IRProfile::cpuFrameHistogram().resetRun();
     }
 }
 
@@ -486,6 +490,7 @@ void World::buildAndWriteProfileReport() {
           std::pair{"PerAxisCanvas::Unpark", IRRender::renderRunWitness().perAxisUnpark_}}) {
         report.cpuPhases_.push_back({name, phase.totalMs_, phase.maxMs_, phase.sampleCount_});
     }
+    IRProfile::appendCpuScopePhases(report, IRProfile::cpuFrameHistogram());
 
     const auto &cull = IRRender::voxelCullAccumulator();
     report.voxelCullStats_.visibleSum_ = cull.visibleSum_;

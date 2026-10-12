@@ -66,6 +66,18 @@ void writeSeries(
 
 } // namespace
 
+void appendCpuScopePhases(ProfileReport &report, const CpuFrameHistogram &histogram) {
+    const size_t first = report.cpuPhases_.size();
+    for (const auto &[name, stats] : histogram.runTotals()) {
+        if (stats.count_ == 0)
+            continue;
+        report.cpuPhases_.push_back({name, stats.totalMs_, stats.maxMs_, stats.count_});
+    }
+    std::sort(report.cpuPhases_.begin() + first, report.cpuPhases_.end(), [](auto &a, auto &b) {
+        return a.name_ < b.name_;
+    });
+}
+
 void writeProfileReport(const ProfileReport &report, const char *outputPath) {
     std::filesystem::path outPath(outputPath);
     std::filesystem::create_directories(outPath.parent_path());

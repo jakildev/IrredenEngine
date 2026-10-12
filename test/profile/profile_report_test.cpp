@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 
 #include <irreden/profile/profile_report.hpp>
+#include <irreden/profile/scope_timer.hpp>
 
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -104,6 +106,58 @@ TEST(ProfileReportWitness, ALongRunKeepsItsSteadyLineAndDropsItsSeries) {
         std::string::npos
     );
     EXPECT_EQ(text.find("--- Frame times"), std::string::npos);
+}
+
+TEST(ProfileReportCpuScopes, ScopeRowsFollowTheFixedPhasesWithRunWideSampleCounts) {
+    IRProfile::CpuFrameHistogram histogram;
+    histogram.enabled_ = true;
+    histogram.record("ScopeB", 0.5);
+    histogram.record("ScopeA", 1.0);
+    histogram.record("ScopeA", 3.0);
+    histogram.endFrame();
+    histogram.record("ScopeA", 2.0);
+    histogram.endFrame();
+
+    IRProfile::ProfileReport report;
+    report.cpuPhases_.push_back({"FixedPhase", 4.0, 4.0, 1});
+    IRProfile::appendCpuScopePhases(report, histogram);
+    const std::string text = writeAndRead(report);
+
+    // Same row format as the writer: the name column is 36 wide.
+    const auto row = [&](const char *name, double avg, double max, unsigned samples) {
+        char line[128];
+        std::snprintf(line, sizeof(line), "%-36s %9.3f %9.3f %7u\n", name, avg, max, samples);
+        return text.find(line);
+    };
+    const auto fixed = row("FixedPhase", 4.0, 4.0, 1);
+    const auto a = row("ScopeA", 2.0, 3.0, 3);
+    const auto b = row("ScopeB", 0.5, 0.5, 1);
+    ASSERT_NE(fixed, std::string::npos) << text;
+    ASSERT_NE(a, std::string::npos) << text;
+    ASSERT_NE(b, std::string::npos) << text;
+    EXPECT_LT(fixed, a) << text;
+    EXPECT_LT(a, b) << text;
+}
+
+TEST(ProfileReportCpuScopes, ADisabledHistogramAppendsNothing) {
+    IRProfile::CpuFrameHistogram histogram;
+    histogram.record("ScopeA", 1.0);
+    histogram.endFrame();
+
+    IRProfile::ProfileReport report;
+    IRProfile::appendCpuScopePhases(report, histogram);
+    EXPECT_TRUE(report.cpuPhases_.empty());
+}
+
+TEST(ProfileReportCpuScopes, ResetRunDropsTotalsButKeepsTheHistogramEnabled) {
+    IRProfile::CpuFrameHistogram histogram;
+    histogram.enabled_ = true;
+    histogram.record("ScopeA", 1.0);
+    histogram.endFrame();
+    histogram.resetRun();
+
+    EXPECT_TRUE(histogram.runTotals().empty());
+    EXPECT_TRUE(histogram.enabled_);
 }
 
 } // namespace

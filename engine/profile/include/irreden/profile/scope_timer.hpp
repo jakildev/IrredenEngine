@@ -58,7 +58,10 @@ using CpuScopeMap = std::unordered_map<
 // Per-frame CPU scope histogram. `IR_PROFILE_SCOPE(name)` instances record
 // into the "current" map at scope exit; `endFrame()` swaps current → last so
 // the HUD can read a stable per-frame snapshot. Single-threaded by
-// construction — the engine's tick fires on the main thread only.
+// construction — the engine's tick fires on the main thread only, and a scope
+// recorded from a worker thread races these unsynchronized maps (unsupported;
+// no locking is added). `endFrame()` also folds the finished frame into a
+// run-long total that `--auto-profile` writes into the profile report.
 class CpuFrameHistogram {
   public:
     bool enabled_ = false;
@@ -81,6 +84,17 @@ class CpuFrameHistogram {
     }
 
     void endFrame() {
+        // Merge before the swap: the swap hands the zeroed map to `m_current`.
+        for (const auto &[name, frame] : m_current) {
+            if (frame.count_ == 0)
+                continue;
+            auto &run = m_run[name];
+            run.totalMs_ += frame.totalMs_;
+            if (frame.maxMs_ > run.maxMs_) {
+                run.maxMs_ = frame.maxMs_;
+            }
+            run.count_ += frame.count_;
+        }
         m_lastFrame.swap(m_current);
         for (auto &[_, stats] : m_current) {
             stats = CpuScopeStats{};
@@ -94,9 +108,20 @@ class CpuFrameHistogram {
 
     const detail::CpuScopeMap &lastFrame() const { return m_lastFrame; }
 
+    /// Totals per scope name across every frame since the last `resetRun()`.
+    const detail::CpuScopeMap &runTotals() const {
+        return m_run;
+    }
+
+    /// Clears the run totals only; `enabled_` and the per-frame maps are untouched.
+    void resetRun() {
+        m_run.clear();
+    }
+
   private:
     detail::CpuScopeMap m_current;
     detail::CpuScopeMap m_lastFrame;
+    detail::CpuScopeMap m_run;
 };
 
 inline CpuFrameHistogram &cpuFrameHistogram() {
