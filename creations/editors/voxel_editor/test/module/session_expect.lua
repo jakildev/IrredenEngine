@@ -4,7 +4,7 @@
 --
 --   components: registered component name + field count, read back through
 --               the registry enumeration
---   panels:     panel name + the one label its build function makes
+--   panels:     panel name + a label its build function makes
 --   recipe:     the recipe to apply and the slider values to drag first; every
 --               value must differ from its default so the drag is proven
 --

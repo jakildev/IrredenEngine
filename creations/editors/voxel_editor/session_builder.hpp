@@ -495,8 +495,8 @@ struct ManifestCheck {
     std::string name_;
 };
 
-// Module-panel expectation: the docked panel named panelName_ holds exactly
-// one label, reading label_.
+// Module-panel expectation: the docked panel named panelName_ draws a
+// label reading label_.
 struct PanelLabelCheck {
     std::string panelName_;
     std::string label_;
@@ -1540,7 +1540,7 @@ class Builder {
         );
     }
 
-    // Assert the docked module panel `panelName` built exactly one label,
+    // Assert the docked module panel `panelName` draws a label
     // reading `label`.
     void expectPanelLabel(std::string panelName, std::string label, std::string name) {
         m_recipe.panelLabelChecks_.push_back(
