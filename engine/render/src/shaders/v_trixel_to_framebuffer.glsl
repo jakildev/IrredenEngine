@@ -10,11 +10,6 @@
 #version 450 core
 layout (location = 0) in vec2 aPos;
 
-out vec2 CanvasPositionFromCenter;
-
-layout (binding = 0) uniform sampler2D triangleColors;
-layout (binding = 1) uniform isampler2D  triangleDistances;
-
 layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     mat4 mpMatrix;
     vec2 zoomLevel;
@@ -30,8 +25,8 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     // (Linux/macOS) accept a vertex-side head-only form; the stricter
     // native-Windows driver rejects it with "members of uniform block (named
     // FrameDataIsoTriangles) are not the same between shader stages" and the
-    // program link fails. The vertex stage consumes only mpMatrix +
-    // textureOffset, but it must still declare the full scatter UBO tail so
+    // program link fails. The vertex stage consumes only mpMatrix, but it
+    // must still declare the full block tail so
     // the std140 layout matches BOTH the fragment stage and the shared C++
     // struct (FrameDataTrixelToFramebuffer, ir_render_types.hpp). Keep these
     // two blocks in lockstep.
@@ -50,15 +45,12 @@ layout (std140, binding = 3) uniform FrameDataIsoTriangles {
     int trixelSampleLayout;
     uint fogBodyFactorEncoded;
     uint fogUnexploredColorPacked;
+    ivec4 perAxisStoreFrame;
+    vec4 canvasFromPixel;
 };
 
 void main() {
-    ivec2 textureSize = textureSize(triangleColors, 0);
-    // -aPos.y flips the texture V so that canvas pixel Y=0 (GL bottom)
-    // appears at the top of the screen.  This means higher iso/canvas Y
-    // renders lower on the final output.
-    // Centered texel units avoid normalized-UV rescaling, which can round
-    // integer sampling boundaries into a neighboring cell.
-    CanvasPositionFromCenter = vec2(aPos.x, -aPos.y) * vec2(textureSize) + textureOffset;
+    // The fragment stage derives its canvas position from gl_FragCoord
+    // (canvasPositionFromPixel); nothing is interpolated.
     gl_Position = mpMatrix * vec4(aPos, 1.0f, 1.0f);
 }

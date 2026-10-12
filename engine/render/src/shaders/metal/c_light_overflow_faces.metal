@@ -63,7 +63,7 @@ kernel void c_light_overflow_faces(
     const int faceId = voxelFrameData.visibleFaceIds[slot] ^ flip;
     const float3 worldNormal = faceOutwardNormal6(faceId);
     if (frameData.debugOverlayMode == 8) {
-        overflowScratch[entryBase + 1u] = packColor(float4(worldNormal * 0.5f + 0.5f, albedo.a));
+        overflowScratch[entryBase + 1u] = packColor(float4(encodeUnitVectorUnorm8(worldNormal), albedo.a));
         return;
     }
     const float3 pos3D = perAxisCellToWorld3DSubCell(

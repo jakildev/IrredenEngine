@@ -1631,7 +1631,7 @@ constexpr vec2 pos2DIsoToPos2DGameResolution(const vec2 position, const vec2 zoo
 /// screen blit chain. See @ref cameraSubPixelOffsets.
 struct CameraSubPixelOffsets {
     /// Game-pixel offset for the trixel-canvas-to-framebuffer placement
-    /// (the translate term in `TRIXEL_TO_FRAMEBUFFER::calcModelMatrix`).
+    /// (the gather centre `TRIXEL_TO_FRAMEBUFFER` hands `placeGatherQuad`).
     ivec2 framebufferGamePxOffset_;
 
     /// Screen-pixel residual for the framebuffer-to-screen upscale blit
