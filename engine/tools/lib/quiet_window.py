@@ -310,17 +310,30 @@ def cpu_time(pid: int) -> float:
     # Own user + kernel time only: Windows never folds a reaped child into its parent.
     # A process that cannot be opened or read is reported gone, so a member exiting
     # mid-snapshot is skipped rather than failing the whole sample.
+    times = windows_process_times(pid)
+    if times is None:
+        raise ProcessLookupError(pid)
+    return (times[2] + times[3]) / 10_000_000
+
+
+def windows_process_times(pid: int) -> tuple[int, int, int, int] | None:
+    """GetProcessTimes' creation, exit, kernel and user FILETIMEs; None when unreadable."""
     library = kernel32()
     handle = library.OpenProcess(0x1000, False, pid)
     if not handle:
-        raise ProcessLookupError(pid)
+        return None
     try:
         times = [ctypes.c_uint64() for _ in range(4)]
         if not library.GetProcessTimes(handle, *(ctypes.byref(value) for value in times)):
-            raise ProcessLookupError(pid)
-        return (times[2].value + times[3].value) / 10_000_000
+            return None
+        return tuple(value.value for value in times)
     finally:
         library.CloseHandle(handle)
+
+
+def windows_process_start(pid: int) -> int | None:
+    times = windows_process_times(pid)
+    return times[0] if times else None
 
 
 def descendants(root: int, children: dict[int, list[int]]) -> set[int]:
@@ -381,11 +394,23 @@ def lease_path(tag: str) -> Path:
     return LEASES / tag
 
 
+def parker_alive(row: dict) -> bool:
+    """The row's writer is still running: a Windows pid recycled to another process is not."""
+    pid = int(row.get("pid", 0))
+    owner_token = str(row.get("owner_token", ""))
+    if not pid_alive(pid, owner_token):
+        return False
+    start_time = int(row.get("start_time", 0))
+    if os.name != "nt" or not start_time:
+        return True
+    return windows_process_start(windows_native_pid(pid, owner_token)) == start_time
+
+
 def live_parkers(path: Path) -> list[dict]:
     rows = []
     for entry in (path / "parkers").glob("*.json"):
         row = read_json(entry)
-        if row and pid_alive(int(row.get("pid", 0)), str(row.get("owner_token", ""))):
+        if row and parker_alive(row):
             rows.append(row)
     return rows
 
@@ -563,7 +588,10 @@ def cmd_park(args: argparse.Namespace) -> int:
         "quiet_since": now(),
         "covered_through": now(),
         "measurement_root": measurement_root,
+        "launcher_token": args.launcher_token,
     }
+    if os.name == "nt":
+        state["start_time"] = windows_process_start(os.getpid()) or 0
     atomic_json(parker_path, state)
     try:
         while True:
@@ -618,6 +646,26 @@ def cmd_park(args: argparse.Namespace) -> int:
             parker_path.unlink()
         except FileNotFoundError:
             pass
+
+
+def cmd_park_drop(args: argparse.Namespace) -> int:
+    """Remove the rows a killed parker could not: its launcher's, and any whose writer is gone.
+
+    The launcher token matches a parker that is still dying, which the liveness
+    sweep would keep. An empty token matches nothing, since every parker outside a
+    benchmark carries an empty one.
+    """
+    for entry in (lease_path(args.tag) / "parkers").glob("*.json"):
+        row = read_json(entry)
+        if row is None:
+            continue
+        token = row.get("launcher_token")
+        if (args.launcher_token and token == args.launcher_token) or not parker_alive(row):
+            try:
+                entry.unlink()
+            except FileNotFoundError:
+                pass
+    return 0
 
 
 def cmd_status(args: argparse.Namespace) -> int:
@@ -800,7 +848,12 @@ def parser() -> argparse.ArgumentParser:
     park.add_argument("--measurement-root", type=int, default=0)
     park.add_argument("--measurement-root-token", default="")
     park.add_argument("--runtime-root", default="")
+    park.add_argument("--launcher-token", default="")
     park.set_defaults(func=cmd_park)
+    park_drop = sub.add_parser("park-drop")
+    park_drop.add_argument("tag")
+    park_drop.add_argument("--launcher-token", default="")
+    park_drop.set_defaults(func=cmd_park_drop)
     status = sub.add_parser("status")
     status.add_argument("--owner")
     status.add_argument("--json", action="store_true")

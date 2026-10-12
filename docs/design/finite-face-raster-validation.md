@@ -52,7 +52,7 @@ This is algebraically the same projection with a better-conditioned evaluation
 order. It changes neither the face footprint nor the depth key and adds no
 margin, snapping policy, blur, visibility rejection, or fragment work.
 
-The shared gather has the related [centered texel sampling contract](trixel-gather-sampling.md).
+The shared gather has the related [pixel-derived sampling contract](trixel-gather-sampling.md).
 Validate both against actual geometry: two paths agreeing is useful evidence,
 but agreement alone does not establish that their common output is correct.
 

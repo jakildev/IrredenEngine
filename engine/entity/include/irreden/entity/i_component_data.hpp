@@ -5,8 +5,10 @@
 
 #include <irreden/entity/ir_entity_types.hpp>
 
-#include <vector>
+#include <cstddef>
 #include <memory>
+#include <utility>
+#include <vector>
 
 namespace IREntity {
 
@@ -64,12 +66,15 @@ template <typename Component> class IComponentDataImpl : public IComponentData {
         return std::make_unique<IComponentDataImpl<Component>>();
     }
 
+    // Archetype moves and the swap-and-pop both move rows, never copy them: a
+    // component's heap storage keeps its address across structural changes, so
+    // views into it held by other components (spans into a container member)
+    // stay valid. A copy would free the storage those views alias.
     virtual void moveDataAndPack(IComponentData *dest, const int indexSource) override {
         IComponentDataImpl<Component> *castedDest =
             static_cast<IComponentDataImpl<Component> *>(dest);
-        castedDest->dataVector.push_back(this->dataVector[indexSource]);
-        this->dataVector[indexSource] = this->dataVector.back();
-        this->dataVector.pop_back();
+        castedDest->dataVector.push_back(std::move(this->dataVector[indexSource]));
+        packInto(indexSource);
     }
 
     virtual void pushCopyData(IComponentData *dest, const int indexSource) override {
@@ -80,8 +85,7 @@ template <typename Component> class IComponentDataImpl : public IComponentData {
 
     virtual void removeDataAndPack(const int index) override {
         IR_ASSERT(index < size(), "Attempted to remove data with index out of bounds");
-        this->dataVector[index] = this->dataVector.back();
-        this->dataVector.pop_back();
+        packInto(index);
     }
 
     virtual void destroy(const int index) override {
@@ -89,6 +93,16 @@ template <typename Component> class IComponentDataImpl : public IComponentData {
         if constexpr (HasOnDestroy<Component>::value) {
             this->dataVector[index].onDestroy();
         }
+    }
+
+  private:
+    // Fill row @p index from the back row and drop the back. The back row skips
+    // the move: self-move-assignment is not safe for every component type.
+    void packInto(const int index) {
+        if (static_cast<std::size_t>(index) + 1 != this->dataVector.size()) {
+            this->dataVector[index] = std::move(this->dataVector.back());
+        }
+        this->dataVector.pop_back();
     }
 };
 

@@ -180,14 +180,18 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             static_cast<int>(triangleCanvasTextures.renderedSampleLayout_);
         const ivec2 logicalCanvasSize =
             IRPrefab::CanvasCoverage::logicalSize(entity, triangleCanvasTextures.size_);
-        const vec2 backingScale = vec2(triangleCanvasTextures.size_) / vec2(logicalCanvasSize);
-        frameData.frameData_.mpMatrix_ =
-            calcProjectionMatrix(framebufferResolution) * calcModelMatrix(
-                                                              framebufferResolution,
-                                                              gatherTranslation,
-                                                              frameData.frameData_.canvasZoomLevel_,
-                                                              backingScale
-                                                          );
+        const vec2 textureSize = vec2(triangleCanvasTextures.size_);
+        const vec2 backingScale = textureSize / vec2(logicalCanvasSize);
+        const vec2 gatherCenter = framebufferResolution * 0.5f + gatherTranslation;
+        const vec2 gatherExtent =
+            framebufferResolution * frameData.frameData_.canvasZoomLevel_ * backingScale;
+        placeGatherQuad(
+            frameData.frameData_,
+            framebufferResolution,
+            gatherCenter,
+            gatherExtent,
+            textureSize
+        );
 
         if (!behavior.mouseHoverEnabled_) {
             frameData.frameData_.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
@@ -228,15 +232,15 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             // content (its voxel pass is skipped in VOXEL_TO_TRIXEL_STAGE_1), so
             // the gather composites that content by depth alongside the smooth
             // voxels with no double-draw. SDF stays cardinal-snapped during
-            // rotation. Restore the main-canvas model-projection the scatter
+            // rotation. Restore the main-canvas placement the scatter
             // overwrote with its per-axis zoomEff matrix.
-            frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) *
-                                             calcModelMatrix(
-                                                 framebufferResolution,
-                                                 gatherTranslation,
-                                                 frameData.frameData_.canvasZoomLevel_,
-                                                 backingScale
-                                             );
+            placeGatherQuad(
+                frameData.frameData_,
+                framebufferResolution,
+                gatherCenter,
+                gatherExtent,
+                textureSize
+            );
         }
 
         if ((shapeProbeEnabled_ || shapeLightingEnabled_) && entity == perAxisCanvasEntity_)
@@ -406,11 +410,11 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // complements screenPxPerCell·floor(cameraIso) (the anchor), so their sum
         // is screenPxPerCell·cameraIso, continuous. The y term carries the iso→
         // screen sign flip the scatter applies to cornerIso
-        // (quadPos.y = 0.5 - cornerIso.y/size.y). This REPLACES calcModelMatrix's
+        // (quadPos.y = 0.5 - cornerIso.y/size.y). This REPLACES the gather's
         // whole-game-px offset, which snapped to the canvas's game-px grid
         // (zoomEff·2) — a different scale than one anchor cell — leaving the
-        // uncompensated snap. (The cardinal single-canvas path keeps
-        // calcModelMatrix: there the canvas IS the native-res blit grid, so its
+        // uncompensated snap. (The cardinal single-canvas gather keeps that
+        // offset: there the canvas IS the native-res blit grid, so its
         // game-px snap + the framebuffer→screen residual are the anti-vibration.)
         const vec2 screenPxPerCell = framebufferResolution * zoomEff / vec2(axes.size_);
         const vec2 smoothPx = perAxisScatterCameraOffset(
@@ -911,28 +915,6 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             (canvasCameraIso + parityOffsetIso) * vec2(canvasDensity),
             canvasZoomLevel
         );
-    }
-
-    static mat4 calcModelMatrix(
-        const vec2 &resolution,
-        const vec2 &isoPixelOffset,
-        const vec2 &zoomLevel,
-        const vec2 &backingScale
-    ) {
-        mat4 model = mat4(1.0f);
-        model = translate(
-            model,
-            vec3(resolution.x / 2 + isoPixelOffset.x, resolution.y / 2 + isoPixelOffset.y, 0.0f)
-        );
-        model = scale(
-            model,
-            vec3(
-                resolution.x * zoomLevel.x * backingScale.x,
-                resolution.y * zoomLevel.y * backingScale.y,
-                1.0f
-            )
-        );
-        return model;
     }
 };
 

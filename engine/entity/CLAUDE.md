@@ -158,7 +158,11 @@ After reset:
 - Relations are component-like archetype entries, so `setParent` can move an
   entity to another node.
 - Never retain a component pointer or archetype row index across structural
-  mutation; retain the `EntityId` and look it up again.
+  mutation; retain the `EntityId` and look it up again. A component's own heap
+  storage is different: archetype moves and row packing move rows, never copy
+  them, so a view into a component's container (`C_VoxelSetNew`'s spans into
+  its canvas's `C_VoxelPool`) survives. A component that others view this way
+  must stay nothrow-move-constructible, or column growth copies it.
 - `removeComponentsSimple()` performs one archetype mutation per entity; use
   deferred removal and one flush for bulk work.
 - Component registration is lazy. Register explicitly before creation only
