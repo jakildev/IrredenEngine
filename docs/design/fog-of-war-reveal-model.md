@@ -304,6 +304,12 @@ line-of-sight edge and a disc rim share one cap language. The radial rim cap
 is unchanged in where it applies: hard discs only, unexplored grid cells
 only, vertical faces only, and within two cells past the rim.
 
+The radial rim cap's tone is also unchanged: it blends with the fixed 0.85
+constant whether or not the treatment is enabled, and an enabled `capTone`
+tones only the treated partial band. A canvas that enables the treatment with
+a `capTone` other than 0.85 therefore shows two cap tones: `capTone` on
+ceiling and line-of-sight cuts, 0.85 on hard-disc rims.
+
 ### Column top
 
 **Landing child:** #4304.
