@@ -126,3 +126,9 @@ They extend native moving-caster coverage. This evidence review does not treat
 them as an independent exact shadow oracle or infer determinism from one set of
 images. Combined-stack native validation and cross-host status belong to the
 parent validation report.
+
+The [native mask measurements](moving-mask.json) isolate the cast-shadow
+component from the floor rim using its exact RGB code and connectivity. Across
+all eight transitions the shadow centroid moves, with 256 or 320 changed output
+pixels per step; the rim is unchanged. This verifies sub-voxel motion in this
+fixture without treating its silhouette as an independent geometric oracle.
