@@ -1062,6 +1062,34 @@ inline float evalActiveReveal(
     return 1.0f;
 }
 
+/// The position-only FIELD paint verdict at @p worldPosition on the active
+/// canvas (the term-off arm). An absent fog attachment leaves gameplay
+/// unrestricted: fully revealed, no styled band.
+inline RevealSurfaceSample evalActiveRevealSurface(
+    IRMath::vec3 worldPosition, std::uint32_t channels = IRComponents::kFogChannelDefault
+) {
+    if (auto *fog = detail::activeFogComponent()) {
+        return evalRevealSurface(*fog, worldPosition, channels);
+    }
+    return RevealSurfaceSample{1.0f, 0.0f};
+}
+
+/// The FIELD paint verdict of a sample on face @p face whose point on the face
+/// plane is @p facePoint, column-top term included, on the active canvas. The
+/// sample marches from @p facePoint stepped `kFogLosFaceBias` outward and
+/// takes its column point (`losColumnPoint`, the route-free form) inward.
+inline RevealSurfaceSample evalActiveRevealFace(
+    IRMath::vec3 facePoint,
+    IRMath::FaceId face,
+    std::uint32_t channels = IRComponents::kFogChannelDefault
+) {
+    if (auto *fog = detail::activeFogComponent()) {
+        const IRMath::vec3 sample = facePoint + IRMath::faceOutwardNormal(face) * kFogLosFaceBias;
+        return evalRevealSurface(*fog, sample, losColumnPoint(facePoint, face), face, channels);
+    }
+    return RevealSurfaceSample{1.0f, 0.0f};
+}
+
 /// Read the last reveal verdict stored for @p entity. Entities without the
 /// governance component are unrestricted.
 inline float getEntityReveal(IREntity::EntityId entity) {
