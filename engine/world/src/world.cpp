@@ -363,6 +363,9 @@ void World::end() {
     // Ensure component onDestroy hooks run while managers are still valid
     // (e.g. MIDI cleanup that sends NOTE_OFF on shutdown).
     m_entityManager.destroyAllEntities();
+    // The MIDI clock's STOP leaves after those NOTE_OFFs and before logging
+    // ends, so its pulse count is the run's last MIDI line.
+    m_audioManager.getMidiClock().stop();
     IRProfile::CPUProfiler::instance().shutdown();
     // Last log before shutdownLogging() flips g_loggingEnabled off — the
     // observable proof that deterministic teardown ran. The same line
