@@ -1445,6 +1445,40 @@ TEST_F(PrefabWriter, RoundTripsVoxelPartAnchor) {
     EXPECT_TRUE(IRPrefab::Prefab::readManifest(m_lua, shapePath).ok());
 }
 
+// The editor's reader refuses an `anchor` that no voxel content would receive:
+// on a bare part, and on the root, where the writer has no field to save it in.
+TEST_F(PrefabWriter, ReaderRefusesAnAnchorWithNoVoxelContent) {
+    const auto read = [&](const std::string &tag, const std::string &body) {
+        const std::string path = "/tmp/prefab_writer_anchor_" + tag + ".prefab.lua";
+        std::ofstream(path) << body;
+        return IRPrefab::Prefab::readManifest(m_lua, path);
+    };
+
+    const IRPrefab::Prefab::ManifestResult bare =
+        read("bare", "return { prefab_version = 2, parts = { { id = 'bare', anchor = 1 } } }\n");
+    EXPECT_FALSE(bare.ok());
+    EXPECT_NE(bare.error_.find("a bare part has none"), std::string::npos) << bare.error_;
+
+    IRPrefab::Prefab::PrefabDescription written;
+    IRPrefab::Prefab::PrefabPartDescription shape;
+    shape.id_ = "marker";
+    shape.shape_ = IRPrefab::Prefab::PrefabShapeDescription{};
+    written.parts_.push_back(shape);
+    const std::string controlPath = "/tmp/prefab_writer_anchor_root_control.prefab.lua";
+    ASSERT_FALSE(IRPrefab::Prefab::writeManifest(controlPath, written).has_value());
+    ASSERT_TRUE(IRPrefab::Prefab::readManifest(m_lua, controlPath).ok());
+
+    std::ifstream in(controlPath);
+    std::string text{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+    const std::string versionLine = "prefab_version = 2,";
+    const std::size_t at = text.find(versionLine);
+    ASSERT_NE(at, std::string::npos) << text;
+    text.insert(at + versionLine.size(), "\n  anchor = 1,");
+    const IRPrefab::Prefab::ManifestResult root = read("root", text);
+    EXPECT_FALSE(root.ok());
+    EXPECT_NE(root.error_.find("root-level anchor"), std::string::npos) << root.error_;
+}
+
 TEST_F(PrefabWriter, RoundTripsComponents) {
     m_lua.lua().safe_script(
         "IRComponent.register('WrittenTag', { count = 1, label = 'a', offset = { type = 'vec3' } })"

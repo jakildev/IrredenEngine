@@ -64,7 +64,8 @@ struct PrefabPartDescription {
     std::string voxelRef_;
     // How the voxel_ref content attaches to the part's translation. The `.vxs`
     // stores integer bounds, so this field is the only record of a non-CORNER
-    // anchor. Unused by a shape part.
+    // anchor. Written and read for a voxel_ref part only; the reader rejects
+    // the field on a shape part and on a bare part.
     IRComponents::EntityAnchor anchor_ = IRComponents::EntityAnchor::CORNER;
     std::optional<PrefabShapeDescription> shape_;
     IRComponents::C_LocalTransform transform_;

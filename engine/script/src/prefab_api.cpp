@@ -109,6 +109,17 @@ SpawnResult makeError(std::string id, std::string path, std::string message) {
     return r;
 }
 
+bool hasField(const sol::table &table, const char *key) {
+    const sol::object value = table[key];
+    return value.valid() && value.get_type() != sol::type::lua_nil;
+}
+
+/// An anchor belongs to a voxel_ref part; one written on the root would be
+/// silently dropped.
+constexpr const char *kRootAnchorError =
+    "root-level anchor is not supported; the root's voxel_ref is CORNER, and a part states its "
+    "anchor in its own table";
+
 /// Reads `rotation_mode` and, for a canvas-owning mode, `canvas_size` from
 /// `table` (the prefab root or one part). Returns an error message on a bad
 /// value. The schema takes the `IRComponent.RotationMode.*` integer, never a
@@ -296,13 +307,13 @@ std::optional<std::string> parsePart(const sol::table &partTable, PartSpec &part
         }
         part.shape_ = shape;
     }
-    if (hasShape) {
-        if (sol::object anchorObj = partTable["anchor"];
-            anchorObj.valid() && anchorObj.get_type() != sol::type::lua_nil) {
-            return std::string{"anchor applies to voxel_ref content; a shape part has none"};
+    if (voxelRef) {
+        if (auto error = parseAnchor(partTable, part.anchor_)) {
+            return error;
         }
-    } else if (auto error = parseAnchor(partTable, part.anchor_)) {
-        return error;
+    } else if (hasField(partTable, "anchor")) {
+        return std::string{"anchor applies to voxel_ref content; a "} +
+               (hasShape ? "shape" : "bare") + " part has none";
     }
 
     sol::object transformObj = partTable["transform"];
@@ -796,6 +807,10 @@ ManifestResult readManifest(IRScript::LuaScript &script, const std::string &path
         result.error_ = "root-level lod is not supported; give each part its own lod band";
         return result;
     }
+    if (hasField(prefab, "anchor")) {
+        result.error_ = kRootAnchorError;
+        return result;
+    }
 
     std::shared_ptr<PartsManifest> manifest;
     if (auto error = parseParts(prefab, path, manifest)) {
@@ -969,6 +984,10 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
                 std::to_string(kPrefabSchemaVersionMin) + ".." +
                 std::to_string(kPrefabSchemaVersion) + ")"
         );
+    }
+
+    if (hasField(prefab, "anchor")) {
+        return makeError(idStr, path, kRootAnchorError);
     }
 
     // Parsed before the root exists, so a bad part leaves nothing to tear down.
