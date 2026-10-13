@@ -273,11 +273,10 @@ int main(){
    const double origin[]={c*viewX-s*viewY,s*viewX+c*viewY,v/3-4};
    const double direction[]={(c-s)/3,(s+c)/3,1./3};
    const Hit expected=intersect(origin,direction,half);
-   // Invert the centered gather quad's scale to obtain its vertex varying.
-   // The executed vertex/fragment statements retain the backend Y adapter.
-   const vec2 quad(float((screenX-1280.)/(16./density*canvas.x)),
-                   float(-(screenY-720.)/(8./density*canvas.y)));
-   const vec2 raw=gatherRawPixel(quad,canvas);
+   // Both backends expose bottom-up fragment coordinates after Metal's
+   // clip-Y adapter. Execute the production pixel-to-canvas mapping.
+   const vec2 fragmentPixel(float(screenX),float(1440.-screenY));
+   const vec2 raw=gatherRawPixel(fragmentPixel,canvas,density);
    vec3 position(999),normal(999);
    const bool hit=shapeBoxReceiver(shape,f,shapeFragmentQueryPixel(raw,canvas),
                                    false,position,normal);
@@ -309,8 +308,6 @@ int main(){
             sdf = (shaders / f"ir_sdf_common.{suffix}").read_text()
             selected = (shaders / f"ir_selected_shape_receiver.{suffix}").read_text()
             fragment = (shaders / f"ir_trixel_to_framebuffer_body.{suffix}").read_text()
-            vertex = ((shaders / "v_trixel_to_framebuffer.glsl").read_text()
-                      if suffix == "glsl" else fragment)
             functions = "\n".join(extract_function(common, name) for name in (
                 "rasterYawCardinalIndex", "cardinalYawCosSin", "pos3DtoPos2DIsoYawed",
                 "isoPositionToPos3D", "yawedIsoDistance"))
@@ -322,20 +319,22 @@ int main(){
                 "slabFromLinear", "boxSurfaceIntervalYaw"))
             functions += "\n" + (shaders / f"ir_shape_receiver.{suffix}").read_text()
             conversion = extract_function(selected, "shapeFragmentQueryPixel")
-            varying = ("CanvasPositionFromCenter" if suffix == "glsl"
-                       else "out.canvasPositionFromCenter")
-            vertex_assignment = re.search(re.escape(varying) + r"\s*=[^;]+;", vertex).group()
+            mapping = extract_function(common, "canvasPositionFromPixel")
+            mapping = mapping.replace("vec4 canvasFromPixel", "PixelMap canvasFromPixel")
+            mapping = mapping.replace("float4 canvasFromPixel", "PixelMap canvasFromPixel")
             raw_assignment = re.search(r"(?:const )?(?:vec2|float2) originRaw = [^;]+;",
                                        fragment).group()
-            gather = ("\nvec2 gatherRawPixel(vec2 aPos,ivec2 canvasSize){\n"
-                      "vec2 textureSize(canvasSize),textureOffset(0,0),CanvasPositionFromCenter;\n"
-                      + vertex_assignment + "\n" + raw_assignment + "\nreturn originRaw;}\n")
-            for before, after in (("out.canvasPositionFromCenter", "CanvasPositionFromCenter"),
-                                  ("in.canvasPositionFromCenter", "CanvasPositionFromCenter"),
-                                  ("in.position", "aPos"),
+            gather = ("\nvec2 gatherRawPixel(vec2 fragmentPixel,ivec2 canvasSize,int density){\n"
+                      "vec2 textureSize(canvasSize),textureOffset(0,0);\n"
+                      "PixelMap canvasFromPixel{{1280,720},{density/16.f,density/8.f}};\n"
+                      + raw_assignment + "\nreturn originRaw;}\n")
+            for before, after in (("gl_FragCoord.xy", "fragmentPixel"),
+                                  ("in.position.xy", "fragmentPixel"),
+                                  ("frameData.canvasFromPixel", "canvasFromPixel"),
                                   ("frameData.textureOffset", "textureOffset")):
                 gather = gather.replace(before, after)
             adapters = r"""
+struct PixelMap {vec2 xy,zw;};
 ivec2 operator/(ivec2 a,ivec2 b){return {a.x/b.x,a.y/b.y};}
 vec2 operator*(vec2 a,vec2 b){return {a.x*b.x,a.y*b.y};}
 vec2 operator*(double a,vec2 b){return b*float(a);}
@@ -343,20 +342,24 @@ vec2 operator*(double a,vec2 b){return b*float(a);}
             preamble = PREAMBLE.replace("V2():x(0),y(0){}",
                                         "V2():x(0),y(0){} explicit V2(T a):x(a),y(a){}")
             variants = {
-                "production": conversion,
-                "missing_conversion": re.sub(r"return [^;]+;",
-                                             "return rawCanvasPixel;", conversion),
-                "fixed_even_offset": re.sub(r"return [^;]+;",
-                                            "return rawCanvasPixel - vec2(1.0, 1.0);", conversion),
+                "production": (conversion, mapping),
+                "missing_conversion": (re.sub(r"return [^;]+;",
+                                              "return rawCanvasPixel;", conversion), mapping),
+                "fixed_even_offset": (re.sub(r"return [^;]+;",
+                                             "return rawCanvasPixel - vec2(1.0, 1.0);",
+                                             conversion), mapping),
+                "inverted_pixel_y": (conversion, mapping.replace("-1.0", "1.0")),
+                "missing_pixel_scale": (conversion,
+                                        mapping.replace("* canvasFromPixel.zw", "")),
             }
-            for name, helper in variants.items():
+            for name, (helper, pixel_mapping) in variants.items():
                 with (
                     self.subTest(backend=suffix, variant=name),
                     tempfile.TemporaryDirectory() as tmp,
                 ):
                     if name != "production":
-                        self.assertNotEqual(helper, conversion)
-                    body = functions + "\n" + helper + gather
+                        self.assertNotEqual((helper, pixel_mapping), (conversion, mapping))
+                    body = functions + "\n" + helper + pixel_mapping + gather
                     body = re.sub(r"out (float|vec3) (\w+)", r"\1& \2", body)
                     for before, after in (("thread ", ""), ("float3", "vec3"),
                                           ("float2", "vec2"), ("int3", "ivec3"),
