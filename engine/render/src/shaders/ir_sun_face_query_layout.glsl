@@ -35,6 +35,8 @@ bool sourceFaceQueryComplete(uint count) {
     return count <= kSourceFaceTileCapacity;
 }
 
+const float kSourceFaceEdgeTolerance = 0.0001;
+
 // Positive separation means the receiver ray intersects this finite face in front.
 float sourceFaceRaySeparation(vec2 sunUV, float sunZ, vec3 corner, vec3 edgeU, vec3 edgeV) {
     const float determinant = projectedFaceDeterminant(vec2(edgeU.x, edgeU.y), vec2(edgeV.x, edgeV.y));
@@ -42,7 +44,10 @@ float sourceFaceRaySeparation(vec2 sunUV, float sunZ, vec3 corner, vec3 edgeU, v
     const vec2 uv = projectedFaceCoordinates(
         vec2(sunUV.x - corner.x, sunUV.y - corner.y),
         vec2(edgeU.x, edgeU.y), vec2(edgeV.x, edgeV.y), determinant);
-    if (uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0) return -1.0;
+    // Adjacent faces share an edge exactly; the tolerance keeps rounding in the
+    // projection from opening a lit crack along it.
+    if (any(lessThan(uv, vec2(-kSourceFaceEdgeTolerance))) ||
+        any(greaterThan(uv, vec2(1.0 + kSourceFaceEdgeTolerance)))) return -1.0;
     return sunZ - (corner.z + uv.x * edgeU.z + uv.y * edgeV.z);
 }
 

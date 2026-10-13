@@ -130,6 +130,8 @@ void main() {
 
     vec3 pos3D;
     vec3 normal;
+    // Cardinal voxel faces can receive at their exact surface point.
+    bool voxelFaceReceiver = false;
     if (residualYaw != 0.0) {
         // Smooth-yaw receive. While rotating, voxels leave the single canvas
         // (per-axis scatter) and its remaining SDF/text content is stored at the
@@ -142,13 +144,16 @@ void main() {
         normal = rotateYawZInv(faceOutwardNormal(face), visualYaw);
     } else {
         int recoveryDepth = rawDepth;
+        voxelFaceReceiver = true;
 #if IR_SHAPE_RECEIVER
         const bool smoothMode = receiverFrame.voxelRenderOptions.x != 0 &&
                                 receiverFrame.voxelRenderOptions.y > 1;
+        const bool shapePixel = selectedShapeIndex(pixel, size.x) >= 0;
+        voxelFaceReceiver = !shapePixel;
         recoveryDepth = cardinalShapeReceiverDepth(
             rawDepth,
             receiverFrame.voxelRenderOptions.y,
-            selectedShapeIndex(pixel, size.x) >= 0,
+            shapePixel,
             smoothMode && receiverFrame.smoothYawEnabled == 0,
             receiverFrame.finiteCoverage != 0
         );
@@ -188,6 +193,20 @@ void main() {
     // correction applies only to reconstructed sample position so a corrected
     // receiver keeps the cascade ownership assigned by its stored pixel.
     // The cascade PCF lookup is shared with the detached world-receive path.
-    float factor = shadowsEnabled == 0 ? 1.0 : worldSunShadowFactor(pos3D, normal, float(rawDepth));
+    // With exact caster faces indexed, a voxel face tests its own surface point
+    // against them, so a cast edge follows the caster's sub-voxel placement
+    // instead of stepping with the sun-map texel grid.
+    float factor = 1.0;
+    if (shadowsEnabled != 0) {
+        if (voxelFaceReceiver && sunSourceFacesIndexed()) {
+            const vec3 surface = trixelCanvasPixelToVoxelFaceSurface3D(
+                pixel, rawDepth, face, trixelCanvasOffsetZ1, frameCanvasOffset,
+                voxelRenderOptions, cardinalIndex
+            );
+            factor = worldSurfaceSunShadowFactor(surface, normal, float(rawDepth), sunCasterViewToWorld);
+        } else {
+            factor = worldSunShadowFactor(pos3D, normal, float(rawDepth));
+        }
+    }
     imageStore(canvasSunShadow, pixel, vec4(factor, 0.0, 0.0, receiverFace));
 }

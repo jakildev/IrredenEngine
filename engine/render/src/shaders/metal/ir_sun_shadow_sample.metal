@@ -51,6 +51,11 @@ struct FrameDataSun {
     float4 sunCasterViewToWorld;
 };
 
+// True once a finite-coverage bake has indexed exact caster faces this frame.
+inline bool sunSourceFacesIndexed(device const uint *sunDepthBuf) {
+    return sunDepthBuf[kSourceFaceHeaderOffset] != 0u;
+}
+
 inline float sampleCascadeShadow(
     float2 sunUV, float sunZ, float3 normal, float3 sunDir, float3 uHat, float3 vHat,
     float2 origin, float2 texelSz, int bufferOffset,

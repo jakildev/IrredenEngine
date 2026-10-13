@@ -924,6 +924,39 @@ int cardinalRasterLatticeDepthOffset(int subdivisions) {
     return (3 * subdivisions + 1) / 2;
 }
 
+// Stage 1 rasters a cardinal single-canvas micro-face as the trixel block
+// base + {0,1}x{0,1,2}, every texel keyed with the face corner's depth, so
+// isoPixelToPos3D lands within (-5/6..0, -1/3..1/2, 0..2/3) subdivided units of
+// that corner on the view X/Y/Z axis. Rounding the face-axis coordinate less
+// this midpoint recovers the corner's exact plane (every offset is under half a
+// unit from it).
+const vec3 kCardinalFaceBlockRecoveryMid = vec3(-5.0 / 12.0, 1.0 / 12.0, 1.0 / 3.0);
+
+// World point where a cardinal single-canvas voxel pixel's view ray meets the
+// face it shows. Sliding along the iso depth axis (1,1,1) keeps the pixel, and
+// the lower-corner raster lattice sits kVoxelRasterCellAnchor along every view
+// axis from the voxel geometry the sun bake casts, so the result lies on the
+// caster-frame face, continuous across the face rather than per raster cell.
+vec3 trixelCanvasPixelToVoxelFaceSurface3D(
+    ivec2 pixel,
+    int rawDepth,
+    int faceAxis,
+    ivec2 trixelCanvasOffsetZ1,
+    vec2 frameCanvasOffset,
+    ivec2 voxelRenderOptions,
+    int cardinalIndex
+) {
+    const ivec2 isoRel =
+        trixelCanvasPixelToIsoRel(pixel, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
+    const vec3 viewFixed = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
+    const float plane =
+        float(roundHalfUp(viewFixed[faceAxis] - kCardinalFaceBlockRecoveryMid[faceAxis]));
+    const vec3 onPlane = viewFixed + vec3(plane - viewFixed[faceAxis]);
+    const vec3 view = onPlane / float(effectiveTrixelSubdivisionScale(voxelRenderOptions)) -
+                      kVoxelRasterCellAnchor;
+    return rotateCardinalZInv(view, cardinalIndex);
+}
+
 vec2 pos3DtoPos2DIsoYawedCellAnchor(vec3 rasterPos, float visualYaw) {
     return pos3DtoPos2DIsoYawed(rasterPos - kVoxelRasterCellAnchor, visualYaw);
 }

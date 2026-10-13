@@ -846,6 +846,32 @@ inline int cardinalRasterLatticeDepthOffset(int subdivisions) {
     return (3 * subdivisions + 1) / 2;
 }
 
+// Mirror of kCardinalFaceBlockRecoveryMid in ir_iso_common.glsl: midpoint of
+// the per-axis offset between a stage-1 face-block texel's recovered position
+// and its face corner, in subdivided units.
+constant float3 kCardinalFaceBlockRecoveryMid = float3(-5.0f / 12.0f, 1.0f / 12.0f, 1.0f / 3.0f);
+
+// Mirror of trixelCanvasPixelToVoxelFaceSurface3D in ir_iso_common.glsl.
+inline float3 trixelCanvasPixelToVoxelFaceSurface3D(
+    int2 pixel,
+    int rawDepth,
+    int faceAxis,
+    int2 trixelCanvasOffsetZ1,
+    float2 frameCanvasOffset,
+    int2 voxelRenderOptions,
+    int cardinalIndex
+) {
+    const int2 isoRel =
+        trixelCanvasPixelToIsoRel(pixel, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions);
+    const float3 viewFixed = isoPixelToPos3D(isoRel.x, isoRel.y, float(rawDepth));
+    const float plane =
+        float(roundHalfUp(viewFixed[faceAxis] - kCardinalFaceBlockRecoveryMid[faceAxis]));
+    const float3 onPlane = viewFixed + float3(plane - viewFixed[faceAxis]);
+    const float3 view = onPlane / float(effectiveTrixelSubdivisionScale(voxelRenderOptions)) -
+                        kVoxelRasterCellAnchor;
+    return rotateCardinalZInv(view, cardinalIndex);
+}
+
 inline float2 pos3DtoPos2DIsoYawedCellAnchor(float3 rasterPos, float visualYaw) {
     return pos3DtoPos2DIsoYawed(rasterPos - kVoxelRasterCellAnchor, visualYaw);
 }

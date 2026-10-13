@@ -261,6 +261,47 @@ true, pre-existing under-coverage of the #2270 splat rather than growing a fourt
 mechanism round to absorb it. A follow-up child (*genuine-cast under-coverage
 unmasked by S1*) files at post-merge reconcile.
 
+## Cardinal voxel-face receive — exact faces, not sun-map texels
+
+The finite-coverage bake (`c_bake_voxel_sun_faces`) indexes every sun-facing
+caster face exactly (the source-face tile lists at the tail of
+`SunShadowDepthMap`) as well as rasterizing it into the fallback map layer at
+sun-texel centres. Surface receivers (per-axis faces, finite shapes, detached
+world receive) ray-test the exact faces; a cardinal single-canvas voxel pixel
+in `c_compute_sun_shadow` used to read only the rasterized layer through the
+raster-offset PCF lookup. A rasterized footprint changes only when a caster
+edge crosses a texel centre, and a texel spans `viewport extent / 1024` sun-UV
+units (measured 0.43 voxel at zoom 4 on a 1280x720 canvas, so about a voxel at
+zoom 2 and wider on larger canvases). A smoothly moving caster's shadow
+therefore stepped in texel-sized jumps while its raster moved on the
+`1/effectiveSubdivisions` lattice.
+
+**Contract.** While exact faces are indexed this frame (the header count is
+non-zero), a cardinal voxel pixel (not an SDF-shape pixel) receives through
+`worldSurfaceSunShadowFactor` at `trixelCanvasPixelToVoxelFaceSurface3D`: the
+point where its view ray meets the face it shows, in the same caster frame the
+bake casts from. Stage 1 keys every texel of a micro-face's
+`{0,1}x{0,1,2}` trixel block with the face corner's depth, so the plain
+recovery lands within a fixed per-axis band of the corner;
+`kCardinalFaceBlockRecoveryMid` rounds the face-axis coordinate back onto the
+corner's plane, the point slides along the iso depth axis onto it (same pixel),
+and the half-cell raster lattice offset is removed. The cast edge then moves
+with the caster's raster lattice, and the receiver matches what the per-axis
+path already did while rotating. `test/render/cardinal_voxel_face_surface_test.cpp`
+pins the plane, view-ray and translation properties for every block texel,
+cardinal and subdivision.
+
+- **Fallbacks are unchanged.** A tile whose list overflows
+  (`kSourceFaceTileCapacity`) keeps the surface receiver's nearest-tap test on
+  the fallback layer for that tile; a frame without indexed faces (particle
+  producers force the screen-space bake) keeps the raster-offset PCF lookup,
+  so the splat regimes above are untouched.
+- **Shared edges.** `sourceFaceRaySeparation` accepts face UVs within
+  `kSourceFaceEdgeTolerance` of `[0, 1]`, so rounding where two caster faces
+  share an edge cannot open a lit crack through the cast.
+- **Fixture.** `IRShapeDebug --moving-caster --auto-screenshot 10` drops a voxel
+  cube over a voxel floor in quarter-voxel steps at zoom 2.
+
 ## Acceptance / regression oracle (re-grounded for #2319, macOS/Metal pane)
 
 The full-scene `88380`-px macOS master anchor is **retired** — it was ~64k floor

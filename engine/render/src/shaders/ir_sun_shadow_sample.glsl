@@ -53,6 +53,11 @@ layout(std430, binding = 28) readonly buffer SunShadowDepthMap {
     uint sunDepthBuf[];
 };
 
+// True once a finite-coverage bake has indexed exact caster faces this frame.
+bool sunSourceFacesIndexed() {
+    return sunDepthBuf[sourceFaceHeaderIndex(uint(sunDepthBuf.length()))] != 0u;
+}
+
 float sampleCascadeShadow(
     vec2 sunUV, float sunZ, vec3 normal, vec3 sunDir, vec3 uHat, vec3 vHat,
     vec2 origin, vec2 texelSz, int bufferOffset, float maxShadowThrow, bool surfaceReceiver, vec4 casterViewToWorld,
