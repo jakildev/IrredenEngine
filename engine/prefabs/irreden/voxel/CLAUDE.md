@@ -50,7 +50,7 @@ flush at every size. Content changes anchor only by deliberate migration. Body-c
 calls `anchorLocalCenter(anchor_, size_)`. Colliders, SDF shapes, and entity canvases ignore it.
 
 An entity turns about its translation in every rotation mode, so a set that rotates is
-`CENTER`. A `.vxs` stores integer bounds and cannot carry a non-CORNER origin: a prefab
+[`CENTER`](../../../../docs/design/prefab-part-anchor.md). A `.vxs` stores integer bounds and cannot carry a non-CORNER origin: a prefab
 part's `anchor` field records it, and every `DenseVoxel::toComponent` caller passes it on.
 Detached revoxelization requires one centered set per private pool: before seeding the
 static cull bound, its rebuild tick asserts symmetric composed locals. Half-cell-anchor
