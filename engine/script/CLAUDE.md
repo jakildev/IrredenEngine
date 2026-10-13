@@ -180,6 +180,8 @@ The [fog selftest](../../creations/demos/fog_demo/scripts/fog_binding_selftest.l
 - **`IRGui.draw*` / `IRDebug.draw*`:** immediate; re-issue in RENDER after
   `TEXT_TO_TRIXEL` / before `DEBUG_OVERLAY` respectively.
 - **Widgets:** Lua `onClick` raises unless `WIDGET_LUA_DISPATCH` follows `WIDGET_INPUT` in INPUT.
+  `IRGui.makeHitRegion(x, y, w, h, { zOrder, onHover, onUnhover, onClick })` (every key optional,
+  unknown keys raise) is the invisible row / group target; `IRGui.destroyWidget(id)` removes any widget, deferred.
 - **`IRRender.setCameraZoom` / `getCameraZoom` / `setCameraZoomContinuous` / `isCameraZoomContinuous`:** main camera only; a write reads back exactly only under the continuous policy, and a bad argument raises before any write ([design](../../docs/design/continuous-camera-zoom.md)).
 - **`IRRender.createViewport` family:** `LuaScript::bindLuaViewport()`, opt-in like `IRFog`;
   every setter takes the id `createViewport` returned ([design](../../docs/design/secondary-viewport.md)).
