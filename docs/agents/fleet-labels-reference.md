@@ -330,6 +330,8 @@ Protocol: [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md).
   stamped at unblock or by a worker parking that residual, removed by the
   finishing pane; swapped, never carried together. The macOS label beats an
   inherited `**Host:**` pin. Enforced by dispatch, `claim`, `amending-claim`.
+  On a pinned-only satellite the GL label is also the pin that routes the
+  item there; an OS pin on the same item is finer and wins.
 - `fleet:backend-symmetric` — issue only. **Human/architect** (scout
   backstop: the body cites a real `.glsl` and a real `.metal`). Paired with
   `fleet:needs-gl-host` it narrows the issue-claim refusal to hosts that

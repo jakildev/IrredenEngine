@@ -737,9 +737,10 @@ fi
 # is the EXACT set of roles this host serves, replacing the default list and
 # the opt-in flags above — naming smoke-worker here enables it, omitting
 # worker disables it. A satellite host (the native-Windows box that only
-# smokes and takes `**Host:** windows` tasks) sets "smoke-worker worker" so
-# the merger and reviewer lanes stay on the primary fleet. The canonical
-# service order is kept whatever order the list names them in. Unknown names
+# smokes and takes `**Host:** windows` and GL-host tasks) sets
+# "smoke-worker worker" so the merger and reviewer lanes stay on the primary
+# fleet. The canonical service order is kept whatever order the list names
+# them in. Unknown names
 # are dropped with a warning; an empty result serves nothing, visible as
 # `roles=none` on every `config:` line rather than failing the boot. A cap
 # of 0 means UNCAPPED (dispatch_role), so this list — not a zero cap — is
