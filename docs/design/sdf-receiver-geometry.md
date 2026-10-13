@@ -527,6 +527,22 @@ the finite-query fallback. Fog composition, procedural material reconstruction
 and broader receiver geometry remain follow-ups; no fallback is certified as
 sharp merely because it is preserved.
 
+The `normals` overlay uses this same eligibility and finite query. For eligible
+solid-color boxes it displays the final fragment normal as `normal * 0.5 + 0.5`
+before any material, AO, shadow, local-light or display-mapping work. Unsupported
+or procedural winners retain their compute normal colors, just as their beauty
+path retains compute lighting. Fog pipelines retain compute diagnostics because
+their beauty path also skips finite fragment lighting. This overlay changes
+neither the selected owner nor coverage and does not claim a separate geometry
+oracle; the signed-face tests establish that geometry independently.
+
+[Native evidence](../pr-screenshots/codex/finite-box-fragment-lighting/README.md)
+shows eight camera angles and a straight floor-shadow boundary without blur.
+The composition harness executes 3,456 cases per backend including back/side/
+angled normals, AO, LUT, local light, shadow toggles, HDR and procedural fallback,
+with seven broken variants rejected. Existing receiver oracles establish finite
+hit geometry. Native OpenGL and crowded-query performance remain unverified.
+
 ### SDF-silhouette reference movers and confinement
 
 A row moved by an SDF-silhouette change is a confined mover when its control
@@ -551,19 +567,3 @@ outlier in 1,376 changed pixels.
 | `zoom4_yaw270` | 122 / 122 local-colour | 504 / 503 local-colour |
 | `zoom8_yaw180` | 74 / 74 local-colour | 316 / 316 local-colour |
 | `zoom4_pan16_yaw180_pivot` | 60 / 60 local-colour | 280 / 280 local-colour |
-
-The `normals` overlay uses this same eligibility and finite query. For eligible
-solid-color boxes it displays the final fragment normal as `normal * 0.5 + 0.5`
-before any material, AO, shadow, local-light or display-mapping work. Unsupported
-or procedural winners retain their compute normal colors, just as their beauty
-path retains compute lighting. Fog pipelines retain compute diagnostics because
-their beauty path also skips finite fragment lighting. This overlay changes
-neither the selected owner nor coverage and does not claim a separate geometry
-oracle; the signed-face tests establish that geometry independently.
-
-[Native evidence](../pr-screenshots/codex/finite-box-fragment-lighting/README.md)
-shows eight camera angles and a straight floor-shadow boundary without blur.
-The composition harness executes 3,456 cases per backend including back/side/
-angled normals, AO, LUT, local light, shadow toggles, HDR and procedural fallback,
-with seven broken variants rejected. Existing receiver oracles establish finite
-hit geometry. Native OpenGL and crowded-query performance remain unverified.
