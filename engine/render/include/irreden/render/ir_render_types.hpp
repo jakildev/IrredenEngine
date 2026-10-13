@@ -495,6 +495,23 @@ inline DecodedCompositeDepth decodeCompositeDepth(float rawDist) {
     return decoded;
 }
 
+/// Row of the main framebuffer's depth attachment holding top-left pixel row
+/// @p pixelY. The gather stores raster rows y-up on both backends and each
+/// screen pass displays texture row `r` that many rows above the bottom, so the
+/// mapping is the same flip on OpenGL and Metal.
+inline int compositeDepthTextureRow(int pixelY, int framebufferHeight) {
+    return framebufferHeight - 1 - pixelY;
+}
+
+/// Top-left pixel whose depth texel is raster texel `resolution / 2`, the texel
+/// `RenderManager::getCanvasCenterIso` describes and the default-pivot latch
+/// acquires from. `resolution / 2` itself is not that pixel: with an even
+/// height the centre line falls between two rows, and the latch's row is the
+/// upper one on screen.
+inline ivec2 framebufferCenterPixel(ivec2 resolution) {
+    return ivec2(resolution.x / 2, resolution.y - 1 - resolution.y / 2);
+}
+
 // The per-trixel tier travels voxel authoring → trixel raster → finalization in
 // the top K=2 bits of the 64-bit entity id stored in the `triangleEntityIds`
 // channel (the only per-texel channel that already reaches finalization). Entity
