@@ -5,6 +5,7 @@
 #include "recipes_panel.hpp"
 #include "session_builder.hpp"
 
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -108,6 +109,15 @@
 // `component_field_key` is the same round trip on the sidecar's
 // `componentFieldKey`: a field whose name is not a Lua identifier, which the
 // record's table constructor and the manifest must spell as a bracketed key.
+//
+// `composite_proof` authors the reference composite entity from the loaded
+// module and the entity-scene tools: nine parts of one extent under a
+// geometry-free root. The stem and the frame are module recipes named by the
+// sidecar's `compositeProof`, the blob is a baked sphere, and the frame is
+// banded to the fine tiers, given the engine's C_AutoSpin, and arrayed six
+// times with a 60 degree turn a copy, so every copy carries its band and its
+// spin. It saves, clears and reloads the scene, and
+// `scripts/author-entity.py --prefab composite_proof` commits the result.
 namespace IRVoxelEditor::Session {
 
 enum class Id {
@@ -139,6 +149,7 @@ enum class Id {
     COMPONENT_ATTACH,
     COMPONENT_FIELD_PAGE,
     COMPONENT_FIELD_KEY,
+    COMPOSITE_PROOF,
 };
 
 // CLI name -> id. The accepted set is declared to IRArgs as an enum arg, so an
@@ -198,6 +209,8 @@ inline Id idFromName(const std::string &name) {
         return Id::COMPONENT_FIELD_PAGE;
     if (name == "component_field_key")
         return Id::COMPONENT_FIELD_KEY;
+    if (name == "composite_proof")
+        return Id::COMPOSITE_PROOF;
     return Id::NONE;
 }
 
@@ -254,6 +267,27 @@ struct ComponentAttachSpec {
     std::string typedText_;
     ComponentFieldValue value_;
     ComponentFieldValue default_;
+    std::vector<std::string> errors_;
+};
+
+// Extent of every composite_proof part. Odd in X and Y, so the box centre a
+// part turns about is a cell and a frame around it turns in place. The Z
+// extent puts the box's centre layer where the sidecar's stem recipe ends.
+constexpr IRMath::ivec3 kCompositeProofPartSize{9, 9, 13};
+
+// The engine component composite_proof attaches to its frame, and what it
+// types into the COMPONENTS panel's overrides input.
+constexpr const char *kCompositeProofSpinComponent = "C_AutoSpin";
+constexpr float kCompositeProofSpinRate = 0.02f;
+constexpr const char *kCompositeProofSpinLiteral = "{ axis = { 0, 0, 1 }, radiansPerFrame = 0.02 }";
+
+// What composite_proof authors from the loaded module, resolved in main.cpp
+// from the sidecar's `compositeProof` entry at kCompositeProofPartSize.
+struct CompositeProofSpec {
+    ModuleSessionSpec stem_;
+    ModuleSessionSpec frame_;
+    // COMPONENTS list row of kCompositeProofSpinComponent.
+    int spinListRow_ = -1;
     std::vector<std::string> errors_;
 };
 
@@ -1435,6 +1469,22 @@ inline Recipe buildTree(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
     return builder.finish();
 }
 
+// Selects @p recipe in the RECIPES list, drags its params to the session's
+// values and clicks APPLY: a first write into the selected part that needs no
+// pick. The builder's occupancy model does not follow it.
+inline void applyModuleRecipe(Builder &builder, const ModuleSessionSpec &recipe) {
+    builder.clickGui(recipeListRowCenterGuiTrixel(recipe.recipeRow_));
+    for (const ModuleSessionSpec::ParamDrag &drag : recipe.params_) {
+        builder.dragGuiSlider(
+            recipeParamSliderGeometry(drag.index_),
+            drag.min_,
+            drag.max_,
+            drag.value_
+        );
+    }
+    builder.clickGui(recipeApplyCenterGuiTrixel());
+}
+
 inline Recipe buildModuleLoaded(
     IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin, const ModuleSessionSpec &spec
 ) {
@@ -1463,16 +1513,7 @@ inline Recipe buildModuleLoaded(
         builder.expectOccupancy(cell, false, "recipe_cell_empty_before_apply");
 
     builder.segment("recipe_apply");
-    builder.clickGui(recipeListRowCenterGuiTrixel(spec.recipeRow_));
-    for (const ModuleSessionSpec::ParamDrag &drag : spec.params_) {
-        builder.dragGuiSlider(
-            recipeParamSliderGeometry(drag.index_),
-            drag.min_,
-            drag.max_,
-            drag.value_
-        );
-    }
-    builder.clickGui(recipeApplyCenterGuiTrixel());
+    applyModuleRecipe(builder, spec);
     for (const IRMath::ivec3 &cell : spec.appliedCells_)
         builder.expectOccupancy(cell, true, "recipe_cell_filled");
     for (const IRMath::ivec3 &cell : spec.defaultOnlyCells_)
@@ -1597,6 +1638,206 @@ inline Recipe buildComponentAttach(
     return builder.finish();
 }
 
+inline Recipe buildCompositeProof(
+    IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin, const CompositeProofSpec &spec
+) {
+    constexpr IRMath::ivec3 kSize = kCompositeProofPartSize;
+    Builder builder("composite_proof", sceneSize, sceneOrigin);
+    for (const std::string &error : spec.errors_)
+        builder.recordError(error);
+    if (!spec.errors_.empty())
+        return builder.finish();
+
+    constexpr int kStem = 0;
+    constexpr int kBlob = 1;
+    constexpr int kFrame = 2;
+    constexpr int kCopies = 6;
+    constexpr int kFirstCopy = kFrame + 1;
+    constexpr int kLastCopy = kFrame + kCopies;
+    constexpr int kParts = kLastCopy + 1;
+    constexpr float kCopyYawDegrees = 60.0f;
+    // COPY YAW applies whole degrees, so a copy is off its turn by float
+    // error alone; a drag that lands a trixel off is 3 degrees a copy.
+    constexpr float kYawToleranceDegrees = 0.01f;
+    constexpr int kFollowsZoom = -1;
+    using IRComponents::EntityAnchor;
+    using IRComponents::RotationMode;
+
+    const IRMath::ivec3 center(kSize.x / 2, kSize.y / 2, kSize.z / 2);
+    const auto holds = [](const std::vector<IRMath::ivec3> &cells, IRMath::ivec3 cell) {
+        return std::find(cells.begin(), cells.end(), cell) != cells.end();
+    };
+    const bool stemReachesCentre = holds(spec.stem_.appliedCells_, center);
+    const bool frameRingsCentre = !holds(spec.frame_.appliedCells_, center);
+    if (!stemReachesCentre)
+        builder.recordError("compositeProof.stem must fill the part's centre cell");
+    if (!frameRingsCentre)
+        builder.recordError("compositeProof.frame must leave the part's centre cell empty");
+    if (!stemReachesCentre || !frameRingsCentre)
+        return builder.finish();
+    const IRMath::ivec3 frameRim = spec.frame_.appliedCells_.front();
+    // Radius 2.14 puts the sphere's surface threshold midway between the
+    // cells at squared distance 6 and 8, so a slider landing a trixel off
+    // bakes the same cells: the blob reaches two cells out along each axis.
+    constexpr float kBlobRadius = 2.14f;
+    constexpr int kBlobSwatch = 3;
+    const IRMath::ivec3 blobTop = center + IRMath::ivec3(0, 0, -2);
+    const IRMath::ivec3 blobEdge = center + IRMath::ivec3(2, 1, 1);
+    const IRMath::ivec3 blobCorner = center + IRMath::ivec3(2, 2, 0);
+    const IRMath::vec3 pivot = partPivot(kSize, deriveSceneOrigin(kSize));
+
+    builder.segment("stem_part");
+    builder.setPartSize(kSize);
+    builder.addVoxelPart();
+    builder.expectPartExtent(kStem, kSize, "stem_part_at_proof_size");
+    builder.expectPartAuthoredCount(kStem, 0, "stem_part_starts_clear");
+
+    builder.segment("stem");
+    applyModuleRecipe(builder, spec.stem_);
+    for (const IRMath::ivec3 &cell : spec.stem_.appliedCells_)
+        builder.expectPartOccupancy(kStem, cell, true, "stem_cell_filled");
+    for (const IRMath::ivec3 &cell : spec.stem_.defaultOnlyCells_)
+        builder.expectPartOccupancy(kStem, cell, false, "stem_default_only_cell_empty");
+    builder.expectPartAuthoredCount(
+        kStem,
+        static_cast<int>(spec.stem_.appliedCells_.size()),
+        "stem_is_the_recipe_alone"
+    );
+
+    builder.segment("blob");
+    builder.addVoxelPart();
+    builder.selectPaletteSwatch(kBlobSwatch);
+    builder.bakeSphere(kBlobRadius);
+    builder.expectPartOccupancy(kBlob, center, true, "blob_centre_filled");
+    builder.expectPartOccupancy(kBlob, blobTop, true, "blob_top_filled");
+    builder.expectPartOccupancy(kBlob, blobEdge, true, "blob_edge_filled");
+    builder.expectPartOccupancy(kBlob, blobCorner, false, "blob_corner_empty");
+
+    builder.segment("blob_band");
+    builder.dragLodSlider(SliderTarget::LOD_FINE, 3);
+    builder.expectPartGated(kBlob, true, kFollowsZoom, "blob_gated_at_zoom_tier");
+    builder.expectPartGated(kStem, false, kFollowsZoom, "stem_drawn_at_zoom_tier");
+
+    builder.segment("frame_part");
+    builder.addVoxelPart();
+    builder.expectPartAuthoredCount(kFrame, 0, "frame_part_starts_clear");
+    builder.expectPartSpinRate(kFrame, kCompositeProofSpinRate, false, "frame_has_no_spin_yet");
+
+    builder.segment("frame");
+    applyModuleRecipe(builder, spec.frame_);
+    builder.expectPartOccupancy(kFrame, frameRim, true, "frame_rim_filled");
+    builder.expectPartOccupancy(kFrame, center, false, "frame_centre_empty");
+    for (const IRMath::ivec3 &cell : spec.frame_.defaultOnlyCells_)
+        builder.expectPartOccupancy(kFrame, cell, false, "frame_default_only_cell_empty");
+    builder.expectPartAuthoredCount(
+        kFrame,
+        static_cast<int>(spec.frame_.appliedCells_.size()),
+        "frame_is_the_recipe_alone"
+    );
+
+    builder.segment("frame_band");
+    builder.dragLodSlider(SliderTarget::LOD_COARSE, 2);
+    builder.expectPartGated(kFrame, false, kFollowsZoom, "frame_drawn_at_zoom_tier");
+
+    builder.segment("frame_spin_attach");
+    builder.clickGui(componentListRowCenterGuiTrixel(spec.spinListRow_));
+    builder.clickGui(componentButtonCenterGuiTrixel(kComponentAttachPos));
+    builder.expectPartSpinRate(kFrame, 0.0f, true, "attach_gives_the_default_spin");
+
+    builder.segment("frame_spin_rate");
+    builder.typeText(componentOverridesInputCenterGuiTrixel(), kCompositeProofSpinLiteral);
+    builder.expectPartSpinRate(kFrame, kCompositeProofSpinRate, true, "frame_spin_rate_typed");
+    builder.expectPartCount(kFrame + 1, "typing_adds_no_part");
+
+    builder.segment("array");
+    builder.dragGuiSlider(
+        kArrayYawSliderGeometry,
+        kArrayYawSliderMin,
+        kArrayYawSliderMax,
+        kCopyYawDegrees
+    );
+    builder.applyRadialArray(kCopies);
+    builder.expectPartCount(kParts, "nine_parts");
+    builder.expectPartTransform(kFrame, pivot, 0.001f, true, "source_frame_stays_at_the_pivot");
+    builder.expectPartYaw(kFrame, 0.0f, 0.001f, "source_frame_unturned");
+    for (int copy = 0; copy < kCopies; ++copy) {
+        const float angle = IRMath::kTwoPi * static_cast<float>(copy) / static_cast<float>(kCopies);
+        const std::string suffix = std::to_string(copy);
+        builder.expectPartTransform(
+            kFirstCopy + copy,
+            pivot + IRMath::vec3(4.0f * IRMath::cos(angle), 4.0f * IRMath::sin(angle), 0.0f),
+            0.25f,
+            true,
+            "copy_on_the_ring_" + suffix
+        );
+        builder.expectPartYaw(
+            kFirstCopy + copy,
+            kCopyYawDegrees * static_cast<float>(copy),
+            kYawToleranceDegrees,
+            "copy_turned_" + suffix
+        );
+    }
+    builder.expectPartSpinRate(kLastCopy, kCompositeProofSpinRate, true, "copy_keeps_the_spin");
+    builder.expectPartAnchor(kLastCopy, EntityAnchor::CENTER, "copy_is_center");
+    builder.expectPartGated(kLastCopy, false, kFollowsZoom, "copy_drawn_at_zoom_tier");
+    builder.expectRotationMode(kLastCopy, RotationMode::GRID, "copy_is_grid");
+    builder.expectPartOccupancy(kFirstCopy, frameRim, true, "unturned_copy_keeps_the_rim");
+
+    builder.segment("coarse_tier");
+    builder.dragLodSlider(SliderTarget::LOD_TIER, 4);
+    builder.expectPartGated(kStem, false, 4, "stem_drawn_at_tier4");
+    builder.expectPartGated(kBlob, false, 4, "blob_drawn_at_tier4");
+    builder.expectPartGated(kFrame, true, 4, "frame_gated_at_tier4");
+    builder.expectPartGated(kLastCopy, true, 4, "copy_gated_at_tier4");
+
+    builder.segment("fine_tier");
+    builder.dragLodSlider(SliderTarget::LOD_TIER, 0);
+    builder.expectPartGated(kStem, false, 0, "stem_drawn_at_tier0");
+    builder.expectPartGated(kBlob, true, 0, "blob_gated_at_tier0");
+    builder.expectPartGated(kFrame, false, 0, "frame_drawn_at_tier0");
+    builder.expectPartGated(kLastCopy, false, 0, "copy_drawn_at_tier0");
+
+    builder.segment("follow_zoom");
+    builder.toggleLodFollowZoom();
+    builder.expectPartGated(kBlob, true, kFollowsZoom, "blob_follows_zoom_tier");
+
+    builder.segment("save");
+    builder.save();
+    builder.expectManifestContains("anchor = 1,", "manifest_states_center_anchor");
+    builder.expectManifestContains("lod = { fine = 3, coarse = 4 }", "blob_band_saved");
+    builder.expectManifestContains("lod = { fine = 0, coarse = 2 }", "frame_band_saved");
+    builder.expectManifestContains(
+        std::string(kCompositeProofSpinComponent) + " = " + kCompositeProofSpinLiteral,
+        "frame_spin_saved"
+    );
+    builder.expectManifestContains("id = \"part_8\"", "ninth_part_saved");
+
+    builder.segment("clear");
+    builder.clearEntityScene();
+    builder.expectPartCount(0, "scene_cleared");
+
+    builder.segment("load");
+    builder.reload();
+    builder.expectPartCount(kParts, "nine_parts_reloaded");
+    builder.expectPartOccupancy(kStem, center, true, "stem_top_reloaded");
+    builder.expectPartOccupancy(kBlob, blobTop, true, "blob_reloaded");
+    builder.expectPartOccupancy(kFrame, frameRim, true, "frame_rim_reloaded");
+    builder.expectPartOccupancy(kFrame, center, false, "frame_centre_empty_reloaded");
+    builder.expectPartAnchor(kFrame, EntityAnchor::CENTER, "frame_pivot_reloaded");
+    builder.expectPartGated(kBlob, true, kFollowsZoom, "blob_band_reloaded");
+    builder.expectPartGated(kFrame, false, kFollowsZoom, "frame_band_reloaded");
+    builder.expectPartSpinRate(kFrame, kCompositeProofSpinRate, true, "frame_spin_reloaded");
+    builder.expectPartSpinRate(kLastCopy, kCompositeProofSpinRate, true, "copy_spin_reloaded");
+    builder.expectPartSpinRate(kBlob, kCompositeProofSpinRate, false, "blob_has_no_spin");
+    builder.expectPartYaw(
+        kLastCopy,
+        kCopyYawDegrees * static_cast<float>(kCopies - 1),
+        kYawToleranceDegrees,
+        "copy_turn_reloaded"
+    );
+    return builder.finish();
+}
+
 } // namespace detail
 
 // Build the named session's recipe against the live scene dimensions. Returns
@@ -1607,7 +1848,8 @@ inline Recipe build(
     IRMath::ivec3 sceneSize,
     IRMath::vec3 sceneOrigin,
     const ModuleSessionSpec &moduleSpec,
-    const ComponentAttachSpec &componentSpec
+    const ComponentAttachSpec &componentSpec,
+    const CompositeProofSpec &proofSpec
 ) {
     switch (id) {
     case Id::MODULE:
@@ -2507,6 +2749,8 @@ inline Recipe build(
     case Id::COMPONENT_FIELD_PAGE:
     case Id::COMPONENT_FIELD_KEY:
         return detail::buildComponentAttach(sceneSize, sceneOrigin, componentSpec);
+    case Id::COMPOSITE_PROOF:
+        return detail::buildCompositeProof(sceneSize, sceneOrigin, proofSpec);
     case Id::NONE:
         break;
     }

@@ -353,10 +353,31 @@ runs by double-click on a clean box. `IRShapeDebug` is the reference.
   (resolver probe over the built exe plus a closure audit of the unzipped
   package), then unzip it into an empty directory and run the exe with only
   `%SystemRoot%\System32;%SystemRoot%` on `PATH`.
-- **macOS** — `cmake/macos_bundle_dylibs.cmake` copies non-system dylibs
-  next to the exe, rewrites load commands to `@executable_path`, and ad-hoc
-  re-signs. Shallow: transitive Homebrew deps (ffmpeg's codec libraries)
-  are not walked, so a macOS bundle is verified via cross-host smoke or the
-  human.
+- **macOS** — `cmake/macos_bundle_dylibs.cmake` uses CMake's Mach-O runtime
+  resolver to copy the complete non-system dylib closure next to the exe. It
+  rewrites every non-system load edge and copied install ID to
+  `@loader_path/<leaf>`, removes package-manager-prefix rpaths, and ad-hoc
+  signs each dylib before signing the executable. Unresolved dependencies or
+  conflicting leaf names fail before archive creation. Run
+  `python3 scripts/package-verify.py [--target <target>]` after packaging to
+  exercise the recursive resolver and audit every extracted Mach-O, including
+  signatures, load commands, rpaths, and the transitive-only count.
+
+  A clean-box smoke denies both common Homebrew prefixes while launching the
+  unpacked executable through `fleet-run`; run this from a normal macOS shell
+  because an already-sandboxed process cannot nest `sandbox-exec`:
+
+  ```bash
+  PACKAGE_SMOKE_ROOT="$(mktemp -d)"
+  ditto -x -k build/IRShapeDebug-macos-arm64.zip "$PACKAGE_SMOKE_ROOT"
+  sandbox-exec -p '(version 1) (allow default) (deny file-read* (subpath "/opt/homebrew") (subpath "/usr/local"))' \
+    env -u DYLD_LIBRARY_PATH -u DYLD_FALLBACK_LIBRARY_PATH \
+        -u DYLD_FALLBACK_FRAMEWORK_PATH \
+        fleet-run --build-dir "$PACKAGE_SMOKE_ROOT" \
+          IRShapeDebug --auto-screenshot 10
+  ```
+
+  The required terminal reading is `ir-run: RESULT=CLEAN`; the profile makes
+  any accidental package-manager load fail even on the build host.
 
 Packaging never runs as part of a normal `--target <exe>` build.

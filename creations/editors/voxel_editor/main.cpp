@@ -9,6 +9,8 @@
 #include <irreden/ir_video.hpp>
 
 // Components
+#include <irreden/common/components/component_auto_spin.hpp>
+#include <irreden/common/components/component_auto_spin_lua.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_local_transform_lua.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
@@ -3136,6 +3138,27 @@ bool evaluatePartYawCheck(const void *context, std::string &actual) {
     return IRMath::abs(off) <= check.toleranceDegrees_;
 }
 
+bool evaluatePartSpinCheck(const void *context, std::string &actual) {
+    const PartSpinCheck &check = *static_cast<const PartSpinCheck *>(context);
+    if (check.partIndex_ < 0 ||
+        check.partIndex_ >= static_cast<int>(g_entityScene.parts().size())) {
+        actual = "part index out of range";
+        return false;
+    }
+    const IREntity::EntityId entity =
+        g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)].entity_;
+    const auto spin = IREntity::getComponentOptional<C_AutoSpin>(entity);
+    if (!spin) {
+        actual = "no C_AutoSpin";
+        return !check.expectEqual_;
+    }
+    const float rate = spin.value()->radiansPerFrame_;
+    constexpr float kRateTolerance = 1e-6f;
+    actual = "radiansPerFrame=" + std::to_string(rate) +
+             (check.expectEqual_ ? " want=" : " want!=") + std::to_string(check.radiansPerFrame_);
+    return (IRMath::abs(rate - check.radiansPerFrame_) <= kRateTolerance) == check.expectEqual_;
+}
+
 bool evaluatePartModeDropdownCheck(const void *context, std::string &actual) {
     const PartModeDropdownCheck &check = *static_cast<const PartModeDropdownCheck *>(context);
     if (g_partModeDropdown == IREntity::kNullEntity) {
@@ -3442,6 +3465,31 @@ bool evaluateComponentValueCheck(const void *context, std::string &actual) {
 
 } // namespace Session
 
+// Runs <module dir>/session_expect.lua and returns the table it yields, with
+// its path in @p path. Without a module, or on a sidecar that does not yield
+// a table, appends the reason to @p errors and returns nullopt.
+std::optional<sol::table>
+loadSessionExpect(const std::string &session, std::string &path, std::vector<std::string> &errors) {
+    if (!g_moduleHost.loaded()) {
+        errors.push_back(session + " needs --module <dir>");
+        return std::nullopt;
+    }
+    path = (std::filesystem::path(g_moduleHost.dir()) / "session_expect.lua").string();
+    sol::state &lua = g_moduleHost.script().lua();
+    sol::protected_function_result result = lua.safe_script_file(path, sol::script_pass_on_error);
+    if (!result.valid()) {
+        const sol::error err = result;
+        errors.push_back(path + ": " + err.what());
+        return std::nullopt;
+    }
+    const sol::object returned = result;
+    if (returned.get_type() != sol::type::table) {
+        errors.push_back(path + ": must return a table");
+        return std::nullopt;
+    }
+    return returned.as<sol::table>();
+}
+
 // Resolves a component session from <module dir>/session_expect.lua's
 // `<key> = { component, field, value, default }` against the loaded module and
 // the COMPONENTS panel layout: `componentAttach` for component_attach,
@@ -3459,27 +3507,16 @@ Session::ComponentAttachSpec resolveComponentAttachSpec(Session::Id id) {
                     : keyed                          ? "component_field_key"
                     : id == Session::Id::REMOVE_PART ? "remove_part"
                                                      : "component_attach";
-    if (!g_moduleHost.loaded()) {
-        spec.errors_.push_back(spec.session_ + " needs --module <dir>");
+    std::string path;
+    const std::optional<sol::table> expect = loadSessionExpect(spec.session_, path, spec.errors_);
+    if (!expect)
         return spec;
-    }
-    const std::string path =
-        (std::filesystem::path(g_moduleHost.dir()) / "session_expect.lua").string();
     auto fail = [&spec, &path](const std::string &why) {
         spec.errors_.push_back(path + ": " + why);
         return spec;
     };
     IRScript::LuaScript &script = g_moduleHost.script();
-    sol::protected_function_result result =
-        script.lua().safe_script_file(path, sol::script_pass_on_error);
-    if (!result.valid()) {
-        const sol::error err = result;
-        return fail(err.what());
-    }
-    const sol::object returned = result;
-    if (returned.get_type() != sol::type::table)
-        return fail("must return a table");
-    const sol::optional<sol::table> entry = returned.as<sol::table>()[entryKey];
+    const sol::optional<sol::table> entry = (*expect)[entryKey];
     const sol::optional<std::string> component =
         entry ? (*entry)["component"] : sol::optional<std::string>{};
     const sol::optional<std::string> fieldName =
@@ -3531,66 +3568,29 @@ Session::ComponentAttachSpec resolveComponentAttachSpec(Session::Id id) {
     return spec;
 }
 
-// Resolves module_loaded's expectations from <module dir>/session_expect.lua
-// against the loaded module: the recipe's list row and slider ranges, and its
-// cells at the session's values and at its defaults.
-Session::ModuleSessionSpec resolveModuleSessionSpec() {
-    Session::ModuleSessionSpec spec;
-    if (!g_moduleHost.loaded()) {
-        spec.errors_.push_back("module_loaded needs --module <dir>");
-        return spec;
-    }
-    const std::string path =
-        (std::filesystem::path(g_moduleHost.dir()) / "session_expect.lua").string();
-    auto fail = [&spec, &path](const std::string &why) {
-        spec.errors_.push_back(path + ": " + why);
-        return spec;
-    };
-    sol::state &lua = g_moduleHost.script().lua();
-    sol::protected_function_result result = lua.safe_script_file(path, sol::script_pass_on_error);
-    if (!result.valid()) {
-        const sol::error err = result;
-        return fail(err.what());
-    }
-    const sol::object returned = result;
-    if (returned.get_type() != sol::type::table)
-        return fail("must return a table");
-    const sol::table expect = returned.as<sol::table>();
-
-    if (const sol::optional<sol::table> components = expect["components"]) {
-        for (std::size_t i = 1; i <= components->size(); ++i) {
-            const sol::table entry = (*components)[i];
-            const sol::optional<std::string> name = entry["name"];
-            const sol::optional<int> fieldCount = entry["fieldCount"];
-            if (!name || !fieldCount)
-                return fail("each components entry needs name and fieldCount");
-            spec.components_.push_back({*name, *fieldCount});
-        }
-    }
-    if (const sol::optional<sol::table> panels = expect["panels"]) {
-        for (std::size_t i = 1; i <= panels->size(); ++i) {
-            const sol::table entry = (*panels)[i];
-            const sol::optional<std::string> name = entry["name"];
-            const sol::optional<std::string> label = entry["label"];
-            if (!name || !label)
-                return fail("each panels entry needs name and label");
-            spec.panels_.push_back({*name, *label});
-        }
-    }
-
-    const sol::optional<sol::table> recipeExpect = expect["recipe"];
+// Resolves the sidecar's `<key> = { name, values }` against the loaded module
+// for a voxel set of @p size: the recipe's list row and slider drags, and its
+// cells at those values and at its defaults. Returns the problem, or nullopt.
+std::optional<std::string> resolveRecipeExpect(
+    const sol::optional<sol::table> &recipeExpect,
+    const std::string &key,
+    ivec3 size,
+    Session::ModuleSessionSpec &spec
+) {
     const sol::optional<std::string> recipeName =
         recipeExpect ? (*recipeExpect)["name"] : sol::optional<std::string>{};
     if (!recipeName)
-        return fail("needs recipe = { name, values }");
+        return "needs " + key + " = { name, values }";
     const std::vector<ModuleRecipe> &recipes = g_moduleHost.recipes();
     const auto recipeIt = std::find_if(recipes.begin(), recipes.end(), [&](const ModuleRecipe &r) {
         return r.name_ == *recipeName;
     });
     if (recipeIt == recipes.end())
-        return fail("recipe '" + *recipeName + "' is not registered by the module");
+        return "recipe '" + *recipeName + "' is not registered by the module";
     const std::size_t recipeIndex = static_cast<std::size_t>(recipeIt - recipes.begin());
     spec.recipeRow_ = static_cast<int>(recipeIndex);
+    if (spec.recipeRow_ * kRecipeListItemHeight >= kRecipeListSize.y)
+        return "recipe '" + *recipeName + "' is below the list's visible rows";
 
     const sol::optional<sol::table> values = (*recipeExpect)["values"];
     std::vector<float> sessionValues;
@@ -3604,21 +3604,21 @@ Session::ModuleSessionSpec resolveModuleSessionSpec() {
             continue;
         }
         if (*value < param.min_ || *value > param.max_)
-            return fail("value for param '" + param.name_ + "' is outside its range");
+            return "value for param '" + param.name_ + "' is outside its range";
         if (*value == param.default_)
-            return fail("value for param '" + param.name_ + "' equals its default");
+            return "value for param '" + param.name_ + "' equals its default";
         spec.params_.push_back({static_cast<int>(i), param.min_, param.max_, *value});
         sessionValues.push_back(*value);
     }
     if (spec.params_.empty())
-        return fail("recipe.values must move at least one param off its default");
+        return key + ".values must move at least one param off its default";
 
     std::vector<RecipeCell> applied;
     std::vector<RecipeCell> atDefaults;
     std::string error;
-    if (!g_moduleHost.evaluate(recipeIndex, sessionValues, g_editableSceneSize, applied, error) ||
-        !g_moduleHost.evaluate(recipeIndex, defaultValues, g_editableSceneSize, atDefaults, error))
-        return fail(error);
+    if (!g_moduleHost.evaluate(recipeIndex, sessionValues, size, applied, error) ||
+        !g_moduleHost.evaluate(recipeIndex, defaultValues, size, atDefaults, error))
+        return error;
     for (const RecipeCell &cell : applied)
         spec.appliedCells_.push_back(cell.local_);
     for (const RecipeCell &cell : atDefaults) {
@@ -3627,7 +3627,92 @@ Session::ModuleSessionSpec resolveModuleSessionSpec() {
             spec.defaultOnlyCells_.push_back(cell.local_);
     }
     if (spec.appliedCells_.empty())
-        return fail("recipe '" + *recipeName + "' writes no cells at the session's values");
+        return "recipe '" + *recipeName + "' writes no cells at the session's values";
+    return std::nullopt;
+}
+
+// Resolves module_loaded's expectations from <module dir>/session_expect.lua
+// against the loaded module: its components and panels, and its `recipe`.
+Session::ModuleSessionSpec resolveModuleSessionSpec() {
+    Session::ModuleSessionSpec spec;
+    std::string path;
+    const std::optional<sol::table> expect = loadSessionExpect("module_loaded", path, spec.errors_);
+    if (!expect)
+        return spec;
+    auto fail = [&spec, &path](const std::string &why) {
+        spec.errors_.push_back(path + ": " + why);
+        return spec;
+    };
+
+    if (const sol::optional<sol::table> components = (*expect)["components"]) {
+        for (std::size_t i = 1; i <= components->size(); ++i) {
+            const sol::table entry = (*components)[i];
+            const sol::optional<std::string> name = entry["name"];
+            const sol::optional<int> fieldCount = entry["fieldCount"];
+            if (!name || !fieldCount)
+                return fail("each components entry needs name and fieldCount");
+            spec.components_.push_back({*name, *fieldCount});
+        }
+    }
+    if (const sol::optional<sol::table> panels = (*expect)["panels"]) {
+        for (std::size_t i = 1; i <= panels->size(); ++i) {
+            const sol::table entry = (*panels)[i];
+            const sol::optional<std::string> name = entry["name"];
+            const sol::optional<std::string> label = entry["label"];
+            if (!name || !label)
+                return fail("each panels entry needs name and label");
+            spec.panels_.push_back({*name, *label});
+        }
+    }
+    if (const auto error =
+            resolveRecipeExpect((*expect)["recipe"], "recipe", g_editableSceneSize, spec))
+        return fail(*error);
+    return spec;
+}
+
+// Resolves composite_proof from the sidecar's `compositeProof = { stem, frame }`
+// (each a `{ name, values }` recipe, evaluated at the proof's part size) and
+// from the COMPONENTS list, which must show the engine's C_AutoSpin.
+Session::CompositeProofSpec resolveCompositeProofSpec() {
+    Session::CompositeProofSpec spec;
+    std::string path;
+    const std::optional<sol::table> expect =
+        loadSessionExpect("composite_proof", path, spec.errors_);
+    if (!expect)
+        return spec;
+    auto fail = [&spec, &path](const std::string &why) {
+        spec.errors_.push_back(path + ": " + why);
+        return spec;
+    };
+    const sol::optional<sol::table> entry = (*expect)["compositeProof"];
+    if (!entry)
+        return fail("needs compositeProof = { stem, frame }");
+    if (const auto error = resolveRecipeExpect(
+            (*entry)["stem"],
+            "compositeProof.stem",
+            Session::kCompositeProofPartSize,
+            spec.stem_
+        ))
+        return fail(*error);
+    if (const auto error = resolveRecipeExpect(
+            (*entry)["frame"],
+            "compositeProof.frame",
+            Session::kCompositeProofPartSize,
+            spec.frame_
+        ))
+        return fail(*error);
+
+    const std::vector<std::string> names = componentPaletteNames();
+    spec.spinListRow_ = static_cast<int>(
+        std::find(names.begin(), names.end(), Session::kCompositeProofSpinComponent) - names.begin()
+    );
+    if (spec.spinListRow_ >= static_cast<int>(names.size()))
+        return fail(std::string(Session::kCompositeProofSpinComponent) + " has no prefab factory");
+    if (spec.spinListRow_ * kComponentListItemHeight >= kComponentListSize.y)
+        return fail(
+            std::string(Session::kCompositeProofSpinComponent) +
+            " is below the COMPONENTS list's visible rows"
+        );
     return spec;
 }
 
@@ -3644,6 +3729,7 @@ void registerLuaBindings() {
     IREngine::registerLuaBindings([](IRScript::LuaScript &script) {
         script.bindLuaDrivenEcs();
         script.registerTypeFromTraits<C_LocalTransform>();
+        script.registerTypeFromTraits<C_AutoSpin>();
         // initSystems places this instance right after WIDGET_INPUT, where a
         // module's IRGui onClick handlers need it.
         IRVoxelEditor::g_widgetLuaDispatchId =
@@ -3694,7 +3780,7 @@ int main(int argc, char **argv) {
         "remove_part | radial_array | linear_array | nway_symmetry | mode_preview | "
         "mode_preview_shots | part_mode_cycle | corner_part_revox_refused | "
         "parts_scroll | module_loaded | component_attach | component_field_page | "
-        "component_field_key | text_input_command_capture | part_sizes",
+        "component_field_key | text_input_command_capture | part_sizes | composite_proof",
         {"none",
          "drag_probe",
          "place_below",
@@ -3721,7 +3807,8 @@ int main(int argc, char **argv) {
          "component_field_key",
          "text_input_command_capture",
          "part_sizes",
-         "part_gizmo_reach"},
+         "part_gizmo_reach",
+         "composite_proof"},
         "none"
     );
     IREngine::args().string(
@@ -3816,6 +3903,10 @@ int main(int argc, char **argv) {
             IRVoxelEditor::Session::usesComponentSpec(IRVoxelEditor::g_sessionId)
                 ? IRVoxelEditor::resolveComponentAttachSpec(IRVoxelEditor::g_sessionId)
                 : IRVoxelEditor::Session::ComponentAttachSpec{};
+        const IRVoxelEditor::Session::CompositeProofSpec proofSpec =
+            IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::COMPOSITE_PROOF
+                ? IRVoxelEditor::resolveCompositeProofSpec()
+                : IRVoxelEditor::Session::CompositeProofSpec{};
         IRVoxelEditor::g_session = IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::MODULE
                                        ? IRVoxelEditor::g_moduleHost.buildSession(
                                              moduleSession,
@@ -3827,7 +3918,8 @@ int main(int argc, char **argv) {
                                              IRVoxelEditor::g_editableSceneSize,
                                              IRVoxelEditor::g_editableSceneOrigin,
                                              moduleSpec,
-                                             componentSpec
+                                             componentSpec,
+                                             proofSpec
                                          );
         if (!IRVoxelEditor::g_session.ok()) {
             for (const std::string &error : IRVoxelEditor::g_session.errors_)
@@ -4750,8 +4842,8 @@ void initSystems() {
                 );
                 return;
             }
-            const float yaw =
-                IRPrefab::Widget::sliderValue(g_arrayYawSlider) * IRMath::kPi / 180.0f;
+            const float yaw = IRMath::round(IRPrefab::Widget::sliderValue(g_arrayYawSlider)) *
+                              IRMath::kPi / 180.0f;
             applyRadialArray(count, x, yaw);
         }
     );

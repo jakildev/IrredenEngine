@@ -8,9 +8,11 @@
 #include <irreden/render/components/component_camera_zoom_frame_state.hpp>
 #include <irreden/render/components/component_widget.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
+#include <irreden/render/active_canvas.hpp>
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_render_bindings.hpp>
 #include <irreden/script/lua_script.hpp>
+#include <irreden/voxel/components/component_voxel_pool.hpp>
 
 #include <sol/sol.hpp>
 
@@ -32,6 +34,10 @@ class LuaRenderBindingsTest : public testing::Test {
         , m_entity_manager{}
         , m_system_manager{} {
         m_lua.bindLuaDrivenEcs();
+    }
+
+    ~LuaRenderBindingsTest() override {
+        IRRender::setHeadlessActiveCanvasEntity(IREntity::kNullEntity);
     }
 
     bool isFunction(const char *expr) {
@@ -65,6 +71,27 @@ TEST_F(LuaRenderBindingsTest, EntityCanvasCountBound) {
     auto result = m_lua.lua().safe_script("return IRRender.entityCanvasCount()");
     ASSERT_TRUE(result.valid());
     EXPECT_EQ(result.get<int>(), 0);
+}
+
+TEST_F(LuaRenderBindingsTest, CanAllocateVoxelsReadsTheActiveCanvasPool) {
+    const IREntity::EntityId canvas =
+        IREntity::createEntity(IRComponents::C_VoxelPool{IRMath::ivec3(1, 1, 1)});
+    IRRender::setHeadlessActiveCanvasEntity(canvas);
+
+    auto before = m_lua.lua().safe_script("return IRRender.canAllocateVoxels(1)");
+    ASSERT_TRUE(before.valid());
+    EXPECT_TRUE(before.get<bool>());
+
+    auto oversized = m_lua.lua().safe_script("return IRRender.canAllocateVoxels(4294967295)");
+    ASSERT_TRUE(oversized.valid());
+    EXPECT_FALSE(oversized.get<bool>());
+
+    IRComponents::C_VoxelPool &pool = IREntity::getComponent<IRComponents::C_VoxelPool>(canvas);
+    pool.allocateVoxels(1);
+
+    auto after = m_lua.lua().safe_script("return IRRender.canAllocateVoxels(1)");
+    ASSERT_TRUE(after.valid());
+    EXPECT_FALSE(after.get<bool>());
 }
 
 TEST_F(LuaRenderBindingsTest, GuiDrawPrimitivesBound) {

@@ -408,6 +408,16 @@ struct PartYawCheck {
     std::string name_;
 };
 
+// Spin expectation on one entity-scene part: it carries C_AutoSpin turning
+// radiansPerFrame_ a tick, or with expectEqual_ false, it does not (an absent
+// component counts as not equal).
+struct PartSpinCheck {
+    int partIndex_ = 0;
+    float radiansPerFrame_ = 0.0f;
+    bool expectEqual_ = true;
+    std::string name_;
+};
+
 // PART MODE dropdown expectation: it is collapsed and shows expected_'s row.
 struct PartModeDropdownCheck {
     IRComponents::RotationMode expected_ = IRComponents::RotationMode::GRID;
@@ -569,6 +579,7 @@ struct Recipe {
     std::deque<RotationModeCheck> rotationModeChecks_;
     std::deque<PartAnchorCheck> partAnchorChecks_;
     std::deque<PartYawCheck> partYawChecks_;
+    std::deque<PartSpinCheck> partSpinChecks_;
     std::deque<PartModeDropdownCheck> partModeDropdownChecks_;
     std::deque<EditorInputCheck> editorInputChecks_;
     std::deque<PartsListCheck> partsListChecks_;
@@ -634,6 +645,7 @@ bool evaluateCanvasCountCheck(const void *context, std::string &actual);
 bool evaluateRotationModeCheck(const void *context, std::string &actual);
 bool evaluatePartAnchorCheck(const void *context, std::string &actual);
 bool evaluatePartYawCheck(const void *context, std::string &actual);
+bool evaluatePartSpinCheck(const void *context, std::string &actual);
 bool evaluatePartModeDropdownCheck(const void *context, std::string &actual);
 bool evaluateEditorInputCheck(const void *context, std::string &actual);
 
@@ -1413,6 +1425,18 @@ class Builder {
             m_recipe.partYawChecks_,
             PartYawCheck{partIndex, degrees, toleranceDegrees, std::move(name)},
             &evaluatePartYawCheck
+        );
+    }
+
+    // Assert part @p partIndex carries a C_AutoSpin turning @p radiansPerFrame
+    // a tick when this segment settles, or with @p expectEqual false, that it
+    // does not.
+    void
+    expectPartSpinRate(int partIndex, float radiansPerFrame, bool expectEqual, std::string name) {
+        addPredicateCheck(
+            m_recipe.partSpinChecks_,
+            PartSpinCheck{partIndex, radiansPerFrame, expectEqual, std::move(name)},
+            &evaluatePartSpinCheck
         );
     }
 
