@@ -1,8 +1,8 @@
 """Tests for the shared branch<->issue matcher (fleet_branch_match.py).
 
 Pins the contract both fleet-claim and fleet-state-scout rely on:
-  - engine accepts only `claude/<N>-`
-  - game accepts both `claude/<N>-` and `claude/game-<N>-`
+  - engine accepts only `<ns>/<N>-`, `<ns>` one of `claude` / `codex`
+  - game accepts both `<ns>/<N>-` and `<ns>/game-<N>-`
   - cross-repo and wrong-issue branches do not match
   - issue_from_branch is the repo-agnostic inverse (strips optional game-)
   - an improvised `issue-<N>` token branch, or a `Closes #N` body, resolves
@@ -21,6 +21,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from fleet_branch_match import (
+    _REPO_SLUGS,
     _is_game,
     _normalize_newlines,
     body_closed_issue_numbers,
@@ -35,45 +36,63 @@ from fleet_branch_match import (
     issue_from_branch,
     issue_pr_state,
     parked_until_issue_numbers,
+    parked_until_refs,
     pr_matches_issue,
     repo_key,
+    repo_slug,
     split_closed_issue_refs,
 )
 
+ENGINE = "jakildev/IrredenEngine"
+GAME = "jakildev/irreden"
+
 
 class ParkedUntilIssueNumbers(unittest.TestCase):
-    def test_last_marker_wins_and_trailing_prose_is_ignored(self):
+    def test_every_marker_counts_and_trailing_prose_is_ignored(self):
+        # One blocker per line is the other shape a worker writes; a park
+        # spelled that way waits on all of them, not on the last line alone.
         body = (
             "Parked-until: #10\n"
             "Parked-until: #20, #30 (build wall; see also #40)"
         )
-        self.assertEqual(parked_until_issue_numbers(body), [20, 30])
+        self.assertEqual(parked_until_issue_numbers(body, ENGINE), [10, 20, 30])
+
+    def test_repeated_blocker_is_listed_once(self):
+        body = "Parked-until: #20\nParked-until: #20, #30"
+        self.assertEqual(parked_until_issue_numbers(body, ENGINE), [20, 30])
+
+    def test_only_blockers_in_the_given_repo_are_numbers(self):
+        # A qualifier naming the repo itself is the same issue as the bare
+        # form, a bare ref belongs to the given repo, and a qualifier naming
+        # the other fleet repo is not a number here.
+        body = "Parked-until: IrredenEngine#20, irreden#25, #30"
+        self.assertEqual(parked_until_issue_numbers(body, ENGINE), [20, 30])
+        self.assertEqual(parked_until_issue_numbers(body, GAME), [25, 30])
 
     def test_whitespace_separated_issue_list(self):
-        self.assertEqual(parked_until_issue_numbers("Parked-until: #20 #30"), [20, 30])
+        self.assertEqual(parked_until_issue_numbers("Parked-until: #20 #30", ENGINE), [20, 30])
 
     def test_missing_or_malformed_marker_is_empty(self):
-        self.assertEqual(parked_until_issue_numbers(""), [])
-        self.assertEqual(parked_until_issue_numbers("Parked-until: later #20"), [])
+        self.assertEqual(parked_until_issue_numbers("", ENGINE), [])
+        self.assertEqual(parked_until_issue_numbers("Parked-until: later #20", ENGINE), [])
 
     def test_list_bullet_before_marker_is_tolerated(self):
-        self.assertEqual(parked_until_issue_numbers("- Parked-until: #3686"), [3686])
-        self.assertEqual(parked_until_issue_numbers("  * Parked-until: #20, #30"), [20, 30])
+        self.assertEqual(parked_until_issue_numbers("- Parked-until: #3686", ENGINE), [3686])
+        self.assertEqual(parked_until_issue_numbers("  * Parked-until: #20, #30", ENGINE), [20, 30])
         self.assertEqual(
-            parked_until_issue_numbers("+ Parked-until: #20 #30 (aside #40)"), [20, 30]
+            parked_until_issue_numbers("+ Parked-until: #20 #30 (aside #40)", ENGINE), [20, 30]
         )
 
     def test_bold_or_backtick_marker_is_tolerated(self):
-        self.assertEqual(parked_until_issue_numbers("**Parked-until:** #20"), [20])
-        self.assertEqual(parked_until_issue_numbers("**Parked-until**: #20, #30"), [20, 30])
-        self.assertEqual(parked_until_issue_numbers("`Parked-until:` #20"), [20])
-        self.assertEqual(parked_until_issue_numbers("`Parked-until`: #20"), [20])
-        self.assertEqual(parked_until_issue_numbers("`Parked-until: #20`"), [20])
-        self.assertEqual(
-            parked_until_issue_numbers("**Parked-until: #20, #30** (the fmt wall)"), [20, 30]
-        )
-        self.assertEqual(parked_until_issue_numbers("- **Parked-until:** #20"), [20])
-        self.assertEqual(parked_until_issue_numbers("* `Parked-until`: #20"), [20])
+        self.assertEqual(parked_until_issue_numbers("**Parked-until:** #20", ENGINE), [20])
+        self.assertEqual(parked_until_issue_numbers("**Parked-until**: #20, #30", ENGINE), [20, 30])
+        self.assertEqual(parked_until_issue_numbers("`Parked-until:` #20", ENGINE), [20])
+        self.assertEqual(parked_until_issue_numbers("`Parked-until`: #20", ENGINE), [20])
+        self.assertEqual(parked_until_issue_numbers("`Parked-until: #20`", ENGINE), [20])
+        body = "**Parked-until: #20, #30** (the fmt wall)"
+        self.assertEqual(parked_until_issue_numbers(body, ENGINE), [20, 30])
+        self.assertEqual(parked_until_issue_numbers("- **Parked-until:** #20", ENGINE), [20])
+        self.assertEqual(parked_until_issue_numbers("* `Parked-until`: #20", ENGINE), [20])
 
     def test_unpaired_or_mismatched_emphasis_is_malformed(self):
         for body in (
@@ -88,16 +107,86 @@ class ParkedUntilIssueNumbers(unittest.TestCase):
             "`Parked-until: #20\n` closes on the next line",
         ):
             with self.subTest(body=body):
-                self.assertEqual(parked_until_issue_numbers(body), [])
+                self.assertEqual(parked_until_issue_numbers(body, ENGINE), [])
 
     def test_malformed_emphasis_does_not_shadow_an_earlier_marker(self):
         self.assertEqual(
-            parked_until_issue_numbers("Parked-until: #20\n**Parked-until: #30"), [20]
+            parked_until_issue_numbers("Parked-until: #20\n**Parked-until: #30", ENGINE), [20]
         )
 
+    def test_glued_refs_are_not_a_list(self):
+        self.assertEqual(parked_until_issue_numbers("Parked-until: #20#30", ENGINE), [20])
+
     def test_marker_mid_sentence_is_still_rejected(self):
-        self.assertEqual(parked_until_issue_numbers("See Parked-until: #20 above"), [])
-        self.assertEqual(parked_until_issue_numbers("the Parked-until: #20 line"), [])
+        self.assertEqual(parked_until_issue_numbers("See Parked-until: #20 above", ENGINE), [])
+        self.assertEqual(parked_until_issue_numbers("the Parked-until: #20 line", ENGINE), [])
+
+
+class ParkedUntilRefs(unittest.TestCase):
+    def test_bare_refs_resolve_to_the_default_repo_by_key_or_slug(self):
+        self.assertEqual(parked_until_refs("Parked-until: #20, #30", "engine"),
+                         [(ENGINE, 20), (ENGINE, 30)])
+        self.assertEqual(parked_until_refs("Parked-until: #20", GAME), [(GAME, 20)])
+        self.assertEqual(parked_until_refs("Parked-until: #20", "game"), [(GAME, 20)])
+
+    def test_qualified_refs_name_the_other_fleet_repo(self):
+        # A game PR waiting on an engine entry parks on it, in any of the
+        # spellings the `Blocked by:` grammar already accepts.
+        for spelling in ("IrredenEngine#4329", "irredenengine#4329",
+                         "jakildev/IrredenEngine#4329"):
+            with self.subTest(spelling=spelling):
+                self.assertEqual(parked_until_refs(f"Parked-until: {spelling}", GAME),
+                                 [(ENGINE, 4329)])
+        self.assertEqual(parked_until_refs("Parked-until: irreden#7, #8", ENGINE),
+                         [(GAME, 7), (ENGINE, 8)])
+
+    def test_non_fleet_default_repo_keeps_its_bare_refs(self):
+        # A sandbox slug under test is not a fleet repo; its own bare refs
+        # still resolve (to it, as written) while a qualifier must be a fleet
+        # repo to count.
+        self.assertEqual(parked_until_refs("Parked-until: #5, irreden#6", "example/sandbox"),
+                         [("example/sandbox", 5), (GAME, 6)])
+
+    def test_unknown_qualifier_is_no_blocker(self):
+        # Fail closed: a park whose only blocker names a repo the fleet does
+        # not run is malformed (empty), never read as a same-repo number.
+        self.assertEqual(parked_until_refs("Parked-until: someone/other#5", ENGINE), [])
+        self.assertEqual(parked_until_refs("Parked-until: other#5, #6", ENGINE),
+                         [(ENGINE, 6)])
+
+    def test_markers_union_in_body_order_without_repeats(self):
+        body = "Parked-until: #4293\nParked-until: #4252\nParked-until: #4246, #4293"
+        self.assertEqual(parked_until_refs(body, ENGINE),
+                         [(ENGINE, 4293), (ENGINE, 4252), (ENGINE, 4246)])
+
+    def test_same_repo_qualified_ref_dedupes_against_the_bare_form(self):
+        self.assertEqual(parked_until_refs("Parked-until: #9, IrredenEngine#9", ENGINE),
+                         [(ENGINE, 9)])
+
+    def test_malformed_or_missing_marker_is_empty(self):
+        self.assertEqual(parked_until_refs("", ENGINE), [])
+        self.assertEqual(parked_until_refs(None, ENGINE), [])
+        self.assertEqual(parked_until_refs("Parked-until: later #20", ENGINE), [])
+        self.assertEqual(parked_until_refs("See Parked-until: #20 above", ENGINE), [])
+
+
+class RepoSlug(unittest.TestCase):
+    def test_slug_map_agrees_with_the_blocked_by_grammar(self):
+        import fleet_blocked_by
+        self.assertEqual(set(_REPO_SLUGS.values()),
+                         set(fleet_blocked_by._REF_NAME_TO_SLUG.values()))
+        for name, slug in fleet_blocked_by._REF_NAME_TO_SLUG.items():
+            self.assertEqual(repo_slug(name), slug, name)
+
+    def test_every_identifier_form_yields_the_canonical_slug(self):
+        for ident in ("engine", "IrredenEngine", "jakildev/irredenengine", ENGINE):
+            self.assertEqual(repo_slug(ident), ENGINE, ident)
+        for ident in ("game", "irreden", "jakildev/irreden"):
+            self.assertEqual(repo_slug(ident), GAME, ident)
+        self.assertIsNone(repo_slug("someone/other"))
+        # The empty namespace token is the engine, as `repo_key` already reads it.
+        self.assertEqual(repo_slug(""), ENGINE)
+        self.assertEqual(repo_slug(None), ENGINE)
 
 
 class BranchMatchesIssue(unittest.TestCase):
@@ -158,10 +247,11 @@ class BranchMatchesIssue(unittest.TestCase):
             self.assertTrue(branch_matches_issue("claude/105-x", issue, "engine"), issue)
 
     def test_issue_branch_prefixes(self):
-        self.assertEqual(issue_branch_prefixes("engine", 105), ["claude/105-"])
+        self.assertEqual(
+            issue_branch_prefixes("engine", 105), ["claude/105-", "codex/105-"])
         self.assertEqual(
             issue_branch_prefixes("game", 105),
-            ["claude/105-", "claude/game-105-"],
+            ["claude/105-", "codex/105-", "claude/game-105-", "codex/game-105-"],
         )
 
     # --- the improvised `issue-<N>` token form --------------------
@@ -209,6 +299,53 @@ class BranchMatchesIssue(unittest.TestCase):
         b = "claude/2419-fix-issue-1425-recurrence"
         self.assertTrue(branch_matches_issue(b, 2419, "engine"))
         self.assertFalse(branch_matches_issue(b, 1425, "engine"))
+
+
+class CodexBranches(unittest.TestCase):
+    """`codex/...` is a supported namespace with the same grammar as `claude/...`."""
+
+    def test_engine_prefix_matches(self):
+        self.assertTrue(branch_matches_issue(
+            "codex/4231-cardinal-surface-receiver", 4231, "engine"))
+
+    def test_game_infix_matches_game_only(self):
+        self.assertTrue(branch_matches_issue("codex/game-105-x", 105, "game"))
+        self.assertFalse(branch_matches_issue("codex/game-105-x", 105, "engine"))
+
+    def test_leading_number_wins_over_trailing_token(self):
+        b = "codex/2419-fix-issue-1425-recurrence"
+        self.assertTrue(branch_matches_issue(b, 2419, "engine"))
+        self.assertFalse(branch_matches_issue(b, 1425, "engine"))
+
+    def test_number_boundaries(self):
+        self.assertFalse(branch_matches_issue("codex/255-x", 25, "engine"))
+        self.assertFalse(branch_matches_issue("codex/25-x", 255, "engine"))
+        self.assertFalse(branch_matches_issue("codex/issue-25-x", 255, "engine"))
+        self.assertTrue(branch_matches_issue("codex/worker-2-issue-255", 255, "engine"))
+
+    def test_unsupported_shapes_match_nothing(self):
+        for head in ("foo/4231-x", "codex-4231-x", "4231-x", "codexx/4231-x",
+                     "feature/codex/4231-x", "codex4231-x"):
+            self.assertFalse(branch_matches_issue(head, 4231, "engine"), head)
+            self.assertIsNone(issue_from_branch(head), head)
+
+    def test_issue_from_branch(self):
+        self.assertEqual(issue_from_branch("codex/4231-x"), 4231)
+        self.assertEqual(issue_from_branch("codex/game-105-x"), 105)
+        self.assertEqual(issue_from_branch("codex/worker-4-issue-255"), 255)
+        self.assertEqual(issue_from_branch("codex/105-issue-99-fix"), 105)
+
+    def test_refs_only_wip_pr_is_active_and_parked_states_stay_parked(self):
+        pr = {"headRefName": "codex/4231-cardinal-surface-receiver",
+              "body": "Refs #4231", "labels": [{"name": "fleet:wip"}]}
+        self.assertEqual(issue_pr_state([pr], 4231, "engine"), "active")
+        parked = dict(pr, labels=[{"name": "fleet:design-blocked"}])
+        self.assertEqual(issue_pr_state([parked], 4231, "engine"), "parked")
+
+    def test_refs_only_on_an_unnamespaced_branch_is_not_a_claim(self):
+        pr = {"headRefName": "feature/cardinal-surface", "body": "Refs #4231",
+              "labels": [{"name": "fleet:wip"}]}
+        self.assertEqual(issue_pr_state([pr], 4231, "engine"), "none")
 
 
 class IssueFromBranch(unittest.TestCase):

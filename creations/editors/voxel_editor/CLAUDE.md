@@ -15,19 +15,31 @@ Design log, findings and the authoring-session history:
   `component_field_page` the same on a field only the panel's pager reaches,
   `component_field_key` the same on a field whose name is not a Lua identifier,
   `parts_roundtrip` authors, moves, saves, clears, and reloads a two-part entity,
+  `remove_part` removes and restores a part across hot and cold undo stacks and
+  proves the saved manifest omits the removed record,
   `tier_scrub` proves per-part LOD bands and the tier scrubber,
+  `part_mode_cycle` takes a Ctrl+P part through every render mode, the Ctrl+M
+  twin, an array, and a save and reload,
+  `corner_part_revox_refused` proves a part that is not centred on its
+  translation is kept out of DETACHED REVOX,
   `parts_scroll` reaches every part of an arrayed scene through the PARTS list
   alone (reveal after the array, wheel, row click),
   `mode_preview` proves the deferred render-mode switch allocates and releases
   the selected part's private canvas while rotated and private-canvas parts stay
   outside the axis-aligned edit pick, and `part_sizes` creates two parts of
   different extents and holds the mirror and loft tools to them.
+- `python3 scripts/gui-verify.py IRVoxelEditor -- --module <dir>
+  --module-session <name>` — one session registered by a creation module.
+  `test/module` registers `test_parts`, `test_single`, and the deliberately
+  failing `test_unreachable` fixture.
 - `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
   render reference set, discovered under this creation's `test/references/`.
 - `python3 scripts/author-entity.py <entity>` — replays an entity session twice
   and byte-compares the saved `.vxs` (rock, mushroom, bird at the default
   scene; `ant --scene-size 20 20 20`; `tree --scene-size 16 16 26`). A clean
   `git status assets/` afterwards means the committed asset is unchanged.
+  Pass `--module <dir> --module-session <name>` to author from a module-owned
+  session; `--asset-dir` may name an alternate output directory.
 
 ## Picking contract
 
@@ -70,6 +82,19 @@ render, because the aim and the pick share one screen mapping.
   bounds; the manifest carries no size. An edit path sizes from the set it
   edits, never from `g_editableSceneSize`. The loft tool is the exception: its
   masks are scene-sized, so it refuses a part of any other extent.
+- Every voxel part the editor creates is `EntityAnchor::CENTER`: its
+  translation is the middle of its box and the point it turns about. The
+  manifest's per-part `anchor` carries that through save and load, and every
+  rebuild of a part's set (array copy, Ctrl+M twin, load, undo of a removal)
+  passes the source's anchor to `DenseVoxel::toComponent`. A world-to-cell
+  conversion goes through `voxelSetCellOrigin`, never the translation alone.
+- A part enters DETACHED REVOX only when `voxelSetIsCentered` holds, which a
+  loaded manifest with no `anchor` (CORNER) usually fails: `M` and the twin
+  skip the mode, the dropdown refuses it, and `load` rejects a manifest that
+  asks for it.
+- A part's move gizmo sits at its pivot, inside whatever is authored at the
+  box centre, and an occluded handle takes no click. A session drags a part's
+  gizmo (`Builder::dragPartGizmo`) before anything is authored into it.
 - `EntityScene` owns one root and its ordered part records. Only the selected
   voxel part receives paint; other voxel parts carry `C_EditorReference`.
 - A part's LOD band (`EditorPart::lodMax_` fine .. `lodMin_` coarse) is
@@ -83,6 +108,11 @@ render, because the aim and the pick share one screen mapping.
   copy group through the same stroke buffer. The selected source stays outside
   the copy group: radial copies start at the radius, and linear copies start
   one step out.
+- Delete and the PARTS-panel REMOVE button remove the selected part as one undo
+  record. Ctrl+Z recreates its authored payload at the same ordered index and
+  rewrites older undo references to the fresh entity id. Removing a rotational
+  group member preserves the group's identity; symmetry remains inactive until
+  the group again matches its rotational order.
 
 - A recipe names cells; `Session::Builder` (`session_builder.hpp`) aims each
   click and mirrors the editable set in `OccupancyModel`, which casts the same
@@ -95,14 +125,23 @@ render, because the aim and the pick share one screen mapping.
   aims off gizmo pixels (the model does not know where handles are drawn).
 - A new session is four edits: `Session::Id`, `idFromName`, `Session::build`,
   and the `--gui-session` enum list in `main()`.
+- `Session::Builder` is also the Lua authoring ABI. Adding or changing a public
+  builder operation requires the matching `IREditor.registerSession` binding,
+  conversion coverage, and binding-matrix test in the same change.
 
 ## Creation modules (`--module <dir>`)
 
 - `ModuleHost` (`editor_lua_host.hpp`, whose header comment is the contract)
   runs `<dir>/init.lua` in the world's Lua VM in EVAL mode. A module registers
-  components (`IRComponent.register`), recipes and panels (`IREditor.*`). A
+  components (`IRComponent.register`), recipes, panels, and authoring sessions
+  (`IREditor.registerSession(name, function(session) ... end)`). A
   missing `init.lua`, a Lua error, or a component name already registered (a
   C++ one included) exits 2.
+- `--module-session <name>` requires `--module`, is mutually exclusive with a
+  non-`none` `--gui-session`, and builds the registered function exactly once
+  against the live scene size and origin. Its session handle is valid only
+  during that function call; retaining it for a later panel callback is an
+  error.
 - A recipe is a pure function of `(values, size)`. APPLY writes its cells
   through `applyEditRaw` and one `commitStroke`, so one Ctrl+Z undoes it.
 - A module may call `IRSystem.registerSystem`, but the editor places no module

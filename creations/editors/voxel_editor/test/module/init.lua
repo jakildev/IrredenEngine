@@ -45,4 +45,58 @@ IREditor.registerRecipe(
 
 IREditor.registerPanel("TestModulePanel", function(x, y, w, h)
     IRGui.makeLabel(x + 4, y + 18, "MODULE LOADED")
+    IRGui.makeLabel(x + 4, y + 32, "FIELD ROW")
+end)
+
+IREditor.registerSession("test_parts", function(session)
+    local size = session:sceneSize()
+    local center = {
+        x = math.floor(size.x / 2),
+        y = math.floor(size.y / 2),
+        z = math.floor(size.z / 2),
+    }
+    local blob_front = { center.x, center.y, center.z - 2 }
+    local painted = { center.x, center.y, center.z - 3 }
+
+    session:segment("bake")
+    session:addVoxelPart()
+    session:bakeSphere(2)
+    session:expectPartOccupancy(0, blob_front, true, "blob_baked")
+
+    session:segment("before_click")
+    session:expectPartOccupancy(0, painted, false, "before_click_empty")
+    session:segment("click")
+    session:click(painted)
+    session:expectPartOccupancy(0, painted, true, "clicked_cell_filled")
+
+    session:segment("array_and_band")
+    session:applyRadialArray(2)
+    session:dragLodSlider(IREditor.SliderTarget.LOD_FINE, 3)
+    session:dragLodSlider(IREditor.SliderTarget.LOD_TIER, 0)
+    session:expectPartCount(3, "three_parts_before_save")
+    session:expectPartGated(2, true, 0, "selected_copy_band_set")
+
+    session:segment("save")
+    session:save()
+    session:segment("clear")
+    session:clearEntityScene()
+    session:segment("reload")
+    session:reload()
+    session:expectPartOccupancy(0, painted, true, "reload_occupancy")
+    session:expectPartCount(3, "reload_part_count")
+    session:expectPartGated(2, true, 0, "reload_band")
+end)
+
+IREditor.registerSession("test_single", function(session)
+    local size = session:sceneSize()
+    local cell = { math.floor(size.x / 2), math.floor(size.y / 2), size.z - 2 }
+    session:segment("place")
+    session:click(cell)
+    session:expectOccupancy(cell, true, "single_cell_placed")
+    session:segment("save")
+    session:save()
+end)
+
+IREditor.registerSession("test_unreachable", function(session)
+    session:click({ 0, 0, 0 })
 end)

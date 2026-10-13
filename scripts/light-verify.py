@@ -485,7 +485,11 @@ def main(argv: list[str] | None = None) -> int:
                                                           "error": "no reference"}))
                 continue
             result = verify_common.compare(
-                image, reference, diff_dir / f"{label}.diff.png", LIGHT_VERIFY_THRESHOLDS
+                image,
+                reference,
+                diff_dir / f"{label}.diff.png",
+                LIGHT_VERIFY_THRESHOLDS,
+                classify=True,
             )
             all_image_results.append((flag, label, result))
 
@@ -507,8 +511,11 @@ def main(argv: list[str] | None = None) -> int:
                 )
 
     print()
-    print(f"{'pass':22} {'shot':30} {'result':8} {'match%':>8} {'max_d':>6} {'psnr':>8}")
-    print("-" * 90)
+    print(
+        f"{'pass':22} {'shot':30} {'result':8} {'match%':>8} {'max_d':>6} "
+        f"{'psnr':>8} {'difference':>16}"
+    )
+    print("-" * 107)
     image_failures = []
     for flag, label, result in all_image_results:
         verdict = "PASS" if result.get("pass") else "FAIL"
@@ -516,9 +523,12 @@ def main(argv: list[str] | None = None) -> int:
         psnr_str = (
             f"{raw_psnr:>8.2f}" if isinstance(raw_psnr, (int, float)) else f"{str(raw_psnr):>8}"
         )
+        difference = result.get("difference_class", "-")
+        if "shift" in result:
+            difference += f"({result['shift'][0]},{result['shift'][1]})"
         print(
             f"{flag:22} {label:30} {verdict:8} {result.get('match_pct', 0):>8.3f} "
-            f"{result.get('max_delta', -1):>6} {psnr_str}"
+            f"{result.get('max_delta', -1):>6} {psnr_str} {difference:>16}"
         )
         if not result.get("pass"):
             image_failures.append((flag, label, result))
@@ -532,9 +542,12 @@ def main(argv: list[str] | None = None) -> int:
     if image_failures:
         print(f"[light-verify] {len(image_failures)} image comparison failure(s):")
         for flag, label, result in image_failures:
+            difference = result.get("difference_class", "-")
+            if "shift" in result:
+                difference += f"({result['shift'][0]},{result['shift'][1]})"
             print(
                 f"  {flag}/{label}: {result.get('error', '')} "
-                f"match={result.get('match_pct', 0):.3f}%"
+                f"match={result.get('match_pct', 0):.3f}% class={difference}"
             )
 
     ok = not all_assertion_failures and not image_failures and not any_run_failed

@@ -14,6 +14,7 @@
 #include <irreden/render/camera_controls.hpp>
 #include <irreden/render/systems/system_render_gpu_particles_to_trixel.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
+#include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
 #include <irreden/render/systems/system_shapes_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_update_gpu_particles.hpp>
@@ -140,6 +141,7 @@ void initSystems() {
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::RENDER_GPU_PARTICLES_TO_TRIXEL>());
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>());
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>());
 
     IRVideo::appendAutoScreenshotIfRequested(renderPipeline, g_autoWarmupFrames, kShots);
 

@@ -2,7 +2,8 @@
 
 **Status:** Normative design contract. The implementation is split across
 #3675–#3677 and #3679–#3680, with the reveal-surface ceiling and treatment in
-#4055; the mapping table names the child that makes each part live.
+#4055 and the column-top reveal in #4304; the mapping table names the child
+that makes each part live.
 Until a child lands, its row describes the target behavior rather than the
 current render path.
 
@@ -65,6 +66,9 @@ this contract.
 | Detached-canvas BODY apply route | The canvas owner carries `fogHidden_` and `fogRevealFactor_`. `ENTITY_CANVAS_TO_FRAMEBUFFER` suppresses a hidden canvas or applies the uniform factor to the whole composite; private-pool voxels carry the BODY exemption. A fog-governed BODY voxel set matches `shown_` while it is on the active fog canvas and keeps `visible_` open in any other pool, where the owning canvas carries the hide. The reveal evaluators repair both gates on the first UPDATE tick after a pool move. | #3680 (P6) |
 | EXEMPT apply routes | For a voxel set, explicit EXEMPT classification stamps factor 255 without `C_FogRevealed`. Shape and detached-canvas EXEMPT bypasses require explicit raster-route realization; exclusion from BODY adoption alone is insufficient. | #3676 (P3) for voxel sets; #3696 for shapes and detached canvases |
 | Reveal surface | A per-source ceiling (`setVisionCircleCeiling`) multiplies with `losVisibility` into one surface factor per source before the maximum over sources. A canvas-owned style (`setRevealSurfaceTreatment`) marks a partial winning cut on FIELD samples in `FOG_TO_TRIXEL` and the overflow lane. [Reveal-surface treatment](#reveal-surface-treatment) is the contract. | #4055 |
+| Column top | A FIELD sample on a vertical face takes the larger of its own reveal and the reveal at the top plane of its own column (`fogColumnTopState` in the paint, `IRPrefab::Fog::evalRevealSurface` with a column point on the CPU). [Column top](#column-top) is the contract. | #4304 |
+| Lua FIELD surface read | `IRFog.evalRevealSurface(x, y, z [, channels])` returns `state, band` of the position-only FIELD verdict (`IRPrefab::Fog::evalActiveRevealSurface`, the term-off arm). A point exactly on a negative-side face plane lies in the matter's half-cell and reads its column top's verdict, so a caller reading the arm a face sample compares against steps the point `kFogLosFaceBias` outward first. | #4329 |
+| Lua FIELD face read | `IRFog.evalRevealFace(x, y, z, face [, channels])` returns `state, band` of the verdict with the column-top term for a sample on face `face` (`IRFog.Face.X_NEG` through `Z_POS`) whose point on the face plane is `(x, y, z)`. `IRPrefab::Fog::evalActiveRevealFace` steps that point outward for the sample's own march target and inward for its column point (`losColumnPoint`). | #4329 |
 | Creation seams | Override and source/BODY channel data live with `C_FogRevealed` and feed every BODY evaluator; the FIELD paint admits a source only where its mask intersects the sampled cell's mask (the world field's per-cell channels), on both source tiers. | #3679 (P5), per-cell masks #3687 |
 
 Only FIELD matter and shapes with `C_LightBlocker::blocksLOS_` occlude the
@@ -138,10 +142,11 @@ own. Its cost scales with the blocks a segment crosses, not with a texel read,
 so its budget is priced against the march it runs. For an identical fixture
 and a same-session matched merge base, let `M` be the base's `fogToTrixel`
 delta between line of sight on and off; the gate is `LOS-on <= control +
-ceil_to_10us(1.15 * M)`. On the unchanged `IRPerfGrid --fog-los-unexplored`
-reference fixture `M` is +67 µs, so the gate is control + 80 µs (#3878). A
-fixture that changes the marched pixels, the sources or the blocks crossed
-measures its own `M`.
+max(10 µs, ceil_to_10us(1.15 * M))` (#3878). A fixture whose `M` rounds to
+zero runs no FIELD march the stage's timing resolves, so the floor is the
+whole allowance, and a pass proves that the stage did not grow, not that the
+change's march cost is bounded. A fixture that changes the marched pixels,
+the sources or the blocks crossed measures its own `M`.
 
 ### Unpainted-route FIELD deviations
 
@@ -231,6 +236,25 @@ no ceiling and no line-of-sight factor scales it.
 The CPU oracle (`IRPrefab::Fog::evalReveal`) and the GLSL and Metal FIELD
 paint evaluate this one definition.
 
+### Sun-shadow caster ceiling
+
+The sun-shadow bake applies a deliberately binary version of the ceiling to
+FIELD caster samples. Among analytic sources whose authored circle covers the
+sample XY, it takes the maximum `ceilingVisibility`; the sample casts when that
+maximum is at least `0.5`. An uncovered sample casts normally. A BODY subject
+always casts whole, matching its anchor-governed reveal contract, and any
+covering source whose ceiling is disabled contributes 1 and therefore keeps the
+FIELD sample casting.
+
+For a hard ceiling the shadow cut is the authored plane. For a soft fade of
+height `H`, the cut is its midpoint (`ceilingHeight + H / 2`), inclusive on the
+casting side. This is intentionally not a translucent shadow: it gives one
+stable caster set to the bake and bounds the disagreement with the visible
+fade band to `H / 2` world units. The rule is evaluated before every sun-depth
+write in the voxel, analytic-shape, legacy canvas, and world-placed paths; when
+no source has a ceiling enabled, the driver flag makes those predicates an
+identity fast path.
+
 ### Treatment
 
 With the treatment disabled, a partial contribution simply stands. The sample
@@ -301,6 +325,108 @@ line-of-sight edge and a disc rim share one cap language. The radial rim cap
 is unchanged in where it applies: hard discs only, unexplored grid cells
 only, vertical faces only, and within two cells past the rim.
 
+The radial rim cap's tone is also unchanged: it blends with the fixed 0.85
+constant whether or not the treatment is enabled, and an enabled `capTone`
+tones only the treated partial band. A canvas that enables the treatment with
+a `capTone` other than 0.85 therefore shows two cap tones: `capTone` on
+ceiling and line-of-sight cuts, 0.85 on hard-disc rims.
+
+### Column top
+
+**Landing child:** #4304.
+
+A source that reveals a ground surface reveals the matter under it. Without
+this rule a wall can carry an unrevealed band that conveys nothing: a source
+standing on a plateau reveals its top but not its walls (the march to a wall
+passes under the top plane), and a source at the foot reveals the walls only
+up to its ceiling. The observer sees the top and the base, and the band
+between them stays unexplored.
+
+A FIELD sample on a vertical face therefore takes the larger of its own
+reveal and the reveal at the top plane of the column it belongs to:
+
+```
+own   = the composition, treatment included, evaluated at the sample
+p     = facePoint - kFogLosFaceBias * n
+topZ  = the column field's top plane at p's half-cell
+T     = (p.x, p.y, topZ)
+top   = max over admitted sources of
+        shapeReveal(T) * ceilingVisibility(T) * losVisibility(T)
+state = fires ? max(own.state, top) : own.state
+```
+
+`facePoint` is the sample's point on its face plane and `n` the face's
+outward normal. `p`, the *column point*, therefore lies just inside the
+matter the face bounds, in that matter's own column, where the sample's own
+march target lies just outside it. `T` is the point of that column's top
+plane over `p`, with no further bias. It is the point `losVisibility`
+evaluates for a body standing there, so a wall is revealed through its column
+top exactly where a BODY standing on that top would be. A source is admitted
+by the channel mask of the sample's own grid cell.
+
+The term fires only when all three conditions hold:
+
+| Condition | Reason |
+|---|---|
+| The column field is published this frame: some live source is gated by line of sight (`losSourceMask != 0` in the paint, `FogLosColumnField::published()` on the CPU). | The field is the only per-column top plane the paint can read, and `FOG_LOS_BUILD` builds it only on such a frame. |
+| The face is vertical. | A top face is its own ground surface. A top face under an overhang keeps its own verdict. |
+| The column has a top plane above the sample by more than `kFogLosClearanceTolerance`. | A sample at its column's top has no surface above it to inherit from. |
+
+Three properties follow from the march's own arithmetic:
+
+- **A source below a top does not reveal a wall through it.** Its segment to
+  `T` enters the column's edge cell under the top plane, by `kFogLosFaceBias`
+  times the segment's slope, and is blocked once that exceeds
+  `kFogLosClearanceTolerance`: an eye below the top by more than `0.05`
+  times its perpendicular distance to the face. An eye nearer the top's
+  height than that grazes the plane and reveals the wall, which is the
+  verdict a body standing on that edge takes.
+- **The column top is the highest occluder in the half-cell**, a FIELD voxel
+  or a `blocksLOS_` shape. A FIELD shape without `blocksLOS_` is not in the
+  column field and keeps its own verdict.
+- **A column point that misses its own column leaves the sample unchanged.**
+  A shape stamp edge that snaps inside the authored face reads the
+  neighbouring column's lower top plane, and the third condition fails.
+
+**Treatment.** The term raises the state and nothing else. A sample it raises
+above its own state carries no styled band: no dissolve key is drawn for it
+and no cap tones it, whatever the surface factor at `T`. When the term does
+not exceed the own state, the own band stands. The rim distance and the grid
+state stay the sample's own, so the radial rim lift and cut cap read what
+they read without the term.
+
+**Cost.** The term runs after the sample's own sources, and only when the
+three conditions hold and the sample is below full reveal. A source is
+evaluated at `T` only when its radial curve times its ceiling there exceeds
+the current state; a gated source then marches to `T` and an ungated one
+contributes without a march. These skips are exact, because the term feeds
+the state alone.
+
+Every painted route builds the column point from its face point and the
+face the pass already decodes, stepping `kFogLosFaceBias` into the face:
+
+| Route | Face point | In-plane coordinate |
+|---|---|---|
+| Cardinal voxel canvas | The recovered position with its face-axis coordinate snapped onto the micro lattice. | Snapped onto the lattice line through the drawn cell's view-frame lower corner, then stepped `kFogLosFaceBias` into the cell. |
+| Per-axis cells and overflow entries | The cell's own position, which lies exactly on its face plane. | As recovered. |
+| Smooth-yaw canvas and analytic (shape) pixels | The recovered or authored surface point. | As recovered. |
+
+The cardinal raster recovers a pixel on the plane through its voxel's corner
+that faces the camera, not on the voxel's face, so a wall pixel's in-plane
+horizontal coordinate lands up to a third of a micro cell either side of
+that corner. Left as recovered, the pixels along one vertical edge of every
+wall would read the neighbouring column and keep a one-pixel unrevealed
+line. The drawn cell extends from the corner toward the cardinal rotation of
+view `(+1, +1)`, the direction `losVoxelBox` stamps it in.
+
+BODY and EXEMPT pixels, and the unpainted detached-canvas FIELD clip, never
+take the term.
+
+**Byte identity.** A scene with no gated source publishes no column field, so
+the term never fires and nothing changes by a byte. With a gated source, a
+sample changes only where a source reveals the top of its own column above
+it.
+
 ### Routes and subject classes
 
 | Subject and route | Ceiling and line of sight | Treatment |
@@ -367,6 +493,12 @@ and its tone.
 | Removing geometry above the ceiling on a painted FIELD route | It breaks [A FIELD sample is painted, not removed](#a-field-sample-is-painted-not-removed): the hole exposes what is behind it and changes the world's silhouette. |
 | Dissolving, tinting or clipping BODY or EXEMPT pixels | It breaks [A BODY is never sliced](#a-body-is-never-sliced). The anchor verdict owns a body's visibility, and EXEMPT is outside fog. |
 | A separate treatment parameter or boundary representation for line of sight | The exact march's softness already supplies the factor. A second one would allow two overlapping treatments on one sample. |
+| Applying the [column top](#column-top) to every sample by a height test alone | A top-face pixel whose recovered XY falls a float error inside a taller neighbouring column would light a one-pixel line along the foot of a shadowed wall, and a floor under a roofed column would reveal through the roof. |
+| Reading the column top from a second per-column summary of the voxel pool | It is a new per-frame upload against a full Metal buffer table, and a second occluder set that can disagree with the one the march walks. |
+| Building the column field for scenes with no gated source | A full column raster and a 2 MiB upload per frame for scenes that run no march. |
+| Answering the column-top term from the sample's own route | The two targets end in different half-cells, the hard-route cache is a CPU structure keyed on exact XY and owned by the BODY evaluators, and the paint shares no route between pixels. |
+| Giving a wall the dissolve decision of the top voxel above it | The top face keys its hash on its recovered position and the wall would key on the top plane; on a half-integer plane those round to different voxels, so the wall would dissolve against a different pattern than the surface above it. |
+| A runtime switch for the column top | It adds public API and a uniform read for a test. The position-only oracle is the term-off arm. |
 
 ## Creation-facing seams
 

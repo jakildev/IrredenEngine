@@ -128,7 +128,7 @@ void main() {
     const int faceId = visibleFaceIds[slot] ^ flip;
     const vec3 worldNormal = faceOutwardNormal6(faceId);
     if (debugOverlayMode == 8) {
-        overflowScratch[entryBase + 1u] = packColor(vec4(worldNormal * 0.5 + 0.5, albedo.a));
+        overflowScratch[entryBase + 1u] = packColor(vec4(encodeUnitVectorUnorm8(worldNormal), albedo.a));
         return;
     }
     const vec3 pos3D = perAxisCellToWorld3DSubCell(cell, rawDist, faceId, perAxisStoreFrame);

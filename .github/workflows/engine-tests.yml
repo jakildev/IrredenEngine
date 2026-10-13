@@ -10,6 +10,8 @@ on:
       - 'tools/**'
       - 'cmake/**'
       - 'CMakePresets.json'
+      - 'assets/demos/sprite_demo/**'
+      - 'scripts/render-sprite-orientation-metric.py'
       - '.github/workflows/engine-tests.yml'
   pull_request:
     paths:
@@ -19,6 +21,8 @@ on:
       - 'tools/**'
       - 'cmake/**'
       - 'CMakePresets.json'
+      - 'assets/demos/sprite_demo/**'
+      - 'scripts/render-sprite-orientation-metric.py'
       - '.github/workflows/engine-tests.yml'
   workflow_dispatch:
 
@@ -70,3 +74,20 @@ jobs:
 
       - name: Build smoke target (IRShapeDebug)
         run: cmake --build build --target IRShapeDebug -j $(nproc)
+
+      # Draws the two-tone fixture sprite on OpenGL and grades which way up it
+      # is. The screenshot directory is empty on a fresh checkout, so every
+      # full-frame capture in it is one of this run's shots.
+      - name: Sprite frame orientation on OpenGL
+        run: |
+          cmake --build build --target IRSpriteDemo -j $(nproc)
+          demo_dir=build/creations/demos/sprite_demo
+          (cd "$demo_dir" && xvfb-run --auto-servernum -- \
+            timeout 300 ./IRSpriteDemo --auto-screenshot 10)
+          shopt -s nullglob
+          captures=("$demo_dir"/save_files/screenshots/screenshot_[0-9][0-9][0-9][0-9][0-9][0-9].png)
+          if [[ ${#captures[@]} -lt 2 ]]; then
+            echo "expected the demo's two shots, found ${#captures[@]} capture(s)" >&2
+            exit 1
+          fi
+          python3 scripts/render-sprite-orientation-metric.py "${captures[@]}"

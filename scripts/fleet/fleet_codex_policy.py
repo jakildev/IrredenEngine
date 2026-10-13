@@ -107,6 +107,8 @@ def check(path, role):
              (["git", "commit", "-m", "test"],
               "forbidden" if role in REVIEW_ROLES else "allow"),
              (["fleet-run", "IRShapeDebug", "--auto-screenshot", "10"], "allow"),
+             (["fleet-run", "--env", "IR_FOO=1", "IRShapeDebug",
+               "--auto-screenshot", "10"], "allow"),
              (["python3", "scripts/render-verify.py", "--target", "IRShapeDebug"], "allow"),
              (["python3", "scripts/perf/repeat_profile.py", "--target", "IRPerfGrid"], "allow"),
              (["python3", "-c", "print(1)"], None),

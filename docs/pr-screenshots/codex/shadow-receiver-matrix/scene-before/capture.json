@@ -1,0 +1,12 @@
+{
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRShapeDebug",
+    "--auto-screenshot",
+    "10"
+  ],
+  "revision": "3fe348fff8c7d8024f0daf3fba5c26cebeca6eb9",
+  "renderer_patch": ""
+}

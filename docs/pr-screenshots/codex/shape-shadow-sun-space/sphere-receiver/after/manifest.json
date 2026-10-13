@@ -1,0 +1,71 @@
+{
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRCanvasStress",
+    "--only",
+    "shadowbox,floor",
+    "--probe-analytic-sphere",
+    "--probe-overlapping-source",
+    "--pivot-origin",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--no-ao",
+    "--subdivisions",
+    "1",
+    "--zoom",
+    "6",
+    "--auto-screenshot",
+    "6",
+    "--sweep-yaw",
+    "0",
+    "5.49778714",
+    "8"
+  ],
+  "revision": "72c6e5218ae9e217813a08b63cfac3336cb54017",
+  "exit_code": 0,
+  "clean": true,
+  "images": [
+    {
+      "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000271.png",
+      "file": "0.png",
+      "sha256": "d05f9e5b44a8b3511456f0f41d7473fb59b2f407fb126f6b8c230e956194e47e"
+    },
+    {
+      "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000272.png",
+      "file": "1.png",
+      "sha256": "ad22501e04647fc1bfc35980fb039246a8f787af134a894e4e08c060e6ad1c6a"
+    },
+    {
+      "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000273.png",
+      "file": "2.png",
+      "sha256": "1e71770166ee373f4e9b57a41d868f7d938b35b11c8ca5cda176793e2787e26e"
+    },
+    {
+      "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000274.png",
+      "file": "3.png",
+      "sha256": "12633e16575823d76e66a96abc3b7be9c7ad8499eae9e096e998db83ff625645"
+    },
+    {
+      "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000275.png",
+      "file": "4.png",
+      "sha256": "a770a6ccc9001990431e3105215663f018494f05223e53fc538c6c9026e4dabf"
+    },
+    {
+      "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000276.png",
+      "file": "5.png",
+      "sha256": "3c2ac0a4dccd40ebca7f6369745f901ff9f5f5e5723f57176853bf082c049723"
+    },
+    {
+      "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000277.png",
+      "file": "6.png",
+      "sha256": "f951bc44da98871454078f884ca806b4e84ec1e97c738ae8ddaaedbb9b3a45f2"
+    },
+    {
+      "source": "build/creations/demos/canvas_stress/save_files/screenshots/screenshot_000278.png",
+      "file": "7.png",
+      "sha256": "a35666a782a4ecce54de8d3f02700c21f299b74af51ac2629daf16a1959c5043"
+    }
+  ]
+}

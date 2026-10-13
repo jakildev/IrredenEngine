@@ -7,15 +7,23 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from shader_contract_helpers import extract_block, extract_function
+
 ROOT = Path(__file__).resolve().parents[2]
 COMPILER = shutil.which("c++")
 
 HARNESS = r"""
 #include <cmath>
 #include <cstdlib>
-struct vec2 {float x,y; vec2(float a,float b):x(a),y(b){} };
+struct vec2 {float x,y; vec2(float a,float b):x(a),y(b){}
+ template<class T> explicit vec2(T v):x(v.x),y(v.y){}
+ vec2 operator+(vec2 b)const{return {x+b.x,y+b.y};}
+ vec2 operator-(vec2 b)const{return {x-b.x,y-b.y};} };
+vec2 operator*(float a,vec2 b){return {a*b.x,a*b.y};}
 struct ivec2 {int x,y; explicit ivec2(vec2 v):x(int(v.x)),y(int(v.y)){}
  explicit ivec2(int v):x(v),y(v){} ivec2(int a,int b):x(a),y(b){} };
+ivec2 operator+(ivec2 a,ivec2 b){return {a.x+b.x,a.y+b.y};}
+ivec2 operator/(ivec2 a,ivec2 b){return {a.x/b.x,a.y/b.y};}
 ivec2 operator-(vec2 v,int n){return {int(v.x)-n,int(v.y)-n};}
 ivec2 clamp(ivec2 v,ivec2 lo,ivec2 hi){return {
  v.x<lo.x?lo.x:(v.x>hi.x?hi.x:v.x), v.y<lo.y?lo.y:(v.y>hi.y?hi.y:v.y)};}
@@ -26,14 +34,15 @@ struct vec4 {float x,y,z,w;};
 vec4 casterViewToWorld{.1f,.2f,.3f,.9f};
 struct Color {vec3 rgb{.2f,.3f,.4f};float a=.7f;};
 Color color;
-vec2 originRaw{1.25f,2.75f},displayOrigin=originRaw,textureSize{8,6};
+vec2 originRaw{1.25f,2.75f},displayOrigin=originRaw;
+ivec2 textureSize{8,6};
 ivec2 sampleCoord{floor(displayOrigin)}, expectedOwner{1,2};
 int shadowsEnabled=1,queryCalls=0,shadowCalls=0;
 bool hit=true;
 bool selectedShapeBoxReceiver(ivec2 owner,int width,vec2 query,bool recover,
                               vec3& p,vec3& n){
  ++queryCalls;
- if(owner.x!=expectedOwner.x||owner.y!=expectedOwner.y||width!=8||query.x!=originRaw.x||query.y!=originRaw.y||!recover)std::exit(11);
+ if(owner.x!=expectedOwner.x||owner.y!=expectedOwner.y||width!=8||query.x!=originRaw.x-1||query.y!=originRaw.y-1||!recover)std::exit(11);
  p={query.x,query.y,1};n={0,0,-1};return hit;
 }
 float pos3DtoDistance(vec3 p){return p.x+p.y+p.z;}
@@ -42,7 +51,7 @@ float shapeCanvasIsoDepth(vec3 p,Frame){return 4*(p.x-p.y+p.z);}
 float worldShapeSurfaceSunShadowFactor(vec3 p,vec3 n,float depth,vec4 rotation){
  if(rotation.x!=.1f||rotation.y!=.2f||rotation.z!=.3f||rotation.w!=.9f)std::exit(12);
  ++shadowCalls;
- if(p.x!=originRaw.x||p.y!=originRaw.y||p.z!=1||n.z!=-1||depth!=4*(originRaw.x-originRaw.y+1))std::exit(12);
+ if(p.x!=originRaw.x-1||p.y!=originRaw.y-1||p.z!=1||n.z!=-1||depth!=4*(originRaw.x-originRaw.y+1))std::exit(12);
  return .5f;
 }
 """
@@ -156,15 +165,24 @@ int main(int argc,char**){
             block = block.replace("sunFrameData.shadowsEnabled", "shadowsEnabled")
             for a, b in (("float3", "vec3"), ("float2", "vec2"), ("int2", "ivec2")):
                 block = block.replace(a, b)
+            common = (path / f"ir_iso_common.{suffix}").read_text()
+            receiver = (path / f"ir_selected_shape_receiver.{suffix}").read_text()
+            return_type = "ivec2" if suffix == "glsl" else "inline int2"
+            helpers = "\n".join([extract_block(common, f"{return_type} {name}") for name in
+                                  ("trixelOriginOffsetX1", "trixelOriginOffsetZ1")])
+            helpers += "\n" + extract_function(receiver, "shapeFragmentQueryPixel")
+            for a, b in (("float2", "vec2"), ("int2", "ivec2")):
+                helpers = helpers.replace(a, b)
             variants = {
                 "production": block,
                 "lost_caster_rotation": block.replace(
                     "casterViewToWorld", "vec4{0,0,0,1}"),
                 "snapped_query": block.replace("originRaw,", "floor(originRaw),"),
                 "wrong_owner": block.replace("sampleCoord", "ivec2(vec2(0,0))"),
-                "recovery_disabled": re.sub(
-                    r"(selectedShapeBoxReceiver\([^;]+?originRaw,\s*)true,",
-                    r"\1false,", block, count=1),
+                "recovery_disabled": block.replace("true,", "false,"),
+                "lost_query_conversion": block.replace(
+                    "shapeFragmentQueryPixel(originRaw, textureSize)", "originRaw").replace(
+                    "shapeFragmentQueryPixel(originRaw, ivec2(textureSize))", "originRaw"),
                 "lost_miss_fallback": block.replace(
                     "if (selectedShapeBoxReceiver", "if (true || selectedShapeBoxReceiver"),
                 "world_cascade_depth": block.replace(
@@ -180,7 +198,7 @@ int main(int argc,char**){
                     if name != "production":
                         self.assertNotEqual(body, block)
                     cpp, exe = Path(tmp) / "probe.cpp", Path(tmp) / "probe"
-                    cpp.write_text(HARNESS + "void run(){" + body + "}\n" + CASES)
+                    cpp.write_text(HARNESS + helpers + "\nvoid run(){" + body + "}\n" + CASES)
                     build = subprocess.run([COMPILER, "-std=c++17", str(cpp), "-o", str(exe)],
                                            capture_output=True, text=True)
                     self.assertEqual(build.returncode, 0, build.stderr)

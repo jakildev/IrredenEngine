@@ -73,38 +73,46 @@ int samples() {
     CanvasShapeGeometry a, b;
     std::array<ShapeTileDescriptor, 1> tile{{{7, 0, {13, -9}}}};
     bool rejectedEmpty = false;
-    try { a.publishSamples(true); } catch (const std::runtime_error&) { rejectedEmpty = true; }
+    try { a.publishSamples(true, 7); } catch (const std::runtime_error&) { rejectedEmpty = true; }
     if (!rejectedEmpty || a.samplesValid()) return 32;
     std::array<GPUShapeDescriptor, 1> descriptor{{{7, 2.5f}}};
     GPUShapesFrameData frame{1, .4f, 3};
     a.upload(descriptor, frame);
     bool noTiles = false, noOwners = false;
     a.prepareSampleOwners({2, 3});
-    try { a.publishSamples(true); } catch (const std::runtime_error&) { noTiles = true; }
+    try { a.publishSamples(true, 7); } catch (const std::runtime_error&) { noTiles = true; }
     a.reset();
     a.upload(descriptor, frame);
     a.uploadTiles(tile);
-    try { a.publishSamples(true); } catch (const std::runtime_error&) { noOwners = true; }
+    try { a.publishSamples(true, 7); } catch (const std::runtime_error&) { noOwners = true; }
     if (!noTiles || !noOwners) return 40;
     a.prepareSampleOwners({2, 3});
-    a.publishSamples(true);
+    bool rejectedZeroTick = false;
+    try { a.publishSamples(true, 0); }
+    catch (const std::runtime_error&) { rejectedZeroTick = true; }
+    if (!rejectedZeroTick || a.samplesValidForTick(0)) return 53;
+    a.publishSamples(true, 7);
     if (!a.samplesValid()) return 33;
-    a.publishSamples(false);
+    if (!a.samplesValidForTick(7) || a.samplesValidForTick(0) || a.samplesValidForTick(8) ||
+        a.publicationTick() != 7) return 50;
+    a.publishSamples(false, 7);
     if (a.samplesValid()) return 34;
-    a.publishSamples(true);
+    if (a.publicationTick() != 0) return 51;
+    a.publishSamples(true, 7);
     const CanvasShapeGeometry& readonly = a;
     readonly.invalidateSamples();
     if (a.samplesValid()) return 35;
-    a.publishSamples(true);
+    if (a.publicationTick() != 0 || a.samplesValidForTick(7)) return 52;
+    a.publishSamples(true, 7);
     a.upload(descriptor, frame);
     if (a.samplesValid()) return 36;
-    a.publishSamples(true);
+    a.publishSamples(true, 7);
     a.uploadTiles(tile);
     if (a.samplesValid()) return 37;
-    a.publishSamples(true);
+    a.publishSamples(true, 7);
     a.prepareSampleOwners({2, 3});
     if (a.samplesValid()) return 38;
-    a.publishSamples(true);
+    a.publishSamples(true, 7);
     const auto ownerHandle = a.sampleOwners_.first;
     const auto tileHandle = a.tiles_.first;
     const std::uint32_t key = (17 * 3 + 2) * 2 + 1;
@@ -144,7 +152,7 @@ int samples() {
     if (!rejected) return 29;
     a.upload(descriptor, frame);
     a.uploadTiles(tile);
-    a.publishSamples(true);
+    a.publishSamples(true, 7);
     a.onDestroy(); b.onDestroy();
     if (a.samplesValid()) return 41;
     if (!resources.empty() || a.sampleOwners_.second || a.tiles_.second ||
@@ -278,7 +286,7 @@ class CanvasShapeGeometryTest(unittest.TestCase):
             self.assertNotIn("getTextureColorsForGeometryWrite", source, name)
         shapes = (render / "systems/system_shapes_to_trixel.hpp").read_text()
         self.assertLess(shapes.index("shapePublishProgram_->use()"),
-                        shapes.index("shapeGeometry_.publishSamples(!hasXray)"))
+                        shapes.index("shapeGeometry_.publishSamples("))
         self.assertIn("shape.flags & SHAPE_FLAG_XRAY_OCCLUDED", shapes)
 
 

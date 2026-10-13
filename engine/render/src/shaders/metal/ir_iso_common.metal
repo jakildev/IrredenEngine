@@ -221,10 +221,12 @@ constant uint kEntityIdFogBodyFactorMaskInHighWord = 0xFFu << kEntityIdFogBodyFa
 // as opposed to a voxel raster point on the lower-corner cell lattice. Rides
 // the same masking chokepoint.
 constant uint kEntityIdAnalyticSurfaceMaskInHighWord = 0x1u << 19u;
+// Positive provenance of a settled non-detached voxel raster sample.
+constant uint kEntityIdCardinalVoxelMaskInHighWord = 0x1u << 18u;
 constant uint kEntityIdHighWordMask =
     ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord |
       kEntityIdFogBodyMaskInHighWord | kEntityIdFogBodyFactorMaskInHighWord |
-      kEntityIdAnalyticSurfaceMaskInHighWord);
+      kEntityIdAnalyticSurfaceMaskInHighWord | kEntityIdCardinalVoxelMaskInHighWord);
 inline uint decodePriority(uint2 rawId) {
     return (rawId.y >> kEntityIdPriorityShiftInHighWord) & 0x3u;
 }
@@ -243,6 +245,9 @@ inline uint decodeFogBodyFactor(uint2 rawId) {
 }
 inline bool decodeAnalyticSurface(uint2 rawId) {
     return (rawId.y & kEntityIdAnalyticSurfaceMaskInHighWord) != 0u;
+}
+inline bool decodeEntityIdCardinalVoxel(uint2 rawId) {
+    return (rawId.y & kEntityIdCardinalVoxelMaskInHighWord) != 0u;
 }
 inline uint2 decodeEntityId(uint2 rawId) {
     return uint2(rawId.x, rawId.y & kEntityIdHighWordMask);
@@ -266,6 +271,10 @@ inline uint2 encodeEntityIdFogBody(uint2 packedId, bool isFogBody, uint factor) 
                                 ((factor & 0xFFu) << kEntityIdFogBodyFactorShiftInHighWord))
         : packedId;
 }
+inline uint2 encodeEntityIdCardinalVoxel(uint2 packedId) {
+    return uint2(packedId.x, packedId.y | kEntityIdCardinalVoxelMaskInHighWord);
+}
+
 // Set the analytic-surface flag on an ALREADY priority-encoded id — GLSL twin.
 inline uint2 encodeEntityIdAnalyticSurface(uint2 packedId) {
     return uint2(packedId.x, packedId.y | kEntityIdAnalyticSurfaceMaskInHighWord);
@@ -530,6 +539,27 @@ inline int roundHalfUp(float v) {
 
 inline int2 roundHalfUp(float2 v) {
     return int2(floor(v + float2(0.5)));
+}
+
+// Unit-vector components as exact UNORM8 codes: -1 → 0, 0 → 128, +1 → 255.
+// A bare `v * 0.5 + 0.5` leaves the 0.5 midpoint to the store's float-to-unorm
+// conversion, which is implementation-defined at that tie (127 or 128), so
+// debug colours read back exactly only when the shader rounds them itself.
+inline float3 encodeUnitVectorUnorm8(float3 v) {
+    return float3(roundHalfUp(v * 127.5f + 127.5f)) / 255.0f;
+}
+
+// Raw canvas position of the gather fragment at raster-target pixel
+// `fragmentPixel` (fragment position.xy; the vertex stage's clip-Y negation
+// makes it equal OpenGL's gl_FragCoord.xy). `canvasFromPixel` holds the quad
+// centre in raster-target pixels (.xy) and canvas texels per raster pixel (.zw);
+// canvas Y runs down the screen. Evaluated per fragment, never interpolated:
+// with a power-of-two scale and a centre on the half-pixel lattice every term is
+// exact, so a pixel centre on a texel boundary selects the same texel on every GPU.
+inline float2 canvasPositionFromPixel(float2 fragmentPixel, float4 canvasFromPixel,
+                                      float2 textureOffset, float2 textureSize) {
+    return (fragmentPixel - canvasFromPixel.xy) * float2(1.0f, -1.0f) * canvasFromPixel.zw +
+           textureOffset + 0.5f * textureSize;
 }
 
 // Per-voxel iso occlusion depth of model position `pos` projected onto a

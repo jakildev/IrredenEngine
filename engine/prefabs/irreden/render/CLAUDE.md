@@ -54,7 +54,7 @@ Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md). Rationale: [`d
 | `HITBOX_MOUSE_TEST_GUI` → `WIDGET_INPUT` → `WIDGET_APPLY_*` → `CAMERA_SCROLL_ZOOM` | INPUT; `WIDGET_LUA_DISPATCH` immediately after `WIDGET_INPUT`; the zoom drops the wheel while `C_GuiHoverState` names a hovered widget |
 | `TEXT_TO_TRIXEL` → `LAYOUT_COMPUTE` → `WIDGET_RENDER_*` | RENDER, before `TRIXEL_TO_FRAMEBUFFER`; `WIDGET_RENDER_DROPDOWN` last among the renderers |
 | `HelpOverlay::systems()`, `SettingsMenu::renderSystems()` / `inputSystems()` | RENDER after `TEXT_TO_TRIXEL`, before the composite / INPUT after `INPUT_KEY_MOUSE` |
-| `ENTITY_CANVAS_TO_FRAMEBUFFER` · `FRAMEBUFFER_TO_SCREEN` · `SPRITE_TO_SCREEN` | after `TRIXEL_TO_FRAMEBUFFER`, whose `beginTick` alone publishes the frame's [continuous-zoom sample](../../../../docs/design/continuous-camera-zoom.md) (`IRPrefab::Camera::zoomFrame`); sprites after the main canvas's `FRAMEBUFFER_TO_SCREEN` |
+| `ENTITY_CANVAS_TO_FRAMEBUFFER` · `FRAMEBUFFER_TO_SCREEN` · `SPRITE_TO_SCREEN` · `GUI_CANVAS_TO_SCREEN` | after `TRIXEL_TO_FRAMEBUFFER`, whose `beginTick` alone publishes the frame's [continuous-zoom sample](../../../../docs/design/continuous-camera-zoom.md) (`IRPrefab::Camera::zoomFrame`); sprites after the main canvas's `FRAMEBUFFER_TO_SCREEN`; the GUI composite last, so the GUI sits above sprites ([display contract](../../../../docs/design/gui-trixel-display.md)) |
 | `SYNC_VIEWPORT_SUBJECTS` / `VIEWPORT_TO_FRAMEBUFFER` | RENDER before `VOXEL_TO_TRIXEL_STAGE_1` / after `TRIXEL_TO_FRAMEBUFFER`, before `FRAMEBUFFER_TO_SCREEN` |
 
 `VOXEL_TO_TRIXEL_STAGE_1` runs compact + stage 1 + stage 2 per canvas in one
@@ -151,12 +151,12 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
 
 ## Widget framework
 
-- `IRPrefab::Widget::make<Kind>` builds one entity: `C_Widget` +
-  `C_GuiPosition` + `C_Widget<Kind>`, plus `C_WidgetState` + `C_HitBox2DGui`
-  for interactive kinds. Mutate the `C_WidgetTheme` singleton
-  (`widget_theme.hpp::defaultTheme()`) once at init, before building widgets.
-  Opt-in hover publication: `makeGuiHoverState()` creates the
-  `C_GuiHoverState` singleton; `hoveredWidget()` reads it.
+- `IRPrefab::Widget::make<Kind>` builds one entity: `C_Widget` + `C_GuiPosition` + `C_Widget<Kind>`,
+  plus `C_WidgetState` + `C_HitBox2DGui` for interactive kinds. `makeHitRegion` is the invisible kind
+  (no `C_Widget<Kind>`, no renderer, never a Tab stop): lay it over content drawn elsewhere; like any
+  GUI hitbox it shadows world picks beneath it. `topmostHoveredWidget()` owns hover routing.
+  Mutate the `C_WidgetTheme` singleton (`widget_theme.hpp::defaultTheme()`) once at init, before
+  building widgets. Opt-in hover publication: `makeGuiHoverState()` creates the `C_GuiHoverState` singleton; `hoveredWidget()` reads it.
 - Dropdown strip and list scroll geometry have one owner each (the `C_WidgetDropdown` / `C_WidgetList` helpers); read a list's
   first row from `topIndex`, never raw `scrollOffset_`. Authored `zOrder_` stays below `kWidgetDropdownOpenZBias`; two open dropdowns are unordered.
 - The wheel scrolls the hovered list; `setListSelectedIndex` reveals the row only when the index
@@ -173,8 +173,8 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   `TRIXEL_TO_FRAMEBUFFER::beginTick` resets that buffer, so splice the
   GUI-test cycler ahead of the composite, as `shape_debug` does. `picksVoxel`
   is the CPU ray cast and cannot see that buffer. Reference wiring:
-  `creations/editors/voxel_editor/main.cpp`; Lua `onClick`:
-  `engine/script/CLAUDE.md` §"Engine service bindings".
+  `creations/editors/voxel_editor/main.cpp`; Lua handlers (`system_widget_lua_dispatch.hpp`
+  fires them in `endTick`): `engine/script/CLAUDE.md` §"Engine service bindings".
 
 ## Rotation modes
 

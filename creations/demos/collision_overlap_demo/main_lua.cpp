@@ -30,6 +30,7 @@
 #include <irreden/update/systems/system_dispatch_lua_overlap.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
+#include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
 
 namespace {
 
@@ -84,7 +85,8 @@ void registerLuaBindings() {
             IRSystem::COLLISION_NOTE_PLATFORM,
             IRSystem::DISPATCH_LUA_OVERLAP,
             IRSystem::TRIXEL_TO_FRAMEBUFFER,
-            IRSystem::FRAMEBUFFER_TO_SCREEN>();
+            IRSystem::FRAMEBUFFER_TO_SCREEN,
+            IRSystem::GUI_CANVAS_TO_SCREEN>();
     });
 }
 

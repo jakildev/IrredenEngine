@@ -8,6 +8,10 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 #include "ir_constants.glsl"
 #include "ir_sdf_common.glsl"
 #include "ir_shape_data.glsl"
+#include "ir_shape_sun_ray.glsl"
+#if IR_SHAPE_PASS == 2
+#include "ir_fog_shadow_caster.glsl"
+#endif
 
 layout(std140, binding = 23) uniform ShapesFrameData {
     uniform vec2 frameCanvasOffset;
@@ -722,7 +726,8 @@ void main() {
     ivec2 isoOrigin = tile.tileIsoOrigin;
     ShapeDescriptor shape = shapes[shapeIndex];
 #if IR_SHAPE_PASS == 2
-    if (shape.shapeType == SHAPE_BOX) return;
+    if (shape.shapeType == SHAPE_BOX ||
+        shapeUsesSunRay(shape, voxelRenderOptions, smoothYawEnabled, latticeShapes)) return;
 #endif
 
     // Cardinal-snap Z-yaw. The cardinal path rasterizes at rasterYaw (the
@@ -801,7 +806,7 @@ void main() {
     }
     // Per-entity rotation expands the shape-local AABB before the camera-yaw
     // expansion. Spheres are rotation-invariant and skip this.
-    bool hasEntityRotation = abs(shape.rotation.w) < 0.9999;
+    bool hasEntityRotation = shapeHasEntityRotation(shape.rotation);
     if (hasEntityRotation && st != SHAPE_SPHERE) {
         vec3 ax = abs(rotateByQuat(vec3(boundingHalf.x, 0.0, 0.0), shape.rotation));
         vec3 ay = abs(rotateByQuat(vec3(0.0, boundingHalf.y, 0.0), shape.rotation));
@@ -876,6 +881,18 @@ void main() {
                                     shape.flags, dExtent, yawC, yawS);
     }
     if (surfaceD == kInvalidDepth) return;
+
+#if IR_SHAPE_PASS == 2
+    const vec3 fogViewOffset = isoToLocal3D(isoPixelRel, float(surfaceD));
+    const vec3 fogWorldOffset = vec3(
+        yawC * fogViewOffset.x - yawS * fogViewOffset.y,
+        yawS * fogViewOffset.x + yawC * fogViewOffset.y,
+        fogViewOffset.z
+    );
+    const vec3 fogWorldSample = worldPos + fogWorldOffset / float(sub);
+    if (!fogFieldCastsSunShadow(
+            fogWorldSample, (shape.flags & FLAG_FOG_BODY) != 0u, 1)) return;
+#endif
 
     // Depth metric. Cardinal path: view-space x+y+z relative to the cardinal-
     // snapped integer origin (surfaceD is the local iso depth). Smooth path:

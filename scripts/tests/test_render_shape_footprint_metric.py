@@ -47,6 +47,49 @@ class ShapeFootprintTest(unittest.TestCase):
                 expected[y * size[0] + x] = 255 if near <= far else 0
         self.assertEqual(actual.tobytes(), bytes(expected))
 
+    def test_analytic_origin_defaults_to_screen_center(self):
+        for shape in ("cone", "torus"):
+            options = dict(slices=256, sectors=128)
+            default, _ = metric.analytic_expected_mask((512, 512), shape, .71, (8, 4), 8,
+                                                        **options)
+            centered, _ = metric.analytic_expected_mask((512, 512), shape, .71, (8, 4), 8,
+                                                         origin=(256, 256), **options)
+            shifted, _ = metric.analytic_expected_mask((512, 512), shape, .71, (8, 4), 8,
+                                                       origin=(263, 251), **options)
+            self.assertEqual(default.tobytes(), centered.tobytes())
+            self.assertEqual(shifted.tobytes(), ImageChops.offset(centered, 7, -5).tobytes())
+
+    def test_analytic_sections_match_independent_field_boundaries(self):
+        for threshold in (.5, .125, .0625):
+            for shape in ("cone", "torus"):
+                height = (4 if shape == "cone" else 2) + threshold
+                for index in range(301):
+                    z = -height + 2 * height * index / 300
+                    inner, outer = metric.analytic_cross_section(shape, z, threshold)
+                    for radius in (inner, outer):
+                        if radius == 0:
+                            continue
+                        if shape == "torus":
+                            distance = math.hypot(radius - 4, z) - 2
+                        else:
+                            dr = radius - 4 * (1 - min(1, max(0, (z + 4) / 8)))
+                            dz = abs(z) - 4
+                            distance = math.hypot(max(dr, 0), max(dz, 0))
+                            distance += min(max(dr, dz), 0)
+                        self.assertAlmostEqual(distance, threshold, places=6)
+
+    def test_analytic_reference_converges_inside_pixel_tolerance(self):
+        size = (512, 512)
+        visible = Image.new("L", size, 255)
+        for shape in ("cone", "torus"):
+            first, clipped = metric.analytic_expected_mask(
+                size, shape, .71, (8, 4), 8, slices=256, sectors=128)
+            second, _ = metric.analytic_expected_mask(
+                size, shape, .71, (8, 4), 8, slices=512, sectors=256)
+            self.assertFalse(clipped)
+            result, _ = metric.compare_masks(first, second, visible)
+            self.assertTrue(result["strict_edges_passed"])
+
     def test_native_fixture_occupancy(self):
         self.assertEqual(len(metric.occupied_cells("torus")), 504)
         self.assertEqual(len(metric.occupied_cells("cone")), 233)

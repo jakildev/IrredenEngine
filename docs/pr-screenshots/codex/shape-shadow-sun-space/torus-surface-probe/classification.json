@@ -1,0 +1,508 @@
+{
+  "fixture": "torus yaw=0 subdivision=8 R=4 r=2 origin=0",
+  "accepted_samples": 18406,
+  "published_texels": 18922,
+  "face_texels": {
+    "2": 7922,
+    "0": 7478,
+    "1": 3522
+  },
+  "finite_model_pixel_classifications": {
+    "publisher_face_not_on_ray": 37504,
+    "normal_matches_nearest": 101732,
+    "nearest_exposed_face": 40056,
+    "publisher_face_occluded": 26390,
+    "owner_ambiguous": 46906,
+    "normal_differs_from_nearest": 49124,
+    "outside_finite_union": 520,
+    "no_finite_hit": 520
+  },
+  "finite_union_unpublished_pixels": 808,
+  "finite_union_unpublished_example": {
+    "pixel": [
+      1247,
+      546
+    ],
+    "iso": [
+      -8.125,
+      -86.75
+    ],
+    "nearest": {
+      "sample": [
+        -8,
+        -85,
+        43
+      ],
+      "depth": 43.25,
+      "axes": [
+        2
+      ],
+      "point": [
+        32.9375,
+        24.8125,
+        -14.500000000000002
+      ]
+    }
+  },
+  "examples": {
+    "publisher_face_not_on_ray": {
+      "pixel": [
+        1248,
+        550
+      ],
+      "iso": [
+        -7.875,
+        -84.75
+      ],
+      "classification": "publisher_face_not_on_ray",
+      "normal_matches_nearest": true,
+      "possible_owners": [
+        {
+          "classification": "publisher_face_not_on_ray",
+          "candidate_sample": [
+            -7,
+            -84,
+            38
+          ],
+          "published_face": 2,
+          "candidate_half": 0,
+          "normal_matches_nearest": true,
+          "nearest": [
+            {
+              "sample": [
+                -8,
+                -83,
+                36
+              ],
+              "depth": 36.25000000000001,
+              "axes": [
+                2
+              ],
+              "point": [
+                30.145833333333336,
+                22.270833333333336,
+                -16.166666666666664
+              ]
+            }
+          ],
+          "owner_hits": [
+            {
+              "sample": [
+                -7,
+                -84,
+                38
+              ],
+              "depth": 37.4375,
+              "axes": [
+                1
+              ],
+              "point": [
+                30.541666666666664,
+                22.666666666666664,
+                -15.770833333333334
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "nearest_exposed_face": {
+      "pixel": [
+        1249,
+        550
+      ],
+      "iso": [
+        -7.625,
+        -84.75
+      ],
+      "classification": "nearest_exposed_face",
+      "normal_matches_nearest": true,
+      "possible_owners": [
+        {
+          "classification": "nearest_exposed_face",
+          "candidate_sample": [
+            -7,
+            -84,
+            38
+          ],
+          "published_face": 2,
+          "candidate_half": 0,
+          "normal_matches_nearest": true,
+          "nearest": [
+            {
+              "sample": [
+                -7,
+                -84,
+                38
+              ],
+              "depth": 37.25,
+              "axes": [
+                2
+              ],
+              "point": [
+                30.354166666666664,
+                22.729166666666664,
+                -15.833333333333334
+              ]
+            }
+          ],
+          "owner_hits": [
+            {
+              "sample": [
+                -7,
+                -84,
+                38
+              ],
+              "depth": 37.25,
+              "axes": [
+                2
+              ],
+              "point": [
+                30.354166666666664,
+                22.729166666666664,
+                -15.833333333333334
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "publisher_face_occluded": {
+      "pixel": [
+        1251,
+        550
+      ],
+      "iso": [
+        -7.125,
+        -84.75
+      ],
+      "classification": "publisher_face_occluded",
+      "normal_matches_nearest": true,
+      "possible_owners": [
+        {
+          "classification": "publisher_face_occluded",
+          "candidate_sample": [
+            -7,
+            -84,
+            38
+          ],
+          "published_face": 2,
+          "candidate_half": 0,
+          "normal_matches_nearest": true,
+          "nearest": [
+            {
+              "sample": [
+                -7,
+                -83,
+                36
+              ],
+              "depth": 36.25000000000001,
+              "axes": [
+                2
+              ],
+              "point": [
+                29.770833333333336,
+                22.645833333333336,
+                -16.166666666666664
+              ]
+            }
+          ],
+          "owner_hits": [
+            {
+              "sample": [
+                -7,
+                -84,
+                38
+              ],
+              "depth": 37.25,
+              "axes": [
+                2
+              ],
+              "point": [
+                30.104166666666664,
+                22.979166666666664,
+                -15.833333333333334
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "owner_ambiguous": {
+      "pixel": [
+        1248,
+        552
+      ],
+      "iso": [
+        -7.875,
+        -83.75
+      ],
+      "classification": "owner_ambiguous",
+      "normal_matches_nearest": true,
+      "possible_owners": [
+        {
+          "classification": "publisher_face_occluded",
+          "candidate_sample": [
+            -8,
+            -83,
+            36
+          ],
+          "published_face": 2,
+          "candidate_half": 1,
+          "normal_matches_nearest": true,
+          "nearest": [
+            {
+              "sample": [
+                -8,
+                -82,
+                34
+              ],
+              "depth": 34.25,
+              "axes": [
+                2
+              ],
+              "point": [
+                29.3125,
+                21.4375,
+                -16.5
+              ]
+            }
+          ],
+          "owner_hits": [
+            {
+              "sample": [
+                -8,
+                -83,
+                36
+              ],
+              "depth": 35.250000000000014,
+              "axes": [
+                2
+              ],
+              "point": [
+                29.645833333333336,
+                21.77083333333334,
+                -16.166666666666664
+              ]
+            }
+          ]
+        },
+        {
+          "classification": "publisher_face_not_on_ray",
+          "candidate_sample": [
+            -7,
+            -83,
+            36
+          ],
+          "published_face": 2,
+          "candidate_half": 0,
+          "normal_matches_nearest": true,
+          "nearest": [
+            {
+              "sample": [
+                -8,
+                -82,
+                34
+              ],
+              "depth": 34.25,
+              "axes": [
+                2
+              ],
+              "point": [
+                29.3125,
+                21.4375,
+                -16.5
+              ]
+            }
+          ],
+          "owner_hits": [
+            {
+              "sample": [
+                -7,
+                -83,
+                36
+              ],
+              "depth": 35.43749999999999,
+              "axes": [
+                1
+              ],
+              "point": [
+                29.70833333333333,
+                21.833333333333332,
+                -16.10416666666667
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "normal_differs_from_nearest": {
+      "pixel": [
+        1253,
+        569
+      ],
+      "iso": [
+        -6.625,
+        -75.25
+      ],
+      "classification": "publisher_face_not_on_ray",
+      "normal_matches_nearest": false,
+      "possible_owners": [
+        {
+          "classification": "publisher_face_not_on_ray",
+          "candidate_sample": [
+            -7,
+            -75,
+            26
+          ],
+          "published_face": 2,
+          "candidate_half": 1,
+          "normal_matches_nearest": false,
+          "nearest": [
+            {
+              "sample": [
+                -7,
+                -75,
+                26
+              ],
+              "depth": 24.937500000000007,
+              "axes": [
+                0
+              ],
+              "point": [
+                24.166666666666668,
+                17.541666666666668,
+                -16.77083333333333
+              ]
+            }
+          ],
+          "owner_hits": [
+            {
+              "sample": [
+                -7,
+                -75,
+                26
+              ],
+              "depth": 24.937500000000007,
+              "axes": [
+                0
+              ],
+              "point": [
+                24.166666666666668,
+                17.541666666666668,
+                -16.77083333333333
+              ]
+            }
+          ]
+        },
+        {
+          "classification": "publisher_face_not_on_ray",
+          "candidate_sample": [
+            -6,
+            -75,
+            26
+          ],
+          "published_face": 2,
+          "candidate_half": 0,
+          "normal_matches_nearest": false,
+          "nearest": [
+            {
+              "sample": [
+                -7,
+                -75,
+                26
+              ],
+              "depth": 24.937500000000007,
+              "axes": [
+                0
+              ],
+              "point": [
+                24.166666666666668,
+                17.541666666666668,
+                -16.77083333333333
+              ]
+            }
+          ],
+          "owner_hits": [
+            {
+              "sample": [
+                -6,
+                -75,
+                26
+              ],
+              "depth": 25.312500000000007,
+              "axes": [
+                1
+              ],
+              "point": [
+                24.291666666666668,
+                17.666666666666668,
+                -16.64583333333333
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "outside_finite_union": {
+      "pixel": [
+        1253,
+        713
+      ],
+      "iso": [
+        -6.625,
+        -3.25
+      ],
+      "classification": "outside_finite_union",
+      "normal_matches_nearest": null,
+      "possible_owners": [
+        {
+          "classification": "outside_finite_union",
+          "candidate_sample": [
+            -7,
+            -5,
+            38
+          ],
+          "published_face": 0,
+          "candidate_half": 1,
+          "normal_matches_nearest": null,
+          "nearest": [],
+          "owner_hits": []
+        }
+      ]
+    }
+  },
+  "limits": [
+    "Finite unit faces at fractional samples are a representation diagnostic.",
+    "Rectangular gather is not exact triangle coverage; discrepancies are not a gate.",
+    "All equal encoded-depth owners are classified; native tile IDs are unobserved.",
+    "No continuous-torus gradient is used as a face-normal correctness oracle."
+  ],
+  "provenance": {
+    "source_revision": "f2e764f4a607b3efff5a4908d0ea2f113430e8e0",
+    "source_sha256": {
+      "engine/render/src/shaders/ir_sdf_common.glsl": "fb4f16412921743aa81f889b45a864a4e7b89e1ed921f5e6b0c7447442561958",
+      "engine/render/src/shaders/ir_iso_common.glsl": "9a4eb8a410b45761bd24ff12eb22c765745cba9101a6983a93161fc4bd2b13e3",
+      "engine/render/src/shaders/c_shapes_to_trixel_body.glsl": "196ef5107cf50b50c5d2501e96a6e9726675838d00a82290c7edc3860f0fb680",
+      "engine/render/src/shaders/metal/ir_sdf_common.metal": "d428b7ea84fb196551af4616e913d69fa4e678b2dc7523543b2f2eb6ff6d3a3c",
+      "engine/render/src/shaders/metal/ir_iso_common.metal": "ea04c296fc7c065b4b2f3caed0c88875d2e860620795e1a0fe6443f11568b1c9",
+      "engine/render/src/shaders/metal/c_shapes_to_trixel_body.metal": "b64c8935ebfda2d44566ae1a54bee4b4a4d2713b5e37b8789e06e790a42f8ff1"
+    },
+    "capture_fixture": "Assumed yaw=0, origin=0, zoom=8, subdiv=8, radii=(4,2); no AO/shadows",
+    "registration": "2560x1440 center=(1280,720), texel=(4,2), Z1=(-1,-1)",
+    "normals_path": "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/docs/pr-screenshots/codex/shape-shadow-sun-space/torus-surface-probe/normals-0.png",
+    "normals_file_sha256": "8e2ee6c991467ef3ad2fca1245eda91bfe0cdb36c799c5e70296ff8b845aa6c6"
+  },
+  "publisher_image_agreement": {
+    "matching_foreground_pixels": 151376,
+    "mismatching_foreground_pixels": 0,
+    "unexpected_foreground_pixels": 0,
+    "exact_full_image_color_counts": true,
+    "observed_colors": {
+      "(0, 0, 0)": 3535024,
+      "(128, 128, 0)": 63376,
+      "(0, 128, 128)": 59824,
+      "(128, 0, 128)": 28176
+    }
+  }
+}

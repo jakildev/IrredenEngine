@@ -1,7 +1,8 @@
 # ShapeDebug isolated floor-shadow baseline
 
 Investigation evidence for [#4274](https://github.com/jakildev/IrredenEngine/issues/4274),
-not a shadow repair or a clean-edge certification. Native Metal, Apple M4 Max,
+not a shadow repair. **The voxel edge failures below were measurement errors;
+see [the corrected framebuffer-origin results](#framebuffer-origin-correction).** Native Metal, Apple M4 Max,
 Debug, 2560×1440 framebuffer. Captures use renderer baseline
 `d1beb77d06b088a72bfa95f77e79235c89cf5951` plus the isolated floor fixture;
 each run's `capture.json` contains its exact revision, dirty patch and command.
@@ -45,14 +46,14 @@ python3 scripts/render-shape-footprint-metric.py docs/pr-screenshots/codex/4274-
 python3 -m unittest scripts.tests.test_render_shape_footprint_metric
 ```
 
-The first command must currently exit **1**: the committed baseline has real
-edge discrepancies. Without `--strict-edges`, exit 0 means the measurement
+With the framebuffer-origin correction, the first command exits **0**.
+Without `--strict-edges`, exit 0 means the measurement
 completed, not that the shadow is correct. Red oracle contours show the
 expected footprint; error images mark excess red and missing cyan. No filter
 is applied to the engine output. Mask morphology only defines measurement
 tolerance.
 
-## Measured voxel results
+## Historical voxel results before framebuffer-origin correction
 
 | Nominal yaw | Torus observed/expected area | Torus IoU | Cone observed/expected area | Cone IoU |
 |---|---:|---:|---:|---:|
@@ -65,10 +66,10 @@ tolerance.
 | 270° | 1.00336 | 0.98182 | 1.00117 | 0.97771 |
 | 315° | 0.99831 | 0.97519 | 0.99918 | 0.95964 |
 
-All sixteen fail strict edges. Full counts and actual yaws are in
+All sixteen failed the incorrectly positioned oracle. Historical counts and actual yaws are in
 `voxel-metrics.json`; none of the expected footprints clips the framebuffer.
 Area agreement rejects a gross scale-error explanation in these voxel cases,
-but does not establish correct shape or edge ownership. The sun produces
+but alone does not establish correct shape or edge ownership. The sun produces
 about 2.30 units of horizontal displacement per unit of vertical separation,
 so a large floor footprint need not imply incorrect scale.
 
@@ -121,7 +122,23 @@ and passes all 48 afterward. Fractional test pixel scales avoid exact boundary
 ownership ties between the closed slab test and half-open polygon rasterizer.
 
 Re-measuring all 16 committed voxel pairs changes six cone rows by at most
-142 expected visible pixels; the torus rows are identical. Every strict-edge
-result still fails. The table, JSON and diagnostic overlays above reflect the
+142 expected visible pixels; the torus rows are identical. At that stage every strict-edge
+result still failed. The table, JSON and diagnostic overlays above reflect the
 clipped oracle; original engine screenshots and capture provenance are unchanged.
 This correction is measurement tooling only, not a renderer improvement.
+
+## Framebuffer-origin correction
+
+The Z1 framebuffer projection places world zero one canvas texel before the
+image center: `(width/2 - scale.x/subdivisions, height/2 - scale.y/subdivisions)`.
+The original oracle used the image center. At this fixture's scale that was a
+four-pixel horizontal and two-pixel vertical displacement, enough to report
+false edge failures in otherwise correct voxel projections.
+
+Re-measuring these unchanged native images with the corrected origin passes
+**all 16 strict-edge checks**, with zero missing/excess outside the one-pixel
+boundary band. Torus IoU is 0.99472–0.99752 and cone IoU is 0.99194–0.99594.
+[Corrected results](../shape-shadow-sun-space/voxel-baseline-corrected.json)
+supersede the historical metrics and diagnostic overlays above. The original
+screenshots, hashes and provenance remain unchanged. The cone and torus voxel
+footprints in these captures do not need a renderer repair.

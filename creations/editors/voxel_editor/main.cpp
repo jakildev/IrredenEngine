@@ -64,6 +64,7 @@
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
+#include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
 #include <irreden/render/systems/system_entity_canvas_to_framebuffer.hpp>
 #include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
@@ -209,9 +210,12 @@ struct UndoEdit {
 struct UndoRecord {
     std::vector<UndoEdit> edits_;
     std::vector<IREntity::EntityId> createdParts_;
+    std::optional<RemovedEditorPart> removedPart_;
 
     std::size_t byteSize() const {
-        return sizeof(UndoEdit) * edits_.size() + sizeof(IREntity::EntityId) * createdParts_.size();
+        return sizeof(UndoEdit) * edits_.size() +
+               sizeof(IREntity::EntityId) * createdParts_.size() +
+               (removedPart_ ? removedPart_->byteSize() : 0);
     }
 };
 
@@ -985,6 +989,7 @@ const std::filesystem::file_time_type g_runStartFileTime =
 bool g_entitySceneMode = false;
 IREntity::EntityId g_partsPanel = IREntity::kNullEntity;
 IREntity::EntityId g_partsList = IREntity::kNullEntity;
+IREntity::EntityId g_partRemoveButton = IREntity::kNullEntity;
 std::vector<const EditorPart *> g_rotationGroupScratch;
 std::vector<C_VoxelSetNew *> g_rotationSetScratch;
 IREntity::EntityId g_arrayPanel = IREntity::kNullEntity;
@@ -1056,35 +1061,22 @@ void stepLodTierPin(int delta) {
 IREntity::EntityId g_partModeDropdown = IREntity::kNullEntity;
 int g_modePreviewBaseCanvasCount = 0;
 
-int rotationModeIndex(IRComponents::RotationMode mode) {
-    switch (mode) {
-    case IRComponents::RotationMode::GRID:
-        return 0;
-    case IRComponents::RotationMode::DETACHED:
-        return 1;
-    case IRComponents::RotationMode::DETACHED_REVOXELIZE:
-        return 2;
-    }
-    return 0;
+// Whether @p part may enter DETACHED_REVOXELIZE: the resample rotates about
+// the set's local origin, so the set's box has to be centred on it.
+bool partCanRevoxelize(const EditorPart &part) {
+    return part.kind_ == EditorPartKind::VOXEL_SET &&
+           voxelSetIsCentered(IREntity::getComponent<C_VoxelSetNew>(part.entity_));
 }
 
-IRComponents::RotationMode rotationModeFromIndex(int index) {
-    switch (index) {
-    case 1:
-        return IRComponents::RotationMode::DETACHED;
-    case 2:
-        return IRComponents::RotationMode::DETACHED_REVOXELIZE;
-    default:
-        return IRComponents::RotationMode::GRID;
-    }
-}
-
-IRComponents::RotationMode nextRotationMode(IRComponents::RotationMode mode) {
-    switch (mode) {
+// The mode M takes @p part to. A part that cannot re-voxelize cycles GRID,
+// DETACHED, GRID.
+IRComponents::RotationMode nextRotationMode(const EditorPart &part) {
+    switch (part.mode_) {
     case IRComponents::RotationMode::GRID:
         return IRComponents::RotationMode::DETACHED;
     case IRComponents::RotationMode::DETACHED:
-        return IRComponents::RotationMode::DETACHED_REVOXELIZE;
+        return partCanRevoxelize(part) ? IRComponents::RotationMode::DETACHED_REVOXELIZE
+                                       : IRComponents::RotationMode::GRID;
     case IRComponents::RotationMode::DETACHED_REVOXELIZE:
         return IRComponents::RotationMode::GRID;
     }
@@ -1098,7 +1090,7 @@ void syncPartModeDropdown() {
     const EditorPart *part = g_entityScene.selectedPart();
     IRPrefab::Widget::setDropdownSelectedIndex(
         g_partModeDropdown,
-        part != nullptr ? rotationModeIndex(part->mode_) : 0
+        part != nullptr ? partModeRow(part->mode_) : 0
     );
 }
 
@@ -1130,18 +1122,21 @@ void createModePreviewTwin() {
     transform.translation_.x += static_cast<float>(source.size_.x * 2);
     const IREntity::EntityId preview = IREntity::createEntity(
         transform,
-        IRPrefab::DenseVoxel::toComponent(dense),
+        IRPrefab::DenseVoxel::toComponent(dense, source.anchor_),
         C_RotationMode{RotationMode::GRID},
         C_EditorReference{}
     );
     IREntity::setParent(preview, g_entityScene.root());
     g_entityScene.setPreviewEntity(preview);
-    stageRotationMode(preview, nextRotationMode(part->mode_));
+    stageRotationMode(preview, nextRotationMode(*part));
 }
 
+// A request the part cannot take leaves its mode as it was and re-syncs the
+// dropdown to it.
 void setSelectedPartRotationMode(IRComponents::RotationMode mode) {
     EditorPart *part = g_entityScene.selectedPart();
-    if (part == nullptr || part->kind_ != EditorPartKind::VOXEL_SET || part->mode_ == mode) {
+    if (part == nullptr || part->kind_ != EditorPartKind::VOXEL_SET || part->mode_ == mode ||
+        (mode == IRComponents::RotationMode::DETACHED_REVOXELIZE && !partCanRevoxelize(*part))) {
         syncPartModeDropdown();
         return;
     }
@@ -1161,7 +1156,7 @@ void setSelectedPartRotationMode(IRComponents::RotationMode mode) {
 void cycleSelectedPartRotationMode() {
     const EditorPart *part = g_entityScene.selectedPart();
     if (part != nullptr) {
-        setSelectedPartRotationMode(nextRotationMode(part->mode_));
+        setSelectedPartRotationMode(nextRotationMode(*part));
     }
 }
 
@@ -1268,6 +1263,9 @@ void selectEditorPart(int index, bool createGizmos = true) {
         }
         IRPrefab::Widget::setListSelectedIndex(g_partsList, g_entityScene.selectedIndex());
     }
+    if (g_partRemoveButton != IREntity::kNullEntity) {
+        IRPrefab::Widget::setDisabled(g_partRemoveButton, selected == IREntity::kNullEntity);
+    }
     syncLodBandSliders();
     syncPartModeDropdown();
     reseatEditorMirrorAxes();
@@ -1292,7 +1290,8 @@ void addEditorVoxelPart() {
         g_entityScene.begin();
     }
     const ivec3 size = nextPartSize();
-    const IREntity::EntityId part = g_entityScene.addVoxelPart(size, deriveSceneOrigin(size));
+    const IREntity::EntityId part =
+        g_entityScene.addVoxelPart(size, derivePartPivot(size), EntityAnchor::CENTER);
     auto &set = IREntity::getComponent<C_VoxelSetNew>(part);
     set.deactivateAll();
     selectEditorPart(g_entityScene.selectedIndex());
@@ -1370,18 +1369,36 @@ void addEditorShapePart() {
     selectEditorPart(g_entityScene.selectedIndex());
 }
 
+void pushUndoRecord(UndoRecord record) {
+    g_editor.undoTotalBytes_ += record.byteSize();
+    g_editor.undoRecords_.push_back(std::move(record));
+    while (g_editor.undoTotalBytes_ > kUndoByteBudget && g_editor.undoRecords_.size() > 1) {
+        g_editor.undoTotalBytes_ -= g_editor.undoRecords_.front().byteSize();
+        g_editor.undoRecords_.pop_front();
+    }
+}
+
+void removeSelectedPart() {
+    if (!g_entitySceneMode || g_entityScene.selectedPart() == nullptr) {
+        return;
+    }
+    std::optional<RemovedEditorPart> removed = g_entityScene.removeSelectedPart();
+    if (!removed) {
+        return;
+    }
+    UndoRecord record;
+    record.removedPart_ = std::move(removed);
+    pushUndoRecord(std::move(record));
+    selectEditorPart(g_entityScene.selectedIndex());
+}
+
 void commitPartCreation(std::vector<IREntity::EntityId> created) {
     if (created.empty()) {
         return;
     }
     UndoRecord record;
     record.createdParts_ = std::move(created);
-    g_editor.undoTotalBytes_ += record.byteSize();
-    g_editor.undoRecords_.push_back(std::move(record));
-    while (g_editor.undoTotalBytes_ > kUndoByteBudget && !g_editor.undoRecords_.empty()) {
-        g_editor.undoTotalBytes_ -= g_editor.undoRecords_.front().byteSize();
-        g_editor.undoRecords_.pop_front();
-    }
+    pushUndoRecord(std::move(record));
     selectEditorPart(g_entityScene.selectedIndex());
 }
 
@@ -1645,21 +1662,39 @@ void commitStroke(bool derivedStateAlreadySynced = false) {
             }
         }
     }
-    g_editor.undoTotalBytes_ += g_editor.pendingStroke_.byteSize();
-    g_editor.undoRecords_.push_back(std::move(g_editor.pendingStroke_));
+    pushUndoRecord(std::move(g_editor.pendingStroke_));
     g_editor.pendingStroke_.edits_.clear();
     g_editor.pendingStroke_.edits_.reserve(kUndoStrokeReserve);
-
-    // Whole-stroke eviction from the front. Per-record eviction
-    // would split a stroke; Ctrl-Z partway through a half-evicted
-    // stroke would only restore part of it.
-    while (g_editor.undoTotalBytes_ > kUndoByteBudget && !g_editor.undoRecords_.empty()) {
-        g_editor.undoTotalBytes_ -= g_editor.undoRecords_.front().byteSize();
-        g_editor.undoRecords_.pop_front();
-    }
     for (IREntity::EntityId entity : touchedSets) {
         IREntity::getComponent<C_VoxelSetNew>(entity).resyncAfterRawEdits();
     }
+}
+
+void remapUndoRecordEntity(
+    UndoRecord &record, IREntity::EntityId removed, IREntity::EntityId restored
+) {
+    for (UndoEdit &edit : record.edits_) {
+        if (edit.voxelSet_ == removed) {
+            edit.voxelSet_ = restored;
+        }
+    }
+    for (IREntity::EntityId &created : record.createdParts_) {
+        if (created == removed) {
+            created = restored;
+        }
+    }
+}
+
+void remapUndoEntity(IREntity::EntityId removed, IREntity::EntityId restored) {
+    for (UndoRecord &record : g_editor.undoRecords_) {
+        remapUndoRecordEntity(record, removed, restored);
+    }
+    for (std::deque<UndoRecord> &records : g_editor.perFrameUndoStacks_) {
+        for (UndoRecord &record : records) {
+            remapUndoRecordEntity(record, removed, restored);
+        }
+    }
+    remapUndoRecordEntity(g_editor.pendingStroke_, removed, restored);
 }
 
 void undoOne() {
@@ -1669,20 +1704,31 @@ void undoOne() {
     UndoRecord rec = std::move(g_editor.undoRecords_.back());
     g_editor.undoRecords_.pop_back();
     g_editor.undoTotalBytes_ -= rec.byteSize();
+    if (rec.removedPart_) {
+        const IREntity::EntityId removed = rec.removedPart_->part_.entity_;
+        const EntitySceneRestoreResult restored =
+            g_entityScene.restorePart(g_moduleHost.script(), *rec.removedPart_);
+        if (!restored.ok()) {
+            IR_LOG_ERROR("Part restore failed: {}", restored.error_);
+            pushUndoRecord(std::move(rec));
+            return;
+        }
+        remapUndoEntity(removed, restored.entity_);
+        selectEditorPart(g_entityScene.selectedIndex());
+        return;
+    }
     if (!rec.createdParts_.empty()) {
         g_entityScene.removeParts(rec.createdParts_);
         selectEditorPart(g_entityScene.selectedIndex());
     }
     // Replay in reverse so overlapping edits inside a stroke restore
     // in last-write-wins order — same property the forward edit chain
-    // produced when authoring. Voxel-set entities are allocated once
-    // in initEntities and live for the session; there is no teardown
-    // path, so the getComponent lookup below assumes the set is alive
-    // without an extra liveness check. A future refactor that adds
-    // entity removal must guard this loop.
+    // produced when authoring.
     std::vector<IREntity::EntityId> touchedSets;
     for (auto it = rec.edits_.rbegin(); it != rec.edits_.rend(); ++it) {
-        // editable set lives for the session — no teardown path
+        if (!IREntity::entityExists(it->voxelSet_)) {
+            continue;
+        }
         auto &set = IREntity::getComponent<C_VoxelSetNew>(it->voxelSet_);
         const std::size_t flat =
             static_cast<std::size_t>(IRMath::index3DtoIndex1D(it->localIdx_, set.size_));
@@ -1694,9 +1740,18 @@ void undoOne() {
         }
     }
     for (auto id : touchedSets) {
+        if (!IREntity::entityExists(id)) {
+            continue;
+        }
         auto &set = IREntity::getComponent<C_VoxelSetNew>(id);
         set.resyncAfterRawEdits();
     }
+}
+
+// World cell of `set`'s cell (0,0,0). A set's translation is its anchor, not
+// its minimum corner, so every world-to-cell conversion goes through here.
+ivec3 voxelSetCellOrigin(const C_VoxelSetNew &set, const C_WorldTransform &worldTransform) {
+    return IRMath::roundVec3HalfUp(worldTransform.translation_ + voxelSetLocalOrigin(set));
 }
 
 // Computes the local index inside `set` for a world voxel position.
@@ -1712,8 +1767,7 @@ bool worldVoxelToLocal(
     if (set.numVoxels_ <= 0 || set.voxels_.empty()) {
         return false;
     }
-    const ivec3 origin = IRMath::roundVec3HalfUp(worldTransform.translation_);
-    outLocal = worldVoxel - origin;
+    outLocal = worldVoxel - voxelSetCellOrigin(set, worldTransform);
     if (outLocal.x < 0 || outLocal.x >= set.size_.x || outLocal.y < 0 ||
         outLocal.y >= set.size_.y || outLocal.z < 0 || outLocal.z >= set.size_.z) {
         return false;
@@ -1833,8 +1887,7 @@ void applyFillFace(
     if (fixedAxis < 0)
         return;
 
-    const ivec3 origin = IRMath::roundVec3HalfUp(gpos.translation_);
-    const ivec3 startLocal = worldHit - origin;
+    const ivec3 startLocal = worldHit - voxelSetCellOrigin(set, gpos);
     if (startLocal.x < 0 || startLocal.x >= set.size_.x || startLocal.y < 0 ||
         startLocal.y >= set.size_.y || startLocal.z < 0 || startLocal.z >= set.size_.z)
         return;
@@ -2963,6 +3016,18 @@ bool evaluatePartCountCheck(const void *context, std::string &actual) {
     return count == check.expected_;
 }
 
+bool evaluatePartIdCheck(const void *context, std::string &actual) {
+    const PartIdCheck &check = *static_cast<const PartIdCheck *>(context);
+    if (check.partIndex_ < 0 ||
+        check.partIndex_ >= static_cast<int>(g_entityScene.parts().size())) {
+        actual = "part index out of range";
+        return false;
+    }
+    const std::string &id = g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)].id_;
+    actual = "id=" + id + " want=" + check.expected_;
+    return id == check.expected_;
+}
+
 bool evaluatePartAuthoredCountCheck(const void *context, std::string &actual) {
     const PartAuthoredCountCheck &check = *static_cast<const PartAuthoredCountCheck *>(context);
     if (check.partIndex_ < 0 ||
@@ -3022,11 +3087,43 @@ bool evaluateRotationModeCheck(const void *context, std::string &actual) {
         canvasSizeMatches = canvas && part.canvasSize_.x > 0 && part.canvasSize_.y > 0 &&
                             part.canvasSize_ == canvas.value()->canvasSize_;
     }
-    actual = "mode=" + std::to_string(rotationModeIndex(mode)) +
-             " want=" + std::to_string(rotationModeIndex(check.expected_)) +
+    actual = "mode=" + std::to_string(partModeRow(mode)) +
+             " want=" + std::to_string(partModeRow(check.expected_)) +
              " stored_canvas=" + std::to_string(part.canvasSize_.x) + "x" +
              std::to_string(part.canvasSize_.y);
     return mode == check.expected_ && canvasSizeMatches;
+}
+
+bool evaluatePartAnchorCheck(const void *context, std::string &actual) {
+    const PartAnchorCheck &check = *static_cast<const PartAnchorCheck *>(context);
+    if (check.partIndex_ < 0 ||
+        check.partIndex_ >= static_cast<int>(g_entityScene.parts().size())) {
+        actual = "part index out of range";
+        return false;
+    }
+    const EditorPart &part = g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)];
+    if (part.kind_ != EditorPartKind::VOXEL_SET) {
+        actual = "part is not a voxel set";
+        return false;
+    }
+    const EntityAnchor anchor = IREntity::getComponent<C_VoxelSetNew>(part.entity_).anchor_;
+    actual = "anchor=" + std::to_string(static_cast<int>(anchor)) +
+             " want=" + std::to_string(static_cast<int>(check.expected_));
+    return anchor == check.expected_;
+}
+
+bool evaluatePartModeDropdownCheck(const void *context, std::string &actual) {
+    const PartModeDropdownCheck &check = *static_cast<const PartModeDropdownCheck *>(context);
+    if (g_partModeDropdown == IREntity::kNullEntity) {
+        actual = "no mode dropdown";
+        return false;
+    }
+    const int row = IRPrefab::Widget::dropdownSelectedIndex(g_partModeDropdown);
+    const bool open = IRPrefab::Widget::isDropdownOpen(g_partModeDropdown);
+    actual = "row=" + std::to_string(row) +
+             " want=" + std::to_string(partModeRow(check.expected_)) +
+             " open=" + (open ? "yes" : "no");
+    return row == partModeRow(check.expected_) && !open;
 }
 
 bool evaluateEditorInputCheck(const void *context, std::string &actual) {
@@ -3234,7 +3331,7 @@ bool evaluateManifestCheck(const void *context, std::string &actual) {
     const std::string text{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
     const bool found = text.find(check.text_) != std::string::npos;
     actual = std::string(found ? "found" : "missing") + " in " + path.string();
-    return found;
+    return found == check.expectContains_;
 }
 
 bool evaluateComponentCheck(const void *context, std::string &actual) {
@@ -3250,9 +3347,9 @@ bool evaluateComponentCheck(const void *context, std::string &actual) {
     return false;
 }
 
-// Counts the label widgets positioned inside the docked panel's rectangle —
+// Collects the label widgets positioned inside the docked panel's rectangle —
 // the panel's build function places them, so there is no other handle to
-// them.
+// them — and passes when any of them reads check.label_.
 bool evaluatePanelLabelCheck(const void *context, std::string &actual) {
     const PanelLabelCheck &check = *static_cast<const PanelLabelCheck *>(context);
     const std::vector<std::string> &names = g_moduleHost.panelNames();
@@ -3265,16 +3362,18 @@ bool evaluatePanelLabelCheck(const void *context, std::string &actual) {
     const ivec2 lo = g_dockedModulePanels[index].pos_;
     const ivec2 hi = lo + kModulePanelSize;
     int labels = 0;
-    std::string text;
+    bool found = false;
+    std::string texts;
     IREntity::forEachComponent<C_WidgetLabel>([&](IREntity::EntityId &id, C_WidgetLabel &label) {
         const ivec2 pos = IREntity::getComponent<C_GuiPosition>(id).pos_;
         if (pos.x < lo.x || pos.y < lo.y || pos.x >= hi.x || pos.y >= hi.y)
             return;
         ++labels;
-        text = label.text_;
+        found = found || label.text_ == check.label_;
+        texts += (texts.empty() ? "\"" : ",\"") + label.text_ + "\"";
     });
-    actual = "labels=" + std::to_string(labels) + " text=\"" + text + "\"";
-    return labels == 1 && text == check.label_;
+    actual = "labels=" + std::to_string(labels) + " texts=[" + texts + "]";
+    return found;
 }
 
 // Reads the component's field straight from the target's live entity row, so
@@ -3332,9 +3431,10 @@ Session::ComponentAttachSpec resolveComponentAttachSpec(Session::Id id) {
                                  : keyed ? "componentFieldKey"
                                          : "componentAttach";
     Session::ComponentAttachSpec spec;
-    spec.session_ = paged   ? "component_field_page"
-                    : keyed ? "component_field_key"
-                            : "component_attach";
+    spec.session_ = paged                            ? "component_field_page"
+                    : keyed                          ? "component_field_key"
+                    : id == Session::Id::REMOVE_PART ? "remove_part"
+                                                     : "component_attach";
     if (!g_moduleHost.loaded()) {
         spec.errors_.push_back(spec.session_ + " needs --module <dir>");
         return spec;
@@ -3567,7 +3667,8 @@ int main(int argc, char **argv) {
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
         "face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | tier_scrub | "
-        "radial_array | linear_array | nway_symmetry | mode_preview | mode_preview_shots | "
+        "remove_part | radial_array | linear_array | nway_symmetry | mode_preview | "
+        "mode_preview_shots | part_mode_cycle | corner_part_revox_refused | "
         "parts_scroll | module_loaded | component_attach | component_field_page | "
         "component_field_key | text_input_command_capture | part_sizes",
         {"none",
@@ -3580,12 +3681,15 @@ int main(int argc, char **argv) {
          "bird",
          "tree",
          "parts_roundtrip",
+         "remove_part",
          "tier_scrub",
          "radial_array",
          "linear_array",
          "nway_symmetry",
          "mode_preview",
          "mode_preview_shots",
+         "part_mode_cycle",
+         "corner_part_revox_refused",
          "parts_scroll",
          "module_loaded",
          "component_attach",
@@ -3600,7 +3704,14 @@ int main(int argc, char **argv) {
         "load a creation module: runs <dir>/init.lua in the editor's Lua VM",
         ""
     );
+    IREngine::args()
+        .string("--module-session", "replay an authoring session registered by --module", "");
     IREngine::init(argc, argv);
+    const auto exitCleanly = [](int code) {
+        IRWindow::closeWindow();
+        IREngine::gameLoop();
+        return code;
+    };
     {
         const std::vector<float> &dims = IREngine::args().getFloats("--scene-size");
         if (dims.size() == 3 && dims[0] >= 1.0f && dims[1] >= 1.0f && dims[2] >= 1.0f) {
@@ -3625,46 +3736,78 @@ int main(int argc, char **argv) {
     // A module loads before the session builds: module_loaded resolves its
     // expectations against what the module registered.
     const std::string moduleDir = IREngine::args().getString("--module");
+    const std::string moduleSession = IREngine::args().getString("--module-session");
+    const std::string guiSession = IREngine::args().getEnum("--gui-session");
+    if (!moduleSession.empty() && moduleDir.empty()) {
+        IR_LOG_ERROR("--module-session requires --module <dir>");
+        return exitCleanly(2);
+    }
+    if (!moduleSession.empty() && guiSession != "none") {
+        IR_LOG_ERROR("--module-session cannot be combined with --gui-session {}", guiSession);
+        return exitCleanly(2);
+    }
     if (!moduleDir.empty()) {
         std::string error;
         if (!IRVoxelEditor::g_moduleHost.load(moduleDir, error)) {
             IR_LOG_ERROR("Module load failed: {}", error);
-            return 2;
+            return exitCleanly(2);
         }
         IR_LOG_INFO(
-            "module_loaded dir={} components={} recipes={} panels={}",
+            "module_loaded dir={} components={} recipes={} panels={} sessions={}",
             moduleDir,
             IRVoxelEditor::g_moduleHost.componentCount(),
             IRVoxelEditor::g_moduleHost.recipes().size(),
-            IRVoxelEditor::g_moduleHost.panelNames().size()
+            IRVoxelEditor::g_moduleHost.panelNames().size(),
+            IRVoxelEditor::g_moduleHost.sessionNames().size()
         );
+    }
+    if (!moduleSession.empty()) {
+        const std::vector<std::string> &names = IRVoxelEditor::g_moduleHost.sessionNames();
+        if (std::find(names.begin(), names.end(), moduleSession) == names.end()) {
+            std::string available;
+            for (const std::string &name : names)
+                available += (available.empty() ? "" : ", ") + name;
+            IR_LOG_ERROR(
+                "Unknown --module-session '{}'; registered module sessions: {}",
+                moduleSession,
+                available.empty() ? "(none)" : available
+            );
+            return exitCleanly(2);
+        }
     }
     // Build the session recipe before the systems are wired — initSystems hands
     // its shot table to the harness. A recipe that cannot aim one of its
     // gestures is a hard error rather than a partial replay: a session that
     // silently drops an op authors the wrong entity and saves it anyway.
-    IRVoxelEditor::g_sessionId =
-        IRVoxelEditor::Session::idFromName(IREngine::args().getEnum("--gui-session"));
+    IRVoxelEditor::g_sessionId = moduleSession.empty()
+                                     ? IRVoxelEditor::Session::idFromName(guiSession)
+                                     : IRVoxelEditor::Session::Id::MODULE;
     if (IRVoxelEditor::g_sessionId != IRVoxelEditor::Session::Id::NONE) {
         const IRVoxelEditor::Session::ModuleSessionSpec moduleSpec =
             IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::MODULE_LOADED
                 ? IRVoxelEditor::resolveModuleSessionSpec()
                 : IRVoxelEditor::Session::ModuleSessionSpec{};
         const IRVoxelEditor::Session::ComponentAttachSpec componentSpec =
-            IRVoxelEditor::Session::isComponentSession(IRVoxelEditor::g_sessionId)
+            IRVoxelEditor::Session::usesComponentSpec(IRVoxelEditor::g_sessionId)
                 ? IRVoxelEditor::resolveComponentAttachSpec(IRVoxelEditor::g_sessionId)
                 : IRVoxelEditor::Session::ComponentAttachSpec{};
-        IRVoxelEditor::g_session = IRVoxelEditor::Session::build(
-            IRVoxelEditor::g_sessionId,
-            IRVoxelEditor::g_editableSceneSize,
-            IRVoxelEditor::g_editableSceneOrigin,
-            moduleSpec,
-            componentSpec
-        );
+        IRVoxelEditor::g_session = IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::MODULE
+                                       ? IRVoxelEditor::g_moduleHost.buildSession(
+                                             moduleSession,
+                                             IRVoxelEditor::g_editableSceneSize,
+                                             IRVoxelEditor::g_editableSceneOrigin
+                                         )
+                                       : IRVoxelEditor::Session::build(
+                                             IRVoxelEditor::g_sessionId,
+                                             IRVoxelEditor::g_editableSceneSize,
+                                             IRVoxelEditor::g_editableSceneOrigin,
+                                             moduleSpec,
+                                             componentSpec
+                                         );
         if (!IRVoxelEditor::g_session.ok()) {
             for (const std::string &error : IRVoxelEditor::g_session.errors_)
                 IR_LOG_ERROR("Session recipe error: {}", error);
-            return 1;
+            return exitCleanly(1);
         }
         // Resolve the shot table only now that the recipe sits in the storage
         // it keeps for the whole run — the shots point into its segments.
@@ -3680,7 +3823,7 @@ int main(int argc, char **argv) {
     initCommands();
     initEntities();
     if (!IRVoxelEditor::initModuleUi())
-        return 2;
+        return exitCleanly(2);
     IRVoxelEditor::initComponentsUi();
     IREngine::gameLoop();
     return 0;
@@ -4410,9 +4553,13 @@ void initSystems() {
             }
             if (g_entitySceneMode && g_partModeDropdown != IREntity::kNullEntity &&
                 IRPrefab::Widget::wasClicked(g_partModeDropdown)) {
-                setSelectedPartRotationMode(rotationModeFromIndex(
-                    IRPrefab::Widget::dropdownSelectedIndex(g_partModeDropdown)
-                ));
+                setSelectedPartRotationMode(
+                    partModeFromRow(IRPrefab::Widget::dropdownSelectedIndex(g_partModeDropdown))
+                );
+            }
+            if (g_entitySceneMode && g_partRemoveButton != IREntity::kNullEntity &&
+                IRPrefab::Widget::wasClicked(g_partRemoveButton)) {
+                removeSelectedPart();
             }
             if (g_layerList == IREntity::kNullEntity)
                 return;
@@ -4834,6 +4981,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
+            IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>(),
         }
     );
 
@@ -5526,6 +5674,17 @@ void initCommands() {
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonDelete,
+        []() { IRVoxelEditor::removeSelectedPart(); },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "REMOVE PART",
+        "REMOVE THE SELECTED ENTITY-SCENE PART"
+    );
+
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonTab,
         []() { IRVoxelEditor::selectRelativeEditorPart(1); },
         IRInput::kModifierNone,
@@ -6110,13 +6269,20 @@ void initEntities() {
         -1,
         IRVoxelEditor::kPartsListItemHeight
     );
+    // Item order is partModeRow's.
     IRVoxelEditor::g_partModeDropdown = IRPrefab::Widget::makeDropdown(
-        ivec2(IRVoxelEditor::kPartsPanelPos.x + 4, IRVoxelEditor::kPartsPanelPos.y + 66),
-        ivec2(112, 18),
+        IRVoxelEditor::kPartModeDropdownPos,
+        IRVoxelEditor::kPartModeDropdownSize,
         {"GRID", "DETACHED", "DETACHED REVOX"},
         0,
-        16
+        IRVoxelEditor::kPartModeDropdownItemHeight
     );
+    IRVoxelEditor::g_partRemoveButton = IRPrefab::Widget::makeButton(
+        IRVoxelEditor::kPartRemoveButtonPos,
+        IRVoxelEditor::kPartRemoveButtonSize,
+        "REMOVE"
+    );
+    IRPrefab::Widget::setDisabled(IRVoxelEditor::g_partRemoveButton, true);
 
     IRVoxelEditor::g_lodPanel = IRPrefab::Widget::makePanel(
         IRVoxelEditor::kLodPanelPos,
@@ -6456,9 +6622,12 @@ void initEntities() {
         IRVoxelEditor::g_entitySceneMode = true;
         IRVoxelEditor::g_entityScene.begin();
         constexpr ivec3 kPreviewSize{6, 6, 6};
-        const IREntity::EntityId part =
-            IRVoxelEditor::g_entityScene
-                .addVoxelPart(kPreviewSize, vec3(0.0f), Color{150, 205, 235, 255}, true);
+        const IREntity::EntityId part = IRVoxelEditor::g_entityScene.addVoxelPart(
+            kPreviewSize,
+            vec3(0.0f),
+            EntityAnchor::CENTER,
+            Color{150, 205, 235, 255}
+        );
         auto &set = IREntity::getComponent<C_VoxelSetNew>(part);
         set.carve([](vec3 local) {
             return local.x >= 1.5f && local.y <= -0.5f && local.z <= 0.5f;
@@ -6468,6 +6637,21 @@ void initEntities() {
         IRVoxelEditor::selectEditorPart(0, false);
         g_editor.editableVoxelSet_ = part;
         IRVoxelEditor::g_sceneVoxelSetEntity = part;
+        IRVoxelEditor::g_modePreviewBaseCanvasCount = IRPrefab::EntityCanvas::count();
+    }
+    // No GUI gesture makes a corner-anchored part, so this session's is built
+    // here.
+    if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::CORNER_PART_REVOX_REFUSED) {
+        IREntity::destroyEntity(g_editor.editableVoxelSet_);
+        IRVoxelEditor::g_entitySceneMode = true;
+        IRVoxelEditor::g_entityScene.begin();
+        constexpr ivec3 kCornerPartSize{6, 6, 6};
+        IRVoxelEditor::g_entityScene.addVoxelPart(
+            kCornerPartSize,
+            IRVoxelEditor::deriveSceneOrigin(kCornerPartSize),
+            EntityAnchor::CORNER
+        );
+        IRVoxelEditor::selectEditorPart(0, false);
         IRVoxelEditor::g_modePreviewBaseCanvasCount = IRPrefab::EntityCanvas::count();
     }
 

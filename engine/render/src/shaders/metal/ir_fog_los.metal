@@ -8,7 +8,7 @@
 // kFogLosLevelCount / kFogLosLevelBias / kFogLosColumnEmpty /
 // kFogLosClearanceTolerance (component_canvas_fog_of_war.hpp) and
 // kFogLosDiscMargin / kFogLosRimFadeCells / kFogLosMaxMarchSteps /
-// kFogLosMarchNudge (fog_line_of_sight.hpp).
+// kFogLosMarchNudge / kFogLosFaceBias (fog_line_of_sight.hpp).
 constant int kFogLosCellsPerUnit = 2;
 constant int kFogLosFieldHalfExtent = 256;
 constant int kFogLosTextureSize = 256;
@@ -186,20 +186,44 @@ static float fogLosVisibility(
     return fogLosVisibilityFromClearance(minClearance, bandClearance, softness);
 }
 
+static int2 fogLosHalfCellOf(float2 worldXY) {
+    return int2(floor(worldXY * float(kFogLosCellsPerUnit)));
+}
+
+static float3 fogLosFacePoint(float3 pos3D, int worldFaceId, int route, int scale) {
+    if (route != kFogLosRouteCardinal) {
+        return pos3D;
+    }
+    const float3 normal = faceOutwardNormal6(worldFaceId);
+    const float3 axisMask = abs(normal);
+    const float outward = dot(normal, float3(1.0));
+    const float micro = float(scale);
+    const float coordinate = dot(pos3D, axisMask);
+    const float snapped =
+        float(roundHalfUp((coordinate - outward * kFogLosFaceSnapOffset / micro) * micro)) / micro;
+    return mix(pos3D, float3(snapped), axisMask);
+}
+
 static float3 fogLosCanonicalSample(float3 pos3D, int worldFaceId, int route, int scale) {
     if (route == kFogLosRouteAnalytic) {
         return pos3D;
     }
+    return fogLosFacePoint(pos3D, worldFaceId, route, scale) +
+        faceOutwardNormal6(worldFaceId) * kFogLosFaceBias;
+}
+
+static float3 fogLosColumnPoint(
+    float3 pos3D, int worldFaceId, int route, int scale, int cardinalIndex
+) {
     const float3 normal = faceOutwardNormal6(worldFaceId);
-    float3 canonical = pos3D;
-    if (route == kFogLosRouteCardinal) {
-        const float3 axisMask = abs(normal);
-        const float outward = dot(normal, float3(1.0));
-        const float micro = float(scale);
-        const float coordinate = dot(pos3D, axisMask);
-        const float snapped =
-            float(roundHalfUp((coordinate - outward * kFogLosFaceSnapOffset / micro) * micro)) / micro;
-        canonical = mix(pos3D, float3(snapped), axisMask);
+    const float3 inward =
+        fogLosFacePoint(pos3D, worldFaceId, route, scale) - normal * kFogLosFaceBias;
+    if (route != kFogLosRouteCardinal || normal.z != 0.0) {
+        return inward;
     }
-    return canonical + normal * kFogLosFaceBias;
+    const float3 inPlane = float3(abs(normal.y), abs(normal.x), 0.0);
+    const float micro = float(scale);
+    const float lattice = float(roundHalfUp(dot(pos3D, inPlane) * micro)) / micro;
+    const float cellSide = dot(rotateCardinalZInv(float3(1.0, 1.0, 0.0), cardinalIndex), inPlane);
+    return mix(inward, float3(lattice + cellSide * kFogLosFaceBias), inPlane);
 }

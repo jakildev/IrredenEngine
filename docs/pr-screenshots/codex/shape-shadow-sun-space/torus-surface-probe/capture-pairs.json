@@ -1,0 +1,552 @@
+{
+  "runs": [
+    {
+      "mode": "beauty",
+      "revision": "3fe9f6cd6477976473858bda30bd0d9d2b8c73c7",
+      "patch": "",
+      "command": [
+        "fleet-run",
+        "IRShapeDebug",
+        "--spin-yaw",
+        "--auto-screenshot",
+        "8",
+        "--zoom",
+        "8",
+        "--no-ao",
+        "--pivot-origin",
+        "--spin-shape",
+        "torus",
+        "--no-shadows"
+      ],
+      "clean_exit": true
+    },
+    {
+      "mode": "normals",
+      "revision": "3fe9f6cd6477976473858bda30bd0d9d2b8c73c7",
+      "patch": "",
+      "command": [
+        "fleet-run",
+        "IRShapeDebug",
+        "--spin-yaw",
+        "--auto-screenshot",
+        "8",
+        "--zoom",
+        "8",
+        "--no-ao",
+        "--pivot-origin",
+        "--spin-shape",
+        "torus",
+        "--no-shadows",
+        "--debug-overlay",
+        "normals"
+      ],
+      "clean_exit": true
+    }
+  ],
+  "pairs": [
+    {
+      "frame": 0,
+      "dimensions": [
+        2560,
+        1440
+      ],
+      "beauty_rgb_sha256": "c3e1dc8b373b80447a7cd0c45de64f18515cb23cb458994cf25f39b452a008bd",
+      "normals_rgb_sha256": "d33b11614ff94c86dcbe8a0bab20c326cd1ae1677e40c1ee5b831d12335bb7f7",
+      "color_pairs": [
+        {
+          "beauty": [
+            0,
+            0,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            0
+          ],
+          "pixels": 3535024
+        },
+        {
+          "beauty": [
+            64,
+            115,
+            141
+          ],
+          "normal": [
+            128,
+            128,
+            0
+          ],
+          "pixels": 63376
+        },
+        {
+          "beauty": [
+            40,
+            72,
+            88
+          ],
+          "normal": [
+            0,
+            128,
+            128
+          ],
+          "pixels": 59824
+        },
+        {
+          "beauty": [
+            40,
+            72,
+            88
+          ],
+          "normal": [
+            128,
+            0,
+            128
+          ],
+          "pixels": 28176
+        }
+      ]
+    },
+    {
+      "frame": 1,
+      "dimensions": [
+        2560,
+        1440
+      ],
+      "beauty_rgb_sha256": "c3e1dc8b373b80447a7cd0c45de64f18515cb23cb458994cf25f39b452a008bd",
+      "normals_rgb_sha256": "aad08f7a1cf70f46572f77f205c05d5ad568d3819599cffa6f79656e02872f81",
+      "color_pairs": [
+        {
+          "beauty": [
+            0,
+            0,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            0
+          ],
+          "pixels": 3535024
+        },
+        {
+          "beauty": [
+            64,
+            115,
+            141
+          ],
+          "normal": [
+            128,
+            128,
+            0
+          ],
+          "pixels": 63376
+        },
+        {
+          "beauty": [
+            40,
+            72,
+            88
+          ],
+          "normal": [
+            37,
+            37,
+            128
+          ],
+          "pixels": 59824
+        },
+        {
+          "beauty": [
+            40,
+            72,
+            88
+          ],
+          "normal": [
+            218,
+            37,
+            128
+          ],
+          "pixels": 28176
+        }
+      ]
+    },
+    {
+      "frame": 2,
+      "dimensions": [
+        2560,
+        1440
+      ],
+      "beauty_rgb_sha256": "d07e6a17ec8812733bd0ccb2b34084833689e67aa6a2d07f4a7a1e0d4058e059",
+      "normals_rgb_sha256": "e311271a7a778593d53ccdc2e6484988ce506a4f5437e3e41b1bf4fe28041be6",
+      "color_pairs": [
+        {
+          "beauty": [
+            0,
+            0,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            0
+          ],
+          "pixels": 3535024
+        },
+        {
+          "beauty": [
+            64,
+            115,
+            141
+          ],
+          "normal": [
+            128,
+            128,
+            0
+          ],
+          "pixels": 63376
+        },
+        {
+          "beauty": [
+            40,
+            72,
+            88
+          ],
+          "normal": [
+            128,
+            0,
+            128
+          ],
+          "pixels": 59824
+        },
+        {
+          "beauty": [
+            61,
+            110,
+            134
+          ],
+          "normal": [
+            255,
+            128,
+            128
+          ],
+          "pixels": 28176
+        }
+      ]
+    },
+    {
+      "frame": 3,
+      "dimensions": [
+        2560,
+        1440
+      ],
+      "beauty_rgb_sha256": "190f2fb7e82ceac25cd99a3d2089a2d68f8518e9129eff08685b1f3c4f8bc2c3",
+      "normals_rgb_sha256": "5c0bde6c588a97d5acc31911fe0248e131a61d92ca395f413a85beda4d939608",
+      "color_pairs": [
+        {
+          "beauty": [
+            0,
+            0,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            0
+          ],
+          "pixels": 3535024
+        },
+        {
+          "beauty": [
+            64,
+            115,
+            141
+          ],
+          "normal": [
+            128,
+            128,
+            0
+          ],
+          "pixels": 63376
+        },
+        {
+          "beauty": [
+            40,
+            72,
+            88
+          ],
+          "normal": [
+            218,
+            37,
+            128
+          ],
+          "pixels": 59824
+        },
+        {
+          "beauty": [
+            91,
+            163,
+            200
+          ],
+          "normal": [
+            218,
+            218,
+            128
+          ],
+          "pixels": 28176
+        }
+      ]
+    },
+    {
+      "frame": 4,
+      "dimensions": [
+        2560,
+        1440
+      ],
+      "beauty_rgb_sha256": "058ec9e397ed2f65420e44633f75220b65fd33b1b86cd179d59732838732ee83",
+      "normals_rgb_sha256": "15ff1a2a8c8753dc853954f11e35c47e2931abf49164b2cd9a18151df5895b2e",
+      "color_pairs": [
+        {
+          "beauty": [
+            0,
+            0,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            0
+          ],
+          "pixels": 3535024
+        },
+        {
+          "beauty": [
+            64,
+            115,
+            141
+          ],
+          "normal": [
+            128,
+            128,
+            0
+          ],
+          "pixels": 63376
+        },
+        {
+          "beauty": [
+            61,
+            110,
+            134
+          ],
+          "normal": [
+            255,
+            128,
+            128
+          ],
+          "pixels": 59824
+        },
+        {
+          "beauty": [
+            91,
+            164,
+            200
+          ],
+          "normal": [
+            128,
+            255,
+            128
+          ],
+          "pixels": 28176
+        }
+      ]
+    },
+    {
+      "frame": 5,
+      "dimensions": [
+        2560,
+        1440
+      ],
+      "beauty_rgb_sha256": "11eb95b968379558ed743875959292a575a67c851be5f0ed2bc95cc271f826e3",
+      "normals_rgb_sha256": "d0b760ba96872b3207007c3eda2e8f0805cb567f8defb0ede9e78c88a9a27328",
+      "color_pairs": [
+        {
+          "beauty": [
+            0,
+            0,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            0
+          ],
+          "pixels": 3535024
+        },
+        {
+          "beauty": [
+            64,
+            115,
+            141
+          ],
+          "normal": [
+            128,
+            128,
+            0
+          ],
+          "pixels": 63376
+        },
+        {
+          "beauty": [
+            91,
+            163,
+            200
+          ],
+          "normal": [
+            218,
+            218,
+            128
+          ],
+          "pixels": 59824
+        },
+        {
+          "beauty": [
+            61,
+            110,
+            135
+          ],
+          "normal": [
+            37,
+            218,
+            128
+          ],
+          "pixels": 28176
+        }
+      ]
+    },
+    {
+      "frame": 6,
+      "dimensions": [
+        2560,
+        1440
+      ],
+      "beauty_rgb_sha256": "bea48f80f5cad8847a91e7dd157b17f2403b1cc5dd869f71fd4888546f3a25f3",
+      "normals_rgb_sha256": "8575577a7fb493faca808a9d80f8937bf621bd34b626764990d7da2bdb766491",
+      "color_pairs": [
+        {
+          "beauty": [
+            0,
+            0,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            0
+          ],
+          "pixels": 3535024
+        },
+        {
+          "beauty": [
+            64,
+            115,
+            141
+          ],
+          "normal": [
+            128,
+            128,
+            0
+          ],
+          "pixels": 63376
+        },
+        {
+          "beauty": [
+            91,
+            164,
+            200
+          ],
+          "normal": [
+            128,
+            255,
+            128
+          ],
+          "pixels": 59824
+        },
+        {
+          "beauty": [
+            40,
+            72,
+            88
+          ],
+          "normal": [
+            0,
+            128,
+            128
+          ],
+          "pixels": 28176
+        }
+      ]
+    },
+    {
+      "frame": 7,
+      "dimensions": [
+        2560,
+        1440
+      ],
+      "beauty_rgb_sha256": "431f84d69f94405617607ffebf317a0ae4d366ac52b2afca8a6e836dfa0b6579",
+      "normals_rgb_sha256": "4c20354ee0ab1ab9778325f7946681e0813e6b8001fce1f7597dda89bf9207da",
+      "color_pairs": [
+        {
+          "beauty": [
+            0,
+            0,
+            0
+          ],
+          "normal": [
+            0,
+            0,
+            0
+          ],
+          "pixels": 3535024
+        },
+        {
+          "beauty": [
+            64,
+            115,
+            141
+          ],
+          "normal": [
+            128,
+            128,
+            0
+          ],
+          "pixels": 63376
+        },
+        {
+          "beauty": [
+            61,
+            110,
+            135
+          ],
+          "normal": [
+            37,
+            218,
+            128
+          ],
+          "pixels": 59824
+        },
+        {
+          "beauty": [
+            40,
+            72,
+            88
+          ],
+          "normal": [
+            37,
+            37,
+            128
+          ],
+          "pixels": 28176
+        }
+      ]
+    }
+  ]
+}

@@ -6,6 +6,7 @@
 #include <irreden/ir_video.hpp>
 #include <irreden/input/ir_input_types.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
+#include <irreden/common/components/entity_anchor.hpp>
 #include <irreden/render/gui_test_assertions.hpp>
 #include <irreden/render/picking.hpp>
 #include <irreden/voxel/sdf_fill.hpp>
@@ -95,7 +96,9 @@ inline constexpr int kFramesPerClickStep = 1;
 // so a capture reads clearly. A face aim resolves down to zoom 1.
 inline constexpr float kSessionZoom = 4.0f;
 
-inline constexpr int kTabWalkPresses = 64;
+// Keep this above the live focus-candidate count so the capture session proves
+// that keyboard navigation wraps the complete widget cycle.
+inline constexpr int kTabWalkPresses = 80;
 inline constexpr IRMath::ivec2 kSkeletonPanelPos{378, 342};
 inline constexpr IRMath::ivec2 kSkeletonPanelSize{120, 114};
 inline constexpr IRMath::ivec2 kJointRenameInputPos{
@@ -359,6 +362,12 @@ struct PartCountCheck {
     std::string name_;
 };
 
+struct PartIdCheck {
+    int partIndex_ = 0;
+    std::string expected_;
+    std::string name_;
+};
+
 struct PartAuthoredCountCheck {
     int partIndex_ = 0;
     int expected_ = 0;
@@ -378,6 +387,19 @@ struct CanvasCountCheck {
 
 struct RotationModeCheck {
     int partIndex_ = 0;
+    IRComponents::RotationMode expected_ = IRComponents::RotationMode::GRID;
+    std::string name_;
+};
+
+// Anchor expectation on one entity-scene voxel part: its C_VoxelSetNew::anchor_.
+struct PartAnchorCheck {
+    int partIndex_ = 0;
+    IRComponents::EntityAnchor expected_ = IRComponents::EntityAnchor::CORNER;
+    std::string name_;
+};
+
+// PART MODE dropdown expectation: it is collapsed and shows expected_'s row.
+struct PartModeDropdownCheck {
     IRComponents::RotationMode expected_ = IRComponents::RotationMode::GRID;
     std::string name_;
 };
@@ -483,11 +505,12 @@ struct LoftMaskCheck {
 // run, so a manifest left by an earlier run cannot satisfy it.
 struct ManifestCheck {
     std::string text_;
+    bool expectContains_ = true;
     std::string name_;
 };
 
-// Module-panel expectation: the docked panel named panelName_ holds exactly
-// one label, reading label_.
+// Module-panel expectation: the docked panel named panelName_ draws a
+// label reading label_.
 struct PanelLabelCheck {
     std::string panelName_;
     std::string label_;
@@ -529,10 +552,13 @@ struct Recipe {
     std::deque<OccupancyCheck> checks_;
     std::deque<PartTransformCheck> partTransformChecks_;
     std::deque<PartCountCheck> partCountChecks_;
+    std::deque<PartIdCheck> partIdChecks_;
     std::deque<PartAuthoredCountCheck> partAuthoredCountChecks_;
     std::deque<PartEditableCheck> partEditableChecks_;
     std::deque<CanvasCountCheck> canvasCountChecks_;
     std::deque<RotationModeCheck> rotationModeChecks_;
+    std::deque<PartAnchorCheck> partAnchorChecks_;
+    std::deque<PartModeDropdownCheck> partModeDropdownChecks_;
     std::deque<EditorInputCheck> editorInputChecks_;
     std::deque<PartsListCheck> partsListChecks_;
     std::deque<CameraZoomCheck> cameraZoomChecks_;
@@ -590,10 +616,13 @@ inline void resolveShots(Recipe &recipe) {
 bool evaluateOccupancyCheck(const void *context, std::string &actual);
 bool evaluatePartTransformCheck(const void *context, std::string &actual);
 bool evaluatePartCountCheck(const void *context, std::string &actual);
+bool evaluatePartIdCheck(const void *context, std::string &actual);
 bool evaluatePartAuthoredCountCheck(const void *context, std::string &actual);
 bool evaluatePartEditableCheck(const void *context, std::string &actual);
 bool evaluateCanvasCountCheck(const void *context, std::string &actual);
 bool evaluateRotationModeCheck(const void *context, std::string &actual);
+bool evaluatePartAnchorCheck(const void *context, std::string &actual);
+bool evaluatePartModeDropdownCheck(const void *context, std::string &actual);
 bool evaluateEditorInputCheck(const void *context, std::string &actual);
 
 // Read one PartsListCheck / CameraZoomCheck. Defined in main.cpp, where the
@@ -647,6 +676,14 @@ class Builder {
         m_recipe.name_ = std::move(name);
         m_model.seedGroundPlane();
         segment("start");
+    }
+
+    IRMath::ivec3 sceneSize() const {
+        return m_sceneSize;
+    }
+
+    IRMath::vec3 sceneOrigin() const {
+        return m_model.origin();
     }
 
     // Author against the editor's full reference scene rather than the bare
@@ -1037,7 +1074,8 @@ class Builder {
     }
 
     // Ctrl+P: add a voxel part at the PART SIZE sliders' extent and select it.
-    // The editor seats the part with deriveSceneOrigin, so the model does too.
+    // The editor seats the part's cell (0,0,0) at deriveSceneOrigin, which is
+    // the model's origin too.
     void addVoxelPart() {
         chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonP);
         if (!m_partModels.empty()) {
@@ -1114,6 +1152,43 @@ class Builder {
         tapKey(IRInput::kKeyButtonEnter);
     }
 
+    void removeSelectedPart() {
+        if (m_partModels.empty() || m_activePart < 0) {
+            recordError("removeSelectedPart needs an entity-scene part");
+            return;
+        }
+        tapKey(IRInput::kKeyButtonDelete);
+        recordSelectedPartRemoval();
+    }
+
+    void removeSelectedPartWithButton() {
+        if (m_partModels.empty() || m_activePart < 0) {
+            recordError("removeSelectedPartWithButton needs an entity-scene part");
+            return;
+        }
+        clickGui(IRVoxelEditor::partRemoveButtonCenterGuiTrixel());
+        recordSelectedPartRemoval();
+    }
+
+    void undoRemovedPart() {
+        if (!m_removedPartModel) {
+            recordError("undoRemovedPart needs a preceding part removal");
+            return;
+        }
+        chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        const int index = m_removedPartModel->index_;
+        m_partModels.insert(m_partModels.begin() + index, std::move(m_removedPartModel->model_));
+        m_activePart = index;
+        m_model = m_partModels[static_cast<std::size_t>(m_activePart)];
+        m_removedPartModel.reset();
+    }
+
+    void discardRemovedPart() {
+        m_removedPartModel.reset();
+        m_partModels.clear();
+        m_activePart = -1;
+    }
+
     // Drag one LOD panel slider to tier @p tier (0 finest .. 4 coarsest).
     void dragLodSlider(SliderTarget target, int tier) {
         const IRVoxelEditor::SliderGeometry *geom = nullptr;
@@ -1156,6 +1231,29 @@ class Builder {
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
     }
 
+    // Left-drag the selected part's move gizmo from @p from to @p to, which
+    // translates the part by @p partDelta; the model follows, so later aims
+    // land on the moved part. The gizmo sits at the part's pivot, the middle
+    // of its box, and an occluded handle takes no click: drag before anything
+    // is authored into the part.
+    void dragPartGizmo(IRMath::vec3 from, IRMath::vec3 to, IRMath::vec3 partDelta) {
+        if (m_partModels.empty()) {
+            recordError("dragPartGizmo needs an entity-scene part");
+            return;
+        }
+        dragWorld(from, to);
+        m_model.setOrigin(m_model.origin() + partDelta);
+    }
+
+    // Pick @p mode in the PART MODE dropdown: one click opens it, the next
+    // lands on the mode's row. The idle frame lets the opened dropdown grow
+    // its hit region before the cursor moves onto a row.
+    void selectPartMode(IRComponents::RotationMode mode) {
+        clickGui(IRVoxelEditor::partModeDropdownHeaderCenterGuiTrixel());
+        m_frame += kFramesPerClickStep;
+        clickGui(IRVoxelEditor::partModeDropdownRowCenterGuiTrixel(mode));
+    }
+
     // Assert the live editable set's occupancy at `local` when this segment
     // settles — i.e. after every event in the segment has fired, not at this
     // call's position in the op sequence (see segment()).
@@ -1183,6 +1281,14 @@ class Builder {
             m_recipe.partCountChecks_,
             PartCountCheck{expected, std::move(name)},
             &evaluatePartCountCheck
+        );
+    }
+
+    void expectPartId(int partIndex, std::string expected, std::string name) {
+        addPredicateCheck(
+            m_recipe.partIdChecks_,
+            PartIdCheck{partIndex, std::move(expected), std::move(name)},
+            &evaluatePartIdCheck
         );
     }
 
@@ -1273,6 +1379,25 @@ class Builder {
             m_recipe.rotationModeChecks_,
             RotationModeCheck{partIndex, expected, std::move(name)},
             &evaluateRotationModeCheck
+        );
+    }
+
+    // Assert part @p partIndex's voxel anchor when this segment settles.
+    void expectPartAnchor(int partIndex, IRComponents::EntityAnchor expected, std::string name) {
+        addPredicateCheck(
+            m_recipe.partAnchorChecks_,
+            PartAnchorCheck{partIndex, expected, std::move(name)},
+            &evaluatePartAnchorCheck
+        );
+    }
+
+    // Assert the PART MODE dropdown is collapsed on @p expected's row when
+    // this segment settles.
+    void expectPartModeDropdown(IRComponents::RotationMode expected, std::string name) {
+        addPredicateCheck(
+            m_recipe.partModeDropdownChecks_,
+            PartModeDropdownCheck{expected, std::move(name)},
+            &evaluatePartModeDropdownCheck
         );
     }
 
@@ -1465,11 +1590,11 @@ class Builder {
     }
 
     void expectManifestContains(std::string text, std::string name) {
-        m_recipe.manifestChecks_.push_back(ManifestCheck{std::move(text), std::move(name)});
-        const ManifestCheck &check = m_recipe.manifestChecks_.back();
-        m_current.assertions_.push_back(
-            IRPrefab::GuiTest::predicate(&evaluateManifestCheck, &check, check.name_.c_str())
-        );
+        expectManifest(std::move(text), true, std::move(name));
+    }
+
+    void expectManifestOmits(std::string text, std::string name) {
+        expectManifest(std::move(text), false, std::move(name));
     }
 
     // Assert the loaded module registered `componentName` with `fieldCount`
@@ -1484,7 +1609,7 @@ class Builder {
         );
     }
 
-    // Assert the docked module panel `panelName` built exactly one label,
+    // Assert the docked module panel `panelName` draws a label
     // reading `label`.
     void expectPanelLabel(std::string panelName, std::string label, std::string name) {
         m_recipe.panelLabelChecks_.push_back(
@@ -1539,6 +1664,30 @@ class Builder {
     }
 
   private:
+    void expectManifest(std::string text, bool expectContains, std::string name) {
+        addPredicateCheck(
+            m_recipe.manifestChecks_,
+            ManifestCheck{std::move(text), expectContains, std::move(name)},
+            &evaluateManifestCheck
+        );
+    }
+
+    struct RemovedPartModel {
+        OccupancyModel model_;
+        int index_ = 0;
+    };
+
+    void recordSelectedPartRemoval() {
+        m_removedPartModel = RemovedPartModel{m_model, m_activePart};
+        m_partModels.erase(m_partModels.begin() + m_activePart);
+        if (m_partModels.empty()) {
+            m_activePart = -1;
+            return;
+        }
+        m_activePart = IRMath::min(m_activePart, static_cast<int>(m_partModels.size()) - 1);
+        m_model = m_partModels[static_cast<std::size_t>(m_activePart)];
+    }
+
     struct TypedKey {
         IRInput::KeyMouseButtons key_;
         bool shift_ = false;
@@ -1697,6 +1846,7 @@ class Builder {
     IRMath::ivec3 m_partSize;
     std::vector<OccupancyModel> m_partModels;
     int m_activePart = -1;
+    std::optional<RemovedPartModel> m_removedPartModel;
     // The animation's non-active frames, indexed as the editor indexes them
     // with the active frame removed — m_model IS frame m_activeFrame, mirroring
     // the editor's hot-slot/cold-storage split (animation.hpp). Empty until a

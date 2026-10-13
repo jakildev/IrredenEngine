@@ -32,6 +32,20 @@ sources:
   runner has this fingerprint, so only a run on that machine compares against
   it.
 
+## Split a system row with `IR_PROFILE_SCOPE`
+
+The `--- CPU phase timing ---` section of every cell's report lists the fixed
+phases, then one row per `IR_PROFILE_SCOPE(name)` recorded on the main thread
+during the profiled window (avg per invocation, max, sample count), sorted by
+name. `--auto-profile` turns the histogram on itself (`World::enableFrameTiming`),
+so the rows appear with `--no-overlay` and in any creation. To split a system
+row on the gate, add a scope inside its `beginTick` / `tick` / `endTick` and read
+the new row in the perf-gate artifact. Rows are informational: neither
+`compare_perf_runs.py` nor `check_regression.py` gates on them. Scopes recorded
+from worker threads are unsupported, and `IR_RELEASE` compiles the macro out.
+Executor: `fleet-run IRPerfGrid --auto-profile 120 --no-overlay` with a
+temporary scope, then `grep -A30 'CPU phase timing' save_files/profile_report.txt`.
+
 ## Same-runner Linux diagnostic
 
 When a historical CI comparison cannot isolate a change, dispatch `Perf Gate`
@@ -76,21 +90,64 @@ satellite fleet live and desktop apps open, four back-to-back runs of one
 master SHA spread 10–43% per cell (median 25%), which is wider than the
 10% gate. One run read load factor 1.01 at its start and still ran every
 cell 10–40% slow: `ref_ms` is sampled once, before the first cell, and does
-not see load that arrives mid-matrix. So: `fleet-down`, close GPU- and
+not see load that arrives mid-matrix (the per-cell load gate below does, for
+CPU load). So: `fleet-down`, close GPU- and
 CPU-heavy desktop apps, and publish only a run that passes the self-check
 below.
 
-**`load_ref_ms`.** Each cell's manifest entry carries two `ir_ref_bench`
-readings taken inside the hold: `before`, just ahead of the cell's run, and
-`after`, as soon as the run returns. Both are records, not gate inputs:
-`check_regression.py` reads neither.
+**`load_ref_ms`.** Each cell's manifest entry carries `ir_ref_bench`
+readings taken inside the hold: `before`, the median of three back-to-back
+samples just ahead of the cell's run (the samples, in order, are
+`before_samples`), and `after`, one sample as soon as the run returns.
 
 - `after` is not a load reading. It is sampled the moment the run returns,
   when the cell's own process can still be tearing down, so a high value
   there says nothing about the host. No consumer may grade on it.
-- `before` is the only endpoint a future check may use. A single sample has
-  not been shown to tell a loaded host from a quiet one, which is why nothing
-  reads it yet.
+- `before` is the load gate's only input.
+
+**Load gate.** `check_regression.py` classifies every cell of both the head
+and the baseline manifest from its `before` reading, on measured host
+classes only:
+
+| Host class | Slug glob(s) in `LOAD_GATE_THRESHOLDS` | Threshold `T` | Quiet corpus |
+|---|---|---|---|
+| GitHub-hosted runners (no GPU) | `linux-x86_64-epyc-*-unknown`, `linux-x86_64-xeon-*-unknown` | 1.10 | every bracketed capture on `perf-baseline` through 2026-10-11: 26 captures, 52 cells, `Q_max` 1.0488 |
+
+The Windows ship host (`windows-x86_64-ryzen-9-5950x-rtx-3060-ti`) gets its
+entry once three quiet default-matrix runs, taken with the fleet down, give
+it a corpus.
+
+- A cell's factor is its `before` divided by the run floor, the smallest of
+  the manifest's `calibration.ref_ms` and every cell's `before`. The start
+  reading is taken outside the hold, so load already present there cannot
+  hide itself by raising the floor.
+- A cell is load-flagged when its factor is at or above `T`. A flagged cell,
+  on either side, is informational: it is left out of regression grading, the
+  stderr verdict lists it, the comparison gains a "load-flagged cells"
+  section with its reading, floor, factor and threshold, and its rows carry no
+  ⚠ or ↓. Exit 1 still means an unflagged cell regressed.
+- A slug that no glob matches is never classified and grades exactly as it
+  would without brackets. That covers every macOS host, where a single
+  `before` sample read up to 1.14× on a quiet host and only 1.16× under full
+  CPU saturation, and a Linux fleet host whose GPU probe reads `unknown`.
+  No `darwin-*` or `macos-*` entry is ever added.
+- A cell with a missing, non-positive or malformed `before` is graded as
+  without brackets; legacy and unbracketed manifests are untouched.
+- `T = max(1.05, 1 + 2 × (Q_max − 1))`, rounded up to 0.01, where `Q_max` is
+  the largest `before` factor in the class's quiet corpus. The 1.05 floor is
+  half the 10% regression threshold. A class whose rule yields more than
+  `LOAD_FACTOR_TRUST_NORMALIZED` (1.20) gets no entry.
+- Not detected: GPU-only contention (on macOS it slowed cells 11% with every
+  endpoint at or under 1.009×), load that starts and ends inside one cell,
+  and load constant across the whole run, which raises the floor with every
+  reading and is the run-level load factor's case. The hosted entry rests on
+  a quiet corpus alone: nothing has measured `before` rising under a
+  noisy-neighbour load on a hosted runner, so the gate claims no detection
+  there. It is safe because a gate that does not fire grades exactly as
+  without it, and the quiet corpus bounds false flags.
+- `--strict-load` makes any load-flagged cell in either manifest a
+  measurement error: exit 2, the flagged cells on stderr, no table and no
+  verdict.
 
 **Wall time** on the ship host: about 220 s per matrix run (12 cells at
 ~18 s each, plus the calibration probe). A seed plus its self-check is
@@ -109,8 +166,11 @@ ir-host-probe --refresh           # the cached fingerprint never expires on its 
 ir-perf-grid --label baseline     # → save_files/perf/<sha>-baseline/
 ir-perf-grid --label selfcheck    # same SHA, immediately after
 mkdir -p <scratch>/seed && cp -r save_files/perf/<sha>-baseline <scratch>/seed/<slug>
-python3 scripts/perf/check_regression.py <scratch>/seed save_files/perf/<sha>-selfcheck
+python3 scripts/perf/check_regression.py --strict-load <scratch>/seed save_files/perf/<sha>-selfcheck
 ```
+
+`--strict-load` keeps a loaded self-check from passing by having its cells
+excused: an exit 2 there names the cells that ran under load in either run.
 
 Publish only when that self-check exits 0, every cell's `status` in both
 manifests is `ok`, and the load factor is below

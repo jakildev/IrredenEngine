@@ -67,6 +67,7 @@ jobs:
           python3 scripts/perf/tests/test_baseline_layouts.py
           python3 scripts/perf/tests/test_ci_pair.py
           scripts/perf/tests/test_baseline_writer.sh
+          scripts/perf/tests/test_load_bracket_capture.sh
           bash test/tools/normalization_test.sh
 
       - name: Install system dependencies

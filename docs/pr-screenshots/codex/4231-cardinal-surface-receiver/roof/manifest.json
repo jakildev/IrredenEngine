@@ -1,0 +1,47 @@
+{
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "180",
+    "IRCanvasStress",
+    "--only",
+    "shadowocclusion",
+    "--probe-staircase",
+    "--probe-analytic-blocker",
+    "--pivot-origin",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--no-ao",
+    "--subdivisions",
+    "1",
+    "--zoom",
+    "4",
+    "--auto-screenshot",
+    "6",
+    "--sweep-yaw",
+    "3.14159265",
+    "3.92699082",
+    "3",
+    "--source-face-shadows"
+  ],
+  "clean": true,
+  "images": [
+    {
+      "file": "0.png",
+      "source": "save_files/screenshots/screenshot_000427.png",
+      "sha256": "8559c5101f6e93fba1a18a7d7e387a54f9dc6ab8141cc2ddb1ccf5bf9d150054"
+    },
+    {
+      "file": "1.png",
+      "source": "save_files/screenshots/screenshot_000428.png",
+      "sha256": "bac6e944e6789a6a8142a6fae8e5c60ba179870f24d430a7d5f51af70584ae9e"
+    },
+    {
+      "file": "2.png",
+      "source": "save_files/screenshots/screenshot_000429.png",
+      "sha256": "4b3a5ff94702ffae136a358afa5630a4b35715c97132f6972ef778cd5a159106"
+    }
+  ],
+  "revision": "ad9a77540fce71a15dafbb59ca63f31246e8f0f6",
+  "patch_sha256": "c6f34d748a0847929507e6d44e36f74152a8bffa4b98cdecf13db6204c3ba0e1"
+}

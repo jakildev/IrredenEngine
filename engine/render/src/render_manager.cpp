@@ -21,6 +21,7 @@
 #include <irreden/common/components/component_position_2d_iso.hpp>
 #include <irreden/common/components/component_size_triangles.hpp>
 #include <irreden/common/components/component_persistent.hpp>
+#include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/update/components/component_velocity_2d_iso.hpp>
 #include <irreden/render/components/component_camera.hpp>
 
@@ -163,6 +164,8 @@ RenderManager::RenderManager(
     m_canvasMap["gui"] = m_guiCanvas;
     // m_canvasMap["player"] = m_playerCanvas;
 
+    IREntity::setComponent(m_guiCanvas, C_GuiCanvas{});
+    stampGuiCanvasSampleLayout();
     IREntity::setComponent(
         m_guiCanvas,
         C_TrixelCanvasRenderBehavior{
@@ -356,17 +359,11 @@ void RenderManager::updateDefaultRotationPivotFocus() {
         return;
     }
 
-    // The framebuffer texel under the viewport center. The framebuffer's
-    // resolution-plus-buffer is symmetric about the view, so its center texel is
-    // the center of the view. The attachment still holds the PREVIOUS frame —
-    // the one the source stamp describes.
-    const auto framebufferOpt =
-        IREntity::getComponentOptional<C_TrixelCanvasFramebuffer>(m_mainFramebuffer);
-    if (!framebufferOpt.has_value()) {
-        return;
-    }
-    const ivec2 resolution = (*framebufferOpt.value()).getResolutionPlusBuffer();
-    const IRRender::CompositeDepthSample sample = IRRender::readbackCompositeDepth(resolution / 2);
+    // The framebuffer texel under the viewport center, the one
+    // getCanvasCenterIso describes. The attachment still holds the PREVIOUS
+    // frame — the one the source stamp describes.
+    const IRRender::CompositeDepthSample sample =
+        IRRender::readbackCompositeDepth(IRRender::getMainFramebufferCenterPixel());
     const IRRender::DecodedCompositeDepth decoded = IRRender::decodeCompositeDepth(sample.rawDist_);
     // Background (depth clear at the far plane) and any foreground-tier
     // fragment hold the previous anchor. A foreground-tier hit is a
@@ -644,6 +641,12 @@ void RenderManager::resizeGuiCanvas(ivec2 newSize) {
     textures.onDestroy();
     textures = C_TriangleCanvasTextures{newSize};
     IREntity::getComponent<C_SizeTriangles>(m_guiCanvas).size_ = newSize;
+    stampGuiCanvasSampleLayout();
+}
+
+void RenderManager::stampGuiCanvasSampleLayout() {
+    IREntity::getComponent<C_TriangleCanvasTextures>(m_guiCanvas).renderedSampleLayout_ =
+        m_guiFullResolution ? TrixelSampleLayout::RECTANGULAR : TrixelSampleLayout::LOCAL_TRIANGLES;
 }
 
 void RenderManager::setGuiScale(int scale) {
@@ -670,6 +673,7 @@ void RenderManager::setGuiCanvasFullResolution() {
     // makes one GUI trixel == one framebuffer pixel (1:1, no iso stretch).
     const ivec2 fbSize = m_gameResolution + IRConstants::kSizeExtraPixelBuffer;
     resizeGuiCanvas(fbSize);
+    stampGuiCanvasSampleLayout();
     IRE_LOG_INFO("GUI canvas set to full resolution ({}x{})", fbSize.x, fbSize.y);
 }
 

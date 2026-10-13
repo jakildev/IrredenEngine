@@ -1222,6 +1222,16 @@ TEST_F(PrefabApi, SpawnRejectsOutOfRangeRotationMode) {
     EXPECT_NE(r.error_.find("42"), std::string::npos) << r.error_;
 }
 
+TEST_F(PrefabApi, SpawnRejectsFractionalRotationMode) {
+    PrefabFiles f =
+        writeFixtureSet("rot_fraction", "return { prefab_version = 1, rotation_mode = 0.5 }\n");
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    EXPECT_EQ(r.entity_, IREntity::kNullEntity);
+    EXPECT_NE(r.error_.find("rotation_mode must be"), std::string::npos) << r.error_;
+    EXPECT_EQ(r.error_.find("canvas_size"), std::string::npos) << r.error_;
+}
+
 TEST_F(PrefabApi, SpawnRejectsStringRotationMode) {
     // The schema accepts the IRComponent.RotationMode.{GRID,DETACHED} enum
     // value only — string-name lookups are deliberately rejected.
@@ -1392,6 +1402,93 @@ TEST_F(PrefabWriter, RoundTripsThroughReader) {
     EXPECT_EQ(readShape.canvasSize_, shape.canvasSize_);
 }
 
+// The writer states a voxel part's anchor, CORNER included, and none for a
+// shape part; the reader hands back what was written.
+TEST_F(PrefabWriter, RoundTripsVoxelPartAnchor) {
+    const std::string voxelPath = "/tmp/prefab_writer_anchor_part.vxs";
+    IRAsset::DenseVoxelSet dense;
+    dense.boundsMax_ = IRMath::ivec3(2);
+    dense.voxels_.resize(dense.voxelCount());
+    ASSERT_TRUE(IRAsset::saveDenseVoxelSet(voxelPath, dense).ok());
+
+    IRPrefab::Prefab::PrefabDescription written;
+    for (const auto &[id, anchor] :
+         {std::pair{"centered", IRComponents::EntityAnchor::CENTER},
+          std::pair{"cornered", IRComponents::EntityAnchor::CORNER},
+          std::pair{"grounded", IRComponents::EntityAnchor::GROUND}}) {
+        IRPrefab::Prefab::PrefabPartDescription part;
+        part.id_ = id;
+        part.voxelRef_ = voxelPath;
+        part.anchor_ = anchor;
+        written.parts_.push_back(part);
+    }
+    const std::string path = "/tmp/prefab_writer_anchor.prefab.lua";
+    ASSERT_FALSE(IRPrefab::Prefab::writeManifest(path, written).has_value());
+
+    std::ifstream in(path);
+    const std::string text{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+    EXPECT_NE(text.find("anchor = 1,"), std::string::npos) << text;
+    EXPECT_NE(text.find("anchor = 0,"), std::string::npos) << text;
+    EXPECT_NE(text.find("anchor = 2,"), std::string::npos) << text;
+
+    const IRPrefab::Prefab::ManifestResult read = IRPrefab::Prefab::readManifest(m_lua, path);
+    ASSERT_TRUE(read.ok()) << read.error_;
+    ASSERT_EQ(read.description_->parts_.size(), 3u);
+    EXPECT_EQ(read.description_->parts_[0].anchor_, IRComponents::EntityAnchor::CENTER);
+    EXPECT_EQ(read.description_->parts_[1].anchor_, IRComponents::EntityAnchor::CORNER);
+    EXPECT_EQ(read.description_->parts_[2].anchor_, IRComponents::EntityAnchor::GROUND);
+
+    IRPrefab::Prefab::PrefabDescription shapeOnly;
+    IRPrefab::Prefab::PrefabPartDescription shape;
+    shape.id_ = "marker";
+    shape.shape_ = IRPrefab::Prefab::PrefabShapeDescription{};
+    shape.anchor_ = IRComponents::EntityAnchor::CENTER;
+    shapeOnly.parts_.push_back(shape);
+    const std::string shapePath = "/tmp/prefab_writer_anchor_shape.prefab.lua";
+    ASSERT_FALSE(IRPrefab::Prefab::writeManifest(shapePath, shapeOnly).has_value());
+    std::ifstream shapeIn(shapePath);
+    const std::string shapeText{
+        std::istreambuf_iterator<char>(shapeIn),
+        std::istreambuf_iterator<char>()
+    };
+    EXPECT_EQ(shapeText.find("anchor"), std::string::npos) << shapeText;
+    EXPECT_TRUE(IRPrefab::Prefab::readManifest(m_lua, shapePath).ok());
+}
+
+// The editor's reader refuses an `anchor` that no voxel content would receive:
+// on a bare part, and on the root, where the writer has no field to save it in.
+TEST_F(PrefabWriter, ReaderRefusesAnAnchorWithNoVoxelContent) {
+    const auto read = [&](const std::string &tag, const std::string &body) {
+        const std::string path = "/tmp/prefab_writer_anchor_" + tag + ".prefab.lua";
+        std::ofstream(path) << body;
+        return IRPrefab::Prefab::readManifest(m_lua, path);
+    };
+
+    const IRPrefab::Prefab::ManifestResult bare =
+        read("bare", "return { prefab_version = 2, parts = { { id = 'bare', anchor = 1 } } }\n");
+    EXPECT_FALSE(bare.ok());
+    EXPECT_NE(bare.error_.find("a bare part has none"), std::string::npos) << bare.error_;
+
+    IRPrefab::Prefab::PrefabDescription written;
+    IRPrefab::Prefab::PrefabPartDescription shape;
+    shape.id_ = "marker";
+    shape.shape_ = IRPrefab::Prefab::PrefabShapeDescription{};
+    written.parts_.push_back(shape);
+    const std::string controlPath = "/tmp/prefab_writer_anchor_root_control.prefab.lua";
+    ASSERT_FALSE(IRPrefab::Prefab::writeManifest(controlPath, written).has_value());
+    ASSERT_TRUE(IRPrefab::Prefab::readManifest(m_lua, controlPath).ok());
+
+    std::ifstream in(controlPath);
+    std::string text{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+    const std::string versionLine = "prefab_version = 2,";
+    const std::size_t at = text.find(versionLine);
+    ASSERT_NE(at, std::string::npos) << text;
+    text.insert(at + versionLine.size(), "\n  anchor = 1,");
+    const IRPrefab::Prefab::ManifestResult root = read("root", text);
+    EXPECT_FALSE(root.ok());
+    EXPECT_NE(root.error_.find("root-level anchor"), std::string::npos) << root.error_;
+}
+
 TEST_F(PrefabWriter, RoundTripsComponents) {
     m_lua.lua().safe_script(
         "IRComponent.register('WrittenTag', { count = 1, label = 'a', offset = { type = 'vec3' } })"
@@ -1496,6 +1593,162 @@ TEST_F(PrefabWriter, FailedEntitySceneLoadPreservesLiveScene) {
     EXPECT_TRUE(IREntity::entityExists(originalPart));
 }
 
+TEST_F(PrefabWriter, EntitySceneCenteringPredicateMatchesTheRevoxelizeGuard) {
+    using IRComponents::anchorOffset;
+    using IRComponents::EntityAnchor;
+    const IRMath::ivec3 even(16);
+    const IRMath::ivec3 odd(3, 5, 7);
+    EXPECT_TRUE(
+        IRVoxelEditor::boxIsCenteredOnOrigin(anchorOffset(EntityAnchor::CENTER, even), even)
+    );
+    EXPECT_TRUE(IRVoxelEditor::boxIsCenteredOnOrigin(anchorOffset(EntityAnchor::CENTER, odd), odd));
+    EXPECT_FALSE(IRVoxelEditor::boxIsCenteredOnOrigin(vec3(0.0f), even));
+    EXPECT_FALSE(
+        IRVoxelEditor::boxIsCenteredOnOrigin(anchorOffset(EntityAnchor::GROUND, odd), odd)
+    );
+    // A corner-anchored set whose integer bounds are symmetric is centred.
+    EXPECT_TRUE(IRVoxelEditor::boxIsCenteredOnOrigin(vec3(-1.0f, -2.0f, -3.0f), odd));
+    // The integer bounds a CENTER set of even extent is saved with are not.
+    EXPECT_FALSE(IRVoxelEditor::boxIsCenteredOnOrigin(vec3(-7.0f), even));
+    EXPECT_TRUE(IRVoxelEditor::boxIsCenteredOnOrigin(vec3(5.0f), IRMath::ivec3(0)));
+}
+
+// A manifest asking for DETACHED_REVOXELIZE on a part whose voxels are not
+// centred on its translation is refused, and the live scene stays. The same
+// file loads once the part is CENTER, or once it asks for another mode.
+TEST_F(PrefabWriter, EntitySceneLoadRefusesRevoxelizeOnAnUncenteredPart) {
+    const std::string voxelPath = "/tmp/prefab_writer_uncentered_part.vxs";
+    IRAsset::DenseVoxelSet dense;
+    dense.boundsMax_ = IRMath::ivec3(4);
+    dense.voxels_.resize(dense.voxelCount());
+    ASSERT_TRUE(IRAsset::saveDenseVoxelSet(voxelPath, dense).ok());
+
+    const auto writeScene = [&](const std::string &name,
+                                IRComponents::EntityAnchor anchor,
+                                IRComponents::RotationMode mode) {
+        IRPrefab::Prefab::PrefabDescription description;
+        IRPrefab::Prefab::PrefabPartDescription part;
+        part.id_ = "spinner";
+        part.voxelRef_ = voxelPath;
+        part.anchor_ = anchor;
+        part.rotationMode_ = mode;
+        if (IRPrefab::RotationMode::ownsEntityCanvas(mode)) {
+            part.canvasSize_ = IRMath::ivec2(32, 32);
+        }
+        description.parts_.push_back(part);
+        ASSERT_FALSE(
+            IRPrefab::Prefab::writeManifest("/tmp/" + name + ".prefab.lua", description).has_value()
+        );
+    };
+    writeScene(
+        "prefab_writer_revox_corner",
+        IRComponents::EntityAnchor::CORNER,
+        IRComponents::RotationMode::DETACHED_REVOXELIZE
+    );
+    writeScene(
+        "prefab_writer_revox_center",
+        IRComponents::EntityAnchor::CENTER,
+        IRComponents::RotationMode::DETACHED_REVOXELIZE
+    );
+    writeScene(
+        "prefab_writer_grid_corner",
+        IRComponents::EntityAnchor::CORNER,
+        IRComponents::RotationMode::GRID
+    );
+
+    IRVoxelEditor::EntityScene scene;
+    addLiveShapePart(scene);
+    const IREntity::EntityId originalRoot = scene.root();
+    const IREntity::EntityId originalPart = scene.parts().front().entity_;
+    const int voxelSetsBefore = IREntity::countComponents<IRComponents::C_VoxelSetNew>();
+
+    const IRVoxelEditor::EntitySceneResult refused =
+        scene.load(m_lua, "/tmp", "prefab_writer_revox_corner");
+    EXPECT_FALSE(refused.ok_);
+    EXPECT_NE(refused.error_.find("part 'spinner'"), std::string::npos) << refused.error_;
+    EXPECT_NE(refused.error_.find("DETACHED_REVOXELIZE"), std::string::npos) << refused.error_;
+    EXPECT_EQ(scene.root(), originalRoot);
+    ASSERT_EQ(scene.parts().size(), 1u);
+    EXPECT_EQ(scene.parts().front().entity_, originalPart);
+    EXPECT_TRUE(IREntity::entityExists(originalRoot));
+    EXPECT_TRUE(IREntity::entityExists(originalPart));
+    EXPECT_EQ(IREntity::countComponents<IRComponents::C_VoxelSetNew>(), voxelSetsBefore)
+        << "the refusal builds no replacement part";
+
+    const IRVoxelEditor::EntitySceneResult centered =
+        scene.load(m_lua, "/tmp", "prefab_writer_revox_center");
+    ASSERT_TRUE(centered.ok_) << centered.error_;
+    ASSERT_EQ(scene.parts().size(), 1u);
+    EXPECT_EQ(scene.parts().front().mode_, IRComponents::RotationMode::DETACHED_REVOXELIZE);
+    const auto &centeredSet =
+        IREntity::getComponent<IRComponents::C_VoxelSetNew>(scene.parts().front().entity_);
+    EXPECT_EQ(centeredSet.anchor_, IRComponents::EntityAnchor::CENTER);
+    EXPECT_TRUE(IRVoxelEditor::voxelSetIsCentered(centeredSet));
+
+    const IRVoxelEditor::EntitySceneResult grid =
+        scene.load(m_lua, "/tmp", "prefab_writer_grid_corner");
+    ASSERT_TRUE(grid.ok_) << grid.error_;
+    const auto &cornerSet =
+        IREntity::getComponent<IRComponents::C_VoxelSetNew>(scene.parts().front().entity_);
+    EXPECT_EQ(cornerSet.anchor_, IRComponents::EntityAnchor::CORNER);
+    EXPECT_FALSE(IRVoxelEditor::voxelSetIsCentered(cornerSet));
+}
+
+// A save writes each voxel part's live anchor, the copies an array makes carry
+// their source's, and a reload rebuilds the part from the manifest's.
+TEST_F(PrefabWriter, EntitySceneSaveAndCloneCarryThePartAnchor) {
+    const std::string voxelPath = "/tmp/prefab_writer_scene_anchor_source.vxs";
+    const IRMath::ivec3 size(4);
+    IRAsset::DenseVoxelSet dense;
+    dense.boundsMax_ = size;
+    dense.voxels_.resize(dense.voxelCount());
+    ASSERT_TRUE(IRAsset::saveDenseVoxelSet(voxelPath, dense).ok());
+    IRPrefab::Prefab::PrefabDescription description;
+    IRPrefab::Prefab::PrefabPartDescription part;
+    part.id_ = "part_0";
+    part.voxelRef_ = voxelPath;
+    part.anchor_ = IRComponents::EntityAnchor::CENTER;
+    description.parts_.push_back(part);
+    ASSERT_FALSE(
+        IRPrefab::Prefab::writeManifest(
+            "/tmp/prefab_writer_scene_anchor_source.prefab.lua",
+            description
+        )
+            .has_value()
+    );
+
+    IRVoxelEditor::EntityScene scene;
+    ASSERT_TRUE(scene.load(m_lua, "/tmp", "prefab_writer_scene_anchor_source").ok_);
+    const IRVoxelEditor::EntitySceneCloneResult clones = scene.cloneSelected(
+        m_lua,
+        {IRComponents::C_LocalTransform{vec3(8.0f, 0.0f, 0.0f)}},
+        vec3(0.0f, 0.0f, 1.0f),
+        0
+    );
+    ASSERT_EQ(clones.entities_.size(), 1u) << clones.error_;
+    const auto &cloneSet =
+        IREntity::getComponent<IRComponents::C_VoxelSetNew>(clones.entities_.front());
+    EXPECT_EQ(cloneSet.anchor_, IRComponents::EntityAnchor::CENTER);
+    EXPECT_EQ(cloneSet.size_, size);
+
+    ASSERT_TRUE(scene.save("/tmp", "prefab_writer_scene_anchor").ok_);
+    const IRPrefab::Prefab::ManifestResult read =
+        IRPrefab::Prefab::readManifest(m_lua, "/tmp/prefab_writer_scene_anchor.prefab.lua");
+    ASSERT_TRUE(read.ok()) << read.error_;
+    ASSERT_EQ(read.description_->parts_.size(), 2u);
+    EXPECT_EQ(read.description_->parts_[0].anchor_, IRComponents::EntityAnchor::CENTER);
+    EXPECT_EQ(read.description_->parts_[1].anchor_, IRComponents::EntityAnchor::CENTER);
+
+    IRVoxelEditor::EntityScene reloaded;
+    ASSERT_TRUE(reloaded.load(m_lua, "/tmp", "prefab_writer_scene_anchor").ok_);
+    ASSERT_EQ(reloaded.parts().size(), 2u);
+    const auto &set =
+        IREntity::getComponent<IRComponents::C_VoxelSetNew>(reloaded.parts().back().entity_);
+    EXPECT_EQ(set.anchor_, IRComponents::EntityAnchor::CENTER);
+    EXPECT_EQ(set.size_, size);
+    EXPECT_EQ(set.stagedOrigin(), vec3(-1.5f));
+}
+
 TEST_F(PrefabWriter, EntitySceneLoadWithThrowingComponentFactoryPreservesLiveScene) {
     IRVoxelEditor::EntityScene scene;
     addLiveShapePart(scene);
@@ -1540,6 +1793,130 @@ TEST_F(PrefabWriter, EntitySceneLoadWithThrowingComponentFactoryPreservesLiveSce
     EXPECT_TRUE(IREntity::entityExists(originalRoot));
     EXPECT_TRUE(IREntity::entityExists(originalPart));
     EXPECT_EQ(IREntity::countComponents<IRComponents::C_ShapeDescriptor>(), 1);
+}
+
+TEST_F(PrefabWriter, EntitySceneRemoveVoxelPartRestoresOwnedStateAndOrder) {
+    const std::string voxelPath = "/tmp/prefab_writer_remove_part.vxs";
+    IRAsset::DenseVoxelSet dense;
+    dense.boundsMax_ = IRMath::ivec3(2, 2, 2);
+    dense.voxels_.resize(8);
+    dense.voxels_[3].color_ = IRMath::Color{11, 22, 33, 255};
+    ASSERT_TRUE(IRAsset::saveDenseVoxelSet(voxelPath, dense).ok());
+
+    IRPrefab::Prefab::PrefabDescription description;
+    IRPrefab::Prefab::PrefabPartDescription voxel;
+    voxel.id_ = "voxel_part";
+    voxel.voxelRef_ = voxelPath;
+    voxel.transform_.translation_ = vec3(3.0f, 4.0f, 5.0f);
+    voxel.lodMin_ = IRRender::LodLevel::LOD_3;
+    voxel.lodMax_ = IRRender::LodLevel::LOD_1;
+    description.parts_.push_back(voxel);
+    IRPrefab::Prefab::PrefabPartDescription shape;
+    shape.id_ = "shape_part";
+    shape.shape_ = IRPrefab::Prefab::PrefabShapeDescription{};
+    description.parts_.push_back(shape);
+    ASSERT_FALSE(
+        IRPrefab::Prefab::writeManifest("/tmp/prefab_writer_remove_part.prefab.lua", description)
+            .has_value()
+    );
+
+    IRVoxelEditor::EntityScene scene;
+    ASSERT_TRUE(scene.load(m_lua, "/tmp", "prefab_writer_remove_part").ok_);
+    int factoryCalls = 0;
+    IRPrefab::Prefab::registerComponentFactory(
+        "ReplayTag",
+        [&](IREntity::EntityId, const sol::table &) { ++factoryCalls; }
+    );
+    IRVoxelEditor::ComponentRecord record = IRVoxelEditor::makeComponentRecord(m_lua, "ReplayTag");
+    ASSERT_FALSE(
+        IRVoxelEditor::applyComponentRecord(m_lua, scene.parts().front().entity_, record)
+            .has_value()
+    );
+    scene.targetComponents(0)->push_back(record);
+    const IREntity::EntityId removedEntity = scene.parts().front().entity_;
+
+    std::optional<IRVoxelEditor::RemovedEditorPart> removed = scene.removeSelectedPart();
+    ASSERT_TRUE(removed.has_value());
+    EXPECT_EQ(scene.parts().size(), 1u);
+    EXPECT_EQ(scene.parts().front().id_, "shape_part");
+
+    const IRVoxelEditor::EntitySceneRestoreResult restored = scene.restorePart(m_lua, *removed);
+    ASSERT_TRUE(restored.ok()) << restored.error_;
+    ASSERT_EQ(scene.parts().size(), 2u);
+    EXPECT_EQ(scene.parts().front().id_, "voxel_part");
+    EXPECT_EQ(scene.selectedIndex(), 0);
+    EXPECT_NE(restored.entity_, removedEntity);
+    EXPECT_EQ(factoryCalls, 2);
+    const auto &transform =
+        IREntity::getComponent<IRComponents::C_LocalTransform>(restored.entity_);
+    EXPECT_EQ(transform.translation_, vec3(3.0f, 4.0f, 5.0f));
+    const auto &set = IREntity::getComponent<IRComponents::C_VoxelSetNew>(restored.entity_);
+    ASSERT_EQ(set.authoredRecords().size(), 8u);
+    EXPECT_EQ(set.authoredRecords()[3].color_.red_, 11);
+    EXPECT_EQ(set.authoredRecords()[3].color_.green_, 22);
+    EXPECT_EQ(set.authoredRecords()[3].color_.blue_, 33);
+    EXPECT_EQ(set.authoredRecords()[3].color_.alpha_, 255);
+    EXPECT_EQ(set.lodMin_, IRRender::LodLevel::LOD_3);
+    EXPECT_EQ(set.lodMax_, IRRender::LodLevel::LOD_1);
+}
+
+TEST_F(PrefabWriter, EntitySceneRemoveShapePartRestoresGroupMetadata) {
+    IRVoxelEditor::EntityScene scene;
+    addLiveShapePart(scene);
+    const std::vector<IRComponents::C_LocalTransform> offsets = {
+        IRComponents::C_LocalTransform{vec3(2.0f, 0.0f, 0.0f)},
+        IRComponents::C_LocalTransform{vec3(-2.0f, 0.0f, 0.0f)}
+    };
+    const IRVoxelEditor::EntitySceneCloneResult clones =
+        scene.cloneSelected(m_lua, offsets, vec3(0.0f, 1.0f, 0.0f), 2);
+    ASSERT_TRUE(clones.error_.empty()) << clones.error_;
+    ASSERT_EQ(scene.parts().size(), 3u);
+    const IRVoxelEditor::EditorPart expected = scene.parts().back();
+
+    std::optional<IRVoxelEditor::RemovedEditorPart> removed = scene.removeSelectedPart();
+    ASSERT_TRUE(removed.has_value());
+    ASSERT_EQ(scene.parts().size(), 2u);
+    const IRVoxelEditor::EntitySceneRestoreResult restored = scene.restorePart(m_lua, *removed);
+    ASSERT_TRUE(restored.ok()) << restored.error_;
+    ASSERT_EQ(scene.parts().size(), 3u);
+    const IRVoxelEditor::EditorPart &actual = scene.parts().back();
+    EXPECT_EQ(actual.id_, expected.id_);
+    EXPECT_EQ(actual.groupId_, expected.groupId_);
+    EXPECT_EQ(actual.groupAxis_, expected.groupAxis_);
+    EXPECT_EQ(actual.rotationalOrder_, expected.rotationalOrder_);
+    EXPECT_TRUE(IREntity::entityExists(scene.root()));
+}
+
+TEST_F(PrefabWriter, EntitySceneRemovePartFailedRestoreKeepsSnapshotAndRoot) {
+    IRVoxelEditor::EntityScene scene;
+    addLiveShapePart(scene);
+    IRVoxelEditor::ComponentRecord record =
+        IRVoxelEditor::makeComponentRecord(m_lua, "RefusingRestoreTag");
+    scene.targetComponents(0)->push_back(record);
+    std::optional<IRVoxelEditor::RemovedEditorPart> removed = scene.removeSelectedPart();
+    ASSERT_TRUE(removed.has_value());
+    const IREntity::EntityId root = scene.root();
+
+    IRPrefab::Prefab::registerComponentFactory(
+        "RefusingRestoreTag",
+        [](IREntity::EntityId, const sol::table &) { throw std::runtime_error("restore refused"); }
+    );
+    const IRVoxelEditor::EntitySceneRestoreResult restored = scene.restorePart(m_lua, *removed);
+    EXPECT_FALSE(restored.ok());
+    EXPECT_NE(restored.error_.find("restore refused"), std::string::npos) << restored.error_;
+    EXPECT_TRUE(scene.parts().empty());
+    EXPECT_TRUE(IREntity::entityExists(root));
+    EXPECT_EQ(removed->part_.id_, "part_0");
+    m_entity_manager.destroyMarkedEntities();
+    EXPECT_EQ(IREntity::countComponents<IRComponents::C_ShapeDescriptor>(), 0);
+}
+
+TEST_F(PrefabWriter, EntitySceneRemovePartWithoutSelectionPreservesRoot) {
+    IRVoxelEditor::EntityScene scene;
+    scene.begin();
+    const IREntity::EntityId root = scene.root();
+    EXPECT_FALSE(scene.removeSelectedPart().has_value());
+    EXPECT_TRUE(IREntity::entityExists(root));
 }
 
 TEST_F(PrefabWriter, V1ReadStillLoads) {

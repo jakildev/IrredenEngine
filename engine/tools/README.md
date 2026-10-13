@@ -44,7 +44,7 @@ release-early rule) ships as its own follow-up PR.
 | `bin/ir-acquire` | Acquire CPU slots, GPU, perf, or all three (`benchmark`). Releases on command exit. |
 | `bin/ir-build` | `cmake --build` wrapper, holds `ir-acquire cpu` for the build window. Each worktree builds into its own `build/`. |
 | `bin/ir-run` | Run a built executable from its own directory; wraps `--auto-screenshot` in `ir-acquire gpu` and `--auto-profile` in `ir-acquire benchmark`. On native Windows every run takes the gpu lock (`IR_RUN_GL_EXCLUSIVE=0` opts out) — a second live GL context stalls other engine processes' shader links for minutes. |
-| `bin/ir-perf-grid` | Perf-matrix runner (`ir-perf-grid [matrix-args]`, `ir-perf-grid calibrate`, `ir-perf-grid ref`). Wraps `scripts/perf/perf_grid_matrix.sh` in `ir-acquire benchmark` and splices ref_ms + host fingerprint into `manifest.json`; each cell also records `load_ref_ms` before/after readings taken inside the hold. |
+| `bin/ir-perf-grid` | Perf-matrix runner (`ir-perf-grid [matrix-args]`, `ir-perf-grid calibrate`, `ir-perf-grid ref`). Wraps `scripts/perf/perf_grid_matrix.sh` in `ir-acquire benchmark` and splices ref_ms + host fingerprint into `manifest.json`; each cell also records `load_ref_ms` readings taken inside the hold: `before`, the median of three back-to-back samples (kept in `before_samples`), and one `after`. `check_regression.py` grades on `before` only, and only for the host classes in `scripts/perf/README.md`. |
 | `bench/ir_ref_bench.cpp` | Deterministic IRMath hot-path mini-bench. Tuned to ~50ms on the calibration host; ref_ms above target means the host was loaded and per-cell measurements should be weighted normalized. |
 | `lib/concurrency_helpers.sh` | Sourced by `bin/ir-*`. Lock primitives + 3-layer config resolver. |
 | `py/ir_hardware_probe.py` | Python module called by `ir-host-probe`. Linux, macOS, and Windows. |
@@ -105,9 +105,15 @@ The `[quiet]` values in `concurrency.toml` are stamped on each request so all
 readers sharing the lock root agree. `ir-acquire --quiet-disable [reason]`
 writes the host-wide switch and makes subsequent runs explicitly unguarded;
 `--quiet-enable` restores the guard, and `--quiet-status [--json]` reports it.
+On native Windows a lease's process tree is the Win32 creator links overlaid
+with each runtime's own process table (`<runtime>/usr/bin/ps.exe` for the
+lease holder's runtime and the parker's). An MSYS `exec` leaves the new image
+under a Windows creator that has already exited, and only the runtime's table
+still links it to its shell. A table that cannot be read counts as activity.
 The guarantee excludes interactive processes without leases, fleet daemons,
-non-fleet work, double-forked descendants, the measurement harness, and
-native-Windows children shorter than one sample interval.
+non-fleet work, double-forked descendants, the measurement harness, and the
+CPU a native-Windows process spends in a sample interval it exits during,
+because Windows process time never absorbs an exited child.
 
 ## Acquire-late, release-early
 

@@ -39,6 +39,19 @@ prs='[{"headRefName":"claude/999-unrelated","labels":[]}]'
 assert_eq "$(_issue_pr_state_from "$prs" 255 game)" "none" \
     "unrelated branch is not live for #255"
 
+# A codex branch with a `Refs`-only body is live through the branch alone;
+# the same PR parked is parked; off-namespace it is not a claim at all.
+CODEX_BRANCH="codex/4231-cardinal-surface-receiver"
+prs='[{"headRefName":"'"$CODEX_BRANCH"'","body":"Refs #4231","labels":[{"name":"fleet:wip"}]}]'
+assert_eq "$(_issue_pr_state_from "$prs" 4231 engine)" "active" \
+    "codex branch with a Refs-only body keeps the claim"
+prs='[{"headRefName":"'"$CODEX_BRANCH"'","body":"Refs #4231","labels":[{"name":"fleet:design-blocked"}]}]'
+assert_eq "$(_issue_pr_state_from "$prs" 4231 engine)" "parked" \
+    "design-blocked codex branch stays parked"
+prs='[{"headRefName":"feature/cardinal-surface","body":"Refs #4231","labels":[{"name":"fleet:wip"}]}]'
+assert_eq "$(_issue_pr_state_from "$prs" 4231 engine)" "none" \
+    "a Refs mention on an unnamespaced branch is not a claim"
+
 echo "== cmd_claim open-PR guard (refuses a duplicate) =="
 
 # Isolate the guard: neutralize the gates that run before it (each hits

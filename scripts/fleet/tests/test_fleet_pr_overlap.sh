@@ -683,11 +683,22 @@ run_tool --pr-json "$TMP/prs-12b.json"
 assert_rc 3 "T12b a stale marker without the active label blocks"
 assert_contains "$OUT" "#402 src/y.txt conflicts" "T12b the stale marker stays an ordinary conflict"
 
-WRONG_LAST_12_BODY="\"Parked-until: #${BACKING_ISSUE_12}\\nParked-until: #${WRONG_ISSUE_12}\""
-WRONG_LAST_12="$(PR_ROW_BODY_JSON="$WRONG_LAST_12_BODY" PR_ROW_LABELS_JSON='[{"name":"fleet:awaiting-infra"}]' pr_row 402 pr-402 master false - src/y.txt)"
-pr_json "$TMP/prs-12c.json" "$SELF_12" "$WRONG_LAST_12"
+# Every parsable marker is live: a park spelled one blocker per line waits on
+# all of them, so an earlier line naming self still sequences the descendant.
+EARLIER_SELF_12_BODY="\"Parked-until: #${BACKING_ISSUE_12}\\nParked-until: #${WRONG_ISSUE_12}\""
+EARLIER_SELF_12="$(PR_ROW_BODY_JSON="$EARLIER_SELF_12_BODY" PR_ROW_LABELS_JSON='[{"name":"fleet:awaiting-infra"}]' pr_row 402 pr-402 master false - src/y.txt)"
+pr_json "$TMP/prs-12c.json" "$SELF_12" "$EARLIER_SELF_12"
 run_tool --pr-json "$TMP/prs-12c.json"
-assert_rc 3 "T12c only the last parsable marker is active"
+assert_rc 1 "T12c an earlier marker naming self still sequences"
+assert_contains "$OUT" "#402 src/y.txt sequenced (Parked-until: #3988)" "T12c the self issue is named from the earlier line"
+
+# A marker naming only the OTHER fleet repo's issue never matches a same-repo
+# self issue, even when the numbers coincide.
+FOREIGN_12_BODY="\"Parked-until: irreden#${BACKING_ISSUE_12}\""
+FOREIGN_12="$(PR_ROW_BODY_JSON="$FOREIGN_12_BODY" PR_ROW_LABELS_JSON='[{"name":"fleet:awaiting-infra"}]' pr_row 402 pr-402 master false - src/y.txt)"
+pr_json "$TMP/prs-12e.json" "$SELF_12" "$FOREIGN_12"
+run_tool --pr-json "$TMP/prs-12e.json"
+assert_rc 3 "T12e a cross-repo marker with the same number does not sequence"
 
 NO_CLOSE_12_BODY="\"Refs #${BACKING_ISSUE_12}\""
 NO_CLOSE_12="$(PR_ROW_BODY_JSON="$NO_CLOSE_12_BODY" pr_row 401 feature-12 master false - src/y.txt)"

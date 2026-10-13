@@ -61,6 +61,9 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
         );
         bindDefaultFramebuffer();
         clearDefaultFramebuffer();
+        // Slot 2 is shared with GUI_CANVAS_TO_SCREEN's UBO; each screen pass
+        // re-asserts its own binding before it draws.
+        frameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FramebufferFrameDataUniform);
         program_->use();
         quadVao_->bind();
     }

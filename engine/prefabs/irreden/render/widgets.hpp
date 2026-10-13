@@ -12,6 +12,7 @@
 #include <irreden/render/widget_theme.hpp>
 #include <irreden/render/widget_hotkeys.hpp>
 
+#include <climits>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -19,8 +20,32 @@
 
 namespace IRPrefab::Widget {
 
+// A hit region draws nothing, so keyboard focus on one would be invisible.
 inline bool isTabFocusCandidate(const IRComponents::C_Widget &widget) {
-    return !widget.disabled_ && widget.kind_ != IRComponents::WidgetKind::TEXT_INPUT;
+    return !widget.disabled_ && widget.kind_ != IRComponents::WidgetKind::TEXT_INPUT &&
+           widget.kind_ != IRComponents::WidgetKind::HIT_REGION;
+}
+
+// The single widget WIDGET_INPUT routes hover to: among enabled widgets whose
+// `C_HitBox2DGui::hovered_` is set, the highest `C_Widget::zOrder_`; on equal
+// z-order the one met last in archetype iteration wins. Every
+// `C_HitBox2DGui` entity must carry a `C_Widget`. kNullEntity when none.
+inline IREntity::EntityId topmostHoveredWidget() {
+    IREntity::EntityId topmost = IREntity::kNullEntity;
+    int topZ = INT_MIN;
+    IREntity::forEachComponent<IRComponents::C_HitBox2DGui>(
+        [&topmost, &topZ](IREntity::EntityId &id, IRComponents::C_HitBox2DGui &hitbox) {
+            if (!hitbox.hovered_) {
+                return;
+            }
+            const auto &widget = IREntity::getComponent<IRComponents::C_Widget>(id);
+            if (!widget.disabled_ && widget.zOrder_ >= topZ) {
+                topZ = widget.zOrder_;
+                topmost = id;
+            }
+        }
+    );
+    return topmost;
 }
 
 // Ergonomic free-function constructors for the five Phase-0 minimum
@@ -30,10 +55,11 @@ inline bool isTabFocusCandidate(const IRComponents::C_Widget &widget) {
 //   - C_GuiElement   (tag for canvas-scoped iteration)
 //   - C_WidgetState  (interactive state; default-constructed)
 //   - C_WidgetPanel / C_WidgetLabel / C_WidgetButton / C_WidgetSlider
-//                    / C_WidgetCheckbox (kind-specific data)
+//                    / C_WidgetCheckbox (kind-specific data; HIT_REGION
+//                    has none)
 //   - C_HitBox2DGui  (only for interactive kinds — BUTTON, SLIDER,
-//                    CHECKBOX. PANEL and LABEL skip the hitbox so they
-//                    do not consume mouse hover.)
+//                    CHECKBOX, HIT_REGION. PANEL and LABEL skip the hitbox
+//                    so they do not consume mouse hover.)
 //
 // Z-order routing (C_Widget::zOrder_) resolves overlap only among entities
 // that carry C_HitBox2DGui. PANEL and LABEL have no hitbox and therefore
@@ -107,6 +133,20 @@ inline IREntity::EntityId makeSlider(
         IRComponents::C_GuiElement{},
         IRComponents::C_WidgetState{},
         std::move(sliderData),
+        IRComponents::C_HitBox2DGui{size}
+    );
+}
+
+// HIT_REGION — an invisible widget: hover, press and click route through
+// WIDGET_INPUT exactly as for a button (z-order included), but no renderer
+// draws it. Lay one over content drawn elsewhere to make that content one
+// hover / click target; the caller draws its own hover feedback.
+inline IREntity::EntityId makeHitRegion(IRMath::ivec2 pos, IRMath::ivec2 size, int zOrder = 0) {
+    return IREntity::createEntity(
+        IRComponents::C_Widget{IRComponents::WidgetKind::HIT_REGION, size, zOrder},
+        IRComponents::C_GuiPosition{pos},
+        IRComponents::C_GuiElement{},
+        IRComponents::C_WidgetState{},
         IRComponents::C_HitBox2DGui{size}
     );
 }

@@ -2,6 +2,10 @@
 #include "ir_constants.metal"
 #include "ir_sdf_common.metal"
 #include "ir_shape_data.metal"
+#include "ir_shape_sun_ray.metal"
+#if IR_SHAPE_PASS == 2
+#include "ir_fog_shadow_caster.metal"
+#endif
 
 // Mirrors shaders/c_shapes_to_trixel_body.glsl.
 
@@ -781,6 +785,9 @@ inline int shapeBoxFaceSlot(
 
 kernel void IR_SHAPE_KERNEL_NAME(
     constant ShapeProjectionData& frameData [[buffer(23)]],
+#if IR_SHAPE_PASS == 2
+    constant FogShadowObserverData& fogObservers [[buffer(27)]],
+#endif
     device const ShapeDescriptor* shapes [[buffer(20)]],
     device const ShapeTileDescriptor* tiles [[buffer(30)]],
     device atomic_int* distanceScratch [[buffer(16)]],
@@ -801,7 +808,8 @@ kernel void IR_SHAPE_KERNEL_NAME(
     const int2 isoOrigin = tile.tileIsoOrigin;
     const ShapeDescriptor shape = shapes[shapeIndex];
 #if IR_SHAPE_PASS == 2
-    if (shape.shapeType == SHAPE_BOX) return;
+    if (shape.shapeType == SHAPE_BOX ||
+        shapeUsesSunRay(shape, frameData.voxelRenderOptions, frameData.smoothYawEnabled, frameData.latticeShapes)) return;
 #endif
 
     // Cardinal-snap Z-yaw. Mirrors the GLSL shader in c_shapes_to_trixel_body.glsl.
@@ -873,7 +881,7 @@ kernel void IR_SHAPE_KERNEL_NAME(
     }
     // Per-entity rotation expands the shape-local AABB before the camera-yaw
     // expansion. Spheres are rotation-invariant and skip this.
-    const bool hasEntityRotation = abs(shape.rotation.w) < 0.9999;
+    const bool hasEntityRotation = shapeHasEntityRotation(shape.rotation);
     if (hasEntityRotation && st != SHAPE_SPHERE) {
         const float3 ax = abs(rotateByQuat(float3(boundingHalf.x, 0.0, 0.0), shape.rotation));
         const float3 ay = abs(rotateByQuat(float3(0.0, boundingHalf.y, 0.0), shape.rotation));
@@ -951,6 +959,21 @@ kernel void IR_SHAPE_KERNEL_NAME(
     if (surfaceD == kInvalidDepth) {
         return;
     }
+
+#if IR_SHAPE_PASS == 2
+    const float3 fogViewOffset = isoToLocal3D(isoPixelRel, float(surfaceD));
+    const float3 fogWorldOffset = float3(
+        yawC * fogViewOffset.x - yawS * fogViewOffset.y,
+        yawS * fogViewOffset.x + yawC * fogViewOffset.y,
+        fogViewOffset.z
+    );
+    const float3 fogWorldSample = worldPos + fogWorldOffset / float(sub);
+    if (!fogFieldCastsSunShadow(
+            fogWorldSample,
+            (shape.flags & FLAG_FOG_BODY) != 0u,
+            1,
+            fogObservers)) return;
+#endif
 
     // Depth metric. Cardinal path: view-space x+y+z relative to the cardinal-
     // snapped integer origin. Smooth path: yawedIsoDistance of the subdivided

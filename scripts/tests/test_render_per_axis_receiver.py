@@ -10,6 +10,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from shader_contract_helpers import replace_once
 from test_render_per_axis_caster_position import (
     CHECKS as CASTER_CHECKS,
 )
@@ -22,12 +23,6 @@ from test_render_per_axis_caster_position import (
 from test_render_per_axis_caster_position import (
     harness as caster_harness,
 )
-
-
-def replace_once(source, before, after):
-    if source.count(before) != 1:
-        raise ValueError(f"expected one mutation site for {before!r}")
-    return source.replace(before, after)
 
 
 def host(source):
@@ -258,6 +253,10 @@ def camera_refresh():
     late = replace_once(prefix, assignment, "")
     late = late[:late.rindex("}")] + assignment + "\n}\n"
     late = late.replace("updateSunFrameData", "updateCameraAfterGuard")
+    coverage_assignment = re.search(r"frameData_\.sunBasisU_\.w = [^;]+;", prefix)[0]
+    coverage_late = replace_once(prefix, coverage_assignment, "")
+    coverage_late = coverage_late[:coverage_late.rindex("}")] + coverage_assignment + "\n}\n"
+    coverage_late = coverage_late.replace("updateSunFrameData", "updateCoverageAfterGuard")
     return r"""
 vec3& operator/=(vec3& value,float scale){value=value/scale;return value;}
 namespace IRMath {float length(vec3 v){return std::sqrt(v.x*v.x+v.y*v.y+v.z*v.z);}}
@@ -275,24 +274,35 @@ vec4 getRotationQuat(){++reads;return inputCamera;}
 }
 struct UploadPrefix {
     struct Data {
-        vec4 sunDirection_,sunCasterViewToWorld_;
+        vec4 sunDirection_,sunCasterViewToWorld_,sunBasisU_;
         float sunIntensity_,sunAmbient_;
         int shadowsEnabled_,aoEnabled_;
     } frameData_;
-""" + prefix + late + r"""
+    bool frameUsesFiniteCoverage_=false;
+""" + prefix + late + coverage_late + r"""
 };
 int checkCameraRefresh() {
     UploadPrefix owner;
-    for(bool enabled:{true,false,true,false})for(vec4 quaternion:{
+    for(bool enabled:{true,false,true,false})
+    for(bool finite:{true,false,true,false})for(vec4 quaternion:{
         vec4(0,0,0,1),vec4(.36f,.48f,0,.8f),vec4(-.5f,.5f,-.5f,.5f)}) {
         detail::inputSun.shadowsEnabled_=enabled;
+        owner.frameUsesFiniteCoverage_=finite;
+        owner.frameData_.sunBasisU_=vec4(3,4,5,finite?0.f:1.f);
         IRPrefab::Camera::inputCamera=quaternion;IRPrefab::Camera::reads=0;
         owner.frameData_.sunCasterViewToWorld_=vec4(1,0,0,0);
         if(std::strcmp(mutation,"camera-after-guard")==0)owner.updateCameraAfterGuard();
+        else if(std::strcmp(mutation,"coverage-after-guard")==0)owner.updateCoverageAfterGuard();
         else owner.updateSunFrameData();
         if(IRPrefab::Camera::reads!=1 ||
            !same(owner.frameData_.sunCasterViewToWorld_,quaternion)) {
-            std::fprintf(stderr,"camera refresh before shadows-disabled return\n");return 1;
+            std::fprintf(stderr,"camera refresh before shadows-disabled return\n");
+            return 1;
+        }
+        if(owner.frameData_.sunBasisU_.w!=(finite?1.f:0.f) ||
+           !same(owner.frameData_.sunBasisU_.xyz,vec3(3,4,5))) {
+            std::fprintf(stderr,"finite coverage refresh before shadows-disabled return\n");
+            return 1;
         }
     }
     return 0;
@@ -365,6 +375,7 @@ def overflow_overlay_harness(suffix, directory, old_gate=False):
                       normals, "const vec3 pos3D(1.f, 2.f, 3.f);",
                       "const int faceId = 4;", shadow, shadow_overlay))
     return r"""
+#include <cmath>
 #include <cstdio>
 #include <cstdint>
 #include <initializer_list>
@@ -380,6 +391,10 @@ struct vec4 {
     vec3 rgb;float a;
     vec4(vec3 v,float alpha):rgb(v),a(alpha){}
 };
+vec3 encodeUnitVectorUnorm8(vec3 v){
+    auto code=[](float x){return std::floor(x*127.5f+127.5f+.5f)/255.f;};
+    return {code(v.x),code(v.y),code(v.z)};
+}
 uint packCount=0,queryCount=0;
 vec4 packed(vec3(0),0);
 uint packColor(vec4 color){packed=color;++packCount;return 0xCEu;}
@@ -430,7 +445,7 @@ int main(){
     if(check(3,1,1,0,.25f,0,0,vec3(0)))return 1;
     if(check(3,0,1,1,.25f,0,0,vec3(0)))return 2;
     for(int mode:{1,2,9})if(check(mode,1,1,1,.25f,0,0,vec3(0)))return 3;
-    if(check(8,1,1,1,.25f,0,1,vec3(0.f,.5f,.5f)))return 4;
+    if(check(8,1,1,1,.25f,0,1,vec3(0.f,128.f/255.f,128.f/255.f)))return 4;
     if(check(3,1,1,1,.25f,1,1,vec3(1.f,0.f,1.f)))return 5;
     if(check(3,1,1,1,.999f,1,1,vec3(0)))return 6;
     if(check(3,1,0,1,.25f,0,1,vec3(0)))return 7;
@@ -465,6 +480,8 @@ class PerAxisReceiverTest(unittest.TestCase):
                     ("regular-flip", "receiver polarity"),
                     ("overflow-flip", "receiver polarity"),
                     ("camera-after-guard", "camera refresh before shadows-disabled return"),
+                    ("coverage-after-guard",
+                     "finite coverage refresh before shadows-disabled return"),
                 ):
                     with self.subTest(mutation=mutant):
                         result = subprocess.run([str(executable), mutant],

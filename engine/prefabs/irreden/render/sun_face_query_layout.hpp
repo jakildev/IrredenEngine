@@ -17,7 +17,7 @@ constexpr std::uint32_t kSourceFaceTileCount =
     kSourceFaceCascadeCount * kSourceFaceTilesPerAxis * kSourceFaceTilesPerAxis;
 constexpr std::uint32_t kSourceFaceTileCapacity = 64u;
 constexpr std::uint32_t kSourceFaceCapacity = 65536u;
-constexpr std::uint32_t kSourceFaceRecordWords = 9u;
+constexpr std::uint32_t kSourceFaceRecordWords = 10u;
 constexpr std::uint32_t kSourceFaceFallbackOffset =
     kSourceFaceCascadeCount * kSourceFaceMapDimension * kSourceFaceMapDimension;
 constexpr std::uint32_t kSourceFaceHeaderOffset = 2u * kSourceFaceFallbackOffset;

@@ -10,6 +10,7 @@
 #include <irreden/render/camera.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
 #include <irreden/render/default_pivot_latch.hpp>
+#include <irreden/render/shape_sample_probe.hpp>
 
 #include <irreden/asset/voxel_set_format.hpp>
 #include <irreden/voxel/dense_bridge.hpp>
@@ -73,6 +74,7 @@
 #include <irreden/render/systems/system_debug_overlay.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
+#include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
 #include <irreden/render/camera_controls.hpp>
 #include <irreden/common/settings_registry.hpp>
@@ -192,6 +194,29 @@ constexpr IRVideo::AutoScreenshotShot kShadowFootprintShots[] = {
     {4.0f, vec2(0.0f), 0.0f, "shadow_footprint_yaw0"},
     {4.0f, vec2(0.0f), IRMath::kQuarterPi, "shadow_footprint_yaw45"},
 };
+
+// A voxel cube falling over a voxel floor in quarter-voxel steps: shot i holds
+// the caster at kMovingCasterStart + i * kMovingCasterStep. At zoom 2 with a
+// base subdivision of 2 the raster places it on a quarter-voxel lattice while a
+// sun-map texel spans about a voxel, so a cast shadow that follows sub-voxel
+// placement moves on every shot.
+constexpr vec3 kMovingCasterStart{-2.0f, -2.0f, -4.0f};
+constexpr vec3 kMovingCasterStep{0.0f, 0.0f, 0.25f};
+constexpr int kMovingCasterSubdivisions = 2;
+constexpr vec3 kMovingCasterSunDirection{0.5f, 0.7f, -0.5f};
+constexpr IRVideo::AutoScreenshotShot kMovingCasterShots[] = {
+    {2.0f, vec2(0.0f), 0.0f, "moving_caster_0"},
+    {2.0f, vec2(0.0f), 0.0f, "moving_caster_1"},
+    {2.0f, vec2(0.0f), 0.0f, "moving_caster_2"},
+    {2.0f, vec2(0.0f), 0.0f, "moving_caster_3"},
+    {2.0f, vec2(0.0f), 0.0f, "moving_caster_4"},
+    {2.0f, vec2(0.0f), 0.0f, "moving_caster_5"},
+    {2.0f, vec2(0.0f), 0.0f, "moving_caster_6"},
+    {2.0f, vec2(0.0f), 0.0f, "moving_caster_7"},
+    {2.0f, vec2(0.0f), 0.0f, "moving_caster_8"},
+};
+bool g_movingCaster = false;
+IREntity::EntityId g_movingCasterEntity = IREntity::kNullEntity;
 
 int g_autoWarmupFrames = 0; // 0 = --auto-screenshot not requested
 int g_autoRecordFrames = 0; // 0 = --auto-record not requested
@@ -997,11 +1022,8 @@ void logPivotCompositeDepth(int shotIndex) {
     if (g_pivotVerifyBlock != "center-axis") {
         return;
     }
-    const auto &framebuffer = IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>(
-        IRRender::getRenderManager().getMainFramebuffer()
-    );
-    const IRMath::ivec2 resolution = framebuffer.getResolutionPlusBuffer();
-    const IRRender::CompositeDepthSample sample = IRRender::readbackCompositeDepth(resolution / 2);
+    const IRRender::CompositeDepthSample sample =
+        IRRender::readbackCompositeDepth(IRRender::getMainFramebufferCenterPixel());
     const IRRender::DecodedCompositeDepth decoded = IRRender::decodeCompositeDepth(sample.rawDist_);
     IR_LOG_INFO(
         "[pivot-composite-depth] block={} shot={} yaw={} subject={} valid={} tier={} "
@@ -1305,6 +1327,13 @@ bool g_zoomContinuous = false;
 // capture the same subject.
 bool g_zoomCalibration = false;
 
+// One retained owner readback on the first settled capture, before the spin advances.
+bool g_shapeSampleProbe = false;
+bool g_shapeSampleProbeAttempted = false;
+bool g_shapeSampleProbePassed = false;
+ivec2 g_shapeSampleProbePixel{-1};
+std::string g_shapeSampleProbeOutput;
+
 // --zoom-sweep <from> <to> <count>: hold the camera at kZoomCalibrationCamera
 // and step the requested zoom linearly across <count> shots. With
 // --zoom-continuous the subject must grow smoothly; without it the same
@@ -1390,6 +1419,18 @@ void logZoomCalibrationState(int shotIndex) {
     );
 }
 
+void onShapeDebugCaptureFrame(int shotIndex) {
+    if (g_zoomCalibration)
+        logZoomCalibrationState(shotIndex);
+    if (g_shapeSampleProbe && !g_shapeSampleProbeAttempted) {
+        g_shapeSampleProbeAttempted = true;
+        g_shapeSampleProbePassed = IRPrefab::ShapeSampleProbe::writeFirstCapture(
+            g_shapeSampleProbePixel,
+            g_shapeSampleProbeOutput
+        );
+    }
+}
+
 // Shared shot-table emission for the sweep-flag family below (--spin-yaw,
 // --pivot-focus-demo, --pivot-verify, --pan-sweep, --yaw-sweep): reserves
 // both vectors up front — `shots`/`labels` must never reallocate mid-loop,
@@ -1422,6 +1463,16 @@ void registerCliArgs() {
         "Run N frames (default 300) with frame timing, then exit",
         300
     );
+    args.numbers(
+        "--shape-sample-probe",
+        "Read one retained main-canvas owner at screenshot X Y on the first auto capture",
+        2
+    );
+    args.string(
+        "--shape-sample-probe-output",
+        "JSON output for the first capture only",
+        "shape-sample-probe.json"
+    );
     args.flag("--ao-contact-probe", "Isolate a voxel inside corner and convex cube for AO");
     args.flag("--no-ao", "Disable ambient occlusion for lighting isolation");
     args.flag("--no-shadows", "Disable sun shadows for lighting isolation");
@@ -1437,6 +1488,10 @@ void registerCliArgs() {
     args.flag(
         "--shadow-footprint-probe",
         "Isolate grounded voxel/SDF cone and torus pairs on a measured receiver plane"
+    );
+    args.flag(
+        "--moving-caster",
+        "Voxel cube over a voxel floor, falling a quarter voxel per capture shot"
     );
     args.flag("--pan-sweep", "Fine fixed-yaw camera-pan jitter sweep (#1944)");
     args.flag("--yaw-sweep", "Fine fixed-position camera-yaw jitter sweep (#1944)");
@@ -1560,6 +1615,15 @@ void registerCliArgs() {
 void readCliArgs() {
     const IRArgs::Parser &args = IREngine::args();
 
+    g_shapeSampleProbe = args.wasProvided("--shape-sample-probe");
+    if (g_shapeSampleProbe) {
+        const auto &pixel = args.getFloats("--shape-sample-probe");
+        // Stay inside exactly representable integer float coordinates before conversion.
+        if (pixel[0] >= 0 && pixel[1] >= 0 && pixel[0] < 16777216 && pixel[1] < 16777216 &&
+            IRMath::floor(pixel[0]) == pixel[0] && IRMath::floor(pixel[1]) == pixel[1])
+            g_shapeSampleProbePixel = ivec2(pixel[0], pixel[1]);
+        g_shapeSampleProbeOutput = args.getString("--shape-sample-probe-output");
+    }
     g_autoWarmupFrames = args.autoScreenshotWarmupFrames();
     g_autoRecordFrames = args.autoRecordFrames();
 
@@ -1574,6 +1638,7 @@ void readCliArgs() {
     g_pivotFocusDemo = args.getFlag("--pivot-focus-demo");
     g_skinSmoke = args.getFlag("--skin-smoke");
     g_shadowFootprintProbe = args.getFlag("--shadow-footprint-probe");
+    g_movingCaster = args.getFlag("--moving-caster");
     g_panSweep = args.getFlag("--pan-sweep");
     g_yawSweep = args.getFlag("--yaw-sweep");
     g_pivotVerifyBlock = args.getEnum("--pivot-verify");
@@ -1644,6 +1709,12 @@ int main(int argc, char **argv) {
     registerCliArgs();
     IREngine::args().parse(argc, argv);
     readCliArgs();
+    if (g_shapeSampleProbe && (g_shapeSampleProbePixel.x < 0 || g_autoWarmupFrames <= 0)) {
+        IR_LOG_ERROR(
+            "--shape-sample-probe requires integer screenshot coordinates and --auto-screenshot"
+        );
+        return 2;
+    }
 
     if (IREngine::args().getFlag("--spin-shape-floor")) {
         if (g_spinShapeType.empty()) {
@@ -1744,7 +1815,8 @@ int main(int argc, char **argv) {
         );
     }
     IREngine::gameLoop();
-    return 0;
+    return g_shapeSampleProbe && (!g_shapeSampleProbeAttempted || !g_shapeSampleProbePassed) ? 2
+                                                                                             : 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -3477,6 +3549,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::DEBUG_OVERLAY>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
+            IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>(),
         }
     );
     if (g_viewportPortrait) {
@@ -3570,8 +3643,8 @@ void initSystems() {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
         cfg.settleFrames_ = 3;
-        if (g_zoomCalibration) {
-            cfg.onCaptureFrame_ = &logZoomCalibrationState;
+        if (g_zoomCalibration || g_shapeSampleProbe) {
+            cfg.onCaptureFrame_ = &onShapeDebugCaptureFrame;
         }
         // Set by the one block that needs scripted cursor input + a per-frame
         // hook (--pivot-verify cursor-latch); every other sweep stays on the
@@ -3977,6 +4050,14 @@ void initSystems() {
             );
         } else if (g_shadowFootprintProbe) {
             IRVideo::setAutoScreenshotShots(cfg, kShadowFootprintShots);
+        } else if (g_movingCaster) {
+            IRVideo::setAutoScreenshotShots(cfg, kMovingCasterShots);
+            // The capture frame of shot i places the caster for shot i + 1,
+            // which then settles before its own capture.
+            cfg.onCaptureFrame_ = [](int shotIndex) {
+                IREntity::getComponent<C_LocalTransform>(g_movingCasterEntity).translation_ =
+                    kMovingCasterStart + kMovingCasterStep * static_cast<float>(shotIndex + 1);
+            };
         } else if (g_lodDenseSwap) {
             IRVideo::setAutoScreenshotShots(cfg, kLodDenseSwapShots);
         } else if (g_viewportLodSwap) {
@@ -4724,6 +4805,21 @@ void initViewportPortraitScene() {
 }
 
 void initEntities() {
+    if (g_movingCaster) {
+        IR_LOG_INFO("--- Moving sub-voxel caster scene ---");
+        IREntity::createEntity(
+            C_LocalTransform{vec3(0.0f, 0.0f, 4.0f)},
+            C_VoxelSetNew{ivec3(40, 40, 1), Color{150, 150, 160, 255}, true}
+        );
+        g_movingCasterEntity = IREntity::createEntity(
+            C_LocalTransform{kMovingCasterStart},
+            C_VoxelSetNew{ivec3(4, 4, 4), Color{220, 140, 100, 255}, true}
+        );
+        setupCanvasLighting();
+        IRRender::setSunDirection(kMovingCasterSunDirection);
+        IRRender::setVoxelRenderSubdivisions(kMovingCasterSubdivisions);
+        return;
+    }
     if (g_shadowFootprintProbe) {
         IR_LOG_INFO("--- Shape shadow-footprint probe scene ---");
         initShadowFootprintProbeScene();

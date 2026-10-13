@@ -1,0 +1,241 @@
+#include <gtest/gtest.h>
+
+#include "../../creations/editors/voxel_editor/lua_session_bindings.hpp"
+
+namespace IRVoxelEditor::Session {
+
+#define IR_SESSION_PREDICATE_STUB(name)                                                            \
+    bool name(const void *, std::string &) {                                                       \
+        return true;                                                                               \
+    }
+IR_SESSION_PREDICATE_STUB(evaluateOccupancyCheck)
+IR_SESSION_PREDICATE_STUB(evaluatePartTransformCheck)
+IR_SESSION_PREDICATE_STUB(evaluatePartCountCheck)
+IR_SESSION_PREDICATE_STUB(evaluatePartIdCheck)
+IR_SESSION_PREDICATE_STUB(evaluatePartAuthoredCountCheck)
+IR_SESSION_PREDICATE_STUB(evaluatePartEditableCheck)
+IR_SESSION_PREDICATE_STUB(evaluateCanvasCountCheck)
+IR_SESSION_PREDICATE_STUB(evaluateRotationModeCheck)
+IR_SESSION_PREDICATE_STUB(evaluatePartAnchorCheck)
+IR_SESSION_PREDICATE_STUB(evaluatePartModeDropdownCheck)
+IR_SESSION_PREDICATE_STUB(evaluateEditorInputCheck)
+IR_SESSION_PREDICATE_STUB(evaluatePartsListCheck)
+IR_SESSION_PREDICATE_STUB(evaluateCameraZoomCheck)
+IR_SESSION_PREDICATE_STUB(evaluatePickCheck)
+IR_SESSION_PREDICATE_STUB(evaluatePickMatchesRender)
+IR_SESSION_PREDICATE_STUB(evaluateSliderCheck)
+IR_SESSION_PREDICATE_STUB(evaluateComponentCheck)
+IR_SESSION_PREDICATE_STUB(evaluatePanelLabelCheck)
+IR_SESSION_PREDICATE_STUB(evaluatePartGateCheck)
+IR_SESSION_PREDICATE_STUB(evaluateManifestCheck)
+IR_SESSION_PREDICATE_STUB(evaluateComponentValueCheck)
+IR_SESSION_PREDICATE_STUB(evaluatePartExtentCheck)
+IR_SESSION_PREDICATE_STUB(evaluateMirrorCheck)
+IR_SESSION_PREDICATE_STUB(evaluateLoftMaskCheck)
+#undef IR_SESSION_PREDICATE_STUB
+
+} // namespace IRVoxelEditor::Session
+
+namespace {
+
+using IRVoxelEditor::LuaSession::Handle;
+using IRVoxelEditor::LuaSession::Lifetime;
+using IRVoxelEditor::Session::Builder;
+
+class LuaEditorSessionBindingsTest : public testing::Test {
+  protected:
+    LuaEditorSessionBindingsTest() {
+        m_lua.bindLuaDrivenEcs();
+        sol::table editor = m_lua.lua().create_named_table("IREditor");
+        IRVoxelEditor::LuaSession::bind(m_lua, editor);
+        const sol::protected_function_result component = m_lua.lua().safe_script(R"lua(
+            IRComponent.register("MatrixComponent", {
+                count = 1,
+                ratio = { type = "float", default = 1 },
+                enabled = true,
+                title = "value",
+                point = { type = "vec3" },
+                cell = { type = "ivec3" },
+                rotation = { type = "vec4" },
+                callback = function() end,
+                opaque = { type = "table", default = {} },
+            })
+        )lua");
+        if (!component.valid()) {
+            const sol::error error = component;
+            throw std::runtime_error(error.what());
+        }
+    }
+
+    IRScript::LuaScript m_lua;
+    IREntity::EntityManager m_entityManager;
+    IRSystem::SystemManager m_systemManager;
+};
+
+TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
+    Builder builder("binding_matrix", IRMath::ivec3(16), IRMath::vec3(-8.0f));
+    const std::shared_ptr<Lifetime> lifetime =
+        std::make_shared<Lifetime>(Lifetime{&builder, &m_lua});
+    m_lua.lua()["session"] = Handle{lifetime};
+
+    const sol::protected_function_result result = m_lua.lua().safe_script(R"lua(
+        local s = session
+        assert(s:sceneSize().x == 16)
+        assert(s:sceneOrigin().x == -8)
+        s:withReferenceFurniture()
+        s:segment("matrix", 4)
+        s:click({8, 8, 14})
+        s:clickExpectingNoEdit({9, 8, 14})
+        s:clickFace({6, 6, 15}, {0, 0, -1})
+        s:click({8, 8, 13})
+        s:click({8, 8, 12})
+        s:click({7, 8, 12})
+        s:click({6, 8, 12})
+        s:clickBelow({6, 8, 13})
+        s:hover({5, 8, 12})
+        s:dragBox({10, 8, 14}, {13, 8, 14})
+        s:tapKey(IRInput.Key.SPACE)
+        s:chordKey(IRInput.Key.LEFT_CONTROL, IRInput.Key.S)
+        s:toggleEraseMode()
+        s:toggleEraseMode()
+        s:enableSymmetry(false, false, false)
+        s:addLayer()
+        s:selectPrevLayer()
+        s:selectNextLayer()
+        s:toggleActiveLayerVisibility()
+        s:toggleActiveLayerVisibility()
+        s:selectPaletteSwatch(1)
+        s:clickGui({x = 20, y = 20})
+        s:wheelGui({20, 20}, 1)
+        s:wheelScene({5, 8, 12}, -1)
+        s:typeText({20, 20}, "Matrix 1")
+        s:dragGuiSlider({pos = {10, 10}, size = {100, 14}}, 0, 10, 5)
+        s:duplicateFrame()
+        s:prevFrame()
+        s:nextFrame()
+        s:save()
+        s:reload()
+        s:setPartSize({8, 8, 8})
+        s:addVoxelPart()
+        s:dragPartGizmo({0, 0, 0}, {1, 0, 0}, {1, 0, 0})
+        s:selectPartMode(0)
+        s:bakeSphere(2)
+        s:nextPart()
+        s:toggleLoftMode()
+        s:clickLoftCell(IREditor.LoftMask.XZ, {0, 0})
+        s:stampLoft()
+        s:toggleLoftMode()
+        s:removeSelectedPart()
+        s:undoRemovedPart()
+        s:removeSelectedPartWithButton()
+        s:undoRemovedPart()
+        s:dragLodSlider(IREditor.SliderTarget.LOD_FINE, 2)
+        s:toggleLodFollowZoom()
+        s:dragWorld({0, 0, 0}, {1, 0, 0})
+        s:applyRadialArray(2)
+        s:applyRadialArrayToLiveScene(2)
+        s:toggleRotationalSymmetry()
+        s:selectPartThroughList(0, 0)
+
+        s:expectOccupancy({8, 8, 14}, true, "occupancy")
+        s:expectPartOccupancy(0, {4, 4, 2}, true, "part_occupancy")
+        s:expectPartTransform(0, {0, 0, 0}, 1, false, "part_transform")
+        s:expectPartCount(1, "part_count")
+        s:expectPartId(0, "part_1", "part_id")
+        s:expectPartAuthoredCount(0, 1, "authored_count")
+        s:expectPartEditable(0, true, "editable")
+        s:expectSelectedPartVisible(0, "selected")
+        s:expectPartsListTop(0, "list_top")
+        s:expectCameraZoom(4, true, "camera_zoom")
+        s:expectCanvasCount(0, "canvas_count")
+        s:expectRotationMode(0, 0, "rotation_mode")
+        s:expectPartAnchor(0, IRComponent.EntityAnchor.CENTER, "part_anchor")
+        s:expectPartModeDropdown(0, "part_mode_dropdown")
+        s:expectEditorInput(IREditor.EditorInputCheckKind.SELECTED_PART_NO_TEXT_FOCUS,
+                            0, "editor_input")
+        s:expectPoolActive({8, 8, 14}, true, "pool_active")
+        s:expectVoxelColor({8, 8, 14}, 1, "voxel_color")
+        s:expectPick({8, 8, 14}, "pick")
+        s:expectPickMatchesRender("pick_render")
+        s:expectSliderValue(IREditor.SliderTarget.FPS, 12, 1, "slider")
+        s:expectPartGated(0, false, -1, "part_gated")
+        s:expectPreviewGated(false, -1, "preview_gated")
+        s:expectPartExtent(0, {8, 8, 8}, "extent")
+        s:expectMirrorOffsets({0, 0, 0}, "mirrors")
+        s:expectLoftMask(IREditor.LoftMask.XZ, {0, 0}, true, "loft")
+        s:expectManifestContains("parts", "manifest_has")
+        s:expectManifestOmits("missing", "manifest_omits")
+        s:expectComponentRegistered("MatrixComponent", 9, "component_registered")
+        s:expectPanelLabel("Panel", "Label", "panel_label")
+        s:expectComponentValue(0, "MatrixComponent", "count", 1, true, "component_value")
+        s:clearEntityScene()
+        s:discardRemovedPart()
+    )lua");
+    ASSERT_TRUE(result.valid()) << sol::error(result).what();
+    const IRVoxelEditor::Session::Recipe recipe = builder.finish();
+    EXPECT_TRUE(recipe.ok()) << (recipe.errors_.empty() ? "" : recipe.errors_.front());
+}
+
+TEST_F(LuaEditorSessionBindingsTest, InvalidatesRetainedHandleAfterReturnAndRaise) {
+    for (const char *body : {"retained = session", "retained = session; error('raised')"}) {
+        Builder builder("escape", IRMath::ivec3(16), IRMath::vec3(-8.0f));
+        const std::shared_ptr<Lifetime> lifetime =
+            std::make_shared<Lifetime>(Lifetime{&builder, &m_lua});
+        m_lua.lua()["session"] = Handle{lifetime};
+        const sol::protected_function_result call =
+            m_lua.lua().safe_script(body, sol::script_pass_on_error);
+        lifetime->builder_ = nullptr;
+        const sol::protected_function_result escaped =
+            m_lua.lua().safe_script("return retained:sceneSize()", sol::script_pass_on_error);
+        EXPECT_FALSE(escaped.valid());
+        const sol::error error = escaped;
+        EXPECT_NE(std::string(error.what()).find("session handle used outside"), std::string::npos);
+        if (std::string(body).find("error") == std::string::npos)
+            EXPECT_TRUE(call.valid());
+        else
+            EXPECT_FALSE(call.valid());
+    }
+}
+
+TEST_F(LuaEditorSessionBindingsTest, RejectsEveryArgumentFamilyAndNonComparableFields) {
+    Builder builder("negative", IRMath::ivec3(16), IRMath::vec3(-8.0f));
+    const std::shared_ptr<Lifetime> lifetime =
+        std::make_shared<Lifetime>(Lifetime{&builder, &m_lua});
+    m_lua.lua()["session"] = Handle{lifetime};
+    const char *calls[] = {
+        "session:segment({}, 4)",
+        "session:segment('Bad Label', 4)",
+        "session:segment('x', {})",
+        "session:click({x=1,y=2,z='bad'})",
+        "session:clickLoftCell(99, {0,0})",
+        "session:dragGuiSlider({pos={0,0},size='bad'}, 0, 1, 0)",
+        "session:dragWorld({0,0}, {1,1,1})",
+        "session:clickGui({0})",
+        "session:tapKey(9999)",
+        "session:expectRotationMode(0, 9999, 'bad')",
+        "session:expectPartAnchor(0, 9999, 'bad')",
+        "session:selectPartMode(9999)",
+        "session:expectPartModeDropdown(9999, 'bad')",
+        "session:expectComponentValue(0, 'MatrixComponent', 'point', {x=1}, true, 'bad')",
+        "session:expectComponentValue(0, 'MatrixComponent', 'callback', nil, true, 'bad')",
+        "session:expectComponentValue(0, 'MatrixComponent', 'opaque', {}, true, 'bad')",
+    };
+    for (const char *call : calls) {
+        const sol::protected_function_result result =
+            m_lua.lua().safe_script(call, sol::script_pass_on_error);
+        EXPECT_FALSE(result.valid()) << call;
+    }
+}
+
+TEST_F(LuaEditorSessionBindingsTest, RecordErrorForwardsAsRecipeFailure) {
+    Builder builder("record_error", IRMath::ivec3(16), IRMath::vec3(-8.0f));
+    const std::shared_ptr<Lifetime> lifetime =
+        std::make_shared<Lifetime>(Lifetime{&builder, &m_lua});
+    m_lua.lua()["session"] = Handle{lifetime};
+    ASSERT_TRUE(m_lua.lua().safe_script("session:recordError('matrix error')").valid());
+    const IRVoxelEditor::Session::Recipe recipe = builder.finish();
+    ASSERT_FALSE(recipe.ok());
+    EXPECT_EQ(recipe.errors_.front(), "matrix error");
+}
+
+} // namespace

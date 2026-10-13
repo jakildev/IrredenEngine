@@ -1,6 +1,12 @@
-"""Extract brace blocks and scalar/vector functions for executable shader controls."""
+"""Extract shader bodies and apply checked mutations for executable controls."""
 
 import re
+
+
+def replace_once(source, before, after):
+    if source.count(before) != 1:
+        raise ValueError(f"expected one mutation site for {before!r}")
+    return source.replace(before, after)
 
 
 def extract_block(source, marker):

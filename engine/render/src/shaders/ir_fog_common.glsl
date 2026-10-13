@@ -9,6 +9,8 @@
 //      by the exact segment march (ir_fog_los) from its eye to the sample's
 //      canonical position, which each route builds with
 //      fogLosCanonicalSample.
+// A sample on a vertical face also takes the reveal at the top plane of its
+// own column (fogColumnTopState), on frames with a gated source.
 // The reveal is split from the colour apply so a caller can skip the colour
 // read-modify-write for a fully revealed sample (state >= 1.0), which is most
 // of a revealed scene's pixels. The reveal relies on that early-out: it stops
@@ -156,12 +158,65 @@ uvec2 fogTapTexel(ivec2 col, ivec2 fogSize) {
     return imageLoad(canvasFogOfWar, cell).rg;
 }
 
+// The column-top term of a vertical face: the reveal at the top plane of the
+// column `columnPoint` lies in, the ground surface the face's matter stands
+// under. Each admitted source contributes its radial curve, ceiling and line
+// of sight evaluated at the point of that plane over `columnPoint`, which is
+// the verdict a body standing there takes. Returns the largest of `state` and
+// those contributions; a column with no top plane above the sample returns
+// `state`. The term feeds the state alone, so a source whose curve at the
+// plane cannot exceed it is skipped whole, march included, and the result is
+// bit-identical to evaluating it.
+float fogColumnTopState(
+    vec3 columnPoint, float aaFloor, uint cellChannels, ivec2 losFieldMin, float state
+) {
+    const float topZ = fogLosTopPlane(fogLosHalfCellOf(columnPoint.xy), losFieldMin);
+    if (topZ == kFogLosColumnEmpty || topZ >= columnPoint.z - kFogLosClearanceTolerance) {
+        return state;
+    }
+    const vec3 top = vec3(columnPoint.xy, topZ);
+    for (int i = 0; i < visionCircleCount; ++i) {
+        if ((visionCircleChannels[i / 4][i % 4] & cellChannels) == 0u) {
+            continue;
+        }
+        const vec4 heights = visionCircleHeights[i];
+        const float dzUp = max(heights.x - top.z, 0.0);
+        const float dzDown = max(top.z - heights.x, 0.0);
+        const float distEff = length(top.xy - visionCircles[i].xy) +
+            heights.y * max(dzUp - heights.w, 0.0) +
+            heights.z * max(dzDown - heights.w, 0.0);
+        const float aa = max(visionCircles[i].w, aaFloor);
+        const float ceilingReveal =
+            (1.0 - smoothstep(visionCircles[i].z - aa, visionCircles[i].z + aa, distEff)) *
+            fogCeilingVisibility(visionCircleCeilings[i], dzUp);
+        if (ceilingReveal <= state) {
+            continue;
+        }
+        float losVisibility = 1.0;
+        if (fogLosSourceGated(losSourceMask, i) &&
+            length(top.xy - visionCircles[i].xy) <= fogLosReach(visionCircles[i])) {
+            losVisibility = fogLosVisibility(
+                fogLosEye(visionCircles[i], heights.x, losParams[i].x),
+                top,
+                losParams[i].y,
+                losFieldMin
+            );
+        }
+        state = max(state, losVisibility * ceilingReveal);
+    }
+    return state;
+}
+
 // The FIELD reveal. `aaFloor` (world units per canvas pixel) and `losSample`
 // (the sample's canonical position, fogLosCanonicalSample) are read only by
 // the vision-circle loop, so callers may skip computing them when
-// visionCircleCount is 0; `losSample` is read only for a gated source. A BODY
-// sample never reaches it (fogApplyBody).
-FogReveal fogRevealSample(vec3 pos3D, vec3 losSample, float aaFloor) {
+// visionCircleCount is 0; `losSample` is read only for a gated source.
+// `columnPoint` (fogLosColumnPoint) and `faceAxis` (the face's world axis, 2 =
+// a top or bottom face) are read only while a source is gated, the frames the
+// column field is published on. A BODY sample never reaches it (fogApplyBody).
+FogReveal fogRevealSample(
+    vec3 pos3D, vec3 losSample, vec3 columnPoint, int faceAxis, float aaFloor
+) {
     const ivec3 surfaceVoxel = roundHalfUp(pos3D);
     const ivec2 fogSize = imageSize(canvasFogOfWar);
     const uvec2 gridTexel = fogTapTexel(surfaceVoxel.xy, fogSize);
@@ -258,6 +313,20 @@ FogReveal fogRevealSample(vec3 pos3D, vec3 losSample, float aaFloor) {
                 hardDistPastRim,
                 losVisibility < 1.0 ? mix(kFogRimFadeCells, distPastRim, losVisibility) : distPastRim
             );
+        }
+    }
+    // A vertical face below a revealed top plane of its own column is
+    // revealed with it. A top face is its own ground surface and never takes
+    // the term: a height test alone would light the foot of a shadowed wall
+    // wherever a top pixel's recovered XY lands inside the taller neighbour.
+    // A sample the term raises carries no band, so no dissolve or cap marks
+    // it; the rim distance and the grid state stay the sample's own.
+    if (state < 1.0 && losSourceMask != 0 && faceAxis != 2) {
+        const float topState =
+            fogColumnTopState(columnPoint, aaFloor, cellChannels, losFieldMin, state);
+        if (topState > state) {
+            state = topState;
+            styledBand = 0.0;
         }
     }
     return FogReveal(state, gridState, hardDistPastRim, styledBand);

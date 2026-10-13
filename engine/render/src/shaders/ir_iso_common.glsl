@@ -244,10 +244,12 @@ const uint kEntityIdFogBodyFactorMaskInHighWord = 0xFFu << kEntityIdFogBodyFacto
 // the flag bits 0..2 of the high word, so bit 19 never carries id state. Same
 // masking chokepoint as the bits above.
 const uint kEntityIdAnalyticSurfaceMaskInHighWord = 0x1u << 19u;
+// Positive provenance of a settled non-detached voxel raster sample.
+const uint kEntityIdCardinalVoxelMaskInHighWord = 0x1u << 18u;
 const uint kEntityIdHighWordMask =
     ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord |
       kEntityIdFogBodyMaskInHighWord | kEntityIdFogBodyFactorMaskInHighWord |
-      kEntityIdAnalyticSurfaceMaskInHighWord);
+      kEntityIdAnalyticSurfaceMaskInHighWord | kEntityIdCardinalVoxelMaskInHighWord);
 uint decodePriority(uvec2 rawId) {
     return (rawId.y >> kEntityIdPriorityShiftInHighWord) & 0x3u;
 }
@@ -266,6 +268,9 @@ uint decodeFogBodyFactor(uvec2 rawId) {
 }
 bool decodeAnalyticSurface(uvec2 rawId) {
     return (rawId.y & kEntityIdAnalyticSurfaceMaskInHighWord) != 0u;
+}
+bool decodeEntityIdCardinalVoxel(uvec2 rawId) {
+    return (rawId.y & kEntityIdCardinalVoxelMaskInHighWord) != 0u;
 }
 uvec2 decodeEntityId(uvec2 rawId) {
     return uvec2(rawId.x, rawId.y & kEntityIdHighWordMask);
@@ -292,6 +297,10 @@ uvec2 encodeEntityIdFogBody(uvec2 packedId, bool isFogBody, uint factor) {
                                 ((factor & 0xFFu) << kEntityIdFogBodyFactorShiftInHighWord))
         : packedId;
 }
+uvec2 encodeEntityIdCardinalVoxel(uvec2 packedId) {
+    return uvec2(packedId.x, packedId.y | kEntityIdCardinalVoxelMaskInHighWord);
+}
+
 // Set the analytic-surface flag on an ALREADY priority-encoded id, like
 // encodeEntityIdCutFace.
 uvec2 encodeEntityIdAnalyticSurface(uvec2 packedId) {
@@ -568,6 +577,26 @@ int roundHalfUp(float v) {
 
 ivec2 roundHalfUp(vec2 v) {
     return ivec2(floor(v + vec2(0.5)));
+}
+
+// Unit-vector components as exact UNORM8 codes: -1 → 0, 0 → 128, +1 → 255.
+// A bare `v * 0.5 + 0.5` leaves the 0.5 midpoint to the store's float-to-unorm
+// conversion, which is implementation-defined at that tie (127 or 128), so
+// debug colours read back exactly only when the shader rounds them itself.
+vec3 encodeUnitVectorUnorm8(vec3 v) {
+    return vec3(roundHalfUp(v * 127.5 + 127.5)) / 255.0;
+}
+
+// Raw canvas position of the gather fragment at raster-target pixel
+// `fragmentPixel` (gl_FragCoord.xy). `canvasFromPixel` holds the quad centre in
+// raster-target pixels (.xy) and canvas texels per raster pixel (.zw); canvas Y
+// runs down the screen. Evaluated per fragment, never interpolated: with a
+// power-of-two scale and a centre on the half-pixel lattice every term is exact,
+// so a pixel centre on a texel boundary selects the same texel on every GPU.
+vec2 canvasPositionFromPixel(vec2 fragmentPixel, vec4 canvasFromPixel, vec2 textureOffset,
+                             vec2 textureSize) {
+    return (fragmentPixel - canvasFromPixel.xy) * vec2(1.0, -1.0) * canvasFromPixel.zw +
+           textureOffset + 0.5 * textureSize;
 }
 
 // Per-voxel iso occlusion depth of model position `pos` projected onto a

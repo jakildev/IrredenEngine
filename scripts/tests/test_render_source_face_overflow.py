@@ -78,6 +78,9 @@ struct BoundBuffer {
     int length() const{return int(words.size());}
 };
 BoundBuffer sunDepthBuf;
+// This fixture contains finite faces only; analytic shapes have separate ray controls.
+float sourceShapeRaySeparation(vec2,float,uint,vec3,vec3,vec3){std::abort();}
+
 """
 
 CASES = r"""
@@ -94,10 +97,11 @@ void reset(uint count,uint tileCount,uint cascade=0) {
     faces.clear();
 }
 void writeFace(Face f){
-    const uint record=kSourceFaceRecordOffset+9*uint(faces.size());
+    const uint record=kSourceFaceRecordOffset+kSourceFaceRecordWords*uint(faces.size());
     const float values[]={f.corner.x,f.corner.y,f.corner.z,f.u.x,f.u.y,f.u.z,
                           f.v.x,f.v.y,f.v.z};
     for(uint i=0;i<9;++i)sunDepthBuf.words[record+i]=floatBitsToUint(values[i]);
+    sunDepthBuf.words[record+9]=0;
     faces.push_back(f);
 }
 float sample(vec2 uv={2.9f,3.5f},float z=10,uint cascade=0,
@@ -155,7 +159,8 @@ int main(){
             fallback(cascade,empty,depth(1));
             const bool exact=count<=64 || (enabled && count<=256);
             require(sample({2.9f,3.5f},10,cascade)==(exact?0:1),"exact miss/fallback boundary");
-            require(sunDepthBuf.readCount==(exact?count*9:0),"bounded no-hit record reads");
+            require(sunDepthBuf.readCount==(exact?count*kSourceFaceRecordWords:0),
+                    "bounded no-hit record reads");
             fallback(cascade,depth(2),depth(1));
             require(sample({2.9f,3.5f},10,cascade)==1,"preserve other surface layer");
         }
@@ -170,11 +175,11 @@ int main(){
         reset(65537,64,cascade);fill(64,tapOnly);
         fallback(cascade,empty,depth(1));
         require(sample({2.9f,3.5f},10,cascade)==0,"complete tile in exhausted pool");
-        require(sunDepthBuf.readCount==64*9,"complete tile uses bounded list");
+        require(sunDepthBuf.readCount==64*kSourceFaceRecordWords,"complete tile uses bounded list");
     }
     reset(257,1);fill(63,tapOnly);writeFace(hit);
     require(sample()==1,"complete list uses stored record IDs");
-    require(sunDepthBuf.readCount==9,"ordinary tile query work unchanged");
+    require(sunDepthBuf.readCount==kSourceFaceRecordWords,"ordinary tile query work unchanged");
     reset(0,0);
     fallback(0,empty,depth(1));
     require(sample()==0 && sunDepthBuf.readCount==0,"empty index ignores indexed fallback");
@@ -209,7 +214,8 @@ int main(){
                 const bool expected=oracle(uv,10,100);
                 sunDepthBuf.readCount=0;
                 require(sample(uv)==expected,"independent triangle-ray coverage");
-                require(sunDepthBuf.readCount<=count*9,"bounded reference query work");
+                require(sunDepthBuf.readCount<=count*kSourceFaceRecordWords,
+                        "bounded reference query work");
                 ++queries;hits+=expected;misses+=!expected;
             }
         }
@@ -220,7 +226,45 @@ int main(){
 """
 
 
-def host_source(suffix, directory, enabled, mutation=None):
+ORDER_CASES = CASES[:CASES.index("int main(){")] + r"""
+int main(){
+    const bool enabled=IR_SUN_FACE_OVERFLOW_REFERENCE!=0;
+    const uint empty=0xffffffffu;
+    const Face miss{{2,3,1},{.25f,0,0},{0,1,0}};
+    const Face tapOnly{{2,3,1},{.75f,0,0},{0,1,0}};
+    const Face hit{{2.8f,3,2},{.2f,0,0},{0,1,0}};
+    uint comparisons=0;
+    for(uint cascade:{0u,1u})for(uint count:{65u,129u}){
+        for(uint indexed:{empty,depth(1)})for(uint primary:{empty,depth(2)}){
+            reset(count,count,cascade);
+            writeFace(indexed==empty?miss:tapOnly);
+            fill(count-2,miss);writeFace(hit);
+            require(oracle({2.9f,3.5f},10,100),"scene contains a real blocker");
+            require(oracle({2.5f,3.5f},10,100)==(indexed!=empty),
+                    "indexed fallback matches geometry at texel center");
+            fallback(cascade,primary,indexed);
+            for(uint i=0;i<64;++i)sunDepthBuf.words[tileBase(cascade)+1+i]=i;
+            const float excluded=sample({2.9f,3.5f},10,cascade);
+            sunDepthBuf.words[tileBase(cascade)+64]=count-1;
+            const float retained=sample({2.9f,3.5f},10,cascade);
+            require(retained==excluded,"retained subset changes shadow coverage");
+            const bool expected=enabled || indexed!=empty || primary!=empty;
+            require(retained==expected,"complete reference or sampled fallback");
+            ++comparisons;
+        }
+        // A failed global reservation can poison an empty tile without publishing IDs.
+        reset(kSourceFaceCapacity+1,65,cascade);
+        for(uint i=0;i<64;++i)sunDepthBuf.words[tileBase(cascade)+1+i]=empty;
+        fallback(cascade,empty,depth(1));
+        require(sample({2.9f,3.5f},10,cascade)==1,"exhaustion retains fallback");
+        require(sunDepthBuf.readCount==0,"exhaustion never reads unpublished records");
+    }
+    std::cout<<comparisons<<" retained-subset comparisons; poisoned exhaustion safe\n";
+}
+"""
+
+
+def host_source(suffix, directory, enabled, mutation=None, cases=CASES):
     sampler = (SHADERS / directory / f"ir_sun_shadow_sample.{suffix}").read_text()
     layout = (SHADERS / directory / f"ir_sun_face_query_layout.{suffix}").read_text()
     geometry = (SHADERS / directory / f"ir_projected_face.{suffix}").read_text()
@@ -247,7 +291,7 @@ def host_source(suffix, directory, enabled, mutation=None):
     define = "#define IR_SUN_FACE_OVERFLOW_REFERENCE 1\n" if enabled else ""
     code = PREAMBLE + define + constants[0] + "\n" + layout + helpers + body
     code += f"static_assert(IR_SUN_FACE_OVERFLOW_REFERENCE == {int(enabled)});\n"
-    code += CASES.replace("SAMPLE_CALL", call)
+    code += cases.replace("SAMPLE_CALL", call)
     return (code.replace("constant uint", "const uint")
             .replace("device const uint *sunDepthBuf", "BoundBuffer& sunDepthBuf")
             .replace("float2", "vec2").replace("float3", "vec3")
@@ -264,6 +308,28 @@ class SourceFaceOverflowTest(unittest.TestCase):
                     self.assertEqual(run.returncode, 0, run.stderr)
                     if enabled:
                         print(f"{suffix}: {run.stdout}", end="")
+
+    def test_incomplete_lists_do_not_choose_coverage_by_reservation_order(self):
+        partial_query = (
+            "const uint candidateCount = queryAllFaces ? sourceFaceCount : count;\n"
+            "            if (sourceQueryComplete && dot(normal, sunDir) > 0.0) {",
+            "const uint candidateCount = queryAllFaces ? sourceFaceCount\n"
+            "                : min(count, kSourceFaceTileCapacity);\n"
+            "            if ((sourceQueryComplete || sourceFaceCount <= kSourceFaceCapacity)\n"
+            "                && dot(normal, sunDir) > 0.0) {",
+        )
+        for suffix, directory in (("glsl", ""), ("metal", "metal/")):
+            for enabled in (False, True):
+                with self.subTest(backend=suffix, enabled=enabled):
+                    run = self.compile_and_run(host_source(
+                        suffix, directory, enabled, cases=ORDER_CASES))
+                    self.assertEqual(run.returncode, 0, run.stderr)
+                    print(f"{suffix} reference={enabled}: {run.stdout}", end="")
+            with self.subTest(backend=suffix, mutation="partial_exact_query"):
+                run = self.compile_and_run(host_source(
+                    suffix, directory, False, partial_query, ORDER_CASES))
+                self.assertNotEqual(run.returncode, 0)
+                self.assertIn("retained subset changes shadow coverage", run.stderr)
 
     def test_mutation_controls(self):
         mutations = {

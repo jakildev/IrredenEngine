@@ -9,6 +9,11 @@ const char *const kFileFragFramebufferToScreen = "shaders/f_framebuffer_to_scree
 const char *const kFileVertSpritesToScreen = "shaders/v_sprites_to_screen.glsl";
 const char *const kFileFragSpritesToScreen = "shaders/f_sprites_to_screen.glsl";
 
+// Screen-resolution GUI canvas composite with anti-aliased lattice triangles
+// (Metal mirror in metal/gui_canvas_to_screen.metal).
+const char *const kFileVertGuiCanvasToScreen = "shaders/v_gui_canvas_to_screen.glsl";
+const char *const kFileFragGuiCanvasToScreen = "shaders/f_gui_canvas_to_screen.glsl";
+
 const char *const kFileVertTrixelToFramebuffer = "shaders/v_trixel_to_framebuffer.glsl";
 const char *const kFileFragTrixelToFramebuffer = "shaders/f_trixel_to_framebuffer.glsl";
 const char *const kFileFragTrixelToFramebufferLitShapes =
