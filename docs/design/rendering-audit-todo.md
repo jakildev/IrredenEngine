@@ -22,7 +22,7 @@ historical, not a claim that every shadow defect is closed.
 
 Work through these slices in order, keeping their image and cost evidence separate:
 
-1. **Crowded finite-index coverage — implementation under validation.** Preserve
+1. **Crowded finite-index coverage — native correctness validated in #4399.** Preserve
    the inline 64-entry lists and allocate bounded spill nodes only for crowded
    tiles. Exact queries require complete local coverage and at most 256
    candidates. Pool exhaustion disables spill queries frame-wide; local query
@@ -30,12 +30,18 @@ Work through these slices in order, keeping their image and cost evidence separa
    ray coverage, reservation permutations, stale resets, unrelated records,
    both cascades and independent depth layers. Measure build/query cost and
    memory before adoption; this is not a solution for arbitrary overlap.
+   Eight crowded edge controls have zero missing/excess pixels. Eleven full-scene
+   captures equal a complete-geometry diagnostic, and actual half-face receiver
+   tests verify parity, density and anchors. The changed Metal references are
+   intentional. Bounded Release controls are preliminary: mixed capture/profile
+   flags selected GPU-only reservation, so quiet-host timing still needs retry.
 2. **Current-master performance qualification — pending measurements.** Use
    warmed Release controls at cardinal, diagonal and moving views, fixed
    effective densities, zoom changes and dense overlap. Separate profiling
    overhead and frame pacing from render work; report CPU, GPU spans,
    allocation limits and tail latency. Passing CI does not establish hardware
    throughput or million-entity/60-fps qualification.
+   Fix capture/profile reservation precedence before the next mixed-run timing.
 3. **Curved receiver correctness — prototype, not yet promoted.** Extend
    retained-owner ray reconstruction using the same represented field as the
    caster, without changing elected coverage or displayed face normals. Native
@@ -53,6 +59,14 @@ owns snapped camera placement, and #4308 owns cardinal AO/local-light depth.
 Integrate their results and recapture shared rows without duplicating those
 implementations. Windows-native smoke of the merged stack remains separate
 validation debt.
+
+New numerical follow-up: nearly sun-edge-on finite faces can amplify float
+projection error after translation. A constructed determinant-`5e-5` midpoint
+at sun-UV origin 100 produces false self-separation near 0.042, versus zero at
+the origin. This predates the spill index and is not attributed to the native
+scene differences above. Preserve the witness and investigate subtracting
+world-relative coordinates before projection; do not repair it with a larger
+bias or by rejecting all same-entity shadows.
 
 ## Active analytic-shadow follow-up
 
