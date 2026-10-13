@@ -220,10 +220,11 @@ vec2 framebufferPxToWindowPoints(vec2 framebufferPx);
 /// Returns @c false on GL error. Used by the screenshot system.
 bool readDefaultFramebuffer(int x, int y, int width, int height, void *rgbaData);
 /// Read and decode the main framebuffer's composite depth at pixel @p px.
-/// Coordinates are in the MAIN FRAMEBUFFER's texture space (its
-/// resolution-plus-buffer), top-left origin on both backends — NOT window /
-/// screenshot pixels. Returns @c valid_ == false when @p px is outside the
-/// framebuffer or no main framebuffer exists yet.
+/// Coordinates are MAIN FRAMEBUFFER pixels (its resolution-plus-buffer),
+/// top-left origin on both backends — NOT window / screenshot pixels; the
+/// texel read is @c compositeDepthTextureRow(px.y, height) on both. Returns
+/// @c valid_ == false when @p px is outside the framebuffer or no main
+/// framebuffer exists yet.
 ///
 /// Costs a full GPU flush (Metal commit+wait, GL glFinish), so it is strictly a
 /// debug / on-change primitive — never call it per frame on a hot path. Pure
@@ -231,6 +232,11 @@ bool readDefaultFramebuffer(int x, int y, int width, int height, void *rgbaData)
 /// byte-identical at the pixel level. @see IRPrefab::DepthProbe for the
 /// diagnostic + regression-guard wrappers built on this.
 CompositeDepthSample readbackCompositeDepth(ivec2 px);
+/// The main-framebuffer pixel @ref readbackCompositeDepth takes to read the
+/// texel the default-pivot latch acquires from (@c framebufferCenterPixel).
+/// Every reader of the view-centre depth asks for it here so it cannot drift
+/// from the latch. Returns (-1, -1) when no main framebuffer exists yet.
+ivec2 getMainFramebufferCenterPixel();
 /// Mouse position in the output view: viewport pixels measured from the corner
 /// of the quad the main framebuffer is drawn into, so one main-framebuffer
 /// pixel spans @ref getOutputScaleFactor of them.

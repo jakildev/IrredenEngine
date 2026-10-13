@@ -89,6 +89,7 @@ add_executable(IrredenEngineTest
   render/canvas_part_test.cpp
   render/canvas_residency_test.cpp
   render/canvas_rotation_test.cpp
+  render/composite_depth_row_test.cpp
   render/default_pivot_latch_test.cpp
   render/detached_revoxelize_groups_test.cpp
   render/detached_world_depth_test.cpp
