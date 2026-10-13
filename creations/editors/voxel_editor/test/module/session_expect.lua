@@ -17,6 +17,11 @@
 --
 -- component_field_key reads componentFieldKey, the same shape, for a field
 -- whose name is not a Lua identifier.
+--
+-- composite_proof reads compositeProof: the recipe that authors its stem part
+-- and the one that authors its frame part, each { name, values } as `recipe`
+-- is. The session sizes its parts so the stem's top cell is the cell the
+-- frame rings.
 return {
     components = {
         { name = "TestModuleTag", fieldCount = 2 },
@@ -47,5 +52,9 @@ return {
         field = "end",
         value = 7,
         default = 1,
+    },
+    compositeProof = {
+        stem = { name = "test_column", values = { height = 6 } },
+        frame = { name = "test_frame", values = { half = 2 } },
     },
 }

@@ -427,12 +427,12 @@ endfunction()
 #            two files fails the target before the zip is written.
 #   Linux:   deps default to static (top-level CMakeLists.txt), so usually
 #            nothing to bundle; $ORIGIN rpath covers any shared .so left.
-#   macOS:   cmake/macos_bundle_dylibs.cmake copies the exe's non-system
-#            dylibs next to it and rewrites the load commands to
-#            @executable_path. NOTE: this is a SHALLOW (direct-dependency)
-#            bundle — transitive Homebrew deps (e.g. ffmpeg's codec libs) are
-#            NOT walked, so a bundle is not clean-box self-contained;
-#            verify a macOS bundle via cross-host smoke / the human.
+#   macOS:   cmake/macos_bundle_dylibs.cmake resolves the complete non-system
+#            Mach-O dependency closure, copies it next to the executable,
+#            rewrites every local load edge and install ID to @loader_path,
+#            removes package-manager rpaths, then ad-hoc signs every Mach-O.
+#            An unresolved dependency or conflicting leaf name fails before
+#            the archive is written.
 function(irreden_package_target target)
     set(_exedir "$<TARGET_FILE_DIR:${target}>")
     set(_pkg_root "${CMAKE_BINARY_DIR}/package")
@@ -486,6 +486,7 @@ function(irreden_package_target target)
         list(APPEND _pkg_cmds
             COMMAND ${CMAKE_COMMAND}
                 -DEXE=${_staged_exe} -DDEST=${_stage}
+                -DINSTALL_NAME_TOOL=${CMAKE_INSTALL_NAME_TOOL}
                 -P ${PROJECT_SOURCE_DIR}/cmake/macos_bundle_dylibs.cmake)
     endif()
 

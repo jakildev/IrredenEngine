@@ -1,5 +1,5 @@
--- Neutral fixture for IRVoxelEditor --module: three components, one recipe and
--- one panel, so every registration path the editor hosts is exercised.
+-- Neutral fixture for IRVoxelEditor --module: three components, two recipes
+-- and one panel, so every registration path the editor hosts is exercised.
 
 IRComponent.register("TestModuleTag", {
     weight = 1,
@@ -38,6 +38,30 @@ IREditor.registerRecipe(
         local cells = {}
         for i = 1, values.height do
             cells[#cells + 1] = { cx, cy, size.z - 1 - i, { r = 220, g = 140, b = 60 } }
+        end
+        return cells
+    end
+)
+
+-- A one-cell-thick square frame on the set's centre layer, around its centre
+-- column: the cells whose larger X / Y distance from that column is `half`.
+IREditor.registerRecipe(
+    "test_frame",
+    {
+        { name = "half", type = IREditor.ParamType.INT, default = 1, min = 1, max = 4 },
+    },
+    function(values, size)
+        local cx = math.floor(size.x / 2)
+        local cy = math.floor(size.y / 2)
+        local cz = math.floor(size.z / 2)
+        local half = values.half
+        local cells = {}
+        for dy = -half, half do
+            for dx = -half, half do
+                if math.max(math.abs(dx), math.abs(dy)) == half then
+                    cells[#cells + 1] = { cx + dx, cy + dy, cz, { r = 90, g = 170, b = 230 } }
+                end
+            end
         end
         return cells
     end

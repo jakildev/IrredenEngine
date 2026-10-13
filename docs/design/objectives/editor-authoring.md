@@ -22,7 +22,7 @@ routine, proven by scripted interaction rather than claimed.
   22 GUI assertions: assertion coverage grows with each authoring
   feature, and editor scenes get reference images or a structural
   oracle.
-- [ ] A composite entity — a root plus parts with per-part LOD bands and
+- [x] A composite entity — a root plus parts with per-part LOD bands and
   attached components — is authored end to end through the GUI harness from
   a loaded creation module and round-trips through `Prefab.spawn` (#3974).
 
@@ -50,6 +50,15 @@ into defects are approved (#3148 place-below modifier, #3149 widget drag).
 Open: the gui_scale space mismatch (row 3) and reference images or a
 structural oracle for editor scenes (row 4).
 
+The entity creator (#3974) landed its reference proof: the `composite_proof`
+session authors nine parts (a stem and a frame from the fixture module's
+recipes, a baked blob, and six arrayed copies of the frame) with per-part LOD
+bands and the engine's `C_AutoSpin` on the frames. `scripts/author-entity.py
+--prefab composite_proof` commits the manifest and parts under
+`assets/voxel/entities/composite_proof/`, and `IRShapeDebug --load-prefab`
+spawns it for the `composite_proof_z1` / `_z4` / `_z16` references. What
+the authoring surfaced is `editor-authoring-friction.md` Part 3.
+
 The owner reviewed the friction report on 2026-09-30. Its picking limits are
 routed to #3982 as a fix rather than held as a blocker; #3974 is the
 objective-linked decomposition for the entity creator.
@@ -62,3 +71,4 @@ objective-linked decomposition for the entity creator.
 | 2026-09-14 | `editor-authoring-friction.md` §Phase 0 | mechanism probes run, gate passed; Done-means row 2 verifies |
 | 2026-09-19 | #604 close-out; #608/#610/#612/#613 retired; #3148, #3149 approved | phase direction now flows from this objective plus the friction-report review |
 | 2026-09-30 | #3974 (proposal), #3982 | friction-report review done; non-goals narrowed to phases 3, 4, 7, 8; composite-entity Done-means row added |
+| 2026-10-13 | #3974 / #3992 | composite proof authored through the harness from the fixture module, committed, and spawned by `Prefab.spawn`; Done-means row 5 verifies |

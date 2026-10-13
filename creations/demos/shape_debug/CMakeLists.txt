@@ -12,6 +12,8 @@ irreden_bundle_assets(IRShapeDebug
         ${PROJECT_SOURCE_DIR}/assets/prefabs assets/prefabs
         ${PROJECT_SOURCE_DIR}/creations/editors/voxel_editor/test/fixtures/editor_parts
         assets/prefabs/editor_parts
+        ${PROJECT_SOURCE_DIR}/assets/voxel/entities/composite_proof
+        assets/voxel/entities/composite_proof
 )
 irreden_package_target(IRShapeDebug)
 

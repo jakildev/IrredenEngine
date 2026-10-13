@@ -8,11 +8,9 @@ macOS), a creation packages into a double-clickable artifact that runs
 on a machine with none of the dev toolchain installed.
 
 ## Done means
-- [ ] The macOS bundle walks transitive dependencies — today
-  `cmake/macos_bundle_dylibs.cmake` copies direct non-system dylibs but
-  not their Homebrew transitive deps (ffmpeg codec libs), so a truly
-  clean-box macOS bundle is admitted follow-up work (`BUILD.md`
-  § packaging).
+- [x] The macOS bundle walks transitive dependencies: the package helper
+  resolves the complete non-system Mach-O closure, rewrites every bundled
+  load edge, and validates the result from an extracted archive.
 - [ ] A per-host package smoke exists: build + clean-box-run of a
   packaged reference demo (`IRShapeDebug` is the wired
   `irreden_package_target` reference) on each of the three hosts.
@@ -41,3 +39,4 @@ and Linux build maturity.
 |---|---|---|
 | 2026-07-20 | — | objective seeded |
 | 2026-10-12 | #4352 | Windows package bundles the exe's full transitive DLL closure (FFmpeg + codecs + MinGW runtime); a hand-run clean-box launch and `--auto-record` pass with only the system dirs on `PATH`. The automated per-host smoke row stays open. |
+| 2026-10-13 | #4333 / PR #4394 | macOS package bundles and ad-hoc signs the complete non-system dylib closure; an extracted-archive audit proves all load edges are bundle-local. The automated per-host smoke row stays open. |
