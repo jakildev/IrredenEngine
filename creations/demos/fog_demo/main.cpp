@@ -1992,13 +1992,13 @@ static_assert(kCeilingShadowControlHeight == 9);
 // The curved variant swaps the centre FIELD column and the BODY twin for
 // cylinders of the same footprint, which only the analytic-shape caster route
 // bakes. A shape takes its BODY reveal verdict at its centre, so the centre
-// stays under the ceiling plane while the top rises past the cut midpoint.
+// stays under the ceiling plane while the top rises past the retained levels.
 bool g_ceilingShadowCurved = false;
 constexpr float kCeilingShadowCylinderHeight = 10.0f;
 static_assert(
     0.5f * (kCeilingShadowCylinderHeight - 1.0f) < kCeilingHeight &&
-        kCeilingShadowCylinderHeight - 1.0f > kCeilingHeight + 0.5f * kCeilingFade,
-    "the BODY cylinder must be revealed at its centre and cast above the cut midpoint"
+        kCeilingShadowCylinderHeight - 1.0f > float(kCeilingShadowControlHeight - 1),
+    "the BODY cylinder must be revealed at its centre and cast above the retained levels"
 );
 constexpr vec4 kCeilingShadowCylinder{
     kCeilingColumnFootprint * 0.5f,
@@ -2372,6 +2372,7 @@ void probeCeilingSurface() {
 struct ShadowFootprintReading {
     int texels_ = 0;
     float reach_ = -1.0f;
+    float receiverReach_ = -1.0f;
     int capWitnesses_ = 0;
     int capWitnessesLit_ = 0;
     float expectedReach_ = -1.0f;
@@ -2475,6 +2476,7 @@ void probeCeilingShadow() {
                 if (along < 0.0f || IRMath::abs(IRMath::dot(delta, lateral)) > 1.5f) {
                     continue;
                 }
+                reading.receiverReach_ = IRMath::max(reading.receiverReach_, along);
                 // Independent slab intersection over the CPU-retained solid,
                 // evaluated on this lane's actual receiver samples. It includes
                 // finite floor extent and treatment holes in the expected reach.
@@ -2592,19 +2594,28 @@ void probeCeilingShadow() {
         g_revealTreatment || IRMath::abs(rim.reach_ - control.reach_) <= sunTexel,
         "the cut rim footprint differs from the cut-height control by more than one sun texel"
     );
-    // The control is calibrated to the voxel layers the static retained boundary keeps; an
-    // analytic cylinder is cut on the continuous plane instead, so the curved
-    // variant compares the FIELD cylinder against its BODY twin only. The BODY
-    // twin must keep at least half the throw of its height above the static retained boundary.
+    // A cylinder's footprint differs from the voxel control, so compare identical
+    // curved casters. The BODY twin must keep at least half the throw of its
+    // height above the static retained boundary.
     if (g_ceilingShadowCurved) {
+        // Unlike the voxel oracle, this comparison needs both complete shadows.
+        for (const auto &reading : {centre, body}) {
+            requireFogProbe(
+                "FOG-SHADOW-PROBE",
+                reading.receiverReach_ > reading.reach_ + sunTexel,
+                "the finite receiver clips a curved shadow footprint lane"
+            );
+        }
         const float throwPerHeight = IRMath::length(vec2(sun)) / IRMath::abs(sun.z);
         const float riseAboveCut =
             kCeilingShadowCylinderHeight - 1.0f - (float(kCeilingShadowControlHeight - 1));
         const float minGap = 0.5f * riseAboveCut * throwPerHeight;
         IR_LOG_INFO(
-            "FOG-SHADOW-PROBE curved gap={:.3f} min={:.3f}",
+            "FOG-SHADOW-PROBE curved gap={:.3f} min={:.3f} receiver={:.3f}/{:.3f}",
             body.reach_ - centre.reach_,
-            minGap
+            minGap,
+            centre.receiverReach_,
+            body.receiverReach_
         );
         requireFogProbe(
             "FOG-SHADOW-PROBE",
@@ -4333,14 +4344,14 @@ createFieldShape(vec3 position, IRRender::ShapeType type, vec4 params, Color col
 }
 
 // The cross-section scenes' shared VOXEL ground slab. centerAroundOrigin
-// places the 60×60×3 cells at [-29,30]²×[4,6], so the radius-9 vision disc is
+// places the default 60×60×3 cells at [-29,30]²×[4,6], so the radius-9 vision disc is
 // fully interior and the whole cut arc runs through pool voxels the occlusion
 // bitfield knows — an off-origin slab covers only part of the arc and the
 // uncovered segments cut to black.
-IREntity::EntityId createEdgeGroundSlab() {
+IREntity::EntityId createEdgeGroundSlab(IRMath::ivec2 footprint = {60, 60}) {
     return IREntity::createEntity(
         C_LocalTransform{vec3(0.0f, 0.0f, 5.0f)},
-        C_VoxelSetNew{IRMath::ivec3{60, 60, 3}, Color{90, 100, 120, 255}, true},
+        C_VoxelSetNew{IRMath::ivec3{footprint, 3}, Color{90, 100, 120, 255}, true},
         C_FogField{}
     );
 }
@@ -4442,7 +4453,10 @@ void initDepthSlabScene() {
 // equal-height FIELD columns at its centre and near its rim, and a governed
 // BODY twin anchored on the ground under the ceiling.
 void initCeilingTreatmentScene() {
-    g_occlusionSlab = createEdgeGroundSlab();
+    // The offset BODY lane needs receiver cells beyond the full-height shadow;
+    // clipping it at the slab edge can conceal a missing FIELD ceiling cut.
+    g_occlusionSlab =
+        createEdgeGroundSlab(g_ceilingShadowCurved ? IRMath::ivec2{60, 96} : IRMath::ivec2{60, 60});
     const int slot = IRPrefab::Fog::setVisionCircle(
         0.0f,
         0.0f,
