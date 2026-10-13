@@ -151,20 +151,12 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
 
 ## Widget framework
 
-- `IRPrefab::Widget::make<Kind>` builds one entity: `C_Widget` +
-  `C_GuiPosition` + `C_Widget<Kind>`, plus `C_WidgetState` + `C_HitBox2DGui`
-  for interactive kinds. Mutate the `C_WidgetTheme` singleton
-  (`widget_theme.hpp::defaultTheme()`) once at init, before building widgets.
-  Opt-in hover publication: `makeGuiHoverState()` creates the
-  `C_GuiHoverState` singleton; `hoveredWidget()` reads it.
-- `makeHitRegion` is an invisible interactive widget (no per-kind component, so
-  no renderer draws it): lay one over content drawn elsewhere, even on another
-  canvas, to hover and click it as one unit. It takes z-order like any widget and is
-  never a Tab stop; as a GUI hitbox it also shadows world picks beneath it in `ENTITY_HOVER_DETECT`.
-  Hover routing has one owner, `topmostHoveredWidget()`; every `C_HitBox2DGui` entity carries a `C_Widget`.
-- `WIDGET_LUA_DISPATCH` records hover edges and clicks in `tick` and fires them in
-  `endTick` (unhovers, then hovers, then clicks), so a handler may build or destroy
-  widgets; a pre-destroy hook drops a destroyed widget's handlers.
+- `IRPrefab::Widget::make<Kind>` builds one entity: `C_Widget` + `C_GuiPosition` + `C_Widget<Kind>`,
+  plus `C_WidgetState` + `C_HitBox2DGui` for interactive kinds. `makeHitRegion` is the invisible kind
+  (no `C_Widget<Kind>`, no renderer, never a Tab stop): lay it over content drawn elsewhere; like any
+  GUI hitbox it shadows world picks beneath it. `topmostHoveredWidget()` owns hover routing.
+  Mutate the `C_WidgetTheme` singleton (`widget_theme.hpp::defaultTheme()`) once at init, before
+  building widgets. Opt-in hover publication: `makeGuiHoverState()` creates the `C_GuiHoverState` singleton; `hoveredWidget()` reads it.
 - Dropdown strip and list scroll geometry have one owner each (the `C_WidgetDropdown` / `C_WidgetList` helpers); read a list's
   first row from `topIndex`, never raw `scrollOffset_`. Authored `zOrder_` stays below `kWidgetDropdownOpenZBias`; two open dropdowns are unordered.
 - The wheel scrolls the hovered list; `setListSelectedIndex` reveals the row only when the index
@@ -181,8 +173,8 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   `TRIXEL_TO_FRAMEBUFFER::beginTick` resets that buffer, so splice the
   GUI-test cycler ahead of the composite, as `shape_debug` does. `picksVoxel`
   is the CPU ray cast and cannot see that buffer. Reference wiring:
-  `creations/editors/voxel_editor/main.cpp`; Lua `onClick`:
-  `engine/script/CLAUDE.md` §"Engine service bindings".
+  `creations/editors/voxel_editor/main.cpp`; Lua handlers (`system_widget_lua_dispatch.hpp`
+  fires them in `endTick`): `engine/script/CLAUDE.md` §"Engine service bindings".
 
 ## Rotation modes
 
