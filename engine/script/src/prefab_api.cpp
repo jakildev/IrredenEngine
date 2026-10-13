@@ -120,6 +120,23 @@ constexpr const char *kRootAnchorError =
     "root-level anchor is not supported; the root's voxel_ref is CORNER, and a part states its "
     "anchor in its own table";
 
+/// Largest magnitude below which every integer is exactly representable as a double.
+constexpr double kExactIntegerLimit = 9007199254740992.0;
+
+/// The whole value of a Lua number, or nullopt for any other type or a
+/// fraction. LuaJIT numbers are doubles and `sol::object::is<lua_Integer>()`
+/// accepts `1.5`, so an integer-enum field is read here instead.
+std::optional<lua_Integer> wholeNumber(const sol::object &object) {
+    if (object.get_type() != sol::type::number) {
+        return std::nullopt;
+    }
+    const double value = object.as<double>();
+    if (value != IRMath::floor(value) || IRMath::abs(value) >= kExactIntegerLimit) {
+        return std::nullopt;
+    }
+    return static_cast<lua_Integer>(value);
+}
+
 /// Reads `rotation_mode` and, for a canvas-owning mode, `canvas_size` from
 /// `table` (the prefab root or one part). Returns an error message on a bad
 /// value. The schema takes the `IRComponent.RotationMode.*` integer, never a
@@ -134,13 +151,14 @@ std::optional<std::string> parseRotationMode(
                                "IRComponent.RotationMode.{GRID,DETACHED,DETACHED_REVOXELIZE} "
                                "value; string names are not accepted"};
         }
-        if (!modeObj.is<lua_Integer>()) {
+        const std::optional<lua_Integer> wholeMode = wholeNumber(modeObj);
+        if (!wholeMode) {
             return std::string{
                 "rotation_mode must be an "
                 "IRComponent.RotationMode.{GRID,DETACHED,DETACHED_REVOXELIZE} value"
             };
         }
-        const lua_Integer raw = modeObj.as<lua_Integer>();
+        const lua_Integer raw = *wholeMode;
         if (raw < static_cast<lua_Integer>(IRComponents::RotationMode::kFirst) ||
             raw > static_cast<lua_Integer>(IRComponents::RotationMode::kLast)) {
             return "rotation_mode=" + std::to_string(raw) +
@@ -209,10 +227,11 @@ parseLodTier(const sol::table &lod, const char *key, IRRender::LodLevel &tier) {
     if (!tierObj.valid() || tierObj.get_type() == sol::type::lua_nil) {
         return std::nullopt;
     }
-    if (!tierObj.is<lua_Integer>() || tierObj.get_type() == sol::type::string) {
+    const std::optional<lua_Integer> wholeTier = wholeNumber(tierObj);
+    if (!wholeTier) {
         return std::string{"lod."} + key + " must be an IRRender.LodLevel value";
     }
-    const lua_Integer raw = tierObj.as<lua_Integer>();
+    const lua_Integer raw = *wholeTier;
     if (raw < static_cast<lua_Integer>(IRRender::LodLevel::LOD_0) ||
         raw > static_cast<lua_Integer>(IRRender::LodLevel::LOD_4)) {
         return std::string{"lod."} + key + "=" + std::to_string(raw) +
@@ -519,7 +538,6 @@ std::optional<std::string> writeLuaNumber(std::ostream &out, double value) {
     if (!(IRMath::abs(value) <= std::numeric_limits<double>::max())) {
         return std::string{"holds a non-finite number"};
     }
-    constexpr double kExactIntegerLimit = 9007199254740992.0;
     if (value == IRMath::floor(value) && IRMath::abs(value) < kExactIntegerLimit) {
         out << static_cast<long long>(value);
     } else {
