@@ -2,8 +2,7 @@
 
 ## Working agreements
 
-- Creations include the public entry point
-  `engine/render/include/irreden/ir_render.hpp`, never internal render headers.
+### What belongs in engine/render/ vs engine/prefabs/irreden/render/
 
 - `engine/render/` owns device and pipeline primitives every creation needs.
   Opt-in feature state lives in `engine/prefabs/irreden/render/` behind a
@@ -20,8 +19,9 @@
 
 ## Commands and validators
 
+### Verifying render changes
+
 Commands and validators: [validation index](../../docs/agents/VALIDATION.md).
-For per-frame jitter, use its probe with the camera contracts below.
 Image evidence: [`CODEX.md` § Rendering conversations](../../docs/agents/CODEX.md#rendering-conversations).
 Changes without a visual effect need no captures.
 
