@@ -299,12 +299,12 @@ Protocol: [`FLEET-FEEDBACK-HANDLING.md`](FLEET-FEEDBACK-HANDLING.md).
   unverifiable on any host until another issue lands: remove
   `fleet:design-unblocked`, add this, append `Parked-until: #<issue>` to
   the PR **body** (not a comment) on its own line — the **backing issue** of
-  the blocking PR, never the PR number (reconcile reads the last occurrence
-  and the contiguous comma/space-separated `#N` run after the marker,
-  un-parking only when all read CLOSED or MERGED; a leading list bullet or
-  paired bold/backtick emphasis on the marker is tolerated, a marker
-  mid-sentence is not; same-repo only, a cross-repo spelling surfaces as
-  malformed), comment the rationale, keep `fleet:wip`, release the claim.
+  the blocking PR, never the PR number (reconcile unions the `#N` run after
+  **every** marker line and un-parks only when all read CLOSED or MERGED, so
+  dropping a blocker means deleting its marker; the other fleet repo's issue
+  is `IrredenEngine#N` / `irreden#N`, checked there — a park, never a
+  `declined:` exit; marker grammar: FLEET-FEEDBACK-HANDLING.md § PARK),
+  comment the rationale, keep `fleet:wip`, release the claim.
   Never park on a smoke label or a host-only verification child
   ([`FLEET-CROSS-HOST-SMOKE.md § Ledger, not a gate`](FLEET-CROSS-HOST-SMOKE.md)).
   Reconcile R7/R2 skip it; R8 removes it when the blocker closes, after

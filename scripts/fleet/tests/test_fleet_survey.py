@@ -168,7 +168,18 @@ PRS = [
     {"number": 965, "title": "park on a merged PR", "headRefName": "claude/121-x",
      "labels": labels("fleet:awaiting-infra"), "mergeable": "MERGEABLE",
      "body": "Parked-until: #899\n"},
+    {"number": 966, "title": "park on the other repo's issue", "headRefName": "claude/122-x",
+     "labels": labels("fleet:awaiting-infra"), "mergeable": "MERGEABLE",
+     "body": "Parked-until: irreden#5\nParked-until: #100\n"},
 ]
+
+# The game repo's listing, for the cross-repo park: #5 is open there, nothing
+# else is.
+GAME_ISSUES = [
+    {"number": 5, "title": "engine entry the game PR waits on",
+     "labels": labels("fleet:task", "human:approved", "fleet:queued")},
+]
+GAME_PRS = []
 
 LOG = """\
 [2026-10-06T22:00:00Z dispatcher] worker: no candidate could be claimed (class=sonnet)
@@ -206,9 +217,16 @@ class FleetSurveyFixture(unittest.TestCase):
     def setUp(self):
         self.decline_file.write_text(self.decline_text)
 
-    def run_survey(self, host="mac", state=STATE):
+    def run_survey(self, host="mac", state=STATE, with_game=False):
+        issues, prs = {"engine": ISSUES}, {"engine": PRS}
+        if with_game:
+            # The game repo joins the scout cache (an empty queue) and the
+            # listings, as a `--repo all` run on a two-repo host carries it.
+            state = copy.deepcopy(state)
+            state["repos"]["game"] = {"tasks": {"open": [], "in_progress": []}}
+            issues["game"], prs["game"] = GAME_ISSUES, GAME_PRS
         with mock.patch.dict(os.environ, {"FLEET_STATE_DIR": str(self.state_dir)}):
-            return _mod.survey(state, {"engine": ISSUES}, {"engine": PRS}, host,
+            return _mod.survey(state, issues, prs, host,
                                Path(self.tmp.name) / "usage", self.log, now=NOW)
 
 
@@ -367,10 +385,36 @@ class Parks(FleetSurveyFixture):
         self.assertTrue(v[955].startswith("malformed"))
         self.assertNotIn(950, v)
 
-    def test_last_parked_until_line_wins(self):
+    def test_every_parked_until_line_counts(self):
+        # One blocker per line is a park on all of them; the earlier line is
+        # not inert history. The first blocker is closed and the second open,
+        # so the park stands.
         row = next(r for r in self.run_survey()["repos"]["engine"]["parks"] if r["pr"] == 954)
+        self.assertEqual(row["parked_until"], [997, 100])
+        self.assertEqual(row["issues"], {997: "not open", 100: "open"})
+        self.assertTrue(row["verdict"].startswith("legit"))
+
+    def test_a_cross_repo_blocker_is_judged_in_its_own_repo_when_surveyed(self):
+        row = next(r for r in self.run_survey(with_game=True)["repos"]["engine"]["parks"]
+                   if r["pr"] == 966)
         self.assertEqual(row["parked_until"], [100])
+        self.assertEqual(row["parked_until_foreign"], ["jakildev/irreden#5"])
         self.assertEqual(row["issues"], {100: "open"})
+        self.assertEqual(row["foreign"], {"jakildev/irreden#5": "open"})
+        self.assertEqual(row["verdict"], "legit: named issue still open")
+
+    def test_a_cross_repo_blocker_in_an_unsurveyed_repo_reads_as_open(self):
+        # Fail closed: the run that fetched only the engine cannot see the
+        # game issue, so the park is reported standing and says why.
+        row = next(r for r in self.run_survey()["repos"]["engine"]["parks"] if r["pr"] == 966)
+        self.assertEqual(row["foreign"],
+                         {"jakildev/irreden#5": "other repo, not surveyed here "
+                                                 "(reconcile R8 asks it live)"})
+        self.assertEqual(row["verdict"], "legit: named issue still open")
+
+    def test_render_lists_the_cross_repo_blocker_with_its_slug(self):
+        text = _mod.render(self.run_survey(with_game=True))
+        self.assertIn("      jakildev/irreden#5: open", text)
 
     def test_ghost_park_names_the_shadowing_pr(self):
         row = next(r for r in self.run_survey()["repos"]["engine"]["parks"] if r["pr"] == 952)
@@ -436,8 +480,8 @@ class ParkParserDriftGuard(unittest.TestCase):
     def test_survey_and_reconcile_share_the_parser(self):
         survey_source = _SCRIPT.read_text(encoding="utf-8")
         source = (Path(__file__).parent.parent / "fleet-claim").read_text(encoding="utf-8")
-        self.assertIn("fleet_branch_match.parked_until_issue_numbers", survey_source)
-        self.assertIn("parked_until_issue_numbers", source)
+        self.assertIn("fleet_branch_match.parked_until_refs", survey_source)
+        self.assertIn("parked_until_refs", source)
 
 
 class Render(FleetSurveyFixture):

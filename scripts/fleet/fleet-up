@@ -401,8 +401,9 @@ done
 # --- host profile (begin) ---
 # `fleet-up --satellite` is the launch form of the satellite host profile
 # (docs/agents/FLEET-CROSS-HOST-SMOKE.md "Satellite host profile"): this
-# box serves only its own smoke labels and `**Host:**`-pinned tasks, and
-# the architect panes stay up as the interactive sessions that file
+# box serves only its own smoke labels, `**Host:**`-pinned tasks, and (on
+# a GL host) `fleet:needs-gl-host` work with no finer OS pin, and the
+# architect panes stay up as the interactive sessions that file
 # everything else out to the primary fleet. The flag sets the two
 # dispatcher knobs and outranks the conf; the conf knobs alone are the
 # permanent form. Passed to the dispatcher as launch environment (env wins
@@ -2005,9 +2006,10 @@ fi
 #     --no-attach: skip the auto-attach (live mode only). Useful for
 #                  headless runs / CI / tests that just need the panes
 #                  spawned but don't want to attach.
-#     --satellite: serve only this host's smoke labels and **Host:**-pinned
-#                  tasks; architects stay up and file the rest out
-#                  (the "host profile" block near the top).
+#     --satellite: serve only this host's smoke labels, **Host:**-pinned
+#                  tasks, and (on a GL host) fleet:needs-gl-host work with
+#                  no finer OS pin; architects stay up and file the rest
+#                  out (the "host profile" block near the top).
 #
 # See the heredoc below ("mode review-only ...") for the user-facing
 # description of each mode.

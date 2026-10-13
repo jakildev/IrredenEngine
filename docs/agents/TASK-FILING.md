@@ -42,7 +42,11 @@ Optional:
   in the body, or a `claude/<N>-…` branch), on another host; `fleet-claim` does not enforce it, so a hand-picked claim
   on the wrong host is refused only by the pane's own read of the body.
   Finer than `fleet:needs-gl-host`, which
-  lets linux and windows stand in for each other.
+  lets linux and windows stand in for each other. Name one OS: a value
+  naming two GL hosts (`linux or windows`) or the backend (`opengl`) pins
+  nothing and projects `needs_gl_host` instead — the task then goes to
+  whichever GL host is up, where a one-OS pin would strand it on the one
+  that is down. A parenthetical in the value is read as an aside, not a host.
 
 ### File with a plan
 

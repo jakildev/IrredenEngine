@@ -7,6 +7,7 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #include "ir_shape_receiver.glsl"
 #include "ir_shape_sun_ray.glsl"
 #include "ir_sun_projection.glsl"
+#include "ir_fog_shadow_caster.glsl"
 #include "ir_sun_face_query_layout.glsl"
 
 layout(std430, binding = 20) readonly buffer ShapeBuffer { ShapeDescriptor shapes[]; };
@@ -31,6 +32,8 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform int cascadeCount;
     uniform float sunSplatMaxTexels;
     uniform float sunMaxShadowThrow;  // Unused here (receiver-only)
+    uniform vec4 sunCasterViewToWorld;  // Unused here; places fogCeilingEnabled at 144
+    uniform ivec4 fogCeilingEnabled;
 };
 
 #define IR_SUN_FACE_INDEX_COOPERATIVE
@@ -63,7 +66,12 @@ void main() {
         + abs(sunSpaceProject(axisY, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz)) * halfExtent.y
         + abs(sunSpaceProject(axisZ, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz)) * halfExtent.z;
     const vec3 direction = -vec3(dot(sunDirection.xyz, axisX), dot(sunDirection.xyz, axisY), dot(sunDirection.xyz, axisZ));
-    if (box && gl_WorkGroupID.z == 0u) {
+    const bool fogBody = (shape.flags & 16u) != 0u;
+    const bool indexWholeShape = fogBody || fogCeilingEnabled.x == 0;
+    // Ceiling-cut FIELD samples have no whole-shape record. Keep them in the
+    // independent depth layer, which complete exact queries still consult.
+    const uint depthLayerOffset = indexWholeShape ? kSourceFaceFallbackOffset : 0u;
+    if (box && gl_WorkGroupID.z == 0u && indexWholeShape) {
         for (int axis = 0; axis < 3; ++axis) {
             vec3 localNormal = vec3(0.0);
             localNormal[axis] = 1.0;
@@ -82,7 +90,7 @@ void main() {
             indexSourceSunFace(projected, projectedU, projectedV);
         }
     }
-    if (!box && gl_WorkGroupID.z == 0u) {
+    if (!box && gl_WorkGroupID.z == 0u && indexWholeShape) {
         const vec3 projectedAxis = sunSpaceProject(axisZ, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
         const vec3 parameters = vec3(shape.params.x, shape.shapeType == SHAPE_TORUS ? shape.params.y : shape.params.z, threshold);
         indexSourceSunGeometry(center, projectedAxis, parameters, shape.shapeType, center.xy - extent.xy, center.xy + extent.xy);
@@ -115,7 +123,10 @@ void main() {
             float casterDepth = nearDepth;
             if (hit && nearDepth <= farDepth &&
                 (box || sdfRayHit(shape.shapeType, shape.params, rayOrigin, direction, threshold, nearDepth, farDepth, casterDepth))) {
-                atomicMin(sunDepthBuf[kSourceFaceFallbackOffset + cascade * kCascadeTexelCount + pixel.y * kSunShadowMapDim + pixel.x], packSunSurfaceDepth(casterDepth));
+                const vec3 worldSample = sunBasisU.xyz * uv.x + sunBasisV.xyz * uv.y -
+                    sunDirection.xyz * casterDepth;
+                if (!fogFieldCastsSunShadow(worldSample, fogBody, fogCeilingEnabled.x)) continue;
+                atomicMin(sunDepthBuf[depthLayerOffset + cascade * kCascadeTexelCount + pixel.y * kSunShadowMapDim + pixel.x], packSunSurfaceDepth(casterDepth));
             }
         }
     }

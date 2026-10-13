@@ -282,7 +282,7 @@
       "name": "fleet:needs-gl-host",
       "scope": "issue+pr",
       "color": "c5def5",
-      "description": "Remaining work needs GL runtime verification on an OpenGL-4.5 host (Linux/Windows); macOS/Metal panes skip it (dispatcher filter, claim + amending-claim gates, feedback-tier skip). Human/architect triage signal. On an ISSUE the refusal is narrowed by fleet:backend-symmetric, which says the task also has a natively Metal-verifiable half; on a PR the label describes the remaining work, so it is never narrowed."
+      "description": "Remaining work needs GL runtime verification on an OpenGL-4.5 host (Linux/Windows); macOS/Metal panes skip it (dispatcher filter, claim + amending-claim gates, feedback-tier skip), and on a pinned-only GL satellite it is the pin that routes the item there (an OS pin on the same item is finer and wins). Human/architect triage signal. On an ISSUE the refusal is narrowed by fleet:backend-symmetric, which says the task also has a natively Metal-verifiable half; on a PR the label describes the remaining work, so it is never narrowed."
     },
     {
       "name": "fleet:needs-macos-host",

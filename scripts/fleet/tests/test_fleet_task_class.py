@@ -1158,11 +1158,12 @@ class FeedbackPrInheritsIssueHostPin(SliceHostCase):
 class HostPinnedOnlyMode(HostSeamCase):
     """`FLEET_WORKER_HOST_PINNED_ONLY=1` — the satellite-host profile. The
     worker lane elects ONLY items pinned to this host (`needs_host` equal to
-    the host key, or `fleet:needs-macos-host` on mac): unpinned tasks and
-    feedback PRs, semantic conflicts, and needs-plan issues all stay for the
-    primary fleet. With nothing pinned the resolver yields '' (the dispatcher's
-    lane-default gate stands the lane down), never a lane-default class that
-    would launch an unassigned worker to scan for anything."""
+    the host key, `fleet:needs-macos-host` on mac, or a GL-host item with no
+    OS pin on a GL-capable host): unpinned tasks and feedback PRs, semantic
+    conflicts, and needs-plan issues all stay for the primary fleet. With
+    nothing pinned the resolver yields '' (the dispatcher's lane-default gate
+    stands the lane down), never a lane-default class that would launch an
+    unassigned worker to scan for anything."""
 
     def setUp(self):
         super().setUp()
@@ -1242,6 +1243,43 @@ class HostPinnedOnlyMode(HostSeamCase):
         slice_data = {"feedback_prs": [pr]}
         self.assertEqual(self._pick_on("mac", slice_data), ["feedback:engine:32"])
         self.assertEqual(self._pick_on("windows", slice_data), [])
+
+    def test_gl_host_task_is_satellite_work_on_every_gl_host(self):
+        # The Metal fleet refuses a GL-host task outright, so with no OS pin
+        # a GL satellite is its only taker; linux and windows stand in for
+        # each other exactly as the label promises.
+        slice_data = {"tasks_open": [_task("#40", "opus", needs_gl_host=True)]}
+        for host in ("windows", "linux"):
+            self.assertEqual(self._resolve_on(host, slice_data), "opus high 0 1 0", host)
+            self.assertEqual(self._pick_on(host, slice_data), ["task:engine:40"], host)
+        self.assertEqual(self._pick_on("mac", slice_data), [])
+
+    def test_gl_host_feedback_pr_is_satellite_work_on_a_gl_host(self):
+        # A PR record carries the GL residual as a label, never a derived
+        # field, and the pin reads that shape too.
+        pr = {"number": 41, "repo": "engine",
+              "labels": ["fleet:needs-fix", "fleet:needs-gl-host"]}
+        slice_data = {"feedback_prs": [pr]}
+        self.assertEqual(self._resolve_on("windows", slice_data), "opus high 0 1 0")
+        self.assertEqual(self._pick_on("windows", slice_data), ["feedback:engine:41"])
+        self.assertEqual(self._pick_on("mac", slice_data), [])
+
+    def test_os_pin_narrows_a_gl_host_task_to_that_os(self):
+        slice_data = {"tasks_open": [
+            _task("#42", "opus", needs_gl_host=True, needs_host="linux")]}
+        self.assertEqual(self._pick_on("windows", slice_data), [])
+        self.assertEqual(self._pick_on("linux", slice_data), ["task:engine:42"])
+
+    def test_macos_label_beats_the_gl_label_on_a_gl_satellite(self):
+        pr = {"number": 43, "repo": "engine",
+              "labels": ["fleet:needs-fix", "fleet:needs-gl-host",
+                         "fleet:needs-macos-host"]}
+        slice_data = {"feedback_prs": [pr]}
+        self.assertEqual(self._pick_on("windows", slice_data), [])
+
+    def test_gl_host_item_is_not_pinned_to_an_unknown_host(self):
+        slice_data = {"tasks_open": [_task("#44", "opus", needs_gl_host=True)]}
+        self.assertEqual(self._pick_on("unknown", slice_data), [])
 
     def test_unknown_host_is_fail_closed(self):
         slice_data = {"tasks_open": [_task("#16", "opus", needs_host="windows")]}

@@ -6,6 +6,7 @@
 #include <irreden/ir_video.hpp>
 #include <irreden/input/ir_input_types.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
+#include <irreden/common/components/entity_anchor.hpp>
 #include <irreden/render/gui_test_assertions.hpp>
 #include <irreden/render/picking.hpp>
 #include <irreden/voxel/sdf_fill.hpp>
@@ -390,6 +391,19 @@ struct RotationModeCheck {
     std::string name_;
 };
 
+// Anchor expectation on one entity-scene voxel part: its C_VoxelSetNew::anchor_.
+struct PartAnchorCheck {
+    int partIndex_ = 0;
+    IRComponents::EntityAnchor expected_ = IRComponents::EntityAnchor::CORNER;
+    std::string name_;
+};
+
+// PART MODE dropdown expectation: it is collapsed and shows expected_'s row.
+struct PartModeDropdownCheck {
+    IRComponents::RotationMode expected_ = IRComponents::RotationMode::GRID;
+    std::string name_;
+};
+
 enum class EditorInputCheckKind : int {
     SELECTED_PART_NO_TEXT_FOCUS = 0,
     TEXT_CAPTURED_X = 1,
@@ -543,6 +557,8 @@ struct Recipe {
     std::deque<PartEditableCheck> partEditableChecks_;
     std::deque<CanvasCountCheck> canvasCountChecks_;
     std::deque<RotationModeCheck> rotationModeChecks_;
+    std::deque<PartAnchorCheck> partAnchorChecks_;
+    std::deque<PartModeDropdownCheck> partModeDropdownChecks_;
     std::deque<EditorInputCheck> editorInputChecks_;
     std::deque<PartsListCheck> partsListChecks_;
     std::deque<CameraZoomCheck> cameraZoomChecks_;
@@ -605,6 +621,8 @@ bool evaluatePartAuthoredCountCheck(const void *context, std::string &actual);
 bool evaluatePartEditableCheck(const void *context, std::string &actual);
 bool evaluateCanvasCountCheck(const void *context, std::string &actual);
 bool evaluateRotationModeCheck(const void *context, std::string &actual);
+bool evaluatePartAnchorCheck(const void *context, std::string &actual);
+bool evaluatePartModeDropdownCheck(const void *context, std::string &actual);
 bool evaluateEditorInputCheck(const void *context, std::string &actual);
 
 // Read one PartsListCheck / CameraZoomCheck. Defined in main.cpp, where the
@@ -658,6 +676,14 @@ class Builder {
         m_recipe.name_ = std::move(name);
         m_model.seedGroundPlane();
         segment("start");
+    }
+
+    IRMath::ivec3 sceneSize() const {
+        return m_sceneSize;
+    }
+
+    IRMath::vec3 sceneOrigin() const {
+        return m_model.origin();
     }
 
     // Author against the editor's full reference scene rather than the bare
@@ -1048,7 +1074,8 @@ class Builder {
     }
 
     // Ctrl+P: add a voxel part at the PART SIZE sliders' extent and select it.
-    // The editor seats the part with deriveSceneOrigin, so the model does too.
+    // The editor seats the part's cell (0,0,0) at deriveSceneOrigin, which is
+    // the model's origin too.
     void addVoxelPart() {
         chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonP);
         if (!m_partModels.empty()) {
@@ -1204,6 +1231,29 @@ class Builder {
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
     }
 
+    // Left-drag the selected part's move gizmo from @p from to @p to, which
+    // translates the part by @p partDelta; the model follows, so later aims
+    // land on the moved part. The gizmo sits at the part's pivot, the middle
+    // of its box, and an occluded handle takes no click: drag before anything
+    // is authored into the part.
+    void dragPartGizmo(IRMath::vec3 from, IRMath::vec3 to, IRMath::vec3 partDelta) {
+        if (m_partModels.empty()) {
+            recordError("dragPartGizmo needs an entity-scene part");
+            return;
+        }
+        dragWorld(from, to);
+        m_model.setOrigin(m_model.origin() + partDelta);
+    }
+
+    // Pick @p mode in the PART MODE dropdown: one click opens it, the next
+    // lands on the mode's row. The idle frame lets the opened dropdown grow
+    // its hit region before the cursor moves onto a row.
+    void selectPartMode(IRComponents::RotationMode mode) {
+        clickGui(IRVoxelEditor::partModeDropdownHeaderCenterGuiTrixel());
+        m_frame += kFramesPerClickStep;
+        clickGui(IRVoxelEditor::partModeDropdownRowCenterGuiTrixel(mode));
+    }
+
     // Assert the live editable set's occupancy at `local` when this segment
     // settles — i.e. after every event in the segment has fired, not at this
     // call's position in the op sequence (see segment()).
@@ -1329,6 +1379,25 @@ class Builder {
             m_recipe.rotationModeChecks_,
             RotationModeCheck{partIndex, expected, std::move(name)},
             &evaluateRotationModeCheck
+        );
+    }
+
+    // Assert part @p partIndex's voxel anchor when this segment settles.
+    void expectPartAnchor(int partIndex, IRComponents::EntityAnchor expected, std::string name) {
+        addPredicateCheck(
+            m_recipe.partAnchorChecks_,
+            PartAnchorCheck{partIndex, expected, std::move(name)},
+            &evaluatePartAnchorCheck
+        );
+    }
+
+    // Assert the PART MODE dropdown is collapsed on @p expected's row when
+    // this segment settles.
+    void expectPartModeDropdown(IRComponents::RotationMode expected, std::string name) {
+        addPredicateCheck(
+            m_recipe.partModeDropdownChecks_,
+            PartModeDropdownCheck{expected, std::move(name)},
+            &evaluatePartModeDropdownCheck
         );
     }
 
