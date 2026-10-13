@@ -1612,6 +1612,10 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
     FrameDataVoxelToCanvas frame{};
     frame.overflowScratchLayout_ = layout;
     Buffer uniform(&frame, sizeof(frame), BUFFER_STORAGE_DYNAMIC);
+    constexpr std::uint32_t argsUints =
+        Axes::kOverflowSortCommandCount * Axes::kOverflowSortCommandUints;
+    std::vector<std::uint32_t> argsWords(argsUints, 0xA5A5A5A5u);
+    Buffer args(argsWords.data(), argsWords.size() * sizeof(std::uint32_t), BUFFER_STORAGE_DYNAMIC);
     const std::string path =
         std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_per_axis_overflow_sort.glsl";
     ShaderProgram program{std::vector{ShaderStage{path.c_str(), ShaderType::COMPUTE}}};
@@ -1652,7 +1656,9 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
         }
         std::sort(expected.begin(), expected.end(), recordLess);
         scratch.subData(0, words.size() * sizeof(std::uint32_t), words.data());
+        args.subData(0, argsWords.size() * sizeof(std::uint32_t), argsWords.data());
         scratch.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_PerAxisResolveScratch);
+        args.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_IndirectDispatchParams);
         uniform.bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
         program.use();
         auto step = [&](int mode,
@@ -1662,23 +1668,21 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
                         std::uint32_t command) {
             frame.overflowSortStep_ = IRMath::ivec4(mode, k, lo, hi);
             uniform.subData(0, sizeof(frame), &frame);
-            const auto offset = static_cast<std::ptrdiff_t>(
-                                    ctrl + Axes::kOverflowSortArgsBaseUints +
-                                    command * Axes::kOverflowSortCommandUints
-                                ) *
-                                sizeof(std::uint32_t);
+            const auto offset =
+                static_cast<std::ptrdiff_t>(command * Axes::kOverflowSortCommandUints) *
+                sizeof(std::uint32_t);
 #if defined(IR_GRAPHICS_METAL)
             if (mode == 3)
                 device_->dispatchCompute(1, 1, 1);
             else
-                device_->dispatchComputeIndirect(&scratch, offset);
+                device_->dispatchComputeIndirect(&args, offset);
             device_->memoryBarrier(BarrierType::SHADER_STORAGE);
             device_->memoryBarrier(BarrierType::COMMAND);
 #else
             if (mode == 3)
                 ENG_API->glDispatchCompute(1, 1, 1);
             else {
-                ENG_API->glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, scratch.getHandle());
+                ENG_API->glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, args.getHandle());
                 ENG_API->glDispatchComputeIndirect(offset);
             }
             ENG_API->glMemoryBarrier(GL_ALL_BARRIER_BITS);
@@ -1727,16 +1731,17 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
             std::sort(observed.begin(), observed.end(), recordLess);
             EXPECT_EQ(observed, expected);
         }
-        for (std::uint32_t i = 0; i < 8; ++i)
+        for (std::uint32_t i = 0; i < static_cast<std::uint32_t>(entries - ctrl); ++i)
             EXPECT_EQ(actual[ctrl + i], words[ctrl + i]);
-        const auto args = ctrl + Axes::kOverflowSortArgsBaseUints;
-        EXPECT_LE(actual[args], 1024u);
-        EXPECT_EQ(actual[args + 1] == 0, count == 0);
+        std::vector<std::uint32_t> grids(argsUints);
+        args.getSubData(0, grids.size() * sizeof(std::uint32_t), grids.data());
+        EXPECT_LE(grids[0], 1024u);
+        EXPECT_EQ(grids[1] == 0, count == 0);
         if (count == 262145u)
-            EXPECT_EQ(actual[args + 1], 2u);
+            EXPECT_EQ(grids[1], 2u);
         if (count == 0) {
             for (std::uint32_t command = 0; command < Axes::kOverflowSortCommandCount; ++command)
-                EXPECT_EQ(actual[args + command * Axes::kOverflowSortCommandUints + 1], 0u);
+                EXPECT_EQ(grids[command * Axes::kOverflowSortCommandUints + 1], 0u);
         }
     }
 }
