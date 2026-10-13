@@ -246,10 +246,10 @@ def same_repo_closing_issues(row, slug):
     }
 
 
-def sequenced_after_self(row, self_issues):
+def sequenced_after_self(row, self_issues, slug):
     if not self_issues or "fleet:awaiting-infra" not in row["labels"]:
         return set()
-    return self_issues & set(parked_until_issue_numbers(row["body"]))
+    return self_issues & set(parked_until_issue_numbers(row["body"], slug))
 
 
 def resolve_self(snapshot, args):
@@ -471,7 +471,7 @@ def grade(args):
                 f"#{number} ({row['headRefName']}) is in HEAD but not in --base {base}; "
                 f"pass --base {row['headRefName']} or rebase"
             )
-        sequenced_issues = sequenced_after_self(row, self_issues)
+        sequenced_issues = sequenced_after_self(row, self_issues, slug)
         if sequenced_issues:
             # Conflicts are expected until the prerequisite branch lands, so
             # sequenced descendants deliberately bypass the trial merge.
