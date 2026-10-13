@@ -14,6 +14,9 @@ Design log, findings and the authoring-session history:
   `component_attach` (same module) the COMPONENTS panel's manifest round trip,
   `component_field_page` the same on a field only the panel's pager reaches,
   `component_field_key` the same on a field whose name is not a Lua identifier,
+  `composite_proof` (same module) authors the reference composite entity: nine
+  parts from the module's recipes, a bake, LOD bands, an engine component and a
+  yawed radial array,
   `parts_roundtrip` authors, moves, saves, clears, and reloads a two-part entity,
   `remove_part` removes and restores a part across hot and cold undo stacks and
   proves the saved manifest omits the removed record,
@@ -40,6 +43,13 @@ Design log, findings and the authoring-session history:
   `git status assets/` afterwards means the committed asset is unchanged.
   Pass `--module <dir> --module-session <name>` to author from a module-owned
   session; `--asset-dir` may name an alternate output directory.
+- `python3 scripts/author-entity.py --prefab composite_proof` — the same
+  two-run gate over an entity scene (manifest, parts, sidecars), committed to
+  `assets/voxel/entities/composite_proof/` with each `voxel_ref` rewritten to
+  that staged path. The `--module` and `--part-names` it was authored with are
+  read from that directory's `author.json`; a new prefab passes them once.
+  `python3 scripts/render-verify.py --target IRShapeDebug` then spawns it for
+  the `composite_proof_z*` shots.
 
 ## Picking contract
 
@@ -103,7 +113,8 @@ render, because the aim and the pick share one screen mapping.
   editor never runs `PREFAB_LOD_PARTS`. The LOD panel's TIER slider and `,` /
   `.` pin `C_LodTierOverride` on the root and every part; FOLLOW ZOOM removes
   it. Neither touches the camera zoom.
-- Radial and linear arrays create independently editable parts. One array is
+- Radial and linear arrays create independently editable parts. COPY YAW
+  applies whole degrees, and its track lands on multiples of 3. One array is
   one undo record; rotational symmetry replays a stroke across the radial
   copy group through the same stroke buffer. The selected source stays outside
   the copy group: radial copies start at the radius, and linear copies start
@@ -152,6 +163,8 @@ render, because the aim and the pick share one screen mapping.
   ROOT, the root. Its records (`component_records.hpp`) hold no sol objects;
   each apply goes through the factory, and Ctrl+S writes them as `components`.
   A saved scene naming a module component loads only with that module.
+  The editor binds `C_AutoSpin` as its engine row; it runs no auto-spin
+  system, so the component is data there.
 - Editor source names no module content: the module sessions read their
   expectations from `<dir>/session_expect.lua`. `test/module/` is the neutral
   fixture; `test/module_cpp_collision/` must exit 2.

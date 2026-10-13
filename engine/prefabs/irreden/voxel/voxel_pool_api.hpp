@@ -120,6 +120,13 @@ inline IRRender::VoxelPoolAllocation allocate(unsigned int size, IREntity::Entit
     return IRRender::VoxelPoolAllocation{};
 }
 
+inline bool canAllocate(unsigned int size, IREntity::EntityId canvasEntity) {
+    if (auto *pool = detail::poolForCanvas(canvasEntity)) {
+        return pool->canAllocateVoxels(size);
+    }
+    return false;
+}
+
 inline void deallocate(std::size_t startIndex, std::size_t count, IREntity::EntityId canvasEntity) {
     if (auto *pool = detail::poolForCanvas(canvasEntity)) {
         pool->deallocateVoxels(startIndex, count);
