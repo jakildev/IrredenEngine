@@ -8,6 +8,7 @@
 #include <irreden/render/lod_utils.hpp>
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
+#include <irreden/voxel/voxel_pool_api.hpp>
 
 #include <sol/sol.hpp>
 
@@ -62,6 +63,9 @@ inline void bindRenderGlue(LuaScript &script) {
         IRRender::setSkyIntensity(intensity);
     };
     lua["IRRender"]["entityCanvasCount"] = []() { return IRPrefab::EntityCanvas::count(); };
+    lua["IRRender"]["canAllocateVoxels"] = [](unsigned int size) {
+        return IRPrefab::VoxelPool::canAllocate(size, IRRender::getActiveCanvasEntityOrNull());
+    };
 
     // Main-camera zoom. The value setter and getter forward to the core
     // `IRRender::` pair; the policy pair forwards to `IRPrefab::Camera`, which
