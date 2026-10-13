@@ -94,7 +94,9 @@ int main(int argc,char** argv){
   const vec3 projected=sunSpaceProject(surface,basisU,basisV,sun);
   const float self=sourceFaceRaySeparation({projected.x,projected.y},projected.z,
                                         ownCorner,edgeU,edgeV);
-  if(std::abs(self)>4.f/1024.f){std::fprintf(stderr,"self plane\n");return 2;}
+  if(std::abs(self)>4.f/1024.f){
+   std::fprintf(stderr,"self plane separation: %.9g\n",self);return 2;
+  }
   vec3 query=surface;
   if(mutation==1)query.x-=.5f;
   if(mutation==2)query=vec3(10.5f,-17.f,-11.f);
@@ -152,7 +154,12 @@ class ImpulseShadowTest(unittest.TestCase):
             shaders = shader_directory(backend)
             source, _ = geometry_harness(backend)
             source = replace_once(source, GEOMETRY_CHECKS, "")
-            helpers = "float dot(vec3 a,vec3 b){return a.x*b.x+a.y*b.y+a.z*b.z;}\n"
+            helpers = """
+#include <type_traits>
+using std::abs;
+static_assert(std::is_same_v<decltype(abs(0.5f)), float>, "shader abs must preserve float");
+float dot(vec3 a,vec3 b){return a.x*b.x+a.y*b.y+a.z*b.z;}
+"""
             for file, names in (
                 ("ir_projected_face", ("projectedFaceDeterminant", "projectedFaceCoordinates")),
                 ("ir_sun_projection", ("sunSpaceProject",)),
