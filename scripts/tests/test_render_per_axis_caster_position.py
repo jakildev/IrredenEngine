@@ -48,8 +48,12 @@ PREAMBLE = r"""
 #include <cstdio>
 #include <cstring>
 #include <initializer_list>
+#include <type_traits>
+using std::abs;
 using std::clamp;
 using std::floor;
+static_assert(std::is_same<decltype(abs(-0.5f)), float>::value,
+              "shader scalar abs must retain floating-point precision");
 template<class T> struct V2 {
     T x,y;
     explicit V2(T a=0):x(a),y(a){}
