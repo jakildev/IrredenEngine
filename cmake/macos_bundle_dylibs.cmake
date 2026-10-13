@@ -1,125 +1,229 @@
-# macos_bundle_dylibs.cmake — make a staged macOS executable relocatable.
+# macos_bundle_dylibs.cmake — discover and stage a complete Mach-O closure.
 #
-# Invoked by irreden_package_target() (cmake/ir_functions.cmake) as:
-#   cmake -DEXE=<staged exe> -DDEST=<staging dir> -P macos_bundle_dylibs.cmake
+# Bundle mode:
+#   cmake -DEXE=<staged exe> -DDEST=<staging dir> [-DOTOOL=<path>]
+#         [-DINSTALL_NAME_TOOL=<path>] [-DCODESIGN=<path>]
+#         -P macos_bundle_dylibs.cmake
 #
-# Copies the executable's non-system dynamic libraries next to it and rewrites
-# the exe's load commands to @executable_path so the unzipped folder runs
-# without the build tree or Homebrew on the load path.
+# Report mode, used by scripts/package-verify.py:
+#   cmake -DEXE=<built exe> -DOTOOL=<path> -DREPORT_ONLY=ON
+#         -P macos_bundle_dylibs.cmake
 #
-# SHALLOW bundle: only the exe's DIRECT dependencies are walked. Transitive
-# Homebrew deps (e.g. ffmpeg's codec libraries) are not yet followed, so a
-# truly clean-box bundle is follow-up work — on the build host the copied libs
-# still resolve their own deps via their absolute install paths. System
-# libraries (/usr/lib, /System, framework SDKs) are never bundled.
+# System libraries under /usr/lib and /System/Library remain supplied by
+# macOS. Every other resolved dependency is copied next to the executable.
 
-if(NOT DEFINED EXE OR NOT DEFINED DEST)
-    message(FATAL_ERROR "macos_bundle_dylibs: -DEXE and -DDEST are required")
+cmake_minimum_required(VERSION 3.28)
+
+if(NOT DEFINED EXE OR NOT EXISTS "${EXE}")
+    message(FATAL_ERROR "macos_bundle_dylibs: -DEXE must name an executable")
 endif()
-if(NOT EXISTS "${EXE}")
-    message(FATAL_ERROR "macos_bundle_dylibs: staged exe not found: ${EXE}")
+if(NOT REPORT_ONLY AND (NOT DEFINED DEST OR NOT IS_DIRECTORY "${DEST}"))
+    message(FATAL_ERROR "macos_bundle_dylibs: -DDEST must name the staging directory")
 endif()
 
-get_filename_component(_exe_dir "${EXE}" DIRECTORY)
-
-# --- Collect the exe's LC_RPATH entries (to resolve @rpath/... references) ----
-execute_process(COMMAND otool -l "${EXE}" OUTPUT_VARIABLE _load_cmds
-                RESULT_VARIABLE _rc)
-if(NOT _rc EQUAL 0)
-    message(FATAL_ERROR "macos_bundle_dylibs: otool -l failed on ${EXE}")
+if(NOT OTOOL)
+    find_program(OTOOL otool REQUIRED)
 endif()
-string(REPLACE "\n" ";" _lc_lines "${_load_cmds}")
-set(_rpaths "")
-set(_expect_path FALSE)
-foreach(_line IN LISTS _lc_lines)
-    if(_line MATCHES "cmd LC_RPATH")
-        set(_expect_path TRUE)
-    elseif(_expect_path AND _line MATCHES "path (.+) \\(offset")
-        list(APPEND _rpaths "${CMAKE_MATCH_1}")
-        set(_expect_path FALSE)
+if(NOT REPORT_ONLY)
+    if(NOT INSTALL_NAME_TOOL)
+        find_program(INSTALL_NAME_TOOL install_name_tool REQUIRED)
     endif()
+    if(NOT CODESIGN)
+        find_program(CODESIGN codesign REQUIRED)
+    endif()
+endif()
+
+set(CMAKE_GET_RUNTIME_DEPENDENCIES_PLATFORM "macos+macho")
+set(CMAKE_GET_RUNTIME_DEPENDENCIES_TOOL "otool")
+set(CMAKE_GET_RUNTIME_DEPENDENCIES_COMMAND "${OTOOL}")
+
+file(GET_RUNTIME_DEPENDENCIES
+    EXECUTABLES "${EXE}"
+    POST_EXCLUDE_REGEXES "^/usr/lib/" "^/System/Library/"
+    RESOLVED_DEPENDENCIES_VAR _resolved
+    UNRESOLVED_DEPENDENCIES_VAR _unresolved
+    CONFLICTING_DEPENDENCIES_PREFIX _conflict)
+
+foreach(_path IN LISTS _resolved)
+    message(STATUS "R ${_path}")
+endforeach()
+foreach(_name IN LISTS _unresolved)
+    message(STATUS "U ${_name}")
+endforeach()
+foreach(_name IN LISTS _conflict_FILENAMES)
+    message(STATUS "C ${_name}|${_conflict_${_name}}")
 endforeach()
 
-# --- Walk the exe's direct dylib references ----------------------------------
-execute_process(COMMAND otool -L "${EXE}" OUTPUT_VARIABLE _linked
-                RESULT_VARIABLE _rc)
-if(NOT _rc EQUAL 0)
-    message(FATAL_ERROR "macos_bundle_dylibs: otool -L failed on ${EXE}")
+if(_unresolved)
+    message(FATAL_ERROR
+        "macos_bundle_dylibs: unresolved dependencies: ${_unresolved}")
 endif()
-string(REPLACE "\n" ";" _link_lines "${_linked}")
+if(_conflict_FILENAMES)
+    message(FATAL_ERROR
+        "macos_bundle_dylibs: conflicting dependency names: ${_conflict_FILENAMES}")
+endif()
+if(REPORT_ONLY)
+    return()
+endif()
 
-# Resolve an @rpath/@loader_path/@executable_path/absolute reference to a real
-# file path, or empty if it cannot be found.
-function(_resolve_ref ref out_var)
-    set(${out_var} "" PARENT_SCOPE)
-    if(ref MATCHES "^@rpath/(.+)$")
-        set(_rest "${CMAKE_MATCH_1}")
-        foreach(_rp IN LISTS _rpaths)
-            string(REPLACE "@loader_path" "${_exe_dir}" _rp_abs "${_rp}")
-            string(REPLACE "@executable_path" "${_exe_dir}" _rp_abs "${_rp_abs}")
-            if(EXISTS "${_rp_abs}/${_rest}")
-                set(${out_var} "${_rp_abs}/${_rest}" PARENT_SCOPE)
-                return()
-            endif()
-        endforeach()
-    elseif(ref MATCHES "^@(loader_path|executable_path)/(.+)$")
-        if(EXISTS "${_exe_dir}/${CMAKE_MATCH_2}")
-            set(${out_var} "${_exe_dir}/${CMAKE_MATCH_2}" PARENT_SCOPE)
+set(_staged_libraries "")
+foreach(_source IN LISTS _resolved)
+    get_filename_component(_leaf "${_source}" NAME)
+    get_filename_component(_real "${_source}" REALPATH)
+    set(_staged "${DEST}/${_leaf}")
+    execute_process(
+        COMMAND "${CMAKE_COMMAND}" -E copy "${_real}" "${_staged}"
+        RESULT_VARIABLE _result)
+    if(NOT _result EQUAL 0)
+        message(FATAL_ERROR "macos_bundle_dylibs: copy failed for ${_real}")
+    endif()
+    list(APPEND _staged_libraries "${_staged}")
+endforeach()
+
+function(_read_dependencies macho output_var)
+    execute_process(
+        COMMAND "${OTOOL}" -L "${macho}"
+        OUTPUT_VARIABLE _linked
+        RESULT_VARIABLE _result)
+    if(NOT _result EQUAL 0)
+        message(FATAL_ERROR "macos_bundle_dylibs: otool -L failed on ${macho}")
+    endif()
+    string(REPLACE "\n" ";" _lines "${_linked}")
+    set(_dependencies "")
+    foreach(_line IN LISTS _lines)
+        if(_line MATCHES "^.(.+) \\(compatibility")
+            list(APPEND _dependencies "${CMAKE_MATCH_1}")
         endif()
-    elseif(EXISTS "${ref}")
-        set(${out_var} "${ref}" PARENT_SCOPE)
+    endforeach()
+    set(${output_var} "${_dependencies}" PARENT_SCOPE)
+endfunction()
+
+function(_read_install_id macho output_var)
+    execute_process(
+        COMMAND "${OTOOL}" -D "${macho}"
+        OUTPUT_VARIABLE _id_output
+        RESULT_VARIABLE _result)
+    if(NOT _result EQUAL 0)
+        set(${output_var} "" PARENT_SCOPE)
+        return()
+    endif()
+    string(REPLACE "\n" ";" _id_lines "${_id_output}")
+    list(LENGTH _id_lines _id_count)
+    if(_id_count GREATER 1)
+        list(GET _id_lines 1 _id)
+        set(${output_var} "${_id}" PARENT_SCOPE)
+    else()
+        set(${output_var} "" PARENT_SCOPE)
     endif()
 endfunction()
 
-set(_bundled 0)
-foreach(_line IN LISTS _link_lines)
-    # Each dependency line is "\t<path> (compatibility ...)".
-    if(NOT _line MATCHES "^\t(.+) \\(compatibility")
-        continue()
+function(_read_rpaths macho output_var)
+    execute_process(
+        COMMAND "${OTOOL}" -l "${macho}"
+        OUTPUT_VARIABLE _commands
+        RESULT_VARIABLE _result)
+    if(NOT _result EQUAL 0)
+        message(FATAL_ERROR "macos_bundle_dylibs: otool -l failed on ${macho}")
     endif()
-    set(_ref "${CMAKE_MATCH_1}")
+    string(REPLACE "\n" ";" _lines "${_commands}")
+    set(_rpaths "")
+    set(_expect_path FALSE)
+    foreach(_line IN LISTS _lines)
+        if(_line MATCHES "cmd LC_RPATH")
+            set(_expect_path TRUE)
+        elseif(_expect_path AND _line MATCHES "path (.+) \\(offset")
+            list(APPEND _rpaths "${CMAKE_MATCH_1}")
+            set(_expect_path FALSE)
+        endif()
+    endforeach()
+    set(${output_var} "${_rpaths}" PARENT_SCOPE)
+endfunction()
 
-    # Skip system libraries / SDK frameworks — never bundled.
-    if(_ref MATCHES "^/usr/lib/" OR _ref MATCHES "^/System/"
-       OR _ref MATCHES "^/Library/" OR _ref MATCHES "\\.framework/")
-        continue()
+set(_machos "${EXE};${_staged_libraries}")
+foreach(_macho IN LISTS _machos)
+    _read_install_id("${_macho}" _install_id)
+    _read_dependencies("${_macho}" _dependencies)
+    foreach(_reference IN LISTS _dependencies)
+        if("${_reference}" STREQUAL "${_install_id}"
+           OR _reference MATCHES "^/usr/lib/"
+           OR _reference MATCHES "^/System/Library/")
+            continue()
+        endif()
+        get_filename_component(_leaf "${_reference}" NAME)
+        if(NOT EXISTS "${DEST}/${_leaf}")
+            message(FATAL_ERROR
+                "macos_bundle_dylibs: ${_macho} references unstaged ${_reference}")
+        endif()
+        execute_process(
+            COMMAND "${INSTALL_NAME_TOOL}" -change "${_reference}"
+                    "@loader_path/${_leaf}" "${_macho}"
+            RESULT_VARIABLE _result
+            ERROR_VARIABLE _error)
+        if(NOT _result EQUAL 0)
+            message(FATAL_ERROR
+                "macos_bundle_dylibs: failed to rewrite ${_reference} in ${_macho}: ${_error}")
+        endif()
+    endforeach()
+
+    if(NOT "${_macho}" STREQUAL "${EXE}")
+        get_filename_component(_leaf "${_macho}" NAME)
+        execute_process(
+            COMMAND "${INSTALL_NAME_TOOL}" -id "@loader_path/${_leaf}" "${_macho}"
+            RESULT_VARIABLE _result
+            ERROR_VARIABLE _error)
+        if(NOT _result EQUAL 0)
+            message(FATAL_ERROR
+                "macos_bundle_dylibs: failed to set id for ${_macho}: ${_error}")
+        endif()
     endif()
 
-    _resolve_ref("${_ref}" _src)
-    if(_src STREQUAL "")
-        message(WARNING "macos_bundle_dylibs: could not resolve '${_ref}' — skipping (bundle may be incomplete)")
-        continue()
+    _read_rpaths("${_macho}" _rpaths)
+    set(_has_local_rpath FALSE)
+    foreach(_rpath IN LISTS _rpaths)
+        if(_rpath STREQUAL "@loader_path")
+            set(_has_local_rpath TRUE)
+        elseif(_rpath MATCHES "^/opt/homebrew(/|$)" OR
+               _rpath MATCHES "^/usr/local(/|$)")
+            execute_process(
+                COMMAND "${INSTALL_NAME_TOOL}" -delete_rpath "${_rpath}" "${_macho}"
+                RESULT_VARIABLE _result
+                ERROR_VARIABLE _error)
+            if(NOT _result EQUAL 0)
+                message(FATAL_ERROR
+                    "macos_bundle_dylibs: failed to remove rpath ${_rpath} "
+                    "from ${_macho}: ${_error}")
+            endif()
+        endif()
+    endforeach()
+    if(NOT _has_local_rpath)
+        execute_process(
+            COMMAND "${INSTALL_NAME_TOOL}" -add_rpath "@loader_path" "${_macho}"
+            RESULT_VARIABLE _result
+            ERROR_VARIABLE _error)
+        if(NOT _result EQUAL 0)
+            message(FATAL_ERROR
+                "macos_bundle_dylibs: failed to add local rpath to ${_macho}: ${_error}")
+        endif()
     endif()
-
-    # Name the bundled file after the reference (what dyld looks up), but copy
-    # the symlink's real target content — most dylibs are versioned symlinks
-    # (librtaudio.8.dylib -> librtaudio.8.0.0.dylib); a preserved symlink would
-    # dangle in the bundle. `cmake -E copy` dereferences.
-    get_filename_component(_base "${_ref}" NAME)
-    get_filename_component(_real "${_src}" REALPATH)
-    execute_process(COMMAND ${CMAKE_COMMAND} -E copy "${_real}" "${DEST}/${_base}"
-                    RESULT_VARIABLE _rc)
-    if(NOT _rc EQUAL 0)
-        message(FATAL_ERROR "macos_bundle_dylibs: copy failed for ${_real}")
-    endif()
-    execute_process(COMMAND install_name_tool -change
-                        "${_ref}" "@executable_path/${_base}" "${EXE}"
-                    RESULT_VARIABLE _rc)
-    if(NOT _rc EQUAL 0)
-        message(FATAL_ERROR "macos_bundle_dylibs: install_name_tool -change failed for ${_ref}")
-    endif()
-    math(EXPR _bundled "${_bundled} + 1")
 endforeach()
 
-# Belt-and-suspenders: ensure @executable_path is on the rpath so any @rpath/...
-# reference we left untouched still resolves next to the exe. Duplicate-add is a
-# benign error, so do not fail the build on it.
-execute_process(COMMAND install_name_tool -add_rpath "@executable_path" "${EXE}"
-                ERROR_QUIET RESULT_VARIABLE _ignored)
+foreach(_library IN LISTS _staged_libraries)
+    execute_process(
+        COMMAND "${CODESIGN}" --force --sign - "${_library}"
+        RESULT_VARIABLE _result
+        ERROR_VARIABLE _error)
+    if(NOT _result EQUAL 0)
+        message(FATAL_ERROR
+            "macos_bundle_dylibs: codesign failed for ${_library}: ${_error}")
+    endif()
+endforeach()
+execute_process(
+    COMMAND "${CODESIGN}" --force --sign - "${EXE}"
+    RESULT_VARIABLE _result
+    ERROR_VARIABLE _error)
+if(NOT _result EQUAL 0)
+    message(FATAL_ERROR "macos_bundle_dylibs: codesign failed for ${EXE}: ${_error}")
+endif()
 
-# install_name_tool invalidates the code signature; arm64 binaries must be
-# (re-)signed to run. Ad-hoc sign the modified exe.
-execute_process(COMMAND codesign --force --sign - "${EXE}"
-                ERROR_QUIET RESULT_VARIABLE _ignored)
-
+list(LENGTH _staged_libraries _bundled)
 message(STATUS "macos_bundle_dylibs: bundled ${_bundled} dylib(s) next to ${EXE}")
