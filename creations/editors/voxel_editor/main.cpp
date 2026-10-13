@@ -3807,6 +3807,7 @@ int main(int argc, char **argv) {
          "component_field_key",
          "text_input_command_capture",
          "part_sizes",
+         "part_gizmo_reach",
          "composite_proof"},
         "none"
     );

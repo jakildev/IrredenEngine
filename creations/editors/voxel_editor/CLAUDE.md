@@ -29,8 +29,9 @@ Design log, findings and the authoring-session history:
   alone (reveal after the array, wheel, row click),
   `mode_preview` proves the deferred render-mode switch allocates and releases
   the selected part's private canvas while rotated and private-canvas parts stay
-  outside the axis-aligned edit pick, and `part_sizes` creates two parts of
-  different extents and holds the mirror and loft tools to them.
+  outside the axis-aligned edit pick, `part_sizes` creates two parts of different
+  extents and holds the mirror and loft tools to them, and `part_gizmo_reach`
+  drags a part's gizmo after a bake at its pivot, a camera turn, and on a turned copy.
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --module <dir>
   --module-session <name>` — one session registered by a creation module.
   `test/module` registers `test_parts`, `test_single`, and the deliberately
@@ -102,9 +103,8 @@ render, because the aim and the pick share one screen mapping.
   loaded manifest with no `anchor` (CORNER) usually fails: `M` and the twin
   skip the mode, the dropdown refuses it, and `load` rejects a manifest that
   asks for it.
-- A part's move gizmo sits at its pivot, inside whatever is authored at the
-  box centre, and an occluded handle takes no click. A session drags a part's
-  gizmo (`Builder::dragPartGizmo`) before anything is authored into it.
+- A selected part's gizmo is drawn on its pivot's pixels, in front of the part's
+  own content (`EntityScene::partViewClearance`); other content can occlude it.
 - `EntityScene` owns one root and its ordered part records. Only the selected
   voxel part receives paint; other voxel parts carry `C_EditorReference`.
 - A part's LOD band (`EditorPart::lodMax_` fine .. `lodMin_` coarse) is
