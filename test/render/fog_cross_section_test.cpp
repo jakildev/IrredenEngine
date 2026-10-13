@@ -2174,9 +2174,13 @@ constexpr std::uint32_t kBindingSurfaceProbeOut = 1;  // std430 binding in the p
 constexpr std::uint32_t kBindingSurfaceProbeIn = 2;   // std430 binding in the probe
 constexpr int kSurfaceProbeLocalSize = 64;            // local_size_x in the probe
 
-// An ungated soft-edged source standing on the ground plane, so a sample's
-// lift above the ground is its dzUp.
-const LosProbeSource kSurfaceGroundSource{IRMath::vec4(0.5f, 0.0f, 14.0f, 2.0f), kLosGround};
+// An ungated source standing on the ground plane, so a sample's lift above the
+// ground is its dzUp. Its hard radial edge isolates the ceiling and
+// line-of-sight surface cuts: a soft rim would add partial samples that no
+// surface treatment applies to. The probe's radial band is then zero-width,
+// undefined exactly at the rim, so no probed sample may lie on it (the nearest
+// is 0.0067 away); re-check that when the centre, radius or lattice moves.
+const LosProbeSource kSurfaceGroundSource{IRMath::vec4(0.5f, 0.0f, 14.0f, 0.0f), kLosGround};
 
 struct FogSurfaceProbeHeader {
     std::int32_t sampleCount_;
