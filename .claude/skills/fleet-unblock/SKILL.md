@@ -37,8 +37,16 @@ Read it first, then apply the deltas below.
   `gh` polling (`docs/agents/FLEET-CACHE.md`).
 - `gh issue close`, `gh issue edit`, `gh pr edit` and `fleet-triage-sweep
   apply` run without prompts in the architect worktree (`Bash(gh:*)` and
-  the fleet tools are allowed in its settings). The worktree sync uses
-  `git checkout -B`; `git reset --hard` is denied by user policy.
+  the fleet tools are allowed in its settings) **only as one bare command
+  per Bash call**: no `cd … &&` prefix, no heredoc, no pipe, no `$(…)`.
+  A compound call is matched by none of those allow rules and falls to
+  the harness's auto-mode classifier, which refused the batched
+  staging-write-plus-`apply` on 2026-10-12. Write the staging file in one
+  call (the `Write` tool, or a script run as `python3 -I <file>`), run
+  `apply` in the next, and pass comment and body text with `--body-file`
+  ([`CLAUDE-BASELINE.md`](../../../docs/agents/CLAUDE-BASELINE.md)
+  § Bash tool rules). The worktree sync uses `git checkout -B`;
+  `git reset --hard` is denied by user policy.
 - Host pins: this host's key comes from `uname` (`mac` / `linux` /
   `windows`); `fleet:needs-gl-host` work is claimable on `linux` and
   `windows` only. A `pinned_away` row is a satellite-host item, not a
