@@ -8,6 +8,7 @@
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
+layout(rg32ui, binding = 4) readonly uniform uimage2D fogShadowWindow;
 #include "ir_fog_shadow_caster.glsl"
 // Shared caster/receiver sun-space projection + depth pack.
 #include "ir_sun_projection.glsl"
@@ -143,7 +144,9 @@ void main() {
 
     const bool fogBodyOrPrecut =
         fogCeilingEnabled.y != 0 || decodeFogBody(imageLoad(trixelEntityIds, pixel).xy);
-    if (!fogFieldCastsSunShadow(pos3D, fogBodyOrPrecut, fogCeilingEnabled.x)) return;
+    if (!(fogBodyOrPrecut) && fogCeilingEnabled.x != 0 && fogShadowVisionCircleCount > 0 &&
+        !fogFieldCastsSunShadow(pos3D, false, fogCeilingEnabled.x,
+            fogShadowCell(pos3D))) return;
 
     // Shared caster/receiver projection — the receiver lookup
     // (ir_sun_shadow_sample.glsl worldSunShadowFactor) derives its sun UV +

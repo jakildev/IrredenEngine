@@ -136,12 +136,26 @@ kernel void c_fog_to_trixel(
         }
     }
 
+    if (decodeCutFace(rawId)) {
+        const float3 facePoint = fogLosFacePoint(pos3D, faceId,
+            frameData.perAxisRoute == 0 && frameData.residualYaw == 0.0 ? kFogLosRouteCardinal :
+                kFogLosRoutePerAxis, scale);
+        if (fogCeilingCutFace(facePoint, faceId, fogObservers, canvasFogOfWar)) {
+            const float4 sourceColor = trixelColors.read(uint2(pixel));
+            const float4 capColor = float4(fogCutCapBlend(sourceColor.rgb,
+                sourceColor.rgb, fogObservers.revealSurfaceTreatment.z, 0.0, 1.0), sourceColor.a);
+            trixelColors.write(capColor, uint2(pixel));
+            return;
+        }
+    }
+
     const FogReveal reveal = fogRevealSample(
         pos3D,
         losSample,
         columnPoint,
         faceId >> 1,
         aaFloor,
+        decodeAnalyticSurface(rawId),
         fogObservers,
         canvasFogOfWar,
         fogLineOfSight

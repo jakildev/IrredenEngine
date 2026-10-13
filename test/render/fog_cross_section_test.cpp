@@ -31,6 +31,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/fog_line_of_sight.hpp>
+#include <irreden/render/fog_of_war.hpp>
 
 #include <cstddef>
 #include <fstream>
@@ -256,8 +257,10 @@ bool readShaderConstant(const std::string &source, const std::string &name, doub
 // kFogHiddenKeepCells (the keep-ring width the cross-section cut depends
 // on) is exactly the drift a GL-only smoke cannot see.
 TEST(FogCrossSectionShaderParity, ClipConstantsAgreeAcrossBackends) {
-    const std::string glsl = readShaderSource(kGlslFaceSelectPath);
-    const std::string metal = readShaderSource(kMetalFaceSelectPath);
+    const std::string glsl =
+        readShaderSource(kGlslFaceSelectPath) + readShaderSource(kGlslIsoCommonPath);
+    const std::string metal =
+        readShaderSource(kMetalFaceSelectPath) + readShaderSource(kMetalIsoCommonPath);
     ASSERT_FALSE(glsl.empty()) << "could not read " << kGlslFaceSelectPath;
     ASSERT_FALSE(metal.empty()) << "could not read " << kMetalFaceSelectPath;
 
@@ -291,7 +294,7 @@ TEST(FogCrossSectionShaderParity, WindowTexelMappingIsIdenticalAcrossBackends) {
     const std::string kMetalCompactPath =
         std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_voxel_visibility_compact.metal";
     const std::string reference =
-        extractFunctionBody(readShaderSource(kGlslFaceSelectPath), "fogWindowTexel");
+        extractFunctionBody(readShaderSource(kGlslIsoCommonPath), "fogWindowTexel");
     ASSERT_FALSE(reference.empty()) << "fogWindowTexel not found in ir_voxel_face_select.glsl";
     EXPECT_NE(reference.find("% fogSize"), std::string::npos)
         << "the tap must wrap through the window edge, not offset by a literal";
@@ -309,7 +312,12 @@ TEST(FogCrossSectionShaderParity, WindowTexelMappingIsIdenticalAcrossBackends) {
           kMetalCompactPath}) {
         const std::string source = readShaderSource(path);
         ASSERT_FALSE(source.empty()) << "could not read " << path;
-        const std::string body = extractFunctionBody(source, "fogWindowTexel");
+        const std::string body = extractFunctionBody(
+            readShaderSource(
+                path.find("metal") != std::string::npos ? kMetalIsoCommonPath : kGlslIsoCommonPath
+            ),
+            "fogWindowTexel"
+        );
         ASSERT_FALSE(body.empty()) << "fogWindowTexel not found in " << path;
         EXPECT_EQ(
             std::regex_replace(
@@ -1022,8 +1030,7 @@ TEST(FogCrossSectionShaderParity, RevealSurfaceHelpersAreIdenticalAcrossBackends
 
     const std::string glsl = readShaderSource(kGlslFogCommonPath);
     const std::string metal = readShaderSource(kMetalFogCommonPath);
-    for (const char *helper :
-         {"fogRevealSurfaceHash01", "fogRevealSurfaceBandWeight", "fogCutCapBlend"}) {
+    for (const char *helper : {"fogRevealSurfaceBandWeight", "fogCutCapBlend"}) {
         SCOPED_TRACE(helper);
         const std::string glslBody = extractFunctionBody(glsl, helper);
         const std::string metalBody = extractFunctionBody(metal, helper);
@@ -1032,7 +1039,7 @@ TEST(FogCrossSectionShaderParity, RevealSurfaceHelpersAreIdenticalAcrossBackends
         EXPECT_EQ(normalizeShaderMath(glslBody), normalizeShaderMath(metalBody))
             << helper << " diverged between backends";
     }
-    const std::string hash = extractFunctionBody(glsl, "fogRevealSurfaceHash01");
+    const std::string hash = extractFunctionBody(glslIso, "fogRevealSurfaceHash01");
     for (const char *forbidden : {"sin(", "fract(", "frameCount", "yaw"}) {
         EXPECT_EQ(hash.find(forbidden), std::string::npos)
             << "the dissolve hash must be integer-only over the world voxel: " << hash;
@@ -1055,19 +1062,12 @@ TEST(FogCrossSectionShaderParity, RevealSurfaceHelpersAreIdenticalAcrossBackends
         EXPECT_TRUE(std::regex_search(readShaderSource(path), tail))
             << path << " must declare the ceilings and the treatment as the block tail";
     }
-    const std::regex stageTail(
-        R"(visionCircleChannels\[2\];\s*(//[^\n]*\s*)*(vec4|float4) visionCircleCeilings\[kMaxFogVisionCircles\];\s*\};)"
-    );
-    for (const std::string &path : {kGlslFaceSelectPath, kMetalFaceSelectPath}) {
-        EXPECT_TRUE(std::regex_search(readShaderSource(path), stageTail))
-            << path << " must reach the ceilings through the fog passes' tail";
-    }
-    for (const char *path :
-         {"/c_voxel_visibility_compact.glsl", "/metal/c_voxel_visibility_compact.metal"}) {
-        const std::string compact = readShaderSource(std::string(IR_TEST_RENDER_SHADER_DIR) + path);
-        ASSERT_FALSE(compact.empty()) << path;
-        EXPECT_EQ(compact.find("visionCircleCeilings"), std::string::npos)
-            << path << " reads no ceiling: its cull stays a z-free superset";
+    for (const std::string &path :
+         {kGlslFaceSelectPath,
+          kMetalFaceSelectPath,
+          std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_voxel_visibility_compact.glsl",
+          std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_voxel_visibility_compact.metal"}) {
+        EXPECT_TRUE(std::regex_search(readShaderSource(path), tail)) << path;
     }
 }
 
@@ -1089,7 +1089,7 @@ TEST(FogCrossSectionShaderParity, CeilingScalesEachSourceBeforeTheMaximumOnBothB
               "ceilingReveal = reveal * ceilingVisibility;",
               "contribution = losVisibility * ceilingReveal;",
               "surfaceVisibility = ceilingVisibility * losVisibility;",
-              "if (hash01 > mix(1.0, surfaceVisibility, revealSurfaceTreatment.y)) { continue; }",
+              "if (hash01 > mix(1.0, dissolveVisibility, revealSurfaceTreatment.y)) { continue; }",
               "if (contribution > state) { state = contribution; styledBand = bandWeight; }"}) {
             EXPECT_NE(loop.find(expected), std::string::npos)
                 << "missing `" << expected << "` in " << loop;
@@ -1124,11 +1124,117 @@ TEST(FogCrossSectionShaderParity, CeilingScalesEachSourceBeforeTheMaximumOnBothB
     ASSERT_FALSE(metalDrop.empty()) << "fogColumnRevealZ accumulation not found in MSL";
     EXPECT_EQ(normalizeShaderMath(glslDrop), normalizeShaderMath(metalDrop))
         << "the unpainted-route drop diverged between backends";
-    EXPECT_NE(
-        normalizeShaderMath(glslDrop).find("* fogCeilingVisibility(visionCircleCeilings[i], dzUp)"),
-        std::string::npos
-    ) << "the drop must scale each source by its ceiling inside the max: "
-      << glslDrop;
+    EXPECT_EQ(normalizeShaderMath(glslDrop).find("fogCeilingVisibility("), std::string::npos)
+        << "the radial drop must not repeat ceiling selection: " << glslDrop;
+}
+
+TEST(FogCrossSectionShaderParity, CeilingRetentionAndOverflowKeysAgree) {
+    const std::string glsl = readShaderSource(kGlslIsoCommonPath);
+    const std::string metal = readShaderSource(kMetalIsoCommonPath);
+    for (const char *helper :
+         {"fogRevealSurfaceHash01",
+          "fogCeilingPhaseHeight",
+          "fogAnyCeilingEnabled",
+          "fogCeilingSourceMask",
+          "fogCeilingPresenceFromMask",
+          "fogCeilingPresence",
+          "fogCeilingRetained",
+          "fogOverflowEntryKey"}) {
+        const auto lhs = extractFunctionBody(glsl, helper);
+        const auto rhs = extractFunctionBody(metal, helper);
+        ASSERT_FALSE(lhs.empty()) << helper;
+        ASSERT_FALSE(rhs.empty()) << helper;
+        EXPECT_EQ(normalizeShaderMath(lhs), normalizeShaderMath(rhs)) << helper;
+    }
+    for (const auto &source : {glsl, metal}) {
+        double aa = 0.0;
+        ASSERT_TRUE(readShaderConstant(source, "kFogCeilingAdmitAa", aa));
+        EXPECT_DOUBLE_EQ(aa, IRPrefab::Fog::detail::kFogCeilingAdmitAa);
+        EXPECT_NE(source.find("0x80000000u"), std::string::npos);
+        EXPECT_NE(
+            extractFunctionBody(source, "fogOverflowEntryKey").find("0x7FFFFFFFu"),
+            std::string::npos
+        );
+    }
+    for (const char *path :
+         {"/c_per_axis_overflow_sort.glsl",
+          "/metal/c_per_axis_overflow_sort.metal",
+          "/v_peraxis_scatter.glsl",
+          "/metal/peraxis_scatter.metal",
+          "/c_light_overflow_faces.glsl",
+          "/metal/c_light_overflow_faces.metal",
+          "/c_fog_overflow_faces.glsl",
+          "/metal/c_fog_overflow_faces.metal"}) {
+        const auto source = readShaderSource(std::string(IR_TEST_RENDER_SHADER_DIR) + path);
+        EXPECT_NE(source.find("fogOverflowEntryKey("), std::string::npos) << path;
+    }
+}
+
+TEST(FogCrossSectionShaderParity, CeilingSelectionBindingsAndCapSitesArePresentOnBothBackends) {
+    for (const auto &[folder, extension] :
+         {std::pair{"/", ".glsl"}, std::pair{"/metal/", ".metal"}}) {
+        const auto read = [&](const char *stem) {
+            const auto source = readShaderSource(
+                std::string(IR_TEST_RENDER_SHADER_DIR) + folder + stem + extension
+            );
+            return std::regex_replace(
+                source,
+                std::regex(R"(fogSelectionCell\((canvasFogOfWar, fogObservers, |fog, obs, ))"),
+                "fogSelectionCell("
+            );
+        };
+        const auto compact = read("c_voxel_visibility_compact");
+        for (const char *term :
+             {"visionCircleCeilings",
+              "revealSurfaceTreatment",
+              "-ceilingSpan",
+              "ownMinimum < 1.0",
+              "plusMinimum < 1.0",
+              "minusMinimum < 1.0",
+              "fogSelectionCell(plus.xy",
+              "fogSelectionCell(minus.xy",
+              "axis == 2"})
+            EXPECT_NE(compact.find(term), std::string::npos) << term << extension;
+        const auto select = read("ir_voxel_face_select");
+        for (const char *term :
+             {"const bool ceilingActive",
+              "fogCeilingRetained(worldVoxel",
+              "fogCeilingRetained(neighbour",
+              "fogSelectionCell(neighbour.xy"})
+            EXPECT_NE(select.find(term), std::string::npos) << term << extension;
+        for (const char *stem : {"c_fog_to_trixel", "c_fog_overflow_faces"}) {
+            const auto paint = read(stem);
+            EXPECT_NE(paint.find("fogCeilingCutFace("), std::string::npos) << stem;
+            EXPECT_LT(paint.find("fogCeilingCutFace("), paint.find("reveal.state >= 1.0")) << stem;
+        }
+        const auto common = read("ir_fog_common");
+        EXPECT_NE(
+            common.find("analyticSurface ? surfaceVisibility : losVisibility"),
+            std::string::npos
+        );
+        for (const char *stem :
+             {"c_bake_voxel_sun_faces",
+              "c_bake_box_sun_shadow",
+              "c_bake_sun_shadow_map",
+              "c_resolve_world_placed_depth",
+              "c_shapes_to_trixel_body"}) {
+            const auto caster = read(stem);
+            EXPECT_NE(caster.find("fogShadowCell("), std::string::npos) << stem;
+            EXPECT_NE(
+                caster.find(extension == std::string(".glsl") ? "binding = 4" : "texture(4)"),
+                std::string::npos
+            ) << stem;
+        }
+        const auto iso = read("ir_iso_common");
+        for (const char *helper :
+             {"trixelCanvasPixelToWorld3D", "trixelCanvasPixelToWorld3DSmoothYaw"})
+            EXPECT_NE(extractFunctionBody(iso, helper).find("isoPixelToPos3D("), std::string::npos);
+        EXPECT_NE(
+            extractFunctionBody(read("ir_per_axis_lighting"), "perAxisCellToWorld3D")
+                .find("isoPixelToPos3D("),
+            std::string::npos
+        );
+    }
 }
 
 TEST(FogCrossSectionShaderParity, CeilingShadowCasterPolicyAndBakeRoutesStayBackendSymmetric) {
@@ -1138,7 +1244,7 @@ TEST(FogCrossSectionShaderParity, CeilingShadowCasterPolicyAndBakeRoutesStayBack
     const std::string metalBody = extractFunctionBody(metal, "fogFieldCastsSunShadow");
     ASSERT_FALSE(glslBody.empty());
     ASSERT_FALSE(metalBody.empty());
-    for (const char *policy : {"fogCeilingVisibility(", "return true", "return !covered"}) {
+    for (const char *policy : {"fogCeilingRetained(roundHalfUp(worldPos), cell,", "return true"}) {
         EXPECT_NE(glslBody.find(policy), std::string::npos) << policy;
         EXPECT_NE(metalBody.find(policy), std::string::npos) << policy;
     }
@@ -2428,6 +2534,14 @@ TEST_F(FogCrossSectionTest, GpuRevealSurfaceMatchesTheCpuOracle) {
             kBindingSurfaceProbeOut
         };
 
+        Buffer ceilingOut{
+            seed.data(),
+            seed.size() * sizeof(IRMath::vec4),
+            BUFFER_STORAGE_DYNAMIC,
+            BufferTarget::SHADER_STORAGE,
+            3
+        };
+        ceilingOut.bindBase(BufferTarget::SHADER_STORAGE, 3);
         program.use();
         m_fogGrid->bindAsImage(
             kBindingSurfaceGridImage,
@@ -2448,8 +2562,18 @@ TEST_F(FogCrossSectionTest, GpuRevealSurfaceMatchesTheCpuOracle) {
         std::vector<IRMath::vec4> readback(samples.size(), IRMath::vec4(-1.0f));
         probeOut.getSubData(0, readback.size() * sizeof(IRMath::vec4), readback.data());
 
+        std::vector<IRMath::vec4> ceilingReadback(samples.size());
+        ceilingOut
+            .getSubData(0, ceilingReadback.size() * sizeof(IRMath::vec4), ceilingReadback.data());
         for (std::size_t i = 0; i < samples.size(); ++i) {
             const IRMath::vec3 position(samples[i].position_);
+            const auto voxel = IRMath::roundVec3HalfUp(position);
+            const IRPrefab::Fog::FogWindowTexel cell{};
+            using namespace IRPrefab::Fog::detail;
+            EXPECT_NEAR(ceilingReadback[i].x, ceilingPresence(observers, voxel, cell), 1e-5f);
+            EXPECT_EQ(ceilingReadback[i].y, ceilingRetained(observers, voxel, cell, 0.0f));
+            EXPECT_EQ(ceilingReadback[i].z, ceilingRetained(observers, voxel, cell, 0.37f));
+            EXPECT_NEAR(ceilingReadback[i].w, ceilingPhaseHeight(voxel, 0.37f), 1e-5f);
             const IRPrefab::Fog::RevealSurfaceSample cpu = IRPrefab::Fog::evalRevealSurface(
                 observers,
                 columns,

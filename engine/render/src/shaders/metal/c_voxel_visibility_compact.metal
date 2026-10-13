@@ -81,36 +81,24 @@ constant float kFogExploredThreshold = 0.25f;
 // setVisionCircle keeps its floor. The tail after the count is the
 // line-of-sight mask (unread here) and the field column at texel (0, 0) of
 // the fog window.
-constant int kMaxFogVisionCircles = 8; // mirror of component_canvas_fog_of_war.hpp kMaxFogVisionCircles — must stay in sync
 struct FogObserverData {
     float4 visionCircles[kMaxFogVisionCircles]; // (centerX, centerY, radius, edgeSoftness)
     int visionCircleCount;
     int losSourceMask;
     int windowOriginX;
     int windowOriginY;
+    float4 visionCircleHeights[kMaxFogVisionCircles];
+    float4 unexploredColor;
+    float4 losParams[kMaxFogVisionCircles];
+    uint4 visionCircleChannels[2];
+    float4 visionCircleCeilings[kMaxFogVisionCircles];
+    float4 revealSurfaceTreatment;
 };
 
-// Texel of world column `col` in the fog window, or (-1, -1) when the column
-// is outside it. Column `c` lives at texel floorMod(c, W) with W the window
-// edge; the window covers [origin, origin + W) per axis. Every modulo takes
-// non-negative operands only. GLSL twin: fogWindowTexel in
-// ../c_voxel_visibility_compact.glsl (keep byte-identical).
-static int2 fogWindowTexel(int2 col, int2 origin, int2 fogSize) {
-    const int2 rel = col - origin;
-    if (rel.x < 0 || rel.x >= fogSize.x || rel.y < 0 || rel.y >= fogSize.y) {
-        return int2(-1);
-    }
-    int2 base;
-    base.x = origin.x >= 0 ? origin.x % fogSize.x : fogSize.x - 1 - (-(origin.x + 1)) % fogSize.x;
-    base.y = origin.y >= 0 ? origin.y % fogSize.y : fogSize.y - 1 - (-(origin.y + 1)) % fogSize.y;
-    int2 texel = rel + base;
-    if (texel.x >= fogSize.x) {
-        texel.x -= fogSize.x;
-    }
-    if (texel.y >= fogSize.y) {
-        texel.y -= fogSize.y;
-    }
-    return texel;
+static uint2 fogSelectionCell(texture2d<uint, access::read> fog, constant FogObserverData& obs, int2 column) {
+    const int2 texel = fogWindowTexel(column, int2(obs.windowOriginX, obs.windowOriginY),
+                                    int2(fog.get_width(), fog.get_height()));
+    return texel.x < 0 ? uint2(0u, kFogChannelDefault) : fog.read(uint2(texel)).rg;
 }
 
 // True iff this voxel's RAW world column is unexplored. World-space fog grid →
@@ -345,13 +333,24 @@ kernel void c_voxel_visibility_compact(
                 }
                 const bool fogWholeBodyExempt =
                     (voxels[idx].reserved & kFogWholeBodyExemptBit) != 0u;
+
+                const bool ceilingActive = !fogWholeBodyExempt && canvasFogOfWar.get_width() > 1 &&
+                    fogAnyCeilingEnabled(fogObservers.visionCircleCeilings, fogObservers.visionCircleCount);
+                const float ceilingSpan = fogObservers.revealSurfaceTreatment.x != 0.0f
+                    ? kFogCeilingFlickerSpan : 0.0f;
+                const uint admitted = ceilingActive ? fogCeilingSourceMask(
+                    voxelPosRaw.xy, fogSelectionCell(canvasFogOfWar, fogObservers, voxelPosRaw.xy), fogObservers.visionCircles,
+                    fogObservers.visionCircleChannels, fogObservers.visionCircleCount) : 0u;
+                const bool ceilingPossible = !ceilingActive || fogCeilingPresenceFromMask(
+                    voxelPosRaw.z, admitted, fogObservers.visionCircleHeights,
+                    fogObservers.visionCircleCeilings, fogObservers.visionCircleCount, -ceilingSpan) > 0.0f;
                 if (isoPos.x >= frameData.cullIsoMin.x - cullMargin &&
                     isoPos.x <= frameData.cullIsoMax.x + cullMargin &&
                     isoPos.y >= frameData.cullIsoMin.y - cullMargin &&
                     isoPos.y <= frameData.cullIsoMax.y + cullMargin &&
                     (fogWholeBodyExempt ||
                      !fogColumnUnexplored(canvasFogOfWar, fogObservers, voxelPosRaw) ||
-                     fogColumnInVisionCircle(fogObservers, voxelPosRaw))) {
+                     fogColumnInVisionCircle(fogObservers, voxelPosRaw)) && ceilingPossible) {
                     if (frameData.perAxisRoute == 0) {
                         // Fully-interior drop — mirrors the GLSL twin: all six
                         // face-occlusion bits set means stage 1/2 fail
@@ -411,8 +410,28 @@ kernel void c_voxel_visibility_compact(
                         const uint flagsByte = (voxels[idx].materialFlagBone >> 8u) & 0xFFu;
                         const uint stride = uint(frameData.perAxisRoute);
                         for (int axis = 0; axis < 3; ++axis) {
+
+                            bool possibleCut = false;
+                            if (ceilingActive) {
+                                const float ownMinimum = fogCeilingPresenceFromMask(
+                                    voxelPosRaw.z, admitted, fogObservers.visionCircleHeights,
+                                    fogObservers.visionCircleCeilings, fogObservers.visionCircleCount, ceilingSpan);
+                                int3 step = int3(0);
+                                step[axis] = 1;
+                                const int3 plus = voxelPosRaw + step;
+                                const int3 minus = voxelPosRaw - step;
+                                const float plusMinimum = axis == 2
+                                    ? fogCeilingPresenceFromMask(plus.z, admitted, fogObservers.visionCircleHeights,
+                                        fogObservers.visionCircleCeilings, fogObservers.visionCircleCount, ceilingSpan)
+                                    : fogCeilingPresence(plus, fogSelectionCell(canvasFogOfWar, fogObservers, plus.xy), fogObservers.visionCircles, fogObservers.visionCircleHeights, fogObservers.visionCircleCeilings, fogObservers.visionCircleChannels, fogObservers.visionCircleCount, ceilingSpan);
+                                const float minusMinimum = axis == 2
+                                    ? fogCeilingPresenceFromMask(minus.z, admitted, fogObservers.visionCircleHeights,
+                                        fogObservers.visionCircleCeilings, fogObservers.visionCircleCount, ceilingSpan)
+                                    : fogCeilingPresence(minus, fogSelectionCell(canvasFogOfWar, fogObservers, minus.xy), fogObservers.visionCircles, fogObservers.visionCircleHeights, fogObservers.visionCircleCeilings, fogObservers.visionCircleChannels, fogObservers.visionCircleCount, ceilingSpan);
+                                possibleCut = ownMinimum < 1.0f || plusMinimum < 1.0f || minusMinimum < 1.0f;
+                            }
                             if (faceIsExposed(flagsByte, 2 * axis) ||
-                                faceIsExposed(flagsByte, 2 * axis + 1)) {
+                                faceIsExposed(flagsByte, 2 * axis + 1) || possibleCut) {
                                 groupUniqueSurvivors[localIndex] = 1u;
                                 const uint base = uint(axis) * kPerAxisIndirectStrideUints;
                                 const uint slot = atomic_fetch_add_explicit(

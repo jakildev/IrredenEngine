@@ -54,22 +54,23 @@ int main() {
     const ivec2 base{8,8};
     const ivec3 face{0,0,0};
     FrameDataVoxelToTrixel frame{overflowScratchLayout};
-    auto append=[&](ivec3 p,int depth,uint color) {
+    auto append=[&](ivec3 p,int depth,uint color,bool cut=false) {
 #ifdef METAL_ADAPTER
-        overflowAppendTap(base,p,depth,color,frame,distances,perAxisWinnerIds,canvasSize);
+        overflowAppendTap(base,p,depth,color,cut,frame,distances,perAxisWinnerIds,canvasSize);
 #else
-        overflowAppendTap(base,p,depth,color);
+        overflowAppendTap(base,p,depth,color,cut);
 #endif
     };
     append(face,100,0x11111111u); // settled cardinal winner
     if(perAxisWinnerIds[301]!=0) return 1;
     append(face,101,0x22222222u); // visible cardinal loser
-    append(face,102,0x33333333u); // another loser, at capacity
+    append(face,102,0x33333333u,true); // another loser, at capacity
     if(perAxisWinnerIds[301]!=2 || perAxisWinnerIds[305]!=0) return 2;
     if(perAxisWinnerIds[320]!=0x00080008u ||
        perAxisWinnerIds[321]!=0x22222222u || perAxisWinnerIds[322]!=101u ||
        perAxisWinnerIds[323]!=0x00080008u ||
-       perAxisWinnerIds[324]!=0x33333333u || perAxisWinnerIds[325]!=102u) return 3;
+       perAxisWinnerIds[324]!=0x33333333u || perAxisWinnerIds[325]!=(102u|kFogOverflowCutFaceBit)) return 3;
+    if(fogOverflowEntryKey(perAxisWinnerIds[325])!=102) return 6;
     append(face,103,0x44444444u); // cap reports, count stays capped
     if(perAxisWinnerIds[301]!=2 || perAxisWinnerIds[305]!=1 ||
        perAxisWinnerIds[326]!=0) return 4;
@@ -88,7 +89,12 @@ def adapter(source, metal):
                                    ("atomic_int", "int"), ("atomic_uint", "uint")):
             function = re.sub(r"\b" + token + r"\b", replacement, function)
         function = re.sub(r"\b(?:constant|device)\s+", "", function)
-    return HOST + ("#define METAL_ADAPTER\n" if metal else "") + function + CHECKS
+    folder = ROOT / "engine/render/src/shaders" / ("metal" if metal else "")
+    common = (folder / ("ir_iso_common.metal" if metal else "ir_iso_common.glsl")).read_text()
+    flag = re.search(r"(?:const|constant) uint kFogOverflowCutFaceBit = [^;]+;", common).group()
+    flag = flag.replace("constant", "const")
+    key = functions(common, "fogOverflowEntryKey")
+    return HOST + flag + key + "\n" + ("#define METAL_ADAPTER\n" if metal else "") + function + CHECKS
 
 
 def run_host(source):
@@ -112,6 +118,10 @@ class OverflowAppendTest(unittest.TestCase):
                 result = run_host(host)
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn("controls passed", result.stdout)
+
+                cut_mutant = host.replace("isCutFace ? kFogOverflowCutFaceBit", "false ? kFogOverflowCutFaceBit")
+                self.assertNotEqual(cut_mutant, host)
+                self.assertNotEqual(run_host(cut_mutant).returncode, 0)
 
                 # Reversing the winner predicate admits the stored face.
                 winner_mutant, count = re.subn(

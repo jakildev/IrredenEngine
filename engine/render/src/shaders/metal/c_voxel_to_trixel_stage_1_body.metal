@@ -80,6 +80,7 @@ inline void overflowAppendTap(
     int3 facePos,
     int voxelDistance,
     uint colorPacked,
+    bool isCutFace,
     constant FrameDataVoxelToTrixel& frameData,
     device const atomic_int* distanceScratch,
     device atomic_uint* scratch,
@@ -117,7 +118,8 @@ inline void overflowAppendTap(
         memory_order_relaxed
     );
     atomic_store_explicit(&scratch[entryBase + 1u], colorPacked, memory_order_relaxed);
-    atomic_store_explicit(&scratch[entryBase + 2u], uint(voxelDistance), memory_order_relaxed);
+    atomic_store_explicit(&scratch[entryBase + 2u], uint(voxelDistance) |
+        (isCutFace ? kFogOverflowCutFaceBit : 0u), memory_order_relaxed);
 }
 
 // Emit a face's 2x3 trixel block through the deformation matrix D.
@@ -212,22 +214,8 @@ struct Voxel {
 // through the atomic scratch buffer; Metal passes the texture + observers into
 // the shared functions as arguments.
 
-// Z-cost twin of fogColumnReveal for the own-column drop on the routes
-// FOG_TO_TRIXEL never paints — the DETACHED canvas and the per-axis rotation
-// textures (the voxel's world Z is known there). It folds the per-circle height
-// penalty zCostUp * max(dzUp - freeBand, 0) + zCostDown * max(dzDown -
-// freeBand, 0), where dzUp = max(observerZ - voxelZ, 0) and dzDown =
-// max(voxelZ - observerZ, 0), into the effective radial distance, so a
-// height-hidden voxel is removed on the z-aware curve FOG_TO_TRIXEL reveals by,
-// each source scaled by its ceiling factor. The world canvas and the per-axis
-// routes do NOT use it: their drop is z-free so a height-hidden voxel keeps
-// its geometry and the fog pass paints it unexplored. Mirror of the GLSL twin. It lives HERE
-// rather than beside the z-free twins in ir_voxel_face_select.metal because the
-// drop is STAGE-1-ONLY — stage 2 never repeats it — and the shared include
-// holds exactly the definitions both stages must agree on. The disc test itself
-// is fogDiscRevealAtDistance, the one fogColumnReveal uses, so the drop and the
-// cut-face rule resolve a column on a hard disc's rim the same way. All-zero
-// heights make this return exactly fogColumnReveal's value.
+// Detached canvases retain the height-cost radial drop. Ceiling retention is
+// owned by selectVoxelFace, including partial dissolve and neighbour caps.
 static float fogColumnRevealZ(
     texture2d<uint, access::read> fog, constant FogObserverData& obs, int2 col, float voxelZ
 ) {
@@ -248,8 +236,7 @@ static float fogColumnRevealZ(
             h.y * max(dzUp - h.w, 0.0f) + h.z * max(dzDown - h.w, 0.0f);
         reveal = max(
             reveal,
-            fogDiscRevealAtDistance(distEff, obs.visionCircles[i].z, obs.visionCircles[i].w) *
-                fogCeilingVisibility(obs.visionCircleCeilings[i], dzUp)
+            fogDiscRevealAtDistance(distEff, obs.visionCircles[i].z, obs.visionCircles[i].w)
         );
     }
     return reveal;
@@ -445,7 +432,7 @@ kernel void IR_STAGE1_KERNEL_NAME(
             const uint overflowColor =
                 (voxels[voxelIndex].colorPacked & 0x00FFFFFFu) | (fogClassByte << 24u);
             overflowAppendTap(
-                perAxisBase, facePos, voxelDistance, overflowColor,
+                perAxisBase, facePos, voxelDistance, overflowColor, sel.isCutFace,
                 frameData, distanceScratch, perAxisWinnerIds, canvasSize
             );
             return;

@@ -28,7 +28,8 @@ def selection_source(suffix, directory, remove_route_guard=False):
             "", selector)
         if count != 1:
             raise ValueError("missing Metal fog arguments")
-        selector = selector.replace("obs.visionCircleCount", "visionCircleCount")
+        selector = selector.replace("obs.", "")
+        selector = selector.replace("fogSelectionCell(fog, obs, ", "fogSelectionCell(")
         selector = selector.replace("fogColumnReveal(fog, obs, ", "fogColumnReveal(")
     exposed = functions((shaders / f"ir_iso_common.{suffix}").read_text(),
                         "faceIsExposed")
@@ -50,12 +51,23 @@ struct vec3 {
     vec2 xy;float z;
     explicit vec3(float v=0):xy(v),z(v){}
     vec3(float x,float y,float z):xy(x,y),z(z){}
+    vec3 operator+(vec3 v)const{return {xy.x+v.xy.x,xy.y+v.xy.y,z+v.z};}
     explicit vec3(ivec3 v):xy(float(v.xy.x),float(v.xy.y)),z(float(v.z)){}
 };
 struct vec4 {
     vec3 xyz;vec2 xy;float w;
     vec4(float x=0,float y=0,float z=0,float w=0):xyz(x,y,z),xy(x,y),w(w){}
 };
+// This matrix exercises the original radial/riser policy with ceilings disabled.
+// The retained-solid oracle lives in test_render_fog_cut_voxel_faces.py.
+struct uvec4 {};
+using uvec2=ivec2;
+using uint2=ivec2;
+vec4 visionCircles[8],visionCircleHeights[8],visionCircleCeilings[8],revealSurfaceTreatment;
+uvec4 visionCircleChannels[2];
+bool fogAnyCeilingEnabled(const vec4*,int){return false;}
+uvec2 fogSelectionCell(ivec2){return uvec2(0);}
+bool fogCeilingRetained(ivec3,uvec2,const vec4*,const vec4*,const vec4*,const uvec4*,int,vec4,float){return true;}
 constexpr int kFaceZNeg=4;
 int visionCircleCount=0;
 float fogReveal=1.f;

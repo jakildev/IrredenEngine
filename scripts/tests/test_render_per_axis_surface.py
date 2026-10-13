@@ -271,7 +271,7 @@ struct vec4 {
 };
 """)
     helpers = "\n".join(functions(common, name) for name in (
-        "faceOutwardNormal6", "decodeSlot", "decodeFlipPerAxis"))
+        "faceOutwardNormal6", "decodeSlot", "decodeFlipPerAxis", "fogOverflowEntryKey"))
     entry = host(functions(sampler, "worldSurfaceSunShadowFactor"))
     controls = surface_controls(host(functions(surface, "perAxisFaceSurfacePoint")))
     return (f"#define METAL_BACKEND {int(suffix == 'metal')}\n" + geometry + SPY + ADAPTER

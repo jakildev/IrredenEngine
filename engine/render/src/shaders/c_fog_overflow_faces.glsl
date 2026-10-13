@@ -56,7 +56,7 @@ void main() {
     const uint entryBase = uint(overflowScratchLayout.z) + gid * 3u;
     const uint packedCell = overflowScratch[entryBase + 0u];
     const uint colorPacked = overflowScratch[entryBase + 1u];
-    const int encoded = int(overflowScratch[entryBase + 2u]);
+    const int encoded = fogOverflowEntryKey(overflowScratch[entryBase + 2u]);
     const uint fogClassByte = colorPacked >> 24u;
     if (fogClassByte != kFogOverflowFieldByte) {
         const float bodyState = fogOverflowBodyState(fogClassByte);
@@ -82,8 +82,19 @@ void main() {
         }
     }
 
+    if ((overflowScratch[entryBase + 2u] & kFogOverflowCutFaceBit) != 0u) {
+        const vec3 facePoint = pos3D;
+        if (fogCeilingCutFace(facePoint, faceId)) {
+            const vec4 sourceColor = unpackColor(colorPacked);
+            const vec4 capColor = vec4(fogCutCapBlend(sourceColor.rgb,
+                sourceColor.rgb, revealSurfaceTreatment.z, 0.0, 1.0), sourceColor.a);
+            overflowScratch[entryBase + 1u] = packColor(capColor);
+            return;
+        }
+    }
+
     const FogReveal reveal =
-        fogRevealSample(pos3D, losSample, columnPoint, faceId >> 1, aaFloor);
+        fogRevealSample(pos3D, losSample, columnPoint, faceId >> 1, aaFloor, false);
     if (reveal.state >= 1.0) {
         return;
     }

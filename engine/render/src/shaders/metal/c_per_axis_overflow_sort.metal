@@ -32,7 +32,9 @@ inline bool overflowRecordLess(
     uint a0, uint a1, uint a2, uint b0, uint b1, uint b2
 ) {
     if (a0 != b0) return a0 < b0;
-    if (a2 != b2) return a2 < b2;
+    const int aKey = fogOverflowEntryKey(a2);
+    const int bKey = fogOverflowEntryKey(b2);
+    if (aKey != bKey) return aKey < bKey;
     return a1 < b1;
 }
 

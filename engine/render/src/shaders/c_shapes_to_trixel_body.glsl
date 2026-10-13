@@ -10,6 +10,7 @@ layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 #include "ir_shape_data.glsl"
 #include "ir_shape_sun_ray.glsl"
 #if IR_SHAPE_PASS == 2
+layout(rg32ui, binding = 4) readonly uniform uimage2D fogShadowWindow;
 #include "ir_fog_shadow_caster.glsl"
 #endif
 
@@ -890,8 +891,9 @@ void main() {
         fogViewOffset.z
     );
     const vec3 fogWorldSample = worldPos + fogWorldOffset / float(sub);
-    if (!fogFieldCastsSunShadow(
-            fogWorldSample, (shape.flags & FLAG_FOG_BODY) != 0u, 1)) return;
+    if (!((shape.flags & FLAG_FOG_BODY) != 0u) && 1 != 0 && fogShadowVisionCircleCount > 0 &&
+        !fogFieldCastsSunShadow(fogWorldSample, false, 1,
+            fogShadowCell(fogWorldSample))) return;
 #endif
 
     // Depth metric. Cardinal path: view-space x+y+z relative to the cardinal-

@@ -286,6 +286,12 @@ inline uint2 encodeEntityIdFogWholeBody(uint2 packedId, bool isFogWholeBody) {
 }
 // Overflow-entry fog class byte — GLSL twin: 255 FIELD, a BODY factor rescaled
 // onto 0..254.
+// The high bit carries cut provenance; depth ordering uses only the key.
+constant uint kFogOverflowCutFaceBit = 0x80000000u;
+inline int fogOverflowEntryKey(uint word) {
+    return int(word & 0x7FFFFFFFu);
+}
+
 constant uint kFogOverflowFieldByte = 255u;
 inline uint encodeFogOverflowClassByte(bool isFogBody, uint factor) {
     return isFogBody ? ((factor & 0xFFu) * 254u + 127u) / 255u : kFogOverflowFieldByte;
@@ -1139,6 +1145,113 @@ inline float fogTexelState(uint state) {
     return float(state) / 255.0f;
 }
 
+inline float fogRevealSurfaceHash01(int3 voxel) {
+    uint hash = uint(voxel.x) * 0x8DA6B343u ^ uint(voxel.y) * 0xD8163841u ^
+        uint(voxel.z) * 0xCB1AB31Fu;
+    hash ^= hash >> 16u;
+    hash *= 0x7FEB352Du;
+    hash ^= hash >> 15u;
+    hash *= 0x846CA68Bu;
+    hash ^= hash >> 16u;
+    return float(hash & 0xFFFFFFu) / 16777216.0f;
+}
+
+inline int2 fogWindowTexel(int2 col, int2 origin, int2 fogSize) {
+    const int2 rel = col - origin;
+    if (rel.x < 0 || rel.x >= fogSize.x || rel.y < 0 || rel.y >= fogSize.y) {
+        return int2(-1);
+    }
+    int2 base;
+    base.x = origin.x >= 0 ? origin.x % fogSize.x : fogSize.x - 1 - (-(origin.x + 1)) % fogSize.x;
+    base.y = origin.y >= 0 ? origin.y % fogSize.y : fogSize.y - 1 - (-(origin.y + 1)) % fogSize.y;
+    int2 texel = rel + base;
+    if (texel.x >= fogSize.x) {
+        texel.x -= fogSize.x;
+    }
+    if (texel.y >= fogSize.y) {
+        texel.y -= fogSize.y;
+    }
+    return texel;
+}
+
+constant int kMaxFogVisionCircles = 8;
+constant float kFogCeilingAdmitAa = 0.75f;
+constant float kFogCeilingFlickerSpan = 2.0f;
+
+inline float fogCeilingPhaseHeight(int3 voxel, float phase) {
+    if (phase == 0.0f) return 0.0f;
+    uint hash = uint(voxel.x) * 0xA24BAED5u ^ uint(voxel.y) * 0x9FB21C65u ^
+        uint(voxel.z) * 0xC13FA9A9u;
+    hash ^= hash >> 16u;
+    hash *= 0x7FEB352Du;
+    hash ^= hash >> 15u;
+    const float rate = 0.125f + 0.875f * (float(hash & 0xFFFFFFu) / 16777216.0f);
+    return kFogCeilingFlickerSpan * (1.0f - 4.0f * abs(fract(rate * phase + 0.25f) - 0.5f));
+}
+
+inline bool fogAnyCeilingEnabled(constant float4* ceilings, int count) {
+    for (int source = 0; source < count; ++source) {
+        if (ceilings[source].x >= 0.0f) return true;
+    }
+    return false;
+}
+
+// Admission is independent of height and phase; Z neighbours reuse this mask.
+inline uint fogCeilingSourceMask(
+    int2 column, uint2 cell, constant float4* circles,
+    constant uint4* channels, int count
+) {
+    if (cell.x == 255u) return 0u;
+    uint admitted = 0u;
+    for (int source = 0; source < count; ++source) {
+        if ((channels[source / 4][source % 4] & cell.y) == 0u) continue;
+        const float4 circle = circles[source];
+        const float2 nearest = clamp(circle.xy, float2(column) - 0.5f, float2(column) + 0.5f);
+        if (fogVisionCircleReveal(nearest, circle, kFogCeilingAdmitAa) > 0.0f) {
+            admitted |= 1u << uint(source);
+        }
+    }
+    return admitted;
+}
+
+inline float fogCeilingPresenceFromMask(
+    int voxelZ, uint admitted, constant float4* heights,
+    constant float4* ceilings, int count, float heightOffset
+) {
+    if (admitted == 0u) return 1.0f;
+    float presence = 0.0f;
+    for (int source = 0; source < count; ++source) {
+        if ((admitted & (1u << uint(source))) == 0u) continue;
+        const float dzUp = max(heights[source].x - float(voxelZ), 0.0f);
+        presence = max(presence, fogCeilingVisibility(ceilings[source], dzUp + heightOffset));
+        if (presence == 1.0f) return 1.0f;
+    }
+    return presence;
+}
+
+inline float fogCeilingPresence(
+    int3 voxel, uint2 cell, constant float4* circles,
+    constant float4* heights, constant float4* ceilings,
+    constant uint4* channels, int count, float heightOffset
+) {
+    return fogCeilingPresenceFromMask(
+        voxel.z, fogCeilingSourceMask(voxel.xy, cell, circles, channels, count),
+        heights, ceilings, count, heightOffset);
+}
+
+inline bool fogCeilingRetained(
+    int3 voxel, uint2 cell, constant float4* circles,
+    constant float4* heights, constant float4* ceilings,
+    constant uint4* channels, int count, float4 treatment, float phase
+) {
+    const bool treated = treatment.x != 0.0f;
+    const float presence = fogCeilingPresence(
+        voxel, cell, circles, heights, ceilings, channels, count,
+        treated ? fogCeilingPhaseHeight(voxel, phase) : 0.0f);
+    if (presence <= 0.0f) return false;
+    if (presence >= 1.0f || !treated || treatment.y == 0.0f) return true;
+    return fogRevealSurfaceHash01(voxel) <= mix(1.0f, presence, treatment.y);
+}
 
 constant int kDetachedFaceMissDepth = 2147483647;
 
@@ -1216,7 +1329,6 @@ inline int detachedFaceSampleDepth(DetachedFaceFootprint face, int2 pixel, int p
         return kDetachedFaceMissDepth;
     return encodeDepthWithFace(int(floor(face.depth.x + dot(uv, face.depth.yz) + 0.5)), slot);
 }
-
 
 inline float3 detachedFaceViewNormal(int faceId, float2x2 deformX, float2x2 deformY, float3 depthAxis) {
     const int axis = faceId >> 1;

@@ -214,7 +214,8 @@ void resolveWinnerTap(const ivec2 canvasPixel, const int voxelDistance, const ui
 // encoded distance) pair the store would have written plus the raw colorPacked,
 // so the scatter's overflow branch reuses the per-cell recovery bit-for-bit.
 void overflowAppendTap(
-    const ivec2 perAxisBase, const ivec3 facePos, const int voxelDistance, const uint colorPacked
+    const ivec2 perAxisBase, const ivec3 facePos, const int voxelDistance, const uint colorPacked,
+    const bool isCutFace
 ) {
     // A face-origin depth sample cannot prove occlusion of the finite quad.
     // Keep cardinal losers for the framebuffer depth test.
@@ -240,7 +241,8 @@ void overflowAppendTap(
     perAxisWinnerIds[entryBase + 0u] =
         (uint(cardPix.x) & 0xFFFFu) | ((uint(cardPix.y) & 0xFFFFu) << 16u);
     perAxisWinnerIds[entryBase + 1u] = colorPacked;
-    perAxisWinnerIds[entryBase + 2u] = uint(voxelDistance);
+    perAxisWinnerIds[entryBase + 2u] = uint(voxelDistance) |
+        (isCutFace ? kFogOverflowCutFaceBit : 0u);
 }
 
 // Emit a face's 2x3 trixel block through the deformation matrix D.
@@ -316,24 +318,8 @@ void emitDeformedFace(
     }
 }
 
-// Z-aware twin of fogColumnReveal for the own-column drop on the one route
-// FOG_TO_TRIXEL never paints — a world-placed DETACHED canvas — where the
-// voxel's own world Z is known. It folds the per-circle height penalty
-// zCostUp * max(dzUp - freeBand, 0) + zCostDown * max(dzDown - freeBand, 0),
-// where dzUp = max(observerZ - voxelZ, 0) and dzDown = max(voxelZ - observerZ,
-// 0), into the effective radial distance, and scales each source by its
-// ceiling factor, so a height-hidden voxel is removed on the z-aware curve
-// FOG_TO_TRIXEL reveals by. The drop removes a voxel only where this reaches
-// 0, so a soft ceiling band is kept whole and the cut falls at ceilingHeight
-// + fadeHeight. The world canvas and the per-axis routes do NOT use it: their
-// drop is z-free so a height-hidden voxel keeps its geometry (top face
-// included) and the fog pass paints it unexplored. It lives HERE rather than
-// beside the z-free twins in ir_voxel_face_select.glsl because the drop is
-// STAGE-1-ONLY — stage 2 never repeats it — and the shared include holds
-// exactly the definitions both stages must agree on. The disc test itself is
-// fogDiscRevealAtDistance, the one fogColumnReveal uses, so the drop and the
-// cut-face rule resolve a column on a hard disc's rim the same way. All-zero
-// heights and off ceilings make this return exactly fogColumnReveal's value.
+// Detached canvases retain the height-cost radial drop. Ceiling retention is
+// owned by selectVoxelFace, including partial dissolve and neighbour caps.
 float fogColumnRevealZ(ivec2 col, float voxelZ) {
     const ivec2 fogSize = imageSize(canvasFogOfWar);
     if (fogSize.x <= 1) {
@@ -352,8 +338,7 @@ float fogColumnRevealZ(ivec2 col, float voxelZ) {
             h.y * max(dzUp - h.w, 0.0) + h.z * max(dzDown - h.w, 0.0);
         reveal = max(
             reveal,
-            fogDiscRevealAtDistance(distEff, visionCircles[i].z, visionCircles[i].w) *
-                fogCeilingVisibility(visionCircleCeilings[i], dzUp)
+            fogDiscRevealAtDistance(distEff, visionCircles[i].z, visionCircles[i].w)
         );
     }
     return reveal;
@@ -558,7 +543,7 @@ void main() {
             );
             const uint overflowColor =
                 (voxels[voxelIndex].colorPacked & 0x00FFFFFFu) | (fogClassByte << 24u);
-            overflowAppendTap(perAxisBase, facePos, voxelDistance, overflowColor);
+            overflowAppendTap(perAxisBase, facePos, voxelDistance, overflowColor, sel.isCutFace);
             return;
         }
         // Equal keys arise from perAxisStoreFacePos's 4-bit frac quantization —

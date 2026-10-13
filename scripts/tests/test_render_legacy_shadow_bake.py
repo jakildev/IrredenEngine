@@ -121,6 +121,7 @@ struct Adapter {
  Buffer *voxelFrameDataBuf_=&voxel,*sunShadowFrameDataBuf_=&sun,*sunShadowDepthMap_=&other;
  Buffer *detachedShadowFrameBuf_=&other,*revoxelizeParamsBuf_=&other,*worldPlacedScratch_=&other;
  Buffer *fogObserverBuf_=&other,*analyticCasterFrameBuf_=&other;
+ Texture2D fogTexture{14};Texture2D* fogWindow_=&fogTexture;
  Texture2D analyticTexture{13};std::pair<int,Texture2D*> analyticCasterDepth_{0,&analyticTexture};
  FrameDataVoxelToCanvas analyticCasterFrame_;bool analyticCasterReady_=false;
  ShaderProgram bake{1},scatter{2},blit{3};
@@ -265,7 +266,9 @@ unsigned inputEntityId=0;
 bool fieldCasts=true;
 unsigned entityIdAt(ivec2){return inputEntityId;}
 bool decodeFogBody(unsigned id){return id!=0;}
-bool fogFieldCastsSunShadow(vec3,bool body,int enabled){
+int fogShadowWindow=0, fogShadowVisionCircleCount=1;
+int fogShadowCell(vec3,int=0){return 0;}
+bool fogFieldCastsSunShadow(vec3,bool body,int enabled,int){
  if(enabled!=1)std::exit(27);return body||fieldCasts;
 }
 """
@@ -312,7 +315,8 @@ def shader_source(suffix, folder):
     body = body.replace("sunDepthBuf,", "").replace(".xyz", "").replace("float3", "vec3")
     body = body.replace("imageLoad(trixelEntityIds, pixel).xy", "entityIdAt(pixel)")
     body = body.replace("trixelEntityIds.read(uint2(pixel)).xy", "entityIdAt(pixel)")
-    body = body.replace(", fogObservers)", ")")
+    body = body.replace(", fogObservers", "")
+    body = body.replace("fogObservers.visionCircleCount", "fogShadowVisionCircleCount")
     sentinel = re.search(r"(?:const|constant) int kEmptyDistanceEncoded = \d+;", source)[0]
     sentinel = sentinel.replace("constant", "const")
     return (SHADER + sentinel + extract_function(common, "decodeDepthSingle")

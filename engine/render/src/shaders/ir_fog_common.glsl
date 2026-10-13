@@ -26,8 +26,6 @@
 #include "ir_fog_color.glsl"
 #include "ir_fog_los.glsl"
 
-// Mirrors kMaxFogVisionCircles in component_canvas_fog_of_war.hpp.
-const int kMaxFogVisionCircles = 8;
 // Cross-section cap: the tint applied to a hidden VERTICAL face within
 // kFogCutMaxRimCells of the disc rim (radial surface-XY distance, the metric
 // the reveal and rim fade key on). A pure multiply with kFogRimFadeLevel <
@@ -70,7 +68,7 @@ layout(std140, binding = 27) uniform FogObserverData {
     // units above observerZ; a negative height is off (fogCeilingVisibility).
     vec4 visionCircleCeilings[kMaxFogVisionCircles];
     // The canvas's reveal-surface treatment, (enabled, dissolveDensity,
-    // capTone, 0): with x non-zero a partial ceiling or line-of-sight cut on
+    // capTone, phase): with x non-zero a partial ceiling or line-of-sight cut on
     // a FIELD sample is dissolved per world voxel and cap-toned.
     vec4 revealSurfaceTreatment;
 };
@@ -92,21 +90,6 @@ struct FogReveal {
     float styledBand;
 };
 
-// The per-voxel dissolve key in [0, 1): fixed-width integer xor / multiply
-// steps over the sample's integer world voxel and nothing else, so every
-// route, yaw, frame and backend decides one way per voxel. CPU twin:
-// IRPrefab::Fog::detail::revealSurfaceHash01.
-float fogRevealSurfaceHash01(ivec3 voxel) {
-    uint hash = uint(voxel.x) * 0x8DA6B343u ^ uint(voxel.y) * 0xD8163841u ^
-        uint(voxel.z) * 0xCB1AB31Fu;
-    hash ^= hash >> 16u;
-    hash *= 0x7FEB352Du;
-    hash ^= hash >> 15u;
-    hash *= 0x846CA68Bu;
-    hash ^= hash >> 16u;
-    return float(hash & 0xFFFFFFu) / 16777216.0;
-}
-
 // The cap tone's blend weight across a partial cut: 0 where the surface
 // factor is 0 or 1, 1 at the midpoint, so the cap meets the untreated colour
 // at both edges of the band.
@@ -121,30 +104,6 @@ vec3 fogCutCapBlend(vec3 color, vec3 sourceColor, float tone, float state, float
     return mix(color, mix(sourceColor * tone, sourceColor, state), weight);
 }
 
-// Texel of world column `col` in the fog window, or (-1, -1) when the column
-// is outside it. Column `c` lives at texel floorMod(c, W) with W the window
-// edge (imageSize); the window covers [origin, origin + W) per axis. Every
-// modulo takes non-negative operands only (GLSL leaves the negative case
-// undefined). Mirrors fogWindowTexel in ir_voxel_face_select.glsl; Metal
-// twin in metal/ir_fog_common.metal.
-ivec2 fogWindowTexel(ivec2 col, ivec2 origin, ivec2 fogSize) {
-    const ivec2 rel = col - origin;
-    if (rel.x < 0 || rel.x >= fogSize.x || rel.y < 0 || rel.y >= fogSize.y) {
-        return ivec2(-1);
-    }
-    ivec2 base;
-    base.x = origin.x >= 0 ? origin.x % fogSize.x : fogSize.x - 1 - (-(origin.x + 1)) % fogSize.x;
-    base.y = origin.y >= 0 ? origin.y % fogSize.y : fogSize.y - 1 - (-(origin.y + 1)) % fogSize.y;
-    ivec2 texel = rel + base;
-    if (texel.x >= fogSize.x) {
-        texel.x -= fogSize.x;
-    }
-    if (texel.y >= fogSize.y) {
-        texel.y -= fogSize.y;
-    }
-    return texel;
-}
-
 // Grid texel of world column `col`: (state integer, channel mask), or
 // (0, kFogChannelDefault) — unexplored on the default channel — for a column
 // outside the window. imageLoad has no sampler wrap mode, so the window test
@@ -156,6 +115,16 @@ uvec2 fogTapTexel(ivec2 col, ivec2 fogSize) {
         return uvec2(0u, kFogChannelDefault);
     }
     return imageLoad(canvasFogOfWar, cell).rg;
+}
+
+bool fogCeilingCutFace(vec3 facePoint, int faceId) {
+    const ivec3 normal = faceOutwardNormal6I(faceId);
+    const ivec3 owner = roundHalfUp(facePoint - 0.5 * vec3(normal));
+    const ivec3 neighbor = owner + normal;
+    const uvec2 cell = fogTapTexel(neighbor.xy, imageSize(canvasFogOfWar));
+    return !fogCeilingRetained(neighbor, cell, visionCircles,
+        visionCircleHeights, visionCircleCeilings, visionCircleChannels,
+        visionCircleCount, revealSurfaceTreatment, revealSurfaceTreatment.w);
 }
 
 // The column-top term of a vertical face: the reveal at the top plane of the
@@ -215,7 +184,8 @@ float fogColumnTopState(
 // a top or bottom face) are read only while a source is gated, the frames the
 // column field is published on. A BODY sample never reaches it (fogApplyBody).
 FogReveal fogRevealSample(
-    vec3 pos3D, vec3 losSample, vec3 columnPoint, int faceAxis, float aaFloor
+    vec3 pos3D, vec3 losSample, vec3 columnPoint, int faceAxis, float aaFloor,
+    bool analyticSurface
 ) {
     const ivec3 surfaceVoxel = roundHalfUp(pos3D);
     const ivec2 fogSize = imageSize(canvasFogOfWar);
@@ -283,22 +253,21 @@ FogReveal fogRevealSample(
             continue;
         }
         const float contribution = losVisibility * ceilingReveal;
-        // A partial surface cut (ceiling and line of sight multiplied) is
-        // dissolved per world voxel: a rejected voxel contributes nothing,
-        // so a dissolved source never lowers what the grid or another source
-        // reveals, and the retained ones carry the cap's band weight.
+        // Voxel ceiling dissolve already selected geometry. Analytic surfaces
+        // keep the composed ceiling/LOS dissolve; both routes retain its band.
         float bandWeight = 0.0;
         if (treated && contribution > 0.0) {
             const float surfaceVisibility = ceilingVisibility * losVisibility;
-            if (surfaceVisibility < 1.0) {
+            const float dissolveVisibility = analyticSurface ? surfaceVisibility : losVisibility;
+            if (dissolveVisibility < 1.0) {
                 if (hash01 < 0.0) {
                     hash01 = fogRevealSurfaceHash01(surfaceVoxel);
                 }
-                if (hash01 > mix(1.0, surfaceVisibility, revealSurfaceTreatment.y)) {
+                if (hash01 > mix(1.0, dissolveVisibility, revealSurfaceTreatment.y)) {
                     continue;
                 }
-                bandWeight = fogRevealSurfaceBandWeight(surfaceVisibility);
             }
+            bandWeight = fogRevealSurfaceBandWeight(surfaceVisibility);
         }
         // The band follows the contribution that establishes the state; a
         // tie keeps the larger band.

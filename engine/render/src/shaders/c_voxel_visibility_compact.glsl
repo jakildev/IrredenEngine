@@ -123,8 +123,8 @@ layout(rg32ui, binding = 0) readonly uniform uimage2D canvasFogOfWar;
 // state integer; decoded through fogTexelState (unexplored 0.0, explored
 // ≈0.5, visible 1.0) `state < kFogExploredThreshold` selects ONLY unexplored
 // columns. Explored columns still rasterize (FOG_TO_TRIXEL desaturates them
-// as "memory"). The `.g` channel mask is the paint pass's concern: this cull
-// stays a channel-blind conservative superset.
+// as "memory"). Radial admission is channel-blind; the ceiling envelope
+// uses the exact cell channels.
 const float kFogExploredThreshold = 0.25;
 
 // Live analytic fog vision circles (aliases binding 27; uploaded by VOXEL_TO_TRIXEL_STAGE_1
@@ -134,37 +134,23 @@ const float kFogExploredThreshold = 0.25;
 // keeps a column covered by any disc EVEN when its grid cell is unexplored, so a voxel-floor
 // scene driven purely by setVisionCircle keeps its floor. The tail after the count is the
 // line-of-sight mask (unread here) and the field column at texel (0, 0) of the fog window.
-const int kMaxFogVisionCircles = 8; // mirror of component_canvas_fog_of_war.hpp kMaxFogVisionCircles — must stay in sync
 layout(std140, binding = 27) uniform FogObserverData {
     vec4 visionCircles[kMaxFogVisionCircles]; // (centerX, centerY, radius, edgeSoftness)
     int visionCircleCount;
     int losSourceMask;
     int windowOriginX;
     int windowOriginY;
+    vec4 visionCircleHeights[kMaxFogVisionCircles];
+    vec4 unexploredColor;
+    vec4 losParams[kMaxFogVisionCircles];
+    uvec4 visionCircleChannels[2];
+    vec4 visionCircleCeilings[kMaxFogVisionCircles];
+    vec4 revealSurfaceTreatment;
 };
 
-// Texel of world column `col` in the fog window, or (-1, -1) when the column
-// is outside it. Column `c` lives at texel floorMod(c, W) with W the window
-// edge (imageSize); the window covers [origin, origin + W) per axis. Every
-// modulo takes non-negative operands only (GLSL leaves the negative case
-// undefined). Mirrors fogWindowTexel in ir_voxel_face_select.glsl; Metal
-// twin in metal/c_voxel_visibility_compact.metal.
-ivec2 fogWindowTexel(ivec2 col, ivec2 origin, ivec2 fogSize) {
-    const ivec2 rel = col - origin;
-    if (rel.x < 0 || rel.x >= fogSize.x || rel.y < 0 || rel.y >= fogSize.y) {
-        return ivec2(-1);
-    }
-    ivec2 base;
-    base.x = origin.x >= 0 ? origin.x % fogSize.x : fogSize.x - 1 - (-(origin.x + 1)) % fogSize.x;
-    base.y = origin.y >= 0 ? origin.y % fogSize.y : fogSize.y - 1 - (-(origin.y + 1)) % fogSize.y;
-    ivec2 texel = rel + base;
-    if (texel.x >= fogSize.x) {
-        texel.x -= fogSize.x;
-    }
-    if (texel.y >= fogSize.y) {
-        texel.y -= fogSize.y;
-    }
-    return texel;
+uvec2 fogSelectionCell(ivec2 column) {
+    const ivec2 texel = fogWindowTexel(column, ivec2(windowOriginX, windowOriginY), imageSize(canvasFogOfWar));
+    return texel.x < 0 ? uvec2(0u, kFogChannelDefault) : imageLoad(canvasFogOfWar, texel).rg;
 }
 
 // True iff this voxel's raw world column is unexplored on the bound fog
@@ -404,12 +390,23 @@ void main() {
                 }
                 bool fogWholeBodyExempt =
                     (voxels[idx].reserved & kFogWholeBodyExemptBit) != 0u;
+
+                const bool ceilingActive = !fogWholeBodyExempt && imageSize(canvasFogOfWar).x > 1 &&
+                    fogAnyCeilingEnabled(visionCircleCeilings, visionCircleCount);
+                const float ceilingSpan = revealSurfaceTreatment.x != 0.0
+                    ? kFogCeilingFlickerSpan : 0.0;
+                const uint admitted = ceilingActive ? fogCeilingSourceMask(
+                    voxelPosRaw.xy, fogSelectionCell(voxelPosRaw.xy), visionCircles,
+                    visionCircleChannels, visionCircleCount) : 0u;
+                const bool ceilingPossible = !ceilingActive || fogCeilingPresenceFromMask(
+                    voxelPosRaw.z, admitted, visionCircleHeights,
+                    visionCircleCeilings, visionCircleCount, -ceilingSpan) > 0.0;
                 if (isoPos.x >= cullIsoMin.x - cullMargin &&
                     isoPos.x <= cullIsoMax.x + cullMargin &&
                     isoPos.y >= cullIsoMin.y - cullMargin &&
                     isoPos.y <= cullIsoMax.y + cullMargin &&
                     (fogWholeBodyExempt || !fogColumnUnexplored(voxelPosRaw) ||
-                     fogColumnInVisionCircle(voxelPosRaw))) {
+                     fogColumnInVisionCircle(voxelPosRaw)) && ceilingPossible) {
                     if (perAxisSplitStride == 0) {
                         // Fully-interior drop: a voxel with all six face-occlusion
                         // bits set can emit nothing downstream — stage 1/2 fail
@@ -465,13 +462,33 @@ void main() {
                         // region whose axis it has an exposed face on. The store
                         // shader re-checks the precise visible-face exposure per
                         // axis, so an over-inclusive entry here is harmless; a
-                        // fully-interior voxel (every face occluded) lands in no
-                        // region.
+                        // fully-interior voxel also enters any region adjacent to a possible
+                        // ceiling cut, bounded by the lower visibility envelope.
                         uint flagsByte = (voxels[idx].materialFlagBone >> 8u) & 0xFFu;
                         uint stride = uint(perAxisSplitStride);
                         for (int axis = 0; axis < 3; ++axis) {
+
+                            bool possibleCut = false;
+                            if (ceilingActive) {
+                                const float ownMinimum = fogCeilingPresenceFromMask(
+                                    voxelPosRaw.z, admitted, visionCircleHeights,
+                                    visionCircleCeilings, visionCircleCount, ceilingSpan);
+                                ivec3 step = ivec3(0);
+                                step[axis] = 1;
+                                const ivec3 plus = voxelPosRaw + step;
+                                const ivec3 minus = voxelPosRaw - step;
+                                const float plusMinimum = axis == 2
+                                    ? fogCeilingPresenceFromMask(plus.z, admitted, visionCircleHeights,
+                                        visionCircleCeilings, visionCircleCount, ceilingSpan)
+                                    : fogCeilingPresence(plus, fogSelectionCell(plus.xy), visionCircles, visionCircleHeights, visionCircleCeilings, visionCircleChannels, visionCircleCount, ceilingSpan);
+                                const float minusMinimum = axis == 2
+                                    ? fogCeilingPresenceFromMask(minus.z, admitted, visionCircleHeights,
+                                        visionCircleCeilings, visionCircleCount, ceilingSpan)
+                                    : fogCeilingPresence(minus, fogSelectionCell(minus.xy), visionCircles, visionCircleHeights, visionCircleCeilings, visionCircleChannels, visionCircleCount, ceilingSpan);
+                                possibleCut = ownMinimum < 1.0 || plusMinimum < 1.0 || minusMinimum < 1.0;
+                            }
                             if (faceIsExposed(flagsByte, 2 * axis) ||
-                                faceIsExposed(flagsByte, 2 * axis + 1)) {
+                                faceIsExposed(flagsByte, 2 * axis + 1) || possibleCut) {
                                 groupUniqueSurvivors[gl_LocalInvocationIndex] = 1u;
                                 uint base = uint(axis) * kPerAxisIndirectStrideUints;
                                 uint slot = atomicAdd(params[base + 3u], 1u);

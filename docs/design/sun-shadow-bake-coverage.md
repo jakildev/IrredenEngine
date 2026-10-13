@@ -220,8 +220,7 @@ neighbourhood is sparse) could reclaim the remaining cost; deferred (lever
    misclassifying BODY samples as FIELD. The guard restores the canonical lane
    before downstream consumers run.
 
-   The pending geometric-ceiling contract (#4305) replaces the midpoint caster
-   rule with the raster's phase-zero retained set: absent or dissolved FIELD
+   The geometric-ceiling contract uses the raster's phase-zero retained set: absent or dissolved FIELD
    voxels cast nothing, and BODY remains whole. The per-axis resolve inherits
    the raster cut; the other raster-derived routes intersect their current
    raster with the static set, while voxel-face, box and analytic-shape bakes

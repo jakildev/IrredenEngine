@@ -317,7 +317,7 @@ override to ceiling selection or casting.
 
 ### Ceiling presence and voxel selection
 
-The planned shared helpers `fogCeilingPresence(v, cell)` /
+The shared helpers `fogCeilingPresence(v, cell)` /
 `fogCeilingRetained(v, cell, phase)` and their CPU twins
 `IRPrefab::Fog::detail::ceilingPresence` / `ceilingRetained` take the observers,
 the sampled world-field cell and the integer world voxel, independently of
@@ -466,10 +466,18 @@ point, not the raw cardinal pixel recovery. This test precedes the paint's
 fully-revealed early return. The stored tone applies with treatment on or
 off, defaulting to `kFogCutTone`.
 
-The per-axis overflow entry carries the cut flag in word 2, bit 31
-(`kFogOverflowCutFaceBit`). Sort, scatter, light and fog readers mask the bit
-through the planned `fogOverflowEntryKey` helper before decoding or comparing
-the key. The class byte and entry stride remain unchanged.
+**Overflow cut provenance remains design-blocked in #4305.** The prescribed
+word-2 bit-31 flag (`kFogOverflowCutFaceBit`) and masked
+`fogOverflowEntryKey` are present in the WIP, but bit 31 is already the sign
+of the existing per-axis depth field `[31:15]`. For example, the valid
+uncut key `0xFFFF8000` decodes to depth -1; masking bit 31 decodes it to
+65535 and also misidentifies the uncut face as a cap. The same stored word
+would represent depth 65535 with a cut flag, so a reader cannot recover both
+the full signed depth and independent provenance from that word. The
+existing surface-reconstruction oracle fails on both shader dialects,
+including with ceilings disabled. The class byte and entry stride remain
+unchanged pending a ruling on a lossless provenance carrier; the bit-31
+proposal is not a valid final encoding.
 
 A retained fragment of the styled contribution is blended toward its source
 colour multiplied by `capTone`, on every face axis. The weight of that blend,
@@ -616,8 +624,8 @@ radius.
 | `setRevealSurfaceTreatment` | `setRevealSurfaceTreatment` | Enables the canvas style with a `dissolveDensity` and a `capTone`. |
 | `revealSurfaceTreatment` | `getRevealSurfaceTreatment` | Reads the stored style and whether it is enabled. |
 | `clearRevealSurfaceTreatment` | `clearRevealSurfaceTreatment` | Disables the treatment. Every source keeps its ceiling. |
-| `setRevealSurfacePhase` (planned) | `setRevealSurfacePhase` (planned) | Stores the finite phase without changing the treatment enable flag. |
-| `revealSurfacePhase` (planned) | `getRevealSurfacePhase` (planned) | Reads the stored phase separately; the treatment getter keeps its three values. |
+| `setRevealSurfacePhase` | `setRevealSurfacePhase` | Stores the finite phase without changing the treatment enable flag. |
+| `revealSurfacePhase` | `getRevealSurfacePhase` | Reads the stored phase separately; the treatment getter keeps its three values. |
 
 The slot argument must name a registered analytic slot, which is
 `addVisionCircle`'s return value. Every slot starts with its ceiling

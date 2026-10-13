@@ -17,34 +17,36 @@ layout(std140, binding = 27) uniform FogShadowObserverData {
     vec4 fogShadowRevealSurfaceTreatment;
 };
 
-bool fogFieldCastsSunShadow(vec3 worldPos, bool fogBody, int ceilingEnabled) {
+// The caller declares the format-qualified image before this include. GLSL
+// image parameters cannot retain a portable format qualifier across drivers.
+uvec2 fogShadowCell(vec3 worldPos) {
+    const ivec2 size = imageSize(fogShadowWindow);
+    const ivec2 column = roundHalfUp(worldPos).xy;
+    const ivec2 texel = fogWindowTexel(column,
+        ivec2(fogShadowWindowOriginX, fogShadowWindowOriginY), size);
+    return texel.x < 0 ? uvec2(0u, kFogChannelDefault) : imageLoad(fogShadowWindow, texel).rg;
+}
+
+bool fogFieldCastsSunShadow(
+    vec3 worldPos, bool fogBody, int ceilingEnabled, uvec2 cell
+) {
     if (fogBody || ceilingEnabled == 0 || fogShadowVisionCircleCount == 0) {
         return true;
     }
-
-    bool covered = false;
-    for (int i = 0; i < fogShadowVisionCircleCount; ++i) {
-        if (length(worldPos.xy - fogShadowVisionCircles[i].xy) >
-            fogShadowVisionCircles[i].z) {
-            continue;
-        }
-        covered = true;
-        const float dzUp = max(fogShadowVisionCircleHeights[i].x - worldPos.z, 0.0);
-        if (fogCeilingVisibility(fogShadowVisionCircleCeilings[i], dzUp) >= 0.5) {
-            return true;
-        }
-    }
-    return !covered;
+    return fogCeilingRetained(roundHalfUp(worldPos), cell,
+        fogShadowVisionCircles, fogShadowVisionCircleHeights,
+        fogShadowVisionCircleCeilings, fogShadowVisionCircleChannels,
+        fogShadowVisionCircleCount, fogShadowRevealSurfaceTreatment, 0.0);
 }
 
 // A retained voxel gains a boundary where its formerly occupied neighbor was
 // cut by the same FIELD policy. Existing exposed faces and BODY are unchanged.
 bool fogVoxelFaceCastsSunShadow(
     bool exposed, vec3 worldCenter, vec3 outwardNormal, bool fogBody,
-    int ceilingEnabled
+    int ceilingEnabled, uvec2 neighborCell
 ) {
     if (exposed) return true;
     if (fogBody || ceilingEnabled == 0) return false;
     return !fogFieldCastsSunShadow(
-        worldCenter + outwardNormal, false, ceilingEnabled);
+        worldCenter + outwardNormal, false, ceilingEnabled, neighborCell);
 }

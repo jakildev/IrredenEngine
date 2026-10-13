@@ -75,37 +75,6 @@ inline float ceilingVisibility(IRMath::vec4 ceiling, float dzUp) {
     return 1.0f - IRMath::smoothstep(ceiling.x, ceiling.x + ceiling.y, dzUp);
 }
 
-/// Sun-shadow caster policy for fog-governed matter. FIELD samples covered by
-/// a vision source cast only when the maximum ceiling visibility is at least
-/// one half; uncovered samples and BODY subjects cast unchanged. Mirrors
-/// `fogFieldCastsSunShadow` in the GLSL and Metal bake helpers.
-inline bool fieldCastsSunShadow(
-    const IRComponents::FrameDataFogObservers &observers,
-    IRMath::vec3 worldPosition,
-    bool fogBody = false
-) {
-    if (fogBody || !anyCeilingEnabled(observers)) {
-        return true;
-    }
-    bool covered = false;
-    float visibility = 0.0f;
-    for (int source = 0; source < observers.visionCircleCount_; ++source) {
-        const IRMath::vec4 circle = observers.visionCircles_[source];
-        const IRMath::vec2 delta = IRMath::vec2(worldPosition) - IRMath::vec2(circle);
-        if (IRMath::dot(delta, delta) > circle.z * circle.z) {
-            continue;
-        }
-        covered = true;
-        const float dzUp =
-            IRMath::max(observers.visionCircleHeights_[source].x - worldPosition.z, 0.0f);
-        visibility = IRMath::max(
-            visibility,
-            ceilingVisibility(observers.visionCircleCeilings_[source], dzUp)
-        );
-    }
-    return !covered || visibility >= 0.5f;
-}
-
 /// Source @p source's reveal of @p worldPosition, ignoring line of sight: the
 /// radial curve with its additive height terms, scaled by the source's
 /// ceiling factor.
@@ -138,7 +107,7 @@ inline float evalVisionCircleReveal(
 /// The per-voxel dissolve key in [0, 1): fixed-width integer xor / multiply
 /// steps over the sample's integer world voxel, so every route, yaw, frame
 /// and backend reads one value per voxel. Mirrors `fogRevealSurfaceHash01`
-/// in `ir_fog_common.glsl` / `metal/ir_fog_common.metal`.
+/// in `ir_iso_common.glsl` / `metal/ir_iso_common.metal`.
 inline float revealSurfaceHash01(IRMath::ivec3 voxel) {
     std::uint32_t hash = static_cast<std::uint32_t>(voxel.x) * 0x8DA6B343u ^
                          static_cast<std::uint32_t>(voxel.y) * 0xD8163841u ^
@@ -149,6 +118,118 @@ inline float revealSurfaceHash01(IRMath::ivec3 voxel) {
     hash *= 0x846CA68Bu;
     hash ^= hash >> 16;
     return static_cast<float>(hash & 0xFFFFFFu) / 16777216.0f;
+}
+
+constexpr float kFogCeilingAdmitAa = 0.75f;
+constexpr float kFogCeilingFlickerSpan = 2.0f;
+
+inline float ceilingPhaseHeight(IRMath::ivec3 voxel, float phase) {
+    if (phase == 0.0f)
+        return 0.0f;
+    std::uint32_t hash = static_cast<std::uint32_t>(voxel.x) * 0xA24BAED5u ^
+                         static_cast<std::uint32_t>(voxel.y) * 0x9FB21C65u ^
+                         static_cast<std::uint32_t>(voxel.z) * 0xC13FA9A9u;
+    hash ^= hash >> 16u;
+    hash *= 0x7FEB352Du;
+    hash ^= hash >> 15u;
+    const float rate = 0.125f + 0.875f * (static_cast<float>(hash & 0xFFFFFFu) / 16777216.0f);
+    return kFogCeilingFlickerSpan *
+           (1.0f - 4.0f * IRMath::abs(IRMath::fract(rate * phase + 0.25f) - 0.5f));
+}
+
+inline std::uint32_t ceilingSourceMask(
+    const IRComponents::FrameDataFogObservers &observers, IRMath::ivec2 column, FogWindowTexel cell
+) {
+    if (cell.state_ == IRComponents::kFogStateVisible)
+        return 0u;
+    std::uint32_t admitted = 0u;
+    for (int source = 0; source < observers.visionCircleCount_; ++source) {
+        if ((observers.channels(source) & cell.channels_) == 0u)
+            continue;
+        const IRMath::vec4 circle = observers.visionCircles_[source];
+        const IRMath::vec2 nearest = IRMath::clamp(
+            IRMath::vec2(circle),
+            IRMath::vec2(column) - 0.5f,
+            IRMath::vec2(column) + 0.5f
+        );
+        const float aa = IRMath::max(circle.w, kFogCeilingAdmitAa);
+        const float reveal = 1.0f - IRMath::smoothstep(
+                                        circle.z - aa,
+                                        circle.z + aa,
+                                        IRMath::length(nearest - IRMath::vec2(circle))
+                                    );
+        if (reveal > 0.0f)
+            admitted |= 1u << static_cast<unsigned>(source);
+    }
+    return admitted;
+}
+
+inline float ceilingPresenceFromMask(
+    const IRComponents::FrameDataFogObservers &observers,
+    int voxelZ,
+    std::uint32_t admitted,
+    float heightOffset = 0.0f
+) {
+    if (admitted == 0u)
+        return 1.0f;
+    float presence = 0.0f;
+    for (int source = 0; source < observers.visionCircleCount_; ++source) {
+        if ((admitted & (1u << static_cast<unsigned>(source))) == 0u)
+            continue;
+        const float dzUp = IRMath::max(
+            observers.visionCircleHeights_[source].x - static_cast<float>(voxelZ),
+            0.0f
+        );
+        presence = IRMath::max(
+            presence,
+            ceilingVisibility(observers.visionCircleCeilings_[source], dzUp + heightOffset)
+        );
+        if (presence == 1.0f)
+            return 1.0f;
+    }
+    return presence;
+}
+
+inline float ceilingPresence(
+    const IRComponents::FrameDataFogObservers &observers,
+    IRMath::ivec3 voxel,
+    FogWindowTexel cell,
+    float heightOffset = 0.0f
+) {
+    return ceilingPresenceFromMask(
+        observers,
+        voxel.z,
+        ceilingSourceMask(observers, IRMath::ivec2(voxel), cell),
+        heightOffset
+    );
+}
+
+inline bool ceilingRetained(
+    const IRComponents::FrameDataFogObservers &observers,
+    IRMath::ivec3 voxel,
+    FogWindowTexel cell,
+    float phase
+) {
+    const bool treated = observers.revealSurfaceTreatmentEnabled();
+    const float presence =
+        ceilingPresence(observers, voxel, cell, treated ? ceilingPhaseHeight(voxel, phase) : 0.0f);
+    if (presence <= 0.0f)
+        return false;
+    if (presence >= 1.0f || !treated || observers.dissolveDensity() == 0.0f)
+        return true;
+    return revealSurfaceHash01(voxel) <= IRMath::mix(1.0f, presence, observers.dissolveDensity());
+}
+
+/// The sun bake uses the static retained set and the caster's world column cell.
+inline bool fieldCastsSunShadow(
+    const IRComponents::FrameDataFogObservers &observers,
+    IRMath::vec3 worldPosition,
+    FogWindowTexel cell,
+    bool fogBody = false
+) {
+    if (fogBody || !anyCeilingEnabled(observers))
+        return true;
+    return ceilingRetained(observers, IRMath::roundVec3HalfUp(worldPosition), cell, 0.0f);
 }
 
 /// The cap tone's blend weight across a partial cut: 0 where the surface
@@ -213,7 +294,8 @@ inline float evalGatedVisionReveal(
     const IRComponents::FrameDataFogObservers &observers,
     IRMath::vec3 worldPosition,
     std::uint32_t channels,
-    VisibilityFn &&visibilityOf
+    VisibilityFn &&visibilityOf,
+    bool analyticSurface = true
 ) {
     float reveal = 0.0f;
     float pending[IRComponents::kMaxFogVisionCircles] = {};
@@ -278,9 +360,10 @@ namespace detail {
 
 /// The fog pass's FIELD composition (`fogRevealSample`) in its slot order:
 /// each source's contribution is `shapeReveal * ceilingVisibility *
-/// losVisibility`, a partial surface factor dissolves the contribution per
-/// world voxel when the treatment is on, and the maximum over the grid term
-/// and the surviving contributions is the state. The band of the
+/// losVisibility`. Under treatment, analytic samples dissolve by that product;
+/// voxel samples dissolve only by line of sight because selection already
+/// handles their ceiling. The maximum over the grid term and surviving
+/// contributions is the state. The band of the
 /// contribution that establishes the state is kept; equal contributions keep
 /// the larger band. @p visibilityOf(source) is a gated source's
 /// line-of-sight factor at @p worldPosition.
@@ -290,7 +373,8 @@ inline RevealSurfaceSample evalRevealSurfaceComposition(
     float gridState,
     IRMath::vec3 worldPosition,
     std::uint32_t channels,
-    VisibilityFn &&visibilityOf
+    VisibilityFn &&visibilityOf,
+    bool analyticSurface = true
 ) {
     RevealSurfaceSample sample{gridState, 0.0f};
     const bool treated = observers.revealSurfaceTreatmentEnabled();
@@ -326,14 +410,17 @@ inline RevealSurfaceSample evalRevealSurfaceComposition(
         }
         const float surfaceVisibility = ceiling * losVisibility;
         const float contribution = losVisibility * ceilingReveal;
+        const float dissolveVisibility = analyticSurface ? surfaceVisibility : losVisibility;
         float bandWeight = 0.0f;
-        if (treated && surfaceVisibility > 0.0f && surfaceVisibility < 1.0f) {
+        if (treated && dissolveVisibility > 0.0f && dissolveVisibility < 1.0f) {
             if (hash01 < 0.0f) {
                 hash01 = revealSurfaceHash01(IRMath::roundVec3HalfUp(worldPosition));
             }
-            if (hash01 > IRMath::mix(1.0f, surfaceVisibility, density)) {
+            if (hash01 > IRMath::mix(1.0f, dissolveVisibility, density)) {
                 continue;
             }
+        }
+        if (treated && surfaceVisibility > 0.0f && surfaceVisibility < 1.0f) {
             bandWeight = revealSurfaceBandWeight(surfaceVisibility);
         }
         if (contribution > sample.state_) {
@@ -1383,6 +1470,19 @@ inline IRComponents::FogRevealSurfaceTreatment revealSurfaceTreatment() {
         return fog->revealSurfaceTreatment();
     }
     return {};
+}
+
+inline void setRevealSurfacePhase(float phase) {
+    if (auto *fog = detail::activeFogComponent()) {
+        fog->setRevealSurfacePhase(phase);
+    }
+}
+
+inline float revealSurfacePhase() {
+    if (auto *fog = detail::activeFogComponent()) {
+        return fog->revealSurfacePhase();
+    }
+    return 0.0f;
 }
 
 /// Whether @p to is visible from the eye @p from under the line-of-sight model

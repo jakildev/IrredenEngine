@@ -151,7 +151,7 @@ void main() {
         ij = ivec2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
         color = unpackColor(compactedCells[entryBase + 1u]);
         color.a = 1.0;
-        rawDist = int(compactedCells[entryBase + 2u]);
+        rawDist = fogOverflowEntryKey(compactedCells[entryBase + 2u]);
     } else {
         const int cell = int(compactedCells[gl_InstanceID]);
         ij = ivec2(cell % canvasSize.x, cell / canvasSize.x);

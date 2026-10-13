@@ -787,6 +787,7 @@ kernel void IR_SHAPE_KERNEL_NAME(
     constant ShapeProjectionData& frameData [[buffer(23)]],
 #if IR_SHAPE_PASS == 2
     constant FogShadowObserverData& fogObservers [[buffer(27)]],
+    texture2d<uint, access::read> fogShadowWindow [[texture(4)]],
 #endif
     device const ShapeDescriptor* shapes [[buffer(20)]],
     device const ShapeTileDescriptor* tiles [[buffer(30)]],
@@ -968,11 +969,9 @@ kernel void IR_SHAPE_KERNEL_NAME(
         fogViewOffset.z
     );
     const float3 fogWorldSample = worldPos + fogWorldOffset / float(sub);
-    if (!fogFieldCastsSunShadow(
-            fogWorldSample,
-            (shape.flags & FLAG_FOG_BODY) != 0u,
-            1,
-            fogObservers)) return;
+    if (!((shape.flags & FLAG_FOG_BODY) != 0u) && 1 != 0 && fogObservers.visionCircleCount > 0 &&
+        !fogFieldCastsSunShadow(fogWorldSample, false, 1,
+            fogShadowCell(fogWorldSample, fogObservers, fogShadowWindow), fogObservers)) return;
 #endif
 
     // Depth metric. Cardinal path: view-space x+y+z relative to the cardinal-
