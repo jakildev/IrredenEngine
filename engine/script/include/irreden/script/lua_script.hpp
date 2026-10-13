@@ -75,6 +75,11 @@ class LuaScript {
     // for the surface contract.
     void bindLuaCommands();
 
+    // Bind only the integer-backed IRInput enum tables shared with
+    // bindLuaCommands(). This leaves IRCommand and entity-event registration
+    // unavailable to hosts that need key constants but not command creation.
+    void bindLuaInputEnums();
+
     // Bind the opt-in fog service. Extends an existing IRFog table, replaces
     // engine-owned keys, preserves custom keys, and rejects a non-table
     // collision. See engine/script/CLAUDE.md "Engine service bindings".

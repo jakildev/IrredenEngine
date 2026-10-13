@@ -4,7 +4,6 @@
 #include <irreden/ir_input.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_constants.hpp>
-#include <irreden/ir_platform.hpp>
 
 #include <irreden/render/rendering_rm.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
@@ -121,11 +120,7 @@ CompositeDepthSample readbackCompositeDepth(ivec2 px) {
         return sample;
     }
 
-    // The offscreen framebuffer depth texture is bottom-left origin on OpenGL,
-    // top-left on Metal; map the top-left screen pixel to the texel accordingly
-    // (mirrors readDefaultFramebuffer's GL row flip so a pixel picked from an
-    // auto-screenshot maps to the same texel on both backends).
-    const int texelY = IRPlatform::kIsOpenGL ? (resolution.y - 1 - px.y) : px.y;
+    const int texelY = compositeDepthTextureRow(px.y, resolution.y);
 
     // Flush so the readback sees this frame's committed composite. On Metal this
     // is the mandatory commit-and-wait before getBytes; OpenGL uses glFinish.
@@ -149,6 +144,15 @@ CompositeDepthSample readbackCompositeDepth(ivec2 px) {
     sample.rawDist_ = compositeRawDepthFromNormalized(windowDepth);
     sample.valid_ = true;
     return sample;
+}
+ivec2 getMainFramebufferCenterPixel() {
+    const auto framebufferOpt = IREntity::getComponentOptional<C_TrixelCanvasFramebuffer>(
+        getRenderManager().getMainFramebuffer()
+    );
+    if (!framebufferOpt.has_value()) {
+        return ivec2(-1, -1);
+    }
+    return framebufferCenterPixel((*framebufferOpt.value()).getResolutionPlusBuffer());
 }
 vec2 windowPointsToFramebufferPx(vec2 windowPoints) {
     return getRenderManager().windowPointsToFramebufferPx(windowPoints);

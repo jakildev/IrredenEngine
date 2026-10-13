@@ -405,15 +405,16 @@ the tmux default **`Ctrl+b`** (detach = `Ctrl+b` then `d`). For the
 
 The usual shape for the ship-platform box: the Linux/macOS fleet does
 the merging, reviewing, and unpinned queue work; Windows runs only what
-needs Windows — `fleet:needs-windows-smoke` and tasks filed with
-`**Host:** windows` — and its architect panes are your interactive
+needs Windows — `fleet:needs-windows-smoke`, tasks filed with
+`**Host:** windows`, and `fleet:needs-gl-host` work with no finer OS pin
+(the Metal fleet refuses it) — and its architect panes are your interactive
 sessions for game development and MIDI work (which needs native hardware
 access anyway). That is one launch flag
 ([`FLEET-CROSS-HOST-SMOKE.md`](agents/FLEET-CROSS-HOST-SMOKE.md)
 § "Satellite host profile"), from an MSYS2 bash shell (tmux lives there):
 
 ```bash
-fleet-up --satellite live   # smoke + **Host:** windows tasks only; architects up
+fleet-up --satellite live   # smoke + **Host:** windows + GL-host tasks only; architects up
 fleet-health                # `host profile: satellite`; `roles=smoke-worker worker pinned-only=1` on the config line
 fleet-down                  # when you want the box quiet
 ```

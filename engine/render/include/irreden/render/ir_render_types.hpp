@@ -495,6 +495,23 @@ inline DecodedCompositeDepth decodeCompositeDepth(float rawDist) {
     return decoded;
 }
 
+/// Row of the main framebuffer's depth attachment holding top-left pixel row
+/// @p pixelY. The gather stores raster rows y-up on both backends and each
+/// screen pass displays texture row `r` that many rows above the bottom, so the
+/// mapping is the same flip on OpenGL and Metal.
+inline int compositeDepthTextureRow(int pixelY, int framebufferHeight) {
+    return framebufferHeight - 1 - pixelY;
+}
+
+/// Top-left pixel whose depth texel is raster texel `resolution / 2`, the texel
+/// `RenderManager::getCanvasCenterIso` describes and the default-pivot latch
+/// acquires from. `resolution / 2` itself is not that pixel: with an even
+/// height the centre line falls between two rows, and the latch's row is the
+/// upper one on screen.
+inline ivec2 framebufferCenterPixel(ivec2 resolution) {
+    return ivec2(resolution.x / 2, resolution.y - 1 - resolution.y / 2);
+}
+
 // The per-trixel tier travels voxel authoring → trixel raster → finalization in
 // the top K=2 bits of the 64-bit entity id stored in the `triangleEntityIds`
 // channel (the only per-texel channel that already reaches finalization). Entity
@@ -1244,11 +1261,19 @@ struct FrameDataSun {
     // View-aligned caster fallback planes need the camera basis even when
     // the receiving canvas stores world-space geometry. Quaternion xyzw.
     vec4 sunCasterViewToWorld_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    // .x is non-zero when the active world fog has an enabled reveal ceiling
+    // and the sun can project caster height beyond its XY footprint. The bake
+    // shaders use it as the byte-identity fast path; .y is the scoped legacy
+    // pre-cut lane and the remaining lanes preserve std140 alignment.
+    ivec4 fogCeilingEnabled_{0};
 };
-static_assert(sizeof(FrameDataSun) == 144, "FrameDataSun must match std140 layout");
+static_assert(sizeof(FrameDataSun) == 160, "FrameDataSun must match std140 layout");
 static_assert(
     offsetof(FrameDataSun, sunCasterViewToWorld_) == 128,
     "sunCasterViewToWorld_ must align after sunMaxShadowThrow_"
+);
+static_assert(
+    offsetof(FrameDataSun, fogCeilingEnabled_) == 144, "fogCeilingEnabled_ must be the std140 tail"
 );
 static_assert(offsetof(FrameDataSun, sunBasisU_) == 32, "sunBasisU_ must align after aoEnabled_");
 static_assert(

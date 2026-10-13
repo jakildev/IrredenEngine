@@ -17,7 +17,6 @@
 #include <irreden/render/widgets.hpp>
 
 #include <algorithm>
-#include <climits>
 #include <optional>
 #include <vector>
 
@@ -99,25 +98,11 @@ template <> struct System<WIDGET_INPUT> {
         );
         mouseLeftDown_ = heldThisFrame || mouseLeftPressedThisFrame_;
 
-        // Z-order routing: captured widget holds its hover; otherwise scan for
-        // the topmost (highest zOrder_) entity whose hitbox reports hovered_.
-        if (capturedWidgetId_ != IREntity::kNullEntity) {
-            topHoveredId_ = capturedWidgetId_;
-        } else {
-            topHoveredId_ = IREntity::kNullEntity;
-            int topZ = INT_MIN;
-            IREntity::forEachComponent<IRComponents::C_HitBox2DGui>(
-                [this, &topZ](IREntity::EntityId &id, IRComponents::C_HitBox2DGui &hitbox) {
-                    if (!hitbox.hovered_)
-                        return;
-                    const auto &widget = IREntity::getComponent<IRComponents::C_Widget>(id);
-                    if (!widget.disabled_ && widget.zOrder_ >= topZ) {
-                        topZ = widget.zOrder_;
-                        topHoveredId_ = id;
-                    }
-                }
-            );
-        }
+        // Z-order routing: the captured widget holds its hover; otherwise the
+        // topmost hovered widget takes it.
+        topHoveredId_ = capturedWidgetId_ != IREntity::kNullEntity
+                            ? capturedWidgetId_
+                            : IRPrefab::Widget::topmostHoveredWidget();
 
         // Release capture when the mouse button comes up.
         if (mouseLeftReleasedThisFrame_) {

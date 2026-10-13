@@ -132,6 +132,9 @@ export TRACKER_STATE="$TMPROOT/tracker.exists"
 # to the closed case.
 export BLOCKERS_DIR="$TMPROOT/blockers"; mkdir -p "$BLOCKERS_DIR"
 set_blocker() { printf '%s' "$2" > "$BLOCKERS_DIR/$1"; }
+# Every `issue view` the apply half makes, one argv per line, so a park on
+# the other fleet repo's issue can prove the lookup went to THAT repo.
+export VIEW_LOG="$TMPROOT/view.log"; : > "$VIEW_LOG"
 cat > "$STUB_DIR/gh" <<'GHSTUB'
 #!/usr/bin/env bash
 case "$1" in
@@ -176,6 +179,7 @@ case "$1" in
                     *"--jq .state "*) ;;
                     *) echo "gh stub: unmodelled 'issue view' jq: $_args" >&2; exit 64 ;;
                 esac
+                printf '%s\n' "$*" >> "$VIEW_LOG"
                 if [[ -f "$BLOCKERS_DIR/$3" ]]; then cat "$BLOCKERS_DIR/$3"; else echo "OPEN"; fi
                 exit 0 ;;
             *) exit 0 ;;
@@ -326,7 +330,7 @@ r8 = [f for f in r["findings"] if f["rule"] == "R8" and f["target"] == 1050]
 assert r8, f"no R8 for #1050: {[(f['rule'], f['target']) for f in r['findings']]}"
 a = (r8[0].get("apply") or {})
 assert a.get("type") == "unpark_infra", f"R8 apply wrong: {a}"
-assert a.get("blockers") == [7000], f"R8 parsed the wrong blocker: {a}"
+assert a.get("blockers") == ["jakildev/IrredenEngine#7000"], f"R8 parsed the wrong blocker: {a}"
 PY
 python3 - "$REPORT" <<'PY' && ok "parked PR #1050 invisible to R7 AND R2 (park respected on both sites)" || bad "R7/R2 fired on the parked PR #1050"
 import sys, json
@@ -436,7 +440,7 @@ r8 = [f for f in r["findings"] if f["rule"] == "R8" and f["target"] == 1050]
 assert r8, "no R8 finding at all"
 a = (r8[0].get("apply") or {})
 assert a.get("type") == "unpark_infra", f"parsed as malformed/flag-only: {r8[0]}"
-assert a.get("blockers") == [7001], f"wrong blocker parsed (over-matched the aside?): {a}"
+assert a.get("blockers") == ["jakildev/IrredenEngine#7001"], f"wrong blocker parsed (over-matched the aside?): {a}"
 PY
 # The capture ends at the first non-`#N` token, so the aside cannot un-park the PR either: a
 # second issue mentioned only in the aside is canned CLOSED, and the park
@@ -448,7 +452,10 @@ c=$(ai_remove_count); [[ "$c" == "$before" ]] && ok "a CLOSED issue mentioned on
 
 echo "=== Phase 9c: a multi-blocker park un-parks only when EVERY blocker has closed ==="
 # The list shapes a worker writes: comma, bare whitespace, comma with a trailing
-# aside that names a further issue, and a re-park whose last marker wins.
+# aside that names a further issue, one marker line per blocker, and a re-park
+# that appends a line — every parsable marker counts. Blockers are carried as
+# `owner/repo#N` so the apply half addresses the right repo.
+E="jakildev/IrredenEngine"
 parse_blockers() {
     PARKED_PR_JSON=$(python3 -c 'import json,sys; print(json.dumps({"number":1050,"headRefName":"claude/1000-parked-infra","body":sys.argv[1].replace("\\n","\n"),"labels":[{"name":"fleet:wip"},{"name":"fleet:awaiting-infra"}]}))' "$1")
     healed_prs
@@ -463,18 +470,21 @@ assert a.get("type") == "unpark_infra", f"parsed as malformed/flag-only: {r8[0]}
 assert a.get("blockers") == json.loads(sys.argv[2]), f"wrong blockers: {a}"
 PY
 }
-parse_blockers 'Closes #1000\n\nParked-until: #7003, #7004' '[7003, 7004]' && ok "comma-separated list parses to both blockers" || bad "comma list mis-parsed"
-parse_blockers 'Closes #1000\n\nParked-until: #7003 #7004' '[7003, 7004]' && ok "whitespace-separated list parses to both blockers" || bad "whitespace list mis-parsed"
-parse_blockers 'Closes #1000\n\nParked-until: #7003,#7004 (the fmt wall; see also #7005)' '[7003, 7004]' && ok "list plus trailing aside: the aside's #7005 is not a blocker" || bad "list + aside mis-parsed"
-parse_blockers 'Closes #1000\n\nParked-until: #7006\nParked-until: #7003, #7004' '[7003, 7004]' && ok "a re-park's last marker (a list) wins over an earlier single" || bad "last-marker-wins broke for a list"
-parse_blockers 'Closes #1000\n\nParked-until: #7003#7004' '[7003]' && ok "glued refs are not a list (only the first is taken)" || bad "glued refs over-matched"
-parse_blockers 'Closes #1000\n\n- Parked-until: #7003' '[7003]' && ok "a list-bullet marker parses" || bad "list-bullet marker read as malformed"
-parse_blockers 'Closes #1000\n\n**Parked-until:** #7003, #7004' '[7003, 7004]' && ok "a bold marker parses" || bad "bold marker read as malformed"
-parse_blockers 'Closes #1000\n\n`Parked-until`: #7003' '[7003]' && ok "a backtick-word marker parses" || bad "backtick-word marker read as malformed"
+parse_blockers 'Closes #1000\n\nParked-until: #7003, #7004' "[\"$E#7003\", \"$E#7004\"]" && ok "comma-separated list parses to both blockers" || bad "comma list mis-parsed"
+parse_blockers 'Closes #1000\n\nParked-until: #7003 #7004' "[\"$E#7003\", \"$E#7004\"]" && ok "whitespace-separated list parses to both blockers" || bad "whitespace list mis-parsed"
+parse_blockers 'Closes #1000\n\nParked-until: #7003,#7004 (the fmt wall; see also #7005)' "[\"$E#7003\", \"$E#7004\"]" && ok "list plus trailing aside: the aside's #7005 is not a blocker" || bad "list + aside mis-parsed"
+parse_blockers 'Closes #1000\n\nParked-until: #7006\nParked-until: #7003, #7004' "[\"$E#7006\", \"$E#7003\", \"$E#7004\"]" && ok "a re-park's appended line unions with the earlier marker" || bad "an earlier marker was dropped as inert"
+parse_blockers 'Closes #1000\n\nParked-until: #7003\nParked-until: #7004\nParked-until: #7003' "[\"$E#7003\", \"$E#7004\"]" && ok "one marker line per blocker parses to the whole set, once each" || bad "per-line markers mis-parsed"
+parse_blockers 'Closes #1000\n\nParked-until: #7003#7004' "[\"$E#7003\"]" && ok "glued refs are not a list (only the first is taken)" || bad "glued refs over-matched"
+parse_blockers 'Closes #1000\n\n- Parked-until: #7003' "[\"$E#7003\"]" && ok "a list-bullet marker parses" || bad "list-bullet marker read as malformed"
+parse_blockers 'Closes #1000\n\n**Parked-until:** #7003, #7004' "[\"$E#7003\", \"$E#7004\"]" && ok "a bold marker parses" || bad "bold marker read as malformed"
+parse_blockers 'Closes #1000\n\n`Parked-until`: #7003' "[\"$E#7003\"]" && ok "a backtick-word marker parses" || bad "backtick-word marker read as malformed"
+parse_blockers 'Closes #1000\n\nParked-until: irreden#7020, #7003' "[\"jakildev/irreden#7020\", \"$E#7003\"]" && ok "a blocker in the other fleet repo carries that repo's slug" || bad "cross-repo blocker mis-parsed"
+parse_blockers 'Closes #1000\n\nParked-until: someone/other#5, #7003' "[\"$E#7003\"]" && ok "a qualifier naming neither fleet repo is no blocker" || bad "unknown repo qualifier was read as a blocker"
 
 # Arrange the two-blocker park; the parse itself is asserted above, so a
 # failure here must not abort the suite before its tally prints.
-parse_blockers 'Closes #1000\n\nParked-until: #7003, #7004' '[7003, 7004]' || true
+parse_blockers 'Closes #1000\n\nParked-until: #7003, #7004' "[\"$E#7003\", \"$E#7004\"]" || true
 before=$(ai_remove_count)
 run_reconcile --apply
 c=$(ai_remove_count); [[ "$c" == "$before" ]] && ok "both blockers open → park stands" || bad "un-parked with both blockers open (removes=$c, was $before)"
@@ -487,6 +497,40 @@ c=$(ai_remove_count); [[ "$c" == "$before" ]] && ok "only the second blocker clo
 set_blocker 7003 CLOSED
 run_reconcile --apply
 c=$(ai_remove_count); [[ "$c" == "$((before + 1))" ]] && ok "every blocker closed → exactly one remove-label fleet:awaiting-infra" || bad "all-closed did not un-park exactly once (removes=$c, was $before)"
+
+echo "=== Phase 9d: one marker line per blocker is one park on all of them ==="
+# The shape that used to lose every line but the last: three blockers on three
+# lines. The first two closing must not un-park it.
+set_blocker 7003 OPEN; set_blocker 7004 OPEN; set_blocker 7007 OPEN
+parse_blockers 'Closes #1000\n\nParked-until: #7003\nParked-until: #7004\nParked-until: #7007' "[\"$E#7003\", \"$E#7004\", \"$E#7007\"]" || true
+before=$(ai_remove_count)
+set_blocker 7003 CLOSED; set_blocker 7004 CLOSED
+run_reconcile --apply
+c=$(ai_remove_count); [[ "$c" == "$before" ]] && ok "two of three per-line blockers closed → park stands" || bad "per-line park un-parked early (removes=$c, was $before)"
+set_blocker 7007 CLOSED
+run_reconcile --apply
+c=$(ai_remove_count); [[ "$c" == "$((before + 1))" ]] && ok "the last per-line blocker closed → exactly one un-park" || bad "per-line park did not un-park exactly once (removes=$c, was $before)"
+
+echo "=== Phase 9e: a park on the OTHER fleet repo's issue is checked in that repo ==="
+set_blocker 7020 OPEN
+parse_blockers 'Closes #1000\n\nParked-until: irreden#7020' '["jakildev/irreden#7020"]' || true
+: > "$VIEW_LOG"
+before=$(ai_remove_count)
+run_reconcile --apply
+c=$(ai_remove_count); [[ "$c" == "$before" ]] && ok "open cross-repo blocker → park stands" || bad "un-parked on an open cross-repo blocker (removes=$c, was $before)"
+if grep -q '^issue view 7020 --repo jakildev/irreden ' "$VIEW_LOG"; then
+    ok "the blocker was looked up in the repo its qualifier names"
+else
+    bad "cross-repo blocker was not looked up in jakildev/irreden: $(cat "$VIEW_LOG")"
+fi
+if grep -q -- '--repo jakildev/IrredenEngine' "$VIEW_LOG"; then
+    bad "cross-repo blocker was also (or instead) looked up in the PR's own repo"
+else
+    ok "no lookup of the cross-repo blocker in the PR's own repo"
+fi
+set_blocker 7020 CLOSED
+run_reconcile --apply
+c=$(ai_remove_count); [[ "$c" == "$((before + 1))" ]] && ok "cross-repo blocker closed → exactly one un-park" || bad "cross-repo park did not un-park exactly once (removes=$c, was $before)"
 
 echo "=== Phase 10: fleet:blocked backing issue suppresses R7 (not R2) ==="
 # Non-vacuity: the PR is a bare claimless wip PR with neither design label —

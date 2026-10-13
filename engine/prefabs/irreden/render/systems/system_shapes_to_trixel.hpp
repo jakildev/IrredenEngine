@@ -567,7 +567,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                     }
                     {
                         IRRender::GpuSubStageScope timing("shapeCastBake");
-                        baker->bakeAnalyticCasterDepth();
+                        baker->bakeAnalyticCasterDepth(canvasTextures.getTextureEntityIds());
                     }
                     canvasTextures.getTextureColors()
                         ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
