@@ -47,6 +47,10 @@ float worldSurfaceSunShadowFactor(vec3 p,vec3 n,float d,vec4 r){
     !near(n.z,normalZ)||!near(d,20.5f)||!near(r.w,.7f))std::exit(25);
  return visibilityInput;
 }
+vec3 encodeUnitVectorUnorm8(vec3 v){
+ auto code=[](float x){return std::floor(x*127.5f+127.5f+.5f)/255.f;};
+ return {code(v.x),code(v.y),code(v.z)};
+}
 vec3 localLight(vec3 p){
  ++lightCalls;
  if(!same(vec4(p,1),vec4(expectedLocalPosition,1)))std::exit(24);
@@ -111,7 +115,7 @@ int main(){
   shapeShadowCalls=worldShadowCalls=lightCalls=aoCalls=paletteCalls=albedoCalls=0;
   const vec3 out=query({1,1},4,{10.25f,-20.5f,30.75f},normal,
                        -81.f,{0,0,0,.7f},{.9f,.8f,.7f});
-  const vec3 expected=flags?vec3(.9f,.8f,.7f):normal*.5f+vec3(.5f);
+  const vec3 expected=flags?vec3(.9f,.8f,.7f):encodeUnitVectorUnorm8(normal);
   if(!same(vec4(out,1),vec4(expected,1)))return 5;
   if(shapeShadowCalls||worldShadowCalls||lightCalls||aoCalls||paletteCalls||albedoCalls)return 6;
  }
@@ -193,7 +197,11 @@ class ShapeSurfaceLightingTest(unittest.TestCase):
                 "production": body,
                 "lost_normal_overlay": body.replace("debugOverlayMode == 8", "false"),
                 "reversed_normal_overlay": body.replace(
-                    "return normal * 0.5 + 0.5", "return normal * -0.5 + 0.5"),
+                    "return encodeUnitVectorUnorm8(normal)",
+                    "return encodeUnitVectorUnorm8(normal * vec3(-1.f))"),
+                "unrounded_normal_overlay": body.replace(
+                    "return encodeUnitVectorUnorm8(normal)",
+                    "return normal * vec3(.5f) + vec3(.5f)"),
                 "lost_material_owner": body.replace("receiverShapes[shapeIndex].color",
                                                     "receiverShapes[0].color"),
                 "lost_procedural_fallback": body.replace("!= 0u", "== 999u"),

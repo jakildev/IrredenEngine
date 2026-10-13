@@ -32,6 +32,7 @@
 #   - cross-repo ref `[owner/]Repo#N`, CLOSED in the referenced repo → pass;
 #     still OPEN in the referenced repo → fail (the gate routes the
 #     state probe to the referenced repo, not the issue's own).
+#   - a prose ref to the issue's own number is not a blocker → pass
 
 set -euo pipefail
 
@@ -189,6 +190,9 @@ ISSUE_INFO = {
     # False-positive guard: prose "not blocked by anything"
     # has no `#N` after the colon → not a blocker → claim succeeds.
     "2021": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"## Scope\n\nThis task is not blocked by anything yet.\n"}',
+    # Decorated line whose prose mentions the issue's own number; the one real
+    # blocker is CLOSED → the issue must not block on itself.
+    "2023": r'{"state":"OPEN","labels":[{"name":"fleet:queued"}],"body":"**Blocked by:** #100 (lands first; both touch the files for #2023)\n"}',
 }
 ISSUE_INFO_DEFAULT = r'{"state":"OPEN","labels":[],"body":""}'
 
@@ -386,6 +390,12 @@ echo "T21: prose 'not blocked by anything yet' (no #N) → claim succeeds"
 actual=0; "$FLEET_CLAIM" claim 2021 test-agent 2>/dev/null || actual=$?
 assert_exit "$actual" 0 "ref-less 'blocked by' prose bypasses gate → exit 0"
 release_quiet 2021
+
+# --- T22: a ref to the issue's own number is never a blocker -----------------
+echo "T22: '#100 (… the files for #2023)' on issue 2023 — #100 CLOSED → claim succeeds"
+actual=0; "$FLEET_CLAIM" claim 2023 test-agent 2>/dev/null || actual=$?
+assert_exit "$actual" 0 "own-number prose ref ignored → exit 0"
+release_quiet 2023
 
 echo ""
 echo "PASS: $PASS  FAIL: $FAIL"

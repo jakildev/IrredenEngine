@@ -128,8 +128,9 @@ enum class DrawMode : std::uint8_t { TRIANGLES, LINES };
 ///                        margin genuinely won the composite there —
 ///                        separates margin-vs-exact contests from
 ///                        footprint-overlap contests at shared face edges.
-/// - @c NORMALS — shading normal encoded as RGB = normal * 0.5 + 0.5,
-///   independent of albedo, AO, shadows, exposure and tonemapping.
+/// - @c NORMALS — shading normal encoded as RGB = normal * 0.5 + 0.5, rounded
+///   half up to exact UNORM8 codes on every backend (-1 → 0, 0 → 128,
+///   +1 → 255), independent of albedo, AO, shadows, exposure and tonemapping.
 enum class DebugOverlayMode : std::uint8_t {
     NONE = 0,
     AO = 1,

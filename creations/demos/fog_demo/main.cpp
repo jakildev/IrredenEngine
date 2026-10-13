@@ -93,6 +93,7 @@
 #include <irreden/render/systems/system_fog_to_trixel.hpp>
 #include <irreden/render/systems/system_fog_los_build.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
+#include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_lod_update.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
@@ -2375,6 +2376,8 @@ void probeEntityRevealIds() {
 //   flat             the slab alone: the gated disc reveals exactly as an
 //                    ungated one would
 //   ground-los-off   the ground scene with LOS off (the img_diff control)
+//   column-top       two plateaus and two gated sources: a wall under a
+//                    revealed plateau top is revealed with it
 enum class OcclusionScene {
     NONE,
     GROUND,
@@ -2384,6 +2387,7 @@ enum class OcclusionScene {
     TWO_SOURCES,
     FLAT,
     GROUND_LOS_OFF,
+    COLUMN_TOP,
 };
 OcclusionScene g_occlusion = OcclusionScene::NONE;
 // --los-softness: every gated --occlusion source grades its verdict over this
@@ -2434,6 +2438,93 @@ constexpr IRVideo::AutoScreenshotShot kOcclusionGroundLosOffShots[] = {
 constexpr IRVideo::AutoScreenshotShot kOcclusionHighGroundSoftShots[] = {
     {6.0f, vec2(0, 0), 0.0f, "fog_occlusion_high_ground_soft"},
 };
+
+// --occlusion=column-top: the column-top reveal. Two FIELD voxel plateaus of
+// equal height stand on the ground slab. A gated source on the main plateau's
+// top reveals that top and, on its own, none of the walls under it (its
+// march to a wall passes under the top plane). A gated source at the
+// plateau's foot, capped by a hard ceiling part-way up the walls, reveals the
+// two camera-facing walls up to that ceiling. The band of wall between the
+// ceiling and the top is hidden from both sources, and is revealed only
+// through the top: a column whose top a source reveals is known to its base.
+// The control plateau stands inside the foot disc and outside the top
+// source's, so no source reveals its top and its walls keep the cut above the
+// foot source's ceiling. A change that removes fog-hidden matter above a
+// ceiling must keep the main plateau's band: its column top is revealed.
+// Both discs are soft-edged: a hard disc would tone a ceiling cut inside it
+// with the radial rim cap instead of leaving it the unexplored colour.
+constexpr IRMath::ivec3 kColumnTopPlateauSize{6, 6, 9};
+// The lower XY corner of each plateau's drawn boxes. At yaw 0 the camera sees
+// a plateau's X_NEG and Y_NEG walls, which lie on those two planes.
+constexpr vec2 kColumnTopPlateauMin{-3.0f, -3.0f};
+constexpr vec2 kColumnTopControlMin{-15.0f, 1.0f};
+constexpr float kColumnTopGroundPlaneZ = 4.0f;
+constexpr float kColumnTopTopPlaneZ =
+    kColumnTopGroundPlaneZ - static_cast<float>(kColumnTopPlateauSize.z);
+constexpr float kColumnTopEdge = 1.0f;
+constexpr vec2 kColumnTopTopObserver{0.0f, 0.0f};
+constexpr float kColumnTopTopRadius = 6.0f;
+constexpr vec2 kColumnTopFootObserver{-8.0f, -8.0f};
+constexpr float kColumnTopFootRadius = 20.0f;
+constexpr float kColumnTopFootCeiling = 4.0f;
+// The foot source's ceiling plane: wall matter above it (a smaller Z) is the
+// band.
+constexpr float kColumnTopCeilingPlaneZ = kColumnTopGroundPlaneZ - kColumnTopFootCeiling;
+constexpr Color kColumnTopPlateauColor{225, 180, 95, 255};
+constexpr Color kColumnTopControlColor{120, 200, 215, 255};
+constexpr float kColumnTopShotYaw = 0.35f;
+constexpr IRVideo::AutoScreenshotShot kOcclusionColumnTopShots[] = {
+    {8.0f, vec2(0, 0), 0.0f, "fog_occlusion_column_top"},
+    {8.0f, vec2(0, 0), kColumnTopShotYaw, "fog_occlusion_column_top_yaw"},
+};
+IREntity::EntityId g_columnTopPlateau = IREntity::kNullEntity;
+IREntity::EntityId g_columnTopControl = IREntity::kNullEntity;
+
+constexpr float columnTopSquaredDistance(vec2 a, vec2 b) {
+    return (a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y);
+}
+constexpr float columnTopSquared(float value) {
+    return value * value;
+}
+constexpr vec2 kColumnTopPlateauExtent{
+    static_cast<float>(kColumnTopPlateauSize.x), static_cast<float>(kColumnTopPlateauSize.y)
+};
+static_assert(
+    kColumnTopCeilingPlaneZ > kColumnTopTopPlaneZ &&
+        kColumnTopCeilingPlaneZ < kColumnTopGroundPlaneZ,
+    "the foot source's ceiling must cut the plateau walls part-way up"
+);
+static_assert(
+    columnTopSquaredDistance(
+        kColumnTopTopObserver, kColumnTopPlateauMin + kColumnTopPlateauExtent
+    ) < columnTopSquared(kColumnTopTopRadius - kColumnTopEdge) &&
+        columnTopSquaredDistance(kColumnTopTopObserver, kColumnTopPlateauMin) <
+            columnTopSquared(kColumnTopTopRadius - kColumnTopEdge),
+    "the top source must reveal the main plateau's whole top at full strength"
+);
+static_assert(
+    columnTopSquaredDistance(
+        kColumnTopTopObserver,
+        vec2(kColumnTopControlMin.x + kColumnTopPlateauExtent.x, kColumnTopControlMin.y)
+    ) > columnTopSquared(kColumnTopTopRadius + kColumnTopEdge),
+    "the control plateau's nearest corner must lie outside the top source's disc"
+);
+static_assert(
+    columnTopSquaredDistance(
+        kColumnTopFootObserver,
+        vec2(kColumnTopPlateauMin.x, kColumnTopPlateauMin.y + kColumnTopPlateauExtent.y)
+    ) < columnTopSquared(kColumnTopFootRadius - kColumnTopEdge) &&
+        columnTopSquaredDistance(
+            kColumnTopFootObserver,
+            vec2(kColumnTopControlMin.x, kColumnTopControlMin.y + kColumnTopPlateauExtent.y)
+        ) < columnTopSquared(kColumnTopFootRadius - kColumnTopEdge),
+    "the foot source must reach both plateaus' camera-facing walls at full strength"
+);
+static_assert(
+    kColumnTopFootObserver.x < kColumnTopPlateauMin.x &&
+        kColumnTopFootObserver.y < kColumnTopPlateauMin.y,
+    "the foot source must stand in front of both camera-facing walls of the main plateau"
+);
 
 // One-shot point-query probe for the --occlusion scenes: after warmup, ask
 // `IRPrefab::Fog::lineOfSight` — which rebuilds its own column view and needs
@@ -2573,6 +2664,131 @@ void probeOcclusionSurface() {
     requireSurfaceProbe(
         partialBand * 10 <= slabTexels,
         "the treated band is not a thin strip of the slab"
+    );
+}
+
+// A plateau's camera-facing wall texels above the foot source's ceiling.
+struct ColumnTopBandCount {
+    int texels_ = 0;
+    // The position-only oracle reads the texel hidden: the verdict without
+    // the column-top term.
+    int ownHidden_ = 0;
+    // The oracle with the texel's column point reads it hidden.
+    int oracleHidden_ = 0;
+    // The pass painted the texel the unexplored colour.
+    int painted_ = 0;
+    // The pass left the texel its lit colour.
+    int lit_ = 0;
+};
+
+// The column-top fixture's band, GPU against oracle: on the main plateau
+// every band texel is hidden by its own verdict and revealed through its
+// column top, on both the oracle and the readback; on the control plateau,
+// whose top no source reveals, the whole band stays painted.
+void probeColumnTop() {
+    if (++g_surfaceProbeFrame != g_autoWarmupFrames || g_bodyProbeBeforeColors.empty()) {
+        return;
+    }
+    const auto &textures =
+        IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity());
+    const auto &fog = IREntity::getComponent<C_CanvasFogOfWar>(IRRender::getActiveCanvasEntity());
+    std::vector<IRMath::uvec2> carriers;
+    std::vector<Color> colors;
+    std::vector<int> distances;
+    textures.readEntityIdCarriers(carriers);
+    textures.readColors(colors);
+    textures.readDistances(distances);
+    const auto *stage1 =
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>>(
+            IRSystem::findSystem(IRSystem::VOXEL_TO_TRIXEL_STAGE_1)
+        );
+    const vec3 unexplored(fog.observers_.unexploredColor_);
+    const IRPrefab::Fog::LosRasterFrame frame = IRPrefab::Fog::activeLosRasterFrame();
+
+    const auto countBand = [&](IREntity::EntityId entity, vec2 plateauMin) {
+        ColumnTopBandCount count;
+        const auto expected = static_cast<std::uint32_t>(entity);
+        for (int y = 0; y < textures.size_.y; ++y) {
+            for (int x = 0; x < textures.size_.x; ++x) {
+                const std::size_t i = static_cast<std::size_t>(y) * textures.size_.x + x;
+                if (carriers[i].x != expected) {
+                    continue;
+                }
+                // The single-canvas encoding: face slot in bits 1:0, polarity
+                // flip in bit 2 (decodeSlot / decodeFlipSingle).
+                const int encoded = distances[i];
+                const auto face = static_cast<IRMath::FaceId>(
+                    stage1->frameData_.visibleFaceIds_[encoded & 3] ^ ((encoded >> 2) & 1)
+                );
+                const int axis = IRMath::faceAxis(face);
+                if (axis == 2) {
+                    continue;
+                }
+                const vec3 world =
+                    canvasTexelToWorld(IRMath::ivec2(x, y), encoded, stage1->frameData_);
+                if (world.z >= kColumnTopCeilingPlaneZ) {
+                    continue;
+                }
+                ++count.texels_;
+                // The raster recovers a wall texel up to a micro cell off its
+                // plane; the oracle takes the authored plane.
+                vec3 facePoint = world;
+                facePoint[axis] = IRMath::faceIsPositive(face)
+                                      ? plateauMin[axis] + kColumnTopPlateauExtent[axis]
+                                      : plateauMin[axis];
+                const vec3 sample =
+                    facePoint + IRMath::faceOutwardNormal(face) * IRPrefab::Fog::kFogLosFaceBias;
+                const float own = IRPrefab::Fog::evalRevealSurface(fog, sample).state_;
+                const float withColumnTop =
+                    IRPrefab::Fog::evalRevealSurface(
+                        fog,
+                        sample,
+                        IRPrefab::Fog::losColumnPoint(facePoint, face, frame),
+                        face
+                    )
+                        .state_;
+                count.ownHidden_ += own <= 0.0f ? 1 : 0;
+                count.oracleHidden_ += withColumnTop <= 0.0f ? 1 : 0;
+                count.painted_ += colorMatches(colors[i], unexplored) ? 1 : 0;
+                count.lit_ += colorEquals(colors[i], g_bodyProbeBeforeColors[i]) ? 1 : 0;
+            }
+        }
+        return count;
+    };
+
+    const ColumnTopBandCount band = countBand(g_columnTopPlateau, kColumnTopPlateauMin);
+    const ColumnTopBandCount control = countBand(g_columnTopControl, kColumnTopControlMin);
+    IR_LOG_INFO(
+        "FOG-SURFACE-PROBE scene=occlusion_column_top canvas={}x{} bandTexels={} "
+        "bandOwnHidden={} bandOracleHidden={} bandPainted={} bandLit={} controlTexels={} "
+        "controlOracleHidden={} controlPainted={}",
+        textures.size_.x,
+        textures.size_.y,
+        band.texels_,
+        band.ownHidden_,
+        band.oracleHidden_,
+        band.painted_,
+        band.lit_,
+        control.texels_,
+        control.oracleHidden_,
+        control.painted_
+    );
+    requireSurfaceProbe(band.texels_ > 0, "the main plateau has no band texels");
+    requireSurfaceProbe(
+        band.ownHidden_ > 0,
+        "the band is not hidden by its own verdict: the fixture no longer needs the column top"
+    );
+    requireSurfaceProbe(
+        band.oracleHidden_ == 0,
+        "the oracle leaves a band texel hidden under a revealed column top"
+    );
+    requireSurfaceProbe(
+        band.painted_ == 0,
+        "the pass painted a band texel under a revealed column top"
+    );
+    requireSurfaceProbe(
+        control.texels_ > 0 && control.painted_ == control.texels_,
+        "the control plateau's band is not painted whole: its top is unrevealed"
     );
 }
 
@@ -2722,6 +2938,8 @@ OcclusionScene parseOcclusionScene(const std::string &name) {
         return OcclusionScene::FLAT;
     if (name == "ground-los-off")
         return OcclusionScene::GROUND_LOS_OFF;
+    if (name == "column-top")
+        return OcclusionScene::COLUMN_TOP;
     return OcclusionScene::NONE;
 }
 
@@ -2884,8 +3102,9 @@ int main(int argc, char **argv) {
     IREngine::args().enumValue(
         "--occlusion",
         "Line-of-sight fog scene "
-        "(none|ground|high-ground|blocker|blocker-inert|two-sources|flat|ground-los-off); "
-        "overrides every other reveal mode",
+        "(none|ground|high-ground|blocker|blocker-inert|two-sources|flat|ground-los-off|"
+        "column-top); overrides every other reveal mode. column-top paints unexplored matter "
+        "the debug colour and logs FOG-SURFACE-PROBE on the cardinal shot",
         {"none",
          "ground",
          "high-ground",
@@ -2893,7 +3112,8 @@ int main(int argc, char **argv) {
          "blocker-inert",
          "two-sources",
          "flat",
-         "ground-los-off"},
+         "ground-los-off",
+         "column-top"},
         "none"
     );
     IREngine::args().number(
@@ -3084,6 +3304,9 @@ int main(int argc, char **argv) {
     if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_exploredDecay || g_channelProbe ||
         g_manySources) {
         g_occlusion = OcclusionScene::NONE;
+    }
+    if (g_occlusion == OcclusionScene::COLUMN_TOP) {
+        g_fogDebugColor = true;
     }
     if (g_luaFogSelftest || g_worldPan || g_depthSlab || g_exploredDecay || g_channelProbe ||
         g_manySources || g_occlusion != OcclusionScene::NONE) {
@@ -3338,7 +3561,9 @@ void initSystems() {
     const bool occlusionSurfaceProbe = g_occlusion == OcclusionScene::HIGH_GROUND &&
                                        g_occlusionLosSoftness > kFogLosHardGate &&
                                        g_revealTreatment;
-    if ((g_entityReveal || g_ceilingTreatment || occlusionSurfaceProbe) && g_autoWarmupFrames > 1) {
+    const bool columnTopProbe = g_occlusion == OcclusionScene::COLUMN_TOP;
+    if ((g_entityReveal || g_ceilingTreatment || occlusionSurfaceProbe || columnTopProbe) &&
+        g_autoWarmupFrames > 1) {
         renderPipeline.push_back(
             IRSystem::createSystem<C_Name>(
                 "FogBodyProbeBeforeSnapshot",
@@ -3366,6 +3591,7 @@ void initSystems() {
         renderPipeline.push_back(IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>());
     }
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>());
 
     if (g_autoProfileFrames > 0) {
         IRSystem::SystemId autoProfileId = IRSystem::createSystem<C_Name>(
@@ -3461,6 +3687,15 @@ void initSystems() {
                 "FogOcclusionSurfaceProbe",
                 [](C_Name &) {},
                 []() { probeOcclusionSurface(); }
+            )
+        );
+    }
+    if (columnTopProbe && g_autoWarmupFrames > 1) {
+        renderPipeline.push_front(
+            IRSystem::createSystem<C_Name>(
+                "FogColumnTopProbe",
+                [](C_Name &) {},
+                []() { probeColumnTop(); }
             )
         );
     }
@@ -3572,6 +3807,9 @@ void initSystems() {
                 break;
             case OcclusionScene::GROUND_LOS_OFF:
                 IRVideo::setAutoScreenshotShots(cfg, kOcclusionGroundLosOffShots);
+                break;
+            case OcclusionScene::COLUMN_TOP:
+                IRVideo::setAutoScreenshotShots(cfg, kOcclusionColumnTopShots);
                 break;
             case OcclusionScene::NONE:
                 break;
@@ -3703,14 +3941,11 @@ IREntity::EntityId createEdgeGroundSlab() {
 
 // A gated vision circle for the --occlusion scenes: the plain disc (no height
 // cost) so line of sight is the only term that differs between scenes.
-void addOcclusionSource(vec2 center, float observerZ, float radius, bool lineOfSight) {
-    const int slot = IRPrefab::Fog::addVisionCircle(
-        center.x,
-        center.y,
-        radius,
-        kFogVisionEdgeDefault,
-        observerZ
-    );
+// Returns its slot.
+int addOcclusionSource(
+    vec2 center, float observerZ, float radius, bool lineOfSight, float edge = kFogVisionEdgeDefault
+) {
+    const int slot = IRPrefab::Fog::addVisionCircle(center.x, center.y, radius, edge, observerZ);
     IR_ASSERT(slot >= 0, "occlusion scene vision circle was rejected");
     if (lineOfSight) {
         IRPrefab::Fog::setVisionCircleLineOfSight(
@@ -3719,14 +3954,31 @@ void addOcclusionSource(vec2 center, float observerZ, float radius, bool lineOfS
             g_occlusionLosSoftness
         );
     }
+    return slot;
+}
+
+// A FIELD voxel box centred on @p center: the --occlusion scenes' terrain.
+IREntity::EntityId createOcclusionTerrain(vec3 center, IRMath::ivec3 size, Color color) {
+    return IREntity::createEntity(
+        C_LocalTransform{center},
+        C_VoxelSetNew{size, color, true},
+        C_FogField{}
+    );
+}
+
+// A column-top plateau whose drawn boxes start at @p minXY and stand on the
+// ground slab's top plane.
+IREntity::EntityId createColumnTopPlateau(vec2 minXY, Color color) {
+    const vec3 firstVoxel(minXY, kColumnTopTopPlaneZ);
+    return createOcclusionTerrain(
+        firstVoxel + vec3(kColumnTopPlateauSize - IRMath::ivec3(1)) * 0.5f,
+        kColumnTopPlateauSize,
+        color
+    );
 }
 
 void createOcclusionWall(IRMath::ivec3 size) {
-    IREntity::createEntity(
-        C_LocalTransform{kOcclusionRidgeCenter},
-        C_VoxelSetNew{size, kOcclusionRidgeColor, true},
-        C_FogField{}
-    );
+    createOcclusionTerrain(kOcclusionRidgeCenter, size, kOcclusionRidgeColor);
 }
 
 // The --world-pan scene: persistence first (the root refuses a populated
@@ -3872,6 +4124,26 @@ void initOcclusionScene() {
     case OcclusionScene::FLAT:
         addOcclusionSource(vec2(0.0f), kOcclusionGroundZ, kOcclusionRadius, true);
         break;
+    case OcclusionScene::COLUMN_TOP: {
+        g_columnTopPlateau = createColumnTopPlateau(kColumnTopPlateauMin, kColumnTopPlateauColor);
+        g_columnTopControl = createColumnTopPlateau(kColumnTopControlMin, kColumnTopControlColor);
+        addOcclusionSource(
+            kColumnTopTopObserver,
+            kColumnTopTopPlaneZ,
+            kColumnTopTopRadius,
+            true,
+            kColumnTopEdge
+        );
+        const int footSlot = addOcclusionSource(
+            kColumnTopFootObserver,
+            kColumnTopGroundPlaneZ,
+            kColumnTopFootRadius,
+            true,
+            kColumnTopEdge
+        );
+        IRPrefab::Fog::setVisionCircleCeiling(footSlot, kColumnTopFootCeiling);
+        break;
+    }
     case OcclusionScene::NONE:
         break;
     }

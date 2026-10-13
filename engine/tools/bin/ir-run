@@ -24,6 +24,7 @@
 #   ir-run --timeout 5 IRShapeDebug          # auto-kill after 5 seconds
 #   ir-run --timeout 0 IRShapeDebug          # explicit opt-out of any default
 #   ir-run --build-dir /path/to/build IrredenEngineTest
+#   ir-run --env IR_SHAPE_PROBE=1 IRShapeDebug
 #   ir-run --targets [--plain|--plan|--built] [--build-dir DIR]
 #
 # --timeout budgets the executable's run time only. When the run is
@@ -101,6 +102,14 @@ TIMEOUT=""
 TIMEOUT_EXPLICIT=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --env)
+            if [[ $# -lt 2 || "$2" != *=* ]]; then
+                echo "ir-run: --env requires KEY=VALUE" >&2
+                exit 2
+            fi
+            export "$2"
+            shift 2
+            ;;
         --build-dir)
             if [[ $# -lt 2 || "$2" == -* ]]; then
                 echo "ir-run: --build-dir requires a directory path" >&2
@@ -168,6 +177,9 @@ Run mode
     holding the verb       still holds it (IR_ACQUIRE_HOLDER_PID/_HELD_VERB)
 
   Options (run mode):
+    --env KEY=VALUE    Export a variable into the child process. Repeat before
+                       <executable-name> for multiple variables; use this for
+                       probe switches such as IR_SHAPE_PROBE=1.
     --build-dir <dir>   CMake build directory (must contain the built binary).
                         Default: see "Build directory" below.
     --timeout N | -t N  Run under a watchdog: kill after N whole seconds.
@@ -194,7 +206,8 @@ Run mode
     offscreen never shows a window and renders into an engine-owned screen
     target (it still injects input and captures); background shows a
     window that is never focused or activated.
-    `--window-mode normal` after the executable, or IR_WINDOW_MODE=normal,
+    `--window-mode normal` after the executable, `--env IR_WINDOW_MODE=normal`,
+    or IR_WINDOW_MODE=normal,
     watches a fleet-shaped run.
 
   Env vars:
@@ -288,7 +301,7 @@ USAGE
 done
 
 if [[ $# -eq 0 ]]; then
-    echo "usage: ir-run [--build-dir <dir>] [--timeout <secs>] <executable-name> [args...]" >&2
+    echo "usage: ir-run [--env KEY=VALUE] [--build-dir <dir>] [--timeout <secs>] <executable-name> [args...]" >&2
     echo "       ir-run --targets [--plain | --plan | --built] [--build-dir <dir>]" >&2
     echo "       ir-run --help" >&2
     exit 2

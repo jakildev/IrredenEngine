@@ -1542,6 +1542,130 @@ TEST_F(PrefabWriter, EntitySceneLoadWithThrowingComponentFactoryPreservesLiveSce
     EXPECT_EQ(IREntity::countComponents<IRComponents::C_ShapeDescriptor>(), 1);
 }
 
+TEST_F(PrefabWriter, EntitySceneRemoveVoxelPartRestoresOwnedStateAndOrder) {
+    const std::string voxelPath = "/tmp/prefab_writer_remove_part.vxs";
+    IRAsset::DenseVoxelSet dense;
+    dense.boundsMax_ = IRMath::ivec3(2, 2, 2);
+    dense.voxels_.resize(8);
+    dense.voxels_[3].color_ = IRMath::Color{11, 22, 33, 255};
+    ASSERT_TRUE(IRAsset::saveDenseVoxelSet(voxelPath, dense).ok());
+
+    IRPrefab::Prefab::PrefabDescription description;
+    IRPrefab::Prefab::PrefabPartDescription voxel;
+    voxel.id_ = "voxel_part";
+    voxel.voxelRef_ = voxelPath;
+    voxel.transform_.translation_ = vec3(3.0f, 4.0f, 5.0f);
+    voxel.lodMin_ = IRRender::LodLevel::LOD_3;
+    voxel.lodMax_ = IRRender::LodLevel::LOD_1;
+    description.parts_.push_back(voxel);
+    IRPrefab::Prefab::PrefabPartDescription shape;
+    shape.id_ = "shape_part";
+    shape.shape_ = IRPrefab::Prefab::PrefabShapeDescription{};
+    description.parts_.push_back(shape);
+    ASSERT_FALSE(
+        IRPrefab::Prefab::writeManifest("/tmp/prefab_writer_remove_part.prefab.lua", description)
+            .has_value()
+    );
+
+    IRVoxelEditor::EntityScene scene;
+    ASSERT_TRUE(scene.load(m_lua, "/tmp", "prefab_writer_remove_part").ok_);
+    int factoryCalls = 0;
+    IRPrefab::Prefab::registerComponentFactory(
+        "ReplayTag",
+        [&](IREntity::EntityId, const sol::table &) { ++factoryCalls; }
+    );
+    IRVoxelEditor::ComponentRecord record = IRVoxelEditor::makeComponentRecord(m_lua, "ReplayTag");
+    ASSERT_FALSE(
+        IRVoxelEditor::applyComponentRecord(m_lua, scene.parts().front().entity_, record)
+            .has_value()
+    );
+    scene.targetComponents(0)->push_back(record);
+    const IREntity::EntityId removedEntity = scene.parts().front().entity_;
+
+    std::optional<IRVoxelEditor::RemovedEditorPart> removed = scene.removeSelectedPart();
+    ASSERT_TRUE(removed.has_value());
+    EXPECT_EQ(scene.parts().size(), 1u);
+    EXPECT_EQ(scene.parts().front().id_, "shape_part");
+
+    const IRVoxelEditor::EntitySceneRestoreResult restored = scene.restorePart(m_lua, *removed);
+    ASSERT_TRUE(restored.ok()) << restored.error_;
+    ASSERT_EQ(scene.parts().size(), 2u);
+    EXPECT_EQ(scene.parts().front().id_, "voxel_part");
+    EXPECT_EQ(scene.selectedIndex(), 0);
+    EXPECT_NE(restored.entity_, removedEntity);
+    EXPECT_EQ(factoryCalls, 2);
+    const auto &transform =
+        IREntity::getComponent<IRComponents::C_LocalTransform>(restored.entity_);
+    EXPECT_EQ(transform.translation_, vec3(3.0f, 4.0f, 5.0f));
+    const auto &set = IREntity::getComponent<IRComponents::C_VoxelSetNew>(restored.entity_);
+    ASSERT_EQ(set.authoredRecords().size(), 8u);
+    EXPECT_EQ(set.authoredRecords()[3].color_.red_, 11);
+    EXPECT_EQ(set.authoredRecords()[3].color_.green_, 22);
+    EXPECT_EQ(set.authoredRecords()[3].color_.blue_, 33);
+    EXPECT_EQ(set.authoredRecords()[3].color_.alpha_, 255);
+    EXPECT_EQ(set.lodMin_, IRRender::LodLevel::LOD_3);
+    EXPECT_EQ(set.lodMax_, IRRender::LodLevel::LOD_1);
+}
+
+TEST_F(PrefabWriter, EntitySceneRemoveShapePartRestoresGroupMetadata) {
+    IRVoxelEditor::EntityScene scene;
+    addLiveShapePart(scene);
+    const std::vector<IRComponents::C_LocalTransform> offsets = {
+        IRComponents::C_LocalTransform{vec3(2.0f, 0.0f, 0.0f)},
+        IRComponents::C_LocalTransform{vec3(-2.0f, 0.0f, 0.0f)}
+    };
+    const IRVoxelEditor::EntitySceneCloneResult clones =
+        scene.cloneSelected(m_lua, offsets, vec3(0.0f, 1.0f, 0.0f), 2);
+    ASSERT_TRUE(clones.error_.empty()) << clones.error_;
+    ASSERT_EQ(scene.parts().size(), 3u);
+    const IRVoxelEditor::EditorPart expected = scene.parts().back();
+
+    std::optional<IRVoxelEditor::RemovedEditorPart> removed = scene.removeSelectedPart();
+    ASSERT_TRUE(removed.has_value());
+    ASSERT_EQ(scene.parts().size(), 2u);
+    const IRVoxelEditor::EntitySceneRestoreResult restored = scene.restorePart(m_lua, *removed);
+    ASSERT_TRUE(restored.ok()) << restored.error_;
+    ASSERT_EQ(scene.parts().size(), 3u);
+    const IRVoxelEditor::EditorPart &actual = scene.parts().back();
+    EXPECT_EQ(actual.id_, expected.id_);
+    EXPECT_EQ(actual.groupId_, expected.groupId_);
+    EXPECT_EQ(actual.groupAxis_, expected.groupAxis_);
+    EXPECT_EQ(actual.rotationalOrder_, expected.rotationalOrder_);
+    EXPECT_TRUE(IREntity::entityExists(scene.root()));
+}
+
+TEST_F(PrefabWriter, EntitySceneRemovePartFailedRestoreKeepsSnapshotAndRoot) {
+    IRVoxelEditor::EntityScene scene;
+    addLiveShapePart(scene);
+    IRVoxelEditor::ComponentRecord record =
+        IRVoxelEditor::makeComponentRecord(m_lua, "RefusingRestoreTag");
+    scene.targetComponents(0)->push_back(record);
+    std::optional<IRVoxelEditor::RemovedEditorPart> removed = scene.removeSelectedPart();
+    ASSERT_TRUE(removed.has_value());
+    const IREntity::EntityId root = scene.root();
+
+    IRPrefab::Prefab::registerComponentFactory(
+        "RefusingRestoreTag",
+        [](IREntity::EntityId, const sol::table &) { throw std::runtime_error("restore refused"); }
+    );
+    const IRVoxelEditor::EntitySceneRestoreResult restored = scene.restorePart(m_lua, *removed);
+    EXPECT_FALSE(restored.ok());
+    EXPECT_NE(restored.error_.find("restore refused"), std::string::npos) << restored.error_;
+    EXPECT_TRUE(scene.parts().empty());
+    EXPECT_TRUE(IREntity::entityExists(root));
+    EXPECT_EQ(removed->part_.id_, "part_0");
+    m_entity_manager.destroyMarkedEntities();
+    EXPECT_EQ(IREntity::countComponents<IRComponents::C_ShapeDescriptor>(), 0);
+}
+
+TEST_F(PrefabWriter, EntitySceneRemovePartWithoutSelectionPreservesRoot) {
+    IRVoxelEditor::EntityScene scene;
+    scene.begin();
+    const IREntity::EntityId root = scene.root();
+    EXPECT_FALSE(scene.removeSelectedPart().has_value());
+    EXPECT_TRUE(IREntity::entityExists(root));
+}
+
 TEST_F(PrefabWriter, V1ReadStillLoads) {
     PrefabFiles fixture = writeFixtureSet(
         "writer_v1_compat",

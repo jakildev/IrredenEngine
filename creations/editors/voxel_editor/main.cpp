@@ -64,6 +64,7 @@
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
+#include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
 #include <irreden/render/systems/system_entity_canvas_to_framebuffer.hpp>
 #include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
@@ -209,9 +210,12 @@ struct UndoEdit {
 struct UndoRecord {
     std::vector<UndoEdit> edits_;
     std::vector<IREntity::EntityId> createdParts_;
+    std::optional<RemovedEditorPart> removedPart_;
 
     std::size_t byteSize() const {
-        return sizeof(UndoEdit) * edits_.size() + sizeof(IREntity::EntityId) * createdParts_.size();
+        return sizeof(UndoEdit) * edits_.size() +
+               sizeof(IREntity::EntityId) * createdParts_.size() +
+               (removedPart_ ? removedPart_->byteSize() : 0);
     }
 };
 
@@ -985,6 +989,7 @@ const std::filesystem::file_time_type g_runStartFileTime =
 bool g_entitySceneMode = false;
 IREntity::EntityId g_partsPanel = IREntity::kNullEntity;
 IREntity::EntityId g_partsList = IREntity::kNullEntity;
+IREntity::EntityId g_partRemoveButton = IREntity::kNullEntity;
 std::vector<const EditorPart *> g_rotationGroupScratch;
 std::vector<C_VoxelSetNew *> g_rotationSetScratch;
 IREntity::EntityId g_arrayPanel = IREntity::kNullEntity;
@@ -1268,6 +1273,9 @@ void selectEditorPart(int index, bool createGizmos = true) {
         }
         IRPrefab::Widget::setListSelectedIndex(g_partsList, g_entityScene.selectedIndex());
     }
+    if (g_partRemoveButton != IREntity::kNullEntity) {
+        IRPrefab::Widget::setDisabled(g_partRemoveButton, selected == IREntity::kNullEntity);
+    }
     syncLodBandSliders();
     syncPartModeDropdown();
     reseatEditorMirrorAxes();
@@ -1370,18 +1378,36 @@ void addEditorShapePart() {
     selectEditorPart(g_entityScene.selectedIndex());
 }
 
+void pushUndoRecord(UndoRecord record) {
+    g_editor.undoTotalBytes_ += record.byteSize();
+    g_editor.undoRecords_.push_back(std::move(record));
+    while (g_editor.undoTotalBytes_ > kUndoByteBudget && g_editor.undoRecords_.size() > 1) {
+        g_editor.undoTotalBytes_ -= g_editor.undoRecords_.front().byteSize();
+        g_editor.undoRecords_.pop_front();
+    }
+}
+
+void removeSelectedPart() {
+    if (!g_entitySceneMode || g_entityScene.selectedPart() == nullptr) {
+        return;
+    }
+    std::optional<RemovedEditorPart> removed = g_entityScene.removeSelectedPart();
+    if (!removed) {
+        return;
+    }
+    UndoRecord record;
+    record.removedPart_ = std::move(removed);
+    pushUndoRecord(std::move(record));
+    selectEditorPart(g_entityScene.selectedIndex());
+}
+
 void commitPartCreation(std::vector<IREntity::EntityId> created) {
     if (created.empty()) {
         return;
     }
     UndoRecord record;
     record.createdParts_ = std::move(created);
-    g_editor.undoTotalBytes_ += record.byteSize();
-    g_editor.undoRecords_.push_back(std::move(record));
-    while (g_editor.undoTotalBytes_ > kUndoByteBudget && !g_editor.undoRecords_.empty()) {
-        g_editor.undoTotalBytes_ -= g_editor.undoRecords_.front().byteSize();
-        g_editor.undoRecords_.pop_front();
-    }
+    pushUndoRecord(std::move(record));
     selectEditorPart(g_entityScene.selectedIndex());
 }
 
@@ -1645,21 +1671,39 @@ void commitStroke(bool derivedStateAlreadySynced = false) {
             }
         }
     }
-    g_editor.undoTotalBytes_ += g_editor.pendingStroke_.byteSize();
-    g_editor.undoRecords_.push_back(std::move(g_editor.pendingStroke_));
+    pushUndoRecord(std::move(g_editor.pendingStroke_));
     g_editor.pendingStroke_.edits_.clear();
     g_editor.pendingStroke_.edits_.reserve(kUndoStrokeReserve);
-
-    // Whole-stroke eviction from the front. Per-record eviction
-    // would split a stroke; Ctrl-Z partway through a half-evicted
-    // stroke would only restore part of it.
-    while (g_editor.undoTotalBytes_ > kUndoByteBudget && !g_editor.undoRecords_.empty()) {
-        g_editor.undoTotalBytes_ -= g_editor.undoRecords_.front().byteSize();
-        g_editor.undoRecords_.pop_front();
-    }
     for (IREntity::EntityId entity : touchedSets) {
         IREntity::getComponent<C_VoxelSetNew>(entity).resyncAfterRawEdits();
     }
+}
+
+void remapUndoRecordEntity(
+    UndoRecord &record, IREntity::EntityId removed, IREntity::EntityId restored
+) {
+    for (UndoEdit &edit : record.edits_) {
+        if (edit.voxelSet_ == removed) {
+            edit.voxelSet_ = restored;
+        }
+    }
+    for (IREntity::EntityId &created : record.createdParts_) {
+        if (created == removed) {
+            created = restored;
+        }
+    }
+}
+
+void remapUndoEntity(IREntity::EntityId removed, IREntity::EntityId restored) {
+    for (UndoRecord &record : g_editor.undoRecords_) {
+        remapUndoRecordEntity(record, removed, restored);
+    }
+    for (std::deque<UndoRecord> &records : g_editor.perFrameUndoStacks_) {
+        for (UndoRecord &record : records) {
+            remapUndoRecordEntity(record, removed, restored);
+        }
+    }
+    remapUndoRecordEntity(g_editor.pendingStroke_, removed, restored);
 }
 
 void undoOne() {
@@ -1669,20 +1713,31 @@ void undoOne() {
     UndoRecord rec = std::move(g_editor.undoRecords_.back());
     g_editor.undoRecords_.pop_back();
     g_editor.undoTotalBytes_ -= rec.byteSize();
+    if (rec.removedPart_) {
+        const IREntity::EntityId removed = rec.removedPart_->part_.entity_;
+        const EntitySceneRestoreResult restored =
+            g_entityScene.restorePart(g_moduleHost.script(), *rec.removedPart_);
+        if (!restored.ok()) {
+            IR_LOG_ERROR("Part restore failed: {}", restored.error_);
+            pushUndoRecord(std::move(rec));
+            return;
+        }
+        remapUndoEntity(removed, restored.entity_);
+        selectEditorPart(g_entityScene.selectedIndex());
+        return;
+    }
     if (!rec.createdParts_.empty()) {
         g_entityScene.removeParts(rec.createdParts_);
         selectEditorPart(g_entityScene.selectedIndex());
     }
     // Replay in reverse so overlapping edits inside a stroke restore
     // in last-write-wins order — same property the forward edit chain
-    // produced when authoring. Voxel-set entities are allocated once
-    // in initEntities and live for the session; there is no teardown
-    // path, so the getComponent lookup below assumes the set is alive
-    // without an extra liveness check. A future refactor that adds
-    // entity removal must guard this loop.
+    // produced when authoring.
     std::vector<IREntity::EntityId> touchedSets;
     for (auto it = rec.edits_.rbegin(); it != rec.edits_.rend(); ++it) {
-        // editable set lives for the session — no teardown path
+        if (!IREntity::entityExists(it->voxelSet_)) {
+            continue;
+        }
         auto &set = IREntity::getComponent<C_VoxelSetNew>(it->voxelSet_);
         const std::size_t flat =
             static_cast<std::size_t>(IRMath::index3DtoIndex1D(it->localIdx_, set.size_));
@@ -1694,6 +1749,9 @@ void undoOne() {
         }
     }
     for (auto id : touchedSets) {
+        if (!IREntity::entityExists(id)) {
+            continue;
+        }
         auto &set = IREntity::getComponent<C_VoxelSetNew>(id);
         set.resyncAfterRawEdits();
     }
@@ -2963,6 +3021,18 @@ bool evaluatePartCountCheck(const void *context, std::string &actual) {
     return count == check.expected_;
 }
 
+bool evaluatePartIdCheck(const void *context, std::string &actual) {
+    const PartIdCheck &check = *static_cast<const PartIdCheck *>(context);
+    if (check.partIndex_ < 0 ||
+        check.partIndex_ >= static_cast<int>(g_entityScene.parts().size())) {
+        actual = "part index out of range";
+        return false;
+    }
+    const std::string &id = g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)].id_;
+    actual = "id=" + id + " want=" + check.expected_;
+    return id == check.expected_;
+}
+
 bool evaluatePartAuthoredCountCheck(const void *context, std::string &actual) {
     const PartAuthoredCountCheck &check = *static_cast<const PartAuthoredCountCheck *>(context);
     if (check.partIndex_ < 0 ||
@@ -3234,7 +3304,7 @@ bool evaluateManifestCheck(const void *context, std::string &actual) {
     const std::string text{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
     const bool found = text.find(check.text_) != std::string::npos;
     actual = std::string(found ? "found" : "missing") + " in " + path.string();
-    return found;
+    return found == check.expectContains_;
 }
 
 bool evaluateComponentCheck(const void *context, std::string &actual) {
@@ -3250,9 +3320,9 @@ bool evaluateComponentCheck(const void *context, std::string &actual) {
     return false;
 }
 
-// Counts the label widgets positioned inside the docked panel's rectangle —
+// Collects the label widgets positioned inside the docked panel's rectangle —
 // the panel's build function places them, so there is no other handle to
-// them.
+// them — and passes when any of them reads check.label_.
 bool evaluatePanelLabelCheck(const void *context, std::string &actual) {
     const PanelLabelCheck &check = *static_cast<const PanelLabelCheck *>(context);
     const std::vector<std::string> &names = g_moduleHost.panelNames();
@@ -3265,16 +3335,18 @@ bool evaluatePanelLabelCheck(const void *context, std::string &actual) {
     const ivec2 lo = g_dockedModulePanels[index].pos_;
     const ivec2 hi = lo + kModulePanelSize;
     int labels = 0;
-    std::string text;
+    bool found = false;
+    std::string texts;
     IREntity::forEachComponent<C_WidgetLabel>([&](IREntity::EntityId &id, C_WidgetLabel &label) {
         const ivec2 pos = IREntity::getComponent<C_GuiPosition>(id).pos_;
         if (pos.x < lo.x || pos.y < lo.y || pos.x >= hi.x || pos.y >= hi.y)
             return;
         ++labels;
-        text = label.text_;
+        found = found || label.text_ == check.label_;
+        texts += (texts.empty() ? "\"" : ",\"") + label.text_ + "\"";
     });
-    actual = "labels=" + std::to_string(labels) + " text=\"" + text + "\"";
-    return labels == 1 && text == check.label_;
+    actual = "labels=" + std::to_string(labels) + " texts=[" + texts + "]";
+    return found;
 }
 
 // Reads the component's field straight from the target's live entity row, so
@@ -3332,9 +3404,10 @@ Session::ComponentAttachSpec resolveComponentAttachSpec(Session::Id id) {
                                  : keyed ? "componentFieldKey"
                                          : "componentAttach";
     Session::ComponentAttachSpec spec;
-    spec.session_ = paged   ? "component_field_page"
-                    : keyed ? "component_field_key"
-                            : "component_attach";
+    spec.session_ = paged                            ? "component_field_page"
+                    : keyed                          ? "component_field_key"
+                    : id == Session::Id::REMOVE_PART ? "remove_part"
+                                                     : "component_attach";
     if (!g_moduleHost.loaded()) {
         spec.errors_.push_back(spec.session_ + " needs --module <dir>");
         return spec;
@@ -3567,7 +3640,8 @@ int main(int argc, char **argv) {
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
         "face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | tier_scrub | "
-        "radial_array | linear_array | nway_symmetry | mode_preview | mode_preview_shots | "
+        "remove_part | radial_array | linear_array | nway_symmetry | mode_preview | "
+        "mode_preview_shots | "
         "parts_scroll | module_loaded | component_attach | component_field_page | "
         "component_field_key | text_input_command_capture | part_sizes",
         {"none",
@@ -3580,6 +3654,7 @@ int main(int argc, char **argv) {
          "bird",
          "tree",
          "parts_roundtrip",
+         "remove_part",
          "tier_scrub",
          "radial_array",
          "linear_array",
@@ -3651,7 +3726,7 @@ int main(int argc, char **argv) {
                 ? IRVoxelEditor::resolveModuleSessionSpec()
                 : IRVoxelEditor::Session::ModuleSessionSpec{};
         const IRVoxelEditor::Session::ComponentAttachSpec componentSpec =
-            IRVoxelEditor::Session::isComponentSession(IRVoxelEditor::g_sessionId)
+            IRVoxelEditor::Session::usesComponentSpec(IRVoxelEditor::g_sessionId)
                 ? IRVoxelEditor::resolveComponentAttachSpec(IRVoxelEditor::g_sessionId)
                 : IRVoxelEditor::Session::ComponentAttachSpec{};
         IRVoxelEditor::g_session = IRVoxelEditor::Session::build(
@@ -4414,6 +4489,10 @@ void initSystems() {
                     IRPrefab::Widget::dropdownSelectedIndex(g_partModeDropdown)
                 ));
             }
+            if (g_entitySceneMode && g_partRemoveButton != IREntity::kNullEntity &&
+                IRPrefab::Widget::wasClicked(g_partRemoveButton)) {
+                removeSelectedPart();
+            }
             if (g_layerList == IREntity::kNullEntity)
                 return;
 
@@ -4834,6 +4913,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
+            IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>(),
         }
     );
 
@@ -5526,6 +5606,17 @@ void initCommands() {
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonDelete,
+        []() { IRVoxelEditor::removeSelectedPart(); },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "REMOVE PART",
+        "REMOVE THE SELECTED ENTITY-SCENE PART"
+    );
+
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonTab,
         []() { IRVoxelEditor::selectRelativeEditorPart(1); },
         IRInput::kModifierNone,
@@ -6117,6 +6208,12 @@ void initEntities() {
         0,
         16
     );
+    IRVoxelEditor::g_partRemoveButton = IRPrefab::Widget::makeButton(
+        IRVoxelEditor::kPartRemoveButtonPos,
+        IRVoxelEditor::kPartRemoveButtonSize,
+        "REMOVE"
+    );
+    IRPrefab::Widget::setDisabled(IRVoxelEditor::g_partRemoveButton, true);
 
     IRVoxelEditor::g_lodPanel = IRPrefab::Widget::makePanel(
         IRVoxelEditor::kLodPanelPos,

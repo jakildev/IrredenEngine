@@ -1,4 +1,16 @@
 {
+    "terminal.integrated.profiles.windows": {
+        "Git Bash (fleet)": {
+            "path": "C:\\Program Files\\Git\\bin\\bash.exe",
+            "args": ["--login", "-i"],
+            "icon": "terminal-bash"
+        },
+        "PowerShell": {
+            "source": "PowerShell",
+            "icon": "terminal-powershell"
+        }
+    },
+    "terminal.integrated.defaultProfile.windows": "Git Bash (fleet)",
     "files.associations": {
         "__bit_reference": "cpp",
         "__hash_table": "cpp",

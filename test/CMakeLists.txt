@@ -28,6 +28,7 @@ add_executable(IrredenEngineTest
   common/command_registry_test.cpp
   common/ir_args_test.cpp
   common/ir_platform_test.cpp
+  ecs/archetype_move_storage_test.cpp
   ecs/chunk_bounds_eviction_test.cpp
   ecs/chunked_field_test.cpp
   ecs/command_randomize_voxels_test.cpp
@@ -93,6 +94,7 @@ add_executable(IrredenEngineTest
   render/entity_canvas_teardown_test.cpp
   render/entity_canvas_hitbox_test.cpp
   render/entity_id_carrier_test.cpp
+  render/fog_carrier_policy_test.cpp
   render/fog_cross_section_test.cpp
   render/fog_ghost_policy_test.cpp
   render/fog_line_of_sight_test.cpp
@@ -108,6 +110,7 @@ add_executable(IrredenEngineTest
   render/per_axis_store_frame_test.cpp
   render/frame_data_sun_layout_test.cpp
   render/gizmo_drag_reset_test.cpp
+  render/gui_canvas_routing_test.cpp
   render/gpu_compute_dispatch_test.cpp
   render/gpu_timestamp_poll_test.cpp
   render/light_volume_boundary_seed_test.cpp
@@ -213,6 +216,7 @@ add_executable(IrredenEngineTest
   world/voxel_set_serialize_test.cpp
   world/world_config_missing_table_test.cpp
   world/world_config_audio_monitor_test.cpp
+  world/world_config_gui_pixelated_test.cpp
   world/world_config_window_mode_test.cpp
   world/save_serializers_test.cpp
 )

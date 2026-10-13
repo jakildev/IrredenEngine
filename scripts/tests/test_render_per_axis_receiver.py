@@ -365,6 +365,7 @@ def overflow_overlay_harness(suffix, directory, old_gate=False):
                       normals, "const vec3 pos3D(1.f, 2.f, 3.f);",
                       "const int faceId = 4;", shadow, shadow_overlay))
     return r"""
+#include <cmath>
 #include <cstdio>
 #include <cstdint>
 #include <initializer_list>
@@ -380,6 +381,10 @@ struct vec4 {
     vec3 rgb;float a;
     vec4(vec3 v,float alpha):rgb(v),a(alpha){}
 };
+vec3 encodeUnitVectorUnorm8(vec3 v){
+    auto code=[](float x){return std::floor(x*127.5f+127.5f+.5f)/255.f;};
+    return {code(v.x),code(v.y),code(v.z)};
+}
 uint packCount=0,queryCount=0;
 vec4 packed(vec3(0),0);
 uint packColor(vec4 color){packed=color;++packCount;return 0xCEu;}
@@ -430,7 +435,7 @@ int main(){
     if(check(3,1,1,0,.25f,0,0,vec3(0)))return 1;
     if(check(3,0,1,1,.25f,0,0,vec3(0)))return 2;
     for(int mode:{1,2,9})if(check(mode,1,1,1,.25f,0,0,vec3(0)))return 3;
-    if(check(8,1,1,1,.25f,0,1,vec3(0.f,.5f,.5f)))return 4;
+    if(check(8,1,1,1,.25f,0,1,vec3(0.f,128.f/255.f,128.f/255.f)))return 4;
     if(check(3,1,1,1,.25f,1,1,vec3(1.f,0.f,1.f)))return 5;
     if(check(3,1,1,1,.999f,1,1,vec3(0)))return 6;
     if(check(3,1,0,1,.25f,0,1,vec3(0)))return 7;

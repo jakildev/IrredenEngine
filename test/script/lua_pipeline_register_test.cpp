@@ -69,6 +69,10 @@ TEST_F(LuaPipelineRegisterTest, SystemNameEnumBound) {
         static_cast<int>(IRSystem::FRAMEBUFFER_TO_SCREEN)
     );
     EXPECT_EQ(
+        lua.script("return IRSystem.SystemName.GUI_CANVAS_TO_SCREEN").get<int>(),
+        static_cast<int>(IRSystem::GUI_CANVAS_TO_SCREEN)
+    );
+    EXPECT_EQ(
         lua.script("return IRSystem.SystemName.PROPAGATE_CANVAS_PARTS").get<int>(),
         static_cast<int>(IRSystem::PROPAGATE_CANVAS_PARTS)
     );

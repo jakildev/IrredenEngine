@@ -365,5 +365,86 @@ class TestCrossRepoBlocker(unittest.TestCase):
         self.assertEqual(tasks[0]["blocked_by"], "#101")
 
 
+# A blocker, then prose that names the issue's own number among the files the
+# blocker's PR touches.
+_SELF_MENTIONING_VALUE = (
+    "#3686 (PR #4204 edits the same files: component_entity_canvas.hpp for "
+    "#4195, fog_of_war.hpp for #4197; land after it)"
+)
+
+
+class TestOwnNumberIsNotABlocker(unittest.TestCase):
+    """An issue is never its own dependency, in every lane that resolves
+    blockers: queued tasks, human:approved issues, and needs-plan issues."""
+
+    def test_open_blocker_is_reported_without_the_own_number(self):
+        tasks = [_task("#4197", _SELF_MENTIONING_VALUE)]
+        state = _state(engine_tasks=tasks, closed=[_closed_issue(4195)],
+                       merged_prs=[_merged_pr("claude/4204-x", number=4204)])
+        with patch.object(_mod, "conditional_get", _reference_state_stub({"3686": "OPEN"})):
+            resolve_blocked_by(state)
+        self.assertEqual(tasks[0]["blocked_by"], "#3686")
+        self.assertTrue(tasks[0]["has_open_blocker"])
+
+    def test_closed_blocker_leaves_the_task_unblocked(self):
+        tasks = [_task("#4197", _SELF_MENTIONING_VALUE)]
+        state = _state(engine_tasks=tasks,
+                       closed=[_closed_issue(3686), _closed_issue(4195)],
+                       merged_prs=[_merged_pr("claude/4204-x", number=4204)])
+        resolve_blocked_by(state)
+        self.assertEqual(tasks[0]["blocked_by"], "(none)")
+        self.assertFalse(tasks[0]["has_open_blocker"])
+
+    def test_the_task_issue_field_names_the_own_number(self):
+        task = {"id": "#4197", "issue": "#4197", "area": None,
+                "blocked_by": "#4197 (this very issue)"}
+        state = _state(engine_tasks=[task])
+        resolve_blocked_by(state)
+        self.assertEqual(task["blocked_by"], "(none)")
+        self.assertFalse(task["has_open_blocker"])
+
+    def test_a_value_naming_only_the_own_number_is_unblocked(self):
+        tasks = [_task("#4197", "#4197 (see the note)")]
+        state = _state(engine_tasks=tasks)
+        resolve_blocked_by(state)
+        self.assertEqual(tasks[0]["blocked_by"], "(none)")
+        self.assertFalse(tasks[0]["has_open_blocker"])
+
+    def test_prose_with_no_ref_still_leaves_the_value_unchanged(self):
+        tasks = [_task("#4197", "the auth redesign")]
+        state = _state(engine_tasks=tasks)
+        resolve_blocked_by(state)
+        self.assertEqual(tasks[0]["blocked_by"], "the auth redesign")
+
+    def test_the_declared_view_omits_the_own_number(self):
+        tasks = [_task("#4197", "#3686, #4195, #4197")]
+        state = _state(engine_tasks=tasks, closed=[_closed_issue(4195)])
+        with patch.object(_mod, "conditional_get", _reference_state_stub({"3686": "OPEN"})):
+            resolve_blocked_by(state)
+        self.assertEqual(tasks[0]["blocked_by"], "#3686")
+        self.assertNotIn("blocked_by_declared", tasks[0])
+
+    def test_human_approved_and_needs_plan_lanes_do_not_block_on_themselves(self):
+        body = f"**Blocked by:** {_SELF_MENTIONING_VALUE}\n"
+        state = _state(closed=[_closed_issue(3686), _closed_issue(4195)],
+                       merged_prs=[_merged_pr("claude/4204-x", number=4204)])
+        state["repos"]["engine"]["human_approved"] = [{"number": 4197, "body": body}]
+        state["repos"]["engine"]["needs_plan"] = [{"number": 4197, "body": body}]
+        _mod.resolve_human_approved_blockers(state)
+        _mod.resolve_needs_plan_blocked_by(state)
+        self.assertFalse(state["repos"]["engine"]["human_approved"][0]["blocked"])
+        self.assertFalse(state["repos"]["engine"]["needs_plan"][0]["blocked"])
+
+    def test_a_self_only_value_does_not_hold_either_lane(self):
+        body = "**Blocked by:** #4197 (see the note)\n"
+        state = _state()
+        state["repos"]["engine"]["human_approved"] = [{"number": 4197, "body": body}]
+        state["repos"]["engine"]["needs_plan"] = [{"number": 4197, "body": body}]
+        _mod.resolve_human_approved_blockers(state)
+        _mod.resolve_needs_plan_blocked_by(state)
+        self.assertFalse(state["repos"]["engine"]["human_approved"][0]["blocked"])
+        self.assertFalse(state["repos"]["engine"]["needs_plan"][0]["blocked"])
+
+
 if __name__ == "__main__":
     unittest.main()

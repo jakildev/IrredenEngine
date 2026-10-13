@@ -5,6 +5,7 @@
 #include <irreden/ir_input.hpp>
 #include <irreden/ir_audio.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
+#include <irreden/render/gui_canvas.hpp>
 #include <irreden/profile/profile_report.hpp>
 #include <irreden/video/auto_screenshot.hpp>
 #include <irreden/input/components/component_entity_event_handlers.hpp>
@@ -65,6 +66,7 @@ World::World(
     );
     IRRender::setVoxelRenderSubdivisions(m_worldConfig["voxel_render_subdivisions"].get_integer());
     IRRender::setGuiScale(m_worldConfig["gui_scale"].get_integer());
+    IRPrefab::GuiCanvas::setPixelated(m_worldConfig["gui_pixelated"].get_boolean());
     IRRender::setHoveredTrixelVisible(m_worldConfig["hovered_trixel_visible"].get_boolean());
     IRProfile::CPUProfiler::instance().setEnabled(m_worldConfig["profiling_enabled"].get_boolean());
     IRRender::gpuStageTiming().enabled_ = m_worldConfig["gpu_stage_timing"].get_boolean();
@@ -299,6 +301,12 @@ void World::gameLoop() {
                 ++updateTicksThisFrame;
             }
             render();
+            // Histogram frame boundary. It sits outside render() so render()'s
+            // own IR_PROFILE_SCOPE has exited and lands in the frame it
+            // measured; the HUD reads the swapped "last frame" map next frame,
+            // so display state is stable across that frame's
+            // INPUT/UPDATE/RENDER cycle.
+            IRProfile::cpuFrameHistogram().endFrame();
 
             if (m_frameTimingEnabled) {
                 auto elapsed = Clock::now() - frameStart;
@@ -390,12 +398,6 @@ void World::render() {
     m_videoManager.render();
     m_renderer.presentFrame();
 
-    // Frame-aligned histogram swap: every IR_PROFILE_SCOPE that ran since the
-    // previous render() landed in the "current" map; the HUD reads the
-    // newly-swapped "last frame" map next frame, so display state is stable
-    // across the entire next-frame INPUT/UPDATE/RENDER cycle.
-    IRProfile::cpuFrameHistogram().endFrame();
-
     m_timeManager.endEvent<IRTime::RENDER>();
 }
 
@@ -421,6 +423,10 @@ void World::enableFrameTiming(bool enabled) {
         IRRender::voxelCullAccumulator().reset();
         IRRender::renderRunWitness().reset();
         IRRender::resetGpuStageAccumulators();
+        // The profiled window owns the IR_PROFILE_SCOPE histogram so its rows
+        // reach the report without the HUD. Disabling leaves `enabled_` alone.
+        IRProfile::cpuFrameHistogram().enabled_ = true;
+        IRProfile::cpuFrameHistogram().resetRun();
     }
 }
 
@@ -484,6 +490,7 @@ void World::buildAndWriteProfileReport() {
           std::pair{"PerAxisCanvas::Unpark", IRRender::renderRunWitness().perAxisUnpark_}}) {
         report.cpuPhases_.push_back({name, phase.totalMs_, phase.maxMs_, phase.sampleCount_});
     }
+    IRProfile::appendCpuScopePhases(report, IRProfile::cpuFrameHistogram());
 
     const auto &cull = IRRender::voxelCullAccumulator();
     report.voxelCullStats_.visibleSum_ = cull.visibleSum_;

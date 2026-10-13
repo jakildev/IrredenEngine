@@ -221,10 +221,11 @@ translation re-injects Git's mingw64 when the Win32 child spawns.
 > uses `//c` internally. Don't wrap a no-space path in `"…"` inside the
 > `//c` string — the quotes leak into the argument.
 
-Not applicable in WSL. The user's VSCode terminal lacks Git's mingw64 on
-PATH, so builds work there unconditionally — a Bash-tool-only failure on
-Windows-native is checked with the PATH prefix before anything else is
-blamed.
+Not applicable in WSL. The workspace's default integrated terminal is the
+Git Bash login profile in `.vscode/settings.json`, whose PATH puts
+`C:\msys64\mingw64\bin` ahead of Git's mingw64, so builds work there
+unconditionally — a Bash-tool-only failure on Windows-native is checked
+with the PATH prefix before anything else is blamed.
 
 ### Debugging under gdb (Windows only)
 

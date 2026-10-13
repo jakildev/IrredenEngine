@@ -33,9 +33,13 @@ layout (std430, binding = 25) readonly buffer SpriteInstancesBuffer {
 
 void main() {
     SpriteInstance s = instances[gl_InstanceID];
-    vec2 quadFrac = aPos + vec2(0.5);            // [0, 1] from top-left
+    // quadFrac and aTexCoords are the same [0, 1] fraction on every vertex,
+    // and its y = 0 corner is the quad's bottom edge on screen.
+    vec2 quadFrac = aPos + vec2(0.5);
     vec2 worldXY  = s.screenPosSize.xy + quadFrac * s.screenPosSize.zw;
     gl_Position   = projection * vec4(worldXY, 0.0, 1.0);
-    vTexCoords    = mix(s.uvRect.xy, s.uvRect.zw, aTexCoords);
+    // uvRect's v0 is the frame's top row in the atlas image, so V is
+    // inverted: the bottom edge samples v1 and the top edge samples v0.
+    vTexCoords    = mix(s.uvRect.xy, s.uvRect.zw, vec2(aTexCoords.x, 1.0 - aTexCoords.y));
     vTint         = s.tintRgba;
 }
