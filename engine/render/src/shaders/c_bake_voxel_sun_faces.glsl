@@ -92,7 +92,10 @@ void main() {
         const vec3 worldAxis = rotateByQuat(normal, viewToWorld);
         const bool positive = dot(worldAxis, sunDirection.xyz) > 0.0;
         const int faceId = axis * 2 + (positive ? 1 : 0);
-        if (!faceIsExposed(flags, faceId)) continue;
+        if (!fogVoxelFaceCastsSunShadow(
+                faceIsExposed(flags, faceId), worldCenter,
+                positive ? worldAxis : -worldAxis, fogBody,
+                fogCeilingEnabled.x)) continue;
         vec3 corner = position - kVoxelRasterCellAnchor;
         corner[axis] += positive ? 1.0 : 0.0;
         vec3 edgeU = vec3(0.0);

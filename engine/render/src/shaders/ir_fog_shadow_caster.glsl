@@ -36,3 +36,15 @@ bool fogFieldCastsSunShadow(vec3 worldPos, bool fogBody, int ceilingEnabled) {
     }
     return !covered;
 }
+
+// A retained voxel gains a boundary where its formerly occupied neighbor was
+// cut by the same FIELD policy. Existing exposed faces and BODY are unchanged.
+bool fogVoxelFaceCastsSunShadow(
+    bool exposed, vec3 worldCenter, vec3 outwardNormal, bool fogBody,
+    int ceilingEnabled
+) {
+    if (exposed) return true;
+    if (fogBody || ceilingEnabled == 0) return false;
+    return !fogFieldCastsSunShadow(
+        worldCenter + outwardNormal, false, ceilingEnabled);
+}
