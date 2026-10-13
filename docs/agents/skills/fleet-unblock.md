@@ -110,6 +110,14 @@ needs-human items, and the untriaged set through the triage sweep. Each
 executed row gets its citation; each non-granted row gets its one-line
 recommendation and command in the report.
 
+The staging-file write and `fleet-triage-sweep apply` are two separate
+tool calls, each one bare command. A call that chains them, or wraps
+either in `cd &&`, a heredoc or a pipe, is not matched by the repo's
+allow rules; the harness's permission classifier sees the compound
+string and refuses it, and the sweep's audit log never runs. The same
+holds for every `gh` write this flow makes: one command per call, text
+through `--body-file`.
+
 ## Step 5 — Create the next work
 
 After the unblocks, the state says what is missing:

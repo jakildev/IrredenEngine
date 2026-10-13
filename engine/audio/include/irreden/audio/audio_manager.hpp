@@ -4,6 +4,7 @@
 #include <irreden/audio/ir_audio_types.hpp>
 #include <irreden/audio/audio.hpp>
 #include <irreden/audio/audio_playback.hpp>
+#include <irreden/audio/midi_clock.hpp>
 #include <irreden/audio/midi_in.hpp>
 #include <irreden/audio/midi_out.hpp>
 #include <irreden/audio/synthetic_capture_source.hpp>
@@ -36,6 +37,9 @@ class AudioManager {
     inline MidiOut &getMidiOut() {
         return m_midiOut;
     }
+    inline MidiClock &getMidiClock() {
+        return m_midiClock;
+    }
     inline Audio &getAudio() {
         return m_audio;
     }
@@ -67,6 +71,9 @@ class AudioManager {
     SyntheticAudioCaptureSource m_syntheticAudioCaptureSource;
     MidiIn m_midiIn;
     MidiOut m_midiOut;
+    // Declared after m_midiOut: its thread writes through m_midiOut and must
+    // be joined (destroyed) first.
+    MidiClock m_midiClock;
     AudioPlayback m_audioPlayback;
     // Single observer fired on every outbound sendMidiMessage. Lives for this
     // AudioManager's lifetime; a captured sol::function inside it must outlive
