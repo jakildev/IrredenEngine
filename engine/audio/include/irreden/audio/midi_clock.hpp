@@ -13,21 +13,23 @@
 namespace IRAudio {
 
 // MIDI beat clock on one output port: START, then TIMING_CLOCK at
-// kMidiClockPulsesPerQuarterNote from its own thread, then STOP. The send
-// callback is injected so the pacing and the transport order are testable
-// without a device; AudioManager supplies one that writes through MidiOut.
+// kMidiClockPulsesPerQuarterNote from its own thread, then STOP. Both
+// callbacks are injected so the pacing and the transport order are testable
+// without a device; AudioManager supplies a MidiOut writer and its outbound
+// observer.
 //
 // Threading contract: START and STOP leave on the thread that calls start()
-// / stop(), so a send callback may fan them out to the outbound observer
-// (Lua). TIMING_CLOCK leaves on the clock thread, where the callback must
-// touch neither the observer nor Lua. The callback is also called from both
-// threads at once with the main thread's own note/CC sends, so the port
-// writer behind it serialises (MidiOut holds one mutex over its sends).
+// / stop(), to observeTransport first and then to write — the order every
+// other outbound message takes through IRAudio::sendMidiMessage. TIMING_CLOCK
+// leaves on the clock thread through write alone, so the observer (which may
+// run Lua) never runs there. write is therefore called from both threads, at
+// once with the main thread's own note/CC sends, and the port writer behind
+// it serialises (MidiOut holds one mutex over its sends).
 class MidiClock {
   public:
     using RealtimeSend = std::function<void(int portIndex, unsigned char status)>;
 
-    explicit MidiClock(RealtimeSend send);
+    explicit MidiClock(RealtimeSend write, RealtimeSend observeTransport = {});
     ~MidiClock();
     MidiClock(const MidiClock &) = delete;
     MidiClock &operator=(const MidiClock &) = delete;
@@ -37,8 +39,11 @@ class MidiClock {
     // there (STOP) first. A bpm outside [kMidiClockMinBpm, kMidiClockMaxBpm]
     // or not finite is refused: returns false, nothing sent, state unchanged.
     bool start(int portIndex, double bpm);
-    // Retunes a running clock; the next pulse already paces at the new rate.
-    // Returns false (unchanged) when stopped or the bpm is out of range.
+    // Retunes a running clock. The pending pulse is re-timed from the last one
+    // sent, so a faster tempo does not wait out the old interval (a pulse
+    // already overdue at the new rate leaves at once) and a slower one
+    // stretches it. Returns false (unchanged) when stopped or the bpm is out
+    // of range.
     bool setBpm(double bpm);
     // Ends the pulses (joins the thread) and sends STOP. No-op when stopped.
     void stop();
@@ -51,8 +56,11 @@ class MidiClock {
 
   private:
     void pulseLoop();
+    void retune(double bpm);
+    void sendTransport(int portIndex, unsigned char status);
 
-    RealtimeSend m_send;
+    RealtimeSend m_write;
+    RealtimeSend m_observeTransport;
     std::atomic<bool> m_running = false;
     std::atomic<int> m_portIndex = -1;
     std::atomic<double> m_bpm = 0.0;

@@ -79,9 +79,11 @@ void clearOutboundMidiObserver();
 /// retunes; on another port it stops there first. Returns false (one warning,
 /// nothing sent) for a port that is not open or a bpm outside
 /// [@ref kMidiClockMinBpm, @ref kMidiClockMaxBpm]. START and STOP reach the
-/// outbound observer; the pulses do not (they leave on the clock thread).
+/// outbound observer and then the port, as @ref sendMidiMessage does; the
+/// pulses reach the port alone (they leave on the clock thread).
 bool startMidiClock(int portIndex, double bpm);
-/// Retunes the running clock; false (unchanged) when stopped or out of range.
+/// Retunes the running clock, re-timing the pending pulse from the last one
+/// sent; false (unchanged) when stopped or out of range.
 bool setMidiClockBpm(double bpm);
 /// Ends the pulses, then sends STOP. No-op when no clock runs. `World::end()`
 /// calls it after the shutdown NOTE_OFFs (the pulse count is logged there)

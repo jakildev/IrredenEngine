@@ -178,8 +178,8 @@ inline void bindAudioApi(LuaScript &script) {
     };
     audio["clearMidiObserver"] = []() { IRAudio::clearOutboundMidiObserver(); };
 
-    // MIDI beat clock on one open output port (engine/audio/CLAUDE.md
-    // §"MIDI clock"): START, pulses from an engine thread, STOP.
+    // MIDI beat clock on one open output port (IRAudio::startMidiClock):
+    // START, pulses from an engine thread, STOP.
     audio["startMidiClock"] = [](lua_Integer portIndex, double bpm) {
         return IRAudio::startMidiClock(static_cast<int>(portIndex), bpm);
     };

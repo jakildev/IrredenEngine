@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include "../common/wait_for.hpp"
+
 #include <irreden/ir_audio.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_system.hpp>
@@ -9,12 +11,15 @@
 #include <sol/sol.hpp>
 
 #include <string>
+#include <thread>
 #include <vector>
 
 // The Lua MIDI-clock surface, headless: with no output port open every call
 // refuses or no-ops (never starts a thread against a missing port), the
 // system status bytes are bound by name, and a system message reaches a Lua
-// observer with its whole status byte and no channel.
+// observer with its whole status byte and no channel. Also the AudioManager's
+// own clock wiring: its transport reaches the outbound observer, its pulses
+// do not.
 
 namespace {
 
@@ -88,6 +93,38 @@ TEST_F(LuaAudioMidiClockTest, HeadlessStartIsRefusedAndTheRestNoOps) {
     EXPECT_EQ(luaInt("pulses"), 0);
     EXPECT_EQ(luaInt("observed"), 0); // nothing left, not even a START
     EXPECT_FALSE(IRAudio::isMidiClockRunning());
+}
+
+// Driven on the clock itself, past the open-port check in startMidiClock: the
+// port writes warn and drop, the observer still sees the transport.
+TEST_F(LuaAudioMidiClockTest, ManagerClockShowsTheObserverTransportOnTheCallerThreadOnly) {
+    constexpr int kUnopenedPort = 7;
+    struct Observed {
+        unsigned char status;
+        int portIndex;
+        std::thread::id thread;
+        bool operator==(const Observed &) const = default;
+    };
+    std::vector<Observed> observed;
+    IRAudio::setOutboundMidiObserver(
+        [&observed](const IRComponents::C_MidiMessage &message, int portIndex) {
+            observed.push_back(Observed{message.status_, portIndex, std::this_thread::get_id()});
+        }
+    );
+
+    IRAudio::MidiClock &clock = m_audio_manager.getMidiClock();
+    ASSERT_TRUE(clock.start(kUnopenedPort, IRAudio::kMidiClockMaxBpm));
+    const bool pulsed = IRTest::waitFor([&clock]() { return clock.pulsesSent() >= 3; });
+    clock.stop();
+    IRAudio::clearOutboundMidiObserver();
+
+    const std::thread::id caller = std::this_thread::get_id();
+    const std::vector<Observed> expected{
+        {kMidiStatus_START, kUnopenedPort, caller},
+        {kMidiStatus_STOP, kUnopenedPort, caller},
+    };
+    EXPECT_TRUE(pulsed);
+    EXPECT_EQ(observed, expected);
 }
 
 TEST_F(LuaAudioMidiClockTest, SystemMessageReachesTheObserverWholeWithNoChannel) {
