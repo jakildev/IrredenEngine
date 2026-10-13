@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from shader_contract_helpers import extract_function
+from shader_contract_helpers import extract_block, extract_function
 from test_render_sdf_surface_contract import CASES
 
 ROOT = Path(__file__).resolve().parents[2]
