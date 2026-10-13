@@ -238,11 +238,12 @@ VoxelFaceSelect selectVoxelFace(
         sel.isCutFace = sel.keepFace;
     }
 
-    const bool ceilingActive = visionCircleCount > 0 &&
+    // BODY never needs ceiling selection, including the source scan.
+    const bool ceilingActive = (reserved & 8u) == 0u && visionCircleCount > 0 &&
         (isDetachedCanvasIn < 0.5 ||
          (perAxisRouteIn == 0 && detachedWorldReceiveIn.w != 0.0)) &&
         fogAnyCeilingEnabled(visionCircleCeilings, visionCircleCount);
-    if (ceilingActive && (reserved & 8u) == 0u) {
+    if (ceilingActive) {
         const vec3 worldPosition = isDetachedCanvasIn > 0.5
             ? rotateByQuat(voxelPosition.xyz, detachedViewToWorldIn) + detachedWorldReceiveIn.xyz
             : voxelPosition.xyz;
