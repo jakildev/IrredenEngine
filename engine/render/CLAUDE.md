@@ -185,6 +185,10 @@ Changes with no visual effect (docs, tests, mechanical, build-only) need no capt
   sweep, and the sun-map bake and receiver share `kSunShadowMaxDistance`. Read
   the [coverage design](../../docs/design/sun-shadow-bake-coverage.md) before
   changing the bake kernel or splat controls.
+- Settled-cardinal voxel surface queries require positive producer provenance
+  and finite caster coverage; preserve other producers' receiver contracts.
+  The [surface-sampling model](../../docs/design/surface-shadow-sampling.md#settled-cardinal-voxel-receivers)
+  owns the reconstruction, carrier and cascade-depth contract.
 
 ## Performance and lifecycle pitfalls
 

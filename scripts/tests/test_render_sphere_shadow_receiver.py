@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from shader_contract_helpers import extract_block, extract_function
+from shader_contract_helpers import extract_block, extract_function, replace_once
 from test_render_shape_receiver import PREAMBLE
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -18,6 +18,7 @@ def cpp(source):
     source = re.sub(r"\bout (vec3|float) (\w+)", r"\1& \2", source)
     source = source.replace("thread ", "").replace("constant ", "const ")
     source = source.replace("float3", "vec3").replace("float2", "vec2")
+    source = source.replace("uint2", "uvec2")
     source = source.replace("int3", "ivec3").replace("int2", "ivec2")
     source = source.replace("shape.params.x", "shape.params.xyz.x")
     source = source.replace("const ShapeProjectionData &receiverFrame,", "")
@@ -30,7 +31,8 @@ def cpp(source):
     source = re.sub(
         r"receiverFrame,\s*receiverShapes,\s*receiverOwners,\s*receiverTiles,", "", source
     )
-    return source.replace("sunFrameData.", "").replace(", sunFrameData, sunDepthBuf", "")
+    return (source.replace("sunFrameData.", "").replace("frameData.", "")
+            .replace(", sunFrameData, sunDepthBuf", ""))
 
 
 HARNESS = (
@@ -50,10 +52,26 @@ ShapeTileDescriptor receiverTiles[3];
 uint receiverOwners[4];
 ivec2 pixel(1,1),size(2,2);
 vec3 pos3D(91),normal(93),lastPosition,lastNormal;
-vec4 sunCasterViewToWorld;
+vec4 sunCasterViewToWorld,sunBasisU;
+using uvec2=V2<uint>;
+uvec2 pixelEntityId(123u,1u<<19u);
+int entityReads=0,cardinalCalls=0,sphereCalls=0;
+struct EntitySample {uvec2 xy;};
+struct EntityImage {
+ template<class T>EntitySample read(T){++entityReads;return {pixelEntityId};}
+} trixelEntityIds;
+EntitySample imageLoad(EntityImage& image,ivec2 p){return image.read(p);}
+float residualYaw=0;
+int encoded=984,cardinalIndex=0;
+ivec2 trixelCanvasOffsetZ1(0,0),voxelRenderOptions(1,8);
+vec2 frameCanvasOffset(0,0);
+vec3 cardinalVoxelSurfaceCenter(ivec2,int,ivec2,vec2,ivec2,int){
+ ++cardinalCalls;return {7,8,9};
+}
 int rawDepth=123,shadowsEnabled=1,surfaceCalls=0,legacyCalls=0;
 float worldSurfaceSunShadowFactor(vec3 p,vec3 n,float depth,vec4){
- lastPosition=p;lastNormal=n;surfaceCalls++;return depth==123?0.25f:-1.f;
+ lastPosition=p;lastNormal=n;surfaceCalls++;
+ return depth==(cardinalCalls?24.f:123.f)?0.25f:-1.f;
 }
 float worldSunShadowFactor(vec3 p,vec3 n,float depth){
  lastPosition=p;lastNormal=n;legacyCalls++;return depth==123?0.75f:-1.f;
@@ -125,11 +143,20 @@ int main(){
   receiverOwners[3]=key;
  }
  receiverFrame.shapeCount=1;
- for(int disabled=0;disabled<2;disabled++)for(int supported=0;supported<2;supported++){
+ for(int disabled=0;disabled<2;disabled++)for(int supported=0;supported<2;supported++)
+ for(bool tagged:{false,true}){
   shadowsEnabled=disabled?0:1;receiverShapes[2].shapeType=supported?SHAPE_SPHERE:9;
+  pixelEntityId.y=tagged?1u<<18u:1u<<19u;
+  entityReads=cardinalCalls=sphereCalls=0;
   surfaceCalls=legacyCalls=0;pos3D=vec3(91);normal=vec3(93);
   float result=route();
+  if(entityReads!=int(!disabled)||cardinalCalls!=int(!disabled&&tagged)||
+     sphereCalls!=int(!disabled&&!tagged))return 18;
   if(disabled){if(result!=1||surfaceCalls||legacyCalls)return 7;}
+  else if(tagged){
+   if(result!=.25f||surfaceCalls!=1||legacyCalls||
+      !close(lastPosition,vec3(7,8,9))||!close(lastNormal,normal))return 19;
+  }
   else if(supported){
    vec3 expectedPosition(-(4.f+.5f/8.f)/sqrt(3.f));
    if(result!=.25f||surfaceCalls!=1||legacyCalls!=0||!close(lastNormal,normal)||
@@ -153,7 +180,7 @@ int main(){
  if(!sdfRaySphere(frontPoint+sun*12.f-blocker,-sun,.75f,0.f,12.f,hit)||
     abs(12.f-hit-6.75f)>.0001f)return 16;
  if(sdfRaySphere(frontPoint+sun*12.f-blocker+vec3(0,2,0),-sun,.75f,0.f,12.f,hit))return 17;
- printf("sphere_receivers=%d misses=%d owner_keys=384 route_controls=4\n",hits,misses);
+ printf("sphere_receivers=%d misses=%d owner_keys=384 route_controls=8\n",hits,misses);
  return hits>0&&misses>0?0:11;
 }
 """
@@ -176,15 +203,26 @@ class SphereShadowReceiverTest(unittest.TestCase):
                     "cardinalYawCosSin",
                     "pos3DtoPos2DIsoYawed",
                     "isoPositionToPos3D",
+                    "pos3DtoDistance",
+                    "decodeEntityIdCardinalVoxel",
                 )
             )
+            functions = re.search(
+                r"(?:const|constant) uint kEntityIdCardinalVoxelMaskInHighWord = [^;]+;",
+                common).group() + "\n" + functions
             functions += "\n" + "\n".join(
                 extract_function(receiver, name)
                 for name in ("shapeYawCosSin", "shapeRenderedCenter")
             )
             origin_type = "ivec2" if suffix == "glsl" else "int2"
             functions += "\n" + extract_block(receiver, f"{origin_type} shapeRenderedOriginIso")
-            functions += "\n" + extract_function(roots, "sdfRaySphere") + "\n" + helper
+            functions += "\n" + extract_function(roots, "sdfRaySphere") + "\n" + helper.replace(
+                "selectedShapeSphereShadowReceiver", "selectedShapeSphereShadowReceiverImpl")
+            sphere_spy = """
+bool selectedShapeSphereShadowReceiver(ivec2 p,int width,vec3& position){
+ ++sphereCalls;return selectedShapeSphereShadowReceiverImpl(p,width,position);
+}
+"""
             route = compute[compute.index("    float factor = 1.0;") :]
             route = route[
                 : route.index("    imageStore" if suffix == "glsl" else "    canvasSunShadow.write")
@@ -193,6 +231,7 @@ class SphereShadowReceiverTest(unittest.TestCase):
             source = (
                 HARNESS
                 + cpp(functions)
+                + sphere_spy
                 + "\nfloat route(){\n"
                 + cpp(route)
                 + "return factor;}\n"
@@ -225,13 +264,20 @@ class SphereShadowReceiverTest(unittest.TestCase):
                     "float factor = 1.0;",
                     "float factor = 1.0; normal = vec3(0);",
                 ),
+                "voxel_provenance_ignored": (
+                    "return (rawId.y & kEntityIdCardinalVoxelMaskInHighWord) != 0u;",
+                    "return false;",
+                ),
+                "voxel_queries_sphere": (
+                    "const vec3 surface = cardinalVoxelSurfaceCenter(",
+                    "vec3 unwanted; selectedShapeSphereShadowReceiver(pixel, size.x, unwanted);"
+                    " const vec3 surface = cardinalVoxelSurfaceCenter(",
+                ),
             }
             with tempfile.TemporaryDirectory() as directory:
                 for name, mutation in [("production", None), *mutations.items()]:
                     with self.subTest(backend=suffix, variant=name):
-                        altered = source if mutation is None else source.replace(*mutation)
-                        if mutation is not None:
-                            self.assertNotEqual(altered, source, f"no-op mutation {name}")
+                        altered = source if mutation is None else replace_once(source, *mutation)
                         path = Path(directory) / "probe.cpp"
                         path.write_text(altered)
                         binary = Path(directory) / "probe"

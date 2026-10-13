@@ -33,7 +33,7 @@ struct FrameDataSun {
     float sunAmbient;
     int shadowsEnabled;
     int aoEnabled;
-    float4 sunBasisU;
+    float4 sunBasisU; // xyz: sun basis; w: finite caster coverage
     float4 sunBasisV;
     float2 sunBufferOriginUV;
     float2 sunBufferTexelSize;

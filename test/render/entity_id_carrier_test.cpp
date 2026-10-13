@@ -82,3 +82,31 @@ TEST(EntityIdCarrier, AnUnflaggedIdReadsNoFogBodyAndFactorZero) {
     EXPECT_FALSE(IRRender::decodeCarrierFogBody(packed));
     EXPECT_EQ(IRRender::decodeFogBodyFactor(packed), 0u);
 }
+
+TEST(EntityIdCarrier, CardinalVoxelProvenancePreservesEveryOtherCarrier) {
+    const std::uint64_t maximumId =
+        (std::uint64_t(IRRender::kEntityIdHighWordMask) << 32) | 0xFFFFFFFFull;
+    for (const auto id : {kId, maximumId}) {
+        for (std::uint32_t priority = 0; priority < 4; ++priority) {
+            for (std::uint32_t factor = 0; factor < 256; ++factor) {
+                const std::uint32_t flags =
+                    IRRender::kEntityIdFogBodyMaskInHighWord |
+                    IRRender::kEntityIdCutFaceMaskInHighWord |
+                    IRRender::kEntityIdAnalyticSurfaceMaskInHighWord |
+                    (factor << IRRender::kEntityIdFogBodyFactorShiftInHighWord) |
+                    (priority << IRRender::kEntityIdPriorityShiftInHighWord);
+                const auto plain = carrierWords(id, flags);
+                EXPECT_FALSE(IRRender::decodeCarrierCardinalVoxel(plain));
+                const auto marked =
+                    carrierWords(id, flags | IRRender::kEntityIdCardinalVoxelMaskInHighWord);
+                ASSERT_TRUE(IRRender::decodeCarrierCardinalVoxel(marked));
+                ASSERT_EQ(IRRender::decodeCarrierEntityId(marked), id);
+                ASSERT_EQ(IRRender::decodeCarrierPriority(marked), priority);
+                ASSERT_TRUE(IRRender::decodeCarrierFogBody(marked));
+                ASSERT_EQ(IRRender::decodeFogBodyFactor(marked), factor);
+            }
+        }
+    }
+    EXPECT_EQ(IRRender::kEntityIdCardinalVoxelMaskInHighWord, 1u << 18);
+    EXPECT_EQ(IRRender::kEntityIdHighWordMask & IRRender::kEntityIdCardinalVoxelMaskInHighWord, 0u);
+}

@@ -221,10 +221,12 @@ constant uint kEntityIdFogBodyFactorMaskInHighWord = 0xFFu << kEntityIdFogBodyFa
 // as opposed to a voxel raster point on the lower-corner cell lattice. Rides
 // the same masking chokepoint.
 constant uint kEntityIdAnalyticSurfaceMaskInHighWord = 0x1u << 19u;
+// Positive provenance of a settled non-detached voxel raster sample.
+constant uint kEntityIdCardinalVoxelMaskInHighWord = 0x1u << 18u;
 constant uint kEntityIdHighWordMask =
     ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord |
       kEntityIdFogBodyMaskInHighWord | kEntityIdFogBodyFactorMaskInHighWord |
-      kEntityIdAnalyticSurfaceMaskInHighWord);
+      kEntityIdAnalyticSurfaceMaskInHighWord | kEntityIdCardinalVoxelMaskInHighWord);
 inline uint decodePriority(uint2 rawId) {
     return (rawId.y >> kEntityIdPriorityShiftInHighWord) & 0x3u;
 }
@@ -243,6 +245,9 @@ inline uint decodeFogBodyFactor(uint2 rawId) {
 }
 inline bool decodeAnalyticSurface(uint2 rawId) {
     return (rawId.y & kEntityIdAnalyticSurfaceMaskInHighWord) != 0u;
+}
+inline bool decodeEntityIdCardinalVoxel(uint2 rawId) {
+    return (rawId.y & kEntityIdCardinalVoxelMaskInHighWord) != 0u;
 }
 inline uint2 decodeEntityId(uint2 rawId) {
     return uint2(rawId.x, rawId.y & kEntityIdHighWordMask);
@@ -266,6 +271,10 @@ inline uint2 encodeEntityIdFogBody(uint2 packedId, bool isFogBody, uint factor) 
                                 ((factor & 0xFFu) << kEntityIdFogBodyFactorShiftInHighWord))
         : packedId;
 }
+inline uint2 encodeEntityIdCardinalVoxel(uint2 packedId) {
+    return uint2(packedId.x, packedId.y | kEntityIdCardinalVoxelMaskInHighWord);
+}
+
 // Set the analytic-surface flag on an ALREADY priority-encoded id — GLSL twin.
 inline uint2 encodeEntityIdAnalyticSurface(uint2 packedId) {
     return uint2(packedId.x, packedId.y | kEntityIdAnalyticSurfaceMaskInHighWord);

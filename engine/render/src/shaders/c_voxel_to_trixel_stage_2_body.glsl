@@ -418,6 +418,10 @@ void main() {
         return;
     }
 
+    if (isDetachedCanvas <= 0.5 && residualYaw == 0.0) {
+        packedEntityId = encodeEntityIdCardinalVoxel(packedEntityId);
+    }
+
     // Depth-only shadow-feeder path. On the cardinal single-canvas world route
     // (perAxisRoute == 0 here), a voxel whose cardinal iso position lies outside
     // the un-widened visible viewport but inside the shadow-feeder-widened cull
