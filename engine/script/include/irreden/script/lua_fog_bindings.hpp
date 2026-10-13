@@ -133,6 +133,40 @@ inline std::uint64_t requireFogTimeMs(sol::object value, const char *function, s
     );
 }
 
+/// An `IRFog.Face` value: one of the six `IRMath::FaceId` faces; `NONE` and
+/// anything non-integral or out of range are rejected.
+inline IRMath::FaceId requireFogFace(sol::object value, const char *function, std::size_t index) {
+    const std::string message = fogArgumentName(function, index) + " must be an IRFog.Face value";
+    if (value.get_type() != sol::type::number) {
+        throw std::invalid_argument(message);
+    }
+    const double number = value.as<double>();
+    if (!(number >= 0.0 && number <= static_cast<double>(IRMath::FaceId::Z_POS))) {
+        throw std::invalid_argument(message);
+    }
+    const auto raw = static_cast<lua_Integer>(number);
+    if (static_cast<double>(raw) != number) {
+        throw std::invalid_argument(message);
+    }
+    switch (raw) {
+    case static_cast<lua_Integer>(IRMath::FaceId::X_NEG):
+        return IRMath::FaceId::X_NEG;
+    case static_cast<lua_Integer>(IRMath::FaceId::X_POS):
+        return IRMath::FaceId::X_POS;
+    case static_cast<lua_Integer>(IRMath::FaceId::Y_NEG):
+        return IRMath::FaceId::Y_NEG;
+    case static_cast<lua_Integer>(IRMath::FaceId::Y_POS):
+        return IRMath::FaceId::Y_POS;
+    case static_cast<lua_Integer>(IRMath::FaceId::Z_NEG):
+        return IRMath::FaceId::Z_NEG;
+    case static_cast<lua_Integer>(IRMath::FaceId::Z_POS):
+        return IRMath::FaceId::Z_POS;
+    default:
+        break;
+    }
+    throw std::invalid_argument(message);
+}
+
 inline IRPrefab::Fog::ExploredPolicy
 requireFogExploredPolicy(sol::object value, const char *function, std::size_t index) {
     if (value.get_type() != sol::type::number) {
@@ -476,6 +510,34 @@ bindFog(LuaScript &script, FogVisionTargetResolver resolveTarget = activeFogVisi
             channels
         );
     };
+    fog["evalRevealSurface"] = [](sol::variadic_args args) {
+        requireFogArity("evalRevealSurface", args.size(), 3, 4);
+        const std::uint32_t channels =
+            optionalFogUint32(args, 3, IRComponents::kFogChannelDefault, "evalRevealSurface");
+        const IRPrefab::Fog::RevealSurfaceSample sample = IRPrefab::Fog::evalActiveRevealSurface(
+            IRMath::vec3(
+                requireFogFloat(args[0], "evalRevealSurface", 0),
+                requireFogFloat(args[1], "evalRevealSurface", 1),
+                requireFogFloat(args[2], "evalRevealSurface", 2)
+            ),
+            channels
+        );
+        return std::make_tuple(sample.state_, sample.styledBand_);
+    };
+    fog["evalRevealFace"] = [](sol::variadic_args args) {
+        requireFogArity("evalRevealFace", args.size(), 4, 5);
+        const IRMath::vec3 facePoint(
+            requireFogFloat(args[0], "evalRevealFace", 0),
+            requireFogFloat(args[1], "evalRevealFace", 1),
+            requireFogFloat(args[2], "evalRevealFace", 2)
+        );
+        const IRMath::FaceId face = requireFogFace(args[3], "evalRevealFace", 3);
+        const std::uint32_t channels =
+            optionalFogUint32(args, 4, IRComponents::kFogChannelDefault, "evalRevealFace");
+        const IRPrefab::Fog::RevealSurfaceSample sample =
+            IRPrefab::Fog::evalActiveRevealFace(facePoint, face, channels);
+        return std::make_tuple(sample.state_, sample.styledBand_);
+    };
     fog["lineOfSight"] = [](sol::variadic_args args) {
         requireFogArity("lineOfSight", args.size(), 6, 6);
         float coordinates[6];
@@ -678,6 +740,16 @@ bindFog(LuaScript &script, FogVisionTargetResolver resolveTarget = activeFogVisi
     IR_BIND_FOG_POLICY(DECAY);
 #undef IR_BIND_FOG_POLICY
     fog["ExploredPolicy"] = exploredPolicy;
+    sol::table face = lua.create_table();
+#define IR_BIND_FOG_FACE(name) face[#name] = static_cast<lua_Integer>(IRMath::FaceId::name)
+    IR_BIND_FOG_FACE(X_NEG);
+    IR_BIND_FOG_FACE(X_POS);
+    IR_BIND_FOG_FACE(Y_NEG);
+    IR_BIND_FOG_FACE(Y_POS);
+    IR_BIND_FOG_FACE(Z_NEG);
+    IR_BIND_FOG_FACE(Z_POS);
+#undef IR_BIND_FOG_FACE
+    fog["Face"] = face;
     sol::table channel = lua.create_table();
     channel["DEFAULT"] = static_cast<lua_Integer>(IRComponents::kFogChannelDefault);
     fog["Channel"] = channel;

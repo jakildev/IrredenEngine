@@ -5,13 +5,16 @@ namespace {
 using namespace IRMath;
 namespace ProbeDetail = IRPrefab::ShapeSampleProbe::detail;
 
-const auto fixtureModel = [] {
-    return IRSystem::System<IRSystem::TRIXEL_TO_FRAMEBUFFER>::calcModelMatrix(
+const auto fixtureMap = [] {
+    IRRender::FrameDataTrixelToFramebuffer frame{};
+    IRRender::placeGatherQuad(
+        frame,
         vec2(1284, 722),
-        vec2(0),
-        vec2(1),
-        vec2(1)
+        vec2(642, 361),
+        vec2(1284, 722),
+        vec2(642, 722)
     );
+    return frame.canvasFromPixel_;
 };
 
 auto fixturePixel(ivec2 pixel) {
@@ -22,7 +25,7 @@ auto fixturePixel(ivec2 pixel) {
         ivec2(1284, 722),
         vec2(0),
         ivec2(642, 722),
-        fixtureModel()
+        fixtureMap()
     );
 }
 
@@ -55,7 +58,7 @@ TEST(ShapeSampleProbe, RejectsOutsideViewportFramebufferAndCanvas) {
             ivec2(1284, 722),
             vec2(0),
             ivec2(642, 722),
-            fixtureModel()
+            fixtureMap()
         )
             .valid_
     );
@@ -67,12 +70,12 @@ TEST(ShapeSampleProbe, RejectsOutsideViewportFramebufferAndCanvas) {
             ivec2(1284, 722),
             vec2(4000),
             ivec2(642, 722),
-            fixtureModel()
+            fixtureMap()
         )
             .valid_
     );
-    auto tinyModel = fixtureModel();
-    tinyModel[0].x = 1;
+    auto tinyMap = fixtureMap();
+    tinyMap.z = 642;
     EXPECT_FALSE(
         ProbeDetail::mapPixel(
             ivec2(10),
@@ -81,10 +84,27 @@ TEST(ShapeSampleProbe, RejectsOutsideViewportFramebufferAndCanvas) {
             ivec2(1284, 722),
             vec2(0),
             ivec2(642, 722),
-            tinyModel
+            tinyMap
         )
             .valid_
     );
+}
+
+TEST(ShapeSampleProbe, GatherMapHandlesTranslatedNonuniformQuad) {
+    IRRender::FrameDataTrixelToFramebuffer frame{};
+    IRRender::placeGatherQuad(frame, vec2(100), vec2(40, 60), vec2(80, 40), vec2(40));
+    const auto mapped = ProbeDetail::mapPixel(
+        ivec2(49, 39),
+        ivec2(100),
+        ivec2(1),
+        ivec2(100),
+        vec2(0),
+        ivec2(40),
+        frame.canvasFromPixel_
+    );
+    ASSERT_TRUE(mapped.valid_);
+    EXPECT_EQ(mapped.canvasOriginRaw_, vec2(24.75f, 19.5f));
+    EXPECT_EQ(mapped.canvasPixel_, ivec2(24, 19));
 }
 
 TEST(ShapeSampleProbe, DecodesOwnerAndRejectsForeignPublication) {

@@ -29,8 +29,9 @@
 # Cell ID format (threading mode): target=<exe>,grid=<g>,worker_threads=<n>
 #
 # Load brackets: when IR_PERF_CELL_REF_EXE names a reference-bench executable
-# (ir-perf-grid sets it to ir_ref_bench), every cell records one reading just
-# before and one just after its run as "load_ref_ms": {"before", "after"}.
+# (ir-perf-grid sets it to ir_ref_bench), every cell records three back-to-back
+# readings just before its run and one just after, as
+# "load_ref_ms": {"before": <median>, "before_samples": [s1, s2, s3], "after"}.
 # A probe that fails or reads non-positive fails the matrix. Unset, cells
 # carry no bracket.
 #
@@ -90,7 +91,7 @@ while [[ $# -gt 0 ]]; do
         --presets) PRESETS_DIR="$2"; shift 2 ;;
         --threading-baseline) THREADING_BASELINE=true; shift ;;
         -h|--help)
-            sed -n '2,35p' "$0"
+            awk 'NR > 1 && !/^#/ { exit } NR > 1' "$0"
             exit 0
             ;;
         *)
@@ -225,6 +226,21 @@ capture_cell_ref() {
     echo "$ms"
 }
 
+# The "before" half of a bracket as a JSON fragment: the median of three
+# back-to-back readings, then the readings in order.
+capture_cell_before() {
+    local s1 s2 s3
+    s1="$(capture_cell_ref before)" || exit 1
+    s2="$(capture_cell_ref before)" || exit 1
+    s3="$(capture_cell_ref before)" || exit 1
+    python3 -c '
+import sys
+samples = sys.argv[1:]
+median = sorted(samples, key=float)[1]
+print("\"before\": %s, \"before_samples\": [%s]" % (median, ", ".join(samples)))
+' "$s1" "$s2" "$s3" | tr -d '\r'
+}
+
 run_cell() {
     local RUN_TARGET="$1"
     local CELL_ID="$2"
@@ -241,7 +257,7 @@ run_cell() {
 
     local REF_BEFORE="" REF_AFTER=""
     if [[ -n "$CELL_REF_EXE" ]]; then
-        REF_BEFORE="$(capture_cell_ref before)" || exit 1
+        REF_BEFORE="$(capture_cell_before)" || exit 1
     fi
 
     local STATUS=0
@@ -251,8 +267,9 @@ run_cell() {
     local BRACKET=""
     if [[ -n "$CELL_REF_EXE" ]]; then
         REF_AFTER="$(capture_cell_ref after)" || exit 1
-        BRACKET=", \"load_ref_ms\": {\"before\": $REF_BEFORE, \"after\": $REF_AFTER}"
-        echo "  load_ref_ms before=${REF_BEFORE} after=${REF_AFTER}"
+        local LOAD_REF="{$REF_BEFORE, \"after\": $REF_AFTER}"
+        BRACKET=", \"load_ref_ms\": $LOAD_REF"
+        echo "  load_ref_ms $LOAD_REF"
     fi
 
     local REPORT

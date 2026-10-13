@@ -22,7 +22,7 @@ struct GatherPixel {
     IRMath::ivec2 canvasPixel_{};
 };
 
-// Invert the two axis-aligned draw models at the nearest-filtered framebuffer
+// Sample the gather pixel-to-canvas map at the nearest-filtered framebuffer
 // texel center. Physical pixels in one upscale block therefore share one ray.
 inline GatherPixel mapPixel(
     IRMath::ivec2 pixel,
@@ -31,13 +31,13 @@ inline GatherPixel mapPixel(
     IRMath::ivec2 framebufferSize,
     IRMath::vec2 blitOffset,
     IRMath::ivec2 canvasSize,
-    const IRMath::mat4 &gatherModel
+    const IRMath::vec4 &canvasFromPixel
 ) {
     using namespace IRMath;
     GatherPixel result;
     if (!inside(pixel, viewport) || outputScale.x <= 0 || outputScale.y <= 0 ||
         framebufferSize.x <= 0 || framebufferSize.y <= 0 || canvasSize.x <= 0 ||
-        canvasSize.y <= 0 || gatherModel[0].x <= 0 || gatherModel[1].y <= 0)
+        canvasSize.y <= 0 || canvasFromPixel.z <= 0 || canvasFromPixel.w <= 0)
         return result;
     const vec2 center = vec2(viewport) * 0.5f + vec2(blitOffset.x, -blitOffset.y);
     result.preUpscalePosition_ =
@@ -46,11 +46,10 @@ inline GatherPixel mapPixel(
     if (fb.x < 0 || fb.y < 0 || fb.x >= framebufferSize.x || fb.y >= framebufferSize.y)
         return result;
     result.framebufferPixel_ = ivec2(fb);
-    const vec2 quad = vec2(
-        (fb.x + 0.5f - gatherModel[3].x) / gatherModel[0].x,
-        (framebufferSize.y - fb.y - 0.5f - gatherModel[3].y) / gatherModel[1].y
-    );
-    result.canvasOriginRaw_ = (vec2(quad.x, -quad.y) + 0.5f) * vec2(canvasSize);
+    const vec2 fragmentPixel(fb.x + 0.5f, framebufferSize.y - fb.y - 0.5f);
+    result.canvasOriginRaw_ = (fragmentPixel - vec2(canvasFromPixel)) * vec2(1.0f, -1.0f) *
+                                  vec2(canvasFromPixel.z, canvasFromPixel.w) +
+                              0.5f * vec2(canvasSize);
     if (result.canvasOriginRaw_.x < 0 || result.canvasOriginRaw_.y < 0 ||
         result.canvasOriginRaw_.x >= canvasSize.x || result.canvasOriginRaw_.y >= canvasSize.y)
         return result;
@@ -174,6 +173,14 @@ inline bool writeFirstCapture(IRMath::ivec2 pixel, const std::string &path) {
             IRRender::getTriangleStepSizeScreen()
         ) +
         vec2(IRPrefab::Camera::screenResidual(cameraIso, cameraZoom, outputScale));
+    IRRender::FrameDataTrixelToFramebuffer gatherFrame{};
+    IRRender::placeGatherQuad(
+        gatherFrame,
+        vec2(framebufferSize),
+        vec2(framebufferSize) * 0.5f + gather,
+        vec2(framebufferSize) * zoom * (vec2(canvas.size_) / vec2(logicalSize)),
+        vec2(canvas.size_)
+    );
     const auto mapped = detail::mapPixel(
         pixel,
         viewport,
@@ -181,12 +188,7 @@ inline bool writeFirstCapture(IRMath::ivec2 pixel, const std::string &path) {
         framebufferSize,
         blitOffset,
         canvas.size_,
-        Gather::calcModelMatrix(
-            vec2(framebufferSize),
-            gather,
-            zoom,
-            vec2(canvas.size_) / vec2(logicalSize)
-        )
+        gatherFrame.canvasFromPixel_
     );
     vector("viewport_size", viewport);
     vector("output_scale", outputScale);
