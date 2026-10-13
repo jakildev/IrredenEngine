@@ -89,8 +89,9 @@ action (filing a plan, citing merge state, touching core code).
    auto-invoke it.
 7. **Host profile:** read `~/.fleet/state/host-profile` (absent → `full`).
    `satellite` ([`FLEET-CROSS-HOST-SMOKE.md § Satellite host profile`](FLEET-CROSS-HOST-SMOKE.md))
-   means this box serves only its own smoke labels and `**Host:**`-pinned
-   tasks, and this pane is the human's interactive session here: iterate
+   means this box serves only its own smoke labels, `**Host:**`-pinned
+   tasks, and (on a GL host) `fleet:needs-gl-host` work with no finer OS
+   pin, and this pane is the human's interactive session here: iterate
    on creations, scenes, and MIDI work with them, plan engine and game work
    as usual, and file everything that does not need this OS as an ordinary
    task for the primary fleet — pin `**Host:** <key>` only when the work
