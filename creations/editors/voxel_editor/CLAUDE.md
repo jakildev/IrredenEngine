@@ -35,8 +35,8 @@ Design log, findings and the authoring-session history:
   drags a part's gizmo after a bake at its pivot, a camera turn, and on a turned copy.
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --module <dir>
   --module-session <name>` — one session registered by a creation module.
-  `test/module` registers `test_parts`, `test_single`, and the deliberately
-  failing `test_unreachable` fixture.
+  `test/module` registers `test_parts`, `test_recipe_attach`, `test_single`,
+  and the deliberately failing `test_unreachable` fixture.
 - `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
   render reference set, discovered under this creation's `test/references/`.
 - `python3 scripts/author-entity.py <entity>` — replays an entity session twice
@@ -144,6 +144,12 @@ render, because the aim and the pick share one screen mapping.
 - `Session::Builder` is also the Lua authoring ABI. Adding or changing a public
   builder operation requires the matching `IREditor.registerSession` binding,
   conversion coverage, and binding-matrix test in the same change.
+- Module sessions use `applyRecipe(name, values)`, `attachComponent(name)`,
+  `setComponentField(component, field, text)`, and
+  `setComponentOverrides(component, text)` instead of RECIPES or COMPONENTS
+  panel coordinates. `applyRecipe` accepts only INT params with whole targets
+  and at least four slider trixels per unit; other recipes keep using the raw
+  GUI gestures without occupancy-model updates.
 
 ## Creation modules (`--module <dir>`)
 

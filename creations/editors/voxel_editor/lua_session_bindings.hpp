@@ -342,6 +342,37 @@ class Handle {
             value
         );
     }
+    void applyRecipe(const sol::object &name, const sol::object &values) {
+        const std::string parsedName = stringArg(name, "applyRecipe", "name");
+        const sol::table valueTable = tableArg(values, "applyRecipe", "values");
+        std::vector<std::pair<std::string, float>> parsedValues;
+        parsedValues.reserve(valueTable.size());
+        for (const auto &entry : valueTable) {
+            parsedValues.emplace_back(
+                stringArg(entry.first, "applyRecipe", "values key"),
+                numberArg(entry.second, "applyRecipe", "values value")
+            );
+        }
+        builder().applyRecipe(parsedName, parsedValues);
+    }
+    void attachComponent(const sol::object &name) {
+        builder().attachComponent(stringArg(name, "attachComponent", "name"));
+    }
+    void setComponentField(
+        const sol::object &component, const sol::object &field, const sol::object &text
+    ) {
+        builder().setComponentField(
+            stringArg(component, "setComponentField", "component"),
+            stringArg(field, "setComponentField", "field"),
+            stringArg(text, "setComponentField", "text")
+        );
+    }
+    void setComponentOverrides(const sol::object &component, const sol::object &text) {
+        builder().setComponentOverrides(
+            stringArg(component, "setComponentOverrides", "component"),
+            stringArg(text, "setComponentOverrides", "text")
+        );
+    }
     void setPartSize(const sol::object &size) {
         builder().setPartSize(ivec3Arg(size, "setPartSize", "size"));
     }
@@ -685,6 +716,14 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         &Handle::typeText,
         "dragGuiSlider",
         &Handle::dragGuiSlider,
+        "applyRecipe",
+        &Handle::applyRecipe,
+        "attachComponent",
+        &Handle::attachComponent,
+        "setComponentField",
+        &Handle::setComponentField,
+        "setComponentOverrides",
+        &Handle::setComponentOverrides,
         "duplicateFrame",
         &Handle::duplicateFrame,
         "prevFrame",

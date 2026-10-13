@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
-#include "../../creations/editors/voxel_editor/lua_session_bindings.hpp"
+#include "../../creations/editors/voxel_editor/editor_lua_host.hpp"
+
+#include <tuple>
 
 namespace IRVoxelEditor::Session {
 
@@ -49,8 +51,7 @@ class LuaEditorSessionBindingsTest : public testing::Test {
   protected:
     LuaEditorSessionBindingsTest() {
         m_lua.bindLuaDrivenEcs();
-        sol::table editor = m_lua.lua().create_named_table("IREditor");
-        IRVoxelEditor::LuaSession::bind(m_lua, editor);
+        m_host.bind(m_lua);
         const sol::protected_function_result component = m_lua.lua().safe_script(R"lua(
             IRComponent.register("MatrixComponent", {
                 count = 1,
@@ -63,6 +64,31 @@ class LuaEditorSessionBindingsTest : public testing::Test {
                 callback = function() end,
                 opaque = { type = "table", default = {} },
             })
+            IREditor.registerRecipe("matrix_recipe", {
+                { name = "count", type = IREditor.ParamType.INT, default = 1, min = 0, max = 28 },
+            }, function(values, size)
+                return { { 1, 1, 1 } }
+            end)
+            IREditor.registerRecipe("interior_float", {
+                { name = "value", type = IREditor.ParamType.FLOAT, default = 0, min = -1, max = 1 },
+            }, function(values, size)
+                if values.value > 0.004 and values.value < 0.006 then
+                    return { { 2, 2, 2 } }
+                end
+                return {}
+            end)
+            IREditor.registerRecipe("joint_float", {
+                { name = "a", type = IREditor.ParamType.FLOAT, default = 0, min = -1, max = 1 },
+                { name = "b", type = IREditor.ParamType.FLOAT, default = 0, min = -1, max = 1 },
+            }, function(values, size)
+                if values.a > 0.004 and values.b > 0.004 then
+                    return { { 3, 3, 3 } }
+                end
+                return {}
+            end)
+            IREditor.registerRecipe("wide_int", {
+                { name = "value", type = IREditor.ParamType.INT, default = 1, min = 0, max = 29 },
+            }, function(values, size) return {} end)
         )lua");
         if (!component.valid()) {
             const sol::error error = component;
@@ -73,10 +99,15 @@ class LuaEditorSessionBindingsTest : public testing::Test {
     IRScript::LuaScript m_lua;
     IREntity::EntityManager m_entityManager;
     IRSystem::SystemManager m_systemManager;
+    IRVoxelEditor::ModuleHost m_host;
 };
 
 TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
-    Builder builder("binding_matrix", IRMath::ivec3(16), IRMath::vec3(-8.0f));
+    IRVoxelEditor::ModuleSessionView view = m_host.sessionView();
+    view.components_.push_back(
+        IRVoxelEditor::ComponentRecord{"EngineComponent", IRVoxelEditor::ComponentSource::ENGINE}
+    );
+    Builder builder("binding_matrix", IRMath::ivec3(16), IRMath::vec3(-8.0f), &view);
     const std::shared_ptr<Lifetime> lifetime =
         std::make_shared<Lifetime>(Lifetime{&builder, &m_lua});
     m_lua.lua()["session"] = Handle{lifetime};
@@ -115,6 +146,11 @@ TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
         s:wheelScene({5, 8, 12}, -1)
         s:typeText({20, 20}, "Matrix 1")
         s:dragGuiSlider({pos = {10, 10}, size = {100, 14}}, 0, 10, 5)
+        s:applyRecipe("matrix_recipe", { count = 2 })
+        s:attachComponent("MatrixComponent")
+        s:setComponentField("MatrixComponent", "count", "7")
+        s:attachComponent("EngineComponent")
+        s:setComponentOverrides("EngineComponent", "{}")
         s:duplicateFrame()
         s:prevFrame()
         s:nextFrame()
@@ -296,6 +332,12 @@ TEST_F(LuaEditorSessionBindingsTest, RejectsEveryArgumentFamilyAndNonComparableF
         "session:clickLoftCell(99, {0,0})",
         "session:dragGuiSlider({pos={0,0},size='bad'}, 0, 1, 0)",
         "session:dragWorld({0,0}, {1,1,1})",
+        "session:applyRecipe({}, {})",
+        "session:applyRecipe('matrix_recipe', 1)",
+        "session:applyRecipe('matrix_recipe', { count = 'bad' })",
+        "session:attachComponent({})",
+        "session:setComponentField('MatrixComponent', {}, '1')",
+        "session:setComponentOverrides('EngineComponent', {})",
         "session:clickGui({0})",
         "session:tapKey(9999)",
         "session:expectRotationMode(0, 9999, 'bad')",
@@ -322,6 +364,79 @@ TEST_F(LuaEditorSessionBindingsTest, RecordErrorForwardsAsRecipeFailure) {
     const IRVoxelEditor::Session::Recipe recipe = builder.finish();
     ASSERT_FALSE(recipe.ok());
     EXPECT_EQ(recipe.errors_.front(), "matrix error");
+}
+
+TEST_F(LuaEditorSessionBindingsTest, ApplyRecipeRejectsUnprovableSliderValues) {
+    const IRVoxelEditor::ModuleSessionView view = m_host.sessionView();
+    auto recipeIndex = [&view](const std::string &name) {
+        return static_cast<std::size_t>(
+            std::find_if(
+                view.recipes_.begin(),
+                view.recipes_.end(),
+                [&name](const IRVoxelEditor::ModuleRecipe &recipe) { return recipe.name_ == name; }
+            ) -
+            view.recipes_.begin()
+        );
+    };
+    auto evaluate = [&view, &recipeIndex](const std::string &name, std::vector<float> values) {
+        std::vector<IRVoxelEditor::RecipeCell> cells;
+        std::string error;
+        EXPECT_TRUE(view.evaluate_(recipeIndex(name), values, IRMath::ivec3(16), cells, error));
+        return cells;
+    };
+
+    EXPECT_TRUE(evaluate("interior_float", {0.0f}).empty());
+    EXPECT_TRUE(evaluate("interior_float", {-2.0f / 112.0f}).empty());
+    EXPECT_TRUE(evaluate("interior_float", {2.0f / 112.0f}).empty());
+    EXPECT_EQ(evaluate("interior_float", {0.005f}).size(), 1u);
+    EXPECT_TRUE(evaluate("joint_float", {2.0f / 112.0f, 0.0f}).empty());
+    EXPECT_TRUE(evaluate("joint_float", {0.0f, 2.0f / 112.0f}).empty());
+    EXPECT_EQ(evaluate("joint_float", {2.0f / 112.0f, 2.0f / 112.0f}).size(), 1u);
+
+    for (const auto &[name, values, token] : std::vector<
+             std::tuple<std::string, std::vector<std::pair<std::string, float>>, std::string>>{
+             {"interior_float", {{"value", 0.0f}}, "value"},
+             {"joint_float", {{"a", 0.0f}, {"b", 0.0f}}, "a"},
+             {"wide_int", {{"value", 1.0f}}, "value"},
+             {"matrix_recipe", {{"count", 1.5f}}, "count"},
+         }) {
+        Builder builder("reject", IRMath::ivec3(16), IRMath::vec3(-8.0f), &view);
+        builder.applyRecipe(name, values);
+        const IRVoxelEditor::Session::Recipe result = builder.finish();
+        ASSERT_EQ(result.errors_.size(), 1u) << name;
+        EXPECT_NE(result.errors_.front().find(token), std::string::npos) << name;
+        EXPECT_TRUE(result.segments_.empty()) << name;
+    }
+
+    IRVoxelEditor::ModuleSessionView fractionalDefault = view;
+    fractionalDefault.recipes_.front().params_.front().default_ = 1.5f;
+    Builder
+        builder("fractional_default", IRMath::ivec3(16), IRMath::vec3(-8.0f), &fractionalDefault);
+    builder.applyRecipe("matrix_recipe", {});
+    const IRVoxelEditor::Session::Recipe result = builder.finish();
+    ASSERT_EQ(result.errors_.size(), 1u);
+    EXPECT_NE(result.errors_.front().find("count"), std::string::npos);
+    EXPECT_TRUE(result.segments_.empty());
+}
+
+TEST_F(LuaEditorSessionBindingsTest, FourTrixelsPerUnitIsTheExactIntegerBoundary) {
+    for (int target = 0; target <= 28; ++target) {
+        for (int step = -31; step <= 31; ++step) {
+            const float cursor =
+                static_cast<float>(target) * 4.0f + static_cast<float>(step) / 16.0f;
+            const float held = cursor / 112.0f * 28.0f;
+            EXPECT_EQ(IRMath::roundHalfUp(held), target);
+        }
+    }
+    bool missed = false;
+    for (int target = 0; target <= 29; ++target) {
+        for (int step = -31; step <= 31; ++step) {
+            const float aim = static_cast<float>(target) / 29.0f * 112.0f;
+            const float held = (aim + static_cast<float>(step) / 16.0f) / 112.0f * 29.0f;
+            missed = missed || IRMath::roundHalfUp(held) != target;
+        }
+    }
+    EXPECT_TRUE(missed);
 }
 
 } // namespace
