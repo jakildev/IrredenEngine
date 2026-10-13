@@ -349,7 +349,9 @@ runs by double-click on a clean box. `IRShapeDebug` is the reference.
   The FFmpeg closure dominates the DLL payload: the `IRShapeDebug`
   debug-preset bundle is ~104 DLLs / ~168 MiB uncompressed (~59 MiB
   compressed) beside a ~278 MiB debug exe, a ~124 MiB zip. To check a
-  bundle, unzip it into an empty directory and run the exe with only
+  bundle, run `python3 scripts/package-verify.py [--target <target>]`
+  (resolver probe over the built exe plus a closure audit of the unzipped
+  package), then unzip it into an empty directory and run the exe with only
   `%SystemRoot%\System32;%SystemRoot%` on `PATH`.
 - **macOS** — `cmake/macos_bundle_dylibs.cmake` copies non-system dylibs
   next to the exe, rewrites load commands to `@executable_path`, and ad-hoc
