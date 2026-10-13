@@ -35,6 +35,8 @@ vec3 sunSpaceProject(vec3 p,vec3 u,vec3 v,vec3 light){return {dot(p,u),dot(p,v),
 struct Shape {vec4 rotation{0,0,0,1};} shape;
 vec3 boxCenter{2.25,-3.125,1.75};
 vec3 halfExtent{1,2,3},sunDirection{0,0,-1},sunBasisU{1,0,0},sunBasisV{0,1,0};
+bool fogBody=FOG_BODY;
+struct {int x;} fogCeilingEnabled{FOG_CEILING};
 struct Face {vec3 corner,u,v;};
 std::vector<Face> faces;
 unsigned currentLane=0,faceCalls=0;
@@ -118,25 +120,33 @@ class BoxFaceProjectionTest(unittest.TestCase):
             gate = re.search(r"if \(((?:gl_WorkGroupID|groupId).*?)\) \{", source)[1]
             gate = gate.replace("gl_WorkGroupID.z", "group").replace("groupId.z", "group")
             gate = gate.replace("gl_LocalInvocationID.x", "lane").replace("localId.x", "lane")
+            gate = gate.replace("sunFrame.", "")
+            # A FIELD box under an enabled ceiling indexes no whole faces; its
+            # cut samples go through the fallback ray instead.
+            variants["body_under_ceiling"] = block
+            variants["field_under_ceiling"] = block
+            passing = ("production", "body_under_ceiling")
             for name, body in variants.items():
                 with (self.subTest(backend=suffix, mutation=name),
                       tempfile.TemporaryDirectory() as tmp):
-                    if name not in ("production", "duplicate_index"):
+                    if name not in passing + ("duplicate_index", "field_under_ceiling"):
                         self.assertNotEqual(body, block)
                     cpp, exe = Path(tmp) / "box.cpp", Path(tmp) / "box"
                     selected_gate = "true" if name == "duplicate_index" else gate
+                    fog = (f"#define FOG_BODY {int(name == 'body_under_ceiling')}\n"
+                           f"#define FOG_CEILING {int(name.endswith('_under_ceiling'))}\n")
                     emitter = ("void emit(){for(unsigned group=0;group<32;++group)"
                                "for(unsigned lane=0;lane<64;++lane)if("
                                + selected_gate + "){currentLane=lane;" + body + "}}")
-                    cpp.write_text(HARNESS + emitter + CASES)
+                    cpp.write_text(fog + HARNESS + emitter + CASES)
                     build = subprocess.run(
                         [COMPILER, "-std=c++17", "-O2", str(cpp), "-o", str(exe)],
                         capture_output=True, text=True)
                     self.assertEqual(build.returncode, 0, build.stderr)
                     run = subprocess.run([str(exe)], capture_output=True, text=True)
-                    if name == "production":
+                    if name in passing:
                         self.assertEqual(run.returncode, 0, run.stderr)
-                        print(suffix, run.stdout.strip())
+                        print(suffix, name, run.stdout.strip())
                     else:
                         self.assertNotEqual(run.returncode, 0)
 

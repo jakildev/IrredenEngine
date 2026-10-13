@@ -1,4 +1,5 @@
 #include "ir_iso_common.metal"
+#include "ir_fog_shadow_caster.metal"
 #include <metal_atomic>
 // The cardinal-layout micro-cell emit shared with
 // c_resolve_per_axis_screen_depth.
@@ -14,6 +15,7 @@ constant int kEmptyDistanceEncoded = 65535;
 struct DetachedShadowFrame {
     float4 worldOriginAndDensity;
     float4 viewToWorld;
+    int4 fogPolicy;
 };
 
 kernel void c_resolve_world_placed_depth(
@@ -21,6 +23,7 @@ kernel void c_resolve_world_placed_depth(
     constant DetachedShadowFrame& casterFrame [[buffer(16)]],
     texture2d<int, access::read> detachedDistances [[texture(0)]],
     device atomic_int* resolveScratch [[buffer(28)]],
+    constant FogShadowObserverData& fogObservers [[buffer(27)]],
     uint3 globalId [[thread_position_in_grid]]
 ) {
     const int2 cell = int2(globalId.xy);
@@ -47,6 +50,11 @@ kernel void c_resolve_world_placed_depth(
     );
     const float3 worldPoint = rotateByQuat(viewLocalPos, casterFrame.viewToWorld)
                             + casterFrame.worldOriginAndDensity.xyz;
+    if (!fogFieldCastsSunShadow(
+            worldPoint,
+            casterFrame.fogPolicy.x != 0,
+            casterFrame.fogPolicy.y,
+            fogObservers)) return;
     const int scale = effectiveTrixelSubdivisionScale(frameData.voxelRenderOptions);
     const int3 worldPos = roundHalfUp(worldPoint * float(scale));
 

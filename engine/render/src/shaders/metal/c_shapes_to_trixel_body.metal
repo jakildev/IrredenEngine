@@ -2,6 +2,9 @@
 #include "ir_constants.metal"
 #include "ir_sdf_common.metal"
 #include "ir_shape_data.metal"
+#if IR_SHAPE_PASS == 2
+#include "ir_fog_shadow_caster.metal"
+#endif
 
 // Mirrors shaders/c_shapes_to_trixel_body.glsl.
 
@@ -781,6 +784,9 @@ inline int shapeBoxFaceSlot(
 
 kernel void IR_SHAPE_KERNEL_NAME(
     constant ShapeProjectionData& frameData [[buffer(23)]],
+#if IR_SHAPE_PASS == 2
+    constant FogShadowObserverData& fogObservers [[buffer(27)]],
+#endif
     device const ShapeDescriptor* shapes [[buffer(20)]],
     device const ShapeTileDescriptor* tiles [[buffer(30)]],
     device atomic_int* distanceScratch [[buffer(16)]],
@@ -951,6 +957,21 @@ kernel void IR_SHAPE_KERNEL_NAME(
     if (surfaceD == kInvalidDepth) {
         return;
     }
+
+#if IR_SHAPE_PASS == 2
+    const float3 fogViewOffset = isoToLocal3D(isoPixelRel, float(surfaceD));
+    const float3 fogWorldOffset = float3(
+        yawC * fogViewOffset.x - yawS * fogViewOffset.y,
+        yawS * fogViewOffset.x + yawC * fogViewOffset.y,
+        fogViewOffset.z
+    );
+    const float3 fogWorldSample = worldPos + fogWorldOffset / float(sub);
+    if (!fogFieldCastsSunShadow(
+            fogWorldSample,
+            (shape.flags & FLAG_FOG_BODY) != 0u,
+            1,
+            fogObservers)) return;
+#endif
 
     // Depth metric. Cardinal path: view-space x+y+z relative to the cardinal-
     // snapped integer origin. Smooth path: yawedIsoDistance of the subdivided
