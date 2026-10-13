@@ -1,8 +1,8 @@
 """Tests for the shared branch<->issue matcher (fleet_branch_match.py).
 
 Pins the contract both fleet-claim and fleet-state-scout rely on:
-  - engine accepts only `claude/<N>-`
-  - game accepts both `claude/<N>-` and `claude/game-<N>-`
+  - engine accepts only `<ns>/<N>-`, `<ns>` one of `claude` / `codex`
+  - game accepts both `<ns>/<N>-` and `<ns>/game-<N>-`
   - cross-repo and wrong-issue branches do not match
   - issue_from_branch is the repo-agnostic inverse (strips optional game-)
   - an improvised `issue-<N>` token branch, or a `Closes #N` body, resolves
@@ -247,10 +247,11 @@ class BranchMatchesIssue(unittest.TestCase):
             self.assertTrue(branch_matches_issue("claude/105-x", issue, "engine"), issue)
 
     def test_issue_branch_prefixes(self):
-        self.assertEqual(issue_branch_prefixes("engine", 105), ["claude/105-"])
+        self.assertEqual(
+            issue_branch_prefixes("engine", 105), ["claude/105-", "codex/105-"])
         self.assertEqual(
             issue_branch_prefixes("game", 105),
-            ["claude/105-", "claude/game-105-"],
+            ["claude/105-", "codex/105-", "claude/game-105-", "codex/game-105-"],
         )
 
     # --- the improvised `issue-<N>` token form --------------------
@@ -298,6 +299,53 @@ class BranchMatchesIssue(unittest.TestCase):
         b = "claude/2419-fix-issue-1425-recurrence"
         self.assertTrue(branch_matches_issue(b, 2419, "engine"))
         self.assertFalse(branch_matches_issue(b, 1425, "engine"))
+
+
+class CodexBranches(unittest.TestCase):
+    """`codex/...` is a supported namespace with the same grammar as `claude/...`."""
+
+    def test_engine_prefix_matches(self):
+        self.assertTrue(branch_matches_issue(
+            "codex/4231-cardinal-surface-receiver", 4231, "engine"))
+
+    def test_game_infix_matches_game_only(self):
+        self.assertTrue(branch_matches_issue("codex/game-105-x", 105, "game"))
+        self.assertFalse(branch_matches_issue("codex/game-105-x", 105, "engine"))
+
+    def test_leading_number_wins_over_trailing_token(self):
+        b = "codex/2419-fix-issue-1425-recurrence"
+        self.assertTrue(branch_matches_issue(b, 2419, "engine"))
+        self.assertFalse(branch_matches_issue(b, 1425, "engine"))
+
+    def test_number_boundaries(self):
+        self.assertFalse(branch_matches_issue("codex/255-x", 25, "engine"))
+        self.assertFalse(branch_matches_issue("codex/25-x", 255, "engine"))
+        self.assertFalse(branch_matches_issue("codex/issue-25-x", 255, "engine"))
+        self.assertTrue(branch_matches_issue("codex/worker-2-issue-255", 255, "engine"))
+
+    def test_unsupported_shapes_match_nothing(self):
+        for head in ("foo/4231-x", "codex-4231-x", "4231-x", "codexx/4231-x",
+                     "feature/codex/4231-x", "codex4231-x"):
+            self.assertFalse(branch_matches_issue(head, 4231, "engine"), head)
+            self.assertIsNone(issue_from_branch(head), head)
+
+    def test_issue_from_branch(self):
+        self.assertEqual(issue_from_branch("codex/4231-x"), 4231)
+        self.assertEqual(issue_from_branch("codex/game-105-x"), 105)
+        self.assertEqual(issue_from_branch("codex/worker-4-issue-255"), 255)
+        self.assertEqual(issue_from_branch("codex/105-issue-99-fix"), 105)
+
+    def test_refs_only_wip_pr_is_active_and_parked_states_stay_parked(self):
+        pr = {"headRefName": "codex/4231-cardinal-surface-receiver",
+              "body": "Refs #4231", "labels": [{"name": "fleet:wip"}]}
+        self.assertEqual(issue_pr_state([pr], 4231, "engine"), "active")
+        parked = dict(pr, labels=[{"name": "fleet:design-blocked"}])
+        self.assertEqual(issue_pr_state([parked], 4231, "engine"), "parked")
+
+    def test_refs_only_on_an_unnamespaced_branch_is_not_a_claim(self):
+        pr = {"headRefName": "feature/cardinal-surface", "body": "Refs #4231",
+              "labels": [{"name": "fleet:wip"}]}
+        self.assertEqual(issue_pr_state([pr], 4231, "engine"), "none")
 
 
 class IssueFromBranch(unittest.TestCase):
