@@ -33,7 +33,10 @@ CPU = r"""
 #include <utility>
 #include <vector>
 struct ivec2 {int x=0,y=0;};
-struct ivec4 {int x=0,y=0,z=0,w=0;ivec4()=default;ivec4(int a,int b,int c,int d):x(a),y(b),z(c),w(d){}};
+struct ivec4 {
+ int x=0,y=0,z=0,w=0;
+ ivec4()=default;ivec4(int a,int b,int c,int d):x(a),y(b),z(c),w(d){}
+};
 struct vec4 {vec4()=default;vec4(ivec2,float){};};
 enum class BufferTarget {UNIFORM,SHADER_STORAGE};
 enum class TextureAccess {READ_ONLY,WRITE_ONLY};
@@ -80,7 +83,9 @@ struct C_PerAxisTrixelCanvases {
  std::pair<int,Texture2D*> resolveDepth_{0,&texture};
  bool isAllocated()const{return allocated;}
 };
-struct WorldPlacedCaster {ivec2 worldCellOffset_;C_TriangleCanvasTextures* textures_;bool fogBody_=true;};
+struct WorldPlacedCaster {
+ ivec2 worldCellOffset_;C_TriangleCanvasTextures* textures_;bool fogBody_=true;
+};
 struct DetachedShadowFrame {vec4 offset,rotation;ivec4 fogPolicy;};
 struct Dispatch {int image,route;float residual,radius;int x,y,ids,precut;};
 Buffer voxel,sun,other;

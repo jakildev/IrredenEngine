@@ -45,24 +45,12 @@ namespace {
 
 // CPU member order of FrameDataSun, trailing underscore dropped.
 constexpr std::array<const char *, 19> kFrameDataSunMembers = {
-    "sunDirection",
-    "sunIntensity",
-    "sunAmbient",
-    "shadowsEnabled",
-    "aoEnabled",
-    "sunBasisU",
-    "sunBasisV",
-    "sunBufferOriginUV",
-    "sunBufferTexelSize",
-    "cascadeOriginUV_0",
-    "cascadeTexelSize_0",
-    "cascadeOriginUV_1",
-    "cascadeTexelSize_1",
-    "cascadeSplitDepth",
-    "cascadeCount",
-    "sunSplatMaxTexels",
-    "sunMaxShadowThrow",
-    "sunCasterViewToWorld",
+    "sunDirection",       "sunIntensity",       "sunAmbient",
+    "shadowsEnabled",     "aoEnabled",          "sunBasisU",
+    "sunBasisV",          "sunBufferOriginUV",  "sunBufferTexelSize",
+    "cascadeOriginUV_0",  "cascadeTexelSize_0", "cascadeOriginUV_1",
+    "cascadeTexelSize_1", "cascadeSplitDepth",  "cascadeCount",
+    "sunSplatMaxTexels",  "sunMaxShadowThrow",  "sunCasterViewToWorld",
     "fogCeilingEnabled",
 };
 
