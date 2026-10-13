@@ -189,6 +189,7 @@ class CanvasStaticPoseTest(unittest.TestCase):
             witnessed(yaw=0, zoom_min=None, zoom_max=None)))
 
     def test_runner_rejects_bad_pose_before_producing_summary(self):
+        launched_ns = 1_700_000_000_000_000_000
         cases = (("min=4.000 max=4.000", None, True),
                  ("min=1.000 max=4.000", "zoom range", False),
                  ("min=4.000 max=32.000", "zoom range", False),
@@ -212,7 +213,9 @@ class CanvasStaticPoseTest(unittest.TestCase):
 
                 def capture(command, repo, log, binary, seconds, delay):
                     log.write_text("ir-run: QUIET=guarded exe=IRCanvasStress\nRESULT=CLEAN\n")
-                    (demo / "save_files/profile_report.txt").write_text(text)
+                    report = demo / "save_files/profile_report.txt"
+                    report.write_text(text)
+                    os.utime(report, ns=(launched_ns, launched_ns + 1_000_000_000))
                     return 0, None
 
                 with (
@@ -225,10 +228,11 @@ class CanvasStaticPoseTest(unittest.TestCase):
                     patch("repeat_profile.platform.platform", return_value="fixture host"),
                     patch("repeat_profile.host_power_source", return_value=None),
                     patch("repeat_profile.host_battery_percent", return_value=None),
+                    patch("repeat_profile.time.time_ns", return_value=launched_ns),
                     patch("repeat_profile.run_profile", side_effect=capture),
-                    patch("sys.stdout", new_callable=io.StringIO),
+                    patch("sys.stdout", new_callable=io.StringIO) as stdout,
                 ):
-                    self.assertEqual(main(), 0 if accepted else 1)
+                    self.assertEqual(main(), 0 if accepted else 1, stdout.getvalue())
                 self.assertEqual((output / "summary.md").exists(), accepted)
                 self.assertTrue((output / "run-1.txt").exists())
                 run = json.loads((output / "manifest.json").read_text())["runs"][0]
@@ -459,6 +463,7 @@ class BuildTreeTest(unittest.TestCase):
 
 class ManifestEnvironmentTest(unittest.TestCase):
     def test_records_only_allowlisted_raw_values_inherited_by_the_child(self):
+        launched_ns = 1_700_000_000_000_000_000
         names = (
             "IR_PERAXIS_SURFACE_LIGHTING", "IR_PERAXIS_VISIBILITY_PREPASS",
             "IR_PERAXIS_VISIBILITY_STATS", "IR_PERAXIS_OVERFLOW_DISABLE",
@@ -496,8 +501,10 @@ class ManifestEnvironmentTest(unittest.TestCase):
                     inherited.append({name: child_env.get(name) for name in names})
                     self.assertEqual(child_env["UNRELATED_SECRET"], environment["UNRELATED_SECRET"])
                     kwargs["stdout"].write("RESULT=CLEAN\n")
-                    (demo / "save_files/profile_report.txt").write_text(
+                    report = demo / "save_files/profile_report.txt"
+                    report.write_text(
                         WITNESSED_REPORT.replace("maxDropped=7", "maxDropped=0"))
+                    os.utime(report, ns=(launched_ns, launched_ns + 1_000_000_000))
                     process = MagicMock()
                     process.__enter__.return_value = process
                     process.wait.return_value = 0
@@ -513,10 +520,11 @@ class ManifestEnvironmentTest(unittest.TestCase):
                     patch("repeat_profile.platform.platform", return_value="fixture host"),
                     patch("repeat_profile.host_power_source", return_value=None),
                     patch("repeat_profile.host_battery_percent", return_value=None),
+                    patch("repeat_profile.time.time_ns", return_value=launched_ns),
                     patch("repeat_profile.subprocess.Popen", side_effect=launch),
-                    patch("sys.stdout", new_callable=io.StringIO),
+                    patch("sys.stdout", new_callable=io.StringIO) as stdout,
                 ):
-                    self.assertEqual(main(), 0)
+                    self.assertEqual(main(), 0, stdout.getvalue())
                 manifest_text = (output / "manifest.json").read_text()
                 recorded = json.loads(manifest_text)["render_environment"]
                 self.assertEqual(recorded, expected)

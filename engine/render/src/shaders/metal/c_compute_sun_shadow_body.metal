@@ -1,8 +1,8 @@
 #include "ir_iso_common.metal"
 #include "ir_per_axis_lighting.metal"
 #include "ir_per_axis_cell_dispatch.metal"
-#if IR_SHAPE_RECEIVER
 #include "ir_sdf_common.metal"
+#if IR_SHAPE_RECEIVER
 #include "ir_shape_data.metal"
 #include "ir_shape_receiver.metal"
 #include "ir_selected_shape_receiver.metal"
@@ -13,6 +13,9 @@
 // world-receive path.
 #include "ir_sun_shadow_sample.metal"
 #include "ir_per_axis_shadow.metal"
+#if IR_SHAPE_RECEIVER
+#include "ir_shape_shadow_receiver.metal"
+#endif
 
 // Mirrors shaders/c_compute_sun_shadow.glsl.
 
@@ -166,6 +169,18 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
     // correction applies only to reconstructed sample position so a corrected
     // receiver keeps the cascade ownership assigned by its stored pixel.
     // The cascade PCF lookup is shared with the detached world-receive path.
-    float factor = sunFrameData.shadowsEnabled == 0 ? 1.0 : worldSunShadowFactor(pos3D, normal, float(rawDepth), sunFrameData, sunDepthBuf);
+    float factor = 1.0;
+    if (sunFrameData.shadowsEnabled != 0) {
+#if IR_SHAPE_RECEIVER
+        float3 shadowPosition;
+        if (selectedShapeSphereShadowReceiver(pixel, size.x,
+                receiverFrame, receiverShapes, receiverOwners, receiverTiles,
+                shadowPosition))
+            factor = worldSurfaceSunShadowFactor(shadowPosition, normal,
+                float(rawDepth), sunFrameData.sunCasterViewToWorld, sunFrameData, sunDepthBuf);
+        else
+#endif
+            factor = worldSunShadowFactor(pos3D, normal, float(rawDepth), sunFrameData, sunDepthBuf);
+    }
     canvasSunShadow.write(float4(factor, 0.0, 0.0, receiverFace), uint2(pixel));
 }

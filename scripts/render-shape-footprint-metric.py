@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Measure IRShapeDebug's isolated voxel torus/cone floor shadow.
+"""Measure IRShapeDebug's isolated torus/cone floor shadow.
 
 Pair --spin-shape SHAPE --spin-shape-voxel --spin-shape-floor --no-ao
 --pivot-origin captures with identical --no-shadows controls. Supply the actual
 CaptureCamera yaw (radians), SHADOW-FOOTPRINT step and effective subdivisions.
-The camera must be unpanned. This oracle projects occupied unit boxes, not the
-caster's bounding box or the SDF's smooth silhouette. It reports discrepancies;
+The camera must be unpanned. The voxel oracle projects occupied unit boxes;
+--representation analytic projects horizontal sections of the rendered SDF solid.
+Both account for the floor receiver's canvas-origin phase. It reports discrepancies;
 --strict-edges additionally fails on missing/excess pixels beyond one pixel.
 Area agreement alone does not certify edge reconstruction or self-shadowing.
 """
@@ -16,7 +17,7 @@ import json
 import math
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageFilter
 from render_fixture_geometry import iso, view
 from render_metric_util import raster_polygon
 from render_probe_geometry import convex_hull
@@ -48,9 +49,9 @@ def project_to_floor(point, floor_z, yaw, scale, origin):
     return tuple(origin[i] + scale[i] * projected[i] for i in range(2))
 
 
-def expected_mask(size, cells, yaw, scale, subdivisions):
+def expected_mask(size, cells, yaw, scale, subdivisions, origin=None):
     labels = bytearray(size[0] * size[1])
-    origin = (size[0] / 2, size[1] / 2)
+    origin = origin or (size[0] / 2, size[1] / 2)
     floor_z = 4.5 - 0.5 / subdivisions
     clipped = False
     for x, y, z in cells:
@@ -67,6 +68,65 @@ def expected_mask(size, cells, yaw, scale, subdivisions):
         raster_polygon(labels, *size, convex_hull(corners), 255)
     return Image.frombytes("L", size, bytes(labels)), clipped
 
+
+
+def receiver_screen_origin(size, scale, subdivisions):
+    # The fragment query is relative to Z1, one canvas texel before canvas centre.
+    return tuple(size[i] / 2 - scale[i] / subdivisions for i in range(2))
+
+
+def analytic_cross_section(shape, z, threshold):
+    if shape == "torus":
+        radius = math.sqrt(max(0, (2 + threshold)**2 - z*z))
+        return max(0, 4 - radius), 4 + radius
+    if z < -4:
+        radius = 4 + math.sqrt(max(0, threshold**2 - (z + 4)**2))
+    elif z <= 4:
+        radius = 4 * (4 - z) / 8 + threshold
+    else:
+        radius = math.sqrt(max(0, threshold**2 - (z - 4)**2))
+    return 0, radius
+
+
+def analytic_expected_mask(size, shape, yaw, scale, subdivisions,
+                           slices=4096, sectors=512):
+    """Independent horizontal annulus/disk union, centre sampled at 4x resolution.
+
+    This is a convergent geometric reference, not an exact pixel oracle. Compare
+    doubled slice/sector counts before trusting errors close to the pixel boundary.
+    """
+    supersample = 4
+    mask = Image.new("L", tuple(value * supersample for value in size))
+    draw = ImageDraw.Draw(mask)
+    origin = receiver_screen_origin(size, scale, subdivisions)
+    threshold = 0.5 / subdivisions
+    floor_z = 4.5 - threshold
+    half_height = (2 if shape == "torus" else 4) + threshold
+    angles = [(math.cos(2 * math.pi * i / sectors), math.sin(2 * math.pi * i / sectors))
+              for i in range(sectors)]
+    clipped = False
+    for i in range(slices + 1):
+        z = -half_height + 2 * half_height * i / slices
+        if z > floor_z:
+            continue
+        inner, outer = analytic_cross_section(shape, z, threshold)
+
+        def ring(radius):
+            points = [project_to_floor((radius * c, radius * sn, z), floor_z,
+                                       yaw, scale, origin) for c, sn in angles]
+            return [(round(x * supersample), round(y * supersample)) for x, y in points]
+
+        outside = ring(outer)
+        clipped |= any(x < 4 or y < 4 or x >= (size[0] - 1) * 4 or
+                       y >= (size[1] - 1) * 4 for x, y in outside)
+        if inner == 0:
+            draw.polygon(outside, fill=255)
+        else:
+            inside = ring(inner)
+            for k in range(sectors):
+                j = (k + 1) % sectors
+                draw.polygon((outside[k], outside[j], inside[j], inside[k]), fill=255)
+    return mask.resize(size, Image.Resampling.NEAREST), clipped
 
 def shadow_masks(image, control):
     if image.size != control.size:
@@ -120,6 +180,7 @@ def main():
     parser.add_argument("image", type=Path)
     parser.add_argument("control", type=Path)
     parser.add_argument("--shape", choices=("torus", "cone"), required=True)
+    parser.add_argument("--representation", choices=("voxel", "analytic"), default="voxel")
     parser.add_argument("--yaw", type=float, required=True, help="Actual captured yaw, radians")
     parser.add_argument("--iso-scale", type=float, nargs=2, required=True)
     parser.add_argument("--subdivisions", type=int, required=True)
@@ -134,12 +195,18 @@ def main():
         image = opened.convert("RGB")
     with Image.open(args.control) as opened:
         control = opened.convert("RGB")
-    cells = occupied_cells(args.shape)
-    expected, clipped = expected_mask(
-        image.size, cells, args.yaw, args.iso_scale, args.subdivisions)
+    cells = occupied_cells(args.shape) if args.representation == "voxel" else []
+    if args.representation == "analytic":
+        expected, clipped = analytic_expected_mask(
+            image.size, args.shape, args.yaw, args.iso_scale, args.subdivisions)
+    else:
+        expected, clipped = expected_mask(
+            image.size, cells, args.yaw, args.iso_scale, args.subdivisions,
+            receiver_screen_origin(image.size, args.iso_scale, args.subdivisions))
     observed, visible = shadow_masks(image, control)
     result, errors = compare_masks(expected, observed, visible)
-    result.update(shape=args.shape, occupied_cells=len(cells), yaw=args.yaw,
+    result.update(shape=args.shape, representation=args.representation,
+                  occupied_cells=len(cells), yaw=args.yaw,
                   iso_scale=args.iso_scale, subdivisions=args.subdivisions,
                   clipped=clipped, image=str(args.image), control=str(args.control))
     result["strict_edges_passed"] &= not clipped

@@ -5,12 +5,13 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #include "ir_sdf_common.glsl"
 #include "ir_shape_data.glsl"
 #include "ir_shape_receiver.glsl"
+#include "ir_shape_sun_ray.glsl"
 #include "ir_sun_projection.glsl"
 #include "ir_fog_shadow_caster.glsl"
 #include "ir_sun_face_query_layout.glsl"
 
 layout(std430, binding = 20) readonly buffer ShapeBuffer { ShapeDescriptor shapes[]; };
-layout(std140, binding = 23) uniform ShapeProjectionFrame { ShapeProjectionData boxProjection; };
+layout(std140, binding = 23) uniform ShapeProjectionFrame { ShapeProjectionData shapeProjection; };
 layout(std430, binding = 28) restrict buffer SunShadowDepthMap { uint sunDepthBuf[]; };
 layout(std140, binding = 16) uniform ShapeSunFrame { ivec4 dispatch; };
 layout(std140, binding = 29) uniform FrameDataSun {
@@ -43,39 +44,56 @@ void main() {
     const uint index = gl_WorkGroupID.y * uint(dispatch.y) + gl_WorkGroupID.x;
     if (index >= uint(dispatch.x)) return;
     const ShapeDescriptor shape = shapes[index];
-    if (shape.shapeType != 0u || (shape.flags & 8u) == 0u || (shape.color >> 24u) == 0u) return;
+    const bool box = shape.shapeType == SHAPE_BOX;
+    if ((!box && !shapeUsesSunRay(shape, shapeProjection.voxelRenderOptions,
+                                  shapeProjection.smoothYawEnabled, shapeProjection.latticeShapes)) ||
+        (shape.flags & 8u) == 0u || (shape.color >> 24u) == 0u) return;
+    const float threshold = 0.5 / float(dispatch.z);
     // BOX params count voxel centers; the SDF boundary adds half a raster cell.
-    const vec3 halfExtent = (shape.params.xyz - 1.0) * 0.5 + vec3(0.5 / float(dispatch.z));
+    const vec3 halfExtent = box
+        ? (shape.params.xyz - 1.0) * 0.5 + vec3(threshold)
+        : shapeSunHalfExtent(shape.shapeType, shape.params, threshold);
     if (any(lessThanEqual(halfExtent, vec3(0.0)))) return;
-    const vec3 axisX = rotateByQuat(vec3(1, 0, 0), shape.rotation);
-    const vec3 axisY = rotateByQuat(vec3(0, 1, 0), shape.rotation);
-    const vec3 axisZ = rotateByQuat(vec3(0, 0, 1), shape.rotation);
-    // Faces and footprint follow the drawn box, not the raw descriptor position.
-    const vec3 boxCenter = shapeRenderedCenter(shape.worldPosition.xyz, boxProjection);
-    const vec3 center = sunSpaceProject(boxCenter, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
+    const vec4 rotation = shapeHasEntityRotation(shape.rotation)
+        ? shape.rotation : vec4(0, 0, 0, 1);
+    const vec3 axisX = rotateByQuat(vec3(1, 0, 0), rotation);
+    const vec3 axisY = rotateByQuat(vec3(0, 1, 0), rotation);
+    const vec3 axisZ = rotateByQuat(vec3(0, 0, 1), rotation);
+    // Faces and footprint follow the drawn shape, not the raw descriptor position.
+    const vec3 shapeCenter = shapeRenderedCenter(shape.worldPosition.xyz, shapeProjection);
+    const vec3 center = sunSpaceProject(shapeCenter, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
     const vec3 extent = abs(sunSpaceProject(axisX, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz)) * halfExtent.x
         + abs(sunSpaceProject(axisY, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz)) * halfExtent.y
         + abs(sunSpaceProject(axisZ, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz)) * halfExtent.z;
     const vec3 direction = -vec3(dot(sunDirection.xyz, axisX), dot(sunDirection.xyz, axisY), dot(sunDirection.xyz, axisZ));
     const bool fogBody = (shape.flags & 16u) != 0u;
-    if (gl_WorkGroupID.z == 0u && (fogBody || fogCeilingEnabled.x == 0)) {
+    const bool indexWholeShape = fogBody || fogCeilingEnabled.x == 0;
+    // Ceiling-cut FIELD samples have no whole-shape record. Keep them in the
+    // independent depth layer, which complete exact queries still consult.
+    const uint depthLayerOffset = indexWholeShape ? kSourceFaceFallbackOffset : 0u;
+    if (box && gl_WorkGroupID.z == 0u && indexWholeShape) {
         for (int axis = 0; axis < 3; ++axis) {
             vec3 localNormal = vec3(0.0);
             localNormal[axis] = 1.0;
-            const bool positive = dot(rotateByQuat(localNormal, shape.rotation), sunDirection.xyz) > 0.0;
+            const bool positive = dot(rotateByQuat(localNormal, rotation), sunDirection.xyz) > 0.0;
             vec3 corner = -halfExtent;
             corner[axis] = positive ? halfExtent[axis] : -halfExtent[axis];
             vec3 edgeU = vec3(0.0), edgeV = vec3(0.0);
             edgeU[(axis + 1) % 3] = 2.0 * halfExtent[(axis + 1) % 3];
             edgeV[(axis + 2) % 3] = 2.0 * halfExtent[(axis + 2) % 3];
-            corner = boxCenter + rotateByQuat(corner, shape.rotation);
-            edgeU = rotateByQuat(edgeU, shape.rotation);
-            edgeV = rotateByQuat(edgeV, shape.rotation);
+            corner = shapeCenter + rotateByQuat(corner, rotation);
+            edgeU = rotateByQuat(edgeU, rotation);
+            edgeV = rotateByQuat(edgeV, rotation);
             const vec3 projected = sunSpaceProject(corner, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
             const vec3 projectedU = sunSpaceProject(edgeU, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
             const vec3 projectedV = sunSpaceProject(edgeV, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
             indexSourceSunFace(projected, projectedU, projectedV);
         }
+    }
+    if (!box && gl_WorkGroupID.z == 0u && indexWholeShape) {
+        const vec3 projectedAxis = sunSpaceProject(axisZ, sunBasisU.xyz, sunBasisV.xyz, sunDirection.xyz);
+        const vec3 parameters = vec3(shape.params.x, shape.shapeType == SHAPE_TORUS ? shape.params.y : shape.params.z, threshold);
+        indexSourceSunGeometry(center, projectedAxis, parameters, shape.shapeType, center.xy - extent.xy, center.xy + extent.xy);
     }
     for (int cascade = 0; cascade < 2; ++cascade) {
         const vec2 origin = cascade == 0 ? cascadeOriginUV_0 : cascadeOriginUV_1;
@@ -87,7 +105,7 @@ void main() {
         for (uint sampleIndex = gl_WorkGroupID.z * 64u + gl_LocalInvocationID.x; sampleIndex < uint(size.x * size.y); sampleIndex += 64u * uint(dispatch.w)) {
             const ivec2 pixel = first + ivec2(int(sampleIndex) % size.x, int(sampleIndex) / size.x);
             const vec2 uv = origin + (vec2(pixel) + 0.5) * texel;
-            const vec3 worldDelta = sunBasisU.xyz * uv.x + sunBasisV.xyz * uv.y - boxCenter;
+            const vec3 worldDelta = sunBasisU.xyz * uv.x + sunBasisV.xyz * uv.y - shapeCenter;
             const vec3 rayOrigin = vec3(dot(worldDelta, axisX), dot(worldDelta, axisY), dot(worldDelta, axisZ));
             float nearDepth = -1e30;
             float farDepth = 1e30;
@@ -102,11 +120,13 @@ void main() {
                     farDepth = min(farDepth, max(a, b));
                 }
             }
-            if (hit && nearDepth <= farDepth) {
+            float casterDepth = nearDepth;
+            if (hit && nearDepth <= farDepth &&
+                (box || sdfRayHit(shape.shapeType, shape.params, rayOrigin, direction, threshold, nearDepth, farDepth, casterDepth))) {
                 const vec3 worldSample = sunBasisU.xyz * uv.x + sunBasisV.xyz * uv.y -
-                    sunDirection.xyz * nearDepth;
+                    sunDirection.xyz * casterDepth;
                 if (!fogFieldCastsSunShadow(worldSample, fogBody, fogCeilingEnabled.x)) continue;
-                atomicMin(sunDepthBuf[kSourceFaceFallbackOffset + cascade * kCascadeTexelCount + pixel.y * kSunShadowMapDim + pixel.x], packSunSurfaceDepth(nearDepth));
+                atomicMin(sunDepthBuf[depthLayerOffset + cascade * kCascadeTexelCount + pixel.y * kSunShadowMapDim + pixel.x], packSunSurfaceDepth(casterDepth));
             }
         }
     }

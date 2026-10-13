@@ -19,6 +19,15 @@ inline float3 shapeRenderedCenter(float3 worldPosition, ShapeProjectionData proj
     return float3(yaw.x * view.x - yaw.y * view.y, yaw.y * view.x + yaw.x * view.y, view.z);
 }
 
+inline int2 shapeRenderedOriginIso(float3 center, ShapeProjectionData projection, int density) {
+    float2 yaw = shapeYawCosSin(projection);
+    return projection.smoothYawEnabled != 0
+        ? roundHalfUp(pos3DtoPos2DIsoYawed(center * float(density), projection.visualYaw))
+        : pos3DtoPos2DIso(roundHalfUp(float3(yaw.x * center.x + yaw.y * center.y,
+                                             -yaw.y * center.x + yaw.x * center.y,
+                                             center.z)) * density);
+}
+
 // Canvas cell receivers select their sun cascade by the canvas depth: the
 // view-frame x+y+z at the canvas's subdivided resolution. A finite fragment that
 // stands in for a canvas cell must select the same cascade as its neighbours.
@@ -46,11 +55,7 @@ inline bool shapeBoxReceiver(ShapeDescriptor shape, ShapeProjectionData projecti
     float3 center = shapeRenderedCenter(shape.worldPosition.xyz, projection);
     // Cardinal yaw: center is a lattice cell rotated by an exact cos/sin pair,
     // so rotating it back recovers the integer view cell exactly.
-    int2 originIso = smoothYaw
-        ? roundHalfUp(pos3DtoPos2DIsoYawed(center * float(density), projection.visualYaw))
-        : pos3DtoPos2DIso(roundHalfUp(float3(yaw.x * center.x + yaw.y * center.y,
-                                             -yaw.y * center.x + yaw.x * center.y,
-                                             center.z)) * density);
+    int2 originIso = shapeRenderedOriginIso(center, projection, density);
     int2 frameOffset = trixelFrameOffset(projection.trixelCanvasOffsetZ1,
         projection.frameCanvasOffset, projection.voxelRenderOptions);
     float2 relativeIso = canvasPixel - float2(frameOffset + originIso);

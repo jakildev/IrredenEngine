@@ -127,6 +127,7 @@ add_executable(IrredenEngineTest
   render/picking_grid_ray_test.cpp
   render/picking_face_normal_test.cpp
   render/prefab_system_probe_test.cpp
+  render/shape_sample_probe_test.cpp
   render/run_witness_test.cpp
   render/settings_menu_layout_test.cpp
   render/settings_menu_reset_test.cpp

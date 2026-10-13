@@ -59,3 +59,7 @@ int cardinalShapeReceiverDepth(int storedDepth, int subdivisions, bool shapeOwne
         ? storedDepth - cardinalRasterLatticeDepthOffset(subdivisions)
         : storedDepth;
 }
+
+bool shapeHasEntityRotation(vec4 rotation) {
+    return abs(rotation.w) < 0.9999;
+}

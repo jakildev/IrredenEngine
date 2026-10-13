@@ -37,7 +37,7 @@ ivec3 roundHalfUp(vec3 v){
 """
 
 CHECKS = r"""
-vec3 bake(ShapeDescriptor shape, ShapeProjectionData boxProjection){
+vec3 bake(ShapeDescriptor shape, ShapeProjectionData shapeProjection){
  return BAKE_CENTER;
 }
 int main(){
@@ -107,7 +107,7 @@ class BoxCasterCenterTest(unittest.TestCase):
                 + [extract_function(receiver, name)
                    for name in ("shapeYawCosSin", "shapeRenderedCenter")])
             bake_source = (shaders / f"c_bake_box_sun_shadow.{suffix}").read_text()
-            bake_center = re.search(r"boxCenter = ([^;]+);", bake_source).group(1)
+            bake_center = re.search(r"shapeCenter = ([^;]+);", bake_source).group(1)
             prologue, predicate = raster_prologue(suffix)
             variants = {
                 "production": (helpers, bake_center),
