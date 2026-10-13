@@ -24,12 +24,18 @@ Design log, findings and the authoring-session history:
   the selected part's private canvas while rotated and private-canvas parts stay
   outside the axis-aligned edit pick, and `part_sizes` creates two parts of
   different extents and holds the mirror and loft tools to them.
+- `python3 scripts/gui-verify.py IRVoxelEditor -- --module <dir>
+  --module-session <name>` — one session registered by a creation module.
+  `test/module` registers `test_parts`, `test_single`, and the deliberately
+  failing `test_unreachable` fixture.
 - `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
   render reference set, discovered under this creation's `test/references/`.
 - `python3 scripts/author-entity.py <entity>` — replays an entity session twice
   and byte-compares the saved `.vxs` (rock, mushroom, bird at the default
   scene; `ant --scene-size 20 20 20`; `tree --scene-size 16 16 26`). A clean
   `git status assets/` afterwards means the committed asset is unchanged.
+  Pass `--module <dir> --module-session <name>` to author from a module-owned
+  session; `--asset-dir` may name an alternate output directory.
 
 ## Picking contract
 
@@ -102,14 +108,23 @@ render, because the aim and the pick share one screen mapping.
   aims off gizmo pixels (the model does not know where handles are drawn).
 - A new session is four edits: `Session::Id`, `idFromName`, `Session::build`,
   and the `--gui-session` enum list in `main()`.
+- `Session::Builder` is also the Lua authoring ABI. Adding or changing a public
+  builder operation requires the matching `IREditor.registerSession` binding,
+  conversion coverage, and binding-matrix test in the same change.
 
 ## Creation modules (`--module <dir>`)
 
 - `ModuleHost` (`editor_lua_host.hpp`, whose header comment is the contract)
   runs `<dir>/init.lua` in the world's Lua VM in EVAL mode. A module registers
-  components (`IRComponent.register`), recipes and panels (`IREditor.*`). A
+  components (`IRComponent.register`), recipes, panels, and authoring sessions
+  (`IREditor.registerSession(name, function(session) ... end)`). A
   missing `init.lua`, a Lua error, or a component name already registered (a
   C++ one included) exits 2.
+- `--module-session <name>` requires `--module`, is mutually exclusive with a
+  non-`none` `--gui-session`, and builds the registered function exactly once
+  against the live scene size and origin. Its session handle is valid only
+  during that function call; retaining it for a later panel callback is an
+  error.
 - A recipe is a pure function of `(values, size)`. APPLY writes its cells
   through `applyEditRaw` and one `commitStroke`, so one Ctrl+Z undoes it.
 - A module may call `IRSystem.registerSystem`, but the editor places no module

@@ -3675,7 +3675,14 @@ int main(int argc, char **argv) {
         "load a creation module: runs <dir>/init.lua in the editor's Lua VM",
         ""
     );
+    IREngine::args()
+        .string("--module-session", "replay an authoring session registered by --module", "");
     IREngine::init(argc, argv);
+    const auto exitCleanly = [](int code) {
+        IRWindow::closeWindow();
+        IREngine::gameLoop();
+        return code;
+    };
     {
         const std::vector<float> &dims = IREngine::args().getFloats("--scene-size");
         if (dims.size() == 3 && dims[0] >= 1.0f && dims[1] >= 1.0f && dims[2] >= 1.0f) {
@@ -3700,26 +3707,52 @@ int main(int argc, char **argv) {
     // A module loads before the session builds: module_loaded resolves its
     // expectations against what the module registered.
     const std::string moduleDir = IREngine::args().getString("--module");
+    const std::string moduleSession = IREngine::args().getString("--module-session");
+    const std::string guiSession = IREngine::args().getEnum("--gui-session");
+    if (!moduleSession.empty() && moduleDir.empty()) {
+        IR_LOG_ERROR("--module-session requires --module <dir>");
+        return exitCleanly(2);
+    }
+    if (!moduleSession.empty() && guiSession != "none") {
+        IR_LOG_ERROR("--module-session cannot be combined with --gui-session {}", guiSession);
+        return exitCleanly(2);
+    }
     if (!moduleDir.empty()) {
         std::string error;
         if (!IRVoxelEditor::g_moduleHost.load(moduleDir, error)) {
             IR_LOG_ERROR("Module load failed: {}", error);
-            return 2;
+            return exitCleanly(2);
         }
         IR_LOG_INFO(
-            "module_loaded dir={} components={} recipes={} panels={}",
+            "module_loaded dir={} components={} recipes={} panels={} sessions={}",
             moduleDir,
             IRVoxelEditor::g_moduleHost.componentCount(),
             IRVoxelEditor::g_moduleHost.recipes().size(),
-            IRVoxelEditor::g_moduleHost.panelNames().size()
+            IRVoxelEditor::g_moduleHost.panelNames().size(),
+            IRVoxelEditor::g_moduleHost.sessionNames().size()
         );
+    }
+    if (!moduleSession.empty()) {
+        const std::vector<std::string> &names = IRVoxelEditor::g_moduleHost.sessionNames();
+        if (std::find(names.begin(), names.end(), moduleSession) == names.end()) {
+            std::string available;
+            for (const std::string &name : names)
+                available += (available.empty() ? "" : ", ") + name;
+            IR_LOG_ERROR(
+                "Unknown --module-session '{}'; registered module sessions: {}",
+                moduleSession,
+                available.empty() ? "(none)" : available
+            );
+            return exitCleanly(2);
+        }
     }
     // Build the session recipe before the systems are wired — initSystems hands
     // its shot table to the harness. A recipe that cannot aim one of its
     // gestures is a hard error rather than a partial replay: a session that
     // silently drops an op authors the wrong entity and saves it anyway.
-    IRVoxelEditor::g_sessionId =
-        IRVoxelEditor::Session::idFromName(IREngine::args().getEnum("--gui-session"));
+    IRVoxelEditor::g_sessionId = moduleSession.empty()
+                                     ? IRVoxelEditor::Session::idFromName(guiSession)
+                                     : IRVoxelEditor::Session::Id::MODULE;
     if (IRVoxelEditor::g_sessionId != IRVoxelEditor::Session::Id::NONE) {
         const IRVoxelEditor::Session::ModuleSessionSpec moduleSpec =
             IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::MODULE_LOADED
@@ -3729,17 +3762,23 @@ int main(int argc, char **argv) {
             IRVoxelEditor::Session::usesComponentSpec(IRVoxelEditor::g_sessionId)
                 ? IRVoxelEditor::resolveComponentAttachSpec(IRVoxelEditor::g_sessionId)
                 : IRVoxelEditor::Session::ComponentAttachSpec{};
-        IRVoxelEditor::g_session = IRVoxelEditor::Session::build(
-            IRVoxelEditor::g_sessionId,
-            IRVoxelEditor::g_editableSceneSize,
-            IRVoxelEditor::g_editableSceneOrigin,
-            moduleSpec,
-            componentSpec
-        );
+        IRVoxelEditor::g_session = IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::MODULE
+                                       ? IRVoxelEditor::g_moduleHost.buildSession(
+                                             moduleSession,
+                                             IRVoxelEditor::g_editableSceneSize,
+                                             IRVoxelEditor::g_editableSceneOrigin
+                                         )
+                                       : IRVoxelEditor::Session::build(
+                                             IRVoxelEditor::g_sessionId,
+                                             IRVoxelEditor::g_editableSceneSize,
+                                             IRVoxelEditor::g_editableSceneOrigin,
+                                             moduleSpec,
+                                             componentSpec
+                                         );
         if (!IRVoxelEditor::g_session.ok()) {
             for (const std::string &error : IRVoxelEditor::g_session.errors_)
                 IR_LOG_ERROR("Session recipe error: {}", error);
-            return 1;
+            return exitCleanly(1);
         }
         // Resolve the shot table only now that the recipe sits in the storage
         // it keeps for the whole run — the shots point into its segments.
@@ -3755,7 +3794,7 @@ int main(int argc, char **argv) {
     initCommands();
     initEntities();
     if (!IRVoxelEditor::initModuleUi())
-        return 2;
+        return exitCleanly(2);
     IRVoxelEditor::initComponentsUi();
     IREngine::gameLoop();
     return 0;

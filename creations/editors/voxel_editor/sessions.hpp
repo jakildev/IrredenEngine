@@ -93,6 +93,7 @@ namespace IRVoxelEditor::Session {
 
 enum class Id {
     NONE,
+    MODULE,
     DRAG_PROBE,
     PLACE_BELOW,
     FACE_PICK,
@@ -1552,6 +1553,8 @@ inline Recipe build(
     const ComponentAttachSpec &componentSpec
 ) {
     switch (id) {
+    case Id::MODULE:
+        break;
     case Id::DRAG_PROBE:
         return detail::buildDragProbe(sceneSize, sceneOrigin);
     case Id::PLACE_BELOW:

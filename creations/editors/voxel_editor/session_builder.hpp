@@ -660,6 +660,14 @@ class Builder {
         segment("start");
     }
 
+    IRMath::ivec3 sceneSize() const {
+        return m_sceneSize;
+    }
+
+    IRMath::vec3 sceneOrigin() const {
+        return m_model.origin();
+    }
+
     // Author against the editor's full reference scene rather than the bare
     // stage. The model is unchanged: the edit pick passes through furniture,
     // so only the editable set's occupancy decides where an aim lands. What
