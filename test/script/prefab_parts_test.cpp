@@ -669,6 +669,13 @@ TEST_F(PrefabParts, RejectsMalformedParts) {
     rejects("bad_shape", "{ id = 'a', shape = { type = 99 } }", "IRShape");
     rejects("string_tier", "{ id = 'a', lod = { fine = 'LOD_0' } }", "lod.fine");
     rejects("tier_range", "{ id = 'a', lod = { coarse = 5 } }", "lod.coarse=5");
+    rejects("fractional_fine", "{ id = 'a', lod = { fine = 0.5 } }", "lod.fine must be");
+    rejects("fractional_coarse", "{ id = 'a', lod = { coarse = 3.5 } }", "lod.coarse must be");
+    rejects(
+        "fractional_rotation_mode",
+        "{ id = 'a', shape = { type = IRShape.BOX }, rotation_mode = 0.25 }",
+        "rotation_mode must be"
+    );
     rejects(
         "inverted",
         "{ id = 'a', lod = { fine = IRRender.LodLevel.LOD_3, coarse = IRRender.LodLevel.LOD_1 } }",
