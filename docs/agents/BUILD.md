@@ -338,8 +338,19 @@ runs by double-click on a clean box. `IRShapeDebug` is the reference.
 
 - **Linux** — FetchContent deps default to static (top-level
   `CMakeLists.txt`); `$ORIGIN` rpath covers any remaining `.so`.
-- **Windows** — bundles `$<TARGET_RUNTIME_DLLS>` plus the MinGW runtime trio
-  (which `TARGET_RUNTIME_DLLS` omits).
+- **Windows** — `cmake/windows_bundle_dlls.cmake` walks the exe's PE imports
+  transitively (`file(GET_RUNTIME_DEPENDENCIES)` with the toolchain's
+  `objdump`) and copies every DLL resolved outside `%SystemRoot%` next to the
+  exe: the CMake-built DLLs, the MinGW runtime, FFmpeg, and FFmpeg's codec
+  closure (x264/x265/vpx/aom/…). It searches the exe's build dir,
+  `IRREDEN_FFMPEG_ROOT/bin`, then the compiler's `bin/` — never `PATH`. An
+  unresolved import or one DLL name resolving to two files fails the target,
+  and the previous zip is deleted first, so a failed run leaves no archive.
+  The FFmpeg closure dominates the DLL payload: the `IRShapeDebug`
+  debug-preset bundle is ~104 DLLs / ~168 MiB uncompressed (~59 MiB
+  compressed) beside a ~278 MiB debug exe, a ~124 MiB zip. To check a
+  bundle, unzip it into an empty directory and run the exe with only
+  `%SystemRoot%\System32;%SystemRoot%` on `PATH`.
 - **macOS** — `cmake/macos_bundle_dylibs.cmake` copies non-system dylibs
   next to the exe, rewrites load commands to `@executable_path`, and ad-hoc
   re-signs. Shallow: transitive Homebrew deps (ffmpeg's codec libraries)
