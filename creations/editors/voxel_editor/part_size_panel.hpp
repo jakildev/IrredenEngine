@@ -1,6 +1,7 @@
 #ifndef IR_VOXEL_EDITOR_PART_SIZE_PANEL_H
 #define IR_VOXEL_EDITOR_PART_SIZE_PANEL_H
 
+#include <irreden/common/components/entity_anchor.hpp>
 #include <irreden/ir_math.hpp>
 
 #include "anim_panel.hpp"
@@ -59,6 +60,14 @@ inline IRMath::vec3 deriveSceneOrigin(IRMath::ivec3 size) {
         -static_cast<float>(size.y) / 2.0f,
         static_cast<float>(kSeedGroundPlaneWorldZ - (size.z - 1))
     );
+}
+
+// Translation of a CENTER-anchored voxel part of @p size whose cell (0,0,0)
+// sits at deriveSceneOrigin(size): the middle of its box, which is the point
+// the part turns about.
+inline IRMath::vec3 derivePartPivot(IRMath::ivec3 size) {
+    return deriveSceneOrigin(size) -
+           IRComponents::anchorOffset(IRComponents::EntityAnchor::CENTER, size);
 }
 
 } // namespace IRVoxelEditor

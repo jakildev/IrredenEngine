@@ -1011,10 +1011,14 @@ void LuaScript::bindLuaDrivenEcs() {
 
 void LuaScript::bindLuaCommands() {
     detail::bindCommandNameEnum(*this);
-    detail::bindInputEnums(*this);
+    bindLuaInputEnums();
     detail::bindCommandFunctions(*this);
     detail::bindEntityEvents(*this);
     detail::bindCursorPosition(*this);
+}
+
+void LuaScript::bindLuaInputEnums() {
+    detail::bindInputEnums(*this);
 }
 
 void LuaScript::bindLuaFog() {

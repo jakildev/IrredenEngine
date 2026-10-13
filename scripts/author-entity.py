@@ -64,14 +64,20 @@ def clear_saves(save_dir: Path) -> None:
 
 
 def run_session(exe: Path, save_dir: Path, session: str, scene_size: list[int] | None,
-                warmup: int, timeout: int) -> tuple[int, str, list[Path]]:
+                warmup: int, timeout: int, module: str | None,
+                module_session: str | None) -> tuple[int, str, list[Path]]:
     """Clear stale saves, replay the session once, and collect the saved frames."""
     clear_saves(save_dir)
     cmd = [
         "fleet-run", "--timeout", str(timeout),
         EDITOR_TARGET, "--auto-screenshot", str(warmup),
-        "--gui-session", session,
     ]
+    if module:
+        cmd += ["--module", module]
+    if module_session:
+        cmd += ["--module-session", module_session]
+    else:
+        cmd += ["--gui-session", session]
     if scene_size:
         cmd += ["--scene-size", *(str(v) for v in scene_size)]
     rc, output = verify_common.run_capture(cmd)
@@ -120,8 +126,15 @@ def main() -> None:
                     "verify it, and commit the asset."
     )
     parser.add_argument("entity", help="entity name (also the asset base name)")
-    parser.add_argument("--session", default=None,
-                        help="--gui-session name (default: the entity name)")
+    session_group = parser.add_mutually_exclusive_group()
+    session_group.add_argument("--session", default=None,
+                               help="--gui-session name (default: the entity name)")
+    session_group.add_argument("--module-session", default=None,
+                               help="session registered by --module")
+    parser.add_argument("--module", default=None,
+                        help="creation-module directory passed through to the editor")
+    parser.add_argument("--asset-dir", type=Path, default=ASSET_SUBDIR,
+                        help="asset copy destination (default: assets/voxel/entities)")
     parser.add_argument("--scene-size", type=int, nargs=3, metavar=("W", "H", "D"),
                         default=None, help="editable grid dims (default: editor's 16³)")
     parser.add_argument("--no-build", action="store_true",
@@ -132,6 +145,8 @@ def main() -> None:
                         help="per-run watchdog seconds (default: 180 — sessions are "
                              "longer than the standing shot table)")
     args = parser.parse_args()
+    if args.module_session and not args.module:
+        parser.error("--module-session requires --module")
     session = args.session or args.entity
 
     worktree = verify_common.detect_worktree_root(verify_common.SCRIPT_DIR)
@@ -151,7 +166,8 @@ def main() -> None:
     print(f"[author-entity] save dir: {save_dir}")
 
     rc1, out1, frames1 = run_session(exe, save_dir, session, args.scene_size,
-                                     args.warmup_frames, args.timeout)
+                                     args.warmup_frames, args.timeout, args.module,
+                                     args.module_session)
     check_assertions(out1, rc1, args.timeout)
     if not frames1:
         raise SystemExit(f"[author-entity] session '{session}' passed its asserts but "
@@ -162,7 +178,8 @@ def main() -> None:
     first_bytes = {p.name: p.read_bytes() for p in frames1}
 
     rc2, out2, frames2 = run_session(exe, save_dir, session, args.scene_size,
-                                     args.warmup_frames, args.timeout)
+                                     args.warmup_frames, args.timeout, args.module,
+                                     args.module_session)
     check_assertions(out2, rc2, args.timeout)
     # Compare run 2's live files against run 1's captured bytes.
     if sorted(first_bytes) != sorted(p.name for p in frames2):
@@ -175,11 +192,15 @@ def main() -> None:
     print(f"[author-entity] determinism gate: {len(frames2)} frame(s) byte-identical "
           f"across two runs")
 
-    asset_dir = worktree / ASSET_SUBDIR
+    asset_dir = args.asset_dir if args.asset_dir.is_absolute() else worktree / args.asset_dir
     written = commit_asset(frames2, args.entity, asset_dir)
     print(f"\n[author-entity] committed {args.entity}:")
     for p in written:
-        print(f"  {p.relative_to(worktree)}")
+        try:
+            display_path = p.relative_to(worktree)
+        except ValueError:
+            display_path = p
+        print(f"  {display_path}")
 
 
 if __name__ == "__main__":

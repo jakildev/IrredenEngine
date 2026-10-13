@@ -359,17 +359,11 @@ void RenderManager::updateDefaultRotationPivotFocus() {
         return;
     }
 
-    // The framebuffer texel under the viewport center. The framebuffer's
-    // resolution-plus-buffer is symmetric about the view, so its center texel is
-    // the center of the view. The attachment still holds the PREVIOUS frame —
-    // the one the source stamp describes.
-    const auto framebufferOpt =
-        IREntity::getComponentOptional<C_TrixelCanvasFramebuffer>(m_mainFramebuffer);
-    if (!framebufferOpt.has_value()) {
-        return;
-    }
-    const ivec2 resolution = (*framebufferOpt.value()).getResolutionPlusBuffer();
-    const IRRender::CompositeDepthSample sample = IRRender::readbackCompositeDepth(resolution / 2);
+    // The framebuffer texel under the viewport center, the one
+    // getCanvasCenterIso describes. The attachment still holds the PREVIOUS
+    // frame — the one the source stamp describes.
+    const IRRender::CompositeDepthSample sample =
+        IRRender::readbackCompositeDepth(IRRender::getMainFramebufferCenterPixel());
     const IRRender::DecodedCompositeDepth decoded = IRRender::decodeCompositeDepth(sample.rawDist_);
     // Background (depth clear at the far plane) and any foreground-tier
     // fragment hold the previous anchor. A foreground-tier hit is a

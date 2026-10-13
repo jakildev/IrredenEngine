@@ -179,7 +179,7 @@ The [fog selftest](../../creations/demos/fog_demo/scripts/fog_binding_selftest.l
   or callback; call `IRWorld.resetGameplay()` immediately before loading.
 - **`IRGui.draw*` / `IRDebug.draw*`:** immediate; re-issue in RENDER after
   `TEXT_TO_TRIXEL` / before `DEBUG_OVERLAY` respectively.
-- **Widgets:** Lua `onClick` raises unless `WIDGET_LUA_DISPATCH` follows `WIDGET_INPUT` in INPUT.
+- **Widgets:** a Lua handler (`makeButton` `onClick`; `makeHitRegion` `onHover` / `onUnhover` / `onClick`) raises unless `WIDGET_LUA_DISPATCH` follows `WIDGET_INPUT` in INPUT ([contract](include/irreden/script/lua_widget_bindings.hpp)).
 - **`IRRender.setCameraZoom` / `getCameraZoom` / `setCameraZoomContinuous` / `isCameraZoomContinuous`:** main camera only; a write reads back exactly only under the continuous policy, and a bad argument raises before any write ([design](../../docs/design/continuous-camera-zoom.md)).
 - **`IRRender.createViewport` family:** `LuaScript::bindLuaViewport()`, opt-in like `IRFog`;
   every setter takes the id `createViewport` returned ([design](../../docs/design/secondary-viewport.md)).
@@ -195,8 +195,8 @@ Compose modifiers with `bit.bor`. A `createCommand` body appears in the F1 overl
 ## Prefab format (`Prefab.register`, `Prefab.spawn`)
 
 A prefab has optional refs/rotation/canvas/components/setup and v2 `parts`
-([schema](../../docs/design/lod-strategy.md), Phase 2); an `IRComponent.register` name in `components`
-spawns only in a process that registered it. Contracts: [`prefab_api.hpp`](include/irreden/script/prefab_api.hpp).
+([schema](../../docs/design/lod-strategy.md), Phase 2); a `voxel_ref` part's `anchor` is an `IRComponent.EntityAnchor.*` integer (absent = CORNER).
+An `IRComponent.register` name in `components` spawns only in a process that registered it. Contracts: [`prefab_api.hpp`](include/irreden/script/prefab_api.hpp).
 
 ## Script output
 

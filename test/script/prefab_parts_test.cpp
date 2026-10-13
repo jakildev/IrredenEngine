@@ -550,6 +550,45 @@ TEST_F(PrefabParts, SpawnsVoxelPartsAtTheirOwnExtent) {
     EXPECT_EQ(frameSet.recordCount(), 25u);
 }
 
+// A part's `anchor` reaches its C_VoxelSetNew: CENTER gives an even extent a
+// half-integer local origin, and a part without the field stays CORNER.
+TEST_F(PrefabParts, VoxelPartAnchorComesFromTheManifest) {
+    const std::string voxelPath = std::string{kTmpDir} + "/prefab_parts_anchor.vxs";
+    const IRMath::ivec3 extent(4, 2, 6);
+    IRAsset::DenseVoxelSet dense;
+    dense.boundsMin_ = IRMath::ivec3(0);
+    dense.boundsMax_ = extent;
+    dense.voxels_.resize(dense.voxelCount());
+    ASSERT_TRUE(IRAsset::saveDenseVoxelSet(voxelPath, dense).ok());
+
+    const EntityId root = spawn(
+        "anchor",
+        "return {\n"
+        "  prefab_version = 2,\n"
+        "  parts = {\n"
+        "    { id = 'centered', voxel_ref = '" +
+            voxelPath +
+            "',\n"
+            "      anchor = IRComponent.EntityAnchor.CENTER },\n"
+            "    { id = 'unstated', voxel_ref = '" +
+            voxelPath +
+            "' },\n"
+            "  },\n"
+            "}\n"
+    );
+    ASSERT_NE(root, IREntity::kNullEntity);
+    ASSERT_EQ(liveCount(root), 2);
+
+    const C_PrefabParts &parts = partsOf(root);
+    const auto &centered = IREntity::getComponent<C_VoxelSetNew>(parts.slots_[0].entity_);
+    EXPECT_EQ(centered.anchor_, IRComponents::EntityAnchor::CENTER);
+    EXPECT_EQ(centered.size_, extent);
+    EXPECT_EQ(centered.stagedOrigin(), vec3(-1.5f, -0.5f, -2.5f));
+    const auto &unstated = IREntity::getComponent<C_VoxelSetNew>(parts.slots_[1].entity_);
+    EXPECT_EQ(unstated.anchor_, IRComponents::EntityAnchor::CORNER);
+    EXPECT_EQ(unstated.stagedOrigin(), vec3(0.0f));
+}
+
 // A tree mark lists the root's descendants when it is taken, so a part staged
 // before it and built at the flush after it would outlive the root. The staged
 // build sees the mark and gives up; a root nobody marked still gets its part.
@@ -630,12 +669,95 @@ TEST_F(PrefabParts, RejectsMalformedParts) {
     rejects("bad_shape", "{ id = 'a', shape = { type = 99 } }", "IRShape");
     rejects("string_tier", "{ id = 'a', lod = { fine = 'LOD_0' } }", "lod.fine");
     rejects("tier_range", "{ id = 'a', lod = { coarse = 5 } }", "lod.coarse=5");
+    rejects("fractional_fine", "{ id = 'a', lod = { fine = 0.5 } }", "lod.fine must be");
+    rejects("fractional_coarse", "{ id = 'a', lod = { coarse = 3.5 } }", "lod.coarse must be");
+    rejects(
+        "fractional_rotation_mode",
+        "{ id = 'a', shape = { type = IRShape.BOX }, rotation_mode = 0.25 }",
+        "rotation_mode must be"
+    );
     rejects(
         "inverted",
         "{ id = 'a', lod = { fine = IRRender.LodLevel.LOD_3, coarse = IRRender.LodLevel.LOD_1 } }",
         "lod.fine must not be coarser"
     );
     rejects("factory", "{ id = 'a', components = { C_Nope = {} } }", "no factory registered");
+    EXPECT_EQ(IREntity::countComponents<C_PrefabParts>(), 0) << "a rejected spawn leaves no root";
+}
+
+// `anchor` places a part's voxel_ref content. Everywhere else it can be written
+// it would attach to nothing, so the reader refuses it there.
+TEST_F(PrefabParts, RejectsMalformedAnchors) {
+    const std::string voxelPath = std::string{kTmpDir} + "/prefab_parts_anchor_reject.vxs";
+    IRAsset::DenseVoxelSet dense;
+    dense.boundsMax_ = IRMath::ivec3(2);
+    dense.voxels_.resize(dense.voxelCount());
+    ASSERT_TRUE(IRAsset::saveDenseVoxelSet(voxelPath, dense).ok());
+
+    const auto rejects = [&](const std::string &tag, const std::string &body, const char *needle) {
+        const IRPrefab::Prefab::SpawnResult result = spawnResult(tag, body);
+        EXPECT_EQ(result.entity_, IREntity::kNullEntity) << tag;
+        EXPECT_NE(result.error_.find(needle), std::string::npos) << tag << ": " << result.error_;
+    };
+    const auto withPart = [](const std::string &part) {
+        return "return { prefab_version = 2, parts = { " + part + " } }\n";
+    };
+    const auto voxelPart = [&](const std::string &anchor) {
+        return withPart("{ id = 'a', voxel_ref = '" + voxelPath + "', anchor = " + anchor + " }");
+    };
+
+    // The part is otherwise loadable, so each row fails on the value alone.
+    const EntityId control = spawn("anchor_control", voxelPart("IRComponent.EntityAnchor.GROUND"));
+    ASSERT_NE(control, IREntity::kNullEntity);
+    IREntity::destroyTree(control);
+    tick();
+    ASSERT_EQ(IREntity::countComponents<C_PrefabParts>(), 0);
+
+    rejects("anchor_range", voxelPart("3"), "anchor=3 not recognized");
+    rejects("anchor_negative", voxelPart("-1"), "anchor=-1 not recognized");
+    rejects("anchor_string", voxelPart("'CENTER'"), "IRComponent.EntityAnchor");
+    rejects("anchor_fraction", voxelPart("1.5"), "anchor=1.5 not recognized");
+    rejects("anchor_bool", voxelPart("true"), "IRComponent.EntityAnchor");
+    rejects("anchor_table", voxelPart("{}"), "IRComponent.EntityAnchor");
+
+    rejects(
+        "anchor_on_shape",
+        withPart(
+            "{ id = 'a', shape = { type = IRShape.BOX }, anchor = IRComponent.EntityAnchor.CENTER }"
+        ),
+        "a shape part has none"
+    );
+    // A bare part is refused on the field's presence, whatever its value.
+    int bareRow = 0;
+    for (const char *anchor :
+         {"IRComponent.EntityAnchor.CENTER", "IRComponent.EntityAnchor.CORNER", "false", "'x'"}) {
+        rejects(
+            "anchor_on_bare_" + std::to_string(bareRow++),
+            withPart(std::string{"{ id = 'a', anchor = "} + anchor + " }"),
+            "a bare part has none"
+        );
+    }
+    // A voxel_ref that is not a string names no content either.
+    rejects(
+        "anchor_beside_numeric_ref",
+        withPart("{ id = 'a', voxel_ref = 5, anchor = IRComponent.EntityAnchor.CENTER }"),
+        "a bare part has none"
+    );
+
+    for (const int version : {1, 2}) {
+        const std::string head = "return { prefab_version = " + std::to_string(version);
+        rejects(
+            "root_anchor_v" + std::to_string(version),
+            head + ", anchor = IRComponent.EntityAnchor.CENTER }\n",
+            "root-level anchor"
+        );
+        rejects(
+            "root_anchor_beside_ref_v" + std::to_string(version),
+            head + ", voxel_ref = '" + voxelPath +
+                "', anchor = IRComponent.EntityAnchor.CORNER }\n",
+            "root-level anchor"
+        );
+    }
     EXPECT_EQ(IREntity::countComponents<C_PrefabParts>(), 0) << "a rejected spawn leaves no root";
 }
 

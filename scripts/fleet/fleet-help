@@ -65,9 +65,10 @@ fleet-up — multi-pane tmux fleet + optional scout daemon.
     review-only reviewers/mergers/smoke; workers skip new task pickup
     FLEET_CAMPAIGNS="<slug> …" (conf) adds a "campaigns" window with one
                 persistent fable pane per slug (campaign-protocol.md)
-    --satellite this box serves only its own smoke labels and
-                **Host:**-pinned tasks; architects stay up and file the
-                rest out (permanent form: FLEET_DISPATCH_ROLES +
+    --satellite this box serves only its own smoke labels,
+                **Host:**-pinned tasks and (on a GL host) fleet:needs-gl-host
+                work; architects stay up and file the rest out
+                (permanent form: FLEET_DISPATCH_ROLES +
                 FLEET_WORKER_HOST_PINNED_ONLY in the conf;
                 FLEET-CROSS-HOST-SMOKE.md "Satellite host profile")
 
@@ -215,7 +216,7 @@ Parallel-agent fleet (tmux + Claude)
                                  FLEET_CAMPAIGNS="<slug> …" in ~/.fleet/fleet-up.conf
                                  adds a "campaigns" window: one persistent fable
                                  pane per slug (docs/agents/campaign-protocol.md)
-                                 --satellite = smoke + **Host:**-pinned tasks only,
+                                 --satellite = smoke + **Host:**-pinned + GL-host tasks only,
                                  architects stay up (docs/agents/FLEET-CROSS-HOST-SMOKE.md
                                  "Satellite host profile")
   fleet-down [--force] [--keep-claims] [--wait] [--summary]

@@ -90,6 +90,7 @@ add_executable(IrredenEngineTest
   render/canvas_residency_test.cpp
   render/canvas_rotation_test.cpp
   render/default_pivot_latch_test.cpp
+  render/composite_depth_row_test.cpp
   render/detached_revoxelize_groups_test.cpp
   render/detached_world_depth_test.cpp
   render/entity_canvas_teardown_test.cpp
@@ -141,6 +142,7 @@ add_executable(IrredenEngineTest
   render/sprite_render_test.cpp
   render/widget_list_scroll_test.cpp
   render/widget_theme_singleton_test.cpp
+  render/widget_hit_region_test.cpp
   render/widget_tab_focus_test.cpp
   script/lua_audio_midi_clock_test.cpp
   script/lua_audio_midi_observer_test.cpp
@@ -149,6 +151,8 @@ add_executable(IrredenEngineTest
   script/lua_command_test.cpp
   script/lua_cursor_position_test.cpp
   script/lua_input_bindings_test.cpp
+  script/lua_input_enums_test.cpp
+  script/lua_editor_session_bindings_test.cpp
   script/lua_hitbox_2d_test.cpp
   script/lua_component_codegen_test.cpp
   # A second includer proves generated-header definitions are safe across
@@ -159,6 +163,7 @@ add_executable(IrredenEngineTest
   script/lua_deferred_entity_test.cpp
   script/lua_entity_anchor_test.cpp
   script/lua_entity_events_test.cpp
+  script/lua_widget_hit_region_test.cpp
   script/lua_voxel_seam_test.cpp
   script/lua_hierarchy_test.cpp
   script/lua_enum_register_test.cpp

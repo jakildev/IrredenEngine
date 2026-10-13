@@ -58,6 +58,7 @@ struct PartSpec {
     std::string id_;
     // At most one of voxelRef_ / shape_; a part with neither is a bare node.
     std::string voxelRef_;
+    IRComponents::EntityAnchor anchor_ = IRComponents::EntityAnchor::CORNER;
     std::optional<PrefabShapeDescription> shape_;
     IRComponents::C_LocalTransform transform_;
     IRComponents::RotationMode rotationMode_ = IRComponents::RotationMode::GRID;
@@ -108,6 +109,34 @@ SpawnResult makeError(std::string id, std::string path, std::string message) {
     return r;
 }
 
+bool hasField(const sol::table &table, const char *key) {
+    const sol::object value = table[key];
+    return value.valid() && value.get_type() != sol::type::lua_nil;
+}
+
+/// An anchor belongs to a voxel_ref part; one written on the root would be
+/// silently dropped.
+constexpr const char *kRootAnchorError =
+    "root-level anchor is not supported; the root's voxel_ref is CORNER, and a part states its "
+    "anchor in its own table";
+
+/// Largest magnitude below which every integer is exactly representable as a double.
+constexpr double kExactIntegerLimit = 9007199254740992.0;
+
+/// The whole value of a Lua number, or nullopt for any other type or a
+/// fraction. LuaJIT numbers are doubles and `sol::object::is<lua_Integer>()`
+/// accepts `1.5`, so an integer-enum field is read here instead.
+std::optional<lua_Integer> wholeNumber(const sol::object &object) {
+    if (object.get_type() != sol::type::number) {
+        return std::nullopt;
+    }
+    const double value = object.as<double>();
+    if (value != IRMath::floor(value) || IRMath::abs(value) >= kExactIntegerLimit) {
+        return std::nullopt;
+    }
+    return static_cast<lua_Integer>(value);
+}
+
 /// Reads `rotation_mode` and, for a canvas-owning mode, `canvas_size` from
 /// `table` (the prefab root or one part). Returns an error message on a bad
 /// value. The schema takes the `IRComponent.RotationMode.*` integer, never a
@@ -122,13 +151,14 @@ std::optional<std::string> parseRotationMode(
                                "IRComponent.RotationMode.{GRID,DETACHED,DETACHED_REVOXELIZE} "
                                "value; string names are not accepted"};
         }
-        if (!modeObj.is<lua_Integer>()) {
+        const std::optional<lua_Integer> wholeMode = wholeNumber(modeObj);
+        if (!wholeMode) {
             return std::string{
                 "rotation_mode must be an "
                 "IRComponent.RotationMode.{GRID,DETACHED,DETACHED_REVOXELIZE} value"
             };
         }
-        const lua_Integer raw = modeObj.as<lua_Integer>();
+        const lua_Integer raw = *wholeMode;
         if (raw < static_cast<lua_Integer>(IRComponents::RotationMode::kFirst) ||
             raw > static_cast<lua_Integer>(IRComponents::RotationMode::kLast)) {
             return "rotation_mode=" + std::to_string(raw) +
@@ -197,16 +227,46 @@ parseLodTier(const sol::table &lod, const char *key, IRRender::LodLevel &tier) {
     if (!tierObj.valid() || tierObj.get_type() == sol::type::lua_nil) {
         return std::nullopt;
     }
-    if (!tierObj.is<lua_Integer>() || tierObj.get_type() == sol::type::string) {
+    const std::optional<lua_Integer> wholeTier = wholeNumber(tierObj);
+    if (!wholeTier) {
         return std::string{"lod."} + key + " must be an IRRender.LodLevel value";
     }
-    const lua_Integer raw = tierObj.as<lua_Integer>();
+    const lua_Integer raw = *wholeTier;
     if (raw < static_cast<lua_Integer>(IRRender::LodLevel::LOD_0) ||
         raw > static_cast<lua_Integer>(IRRender::LodLevel::LOD_4)) {
         return std::string{"lod."} + key + "=" + std::to_string(raw) +
                " is outside IRRender.LodLevel.LOD_0 .. LOD_4";
     }
     tier = static_cast<IRRender::LodLevel>(raw);
+    return std::nullopt;
+}
+
+/// Reads a part's optional `anchor`; an absent field leaves `anchor` as it was.
+/// The schema takes the `IRComponent.EntityAnchor.*` integer, never a string
+/// name. LuaJIT numbers are doubles, so a whole value is checked for here.
+std::optional<std::string>
+parseAnchor(const sol::table &partTable, IRComponents::EntityAnchor &anchor) {
+    sol::object anchorObj = partTable["anchor"];
+    if (!anchorObj.valid() || anchorObj.get_type() == sol::type::lua_nil) {
+        return std::nullopt;
+    }
+    if (anchorObj.get_type() != sol::type::number) {
+        return std::string{
+            "anchor must be an IRComponent.EntityAnchor.{CORNER,CENTER,GROUND} value; string "
+            "names are not accepted"
+        };
+    }
+    const double raw = anchorObj.as<double>();
+    if (!(raw >= static_cast<double>(IRComponents::EntityAnchor::kFirst) &&
+          raw <= static_cast<double>(IRComponents::EntityAnchor::kLast)) ||
+        raw != IRMath::floor(raw)) {
+        std::ostringstream message;
+        message << "anchor=" << raw
+                << " not recognized (expected IRComponent.EntityAnchor.CORNER, .CENTER, or "
+                   ".GROUND)";
+        return message.str();
+    }
+    anchor = static_cast<IRComponents::EntityAnchor>(static_cast<int>(raw));
     return std::nullopt;
 }
 
@@ -265,6 +325,14 @@ std::optional<std::string> parsePart(const sol::table &partTable, PartSpec &part
             return error;
         }
         part.shape_ = shape;
+    }
+    if (voxelRef) {
+        if (auto error = parseAnchor(partTable, part.anchor_)) {
+            return error;
+        }
+    } else if (hasField(partTable, "anchor")) {
+        return std::string{"anchor applies to voxel_ref content; a "} +
+               (hasShape ? "shape" : "bare") + " part has none";
     }
 
     sol::object transformObj = partTable["transform"];
@@ -379,10 +447,12 @@ IRComponents::C_WorldTransform composeWorld(
 /// `C_LocalTransform`; DENSE data as `C_VoxelSetNew` on `entity` itself. The
 /// dense adapter is headless-safe: with no active canvas it stages records for
 /// a later canvas-attach pass. Per-record rotation, CSG op and bone id are not
-/// consumed by the renderer and are not stamped.
+/// consumed by the renderer and are not stamped. `anchor` places the DENSE
+/// data relative to the entity's translation.
 void attachVoxelContent(
     IREntity::EntityId entity,
     const IRAsset::VoxelSetAllFile &voxels,
+    IRComponents::EntityAnchor anchor,
     std::vector<IREntity::EntityId> &shapeChildren
 ) {
     if (voxels.mode_ == IRAsset::VoxelSetMode::SHAPES ||
@@ -407,7 +477,8 @@ void attachVoxelContent(
 
     if (voxels.mode_ == IRAsset::VoxelSetMode::DENSE ||
         voxels.mode_ == IRAsset::VoxelSetMode::HYBRID) {
-        IRComponents::C_VoxelSetNew voxelSet = IRPrefab::DenseVoxel::toComponent(voxels.dense_);
+        IRComponents::C_VoxelSetNew voxelSet =
+            IRPrefab::DenseVoxel::toComponent(voxels.dense_, anchor);
         if (voxelSet.recordCount() > 0) {
             IREntity::setComponent(entity, std::move(voxelSet));
         }
@@ -467,7 +538,6 @@ std::optional<std::string> writeLuaNumber(std::ostream &out, double value) {
     if (!(IRMath::abs(value) <= std::numeric_limits<double>::max())) {
         return std::string{"holds a non-finite number"};
     }
-    constexpr double kExactIntegerLimit = 9007199254740992.0;
     if (value == IRMath::floor(value) && IRMath::abs(value) < kExactIntegerLimit) {
         out << static_cast<long long>(value);
     } else {
@@ -656,7 +726,7 @@ void buildPart(
             manifest.voxels_[index] = loadPartVoxels(spec.voxelRef_);
         }
         if (manifest.voxels_[index]) {
-            attachVoxelContent(part, *manifest.voxels_[index], shapeChildren);
+            attachVoxelContent(part, *manifest.voxels_[index], spec.anchor_, shapeChildren);
         } else {
             IRE_LOG_ERROR(
                 "Prefab '{}': part '{}' voxel_ref load failed: {}",
@@ -755,6 +825,10 @@ ManifestResult readManifest(IRScript::LuaScript &script, const std::string &path
         result.error_ = "root-level lod is not supported; give each part its own lod band";
         return result;
     }
+    if (hasField(prefab, "anchor")) {
+        result.error_ = kRootAnchorError;
+        return result;
+    }
 
     std::shared_ptr<PartsManifest> manifest;
     if (auto error = parseParts(prefab, path, manifest)) {
@@ -777,6 +851,7 @@ ManifestResult readManifest(IRScript::LuaScript &script, const std::string &path
             PrefabPartDescription part;
             part.id_ = spec.id_;
             part.voxelRef_ = spec.voxelRef_;
+            part.anchor_ = spec.anchor_;
             part.shape_ = spec.shape_;
             part.transform_ = spec.transform_;
             part.rotationMode_ = spec.rotationMode_;
@@ -864,6 +939,9 @@ writeManifest(const std::string &path, const PrefabDescription &description) {
         out << ", scale = ";
         writeVec3(out, part.transform_.scale_);
         out << " },\n      rotation_mode = " << static_cast<int>(part.rotationMode_) << ",\n";
+        if (!part.voxelRef_.empty()) {
+            out << "      anchor = " << static_cast<int>(part.anchor_) << ",\n";
+        }
         if (IRPrefab::RotationMode::ownsEntityCanvas(part.rotationMode_)) {
             out << "      canvas_size = { x = " << part.canvasSize_.x
                 << ", y = " << part.canvasSize_.y << " },\n";
@@ -924,6 +1002,10 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
                 std::to_string(kPrefabSchemaVersionMin) + ".." +
                 std::to_string(kPrefabSchemaVersion) + ")"
         );
+    }
+
+    if (hasField(prefab, "anchor")) {
+        return makeError(idStr, path, kRootAnchorError);
     }
 
     // Parsed before the root exists, so a bad part leaves nothing to tear down.
@@ -1092,8 +1174,14 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
         IREntity::setComponent(entity, std::move(bindPoints));
     }
 
+    // The root's voxel_ref has no anchor field.
     if (loadedVoxels) {
-        attachVoxelContent(entity, *loadedVoxels, spawnedChildren);
+        attachVoxelContent(
+            entity,
+            *loadedVoxels,
+            IRComponents::EntityAnchor::CORNER,
+            spawnedChildren
+        );
     }
 
     // Optional declarative `components = { C_Foo = { field = ... }, ... }`

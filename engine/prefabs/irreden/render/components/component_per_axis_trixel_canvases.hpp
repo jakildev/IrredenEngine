@@ -127,7 +127,7 @@ struct PerAxisCanvasStore {
     //     fillBuffer(bytes = texels*4) reset covers exactly this region.
     // [ctrlBaseUints_, entriesBaseUints_) — ctrl block: indirect
     //     draw args {indexCount, instanceCount, firstIndex, baseVertex,
-    //     baseInstance} + droppedCount, followed by GPU-authored sort commands.
+    //     baseInstance} + droppedCount.
     //     instanceCount/droppedCount are GPU atomics (resolveMode 3). The
     //     overflow indirect draw sources its args at ctrlBaseUints_*4 directly.
     // [entriesBaseUints_, +overflowCap_*3) — overflow entries, 3 uints
@@ -143,7 +143,6 @@ struct PerAxisCanvasStore {
     int overflowCap_ = 0;
     static constexpr std::uint32_t kOverflowSortBlockBits = 11;
     static constexpr std::uint32_t kOverflowSortMaxStageBits = 30;
-    static constexpr std::uint32_t kOverflowSortArgsBaseUints = 8;
     static constexpr std::uint32_t kOverflowSortCommandUints = 4;
     static constexpr std::uint32_t kOverflowSortCommandCount =
         2 + kOverflowSortMaxStageBits - kOverflowSortBlockBits;
@@ -151,11 +150,6 @@ struct PerAxisCanvasStore {
     static constexpr int kScratchAlignUints = 64;
     static_assert(
         kOverflowControlUints % kScratchAlignUints == 0, "overflow entries must be 256-byte aligned"
-    );
-    static_assert(
-        kOverflowSortArgsBaseUints + kOverflowSortCommandCount * kOverflowSortCommandUints <=
-            kOverflowControlUints,
-        "overflow sort commands must fit the aligned control region"
     );
     // Completed-frame count bounding the next sort's encoded merge stages; the
     // cap on the first rotating frame after allocate() (nothing completed yet).

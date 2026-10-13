@@ -28,6 +28,9 @@
 //     re-zooms and retargets the portrait → VIEWPORT_RECT / VIEWPORT_ZOOM hold
 //     the new values and VIEWPORT_SUBJECT / VIEWPORT_DRAWN_ID name the second
 //     entity.
+//   * shot 5 moves onto the `IRGui.makeHitRegion` row, clicks it and moves
+//     off → LUA_ROW_REGION PASS (the region's onHover, onClick and onUnhover
+//     ran once each, in that order, with the region's id).
 
 #include <irreden/ir_engine.hpp>
 #include <irreden/ir_entity.hpp>
@@ -107,6 +110,17 @@ IRMath::ivec2 g_portraitRetargetOrigin{0};
 IRMath::ivec2 g_portraitRetargetSize{0};
 float g_portraitRetargetZoom = 0.0f;
 
+// The row hit region main.lua built, and the handler calls it reported, one
+// letter each (H = hover, C = click, U = unhover) in call order.
+IREntity::EntityId g_rowRegion = IREntity::kNullEntity;
+std::string g_rowEvents;
+bool g_rowEventIdsMatch = true;
+
+void recordRowEvent(char event, lua_Integer id) {
+    g_rowEvents.push_back(event);
+    g_rowEventIdsMatch = g_rowEventIdsMatch && static_cast<IREntity::EntityId>(id) == g_rowRegion;
+}
+
 namespace {
 
 // Click coords are in screen px; the GUI canvas is
@@ -163,7 +177,30 @@ constexpr IRVideo::GuiInputEvent kRetargetEvents[] = {
      IRInput::KeyMouseButtons::kMouseButtonLeft},
 };
 
-enum GuiTestShotIndex { kHoverShot, kOnClickShot, kPollShot, kPortraitShot, kPortraitRetargetShot };
+// The row region spans GUI x 260-590, y 410-440: screen x 520-1180, y 410-440.
+constexpr IRVideo::GuiInputEvent kRowEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(1000, 425)},
+    {1,
+     IRVideo::GuiInputEvent::Type::PRESS,
+     IRMath::ivec2(1000, 425),
+     IRMath::vec2(0.0f),
+     IRInput::KeyMouseButtons::kMouseButtonLeft},
+    {2,
+     IRVideo::GuiInputEvent::Type::RELEASE,
+     IRMath::ivec2(1000, 425),
+     IRMath::vec2(0.0f),
+     IRInput::KeyMouseButtons::kMouseButtonLeft},
+    {3, IRVideo::GuiInputEvent::Type::MOVE, IRMath::ivec2(1000, 475)},
+};
+
+enum GuiTestShotIndex {
+    kHoverShot,
+    kOnClickShot,
+    kPollShot,
+    kPortraitShot,
+    kPortraitRetargetShot,
+    kRowShot
+};
 
 constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_hover"},
@@ -179,6 +216,9 @@ constexpr IRVideo::GuiTestShot kGuiTestShots[] = {
     {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_portrait_retarget"},
      kRetargetEvents,
      static_cast<int>(sizeof(kRetargetEvents) / sizeof(kRetargetEvents[0]))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "lua_widgets_row_region"},
+     kRowEvents,
+     static_cast<int>(sizeof(kRowEvents) / sizeof(kRowEvents[0]))},
 };
 constexpr int kNumGuiTestShots = static_cast<int>(sizeof(kGuiTestShots) / sizeof(kGuiTestShots[0]));
 
@@ -286,6 +326,10 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
         g_clickLatch.firedWidgets_.clear();
         g_luaOnClickFired = false;
         g_pollWasClickedSeen = false;
+        if (shotIndex == kRowShot) {
+            g_rowEvents.clear();
+            g_rowEventIdsMatch = true;
+        }
         if (shotIndex == kHoverShot) {
             g_hoverLabelBefore = hoverLabelText();
             g_cursorPositionHookRan = false;
@@ -345,6 +389,15 @@ void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
     } else if (shotIndex == kPortraitRetargetShot) {
         assertPortraitRetargetCamera(shotIndex);
         assertPortraitSubject(shotIndex, g_portraitSecondSubject);
+    } else if (shotIndex == kRowShot) {
+        logGuiAssert(
+            shotIndex,
+            "LUA_ROW_REGION",
+            g_rowRegion,
+            "row_region",
+            g_rowEvents == "HCU" && g_rowEventIdsMatch && g_rowRegion != IREntity::kNullEntity,
+            "events=" + g_rowEvents + (g_rowEventIdsMatch ? "" : " (wrong id)")
+        );
     } else if (shotIndex == kOnClickShot) {
         const bool clickFired =
             IRPrefab::GuiTest::detail::firedThisShot(g_clickLatch, g_onClickButton);
@@ -423,6 +476,14 @@ void registerLuaBindings() {
             };
         lua["IRTest"]["onClickFired"] = []() { IRLuaWidgets::g_luaOnClickFired = true; };
         lua["IRTest"]["onPollFired"] = []() { IRLuaWidgets::g_pollWasClickedSeen = true; };
+        lua["IRTest"]["setRowRegion"] = [](lua_Integer region) {
+            IRLuaWidgets::g_rowRegion = static_cast<IREntity::EntityId>(region);
+        };
+        lua["IRTest"]["rowHovered"] = [](lua_Integer id) { IRLuaWidgets::recordRowEvent('H', id); };
+        lua["IRTest"]["rowClicked"] = [](lua_Integer id) { IRLuaWidgets::recordRowEvent('C', id); };
+        lua["IRTest"]["rowUnhovered"] = [](lua_Integer id) {
+            IRLuaWidgets::recordRowEvent('U', id);
+        };
         // A world voxel cube for the portrait to view; the demo binds no
         // component pack, so this stands in for a creation's own spawn path.
         lua["IRTest"]["spawnCube"] =
