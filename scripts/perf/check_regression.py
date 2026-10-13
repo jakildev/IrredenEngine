@@ -21,15 +21,22 @@ the LOAD_FACTOR_TRUST_NORMALIZED band of the head's:
     Class-matched capture found        → check raw deltas against it.
     No capture in the head's class     → informational only, pass, no table.
 
+On a host class in LOAD_GATE_THRESHOLDS, a cell whose `load_ref_ms.before`
+reading marks it as run under load, in either manifest, is reported as
+informational and left out of grading. --strict-load turns any such cell into
+a measurement error instead (the seed self-check uses it).
+
 Usage:
     scripts/perf/check_regression.py <baseline_root> <head_dir>
-        [--baseline-history DIR]
+        [--baseline-history DIR] [--strict-load]
         [--regress-pct N] [--improve-pct N] [--gpu-only] [--cpu-only]
 
 Exit codes:
-    0   No regression above threshold (pass — may still show improvements)
-    1   One or more cells regressed by more than --regress-pct (fail)
-    2   Usage or measurement error
+    0   No graded cell regressed above threshold (pass — may still show
+        improvements and load-flagged cells)
+    1   One or more graded cells regressed by more than --regress-pct (fail)
+    2   Usage or measurement error, including a load-flagged cell under
+        --strict-load
 """
 
 from __future__ import annotations
@@ -44,10 +51,12 @@ from compare_perf_runs import (  # noqa: E402
     CLASS_MATCH_MAX_AGE_DAYS,
     LOAD_FACTOR_TRUST_NORMALIZED,
     ClassMatch,
+    LoadFlag,
     build_host_note,
     calibration_ref_ms,
     host_slug,
     load_factor,
+    load_flagged_cells,
     load_manifest,
     load_run,
     normalize_ms,
@@ -61,9 +70,9 @@ from compare_perf_runs import (  # noqa: E402
 
 def _regressed_cells(base, head, regress_pct: float, *,
                      head_ref_ms: float, base_ref_ms: float,
-                     use_normalized: bool) -> list[str]:
+                     use_normalized: bool, ungraded: set[str]) -> list[str]:
     out = []
-    for cell_id in sorted(set(base) & set(head)):
+    for cell_id in sorted((set(base) & set(head)) - ungraded):
         avg_b = base[cell_id].frame.avg
         avg_h = head[cell_id].frame.avg
         if avg_b <= 0.0:
@@ -101,6 +110,17 @@ def _no_class_match_body(slug: str, head_ref_ms: float, match: ClassMatch) -> st
     return "\n".join(lines) + "\n"
 
 
+def _describe_flags(flags: list[LoadFlag]) -> str:
+    return ", ".join(f"{f.cell_id} ({f.side} {f.factor:.3f}× ≥ {f.threshold:.2f}×)"
+                     for f in flags)
+
+
+def _refuse_loaded(flags: list[LoadFlag]) -> int:
+    print(f"check_regression: LOAD-FLAGGED — {len(flags)} cell(s) ran under load "
+          f"(--strict-load): {_describe_flags(flags)}", file=sys.stderr)
+    return 2
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("baseline", help="baseline root (docs/perf/baseline_latest/) — "
@@ -113,6 +133,9 @@ def main() -> int:
                    help=">= this %% on mean frame avg counts as regression (default 10)")
     p.add_argument("--improve-pct", type=float, default=5.0,
                    help="<= negative this %% marks improvement in the table (default 5)")
+    p.add_argument("--strict-load", action="store_true",
+                   help="exit 2 when any cell in either run is load-flagged, "
+                        "instead of reporting it as informational")
     p.add_argument("--gpu-only", action="store_true")
     p.add_argument("--cpu-only", action="store_true")
     args = p.parse_args()
@@ -150,6 +173,9 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
+    head_flags = load_flagged_cells(head_manifest, "head")
+    if args.strict_load and head_flags:
+        return _refuse_loaded(head_flags)
 
     # No-baseline path → informational seed-new, pass.
     base_dir = resolve_baseline(baseline_arg, head_manifest)
@@ -201,6 +227,9 @@ def main() -> int:
         return 2
 
     base_manifest = load_manifest(base_dir)
+    load_flags = load_flagged_cells(base_manifest, "baseline") + head_flags
+    if args.strict_load and load_flags:
+        return _refuse_loaded(load_flags)
     host_note = build_host_note(base_manifest, head_manifest,
                                 capture=capture, capture_is_tip=capture_is_tip)
 
@@ -208,9 +237,12 @@ def main() -> int:
         base_dir, head_dir, base, head,
         args.regress_pct, args.improve_pct,
         args.gpu_only, args.cpu_only,
-        host_note=host_note,
+        host_note=host_note, load_flags=load_flags,
     )
     print(md, end="")
+    if load_flags:
+        print(f"check_regression: {len(load_flags)} load-flagged cell(s) informational, "
+              f"not graded: {_describe_flags(load_flags)}", file=sys.stderr)
 
     # Decide whether to gate.
     base_slug = host_slug(base_manifest)
@@ -244,6 +276,7 @@ def main() -> int:
         base, head, args.regress_pct,
         head_ref_ms=head_ref_ms, base_ref_ms=base_ref_ms,
         use_normalized=use_normalized,
+        ungraded={f.cell_id for f in load_flags},
     )
     if regressed:
         weighting = "normalized" if use_normalized else "raw"
