@@ -18,15 +18,16 @@ Design log, findings and the authoring-session history:
   `remove_part` removes and restores a part across hot and cold undo stacks and
   proves the saved manifest omits the removed record,
   `tier_scrub` proves per-part LOD bands and the tier scrubber,
+  `part_mode_cycle` takes a Ctrl+P part through every render mode, the Ctrl+M
+  twin, an array, and a save and reload,
+  `corner_part_revox_refused` proves a part that is not centred on its
+  translation is kept out of DETACHED REVOX,
   `parts_scroll` reaches every part of an arrayed scene through the PARTS list
   alone (reveal after the array, wheel, row click),
   `mode_preview` proves the deferred render-mode switch allocates and releases
   the selected part's private canvas while rotated and private-canvas parts stay
-  outside the axis-aligned edit pick, `part_sizes` creates two parts of
-  different extents and holds the mirror and loft tools to them,
-  `part_mode_cycle` takes a Ctrl+P part through every render mode, the Ctrl+M
-  twin, an array, and a save and reload, and `corner_part_revox_refused` proves
-  a part that is not centred on its translation is kept out of DETACHED REVOX.
+  outside the axis-aligned edit pick, and `part_sizes` creates two parts of
+  different extents and holds the mirror and loft tools to them.
 - `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
   render reference set, discovered under this creation's `test/references/`.
 - `python3 scripts/author-entity.py <entity>` — replays an entity session twice
