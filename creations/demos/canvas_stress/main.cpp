@@ -1,3 +1,4 @@
+#include <optional>
 #include <irreden/ir_engine.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_entity.hpp>
@@ -2146,6 +2147,19 @@ void registerArgs() {
         "With --probe-analytic-box, overlap an orange box to test equal-depth ownership"
     );
     args.flag("--probe-analytic-sphere", "Use an analytic sphere for shadowbox");
+    args.enumValue(
+        "--probe-analytic-shape",
+        "Analytic receiver shape (sphere is also --probe-analytic-sphere)",
+        {"off", "sphere", "cylinder", "cone", "torus"},
+        "off"
+    );
+    args.number("--analytic-shape-tilt", "Analytic receiver pitch about world X, radians", 0.0f);
+    args.flag("--probe-analytic-hollow", "Keep the analytic receiver on its hollow representation");
+    args.numbers(
+        "--probe-overlapping-source-offset",
+        "Offset the external source caster from the central sun ray <x> <y> <z>",
+        3
+    );
     args.numbers("--analytic-box-offset", "Analytic shadowbox translation offset <x> <y> <z>", 3);
     args.number("--analytic-box-yaw", "Analytic shadowbox entity yaw, radians", 0.0f);
     args.flag("--probe-analytic-blocker", "Use an analytic box for the staircase roof");
@@ -2895,6 +2909,33 @@ void initCommands() {
     IRCommand::registerCaptureCommands();
 }
 
+namespace {
+
+std::optional<C_ShapeDescriptor> analyticProbeDescriptor(Color color) {
+    const auto &args = IREngine::args();
+    const std::string selection = args.getEnum("--probe-analytic-shape");
+    if (selection == "off" && !args.getFlag("--probe-analytic-sphere"))
+        return std::nullopt;
+    IRRender::ShapeType type = IRRender::ShapeType::SPHERE;
+    vec4 params(4.0f);
+    if (selection == "cylinder") {
+        type = IRRender::ShapeType::CYLINDER;
+        params = vec4(4.0f, 4.0f, 8.0f, 0.0f);
+    } else if (selection == "cone") {
+        type = IRRender::ShapeType::CONE;
+        params = vec4(4.0f, 4.0f, 8.0f, 0.0f);
+    } else if (selection == "torus") {
+        type = IRRender::ShapeType::TORUS;
+        params = vec4(4.0f, 1.5f, 0.0f, 0.0f);
+    }
+    C_ShapeDescriptor descriptor{type, params, color};
+    if (args.getFlag("--probe-analytic-hollow"))
+        descriptor.flags_ |= IRRender::SHAPE_FLAG_HOLLOW;
+    return descriptor;
+}
+
+} // namespace
+
 void initEntities() {
     EntityId mainCanvas = IRRender::getActiveCanvasEntity();
     IREntity::setComponent(mainCanvas, C_TrixelCanvasRenderBehavior{});
@@ -3125,6 +3166,12 @@ void initEntities() {
             (boxOffset.empty() ? vec3(0.0f) : vec3(boxOffset[0], boxOffset[1], boxOffset[2]));
         const Color color{80, 120, 240, 255};
         if (IREngine::args().getFlag("--probe-overlapping-source")) {
+            const auto sourceOffsetValues =
+                IREngine::args().getFloats("--probe-overlapping-source-offset");
+            const vec3 sourceOffset =
+                sourceOffsetValues.empty()
+                    ? vec3(0.0f)
+                    : vec3(sourceOffsetValues[0], sourceOffsetValues[1], sourceOffsetValues[2]);
             auto overlap = IRPrefab::EntityCanvas::createWithVoxelPool(
                 "overlapping_source_caster",
                 ivec2(64),
@@ -3137,17 +3184,26 @@ void initEntities() {
             );
             IREntity::createEntity(
                 C_LocalTransform{
-                    position + IRRender::getSunDirection() * 12.0f,
+                    position + IRRender::getSunDirection() * 12.0f + sourceOffset,
                     IRMath::quatAxisAngle(IRMath::normalize(vec3(1.0f)), 0.47f)
                 },
                 C_RotationMode{RotationMode::DETACHED},
                 overlap
             );
         }
-        if (IREngine::args().getFlag("--probe-analytic-sphere")) {
-            IREntity::createEntity(
-                C_LocalTransform{position},
-                C_ShapeDescriptor{IRRender::ShapeType::SPHERE, vec4(4.0f), color}
+        if (auto descriptor = analyticProbeDescriptor(color)) {
+            const float tilt = IREngine::args().getFloat("--analytic-shape-tilt");
+            const auto rotation = IRMath::quatAxisAngle(vec3(1.0f, 0.0f, 0.0f), tilt);
+            IREntity::createEntity(C_LocalTransform{position, rotation}, *descriptor);
+            IR_LOG_INFO(
+                "ANALYTIC-RECEIVER type={} params=({},{},{},{}) tilt={} hollow={}",
+                static_cast<int>(descriptor->shapeType_),
+                descriptor->params_.x,
+                descriptor->params_.y,
+                descriptor->params_.z,
+                descriptor->params_.w,
+                tilt,
+                IREngine::args().getFlag("--probe-analytic-hollow")
             );
         } else if (IREngine::args().getFlag("--probe-analytic-box")) {
             const auto offsetValues = IREngine::args().getFloats("--analytic-box-offset");

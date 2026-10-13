@@ -15,12 +15,14 @@ COMPILER = shutil.which("c++")
 
 
 def cpp(source):
-    source = re.sub(r"\bout (vec3|float) (\w+)", r"\1& \2", source)
+    source = re.sub(r"\b(?:inout|out) (vec[234]|float) (\w+)", r"\1& \2", source)
     source = source.replace("thread ", "").replace("constant ", "const ")
-    source = source.replace("float3", "vec3").replace("float2", "vec2")
+    source = source.replace("float4", "vec4").replace("float3", "vec3").replace("float2", "vec2")
     source = source.replace("uint2", "uvec2")
     source = source.replace("int3", "ivec3").replace("int2", "ivec2")
-    source = source.replace("shape.params.x", "shape.params.xyz.x")
+    source = re.sub(r"\b(params|coefficients)\.([xyz])\b", r"\1.xyz.\2", source)
+    source = re.sub(r"\b(\w+)\.xy\b", r"xy(\1)", source)
+    source = re.sub(r"(?<![\w.])(\d+\.\d+(?:e[+-]?\d+)?)(?![\w.])", r"\1f", source)
     source = source.replace("const ShapeProjectionData &receiverFrame,", "")
     for declaration in (
         "device const ShapeDescriptor *receiverShapes,",
@@ -38,12 +40,29 @@ def cpp(source):
 HARNESS = (
     PREAMBLE.replace(
         "int smoothYawEnabled=0", "int shapeCount=1,finiteCoverage=1; int smoothYawEnabled=0"
+    ).replace(
+        "V2():x(0),y(0){}", "V2():x(0),y(0){} explicit V2(T a):x(a),y(a){}"
+    ).replace(
+        "template<class U> explicit V3", "T& operator[](int i){return i==0?x:i==1?y:z;} "
+        "T operator[](int i)const{return i==0?x:i==1?y:z;} template<class U> explicit V3"
+    ).replace(
+        "V2 operator+(V2 b)", "T& operator[](int i){return i==0?x:y;} "
+        "T operator[](int i)const{return i==0?x:y;} V2 operator+(V2 b)"
+    ).replace(
+        "struct vec4 {vec3 xyz; float w=1;};", "struct vec4 {vec3 xyz; float w=1; "
+        "vec4()=default; vec4(vec3 v,float a):xyz(v),w(a){} "
+        "vec4(float x,float y,float z,float a):xyz(x,y,z),w(a){} };"
     )
     + r"""
+vec2 xy(vec3 a){return {a.x,a.y};}
+float dot(vec2 a,vec2 b){return a.x*b.x+a.y*b.y;}
+float length(vec2 a){return sqrt(dot(a,a));}
+vec3 cross(vec3 a,vec3 b){return {a.y*b.z-a.z*b.y,a.z*b.x-a.x*b.z,a.x*b.y-a.y*b.x};}
+vec3 operator*(float a,vec3 b){return b*a;}
 float max(float a,double b){return std::max(a,float(b));}
 float length(vec3 v){return sqrt(dot(v,v));}
 vec3 normalize(vec3 v){return v/length(v);}
-const uint SHAPE_SPHERE=1;
+const uint SHAPE_SPHERE=1,SHAPE_CYLINDER=2,SHAPE_CONE=8,SHAPE_TORUS=9;
 const uint kShapeSamplesPerTile=384;
 struct ShapeTileDescriptor {int shapeIndex;ivec2 tileIsoOrigin;};
 ShapeProjectionData receiverFrame;
@@ -106,7 +125,7 @@ int main(){
    double x=-u/2-v/6,y=u/2-v/6,z=v/3;
    double lengthSquared=x*x+y*y+z*z, chord=radius*radius-lengthSquared;
    bool expected=chord>=0;
-   vec3 p(91);bool actual=shapeSphereShadowReceiver(shape,f,sample,p);
+   vec3 p(91);bool actual=shapeAnalyticShadowReceiver(shape,f,sample,p);
    if(actual!=expected)return 1;
    if(!actual){misses++;if(!close(p,vec3(91)))return 2;continue;}
    hits++;double along=-sqrt(chord/3);x+=along;y+=along;z+=along;
@@ -121,8 +140,8 @@ int main(){
   receiverOwners[3]=((2u*64u+lane)*3u+face)*2u+half;
   vec3 p,wantP;
   ivec2 expectedIso(-3+int(lane%8),-4+int(lane/8));
-  bool expected=shapeSphereShadowReceiver(receiverShapes[2],receiverFrame,expectedIso,wantP);
-  bool actual=selectedShapeSphereShadowReceiver(pixel,size.x,p);
+  bool expected=shapeAnalyticShadowReceiver(receiverShapes[2],receiverFrame,expectedIso,wantP);
+  bool actual=selectedShapeAnalyticShadowReceiver(pixel,size.x,p);
   if(actual!=expected||(actual&&!close(p,wantP)))return 4;
  }
  receiverOwners[3]=(2u*64u+35u)*6u;
@@ -130,22 +149,22 @@ int main(){
   auto f=receiverFrame;auto shape=receiverShapes[2];
   if(kind==0)f.finiteCoverage=0;if(kind==1)f.voxelRenderOptions.x=0;
   if(kind==2)f.voxelRenderOptions.y=1;if(kind==3)f.latticeShapes=1;
-  if(kind==4)shape.flags=1;if(kind==5)shape.shapeType=9;
+  if(kind==4)shape.flags=1;if(kind==5)shape.shapeType=7;
   if(kind==6)f.residualYaw=.1;if(kind==7)shape.params.xyz.x=-1;
   vec3 p(91);
-  if(shapeSphereShadowReceiver(shape,f,{0,0},p)||!close(p,vec3(91)))return 5;
+  if(shapeAnalyticShadowReceiver(shape,f,{0,0},p)||!close(p,vec3(91)))return 5;
  }
  for(int kind=0;kind<2;kind++){
   auto key=receiverOwners[3];receiverFrame.shapeCount=kind==0?0:1;
   if(kind==1)receiverOwners[3]=0xffffffffu;
   vec3 p(91);
-  if(selectedShapeSphereShadowReceiver(pixel,size.x,p)||!close(p,vec3(91)))return 6;
+  if(selectedShapeAnalyticShadowReceiver(pixel,size.x,p)||!close(p,vec3(91)))return 6;
   receiverOwners[3]=key;
  }
  receiverFrame.shapeCount=1;
  for(int disabled=0;disabled<2;disabled++)for(int supported=0;supported<2;supported++)
  for(bool tagged:{false,true}){
-  shadowsEnabled=disabled?0:1;receiverShapes[2].shapeType=supported?SHAPE_SPHERE:9;
+  shadowsEnabled=disabled?0:1;receiverShapes[2].shapeType=supported?SHAPE_SPHERE:7;
   pixelEntityId.y=tagged?1u<<18u:1u<<19u;
   entityReads=cardinalCalls=sphereCalls=0;
   surfaceCalls=legacyCalls=0;pos3D=vec3(91);normal=vec3(93);
@@ -170,7 +189,7 @@ int main(){
  // stair normal is sun-lit. The finite ray must find the sphere's near side.
  receiverShapes[2].shapeType=SHAPE_SPHERE;
  vec3 backPoint;
- if(!shapeSphereShadowReceiver(receiverShapes[2],receiverFrame,{-36,-36},backPoint))return 12;
+ if(!shapeAnalyticShadowReceiver(receiverShapes[2],receiverFrame,{-36,-36},backPoint))return 12;
  vec3 sun(-1,0,0),displayNormal(-1,0,0);float radius=4.f+.5f/8.f,hit;
  if(dot(backPoint,sun)>=0||dot(displayNormal,sun)<=0)return 13;
  if(!sdfRaySphere(backPoint+sun*12.f,-sun,radius,0.f,12.f,hit)||12.f-hit<1.f)return 14;
@@ -186,41 +205,53 @@ int main(){
 """
 
 
+
+def receiver_functions(suffix):
+    folder = "metal/" if suffix == "metal" else ""
+    shaders = ROOT / "engine/render/src/shaders" / folder
+    common = (shaders / f"ir_iso_common.{suffix}").read_text()
+    receiver = (shaders / f"ir_shape_receiver.{suffix}").read_text()
+    roots = (shaders / f"ir_sdf_ray_roots.{suffix}").read_text()
+    helper = (shaders / f"ir_shape_shadow_receiver.{suffix}").read_text()
+    functions = "\n".join(
+        extract_function(common, name)
+        for name in (
+            "rasterYawCardinalIndex",
+            "cardinalYawCosSin",
+            "pos3DtoPos2DIsoYawed",
+            "isoPositionToPos3D",
+            "pos3DtoDistance",
+            "decodeEntityIdCardinalVoxel", "rotateByQuat", "rotateByInverseQuat",
+        )
+    )
+    functions = re.search(
+        r"(?:const|constant) uint kEntityIdCardinalVoxelMaskInHighWord = [^;]+;",
+        common).group() + "\n" + functions
+    functions += "\n" + "\n".join(
+        extract_function(receiver, name)
+        for name in ("shapeYawCosSin", "shapeRenderedCenter")
+    )
+    origin_type = "ivec2" if suffix == "glsl" else "int2"
+    functions += "\n" + extract_block(receiver, f"{origin_type} shapeRenderedOriginIso")
+    shape_data = (shaders / f"ir_shape_data.{suffix}").read_text()
+    sun_ray = (shaders / f"ir_sdf_sun_ray.{suffix}").read_text()
+    functions += "\n" + extract_function(shape_data, "shapeHasEntityRotation")
+    functions += "\n" + roots + "\n" + extract_function(sun_ray, "shapeSunHalfExtent")
+    functions += "\n" + helper
+    return functions
+
+
 @unittest.skipUnless(COMPILER, "sphere receiver controls require a C++ compiler")
 class SphereShadowReceiverTest(unittest.TestCase):
     def test_production_geometry_ownership_and_shadow_only_route(self):
         for suffix, folder in (("glsl", ""), ("metal", "metal/")):
             shaders = ROOT / "engine/render/src/shaders" / folder
-            common = (shaders / f"ir_iso_common.{suffix}").read_text()
-            receiver = (shaders / f"ir_shape_receiver.{suffix}").read_text()
-            roots = (shaders / f"ir_sdf_ray_roots.{suffix}").read_text()
-            helper = (shaders / f"ir_shape_shadow_receiver.{suffix}").read_text()
             compute = (shaders / f"c_compute_sun_shadow_body.{suffix}").read_text()
-            functions = "\n".join(
-                extract_function(common, name)
-                for name in (
-                    "rasterYawCardinalIndex",
-                    "cardinalYawCosSin",
-                    "pos3DtoPos2DIsoYawed",
-                    "isoPositionToPos3D",
-                    "pos3DtoDistance",
-                    "decodeEntityIdCardinalVoxel",
-                )
-            )
-            functions = re.search(
-                r"(?:const|constant) uint kEntityIdCardinalVoxelMaskInHighWord = [^;]+;",
-                common).group() + "\n" + functions
-            functions += "\n" + "\n".join(
-                extract_function(receiver, name)
-                for name in ("shapeYawCosSin", "shapeRenderedCenter")
-            )
-            origin_type = "ivec2" if suffix == "glsl" else "int2"
-            functions += "\n" + extract_block(receiver, f"{origin_type} shapeRenderedOriginIso")
-            functions += "\n" + extract_function(roots, "sdfRaySphere") + "\n" + helper.replace(
-                "selectedShapeSphereShadowReceiver", "selectedShapeSphereShadowReceiverImpl")
+            functions = receiver_functions(suffix).replace(
+                "selectedShapeAnalyticShadowReceiver", "selectedShapeAnalyticShadowReceiverImpl")
             sphere_spy = """
-bool selectedShapeSphereShadowReceiver(ivec2 p,int width,vec3& position){
- ++sphereCalls;return selectedShapeSphereShadowReceiverImpl(p,width,position);
+bool selectedShapeAnalyticShadowReceiver(ivec2 p,int width,vec3& position){
+ ++sphereCalls;return selectedShapeAnalyticShadowReceiverImpl(p,width,position);
 }
 """
             route = compute[compute.index("    float factor = 1.0;") :]
@@ -238,8 +269,10 @@ bool selectedShapeSphereShadowReceiver(ivec2 p,int width,vec3& position){
                 + CHECKS
             )
             mutations = {
-                "radius_without_cell": ("0.5 / float(density)", "0.0 / float(density)"),
-                "wrong_density": ("0.0) / float(density)", "0.0) / 1.0"),
+                "radius_without_cell": (
+                    "float radius = shape.params.xyz.x + 0.5f / float(density)",
+                    "float radius = shape.params.xyz.x + 0.0f / float(density)"),
+                "wrong_density": ("0.0f) / float(density)", "0.0f) / 1.0f"),
                 "raw_origin": (
                     "roundHalfUp(pos3DtoPos2DIsoYawed(center * float(density), "
                     "projection.visualYaw))",
@@ -261,8 +294,8 @@ bool selectedShapeSphereShadowReceiver(ivec2 p,int width,vec3& position){
                     "worldSurfaceSunShadowFactor(pos3D, normal,",
                 ),
                 "lighting_normal_overwrite": (
-                    "float factor = 1.0;",
-                    "float factor = 1.0; normal = vec3(0);",
+                    "float factor = 1.0f;",
+                    "float factor = 1.0f; normal = vec3(0);",
                 ),
                 "voxel_provenance_ignored": (
                     "return (rawId.y & kEntityIdCardinalVoxelMaskInHighWord) != 0u;",
@@ -270,7 +303,7 @@ bool selectedShapeSphereShadowReceiver(ivec2 p,int width,vec3& position){
                 ),
                 "voxel_queries_sphere": (
                     "const vec3 surface = cardinalVoxelSurfaceCenter(",
-                    "vec3 unwanted; selectedShapeSphereShadowReceiver(pixel, size.x, unwanted);"
+                    "vec3 unwanted; selectedShapeAnalyticShadowReceiver(pixel, size.x, unwanted);"
                     " const vec3 surface = cardinalVoxelSurfaceCenter(",
                 ),
             }

@@ -41,12 +41,20 @@ Work through these slices in order, keeping their image and cost evidence separa
    overhead and frame pacing from render work; report CPU, GPU spans,
    allocation limits and tail latency. Passing CI does not establish hardware
    throughput or million-entity/60-fps qualification.
-   Fix capture/profile reservation precedence before the next mixed-run timing.
-3. **Curved receiver correctness — prototype, not yet promoted.** Extend
-   retained-owner ray reconstruction using the same represented field as the
-   caster, without changing elected coverage or displayed face normals. Native
-   external-blocker/no-shadow, torus-hole and timing controls must justify
-   promotion. The torus surface-band representation question stays separate.
+   Capture/profile reservation precedence is fixed in #4404. A current-master
+   million matrix and a bounded cylinder cost comparison both refused quiet-host
+   admission; neither produced a new timing measurement.
+3. **Curved receiver correctness — cylinder geometry validated; cost pending.**
+   The [cylinder receiver evidence](../pr-screenshots/codex/cylinder-shadow-receiver/README.md)
+   covers 240 native pairs, 216 byte-identical unchanged controls, independent
+   shader field/ray tests and permanent external/pitched yaw sweeps. Preserve
+   elected coverage and displayed normals. Cone and torus remain deferred:
+   the first continuous root can belong to a nearer interval skipped by the
+   producer's retained integer sample. Select the retained occupied interval
+   before extending their receiver path. Cylinder side combs remain visible
+   without sun shadows; investigate emitted face ownership/parity independently
+   rather than suppressing potentially legitimate voxel stairs. Native cost
+   qualification and continuous-angle transition coverage remain open.
 4. **Representative authored-LOD scene — prototype, native validation pending.**
    Exercise repeated assets, terrain, moving attached parts, lazy/resident
    variants and reversible zoom/yaw transitions. Shared loaded assets are not

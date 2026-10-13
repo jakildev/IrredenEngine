@@ -181,7 +181,7 @@ kernel void IR_SUN_SHADOW_KERNEL_NAME(
         } else {
 #if IR_SHAPE_RECEIVER
             float3 shadowPosition;
-            if (selectedShapeSphereShadowReceiver(pixel, size.x,
+            if (selectedShapeAnalyticShadowReceiver(pixel, size.x,
                     receiverFrame, receiverShapes, receiverOwners, receiverTiles,
                     shadowPosition))
                 factor = worldSurfaceSunShadowFactor(shadowPosition, normal,

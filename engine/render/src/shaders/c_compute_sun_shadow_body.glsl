@@ -201,7 +201,7 @@ void main() {
         } else {
 #if IR_SHAPE_RECEIVER
             vec3 shadowPosition;
-            if (selectedShapeSphereShadowReceiver(pixel, size.x, shadowPosition))
+            if (selectedShapeAnalyticShadowReceiver(pixel, size.x, shadowPosition))
                 factor = worldSurfaceSunShadowFactor(shadowPosition, normal,
                     float(rawDepth), sunCasterViewToWorld);
             else
