@@ -179,6 +179,14 @@ class OccupancyModel {
         m_origin = origin;
     }
 
+    bool sameOccupancy(const OccupancyModel &other) const {
+        return m_size == other.m_size && m_occupied == other.m_occupied;
+    }
+
+    int occupiedCount() const {
+        return static_cast<int>(std::count(m_occupied.begin(), m_occupied.end(), true));
+    }
+
     // Places every cell the SDF primitive covers: the same cell walk the
     // editor's BAKE fills through.
     void bakeShape(IRMath::SDF::ShapeType type, IRMath::vec4 params, const SymmetryState &sym) {
@@ -753,6 +761,12 @@ class Builder {
         return m_model.origin();
     }
 
+    // The shadow occupancy of the set the editor is editing at this point of
+    // the recipe.
+    const OccupancyModel &model() const {
+        return m_model;
+    }
+
     // Author against the editor's full reference scene rather than the bare
     // stage. The model is unchanged: the edit pick passes through furniture,
     // so only the editable set's occupancy decides where an aim lands. What
@@ -1316,21 +1330,43 @@ class Builder {
     // default shape row (a sphere): the first write into a part that has no
     // voxel for a click to pick. Open a new segment before aiming at the
     // result.
+    //
+    // The editor bakes at the radius the slider holds, which the drag leaves
+    // within kBakeParamSliderDragDrift of @p radius. A sphere only gains cells
+    // as its radius grows, so the bakes at the two ends of that range bracket
+    // every bake the editor can run: when both leave the same occupancy, that
+    // occupancy is the model. A radius off the track, or one whose range spans
+    // a change in the baked cells, is a recipe error that emits no gesture and
+    // leaves the model as it was.
     void bakeSphere(float radius) {
-        dragGuiSlider(
-            IRVoxelEditor::kBakeParam1SliderGeometry,
-            IRVoxelEditor::kBakeParamSliderMin,
-            IRVoxelEditor::kBakeParamSliderMax,
-            radius
-        );
+        const float minRadius = IRVoxelEditor::kBakeParamSliderMin;
+        const float maxRadius = IRVoxelEditor::kBakeParamSliderMax;
+        // Written so a NaN fails it.
+        if (!(radius >= minRadius && radius <= maxRadius)) {
+            recordError(
+                "bakeSphere radius " + std::to_string(radius) +
+                " is off the BAKE slider's track [" + std::to_string(minRadius) + ", " +
+                std::to_string(maxRadius) + "] in segment " + m_current.label_
+            );
+            return;
+        }
+        const float heldLow =
+            IRMath::max(radius - IRVoxelEditor::kBakeParamSliderDragDrift, minRadius);
+        const float heldHigh =
+            IRMath::min(radius + IRVoxelEditor::kBakeParamSliderDragDrift, maxRadius);
+        OccupancyModel baked = sphereBakedAt(heldLow);
+        if (!baked.sameOccupancy(sphereBakedAt(heldHigh))) {
+            recordError(
+                "bakeSphere radius " + std::to_string(radius) + " is ambiguous in segment " +
+                m_current.label_ + ": the BAKE slider can hold anything in [" +
+                std::to_string(heldLow) + ", " + std::to_string(heldHigh) +
+                "] and the baked cells change inside that range"
+            );
+            return;
+        }
+        dragGuiSlider(IRVoxelEditor::kBakeParam1SliderGeometry, minRadius, maxRadius, radius);
         clickGui(IRVoxelEditor::bakeButtonCenterGuiTrixel());
-        const IRMath::SDF::ShapeType type =
-            IRVoxelEditor::kBakeShapeTypes[IRVoxelEditor::kBakeDefaultShapeRow];
-        m_model.bakeShape(
-            type,
-            IRVoxelEditor::bakeShapeParams(type, radius, IRVoxelEditor::kBakeParam2Default),
-            m_symmetry
-        );
+        m_model = std::move(baked);
     }
 
     void nextPart() {
@@ -2079,6 +2115,20 @@ class Builder {
 
     std::optional<IRMath::vec3> aimFor(IRMath::ivec3 target) const {
         return m_eraseMode ? m_model.aimAtVoxel(target) : m_model.aimToPlace(target);
+    }
+
+    // The active model after a BAKE of the default shape row whose P1 slider
+    // holds @p radius.
+    OccupancyModel sphereBakedAt(float radius) const {
+        const IRMath::SDF::ShapeType type =
+            IRVoxelEditor::kBakeShapeTypes[IRVoxelEditor::kBakeDefaultShapeRow];
+        OccupancyModel baked = m_model;
+        baked.bakeShape(
+            type,
+            IRVoxelEditor::bakeShapeParams(type, radius, IRVoxelEditor::kBakeParam2Default),
+            m_symmetry
+        );
+        return baked;
     }
 
     // The editor's press-then-release-without-moving gesture at `worldAim`.

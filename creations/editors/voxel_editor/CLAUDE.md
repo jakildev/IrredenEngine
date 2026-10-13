@@ -90,6 +90,11 @@ render, because the aim and the pick share one screen mapping.
   plane), so a click has nothing to pick until a first write that needs no
   pick: BAKE, or a module recipe APPLY. Sessions author that write with
   `Builder::bakeSphere` (panel geometry in `bake_panel.hpp`).
+- BAKE reads the radius the P1 slider holds, and a scripted drag leaves that
+  within `kBakeParamSliderDragDrift` of the request. `bakeSphere` models the
+  bake only when both ends of that range bake the same cells, and is a recipe
+  error otherwise. The radii where the cells change depend on the parity of
+  the part's extent (1.9 holds on an even extent, 2.14 on an odd one).
 - A voxel part's extent is its `C_VoxelSetNew::size_`, saved as its `.vxs`
   bounds; the manifest carries no size. An edit path sizes from the set it
   edits, never from `g_editableSceneSize`. The loft tool is the exception: its

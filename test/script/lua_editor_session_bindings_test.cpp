@@ -4,6 +4,8 @@
 
 #include <tuple>
 
+#include <limits>
+
 namespace IRVoxelEditor::Session {
 
 #define IR_SESSION_PREDICATE_STUB(name)                                                            \
@@ -44,9 +46,97 @@ IR_SESSION_PREDICATE_STUB(evaluateLoftMaskCheck)
 
 namespace {
 
+using IRVoxelEditor::kBakeParamSliderDragDrift;
+using IRVoxelEditor::kBakeParamSliderMax;
+using IRVoxelEditor::kBakeParamSliderMin;
 using IRVoxelEditor::LuaSession::Handle;
 using IRVoxelEditor::LuaSession::Lifetime;
 using IRVoxelEditor::Session::Builder;
+using IRVoxelEditor::Session::OccupancyModel;
+using IRVoxelEditor::Session::Recipe;
+
+// Plateau edges of the baked sphere follow the parity of the part extent, so
+// each case pins the extent it was enumerated on.
+constexpr IRMath::ivec3 kEvenPartSize(16);
+constexpr IRMath::ivec3 kOddPartSize(9, 9, 13);
+
+std::size_t eventCount(const Recipe &recipe) {
+    std::size_t count = 0;
+    for (const IRVoxelEditor::Session::Segment &segment : recipe.segments_)
+        count += segment.events_.size();
+    return count;
+}
+
+// A builder whose active model is one clear voxel part of @p size.
+Builder builderWithClearPart(IRMath::ivec3 size) {
+    Builder builder("bake_radius", size, IRVoxelEditor::deriveSceneOrigin(size));
+    builder.addVoxelPart();
+    return builder;
+}
+
+// What the editor's BAKE leaves on @p model when the P1 slider holds @p radius.
+OccupancyModel bakedAtHeldRadius(OccupancyModel model, float radius) {
+    const IRMath::SDF::ShapeType type =
+        IRVoxelEditor::kBakeShapeTypes[IRVoxelEditor::kBakeDefaultShapeRow];
+    model.bakeShape(
+        type,
+        IRVoxelEditor::bakeShapeParams(type, radius, IRVoxelEditor::kBakeParam2Default),
+        IRVoxelEditor::SymmetryState{}
+    );
+    return model;
+}
+
+float heldRadiusLow(float radius) {
+    return IRMath::max(radius - kBakeParamSliderDragDrift, kBakeParamSliderMin);
+}
+
+float heldRadiusHigh(float radius) {
+    return IRMath::min(radius + kBakeParamSliderDragDrift, kBakeParamSliderMax);
+}
+
+void expectBakeAccepted(IRMath::ivec3 partSize, float radius, int expectedCells) {
+    SCOPED_TRACE(
+        testing::Message() << "radius " << radius << " on a part of x extent " << partSize.x
+    );
+    const std::size_t eventsBeforeBake = eventCount(builderWithClearPart(partSize).finish());
+    Builder builder = builderWithClearPart(partSize);
+    const OccupancyModel before = builder.model();
+    builder.bakeSphere(radius);
+
+    EXPECT_EQ(builder.model().occupiedCount(), expectedCells);
+    constexpr int kHeldSamples = 64;
+    for (int sample = 0; sample <= kHeldSamples; ++sample) {
+        const float held = IRMath::mix(
+            heldRadiusLow(radius),
+            heldRadiusHigh(radius),
+            static_cast<float>(sample) / static_cast<float>(kHeldSamples)
+        );
+        EXPECT_TRUE(builder.model().sameOccupancy(bakedAtHeldRadius(before, held)))
+            << "held radius " << held;
+    }
+    const Recipe recipe = builder.finish();
+    EXPECT_TRUE(recipe.ok()) << (recipe.errors_.empty() ? "" : recipe.errors_.front());
+    EXPECT_GT(eventCount(recipe), eventsBeforeBake);
+}
+
+// @p names is what the one recorded error must contain besides the op name.
+void expectBakeRefused(IRMath::ivec3 partSize, float radius, const std::string &names) {
+    SCOPED_TRACE(
+        testing::Message() << "radius " << radius << " on a part of x extent " << partSize.x
+    );
+    const std::size_t eventsBeforeBake = eventCount(builderWithClearPart(partSize).finish());
+    Builder builder = builderWithClearPart(partSize);
+    const OccupancyModel before = builder.model();
+    builder.bakeSphere(radius);
+
+    EXPECT_TRUE(builder.model().sameOccupancy(before));
+    const Recipe recipe = builder.finish();
+    ASSERT_EQ(recipe.errors_.size(), 1u);
+    EXPECT_NE(recipe.errors_.front().find("bakeSphere"), std::string::npos)
+        << recipe.errors_.front();
+    EXPECT_NE(recipe.errors_.front().find(names), std::string::npos) << recipe.errors_.front();
+    EXPECT_EQ(eventCount(recipe), eventsBeforeBake);
+}
 
 void expectOneErrorAndNoEvents(
     const IRVoxelEditor::Session::Recipe &recipe, std::string_view token
@@ -169,7 +259,7 @@ TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
         s:addVoxelPart()
         s:dragPartGizmo({0, 0, 0}, {1, 0, 0}, {1, 0, 0})
         s:selectPartMode(0)
-        s:bakeSphere(2)
+        s:bakeSphere(1.9)
         s:nextPart()
         s:toggleLoftMode()
         s:clickLoftCell(IREditor.LoftMask.XZ, {0, 0})
@@ -404,6 +494,60 @@ TEST_F(LuaEditorSessionBindingsTest, RadialRadiusSliderRoundsWholeTargetsInsideT
             EXPECT_EQ(IRMath::round(held), target) << "target=" << target << " offset=" << offset;
         }
     }
+}
+
+TEST_F(LuaEditorSessionBindingsTest, BakeSphereModelsEveryRadiusTheSliderCanHold) {
+    expectBakeAccepted(kEvenPartSize, 1.9f, 56);
+    expectBakeAccepted(kEvenPartSize, 2.28f, 88);
+    expectBakeAccepted(IRMath::ivec3(8), 1.9f, 56);
+    expectBakeAccepted(kOddPartSize, 2.14f, 81);
+    expectBakeAccepted(kEvenPartSize, kBakeParamSliderMin, 8);
+}
+
+TEST_F(LuaEditorSessionBindingsTest, BakeSphereRefusesRadiusWhoseHeldRangeChangesTheCells) {
+    for (const float radius : {2.0f, 2.085f, 2.095f}) {
+        const OccupancyModel clear = builderWithClearPart(kEvenPartSize).model();
+        EXPECT_EQ(bakedAtHeldRadius(clear, heldRadiusLow(radius)).occupiedCount(), 56);
+        EXPECT_EQ(bakedAtHeldRadius(clear, heldRadiusHigh(radius)).occupiedCount(), 88);
+    }
+    expectBakeRefused(kEvenPartSize, 2.0f, "2.000");
+    expectBakeRefused(kEvenPartSize, 2.085f, "2.085");
+    expectBakeRefused(kEvenPartSize, 2.095f, "2.095");
+    expectBakeRefused(IRMath::ivec3(15), 1.9f, "1.900");
+    expectBakeRefused(kOddPartSize, 2.28f, "2.280");
+}
+
+TEST_F(LuaEditorSessionBindingsTest, BakeSphereRefusesRadiusOffTheSliderTrack) {
+    // A non-finite radius prints differently per C runtime, so these name the
+    // refusal instead of the value.
+    expectBakeRefused(kEvenPartSize, std::numeric_limits<float>::quiet_NaN(), "slider's track");
+    expectBakeRefused(kEvenPartSize, std::numeric_limits<float>::infinity(), "slider's track");
+    expectBakeRefused(kEvenPartSize, -std::numeric_limits<float>::infinity(), "slider's track");
+    expectBakeRefused(kEvenPartSize, kBakeParamSliderMin - 0.25f, "0.250");
+    expectBakeRefused(kEvenPartSize, kBakeParamSliderMax + 0.5f, "12.500");
+}
+
+TEST_F(LuaEditorSessionBindingsTest, BakeSphereAcceptsRangeWhoseExtraCellsAreAlreadyOccupied) {
+    Builder builder = builderWithClearPart(kEvenPartSize);
+    builder.bakeSphere(2.28f);
+    const OccupancyModel baked = builder.model();
+    builder.bakeSphere(2.095f);
+    EXPECT_TRUE(builder.model().sameOccupancy(baked));
+    EXPECT_TRUE(builder.finish().ok());
+}
+
+TEST_F(LuaEditorSessionBindingsTest, BakeSphereRefusalForwardsThroughLua) {
+    Builder builder = builderWithClearPart(kEvenPartSize);
+    const OccupancyModel before = builder.model();
+    const std::shared_ptr<Lifetime> lifetime =
+        std::make_shared<Lifetime>(Lifetime{&builder, &m_lua});
+    m_lua.lua()["session"] = Handle{lifetime};
+    ASSERT_TRUE(m_lua.lua().safe_script("session:bakeSphere(2.095)").valid());
+    EXPECT_TRUE(builder.model().sameOccupancy(before));
+    const Recipe recipe = builder.finish();
+    ASSERT_EQ(recipe.errors_.size(), 1u);
+    EXPECT_NE(recipe.errors_.front().find("bakeSphere"), std::string::npos);
+    EXPECT_NE(recipe.errors_.front().find("2.095"), std::string::npos);
 }
 
 TEST_F(LuaEditorSessionBindingsTest, RecordErrorForwardsAsRecipeFailure) {
