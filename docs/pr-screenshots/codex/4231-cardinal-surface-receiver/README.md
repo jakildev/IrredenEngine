@@ -74,3 +74,24 @@ The [reference attribution](reference-attribution/README.md) retains every refre
 before/after pair, distinguishes new receiver changes from inherited drift, and
 records the fog review. The [staircase witness](staircase-witness/README.md) explains
 why a newly sharp band is real voxel occlusion rather than a parity defect.
+
+Final native validation: `python3 scripts/render-verify.py --all --no-build`
+passes **172 checks across nine demos, zero failures and zero skips**. The
+[complete log](native-suite.txt) records every command and check. All nine
+targets were rebuilt against integrated master `4ca544a45` immediately before
+the final run. Runtime code and reference images match `87afa20e1`; the only
+change during the run was the test-adapter correction in `4b02c4f27`.
+
+The preceding full build/run passed 170 checks and rejected the two CanvasStress
+comparison references, which had selected the wrong capture indices during
+attribution. Their corrected references were already committed before this fresh
+aggregate run; both now match at 100%. No threshold or shot selection changed.
+The editor-parts prefab passes its existing tolerance at 99.9799%; the green suite
+is not a claim that every image is byte-identical or every possible scene is correct.
+
+[Linux render-harness CI at `4b02c4f27`](https://github.com/jakildev/IrredenEngine/actions/runs/38351626445)
+passes all 88 suites. Its initial failure exposed an integer `abs` overload in the
+new C++ shader adapter; importing `std::abs` and pinning its scalar return type
+fixed the adapter without changing production geometry or weakening the coplanar
+assertion. Native OpenGL visual smoke, receiver-stage profiling, and integration
+with #4362 and the existing #4246 hold remain separate work.

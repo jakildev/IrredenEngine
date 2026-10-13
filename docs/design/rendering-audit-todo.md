@@ -84,9 +84,12 @@ checked against independent voxel occupancy: an actual distinct voxel blocks the
 surface-center ray, while the old outward offset misses it. Do not erase genuine
 stepped occlusion to make a beauty image more uniform.
 
+The refreshed native whole-suite run passes 172 checks across nine demos, with
+zero failures or skips; Linux render-harness CI passes all 88 suites.
+
 Before merge: reconcile the overlapping #4362 receiver implementation and its
-moving-caster coverage with this contract, complete the refreshed whole-suite run,
-and preserve the existing #4246 integration hold. Other-host smoke and measured
+moving-caster coverage with this contract, and preserve the existing #4246
+integration hold. Other-host smoke and measured
 receiver-stage cost remain due. This item is not a claim that incomplete-index
 fallback edges, every curved receiver, or million-entity throughput are solved.
 
