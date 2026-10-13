@@ -39,7 +39,7 @@ Optional:
   only (a `linux-debug` reference bless, a Windows DLL-staging check, a
   Metal-only capture). The scout projects it as `needs_host` and the
   dispatcher never elects the task, or a feedback PR linked to it (`Closes`/`Refs`
-  in the body, or a `claude/<N>-…` branch), on another host; `fleet-claim` does not enforce it, so a hand-picked claim
+  in the body, or a `claude/<N>-…` / `codex/<N>-…` branch), on another host; `fleet-claim` does not enforce it, so a hand-picked claim
   on the wrong host is refused only by the pane's own read of the body.
   Finer than `fleet:needs-gl-host`, which
   lets linux and windows stand in for each other. Name one OS: a value

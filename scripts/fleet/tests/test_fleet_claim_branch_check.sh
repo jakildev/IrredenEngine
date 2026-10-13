@@ -81,6 +81,19 @@ assert_exit "$actual" 1 "branch-check 1425 on a #2419-leading branch → exit 1 
 actual=0; "$FLEET_CLAIM" branch-check 2419 claude/2419-fix-issue-1425-recurrence >/dev/null 2>&1 || actual=$?
 assert_exit "$actual" 0 "branch-check 2419 on the same branch → exit 0 (leading number wins)"
 
+echo "T6b: codex namespace — same grammar as claude"
+actual=0; "$FLEET_CLAIM" branch-check 4231 codex/4231-cardinal-surface-receiver >/dev/null 2>&1 || actual=$?
+assert_exit "$actual" 0 "branch-check 4231 codex/4231-cardinal-surface-receiver → exit 0"
+actual=0; "$FLEET_CLAIM" --repo game branch-check 255 codex/game-255-topic >/dev/null 2>&1 || actual=$?
+assert_exit "$actual" 0 "--repo game branch-check 255 codex/game-255-topic → exit 0"
+actual=0; "$FLEET_CLAIM" branch-check 4231 codex/4232-other >/dev/null 2>&1 || actual=$?
+assert_exit "$actual" 1 "branch-check 4231 on a #4232 codex branch → exit 1"
+actual=0; "$FLEET_CLAIM" branch-check 4231 foo/4231-x >/dev/null 2>&1 || actual=$?
+assert_exit "$actual" 1 "branch-check 4231 foo/4231-x → exit 1 (unsupported namespace)"
+err=$("$FLEET_CLAIM" branch-check 4231 codex/4232-other 2>&1 1>/dev/null) && actual=0 || actual=$?
+assert_contains "$err" "claude/4231-" "mismatch still names the claude form"
+assert_contains "$err" "codex/4231-" "mismatch names the codex form"
+
 # --- default-to-current-branch (needs a throwaway git repo) -----------------
 
 REPO="$TMPROOT/repo"

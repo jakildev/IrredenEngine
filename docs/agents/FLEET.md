@@ -21,7 +21,9 @@ sessions alike. This file is the overview; each mechanism has one owner:
 ## Workflow: parallel agents + PRs
 
 1. **Never commit to `master`.** Fleet workers branch
-   `claude/<issue>-<topic>`; Cursor / ad-hoc work `claude/<area>-<topic>`.
+   `claude/<issue>-<topic>`; Codex-authored work uses `codex/<issue>-<topic>`
+   (the claim matcher treats both namespaces alike); Cursor / ad-hoc work
+   `claude/<area>-<topic>`.
 2. **Commit and open PRs only via `commit-and-push`** (branches if needed,
    runs `simplify`, pushes, `gh pr create`).
 3. **After a PR opens, `start-next-task`** resets the worktree; unrelated
