@@ -130,7 +130,10 @@ lands on the top edge: OpenGL inverts V, and Metal, which negates clip-space
 Y, samples with the quad texcoord as it is.
 
 `scripts/render-sprite-orientation-metric.py` reads the orientation from an
-`IRSpriteDemo` capture of the two-tone `test_anchor` fixture.
+`IRSpriteDemo` capture of the two-tone `test_anchor` fixture, and grades the
+default anchor against the unit voxel at the sprite's world position: the
+voxel's first row is the row directly below the sprite box, with equal
+margins left and right.
 
 ### Size
 
