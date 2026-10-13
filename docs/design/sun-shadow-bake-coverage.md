@@ -213,8 +213,9 @@ neighbourhood is sparse) could reclaim the remaining cost; deferred (lever
    that do not author a fog ceiling preserve the pre-ceiling caster set exactly.
    A vertical sun also takes the identity path because caster height cannot
    enlarge its XY shadow footprint. The legacy main-canvas fallback decodes the
-   BODY bit from its entity-id plane. World-placed FIELD samples are cut by their
-   feeder before its resolve texture is baked. The per-axis resolve has no
+   BODY bit from its entity-id plane. World-placed and non-box analytic-shape
+   FIELD samples are cut by their feeder before its depth texture is baked, so
+   both bakes run on the scoped `precut` lane. The per-axis resolve has no
    entity-id plane and remains uncut; its dispatch uses the scoped `precut` lane
    to avoid misclassifying BODY samples as FIELD. Retained-set raster selection
    will close that route structurally (#4305). The guard restores the canonical

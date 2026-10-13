@@ -190,10 +190,11 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         }
     };
 
-    // Resolve textures have no entity-id plane, so their bake dispatch cannot
-    // distinguish BODY from FIELD. World-placed FIELD samples are cut by their
-    // feeder; the legacy per-axis route deliberately remains uncut until its
-    // raster publishes the retained caster set.
+    // Resolve and analytic-caster depth textures have no entity-id plane, so
+    // their bake dispatch cannot distinguish BODY from FIELD. World-placed and
+    // analytic-shape FIELD samples are cut by their feeder; the legacy
+    // per-axis route deliberately remains uncut until its raster publishes
+    // the retained caster set.
     void patchFogCasterPrecut(int precut) {
         sunShadowFrameDataBuf_->subData(
             offsetof(FrameDataSun, fogCeilingEnabled_) + sizeof(int),
@@ -240,7 +241,9 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         return analyticCasterDepth_.second;
     }
 
-    void bakeAnalyticCasterDepth() {
+    // Runs pre-cut; `canvasEntityIds` only fills the image unit the kernel
+    // declares.
+    void bakeAnalyticCasterDepth(const Texture2D *canvasEntityIds) {
         if (!analyticCasterReady_)
             return;
         analyticCasterFrameBuf_->subData(0, sizeof(analyticCasterFrame_), &analyticCasterFrame_);
@@ -248,11 +251,13 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
             BufferTarget::UNIFORM,
             kBufferIndex_FrameDataVoxelToCanvas
         );
-        sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);
         sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
         bindFogObservers();
         bakeProgram_->use();
         analyticCasterDepth_.second->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
+        canvasEntityIds->bindAsImage(3, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
+        patchFogCasterPrecut(1);
+        const FogCasterPrecutRestoreGuard fogPrecutGuard{*this};
         const bool cardinalFrame = analyticCasterFrame_.residualYaw_ == 0.0f;
         if (cardinalFrame) {
             patchSunSplatRadius(0.0f);

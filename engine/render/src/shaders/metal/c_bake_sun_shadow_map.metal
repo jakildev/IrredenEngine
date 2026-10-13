@@ -28,6 +28,7 @@ struct FrameDataSun {
     // 0 => the exact single-write path. Mirrors FrameDataSun in ir_render_types.hpp.
     float sunSplatMaxTexels;
     float sunMaxShadowThrow;  // unused here (receiver-only)
+    float4 sunCasterViewToWorld;  // unused here; places fogCeilingEnabled at 144
     int4 fogCeilingEnabled;
 };
 

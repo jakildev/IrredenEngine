@@ -66,6 +66,7 @@ layout(std140, binding = 29) uniform FrameDataSun {
     // see docs/design/sun-shadow-bake-coverage.md.
     uniform float sunSplatMaxTexels;
     uniform float sunMaxShadowThrow;  // unused here (receiver-only)
+    uniform vec4 sunCasterViewToWorld;  // unused here; places fogCeilingEnabled at 144
     uniform ivec4 fogCeilingEnabled;
 };
 

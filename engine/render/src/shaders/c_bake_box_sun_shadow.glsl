@@ -31,6 +31,7 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform int cascadeCount;
     uniform float sunSplatMaxTexels;
     uniform float sunMaxShadowThrow;  // Unused here (receiver-only)
+    uniform vec4 sunCasterViewToWorld;  // Unused here; places fogCeilingEnabled at 144
     uniform ivec4 fogCeilingEnabled;
 };
 

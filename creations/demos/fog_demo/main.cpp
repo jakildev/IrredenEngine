@@ -1977,6 +1977,23 @@ constexpr vec3 kCeilingShadowControlPosition{-11.10f, 4.57f, kCeilingObserverZ};
 // Voxel face centres at the inclusive 0.5 ceiling midpoint leave six complete
 // caster layers in the sun bake; this solid is the authored-height oracle.
 constexpr int kCeilingShadowControlHeight = 6;
+// The curved variant swaps the centre FIELD column and the BODY twin for
+// cylinders of the same footprint, which only the analytic-shape caster route
+// bakes. A shape takes its BODY reveal verdict at its centre, so the centre
+// stays under the ceiling plane while the top rises past the cut midpoint.
+bool g_ceilingShadowCurved = false;
+constexpr float kCeilingShadowCylinderHeight = 10.0f;
+static_assert(
+    0.5f * (kCeilingShadowCylinderHeight - 1.0f) < kCeilingHeight &&
+        kCeilingShadowCylinderHeight - 1.0f > kCeilingHeight + 0.5f * kCeilingFade,
+    "the BODY cylinder must be revealed at its centre and cast above the cut midpoint"
+);
+constexpr vec4 kCeilingShadowCylinder{
+    kCeilingColumnFootprint * 0.5f,
+    kCeilingColumnFootprint * 0.5f,
+    kCeilingShadowCylinderHeight,
+    0.0f
+};
 constexpr float kCeilingShotYaw = 0.35f;
 constexpr IRVideo::AutoScreenshotShot kCeilingShots[] = {
     {9.0f, vec2(0, 0), 0.0f, "fog_ceiling9"},
@@ -1989,6 +2006,9 @@ constexpr IRVideo::AutoScreenshotShot kCeilingTreatmentShots[] = {
 constexpr IRVideo::AutoScreenshotShot kCeilingShadowShots[] = {
     {9.0f, vec2(0, 0), 0.0f, "fog_ceiling_shadow9"},
     {9.0f, vec2(0, 0), kCeilingShotYaw, "fog_ceiling_shadow_yaw9"},
+};
+constexpr IRVideo::AutoScreenshotShot kCeilingShadowCurvedShots[] = {
+    {9.0f, vec2(0, 0), 0.0f, "fog_ceiling_shadow_curved9"},
 };
 constexpr IRVideo::AutoScreenshotShot kOcclusionHighGroundSoftTreatedShots[] = {
     {6.0f, vec2(0, 0), 0.0f, "fog_occlusion_high_ground_soft_treated"},
@@ -2381,8 +2401,9 @@ void probeCeilingShadow() {
         baker->frameData_.cascadeTexelSize_0_.y
     );
     IR_LOG_INFO(
-        "FOG-SHADOW-PROBE centre={}:{:.3f} rim={}:{:.3f} control={}:{:.3f} "
+        "FOG-SHADOW-PROBE casters={} centre={}:{:.3f} rim={}:{:.3f} control={}:{:.3f} "
         "body=twin {}:{:.3f} sunTexel={:.3f}",
+        g_ceilingShadowCurved ? "cylinder" : "voxel",
         centre.texels_,
         centre.reach_,
         rim.texels_,
@@ -2400,10 +2421,37 @@ void probeCeilingShadow() {
     );
     requireFogProbe(
         "FOG-SHADOW-PROBE",
-        IRMath::abs(centre.reach_ - control.reach_) <= sunTexel &&
-            IRMath::abs(rim.reach_ - control.reach_) <= sunTexel,
-        "a cut FIELD footprint differs from the cut-height control by more than one sun texel"
+        IRMath::abs(rim.reach_ - control.reach_) <= sunTexel,
+        "the cut rim footprint differs from the cut-height control by more than one sun texel"
     );
+    // The control is calibrated to the voxel layers the midpoint keeps; an
+    // analytic cylinder is cut on the continuous plane instead, so the curved
+    // variant compares the FIELD cylinder against its BODY twin only. The BODY
+    // twin must keep at least half the throw of its height above the midpoint.
+    if (g_ceilingShadowCurved) {
+        const vec3 sun = IRRender::getSunDirection();
+        const float throwPerHeight = IRMath::length(vec2(sun)) / IRMath::abs(sun.z);
+        const float riseAboveCut =
+            kCeilingShadowCylinderHeight - 1.0f - (kCeilingHeight + 0.5f * kCeilingFade);
+        const float minGap = 0.5f * riseAboveCut * throwPerHeight;
+        IR_LOG_INFO(
+            "FOG-SHADOW-PROBE curved gap={:.3f} min={:.3f}",
+            body.reach_ - centre.reach_,
+            minGap
+        );
+        requireFogProbe(
+            "FOG-SHADOW-PROBE",
+            body.reach_ - centre.reach_ > minGap,
+            "the curved BODY caster did not outreach its cut FIELD twin"
+        );
+    } else {
+        requireFogProbe(
+            "FOG-SHADOW-PROBE",
+            IRMath::abs(centre.reach_ - control.reach_) <= sunTexel,
+            "the cut centre footprint differs from the cut-height control by more than one "
+            "sun texel"
+        );
+    }
     requireFogProbe(
         "FOG-SHADOW-PROBE",
         body.reach_ > control.reach_ + sunTexel,
@@ -3205,6 +3253,11 @@ int main(int argc, char **argv) {
         "twin; logs FOG-SHADOW-PROBE and captures cardinal plus yaw shots"
     );
     IREngine::args().flag(
+        "--ceiling-shadow-curved",
+        "--ceiling-shadow with SDF cylinders as the centre FIELD caster and the BODY twin, "
+        "exercising the analytic-shape caster bake; one cardinal shot"
+    );
+    IREngine::args().flag(
         "--reveal-treatment",
         "Enable the canvas reveal-surface treatment (dissolve + cap tone) on the "
         "--ceiling-treatment rows or the --occlusion=high-ground --los-softness band"
@@ -3384,7 +3437,8 @@ int main(int argc, char **argv) {
     g_entityRevealSoftEdge = g_entityRevealSoftEdge || g_ghostPolicy;
     g_entityReveal = g_entityReveal || g_ghostPolicy;
     g_entityReveal = g_entityReveal || (g_entityRevealSoftEdge && !g_detachedBody);
-    g_ceilingShadow = IREngine::args().getFlag("--ceiling-shadow");
+    g_ceilingShadowCurved = IREngine::args().getFlag("--ceiling-shadow-curved");
+    g_ceilingShadow = IREngine::args().getFlag("--ceiling-shadow") || g_ceilingShadowCurved;
     g_ceilingTreatment = IREngine::args().getFlag("--ceiling-treatment") || g_ceilingShadow;
     g_revealTreatment = IREngine::args().getFlag("--reveal-treatment");
     g_fogDebugColor = IREngine::args().getFlag("--fog-debug-color") || g_ceilingTreatment;
@@ -3938,6 +3992,8 @@ void initSystems() {
             case OcclusionScene::NONE:
                 break;
             }
+        } else if (g_ceilingShadowCurved) {
+            IRVideo::setAutoScreenshotShots(cfg, kCeilingShadowCurvedShots);
         } else if (g_ceilingShadow) {
             IRVideo::setAutoScreenshotShots(cfg, kCeilingShadowShots);
         } else if (g_ceilingTreatment && g_revealTreatment) {
@@ -4193,9 +4249,31 @@ void initCeilingTreatmentScene() {
     const vec3 centrePosition = g_ceilingShadow ? kCeilingShadowCentre : kCeilingCentreColumn;
     const vec3 rimPosition = g_ceilingShadow ? kCeilingShadowRim : kCeilingRimColumn;
     const vec3 bodyPosition = g_ceilingShadow ? kCeilingShadowBody : kCeilingBodyTwin;
-    g_ceilingCentreColumn = createColumn(centrePosition, Color{245, 155, 75, 255}, C_FogField{});
+    // Centred on the column's voxel-centre span so both stand on the slab alike.
+    const vec3 cylinderLift{0.0f, 0.0f, -0.5f * (kCeilingShadowCylinder.z - 1.0f)};
+    const Color centreColor{245, 155, 75, 255};
+    const Color bodyColor{80, 210, 245, 255};
+    if (g_ceilingShadowCurved) {
+        g_ceilingCentreColumn = createFieldShape(
+            centrePosition + cylinderLift,
+            IRRender::ShapeType::CYLINDER,
+            kCeilingShadowCylinder,
+            centreColor
+        );
+    } else {
+        g_ceilingCentreColumn = createColumn(centrePosition, centreColor, C_FogField{});
+    }
     g_ceilingRimColumn = createColumn(rimPosition, Color{120, 235, 140, 255}, C_FogField{});
-    g_ceilingBodyTwin = createColumn(bodyPosition, Color{80, 210, 245, 255});
+    if (g_ceilingShadowCurved) {
+        g_ceilingBodyTwin = createShape(
+            bodyPosition + cylinderLift,
+            IRRender::ShapeType::CYLINDER,
+            kCeilingShadowCylinder,
+            bodyColor
+        );
+    } else {
+        g_ceilingBodyTwin = createColumn(bodyPosition, bodyColor);
+    }
     IRPrefab::Fog::setEntityRevealGoverned(g_ceilingBodyTwin);
     if (g_ceilingShadow) {
         g_ceilingShadowControl = IREntity::createEntity(
