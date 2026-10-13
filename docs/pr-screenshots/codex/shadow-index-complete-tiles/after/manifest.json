@@ -1,0 +1,84 @@
+{
+  "renderer_patch_sha256": "f366c9395ddcb412052a23447c7dd25e2c4663f29aa33a13ef6b16963f4da277",
+  "binary_sha256": "53ead647acac0b2d1c82088a4a6ba81b03444b008eb67d3383aa14c42dcba1b4",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRCanvasStress",
+    "--only",
+    "shadowbox,floor",
+    "--probe-source-box",
+    "--probe-floor-mode",
+    "sdf",
+    "--probe-floor-span",
+    "40",
+    "--frozen-pose",
+    "0.6",
+    "--pivot-origin",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--no-ao",
+    "--subdivisions",
+    "1",
+    "--zoom",
+    "3",
+    "--auto-screenshot",
+    "6",
+    "--sweep-yaw",
+    "0",
+    "5.49778714",
+    "8",
+    "--sun-face-index-probe",
+    "--probe-analytic-box",
+    "--analytic-box-yaw",
+    "0.6",
+    "--analytic-box-count",
+    "65"
+  ],
+  "revision": "90503255f84bf5046b04fc9a31788bc17c2447ed",
+  "clean": true,
+  "exit_code": 0,
+  "images": [
+    {
+      "file": "0.png",
+      "source": "save_files/screenshots/screenshot_000013.png",
+      "sha256": "bdbee03a7c0d559765f0bf5b8a9fe7bf89bde408fd2e86c6cc1dc3dad4ebf69f"
+    },
+    {
+      "file": "1.png",
+      "source": "save_files/screenshots/screenshot_000014.png",
+      "sha256": "739eb1c85a74725d1ba61c81db4043ff82dd5875b83dc0bf6e0aef187c2d1602"
+    },
+    {
+      "file": "2.png",
+      "source": "save_files/screenshots/screenshot_000015.png",
+      "sha256": "1c8b6db8eace892251087259d392101089264eae6cc7e248232aa72c3c7fde20"
+    },
+    {
+      "file": "3.png",
+      "source": "save_files/screenshots/screenshot_000016.png",
+      "sha256": "c5c921637f08aa96f9fbab41f6a5306e720fe00e539d32ac16e3b2258c9df024"
+    },
+    {
+      "file": "4.png",
+      "source": "save_files/screenshots/screenshot_000017.png",
+      "sha256": "50f8bb796efa763e6c3800348fcae0a548da3f622191af9ba7519b43626693ff"
+    },
+    {
+      "file": "5.png",
+      "source": "save_files/screenshots/screenshot_000018.png",
+      "sha256": "f9ead1ebdcebf52065d45e0705b77f187cf73d8193444ca71199bb70eefa9f1a"
+    },
+    {
+      "file": "6.png",
+      "source": "save_files/screenshots/screenshot_000019.png",
+      "sha256": "cb70b2cb6aefe7cc8f69621132fd8658096fda526ade6057c82d2640f365385e"
+    },
+    {
+      "file": "7.png",
+      "source": "save_files/screenshots/screenshot_000020.png",
+      "sha256": "bfc865dc828bc3d717f045e150df55a9ed25a817c222144ff19b28019e237bf5"
+    }
+  ]
+}

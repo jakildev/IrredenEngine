@@ -69,7 +69,8 @@ inline float sampleCascadeShadow(
                 + uint(tile.y) * kSourceFaceTilesPerAxis + uint(tile.x);
             const uint tileBase = sourceFaceTileBase(tileIndex);
             const uint count = sunDepthBuf[tileBase];
-            sourceQueryComplete = sourceFaceQueryComplete(count);
+            sourceQueryComplete = sourceFaceQueryComplete(count)
+                && (count <= kSourceFaceTileCapacity || sunDepthBuf[kSourceFaceSpillCounterOffset] <= kSourceFaceSpillCapacity);
             // A complete small record pool is an exact reference for an incomplete tile.
             const bool queryAllFaces = IR_SUN_FACE_OVERFLOW_REFERENCE != 0
                 && !sourceQueryComplete && sourceFaceCount <= kSourceFaceOverflowReferenceBudget
@@ -77,8 +78,19 @@ inline float sampleCascadeShadow(
             sourceQueryComplete = sourceQueryComplete || queryAllFaces;
             const uint candidateCount = queryAllFaces ? sourceFaceCount : count;
             if (sourceQueryComplete && dot(normal, sunDir) > 0.0) {
+                uint spill = !queryAllFaces && count > kSourceFaceTileCapacity
+                    ? sunDepthBuf[kSourceFaceSpillHeadOffset + tileIndex] : 0xFFFFFFFFu;
                 for (uint candidate = 0; candidate < candidateCount; ++candidate) {
-                    const uint faceIndex = queryAllFaces ? candidate : sunDepthBuf[tileBase + 1u + candidate];
+                    uint faceIndex;
+                    if (queryAllFaces) {
+                        faceIndex = candidate;
+                    } else if (candidate < kSourceFaceTileCapacity) {
+                        faceIndex = sunDepthBuf[tileBase + 1u + candidate];
+                    } else {
+                        const uint node = kSourceFaceSpillNodeOffset + spill * kSourceFaceSpillNodeWords;
+                        faceIndex = sunDepthBuf[node];
+                        spill = sunDepthBuf[node + 1u];
+                    }
                     const uint record = kSourceFaceRecordOffset + kSourceFaceRecordWords * faceIndex;
                     const float3 corner = float3(as_type<float>(sunDepthBuf[record]), as_type<float>(sunDepthBuf[record+1u]), as_type<float>(sunDepthBuf[record+2u]));
                     const float3 edgeU = float3(as_type<float>(sunDepthBuf[record+3u]), as_type<float>(sunDepthBuf[record+4u]), as_type<float>(sunDepthBuf[record+5u]));

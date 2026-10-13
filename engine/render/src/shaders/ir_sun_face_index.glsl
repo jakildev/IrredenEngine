@@ -46,11 +46,22 @@ void indexSourceSunGeometry(vec3 corner, vec3 edgeU, vec3 edgeV, uint type, vec2
             const uint tile = cascade * kSourceFaceTilesPerAxis * kSourceFaceTilesPerAxis + uint(y) * kSourceFaceTilesPerAxis + uint(x);
             const uint base = sourceFaceTileBase(tile);
             if (faceIndex >= kSourceFaceCapacity) {
-                atomicMax(sunDepthBuf[base], kSourceFaceTileCapacity + 1u);
+                atomicMax(sunDepthBuf[base], kSourceFaceTileQueryCapacity + 1u);
                 continue;
             }
             const uint slot = atomicAdd(sunDepthBuf[base], 1u);
-            if (slot < kSourceFaceTileCapacity) sunDepthBuf[base + 1u + slot] = faceIndex;
+            if (slot < kSourceFaceTileCapacity) {
+                sunDepthBuf[base + 1u + slot] = faceIndex;
+            } else if (slot < kSourceFaceTileQueryCapacity) {
+                const uint spill = atomicAdd(sunDepthBuf[sourceFaceSpillCounterIndex(uint(sunDepthBuf.length()))], 1u);
+                if (spill < kSourceFaceSpillCapacity) {
+                    const uint node = kSourceFaceSpillNodeOffset + spill * kSourceFaceSpillNodeWords;
+                    sunDepthBuf[node] = faceIndex;
+                    sunDepthBuf[node + 1u] = atomicExchange(sunDepthBuf[kSourceFaceSpillHeadOffset + tile], spill);
+                } else {
+                    atomicMax(sunDepthBuf[base], kSourceFaceTileQueryCapacity + 1u);
+                }
+            }
         }
     }
 }

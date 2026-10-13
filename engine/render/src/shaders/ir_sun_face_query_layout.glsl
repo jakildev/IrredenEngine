@@ -2,20 +2,26 @@
 #ifndef IR_SUN_FACE_QUERY_LAYOUT_INCLUDED
 #define IR_SUN_FACE_QUERY_LAYOUT_INCLUDED
 
-// Tail of SunShadowDepthMap: face count, bounded tile lists, then projected face records.
+// SunShadowDepthMap holds depth layers, primary tile lists, geometry and bounded spill lists.
 const uint kSourceFaceMapDimension = 1024u;
 const uint kSourceFaceCascadeCount = 2u;
 const uint kSourceFaceTileEdge = 8u;
 const uint kSourceFaceTilesPerAxis = kSourceFaceMapDimension / kSourceFaceTileEdge;
 const uint kSourceFaceTileCount = kSourceFaceCascadeCount * kSourceFaceTilesPerAxis * kSourceFaceTilesPerAxis;
 const uint kSourceFaceTileCapacity = 64u;
+const uint kSourceFaceTileQueryCapacity = 256u;
+const uint kSourceFaceSpillCapacity = 262144u;
+const uint kSourceFaceSpillNodeWords = 2u;
 const uint kSourceFaceCapacity = 65536u;
 const uint kSourceFaceRecordWords = 10u;
 const uint kSourceFaceFallbackOffset = kSourceFaceCascadeCount * kSourceFaceMapDimension * kSourceFaceMapDimension;
 const uint kSourceFaceHeaderOffset = 2u * kSourceFaceFallbackOffset;
 const uint kSourceFaceTileOffset = kSourceFaceHeaderOffset + 1u;
 const uint kSourceFaceRecordOffset = kSourceFaceTileOffset + kSourceFaceTileCount * (kSourceFaceTileCapacity + 1u);
-const uint kSourceFaceBufferWords = kSourceFaceRecordOffset + kSourceFaceCapacity * kSourceFaceRecordWords;
+const uint kSourceFaceSpillCounterOffset = kSourceFaceRecordOffset + kSourceFaceCapacity * kSourceFaceRecordWords;
+const uint kSourceFaceSpillHeadOffset = kSourceFaceSpillCounterOffset + 1u;
+const uint kSourceFaceSpillNodeOffset = kSourceFaceSpillHeadOffset + kSourceFaceTileCount;
+const uint kSourceFaceBufferWords = kSourceFaceSpillNodeOffset + kSourceFaceSpillCapacity * kSourceFaceSpillNodeWords;
 
 // Every header access passes `uint(sunDepthBuf.length())`: NVIDIA's cold link
 // time grows with a compile-time-constant SSBO index, and this one costs minutes
@@ -27,12 +33,16 @@ uint sourceFaceHeaderIndex(uint boundWords) {
     return boundWords - (kSourceFaceBufferWords - kSourceFaceHeaderOffset);
 }
 
+uint sourceFaceSpillCounterIndex(uint boundWords) {
+    return boundWords - (kSourceFaceBufferWords - kSourceFaceSpillCounterOffset);
+}
+
 uint sourceFaceTileBase(uint tileIndex) {
     return kSourceFaceTileOffset + tileIndex * (kSourceFaceTileCapacity + 1u);
 }
 
 bool sourceFaceQueryComplete(uint count) {
-    return count <= kSourceFaceTileCapacity;
+    return count <= kSourceFaceTileQueryCapacity;
 }
 
 // Positive separation means the receiver ray intersects this finite face in front.

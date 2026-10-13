@@ -1,0 +1,170 @@
+{
+  "sun-face-index-0.csv.gz": {
+    "face_records_requested": 198,
+    "face_record_capacity": 65536,
+    "tile_capacity": 256,
+    "cascades": [
+      {
+        "occupied_tiles": 1351,
+        "incomplete_tiles": 0,
+        "max_counter": 196
+      },
+      {
+        "occupied_tiles": 1075,
+        "incomplete_tiles": 0,
+        "max_counter": 196
+      }
+    ],
+    "buffer_bytes": 30146568,
+    "spill_node_capacity": 262144,
+    "tile_inline_capacity": 64,
+    "spill_nodes_requested": 12477
+  },
+  "sun-face-index-1.csv.gz": {
+    "face_records_requested": 198,
+    "face_record_capacity": 65536,
+    "tile_capacity": 256,
+    "cascades": [
+      {
+        "occupied_tiles": 780,
+        "incomplete_tiles": 0,
+        "max_counter": 196
+      },
+      {
+        "occupied_tiles": 598,
+        "incomplete_tiles": 0,
+        "max_counter": 196
+      }
+    ],
+    "buffer_bytes": 30146568,
+    "spill_node_capacity": 262144,
+    "tile_inline_capacity": 64,
+    "spill_nodes_requested": 10534
+  },
+  "sun-face-index-2.csv.gz": {
+    "face_records_requested": 198,
+    "face_record_capacity": 65536,
+    "tile_capacity": 256,
+    "cascades": [
+      {
+        "occupied_tiles": 780,
+        "incomplete_tiles": 0,
+        "max_counter": 196
+      },
+      {
+        "occupied_tiles": 598,
+        "incomplete_tiles": 0,
+        "max_counter": 196
+      }
+    ],
+    "buffer_bytes": 30146568,
+    "spill_node_capacity": 262144,
+    "tile_inline_capacity": 64,
+    "spill_nodes_requested": 10534
+  },
+  "sun-face-index-3.csv.gz": {
+    "face_records_requested": 198,
+    "face_record_capacity": 65536,
+    "tile_capacity": 256,
+    "cascades": [
+      {
+        "occupied_tiles": 914,
+        "incomplete_tiles": 0,
+        "max_counter": 196
+      },
+      {
+        "occupied_tiles": 337,
+        "incomplete_tiles": 0,
+        "max_counter": 196
+      }
+    ],
+    "buffer_bytes": 30146568,
+    "spill_node_capacity": 262144,
+    "tile_inline_capacity": 64,
+    "spill_nodes_requested": 7166
+  },
+  "sun-face-index-4.csv.gz": {
+    "face_records_requested": 198,
+    "face_record_capacity": 65536,
+    "tile_capacity": 256,
+    "cascades": [
+      {
+        "occupied_tiles": 914,
+        "incomplete_tiles": 0,
+        "max_counter": 196
+      },
+      {
+        "occupied_tiles": 337,
+        "incomplete_tiles": 0,
+        "max_counter": 196
+      }
+    ],
+    "buffer_bytes": 30146568,
+    "spill_node_capacity": 262144,
+    "tile_inline_capacity": 64,
+    "spill_nodes_requested": 7166
+  },
+  "sun-face-index-5.csv.gz": {
+    "face_records_requested": 198,
+    "face_record_capacity": 65536,
+    "tile_capacity": 256,
+    "cascades": [
+      {
+        "occupied_tiles": 914,
+        "incomplete_tiles": 0,
+        "max_counter": 196
+      },
+      {
+        "occupied_tiles": 337,
+        "incomplete_tiles": 0,
+        "max_counter": 196
+      }
+    ],
+    "buffer_bytes": 30146568,
+    "spill_node_capacity": 262144,
+    "tile_inline_capacity": 64,
+    "spill_nodes_requested": 7166
+  },
+  "sun-face-index-6.csv.gz": {
+    "face_records_requested": 198,
+    "face_record_capacity": 65536,
+    "tile_capacity": 256,
+    "cascades": [
+      {
+        "occupied_tiles": 555,
+        "incomplete_tiles": 0,
+        "max_counter": 196
+      },
+      {
+        "occupied_tiles": 410,
+        "incomplete_tiles": 0,
+        "max_counter": 196
+      }
+    ],
+    "buffer_bytes": 30146568,
+    "spill_node_capacity": 262144,
+    "tile_inline_capacity": 64,
+    "spill_nodes_requested": 7450
+  },
+  "sun-face-index-7.csv.gz": {
+    "face_records_requested": 198,
+    "face_record_capacity": 65536,
+    "tile_capacity": 256,
+    "cascades": [
+      {
+        "occupied_tiles": 555,
+        "incomplete_tiles": 0,
+        "max_counter": 196
+      },
+      {
+        "occupied_tiles": 410,
+        "incomplete_tiles": 0,
+        "max_counter": 196
+      }
+    ],
+    "buffer_bytes": 30146568,
+    "spill_node_capacity": 262144,
+    "tile_inline_capacity": 64,
+    "spill_nodes_requested": 7450
+  }
+}

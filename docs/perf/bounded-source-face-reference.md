@@ -5,7 +5,12 @@ on an incomplete tile with an exact query of the complete face-record pool,
 provided the pool contains no more than 256 faces. It preserves the scene,
 sun map, index, tile counters, face geometry, bias and shadow-throw window.
 This isolates the query transition implicated by
-[the source-face index diagnostics](sun-face-index-diagnostics.md).
+[the source-face index diagnostics](sun-face-index-diagnostics.md). The native
+results below were captured with the earlier 64-candidate tile ceiling. Current
+production retains 64 inline IDs plus bounded spill coverage up to 256 candidates;
+[the capacity contract](../design/sun-face-index-capacity.md) defines publication,
+allocation limits and fallback. A 65-candidate tile no longer needs this diagnostic
+when its spill list is complete.
 
 The reference is not a production overflow solution. At 257 global records,
 an incomplete tile resumes sampled fallback. Adding unrelated distant faces
@@ -15,16 +20,19 @@ repair overflow in a large record pool.
 
 ## Query contract
 
-`sampleCascadeShadow` retains the ordinary tile list whenever its count is at
-most 64, including complete tiles in a globally exhausted pool. For an
-incomplete tile, the reference may inspect records `[0, sourceFaceCount)` only
+`sampleCascadeShadow` retains complete local candidate lists: inline counts up
+to 64 and spilled counts up to 256 while the spill pool has not exhausted.
+Complete inline tiles remain exact after spill exhaustion; complete local lists
+remain usable after unrelated record allocations fail. For an incomplete tile,
+the reference may inspect records `[0, sourceFaceCount)` only
 when the count fits both the 256-face query budget and the allocated record
 capacity. Every recorded finite face is then available, so an exact miss may
 skip the indexed surface fallback layer. The independent non-indexed layer
 remains eligible. Out-of-map, non-surface and back-facing receivers do not
 run the rescue query.
 
-No extra buffer, index write, readback or larger allocation is introduced.
+Enabling the diagnostic adds no buffer, index write, readback or allocation
+beyond the production index.
 Each rescue invocation performs at most 256 finite-face intersection tests
 and stops on the first accepted blocker. A receiver in a cascade blend can
 invoke the sampler twice. The reference uses the existing finite-face
@@ -42,15 +50,21 @@ No CLI flag changes this compile-time experiment.
 
 Use the same scene, binary and camera commands in every arm. The reproduction
 in [the diagnostic report](sun-face-index-diagnostics.md#reproduce) supplies
-the overhead-light oblique box fixture. Capture 63, 64 and 128 boxes, each
-with the same floor: these emit 64, 65 and 129 records. The first should
-remain unchanged; the other two exercise the rescue on incomplete tiles.
-The demo caps this fixture at 128 boxes. For a native above-budget control,
-retain 128 boxes and use oblique sunlight with nonzero components along all
-three box axes; confirm with the probe that more than 256 records were
-emitted. The precise 256/257 record boundary is covered by the CPU suite.
-Keep the probe off for performance measurements. Native image and timing
-evidence must be recorded separately from these host-side tests.
+the overhead-light oblique box fixture. Its 63, 64 and 128 boxes plus floor
+emit 64, 65 and 129 records. Under the historical 64-candidate ceiling, the
+latter two exercised the rescue. With the current spill index, all three are
+production-versus-reference agreement controls while their local lists remain
+complete; do not interpret them as enabling overflow rescue.
+
+The demo caps this fixture at 128 boxes. For an above-budget control, retain
+128 boxes and use oblique sunlight with nonzero components along all three box
+axes; confirm with the probe that more than 256 records were emitted and which
+local tiles are incomplete. A global count above 256 alone does not invalidate
+a complete local list. Current rescue coverage needs an incomplete tile with a
+complete global pool of at most 256 records, such as a controlled spill-allocation
+failure; the receiver CPU suite supplies that boundary explicitly. Keep the
+probe off for performance measurements. Native image and timing evidence must
+be recorded separately from these host-side tests.
 
 ## Executable controls
 
@@ -68,17 +82,22 @@ exhausted pool, strict bias/throw boundaries, closed edges and preservation of
 the other surface layer. Instrumented buffer reads check the rescue ceiling
 and unchanged ordinary-list work. The default-off contract is asserted.
 
-Each enabled backend agrees with an independent double-precision
-triangle-ray oracle for 61,934 rays through rotated, mirrored, edge-swapped
-and sloped overlapping faces: 4,519 hits and 57,415 misses. Seven mutations
-per backend reject disabled rescue, truncated scans, a removed budget guard,
-wrong records, sampled fallback after an exact miss, lost other-layer shadows
-and ignored tile-list IDs. Retained-subset controls compare two legal lists
-for the same 65- and 129-record scene, with the sole blocker either retained
-in slot 63 or omitted. Both cascades and all four sampled-layer combinations
-are covered. A mutation that accepts partial exact hits fails this invariant
-on both backends. Poisoned tile IDs exercise global-pool exhaustion without
-reading unpublished records. These tests do not certify GPU ordering, index
+The historical diagnostic validation compared each enabled backend with an
+independent double-precision triangle-ray oracle for 61,934 rays through rotated,
+mirrored, edge-swapped and sloped overlapping faces: 4,519 hits and 57,415 misses.
+Its seven mutations per backend rejected disabled rescue, truncated scans, a
+removed budget guard, wrong records, sampled fallback after an exact miss, lost
+other-layer shadows and ignored tile-list IDs. Its retained-subset scenes had
+65 and 129 records under the then-current 64-entry ceiling.
+
+Current retained-subset controls use 257- and 513-record scenes beyond the
+production query ceiling, with the sole blocker retained or omitted. Additional
+controls cover complete spill lists, unrelated records, allocation-order
+invariance at spill exhaustion, and inline queries avoiding the spill counter.
+Both cascades and all four sampled-layer combinations remain covered. A mutation
+that accepts partial exact hits fails the retained-subset invariant on both
+backends. Poisoned tile IDs exercise record exhaustion without reading
+unpublished records. These receiver tests do not certify GPU ordering, index
 construction, legacy PCF, cascade selection or displayed receiver geometry.
 
 ## Rendering modes remain distinct
@@ -117,7 +136,7 @@ whether the display is continuous or lattice-based, then provide corresponding
 finite caster and receiver geometry. The small-pool reference neither supplies
 missing geometry nor justifies blur, footprint dilation or bias adjustment.
 
-## Native same-geometry result
+## Historical native same-geometry result
 
 Apple M4 Max, macOS 26.5.2, Metal Debug, 2560×1440. The three arms use the
 same demo binary, scene commands and camera angles; only the sampler switch
@@ -152,7 +171,9 @@ first three baseline cases' CSV files were overwritten by subsequent demo
 captures; their images and manifests remain. The restored arm preserves
 all four cases' tables and verifies the baseline images.
 
-Each capture uses the common arguments below, with count 63, 64 or 128. For
+The historical captures used the common arguments below, with count 63, 64 or
+128. On current production these counts test agreement with complete spill
+queries, not the historical 64-entry transition. For
 the above-budget control use count 128 and sun `-0.42 -0.60 -0.55` instead.
 Archive the generated CSVs before starting another case.
 
@@ -160,7 +181,7 @@ Archive the generated CSVs before starting another case.
 python3 scripts/perf/repeat_profile.py --target IRCanvasStress --output /tmp/shadow-reference-count128 --repeats 1 -- --only shadowbox,floor --probe-analytic-box --no-spin --no-auto-rotate --pivot-origin --zoom 3 --subdivisions 1 --auto-profile --auto-screenshot 6 --sweep-yaw 0 4.71238898 4 --analytic-box-count 128 --analytic-box-yaw 0.785398163 --analytic-box-step 0.03125 0 0 --analytic-box-yaw-step 0.001 --sun-direction 0 0 -1 --sun-face-index-probe
 ```
 
-## Separate timing control
+## Historical separate timing control
 
 Two forward/reverse timing rounds per arm used `box_shadow_controls.py
 --suite oblique --rounds 2`, without the synchronized index probe. Raw reports,
@@ -203,15 +224,19 @@ needs a separately proven publication contract; clamping the count is insufficie
 
 ## Next scalable experiment
 
-The current allocation spends `32768 * 64` record-index slots on fixed tile
-lists, regardless of occupancy. Replacing those fixed lists with pooled
+Current production keeps `32768 * 64` inline record-index slots regardless of
+occupancy and appends the bounded linked spill pool described in
+[the capacity contract](../design/sun-face-index-capacity.md). This extends local
+coverage without a count/prefix/fill pass; it does not resolve arbitrary overlap
+or spill exhaustion. Replacing the inline and linked lists with pooled
 contiguous tile ranges can redistribute the same total index budget toward
 hot tiles. A GPU count/prefix/fill sequence would retain one count and start
 offset per tile and index the existing face records, with explicit incomplete
 state when the total index pool is exhausted. This is preferable to simply
 raising every tile's capacity, but introduces dispatch, prefix-scan and
-publication costs that need native measurements. A linked overflow-page pool
-uses fewer passes but adds allocation contention and scattered receiver reads.
+publication costs that need native measurements. The current linked spill
+pool avoids those passes but adds allocation contention and dependent receiver
+reads; any replacement needs comparisons against that implementation.
 
 Neither layout alone bounds the exact receiver cost independently of overlap.
 A genuinely hot tile can contain thousands of finite faces; an exact miss

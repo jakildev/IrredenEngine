@@ -2,12 +2,22 @@
 
 Run `python3 scripts/tests/test_render_source_face_index.py`. The harness
 executes the production GLSL and Metal indexer bodies with serial host atomics,
-counts actual atomic-add/max calls, and checks the complete buffer against
+counts actual atomic-add/max/exchange calls, and checks the complete buffer against
 independently specified tile lists with guard words. No renderer code changes
 or GPU readback are required. These are deterministic operation counts, **not
 GPU timing, contention measurements, or observations of a live demo**.
 
-Both backend adapters produce the same counts:
+## Historical inline-only baseline
+
+The following measurements predate the bounded spill pool. Both backend
+adapters produced these counts with 64 inline candidates and no spill nodes;
+they are historical operation counts, not the current harness output.
+
+Current limits and failure semantics live in
+[finite sun-face index capacity](../design/sun-face-index-capacity.md). The current
+harness also checks spill reservations, links, pool exhaustion and stale-frame
+clears. Complete queries can retain 256 candidates per tile while the shared
+spill pool has capacity.
 
 | Fixture | Allocations attempted | Occupied tiles | Incomplete tiles | Peak tile count | Atomic adds | Atomic maxes |
 |---|---:|---:|---:|---:|---:|---:|
@@ -26,13 +36,14 @@ of stored records. Tile-count peaks include candidates beyond list capacity.
 ## Consequences for optimization
 
 - A single full-map face requires 32,768 tile reservations plus one record
-  reservation. The [three-lane box change](box-shadow-index-lanes.md) distributes
-  faces; each face still performs this loop serially. Partitioning a face's
-  tile loop is the next scheduling experiment, with one shared record reservation
-  and explicit publication to collaborating lanes.
-- Tile capacity and global record capacity are separate limits. Just 65 faces
-  can make every tile incomplete while consuming only 65 of 65,536 records.
-  Increasing record capacity alone cannot help that case.
+  reservation. [Cooperative box indexing](cooperative-box-face-index.md)
+  partitions that tile loop among lanes with one shared record reservation.
+  Spilled candidates additionally reserve and link nodes; they are not covered
+  by the historical inline-only atomic counts.
+- Tile, spill-pool and global record capacity are separate limits. The historical
+  65-face full-map failure needs only one spill node per tile under the current
+  design and fits the shared pool. Denser full-map overlap can still exhaust
+  that pool; increasing record capacity alone cannot help it.
 - A saturated tile still performs an atomic add for every additional candidate.
   Avoiding those atomics requires a concurrency-safe saturation protocol and
   measured benefit; preserving bounded writes alone is insufficient proof.
@@ -53,10 +64,9 @@ cannot mask a failure of the independent buffer oracle. A future algorithm
 that deliberately reduces atomic work must update that cost expectation while
 retaining the independent buffer/coverage checks.
 
-Serial execution cannot certify GPU races or performance. Before shipping a
-cooperative implementation, validate interleaved ownership, native Metal and
-OpenGL behavior, identical matched captures, and repeat the native span/count
-matrix. No smoothing, bias or geometry change follows from this audit.
-
-[Cooperative box indexing](cooperative-box-face-index.md) implements and measures
-the tile-loop scheduling experiment while retaining the same reservation counts.
+Serial execution cannot certify GPU races or performance. The cooperative
+adapter separately exercises interleaved ownership; native Metal and OpenGL
+behavior, matched captures and the span/count matrix remain distinct checks.
+[Current crowded-tile captures](../pr-screenshots/codex/shadow-index-complete-tiles/README.md)
+measure spill coverage rather than GPU throughput. No smoothing, bias or
+geometry change follows from this operation-count audit.

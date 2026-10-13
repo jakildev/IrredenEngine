@@ -28,7 +28,8 @@ class SourceFaceQueryTest(unittest.TestCase):
                                    for n in names)
                 header_check = (
                     "if (sourceFaceHeaderIndex(kSourceFaceBufferWords) != kSourceFaceHeaderOffset)"
-                    " return 19;" if suffix == "glsl" else "")
+                    " return 19; if (sourceFaceSpillCounterIndex(kSourceFaceBufferWords)"
+                    " != kSourceFaceSpillCounterOffset) return 21;" if suffix == "glsl" else "")
                 source = """#include <cstdint>
 #include <cmath>
 using std::abs;
@@ -38,8 +39,9 @@ struct vec3 {float x, y, z;};
 using uint = std::uint32_t;
 """ + shader + "\n" + checks + """
 int main() {
-    if (!sourceFaceQueryComplete(0u) || !sourceFaceQueryComplete(kSourceFaceTileCapacity)) return 1;
-    if (sourceFaceQueryComplete(kSourceFaceTileCapacity + 1u) ||
+    if (!sourceFaceQueryComplete(0u) ||
+        !sourceFaceQueryComplete(kSourceFaceTileQueryCapacity)) return 1;
+    if (sourceFaceQueryComplete(kSourceFaceTileQueryCapacity + 1u) ||
         sourceFaceQueryComplete(0xffffffffu)) return 2;
     for (uint tile = 0; tile < kSourceFaceTileCount; ++tile) {
         const uint base = sourceFaceTileBase(tile);
@@ -49,7 +51,11 @@ int main() {
             base != sourceFaceTileBase(tile - 1) + kSourceFaceTileCapacity + 1u) return 4;
     }
     const uint end = kSourceFaceRecordOffset + kSourceFaceCapacity * kSourceFaceRecordWords;
-    if (end != kSourceFaceBufferWords) return 5;
+    if (end != kSourceFaceSpillCounterOffset) return 5;
+    if (kSourceFaceSpillHeadOffset != end + 1u ||
+        kSourceFaceSpillNodeOffset != kSourceFaceSpillHeadOffset + kSourceFaceTileCount ||
+        kSourceFaceBufferWords != kSourceFaceSpillNodeOffset +
+            kSourceFaceSpillCapacity * kSourceFaceSpillNodeWords) return 20;
     const vec2 uv{0.5f, 0.5f};
     const vec3 corner{0, 0, 2}, u{1, 0, .5f}, v{0, 1, -.25f};
     if (sourceFaceRaySeparation(uv, 3, corner, u, v) != .875f) return 8;

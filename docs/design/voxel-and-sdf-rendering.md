@@ -59,10 +59,12 @@ quadratic bodies. Torus roots use derivative-partitioned, bounded bisection;
 cylinder/cone cap pieces reproduce the field's threshold region. A fixed-step
 SDF marcher is not sufficient for shallow cones or near-tangent thin rims.
 
-The index retains 65,536 records, 64 candidates per 8×8 sun tile, and two
-1024×1024 cascades. Typed records occupy ten words (40 bytes); queries never scan
-the whole shape list. Full tiles or exhausted records use the separately baked
-light-space depth fallback. That fallback has shadow-map sampling resolution;
+The index retains 65,536 records across two 1024×1024 cascades. Each 8×8 sun tile
+has 64 inline candidates; a shared spill pool extends complete queries to 256.
+Typed records occupy ten words (40 bytes); production queries never scan the
+whole shape list. [Capacity and publication rules](sun-face-index-capacity.md)
+define when exhausted tiles use the separately baked light-space depth fallback.
+That fallback has shadow-map sampling resolution;
 an exact edge is only claimed for complete indexed tiles and eligible surface
 receivers. Main lattice receivers and curved SDF receiver reconstruction remain
 distinct validation targets. Casting a correct curve does not certify its own

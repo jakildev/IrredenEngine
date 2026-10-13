@@ -35,6 +35,30 @@ class SourceFaceIndexProbeTest(unittest.TestCase):
         self.assertEqual(result["cascades"], [{"occupied_tiles": 3,
                                              "incomplete_tiles": 2, "max_counter": 70000}])
 
+    def test_spill_capacity_and_global_exhaustion(self):
+        metadata = {"tile_capacity": "256", "tile_inline_capacity": "64",
+                    "spill_node_capacity": "262144", "spill_nodes_requested": "262144",
+                    "buffer_bytes": "30146568"}
+        rows = "0,0,0,64,1\n0,1,0,65,1\n0,0,1,256,1\n0,1,1,257,0\n"
+        result = self.evaluate(rows, metadata=metadata)
+        self.assertEqual(result["cascades"][0]["incomplete_tiles"], 1)
+        self.assertEqual(result["spill_nodes_requested"], 262144)
+        metadata["spill_nodes_requested"] = "262145"
+        with self.assertRaisesRegex(ValueError, "completeness"):
+            self.evaluate(rows, metadata=metadata)
+        result = self.evaluate(
+            "0,0,0,64,1\n0,1,0,65,0\n0,0,1,256,0\n0,1,1,257,0\n",
+            metadata=metadata)
+        self.assertEqual(result["cascades"][0]["incomplete_tiles"], 3)
+
+    def test_partial_and_invalid_spill_metadata(self):
+        for metadata in ({"spill_node_capacity": "1"},
+                         {"tile_capacity": "256", "tile_inline_capacity": "64",
+                          "spill_node_capacity": "0", "spill_nodes_requested": "0",
+                          "buffer_bytes": "1"}):
+            with self.subTest(metadata=metadata), self.assertRaisesRegex(ValueError, "spill"):
+                self.evaluate("", metadata=metadata)
+
     def test_world_point_on_tile_boundary_and_compressed_capture(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "tiles.csv.gz"
