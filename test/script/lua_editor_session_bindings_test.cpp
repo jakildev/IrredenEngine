@@ -18,6 +18,8 @@ IR_SESSION_PREDICATE_STUB(evaluateCanvasCountCheck)
 IR_SESSION_PREDICATE_STUB(evaluateRotationModeCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartYawCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartSpinCheck)
+IR_SESSION_PREDICATE_STUB(evaluatePartAnchorCheck)
+IR_SESSION_PREDICATE_STUB(evaluatePartModeDropdownCheck)
 IR_SESSION_PREDICATE_STUB(evaluateEditorInputCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartsListCheck)
 IR_SESSION_PREDICATE_STUB(evaluateCameraZoomCheck)
@@ -117,6 +119,8 @@ TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
         s:reload()
         s:setPartSize({8, 8, 8})
         s:addVoxelPart()
+        s:dragPartGizmo({0, 0, 0}, {1, 0, 0}, {1, 0, 0})
+        s:selectPartMode(0)
         s:bakeSphere(2)
         s:nextPart()
         s:toggleLoftMode()
@@ -149,6 +153,8 @@ TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
         s:expectRotationMode(0, 0, "rotation_mode")
         s:expectPartYaw(0, 60, 1, "part_yaw")
         s:expectPartSpinRate(0, 0.02, true, "part_spin_rate")
+        s:expectPartAnchor(0, IRComponent.EntityAnchor.CENTER, "part_anchor")
+        s:expectPartModeDropdown(0, "part_mode_dropdown")
         s:expectEditorInput(IREditor.EditorInputCheckKind.SELECTED_PART_NO_TEXT_FOCUS,
                             0, "editor_input")
         s:expectPoolActive({8, 8, 14}, true, "pool_active")
@@ -211,6 +217,9 @@ TEST_F(LuaEditorSessionBindingsTest, RejectsEveryArgumentFamilyAndNonComparableF
         "session:clickGui({0})",
         "session:tapKey(9999)",
         "session:expectRotationMode(0, 9999, 'bad')",
+        "session:expectPartAnchor(0, 9999, 'bad')",
+        "session:selectPartMode(9999)",
+        "session:expectPartModeDropdown(9999, 'bad')",
         "session:expectComponentValue(0, 'MatrixComponent', 'point', {x=1}, true, 'bad')",
         "session:expectComponentValue(0, 'MatrixComponent', 'callback', nil, true, 'bad')",
         "session:expectComponentValue(0, 'MatrixComponent', 'opaque', {}, true, 'bad')",
