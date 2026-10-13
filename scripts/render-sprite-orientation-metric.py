@@ -12,11 +12,14 @@ Rows count from the top of the capture, and colours match exactly.
 The demo puts a ``VOXEL``-coloured unit voxel at the sprite's world position,
 and the sprite's default anchor is its bottom centre. ``voxel_box`` is the
 inclusive box of that colour and ``voxel_margins`` is ``left,right``: the
-columns between the sprite box's edges and the voxel box's. ``voxel`` is
-``aligned`` when the voxel's first row is the row directly below the sprite
-box and the two margins are equal, ``absent`` when the capture has no
-``VOXEL`` pixel, and ``misaligned`` otherwise. Both checks are in capture
-pixels, so they hold at any output scale.
+columns between the sprite box's edges and the voxel box's, negative where the
+voxel box reaches past that edge. ``voxel`` is ``aligned`` when the voxel's
+first row is the row directly below the sprite box and the two margins are
+equal and not negative, ``absent`` when the capture has no ``VOXEL`` pixel,
+and ``misaligned`` otherwise. The checks are in capture pixels, so they hold
+at any output scale. The sprite keeps its screen size while the voxel grows
+with zoom, so a zoom that draws the voxel wider than the sprite reads
+``misaligned``.
 
     fleet-run IRSpriteDemo --auto-screenshot 10
     python3 scripts/render-sprite-orientation-metric.py <capture.png>...
@@ -104,9 +107,10 @@ def measure(path: Path) -> Measurement:
     if voxel_box is not None:
         voxel = "misaligned"
         if sprite_box is not None:
-            voxel_margins = (voxel_box[0] - sprite_box[0], sprite_box[2] - voxel_box[2])
+            left, right = voxel_box[0] - sprite_box[0], sprite_box[2] - voxel_box[2]
+            voxel_margins = (left, right)
             below = voxel_box[1] == sprite_box[3] + 1
-            if below and voxel_margins[0] == voxel_margins[1]:
+            if below and left == right and left >= 0:
                 voxel = "aligned"
     return Measurement(
         sprite_orientation(top, bottom), sprite_box, voxel_box, voxel_margins, voxel)

@@ -132,8 +132,8 @@ Y, samples with the quad texcoord as it is.
 `scripts/render-sprite-orientation-metric.py` reads the orientation from an
 `IRSpriteDemo` capture of the two-tone `test_anchor` fixture, and grades the
 default anchor against the unit voxel at the sprite's world position: the
-voxel's first row is the row directly below the sprite box, with equal
-margins left and right.
+voxel's first row is the row directly below the sprite box, and the voxel box
+sits inside the sprite box's columns with equal margins left and right.
 
 ### Size
 

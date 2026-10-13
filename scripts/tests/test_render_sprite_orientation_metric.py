@@ -97,6 +97,20 @@ class SpriteOrientationMetricTest(unittest.TestCase):
             "orientation=upright sprite_box=4,2,7,5"
             " voxel_box=6,6,7,6 voxel_margins=2,0 voxel=misaligned"])
 
+    def test_centred_voxel_wider_than_the_sprite_fails(self):
+        path = self.capture(
+            "too_wide.png", UPRIGHT_ROWS, voxel={(x, 6) for x in range(3, 9)})
+        self.assert_cli([path], 1, [
+            "orientation=upright sprite_box=4,2,7,5"
+            " voxel_box=3,6,8,6 voxel_margins=-1,-1 voxel=misaligned"])
+
+    def test_voxel_as_wide_as_the_sprite_is_aligned(self):
+        path = self.capture(
+            "flush.png", UPRIGHT_ROWS, voxel={(x, 6) for x in SPRITE_COLUMNS})
+        self.assert_cli([path], 0, [
+            "orientation=upright sprite_box=4,2,7,5"
+            " voxel_box=4,6,7,6 voxel_margins=0,0 voxel=aligned"])
+
     def test_voxel_not_directly_below_the_sprite_fails(self):
         gap = self.capture("gap.png", UPRIGHT_ROWS, voxel={(5, 7), (6, 7)})
         overlap = self.capture("overlap.png", UPRIGHT_ROWS, voxel={(5, 1), (6, 1)})
