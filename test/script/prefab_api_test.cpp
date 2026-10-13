@@ -1222,6 +1222,16 @@ TEST_F(PrefabApi, SpawnRejectsOutOfRangeRotationMode) {
     EXPECT_NE(r.error_.find("42"), std::string::npos) << r.error_;
 }
 
+TEST_F(PrefabApi, SpawnRejectsFractionalRotationMode) {
+    PrefabFiles f =
+        writeFixtureSet("rot_fraction", "return { prefab_version = 1, rotation_mode = 0.5 }\n");
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    EXPECT_EQ(r.entity_, IREntity::kNullEntity);
+    EXPECT_NE(r.error_.find("rotation_mode must be"), std::string::npos) << r.error_;
+    EXPECT_EQ(r.error_.find("canvas_size"), std::string::npos) << r.error_;
+}
+
 TEST_F(PrefabApi, SpawnRejectsStringRotationMode) {
     // The schema accepts the IRComponent.RotationMode.{GRID,DETACHED} enum
     // value only — string-name lookups are deliberately rejected.
