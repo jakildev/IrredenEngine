@@ -1,0 +1,14 @@
+{
+  "module": "test/module",
+  "part_names": [
+    "stem",
+    "blob",
+    "frame",
+    "frame_0",
+    "frame_1",
+    "frame_2",
+    "frame_3",
+    "frame_4",
+    "frame_5"
+  ]
+}

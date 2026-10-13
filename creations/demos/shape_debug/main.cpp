@@ -32,6 +32,7 @@
 #include <string_view>
 #include <vector>
 // COMPONENTS
+#include <irreden/common/components/component_auto_spin_lua.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
@@ -50,6 +51,7 @@
 #include <irreden/render/camera.hpp>
 
 // SYSTEMS
+#include <irreden/update/systems/system_auto_spin_local_transform.hpp>
 #include <irreden/update/systems/system_prefab_lod_parts.hpp>
 #include <irreden/update/systems/system_propagate_transform.hpp>
 #include <irreden/render/systems/system_gate_voxel_sets_by_lod.hpp>
@@ -1732,6 +1734,8 @@ int main(int argc, char **argv) {
     IREngine::registerLuaBindings([](IRScript::LuaScript &lua) {
         if (IREngine::args().wasProvided("--load-prefab")) {
             lua.bindLuaDrivenEcs();
+            // The engine components a manifest's `components` may name.
+            lua.registerTypeFromTraits<IRComponents::C_AutoSpin>();
             g_prefabLua = &lua;
         }
     });
@@ -3423,10 +3427,13 @@ void initSystems() {
     };
     if (!g_loadPrefabPath.empty()) {
         // After LOD_UPDATE, so the parts follow this tick's tier, and before
-        // PROPAGATE_TRANSFORM, so a part spawned this tick is placed this tick.
+        // PROPAGATE_TRANSFORM, so a part spawned this tick is placed this tick
+        // and a part's spin reaches its world transform the tick it turns.
+        const auto propagate = std::next(updatePipeline.begin(), 2);
+        updatePipeline.insert(propagate, IRSystem::createSystem<IRSystem::PREFAB_LOD_PARTS>());
         updatePipeline.insert(
-            std::next(updatePipeline.begin(), 2),
-            IRSystem::createSystem<IRSystem::PREFAB_LOD_PARTS>()
+            propagate,
+            IRSystem::createSystem<IRSystem::AUTO_SPIN_LOCAL_TRANSFORM>()
         );
     }
     // --load-vxs animation playback: swap the next frame's voxels
