@@ -2547,7 +2547,7 @@ inline Recipe build(
         // turned one. The array selects it.
         constexpr int kCopies = 2;
         constexpr float kCopyYawDegrees = 60.0f;
-        constexpr float kYawToleranceDegrees = 3.0f;
+        constexpr float kYawToleranceDegrees = 0.01f;
         const IRMath::vec3 copyPivot = movedTwice - IRMath::vec3(4.0f, 0.0f, 0.0f);
         builder.segment("array");
         builder.dragGuiSlider(
