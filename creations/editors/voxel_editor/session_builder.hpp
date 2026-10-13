@@ -408,6 +408,17 @@ struct PartYawCheck {
     std::string name_;
 };
 
+// Turn expectation on one entity-scene part: its C_LocalTransform rotation
+// is a turn of at least minDegrees_ about plus or minus axis_, a unit vector
+// in the part's own frame. The sign and size of a gizmo ring drag follow the
+// cursor's path, so only the axis is exact.
+struct PartTurnAxisCheck {
+    int partIndex_ = 0;
+    IRMath::vec3 axis_ = IRMath::vec3(0.0f, 0.0f, 1.0f);
+    float minDegrees_ = 0.0f;
+    std::string name_;
+};
+
 // Spin expectation on one entity-scene part: it carries C_AutoSpin turning
 // radiansPerFrame_ a tick, or with expectEqual_ false, it does not (an absent
 // component counts as not equal).
@@ -592,6 +603,7 @@ struct Recipe {
     std::deque<RotationModeCheck> rotationModeChecks_;
     std::deque<PartAnchorCheck> partAnchorChecks_;
     std::deque<PartYawCheck> partYawChecks_;
+    std::deque<PartTurnAxisCheck> partTurnAxisChecks_;
     std::deque<PartSpinCheck> partSpinChecks_;
     std::deque<PartModeDropdownCheck> partModeDropdownChecks_;
     std::deque<EditorInputCheck> editorInputChecks_;
@@ -660,6 +672,7 @@ bool evaluateCanvasCountCheck(const void *context, std::string &actual);
 bool evaluateRotationModeCheck(const void *context, std::string &actual);
 bool evaluatePartAnchorCheck(const void *context, std::string &actual);
 bool evaluatePartYawCheck(const void *context, std::string &actual);
+bool evaluatePartTurnAxisCheck(const void *context, std::string &actual);
 bool evaluatePartSpinCheck(const void *context, std::string &actual);
 bool evaluatePartModeDropdownCheck(const void *context, std::string &actual);
 bool evaluateEditorInputCheck(const void *context, std::string &actual);
@@ -1447,6 +1460,18 @@ class Builder {
             m_recipe.partYawChecks_,
             PartYawCheck{partIndex, degrees, toleranceDegrees, std::move(name)},
             &evaluatePartYawCheck
+        );
+    }
+
+    // Assert part @p partIndex is turned at least @p minDegrees about plus or
+    // minus @p axis, a unit vector in the part's own frame, when this segment
+    // settles. A turn composed onto an earlier one is about no single axis:
+    // start the gesture on an unturned part.
+    void expectPartTurnAxis(int partIndex, IRMath::vec3 axis, float minDegrees, std::string name) {
+        addPredicateCheck(
+            m_recipe.partTurnAxisChecks_,
+            PartTurnAxisCheck{partIndex, axis, minDegrees, std::move(name)},
+            &evaluatePartTurnAxisCheck
         );
     }
 

@@ -3162,6 +3162,33 @@ bool evaluatePartYawCheck(const void *context, std::string &actual) {
     return IRMath::abs(off) <= check.toleranceDegrees_;
 }
 
+bool evaluatePartTurnAxisCheck(const void *context, std::string &actual) {
+    const PartTurnAxisCheck &check = *static_cast<const PartTurnAxisCheck *>(context);
+    if (check.partIndex_ < 0 ||
+        check.partIndex_ >= static_cast<int>(g_entityScene.parts().size())) {
+        actual = "part index out of range";
+        return false;
+    }
+    const IREntity::EntityId entity =
+        g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)].entity_;
+    const vec4 rotation = IREntity::getComponent<C_LocalTransform>(entity).rotation_;
+    const vec3 imaginary(rotation.x, rotation.y, rotation.z);
+    const float sinHalf = IRMath::length(imaginary);
+    constexpr float kDegreesPerRadian = 180.0f / IRMath::kPi;
+    const float degrees =
+        2.0f * IRMath::atan2(sinHalf, IRMath::abs(rotation.w)) * kDegreesPerRadian;
+    // The share of the turn's axis that lies along the expected one; 0 for
+    // an unturned part, which has no axis.
+    constexpr float kNoTurn = 1e-6f;
+    const float along =
+        sinHalf > kNoTurn ? IRMath::abs(IRMath::dot(imaginary, check.axis_)) / sinHalf : 0.0f;
+    actual = "turn=" + std::to_string(degrees) + " along_axis=" + std::to_string(along) +
+             " want_axis=(" + std::to_string(check.axis_.x) + "," + std::to_string(check.axis_.y) +
+             "," + std::to_string(check.axis_.z) + ") min=" + std::to_string(check.minDegrees_);
+    constexpr float kAxisTolerance = 1e-4f;
+    return degrees >= check.minDegrees_ && along >= 1.0f - kAxisTolerance;
+}
+
 bool evaluatePartSpinCheck(const void *context, std::string &actual) {
     const PartSpinCheck &check = *static_cast<const PartSpinCheck *>(context);
     if (check.partIndex_ < 0 ||
@@ -3804,7 +3831,8 @@ int main(int argc, char **argv) {
         "tier_scrub | remove_part | radial_array | linear_array | nway_symmetry | mode_preview | "
         "mode_preview_shots | part_mode_cycle | corner_part_revox_refused | "
         "parts_scroll | module_loaded | component_attach | component_field_page | "
-        "component_field_key | text_input_command_capture | part_sizes | composite_proof",
+        "component_field_key | text_input_command_capture | part_sizes | part_gizmo_reach | "
+        "part_ring_turn | composite_proof",
         {"none",
          "drag_probe",
          "place_below",
@@ -3833,6 +3861,7 @@ int main(int argc, char **argv) {
          "text_input_command_capture",
          "part_sizes",
          "part_gizmo_reach",
+         "part_ring_turn",
          "composite_proof"},
         "none"
     );

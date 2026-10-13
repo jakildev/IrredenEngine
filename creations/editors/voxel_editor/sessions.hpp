@@ -89,6 +89,11 @@
 // direction would leave the arrow's pixels; and drags the Z arrow of a radial
 // copy turned about Z, where one applied in the part's own frame would.
 //
+// `part_ring_turn` proves each ring of a selected part's rotate gizmo turns the
+// part about that ring's own axis. It drags the X, Y and Z rings in turn, each
+// on a fresh Ctrl+P part, and asserts the part's rotation is a turn about that
+// axis alone; the three turns are asserted again together at the end.
+//
 // `parts_scroll` proves the PARTS list reaches every part once an array makes
 // more parts than the list has rows: the array's selection is scrolled into
 // view, the wheel walks the list to either end, and a row click there selects
@@ -149,6 +154,7 @@ enum class Id {
     TEXT_INPUT_COMMAND_CAPTURE,
     PART_SIZES,
     PART_GIZMO_REACH,
+    PART_RING_TURN,
     PARTS_SCROLL,
     PART_MODE_CYCLE,
     CORNER_PART_REVOX_REFUSED,
@@ -204,6 +210,8 @@ inline Id idFromName(const std::string &name) {
         return Id::PART_SIZES;
     if (name == "part_gizmo_reach")
         return Id::PART_GIZMO_REACH;
+    if (name == "part_ring_turn")
+        return Id::PART_RING_TURN;
     if (name == "parts_scroll")
         return Id::PARTS_SCROLL;
     if (name == "part_mode_cycle")
@@ -309,6 +317,12 @@ namespace detail {
 // z = -2 and a paint cell one further forward, at z = -3, is empty.
 constexpr float kFirstWriteBlobRadius = 1.9f;
 
+// The zoom a part session paints its baked blob at. A selected part's gizmo
+// holds its pixel size and is drawn in front of the part, so at kSessionZoom
+// its handles own the pixels of the blob's front faces; one zoom step in, the
+// blob is drawn twice as large and those faces lie outside the gizmo.
+constexpr float kPartPaintZoom = 8.0f;
+
 // Translation of a Ctrl+P voxel part of the scene's size: the middle of its
 // box, (size - 1) / 2 cells in from the scene origin. Spelled from the scene
 // origin rather than through derivePartPivot, so an assertion on where the
@@ -330,13 +344,53 @@ constexpr IRMath::vec3 kGizmoDragPartDelta{8.0f / 3.0f, 0.0f, 0.0f};
 constexpr IRMath::vec3 kGizmoDragFarGrabOffset{1.625f, 0.0f, 0.0f};
 
 // The gesture on the Z arrow, which a part turned about Z keeps, at
-// kGizmoDragZoomZ. The arrow is a few trixels across and the rings' near arc
-// covers it from one unit up, so the grab sits below the arc and in the
-// middle of the columns the arrow is drawn in, a quarter trixel off its axis.
+// kGizmoDragZoomZ. The arrow is one trixel column across there and a ring
+// owns the columns beside it, so the grab is on the arrow's axis, in the
+// middle of the stretch of shaft the rings leave clear.
 constexpr float kGizmoDragZoomZ = 2.0f;
-constexpr IRMath::vec3 kGizmoDragGrabOffsetZ{0.1875f, -0.1875f, 0.5f};
+constexpr IRMath::vec3 kGizmoDragGrabOffsetZ{0.0f, 0.0f, 1.25f};
 constexpr IRMath::vec3 kGizmoDragPullZ{0.0f, 0.0f, 4.0f};
 constexpr IRMath::vec3 kGizmoDragPartDeltaZ{0.0f, 0.0f, 8.0f / 3.0f};
+
+// One rotate-ring drag of `part_ring_turn`: press the ring about axis_ at
+// grab_ and release at release_, both offsets from the part's pivot on the
+// ring's circle at the session zoom, an eighth of a turn apart. Each grab is
+// the middle of the longest arc its ring owns on screen at yaw 0, clear of the
+// other two rings and the arrows. The arcs are read from a run, as
+// dragPartGizmo's grab points are.
+struct RingTurn {
+    const char *segment_;
+    const char *name_;
+    const char *held_;
+    IRMath::vec3 axis_;
+    IRMath::vec3 grab_;
+    IRMath::vec3 release_;
+};
+// A ring's radius in world units at kSessionZoom: 9 reference units, which a
+// gizmo's constant pixel size divides by the zoom.
+constexpr float kRingTurnRadius = 9.0f / kSessionZoom;
+constexpr float kRingTurnDiagonal = kRingTurnRadius * 0.70710678f;
+constexpr float kRingTurnMinDegrees = 10.0f;
+constexpr RingTurn kRingTurns[] = {
+    {"turn_x",
+     "x_ring_turns_about_x",
+     "x_turn_held",
+     IRMath::vec3(1.0f, 0.0f, 0.0f),
+     IRMath::vec3(0.0f, -kRingTurnDiagonal, -kRingTurnDiagonal),
+     IRMath::vec3(0.0f, 0.0f, -kRingTurnRadius)},
+    {"turn_y",
+     "y_ring_turns_about_y",
+     "y_turn_held",
+     IRMath::vec3(0.0f, 1.0f, 0.0f),
+     IRMath::vec3(-kRingTurnRadius, 0.0f, 0.0f),
+     IRMath::vec3(-kRingTurnDiagonal, 0.0f, -kRingTurnDiagonal)},
+    {"turn_z",
+     "z_ring_turns_about_z",
+     "z_turn_held",
+     IRMath::vec3(0.0f, 0.0f, 1.0f),
+     IRMath::vec3(-kRingTurnDiagonal, -kRingTurnDiagonal, 0.0f),
+     IRMath::vec3(0.0f, -kRingTurnRadius, 0.0f)},
+};
 
 // The four gestures, on the seeded ground plane at the scene's centre — clear
 // of the left-column GUI panels in screen space and clear of the ground's edges
@@ -2002,7 +2056,7 @@ inline Recipe build(
         builder.expectPartOccupancy(1, blobFront, true, "second_part_blob_baked");
         builder.expectPartOccupancy(1, first, false, "second_part_paint_cell_empty");
 
-        builder.segment("paint_second");
+        builder.segment("paint_second", detail::kPartPaintZoom);
         builder.click(second);
         builder.expectPartOccupancy(1, second, true, "second_part_cell_painted");
 
@@ -2011,7 +2065,7 @@ inline Recipe build(
         builder.bakeSphere(detail::kFirstWriteBlobRadius);
         builder.expectPartOccupancy(0, blobFront, true, "first_part_blob_baked");
 
-        builder.segment("paint_first");
+        builder.segment("paint_first", detail::kPartPaintZoom);
         builder.click(first);
         builder.expectPartOccupancy(0, first, true, "first_part_cell_painted");
 
@@ -2053,7 +2107,7 @@ inline Recipe build(
         builder.addVoxelPart();
         builder.bakeSphere(detail::kFirstWriteBlobRadius);
 
-        builder.segment("cold_undo_paint");
+        builder.segment("cold_undo_paint", detail::kPartPaintZoom);
         builder.click(edited);
         builder.expectPartOccupancy(0, edited, true, "edit_exists_before_frame_switch");
 
@@ -2107,7 +2161,7 @@ inline Recipe build(
             "source_component_has_distinct_value"
         );
 
-        builder.segment("array_and_edit_source");
+        builder.segment("array_and_edit_source", detail::kPartPaintZoom);
         builder.applyRadialArray(3);
         builder.nextPart();
         builder.nextPart();
@@ -2182,7 +2236,7 @@ inline Recipe build(
         builder.expectPartCount(4, "rotation_group_shrinks_by_one");
         builder.expectSelectedPartVisible(3, "short_group_selects_surviving_neighbor");
 
-        builder.segment("short_group_edit");
+        builder.segment("short_group_edit", detail::kPartPaintZoom);
         builder.click(groupEdit);
         builder.expectPartOccupancy(3, groupEdit, true, "short_group_edits_selected_survivor");
         builder.expectPartOccupancy(2, groupPartA, false, "short_group_does_not_fan_out");
@@ -2196,7 +2250,7 @@ inline Recipe build(
         builder.expectPartCount(5, "rotation_group_member_restored");
         builder.expectSelectedPartVisible(4, "restored_group_member_reselected");
 
-        builder.segment("restored_group_edit");
+        builder.segment("restored_group_edit", detail::kPartPaintZoom);
         builder.click(groupEdit);
         builder
             .expectPartOccupancy(2, groupPartA, true, "restored_group_first_member_receives_edit");
@@ -2384,7 +2438,7 @@ inline Recipe build(
         builder.expectPartOccupancy(2, onPart2, false, "second_sibling_empty_before_stroke");
         builder.expectPartOccupancy(3, source, false, "source_empty_before_stroke");
 
-        builder.segment("paint");
+        builder.segment("paint", detail::kPartPaintZoom);
         builder.click(source);
         builder.expectPartOccupancy(1, onPart1, true, "first_sibling_receives_stroke");
         builder.expectPartOccupancy(2, onPart2, true, "second_sibling_receives_stroke");
@@ -2673,6 +2727,30 @@ inline Recipe build(
             true,
             "turned_copy_moved_by_z_arrow"
         );
+        return builder.finish();
+    }
+    case Id::PART_RING_TURN: {
+        Builder builder("part_ring_turn", sceneSize, sceneOrigin);
+        const IRMath::vec3 pivot = detail::partPivot(sceneSize, sceneOrigin);
+        // A ring drag composes onto the press-time rotation, so each ring is
+        // dragged on a part of its own, unturned at the press. Every part is
+        // seated on the one pivot and only the selected one carries a gizmo.
+        int part = 0;
+        for (const detail::RingTurn &turn : detail::kRingTurns) {
+            builder.segment(turn.segment_);
+            builder.addVoxelPart();
+            builder.dragWorld(pivot + turn.grab_, pivot + turn.release_);
+            builder.expectPartTurnAxis(part, turn.axis_, detail::kRingTurnMinDegrees, turn.name_);
+            ++part;
+        }
+
+        builder.segment("all_turned");
+        builder.expectPartCount(part, "one_part_per_ring");
+        part = 0;
+        for (const detail::RingTurn &turn : detail::kRingTurns) {
+            builder.expectPartTurnAxis(part, turn.axis_, detail::kRingTurnMinDegrees, turn.held_);
+            ++part;
+        }
         return builder.finish();
     }
     case Id::PARTS_SCROLL: {

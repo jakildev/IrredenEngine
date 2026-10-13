@@ -112,6 +112,7 @@ add_executable(IrredenEngineTest
   render/per_axis_store_frame_test.cpp
   render/frame_data_sun_layout_test.cpp
   render/gizmo_drag_reset_test.cpp
+  render/gizmo_ring_orientation_test.cpp
   render/gizmo_view_clearance_test.cpp
   render/gui_canvas_routing_test.cpp
   render/gpu_compute_dispatch_test.cpp
