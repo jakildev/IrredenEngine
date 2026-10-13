@@ -3112,6 +3112,30 @@ bool evaluatePartAnchorCheck(const void *context, std::string &actual) {
     return anchor == check.expected_;
 }
 
+bool evaluatePartYawCheck(const void *context, std::string &actual) {
+    const PartYawCheck &check = *static_cast<const PartYawCheck *>(context);
+    if (check.partIndex_ < 0 ||
+        check.partIndex_ >= static_cast<int>(g_entityScene.parts().size())) {
+        actual = "part index out of range";
+        return false;
+    }
+    const IREntity::EntityId entity =
+        g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)].entity_;
+    const vec4 rotation = IREntity::getComponent<C_LocalTransform>(entity).rotation_;
+    constexpr float kTiltTolerance = 1e-4f;
+    if (IRMath::abs(rotation.x) > kTiltTolerance || IRMath::abs(rotation.y) > kTiltTolerance) {
+        actual = "rotation is not about z";
+        return false;
+    }
+    constexpr float kDegreesPerRadian = 180.0f / IRMath::kPi;
+    const float yaw = IRMath::quatExtractZAngle(rotation);
+    const float off =
+        IRMath::wrapAnglePi(yaw - check.expectedDegrees_ / kDegreesPerRadian) * kDegreesPerRadian;
+    actual = "yaw=" + std::to_string(IRMath::wrapAngleTwoPi(yaw) * kDegreesPerRadian) +
+             " want=" + std::to_string(check.expectedDegrees_);
+    return IRMath::abs(off) <= check.toleranceDegrees_;
+}
+
 bool evaluatePartModeDropdownCheck(const void *context, std::string &actual) {
     const PartModeDropdownCheck &check = *static_cast<const PartModeDropdownCheck *>(context);
     if (g_partModeDropdown == IREntity::kNullEntity) {
@@ -3696,7 +3720,8 @@ int main(int argc, char **argv) {
          "component_field_page",
          "component_field_key",
          "text_input_command_capture",
-         "part_sizes"},
+         "part_sizes",
+         "part_gizmo_reach"},
         "none"
     );
     IREngine::args().string(
@@ -6370,11 +6395,11 @@ void initEntities() {
         0.0f
     );
     IRVoxelEditor::g_arrayYawSlider = IRPrefab::Widget::makeSlider(
-        ivec2(IRVoxelEditor::kArrayPanelPos.x + 4, IRVoxelEditor::kArrayPanelPos.y + 122),
-        ivec2(122, 14),
+        IRVoxelEditor::kArrayYawSliderGeometry.pos_,
+        IRVoxelEditor::kArrayYawSliderGeometry.size_,
         "COPY YAW",
-        -180.0f,
-        180.0f,
+        IRVoxelEditor::kArrayYawSliderMin,
+        IRVoxelEditor::kArrayYawSliderMax,
         0.0f
     );
     IRVoxelEditor::g_arrayApplyButton = IRPrefab::Widget::makeButton(

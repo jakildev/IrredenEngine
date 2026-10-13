@@ -49,6 +49,20 @@ namespace IRComponents {
 ///   handle bundle), so all axes of a given gizmo move the same
 ///   anchor together. `kNullEntity` disables drag for the handle
 ///   (still hoverable).
+///
+/// View clearance:
+///
+/// - `viewClearance_` is the radius, in world units, of a sphere centred on
+///   the handle's anchor. `GIZMO_SCREEN_SPACE_SIZE` draws a handle with a
+///   positive value nearer the camera than every point of that sphere, on
+///   the pixels it covers with a value of 0, so content inside the sphere
+///   never occludes it. 0 leaves the handle where its parent chain puts it.
+///   Handles that share an anchor and a clearance are displaced by one
+///   vector, so a gizmo keeps the depth order among its own handles.
+///   The displacement travels as a `TRANSFORM_TRANSLATION` modifier, so the
+///   handle carries a `C_Modifiers`; that component is not saved, and a
+///   handle restored from a save is placed with a clearance of 0 until its
+///   gizmo is rebuilt.
 
 enum class GizmoKind : std::uint8_t {
     TRANSLATE_ARROW,   ///< Cylinder shaft + cone head along an axis.
@@ -76,6 +90,7 @@ struct C_GizmoHandle {
     IRMath::vec3 referenceLocalPos_ = IRMath::vec3(0.0f);
     IRMath::Color baseColor_ = IRMath::Color{220, 220, 220, 255};
     IREntity::EntityId anchorEntity_ = IREntity::kNullEntity;
+    float viewClearance_ = 0.0f;
 
     C_GizmoHandle() = default;
 
@@ -90,7 +105,8 @@ struct C_GizmoHandle {
         IRMath::vec3 referenceLocalPos,
         bool isAnchor,
         IRMath::Color baseColor,
-        IREntity::EntityId anchorEntity
+        IREntity::EntityId anchorEntity,
+        float viewClearance = 0.0f
     )
         : kind_{kind}
         , axis_{axis}
@@ -98,7 +114,8 @@ struct C_GizmoHandle {
         , referenceParams_{referenceParams}
         , referenceLocalPos_{referenceLocalPos}
         , baseColor_{baseColor}
-        , anchorEntity_{anchorEntity} {}
+        , anchorEntity_{anchorEntity}
+        , viewClearance_{viewClearance} {}
 };
 
 } // namespace IRComponents

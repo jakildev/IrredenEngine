@@ -115,14 +115,14 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
 
 ## Editor interaction
 
-- `IRPrefab::Gizmo::` builders spawn SDF handles (`C_LocalTransform +
-  C_WorldTransform + C_ShapeDescriptor + C_GizmoHandle + C_Name`) under a group
-  root; `GIZMO_SCREEN_SPACE_SIZE` (UPDATE) holds constant pixel size;
-  `SHAPE_FLAG_XRAY_OCCLUDED` is generic for any see-through overlay.
+- `IRPrefab::Gizmo::` builders spawn SDF handles (`C_ShapeDescriptor +
+  C_GizmoHandle + C_Name`) under a group root; `GIZMO_SCREEN_SPACE_SIZE` (UPDATE)
+  holds constant pixel size; `SHAPE_FLAG_XRAY_OCCLUDED` is generic for any overlay.
 - The parent passed to `spawnHandle` is the drag anchor: grouped builders move
-  the gizmo as a unit, `create*GizmoForAnchor(anchor)` mutates the anchor's own
-  `C_LocalTransform`, `kNullEntity` makes a marker hoverable but drag-inert.
-  `GIZMO_DRAG` locks its iso-depth plane at press.
+  the gizmo as a unit, `create*GizmoForAnchor(anchor, viewClearance)` mutates the
+  anchor's own `C_LocalTransform`, `kNullEntity` makes a marker drag-inert. A
+  positive clearance draws the handles in front of that sphere around the anchor, on the same pixels
+  ([contract](../../../../docs/design/prefab-render-surface.md#view-clearance)). `GIZMO_DRAG` locks its iso-depth plane at press.
 - `Picking::castVoxelRay(RayCastOptions)`: `ISO_LATTICE` (default) resolves the
   iso column; `SCREEN_PIXEL` resolves the face drawn under the cursor — an edit
   pick uses it, with `shapes_ = false` (a shape hit has no face).

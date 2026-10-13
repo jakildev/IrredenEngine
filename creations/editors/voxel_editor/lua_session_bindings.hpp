@@ -423,6 +423,9 @@ class Handle {
         builder()
             .expectRotationMode(part, rotationModeArg(mode, "expectRotationMode", "mode"), name);
     }
+    void expectPartYaw(int part, float degrees, float tolerance, const std::string &name) {
+        builder().expectPartYaw(part, degrees, tolerance, name);
+    }
     void expectPartAnchor(int part, const sol::object &expected, const std::string &name) {
         builder().expectPartAnchor(
             part,
@@ -733,6 +736,8 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         &Handle::expectCanvasCount,
         "expectRotationMode",
         &Handle::expectRotationMode,
+        "expectPartYaw",
+        &Handle::expectPartYaw,
         "expectPartAnchor",
         &Handle::expectPartAnchor,
         "expectPartModeDropdown",

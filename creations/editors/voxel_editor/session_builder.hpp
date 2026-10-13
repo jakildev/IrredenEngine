@@ -398,6 +398,16 @@ struct PartAnchorCheck {
     std::string name_;
 };
 
+// Yaw expectation on one entity-scene part: the angle its C_LocalTransform
+// rotation turns about +z, in degrees, within toleranceDegrees_ of
+// expectedDegrees_ on the circle.
+struct PartYawCheck {
+    int partIndex_ = 0;
+    float expectedDegrees_ = 0.0f;
+    float toleranceDegrees_ = 0.5f;
+    std::string name_;
+};
+
 // PART MODE dropdown expectation: it is collapsed and shows expected_'s row.
 struct PartModeDropdownCheck {
     IRComponents::RotationMode expected_ = IRComponents::RotationMode::GRID;
@@ -558,6 +568,7 @@ struct Recipe {
     std::deque<CanvasCountCheck> canvasCountChecks_;
     std::deque<RotationModeCheck> rotationModeChecks_;
     std::deque<PartAnchorCheck> partAnchorChecks_;
+    std::deque<PartYawCheck> partYawChecks_;
     std::deque<PartModeDropdownCheck> partModeDropdownChecks_;
     std::deque<EditorInputCheck> editorInputChecks_;
     std::deque<PartsListCheck> partsListChecks_;
@@ -622,6 +633,7 @@ bool evaluatePartEditableCheck(const void *context, std::string &actual);
 bool evaluateCanvasCountCheck(const void *context, std::string &actual);
 bool evaluateRotationModeCheck(const void *context, std::string &actual);
 bool evaluatePartAnchorCheck(const void *context, std::string &actual);
+bool evaluatePartYawCheck(const void *context, std::string &actual);
 bool evaluatePartModeDropdownCheck(const void *context, std::string &actual);
 bool evaluateEditorInputCheck(const void *context, std::string &actual);
 
@@ -1233,9 +1245,12 @@ class Builder {
 
     // Left-drag the selected part's move gizmo from @p from to @p to, which
     // translates the part by @p partDelta; the model follows, so later aims
-    // land on the moved part. The gizmo sits at the part's pivot, the middle
-    // of its box, and an occluded handle takes no click: drag before anything
-    // is authored into the part.
+    // land on the moved part. The gizmo is drawn at the part's pivot, the
+    // middle of its box, in front of the part's own content. A handle is a
+    // few trixels across at the session zoom, and which of its pixels are
+    // drawn depends on where the part sits on the voxel lattice and on the
+    // camera's yaw: take a new grab point from a run, not from the handle's
+    // geometry.
     void dragPartGizmo(IRMath::vec3 from, IRMath::vec3 to, IRMath::vec3 partDelta) {
         if (m_partModels.empty()) {
             recordError("dragPartGizmo needs an entity-scene part");
@@ -1388,6 +1403,16 @@ class Builder {
             m_recipe.partAnchorChecks_,
             PartAnchorCheck{partIndex, expected, std::move(name)},
             &evaluatePartAnchorCheck
+        );
+    }
+
+    // Assert part @p partIndex is turned @p degrees about +z, to within
+    // @p toleranceDegrees on the circle, when this segment settles.
+    void expectPartYaw(int partIndex, float degrees, float toleranceDegrees, std::string name) {
+        addPredicateCheck(
+            m_recipe.partYawChecks_,
+            PartYawCheck{partIndex, degrees, toleranceDegrees, std::move(name)},
+            &evaluatePartYawCheck
         );
     }
 
