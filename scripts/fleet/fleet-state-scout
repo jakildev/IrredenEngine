@@ -1847,11 +1847,49 @@ _GL_ONLY_SOURCE_PATH_RE = re.compile(
 
 def _body_requires_gl_host(body):
     """True when the task body declares a Linux/Windows/OpenGL host requirement
-    or names a source file in a CMake-platform-gated GL-only source set — a
-    backstop for a missing fleet:needs-gl-host label."""
+    (in prose, or as a `**Host:**` field that names only GL-capable hosts or
+    the backend itself) or names a source file in a CMake-platform-gated
+    GL-only source set — a backstop for a missing fleet:needs-gl-host label."""
     body = body or ""
     return bool(_GL_HOST_REQUIRED_RE.search(body)
-                or _GL_ONLY_SOURCE_PATH_RE.search(body))
+                or _GL_ONLY_SOURCE_PATH_RE.search(body)
+                or _host_field_requires_gl_host(body))
+
+
+# Keep in sync with `fleet_task_class.GL_CAPABLE_HOSTS` (the dispatcher's
+# gate); `test_scout_gl_host_backstop.py` asserts the two copies agree. The
+# scout is pure Python and does not import that module.
+_GL_HOST_KEYS = frozenset({"linux", "windows"})
+_GL_BACKEND_WORDS = frozenset({"gl", "opengl"})
+
+
+def _host_field_words(body):
+    """Lower-cased words of an explicit `**Host:**` body field, in order. A
+    parenthetical is the filer's aside (`windows (linux-debug refs differ)`),
+    not a second host, so it is dropped before the words are read."""
+    value = re.sub(r"\([^)]*\)", " ", _parse_issue_field(body, "Host"))
+    return re.findall(r"[a-z]+", value.lower())
+
+
+def _host_field_keys(body):
+    """Dispatch-host keys the `**Host:**` field names, in order, deduped."""
+    keys = []
+    for word in _host_field_words(body):
+        key = _HOST_KEYS.get(word)
+        if key and key not in keys:
+            keys.append(key)
+    return keys
+
+
+def _host_field_requires_gl_host(body):
+    """A `**Host:**` field reads as a backend need, not an OS pin, when it
+    names the backend (`opengl`) or more than one host with every one of them
+    GL-capable (`linux or windows`): any such host can serve the task, so
+    pinning it to the first word would strand it on whichever host is down."""
+    keys = _host_field_keys(body)
+    if len(keys) > 1 and set(keys) <= _GL_HOST_KEYS:
+        return True
+    return any(word in _GL_BACKEND_WORDS for word in _host_field_words(body))
 
 
 # The OS a task's body pins it to, as a dispatch-host key. `needs_gl_host`
@@ -1877,12 +1915,15 @@ _HOST_KEYS = {"linux": "linux", "windows": "windows", "mac": "mac",
 
 
 def _body_required_host(body):
-    """`linux` | `windows` | `mac` when the body pins the task to one OS, else
-    None. An explicit `**Host:**` field wins over the prose forms."""
+    """`linux` | `windows` | `mac` when the body pins the task to ONE OS, else
+    None. An explicit `**Host:**` field wins over the prose forms, including
+    when it names several hosts: that is no single pin (the GL gate reads the
+    all-GL case, `_host_field_requires_gl_host`), and the prose must not
+    narrow it back to one."""
     body = body or ""
-    field = _parse_issue_field(body, "Host").lower().split(None, 1)
-    if field and field[0] in _HOST_KEYS:
-        return _HOST_KEYS[field[0]]
+    keys = _host_field_keys(body)
+    if keys:
+        return keys[0] if len(keys) == 1 else None
     m = _HOST_REQUIRED_RE.search(body)
     if not m:
         return None

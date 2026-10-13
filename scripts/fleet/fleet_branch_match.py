@@ -505,6 +505,23 @@ PARKED_PR_LABELS = frozenset({
     "fleet:design-proposed",
 })
 
+# Canonical GitHub slug per scout repo key, for callers that must address the
+# OTHER fleet repo by slug (a cross-repo park). The identifier -> key direction
+# is `_REPO_KEYS`; this is its inverse in canonical case, since `gh` output and
+# the drift report echo the slug as written. Keep in sync with
+# `fleet_blocked_by._REF_NAME_TO_SLUG` (the `Blocked by:` grammar's copy);
+# `test_branch_matches_issue.py` asserts the two agree.
+_REPO_SLUGS = {
+    "engine": "jakildev/IrredenEngine",
+    "game": "jakildev/irreden",
+}
+
+
+def repo_slug(repo):
+    """Canonical `owner/repo` slug for any fleet repo identifier, else None."""
+    return _REPO_SLUGS.get(repo_key(repo))
+
+
 # The marker must open its line, but a worker's markdown habits are tolerated
 # there: an unordered-list bullet (`- Parked-until: #N`) and bold or backtick
 # emphasis on the marker. The emphasis must be paired, and its closer may sit
@@ -514,29 +531,65 @@ PARKED_PR_LABELS = frozenset({
 # accident. A marker that appears mid-sentence is still rejected: the own-line
 # rule is what keeps a prose mention from being read as a park, and a park
 # nothing can parse never un-parks.
+#
+# A blocker is a `#N` token, optionally qualified with the repo it lives in:
+# `IrredenEngine#N`, `irreden#N`, or GitHub's `owner/repo#N`. The qualifier
+# charset is the one `_CLOSES_REF_RE` uses, so the two cross-repo grammars
+# cannot drift; a qualifier naming neither fleet repo makes that token no
+# blocker at all (`parked_until_refs` drops it) — the conservative direction,
+# since a park whose only blocker is unresolvable must read as malformed and
+# escalate rather than un-park on a guess.
+_PARKED_REF = r"(?:[A-Za-z0-9][\w.-]*/)?(?:[A-Za-z0-9][\w.-]*)?#\d+\b"
 _PARKED_UNTIL_RE = re.compile(
     r"^[ \t]*(?:[-*+][ \t]+)?"
     r"(?:Parked-until:"
     r"|(?P<em>\*\*|`)Parked-until(?::(?P=em)|(?P=em):|:(?=[^\n]*(?P=em))))"
-    r"[ \t]*(?P<issues>#\d+\b(?:(?:[ \t]*,[ \t]*|[ \t]+)#\d+\b)*)",
+    r"[ \t]*(?P<issues>" + _PARKED_REF + r"(?:(?:[ \t]*,[ \t]*|[ \t]+)" + _PARKED_REF + r")*)",
     re.IGNORECASE | re.MULTILINE,
 )
+_PARKED_REF_RE = re.compile(r"((?:[A-Za-z0-9][\w.-]*/)?[A-Za-z0-9][\w.-]*)?#(\d+)")
 
 
-def parked_until_issue_numbers(body):
-    """Issue numbers from the last parsable `Parked-until:` body marker.
+def _parked_until_markers(body):
+    return [match.group("issues") for match in _PARKED_UNTIL_RE.finditer(body or "")]
+
+
+def parked_until_refs(body, default_repo):
+    """`[(slug, number), ...]` for every blocker a `Parked-until:` marker names.
 
     The marker opens its line, optionally behind a list bullet or wrapped in
-    paired bold / backticks (see `_PARKED_UNTIL_RE`). The issue list is the
-    contiguous comma/whitespace-separated run after the marker. Trailing
-    prose is ignored, and an appended parsable marker makes every earlier
-    marker inert. Missing or malformed markers return an empty list so
-    callers fail closed.
+    paired bold / backticks (see `_PARKED_UNTIL_RE`). The blocker list is the
+    contiguous comma/whitespace-separated run after the marker; trailing prose
+    is ignored. EVERY parsable marker in the body counts and the lists are
+    unioned in body order, so a worker may spell three blockers as three lines
+    and a re-park may append a line without rewriting the body — the park ends
+    only when all of them have closed, and dropping a blocker means deleting
+    its marker. A bare `#N` is an issue in `default_repo` (a key or a slug); a
+    qualified `IrredenEngine#N` / `owner/repo#N` names the other fleet repo.
+    Missing, malformed, or unresolvable markers contribute nothing, so a body
+    with no usable blocker returns an empty list and callers fail closed. A
+    `default_repo` outside the fleet (a sandbox slug under test) is kept as
+    written for its bare refs; only a qualifier must name a fleet repo.
     """
-    markers = [match.group("issues") for match in _PARKED_UNTIL_RE.finditer(body or "")]
-    if not markers:
-        return []
-    return [int(number) for number in re.findall(r"#(\d+)", markers[-1])]
+    own = repo_slug(default_repo) or default_repo
+    refs = []
+    for marker in _parked_until_markers(body):
+        for qualifier, number in _PARKED_REF_RE.findall(marker):
+            slug = repo_slug(qualifier) if qualifier else own
+            if slug is None:
+                continue
+            ref = (slug, int(number))
+            if ref not in refs:
+                refs.append(ref)
+    return refs
+
+
+def parked_until_issue_numbers(body, repo):
+    """The blockers of `parked_until_refs` that live in `repo` itself, as
+    numbers — bare `#N` and a qualifier naming that same repo alike — for
+    callers that only compare against their own repo's issues."""
+    own = repo_slug(repo) or repo
+    return [number for slug, number in parked_until_refs(body, repo) if slug == own]
 
 
 def issue_pr_state(prs, issue, repo):

@@ -12,6 +12,7 @@ negative case below is load-bearing, not filler.
 """
 import importlib.machinery
 import importlib.util
+import sys
 import unittest
 from pathlib import Path
 
@@ -211,6 +212,24 @@ class TestRequiredHost(unittest.TestCase):
                          "linux")
         self.assertIsNone(required_host("**Host:** any"))
 
+    def test_a_field_naming_several_hosts_pins_none_of_them(self):
+        # A field naming both GL hosts: pinning the first word would route the
+        # task to whichever of the two hosts happens to be down.
+        for body in ("**Host:** linux or windows (OpenGL)",
+                     "**Host:** linux, windows",
+                     "**Host:** Windows or Linux",
+                     "**Host:** macos or linux"):
+            self.assertIsNone(required_host(body), body)
+        # Explicit beats prose: the multi-host field is not narrowed back to
+        # one OS by an older sentence further down.
+        self.assertIsNone(
+            required_host("**Host:** linux or windows\n\nmust run on a Linux host"))
+
+    def test_a_parenthetical_in_the_field_is_not_a_second_host(self):
+        self.assertEqual(required_host("**Host:** windows (linux-debug refs are separate)"),
+                         "windows")
+        self.assertEqual(required_host("**Host:** Linux (linux-debug preset)"), "linux")
+
     def test_opengl_is_a_backend_not_an_os(self):
         # The GL gate owns this shape; no OS is pinned.
         body = "It must be run on an OpenGL host."
@@ -230,6 +249,33 @@ class TestRequiredHost(unittest.TestCase):
     def test_none_and_empty(self):
         self.assertIsNone(required_host(None))
         self.assertIsNone(required_host(""))
+
+
+class TestHostFieldGlNeed(unittest.TestCase):
+    """A `**Host:**` field that names only GL-capable hosts, or the backend
+    itself, is a `needs_gl_host` signal — the pair to the pin tests above."""
+
+    def test_two_gl_hosts_read_as_the_gl_need(self):
+        for body in ("**Host:** linux or windows (OpenGL)",
+                     "**Host:** linux, windows",
+                     "**Host:** OpenGL host (linux or windows)",
+                     "**Host:** opengl"):
+            self.assertTrue(requires_gl_host(body), body)
+            self.assertIsNone(required_host(body), body)
+
+    def test_one_host_is_a_pin_not_a_gl_need(self):
+        for body in ("**Host:** windows", "**Host:** linux",
+                     "**Host:** windows (linux-debug refs are separate)"):
+            self.assertFalse(requires_gl_host(body), body)
+
+    def test_a_mac_in_the_set_is_not_gl(self):
+        self.assertFalse(requires_gl_host("**Host:** macos or linux"))
+        self.assertFalse(requires_gl_host("**Host:** macos"))
+
+    def test_gl_host_keys_agree_with_the_dispatcher_gate(self):
+        sys.path.insert(0, str(Path(__file__).parent.parent))
+        import fleet_task_class
+        self.assertEqual(_mod._GL_HOST_KEYS, frozenset(fleet_task_class.GL_CAPABLE_HOSTS))
 
 
 # --- the backend-symmetric discriminator ----------------------------------
