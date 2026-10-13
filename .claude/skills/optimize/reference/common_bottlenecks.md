@@ -200,6 +200,7 @@ that found a new one; never add a pattern that was only suspected.
   can misleadingly look cheaper. Five native Metal pairs measured stage 1
   at 0.6806 ms versus 0.5452 ms on master with ceilings disabled.
 - **Fix**: put the existing BODY exemption first in the short-circuit
-  predicate. The first targeted measurement fell to 0.565 ms without
-  changing FIELD selection. Confirm with the full interleaved acceptance
-  runs, including the treatment-enabled lane and native image identity.
+  predicate. Five fresh interleaved pairs measured 0.5640 ms versus
+  master's 0.5476 ms (1.030×); both fog lanes passed their acceptance limits.
+  Raw reports: `docs/perf/fog-ceiling-retention/`. Also verify native image
+  identity after reordering a shader predicate.

@@ -1,0 +1,41 @@
+import json, subprocess
+from pathlib import Path
+ROOT = Path(__file__).resolve().parent
+spec = json.loads((ROOT / 'compile-args.json').read_text())
+header = ROOT / 'include/irreden/render/fog_of_war.hpp'
+original = header.read_text()
+mutations = [
+('uncovered', 'if (admitted == 0u)\n        return 1.0f;', 'if (admitted == 0u)\n        return 0.0f;', 'uncovered'),
+('visible', 'cell.state_ == IRComponents::kFogStateVisible', 'false', 'visible'),
+('explored', 'cell.state_ == IRComponents::kFogStateVisible', 'cell.state_ >= 128', 'explored'),
+('maximum', 'presence = IRMath::max(', 'presence = IRMath::min(', 'source_maximum'),
+('own_softness', 'IRMath::max(circle.w, kFogCeilingAdmitAa)', 'circle.w', 'aa_admission'),
+('aa_too_small', 'kFogCeilingAdmitAa = 0.75f', 'kFogCeilingAdmitAa = 0.70f', 'aa_pixel_bound'),
+('height_cost', 'dzUp + heightOffset)', 'dzUp + heightOffset + observers.visionCircleHeights_[source].y)', 'height_and_los_ignored'),
+('los_rejection', 'if (admitted == 0u)', 'if (observers.losSourceMask_ != 0u) return 0.0f;\n    if (admitted == 0u)', 'height_and_los_ignored'),
+('channels', 'if ((observers.channels(source) & cell.channels_) == 0u)', 'if (false)', 'source_channels'),
+('density', 'if (presence >= 1.0f || !treated || observers.dissolveDensity() == 0.0f)\n        return true;\n    return revealSurfaceHash01(voxel) <= IRMath::mix(1.0f, presence, observers.dissolveDensity());', 'if (presence >= 1.0f || !treated) return true;\n    return revealSurfaceHash01(voxel) <= presence;', 'zero_density'),
+('phase_zero', 'if (phase == 0.0f)\n        return 0.0f;', 'if (phase == 0.0f)\n        return 0.25f;', 'phase_zero'),
+('phase_span', 'kFogCeilingFlickerSpan = 2.0f', 'kFogCeilingFlickerSpan = 3.0f', 'phase_bound'),
+('phase_removed', 'return kFogCeilingFlickerSpan *', 'return 0.0f *', 'phase_revives'),
+('shadow_phase', 'IRMath::roundVec3HalfUp(worldPosition), cell, 0.0f)', 'IRMath::roundVec3HalfUp(worldPosition), cell, observers.revealSurfaceTreatment_.w)', 'shadow_static'),
+('body', 'if (fogBody || !anyCeilingEnabled(observers))', 'if (!anyCeilingEnabled(observers))', 'shadow_body'),
+('voxel_paint', 'analyticSurface ? surfaceVisibility : losVisibility', 'surfaceVisibility', 'voxel_ceiling_paint'),
+('analytic_paint', 'analyticSurface ? surfaceVisibility : losVisibility', 'losVisibility', 'analytic_ceiling_paint'),
+('los_paint', 'analyticSurface ? surfaceVisibility : losVisibility', 'analyticSurface ? surfaceVisibility : 1.0f', 'voxel_los_paint'),
+]
+results=[]
+try:
+ for name, before, after, expected in [('production','','','')]+mutations:
+  if before: assert original.count(before)==1, (name,original.count(before))
+  header.write_text(original.replace(before,after,1) if before else original)
+  build=subprocess.run(spec['args'],cwd=spec['cwd'],capture_output=True,text=True)
+  if build.returncode: raise RuntimeError(name+' compile failed: '+build.stderr)
+  run=subprocess.run([str(ROOT/'control')],capture_output=True,text=True)
+  ok=run.returncode==0 if name=='production' else run.returncode!=0 and run.stdout.strip()=='FAIL '+expected
+  result={'mutation':name,'expected':expected,'exit':run.returncode,'stdout':run.stdout.strip(),'valid_control':ok}
+  results.append(result);print(json.dumps(result),flush=True)
+  if not ok: raise RuntimeError('control did not fire as intended')
+finally:
+ header.write_text(original)
+ (ROOT/'results.json').write_text(json.dumps(results,indent=2)+'\n')
