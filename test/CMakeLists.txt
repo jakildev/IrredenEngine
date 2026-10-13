@@ -16,6 +16,7 @@ add_executable(IrredenEngineTest
   audio/audio_monitor_ring_test.cpp
   audio/audio_playback_test.cpp
   audio/synthetic_audio_capture_test.cpp
+  audio/midi_clock_test.cpp
   audio/midi_in_tick_test.cpp
   audio/midi_message_ring_test.cpp
   audio/midi_multiport_test.cpp
@@ -140,6 +141,7 @@ add_executable(IrredenEngineTest
   render/widget_list_scroll_test.cpp
   render/widget_theme_singleton_test.cpp
   render/widget_tab_focus_test.cpp
+  script/lua_audio_midi_clock_test.cpp
   script/lua_audio_midi_observer_test.cpp
   script/lua_audio_monitor_test.cpp
   script/lua_collision_bindings_test.cpp

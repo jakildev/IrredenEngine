@@ -65,22 +65,35 @@ inline void bindAudioApi(LuaScript &script) {
 #undef IR_BIND_AUDIO_BUS
     audio["Bus"] = bus;
 
-    audio["playSound"] =
-        [](const std::string &path, sol::object busObj, sol::optional<float> volume, sol::optional<bool> loop)
-        -> lua_Integer {
+    audio["playSound"] = [](const std::string &path,
+                            sol::object busObj,
+                            sol::optional<float> volume,
+                            sol::optional<bool> loop) -> lua_Integer {
+        return static_cast<lua_Integer>(IRAudio::playSound(
+            path,
+            audioBusFromLua(busObj),
+            volume.value_or(1.0f),
+            loop.value_or(false)
+        ));
+    };
+    audio["playMusic"] = [](const std::string &path,
+                            sol::optional<float> volume,
+                            sol::optional<bool> loop) -> lua_Integer {
         return static_cast<lua_Integer>(
-            IRAudio::playSound(path, audioBusFromLua(busObj), volume.value_or(1.0f), loop.value_or(false))
+            IRAudio::playMusic(path, volume.value_or(1.0f), loop.value_or(true))
         );
     };
-    audio["playMusic"] =
-        [](const std::string &path, sol::optional<float> volume, sol::optional<bool> loop) -> lua_Integer {
-        return static_cast<lua_Integer>(IRAudio::playMusic(path, volume.value_or(1.0f), loop.value_or(true)));
-    };
-    audio["playSoundAt"] =
-        [](const std::string &path, sol::object busObj, sol::object position, sol::optional<float> volume,
-           sol::optional<bool> loop) -> lua_Integer {
+    audio["playSoundAt"] = [](const std::string &path,
+                              sol::object busObj,
+                              sol::object position,
+                              sol::optional<float> volume,
+                              sol::optional<bool> loop) -> lua_Integer {
         return static_cast<lua_Integer>(IRAudio::playSoundAt(
-            path, audioBusFromLua(busObj), vec3FromLua(position), volume.value_or(1.0f), loop.value_or(false)
+            path,
+            audioBusFromLua(busObj),
+            vec3FromLua(position),
+            volume.value_or(1.0f),
+            loop.value_or(false)
         ));
     };
 
@@ -91,18 +104,22 @@ inline void bindAudioApi(LuaScript &script) {
         IRAudio::setSoundVolume(static_cast<IRAudio::SoundHandle>(handle), volume);
     };
     audio["fadeIn"] = [](lua_Integer handle, lua_Integer milliseconds) {
-        IRAudio::fadeInSound(static_cast<IRAudio::SoundHandle>(handle), static_cast<unsigned int>(milliseconds));
+        IRAudio::fadeInSound(
+            static_cast<IRAudio::SoundHandle>(handle),
+            static_cast<unsigned int>(milliseconds)
+        );
     };
     audio["fadeOut"] = [](lua_Integer handle, lua_Integer milliseconds) {
-        IRAudio::fadeOutSound(static_cast<IRAudio::SoundHandle>(handle), static_cast<unsigned int>(milliseconds));
+        IRAudio::fadeOutSound(
+            static_cast<IRAudio::SoundHandle>(handle),
+            static_cast<unsigned int>(milliseconds)
+        );
     };
 
     audio["setBusVolume"] = [](sol::object busObj, float volume) {
         IRAudio::setBusVolume(audioBusFromLua(busObj), volume);
     };
-    audio["setMasterVolume"] = [](float volume) {
-        IRAudio::setMasterVolume(volume);
-    };
+    audio["setMasterVolume"] = [](float volume) { IRAudio::setMasterVolume(volume); };
     audio["setListenerPosition"] = [](sol::object position) {
         IRAudio::setListenerPosition(vec3FromLua(position));
     };
@@ -126,21 +143,29 @@ inline void bindAudioApi(LuaScript &script) {
     IR_BIND_MIDI_STATUS(PROGRAM_CHANGE);
     IR_BIND_MIDI_STATUS(CHANNEL_PRESSURE);
     IR_BIND_MIDI_STATUS(PITCH_BEND);
+    IR_BIND_MIDI_STATUS(TIMING_CLOCK);
+    IR_BIND_MIDI_STATUS(START);
+    IR_BIND_MIDI_STATUS(CONTINUE);
+    IR_BIND_MIDI_STATUS(STOP);
 #undef IR_BIND_MIDI_STATUS
     audio["MidiStatus"] = midiStatus;
 
     // IRAudio.onMidiSent(fn): fn(status, channel, data1, data2, portIndex) — all
     // integers. `status` is the message-type byte (matches IRAudio.MidiStatus.*);
-    // `channel` is 0-15; `portIndex` is -1 for the default-port send. Last
-    // registration wins (single observer, like the inbound AudioInputCallback);
-    // multiplex in Lua if you need fan-out. A handler error is logged and
-    // swallowed so one bad Lua callback can't abort the C++ send loop.
+    // `channel` is 0-15; `portIndex` is -1 for the default-port send. A system
+    // message (START, STOP, ...) carries no channel: `status` is its whole byte
+    // and `channel` is -1. Last registration wins (single observer, like the
+    // inbound AudioInputCallback); multiplex in Lua if you need fan-out. A
+    // handler error is logged and swallowed so one bad Lua callback can't
+    // abort the C++ send loop.
     audio["onMidiSent"] = [](sol::protected_function fn) {
         IRAudio::setOutboundMidiObserver(
             [fn = std::move(fn)](const IRComponents::C_MidiMessage &message, int portIndex) {
+                const bool system = IRAudio::isMidiSystemStatus(message.status_);
                 sol::protected_function_result result =
-                    fn(static_cast<lua_Integer>(message.getStatusBits()),
-                       static_cast<lua_Integer>(message.getChannelBits()),
+                    fn(static_cast<lua_Integer>(system ? message.status_ : message.getStatusBits()),
+                       system ? static_cast<lua_Integer>(-1)
+                              : static_cast<lua_Integer>(message.getChannelBits()),
                        static_cast<lua_Integer>(message.data1_),
                        static_cast<lua_Integer>(message.data2_),
                        static_cast<lua_Integer>(portIndex));
@@ -152,6 +177,18 @@ inline void bindAudioApi(LuaScript &script) {
         );
     };
     audio["clearMidiObserver"] = []() { IRAudio::clearOutboundMidiObserver(); };
+
+    // MIDI beat clock on one open output port (engine/audio/CLAUDE.md
+    // §"MIDI clock"): START, pulses from an engine thread, STOP.
+    audio["startMidiClock"] = [](lua_Integer portIndex, double bpm) {
+        return IRAudio::startMidiClock(static_cast<int>(portIndex), bpm);
+    };
+    audio["setMidiClockBpm"] = [](double bpm) { return IRAudio::setMidiClockBpm(bpm); };
+    audio["stopMidiClock"] = []() { IRAudio::stopMidiClock(); };
+    audio["isMidiClockRunning"] = []() { return IRAudio::isMidiClockRunning(); };
+    audio["midiClockPulses"] = []() {
+        return static_cast<lua_Integer>(IRAudio::midiClockPulses());
+    };
 }
 
 } // namespace IRScript::detail

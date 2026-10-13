@@ -18,6 +18,9 @@ functions:
   helpers; build the `C_MidiMessage` and call `sendMidiMessage`.)
 - MIDI send observer: `setOutboundMidiObserver(cb)` / `clearOutboundMidiObserver()`
   — see "Outbound MIDI observer" below.
+- MIDI beat clock: `startMidiClock(portIndex, bpm)` / `setMidiClockBpm` /
+  `stopMidiClock` / `isMidiClockRunning` / `midiClockPulses` — see "MIDI
+  clock" below.
 - Audio input: open/start/stop a capture stream, register a float-sample
   callback.
 - File playback: `playSound` / `playMusic` / `playSoundAt`, `stopSound`,
@@ -33,7 +36,11 @@ functions:
   ring into a `MidiInputFrameBuffer` (cleared and refilled each frame) that
   keeps both a merged all-ports per-channel view and a per-port view.
 - **`MidiOut`** — one `RtMidiOut` per open output port; fire-and-forget send
-  to the default (first-opened) port, or to a specific port by index.
+  to the default (first-opened) port, or to a specific port by index. One
+  mutex covers the port list and every send, so the `MidiClock` thread and
+  the main thread share a port.
+- **`MidiClock`** — MIDI beat clock on one open output port from its own
+  thread (see below).
 - **`Audio`** — `RtAudio` wrapper for microphone/line-in. Implements
   `IAudioCaptureSource`. Used by `VideoManager` for recording soundtracks.
 - **`SyntheticAudioCaptureSource`** — wall-clock-paced tone source used by
@@ -154,7 +161,37 @@ IRAudio::clearOutboundMidiObserver();
   data1, data2, portIndex)` (integers; `status` matches `IRAudio.MidiStatus.*`);
   `IRAudio.clearMidiObserver()` detaches. A Lua handler error is logged and
   swallowed so it can't abort the C++ send loop (bound by `bindLuaDrivenEcs()`
-  in `lua_audio_bindings.hpp`).
+  in `lua_audio_bindings.hpp`). A system message (`MidiStatus.START` /
+  `STOP` / ...) has no channel nibble: the handler gets its whole status byte
+  and `channel == -1`.
+
+## MIDI clock
+
+`MidiClock` (`midi_clock.hpp`, owned by `AudioManager`) emits MIDI beat clock
+on one open output port: START, then `TIMING_CLOCK` at
+`kMidiClockPulsesPerQuarterNote` (24) from its own thread, paced on
+accumulated steady-clock deadlines so jitter never shortens the average
+period, then STOP. `IRAudio::startMidiClock(port, bpm)` / `setMidiClockBpm`
+/ `stopMidiClock` / `isMidiClockRunning` / `midiClockPulses`, mirrored on the
+Lua `IRAudio` table. One clock per `AudioManager`: starting on the port
+already running retunes it, starting on another port stops there first, and
+`World::end()` stops it after the shutdown NOTE_OFFs with the pulse count in
+the log (`~AudioManager` is the backstop, after logging has ended).
+
+- **Which thread sends what.** START and STOP leave on the caller's thread
+  (`start` / `stop`) and reach the outbound observer; the pulses leave on the
+  clock thread and never do — the observer may run Lua, main thread only.
+  The injected send callback (`MidiClock::RealtimeSend`) is the test seam:
+  `test/audio/midi_clock_test.cpp` records transport order and pacing with
+  no device.
+- **An unopened port is refused** at `startMidiClock` with one warning and
+  `false`, rather than a warning per pulse from the thread. Headless, every
+  call is therefore a no-op: `test/script/lua_audio_midi_clock_test.cpp`.
+- **Tempo range** is `kMidiClockMinBpm`..`kMidiClockMaxBpm`; outside it
+  `start` / `setBpm` refuse and keep the running state.
+- Gear that follows clock (Hologram Microcosm, Meris pedals) switches to it on
+  START and back to its own tempo on STOP; without a START it ignores the
+  pulses, so a clock is never started on a port that is not open.
 
 ## Audio capture model
 

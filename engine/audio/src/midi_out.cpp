@@ -32,6 +32,7 @@ MidiOut::~MidiOut() {
 }
 
 void MidiOut::sendAllNotesOff() {
+    std::lock_guard<std::mutex> lock(m_portsMutex);
     if (m_ports.empty()) {
         return;
     }
@@ -50,6 +51,7 @@ int MidiOut::openPort(MidiOutInterfaces interface) {
 }
 
 int MidiOut::openPort(std::string portNameSubstring) {
+    std::lock_guard<std::mutex> lock(m_portsMutex);
     for (int i = 0; i < m_numberPorts; i++) {
         const std::string_view portName{m_portNames[i]};
         if (portName.find(portNameSubstring) == portName.npos) {
@@ -93,6 +95,7 @@ const std::vector<std::string> &MidiOut::getPortNames() const {
 }
 
 std::vector<int> MidiOut::getOpenPortIndices() const {
+    std::lock_guard<std::mutex> lock(m_portsMutex);
     std::vector<int> indices;
     indices.reserve(m_ports.size());
     for (const auto &port : m_ports) {
@@ -101,7 +104,18 @@ std::vector<int> MidiOut::getOpenPortIndices() const {
     return indices;
 }
 
+bool MidiOut::isPortOpen(int portIndex) const {
+    std::lock_guard<std::mutex> lock(m_portsMutex);
+    for (const auto &port : m_ports) {
+        if (port->portIndex_ == portIndex) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void MidiOut::sendMessage(const std::vector<unsigned char> &message) {
+    std::lock_guard<std::mutex> lock(m_portsMutex);
     if (m_ports.empty()) {
         IRE_LOG_WARN("sendMessage called with no MIDI output port open");
         return;
@@ -111,6 +125,7 @@ void MidiOut::sendMessage(const std::vector<unsigned char> &message) {
 }
 
 void MidiOut::sendMessage(int portIndex, const std::vector<unsigned char> &message) {
+    std::lock_guard<std::mutex> lock(m_portsMutex);
     for (auto &port : m_ports) {
         if (port->portIndex_ == portIndex) {
             port->rtMidiOut_->sendMessage(&message);
