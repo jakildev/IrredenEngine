@@ -39,6 +39,9 @@ Design log, findings and the authoring-session history:
   and the deliberately failing `test_unreachable` fixture.
 - `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
   render reference set, discovered under this creation's `test/references/`.
+- `--module test/module --module-session test_bake_radius_guard` is a second
+  deliberately failing fixture: it exits 1 before any replay, on a recipe
+  error that names `bakeSphere` and radius 2.095.
 - `python3 scripts/author-entity.py <entity>` — replays an entity session twice
   and byte-compares the saved `.vxs` (rock, mushroom, bird at the default
   scene; `ant --scene-size 20 20 20`; `tree --scene-size 16 16 26`). A clean
