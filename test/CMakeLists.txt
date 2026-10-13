@@ -140,6 +140,7 @@ add_executable(IrredenEngineTest
   render/sprite_render_test.cpp
   render/widget_list_scroll_test.cpp
   render/widget_theme_singleton_test.cpp
+  render/widget_hit_region_test.cpp
   render/widget_tab_focus_test.cpp
   script/lua_audio_midi_clock_test.cpp
   script/lua_audio_midi_observer_test.cpp
@@ -158,6 +159,7 @@ add_executable(IrredenEngineTest
   script/lua_deferred_entity_test.cpp
   script/lua_entity_anchor_test.cpp
   script/lua_entity_events_test.cpp
+  script/lua_widget_hit_region_test.cpp
   script/lua_voxel_seam_test.cpp
   script/lua_hierarchy_test.cpp
   script/lua_enum_register_test.cpp
