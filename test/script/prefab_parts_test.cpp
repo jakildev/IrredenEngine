@@ -550,6 +550,45 @@ TEST_F(PrefabParts, SpawnsVoxelPartsAtTheirOwnExtent) {
     EXPECT_EQ(frameSet.recordCount(), 25u);
 }
 
+// A part's `anchor` reaches its C_VoxelSetNew: CENTER gives an even extent a
+// half-integer local origin, and a part without the field stays CORNER.
+TEST_F(PrefabParts, VoxelPartAnchorComesFromTheManifest) {
+    const std::string voxelPath = std::string{kTmpDir} + "/prefab_parts_anchor.vxs";
+    const IRMath::ivec3 extent(4, 2, 6);
+    IRAsset::DenseVoxelSet dense;
+    dense.boundsMin_ = IRMath::ivec3(0);
+    dense.boundsMax_ = extent;
+    dense.voxels_.resize(dense.voxelCount());
+    ASSERT_TRUE(IRAsset::saveDenseVoxelSet(voxelPath, dense).ok());
+
+    const EntityId root = spawn(
+        "anchor",
+        "return {\n"
+        "  prefab_version = 2,\n"
+        "  parts = {\n"
+        "    { id = 'centered', voxel_ref = '" +
+            voxelPath +
+            "',\n"
+            "      anchor = IRComponent.EntityAnchor.CENTER },\n"
+            "    { id = 'unstated', voxel_ref = '" +
+            voxelPath +
+            "' },\n"
+            "  },\n"
+            "}\n"
+    );
+    ASSERT_NE(root, IREntity::kNullEntity);
+    ASSERT_EQ(liveCount(root), 2);
+
+    const C_PrefabParts &parts = partsOf(root);
+    const auto &centered = IREntity::getComponent<C_VoxelSetNew>(parts.slots_[0].entity_);
+    EXPECT_EQ(centered.anchor_, IRComponents::EntityAnchor::CENTER);
+    EXPECT_EQ(centered.size_, extent);
+    EXPECT_EQ(centered.stagedOrigin(), vec3(-1.5f, -0.5f, -2.5f));
+    const auto &unstated = IREntity::getComponent<C_VoxelSetNew>(parts.slots_[1].entity_);
+    EXPECT_EQ(unstated.anchor_, IRComponents::EntityAnchor::CORNER);
+    EXPECT_EQ(unstated.stagedOrigin(), vec3(0.0f));
+}
+
 // A tree mark lists the root's descendants when it is taken, so a part staged
 // before it and built at the flush after it would outlive the root. The staged
 // build sees the mark and gives up; a root nobody marked still gets its part.
@@ -636,6 +675,16 @@ TEST_F(PrefabParts, RejectsMalformedParts) {
         "lod.fine must not be coarser"
     );
     rejects("factory", "{ id = 'a', components = { C_Nope = {} } }", "no factory registered");
+    rejects("anchor_range", "{ id = 'a', anchor = 3 }", "anchor=3 not recognized");
+    rejects("anchor_negative", "{ id = 'a', anchor = -1 }", "anchor=-1 not recognized");
+    rejects("anchor_string", "{ id = 'a', anchor = 'CENTER' }", "IRComponent.EntityAnchor");
+    rejects("anchor_fraction", "{ id = 'a', anchor = 1.5 }", "anchor=1.5 not recognized");
+    rejects("anchor_bool", "{ id = 'a', anchor = true }", "IRComponent.EntityAnchor");
+    rejects(
+        "anchor_on_shape",
+        "{ id = 'a', shape = { type = IRShape.BOX }, anchor = IRComponent.EntityAnchor.CENTER }",
+        "a shape part has none"
+    );
     EXPECT_EQ(IREntity::countComponents<C_PrefabParts>(), 0) << "a rejected spawn leaves no root";
 }
 

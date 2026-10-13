@@ -58,6 +58,7 @@ struct PartSpec {
     std::string id_;
     // At most one of voxelRef_ / shape_; a part with neither is a bare node.
     std::string voxelRef_;
+    IRComponents::EntityAnchor anchor_ = IRComponents::EntityAnchor::CORNER;
     std::optional<PrefabShapeDescription> shape_;
     IRComponents::C_LocalTransform transform_;
     IRComponents::RotationMode rotationMode_ = IRComponents::RotationMode::GRID;
@@ -210,6 +211,35 @@ parseLodTier(const sol::table &lod, const char *key, IRRender::LodLevel &tier) {
     return std::nullopt;
 }
 
+/// Reads a part's optional `anchor`; an absent field leaves `anchor` as it was.
+/// The schema takes the `IRComponent.EntityAnchor.*` integer, never a string
+/// name. LuaJIT numbers are doubles, so a whole value is checked for here.
+std::optional<std::string>
+parseAnchor(const sol::table &partTable, IRComponents::EntityAnchor &anchor) {
+    sol::object anchorObj = partTable["anchor"];
+    if (!anchorObj.valid() || anchorObj.get_type() == sol::type::lua_nil) {
+        return std::nullopt;
+    }
+    if (anchorObj.get_type() != sol::type::number) {
+        return std::string{
+            "anchor must be an IRComponent.EntityAnchor.{CORNER,CENTER,GROUND} value; string "
+            "names are not accepted"
+        };
+    }
+    const double raw = anchorObj.as<double>();
+    if (!(raw >= static_cast<double>(IRComponents::EntityAnchor::kFirst) &&
+          raw <= static_cast<double>(IRComponents::EntityAnchor::kLast)) ||
+        raw != IRMath::floor(raw)) {
+        std::ostringstream message;
+        message << "anchor=" << raw
+                << " not recognized (expected IRComponent.EntityAnchor.CORNER, .CENTER, or "
+                   ".GROUND)";
+        return message.str();
+    }
+    anchor = static_cast<IRComponents::EntityAnchor>(static_cast<int>(raw));
+    return std::nullopt;
+}
+
 std::optional<std::string>
 parsePartShape(const sol::table &shapeTable, PrefabShapeDescription &shape) {
     sol::object typeObj = shapeTable["type"];
@@ -265,6 +295,14 @@ std::optional<std::string> parsePart(const sol::table &partTable, PartSpec &part
             return error;
         }
         part.shape_ = shape;
+    }
+    if (hasShape) {
+        if (sol::object anchorObj = partTable["anchor"];
+            anchorObj.valid() && anchorObj.get_type() != sol::type::lua_nil) {
+            return std::string{"anchor applies to voxel_ref content; a shape part has none"};
+        }
+    } else if (auto error = parseAnchor(partTable, part.anchor_)) {
+        return error;
     }
 
     sol::object transformObj = partTable["transform"];
@@ -379,10 +417,12 @@ IRComponents::C_WorldTransform composeWorld(
 /// `C_LocalTransform`; DENSE data as `C_VoxelSetNew` on `entity` itself. The
 /// dense adapter is headless-safe: with no active canvas it stages records for
 /// a later canvas-attach pass. Per-record rotation, CSG op and bone id are not
-/// consumed by the renderer and are not stamped.
+/// consumed by the renderer and are not stamped. `anchor` places the DENSE
+/// data relative to the entity's translation.
 void attachVoxelContent(
     IREntity::EntityId entity,
     const IRAsset::VoxelSetAllFile &voxels,
+    IRComponents::EntityAnchor anchor,
     std::vector<IREntity::EntityId> &shapeChildren
 ) {
     if (voxels.mode_ == IRAsset::VoxelSetMode::SHAPES ||
@@ -407,7 +447,8 @@ void attachVoxelContent(
 
     if (voxels.mode_ == IRAsset::VoxelSetMode::DENSE ||
         voxels.mode_ == IRAsset::VoxelSetMode::HYBRID) {
-        IRComponents::C_VoxelSetNew voxelSet = IRPrefab::DenseVoxel::toComponent(voxels.dense_);
+        IRComponents::C_VoxelSetNew voxelSet =
+            IRPrefab::DenseVoxel::toComponent(voxels.dense_, anchor);
         if (voxelSet.recordCount() > 0) {
             IREntity::setComponent(entity, std::move(voxelSet));
         }
@@ -656,7 +697,7 @@ void buildPart(
             manifest.voxels_[index] = loadPartVoxels(spec.voxelRef_);
         }
         if (manifest.voxels_[index]) {
-            attachVoxelContent(part, *manifest.voxels_[index], shapeChildren);
+            attachVoxelContent(part, *manifest.voxels_[index], spec.anchor_, shapeChildren);
         } else {
             IRE_LOG_ERROR(
                 "Prefab '{}': part '{}' voxel_ref load failed: {}",
@@ -777,6 +818,7 @@ ManifestResult readManifest(IRScript::LuaScript &script, const std::string &path
             PrefabPartDescription part;
             part.id_ = spec.id_;
             part.voxelRef_ = spec.voxelRef_;
+            part.anchor_ = spec.anchor_;
             part.shape_ = spec.shape_;
             part.transform_ = spec.transform_;
             part.rotationMode_ = spec.rotationMode_;
@@ -864,6 +906,9 @@ writeManifest(const std::string &path, const PrefabDescription &description) {
         out << ", scale = ";
         writeVec3(out, part.transform_.scale_);
         out << " },\n      rotation_mode = " << static_cast<int>(part.rotationMode_) << ",\n";
+        if (!part.voxelRef_.empty()) {
+            out << "      anchor = " << static_cast<int>(part.anchor_) << ",\n";
+        }
         if (IRPrefab::RotationMode::ownsEntityCanvas(part.rotationMode_)) {
             out << "      canvas_size = { x = " << part.canvasSize_.x
                 << ", y = " << part.canvasSize_.y << " },\n";
@@ -1092,8 +1137,14 @@ SpawnResult spawnPrefab(IRScript::LuaScript &script, std::string_view id, IRMath
         IREntity::setComponent(entity, std::move(bindPoints));
     }
 
+    // The root's voxel_ref has no anchor field.
     if (loadedVoxels) {
-        attachVoxelContent(entity, *loadedVoxels, spawnedChildren);
+        attachVoxelContent(
+            entity,
+            *loadedVoxels,
+            IRComponents::EntityAnchor::CORNER,
+            spawnedChildren
+        );
     }
 
     // Optional declarative `components = { C_Foo = { field = ... }, ... }`

@@ -336,6 +336,7 @@ A part takes:
 | `voxel_ref` **or** `shape` | At most one. `voxel_ref` attaches like the root's (SHAPES records as children of the part, DENSE data on the part); `shape = { type = IRShape.*, params, color, flags }` is one `C_ShapeDescriptor` on the part. Neither = a bare node. |
 | `transform` | `{ translation, rotation (quat), scale }`, relative to the root. |
 | `rotation_mode` / `canvas_size` | As on the root; a canvas-owning mode allocates the part's own canvas. |
+| `anchor` | `voxel_ref` parts only (an error beside `shape`): the `IRComponent.EntityAnchor.*` integer saying how the DENSE content attaches to the part's translation. Absent = `CORNER`. A part turns about its translation, so a part that rotates is `CENTER`. The `.vxs` bounds are integers and cannot carry a `CENTER` / `GROUND` origin; this field is its only record. The root's own `voxel_ref` has no anchor and is `CORNER`. |
 | `lod = { fine, coarse }` | Inclusive band, indexed the engine way: `fine` is the finest tier (smallest index), `coarse` the coarsest. Defaults `LOD_0` / `LOD_4`. `{ fine = LOD_0, coarse = LOD_2 }` means "zoom 4× and up". |
 | `resident` | `true` keeps the part alive (hidden) outside its band instead of destroying it. |
 | `components` | The root's `components = {}` form, applied to the part. |

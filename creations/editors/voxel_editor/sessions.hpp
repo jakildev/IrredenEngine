@@ -63,6 +63,18 @@
 // when the selection moves between the two parts, and the scene-sized loft
 // tool refuses the 3x3x8 part instead of reading its masks at the wrong stride.
 //
+// `part_mode_cycle` proves a part made with Ctrl+P is centre-anchored and so
+// survives every render mode: GRID, DETACHED, DETACHED_REVOXELIZE and back,
+// with the Ctrl+M twin, a radial array, and a save, clear and reload on the
+// way. Each step asserts the private-canvas count and the part's mode.
+//
+// `corner_part_revox_refused` proves the editor keeps a part whose voxels are
+// not centred on its translation out of DETACHED_REVOXELIZE. Its part is
+// corner-anchored and built in session setup, because no GUI gesture makes
+// one. The PART MODE dropdown first takes the part to DETACHED, which shows
+// the dropdown clicks land; its DETACHED REVOX row is then refused, the
+// Ctrl+M twin previews GRID, and M returns to GRID.
+//
 // `parts_scroll` proves the PARTS list reaches every part once an array makes
 // more parts than the list has rows: the array's selection is scrolled into
 // view, the wheel walks the list to either end, and a row click there selects
@@ -112,6 +124,8 @@ enum class Id {
     TEXT_INPUT_COMMAND_CAPTURE,
     PART_SIZES,
     PARTS_SCROLL,
+    PART_MODE_CYCLE,
+    CORNER_PART_REVOX_REFUSED,
     MODULE_LOADED,
     COMPONENT_ATTACH,
     COMPONENT_FIELD_PAGE,
@@ -161,6 +175,10 @@ inline Id idFromName(const std::string &name) {
         return Id::PART_SIZES;
     if (name == "parts_scroll")
         return Id::PARTS_SCROLL;
+    if (name == "part_mode_cycle")
+        return Id::PART_MODE_CYCLE;
+    if (name == "corner_part_revox_refused")
+        return Id::CORNER_PART_REVOX_REFUSED;
     if (name == "module_loaded")
         return Id::MODULE_LOADED;
     if (name == "component_attach")
@@ -236,6 +254,22 @@ namespace detail {
 // same cells. In cells relative to (size / 2), the blob's front face is at
 // z = -2 and a paint cell one further forward, at z = -3, is empty.
 constexpr float kFirstWriteBlobRadius = 1.9f;
+
+// Translation of a Ctrl+P voxel part of the scene's size: the middle of its
+// box, (size - 1) / 2 cells in from the scene origin. Spelled from the scene
+// origin rather than through derivePartPivot, so an assertion on where the
+// editor seats a part does not read its expectation from the function that
+// seats it.
+inline IRMath::vec3 partPivot(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
+    return sceneOrigin +
+           IRComponents::anchorLocalCenter(IRComponents::EntityAnchor::CORNER, sceneSize);
+}
+
+// The move-gizmo drag the part sessions share: press the X arrow just off the
+// pivot and pull it along +x. The part follows by kGizmoDragPartDelta.
+constexpr IRMath::vec3 kGizmoDragGrabOffset{0.75f, 0.0f, 0.0f};
+constexpr IRMath::vec3 kGizmoDragPull{4.0f, 0.0f, 0.0f};
+constexpr IRMath::vec3 kGizmoDragPartDelta{8.0f / 3.0f, 0.0f, 0.0f};
 
 // The four gestures, on the seeded ground plane at the scene's centre — clear
 // of the left-column GUI panels in screen space and clear of the ground's edges
@@ -1586,6 +1620,18 @@ inline Recipe build(
         builder.expectPartAuthoredCount(0, 0, "first_part_starts_clear");
         builder.expectPartAuthoredCount(1, 0, "second_part_starts_clear");
 
+        // The gizmo is dragged while the part is still clear.
+        const IRMath::vec3 pivot = detail::partPivot(sceneSize, sceneOrigin);
+        const IRMath::vec3 movedPivot = pivot + detail::kGizmoDragPartDelta;
+        builder.segment("move_second");
+        builder.dragPartGizmo(
+            pivot + detail::kGizmoDragGrabOffset,
+            pivot + detail::kGizmoDragGrabOffset + detail::kGizmoDragPull,
+            detail::kGizmoDragPartDelta
+        );
+        builder.expectPartTransform(1, movedPivot, 0.25f, true, "second_part_moved_by_gizmo");
+        builder.expectPartTransform(0, pivot, 0.25f, true, "first_part_stays_at_its_pivot");
+
         builder.segment("bake_second");
         builder.bakeSphere(detail::kFirstWriteBlobRadius);
         builder.expectPartOccupancy(1, blobFront, true, "second_part_blob_baked");
@@ -1604,14 +1650,6 @@ inline Recipe build(
         builder.click(first);
         builder.expectPartOccupancy(0, first, true, "first_part_cell_painted");
 
-        builder.segment("move_second");
-        builder.nextPart();
-        const IRMath::vec3 dragStart = sceneOrigin + IRMath::vec3(0.75f, 0.0f, 0.0f);
-        const IRMath::vec3 dragEnd = dragStart + IRMath::vec3(4.0f, 0.0f, 0.0f);
-        const IRMath::vec3 movedOrigin = sceneOrigin + IRMath::vec3(8.0f / 3.0f, 0.0f, 0.0f);
-        builder.dragWorld(dragStart, dragEnd);
-        builder.expectPartTransform(1, movedOrigin, 0.25f, true, "second_part_moved_by_gizmo");
-
         builder.segment("save");
         builder.save();
         builder.segment("clear");
@@ -1621,14 +1659,15 @@ inline Recipe build(
         builder.reload();
         builder.expectPartOccupancy(0, first, true, "first_part_survives_reload");
         builder.expectPartOccupancy(1, second, true, "second_part_survives_reload");
-        builder.expectPartTransform(
+        builder
+            .expectPartTransform(1, pivot, 0.25f, false, "pre_move_transform_fails_after_reload");
+        builder.expectPartTransform(0, pivot, 0.25f, true, "unmoved_transform_survives_reload");
+        builder.expectPartTransform(1, movedPivot, 0.25f, true, "moved_transform_survives_reload");
+        builder.expectPartAnchor(
             1,
-            sceneOrigin,
-            0.25f,
-            false,
-            "pre_move_transform_fails_after_reload"
+            IRComponents::EntityAnchor::CENTER,
+            "center_anchor_survives_reload"
         );
-        builder.expectPartTransform(1, movedOrigin, 0.25f, true, "moved_transform_survives_reload");
         return builder.finish();
     }
     case Id::REMOVE_PART: {
@@ -1668,6 +1707,19 @@ inline Recipe build(
         builder.addVoxelPart();
         builder.addVoxelPart();
         builder.dragLodSlider(SliderTarget::LOD_FINE, 2);
+
+        // The gizmo is dragged while the source is still clear.
+        const IRMath::vec3 pivot = detail::partPivot(sceneSize, sceneOrigin);
+        const IRMath::vec3 movedPivot = pivot + detail::kGizmoDragPartDelta;
+        builder.segment("move_source");
+        builder.dragPartGizmo(
+            pivot + detail::kGizmoDragGrabOffset,
+            pivot + detail::kGizmoDragGrabOffset + detail::kGizmoDragPull,
+            detail::kGizmoDragPartDelta
+        );
+        builder.expectPartTransform(1, movedPivot, 0.25f, true, "source_moved_by_gizmo");
+
+        builder.segment("bake_source");
         builder.bakeSphere(detail::kFirstWriteBlobRadius);
 
         builder.segment("attach_source_component");
@@ -1697,11 +1749,7 @@ inline Recipe build(
         builder.click(edited);
         builder.expectPartOccupancy(1, edited, true, "source_edit_before_removal");
 
-        builder.segment("move_and_preview_source");
-        const IRMath::vec3 dragStart = sceneOrigin + IRMath::vec3(0.75f, 0.0f, 0.0f);
-        const IRMath::vec3 dragEnd = dragStart + IRMath::vec3(4.0f, 0.0f, 0.0f);
-        const IRMath::vec3 movedOrigin = sceneOrigin + IRMath::vec3(8.0f / 3.0f, 0.0f, 0.0f);
-        builder.dragWorld(dragStart, dragEnd);
+        builder.segment("preview_source");
         builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonM);
         builder.expectCanvasCount(1, "preview_owns_private_canvas");
 
@@ -1735,7 +1783,7 @@ inline Recipe build(
         builder.expectPartCount(5, "undo_restores_detached_source_count");
         builder.expectSelectedPartVisible(1, "undo_reselects_detached_source");
         builder.expectPartId(1, "part_2", "undo_restores_authored_part_id");
-        builder.expectPartTransform(1, movedOrigin, 0.25f, true, "undo_restores_transform");
+        builder.expectPartTransform(1, movedPivot, 0.25f, true, "undo_restores_transform");
         builder.expectSliderValue(SliderTarget::LOD_FINE, 2.0f, 0.01f, "undo_restores_lod_band");
         builder.expectPartOccupancy(1, edited, true, "undo_restores_voxels");
         builder.expectRotationMode(
@@ -1898,12 +1946,12 @@ inline Recipe build(
         builder.applyRadialArray(6);
         builder.expectPartCount(7, "six_copies_plus_source");
         builder.expectPartGated(1, true, 0, "copy_keeps_band_and_tier_pin");
+        const IRMath::vec3 pivot = detail::partPivot(sceneSize, sceneOrigin);
         for (int i = 0; i < 6; ++i) {
             const float angle = IRMath::kTwoPi * static_cast<float>(i) / 6.0f;
             builder.expectPartTransform(
                 i + 1,
-                sceneOrigin +
-                    IRMath::vec3(4.0f * IRMath::cos(angle), 4.0f * IRMath::sin(angle), 0.0f),
+                pivot + IRMath::vec3(4.0f * IRMath::cos(angle), 4.0f * IRMath::sin(angle), 0.0f),
                 1.0f,
                 true,
                 "radial_copy_transform_" + std::to_string(i)
@@ -1924,17 +1972,19 @@ inline Recipe build(
         builder.segment("array");
         builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonL);
         builder.expectPartCount(4, "three_copies_plus_source");
+        const IRMath::vec3 pivot = detail::partPivot(sceneSize, sceneOrigin);
+        builder.expectPartTransform(0, pivot, 1.0f, true, "linear_source_at_its_pivot");
         for (int i = 0; i < 3; ++i) {
             builder.expectPartTransform(
                 i + 1,
-                sceneOrigin + IRMath::vec3(static_cast<float>(i + 1) * 2.0f, 0.0f, 0.0f),
+                pivot + IRMath::vec3(static_cast<float>(i + 1) * 2.0f, 0.0f, 0.0f),
                 1.0f,
                 true,
                 "linear_copy_transform_" + std::to_string(i)
             );
             builder.expectPartTransform(
                 i + 1,
-                sceneOrigin,
+                pivot,
                 1.0f,
                 false,
                 "linear_copy_not_at_source_" + std::to_string(i)
@@ -2129,9 +2179,11 @@ inline Recipe build(
         builder.setPartSize(stemSize);
         builder.addVoxelPart();
         builder.expectPartExtent(kStem, stemSize, "stem_created_at_slider_size");
+        // A part's translation is the middle of its box: its seated minimum
+        // corner (-1.5, -1.5, -4) plus (size - 1) / 2.
         builder.expectPartTransform(
             kStem,
-            IRMath::vec3(-1.5f, -1.5f, -4.0f),
+            IRMath::vec3(-0.5f, -0.5f, -0.5f),
             kTolerance,
             true,
             "stem_seated_by_its_own_extent"
@@ -2143,7 +2195,7 @@ inline Recipe build(
         builder.expectPartExtent(kFrame, frameSize, "frame_created_at_slider_size");
         builder.expectPartTransform(
             kFrame,
-            IRMath::vec3(-2.5f, -2.5f, 3.0f),
+            IRMath::vec3(-0.5f, -0.5f, 3.0f),
             kTolerance,
             true,
             "frame_seated_by_its_own_extent"
@@ -2240,6 +2292,119 @@ inline Recipe build(
         builder.segment("scene_wheel");
         builder.wheelScene(inFrontOfBlob, -1);
         builder.expectCameraZoom(kSessionZoom, false, "scene_wheel_zooms");
+        return builder.finish();
+    }
+    case Id::PART_MODE_CYCLE: {
+        Builder builder("part_mode_cycle", sceneSize, sceneOrigin);
+        const IRMath::ivec3 center(sceneSize.x / 2, sceneSize.y / 2, sceneSize.z / 2);
+        const IRMath::ivec3 blobFront = center + IRMath::ivec3(0, 0, -2);
+        using IRComponents::RotationMode;
+
+        builder.segment("grid");
+        builder.addVoxelPart();
+        builder.expectPartAnchor(0, IRComponents::EntityAnchor::CENTER, "ctrl_p_part_is_center");
+        builder.expectCanvasCount(0, "grid_has_no_private_canvas");
+        builder.expectRotationMode(0, RotationMode::GRID, "part_starts_grid");
+
+        builder.segment("bake");
+        builder.bakeSphere(detail::kFirstWriteBlobRadius);
+        builder.expectPartOccupancy(0, blobFront, true, "blob_baked");
+
+        builder.segment("detached");
+        builder.tapKey(IRInput::kKeyButtonM);
+        builder.expectCanvasCount(1, "detached_allocates_private_canvas");
+        builder.expectRotationMode(0, RotationMode::DETACHED, "part_cycles_to_detached");
+
+        builder.segment("detached_twin");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonM);
+        builder.expectCanvasCount(2, "revox_twin_of_detached_part_owns_canvas");
+        builder.expectRotationMode(0, RotationMode::DETACHED, "twin_does_not_change_authored_mode");
+
+        builder.segment("detached_twin_off");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonM);
+        builder.expectCanvasCount(1, "twin_toggle_releases_twin_canvas");
+
+        builder.segment("revox");
+        builder.tapKey(IRInput::kKeyButtonM);
+        builder.expectCanvasCount(1, "revox_keeps_private_canvas");
+        builder.expectRotationMode(0, RotationMode::DETACHED_REVOXELIZE, "part_cycles_to_revox");
+        builder.expectPartModeDropdown(
+            RotationMode::DETACHED_REVOXELIZE,
+            "dropdown_follows_the_cycle"
+        );
+
+        builder.segment("revox_array");
+        builder.applyRadialArrayToLiveScene(3);
+        builder.expectPartCount(4, "revox_array_copies_created");
+        builder.expectCanvasCount(4, "revox_array_copies_allocate_canvases");
+        builder.expectRotationMode(
+            3,
+            RotationMode::DETACHED_REVOXELIZE,
+            "revox_array_copy_reconciles_canvas"
+        );
+        builder
+            .expectPartAnchor(3, IRComponents::EntityAnchor::CENTER, "revox_array_copy_is_center");
+
+        builder.segment("revox_array_undo");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonZ);
+        builder.expectPartCount(1, "revox_array_undo_restores_source");
+        builder.expectCanvasCount(1, "revox_array_undo_releases_copy_canvases");
+
+        builder.segment("save");
+        builder.save();
+        builder.expectManifestContains("anchor = 1,", "manifest_states_center_anchor");
+        builder.segment("clear");
+        builder.clearEntityScene();
+        builder.expectPartCount(0, "scene_cleared");
+        builder.expectCanvasCount(0, "clear_releases_private_canvas");
+        builder.segment("load");
+        builder.reload();
+        builder.expectPartCount(1, "revox_part_reloaded");
+        builder.expectCanvasCount(1, "reloaded_revox_part_owns_canvas");
+        builder.expectRotationMode(0, RotationMode::DETACHED_REVOXELIZE, "revox_mode_reloaded");
+        builder.expectPartAnchor(0, IRComponents::EntityAnchor::CENTER, "center_anchor_reloaded");
+        builder.expectPartOccupancy(0, blobFront, true, "baked_cell_reloaded");
+
+        builder.segment("grid_return");
+        builder.tapKey(IRInput::kKeyButtonM);
+        builder.expectCanvasCount(0, "grid_releases_private_canvas");
+        builder.expectRotationMode(0, RotationMode::GRID, "part_cycles_back_to_grid");
+        return builder.finish();
+    }
+    case Id::CORNER_PART_REVOX_REFUSED: {
+        Builder builder("corner_part_revox_refused", sceneSize, sceneOrigin);
+        using IRComponents::RotationMode;
+
+        builder.segment("grid");
+        builder.expectPartAnchor(0, IRComponents::EntityAnchor::CORNER, "setup_part_is_corner");
+        builder.expectCanvasCount(0, "grid_has_no_private_canvas");
+        builder.expectRotationMode(0, RotationMode::GRID, "part_starts_grid");
+
+        builder.segment("dropdown_detached");
+        builder.selectPartMode(RotationMode::DETACHED);
+        builder.expectCanvasCount(1, "dropdown_detached_allocates_private_canvas");
+        builder.expectRotationMode(0, RotationMode::DETACHED, "dropdown_selects_detached");
+        builder.expectPartModeDropdown(RotationMode::DETACHED, "dropdown_shows_detached");
+
+        builder.segment("twin");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonM);
+        builder.expectCanvasCount(1, "twin_of_corner_part_previews_grid");
+
+        builder.segment("twin_off");
+        builder.chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonM);
+        builder.expectCanvasCount(1, "twin_toggle_keeps_part_canvas");
+
+        builder.segment("dropdown_revox");
+        builder.selectPartMode(RotationMode::DETACHED_REVOXELIZE);
+        builder.expectRotationMode(0, RotationMode::DETACHED, "dropdown_revox_request_refused");
+        builder.expectCanvasCount(1, "refused_request_keeps_canvas_count");
+        builder.expectPartModeDropdown(RotationMode::DETACHED, "dropdown_resyncs_to_prior_mode");
+
+        builder.segment("m_skips_revox");
+        builder.tapKey(IRInput::kKeyButtonM);
+        builder.expectCanvasCount(0, "m_from_detached_releases_canvas");
+        builder.expectRotationMode(0, RotationMode::GRID, "m_from_detached_reaches_grid");
+        builder.expectPartModeDropdown(RotationMode::GRID, "dropdown_shows_grid");
         return builder.finish();
     }
     case Id::MODULE_LOADED:

@@ -8,6 +8,7 @@
 #include <irreden/ir_math.hpp>
 #include <irreden/math/sdf.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/common/components/entity_anchor.hpp>
 #include <irreden/common/rotation_mode.hpp>
 #include <irreden/render/lod_level.hpp>
 #include <irreden/update/components/component_prefab_parts.hpp>
@@ -61,6 +62,10 @@ struct PrefabComponentDescription {
 struct PrefabPartDescription {
     std::string id_;
     std::string voxelRef_;
+    // How the voxel_ref content attaches to the part's translation. The `.vxs`
+    // stores integer bounds, so this field is the only record of a non-CORNER
+    // anchor. Unused by a shape part.
+    IRComponents::EntityAnchor anchor_ = IRComponents::EntityAnchor::CORNER;
     std::optional<PrefabShapeDescription> shape_;
     IRComponents::C_LocalTransform transform_;
     IRComponents::RotationMode rotationMode_ = IRComponents::RotationMode::GRID;

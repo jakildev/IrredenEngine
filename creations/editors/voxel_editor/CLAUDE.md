@@ -22,8 +22,11 @@ Design log, findings and the authoring-session history:
   alone (reveal after the array, wheel, row click),
   `mode_preview` proves the deferred render-mode switch allocates and releases
   the selected part's private canvas while rotated and private-canvas parts stay
-  outside the axis-aligned edit pick, and `part_sizes` creates two parts of
-  different extents and holds the mirror and loft tools to them.
+  outside the axis-aligned edit pick, `part_sizes` creates two parts of
+  different extents and holds the mirror and loft tools to them,
+  `part_mode_cycle` takes a Ctrl+P part through every render mode, the Ctrl+M
+  twin, an array, and a save and reload, and `corner_part_revox_refused` proves
+  a part that is not centred on its translation is kept out of DETACHED REVOX.
 - `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
   render reference set, discovered under this creation's `test/references/`.
 - `python3 scripts/author-entity.py <entity>` — replays an entity session twice
@@ -72,6 +75,19 @@ render, because the aim and the pick share one screen mapping.
   bounds; the manifest carries no size. An edit path sizes from the set it
   edits, never from `g_editableSceneSize`. The loft tool is the exception: its
   masks are scene-sized, so it refuses a part of any other extent.
+- Every voxel part the editor creates is `EntityAnchor::CENTER`: its
+  translation is the middle of its box and the point it turns about. The
+  manifest's per-part `anchor` carries that through save and load, and every
+  rebuild of a part's set (array copy, Ctrl+M twin, load, undo of a removal)
+  passes the source's anchor to `DenseVoxel::toComponent`. A world-to-cell
+  conversion goes through `voxelSetCellOrigin`, never the translation alone.
+- A part enters DETACHED REVOX only when `voxelSetIsCentered` holds, which a
+  loaded manifest with no `anchor` (CORNER) usually fails: `M` and the twin
+  skip the mode, the dropdown refuses it, and `load` rejects a manifest that
+  asks for it.
+- A part's move gizmo sits at its pivot, inside whatever is authored at the
+  box centre, and an occluded handle takes no click. A session drags a part's
+  gizmo (`Builder::dragPartGizmo`) before anything is authored into it.
 - `EntityScene` owns one root and its ordered part records. Only the selected
   voxel part receives paint; other voxel parts carry `C_EditorReference`.
 - A part's LOD band (`EditorPart::lodMax_` fine .. `lodMin_` coarse) is
