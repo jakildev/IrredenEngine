@@ -44,7 +44,7 @@ class LightVerifyCompletionTest(unittest.TestCase):
         }
 
     def drive(self, *, token=CLEAN, rc=0, empty=False, omit_domains=False,
-              baselines=False, update=False):
+              baselines=False, update=False, compare_results=None):
         def run_pass(command, worktree, shots_dir, timeout):
             flag = next(flag for flag in lv.PASSES if f"--{flag}" in command)
             log = self.logs[flag]
@@ -65,19 +65,51 @@ class LightVerifyCompletionTest(unittest.TestCase):
 
         argv = ["--no-build"] + (["--update-baselines", "--force"] if update else [])
         out, err = io.StringIO(), io.StringIO()
+        compare_kwargs = (
+            {"return_value": {"pass": True}}
+            if compare_results is None
+            else {"side_effect": compare_results}
+        )
         with patch.object(lv.verify_common, "detect_worktree_root", return_value=self.root), \
                 patch.object(lv.verify_common, "detect_backend", return_value="test"), \
                 patch.object(lv.verify_common, "find_exe", return_value=self.exe), \
                 patch.object(lv.verify_common, "run_pass", side_effect=run_pass), \
-                patch.object(lv.verify_common, "compare", return_value={"pass": True}) as compare, \
+                patch.object(lv.verify_common, "compare", **compare_kwargs) as compare, \
                 redirect_stdout(out), redirect_stderr(err):
             result = lv.main(argv)
+        self.compare_calls = compare.call_args_list
         return result, out.getvalue(), err.getvalue(), compare.call_count
 
     def test_clean_complete_passes_still_compare_every_image(self):
         result, out, _, compared = self.drive(baselines=True)
         self.assertEqual((result, compared), (0, 6))
         self.assertIn("all checks PASS", out)
+
+    def test_difference_classes_are_requested_and_printed_for_failures(self):
+        failures = [
+            {"pass": False, "match_pct": 90.0, "max_delta": 20, "psnr_db": 20.0,
+             "difference_class": "shift", "shift": [-1, -1]},
+            {"pass": False, "match_pct": 90.0, "max_delta": 20, "psnr_db": 20.0,
+             "difference_class": "local"},
+            {"pass": False, "match_pct": 90.0, "max_delta": 20, "psnr_db": 20.0,
+             "difference_class": "global"},
+        ]
+        passing = [
+            {"pass": True, "match_pct": 100.0, "max_delta": 0, "psnr_db": "inf",
+             "difference_class": "identical"}
+            for _ in range(3)
+        ]
+        result, out, _, compared = self.drive(
+            baselines=True, compare_results=failures + passing
+        )
+
+        self.assertEqual((result, compared), (1, 6))
+        self.assertIn("shift(-1,-1)", out)
+        self.assertIn("class=shift(-1,-1)", out)
+        self.assertIn("class=local", out)
+        self.assertIn("class=global", out)
+        self.assertTrue(all(call.kwargs.get("classify") is True
+                            for call in self.compare_calls))
 
     def test_clean_evidence_preserves_missing_backend_baseline_skip(self):
         result, out, _, compared = self.drive()
