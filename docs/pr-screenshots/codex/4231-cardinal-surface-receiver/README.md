@@ -67,3 +67,10 @@ prove continuous shadow coverage inside every display triangle, remove bounded
 shadow-index overflow, or fix unrelated SDF raster/lighting artifacts. Native
 OpenGL execution remains a cross-host check. This is a correctness change, not
 a measured performance improvement.
+
+## Whole-suite follow-up
+
+The [reference attribution](reference-attribution/README.md) retains every refreshed
+before/after pair, distinguishes new receiver changes from inherited drift, and
+records the fog review. The [staircase witness](staircase-witness/README.md) explains
+why a newly sharp band is real voxel occlusion rather than a parity defect.

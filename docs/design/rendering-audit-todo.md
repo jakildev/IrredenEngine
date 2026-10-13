@@ -69,6 +69,27 @@ incomplete-index fallback edges remain open.
    receiver path before extending it; check whether rejecting unsupported frame
    modes before owner-buffer reads materially reduces its overhead.
 
+### Cardinal voxel receivers (#4231)
+
+Implemented on #4363 with an explicit voxel-producer carrier bit, exact emitted
+microface centers, and world-unit cascade selection. Both shader backends share
+the same contract. The native 720-frame sweep improves every cardinal to below
+1.3; all 716 non-cardinal frames remain byte-identical. The authored-box, analytic
+roof and unblocked-staircase rejection controls pass. [Evidence and limits](../pr-screenshots/codex/4231-cardinal-surface-receiver/README.md).
+
+The full native reference sweep exposed expected shadow changes and inherited
+reference drift; retain the [paired attribution](../pr-screenshots/codex/4231-cardinal-surface-receiver/reference-attribution/README.md)
+when reviewing the deliberate reference refresh. A new thin staircase band was
+checked against independent voxel occupancy: an actual distinct voxel blocks the
+surface-center ray, while the old outward offset misses it. Do not erase genuine
+stepped occlusion to make a beauty image more uniform.
+
+Before merge: reconcile the overlapping #4362 receiver implementation and its
+moving-caster coverage with this contract, complete the refreshed whole-suite run,
+and preserve the existing #4246 integration hold. Other-host smoke and measured
+receiver-stage cost remain due. This item is not a claim that incomplete-index
+fallback edges, every curved receiver, or million-entity throughput are solved.
+
 ### FOW integration checkpoint (2026-10-11)
 
 Master `9e45a862e` includes #4248's fog-gate repair across rotation-mode switches
