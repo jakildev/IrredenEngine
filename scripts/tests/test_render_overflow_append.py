@@ -68,14 +68,22 @@ int main() {
     if(perAxisWinnerIds[301]!=2 || perAxisWinnerIds[305]!=0) return 2;
     if(perAxisWinnerIds[320]!=0x00080008u ||
        perAxisWinnerIds[321]!=0x22222222u || perAxisWinnerIds[322]!=101u ||
-       perAxisWinnerIds[323]!=0x00080008u ||
-       perAxisWinnerIds[324]!=0x33333333u || perAxisWinnerIds[325]!=(102u|kFogOverflowCutFaceBit)) return 3;
-    if(fogOverflowEntryKey(perAxisWinnerIds[325])!=102) return 6;
+       perAxisWinnerIds[323]!=(0x00080008u|kOverflowCutFaceBit) ||
+       perAxisWinnerIds[324]!=0x33333333u || perAxisWinnerIds[325]!=102u) return 3;
+    if(overflowEntryCell(perAxisWinnerIds[323])!=0x00080008u ||
+       !overflowEntryIsCutFace(perAxisWinnerIds[323])) return 6;
     append(face,103,0x44444444u); // cap reports, count stays capped
     if(perAxisWinnerIds[301]!=2 || perAxisWinnerIds[305]!=1 ||
        perAxisWinnerIds[326]!=0) return 4;
     append({1000,0,0},104,0x55555555u); // off-canvas cardinal key
     if(perAxisWinnerIds[301]!=2 || perAxisWinnerIds[305]!=1) return 5;
+    perAxisWinnerIds[301]=0;
+    append(face,-32768,0x87654321u,false);
+    append(face,-32768,0x87654321u,true);
+    if((perAxisWinnerIds[320]^perAxisWinnerIds[323])!=kOverflowCutFaceBit ||
+       perAxisWinnerIds[321]!=perAxisWinnerIds[324] ||
+       perAxisWinnerIds[322]!=perAxisWinnerIds[325] ||
+       int(perAxisWinnerIds[322])!=-32768) return 7;
     std::puts("overflow append controls passed");
     return 0;
 }
@@ -91,10 +99,13 @@ def adapter(source, metal):
         function = re.sub(r"\b(?:constant|device)\s+", "", function)
     folder = ROOT / "engine/render/src/shaders" / ("metal" if metal else "")
     common = (folder / ("ir_iso_common.metal" if metal else "ir_iso_common.glsl")).read_text()
-    flag = re.search(r"(?:const|constant) uint kFogOverflowCutFaceBit = [^;]+;", common).group()
+    flag = re.search(r"(?:const|constant) uint kOverflowCutFaceBit = [^;]+;", common).group()
     flag = flag.replace("constant", "const")
-    key = functions(common, "fogOverflowEntryKey")
-    return HOST + flag + key + "\n" + ("#define METAL_ADAPTER\n" if metal else "") + function + CHECKS
+    key = "\n".join(functions(common, name) for name in (
+        "packOverflowEntryCell", "overflowEntryCell", "overflowEntryIsCutFace"))
+    key = re.sub(r"\bint2\b", "ivec2", key)
+    return (HOST + flag + key + "\n" + ("#define METAL_ADAPTER\n" if metal else "")
+            + function + CHECKS)
 
 
 def run_host(source):
@@ -119,7 +130,8 @@ class OverflowAppendTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertIn("controls passed", result.stdout)
 
-                cut_mutant = host.replace("isCutFace ? kFogOverflowCutFaceBit", "false ? kFogOverflowCutFaceBit")
+                cut_mutant = host.replace(
+                    "isCutFace ? kOverflowCutFaceBit", "false ? kOverflowCutFaceBit")
                 self.assertNotEqual(cut_mutant, host)
                 self.assertNotEqual(run_host(cut_mutant).returncode, 0)
 

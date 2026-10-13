@@ -315,15 +315,23 @@ uvec2 encodeEntityIdFogWholeBody(uvec2 packedId, bool isFogWholeBody) {
 // (the scatter forces the entry opaque): 255 is FIELD, and a BODY's 8-bit
 // factor is rescaled onto 0..254 so a fully revealed body still reads state
 // 1.0 (ir_fog_common fogOverflowBodyState).
-// The high bit carries cut provenance; depth ordering uses only the key.
-const uint kFogOverflowCutFaceBit = 0x80000000u;
-int fogOverflowEntryKey(uint word) {
-    return int(word & 0x7FFFFFFFu);
-}
-
 const uint kFogOverflowFieldByte = 255u;
 uint encodeFogOverflowClassByte(bool isFogBody, uint factor) {
     return isFogBody ? ((factor & 0xFFu) * 254u + 127u) / 255u : kFogOverflowFieldByte;
+}
+
+// Overflow word 0: x in bits 15:0, y in 30:16, cut-face provenance in 31.
+// PerAxisCanvasStore::allocate bounds the canvas height below 32768 cells.
+const uint kOverflowCutFaceBit = 0x80000000u;
+uint packOverflowEntryCell(ivec2 cell, bool isCutFace) {
+    return uint(cell.x) | (uint(cell.y) << 16u) |
+           (isCutFace ? kOverflowCutFaceBit : 0u);
+}
+uint overflowEntryCell(uint word) {
+    return word & ~kOverflowCutFaceBit;
+}
+bool overflowEntryIsCutFace(uint word) {
+    return (word & kOverflowCutFaceBit) != 0u;
 }
 
 // Per-axis fractional encoding:

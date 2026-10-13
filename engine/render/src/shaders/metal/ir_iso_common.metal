@@ -284,14 +284,22 @@ inline uint2 encodeEntityIdAnalyticSurface(uint2 packedId) {
 inline uint2 encodeEntityIdFogWholeBody(uint2 packedId, bool isFogWholeBody) {
     return encodeEntityIdFogBody(packedId, isFogWholeBody, 255u);
 }
-// Overflow-entry fog class byte — GLSL twin: 255 FIELD, a BODY factor rescaled
-// onto 0..254.
-// The high bit carries cut provenance; depth ordering uses only the key.
-constant uint kFogOverflowCutFaceBit = 0x80000000u;
-inline int fogOverflowEntryKey(uint word) {
-    return int(word & 0x7FFFFFFFu);
+// Overflow word 0: x in bits 15:0, y in 30:16, cut-face provenance in 31.
+// PerAxisCanvasStore::allocate bounds the canvas height below 32768 cells.
+constant uint kOverflowCutFaceBit = 0x80000000u;
+inline uint packOverflowEntryCell(int2 cell, bool isCutFace) {
+    return uint(cell.x) | (uint(cell.y) << 16u) |
+           (isCutFace ? kOverflowCutFaceBit : 0u);
+}
+inline uint overflowEntryCell(uint word) {
+    return word & ~kOverflowCutFaceBit;
+}
+inline bool overflowEntryIsCutFace(uint word) {
+    return (word & kOverflowCutFaceBit) != 0u;
 }
 
+// Overflow-entry fog class byte — GLSL twin: 255 FIELD, a BODY factor rescaled
+// onto 0..254.
 constant uint kFogOverflowFieldByte = 255u;
 inline uint encodeFogOverflowClassByte(bool isFogBody, uint factor) {
     return isFogBody ? ((factor & 0xFFu) * 254u + 127u) / 255u : kFogOverflowFieldByte;

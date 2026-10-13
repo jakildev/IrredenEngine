@@ -466,18 +466,24 @@ point, not the raw cardinal pixel recovery. This test precedes the paint's
 fully-revealed early return. The stored tone applies with treatment on or
 off, defaulting to `kFogCutTone`.
 
-**Overflow cut provenance remains design-blocked in #4305.** The prescribed
-word-2 bit-31 flag (`kFogOverflowCutFaceBit`) and masked
-`fogOverflowEntryKey` are present in the WIP, but bit 31 is already the sign
-of the existing per-axis depth field `[31:15]`. For example, the valid
-uncut key `0xFFFF8000` decodes to depth -1; masking bit 31 decodes it to
-65535 and also misidentifies the uncut face as a cap. The same stored word
-would represent depth 65535 with a cut flag, so a reader cannot recover both
-the full signed depth and independent provenance from that word. The
-existing surface-reconstruction oracle fails on both shader dialects,
-including with ceilings disabled. The class byte and entry stride remain
-unchanged pending a ruling on a lossless provenance carrier; the bit-31
-proposal is not a valid final encoding.
+Overflow cut provenance uses **word 0, bit 31**, with x in bits 15:0 and y
+in 30:16. `PerAxisCanvasStore::allocate` asserts a canvas height below 32768
+cells. `ir_iso_common.{glsl,metal}` owns `kOverflowCutFaceBit`,
+`packOverflowEntryCell`, `overflowEntryCell` and `overflowEntryIsCutFace`;
+the append packs the selection verdict, and every consumer masks the cell
+through the shared helper. Words 1 and 2 and the three-word stride are
+unchanged, preserving the full signed 17-bit depth and BODY class byte.
+The sort orders `(masked cell, encoded distance, colour, cut flag)`: the
+flag breaks only otherwise identical ties, so the key covers every bit and
+strict compare-exchange remains deterministic. The all-ones sentinel sorts
+last because no real cell reaches x=65535. Only the fog overflow pass reads
+the flag for cap tone; scatter and lighting preserve their cell recovery.
+
+Rejected carriers: a fourth word increases bandwidth and shared-memory sort
+cost on every rotating frame; word 2 has no free bit without narrowing the
+signed depth domain; the class byte has no free value without requantizing
+BODY; dropping provenance would require the paint to recover authored face
+exposure it cannot read, or make the store own the cap paint rule.
 
 A retained fragment of the styled contribution is blended toward its source
 colour multiplied by `capTone`, on every face axis. The weight of that blend,

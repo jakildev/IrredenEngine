@@ -239,10 +239,9 @@ void overflowAppendTap(
     }
     const uint entryBase = uint(overflowScratchLayout.z) + idx * 3u;
     perAxisWinnerIds[entryBase + 0u] =
-        (uint(cardPix.x) & 0xFFFFu) | ((uint(cardPix.y) & 0xFFFFu) << 16u);
+        packOverflowEntryCell(cardPix, isCutFace);
     perAxisWinnerIds[entryBase + 1u] = colorPacked;
-    perAxisWinnerIds[entryBase + 2u] = uint(voxelDistance) |
-        (isCutFace ? kFogOverflowCutFaceBit : 0u);
+    perAxisWinnerIds[entryBase + 2u] = uint(voxelDistance);
 }
 
 // Emit a face's 2x3 trixel block through the deformation matrix D.

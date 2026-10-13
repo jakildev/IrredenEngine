@@ -114,12 +114,11 @@ inline void overflowAppendTap(
     const uint entryBase = uint(frameData.overflowScratchLayout.z) + idx * 3u;
     atomic_store_explicit(
         &scratch[entryBase + 0u],
-        (uint(cardPix.x) & 0xFFFFu) | ((uint(cardPix.y) & 0xFFFFu) << 16u),
+        packOverflowEntryCell(cardPix, isCutFace),
         memory_order_relaxed
     );
     atomic_store_explicit(&scratch[entryBase + 1u], colorPacked, memory_order_relaxed);
-    atomic_store_explicit(&scratch[entryBase + 2u], uint(voxelDistance) |
-        (isCutFace ? kFogOverflowCutFaceBit : 0u), memory_order_relaxed);
+    atomic_store_explicit(&scratch[entryBase + 2u], uint(voxelDistance), memory_order_relaxed);
 }
 
 // Emit a face's 2x3 trixel block through the deformation matrix D.

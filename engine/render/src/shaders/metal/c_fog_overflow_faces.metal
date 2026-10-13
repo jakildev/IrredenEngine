@@ -21,9 +21,9 @@ kernel void c_fog_overflow_faces(
     }
 
     const uint entryBase = uint(layout.z) + gid * 3u;
-    const uint packedCell = overflowScratch[entryBase + 0u];
+    const uint packedCell = overflowEntryCell(overflowScratch[entryBase + 0u]);
     const uint colorPacked = overflowScratch[entryBase + 1u];
-    const int encoded = fogOverflowEntryKey(overflowScratch[entryBase + 2u]);
+    const int encoded = int(overflowScratch[entryBase + 2u]);
     const uint fogClassByte = colorPacked >> 24u;
     if (fogClassByte != kFogOverflowFieldByte) {
         const float bodyState = fogOverflowBodyState(fogClassByte);
@@ -54,7 +54,7 @@ kernel void c_fog_overflow_faces(
         }
     }
 
-    if ((overflowScratch[entryBase + 2u] & kFogOverflowCutFaceBit) != 0u) {
+    if (overflowEntryIsCutFace(overflowScratch[entryBase + 0u])) {
         const float3 facePoint = pos3D;
         if (fogCeilingCutFace(facePoint, faceId, fogObservers, canvasFogOfWar)) {
             const float4 sourceColor = unpackColor(colorPacked);

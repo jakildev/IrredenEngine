@@ -1139,7 +1139,9 @@ TEST(FogCrossSectionShaderParity, CeilingRetentionAndOverflowKeysAgree) {
           "fogCeilingPresenceFromMask",
           "fogCeilingPresence",
           "fogCeilingRetained",
-          "fogOverflowEntryKey"}) {
+          "packOverflowEntryCell",
+          "overflowEntryCell",
+          "overflowEntryIsCutFace"}) {
         const auto lhs = extractFunctionBody(glsl, helper);
         const auto rhs = extractFunctionBody(metal, helper);
         ASSERT_FALSE(lhs.empty()) << helper;
@@ -1152,7 +1154,7 @@ TEST(FogCrossSectionShaderParity, CeilingRetentionAndOverflowKeysAgree) {
         EXPECT_DOUBLE_EQ(aa, IRPrefab::Fog::detail::kFogCeilingAdmitAa);
         EXPECT_NE(source.find("0x80000000u"), std::string::npos);
         EXPECT_NE(
-            extractFunctionBody(source, "fogOverflowEntryKey").find("0x7FFFFFFFu"),
+            extractFunctionBody(source, "overflowEntryCell").find("~kOverflowCutFaceBit"),
             std::string::npos
         );
     }
@@ -1166,7 +1168,7 @@ TEST(FogCrossSectionShaderParity, CeilingRetentionAndOverflowKeysAgree) {
           "/c_fog_overflow_faces.glsl",
           "/metal/c_fog_overflow_faces.metal"}) {
         const auto source = readShaderSource(std::string(IR_TEST_RENDER_SHADER_DIR) + path);
-        EXPECT_NE(source.find("fogOverflowEntryKey("), std::string::npos) << path;
+        EXPECT_NE(source.find("overflowEntryCell("), std::string::npos) << path;
     }
 }
 
