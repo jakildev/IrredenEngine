@@ -7,6 +7,7 @@
 #include <RtMidi.h>
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -34,6 +35,7 @@ class MidiOut {
 
     const std::vector<std::string> &getPortNames() const;
     std::vector<int> getOpenPortIndices() const;
+    bool isPortOpen(int portIndex) const;
 
     // Sends to the default port (the first one opened) — back-compat surface.
     void sendMessage(const std::vector<unsigned char> &message);
@@ -50,6 +52,9 @@ class MidiOut {
     unsigned int m_numberPorts;
     std::vector<std::string> m_portNames;
     std::vector<std::unique_ptr<MidiOutPort>> m_ports;
+    // One lock over the port list and every send: the MidiClock thread writes
+    // its pulses to a port the main thread is sending notes and CC to.
+    mutable std::mutex m_portsMutex;
 };
 
 } // namespace IRAudio

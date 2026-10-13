@@ -3,10 +3,32 @@
 #include <irreden/audio/audio_manager.hpp>
 
 namespace IRAudio {
+
+namespace {
+
+// The clock's port writer. The pulses reach it on the clock thread, so it
+// touches the port and nothing else.
+MidiClock::RealtimeSend midiClockWrite(AudioManager &manager) {
+    return [&manager](int portIndex, unsigned char status) {
+        manager.getMidiOut().sendMessage(portIndex, std::vector<unsigned char>{status});
+    };
+}
+
+// START and STOP reach the outbound observer ahead of the port, the order
+// IRAudio::sendMidiMessage gives every other outbound message.
+MidiClock::RealtimeSend midiClockObserveTransport(AudioManager &manager) {
+    return [&manager](int portIndex, unsigned char status) {
+        manager.fireOutboundMidiObserver(IRComponents::C_MidiMessage{status, 0, 0}, portIndex);
+    };
+}
+
+} // namespace
+
 AudioManager::AudioManager()
     : m_audio{}
     , m_midiIn{}
     , m_midiOut{}
+    , m_midiClock{midiClockWrite(*this), midiClockObserveTransport(*this)}
     , m_audioPlayback{} {
     // for(auto& midiInInterface : midiInInterfaces) {
     //     m_midiIn.openPort(midiInInterface);
@@ -27,12 +49,14 @@ AudioManager::AudioManager(
     : m_audio{std::move(inputBackend), std::move(outputBackend), deadlines}
     , m_midiIn{}
     , m_midiOut{}
+    , m_midiClock{midiClockWrite(*this), midiClockObserveTransport(*this)}
     , m_audioPlayback{} {
     g_audioManager = this;
     IRE_LOG_INFO("Created AudioManager");
 }
 
 AudioManager::~AudioManager() {
+    m_midiClock.stop();
     m_midiOut.sendAllNotesOff();
     if (g_audioManager == this) {
         g_audioManager = nullptr;

@@ -542,8 +542,8 @@ bool g_fogGhostSighting = false;
 bool g_fogGhostHeavyHide = false;
 // --fog-los / --fog-los-disabled: the line-of-sight perf fixture. Both move the
 // eight --fog-reveal circles onto a ring of radius kFogLosRingRadius inside the
-// fog footprint (radius 32, observers standing on a flagged SDF terrain slab
-// under the grid) and add a flagged SDF wall along x = 0, so every source has
+// fog footprint (radius 32, observers standing on a FIELD SDF terrain slab
+// under the BODY grid) and add a FIELD SDF wall along x = 0, so every source has
 // both visible and occluded ground. --fog-los gates every source at eye height
 // kFogLosEyeHeight; --fog-los-disabled is the identical scene with LOS off —
 // the A/B control. Both imply --fog-reveal; bare --fog-reveal keeps its
@@ -1492,6 +1492,7 @@ void configureFogLosFixture() {
         IREntity::createEntity(
             C_LocalTransform{center},
             C_ShapeDescriptor{IRRender::ShapeType::BOX, size, Color{110, 120, 110, 255}},
+            C_FogField{},
             C_LightBlocker{true, false, 1.0f}
         );
     }

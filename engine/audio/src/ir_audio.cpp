@@ -89,6 +89,33 @@ void clearOutboundMidiObserver() {
     getAudioManager().clearOutboundMidiObserver();
 }
 
+bool startMidiClock(int portIndex, double bpm) {
+    AudioManager &manager = getAudioManager();
+    // Refused here, once: the clock thread would otherwise warn on every
+    // pulse that the port is not open.
+    if (!manager.getMidiOut().isPortOpen(portIndex)) {
+        IRE_LOG_WARN("startMidiClock: MIDI output port {} is not open", portIndex);
+        return false;
+    }
+    return manager.getMidiClock().start(portIndex, bpm);
+}
+
+bool setMidiClockBpm(double bpm) {
+    return getAudioManager().getMidiClock().setBpm(bpm);
+}
+
+void stopMidiClock() {
+    getAudioManager().getMidiClock().stop();
+}
+
+bool isMidiClockRunning() {
+    return getAudioManager().getMidiClock().isRunning();
+}
+
+std::uint64_t midiClockPulses() {
+    return getAudioManager().getMidiClock().pulsesSent();
+}
+
 CCData checkCCMessage(int channel, CCMessage ccMessage) {
     return getAudioManager().getMidiIn().checkCCMessageThisFrame(channel, ccMessage);
 }
