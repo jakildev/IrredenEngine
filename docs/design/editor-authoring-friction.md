@@ -869,3 +869,98 @@ Alt place-below modifier (#3148, §2g) stays. Editing a skinned set by clicking
 its deformed result is still unsupported (F-2b-2); the rig is now passed
 through rather than swallowing the click. A reference shape drawn in front of
 editable voxels still hides them — the click edits what is behind it.
+
+## Part 3 — composite proof through the entity creator
+
+The entity-creator epic (#3974) closes on `composite_proof` (#3992): a scripted
+session authors a nine-part composite entity from the fixture module
+(`creations/editors/voxel_editor/test/module/`) and the entity-scene tools,
+`author-entity.py --prefab` commits it under
+`assets/voxel/entities/composite_proof/`, and `IRShapeDebug --load-prefab`
+spawns it. The parts are a stem (the module's `test_column` recipe), a blob (a
+baked sphere, banded to tiers 3..4), and a frame (the module's `test_frame`
+recipe, banded to tiers 0..2, carrying `C_AutoSpin`) arrayed six times at a 60
+degree turn a copy. Every part is 9x9x13, set once on the PART SIZE sliders.
+
+This part records what authoring it surfaced. Each paragraph is a finding as
+measured or read; none of them is a proposal.
+
+- **F-3-1 — COPY YAW could not be dragged to 60 degrees.** The slider's value is
+  the trixel the drag lands on, and the track was 122 trixels across 360
+  degrees. A drag to 60 landed on 59.016, and the array applied that unrounded:
+  the session's first run read the six copies at 0, 59.016, 118.033, 177.049,
+  236.066 and 295.082 degrees. The track is now 120 trixels and the array
+  applies whole degrees, so the multiples of 3 are reachable and the same run
+  reads 0, 60, 120, 180, 240 and 300. A turn that is not a multiple of 3 still
+  has no drag: 40 degrees for nine copies, 51.4 for seven.
+- **F-3-2 — no BAKE shape is one cell thick.** By reading
+  `IRMath::SDF::evaluate` against `kSurfaceThreshold`: a cell is filled when
+  its centre is within half a cell of the surface, and P2's track starts at
+  0.5, so the thinnest box or cylinder covers three layers and the smallest
+  sphere is the seven-cell plus. The plan's frame ("box fill, erase the 3x3
+  centre") therefore has no first write through BAKE. The proof's frame is a
+  module recipe instead.
+- **F-3-3 — a recipe APPLY is invisible to the session's aim model.** The
+  builder mirrors BAKE (`bakeSphere`) in its occupancy model and has no
+  operation for a recipe, so a session drives APPLY with raw panel clicks and
+  cannot then aim a paint click at the cells it wrote. Neither recipe-authored
+  part of the proof takes a click after its first write.
+- **F-3-4 — an engine component's overrides do not fit their input.** A C++
+  component has no field reflection; its values are one Lua table literal
+  typed into a 162-trixel input. `{ axis = { 0, 0, 1 }, radiansPerFrame = 0.02 }`
+  is 46 characters: in the session's captures the text runs past the input and
+  past the panel's right edge, and the GUI font draws each brace as `?`.
+- **F-3-5 — a misspelled override key is accepted.** By reading:
+  `registerComponentFactoryFor` registers no validator, so the panel attaches
+  a default `C_AutoSpin` for any table and records the literal as typed. A
+  check on the saved manifest's text would pass on the misspelling. The
+  session reads the live component (`expectPartSpinRate`) for that reason.
+- **F-3-6 — no session predicate read an engine component or a rotation.**
+  `expectComponentValue` resolves its component through the module registry
+  and reports any other name absent, and `expectPartTransform` compares a
+  translation. The proof added `expectPartSpinRate` and `expectPartYaw`, each
+  bound for module sessions as well.
+- **F-3-7 — the editor shows the spin's data and never the spin.** The editor
+  runs no auto-spin system, so an attached `C_AutoSpin` changes nothing drawn
+  there. The first place the frames turn is `IRShapeDebug --load-prefab`.
+- **F-3-8 — an array's copies are saved as seven separate, identical files.**
+  The source frame and its six copies each save their own `.vxs`; the seven
+  committed files (`frame.vxs`, `frame_0.vxs` .. `frame_5.vxs`) share one
+  SHA-1. Nothing in the editor lets two parts name one `voxel_ref`. The
+  array's group and its rotational order are not in the manifest either: the
+  reloaded scene is nine ungrouped parts.
+- **F-3-9 — each part carries the whole extent.** A six-cell stem is saved as
+  a 9x9x13 dense set (12.8 KB). Parts can be created at their own sizes, but by
+  reading `deriveSceneOrigin` a part is seated by its own extent (centred in
+  X / Y, its far layer at one fixed world z), so a small part made for the top
+  of the stem starts at its base and has to be moved there by the gizmo. The
+  proof keeps one extent so that no part moves.
+- **F-3-10 — the saved scene is not the committed asset.** The editor saves
+  to and loads from one fixed path, `data/editor_scene/scene.prefab.lua`, names
+  parts `part_<n>` with no rename, and writes each `voxel_ref` relative to its
+  own working directory. `author-entity.py --prefab` therefore renames the
+  part files (`--part-names`) and rewrites every `voxel_ref` to the path the
+  spawning executable stages the asset at, and records the module and the
+  names beside the asset (`author.json`) so the bare command re-authors it. The
+  committed manifest cannot be reopened in the editor without copying it back.
+- **F-3-11 — the manifest's floats are printed to nine digits.** The copies'
+  translations are `4·cos` and `4·sin` of their ring angle and read
+  `x = 1.49999988`, `y = 2.96410179`. The two-run gate is byte-identical on one
+  host; nothing here measures a second host.
+- **F-3-12 — RECIPES is still drawn under BONE and SKELETON with a module
+  loaded (#4220).** The session's captures show the recipe list and its sliders
+  partly covered. Every click the session sends there lands.
+
+**Validators and results (macOS / Metal).**
+
+- `gui-verify IRVoxelEditor -- --module test/module --gui-session
+  composite_proof` — 79/79.
+- `author-entity.py --prefab composite_proof` — 19 files (the manifest, nine
+  parts, nine sidecars) byte-identical across two runs, and identical to the
+  committed asset. The first authoring passed `--module test/module
+  --part-names stem blob frame frame_0 frame_1 frame_2 frame_3 frame_4 frame_5`.
+- `render-verify --target IRShapeDebug` — 47/47, with
+  `composite_proof_z1` (stem and blob), `_z4` and `_z16` (stem and
+  frames). With the spin rate zeroed in a copy of the manifest the zoom-1
+  capture is byte-identical and the zoom-4 and zoom-16 captures differ, so the
+  references hold the frames mid-turn.

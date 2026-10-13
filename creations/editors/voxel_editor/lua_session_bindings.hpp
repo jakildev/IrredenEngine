@@ -382,6 +382,12 @@ class Handle {
         builder()
             .expectRotationMode(part, rotationModeArg(mode, "expectRotationMode", "mode"), name);
     }
+    void expectPartYaw(int part, float degrees, float tolerance, const std::string &name) {
+        builder().expectPartYaw(part, degrees, tolerance, name);
+    }
+    void expectPartSpinRate(int part, float radiansPerFrame, bool equal, const std::string &name) {
+        builder().expectPartSpinRate(part, radiansPerFrame, equal, name);
+    }
     void expectEditorInput(const sol::object &kind, int expectedPart, const std::string &name) {
         builder().expectEditorInput(
             editorInputKindArg(kind, "expectEditorInput", "kind"),
@@ -675,6 +681,10 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         &Handle::expectCanvasCount,
         "expectRotationMode",
         &Handle::expectRotationMode,
+        "expectPartYaw",
+        &Handle::expectPartYaw,
+        "expectPartSpinRate",
+        &Handle::expectPartSpinRate,
         "expectEditorInput",
         &Handle::expectEditorInput,
         "expectPoolActive",

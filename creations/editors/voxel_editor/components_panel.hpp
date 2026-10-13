@@ -83,6 +83,16 @@ constexpr IRMath::vec2 componentFieldInputCenterGuiTrixel(int row) {
     );
 }
 
+// An ENGINE component's overrides input: the row under its label.
+constexpr IRMath::vec2 componentOverridesInputCenterGuiTrixel() {
+    return IRMath::vec2(
+        static_cast<float>(kComponentFieldLabelX) +
+            static_cast<float>(kComponentOverridesInputSize.x) / 2.0f,
+        static_cast<float>(componentFieldRowY(1)) +
+            static_cast<float>(kComponentOverridesInputSize.y) / 2.0f
+    );
+}
+
 } // namespace IRVoxelEditor
 
 #endif /* IR_VOXEL_EDITOR_COMPONENTS_PANEL_H */

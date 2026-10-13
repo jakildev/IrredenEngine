@@ -31,8 +31,10 @@ in the `UPDATE` pipeline unless explicitly noted.
   angular-velocity vector; the header documents the time to rest (`ticksToRest`, -1 when it never decays or outlasts `kMaxTicksToRest`). Lua-bound
   (`component_angular_velocity_lua.hpp`): `radiansPerFrame` / `dampingPerFrame`
   / `axis` read-write, plus `spin:impulse({x,y,z}, rate)`. Stacks with
-  `C_AutoSpin` (Lua-bound via `common/components/component_auto_spin_lua.hpp`)
-  on one entity: the steady spin keeps turning while the impulse decays.
+  `C_AutoSpin` (Lua-bound via `common/components/component_auto_spin_lua.hpp`,
+  which also registers its prefab factory: `components = { C_AutoSpin =
+  { axis = { 0, 0, 1 }, radiansPerFrame = r } }`, an omitted field keeping its
+  default) on one entity: the steady spin keeps turning while the impulse decays.
 - `C_OverlapContactBatch` (#1817) — **singleton** component holding this
   frame's confirmed overlap pairs (`std::vector<ContactPair>`, each with both
   entity ids + both collision layers + a normal). `COLLISION_NOTE_PLATFORM`

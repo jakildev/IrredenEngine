@@ -2,6 +2,8 @@
 
 #include <irreden/asset/rig_format.hpp>
 #include <irreden/asset/voxel_set_format.hpp>
+#include <irreden/common/components/component_auto_spin.hpp>
+#include <irreden/common/components/component_auto_spin_lua.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
 #include <irreden/ir_entity.hpp>
@@ -1048,6 +1050,44 @@ TEST_F(PrefabApi, ComponentsRunBeforeSetupCallback) {
     const auto &z = IREntity::getComponent<IRComponents::C_ZoomLevel>(r.entity_);
     EXPECT_FLOAT_EQ(z.zoom_.x, 7.5f);
     EXPECT_EQ(m_lua.lua()["g_zoom"].get<std::string>(), "ran");
+}
+
+TEST_F(PrefabApi, SpawnsAutoSpinFromManifest) {
+    IRScript::bindLuaType<IRComponents::C_AutoSpin>(m_lua);
+
+    PrefabFiles f = writeFixtureSet(
+        "components_auto_spin",
+        "return {\n"
+        "  prefab_version = 1,\n"
+        "  components = { C_AutoSpin = { axis = { 0, 1, 0 }, radiansPerFrame = 0.02 } },\n"
+        "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    const auto &spin = IREntity::getComponent<IRComponents::C_AutoSpin>(r.entity_);
+    EXPECT_EQ(spin.axis_, vec3(0.0f, 1.0f, 0.0f));
+    EXPECT_FLOAT_EQ(spin.radiansPerFrame_, 0.02f);
+}
+
+TEST_F(PrefabApi, AutoSpinManifestOmittedFieldsKeepDefaults) {
+    IRScript::bindLuaType<IRComponents::C_AutoSpin>(m_lua);
+
+    PrefabFiles f = writeFixtureSet(
+        "components_auto_spin_defaults",
+        "return {\n"
+        "  prefab_version = 1,\n"
+        "  components = { C_AutoSpin = { radiansPerFrame = 0.5 } },\n"
+        "}\n"
+    );
+    IRPrefab::Prefab::registerPrefab("p", f.prefab_path_);
+    auto r = IRPrefab::Prefab::spawnPrefab(m_lua, "p", vec3(0.0f));
+    ASSERT_NE(r.entity_, IREntity::kNullEntity) << r.error_;
+
+    const auto &spin = IREntity::getComponent<IRComponents::C_AutoSpin>(r.entity_);
+    EXPECT_EQ(spin.axis_, IRComponents::C_AutoSpin{}.axis_);
+    EXPECT_FLOAT_EQ(spin.radiansPerFrame_, 0.5f);
 }
 
 // ---- additivity: unknown top-level keys do not break the load -------------

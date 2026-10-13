@@ -96,6 +96,19 @@
       ],
       "shots": ["prefab_editor_parts_z4"],
       "capture_offset": 0
+    },
+    {
+      "name": "composite_proof",
+      "demo_args": [
+        "--load-prefab",
+        "assets/voxel/entities/composite_proof/composite_proof.prefab.lua"
+      ],
+      "shots": [
+        "composite_proof_z1",
+        "composite_proof_z4",
+        "composite_proof_z16"
+      ],
+      "capture_offset": 0
     }
   ],
   "structural": {
