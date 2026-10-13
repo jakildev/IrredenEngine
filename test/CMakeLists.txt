@@ -137,6 +137,7 @@ add_executable(IrredenEngineTest
   render/sun_shadow_feeder_ring_test.cpp
   render/viewport_test.cpp
   render/voxel_pool_config_test.cpp
+  render/voxel_pool_capacity_test.cpp
   render/sprite_animation_test.cpp
   render/sprite_components_test.cpp
   render/sprite_render_test.cpp

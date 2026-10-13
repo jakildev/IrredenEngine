@@ -8,6 +8,10 @@ API contracts; this file owns cross-header and pipeline constraints.
   `C_VoxelSetNew` owns one contiguous span in that pool and captures its target
   canvas at construction. Detached entity canvases, absent from the render
   manager's named-canvas map, use the entity-keyed `IRPrefab::VoxelPool` facade.
+- `C_VoxelPool::canAllocateVoxels` is a non-mutating capacity query: it follows
+  the allocator's exact freed-span-or-never-allocated-tail policy, so a larger
+  freed span does not satisfy a smaller request. Lua creations call it through
+  `IRRender.canAllocateVoxels` for the active canvas before sizing user data.
 - `C_Voxel` is a 12-byte std430 GPU record. Its alpha defines activity, and
   its face-occlusion and `reserved_` bits are shader-visible encodings. When
   assigning a `reserved_` bit, update the layout comment and every shader
