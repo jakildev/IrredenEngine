@@ -184,14 +184,44 @@ loftMaskArg(const sol::object &value, const char *method, const char *argument) 
     }
 }
 
+template <typename T>
+inline T enumArg(
+    const sol::object &value,
+    const char *method,
+    const char *argument,
+    T first,
+    T last,
+    const char *expected
+) {
+    const int parsed = integerArg(value, method, argument);
+    if (parsed < static_cast<int>(first) || parsed > static_cast<int>(last)) {
+        throw argumentError(method, argument, expected);
+    }
+    return static_cast<T>(parsed);
+}
+
 inline IRComponents::RotationMode
 rotationModeArg(const sol::object &value, const char *method, const char *argument) {
-    const int mode = integerArg(value, method, argument);
-    if (mode < static_cast<int>(IRComponents::RotationMode::kFirst) ||
-        mode > static_cast<int>(IRComponents::RotationMode::kLast)) {
-        throw argumentError(method, argument, "an IRComponent.RotationMode value");
-    }
-    return static_cast<IRComponents::RotationMode>(mode);
+    return enumArg(
+        value,
+        method,
+        argument,
+        IRComponents::RotationMode::kFirst,
+        IRComponents::RotationMode::kLast,
+        "an IRComponent.RotationMode value"
+    );
+}
+
+inline IRComponents::EntityAnchor
+entityAnchorArg(const sol::object &value, const char *method, const char *argument) {
+    return enumArg(
+        value,
+        method,
+        argument,
+        IRComponents::EntityAnchor::kFirst,
+        IRComponents::EntityAnchor::kLast,
+        "an IRComponent.EntityAnchor value"
+    );
 }
 
 class Handle {
@@ -324,6 +354,17 @@ class Handle {
     void dragWorld(const sol::object &from, const sol::object &to) {
         builder().dragWorld(vec3Arg(from, "dragWorld", "from"), vec3Arg(to, "dragWorld", "to"));
     }
+    void
+    dragPartGizmo(const sol::object &from, const sol::object &to, const sol::object &partDelta) {
+        builder().dragPartGizmo(
+            vec3Arg(from, "dragPartGizmo", "from"),
+            vec3Arg(to, "dragPartGizmo", "to"),
+            vec3Arg(partDelta, "dragPartGizmo", "partDelta")
+        );
+    }
+    void selectPartMode(const sol::object &mode) {
+        builder().selectPartMode(rotationModeArg(mode, "selectPartMode", "mode"));
+    }
     void expectOccupancy(const sol::object &local, bool occupied, const std::string &name) {
         builder().expectOccupancy(ivec3Arg(local, "expectOccupancy", "local"), occupied, name);
     }
@@ -381,6 +422,19 @@ class Handle {
     void expectRotationMode(int part, const sol::object &mode, const std::string &name) {
         builder()
             .expectRotationMode(part, rotationModeArg(mode, "expectRotationMode", "mode"), name);
+    }
+    void expectPartAnchor(int part, const sol::object &expected, const std::string &name) {
+        builder().expectPartAnchor(
+            part,
+            entityAnchorArg(expected, "expectPartAnchor", "expected"),
+            name
+        );
+    }
+    void expectPartModeDropdown(const sol::object &expected, const std::string &name) {
+        builder().expectPartModeDropdown(
+            rotationModeArg(expected, "expectPartModeDropdown", "expected"),
+            name
+        );
     }
     void expectEditorInput(const sol::object &kind, int expectedPart, const std::string &name) {
         builder().expectEditorInput(
@@ -645,6 +699,10 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         &Handle::clearEntityScene,
         "dragWorld",
         &Handle::dragWorld,
+        "dragPartGizmo",
+        &Handle::dragPartGizmo,
+        "selectPartMode",
+        &Handle::selectPartMode,
         "applyRadialArray",
         &Handle::applyRadialArray,
         "applyRadialArrayToLiveScene",
@@ -675,6 +733,10 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         &Handle::expectCanvasCount,
         "expectRotationMode",
         &Handle::expectRotationMode,
+        "expectPartAnchor",
+        &Handle::expectPartAnchor,
+        "expectPartModeDropdown",
+        &Handle::expectPartModeDropdown,
         "expectEditorInput",
         &Handle::expectEditorInput,
         "expectPoolActive",
