@@ -2,9 +2,6 @@
 
 ## Working agreements
 
-- Creations include the public entry point
-  `engine/render/include/irreden/ir_render.hpp`, never internal render headers.
-
 ### What belongs in engine/render/ vs engine/prefabs/irreden/render/
 
 - `engine/render/` owns device and pipeline primitives every creation needs.
@@ -13,8 +10,7 @@
 
 ### Name identifiers after the rendering effect, not the caller
 
-- Names in this module (C++ types, flags, shader identifiers, binding names,
-  comments) describe rendering effects, never the first feature or caller.
+- Names describe rendering effects, never the first feature or caller.
 - System registration, ordering, and tick contracts live in
   [`engine/system/CLAUDE.md`](../system/CLAUDE.md).
 - Current feature-API exceptions are tracked in
@@ -25,12 +21,9 @@
 
 ### Verifying render changes
 
-Canonical commands: the [validation index](../../docs/agents/VALIDATION.md)
-(per-frame jitter: its probe plus the camera contracts below). Render changes
-commonly need `header-checks`, `render-debug-loop`, `render-verify`,
-`backend-parity`, `cull-verify`, and the relevant `scripts/*-verify.py`
-metric; Codex image evidence: [`CODEX.md` § Rendering conversations](../../docs/agents/CODEX.md#rendering-conversations).
-Changes with no visual effect (docs, tests, mechanical, build-only) need no captures.
+Commands and validators: [validation index](../../docs/agents/VALIDATION.md).
+Image evidence: [`CODEX.md` § Rendering conversations](../../docs/agents/CODEX.md#rendering-conversations).
+Changes without a visual effect need no captures.
 
 ## Pipeline contracts
 
@@ -186,20 +179,17 @@ Changes with no visual effect (docs, tests, mechanical, build-only) need no capt
   sweep, and the sun-map bake and receiver share `kSunShadowMaxDistance`. Read
   the [coverage design](../../docs/design/sun-shadow-bake-coverage.md) before
   changing the bake kernel or splat controls.
+- Cardinal voxel provenance, reconstruction and cascade units: [surface-sampling contract](../../docs/design/surface-shadow-sampling.md#settled-cardinal-voxel-receivers).
 
 ## Performance and lifecycle pitfalls
 
 ### Gotchas
 
-- **`WindowMode::OFFSCREEN` replaces the swapchain, not the pipeline.** Each
-  backend keeps an engine-owned screen target (Metal: a BGRA8 texture handed
-  to the runtime via `setMetalOffscreenColorTexture`, read through
-  `metalDefaultColorTexture()`; GL: an RGBA8 + depth-stencil FBO bound wherever
-  `0` was). `bindDefaultFramebuffer`, `clearDefaultFramebuffer`,
-  `readDefaultFramebuffer` and `present` are the only seams; nothing above the
-  device knows. Reach the frame's colour target only through
-  `metalDefaultColorTexture()`: `metalDrawable()` is nullptr all run long in
-  this mode. Mode semantics: `engine/window/CLAUDE.md` "Window modes".
+- **`WindowMode::OFFSCREEN` replaces the swapchain, not the pipeline.** The
+  device owns its screen target; higher layers use the default-framebuffer APIs.
+  Metal callers read `metalDefaultColorTexture()`, never `metalDrawable()`
+  (null throughout this mode). Mode semantics: `engine/window/CLAUDE.md`
+  "Window modes".
 - Compute grids cap X at `kMaxDispatchGroupsX` and spill into Y; consumers
   flatten both group dimensions consistently.
 - Hot compute-kernel mode branches use compile-time specializations of a

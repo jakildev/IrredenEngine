@@ -405,6 +405,10 @@ kernel void IR_STAGE2_KERNEL_NAME(
         return;
     }
 
+    if (frameData.isDetachedCanvas <= 0.5 && frameData.residualYaw == 0.0) {
+        packedEntityId = encodeEntityIdCardinalVoxel(packedEntityId);
+    }
+
     // Depth-only shadow-feeder path — mirror of c_voxel_to_trixel_stage_2_body.glsl.
     // On the cardinal single-canvas world route, a voxel whose cardinal iso
     // position lies outside the un-widened visible viewport but inside the

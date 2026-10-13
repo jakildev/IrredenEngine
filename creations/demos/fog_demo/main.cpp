@@ -1967,16 +1967,26 @@ constexpr int kCeilingColumnFootprint = 4;
 constexpr vec3 kCeilingCentreColumn{0.0f, 0.0f, kCeilingObserverZ};
 constexpr vec3 kCeilingRimColumn{8.0f, 0.0f, kCeilingObserverZ};
 constexpr vec3 kCeilingBodyTwin{0.0f, 8.0f, kCeilingObserverZ};
-// The angled-sun fixture spaces its four casters across the axis perpendicular
-// to the shadow ray. This keeps the footprint lanes disjoint while preserving
-// a centre FIELD and a radially-full FIELD away from the source centre.
+// Integral translations preserve the caster snap and receiver-trixel phases.
+// The lanes are nearly perpendicular to the shadow ray and stay disjoint;
+// fractional offsets would compare different sampled footprints.
 constexpr vec3 kCeilingShadowCentre{0.0f, 0.0f, kCeilingObserverZ};
-constexpr vec3 kCeilingShadowRim{11.10f, -4.57f, kCeilingObserverZ};
-constexpr vec3 kCeilingShadowBody{22.19f, -9.14f, kCeilingObserverZ};
-constexpr vec3 kCeilingShadowControlPosition{-11.10f, 4.57f, kCeilingObserverZ};
-// Voxel face centres at the inclusive 0.5 ceiling midpoint leave six complete
-// caster layers in the sun bake; this solid is the authored-height oracle.
-constexpr int kCeilingShadowControlHeight = 6;
+constexpr vec3 kCeilingShadowRim{11.0f, -5.0f, kCeilingObserverZ};
+constexpr vec3 kCeilingShadowBody{22.0f, -10.0f, kCeilingObserverZ};
+constexpr vec3 kCeilingShadowControlPosition{-11.0f, 5.0f, kCeilingObserverZ};
+static_assert(
+    kCeilingShadowRim.x == static_cast<int>(kCeilingShadowRim.x) &&
+        kCeilingShadowRim.y == static_cast<int>(kCeilingShadowRim.y) &&
+        kCeilingShadowControlPosition.x == -kCeilingShadowRim.x &&
+        kCeilingShadowControlPosition.y == -kCeilingShadowRim.y &&
+        kCeilingShadowBody.x == 2.0f * kCeilingShadowRim.x &&
+        kCeilingShadowBody.y == 2.0f * kCeilingShadowRim.y,
+    "ceiling-shadow controls must preserve integral receiver and caster lattice phases"
+);
+// At the warmup probe's density-one cardinal raster, GROUND's half-integer
+// centers round upward. The inclusive midpoint retains z=-3 through z=4.
+constexpr int kCeilingShadowControlHeight =
+    static_cast<int>(kCeilingHeight + 0.5f * kCeilingFade) + 1;
 // The curved variant swaps the centre FIELD column and the BODY twin for
 // cylinders of the same footprint, which only the analytic-shape caster route
 // bakes. A shape takes its BODY reveal verdict at its centre, so the centre
@@ -2342,6 +2352,8 @@ void probeCeilingSurface() {
 struct ShadowFootprintReading {
     int texels_ = 0;
     float reach_ = -1.0f;
+    int capWitnesses_ = 0;
+    int capWitnessesLit_ = 0;
 };
 
 void probeCeilingShadow() {
@@ -2363,7 +2375,63 @@ void probeCeilingShadow() {
         IRSystem::getSystemParams<IRSystem::System<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>>(
             IRSystem::findSystem(IRSystem::VOXEL_TO_TRIXEL_STAGE_1)
         );
-    vec2 shadowDirection = -vec2(IRRender::getSunDirection());
+    const auto &frame = stage1->frameData_;
+    requireFogProbe(
+        "FOG-SHADOW-PROBE",
+        frame.voxelRenderOptions_.x != 0 && frame.voxelRenderOptions_.y == 1 &&
+            frame.rasterYaw_ == 0.0f && frame.residualYaw_ == 0.0f,
+        "the ceiling-shadow oracle requires the density-one cardinal fixture"
+    );
+    const auto retainedCells = [](IREntity::EntityId entity, vec3 origin, bool cut) {
+        std::vector<IRMath::ivec3> cells;
+        const auto &set = IREntity::getComponent<C_VoxelSetNew>(entity);
+        for (const auto &position : set.globalPositions_) {
+            const auto center = IRMath::roundVec3HalfUp(position.pos_);
+            const float rise = kCeilingObserverZ - static_cast<float>(center.z);
+            if (cut && rise > kCeilingHeight + 0.5f * kCeilingFade)
+                continue;
+            cells.push_back(center - IRMath::ivec3(origin));
+        }
+        std::sort(cells.begin(), cells.end(), [](auto a, auto b) {
+            if (a.x != b.x)
+                return a.x < b.x;
+            if (a.y != b.y)
+                return a.y < b.y;
+            return a.z < b.z;
+        });
+        return cells;
+    };
+    const auto controlCells =
+        retainedCells(g_ceilingShadowControl, kCeilingShadowControlPosition, false);
+    requireFogProbe(
+        "FOG-SHADOW-PROBE",
+        controlCells.size() ==
+                static_cast<std::size_t>(
+                    kCeilingColumnFootprint * kCeilingColumnFootprint * kCeilingShadowControlHeight
+                ) &&
+            retainedCells(g_ceilingRimColumn, kCeilingShadowRim, true) == controlCells &&
+            (g_ceilingShadowCurved ||
+             retainedCells(g_ceilingCentreColumn, kCeilingShadowCentre, true) == controlCells),
+        "the authored control differs from the translated ceiling-retained occupancy"
+    );
+    const auto floorSample = [&](IRMath::ivec2 pixel, int encoded) {
+        const auto frameOffset =
+            frame.trixelCanvasOffsetZ1_ + IRMath::ivec2(IRMath::floor(frame.cameraTrixelOffset_));
+        const auto iso = pixel - frameOffset;
+        const int half = (iso.x + iso.y) & 1;
+        const auto originIso = iso - IRMath::deformedTrixelIsoPixel(IRMath::kZFace, half, 0.0f);
+        // A density-one top microface has its center half a voxel above its
+        // stored plane origin; both published halves name that one surface.
+        return IRMath::isoPixelToPos3D(originIso.x, originIso.y, static_cast<float>(encoded >> 3)) -
+               vec3(0.0f, 0.0f, 0.5f);
+    };
+    const float capZ =
+        kCeilingObserverZ - static_cast<float>(kCeilingShadowControlHeight - 1) - 0.5f;
+    // Inset by half a cell from the finite footprint to exclude edge ambiguity.
+    const vec2 capInteriorMin = vec2(controlCells.front());
+    const vec2 capInteriorMax = vec2(controlCells.back());
+    const vec3 sun = IRRender::getSunDirection();
+    vec2 shadowDirection = -vec2(sun);
     shadowDirection /= IRMath::length(shadowDirection);
     const vec2 lateral{-shadowDirection.y, shadowDirection.x};
     const std::uint32_t slab = static_cast<std::uint32_t>(g_occlusionSlab);
@@ -2372,16 +2440,25 @@ void probeCeilingShadow() {
         for (int y = 0; y < textures.size_.y; ++y) {
             for (int x = 0; x < textures.size_.x; ++x) {
                 const std::size_t i = static_cast<std::size_t>(y) * textures.size_.x + x;
-                if (carriers[i].x != slab || factors[i].red_ >= 250) {
+                if (carriers[i].x != slab || (distances[i] & 7) != IRMath::kZFace) {
                     continue;
                 }
-                const vec3 world =
-                    canvasTexelToWorld(IRMath::ivec2(x, y), distances[i], stage1->frameData_);
+                const vec3 world = floorSample(IRMath::ivec2(x, y), distances[i]);
                 const vec2 delta = vec2(world) - vec2(origin);
                 const float along = IRMath::dot(delta, shadowDirection);
                 if (along < 0.0f || IRMath::abs(IRMath::dot(delta, lateral)) > 1.5f) {
                     continue;
                 }
+                // Interior cap hits cannot be supplied by the retained side
+                // walls: the sun ray exits those walls above the cut plane.
+                const vec2 capHit = vec2(world + sun * ((capZ - world.z) / sun.z) - origin);
+                if (capHit.x > capInteriorMin.x && capHit.x < capInteriorMax.x &&
+                    capHit.y > capInteriorMin.y && capHit.y < capInteriorMax.y) {
+                    ++reading.capWitnesses_;
+                    reading.capWitnessesLit_ += factors[i].red_ >= 250 ? 1 : 0;
+                }
+                if (factors[i].red_ >= 250)
+                    continue;
                 ++reading.texels_;
                 reading.reach_ = IRMath::max(reading.reach_, along);
             }
@@ -2393,6 +2470,29 @@ void probeCeilingShadow() {
     const ShadowFootprintReading rim = read(kCeilingShadowRim);
     const ShadowFootprintReading control = read(kCeilingShadowControlPosition);
     const ShadowFootprintReading body = read(kCeilingShadowBody);
+    IR_LOG_INFO(
+        "FOG-SHADOW-PROBE cap witnesses centre={}/{} rim={}/{} control={}/{}",
+        centre.capWitnessesLit_,
+        centre.capWitnesses_,
+        rim.capWitnessesLit_,
+        rim.capWitnesses_,
+        control.capWitnessesLit_,
+        control.capWitnesses_
+    );
+    for (const auto &reading : {rim, control}) {
+        requireFogProbe(
+            "FOG-SHADOW-PROBE",
+            reading.capWitnesses_ > 0 && reading.capWitnessesLit_ == 0,
+            "a voxel cut-cap interior is missing its geometrically required shadow"
+        );
+    }
+    if (!g_ceilingShadowCurved) {
+        requireFogProbe(
+            "FOG-SHADOW-PROBE",
+            centre.capWitnesses_ > 0 && centre.capWitnessesLit_ == 0,
+            "the centre cut cap is missing its geometrically required shadow"
+        );
+    }
     const auto *baker = IRSystem::getSystemParams<IRSystem::System<IRSystem::BAKE_SUN_SHADOW_MAP>>(
         IRSystem::findSystem(IRSystem::BAKE_SUN_SHADOW_MAP)
     );
@@ -2429,7 +2529,6 @@ void probeCeilingShadow() {
     // variant compares the FIELD cylinder against its BODY twin only. The BODY
     // twin must keep at least half the throw of its height above the midpoint.
     if (g_ceilingShadowCurved) {
-        const vec3 sun = IRRender::getSunDirection();
         const float throwPerHeight = IRMath::length(vec2(sun)) / IRMath::abs(sun.z);
         const float riseAboveCut =
             kCeilingShadowCylinderHeight - 1.0f - (kCeilingHeight + 0.5f * kCeilingFade);

@@ -76,6 +76,8 @@ template <> struct System<COMPUTE_SUN_SHADOW> {
         canvasTextures.getTextureDistances()
             ->bindAsImage(0, TextureAccess::READ_ONLY, TextureFormat::R32I);
         shadow.getTexture()->bindAsImage(1, TextureAccess::WRITE_ONLY, TextureFormat::RGBA8);
+        canvasTextures.getTextureEntityIds()
+            ->bindAsImage(2, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
         sunShadowDepthMap_->bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_SunShadowDepthMap);
         voxelFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
         sunShadowFrameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataSun);

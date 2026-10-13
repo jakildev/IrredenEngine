@@ -794,13 +794,14 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
         frameData_.shadowsEnabled_ = sun.shadowsEnabled_ ? 1 : 0;
         frameData_.aoEnabled_ = sun.aoEnabled_ ? 1 : 0;
         frameData_.sunCasterViewToWorld_ = IRPrefab::Camera::getRotationQuat();
+        frameData_.sunBasisU_.w = frameUsesFiniteCoverage_ ? 1.0f : 0.0f;
         if (frameData_.shadowsEnabled_ == 0) {
             return;
         }
 
         vec3 uHat, vHat;
         IRMath::buildOrthonormalBasis(sunDir, uHat, vHat);
-        frameData_.sunBasisU_ = vec4(uHat, 0.0f);
+        frameData_.sunBasisU_ = vec4(uHat, frameData_.sunBasisU_.w);
         frameData_.sunBasisV_ = vec4(vHat, 0.0f);
 
         const auto &cull = IRRender::getCullViewport();

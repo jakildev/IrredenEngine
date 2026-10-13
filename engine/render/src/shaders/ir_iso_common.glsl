@@ -244,10 +244,12 @@ const uint kEntityIdFogBodyFactorMaskInHighWord = 0xFFu << kEntityIdFogBodyFacto
 // the flag bits 0..2 of the high word, so bit 19 never carries id state. Same
 // masking chokepoint as the bits above.
 const uint kEntityIdAnalyticSurfaceMaskInHighWord = 0x1u << 19u;
+// Positive provenance of a settled non-detached voxel raster sample.
+const uint kEntityIdCardinalVoxelMaskInHighWord = 0x1u << 18u;
 const uint kEntityIdHighWordMask =
     ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord |
       kEntityIdFogBodyMaskInHighWord | kEntityIdFogBodyFactorMaskInHighWord |
-      kEntityIdAnalyticSurfaceMaskInHighWord);
+      kEntityIdAnalyticSurfaceMaskInHighWord | kEntityIdCardinalVoxelMaskInHighWord);
 uint decodePriority(uvec2 rawId) {
     return (rawId.y >> kEntityIdPriorityShiftInHighWord) & 0x3u;
 }
@@ -266,6 +268,9 @@ uint decodeFogBodyFactor(uvec2 rawId) {
 }
 bool decodeAnalyticSurface(uvec2 rawId) {
     return (rawId.y & kEntityIdAnalyticSurfaceMaskInHighWord) != 0u;
+}
+bool decodeEntityIdCardinalVoxel(uvec2 rawId) {
+    return (rawId.y & kEntityIdCardinalVoxelMaskInHighWord) != 0u;
 }
 uvec2 decodeEntityId(uvec2 rawId) {
     return uvec2(rawId.x, rawId.y & kEntityIdHighWordMask);
@@ -292,6 +297,10 @@ uvec2 encodeEntityIdFogBody(uvec2 packedId, bool isFogBody, uint factor) {
                                 ((factor & 0xFFu) << kEntityIdFogBodyFactorShiftInHighWord))
         : packedId;
 }
+uvec2 encodeEntityIdCardinalVoxel(uvec2 packedId) {
+    return uvec2(packedId.x, packedId.y | kEntityIdCardinalVoxelMaskInHighWord);
+}
+
 // Set the analytic-surface flag on an ALREADY priority-encoded id, like
 // encodeEntityIdCutFace.
 uvec2 encodeEntityIdAnalyticSurface(uvec2 packedId) {

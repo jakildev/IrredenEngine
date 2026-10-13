@@ -76,7 +76,10 @@ kernel void c_bake_voxel_sun_faces(
         const float3 worldAxis = rotateByQuat(normal, faceFrame.viewToWorld);
         const bool positive = dot(worldAxis, sunFrame.sunDirection.xyz) > 0.0;
         const int faceId = axis * 2 + (positive ? 1 : 0);
-        if (!faceIsExposed(flags, faceId)) continue;
+        if (!fogVoxelFaceCastsSunShadow(
+                faceIsExposed(flags, faceId), worldCenter,
+                positive ? worldAxis : -worldAxis, fogBody,
+                sunFrame.fogCeilingEnabled.x, fogObservers)) continue;
         float3 corner = position - kVoxelRasterCellAnchor;
         corner[axis] += positive ? 1.0 : 0.0;
         float3 edgeU = float3(0.0);

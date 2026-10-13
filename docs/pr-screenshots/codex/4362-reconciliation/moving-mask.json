@@ -1,0 +1,238 @@
+{
+  "mask_rgb": [
+    60,
+    60,
+    64
+  ],
+  "selection": "smaller-width of two four-connected components; other is invariant floor side rim",
+  "rows": [
+    {
+      "shot": 0,
+      "sha256": "ccacce75e534f001e31a8faf5cd8d32e3e42b5e9c03eb46b3e0f7e1422e73c8b",
+      "size": [
+        2560,
+        1440
+      ],
+      "count": 3456,
+      "bbox": [
+        1218,
+        802,
+        1293,
+        869
+      ],
+      "centroid": [
+        1255.5,
+        835.5
+      ],
+      "floor_rim_count": 5120
+    },
+    {
+      "shot": 1,
+      "sha256": "19e66221e4a57c0a24a12f1cd8b205e20f925a84c677c1a67d96448135c6cc5f",
+      "size": [
+        2560,
+        1440
+      ],
+      "count": 3520,
+      "bbox": [
+        1218,
+        798,
+        1293,
+        867
+      ],
+      "centroid": [
+        1256.3363636363636,
+        832.9909090909091
+      ],
+      "floor_rim_count": 5120,
+      "centroid_delta": [
+        0.8363636363635578,
+        -2.509090909090901
+      ],
+      "shadow_changed_pixels": 320,
+      "floor_rim_changed_pixels": 0
+    },
+    {
+      "shot": 2,
+      "sha256": "4fe0fbaa370257308b638a6b56a1fa30be25f8e0373ce3da532129aae2db97b6",
+      "size": [
+        2560,
+        1440
+      ],
+      "count": 3456,
+      "bbox": [
+        1218,
+        796,
+        1293,
+        865
+      ],
+      "centroid": [
+        1257.2037037037037,
+        830.5
+      ],
+      "floor_rim_count": 5120,
+      "centroid_delta": [
+        0.8673400673401375,
+        -2.490909090909099
+      ],
+      "shadow_changed_pixels": 320,
+      "floor_rim_changed_pixels": 0
+    },
+    {
+      "shot": 3,
+      "sha256": "1c979f22225b4c0656aa25fe073dcc8c6d3db1a1e6bdd5fe886d69efd1402c04",
+      "size": [
+        2560,
+        1440
+      ],
+      "count": 3456,
+      "bbox": [
+        1222,
+        794,
+        1297,
+        863
+      ],
+      "centroid": [
+        1257.7962962962963,
+        828.5
+      ],
+      "floor_rim_count": 5120,
+      "centroid_delta": [
+        0.5925925925926094,
+        -2.0
+      ],
+      "shadow_changed_pixels": 256,
+      "floor_rim_changed_pixels": 0
+    },
+    {
+      "shot": 4,
+      "sha256": "a2b8e7d8ee6168986a56a552ad2816fd986ef4dbe4d2b39259f26947489db9f1",
+      "size": [
+        2560,
+        1440
+      ],
+      "count": 3520,
+      "bbox": [
+        1222,
+        792,
+        1297,
+        861
+      ],
+      "centroid": [
+        1258.6636363636364,
+        826.0090909090909
+      ],
+      "floor_rim_count": 5120,
+      "centroid_delta": [
+        0.8673400673401375,
+        -2.490909090909099
+      ],
+      "shadow_changed_pixels": 320,
+      "floor_rim_changed_pixels": 0
+    },
+    {
+      "shot": 5,
+      "sha256": "cbe41d420dbf6af8bbbd81fd8234230e607e87f0569fd4668e77009a0d39c876",
+      "size": [
+        2560,
+        1440
+      ],
+      "count": 3456,
+      "bbox": [
+        1222,
+        790,
+        1297,
+        857
+      ],
+      "centroid": [
+        1259.5,
+        823.5
+      ],
+      "floor_rim_count": 5120,
+      "centroid_delta": [
+        0.8363636363635578,
+        -2.509090909090901
+      ],
+      "shadow_changed_pixels": 320,
+      "floor_rim_changed_pixels": 0
+    },
+    {
+      "shot": 6,
+      "sha256": "cb99472ca999e3418f487e7c9655277e1d77eee25f3cd164279966e9e23dc195",
+      "size": [
+        2560,
+        1440
+      ],
+      "count": 3520,
+      "bbox": [
+        1222,
+        786,
+        1297,
+        855
+      ],
+      "centroid": [
+        1260.3363636363636,
+        820.9909090909091
+      ],
+      "floor_rim_count": 5120,
+      "centroid_delta": [
+        0.8363636363635578,
+        -2.509090909090901
+      ],
+      "shadow_changed_pixels": 320,
+      "floor_rim_changed_pixels": 0
+    },
+    {
+      "shot": 7,
+      "sha256": "ef180754465be9c1fcab4fdfc42fadad64241a7299135f6d07ca3b9e7ec73413",
+      "size": [
+        2560,
+        1440
+      ],
+      "count": 3456,
+      "bbox": [
+        1222,
+        784,
+        1297,
+        853
+      ],
+      "centroid": [
+        1261.2037037037037,
+        818.5
+      ],
+      "floor_rim_count": 5120,
+      "centroid_delta": [
+        0.8673400673401375,
+        -2.490909090909099
+      ],
+      "shadow_changed_pixels": 320,
+      "floor_rim_changed_pixels": 0
+    },
+    {
+      "shot": 8,
+      "sha256": "1d6c4d02fa6c2b1a72dbeb0e3b8c54d0cd10194ae8ed2c3b324aa570065bc89f",
+      "size": [
+        2560,
+        1440
+      ],
+      "count": 3456,
+      "bbox": [
+        1226,
+        782,
+        1301,
+        851
+      ],
+      "centroid": [
+        1261.7962962962963,
+        816.5
+      ],
+      "floor_rim_count": 5120,
+      "centroid_delta": [
+        0.5925925925926094,
+        -2.0
+      ],
+      "shadow_changed_pixels": 256,
+      "floor_rim_changed_pixels": 0
+    }
+  ]
+}

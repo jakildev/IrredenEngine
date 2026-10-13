@@ -8,6 +8,7 @@
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
+#include "ir_cardinal_voxel_receiver.glsl"
 #include "ir_per_axis_lighting.glsl"
 #include "ir_per_axis_cell_dispatch.glsl"
 #include "ir_sdf_common.glsl"
@@ -63,6 +64,7 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
 
 layout(r32i, binding = 0) readonly uniform iimage2D trixelDistances;
 layout(rgba8, binding = 1) writeonly uniform image2D canvasSunShadow;
+layout(rg32ui, binding = 2) readonly uniform uimage2D trixelEntityIds;
 
 // On the per-axis path this stage is dispatched indirectly over only each axis's
 // OCCUPIED cells (compacted by the STAGE_1 per-axis pre-pass) instead of sweeping
@@ -185,20 +187,27 @@ void main() {
 
 #endif
 
-    // Stored world-iso depth selects the cascade. The finite-coverage shape
-    // correction applies only to reconstructed sample position so a corrected
-    // receiver keeps the cascade ownership assigned by its stored pixel.
-    // The cascade PCF lookup is shared with the detached world-receive path.
+    // Exact voxel receivers select cascades in world units, independent of
+    // raster density. Shape and raster-origin paths retain their stored depth.
     float factor = 1.0;
     if (shadowsEnabled != 0) {
+        if (residualYaw == 0.0 && sunBasisU.w != 0.0 &&
+            decodeEntityIdCardinalVoxel(imageLoad(trixelEntityIds, pixel).xy)) {
+            const vec3 surface = cardinalVoxelSurfaceCenter(
+                pixel, encoded, trixelCanvasOffsetZ1, frameCanvasOffset,
+                voxelRenderOptions, cardinalIndex);
+            factor = worldSurfaceSunShadowFactor(surface, normal, pos3DtoDistance(surface),
+                sunCasterViewToWorld);
+        } else {
 #if IR_SHAPE_RECEIVER
-        vec3 shadowPosition;
-        if (selectedShapeSphereShadowReceiver(pixel, size.x, shadowPosition))
-            factor = worldSurfaceSunShadowFactor(shadowPosition, normal,
-                float(rawDepth), sunCasterViewToWorld);
-        else
+            vec3 shadowPosition;
+            if (selectedShapeSphereShadowReceiver(pixel, size.x, shadowPosition))
+                factor = worldSurfaceSunShadowFactor(shadowPosition, normal,
+                    float(rawDepth), sunCasterViewToWorld);
+            else
 #endif
-            factor = worldSunShadowFactor(pos3D, normal, float(rawDepth));
+                factor = worldSunShadowFactor(pos3D, normal, float(rawDepth));
+        }
     }
     imageStore(canvasSunShadow, pixel, vec4(factor, 0.0, 0.0, receiverFace));
 }

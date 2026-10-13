@@ -31,7 +31,7 @@ layout(std140, binding = 29) uniform FrameDataSun {
     uniform float sunAmbient;
     uniform int shadowsEnabled;
     uniform int aoEnabled;
-    uniform vec4 sunBasisU;
+    uniform vec4 sunBasisU; // xyz: sun basis; w: finite caster coverage
     uniform vec4 sunBasisV;
     uniform vec2 sunBufferOriginUV;
     uniform vec2 sunBufferTexelSize;

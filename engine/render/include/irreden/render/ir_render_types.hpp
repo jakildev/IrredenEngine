@@ -554,10 +554,19 @@ constexpr std::uint32_t kEntityIdFogBodyFactorMaskInHighWord =
 // by kEntityIdHighWordMask like the bits above. Mirror of the .glsl/.metal
 // kEntityIdAnalyticSurfaceMaskInHighWord.
 constexpr std::uint32_t kEntityIdAnalyticSurfaceMaskInHighWord = 1u << 19;
+// Positive provenance of a settled non-detached voxel raster sample.
+constexpr std::uint32_t kEntityIdCardinalVoxelMaskInHighWord = 1u << 18;
 constexpr std::uint32_t kEntityIdHighWordMask =
     ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord |
       kEntityIdFogBodyMaskInHighWord | kEntityIdFogBodyFactorMaskInHighWord |
-      kEntityIdAnalyticSurfaceMaskInHighWord);
+      kEntityIdAnalyticSurfaceMaskInHighWord | kEntityIdCardinalVoxelMaskInHighWord);
+static_assert(
+    (kEntityIdCardinalVoxelMaskInHighWord &
+     (kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord |
+      kEntityIdFogBodyMaskInHighWord | kEntityIdFogBodyFactorMaskInHighWord |
+      kEntityIdAnalyticSurfaceMaskInHighWord)) == 0u,
+    "cardinal voxel provenance must not overlap another carrier field"
+);
 static_assert(
     kDepthForegroundTierCount <= (1 << kEntityIdPriorityBits),
     "tier count must fit in the K stolen entity-id bits"
@@ -579,6 +588,9 @@ inline std::uint64_t decodeCarrierEntityId(uvec2 packed) {
 }
 inline std::uint32_t decodeCarrierPriority(uvec2 packed) {
     return (packed.y >> kEntityIdPriorityShiftInHighWord) & ((1u << kEntityIdPriorityBits) - 1u);
+}
+inline bool decodeCarrierCardinalVoxel(uvec2 packed) {
+    return (packed.y & kEntityIdCardinalVoxelMaskInHighWord) != 0u;
 }
 inline bool decodeCarrierFogBody(uvec2 packed) {
     return (packed.y & kEntityIdFogBodyMaskInHighWord) != 0u;
@@ -1222,8 +1234,8 @@ struct FrameDataSun {
     // because every consumer (AO compute, lighting) already binds
     // FrameDataSun.
     int aoEnabled_ = 1;
-    // Orthonormal basis perpendicular to sunDirection_, computed CPU-side
-    // each frame in system_bake_sun_shadow_map. .w is std140 padding.
+    // Orthonormal sun-space basis perpendicular to sunDirection_.
+    // U.w is 1 for finite caster coverage, otherwise 0; V.w is padding.
     vec4 sunBasisU_ = vec4(0.0f);
     vec4 sunBasisV_ = vec4(0.0f);
     // sunPx = floor((dot(p, uHat/vHat) - origin) / texelSize).

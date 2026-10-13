@@ -45,7 +45,7 @@ backend-dependent for every consumer.
 ## Continuous surface queries
 
 Texture addressing and a fragment's geometric ray use different origins. Raw
-texture coordinates add `S / 2` to the centered varying; analytical shape
+texture coordinates add `S / 2` to the centered pixel map; analytical shape
 producers anchor their iso coordinates at `trixelOriginOffsetZ1(S)`. Before a
 continuous fragment calls the finite shape receiver, `shapeFragmentQueryPixel`
 converts raw coordinates with `raw - S / 2 + trixelOriginOffsetZ1(S)`.
@@ -56,7 +56,7 @@ For even canvases the conversion subtracts one storage texel per axis. Odd
 dimensions also require the half-texel difference between the floating center
 and the integer producer origin; a fixed `(-1,-1)` offset is insufficient.
 The connected `test_render_shape_receiver.py` control executes the production
-vertex varying, fragment raw-coordinate expression, conversion and box receiver
+fragment pixel map, raw-coordinate expression, conversion and box receiver
 against an independent screen-ray intersection. Both missing conversion and
 fixed-even-offset mutations must fail. Odd-size controls prove this query
 algebra; they do not certify producer coverage or sampled depth for odd backing
