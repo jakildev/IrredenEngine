@@ -127,6 +127,6 @@ suite (6) pass. Header/GLSL-name checks and whole-scripts Ruff also pass.
 
 This is a coordinate-correctness fix, not a performance gain or proof that all
 rendering modes have exact shadows. Remaining work includes saturated-index
-fallback, GRID sampling costs, curved-surface reconstruction/reception, native
-OpenGL presentation, and integration with the separately owned FIELD fog shadow
-policy. The parent dependency hold on that fog work remains in effect.
+fallback, GRID sampling costs, curved-surface reconstruction/reception and native
+OpenGL presentation. The parent now integrates the merged FIELD fog policy;
+[combined-stack evidence](../4362-reconciliation/README.md) records current validation.

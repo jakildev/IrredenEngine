@@ -93,5 +93,6 @@ is not a claim that every image is byte-identical or every possible scene is cor
 passes all 88 suites. Its initial failure exposed an integer `abs` overload in the
 new C++ shader adapter; importing `std::abs` and pinning its scalar return type
 fixed the adapter without changing production geometry or weakening the coplanar
-assertion. Native OpenGL visual smoke, receiver-stage profiling, and integration
-with #4362 and the existing #4246 hold remain separate work.
+assertion. Native OpenGL visual smoke and receiver-stage profiling remain open.
+The [reconciliation report](../4362-reconciliation/README.md) records the later
+#4362 integration and merged FIELD fog policy; the #4246 hold is resolved.
