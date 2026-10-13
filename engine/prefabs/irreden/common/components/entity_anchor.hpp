@@ -16,9 +16,13 @@
 // Adoption is per-prefab:
 //   - Discrete-entity prefabs anchor GROUND.
 //   - Terrain-like / corner-authored content is CORNER.
-//   - CENTER is the `centerAroundOrigin = true` spelling.
+//   - Content that rotates is CENTER: an entity turns about its translation
+//     in every rotation mode, and only CENTER puts that point in the middle
+//     of the body. `centerAroundOrigin = true` is the same anchor.
 // Changing a prefab's anchor is a deliberate per-prefab change, never
-// implicit.
+// implicit. A `.vxs` stores integer bounds, which cannot carry a non-CORNER
+// origin, so the anchor travels beside the asset: a prefab manifest part's
+// `anchor` field, or the anchor argument of `IRAsset.loadVoxelSet`.
 //
 // `anchorOffset()` is baked into a set's local voxel positions at
 // construction time (`C_VoxelSetNew`), so every downstream path — grid

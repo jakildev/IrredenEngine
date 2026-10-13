@@ -19,6 +19,12 @@ def uncomment(source):
     return re.sub(r"/\*.*?\*/|//[^\n]*", "", source, flags=re.S)
 
 
+def without_nth(source, needle, n):
+    start = -1
+    for _ in range(n + 1):
+        start = source.index(needle, start + 1)
+    return source[:start] + source[start + len(needle):]
+
 
 CPU = r"""
 #include <cstddef>
@@ -27,21 +33,26 @@ CPU = r"""
 #include <utility>
 #include <vector>
 struct ivec2 {int x=0,y=0;};
+struct ivec4 {
+ int x=0,y=0,z=0,w=0;
+ ivec4()=default;ivec4(int a,int b,int c,int d):x(a),y(b),z(c),w(d){}
+};
 struct vec4 {vec4()=default;vec4(ivec2,float){};};
 enum class BufferTarget {UNIFORM,SHADER_STORAGE};
 enum class TextureAccess {READ_ONLY,WRITE_ONLY};
-enum class TextureFormat {R32I};
+enum class TextureFormat {R32I,RG32UI};
 enum class BarrierType {SHADER_STORAGE,ALL};
 constexpr int kBufferIndex_FrameDataVoxelToCanvas=7,kBufferIndex_FrameDataSun=29;
 constexpr int kBufferIndex_SunShadowDepthMap=28,kBufferIndex_PerAxisResolveScratch=16;
 constexpr int kBufferIndex_RevoxelizeDetachedParams=22,kBakeSunShadowGroupSize=16;
+constexpr int kBufferIndex_FogObservers=27;
 #define IR_PROFILE_FUNCTION(x)
 struct FrameDataVoxelToCanvas {
  int perAxisRoute_=97;
  ivec2 canvasSizePixels_,trixelCanvasOffsetZ1_,voxelRenderOptions_;
  float visualYaw_=0,rasterYaw_=0,residualYaw_=0;
 };
-struct FrameDataSun {int shadowsEnabled_=1;float sunSplatMaxTexels_=6;};
+struct FrameDataSun {int shadowsEnabled_=1;float sunSplatMaxTexels_=6;ivec4 fogCeilingEnabled_;};
 struct Buffer {
  unsigned char bytes[256]{};
  void subData(std::size_t offset,std::size_t count,const void* source){
@@ -51,16 +62,17 @@ struct Buffer {
  void bindBase(BufferTarget,int){}
  template<class T>T read()const {T value;std::memcpy(&value,bytes,sizeof(T));return value;}
 };
-int image=0,program=0,builds=0;
+int image=0,ids=0,program=0,builds=0;
 float cameraYaw=0;
 struct Texture2D {
  int id;
- void bindAsImage(int slot,TextureAccess,TextureFormat){if(slot==0)image=id;}
+ void bindAsImage(int slot,TextureAccess,TextureFormat)const{if(slot==0)image=id;if(slot==3)ids=id;}
 };
 struct ShaderProgram {int id;void use(){program=id;}};
 struct C_TriangleCanvasTextures {
- ivec2 size_{32,48};Texture2D texture{10};int renderedSubdivisions_=2;
+ ivec2 size_{32,48};Texture2D texture{10},idTexture{20};int renderedSubdivisions_=2;
  Texture2D* getTextureDistances()const{return const_cast<Texture2D*>(&texture);}
+ Texture2D* getTextureEntityIds()const{return const_cast<Texture2D*>(&idTexture);}
 };
 struct C_CanvasSunShadow {};
 struct C_TrixelCanvasRenderBehavior {bool useCameraPositionIso_=true;};
@@ -71,16 +83,19 @@ struct C_PerAxisTrixelCanvases {
  std::pair<int,Texture2D*> resolveDepth_{0,&texture};
  bool isAllocated()const{return allocated;}
 };
-struct WorldPlacedCaster {ivec2 worldCellOffset_;C_TriangleCanvasTextures* textures_;};
-struct DetachedShadowFrame {vec4 offset,rotation;};
-struct Dispatch {int image,route;float residual,radius;int x,y;};
+struct WorldPlacedCaster {
+ ivec2 worldCellOffset_;C_TriangleCanvasTextures* textures_;bool fogBody_=true;
+};
+struct DetachedShadowFrame {vec4 offset,rotation;ivec4 fogPolicy;};
+struct Dispatch {int image,route;float residual,radius;int x,y,ids,precut;};
 Buffer voxel,sun,other;
 std::vector<Dispatch> bakes;
 struct Device {
  void dispatchCompute(int x,int y,int){
   if(program==1){
    auto frame=voxel.read<FrameDataVoxelToCanvas>();auto light=sun.read<FrameDataSun>();
-   bakes.push_back({image,frame.perAxisRoute_,frame.residualYaw_,light.sunSplatMaxTexels_,x,y});
+   bakes.push_back({image,frame.perAxisRoute_,frame.residualYaw_,light.sunSplatMaxTexels_,x,y,
+                    ids,light.fogCeilingEnabled_.y});
   }
  }
  void memoryBarrier(BarrierType){}
@@ -105,6 +120,9 @@ ADAPTER = r"""
 struct Adapter {
  Buffer *voxelFrameDataBuf_=&voxel,*sunShadowFrameDataBuf_=&sun,*sunShadowDepthMap_=&other;
  Buffer *detachedShadowFrameBuf_=&other,*revoxelizeParamsBuf_=&other,*worldPlacedScratch_=&other;
+ Buffer *fogObserverBuf_=&other,*analyticCasterFrameBuf_=&other;
+ Texture2D analyticTexture{13};std::pair<int,Texture2D*> analyticCasterDepth_{0,&analyticTexture};
+ FrameDataVoxelToCanvas analyticCasterFrame_;bool analyticCasterReady_=false;
  ShaderProgram bake{1},scatter{2},blit{3};
  ShaderProgram *bakeProgram_=&bake,*worldPlacedScatterProgram_=&scatter;
  ShaderProgram *worldPlacedBlitProgram_=&blit;
@@ -160,8 +178,11 @@ int main(){
   if(active){
    auto d=bakes[index++];
    if(d.image!=10||d.residual!=yaw||d.radius!=radius)return 11;
-   if(main&&axes){d=bakes[index++];if(d.image!=11||d.residual!=0||d.radius!=0)return 12;}
-   if(main&&detached){d=bakes[index++];if(d.image!=12||d.residual!=0||d.radius!=radius)return 13;}
+   if(d.ids!=20||d.precut!=0)return 19;
+   if(main&&axes){d=bakes[index++];if(d.image!=11||d.residual!=0||d.radius!=0)return 12;
+    if(d.precut!=1)return 32;}
+   if(main&&detached){d=bakes[index++];if(d.image!=12||d.residual!=0||d.radius!=radius)return 13;
+    if(d.precut!=1)return 33;}
   }
   for(auto d:bakes)if(d.route!=0||d.x!=2||d.y!=3)return 14;
   if(builds!=int(active&&main&&detached))return 15;
@@ -169,7 +190,13 @@ int main(){
   if(restored.residualYaw_!=yaw||restored.visualYaw_!=yaw)return 16;
   if(world&&sun.read<FrameDataSun>().sunSplatMaxTexels_!=radius)return 17;
   if(active&&image!=10)return 18;
+  if(sun.read<FrameDataSun>().fogCeilingEnabled_.y!=0)return 34;
  }
+ {Adapter adapter;adapter.analyticCasterReady_=true;
+  adapter.analyticCasterFrame_.canvasSizePixels_={32,48};
+  bakes.clear();ids=0;adapter.bakeAnalyticCasterDepth(&canvas.idTexture);
+  if(bakes.size()!=1||bakes[0].image!=13||bakes[0].ids!=20||bakes[0].precut!=1)return 30;
+  if(sun.read<FrameDataSun>().fogCeilingEnabled_.y!=0)return 31;}
 }
 """
 
@@ -189,9 +216,11 @@ def cpu_source():
     compact = re.search(r"if \(perAxisSplit\) \{\s*frameData_\.perAxisRoute_ = 0;.*?\n\s*\}",
                         producer, re.S)[0]
     methods = "\n".join(extract_function(driver, name) for name in
-                        ("patchFrameYawSplit", "patchSunSplatRadius", "tick"))
+                        ("patchFrameYawSplit", "patchSunSplatRadius", "patchFogCasterPrecut",
+                         "bindFogObservers", "tick", "bakeAnalyticCasterDepth"))
     guards = "\n".join(extract_block(driver, "struct " + name) + ";" for name in
-                       ("FrameYawRestoreGuard", "SunSplatRestoreGuard"))
+                       ("FrameYawRestoreGuard", "SunSplatRestoreGuard",
+                        "FogCasterPrecutRestoreGuard"))
     guards = guards.replace("System<BAKE_SUN_SHADOW_MAP>", "Adapter")
     cases = CPU_CASES.replace("STORE_RESET", store).replace("COMPACT_RESET", compact)
     return (CPU + build + extract_function(frames, "restoreMainCanvasVoxelFrame")
@@ -231,18 +260,29 @@ vec3 sunSpaceProject(vec3 p,vec3,vec3,vec3){return p;}
 void bakeCascadeBox(vec3 p,vec2 origin,vec2 texel,int offset,int radius){
  calls.push_back({p,origin,texel,offset,radius});
 }
+struct {int x,y;} fogCeilingEnabled{1,0};
+unsigned inputEntityId=0;
+bool fieldCasts=true;
+unsigned entityIdAt(ivec2){return inputEntityId;}
+bool decodeFogBody(unsigned id){return id!=0;}
+bool fogFieldCastsSunShadow(vec3,bool body,int enabled){
+ if(enabled!=1)std::exit(27);return body||fieldCasts;
+}
 """
 
 SHADER_CASES = r"""
 int main(){
  for(int encoded:{-262144,-262143,-9,-8,-7,-1,0,1,7,8,65528,65534,65535,65536,2147483647})
  for(float residual:{0.f,.35f,-.2f})for(float radius:{0.f,1.f,6.f})
- for(ivec2 pixel:{ivec2{3,5},ivec2{31,47},ivec2{32,5},ivec2{3,48}}){
+ for(ivec2 pixel:{ivec2{3,5},ivec2{31,47},ivec2{32,5},ivec2{3,48}})
+ for(int fog=0;fog<8;++fog){
   inputEncoded=encoded;inputPixel=pixel;residualYaw=residual;sunSplatMaxTexels=radius;
+  fogCeilingEnabled.y=fog&1;inputEntityId=(fog>>1)&1;fieldCasts=(fog>>2)&1;
   calls.clear();run();
   const bool valid=encoded<65535&&pixel.x<32&&pixel.y<48;
-  if(calls.size()!=(valid?2u:0u))return 20;
-  if(!valid)continue;
+  const bool casts=fogCeilingEnabled.y!=0||inputEntityId!=0||fieldCasts;
+  if(calls.size()!=(valid&&casts?2u:0u))return valid?26:20;
+  if(!valid||!casts)continue;
   for(int i=0;i<2;++i){const auto c=calls[i];
    if(c.position.x!=float(std::floor(double(encoded)/8.)))return 21;
    if(c.position.y!=(residual!=0?visualYaw:rasterYaw)||c.position.z!=float(residual!=0))return 22;
@@ -270,6 +310,9 @@ def shader_source(suffix, folder):
     body = body.replace("imageLoad(trixelDistances, pixel).x", "inputEncoded")
     body = body.replace("trixelDistances.read(uint2(pixel)).x", "inputEncoded")
     body = body.replace("sunDepthBuf,", "").replace(".xyz", "").replace("float3", "vec3")
+    body = body.replace("imageLoad(trixelEntityIds, pixel).xy", "entityIdAt(pixel)")
+    body = body.replace("trixelEntityIds.read(uint2(pixel)).xy", "entityIdAt(pixel)")
+    body = body.replace(", fogObservers)", ")")
     sentinel = re.search(r"(?:const|constant) int kEmptyDistanceEncoded = \d+;", source)[0]
     sentinel = sentinel.replace("constant", "const")
     return (SHADER + sentinel + extract_function(common, "decodeDepthSingle")
@@ -314,6 +357,21 @@ class LegacyShadowBakeTest(unittest.TestCase):
                 flags=re.S)
             self.assertEqual(count, 1)
             self.execute(candidate, 15)
+        precut = "patchFogCasterPrecut(1);"
+        self.assertEqual(source.count(precut), 3)
+        for name, n, expected in (("per_axis_precut", 0, 32), ("world_placed_precut", 1, 33),
+                                  ("analytic_precut", 2, 30)):
+            with self.subTest(mutation=name):
+                self.execute(without_nth(source, precut, n), expected)
+        for name, pattern, expected in (
+                ("precut_restore", r"sys_\.patchFogCasterPrecut\(0\);", 34),
+                ("main_entity_ids",
+                 r"canvasTextures\.getTextureEntityIds\(\)\s*->bindAsImage\(3[^;]*;", 19),
+                ("analytic_entity_ids", r"canvasEntityIds->bindAsImage\(3[^;]*;", 30)):
+            with self.subTest(mutation=name):
+                candidate, count = re.subn(pattern, "", source)
+                self.assertEqual(count, 1)
+                self.execute(candidate, expected)
         with self.subTest(mutation="resolve_yaw"):
             before = "patchFrameYawSplit(cameraRasterYaw, 0.0f);"
             self.assertEqual(source.count(before), 2)
@@ -332,6 +390,7 @@ class LegacyShadowBakeTest(unittest.TestCase):
                     ("splat_on_smooth", "residualYaw == 0.0 &&", "true &&", 23),
                     ("lost_splat", "radius = int(sunSplatMaxTexels);", "radius = 0;", 23),
                     ("second_cascade", "kCascadeTexelCount, radius", "0, radius", 24),
+                    ("precut_lane", "fogCeilingEnabled.y != 0", "false", 26),
                 )
                 for name, before, after, expected in mutations:
                     with self.subTest(mutation=name):

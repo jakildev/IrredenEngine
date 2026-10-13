@@ -367,6 +367,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // restored after the election window so the next canvas's default
     // dispatches retain the required binding state.
     Buffer *winnerPlaceholderBuf_ = nullptr;
+    // The overflow sort's indirect step grids (mode 3 writes them; see
+    // sortFaceRecords).
+    Buffer *overflowSortArgsBuf_ = nullptr;
     // Reused key scratch for recomputeStoreTiesPossible's duplicate-cell scan
     // (capacity persists across frames — no per-tick allocation after the
     // first high-water mark).
@@ -780,6 +783,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
     // Three-word records sort lexicographically by words (0, 2, 1).
     // The caller owns capacity and the settled count at layout.y + 1.
+    // Mode 3 writes the step grids into overflowSortArgsBuf_, bound on
+    // kBufferIndex_IndirectDispatchParams for that dispatch only; 26 then
+    // returns to indirectBuf_, its binding outside the per-axis window. NVIDIA GL
+    // stalls the CPU until the GPU drains when an indirect dispatch reads
+    // arguments from a buffer the dispatching program has bound for writing,
+    // so the grids never live in the record scratch.
     std::uint32_t sortFaceRecords(Buffer *scratch, ivec4 layout, std::uint32_t dispatchSpan) {
         const ivec4 previousLayout = frameData_.overflowScratchLayout_;
         frameData_.overflowScratchLayout_ = layout;
@@ -807,15 +816,23 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 &frameData_.overflowSortStep_
             );
             if (mode == 3) {
+                overflowSortArgsBuf_->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_IndirectDispatchParams
+                );
                 IRRender::device()->dispatchCompute(1, 1, 1);
+                indirectBuf_->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_IndirectDispatchParams
+                );
                 IRRender::device()->memoryBarrier(BarrierType::COMMAND);
             } else {
-                const auto commandUints =
-                    layout.y + C_PerAxisTrixelCanvases::kOverflowSortArgsBaseUints +
-                    commandIndex * C_PerAxisTrixelCanvases::kOverflowSortCommandUints;
                 IRRender::device()->dispatchComputeIndirect(
-                    scratch,
-                    static_cast<std::ptrdiff_t>(commandUints) * sizeof(std::uint32_t)
+                    overflowSortArgsBuf_,
+                    static_cast<std::ptrdiff_t>(
+                        commandIndex * C_PerAxisTrixelCanvases::kOverflowSortCommandUints *
+                        sizeof(std::uint32_t)
+                    )
                 );
             }
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
@@ -2479,6 +2496,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_PerAxisResolveScratch
         );
+        IRRender::createNamedResource<Buffer>(
+            "OverflowSortArgs",
+            nullptr,
+            static_cast<std::size_t>(C_PerAxisTrixelCanvases::kOverflowSortCommandCount) *
+                C_PerAxisTrixelCanvases::kOverflowSortCommandUints * sizeof(std::uint32_t),
+            BUFFER_STORAGE_DYNAMIC
+        );
         const int maxSingleVoxels = IRRender::VoxelPoolConfig::getTotalSize();
         IRRender::createNamedResource<Buffer>(
             "VoxelPositionBuffer",
@@ -2656,6 +2680,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             IRRender::getNamedResource<ShaderProgram>("SingleVoxelWinnerResolve");
         p->stage2WinnerProgram_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxel2Winner");
         p->winnerPlaceholderBuf_ = IRRender::getNamedResource<Buffer>("PerAxisWinnerPlaceholder");
+        p->overflowSortArgsBuf_ = IRRender::getNamedResource<Buffer>("OverflowSortArgs");
         p->revoxelizeProgram_ =
             IRRender::getNamedResource<ShaderProgram>("RevoxelizeDetachedProgram");
         p->revoxelizeParamsBuf_ =

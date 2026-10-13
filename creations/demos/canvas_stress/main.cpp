@@ -214,7 +214,7 @@ struct CanvasStressSettings {
     //     non-background depth at (X,Y), i.e. the detached-canvas composite WROTE
     //     the depth attachment there. Aim it at a texel inside a world-placed
     //     detached solid (canonical:
-    //     `--only canary --no-spin --no-auto-rotate --depth-probe-assert 321,210`,
+    //     `--only canary --no-spin --no-auto-rotate --depth-probe-assert 321,511`,
     //     which the canary covers on both backends). FAILs if a future pass
     //     disables the composite depth-write.
     //   - `X,Y,tier=N` — per-trixel-priority TIER guard: PASS iff the
@@ -759,8 +759,8 @@ spawnDetachedVoxelObject(int index, vec3 worldPos, vec3 spinAxis, float spinRate
     // yaw (the `--only canary,floor` case) instead of clipping behind it as world
     // iso-depth grows. No-op under screenLocked_ (the composite gates priority on
     // !screenLocked_), so the screen-locked byte-identical regression canary is
-    // unchanged. The canary still writes depth, so --depth-probe-assert 321,210
-    // (now reading inside the foreground near band) still PASSes.
+    // unchanged. The canary still writes depth, so --depth-probe-assert 321,511
+    // reads inside the foreground near band and PASSes.
     canvas.depthPriority_ = 1;
 
     // The voxel cube lives centered in the detached canvas's pool so
@@ -1981,8 +1981,8 @@ void applyDepthProbeAssert(const std::string &value) {
         g_settings.depthProbeAssertTier_ = -1;
     } else {
         IR_LOG_WARN(
-            "--depth-probe-assert: expected X,Y or X,Y,tier=N (e.g. 321,210 or "
-            "321,210,tier=2); ignoring '{}'",
+            "--depth-probe-assert: expected X,Y or X,Y,tier=N (e.g. 321,511 or "
+            "321,511,tier=2); ignoring '{}'",
             value
         );
     }

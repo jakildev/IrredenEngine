@@ -10,16 +10,20 @@
 //   IRGui.setLabelText(label, text)
 //   local button = IRGui.makeButton(x, y, w, h, label, onClick?)   -- onClick(id)
 //   if IRGui.wasClicked(button) then ... end
+//   local region = IRGui.makeHitRegion(x, y, w, h, {
+//       zOrder = 0, onHover = fn(id), onUnhover = fn(id), onClick = fn(id),
+//   })                                                -- every key optional
+//   IRGui.destroyWidget(region)
 //   local gx, gy = IRGui.glyphStep()
 //   local w, h   = IRRender.getGuiCanvasSize()
 //
-// `onClick` (the load-bearing new piece — click was poll-only before this)
-// is stored in WIDGET_LUA_DISPATCH's session-lifetime state, NOT a component:
+// `onClick` / `onHover` / `onUnhover` are stored in WIDGET_LUA_DISPATCH's
+// state, NOT a component:
 // the binding reaches that system through the LuaScript's prefab-system-id
 // map (the same mechanism `IRSystem.systemId` uses), so a creation must
 // `registerPrefabSystem<IRSystem::WIDGET_LUA_DISPATCH>()` and place it in the
 // INPUT pipeline immediately after WIDGET_INPUT before registering handlers.
-// The dispatcher passes the clicked widget's EntityId as the callback's only
+// The dispatcher passes the widget's EntityId as each callback's only
 // argument.
 //
 // The C++ widget constructors take `IRMath::ivec2 pos, IRMath::ivec2 size`,
@@ -42,7 +46,10 @@
 #include <irreden/render/trixel_font.hpp>
 #include <irreden/render/widgets.hpp>
 
+#include <algorithm>
+#include <array>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <unordered_map>
 
@@ -51,23 +58,65 @@ namespace IRScript::detail {
 // Resolve the live WIDGET_LUA_DISPATCH instance via the LuaScript's
 // prefab-system-id map, raising a Lua-visible error that points at the
 // missing registration call (mirrors `resolveOverlapDispatch`).
-inline IRSystem::System<IRSystem::WIDGET_LUA_DISPATCH> *
-resolveWidgetDispatch(const std::unordered_map<int, IRSystem::SystemId> *prefabSystemIds) {
+// @p caller names the Lua call in the error, e.g. "IRGui.makeButton(onClick)".
+inline IRSystem::System<IRSystem::WIDGET_LUA_DISPATCH> *resolveWidgetDispatch(
+    const std::unordered_map<int, IRSystem::SystemId> *prefabSystemIds, const std::string &caller
+) {
     auto it = prefabSystemIds->find(static_cast<int>(IRSystem::WIDGET_LUA_DISPATCH));
     if (it == prefabSystemIds->end()) {
-        throw sol::error{"IRGui.makeButton(onClick): WIDGET_LUA_DISPATCH is not registered "
-                         "— the C++ creation must call "
-                         "LuaScript::registerPrefabSystem<IRSystem::WIDGET_LUA_DISPATCH>() "
-                         "and add it to the INPUT pipeline after WIDGET_INPUT before "
-                         "main.lua registers an onClick"};
+        throw sol::error{
+            caller + ": WIDGET_LUA_DISPATCH is not registered — the C++ creation must call "
+                     "LuaScript::registerPrefabSystem<IRSystem::WIDGET_LUA_DISPATCH>() and add "
+                     "it to the INPUT pipeline after WIDGET_INPUT before main.lua registers a "
+                     "widget handler"
+        };
     }
     auto *system =
         IRSystem::getSystemParams<IRSystem::System<IRSystem::WIDGET_LUA_DISPATCH>>(it->second);
     if (system == nullptr) {
-        throw sol::error{"IRGui.makeButton(onClick): widget dispatch system params are null"};
+        throw sol::error{caller + ": widget dispatch system params are null"};
     }
     return system;
 }
+
+// The `zOrder` cap every Lua-facing widget factory applies. Clamp instead of
+// letting `C_Widget`'s ctor assert: the value is script-supplied data, not a
+// programmer error, and IR_ASSERT compiles to nothing under IR_RELEASE, which
+// would leave a release build silently inverting the expanded-dropdown hover
+// tie-break the bias exists to win. Only the diagnostic is debug-visible.
+inline int clampWidgetZOrder(int requestedZOrder, const char *caller) {
+    const int clampedZOrder =
+        IRMath::min(requestedZOrder, IRComponents::kWidgetDropdownOpenZBias - 1);
+    if (clampedZOrder != requestedZOrder) {
+        IRE_LOG_WARN(
+            "{}: zOrder {} is at or above the dropdown-open bias {}; clamped to {} so "
+            "expanded dropdown rows stay clickable",
+            caller,
+            requestedZOrder,
+            IRComponents::kWidgetDropdownOpenZBias,
+            clampedZOrder
+        );
+    }
+    return clampedZOrder;
+}
+
+// One `IRGui.makeHitRegion` handler option: absent or nil reads as an empty
+// (invalid) function; anything but a function raises.
+inline sol::protected_function
+optionalHandler(const sol::table &options, const char *key, const char *caller) {
+    const sol::object value = options[key];
+    if (!value.valid() || value.get_type() == sol::type::lua_nil) {
+        return sol::protected_function{};
+    }
+    if (value.get_type() != sol::type::function) {
+        throw sol::error{std::string(caller) + ": option '" + key + "' must be a function"};
+    }
+    return value.as<sol::protected_function>();
+}
+
+inline constexpr std::array<std::string_view, 4> kHitRegionOptionKeys{
+    "zOrder", "onHover", "onUnhover", "onClick"
+};
 
 inline void bindWidgets(LuaScript &script) {
     sol::state &lua = script.lua();
@@ -91,31 +140,12 @@ inline void bindWidgets(LuaScript &script) {
                           sol::optional<std::string> title,
                           sol::optional<bool> drawBorder,
                           sol::optional<int> zOrder) -> lua_Integer {
-        // Clamp instead of letting `C_Widget`'s ctor assert. This is the only
-        // zOrder-taking factory Lua exposes, so the value is script-supplied
-        // data, not a programmer error: IR_ASSERT throws out of the ctor in
-        // debug and compiles to nothing under IR_RELEASE, which would leave a
-        // release build silently inverting the expanded-dropdown hover
-        // tie-break the bias exists to win. The clamp is plain code, so it
-        // holds in both build flavors; only the diagnostic is debug-only.
-        const int requestedZOrder = zOrder.value_or(0);
-        const int clampedZOrder =
-            IRMath::min(requestedZOrder, IRComponents::kWidgetDropdownOpenZBias - 1);
-        if (clampedZOrder != requestedZOrder) {
-            IRE_LOG_WARN(
-                "IRGui.makePanel: zOrder {} is at or above the dropdown-open bias {}; "
-                "clamped to {} so expanded dropdown rows stay clickable",
-                requestedZOrder,
-                IRComponents::kWidgetDropdownOpenZBias,
-                clampedZOrder
-            );
-        }
         const IREntity::EntityId id = IRPrefab::Widget::makePanel(
             IRMath::ivec2(x, y),
             IRMath::ivec2(w, h),
             title.value_or(std::string{}),
             drawBorder.value_or(true),
-            clampedZOrder
+            clampWidgetZOrder(zOrder.value_or(0), "IRGui.makePanel")
         );
         return static_cast<lua_Integer>(id);
     };
@@ -143,10 +173,82 @@ inline void bindWidgets(LuaScript &script) {
             std::move(label)
         );
         if (onClick.has_value() && onClick.value().valid()) {
-            resolveWidgetDispatch(prefabSystemIds)
+            resolveWidgetDispatch(prefabSystemIds, "IRGui.makeButton(onClick)")
                 ->registerClickHandler(id, std::move(onClick.value()));
         }
         return static_cast<lua_Integer>(id);
+    };
+
+    // Options are validated before the entity exists, so a bad call creates
+    // nothing. Handlers need WIDGET_LUA_DISPATCH; a region with none still
+    // takes hover and is pollable through `wasClicked`.
+    gui["makeHitRegion"] =
+        [prefabSystemIds](int x, int y, int w, int h, sol::optional<sol::table> options)
+        -> lua_Integer {
+        constexpr const char *kCaller = "IRGui.makeHitRegion";
+        int zOrder = 0;
+        sol::protected_function onHover;
+        sol::protected_function onUnhover;
+        sol::protected_function onClick;
+        if (options.has_value()) {
+            const sol::table &opts = options.value();
+            for (const auto &[key, value] : opts) {
+                const bool known =
+                    key.get_type() == sol::type::string && std::find(
+                                                               kHitRegionOptionKeys.begin(),
+                                                               kHitRegionOptionKeys.end(),
+                                                               key.as<std::string_view>()
+                                                           ) != kHitRegionOptionKeys.end();
+                if (!known) {
+                    throw sol::error{
+                        std::string(kCaller) +
+                        ": unknown option; valid keys are zOrder, onHover, onUnhover, onClick"
+                    };
+                }
+            }
+            const sol::object zOrderValue = opts["zOrder"];
+            if (zOrderValue.valid() && zOrderValue.get_type() != sol::type::lua_nil) {
+                if (zOrderValue.get_type() != sol::type::number) {
+                    throw sol::error{std::string(kCaller) + ": option 'zOrder' must be a number"};
+                }
+                zOrder = clampWidgetZOrder(zOrderValue.as<int>(), kCaller);
+            }
+            onHover = optionalHandler(opts, "onHover", kCaller);
+            onUnhover = optionalHandler(opts, "onUnhover", kCaller);
+            onClick = optionalHandler(opts, "onClick", kCaller);
+        }
+        const bool wantsHover = onHover.valid() || onUnhover.valid();
+        IRSystem::System<IRSystem::WIDGET_LUA_DISPATCH> *dispatch =
+            wantsHover || onClick.valid() ? resolveWidgetDispatch(prefabSystemIds, kCaller)
+                                          : nullptr;
+
+        const IREntity::EntityId id =
+            IRPrefab::Widget::makeHitRegion(IRMath::ivec2(x, y), IRMath::ivec2(w, h), zOrder);
+        if (wantsHover) {
+            dispatch->registerHoverHandlers(id, std::move(onHover), std::move(onUnhover));
+        }
+        if (onClick.valid()) {
+            dispatch->registerClickHandler(id, std::move(onClick));
+        }
+        return static_cast<lua_Integer>(id);
+    };
+
+    // Deferred like every entity destroy: the widget goes at the next
+    // structural flush, so a widget handler may destroy its own widget. The
+    // widget's Lua handlers go with it, and none of them runs after this
+    // call, events already queued this frame included.
+    gui["destroyWidget"] = [](lua_Integer id) {
+        const IREntity::EntityId widget = static_cast<IREntity::EntityId>(id);
+        const bool isWidget =
+            id > 0 && IREntity::entityExists(widget) &&
+            IREntity::getComponentOptional<IRComponents::C_Widget>(widget).has_value();
+        if (!isWidget) {
+            throw sol::error{
+                "IRGui.destroyWidget: entity " + std::to_string(id) +
+                " is not a live widget — pass the id an IRGui.make* call returned"
+            };
+        }
+        IREntity::destroyEntity(widget);
     };
 
     // Raises on a non-label id rather than attaching a C_WidgetLabel to it: a

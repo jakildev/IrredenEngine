@@ -999,11 +999,8 @@ void logPivotCompositeDepth(int shotIndex) {
     if (g_pivotVerifyBlock != "center-axis") {
         return;
     }
-    const auto &framebuffer = IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>(
-        IRRender::getRenderManager().getMainFramebuffer()
-    );
-    const IRMath::ivec2 resolution = framebuffer.getResolutionPlusBuffer();
-    const IRRender::CompositeDepthSample sample = IRRender::readbackCompositeDepth(resolution / 2);
+    const IRRender::CompositeDepthSample sample =
+        IRRender::readbackCompositeDepth(IRRender::getMainFramebufferCenterPixel());
     const IRRender::DecodedCompositeDepth decoded = IRRender::decodeCompositeDepth(sample.rawDist_);
     IR_LOG_INFO(
         "[pivot-composite-depth] block={} shot={} yaw={} subject={} valid={} tier={} "

@@ -5,6 +5,7 @@
 #include "ir_shape_sun_ray.metal"
 #include "ir_sun_projection.metal"
 #include "ir_sun_shadow_sample.metal"
+#include "ir_fog_shadow_caster.metal"
 #include <metal_atomic>
 
 #define IR_SUN_FACE_INDEX_COOPERATIVE
@@ -16,6 +17,7 @@ kernel void c_bake_box_sun_shadow(
     constant int4& dispatch [[buffer(16)]],
     constant FrameDataSun& sunFrame [[buffer(29)]],
     constant ShapeProjectionData& shapeProjection [[buffer(23)]],
+    constant FogShadowObserverData& fogObservers [[buffer(27)]],
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 localId [[thread_position_in_threadgroup]]
 ) {
@@ -45,7 +47,12 @@ kernel void c_bake_box_sun_shadow(
         + abs(sunSpaceProject(axisY, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz)) * halfExtent.y
         + abs(sunSpaceProject(axisZ, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz)) * halfExtent.z;
     const float3 direction = -float3(dot(sunFrame.sunDirection.xyz, axisX), dot(sunFrame.sunDirection.xyz, axisY), dot(sunFrame.sunDirection.xyz, axisZ));
-    if (box && groupId.z == 0u) {
+    const bool fogBody = (shape.flags & 16u) != 0u;
+    const bool indexWholeShape = fogBody || sunFrame.fogCeilingEnabled.x == 0;
+    // Ceiling-cut FIELD samples have no whole-shape record. Keep them in the
+    // independent depth layer, which complete exact queries still consult.
+    const uint depthLayerOffset = indexWholeShape ? kSourceFaceFallbackOffset : 0u;
+    if (box && groupId.z == 0u && indexWholeShape) {
         for (int axis = 0; axis < 3; ++axis) {
             float3 localNormal = float3(0.0);
             localNormal[axis] = 1.0;
@@ -64,7 +71,7 @@ kernel void c_bake_box_sun_shadow(
             indexSourceSunFace(sunDepthBuf, projected, projectedU, projectedV, sunFrame, localId.x, sharedFaceIndex);
         }
     }
-    if (!box && groupId.z == 0u) {
+    if (!box && groupId.z == 0u && indexWholeShape) {
         const float3 projectedAxis = sunSpaceProject(axisZ, sunFrame.sunBasisU.xyz, sunFrame.sunBasisV.xyz, sunFrame.sunDirection.xyz);
         const float3 parameters = float3(shape.params.x, shape.shapeType == SHAPE_TORUS ? shape.params.y : shape.params.z, threshold);
         indexSourceSunGeometry(sunDepthBuf, center, projectedAxis, parameters, shape.shapeType, center.xy - extent.xy, center.xy + extent.xy, sunFrame, localId.x, sharedFaceIndex);
@@ -97,7 +104,11 @@ kernel void c_bake_box_sun_shadow(
             float casterDepth = nearDepth;
             if (hit && nearDepth <= farDepth &&
                 (box || sdfRayHit(shape.shapeType, shape.params, rayOrigin, direction, threshold, nearDepth, farDepth, casterDepth))) {
-                atomic_fetch_min_explicit(&sunDepthBuf[kSourceFaceFallbackOffset + cascade * kCascadeTexelCount + pixel.y * kSunShadowMapDim + pixel.x], packSunSurfaceDepth(casterDepth), memory_order_relaxed);
+                const float3 worldSample = sunFrame.sunBasisU.xyz * uv.x +
+                    sunFrame.sunBasisV.xyz * uv.y - sunFrame.sunDirection.xyz * casterDepth;
+                if (!fogFieldCastsSunShadow(
+                        worldSample, fogBody, sunFrame.fogCeilingEnabled.x, fogObservers)) continue;
+                atomic_fetch_min_explicit(&sunDepthBuf[depthLayerOffset + cascade * kCascadeTexelCount + pixel.y * kSunShadowMapDim + pixel.x], packSunSurfaceDepth(casterDepth), memory_order_relaxed);
             }
         }
     }

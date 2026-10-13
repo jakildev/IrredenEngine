@@ -27,6 +27,10 @@ enum class WidgetKind : int {
     TEXT_INPUT = 8,
     SCROLL = 9,
     COLOR_SWATCH = 10,
+    // Invisible interactive rectangle: hover / press / click like a button,
+    // drawn by no renderer. For grouping things drawn elsewhere (text, a
+    // swatch strip on another canvas) into one hover / click target.
+    HIT_REGION = 11,
 };
 
 // Z-order bias WIDGET_APPLY_DROPDOWN adds to a dropdown for as long as it is

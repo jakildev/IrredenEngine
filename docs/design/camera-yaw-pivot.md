@@ -39,6 +39,22 @@ helper.
    the viewport-center pixel. A background center pixel falls back to `d = 0`,
    the pre-#2547 behavior.
 
+   **Which texel the readback reads.** `readbackCompositeDepth(px)` takes a
+   main-framebuffer pixel with a top-left origin and reads texture row
+   `H − 1 − px.y` on both backends (`compositeDepthTextureRow`): the gather
+   stores raster rows y-up on OpenGL and Metal alike, and each backend's screen
+   pass displays texture row `r` that many rows above the bottom. The latch and
+   the `[pivot-composite-depth]` instrument ask
+   `IRRender::getMainFramebufferCenterPixel()` for their pixel, which is
+   `(W/2, H − 1 − H/2)` (`framebufferCenterPixel`): its texel is raster row
+   `H/2`, the row `getCanvasCenterIso` describes. Passing `resolution / 2`
+   instead reads the adjacent raster row whenever `H` is even (the main
+   framebuffer is 722 rows tall). On the subdivided lattice adjacent rows hold
+   different depths, and since every later gesture's source frame depends on
+   the anchor earlier gestures latched, a one-row error at the first
+   acquisition moves every later cardinal reading. The pairing is pinned by
+   `CompositeDepthRow.*` in `test/render/composite_depth_row_test.cpp`.
+
    **What it pins (ratified 2026-07-29, epic #2544).** The default pivot pins
    **the surface point under the crosshair** — that point holds its screen
    position across the yaw sweep. It does NOT pin the axis or centroid of the
@@ -441,10 +457,10 @@ closes:
 
    **Cross-backend: CONFIRMED (#2641 criterion 4), under the pre-#3169 anchor
    and latch.** Re-measured on Windows/OpenGL (mingw64, `windows-debug`)
-   against the same sweeps. The
-   GL-only row flip in `readbackCompositeDepth` (`resolution.y - 1 - y`,
-   `engine/render/src/ir_render.cpp:116`) does **not** perturb the derive: every
-   derived focus is byte-identical to the Metal value — `background-center`
+   against the same sweeps: every derived focus is byte-identical to the Metal
+   value. On that integer probe adjacent framebuffer rows share a depth, so the
+   two backends reading mirrored rows (since unified, §"Which texel the
+   readback reads") did not show — `background-center`
    `(12,-12,0)` / 0.0, `center-column` `(14.333333,-9.666667,2.333333)` /
    0.5773497, `center-axis` `(18.333334,-5.666666,6.333334)` / 0.5773514, all 9
    shots, `view_held=1` throughout. `center-depth` agrees at zoom 4
@@ -678,8 +694,9 @@ which is what still catches an SDF-side pivot regression (#2851).
   clipping a cell corner for 0.040 depth units; per-axis sources are now graded
   against the first cells of the pixel's nine footprint rays.
 - #3169, D20 — the SDF row read 0.289–0.348 world on OpenGL against the
-  micro-face bound it had inherited from the voxel rows, the SDF key's own
-  offset rather than a misbranch (filed as #3861). The temporary row was
+  micro-face bound it had inherited from the voxel rows, at the time read as
+  the SDF key's own offset (filed as #3861, which later traced it to the
+  readback row instead). The temporary row was
   changed to grade the branch at half the lattice. The temporary classifier
   was then hardened so no key match, an edge-overlapping block, disagreeing
   matching texels, a dead winner id, and an entity carrying both store
@@ -688,3 +705,9 @@ which is what still catches an SDF-side pivot regression (#2851).
   offset, so voxel and SDF winners share one composite-depth convention. The
   temporary subject classifier and its 3×3 distance/entity readback are gone;
   every cardinal acquisition subtracts the shared 1.5-unit lattice depth.
+- #3861 — the OpenGL cardinal readings above the micro-face bound were the
+  readback reading the raster row below the centre texel, not either store's
+  key: Metal read texture row `px.y`, OpenGL row `H − 1 − px.y`, mirrored rows
+  for one pixel. The readback now maps rows the same way on both backends and
+  the latch asks for `framebufferCenterPixel`, so Metal's latch row is
+  unchanged and OpenGL's moves onto it.

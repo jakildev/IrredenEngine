@@ -191,10 +191,15 @@ HOST_SMOKE_LABELS = {
 # (fleet-dispatcher exports it into this module's environment). The lane then
 # elects ONLY items pinned to this host: tasks and feedback PRs whose
 # `needs_host` (scout-derived from the `**Host:**` body field, inherited by a
-# feedback PR from its Closes issue) names this host, or a
-# `fleet:needs-macos-host` PR on mac. Semantic-conflict PRs and needs-plan
-# issues carry no host and are never host-specific work, so the mode skips
-# them outright. Everything unpinned stays for the primary fleet.
+# feedback PR from its Closes issue) names this host, a
+# `fleet:needs-macos-host` PR on mac, or a GL-host item (`needs_gl_host` on a
+# task, `fleet:needs-gl-host` on a PR) with no finer OS pin on a GL-capable
+# host. The GL label names a host class the Metal fleet refuses outright, so
+# a GL satellite is that work's only taker; an OS pin on the same item is
+# finer and still wins (a linux-pinned GL task is not windows work).
+# Semantic-conflict PRs and needs-plan issues carry no host and are never
+# host-specific work, so the mode skips them outright. Everything unpinned
+# stays for the primary fleet.
 #
 # The filter lives in `_candidates`, the one seam `resolve` (class election)
 # and `pick` (the dispatcher's claim walk) both read, so a satellite can never
@@ -219,9 +224,21 @@ def _required_host(item):
     return item.get("needs_host") or None
 
 
+def _needs_gl_host(item):
+    """True when the item needs an OpenGL-4.5 host. Reads both record shapes
+    the slice carries: the scout derives `needs_gl_host` on TASK records,
+    while PR records (`_slice_pr_with_repo`) carry only raw `labels`."""
+    return (bool(item.get("needs_gl_host"))
+            or GL_HOST_LABEL in (item.get("labels") or []))
+
+
 def _pinned_to_host(item, host):
+    if host == "unknown":
+        return False
     required = _required_host(item)
-    return bool(required) and host != "unknown" and required == host
+    if required:
+        return required == host
+    return _needs_gl_host(item) and host in GL_CAPABLE_HOSTS
 
 
 def smoke_pr_for_host(labels, host):
@@ -282,15 +299,7 @@ def _host_incompatible(item, host):
         return True
     # A GL-only item on a non-GL host (macOS/Metal, or unknown) can never be
     # built/run/verified here — terminally unclaimable, like inflight.
-    #
-    # Reads both record shapes the slice carries: the scout derives a
-    # `needs_gl_host` field on TASK records, while PR records
-    # (`_slice_pr_with_repo`) carry only raw `labels`, so a feedback PR is
-    # gated on the label directly. Checking both keeps one predicate for both
-    # dimensions.
-    needs_gl = (bool(item.get("needs_gl_host"))
-                or GL_HOST_LABEL in (item.get("labels") or []))
-    if not needs_gl:
+    if not _needs_gl_host(item):
         return False
     if host in GL_CAPABLE_HOSTS:
         return False

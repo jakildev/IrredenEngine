@@ -399,8 +399,9 @@
 # architect panes stay up as the operator's interactive sessions and file
 # everything else out to the primary fleet. The canonical case is the
 # native-Windows ship-platform machine — it clears fleet:needs-windows-smoke,
-# takes tasks pinned `**Host:** windows` (TASK-FILING.md), and leaves
-# merging, reviewing, and the unpinned queue to the Linux/macOS fleet. See
+# takes tasks pinned `**Host:** windows` (TASK-FILING.md) and GL-host work
+# (fleet:needs-gl-host with no finer OS pin), and leaves merging,
+# reviewing, and the unpinned queue to the Linux/macOS fleet. See
 # docs/agents/FLEET-CROSS-HOST-SMOKE.md "Satellite host profile". The flag
 # sets the two knobs below and outranks this file; set them here instead to
 # make the profile permanent (every plain `fleet-up` launch).
@@ -417,8 +418,10 @@
 #
 # FLEET_WORKER_HOST_PINNED_ONLY=1 — the worker lane elects only items pinned
 # to this host (`needs_host` from the issue's `**Host:**` field, inherited
-# by its feedback PRs; `fleet:needs-macos-host` on mac). Unpinned tasks,
-# semantic-conflict PRs, and needs-plan issues are never elected here. With
+# by its feedback PRs; `fleet:needs-macos-host` on mac; `fleet:needs-gl-host`
+# with no OS pin on linux or windows, since the Metal fleet refuses GL work
+# outright). Unpinned tasks, semantic-conflict PRs, and needs-plan issues
+# are never elected here. With
 # nothing pinned the lane stands down (no unassigned worker is ever
 # launched to go looking).
 #
