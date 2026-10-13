@@ -4,6 +4,7 @@
 #include <irreden/asset/voxel_set_format.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
+#include <irreden/common/components/entity_anchor.hpp>
 #include <irreden/common/rotation_mode.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/render/components/component_gizmo_handle.hpp>
@@ -14,6 +15,7 @@
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/dense_bridge.hpp>
+#include <irreden/voxel/grid_rotation.hpp>
 
 #include "component_records.hpp"
 
@@ -100,6 +102,38 @@ struct RemovedEditorPart {
         return bytes;
     }
 };
+
+// Local position, relative to the translation, of cell (0,0,0) of a set of
+// @p size whose integer bounds start at @p boundsMin. CORNER keeps the authored
+// bounds; any other anchor fixes the origin from the extent, which integer
+// bounds cannot carry.
+inline IRMath::vec3 anchoredLocalOrigin(
+    IRComponents::EntityAnchor anchor, IRMath::ivec3 boundsMin, IRMath::ivec3 size
+) {
+    return anchor == IRComponents::EntityAnchor::CORNER ? IRMath::vec3(boundsMin)
+                                                        : IRComponents::anchorOffset(anchor, size);
+}
+
+inline IRMath::vec3 voxelSetLocalOrigin(const IRComponents::C_VoxelSetNew &set) {
+    return anchoredLocalOrigin(set.anchor_, set.localOriginMin(), set.size_);
+}
+
+// True when a box of @p size cells whose cell (0,0,0) sits at @p origin is
+// centred on the local origin: the quantity REBUILD_DETACHED_VOXELS asserts of
+// a re-voxelize pool, so a part may enter DETACHED_REVOXELIZE only when this
+// holds for its set. An empty box is centred.
+inline bool boxIsCenteredOnOrigin(IRMath::vec3 origin, IRMath::ivec3 size) {
+    if (size.x <= 0 || size.y <= 0 || size.z <= 0) {
+        return true;
+    }
+    return IRPrefab::GridRotation::poolIsOriginCentered(2, [&](int corner) {
+        return corner == 0 ? origin : origin + IRMath::vec3(size - IRMath::ivec3(1));
+    });
+}
+
+inline bool voxelSetIsCentered(const IRComponents::C_VoxelSetNew &set) {
+    return boxIsCenteredOnOrigin(voxelSetLocalOrigin(set), set.size_);
+}
 
 struct EntitySceneRestoreResult {
     IREntity::EntityId entity_ = IREntity::kNullEntity;
@@ -208,8 +242,8 @@ class EntityScene {
     IREntity::EntityId addVoxelPart(
         IRMath::ivec3 size,
         IRMath::vec3 translation,
-        IRMath::Color color = IRMath::Color{200, 200, 210, 255},
-        bool centerAroundOrigin = false
+        IRComponents::EntityAnchor anchor,
+        IRMath::Color color = IRMath::Color{200, 200, 210, 255}
     ) {
         if (!active()) {
             begin();
@@ -217,7 +251,7 @@ class EntityScene {
         const std::string id = "part_" + std::to_string(m_nextPartId++);
         const IREntity::EntityId entity = IREntity::createEntity(
             IRComponents::C_LocalTransform{translation},
-            IRComponents::C_VoxelSetNew{size, color, centerAroundOrigin},
+            IRComponents::C_VoxelSetNew{size, color, anchor},
             IRComponents::C_RotationMode{IRComponents::RotationMode::GRID}
         );
         return appendPart(entity, id, EditorPartKind::VOXEL_SET);
@@ -313,7 +347,10 @@ class EntityScene {
                     IREntity::getComponent<IRComponents::C_VoxelSetNew>(source.entity_);
                 entity = IREntity::createEntity(
                     transform,
-                    IRPrefab::DenseVoxel::toComponent(IRPrefab::DenseVoxel::fromComponent(set)),
+                    IRPrefab::DenseVoxel::toComponent(
+                        IRPrefab::DenseVoxel::fromComponent(set),
+                        set.anchor_
+                    ),
                     IRComponents::C_RotationMode{source.mode_}
                 );
             }
@@ -525,6 +562,7 @@ class EntityScene {
                     return {false, "failed to save voxel part '" + editorPart.id_ + "'"};
                 }
                 part.voxelRef_ = voxelPath;
+                part.anchor_ = set.anchor_;
             }
             description.parts_.push_back(std::move(part));
         }
@@ -562,6 +600,20 @@ class EntityScene {
             if (!loaded.ok()) {
                 return {false, "failed to load voxel part '" + description.id_ + "'"};
             }
+            const IRAsset::DenseVoxelSet &dense = loaded.value_.dense_;
+            const IRMath::ivec3 size = dense.boundsMax_ - dense.boundsMin_;
+            if (description.rotationMode_ == IRComponents::RotationMode::DETACHED_REVOXELIZE &&
+                !boxIsCenteredOnOrigin(
+                    anchoredLocalOrigin(description.anchor_, dense.boundsMin_, size),
+                    size
+                )) {
+                return {
+                    false,
+                    "part '" + description.id_ +
+                        "' asks for DETACHED_REVOXELIZE but its voxels are not centred on its "
+                        "translation"
+                };
+            }
             stagedVoxelSets.emplace_back(std::move(loaded.value_.dense_));
         }
 
@@ -593,7 +645,7 @@ class EntityScene {
             } else {
                 entity = IREntity::createEntity(
                     description.transform_,
-                    IRPrefab::DenseVoxel::toComponent(*stagedVoxelSets[i]),
+                    IRPrefab::DenseVoxel::toComponent(*stagedVoxelSets[i], description.anchor_),
                     IRComponents::C_RotationMode{description.rotationMode_}
                 );
             }
