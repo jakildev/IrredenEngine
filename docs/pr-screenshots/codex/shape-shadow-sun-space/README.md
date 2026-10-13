@@ -24,10 +24,10 @@ fleet-run IRShapeDebug --spin-yaw --auto-screenshot 8 --zoom 8 --no-ao --pivot-o
 ```
 
 Repeat for `torus`, and add `--no-shadows` for the matching control. Actual
-yaws and subdivision density are in each run log. Measure each pair with:
+yaws and subdivision density are in each run log. Reproduce the historical, storage-offset measurement with:
 
 ```sh
-python3 scripts/render-shape-footprint-metric.py <shadow.png> <control.png> --shape cone --representation analytic --yaw <actual-radians> --iso-scale 32 16 --subdivisions 8 --strict-edges
+python3 scripts/render-shape-footprint-metric.py <shadow.png> <control.png> --shape cone --representation analytic --yaw <actual-radians> --iso-scale 32 16 --subdivisions 8 --screen-origin 1276 718 --strict-edges
 ```
 
 The independent reference unions projected horizontal disks/annuli from the
@@ -41,8 +41,13 @@ alter rendering. Fixture tests check section boundaries and convergence.
 | Cone | 0.65923–0.83425 | 0.99056–0.99429 | 0/8 → 8/8 |
 | Torus | 0.66508–0.83868 | 0.99453–0.99639 | 0/8 → 8/8 |
 
-Every after frame has zero missing/excess shadow outside the one-pixel boundary
-band; no projected reference is clipped. Per-frame counts are in each
+Under that historical origin, every after frame has zero missing/excess shadow
+outside the one-pixel boundary band; no projected reference is clipped.
+The [receiver registration follow-up](../shadow-receiver-matrix/README.md) shows
+that this origin copied the old fragment receiver offset. These numbers establish
+relative caster shape, not correct world/display registration. The corrected
+checker defaults to the independently derived screen center; the follow-up
+records before/after results using it. Per-frame counts are in each
 before/after directory's `metrics.json`.
 
 | Cone, 45° before | Cone, 45° after |
@@ -156,10 +161,12 @@ there is no new dispatch or buffer binding.
 
 `voxel-baseline-corrected.json` remeasures the unchanged 16 native voxel images
 in [the earlier footprint investigation](../4274-shape-shadow-footprints/README.md).
-Accounting for the Z1 framebuffer origin removes the false displacement in the
-oracle: every voxel frame passes strict edges. No voxel renderer change is
-responsible for that improvement. Historical oracle/error images in the earlier
-directory retain their original, incorrect image-center origin.
+Those historical measurements used the displaced Z1 query origin and report
+strict-edge passes under that convention. The receiver registration follow-up
+establishes that the compositor centers world geometry; the shifted oracle hid
+the receiver error. This report therefore does not certify absolute voxel-shadow
+registration. The earlier image-center convention was not itself incorrect.
+No voxel renderer change was responsible for the historical score improvement.
 
 ## Bounds and validation limits
 
@@ -176,5 +183,5 @@ eight-angle external-shadow interior check. Other curved receiver types remain o
 
 Next checks are native OpenGL, broader finite-ray reception on curved SDF surfaces,
 surface-normal/fragment reconstruction (the torus's no-shadow striping), and
-high-overlap/overflow performance. The isolated voxel floor footprints are
-already correct under the repaired measurement convention.
+high-overlap/overflow performance. The historical isolated voxel measurements require revalidation with the centered
+receiver and independent screen origin.

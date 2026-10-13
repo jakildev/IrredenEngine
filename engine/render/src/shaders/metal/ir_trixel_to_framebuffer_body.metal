@@ -144,7 +144,8 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
     if (color.a >= 0.1) {
         float3 position = float3(0.0), normal = float3(0.0);
         if (selectedShapeBoxReceiver(int2(sampleCoord), int(textureSize.x),
-                                     originRaw, receiverFrame, receiverShapes, receiverOwners, receiverTiles,
+                                     shapeFragmentQueryPixel(originRaw, int2(textureSize)),
+                                     receiverFrame, receiverShapes, receiverOwners, receiverTiles,
                                      true,
                                      position, normal)) {
             float visibility = sunFrameData.shadowsEnabled == 0 ? 1.0 :
@@ -160,7 +161,8 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
 #if IR_SHAPE_LIGHTING
     if (color.a >= 0.1 && lighting.lightingEnabled != 0) {
         float3 position = float3(0.0), normal = float3(0.0);
-        if (selectedShapeBoxReceiver(int2(sampleCoord), int(textureSize.x), originRaw,
+        if (selectedShapeBoxReceiver(int2(sampleCoord), int(textureSize.x),
+                                     shapeFragmentQueryPixel(originRaw, int2(textureSize)),
                                      receiverFrame, receiverShapes, receiverOwners, receiverTiles,
                                      true,
                                      position, normal))

@@ -6,7 +6,8 @@ Pair --spin-shape SHAPE --spin-shape-voxel --spin-shape-floor --no-ao
 CaptureCamera yaw (radians), SHADOW-FOOTPRINT step and effective subdivisions.
 The camera must be unpanned. The voxel oracle projects occupied unit boxes;
 --representation analytic projects horizontal sections of the rendered SDF solid.
-Both account for the floor receiver's canvas-origin phase. It reports discrepancies;
+Both use the displayed world-to-screen origin, independent of texture storage.
+The metric reports discrepancies;
 --strict-edges additionally fails on missing/excess pixels beyond one pixel.
 Area agreement alone does not certify edge reconstruction or self-shadowing.
 """
@@ -70,11 +71,6 @@ def expected_mask(size, cells, yaw, scale, subdivisions, origin=None):
 
 
 
-def receiver_screen_origin(size, scale, subdivisions):
-    # The fragment query is relative to Z1, one canvas texel before canvas centre.
-    return tuple(size[i] / 2 - scale[i] / subdivisions for i in range(2))
-
-
 def analytic_cross_section(shape, z, threshold):
     if shape == "torus":
         radius = math.sqrt(max(0, (2 + threshold)**2 - z*z))
@@ -89,7 +85,7 @@ def analytic_cross_section(shape, z, threshold):
 
 
 def analytic_expected_mask(size, shape, yaw, scale, subdivisions,
-                           slices=4096, sectors=512):
+                           slices=4096, sectors=512, origin=None):
     """Independent horizontal annulus/disk union, centre sampled at 4x resolution.
 
     This is a convergent geometric reference, not an exact pixel oracle. Compare
@@ -98,7 +94,7 @@ def analytic_expected_mask(size, shape, yaw, scale, subdivisions,
     supersample = 4
     mask = Image.new("L", tuple(value * supersample for value in size))
     draw = ImageDraw.Draw(mask)
-    origin = receiver_screen_origin(size, scale, subdivisions)
+    origin = origin or (size[0] / 2, size[1] / 2)
     threshold = 0.5 / subdivisions
     floor_z = 4.5 - threshold
     half_height = (2 if shape == "torus" else 4) + threshold
@@ -184,6 +180,8 @@ def main():
     parser.add_argument("--yaw", type=float, required=True, help="Actual captured yaw, radians")
     parser.add_argument("--iso-scale", type=float, nargs=2, required=True)
     parser.add_argument("--subdivisions", type=int, required=True)
+    parser.add_argument("--screen-origin", type=float, nargs=2,
+                        help="World-origin screenshot position; default image center")
     parser.add_argument("--strict-edges", action="store_true")
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
@@ -191,6 +189,8 @@ def main():
         parser.error("yaw must be finite and subdivisions positive")
     if not all(math.isfinite(v) and v > 0 for v in args.iso_scale):
         parser.error("iso scale must be finite and positive")
+    if args.screen_origin is not None and not all(math.isfinite(v) for v in args.screen_origin):
+        parser.error("screen origin must be finite")
     with Image.open(args.image) as opened:
         image = opened.convert("RGB")
     with Image.open(args.control) as opened:
@@ -198,16 +198,18 @@ def main():
     cells = occupied_cells(args.shape) if args.representation == "voxel" else []
     if args.representation == "analytic":
         expected, clipped = analytic_expected_mask(
-            image.size, args.shape, args.yaw, args.iso_scale, args.subdivisions)
+            image.size, args.shape, args.yaw, args.iso_scale, args.subdivisions,
+            origin=args.screen_origin)
     else:
         expected, clipped = expected_mask(
             image.size, cells, args.yaw, args.iso_scale, args.subdivisions,
-            receiver_screen_origin(image.size, args.iso_scale, args.subdivisions))
+            args.screen_origin)
     observed, visible = shadow_masks(image, control)
     result, errors = compare_masks(expected, observed, visible)
     result.update(shape=args.shape, representation=args.representation,
                   occupied_cells=len(cells), yaw=args.yaw,
                   iso_scale=args.iso_scale, subdivisions=args.subdivisions,
+                  screen_origin=args.screen_origin or [image.width / 2, image.height / 2],
                   clipped=clipped, image=str(args.image), control=str(args.control))
     result["strict_edges_passed"] &= not clipped
     print(json.dumps(result, indent=2))

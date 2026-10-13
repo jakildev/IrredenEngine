@@ -1,0 +1,71 @@
+diff --git a/engine/render/src/shaders/ir_selected_shape_receiver.glsl b/engine/render/src/shaders/ir_selected_shape_receiver.glsl
+index 9f9373cb6..42c114829 100644
+--- a/engine/render/src/shaders/ir_selected_shape_receiver.glsl
++++ b/engine/render/src/shaders/ir_selected_shape_receiver.glsl
+@@ -1,3 +1,8 @@
++// Continuous fragment rays use the producer Z-face origin, not the texture center.
++vec2 shapeFragmentQueryPixel(vec2 rawCanvasPixel, ivec2 canvasSize) {
++    return rawCanvasPixel - 0.5 * vec2(canvasSize) + vec2(trixelOriginOffsetZ1(canvasSize));
++}
++
+ layout(std140, binding = 23) uniform ShapeReceiverFrame {
+     ShapeProjectionData receiverFrame;
+ };
+diff --git a/engine/render/src/shaders/ir_trixel_to_framebuffer_body.glsl b/engine/render/src/shaders/ir_trixel_to_framebuffer_body.glsl
+index 7b5859198..20a5824e9 100644
+--- a/engine/render/src/shaders/ir_trixel_to_framebuffer_body.glsl
++++ b/engine/render/src/shaders/ir_trixel_to_framebuffer_body.glsl
+@@ -99,7 +99,7 @@ void main() {
+ #if IR_SHAPE_RECEIVER && !IR_SHAPE_LIGHTING
+     if (color.a >= 0.1) {
+         vec3 position = vec3(0.0), normal = vec3(0.0);
+-        if (selectedShapeBoxReceiver(sampleCoord, textureSize.x, originRaw, true,
++        if (selectedShapeBoxReceiver(sampleCoord, textureSize.x, shapeFragmentQueryPixel(originRaw, textureSize), true,
+                                      position, normal)) {
+             float visibility = shadowsEnabled == 0 ? 1.0 :
+                 worldShapeSurfaceSunShadowFactor(position, normal, shapeCanvasIsoDepth(position, receiverFrame),
+@@ -113,7 +113,7 @@ void main() {
+ #if IR_SHAPE_LIGHTING
+     if (color.a >= 0.1 && lightingEnabled != 0) {
+         vec3 position = vec3(0.0), normal = vec3(0.0);
+-        if (selectedShapeBoxReceiver(sampleCoord, textureSize.x, originRaw, true,
++        if (selectedShapeBoxReceiver(sampleCoord, textureSize.x, shapeFragmentQueryPixel(originRaw, textureSize), true,
+                                      position, normal))
+             color.rgb = shapeSurfaceLighting(sampleCoord, textureSize.x, position, normal,
+                 shapeCanvasIsoDepth(position, receiverFrame), casterViewToWorld, color.rgb);
+diff --git a/engine/render/src/shaders/metal/ir_selected_shape_receiver.metal b/engine/render/src/shaders/metal/ir_selected_shape_receiver.metal
+index 136594f8c..052c0f496 100644
+--- a/engine/render/src/shaders/metal/ir_selected_shape_receiver.metal
++++ b/engine/render/src/shaders/metal/ir_selected_shape_receiver.metal
+@@ -1,3 +1,8 @@
++// Continuous fragment rays use the producer Z-face origin, not the texture center.
++inline float2 shapeFragmentQueryPixel(float2 rawCanvasPixel, int2 canvasSize) {
++    return rawCanvasPixel - 0.5 * float2(canvasSize) + float2(trixelOriginOffsetZ1(canvasSize));
++}
++
+ inline int selectedShapeIndex(int2 ownerPixel, int ownerWidth,
+                              constant ShapeProjectionData &receiverFrame,
+                              device const uint *receiverOwners,
+diff --git a/engine/render/src/shaders/metal/ir_trixel_to_framebuffer_body.metal b/engine/render/src/shaders/metal/ir_trixel_to_framebuffer_body.metal
+index f5cd05e9e..c5d91f28a 100644
+--- a/engine/render/src/shaders/metal/ir_trixel_to_framebuffer_body.metal
++++ b/engine/render/src/shaders/metal/ir_trixel_to_framebuffer_body.metal
+@@ -147,7 +147,7 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
+     if (color.a >= 0.1) {
+         float3 position = float3(0.0), normal = float3(0.0);
+         if (selectedShapeBoxReceiver(int2(sampleCoord), int(textureSize.x),
+-                                     originRaw, receiverFrame, receiverShapes, receiverOwners, receiverTiles,
++                                     shapeFragmentQueryPixel(originRaw, int2(textureSize)), receiverFrame, receiverShapes, receiverOwners, receiverTiles,
+                                      true,
+                                      position, normal)) {
+             float visibility = sunFrameData.shadowsEnabled == 0 ? 1.0 :
+@@ -163,7 +163,8 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
+ #if IR_SHAPE_LIGHTING
+     if (color.a >= 0.1 && lighting.lightingEnabled != 0) {
+         float3 position = float3(0.0), normal = float3(0.0);
+-        if (selectedShapeBoxReceiver(int2(sampleCoord), int(textureSize.x), originRaw,
++        if (selectedShapeBoxReceiver(int2(sampleCoord), int(textureSize.x),
++                                     shapeFragmentQueryPixel(originRaw, int2(textureSize)),
+                                      receiverFrame, receiverShapes, receiverOwners, receiverTiles,
+                                      true,
+                                      position, normal))
