@@ -235,7 +235,8 @@ inline void bindWidgets(LuaScript &script) {
 
     // Deferred like every entity destroy: the widget goes at the next
     // structural flush, so a widget handler may destroy its own widget. The
-    // widget's Lua handlers go with it.
+    // widget's Lua handlers go with it, and none of them runs after this
+    // call, events already queued this frame included.
     gui["destroyWidget"] = [](lua_Integer id) {
         const IREntity::EntityId widget = static_cast<IREntity::EntityId>(id);
         const bool isWidget =

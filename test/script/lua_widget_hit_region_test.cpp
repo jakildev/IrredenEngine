@@ -191,6 +191,126 @@ TEST_F(LuaWidgetHitRegion, ClickHandlerMayDestroyItsOwnRegion) {
     EXPECT_FALSE(IREntity::entityExists(region));
 }
 
+// The old row's unhover tears down the row the cursor moved onto, whose hover
+// is already queued behind it in the same frame.
+TEST_F(LuaWidgetHitRegion, UnhoverHandlerDestroyingTheNextRegionDropsItsQueuedHover) {
+    registerDispatch();
+    run(R"lua(
+        events = {}
+        first = IRGui.makeHitRegion(0, 0, 100, 10, {
+            onHover = function() events[#events + 1] = 'hover1' end,
+            onUnhover = function()
+                events[#events + 1] = 'unhover1'
+                IRGui.destroyWidget(second)
+            end,
+        })
+        second = IRGui.makeHitRegion(0, 10, 100, 10, {
+            onHover = function() events[#events + 1] = 'hover2' end,
+            onClick = function() events[#events + 1] = 'click2' end,
+        })
+    )lua");
+    const IREntity::EntityId first = entity("first");
+    const IREntity::EntityId second = entity("second");
+
+    state(first).hovered_ = true;
+    dispatch();
+    state(first).hovered_ = false;
+    state(second).hovered_ = true;
+    state(second).fireAction_ = true;
+    dispatch();
+
+    EXPECT_EQ(events(), "hover1 unhover1");
+
+    m_entityManager.destroyMarkedEntities();
+    EXPECT_TRUE(IREntity::entityExists(first));
+    EXPECT_FALSE(IREntity::entityExists(second));
+}
+
+TEST_F(LuaWidgetHitRegion, HoverHandlerDestroyingItsOwnRegionDropsItsQueuedClick) {
+    registerDispatch();
+    run(R"lua(
+        events = {}
+        region = IRGui.makeHitRegion(0, 0, 100, 10, {
+            onHover = function(id)
+                events[#events + 1] = 'hover'
+                IRGui.destroyWidget(id)
+            end,
+            onClick = function() events[#events + 1] = 'click' end,
+        })
+    )lua");
+    const IREntity::EntityId region = entity("region");
+
+    state(region).hovered_ = true;
+    state(region).fireAction_ = true;
+    dispatch();
+
+    EXPECT_EQ(events(), "hover");
+}
+
+// A tree mark names the widget the same as a plain one: a handler that tears
+// down the panel a row is parented to silences that row's queued events.
+TEST_F(LuaWidgetHitRegion, HandlerTreeDestroyingAParentDropsTheChildRegionsQueuedEvents) {
+    registerDispatch();
+    run(R"lua(
+        events = {}
+        panel = IRGui.makePanel(0, 0, 100, 40)
+        closer = IRGui.makeHitRegion(0, 0, 100, 10, {
+            onUnhover = function()
+                events[#events + 1] = 'close'
+                IREntity.deferredDestroyTree(panel)
+            end,
+        })
+        row = IRGui.makeHitRegion(0, 10, 100, 10, {
+            onHover = function() events[#events + 1] = 'hoverRow' end,
+            onClick = function() events[#events + 1] = 'clickRow' end,
+        })
+        IREntity.setParent(row, panel)
+    )lua");
+    const IREntity::EntityId closer = entity("closer");
+    const IREntity::EntityId row = entity("row");
+
+    state(closer).hovered_ = true;
+    dispatch();
+    state(closer).hovered_ = false;
+    state(row).hovered_ = true;
+    state(row).fireAction_ = true;
+    dispatch();
+
+    EXPECT_EQ(events(), "close");
+
+    m_entityManager.destroyMarkedEntities();
+    EXPECT_FALSE(IREntity::entityExists(row));
+    EXPECT_TRUE(IREntity::entityExists(closer));
+}
+
+// A widget destroyed outside a handler is still in its archetype until the
+// drain, so the tick visits it; it reports nothing, including the unhover of
+// a widget destroyed while hovered.
+TEST_F(LuaWidgetHitRegion, RegionDestroyedBeforeTheDrainGetsNoFurtherEvents) {
+    registerDispatch();
+    run(R"lua(
+        events = {}
+        local function record(tag)
+            return function() events[#events + 1] = tag end
+        end
+        region = IRGui.makeHitRegion(0, 0, 100, 10, {
+            onHover = record('hover'),
+            onUnhover = record('unhover'),
+            onClick = record('click'),
+        })
+    )lua");
+    const IREntity::EntityId region = entity("region");
+
+    state(region).hovered_ = true;
+    dispatch();
+    run("IRGui.destroyWidget(region)");
+    state(region).hovered_ = false;
+    state(region).fireAction_ = true;
+    dispatch();
+
+    EXPECT_EQ(events(), "hover");
+}
+
 TEST_F(LuaWidgetHitRegion, DestroyWidgetRemovesAnyWidgetAndRejectsOtherIds) {
     run(R"lua(
         region = IRGui.makeHitRegion(0, 0, 10, 10)

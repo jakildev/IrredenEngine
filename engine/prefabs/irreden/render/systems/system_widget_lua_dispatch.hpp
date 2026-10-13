@@ -22,9 +22,11 @@
 // widgets, and moving the cursor from one widget to another always reports
 // the unhover before the hover.
 //
-// A destroyed widget's handlers are dropped by a pre-destroy hook, so a
-// recycled entity id never inherits them. No unhover is delivered for a
-// widget destroyed while hovered.
+// A widget reports nothing from the moment it is marked for destruction:
+// `fire` skips it, so an event already queued behind the handler that
+// destroyed it this frame is dropped, and no unhover is delivered for a
+// widget destroyed while hovered. A pre-destroy hook then drops its handlers,
+// so a recycled entity id never inherits them.
 //
 // The `sol::protected_function`s held here are freed when the SystemManager
 // is destroyed, which `World` orders BEFORE the `sol::state` (`m_lua` leads
@@ -142,7 +144,14 @@ template <> struct System<WIDGET_LUA_DISPATCH> {
     // replaced or dropped this frame is honoured. The call goes through a
     // copy, so a callback that re-registers its own widget does not destroy
     // the function it is running from.
+    //
+    // The deletion-mark check is what covers a deferred destroy: the widget
+    // keeps its handlers until the drain runs the pre-destroy hook, which is
+    // after this endTick.
     void fire(const PendingEvent &pending) {
+        if (IREntity::getEntityManager().isMarkedForDeletion(pending.widget_)) {
+            return;
+        }
         sol::protected_function fn;
         if (pending.event_ == WidgetEvent::CLICK) {
             auto it = clickHandlers_.find(pending.widget_);
