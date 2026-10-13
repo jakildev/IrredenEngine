@@ -178,7 +178,7 @@ struct C_VoxelPool {
             return allocation;
         }
 
-        if (m_voxelPoolIndex + size <= m_voxelPoolSize) {
+        if (size <= static_cast<unsigned int>(m_voxelPoolSize - m_voxelPoolIndex)) {
             size_t startIndex = static_cast<size_t>(m_voxelPoolIndex);
             m_voxelPoolIndex += size;
             ++m_allocatedSpanCount;
@@ -213,7 +213,8 @@ struct C_VoxelPool {
     // Reports whether allocateVoxels(size) can reuse an exact free span or
     // extend the never-allocated tail without mutating either allocator state.
     bool canAllocateVoxels(unsigned int size) const {
-        return findFreeSpan(size).has_value() || m_voxelPoolIndex + size <= m_voxelPoolSize;
+        return findFreeSpan(size).has_value() ||
+               size <= static_cast<unsigned int>(m_voxelPoolSize - m_voxelPoolIndex);
     }
 
     void deallocateVoxels(size_t startIndex, size_t size) {

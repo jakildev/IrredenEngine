@@ -82,6 +82,10 @@ TEST_F(LuaRenderBindingsTest, CanAllocateVoxelsReadsTheActiveCanvasPool) {
     ASSERT_TRUE(before.valid());
     EXPECT_TRUE(before.get<bool>());
 
+    auto oversized = m_lua.lua().safe_script("return IRRender.canAllocateVoxels(4294967295)");
+    ASSERT_TRUE(oversized.valid());
+    EXPECT_FALSE(oversized.get<bool>());
+
     IRComponents::C_VoxelPool &pool = IREntity::getComponent<IRComponents::C_VoxelPool>(canvas);
     pool.allocateVoxels(1);
 

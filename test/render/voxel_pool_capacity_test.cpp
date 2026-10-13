@@ -5,6 +5,8 @@
 #include <irreden/ir_profile.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 
+#include <limits>
+
 namespace {
 
 using IRComponents::C_VoxelPool;
@@ -27,6 +29,7 @@ TEST(VoxelPoolCapacity, MatchesAllocationForTailExactFreeSpanLargerSpanAndExhaus
     EXPECT_FALSE(pool.canAllocateVoxels(2));
 
     EXPECT_FALSE(pool.canAllocateVoxels(1));
+    EXPECT_FALSE(pool.canAllocateVoxels(std::numeric_limits<unsigned int>::max()));
 }
 
 } // namespace
