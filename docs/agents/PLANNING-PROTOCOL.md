@@ -103,6 +103,28 @@ task are a separate docs-first PR — [`architect-protocol.md`](architect-protoc
      proves only that the OFF path is a no-op. The criterion names the
      fixture or scene it fires on, and that fixture exists, or creating it
      is part of this plan, or it is filed as a blocker first.
+     **Pixel evidence for a placement re-bless** (render-verify and
+     light-verify rows). A change that moves content by **whole**
+     framebuffer pixels may use a translation check: the old image shifted
+     by one `(dx, dy)` equals the new one on interior crops. A change that
+     moves content by a **sub-pixel** amount (an offset floored or
+     re-split, a residual moved between stages, a pitch correction)
+     re-rasterizes every edge at its own phase, so no uniform shift exists
+     and a translation check fails on a correct change. Its criterion is
+     per pixel, on named rows: every pixel that differs between old and
+     new has its new colour present in the old image within one
+     framebuffer pixel — a `(2·scale+1)²` screen-pixel window at output
+     scale `scale`, exact RGB compare, a `2·scale`-pixel frame border
+     ignored. It does not prove a colour that vanished (run the reverse
+     direction, old in new, to see it) or a shaded gradient re-sampled at
+     a new phase; the before/after pairs and the placement oracle cover
+     those. Never write a face-colour-equality clause ("new colour equals
+     the adjacent lit face") — it fails on the merged reference's own
+     changed pixels. The first host to capture runs the check and records
+     the readings with the script; a pixel-level clause is never left as a
+     prediction for the cross-host twin. Executor and "old" source per
+     [`AUTHOR-PIPELINE.md`](AUTHOR-PIPELINE.md) §"Render-verify and
+     light-verify rows".
    - **Gotchas** — invariants the implementation must not violate.
    - **Cross-system audit** when deleting or migrating a shared resource
      (component, SSBO, GPU buffer, system, coordinate convention): every
