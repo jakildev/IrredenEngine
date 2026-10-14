@@ -1772,8 +1772,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // Face selection reads whether the fog it selects against has a ceiling
         // as one uniform; the per-source scan runs here, once per canvas.
         frameData_.fogCeilingEnabled_.x =
-            cutSectionFog != nullptr &&
-                    IRPrefab::Fog::anyCeilingEnabled(cutSectionFog->observers_)
+            cutSectionFog != nullptr && IRPrefab::Fog::anyCeilingEnabled(cutSectionFog->observers_)
                 ? 1
                 : 0;
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
@@ -2422,9 +2421,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
         // VoxelCompactProgram stays byte-for-byte master's kernel.
         IRRender::createNamedResource<ShaderProgram>(
             "VoxelCompactCeilingProgram",
-            std::vector{ShaderStage{
-                IRRender::kFileCompVoxelVisibilityCompactCeiling, ShaderType::COMPUTE
-            }}
+            std::vector{
+                ShaderStage{IRRender::kFileCompVoxelVisibilityCompactCeiling, ShaderType::COMPUTE}
+            }
         );
         IRRender::createNamedResource<ShaderProgram>(
             "SingleVoxelProgram1",

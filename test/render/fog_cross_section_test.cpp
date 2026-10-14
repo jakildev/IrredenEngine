@@ -2597,10 +2597,9 @@ TEST_F(FogCrossSectionTest, GpuRevealSurfaceMatchesTheCpuOracle) {
             // An unperturbed height is exact integer arithmetic on both backends,
             // so only a non-zero phase offset can sit within noise of a plane.
             const int expected = verdict(offset);
-            const bool stable = expected >= 0 &&
-                                (offset == 0.0f ||
-                                 (verdict(offset - kHeightTieMargin) == expected &&
-                                  verdict(offset + kHeightTieMargin) == expected));
+            const bool stable = expected >= 0 && (offset == 0.0f ||
+                                                  (verdict(offset - kHeightTieMargin) == expected &&
+                                                   verdict(offset + kHeightTieMargin) == expected));
             if (!stable) {
                 ++dissolveTies;
                 return;
