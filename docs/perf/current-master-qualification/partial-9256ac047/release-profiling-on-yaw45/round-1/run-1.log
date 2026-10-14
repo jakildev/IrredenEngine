@@ -1,0 +1,4 @@
+ir-run: ${ENGINE_ROOT}/engine/tools/bin/ir-acquire benchmark -- ${WORKTREE}/build-release/creations/demos/perf_grid/IRPerfGrid --wave-freeze --no-overlay --pivot-origin --auto-profile 1200 --config-preset configs/perf/million.lua --yaw 0.785398163 (timeout: 900s) (window mode: offscreen)
+ir-run: IRPerfGrid exited cleanly after 71s
+ir-run: QUIET=guarded exe=IRPerfGrid
+ir-run: RESULT=CLEAN exe=IRPerfGrid exit=0

@@ -1,0 +1,4 @@
+ir-run: ${ENGINE_ROOT}/engine/tools/bin/ir-acquire benchmark -- ${WORKTREE}/build-release/creations/demos/perf_grid/IRPerfGrid --wave-freeze --no-overlay --pivot-origin --auto-profile 600 --config-preset configs/perf/million.lua --yaw 0 (timeout: 900s) (window mode: offscreen)
+ir-acquire: QUIET-REFUSED 42f9f82e-bbbd-4439-80b6-bfe6a9729138 pid=54728 state=busy age=1081s
+ir-run: QUIET=refused exe=IRPerfGrid
+ir-run: RESULT=HOST-NOT-QUIET exe=IRPerfGrid exit=75
