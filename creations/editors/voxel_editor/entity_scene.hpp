@@ -496,10 +496,33 @@ class EntityScene {
         m_selected = IRMath::clamp(index, 0, static_cast<int>(m_parts.size()) - 1);
         const IREntity::EntityId selected = selectedEntity();
         if (createGizmos) {
-            IRPrefab::Gizmo::createTranslateGizmoForAnchor(selected);
-            IRPrefab::Gizmo::createRotateGizmoForAnchor(selected);
+            const float clearance = partViewClearance(*selectedPart());
+            IRPrefab::Gizmo::createTranslateGizmoForAnchor(selected, clearance);
+            IRPrefab::Gizmo::createRotateGizmoForAnchor(selected, clearance);
         }
         return selected;
+    }
+
+    // Radius, in world units, of a sphere centred on @p part's translation
+    // that holds everything the part draws: the farthest corner of a voxel
+    // set's local box, or an SDF's bounding radius, under the part's absolute
+    // scale. The part's rotation does not change it. Read at selection, as the
+    // clearance of the part's gizmo; no edit path changes a part's extent.
+    float partViewClearance(const EditorPart &part) const {
+        const IRMath::vec3 scale = IRMath::abs(
+            IREntity::getComponent<IRComponents::C_LocalTransform>(m_root).scale_ *
+            IREntity::getComponent<IRComponents::C_LocalTransform>(part.entity_).scale_
+        );
+        if (part.kind_ == EditorPartKind::SHAPE) {
+            const auto &shape =
+                IREntity::getComponent<IRComponents::C_ShapeDescriptor>(part.entity_);
+            return IRMath::SDF::boundingRadius(shape.shapeType_, shape.params_) *
+                   IRMath::max(scale.x, IRMath::max(scale.y, scale.z));
+        }
+        const auto &set = IREntity::getComponent<IRComponents::C_VoxelSetNew>(part.entity_);
+        const IRMath::vec3 boxMin = voxelSetLocalOrigin(set) - IRMath::vec3(0.5f);
+        const IRMath::vec3 boxMax = boxMin + IRMath::vec3(set.size_);
+        return IRMath::length(IRMath::max(IRMath::abs(boxMin), IRMath::abs(boxMax)) * scale);
     }
 
     void clear() {

@@ -25,6 +25,7 @@
 
 #include <irreden/common/components/component_name.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
+#include <irreden/common/components/component_modifiers.hpp>
 #include <irreden/render/components/component_fog_exempt.hpp>
 #include <irreden/render/components/component_gizmo_handle.hpp>
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
@@ -108,7 +109,8 @@ inline IREntity::EntityId spawnHandle(
     IRRender::ShapeType shapeType,
     vec4 shapeParams,
     Color color,
-    const char *name
+    const char *name,
+    float viewClearance = 0.0f
 ) {
     // Opt the handle's shape into the generic xray-occlusion shader path
     // so SHAPES_TO_TRIXEL emits the faint-silhouette alpha blend where
@@ -134,9 +136,14 @@ inline IREntity::EntityId spawnHandle(
         C_LocalTransform{localPos},
         shapeDesc,
         IRComponents::C_FogExempt{},
-        C_GizmoHandle{kind, axis, shapeParams, localPos, isAnchor, color, parent},
+        C_GizmoHandle{kind, axis, shapeParams, localPos, isAnchor, color, parent, viewClearance},
         C_Name{name}
     );
+    if (viewClearance > 0.0f) {
+        // The clearance displacement is a world-space modifier, which
+        // PROPAGATE_TRANSFORM reads from this component.
+        IREntity::setComponent(handle, IRComponents::C_Modifiers{});
+    }
     if (!isAnchor) {
         IREntity::setParent(handle, parent);
     }
@@ -153,7 +160,8 @@ inline IREntity::EntityId makeGroup(IREntity::EntityId parent, const char *name)
 
 // Shared by createRotateGizmo / createRotateGizmoForAnchor: the three axis
 // rings (TORUS per axis), parented to — and anchored at — `parent`.
-inline void spawnRotateRings(IREntity::EntityId parent, const char *ringName) {
+inline void
+spawnRotateRings(IREntity::EntityId parent, const char *ringName, float viewClearance = 0.0f) {
     for (GizmoAxis axis : {GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z}) {
         spawnHandle(
             parent,
@@ -163,7 +171,8 @@ inline void spawnRotateRings(IREntity::EntityId parent, const char *ringName) {
             IRRender::ShapeType::TORUS,
             vec4(kRingMajorRadius, kRingMinorRadius, 0.0f, 0.0f),
             axisColor(axis),
-            ringName
+            ringName,
+            viewClearance
         );
     }
 }
@@ -171,8 +180,12 @@ inline void spawnRotateRings(IREntity::EntityId parent, const char *ringName) {
 // Shared by createTranslateGizmo / createTranslateGizmoForAnchor: the three
 // axis arrows (CYLINDER shaft + CONE head per axis), parented to — and
 // anchored at — `parent`.
-inline void
-spawnTranslateArrows(IREntity::EntityId parent, const char *shaftName, const char *headName) {
+inline void spawnTranslateArrows(
+    IREntity::EntityId parent,
+    const char *shaftName,
+    const char *headName,
+    float viewClearance = 0.0f
+) {
     constexpr float shaftCenter = kArrowShaftLength * 0.5f;
     constexpr float headCenter = kArrowShaftLength + kArrowHeadLength * 0.5f;
 
@@ -186,7 +199,8 @@ spawnTranslateArrows(IREntity::EntityId parent, const char *shaftName, const cha
             IRRender::ShapeType::CYLINDER,
             vec4(kArrowShaftRadius, 0.0f, kArrowShaftLength, 0.0f),
             color,
-            shaftName
+            shaftName,
+            viewClearance
         );
         spawnHandle(
             parent,
@@ -196,7 +210,8 @@ spawnTranslateArrows(IREntity::EntityId parent, const char *shaftName, const cha
             IRRender::ShapeType::CONE,
             vec4(kArrowHeadRadius, 0.0f, kArrowHeadLength, 0.0f),
             color,
-            headName
+            headName,
+            viewClearance
         );
     }
 }
@@ -243,9 +258,20 @@ inline IREntity::EntityId createTranslateGizmo(IREntity::EntityId parent = IREnt
 /// created; the returned id is `anchor` itself. (`createTranslateGizmo`,
 /// by contrast, anchors its arrows to the group it returns, so dragging
 /// moves the gizmo as a free-standing unit.)
-inline IREntity::EntityId createTranslateGizmoForAnchor(IREntity::EntityId anchor) {
+///
+/// A positive `viewClearance` (world units) draws every arrow nearer the
+/// camera than a sphere of that radius centred on `anchor`
+/// (`C_GizmoHandle::viewClearance_`): pass a bound on the anchor's own
+/// content so it cannot occlude its gizmo.
+inline IREntity::EntityId
+createTranslateGizmoForAnchor(IREntity::EntityId anchor, float viewClearance = 0.0f) {
     using namespace detail;
-    spawnTranslateArrows(anchor, "GizmoAnchorTranslateShaft", "GizmoAnchorTranslateHead");
+    spawnTranslateArrows(
+        anchor,
+        "GizmoAnchorTranslateShaft",
+        "GizmoAnchorTranslateHead",
+        viewClearance
+    );
     return anchor;
 }
 
@@ -264,10 +290,12 @@ inline IREntity::EntityId createRotateGizmo(IREntity::EntityId parent = IREntity
 /// `GIZMO_DRAG` rotation lands on the anchor directly. Use for per-target
 /// posing handles where the rotated entity IS the visual anchor — e.g. FK
 /// pose editing of a skeletal joint in the voxel editor. No group
-/// entity is created; the returned id is `anchor` itself.
-inline IREntity::EntityId createRotateGizmoForAnchor(IREntity::EntityId anchor) {
+/// entity is created; the returned id is `anchor` itself. `viewClearance`
+/// is the same opt-in as on `createTranslateGizmoForAnchor`.
+inline IREntity::EntityId
+createRotateGizmoForAnchor(IREntity::EntityId anchor, float viewClearance = 0.0f) {
     using namespace detail;
-    spawnRotateRings(anchor, "GizmoAnchorRotateRing");
+    spawnRotateRings(anchor, "GizmoAnchorRotateRing", viewClearance);
     return anchor;
 }
 

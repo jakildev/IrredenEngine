@@ -430,7 +430,9 @@ IR_SAVE_OPT_OUT(IRComponents::C_SettingsRegistry)
 IR_SAVE_OPT_IN(IRComponents::C_Splitter, 1)
 IR_SAVE_OPT_IN(IRComponents::C_VoxelSelection, 1)
 IR_SAVE_OPT_IN(IRComponents::C_VoxelSelectionHighlight, 1)
-IR_SAVE_OPT_IN(IRComponents::C_GizmoHandle, 1)
+// Version 2 appends viewClearance_; version 1 reads back through
+// SaveMigration<C_GizmoHandle> with a clearance of 0.
+IR_SAVE_OPT_IN(IRComponents::C_GizmoHandle, 2)
 IR_SAVE_OPT_IN(IRComponents::C_Player, 1)
 IR_SAVE_OPT_IN(IRComponents::C_ControllableUnit, 1)
 IR_SAVE_OPT_IN(IRComponents::C_Selected, 1)

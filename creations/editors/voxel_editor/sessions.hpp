@@ -76,6 +76,13 @@
 // the dropdown clicks land; its DETACHED REVOX row is then refused, the
 // Ctrl+M twin previews GRID, and M returns to GRID.
 //
+// `part_gizmo_reach` proves a selected part's gizmo takes a click after
+// content is authored at the part's pivot. It bakes a blob into the centre of
+// a Ctrl+P part and only then drags the X arrow; drags it again after a
+// quarter turn of the camera, where a clearance taken along a fixed world
+// direction would leave the arrow's pixels; and drags the Z arrow of a radial
+// copy turned about Z, where one applied in the part's own frame would.
+//
 // `parts_scroll` proves the PARTS list reaches every part once an array makes
 // more parts than the list has rows: the array's selection is scrolled into
 // view, the wheel walks the list to either end, and a row click there selects
@@ -134,6 +141,7 @@ enum class Id {
     MODE_PREVIEW_SHOTS,
     TEXT_INPUT_COMMAND_CAPTURE,
     PART_SIZES,
+    PART_GIZMO_REACH,
     PARTS_SCROLL,
     PART_MODE_CYCLE,
     CORNER_PART_REVOX_REFUSED,
@@ -185,6 +193,8 @@ inline Id idFromName(const std::string &name) {
         return Id::TEXT_INPUT_COMMAND_CAPTURE;
     if (name == "part_sizes")
         return Id::PART_SIZES;
+    if (name == "part_gizmo_reach")
+        return Id::PART_GIZMO_REACH;
     if (name == "parts_scroll")
         return Id::PARTS_SCROLL;
     if (name == "part_mode_cycle")
@@ -305,6 +315,19 @@ inline IRMath::vec3 partPivot(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin)
 constexpr IRMath::vec3 kGizmoDragGrabOffset{0.75f, 0.0f, 0.0f};
 constexpr IRMath::vec3 kGizmoDragPull{4.0f, 0.0f, 0.0f};
 constexpr IRMath::vec3 kGizmoDragPartDelta{8.0f / 3.0f, 0.0f, 0.0f};
+
+// The same gesture on the X arrow's far end, the stretch a quarter turn of the
+// camera leaves clear of the other handles.
+constexpr IRMath::vec3 kGizmoDragFarGrabOffset{1.625f, 0.0f, 0.0f};
+
+// The gesture on the Z arrow, which a part turned about Z keeps, at
+// kGizmoDragZoomZ. The arrow is a few trixels across and the rings' near arc
+// covers it from one unit up, so the grab sits below the arc and in the
+// middle of the columns the arrow is drawn in, a quarter trixel off its axis.
+constexpr float kGizmoDragZoomZ = 2.0f;
+constexpr IRMath::vec3 kGizmoDragGrabOffsetZ{0.1875f, -0.1875f, 0.5f};
+constexpr IRMath::vec3 kGizmoDragPullZ{0.0f, 0.0f, 4.0f};
+constexpr IRMath::vec3 kGizmoDragPartDeltaZ{0.0f, 0.0f, 8.0f / 3.0f};
 
 // The four gestures, on the seeded ground plane at the scene's centre — clear
 // of the left-column GUI panels in screen space and clear of the ground's edges
@@ -2485,6 +2508,74 @@ inline Recipe build(
         builder.reload();
         builder.expectPartExtent(kStem, stemSize, "stem_extent_survives_reload");
         builder.expectPartExtent(kFrame, frameSize, "frame_extent_survives_reload");
+        return builder.finish();
+    }
+    case Id::PART_GIZMO_REACH: {
+        Builder builder("part_gizmo_reach", sceneSize, sceneOrigin);
+        const IRMath::ivec3 center(sceneSize.x / 2, sceneSize.y / 2, sceneSize.z / 2);
+        const IRMath::vec3 pivot = detail::partPivot(sceneSize, sceneOrigin);
+        const IRMath::vec3 movedOnce = pivot + detail::kGizmoDragPartDelta;
+        const IRMath::vec3 movedTwice = movedOnce + detail::kGizmoDragPartDelta;
+
+        builder.segment("bake_center");
+        builder.addVoxelPart();
+        builder.bakeSphere(detail::kFirstWriteBlobRadius);
+        builder.expectPartOccupancy(0, center, true, "centre_cell_authored");
+        builder.expectPartTransform(0, pivot, 0.25f, true, "baked_part_at_its_pivot");
+
+        builder.segment("drag_x");
+        builder.dragPartGizmo(
+            pivot + detail::kGizmoDragGrabOffset,
+            pivot + detail::kGizmoDragGrabOffset + detail::kGizmoDragPull,
+            detail::kGizmoDragPartDelta
+        );
+        builder.expectPartTransform(0, movedOnce, 0.25f, true, "baked_part_moved_by_x_arrow");
+
+        // A segment opens at yaw 0, so the turn and its drag share one. Only
+        // world-aimed drags are valid while the camera is turned.
+        builder.segment("drag_x_turned");
+        builder.tapKey(IRInput::kKeyButtonQ);
+        builder.dragPartGizmo(
+            movedOnce + detail::kGizmoDragFarGrabOffset,
+            movedOnce + detail::kGizmoDragFarGrabOffset + detail::kGizmoDragPull,
+            detail::kGizmoDragPartDelta
+        );
+        builder.expectPartTransform(0, movedTwice, 0.25f, true, "baked_part_moved_at_a_turn");
+
+        // COPY YAW turns each copy that much further than the one before it,
+        // so the second of two copies, across the ring from the first, is the
+        // turned one. The array selects it.
+        constexpr int kCopies = 2;
+        constexpr float kCopyYawDegrees = 60.0f;
+        constexpr float kYawToleranceDegrees = 0.01f;
+        const IRMath::vec3 copyPivot = movedTwice - IRMath::vec3(4.0f, 0.0f, 0.0f);
+        builder.segment("array");
+        builder.dragGuiSlider(
+            kArrayYawSliderGeometry,
+            kArrayYawSliderMin,
+            kArrayYawSliderMax,
+            kCopyYawDegrees
+        );
+        builder.applyRadialArray(kCopies);
+        builder.expectPartCount(kCopies + 1, "two_copies_plus_source");
+        builder.expectPartYaw(kCopies, kCopyYawDegrees, kYawToleranceDegrees, "last_copy_turned");
+        builder.expectPartYaw(0, 0.0f, kYawToleranceDegrees, "source_unturned");
+        builder.expectPartOccupancy(1, center, true, "copy_carries_the_blob");
+        builder.expectPartTransform(kCopies, copyPivot, 0.25f, true, "last_copy_at_its_pivot");
+
+        builder.segment("drag_z_turned_part", detail::kGizmoDragZoomZ);
+        builder.dragPartGizmo(
+            copyPivot + detail::kGizmoDragGrabOffsetZ,
+            copyPivot + detail::kGizmoDragGrabOffsetZ + detail::kGizmoDragPullZ,
+            detail::kGizmoDragPartDeltaZ
+        );
+        builder.expectPartTransform(
+            kCopies,
+            copyPivot + detail::kGizmoDragPartDeltaZ,
+            0.25f,
+            true,
+            "turned_copy_moved_by_z_arrow"
+        );
         return builder.finish();
     }
     case Id::PARTS_SCROLL: {
