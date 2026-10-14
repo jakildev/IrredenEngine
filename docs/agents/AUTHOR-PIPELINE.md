@@ -120,6 +120,14 @@ and is tracked by an open re-bless issue. The PR body shows that control row
 by row. A row that fails only on the PR head, or a tracked row whose metrics
 differ from the control, still fails.
 
+A pixel-level clause for a placement re-bless follows the contract in
+[`PLANNING-PROTOCOL.md`](PLANNING-PROTOCOL.md) (whole-pixel translation vs
+sub-pixel colour locality); run it on the first capture and record the
+readings with the script. "Old" is `origin/master`'s committed reference for a
+render-verify row. A light-verify row whose master reference is stale cannot
+be re-derived from committed files: its "old" is the same-session master
+control capture.
+
 If `commit-and-push`'s simplify pass applies a behavior-affecting fix,
 re-run the affected checks before the PR opens; the reviewer grades this
 table against the plan.
