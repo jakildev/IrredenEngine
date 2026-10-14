@@ -78,6 +78,8 @@ struct FakeBackendState {
     unsigned int grantedBufferFrames_ = 0;
     unsigned int inputDeviceId_ = kFakeDeviceId;
     unsigned int outputDeviceId_ = kFakeOutputDeviceId;
+    std::string inputDeviceName_ = kFakeDeviceName;
+    std::string outputDeviceName_ = kFakeOutputDeviceName;
     unsigned int inputChannels_ = 2;
     unsigned int outputChannels_ = 2;
     bool hasSeparateOutputDevice_ = false;
@@ -167,14 +169,14 @@ class FakeAudioInputBackend final : public IRAudio::detail::IAudioInputBackend {
         RtAudio::DeviceInfo info;
         info.ID = deviceId;
         if (deviceId == m_state->outputDeviceId_) {
-            info.name = kFakeOutputDeviceName;
+            info.name = m_state->outputDeviceName_;
             info.outputChannels = m_state->outputChannels_;
             info.isDefaultOutput = m_state->hasDefaultOutput_;
             info.sampleRates = m_state->sampleRates_;
             info.preferredSampleRate = 44'100;
             return info;
         }
-        info.name = kFakeDeviceName;
+        info.name = m_state->inputDeviceName_;
         info.inputChannels = m_state->inputChannels_;
         info.outputChannels = m_state->outputChannels_;
         info.isDefaultInput = true;
@@ -392,14 +394,39 @@ TEST(AudioCaptureBackendTest, NullBackendAsserts) {
     EXPECT_THROW(Audio{std::unique_ptr<IRAudio::detail::IAudioInputBackend>{}}, std::runtime_error);
 }
 
-TEST_F(AudioCaptureTest, DeviceSummariesListTheEnumeratedDevices) {
-    const std::vector<IRAudio::AudioDeviceSummary> devices = m_audio->deviceSummaries();
-    ASSERT_EQ(devices.size(), 1u);
-    EXPECT_EQ(devices[0].name_, kFakeDeviceName);
-    EXPECT_EQ(devices[0].inputChannels_, 2u);
-    EXPECT_EQ(devices[0].outputChannels_, 2u);
-    EXPECT_TRUE(devices[0].defaultInput_);
-    EXPECT_EQ(devices[0].preferredSampleRate_, 44'100u);
+void expectSummary(
+    const IRAudio::AudioDeviceSummary &actual, const IRAudio::AudioDeviceSummary &expected, int arm
+) {
+    EXPECT_EQ(actual.name_, expected.name_) << "arm " << arm;
+    EXPECT_EQ(actual.inputChannels_, expected.inputChannels_) << "arm " << arm;
+    EXPECT_EQ(actual.outputChannels_, expected.outputChannels_) << "arm " << arm;
+    EXPECT_EQ(actual.defaultInput_, expected.defaultInput_) << "arm " << arm;
+    EXPECT_EQ(actual.defaultOutput_, expected.defaultOutput_) << "arm " << arm;
+    EXPECT_EQ(actual.preferredSampleRate_, expected.preferredSampleRate_) << "arm " << arm;
+}
+
+// Both arms enumerate the same IDs in the same order and swap the two names, so
+// the device map iterates identically in both while the name order flips: only
+// a sort by name passes both.
+TEST(AudioDeviceSummaryTest, DeviceSummariesListTheEnumeratedDevicesByName) {
+    for (int arm = 0; arm < 2; ++arm) {
+        auto backend = std::make_shared<FakeBackendState>();
+        backend->hasSeparateOutputDevice_ = true;
+        if (arm == 1) {
+            std::swap(backend->inputDeviceName_, backend->outputDeviceName_);
+        }
+        Audio audio{std::make_unique<FakeAudioInputBackend>(backend)};
+        const IRAudio::AudioDeviceSummary
+            input{backend->inputDeviceName_, 2, 2, true, false, 44'100};
+        const IRAudio::AudioDeviceSummary
+            output{backend->outputDeviceName_, 0, 2, false, true, 44'100};
+
+        const std::vector<IRAudio::AudioDeviceSummary> devices = audio.deviceSummaries();
+
+        ASSERT_EQ(devices.size(), 2u) << "arm " << arm;
+        expectSummary(devices[0], arm == 0 ? input : output, arm);
+        expectSummary(devices[1], arm == 0 ? output : input, arm);
+    }
 }
 
 TEST_F(AudioCaptureTest, UnlistedRateUsesNearestListedRateAndWarnsOnce) {
