@@ -8,10 +8,10 @@ Core engine static libraries. Everything here is shared by every creation.
   point** for creations. It constructs the `World` and drives init.
 - Each module also exposes its own `ir_*.hpp` header at
   `engine/<module>/include/irreden/ir_<module>.hpp`.
-- **Creations must only include `ir_*.hpp` entry points**, never internal
-  module headers. If you're tempted to include `engine/render/include/
-  irreden/render/shader.hpp` from a creation, the API is wrong — either
-  re-expose what you need through `ir_render.hpp` or flag it in a PR.
+- Creation-side includes follow the canonical
+  [`creations/CLAUDE.md` Gotchas](../creations/CLAUDE.md#gotchas): prefer module
+  entry points and keep the documented public-header exceptions narrow.
+  Private engine implementation headers remain off limits to creations.
 - Inside the engine itself, modules may freely include each other's
   internal headers, but keep dependency direction clear: low-level
   modules (`common/`, `math/`, `profile/`) do not depend on high-level

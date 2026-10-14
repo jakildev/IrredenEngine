@@ -1,0 +1,26 @@
+{
+  "argv": [
+    "/opt/homebrew/opt/python@3.14/bin/python3.14",
+    "${WORKTREE}/scripts/render-compare.py",
+    "/private/tmp/authored-lod-scene-origin/one-channel-mutation.png",
+    "/private/tmp/authored-lod-scene-origin/positive/lod_scene_coarse.png",
+    "--per-pixel-tol",
+    "0",
+    "--threshold-match-pct",
+    "100",
+    "--threshold-max-delta",
+    "0",
+    "--json",
+    "--diff-out",
+    "/private/tmp/authored-lod-scene-origin/one-channel-control-diff.png"
+  ],
+  "exit_code": 1,
+  "metric": {
+    "pass": false,
+    "match_pct": 100.0,
+    "max_delta": 1,
+    "psnr_db": 119.82,
+    "diff_path": "/private/tmp/authored-lod-scene-origin/one-channel-control-diff.png",
+    "reason": "max_delta 1 > 0; match_pct 100.000% < 100.0%"
+  }
+}

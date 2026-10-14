@@ -79,9 +79,15 @@ the Windows `$<TARGET_RUNTIME_DLLS:...>` POST_BUILD step — they come from
 - **Runtime CWD matters.** Creations load `data/`, `shaders/`, and
   `scripts/` relative to the exe. Always launch from the exe's own
   directory (the `IR<Name>Run` target does this correctly).
-- **Don't include internal engine headers.** Only pull from
-  `ir_*.hpp` umbrellas. If a creation needs something deeper, expose
-  it through the umbrella first.
+- **Don't include private engine implementation headers.** Prefer the
+  `ir_*.hpp` module umbrellas when they expose the required API. Public ECS
+  component/system headers and their authoring/policy helpers under
+  `engine/prefabs/irreden/`, and prefab-authoring APIs under
+  `engine/script/include/irreden/`, may be included directly when no umbrella
+  exports them; these are the creation-facing APIs used by the reference demos.
+  Keep those imports narrow rather than expanding a global umbrella solely to
+  include a demo's component set. Headers under engine source/private
+  directories remain off limits to creations.
 - **Private creations are on their own git.** A crash in a private
   creation's build does not fail engine CI. Engine-level changes must
   still be able to build and run the demos.

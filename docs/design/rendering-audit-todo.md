@@ -55,12 +55,19 @@ Work through these slices in order, keeping their image and cost evidence separa
    without sun shadows; investigate emitted face ownership/parity independently
    rather than suppressing potentially legitimate voxel stairs. Native cost
    qualification and continuous-angle transition coverage remain open.
-4. **Representative authored-LOD scene — prototype, native validation pending.**
-   Exercise repeated assets, terrain, moving attached parts, lazy/resident
-   variants and reversible zoom/yaw transitions. Shared loaded assets are not
-   GPU geometry instancing; log selected and retained spans independently.
-   Orthographic depth alone does not change apparent size, so do not introduce
-   distance LOD implicitly.
+4. **Representative authored-LOD scene — implemented, native witnesses validated.**
+   The [six-shot evidence](../pr-screenshots/codex/authored-lod-scene/README.md)
+   covers repeated assets, terrain, moving attachments, lazy/resident first-use
+   behavior and origin-pivot zoom/yaw reversal. Initial/restored pixels match
+   exactly; one-channel, residency, parent-relation and closed-camera faults
+   are rejected. The full ShapeDebug suite passes all 62 checks. Shared loaded
+   assets are not GPU instancing: DENSE variants retain 432 allocated slots and
+   select one 216-slot span, whose fine occupancy is a subset. LOD is zoom-based,
+   and motion advances only during automatic captures; no performance claim.
+   Petal/stamen combs, floor-shadow holes/ragged tails and apparent blue-sphere
+   gaps at yaw 180 remain. A six-view no-sun control preserves the apparent
+   gaps and surface bands; use face-owner/retained-field and AO controls next.
+   These are observations, not established causes or proof of new regressions.
 
 Concurrent ownership: #4381 owns the new animated FIELD ceiling policy, #4303
 owns snapped camera placement, and #4308 owns cardinal AO/local-light depth.

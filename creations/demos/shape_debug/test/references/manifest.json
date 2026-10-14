@@ -33,6 +33,23 @@
   },
   "extra_runs": [
     {
+      "name": "lod_scene",
+      "demo_args": [
+        "--lod-scene",
+        "--pivot-origin"
+      ],
+      "warmup": 20,
+      "shots": [
+        "lod_scene_coarse",
+        "lod_scene_medium_yaw45",
+        "lod_scene_fine_yaw90",
+        "lod_scene_return_yaw180",
+        "lod_scene_coarse_yaw270",
+        "lod_scene_restored"
+      ],
+      "capture_offset": 0
+    },
+    {
       "name": "moving_caster",
       "demo_args": ["--moving-caster"],
       "shots": [
