@@ -10,6 +10,7 @@ Design log, findings and the authoring-session history:
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --gui-session <name>` — one
   scripted session: `face_pick` and `drag_probe` prove the picking contract
   against the full reference scene, `place_below` the Alt modifier,
+  `fill_ghost` the fill preview drawn while a drag is held,
   `module_loaded` (with `--module test/module`) the creation-module seam,
   `component_attach` (same module) the COMPONENTS panel's manifest round trip,
   `component_field_page` the same on a field only the panel's pager reaches,
@@ -136,6 +137,10 @@ render, because the aim and the pick share one screen mapping.
   aims off gizmo pixels (the model does not know where handles are drawn).
 - A new session is four edits: `Session::Id`, `idFromName`, `Session::build`,
   and the `--gui-session` enum list in `main()`.
+- A button left down at a segment's end stays down into the next: `holdBox`
+  ends a segment with the drag held, and `releaseBox` commits it in a later
+  one. `expectFillGhost` reads the texels the ghost owns, and a ghost inside
+  the voxels an erase drag would carve owns none.
 - `Session::Builder` is also the Lua authoring ABI. Adding or changing a public
   builder operation requires the matching `IREditor.registerSession` binding,
   conversion coverage, and binding-matrix test in the same change.

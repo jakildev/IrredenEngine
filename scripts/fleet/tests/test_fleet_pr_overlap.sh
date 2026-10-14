@@ -31,6 +31,10 @@
 #      already matches the caller's base tip, and keeps one that differs
 #   12 an actively parked descendant is sequenced; fail-closed and mixed cases
 #   13 the missing-subject guard skips with exit 3 and no tally
+#   14 a conflict the competitor already has with the base the head carries
+#      is a base-conflict row, overlap, exit 1; a head that adds a conflict,
+#      edits inside or beside an inherited one, or cannot be proven clear of
+#      it still blocks; same grades under every host merge.conflictStyle
 
 set -uo pipefail
 
@@ -249,6 +253,18 @@ run_tool() {
         "$SUBJECT" "$@" 2> "$TMP/err.txt")
     RC=$?
     ERR=$(cat "$TMP/err.txt")
+}
+
+# run_tool_style <default|diff3|zdiff3> [args] — run_tool under a host merge.conflictStyle.
+run_tool_style() {
+    local style="$1"
+    shift
+    if [[ "$style" == "default" ]]; then
+        run_tool "$@"
+    else
+        GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=merge.conflictStyle GIT_CONFIG_VALUE_0="$style" \
+            run_tool "$@"
+    fi
 }
 
 assert_rc() { assert_eq "$RC" "$1" "$2 (rc)"; }
@@ -726,6 +742,289 @@ run_tool --pr-json "$TMP/prs-12g.json"
 assert_rc 1 "T12g sequenced plus ordinary clean overlap exits 1"
 assert_contains "$OUT" "#404 src/y.txt clean" "T12g the ordinary overlap remains visible"
 assert_eq "$(verdict_line)" "VERDICT: overlap" "T12g overlap outranks sequenced"
+
+# Placed above 13 so the missing-subject guard stays the suite's last section.
+echo "=== 14: a conflict the competitor already has with the base the head carries ==="
+stanza() { seq 1 12 | sed "s/^/stanza line /" | sed '6s/.*/value=0/'; }
+short_stanza() { printf '%s\n' s0 s1 value=0 s2 s3; }
+g fetch -q origin
+branch_from fork-14 origin/master
+write_file src/w.txt "$(numbered_file w)"
+write_file src/v.txt "$(numbered_file v)"
+write_file src/gone.txt "$(numbered_file gone)"
+write_file src/dup.txt "$(stanza; stanza)"
+write_file src/locked.txt "$(numbered_file locked)"
+# git merge-tree takes attributes from the clone it runs in.
+mkdir -p "$WORK/.git/info"
+printf '%s\n' "src/locked.txt -merge" > "$WORK/.git/info/attributes"
+write_file src/pipe.txt "$(numbered_file pipe)"
+write_file src/old.txt "$(numbered_file old)"
+write_file src/carry.txt "$(numbered_file carry)"
+write_file src/rep.txt "$(short_stanza; short_stanza; short_stanza)"
+commit_all fork-14
+g push -q origin HEAD:master
+FORK_14=$(oid HEAD)
+
+# Every competitor forks before the base edits the contested lines.
+branch_from pr-501 "$FORK_14"
+edit_line src/w.txt 10 "w line 10 competitor"
+commit_all theirs-501
+publish_pr 501 pr-501
+branch_from pr-502 "$FORK_14"
+edit_line src/w.txt 10 "w line 10 competitor"
+edit_line src/w.txt 25 "w line 25 competitor"
+commit_all theirs-502
+publish_pr 502 pr-502
+branch_from pr-503 "$FORK_14"
+g rm -q src/gone.txt
+commit_all theirs-503
+publish_pr 503 pr-503
+branch_from pr-504 "$FORK_14"
+edit_line src/w.txt 10 "w line 10 competitor"
+edit_line src/v.txt 5 "v line 5 competitor"
+commit_all theirs-504
+publish_pr 504 pr-504
+branch_from pr-505 "$FORK_14"
+edit_line src/dup.txt 6 "value=competitor"
+edit_line src/dup.txt 18 "value=competitor"
+commit_all theirs-505
+publish_pr 505 pr-505
+branch_from pr-506 "$FORK_14"
+edit_line src/w.txt 10 "w line 10 competitor"
+edit_line src/w.txt 25 "w line 25 ours"
+commit_all theirs-506
+publish_pr 506 pr-506
+branch_from pr-507 "$FORK_14"
+edit_line src/w.txt 10 "w line 10 competitor"
+edit_line src/w.txt 15 "w line 15 agreed"
+commit_all theirs-507
+publish_pr 507 pr-507
+branch_from pr-508 "$FORK_14"
+for n in 18 19 20 21 22; do edit_line src/v.txt "$n" "v line $n competitor"; done
+commit_all theirs-508
+publish_pr 508 pr-508
+branch_from pr-509 "$FORK_14"
+edit_line src/locked.txt 10 "locked line 10 competitor"
+commit_all theirs-509
+publish_pr 509 pr-509
+branch_from pr-510 "$FORK_14"
+for n in 10 11 12 20 21 22; do edit_line src/pipe.txt "$n" "pipe line $n competitor"; done
+commit_all theirs-510
+publish_pr 510 pr-510
+branch_from pr-511 "$FORK_14"
+edit_line src/old.txt 10 "old line 10 competitor"
+write_file src/new.txt "$(numbered_file other)"
+commit_all theirs-511
+publish_pr 511 pr-511
+branch_from pr-512 "$FORK_14"
+edit_line src/carry.txt 3 "carry line 3 competitor"
+commit_all theirs-512-early
+EARLY_512=$(oid HEAD)
+edit_line src/carry.txt 10 "carry line 10 competitor"
+commit_all theirs-512
+publish_pr 512 pr-512
+branch_from pr-513 "$FORK_14"
+edit_line src/rep.txt 3 "x"
+commit_all theirs-513
+publish_pr 513 pr-513
+
+branch_from base-14 "$FORK_14"
+edit_line src/w.txt 10 "w line 10 base"
+edit_line src/w.txt 15 "w line 15 agreed"
+edit_line src/v.txt 18 "v line 18 base"
+edit_line src/v.txt 22 "v line 22 base"
+edit_line src/gone.txt 10 "gone line 10 base"
+edit_line src/dup.txt 6 "value=base"
+edit_line src/locked.txt 10 "locked line 10 base"
+for n in 10 12 20 22; do edit_line src/pipe.txt "$n" "pipe line $n base"; done
+edit_line src/pipe.txt 11 "||||||| literal-old"
+edit_line src/pipe.txt 21 "======= literal-old"
+g mv src/old.txt src/new.txt
+edit_line src/new.txt 10 "old line 10 base"
+edit_line src/carry.txt 10 "carry line 10 base"
+edit_line src/rep.txt 3 "value=base"
+edit_line src/rep.txt 14 "value=base"
+commit_all base-14
+g push -q origin HEAD:master
+CARRIED_14=$(oid HEAD)
+CARRIED_14_SHORT=${CARRIED_14:0:9}
+
+# feature-14 stays clear of every contested region; each sibling touches one.
+branch_from feature-14 "$CARRIED_14"
+edit_line src/w.txt 25 "w line 25 ours"
+edit_line src/v.txt 5 "v line 5 ours"
+edit_line src/gone.txt 25 "gone line 25 ours"
+edit_line src/locked.txt 25 "locked line 25 ours"
+edit_line src/pipe.txt 28 "pipe line 28 ours"
+edit_line src/new.txt 25 "old line 25 ours"
+commit_all ours-14
+branch_from feature-14-same "$CARRIED_14"
+edit_line src/w.txt 10 "w line 10 ours"
+commit_all ours-14-same
+branch_from feature-14-adjacent "$CARRIED_14"
+edit_line src/w.txt 11 "w line 11 ours"
+commit_all ours-14-adjacent
+branch_from feature-14-agreed "$CARRIED_14"
+edit_line src/w.txt 15 "w line 15 ours"
+commit_all ours-14-agreed
+branch_from feature-14-inside "$CARRIED_14"
+edit_line src/v.txt 20 "v line 20 ours"
+commit_all ours-14-inside
+branch_from feature-14-literal "$CARRIED_14"
+edit_line src/w.txt 25 "<<<<<<< not a merge marker"
+commit_all ours-14-literal
+branch_from feature-14-dup "$CARRIED_14"
+edit_line src/dup.txt 6 "value=competitor"
+edit_line src/dup.txt 18 "value=base"
+commit_all ours-14-dup
+branch_from feature-14-pipe "$CARRIED_14"
+edit_line src/pipe.txt 11 "||||||| literal-new"
+commit_all ours-14-pipe
+branch_from feature-14-equals "$CARRIED_14"
+edit_line src/pipe.txt 21 "======= literal-new"
+commit_all ours-14-equals
+branch_from feature-14-carry "$CARRIED_14"
+g merge -q --no-edit "$EARLY_512"
+edit_line src/carry.txt 25 "carry line 25 ours"
+commit_all ours-14-carry
+# One inserted line in the first stanza and one edit in the second. The trial
+# merge then reports its one conflict in the second stanza, while replaying
+# the head's change onto the base's merged file leaves it in the first.
+branch_from feature-14-repeat "$CARRIED_14"
+write_file src/rep.txt "$(printf '%s\n' \
+    s0 value=0 s1 value=base s2 s3 \
+    s0 s1 value=base s2 s3 \
+    s0 s1 value=0 value=base s3)"
+commit_all ours-14-repeat
+
+pr_json "$TMP/prs-14-501.json" "$(pr_row 501 pr-501 master false - src/w.txt)"
+pr_json "$TMP/prs-14-502.json" "$(pr_row 502 pr-502 master false - src/w.txt)"
+pr_json "$TMP/prs-14-503.json" "$(pr_row 503 pr-503 master false - src/gone.txt)"
+pr_json "$TMP/prs-14-504.json" "$(pr_row 504 pr-504 master false - src/w.txt src/v.txt)"
+pr_json "$TMP/prs-14-505.json" "$(pr_row 505 pr-505 master false - src/dup.txt)"
+pr_json "$TMP/prs-14-506.json" "$(pr_row 506 pr-506 master false - src/w.txt)"
+pr_json "$TMP/prs-14-507.json" "$(pr_row 507 pr-507 master false - src/w.txt)"
+pr_json "$TMP/prs-14-508.json" "$(pr_row 508 pr-508 master false - src/v.txt)"
+pr_json "$TMP/prs-14-509.json" "$(pr_row 509 pr-509 master false - src/locked.txt)"
+pr_json "$TMP/prs-14-510.json" "$(pr_row 510 pr-510 master false - src/pipe.txt)"
+pr_json "$TMP/prs-14-511.json" "$(pr_row 511 pr-511 master false - src/old.txt src/new.txt)"
+pr_json "$TMP/prs-14-512.json" "$(pr_row 512 pr-512 master false - src/carry.txt)"
+pr_json "$TMP/prs-14-513.json" "$(pr_row 513 pr-513 master false - src/rep.txt)"
+BASE_ROW_14="#501 src/w.txt base-conflict (conflicts with master $CARRIED_14_SHORT alone)"
+
+for style in default diff3 zdiff3; do
+    g checkout -q feature-14
+    run_tool_style "$style" --pr-json "$TMP/prs-14-501.json"
+    assert_rc 1 "T14a $style a conflict the carried base already has exits 1"
+    assert_contains "$OUT" "$BASE_ROW_14" "T14a $style the row names the carried base"
+    assert_absent "$OUT" "#501 src/w.txt conflicts" "T14a $style no conflicts row for the path"
+    assert_eq "$(verdict_line)" "VERDICT: overlap" "T14a $style verdict overlap"
+done
+
+run_tool --pr-json "$TMP/prs-14-508.json"
+assert_rc 1 "T14b a five-line inherited block the head stays clear of exits 1"
+assert_contains "$OUT" "#508 src/v.txt base-conflict" "T14b the row is base-conflict"
+
+run_tool --pr-json "$TMP/prs-14-506.json"
+assert_rc 1 "T14c the competitor making the head's own far edit exits 1"
+assert_contains "$OUT" "#506 src/w.txt base-conflict" "T14c the row is base-conflict"
+
+for style in default diff3 zdiff3; do
+    g checkout -q feature-14
+    run_tool_style "$style" --pr-json "$TMP/prs-14-510.json"
+    assert_rc 1 "T14d $style literal pipe and equals lines the head leaves alone exit 1"
+    assert_contains "$OUT" "#510 src/pipe.txt base-conflict" "T14d $style the row is base-conflict"
+    g checkout -q feature-14-carry
+    run_tool_style "$style" --pr-json "$TMP/prs-14-512.json"
+    assert_rc 1 "T14e $style a head carrying an earlier competitor commit exits 1"
+    assert_contains "$OUT" "#512 src/carry.txt base-conflict" "T14e $style the row is base-conflict"
+done
+
+g checkout -q feature-14-same
+run_tool --pr-json "$TMP/prs-14-501.json"
+assert_rc 3 "T14f the head editing the contested line blocks"
+assert_contains "$OUT" "#501 src/w.txt conflicts" "T14f the row conflicts"
+assert_absent "$OUT" "base-conflict" "T14f no base-conflict row"
+assert_eq "$(verdict_line)" "VERDICT: block" "T14f verdict block"
+
+g checkout -q feature-14-adjacent
+run_tool --pr-json "$TMP/prs-14-501.json"
+assert_rc 3 "T14g the head editing the adjacent line blocks"
+assert_contains "$OUT" "#501 src/w.txt conflicts" "T14g the row conflicts"
+
+g checkout -q feature-14
+run_tool --pr-json "$TMP/prs-14-502.json"
+assert_rc 3 "T14h one inherited block plus one new block blocks"
+assert_contains "$OUT" "#502 src/w.txt conflicts" "T14h the row conflicts"
+
+run_tool --pr-json "$TMP/prs-14-503.json"
+assert_rc 3 "T14i a modify/delete conflict blocks"
+assert_contains "$OUT" "#503 src/gone.txt conflicts" "T14i the row conflicts"
+
+for style in default diff3 zdiff3; do
+    g checkout -q feature-14-dup
+    run_tool_style "$style" --pr-json "$TMP/prs-14-505.json"
+    assert_rc 3 "T14j $style resolving the inherited block and adding a byte-identical one blocks"
+    assert_contains "$OUT" "#505 src/dup.txt conflicts" "T14j $style the row conflicts"
+    assert_eq "$(verdict_line)" "VERDICT: block" "T14j $style verdict block"
+done
+
+g checkout -q feature-14-inside
+run_tool --pr-json "$TMP/prs-14-508.json"
+assert_rc 3 "T14k the head editing a line inside an inherited block blocks"
+assert_contains "$OUT" "#508 src/v.txt conflicts" "T14k the row conflicts"
+
+g checkout -q feature-14-agreed
+run_tool --pr-json "$TMP/prs-14-507.json"
+assert_rc 3 "T14l the head re-editing a line the base and competitor agreed on blocks"
+assert_contains "$OUT" "#507 src/w.txt conflicts" "T14l the row conflicts"
+
+g checkout -q feature-14-literal
+run_tool --pr-json "$TMP/prs-14-501.json"
+assert_rc 3 "T14m a head whose file carries a literal marker line blocks"
+assert_contains "$OUT" "#501 src/w.txt conflicts" "T14m the row conflicts"
+
+g checkout -q feature-14
+run_tool --pr-json "$TMP/prs-14-509.json"
+assert_rc 3 "T14n a conflict git writes no block for blocks"
+assert_contains "$OUT" "#509 src/locked.txt conflicts" "T14n the row conflicts"
+
+for style in default diff3 zdiff3; do
+    g checkout -q feature-14-pipe
+    run_tool_style "$style" --pr-json "$TMP/prs-14-510.json"
+    assert_rc 3 "T14o $style a head edit of a literal seven-pipe line inside an inherited block blocks"
+    assert_contains "$OUT" "#510 src/pipe.txt conflicts" "T14o $style the row conflicts"
+    g checkout -q feature-14-equals
+    run_tool_style "$style" --pr-json "$TMP/prs-14-510.json"
+    assert_rc 3 "T14p $style a head edit of a literal seven-equals line inside an inherited block blocks"
+    assert_contains "$OUT" "#510 src/pipe.txt conflicts" "T14p $style the row conflicts"
+done
+
+g checkout -q feature-14
+run_tool --pr-json "$TMP/prs-14-511.json"
+assert_rc 3 "T14q a head edit inside a rename/add conflict blocks"
+assert_contains "$OUT" "#511 src/new.txt conflicts" "T14q the row conflicts"
+
+g checkout -q feature-14-repeat
+run_tool --pr-json "$TMP/prs-14-513.json"
+assert_rc 3 "T14r a clean replay that differs from the trial merge blocks"
+assert_contains "$OUT" "#513 src/rep.txt conflicts" "T14r the row conflicts"
+
+g checkout -q feature-14
+run_tool --pr-json "$TMP/prs-14-504.json"
+assert_rc 3 "T14s a base conflict beside a head conflict blocks"
+assert_contains "$OUT" "#504 src/w.txt base-conflict" "T14s the inherited path keeps its grade"
+assert_contains "$OUT" "#504 src/v.txt conflicts" "T14s the head's conflict keeps its grade"
+assert_eq "$(verdict_line)" "VERDICT: block" "T14s verdict block"
+
+branch_from base-14-again "$CARRIED_14"
+edit_line src/w.txt 10 "w line 10 base again"
+commit_all base-14-again
+g push -q origin HEAD:master
+g checkout -q feature-14
+run_tool --pr-json "$TMP/prs-14-501.json"
+assert_rc 1 "T14t a base that moved again after the head took it exits 1"
+assert_contains "$OUT" "$BASE_ROW_14" "T14t the row names the carried commit, not the tip"
 
 echo "=== 13: the missing-subject guard ==="
 STAGE="$TMP/stage/tests"

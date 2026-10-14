@@ -1,9 +1,9 @@
 # Continuous camera zoom
 
 The main camera has two zoom policies. Under the default, **snapped** policy
-every zoom write lands on a power of two, a backing texel always spans whole
-framebuffer pixels, and rendered output is what it has always been. Under the
-opt-in **continuous** policy the zoom is any value in
+every zoom write lands on a power of two and a backing texel always spans
+whole framebuffer pixels. Under the opt-in **continuous** policy the zoom is
+any value in
 `[kTrixelCanvasZoomMin, kTrixelCanvasZoomMax]`, reads back exactly as written,
 and the composite places content so that neither a pan nor a zoom re-rounds
 texel edges from frame to frame.
@@ -116,14 +116,25 @@ the continuous translation. The GUI canvas ignores the camera; handed the
 frame's sample it would shift by the carried phase every time the zoom moved.
 
 The rotated-view scatter anchors on `floor(c)` whole cells and adds the
-camera's sub-cell offset itself. Under the continuous policy that offset is
-the detached camera term above, so voxels, the SDF and overlay content the
-single-canvas gather composites during rotation, and detached canvases all
-sit on `floor(H) + a` and the residual is the remainder of one quantity.
-Under the snapped policy the scatter keeps its unrounded sub-cell offset;
-the residual then counts the sub-pixel fraction a second time, and a
-silhouette edge steps back one screen pixel under a pan at a non-cardinal
-yaw. The snapped rotated path is left as it is so its references do not move.
+camera's sub-cell offset itself, in whole framebuffer pixels under both
+policies. Under the continuous policy that offset is the detached camera term
+above. Under the snapped policy it is `floor(fract(c) * p)`, Y-up
+(`IRMath::cameraSnappedDetachedOffset`): the term snapped detached canvases
+place with, and the cardinal gather's game-pixel offset. Either way voxels,
+the SDF and overlay content the single-canvas gather composites during
+rotation, and detached canvases sit on one whole offset, and the residual is
+the remainder of that one quantity. An unrounded scatter offset under the same
+residual counts the sub-pixel fraction twice, once rounded per face quad
+inside the framebuffer and once as the residual; the two round at different
+camera positions, and a silhouette edge steps back a screen pixel under a pan
+at a non-cardinal yaw.
+
+Every snapped stage floors the same number, `fract(c) * p` with `p` the exact
+`IRMath::cameraZoomPitch`. A pitch rebuilt from texture extents
+(`framebuffer * zoom * storeSize / canvasSize / storeSize`) is a whole number
+in real arithmetic only: in single precision it can land one ulp short, and
+under a floor that is a whole framebuffer pixel on exactly the frames where
+the camera sits on the pixel lattice and the residual reads zero.
 
 ## Persistence
 
@@ -156,13 +167,16 @@ and never enters a snapshot; its policy, zoom, and phase survive
 - `fleet-run IrredenEngineTest --gtest_filter='*CameraZoom*:*CameraSubPixel*:*TriangleStep*'`
   — the policy, the density rule, and rasterized-edge sweeps (pan, off-origin
   zoom, both) with the zero-phase and density-scaled splits as negative
-  controls. An edge at framebuffer position `X` is drawn at pixel
+  controls, plus the snapped rotated-view pan with an unrounded scatter offset
+  as its control. An edge at framebuffer position `X` is drawn at pixel
   `round(X)` and then at screen pixel `round(X) * outputScale + r`; the oracle
   skips samples within `1e-9` of a pixel centre, where the last bit of the
   arithmetic picks the side.
 - `python3 scripts/render-continuous-zoom-metric.py zoom | pan | jitter` — the
   same properties read off `IRShapeDebug` captures of a calibration cube,
-  with the snapped policy as the control.
+  with the snapped policy as the control. `pan` also sweeps the snapped
+  policy's own rotated-view pan.
 - `python3 scripts/gui-verify.py IRShapeDebug -- --continuous-zoom-gui-test`
   — hover and drag-pan picking at a continuous zoom of 2.5.
-- `python3 scripts/render-verify.py --all` — the snapped policy is unchanged.
+- `python3 scripts/render-verify.py --all` — the snapped policy against its
+  committed references.
