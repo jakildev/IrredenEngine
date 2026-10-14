@@ -310,17 +310,22 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
     Buffer *revoxelizeParamsBuf_ = nullptr;
     FrameDataSun frameData_{};
     FrameDataFogObservers fogObservers_{};
+    Texture2D *fogWindow_ = nullptr;
+    Texture2D *fogWindowPlaceholder_ = nullptr;
 
     void bindFogObservers() {
         fogObserverBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FogObservers);
+        fogWindow_->bindAsImage(4, TextureAccess::READ_ONLY, TextureFormat::RG32UI);
     }
 
     void refreshFogCeilingFrame() {
         fogObservers_ = FrameDataFogObservers{};
+        fogWindow_ = fogWindowPlaceholder_;
         const IREntity::EntityId mainCanvas = IRRender::getCanvas("main");
         const auto fog = IREntity::getComponentOptional<C_CanvasFogOfWar>(mainCanvas);
         if (fog.has_value()) {
             fogObservers_ = fog.value()->observers_;
+            fogWindow_ = fog.value()->getTexture();
         }
         const vec2 horizontalSun = vec2(IRRender::getSunDirection());
         // A vertical sun cannot project caster height beyond its own XY
@@ -1060,6 +1065,9 @@ template <> struct System<BAKE_SUN_SHADOW_MAP> {
                                  kBufferIndex_FogObservers
         )
                                  .second;
+        p->fogWindowPlaceholder_ =
+            IRRender::getNamedResource<Texture2D>("FogCullVisiblePlaceholder");
+        p->fogWindow_ = p->fogWindowPlaceholder_;
         p->revoxelizeParamsBuf_ =
             IRRender::getNamedResource<Buffer>("RevoxelizeDetachedParamsBuffer");
         p->clearProgram_ = IRRender::getNamedResource<ShaderProgram>("ClearSunShadowMapProgram");

@@ -271,7 +271,9 @@ struct vec4 {
 };
 """)
     helpers = "\n".join(functions(common, name) for name in (
-        "faceOutwardNormal6", "decodeSlot", "decodeFlipPerAxis"))
+        "faceOutwardNormal6", "decodeSlot", "decodeFlipPerAxis", "overflowEntryCell"))
+    flag = re.search(r"(?:const|constant) uint kOverflowCutFaceBit = [^;]+;", common).group()
+    helpers = flag.replace("constant", "const") + "\n" + helpers
     entry = host(functions(sampler, "worldSurfaceSunShadowFactor"))
     controls = surface_controls(host(functions(surface, "perAxisFaceSurfacePoint")))
     return (f"#define METAL_BACKEND {int(suffix == 'metal')}\n" + geometry + SPY + ADAPTER

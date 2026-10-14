@@ -69,3 +69,7 @@ IRFog.setRevealSurfaceTreatment(0.25)
 
 fogSetupSelftestDone()
 print("LUA-FOG-SETUP sources=2 centers=-10,0;10,0 ceiling=2.5,1.5 treatment=0.25 PASS")
+
+IRFog.setRevealSurfacePhase(0.375)
+assert(IRFog.getRevealSurfacePhase() == 0.375)
+IRFog.setRevealSurfacePhase(0)

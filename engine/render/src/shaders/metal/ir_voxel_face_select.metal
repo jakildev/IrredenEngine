@@ -28,10 +28,9 @@
 // detached canvas binds a 1×1 all-visible placeholder + count-0 observers, so
 // `fogColumnReveal` short-circuits to "fully visible".
 constant float kFogExploredThreshold = 0.25f;
-constant int kMaxFogVisionCircles = 8; // mirror of component_canvas_fog_of_war.hpp kMaxFogVisionCircles
 // The fog window is RG32UI: .r the state integer (fogTexelState decodes it),
-// .g the cell's channel mask. The cull and cut-face taps read the state alone,
-// a channel-blind conservative superset of the paint pass's admission.
+// .g the cell's channel mask. Radial tests read the state alone; ceiling
+// selection reads both lanes for its exact source admission.
 struct FogObserverData {
     float4 visionCircles[kMaxFogVisionCircles]; // (centerX, centerY, radius, edgeSoftness)
     int visionCircleCount;
@@ -41,25 +40,23 @@ struct FogObserverData {
     int losSourceMask;
     int windowOriginX;
     int windowOriginY;
-    // Per-circle height penalty, after the int4 tail to match
-    // FrameDataFogObservers::visionCircleHeights_ (offset 144) and the GLSL
-    // block. heights[i] = (observerZ, zCostUp, zCostDown, freeBand), read only
-    // by stage 1's detached-canvas and per-axis own-column DROPs
-    // (fogColumnRevealZ in c_voxel_to_trixel_stage_1_body.metal); the
-    // selection math in this file ignores it. All-zero heights (the default)
-    // make those drops equal the 2D column clip.
+    // (observerZ, zCostUp, zCostDown, freeBand), at byte offset 144.
+    // Ceiling selection reads observerZ; the detached radial drop uses costs.
     float4 visionCircleHeights[kMaxFogVisionCircles];
-    // The fog passes' tail, spelled out so the ceilings land at 448; the
-    // unexplored colour, the line-of-sight parameters and the channel masks
-    // are unread by every consumer of this struct.
+    // Preserve the shared block offsets through the ceiling and treatment lanes.
     float4 unexploredColor;
     float4 losParams[kMaxFogVisionCircles];
     uint4 visionCircleChannels[2];
-    // Per-circle upward ceiling, (ceilingHeight, fadeHeight, 0, 0) above
-    // observerZ, negative = off; read only by stage 1's unpainted-route drop
-    // (fogColumnRevealZ).
+    // (ceilingHeight, fadeHeight, 0, 0); negative height disables the ceiling.
     float4 visionCircleCeilings[kMaxFogVisionCircles];
+    float4 revealSurfaceTreatment;
 };
+
+static uint2 fogSelectionCell(texture2d<uint, access::read> fog, constant FogObserverData& obs, int2 column) {
+    const int2 texel = fogWindowTexel(column, int2(obs.windowOriginX, obs.windowOriginY),
+                                    int2(fog.get_width(), fog.get_height()));
+    return texel.x < 0 ? uint2(0u, kFogChannelDefault) : fog.read(uint2(texel)).rg;
+}
 
 // Reveal in [0,1] of a column whose center is `dist` world units from a vision
 // circle's center. A hard disc (`softness <= 0`) reveals strictly inside:
@@ -79,29 +76,6 @@ static float fogDiscRevealAtDistance(float dist, float radius, float softness) {
         return 1.0f - step(radius, dist);
     }
     return 1.0f - smoothstep(radius - softness, radius + softness, dist);
-}
-
-// Texel of world column `col` in the fog window, or (-1, -1) when the column
-// is outside it. Column `c` lives at texel floorMod(c, W) with W the window
-// edge; the window covers [origin, origin + W) per axis. Every modulo takes
-// non-negative operands only. GLSL twin: fogWindowTexel in
-// ../ir_voxel_face_select.glsl (keep byte-identical).
-static int2 fogWindowTexel(int2 col, int2 origin, int2 fogSize) {
-    const int2 rel = col - origin;
-    if (rel.x < 0 || rel.x >= fogSize.x || rel.y < 0 || rel.y >= fogSize.y) {
-        return int2(-1);
-    }
-    int2 base;
-    base.x = origin.x >= 0 ? origin.x % fogSize.x : fogSize.x - 1 - (-(origin.x + 1)) % fogSize.x;
-    base.y = origin.y >= 0 ? origin.y % fogSize.y : fogSize.y - 1 - (-(origin.y + 1)) % fogSize.y;
-    int2 texel = rel + base;
-    if (texel.x >= fogSize.x) {
-        texel.x -= fogSize.x;
-    }
-    if (texel.y >= fogSize.y) {
-        texel.y -= fogSize.y;
-    }
-    return texel;
 }
 
 // Fog reveal of world grid COLUMN `col` in [0,1]. Stage 1 emits the cut face's
@@ -205,7 +179,8 @@ static VoxelFaceSelect selectVoxelFace(
     const int perAxisRouteIn,
     const float isDetachedCanvasIn,
     const float4 detachedWorldReceiveIn,
-    const float4 detachedViewToWorldIn
+    const float4 detachedViewToWorldIn,
+    const int fogCeilingEnabledIn
 ) {
     VoxelFaceSelect sel;
     sel.faceId = faceIdIn;
@@ -242,6 +217,35 @@ static VoxelFaceSelect selectVoxelFace(
             : faceOutwardNormal6I(sel.faceId).xy;
         sel.keepFace = fogColumnReveal(fog, obs, sel.worldColumn + probeStep) < 1.0f;
         sel.isCutFace = sel.keepFace;
+    }
+
+    // Whether any bound source has a ceiling is a per-frame fact the CPU
+    // publishes (FrameDataVoxelToCanvas::fogCeilingEnabled_), so a FIELD voxel
+    // on a frame with no ceiling pays one uniform read, never a source scan.
+    // BODY never needs ceiling selection.
+    const bool ceilingActive = (reserved & 8u) == 0u && fogCeilingEnabledIn != 0 &&
+        (isDetachedCanvasIn < 0.5f ||
+         (perAxisRouteIn == 0 && detachedWorldReceiveIn.w != 0.0f));
+    if (ceilingActive) {
+        const float3 worldPosition = isDetachedCanvasIn > 0.5f
+            ? rotateByQuat(voxelPosition.xyz, detachedViewToWorldIn) + detachedWorldReceiveIn.xyz
+            : voxelPosition.xyz;
+        const int3 worldVoxel = roundHalfUp(worldPosition);
+        const uint2 ownCell = fogSelectionCell(fog, obs, worldVoxel.xy);
+        if (!fogCeilingRetained(worldVoxel, ownCell, obs.visionCircles, obs.visionCircleHeights, obs.visionCircleCeilings, obs.visionCircleChannels, obs.visionCircleCount,
+                               obs.revealSurfaceTreatment, obs.revealSurfaceTreatment.w)) {
+            sel.keepFace = false;
+            return sel;
+        }
+        if (!sel.keepFace) {
+            const float3 worldNormal = isDetachedCanvasIn > 0.5f
+                ? rotateByQuat(float3(faceOutwardNormal6I(sel.faceId)), detachedViewToWorldIn)
+                : float3(faceOutwardNormal6I(sel.faceId));
+            const int3 neighbour = roundHalfUp(worldPosition + worldNormal);
+            sel.keepFace = !fogCeilingRetained(neighbour, fogSelectionCell(fog, obs, neighbour.xy),
+                obs.visionCircles, obs.visionCircleHeights, obs.visionCircleCeilings, obs.visionCircleChannels, obs.visionCircleCount, obs.revealSurfaceTreatment, obs.revealSurfaceTreatment.w);
+            sel.isCutFace = sel.keepFace;
+        }
     }
     return sel;
 }

@@ -1,0 +1,102 @@
+{
+ "fog_ceiling9-before.png": {
+  "source": "base/ceiling/screenshot_000001.png",
+  "sha256": "46b1fe80b250d10ffa142ab692c13681888dea6c11a94ea7c4c64b2fc5d0ff47"
+ },
+ "fog_ceiling_yaw9-before.png": {
+  "source": "base/ceiling/screenshot_000002.png",
+  "sha256": "cbf9c7e100486ba47842b7d9f015ba850855e9cf94b7f63ccc501d9414ef85cf"
+ },
+ "fog_ceiling_treatment9-before.png": {
+  "source": "base/treated/screenshot_000001.png",
+  "sha256": "c65b9b90bcfcf43f0c4f6a125ef4cd98ccc7872bb450ac0208e07d50c0ec30fa"
+ },
+ "fog_ceiling_treatment_yaw9-before.png": {
+  "source": "base/treated/screenshot_000002.png",
+  "sha256": "ce05531d8c9665a2295307327a592c319ba4d0386e86551258d06bcfa8a93871"
+ },
+ "fog_occlusion_column_top-before.png": {
+  "source": "base/column-top/screenshot_000001.png",
+  "sha256": "4d50b730f5e573dd5d75342c7471c931161b734088cfa2ada0110e5ce1e6d092"
+ },
+ "fog_occlusion_column_top_yaw-before.png": {
+  "source": "base/column-top/screenshot_000002.png",
+  "sha256": "a8a23e757ed3f3223d398b42bcb69872d2ca9fffea44a3f81e8f4253e5308ec5"
+ },
+ "fog_ceiling_shadow9-before.png": {
+  "source": "base/shadow/screenshot_000001.png",
+  "sha256": "eef231ad322141404bec6faced4cdb489cc87b65dcc990b21708cbda454f4afb"
+ },
+ "fog_ceiling_shadow_yaw9-before.png": {
+  "source": "base/shadow/screenshot_000002.png",
+  "sha256": "128c35ac9079ef8edd4be51d11e7187ee91c4b0889fcd66d3f49d5a1a6c49674"
+ },
+ "fog_ceiling9-after.png": {
+  "source": "head/ceiling/screenshot_000001.png",
+  "sha256": "f4cf77bba8d3bf881f62158048799267861628330cf503db54283a97d853e0d0"
+ },
+ "fog_ceiling_yaw9-after.png": {
+  "source": "head/ceiling/screenshot_000002.png",
+  "sha256": "bd2eecc44dc5dbdf4ca5079472218d007416370ca29dae8a7a63c4b98bd70743"
+ },
+ "fog_ceiling_treatment9-after.png": {
+  "source": "head/treated/screenshot_000001.png",
+  "sha256": "4c596eba21e185cbb7016bce2aa8c9f4a44e89d3af57cc5399fb40faf3423ea2"
+ },
+ "fog_ceiling_treatment_yaw9-after.png": {
+  "source": "head/treated/screenshot_000002.png",
+  "sha256": "1b9e724e8152518b3763a109ec3e205373e8ed328d466bdb2d71192499c321cf"
+ },
+ "fog_occlusion_column_top-after.png": {
+  "source": "head/column-top/screenshot_000001.png",
+  "sha256": "a7e5841778c306d0f85f992d236350d9b02d19959bff2f00f1dc7b9a08a3def0"
+ },
+ "fog_occlusion_column_top_yaw-after.png": {
+  "source": "head/column-top/screenshot_000002.png",
+  "sha256": "2874e91cbe39d17d63774e3bcb548457d0bf9fb4207a7fe38454ba5673a00e66"
+ },
+ "fog_ceiling_shadow9-after.png": {
+  "source": "head/shadow/screenshot_000001.png",
+  "sha256": "0fb15f251e4dd5c5b7f59c43b6773fdf1e4e084984e6633a9b98196a7f881d5a"
+ },
+ "fog_ceiling_shadow_yaw9-after.png": {
+  "source": "head/shadow/screenshot_000002.png",
+  "sha256": "fe0b88790db822123ca34e85bcec1420485ffee1c10e29d72387f2b1686d42dd"
+ },
+ "fog_ceiling_hard9-after.png": {
+  "source": "head/hard/screenshot_000001.png",
+  "sha256": "71d7742a8dffb665ce7e9cb411e63ad999743132b60fa6b7a2d8af01264e07d5"
+ },
+ "fog_ceiling_hard_yaw9-after.png": {
+  "source": "head/hard/screenshot_000002.png",
+  "sha256": "1206e43b29600876f7d9d513e7fed118a39c343a93fc3bf96a076f0d0db49e49"
+ },
+ "fog_ceiling_shadow_curved9-after.png": {
+  "source": "head/curved/screenshot_000001.png",
+  "sha256": "c00671b0d18d6ea245a52c8def5bf158b99f3e4f8c0e3f23c26929b6dd5a2514"
+ },
+ "treatment-yaw-cap-before.png": {
+  "source": "fog_ceiling_treatment_yaw9-before.png crop (750, 180, 1450, 920)",
+  "sha256": "71c386e142f60b110d6018616a194db24175813a44e9785d9a896e515eb6f8d4"
+ },
+ "treatment-yaw-cap-after.png": {
+  "source": "fog_ceiling_treatment_yaw9-after.png crop (750, 180, 1450, 920)",
+  "sha256": "24da441b410a8ef56b2f18bd9eaaf735e0d94ad2321942ae2d22956ae78bed64"
+ },
+ "shadow-cardinal-edge-before.png": {
+  "source": "fog_ceiling_shadow9-before.png crop (500, 800, 1800, 1420)",
+  "sha256": "396e82c5e73b2202457c19ae08eda2587e6b8743c0865dfcb88e3396063a3e07"
+ },
+ "shadow-cardinal-edge-after.png": {
+  "source": "fog_ceiling_shadow9-after.png crop (500, 800, 1800, 1420)",
+  "sha256": "da1f0518f4096dbf34e7108eab11b1f1f468b12a3522df706ddf58d075dca987"
+ },
+ "shadow-yaw-edge-before.png": {
+  "source": "fog_ceiling_shadow_yaw9-before.png crop (350, 800, 1900, 1360)",
+  "sha256": "a26ceb23789d01ecc05cde94df82716701b6fc88486e248e4e712fc9ffb8c3b7"
+ },
+ "shadow-yaw-edge-after.png": {
+  "source": "fog_ceiling_shadow_yaw9-after.png crop (350, 800, 1900, 1360)",
+  "sha256": "59c1d56cd79ca5215b1473659dad67f5b0d3e85ff4fd601285acef2e414e45f7"
+ }
+}

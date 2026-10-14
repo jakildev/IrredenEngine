@@ -1,0 +1,32 @@
+[
+  {
+    "id": "20261013T234342Z-render-verify-97e0d0",
+    "profile": "render-verify",
+    "started_at": "2026-10-13T23:43:42Z",
+    "status": "failed",
+    "exit_code": 1,
+    "source_code_head": "bad76c32a83b5d8ff0cfa78aadc985330bcf0d1c",
+    "role": "head-all-before-reference-update",
+    "terminal_wait_observed": true
+  },
+  {
+    "id": "20261014T000942Z-render-verify-f33beb",
+    "profile": "render-verify",
+    "started_at": "2026-10-14T00:09:43Z",
+    "status": "succeeded",
+    "exit_code": 0,
+    "source_code_head": "8a1bc317a11218c27f46cd3c55080635fdb95397",
+    "role": "master-all",
+    "terminal_wait_observed": true
+  },
+  {
+    "id": "20261014T003200Z-render-verify-e5513f",
+    "profile": "render-verify",
+    "started_at": "2026-10-14T00:32:01Z",
+    "status": "succeeded",
+    "exit_code": 0,
+    "source_code_head": "bad76c32a83b5d8ff0cfa78aadc985330bcf0d1c",
+    "role": "head-fog-with-reference-update",
+    "terminal_wait_observed": true
+  }
+]
