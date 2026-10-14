@@ -4,12 +4,14 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_profile.hpp>
+#include <irreden/ir_time.hpp>
 
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/update/components/component_collider_iso3d_aabb.hpp>
 #include <irreden/update/components/component_collision_layer.hpp>
 #include <irreden/update/components/component_contact_event.hpp>
 #include <irreden/update/components/component_overlap_contact_batch.hpp>
+#include <irreden/update/components/component_velocity_3d.hpp>
 
 using namespace IRComponents;
 using namespace IRMath;
@@ -32,30 +34,53 @@ inline void getAabbWorld(
     outMax = center + collider.halfExtents_;
 }
 
+inline bool broadPhaseIsoDepth(vec3 centerA, vec3 halfA, vec3 centerB, vec3 halfB) {
+    vec2 isoA = pos3DtoPos2DIso(centerA);
+    vec2 isoB = pos3DtoPos2DIso(centerB);
+    float isoExtentAX = halfA.x + halfA.y;
+    float isoExtentBX = halfB.x + halfB.y;
+    float isoExtentAY = halfA.x + halfA.y + (2.0f * halfA.z);
+    float isoExtentBY = halfB.x + halfB.y + (2.0f * halfB.z);
+
+    float depthA = static_cast<float>(pos3DtoDistance(centerA));
+    float depthB = static_cast<float>(pos3DtoDistance(centerB));
+    float depthExtentA = halfA.x + halfA.y + halfA.z;
+    float depthExtentB = halfB.x + halfB.y + halfB.z;
+
+    return IRMath::abs(isoA.x - isoB.x) <= (isoExtentAX + isoExtentBX) &&
+           IRMath::abs(isoA.y - isoB.y) <= (isoExtentAY + isoExtentBY) &&
+           IRMath::abs(depthA - depthB) <= (depthExtentA + depthExtentB);
+}
+
 inline bool broadPhaseIsoDepth(
     const C_WorldTransform &transformA,
     const C_ColliderIso3DAABB &a,
     const C_WorldTransform &transformB,
     const C_ColliderIso3DAABB &b
 ) {
-    vec3 centerA = transformA.translation_ + a.centerOffset_;
-    vec3 centerB = transformB.translation_ + b.centerOffset_;
+    return broadPhaseIsoDepth(
+        transformA.translation_ + a.centerOffset_,
+        a.halfExtents_,
+        transformB.translation_ + b.centerOffset_,
+        b.halfExtents_
+    );
+}
 
-    vec2 isoA = pos3DtoPos2DIso(centerA);
-    vec2 isoB = pos3DtoPos2DIso(centerB);
-    float isoExtentAX = a.halfExtents_.x + a.halfExtents_.y;
-    float isoExtentBX = b.halfExtents_.x + b.halfExtents_.y;
-    float isoExtentAY = a.halfExtents_.x + a.halfExtents_.y + (2.0f * a.halfExtents_.z);
-    float isoExtentBY = b.halfExtents_.x + b.halfExtents_.y + (2.0f * b.halfExtents_.z);
-
-    float depthA = static_cast<float>(pos3DtoDistance(centerA));
-    float depthB = static_cast<float>(pos3DtoDistance(centerB));
-    float depthExtentA = a.halfExtents_.x + a.halfExtents_.y + a.halfExtents_.z;
-    float depthExtentB = b.halfExtents_.x + b.halfExtents_.y + b.halfExtents_.z;
-
-    return IRMath::abs(isoA.x - isoB.x) <= (isoExtentAX + isoExtentBX) &&
-           IRMath::abs(isoA.y - isoB.y) <= (isoExtentAY + isoExtentBY) &&
-           IRMath::abs(depthA - depthB) <= (depthExtentA + depthExtentB);
+// Swept broad phase: A's box stretched back over `motion`, its displacement
+// relative to B this frame, so a pair that crossed between frames survives.
+inline bool broadPhaseIsoDepthSwept(
+    const C_WorldTransform &transformA,
+    const C_ColliderIso3DAABB &a,
+    const C_WorldTransform &transformB,
+    const C_ColliderIso3DAABB &b,
+    vec3 motion
+) {
+    return broadPhaseIsoDepth(
+        transformA.translation_ + a.centerOffset_ - motion * 0.5f,
+        a.halfExtents_ + IRMath::abs(motion) * 0.5f,
+        transformB.translation_ + b.centerOffset_,
+        b.halfExtents_
+    );
 }
 
 inline bool narrowPhaseAabb(
@@ -76,6 +101,33 @@ inline bool narrowPhaseAabb(
            overlaps1D(outMinA.z, outMaxA.z, outMinB.z, outMaxB.z);
 }
 
+// `narrowPhaseAabb` over the frame: A moved by `motion` relative to B.
+inline bool narrowPhaseAabbSwept(
+    const C_WorldTransform &transformA,
+    const C_ColliderIso3DAABB &a,
+    const C_WorldTransform &transformB,
+    const C_ColliderIso3DAABB &b,
+    vec3 motion,
+    vec3 &outMinA,
+    vec3 &outMaxA,
+    vec3 &outMinB,
+    vec3 &outMaxB
+) {
+    getAabbWorld(transformA, a, outMinA, outMaxA);
+    getAabbWorld(transformB, b, outMinB, outMaxB);
+    return sweptAabbOverlap(outMinA, outMaxA, outMinB, outMaxB, motion);
+}
+
+// The node's C_Velocity3D column, or nullptr when its entities have none
+// (a static collider: no motion this frame).
+inline const std::vector<C_Velocity3D> *
+velocityColumn(IREntity::ArchetypeNode *node, IREntity::ComponentId velocityType) {
+    if (!node->type_.contains(velocityType)) {
+        return nullptr;
+    }
+    return &IREntity::getComponentData<C_Velocity3D>(node);
+}
+
 inline void markContact(C_ContactEvent &event, IREntity::EntityId otherEntity, vec3 normal) {
     event.touching_ = true;
     event.exited_ = false;
@@ -89,6 +141,13 @@ inline void markContact(C_ContactEvent &event, IREntity::EntityId otherEntity, v
 }
 } // namespace detail
 
+// Contacts are swept over the frame: a collider with a C_Velocity3D moved by
+// velocity * dt since the previous tick (VELOCITY_3D integrates exactly that
+// ahead of this system), and a pair counts as touching if the two boxes met
+// at any moment in between. A fast body therefore never passes through a thin
+// one between two frames. Colliders without a velocity are static here, and a
+// position written directly (a snap, a teleport) is not swept. The velocity is
+// read as world motion, which holds for unparented colliders.
 template <> struct System<COLLISION_NOTE_PLATFORM> {
     static SystemId create() {
         return createSystem<
@@ -97,7 +156,7 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
             C_CollisionLayer,
             C_ContactEvent>(
             "CollisionNotePlatform",
-            [](const Archetype &,
+            [](const Archetype &selfArchetype,
                std::vector<IREntity::EntityId> &entities,
                std::vector<C_WorldTransform> &transforms,
                std::vector<C_ColliderIso3DAABB> &colliders,
@@ -120,6 +179,25 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                         C_ContactEvent>()
                 );
 
+                const IREntity::ComponentId velocityType =
+                    IREntity::getComponentType<C_Velocity3D>();
+                const std::vector<C_Velocity3D> *selfVelocities = nullptr;
+                for (auto *node : allColliderNodes) {
+                    if (node->type_ == selfArchetype) {
+                        selfVelocities = detail::velocityColumn(node, velocityType);
+                        break;
+                    }
+                }
+                // Read only when some collider moves: a scene of static
+                // colliders (and a test without a TimeManager) never asks.
+                float dt = -1.0f;
+                auto frameDt = [&dt]() {
+                    if (dt < 0.0f) {
+                        dt = static_cast<float>(IRTime::deltaTime(IRTime::UPDATE));
+                    }
+                    return dt;
+                };
+
                 for (int i = 0; i < static_cast<int>(entities.size()); i++) {
                     IR_PROFILE_BLOCK("CollisionBlockScan", IR_PROFILER_COLOR_UPDATE);
                     auto &selfEntity = entities[i];
@@ -129,6 +207,8 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                     auto &selfEvent = events[i];
 
                     bool foundAnyContact = false;
+                    const vec3 selfVelocity =
+                        selfVelocities != nullptr ? (*selfVelocities)[i].velocity_ : vec3(0.0f);
 
                     vec3 blockMin(0.0f);
                     vec3 blockMax(0.0f);
@@ -143,6 +223,8 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                             IREntity::getComponentData<C_ColliderIso3DAABB>(otherNode);
                         auto &otherLayers = IREntity::getComponentData<C_CollisionLayer>(otherNode);
                         auto &otherEvents = IREntity::getComponentData<C_ContactEvent>(otherNode);
+                        const std::vector<C_Velocity3D> *otherVelocities =
+                            detail::velocityColumn(otherNode, velocityType);
 
                         for (int j = 0; j < otherNode->length_; j++) {
                             if (otherEntities[j] == selfEntity) {
@@ -157,20 +239,29 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                             auto &otherTransform = otherTransforms[j];
                             auto &otherCollider = otherColliders[j];
 
-                            if (!detail::broadPhaseIsoDepth(
-                                    selfTransform,
-                                    selfCollider,
-                                    otherTransform,
-                                    otherCollider
-                                )) {
-                                continue;
-                            }
+                            const vec3 relativeVelocity =
+                                selfVelocity - (otherVelocities != nullptr
+                                                    ? (*otherVelocities)[j].velocity_
+                                                    : vec3(0.0f));
+                            const bool moving = relativeVelocity != vec3(0.0f);
+                            const vec3 motion = moving ? relativeVelocity * frameDt() : vec3(0.0f);
 
-                            if (!detail::narrowPhaseAabb(
+                            if (!detail::broadPhaseIsoDepthSwept(
                                     selfTransform,
                                     selfCollider,
                                     otherTransform,
                                     otherCollider,
+                                    motion
+                                )) {
+                                continue;
+                            }
+
+                            if (!detail::narrowPhaseAabbSwept(
+                                    selfTransform,
+                                    selfCollider,
+                                    otherTransform,
+                                    otherCollider,
+                                    motion,
                                     blockMin,
                                     blockMax,
                                     platformMin,
