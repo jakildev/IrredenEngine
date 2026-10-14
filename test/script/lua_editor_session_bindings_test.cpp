@@ -25,6 +25,7 @@ IR_SESSION_PREDICATE_STUB(evaluatePartsListCheck)
 IR_SESSION_PREDICATE_STUB(evaluateCameraZoomCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePickCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePickMatchesRender)
+IR_SESSION_PREDICATE_STUB(evaluateFillGhostCheck)
 IR_SESSION_PREDICATE_STUB(evaluateSliderCheck)
 IR_SESSION_PREDICATE_STUB(evaluateComponentCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePanelLabelCheck)
@@ -96,6 +97,8 @@ TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
         s:clickBelow({6, 8, 13})
         s:hover({5, 8, 12})
         s:dragBox({10, 8, 14}, {13, 8, 14})
+        s:holdBox({10, 6, 14}, {13, 6, 14})
+        s:releaseBox()
         s:tapKey(IRInput.Key.SPACE)
         s:chordKey(IRInput.Key.LEFT_CONTROL, IRInput.Key.S)
         s:toggleEraseMode()
@@ -161,6 +164,8 @@ TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
         s:expectVoxelColor({8, 8, 14}, 1, "voxel_color")
         s:expectPick({8, 8, 14}, "pick")
         s:expectPickMatchesRender("pick_render")
+        s:expectFillGhost({10, 6, 14}, {13, 6, 14}, "fill_ghost")
+        s:expectNoFillGhost("no_fill_ghost")
         s:expectSliderValue(IREditor.SliderTarget.FPS, 12, 1, "slider")
         s:expectPartGated(0, false, -1, "part_gated")
         s:expectPreviewGated(false, -1, "preview_gated")
@@ -178,6 +183,81 @@ TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
     ASSERT_TRUE(result.valid()) << sol::error(result).what();
     const IRVoxelEditor::Session::Recipe recipe = builder.finish();
     EXPECT_TRUE(recipe.ok()) << (recipe.errors_.empty() ? "" : recipe.errors_.front());
+}
+
+TEST_F(LuaEditorSessionBindingsTest, HeldBoxNeedsExactlyOneRelease) {
+    struct Case {
+        const char *script_;
+        const char *error_;
+    };
+    const Case cases[] = {
+        {"session:holdBox({10, 6, 14}, {13, 6, 14})", "ends with a box held"},
+        {"session:releaseBox()", "releaseBox with no box held"},
+        {"session:holdBox({10, 6, 14}, {13, 6, 14}); session:holdBox({10, 4, 14}, {13, 4, 14})",
+         "holdBox while a box is held"},
+        {"session:holdBox({10, 6, 14}, {13, 6, 14}); session:dragBox({10, 4, 14}, {13, 4, 14})",
+         "dragBox while a box is held"},
+    };
+    for (const Case &testCase : cases) {
+        Builder builder("held", IRMath::ivec3(16), IRMath::vec3(-8.0f));
+        const std::shared_ptr<Lifetime> lifetime =
+            std::make_shared<Lifetime>(Lifetime{&builder, &m_lua});
+        m_lua.lua()["session"] = Handle{lifetime};
+        ASSERT_TRUE(m_lua.lua().safe_script(testCase.script_).valid()) << testCase.script_;
+        const IRVoxelEditor::Session::Recipe recipe = builder.finish();
+        ASSERT_FALSE(recipe.ok()) << testCase.script_;
+        EXPECT_NE(recipe.errors_.front().find(testCase.error_), std::string::npos)
+            << testCase.script_ << " -> " << recipe.errors_.front();
+    }
+}
+
+// dragBox is holdBox then releaseBox. Split across a segment boundary, the
+// release is the later segment's only event, on its first frame.
+TEST_F(LuaEditorSessionBindingsTest, HoldThenReleaseEmitsTheDragBoxStream) {
+    using IRVideo::GuiInputEvent;
+    const auto build = [this](const char *script) {
+        Builder builder("stream", IRMath::ivec3(16), IRMath::vec3(-8.0f));
+        const std::shared_ptr<Lifetime> lifetime =
+            std::make_shared<Lifetime>(Lifetime{&builder, &m_lua});
+        m_lua.lua()["session"] = Handle{lifetime};
+        EXPECT_TRUE(m_lua.lua().safe_script(script).valid()) << script;
+        return builder.finish();
+    };
+    const IRVoxelEditor::Session::Recipe dragged =
+        build("session:dragBox({10, 6, 14}, {13, 6, 14})");
+    const IRVoxelEditor::Session::Recipe held =
+        build("session:holdBox({10, 6, 14}, {13, 6, 14}); session:releaseBox()");
+    const IRVoxelEditor::Session::Recipe split = build(
+        "session:holdBox({10, 6, 14}, {13, 6, 14}); session:segment('release'); "
+        "session:releaseBox()"
+    );
+    ASSERT_TRUE(dragged.ok());
+    ASSERT_TRUE(held.ok());
+    ASSERT_TRUE(split.ok());
+    ASSERT_EQ(dragged.segments_.size(), 1u);
+    ASSERT_EQ(held.segments_.size(), 1u);
+    ASSERT_EQ(split.segments_.size(), 2u);
+
+    const std::vector<GuiInputEvent> &dragEvents = dragged.segments_[0].events_;
+    const std::vector<GuiInputEvent> &heldEvents = held.segments_[0].events_;
+    ASSERT_EQ(dragEvents.size(), 4u);
+    ASSERT_EQ(heldEvents.size(), dragEvents.size());
+    for (std::size_t i = 0; i < dragEvents.size(); ++i) {
+        EXPECT_EQ(heldEvents[i].type_, dragEvents[i].type_) << i;
+        EXPECT_EQ(heldEvents[i].frameOffset_, dragEvents[i].frameOffset_) << i;
+        EXPECT_EQ(heldEvents[i].button_, dragEvents[i].button_) << i;
+    }
+    EXPECT_EQ(dragEvents.back().type_, GuiInputEvent::Type::RELEASE);
+
+    const std::vector<GuiInputEvent> &pressEvents = split.segments_[0].events_;
+    ASSERT_EQ(pressEvents.size(), 3u);
+    EXPECT_EQ(pressEvents[1].type_, GuiInputEvent::Type::PRESS);
+    EXPECT_EQ(pressEvents.back().type_, GuiInputEvent::Type::MOVE);
+    const std::vector<GuiInputEvent> &releaseEvents = split.segments_[1].events_;
+    ASSERT_EQ(releaseEvents.size(), 1u);
+    EXPECT_EQ(releaseEvents[0].type_, GuiInputEvent::Type::RELEASE);
+    EXPECT_EQ(releaseEvents[0].frameOffset_, 0);
+    EXPECT_EQ(releaseEvents[0].button_, IRInput::kMouseButtonLeft);
 }
 
 TEST_F(LuaEditorSessionBindingsTest, InvalidatesRetainedHandleAfterReturnAndRaise) {
@@ -211,6 +291,8 @@ TEST_F(LuaEditorSessionBindingsTest, RejectsEveryArgumentFamilyAndNonComparableF
         "session:segment('Bad Label', 4)",
         "session:segment('x', {})",
         "session:click({x=1,y=2,z='bad'})",
+        "session:holdBox({1,2,3}, {1,2})",
+        "session:expectFillGhost({1,2,'bad'}, {1,2,3}, 'bad')",
         "session:clickLoftCell(99, {0,0})",
         "session:dragGuiSlider({pos={0,0},size='bad'}, 0, 1, 0)",
         "session:dragWorld({0,0}, {1,1,1})",

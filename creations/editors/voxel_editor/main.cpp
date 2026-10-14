@@ -146,6 +146,9 @@
 // Symmetry modes
 #include "symmetry.hpp"
 
+// Geometry of the fill tool's drag preview.
+#include "fill_ghost.hpp"
+
 // Authoring sessions — recipes of editor gestures compiled into
 // scripted input and replayed against the live UI by the GUI-test harness.
 #include "editor_picking.hpp"
@@ -1935,8 +1938,9 @@ void applyFillFace(
     }
 }
 
-// Update the ghost shape entity to visualize the fill region during drag.
-// Uses AABB bounds for box fill, or the dominant-axis extent for line fill.
+// Shows the fill preview on the cells a release would fill or carve: the box
+// between the two drag cells, or in line mode the run along the drag's
+// dominant axis.
 void updateGhostShape(ivec3 worldA, ivec3 worldB, bool lineMode) {
     if (g_fillTool.ghostEntity_ == IREntity::kNullEntity)
         return;
@@ -1945,45 +1949,23 @@ void updateGhostShape(ivec3 worldA, ivec3 worldB, bool lineMode) {
     ghost.flags_ = IRMath::SDF::SHAPE_FLAG_VISIBLE | IRMath::SDF::SHAPE_FLAG_HOLLOW |
                    IRMath::SDF::SHAPE_FLAG_XRAY_OCCLUDED;
 
-    ivec3 lo{};
-    ivec3 hi{};
+    ivec3 end = worldB;
     if (lineMode) {
         const ivec3 delta = worldB - worldA;
         const int dx = IRMath::abs(delta.x);
         const int dy = IRMath::abs(delta.y);
         const int dz = IRMath::abs(delta.z);
-        ivec3 lineEnd = worldA;
+        end = worldA;
         if (dx >= dy && dx >= dz)
-            lineEnd.x = worldB.x;
+            end.x = worldB.x;
         else if (dy >= dz)
-            lineEnd.y = worldB.y;
+            end.y = worldB.y;
         else
-            lineEnd.z = worldB.z;
-        lo = ivec3{
-            IRMath::min(worldA.x, lineEnd.x),
-            IRMath::min(worldA.y, lineEnd.y),
-            IRMath::min(worldA.z, lineEnd.z)
-        };
-        hi = ivec3{
-            IRMath::max(worldA.x, lineEnd.x),
-            IRMath::max(worldA.y, lineEnd.y),
-            IRMath::max(worldA.z, lineEnd.z)
-        };
-    } else {
-        lo = ivec3{
-            IRMath::min(worldA.x, worldB.x),
-            IRMath::min(worldA.y, worldB.y),
-            IRMath::min(worldA.z, worldB.z)
-        };
-        hi = ivec3{
-            IRMath::max(worldA.x, worldB.x),
-            IRMath::max(worldA.y, worldB.y),
-            IRMath::max(worldA.z, worldB.z)
-        };
+            end.z = worldB.z;
     }
-    const vec3 halfExt = vec3(hi.x - lo.x + 1, hi.y - lo.y + 1, hi.z - lo.z + 1) * 0.5f;
-    ghostTransform.translation_ = vec3(lo) + halfExt;
-    ghost.params_ = vec4(halfExt.x, halfExt.y, halfExt.z, 0.0f);
+    const FillGhostBox box = fillGhostBox(IRMath::min(worldA, end), IRMath::max(worldA, end));
+    ghostTransform.translation_ = box.center_;
+    ghost.params_ = box.params_;
 }
 
 // Loft mask cell colors. Painted onto the GUI canvas by
@@ -2843,6 +2825,25 @@ namespace Session {
 // subdivision (>= 1) away.
 constexpr float kPickDepthAgreement = 0.75f;
 
+// Calls visit(texel, flat index) for every texel of @p canvas whose entity id
+// is @p entity: the texels that entity is the nearest surface on.
+template <typename Visit>
+void forEachTexelOwnedBy(
+    const C_TriangleCanvasTextures &canvas, IREntity::EntityId entity, Visit &&visit
+) {
+    std::vector<IRMath::uvec2> ids;
+    canvas.readEntityIdCarriers(ids);
+    for (int y = 0; y < canvas.size_.y; ++y) {
+        for (int x = 0; x < canvas.size_.x; ++x) {
+            const std::size_t texel = static_cast<std::size_t>(y) * canvas.size_.x + x;
+            if (static_cast<IREntity::EntityId>(IRRender::decodeCarrierEntityId(ids[texel])) ==
+                entity) {
+                visit(IRMath::ivec2(x, y), texel);
+            }
+        }
+    }
+}
+
 // The whole-frame form of the picking contract: every main-canvas texel that
 // shows the editable set must pick the face it shows, at the depth it shows it.
 // The canvas's own distance readback is the oracle — it records which face slot
@@ -2856,9 +2857,7 @@ bool evaluatePickMatchesRender(const void *, std::string &actual) {
     }
     const auto &canvas =
         IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity());
-    std::vector<IRMath::uvec2> ids;
     std::vector<int> distances;
-    canvas.readEntityIdCarriers(ids);
     canvas.readDistances(distances);
 
     const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sceneVoxelSetEntity);
@@ -2871,35 +2870,27 @@ bool evaluatePickMatchesRender(const void *, std::string &actual) {
     int shown = 0;
     int agree = 0;
     float worstDepthError = 0.0f;
-    for (int y = 0; y < canvas.size_.y; ++y) {
-        for (int x = 0; x < canvas.size_.x; ++x) {
-            const std::size_t texel = static_cast<std::size_t>(y) * canvas.size_.x + x;
-            if (static_cast<IREntity::EntityId>(IRRender::decodeCarrierEntityId(ids[texel])) !=
-                g_sceneVoxelSetEntity) {
-                continue;
+    forEachTexelOwnedBy(canvas, g_sceneVoxelSetEntity, [&](IRMath::ivec2 texel, std::size_t flat) {
+        ++shown;
+        const IRRender::DecodedCompositeDepth drawn =
+            IRRender::decodeCompositeDepth(static_cast<float>(distances[flat]));
+        const std::optional<IRPrefab::Picking::GridRayHit> hit = IRPrefab::Picking::castGridRay(
+            IRRender::mainCanvasTexelWorldPos3DAtIsoDepth(texel, 0.0f) - origin,
+            kSessionRayDirection,
+            set.size_,
+            [&set](IRMath::ivec3 local) {
+                return set.voxels_[IRMath::index3DtoIndex1D(local, set.size_)].color_.alpha_ != 0;
             }
-            ++shown;
-            const IRRender::DecodedCompositeDepth drawn =
-                IRRender::decodeCompositeDepth(static_cast<float>(distances[texel]));
-            const std::optional<IRPrefab::Picking::GridRayHit> hit = IRPrefab::Picking::castGridRay(
-                IRRender::mainCanvasTexelWorldPos3DAtIsoDepth(IRMath::ivec2(x, y), 0.0f) - origin,
-                kSessionRayDirection,
-                set.size_,
-                [&set](IRMath::ivec3 local) {
-                    return set.voxels_[IRMath::index3DtoIndex1D(local, set.size_)].color_.alpha_ !=
-                           0;
-                }
-            );
-            if (!hit || hit->faceNormal_[drawn.face_ % 3] == 0)
-                continue;
-            const float depthError = IRMath::abs(
-                hit->rayT_ * 3.0f * subdivisions + drawnDepthLead - static_cast<float>(drawn.iso_)
-            );
-            worstDepthError = IRMath::max(worstDepthError, depthError);
-            if (depthError < kPickDepthAgreement)
-                ++agree;
-        }
-    }
+        );
+        if (!hit || hit->faceNormal_[drawn.face_ % 3] == 0)
+            return;
+        const float depthError = IRMath::abs(
+            hit->rayT_ * 3.0f * subdivisions + drawnDepthLead - static_cast<float>(drawn.iso_)
+        );
+        worstDepthError = IRMath::max(worstDepthError, depthError);
+        if (depthError < kPickDepthAgreement)
+            ++agree;
+    });
     actual = "texels=" + std::to_string(shown) + " agree=" + std::to_string(agree) +
              " worstDepthError=" + std::to_string(worstDepthError);
     return shown > 0 && agree == shown;
@@ -2919,6 +2910,39 @@ bool evaluatePickCheck(const void *context, std::string &actual) {
              std::to_string(hit->faceNormal_.x) + "," + std::to_string(hit->faceNormal_.y) + "," +
              std::to_string(hit->faceNormal_.z) + ")";
     return hit->voxelPos_ == check.worldVoxel_;
+}
+
+// Reads one fill-preview expectation from the main canvas's entity ids: the
+// texels the ghost shape is the nearest surface on. Cardinal camera only, like
+// the pick sweep: viewRayCrossesCells assumes the (1,1,1) view ray.
+bool evaluateFillGhostCheck(const void *context, std::string &actual) {
+    const FillGhostCheck &check = *static_cast<const FillGhostCheck *>(context);
+    if (g_fillTool.ghostEntity_ == IREntity::kNullEntity) {
+        actual = "no-ghost-entity";
+        return false;
+    }
+    const bool flaggedVisible =
+        (IREntity::getComponent<C_ShapeDescriptor>(g_fillTool.ghostEntity_).flags_ &
+         IRMath::SDF::SHAPE_FLAG_VISIBLE) != 0u;
+    const auto &canvas =
+        IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity());
+    int owned = 0;
+    int inside = 0;
+    forEachTexelOwnedBy(canvas, g_fillTool.ghostEntity_, [&](IRMath::ivec2 texel, std::size_t) {
+        ++owned;
+        if (viewRayCrossesCells(
+                IRRender::mainCanvasTexelWorldPos3DAtIsoDepth(texel, 0.0f),
+                check.worldLo_,
+                check.worldHi_
+            )) {
+            ++inside;
+        }
+    });
+    actual = std::string(flaggedVisible ? "" : "hidden ") + "texels=" + std::to_string(owned);
+    if (!check.expectDrawn_)
+        return !flaggedVisible && owned == 0;
+    actual += " inside=" + std::to_string(inside);
+    return flaggedVisible && owned > 0 && inside == owned;
 }
 
 // Reads one recipe occupancy expectation against the live editable set at a
@@ -3776,14 +3800,15 @@ int main(int argc, char **argv) {
     IREngine::args().enumValue(
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
-        "face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | tier_scrub | "
-        "remove_part | radial_array | linear_array | nway_symmetry | mode_preview | "
+        "fill_ghost | face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | "
+        "tier_scrub | remove_part | radial_array | linear_array | nway_symmetry | mode_preview | "
         "mode_preview_shots | part_mode_cycle | corner_part_revox_refused | "
         "parts_scroll | module_loaded | component_attach | component_field_page | "
         "component_field_key | text_input_command_capture | part_sizes | composite_proof",
         {"none",
          "drag_probe",
          "place_below",
+         "fill_ghost",
          "face_pick",
          "rock",
          "mushroom",
@@ -6719,7 +6744,7 @@ void initEntities() {
         C_LocalTransform{vec3(0.0f)},
         C_ShapeDescriptor{
             IRRender::ShapeType::BOX,
-            vec4(0.5f, 0.5f, 0.5f, 0.0f),
+            vec4(1.0f, 1.0f, 1.0f, 0.0f),
             Color{240, 240, 240, 200}
         }
     );
