@@ -10,7 +10,12 @@ lane). `run_pairs.py` runs every lane once on head, then once on master, per
 pair, through `scripts/perf/repeat_profile.py --repeats 1`;
 `summarize_pairs.py` means the arms and writes `comparison.json` and the
 tables below. Every run is `RESULT=CLEAN`, `QUIET=guarded`, exit 0, with a
-fresh report.
+fresh report, so every pair is complete and no arm is unmatched. Three pairs
+per lane is below the five-pair minimum the corrected criterion 8 rule later
+set, so the summarizer marks these lanes insufficient and exits 1 on this
+directory; the tables stand as the written rule (i) over three symmetric
+pairs, and the criterion 8 table of record is
+[`../metal-restored/`](../metal-restored/README.md).
 
 The common demo arguments are `--auto-profile 300 --grid-size 64 --yaw 0.35`:
 the camera sits 20.05 degrees off cardinal, so the compact runs in per-axis
