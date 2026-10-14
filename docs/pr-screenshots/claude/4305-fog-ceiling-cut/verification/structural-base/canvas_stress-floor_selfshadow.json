@@ -1,0 +1,39 @@
+{
+  "demo": "canvas_stress",
+  "target": "IRCanvasStress",
+  "name": "floor_selfshadow",
+  "args": [
+    "--only",
+    "floor",
+    "--debug-overlay",
+    "shadow"
+  ],
+  "warmup": 120,
+  "offset": 4,
+  "shots": [
+    "floor_selfshadow_offwide"
+  ],
+  "command": "fleet-run --build-dir /tmp/pool-1-4381/structural-base-build --timeout 60 IRCanvasStress --auto-screenshot 120 --only floor --debug-overlay shadow",
+  "exit": 0,
+  "clean": true,
+  "hashes": {
+    "floor_selfshadow_offwide.png": "1dce4af4902af12cb0a770a1cdebfa4e04fca3ea1780f7fd7e35203ba7f1349e"
+  },
+  "probes": [
+    "[2026-10-13 17:12:03.175] [ClientLog] [info] LIGHTING-PROBE sun=(-0.4585579,-0.65508276,-0.60049254) shadows=true ao=true",
+    "[2026-10-13 17:12:06.284] [ClientLog] [info] CaptureCamera: label=so3_smooth_sweep yaw=0.5235958 zoom=(1,1) effectiveIso=(1.9696841,-0.5185714) subdivisions=1 gameResolution=(1280,720)",
+    "[2026-10-13 17:12:07.497] [ClientLog] [info] CaptureCamera: label=so3_offsnap_disc yaw=1.308994 zoom=(1,1) effectiveIso=(3.854519,-2.9310355) subdivisions=1 gameResolution=(1280,720)",
+    "[2026-10-13 17:12:08.700] [ClientLog] [info] CaptureCamera: label=so3_wide_parity yaw=0.5235958 zoom=(1,1) effectiveIso=(1.9696841,-0.5185714) subdivisions=1 gameResolution=(1280,720)",
+    "[2026-10-13 17:12:09.913] [ClientLog] [info] CaptureCamera: label=so3_grid_cross yaw=0.5235958 zoom=(1,1) effectiveIso=(1.9696841,-0.5185714) subdivisions=1 gameResolution=(1280,720)",
+    "[2026-10-13 17:12:11.120] [ClientLog] [info] CaptureCamera: label=so3_offsnap_wide yaw=1.0471947 zoom=(1,1) effectiveIso=(3.4465113,-1.9698367) subdivisions=1 gameResolution=(1280,720)",
+    "[2026-10-13 17:12:12.325] [ClientLog] [info] CaptureCamera: label=revoxelize_solids yaw=0.5235958 zoom=(1,1) effectiveIso=(1.9696841,-0.5185714) subdivisions=1 gameResolution=(1280,720)",
+    "[2026-10-13 17:12:13.527] [ClientLog] [info] CaptureCamera: label=revoxelize_solids_zoom yaw=0.5235958 zoom=(2,2) effectiveIso=(1.9696841,-0.5185714) subdivisions=2 gameResolution=(1280,720)",
+    "[2026-10-13 17:12:14.732] [ClientLog] [info] CaptureCamera: label=orbit_overview yaw=0.5235958 zoom=(1,1) effectiveIso=(1.9696841,-0.5185714) subdivisions=1 gameResolution=(1280,720)",
+    "[2026-10-13 17:12:15.935] [ClientLog] [info] CaptureCamera: label=shadow_overlay_floor yaw=0.5235958 zoom=(1,1) effectiveIso=(1.9696841,-0.5185714) subdivisions=1 gameResolution=(1280,720)",
+    "[2026-10-13 17:12:17.138] [ClientLog] [info] CaptureCamera: label=revox_coverage yaw=0.5235958 zoom=(2,2) effectiveIso=(1.9696841,-0.5185714) subdivisions=2 gameResolution=(1280,720)",
+    "[2026-10-13 17:12:18.342] [ClientLog] [info] CaptureCamera: label=smallzoom_low yaw=0.5235958 zoom=(1,1) effectiveIso=(1.9696841,-0.5185714) subdivisions=1 gameResolution=(1280,720)",
+    "[2026-10-13 17:12:19.546] [ClientLog] [info] CaptureCamera: label=smallzoom_high yaw=0.5235958 zoom=(2,2) effectiveIso=(1.9696841,-0.5185714) subdivisions=2 gameResolution=(1280,720)",
+    "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+  ],
+  "source_head": "8a1bc317a11218c27f46cd3c55080635fdb95397"
+}

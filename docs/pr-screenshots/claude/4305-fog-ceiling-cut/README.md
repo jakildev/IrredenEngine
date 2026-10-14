@@ -1,112 +1,134 @@
-# Fog ceiling retention — WIP evidence
+# Fog ceiling retention — native Metal evidence
 
-Two-ref capture for PR #4381, taken on 2026-10-13 in the same macOS session.
-The original ceiling frames below predate the corrected signed overflow
-encoding. The later validation section records fresh controls and the curved
-fixture correction. Full image identity and performance remain unverified.
-No reference baselines have been replaced.
+Fresh two-ref captures for PR #4381, taken in one macOS session on
+2026-10-13 (local time) by Codex (GPT-6). These replace the earlier WIP
+pairs. Master was pinned before the paired measurements; no later rebase
+is included in this evidence.
 
-- Before: `90503255f84bf5046b04fc9a31788bc17c2447ed` (master at integration,
-  including the merged shadow receiver work).
-- After: `4467fb517ce9b4ca350a8fc048d412f90b0e4cc6` (committed WIP code).
-- Runtime / author: Codex, GPT-6.
-- Host: macOS, Apple M4 Max, 32 GPU cores, Metal, `macos-debug`.
-- Both builds: `fleet-build --detach --target IRFogDemo`, with a successful
-  terminal `fleet-jobs wait`; the before build also included IRLightingEmissive.
-- Build waits: before `20261013T191626Z-build-fbb25a succeeded exit=0`;
-  after `20261013T192322Z-build-490b92 succeeded exit=0`.
-- Both captures: `fleet-run IRFogDemo --ceiling-treatment --reveal-treatment --auto-screenshot 10`.
-- Render viewport: 1280 × 720; PNG framebuffer: 2560 × 1440.
-- Scene: two FIELD voxel columns and one governed BODY column, each 4 × 4 × 16;
-  one 60 × 60 × 3 FIELD ground slab. Four scene solids, 11,568 authored voxels.
-  One fog source at (0,0), radius 14, softness 2, observer Z 4;
-  ceiling height 5 / fade 4; treatment density .5, cap tone .5, phase 0.
-- Lighting: one vertical sun (0,0,-1), sun shadows enabled, no authored local lights.
-- Camera: yaw 0 and .35 radians, requested zoom 9 clamped to effective (8,8),
-  subdivisions 8; camera (0,0); effective iso (0,0) and (-1.4001657,.24756145).
-  Culling toggle 0, no object rotation, no occlusion-refine toggle.
-- Two full frames per arm, paired by auto-screenshot label. Both runs terminate
-  `ir-run: RESULT=CLEAN exe=IRFogDemo exit=0`.
-- Clip skipped: this demo has no auto-record wiring.
+- Before: `8a1bc317a11218c27f46cd3c55080635fdb95397`.
+- After code: `50c68520505c9621237a1ec936ead20523e4ff17`; the later
+  `bad76c32a83b5d8ff0cfa78aadc985330bcf0d1c` adds evidence only.
+- Host: macOS 26.5.2 arm64, Apple M4 Max (32 GPU cores), Metal,
+  `macos-debug`, Debug with the repository's `-O3` setting.
+- Head executable build: `20261013T225309Z-build-4fcb8f`, terminal
+  `succeeded exit=0`, at `f4fd403eddaff4419917168a10ef7c542c6bbef2`.
+  The only subsequent runtime code change is the GLSL/Metal face-selector
+  BODY fast path; those shaders were copied from `50c685205` into the
+  isolated head runtime. The full head sweep also rebuilt the ordinary
+  targets at `bad76c32a`.
+- Master build: `20261014T000738Z-build-e6c255`, terminal
+  `succeeded exit=0`, at the pinned before ref.
+- Captures use `fleet-run --build-dir <isolated-runtime> --timeout 60
+  IRFogDemo <scene-arguments> --auto-screenshot 10`. Head runtime:
+  `/tmp/pool-1-4381/fog-fixed-build`; master:
+  `/tmp/pool-1-4381/fog-base-build`. Every production run exits CLEAN.
+  Logs, probes, capture hashes and runtime provenance are in `verification/`.
+- Viewport 1280 × 720; full PNG framebuffer 2560 × 1440. Requested camera (0,0),
+  yaw 0 and .35 radians, requested zoom 9 / effective zoom 8 (column-top
+  requests 8), subdivisions 8. Effective iso position is (0,0) at yaw 0;
+  at yaw .35 it is (-1.4001657,.24756145) for ceiling/shadow and
+  (-2.428859,.42944288) for column-top in both arms. No object rotation, culling toggle or
+  occlusion-refine toggle. Phase is 0. No authored local lights.
+- All full before/after frames and the unscaled detail crops were inspected.
+  The demo has no auto-record wiring, so no clip is claimed.
 
-Before, both FIELD columns retain their full silhouette and paint the hidden
-upper section magenta. The old probe reads 272 carrier texels per column and
-40/40 top texels painted; the BODY twin stays full-height and unpainted.
+## Scene settings and observed change
 
-After, the hidden upper FIELD sections are absent and the partial band has
-voxel-shaped gaps and caps; the blue BODY twin stays full-height. Full frames
-were inspected at both yaws. Carrier probes, rather than colour alone, check
-that the solid core has no missing faces.
+| Pair labels | Scene arguments | Population and fog | Light |
+|---|---|---|---|
+| `fog_ceiling9`, `fog_ceiling_yaw9` | `--ceiling-treatment` | Two 4×4×16 FIELD columns, one governed BODY twin, one 60×60×3 FIELD slab: four solids, 11,568 authored voxels. Source (0,0,4), radius 14, softness 2, ceiling 5 / fade 4. Treatment off. | One vertical sun (0,0,-1), shadows on. |
+| `fog_ceiling_treatment9`, `fog_ceiling_treatment_yaw9` | `--ceiling-treatment --reveal-treatment` | Same geometry/source; treatment density .5, cap tone .5. | Same vertical sun. |
+| `fog_occlusion_column_top`, `fog_occlusion_column_top_yaw` | `--occlusion=column-top --fog-debug-color` | Two 6×6×9 FIELD plateaus and a 60×60×3 FIELD slab: three solids, 11,448 voxels. Gated foot source (-8,-8,4), radius 20, hard ceiling 4; gated top source (0,0,-5), radius 6, no ceiling; softness 1 each. Treatment off. | Same vertical sun. |
+| `fog_ceiling_shadow9`, `fog_ceiling_shadow_yaw9` | `--ceiling-shadow` | Three 4×4×16 columns (two FIELD, one BODY), 4×4 control, 60×60×3 FIELD slab. Before control height 8; after 9: 11,696 → 11,712 authored voxels, five solids. Source (0,0,4), radius 30, softness 2, ceiling 5 / fade 4. Treatment off. | One sun, normalized (.35,.85,-.4), shadows on. |
 
-The pinned before ref is intentionally recorded: master moved during this
-iteration. These WIP pairs are not a substitute for retaking all required
-current-master pairs after the design blocker is resolved.
+The ceiling pairs show the magenta upper FIELD silhouettes on master.
+Head removes those voxels, exposes caps, and keeps the blue BODY twin
+whole. Treatment makes voxel-shaped gaps in the partial band. Column-top
+preserves the main plateau while removing the control's hidden upper
+section. The shadow pairs compare the old midpoint rule against the
+retained-solid rule and the deliberately re-authored control height.
 
-Final head carrier readings:
+| Probe | Master | Head |
+|---|---|---|
+| Soft ceiling, each FIELD column | 272 carrier texels, 40/40 top texels painted | 160 texels, top 8/8, aboveCut 0, capFaces 32, core 48, hollow 0 |
+| Treated ceiling, centre / rim | 272 texels each, 40/40 top painted | 157 / 150 texels, top 8/8, aboveCut 0, caps 37 / 50, hollow 0 |
+| Treated per-axis route | Full upper silhouette | Top caps 17 / 18, hollow 0 |
+| BODY twin | 272 texels, 192 above ceiling, painted/partial 0, ratio 1 | Same |
+| Column-top main plateau | bandTexels 120, oracleHidden/painted 0 | bandTexels 108, oracleHidden/painted 0 |
+| Column-top control | controlTexels = controlPainted = 120 | controlTexels 0, cap 72, core 48, hollow 0 |
+| Shadow centre / rim / control | 17.460 / 17.460 / 17.079 | 19.690 / 19.690 / 19.690 |
+| Shadow BODY / sun texel | 20.996 / .463 | Same |
 
-```text
-column=centre texels=157 top=8/8 aboveCut=0 capFaces=37 core=16 hollow=0
-column=rim texels=150 top=8/8 aboveCut=0 capFaces=50 core=16 hollow=0
-roi=band phase=0 changed=0 outsideBand=0
-body=twin texels=272 aboveCeiling=192 painted=0 partial=0 ratioMin=1 ratioMax=1
-route=per-axis column=centre capFaces=26 topCaps=17 core=24 hollow=0
-route=per-axis column=rim capFaces=35 topCaps=18 core=24 hollow=0
-```
+The two new hard-ceiling references use `--ceiling-treatment
+--ceiling-hard`, with the same settings and fade 0. Both FIELD columns
+report top 5/5, aboveCut 0, capFaces 32, hollow 0; each per-axis route has
+16 top caps. The BODY twin remains whole.
 
-## Corrected-head validation
+Detail crops preserve the original pixels. Rectangles are
+`(left, top, right, bottom)` in the 2560×1440 full frames:
+`treatment-yaw-cap` (750,180,1450,920), `shadow-cardinal-edge`
+(500,800,1800,1420), `shadow-yaw-edge` (350,800,1900,1360).
 
-Codex (GPT-6) captured these controls in one macOS / Apple M4 Max / Metal
-session on 2026-10-13. The amended code is `63732ea126a859105fe5a00178ace05f2509fcfe`;
-the before control is PR-base master `759145786cf69de39afeb4457c7a5aedfe5bbee7`.
-The original four ceiling-treatment PNGs are byte-identical to fresh captures
-at these two refs, checked with `cmp`. Explicit `--ceiling-phase=0` is also
-byte-identical to omitting the phase argument, at both yaws.
+## Phase, grid and curved controls
 
-The new column-top pairs use:
+Treatment phase .37 changes 76 band samples with `outsideBand=0`.
+Both explicit phase-zero PNGs equal both omitted-phase PNGs byte-for-byte.
+Replacing the complete Metal phase-height helper with `return 0.0f;` in
+an isolated runtime also produces those same two PNGs.
 
-```text
-fleet-run IRFogDemo --occlusion=column-top --fog-debug-color --auto-screenshot 10
-```
+Treated static shadows read centre 19.690 / CPU 19.690 and rim 19.690 /
+CPU 19.309, within the .463 sun texel. The live VISIBLE-grid arm reads
+centre 31.765 / CPU 31.765. Replacing its Metal grid read with an
+uncovered/default-channel placeholder gives 19.690 / 31.765 and fires
+the expected shadow-oracle failure.
 
-Both runs exit CLEAN. The scene has two 6×6×9 FIELD plateaus and a 60×60×3
-FIELD ground slab (three solids, 11,448 authored voxels), two gated fog
-sources, one vertical sun with shadows enabled, and no local lights.
-The foot source at (-8,-8,4) has radius 20 and hard ceiling 4; the top source
-at (0,0,-5) has radius 6 and no ceiling. Both have softness 1. Treatment and
-phase are off. Camera (0,0), zoom 8, yaw 0 / .35, subdivisions 8, no object
-rotation or occlusion refine; viewport 1280×720, full PNG 2560×1440. All four
-frames were inspected. The control's painted upper section is absent after
-the change; the main plateau stands.
+The curved after-only frame uses `--ceiling-shadow-curved`: two radius-2,
+height-10 cylinders (FIELD and BODY), 4×4×16 and 4×4×9 FIELD columns,
+and a 60×96×3 FIELD slab (17,680 voxels plus two analytic shapes).
+Other settings match the shadow scene; yaw is 0. FIELD/BODY reach is
+20.996/22.845, gap 1.849 above the unchanged 1.149 floor, and receiver
+reaches are 39.000/30.841.
 
-```text
-before: bandTexels=120 bandOracleHidden=0 bandPainted=0
-        controlTexels=120 controlPainted=120
-after:  bandTexels=108 bandOracleHidden=0 bandPainted=0
-        controlTexels=0 controlCap=72 controlCore=48 controlHollow=0
-```
+The earlier fixture correction extended only this floor: its old extent
+ended the BODY lane at 20.996. The pushed fixture evidence recorded two
+negative controls: restoring that floor fails the receiver-clipping
+guard; bypassing the FIELD caster predicate with the extended floor gives
+equal reaches 22.845 and fails the gap floor at 0.000. The current normal
+curved run repeats the passing measurements. The full frame supplements
+the carrier oracle; it is not a before/after comparison.
 
-The curved after-only frame uses
-`fleet-run IRFogDemo --ceiling-shadow-curved --auto-screenshot 10` and exits
-CLEAN. It has two radius-2, height-10 cylinders (one FIELD, one BODY),
-4×4×16 and 4×4×9 FIELD columns, and a 60×96×3 FIELD slab (five solids;
-17,680 authored voxels plus two analytic shapes). Camera (0,0), yaw 0,
-requested zoom 9 / effective zoom 8, density one; the sun direction is the
-normalized (0.35,0.85,-0.4), with shadows enabled and no local lights.
-The one radius-30 fog source is at (0,0,4), softness 2, ceiling 5 / fade 4;
-treatment and phase are off. Viewport and PNG dimensions match the paired
-frames. The full frame was inspected; it supplements the numeric oracle.
+Performance reports and compiled mutation controls are recorded under
+`docs/perf/fog-ceiling-retention/`. Native OpenGL remains a separate host
+check.
 
-```text
-centre=100:20.996 body=twin=108:22.845 sunTexel=0.463
-curved gap=1.849 min=1.149 receiver=39.000/30.841
-```
+## Full sweep controls
 
-The old floor ended the BODY lane at 20.996. Restoring that floor fails the
-new receiver-clipping guard. Bypassing the FIELD caster predicate with the
-extended floor gives centre/BODY reach 22.845 and fails the unchanged gap
-threshold at 0.000. Both mutations were restored; the final fixture passes.
+- Master `--all`: job `20261014T000942Z-render-verify-f33beb`, terminal
+  `succeeded exit=0`: all 186 checks across nine demos pass, no skips.
+- Head `--all` before reference changes: job
+  `20261013T234342Z-render-verify-97e0d0`, terminal `failed exit=1`:
+  178 checks pass, exactly the eight approved changed fog rows fail, and
+  the two new hard-ceiling views skip because their references are absent.
+  No other failing row is hidden by re-blessing.
+- `verification/sweep-comparison.json` records all 186 matching checks:
+  159 unaffected pixel rows have max delta 0 on both refs, and all
+  19 structural checks pass. The repeated ground LOS-edge label names
+  two different ROIs; the second occurrence has a `#2` suffix in this
+  comparison so neither check is lost.
+- The ten frames gated only by structural metrics also have matching PNG
+  bytes in separate native captures. Their flags, warmup, slice offsets
+  and hashes are under `verification/structural-*` and
+  `verification/structural-identity.json`.
+- All 36 lighting-domain frames are byte-identical. Head light-verify
+  completes all captures/domain assertions and passes 45/46 images.
+  Its one inherited failure, `domain_z8_yaw0_inwin`, matches master at
+  99.4535%, max delta 124, PSNR 33.67; open issue #4409 was rechecked.
+- Final targeted head fog verification: job
+  `20261014T003200Z-render-verify-e5513f`, terminal `succeeded exit=0`:
+  all 69 checks pass, no skips; every pixel row has max delta 0 after
+  the eight reference replacements and two additions.
 
-Build evidence: head `20261013T211924Z-build-4b343c` and base
-`20261013T212242Z-build-1cc687` have terminal `succeeded exit=0` waits.
-Clip skipped: the demo has no auto-record wiring. These captures are evidence,
-not a reference re-blessing or a claim that the full render sweep passed.
+Archived text logs trim trailing whitespace. PNGs retain their original
+bytes; the additional detail crops are unscaled extracts. Full sweep logs,
+lighting comparison, capture hashes and native probe logs are adjacent in
+`verification/`.

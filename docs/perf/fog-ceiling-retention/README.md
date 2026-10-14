@@ -2,6 +2,8 @@
 
 Five interleaved master/head pairs per lane on the same macOS 26.5.2 arm64 host (14 CPUs, battery power). Master is pinned at `8a1bc317a11218c27f46cd3c55080635fdb95397`; measured head is `50c68520505c9621237a1ec936ead20523e4ff17`. Both use the existing Debug preset with `-O3`. Each report contains 300 frames and GPU coverage 300/300.
 
+The scene uses 1280×720 game resolution, zoom 1, subdivisions 1 and a 64³ contiguous voxel grid with the configured per-cell wave (262,332 total entities). Lighting is one sun in direction (.35,.85,-.4), shadows enabled, and one emissive source at (0,0,-64), radius 24. Every accepted report has 262,144 retained candidates out of 262,144 pool slots, zero feeders and zero per-axis entries. The eight analytic fog sources use the existing identity/surface routes.
+
 Each pair runs head identity, head treatment, master identity, master treatment through `scripts/perf/repeat_profile.py --repeats 1`. The common demo arguments are `--auto-profile 300 --fog-reveal --grid-size 64 --yaw 0`; treatment adds `--fog-reveal-surface`. This flag requires `--fog-reveal` as well. No profiling runs overlap.
 
 Both commits were built with `fleet-build`. Their executable, shader, script and data artifacts were retained separately, then restored into the normal build runtime directory at each checkout. Every retained manifest records a clean source tree, the matching commit, stable per-arm executable/shader/script hashes, `RESULT=CLEAN`, `QUIET=guarded`, stationary yaw, and measured GPU timing. The executable is unchanged by the shader-only BODY optimization; its shader hash changes. Full reports and manifests are adjacent.
@@ -37,6 +39,8 @@ The identity limit is at most 1.05× master or +0.010 ms; the treatment limit is
 | CPU voxelStage1 | 1.6966 | 1.7224 | 1.0152× | +25.8 |
 | CPU fogToTrixel | 0.0080 | 0.0086 | 1.0750× | +0.6 |
 | CPU bakeSunShadowMap | 0.0090 | 0.0092 | 1.0222× | +0.2 |
+
+The frame row above averages all 300 recorded frames. The reports also exclude the first 75 frames for a steady-frame view: identity master 24.306 ms → head 23.730 ms (0.9763×); treatment 23.932 ms → 24.734 ms (1.0335×). Both meet their lane limits. Stage rows retain the profiler’s reported sampling windows rather than pretending to be warmup-filtered frame statistics.
 
 ## Regression caught before the final run
 
