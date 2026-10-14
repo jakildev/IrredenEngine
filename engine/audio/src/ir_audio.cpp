@@ -32,6 +32,10 @@ std::vector<int> midiOutOpenPorts() {
     return getAudioManager().getMidiOut().getOpenPortIndices();
 }
 
+std::vector<AudioDeviceSummary> audioDevices() {
+    return getAudioManager().getAudio().deviceSummaries();
+}
+
 int openPortMidiIn(MidiInInterfaces port) {
     return getAudioManager().getMidiIn().openPort(port);
 }
