@@ -1,0 +1,148 @@
+[
+  {
+    "name": "lod_swap_zoom16_sphere",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  },
+  {
+    "name": "lod_swap_zoom1_cube",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  },
+  {
+    "name": "lod_swap_zoom2_cube",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  },
+  {
+    "name": "lod_swap_zoom4_cone",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  },
+  {
+    "name": "lod_swap_zoom8_cone",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  },
+  {
+    "name": "zoom16_lod_fine_sphere",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  },
+  {
+    "name": "zoom1_odd_offset",
+    "pixels": 16,
+    "max": 53,
+    "bbox": [
+      1200,
+      674,
+      1208,
+      676
+    ]
+  },
+  {
+    "name": "zoom1_origin",
+    "pixels": 16,
+    "max": 53,
+    "bbox": [
+      1196,
+      674,
+      1204,
+      676
+    ]
+  },
+  {
+    "name": "zoom2_origin",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  },
+  {
+    "name": "zoom4_offset_3_5",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  },
+  {
+    "name": "zoom4_origin",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  },
+  {
+    "name": "zoom4_pan16_yaw0_pivot",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  },
+  {
+    "name": "zoom4_pan16_yaw180_pivot",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  },
+  {
+    "name": "zoom4_pan16_yaw45_pivot",
+    "pixels": 6300,
+    "max": 110,
+    "bbox": [
+      60,
+      492,
+      1690,
+      690
+    ]
+  },
+  {
+    "name": "zoom4_pan16_yaw90_pivot",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  },
+  {
+    "name": "zoom4_yaw180",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  },
+  {
+    "name": "zoom4_yaw270",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  },
+  {
+    "name": "zoom4_yaw45_inter_cardinal",
+    "pixels": 7448,
+    "max": 110,
+    "bbox": [
+      38,
+      499,
+      1306,
+      721
+    ]
+  },
+  {
+    "name": "zoom4_yaw90",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  },
+  {
+    "name": "zoom8_origin",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  },
+  {
+    "name": "zoom8_yaw180",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  }
+]
