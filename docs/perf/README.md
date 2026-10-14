@@ -407,8 +407,11 @@ the gate is exercised by the gate.
   that is **in the head's calibration class**: `ref_ms` strictly within
   1.20× of the head's either way, finished at most 14 days before the head
   started, same `matrix` and `frames`, every cell measured. The comparison
-  is raw, and the host note names the capture (perf-baseline commit, master
-  SHA, age, `ref_ms`). With no such capture the gate is informational: exit 0,
+  is raw unless that exact host class has a `CLASS_MATCH_SCALE_FROM` entry and
+  its head-to-capture calibration ratio reaches the entry's threshold. That
+  path grades frame `avg` as calibration-scaled while p99, GPU-stage, and
+  CPU-system marks remain raw. The host note names the rule and the capture
+  (perf-baseline commit, master SHA, age, `ref_ms`). With no such capture the gate is informational: exit 0,
   no table, so no `perf:improved`. The next master push on that class files
   one. Normalizing across the class split instead under-corrected it: `ref_ms`
   scales ~1.28× there while the grid scales ~1.45×, which left a neutral PR

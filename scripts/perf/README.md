@@ -11,11 +11,25 @@ it holds `ir-acquire benchmark` around the whole matrix, captures an
 ## Verdicts are per fingerprint
 
 `check_regression.py <baseline_root> <head_dir>` resolves
-`<baseline_root>/<head host_slug>/`. A same-slug baseline gates (raw deltas,
-or load-normalized when the head's `ref_ms` is at least
-`LOAD_FACTOR_TRUST_NORMALIZED` times the baseline's). A different slug or no
-baseline is informational and exits 0. A perf verdict therefore says nothing
-about a host whose slug has no baseline.
+`<baseline_root>/<head host_slug>/`. A same-slug tip baseline gates (raw
+deltas, or load-normalized when the head's `ref_ms` is at least
+`LOAD_FACTOR_TRUST_NORMALIZED` times the baseline's). History mode normally
+grades a class-matched capture raw. On a host listed in
+`CLASS_MATCH_SCALE_FROM`, a head at or above the listed calibration ratio
+instead grades only frame `avg` on `head mean × capture ref_ms / head ref_ms`;
+p99, GPU-stage, and CPU-system marks stay raw. A different slug or no baseline
+is informational and exits 0. A perf verdict therefore says nothing about a
+host whose slug has no baseline.
+
+| Host class | `CLASS_MATCH_SCALE_FROM` | Evidence and limit |
+|---|---:|---|
+| `linux-x86_64-xeon-platinum-8573c-unknown` | 1.10 | Seven PR heads at or above the threshold, on six changes against two captures: scaling puts all 14 frame-average cells inside the 10% gate. The median residual is -1.5% at zoom 1 and -3.4% at zoom 4, so a zoom-4 regression on a runner near 1.17× needs about 13.5% to fail. |
+
+A host class with no entry is graded raw. A class gains an entry only from its
+own heads at or above the proposed threshold when every scaled frame-average
+delta lands inside `--regress-pct`; evidence from another SKU is not enough.
+The table deliberately has no `epyc-7763-64` entry: its 159-head corpus reaches
+only a 1.082 ratio and shows no frame-time signal over that measured range.
 
 Baselines live on the `perf-baseline` branch under
 `docs/perf/baseline_latest/<slug>/` (`manifest.json`, `host.json`, one
