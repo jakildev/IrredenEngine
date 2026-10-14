@@ -17,6 +17,7 @@
 #include <irreden/render/components/component_camera.hpp>
 #include <irreden/render/components/component_sprite_animation.hpp>
 #include <irreden/render/components/component_entity_canvas.hpp>
+#include <irreden/render/components/component_gizmo_handle.hpp>
 #include <irreden/render/components/component_text_segment.hpp>
 #include <irreden/render/components/component_triangle_canvas_background.hpp>
 #include <irreden/render/components/component_triangles_only_set.hpp>
@@ -89,7 +90,49 @@ struct CameraV1 {};
 
 static_assert(sizeof(CameraV1) == 1);
 
+struct GizmoHandleV1 {
+    IRComponents::GizmoKind kind_;
+    IRComponents::GizmoAxis axis_;
+    bool hover_;
+    bool isAnchor_;
+    IRMath::vec4 referenceParams_;
+    IRMath::vec3 referenceLocalPos_;
+    IRMath::Color baseColor_;
+    IREntity::EntityId anchorEntity_;
+};
+
+static_assert(sizeof(GizmoHandleV1) == 48);
+
 } // namespace detail
+
+template <> struct SaveMigration<IRComponents::C_GizmoHandle> {
+    static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_GizmoHandle>>>
+    migrators() {
+        return {
+            {1u, [](IRAsset::BinaryReader &reader) -> IRAsset::Result<IRComponents::C_GizmoHandle> {
+                 detail::GizmoHandleV1 old{};
+                 IRAsset::BinaryStatus status = reader.readBytes(&old, sizeof(old));
+                 if (!status.ok()) {
+                     return IRAsset::Result<IRComponents::C_GizmoHandle>::error(
+                         status.code_,
+                         std::move(status.message_)
+                     );
+                 }
+                 IRComponents::C_GizmoHandle handle{
+                     old.kind_,
+                     old.axis_,
+                     old.referenceParams_,
+                     old.referenceLocalPos_,
+                     old.isAnchor_,
+                     old.baseColor_,
+                     old.anchorEntity_,
+                 };
+                 handle.hover_ = old.hover_;
+                 return IRAsset::Result<IRComponents::C_GizmoHandle>::success(handle);
+             }},
+        };
+    }
+};
 
 template <> struct SaveMigration<IRComponents::C_Camera> {
     static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_Camera>>>

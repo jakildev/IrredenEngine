@@ -329,6 +329,50 @@ TEST(SaveSerializers, CameraZoomPolicyRoundTrips) {
     expectConsumesAllBytes(continuous);
 }
 
+TEST(SaveSerializers, GizmoHandleV1MigrationPreservesEveryFieldAndDefaultsViewClearance) {
+    IRWorld::detail::GizmoHandleV1 old{
+        GizmoKind::ROTATE_RING,
+        GizmoAxis::Y,
+        true,
+        false,
+        IRMath::vec4(5.0f, 0.4f, 0.25f, 0.125f),
+        IRMath::vec3(1.5f, -2.5f, 3.5f),
+        IRMath::Color{60, 200, 61, 254},
+        77,
+    };
+    IRAsset::MemoryBinaryWriter writer;
+    writer.writeBytes(&old, sizeof(old));
+
+    const auto migrators = IRWorld::SaveMigration<C_GizmoHandle>::migrators();
+    ASSERT_EQ(migrators.size(), 1u);
+    ASSERT_EQ(migrators.front().first, 1u);
+    IRAsset::MemoryBinaryReader reader(writer.buffer().data(), writer.buffer().size(), "gizmo-v1");
+    const IRAsset::Result<C_GizmoHandle> restored = migrators.front().second(reader);
+
+    ASSERT_TRUE(restored.ok()) << restored.status_.message_;
+    EXPECT_EQ(restored.value_.kind_, old.kind_);
+    EXPECT_EQ(restored.value_.axis_, old.axis_);
+    EXPECT_EQ(restored.value_.hover_, old.hover_);
+    EXPECT_EQ(restored.value_.isAnchor_, old.isAnchor_);
+    EXPECT_EQ(restored.value_.referenceParams_, old.referenceParams_);
+    EXPECT_EQ(restored.value_.referenceLocalPos_, old.referenceLocalPos_);
+    EXPECT_EQ(restored.value_.baseColor_.red_, old.baseColor_.red_);
+    EXPECT_EQ(restored.value_.baseColor_.green_, old.baseColor_.green_);
+    EXPECT_EQ(restored.value_.baseColor_.blue_, old.baseColor_.blue_);
+    EXPECT_EQ(restored.value_.baseColor_.alpha_, old.baseColor_.alpha_);
+    EXPECT_EQ(restored.value_.anchorEntity_, old.anchorEntity_);
+    EXPECT_FLOAT_EQ(restored.value_.viewClearance_, 0.0f);
+    EXPECT_EQ(reader.remaining(), 0u);
+    EXPECT_EQ(IRWorld::saveVersion<C_GizmoHandle>(), 2u);
+}
+
+TEST(SaveSerializers, GizmoHandleViewClearanceRoundTrips) {
+    C_GizmoHandle handle{GizmoKind::TRANSLATE_ARROW, GizmoAxis::Z};
+    handle.viewClearance_ = 13.75f;
+    EXPECT_FLOAT_EQ(roundTrip(handle).viewClearance_, 13.75f);
+    expectConsumesAllBytes(handle);
+}
+
 // The carried raster phase is runtime state of the frame loop. Saving it
 // would resume a history the loaded world never rendered.
 TEST(SaveSerializers, CameraZoomFrameStateStaysOptedOut) {

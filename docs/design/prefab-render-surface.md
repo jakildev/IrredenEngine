@@ -135,6 +135,58 @@ flagged shape at reduced alpha wherever it loses the depth contest and knows
 nothing about gizmos. Any prefab that needs a see-through overlay opts in the
 same way without touching `engine/render/`.
 
+### View clearance
+
+The x-ray branch blends colour and leaves the entity-id texel alone, so an
+occluded handle takes no click. That rule stays: the id texel also carries the
+priority tier, the cut-face bit, the fog BODY class and factor, and the
+analytic-surface bit, which fog, the sun-shadow bake and lighting read, and a
+handle that overwrote it would hand a click on a visible voxel pixel to a
+quarter-strength silhouette.
+
+A gizmo that sits inside the content it moves is instead drawn in front of
+that content. `createTranslateGizmoForAnchor` and `createRotateGizmoForAnchor`
+take a `viewClearance` (world units, default 0), stamped on every handle as
+`C_GizmoHandle::viewClearance_`: the radius of a sphere centred on the anchor.
+`GIZMO_SCREEN_SPACE_SIZE` displaces a handle with a positive value toward the
+camera by at least that radius plus the farthest extent, from the anchor, of
+any cleared handle that shares the anchor, at the frame's sizing scale. The
+handle is then nearer than every point of the sphere, on the pixels it covers
+with a value of 0.
+
+- The direction is the one the yawed iso projection is constant in, at the
+  camera's continuous yaw (`IRMath::isoPixelToPos3DYawed`). A cardinal or a
+  fixed `(1,1,1)` direction would walk the handle off its pixels as the camera
+  turns. Camera pitch is outside the contract
+  ([`iso-depth-axis-invariant.md`](iso-depth-axis-invariant.md)).
+- The displacement is a `TRANSFORM_TRANSLATION` modifier on the handle, which
+  `PROPAGATE_TRANSFORM` adds in world space after the parent chain. A local
+  translation would turn with a rotated anchor and stretch with a scaled one.
+  The builders attach the `C_Modifiers` it needs; a handle with a clearance of
+  0 carries none and is placed by its parent chain alone.
+- The length is rounded up to a whole number of steps of the view-depth
+  diagonal, `(1,1,1)` in the view frame. At a cardinal yaw every world
+  component then moves by the same whole number of units and the handle keeps
+  its alignment to the voxel lattice. A handle thinner than a cell draws only
+  where its surface meets the lattice's sample points, so a fractional shift
+  redraws it: at zoom 4 it drew arrow pixels the unshifted gizmo does not have.
+- The extent term is one length for the whole gizmo, not each handle's own. A
+  per-handle length would shift an arrow head further than a ring and could
+  change which of two overlapping handles owns a pixel; with one length, handles
+  built with one clearance move as a unit and keep their depth order.
+- The anchor's world scale stretches a child handle's offset, so the extent
+  term is taken at that scale, as `PROPAGATE_TRANSFORM` last resolved it.
+- The yaw is read in UPDATE. A RENDER-phase system that turns the camera is
+  followed one frame late, so a handle drifts off its pixels by the clearance
+  times the frame's yaw step while such a turn is in progress.
+- Inside the cleared depth band the handle also draws over other content that
+  stands in front of the anchor. Content outside the sphere still occludes it.
+- The caller owns the radius. The voxel editor passes a bound on the selected
+  part (`EntityScene::partViewClearance`); joint gizmos, the grouped builders
+  and every marker keep 0.
+- `C_Modifiers` is not saved, so a handle restored from a save is placed with a
+  clearance of 0 until its gizmo is rebuilt.
+
 ## Help overlay and settings menu
 
 Both adopt the registry-driven command list: `CommandManager` records each
