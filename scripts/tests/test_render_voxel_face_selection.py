@@ -67,7 +67,8 @@ vec4 visionCircles[8],visionCircleHeights[8],visionCircleCeilings[8],revealSurfa
 uvec4 visionCircleChannels[2];
 bool fogAnyCeilingEnabled(const vec4*,int){return false;}
 uvec2 fogSelectionCell(ivec2){return uvec2(0);}
-bool fogCeilingRetained(ivec3,uvec2,const vec4*,const vec4*,const vec4*,const uvec4*,int,vec4,float){return true;}
+bool fogCeilingRetained(
+    ivec3,uvec2,const vec4*,const vec4*,const vec4*,const uvec4*,int,vec4,float){return true;}
 constexpr int kFaceZNeg=4;
 int visionCircleCount=0;
 float fogReveal=1.f;
