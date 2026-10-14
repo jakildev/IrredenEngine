@@ -9,6 +9,11 @@ const char *const kFileFragFramebufferToScreen = "shaders/f_framebuffer_to_scree
 const char *const kFileVertSpritesToScreen = "shaders/v_sprites_to_screen.glsl";
 const char *const kFileFragSpritesToScreen = "shaders/f_sprites_to_screen.glsl";
 
+// Screen-resolution GUI canvas composite with anti-aliased lattice triangles
+// (Metal mirror in metal/gui_canvas_to_screen.metal).
+const char *const kFileVertGuiCanvasToScreen = "shaders/v_gui_canvas_to_screen.glsl";
+const char *const kFileFragGuiCanvasToScreen = "shaders/f_gui_canvas_to_screen.glsl";
+
 const char *const kFileVertTrixelToFramebuffer = "shaders/v_trixel_to_framebuffer.glsl";
 const char *const kFileFragTrixelToFramebuffer = "shaders/f_trixel_to_framebuffer.glsl";
 const char *const kFileFragTrixelToFramebufferLitShapes =
@@ -123,6 +128,8 @@ const char *const kFileCompBakeSunShadowMap = "shaders/c_bake_sun_shadow_map.gls
 const char *const kFileCompComputeSunShadow = "shaders/c_compute_sun_shadow.glsl";
 const char *const kFileCompComputeSunShadowShapes = "shaders/c_compute_sun_shadow_shapes.glsl";
 const char *const kFileCompVoxelVisibilityCompact = "shaders/c_voxel_visibility_compact.glsl";
+const char *const kFileCompVoxelVisibilityCompactCeiling =
+    "shaders/c_voxel_visibility_compact_ceiling.glsl";
 const char *const kFileCompClearLightVolume = "shaders/c_clear_light_volume.glsl";
 const char *const kFileCompSeedLightVolume = "shaders/c_seed_light_volume.glsl";
 const char *const kFileCompPropagateLightVolume = "shaders/c_propagate_light_volume.glsl";

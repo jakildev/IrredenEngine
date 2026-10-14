@@ -16,6 +16,7 @@ add_executable(IrredenEngineTest
   audio/audio_monitor_ring_test.cpp
   audio/audio_playback_test.cpp
   audio/synthetic_audio_capture_test.cpp
+  audio/midi_clock_test.cpp
   audio/midi_in_tick_test.cpp
   audio/midi_message_ring_test.cpp
   audio/midi_multiport_test.cpp
@@ -28,8 +29,10 @@ add_executable(IrredenEngineTest
   common/command_registry_test.cpp
   common/ir_args_test.cpp
   common/ir_platform_test.cpp
+  ecs/archetype_move_storage_test.cpp
   ecs/chunk_bounds_eviction_test.cpp
   ecs/chunked_field_test.cpp
+  ecs/collision_swept_test.cpp
   ecs/command_randomize_voxels_test.cpp
   ecs/entity_event_handlers_test.cpp
   ecs/entity_manager_test.cpp
@@ -88,14 +91,17 @@ add_executable(IrredenEngineTest
   render/canvas_residency_test.cpp
   render/canvas_rotation_test.cpp
   render/default_pivot_latch_test.cpp
+  render/composite_depth_row_test.cpp
   render/detached_revoxelize_groups_test.cpp
   render/detached_world_depth_test.cpp
   render/entity_canvas_teardown_test.cpp
   render/entity_canvas_hitbox_test.cpp
   render/entity_id_carrier_test.cpp
+  render/fog_carrier_policy_test.cpp
   render/fog_cross_section_test.cpp
   render/fog_ghost_policy_test.cpp
   render/fog_line_of_sight_test.cpp
+  render/fog_mode_switch_test.cpp
   render/fog_reveal_eval_test.cpp
   render/fog_reveal_eval_canvas_test.cpp
   render/fog_reveal_eval_shape_test.cpp
@@ -105,8 +111,12 @@ add_executable(IrredenEngineTest
   render/per_axis_canvas_size_test.cpp
   render/per_axis_cast_subcell_test.cpp
   render/per_axis_store_frame_test.cpp
+  render/per_axis_surface_lighting_test.cpp
   render/frame_data_sun_layout_test.cpp
   render/gizmo_drag_reset_test.cpp
+  render/gizmo_ring_orientation_test.cpp
+  render/gizmo_view_clearance_test.cpp
+  render/gui_canvas_routing_test.cpp
   render/gpu_compute_dispatch_test.cpp
   render/gpu_timestamp_poll_test.cpp
   render/light_volume_boundary_seed_test.cpp
@@ -121,6 +131,7 @@ add_executable(IrredenEngineTest
   render/picking_grid_ray_test.cpp
   render/picking_face_normal_test.cpp
   render/prefab_system_probe_test.cpp
+  render/shape_sample_probe_test.cpp
   render/run_witness_test.cpp
   render/settings_menu_layout_test.cpp
   render/settings_menu_reset_test.cpp
@@ -129,19 +140,25 @@ add_executable(IrredenEngineTest
   render/sun_lighting_test.cpp
   render/sun_shadow_feeder_ring_test.cpp
   render/viewport_test.cpp
+  render/voxel_editor_fill_ghost_test.cpp
   render/voxel_pool_config_test.cpp
+  render/voxel_pool_capacity_test.cpp
   render/sprite_animation_test.cpp
   render/sprite_components_test.cpp
   render/sprite_render_test.cpp
   render/widget_list_scroll_test.cpp
   render/widget_theme_singleton_test.cpp
+  render/widget_hit_region_test.cpp
   render/widget_tab_focus_test.cpp
+  script/lua_audio_midi_clock_test.cpp
   script/lua_audio_midi_observer_test.cpp
   script/lua_audio_monitor_test.cpp
   script/lua_collision_bindings_test.cpp
   script/lua_command_test.cpp
   script/lua_cursor_position_test.cpp
   script/lua_input_bindings_test.cpp
+  script/lua_input_enums_test.cpp
+  script/lua_editor_session_bindings_test.cpp
   script/lua_hitbox_2d_test.cpp
   script/lua_component_codegen_test.cpp
   # A second includer proves generated-header definitions are safe across
@@ -152,6 +169,8 @@ add_executable(IrredenEngineTest
   script/lua_deferred_entity_test.cpp
   script/lua_entity_anchor_test.cpp
   script/lua_entity_events_test.cpp
+  script/lua_widget_hit_region_test.cpp
+  script/lua_widget_values_test.cpp
   script/lua_voxel_seam_test.cpp
   script/lua_hierarchy_test.cpp
   script/lua_enum_register_test.cpp
@@ -212,6 +231,7 @@ add_executable(IrredenEngineTest
   world/voxel_set_serialize_test.cpp
   world/world_config_missing_table_test.cpp
   world/world_config_audio_monitor_test.cpp
+  world/world_config_gui_pixelated_test.cpp
   world/world_config_window_mode_test.cpp
   world/save_serializers_test.cpp
 )

@@ -80,3 +80,23 @@ IRGui.makeButton(260, 500, 240, 100, "RETARGET", function(id)
     IRRender.setViewportSubject(portrait, secondSubject)
     IRTest.onPortraitRetargeted(x, y, width, height, zoom)
 end)
+
+-- A selectable row: a label drawn by its own widget, and an invisible hit
+-- region over the whole row that hovers and clicks as one unit. The region's
+-- handlers repaint the label, so the label stays the visual indicator.
+local ROW_TEXT = "ROW HIT REGION"
+local rowLabel = IRGui.makeLabel(270, 422, ROW_TEXT)
+local rowRegion = IRGui.makeHitRegion(260, 410, 330, 30, {
+    onHover = function(id)
+        IRGui.setLabelText(rowLabel, "> " .. ROW_TEXT)
+        IRTest.rowHovered(id)
+    end,
+    onUnhover = function(id)
+        IRGui.setLabelText(rowLabel, ROW_TEXT)
+        IRTest.rowUnhovered(id)
+    end,
+    onClick = function(id)
+        IRTest.rowClicked(id)
+    end,
+})
+IRTest.setRowRegion(rowRegion)

@@ -43,10 +43,19 @@ namespace IRSystem {
 constexpr int kMaxShapeDescriptors = 8192;
 constexpr int kMaxShapeTileDescriptors = 262144;
 constexpr int kShapeTileSize = 8;
+// Bit 31 of an owner word marks an occluded x-ray candidate (the shader's
+// kXrayCandidateBit), so every sample owner key keeps it clear.
+constexpr std::uint32_t kShapeXrayCandidateBit = 0x80000000u;
+constexpr std::uint32_t kShapeSampleOwnerEmpty = std::numeric_limits<std::uint32_t>::max();
+constexpr std::uint64_t kShapeSampleOwnerKeyCount =
+    std::uint64_t(kMaxShapeTileDescriptors) * kShapeTileSize * kShapeTileSize * 6;
 static_assert(
-    std::uint64_t(kMaxShapeTileDescriptors) * kShapeTileSize * kShapeTileSize * 6 <
-        std::numeric_limits<std::uint32_t>::max(),
-    "Shape sample owners must fit below the empty uint32 sentinel"
+    kShapeSampleOwnerKeyCount <= kShapeXrayCandidateBit,
+    "Shape sample owner keys must leave bit 31 free for x-ray candidates"
+);
+static_assert(
+    ((kShapeSampleOwnerKeyCount - 1) | kShapeXrayCandidateBit) < kShapeSampleOwnerEmpty,
+    "The largest x-ray candidate key must stay below the empty owner sentinel"
 );
 
 template <> struct System<SHAPES_TO_TRIXEL> {
@@ -455,9 +464,9 @@ template <> struct System<SHAPES_TO_TRIXEL> {
             // holds an R32I distance texture from an earlier pass, so leaving
             // colors unbound for pass 0 aborts on a type mismatch under
             // `MTL_DEBUG_LAYER=1`. Colors is READ_WRITE (not WRITE_ONLY) so the
-            // SHAPE_FLAG_GIZMO occluded-blend branch can imageLoad the existing
-            // canvas color and blend the gizmo silhouette on top at reduced
-            // alpha; non-gizmo writes are still pure stores.
+            // publish pass's SHAPE_FLAG_XRAY_OCCLUDED branch can load the
+            // existing canvas color and blend the elected occluded sample on
+            // top at reduced alpha; every other write is a pure store.
             canvasTextures.getTextureColors()
                 ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
             canvasTextures.getTextureEntityIds()
@@ -489,12 +498,10 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
             }
 
-            // Pass 1: color + entity ID from the elected depth winner. Colors is bound
-            // READ_WRITE (not WRITE_ONLY) so the SHAPE_FLAG_GIZMO occluded-
-            // blend branch in the shader can imageLoad the existing canvas
-            // color and blend the gizmo silhouette on top at reduced alpha.
-            // Non-gizmo writes are still pure stores; the read
-            // capability is only exercised on the occluded gizmo path.
+            // Pass 1: color + entity ID from the elected depth winner. A pixel
+            // no sample owns takes one blend instead, from the occluded x-ray
+            // sample the owner pass elected for it, so every pixel has at most
+            // one writer in this dispatch.
             canvasTextures.getTextureColors()
                 ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);
             canvasTextures.getTextureEntityIds()
@@ -512,7 +519,10 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_IMAGE_ACCESS);
             }
 
-            canvasTextures.shapeGeometry_.publishSamples(!hasXray);
+            canvasTextures.shapeGeometry_.publishSamples(
+                !hasXray,
+                IRSystem::getEventTickCount(IRTime::RENDER)
+            );
 
             if (baker != nullptr) {
                 {
@@ -564,7 +574,7 @@ template <> struct System<SHAPES_TO_TRIXEL> {
                     }
                     {
                         IRRender::GpuSubStageScope timing("shapeCastBake");
-                        baker->bakeAnalyticCasterDepth();
+                        baker->bakeAnalyticCasterDepth(canvasTextures.getTextureEntityIds());
                     }
                     canvasTextures.getTextureColors()
                         ->bindAsImage(0, TextureAccess::READ_WRITE, TextureFormat::RGBA8);

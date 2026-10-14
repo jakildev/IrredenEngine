@@ -38,6 +38,7 @@
 #include <irreden/render/systems/system_debug_overlay.hpp>
 #include <irreden/render/systems/system_fog_to_trixel.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
+#include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_perf_stats_overlay.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
@@ -643,6 +644,7 @@ inline void initSystems(const DemoConfig &config) {
     // (sceneState().autoWarmupFrames_ == 0) default it visible; F11 toggles it either way.
     IRRender::setCullingMinimapEnabled(sceneState().autoWarmupFrames_ == 0);
     renderPipeline.push_back(IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>());
+    renderPipeline.push_back(IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>());
 
     if (sceneState().autoProfileFrames_ > 0) {
         IRSystem::SystemId autoProfileId = IRSystem::createSystem<C_Name>(

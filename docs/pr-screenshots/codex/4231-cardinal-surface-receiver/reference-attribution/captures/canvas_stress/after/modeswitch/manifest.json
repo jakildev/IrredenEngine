@@ -1,0 +1,40 @@
+{
+  "arm": "after",
+  "case": "modeswitch",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "180",
+    "IRCanvasStress",
+    "--auto-screenshot",
+    "12",
+    "--only",
+    "modeswitch",
+    "--no-auto-rotate",
+    "--no-spin"
+  ],
+  "labels": [
+    "modeswitch_grid",
+    "modeswitch_detached",
+    "modeswitch_revox",
+    "modeswitch_grid_return"
+  ],
+  "sources": [
+    "save_files/screenshots/screenshot_000053.png",
+    "save_files/screenshots/screenshot_000054.png",
+    "save_files/screenshots/screenshot_000055.png",
+    "save_files/screenshots/screenshot_000056.png"
+  ],
+  "shader_hashes": {
+    "c_compute_sun_shadow_body.glsl": "68279aebf1bae3a53ca0f0571c696478c259526d9dca28162e4bc490044d7ca5",
+    "metal/c_compute_sun_shadow_body.metal": "5de11b799251e75819c91731187fac8758fb2ad4f64c35ce3b666e9f3c6384d2"
+  },
+  "clean": true,
+  "exit_code": 0,
+  "exit_evidence": "Capture driver rejects nonzero process return, missing RESULT=CLEAN, or insufficient screenshot count.",
+  "binary_sha256": null,
+  "binary_identity_limit": "Executable digest was not recorded; driver performed no builds between arms and changed only the staged compute bodies.",
+  "result_lines": [
+    "ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0"
+  ]
+}

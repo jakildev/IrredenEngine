@@ -18,7 +18,7 @@ inline float3 shapeSurfaceLighting(uint2 ownerPixel, int ownerWidth, float3 posi
     if ((receiverShapes[shapeIndex].flags & kShapeProceduralColorFlags) != 0u)
         return fallbackColor;
     if (lighting.debugOverlayMode == 8)
-        return normal * 0.5 + 0.5;
+        return encodeUnitVectorUnorm8(normal);
     const float3 albedo = unpackColor(receiverShapes[shapeIndex].color).rgb;
     const float ao = surfaceAO.read(ownerPixel).r;
     const float lambert = max(0.0, dot(normal, sun.sunDirection.xyz));

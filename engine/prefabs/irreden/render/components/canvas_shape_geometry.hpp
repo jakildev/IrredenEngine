@@ -28,16 +28,27 @@ struct CanvasShapeGeometry {
         return m_samplesValid;
     }
 
-    void invalidateSamples() const {
-        m_samplesValid = false;
+    bool samplesValidForTick(std::uint64_t renderTick) const {
+        return m_samplesValid && renderTick != 0 && m_publicationTick == renderTick;
     }
 
-    void publishSamples(bool unblended) {
+    std::uint64_t publicationTick() const {
+        return m_publicationTick;
+    }
+
+    void invalidateSamples() const {
+        m_samplesValid = false;
+        m_publicationTick = 0;
+    }
+
+    void publishSamples(bool unblended, std::uint64_t renderTick) {
         IR_ASSERT(
             frameData_.shapeCount > 0 && tileCount_ > 0 && ownerSize_.x > 0 && ownerSize_.y > 0,
             "Published shape samples require a complete submission"
         );
+        IR_ASSERT(renderTick != 0, "Published shape samples require a render tick");
         m_samplesValid = unblended;
+        m_publicationTick = unblended ? renderTick : 0;
     }
 
     void reset() {
@@ -131,6 +142,7 @@ struct CanvasShapeGeometry {
   private:
     // Const canvas clears mutate GPU content and invalidate this derived reference state.
     mutable bool m_samplesValid = false;
+    mutable std::uint64_t m_publicationTick = 0;
 };
 
 } // namespace IRComponents

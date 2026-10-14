@@ -13,6 +13,7 @@
 #include <optional>
 #include <map>
 #include <limits>
+#include <type_traits>
 
 using namespace IRMath;
 using IREntity::EntityId;
@@ -177,7 +178,7 @@ struct C_VoxelPool {
             return allocation;
         }
 
-        if (m_voxelPoolIndex + size <= m_voxelPoolSize) {
+        if (size <= static_cast<unsigned int>(m_voxelPoolSize - m_voxelPoolIndex)) {
             size_t startIndex = static_cast<size_t>(m_voxelPoolIndex);
             m_voxelPoolIndex += size;
             ++m_allocatedSpanCount;
@@ -207,6 +208,13 @@ struct C_VoxelPool {
             std::span<IRRender::VoxelGpuPosition>{},
             std::span<C_Voxel>{}
         };
+    }
+
+    // Reports whether allocateVoxels(size) can reuse an exact free span or
+    // extend the never-allocated tail without mutating either allocator state.
+    bool canAllocateVoxels(unsigned int size) const {
+        return findFreeSpan(size).has_value() ||
+               size <= static_cast<unsigned int>(m_voxelPoolSize - m_voxelPoolIndex);
     }
 
     void deallocateVoxels(size_t startIndex, size_t size) {
@@ -1168,6 +1176,12 @@ struct C_VoxelPool {
         return std::nullopt; // No suitable free span found
     }
 };
+
+// Every `C_VoxelSetNew` holds spans into its pool's vectors, so the archetype
+// column must relocate a pool by move: `std::vector` growth copies an element
+// whose move constructor may throw, and a copy frees the storage those spans
+// alias.
+static_assert(std::is_nothrow_move_constructible_v<C_VoxelPool>);
 } // namespace IRComponents
 
 #endif /* COMPONENT_VOXEL_POOL_H */

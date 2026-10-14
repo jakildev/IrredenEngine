@@ -1,0 +1,22 @@
+{
+  "demo": "analytic_oracle",
+  "target": "IRAnalyticOracle",
+  "name": "default",
+  "args": [],
+  "warmup": 20,
+  "offset": 0,
+  "shots": [
+    "oracle_box_zoom"
+  ],
+  "command": "fleet-run --build-dir /tmp/pool-1-4381/structural-base-build --timeout 60 IRAnalyticOracle --auto-screenshot 20 ",
+  "exit": 0,
+  "clean": true,
+  "hashes": {
+    "oracle_box_zoom.png": "c439c54d858d454dc33178fb22b48da09e9a8eaeb809ebcab88f65f83f51b540"
+  },
+  "probes": [
+    "[2026-10-13 17:11:54.344] [ClientLog] [info] CaptureCamera: label=oracle_box_zoom yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)",
+    "ir-run: RESULT=CLEAN exe=IRAnalyticOracle exit=0"
+  ],
+  "source_head": "8a1bc317a11218c27f46cd3c55080635fdb95397"
+}

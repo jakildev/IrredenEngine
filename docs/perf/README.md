@@ -19,6 +19,7 @@ profiler, no per-cell stopwatch.
 | `scripts/perf/perf_summary.py`        | One-screen markdown summary of a single run                                        |
 | `scripts/perf/compare_perf_runs.py`   | Diff two runs as a markdown table for the PR body. Fingerprint-aware: `resolve_baseline` picks `<baseline-root>/<slug>/` for the head's SKU, falling back to a legacy flat root; `resolve_class_matched_baseline` picks the head's calibration class out of a per-capture history root. The root is an argument — in CI it comes from the `perf-baseline` branch, locally it is any directory you pass. |
 | `scripts/perf/ci_compare_step.sh`      | The perf gate's PR-path step, extracted from the workflow so it is testable outside Actions. |
+| `scripts/perf/ci_label_step.sh`        | Keeps `perf:improved` synchronized with the current PR head's verdict. |
 | `scripts/perf/tests/test_baseline_layouts.py` | Executed control for baseline resolution + the gate's exit mapping. Runs as the perf-gate job's first step after checkout. |
 | `scripts/perf/tests/test_baseline_writer.sh` | Executed control for the `perf-baseline` branch writer and the PR-path reader, driving the shipped workflow step bodies against a local bare origin. Same CI step. |
 | `scripts/perf/check_regression.py`    | CI gate — fingerprint-aware regression check. Same fingerprint → gates; different fingerprint or no baseline → informational. `--baseline-history` gates against the class-matched capture instead of the tip. |
@@ -386,8 +387,17 @@ the gate is exercised by the gate.
 
 - Any cell where `mean frame avg` regresses by **>10%** fails the check.
   The author must justify or fix before merging.
-- Any cell that improves by **>5%** causes the `perf:improved` label to
-  be added to the PR automatically.
+- A graded frame `avg` cell earns `perf:improved` only when it improves by
+  **>5%** both raw and after applying the head-to-baseline calibration ratio.
+  `p99`, GPU-stage, and CPU-system improvements remain informational. Every
+  current-head PR run attempts to clear the inherited label immediately after
+  checkout and restores it only for that head's passing improvement verdict;
+  superseded-head runs leave it alone. Treat the label as meaningful for a
+  merged head only after that head's `perf-gate` run has concluded. The
+  initial reset tolerates an exhausted GitHub API retry so performance
+  measurement can continue; in
+  that case the inherited label may remain during the run, but the final sync
+  must re-derive it or fail the check loudly.
 - Baseline resolution belongs to `compare_perf_runs.py` alone
   (`resolve_baseline` for the tip, `resolve_class_matched_baseline` for the
   history) — the workflow hands over a baseline *root* and a history root
@@ -407,8 +417,11 @@ the gate is exercised by the gate.
   that is **in the head's calibration class**: `ref_ms` strictly within
   1.20× of the head's either way, finished at most 14 days before the head
   started, same `matrix` and `frames`, every cell measured. The comparison
-  is raw, and the host note names the capture (perf-baseline commit, master
-  SHA, age, `ref_ms`). With no such capture the gate is informational: exit 0,
+  is raw unless that exact host class has a `CLASS_MATCH_SCALE_FROM` entry and
+  its head-to-capture calibration ratio reaches the entry's threshold. That
+  path grades frame `avg` as calibration-scaled while p99, GPU-stage, and
+  CPU-system marks remain raw. The host note names the rule and the capture
+  (perf-baseline commit, master SHA, age, `ref_ms`). With no such capture the gate is informational: exit 0,
   no table, so no `perf:improved`. The next master push on that class files
   one. Normalizing across the class split instead under-corrected it: `ref_ms`
   scales ~1.28× there while the grid scales ~1.45×, which left a neutral PR

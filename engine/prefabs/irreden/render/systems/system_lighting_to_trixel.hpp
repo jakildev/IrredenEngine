@@ -19,6 +19,7 @@
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
+#include <irreden/render/per_axis_surface_lighting.hpp>
 #include <irreden/render/shape_receiver_bindings.hpp>
 #include <irreden/render/voxel_dispatch_grid.hpp>
 #include <irreden/render/voxel_frame_data.hpp>
@@ -104,7 +105,7 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     // Opt-in presentation lighting keeps the existing per-axis colors and
     // overflow entries as albedo. Publish readiness only after the main tick
     // skips their in-place relight; an eligible frame may have no main tick.
-    bool perAxisSurfaceLightingEnabled_ = false;
+    // The switch is `IRPrefab::PerAxisSurfaceLighting`'s singleton.
     bool perAxisSurfaceLightingEligible_ = false;
     bool perAxisSurfaceLightingReady_ = false;
     Buffer *frameDataBuf_ = nullptr;
@@ -587,10 +588,13 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         );
         // Fog still consumes lit colors. Debug modes and incomplete pipelines
         // retain the compute path; presentation must never mistake them for albedo.
-        if (perAxisSurfaceLightingEnabled_ && perAxisCanvases_ != nullptr &&
-            perAxisCanvases_->isAllocated() && mainCanvasTextures_ != nullptr &&
-            mainCanvasAO_ != nullptr && mainCanvasSunShadow_ != nullptr &&
-            mainCanvasLightVolume_ != nullptr && findSystem(COMPUTE_SUN_SHADOW) != kNullSystemId &&
+        const C_PerAxisSurfaceLighting *surfaceLighting =
+            IREntity::singletonOrNull<C_PerAxisSurfaceLighting>();
+        if (surfaceLighting != nullptr && surfaceLighting->enabled_ &&
+            perAxisCanvases_ != nullptr && perAxisCanvases_->isAllocated() &&
+            mainCanvasTextures_ != nullptr && mainCanvasAO_ != nullptr &&
+            mainCanvasSunShadow_ != nullptr && mainCanvasLightVolume_ != nullptr &&
+            findSystem(COMPUTE_SUN_SHADOW) != kNullSystemId &&
             findSystem(TRIXEL_TO_FRAMEBUFFER) != kNullSystemId &&
             findSystem(FOG_TO_TRIXEL) == kNullSystemId &&
             IRRender::getDebugOverlay() == DebugOverlayMode::NONE &&
@@ -715,8 +719,11 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
         // A/B kill switch for the lit-vs-albedo overflow screenshots + GPU delta.
         p->overflowLightingDisabled_ = std::getenv("IR_OVERFLOW_LIGHTING_DISABLE") != nullptr;
         const char *surfaceLighting = std::getenv("IR_PERAXIS_SURFACE_LIGHTING");
-        p->perAxisSurfaceLightingEnabled_ =
-            surfaceLighting != nullptr && surfaceLighting[0] == '1' && surfaceLighting[1] == '\0';
+        // Creates the switch singleton here, on the main thread; the flag turns it on.
+        IRPrefab::PerAxisSurfaceLighting::state();
+        if (surfaceLighting != nullptr && surfaceLighting[0] == '1' && surfaceLighting[1] == '\0') {
+            IRPrefab::PerAxisSurfaceLighting::setEnabled(true);
+        }
         p->frameDataBuf_ = IRRender::getNamedResource<Buffer>("LightingToTrixelFrameData");
         p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
         p->sunFrameDataBuf_ = IRRender::getNamedResource<Buffer>("ComputeSunShadowFrameData");

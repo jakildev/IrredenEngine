@@ -228,6 +228,12 @@ struct FrameDataTrixelToFramebuffer {
     /// vertex shaders invert a cell through it; `perAxisBase_` only places the
     /// recovered face on screen. std140-appended at offset 224.
     ivec4 perAxisStoreFrame_{0, 0, 0, 0};
+    /// Gather pixel→canvas map: quad centre in raster-target pixels (.xy) and
+    /// canvas texels per raster pixel (.zw). The gather fragment derives its
+    /// sampled texel from this (`canvasPositionFromPixel`), so it is written
+    /// only by placeGatherQuad together with mpMatrix_; a zero map samples one
+    /// texel across the whole quad.
+    vec4 canvasFromPixel_{0.0f, 0.0f, 0.0f, 0.0f};
 };
 static_assert(
     offsetof(FrameDataTrixelToFramebuffer, visibleFaceIds_) == 128,
@@ -271,7 +277,12 @@ static_assert(
     "(end at 224); only the per-axis scatter vertex shaders read it"
 );
 static_assert(
-    sizeof(FrameDataTrixelToFramebuffer) == 240,
+    offsetof(FrameDataTrixelToFramebuffer, canvasFromPixel_) == 240,
+    "canvasFromPixel_ must std140-append after perAxisStoreFrame_ (ends at 240); "
+    "the gather vertex and fragment blocks declare both members"
+);
+static_assert(
+    sizeof(FrameDataTrixelToFramebuffer) == 256,
     "FrameDataTrixelToFramebuffer size must mirror its std140 GLSL block. The "
     "camera scatter shaders (v_/f_peraxis_scatter) read the appended "
     "perAxisBase_ / visualYaw_ / visibleFaceIds_ and scatterFbResolution_ at "
@@ -279,6 +290,24 @@ static_assert(
     "per-pixel depth-color mode for the scatter path; a silent reorder or "
     "resize would corrupt the scatter UBO with no compile diagnostic"
 );
+
+/// Places a gather quad (the unit `QuadVAO` square about the origin) at
+/// @p center with size @p extent in a raster target of @p targetSize pixels,
+/// and writes the gather fragment's pixel→canvas map for a bound canvas of
+/// @p textureSize texels. Every gather producer places through this, so the
+/// matrix and the map always describe the same quad.
+inline void placeGatherQuad(
+    FrameDataTrixelToFramebuffer &frameData,
+    const vec2 &targetSize,
+    const vec2 &center,
+    const vec2 &extent,
+    const vec2 &textureSize
+) {
+    mat4 model = translate(mat4(1.0f), vec3(center, 0.0f));
+    model = scale(model, vec3(extent, 1.0f));
+    frameData.mpMatrix_ = ortho(0.0f, targetSize.x, 0.0f, targetSize.y, -1.0f, 100.0f) * model;
+    frameData.canvasFromPixel_ = vec4(center, textureSize / extent);
+}
 
 /// Multiplier in the @c encodeDepthWithFace convention (d·8 + flip·4 + face,
 /// with the silhouette-riser polarity carrier at bit 2), shared by the
@@ -466,6 +495,23 @@ inline DecodedCompositeDepth decodeCompositeDepth(float rawDist) {
     return decoded;
 }
 
+/// Row of the main framebuffer's depth attachment holding top-left pixel row
+/// @p pixelY. The gather stores raster rows y-up on both backends and each
+/// screen pass displays texture row `r` that many rows above the bottom, so the
+/// mapping is the same flip on OpenGL and Metal.
+inline int compositeDepthTextureRow(int pixelY, int framebufferHeight) {
+    return framebufferHeight - 1 - pixelY;
+}
+
+/// Top-left pixel whose depth texel is raster texel `resolution / 2`, the texel
+/// `RenderManager::getCanvasCenterIso` describes and the default-pivot latch
+/// acquires from. `resolution / 2` itself is not that pixel: with an even
+/// height the centre line falls between two rows, and the latch's row is the
+/// upper one on screen.
+inline ivec2 framebufferCenterPixel(ivec2 resolution) {
+    return ivec2(resolution.x / 2, resolution.y - 1 - resolution.y / 2);
+}
+
 // The per-trixel tier travels voxel authoring → trixel raster → finalization in
 // the top K=2 bits of the 64-bit entity id stored in the `triangleEntityIds`
 // channel (the only per-texel channel that already reaches finalization). Entity
@@ -508,10 +554,19 @@ constexpr std::uint32_t kEntityIdFogBodyFactorMaskInHighWord =
 // by kEntityIdHighWordMask like the bits above. Mirror of the .glsl/.metal
 // kEntityIdAnalyticSurfaceMaskInHighWord.
 constexpr std::uint32_t kEntityIdAnalyticSurfaceMaskInHighWord = 1u << 19;
+// Positive provenance of a settled non-detached voxel raster sample.
+constexpr std::uint32_t kEntityIdCardinalVoxelMaskInHighWord = 1u << 18;
 constexpr std::uint32_t kEntityIdHighWordMask =
     ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord |
       kEntityIdFogBodyMaskInHighWord | kEntityIdFogBodyFactorMaskInHighWord |
-      kEntityIdAnalyticSurfaceMaskInHighWord);
+      kEntityIdAnalyticSurfaceMaskInHighWord | kEntityIdCardinalVoxelMaskInHighWord);
+static_assert(
+    (kEntityIdCardinalVoxelMaskInHighWord &
+     (kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord |
+      kEntityIdFogBodyMaskInHighWord | kEntityIdFogBodyFactorMaskInHighWord |
+      kEntityIdAnalyticSurfaceMaskInHighWord)) == 0u,
+    "cardinal voxel provenance must not overlap another carrier field"
+);
 static_assert(
     kDepthForegroundTierCount <= (1 << kEntityIdPriorityBits),
     "tier count must fit in the K stolen entity-id bits"
@@ -533,6 +588,9 @@ inline std::uint64_t decodeCarrierEntityId(uvec2 packed) {
 }
 inline std::uint32_t decodeCarrierPriority(uvec2 packed) {
     return (packed.y >> kEntityIdPriorityShiftInHighWord) & ((1u << kEntityIdPriorityBits) - 1u);
+}
+inline bool decodeCarrierCardinalVoxel(uvec2 packed) {
+    return (packed.y & kEntityIdCardinalVoxelMaskInHighWord) != 0u;
 }
 inline bool decodeCarrierFogBody(uvec2 packed) {
     return (packed.y & kEntityIdFogBodyMaskInHighWord) != 0u;
@@ -742,6 +800,12 @@ struct FrameDataVoxelToCanvas {
     // shader that inverts a store cell read this one value, so they agree on
     // `cell <-> world` by construction.
     ivec4 perAxisStoreFrame_ = ivec4(0, 0, 0, 0);
+    // .x non-zero while the fog window this canvas selects against has a
+    // ceiling-enabled source live (`IRPrefab::Fog::anyCeilingEnabled` over the
+    // observers stage 1 binds). Voxel face selection reads it as one uniform
+    // instead of scanning the sources per face, so a FIELD voxel on a frame
+    // with no ceiling pays nothing. .yzw unused.
+    ivec4 fogCeilingEnabled_ = ivec4(0, 0, 0, 0);
 };
 
 struct FrameDataTrixelToTrixel {
@@ -751,6 +815,10 @@ struct FrameDataTrixelToTrixel {
     vec2 texturePos2DIso_;
 };
 
+// `styleFlags` low byte is the font size (canvas texels per glyph texel).
+// `kGlyphStyleLatticeScale` set: the canvas displays lattice triangles, so a
+// scaled glyph texel rasters as the exactly scaled triangle (fontSize² lattice
+// triangles) rather than a square block of texels.
 struct GlyphDrawCommand {
     uint32_t positionPacked; // x | (y << 16)
     uint32_t glyphIndex;
@@ -758,6 +826,22 @@ struct GlyphDrawCommand {
     uint32_t distance;
     uint32_t styleFlags = 0;
 };
+constexpr uint32_t kGlyphStyleLatticeScale = 0x100u;
+
+/// Per-frame UBO for the GUI_CANVAS_TO_SCREEN pass.
+struct FrameDataGuiCanvasToScreen {
+    mat4 mpMatrix_;
+    /// Screen pixels covered by one GUI canvas texel on each axis.
+    vec2 texelScreenPx_;
+    /// `TrixelSampleLayout` the GUI canvas displays with.
+    int sampleLayout_ = 0;
+    int pad_ = 0;
+};
+static_assert(
+    sizeof(FrameDataGuiCanvasToScreen) % 16 == 0,
+    "FrameDataGuiCanvasToScreen size must be a multiple of 16 to match the size MSL "
+    "rounds its constant-buffer declaration to"
+);
 
 /// How the output canvas is scaled to fill the window.
 enum class FitMode { FIT, STRETCH, UNKNOWN };
@@ -1134,9 +1218,14 @@ static_assert(
     "per-axis store and recovery shader declares it there, after detachedViewToWorld_"
 );
 static_assert(
-    sizeof(FrameDataVoxelToCanvas) == 272,
+    offsetof(FrameDataVoxelToCanvas, fogCeilingEnabled_) == 272,
+    "FrameDataVoxelToCanvas::fogCeilingEnabled_ must land at offset 272; the "
+    "voxel face-selection stages declare it after perAxisStoreFrame_"
+);
+static_assert(
+    sizeof(FrameDataVoxelToCanvas) == 288,
     "FrameDataVoxelToCanvas size must mirror its std140 GLSL block "
-    "(perAxisStoreFrame_ ivec4 append: 256 + 16 = 272)"
+    "(fogCeilingEnabled_ ivec4 append: 272 + 16 = 288)"
 );
 
 struct FrameDataSun {
@@ -1156,8 +1245,8 @@ struct FrameDataSun {
     // because every consumer (AO compute, lighting) already binds
     // FrameDataSun.
     int aoEnabled_ = 1;
-    // Orthonormal basis perpendicular to sunDirection_, computed CPU-side
-    // each frame in system_bake_sun_shadow_map. .w is std140 padding.
+    // Orthonormal sun-space basis perpendicular to sunDirection_.
+    // U.w is 1 for finite caster coverage, otherwise 0; V.w is padding.
     vec4 sunBasisU_ = vec4(0.0f);
     vec4 sunBasisV_ = vec4(0.0f);
     // sunPx = floor((dot(p, uHat/vHat) - origin) / texelSize).
@@ -1195,11 +1284,19 @@ struct FrameDataSun {
     // View-aligned caster fallback planes need the camera basis even when
     // the receiving canvas stores world-space geometry. Quaternion xyzw.
     vec4 sunCasterViewToWorld_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    // .x is non-zero when the active world fog has an enabled reveal ceiling
+    // and the sun can project caster height beyond its XY footprint. The bake
+    // shaders use it as the byte-identity fast path; .y is the scoped legacy
+    // pre-cut lane and the remaining lanes preserve std140 alignment.
+    ivec4 fogCeilingEnabled_{0};
 };
-static_assert(sizeof(FrameDataSun) == 144, "FrameDataSun must match std140 layout");
+static_assert(sizeof(FrameDataSun) == 160, "FrameDataSun must match std140 layout");
 static_assert(
     offsetof(FrameDataSun, sunCasterViewToWorld_) == 128,
     "sunCasterViewToWorld_ must align after sunMaxShadowThrow_"
+);
+static_assert(
+    offsetof(FrameDataSun, fogCeilingEnabled_) == 144, "fogCeilingEnabled_ must be the std140 tail"
 );
 static_assert(offsetof(FrameDataSun, sunBasisU_) == 32, "sunBasisU_ must align after aoEnabled_");
 static_assert(
@@ -1230,6 +1327,11 @@ constexpr std::uint32_t kBufferIndex_FrameDataUniform = 0;
 constexpr std::uint32_t kBufferIndex_GlobalConstantsGLSL = 1;
 constexpr std::uint32_t kBufferIndex_FramebufferFrameDataUniform = 2;
 constexpr std::uint32_t kFramebufferFrameDataUniformBufferSize = sizeof(FrameDataFramebuffer);
+// Slot 2 is a transient alias shared by the two screen passes that read it:
+// FRAMEBUFFER_TO_SCREEN and GUI_CANVAS_TO_SCREEN each re-assert their own UBO
+// on the slot immediately before drawing.
+constexpr std::uint32_t kBufferIndex_GuiCanvasToScreenFrameData =
+    kBufferIndex_FramebufferFrameDataUniform;
 constexpr std::uint32_t kBufferIndex_FrameDataUniformIsoTriangles = 3;
 // Slot 4 was previously unused; the GPU light-volume seed pass reads
 // `LightSourceBuffer` here. Metal caps buffer bindings at 0–30, which

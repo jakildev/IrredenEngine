@@ -119,6 +119,22 @@ up and `1 - anchor.y` when viewport Y points down. The offset uses the
 on-screen size (§"Size"), so the anchor stays on the same point of the quad at
 every output scale and graphics-backend convention.
 
+### Frame orientation
+
+`uvRect` is `(u0, v0, u1, v1)`. `v0` is the frame's top row in the atlas
+image, and it is drawn on the quad's top edge on screen on every graphics
+backend. The atlas is uploaded in file row order with no flip, so texture
+`v = 0` is the image's top row on both backends and the frame table counts
+rows from the top. The two vertex stages differ only in which quad corner
+lands on the top edge: OpenGL inverts V, and Metal, which negates clip-space
+Y, samples with the quad texcoord as it is.
+
+`scripts/render-sprite-orientation-metric.py` reads the orientation from an
+`IRSpriteDemo` capture of the two-tone `test_anchor` fixture, and grades the
+default anchor against the unit voxel at the sprite's world position: the
+voxel's first row is the row directly below the sprite box, and the voxel box
+sits inside the sprite box's columns with equal margins left and right.
+
 ### Size
 
 `C_Sprite.size_` is in **game pixels**: main-framebuffer pixels, each

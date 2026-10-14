@@ -190,7 +190,7 @@ does not justify. A future density-gated firing (splat only where the local
 neighbourhood is sparse) could reclaim the remaining cost; deferred (lever
 (a)'s localisation attempt shows sparse-detection is subtle).
 
-## Byte-identity regimes (the two invariants)
+## Byte-identity regimes (the three invariants)
 
 1. **Per-axis / smooth-yaw byte-identity (structural).** The raw smooth-yaw and
    per-axis face-local inputs skip the splat by the shader gate; the per-axis
@@ -207,6 +207,30 @@ neighbourhood is sparse) could reclaim the remaining cost; deferred (lever
    dense, every box `atomicMin` is a no-op (farther-or-equal depth). Kept as
    an empirical property + the `sunSplatMaxTexels_ == 0` kill switch, not a
    structural guarantee.
+3. **Fog-ceiling-off/vertical-sun byte-identity (structural).** `FrameDataSun`
+   carries a frame-level “ceiling cut can affect a footprint” flag. Every caster
+   route short-circuits to its prior write when that flag is zero, so scenes
+   that do not author a fog ceiling preserve the pre-ceiling caster set exactly.
+   A vertical sun also takes the identity path because caster height cannot
+   enlarge its XY shadow footprint. The legacy main-canvas fallback decodes the
+   BODY bit from its entity-id plane. World-placed and non-box analytic-shape
+   FIELD samples are cut by their feeder before its depth texture is baked, so
+   both bakes run on the scoped `precut` lane. The per-axis resolve has no
+   entity-id plane; its dispatch uses the scoped `precut` lane to avoid
+   misclassifying BODY samples as FIELD. The guard restores the canonical lane
+   before downstream consumers run.
+
+   The geometric-ceiling contract uses the raster's phase-zero retained set: absent or dissolved FIELD
+   voxels cast nothing, and BODY remains whole. The per-axis resolve inherits
+   the raster cut; the other raster-derived routes intersect their current
+   raster with the static set, while voxel-face, box and analytic-shape bakes
+   evaluate the static set directly. The retained predicate takes the observers,
+   integer world voxel and an explicit cell sample from the main world fog
+   window, with UNEXPLORED/default-channel fallback outside it. The caller
+   samples only after the no-ceiling/BODY identity gates; an all-visible
+   placeholder never supplies a retention override. The authoritative contract is in
+   [Sun-shadow caster ceiling](fog-of-war-reveal-model.md#sun-shadow-caster-ceiling).
+   This is target behavior until that implementation lands.
 
 ## The receiver same-plane test (#2319) — removing the splat's coplanar self-acne
 

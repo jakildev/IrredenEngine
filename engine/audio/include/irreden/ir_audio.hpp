@@ -8,6 +8,7 @@
 
 #include <irreden/math/ir_math_types.hpp>
 
+#include <cstdint>
 #include <functional>
 #include <vector>
 #include <string>
@@ -37,6 +38,9 @@ std::vector<std::string> midiOutPorts();
 std::vector<int> midiInOpenPorts();
 /// Returns the RtMidi port indices of every currently-open MIDI output port.
 std::vector<int> midiOutOpenPorts();
+/// Returns every audio device the backend reported at startup, by name: the
+/// names a capture config (`video_capture_audio_input_device_name`) matches.
+std::vector<AudioDeviceSummary> audioDevices();
 /// Opens a MIDI input port by hardcoded interface index.
 int openPortMidiIn(MidiInInterfaces midiInInterface);
 /// Opens the first MIDI input port whose name contains @p deviceName (substring match).
@@ -71,6 +75,27 @@ using OutboundMidiCallback =
 void setOutboundMidiObserver(OutboundMidiCallback callback);
 /// Removes the outbound-MIDI observer if one is set.
 void clearOutboundMidiObserver();
+
+/// Starts MIDI beat clock on an open output port: START now, then TIMING_CLOCK
+/// at @ref kMidiClockPulsesPerQuarterNote from an engine thread until
+/// @ref stopMidiClock. One clock per process: on the port already running it
+/// retunes; on another port it stops there first. Returns false (one warning,
+/// nothing sent) for a port that is not open or a bpm outside
+/// [@ref kMidiClockMinBpm, @ref kMidiClockMaxBpm]. START and STOP reach the
+/// outbound observer and then the port, as @ref sendMidiMessage does; the
+/// pulses reach the port alone (they leave on the clock thread).
+bool startMidiClock(int portIndex, double bpm);
+/// Retunes the running clock, re-timing the pending pulse from the last one
+/// sent; false (unchanged) when stopped or out of range.
+bool setMidiClockBpm(double bpm);
+/// Ends the pulses, then sends STOP. No-op when no clock runs. `World::end()`
+/// calls it after the shutdown NOTE_OFFs (the pulse count is logged there)
+/// and `~AudioManager` again as the backstop, so a creation need not stop the
+/// clock at shutdown.
+void stopMidiClock();
+bool isMidiClockRunning();
+/// TIMING_CLOCK pulses sent since the clock last started.
+std::uint64_t midiClockPulses();
 
 /// Returns the CC value for @p ccMessage on @p channel received this frame
 /// across all open input ports, or @ref kCCFalse if no CC message arrived.

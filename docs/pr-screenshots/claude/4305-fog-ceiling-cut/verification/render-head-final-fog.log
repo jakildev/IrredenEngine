@@ -1,0 +1,192 @@
+[fleet-jobs] display: 1 online CoreGraphics display(s)
+[render-verify] target=IRFogDemo demo=fog_demo backend=macos-debug warmup=10
+[render-verify] 3 shots: fog_zoom2_origin, fog_zoom4_origin, fog_zoom8_origin
+[render-verify] 36 extra run(s): edge, detached, detached_body, detached_body_soft, detached_body_hidden, detached_body_no_solid, detached_exempt, detached_field_hidden, edge_smooth, edge_sdf_blocker, edge_zcost, edge_zcost_asym, edge_zcost_ceiling, edge_zcost_ceiling_paint, peraxis_overflow, entity_reveal, occlusion, occlusion_high_ground, occlusion_blocker, occlusion_blocker_inert, occlusion_two_sources, occlusion_flat, occlusion_high_ground_soft, occlusion_high_ground_soft_treated, occlusion_column_top, ceiling, ceiling_hard, ceiling_treatment, ceiling_shadow, world_pan, depth_slab, entity_reveal_soft, ghost_policy, channel_probe, many_sources, explored_decay
++ fleet-build --target IRFogDemo
+[  0%] Built target luajit_build
+[  0%] Built target enkiTS
+[  0%] Built target rtaudio
+[  0%] Built target rtmidi
+[  0%] Built target IRFogDemoAssets
+[  9%] Built target easy_profiler
+[ 14%] Built target fmt
+[ 14%] Built target glm
+[ 28%] Built target meshoptimizer
+[ 38%] Built target glfw
+[ 42%] Built target spdlog
+[ 47%] Built target IrredenEngineMath
+[ 47%] Built target IrredenEngineProfile
+[ 47%] Built target IrredenEngineJob
+[ 47%] Built target IrredenEngineTime
+[ 47%] Built target IrredenEngineUtility
+[ 52%] Built target IrredenEngineEntity
+[ 57%] Built target IrredenEngineAsset
+[ 57%] Built target IrredenEngineSystem
+[ 66%] Built target IrredenEngineAudio
+[ 71%] Built target IrredenEngineWindow
+[ 71%] Built target IrredenEngineInput
+[ 71%] Building CXX object engine/render/CMakeFiles/IrredenEngineRendering.dir/src/render_manager.cpp.o
+[ 71%] Linking CXX static library libIrredenEngineRendering.a
+[ 85%] Built target IrredenEngineRendering
+[ 90%] Built target IrredenEngineVideo
+[ 90%] Built target IrredenEngineCommand
+[ 95%] Building CXX object engine/world/CMakeFiles/IrredenEngineWorld.dir/src/world_default_registry.cpp.o
+[ 95%] Linking CXX static library libIrredenEngineWorld.a
+[ 95%] Built target IrredenEngineWorld
+[ 95%] Building CXX object engine/script/CMakeFiles/IrredenEngineScripting.dir/src/lua_script.cpp.o
+[ 95%] Building CXX object engine/script/CMakeFiles/IrredenEngineScripting.dir/src/prefab_api.cpp.o
+[100%] Building CXX object engine/script/CMakeFiles/IrredenEngineScripting.dir/src/lua_bindings_prefab.cpp.o
+[100%] Linking CXX static library libIrredenEngineScripting.a
+[100%] Built target IrredenEngineScripting
+[100%] Built target IrredenEngine
+[100%] Building CXX object creations/demos/fog_demo/CMakeFiles/IRFogDemo.dir/main.cpp.o
+[100%] Linking CXX executable IRFogDemo
+ld: warning: ignoring duplicate libraries: '../../../engine/script/libIrredenEngineScripting.a', '../../../engine/world/libIrredenEngineWorld.a'
+[100%] Built target IRFogDemo
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10
+[render-verify] extra run 'edge': --edge-zoom
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --edge-zoom
+[render-verify] extra run 'detached': --detached-edge
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --detached-edge
+[render-verify] extra run 'detached_body': --detached-edge --detached-body
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --detached-edge --detached-body
+[render-verify] extra run 'detached_body_soft': --detached-edge --detached-body --entity-reveal-soft-edge
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --detached-edge --detached-body --entity-reveal-soft-edge
+[render-verify] extra run 'detached_body_hidden': --detached-edge --detached-body-hidden
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --detached-edge --detached-body-hidden
+[render-verify] extra run 'detached_body_no_solid': --detached-body-no-solid
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --detached-body-no-solid
+[render-verify] extra run 'detached_exempt': --detached-exempt
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --detached-exempt
+[render-verify] extra run 'detached_field_hidden': --detached-field-hidden
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --detached-field-hidden
+[render-verify] extra run 'edge_smooth': --edge-smooth
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --edge-smooth
+[render-verify] extra run 'edge_sdf_blocker': --edge-sdf-blocker
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --edge-sdf-blocker
+[render-verify] extra run 'edge_zcost': --edge-zcost
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --edge-zcost
+[render-verify] extra run 'edge_zcost_asym': --edge-zcost-asym
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --edge-zcost-asym
+[render-verify] extra run 'edge_zcost_ceiling': --edge-zcost-ceiling
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --edge-zcost-ceiling
+[render-verify] extra run 'edge_zcost_ceiling_paint': --edge-zcost-ceiling --fog-debug-color
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --edge-zcost-ceiling --fog-debug-color
+[render-verify] extra run 'peraxis_overflow': --peraxis-overflow
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --peraxis-overflow
+[render-verify] extra run 'entity_reveal': --entity-reveal
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --entity-reveal
+[render-verify] extra run 'occlusion': --occlusion=ground
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --occlusion=ground
+[render-verify] extra run 'occlusion_high_ground': --occlusion=high-ground
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --occlusion=high-ground
+[render-verify] extra run 'occlusion_blocker': --occlusion=blocker
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --occlusion=blocker
+[render-verify] extra run 'occlusion_blocker_inert': --occlusion=blocker-inert
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --occlusion=blocker-inert
+[render-verify] extra run 'occlusion_two_sources': --occlusion=two-sources
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --occlusion=two-sources
+[render-verify] extra run 'occlusion_flat': --occlusion=flat
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --occlusion=flat
+[render-verify] extra run 'occlusion_high_ground_soft': --occlusion=high-ground --los-softness=1
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --occlusion=high-ground --los-softness=1
+[render-verify] extra run 'occlusion_high_ground_soft_treated': --occlusion=high-ground --los-softness=1 --reveal-treatment
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --occlusion=high-ground --los-softness=1 --reveal-treatment
+[render-verify] extra run 'occlusion_column_top': --occlusion=column-top --fog-debug-color
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --occlusion=column-top --fog-debug-color
+[render-verify] extra run 'ceiling': --ceiling-treatment
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --ceiling-treatment
+[render-verify] extra run 'ceiling_hard': --ceiling-treatment --ceiling-hard
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --ceiling-treatment --ceiling-hard
+[render-verify] extra run 'ceiling_treatment': --ceiling-treatment --reveal-treatment
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --ceiling-treatment --reveal-treatment
+[render-verify] extra run 'ceiling_shadow': --ceiling-shadow
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --ceiling-shadow
+[render-verify] extra run 'world_pan': --world-pan
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --world-pan
+[render-verify] extra run 'depth_slab': --depth-slab
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --depth-slab
+[render-verify] extra run 'entity_reveal_soft': --entity-reveal-soft-edge
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --entity-reveal-soft-edge
+[render-verify] extra run 'ghost_policy': --ghost-policy
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 180 --ghost-policy
+[render-verify] extra run 'channel_probe': --channel-probe --fog-debug-color
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --channel-probe --fog-debug-color
+[render-verify] extra run 'many_sources': --many-sources
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --many-sources
+[render-verify] extra run 'explored_decay': --explored-decay
++ fleet-run --timeout 60 IRFogDemo --auto-screenshot 10 --explored-decay
+
+shot                                     result     match%  max_d     psnr
+----------------------------------------------------------------------------
+fog_zoom2_origin                         PASS        100.0      0      inf
+fog_zoom4_origin                         PASS        100.0      0      inf
+fog_zoom8_origin                         PASS        100.0      0      inf
+edge:fog_edge_zoom5                      PASS        100.0      0      inf
+edge:fog_edge_zoom9                      PASS        100.0      0      inf
+edge:fog_edge_zoom14                     PASS        100.0      0      inf
+detached:fog_detached_edge_zoom5         PASS        100.0      0      inf
+detached:fog_detached_edge_zoom9         PASS        100.0      0      inf
+detached:fog_detached_edge_yaw90_zoom5   PASS        100.0      0      inf
+detached_body:fog_detached_body          PASS        100.0      0      inf
+detached_body_soft:fog_detached_body_soft PASS        100.0      0      inf
+detached_body_hidden:fog_detached_body_hidden PASS        100.0      0      inf
+detached_body_no_solid:fog_detached_body_no_solid PASS        100.0      0      inf
+detached_exempt:fog_detached_exempt      PASS        100.0      0      inf
+detached_field_hidden:fog_detached_field_hidden PASS        100.0      0      inf
+edge_smooth:fog_edge_smooth5             PASS        100.0      0      inf
+edge_smooth:fog_edge_smooth9             PASS        100.0      0      inf
+edge_smooth:fog_edge_smooth14            PASS        100.0      0      inf
+edge_sdf_blocker:fog_edge_sdf_blocker_zoom5 PASS        100.0      0      inf
+edge_sdf_blocker:fog_edge_sdf_blocker_zoom9 PASS        100.0      0      inf
+edge_zcost:fog_edge_zcost5               PASS        100.0      0      inf
+edge_zcost:fog_edge_zcost9               PASS        100.0      0      inf
+edge_zcost_asym:fog_edge_zcost_asym5     PASS        100.0      0      inf
+edge_zcost_asym:fog_edge_zcost_asym9     PASS        100.0      0      inf
+edge_zcost_ceiling:fog_edge_zcost_ceiling5 PASS        100.0      0      inf
+edge_zcost_ceiling:fog_edge_zcost_ceiling9 PASS        100.0      0      inf
+edge_zcost_ceiling_paint:fog_edge_zcost_ceiling_paint5 PASS        100.0      0      inf
+edge_zcost_ceiling_paint:fog_edge_zcost_ceiling_paint9 PASS        100.0      0      inf
+edge_zcost_ceiling_paint:fog_edge_zcost_ceiling_paint_yaw9 PASS        100.0      0      inf
+peraxis_overflow:fog_peraxis_overflow_yaw9 PASS        100.0      0      inf
+entity_reveal:fog_entity_reveal          PASS        100.0      0      inf
+occlusion:fog_occlusion_ground           PASS        100.0      0      inf
+occlusion:fog_occlusion_ground:fog-los-edge PASS
+occlusion:fog_occlusion_ground:fog-los-edge PASS
+occlusion_high_ground:fog_occlusion_high_ground PASS        100.0      0      inf
+occlusion_high_ground:fog_occlusion_high_ground:fog-los-edge PASS
+occlusion_blocker:fog_occlusion_blocker  PASS        100.0      0      inf
+occlusion_blocker_inert:fog_occlusion_blocker_inert PASS        100.0      0      inf
+occlusion_two_sources:fog_occlusion_two_sources PASS        100.0      0      inf
+occlusion_flat:fog_occlusion_flat        PASS        100.0      0      inf
+occlusion_high_ground_soft:fog_occlusion_high_ground_soft PASS        100.0      0      inf
+occlusion_high_ground_soft_treated:fog_occlusion_high_ground_soft_treated PASS        100.0      0      inf
+occlusion_column_top:fog_occlusion_column_top PASS        100.0      0      inf
+occlusion_column_top:fog_occlusion_column_top_yaw PASS        100.0      0      inf
+ceiling:fog_ceiling9                     PASS        100.0      0      inf
+ceiling:fog_ceiling_yaw9                 PASS        100.0      0      inf
+ceiling_hard:fog_ceiling_hard9           PASS        100.0      0      inf
+ceiling_hard:fog_ceiling_hard_yaw9       PASS        100.0      0      inf
+ceiling_treatment:fog_ceiling_treatment9 PASS        100.0      0      inf
+ceiling_treatment:fog_ceiling_treatment_yaw9 PASS        100.0      0      inf
+ceiling_shadow:fog_ceiling_shadow9       PASS        100.0      0      inf
+ceiling_shadow:fog_ceiling_shadow_yaw9   PASS        100.0      0      inf
+world_pan:fog_world_pan_origin           PASS        100.0      0      inf
+world_pan:fog_world_pan_far              PASS        100.0      0      inf
+world_pan:fog_world_pan_origin_return    PASS        100.0      0      inf
+world_pan:fog_world_pan_far_return       PASS        100.0      0      inf
+depth_slab:fog_depth_slab_yaw0           PASS        100.0      0      inf
+depth_slab:fog_depth_slab_yaw45          PASS        100.0      0      inf
+entity_reveal_soft:fog_entity_reveal_soft PASS        100.0      0      inf
+ghost_policy:fog_ghost_policy_held       PASS        100.0      0      inf
+ghost_policy:fog_ghost_policy_hide       PASS        100.0      0      inf
+ghost_policy:fog_ghost_policy_discarded  PASS        100.0      0      inf
+channel_probe:fog_channel_probe          PASS        100.0      0      inf
+many_sources:fog_many_sources            PASS        100.0      0      inf
+explored_decay:fog_explored_decay_before PASS        100.0      0      inf
+explored_decay:fog_explored_decay_after  PASS        100.0      0      inf
+explored_decay:fog_explored_decay_far    PASS        100.0      0      inf
+explored_decay:fog_explored_decay_return PASS        100.0      0      inf
+explored_decay:fog_explored_decay_tiers_yaw PASS        100.0      0      inf
+
+[render-verify] all 69 checks PASS

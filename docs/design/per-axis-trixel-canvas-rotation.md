@@ -344,9 +344,10 @@ scene, and independently named as a run-variant class by the
 
 `c_per_axis_overflow_sort.{glsl,metal}` closes it: between the append and the
 indirect draw it canonically orders the appended entries by full record value
-(lexicographic `(packedCell, encodedDistance, colorPacked)` = entry words
-`(0, 2, 1)`), so draw order — and every equal-key winner — is a pure function
-of the appended **set**. The key spans all three words, so key-equality and
+(lexicographic `(maskedPackedCell, encodedDistance, colorPacked, cutFlag)`,
+with the cell from word 0 bits 30:0, distance from word 2, colour from word 1
+and the final cut flag from word 0 bit 31), so draw order — and every equal-key
+winner — is a pure function of the appended **set**. The key spans all three words, so key-equality and
 record-equality coincide and equal records need no ordering at all.
 
 **The sort is eligible when `storeTiesPossible_` is set.** Current-frame

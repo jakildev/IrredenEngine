@@ -1,0 +1,32 @@
+{
+  "tests": 16,
+  "failures": 0,
+  "disabled": 0,
+  "errors": 0,
+  "suites": [
+    {
+      "name": "GridRotationTest",
+      "tests": 13,
+      "failures": 0
+    },
+    {
+      "name": "GridInverseSurfaceTest",
+      "tests": 2,
+      "failures": 0
+    },
+    {
+      "name": "GridSurfaceOracleTest",
+      "tests": 1,
+      "failures": 0
+    }
+  ],
+  "interior_first_mutation": {
+    "test": "GridInverseSurfaceTest.SolidCubeOverflowRetainsEverySurfaceCellAndMask",
+    "exit_code": 1,
+    "failed_axes": [
+      "Z45",
+      "Y45"
+    ],
+    "change": "Temporary include override swaps surfaceCells_ and interiorCells_ write loops; production header unchanged."
+  }
+}

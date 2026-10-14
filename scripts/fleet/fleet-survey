@@ -9,7 +9,7 @@ per repo, and prints:
   dispatch   cache age, pool utilisation, last dispatch, idle ticks since it
   queue      per repo: claimable here / host-pinned away / ghost / in-flight /
              blocked / in progress
-  parks      every fleet:awaiting-infra PR with its Parked-until issues resolved
+  parks      every fleet:awaiting-infra PR with its Parked-until issues and PRs resolved
   stranded   fleet:wip PRs no label vouches for, and whether they conflict
   approval   fleet:task issues no approval label has reached, epic children first
   epics      fleet:epic umbrellas with children left, flagging ghost-only remainders
@@ -162,29 +162,60 @@ def queue_section(repo_key, repo_state, host):
     return buckets
 
 
-def parks_section(prs, open_issues, ghosts):
+def _ghost_text(num, ghosts):
+    """The one spelling of a delivered-but-open issue, shared by every section
+    that classifies an issue number so no two reports can disagree on a ghost."""
+    return f"ghost (shadowed by PR #{ghosts[num]})"
+
+
+def _blocker_status(num, surveyed):
+    """(status text, verdict token or None) for one park blocker against the
+    repo it lives in; `surveyed` is that repo's listing or None when this run
+    did not fetch it."""
+    if surveyed is None:
+        return "other repo, not surveyed here (reconcile R8 asks it live)", "open"
+    open_issues, open_prs, ghosts = surveyed
+    issue = open_issues.get(num)
+    named_pr = open_prs.get(num)
+    if named_pr is not None:
+        parked = "fleet:awaiting-infra" in label_set(named_pr)
+        return ("open PR, itself parked" if parked else "open PR"), "open-pr"
+    if issue is None:
+        return "not open", None
+    if num in ghosts:
+        return _ghost_text(num, ghosts), "ghost"
+    if "fleet:needs-human" in label_set(issue):
+        return "open, fleet:needs-human", "needs-human"
+    return "open", "open"
+
+
+def parks_section(key, listings):
+    """Park rows for repo `key`. `listings` maps every surveyed repo key to
+    `(open_issues, open_prs, ghosts)`; a blocker in a repo this run did not
+    survey reads as open, the fail-closed direction, and says so."""
+    slug = REPO_SLUGS[key]
+    prs = listings[key][1].values()
     rows = []
     for pr in prs:
         if "fleet:awaiting-infra" not in label_set(pr):
             continue
-        named = fleet_branch_match.parked_until_issue_numbers(pr.get("body") or "")
-        row = {"pr": pr["number"], "title": pr.get("title"), "parked_until": named,
-               "mergeable": pr.get("mergeable"), "issues": {}}
+        refs = fleet_branch_match.parked_until_refs(pr.get("body") or "", slug)
+        row = {"pr": pr["number"], "title": pr.get("title"),
+               "parked_until": [num for ref_slug, num in refs if ref_slug == slug],
+               "parked_until_foreign": [f"{ref_slug}#{num}" for ref_slug, num in refs
+                                        if ref_slug != slug],
+               "mergeable": pr.get("mergeable"), "issues": {}, "foreign": {}}
         verdicts = []
-        for num in named:
-            issue = open_issues.get(num)
-            if issue is None:
-                row["issues"][num] = "not open"
-            elif num in ghosts:
-                row["issues"][num] = f"ghost (shadowed by PR #{ghosts[num]})"
-                verdicts.append("ghost")
-            elif "fleet:needs-human" in label_set(issue):
-                row["issues"][num] = "open, fleet:needs-human"
-                verdicts.append("needs-human")
+        for ref_slug, num in refs:
+            ref_key = fleet_branch_match.repo_key(ref_slug)
+            status, verdict = _blocker_status(num, listings.get(ref_key))
+            if ref_slug == slug:
+                row["issues"][num] = status
             else:
-                row["issues"][num] = "open"
-                verdicts.append("open")
-        if not named:
+                row["foreign"][f"{ref_slug}#{num}"] = status
+            if verdict:
+                verdicts.append(verdict)
+        if not refs:
             row["verdict"] = "malformed: no parsable Parked-until line"
         elif not verdicts:
             row["verdict"] = "lifted: every named issue closed; waits on reconcile R8"
@@ -192,6 +223,8 @@ def parks_section(prs, open_issues, ghosts):
             row["verdict"] = "parked on a delivered issue; close the ghost to lift it"
         elif "needs-human" in verdicts:
             row["verdict"] = "waits on a human decision"
+        elif set(verdicts) == {"open-pr"}:
+            row["verdict"] = "legit: named PR still open"
         else:
             row["verdict"] = "legit: named issue still open"
         rows.append(row)
@@ -203,7 +236,7 @@ def blocker_impacts(open_issues, ghosts):
     for issue_number, issue in open_issues.items():
         value = fleet_blocked_by.parse_blocked_by(issue.get("body") or "") or ""
         for ref in {int(number) for number in BLOCKER_RE.findall(value)}:
-            if ref in impacts:
+            if ref in impacts and ref != issue_number:
                 impacts[ref].append(issue_number)
     return impacts
 
@@ -254,7 +287,7 @@ def epics_section(open_issues, ghosts, prs_by_issue):
             if child not in open_issues:
                 left[child] = "closed, box unchecked"
             elif child in ghosts:
-                left[child] = f"ghost (shadowed by PR #{ghosts[child]})"
+                left[child] = _ghost_text(child, ghosts)
             elif child in prs_by_issue:
                 left[child] = f"in flight: PR #{prs_by_issue[child]}"
             else:
@@ -274,6 +307,10 @@ def survey(state, issues_by_repo, prs_by_repo, host, usage_dir, log_path, now=No
     now = now or datetime.now(timezone.utc)
     report = {"host": host, "dispatch": dispatch_section(state, usage_dir, log_path, now),
               "repos": {}}
+    # Every surveyed repo's listing is gathered before any park is judged, so
+    # a park naming the other repo's issue resolves against that listing.
+    listings = {}
+    queues = {}
     for key, repo_state in state.get("repos", {}).items():
         if key not in issues_by_repo:
             continue
@@ -281,6 +318,12 @@ def survey(state, issues_by_repo, prs_by_repo, host, usage_dir, log_path, now=No
         prs = prs_by_repo.get(key, [])
         queue = queue_section(key, repo_state, host)
         ghosts = {int(str(r["id"]).lstrip("#")): r["shadow_pr"] for r in queue["ghost"]}
+        listings[key] = (open_issues, {pr["number"]: pr for pr in prs}, ghosts)
+        queues[key] = queue
+    for key in listings:
+        open_issues, open_prs, ghosts = listings[key]
+        prs = list(open_prs.values())
+        queue = queues[key]
         impacts = blocker_impacts(open_issues, ghosts)
         for row in queue["ghost"]:
             row["blocked_by_impacts"] = impacts[int(str(row["id"]).lstrip("#"))]
@@ -297,7 +340,7 @@ def survey(state, issues_by_repo, prs_by_repo, host, usage_dir, log_path, now=No
                     prs_by_issue.setdefault(issue, pr["number"])
         report["repos"][key] = {
             "queue": queue,
-            "parks": parks_section(prs, open_issues, ghosts),
+            "parks": parks_section(key, listings),
             "stranded": stranded_section(prs),
             "approval_gap": approval_section(open_issues),
             "epics": epics_section(open_issues, ghosts, prs_by_issue),
@@ -353,6 +396,8 @@ def render(report):
             out.append(f"  PR #{r['pr']}  {r['verdict']}  [{r['mergeable']}]")
             for num, status in r["issues"].items():
                 out.append(f"      #{num}: {status}")
+            for ref, status in r.get("foreign", {}).items():
+                out.append(f"      {ref}: {status}")
         out.append(f"\n## {key}: stranded wip")
         for r in repo["stranded"]:
             out.append(f"  PR #{r['pr']}  {r['state']}  [{r['mergeable']}]  "

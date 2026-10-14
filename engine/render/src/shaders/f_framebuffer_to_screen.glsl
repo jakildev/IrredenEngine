@@ -13,11 +13,12 @@ out vec4 FragColor;
 in vec2 TexCoords;
 
 layout (binding = 0) uniform sampler2D screenTexture;
-layout (binding = 1) uniform sampler2D depthTexture;
 
+// Copies colour only, like the Metal twin. Carrying the framebuffer's depth
+// into gl_FragDepth would fail the screen's depth test on every pixel left at
+// the cleared far depth, dropping overlays composited without a depth write
+// (secondary viewports, debug lines over empty background).
 void main()
 {
     FragColor = texture(screenTexture, TexCoords);
-    gl_FragDepth = texture(depthTexture, TexCoords).r;
-
 }

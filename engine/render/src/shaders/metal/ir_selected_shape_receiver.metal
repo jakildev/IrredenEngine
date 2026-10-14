@@ -1,3 +1,8 @@
+// Continuous fragment rays use the producer Z-face origin, not the texture center.
+inline float2 shapeFragmentQueryPixel(float2 rawCanvasPixel, int2 canvasSize) {
+    return rawCanvasPixel - 0.5 * float2(canvasSize) + float2(trixelOriginOffsetZ1(canvasSize));
+}
+
 inline int selectedShapeIndex(int2 ownerPixel, int ownerWidth,
                              constant ShapeProjectionData &receiverFrame,
                              device const uint *receiverOwners,

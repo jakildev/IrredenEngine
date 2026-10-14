@@ -3,6 +3,7 @@
 
 #include <array>
 #include <chrono>
+#include <string>
 
 #include <irreden/audio/music_theory.hpp>
 
@@ -18,6 +19,18 @@ using MidiStatus = unsigned char;
 using CCData = unsigned char;
 /// MIDI CC (control-change) message number byte.
 using CCMessage = unsigned char;
+
+/// One audio device the backend reported when the engine started, as
+/// `IRAudio::audioDevices` lists it: what a capture or playback config can
+/// name (`video_capture_audio_input_device_name` matches `name_`).
+struct AudioDeviceSummary {
+    std::string name_;
+    unsigned int inputChannels_ = 0;
+    unsigned int outputChannels_ = 0;
+    bool defaultInput_ = false;
+    bool defaultOutput_ = false;
+    unsigned int preferredSampleRate_ = 0;
+};
 
 /// Sentinel value returned by @ref checkCCMessage when no CC was received this frame.
 constexpr CCData kCCFalse = 0xFF;
@@ -164,6 +177,32 @@ constexpr MidiStatus kMidiStatus_PROGRAM_CHANGE = 0xC0;
 constexpr MidiStatus kMidiStatus_CHANNEL_PRESSURE = 0xD0;
 constexpr MidiStatus kMidiStatus_PITCH_BEND = 0xE0;
 /// @}
+
+/// @name MIDI system real-time status bytes
+/// The whole byte is the status: a system message carries no channel nibble,
+/// so `normalizeMidiStatus` folds every one of these to kMidiStatus_SYSTEM.
+/// @{
+constexpr MidiStatus kMidiStatus_SYSTEM = 0xF0;
+constexpr MidiStatus kMidiStatus_TIMING_CLOCK = 0xF8;
+constexpr MidiStatus kMidiStatus_START = 0xFA;
+constexpr MidiStatus kMidiStatus_CONTINUE = 0xFB;
+constexpr MidiStatus kMidiStatus_STOP = 0xFC;
+/// @}
+
+/// True for a system message (0xF0..0xFF): the status byte is read whole.
+constexpr bool isMidiSystemStatus(MidiStatus status) {
+    return normalizeMidiStatus(status) == kMidiStatus_SYSTEM;
+}
+
+/// MIDI beat clock: TIMING_CLOCK pulses per quarter note (the MIDI standard).
+constexpr int kMidiClockPulsesPerQuarterNote = 24;
+/// The tempo range `MidiClock` accepts; a bpm outside it is refused.
+constexpr double kMidiClockMinBpm = 20.0;
+constexpr double kMidiClockMaxBpm = 999.0;
+/// Seconds between TIMING_CLOCK pulses at @p bpm.
+constexpr double midiClockPulseSeconds(double bpm) {
+    return 60.0 / (bpm * kMidiClockPulsesPerQuarterNote);
+}
 
 /// MIDI note numbers for the 88-key piano range (A0=21 … C8=108).
 /// Values follow the General MIDI standard (middle C = C4 = 60).

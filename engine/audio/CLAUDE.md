@@ -12,6 +12,8 @@ functions:
 
 - `getAudioManager()`, `getMidiIn()`, `getMidiOut()`, `getAudio()`.
 - MIDI device enumeration: list ports, open by index or substring.
+- Audio device listing: `audioDevices()` — the devices the backend enumerated
+  at startup, sorted by name (no hot-plug refresh).
 - MIDI query: per-channel, per-frame CC/note-on/note-off queues.
 - MIDI send: `sendMidiMessage(message)` (default port) / `sendMidiMessage(portIndex,
   message)` — raw RtMidi bytes. (There are no `sendNoteOn`/`sendNoteOff`/`sendCC`
@@ -33,7 +35,9 @@ functions:
   ring into a `MidiInputFrameBuffer` (cleared and refilled each frame) that
   keeps both a merged all-ports per-channel view and a per-port view.
 - **`MidiOut`** — one `RtMidiOut` per open output port; fire-and-forget send
-  to the default (first-opened) port, or to a specific port by index.
+  to the default (first-opened) port, or to a specific port by index, under
+  one mutex it shares with the `MidiClock` thread.
+- **`MidiClock`** — MIDI beat clock on one open output port (`midi_clock.hpp`).
 - **`Audio`** — `RtAudio` wrapper for microphone/line-in. Implements
   `IAudioCaptureSource`. Used by `VideoManager` for recording soundtracks.
 - **`SyntheticAudioCaptureSource`** — wall-clock-paced tone source used by
@@ -123,19 +127,13 @@ Lua (`scripts/audio_demo.lua`).
 
 ## Outbound MIDI observer (#1869)
 
-`IRAudio::sendMidiMessage` is the **sole outbound choke point** — every
-prefab path (`CONTACT_MIDI_TRIGGER`, `MIDI_SEQUENCE_OUT`,
+`IRAudio::sendMidiMessage` is the **outbound choke point** — every prefab
+path (`CONTACT_MIDI_TRIGGER`, `MIDI_SEQUENCE_OUT`,
 `PERIODIC_IDLE_MIDI_TRIGGER`, the `C_MidiNote::onDestroy` NOTE_OFF) routes
-through it; nothing calls `getMidiOut().sendMessage()` directly. So a single
-observer registered there sees **all** outbound traffic, including C++-emitted
-messages a Lua-only monitor would otherwise miss.
-
-```cpp
-IRAudio::setOutboundMidiObserver(
-    [](const IRComponents::C_MidiMessage &message, int portIndex) { /* ... */ }
-);
-IRAudio::clearOutboundMidiObserver();
-```
+through it; only `MidiClock` (last bullet) writes to `MidiOut` beside it. So
+the single observer registered there (`setOutboundMidiObserver`) sees every
+outbound message but the clock's pulses, including C++-emitted ones a Lua-only
+monitor would otherwise miss.
 
 - **Single observer, last-registration-wins** — matches the inbound
   `AudioInputCallback` precedent; multiplex in the handler if you need fan-out.
@@ -154,7 +152,12 @@ IRAudio::clearOutboundMidiObserver();
   data1, data2, portIndex)` (integers; `status` matches `IRAudio.MidiStatus.*`);
   `IRAudio.clearMidiObserver()` detaches. A Lua handler error is logged and
   swallowed so it can't abort the C++ send loop (bound by `bindLuaDrivenEcs()`
-  in `lua_audio_bindings.hpp`).
+  in `lua_audio_bindings.hpp`). A system message (`MidiStatus.START` / `STOP`
+  / ...) arrives as its whole status byte with `channel == -1`.
+- **`MidiClock` keeps the order and the thread rule.** START and STOP go to
+  the observer and then the port on the caller's thread, like any send; the
+  `TIMING_CLOCK` pulses go to the port alone, from the clock thread, where the
+  observer (it may run Lua) must never run.
 
 ## Audio capture model
 

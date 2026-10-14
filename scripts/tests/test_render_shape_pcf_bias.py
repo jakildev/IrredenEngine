@@ -185,7 +185,8 @@ class ShapePcfBiasTest(unittest.TestCase):
                     functions, "worldSurfaceSunShadowFactor",
                     "casterViewToWorld, 0.0)", "casterViewToWorld, kNormalBiasVoxels)"),
                 "blend_far_tap_unbiased": functions.replace(
-                    impl, _replace_last(impl, "pcfOffset\n", "pcfOffset * 0.0\n")),
+                    impl, _replace_last(impl, "pcfOffset\n",
+                                        "sampleIndex == 1 ? pcfOffset * 0.0 : pcfOffset\n")),
                 "offset_moves_the_query": functions.replace(
                     "pos3D, uHat, vHat, sunDir",
                     "pos3D + normal * pcfNormalBias, uHat, vHat, sunDir"),

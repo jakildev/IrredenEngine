@@ -1631,7 +1631,7 @@ constexpr vec2 pos2DIsoToPos2DGameResolution(const vec2 position, const vec2 zoo
 /// screen blit chain. See @ref cameraSubPixelOffsets.
 struct CameraSubPixelOffsets {
     /// Game-pixel offset for the trixel-canvas-to-framebuffer placement
-    /// (the translate term in `TRIXEL_TO_FRAMEBUFFER::calcModelMatrix`).
+    /// (the gather centre `TRIXEL_TO_FRAMEBUFFER` hands `placeGatherQuad`).
     ivec2 framebufferGamePxOffset_;
 
     /// Screen-pixel residual for the framebuffer-to-screen upscale blit
@@ -1765,6 +1765,19 @@ inline dvec2 cameraRasterDetachedOffset(const CameraRasterPhase &sample) {
     const dvec2 offset = IRMath::floor(detail::cameraRasterOffset(sample)) + sample.phase_ -
                          IRMath::floor(sample.cameraIso_) * sample.pitch_;
     return offset * dvec2(1.0, -1.0);
+}
+
+/// Snapped-policy counterpart of @ref cameraRasterDetachedOffset, in the same
+/// Y-up basis: the whole framebuffer pixels of the camera's offset inside its
+/// cell. The upscale residual (`CameraSubPixelOffsets::screenPxResidual_`) is
+/// the fraction this floor leaves over, so the two split one quantity.
+///
+/// @p framebufferPxPerCell must be the exact pitch (@ref cameraZoomPitch). A
+/// pitch rebuilt from texture extents can land one ulp under a whole number,
+/// and the floor then loses a whole pixel wherever the camera sits on the
+/// pixel lattice.
+inline vec2 cameraSnappedDetachedOffset(const vec2 cameraIso, const vec2 framebufferPxPerCell) {
+    return IRMath::floor(IRMath::fract(cameraIso) * framebufferPxPerCell) * vec2(1.0f, -1.0f);
 }
 
 /// Inverse iso projection selecting the 3D position at a specific Z level,

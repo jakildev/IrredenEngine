@@ -24,6 +24,39 @@ namespace IRSystem {
 
 namespace detail {
 
+inline void applyFogGateToPool(
+    IRComponents::C_VoxelSetNew *voxelSet,
+    IRComponents::C_VoxelPool *pool,
+    bool visible,
+    bool ghostHeld
+) {
+    if (voxelSet == nullptr) {
+        return;
+    }
+    const auto apply = [&](IRComponents::C_VoxelPool &resolvedPool) {
+        voxelSet->visible_ = visible;
+        voxelSet->ghostHeld_ = ghostHeld;
+        // A set its LOD band also hides stays masked off; the LOD gate
+        // restores the mask when the band admits it again.
+        if (voxelSet->masksActive()) {
+            resolvedPool.resyncActiveMaskFromColors(
+                voxelSet->voxelStartIdx_,
+                static_cast<std::size_t>(voxelSet->numVoxels_)
+            );
+        } else {
+            resolvedPool.clearActiveMaskRange(
+                voxelSet->voxelStartIdx_,
+                static_cast<std::size_t>(voxelSet->numVoxels_)
+            );
+        }
+    };
+    if (pool != nullptr) {
+        apply(*pool);
+        return;
+    }
+    IRPrefab::VoxelPool::withPoolByEntity(voxelSet->canvasEntity_, apply);
+}
+
 struct FogRevealEvalGhost {
     static constexpr Concurrency kConcurrency = Concurrency::PARALLEL_FOR;
 
@@ -143,10 +176,16 @@ struct FogRevealEvalGhost {
         IRComponents::C_FogGhost &ghost
     ) {
         if (!IRPrefab::Fog::isOnFogCanvas(voxelSet, activeCanvas_)) {
+            if (!voxelSet.visible_ || voxelSet.ghostHeld_) {
+                pending_.push(PendingTransition{&voxelSet, nullptr, true, false});
+            }
             return;
         }
+        const bool fogGatesAgree =
+            voxelSet.visible_ == revealed.shown_ && voxelSet.ghostHeld_ == revealed.ghostHeld_;
         const bool wasShown = revealed.shown_;
         const bool evaluated = revealed.override_ != IRComponents::FogOverride::NONE ||
+                               !fogGatesAgree ||
                                (entity + frameCounter_) % settings_.staggerPeriod_ == 0u;
         if (evaluated) {
             bool shown = revealed.shown_;
@@ -209,25 +248,12 @@ struct FogRevealEvalGhost {
             restampedVoxelsLastFrame_ += count;
         }
         pending_.forEach([](const PendingTransition &transition) {
-            if (transition.voxelSet_ == nullptr || transition.pool_ == nullptr) {
-                return;
-            }
-            IRComponents::C_VoxelSetNew &voxelSet = *transition.voxelSet_;
-            voxelSet.visible_ = transition.visible_;
-            voxelSet.ghostHeld_ = transition.ghostHeld_;
-            // A set its LOD band also hides stays masked off; the LOD gate
-            // restores the mask when the band admits it again.
-            if (voxelSet.masksActive()) {
-                transition.pool_->resyncActiveMaskFromColors(
-                    voxelSet.voxelStartIdx_,
-                    static_cast<std::size_t>(voxelSet.numVoxels_)
-                );
-            } else {
-                transition.pool_->clearActiveMaskRange(
-                    voxelSet.voxelStartIdx_,
-                    static_cast<std::size_t>(voxelSet.numVoxels_)
-                );
-            }
+            detail::applyFogGateToPool(
+                transition.voxelSet_,
+                transition.pool_,
+                transition.visible_,
+                transition.ghostHeld_
+            );
         });
     }
 
@@ -353,9 +379,13 @@ template <> struct System<FOG_REVEAL_EVAL> {
         IRComponents::C_VoxelSetNew &voxelSet
     ) {
         if (!IRPrefab::Fog::isOnFogCanvas(voxelSet, activeCanvas_)) {
+            if (!voxelSet.visible_ || voxelSet.ghostHeld_) {
+                pending_.push(PendingTransition{&voxelSet, nullptr, true, false});
+            }
             return;
         }
-        if (revealed.override_ == IRComponents::FogOverride::NONE &&
+        const bool fogGatesAgree = voxelSet.visible_ == revealed.shown_ && !voxelSet.ghostHeld_;
+        if (revealed.override_ == IRComponents::FogOverride::NONE && fogGatesAgree &&
             (entity + frameCounter_) % settings_.staggerPeriod_ != 0u) {
             return;
         }
@@ -387,7 +417,12 @@ template <> struct System<FOG_REVEAL_EVAL> {
                 }
             }
         }
-        if (shown == revealed.shown_ || activePool_ == nullptr) {
+        if (shown == revealed.shown_ && fogGatesAgree) {
+            return;
+        }
+        // Commit the verdict only when endTick can apply the matching mask and
+        // visibility transition; otherwise the next frame must retry it.
+        if (activePool_ == nullptr) {
             return;
         }
         revealed.shown_ = shown;
@@ -400,23 +435,12 @@ template <> struct System<FOG_REVEAL_EVAL> {
             restampedVoxelsLastFrame_ += count;
         }
         pending_.forEach([](const PendingTransition &transition) {
-            if (transition.voxelSet_ == nullptr || transition.pool_ == nullptr) {
-                return;
-            }
-            IRComponents::C_VoxelSetNew &voxelSet = *transition.voxelSet_;
-            voxelSet.visible_ = transition.visible_;
-            voxelSet.ghostHeld_ = transition.ghostHeld_;
-            if (voxelSet.masksActive()) {
-                transition.pool_->resyncActiveMaskFromColors(
-                    voxelSet.voxelStartIdx_,
-                    static_cast<std::size_t>(voxelSet.numVoxels_)
-                );
-            } else {
-                transition.pool_->clearActiveMaskRange(
-                    voxelSet.voxelStartIdx_,
-                    static_cast<std::size_t>(voxelSet.numVoxels_)
-                );
-            }
+            detail::applyFogGateToPool(
+                transition.voxelSet_,
+                transition.pool_,
+                transition.visible_,
+                transition.ghostHeld_
+            );
         });
     }
 

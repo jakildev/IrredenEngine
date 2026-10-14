@@ -6,9 +6,13 @@
 #include <irreden/script/ir_script_utils.hpp>
 
 #include "recipes_panel.hpp"
+#include "lua_session_bindings.hpp"
+#include "module_session_view.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -28,36 +32,20 @@
 //   IREditor.registerPanel(name, buildFn)
 //     buildFn(x, y, w, h) builds IRGui widgets inside the panel the editor
 //     docks at (x, y) with size (w, h).
+//   IREditor.registerSession(name, fn)
+//     fn(session) compiles the module's gestures and expectations through the
+//     same Session::Builder used by built-in authoring sessions.
 //
 // A recipe is a pure function of its arguments, so the editor may evaluate it
 // any number of times (the module_loaded session predicts the cells it will
 // write that way).
 //
 // The host keeps no sol references: the recipe and panel functions live in the
-// hidden `IREditor._recipeFns` / `_panelFns` tables and are fetched per call.
+// hidden `IREditor._recipeFns` / `_panelFns` / `_sessionFns` tables and are
+// fetched per call.
 // The World closes the lua_State before process-exit static destruction, so a
 // sol reference held by a static host would unref against a dead state.
 namespace IRVoxelEditor {
-
-enum class RecipeParamType { INT, FLOAT };
-
-struct RecipeParam {
-    std::string name_;
-    RecipeParamType type_ = RecipeParamType::INT;
-    float default_ = 0.0f;
-    float min_ = 0.0f;
-    float max_ = 1.0f;
-};
-
-struct RecipeCell {
-    IRMath::ivec3 local_ = IRMath::ivec3(0);
-    std::optional<IRMath::Color> color_;
-};
-
-struct ModuleRecipe {
-    std::string name_;
-    std::vector<RecipeParam> params_;
-};
 
 class ModuleHost {
   public:
@@ -69,6 +57,8 @@ class ModuleHost {
         sol::table editor = lua.create_named_table("IREditor");
         editor["_recipeFns"] = lua.create_table();
         editor["_panelFns"] = lua.create_table();
+        editor["_sessionFns"] = lua.create_table();
+        LuaSession::bind(script, editor);
 
         sol::table paramType = lua.create_table();
 #define IR_BIND_RECIPE_PARAM_TYPE(name)                                                            \
@@ -84,6 +74,9 @@ class ModuleHost {
             };
         editor["registerPanel"] = [this](const std::string &name, sol::protected_function build) {
             registerPanel(name, std::move(build));
+        };
+        editor["registerSession"] = [this](const std::string &name, sol::protected_function fn) {
+            registerSession(name, std::move(fn));
         };
     }
 
@@ -217,12 +210,75 @@ class ModuleHost {
         return m_panelNames;
     }
 
+    const std::vector<std::string> &sessionNames() const {
+        return m_sessionNames;
+    }
+
+    Session::Recipe
+    buildSession(const std::string &name, IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) const {
+        const auto found = std::find(m_sessionNames.begin(), m_sessionNames.end(), name);
+        const ModuleSessionView view = sessionView();
+        Session::Builder builder(name, sceneSize, sceneOrigin, &view);
+        if (found == m_sessionNames.end()) {
+            builder.recordError("module session '" + name + "' is not registered");
+            return builder.finish();
+        }
+        const std::size_t index = static_cast<std::size_t>(found - m_sessionNames.begin());
+        const std::shared_ptr<LuaSession::Lifetime> lifetime =
+            std::make_shared<LuaSession::Lifetime>(LuaSession::Lifetime{&builder, m_script});
+        struct Invalidate {
+            std::shared_ptr<LuaSession::Lifetime> lifetime_;
+            ~Invalidate() {
+                lifetime_->builder_ = nullptr;
+            }
+        } invalidate{lifetime};
+        const sol::protected_function fn =
+            m_script->lua()["IREditor"]["_sessionFns"][static_cast<lua_Integer>(index + 1)];
+        const sol::protected_function_result result = fn(LuaSession::Handle{lifetime});
+        if (!result.valid()) {
+            const sol::error error = result;
+            builder.recordError("session '" + name + "' raised: " + error.what());
+        }
+        Session::Recipe recipe = builder.finish();
+        bool hasWork = false;
+        for (const Session::Segment &segment : recipe.segments_)
+            hasWork = hasWork || !segment.events_.empty() || !segment.assertions_.empty();
+        if (!hasWork && recipe.errors_.empty())
+            recipe.errors_.push_back("session '" + name + "' records no gesture or expectation");
+        return recipe;
+    }
+
     std::size_t componentCount() const {
         return m_script->luaTypedComponents().size();
     }
 
     IRScript::LuaScript &script() const {
         return *m_script;
+    }
+
+    ModuleSessionView sessionView() const {
+        ModuleSessionView view;
+        view.recipes_ = m_recipes;
+        for (const IRScript::LuaTypedComponentInfo &info : m_script->luaTypedComponents())
+            view.components_.push_back(makeComponentRecord(*m_script, info.name_));
+        const std::size_t moduleCount = view.components_.size();
+        for (std::string name : IRPrefab::Prefab::listComponentFactories()) {
+            const auto duplicate = std::find_if(
+                view.components_.begin(),
+                view.components_.begin() + static_cast<std::ptrdiff_t>(moduleCount),
+                [&name](const ComponentRecord &component) { return component.name_ == name; }
+            );
+            if (duplicate == view.components_.begin() + static_cast<std::ptrdiff_t>(moduleCount))
+                view.components_.push_back(makeComponentRecord(*m_script, std::move(name)));
+        }
+        view.evaluate_ = [this](
+                             std::size_t recipe,
+                             const std::vector<float> &values,
+                             IRMath::ivec3 size,
+                             std::vector<RecipeCell> &cells,
+                             std::string &error
+                         ) { return evaluate(recipe, values, size, cells, error); };
+        return view;
     }
 
   private:
@@ -259,6 +315,19 @@ class ModuleHost {
         m_panelNames.push_back(name);
         sol::table fns = m_script->lua()["IREditor"]["_panelFns"];
         fns[static_cast<lua_Integer>(m_panelNames.size())] = std::move(build);
+    }
+
+    void registerSession(const std::string &name, sol::protected_function fn) {
+        if (!LuaSession::validName(name)) {
+            throw sol::error{"IREditor.registerSession: '" + name + "' must match [a-z][a-z0-9_]*"};
+        }
+        if (std::find(m_sessionNames.begin(), m_sessionNames.end(), name) != m_sessionNames.end())
+            throw sol::error{"IREditor.registerSession: '" + name + "' is already registered"};
+        if (!fn.valid())
+            throw sol::error{"IREditor.registerSession('" + name + "'): fn must be a function"};
+        m_sessionNames.push_back(name);
+        sol::table fns = m_script->lua()["IREditor"]["_sessionFns"];
+        fns[static_cast<lua_Integer>(m_sessionNames.size())] = std::move(fn);
     }
 
     static RecipeParam parseParam(const std::string &recipeName, const sol::object &entry) {
@@ -301,6 +370,7 @@ class ModuleHost {
     std::string m_dir;
     std::vector<ModuleRecipe> m_recipes;
     std::vector<std::string> m_panelNames;
+    std::vector<std::string> m_sessionNames;
 };
 
 } // namespace IRVoxelEditor

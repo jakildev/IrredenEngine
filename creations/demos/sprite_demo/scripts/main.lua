@@ -14,12 +14,17 @@ local sheet = ir.sprite.loadSheet("test_sprites", ASSET_DIR)
 local anchorSheet = ir.sprite.loadSheet("test_anchor", ASSET_DIR)
 
 -- The voxel reference at the same world position makes the default
--- bottom-center anchor visible in both screenshot layouts.
+-- bottom-center anchor visible in both screenshot layouts. Sprites draw over
+-- voxels, so at both screenshot zooms no other sprite's quad may reach the
+-- anchor sprite's box or the voxel's footprint under it: a quad over the
+-- voxel hides part of the reference. A sprite's size is in game pixels and
+-- does not follow camera zoom, while the offsets between sprites grow with
+-- it, so zoom 1 is the tight case.
 ir.sprite.create(anchorSheet, 0.0, 0.0, 2.0)
 
--- Three sprites at different iso-Z depths so back-to-front sort is visible.
+-- Three animated sprites, one per loop mode.
 -- Sprite A: LOOP — spins through all 4 frames indefinitely.
-local spriteA = ir.sprite.create(sheet, -4.0, 0.0, 2.0)
+local spriteA = ir.sprite.create(sheet, -8.0, 0.0, 2.0)
 ir.sprite.playAnimation(spriteA, sheet, "spin", ir.sprite.LOOP, 1.0)
 
 -- Sprite B: ONCE — holds on frame 0 (red), terminates after one play.
@@ -28,10 +33,24 @@ ir.sprite.playAnimation(spriteB, sheet, "hold_red", ir.sprite.ONCE)
 
 -- Sprite C: PING_PONG — uses 'spin' in PING_PONG mode so the back-and-forth
 -- reversal across all 4 frames is apparent.
-local spriteC = ir.sprite.create(sheet, 4.0, 0.0, 2.0)
+local spriteC = ir.sprite.create(sheet, 8.0, 0.0, 2.0)
 ir.sprite.playAnimation(spriteC, sheet, "spin", ir.sprite.PING_PONG, 0.5)
 
 -- Mid-playback sub-animation switch is exercised by --auto-screenshot running
 -- enough frames to capture animated state. A per-frame Lua UPDATE system to
 -- trigger it explicitly will be wired in when T-101 (Lua system registration)
 -- ships.
+
+-- Blend pair, set apart from sprites A, B and C so no animated frame sits
+-- under it. Sprite D holds on frame 0 (red, fully opaque). Sprite E
+-- draws from test_half_alpha.png, whose every texel is (255, 255, 255, 128),
+-- and is offset so it covers part of D and part of the bare background at
+-- both screenshot zooms. A blended SPRITE_TO_SCREEN draw shows D through E;
+-- a replacing draw shows flat white. A sprite's size is in game pixels and
+-- does not follow camera zoom, while the offset between the two grows with
+-- it, so they sit one world unit apart to keep overlapping at zoom 2.
+local spriteD = ir.sprite.create(sheet, 0.0, 16.0, 2.0)
+ir.sprite.playAnimation(spriteD, sheet, "hold_red", ir.sprite.ONCE)
+
+local halfAlphaSheet = ir.sprite.loadSheet("test_half_alpha", ASSET_DIR)
+ir.sprite.create(halfAlphaSheet, 0.0, 15.0, 2.0)

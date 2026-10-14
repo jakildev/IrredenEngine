@@ -2,9 +2,6 @@
 
 ## Working agreements
 
-- Creations include the public entry point
-  `engine/render/include/irreden/ir_render.hpp`, never internal render headers.
-
 ### What belongs in engine/render/ vs engine/prefabs/irreden/render/
 
 - `engine/render/` owns device and pipeline primitives every creation needs.
@@ -13,8 +10,7 @@
 
 ### Name identifiers after the rendering effect, not the caller
 
-- Names in this module (C++ types, flags, shader identifiers, binding names,
-  comments) describe rendering effects, never the first feature or caller.
+- Names describe rendering effects, never the first feature or caller.
 - System registration, ordering, and tick contracts live in
   [`engine/system/CLAUDE.md`](../system/CLAUDE.md).
 - Current feature-API exceptions are tracked in
@@ -25,13 +21,9 @@
 
 ### Verifying render changes
 
-Canonical commands: the [validation index](../../docs/agents/VALIDATION.md)
-(per-frame jitter: its probe plus the camera contracts below). Render changes
-commonly need `header-checks`, `render-debug-loop`, `render-verify`,
-`backend-parity`, `cull-verify`, and the relevant `scripts/*-verify.py`
-metric; Codex image evidence: [`CODEX.md` § Rendering conversations](../../docs/agents/CODEX.md#rendering-conversations).
-Changes with no visual effect (docs, tests, mechanical, build-only) need no
-captures.
+Commands and validators: [validation index](../../docs/agents/VALIDATION.md).
+Image evidence: [`CODEX.md` § Rendering conversations](../../docs/agents/CODEX.md#rendering-conversations).
+Changes without a visual effect need no captures.
 
 ## Pipeline contracts
 
@@ -62,6 +54,7 @@ captures.
   `.glsl` identifiers (NVIDIA GL fails, Metal doesn't); rename the `.metal` twin.
 - Derive large SSBO word indices at runtime; constant ones cost NVIDIA minutes per cold link.
 - NVIDIA GL defers a self-fed indirect dispatch; what releases it: `detail::forEachOverflowSortStep`.
+- NVIDIA GL stalls the CPU on an indirect dispatch whose argument buffer the bound program can write; keep GPU-authored args in their own buffer (`sortFaceRecords`).
 
 ### Metal compute kernel threadgroup registry
 
@@ -96,11 +89,13 @@ captures.
   shift stays out of the hover path. Read the
   [parity-shift design](../../docs/design/trixel-parity-shift-442-investigation.md)
   before changing it; the executor is `IRShapeDebug --gui-test`'s `hover_parity_*` shots.
-- Gather interpolates [centered texel units](../../docs/design/trixel-gather-sampling.md);
-  normalized UV rescaling can select the wrong half at integer boundaries.
-- CPU frame-data structs and shader blocks must agree on field order,
-  `std140` padding, and binding index. Every hard-coded binding has a matching
-  `kBufferIndex_*` constant.
+- **The engine GUI canvas displays as `LOCAL_TRIANGLES`** (render-manager-stamped;
+  `RECTANGULAR` at full resolution), hover off. `IRPrefab::GuiCanvas` owns which
+  pass composites it: [GUI trixel display](../../docs/design/gui-trixel-display.md).
+- The gather derives its canvas position from the fragment pixel, never an
+  interpolated varying; producers place through `placeGatherQuad` ([contract](../../docs/design/trixel-gather-sampling.md)).
+- CPU frame-data structs and shader blocks must agree on field order, `std140`
+  padding, and binding index; every hard-coded binding has a `kBufferIndex_*` twin.
 - Metal buffer indices 0–30 are occupied. A pass needing another buffer must
   bind an existing slot transiently and restore the prior binding itself.
 
@@ -117,11 +112,10 @@ captures.
   latest bind of either kind wins and stays resident across dispatches, so
   account for both tables. A resource type in a sticky table untracks itself
   on destruction; destroyed attachments fall back to the default render target.
-- Metal R32I image atomics land in scratch storage. For a canvas's own
-  texture, call `resolveImageAtomicScratch` after atomic passes and before its
-  first reader, having cleared it through `clearTexImage`. A later dispatch
-  consuming a foreign canvas's atomic depth resolves it into a
-  main-canvas-layout texture first.
+- Metal R32I image atomics land in scratch storage. For a canvas's own texture,
+  call `resolveImageAtomicScratch` after atomic passes and before its first reader,
+  having cleared it through `clearTexImage`. A later dispatch consuming a foreign
+  canvas's atomic depth resolves it into a main-canvas-layout texture first.
 - Metal `Texture2D::clear()` / `subImage2D()` writes are ordered through the
   frame command buffer; a same-frame CPU `getBytes` read still needs an
   explicit commit and wait.
@@ -185,20 +179,17 @@ captures.
   sweep, and the sun-map bake and receiver share `kSunShadowMaxDistance`. Read
   the [coverage design](../../docs/design/sun-shadow-bake-coverage.md) before
   changing the bake kernel or splat controls.
+- Cardinal voxel provenance, reconstruction and cascade units: [surface-sampling contract](../../docs/design/surface-shadow-sampling.md#settled-cardinal-voxel-receivers).
 
 ## Performance and lifecycle pitfalls
 
 ### Gotchas
 
-- **`WindowMode::OFFSCREEN` replaces the swapchain, not the pipeline.** Each
-  backend keeps an engine-owned screen target (Metal: a BGRA8 texture handed
-  to the runtime via `setMetalOffscreenColorTexture`, read through
-  `metalDefaultColorTexture()`; GL: an RGBA8 + depth-stencil FBO bound wherever
-  `0` was). `bindDefaultFramebuffer`, `clearDefaultFramebuffer`,
-  `readDefaultFramebuffer` and `present` are the only seams; nothing above the
-  device knows. Reach the frame's colour target only through
-  `metalDefaultColorTexture()`: `metalDrawable()` is nullptr all run long in
-  this mode. Mode semantics: `engine/window/CLAUDE.md` "Window modes".
+- **`WindowMode::OFFSCREEN` replaces the swapchain, not the pipeline.** The
+  device owns its screen target; higher layers use the default-framebuffer APIs.
+  Metal callers read `metalDefaultColorTexture()`, never `metalDrawable()`
+  (null throughout this mode). Mode semantics: `engine/window/CLAUDE.md`
+  "Window modes".
 - Compute grids cap X at `kMaxDispatchGroupsX` and spill into Y; consumers
   flatten both group dimensions consistently.
 - Hot compute-kernel mode branches use compile-time specializations of a

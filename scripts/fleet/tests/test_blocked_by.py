@@ -450,6 +450,69 @@ class BlockerRefsCountsProseForTheGate(unittest.TestCase):
         )
 
 
+class OwnNumberIsNeverABlocker(unittest.TestCase):
+    """The blocking gate counts every ref, with one exception: an issue is
+    never its own dependency. A decorated line that mentions the issue's own
+    number in its prose must not make the issue block on itself."""
+
+    ENGINE = "jakildev/IrredenEngine"
+    DECORATED = (
+        "**Blocked by:** #3686 (PR #4204 edits the same files: "
+        "save_serializers_render.hpp / component_entity_canvas.hpp for #4195, "
+        "fog_of_war.hpp / component_voxel_set.hpp for #4197; land after it)\n"
+    )
+
+    def test_decorated_line_drops_only_the_own_ref(self):
+        self.assertEqual(
+            fbb.blocker_refs(self.DECORATED, self.ENGINE, 4197),
+            [(self.ENGINE, "3686"), (self.ENGINE, "4204"), (self.ENGINE, "4195")],
+        )
+
+    def test_without_an_own_number_every_ref_still_counts(self):
+        self.assertIn((self.ENGINE, "4197"),
+                      fbb.blocker_refs(self.DECORATED, self.ENGINE))
+        self.assertIn((self.ENGINE, "4197"),
+                      fbb.blocker_refs(self.DECORATED, self.ENGINE, None))
+
+    def test_own_number_may_be_an_int_or_a_string(self):
+        body = "**Blocked by:** #8, #9\n"
+        self.assertEqual(fbb.blocker_refs(body, self.ENGINE, 9),
+                         [(self.ENGINE, "8")])
+        self.assertEqual(fbb.blocker_refs(body, self.ENGINE, "9"),
+                         [(self.ENGINE, "8")])
+
+    def test_a_value_naming_only_the_own_number_declares_nothing(self):
+        self.assertEqual(
+            fbb.blocker_refs("**Blocked by:** #4197 (see the note)\n", self.ENGINE, 4197),
+            [],
+        )
+
+    def test_same_number_in_another_repo_is_a_real_blocker(self):
+        self.assertEqual(
+            fbb.blocker_refs("**Blocked by:** irreden#4197\n", self.ENGINE, 4197),
+            [("jakildev/irreden", "4197")],
+        )
+        self.assertEqual(
+            fbb.blocker_refs("**Blocked by:** jakildev/IrredenEngine#4197\n",
+                             "jakildev/irreden", 4197),
+            [(self.ENGINE, "4197")],
+        )
+
+    def test_the_qualified_own_ref_is_dropped(self):
+        self.assertEqual(
+            fbb.blocker_refs("**Blocked by:** irredenengine#4197, #3686\n",
+                             self.ENGINE, 4197),
+            [(self.ENGINE, "3686")],
+        )
+
+    def test_a_pull_request_url_is_never_dropped(self):
+        url = "https://github.com/jakildev/IrredenEngine/pull/4197"
+        self.assertEqual(
+            fbb.blocker_ref_records(f"**Blocked by:** {url}\n", self.ENGINE, 4197),
+            [(self.ENGINE, "4197", True)],
+        )
+
+
 class HasBlockedByField(unittest.TestCase):
     def test_present_forms(self):
         for body in ("**Blocked by:** #5\n", "**Blocked by:** (none)\n",

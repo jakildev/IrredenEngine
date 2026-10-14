@@ -30,6 +30,10 @@ local config_2kfullscreen = {
     start_recording_on_first_key_press = false,
     profiling_enabled = true,
     gui_scale = 1, -- 1 = full res, higher = bigger GUI trixels
+    -- false (default): the GUI composites at screen resolution with anti-aliased
+    -- trixel edges. true: it composites into the game-resolution framebuffer and
+    -- upscales with it (pixel art; wants gui_scale >= 2 to read as trixels).
+    gui_pixelated = false,
     hovered_trixel_visible = true,
     -- END
 

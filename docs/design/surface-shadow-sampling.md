@@ -1,4 +1,46 @@
-# Surface-aware detached shadow sampling
+# Surface-aware voxel and detached shadow sampling
+
+## Settled-cardinal voxel receivers
+
+The single-canvas cardinal voxel route reconstructs the center of the emitted
+finite face sample with `cardinalVoxelSurfaceCenter`. It removes the stored
+half's `faceOffset_2x3` before inverting iso position and decoded depth. Integer
+micro-origins have even iso parity; the Y pair's odd starting parity identifies
+its half. Both pixels of a face sample therefore recover the same surface point.
+
+In subdivision modes, the stored depth identifies the face plane, including its
+polarity. The receiver adds half a microcell along each in-plane axis, divides
+by effective density, subtracts `kVoxelRasterCellAnchor` in the view frame, and
+rotates back to world space. NONE mode instead recovers the unit voxel center
+and adds half its signed face normal. These are face-sample centers, not
+continuous positions for every presentation fragment.
+
+Eligibility requires positive producer provenance. High-word bit 18 of the
+entity-ID carrier, `kEntityIdCardinalVoxelMaskInHighWord`, marks the winning
+non-detached voxel color/ID publication at zero residual yaw. Shared entity-ID
+decoding strips it alongside the other carrier fields. Shape, text and other
+producer writes do not acquire the marker; a missing retained shape owner is
+not evidence that a sample came from a voxel.
+
+`c_compute_sun_shadow_body` selects this receiver only at zero residual yaw,
+with the marker present and `sunBasisU.w != 0`. The latter carries the frame's
+finite-caster-coverage gate; legacy and particle caster frames retain their
+existing receiver path. The selected route calls `worldSurfaceSunShadowFactor`
+with the recovered surface and its signed world normal. Cascade selection uses
+`pos3DtoDistance(surface)` in world voxel units, matching `perAxisSunShadowFactor`,
+rather than the cardinal sample's subdivided stored depth. Per-axis, detached,
+shape and unmarked raster receivers retain their own contracts; this does not
+remove normal offsets or filtered sampling globally.
+
+The connected `test_render_cardinal_voxel_receiver.py` adapter compares production
+publication and reconstruction with independently averaged face vertices for
+cardinal rotations, both halves and polarities, NONE/subdivision modes and camera
+offsets. Carrier tests cover identity and existing flag preservation. The
+[cardinal receiver evidence](../pr-screenshots/codex/4231-cardinal-surface-receiver/README.md)
+records the matched 720-frame sweep and rerun box, roof and staircase controls.
+The historical captures below validate the earlier detached work only.
+
+## Detached receivers and finite fallback
 
 Normal revoxelized canvases carry their actual raster phase through presentation,
 world depth, lighting and resampled shadow casting. Source casting already has
@@ -33,14 +75,15 @@ and disagreement can reject real shadow hits near a face boundary. No new bias,
 blur, map allocation or texture lookup is introduced. Remaining false and missed
 shadows are retained in the [eight-angle evidence](../pr-screenshots/codex/sun-receiver-footprint/README.md).
 
-Main/GRID and raw-debug receivers retain their existing outward offset and PCF
-comparison. Their reconstructed raster positions are not yet exact surface
-centroids. Applying the new comparison to those positions made an analytic roof
-self-shadow and reduced the authored-box yaw-zero oracle from .739 to .684;
-that experiment was rejected. This change does not introduce a blur or enlarge
-caster geometry. It also does not make shadow-map quantization disappear.
+Unmarked raster receivers retain their existing outward offset and PCF
+comparison. Their reconstructed raster positions are not exact surface
+centroids. Applying the finite comparison directly to those positions made an
+analytic roof self-shadow and reduced the authored-box yaw-zero oracle from .739 to .684;
+that experiment was rejected. The cardinal route above first recovers the
+actual voxel face sample and requires its producer marker. Neither route
+introduces a blur or enlarges caster geometry; shadow-map quantization remains.
 
-## Native Metal evidence
+## Historical detached Metal evidence
 
 Full frames are retained under `docs/pr-screenshots/codex/surface-shadow-sampling/`.
 Capture recipes are the unchanged commands in
@@ -64,9 +107,10 @@ shortcut that suppressed mixed legacy blockers.
 Finite voxel casters of all three bases (world GRID, camera-aligned resampled,
 and rigid source) also retain their actual projected face quads in the bounded
 query index. A complete tile uses ray/quad intersections at the receiver point;
-its voxel map layer is ignored after an exact miss. Analytic/legacy casters stay
-in the independent primary layer. Incomplete tiles use the voxel fallback layer,
-which preserves world/camera face markers for the plane-agreement calculation
+its indexed map layer is ignored after an exact miss. Eligible analytical
+sphere, cylinder, cone and torus casters also publish typed finite records;
+other casters stay in the independent primary layer. Incomplete tiles use the
+indexed fallback layer, which preserves world/camera face markers for the plane-agreement calculation
 above. Raster-origin receivers retain the minimum of both depth layers.
 
 Only faces overlapping at least one cascade consume records. Capacity remains
@@ -79,7 +123,8 @@ Native sparse-scene acceptance and outstanding limits are recorded in the
 - [Finite defaults](finite-shadow-defaults.md) cover shape-only and non-main
   producer lifecycles; particle pipelines retain legacy casting.
 - Preserve both the four GRID cubes and detached/attached entities in sweeps.
-- Main/per-axis exact surface reconstruction and finite edge coverage crossing a
-  display triangle remain separate work; do not fix them with a larger blur.
+- Cardinal and per-axis voxel receivers use face-sample centers. Continuous
+  fragment receiving and finite edge coverage crossing a display triangle remain
+  separate work; do not fix them with a larger blur.
 - OpenGL execution still requires a suitable host; shader changes are mirrored.
 - Profile GPU stages and CPU update costs with repeated runs before optimizing.

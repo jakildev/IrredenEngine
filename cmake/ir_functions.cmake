@@ -419,16 +419,20 @@ endfunction()
 # target gives full control for a time-boxed packaging deliverable.
 #
 # Platform runtime-dep bundling (next to the exe in the staging dir):
-#   Windows: $<TARGET_RUNTIME_DLLS> + the MinGW runtime trio (libgcc_s_seh-1,
-#            libstdc++-6, libwinpthread-1), which TARGET_RUNTIME_DLLS omits.
+#   Windows: cmake/windows_bundle_dlls.cmake copies the exe's complete
+#            transitive non-system DLL closure (CMake-built DLLs, the MinGW
+#            runtime, FFmpeg and its codec libraries — ~100 DLLs) next to it,
+#            searching the exe dir, IRREDEN_FFMPEG_ROOT/bin, then the
+#            compiler's bin dir. An unresolved import or a DLL name claimed by
+#            two files fails the target before the zip is written.
 #   Linux:   deps default to static (top-level CMakeLists.txt), so usually
 #            nothing to bundle; $ORIGIN rpath covers any shared .so left.
-#   macOS:   cmake/macos_bundle_dylibs.cmake copies the exe's non-system
-#            dylibs next to it and rewrites the load commands to
-#            @executable_path. NOTE: this is a SHALLOW (direct-dependency)
-#            bundle — transitive Homebrew deps (e.g. ffmpeg's codec libs) are
-#            NOT walked, so a bundle is not clean-box self-contained;
-#            verify a macOS bundle via cross-host smoke / the human.
+#   macOS:   cmake/macos_bundle_dylibs.cmake resolves the complete non-system
+#            Mach-O dependency closure, copies it next to the executable,
+#            rewrites every local load edge and install ID to @loader_path,
+#            removes package-manager rpaths, then ad-hoc signs every Mach-O.
+#            An unresolved dependency or conflicting leaf name fails before
+#            the archive is written.
 function(irreden_package_target target)
     set(_exedir "$<TARGET_FILE_DIR:${target}>")
     set(_pkg_root "${CMAKE_BINARY_DIR}/package")
@@ -444,8 +448,11 @@ function(irreden_package_target target)
     set(_zip "${CMAKE_BINARY_DIR}/${target}-${_os}-${_arch}.zip")
 
     # Clean staging dir + the exe-relative asset layout, already built by
-    # <target>Assets (this target's DEPENDS list names it).
+    # <target>Assets (this target's DEPENDS list names it). The old archive
+    # goes first so a failed run cannot leave a previous build's zip looking
+    # like this build's output.
     set(_pkg_cmds
+        COMMAND ${CMAKE_COMMAND} -E rm -f ${_zip}
         COMMAND ${CMAKE_COMMAND} -E rm -rf ${_stage}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${_stage}
         COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:${target}> ${_stage}/
@@ -455,21 +462,31 @@ function(irreden_package_target target)
     )
 
     if(WIN32)
+        if(NOT CMAKE_OBJDUMP)
+            message(FATAL_ERROR
+                "irreden_package_target(${target}): CMAKE_OBJDUMP is not set; "
+                "the Windows DLL walk needs the toolchain's objdump")
+        endif()
+        get_filename_component(_compiler_bin "${CMAKE_CXX_COMPILER}" DIRECTORY)
+        # A custom IRREDEN_FFMPEG_ROOT build must win over a same-named DLL in
+        # the compiler's bin dir, so its bin/ is searched first.
+        set(_ffmpeg_bin_arg "")
+        if(IRREDEN_FFMPEG_ROOT)
+            set(_ffmpeg_bin_arg "-DFFMPEG_BIN=${IRREDEN_FFMPEG_ROOT}/bin")
+        endif()
         list(APPEND _pkg_cmds
-            COMMAND ${CMAKE_COMMAND} -E copy -t ${_stage} $<TARGET_RUNTIME_DLLS:${target}>)
-        # MinGW runtime trio is not in TARGET_RUNTIME_DLLS; pull it from the
-        # compiler's bin dir (creations/CLAUDE.md gotcha).
-        get_filename_component(_mingw_bin "${CMAKE_CXX_COMPILER}" DIRECTORY)
-        list(APPEND _pkg_cmds
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${_mingw_bin}/libgcc_s_seh-1.dll
-                ${_mingw_bin}/libstdc++-6.dll
-                ${_mingw_bin}/libwinpthread-1.dll
-                ${_stage})
+            COMMAND ${CMAKE_COMMAND}
+                -DEXE=${_staged_exe} -DDEST=${_stage}
+                -DOBJDUMP=${CMAKE_OBJDUMP}
+                -DRUNTIME_DIR=${_exedir}
+                ${_ffmpeg_bin_arg}
+                -DCOMPILER_BIN=${_compiler_bin}
+                -P ${PROJECT_SOURCE_DIR}/cmake/windows_bundle_dlls.cmake)
     elseif(APPLE)
         list(APPEND _pkg_cmds
             COMMAND ${CMAKE_COMMAND}
                 -DEXE=${_staged_exe} -DDEST=${_stage}
+                -DINSTALL_NAME_TOOL=${CMAKE_INSTALL_NAME_TOOL}
                 -P ${PROJECT_SOURCE_DIR}/cmake/macos_bundle_dylibs.cmake)
     endif()
 

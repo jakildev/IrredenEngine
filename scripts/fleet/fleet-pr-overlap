@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Grade this branch against every open PR before publication.
 
-Prints one `#<PR> <path> conflicts|clean|sequenced|upstream` row per shared
-path and a closing `VERDICT: clean|overlap|sequenced|block` line.
+Prints one `#<PR> <path> conflicts|base-conflict|clean|sequenced|upstream` row
+per shared path and a closing `VERDICT: clean|overlap|sequenced|block` line.
+A `base-conflict (conflicts with <base> <sha9> alone)` row is a conflict the
+competitor has with the base commit this branch carries, which this branch
+neither adds to nor touches; it counts toward the verdict as `clean` does.
 
 Exit: 0 clean, 1 overlap or sequenced (informational), 3 block (do not publish),
 2 the tool could not grade (usage, environment, or a population that moved).
@@ -18,6 +21,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
@@ -50,6 +54,12 @@ MERGE_TREE_MIN_VERSION = "2.38"
 MERGE_TREE_USAGE_RE = re.compile(r"^usage: git merge-tree <base-tree> <branch1> <branch2>")
 GIT_VERSION_RE = re.compile(r"^git version (\d+)\.(\d+)(?:\.(\d+))?\S*\s*$")
 EXIT_GIT_TOO_OLD, EXIT_GIT_UNREADABLE = 1, 2
+# Under this style git writes a conflict block from the two merged sides and
+# three marker lines of its own (`<`, `=`, `>`); it writes no `|` line.
+STYLE_PIN = ("-c", "merge.conflictStyle=merge")
+MARKER_LINE_RE = re.compile(rb"(?m)^(?:<{7}|>{7})")
+MARKER_LABEL_RE = re.compile(rb"(?m)^(<{7,}|>{7,})[^\r\n]*")
+CONFLICT_BLOCK_RE = re.compile(rb"(?ms)^<{7}[^\n]*\n.*?^>{7}[^\n]*$")
 
 EXIT_CLEAN, EXIT_OVERLAP, EXIT_ERROR, EXIT_BLOCK = 0, 1, 2, 3
 
@@ -246,10 +256,10 @@ def same_repo_closing_issues(row, slug):
     }
 
 
-def sequenced_after_self(row, self_issues):
+def sequenced_after_self(row, self_issues, slug):
     if not self_issues or "fleet:awaiting-infra" not in row["labels"]:
         return set()
-    return self_issues & set(parked_until_issue_numbers(row["body"]))
+    return self_issues & set(parked_until_issue_numbers(row["body"], slug))
 
 
 def resolve_self(snapshot, args):
@@ -406,6 +416,128 @@ def conflict_paths(number, head_oid, other_oid, shared):
     )
 
 
+def git_bytes(*args):
+    """stdout of a git call as bytes, with its exit code; None when it cannot run."""
+    try:
+        result = subprocess.run(
+            ["git", *args], capture_output=True, timeout=NET_TIMEOUT, check=False
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return None
+    return result.returncode, result.stdout
+
+
+def read_blob(spec):
+    result = git_bytes("cat-file", "blob", spec)
+    return result[1] if result is not None and result[0] == 0 else None
+
+
+def attribution_merge(side_oid, other_oid):
+    """(result tree, {path: {stage: blob OID}}) of a conflicted trial merge, else None.
+
+    The record is git's own account of which blob it merged as each side;
+    under a rename that is not the blob at `<commit>:<path>`.
+    """
+    result = git_bytes(*STYLE_PIN, "merge-tree", "--write-tree", side_oid, other_oid)
+    if result is None or result[0] != 1:
+        return None
+    lines = result[1].decode("utf-8", errors="replace").splitlines()
+    if not lines or not OID_RE.match(lines[0]):
+        return None
+    record = {}
+    for line in lines[1:]:
+        if not line:
+            break
+        meta, tab, path = line.partition("\t")
+        fields = meta.split(" ")
+        if not tab or len(fields) != 3:
+            return None
+        record.setdefault(path, {})[fields[2]] = fields[1]
+    return lines[0], record
+
+
+def strip_marker_labels(blob):
+    return MARKER_LABEL_RE.sub(rb"\1", blob)
+
+
+def conflict_blocks(merged):
+    return [strip_marker_labels(match.group(0)) for match in CONFLICT_BLOCK_RE.finditer(merged)]
+
+
+def replay_head_change(merged_reference, reference_blob, head_blob):
+    """The reference-side merged file with the head's own change applied, or None.
+
+    `git merge-file` exits with the number of conflicts it left, so only 0 is
+    a clean replay.
+    """
+    with tempfile.TemporaryDirectory() as tmp:
+        names = []
+        for name, data in (
+            ("merged", merged_reference), ("reference", reference_blob), ("head", head_blob)
+        ):
+            names.append(os.path.join(tmp, name))
+            with open(names[-1], "wb") as handle:
+                handle.write(data)
+        result = git_bytes(*STYLE_PIN, "merge-file", "-p", *names)
+    return result[1] if result is not None and result[0] == 0 else None
+
+
+def recorded_sides(record, path):
+    """The blobs git merged as stage 2 (the side) and stage 3 (the competitor), or None."""
+    stages = record.get(path, {})
+    if "2" not in stages or "3" not in stages:
+        return None
+    blobs = read_blob(stages["2"]), read_blob(stages["3"])
+    return None if None in blobs else blobs
+
+
+def is_base_conflict(path, head_merge, reference_merge):
+    """True only on proof that every conflict on `path` is the reference commit's.
+
+    Every failure to read or run leaves the answer False: this lowers a row,
+    so it never guesses.
+    """
+    (head_tree, head_record), (reference_tree, reference_record) = head_merge, reference_merge
+    head_sides = recorded_sides(head_record, path)
+    reference_sides = recorded_sides(reference_record, path)
+    if head_sides is None or reference_sides is None:
+        return False
+    # With no marker line in any merged side, every such line in a merged
+    # file is one git wrote: the block parse is exact and label stripping
+    # drops no file content.
+    if any(MARKER_LINE_RE.search(blob) for blob in head_sides + reference_sides):
+        return False
+    merged_head = read_blob(f"{head_tree}:{path}")
+    merged_reference = read_blob(f"{reference_tree}:{path}")
+    if merged_head is None or merged_reference is None:
+        return False
+    blocks = conflict_blocks(merged_head)
+    if not blocks or blocks != conflict_blocks(merged_reference):
+        return False
+    replayed = replay_head_change(merged_reference, reference_sides[0], head_sides[0])
+    return replayed is not None and (
+        strip_marker_labels(replayed) == strip_marker_labels(merged_head)
+    )
+
+
+def carried_base(base_tip, head_oid):
+    """The base commit HEAD carries, or None when it cannot be read."""
+    result = git_bytes("merge-base", base_tip, head_oid)
+    if result is None or result[0] != 0:
+        return None
+    oid = result[1].decode("ascii", errors="replace").strip()
+    return oid if OID_RE.match(oid) else None
+
+
+def base_conflict_paths(head_oid, reference_oid, other_oid, conflicts):
+    """The conflicted paths whose conflicts `other_oid` already has with `reference_oid`."""
+    head_merge = attribution_merge(head_oid, other_oid)
+    reference_merge = attribution_merge(reference_oid, other_oid)
+    if head_merge is None or reference_merge is None:
+        return set()
+    return {path for path in conflicts if is_base_conflict(path, head_merge, reference_merge)}
+
+
 def print_rows(rows):
     for number, path, verdict, suffix in sorted(rows):
         print(f"#{number} {path} {verdict}{suffix}")
@@ -436,6 +568,7 @@ def grade(args):
         return EXIT_BLOCK
 
     own = set(git("diff", "--name-only", f"{base_tip}...{head_oid}").splitlines())
+    reference = carried_base(base_tip, head_oid)
 
     candidates = sorted(
         (row for row in opening.values() if row is not self_row), key=lambda row: row["number"]
@@ -471,7 +604,7 @@ def grade(args):
                 f"#{number} ({row['headRefName']}) is in HEAD but not in --base {base}; "
                 f"pass --base {row['headRefName']} or rebase"
             )
-        sequenced_issues = sequenced_after_self(row, self_issues)
+        sequenced_issues = sequenced_after_self(row, self_issues, slug)
         if sequenced_issues:
             # Conflicts are expected until the prerequisite branch lands, so
             # sequenced descendants deliberately bypass the trial merge.
@@ -482,8 +615,15 @@ def grade(args):
             )
             continue
         conflicts = conflict_paths(number, head_oid, other, shared)
+        inherited = set()
+        if conflicts and reference is not None:
+            inherited = base_conflict_paths(head_oid, reference, other, conflicts)
         for path in shared:
-            rows.append((number, path, "conflicts" if path in conflicts else "clean", ""))
+            if path in inherited:
+                suffix = f" (conflicts with {base} {reference[:9]} alone)"
+                rows.append((number, path, "base-conflict", suffix))
+            else:
+                rows.append((number, path, "conflicts" if path in conflicts else "clean", ""))
 
     closing = take_snapshot(gh)
     delta = snapshot_delta(opening, closing)

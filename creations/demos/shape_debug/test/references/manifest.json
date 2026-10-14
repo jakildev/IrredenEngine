@@ -33,6 +33,16 @@
   },
   "extra_runs": [
     {
+      "name": "moving_caster",
+      "demo_args": ["--moving-caster"],
+      "shots": [
+        "moving_caster_0", "moving_caster_1", "moving_caster_2",
+        "moving_caster_3", "moving_caster_4", "moving_caster_5",
+        "moving_caster_6", "moving_caster_7", "moving_caster_8"
+      ],
+      "capture_offset": 0
+    },
+    {
       "name": "pivot_focus_ctr_z4",
       "demo_args": ["--pivot-verify", "focus-ctr", "--zoom", "4"],
       "warmup": 12,
@@ -95,6 +105,19 @@
         "4"
       ],
       "shots": ["prefab_editor_parts_z4"],
+      "capture_offset": 0
+    },
+    {
+      "name": "composite_proof",
+      "demo_args": [
+        "--load-prefab",
+        "assets/voxel/entities/composite_proof/composite_proof.prefab.lua"
+      ],
+      "shots": [
+        "composite_proof_z1",
+        "composite_proof_z4",
+        "composite_proof_z16"
+      ],
       "capture_offset": 0
     }
   ],

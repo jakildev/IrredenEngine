@@ -303,7 +303,7 @@ void main() {
     // Alpha is preserved so text/overlay antialiasing composites unchanged.
     if (debugOverlayMode == 8) {
         const float alpha = sourceColor.a;
-        writeLitTrixel(sourceMode, sourceIndex, pixel, vec4(worldNormal * 0.5 + 0.5, alpha));
+        writeLitTrixel(sourceMode, sourceIndex, pixel, vec4(encodeUnitVectorUnorm8(worldNormal), alpha));
         return;
     }
 

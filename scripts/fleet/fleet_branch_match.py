@@ -1,18 +1,19 @@
 """Shared branch <-> issue matching for the fleet coordination scripts.
 
 Both `fleet-claim` (bash, via inline `python3`) and `fleet-state-scout`
-(pure Python) repeatedly ask "does this `claude/...` PR branch belong to
-issue #N?" or "which issue does this branch belong to?". Engine branches
-are `claude/<N>-<topic>`; game branches are `claude/<N>-<topic>` or
-`claude/game-<N>-<topic>`. Every caller imports this one matcher, because a
-missed match makes the TTL sweep judge a live claim abandoned, re-free the
-issue, and let a second worker open a duplicate PR.
+(pure Python) repeatedly ask "does this `claude/...` or `codex/...` PR branch
+belong to issue #N?" or "which issue does this branch belong to?". Engine
+branches are `<ns>/<N>-<topic>`; game branches are `<ns>/<N>-<topic>` or
+`<ns>/game-<N>-<topic>`, where `<ns>` is one of `BRANCH_NAMESPACES`. Every
+caller imports this one matcher, because a missed match makes the TTL sweep
+judge a live claim abandoned, re-free the issue, and let a second worker open
+a duplicate PR.
 
 The matcher accepts BOTH forms for the game repo. Engine accepts only
-`claude/<N>-`.
+`<ns>/<N>-`.
 
 Beyond the prefix forms, the matcher also recognizes a word-bounded
-`issue-<N>` token anywhere in a `claude/...` branch
+`issue-<N>` token anywhere in a namespaced branch
 (`claude/game-worker-3-issue-<N>` -> #N) as a *fallback*: it fires only
 when the branch carries no leading-number form, so the leading-number form
 stays authoritative and `claude/<A>-fix-issue-<B>-recurrence` resolves to
@@ -71,23 +72,35 @@ def _is_game(repo):
     return repo_key(repo) == "game"
 
 
+# Branch namespaces a PR head may carry. Closed list: a bare `<word>/<N>-` is
+# not a claim, so an unrelated prefix never ties a PR to an issue.
+BRANCH_NAMESPACES = ("claude", "codex")
+
+
+def _strip_namespace(head):
+    """`head` without its `<ns>/` prefix, or None when it has no supported one."""
+    for ns in BRANCH_NAMESPACES:
+        if head.startswith(ns + "/"):
+            return head[len(ns) + 1:]
+    return None
+
+
 def _norm_issue(issue):
     """Normalize an issue identifier to a bare digit string (drops a '#')."""
     return str(issue).strip().lstrip("#")
 
 
 def _leading_issue(head_ref):
-    """Leading-number issue from a `claude/...` branch, or None.
+    """Leading-number issue from a namespaced branch, or None.
 
-    The authoritative form: strip `claude/` + an optional `game-` infix, then
+    The authoritative form: strip `<ns>/` + an optional `game-` infix, then
     read leading digits. `claude/game-worker-3-issue-255` yields None (the
     remainder after the strip starts with `w`), which is exactly why the token
     fallback below exists.
     """
-    head = head_ref or ""
-    if not head.startswith("claude/"):
+    rest = _strip_namespace(head_ref or "")
+    if rest is None:
         return None
-    rest = head[len("claude/"):]
     if rest.startswith("game-"):
         rest = rest[len("game-"):]
     num = ""
@@ -109,29 +122,29 @@ _TOKEN_ISSUE_RE = re.compile(r"(?:^|[-/])issue-(\d+)(?=-|$)")
 
 
 def _token_issue(head_ref):
-    """First `issue-<N>` token issue in a `claude/...` branch, or None.
+    """First `issue-<N>` token issue in a namespaced branch, or None.
 
     A *fallback* only — see `issue_from_branch` / `branch_matches_issue` for
     the leading-number-is-authoritative precedence that gates when this fires.
     """
     head = head_ref or ""
-    if not head.startswith("claude/"):
+    if _strip_namespace(head) is None:
         return None
     m = _TOKEN_ISSUE_RE.search(head)
     return int(m.group(1)) if m else None
 
 
 def issue_branch_prefixes(repo, issue):
-    """Accepted `claude/...` branch prefixes for `issue` in `repo`.
+    """Accepted branch prefixes for `issue` in `repo`, every namespace.
 
-    Engine -> ["claude/<N>-"]; game -> ["claude/<N>-", "claude/game-<N>-"].
-    The trailing "-" is load-bearing: it stops `claude/105-` from matching
-    issue 1050's `claude/1050-` branch.
+    Engine -> ["claude/<N>-", "codex/<N>-"]; game adds each namespace's
+    `<ns>/game-<N>-`. The trailing "-" is load-bearing: it stops `claude/105-`
+    from matching issue 1050's `claude/1050-` branch.
     """
     n = _norm_issue(issue)
-    prefixes = ["claude/%s-" % n]
+    prefixes = ["%s/%s-" % (ns, n) for ns in BRANCH_NAMESPACES]
     if _is_game(repo):
-        prefixes.append("claude/game-%s-" % n)
+        prefixes += ["%s/game-%s-" % (ns, n) for ns in BRANCH_NAMESPACES]
     return prefixes
 
 
@@ -139,7 +152,7 @@ def branch_matches_issue(head_ref, issue, repo):
     """True when `head_ref` is the working branch for `issue` in `repo`.
 
     Two arms, prefix authoritative:
-      1. Prefix `claude/<N>-` (game also `claude/game-<N>-`).
+      1. Prefix `<ns>/<N>-` (game also `<ns>/game-<N>-`).
       2. Fallback: a word-bounded `issue-<N>` token, but ONLY when the branch
          carries no leading-number form. So `claude/<A>-fix-issue-<B>-*`
          matches #A (prefix) and NOT #B (token suppressed), while
@@ -505,6 +518,23 @@ PARKED_PR_LABELS = frozenset({
     "fleet:design-proposed",
 })
 
+# Canonical GitHub slug per scout repo key, for callers that must address the
+# OTHER fleet repo by slug (a cross-repo park). The identifier -> key direction
+# is `_REPO_KEYS`; this is its inverse in canonical case, since `gh` output and
+# the drift report echo the slug as written. Keep in sync with
+# `fleet_blocked_by._REF_NAME_TO_SLUG` (the `Blocked by:` grammar's copy);
+# `test_branch_matches_issue.py` asserts the two agree.
+_REPO_SLUGS = {
+    "engine": "jakildev/IrredenEngine",
+    "game": "jakildev/irreden",
+}
+
+
+def repo_slug(repo):
+    """Canonical `owner/repo` slug for any fleet repo identifier, else None."""
+    return _REPO_SLUGS.get(repo_key(repo))
+
+
 # The marker must open its line, but a worker's markdown habits are tolerated
 # there: an unordered-list bullet (`- Parked-until: #N`) and bold or backtick
 # emphasis on the marker. The emphasis must be paired, and its closer may sit
@@ -514,29 +544,65 @@ PARKED_PR_LABELS = frozenset({
 # accident. A marker that appears mid-sentence is still rejected: the own-line
 # rule is what keeps a prose mention from being read as a park, and a park
 # nothing can parse never un-parks.
+#
+# A blocker is a `#N` token, optionally qualified with the repo it lives in:
+# `IrredenEngine#N`, `irreden#N`, or GitHub's `owner/repo#N`. The qualifier
+# charset is the one `_CLOSES_REF_RE` uses, so the two cross-repo grammars
+# cannot drift; a qualifier naming neither fleet repo makes that token no
+# blocker at all (`parked_until_refs` drops it) — the conservative direction,
+# since a park whose only blocker is unresolvable must read as malformed and
+# escalate rather than un-park on a guess.
+_PARKED_REF = r"(?:[A-Za-z0-9][\w.-]*/)?(?:[A-Za-z0-9][\w.-]*)?#\d+\b"
 _PARKED_UNTIL_RE = re.compile(
     r"^[ \t]*(?:[-*+][ \t]+)?"
     r"(?:Parked-until:"
     r"|(?P<em>\*\*|`)Parked-until(?::(?P=em)|(?P=em):|:(?=[^\n]*(?P=em))))"
-    r"[ \t]*(?P<issues>#\d+\b(?:(?:[ \t]*,[ \t]*|[ \t]+)#\d+\b)*)",
+    r"[ \t]*(?P<issues>" + _PARKED_REF + r"(?:(?:[ \t]*,[ \t]*|[ \t]+)" + _PARKED_REF + r")*)",
     re.IGNORECASE | re.MULTILINE,
 )
+_PARKED_REF_RE = re.compile(r"((?:[A-Za-z0-9][\w.-]*/)?[A-Za-z0-9][\w.-]*)?#(\d+)")
 
 
-def parked_until_issue_numbers(body):
-    """Issue numbers from the last parsable `Parked-until:` body marker.
+def _parked_until_markers(body):
+    return [match.group("issues") for match in _PARKED_UNTIL_RE.finditer(body or "")]
+
+
+def parked_until_refs(body, default_repo):
+    """`[(slug, number), ...]` for every blocker a `Parked-until:` marker names.
 
     The marker opens its line, optionally behind a list bullet or wrapped in
-    paired bold / backticks (see `_PARKED_UNTIL_RE`). The issue list is the
-    contiguous comma/whitespace-separated run after the marker. Trailing
-    prose is ignored, and an appended parsable marker makes every earlier
-    marker inert. Missing or malformed markers return an empty list so
-    callers fail closed.
+    paired bold / backticks (see `_PARKED_UNTIL_RE`). The blocker list is the
+    contiguous comma/whitespace-separated run after the marker; trailing prose
+    is ignored. EVERY parsable marker in the body counts and the lists are
+    unioned in body order, so a worker may spell three blockers as three lines
+    and a re-park may append a line without rewriting the body — the park ends
+    only when all of them have closed, and dropping a blocker means deleting
+    its marker. A bare `#N` is an issue in `default_repo` (a key or a slug); a
+    qualified `IrredenEngine#N` / `owner/repo#N` names the other fleet repo.
+    Missing, malformed, or unresolvable markers contribute nothing, so a body
+    with no usable blocker returns an empty list and callers fail closed. A
+    `default_repo` outside the fleet (a sandbox slug under test) is kept as
+    written for its bare refs; only a qualifier must name a fleet repo.
     """
-    markers = [match.group("issues") for match in _PARKED_UNTIL_RE.finditer(body or "")]
-    if not markers:
-        return []
-    return [int(number) for number in re.findall(r"#(\d+)", markers[-1])]
+    own = repo_slug(default_repo) or default_repo
+    refs = []
+    for marker in _parked_until_markers(body):
+        for qualifier, number in _PARKED_REF_RE.findall(marker):
+            slug = repo_slug(qualifier) if qualifier else own
+            if slug is None:
+                continue
+            ref = (slug, int(number))
+            if ref not in refs:
+                refs.append(ref)
+    return refs
+
+
+def parked_until_issue_numbers(body, repo):
+    """The blockers of `parked_until_refs` that live in `repo` itself, as
+    numbers — bare `#N` and a qualifier naming that same repo alike — for
+    callers that only compare against their own repo's issues."""
+    own = repo_slug(repo) or repo
+    return [number for slug, number in parked_until_refs(body, repo) if slug == own]
 
 
 def issue_pr_state(prs, issue, repo):
@@ -574,11 +640,11 @@ def issue_pr_state(prs, issue, repo):
 
 
 def issue_from_branch(head_ref):
-    """Extract the issue number from a `claude/...` branch, or None.
+    """Extract the issue number from a namespaced branch, or None.
 
     Repo-agnostic inverse of `branch_matches_issue`, same precedence: prefer
-    the authoritative leading-number form (`claude/<N>-...`, legacy
-    `claude/game-<N>-...`); fall back to a word-bounded `issue-<N>` token
+    the authoritative leading-number form (`<ns>/<N>-...`, legacy
+    `<ns>/game-<N>-...`); fall back to a word-bounded `issue-<N>` token
     (`claude/game-worker-3-issue-255` -> 255) only when there is none.
     """
     lead = _leading_issue(head_ref)

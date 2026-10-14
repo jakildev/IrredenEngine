@@ -15,6 +15,7 @@
 #include <cstddef>
 #include <memory>
 #include <set>
+#include <stdexcept>
 #include <thread>
 #include <tuple>
 #include <vector>
@@ -644,6 +645,68 @@ TEST(FogRevealEvalTest, CeilingFadeIsOneAtThePlaneAndZeroExactlyAtItsEnd) {
     ) << "a negative height is off whatever the fade";
 }
 
+TEST(FogRevealEvalTest, CeilingShadowUsesStaticRetainedSetAndCellAdmission) {
+    FrameDataFogObservers observers = oneCircle(10.0f, 2.0f, 0.0f);
+    IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(observers, 0, 5.0f, 4.0f);
+    const IRPrefab::Fog::FogWindowTexel hidden{};
+    const IRPrefab::Fog::FogWindowTexel visible{IRComponents::kFogStateVisible, 1u};
+    const IRPrefab::Fog::FogWindowTexel other{IRComponents::kFogStateUnexplored, 2u};
+    for (int z = 0; z <= 16; ++z) {
+        const IRMath::vec3 position(0, 0, -z);
+        EXPECT_EQ(IRPrefab::Fog::detail::fieldCastsSunShadow(observers, position, hidden), z < 9);
+        EXPECT_TRUE(IRPrefab::Fog::detail::fieldCastsSunShadow(observers, position, visible));
+        EXPECT_TRUE(IRPrefab::Fog::detail::fieldCastsSunShadow(observers, position, other));
+        EXPECT_TRUE(IRPrefab::Fog::detail::fieldCastsSunShadow(observers, position, hidden, true));
+    }
+    IRComponents::C_CanvasFogOfWar::setRevealSurfaceTreatment(observers, 0.5f);
+    IRComponents::C_CanvasFogOfWar::setRevealSurfacePhase(observers, 0.37f);
+    for (int x = -12; x <= 12; ++x) {
+        for (int z = 0; z <= 16; ++z) {
+            const IRMath::ivec3 voxel(x, -4, -z);
+            EXPECT_EQ(
+                IRPrefab::Fog::detail::fieldCastsSunShadow(observers, IRMath::vec3(voxel), hidden),
+                IRPrefab::Fog::detail::ceilingRetained(observers, voxel, hidden, 0.0f)
+            );
+        }
+    }
+}
+
+TEST(FogRevealEvalTest, CeilingEnvelopesKeepFlickerAndInteriorNeighbourCaps) {
+    using namespace IRPrefab::Fog::detail;
+    FrameDataFogObservers observers = oneCircle(20.0f, 0.0f, 0.0f);
+    IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(observers, 0, 5.0f, 0.0f);
+    IRComponents::C_CanvasFogOfWar::setRevealSurfaceTreatment(observers, 0.5f);
+    const IRPrefab::Fog::FogWindowTexel cell{};
+    for (int height : {6, 7}) {
+        const IRMath::ivec3 voxel(0, 0, -height);
+        EXPECT_EQ(ceilingPresence(observers, voxel, cell), 0.0f);
+        EXPECT_EQ(ceilingPresence(observers, voxel, cell, -kFogCeilingFlickerSpan), 1.0f);
+    }
+    IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(observers, 0, 5.0f, 4.0f);
+    const IRMath::ivec3 voxel(-1, -4, -6);
+    EXPECT_TRUE(ceilingRetained(observers, voxel, cell, 0.0f));
+    EXPECT_FALSE(ceilingRetained(observers, voxel + IRMath::ivec3(1, 0, 0), cell, 0.0f));
+    EXPECT_EQ(ceilingPresence(observers, voxel, cell, -kFogCeilingFlickerSpan), 1.0f);
+    EXPECT_LT(ceilingPresence(observers, voxel, cell, kFogCeilingFlickerSpan), 1.0f);
+    for (int x = -25; x <= 25; ++x) {
+        for (int z = -16; z <= 4; ++z) {
+            const IRMath::ivec3 v(x, 3, z);
+            const float lo = ceilingPresence(observers, v, cell, kFogCeilingFlickerSpan);
+            const float hi = ceilingPresence(observers, v, cell, -kFogCeilingFlickerSpan);
+            EXPECT_FLOAT_EQ(ceilingPhaseHeight(v, 0.0f), 0.0f);
+            for (float phase : {-100.0f, -0.37f, 0.0f, 0.37f, 19.0f}) {
+                const float offset = ceilingPhaseHeight(v, phase);
+                EXPECT_LE(IRMath::abs(offset), kFogCeilingFlickerSpan);
+                const float c = ceilingPresence(observers, v, cell, offset);
+                EXPECT_GE(c, lo);
+                EXPECT_LE(c, hi);
+                if (hi == 0.0f)
+                    EXPECT_FALSE(ceilingRetained(observers, v, cell, phase));
+            }
+        }
+    }
+}
+
 // The additive height cost and the ceiling are independent terms of one
 // source: the cost keeps its curve with the ceiling off, and both apply as a
 // product where both are partial.
@@ -862,6 +925,333 @@ TEST(FogRevealEvalTest, TreatmentStylesOnlyARetainedPartialWinner) {
     }
     EXPECT_GT(retainedCount, 256 * 3 / 10);
     EXPECT_GT(dissolvedCount, 256 * 3 / 10);
+}
+
+namespace {
+
+// The column-top fixture: ground whose top plane is kPlateauGroundZ, and a
+// plateau over x 0..4, y -4..4 whose top plane stands nine units above it.
+// The wall under test is the plateau's X_NEG face, at x = 0.
+constexpr float kPlateauGroundZ = 4.0f;
+constexpr float kPlateauTopZ = -5.0f;
+constexpr float kPlateauEyeHeight = 1.5f;
+constexpr IRMath::FaceId kPlateauWallFace = IRMath::FaceId::X_NEG;
+
+std::vector<float> plateauField() {
+    std::vector<float> columns = emptyField();
+    stampWall(columns, IRMath::vec2(-20.0f), IRMath::vec2(20.0f), kPlateauGroundZ);
+    stampWall(columns, IRMath::vec2(0.0f, -4.0f), IRMath::vec2(4.0f, 4.0f), kPlateauTopZ);
+    return columns;
+}
+
+// A hard-gated hard disc of @p radius standing at @p observer.
+int addPlateauSource(FrameDataFogObservers &observers, IRMath::vec3 observer, float radius) {
+    const int slot = IRComponents::C_CanvasFogOfWar::addVisionCircle(
+        observers,
+        observer.x,
+        observer.y,
+        radius,
+        0.0f,
+        observer.z,
+        0.0f,
+        0.0f,
+        0.0f
+    );
+    IRComponents::C_CanvasFogOfWar::setVisionCircleLineOfSight(observers, slot, kPlateauEyeHeight);
+    return slot;
+}
+
+// A source on the plateau top, and one at the wall's foot six units out.
+const IRMath::vec3 kPlateauTopObserver(2.0f, 0.0f, kPlateauTopZ);
+const IRMath::vec3 kPlateauFootObserver(-6.0f, 0.0f, kPlateauGroundZ);
+
+// The wall face's point at height @p z, the target its own march ends on,
+// and its column point.
+IRMath::vec3 plateauWallPoint(float z) {
+    return IRMath::vec3(0.0f, 0.25f, z);
+}
+
+IRMath::vec3 plateauWallSample(float z) {
+    return plateauWallPoint(z) +
+           IRMath::faceOutwardNormal(kPlateauWallFace) * IRPrefab::Fog::kFogLosFaceBias;
+}
+
+IRMath::vec3 plateauWallColumnPoint(float z) {
+    return IRPrefab::Fog::losColumnPoint(plateauWallPoint(z), kPlateauWallFace);
+}
+
+IRPrefab::Fog::RevealSurfaceSample plateauWallVerdict(
+    const FrameDataFogObservers &observers, const FogLosColumnField &field, float z
+) {
+    return IRPrefab::Fog::evalRevealSurface(
+        observers,
+        field,
+        IRComponents::kFogStateUnexplored,
+        plateauWallSample(z),
+        plateauWallColumnPoint(z),
+        kPlateauWallFace
+    );
+}
+
+float plateauWallOwnState(
+    const FrameDataFogObservers &observers, const FogLosColumnField &field, float z
+) {
+    return IRPrefab::Fog::evalRevealSurface(
+               observers,
+               field,
+               IRComponents::kFogStateUnexplored,
+               plateauWallSample(z)
+    )
+        .state_;
+}
+
+} // namespace
+
+// A source standing on a plateau reveals its top and, on its own, none of the
+// wall under it: the march to the wall passes under the top plane. The wall
+// takes the top's verdict through its column point.
+TEST(FogRevealEvalTest, ColumnTopRevealsAWallItsOwnSourceCannotSee) {
+    const std::vector<float> columns = plateauField();
+    const FogLosColumnField field{columns.data()};
+    FrameDataFogObservers observers{};
+    addPlateauSource(observers, kPlateauTopObserver, 10.0f);
+
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalRevealSurface(
+            observers,
+            field,
+            IRComponents::kFogStateUnexplored,
+            IRMath::vec3(0.02f, 0.25f, kPlateauTopZ)
+        )
+            .state_,
+        1.0f
+    ) << "the plateau top is revealed";
+    for (const float z : {-4.0f, -2.0f, 2.0f}) {
+        EXPECT_FLOAT_EQ(plateauWallOwnState(observers, field, z), 0.0f)
+            << "the wall at z " << z << " is hidden on its own";
+        const IRPrefab::Fog::RevealSurfaceSample wall = plateauWallVerdict(observers, field, z);
+        EXPECT_FLOAT_EQ(wall.state_, 1.0f) << "the wall at z " << z << " takes its column top";
+        EXPECT_FLOAT_EQ(wall.styledBand_, 0.0f);
+    }
+}
+
+// Two sources: the foot source reveals the wall up to its ceiling, the top
+// source reveals the plateau top, and the band of wall between them is
+// hidden from both. Each wall sample is the larger of its own verdict and
+// its column top's.
+TEST(FogRevealEvalTest, ColumnTopIsTheMaximumWithTheSamplesOwnVerdict) {
+    const std::vector<float> columns = plateauField();
+    const FogLosColumnField field{columns.data()};
+    FrameDataFogObservers foot{};
+    const int footSlot = addPlateauSource(foot, kPlateauFootObserver, 12.0f);
+    IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(foot, footSlot, 4.0f);
+    FrameDataFogObservers both = foot;
+    addPlateauSource(both, kPlateauTopObserver, 10.0f);
+
+    EXPECT_FLOAT_EQ(plateauWallOwnState(both, field, 2.0f), 1.0f)
+        << "the foot source sees the wall under its ceiling";
+    EXPECT_FLOAT_EQ(plateauWallVerdict(both, field, 2.0f).state_, 1.0f);
+    EXPECT_FLOAT_EQ(plateauWallOwnState(both, field, -2.0f), 0.0f)
+        << "the band above the foot source's ceiling is hidden from both sources";
+    EXPECT_FLOAT_EQ(plateauWallVerdict(both, field, -2.0f).state_, 1.0f)
+        << "the band is revealed through the top the top source reveals";
+
+    EXPECT_FLOAT_EQ(plateauWallVerdict(foot, field, 2.0f).state_, 1.0f);
+    EXPECT_FLOAT_EQ(plateauWallVerdict(foot, field, -2.0f).state_, 0.0f)
+        << "a top above the foot source's ceiling is unrevealed, so the cut stands";
+}
+
+// A source well below a top never reveals it: the march to the column point
+// on the top plane enters the plateau's edge cell under that plane. A source
+// whose eye stands within kFogLosClearanceTolerance of grazing the top does
+// reach it, which is the verdict a body standing on that edge takes.
+TEST(FogRevealEvalTest, ColumnTopIsHiddenFromBelowAndGrazedFromItsOwnHeight) {
+    const std::vector<float> columns = plateauField();
+    const FogLosColumnField field{columns.data()};
+    const IRMath::vec3 columnPoint = plateauWallColumnPoint(-2.0f);
+
+    FrameDataFogObservers below{};
+    addPlateauSource(below, kPlateauFootObserver, 12.0f);
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::detail::columnTopState(
+            below,
+            field,
+            columnPoint,
+            IRComponents::kFogChannelDefault,
+            0.0f
+        ),
+        0.0f
+    ) << "an eye 7.5 below the top, six units out, is blocked at the edge cell";
+
+    // The eye a quarter unit below the top plane: its segment enters the edge
+    // cell 0.25 * 0.02 / 6.02 under the plane, inside the tolerance.
+    FrameDataFogObservers grazing{};
+    addPlateauSource(
+        grazing,
+        IRMath::vec3(-6.0f, 0.0f, kPlateauTopZ + 0.25f + kPlateauEyeHeight),
+        12.0f
+    );
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::detail::columnTopState(
+            grazing,
+            field,
+            columnPoint,
+            IRComponents::kFogChannelDefault,
+            0.0f
+        ),
+        1.0f
+    );
+}
+
+// The term needs a published column field, a vertical face, and a top plane
+// above the sample.
+TEST(FogRevealEvalTest, ColumnTopNeedsAPublishedFieldAVerticalFaceAndATopAbove) {
+    const std::vector<float> columns = plateauField();
+    const FogLosColumnField field{columns.data()};
+    FrameDataFogObservers observers{};
+    addPlateauSource(observers, kPlateauTopObserver, 10.0f);
+
+    const FogLosColumnField unpublished{};
+    EXPECT_FLOAT_EQ(plateauWallVerdict(observers, unpublished, -2.0f).state_, 0.0f)
+        << "an unpublished field leaves the sample its own verdict";
+
+    // A ground sample at the wall's foot, in the plateau's shadow. Handed a
+    // column point inside the plateau, a top face still takes its own verdict.
+    const IRMath::vec3 groundSample(-0.3f, 0.25f, kPlateauGroundZ);
+    const IRMath::vec3 strayColumnPoint(0.02f, 0.25f, kPlateauGroundZ);
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalRevealSurface(
+            observers,
+            field,
+            IRComponents::kFogStateUnexplored,
+            groundSample,
+            strayColumnPoint,
+            IRMath::FaceId::Z_NEG
+        )
+            .state_,
+        0.0f
+    ) << "a top face never takes the column-top term";
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalRevealSurface(
+            observers,
+            field,
+            IRComponents::kFogStateUnexplored,
+            groundSample,
+            strayColumnPoint,
+            kPlateauWallFace
+        )
+            .state_,
+        1.0f
+    ) << "control: the same inputs on a vertical face do take it";
+
+    // A column point that misses the plateau reads the ground's top plane,
+    // which lies below the sample.
+    EXPECT_FLOAT_EQ(
+        IRPrefab::Fog::evalRevealSurface(
+            observers,
+            field,
+            IRComponents::kFogStateUnexplored,
+            plateauWallSample(-2.0f),
+            IRMath::vec3(-0.02f, 0.25f, -2.0f),
+            kPlateauWallFace
+        )
+            .state_,
+        0.0f
+    ) << "a column with no top above the sample leaves it its own verdict";
+}
+
+// The cardinal raster recovers a wall sample's in-plane coordinate up to a
+// third of a micro cell either side of the drawn cell's view-frame corner.
+// At every cardinal pose and on both visible walls, the cardinal column point
+// lands strictly inside the box the raster draws the voxel as. Control: the
+// route-free column point leaves that box on the side the recovery undershoots.
+TEST(FogRevealEvalTest, CardinalColumnPointLandsInsideTheDrawnCell) {
+    const IRMath::vec3 voxel(3.0f, -2.0f, 1.0f);
+    int routeFreeMisses = 0;
+    for (const int subdivisions : {1, 4}) {
+        for (const IRMath::CardinalIndex cardinal :
+             {IRMath::CardinalIndex::k0,
+              IRMath::CardinalIndex::k90,
+              IRMath::CardinalIndex::k180,
+              IRMath::CardinalIndex::k270}) {
+            IRPrefab::Fog::LosRasterFrame frame;
+            frame.cardinal_ = cardinal;
+            frame.subdivisions_ = subdivisions;
+            IRMath::vec3 boxMin;
+            IRMath::vec3 boxMax;
+            IRPrefab::Fog::losVoxelBox(voxel, frame, boxMin, boxMax);
+            const float micro = static_cast<float>(subdivisions);
+            const auto inside = [&](IRMath::vec3 point) {
+                return point.x > boxMin.x && point.x < boxMax.x && point.y > boxMin.y &&
+                       point.y < boxMax.y;
+            };
+            const auto faces = IRMath::visibleFaceTripletCardinal(cardinal);
+            for (const IRMath::FaceId face : {faces[0], faces[1]}) {
+                const int axis = IRMath::faceAxis(face);
+                const int inPlane = 1 - axis;
+                for (const float offset : {-1.0f / 3.0f, -1.0f / 6.0f, 1.0f / 6.0f, 1.0f / 3.0f}) {
+                    IRMath::vec3 facePoint(voxel.x, voxel.y, voxel.z + 0.5f);
+                    facePoint[axis] = IRMath::faceIsPositive(face) ? boxMax[axis] : boxMin[axis];
+                    facePoint[inPlane] = voxel[inPlane] + offset / micro;
+                    EXPECT_TRUE(inside(IRPrefab::Fog::losColumnPoint(facePoint, face, frame)))
+                        << "cardinal " << static_cast<int>(cardinal) << " subdivisions "
+                        << subdivisions << " face " << static_cast<int>(face) << " offset "
+                        << offset;
+                    routeFreeMisses +=
+                        inside(IRPrefab::Fog::losColumnPoint(facePoint, face)) ? 0 : 1;
+                }
+            }
+        }
+    }
+    EXPECT_GT(routeFreeMisses, 0) << "control: the recovery offsets must cross a cell edge";
+
+    IRPrefab::Fog::LosRasterFrame frame;
+    const IRMath::vec3 topFacePoint(3.25f, -2.25f, 1.0f);
+    EXPECT_EQ(
+        IRPrefab::Fog::losColumnPoint(topFacePoint, IRMath::FaceId::Z_NEG, frame),
+        IRPrefab::Fog::losColumnPoint(topFacePoint, IRMath::FaceId::Z_NEG)
+    ) << "a top face has no in-plane snap";
+
+    frame.rotating_ = true;
+    EXPECT_THROW(
+        IRPrefab::Fog::losColumnPoint(topFacePoint, IRMath::FaceId::X_NEG, frame),
+        std::runtime_error
+    ) << "a turning camera has no cardinal raster frame";
+}
+
+// Under the treatment a wall sample in the foot source's ceiling fade is a
+// styled partial band. A revealed column top lifts it to the full state and
+// drops the band; a column top that does not exceed the own state leaves the
+// band standing.
+TEST(FogRevealEvalTest, ColumnTopBeatsAStyledOwnBandToBandZero) {
+    const std::vector<float> columns = plateauField();
+    const FogLosColumnField field{columns.data()};
+    FrameDataFogObservers foot{};
+    const int footSlot = addPlateauSource(foot, kPlateauFootObserver, 12.0f);
+    IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(foot, footSlot, 4.0f, 4.0f);
+    IRComponents::C_CanvasFogOfWar::setRevealSurfaceTreatment(foot, 0.0f);
+    FrameDataFogObservers both = foot;
+    addPlateauSource(both, kPlateauTopObserver, 10.0f);
+
+    // dzUp 6 of a ceiling at 4 fading over 4: the midpoint of the band.
+    const float bandZ = kPlateauGroundZ - 6.0f;
+    const IRPrefab::Fog::RevealSurfaceSample own = IRPrefab::Fog::evalRevealSurface(
+        both,
+        field,
+        IRComponents::kFogStateUnexplored,
+        plateauWallSample(bandZ)
+    );
+    EXPECT_FLOAT_EQ(own.state_, 0.5f);
+    EXPECT_FLOAT_EQ(own.styledBand_, 1.0f) << "the fixture must style its own band";
+
+    const IRPrefab::Fog::RevealSurfaceSample lifted = plateauWallVerdict(both, field, bandZ);
+    EXPECT_FLOAT_EQ(lifted.state_, 1.0f);
+    EXPECT_FLOAT_EQ(lifted.styledBand_, 0.0f) << "a sample its column top raises is not a band";
+
+    const IRPrefab::Fog::RevealSurfaceSample standing = plateauWallVerdict(foot, field, bandZ);
+    EXPECT_FLOAT_EQ(standing.state_, 0.5f);
+    EXPECT_FLOAT_EQ(standing.styledBand_, 1.0f)
+        << "a column top that does not exceed the own state leaves the band";
 }
 
 TEST(FogRevealEvalTest, RevealSurfaceHashIsVoxelStableAndUniform) {
@@ -1471,3 +1861,157 @@ TEST(FogRevealEvalTest, LanePressureMarchesThenGrowsAndStaysAllocationFree) {
 }
 
 } // namespace
+
+TEST(FogRevealEvalTest, CeilingAdmissionContainsAaAndIgnoresHeightCostAndLos) {
+    using namespace IRPrefab::Fog::detail;
+    const IRPrefab::Fog::FogWindowTexel cell{};
+    FrameDataFogObservers observers = oneCircle(20.0f, 0.0f, 0.0f);
+    IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(observers, 0, 0.0f, 0.0f);
+    observers.visionCircleCount_ = 2;
+    observers.visionCircles_[1] = IRMath::vec4(2.1f, 0.0f, 1.0f, 0.0f);
+    observers.visionCircleCeilings_[1] = IRMath::vec4(-1.0f, 0.0f, 0.0f, 0.0f);
+    const IRMath::ivec3 voxel(0, 0, -6);
+    // Source B misses its hard radius but reaches the closed cell under AA.
+    EXPECT_EQ(ceilingSourceMask(observers, IRMath::ivec2(voxel), cell), 3u);
+    EXPECT_EQ(ceilingPresence(observers, voxel, cell), 1.0f);
+    EXPECT_TRUE(ceilingRetained(observers, voxel, cell, 0.0f));
+    observers.visionCircleHeights_[1] = IRMath::vec4(0.0f, 100.0f, 100.0f, 0.0f);
+    observers.losSourceMask_ = 3;
+    EXPECT_EQ(ceilingPresence(observers, voxel, cell), 1.0f);
+    observers.visionCircleChannels_[0][1] = 2u;
+    EXPECT_EQ(ceilingPresence(observers, voxel, cell), 0.0f);
+    EXPECT_EQ(ceilingPresence(observers, voxel, {IRComponents::kFogStateExplored, 1u}), 0.0f);
+    EXPECT_EQ(ceilingPresence(observers, IRMath::ivec3(100, 100, -100), cell), 1.0f);
+
+    const float expected = IRMath::sqrt(0.5f);
+    EXPECT_GT(expected, 0.70f); // Mutation: 0.70 cannot bound a base-density pixel.
+    EXPECT_LT(expected, kFogCeilingAdmitAa);
+    for (int x = -8; x <= 8; ++x) {
+        for (int depth = -20; depth <= 20; ++depth) {
+            for (int angle = 0; angle < 32; ++angle) {
+                const float yaw = static_cast<float>(angle) * 0.2f;
+                const auto p = IRMath::isoPixelToPos3DYawed(IRMath::vec2(x, 7), float(depth), yaw);
+                const auto q =
+                    IRMath::isoPixelToPos3DYawed(IRMath::vec2(x + 1, 7), float(depth), yaw);
+                EXPECT_NEAR(IRMath::length(IRMath::vec2(q - p)), expected, 3.0e-6f);
+            }
+        }
+    }
+}
+
+TEST(FogRevealEvalTest, RandomizedCeilingBoundsContainTopContributorsAndEveryCutAxis) {
+    using namespace IRPrefab::Fog::detail;
+    using IRComponents::C_CanvasFogOfWar;
+    std::uint32_t randomState = 0x43054381u;
+    const auto random = [&]() {
+        randomState = 1664525u * randomState + 1013904223u;
+        return static_cast<float>(randomState >> 8u) / 16777216.0f;
+    };
+    int cuts = 0, dropped = 0, tops = 0;
+    for (int scene = 0; scene < 500; ++scene) {
+        FrameDataFogObservers observers{};
+        const IRMath::ivec3 voxel{
+            int(random() * 20) - 10,
+            int(random() * 20) - 10,
+            -int(random() * 18)
+        };
+        observers.visionCircleCount_ = 1 + scene % 8;
+        for (int source = 0; source < observers.visionCircleCount_; ++source) {
+            observers.visionCircles_[source] =
+                {random() * 20 - 10, random() * 20 - 10, random() * 20 + 1, random() * 2};
+            observers.visionCircleHeights_[source] =
+                {random() * 6, random() * 2, random() * 2, random()};
+            observers.visionCircleCeilings_[source] =
+                {source == 7 ? -1.0f : random() * 10, scene % 3 ? random() * 5 : 0.0f, 0, 0};
+            observers.visionCircleChannels_[source / 4][source % 4] = 1u << (source % 3);
+        }
+        const IRPrefab::Fog::FogWindowTexel cell{
+            scene % 17 == 0 ? IRComponents::kFogStateVisible : IRComponents::kFogStateUnexplored,
+            1u + unsigned(scene % 7)
+        };
+        C_CanvasFogOfWar::setRevealSurfaceTreatment(observers, random(), 0.5f);
+        const float lower = ceilingPresence(observers, voxel, cell, kFogCeilingFlickerSpan);
+        const float upper = ceilingPresence(observers, voxel, cell, -kFogCeilingFlickerSpan);
+        const float staticPresence = ceilingPresence(observers, voxel, cell);
+        // Top-plane samples are inside the closed owner cell and at or above
+        // its top. LOS can only reduce this radial/height-cost contribution.
+        const IRMath::vec3 top{
+            float(voxel.x) + random() - 0.5f,
+            float(voxel.y) + random() - 0.5f,
+            float(voxel.z) - 0.5f - random() * 8
+        };
+        float topState = 0;
+        for (int source = 0; source < observers.visionCircleCount_; ++source) {
+            if (!(observers.channels(source) & cell.channels_))
+                continue;
+            auto paint = observers;
+            paint.visionCircles_[source].w =
+                IRMath::max(paint.visionCircles_[source].w, IRMath::sqrt(0.5f));
+            topState = IRMath::max(topState, evalVisionCircleReveal(paint, source, top));
+        }
+        EXPECT_GE(staticPresence + 1e-6f, topState);
+        tops += topState > 0;
+        for (int sample = 0; sample < 24; ++sample) {
+            const float phase = float(sample) * 0.37f - 3.0f;
+            const float animated =
+                ceilingPresence(observers, voxel, cell, ceilingPhaseHeight(voxel, phase));
+            EXPECT_LE(lower, animated + 1e-6f);
+            EXPECT_GE(upper + 1e-6f, animated);
+            const bool own = ceilingRetained(observers, voxel, cell, phase);
+            if (upper == 0) {
+                EXPECT_FALSE(own);
+                ++dropped;
+            }
+            for (int axis = 0; axis < 3; ++axis) {
+                for (int side : {-1, 1}) {
+                    auto neighbor = voxel;
+                    neighbor[axis] += side;
+                    // X/Y neighbor cells are independent; Z shares the column.
+                    const IRPrefab::Fog::FogWindowTexel neighborCell =
+                        axis == 2 ? cell
+                                  : IRPrefab::Fog::FogWindowTexel{
+                                        IRComponents::kFogStateUnexplored,
+                                        1u << ((scene + axis) % 3)
+                                    };
+                    if (own && !ceilingRetained(observers, neighbor, neighborCell, phase)) {
+                        ++cuts;
+                        EXPECT_LT(
+                            ceilingPresence(
+                                observers,
+                                neighbor,
+                                neighborCell,
+                                kFogCeilingFlickerSpan
+                            ),
+                            1.0f
+                        );
+                    }
+                }
+            }
+        }
+        C_CanvasFogOfWar::clearRevealSurfaceTreatment(observers);
+        EXPECT_EQ(ceilingPresence(observers, voxel, cell, 0), staticPresence);
+        EXPECT_EQ(ceilingRetained(observers, voxel, cell, 8.75f), staticPresence > 0);
+    }
+    EXPECT_GT(cuts, 0);
+    EXPECT_GT(dropped, 0);
+    EXPECT_GT(tops, 0);
+}
+
+TEST(FogRevealEvalTest, VoxelPaintKeepsCeilingBandWhileAnalyticPaintStillDissolves) {
+    using namespace IRPrefab::Fog::detail;
+    auto observers = oneCircle(100, 0, 0);
+    IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(observers, 0, 5, 4);
+    IRComponents::C_CanvasFogOfWar::setRevealSurfaceTreatment(observers, 1, 0.5f);
+    const auto alwaysVisible = [](int) { return 1.0f; };
+    const IRMath::vec3 point{0, -4, -6};
+    EXPECT_GT(
+        revealSurfaceHash01(IRMath::ivec3(point)),
+        ceilingPresence(observers, IRMath::ivec3(point), IRPrefab::Fog::FogWindowTexel{})
+    );
+    const auto voxel = evalRevealSurfaceComposition(observers, 0, point, 1u, alwaysVisible, false);
+    const auto analytic =
+        evalRevealSurfaceComposition(observers, 0, point, 1u, alwaysVisible, true);
+    EXPECT_GT(voxel.state_, 0.0f);
+    EXPECT_GT(voxel.styledBand_, 0.0f);
+    EXPECT_EQ(analytic.state_, 0.0f);
+}

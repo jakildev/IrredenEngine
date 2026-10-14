@@ -16,7 +16,9 @@ constexpr int kGuiTextDistance = IRConstants::kTrixelDistanceMinDistance + 1;
 
 // Computes the parity-correct starting position for text on a canvas.
 // Adjusts the requested position so (px + py + originModifier) % 2 == 0,
-// matching the glyph design convention (position (0,0) = parity 0).
+// matching the glyph design convention (position (0,0) = parity 0). The GUI
+// canvas displays each texel as a lattice triangle whose orientation follows
+// this parity, so an unaligned origin would mirror every glyph diagonal.
 inline ivec2 parityAlignedPosition(ivec2 position, ivec2 canvasSize) {
     int originModifier = ((canvasSize.x / 2 - 1) + (canvasSize.y / 2 - 1)) & 1;
     if ((position.x + position.y + originModifier) & 1) {

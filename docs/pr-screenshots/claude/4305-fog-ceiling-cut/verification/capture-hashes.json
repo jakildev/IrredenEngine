@@ -1,0 +1,66 @@
+{
+  "fog_ceiling9-before.png": {
+    "source": "/tmp/pool-1-4381/fog-base/ceiling/screenshot_000001.png",
+    "sha256": "46b1fe80b250d10ffa142ab692c13681888dea6c11a94ea7c4c64b2fc5d0ff47"
+  },
+  "fog_ceiling_yaw9-before.png": {
+    "source": "/tmp/pool-1-4381/fog-base/ceiling/screenshot_000002.png",
+    "sha256": "20f7a2c4c7b4e6ed123bdfcf98a009f6262e1136adcfa58a74733cce623fc84c"
+  },
+  "fog_ceiling9-after.png": {
+    "source": "/tmp/pool-1-4381/fog-fixed/ceiling/captures/screenshot_000001.png",
+    "sha256": "f4cf77bba8d3bf881f62158048799267861628330cf503db54283a97d853e0d0"
+  },
+  "fog_ceiling_yaw9-after.png": {
+    "source": "/tmp/pool-1-4381/fog-fixed/ceiling/captures/screenshot_000002.png",
+    "sha256": "ba8e2f05e5cf42bc49b76990d2ab47e7fada16190ede7d2ef5ccced37487cd86"
+  },
+  "fog_ceiling_treatment9-before.png": {
+    "source": "/tmp/pool-1-4381/fog-base/treated/screenshot_000001.png",
+    "sha256": "c65b9b90bcfcf43f0c4f6a125ef4cd98ccc7872bb450ac0208e07d50c0ec30fa"
+  },
+  "fog_ceiling_treatment_yaw9-before.png": {
+    "source": "/tmp/pool-1-4381/fog-base/treated/screenshot_000002.png",
+    "sha256": "80c46600b4c32469145254895dd853bd8ab8c6f3198c1b72d0f9d8d71cb190b4"
+  },
+  "fog_ceiling_treatment9-after.png": {
+    "source": "/tmp/pool-1-4381/fog-fixed/treated/captures/screenshot_000001.png",
+    "sha256": "4c596eba21e185cbb7016bce2aa8c9f4a44e89d3af57cc5399fb40faf3423ea2"
+  },
+  "fog_ceiling_treatment_yaw9-after.png": {
+    "source": "/tmp/pool-1-4381/fog-fixed/treated/captures/screenshot_000002.png",
+    "sha256": "35f90ea9c20c20e769f6d25184deda965fe34bb6bb53f965c30f206ddd0923f4"
+  },
+  "fog_occlusion_column_top-before.png": {
+    "source": "/tmp/pool-1-4381/fog-base/column-top/screenshot_000001.png",
+    "sha256": "4d50b730f5e573dd5d75342c7471c931161b734088cfa2ada0110e5ce1e6d092"
+  },
+  "fog_occlusion_column_top_yaw-before.png": {
+    "source": "/tmp/pool-1-4381/fog-base/column-top/screenshot_000002.png",
+    "sha256": "d37795ecc2ce91da5c5f0558bc140c10fa0d30950949e7f0852661b5e617519e"
+  },
+  "fog_occlusion_column_top-after.png": {
+    "source": "/tmp/pool-1-4381/fog-fixed/column-top/captures/screenshot_000001.png",
+    "sha256": "a7e5841778c306d0f85f992d236350d9b02d19959bff2f00f1dc7b9a08a3def0"
+  },
+  "fog_occlusion_column_top_yaw-after.png": {
+    "source": "/tmp/pool-1-4381/fog-fixed/column-top/captures/screenshot_000002.png",
+    "sha256": "f55bc3b263cade1186d87a04191970946744520429c27722ab996a1a75661862"
+  },
+  "fog_ceiling_shadow9-before.png": {
+    "source": "/tmp/pool-1-4381/fog-base/shadow/screenshot_000001.png",
+    "sha256": "eef231ad322141404bec6faced4cdb489cc87b65dcc990b21708cbda454f4afb"
+  },
+  "fog_ceiling_shadow_yaw9-before.png": {
+    "source": "/tmp/pool-1-4381/fog-base/shadow/screenshot_000002.png",
+    "sha256": "8728ef526b62d24c5fcb135e4b2e7772dd577fb475747fb0ac4115ee61c54646"
+  },
+  "fog_ceiling_shadow9-after.png": {
+    "source": "/tmp/pool-1-4381/fog-fixed/shadow/captures/screenshot_000001.png",
+    "sha256": "0fb15f251e4dd5c5b7f59c43b6773fdf1e4e084984e6633a9b98196a7f881d5a"
+  },
+  "fog_ceiling_shadow_yaw9-after.png": {
+    "source": "/tmp/pool-1-4381/fog-fixed/shadow/captures/screenshot_000002.png",
+    "sha256": "2e2df1490aec4b4a0551e1a74455c353fba1e1abaa6728a1977fa921c877e25f"
+  }
+}

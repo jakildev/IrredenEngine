@@ -13,6 +13,8 @@ from compare_perf_runs import RunWitness
 from repeat_profile import (
     RESIDUAL_YAW_DEADBAND_RAD,
     cmake_build_type,
+    cmake_source_dir,
+    demo_binary,
     directory_digest,
     engine_logged,
     find_demo_pid,
@@ -189,6 +191,7 @@ class CanvasStaticPoseTest(unittest.TestCase):
             witnessed(yaw=0, zoom_min=None, zoom_max=None)))
 
     def test_runner_rejects_bad_pose_before_producing_summary(self):
+        launched_ns = 1_700_000_000_000_000_000
         cases = (("min=4.000 max=4.000", None, True),
                  ("min=1.000 max=4.000", "zoom range", False),
                  ("min=4.000 max=32.000", "zoom range", False),
@@ -212,7 +215,9 @@ class CanvasStaticPoseTest(unittest.TestCase):
 
                 def capture(command, repo, log, binary, seconds, delay):
                     log.write_text("ir-run: QUIET=guarded exe=IRCanvasStress\nRESULT=CLEAN\n")
-                    (demo / "save_files/profile_report.txt").write_text(text)
+                    report = demo / "save_files/profile_report.txt"
+                    report.write_text(text)
+                    os.utime(report, ns=(launched_ns, launched_ns + 1_000_000_000))
                     return 0, None
 
                 with (
@@ -225,10 +230,11 @@ class CanvasStaticPoseTest(unittest.TestCase):
                     patch("repeat_profile.platform.platform", return_value="fixture host"),
                     patch("repeat_profile.host_power_source", return_value=None),
                     patch("repeat_profile.host_battery_percent", return_value=None),
+                    patch("repeat_profile.time.time_ns", return_value=launched_ns),
                     patch("repeat_profile.run_profile", side_effect=capture),
-                    patch("sys.stdout", new_callable=io.StringIO),
+                    patch("sys.stdout", new_callable=io.StringIO) as stdout,
                 ):
-                    self.assertEqual(main(), 0 if accepted else 1)
+                    self.assertEqual(main(), 0 if accepted else 1, stdout.getvalue())
                 self.assertEqual((output / "summary.md").exists(), accepted)
                 self.assertTrue((output / "run-1.txt").exists())
                 run = json.loads((output / "manifest.json").read_text())["runs"][0]
@@ -456,9 +462,32 @@ class BuildTreeTest(unittest.TestCase):
             cache.write_text("CMAKE_BUILD_TYPE:STRING=\n")
             self.assertIsNone(cmake_build_type(tree))
 
+    def test_source_dir_comes_from_the_cache_so_a_foreign_tree_records_its_own_commit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            tree = Path(temporary) / "build"
+            tree.mkdir()
+            fallback = Path(temporary) / "caller"
+            self.assertEqual(cmake_source_dir(tree, fallback), fallback)
+            source = Path(temporary) / "scratch-worktree"
+            source.mkdir()
+            (tree / "CMakeCache.txt").write_text(
+                f"CMAKE_BUILD_TYPE:STRING=Debug\nCMAKE_HOME_DIRECTORY:INTERNAL={source}\n"
+            )
+            self.assertEqual(cmake_source_dir(tree, fallback), source.resolve())
+
+    def test_demo_binary_falls_back_to_the_windows_exe_suffix(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            tree = Path(temporary)
+            demo = tree / "creations/demos/perf_grid"
+            demo.mkdir(parents=True)
+            self.assertEqual(demo_binary(tree, "IRPerfGrid"), demo / "IRPerfGrid.exe")
+            (demo / "IRPerfGrid").write_bytes(b"")
+            self.assertEqual(demo_binary(tree, "IRPerfGrid"), demo / "IRPerfGrid")
+
 
 class ManifestEnvironmentTest(unittest.TestCase):
     def test_records_only_allowlisted_raw_values_inherited_by_the_child(self):
+        launched_ns = 1_700_000_000_000_000_000
         names = (
             "IR_PERAXIS_SURFACE_LIGHTING", "IR_PERAXIS_VISIBILITY_PREPASS",
             "IR_PERAXIS_VISIBILITY_STATS", "IR_PERAXIS_OVERFLOW_DISABLE",
@@ -496,8 +525,10 @@ class ManifestEnvironmentTest(unittest.TestCase):
                     inherited.append({name: child_env.get(name) for name in names})
                     self.assertEqual(child_env["UNRELATED_SECRET"], environment["UNRELATED_SECRET"])
                     kwargs["stdout"].write("RESULT=CLEAN\n")
-                    (demo / "save_files/profile_report.txt").write_text(
+                    report = demo / "save_files/profile_report.txt"
+                    report.write_text(
                         WITNESSED_REPORT.replace("maxDropped=7", "maxDropped=0"))
+                    os.utime(report, ns=(launched_ns, launched_ns + 1_000_000_000))
                     process = MagicMock()
                     process.__enter__.return_value = process
                     process.wait.return_value = 0
@@ -513,10 +544,11 @@ class ManifestEnvironmentTest(unittest.TestCase):
                     patch("repeat_profile.platform.platform", return_value="fixture host"),
                     patch("repeat_profile.host_power_source", return_value=None),
                     patch("repeat_profile.host_battery_percent", return_value=None),
+                    patch("repeat_profile.time.time_ns", return_value=launched_ns),
                     patch("repeat_profile.subprocess.Popen", side_effect=launch),
-                    patch("sys.stdout", new_callable=io.StringIO),
+                    patch("sys.stdout", new_callable=io.StringIO) as stdout,
                 ):
-                    self.assertEqual(main(), 0)
+                    self.assertEqual(main(), 0, stdout.getvalue())
                 manifest_text = (output / "manifest.json").read_text()
                 recorded = json.loads(manifest_text)["render_environment"]
                 self.assertEqual(recorded, expected)

@@ -21,6 +21,13 @@ neighbors are excluded from this floor-only check. Strict checks require the
 known --iso-scale (screenshot pixels per iso unit) because visible SDF floor bounds
 are only an approximate projection calibration. --screen-origin defaults to image
 center, appropriate to --pivot-origin with an unpanned camera.
+For continuous source geometry, --camera-yaws accepts the captured yaw radians
+and --floor-top/--floor-half-span describe the actual receiver surface. This
+requires --source and --iso-scale; it does not model resampled occupancy.
+--box-half-extents describes a smooth analytic box at its effective density.
+Explicit geometry uses rendered positions: rigid source translations are snapped
+by the demo, while smooth SDF centers can remain fractional. The box must lie
+entirely on or above the floor; intersection with the receiver is not modeled.
 """
 
 import argparse
@@ -30,6 +37,7 @@ import math
 from pathlib import Path
 
 from PIL import Image, ImageChops, ImageDraw, ImageFilter
+from render_fixture_geometry import iso, view
 from render_fixture_geometry import rotate as rotate_source
 from render_metric_util import raster_polygon
 from render_probe_geometry import (
@@ -54,9 +62,41 @@ def rotate(point: tuple[float, float, float], cardinal: int) -> tuple[float, flo
     return x, y, z
 
 
+def posed_corner(corner, box_pose, box_yaw, box_offset):
+    point = rotate_source(corner, axis_angle=(1, 1, 1, math.degrees(box_pose)))
+    x, y, z = rotate_source(point, axis_angle=(0, 0, 1, math.degrees(box_yaw)))
+    return x + box_offset[0], y + box_offset[1], z + BOX_Z + box_offset[2]
+
+
 def expected_polygon(image: Image.Image, cardinal: int, grid: bool, source: bool,
                      box_yaw=0.0, box_offset=(0.0, 0.0, 0.0), subdivisions=1,
-                     iso_scale=None, screen_origin=None, box_pose=0.0):
+                     iso_scale=None, screen_origin=None, box_pose=0.0, *,
+                     camera_yaw=None, floor_top=FLOOR_TOP,
+                     floor_half_span=FLOOR_HALF_SPAN, box_half_extents=None):
+    if camera_yaw is not None:
+        if not source or iso_scale is None:
+            raise ValueError("continuous camera yaw requires source geometry and iso scale")
+        origin = screen_origin or (image.width / 2, image.height / 2)
+
+        def project(point):
+            screen = iso(view(point, camera_yaw))
+            return tuple(origin[i] + iso_scale[i] * screen[i] for i in range(2))
+
+        half = box_half_extents or tuple(h + .5 for h in BOX_HALF_CENTER_SPAN)
+        projected = []
+        for corner in itertools.product(*[(-h, h) for h in half]):
+            x, y, z = posed_corner(corner, box_pose, box_yaw, box_offset)
+            if z > floor_top:
+                raise ValueError("box must lie entirely above the receiver plane")
+            x += (floor_top - z) * SUN[0] / SUN[2]
+            y += (floor_top - z) * SUN[1] / SUN[2]
+            projected.append(project((x, y, floor_top)))
+        floor = convex_hull([project((x, y, floor_top)) for x, y in
+                             itertools.product((-floor_half_span, floor_half_span), repeat=2)])
+        labels = bytearray(image.width * image.height)
+        raster_polygon(labels, image.width, image.height, floor, 255)
+        floor_mask = Image.frombytes("L", image.size, bytes(labels))
+        return convex_hull(projected), floor_mask.filter(ImageFilter.MinFilter(3))
     left, top, right, bottom = plate_bounds(image)
     center = ((left + right - 1) / 2, (top + bottom - 1) / 2)
     scale = ((right - left) / (4 * FLOOR_HALF_SPAN),
@@ -74,13 +114,8 @@ def expected_polygon(image: Image.Image, cardinal: int, grid: bool, source: bool
     upper = [max(point[axis] for point in centers) + 0.5 for axis in range(3)]
     projected = []
     for corner in itertools.product(*zip(lower, upper)):
-        x, y, z = rotate(corner, 0 if grid or source else cardinal)
-        x, y, z = rotate_source((x, y, z), axis_angle=(1, 1, 1, math.degrees(box_pose)))
-        cosine, sine = math.cos(box_yaw), math.sin(box_yaw)
-        x, y = cosine * x - sine * y, sine * x + cosine * y
-        x += box_offset[0]
-        y += box_offset[1]
-        z += BOX_Z + box_offset[2]
+        corner = rotate(corner, 0 if grid or source else cardinal)
+        x, y, z = posed_corner(corner, box_pose, box_yaw, box_offset)
         x += (FLOOR_TOP - z) * SUN[0] / SUN[2]
         y += (FLOOR_TOP - z) * SUN[1] / SUN[2]
         view_x, view_y, _ = rotate((x, y, FLOOR_TOP), -cardinal)
@@ -139,12 +174,14 @@ def strict_edges(observed, visible, polygon):
 
 def measure(path: Path, cardinal: int, grid: bool, overlay_dir: Path | None, source=False,
             box_yaw=0.0, box_offset=(0.0, 0.0, 0.0), strict=False, subdivisions=1,
-            iso_scale=None, screen_origin=None, box_pose=0.0) -> bool:
+            iso_scale=None, screen_origin=None, box_pose=0.0, **geometry) -> bool:
     with Image.open(path) as opened_image:
         image = opened_image.convert("RGB")
     polygon, floor_mask = expected_polygon(
         image, cardinal, grid, source, box_yaw, box_offset, subdivisions, iso_scale,
-        screen_origin, box_pose)
+        screen_origin, box_pose, **geometry)
+    yaw = (math.degrees(geometry["camera_yaw"]) if geometry.get("camera_yaw") is not None
+           else cardinal * 90)
     expected = Image.new("L", image.size)
     ImageDraw.Draw(expected).polygon(polygon, fill=255)
     observed, visible = shadow_masks(image, floor_mask)
@@ -157,12 +194,12 @@ def measure(path: Path, cardinal: int, grid: bool, overlay_dir: Path | None, sou
     iou = intersection / (expected_area + actual_area - intersection)
     ratio = actual_area / expected_area
     passed = iou >= MIN_IOU and MIN_AREA_RATIO <= ratio <= MAX_AREA_RATIO
-    print(f"yaw={cardinal * 90} iou={iou:.3f} area_ratio={ratio:.3f} "
+    print(f"yaw={yaw:g} iou={iou:.3f} area_ratio={ratio:.3f} "
           f"expected_pixels={expected_area} observed_pixels={actual_area} "
           f"{'PASS' if passed else 'FAIL'}")
     if strict:
         result, errors = strict_edges(observed, visible, polygon)
-        result.update(image=str(path), yaw=cardinal * 90,
+        result.update(image=str(path), yaw=yaw, geometry=geometry,
                       effective_subdivisions=subdivisions, grid=grid, source=source,
                       iso_scale=iso_scale, screen_origin=screen_origin or
                       [image.width / 2, image.height / 2])
@@ -170,17 +207,22 @@ def measure(path: Path, cardinal: int, grid: bool, overlay_dir: Path | None, sou
         passed &= result["passed"]
         if overlay_dir is not None:
             overlay_dir.mkdir(parents=True, exist_ok=True)
-            errors.save(overlay_dir / f"yaw{cardinal * 90}-edge-errors.png")
+            errors.save(overlay_dir / f"yaw{yaw:g}-edge-errors.png")
     if overlay_dir is not None:
         overlay_dir.mkdir(parents=True, exist_ok=True)
         ImageDraw.Draw(image).line(polygon + [polygon[0]], fill="red", width=2)
-        image.save(overlay_dir / f"yaw{cardinal * 90}-oracle.png")
+        image.save(overlay_dir / f"yaw{yaw:g}-oracle.png")
     return passed
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("images", nargs=4, type=Path, metavar="PNG")
+    parser.add_argument("images", nargs="+", type=Path, metavar="PNG")
+    parser.add_argument("--camera-yaws", type=float, nargs="+",
+                        help="Captured yaw radians, one per image; requires --source --iso-scale")
+    parser.add_argument("--floor-top", type=float, default=FLOOR_TOP)
+    parser.add_argument("--floor-half-span", type=float, default=FLOOR_HALF_SPAN)
+    parser.add_argument("--box-half-extents", type=float, nargs=3)
     parser.add_argument("--grid", action="store_true")
     parser.add_argument("--iso-scale", type=float, nargs=2,
                         help="Known screenshot pixels per iso X/Y unit; required for strict edges")
@@ -198,8 +240,21 @@ def main() -> None:
     parser.add_argument("--box-pose", type=float, default=0.0,
                         help="Source box angle around (1,1,1), radians; matches --frozen-pose")
     parser.add_argument("--box-yaw", type=float, default=0.0, help="Authored box yaw in radians")
-    parser.add_argument("--box-offset", type=float, nargs=3, default=(0.0, 0.0, 0.0))
+    parser.add_argument("--box-offset", type=float, nargs=3, default=(0.0, 0.0, 0.0),
+                        help="Rendered center offset; account for source placement snapping")
     args = parser.parse_args()
+    explicit_geometry = (args.floor_top != FLOOR_TOP or args.floor_half_span != FLOOR_HALF_SPAN
+                         or args.box_half_extents is not None)
+    if args.camera_yaws is None:
+        if len(args.images) != 4 or explicit_geometry:
+            parser.error("use four cardinal images, or provide --camera-yaws for explicit geometry")
+    elif (len(args.camera_yaws) != len(args.images) or not args.source or args.iso_scale is None
+          or not all(math.isfinite(v) for v in args.camera_yaws)):
+        parser.error("camera yaws require one finite angle per image, --source and --iso-scale")
+    if (not math.isfinite(args.floor_top) or not math.isfinite(args.floor_half_span)
+            or args.floor_half_span <= 0 or (args.box_half_extents is not None
+            and not all(math.isfinite(v) and v > 0 for v in args.box_half_extents))):
+        parser.error("floor height must be finite; half extents must be finite and positive")
     if args.strict_edges and args.iso_scale is None:
         parser.error("strict edges require --iso-scale; floor-bound calibration is approximate")
     if args.screen_origin is not None and args.iso_scale is None:
@@ -218,10 +273,13 @@ def main() -> None:
     results = []
     for cardinal, path in enumerate(args.images):
         try:
+            geometry = {} if args.camera_yaws is None else dict(
+                camera_yaw=args.camera_yaws[cardinal], floor_top=args.floor_top,
+                floor_half_span=args.floor_half_span, box_half_extents=args.box_half_extents)
             results.append(measure(path, cardinal, args.grid, args.overlay_dir, args.source,
                                    args.box_yaw, args.box_offset, args.strict_edges,
                                    args.effective_subdivisions, args.iso_scale, args.screen_origin,
-                                   args.box_pose))
+                                   args.box_pose, **geometry))
         except (OSError, ValueError) as error:
             print(f"{path}: FAIL ({error})")
             results.append(False)

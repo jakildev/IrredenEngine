@@ -194,12 +194,16 @@ TEST_F(GpuComputeDispatchTest, CopyNamedBufferSubDataMatchesSourceBytes) {
 // drives the real ShaderProgram / Texture2D / dispatchCompute path.
 
 #include <irreden/render/buffer.hpp>
+#include <irreden/render/framebuffer.hpp>
 #include <irreden/render/ir_render_enums.hpp>
+#include <irreden/render/ir_render_types.hpp>
 #include <irreden/render/metal/metal_runtime.hpp>
 #include <irreden/render/light_volume_dispatch.hpp>
 #include <irreden/render/render_device.hpp>
 #include <irreden/render/shader.hpp>
+#include <irreden/render/shapes_2d.hpp>
 #include <irreden/render/texture.hpp>
+#include <irreden/render/vao.hpp>
 
 #include <cstddef>
 #include <cstdint>
@@ -1310,6 +1314,97 @@ TEST_F(MetalGpuComputeDispatchTest, ResolveOnFirstTickLeavesTheClearSentinel) {
            "pass in between.";
 }
 
+// Blend-state parity with GL: a draw honours enableBlending() /
+// disableBlending() the way GL_BLEND does. Blending starts off, enabling it
+// applies SourceAlpha / OneMinusSourceAlpha to RGB and alpha alike, and the
+// matching disable turns it off again. The fractional-alpha source is the
+// discriminator: an unblended draw writes it verbatim, a blended one mixes it
+// into the seeded target. Blend state is baked into the Metal pipeline state,
+// so this also proves the off and on variants are cached separately.
+TEST_F(MetalGpuComputeDispatchTest, DrawBlendingFollowsDeviceToggle) {
+    using namespace IRRender;
+    constexpr int kTargetDim = 4;
+    constexpr std::uint8_t kSource[4] = {255, 0, 0, 128};
+    constexpr std::uint8_t kDestination[4] = {0, 0, 255, 255};
+    // a = 128/255: rgb = src * a + dst * (1 - a), alpha = a * a + 1 * (1 - a).
+    constexpr std::uint8_t kBlended[4] = {128, 0, 127, 191};
+
+    Framebuffer target{
+        IRMath::ivec2(kTargetDim),
+        IRMath::ivec2(0),
+        TextureFormat::RGBA8,
+        TextureFormat::DEPTH24_STENCIL8
+    };
+    Texture2D source{TextureKind::TEXTURE_2D, kTargetDim, kTargetDim, TextureFormat::RGBA8};
+    source.clear(PixelDataFormat::RGBA, PixelDataType::UNSIGNED_BYTE, kSource);
+
+    // The textured quad spans [-0.5, 0.5]; doubling it covers the whole target.
+    FrameDataFramebuffer frameData{};
+    frameData.mvpMatrix = IRMath::scale(IRMath::mat4(1.0f), IRMath::vec3(2.0f, 2.0f, 1.0f));
+    Buffer frameDataBuffer{
+        &frameData,
+        sizeof(frameData),
+        BUFFER_STORAGE_DYNAMIC,
+        BufferTarget::UNIFORM,
+        kBufferIndex_FramebufferFrameDataUniform
+    };
+    Buffer quadVertices{IRShapes2D::k2DQuadTextured, sizeof(IRShapes2D::k2DQuadTextured), 0};
+    VertexLayout quad{&quadVertices, nullptr, 2, kAttrList2Float2};
+
+    const std::string vertPath =
+        std::string(IR_TEST_RENDER_SHADER_DIR) + "/v_framebuffer_to_screen.glsl";
+    const std::string fragPath =
+        std::string(IR_TEST_RENDER_SHADER_DIR) + "/f_framebuffer_to_screen.glsl";
+    ShaderProgram program{std::vector{
+        ShaderStage{vertPath.c_str(), ShaderType::VERTEX},
+        ShaderStage{fragPath.c_str(), ShaderType::FRAGMENT}
+    }};
+
+    target.bind();
+    program.use();
+    quad.bind();
+    source.bind(0);
+    device_->setDepthTest(false);
+    device_->setDepthWrite(false);
+
+    const auto drawOverDestination = [&]() {
+        device_->clearTexImage(&target.getTextureColor(), 0, kDestination);
+        device_->drawArrays(DrawMode::TRIANGLES, 0, 6);
+        device_->finish();
+        std::vector<std::uint8_t> pixels(kTargetDim * kTargetDim * 4);
+        target.getTextureColor().getSubImage2D(
+            0,
+            0,
+            kTargetDim,
+            kTargetDim,
+            PixelDataFormat::RGBA,
+            PixelDataType::UNSIGNED_BYTE,
+            pixels.data()
+        );
+        return pixels;
+    };
+    // One unit of slack per channel absorbs blend-unit rounding.
+    const auto expectEveryTexel = [](const std::vector<std::uint8_t> &pixels,
+                                     const std::uint8_t (&expected)[4],
+                                     const char *phase) {
+        for (std::size_t byte = 0; byte < pixels.size(); ++byte) {
+            ASSERT_LE(IRMath::abs(int(pixels[byte]) - int(expected[byte % 4])), 1)
+                << phase << ": texel " << byte / 4 << " channel " << byte % 4 << " = "
+                << int(pixels[byte]) << ", expected " << int(expected[byte % 4]);
+        }
+    };
+
+    expectEveryTexel(drawOverDestination(), kSource, "default (blending off)");
+    device_->enableBlending();
+    expectEveryTexel(drawOverDestination(), kBlended, "after enableBlending");
+    device_->disableBlending();
+    expectEveryTexel(drawOverDestination(), kSource, "after disableBlending");
+
+    device_->setDepthTest(true);
+    device_->setDepthWrite(true);
+    setActiveMetalPipeline(nullptr);
+}
+
 } // namespace
 
 #else // other backend (e.g. Vulkan)
@@ -1392,7 +1487,7 @@ TEST_F(CanvasBackingResizeTest, CardinalGrowthClearsBackingAndPreservesAncillary
     const auto shapeOwners = canvas->shapeGeometry_.sampleOwners_;
     canvas->shapeGeometry_.frameData_.shapeCount = 1;
     canvas->shapeGeometry_.tileCount_ = 1;
-    canvas->shapeGeometry_.publishSamples(true);
+    canvas->shapeGeometry_.publishSamples(true, 1);
     const std::int32_t occupied = 17;
     canvas->textureTriangleDistances_.second
         ->clear(PixelDataFormat::RED_INTEGER, PixelDataType::INT32, &occupied);
@@ -1517,6 +1612,10 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
     FrameDataVoxelToCanvas frame{};
     frame.overflowScratchLayout_ = layout;
     Buffer uniform(&frame, sizeof(frame), BUFFER_STORAGE_DYNAMIC);
+    constexpr std::uint32_t argsUints =
+        Axes::kOverflowSortCommandCount * Axes::kOverflowSortCommandUints;
+    std::vector<std::uint32_t> argsWords(argsUints, 0xA5A5A5A5u);
+    Buffer args(argsWords.data(), argsWords.size() * sizeof(std::uint32_t), BUFFER_STORAGE_DYNAMIC);
     const std::string path =
         std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_per_axis_overflow_sort.glsl";
     ShaderProgram program{std::vector{ShaderStage{path.c_str(), ShaderType::COMPUTE}}};
@@ -1557,7 +1656,9 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
         }
         std::sort(expected.begin(), expected.end(), recordLess);
         scratch.subData(0, words.size() * sizeof(std::uint32_t), words.data());
+        args.subData(0, argsWords.size() * sizeof(std::uint32_t), argsWords.data());
         scratch.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_PerAxisResolveScratch);
+        args.bindBase(BufferTarget::SHADER_STORAGE, kBufferIndex_IndirectDispatchParams);
         uniform.bindBase(BufferTarget::UNIFORM, kBufferIndex_FrameDataVoxelToCanvas);
         program.use();
         auto step = [&](int mode,
@@ -1567,23 +1668,21 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
                         std::uint32_t command) {
             frame.overflowSortStep_ = IRMath::ivec4(mode, k, lo, hi);
             uniform.subData(0, sizeof(frame), &frame);
-            const auto offset = static_cast<std::ptrdiff_t>(
-                                    ctrl + Axes::kOverflowSortArgsBaseUints +
-                                    command * Axes::kOverflowSortCommandUints
-                                ) *
-                                sizeof(std::uint32_t);
+            const auto offset =
+                static_cast<std::ptrdiff_t>(command * Axes::kOverflowSortCommandUints) *
+                sizeof(std::uint32_t);
 #if defined(IR_GRAPHICS_METAL)
             if (mode == 3)
                 device_->dispatchCompute(1, 1, 1);
             else
-                device_->dispatchComputeIndirect(&scratch, offset);
+                device_->dispatchComputeIndirect(&args, offset);
             device_->memoryBarrier(BarrierType::SHADER_STORAGE);
             device_->memoryBarrier(BarrierType::COMMAND);
 #else
             if (mode == 3)
                 ENG_API->glDispatchCompute(1, 1, 1);
             else {
-                ENG_API->glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, scratch.getHandle());
+                ENG_API->glBindBuffer(GL_DISPATCH_INDIRECT_BUFFER, args.getHandle());
                 ENG_API->glDispatchComputeIndirect(offset);
             }
             ENG_API->glMemoryBarrier(GL_ALL_BARRIER_BITS);
@@ -1632,16 +1731,17 @@ TEST_F(PositionUploadTest, OverflowSortHandlesFirstPopulationAndCountTransitions
             std::sort(observed.begin(), observed.end(), recordLess);
             EXPECT_EQ(observed, expected);
         }
-        for (std::uint32_t i = 0; i < 8; ++i)
+        for (std::uint32_t i = 0; i < static_cast<std::uint32_t>(entries - ctrl); ++i)
             EXPECT_EQ(actual[ctrl + i], words[ctrl + i]);
-        const auto args = ctrl + Axes::kOverflowSortArgsBaseUints;
-        EXPECT_LE(actual[args], 1024u);
-        EXPECT_EQ(actual[args + 1] == 0, count == 0);
+        std::vector<std::uint32_t> grids(argsUints);
+        args.getSubData(0, grids.size() * sizeof(std::uint32_t), grids.data());
+        EXPECT_LE(grids[0], 1024u);
+        EXPECT_EQ(grids[1] == 0, count == 0);
         if (count == 262145u)
-            EXPECT_EQ(actual[args + 1], 2u);
+            EXPECT_EQ(grids[1], 2u);
         if (count == 0) {
             for (std::uint32_t command = 0; command < Axes::kOverflowSortCommandCount; ++command)
-                EXPECT_EQ(actual[args + command * Axes::kOverflowSortCommandUints + 1], 0u);
+                EXPECT_EQ(grids[command * Axes::kOverflowSortCommandUints + 1], 0u);
         }
     }
 }

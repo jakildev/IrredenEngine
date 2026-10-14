@@ -77,19 +77,14 @@ template <> struct System<VIEWPORT_TO_FRAMEBUFFER> {
             quadOrigin.x + quadSize.x * 0.5f,
             static_cast<float>(extent_.framebufferSize_.y) - (quadOrigin.y + quadSize.y * 0.5f)
         );
-        IRMath::mat4 model = IRMath::translate(IRMath::mat4(1.0f), IRMath::vec3(quadCenter, 0.0f));
-        model = IRMath::scale(model, IRMath::vec3(quadSize, 1.0f));
-
         IRRender::FrameDataTrixelToFramebuffer frameData{};
-        frameData.mpMatrix_ = IRMath::ortho(
-                                  0.0f,
-                                  static_cast<float>(extent_.framebufferSize_.x),
-                                  0.0f,
-                                  static_cast<float>(extent_.framebufferSize_.y),
-                                  -1.0f,
-                                  100.0f
-                              ) *
-                              model;
+        IRRender::placeGatherQuad(
+            frameData,
+            IRMath::vec2(extent_.framebufferSize_),
+            quadCenter,
+            quadSize,
+            IRMath::vec2(textures->size_)
+        );
         frameData.canvasZoomLevel_ =
             zoomLevel.zoom_ / IRMath::vec2(static_cast<float>(subdivisions));
         frameData.cameraTrixelOffset_ = IRMath::vec2(0.0f);

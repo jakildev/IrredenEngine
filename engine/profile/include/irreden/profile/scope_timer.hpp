@@ -58,7 +58,12 @@ using CpuScopeMap = std::unordered_map<
 // Per-frame CPU scope histogram. `IR_PROFILE_SCOPE(name)` instances record
 // into the "current" map at scope exit; `endFrame()` swaps current → last so
 // the HUD can read a stable per-frame snapshot. Single-threaded by
-// construction — the engine's tick fires on the main thread only.
+// construction — the engine's tick fires on the main thread only, and a scope
+// recorded from a worker thread races these unsynchronized maps (unsupported;
+// no locking is added). `endFrame()` also folds the finished frame into a
+// run-long total that `--auto-profile` writes into the profile report; the
+// report read adds the frame in progress, so no scope exit depends on where
+// the frame boundary sits.
 class CpuFrameHistogram {
   public:
     bool enabled_ = false;
@@ -81,6 +86,8 @@ class CpuFrameHistogram {
     }
 
     void endFrame() {
+        // Fold before the swap: the swap hands the zeroed map to `m_current`.
+        foldInto(m_run, m_current);
         m_lastFrame.swap(m_current);
         for (auto &[_, stats] : m_current) {
             stats = CpuScopeStats{};
@@ -94,9 +101,38 @@ class CpuFrameHistogram {
 
     const detail::CpuScopeMap &lastFrame() const { return m_lastFrame; }
 
+    /// Totals per scope name since the last `resetRun()`, including the frame
+    /// in progress: a scope that exits after the last `endFrame()` still counts.
+    /// Builds a map per call, so read it once per report, never per frame.
+    detail::CpuScopeMap runTotals() const {
+        detail::CpuScopeMap totals = m_run;
+        foldInto(totals, m_current);
+        return totals;
+    }
+
+    /// Clears the completed-frame totals only; `enabled_` and the per-frame maps
+    /// are untouched, so call it at a frame boundary to start a clean run.
+    void resetRun() {
+        m_run.clear();
+    }
+
   private:
+    static void foldInto(detail::CpuScopeMap &totals, const detail::CpuScopeMap &frame) {
+        for (const auto &[name, stats] : frame) {
+            if (stats.count_ == 0)
+                continue;
+            auto &total = totals[name];
+            total.totalMs_ += stats.totalMs_;
+            if (stats.maxMs_ > total.maxMs_) {
+                total.maxMs_ = stats.maxMs_;
+            }
+            total.count_ += stats.count_;
+        }
+    }
+
     detail::CpuScopeMap m_current;
     detail::CpuScopeMap m_lastFrame;
+    detail::CpuScopeMap m_run;
 };
 
 inline CpuFrameHistogram &cpuFrameHistogram() {

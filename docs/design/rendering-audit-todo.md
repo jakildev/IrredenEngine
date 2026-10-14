@@ -9,6 +9,119 @@ The [rendering/profiling cleanup audit](render-profile-cleanup-audit.md) records
 the parallel audit findings and bounded follow-ups after the timing-control stack.
 Keep behavior-preserving consolidation separate from visual or scheduling fixes.
 
+## Active analytic-shadow follow-up
+
+The [analytic caster repair](../pr-screenshots/codex/shape-shadow-sun-space/README.md)
+in #4298 gives floor receivers sharp geometric shadows from eligible cone/torus casters:
+its historical 16 edge checks used a receiver-biased origin. The
+[registration follow-up](../pr-screenshots/codex/shadow-receiver-matrix/README.md)
+corrects that origin and the fragment receiver, without blur or dilation.
+Sphere/cylinder share the tested ray path. The
+[sphere receiver repair](../pr-screenshots/codex/shape-shadow-sun-space/sphere-receiver/README.md)
+now queries the retained sample's true sphere surface without changing its
+displayed face normal. Other curved receivers, fragment reconstruction and
+incomplete-index fallback edges remain open.
+
+1. The measured Linux CI startup regression is repaired by cascade-call consolidation.
+   The retained reports isolate 93.25% of zoom 1's excess to its first frame.
+   All 44 native regression checks and all 16 isolated cone/torus images are
+   preserved. The unchanged CI gate passes. The same-runner diagnostic retains
+   about 4.4% higher remaining-frame means and higher shadow-stage costs despite
+   the first-use improvement. Attribute and reduce those costs before claiming
+   performance neutrality; these results do not establish a throughput gain.
+   A [parameter-hoist experiment](../pr-screenshots/codex/shape-shadow-sun-space/profiles/cascade-hoist/README.md)
+   passes routing/PCF controls, but its native comparison was refused by the
+   fleet quiet-window guard. It is not adopted; the indexed loop and all
+   production shader behavior are preserved. Retry only with paired evidence
+   on the backend carrying the measured overhead.
+2. Coordinate with the existing fog work rather than start another implementation.
+   The current dependency and integration checklist is recorded below. Native
+   OpenGL visual smoke remains tracked validation debt, not a merge gate by itself.
+3. The [torus surface-band investigation](../pr-screenshots/codex/shape-shadow-sun-space/torus-surface-probe/README.md)
+   now has an executable fractional-sample publisher and finite-face diagnostic.
+   Both shader adapters match the independent publisher, which reproduces every
+   pixel of the retained yaw-zero normal image. Its finite cube-union comparison
+   finds different face normals at 67,524 published pixels and 952 unpublished
+   model pixels when sampled at the actual pre-upscale framebuffer centers.
+   The prior finer screenshot-ray counts remain recorded separately; these are
+   representation differences, not certified wrong normals. Next establish the
+   intended curved-surface coverage contract before implementing a finite
+   reconstruction route. Native owner/depth readbacks now resolve two controls:
+   `(1253,569)` selects a nearest exposed Z face, while `(1250,570)` selects Z
+   where the finite-cube model meets X. The probe rejects stale publication and
+   the checker validates the fixture and full encoded depth. Preserve legitimate voxel steps and keep
+   continuous curve geometry as a separate comparison. The cardinal AO/local-light
+   depth repair in #4308 does not change this producer/gather ownership path.
+4. The [receiver-mode matrix](../pr-screenshots/codex/shadow-receiver-matrix/README.md)
+   identifies and fixes a one-storage-texel displacement in continuous SDF BOX
+   fragment queries. Rigid, near-contact and analytic caster controls now pass
+   all 24 eight-angle SDF-floor edge checks; the rigid SOURCE_FACES control
+   remains RGB-identical. Keep raw owner/depth/hover sampling separate from the
+   geometric query conversion. GRID retains coarse face lighting samples and
+   revoxelized receivers retain their own occupancy geometry; neither is
+   certified by comparing it to a continuous plane. Resolve those contracts
+   and costs before changing their sampling. The 65-overlapping-box control
+   still exposes incomplete-index fallback edge errors (592 missing / 704 excess
+   pixels across eight views); do not classify them as the repaired phase error.
+5. Measure dense tile saturation, incomplete-index fallback, and moving
+   camera/light costs. Small native scenes and software OpenGL CI do not qualify
+   hardware throughput or the million-entity target. Profile the new sphere
+   receiver path before extending it; check whether rejecting unsupported frame
+   modes before owner-buffer reads materially reduces its overhead.
+
+### Cardinal voxel receivers (#4231)
+
+Implemented on #4363 with an explicit voxel-producer carrier bit, exact emitted
+microface centers, and world-unit cascade selection. Both shader backends share
+the same contract. The native 720-frame sweep improves every cardinal to below
+1.3; all 716 non-cardinal frames remain byte-identical. The authored-box, analytic
+roof and unblocked-staircase rejection controls pass. [Evidence and limits](../pr-screenshots/codex/4231-cardinal-surface-receiver/README.md).
+
+The full native reference sweep exposed expected shadow changes and inherited
+reference drift; retain the [paired attribution](../pr-screenshots/codex/4231-cardinal-surface-receiver/reference-attribution/README.md)
+when reviewing the deliberate reference refresh. A new thin staircase band was
+checked against independent voxel occupancy: an actual distinct voxel blocks the
+surface-center ray, while the old outward offset misses it. Do not erase genuine
+stepped occlusion to make a beauty image more uniform.
+
+The refreshed native whole-suite run passes 172 checks across nine demos, with
+zero failures or skips; Linux render-harness CI passes all 88 suites.
+
+Before merge: reconcile the overlapping #4362 receiver implementation and its
+moving-caster coverage with this contract, and preserve the existing #4246
+integration hold. Other-host smoke and measured
+receiver-stage cost remain due. This item is not a claim that incomplete-index
+fallback edges, every curved receiver, or million-entity throughput are solved.
+
+### FOW integration checkpoint (2026-10-11)
+
+Master `9e45a862e` includes #4248's fog-gate repair across rotation-mode switches
+and #4319's FIELD column-top wall reveal;
+preserve its transition coverage. The following work is already filed elsewhere:
+
+| Existing work | Implication for this rendering session |
+|---|---|
+| #4319 / #4304: FIELD column-top wall reveal | Merged and integrated into this branch. Owns the shared fog formula and reference changes. BODY and EXEMPT keep their existing semantics. Do not duplicate this implementation. |
+| #4269 / #4246: FIELD ceiling sun-shadow filtering | Still needs fixes and native/performance evidence. Our curved caster records must obey the same eligibility as finite box records; fog evaluation must use the curved hit, not AABB entry. |
+| #4305, revision 2 plan: voxel ceiling geometry cuts | Plans retained occupancy and real exposed caps, with static retained occupancy for shadows replacing the midpoint rule. Depends on #4304 and #4246 and remains parked for a dependency/plan update. It is not a landed renderer contract. |
+| #4321: FIELD performance fixture | Repairs the slab/wall fixture's unintended BODY adoption so it actually exercises the FIELD march. Existing timings from that fixture do not measure the added FIELD work. |
+| #4197: rotation-source/private-canvas fog carriers | Owns snapshot and carrier reapplication across rotation/part transitions; reuse its coverage rather than create a competing lifecycle repair. |
+
+Before reconciling the caster shaders, verify both exact-index publication and
+sampled fallback against the same fog policy. Otherwise a retained exact record
+can bypass the filtered bake. For a geometry cut, rejecting the first surface
+intersection is not generally equivalent to finding the first retained surface;
+geometry behind the cut can remain visible. The #4305 plan explicitly leaves
+FIELD SDF shapes on the painted path because cutting them needs ray search to
+resume below the cut. Do not apply the voxel retention rule to curved SDF rays
+without defining that separate behavior.
+
+Track #4303's snapped rotating placement when refreshing any overlapping fog
+captures. Our independent curved-sample ownership probe can proceed without
+changing fog formulas, resource bindings, or reference images. Recheck these
+dependencies at the next integration; this checkpoint records their current
+state, not permission to take over their claims.
+
 ## Current follow-up: finite GRID face coverage
 
 The [cardinal gather follow-up](../pr-screenshots/codex/scatter-boundary-ownership/README.md)
@@ -36,7 +149,10 @@ OpenGL presentation validation.
 
 Next, in order:
 
-1. Complete native OpenGL validation of finite faces and centered gather; isolate
+1. The gather half is closed on native OpenGL: the gather now derives its canvas
+   position from the fragment pixel ([contract](trixel-gather-sampling.md)), and the
+   four cardinal and the yaw135° orbit-geometry rows read zero mismatches on
+   `windows-debug`. Complete native OpenGL validation of finite faces; isolate
    the remaining intermediate-angle boundary differences using actual capture
    poses and raster ownership rules. The prior ideal-angle diagnostic counted
    15 wrong-face and four missing game samples; do not relax a gate to bless them.
@@ -645,10 +761,13 @@ ray intersection is not a projected quad and retains its separate implementation
 
 [Deterministic SDF winner publication](../pr-screenshots/codex/sdf-winner-ownership/README.md)
 selects one submitted sample at the winning depth before color/identity writes.
-This closes the opaque tie race prerequisite. Surface position/normal storage,
-fragment receiver recovery, X-ray overlay ordering, and bounded shared geometric
-caster queries remain pending. Measure and reduce the extra SDF election cost
-without returning to independently raced surface fields.
+This closes the opaque tie race prerequisite. The same election orders the
+X-ray overlay: an occluded flagged sample contends under its owner key with bit
+31 set, so one sample blends per pixel and only where no sample owns it
+([contract](prefab-render-surface.md#gizmo-interaction)). Surface position/normal
+storage, fragment receiver recovery, and bounded shared geometric caster queries
+remain pending. Measure and reduce the extra SDF election cost without returning
+to independently raced surface fields.
 
 ### Sharp-shadow acceptance and optional softness
 

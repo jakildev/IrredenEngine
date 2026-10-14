@@ -21,7 +21,7 @@ kernel void c_fog_overflow_faces(
     }
 
     const uint entryBase = uint(layout.z) + gid * 3u;
-    const uint packedCell = overflowScratch[entryBase + 0u];
+    const uint packedCell = overflowEntryCell(overflowScratch[entryBase + 0u]);
     const uint colorPacked = overflowScratch[entryBase + 1u];
     const int encoded = int(overflowScratch[entryBase + 2u]);
     const uint fogClassByte = colorPacked >> 24u;
@@ -42,6 +42,7 @@ kernel void c_fog_overflow_faces(
     );
     float aaFloor = 0.0f;
     float3 losSample = pos3D;
+    float3 columnPoint = pos3D;
     if (fogObservers.visionCircleCount > 0) {
         const float3 neighbor = perAxisCellToWorld3DSubCell(
             cell + int2(1, 0), encoded, faceId, frameData.perAxisStoreFrame
@@ -49,13 +50,28 @@ kernel void c_fog_overflow_faces(
         aaFloor = length(neighbor.xy - pos3D.xy);
         if (fogObservers.losSourceMask != 0) {
             losSample = fogLosCanonicalSample(pos3D, faceId, kFogLosRoutePerAxis, 1);
+            columnPoint = fogLosColumnPoint(pos3D, faceId, kFogLosRoutePerAxis, 1, 0);
+        }
+    }
+
+    if (overflowEntryIsCutFace(overflowScratch[entryBase + 0u])) {
+        const float3 facePoint = pos3D;
+        if (fogCeilingCutFace(facePoint, faceId, fogObservers, canvasFogOfWar)) {
+            const float4 sourceColor = unpackColor(colorPacked);
+            const float4 capColor = float4(fogCutCapBlend(sourceColor.rgb,
+                sourceColor.rgb, fogObservers.revealSurfaceTreatment.z, 0.0, 1.0), sourceColor.a);
+            overflowScratch[entryBase + 1u] = packColor(capColor);
+            return;
         }
     }
 
     const FogReveal reveal = fogRevealSample(
         pos3D,
         losSample,
+        columnPoint,
+        faceId >> 1,
         aaFloor,
+        false,
         fogObservers,
         canvasFogOfWar,
         fogLineOfSight

@@ -1,0 +1,472 @@
+{
+  "identity0": [
+    {
+      "metric": "frame",
+      "base_ms": 29.0675,
+      "head_ms": 28.715,
+      "ratio": 0.9878730540982197,
+      "delta_us": -352.49999999999915,
+      "limit_us": 1453.3750000000011,
+      "pass_written": true,
+      "pairs": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "pair_deltas_us": [
+        1550.0000000000007,
+        -1289.999999999999,
+        -280.00000000000114,
+        -1390.0000000000005
+      ],
+      "n": 4,
+      "pairs_sufficient": false,
+      "sd_us": null,
+      "lower_bound_us": null,
+      "base_runs": [
+        29.68,
+        29.18,
+        28.68,
+        28.73
+      ],
+      "head_runs": [
+        31.23,
+        27.89,
+        28.4,
+        27.34
+      ],
+      "pass_bound": false,
+      "pass": false
+    },
+    {
+      "metric": "steady frame",
+      "base_ms": 26.595,
+      "head_ms": 26.255,
+      "ratio": 0.9872156420379771,
+      "delta_us": -339.9999999999999,
+      "limit_us": 1329.7500000000011,
+      "pass_written": true,
+      "pairs": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "pair_deltas_us": [
+        2509.999999999998,
+        -1809.9999999999986,
+        -210.00000000000085,
+        -1850.0000000000014
+      ],
+      "n": 4,
+      "pairs_sufficient": false,
+      "sd_us": null,
+      "lower_bound_us": null,
+      "base_runs": [
+        26.21,
+        26.75,
+        26.76,
+        26.66
+      ],
+      "head_runs": [
+        28.72,
+        24.94,
+        26.55,
+        24.81
+      ],
+      "pass_bound": false,
+      "pass": false
+    },
+    {
+      "metric": "GPU voxelCompact",
+      "base_ms": 0.049,
+      "head_ms": 0.043,
+      "ratio": 0.8775510204081631,
+      "delta_us": -6.000000000000005,
+      "limit_us": 10.0,
+      "pass_written": true,
+      "pairs": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "pair_deltas_us": [
+        -4.999999999999997,
+        0.999999999999994,
+        -4.999999999999997,
+        -15.0
+      ],
+      "n": 4,
+      "pairs_sufficient": false,
+      "sd_us": null,
+      "lower_bound_us": null,
+      "base_runs": [
+        0.053,
+        0.042,
+        0.047,
+        0.054
+      ],
+      "head_runs": [
+        0.048,
+        0.043,
+        0.042,
+        0.039
+      ],
+      "pass_bound": false,
+      "pass": false
+    },
+    {
+      "metric": "GPU voxelStage1",
+      "base_ms": 2.70575,
+      "head_ms": 2.72675,
+      "ratio": 1.0077612491915364,
+      "delta_us": 20.999999999999908,
+      "limit_us": 135.2875000000001,
+      "pass_written": true,
+      "pairs": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "pair_deltas_us": [
+        203.99999999999974,
+        -5.999999999999783,
+        37.00000000000037,
+        -151.00000000000026
+      ],
+      "n": 4,
+      "pairs_sufficient": false,
+      "sd_us": null,
+      "lower_bound_us": null,
+      "base_runs": [
+        3.063,
+        2.57,
+        2.582,
+        2.608
+      ],
+      "head_runs": [
+        3.267,
+        2.564,
+        2.619,
+        2.457
+      ],
+      "pass_bound": false,
+      "pass": false
+    },
+    {
+      "metric": "GPU voxelStage2",
+      "base_ms": 2.982,
+      "head_ms": 2.856,
+      "ratio": 0.9577464788732394,
+      "delta_us": -126.00000000000034,
+      "limit_us": 149.10000000000014,
+      "pass_written": true,
+      "pairs": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "pair_deltas_us": [
+        26.000000000000245,
+        -160.00000000000014,
+        -104.00000000000009,
+        -265.99999999999955
+      ],
+      "n": 4,
+      "pairs_sufficient": false,
+      "sd_us": null,
+      "lower_bound_us": null,
+      "base_runs": [
+        3.328,
+        2.873,
+        2.846,
+        2.881
+      ],
+      "head_runs": [
+        3.354,
+        2.713,
+        2.742,
+        2.615
+      ],
+      "pass_bound": false,
+      "pass": false
+    },
+    {
+      "metric": "GPU voxelCardinalElect",
+      "base_ms": 2.62325,
+      "head_ms": 2.6414999999999997,
+      "ratio": 1.006957018965024,
+      "delta_us": 18.249999999999655,
+      "limit_us": 131.16250000000014,
+      "pass_written": true,
+      "pairs": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "pair_deltas_us": [
+        181.99999999999994,
+        -23.00000000000013,
+        38.9999999999997,
+        -125.0
+      ],
+      "n": 4,
+      "pairs_sufficient": false,
+      "sd_us": null,
+      "lower_bound_us": null,
+      "base_runs": [
+        2.966,
+        2.54,
+        2.454,
+        2.533
+      ],
+      "head_runs": [
+        3.148,
+        2.517,
+        2.493,
+        2.408
+      ],
+      "pass_bound": false,
+      "pass": false
+    },
+    {
+      "metric": "GPU fogToTrixel",
+      "base_ms": 0.02075,
+      "head_ms": 0.02375,
+      "ratio": 1.144578313253012,
+      "delta_us": 2.999999999999999,
+      "limit_us": 10.0,
+      "pass_written": true,
+      "pairs": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "pair_deltas_us": [
+        1.0000000000000009,
+        8.0,
+        0.9999999999999974,
+        1.9999999999999982
+      ],
+      "n": 4,
+      "pairs_sufficient": false,
+      "sd_us": null,
+      "lower_bound_us": null,
+      "base_runs": [
+        0.023,
+        0.018,
+        0.021,
+        0.021
+      ],
+      "head_runs": [
+        0.024,
+        0.026,
+        0.022,
+        0.023
+      ],
+      "pass_bound": false,
+      "pass": false
+    },
+    {
+      "metric": "GPU voxelSunFaces",
+      "base_ms": 0.45975,
+      "head_ms": 0.47025,
+      "ratio": 1.0228384991843393,
+      "delta_us": 10.500000000000009,
+      "limit_us": 22.98750000000002,
+      "pass_written": true,
+      "pairs": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "pair_deltas_us": [
+        21.999999999999908,
+        15.000000000000014,
+        22.00000000000002,
+        -17.000000000000014
+      ],
+      "n": 4,
+      "pairs_sufficient": false,
+      "sd_us": null,
+      "lower_bound_us": null,
+      "base_runs": [
+        0.547,
+        0.431,
+        0.428,
+        0.433
+      ],
+      "head_runs": [
+        0.569,
+        0.446,
+        0.45,
+        0.416
+      ],
+      "pass_bound": false,
+      "pass": false
+    },
+    {
+      "metric": "GPU bakeSunShadowMap",
+      "base_ms": 0.001,
+      "head_ms": 0.001,
+      "ratio": 1.0,
+      "delta_us": 0.0,
+      "limit_us": 10.0,
+      "pass_written": true,
+      "pairs": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "pair_deltas_us": [
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "n": 4,
+      "pairs_sufficient": false,
+      "sd_us": null,
+      "lower_bound_us": null,
+      "base_runs": [
+        0.001,
+        0.001,
+        0.001,
+        0.001
+      ],
+      "head_runs": [
+        0.001,
+        0.001,
+        0.001,
+        0.001
+      ],
+      "pass_bound": false,
+      "pass": false
+    },
+    {
+      "metric": "CPU voxelStage1",
+      "base_ms": 8.7615,
+      "head_ms": 8.78,
+      "ratio": 1.0021115105860867,
+      "delta_us": 18.499999999999517,
+      "limit_us": 438.0750000000004,
+      "pass_written": true,
+      "pairs": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "pair_deltas_us": [
+        489.0000000000008,
+        -131.00000000000023,
+        102.99999999999976,
+        -387.00000000000045
+      ],
+      "n": 4,
+      "pairs_sufficient": false,
+      "sd_us": null,
+      "lower_bound_us": null,
+      "base_runs": [
+        9.404,
+        8.603,
+        8.449,
+        8.59
+      ],
+      "head_runs": [
+        9.893,
+        8.472,
+        8.552,
+        8.203
+      ],
+      "pass_bound": false,
+      "pass": false
+    },
+    {
+      "metric": "CPU fogToTrixel",
+      "base_ms": 0.0605,
+      "head_ms": 0.06275,
+      "ratio": 1.037190082644628,
+      "delta_us": 2.2500000000000018,
+      "limit_us": 10.0,
+      "pass_written": true,
+      "pairs": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "pair_deltas_us": [
+        5.000000000000004,
+        -2.0000000000000018,
+        3.0000000000000027,
+        3.0000000000000027
+      ],
+      "n": 4,
+      "pairs_sufficient": false,
+      "sd_us": null,
+      "lower_bound_us": null,
+      "base_runs": [
+        0.06,
+        0.063,
+        0.06,
+        0.059
+      ],
+      "head_runs": [
+        0.065,
+        0.061,
+        0.063,
+        0.062
+      ],
+      "pass_bound": false,
+      "pass": false
+    },
+    {
+      "metric": "CPU bakeSunShadowMap",
+      "base_ms": 0.0405,
+      "head_ms": 0.041,
+      "ratio": 1.0123456790123457,
+      "delta_us": 0.5000000000000004,
+      "limit_us": 10.0,
+      "pass_written": true,
+      "pairs": [
+        2,
+        3,
+        4,
+        5
+      ],
+      "pair_deltas_us": [
+        3.9999999999999964,
+        -1.0000000000000009,
+        0.0,
+        -1.0000000000000009
+      ],
+      "n": 4,
+      "pairs_sufficient": false,
+      "sd_us": null,
+      "lower_bound_us": null,
+      "base_runs": [
+        0.039,
+        0.042,
+        0.04,
+        0.041
+      ],
+      "head_runs": [
+        0.043,
+        0.041,
+        0.04,
+        0.04
+      ],
+      "pass_bound": false,
+      "pass": false
+    }
+  ]
+}

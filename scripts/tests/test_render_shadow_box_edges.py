@@ -5,6 +5,7 @@ import importlib.util
 import io
 import itertools
 import math
+import random
 import sys
 import unittest
 from pathlib import Path
@@ -29,6 +30,90 @@ def rectangle(scale=1, shift=0):
 
 
 class ShadowBoxEdgesTest(unittest.TestCase):
+    def test_continuous_projection_matches_independent_ray_box(self):
+        image = Image.new("RGB", (640, 480))
+        origin, scale = (320, 240), (8, 4)
+        half, center = (8.625, 2.625, 3.625), (1.25, -.75, -12)
+        pose, box_yaw, top = .6, -.3, 2.375
+
+        def inverse_rotation(point, axis, angle):
+            # Inverse quaternion sandwich, independent of the metric's Rodrigues rotation.
+            sine = -math.sin(angle / 2) / math.sqrt(sum(v*v for v in axis))
+            q = tuple(v * sine for v in axis) + (math.cos(angle / 2),)
+
+            def multiply(a, b):
+                x, y, z, w = a
+                u, v, t, s = b
+                return (w*u+x*s+y*t-z*v, w*v-x*t+y*s+z*u,
+                        w*t+x*v-y*u+z*s, w*s-x*u-y*v-z*t)
+
+            return multiply(multiply(q, (*point, 0)), (-q[0], -q[1], -q[2], q[3]))[:3]
+
+        def local(point):
+            return inverse_rotation(inverse_rotation(point, (0, 0, 1), box_yaw),
+                                    (1, 1, 1), pose)
+
+        direction = local(METRIC.SUN)
+        random_source = random.Random(127)
+        for yaw in (0, .23, math.pi/4, math.pi/2, 2.6, math.pi, 4.4, 5.9):
+            polygon, floor = METRIC.expected_polygon(
+                image, 0, False, True, box_yaw=box_yaw, box_offset=(1.25, -.75, 0),
+                box_pose=pose, iso_scale=scale, screen_origin=origin,
+                camera_yaw=yaw, floor_top=top, floor_half_span=20, box_half_extents=half)
+            hits = 0
+            for _ in range(500):
+                x, y = (random_source.uniform(-19, 19) for _ in range(2))
+                ray = local((x-center[0], y-center[1], top-center[2]))
+                intervals = [sorted(((-h-p)/d, (h-p)/d))
+                             for p, d, h in zip(ray, direction, half)]
+                hit = max(0, *(v[0] for v in intervals)) <= min(v[1] for v in intervals)
+                hits += hit
+                # Direct matrix expansion also checks the sign of camera yaw.
+                vx = math.cos(yaw)*x + math.sin(yaw)*y
+                vy = -math.sin(yaw)*x + math.cos(yaw)*y
+                point = (origin[0]+scale[0]*(-vx+vy),
+                         origin[1]+scale[1]*(-vx-vy+2*top))
+                cross = [(b[0]-a[0])*(point[1]-a[1]) - (b[1]-a[1])*(point[0]-a[0])
+                         for a, b in zip(polygon, polygon[1:]+polygon[:1])]
+                self.assertEqual(all(v >= 0 for v in cross), hit)
+                self.assertEqual(floor.getpixel(tuple(int(v) for v in point)), 255)
+            self.assertGreater(hits, 0)
+
+    def test_continuous_projection_respects_floor_height_and_extent(self):
+        image = Image.new("RGB", (640, 480))
+        options = dict(camera_yaw=.7, floor_half_span=20, iso_scale=(8, 4))
+        first, floor = METRIC.expected_polygon(image, 0, False, True, floor_top=2, **options)
+        second, _ = METRIC.expected_polygon(image, 0, False, True, floor_top=3, **options)
+        dx, dy = METRIC.SUN[0]/METRIC.SUN[2], METRIC.SUN[1]/METRIC.SUN[2]
+        vx, vy = math.cos(.7)*dx+math.sin(.7)*dy, -math.sin(.7)*dx+math.cos(.7)*dy
+        for a, b in zip(first, second):
+            self.assertAlmostEqual(b[0]-a[0], 8*(-vx+vy))
+            self.assertAlmostEqual(b[1]-a[1], 4*(-vx-vy+2))
+        self.assertEqual(floor.getpixel((320, 256)), 255)
+        self.assertEqual(floor.getpixel((0, 0)), 0)
+        _, smaller = METRIC.expected_polygon(
+            image, 0, False, True, camera_yaw=.7, floor_half_span=10, iso_scale=(8, 4))
+        self.assertLess(smaller.histogram()[255], floor.histogram()[255])
+
+    def test_explicit_geometry_rejects_incomplete_cli_contract(self):
+        for options in (["--floor-top", "2.375"], ["--camera-yaws", "0"],
+                        ["--source", "--iso-scale", "8", "4", "--camera-yaws", "nan"],
+                        ["--source", "--iso-scale", "8", "4", "--camera-yaws", "0", "1"],
+                        ["--source", "--iso-scale", "8", "4", "--camera-yaws", "0",
+                         "--floor-half-span", "0"]):
+            with patch.object(sys, "argv", ["metric", "a", *options]):
+                with contextlib.redirect_stderr(io.StringIO()):
+                    with self.assertRaises(SystemExit) as error:
+                        METRIC.main()
+                self.assertEqual(error.exception.code, 2)
+
+    def test_continuous_projection_rejects_receiver_intersections(self):
+        for floor_top in (-30, -12):
+            with self.assertRaisesRegex(ValueError, "above the receiver"):
+                METRIC.expected_polygon(
+                    Image.new("RGB", (640, 480)), 0, False, True,
+                    camera_yaw=.7, floor_top=floor_top, iso_scale=(8, 4))
+
     def check(self, image, scale=1, polygon=None):
         if polygon is None:
             polygon = [(16 * scale, 16 * scale), (48 * scale, 16 * scale),

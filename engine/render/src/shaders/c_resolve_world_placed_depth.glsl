@@ -20,6 +20,8 @@
 layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
+layout(rg32ui, binding = 4) readonly uniform uimage2D fogShadowWindow;
+#include "ir_fog_shadow_caster.glsl"
 
 const int kEmptyDistanceEncoded = 65535;
 
@@ -51,6 +53,7 @@ layout(r32i, binding = 0) readonly uniform iimage2D detachedDistances;
 layout(std140, binding = 16) uniform DetachedShadowFrame {
     vec4 worldOriginAndDensity;
     vec4 viewToWorld;
+    ivec4 fogPolicy;
 };
 
 // Output scratch: main-canvas-sized, front-most iso-depth via atomicMin.
@@ -88,6 +91,9 @@ void main() {
         cell, rawDepth, trixelOriginOffsetZ1(detachedSize), vec2(0.0), sourceOptions, 0
     );
     const vec3 worldPoint = rotateByQuat(viewLocalPos, viewToWorld) + worldOriginAndDensity.xyz;
+    if (!(fogPolicy.x != 0) && fogPolicy.y != 0 && fogShadowVisionCircleCount > 0 &&
+        !fogFieldCastsSunShadow(worldPoint, false, fogPolicy.y,
+            fogShadowCell(worldPoint))) return;
     const int scale = effectiveTrixelSubdivisionScale(voxelRenderOptions);
     const ivec3 worldPos = roundHalfUp(worldPoint * float(scale));
 

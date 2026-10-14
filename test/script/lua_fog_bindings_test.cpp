@@ -15,6 +15,8 @@
 
 #include <memory>
 #include <string>
+#include <tuple>
+#include <vector>
 
 namespace {
 
@@ -58,6 +60,7 @@ TEST_F(LuaFogBindingsTest, ExposesCompleteSurfaceAndCppStateValues) {
     EXPECT_TRUE(scriptSucceeds(R"lua(
         local names = {
             'setVision', 'addVision', 'setVisionLineOfSight', 'clearVisions', 'evalReveal',
+            'evalRevealSurface', 'evalRevealFace',
             'lineOfSight', 'captureLineOfSight', 'lineOfSightCaptured',
             'setEntityGoverned', 'getEntityReveal', 'setCell', 'getCell',
             'revealRadius', 'exploreRadius', 'setCellChannels', 'getCellChannels',
@@ -75,7 +78,21 @@ TEST_F(LuaFogBindingsTest, ExposesCompleteSurfaceAndCppStateValues) {
         assert(IRFog.ExploredPolicy.PERSISTENT == 0)
         assert(IRFog.ExploredPolicy.DECAY == 1)
         assert(IRFog.Channel.DEFAULT == 1)
+        assert(IRFog.Face.NONE == nil)
     )lua"));
+    const sol::table face = m_lua.lua()["IRFog"]["Face"];
+    int faceCount = 0;
+    for (const auto &entry : face) {
+        (void)entry;
+        ++faceCount;
+    }
+    EXPECT_EQ(faceCount, 6);
+    EXPECT_EQ(static_cast<int>(IRMath::FaceId::X_NEG), face["X_NEG"].get<int>());
+    EXPECT_EQ(static_cast<int>(IRMath::FaceId::X_POS), face["X_POS"].get<int>());
+    EXPECT_EQ(static_cast<int>(IRMath::FaceId::Y_NEG), face["Y_NEG"].get<int>());
+    EXPECT_EQ(static_cast<int>(IRMath::FaceId::Y_POS), face["Y_POS"].get<int>());
+    EXPECT_EQ(static_cast<int>(IRMath::FaceId::Z_NEG), face["Z_NEG"].get<int>());
+    EXPECT_EQ(static_cast<int>(IRMath::FaceId::Z_POS), face["Z_POS"].get<int>());
     EXPECT_EQ(
         static_cast<int>(IRPrefab::Fog::ExploredPolicy::PERSISTENT),
         m_lua.lua()["IRFog"]["ExploredPolicy"]["PERSISTENT"].get<int>()
@@ -266,6 +283,20 @@ TEST_F(LuaFogBindingsTest, RejectsWrongArityTypesAndNonFiniteNumbers) {
         "IRFog.evalReveal(0, 0)",
         "IRFog.evalReveal(0, false, 0)",
         "IRFog.evalReveal(0, 0, 0, 0, 0)",
+        "IRFog.evalRevealSurface(0, 0)",
+        "IRFog.evalRevealSurface(0, false, 0)",
+        "IRFog.evalRevealSurface(0, 0, 0/0)",
+        "IRFog.evalRevealSurface(0, 0, 0, 0, 0)",
+        "IRFog.evalRevealFace(0, 0, 0)",
+        "IRFog.evalRevealFace(0, 0, 0, IRFog.Face.X_NEG, 1, 1)",
+        "IRFog.evalRevealFace('0', 0, 0, IRFog.Face.X_NEG)",
+        "IRFog.evalRevealFace(0, 0, math.huge, IRFog.Face.X_NEG)",
+        "IRFog.evalRevealFace(0, 0, 0, 'X_NEG')",
+        "IRFog.evalRevealFace(0, 0, 0, 0.5)",
+        "IRFog.evalRevealFace(0, 0, 0, -1)",
+        "IRFog.evalRevealFace(0, 0, 0, 6)",
+        "IRFog.evalRevealFace(0, 0, 0, 0/0)",
+        "IRFog.evalRevealFace(0, 0, 0, nil)",
         "IRFog.lineOfSight(0, 0, 0, 0, 0)",
         "IRFog.lineOfSight(0, 0, 0, 0, 0, '0')",
         "IRFog.lineOfSight(0, 0, 0, 0, 0, 0, 0)",
@@ -314,6 +345,17 @@ TEST_F(LuaFogBindingsTest, RejectsWrongArityTypesAndNonFiniteNumbers) {
     expectScriptFailsWith("IRFog.revealRadius(0, 0, '1')", "IRFog.revealRadius argument 3");
     expectScriptFailsWith("IRFog.evalReveal(0, false, 0)", "IRFog.evalReveal argument 2");
     expectScriptFailsWith(
+        "IRFog.evalRevealSurface(0, false, 0)",
+        "IRFog.evalRevealSurface argument 2"
+    );
+    expectScriptFailsWith(
+        "IRFog.evalRevealFace(0, 0, 0/0, IRFog.Face.X_NEG)",
+        "IRFog.evalRevealFace argument 3"
+    );
+    expectScriptFailsWith("IRFog.evalRevealFace(0, 0, 0, 6)", "IRFog.Face");
+    expectScriptFailsWith("IRFog.evalRevealFace(0, 0, 0, 'X_NEG')", "IRFog.Face");
+    expectScriptFailsWith("IRFog.evalRevealFace(0, 0, 0, 0.5)", "IRFog.Face");
+    expectScriptFailsWith(
         "IRFog.lineOfSightCaptured(0, 0, 0, {1, 2})",
         "IRFog.lineOfSightCaptured argument 4 length must be a multiple of 3"
     );
@@ -333,6 +375,10 @@ TEST_F(LuaFogBindingsTest, RejectsWrongOptionalTypesWithoutMutatingDefaults) {
         "IRFog.addVision(0, 0, 2, nil, nil, nil, nil, nil, 'party')",
         "IRFog.addVision(0, 0, 2, nil, nil, nil, nil, nil, -1)",
         "IRFog.evalReveal(0, 0, 0, 1.5)",
+        "IRFog.evalRevealSurface(0, 0, 0, 1.5)",
+        "IRFog.evalRevealSurface(0, 0, 0, 'all')",
+        "IRFog.evalRevealFace(0, 0, 0, IRFog.Face.X_NEG, 1.5)",
+        "IRFog.evalRevealFace(0, 0, 0, IRFog.Face.X_NEG, -1)",
     };
     expectScriptsFail(kBadCalls);
 }
@@ -575,6 +621,28 @@ TEST_F(LuaFogVisionSlotsTest, TreatmentEntriesRoundTripClearAndReject) {
     ) << "a rejected call must leave the treatment untouched";
 }
 
+TEST_F(LuaFogVisionSlotsTest, PhaseRoundTripsAndRejectsWithoutChangingStoredValue) {
+    ASSERT_TRUE(m_lua.lua()
+                    .safe_script(R"lua(
+        assert(IRFog.getRevealSurfacePhase() == 0)
+        IRFog.setRevealSurfacePhase(-0.375)
+        IRFog.setRevealSurfaceTreatment(0.5)
+        IRFog.clearRevealSurfaceTreatment()
+        assert(IRFog.getRevealSurfacePhase() == -0.375)
+        assert(select('#', IRFog.getRevealSurfaceTreatment()) == 3)
+    )lua")
+                    .valid());
+    for (const char *source :
+         {"IRFog.setRevealSurfacePhase(0/0)",
+          "IRFog.setRevealSurfacePhase(math.huge)",
+          "IRFog.setRevealSurfacePhase('bad')",
+          "IRFog.setRevealSurfacePhase()",
+          "IRFog.getRevealSurfacePhase(1)"}) {
+        EXPECT_NE(scriptError(source).find("IRFog."), std::string::npos);
+        EXPECT_FLOAT_EQ(m_observers.revealSurfaceTreatment_.w, -0.375f);
+    }
+}
+
 TEST(LuaFogPipelineTest, FogLosBuildResolvesFromALuaPipeline) {
     IRScript::LuaScript lua;
     IREntity::EntityManager entityManager;
@@ -750,6 +818,130 @@ TEST_F(LuaFogBindingsActiveCanvasTest, EvalRevealReadsAVisibleCellWithNoCircles)
         assert(IRFog.evalReveal(3, 4, 0, 3) == 1)
         assert(IRFog.evalReveal(30, 40, 0) == 0)
     )lua"));
+}
+
+// A point one `addVision` circle reveals and one it does not: the Lua entry
+// returns the C++ position-only verdict's state and band.
+TEST_F(LuaFogBindingsActiveCanvasTest, EvalRevealSurfaceMatchesTheCppPositionOnlyVerdict) {
+    const auto &fog = IREntity::getComponent<IRComponents::C_CanvasFogOfWar>(m_canvas);
+    ASSERT_TRUE(scriptSucceeds(R"lua(
+        IRFog.clearVisions()
+        IRFog.addVision(0, 0, 4)
+        revealedState, revealedBand = IRFog.evalRevealSurface(0, 0, 0)
+        hiddenState, hiddenBand = IRFog.evalRevealSurface(30, 0, 0)
+        otherChannelState = IRFog.evalRevealSurface(0, 0, 0, 2)
+    )lua"));
+    sol::state &lua = m_lua.lua();
+    const IRPrefab::Fog::RevealSurfaceSample revealed =
+        IRPrefab::Fog::evalRevealSurface(fog, IRMath::vec3(0.0f, 0.0f, 0.0f));
+    const IRPrefab::Fog::RevealSurfaceSample hidden =
+        IRPrefab::Fog::evalRevealSurface(fog, IRMath::vec3(30.0f, 0.0f, 0.0f));
+    EXPECT_FLOAT_EQ(revealed.state_, 1.0f);
+    EXPECT_FLOAT_EQ(hidden.state_, 0.0f);
+    EXPECT_FLOAT_EQ(lua["revealedState"].get<float>(), revealed.state_);
+    EXPECT_FLOAT_EQ(lua["revealedBand"].get<float>(), revealed.styledBand_);
+    EXPECT_FLOAT_EQ(lua["hiddenState"].get<float>(), hidden.state_);
+    EXPECT_FLOAT_EQ(lua["hiddenBand"].get<float>(), hidden.styledBand_);
+    EXPECT_FLOAT_EQ(lua["otherChannelState"].get<float>(), 0.0f);
+}
+
+TEST_F(LuaFogBindingsTest, EvalRevealSurfaceAndFaceDefaultWithoutACanvas) {
+    EXPECT_TRUE(scriptSucceeds(R"lua(
+        local state, band = IRFog.evalRevealSurface(1, 2, 3)
+        assert(state == 1 and band == 0)
+        state, band = IRFog.evalRevealFace(1, 2, 3, IRFog.Face.Y_POS)
+        assert(state == 1 and band == 0)
+    )lua"));
+}
+
+namespace {
+
+// The column-top fixture of `ColumnTopRevealsAWallItsOwnSourceCannotSee`:
+// ground whose top plane is z 4, and a plateau over x 0..4, y -4..4 whose top
+// plane is z -5. The wall under test is the plateau's X_NEG face at x = 0.
+constexpr float kPlateauGroundZ = 4.0f;
+constexpr float kPlateauTopZ = -5.0f;
+
+std::vector<float> plateauColumns() {
+    std::vector<float> columns(
+        IRComponents::kFogLosFieldFloatCount,
+        IRComponents::kFogLosColumnEmpty
+    );
+    const IRMath::ivec2 fieldMin(-IRComponents::kFogLosFieldHalfExtent);
+    IRPrefab::Fog::stampLosBox(
+        columns,
+        fieldMin,
+        IRMath::vec2(-20.0f),
+        IRMath::vec2(20.0f),
+        kPlateauGroundZ
+    );
+    IRPrefab::Fog::stampLosBox(
+        columns,
+        fieldMin,
+        IRMath::vec2(0.0f, -4.0f),
+        IRMath::vec2(4.0f, 4.0f),
+        kPlateauTopZ
+    );
+    IRPrefab::Fog::buildLosPyramid(columns);
+    return columns;
+}
+
+} // namespace
+
+// A hard-gated source on the plateau top reveals the top and, on its own,
+// none of the wall under it. The face entry takes the top's verdict through
+// the wall's column point; the position-only entry, read at the sample's own
+// outward point, does not. With the field unpublished both read the same.
+TEST_F(LuaFogBindingsActiveCanvasTest, EvalRevealFaceTakesTheColumnTopThePositionOnlyEntryCannot) {
+    auto &fog = IREntity::getComponent<IRComponents::C_CanvasFogOfWar>(m_canvas);
+    ASSERT_TRUE(scriptSucceeds(R"lua(
+        IRFog.clearVisions()
+        local slot = IRFog.addVision(2, 0, 10, 0, -5, 0, 0, 0)
+        IRFog.setVisionLineOfSight(slot, 1.5)
+    )lua"));
+    ASSERT_NE(fog.observers_.losSourceMask_, 0);
+    fog.losColumnTops_ = plateauColumns();
+    fog.losPublishedObservers_ = fog.observers_;
+    fog.losPublished_ = true;
+
+    ASSERT_TRUE(scriptSucceeds(R"lua(
+        function wallReads(z)
+            local ownState = IRFog.evalRevealSurface(-0.02, 0.25, z)
+            local faceState, faceBand = IRFog.evalRevealFace(0, 0.25, z, IRFog.Face.X_NEG)
+            return ownState, faceState, faceBand
+        end
+    )lua"));
+    const sol::function wallReads = m_lua.lua()["wallReads"];
+    for (const float z : {-4.0f, -2.0f, 2.0f}) {
+        SCOPED_TRACE(z);
+        const IRMath::vec3 facePoint(0.0f, 0.25f, z);
+        const IRMath::FaceId face = IRMath::FaceId::X_NEG;
+        const IRMath::vec3 sample =
+            facePoint + IRMath::faceOutwardNormal(face) * IRPrefab::Fog::kFogLosFaceBias;
+        const float cppOwn = IRPrefab::Fog::evalRevealSurface(fog, sample).state_;
+        const IRPrefab::Fog::RevealSurfaceSample cppFace = IRPrefab::Fog::evalRevealSurface(
+            fog,
+            sample,
+            IRPrefab::Fog::losColumnPoint(facePoint, face),
+            face
+        );
+        const auto [ownState, faceState, faceBand] =
+            wallReads.call<std::tuple<float, float, float>>(z);
+        EXPECT_FLOAT_EQ(cppOwn, 0.0f);
+        EXPECT_FLOAT_EQ(cppFace.state_, 1.0f);
+        EXPECT_FLOAT_EQ(ownState, cppOwn);
+        EXPECT_FLOAT_EQ(faceState, cppFace.state_);
+        EXPECT_FLOAT_EQ(faceBand, cppFace.styledBand_);
+    }
+
+    fog.losPublished_ = false;
+    for (const float z : {-4.0f, -2.0f, 2.0f}) {
+        SCOPED_TRACE(z);
+        const auto [ownState, faceState, faceBand] =
+            wallReads.call<std::tuple<float, float, float>>(z);
+        (void)faceBand;
+        EXPECT_FLOAT_EQ(faceState, ownState) << "no published field: the term never fires";
+    }
 }
 
 // The `__gc` metatable on the functor userdata sol2 holds as upvalue 2 of a

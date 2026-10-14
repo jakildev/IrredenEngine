@@ -2,6 +2,7 @@ add_library(IrredenEngineAudio STATIC
     src/ir_audio.cpp
     src/audio_manager.cpp
     src/audio_playback.cpp
+    src/midi_clock.cpp
     src/midi_in.cpp
     src/midi_out.cpp
     src/audio.cpp
@@ -145,4 +146,9 @@ if(IR_isDarwin)
     )
 elseif(UNIX)
     target_link_libraries(IrredenEngineAudio PUBLIC pthread m ${CMAKE_DL_LIBS})
+endif()
+
+if(WIN32)
+    # timeBeginPeriod / timeEndPeriod for the MIDI clock thread's wait quantum.
+    target_link_libraries(IrredenEngineAudio PUBLIC winmm)
 endif()

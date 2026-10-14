@@ -244,10 +244,12 @@ const uint kEntityIdFogBodyFactorMaskInHighWord = 0xFFu << kEntityIdFogBodyFacto
 // the flag bits 0..2 of the high word, so bit 19 never carries id state. Same
 // masking chokepoint as the bits above.
 const uint kEntityIdAnalyticSurfaceMaskInHighWord = 0x1u << 19u;
+// Positive provenance of a settled non-detached voxel raster sample.
+const uint kEntityIdCardinalVoxelMaskInHighWord = 0x1u << 18u;
 const uint kEntityIdHighWordMask =
     ~(kEntityIdPriorityMaskInHighWord | kEntityIdCutFaceMaskInHighWord |
       kEntityIdFogBodyMaskInHighWord | kEntityIdFogBodyFactorMaskInHighWord |
-      kEntityIdAnalyticSurfaceMaskInHighWord);
+      kEntityIdAnalyticSurfaceMaskInHighWord | kEntityIdCardinalVoxelMaskInHighWord);
 uint decodePriority(uvec2 rawId) {
     return (rawId.y >> kEntityIdPriorityShiftInHighWord) & 0x3u;
 }
@@ -266,6 +268,9 @@ uint decodeFogBodyFactor(uvec2 rawId) {
 }
 bool decodeAnalyticSurface(uvec2 rawId) {
     return (rawId.y & kEntityIdAnalyticSurfaceMaskInHighWord) != 0u;
+}
+bool decodeEntityIdCardinalVoxel(uvec2 rawId) {
+    return (rawId.y & kEntityIdCardinalVoxelMaskInHighWord) != 0u;
 }
 uvec2 decodeEntityId(uvec2 rawId) {
     return uvec2(rawId.x, rawId.y & kEntityIdHighWordMask);
@@ -292,6 +297,10 @@ uvec2 encodeEntityIdFogBody(uvec2 packedId, bool isFogBody, uint factor) {
                                 ((factor & 0xFFu) << kEntityIdFogBodyFactorShiftInHighWord))
         : packedId;
 }
+uvec2 encodeEntityIdCardinalVoxel(uvec2 packedId) {
+    return uvec2(packedId.x, packedId.y | kEntityIdCardinalVoxelMaskInHighWord);
+}
+
 // Set the analytic-surface flag on an ALREADY priority-encoded id, like
 // encodeEntityIdCutFace.
 uvec2 encodeEntityIdAnalyticSurface(uvec2 packedId) {
@@ -309,6 +318,20 @@ uvec2 encodeEntityIdFogWholeBody(uvec2 packedId, bool isFogWholeBody) {
 const uint kFogOverflowFieldByte = 255u;
 uint encodeFogOverflowClassByte(bool isFogBody, uint factor) {
     return isFogBody ? ((factor & 0xFFu) * 254u + 127u) / 255u : kFogOverflowFieldByte;
+}
+
+// Overflow word 0: x in bits 15:0, y in 30:16, cut-face provenance in 31.
+// PerAxisCanvasStore::allocate bounds the canvas height below 32768 cells.
+const uint kOverflowCutFaceBit = 0x80000000u;
+uint packOverflowEntryCell(ivec2 cell, bool isCutFace) {
+    return uint(cell.x) | (uint(cell.y) << 16u) |
+           (isCutFace ? kOverflowCutFaceBit : 0u);
+}
+uint overflowEntryCell(uint word) {
+    return word & ~kOverflowCutFaceBit;
+}
+bool overflowEntryIsCutFace(uint word) {
+    return (word & kOverflowCutFaceBit) != 0u;
 }
 
 // Per-axis fractional encoding:
@@ -568,6 +591,26 @@ int roundHalfUp(float v) {
 
 ivec2 roundHalfUp(vec2 v) {
     return ivec2(floor(v + vec2(0.5)));
+}
+
+// Unit-vector components as exact UNORM8 codes: -1 → 0, 0 → 128, +1 → 255.
+// A bare `v * 0.5 + 0.5` leaves the 0.5 midpoint to the store's float-to-unorm
+// conversion, which is implementation-defined at that tie (127 or 128), so
+// debug colours read back exactly only when the shader rounds them itself.
+vec3 encodeUnitVectorUnorm8(vec3 v) {
+    return vec3(roundHalfUp(v * 127.5 + 127.5)) / 255.0;
+}
+
+// Raw canvas position of the gather fragment at raster-target pixel
+// `fragmentPixel` (gl_FragCoord.xy). `canvasFromPixel` holds the quad centre in
+// raster-target pixels (.xy) and canvas texels per raster pixel (.zw); canvas Y
+// runs down the screen. Evaluated per fragment, never interpolated: with a
+// power-of-two scale and a centre on the half-pixel lattice every term is exact,
+// so a pixel centre on a texel boundary selects the same texel on every GPU.
+vec2 canvasPositionFromPixel(vec2 fragmentPixel, vec4 canvasFromPixel, vec2 textureOffset,
+                             vec2 textureSize) {
+    return (fragmentPixel - canvasFromPixel.xy) * vec2(1.0, -1.0) * canvasFromPixel.zw +
+           textureOffset + 0.5 * textureSize;
 }
 
 // Per-voxel iso occlusion depth of model position `pos` projected onto a
@@ -1126,6 +1169,107 @@ float fogTexelState(uint state) {
     return float(state) / 255.0;
 }
 
+float fogRevealSurfaceHash01(ivec3 voxel) {
+    uint hash = uint(voxel.x) * 0x8DA6B343u ^ uint(voxel.y) * 0xD8163841u ^
+        uint(voxel.z) * 0xCB1AB31Fu;
+    hash ^= hash >> 16u;
+    hash *= 0x7FEB352Du;
+    hash ^= hash >> 15u;
+    hash *= 0x846CA68Bu;
+    hash ^= hash >> 16u;
+    return float(hash & 0xFFFFFFu) / 16777216.0;
+}
+
+ivec2 fogWindowTexel(ivec2 col, ivec2 origin, ivec2 fogSize) {
+    const ivec2 rel = col - origin;
+    if (rel.x < 0 || rel.x >= fogSize.x || rel.y < 0 || rel.y >= fogSize.y) {
+        return ivec2(-1);
+    }
+    ivec2 base;
+    base.x = origin.x >= 0 ? origin.x % fogSize.x : fogSize.x - 1 - (-(origin.x + 1)) % fogSize.x;
+    base.y = origin.y >= 0 ? origin.y % fogSize.y : fogSize.y - 1 - (-(origin.y + 1)) % fogSize.y;
+    ivec2 texel = rel + base;
+    if (texel.x >= fogSize.x) {
+        texel.x -= fogSize.x;
+    }
+    if (texel.y >= fogSize.y) {
+        texel.y -= fogSize.y;
+    }
+    return texel;
+}
+
+const int kMaxFogVisionCircles = 8;
+const float kFogCeilingAdmitAa = 0.75;
+const float kFogCeilingFlickerSpan = 2.0;
+
+float fogCeilingPhaseHeight(ivec3 voxel, float phase) {
+    if (phase == 0.0) return 0.0;
+    uint hash = uint(voxel.x) * 0xA24BAED5u ^ uint(voxel.y) * 0x9FB21C65u ^
+        uint(voxel.z) * 0xC13FA9A9u;
+    hash ^= hash >> 16u;
+    hash *= 0x7FEB352Du;
+    hash ^= hash >> 15u;
+    const float rate = 0.125 + 0.875 * (float(hash & 0xFFFFFFu) / 16777216.0);
+    return kFogCeilingFlickerSpan * (1.0 - 4.0 * abs(fract(rate * phase + 0.25) - 0.5));
+}
+
+// Admission is independent of height and phase; Z neighbours reuse this mask.
+uint fogCeilingSourceMask(
+    ivec2 column, uvec2 cell, vec4 circles[kMaxFogVisionCircles],
+    uvec4 channels[2], int count
+) {
+    if (cell.x == 255u) return 0u;
+    uint admitted = 0u;
+    for (int source = 0; source < count; ++source) {
+        if ((channels[source / 4][source % 4] & cell.y) == 0u) continue;
+        const vec4 circle = circles[source];
+        const vec2 nearest = clamp(circle.xy, vec2(column) - 0.5, vec2(column) + 0.5);
+        if (fogVisionCircleReveal(nearest, circle, kFogCeilingAdmitAa) > 0.0) {
+            admitted |= 1u << uint(source);
+        }
+    }
+    return admitted;
+}
+
+float fogCeilingPresenceFromMask(
+    int voxelZ, uint admitted, vec4 heights[kMaxFogVisionCircles],
+    vec4 ceilings[kMaxFogVisionCircles], int count, float heightOffset
+) {
+    if (admitted == 0u) return 1.0;
+    float presence = 0.0;
+    for (int source = 0; source < count; ++source) {
+        if ((admitted & (1u << uint(source))) == 0u) continue;
+        const float dzUp = max(heights[source].x - float(voxelZ), 0.0);
+        presence = max(presence, fogCeilingVisibility(ceilings[source], dzUp + heightOffset));
+        if (presence == 1.0) return 1.0;
+    }
+    return presence;
+}
+
+float fogCeilingPresence(
+    ivec3 voxel, uvec2 cell, vec4 circles[kMaxFogVisionCircles],
+    vec4 heights[kMaxFogVisionCircles], vec4 ceilings[kMaxFogVisionCircles],
+    uvec4 channels[2], int count, float heightOffset
+) {
+    return fogCeilingPresenceFromMask(
+        voxel.z, fogCeilingSourceMask(voxel.xy, cell, circles, channels, count),
+        heights, ceilings, count, heightOffset);
+}
+
+bool fogCeilingRetained(
+    ivec3 voxel, uvec2 cell, vec4 circles[kMaxFogVisionCircles],
+    vec4 heights[kMaxFogVisionCircles], vec4 ceilings[kMaxFogVisionCircles],
+    uvec4 channels[2], int count, vec4 treatment, float phase
+) {
+    const bool treated = treatment.x != 0.0;
+    const float presence = fogCeilingPresence(
+        voxel, cell, circles, heights, ceilings, channels, count,
+        treated ? fogCeilingPhaseHeight(voxel, phase) : 0.0);
+    if (presence <= 0.0) return false;
+    if (presence >= 1.0 || !treated || treatment.y == 0.0) return true;
+    return fogRevealSurfaceHash01(voxel) <= mix(1.0, presence, treatment.y);
+}
+
 const int kDetachedFaceMissDepth = 2147483647;
 
 const uint kSourceLightingBaked = 0u;
@@ -1196,7 +1340,6 @@ int detachedFaceSampleDepth(DetachedFaceFootprint face, ivec2 pixel, int parity,
         return kDetachedFaceMissDepth;
     return encodeDepthWithFace(int(floor(face.depth.x + dot(uv, face.depth.yz) + 0.5)), slot);
 }
-
 
 vec3 detachedFaceViewNormal(int faceId, mat2 deformX, mat2 deformY, vec3 depthAxis) {
     const int axis = faceId >> 1;

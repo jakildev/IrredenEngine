@@ -33,6 +33,7 @@
 #include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/fog_line_of_sight.hpp>
+#include <irreden/render/fog_of_war.hpp>
 
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
@@ -345,6 +346,10 @@ static_assert(
 template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     System<BAKE_SUN_SHADOW_MAP> *voxelFaceBaker_ = nullptr;
     ShaderProgram *compactProgram_ = nullptr;
+    // Fog-ceiling compile-time specialization of the compact
+    // (IR_FOG_CEILING_PASS 1), dispatched in place of compactProgram_ only
+    // for a canvas whose own fog window has a ceiling-enabled source live.
+    ShaderProgram *compactCeilingProgram_ = nullptr;
     ShaderProgram *stage1Program_ = nullptr;
     // Feeder-pass compile-time specialization
     // of stage 1 (IR_FEEDER_PASS 1) — a second compiled program dispatched for
@@ -367,6 +372,9 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     // restored after the election window so the next canvas's default
     // dispatches retain the required binding state.
     Buffer *winnerPlaceholderBuf_ = nullptr;
+    // The overflow sort's indirect step grids (mode 3 writes them; see
+    // sortFaceRecords).
+    Buffer *overflowSortArgsBuf_ = nullptr;
     // Reused key scratch for recomputeStoreTiesPossible's duplicate-cell scan
     // (capacity persists across frames — no per-tick allocation after the
     // first high-water mark).
@@ -780,6 +788,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
 
     // Three-word records sort lexicographically by words (0, 2, 1).
     // The caller owns capacity and the settled count at layout.y + 1.
+    // Mode 3 writes the step grids into overflowSortArgsBuf_, bound on
+    // kBufferIndex_IndirectDispatchParams for that dispatch only; 26 then
+    // returns to indirectBuf_, its binding outside the per-axis window. NVIDIA GL
+    // stalls the CPU until the GPU drains when an indirect dispatch reads
+    // arguments from a buffer the dispatching program has bound for writing,
+    // so the grids never live in the record scratch.
     std::uint32_t sortFaceRecords(Buffer *scratch, ivec4 layout, std::uint32_t dispatchSpan) {
         const ivec4 previousLayout = frameData_.overflowScratchLayout_;
         frameData_.overflowScratchLayout_ = layout;
@@ -807,15 +821,23 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
                 &frameData_.overflowSortStep_
             );
             if (mode == 3) {
+                overflowSortArgsBuf_->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_IndirectDispatchParams
+                );
                 IRRender::device()->dispatchCompute(1, 1, 1);
+                indirectBuf_->bindBase(
+                    BufferTarget::SHADER_STORAGE,
+                    kBufferIndex_IndirectDispatchParams
+                );
                 IRRender::device()->memoryBarrier(BarrierType::COMMAND);
             } else {
-                const auto commandUints =
-                    layout.y + C_PerAxisTrixelCanvases::kOverflowSortArgsBaseUints +
-                    commandIndex * C_PerAxisTrixelCanvases::kOverflowSortCommandUints;
                 IRRender::device()->dispatchComputeIndirect(
-                    scratch,
-                    static_cast<std::ptrdiff_t>(commandUints) * sizeof(std::uint32_t)
+                    overflowSortArgsBuf_,
+                    static_cast<std::ptrdiff_t>(
+                        commandIndex * C_PerAxisTrixelCanvases::kOverflowSortCommandUints *
+                        sizeof(std::uint32_t)
+                    )
                 );
             }
             IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
@@ -1733,6 +1755,26 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             frameData_.voxelRenderOptions_.y
         );
         frameData_.feederPassTailBase_ = effectiveVoxelCount;
+
+        // World fog source for the cut-section dispatch. A canvas
+        // with its OWN fog (the main world canvas) cross-sections against it
+        // directly; a WORLD-PLACED detached re-voxelize canvas has no fog of its
+        // own, so it cross-sections against the MAIN canvas's world fog (resolved +
+        // uploaded in beginTick). STAGE_1/STAGE_2 recover each detached voxel's
+        // world column from detachedWorldReceive; the compact below keeps the
+        // placeholder because its cull keys on the un-offset model column. Plain
+        // octahedral DETACHED / per-axis / non-fog → null → the no-fog placeholder.
+        const bool worldPlacedRevoxel = canvasLocalRotation.isDetached() &&
+                                        canvasLocalRotation.reVoxelize_ &&
+                                        canvasLocalRotation.worldPlaced_;
+        C_CanvasFogOfWar *cutSectionFog =
+            (fog != nullptr) ? fog : (worldPlacedRevoxel ? worldFog_ : nullptr);
+        // Face selection reads whether the fog it selects against has a ceiling
+        // as one uniform; the per-source scan runs here, once per canvas.
+        frameData_.fogCeilingEnabled_.x =
+            cutSectionFog != nullptr && IRPrefab::Fog::anyCeilingEnabled(cutSectionFog->observers_)
+                ? 1
+                : 0;
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
 
         if (occlusionCullActive) {
@@ -1962,21 +2004,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
         }
 
-        // World fog source for the cut-section dispatch. A canvas
-        // with its OWN fog (the main world canvas) cross-sections against it
-        // directly; a WORLD-PLACED detached re-voxelize canvas has no fog of its
-        // own, so it cross-sections against the MAIN canvas's world fog (resolved +
-        // uploaded in beginTick). STAGE_1/STAGE_2 recover each detached voxel's
-        // world column from detachedWorldReceive; the compact below keeps the
-        // placeholder because its cull keys on the un-offset model column. Plain
-        // octahedral DETACHED / per-axis / non-fog → null → the no-fog placeholder.
-        const bool worldPlacedRevoxel = canvasLocalRotation.isDetached() &&
-                                        canvasLocalRotation.reVoxelize_ &&
-                                        canvasLocalRotation.worldPlaced_;
-        C_CanvasFogOfWar *cutSectionFog =
-            (fog != nullptr) ? fog : (worldPlacedRevoxel ? worldFog_ : nullptr);
-
-        compactProgram_->use();
+        // The ceiling specialization runs only where the compact's grid cull
+        // runs: the canvas's own fog window (the world-placed detached canvas
+        // binds the placeholder here and stage 1 alone cuts that route).
+        const bool compactCeiling =
+            fog != nullptr && IRPrefab::Fog::anyCeilingEnabled(fog->observers_);
+        (compactCeiling ? compactCeilingProgram_ : compactProgram_)->use();
         // Fog cull input: the real fog window texture for the world fog
         // canvas, else the shared 1×1 all-visible placeholder (compact shader
         // short-circuits on imageSize<=1 → no cull, byte-identical to master).
@@ -2382,6 +2415,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             "VoxelCompactProgram",
             std::vector{ShaderStage{IRRender::kFileCompVoxelVisibilityCompact, ShaderType::COMPUTE}}
         );
+        // Fog-ceiling compile-time specialization of the compact, built from the
+        // shared body with IR_FOG_CEILING_PASS 1. Dispatched only for a canvas
+        // whose bound fog window has a ceiling-enabled source live, so
+        // VoxelCompactProgram stays byte-for-byte master's kernel.
+        IRRender::createNamedResource<ShaderProgram>(
+            "VoxelCompactCeilingProgram",
+            std::vector{
+                ShaderStage{IRRender::kFileCompVoxelVisibilityCompactCeiling, ShaderType::COMPUTE}
+            }
+        );
         IRRender::createNamedResource<ShaderProgram>(
             "SingleVoxelProgram1",
             std::vector{ShaderStage{IRRender::kFileCompVoxelToTrixelStage1, ShaderType::COMPUTE}}
@@ -2478,6 +2521,13 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             BUFFER_STORAGE_DYNAMIC,
             BufferTarget::SHADER_STORAGE,
             kBufferIndex_PerAxisResolveScratch
+        );
+        IRRender::createNamedResource<Buffer>(
+            "OverflowSortArgs",
+            nullptr,
+            static_cast<std::size_t>(C_PerAxisTrixelCanvases::kOverflowSortCommandCount) *
+                C_PerAxisTrixelCanvases::kOverflowSortCommandUints * sizeof(std::uint32_t),
+            BUFFER_STORAGE_DYNAMIC
         );
         const int maxSingleVoxels = IRRender::VoxelPoolConfig::getTotalSize();
         IRRender::createNamedResource<Buffer>(
@@ -2642,6 +2692,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             C_CanvasLocalRotation>("SingleVoxelToCanvasFirst");
         auto *p = getSystemParams<System<VOXEL_TO_TRIXEL_STAGE_1>>(systemId);
         p->compactProgram_ = IRRender::getNamedResource<ShaderProgram>("VoxelCompactProgram");
+        p->compactCeilingProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("VoxelCompactCeilingProgram");
         p->cellCompactProgram_ =
             IRRender::getNamedResource<ShaderProgram>("PerAxisCellCompactProgram");
         p->cellFinalizeProgram_ =
@@ -2656,6 +2708,7 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             IRRender::getNamedResource<ShaderProgram>("SingleVoxelWinnerResolve");
         p->stage2WinnerProgram_ = IRRender::getNamedResource<ShaderProgram>("SingleVoxel2Winner");
         p->winnerPlaceholderBuf_ = IRRender::getNamedResource<Buffer>("PerAxisWinnerPlaceholder");
+        p->overflowSortArgsBuf_ = IRRender::getNamedResource<Buffer>("OverflowSortArgs");
         p->revoxelizeProgram_ =
             IRRender::getNamedResource<ShaderProgram>("RevoxelizeDetachedProgram");
         p->revoxelizeParamsBuf_ =

@@ -110,15 +110,16 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
     }
 
     // Snapped-zoom camera term of a detached canvas's framebuffer centre: the
-    // whole framebuffer pixels in the camera's sub-cell offset, Y-up.
+    // whole framebuffer pixels in the camera's sub-cell offset, Y-up. The main
+    // canvas is the framebuffer at half its width in trixels, so at any even
+    // framebuffer width the extents' ratio times the zoom is the exact pitch.
     static vec2 snappedCameraFramebufferOffset(
         vec2 effectiveCameraIso, vec2 framebufferResolution, vec2 cameraZoom, vec2 mainCanvasSize
     ) {
-        return IRMath::floor(
-                   IRMath::fract(effectiveCameraIso) * framebufferResolution * cameraZoom /
-                   mainCanvasSize
-               ) *
-               vec2(1.0f, -1.0f);
+        return IRMath::cameraSnappedDetachedOffset(
+            effectiveCameraIso,
+            framebufferResolution * cameraZoom / mainCanvasSize
+        );
     }
 
     static void publishHitboxPlacement(
@@ -330,8 +331,6 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         };
         const bool foregroundPriority =
             !entityCanvas.screenLocked_ && entityCanvas.depthPriority_ != 0;
-        mat4 model = translate(mat4(1.0f), vec3(entityFbCenter, 0.0f));
-        model = scale(model, vec3(framebufferExtent, 1.0f));
 
         if (hitbox != nullptr) {
             publishHitboxPlacement(
@@ -355,7 +354,7 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
         fd.fogBodyFactorEncoded_ =
             fogBodyFactor == 255u ? 0u : static_cast<std::uint32_t>(fogBodyFactor) + 1u;
         fd.fogUnexploredColorPacked_ = fogUnexploredColorPacked_;
-        fd.mpMatrix_ = calcProjectionMatrix(fbRes_) * model;
+        placeGatherQuad(fd, fbRes_, entityFbCenter, framebufferExtent, vec2(canvasTextures->size_));
         fd.canvasZoomLevel_ = densityZoom;
         // The gather's canvas offset scales with the raster density, the
         // direct mirror of the main canvas's `cameraTrixelOffset_ *= effSub`
@@ -572,10 +571,6 @@ template <> struct System<ENTITY_CANVAS_TO_FRAMEBUFFER> {
             AlsoWrites<C_HitBox2D>>("EntityCanvasToFramebuffer");
         IRRender::tagGpuStage(s, "entityCanvasToFb");
         return s;
-    }
-
-    static mat4 calcProjectionMatrix(const vec2 &resolution) {
-        return ortho(0.0f, resolution.x, 0.0f, resolution.y, -1.0f, 100.0f);
     }
 };
 

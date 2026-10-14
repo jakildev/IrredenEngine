@@ -30,9 +30,12 @@ Three GPU modes run the captures themselves and print ``RESULT=PASS`` or
     up to one uniform offset.
 
 ``pan`` captures the near edge across a two-cell pan at continuous zoom 3.3
-(yaw 0, the cardinal gather, and yaw 45 degrees, the per-axis composite) and
-across a pan combined with the fine zoom sweep, gating each on motion with no
-backward step.
+(yaw 0, the cardinal gather, and yaw 45 degrees, the per-axis composite),
+across a pan combined with the fine zoom sweep, and across the same pan at
+snapped zoom 4 and yaw 45 degrees, gating each on motion with no backward
+step. The snapped sweep is the default policy's rotated-view placement: the
+per-axis composite and the upscale residual must split one camera offset there
+too.
 
 ``jitter`` runs the same pan over the lit fixture scene at continuous zoom 3.3
 and at snapped zoom 2 and 4, at both yaws, and gates the continuous sweep's
@@ -350,18 +353,21 @@ def _pan_mode(capture: Capture) -> dict:
         SWEEP_SHOTS)
     combined = _progress("combined", measure_edge(frames, states))
 
+    frames, states = capture.run(
+        ["--zoom-calibration", "--zoom", "4", "--pan-sweep", "--yaw", YAW_45], PAN_SHOTS)
+    snapped_yawed = _progress("snapped_yawed", measure_edge(frames, states, model=False))
+
+    sweeps = [cardinal, yawed, combined, snapped_yawed]
     return {
         "mode": "pan",
-        "frames": [cardinal["frames"], yawed["frames"], combined["frames"]],
-        "edge_motion_px": [cardinal["edge_motion_px"], yawed["edge_motion_px"],
-                           combined["edge_motion_px"]],
-        "max_backward_px": max(cardinal["max_backward_px"], yawed["max_backward_px"],
-                               combined["max_backward_px"]),
+        "frames": [sweep["frames"] for sweep in sweeps],
+        "edge_motion_px": [sweep["edge_motion_px"] for sweep in sweeps],
+        "max_backward_px": max(sweep["max_backward_px"] for sweep in sweeps),
         "model_mismatches": cardinal["model_mismatches"] + combined["model_mismatches"],
         "min_tie_distance_fb": min(cardinal["min_tie_distance_fb"],
                                    combined["min_tie_distance_fb"]),
         "output_scale": cardinal["output_scale"],
-        "pass": cardinal["pass"] and yawed["pass"] and combined["pass"],
+        "pass": all(sweep["pass"] for sweep in sweeps),
     }
 
 

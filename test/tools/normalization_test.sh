@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # normalization_test.sh — exercises compare_perf_runs's calibration helpers
-# (normalize_ms, load_factor, host_slug, resolve_baseline, build_host_note)
-# and the gate decision tree in check_regression.py.
+# (normalize_ms, load_factor, host_slug, resolve_baseline, build_host_note),
+# the per-cell load gate (load_flagged_cells), and the gate decision tree in
+# check_regression.py.
 #
 # Pure stdlib python — no engine build needed. Synthesizes baseline + head
 # manifest.json fixtures under a temp dir and asserts the comparator picks
@@ -319,6 +320,183 @@ E_STATUS=$?
 set -e
 check "E: empty baselines root → exit 0 (seed-new)" "[[ $E_STATUS -eq 0 ]]"
 check "E: stderr cites 'NO BASELINE'" 'grep -q "NO BASELINE" "$WORK/E.err"'
+
+# ---------------------------------------------------------------------------
+# [5] Per-cell load gate: load_ref_ms.before against the run floor
+# ---------------------------------------------------------------------------
+
+echo "[5] load gate classification and grading"
+
+HOSTED="linux-x86_64-epyc-7763-64-unknown"
+DARWIN="darwin-arm64-apple-m2-max"
+WSL_NO_GPU="linux-x86_64-ryzen-9-5950x-unknown"
+
+# write_bracketed_run <dir> <slug> <start ref_ms> <cell>...
+# Each cell is <id>:<frame avg ms>:<before|-|bad>[:<after>]; "-" writes no
+# bracket, "bad" writes a non-numeric before.
+write_bracketed_run() {
+    python3 - "$@" <<'PY'
+import json, sys
+from pathlib import Path
+run, slug, start = Path(sys.argv[1]), sys.argv[2], float(sys.argv[3])
+run.mkdir(parents=True, exist_ok=True)
+cells = []
+for spec in sys.argv[4:]:
+    cell_id, avg, before, *after = spec.split(":")
+    cell = {"id": cell_id, "target": "IRPerfGrid", "report": f"{cell_id}.txt"}
+    if before != "-":
+        bracket = {"before": before if before == "bad" else float(before)}
+        if after:
+            bracket["after"] = float(after[0])
+        cell["load_ref_ms"] = bracket
+    cells.append(cell)
+    (run / f"{cell_id}.txt").write_text(
+        f"Frame time: avg={avg}ms p50={avg}ms p95={avg}ms p99={avg}ms min=0.5ms max=99.0ms\n"
+        "Entity count: 1 (1 archetypes)\n=== END REPORT\n")
+manifest = {"cells": cells, "calibration": {
+    "host_slug": slug, "ref_ms": start, "ref_target_ms": 50.0,
+    "host_fingerprint": {"slug": slug}, "math_sha": "deadbeef"}}
+(run / "manifest.json").write_text(json.dumps(manifest))
+PY
+}
+
+# gate <case> <baseline root> <head dir> [flags...] → $WORK/<case>.{out,err,rc}
+gate() {
+    local name="$1" root="$2" head="$3"
+    shift 3
+    set +e
+    python3 "$SCRIPTS_PERF/check_regression.py" "$root" "$head" "$@" \
+        >"$WORK/$name.out" 2>"$WORK/$name.err"
+    echo $? > "$WORK/$name.rc"
+    set -e
+}
+rc_of() { tr -d '\r' < "$WORK/$1.rc"; }
+
+python3 - "$SCRIPTS_PERF" <<'PY' > "$WORK/classify.out"
+import sys
+sys.path.insert(0, sys.argv[1])
+from compare_perf_runs import LOAD_GATE_THRESHOLDS, load_flagged_cells, load_gate_threshold
+
+def run(slug, start, *befores):
+    return {"calibration": {"host_slug": slug, "ref_ms": start},
+            "cells": [{"id": f"c{i}", "load_ref_ms": {"before": b, "after": 999.0}}
+                      for i, b in enumerate(befores, 1)]}
+
+def flagged(manifest):
+    return [(f.cell_id, round(f.factor, 4)) for f in load_flagged_cells(manifest, "head")]
+
+# Every hosted slug ever written to perf-baseline is in scope; nothing else is.
+for slug in ("linux-x86_64-epyc-7763-64-unknown", "linux-x86_64-epyc-9v45-96-unknown",
+             "linux-x86_64-epyc-9v74-80-unknown", "linux-x86_64-xeon-6973p-c-unknown",
+             "linux-x86_64-xeon-platinum-8370c-unknown",
+             "linux-x86_64-xeon-platinum-8573c-unknown"):
+    assert load_gate_threshold(slug) is not None, slug
+for slug in ("darwin-arm64-apple-m2-max", "macos-arm64-apple-m2",
+             "linux-x86_64-ryzen-9-5950x-unknown", "linux-x86_64-epyc-7763-64-nvidia-a10",
+             "windows-x86_64-ryzen-9-5950x-rtx-4090", ""):
+    assert load_gate_threshold(slug) is None, slug
+assert not any(p.startswith(("darwin", "macos")) for p in LOAD_GATE_THRESHOLDS)
+assert all(t <= 1.20 for t in LOAD_GATE_THRESHOLDS.values())
+
+hosted = "linux-x86_64-epyc-7763-64-unknown"
+# Start 70, befores 50 and 62: the floor is 50, so the second cell is 1.24x.
+assert flagged(run(hosted, 70.0, 50.0, 62.0)) == [("c2", 1.24)], flagged(run(hosted, 70.0, 50.0, 62.0))
+# Load present at the start lowers nothing: the floor is the quietest reading.
+assert flagged(run(hosted, 50.0, 52.0, 51.0)) == [], "under threshold"
+# Inclusive boundary on an exact quotient: 55 / 50 == 1.10.
+assert flagged(run(hosted, 50.0, 55.0)) == [("c1", 1.1)]
+assert flagged(run(hosted, 50.0, 54.99)) == []
+# A missing, non-positive or non-numeric before is not classified and does not
+# pull the floor down.
+assert flagged(run(hosted, 50.0, 0.0, -3.0, "x", None, 60.0)) == [("c5", 1.2)]
+m = run(hosted, 50.0, 60.0); del m["cells"][0]["load_ref_ms"]
+assert flagged(m) == []
+# after is never read.
+assert flagged(run(hosted, 50.0, 50.0)) == []
+print("ok")
+PY
+check "classifier: scope table, floor, inclusive boundary, bad brackets" \
+      '[[ "$(tr -d "\r" < "$WORK/classify.out")" == "ok" ]]'
+
+# Baseline: two cells at 10 ms, quiet brackets.
+write_bracketed_run "$WORK/lg_base/$HOSTED" "$HOSTED" 50 c1:10.0:50.0:52 c2:10.0:50.0:52
+
+# G1: in-scope, regressed cell with before at exactly T x floor → informational.
+write_bracketed_run "$WORK/lg_head_flagged" "$HOSTED" 50 c1:12.0:55.0:52 c2:10.0:50.0:52
+gate G1 "$WORK/lg_base" "$WORK/lg_head_flagged"
+check "G1: flagged regressed cell → exit 0" '[[ "$(rc_of G1)" == 0 ]]'
+check "G1: stderr names c1 as load-flagged" 'grep -q "load-flagged cell(s) informational, not graded: c1 (head 1.100×" "$WORK/G1.err"'
+check "G1: markdown lists the flagged cell" 'grep -q "^| \`c1\` | head | 55.00 | 50.00 | 1.100× | 1.10× |" "$WORK/G1.out"'
+check "G1: frame row carries the marker and no mark" \
+      'grep "^| \`c1\` (load-flagged) |" "$WORK/G1.out" | grep -vq "⚠\|↓"'
+
+# G2: the same regression with a clean bracket → exit 1.
+write_bracketed_run "$WORK/lg_head_clean" "$HOSTED" 50 c1:12.0:50.0:52 c2:10.0:50.0:52
+gate G2 "$WORK/lg_base" "$WORK/lg_head_clean"
+check "G2: clean-bracket regression → exit 1" '[[ "$(rc_of G2)" == 1 ]]'
+check "G2: no load finding" '! grep -q "load-flagged" "$WORK/G2.out" "$WORK/G2.err"'
+
+# G3: macOS never grades on brackets — 1.4x before and after on a regressed cell.
+write_bracketed_run "$WORK/lg_mac_base/$DARWIN" "$DARWIN" 50 c1:10.0:50.0:52
+write_bracketed_run "$WORK/lg_mac_regress" "$DARWIN" 50 c1:12.0:70.0:70
+gate G3 "$WORK/lg_mac_base" "$WORK/lg_mac_regress"
+check "G3: darwin regression with 1.4x brackets → exit 1" '[[ "$(rc_of G3)" == 1 ]]'
+check "G3: no load finding" '! grep -q "load-flagged" "$WORK/G3.out" "$WORK/G3.err"'
+write_bracketed_run "$WORK/lg_mac_clean" "$DARWIN" 50 c1:10.0:70.0:70
+gate G3b "$WORK/lg_mac_base" "$WORK/lg_mac_clean"
+check "G3b: same darwin brackets, no regression → exit 0" '[[ "$(rc_of G3b)" == 0 ]]'
+check "G3b: no load finding" '! grep -q "load-flagged" "$WORK/G3b.out" "$WORK/G3b.err"'
+
+# G4: in scope, 1.4x after only → not flagged.
+write_bracketed_run "$WORK/lg_head_after" "$HOSTED" 50 c1:12.0:50.0:70 c2:10.0:50.0:70
+gate G4 "$WORK/lg_base" "$WORK/lg_head_after"
+check "G4: 1.4x after only → graded, exit 1" '[[ "$(rc_of G4)" == 1 ]]'
+check "G4: no load finding" '! grep -q "load-flagged" "$WORK/G4.out" "$WORK/G4.err"'
+
+# G5: flagged on the baseline side only → informational.
+write_bracketed_run "$WORK/lg_base_loaded/$HOSTED" "$HOSTED" 50 c1:10.0:70.0:52 c2:10.0:50.0:52
+gate G5 "$WORK/lg_base_loaded" "$WORK/lg_head_clean"
+check "G5: baseline-side flag → exit 0" '[[ "$(rc_of G5)" == 0 ]]'
+check "G5: stderr names the baseline side" 'grep -q "c1 (baseline 1.400×" "$WORK/G5.err"'
+
+# G6: one flagged and one unflagged regressed cell → exit 1 naming only c2.
+write_bracketed_run "$WORK/lg_head_mixed" "$HOSTED" 50 c1:12.0:70.0:52 c2:12.0:50.0:52
+gate G6 "$WORK/lg_base" "$WORK/lg_head_mixed"
+check "G6: unflagged regression still fails → exit 1" '[[ "$(rc_of G6)" == 1 ]]'
+check "G6: FAIL names only c2" \
+      'grep "FAIL — 1 cell(s) regressed" "$WORK/G6.err" | grep -q ": c2" && ! grep "FAIL" "$WORK/G6.err" | grep -q "c1"'
+
+# G7: a missing bracket and a non-positive before are graded as today.
+write_bracketed_run "$WORK/lg_head_nobracket" "$HOSTED" 50 c1:12.0:- c2:10.0:-
+gate G7 "$WORK/lg_base" "$WORK/lg_head_nobracket"
+check "G7: missing bracket regression → exit 1" '[[ "$(rc_of G7)" == 1 ]]'
+write_bracketed_run "$WORK/lg_head_zero" "$HOSTED" 50 c1:12.0:0 c2:10.0:bad
+gate G7b "$WORK/lg_base" "$WORK/lg_head_zero"
+check "G7b: non-positive / malformed before regression → exit 1" '[[ "$(rc_of G7b)" == 1 ]]'
+check "G7b: no load finding" '! grep -q "load-flagged" "$WORK/G7b.out" "$WORK/G7b.err"'
+
+# G8: a GPU-less Linux host outside the hosted SKU families stays inert.
+write_bracketed_run "$WORK/lg_wsl_base/$WSL_NO_GPU" "$WSL_NO_GPU" 50 c1:10.0:50.0:52
+write_bracketed_run "$WORK/lg_wsl_head" "$WSL_NO_GPU" 50 c1:12.0:70.0:52
+gate G8 "$WORK/lg_wsl_base" "$WORK/lg_wsl_head"
+check "G8: ryzen-unknown 1.4x before on a regressed cell → exit 1" '[[ "$(rc_of G8)" == 1 ]]'
+check "G8: no load finding" '! grep -q "load-flagged" "$WORK/G8.out" "$WORK/G8.err"'
+
+# G9: --strict-load on a flagged run → exit 2, no table, no verdict.
+gate G9 "$WORK/lg_base" "$WORK/lg_head_flagged" --strict-load
+check "G9: --strict-load on a flagged head → exit 2" '[[ "$(rc_of G9)" == 2 ]]'
+check "G9: no table on stdout" '[[ ! -s "$WORK/G9.out" ]]'
+check "G9: stderr lists the flagged cell, no verdict" \
+      'grep -q "LOAD-FLAGGED — 1 cell(s) .*c1 (head" "$WORK/G9.err" && ! grep -q "PASS\|FAIL" "$WORK/G9.err"'
+gate G9b "$WORK/lg_base_loaded" "$WORK/lg_head_clean" --strict-load
+check "G9b: --strict-load on a flagged baseline → exit 2" '[[ "$(rc_of G9b)" == 2 ]]'
+gate G9c "$WORK/lg_base" "$WORK/lg_head_clean" --strict-load
+check "G9c: --strict-load with nothing flagged grades as usual (exit 1)" '[[ "$(rc_of G9c)" == 1 ]]'
+
+# G10: a flagged baseline cell whose head reads faster carries no ↓.
+write_bracketed_run "$WORK/lg_base_slow/$HOSTED" "$HOSTED" 50 c1:20.0:70.0:52 c2:10.0:50.0:52
+gate G10 "$WORK/lg_base_slow" "$WORK/lg_head_clean"
+check "G10: no ↓ anywhere for a flagged cell" '! grep -q "↓" "$WORK/G10.out"'
 
 echo
 echo "normalization_test.sh: $pass passed, $fail failed"

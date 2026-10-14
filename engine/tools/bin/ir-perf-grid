@@ -30,7 +30,8 @@
 #     "math_sha": "abc12345"
 #   }
 # and, inside the benchmark hold, each cell bracketed by ir_ref_bench
-# readings: "load_ref_ms": {"before": <ms>, "after": <ms>}.
+# readings: "load_ref_ms": {"before": <median ms>, "before_samples": [3 ms],
+# "after": <ms>}.
 #
 # Source of truth: engine/tools/bin/ir-perf-grid in the engine repo.
 # Installed to ~/bin/ir-perf-grid (as a symlink) by scripts/fleet/install.sh.
@@ -63,7 +64,7 @@ CALIBRATION_DIR="$IR_CACHE_ROOT/calibration"
 mkdir -p "$CALIBRATION_DIR"
 
 usage() {
-    sed -n '2,33p' "$0"
+    sed -n '2,34p' "$0"
 }
 
 # ---------------------------------------------------------------------------

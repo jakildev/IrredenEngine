@@ -32,6 +32,8 @@ from array import array
 from typing import Tuple
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+SHIFT_RADIUS = 3
+CLASSIFY_TILE_SIZE = 16
 
 
 def _paeth(a: int, b: int, c: int) -> int:
@@ -154,6 +156,176 @@ def write_png(path: str, width: int, height: int, pixels: bytes, bpp: int) -> No
         f.write(chunk(b"IEND", b""))
 
 
+def _row_matches(
+    actual: memoryview,
+    reference: memoryview,
+    actual_start: int,
+    reference_start: int,
+    length: int,
+    tolerance: int,
+) -> bool:
+    actual_row = actual[actual_start:actual_start + length]
+    reference_row = reference[reference_start:reference_start + length]
+    if actual_row == reference_row:
+        return True
+    if tolerance == 0:
+        return False
+    return all(
+        abs(actual_byte - reference_byte) <= tolerance
+        for actual_byte, reference_byte in zip(actual_row, reference_row)
+    )
+
+
+def _interior_matches(
+    actual: memoryview,
+    reference: memoryview,
+    width: int,
+    height: int,
+    bpp: int,
+    dx: int,
+    dy: int,
+    tolerance: int,
+) -> bool:
+    interior_width = width - 2 * SHIFT_RADIUS
+    interior_height = height - 2 * SHIFT_RADIUS
+    if interior_width <= 0 or interior_height <= 0:
+        return False
+
+    stride = width * bpp
+    row_bytes = interior_width * bpp
+    for y in range(SHIFT_RADIUS, height - SHIFT_RADIUS):
+        actual_start = y * stride + SHIFT_RADIUS * bpp
+        reference_start = (
+            (y + dy) * stride + (SHIFT_RADIUS + dx) * bpp
+        )
+        if not _row_matches(
+            actual,
+            reference,
+            actual_start,
+            reference_start,
+            row_bytes,
+            tolerance,
+        ):
+            return False
+    return True
+
+
+def _frame_matches(
+    actual: memoryview,
+    reference: memoryview,
+    width: int,
+    height: int,
+    bpp: int,
+    tolerance: int,
+) -> bool:
+    stride = width * bpp
+    return all(
+        _row_matches(
+            actual,
+            reference,
+            y * stride,
+            y * stride,
+            stride,
+            tolerance,
+        )
+        for y in range(height)
+    )
+
+
+def _tile_differs(
+    actual: memoryview,
+    reference: memoryview,
+    width: int,
+    height: int,
+    bpp: int,
+    tile_x: int,
+    tile_y: int,
+    tolerance: int,
+) -> bool:
+    stride = width * bpp
+    x_start = tile_x * CLASSIFY_TILE_SIZE
+    x_end = min(x_start + CLASSIFY_TILE_SIZE, width)
+    y_start = tile_y * CLASSIFY_TILE_SIZE
+    y_end = min(y_start + CLASSIFY_TILE_SIZE, height)
+    row_bytes = (x_end - x_start) * bpp
+    return any(
+        not _row_matches(
+            actual,
+            reference,
+            y * stride + x_start * bpp,
+            y * stride + x_start * bpp,
+            row_bytes,
+            tolerance,
+        )
+        for y in range(y_start, y_end)
+    )
+
+
+def _classify_difference(
+    actual: bytes,
+    reference: bytes,
+    width: int,
+    height: int,
+    bpp: int,
+    tolerance: int,
+    zero_offset_identical: bool = False,
+) -> tuple[str, tuple[int, int] | None]:
+    actual_view = memoryview(actual)
+    reference_view = memoryview(reference)
+    if zero_offset_identical or _frame_matches(
+        actual_view, reference_view, width, height, bpp, tolerance
+    ):
+        return "identical", None
+
+    shifts: list[tuple[int, int]] = []
+    if not _interior_matches(
+        actual_view, reference_view, width, height, bpp, 0, 0, tolerance
+    ):
+        for dy in range(-SHIFT_RADIUS, SHIFT_RADIUS + 1):
+            for dx in range(-SHIFT_RADIUS, SHIFT_RADIUS + 1):
+                if dx == 0 and dy == 0:
+                    continue
+                if _interior_matches(
+                    actual_view,
+                    reference_view,
+                    width,
+                    height,
+                    bpp,
+                    dx,
+                    dy,
+                    tolerance,
+                ):
+                    shifts.append((dx, dy))
+                    if len(shifts) > 1:
+                        break
+            if len(shifts) > 1:
+                break
+    if len(shifts) == 1:
+        return "shift", shifts[0]
+
+    tiles_wide = (width + CLASSIFY_TILE_SIZE - 1) // CLASSIFY_TILE_SIZE
+    tiles_high = (height + CLASSIFY_TILE_SIZE - 1) // CLASSIFY_TILE_SIZE
+    changed_tiles = sum(
+        _tile_differs(
+            actual_view,
+            reference_view,
+            width,
+            height,
+            bpp,
+            tile_x,
+            tile_y,
+            tolerance,
+        )
+        for tile_y in range(tiles_high)
+        for tile_x in range(tiles_wide)
+    )
+    total_tiles = tiles_wide * tiles_high
+    difference_class = (
+        "local" if changed_tiles * 10 < total_tiles else "global"
+    )
+    return difference_class, None
+
+
 def compare(
     actual_path: str,
     reference_path: str,
@@ -162,12 +334,13 @@ def compare(
     threshold_max_delta: int = 64,
     threshold_psnr: float = 35.0,
     diff_out: str | None = None,
+    classify: bool = False,
 ) -> dict:
     aw, ah, abpp, apix = read_png(actual_path)
     rw, rh, rbpp, rpix = read_png(reference_path)
 
     if (aw, ah) != (rw, rh) or abpp != rbpp:
-        return {
+        result = {
             "pass": False,
             "reason": (
                 f"shape mismatch: actual={aw}x{ah}x{abpp}, "
@@ -177,6 +350,9 @@ def compare(
             "max_delta": 255,
             "psnr_db": 0.0,
         }
+        if classify:
+            result["difference_class"] = "global"
+        return result
 
     a = array("B", apix)
     r = array("B", rpix)
@@ -214,6 +390,20 @@ def compare(
         "max_delta": max_delta,
         "psnr_db": round(psnr_db, 2) if psnr_db != float("inf") else "inf",
     }
+
+    if classify:
+        difference_class, shift = _classify_difference(
+            apix,
+            rpix,
+            aw,
+            ah,
+            abpp,
+            per_pixel_tol,
+            zero_offset_identical=matching == n,
+        )
+        result["difference_class"] = difference_class
+        if shift is not None:
+            result["shift"] = list(shift)
 
     if not passed and diff_out:
         # Visualize deltas: boost by 4x for contrast, keep alpha opaque.
@@ -261,6 +451,8 @@ def _main(argv: list[str]) -> int:
                     help="On mismatch, write a per-byte diff PNG to this path.")
     ap.add_argument("--json", action="store_true",
                     help="Emit result as JSON (default: human-readable).")
+    ap.add_argument("--classify", action="store_true",
+                    help="Classify the spatial difference (default: off).")
     args = ap.parse_args(argv)
 
     try:
@@ -272,6 +464,7 @@ def _main(argv: list[str]) -> int:
             threshold_max_delta=args.threshold_max_delta,
             threshold_psnr=args.threshold_psnr,
             diff_out=args.diff_out,
+            classify=args.classify,
         )
     except (OSError, ValueError) as e:
         print(f"error: {e}", file=sys.stderr)
@@ -283,6 +476,11 @@ def _main(argv: list[str]) -> int:
         verdict = "PASS" if result["pass"] else "FAIL"
         print(f"{verdict}  match={result['match_pct']}%  "
               f"max_delta={result['max_delta']}  psnr={result['psnr_db']}dB")
+        if "difference_class" in result:
+            difference = result["difference_class"]
+            if "shift" in result:
+                difference += f"({result['shift'][0]},{result['shift'][1]})"
+            print(f"  difference: {difference}")
         if "reason" in result:
             print(f"  reason: {result['reason']}")
         if "diff_path" in result:

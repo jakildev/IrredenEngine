@@ -28,10 +28,14 @@ class MetalPipelineStateProvider {
     // scratch bind in bindComputeResources so the slot stays free for
     // kernels that declare unrelated data there.
     virtual bool usesImageAtomicScratch() const = 0;
+    // Blend state is baked into an MTLRenderPipelineState, so each blend
+    // setting is a separate cached state. `blendingEnabled` mirrors the
+    // RenderDevice enableBlending()/disableBlending() toggle.
     virtual MTL::RenderPipelineState *getRenderPipelineState(
         MTL::PixelFormat colorPixelFormat,
         MTL::PixelFormat depthPixelFormat,
-        const MTL::VertexDescriptor *vertexDescriptor
+        const MTL::VertexDescriptor *vertexDescriptor,
+        bool blendingEnabled
     ) = 0;
     virtual MTL::ComputePipelineState *getComputePipelineState() = 0;
 };

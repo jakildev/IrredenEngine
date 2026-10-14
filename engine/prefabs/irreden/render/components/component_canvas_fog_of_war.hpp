@@ -95,6 +95,13 @@
 //     is removed. Every sample then steps a hair out along its face normal. The
 //     CPU oracle (`IRPrefab::Fog::losVisibility`) evaluates an entity at its
 //     ground anchor, lifted onto its column's top plane when it sits below it.
+//   * Column top: a painted FIELD sample on a vertical face also takes the
+//     reveal at the top plane of its own column, so a source that reveals a
+//     ground surface reveals the matter under it. The column is the one
+//     holding the sample's column point (`fogLosColumnPoint`): its face point
+//     stepped a hair into the face. The term reads this field, so it is live
+//     exactly on the frames that build it. Contract:
+//     docs/design/fog-of-war-reveal-model.md ("Column top").
 // `FOG_LOS_BUILD` rebuilds the column field each RENDER frame and uploads
 // `losTexture_` (256 × 510 RGBA32F: the four half-cells of each integer cell
 // in one texel's four channels, then the field's pyramid; `kFogLosColumnEmpty`
@@ -372,10 +379,10 @@ struct FrameDataFogObservers {
         IRMath::vec4(kFogVisionCeilingOff, 0.0f, 0.0f, 0.0f),
     };
     /// The canvas-owned reveal-surface treatment, (enabled, dissolveDensity,
-    /// capTone, 0): with `x` non-zero the fog passes dissolve and cap-tone a
+    /// capTone, phase): with `x` non-zero the fog passes dissolve and cap-tone a
     /// partial ceiling or line-of-sight cut on FIELD samples. `y` and `z`
     /// are in [0, 1]; the tone defaults to the radial rim cap's. The block
-    /// tail; only the fog passes read it.
+    /// tail, shared by voxel selection, static shadow selection and fog paint.
     IRMath::vec4 revealSurfaceTreatment_ = IRMath::vec4(0.0f, 0.0f, kFogCutTone, 0.0f);
 
     std::uint32_t channels(int source) const {
@@ -762,7 +769,7 @@ struct C_CanvasFogOfWar {
     /// voxel, 1 thins the band to empty at its fully cut edge) and the
     /// retained voxels are toned toward their source colour times @p capTone.
     /// Both are clamped to [0, 1]. BODY and EXEMPT pixels are never treated,
-    /// and geometry never changes. `clearRevealSurfaceTreatment` disables it;
+    /// with ceiling dissolve selecting geometry. `clearRevealSurfaceTreatment` disables it;
     /// every source keeps its ceiling either way.
     void setRevealSurfaceTreatment(float dissolveDensity, float capTone = kFogCutTone) {
         setRevealSurfaceTreatment(observers_, dissolveDensity, capTone);
@@ -774,6 +781,14 @@ struct C_CanvasFogOfWar {
 
     FogRevealSurfaceTreatment revealSurfaceTreatment() const {
         return revealSurfaceTreatment(observers_);
+    }
+
+    void setRevealSurfacePhase(float phase) {
+        setRevealSurfacePhase(observers_, phase);
+    }
+
+    float revealSurfacePhase() const {
+        return revealSurfacePhase(observers_);
     }
 
     /// The slot-authoring rules the members above apply to this component's
@@ -947,8 +962,16 @@ struct C_CanvasFogOfWar {
             1.0f,
             IRMath::clamp(dissolveDensity, 0.0f, 1.0f),
             IRMath::clamp(capTone, 0.0f, 1.0f),
-            0.0f
+            observers.revealSurfaceTreatment_.w
         );
+    }
+
+    static void setRevealSurfacePhase(FrameDataFogObservers &observers, float phase) {
+        observers.revealSurfaceTreatment_.w = phase;
+    }
+
+    static float revealSurfacePhase(const FrameDataFogObservers &observers) {
+        return observers.revealSurfaceTreatment_.w;
     }
 
     static void clearRevealSurfaceTreatment(FrameDataFogObservers &observers) {

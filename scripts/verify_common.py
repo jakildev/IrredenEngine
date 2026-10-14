@@ -316,7 +316,8 @@ def find_exe(build_dir: Path, target_name: str, demo_name: str) -> Path:
 
 
 def compare(actual: Path, reference: Path, diff_out: Path | None,
-            thresholds: dict[str, Any] | None = None) -> dict[str, Any]:
+            thresholds: dict[str, Any] | None = None,
+            classify: bool = False) -> dict[str, Any]:
     thresholds = thresholds or {}
     cmd = [
         sys.executable, str(RENDER_COMPARE),
@@ -329,6 +330,8 @@ def compare(actual: Path, reference: Path, diff_out: Path | None,
     ]
     if diff_out:
         cmd.extend(["--diff-out", str(diff_out)])
+    if classify:
+        cmd.append("--classify")
     proc = subprocess.run(cmd, capture_output=True, text=True)
     if proc.returncode == 2:
         raise SystemExit(f"render-compare errored: {proc.stderr}")

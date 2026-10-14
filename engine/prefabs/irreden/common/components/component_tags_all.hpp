@@ -14,7 +14,8 @@ struct C_MidiIn {};
 struct C_MidiOut {};
 struct C_HasGravity {};
 // struct C_MainCanvas{};
-// struct C_GuiCanvas{};
+// The render manager's GUI canvas: the one canvas GUI_CANVAS_TO_SCREEN composites.
+struct C_GuiCanvas {};
 // struct C_BackgroundCanvas{};
 struct C_Loop {};
 struct C_IsNotPure {}; // TEMP while not executing on entities with one component

@@ -9,6 +9,8 @@
 #include <irreden/ir_video.hpp>
 
 // Components
+#include <irreden/common/components/component_auto_spin.hpp>
+#include <irreden/common/components/component_auto_spin_lua.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_local_transform_lua.hpp>
 #include <irreden/common/components/component_world_transform.hpp>
@@ -64,6 +66,7 @@
 #include <irreden/render/systems/system_lighting_to_trixel.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
+#include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
 #include <irreden/render/systems/system_entity_canvas_to_framebuffer.hpp>
 #include <irreden/render/systems/system_propagate_canvas_rotation.hpp>
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
@@ -143,6 +146,9 @@
 // Symmetry modes
 #include "symmetry.hpp"
 
+// Geometry of the fill tool's drag preview.
+#include "fill_ghost.hpp"
+
 // Authoring sessions — recipes of editor gestures compiled into
 // scripted input and replayed against the live UI by the GUI-test harness.
 #include "editor_picking.hpp"
@@ -209,9 +215,12 @@ struct UndoEdit {
 struct UndoRecord {
     std::vector<UndoEdit> edits_;
     std::vector<IREntity::EntityId> createdParts_;
+    std::optional<RemovedEditorPart> removedPart_;
 
     std::size_t byteSize() const {
-        return sizeof(UndoEdit) * edits_.size() + sizeof(IREntity::EntityId) * createdParts_.size();
+        return sizeof(UndoEdit) * edits_.size() +
+               sizeof(IREntity::EntityId) * createdParts_.size() +
+               (removedPart_ ? removedPart_->byteSize() : 0);
     }
 };
 
@@ -985,6 +994,7 @@ const std::filesystem::file_time_type g_runStartFileTime =
 bool g_entitySceneMode = false;
 IREntity::EntityId g_partsPanel = IREntity::kNullEntity;
 IREntity::EntityId g_partsList = IREntity::kNullEntity;
+IREntity::EntityId g_partRemoveButton = IREntity::kNullEntity;
 std::vector<const EditorPart *> g_rotationGroupScratch;
 std::vector<C_VoxelSetNew *> g_rotationSetScratch;
 IREntity::EntityId g_arrayPanel = IREntity::kNullEntity;
@@ -1056,35 +1066,22 @@ void stepLodTierPin(int delta) {
 IREntity::EntityId g_partModeDropdown = IREntity::kNullEntity;
 int g_modePreviewBaseCanvasCount = 0;
 
-int rotationModeIndex(IRComponents::RotationMode mode) {
-    switch (mode) {
-    case IRComponents::RotationMode::GRID:
-        return 0;
-    case IRComponents::RotationMode::DETACHED:
-        return 1;
-    case IRComponents::RotationMode::DETACHED_REVOXELIZE:
-        return 2;
-    }
-    return 0;
+// Whether @p part may enter DETACHED_REVOXELIZE: the resample rotates about
+// the set's local origin, so the set's box has to be centred on it.
+bool partCanRevoxelize(const EditorPart &part) {
+    return part.kind_ == EditorPartKind::VOXEL_SET &&
+           voxelSetIsCentered(IREntity::getComponent<C_VoxelSetNew>(part.entity_));
 }
 
-IRComponents::RotationMode rotationModeFromIndex(int index) {
-    switch (index) {
-    case 1:
-        return IRComponents::RotationMode::DETACHED;
-    case 2:
-        return IRComponents::RotationMode::DETACHED_REVOXELIZE;
-    default:
-        return IRComponents::RotationMode::GRID;
-    }
-}
-
-IRComponents::RotationMode nextRotationMode(IRComponents::RotationMode mode) {
-    switch (mode) {
+// The mode M takes @p part to. A part that cannot re-voxelize cycles GRID,
+// DETACHED, GRID.
+IRComponents::RotationMode nextRotationMode(const EditorPart &part) {
+    switch (part.mode_) {
     case IRComponents::RotationMode::GRID:
         return IRComponents::RotationMode::DETACHED;
     case IRComponents::RotationMode::DETACHED:
-        return IRComponents::RotationMode::DETACHED_REVOXELIZE;
+        return partCanRevoxelize(part) ? IRComponents::RotationMode::DETACHED_REVOXELIZE
+                                       : IRComponents::RotationMode::GRID;
     case IRComponents::RotationMode::DETACHED_REVOXELIZE:
         return IRComponents::RotationMode::GRID;
     }
@@ -1098,7 +1095,7 @@ void syncPartModeDropdown() {
     const EditorPart *part = g_entityScene.selectedPart();
     IRPrefab::Widget::setDropdownSelectedIndex(
         g_partModeDropdown,
-        part != nullptr ? rotationModeIndex(part->mode_) : 0
+        part != nullptr ? partModeRow(part->mode_) : 0
     );
 }
 
@@ -1130,18 +1127,21 @@ void createModePreviewTwin() {
     transform.translation_.x += static_cast<float>(source.size_.x * 2);
     const IREntity::EntityId preview = IREntity::createEntity(
         transform,
-        IRPrefab::DenseVoxel::toComponent(dense),
+        IRPrefab::DenseVoxel::toComponent(dense, source.anchor_),
         C_RotationMode{RotationMode::GRID},
         C_EditorReference{}
     );
     IREntity::setParent(preview, g_entityScene.root());
     g_entityScene.setPreviewEntity(preview);
-    stageRotationMode(preview, nextRotationMode(part->mode_));
+    stageRotationMode(preview, nextRotationMode(*part));
 }
 
+// A request the part cannot take leaves its mode as it was and re-syncs the
+// dropdown to it.
 void setSelectedPartRotationMode(IRComponents::RotationMode mode) {
     EditorPart *part = g_entityScene.selectedPart();
-    if (part == nullptr || part->kind_ != EditorPartKind::VOXEL_SET || part->mode_ == mode) {
+    if (part == nullptr || part->kind_ != EditorPartKind::VOXEL_SET || part->mode_ == mode ||
+        (mode == IRComponents::RotationMode::DETACHED_REVOXELIZE && !partCanRevoxelize(*part))) {
         syncPartModeDropdown();
         return;
     }
@@ -1161,7 +1161,7 @@ void setSelectedPartRotationMode(IRComponents::RotationMode mode) {
 void cycleSelectedPartRotationMode() {
     const EditorPart *part = g_entityScene.selectedPart();
     if (part != nullptr) {
-        setSelectedPartRotationMode(nextRotationMode(part->mode_));
+        setSelectedPartRotationMode(nextRotationMode(*part));
     }
 }
 
@@ -1268,6 +1268,9 @@ void selectEditorPart(int index, bool createGizmos = true) {
         }
         IRPrefab::Widget::setListSelectedIndex(g_partsList, g_entityScene.selectedIndex());
     }
+    if (g_partRemoveButton != IREntity::kNullEntity) {
+        IRPrefab::Widget::setDisabled(g_partRemoveButton, selected == IREntity::kNullEntity);
+    }
     syncLodBandSliders();
     syncPartModeDropdown();
     reseatEditorMirrorAxes();
@@ -1292,7 +1295,8 @@ void addEditorVoxelPart() {
         g_entityScene.begin();
     }
     const ivec3 size = nextPartSize();
-    const IREntity::EntityId part = g_entityScene.addVoxelPart(size, deriveSceneOrigin(size));
+    const IREntity::EntityId part =
+        g_entityScene.addVoxelPart(size, derivePartPivot(size), EntityAnchor::CENTER);
     auto &set = IREntity::getComponent<C_VoxelSetNew>(part);
     set.deactivateAll();
     selectEditorPart(g_entityScene.selectedIndex());
@@ -1370,18 +1374,36 @@ void addEditorShapePart() {
     selectEditorPart(g_entityScene.selectedIndex());
 }
 
+void pushUndoRecord(UndoRecord record) {
+    g_editor.undoTotalBytes_ += record.byteSize();
+    g_editor.undoRecords_.push_back(std::move(record));
+    while (g_editor.undoTotalBytes_ > kUndoByteBudget && g_editor.undoRecords_.size() > 1) {
+        g_editor.undoTotalBytes_ -= g_editor.undoRecords_.front().byteSize();
+        g_editor.undoRecords_.pop_front();
+    }
+}
+
+void removeSelectedPart() {
+    if (!g_entitySceneMode || g_entityScene.selectedPart() == nullptr) {
+        return;
+    }
+    std::optional<RemovedEditorPart> removed = g_entityScene.removeSelectedPart();
+    if (!removed) {
+        return;
+    }
+    UndoRecord record;
+    record.removedPart_ = std::move(removed);
+    pushUndoRecord(std::move(record));
+    selectEditorPart(g_entityScene.selectedIndex());
+}
+
 void commitPartCreation(std::vector<IREntity::EntityId> created) {
     if (created.empty()) {
         return;
     }
     UndoRecord record;
     record.createdParts_ = std::move(created);
-    g_editor.undoTotalBytes_ += record.byteSize();
-    g_editor.undoRecords_.push_back(std::move(record));
-    while (g_editor.undoTotalBytes_ > kUndoByteBudget && !g_editor.undoRecords_.empty()) {
-        g_editor.undoTotalBytes_ -= g_editor.undoRecords_.front().byteSize();
-        g_editor.undoRecords_.pop_front();
-    }
+    pushUndoRecord(std::move(record));
     selectEditorPart(g_entityScene.selectedIndex());
 }
 
@@ -1645,21 +1667,39 @@ void commitStroke(bool derivedStateAlreadySynced = false) {
             }
         }
     }
-    g_editor.undoTotalBytes_ += g_editor.pendingStroke_.byteSize();
-    g_editor.undoRecords_.push_back(std::move(g_editor.pendingStroke_));
+    pushUndoRecord(std::move(g_editor.pendingStroke_));
     g_editor.pendingStroke_.edits_.clear();
     g_editor.pendingStroke_.edits_.reserve(kUndoStrokeReserve);
-
-    // Whole-stroke eviction from the front. Per-record eviction
-    // would split a stroke; Ctrl-Z partway through a half-evicted
-    // stroke would only restore part of it.
-    while (g_editor.undoTotalBytes_ > kUndoByteBudget && !g_editor.undoRecords_.empty()) {
-        g_editor.undoTotalBytes_ -= g_editor.undoRecords_.front().byteSize();
-        g_editor.undoRecords_.pop_front();
-    }
     for (IREntity::EntityId entity : touchedSets) {
         IREntity::getComponent<C_VoxelSetNew>(entity).resyncAfterRawEdits();
     }
+}
+
+void remapUndoRecordEntity(
+    UndoRecord &record, IREntity::EntityId removed, IREntity::EntityId restored
+) {
+    for (UndoEdit &edit : record.edits_) {
+        if (edit.voxelSet_ == removed) {
+            edit.voxelSet_ = restored;
+        }
+    }
+    for (IREntity::EntityId &created : record.createdParts_) {
+        if (created == removed) {
+            created = restored;
+        }
+    }
+}
+
+void remapUndoEntity(IREntity::EntityId removed, IREntity::EntityId restored) {
+    for (UndoRecord &record : g_editor.undoRecords_) {
+        remapUndoRecordEntity(record, removed, restored);
+    }
+    for (std::deque<UndoRecord> &records : g_editor.perFrameUndoStacks_) {
+        for (UndoRecord &record : records) {
+            remapUndoRecordEntity(record, removed, restored);
+        }
+    }
+    remapUndoRecordEntity(g_editor.pendingStroke_, removed, restored);
 }
 
 void undoOne() {
@@ -1669,20 +1709,31 @@ void undoOne() {
     UndoRecord rec = std::move(g_editor.undoRecords_.back());
     g_editor.undoRecords_.pop_back();
     g_editor.undoTotalBytes_ -= rec.byteSize();
+    if (rec.removedPart_) {
+        const IREntity::EntityId removed = rec.removedPart_->part_.entity_;
+        const EntitySceneRestoreResult restored =
+            g_entityScene.restorePart(g_moduleHost.script(), *rec.removedPart_);
+        if (!restored.ok()) {
+            IR_LOG_ERROR("Part restore failed: {}", restored.error_);
+            pushUndoRecord(std::move(rec));
+            return;
+        }
+        remapUndoEntity(removed, restored.entity_);
+        selectEditorPart(g_entityScene.selectedIndex());
+        return;
+    }
     if (!rec.createdParts_.empty()) {
         g_entityScene.removeParts(rec.createdParts_);
         selectEditorPart(g_entityScene.selectedIndex());
     }
     // Replay in reverse so overlapping edits inside a stroke restore
     // in last-write-wins order — same property the forward edit chain
-    // produced when authoring. Voxel-set entities are allocated once
-    // in initEntities and live for the session; there is no teardown
-    // path, so the getComponent lookup below assumes the set is alive
-    // without an extra liveness check. A future refactor that adds
-    // entity removal must guard this loop.
+    // produced when authoring.
     std::vector<IREntity::EntityId> touchedSets;
     for (auto it = rec.edits_.rbegin(); it != rec.edits_.rend(); ++it) {
-        // editable set lives for the session — no teardown path
+        if (!IREntity::entityExists(it->voxelSet_)) {
+            continue;
+        }
         auto &set = IREntity::getComponent<C_VoxelSetNew>(it->voxelSet_);
         const std::size_t flat =
             static_cast<std::size_t>(IRMath::index3DtoIndex1D(it->localIdx_, set.size_));
@@ -1694,9 +1745,18 @@ void undoOne() {
         }
     }
     for (auto id : touchedSets) {
+        if (!IREntity::entityExists(id)) {
+            continue;
+        }
         auto &set = IREntity::getComponent<C_VoxelSetNew>(id);
         set.resyncAfterRawEdits();
     }
+}
+
+// World cell of `set`'s cell (0,0,0). A set's translation is its anchor, not
+// its minimum corner, so every world-to-cell conversion goes through here.
+ivec3 voxelSetCellOrigin(const C_VoxelSetNew &set, const C_WorldTransform &worldTransform) {
+    return IRMath::roundVec3HalfUp(worldTransform.translation_ + voxelSetLocalOrigin(set));
 }
 
 // Computes the local index inside `set` for a world voxel position.
@@ -1712,8 +1772,7 @@ bool worldVoxelToLocal(
     if (set.numVoxels_ <= 0 || set.voxels_.empty()) {
         return false;
     }
-    const ivec3 origin = IRMath::roundVec3HalfUp(worldTransform.translation_);
-    outLocal = worldVoxel - origin;
+    outLocal = worldVoxel - voxelSetCellOrigin(set, worldTransform);
     if (outLocal.x < 0 || outLocal.x >= set.size_.x || outLocal.y < 0 ||
         outLocal.y >= set.size_.y || outLocal.z < 0 || outLocal.z >= set.size_.z) {
         return false;
@@ -1833,8 +1892,7 @@ void applyFillFace(
     if (fixedAxis < 0)
         return;
 
-    const ivec3 origin = IRMath::roundVec3HalfUp(gpos.translation_);
-    const ivec3 startLocal = worldHit - origin;
+    const ivec3 startLocal = worldHit - voxelSetCellOrigin(set, gpos);
     if (startLocal.x < 0 || startLocal.x >= set.size_.x || startLocal.y < 0 ||
         startLocal.y >= set.size_.y || startLocal.z < 0 || startLocal.z >= set.size_.z)
         return;
@@ -1880,8 +1938,9 @@ void applyFillFace(
     }
 }
 
-// Update the ghost shape entity to visualize the fill region during drag.
-// Uses AABB bounds for box fill, or the dominant-axis extent for line fill.
+// Shows the fill preview on the cells a release would fill or carve: the box
+// between the two drag cells, or in line mode the run along the drag's
+// dominant axis.
 void updateGhostShape(ivec3 worldA, ivec3 worldB, bool lineMode) {
     if (g_fillTool.ghostEntity_ == IREntity::kNullEntity)
         return;
@@ -1890,45 +1949,23 @@ void updateGhostShape(ivec3 worldA, ivec3 worldB, bool lineMode) {
     ghost.flags_ = IRMath::SDF::SHAPE_FLAG_VISIBLE | IRMath::SDF::SHAPE_FLAG_HOLLOW |
                    IRMath::SDF::SHAPE_FLAG_XRAY_OCCLUDED;
 
-    ivec3 lo{};
-    ivec3 hi{};
+    ivec3 end = worldB;
     if (lineMode) {
         const ivec3 delta = worldB - worldA;
         const int dx = IRMath::abs(delta.x);
         const int dy = IRMath::abs(delta.y);
         const int dz = IRMath::abs(delta.z);
-        ivec3 lineEnd = worldA;
+        end = worldA;
         if (dx >= dy && dx >= dz)
-            lineEnd.x = worldB.x;
+            end.x = worldB.x;
         else if (dy >= dz)
-            lineEnd.y = worldB.y;
+            end.y = worldB.y;
         else
-            lineEnd.z = worldB.z;
-        lo = ivec3{
-            IRMath::min(worldA.x, lineEnd.x),
-            IRMath::min(worldA.y, lineEnd.y),
-            IRMath::min(worldA.z, lineEnd.z)
-        };
-        hi = ivec3{
-            IRMath::max(worldA.x, lineEnd.x),
-            IRMath::max(worldA.y, lineEnd.y),
-            IRMath::max(worldA.z, lineEnd.z)
-        };
-    } else {
-        lo = ivec3{
-            IRMath::min(worldA.x, worldB.x),
-            IRMath::min(worldA.y, worldB.y),
-            IRMath::min(worldA.z, worldB.z)
-        };
-        hi = ivec3{
-            IRMath::max(worldA.x, worldB.x),
-            IRMath::max(worldA.y, worldB.y),
-            IRMath::max(worldA.z, worldB.z)
-        };
+            end.z = worldB.z;
     }
-    const vec3 halfExt = vec3(hi.x - lo.x + 1, hi.y - lo.y + 1, hi.z - lo.z + 1) * 0.5f;
-    ghostTransform.translation_ = vec3(lo) + halfExt;
-    ghost.params_ = vec4(halfExt.x, halfExt.y, halfExt.z, 0.0f);
+    const FillGhostBox box = fillGhostBox(IRMath::min(worldA, end), IRMath::max(worldA, end));
+    ghostTransform.translation_ = box.center_;
+    ghost.params_ = box.params_;
 }
 
 // Loft mask cell colors. Painted onto the GUI canvas by
@@ -2664,27 +2701,17 @@ void updateComponentsPanel() {
 
 } // namespace
 
-// The COMPONENTS panel's list: the module's components in registration order,
-// then every other component with a prefab factory, by name.
-std::vector<std::string> componentPaletteNames() {
+std::vector<std::string> componentPaletteNames(const ModuleSessionView &view) {
     std::vector<std::string> names;
-    for (const IRScript::LuaTypedComponentInfo &info : g_moduleHost.script().luaTypedComponents())
-        names.push_back(info.name_);
-    const std::size_t moduleCount = names.size();
-    for (std::string &factory : IRPrefab::Prefab::listComponentFactories()) {
-        if (std::find(
-                names.begin(),
-                names.begin() + static_cast<std::ptrdiff_t>(moduleCount),
-                factory
-            ) == names.begin() + static_cast<std::ptrdiff_t>(moduleCount))
-            names.push_back(std::move(factory));
-    }
+    for (const ComponentRecord &component : view.components_)
+        names.push_back(component.name_);
     return names;
 }
 
 // Builds the COMPONENTS panel when there is anything to attach.
 void initComponentsUi() {
-    g_componentNames = componentPaletteNames();
+    const ModuleSessionView view = g_moduleHost.sessionView();
+    g_componentNames = componentPaletteNames(view);
     if (g_componentNames.empty())
         return;
     const std::size_t moduleCount = g_moduleHost.script().luaTypedComponents().size();
@@ -2788,6 +2815,25 @@ namespace Session {
 // subdivision (>= 1) away.
 constexpr float kPickDepthAgreement = 0.75f;
 
+// Calls visit(texel, flat index) for every texel of @p canvas whose entity id
+// is @p entity: the texels that entity is the nearest surface on.
+template <typename Visit>
+void forEachTexelOwnedBy(
+    const C_TriangleCanvasTextures &canvas, IREntity::EntityId entity, Visit &&visit
+) {
+    std::vector<IRMath::uvec2> ids;
+    canvas.readEntityIdCarriers(ids);
+    for (int y = 0; y < canvas.size_.y; ++y) {
+        for (int x = 0; x < canvas.size_.x; ++x) {
+            const std::size_t texel = static_cast<std::size_t>(y) * canvas.size_.x + x;
+            if (static_cast<IREntity::EntityId>(IRRender::decodeCarrierEntityId(ids[texel])) ==
+                entity) {
+                visit(IRMath::ivec2(x, y), texel);
+            }
+        }
+    }
+}
+
 // The whole-frame form of the picking contract: every main-canvas texel that
 // shows the editable set must pick the face it shows, at the depth it shows it.
 // The canvas's own distance readback is the oracle — it records which face slot
@@ -2801,9 +2847,7 @@ bool evaluatePickMatchesRender(const void *, std::string &actual) {
     }
     const auto &canvas =
         IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity());
-    std::vector<IRMath::uvec2> ids;
     std::vector<int> distances;
-    canvas.readEntityIdCarriers(ids);
     canvas.readDistances(distances);
 
     const auto &set = IREntity::getComponent<C_VoxelSetNew>(g_sceneVoxelSetEntity);
@@ -2816,35 +2860,27 @@ bool evaluatePickMatchesRender(const void *, std::string &actual) {
     int shown = 0;
     int agree = 0;
     float worstDepthError = 0.0f;
-    for (int y = 0; y < canvas.size_.y; ++y) {
-        for (int x = 0; x < canvas.size_.x; ++x) {
-            const std::size_t texel = static_cast<std::size_t>(y) * canvas.size_.x + x;
-            if (static_cast<IREntity::EntityId>(IRRender::decodeCarrierEntityId(ids[texel])) !=
-                g_sceneVoxelSetEntity) {
-                continue;
+    forEachTexelOwnedBy(canvas, g_sceneVoxelSetEntity, [&](IRMath::ivec2 texel, std::size_t flat) {
+        ++shown;
+        const IRRender::DecodedCompositeDepth drawn =
+            IRRender::decodeCompositeDepth(static_cast<float>(distances[flat]));
+        const std::optional<IRPrefab::Picking::GridRayHit> hit = IRPrefab::Picking::castGridRay(
+            IRRender::mainCanvasTexelWorldPos3DAtIsoDepth(texel, 0.0f) - origin,
+            kSessionRayDirection,
+            set.size_,
+            [&set](IRMath::ivec3 local) {
+                return set.voxels_[IRMath::index3DtoIndex1D(local, set.size_)].color_.alpha_ != 0;
             }
-            ++shown;
-            const IRRender::DecodedCompositeDepth drawn =
-                IRRender::decodeCompositeDepth(static_cast<float>(distances[texel]));
-            const std::optional<IRPrefab::Picking::GridRayHit> hit = IRPrefab::Picking::castGridRay(
-                IRRender::mainCanvasTexelWorldPos3DAtIsoDepth(IRMath::ivec2(x, y), 0.0f) - origin,
-                kSessionRayDirection,
-                set.size_,
-                [&set](IRMath::ivec3 local) {
-                    return set.voxels_[IRMath::index3DtoIndex1D(local, set.size_)].color_.alpha_ !=
-                           0;
-                }
-            );
-            if (!hit || hit->faceNormal_[drawn.face_ % 3] == 0)
-                continue;
-            const float depthError = IRMath::abs(
-                hit->rayT_ * 3.0f * subdivisions + drawnDepthLead - static_cast<float>(drawn.iso_)
-            );
-            worstDepthError = IRMath::max(worstDepthError, depthError);
-            if (depthError < kPickDepthAgreement)
-                ++agree;
-        }
-    }
+        );
+        if (!hit || hit->faceNormal_[drawn.face_ % 3] == 0)
+            return;
+        const float depthError = IRMath::abs(
+            hit->rayT_ * 3.0f * subdivisions + drawnDepthLead - static_cast<float>(drawn.iso_)
+        );
+        worstDepthError = IRMath::max(worstDepthError, depthError);
+        if (depthError < kPickDepthAgreement)
+            ++agree;
+    });
     actual = "texels=" + std::to_string(shown) + " agree=" + std::to_string(agree) +
              " worstDepthError=" + std::to_string(worstDepthError);
     return shown > 0 && agree == shown;
@@ -2864,6 +2900,39 @@ bool evaluatePickCheck(const void *context, std::string &actual) {
              std::to_string(hit->faceNormal_.x) + "," + std::to_string(hit->faceNormal_.y) + "," +
              std::to_string(hit->faceNormal_.z) + ")";
     return hit->voxelPos_ == check.worldVoxel_;
+}
+
+// Reads one fill-preview expectation from the main canvas's entity ids: the
+// texels the ghost shape is the nearest surface on. Cardinal camera only, like
+// the pick sweep: viewRayCrossesCells assumes the (1,1,1) view ray.
+bool evaluateFillGhostCheck(const void *context, std::string &actual) {
+    const FillGhostCheck &check = *static_cast<const FillGhostCheck *>(context);
+    if (g_fillTool.ghostEntity_ == IREntity::kNullEntity) {
+        actual = "no-ghost-entity";
+        return false;
+    }
+    const bool flaggedVisible =
+        (IREntity::getComponent<C_ShapeDescriptor>(g_fillTool.ghostEntity_).flags_ &
+         IRMath::SDF::SHAPE_FLAG_VISIBLE) != 0u;
+    const auto &canvas =
+        IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity());
+    int owned = 0;
+    int inside = 0;
+    forEachTexelOwnedBy(canvas, g_fillTool.ghostEntity_, [&](IRMath::ivec2 texel, std::size_t) {
+        ++owned;
+        if (viewRayCrossesCells(
+                IRRender::mainCanvasTexelWorldPos3DAtIsoDepth(texel, 0.0f),
+                check.worldLo_,
+                check.worldHi_
+            )) {
+            ++inside;
+        }
+    });
+    actual = std::string(flaggedVisible ? "" : "hidden ") + "texels=" + std::to_string(owned);
+    if (!check.expectDrawn_)
+        return !flaggedVisible && owned == 0;
+    actual += " inside=" + std::to_string(inside);
+    return flaggedVisible && owned > 0 && inside == owned;
 }
 
 // Reads one recipe occupancy expectation against the live editable set at a
@@ -2963,6 +3032,18 @@ bool evaluatePartCountCheck(const void *context, std::string &actual) {
     return count == check.expected_;
 }
 
+bool evaluatePartIdCheck(const void *context, std::string &actual) {
+    const PartIdCheck &check = *static_cast<const PartIdCheck *>(context);
+    if (check.partIndex_ < 0 ||
+        check.partIndex_ >= static_cast<int>(g_entityScene.parts().size())) {
+        actual = "part index out of range";
+        return false;
+    }
+    const std::string &id = g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)].id_;
+    actual = "id=" + id + " want=" + check.expected_;
+    return id == check.expected_;
+}
+
 bool evaluatePartAuthoredCountCheck(const void *context, std::string &actual) {
     const PartAuthoredCountCheck &check = *static_cast<const PartAuthoredCountCheck *>(context);
     if (check.partIndex_ < 0 ||
@@ -3022,11 +3103,115 @@ bool evaluateRotationModeCheck(const void *context, std::string &actual) {
         canvasSizeMatches = canvas && part.canvasSize_.x > 0 && part.canvasSize_.y > 0 &&
                             part.canvasSize_ == canvas.value()->canvasSize_;
     }
-    actual = "mode=" + std::to_string(rotationModeIndex(mode)) +
-             " want=" + std::to_string(rotationModeIndex(check.expected_)) +
+    actual = "mode=" + std::to_string(partModeRow(mode)) +
+             " want=" + std::to_string(partModeRow(check.expected_)) +
              " stored_canvas=" + std::to_string(part.canvasSize_.x) + "x" +
              std::to_string(part.canvasSize_.y);
     return mode == check.expected_ && canvasSizeMatches;
+}
+
+bool evaluatePartAnchorCheck(const void *context, std::string &actual) {
+    const PartAnchorCheck &check = *static_cast<const PartAnchorCheck *>(context);
+    if (check.partIndex_ < 0 ||
+        check.partIndex_ >= static_cast<int>(g_entityScene.parts().size())) {
+        actual = "part index out of range";
+        return false;
+    }
+    const EditorPart &part = g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)];
+    if (part.kind_ != EditorPartKind::VOXEL_SET) {
+        actual = "part is not a voxel set";
+        return false;
+    }
+    const EntityAnchor anchor = IREntity::getComponent<C_VoxelSetNew>(part.entity_).anchor_;
+    actual = "anchor=" + std::to_string(static_cast<int>(anchor)) +
+             " want=" + std::to_string(static_cast<int>(check.expected_));
+    return anchor == check.expected_;
+}
+
+bool evaluatePartYawCheck(const void *context, std::string &actual) {
+    const PartYawCheck &check = *static_cast<const PartYawCheck *>(context);
+    if (check.partIndex_ < 0 ||
+        check.partIndex_ >= static_cast<int>(g_entityScene.parts().size())) {
+        actual = "part index out of range";
+        return false;
+    }
+    const IREntity::EntityId entity =
+        g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)].entity_;
+    const vec4 rotation = IREntity::getComponent<C_LocalTransform>(entity).rotation_;
+    constexpr float kTiltTolerance = 1e-4f;
+    if (IRMath::abs(rotation.x) > kTiltTolerance || IRMath::abs(rotation.y) > kTiltTolerance) {
+        actual = "rotation is not about z";
+        return false;
+    }
+    constexpr float kDegreesPerRadian = 180.0f / IRMath::kPi;
+    const float yaw = IRMath::quatExtractZAngle(rotation);
+    const float off =
+        IRMath::wrapAnglePi(yaw - check.expectedDegrees_ / kDegreesPerRadian) * kDegreesPerRadian;
+    actual = "yaw=" + std::to_string(IRMath::wrapAngleTwoPi(yaw) * kDegreesPerRadian) +
+             " want=" + std::to_string(check.expectedDegrees_);
+    return IRMath::abs(off) <= check.toleranceDegrees_;
+}
+
+bool evaluatePartTurnAxisCheck(const void *context, std::string &actual) {
+    const PartTurnAxisCheck &check = *static_cast<const PartTurnAxisCheck *>(context);
+    if (check.partIndex_ < 0 ||
+        check.partIndex_ >= static_cast<int>(g_entityScene.parts().size())) {
+        actual = "part index out of range";
+        return false;
+    }
+    const IREntity::EntityId entity =
+        g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)].entity_;
+    const vec4 rotation = IREntity::getComponent<C_LocalTransform>(entity).rotation_;
+    const vec3 imaginary(rotation.x, rotation.y, rotation.z);
+    const float sinHalf = IRMath::length(imaginary);
+    constexpr float kDegreesPerRadian = 180.0f / IRMath::kPi;
+    const float degrees =
+        2.0f * IRMath::atan2(sinHalf, IRMath::abs(rotation.w)) * kDegreesPerRadian;
+    // The share of the turn's axis that lies along the expected one; 0 for
+    // an unturned part, which has no axis.
+    constexpr float kNoTurn = 1e-6f;
+    const float along =
+        sinHalf > kNoTurn ? IRMath::abs(IRMath::dot(imaginary, check.axis_)) / sinHalf : 0.0f;
+    actual = "turn=" + std::to_string(degrees) + " along_axis=" + std::to_string(along) +
+             " want_axis=(" + std::to_string(check.axis_.x) + "," + std::to_string(check.axis_.y) +
+             "," + std::to_string(check.axis_.z) + ") min=" + std::to_string(check.minDegrees_);
+    constexpr float kAxisTolerance = 1e-4f;
+    return degrees >= check.minDegrees_ && along >= 1.0f - kAxisTolerance;
+}
+
+bool evaluatePartSpinCheck(const void *context, std::string &actual) {
+    const PartSpinCheck &check = *static_cast<const PartSpinCheck *>(context);
+    if (check.partIndex_ < 0 ||
+        check.partIndex_ >= static_cast<int>(g_entityScene.parts().size())) {
+        actual = "part index out of range";
+        return false;
+    }
+    const IREntity::EntityId entity =
+        g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)].entity_;
+    const auto spin = IREntity::getComponentOptional<C_AutoSpin>(entity);
+    if (!spin) {
+        actual = "no C_AutoSpin";
+        return !check.expectEqual_;
+    }
+    const float rate = spin.value()->radiansPerFrame_;
+    constexpr float kRateTolerance = 1e-6f;
+    actual = "radiansPerFrame=" + std::to_string(rate) +
+             (check.expectEqual_ ? " want=" : " want!=") + std::to_string(check.radiansPerFrame_);
+    return (IRMath::abs(rate - check.radiansPerFrame_) <= kRateTolerance) == check.expectEqual_;
+}
+
+bool evaluatePartModeDropdownCheck(const void *context, std::string &actual) {
+    const PartModeDropdownCheck &check = *static_cast<const PartModeDropdownCheck *>(context);
+    if (g_partModeDropdown == IREntity::kNullEntity) {
+        actual = "no mode dropdown";
+        return false;
+    }
+    const int row = IRPrefab::Widget::dropdownSelectedIndex(g_partModeDropdown);
+    const bool open = IRPrefab::Widget::isDropdownOpen(g_partModeDropdown);
+    actual = "row=" + std::to_string(row) +
+             " want=" + std::to_string(partModeRow(check.expected_)) +
+             " open=" + (open ? "yes" : "no");
+    return row == partModeRow(check.expected_) && !open;
 }
 
 bool evaluateEditorInputCheck(const void *context, std::string &actual) {
@@ -3234,7 +3419,7 @@ bool evaluateManifestCheck(const void *context, std::string &actual) {
     const std::string text{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
     const bool found = text.find(check.text_) != std::string::npos;
     actual = std::string(found ? "found" : "missing") + " in " + path.string();
-    return found;
+    return found == check.expectContains_;
 }
 
 bool evaluateComponentCheck(const void *context, std::string &actual) {
@@ -3250,9 +3435,9 @@ bool evaluateComponentCheck(const void *context, std::string &actual) {
     return false;
 }
 
-// Counts the label widgets positioned inside the docked panel's rectangle —
+// Collects the label widgets positioned inside the docked panel's rectangle —
 // the panel's build function places them, so there is no other handle to
-// them.
+// them — and passes when any of them reads check.label_.
 bool evaluatePanelLabelCheck(const void *context, std::string &actual) {
     const PanelLabelCheck &check = *static_cast<const PanelLabelCheck *>(context);
     const std::vector<std::string> &names = g_moduleHost.panelNames();
@@ -3265,16 +3450,18 @@ bool evaluatePanelLabelCheck(const void *context, std::string &actual) {
     const ivec2 lo = g_dockedModulePanels[index].pos_;
     const ivec2 hi = lo + kModulePanelSize;
     int labels = 0;
-    std::string text;
+    bool found = false;
+    std::string texts;
     IREntity::forEachComponent<C_WidgetLabel>([&](IREntity::EntityId &id, C_WidgetLabel &label) {
         const ivec2 pos = IREntity::getComponent<C_GuiPosition>(id).pos_;
         if (pos.x < lo.x || pos.y < lo.y || pos.x >= hi.x || pos.y >= hi.y)
             return;
         ++labels;
-        text = label.text_;
+        found = found || label.text_ == check.label_;
+        texts += (texts.empty() ? "\"" : ",\"") + label.text_ + "\"";
     });
-    actual = "labels=" + std::to_string(labels) + " text=\"" + text + "\"";
-    return labels == 1 && text == check.label_;
+    actual = "labels=" + std::to_string(labels) + " texts=[" + texts + "]";
+    return found;
 }
 
 // Reads the component's field straight from the target's live entity row, so
@@ -3319,6 +3506,31 @@ bool evaluateComponentValueCheck(const void *context, std::string &actual) {
 
 } // namespace Session
 
+// Runs <module dir>/session_expect.lua and returns the table it yields, with
+// its path in @p path. Without a module, or on a sidecar that does not yield
+// a table, appends the reason to @p errors and returns nullopt.
+std::optional<sol::table>
+loadSessionExpect(const std::string &session, std::string &path, std::vector<std::string> &errors) {
+    if (!g_moduleHost.loaded()) {
+        errors.push_back(session + " needs --module <dir>");
+        return std::nullopt;
+    }
+    path = (std::filesystem::path(g_moduleHost.dir()) / "session_expect.lua").string();
+    sol::state &lua = g_moduleHost.script().lua();
+    sol::protected_function_result result = lua.safe_script_file(path, sol::script_pass_on_error);
+    if (!result.valid()) {
+        const sol::error err = result;
+        errors.push_back(path + ": " + err.what());
+        return std::nullopt;
+    }
+    const sol::object returned = result;
+    if (returned.get_type() != sol::type::table) {
+        errors.push_back(path + ": must return a table");
+        return std::nullopt;
+    }
+    return returned.as<sol::table>();
+}
+
 // Resolves a component session from <module dir>/session_expect.lua's
 // `<key> = { component, field, value, default }` against the loaded module and
 // the COMPONENTS panel layout: `componentAttach` for component_attach,
@@ -3332,30 +3544,20 @@ Session::ComponentAttachSpec resolveComponentAttachSpec(Session::Id id) {
                                  : keyed ? "componentFieldKey"
                                          : "componentAttach";
     Session::ComponentAttachSpec spec;
-    spec.session_ = paged   ? "component_field_page"
-                    : keyed ? "component_field_key"
-                            : "component_attach";
-    if (!g_moduleHost.loaded()) {
-        spec.errors_.push_back(spec.session_ + " needs --module <dir>");
+    spec.session_ = paged                            ? "component_field_page"
+                    : keyed                          ? "component_field_key"
+                    : id == Session::Id::REMOVE_PART ? "remove_part"
+                                                     : "component_attach";
+    std::string path;
+    const std::optional<sol::table> expect = loadSessionExpect(spec.session_, path, spec.errors_);
+    if (!expect)
         return spec;
-    }
-    const std::string path =
-        (std::filesystem::path(g_moduleHost.dir()) / "session_expect.lua").string();
     auto fail = [&spec, &path](const std::string &why) {
         spec.errors_.push_back(path + ": " + why);
         return spec;
     };
     IRScript::LuaScript &script = g_moduleHost.script();
-    sol::protected_function_result result =
-        script.lua().safe_script_file(path, sol::script_pass_on_error);
-    if (!result.valid()) {
-        const sol::error err = result;
-        return fail(err.what());
-    }
-    const sol::object returned = result;
-    if (returned.get_type() != sol::type::table)
-        return fail("must return a table");
-    const sol::optional<sol::table> entry = returned.as<sol::table>()[entryKey];
+    const sol::optional<sol::table> entry = (*expect)[entryKey];
     const sol::optional<std::string> component =
         entry ? (*entry)["component"] : sol::optional<std::string>{};
     const sol::optional<std::string> fieldName =
@@ -3369,10 +3571,14 @@ Session::ComponentAttachSpec resolveComponentAttachSpec(Session::Id id) {
         IRVoxelEditor::detail::findModuleComponent(script, spec.component_);
     if (info == nullptr)
         return fail("component '" + spec.component_ + "' is not registered by the module");
-    const std::vector<std::string> names = componentPaletteNames();
-    spec.listRow_ =
-        static_cast<int>(std::find(names.begin(), names.end(), spec.component_) - names.begin());
-    if (spec.listRow_ * kComponentListItemHeight >= kComponentListSize.y)
+    const ModuleSessionView view = g_moduleHost.sessionView();
+    const auto componentRecord = std::find_if(
+        view.components_.begin(),
+        view.components_.end(),
+        [&spec](const ComponentRecord &candidate) { return candidate.name_ == spec.component_; }
+    );
+    const int listRow = static_cast<int>(componentRecord - view.components_.begin());
+    if (listRow * kComponentListItemHeight >= kComponentListSize.y)
         return fail("component '" + spec.component_ + "' is below the list's visible rows");
 
     // The panel lays a record's fields out in the record's order.
@@ -3384,9 +3590,8 @@ Session::ComponentAttachSpec resolveComponentAttachSpec(Session::Id id) {
     if (field == layout.fields_.end())
         return fail("component '" + spec.component_ + "' has no field '" + spec.field_ + "'");
     const int fieldIndex = static_cast<int>(field - layout.fields_.begin());
-    spec.fieldPage_ = fieldIndex / kComponentFieldRowsPerPage;
-    spec.fieldRow_ = fieldIndex % kComponentFieldRowsPerPage;
-    if (paged && spec.fieldPage_ == 0)
+    const int fieldPage = fieldIndex / kComponentFieldRowsPerPage;
+    if (paged && fieldPage == 0)
         return fail("field '" + spec.field_ + "' is on the first page of the field area");
     if (keyed && IRScript::isLuaIdentifier(spec.field_))
         return fail("field '" + spec.field_ + "' is a Lua identifier");
@@ -3407,66 +3612,27 @@ Session::ComponentAttachSpec resolveComponentAttachSpec(Session::Id id) {
     return spec;
 }
 
-// Resolves module_loaded's expectations from <module dir>/session_expect.lua
-// against the loaded module: the recipe's list row and slider ranges, and its
-// cells at the session's values and at its defaults.
-Session::ModuleSessionSpec resolveModuleSessionSpec() {
-    Session::ModuleSessionSpec spec;
-    if (!g_moduleHost.loaded()) {
-        spec.errors_.push_back("module_loaded needs --module <dir>");
-        return spec;
-    }
-    const std::string path =
-        (std::filesystem::path(g_moduleHost.dir()) / "session_expect.lua").string();
-    auto fail = [&spec, &path](const std::string &why) {
-        spec.errors_.push_back(path + ": " + why);
-        return spec;
-    };
-    sol::state &lua = g_moduleHost.script().lua();
-    sol::protected_function_result result = lua.safe_script_file(path, sol::script_pass_on_error);
-    if (!result.valid()) {
-        const sol::error err = result;
-        return fail(err.what());
-    }
-    const sol::object returned = result;
-    if (returned.get_type() != sol::type::table)
-        return fail("must return a table");
-    const sol::table expect = returned.as<sol::table>();
-
-    if (const sol::optional<sol::table> components = expect["components"]) {
-        for (std::size_t i = 1; i <= components->size(); ++i) {
-            const sol::table entry = (*components)[i];
-            const sol::optional<std::string> name = entry["name"];
-            const sol::optional<int> fieldCount = entry["fieldCount"];
-            if (!name || !fieldCount)
-                return fail("each components entry needs name and fieldCount");
-            spec.components_.push_back({*name, *fieldCount});
-        }
-    }
-    if (const sol::optional<sol::table> panels = expect["panels"]) {
-        for (std::size_t i = 1; i <= panels->size(); ++i) {
-            const sol::table entry = (*panels)[i];
-            const sol::optional<std::string> name = entry["name"];
-            const sol::optional<std::string> label = entry["label"];
-            if (!name || !label)
-                return fail("each panels entry needs name and label");
-            spec.panels_.push_back({*name, *label});
-        }
-    }
-
-    const sol::optional<sol::table> recipeExpect = expect["recipe"];
+// Resolves the sidecar's `<key> = { name, values }` against the loaded module
+// for a voxel set of @p size: the recipe's list row and slider drags, and its
+// cells at those values and at its defaults. Returns the problem, or nullopt.
+std::optional<std::string> resolveRecipeExpect(
+    const sol::optional<sol::table> &recipeExpect,
+    const std::string &key,
+    ivec3 size,
+    Session::ModuleSessionSpec &spec
+) {
     const sol::optional<std::string> recipeName =
         recipeExpect ? (*recipeExpect)["name"] : sol::optional<std::string>{};
     if (!recipeName)
-        return fail("needs recipe = { name, values }");
+        return "needs " + key + " = { name, values }";
     const std::vector<ModuleRecipe> &recipes = g_moduleHost.recipes();
     const auto recipeIt = std::find_if(recipes.begin(), recipes.end(), [&](const ModuleRecipe &r) {
         return r.name_ == *recipeName;
     });
     if (recipeIt == recipes.end())
-        return fail("recipe '" + *recipeName + "' is not registered by the module");
+        return "recipe '" + *recipeName + "' is not registered by the module";
     const std::size_t recipeIndex = static_cast<std::size_t>(recipeIt - recipes.begin());
-    spec.recipeRow_ = static_cast<int>(recipeIndex);
+    spec.recipe_ = *recipeName;
 
     const sol::optional<sol::table> values = (*recipeExpect)["values"];
     std::vector<float> sessionValues;
@@ -3480,21 +3646,21 @@ Session::ModuleSessionSpec resolveModuleSessionSpec() {
             continue;
         }
         if (*value < param.min_ || *value > param.max_)
-            return fail("value for param '" + param.name_ + "' is outside its range");
+            return "value for param '" + param.name_ + "' is outside its range";
         if (*value == param.default_)
-            return fail("value for param '" + param.name_ + "' equals its default");
-        spec.params_.push_back({static_cast<int>(i), param.min_, param.max_, *value});
+            return "value for param '" + param.name_ + "' equals its default";
+        spec.values_.push_back({param.name_, *value});
         sessionValues.push_back(*value);
     }
-    if (spec.params_.empty())
-        return fail("recipe.values must move at least one param off its default");
+    if (spec.values_.empty())
+        return key + ".values must move at least one param off its default";
 
     std::vector<RecipeCell> applied;
     std::vector<RecipeCell> atDefaults;
     std::string error;
-    if (!g_moduleHost.evaluate(recipeIndex, sessionValues, g_editableSceneSize, applied, error) ||
-        !g_moduleHost.evaluate(recipeIndex, defaultValues, g_editableSceneSize, atDefaults, error))
-        return fail(error);
+    if (!g_moduleHost.evaluate(recipeIndex, sessionValues, size, applied, error) ||
+        !g_moduleHost.evaluate(recipeIndex, defaultValues, size, atDefaults, error))
+        return error;
     for (const RecipeCell &cell : applied)
         spec.appliedCells_.push_back(cell.local_);
     for (const RecipeCell &cell : atDefaults) {
@@ -3503,7 +3669,81 @@ Session::ModuleSessionSpec resolveModuleSessionSpec() {
             spec.defaultOnlyCells_.push_back(cell.local_);
     }
     if (spec.appliedCells_.empty())
-        return fail("recipe '" + *recipeName + "' writes no cells at the session's values");
+        return "recipe '" + *recipeName + "' writes no cells at the session's values";
+    return std::nullopt;
+}
+
+// Resolves module_loaded's expectations from <module dir>/session_expect.lua
+// against the loaded module: its components and panels, and its `recipe`.
+Session::ModuleSessionSpec resolveModuleSessionSpec() {
+    Session::ModuleSessionSpec spec;
+    std::string path;
+    const std::optional<sol::table> expect = loadSessionExpect("module_loaded", path, spec.errors_);
+    if (!expect)
+        return spec;
+    auto fail = [&spec, &path](const std::string &why) {
+        spec.errors_.push_back(path + ": " + why);
+        return spec;
+    };
+
+    if (const sol::optional<sol::table> components = (*expect)["components"]) {
+        for (std::size_t i = 1; i <= components->size(); ++i) {
+            const sol::table entry = (*components)[i];
+            const sol::optional<std::string> name = entry["name"];
+            const sol::optional<int> fieldCount = entry["fieldCount"];
+            if (!name || !fieldCount)
+                return fail("each components entry needs name and fieldCount");
+            spec.components_.push_back({*name, *fieldCount});
+        }
+    }
+    if (const sol::optional<sol::table> panels = (*expect)["panels"]) {
+        for (std::size_t i = 1; i <= panels->size(); ++i) {
+            const sol::table entry = (*panels)[i];
+            const sol::optional<std::string> name = entry["name"];
+            const sol::optional<std::string> label = entry["label"];
+            if (!name || !label)
+                return fail("each panels entry needs name and label");
+            spec.panels_.push_back({*name, *label});
+        }
+    }
+    if (const auto error =
+            resolveRecipeExpect((*expect)["recipe"], "recipe", g_editableSceneSize, spec))
+        return fail(*error);
+    return spec;
+}
+
+// Resolves composite_proof from the sidecar's `compositeProof = { stem, frame }`
+// (each a `{ name, values }` recipe, evaluated at the proof's part size) and
+// from the COMPONENTS list, which must show the engine's C_AutoSpin.
+Session::CompositeProofSpec resolveCompositeProofSpec() {
+    Session::CompositeProofSpec spec;
+    std::string path;
+    const std::optional<sol::table> expect =
+        loadSessionExpect("composite_proof", path, spec.errors_);
+    if (!expect)
+        return spec;
+    auto fail = [&spec, &path](const std::string &why) {
+        spec.errors_.push_back(path + ": " + why);
+        return spec;
+    };
+    const sol::optional<sol::table> entry = (*expect)["compositeProof"];
+    if (!entry)
+        return fail("needs compositeProof = { stem, frame }");
+    if (const auto error = resolveRecipeExpect(
+            (*entry)["stem"],
+            "compositeProof.stem",
+            Session::kCompositeProofPartSize,
+            spec.stem_
+        ))
+        return fail(*error);
+    if (const auto error = resolveRecipeExpect(
+            (*entry)["frame"],
+            "compositeProof.frame",
+            Session::kCompositeProofPartSize,
+            spec.frame_
+        ))
+        return fail(*error);
+
     return spec;
 }
 
@@ -3520,6 +3760,7 @@ void registerLuaBindings() {
     IREngine::registerLuaBindings([](IRScript::LuaScript &script) {
         script.bindLuaDrivenEcs();
         script.registerTypeFromTraits<C_LocalTransform>();
+        script.registerTypeFromTraits<C_AutoSpin>();
         // initSystems places this instance right after WIDGET_INPUT, where a
         // module's IRGui onClick handlers need it.
         IRVoxelEditor::g_widgetLuaDispatchId =
@@ -3566,13 +3807,16 @@ int main(int argc, char **argv) {
     IREngine::args().enumValue(
         "--gui-session",
         "replay an authoring session's scripted gestures: none | drag_probe | place_below | "
-        "face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | tier_scrub | "
-        "radial_array | nway_symmetry | mode_preview | mode_preview_shots | parts_scroll | "
-        "module_loaded | component_attach | component_field_page | component_field_key | "
-        "text_input_command_capture | part_sizes",
+        "fill_ghost | face_pick | rock | mushroom | ant | bird | tree | parts_roundtrip | "
+        "tier_scrub | remove_part | radial_array | linear_array | nway_symmetry | mode_preview | "
+        "mode_preview_shots | part_mode_cycle | corner_part_revox_refused | "
+        "parts_scroll | module_loaded | component_attach | component_field_page | "
+        "component_field_key | text_input_command_capture | part_sizes | part_gizmo_reach | "
+        "part_ring_turn | composite_proof",
         {"none",
          "drag_probe",
          "place_below",
+         "fill_ghost",
          "face_pick",
          "rock",
          "mushroom",
@@ -3580,18 +3824,25 @@ int main(int argc, char **argv) {
          "bird",
          "tree",
          "parts_roundtrip",
+         "remove_part",
          "tier_scrub",
          "radial_array",
+         "linear_array",
          "nway_symmetry",
          "mode_preview",
          "mode_preview_shots",
+         "part_mode_cycle",
+         "corner_part_revox_refused",
          "parts_scroll",
          "module_loaded",
          "component_attach",
          "component_field_page",
          "component_field_key",
          "text_input_command_capture",
-         "part_sizes"},
+         "part_sizes",
+         "part_gizmo_reach",
+         "part_ring_turn",
+         "composite_proof"},
         "none"
     );
     IREngine::args().string(
@@ -3599,7 +3850,14 @@ int main(int argc, char **argv) {
         "load a creation module: runs <dir>/init.lua in the editor's Lua VM",
         ""
     );
+    IREngine::args()
+        .string("--module-session", "replay an authoring session registered by --module", "");
     IREngine::init(argc, argv);
+    const auto exitCleanly = [](int code) {
+        IRWindow::closeWindow();
+        IREngine::gameLoop();
+        return code;
+    };
     {
         const std::vector<float> &dims = IREngine::args().getFloats("--scene-size");
         if (dims.size() == 3 && dims[0] >= 1.0f && dims[1] >= 1.0f && dims[2] >= 1.0f) {
@@ -3624,46 +3882,89 @@ int main(int argc, char **argv) {
     // A module loads before the session builds: module_loaded resolves its
     // expectations against what the module registered.
     const std::string moduleDir = IREngine::args().getString("--module");
+    const std::string moduleSession = IREngine::args().getString("--module-session");
+    const std::string guiSession = IREngine::args().getEnum("--gui-session");
+    if (!moduleSession.empty() && moduleDir.empty()) {
+        IR_LOG_ERROR("--module-session requires --module <dir>");
+        return exitCleanly(2);
+    }
+    if (!moduleSession.empty() && guiSession != "none") {
+        IR_LOG_ERROR("--module-session cannot be combined with --gui-session {}", guiSession);
+        return exitCleanly(2);
+    }
     if (!moduleDir.empty()) {
         std::string error;
         if (!IRVoxelEditor::g_moduleHost.load(moduleDir, error)) {
             IR_LOG_ERROR("Module load failed: {}", error);
-            return 2;
+            return exitCleanly(2);
         }
         IR_LOG_INFO(
-            "module_loaded dir={} components={} recipes={} panels={}",
+            "module_loaded dir={} components={} recipes={} panels={} sessions={}",
             moduleDir,
             IRVoxelEditor::g_moduleHost.componentCount(),
             IRVoxelEditor::g_moduleHost.recipes().size(),
-            IRVoxelEditor::g_moduleHost.panelNames().size()
+            IRVoxelEditor::g_moduleHost.panelNames().size(),
+            IRVoxelEditor::g_moduleHost.sessionNames().size()
         );
+    }
+    if (!moduleSession.empty()) {
+        const std::vector<std::string> &names = IRVoxelEditor::g_moduleHost.sessionNames();
+        if (std::find(names.begin(), names.end(), moduleSession) == names.end()) {
+            std::string available;
+            for (const std::string &name : names)
+                available += (available.empty() ? "" : ", ") + name;
+            IR_LOG_ERROR(
+                "Unknown --module-session '{}'; registered module sessions: {}",
+                moduleSession,
+                available.empty() ? "(none)" : available
+            );
+            return exitCleanly(2);
+        }
     }
     // Build the session recipe before the systems are wired — initSystems hands
     // its shot table to the harness. A recipe that cannot aim one of its
     // gestures is a hard error rather than a partial replay: a session that
     // silently drops an op authors the wrong entity and saves it anyway.
-    IRVoxelEditor::g_sessionId =
-        IRVoxelEditor::Session::idFromName(IREngine::args().getEnum("--gui-session"));
+    IRVoxelEditor::g_sessionId = moduleSession.empty()
+                                     ? IRVoxelEditor::Session::idFromName(guiSession)
+                                     : IRVoxelEditor::Session::Id::MODULE;
     if (IRVoxelEditor::g_sessionId != IRVoxelEditor::Session::Id::NONE) {
         const IRVoxelEditor::Session::ModuleSessionSpec moduleSpec =
             IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::MODULE_LOADED
                 ? IRVoxelEditor::resolveModuleSessionSpec()
                 : IRVoxelEditor::Session::ModuleSessionSpec{};
         const IRVoxelEditor::Session::ComponentAttachSpec componentSpec =
-            IRVoxelEditor::Session::isComponentSession(IRVoxelEditor::g_sessionId)
+            IRVoxelEditor::Session::usesComponentSpec(IRVoxelEditor::g_sessionId)
                 ? IRVoxelEditor::resolveComponentAttachSpec(IRVoxelEditor::g_sessionId)
                 : IRVoxelEditor::Session::ComponentAttachSpec{};
-        IRVoxelEditor::g_session = IRVoxelEditor::Session::build(
-            IRVoxelEditor::g_sessionId,
-            IRVoxelEditor::g_editableSceneSize,
-            IRVoxelEditor::g_editableSceneOrigin,
-            moduleSpec,
-            componentSpec
-        );
+        const IRVoxelEditor::Session::CompositeProofSpec proofSpec =
+            IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::COMPOSITE_PROOF
+                ? IRVoxelEditor::resolveCompositeProofSpec()
+                : IRVoxelEditor::Session::CompositeProofSpec{};
+        const std::optional<IRVoxelEditor::ModuleSessionView> moduleView =
+            IRVoxelEditor::g_moduleHost.loaded()
+                ? std::optional<IRVoxelEditor::ModuleSessionView>{IRVoxelEditor::g_moduleHost
+                                                                      .sessionView()}
+                : std::nullopt;
+        IRVoxelEditor::g_session = IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::MODULE
+                                       ? IRVoxelEditor::g_moduleHost.buildSession(
+                                             moduleSession,
+                                             IRVoxelEditor::g_editableSceneSize,
+                                             IRVoxelEditor::g_editableSceneOrigin
+                                         )
+                                       : IRVoxelEditor::Session::build(
+                                             IRVoxelEditor::g_sessionId,
+                                             IRVoxelEditor::g_editableSceneSize,
+                                             IRVoxelEditor::g_editableSceneOrigin,
+                                             moduleSpec,
+                                             componentSpec,
+                                             proofSpec,
+                                             moduleView ? &*moduleView : nullptr
+                                         );
         if (!IRVoxelEditor::g_session.ok()) {
             for (const std::string &error : IRVoxelEditor::g_session.errors_)
                 IR_LOG_ERROR("Session recipe error: {}", error);
-            return 1;
+            return exitCleanly(1);
         }
         // Resolve the shot table only now that the recipe sits in the storage
         // it keeps for the whole run — the shots point into its segments.
@@ -3679,7 +3980,7 @@ int main(int argc, char **argv) {
     initCommands();
     initEntities();
     if (!IRVoxelEditor::initModuleUi())
-        return 2;
+        return exitCleanly(2);
     IRVoxelEditor::initComponentsUi();
     IREngine::gameLoop();
     return 0;
@@ -4409,9 +4710,13 @@ void initSystems() {
             }
             if (g_entitySceneMode && g_partModeDropdown != IREntity::kNullEntity &&
                 IRPrefab::Widget::wasClicked(g_partModeDropdown)) {
-                setSelectedPartRotationMode(rotationModeFromIndex(
-                    IRPrefab::Widget::dropdownSelectedIndex(g_partModeDropdown)
-                ));
+                setSelectedPartRotationMode(
+                    partModeFromRow(IRPrefab::Widget::dropdownSelectedIndex(g_partModeDropdown))
+                );
+            }
+            if (g_entitySceneMode && g_partRemoveButton != IREntity::kNullEntity &&
+                IRPrefab::Widget::wasClicked(g_partRemoveButton)) {
+                removeSelectedPart();
             }
             if (g_layerList == IREntity::kNullEntity)
                 return;
@@ -4577,8 +4882,8 @@ void initSystems() {
                 );
                 return;
             }
-            const float yaw =
-                IRPrefab::Widget::sliderValue(g_arrayYawSlider) * IRMath::kPi / 180.0f;
+            const float yaw = IRMath::round(IRPrefab::Widget::sliderValue(g_arrayYawSlider)) *
+                              IRMath::kPi / 180.0f;
             applyRadialArray(count, x, yaw);
         }
     );
@@ -4833,6 +5138,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::ENTITY_CANVAS_TO_FRAMEBUFFER>(),
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
             IRSystem::createSystem<IRSystem::SPRITE_TO_SCREEN>(),
+            IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>(),
         }
     );
 
@@ -5525,6 +5831,17 @@ void initCommands() {
     IRCommand::createCommand(
         IRInput::InputTypes::KEY_MOUSE,
         IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonDelete,
+        []() { IRVoxelEditor::removeSelectedPart(); },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "REMOVE PART",
+        "REMOVE THE SELECTED ENTITY-SCENE PART"
+    );
+
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
         IRInput::KeyMouseButtons::kKeyButtonTab,
         []() { IRVoxelEditor::selectRelativeEditorPart(1); },
         IRInput::kModifierNone,
@@ -6109,13 +6426,20 @@ void initEntities() {
         -1,
         IRVoxelEditor::kPartsListItemHeight
     );
+    // Item order is partModeRow's.
     IRVoxelEditor::g_partModeDropdown = IRPrefab::Widget::makeDropdown(
-        ivec2(IRVoxelEditor::kPartsPanelPos.x + 4, IRVoxelEditor::kPartsPanelPos.y + 66),
-        ivec2(112, 18),
+        IRVoxelEditor::kPartModeDropdownPos,
+        IRVoxelEditor::kPartModeDropdownSize,
         {"GRID", "DETACHED", "DETACHED REVOX"},
         0,
-        16
+        IRVoxelEditor::kPartModeDropdownItemHeight
     );
+    IRVoxelEditor::g_partRemoveButton = IRPrefab::Widget::makeButton(
+        IRVoxelEditor::kPartRemoveButtonPos,
+        IRVoxelEditor::kPartRemoveButtonSize,
+        "REMOVE"
+    );
+    IRPrefab::Widget::setDisabled(IRVoxelEditor::g_partRemoveButton, true);
 
     IRVoxelEditor::g_lodPanel = IRPrefab::Widget::makePanel(
         IRVoxelEditor::kLodPanelPos,
@@ -6203,11 +6527,11 @@ void initEntities() {
         0.0f
     );
     IRVoxelEditor::g_arrayYawSlider = IRPrefab::Widget::makeSlider(
-        ivec2(IRVoxelEditor::kArrayPanelPos.x + 4, IRVoxelEditor::kArrayPanelPos.y + 122),
-        ivec2(122, 14),
+        IRVoxelEditor::kArrayYawSliderGeometry.pos_,
+        IRVoxelEditor::kArrayYawSliderGeometry.size_,
         "COPY YAW",
-        -180.0f,
-        180.0f,
+        IRVoxelEditor::kArrayYawSliderMin,
+        IRVoxelEditor::kArrayYawSliderMax,
         0.0f
     );
     IRVoxelEditor::g_arrayApplyButton = IRPrefab::Widget::makeButton(
@@ -6435,7 +6759,7 @@ void initEntities() {
         C_LocalTransform{vec3(0.0f)},
         C_ShapeDescriptor{
             IRRender::ShapeType::BOX,
-            vec4(0.5f, 0.5f, 0.5f, 0.0f),
+            vec4(1.0f, 1.0f, 1.0f, 0.0f),
             Color{240, 240, 240, 200}
         }
     );
@@ -6455,9 +6779,12 @@ void initEntities() {
         IRVoxelEditor::g_entitySceneMode = true;
         IRVoxelEditor::g_entityScene.begin();
         constexpr ivec3 kPreviewSize{6, 6, 6};
-        const IREntity::EntityId part =
-            IRVoxelEditor::g_entityScene
-                .addVoxelPart(kPreviewSize, vec3(0.0f), Color{150, 205, 235, 255}, true);
+        const IREntity::EntityId part = IRVoxelEditor::g_entityScene.addVoxelPart(
+            kPreviewSize,
+            vec3(0.0f),
+            EntityAnchor::CENTER,
+            Color{150, 205, 235, 255}
+        );
         auto &set = IREntity::getComponent<C_VoxelSetNew>(part);
         set.carve([](vec3 local) {
             return local.x >= 1.5f && local.y <= -0.5f && local.z <= 0.5f;
@@ -6467,6 +6794,21 @@ void initEntities() {
         IRVoxelEditor::selectEditorPart(0, false);
         g_editor.editableVoxelSet_ = part;
         IRVoxelEditor::g_sceneVoxelSetEntity = part;
+        IRVoxelEditor::g_modePreviewBaseCanvasCount = IRPrefab::EntityCanvas::count();
+    }
+    // No GUI gesture makes a corner-anchored part, so this session's is built
+    // here.
+    if (IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::CORNER_PART_REVOX_REFUSED) {
+        IREntity::destroyEntity(g_editor.editableVoxelSet_);
+        IRVoxelEditor::g_entitySceneMode = true;
+        IRVoxelEditor::g_entityScene.begin();
+        constexpr ivec3 kCornerPartSize{6, 6, 6};
+        IRVoxelEditor::g_entityScene.addVoxelPart(
+            kCornerPartSize,
+            IRVoxelEditor::deriveSceneOrigin(kCornerPartSize),
+            EntityAnchor::CORNER
+        );
+        IRVoxelEditor::selectEditorPart(0, false);
         IRVoxelEditor::g_modePreviewBaseCanvasCount = IRPrefab::EntityCanvas::count();
     }
 

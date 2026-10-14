@@ -37,8 +37,46 @@ for voxel presentation, not a substitute for reconstructed voxel faces. See the
 A visible face, its reconstructed receiver position and its light-space caster
 must describe the same geometry. Sharing projection/depth helpers is preferable
 to per-mode correction constants. SDF casting needs light-facing geometry rather
-than only the camera-visible samples; analytic box intersections provide that
-coverage, while general SDF caster coverage remains a separate validation target.
+than only the camera-visible samples. Boxes and supported smooth curved shapes
+intersect rays in light space; other SDF caster coverage remains a separate
+validation target.
+
+### Analytic sun casters
+
+Smooth sphere, cylinder, cone and torus shapes cast their rendered field solid
+(`evaluateSDF <= 0.5 / effectiveSubdivisions`) rather than camera-visible depth
+points. Their world center uses the display projection's placement convention,
+and model rotation uses the display's near-identity threshold. Lattice and hollow
+shapes retain their sampled geometry; replacing those silhouettes with a smooth
+solid would change the representation.
+
+The curved caster and finite-face caster share the bounded sun-tile index. A
+record contains either a finite quad or an axisymmetric solid's center, axis,
+parameters and field threshold. Eligible surface receivers intersect the indexed
+geometry at their continuous receiver position, so neither blur nor footprint
+dilation is needed to connect the rim. Ray solving is algebraic for spheres and
+quadratic bodies. Torus roots use derivative-partitioned, bounded bisection;
+cylinder/cone cap pieces reproduce the field's threshold region. A fixed-step
+SDF marcher is not sufficient for shallow cones or near-tangent thin rims.
+
+The index retains 65,536 records, 64 candidates per 8×8 sun tile, and two
+1024×1024 cascades. Typed records occupy ten words (40 bytes); queries never scan
+the whole shape list. Full tiles or exhausted records use the separately baked
+light-space depth fallback. That fallback has shadow-map sampling resolution;
+an exact edge is only claimed for complete indexed tiles and eligible surface
+receivers. Main lattice receivers and curved SDF receiver reconstruction remain
+distinct validation targets. Casting a correct curve does not certify its own
+display normals or self-shadow reconstruction.
+
+`test_render_sdf_ray_roots.py` executes both shader implementations against
+independent solid/ray fixtures, including rotated record queries, tangencies,
+torus holes and shallow cones. `test_render_shape_sun_routing.py` checks mode
+eligibility and the shared rotation convention. The footprint metric's
+`--representation analytic` compares isolated floor shadows with a convergent
+horizontal-section projection; its voxel mode instead projects occupied cells.
+Both account for the Z1 framebuffer origin and exclude pixels hidden by the
+caster using a matching no-shadow control. A one-pixel boundary band is a
+measurement tolerance, not renderer smoothing.
 
 Ambient occlusion is local ambient visibility, separate from sun visibility and
 Lambert shading. A rotated voxel staircase has actual exposed faces and can have

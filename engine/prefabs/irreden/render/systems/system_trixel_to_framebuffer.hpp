@@ -17,6 +17,7 @@
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
 #include <irreden/render/canvas_coverage.hpp>
+#include <irreden/render/gui_canvas.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
@@ -85,6 +86,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // cardinal these are released, this is null, and the byte-identical
     // single-canvas fast path runs.
     IREntity::EntityId perAxisCanvasEntity_ = IREntity::kNullEntity;
+    // The GUI canvas while GUI_CANVAS_TO_SCREEN composites it at screen
+    // resolution; kNullEntity when it composites here, into the framebuffer.
+    IREntity::EntityId guiCanvasOnScreen_ = IREntity::kNullEntity;
     const C_PerAxisTrixelCanvases *perAxisCanvases_ = nullptr;
 
     // This frame's continuous-zoom placement sample, copied out in beginTick.
@@ -119,6 +123,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         const C_TriangleCanvasTextures &triangleCanvasTextures,
         const C_Name &
     ) {
+        if (entity == guiCanvasOnScreen_) {
+            return;
+        }
         // CPU histogram bracket — this system is not observer-tagged.
         IR_PROFILE_SCOPE("trixelToFb");
         auto &framebuffer = IREntity::getComponent<C_TrixelCanvasFramebuffer>("mainFramebuffer");
@@ -165,16 +172,26 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         // voxel in the canvas carries a per-trixel priority (still read for hovered
         // fragments; byte-identical output either way).
         frameData.frameData_.anyPerTrixelPriority_ = triangleCanvasTextures.anyPerTrixelPriority_;
+        // The gather displays whatever layout the canvas's producers stored, as
+        // the detached and viewport composites do. Voxel canvases on this path
+        // are RECTANGULAR; the GUI canvas is LOCAL_TRIANGLES, so each text and
+        // widget texel shows as its lattice triangle.
+        frameData.frameData_.trixelSampleLayout_ =
+            static_cast<int>(triangleCanvasTextures.renderedSampleLayout_);
         const ivec2 logicalCanvasSize =
             IRPrefab::CanvasCoverage::logicalSize(entity, triangleCanvasTextures.size_);
-        const vec2 backingScale = vec2(triangleCanvasTextures.size_) / vec2(logicalCanvasSize);
-        frameData.frameData_.mpMatrix_ =
-            calcProjectionMatrix(framebufferResolution) * calcModelMatrix(
-                                                              framebufferResolution,
-                                                              gatherTranslation,
-                                                              frameData.frameData_.canvasZoomLevel_,
-                                                              backingScale
-                                                          );
+        const vec2 textureSize = vec2(triangleCanvasTextures.size_);
+        const vec2 backingScale = textureSize / vec2(logicalCanvasSize);
+        const vec2 gatherCenter = framebufferResolution * 0.5f + gatherTranslation;
+        const vec2 gatherExtent =
+            framebufferResolution * frameData.frameData_.canvasZoomLevel_ * backingScale;
+        placeGatherQuad(
+            frameData.frameData_,
+            framebufferResolution,
+            gatherCenter,
+            gatherExtent,
+            textureSize
+        );
 
         if (!behavior.mouseHoverEnabled_) {
             frameData.frameData_.mouseHoveredTriangleIndex_ = vec2(-1000000.0f);
@@ -215,15 +232,15 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             // content (its voxel pass is skipped in VOXEL_TO_TRIXEL_STAGE_1), so
             // the gather composites that content by depth alongside the smooth
             // voxels with no double-draw. SDF stays cardinal-snapped during
-            // rotation. Restore the main-canvas model-projection the scatter
+            // rotation. Restore the main-canvas placement the scatter
             // overwrote with its per-axis zoomEff matrix.
-            frameData.frameData_.mpMatrix_ = calcProjectionMatrix(framebufferResolution) *
-                                             calcModelMatrix(
-                                                 framebufferResolution,
-                                                 gatherTranslation,
-                                                 frameData.frameData_.canvasZoomLevel_,
-                                                 backingScale
-                                             );
+            placeGatherQuad(
+                frameData.frameData_,
+                framebufferResolution,
+                gatherCenter,
+                gatherExtent,
+                textureSize
+            );
         }
 
         if ((shapeProbeEnabled_ || shapeLightingEnabled_) && entity == perAxisCanvasEntity_)
@@ -382,34 +399,27 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         frameData.frameData_.perAxisBase_ =
             IRMath::trixelOriginOffsetZ1(axes.size_) + ivec2(anchorFloor);
 
-        // Sub-cell camera pan. The anchor above places
-        // content in WHOLE canvas cells; the remaining fraction must move the
-        // scatter CONTINUOUSLY at the SAME screen scale as one anchor cell, or the
-        // two disagree at every cell boundary and the scene snaps back ~1 cell per
-        // crossing — the per-frame pan/rotation jitter (along the world axes; worse
-        // at higher zoom). One canvas cell maps to `screenPxPerCell`
-        // (fbRes·zoomEff/axisSize) framebuffer px through the model scale below, so
-        // the smooth term is screenPxPerCell·fract(cameraIso) — it exactly
-        // complements screenPxPerCell·floor(cameraIso) (the anchor), so their sum
-        // is screenPxPerCell·cameraIso, continuous. The y term carries the iso→
-        // screen sign flip the scatter applies to cornerIso
-        // (quadPos.y = 0.5 - cornerIso.y/size.y). This REPLACES calcModelMatrix's
-        // whole-game-px offset, which snapped to the canvas's game-px grid
-        // (zoomEff·2) — a different scale than one anchor cell — leaving the
-        // uncompensated snap. (The cardinal single-canvas path keeps
-        // calcModelMatrix: there the canvas IS the native-res blit grid, so its
-        // game-px snap + the framebuffer→screen residual are the anti-vibration.)
-        const vec2 screenPxPerCell = framebufferResolution * zoomEff / vec2(axes.size_);
-        const vec2 smoothPx = perAxisScatterCameraOffset(
+        // Sub-cell camera pan. `perAxisBase_` places content in whole store
+        // cells, and the model scale makes one cell span the zoom pitch in
+        // framebuffer pixels. The camera's offset inside its cell lands in
+        // whole framebuffer pixels here and `FRAMEBUFFER_TO_SCREEN` adds the
+        // remainder; the y term carries the iso-to-screen flip the scatter
+        // applies to cornerIso (quadPos.y = 0.5 - cornerIso.y/size.y).
+        //
+        // The pitch is the exact one every snapped stage floors against, never
+        // `framebufferResolution * zoomEff / axes.size_`: that round trip
+        // through the store extent can land one ulp under the whole number,
+        // which costs the floor a whole pixel.
+        const vec2 cameraOffsetPx = perAxisScatterCameraOffset(
             continuousPlacement_ ? &zoomFrame_ : nullptr,
             cameraIso,
-            screenPxPerCell
+            vec2(IRMath::cameraZoomPitch(IRRender::getCameraZoom()))
         );
         mat4 perAxisModel = translate(
             mat4(1.0f),
             vec3(
-                framebufferResolution.x * 0.5f + smoothPx.x,
-                framebufferResolution.y * 0.5f + smoothPx.y,
+                framebufferResolution.x * 0.5f + cameraOffsetPx.x,
+                framebufferResolution.y * 0.5f + cameraOffsetPx.y,
                 0.0f
             )
         );
@@ -608,6 +618,9 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         HoveredEntityIdLayout resetData;
         hoveredIdBuf_->subData(0, sizeof(resetData), &resetData);
 
+        guiCanvasOnScreen_ = IRPrefab::GuiCanvas::compositesOnScreen() ? IRRender::getCanvas("gui")
+                                                                       : IREntity::kNullEntity;
+
         // The pose this frame's main composite draws with — the source a
         // rotation gesture starting next frame acquires the default pivot
         // from. Equivalent to reading it beside the tick's own yaw /
@@ -714,6 +727,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     }
 
     static SystemId create() {
+        IRPrefab::GuiCanvas::ensureDisplaySingleton();
         IRRender::createNamedResource<ShaderProgram>(
             "CanvasShapeLightingProgram",
             std::vector{
@@ -843,23 +857,25 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     // position inside its anchor cell; the scatter's anchor has already placed
     // `floor(cameraIso)` whole cells.
     //
-    // Snapped policy (@p zoomFrame null): the whole sub-cell offset, unrounded.
-    // Continuous policy: the same whole-pixel offset and carried phase every
-    // other camera-following stage places with, so the upscale residual that
+    // Under either policy it is the whole-pixel offset detached canvases place
+    // with (plus the carried phase when @p zoomFrame is the frame's continuous
+    // sample; null means the snapped policy), so the upscale residual that
     // `FRAMEBUFFER_TO_SCREEN` adds on top is the remainder of THIS offset. An
     // unrounded offset under that residual counts the sub-pixel fraction
     // twice, and an edge steps back a screen pixel each time the two round at
     // different camera positions.
+    //
+    // @p framebufferPxPerCell is read under the snapped policy only and must
+    // be the exact `IRMath::cameraZoomPitch` of the camera zoom.
     static vec2 perAxisScatterCameraOffset(
         const IRMath::CameraRasterPhase *zoomFrame,
         const vec2 &cameraIso,
-        const vec2 &screenPxPerCell
+        const vec2 &framebufferPxPerCell
     ) {
         if (zoomFrame != nullptr) {
             return vec2(IRMath::cameraRasterDetachedOffset(*zoomFrame));
         }
-        const vec2 fractIso = cameraIso - IRMath::floor(cameraIso);
-        return vec2(fractIso.x * screenPxPerCell.x, -fractIso.y * screenPxPerCell.y);
+        return IRMath::cameraSnappedDetachedOffset(cameraIso, framebufferPxPerCell);
     }
 
     // Framebuffer translation of one canvas's gather quad. @p zoomFrame is the
@@ -894,28 +910,6 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             (canvasCameraIso + parityOffsetIso) * vec2(canvasDensity),
             canvasZoomLevel
         );
-    }
-
-    static mat4 calcModelMatrix(
-        const vec2 &resolution,
-        const vec2 &isoPixelOffset,
-        const vec2 &zoomLevel,
-        const vec2 &backingScale
-    ) {
-        mat4 model = mat4(1.0f);
-        model = translate(
-            model,
-            vec3(resolution.x / 2 + isoPixelOffset.x, resolution.y / 2 + isoPixelOffset.y, 0.0f)
-        );
-        model = scale(
-            model,
-            vec3(
-                resolution.x * zoomLevel.x * backingScale.x,
-                resolution.y * zoomLevel.y * backingScale.y,
-                1.0f
-            )
-        );
-        return model;
     }
 };
 

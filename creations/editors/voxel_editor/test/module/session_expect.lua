@@ -4,7 +4,7 @@
 --
 --   components: registered component name + field count, read back through
 --               the registry enumeration
---   panels:     panel name + the one label its build function makes
+--   panels:     panel name + a label its build function makes
 --   recipe:     the recipe to apply and the slider values to drag first; every
 --               value must differ from its default so the drag is proven
 --
@@ -17,6 +17,11 @@
 --
 -- component_field_key reads componentFieldKey, the same shape, for a field
 -- whose name is not a Lua identifier.
+--
+-- composite_proof reads compositeProof: the recipe that authors its stem part
+-- and the one that authors its frame part, each { name, values } as `recipe`
+-- is. The session sizes its parts so the stem's top cell is the cell the
+-- frame rings.
 return {
     components = {
         { name = "TestModuleTag", fieldCount = 2 },
@@ -47,5 +52,9 @@ return {
         field = "end",
         value = 7,
         default = 1,
+    },
+    compositeProof = {
+        stem = { name = "test_column", values = { height = 6 } },
+        frame = { name = "test_frame", values = { half = 2 } },
     },
 }

@@ -1,0 +1,48 @@
+{
+  "head": "f2e764f4a607b3efff5a4908d0ea2f113430e8e0",
+  "changes": " M engine/render/src/shaders/ir_sun_shadow_sample.glsl\n M engine/render/src/shaders/metal/ir_sun_shadow_sample.metal\n M scripts/tests/test_render_sun_cascade_routing.py\n",
+  "host": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "host_power": "AC Power",
+  "host_cpus": 14,
+  "build_dir": "build",
+  "build_type": "Debug",
+  "binary_sha256": "90ffbd83357a0fe4aa4cd1da77f3648ed7241f841691397c9e67f95a6b0b2b7a",
+  "shader_sha256": "ae243a73431f3f9e6374785ff69c7339fa37a424a21fa4850ee57dc23af670c1",
+  "runtime_scripts_sha256": "85a4c4c0e04ff77ce830640f6b8935b4ab8dcad11f1ff0dfccbc3dd918d927f6",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "120",
+    "IRPerfGrid",
+    "--auto-profile",
+    "300",
+    "--zoom",
+    "1",
+    "--yaw",
+    "0"
+  ],
+  "render_environment": {
+    "IR_PERAXIS_SURFACE_LIGHTING": null,
+    "IR_PERAXIS_VISIBILITY_PREPASS": null,
+    "IR_PERAXIS_VISIBILITY_STATS": null,
+    "IR_PERAXIS_OVERFLOW_DISABLE": null,
+    "IR_OVERFLOW_LIGHTING_DISABLE": null,
+    "IR_OVERFLOW_FOG_DISABLE": null,
+    "IR_OVERFLOW_COUNT_LOG": null
+  },
+  "runs": [
+    {
+      "index": 1,
+      "launched_utc": "2026-10-11T19:34:26Z",
+      "finished_utc": "2026-10-11T19:44:27Z",
+      "host_battery_percent": 97,
+      "host_load_1m": 3.56,
+      "exit_code": 75,
+      "cpu_sampling": null,
+      "fresh_report": false,
+      "clean": false,
+      "quiet": "refused",
+      "engine_logged": false
+    }
+  ]
+}

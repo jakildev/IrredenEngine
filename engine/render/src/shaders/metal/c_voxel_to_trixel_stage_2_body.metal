@@ -306,7 +306,8 @@ kernel void IR_STAGE2_KERNEL_NAME(
         canvasFogOfWar, fogObservers, faceId, reVoxelize,
         voxels[voxelIndex].reserved, flagsByte, voxelPosition,
         frameData.perAxisRoute, frameData.isDetachedCanvas,
-        frameData.detachedWorldReceive, frameData.detachedViewToWorld
+        frameData.detachedWorldReceive, frameData.detachedViewToWorld,
+        frameData.fogCeilingEnabled.x
     );
     if (!sel.keepFace) return;
     faceId = sel.faceId;
@@ -403,6 +404,10 @@ kernel void IR_STAGE2_KERNEL_NAME(
             triangleCanvasColors, triangleCanvasDistances, triangleCanvasEntityIds
         );
         return;
+    }
+
+    if (frameData.isDetachedCanvas <= 0.5 && frameData.residualYaw == 0.0) {
+        packedEntityId = encodeEntityIdCardinalVoxel(packedEntityId);
     }
 
     // Depth-only shadow-feeder path — mirror of c_voxel_to_trixel_stage_2_body.glsl.

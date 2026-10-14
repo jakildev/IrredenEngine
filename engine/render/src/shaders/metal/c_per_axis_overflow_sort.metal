@@ -1,7 +1,7 @@
 // Metal twin of c_per_axis_overflow_sort.glsl; keep the two in lockstep.
 // Shared contract:
 // pass modes (0 fill / 1 local sort / 2 strided slab / 3 indirect grids),
-// the (cell, distance, color) = words (0, 2, 1) key, the mandatory
+// the (masked cell, distance, color, cut flag) key, the mandatory
 // pre-network fill (the region above the live range holds stale prior-frame
 // entries), sentinel substitution (never thread-skip one side of a
 // compare-exchange), the strict compare-exchange, and the strided-slab
@@ -27,13 +27,16 @@ constant uint kSortThreads = 256u;
 constant uint kSortBlockBits = 11u;
 constant uint kSortBlock = 1u << kSortBlockBits;
 
-// Lexicographic (cell, distance, color) — words (0, 2, 1).
+// Lexicographic (cell, distance, color, cut flag), covering the full record.
 inline bool overflowRecordLess(
     uint a0, uint a1, uint a2, uint b0, uint b1, uint b2
 ) {
-    if (a0 != b0) return a0 < b0;
+    const uint aCell = overflowEntryCell(a0);
+    const uint bCell = overflowEntryCell(b0);
+    if (aCell != bCell) return aCell < bCell;
     if (a2 != b2) return a2 < b2;
-    return a1 < b1;
+    if (a1 != b1) return a1 < b1;
+    return !overflowEntryIsCutFace(a0) && overflowEntryIsCutFace(b0);
 }
 
 // Reinsert the active-bit window into a compressed slab index.
@@ -66,6 +69,9 @@ inline void overflowCompareExchange(
 kernel void c_per_axis_overflow_sort(
     constant FrameDataVoxelToTrixel &frameData [[buffer(7)]],
     device uint *scratch [[buffer(28)]],
+    // Mode 3's output: one {x, y, z, pad} grid per step command, kept out of
+    // the record scratch to match the GL twin. Bound on 26 for mode 3 only.
+    device uint *sortArgs [[buffer(26)]],
     uint3 gridGroups [[threadgroups_per_grid]],
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 localId [[thread_position_in_threadgroup]]
@@ -93,8 +99,8 @@ kernel void c_per_axis_overflow_sort(
     span = min(span, capEntries);
 
     if (mode == 3u) {
-        // Layout mirrors C_PerAxisTrixelCanvases: command count, block bits - 1,
-        // argument base and command stride are 21, 10, 8 and 4 respectively.
+        // Layout mirrors C_PerAxisTrixelCanvases: command count, block bits - 1
+        // and command stride are 21, 10 and 4 respectively.
         // Commands 0/1 cover fill/local; 2..20 cover stages 12..30.
         // Zero-sized grids suppress empty lists and stages outside the live span.
         const uint command = localId.x;
@@ -106,11 +112,11 @@ kernel void c_per_axis_overflow_sort(
                 groups = span / kSortBlock;
         }
         const uint groupsX = max(min(groups, 1024u), 1u);
-        const uint base = uint(frameData.overflowScratchLayout.y) + 8u + command * 4u;
-        scratch[base] = groupsX;
-        scratch[base + 1u] = (groups + groupsX - 1u) / groupsX;
-        scratch[base + 2u] = 1u;
-        scratch[base + 3u] = 0u;
+        const uint base = command * 4u;
+        sortArgs[base] = groupsX;
+        sortArgs[base + 1u] = (groups + groupsX - 1u) / groupsX;
+        sortArgs[base + 2u] = 1u;
+        sortArgs[base + 3u] = 0u;
         return;
     }
 

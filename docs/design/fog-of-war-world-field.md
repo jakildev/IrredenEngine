@@ -579,8 +579,8 @@ on the window.
 | `engine/render/src/shaders/metal/ir_fog_common.metal` | Metal twin of the paint lookup. |
 | `engine/render/src/shaders/c_voxel_to_trixel_stage_1_body.glsl` | Stage-1 column keep/drop lookup. |
 | `engine/render/src/shaders/metal/c_voxel_to_trixel_stage_1_body.metal` | Metal twin of the stage-1 lookup. |
-| `engine/render/src/shaders/c_voxel_visibility_compact.glsl` | Compact-pass fog cull and 1x1 placeholder path. |
-| `engine/render/src/shaders/metal/c_voxel_visibility_compact.metal` | Metal twin of the compact lookup. |
+| `engine/render/src/shaders/c_voxel_visibility_compact_body.glsl` | Compact-pass fog cull and 1x1 placeholder path (shared body of the `c_voxel_visibility_compact[_ceiling]` wrappers). |
+| `engine/render/src/shaders/metal/c_voxel_visibility_compact_body.metal` | Metal twin of the compact lookup. |
 | `engine/render/src/shaders/ir_voxel_face_select.glsl` | Shared face-selection fog taps. |
 | `engine/render/src/shaders/metal/ir_voxel_face_select.metal` | Metal twin of the shared taps. |
 | `engine/render/src/shaders/ir_fog_los.glsl` | LOS field bounds, half-cell and pyramid-block lookup, texture packing and the hierarchical segment march. |

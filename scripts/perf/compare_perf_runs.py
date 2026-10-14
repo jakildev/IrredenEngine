@@ -20,6 +20,7 @@ Stdlib only — must run on any Python 3.9+ without extra deps.
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import math
 import re
@@ -27,7 +28,7 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import Dict, Iterable, List, Optional, Sequence
 
 # --- Parser --------------------------------------------------------------
 
@@ -473,6 +474,105 @@ def load_factor(ref_ms: float, target_ms: float) -> float:
 LOAD_FACTOR_TRUST_NORMALIZED = 1.20
 
 
+# Class-matched captures normally grade raw because calibration does not
+# predict frame time on every runner SKU. Each entry is backed by a corpus for
+# that exact host class; scripts/perf/README.md records the admission rule.
+CLASS_MATCH_SCALE_FROM: Dict[str, float] = {
+    "linux-x86_64-xeon-platinum-8573c-unknown": 1.10,
+}
+
+
+def _threshold_for_slug(slug: str, thresholds: Dict[str, float]) -> Optional[float]:
+    for pattern, threshold in thresholds.items():
+        if fnmatch.fnmatchcase(slug, pattern):
+            return threshold
+    return None
+
+
+def class_match_scale_threshold(slug: str) -> Optional[float]:
+    return _threshold_for_slug(slug, CLASS_MATCH_SCALE_FROM)
+
+
+def class_match_head_scale(slug: str, head_ref_ms: float,
+                           capture_ref_ms: float) -> float:
+    threshold = class_match_scale_threshold(slug)
+    if threshold is None:
+        return 1.0
+    if load_factor(head_ref_ms, capture_ref_ms) < threshold:
+        return 1.0
+    return capture_ref_ms / head_ref_ms
+
+
+# --- Per-cell load gate --------------------------------------------------
+
+# Host classes whose quiet `before` readings have been measured, each mapped to
+# the factor at or above which a cell counts as run under load. A slug that no
+# glob matches is never classified, so an unmeasured host (every macOS host
+# included) grades exactly as it would without brackets. Each threshold is
+# max(1.05, 1 + 2 * (Q_max - 1)) rounded up to 0.01, where Q_max is the
+# largest `before` factor in that class's quiet corpus; scripts/perf/README.md
+# lists the corpora.
+LOAD_GATE_THRESHOLDS: Dict[str, float] = {
+    "linux-x86_64-epyc-*-unknown": 1.10,
+    "linux-x86_64-xeon-*-unknown": 1.10,
+}
+
+
+@dataclass
+class LoadFlag:
+    side: str
+    cell_id: str
+    before_ms: float
+    floor_ms: float
+    factor: float
+    threshold: float
+
+
+def load_gate_threshold(slug: str) -> Optional[float]:
+    return _threshold_for_slug(slug, LOAD_GATE_THRESHOLDS)
+
+
+def _positive_ms(value: object) -> Optional[float]:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    value = float(value)
+    return value if math.isfinite(value) and value > 0.0 else None
+
+
+def load_flagged_cells(manifest: Dict, side: str) -> List[LoadFlag]:
+    """Cells of one run whose `before` reading sits at or above the host
+    class's threshold, as a factor of the run floor.
+
+    The floor is the smallest of the run-start `calibration.ref_ms` and every
+    cell's `before`: the start reading is taken outside the benchmark hold, so
+    load already present at the start would otherwise hide itself. `after` is
+    never read; it lands in the cell's own teardown. A cell with a missing or
+    non-positive `before` is not classified.
+    """
+    threshold = load_gate_threshold(host_slug(manifest))
+    if threshold is None:
+        return []
+    befores = []
+    for cell in manifest.get("cells", []):
+        bracket = cell.get("load_ref_ms")
+        before = _positive_ms(bracket.get("before")) if isinstance(bracket, dict) else None
+        if cell.get("id") and before is not None:
+            befores.append((cell["id"], before))
+    if not befores:
+        return []
+    readings = [before for _, before in befores]
+    start = _positive_ms((manifest.get("calibration") or {}).get("ref_ms"))
+    if start is not None:
+        readings.append(start)
+    floor = min(readings)
+    flags = []
+    for cell_id, before in befores:
+        factor = before / floor
+        if factor >= threshold:
+            flags.append(LoadFlag(side, cell_id, before, floor, factor, threshold))
+    return flags
+
+
 # --- Class-matched baseline selection ------------------------------------
 
 # One host slug can cover runner instances whose speed differs by ~1.5x at the
@@ -598,22 +698,62 @@ def mark(delta_pct: float, regress_pct: float, improve_pct: float) -> str:
     return ""
 
 
+def frame_avg_improved(
+    baseline: float,
+    head: float,
+    calibration_ratio: float,
+    improve_pct: float,
+) -> bool:
+    raw_delta = pct_delta(baseline, head)
+    calibrated_delta = pct_delta(baseline, head * calibration_ratio)
+    return max(raw_delta, calibrated_delta) <= -improve_pct
+
+
 def format_frame_row(
     cell_id: str,
     base: CellReport,
     head: CellReport,
     regress_pct: float,
     improve_pct: float,
+    load_flagged: bool = False,
+    avg_head_scale: float = 1.0,
+    avg_improvement_scale: float = 1.0,
 ) -> str:
     avg_b, avg_h = base.frame.avg, head.frame.avg
     p99_b, p99_h = base.frame.p99, head.frame.p99
     avg_delta = pct_delta(avg_b, avg_h)
+    scaled_avg_delta = pct_delta(avg_b, avg_h * avg_head_scale)
+    improvement_scaled_delta = pct_delta(avg_b, avg_h * avg_improvement_scale)
     p99_delta = pct_delta(p99_b, p99_h)
-    avg_mark = mark(avg_delta, regress_pct, improve_pct)
-    p99_mark = mark(p99_delta, regress_pct, improve_pct)
+    if load_flagged:
+        avg_mark = ""
+    else:
+        regressed = (
+            scaled_avg_delta >= regress_pct
+            if avg_head_scale != 1.0 else avg_delta >= regress_pct
+        )
+        improved = frame_avg_improved(
+            avg_b, avg_h, avg_improvement_scale, improve_pct
+        )
+        avg_mark = " ⚠" if regressed else " ↓" if improved else ""
+    p99_mark = "" if load_flagged else mark(p99_delta, regress_pct, improve_pct)
+    label = f"`{cell_id}` (load-flagged)" if load_flagged else f"`{cell_id}`"
+    show_improvement_scale = (
+        avg_delta <= -improve_pct
+        and avg_improvement_scale != 1.0
+        and improvement_scaled_delta > -improve_pct
+    )
+    display_scaled_delta = (
+        scaled_avg_delta if avg_head_scale != 1.0 else improvement_scaled_delta
+    )
+    avg_delta_text = (
+        f"{avg_delta:+.1f}% raw, {display_scaled_delta:+.1f}% scaled"
+        if avg_head_scale != 1.0 or show_improvement_scale
+        else f"{avg_delta:+.1f}%"
+    )
     return (
-        f"| `{cell_id}` "
-        f"| {avg_b:.2f} → {avg_h:.2f} ({avg_delta:+.1f}%){avg_mark} "
+        f"| {label} "
+        f"| {avg_b:.2f} → {avg_h:.2f} ({avg_delta_text}){avg_mark} "
         f"| {p99_b:.2f} → {p99_h:.2f} ({p99_delta:+.1f}%){p99_mark} |"
     )
 
@@ -639,6 +779,24 @@ def format_feeder_cell(base: CullStats, head: CullStats) -> str:
     return cell
 
 
+def format_load_flags(load_flags: Sequence[LoadFlag]) -> List[str]:
+    out = [
+        "## load-flagged cells (informational, not graded)",
+        "",
+        "A cell's `before` reading sat at or above its host class's threshold "
+        "against the run floor, so its timing reflects load on the host, not "
+        "the code.",
+        "",
+        "| cell | side | before ms | floor ms | factor | threshold |",
+        "|------|------|-----------|----------|--------|-----------|",
+    ]
+    for f in load_flags:
+        out.append(f"| `{f.cell_id}` | {f.side} | {f.before_ms:.2f} | {f.floor_ms:.2f} "
+                   f"| {f.factor:.3f}× | {f.threshold:.2f}× |")
+    out.append("")
+    return out
+
+
 def collect_gpu_names(cells: Iterable[CellReport]) -> List[str]:
     names: List[str] = []
     seen = set()
@@ -660,7 +818,12 @@ def render_markdown(
     gpu_only: bool,
     cpu_only: bool,
     host_note: str = "",
+    load_flags: Sequence[LoadFlag] = (),
+    frame_avg_head_scale: float = 1.0,
+    frame_avg_improvement_scale: float = 1.0,
 ) -> str:
+    """A load-flagged cell keeps its rows but carries no grading mark."""
+    ungraded = {f.cell_id for f in load_flags}
     out: List[str] = []
     out.append(f"# perf comparison: {base_dir.name} → {head_dir.name}")
     out.append("")
@@ -672,6 +835,8 @@ def render_markdown(
     out.append("")
     out.append(f"thresholds: regress ≥ {regress_pct:.0f}%, improve ≥ {improve_pct:.0f}%")
     out.append("")
+    if load_flags:
+        out.extend(format_load_flags(load_flags))
 
     matched = sorted(set(base) & set(head))
     base_only = sorted(set(base) - set(head))
@@ -712,9 +877,10 @@ def render_markdown(
         out.append("| cell | avg | p99 |")
         out.append("|------|-----|-----|")
         for cell_id in matched:
-            out.append(
-                format_frame_row(cell_id, base[cell_id], head[cell_id], regress_pct, improve_pct)
-            )
+            out.append(format_frame_row(cell_id, base[cell_id], head[cell_id],
+                                        regress_pct, improve_pct, cell_id in ungraded,
+                                        frame_avg_head_scale,
+                                        frame_avg_improvement_scale))
         out.append("")
 
     if not cpu_only and any(c.gpu_frame.supported is not None
@@ -758,8 +924,9 @@ def render_markdown(
                         continue
                     bv = sb.avg_ms if sb else 0.0
                     hv = sh.avg_ms if sh else 0.0
-                    delta = pct_delta(bv, hv)
-                    row.append(f"{bv:.2f}→{hv:.2f}{mark(delta, regress_pct, improve_pct)}")
+                    stage_mark = ("" if cell_id in ungraded
+                                  else mark(pct_delta(bv, hv), regress_pct, improve_pct))
+                    row.append(f"{bv:.2f}→{hv:.2f}{stage_mark}")
                 out.append("| " + " | ".join(row) + " |")
             out.append("")
 
@@ -780,7 +947,7 @@ def render_markdown(
                 sb = base_cell.system_by_name(s.name)
                 bv = sb.avg_ms if sb else 0.0
                 delta = pct_delta(bv, s.avg_ms)
-                row_mark = mark(delta, regress_pct, improve_pct)
+                row_mark = "" if cell_id in ungraded else mark(delta, regress_pct, improve_pct)
                 out.append(
                     f"| {s.pipeline} | `{s.name}` "
                     f"| {bv:.3f} → {s.avg_ms:.3f} ({delta:+.1f}%){row_mark} |"
@@ -839,10 +1006,23 @@ def build_host_note(base_manifest: Dict, head_manifest: Dict,
     lines.append(f"- calibration target: {target_ms:.2f} ms (informational)")
     if capture is not None:
         lines.append(format_capture_line(capture, head_manifest, capture_is_tip))
-        lines.append(
-            "- weighting: raw (class-matched capture, ref_ms within "
-            f"{LOAD_FACTOR_TRUST_NORMALIZED:.2f}× of the head's)"
-        )
+        scale_threshold = class_match_scale_threshold(head_slug)
+        head_scale = class_match_head_scale(head_slug, head_ref_ms, base_ref_ms)
+        if head_scale != 1.0:
+            lines.append(
+                "- weighting: calibration-scaled (frame avg only; "
+                f"load_factor {lf:.2f}× ≥ {scale_threshold:.2f}×)"
+            )
+        elif scale_threshold is not None:
+            lines.append(
+                "- weighting: raw (class-matched capture; "
+                f"load_factor {lf:.2f}× < {scale_threshold:.2f}×)"
+            )
+        else:
+            lines.append(
+                "- weighting: raw (class-matched capture; "
+                f"load_factor {lf:.2f}×; no calibration-scaling entry)"
+            )
     else:
         lines.append(
             "- weighting: normalized over raw "
@@ -914,11 +1094,13 @@ def main() -> int:
 
     base_manifest = load_manifest(base_dir)
     host_note = build_host_note(base_manifest, head_manifest)
+    load_flags = (load_flagged_cells(base_manifest, "baseline")
+                  + load_flagged_cells(head_manifest, "head"))
 
     print(render_markdown(base_dir, head_dir, base, head,
                           args.regress_pct, args.improve_pct,
                           args.gpu_only, args.cpu_only,
-                          host_note=host_note), end="")
+                          host_note=host_note, load_flags=load_flags), end="")
     return 0
 
 

@@ -2,6 +2,10 @@
 #include "ir_constants.metal"
 #include "ir_sdf_common.metal"
 #include "ir_shape_data.metal"
+#include "ir_shape_sun_ray.metal"
+#if IR_SHAPE_PASS == 2
+#include "ir_fog_shadow_caster.metal"
+#endif
 
 // Mirrors shaders/c_shapes_to_trixel_body.glsl.
 
@@ -10,12 +14,17 @@ constant uint FLAG_VISIBLE      = 8u;
 constant uint FLAG_FOG_BODY = 16u;
 constant uint FLAG_XRAY_OCCLUDED = 128u;
 
-// X-ray silhouette intensity. When a SHAPE_FLAG_XRAY_OCCLUDED fragment
-// loses the atomicMin contest against geometry that's already won the
-// pixel, pass 1 blends the shape color over the existing canvas pixel
-// at this alpha so the shape still reads as a faint silhouette through
-// the occluder.
+// X-ray silhouette intensity. On a pixel no sample of this submission owns,
+// pass 1 blends the elected occluded SHAPE_FLAG_XRAY_OCCLUDED sample over
+// the canvas pixel at this alpha, so the shape reads as a faint silhouette
+// through content drawn before the shape stage.
 constant float kXrayOccludedAlpha = 0.25;
+
+// An occluded x-ray sample contends for its pixel under its owner key with
+// this bit set. Every owner key has the bit clear, so a sample at the stored
+// depth outranks every candidate, and no candidate equals the cleared word
+// 0xFFFFFFFF. The CPU side asserts the key range that keeps the bit free.
+constant uint kXrayCandidateBit = 0x80000000u;
 
 // FP→int snap guard for analytical depth solvers. dEntry/dIntExit are
 // FMA-reordered across GPU scheduling, so a mathematically-integer entry
@@ -781,13 +790,18 @@ inline int shapeBoxFaceSlot(
 
 kernel void IR_SHAPE_KERNEL_NAME(
     constant ShapeProjectionData& frameData [[buffer(23)]],
+#if IR_SHAPE_PASS == 2
+    constant FogShadowObserverData& fogObservers [[buffer(27)]],
+    texture2d<uint, access::read> fogShadowWindow [[texture(4)]],
+#endif
     device const ShapeDescriptor* shapes [[buffer(20)]],
     device const ShapeTileDescriptor* tiles [[buffer(30)]],
     device atomic_int* distanceScratch [[buffer(16)]],
     device atomic_uint* sampleOwners [[buffer(22)]],
     // `triangleCanvasColors` is read+write (not write-only) so the
     // SHAPE_FLAG_XRAY_OCCLUDED branch in pass 1 can load the existing
-    // pixel and blend the occluded shape's color on top at reduced alpha.
+    // pixel and blend the elected occluded sample's color on top at reduced
+    // alpha.
     texture2d<float, access::read_write> triangleCanvasColors [[texture(0)]],
     texture2d<int, access::write> triangleCanvasDistances [[texture(1)]],
     texture2d<uint, access::write> triangleCanvasEntityIds [[texture(2)]],
@@ -801,7 +815,8 @@ kernel void IR_SHAPE_KERNEL_NAME(
     const int2 isoOrigin = tile.tileIsoOrigin;
     const ShapeDescriptor shape = shapes[shapeIndex];
 #if IR_SHAPE_PASS == 2
-    if (shape.shapeType == SHAPE_BOX) return;
+    if (shape.shapeType == SHAPE_BOX ||
+        shapeUsesSunRay(shape, frameData.voxelRenderOptions, frameData.smoothYawEnabled, frameData.latticeShapes)) return;
 #endif
 
     // Cardinal-snap Z-yaw. Mirrors the GLSL shader in c_shapes_to_trixel_body.glsl.
@@ -873,7 +888,7 @@ kernel void IR_SHAPE_KERNEL_NAME(
     }
     // Per-entity rotation expands the shape-local AABB before the camera-yaw
     // expansion. Spheres are rotation-invariant and skip this.
-    const bool hasEntityRotation = abs(shape.rotation.w) < 0.9999;
+    const bool hasEntityRotation = shapeHasEntityRotation(shape.rotation);
     if (hasEntityRotation && st != SHAPE_SPHERE) {
         const float3 ax = abs(rotateByQuat(float3(boundingHalf.x, 0.0, 0.0), shape.rotation));
         const float3 ay = abs(rotateByQuat(float3(0.0, boundingHalf.y, 0.0), shape.rotation));
@@ -951,6 +966,19 @@ kernel void IR_SHAPE_KERNEL_NAME(
     if (surfaceD == kInvalidDepth) {
         return;
     }
+
+#if IR_SHAPE_PASS == 2
+    const float3 fogViewOffset = isoToLocal3D(isoPixelRel, float(surfaceD));
+    const float3 fogWorldOffset = float3(
+        yawC * fogViewOffset.x - yawS * fogViewOffset.y,
+        yawS * fogViewOffset.x + yawC * fogViewOffset.y,
+        fogViewOffset.z
+    );
+    const float3 fogWorldSample = worldPos + fogWorldOffset / float(sub);
+    if (!((shape.flags & FLAG_FOG_BODY) != 0u) && 1 != 0 && fogObservers.visionCircleCount > 0 &&
+        !fogFieldCastsSunShadow(fogWorldSample, false, 1,
+            fogShadowCell(fogWorldSample, fogObservers, fogShadowWindow), fogObservers)) return;
+#endif
 
     // Depth metric. Cardinal path: view-space x+y+z relative to the cardinal-
     // snapped integer origin. Smooth path: yawedIsoDistance of the subdivided
@@ -1046,7 +1074,6 @@ kernel void IR_SHAPE_KERNEL_NAME(
         }
     }
 
-    const bool xrayOccluded = (shape.flags & FLAG_XRAY_OCCLUDED) != 0u;
     // Shape ids are 32-bit; descriptor bits 23:16 carry the BODY factor.
     const uint2 packedEntityId = encodeEntityIdAnalyticSurface(encodeEntityIdFogBody(
         uint2(shape.entityId, 0u),
@@ -1054,6 +1081,9 @@ kernel void IR_SHAPE_KERNEL_NAME(
         (shape.flags >> 16u) & 0xFFu
     ));
 
+#endif
+#if IR_SHAPE_PASS == 1 || IR_SHAPE_PASS == 3
+    const bool xrayOccluded = (shape.flags & FLAG_XRAY_OCCLUDED) != 0u;
 #endif
 
     for (int face = 0; face < 3; ++face) {
@@ -1087,8 +1117,12 @@ kernel void IR_SHAPE_KERNEL_NAME(
             const uint sampleOwner = ((tileIdx * 64u + localId.y * 8u + localId.x) * 3u + uint(face)) * 2u + uint(subPixel);
 #if IR_SHAPE_PASS == 3
             {
-                if (depthEncoded == atomic_load_explicit(&distanceScratch[linearIndex], memory_order_relaxed))
+                const int stored = atomic_load_explicit(&distanceScratch[linearIndex], memory_order_relaxed);
+                if (depthEncoded == stored) {
                     atomic_fetch_min_explicit(&sampleOwners[linearIndex], sampleOwner, memory_order_relaxed);
+                } else if (xrayOccluded && depthEncoded > stored) {
+                    atomic_fetch_min_explicit(&sampleOwners[linearIndex], sampleOwner | kXrayCandidateBit, memory_order_relaxed);
+                }
             }
 #elif IR_SHAPE_PASS != 1
             {
@@ -1112,15 +1146,13 @@ kernel void IR_SHAPE_KERNEL_NAME(
                         int4(depthEncoded, 0, 0, 0), pix);
                     triangleCanvasEntityIds.write(
                         uint4(packedEntityId, 0u, 0u), pix);
-                } else if (xrayOccluded && depthEncoded > stored) {
-                    // This shape lost the atomicMin contest — something
-                    // closer owns the pixel. Blend its color over the
-                    // existing canvas color at reduced alpha so the shape
-                    // still reads as a faint silhouette through the
-                    // occluder.
-                    // Non-atomic RMW: racing stores produce one mix level
-                    // instead of two — the dimming is visually
-                    // indistinguishable; no coord-level race risk.
+                } else if (xrayOccluded && depthEncoded > stored &&
+                           (sampleOwner | kXrayCandidateBit) ==
+                               atomic_load_explicit(&sampleOwners[linearIndex], memory_order_relaxed)) {
+                    // The elected candidate is this pixel's only writer: a
+                    // candidate key is elected only where no sample owns the
+                    // pixel, so its read sees content drawn before the
+                    // shape stage and never races an owner's store.
                     const float4 existing = triangleCanvasColors.read(pix);
                     const float3 blended = mix(existing.rgb, baseColor.rgb,
                                                kXrayOccludedAlpha);

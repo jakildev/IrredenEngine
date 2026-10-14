@@ -1,0 +1,135 @@
+[
+  {
+    "mutation": "production",
+    "expected": "",
+    "exit": 0,
+    "stdout": "PASS production C++ ceiling, phase, static caster and paint controls",
+    "valid_control": true
+  },
+  {
+    "mutation": "uncovered",
+    "expected": "uncovered",
+    "exit": 1,
+    "stdout": "FAIL uncovered",
+    "valid_control": true
+  },
+  {
+    "mutation": "visible",
+    "expected": "visible",
+    "exit": 1,
+    "stdout": "FAIL visible",
+    "valid_control": true
+  },
+  {
+    "mutation": "explored",
+    "expected": "explored",
+    "exit": 1,
+    "stdout": "FAIL explored",
+    "valid_control": true
+  },
+  {
+    "mutation": "maximum",
+    "expected": "source_maximum",
+    "exit": 1,
+    "stdout": "FAIL source_maximum",
+    "valid_control": true
+  },
+  {
+    "mutation": "own_softness",
+    "expected": "aa_admission",
+    "exit": 1,
+    "stdout": "FAIL aa_admission",
+    "valid_control": true
+  },
+  {
+    "mutation": "aa_too_small",
+    "expected": "aa_pixel_bound",
+    "exit": 1,
+    "stdout": "FAIL aa_pixel_bound",
+    "valid_control": true
+  },
+  {
+    "mutation": "height_cost",
+    "expected": "height_and_los_ignored",
+    "exit": 1,
+    "stdout": "FAIL height_and_los_ignored",
+    "valid_control": true
+  },
+  {
+    "mutation": "los_rejection",
+    "expected": "height_and_los_ignored",
+    "exit": 1,
+    "stdout": "FAIL height_and_los_ignored",
+    "valid_control": true
+  },
+  {
+    "mutation": "channels",
+    "expected": "source_channels",
+    "exit": 1,
+    "stdout": "FAIL source_channels",
+    "valid_control": true
+  },
+  {
+    "mutation": "density",
+    "expected": "zero_density",
+    "exit": 1,
+    "stdout": "FAIL zero_density",
+    "valid_control": true
+  },
+  {
+    "mutation": "phase_zero",
+    "expected": "phase_zero",
+    "exit": 1,
+    "stdout": "FAIL phase_zero",
+    "valid_control": true
+  },
+  {
+    "mutation": "phase_span",
+    "expected": "phase_bound",
+    "exit": 1,
+    "stdout": "FAIL phase_bound",
+    "valid_control": true
+  },
+  {
+    "mutation": "phase_removed",
+    "expected": "phase_revives",
+    "exit": 1,
+    "stdout": "FAIL phase_revives",
+    "valid_control": true
+  },
+  {
+    "mutation": "shadow_phase",
+    "expected": "shadow_static",
+    "exit": 1,
+    "stdout": "FAIL shadow_static",
+    "valid_control": true
+  },
+  {
+    "mutation": "body",
+    "expected": "shadow_body",
+    "exit": 1,
+    "stdout": "FAIL shadow_body",
+    "valid_control": true
+  },
+  {
+    "mutation": "voxel_paint",
+    "expected": "voxel_ceiling_paint",
+    "exit": 1,
+    "stdout": "FAIL voxel_ceiling_paint",
+    "valid_control": true
+  },
+  {
+    "mutation": "analytic_paint",
+    "expected": "analytic_ceiling_paint",
+    "exit": 1,
+    "stdout": "FAIL analytic_ceiling_paint",
+    "valid_control": true
+  },
+  {
+    "mutation": "los_paint",
+    "expected": "voxel_los_paint",
+    "exit": 1,
+    "stdout": "FAIL voxel_los_paint",
+    "valid_control": true
+  }
+]

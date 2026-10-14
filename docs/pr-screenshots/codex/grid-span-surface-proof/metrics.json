@@ -1,0 +1,557 @@
+[
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-normals-yaw0.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "0"
+    ],
+    "exit_code": 0,
+    "metric": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "expected_pixels": 438272,
+      "observed_pixels": 438272,
+      "face_interior_pixels": [
+        133116,
+        138730,
+        128088
+      ],
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "occupied_cells": 1724,
+      "tie_cells": 55,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-normals-yaw0.png",
+      "scope": "resampled_cell_faces",
+      "fixture": "cube",
+      "yaw": 0.0,
+      "palette": [
+        [
+          0,
+          128,
+          128
+        ],
+        [
+          128,
+          0,
+          128
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-normals-yaw22.5.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "22.5"
+    ],
+    "exit_code": 0,
+    "metric": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "expected_pixels": 419840,
+      "observed_pixels": 419840,
+      "face_interior_pixels": [
+        119616,
+        137452,
+        129112
+      ],
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "occupied_cells": 1734,
+      "tie_cells": 66,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-normals-yaw22.5.png",
+      "scope": "resampled_cell_faces",
+      "fixture": "cube",
+      "yaw": 22.5,
+      "palette": [
+        [
+          10,
+          79,
+          128
+        ],
+        [
+          176,
+          10,
+          128
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-normals-yaw45.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "45"
+    ],
+    "exit_code": 0,
+    "metric": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "expected_pixels": 366592,
+      "observed_pixels": 366592,
+      "face_interior_pixels": [
+        97245,
+        120001,
+        110759
+      ],
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "occupied_cells": 1716,
+      "tie_cells": 58,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-normals-yaw45.png",
+      "scope": "resampled_cell_faces",
+      "fixture": "cube",
+      "yaw": 45.0,
+      "palette": [
+        [
+          37,
+          37,
+          128
+        ],
+        [
+          218,
+          37,
+          128
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-upright-yaw0.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "0",
+      "--upright"
+    ],
+    "exit_code": 0,
+    "metric": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "expected_pixels": 442368,
+      "observed_pixels": 442368,
+      "face_interior_pixels": [
+        145542,
+        145542,
+        145160
+      ],
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "occupied_cells": 1728,
+      "tie_cells": 0,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-upright-yaw0.png",
+      "scope": "resampled_cell_faces",
+      "fixture": "cube",
+      "yaw": 0.0,
+      "palette": [
+        [
+          0,
+          128,
+          128
+        ],
+        [
+          128,
+          0,
+          128
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-upright-yaw22.5.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "22.5",
+      "--upright"
+    ],
+    "exit_code": 0,
+    "metric": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "expected_pixels": 422912,
+      "observed_pixels": 422912,
+      "face_interior_pixels": [
+        131484,
+        131500,
+        144432
+      ],
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "occupied_cells": 1728,
+      "tie_cells": 0,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-upright-yaw22.5.png",
+      "scope": "resampled_cell_faces",
+      "fixture": "cube",
+      "yaw": 22.5,
+      "palette": [
+        [
+          10,
+          79,
+          128
+        ],
+        [
+          176,
+          10,
+          128
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-upright-yaw45.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "45",
+      "--upright",
+      "--explain-pixel",
+      "1025",
+      "875",
+      "--explain-pixel",
+      "1062",
+      "875"
+    ],
+    "exit_code": 0,
+    "metric": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "expected_pixels": 375808,
+      "observed_pixels": 375808,
+      "face_interior_pixels": [
+        106376,
+        106376,
+        144448
+      ],
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "pixel_explanations": [
+        {
+          "pixel": [
+            1025,
+            875
+          ],
+          "iso_point": [
+            -7.953125,
+            9.71875
+          ],
+          "camera_hits": [
+            {
+              "cell": [
+                0,
+                -7,
+                1
+              ],
+              "axes": [
+                1
+              ],
+              "depth": -7.210937499999999,
+              "point": [
+                -0.046875,
+                -8.0,
+                0.8359375000000004
+              ]
+            },
+            {
+              "cell": [
+                1,
+                -7,
+                1
+              ],
+              "axes": [
+                0
+              ],
+              "depth": -7.070312499999999,
+              "point": [
+                0.0,
+                -7.953125,
+                0.8828125000000004
+              ]
+            },
+            {
+              "cell": [
+                1,
+                -7,
+                2
+              ],
+              "axes": [
+                2
+              ],
+              "depth": -6.71875,
+              "point": [
+                0.11718749999999956,
+                -7.8359375,
+                1.0
+              ]
+            },
+            {
+              "cell": [
+                1,
+                -6,
+                2
+              ],
+              "axes": [
+                1
+              ],
+              "depth": -4.210937499999999,
+              "point": [
+                0.953125,
+                -7.0,
+                1.8359375000000004
+              ]
+            }
+          ],
+          "boundary_ambiguous": false,
+          "world_normal": [
+            0.7071068286895752,
+            -0.7071067690849304,
+            0.0
+          ],
+          "shadow_sample_ambiguous": false,
+          "triangle": [
+            [
+              -1.0,
+              -8.0,
+              0.0
+            ],
+            [
+              0.0,
+              -8.0,
+              0.0
+            ],
+            [
+              0.0,
+              -8.0,
+              1.0
+            ]
+          ],
+          "shadow_sample": [
+            -0.3333333333333333,
+            -8.0,
+            0.3333333333333333
+          ],
+          "sun_visibility": 1,
+          "blocker_cell": null
+        },
+        {
+          "pixel": [
+            1062,
+            875
+          ],
+          "iso_point": [
+            -6.796875,
+            9.71875
+          ],
+          "camera_hits": [
+            {
+              "cell": [
+                0,
+                -7,
+                1
+              ],
+              "axes": [
+                0
+              ],
+              "depth": -8.3359375,
+              "point": [
+                -0.9999999999999998,
+                -7.796875,
+                0.46093750000000044
+              ]
+            },
+            {
+              "cell": [
+                0,
+                -7,
+                2
+              ],
+              "axes": [
+                2
+              ],
+              "depth": -6.71875,
+              "point": [
+                -0.4609375000000002,
+                -7.2578125,
+                1.0
+              ]
+            },
+            {
+              "cell": [
+                0,
+                -6,
+                2
+              ],
+              "axes": [
+                1
+              ],
+              "depth": -5.945312499999999,
+              "point": [
+                -0.20312499999999978,
+                -7.0,
+                1.2578125000000004
+              ]
+            },
+            {
+              "cell": [
+                1,
+                -6,
+                2
+              ],
+              "axes": [
+                0
+              ],
+              "depth": -5.3359375,
+              "point": [
+                0.0,
+                -6.796875,
+                1.4609375000000002
+              ]
+            }
+          ],
+          "boundary_ambiguous": false,
+          "world_normal": [
+            -0.7071067690849304,
+            -0.7071068286895752,
+            0.0
+          ],
+          "shadow_sample_ambiguous": false,
+          "triangle": [
+            [
+              -1.0,
+              -8.0,
+              0.0
+            ],
+            [
+              -1.0,
+              -7.0,
+              1.0
+            ],
+            [
+              -1.0,
+              -8.0,
+              1.0
+            ]
+          ],
+          "shadow_sample": [
+            -1.0,
+            -7.666666666666667,
+            0.6666666666666666
+          ],
+          "sun_visibility": 1,
+          "blocker_cell": null
+        }
+      ],
+      "occupied_cells": 1728,
+      "tie_cells": 861,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-upright-yaw45.png",
+      "scope": "resampled_cell_faces",
+      "fixture": "cube",
+      "yaw": 45.0,
+      "palette": [
+        [
+          37,
+          37,
+          128
+        ],
+        [
+          218,
+          37,
+          128
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ]
+    }
+  }
+]

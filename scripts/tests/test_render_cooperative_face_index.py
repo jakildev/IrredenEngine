@@ -72,9 +72,11 @@ int main(){
    for(uint i=0;i<ids.size();++i)if(ids[i]!=i)return 3;
   }
   for(uint record=0;record<(exhausted?0:records);++record){
+   if(sunDepthBuf[kSourceFaceRecordOffset+record*kSourceFaceRecordWords+9]!=0)return 7;
    const vec3 vectors[]={corner,u,v};
    for(uint a=0;a<3;++a)for(uint b=0;b<3;++b)
-    if(sunDepthBuf[kSourceFaceRecordOffset+record*9+a*3+b]!=floatBitsToUint(vectors[a][b]))return 4;
+    if(sunDepthBuf[kSourceFaceRecordOffset+record*kSourceFaceRecordWords+a*3+b]
+       !=floatBitsToUint(vectors[a][b]))return 4;
   }
   for(uint i=0;i<guard;++i)
    if(buffer[i]!=canary||buffer[buffer.size()-1-i]!=canary)return 5;

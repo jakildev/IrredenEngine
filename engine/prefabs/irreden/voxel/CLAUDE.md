@@ -8,6 +8,10 @@ API contracts; this file owns cross-header and pipeline constraints.
   `C_VoxelSetNew` owns one contiguous span in that pool and captures its target
   canvas at construction. Detached entity canvases, absent from the render
   manager's named-canvas map, use the entity-keyed `IRPrefab::VoxelPool` facade.
+- `C_VoxelPool::canAllocateVoxels` is a non-mutating capacity query: it follows
+  the allocator's exact freed-span-or-never-allocated-tail policy, so a larger
+  freed span does not satisfy a smaller request. Lua creations call it through
+  `IRRender.canAllocateVoxels` for the active canvas before sizing user data.
 - `C_Voxel` is a 12-byte std430 GPU record. Its alpha defines activity, and
   its face-occlusion and `reserved_` bits are shader-visible encodings. When
   assigning a `reserved_` bit, update the layout comment and every shader
@@ -26,9 +30,9 @@ API contracts; this file owns cross-header and pipeline constraints.
   clears the snapshot. Direct raw-span writes are safe only before the first
   rotated frame unless they use the encapsulated edit API.
 - An owner-private detached pool may carry a uniform fog-carrier policy.
-  Allocation and reuse apply it before returning a span; `seedIntoPool`
-  reapplies it after copying authored records. Shared world pools stay
-  unmanaged because their sets can mix FIELD, BODY, and EXEMPT classes.
+  Allocation, `seedIntoPool`, and GRID rebuild writes apply it; records
+  re-staged from a managed pool leave with FIELD carriers. Shared world pools
+  stay unmanaged because their sets can mix FIELD, BODY, and EXEMPT classes.
 - `C_VoxelSetNew` reserves its span during construction when a canvas is
   active; a temporary made only to inspect dense data leaks because cleanup is
   `onDestroy()`, not a destructor. Attach it to an entity or use
@@ -45,16 +49,16 @@ render, culling, occupancy, and picking need no anchor branch:
 | `CENTER` | `-(size-1)*0.5` | Solid is centered on its entity origin. |
 | `GROUND` | centered XY, `-(size.z-0.5)` in Z | Discrete entity position is footprint center at body bottom. |
 
-New discrete-entity prefabs use `GROUND`: at `translation.z == floorSurfaceZ` they
-stand flush at every size, so consumers need no height correction. Existing content
-changes anchor only through deliberate migration. Body-center code must call
-`anchorLocalCenter(anchor_, size_)`, never assume CORNER. Anchors do not migrate
-collider, SDF-shape, or entity-canvas geometry; each adopts them separately.
+New discrete-entity prefabs use `GROUND`: at `translation.z == floorSurfaceZ` they stand
+flush at every size. Content changes anchor only by deliberate migration. Body-center code
+calls `anchorLocalCenter(anchor_, size_)`. Colliders, SDF shapes, and entity canvases ignore it.
 
-Detached revoxelization rotates about the pool origin, requiring one centered set per
-private pool. Before seeding the static cull bound, its rebuild tick asserts symmetric
-composed locals, catching every off-center mode. Half-cell-anchor uniformity does not
-prove a centered pivot. Keep the guard at the only consumer holding both set and pool.
+An entity turns about its translation in every rotation mode, so a set that rotates is
+[`CENTER`](../../../../docs/design/prefab-part-anchor.md). A `.vxs` stores integer bounds and cannot carry a non-CORNER origin: a prefab
+part's `anchor` field records it, and every `DenseVoxel::toComponent` caller passes it on.
+Detached revoxelization requires one centered set per private pool: before seeding the
+static cull bound, its rebuild tick asserts symmetric composed locals. Half-cell-anchor
+uniformity does not prove a centered pivot. Keep the guard where both set and pool are held.
 
 Lua exposes integer anchor enums. Constructors take `(size, color, anchor[, targetCanvas])`;
 the fourth argument supports headless/detached canvases. There is no boolean arm.

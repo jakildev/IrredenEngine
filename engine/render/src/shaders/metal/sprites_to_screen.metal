@@ -39,12 +39,14 @@ vertex VertexOut v_sprites_to_screen(
 
     VertexOut out;
     out.position = frame.projection * float4(worldXY, 0.0, 1.0);
-    // Match framebuffer_to_screen.metal: Metal NDC Y points the opposite
-    // way from GL once the viewport flip lands; the sign-flip keeps sprites
-    // upright on both backends. The texCoord V is flipped for the same
-    // reason.
+    // The negate puts the quad's y = 0 corner on its top edge on screen.
+    // quadFrac and texCoords are the same [0, 1] fraction on every vertex,
+    // and uvRect's v0 is the frame's top row in the atlas image, so the top
+    // edge samples v0 with the texcoord unchanged. An uploaded image keeps
+    // its row order on every backend; a render target's does not, so the V
+    // flip in framebuffer_to_screen.metal has no counterpart here.
     out.position.y = -out.position.y;
-    out.texCoords  = mix(s.uvRect.xy, s.uvRect.zw, float2(in.texCoords.x, 1.0 - in.texCoords.y));
+    out.texCoords  = mix(s.uvRect.xy, s.uvRect.zw, in.texCoords);
     out.tint       = s.tintRgba;
     return out;
 }

@@ -18,18 +18,27 @@ With --baseline-history (CI always passes it) the baseline is not the branch
 tip but the most recent capture of the head's slug whose ref_ms sits inside
 the LOAD_FACTOR_TRUST_NORMALIZED band of the head's:
 
-    Class-matched capture found        → check raw deltas against it.
+    Class-matched capture found        → check raw deltas, except measured
+                                         host classes whose slow heads use
+                                         calibration-scaled frame averages.
     No capture in the head's class     → informational only, pass, no table.
+
+On a host class in LOAD_GATE_THRESHOLDS, a cell whose `load_ref_ms.before`
+reading marks it as run under load, in either manifest, is reported as
+informational and left out of grading. --strict-load turns any such cell into
+a measurement error instead (the seed self-check uses it).
 
 Usage:
     scripts/perf/check_regression.py <baseline_root> <head_dir>
-        [--baseline-history DIR]
+        [--baseline-history DIR] [--strict-load]
         [--regress-pct N] [--improve-pct N] [--gpu-only] [--cpu-only]
 
 Exit codes:
-    0   No regression above threshold (pass — may still show improvements)
-    1   One or more cells regressed by more than --regress-pct (fail)
-    2   Usage or measurement error
+    0   No graded cell regressed above threshold (pass — may still show
+        improvements and load-flagged cells)
+    1   One or more graded cells regressed by more than --regress-pct (fail)
+    2   Usage or measurement error, including a load-flagged cell under
+        --strict-load
 """
 
 from __future__ import annotations
@@ -44,10 +53,14 @@ from compare_perf_runs import (  # noqa: E402
     CLASS_MATCH_MAX_AGE_DAYS,
     LOAD_FACTOR_TRUST_NORMALIZED,
     ClassMatch,
+    LoadFlag,
     build_host_note,
     calibration_ref_ms,
+    class_match_head_scale,
+    frame_avg_improved,
     host_slug,
     load_factor,
+    load_flagged_cells,
     load_manifest,
     load_run,
     normalize_ms,
@@ -60,10 +73,9 @@ from compare_perf_runs import (  # noqa: E402
 
 
 def _regressed_cells(base, head, regress_pct: float, *,
-                     head_ref_ms: float, base_ref_ms: float,
-                     use_normalized: bool) -> list[str]:
+                     head_scale: float, ungraded: set[str]) -> list[str]:
     out = []
-    for cell_id in sorted(set(base) & set(head)):
+    for cell_id in sorted((set(base) & set(head)) - ungraded):
         avg_b = base[cell_id].frame.avg
         avg_h = head[cell_id].frame.avg
         if avg_b <= 0.0:
@@ -73,11 +85,15 @@ def _regressed_cells(base, head, regress_pct: float, *,
         # reference is the baseline's own ref_ms from the same SKU; scaling
         # against the fixed 50 ms target instead would divide out how slow the
         # SKU is, which no regression can change.
-        if use_normalized:
-            avg_h = normalize_ms(avg_h, head_ref_ms, base_ref_ms)
+        avg_h *= head_scale
         if pct_delta(avg_b, avg_h) >= regress_pct:
             out.append(cell_id)
     return out
+
+
+def _write_improved_cells(path: str | None, cells: list[str]) -> None:
+    if path is not None:
+        Path(path).write_text("".join(f"{cell_id}\n" for cell_id in cells))
 
 
 def _no_class_match_body(slug: str, head_ref_ms: float, match: ClassMatch) -> str:
@@ -101,6 +117,17 @@ def _no_class_match_body(slug: str, head_ref_ms: float, match: ClassMatch) -> st
     return "\n".join(lines) + "\n"
 
 
+def _describe_flags(flags: list[LoadFlag]) -> str:
+    return ", ".join(f"{f.cell_id} ({f.side} {f.factor:.3f}× ≥ {f.threshold:.2f}×)"
+                     for f in flags)
+
+
+def _refuse_loaded(flags: list[LoadFlag]) -> int:
+    print(f"check_regression: LOAD-FLAGGED — {len(flags)} cell(s) ran under load "
+          f"(--strict-load): {_describe_flags(flags)}", file=sys.stderr)
+    return 2
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("baseline", help="baseline root (docs/perf/baseline_latest/) — "
@@ -113,6 +140,11 @@ def main() -> int:
                    help=">= this %% on mean frame avg counts as regression (default 10)")
     p.add_argument("--improve-pct", type=float, default=5.0,
                    help="<= negative this %% marks improvement in the table (default 5)")
+    p.add_argument("--improved-cells-out",
+                   help="write graded frame-average improvement cell ids")
+    p.add_argument("--strict-load", action="store_true",
+                   help="exit 2 when any cell in either run is load-flagged, "
+                        "instead of reporting it as informational")
     p.add_argument("--gpu-only", action="store_true")
     p.add_argument("--cpu-only", action="store_true")
     args = p.parse_args()
@@ -150,6 +182,9 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
+    head_flags = load_flagged_cells(head_manifest, "head")
+    if args.strict_load and head_flags:
+        return _refuse_loaded(head_flags)
 
     # No-baseline path → informational seed-new, pass.
     base_dir = resolve_baseline(baseline_arg, head_manifest)
@@ -166,6 +201,7 @@ def main() -> int:
             f"path for slug {head_slug_str})",
             file=sys.stderr,
         )
+        _write_improved_cells(args.improved_cells_out, [])
         return 0
 
     capture = None
@@ -182,6 +218,7 @@ def main() -> int:
                 f"{head_ref_ms:.2f}, {len(match.captures)} capture(s) considered)",
                 file=sys.stderr,
             )
+            _write_improved_cells(args.improved_cells_out, [])
             return 0
         capture = match.selected
         capture_is_tip = capture.manifest == load_manifest(base_dir)
@@ -201,16 +238,11 @@ def main() -> int:
         return 2
 
     base_manifest = load_manifest(base_dir)
+    load_flags = load_flagged_cells(base_manifest, "baseline") + head_flags
+    if args.strict_load and load_flags:
+        return _refuse_loaded(load_flags)
     host_note = build_host_note(base_manifest, head_manifest,
                                 capture=capture, capture_is_tip=capture_is_tip)
-
-    md = render_markdown(
-        base_dir, head_dir, base, head,
-        args.regress_pct, args.improve_pct,
-        args.gpu_only, args.cpu_only,
-        host_note=host_note,
-    )
-    print(md, end="")
 
     # Decide whether to gate.
     base_slug = host_slug(base_manifest)
@@ -221,11 +253,21 @@ def main() -> int:
         and base_slug == head_slug_str
     )
     if not same_host:
+        print(render_markdown(
+            base_dir, head_dir, base, head,
+            args.regress_pct, args.improve_pct,
+            args.gpu_only, args.cpu_only,
+            host_note=host_note, load_flags=load_flags,
+        ), end="")
+        if load_flags:
+            print(f"check_regression: {len(load_flags)} load-flagged cell(s) informational, "
+                  f"not graded: {_describe_flags(load_flags)}", file=sys.stderr)
         print(
             f"check_regression: host mismatch — informational only (baseline "
             f"slug '{base_slug}', head slug '{head_slug_str}'); no gate fired.",
             file=sys.stderr,
         )
+        _write_improved_cells(args.improved_cells_out, [])
         return 0
 
     head_cal = head_manifest.get("calibration") or {}
@@ -236,31 +278,71 @@ def main() -> int:
     # it does not have.
     base_ref_ms = float(base_cal.get("ref_ms", 0.0))
     lf = load_factor(head_ref_ms, base_ref_ms)
+    improvement_scale = normalize_ms(1.0, head_ref_ms, base_ref_ms)
     # A class-matched capture is in band by construction; normalizing across
     # a class split under-corrects it, so history mode never does.
     use_normalized = capture is None and lf >= LOAD_FACTOR_TRUST_NORMALIZED
+    head_scale = (
+        class_match_head_scale(head_slug_str, head_ref_ms, base_ref_ms)
+        if capture is not None else
+        normalize_ms(1.0, head_ref_ms, base_ref_ms) if use_normalized else 1.0
+    )
+
+    md = render_markdown(
+        base_dir, head_dir, base, head,
+        args.regress_pct, args.improve_pct,
+        args.gpu_only, args.cpu_only,
+        host_note=host_note, load_flags=load_flags,
+        frame_avg_head_scale=head_scale if capture is not None else 1.0,
+        frame_avg_improvement_scale=improvement_scale,
+    )
+    print(md, end="")
+    if load_flags:
+        print(f"check_regression: {len(load_flags)} load-flagged cell(s) informational, "
+              f"not graded: {_describe_flags(load_flags)}", file=sys.stderr)
 
     regressed = _regressed_cells(
         base, head, args.regress_pct,
-        head_ref_ms=head_ref_ms, base_ref_ms=base_ref_ms,
-        use_normalized=use_normalized,
+        head_scale=head_scale,
+        ungraded={f.cell_id for f in load_flags},
     )
+    ungraded = {f.cell_id for f in load_flags}
+    improved = [
+        cell_id
+        for cell_id in sorted((set(base) & set(head)) - ungraded)
+        if base[cell_id].frame.avg > 0.0
+        and frame_avg_improved(
+            base[cell_id].frame.avg,
+            head[cell_id].frame.avg,
+            improvement_scale,
+            args.improve_pct,
+        )
+    ]
     if regressed:
-        weighting = "normalized" if use_normalized else "raw"
+        weighting = (
+            "calibration-scaled" if capture is not None and head_scale != 1.0
+            else "normalized" if use_normalized else "raw"
+        )
         print(
             f"check_regression: FAIL — {len(regressed)} cell(s) regressed "
             f">{args.regress_pct:.0f}% on {weighting} mean frame avg: "
             f"{', '.join(regressed)}",
             file=sys.stderr,
         )
+        _write_improved_cells(args.improved_cells_out, improved)
         return 1
 
+    weighting = (
+        "calibration-scaled" if capture is not None and head_scale != 1.0
+        else "normalized" if use_normalized else "raw"
+    )
     print(
         "check_regression: PASS — no cells regressed "
-        f"({'normalized' if use_normalized else 'raw'}, "
+        f"({weighting}, "
         f"load_factor {lf:.2f}×).",
         file=sys.stderr,
     )
+    _write_improved_cells(args.improved_cells_out, improved)
     return 0
 
 

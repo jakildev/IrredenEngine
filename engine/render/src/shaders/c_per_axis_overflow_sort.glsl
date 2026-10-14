@@ -1,5 +1,7 @@
 #version 450 core
 
+#include "ir_iso_common.glsl"
+
 // Canonical-order the overflow entry list.
 //
 // The mode-3 append (c_voxel_to_trixel_stage_1_body.glsl) assigns entry
@@ -11,8 +13,8 @@
 // making draw order — and therefore every equal-key winner — a pure
 // function of the appended SET.
 //
-// Sort key: lexicographic (packedCell, encodedDistance, colorPacked) =
-// entry words (0, 2, 1). Any total value order works; this one groups
+// Sort key: lexicographic (masked cell, encoded distance, color, cut flag).
+// The flag in word 0 bit 31 breaks only otherwise identical ties; this groups
 // cell ties adjacently. The key spans ALL THREE words, so key-equality and
 // record-equality coincide — which is why the compare-exchange can be
 // strict (equal records never swap) without making draw order depend on
@@ -21,13 +23,14 @@
 // Pass structure (overflowSortStep, driven by system_voxel_to_trixel.hpp;
 // the entry cap is a power of two by construction in
 // component_per_axis_trixel_canvases.hpp):
-//   3 — write current-frame indirect grids into the aligned control region.
+//   3 — write current-frame indirect grids into sortArgs.
 //   0 — sentinel-fill every slot in [liveCount, span) with 0xFFFFFFFF^3. The
 //       region above the live range holds stale prior-frame entries, NOT
 //       zeros — the fill is mandatory, every rotating frame, before any
 //       network step. A real entry cannot tie the sentinel: word 0 packs
-//       canvas cell x|y at 16+16 bits and canvas cell coordinates never
-//       reach 65535, so a real all-max key is unproducible.
+//       x at 15:0, y at 30:16 and the cut flag at 31. Canvas height is
+//       below 32768 and x never reaches 65535, so its masked cell cannot
+//       equal the sentinel's 0x7FFFFFFF.
 //   1 — fused local phase: full bitonic sort of each contiguous
 //       kBlock-element block in shared memory (stages k = 2..kBlock).
 //   2 — fused STRIDED-SLAB phase: every compare-exchange stride of stage k
@@ -56,8 +59,7 @@
 // valid. The only shortcut is the workgroup-uniform whole-block-is-sentinel
 // early-out, taken only where the slab is contiguous (mode 1, and mode 2 at
 // pLo == 0) so a sorted-constant block is provably a no-op. The sort never
-// changes the draw args or counters. Only mode 3 writes the reserved sort
-// command region after those fields.
+// changes the draw args or counters.
 //
 // The whole pass is gated CPU-side on the pool's storeTiesPossible_ flag.
 // Empty lists and inactive stages have zero-sized indirect grids.
@@ -101,6 +103,14 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
 // network step), mirroring c_resolve_per_axis_blit's post-barrier contract.
 layout(std430, binding = 28) buffer PerAxisResolveScratch {
     uint scratch[];
+};
+
+// Mode 3's output: one {x, y, z, pad} indirect grid per step command. A
+// separate buffer from the record scratch, because NVIDIA GL stalls the CPU on
+// an indirect dispatch whose argument buffer the dispatching program has
+// bound for writing. Bound on 26 for the mode-3 dispatch only.
+layout(std430, binding = 26) buffer OverflowSortArgs {
+    uint sortArgs[];
 };
 
 const uint kSentinelWord = 0xFFFFFFFFu;
@@ -152,11 +162,14 @@ uint sortSpan() {
     return min(span, capEntries());
 }
 
-// Lexicographic (cell, distance, color) — words (0, 2, 1).
+// Lexicographic (cell, distance, color, cut flag), covering the full record.
 bool recordLess(uint a0, uint a1, uint a2, uint b0, uint b1, uint b2) {
-    if (a0 != b0) return a0 < b0;
+    const uint aCell = overflowEntryCell(a0);
+    const uint bCell = overflowEntryCell(b0);
+    if (aCell != bCell) return aCell < bCell;
     if (a2 != b2) return a2 < b2;
-    return a1 < b1;
+    if (a1 != b1) return a1 < b1;
+    return !overflowEntryIsCutFace(a0) && overflowEntryIsCutFace(b0);
 }
 
 // Reinsert the active-bit window into a compressed slab index.
@@ -186,8 +199,8 @@ void main() {
     const uint span = sortSpan();
 
     if (mode == 3u) {
-        // Layout mirrors C_PerAxisTrixelCanvases: command count, block bits - 1,
-        // argument base and command stride are 21, 10, 8 and 4 respectively.
+        // Layout mirrors C_PerAxisTrixelCanvases: command count, block bits - 1
+        // and command stride are 21, 10 and 4 respectively.
         // Commands 0/1 cover fill/local; 2..20 cover stages 12..30.
         // Zero-sized grids suppress empty lists and stages outside the live span.
         const uint command = gl_LocalInvocationID.x;
@@ -199,11 +212,11 @@ void main() {
                 groups = span / kBlock;
         }
         const uint groupsX = max(min(groups, 1024u), 1u);
-        const uint base = uint(overflowScratchLayout.y) + 8u + command * 4u;
-        scratch[base] = groupsX;
-        scratch[base + 1u] = (groups + groupsX - 1u) / groupsX;
-        scratch[base + 2u] = 1u;
-        scratch[base + 3u] = 0u;
+        const uint base = command * 4u;
+        sortArgs[base] = groupsX;
+        sortArgs[base + 1u] = (groups + groupsX - 1u) / groupsX;
+        sortArgs[base + 2u] = 1u;
+        sortArgs[base + 3u] = 0u;
         return;
     }
 

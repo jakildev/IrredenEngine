@@ -275,7 +275,7 @@ _ns_token() {
 # `fleet:claim-*` labels are retained through the PR lifecycle and
 # preserved on closed issues as historical "who worked on this" record;
 # cleanup only sweeps them off OPEN issues whose claim is abandoned (no
-# matching open `claude/<N>-*` PR + age > TTL + owner not live, judged on the
+# matching open `<ns>/<N>-*` PR + age > TTL + owner not live, judged on the
 # owning host — see _claim_owner_live).
 
 host_from_uname() {
@@ -1285,7 +1285,7 @@ if not field_value:
     sys.exit(0)
 
 # Referenced issue numbers and PR URLs, routed to the referenced repository.
-issue_refs = blocker_ref_records(body, repo)
+issue_refs = blocker_ref_records(body, repo, issue_num or None)
 
 failed = []
 
@@ -1793,7 +1793,7 @@ sys.stdout.write(unsafe_base_reason(labels, files) or "")
         return 1
     fi
 
-    # Open-PR sanity check: refuse if a PR with head `claude/<N>-*` is
+    # Open-PR sanity check: refuse if a PR with head `<ns>/<N>-*` is
     # already open for this issue. The issue-side `fleet:claim-*` label
     # tie-break (below) covers the active-work window, but the open PR
     # itself is the canonical ownership signal — guarding here catches
@@ -1839,7 +1839,7 @@ for pr in prs:
         # carries GitHub's `Closes owner/repo#N` naming THIS repo is the same
         # in-flight work — a fresh worker here cannot advance it, and every
         # claim on it ended in a decline until the other repo's PR merged.
-        # Body arm only: a `claude/<N>-…` branch over there is that repo's
+        # Body arm only: a `<ns>/<N>-…` branch over there is that repo's
         # #N, and a bare `Closes #N` there is likewise that repo's. Fails
         # open on a gh failure exactly as the same-repo arm does.
         local other_repo_for_pr_check
@@ -2107,7 +2107,7 @@ if branch_matches_issue(branch, issue, repo):
 forms = ["%s<topic>" % p for p in issue_branch_prefixes(repo, issue)]
 sys.stderr.write(
     "fleet-claim branch-check: branch %r does not encode issue #%s; expected "
-    "one of: %s (or a claude/... branch carrying an issue-%s token)\n"
+    "one of: %s (or a claude/... or codex/... branch carrying an issue-%s token)\n"
     % (branch, issue, ", ".join(forms), issue)
 )
 sys.exit(1)
@@ -2116,7 +2116,7 @@ sys.exit(1)
 
 cmd_find_stackable_blockers() {
     # If the task's **Blocked by:** field resolves to exactly one unresolved
-    # blocker with exactly one matching open PR (head-branch `claude/<N>-*`,
+    # blocker with exactly one matching open PR (head-branch `<ns>/<N>-*`,
     # body `Closes #N`, or the ref being that PR's own number),
     # print one tab-separated line:
     #   <pr-url><TAB><headRefName><TAB><author-login><TAB><number>
@@ -2198,7 +2198,7 @@ PYEOF
 )
     [[ -z "$blocker" ]] && return 0
 
-    # Find an open PR whose head-branch starts with claude/<N>-, OR whose
+    # Find an open PR whose head-branch starts with <ns>/<N>-, OR whose
     # body contains "Closes #N" (case-insensitive), OR whose own number IS N
     # (a `Blocked by: #<PR>` ref naming an issue-less blocker PR). The
     # three arms are the same union the scout's enrich_stackable_blocker_prs
@@ -3252,7 +3252,7 @@ cmd_cleanup() {
     # to jakildev/IrredenEngine. With --gh, ALSO sweeps stale
     # fleet:reviewing-* / fleet:resolving-* / fleet:amending-* labels off
     # open PRs, abandoned fleet:claim-* labels off OPEN issues (no matching
-    # claude/<N>-* PR + TTL), and stale fleet:stewarding-* labels off open
+    # <ns>/<N>-* PR + TTL), and stale fleet:stewarding-* labels off open
     # fleet:epic issues. Claim labels on CLOSED issues are kept
     # as a historical record.
     mkdir -p "$CLAIMS_DIR"
@@ -3642,7 +3642,7 @@ for issue in issues:
     # count as active: the worker released its claim to let any worker resume
     # after the architect responds, so its lingering claim is sweepable just
     # like a no-PR abandon. Only an active (non-parked) matching
-    # WIP PR (head-branch claude/<N>-*) keeps the claim.
+    # WIP PR (head-branch <ns>/<N>-*) keeps the claim.
     local claim_issue_stale_secs="${FLEET_CLAIM_STALE_SECS_ISSUES:-7200}"
     local crosshost_stale_secs
     crosshost_stale_secs=$(_crosshost_backstop_secs)
@@ -4385,7 +4385,7 @@ import sys, os, json, re
 sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
 from fleet_branch_match import (
     issue_from_branch,
-    parked_until_issue_numbers,
+    parked_until_refs,
     PARKED_PR_LABELS,
 )
 import fleet_claim_liveness as liveness
@@ -4433,11 +4433,11 @@ def labelset(obj):
                if isinstance(l, dict))
 
 def head_issue(head):
-    # claude/<N>-... or claude/game-<N>-... -> N. Routed through the shared
+    # <ns>/<N>-... or <ns>/game-<N>-... -> N. Routed through the shared
     # matcher so the game `game-` infix is handled here too.
     return issue_from_branch(head or "")
 
-# A PR resolves an issue when its head branch is claude/<N>-* OR its body
+# A PR resolves an issue when its head branch is <ns>/<N>-* OR its body
 # carries a Closes/Fixes/Resolves #N reference — the same dual-match
 # find-stackable-blockers uses. Covers non-standard branch names (e.g.
 # claude/<topic>-<N>) that the head-prefix form alone would miss.
@@ -4534,7 +4534,7 @@ for c in fs_claims:
     add("R1", repo, c["issue"], "issue", ["fs_claim", "label", "pr"],
         "release host-local stale FS claim + remove this host's claim "
         "label + fleet:in-progress",
-        "age %dm >= TTL %dm, no open claude/%d-* PR, owner not live (%s)"
+        "age %dm >= TTL %dm, no open <ns>/%d-* PR, owner not live (%s)"
         % (age // 60, ttl // 60, c["issue"], detail["arm"]),
         apply={"type": "stale_claim", "slug": c["slug"], "issue": c["issue"],
                "repo": repo, "claim_label": "fleet:claim-%s-%s" % (host, c["owner"]),
@@ -4560,7 +4560,7 @@ for r in reservations:
     if op is None or op:
         continue
     add("R3", repo, issue, "reservation", ["reservation"],
-        "reservation for '%s' has no claim and no open claude/%d-* PR; drop" % (wt, issue),
+        "reservation for '%s' has no claim and no open <ns>/%d-* PR; drop" % (wt, issue),
         "no claim, no open PR",
         apply={"type": "drop_reservation", "worktree": wt, "issue": issue})
 
@@ -4807,7 +4807,7 @@ for repo in repos:
 # PR need not have a resolvable backing-issue mapping, and pr_by_issue entries
 # carry only number+labels (the body, which holds the marker, is dropped).
 #
-# `parked_until_issue_numbers` owns the shared marker grammar. A parsable marker
+# `parked_until_refs` owns the shared marker grammar. A parsable marker
 # yields an apply-carrying finding, which reconcile_escalate_drift
 # skips — so a legitimately long park never files a state-drift tracker. A
 # missing/malformed marker yields a FLAG-ONLY finding, so it accrues normally
@@ -4820,9 +4820,14 @@ for repo in repos:
 # or backtick emphasis on it are tolerated for the same reason: they are
 # markdown habits, not a different declaration.
 #
-# A park may name SEVERAL blockers ("Parked-until: #N, #M"); it ends only
-# when every one has closed, so a PR waiting on two fixes is not un-parked by
-# the first and re-parked by the worker the dispatcher then wastes on it.
+# A park may name SEVERAL blockers — one marker listing them
+# ("Parked-until: #N, #M") or one marker per blocker on its own line, since
+# that is the other shape a worker writes — and every parsable marker counts:
+# the park ends only when all of them have closed, so a PR waiting on two
+# fixes is not un-parked by the first and re-parked by the worker the
+# dispatcher then wastes on it. A blocker may live in the other fleet repo
+# (`IrredenEngine#N`, `irreden#N`, `owner/repo#N`): a game PR waiting on an
+# engine entry parks on it like any other, and R8 asks that repo.
 #
 # What makes the leniency safe is that the capture is only the CONTIGUOUS run of
 # `#N` tokens right after the marker, separated by a comma and/or whitespace;
@@ -4836,9 +4841,9 @@ for repo in repos:
     for pr in d["prs"]:
         if "fleet:awaiting-infra" not in labelset(pr):
             continue
-        # Last occurrence wins: a re-park appends a fresh line rather than
-        # rewriting the body, so earlier markers are inert history.
-        blockers = parked_until_issue_numbers(pr.get("body", ""))
+        # Every marker counts, so a re-park may append a fresh line rather
+        # than rewriting the body; the lists are unioned.
+        blockers = parked_until_refs(pr.get("body", ""), repo)
         if not blockers:
             add("R8", repo, pr["number"], "pr", ["pr", "label"],
                 "fleet:awaiting-infra with no parsable 'Parked-until: #N' line "
@@ -4846,7 +4851,11 @@ for repo in repos:
                 "— add the line or drop the label",
                 "flag-only (R8)")
             continue
-        named = ", ".join("#%d" % n for n in blockers)
+        # A blocker is spelled `owner/repo#N` end to end so the apply half
+        # can address the right repo by splitting on the last `#`; same-repo
+        # blockers read as `#N` in the human-facing text.
+        named = ", ".join(("#%d" % n) if slug == repo else "%s#%d" % (slug, n)
+                          for slug, n in blockers)
         add("R8", repo, pr["number"], "pr", ["pr", "label"],
             "parked behind %s; remove fleet:awaiting-infra once %s "
             "closed (R7 then re-surfaces the PR)"
@@ -4854,7 +4863,7 @@ for repo in repos:
                else "all of those issues have"),
             "awaiting-infra PR with Parked-until: %s" % named,
             apply={"type": "unpark_infra", "pr": pr["number"], "repo": repo,
-                   "blockers": blockers})
+                   "blockers": ["%s#%d" % ref for ref in blockers]})
 
 # ---- R9 (auto-escalate): design-parked PR on a fleet:sonnet backing issue ---
 # The design-resume tier is opus+-ONLY (FLEET-FEEDBACK-HANDLING.md tier 4;
@@ -5510,10 +5519,12 @@ PYEOF
 # reconcile_unpark_infra <findings-jsonl>
 #   Apply half of R8. Consumes R8 findings carrying an apply action
 #   (type == unpark_infra): an open PR labelled fleet:awaiting-infra whose body
-#   names its blockers in a `Parked-until: #N[, #M ...]` line. Verifies every
-#   blocker LIVE — the reconcile issue surface is fetched filtered to
-#   label:"fleet:queued", so a blocker that has closed (or was never queued) is
-#   simply absent from it and cannot be distinguished from "still open" without
+#   names its blockers in `Parked-until:` lines, carried in the finding as
+#   `owner/repo#N` tokens. Verifies every blocker LIVE in its own repo — the
+#   reconcile issue surface is fetched filtered to label:"fleet:queued" for
+#   this repo only, so a blocker that has closed (or was never queued, or lives
+#   in the other fleet repo) is simply absent from it and cannot be
+#   distinguished from "still open" without
 #   asking. When ALL blockers are CLOSED, remove fleet:awaiting-infra: the PR
 #   reverts to an ordinary stranded WIP and R7 re-arms fleet:design-unblocked
 #   after its usual threshold, so the worker resume loop adopts it through the
@@ -5525,12 +5536,12 @@ PYEOF
 #   case — blocker reopened just after an un-park — self-corrects: R7 re-arms,
 #   a worker re-adjudicates and re-parks.
 #
-#   Never edits PR bodies, so a stale earlier Parked-until: line stays inert
-#   (detection takes the last occurrence). Mutates a GH label, so cmd_reconcile
-#   calls it on --apply only.
+#   Never edits PR bodies: every Parked-until: line a body carries is live
+#   (detection unions them), and the label is what retires a park. Mutates a GH
+#   label, so cmd_reconcile calls it on --apply only.
 reconcile_unpark_infra() {
     local findings="$1"
-    local line atype repo pr blockers blocker state all_closed
+    local line atype repo pr blockers blocker blocker_repo blocker_num state all_closed
     while IFS= read -r line; do
         [[ -z "$line" ]] && continue
         atype=$(reconcile_apply_field "$line" type)
@@ -5541,7 +5552,14 @@ reconcile_unpark_infra() {
         [[ -z "$repo" || -z "$pr" || -z "$blockers" ]] && continue
         all_closed=1
         for blocker in $blockers; do
-            state=$(gh issue view "$blocker" --repo "$repo" --json state \
+            if [[ "$blocker" == *#* ]]; then
+                blocker_repo="${blocker%#*}"
+                blocker_num="${blocker##*#}"
+            else
+                blocker_repo="$repo"
+                blocker_num="$blocker"
+            fi
+            state=$(gh issue view "$blocker_num" --repo "$blocker_repo" --json state \
                 --jq '.state' 2>/dev/null || true)
             # Anything other than a confirmed CLOSED or MERGED (OPEN, or a
             # lookup failure that yields an empty string) leaves the park
@@ -5554,7 +5572,7 @@ reconcile_unpark_infra() {
         done
         [[ $all_closed -eq 1 ]] || continue
         if gh_release_label "$repo" "$pr" "fleet:awaiting-infra"; then
-            echo "  reconcile --apply: R8 un-parked $repo #$pr — blockers #${blockers// /, #} closed; removed fleet:awaiting-infra"
+            echo "  reconcile --apply: R8 un-parked $repo #$pr — blockers ${blockers// /, } closed; removed fleet:awaiting-infra"
         else
             echo "  reconcile --apply: R8 failed to remove fleet:awaiting-infra on $repo #$pr (retries next tick)" >&2
         fi
@@ -6762,7 +6780,7 @@ commands:
   find-stackable-blockers <issue-number>
                                 if exactly one #N blocker has exactly
                                 one open PR (matched via head-branch
-                                `claude/<N>-*`, a body `Closes #N`
+                                `<ns>/<N>-*`, a body `Closes #N`
                                 reference, or the ref being that PR's
                                 own number), print one tab-separated
                                 line:

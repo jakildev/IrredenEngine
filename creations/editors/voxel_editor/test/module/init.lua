@@ -1,5 +1,5 @@
--- Neutral fixture for IRVoxelEditor --module: three components, one recipe and
--- one panel, so every registration path the editor hosts is exercised.
+-- Neutral fixture for IRVoxelEditor --module: three components, two recipes
+-- and one panel, so every registration path the editor hosts is exercised.
 
 IRComponent.register("TestModuleTag", {
     weight = 1,
@@ -43,6 +43,120 @@ IREditor.registerRecipe(
     end
 )
 
+-- A one-cell-thick square frame on the set's centre layer, around its centre
+-- column: the cells whose larger X / Y distance from that column is `half`.
+IREditor.registerRecipe(
+    "test_frame",
+    {
+        { name = "half", type = IREditor.ParamType.INT, default = 1, min = 1, max = 4 },
+    },
+    function(values, size)
+        local cx = math.floor(size.x / 2)
+        local cy = math.floor(size.y / 2)
+        local cz = math.floor(size.z / 2)
+        local half = values.half
+        local cells = {}
+        for dy = -half, half do
+            for dx = -half, half do
+                if math.max(math.abs(dx), math.abs(dy)) == half then
+                    cells[#cells + 1] = { cx + dx, cy + dy, cz, { r = 90, g = 170, b = 230 } }
+                end
+            end
+        end
+        return cells
+    end
+)
+
 IREditor.registerPanel("TestModulePanel", function(x, y, w, h)
     IRGui.makeLabel(x + 4, y + 18, "MODULE LOADED")
+    IRGui.makeLabel(x + 4, y + 32, "FIELD ROW")
+end)
+
+IREditor.registerSession("test_parts", function(session)
+    local size = session:sceneSize()
+    local center = {
+        x = math.floor(size.x / 2),
+        y = math.floor(size.y / 2),
+        z = math.floor(size.z / 2),
+    }
+    local blob_front = { center.x, center.y, center.z - 2 }
+    local painted = { center.x, center.y, center.z - 3 }
+
+    session:segment("bake")
+    session:addVoxelPart()
+    session:bakeSphere(2)
+    session:expectPartOccupancy(0, blob_front, true, "blob_baked")
+
+    session:segment("before_click")
+    session:expectPartOccupancy(0, painted, false, "before_click_empty")
+    session:segment("click")
+    session:click(painted)
+    session:expectPartOccupancy(0, painted, true, "clicked_cell_filled")
+
+    session:segment("array_and_band")
+    session:applyRadialArray(2)
+    session:dragLodSlider(IREditor.SliderTarget.LOD_FINE, 3)
+    session:dragLodSlider(IREditor.SliderTarget.LOD_TIER, 0)
+    session:expectPartCount(3, "three_parts_before_save")
+    session:expectPartGated(2, true, 0, "selected_copy_band_set")
+
+    session:segment("save")
+    session:save()
+    session:segment("clear")
+    session:clearEntityScene()
+    session:segment("reload")
+    session:reload()
+    session:expectPartOccupancy(0, painted, true, "reload_occupancy")
+    session:expectPartCount(3, "reload_part_count")
+    session:expectPartGated(2, true, 0, "reload_band")
+end)
+
+IREditor.registerSession("test_recipe_attach", function(session)
+    local size = session:sceneSize()
+    local x = math.floor(size.x / 2)
+    local y = math.floor(size.y / 2)
+    local recipe_cell = { x, y, size.z - 4 }
+    local click_target = { x, y, size.z - 5 }
+
+    session:segment("apply")
+    session:addVoxelPart()
+    session:expectComponentValue(
+        0, "TestModuleTag", "weight", nil, true, "component_absent_before_attach")
+    session:applyRecipe("test_column", { height = 3 })
+    session:expectPartOccupancy(0, recipe_cell, true, "recipe_cell_filled")
+    session:expectPartOccupancy(0, click_target, false, "click_target_empty_before_click")
+
+    session:segment("click")
+    session:click(click_target)
+    session:expectPartOccupancy(0, click_target, true, "click_target_filled")
+
+    session:segment("component")
+    session:attachComponent("TestModuleTag")
+    session:setComponentField("TestModuleTag", "weight", "7")
+    session:expectComponentValue(0, "TestModuleTag", "weight", 7, true, "field_set_to_seven")
+
+    session:segment("save")
+    session:save()
+    session:segment("clear")
+    session:clearEntityScene()
+    session:segment("reload")
+    session:reload()
+    session:expectPartOccupancy(0, click_target, true, "clicked_cell_survives_reload")
+    session:expectComponentValue(0, "TestModuleTag", "weight", 7, true, "field_survives_reload")
+    session:expectComponentValue(
+        0, "TestModuleTag", "weight", 1, false, "field_is_not_default_after_reload")
+end)
+
+IREditor.registerSession("test_single", function(session)
+    local size = session:sceneSize()
+    local cell = { math.floor(size.x / 2), math.floor(size.y / 2), size.z - 2 }
+    session:segment("place")
+    session:click(cell)
+    session:expectOccupancy(cell, true, "single_cell_placed")
+    session:segment("save")
+    session:save()
+end)
+
+IREditor.registerSession("test_unreachable", function(session)
+    session:click({ 0, 0, 0 })
 end)

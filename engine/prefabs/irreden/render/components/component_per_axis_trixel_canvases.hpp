@@ -127,11 +127,12 @@ struct PerAxisCanvasStore {
     //     fillBuffer(bytes = texels*4) reset covers exactly this region.
     // [ctrlBaseUints_, entriesBaseUints_) — ctrl block: indirect
     //     draw args {indexCount, instanceCount, firstIndex, baseVertex,
-    //     baseInstance} + droppedCount, followed by GPU-authored sort commands.
+    //     baseInstance} + droppedCount.
     //     instanceCount/droppedCount are GPU atomics (resolveMode 3). The
     //     overflow indirect draw sources its args at ctrlBaseUints_*4 directly.
     // [entriesBaseUints_, +overflowCap_*3) — overflow entries, 3 uints
-    //     each: {iso cell x|y (16+16), colorPacked, encoded distance} — the
+    //     each: {iso cell x|y (16+15) with cut flag in bit 31, colorPacked,
+    //     encoded distance}. Height is below 32768; the
     //     exact (cell, value) pair the cardinal store would have written, so
     //     the scatter's overflow branch reuses the cell path's recovery
     //     bit-for-bit.
@@ -143,7 +144,6 @@ struct PerAxisCanvasStore {
     int overflowCap_ = 0;
     static constexpr std::uint32_t kOverflowSortBlockBits = 11;
     static constexpr std::uint32_t kOverflowSortMaxStageBits = 30;
-    static constexpr std::uint32_t kOverflowSortArgsBaseUints = 8;
     static constexpr std::uint32_t kOverflowSortCommandUints = 4;
     static constexpr std::uint32_t kOverflowSortCommandCount =
         2 + kOverflowSortMaxStageBits - kOverflowSortBlockBits;
@@ -151,11 +151,6 @@ struct PerAxisCanvasStore {
     static constexpr int kScratchAlignUints = 64;
     static_assert(
         kOverflowControlUints % kScratchAlignUints == 0, "overflow entries must be 256-byte aligned"
-    );
-    static_assert(
-        kOverflowSortArgsBaseUints + kOverflowSortCommandCount * kOverflowSortCommandUints <=
-            kOverflowControlUints,
-        "overflow sort commands must fit the aligned control region"
     );
     // Completed-frame count bounding the next sort's encoded merge stages; the
     // cap on the first rotating frame after allocate() (nothing completed yet).
@@ -248,6 +243,8 @@ struct PerAxisCanvasStore {
     // the screen-space resolve texture at @p mainSize. No-op if already
     // allocated. Called at rotation start by the lifecycle.
     void allocate(ivec2 size, ivec2 mainSize) {
+        // ir_iso_common reserves the packed cell's high y bit for cut provenance.
+        IR_ASSERT(size.y < 32768, "per-axis canvas height must be below 32768 cells");
         if (isAllocated()) {
             return;
         }

@@ -221,10 +221,11 @@ translation re-injects Git's mingw64 when the Win32 child spawns.
 > uses `//c` internally. Don't wrap a no-space path in `"…"` inside the
 > `//c` string — the quotes leak into the argument.
 
-Not applicable in WSL. The user's VSCode terminal lacks Git's mingw64 on
-PATH, so builds work there unconditionally — a Bash-tool-only failure on
-Windows-native is checked with the PATH prefix before anything else is
-blamed.
+Not applicable in WSL. The workspace's default integrated terminal is the
+Git Bash login profile in `.vscode/settings.json`, whose PATH puts
+`C:\msys64\mingw64\bin` ahead of Git's mingw64, so builds work there
+unconditionally — a Bash-tool-only failure on Windows-native is checked
+with the PATH prefix before anything else is blamed.
 
 ### Debugging under gdb (Windows only)
 
@@ -337,12 +338,46 @@ runs by double-click on a clean box. `IRShapeDebug` is the reference.
 
 - **Linux** — FetchContent deps default to static (top-level
   `CMakeLists.txt`); `$ORIGIN` rpath covers any remaining `.so`.
-- **Windows** — bundles `$<TARGET_RUNTIME_DLLS>` plus the MinGW runtime trio
-  (which `TARGET_RUNTIME_DLLS` omits).
-- **macOS** — `cmake/macos_bundle_dylibs.cmake` copies non-system dylibs
-  next to the exe, rewrites load commands to `@executable_path`, and ad-hoc
-  re-signs. Shallow: transitive Homebrew deps (ffmpeg's codec libraries)
-  are not walked, so a macOS bundle is verified via cross-host smoke or the
-  human.
+- **Windows** — `cmake/windows_bundle_dlls.cmake` walks the exe's PE imports
+  transitively (`file(GET_RUNTIME_DEPENDENCIES)` with the toolchain's
+  `objdump`) and copies every DLL resolved outside `%SystemRoot%` next to the
+  exe: the CMake-built DLLs, the MinGW runtime, FFmpeg, and FFmpeg's codec
+  closure (x264/x265/vpx/aom/…). It searches the exe's build dir,
+  `IRREDEN_FFMPEG_ROOT/bin`, then the compiler's `bin/` — never `PATH`. An
+  unresolved import or one DLL name resolving to two files fails the target,
+  and the previous zip is deleted first, so a failed run leaves no archive.
+  The FFmpeg closure dominates the DLL payload: the `IRShapeDebug`
+  debug-preset bundle is ~104 DLLs / ~168 MiB uncompressed (~59 MiB
+  compressed) beside a ~278 MiB debug exe, a ~124 MiB zip. To check a
+  bundle, run `python3 scripts/package-verify.py [--target <target>]`
+  (resolver probe over the built exe plus a closure audit of the unzipped
+  package), then unzip it into an empty directory and run the exe with only
+  `%SystemRoot%\System32;%SystemRoot%` on `PATH`.
+- **macOS** — `cmake/macos_bundle_dylibs.cmake` uses CMake's Mach-O runtime
+  resolver to copy the complete non-system dylib closure next to the exe. It
+  rewrites every non-system load edge and copied install ID to
+  `@loader_path/<leaf>`, removes package-manager-prefix rpaths, and ad-hoc
+  signs each dylib before signing the executable. Unresolved dependencies or
+  conflicting leaf names fail before archive creation. Run
+  `python3 scripts/package-verify.py [--target <target>]` after packaging to
+  exercise the recursive resolver and audit every extracted Mach-O, including
+  signatures, load commands, rpaths, and the transitive-only count.
+
+  A clean-box smoke denies both common Homebrew prefixes while launching the
+  unpacked executable through `fleet-run`; run this from a normal macOS shell
+  because an already-sandboxed process cannot nest `sandbox-exec`:
+
+  ```bash
+  PACKAGE_SMOKE_ROOT="$(mktemp -d)"
+  ditto -x -k build/IRShapeDebug-macos-arm64.zip "$PACKAGE_SMOKE_ROOT"
+  sandbox-exec -p '(version 1) (allow default) (deny file-read* (subpath "/opt/homebrew") (subpath "/usr/local"))' \
+    env -u DYLD_LIBRARY_PATH -u DYLD_FALLBACK_LIBRARY_PATH \
+        -u DYLD_FALLBACK_FRAMEWORK_PATH \
+        fleet-run --build-dir "$PACKAGE_SMOKE_ROOT" \
+          IRShapeDebug --auto-screenshot 10
+  ```
+
+  The required terminal reading is `ir-run: RESULT=CLEAN`; the profile makes
+  any accidental package-manager load fail even on the build host.
 
 Packaging never runs as part of a normal `--target <exe>` build.

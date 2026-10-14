@@ -282,7 +282,7 @@ No partial commits, no orphan PNGs, no leftover stash:
 | On the **default branch** | Refuse. |
 | Demo lacks `--auto-screenshot` | Report; exit without capturing. |
 | Build or run fails in either pass | Restore the stash if mid-before-pass; report; nothing staged. |
-| Headless host | Run tool exits non-zero with an empty save path; report and recommend a host with a display. |
+| Headless host | Run tool exits non-zero with an empty save path; report and recommend a host with a display. On macOS Codex, spell probe switches as pre-executable `fleet-run --env KEY=VALUE <demo> ...` so the allowed fleet-run launcher retains display access. |
 | Shot count mismatch | Report both counts; stage nothing. |
 | Stash apply conflicts | Never force; the entry survives (`apply`, then `drop` only on a clean apply) — recover by SHA from `git stash list`. |
 | Demo lacks auto-record wiring, or `ffmpeg` absent | `CLIP_ENABLED=0`; log and skip the clip only — the PNG flow is unaffected, never a hard failure. |

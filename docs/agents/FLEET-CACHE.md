@@ -127,12 +127,12 @@ elected and refused in that residual shape.
 ### `inflight_pr` on a `tasks_open` row — the open-PR gate
 
 `{number, headRefName, parked, repo}`: an open PR that is this task's own
-implementation, by its `claude/<N>-…` branch, a `Closes #N` in its body, or —
+implementation, by its `claude/<N>-…` or `codex/<N>-…` branch, a `Closes #N` in its body, or —
 the only arm that crosses repos — a PR in the **other** fleet repo whose body
 carries GitHub's `Closes owner/repo#N` naming this repo (`closes_cross_repo`).
 `repo` is the key of the repo the PR lives in; a cross-repo tag means no
 fresh worker on this repo can advance the work, so the dispatcher does not
-elect the task and `fleet-claim claim` refuses it. A `claude/<N>-…` branch or
+elect the task and `fleet-claim claim` refuses it. A `claude/<N>-…` / `codex/<N>-…` branch or
 a bare `Closes #N` in the other repo is that repo's #N and never tags here.
 
 Coverage is the fresh-merge window only: the scout reads the already-cached

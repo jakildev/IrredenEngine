@@ -1,0 +1,1036 @@
+[
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-shadow-yaw0.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "0",
+      "--shadow-overlay",
+      "--terminator-tolerance",
+      "0"
+    ],
+    "exit_code": 1,
+    "metric": {
+      "false_shadow_pixels": 0,
+      "grazing_false_shadow_pixels": 0,
+      "false_shadow_clearance_cells": 0.0,
+      "terminator_tolerance_cells": 0.0,
+      "missed_shadow_pixels": 0,
+      "observed_shadow_pixels": 0,
+      "lit_interior_pixels": 335552,
+      "shadowed_interior_pixels": 0,
+      "backfacing_pixels": 0,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "occlusion_exercised": false,
+      "pass": false,
+      "reason": "fixture has no shadowed interior; occlusion is untested",
+      "occupied_cells": 1724,
+      "tie_cells": 56,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-shadow-yaw0.png",
+      "scope": "resampled_cell_sun",
+      "fixture": "cube",
+      "yaw": 0.0,
+      "palette": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          255,
+          0,
+          255
+        ],
+        [
+          64,
+          64,
+          64
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-shadow-yaw22.5.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "22.5",
+      "--shadow-overlay",
+      "--terminator-tolerance",
+      "0"
+    ],
+    "exit_code": 1,
+    "metric": {
+      "false_shadow_pixels": 0,
+      "grazing_false_shadow_pixels": 0,
+      "false_shadow_clearance_cells": 0.0,
+      "terminator_tolerance_cells": 0.0,
+      "missed_shadow_pixels": 0,
+      "observed_shadow_pixels": 0,
+      "lit_interior_pixels": 321440,
+      "shadowed_interior_pixels": 0,
+      "backfacing_pixels": 0,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "occlusion_exercised": false,
+      "pass": false,
+      "reason": "fixture has no shadowed interior; occlusion is untested",
+      "occupied_cells": 1734,
+      "tie_cells": 67,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-shadow-yaw22.5.png",
+      "scope": "resampled_cell_sun",
+      "fixture": "cube",
+      "yaw": 22.5,
+      "palette": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          255,
+          0,
+          255
+        ],
+        [
+          64,
+          64,
+          64
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-shadow-yaw45.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "45",
+      "--shadow-overlay",
+      "--terminator-tolerance",
+      "0"
+    ],
+    "exit_code": 0,
+    "metric": {
+      "false_shadow_pixels": 0,
+      "grazing_false_shadow_pixels": 0,
+      "false_shadow_clearance_cells": 0.0,
+      "terminator_tolerance_cells": 0.0,
+      "missed_shadow_pixels": 0,
+      "observed_shadow_pixels": 10240,
+      "lit_interior_pixels": 272832,
+      "shadowed_interior_pixels": 7840,
+      "backfacing_pixels": 0,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "occlusion_exercised": true,
+      "pass": true,
+      "occupied_cells": 1716,
+      "tie_cells": 61,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-shadow-yaw45.png",
+      "scope": "resampled_cell_sun",
+      "fixture": "cube",
+      "yaw": 45.0,
+      "palette": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          255,
+          0,
+          255
+        ],
+        [
+          64,
+          64,
+          64
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-upright-shadow-yaw0.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "0",
+      "--shadow-overlay",
+      "--terminator-tolerance",
+      "0",
+      "--upright"
+    ],
+    "exit_code": 1,
+    "metric": {
+      "false_shadow_pixels": 0,
+      "grazing_false_shadow_pixels": 0,
+      "false_shadow_clearance_cells": 0.0,
+      "terminator_tolerance_cells": 0.0,
+      "missed_shadow_pixels": 0,
+      "observed_shadow_pixels": 0,
+      "lit_interior_pixels": 338688,
+      "shadowed_interior_pixels": 0,
+      "backfacing_pixels": 0,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "occlusion_exercised": false,
+      "pass": false,
+      "reason": "fixture has no shadowed interior; occlusion is untested",
+      "occupied_cells": 1728,
+      "tie_cells": 0,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-upright-shadow-yaw0.png",
+      "scope": "resampled_cell_sun",
+      "fixture": "cube",
+      "yaw": 0.0,
+      "palette": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          255,
+          0,
+          255
+        ],
+        [
+          64,
+          64,
+          64
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-upright-shadow-yaw22.5.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "22.5",
+      "--shadow-overlay",
+      "--terminator-tolerance",
+      "0",
+      "--upright"
+    ],
+    "exit_code": 1,
+    "metric": {
+      "false_shadow_pixels": 0,
+      "grazing_false_shadow_pixels": 0,
+      "false_shadow_clearance_cells": 0.0,
+      "terminator_tolerance_cells": 0.0,
+      "missed_shadow_pixels": 0,
+      "observed_shadow_pixels": 0,
+      "lit_interior_pixels": 323792,
+      "shadowed_interior_pixels": 0,
+      "backfacing_pixels": 0,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "occlusion_exercised": false,
+      "pass": false,
+      "reason": "fixture has no shadowed interior; occlusion is untested",
+      "occupied_cells": 1728,
+      "tie_cells": 0,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-upright-shadow-yaw22.5.png",
+      "scope": "resampled_cell_sun",
+      "fixture": "cube",
+      "yaw": 22.5,
+      "palette": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          255,
+          0,
+          255
+        ],
+        [
+          64,
+          64,
+          64
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-upright-shadow-yaw45.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "45",
+      "--shadow-overlay",
+      "--terminator-tolerance",
+      "0",
+      "--upright"
+    ],
+    "exit_code": 1,
+    "metric": {
+      "false_shadow_pixels": 0,
+      "grazing_false_shadow_pixels": 0,
+      "false_shadow_clearance_cells": 0.0,
+      "terminator_tolerance_cells": 0.0,
+      "missed_shadow_pixels": 0,
+      "observed_shadow_pixels": 0,
+      "lit_interior_pixels": 287728,
+      "shadowed_interior_pixels": 0,
+      "backfacing_pixels": 0,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "occlusion_exercised": false,
+      "pass": false,
+      "reason": "fixture has no shadowed interior; occlusion is untested",
+      "occupied_cells": 1728,
+      "tie_cells": 889,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-upright-shadow-yaw45.png",
+      "scope": "resampled_cell_sun",
+      "fixture": "cube",
+      "yaw": 45.0,
+      "palette": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          255,
+          0,
+          255
+        ],
+        [
+          64,
+          64,
+          64
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-normals-yaw90.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "90"
+    ],
+    "exit_code": 0,
+    "metric": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "expected_pixels": 409600,
+      "observed_pixels": 409600,
+      "face_interior_pixels": [
+        135726,
+        124134,
+        113460
+      ],
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "occupied_cells": 1724,
+      "tie_cells": 54,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-normals-yaw90.png",
+      "scope": "resampled_cell_faces",
+      "fixture": "cube",
+      "yaw": 90.0,
+      "palette": [
+        [
+          127,
+          0,
+          128
+        ],
+        [
+          255,
+          127,
+          128
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-shadow-yaw90.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "90",
+      "--shadow-overlay",
+      "--terminator-tolerance",
+      "0"
+    ],
+    "exit_code": 0,
+    "metric": {
+      "false_shadow_pixels": 0,
+      "grazing_false_shadow_pixels": 0,
+      "false_shadow_clearance_cells": 0.0,
+      "terminator_tolerance_cells": 0.0,
+      "missed_shadow_pixels": 0,
+      "observed_shadow_pixels": 45056,
+      "lit_interior_pixels": 173264,
+      "shadowed_interior_pixels": 34496,
+      "backfacing_pixels": 138240,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "occlusion_exercised": true,
+      "pass": true,
+      "occupied_cells": 1724,
+      "tie_cells": 55,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-shadow-yaw90.png",
+      "scope": "resampled_cell_sun",
+      "fixture": "cube",
+      "yaw": 90.0,
+      "palette": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          255,
+          0,
+          255
+        ],
+        [
+          64,
+          64,
+          64
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-normals-yaw135.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "135"
+    ],
+    "exit_code": 0,
+    "metric": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "expected_pixels": 355328,
+      "observed_pixels": 355328,
+      "face_interior_pixels": [
+        109994,
+        113224,
+        91826
+      ],
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "occupied_cells": 1716,
+      "tie_cells": 57,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-normals-yaw135.png",
+      "scope": "resampled_cell_faces",
+      "fixture": "cube",
+      "yaw": 135.0,
+      "palette": [
+        [
+          218,
+          37,
+          128
+        ],
+        [
+          218,
+          218,
+          128
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-shadow-yaw135.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "135",
+      "--shadow-overlay",
+      "--terminator-tolerance",
+      "0"
+    ],
+    "exit_code": 0,
+    "metric": {
+      "false_shadow_pixels": 0,
+      "grazing_false_shadow_pixels": 0,
+      "false_shadow_clearance_cells": 0.0,
+      "terminator_tolerance_cells": 0.0,
+      "missed_shadow_pixels": 0,
+      "observed_shadow_pixels": 112640,
+      "lit_interior_pixels": 90552,
+      "shadowed_interior_pixels": 86240,
+      "backfacing_pixels": 124416,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "occlusion_exercised": true,
+      "pass": true,
+      "occupied_cells": 1716,
+      "tie_cells": 60,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-shadow-yaw135.png",
+      "scope": "resampled_cell_sun",
+      "fixture": "cube",
+      "yaw": 135.0,
+      "palette": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          255,
+          0,
+          255
+        ],
+        [
+          64,
+          64,
+          64
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-normals-yaw180.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "180"
+    ],
+    "exit_code": 0,
+    "metric": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "expected_pixels": 391168,
+      "observed_pixels": 391168,
+      "face_interior_pixels": [
+        116438,
+        122484,
+        117789
+      ],
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "occupied_cells": 1724,
+      "tie_cells": 54,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-normals-yaw180.png",
+      "scope": "resampled_cell_faces",
+      "fixture": "cube",
+      "yaw": 180.0,
+      "palette": [
+        [
+          255,
+          128,
+          128
+        ],
+        [
+          127,
+          255,
+          128
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-shadow-yaw180.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "180",
+      "--shadow-overlay",
+      "--terminator-tolerance",
+      "0"
+    ],
+    "exit_code": 0,
+    "metric": {
+      "false_shadow_pixels": 0,
+      "grazing_false_shadow_pixels": 0,
+      "false_shadow_clearance_cells": 0.0,
+      "terminator_tolerance_cells": 0.0,
+      "missed_shadow_pixels": 0,
+      "observed_shadow_pixels": 65024,
+      "lit_interior_pixels": 50960,
+      "shadowed_interior_pixels": 49784,
+      "backfacing_pixels": 259584,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "occlusion_exercised": true,
+      "pass": true,
+      "occupied_cells": 1724,
+      "tie_cells": 54,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-shadow-yaw180.png",
+      "scope": "resampled_cell_sun",
+      "fixture": "cube",
+      "yaw": 180.0,
+      "palette": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          255,
+          0,
+          255
+        ],
+        [
+          64,
+          64,
+          64
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-normals-yaw225.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "225"
+    ],
+    "exit_code": 0,
+    "metric": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "expected_pixels": 443392,
+      "observed_pixels": 443392,
+      "face_interior_pixels": [
+        136075,
+        132680,
+        128151
+      ],
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "occupied_cells": 1716,
+      "tie_cells": 57,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-normals-yaw225.png",
+      "scope": "resampled_cell_faces",
+      "fixture": "cube",
+      "yaw": 225.0,
+      "palette": [
+        [
+          218,
+          218,
+          128
+        ],
+        [
+          37,
+          218,
+          128
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-shadow-yaw225.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "225",
+      "--shadow-overlay",
+      "--terminator-tolerance",
+      "0"
+    ],
+    "exit_code": 0,
+    "metric": {
+      "false_shadow_pixels": 0,
+      "grazing_false_shadow_pixels": 0,
+      "false_shadow_clearance_cells": 0.0,
+      "terminator_tolerance_cells": 0.0,
+      "missed_shadow_pixels": 0,
+      "observed_shadow_pixels": 37376,
+      "lit_interior_pixels": 81928,
+      "shadowed_interior_pixels": 28616,
+      "backfacing_pixels": 299008,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "occlusion_exercised": true,
+      "pass": true,
+      "occupied_cells": 1716,
+      "tie_cells": 59,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-shadow-yaw225.png",
+      "scope": "resampled_cell_sun",
+      "fixture": "cube",
+      "yaw": 225.0,
+      "palette": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          255,
+          0,
+          255
+        ],
+        [
+          64,
+          64,
+          64
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-normals-yaw270.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "270"
+    ],
+    "exit_code": 0,
+    "metric": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "expected_pixels": 382976,
+      "observed_pixels": 382976,
+      "face_interior_pixels": [
+        132427,
+        97732,
+        121285
+      ],
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "occupied_cells": 1724,
+      "tie_cells": 55,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-normals-yaw270.png",
+      "scope": "resampled_cell_faces",
+      "fixture": "cube",
+      "yaw": 270.0,
+      "palette": [
+        [
+          127,
+          255,
+          128
+        ],
+        [
+          0,
+          127,
+          128
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-shadow-yaw270.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "270",
+      "--shadow-overlay",
+      "--terminator-tolerance",
+      "0"
+    ],
+    "exit_code": 0,
+    "metric": {
+      "false_shadow_pixels": 0,
+      "grazing_false_shadow_pixels": 0,
+      "false_shadow_clearance_cells": 0.0,
+      "terminator_tolerance_cells": 0.0,
+      "missed_shadow_pixels": 0,
+      "observed_shadow_pixels": 41472,
+      "lit_interior_pixels": 154056,
+      "shadowed_interior_pixels": 31752,
+      "backfacing_pixels": 140288,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "occlusion_exercised": true,
+      "pass": true,
+      "occupied_cells": 1724,
+      "tie_cells": 55,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-shadow-yaw270.png",
+      "scope": "resampled_cell_sun",
+      "fixture": "cube",
+      "yaw": 270.0,
+      "palette": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          255,
+          0,
+          255
+        ],
+        [
+          64,
+          64,
+          64
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-normals-yaw315.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "315"
+    ],
+    "exit_code": 0,
+    "metric": {
+      "missing_pixels": 0,
+      "extra_pixels": 0,
+      "wrong_face_pixels": 0,
+      "expected_pixels": 369664,
+      "observed_pixels": 369664,
+      "face_interior_pixels": [
+        99194,
+        114447,
+        114045
+      ],
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "pass": true,
+      "occupied_cells": 1716,
+      "tie_cells": 58,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-normals-yaw315.png",
+      "scope": "resampled_cell_faces",
+      "fixture": "cube",
+      "yaw": 315.0,
+      "palette": [
+        [
+          37,
+          218,
+          128
+        ],
+        [
+          37,
+          37,
+          128
+        ],
+        [
+          128,
+          128,
+          0
+        ]
+      ]
+    }
+  },
+  {
+    "command": [
+      "python3",
+      "scripts/render-revox-face-metric.py",
+      "docs/pr-screenshots/codex/grid-span-surface-proof/revox-shadow-yaw315.png",
+      "--fixture",
+      "cube",
+      "--yaw",
+      "315",
+      "--shadow-overlay",
+      "--terminator-tolerance",
+      "0"
+    ],
+    "exit_code": 0,
+    "metric": {
+      "false_shadow_pixels": 0,
+      "grazing_false_shadow_pixels": 0,
+      "false_shadow_clearance_cells": 0.0,
+      "terminator_tolerance_cells": 0.0,
+      "missed_shadow_pixels": 0,
+      "observed_shadow_pixels": 27136,
+      "lit_interior_pixels": 174440,
+      "shadowed_interior_pixels": 20776,
+      "backfacing_pixels": 114688,
+      "boundary_tolerance_pixels": 1,
+      "registration_pixels": [
+        0,
+        0
+      ],
+      "sufficient_resolution": true,
+      "occlusion_exercised": true,
+      "pass": true,
+      "occupied_cells": 1716,
+      "tie_cells": 61,
+      "clipped": false,
+      "image": "docs/pr-screenshots/codex/grid-span-surface-proof/revox-shadow-yaw315.png",
+      "scope": "resampled_cell_sun",
+      "fixture": "cube",
+      "yaw": 315.0,
+      "palette": [
+        [
+          0,
+          0,
+          0
+        ],
+        [
+          255,
+          0,
+          255
+        ],
+        [
+          64,
+          64,
+          64
+        ]
+      ]
+    }
+  }
+]

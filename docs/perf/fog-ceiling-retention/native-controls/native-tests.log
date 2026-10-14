@@ -1,0 +1,637 @@
+Warning: truncated output (original token count: 20360)
+Total output lines: 801
+
+ir-run: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build/IrredenEngineTest --gtest_filter=FogCrossSection*:FogRevealEval*:LuaFog* --gtest_brief=1 (timeout: 60s) (window mode: background)
+Running main() from /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/build/_deps/googletest-src/googletest/src/gtest_main.cc
+/Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/test/render/fog_cross_section_test.cpp:2735: Skipped
+The FogCrossSection GPU probe targets the OpenGL backend (hidden GL 4.5 context); source parity is covered by FogCrossSectionShaderParity.
+
+[2026-10-13 16:42:42.137] [GLAPILog] [critical] ASSERTION: !frame.rotating_
+	FILE: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/engine/prefabs/irreden/render/fog_line_of_sight.hpp
+	FUNCTION: losColumnPoint(...)
+	LINE: 85
+	ERROR: the cardinal column point needs a cardinal raster frame
+[2026-10-13 16:42:42.138] [GLAPILog] [critical] ASSERTION: registered
+	FILE: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/engine/prefabs/irreden/render/components/component_canvas_fog_of_war.hpp
+	FUNCTION: registeredSource(...)
+	LINE: 914
+	ERROR: setVisionCircleCeiling: source 2 is not a registered vision circle (count 2)
+[2026-10-13 16:42:42.138] [GLAPILog] [critical] ASSERTION: registered
+	FILE: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/engine/prefabs/irreden/render/components/component_canvas_fog_of_war.hpp
+	FUNCTION: registeredSource(...)
+	LINE: 914
+	ERROR: setVisionCircleCeiling: source -1 is not a registered vision circle (count 2)
+[2026-10-13 16:42:42.138] [GLAPILog] [critical] ASSERTION: registered
+	FILE: /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-1/engine/prefabs/irreden/render/components/component_canvas_fog_of_war.hpp
+	FUNCTION: registeredSource(...)
+	LINE: 914
+	ERROR: visionCircleCeiling: source 2 is not a registered vision circle (count 2)
+[2026-10-13 16:42:42.216] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.216] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.217] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-13 16:42:42.217] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-13 16:42:42.217] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=1312 with id=258
+[2026-10-13 16:42:42.217] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-13 16:42:42.217] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-13 16:42:42.217] [EngineLog] [info] Created archetype node with components: [ 256 257 258 ], id=3
+[2026-10-13 16:42:42.217] [EngineLog] [info] Regestered component type=N12IRComponents11C_VoxelPoolE, sizeof=560 with id=260
+[2026-10-13 16:42:42.217] [EngineLog] [info] Regestered component type=N12IRComponents16C_DetachedCanvasE, sizeof=1 with id=261
+[2026-10-13 16:42:42.217] [EngineLog] [info] Created archetype node with components: [ 256 257 260 ], id=4
+[2026-10-13 16:42:42.217] [EngineLog] [info] Created archetype node with components: [ 256 257 260 261 ], id=5
+[2026-10-13 16:42:42.217] [EngineLog] [info] Regestered component type=N12IRComponents19C_FogRevealSettingsE, sizeof=12 with id=262
+[2026-10-13 16:42:42.217] [EngineLog] [info] Created archetype node with components: [ 262 ], id=6
+[2026-10-13 16:42:42.217] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.217] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.217] [EngineLog] [info] Created SystemManager
+[2026-10-13 16:42:42.217] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-13 16:42:42.217] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-13 16:42:42.217] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=1312 with id=258
+[2026-10-13 16:42:42.217] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-13 16:42:42.217] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-13 16:42:42.217] [EngineLog] [info] Created archetype node with components: [ 256 257 258 ], id=3
+[2026-10-13 16:42:42.217] [EngineLog] [info] Regestered component type=N12IRComponents14C_EntityCanvasE, sizeof=32 with id=259
+[2026-10-13 16:42:42.217] [EngineLog] [info] Created archetype node with components: [ 256 257 258 259 ], id=4
+[2026-10-13 16:42:42.217] [EngineLog] [info] Regestered component type=N12IRComponents13C_FogRevealedE, sizeof=12 with id=260
+[2026-10-13 16:42:42.217] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogFieldE, sizeof=1 with id=261
+[2026-10-13 16:42:42.217] [EngineLog] [info] Regestered component type=N12IRComponents11C_FogExemptE, sizeof=1 with id=262
+[2026-10-13 16:42:42.217] [EngineLog] [info] Regestered component type=N12IRComponents11C_VoxelPoolE, sizeof=560 with id=264
+[2026-10-13 16:42:42.217] [EngineLog] [info] Regestered component type=N12IRComponents16C_DetachedCanvasE, sizeof=1 with id=265
+[2026-10-13 16:42:42.217] [EngineLog] [info] Created archetype node with components: [ 256 257 264 ], id=5
+[2026-10-13 16:42:42.217] [EngineLog] [info] Created archetype node with components: [ 256 257 264 265 ], id=6
+[2026-10-13 16:42:42.217] [EngineLog] [info] Created archetype node with components: [ 256 257 259 ], id=7
+[2026-10-13 16:42:42.217] [EngineLog] [info] Regestered component type=N12IRComponents19C_FogRevealSettingsE, sizeof=12 with id=267
+[2026-10-13 16:42:42.217] [EngineLog] [info] Created archetype node with components: [ 267 ], id=8
+[2026-10-13 16:42:42.217] [EngineLog] [info] Created archetype node with components: [ 256 257 259 260 ], id=9
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents13C_VoxelSetNewE, sizeof=192 with id=269
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents17C_ShapeDescriptorE, sizeof=48 with id=270
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogGhostE, sizeof=44 with id=271
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created archetype node with components: [ 256 257 259 261 ], id=10
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created SystemManager
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=1312 with id=258
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created archetype node with components: [ 256 257 258 ], id=3
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents14C_EntityCanvasE, sizeof=32 with id=259
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created archetype node with components: [ 256 257 258 259 ], id=4
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents13C_FogRevealedE, sizeof=12 with id=260
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogFieldE, sizeof=1 with id=261
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents11C_FogExemptE, sizeof=1 with id=262
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents11C_VoxelPoolE, sizeof=560 with id=264
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents16C_DetachedCanvasE, sizeof=1 with id=265
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created archetype node with components: [ 256 257 264 ], id=5
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created archetype node with components: [ 256 257 264 265 ], id=6
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created archetype node with components: [ 256 257 259 ], id=7
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created archetype node with components: [ 256 257 259 261 ], id=8
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents19C_FogRevealSettingsE, sizeof=12 with id=271
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created archetype node with components: [ 271 ], id=9
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created SystemManager
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents11C_VoxelPoolE, sizeof=560 with id=258
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=1312 with id=259
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created archetype node with components: [ 256 257 258 ], id=3
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created archetype node with components: [ 256 257 258 259 ], id=4
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents13C_FogRevealedE, sizeof=12 with id=260
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents13C_VoxelSetNewE, sizeof=192 with id=261
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents11C_FogExemptE, sizeof=1 with id=262
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents17C_ShapeDescriptorE, sizeof=48 with id=263
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents14C_EntityCanvasE, sizeof=32 with id=264
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogFieldE, sizeof=1 with id=265
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogGhostE, sizeof=44 with id=266
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created archetype node with components: [ 256 257 261 ], id=5
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents16C_DetachedCanvasE, sizeof=1 with id=268
+[2026-10-13 16:42:42.218] [EngineLog] [info] Regestered component type=N12IRComponents19C_FogRevealSettingsE, sizeof=12 with id=269
+[2026-10-13 16:42:42.218] [EngineLog] [info] Created archetype node with components: [ 269 ], id=6
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 260 ], id=7
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 260 261 ], id=8
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 258 268 ], id=9
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 260 261 264 ], id=10
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents14C_RotationModeE, sizeof=1 with id=272
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 260 261 264 272 ], id=11
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents12C_CanvasPartE, sizeof=8 with id=274
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 261 272 ], id=12
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 261 272 274 ], id=13
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created SystemManager
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents11C_VoxelPoolE, sizeof=560 with id=258
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=1312 with id=259
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 258 ], id=3
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 258 259 ], id=4
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents13C_FogRevealedE, sizeof=12 with id=260
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents13C_VoxelSetNewE, sizeof=192 with id=261
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents11C_FogExemptE, sizeof=1 with id=262
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents17C_ShapeDescriptorE, sizeof=48 with id=263
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents14C_EntityCanvasE, sizeof=32 with id=264
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogFieldE, sizeof=1 with id=265
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogGhostE, sizeof=44 with id=266
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 261 ], id=5
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents16C_DetachedCanvasE, sizeof=1 with id=268
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents19C_FogRevealSettingsE, sizeof=12 with id=269
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 269 ], id=6
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 260 ], id=7
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 260 261 ], id=8
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 258 268 ], id=9
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 260 261 264 ], id=10
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents14C_RotationModeE, sizeof=1 with id=272
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 260 261 264 272 ], id=11
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created SystemManager
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents11C_VoxelPoolE, sizeof=560 with id=258
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=1312 with id=259
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 258 ], id=3
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 258 259 ], id=4
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents13C_FogRevealedE, sizeof=12 with id=260
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents13C_VoxelSetNewE, sizeof=192 with id=261
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents11C_FogExemptE, sizeof=1 with id=262
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents17C_ShapeDescriptorE, sizeof=48 with id=263
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents14C_EntityCanvasE, sizeof=32 with id=264
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogFieldE, sizeof=1 with id=265
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogGhostE, sizeof=44 with id=266
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 261 ], id=5
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents16C_DetachedCanvasE, sizeof=1 with id=268
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents19C_FogRevealSettingsE, sizeof=12 with id=269
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 269 ], id=6
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 260 ], id=7
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 260 261 ], id=8
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 260 261 266 ], id=9
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 258 268 ], id=10
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 260 261 264 ], id=11
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 260 261 264 266 ], id=12
+[2026-10-13 16:42:42.219] [EngineLog] [info] Regestered component type=N12IRComponents14C_RotationModeE, sizeof=1 with id=272
+[2026-10-13 16:42:42.219] [EngineLog] [info] Created archetype node with components: [ 256 257 260 261 264 266 272 ], id=13
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created SystemManager
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents11C_VoxelPoolE, sizeof=560 with id=258
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=1312 with id=259
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 256 257 258 ], id=3
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 256 257 258 259 ], id=4
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents13C_FogRevealedE, sizeof=12 with id=260
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents13C_VoxelSetNewE, sizeof=192 with id=261
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents11C_FogExemptE, sizeof=1 with id=262
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents17C_ShapeDescriptorE, sizeof=48 with id=263
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents14C_EntityCanvasE, sizeof=32 with id=264
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogFieldE, sizeof=1 with id=265
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogGhostE, sizeof=44 with id=266
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 256 257 261 ], id=5
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents16C_DetachedCanvasE, sizeof=1 with id=268
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents19C_FogRevealSettingsE, sizeof=12 with id=269
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 269 ], id=6
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 256 257 260 ], id=7
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 256 257 260 261 ], id=8
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 256 257 258 268 ], id=9
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 256 257 260 261 264 ], id=10
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents14C_RotationModeE, sizeof=1 with id=272
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 256 257 260 261 264 272 ], id=11
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created SystemManager
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=1312 with id=258
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 256 257 258 ], id=3
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents13C_FogRevealedE, sizeof=12 with id=259
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents17C_ShapeDescriptorE, sizeof=48 with id=260
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents11C_FogExemptE, sizeof=1 with id=261
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogFieldE, sizeof=1 with id=262
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogGhostE, sizeof=44 with id=263
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 256 257 260 ], id=4
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 256 257 260 262 ], id=5
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents19C_FogRevealSettingsE, sizeof=12 with id=266
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 266 ], id=6
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 256 257 259 ], id=7
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 256 257 259 260 ], id=8
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created SystemManager
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=1312 with id=258
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-13 16:42:42.220] [EngineLog] [info] Created archetype node with components: [ 256 257 258 ], id=3
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents13C_FogRevealedE, sizeof=12 with id=259
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents17C_ShapeDescriptorE, sizeof=48 with id=260
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents11C_FogExemptE, sizeof=1 with id=261
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogFieldE, sizeof=1 with id=262
+[2026-10-13 16:42:42.220] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogGhostE, sizeof=44 with id=263
+[2026-10-13 16:42:42.221] [EngineLog] [info] Created archetype node with components: [ 256 257 260 ], id=4
+[2026-10-13 16:42:42.221] [EngineLog] [info] Regestered component type=N12IRComponents19C_FogRevealSettingsE, sizeof=12 with id=265
+[2026-10-13 16:42:42.221] [EngineLog] [info] Created archetype node with components: [ 265 ], id=5
+[2026-10-13 16:42:42.221] [EngineLog] [info] Created archetype node with components: [ 256 257 259 ], id=6
+[2026-10-13 16:42:42.221] [EngineLog] [info] Created archetype node with components: [ 256 257 259 260 ], id=7
+[2026-10-13 16:42:42.221] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.221] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.221] [EngineLog] [info] Created SystemManager
+[2026-10-13 16:42:42.221] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-13 16:42:42.221] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-13 16:42:42.221] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=1312 with id=258
+[2026-10-13 16:42:42.221] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-13 16:42:42.221] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-13 16:42:42.221] [EngineLog] [info] Created archetype node with components: [ 256 257 258 ], id=3
+[2026-10-13 16:42:42.221] [EngineLog] [info] Regestered component type=N12IRComponents13C_FogRevealedE, sizeof=12 with id=259
+[2026-10-13 16:42:42.221] [EngineLog] [info] Regestered component type=N12IRComponents17C_ShapeDescriptorE, sizeof=48 with id=260
+[2026-10-13 16:42:42.221] [EngineLog] [info] Regestered component type=N12IRComponents11C_FogExemptE, sizeof=1 with id=261
+[2026-10-13 16:42:42.221] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogFieldE, sizeof=1 with id=262
+[2026-10-13 16:42:42.221] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogGhostE, sizeof=44 with id=263
+[2026-10-13 16:42:42.222] [EngineLog] [info] Created archetype node with components: [ 256 257 260 ], id=4
+[2026-10-13 16:42:42.222] [EngineLog] [info] Created archetype node with components: [ 256 257 259 ], id=5
+[2026-10-13 16:42:42.222] [EngineLog] [info] Created archetype node with components: [ 256 257 259 260 ], id=6
+[2026-10-13 16:42:42.222] [EngineLog] [info] Regestered component type=N12IRComponents19C_FogRevealSettingsE, sizeof=12 with id=265
+[2026-10-13 16:42:42.222] [EngineLog] [info] Created archetype node with components: [ 265 ], id=7
+[2026-10-13 16:42:42.222] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.222] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.222] [EngineLog] [info] Created SystemManager
+[2026-10-13 16:42:42.222] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-13 16:42:42.222] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-13 16:42:42.222] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=1312 with id=258
+[2026-10-13 16:42:42.222] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-13 16:42:42.222] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-13 16:42:42.222] [EngineLog] [info] Created archetype node with components: [ 256 257 258 ], id=3
+[2026-10-13 16:42:42.222] [EngineLog] [info] Regestered component type=N12IRComponents13C_FogRevealedE, sizeof=12 with id=259
+[2026-10-13 16:42:42.222] [EngineLog] [info] Regestered component type=N12IRComponents17C_ShapeDescriptorE, sizeof=48 with id=260
+[2026-10-13 16:42:42.222] [EngineLog] [info] Regestered component type=N12IRComponents11C_FogExemptE, sizeof=1 with id=261
+[2026-10-13 16:42:42.222] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogFieldE, sizeof=1 with id=262
+[2026-10-13 16:42:42.222] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogGhostE, sizeof=44 with id=263
+[2026-10-13 16:42:42.222] [EngineLog] [info] Created archetype node with components: [ 256 257 260 ], id=4
+[2026-10-13 16:42:42.222] [EngineLog] [info] Regestered component type=N12IRComponents13C_VoxelSetNewE, sizeof=192 with id=265
+[2026-10-13 16:42:42.222] [EngineLog] [info] Regestered component type=N12IRComponents14C_EntityCanvasE, sizeof=32 with id=266
+[2026-10-13 16:42:42.222] [EngineLog] [info] Created archetype node with components: [ 256 257 259 ], id=5
+[2026-10-13 16:42:42.222] [EngineLog] [info] Created archetype node with components: [ 256 257 259 260 ], id=6
+[2026-10-13 16:42:42.222] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.222] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.222] [EngineLog] [info] Created SystemManager
+[2026-10-13 16:42:42.222] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-13 16:42:42.222] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-13 16:42:42.222] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=1312 with id=258
+[2026-10-13 16:42:42.222] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-13 16:42:42.222] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-13 16:42:42.222] [EngineLog…4360 tokens truncated…-10-13 16:42:42.232] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.232] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.232] [EngineLog] [info] Created SystemManager
+[2026-10-13 16:42:42.233] [ClientLog] [info] Registering lua type C_FogRevealed
+[2026-10-13 16:42:42.233] [EngineLog] [info] Regestered component type=N12IRComponents13C_FogRevealedE, sizeof=12 with id=255
+[2026-10-13 16:42:42.233] [ClientLog] [info] Registering lua type C_FogField
+[2026-10-13 16:42:42.233] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogFieldE, sizeof=1 with id=256
+[2026-10-13 16:42:42.233] [ClientLog] [info] Registering lua type C_FogExempt
+[2026-10-13 16:42:42.233] [EngineLog] [info] Regestered component type=N12IRComponents11C_FogExemptE, sizeof=1 with id=257
+[2026-10-13 16:42:42.233] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=259
+[2026-10-13 16:42:42.233] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=260
+[2026-10-13 16:42:42.233] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=1312 with id=261
+[2026-10-13 16:42:42.233] [EngineLog] [info] Created archetype node with components: [ 259 ], id=1
+[2026-10-13 16:42:42.233] [EngineLog] [info] Created archetype node with components: [ 259 260 ], id=2
+[2026-10-13 16:42:42.233] [EngineLog] [info] Created archetype node with components: [ 259 260 261 ], id=3
+[2026-10-13 16:42:42.233] [EngineLog] [info] Regestered component type=N12IRComponents17C_ShapeDescriptorE, sizeof=48 with id=262
+[2026-10-13 16:42:42.233] [ClientLog] [info] Registering lua type C_ShapeDescriptor
+[2026-10-13 16:42:42.233] [EngineLog] [info] Created archetype node with components: [ 257 ], id=4
+[2026-10-13 16:42:42.233] [EngineLog] [info] Created archetype node with components: [ 257 259 ], id=5
+[2026-10-13 16:42:42.233] [EngineLog] [info] Created archetype node with components: [ 257 259 260 ], id=6
+[2026-10-13 16:42:42.233] [EngineLog] [info] Created archetype node with components: [ 257 259 260 262 ], id=7
+[2026-10-13 16:42:42.233] [EngineLog] [info] Created archetype node with components: [ 259 260 262 ], id=8
+[2026-10-13 16:42:42.233] [EngineLog] [info] Regestered component type=N12IRComponents19C_FogRevealSettingsE, sizeof=12 with id=265
+[2026-10-13 16:42:42.233] [EngineLog] [info] Created archetype node with components: [ 265 ], id=9
+[2026-10-13 16:42:42.233] [EngineLog] [info] Created archetype node with components: [ 255 ], id=10
+[2026-10-13 16:42:42.233] [EngineLog] [info] Created archetype node with components: [ 255 259 ], id=11
+[2026-10-13 16:42:42.233] [EngineLog] [info] Created archetype node with components: [ 255 259 260 ], id=12
+[2026-10-13 16:42:42.233] [EngineLog] [info] Created archetype node with components: [ 255 259 260 262 ], id=13
+[2026-10-13 16:42:42.233] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.233] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.233] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.233] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.233] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.233] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.233] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.233] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.233] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[sol2] An exception occurred: IRFog.setExploredPolicy expects 2 to 3 arguments, got 0
+[sol2] An exception occurred: IRFog.setExploredPolicy expects 2 to 3 arguments, got 1
+[sol2] An exception occurred: IRFog.setExploredPolicy expects 2 to 3 arguments, got 4
+[sol2] An exception occurred: IRFog.setExploredPolicy argument 1 must be an IRFog.ExploredPolicy value
+[sol2] An exception occurred: IRFog.setExploredPolicy argument 1 must be an IRFog.ExploredPolicy value
+[sol2] An exception occurred: IRFog.setExploredPolicy argument 1 must be an IRFog.ExploredPolicy value
+[sol2] An exception occurred: IRFog.setExploredPolicy argument 2 must be positive for DECAY
+[sol2] An exception occurred: IRFog.setExploredPolicy argument 2 must be in [0, 2^53 - 1] milliseconds
+[sol2] An exception occurred: IRFog.setExploredPolicy argument 2 must be an integer
+[sol2] An exception occurred: IRFog.setExploredPolicy argument 2 must be finite
+[sol2] An exception occurred: IRFog.setExploredPolicy argument 2 must be finite
+[sol2] An exception occurred: IRFog.setExploredPolicy argument 2 must be in [0, 2^53 - 1] milliseconds
+[sol2] An exception occurred: IRFog.setExploredPolicy argument 3 is outside uint32 range
+[sol2] An exception occurred: IRFog.setExploredPolicy argument 3 is outside uint32 range
+[sol2] An exception occurred: IRFog.setExploredPolicy argument 3 must be a number
+[sol2] An exception occurred: IRFog.getExploredPolicy expects 0 arguments, got 1
+[sol2] An exception occurred: IRFog.setExploredTimeMs expects 1 arguments, got 0
+[sol2] An exception occurred: IRFog.setExploredTimeMs expects 1 arguments, got 2
+[sol2] An exception occurred: IRFog.setExploredTimeMs argument 1 must be in [0, 2^53 - 1] milliseconds
+[sol2] An exception occurred: IRFog.setExploredTimeMs argument 1 must be an integer
+[sol2] An exception occurred: IRFog.setExploredTimeMs argument 1 must be finite
+[sol2] An exception occurred: IRFog.setExploredTimeMs argument 1 must be finite
+[sol2] An exception occurred: IRFog.setExploredTimeMs argument 1 must be in [0, 2^53 - 1] milliseconds
+[sol2] An exception occurred: IRFog.setExploredTimeMs argument 1 must be a number
+[sol2] An exception occurred: IRFog.getExploredTimeMs expects 0 arguments, got 1
+[sol2] An exception occurred: IRFog.setCellChannels expects 3 arguments, got 2
+[sol2] An exception occurred: IRFog.setCellChannels expects 3 arguments, got 4
+[sol2] An exception occurred: IRFog.setCellChannels argument 3 is outside uint32 range
+[sol2] An exception occurred: IRFog.setCellChannels argument 3 is outside uint32 range
+[sol2] An exception occurred: IRFog.setCellChannels argument 3 must be an integer
+[sol2] An exception occurred: IRFog.setCellChannels argument 1 must be an integer
+[sol2] An exception occurred: IRFog.getCellChannels expects 2 arguments, got 1
+[sol2] An exception occurred: IRFog.getCellChannels expects 2 arguments, got 3
+[sol2] An exception occurred: IRFog.getCellChannels argument 1 must be a number
+[sol2] An exception occurred: IRFog.exploreRadius expects 3 to 4 arguments, got 2
+[sol2] An exception occurred: IRFog.exploreRadius expects 3 to 4 arguments, got 5
+[sol2] An exception occurred: IRFog.exploreRadius arguments overflow integer bounds
+[sol2] An exception occurred: IRFog.exploreRadius argument 4 is outside uint32 range
+[sol2] An exception occurred: IRFog.exploreRadius argument 4 is outside uint32 range
+[sol2] An exception occurred: IRFog.exploreRadius argument 3 must be a number
+[sol2] An exception occurred: IRFog.setExploredPolicy argument 1 must be an IRFog.ExploredPolicy value
+[sol2] An exception occurred: IRFog.setExploredPolicy argument 2 must be in [0, 2^53 - 1] milliseconds
+[sol2] An exception occurred: IRFog.setExploredPolicy argument 2 must be positive for DECAY
+[sol2] An exception occurred: IRFog.setExploredTimeMs argument 1 must be an integer
+[sol2] An exception occurred: IRFog.setCellChannels argument 3 is outside uint32 range
+[sol2] An exception occurred: IRFog.exploreRadius arguments overflow integer bounds
+[2026-10-13 16:42:42.235] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.235] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.235] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.235] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.235] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.235] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.235] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.235] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.235] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.235] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[sol2] An exception occurred: IRFog.setVisionCeiling argument 3 must not be negative
+[sol2] An exception occurred: IRFog.setRevealSurfaceTreatment argument 1 must be in [0, 1]
+[2026-10-13 16:42:42.235] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.235] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.235] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.235] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-13 16:42:42.235] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-13 16:42:42.235] [EngineLog] [info] Regestered component type=N12IRComponents13C_FogRevealedE, sizeof=12 with id=258
+[2026-10-13 16:42:42.235] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-13 16:42:42.235] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-13 16:42:42.235] [EngineLog] [info] Created archetype node with components: [ 256 257 258 ], id=3
+[2026-10-13 16:42:42.235] [EngineLog] [info] Regestered component type=N12IRComponents13C_VoxelSetNewE, sizeof=192 with id=260
+[2026-10-13 16:42:42.235] [EngineLog] [info] Regestered component type=N12IRComponents17C_ShapeDescriptorE, sizeof=48 with id=261
+[2026-10-13 16:42:42.235] [EngineLog] [info] Regestered component type=N12IRComponents14C_EntityCanvasE, sizeof=32 with id=262
+[2026-10-13 16:42:42.235] [EngineLog] [info] Regestered component type=N12IRComponents11C_FogExemptE, sizeof=1 with id=263
+[2026-10-13 16:42:42.235] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogFieldE, sizeof=1 with id=264
+[2026-10-13 16:42:42.235] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogGhostE, sizeof=44 with id=265
+[2026-10-13 16:42:42.235] [EngineLog] [info] Created archetype node with components: [ 256 257 264 ], id=4
+[2026-10-13 16:42:42.235] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.235] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.235] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[sol2] An exception occurred: IRFog.setVision expects 3 to 9 arguments, got 2
+[sol2] An exception occurred: IRFog.setVision expects 3 to 9 arguments, got 10
+[sol2] An exception occurred: IRFog.addVision argument 1 must be a number
+[sol2] An exception occurred: IRFog.addVision expects 3 to 9 arguments, got 2
+[sol2] An exception occurred: IRFog.addVision expects 3 to 9 arguments, got 10
+[sol2] An exception occurred: IRFog.clearVisions expects 0 arguments, got 1
+[sol2] An exception occurred: IRFog.evalReveal expects 3 to 4 arguments, got 2
+[sol2] An exception occurred: IRFog.evalReveal argument 2 must be a number
+[sol2] An exception occurred: IRFog.evalReveal expects 3 to 4 arguments, got 5
+[sol2] An exception occurred: IRFog.evalRevealSurface expects 3 to 4 arguments, got 2
+[sol2] An exception occurred: IRFog.evalRevealSurface argument 2 must be a number
+[sol2] An exception occurred: IRFog.evalRevealSurface argument 3 must be finite
+[sol2] An exception occurred: IRFog.evalRevealSurface expects 3 to 4 arguments, got 5
+[sol2] An exception occurred: IRFog.evalRevealFace expects 4 to 5 arguments, got 3
+[sol2] An exception occurred: IRFog.evalRevealFace expects 4 to 5 arguments, got 6
+[sol2] An exception occurred: IRFog.evalRevealFace argument 1 must be a number
+[sol2] An exception occurred: IRFog.evalRevealFace argument 3 must be finite
+[sol2] An exception occurred: IRFog.evalRevealFace argument 4 must be an IRFog.Face value
+[sol2] An exception occurred: IRFog.evalRevealFace argument 4 must be an IRFog.Face value
+[sol2] An exception occurred: IRFog.evalRevealFace argument 4 must be an IRFog.Face value
+[sol2] An exception occurred: IRFog.evalRevealFace argument 4 must be an IRFog.Face value
+[sol2] An exception occurred: IRFog.evalRevealFace argument 4 must be an IRFog.Face value
+[sol2] An exception occurred: IRFog.evalRevealFace argument 4 must be an IRFog.Face value
+[sol2] An exception occurred: IRFog.lineOfSight expects 6 arguments, got 5
+[sol2] An exception occurred: IRFog.lineOfSight argument 6 must be a number
+[sol2] An exception occurred: IRFog.lineOfSight expects 6 arguments, got 7
+[sol2] An exception occurred: IRFog.captureLineOfSight expects 0 arguments, got 1
+[sol2] An exception occurred: IRFog.lineOfSightCaptured expects 4 arguments, got 3
+[sol2] An exception occurred: IRFog.lineOfSightCaptured expects 4 arguments, got 5
+[sol2] An exception occurred: IRFog.lineOfSightCaptured argument 1 must be a number
+[sol2] An exception occurred: IRFog.lineOfSightCaptured argument 3 must be finite
+[sol2] An exception occurred: IRFog.lineOfSightCaptured argument 4 must be a table
+[sol2] An exception occurred: IRFog.lineOfSightCaptured argument 4 length must be a multiple of 3, got 2
+[sol2] An exception occurred: IRFog.lineOfSightCaptured argument 4 element 3 must be a number
+[sol2] An exception occurred: IRFog.lineOfSightCaptured argument 4 element 3 must be finite
+[sol2] An exception occurred: IRFog.setEntityGoverned expects 1 to 2 arguments, got 0
+[sol2] An exception occurred: IRFog.setEntityGoverned argument 1 must be a number
+[sol2] An exception occurred: IRFog.setEntityGoverned expects 1 to 2 arguments, got 3
+[sol2] An exception occurred: IRFog.getEntityReveal expects 1 arguments, got 0
+[sol2] An exception occurred: IRFog.getEntityReveal expects 1 arguments, got 2
+[sol2] An exception occurred: IRFog.setCell argument 1 must be an integer
+[sol2] An exception occurred: IRFog.setCell argument 3 must be an IRFog.State value
+[sol2] An exception occurred: IRFog.setCell expects 3 arguments, got 2
+[sol2] An exception occurred: IRFog.setCell expects 3 arguments, got 4
+[sol2] An exception occurred: IRFog.getCell argument 1 must be a number
+[sol2] An exception occurred: IRFog.getCell expects 2 arguments, got 1
+[sol2] An exception occurred: IRFog.getCell expects 2 arguments, got 3
+[sol2] An exception occurred: IRFog.revealRadius arguments overflow integer bounds
+[sol2] An exception occurred: IRFog.revealRadius expects 3 to 4 arguments, got 2
+[sol2] An exception occurred: IRFog.revealRadius argument 3 must be a number
+[sol2] An exception occurred: IRFog.revealRadius expects 3 to 4 arguments, got 5
+[sol2] An exception occurred: IRFog.revealRadius argument 4 is outside uint32 range
+[sol2] An exception occurred: IRFog.revealRadius argument 4 must be an integer
+[sol2] An exception occurred: IRFog.clear expects 0 arguments, got 1
+[sol2] An exception occurred: IRFog.setVision argument 3 must be finite
+[sol2] An exception occurred: IRFog.addVision argument 3 must be finite
+[sol2] An exception occurred: IRFog.setEntityGoverned argument 1 is not a live entity
+[sol2] An exception occurred: IRFog.getEntityReveal argument 1 is outside the exact entity-id range
+[sol2] An exception occurred: IRFog.setVisionLineOfSight expects 2 to 3 arguments, got 1
+[sol2] An exception occurred: IRFog.setVisionLineOfSight expects 2 to 3 arguments, got 4
+[sol2] An exception occurred: IRFog.setVisionLineOfSight argument 1 must be a number
+[sol2] An exception occurred: IRFog.setVisionLineOfSight argument 1 must be an integer
+[sol2] An exception occurred: IRFog.setVisionLineOfSight argument 2 must be a number
+[sol2] An exception occurred: IRFog.setVisionLineOfSight argument 3 must be a number
+[sol2] An exception occurred: IRFog.setCell argument 3 must be an IRFog.State value
+[sol2] An exception occurred: IRFog.revealRadius argument 3 must be a number
+[sol2] An exception occurred: IRFog.evalReveal argument 2 must be a number
+[sol2] An exception occurred: IRFog.evalRevealSurface argument 2 must be a number
+[sol2] An exception occurred: IRFog.evalRevealFace argument 3 must be finite
+[sol2] An exception occurred: IRFog.evalRevealFace argument 4 must be an IRFog.Face value
+[sol2] An exception occurred: IRFog.evalRevealFace argument 4 must be an IRFog.Face value
+[sol2] An exception occurred: IRFog.evalRevealFace argument 4 must be an IRFog.Face value
+[sol2] An exception occurred: IRFog.lineOfSightCaptured argument 4 length must be a multiple of 3, got 2
+[sol2] An exception occurred: IRFog.lineOfSightCaptured argument 4 element 5 must be a number
+[2026-10-13 16:42:42.238] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.238] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.238] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[sol2] An exception occurred: IRFog.setVision argument 4 must be a number
+[sol2] An exception occurred: IRFog.setVision argument 5 must be a number
+[sol2] An exception occurred: IRFog.addVision argument 6 must be a number
+[sol2] An exception occurred: IRFog.addVision argument 7 must be a number
+[sol2] An exception occurred: IRFog.addVision argument 8 must be a number
+[sol2] An exception occurred: IRFog.addVision argument 9 must be a number
+[sol2] An exception occurred: IRFog.addVision argument 9 is outside uint32 range
+[sol2] An exception occurred: IRFog.evalReveal argument 4 must be an integer
+[sol2] An exception occurred: IRFog.evalRevealSurface argument 4 must be an integer
+[sol2] An exception occurred: IRFog.evalRevealSurface argument 4 must be a number
+[sol2] An exception occurred: IRFog.evalRevealFace argument 5 must be an integer
+[sol2] An exception occurred: IRFog.evalRevealFace argument 5 is outside uint32 range
+[2026-10-13 16:42:42.238] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.238] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.238] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.238] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-13 16:42:42.238] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-13 16:42:42.238] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-13 16:42:42.238] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-13 16:42:42.238] [EngineLog] [info] Regestered component type=N12IRComponents11C_FogExemptE, sizeof=1 with id=258
+[2026-10-13 16:42:42.238] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogFieldE, sizeof=1 with id=259
+[2026-10-13 16:42:42.238] [EngineLog] [info] Regestered component type=N12IRComponents13C_VoxelSetNewE, sizeof=192 with id=260
+[2026-10-13 16:42:42.238] [EngineLog] [info] Regestered component type=N12IRComponents17C_ShapeDescriptorE, sizeof=48 with id=261
+[2026-10-13 16:42:42.238] [EngineLog] [info] Regestered component type=N12IRComponents14C_EntityCanvasE, sizeof=32 with id=262
+[2026-10-13 16:42:42.238] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogGhostE, sizeof=44 with id=263
+[2026-10-13 16:42:42.238] [EngineLog] [info] Regestered component type=N12IRComponents13C_FogRevealedE, sizeof=12 with id=264
+[2026-10-13 16:42:42.238] [EngineLog] [info] Created archetype node with components: [ 256 257 259 ], id=3
+[2026-10-13 16:42:42.238] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.238] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.238] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.239] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.239] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.239] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.239] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.239] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.239] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.239] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.239] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.239] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.239] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.239] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.239] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.239] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.239] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.239] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.239] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[sol2] An exception occurred: IRFog.setVisionLineOfSight argument 1 is not a registered vision slot (count 1)
+[sol2] An exception occurred: IRFog.setVisionLineOfSight argument 1 is not a registered vision slot (count 1)
+[sol2] An exception occurred: IRFog.setVisionLineOfSight argument 1 is not a registered vision slot (count 1)
+[sol2] An exception occurred: IRFog.setVisionLineOfSight argument 2 must be a number
+[sol2] An exception occurred: IRFog.setVisionLineOfSight argument 3 must be a number
+[2026-10-13 16:42:42.239] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.239] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.239] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.239] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.239] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.239] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[sol2] An exception occurred: IRFog.setVisionCeiling argument 1 is not a registered vision slot (count 1)
+[sol2] An exception occurred: IRFog.setVisionCeiling argument 1 is not a registered vision slot (count 1)
+[sol2] An exception occurred: IRFog.setVisionCeiling argument 2 must be a number
+[sol2] An exception occurred: IRFog.setVisionCeiling argument 2 must be finite
+[sol2] An exception occurred: IRFog.setVisionCeiling argument 2 must be finite
+[sol2] An exception occurred: IRFog.setVisionCeiling argument 3 must not be negative
+[sol2] An exception occurred: IRFog.setVisionCeiling argument 3 must be finite
+[sol2] An exception occurred: IRFog.setVisionCeiling expects 2 to 3 arguments, got 1
+[sol2] An exception occurred: IRFog.getVisionCeiling argument 1 is not a registered vision slot (count 1)
+[sol2] An exception occurred: IRFog.getVisionCeiling expects 1 arguments, got 0
+[2026-10-13 16:42:42.240] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.240] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.240] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[sol2] An exception occurred: IRFog.setRevealSurfaceTreatment argument 1 must be in [0, 1]
+[sol2] An exception occurred: IRFog.setRevealSurfaceTreatment argument 1 must be in [0, 1]
+[sol2] An exception occurred: IRFog.setRevealSurfaceTreatment argument 2 must be in [0, 1]
+[sol2] An exception occurred: IRFog.setRevealSurfaceTreatment argument 1 must be finite
+[sol2] An exception occurred: IRFog.setRevealSurfaceTreatment argument 1 must be a number
+[sol2] An exception occurred: IRFog.setRevealSurfaceTreatment argument 2 must be a number
+[sol2] An exception occurred: IRFog.setRevealSurfaceTreatment expects 1 to 2 arguments, got 0
+[sol2] An exception occurred: IRFog.getRevealSurfaceTreatment expects 0 arguments, got 1
+[sol2] An exception occurred: IRFog.clearRevealSurfaceTreatment expects 0 arguments, got 1
+[2026-10-13 16:42:42.240] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.240] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.240] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[sol2] An exception occurred: IRFog.setRevealSurfacePhase argument 1 must be finite
+[sol2] An exception occurred: IRFog.setRevealSurfacePhase argument 1 must be finite
+[sol2] An exception occurred: IRFog.setRevealSurfacePhase argument 1 must be a number
+[sol2] An exception occurred: IRFog.setRevealSurfacePhase expects 1 arguments, got 0
+[sol2] An exception occurred: IRFog.getRevealSurfacePhase expects 0 arguments, got 1
+[2026-10-13 16:42:42.240] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.240] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.240] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.240] [EngineLog] [info] Created SystemManager
+[2026-10-13 16:42:42.240] [EngineLog] [info] Regestered component type=N12IRComponents11C_VoxelPoolE, sizeof=560 with id=255
+[2026-10-13 16:42:42.240] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=1312 with id=256
+[2026-10-13 16:42:42.240] [EngineLog] [info] Regestered component type=N12IRComponents28C_TrixelCanvasRenderBehaviorE, sizeof=24 with id=257
+[2026-10-13 16:42:42.240] [EngineLog] [info] Regestered component type=N12IRComponents24C_TriangleCanvasTexturesE, sizeof=408 with id=258
+[2026-10-13 16:42:42.241] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created SystemManager
+[2026-10-13 16:42:42.241] [EngineLog] [info] Regestered component type=N12IRComponents13C_FogRevealedE, sizeof=12 with id=255
+[2026-10-13 16:42:42.241] [EngineLog] [info] Regestered component type=N12IRComponents13C_VoxelSetNewE, sizeof=192 with id=256
+[2026-10-13 16:42:42.241] [EngineLog] [info] Regestered component type=N12IRComponents11C_FogExemptE, sizeof=1 with id=257
+[2026-10-13 16:42:42.241] [EngineLog] [info] Regestered component type=N12IRComponents17C_ShapeDescriptorE, sizeof=48 with id=258
+[2026-10-13 16:42:42.241] [EngineLog] [info] Regestered component type=N12IRComponents14C_EntityCanvasE, sizeof=32 with id=259
+[2026-10-13 16:42:42.241] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogFieldE, sizeof=1 with id=260
+[2026-10-13 16:42:42.241] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=261
+[2026-10-13 16:42:42.241] [EngineLog] [info] Regestered component type=N12IRComponents10C_FogGhostE, sizeof=44 with id=262
+[2026-10-13 16:42:42.241] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.241] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-13 16:42:42.241] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-13 16:42:42.241] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=1312 with id=258
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created archetype node with components: [ 256 257 258 ], id=3
+[sol2] An exception occurred: IRFog.setExploredTimeMs argument 1 must not move the clock backwards
+[sol2] An exception occurred: IRFog.setExploredPolicy refused: the policy is initialization-only and the field already holds cells
+[sol2] An exception occurred: IRFog.setExploredPolicy refused: the policy is initialization-only and the field already holds cells
+[2026-10-13 16:42:42.241] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.241] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-13 16:42:42.241] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-13 16:42:42.241] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=1312 with id=258
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created archetype node with components: [ 256 257 258 ], id=3
+[2026-10-13 16:42:42.241] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.241] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-13 16:42:42.241] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-13 16:42:42.241] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=1312 with id=258
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created archetype node with components: [ 256 257 258 ], id=3
+[2026-10-13 16:42:42.241] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created archetype node with components: [ ], id=0
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created EntityManager (IR_MAX_ENTITIES=33554431)
+[2026-10-13 16:42:42.241] [EngineLog] [info] Regestered component type=N12IRComponents16C_LocalTransformE, sizeof=44 with id=256
+[2026-10-13 16:42:42.241] [EngineLog] [info] Regestered component type=N12IRComponents16C_WorldTransformE, sizeof=40 with id=257
+[2026-10-13 16:42:42.241] [EngineLog] [info] Regestered component type=N12IRComponents16C_CanvasFogOfWarE, sizeof=1312 with id=258
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created archetype node with components: [ 256 ], id=1
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created archetype node with components: [ 256 257 ], id=2
+[2026-10-13 16:42:42.241] [EngineLog] [info] Created archetype node with components: [ 256 257 258 ], id=3
+[2026-10-13 16:42:42.242] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.242] [ClientLog] [info] Registering lua type LuaEntity
+[2026-10-13 16:42:42.242] [ClientLog] [info] Registering lua type LuaEntity
+[==========] 126 tests from 15 test suites ran. (231 ms total)
+[  PASSED  ] 125 tests.
+[  SKIPPED ] 1 test.
+ir-run: IrredenEngineTest exited cleanly after 1s
+ir-run: RESULT=CLEAN exe=IrredenEngineTest exit=0

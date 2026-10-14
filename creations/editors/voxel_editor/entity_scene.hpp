@@ -4,6 +4,7 @@
 #include <irreden/asset/voxel_set_format.hpp>
 #include <irreden/common/components/component_local_transform.hpp>
 #include <irreden/common/components/component_rotation_mode.hpp>
+#include <irreden/common/components/entity_anchor.hpp>
 #include <irreden/common/rotation_mode.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/render/components/component_gizmo_handle.hpp>
@@ -14,6 +15,7 @@
 #include <irreden/voxel/components/component_shape_descriptor.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
 #include <irreden/voxel/dense_bridge.hpp>
+#include <irreden/voxel/grid_rotation.hpp>
 
 #include "component_records.hpp"
 
@@ -26,6 +28,7 @@
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace IRVoxelEditor {
@@ -58,6 +61,87 @@ struct EntitySceneResult {
 struct EntitySceneCloneResult {
     std::vector<IREntity::EntityId> entities_;
     std::string error_;
+};
+
+using EntityScenePartPayload =
+    std::variant<IRAsset::DenseVoxelSet, IRComponents::C_ShapeDescriptor>;
+
+struct RemovedEditorPart {
+    EditorPart part_;
+    std::size_t index_ = 0;
+    IRComponents::C_LocalTransform transform_;
+    EntityScenePartPayload payload_;
+    IRComponents::EntityAnchor voxelAnchor_ = IRComponents::EntityAnchor::CORNER;
+
+    std::size_t byteSize() const {
+        std::size_t bytes = sizeof(RemovedEditorPart) + part_.id_.size();
+        for (const ComponentRecord &component : part_.components_) {
+            bytes += sizeof(ComponentRecord) + component.name_.size() + component.overrides_.size();
+            for (const ComponentField &field : component.fields_) {
+                bytes += sizeof(ComponentField) + field.name_.size();
+                if (const auto *text = std::get_if<std::string>(&field.value_)) {
+                    bytes += text->size();
+                }
+            }
+        }
+        if (const auto *dense = std::get_if<IRAsset::DenseVoxelSet>(&payload_)) {
+            bytes += dense->voxels_.size() * sizeof(IRAsset::VoxelRecord);
+            bytes += dense->layers_.size() * sizeof(IRAsset::LayerInfo);
+            bytes += dense->frames_.size() * sizeof(IRAsset::FramePose);
+            bytes += dense->meta_.size() * sizeof(IRAsset::MetaEntry);
+            for (const IRAsset::LayerInfo &layer : dense->layers_) {
+                bytes += layer.name_.size() + layer.bitmask_.size() * sizeof(std::uint64_t);
+            }
+            for (const IRAsset::FramePose &frame : dense->frames_) {
+                bytes += frame.offsets_.size() * sizeof(IRMath::vec3);
+            }
+            for (const IRAsset::MetaEntry &entry : dense->meta_) {
+                bytes += entry.key_.size() + entry.value_.size();
+            }
+        }
+        return bytes;
+    }
+};
+
+// Local position, relative to the translation, of cell (0,0,0) of a set of
+// @p size whose integer bounds start at @p boundsMin. CORNER keeps the authored
+// bounds; any other anchor fixes the origin from the extent, which integer
+// bounds cannot carry.
+inline IRMath::vec3 anchoredLocalOrigin(
+    IRComponents::EntityAnchor anchor, IRMath::ivec3 boundsMin, IRMath::ivec3 size
+) {
+    return anchor == IRComponents::EntityAnchor::CORNER ? IRMath::vec3(boundsMin)
+                                                        : IRComponents::anchorOffset(anchor, size);
+}
+
+inline IRMath::vec3 voxelSetLocalOrigin(const IRComponents::C_VoxelSetNew &set) {
+    return anchoredLocalOrigin(set.anchor_, set.localOriginMin(), set.size_);
+}
+
+// True when a box of @p size cells whose cell (0,0,0) sits at @p origin is
+// centred on the local origin: the quantity REBUILD_DETACHED_VOXELS asserts of
+// a re-voxelize pool, so a part may enter DETACHED_REVOXELIZE only when this
+// holds for its set. An empty box is centred.
+inline bool boxIsCenteredOnOrigin(IRMath::vec3 origin, IRMath::ivec3 size) {
+    if (size.x <= 0 || size.y <= 0 || size.z <= 0) {
+        return true;
+    }
+    return IRPrefab::GridRotation::poolIsOriginCentered(2, [&](int corner) {
+        return corner == 0 ? origin : origin + IRMath::vec3(size - IRMath::ivec3(1));
+    });
+}
+
+inline bool voxelSetIsCentered(const IRComponents::C_VoxelSetNew &set) {
+    return boxIsCenteredOnOrigin(voxelSetLocalOrigin(set), set.size_);
+}
+
+struct EntitySceneRestoreResult {
+    IREntity::EntityId entity_ = IREntity::kNullEntity;
+    std::string error_;
+
+    bool ok() const {
+        return entity_ != IREntity::kNullEntity;
+    }
 };
 
 class EntityScene {
@@ -158,8 +242,8 @@ class EntityScene {
     IREntity::EntityId addVoxelPart(
         IRMath::ivec3 size,
         IRMath::vec3 translation,
-        IRMath::Color color = IRMath::Color{200, 200, 210, 255},
-        bool centerAroundOrigin = false
+        IRComponents::EntityAnchor anchor,
+        IRMath::Color color = IRMath::Color{200, 200, 210, 255}
     ) {
         if (!active()) {
             begin();
@@ -167,7 +251,7 @@ class EntityScene {
         const std::string id = "part_" + std::to_string(m_nextPartId++);
         const IREntity::EntityId entity = IREntity::createEntity(
             IRComponents::C_LocalTransform{translation},
-            IRComponents::C_VoxelSetNew{size, color, centerAroundOrigin},
+            IRComponents::C_VoxelSetNew{size, color, anchor},
             IRComponents::C_RotationMode{IRComponents::RotationMode::GRID}
         );
         return appendPart(entity, id, EditorPartKind::VOXEL_SET);
@@ -263,7 +347,10 @@ class EntityScene {
                     IREntity::getComponent<IRComponents::C_VoxelSetNew>(source.entity_);
                 entity = IREntity::createEntity(
                     transform,
-                    IRPrefab::DenseVoxel::toComponent(IRPrefab::DenseVoxel::fromComponent(set)),
+                    IRPrefab::DenseVoxel::toComponent(
+                        IRPrefab::DenseVoxel::fromComponent(set),
+                        set.anchor_
+                    ),
                     IRComponents::C_RotationMode{source.mode_}
                 );
             }
@@ -284,7 +371,7 @@ class EntityScene {
             };
             applyBand(clone);
             applyTierOverride(entity);
-            stageRotationModeReconcile(entity, source.mode_);
+            stageRotationModeReconcile(entity, source.mode_, source.canvasSize_);
             for (ComponentRecord &component : clone.components_) {
                 if (const auto error = applyComponentRecord(script, entity, component)) {
                     IREntity::destroyEntity(entity);
@@ -309,6 +396,9 @@ class EntityScene {
     }
 
     void removeParts(const std::vector<IREntity::EntityId> &entities) {
+        if (std::find(entities.begin(), entities.end(), m_previewSourceEntity) != entities.end()) {
+            destroyPreview();
+        }
         destroySelectionGizmos();
         for (IREntity::EntityId entity : entities) {
             if (IREntity::entityExists(entity)) {
@@ -331,6 +421,72 @@ class EntityScene {
                          : IRMath::clamp(m_selected, 0, static_cast<int>(m_parts.size()) - 1);
     }
 
+    std::optional<RemovedEditorPart> removeSelectedPart() {
+        if (!active() || selectedPart() == nullptr) {
+            return std::nullopt;
+        }
+
+        const EditorPart &selected = *selectedPart();
+        RemovedEditorPart removed;
+        removed.part_ = selected;
+        removed.index_ = static_cast<std::size_t>(m_selected);
+        removed.transform_ =
+            IREntity::getComponent<IRComponents::C_LocalTransform>(selected.entity_);
+        if (selected.kind_ == EditorPartKind::SHAPE) {
+            removed.payload_ =
+                IREntity::getComponent<IRComponents::C_ShapeDescriptor>(selected.entity_);
+        } else {
+            const auto &set = IREntity::getComponent<IRComponents::C_VoxelSetNew>(selected.entity_);
+            removed.voxelAnchor_ = set.anchor_;
+            removed.payload_ = IRPrefab::DenseVoxel::fromComponent(set);
+        }
+        removeParts({selected.entity_});
+        return removed;
+    }
+
+    EntitySceneRestoreResult
+    restorePart(IRScript::LuaScript &script, const RemovedEditorPart &removed) {
+        if (!active()) {
+            return {IREntity::kNullEntity, "entity scene is not active"};
+        }
+
+        IREntity::EntityId entity = IREntity::kNullEntity;
+        if (removed.part_.kind_ == EditorPartKind::SHAPE) {
+            entity = IREntity::createEntity(
+                removed.transform_,
+                std::get<IRComponents::C_ShapeDescriptor>(removed.payload_),
+                IRComponents::C_RotationMode{removed.part_.mode_}
+            );
+        } else {
+            entity = IREntity::createEntity(
+                removed.transform_,
+                IRPrefab::DenseVoxel::toComponent(
+                    std::get<IRAsset::DenseVoxelSet>(removed.payload_),
+                    removed.voxelAnchor_
+                ),
+                IRComponents::C_RotationMode{removed.part_.mode_}
+            );
+        }
+        IREntity::setParent(entity, m_root);
+
+        EditorPart restored = removed.part_;
+        restored.entity_ = entity;
+        applyBand(restored);
+        applyTierOverride(entity);
+        for (ComponentRecord &component : restored.components_) {
+            if (const auto error = applyComponentRecord(script, entity, component)) {
+                IREntity::destroyEntity(entity);
+                return {IREntity::kNullEntity, *error};
+            }
+        }
+        stageRotationModeReconcile(entity, restored.mode_, restored.canvasSize_);
+
+        const std::size_t index = IRMath::min(removed.index_, m_parts.size());
+        m_parts.insert(m_parts.begin() + static_cast<std::ptrdiff_t>(index), std::move(restored));
+        select(static_cast<int>(index), false);
+        return {entity, {}};
+    }
+
     IREntity::EntityId select(int index, bool createGizmos = true) {
         destroySelectionGizmos();
         if (m_parts.empty()) {
@@ -340,10 +496,33 @@ class EntityScene {
         m_selected = IRMath::clamp(index, 0, static_cast<int>(m_parts.size()) - 1);
         const IREntity::EntityId selected = selectedEntity();
         if (createGizmos) {
-            IRPrefab::Gizmo::createTranslateGizmoForAnchor(selected);
-            IRPrefab::Gizmo::createRotateGizmoForAnchor(selected);
+            const float clearance = partViewClearance(*selectedPart());
+            IRPrefab::Gizmo::createTranslateGizmoForAnchor(selected, clearance);
+            IRPrefab::Gizmo::createRotateGizmoForAnchor(selected, clearance);
         }
         return selected;
+    }
+
+    // Radius, in world units, of a sphere centred on @p part's translation
+    // that holds everything the part draws: the farthest corner of a voxel
+    // set's local box, or an SDF's bounding radius, under the part's absolute
+    // scale. The part's rotation does not change it. Read at selection, as the
+    // clearance of the part's gizmo; no edit path changes a part's extent.
+    float partViewClearance(const EditorPart &part) const {
+        const IRMath::vec3 scale = IRMath::abs(
+            IREntity::getComponent<IRComponents::C_LocalTransform>(m_root).scale_ *
+            IREntity::getComponent<IRComponents::C_LocalTransform>(part.entity_).scale_
+        );
+        if (part.kind_ == EditorPartKind::SHAPE) {
+            const auto &shape =
+                IREntity::getComponent<IRComponents::C_ShapeDescriptor>(part.entity_);
+            return IRMath::SDF::boundingRadius(shape.shapeType_, shape.params_) *
+                   IRMath::max(scale.x, IRMath::max(scale.y, scale.z));
+        }
+        const auto &set = IREntity::getComponent<IRComponents::C_VoxelSetNew>(part.entity_);
+        const IRMath::vec3 boxMin = voxelSetLocalOrigin(set) - IRMath::vec3(0.5f);
+        const IRMath::vec3 boxMax = boxMin + IRMath::vec3(set.size_);
+        return IRMath::length(IRMath::max(IRMath::abs(boxMin), IRMath::abs(boxMax)) * scale);
     }
 
     void clear() {
@@ -406,6 +585,7 @@ class EntityScene {
                     return {false, "failed to save voxel part '" + editorPart.id_ + "'"};
                 }
                 part.voxelRef_ = voxelPath;
+                part.anchor_ = set.anchor_;
             }
             description.parts_.push_back(std::move(part));
         }
@@ -443,6 +623,20 @@ class EntityScene {
             if (!loaded.ok()) {
                 return {false, "failed to load voxel part '" + description.id_ + "'"};
             }
+            const IRAsset::DenseVoxelSet &dense = loaded.value_.dense_;
+            const IRMath::ivec3 size = dense.boundsMax_ - dense.boundsMin_;
+            if (description.rotationMode_ == IRComponents::RotationMode::DETACHED_REVOXELIZE &&
+                !boxIsCenteredOnOrigin(
+                    anchoredLocalOrigin(description.anchor_, dense.boundsMin_, size),
+                    size
+                )) {
+                return {
+                    false,
+                    "part '" + description.id_ +
+                        "' asks for DETACHED_REVOXELIZE but its voxels are not centred on its "
+                        "translation"
+                };
+            }
             stagedVoxelSets.emplace_back(std::move(loaded.value_.dense_));
         }
 
@@ -474,7 +668,7 @@ class EntityScene {
             } else {
                 entity = IREntity::createEntity(
                     description.transform_,
-                    IRPrefab::DenseVoxel::toComponent(*stagedVoxelSets[i]),
+                    IRPrefab::DenseVoxel::toComponent(*stagedVoxelSets[i], description.anchor_),
                     IRComponents::C_RotationMode{description.rotationMode_}
                 );
             }
@@ -493,7 +687,7 @@ class EntityScene {
             );
             applyBand(stagedParts.back());
             applyTierOverride(entity);
-            stageRotationModeReconcile(entity, description.rotationMode_);
+            stageRotationModeReconcile(entity, description.rotationMode_, description.canvasSize_);
             const std::string prefix = "part_";
             if (description.id_.starts_with(prefix)) {
                 const std::string_view suffix =
@@ -603,11 +797,12 @@ class EntityScene {
         set.lodMax_ = lodMax;
     }
 
-    static void
-    stageRotationModeReconcile(IREntity::EntityId entity, IRComponents::RotationMode mode) {
-        IREntity::getEntityManager().stageStructuralChange([entity, mode]() {
+    static void stageRotationModeReconcile(
+        IREntity::EntityId entity, IRComponents::RotationMode mode, IRMath::ivec2 canvasSize
+    ) {
+        IREntity::getEntityManager().stageStructuralChange([entity, mode, canvasSize]() {
             if (IREntity::entityExists(entity)) {
-                IRPrefab::RotationMode::setMode(entity, mode);
+                IRPrefab::RotationMode::setMode(entity, mode, {}, canvasSize);
             }
         });
     }
