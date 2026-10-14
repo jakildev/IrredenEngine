@@ -45,6 +45,22 @@ material/coverage control, or `--probe-analytic-hollow` for the hollow fallback.
 `--zoom 1` exercises density one. The other accepted probe shapes are sphere,
 cone and torus; the existing sphere flag remains an alias.
 
+## Broader native regression checks
+
+IRCanvasStress passed all 46 native Metal render-verification checks.
+IRShapeDebug initially passed 51 of 56 checks; the five failures were confined
+to cylinder receivers. A separate old-receiver ablation and current default
+capture attributed all 17 intentionally changed views to cylinders, including
+12 views whose differences were below the existing failure thresholds.
+Those 17 references were refreshed; all four unchanged references and all
+thresholds were preserved.
+
+The real comparator then passed all 21 stored current default captures against
+the updated references. This is an offline recomparison, not a claimed native
+56-check rerun. [ShapeDebug attribution and selected pairs](shape-debug/README.md)
+preserve the source patches, camera records, hashes, comparisons and remaining
+visual limitations.
+
 ## Mathematical acceptance and deliberate exclusions
 
 `test_render_curved_shadow_receiver.py` runs the actual GLSL and Metal helpers
