@@ -1100,12 +1100,12 @@ class Builder {
                 recordError("applyRecipe: param '" + param.name_ + "' is not INT");
                 return;
             }
-            if (value != static_cast<float>(IRMath::roundHalfUp(value))) {
-                recordError("applyRecipe: param '" + param.name_ + "' is not a whole number");
-                return;
-            }
             if (value < param.min_ || value > param.max_) {
                 recordError("applyRecipe: param '" + param.name_ + "' is outside its range");
+                return;
+            }
+            if (value != static_cast<float>(IRMath::roundHalfUp(value))) {
+                recordError("applyRecipe: param '" + param.name_ + "' is not a whole number");
                 return;
             }
             if ((param.max_ - param.min_) * 4.0f > static_cast<float>(kRecipeSliderSize.x)) {
