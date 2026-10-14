@@ -89,7 +89,9 @@ IREditor.registerSession("test_parts", function(session)
 
     session:segment("before_click")
     session:expectPartOccupancy(0, painted, false, "before_click_empty")
-    session:segment("click")
+    -- At the session zoom the selected part's gizmo owns the blob's front
+    -- faces; one zoom step in they lie outside it.
+    session:segment("click", 8)
     session:click(painted)
     session:expectPartOccupancy(0, painted, true, "clicked_cell_filled")
 
