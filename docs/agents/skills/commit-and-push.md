@@ -165,12 +165,12 @@ Single-task common case:
 
 ```bash
 gh pr create --base <default-branch> --title "<scope>: <title>" \
-    --body-file .pr-body.md --label fleet:author-<claude|codex>
+    --body-file .pr-body.md --label "fleet:author-${FLEET_RUNTIME:-claude}"
 ```
 
 Stack modes and stackable claims resolve the base and edit-or-create per
 the **procedures** (`fleet-stack.md`, `cursor-stack.md`, `stackable-on.md`,
-`native-stack-link.md`).
+`native-stack-link.md`). Whichever path opened the PR, step 8b runs next.
 
 No WIP label on a human-ready single PR — fleet reviewers skip WIP. WIP is
 the fleet-worker claim lane's marker only.
@@ -265,21 +265,33 @@ and verify the number independently before proceeding.
   | 3 | `VERDICT: block` — a trial-merge conflict in any tree that this branch adds or cannot be proven clear of (a `conflicts` row), or a stale stack base | do not publish. When the overlapping PR is a sibling of your epic or carries `fleet:approved`, base the branch on it (`--base <its head branch>`, a native stack) and re-run. Otherwise leave the PR `fleet:wip`, comment the rows on it, park it `fleet:awaiting-infra` with a `Parked-until: #<issue>` line **in the PR body** (not only in the comment — reconcile reads the body; a leading list bullet or paired bold/backtick emphasis on the marker is tolerated, a marker mid-sentence is not) naming the overlapping PRs' **backing issues** (never PR numbers), and re-run `commit-and-push` once they merge |
   | 2 | could not grade | fix the invocation or environment; after `head moved` or a population delta, re-run |
 
-#### 8b. Host label
+#### 8b. Post-open stamps — every PR, every mode, every runtime
 
-**procedures** `host-label.md` — applies to every PR.
+**procedures** `host-label.md` carries the fence. Run it as soon as
+`gh pr create` / `gh pr edit` returns, and again after every push that
+precedes a review. It stamps two facts and reads them back:
 
-#### 8c. Provenance
+```bash
+fleet-runtime stamp <N> --repo <repo>   # fleet:author-<runtime>: FLEET_RUNTIME, claude when unset
+gh pr edit <N> --repo <repo> --add-label "fleet:authored-on-<host>"
+gh pr view <N> --repo <repo> --json labels \
+    --jq '[.labels[].name] | map(select(startswith("fleet:author")))'
+```
 
-`--label fleet:author-<claude|codex>` on create; after every push that
-precedes review, `fleet-runtime stamp <PR> --repo <repo> --runtime
-<claude|codex>`. Name the provider that made the change, amendments
-included; no Claude co-author trailer on Codex-authored work.
+The PR is open only when the read-back prints exactly one of
+`fleet:author-claude` / `fleet:author-codex` beside the host label. A PR
+with no `fleet:author-*` label is invisible to the review lane: the
+cross-provider router refuses it on every tick (`route:review:…:
+unstamped PR`), the reviewer burns its claim budget on it and dispatches
+nothing, and the PR waits until a human stamps it by hand. The create-time
+`--label` is only a head start; the stamp is authoritative and corrects a
+wrong guess. The label names the provider that made the change,
+amendments included; no Claude co-author trailer on Codex-authored work.
 
 ### 9. Report
 
-Branch pushed, PR URL, files committed, confirmation that push and PR both
-succeeded, anything intentionally left unstaged. Then stop —
+Branch pushed, PR URL, the 8b read-back line, files committed, confirmation
+that push and PR both succeeded, anything intentionally left unstaged. Then stop —
 `start-next-task` resets the worktree. After a needs-fix review, your role
 file's feedback flow adds the changes-made label.
 
