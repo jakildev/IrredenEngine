@@ -739,8 +739,16 @@ class Builder {
         : m_model(sceneSize, sceneOrigin)
         , m_sceneSize(sceneSize)
         , m_partSize(sceneSize)
-        , m_moduleView(moduleView) {
+        , m_moduleView(moduleView)
+        , m_recipeList(recipeListGeometry())
+        , m_componentList(componentListGeometry()) {
         m_recipe.name_ = std::move(name);
+        if (m_moduleView != nullptr) {
+            for (const ModuleRecipe &recipe : m_moduleView->recipes_)
+                m_recipeList.items_.push_back(recipe.name_);
+            for (const ComponentRecord &component : m_moduleView->components_)
+                m_componentList.items_.push_back(component.name_);
+        }
         m_model.seedGroundPlane();
         segment("start");
     }
@@ -994,10 +1002,18 @@ class Builder {
 
     // Park the cursor on a GUI-canvas point and turn the mouse wheel @p rows
     // notches, one event a frame. Positive rows scroll a list toward its end
-    // (wheel down); negative rows toward its start.
+    // (wheel down); negative rows toward its start. Wheeling the RECIPES or
+    // COMPONENTS list moves its shadow too, so a later named operation aims at
+    // the row the live list shows.
     void wheelGui(IRMath::vec2 guiTrixel, int rows) {
         emitGuiMove(guiTrixel);
         emitWheel(rows);
+        if (m_moduleView == nullptr)
+            return;
+        if (guiPointInRect(guiTrixel, kRecipeListPos, kRecipeListSize))
+            m_recipeList.scrollBy(rows, kRecipeListSize.y);
+        else if (guiPointInRect(guiTrixel, kComponentListPos, kComponentListSize))
+            m_componentList.scrollBy(rows, kComponentListSize.y);
     }
 
     // Park the cursor on `target`'s clickable face and turn the wheel @p rows
@@ -1094,11 +1110,6 @@ class Builder {
             recordError("applyRecipe: unknown recipe '" + name + "'");
             return;
         }
-        const int row = static_cast<int>(recipe - m_moduleView->recipes_.begin());
-        if (row * kRecipeListItemHeight >= kRecipeListSize.y) {
-            recordError("applyRecipe: recipe '" + name + "' is below the list's visible rows");
-            return;
-        }
         std::vector<float> values;
         values.reserve(recipe->params_.size());
         for (const RecipeParam &param : recipe->params_) {
@@ -1151,7 +1162,12 @@ class Builder {
             );
             return;
         }
-        clickGui(recipeListRowCenterGuiTrixel(row));
+        clickGui(recipeListRowCenterGuiTrixel(revealListRow(
+            m_recipeList,
+            kRecipeListSize.y,
+            recipeListRowCenterGuiTrixel(0),
+            static_cast<int>(recipeIndex)
+        )));
         for (std::size_t i = 0; i < recipe->params_.size(); ++i) {
             const RecipeParam &param = recipe->params_[i];
             dragGuiSlider(
@@ -1170,8 +1186,7 @@ class Builder {
         const ComponentRecord *component = findComponent(name, "attachComponent");
         if (component == nullptr)
             return;
-        const int row = static_cast<int>(component - m_moduleView->components_.data());
-        clickGui(componentListRowCenterGuiTrixel(row));
+        clickComponentRow(component);
         clickGui(componentButtonCenterGuiTrixel(kComponentAttachPos));
     }
 
@@ -1203,12 +1218,11 @@ class Builder {
             );
             return;
         }
-        const int listRow = static_cast<int>(component - m_moduleView->components_.data());
         const int fieldIndex = static_cast<int>(field - component->fields_.begin());
         const int fieldPage = fieldIndex / kComponentFieldRowsPerPage;
         const int lastPage =
             componentFieldPageCount(static_cast<int>(component->fields_.size())) - 1;
-        clickGui(componentListRowCenterGuiTrixel(listRow));
+        clickComponentRow(component);
         for (int page = 0; page < lastPage; ++page)
             clickGui(componentButtonCenterGuiTrixel(kComponentPagePrevPos));
         for (int page = 0; page < fieldPage; ++page)
@@ -1227,8 +1241,7 @@ class Builder {
             );
             return;
         }
-        const int row = static_cast<int>(component - m_moduleView->components_.data());
-        clickGui(componentListRowCenterGuiTrixel(row));
+        clickComponentRow(component);
         typeText(componentOverridesInputCenterGuiTrixel(), text);
     }
 
@@ -1715,15 +1728,34 @@ class Builder {
             recordError(std::string(operation) + ": unknown component '" + name + "'");
             return nullptr;
         }
-        const int row = static_cast<int>(component - m_moduleView->components_.begin());
-        if (row * kComponentListItemHeight >= kComponentListSize.y) {
-            recordError(
-                std::string(operation) + ": component '" + name +
-                "' is below the list's visible rows"
-            );
-            return nullptr;
-        }
         return &*component;
+    }
+
+    // Wheel @p list, whose view is @p viewHeight tall, until item @p index is
+    // on screen, with the live widget's least movement and per-notch clamp,
+    // and return the visible row it lands on. A visible item turns no wheel.
+    // The shadow moves only through wheelGui, so @p wheelPoint must lie on
+    // @p list.
+    int revealListRow(
+        IRComponents::C_WidgetList &list, int viewHeight, IRMath::vec2 wheelPoint, int index
+    ) {
+        const int top = list.topIndex(viewHeight);
+        list.scrollIntoView(index, viewHeight);
+        const int rows = list.topIndex(viewHeight) - top;
+        list.scrollOffset_ = top;
+        if (rows != 0)
+            wheelGui(wheelPoint, rows);
+        return index - list.topIndex(viewHeight);
+    }
+
+    void clickComponentRow(const ComponentRecord *component) {
+        const int index = static_cast<int>(component - m_moduleView->components_.data());
+        clickGui(componentListRowCenterGuiTrixel(revealListRow(
+            m_componentList,
+            kComponentListSize.y,
+            componentListRowCenterGuiTrixel(0),
+            index
+        )));
     }
 
     template <typename Check>
@@ -2224,6 +2256,11 @@ class Builder {
     // What the PART SIZE sliders read: the extent the next addVoxelPart creates.
     IRMath::ivec3 m_partSize;
     const ModuleSessionView *m_moduleView = nullptr;
+    // Scroll shadows of the RECIPES and COMPONENTS lists. The editor builds
+    // both once, at offset 0, with the module view's items in its order, and
+    // only the wheel moves them.
+    IRComponents::C_WidgetList m_recipeList;
+    IRComponents::C_WidgetList m_componentList;
     std::vector<OccupancyModel> m_partModels;
     int m_activePart = -1;
     std::optional<RemovedPartModel> m_removedPartModel;

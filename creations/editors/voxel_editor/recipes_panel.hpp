@@ -2,6 +2,7 @@
 #define IR_VOXEL_EDITOR_RECIPES_PANEL_H
 
 #include <irreden/ir_math.hpp>
+#include <irreden/render/components/component_widget.hpp>
 
 #include "anim_panel.hpp"
 
@@ -55,13 +56,31 @@ constexpr IRMath::ivec2 modulePanelPos(int index) {
     );
 }
 
-// Centre of recipe-list row @p row — where WIDGET_APPLY_LIST resolves a click
-// to that row ((mouseY - pos.y) / itemHeight).
-constexpr IRMath::vec2 recipeListRowCenterGuiTrixel(int row) {
+// Whether @p guiTrixel lies in the half-open box [pos, pos + size), the
+// extent a GUI hitbox covers.
+constexpr bool guiPointInRect(IRMath::vec2 guiTrixel, IRMath::ivec2 pos, IRMath::ivec2 size) {
+    return guiTrixel.x >= static_cast<float>(pos.x) && guiTrixel.y >= static_cast<float>(pos.y) &&
+           guiTrixel.x < static_cast<float>(pos.x + size.x) &&
+           guiTrixel.y < static_cast<float>(pos.y + size.y);
+}
+
+// The list's row geometry with no items in it.
+inline IRComponents::C_WidgetList recipeListGeometry() {
+    IRComponents::C_WidgetList list;
+    list.itemHeight_ = kRecipeListItemHeight;
+    return list;
+}
+
+inline int recipeListVisibleRows() {
+    return recipeListGeometry().visibleRows(kRecipeListSize.y);
+}
+
+// Centre of the list's @p visibleRow-th row from the top, whichever recipe the
+// scroll offset currently puts there.
+inline IRMath::vec2 recipeListRowCenterGuiTrixel(int visibleRow) {
     return IRMath::vec2(
         static_cast<float>(kRecipeListPos.x) + static_cast<float>(kRecipeListSize.x) / 2.0f,
-        static_cast<float>(kRecipeListPos.y) +
-            (static_cast<float>(row) + 0.5f) * static_cast<float>(kRecipeListItemHeight)
+        static_cast<float>(kRecipeListPos.y) + recipeListGeometry().rowCenterOffsetY(visibleRow)
     );
 }
 

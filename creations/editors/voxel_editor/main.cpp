@@ -2402,26 +2402,20 @@ void updateRecipesPanel() {
         applyRecipe(selected);
 }
 
-bool cursorInRect(vec2 cursor, ivec2 pos, ivec2 size) {
-    return cursor.x >= static_cast<float>(pos.x) && cursor.y >= static_cast<float>(pos.y) &&
-           cursor.x < static_cast<float>(pos.x + size.x) &&
-           cursor.y < static_cast<float>(pos.y + size.y);
-}
-
 // True while the cursor is over the module UI. A rectangle test rather than
 // widget hover: a docked panel holds widgets the module built, and a click on
 // any of them must not fall through to the scene.
 bool cursorOverModuleUi() {
     const vec2 cursor = IRPrefab::Layout::mousePositionInGuiTrixels();
     if (g_componentsPanel != IREntity::kNullEntity &&
-        cursorInRect(cursor, kComponentsPanelPos, kComponentsPanelSize))
+        guiPointInRect(cursor, kComponentsPanelPos, kComponentsPanelSize))
         return true;
     if (g_recipesPanel == IREntity::kNullEntity)
         return false;
-    if (cursorInRect(cursor, kRecipesPanelPos, kRecipesPanelSize))
+    if (guiPointInRect(cursor, kRecipesPanelPos, kRecipesPanelSize))
         return true;
     for (const DockedModulePanel &docked : g_dockedModulePanels) {
-        if (cursorInRect(cursor, docked.pos_, kModulePanelSize))
+        if (guiPointInRect(cursor, docked.pos_, kModulePanelSize))
             return true;
     }
     return false;
@@ -2432,7 +2426,7 @@ bool cursorOverModuleUi() {
 // is on one of its sliders.
 bool cursorOverPartSizePanel() {
     return g_partSizePanel != IREntity::kNullEntity &&
-           cursorInRect(
+           guiPointInRect(
                IRPrefab::Layout::mousePositionInGuiTrixels(),
                kPartSizePanelPos,
                kPartSizePanelSize
@@ -3571,15 +3565,6 @@ Session::ComponentAttachSpec resolveComponentAttachSpec(Session::Id id) {
         IRVoxelEditor::detail::findModuleComponent(script, spec.component_);
     if (info == nullptr)
         return fail("component '" + spec.component_ + "' is not registered by the module");
-    const ModuleSessionView view = g_moduleHost.sessionView();
-    const auto componentRecord = std::find_if(
-        view.components_.begin(),
-        view.components_.end(),
-        [&spec](const ComponentRecord &candidate) { return candidate.name_ == spec.component_; }
-    );
-    const int listRow = static_cast<int>(componentRecord - view.components_.begin());
-    if (listRow * kComponentListItemHeight >= kComponentListSize.y)
-        return fail("component '" + spec.component_ + "' is below the list's visible rows");
 
     // The panel lays a record's fields out in the record's order.
     const ComponentRecord layout = makeComponentRecord(script, spec.component_);

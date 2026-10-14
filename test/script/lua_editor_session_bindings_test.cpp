@@ -516,13 +516,6 @@ TEST_F(LuaEditorSessionBindingsTest, BuilderOperationsRejectEveryUnsupportedRequ
         "outside its range"
     );
 
-    IRVoxelEditor::ModuleSessionView hiddenRecipe = view;
-    hiddenRecipe.recipes_.push_back(IRVoxelEditor::ModuleRecipe{"hidden", {}});
-    Builder
-        hiddenRecipeBuilder("hidden_recipe", IRMath::ivec3(16), IRMath::vec3(-8.0f), &hiddenRecipe);
-    hiddenRecipeBuilder.applyRecipe("hidden", {});
-    expectOneErrorAndNoEvents(hiddenRecipeBuilder.finish(), "below the list's visible rows");
-
     IRVoxelEditor::ModuleSessionView components = view;
     components.components_.push_back(
         IRVoxelEditor::ComponentRecord{"EngineComponent", IRVoxelEditor::ComponentSource::ENGINE}
@@ -553,19 +546,6 @@ TEST_F(LuaEditorSessionBindingsTest, BuilderOperationsRejectEveryUnsupportedRequ
         "not an engine component"
     );
 
-    for (int i = 0; i < 4; ++i) {
-        components.components_.push_back(
-            IRVoxelEditor::ComponentRecord{
-                "Hidden" + std::to_string(i),
-                IRVoxelEditor::ComponentSource::ENGINE
-            }
-        );
-    }
-    Builder
-        hiddenComponent("hidden_component", IRMath::ivec3(16), IRMath::vec3(-8.0f), &components);
-    hiddenComponent.attachComponent("Hidden2");
-    expectOneErrorAndNoEvents(hiddenComponent.finish(), "below the list's visible rows");
-
     for (const auto &operation : std::vector<std::function<void(Builder &)>>{
              [](Builder &builder) { builder.applyRecipe("matrix_recipe", {}); },
              [](Builder &builder) { builder.attachComponent("MatrixComponent"); },
@@ -575,6 +555,126 @@ TEST_F(LuaEditorSessionBindingsTest, BuilderOperationsRejectEveryUnsupportedRequ
         Builder noView("no_view", IRMath::ivec3(16), IRMath::vec3(-8.0f));
         operation(noView);
         expectOneErrorAndNoEvents(noView.finish(), "needs a loaded module");
+    }
+}
+
+// The wheel a segment turns, in rows toward the list's end, and the GUI point
+// its first click aims at.
+struct ListGesture {
+    int wheelRows_ = 0;
+    IRMath::vec2 firstClick_ = IRMath::vec2(-1.0f);
+};
+
+ListGesture listGesture(const IRVoxelEditor::Session::Segment &segment) {
+    using IRVideo::GuiInputEvent;
+    ListGesture gesture;
+    int press = -1;
+    for (std::size_t i = 0; i < segment.events_.size(); ++i) {
+        const GuiInputEvent &event = segment.events_[i];
+        if (event.type_ == GuiInputEvent::Type::SCROLL)
+            gesture.wheelRows_ += event.scroll_.y < 0.0f ? 1 : -1;
+        if (event.type_ == GuiInputEvent::Type::PRESS && press < 0)
+            press = static_cast<int>(i);
+    }
+    for (const IRVoxelEditor::Session::GuiAimFixup &aim : segment.guiAims_) {
+        if (aim.eventIndex_ == press - 1)
+            gesture.firstClick_ = aim.guiTrixel_;
+    }
+    return gesture;
+}
+
+TEST_F(LuaEditorSessionBindingsTest, NamedListOperationsScrollTheirLists) {
+    using IRVoxelEditor::componentListRowCenterGuiTrixel;
+    using IRVoxelEditor::ComponentRecord;
+    using IRVoxelEditor::ComponentSource;
+    using IRVoxelEditor::recipeListRowCenterGuiTrixel;
+    const int recipeRows = IRVoxelEditor::recipeListVisibleRows();
+    const int componentRows = IRVoxelEditor::componentListVisibleRows();
+
+    IRVoxelEditor::ModuleSessionView view;
+    for (int i = 0; i < recipeRows + 2; ++i)
+        view.recipes_.push_back(IRVoxelEditor::ModuleRecipe{"r" + std::to_string(i), {}});
+    view.evaluate_ = [](std::size_t,
+                        const std::vector<float> &,
+                        IRMath::ivec3,
+                        std::vector<IRVoxelEditor::RecipeCell> &cells,
+                        std::string &) {
+        cells.push_back(IRVoxelEditor::RecipeCell{IRMath::ivec3(1)});
+        return true;
+    };
+    for (int i = 0; i <= componentRows; ++i) {
+        view.components_.push_back(
+            ComponentRecord{
+                "M" + std::to_string(i),
+                ComponentSource::MODULE,
+                {IRVoxelEditor::ComponentField{"count", IRScript::LuaFieldType::INT32, 1}}
+            }
+        );
+    }
+    for (int i = componentRows + 1; i <= componentRows + 2; ++i)
+        view.components_.push_back(
+            ComponentRecord{"E" + std::to_string(i), ComponentSource::ENGINE}
+        );
+    const std::string lastModule = "M" + std::to_string(componentRows);
+    const std::string firstEngine = "E" + std::to_string(componentRows + 1);
+    const int componentMaxTop = static_cast<int>(view.components_.size()) - componentRows;
+
+    Builder builder("list_scroll", IRMath::ivec3(16), IRMath::vec3(-8.0f), &view);
+    builder.segment("recipe_below");
+    builder.applyRecipe("r" + std::to_string(recipeRows), {});
+    builder.segment("recipe_again");
+    builder.applyRecipe("r" + std::to_string(recipeRows), {});
+    builder.segment("recipe_last");
+    builder.applyRecipe("r" + std::to_string(recipeRows + 1), {});
+    builder.segment("recipe_first");
+    builder.applyRecipe("r0", {});
+    builder.segment("module_below");
+    builder.attachComponent(lastModule);
+    builder.segment("module_field");
+    builder.setComponentField(lastModule, "count", "3");
+    builder.segment("engine_below");
+    builder.setComponentOverrides(firstEngine, "{}");
+    builder.segment("component_first");
+    builder.attachComponent("M0");
+    builder.segment("raw_wheel_past_end");
+    builder.wheelGui(componentListRowCenterGuiTrixel(0), componentMaxTop + 5);
+    builder.segment("component_at_clamped_top");
+    builder.attachComponent("M" + std::to_string(componentMaxTop));
+    builder.segment("component_first_from_clamp");
+    builder.attachComponent("M0");
+    const IRVoxelEditor::Session::Recipe recipe = builder.finish();
+    ASSERT_TRUE(recipe.ok()) << recipe.errors_.front();
+
+    struct Expected {
+        const char *segment_;
+        int wheelRows_;
+        IRMath::vec2 click_;
+    };
+    const IRMath::vec2 recipeBottom = recipeListRowCenterGuiTrixel(recipeRows - 1);
+    const IRMath::vec2 componentBottom = componentListRowCenterGuiTrixel(componentRows - 1);
+    for (const Expected &expected : std::vector<Expected>{
+             {"recipe_below", 1, recipeBottom},
+             {"recipe_again", 0, recipeBottom},
+             {"recipe_last", 1, recipeBottom},
+             {"recipe_first", -2, recipeListRowCenterGuiTrixel(0)},
+             {"module_below", 1, componentBottom},
+             {"module_field", 0, componentBottom},
+             {"engine_below", 1, componentBottom},
+             {"component_first", -2, componentListRowCenterGuiTrixel(0)},
+             {"component_at_clamped_top", 0, componentListRowCenterGuiTrixel(0)},
+             {"component_first_from_clamp", -componentMaxTop, componentListRowCenterGuiTrixel(0)},
+         }) {
+        const auto segment = std::find_if(
+            recipe.segments_.begin(),
+            recipe.segments_.end(),
+            [&expected](const auto &candidate) {
+                return candidate.label_ == std::string("list_scroll_") + expected.segment_;
+            }
+        );
+        ASSERT_NE(segment, recipe.segments_.end()) << expected.segment_;
+        const ListGesture gesture = listGesture(*segment);
+        EXPECT_EQ(gesture.wheelRows_, expected.wheelRows_) << expected.segment_;
+        EXPECT_EQ(gesture.firstClick_, expected.click_) << expected.segment_;
     }
 }
 

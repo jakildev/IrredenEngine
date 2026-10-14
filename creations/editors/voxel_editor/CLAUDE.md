@@ -35,8 +35,9 @@ Design log, findings and the authoring-session history:
   a camera turn, and on a turned copy, and `part_ring_turn` turns a part about each rotate ring's axis.
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --module <dir>
   --module-session <name>` — one session registered by a creation module.
-  `test/module` registers `test_parts`, `test_recipe_attach`, `test_radius`, `test_single`,
-  and the deliberately failing `test_unreachable` fixture.
+  `test/module` registers `test_parts`, `test_recipe_attach`, `test_radius`,
+  `test_list_scroll`, `test_single`, and the deliberately failing
+  `test_unreachable` fixture.
 - `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
   render reference set, discovered under this creation's `test/references/`.
 - `python3 scripts/author-entity.py <entity>` — replays an entity session twice
@@ -150,6 +151,10 @@ render, because the aim and the pick share one screen mapping.
   panel coordinates. `applyRecipe` accepts only INT params with whole targets
   and at least four slider trixels per unit; other recipes keep using the raw
   GUI gestures without occupancy-model updates.
+- Each of those names its list row. The Builder wheels a row below the
+  RECIPES or COMPONENTS view into it with the live list's least movement, and
+  shadows both lists' scroll offsets with `C_WidgetList`'s own clamp;
+  `wheelGui` over either list moves its shadow too.
 
 ## Creation modules (`--module <dir>`)
 
@@ -176,6 +181,9 @@ render, because the aim and the pick share one screen mapping.
   A saved scene naming a module component loads only with that module.
   The editor binds `C_AutoSpin` as its engine row; it runs no auto-spin
   system, so the component is data there.
+- A list's visible-row count is a panel fact, not module ABI: a module
+  registers any number of recipes and components, and a session names a row,
+  never its position.
 - Editor source names no module content: the module sessions read their
   expectations from `<dir>/session_expect.lua`. `test/module/` is the neutral
   fixture; `test/module_cpp_collision/` must exit 2.
