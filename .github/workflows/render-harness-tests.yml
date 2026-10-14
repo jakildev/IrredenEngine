@@ -45,6 +45,7 @@ on:
       - 'engine/prefabs/irreden/render/systems/system_compute_sun_shadow.hpp'
       - 'engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp'
       - 'creations/demos/*/test/references/manifest.json'
+      - 'docs/pr-screenshots/codex/authored-lod-scene/finite-face-proof/*.png'
       - '.github/workflows/render-harness-tests.yml'
   pull_request:
     paths:
@@ -57,6 +58,7 @@ on:
       - 'engine/prefabs/irreden/render/systems/system_compute_sun_shadow.hpp'
       - 'engine/prefabs/irreden/render/systems/system_bake_sun_shadow_map.hpp'
       - 'creations/demos/*/test/references/manifest.json'
+      - 'docs/pr-screenshots/codex/authored-lod-scene/finite-face-proof/*.png'
       - '.github/workflows/render-harness-tests.yml'
   workflow_dispatch:
 
@@ -70,7 +72,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # The suites are hermetic — synthetic PNGs and scalar shader helpers,
+      # The suites are hermetic — stored/synthetic PNGs and scalar shader helpers,
       # no engine binary or GL context. They use the runner C++ compiler and
       # pinned Pillow. The gating path (render-verify, the
       # comparator and the metrics its manifests name) is stdlib-only; Pillow

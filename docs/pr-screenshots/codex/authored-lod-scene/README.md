@@ -67,16 +67,19 @@ Their logs record child exit 2 (`RESULT=CRASH`); the wrapper returns 1.
 
 ## Visual follow-ups remain
 
-Petal/stamen bands and comb patterns, floor-shadow holes/ragged tails, and apparent
-gaps in the blue DENSE fine sphere at yaw 180 remain visible observations.
-A separate clean six-frame `--no-shadows` capture retains the apparent DENSE
-gaps and petal/stamen bands: [yaw 180](no-sun-shadows/lod_scene_return_yaw180.png),
+The [paired finite-face proof](finite-face-proof/README.md) resolves the apparent
+blue DENSE sphere gaps at yaw180: its material coverage and face normals match
+independent rays through all 136 occupied cells exactly. That does not qualify
+AO or lighting intensity. Petal/stamen bands and comb patterns and floor-shadow
+holes/ragged tails remain visible observations.
+A separate clean six-shot `--no-shadows` capture retains the petal/stamen bands:
+[yaw 180](no-sun-shadows/lod_scene_return_yaw180.png),
 [fine yaw 90](no-sun-shadows/lod_scene_fine_yaw90.png). The
 [control manifest](no-sun-shadows/manifest.json.gz) and
 [log](no-sun-shadows/run.log.gz) preserve the command and cameras. AO and
 ordinary face lighting remain enabled; this excludes sun visibility alone,
 not every shading source. These observations establish neither the cause nor
-a new regression. Face/owner views and retained-field comparisons must
+a new regression. Further face/owner views and retained-field comparisons must
 distinguish legitimate voxel steps from reconstruction defects.
 Keep that investigation separate from the LOD lifecycle assertions. In
 particular, do not blur silhouettes or broaden screenshot tolerances to hide it.

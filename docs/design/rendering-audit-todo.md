@@ -70,13 +70,17 @@ Work through these slices in order, keeping their image and cost evidence separa
    assets are not GPU instancing: DENSE variants retain 432 allocated slots and
    select one 216-slot span, whose fine occupancy is a subset. LOD is zoom-based,
    and motion advances only during automatic captures; no performance claim.
-   Petal/stamen combs, floor-shadow holes/ragged tails and apparent blue-sphere
-   gaps at yaw 180 remain. A six-view no-sun control preserves the apparent
-   gaps and surface bands; use face-owner/retained-field and AO controls next.
-   These are observations, not established causes or proof of new regressions.
+   The [paired finite-face proof](../pr-screenshots/codex/authored-lod-scene/finite-face-proof/README.md)
+   clears the apparent blue-sphere gaps at yaw180: all 17,664 object pixels have
+   the independently predicted occupied-cell coverage and nearest face normal.
+   Preserve those legitimate steps. Petal/stamen combs and floor-shadow
+   holes/ragged tails still need retained-field and AO controls; their causes
+   and regression status are not established. All six beauty references remain
+   byte-identical after integration of the snapped scatter-placement fix.
 
-Concurrent ownership: #4381 owns the new animated FIELD ceiling policy, #4303
-owns snapped camera placement, and #4308 owns cardinal AO/local-light depth.
+Concurrent ownership: #4381 owns the new animated FIELD ceiling policy, #4433
+owns the runtime per-axis surface-lighting switch, and #4308 owns cardinal
+AO/local-light depth. The snapped camera placement fix from #4303 is integrated.
 Integrate their results and recapture shared rows without duplicating those
 implementations. Windows-native smoke of the merged stack remains separate
 validation debt.
