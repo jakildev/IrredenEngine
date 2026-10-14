@@ -240,16 +240,14 @@ struct ModuleSessionSpec {
         std::string name_;
         std::string label_;
     };
-    struct ParamDrag {
-        int index_ = 0;
-        float min_ = 0.0f;
-        float max_ = 1.0f;
+    struct ParamValue {
+        std::string name_;
         float value_ = 0.0f;
     };
     std::vector<Component> components_;
     std::vector<Panel> panels_;
-    int recipeRow_ = -1;
-    std::vector<ParamDrag> params_;
+    std::string recipe_;
+    std::vector<ParamValue> values_;
     // The recipe's cells at the session's values.
     std::vector<IRMath::ivec3> appliedCells_;
     // Cells the recipe writes at its default values but not at the session's:
@@ -266,11 +264,6 @@ struct ComponentAttachSpec {
     std::string session_;
     std::string component_;
     std::string field_;
-    // COMPONENTS list row of the component, then the field's page of the
-    // field area and its row on that page.
-    int listRow_ = -1;
-    int fieldPage_ = 0;
-    int fieldRow_ = -1;
     // What the session types, the value it must read back, and the value the
     // field holds right after ATTACH (which the read-back must not be).
     std::string typedText_;
@@ -295,8 +288,6 @@ constexpr const char *kCompositeProofSpinLiteral = "{ axis = { 0, 0, 1 }, radian
 struct CompositeProofSpec {
     ModuleSessionSpec stem_;
     ModuleSessionSpec frame_;
-    // COMPONENTS list row of kCompositeProofSpinComponent.
-    int spinListRow_ = -1;
     std::vector<std::string> errors_;
 };
 
@@ -1564,26 +1555,20 @@ inline Recipe buildTree(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
     return builder.finish();
 }
 
-// Selects @p recipe in the RECIPES list, drags its params to the session's
-// values and clicks APPLY: a first write into the selected part that needs no
-// pick. The builder's occupancy model does not follow it.
 inline void applyModuleRecipe(Builder &builder, const ModuleSessionSpec &recipe) {
-    builder.clickGui(recipeListRowCenterGuiTrixel(recipe.recipeRow_));
-    for (const ModuleSessionSpec::ParamDrag &drag : recipe.params_) {
-        builder.dragGuiSlider(
-            recipeParamSliderGeometry(drag.index_),
-            drag.min_,
-            drag.max_,
-            drag.value_
-        );
-    }
-    builder.clickGui(recipeApplyCenterGuiTrixel());
+    std::vector<std::pair<std::string, float>> values;
+    for (const ModuleSessionSpec::ParamValue &value : recipe.values_)
+        values.emplace_back(value.name_, value.value_);
+    builder.applyRecipe(recipe.recipe_, values);
 }
 
 inline Recipe buildModuleLoaded(
-    IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin, const ModuleSessionSpec &spec
+    IRMath::ivec3 sceneSize,
+    IRMath::vec3 sceneOrigin,
+    const ModuleSessionSpec &spec,
+    const ModuleSessionView *moduleView
 ) {
-    Builder builder("module_loaded", sceneSize, sceneOrigin);
+    Builder builder("module_loaded", sceneSize, sceneOrigin, moduleView);
     for (const std::string &error : spec.errors_)
         builder.recordError(error);
     if (!spec.errors_.empty())
@@ -1624,9 +1609,12 @@ inline Recipe buildModuleLoaded(
 }
 
 inline Recipe buildComponentAttach(
-    IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin, const ComponentAttachSpec &spec
+    IRMath::ivec3 sceneSize,
+    IRMath::vec3 sceneOrigin,
+    const ComponentAttachSpec &spec,
+    const ModuleSessionView *moduleView
 ) {
-    Builder builder(spec.session_, sceneSize, sceneOrigin);
+    Builder builder(spec.session_, sceneSize, sceneOrigin, moduleView);
     for (const std::string &error : spec.errors_)
         builder.recordError(error);
     if (!spec.errors_.empty())
@@ -1644,8 +1632,7 @@ inline Recipe buildComponentAttach(
     );
 
     builder.segment("attach");
-    builder.clickGui(componentListRowCenterGuiTrixel(spec.listRow_));
-    builder.clickGui(componentButtonCenterGuiTrixel(kComponentAttachPos));
+    builder.attachComponent(spec.component_);
     builder.expectComponentValue(
         0,
         spec.component_,
@@ -1655,15 +1642,8 @@ inline Recipe buildComponentAttach(
         "component_default_after_attach"
     );
 
-    // A page turn rebuilds the field rows, so the typing gets its own segment.
-    if (spec.fieldPage_ > 0) {
-        builder.segment("turn_page");
-        for (int page = 0; page < spec.fieldPage_; ++page)
-            builder.clickGui(componentButtonCenterGuiTrixel(kComponentPageNextPos));
-    }
-
     builder.segment("set_field");
-    builder.typeText(componentFieldInputCenterGuiTrixel(spec.fieldRow_), spec.typedText_);
+    builder.setComponentField(spec.component_, spec.field_, spec.typedText_);
     builder.expectComponentValue(
         0,
         spec.component_,
@@ -1734,10 +1714,13 @@ inline Recipe buildComponentAttach(
 }
 
 inline Recipe buildCompositeProof(
-    IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin, const CompositeProofSpec &spec
+    IRMath::ivec3 sceneSize,
+    IRMath::vec3 sceneOrigin,
+    const CompositeProofSpec &spec,
+    const ModuleSessionView *moduleView
 ) {
     constexpr IRMath::ivec3 kSize = kCompositeProofPartSize;
-    Builder builder("composite_proof", sceneSize, sceneOrigin);
+    Builder builder("composite_proof", sceneSize, sceneOrigin, moduleView);
     for (const std::string &error : spec.errors_)
         builder.recordError(error);
     if (!spec.errors_.empty())
@@ -1835,12 +1818,11 @@ inline Recipe buildCompositeProof(
     builder.expectPartGated(kFrame, false, kFollowsZoom, "frame_drawn_at_zoom_tier");
 
     builder.segment("frame_spin_attach");
-    builder.clickGui(componentListRowCenterGuiTrixel(spec.spinListRow_));
-    builder.clickGui(componentButtonCenterGuiTrixel(kComponentAttachPos));
+    builder.attachComponent(kCompositeProofSpinComponent);
     builder.expectPartSpinRate(kFrame, 0.0f, true, "attach_gives_the_default_spin");
 
     builder.segment("frame_spin_rate");
-    builder.typeText(componentOverridesInputCenterGuiTrixel(), kCompositeProofSpinLiteral);
+    builder.setComponentOverrides(kCompositeProofSpinComponent, kCompositeProofSpinLiteral);
     builder.expectPartSpinRate(kFrame, kCompositeProofSpinRate, true, "frame_spin_rate_typed");
     builder.expectPartCount(kFrame + 1, "typing_adds_no_part");
 
@@ -1944,7 +1926,8 @@ inline Recipe build(
     IRMath::vec3 sceneOrigin,
     const ModuleSessionSpec &moduleSpec,
     const ComponentAttachSpec &componentSpec,
-    const CompositeProofSpec &proofSpec
+    const CompositeProofSpec &proofSpec,
+    const ModuleSessionView *moduleView
 ) {
     switch (id) {
     case Id::MODULE:
@@ -2036,7 +2019,7 @@ inline Recipe build(
         return builder.finish();
     }
     case Id::REMOVE_PART: {
-        Builder builder("remove_part", sceneSize, sceneOrigin);
+        Builder builder("remove_part", sceneSize, sceneOrigin, moduleView);
         for (const std::string &error : componentSpec.errors_)
             builder.recordError(error);
         if (!componentSpec.errors_.empty())
@@ -2088,14 +2071,10 @@ inline Recipe build(
         builder.bakeSphere(detail::kFirstWriteBlobRadius);
 
         builder.segment("attach_source_component");
-        builder.clickGui(componentListRowCenterGuiTrixel(componentSpec.listRow_));
-        builder.clickGui(componentButtonCenterGuiTrixel(kComponentAttachPos));
-        if (componentSpec.fieldPage_ > 0) {
-            for (int page = 0; page < componentSpec.fieldPage_; ++page)
-                builder.clickGui(componentButtonCenterGuiTrixel(kComponentPageNextPos));
-        }
-        builder.typeText(
-            componentFieldInputCenterGuiTrixel(componentSpec.fieldRow_),
+        builder.attachComponent(componentSpec.component_);
+        builder.setComponentField(
+            componentSpec.component_,
+            componentSpec.field_,
             componentSpec.typedText_
         );
         builder.expectComponentValue(
@@ -2841,13 +2820,13 @@ inline Recipe build(
         return builder.finish();
     }
     case Id::MODULE_LOADED:
-        return detail::buildModuleLoaded(sceneSize, sceneOrigin, moduleSpec);
+        return detail::buildModuleLoaded(sceneSize, sceneOrigin, moduleSpec, moduleView);
     case Id::COMPONENT_ATTACH:
     case Id::COMPONENT_FIELD_PAGE:
     case Id::COMPONENT_FIELD_KEY:
-        return detail::buildComponentAttach(sceneSize, sceneOrigin, componentSpec);
+        return detail::buildComponentAttach(sceneSize, sceneOrigin, componentSpec, moduleView);
     case Id::COMPOSITE_PROOF:
-        return detail::buildCompositeProof(sceneSize, sceneOrigin, proofSpec);
+        return detail::buildCompositeProof(sceneSize, sceneOrigin, proofSpec, moduleView);
     case Id::NONE:
         break;
     }
