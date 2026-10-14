@@ -35,7 +35,7 @@ Design log, findings and the authoring-session history:
   a camera turn, and on a turned copy, and `part_ring_turn` turns a part about each rotate ring's axis.
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --module <dir>
   --module-session <name>` — one session registered by a creation module.
-  `test/module` registers `test_parts`, `test_recipe_attach`, `test_single`,
+  `test/module` registers `test_parts`, `test_recipe_attach`, `test_radius`, `test_single`,
   and the deliberately failing `test_unreachable` fixture.
 - `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
   render reference set, discovered under this creation's `test/references/`.
@@ -114,12 +114,12 @@ render, because the aim and the pick share one screen mapping.
   editor never runs `PREFAB_LOD_PARTS`. The LOD panel's TIER slider and `,` /
   `.` pin `C_LodTierOverride` on the root and every part; FOLLOW ZOOM removes
   it. Neither touches the camera zoom.
-- Radial and linear arrays create independently editable parts. COPY YAW
-  applies whole degrees, and its track lands on multiples of 3. One array is
-  one undo record; rotational symmetry replays a stroke across the radial
-  copy group through the same stroke buffer. The selected source stays outside
-  the copy group: radial copies start at the radius, and linear copies start
-  one step out.
+- Radial and linear arrays create independently editable parts. Radial
+  RADIUS/X and COPY YAW apply whole units and degrees; linear X stays
+  continuous. One array is one undo record; rotational symmetry replays a
+  stroke across the radial copy group through the same stroke buffer. The
+  selected source stays outside the copy group: radial copies start at the
+  radius, and linear copies start one step out.
 - Delete and the PARTS-panel REMOVE button remove the selected part as one undo
   record. Ctrl+Z recreates its authored payload at the same ordered index and
   rewrites older undo references to the fresh entity id. Removing a rotational

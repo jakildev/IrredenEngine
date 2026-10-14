@@ -64,6 +64,15 @@ inline int integerArg(const sol::object &value, const char *method, const char *
     return integer;
 }
 
+inline int radialRadiusArg(const sol::object &value, const char *method) {
+    const int radius = integerArg(value, method, "radius");
+    if (radius < static_cast<int>(kArrayRadiusSliderMin) ||
+        radius > static_cast<int>(kArrayRadiusSliderMax)) {
+        throw argumentError(method, "radius", "within the RADIUS/X slider range");
+    }
+    return radius;
+}
+
 inline sol::object vectorEntry(const sol::table &table, const char *key, int index) {
     const sol::object keyed = table[key];
     return keyed.valid() && keyed.get_type() != sol::type::lua_nil ? keyed
@@ -450,8 +459,20 @@ class Handle {
     void applyRadialArray(int count) {
         builder().applyRadialArray(count);
     }
+    void applyRadialArray(const sol::object &count, const sol::object &radius) {
+        builder().applyRadialArray(
+            integerArg(count, "applyRadialArray", "count"),
+            radialRadiusArg(radius, "applyRadialArray")
+        );
+    }
     void applyRadialArrayToLiveScene(int count) {
         builder().applyRadialArrayToLiveScene(count);
+    }
+    void applyRadialArrayToLiveScene(const sol::object &count, const sol::object &radius) {
+        builder().applyRadialArrayToLiveScene(
+            integerArg(count, "applyRadialArrayToLiveScene", "count"),
+            radialRadiusArg(radius, "applyRadialArrayToLiveScene")
+        );
     }
     void expectCanvasCount(int offset, const std::string &name) {
         builder().expectCanvasCount(offset, name);
@@ -779,9 +800,19 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         "selectPartMode",
         &Handle::selectPartMode,
         "applyRadialArray",
-        &Handle::applyRadialArray,
+        sol::overload(
+            static_cast<void (Handle::*)(int)>(&Handle::applyRadialArray),
+            static_cast<void (Handle::*)(const sol::object &, const sol::object &)>(
+                &Handle::applyRadialArray
+            )
+        ),
         "applyRadialArrayToLiveScene",
-        &Handle::applyRadialArrayToLiveScene,
+        sol::overload(
+            static_cast<void (Handle::*)(int)>(&Handle::applyRadialArrayToLiveScene),
+            static_cast<void (Handle::*)(const sol::object &, const sol::object &)>(
+                &Handle::applyRadialArrayToLiveScene
+            )
+        ),
         "toggleRotationalSymmetry",
         &Handle::toggleRotationalSymmetry,
         "expectOccupancy",
