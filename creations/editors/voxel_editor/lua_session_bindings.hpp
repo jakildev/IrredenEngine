@@ -270,6 +270,12 @@ class Handle {
     void dragBox(const sol::object &a, const sol::object &b) {
         builder().dragBox(ivec3Arg(a, "dragBox", "a"), ivec3Arg(b, "dragBox", "b"));
     }
+    void holdBox(const sol::object &a, const sol::object &b) {
+        builder().holdBox(ivec3Arg(a, "holdBox", "a"), ivec3Arg(b, "holdBox", "b"));
+    }
+    void releaseBox() {
+        builder().releaseBox();
+    }
     void tapKey(const sol::object &key) {
         builder().tapKey(keyArg(key, "tapKey", "key"));
     }
@@ -461,6 +467,16 @@ class Handle {
     void expectPickMatchesRender(const std::string &name) {
         builder().expectPickMatchesRender(name);
     }
+    void expectFillGhost(const sol::object &a, const sol::object &b, const std::string &name) {
+        builder().expectFillGhost(
+            ivec3Arg(a, "expectFillGhost", "a"),
+            ivec3Arg(b, "expectFillGhost", "b"),
+            name
+        );
+    }
+    void expectNoFillGhost(const std::string &name) {
+        builder().expectNoFillGhost(name);
+    }
     void expectSliderValue(
         const sol::object &target, float expected, float tolerance, const std::string &name
     ) {
@@ -635,6 +651,10 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         &Handle::hover,
         "dragBox",
         &Handle::dragBox,
+        "holdBox",
+        &Handle::holdBox,
+        "releaseBox",
+        &Handle::releaseBox,
         "tapKey",
         &Handle::tapKey,
         "chordKey",
@@ -757,6 +777,10 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         &Handle::expectPick,
         "expectPickMatchesRender",
         &Handle::expectPickMatchesRender,
+        "expectFillGhost",
+        &Handle::expectFillGhost,
+        "expectNoFillGhost",
+        &Handle::expectNoFillGhost,
         "expectSliderValue",
         &Handle::expectSliderValue,
         "expectPartGated",

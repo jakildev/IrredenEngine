@@ -14,6 +14,7 @@
 #include <irreden/render/systems/system_sprites_to_screen.hpp>
 #include <irreden/render/systems/system_trixel_to_framebuffer.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <utility>
 
@@ -570,15 +571,21 @@ TEST(CameraZoomCanvasPlacement, AParityOffsetShiftsOnlyItsOwnCanvas) {
 }
 
 // The rotated-view scatter adds the camera's sub-cell offset on top of whole
-// anchor cells. Under the snapped policy that offset is unrounded; under the
-// continuous one it is the frame's whole-pixel offset plus carried phase, so
-// the upscale residual is the remainder of the same quantity.
+// anchor cells. Under the snapped policy that offset is its whole framebuffer
+// pixels; under the continuous one it is the frame's whole-pixel offset plus
+// carried phase. Either way the upscale residual is the remainder of the same
+// quantity.
 TEST(CameraZoomCanvasPlacement, RotatedScatterSharesTheFrameOffset) {
     const vec2 camera(17.3f, 4.6f);
     const vec2 pxPerCell(5.0f, 2.5f);
+    // fract = (0.3, 0.6) at 5 x 2.5 px per cell -> (1.5, 1.5) -> floor, Y-up.
     EXPECT_EQ(
         TrixelToFramebuffer::perAxisScatterCameraOffset(nullptr, camera, pxPerCell),
-        vec2(IRMath::fract(camera.x) * 5.0f, -IRMath::fract(camera.y) * 2.5f)
+        vec2(1.0f, -1.0f)
+    );
+    EXPECT_EQ(
+        TrixelToFramebuffer::perAxisScatterCameraOffset(nullptr, camera, pxPerCell),
+        IRMath::cameraSnappedDetachedOffset(camera, pxPerCell)
     );
 
     const IRMath::CameraRasterPhase frame = IRMath::advanceCameraRasterPhase(
@@ -600,6 +607,116 @@ TEST(CameraZoomCanvasPlacement, RotatedScatterSharesTheFrameOffset) {
         const double wholePixels = whole[axis] - frame.phase_[axis];
         EXPECT_NEAR(wholePixels, std::round(wholePixels), 1e-4);
     }
+}
+
+// A sample whose edge sits this close to a framebuffer pixel centre is a
+// raster tie: the last bit of the arithmetic picks its pixel, so it says
+// nothing about direction.
+constexpr double kRasterTieBand = 1e-9;
+
+struct ScatterPanResult {
+    long long maxBackwardPx_ = 0;
+    long long firedSamples_ = 0;
+};
+
+// Largest backward step, in screen pixels, of any rotated-view edge across a
+// three-cell pan under the snapped policy at @p zoom. @p scatterOffset is the
+// scatter's camera offset for one frame.
+//
+// Rotated faces land between cells, so the tracked edges are world-fixed and
+// off the cell lattice (sevenths of a cell), all ahead of the view centre. An
+// edge at framebuffer position `u` is drawn at pixel `round(u)` and then at
+// screen pixel `round(u) * scale + residual`. The scatter offset is Y-up and
+// the residual carries the iso-to-screen sign, so each is un-signed with its
+// own convention before the two are added along the pan direction.
+template <typename OffsetFn>
+ScatterPanResult sweepSnappedScatterPan(float zoom, int axis, int scale, OffsetFn &&scatterOffset) {
+    constexpr int kSteps = 6000;
+    constexpr int kEdgesPerCell = 7;
+    constexpr int kFirstEdge = 2;
+    constexpr int kLastEdge = 6 * kEdgesPerCell;
+    const vec2 pxPerCell = vec2(IRMath::cameraZoomPitch(vec2(zoom)));
+    const double scatterSign = axis == 0 ? 1.0 : -1.0;
+    const long long residualSign = static_cast<long long>(IRPlatform::kIsoToScreenSign[axis]);
+
+    ScatterPanResult result;
+    for (int edge = kFirstEdge; edge <= kLastEdge; ++edge) {
+        const double edgeIso = static_cast<double>(edge) / kEdgesPerCell;
+        bool hasPrevious = false;
+        long long previousScreenPx = 0;
+        for (int step = 0; step <= kSteps; ++step) {
+            const vec2 camera(16.0f + 3.0f * static_cast<float>(step) / kSteps);
+            const vec2 offset = scatterOffset(camera, pxPerCell);
+            const double framebufferPx = (edgeIso + static_cast<double>(std::floor(camera[axis]))) *
+                                             static_cast<double>(pxPerCell[axis]) +
+                                         static_cast<double>(offset[axis]) * scatterSign;
+            const double pixelPhase = framebufferPx - std::floor(framebufferPx);
+            if (std::abs(pixelPhase - 0.5) < kRasterTieBand) {
+                continue;
+            }
+            const ivec2 residual =
+                IRMath::cameraSubPixelOffsets(camera, vec2(zoom), ivec2(scale)).screenPxResidual_;
+            const long long screenPx =
+                static_cast<long long>(std::floor(framebufferPx + 0.5)) * scale +
+                residualSign * residual[axis];
+            ++result.firedSamples_;
+            if (hasPrevious) {
+                result.maxBackwardPx_ =
+                    std::max(result.maxBackwardPx_, previousScreenPx - screenPx);
+            }
+            previousScreenPx = screenPx;
+            hasPrevious = true;
+        }
+    }
+    return result;
+}
+
+// Runs the pan sweep at every snapped zoom, on both axes, at output scales 2
+// and 3, and hands each result to @p check.
+template <typename OffsetFn, typename CheckFn>
+void forEachSnappedScatterPan(OffsetFn &&scatterOffset, CheckFn &&check) {
+    for (const float zoom : {1.0f, 2.0f, 4.0f, 8.0f}) {
+        for (int axis = 0; axis < 2; ++axis) {
+            for (const int scale : {2, 3}) {
+                SCOPED_TRACE(
+                    testing::Message() << "zoom=" << zoom << " axis=" << axis << " scale=" << scale
+                );
+                check(sweepSnappedScatterPan(zoom, axis, scale, scatterOffset));
+            }
+        }
+    }
+}
+
+// A rotated-view pan under the snapped policy never steps an edge backward:
+// the scatter places on whole framebuffer pixels and the upscale residual is
+// what that floor left over.
+TEST(CameraZoomCanvasPlacement, SnappedRotatedPanNeverStepsAnEdgeBackward) {
+    forEachSnappedScatterPan(
+        [](const vec2 &camera, const vec2 &pxPerCell) {
+            return TrixelToFramebuffer::perAxisScatterCameraOffset(nullptr, camera, pxPerCell);
+        },
+        [](const ScatterPanResult &result) {
+            EXPECT_EQ(result.maxBackwardPx_, 0);
+            EXPECT_GT(result.firedSamples_, 1000);
+        }
+    );
+}
+
+// Negative control for the snapped rotated pan: an unrounded scatter offset
+// under the same residual counts the sub-pixel fraction twice, once rounded
+// per edge inside the framebuffer and once as the residual, and the two round
+// at different camera positions. A sweep that reads zero here could not have
+// seen the defect the whole-pixel offset removes.
+TEST(CameraZoomCanvasPlacement, UnroundedRotatedOffsetStepsBackwardDuringAPan) {
+    forEachSnappedScatterPan(
+        [](const vec2 &camera, const vec2 &pxPerCell) {
+            return IRMath::fract(camera) * pxPerCell * vec2(1.0f, -1.0f);
+        },
+        [](const ScatterPanResult &result) {
+            EXPECT_GT(result.maxBackwardPx_, 0);
+            EXPECT_GT(result.firedSamples_, 1000);
+        }
+    );
 }
 
 // --- sprites -----------------------------------------------------------------
