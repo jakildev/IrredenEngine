@@ -33,6 +33,16 @@ a gate that silently passes produce the same check mark — so they get arms:
        comment posted, status/head_slug exported (the retry removed fails it)
     S  the PR comment post always fails -> bounded attempts, exit 3, stderr
        names the comment post
+    T  a slow listed runner grades frame averages on calibration-scaled values
+    U  matched calibration keeps raw grading and catches a regression
+    V  a real regression on a slow listed runner still fails
+    W  a listed runner below its threshold keeps raw grading
+    X  a faster listed runner keeps raw grading
+    Y  scaling never creates an improvement mark
+    Z  tip mode is unchanged
+    AA an unlisted host class keeps raw grading
+    AB p99, GPU stage, and CPU system marks stay raw on a scaled run
+    AC the operator docs name the table, entry, and weighting rule
 
 Stdlib only, no network, no build. Wired into the perf-gate job so it
 executes rather than drifting.
@@ -55,7 +65,11 @@ _SCRIPTS_PERF = _TESTS_DIR.parent
 _REPO_ROOT = _SCRIPTS_PERF.parent.parent
 
 sys.path.insert(0, str(_SCRIPTS_PERF))
-from compare_perf_runs import resolve_baseline  # noqa: E402
+from compare_perf_runs import (  # noqa: E402
+    class_match_head_scale,
+    class_match_scale_threshold,
+    resolve_baseline,
+)
 
 CHECK_REGRESSION = _SCRIPTS_PERF / "check_regression.py"
 COMPARE_STEP = _SCRIPTS_PERF / "ci_compare_step.sh"
@@ -119,7 +133,9 @@ ZOOM_CELLS = ("zoom=1", "zoom=4")
 
 def write_capture(run_dir: Path, reading: tuple, *, finished_at: str,
                   started_at: str | None = None, frames: int = 60,
-                  reportless: bool = False) -> Path:
+                  reportless: bool = False, slug: str = SPLIT_SLUG,
+                  stage_ms: float | None = None,
+                  system_ms: float | None = None) -> Path:
     """A perf-run directory shaped like a real CI capture: two zoom cells and
     the manifest fields the class-matched resolver filters on."""
     ref_ms, *avgs = reading
@@ -129,12 +145,25 @@ def write_capture(run_dir: Path, reading: tuple, *, finished_at: str,
         cells.append({"id": cell_id, "report": f"{cell_id}.txt",
                       "status": "no_report" if reportless else "ok"})
         if not reportless:
-            (run_dir / f"{cell_id}.txt").write_text(
+            report = (
                 "=== PROFILE REPORT ===\n"
                 f"Frame time:  avg={avg:.3f}ms p50={avg:.3f}ms p95={avg:.3f}ms "
                 f"p99={avg:.3f}ms min={avg:.3f}ms max={avg:.3f}ms\n"
-                "=== END REPORT ===\n"
             )
+            if system_ms is not None:
+                report += (
+                    "--- Per-system timing ---\n"
+                    "Pipeline Name Total(ms) Avg(ms) Min(ms) Max(ms) Calls Entities\n"
+                    f"UPDATE TestSystem {system_ms:.3f} {system_ms:.3f} "
+                    f"{system_ms:.3f} {system_ms:.3f} 1 1\n"
+                )
+            if stage_ms is not None:
+                report += (
+                    "--- GPU stage timing ---\n"
+                    "Stage Avg(ms) Max(ms)\n"
+                    f"TestStage {stage_ms:.3f} {stage_ms:.3f}\n"
+                )
+            (run_dir / f"{cell_id}.txt").write_text(report + "=== END REPORT ===\n")
     (run_dir / "manifest.json").write_text(json.dumps({
         "matrix": "quick",
         "frames": frames,
@@ -142,7 +171,7 @@ def write_capture(run_dir: Path, reading: tuple, *, finished_at: str,
         "started_at": started_at or finished_at,
         "finished_at": finished_at,
         "cells": cells,
-        "calibration": {"host_slug": SPLIT_SLUG, "ref_ms": ref_ms,
+        "calibration": {"host_slug": slug, "ref_ms": ref_ms,
                         "ref_target_ms": 50.0},
     }))
     return run_dir
@@ -165,6 +194,36 @@ def split_fixture(work: Path, extra: dict) -> tuple[Path, Path]:
 def write_head(work: Path, reading: tuple = HEAD_NEUTRAL, **kwargs) -> Path:
     return write_capture(work / "head", reading, finished_at=HEAD_STARTED,
                          started_at=HEAD_STARTED, **kwargs)
+
+
+SCALE_CAPTURE = (77.59, 468.01, 1498.33)
+SCALE_HEAD = (90.45, 544.49, 1698.68)
+SCALE_CAPTURED_AT = "2026-10-10T12:00:00Z"
+SCALE_HEAD_AT = "2026-10-13T12:00:00Z"
+
+
+def scale_fixture(work: Path, head_reading: tuple, *, slug: str = OTHER_SLUG,
+                  capture_stage_ms: float | None = None,
+                  head_stage_ms: float | None = None,
+                  capture_system_ms: float | None = None,
+                  head_system_ms: float | None = None) -> tuple[Path, Path, Path]:
+    root = work / "baseline_latest"
+    history = work / "history"
+    write_capture(root / slug, SCALE_CAPTURE, slug=slug,
+                  started_at=SCALE_CAPTURED_AT, finished_at=SCALE_CAPTURED_AT)
+    write_capture(history / slug / "d94ace876", SCALE_CAPTURE, slug=slug,
+                  started_at=SCALE_CAPTURED_AT, finished_at=SCALE_CAPTURED_AT,
+                  stage_ms=capture_stage_ms, system_ms=capture_system_ms)
+    head = write_capture(work / "head", head_reading, slug=slug,
+                         started_at=SCALE_HEAD_AT, finished_at=SCALE_HEAD_AT,
+                         stage_ms=head_stage_ms, system_ms=head_system_ms)
+    return root, history, head
+
+
+def run_scale_history_case(work: Path, head_reading: tuple,
+                           **kwargs) -> subprocess.CompletedProcess:
+    root, history, head = scale_fixture(work, head_reading, **kwargs)
+    return run_checker(root, head, history)
 
 
 # --- Arms A/B/C: baseline resolution -------------------------------------
@@ -629,6 +688,136 @@ def arm_s_comment_retry_bounded(tmp: Path) -> None:
           "the failure is not reported as a comparison failure")
 
 
+# --- Arms T-AC: class-scoped calibration scaling -------------------------
+
+def weighting_line(stdout: str) -> str:
+    return next((line for line in stdout.splitlines()
+                 if line.startswith("- weighting:")), "")
+
+
+def frame_line(stdout: str, cell_id: str) -> str:
+    return next((line for line in stdout.splitlines()
+                 if line.startswith(f"| `{cell_id}` ")), "")
+
+
+def arm_t_slow_listed_runner(tmp: Path) -> None:
+    r = run_scale_history_case(tmp / "t", SCALE_HEAD)
+    note = weighting_line(r.stdout)
+    zoom1 = frame_line(r.stdout, "zoom=1")
+    check("T", r.returncode == 0,
+          f"the fired slow-runner case passes (got {r.returncode})")
+    check("T", class_match_scale_threshold(OTHER_SLUG) == 1.10
+          and class_match_scale_threshold(HEAD_SLUG) is None,
+          "the threshold lookup is exact to the measured host class")
+    check("T", abs(class_match_head_scale(OTHER_SLUG, SCALE_HEAD[0],
+                                          SCALE_CAPTURE[0])
+                         - SCALE_CAPTURE[0] / SCALE_HEAD[0]) < 1e-12,
+          "the scale helper returns capture ref_ms over head ref_ms")
+    check("T", "calibration-scaled" in r.stderr,
+          "the pass verdict names calibration-scaled grading")
+    check("T", note.startswith("- weighting: calibration-scaled (")
+          and "⚠" not in note and "↓" not in note,
+          "the weighting line names the rule without a label glyph")
+    check("T", "(+16.3% raw, -0.2% scaled)" in zoom1 and "⚠" not in zoom1.split("|")[2],
+          "zoom 1 prints both deltas and its avg cell is not warned")
+
+
+def arm_u_matched_calibration(tmp: Path) -> None:
+    matched = (SCALE_CAPTURE[0], *SCALE_HEAD[1:])
+    r = run_scale_history_case(tmp / "u", matched)
+    check("U", r.returncode == 1 and "on raw mean frame avg" in r.stderr,
+          f"matched calibration keeps a real regression red (got {r.returncode})")
+    check("U", weighting_line(r.stdout).startswith("- weighting: raw (")
+          and "1.10×" in weighting_line(r.stdout),
+          "the raw weighting line carries the class threshold")
+
+
+def arm_v_scaled_regression(tmp: Path) -> None:
+    ratio = SCALE_HEAD[0] / SCALE_CAPTURE[0]
+    reading = (SCALE_HEAD[0], *(avg * ratio * 1.15 for avg in SCALE_CAPTURE[1:]))
+    r = run_scale_history_case(tmp / "v", reading)
+    check("V", r.returncode == 1 and "on calibration-scaled mean frame avg" in r.stderr,
+          f"a 15% scaled regression fails (got {r.returncode})")
+    check("V", "⚠" in frame_line(r.stdout, "zoom=1").split("|")[2],
+          "the scaled frame-average cell carries a warning")
+
+
+def arm_w_below_threshold(tmp: Path) -> None:
+    reading = (84.50, *(avg * 1.11 for avg in SCALE_CAPTURE[1:]))
+    r = run_scale_history_case(tmp / "w", reading)
+    check("W", r.returncode == 1 and "on raw mean frame avg" in r.stderr,
+          f"a listed runner below 1.10 grades raw (got {r.returncode})")
+
+
+def arm_x_faster_runner(tmp: Path) -> None:
+    reading = (66.00, *SCALE_CAPTURE[1:])
+    r = run_scale_history_case(tmp / "x", reading)
+    check("X", r.returncode == 0 and weighting_line(r.stdout).startswith("- weighting: raw ("),
+          f"a faster listed runner stays raw (got {r.returncode})")
+
+
+def arm_y_improvement_marks(tmp: Path) -> None:
+    mild = (SCALE_HEAD[0], *(avg * 1.05 for avg in SCALE_CAPTURE[1:]))
+    r = run_scale_history_case(tmp / "y-mild", mild)
+    check("Y", "↓" not in r.stdout,
+          "a negative scaled delta does not create an improvement mark")
+
+    improved = (SCALE_HEAD[0], *(avg * 0.90 for avg in SCALE_CAPTURE[1:]))
+    r = run_scale_history_case(tmp / "y-control", improved)
+    check("Y", "↓" in frame_line(r.stdout, "zoom=1").split("|")[2],
+          "a raw 10% improvement still carries the mark")
+
+
+def arm_z_tip_mode(tmp: Path) -> None:
+    root, _, head = scale_fixture(tmp / "z", SCALE_HEAD)
+    r = run_checker(root, head)
+    check("Z", r.returncode == 1 and "on raw mean frame avg" in r.stderr,
+          f"tip mode remains raw (got {r.returncode})")
+
+
+def arm_aa_unlisted_host(tmp: Path) -> None:
+    r = run_scale_history_case(tmp / "aa", SCALE_HEAD, slug=HEAD_SLUG)
+    check("AA", r.returncode == 1 and "on raw mean frame avg" in r.stderr,
+          f"an unlisted class remains raw (got {r.returncode})")
+    check("AA", "no calibration-scaling entry" in weighting_line(r.stdout)
+          and "scaled" not in frame_line(r.stdout, "zoom=1"),
+          "the note explains the missing entry and the avg cell stays raw")
+
+
+def arm_ab_non_avg_marks(tmp: Path) -> None:
+    r = run_scale_history_case(
+        tmp / "ab-warn", SCALE_HEAD,
+        capture_stage_ms=10.0, head_stage_ms=11.63,
+        capture_system_ms=10.0, head_system_ms=11.63,
+    )
+    zoom1 = frame_line(r.stdout, "zoom=1")
+    check("AB", r.returncode == 0,
+          f"raw informational marks do not fail the scaled avg gate (got {r.returncode})")
+    check("AB", "⚠" not in zoom1.split("|")[2] and "⚠" in zoom1.split("|")[3],
+          "avg is scaled while p99 keeps its raw warning")
+    check("AB", "10.00→11.63 ⚠" in r.stdout and "(+16.3%) ⚠" in r.stdout,
+          "GPU stage and CPU system rows keep raw warnings")
+
+    r = run_scale_history_case(
+        tmp / "ab-control", SCALE_HEAD,
+        capture_stage_ms=10.0, head_stage_ms=10.0,
+        capture_system_ms=10.0, head_system_ms=10.0,
+    )
+    check("AB", "10.00→10.00 ⚠" not in r.stdout and "(+0.0%) ⚠" not in r.stdout,
+          "unchanged stage and system rows do not acquire warnings")
+
+
+def arm_ac_docs() -> None:
+    scripts_doc = (_SCRIPTS_PERF / "README.md").read_text()
+    perf_doc = (_REPO_ROOT / "docs" / "perf" / "README.md").read_text()
+    validation_doc = (_REPO_ROOT / "docs" / "agents" / "VALIDATION.md").read_text()
+    check("AC", "CLASS_MATCH_SCALE_FROM" in scripts_doc
+          and "xeon-platinum-8573c" in scripts_doc,
+          "the operator doc records the table and measured host class")
+    check("AC", "calibration-scaled" in perf_doc and "calibration-scaled" in validation_doc,
+          "the perf and validation docs name the grading rule")
+
+
 def main() -> int:
     print("perf-gate baseline layout + exit-mapping control")
     with tempfile.TemporaryDirectory(prefix="perfgate.") as td:
@@ -651,7 +840,17 @@ def main() -> int:
         arm_q_future_capture(tmp)
         arm_r_comment_retry_recovers(tmp)
         arm_s_comment_retry_bounded(tmp)
+        arm_t_slow_listed_runner(tmp)
+        arm_u_matched_calibration(tmp)
+        arm_v_scaled_regression(tmp)
+        arm_w_below_threshold(tmp)
+        arm_x_faster_runner(tmp)
+        arm_y_improvement_marks(tmp)
+        arm_z_tip_mode(tmp)
+        arm_aa_unlisted_host(tmp)
+        arm_ab_non_avg_marks(tmp)
     arm_g_retired_literal()
+    arm_ac_docs()
 
     if _failures:
         print(f"\n{len(_failures)} assertion(s) failed:")

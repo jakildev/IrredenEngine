@@ -24,6 +24,12 @@
 // can reach at any camera yaw (docs/design/editor-authoring-friction.md §2g
 // F-2g-1). It is the only session that exercises `clickBelow`.
 //
+// `fill_ghost` proves the fill tool's drag preview: a left drag held across a
+// capture draws the ghost on the cells the release then fills, for a one-cell,
+// a row and a slab fill on open ground, and no ghost is drawn before the press
+// or after the release. It ends on an erase drag over the ground, where the
+// ghost is inside the voxels it would carve and shows as its x-ray outline.
+//
 // `face_pick` is the proof that the pick resolves the face under the cursor:
 // from one free-standing anchor it clicks the -x, the -y and the -z face in
 // turn and asserts the three distinct neighbours, once at zoom 2 and once at
@@ -125,6 +131,7 @@ enum class Id {
     MODULE,
     DRAG_PROBE,
     PLACE_BELOW,
+    FILL_GHOST,
     FACE_PICK,
     ROCK,
     MUSHROOM,
@@ -161,6 +168,8 @@ inline Id idFromName(const std::string &name) {
         return Id::DRAG_PROBE;
     if (name == "place_below")
         return Id::PLACE_BELOW;
+    if (name == "fill_ghost")
+        return Id::FILL_GHOST;
     if (name == "face_pick")
         return Id::FACE_PICK;
     if (name == "rock")
@@ -486,6 +495,92 @@ inline Recipe buildPlaceBelow(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin)
     builder.expectOccupancy(below, true, "voxel_placed_below");
     builder.expectOccupancy(armTip, true, "arm_tip_survives");
     builder.expectOccupancy(untouched, false, "untouched_stays_empty");
+
+    return builder.finish();
+}
+
+// The fill tool's drag preview, held across a capture.
+//
+// Each fill is three segments. The hover parks the cursor on the drag's end
+// cell with no button down, so its frame is the held frame without the ghost.
+// The held segment ends with the button down, and its assertion reads the
+// texels the ghost owns. The release commits the fill.
+//
+// The place fills stand one tier above the seeded ground and none is one step
+// toward the camera from another's anchor face, so each drag's ends stay
+// aimable after the fills before it.
+inline Recipe buildFillGhost(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
+    using IRMath::ivec3;
+    Builder builder("fill_ghost", sceneSize, sceneOrigin);
+
+    const int groundZ = sceneSize.z - 1;
+    const int placeZ = groundZ - 1;
+    const int cx = sceneSize.x / 2;
+    const int cy = sceneSize.y / 2;
+    if (cx < 5 || cy < 4 || cx + 6 >= sceneSize.x || cy + 5 >= sceneSize.y || groundZ < 1) {
+        builder.recordError(
+            "fill_ghost needs a scene at least 13 x 11 x 2; got " + std::to_string(sceneSize.x) +
+            " x " + std::to_string(sceneSize.y) + " x " + std::to_string(sceneSize.z)
+        );
+        return builder.finish();
+    }
+
+    struct Fill {
+        const char *label_;
+        ivec3 start_;
+        ivec3 end_;
+    };
+    const Fill fills[] = {
+        {"one", ivec3(cx, cy, placeZ), ivec3(cx, cy, placeZ)},
+        {"row", ivec3(cx + 2, cy, placeZ), ivec3(cx + 5, cy, placeZ)},
+        {"slab", ivec3(cx + 1, cy + 3, placeZ), ivec3(cx + 3, cy + 5, placeZ)},
+    };
+    for (const Fill &fill : fills) {
+        const std::string label = fill.label_;
+        const ivec3 pastEnd = fill.end_ + ivec3(1, 0, 0);
+
+        builder.segment((label + "_hover").c_str());
+        builder.hover(fill.end_);
+        builder.expectNoFillGhost(label + "_no_ghost_before_press");
+        builder.expectOccupancy(fill.end_, false, label + "_hover_does_not_edit");
+
+        builder.segment((label + "_held").c_str());
+        builder.holdBox(fill.start_, fill.end_);
+        builder.expectFillGhost(fill.start_, fill.end_, label + "_ghost_on_the_fill");
+        builder.expectOccupancy(fill.start_, false, label + "_hold_does_not_commit");
+
+        builder.segment((label + "_release").c_str());
+        builder.releaseBox();
+        builder.expectNoFillGhost(label + "_no_ghost_after_release");
+        builder.expectOccupancy(fill.start_, true, label + "_release_fills_start");
+        builder.expectOccupancy(fill.end_, true, label + "_release_fills_end");
+        builder.expectOccupancy(pastEnd, false, label + "_release_stops_at_end");
+    }
+
+    // Ground cells with nothing one step toward the camera, so the whole
+    // carved slab is in view.
+    const ivec3 carveStart(cx - 5, cy - 4, groundZ);
+    const ivec3 carveEnd(cx - 3, cy - 2, groundZ);
+    const ivec3 carveMiddle(cx - 4, cy - 3, groundZ);
+    const ivec3 pastCarve = carveEnd + ivec3(1, 0, 0);
+
+    builder.segment("carve_hover");
+    builder.toggleEraseMode();
+    builder.hover(carveEnd);
+    builder.expectNoFillGhost("carve_no_ghost_before_press");
+    builder.expectOccupancy(carveEnd, true, "carve_hover_does_not_edit");
+
+    builder.segment("carve_held");
+    builder.holdBox(carveStart, carveEnd);
+    builder.expectOccupancy(carveStart, true, "carve_hold_does_not_commit");
+
+    builder.segment("carve_release");
+    builder.releaseBox();
+    builder.expectNoFillGhost("carve_no_ghost_after_release");
+    builder.expectOccupancy(carveStart, false, "carve_release_clears_start");
+    builder.expectOccupancy(carveMiddle, false, "carve_release_clears_middle");
+    builder.expectOccupancy(carveEnd, false, "carve_release_clears_end");
+    builder.expectOccupancy(pastCarve, true, "carve_release_stops_at_end");
 
     return builder.finish();
 }
@@ -1858,6 +1953,8 @@ inline Recipe build(
         return detail::buildDragProbe(sceneSize, sceneOrigin);
     case Id::PLACE_BELOW:
         return detail::buildPlaceBelow(sceneSize, sceneOrigin);
+    case Id::FILL_GHOST:
+        return detail::buildFillGhost(sceneSize, sceneOrigin);
     case Id::FACE_PICK:
         return detail::buildFacePick(sceneSize, sceneOrigin);
     case Id::ROCK:

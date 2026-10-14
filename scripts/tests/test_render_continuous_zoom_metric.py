@@ -65,6 +65,26 @@ class Sweep:
         self.log.write_text("engine noise\n" + "".join(self.lines) + "ir-run: RESULT=CLEAN\n")
 
 
+class StubCapture:
+    """Stands in for the IRShapeDebug runs of a GPU mode: each ``run`` hands
+    back the next scripted sweep and records the demo arguments it was given."""
+
+    def __init__(self, root, sweeps):
+        self.root = root
+        self.sweeps = list(sweeps)
+        self.calls = []
+
+    def run(self, demo_args, shots):
+        directory = self.root / f"run{len(self.calls)}"
+        directory.mkdir()
+        sweep = Sweep(directory)
+        for near in self.sweeps[len(self.calls)]:
+            sweep.shot(2.5, near)
+        self.calls.append(demo_args)
+        return (sorted(directory.glob("screenshot_*.png")),
+                metric.parse_states(sweep.log.read_text()))
+
+
 class ContinuousZoomMetricTest(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
@@ -222,6 +242,27 @@ class ContinuousZoomMetricTest(unittest.TestCase):
         code, result, _ = self.run_cli("widths")
         self.assertEqual(code, 2)
         self.assertIn("error", result)
+
+    def pan_mode(self, snapped_yawed):
+        rigid = (100.2, 101.2, 102.2)
+        capture = StubCapture(self.root, [rigid, rigid, rigid, snapped_yawed])
+        return capture, metric._pan_mode(capture)
+
+    def test_pan_mode_grades_the_snapped_rotated_sweep(self):
+        capture, result = self.pan_mode((100.2, 101.2, 102.2))
+        self.assertTrue(result["pass"], result)
+        self.assertEqual(result["frames"], [3, 3, 3, 3])
+        self.assertEqual(result["edge_motion_px"], [4, 4, 4, 4])
+        self.assertEqual(result["max_backward_px"], 0)
+        self.assertEqual(
+            capture.calls[3],
+            ["--zoom-calibration", "--zoom", "4", "--pan-sweep", "--yaw", metric.YAW_45])
+
+    def test_pan_mode_fails_on_a_backward_step_in_the_snapped_rotated_sweep(self):
+        _, result = self.pan_mode((100.2, 102.2, 101.2, 103.2))
+        self.assertFalse(result["pass"], result)
+        self.assertEqual(result["frames"], [3, 3, 3, 4])
+        self.assertEqual(result["max_backward_px"], 2)
 
 
 if __name__ == "__main__":

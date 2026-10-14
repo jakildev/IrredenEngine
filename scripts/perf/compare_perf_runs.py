@@ -474,6 +474,35 @@ def load_factor(ref_ms: float, target_ms: float) -> float:
 LOAD_FACTOR_TRUST_NORMALIZED = 1.20
 
 
+# Class-matched captures normally grade raw because calibration does not
+# predict frame time on every runner SKU. Each entry is backed by a corpus for
+# that exact host class; scripts/perf/README.md records the admission rule.
+CLASS_MATCH_SCALE_FROM: Dict[str, float] = {
+    "linux-x86_64-xeon-platinum-8573c-unknown": 1.10,
+}
+
+
+def _threshold_for_slug(slug: str, thresholds: Dict[str, float]) -> Optional[float]:
+    for pattern, threshold in thresholds.items():
+        if fnmatch.fnmatchcase(slug, pattern):
+            return threshold
+    return None
+
+
+def class_match_scale_threshold(slug: str) -> Optional[float]:
+    return _threshold_for_slug(slug, CLASS_MATCH_SCALE_FROM)
+
+
+def class_match_head_scale(slug: str, head_ref_ms: float,
+                           capture_ref_ms: float) -> float:
+    threshold = class_match_scale_threshold(slug)
+    if threshold is None:
+        return 1.0
+    if load_factor(head_ref_ms, capture_ref_ms) < threshold:
+        return 1.0
+    return capture_ref_ms / head_ref_ms
+
+
 # --- Per-cell load gate --------------------------------------------------
 
 # Host classes whose quiet `before` readings have been measured, each mapped to
@@ -500,10 +529,7 @@ class LoadFlag:
 
 
 def load_gate_threshold(slug: str) -> Optional[float]:
-    for pattern, threshold in LOAD_GATE_THRESHOLDS.items():
-        if fnmatch.fnmatchcase(slug, pattern):
-            return threshold
-    return None
+    return _threshold_for_slug(slug, LOAD_GATE_THRESHOLDS)
 
 
 def _positive_ms(value: object) -> Optional[float]:
@@ -679,17 +705,30 @@ def format_frame_row(
     regress_pct: float,
     improve_pct: float,
     load_flagged: bool = False,
+    avg_head_scale: float = 1.0,
 ) -> str:
     avg_b, avg_h = base.frame.avg, head.frame.avg
     p99_b, p99_h = base.frame.p99, head.frame.p99
     avg_delta = pct_delta(avg_b, avg_h)
+    scaled_avg_delta = pct_delta(avg_b, avg_h * avg_head_scale)
     p99_delta = pct_delta(p99_b, p99_h)
-    avg_mark = "" if load_flagged else mark(avg_delta, regress_pct, improve_pct)
+    if load_flagged:
+        avg_mark = ""
+    elif avg_head_scale != 1.0:
+        avg_mark = " ⚠" if scaled_avg_delta >= regress_pct else (
+            " ↓" if avg_delta <= -improve_pct else ""
+        )
+    else:
+        avg_mark = mark(avg_delta, regress_pct, improve_pct)
     p99_mark = "" if load_flagged else mark(p99_delta, regress_pct, improve_pct)
     label = f"`{cell_id}` (load-flagged)" if load_flagged else f"`{cell_id}`"
+    avg_delta_text = (
+        f"{avg_delta:+.1f}% raw, {scaled_avg_delta:+.1f}% scaled"
+        if avg_head_scale != 1.0 else f"{avg_delta:+.1f}%"
+    )
     return (
         f"| {label} "
-        f"| {avg_b:.2f} → {avg_h:.2f} ({avg_delta:+.1f}%){avg_mark} "
+        f"| {avg_b:.2f} → {avg_h:.2f} ({avg_delta_text}){avg_mark} "
         f"| {p99_b:.2f} → {p99_h:.2f} ({p99_delta:+.1f}%){p99_mark} |"
     )
 
@@ -755,6 +794,7 @@ def render_markdown(
     cpu_only: bool,
     host_note: str = "",
     load_flags: Sequence[LoadFlag] = (),
+    frame_avg_head_scale: float = 1.0,
 ) -> str:
     """A load-flagged cell keeps its rows but carries no ⚠ or ↓ mark: the
     gate does not grade it, and a ↓ anywhere in the comment labels the PR
@@ -814,7 +854,8 @@ def render_markdown(
         out.append("|------|-----|-----|")
         for cell_id in matched:
             out.append(format_frame_row(cell_id, base[cell_id], head[cell_id],
-                                        regress_pct, improve_pct, cell_id in ungraded))
+                                        regress_pct, improve_pct, cell_id in ungraded,
+                                        frame_avg_head_scale))
         out.append("")
 
     if not cpu_only and any(c.gpu_frame.supported is not None
@@ -940,10 +981,23 @@ def build_host_note(base_manifest: Dict, head_manifest: Dict,
     lines.append(f"- calibration target: {target_ms:.2f} ms (informational)")
     if capture is not None:
         lines.append(format_capture_line(capture, head_manifest, capture_is_tip))
-        lines.append(
-            "- weighting: raw (class-matched capture, ref_ms within "
-            f"{LOAD_FACTOR_TRUST_NORMALIZED:.2f}× of the head's)"
-        )
+        scale_threshold = class_match_scale_threshold(head_slug)
+        head_scale = class_match_head_scale(head_slug, head_ref_ms, base_ref_ms)
+        if head_scale != 1.0:
+            lines.append(
+                "- weighting: calibration-scaled (frame avg only; "
+                f"load_factor {lf:.2f}× ≥ {scale_threshold:.2f}×)"
+            )
+        elif scale_threshold is not None:
+            lines.append(
+                "- weighting: raw (class-matched capture; "
+                f"load_factor {lf:.2f}× < {scale_threshold:.2f}×)"
+            )
+        else:
+            lines.append(
+                "- weighting: raw (class-matched capture; "
+                f"load_factor {lf:.2f}×; no calibration-scaling entry)"
+            )
     else:
         lines.append(
             "- weighting: normalized over raw "

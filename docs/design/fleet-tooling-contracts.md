@@ -246,3 +246,55 @@ to the per-PR record shape that does not bump `PR_RECORD_SCHEMA` keeps
 serving the pre-change shape after the deploy for an unbounded number of
 ticks on a quiet repo, because nothing invalidates the cache until the
 upstream data changes.
+
+## Attributing a trial-merge conflict to the base
+
+`fleet-pr-overlap` lowers a conflicted shared path to `base-conflict` only on
+proof that the head-side merged file is the reference-side merged file with
+the head's own change applied outside every conflict block. The two errors
+are not symmetric: a wrong `conflicts` row costs a park, a wrong
+`base-conflict` row publishes a real conflict, so every unreadable or
+unprovable case stays `conflicts`. Each element of the proof closes a way to
+be wrong that the others leave open.
+
+- **The reference is the base commit the head carries**
+  (`merge-base(<base tip>, HEAD)`), not the base tip. A base that moved again
+  in the contested region has different blocks from the ones the head was
+  written against.
+- **A path that also conflicts against the reference proves nothing alone.**
+  The head can still edit the contested line or the one beside it, or add a
+  second conflict to the same file.
+- **Equal, non-empty, ordered block lists.** Equality catches a head edit
+  inside its own side of a multi-line block, which replays cleanly.
+  Non-empty catches a conflict git reports without writing a block (a path
+  with the `-merge` attribute), where two empty lists compare equal.
+- **A clean replay** of the head's change onto the reference-side merged
+  file. Block bytes do not say where a block sits: a head that resolves the
+  inherited conflict in one stanza and adds a byte-identical one in the next
+  has the same block list.
+- **The replay's output equals the head-side merged file.** `git merge-file`
+  and `git merge-tree` diff differently, and in repeated content they can
+  place one conflict in two different stanzas. The equality ties the clean
+  replay to the merge git actually ran.
+- **No merged side has a line starting with seven `<` or `>`.** Every such
+  line in a merged file is then one git wrote, so the block parse is exact
+  and stripping the label after a marker run (the commit ids passed to the
+  merge, which differ between the two merges) drops no file content. The
+  sides come from the merge's own conflict record, by object id: under a
+  rename/add conflict git merges an intermediate blob that already holds
+  nested markers, not the blob at `<commit>:<path>`.
+- **`merge.conflictStyle=merge` is pinned on the two attribution merges and
+  the replay.** Under `diff3` and `zdiff3` git writes a `|||||||` line
+  labelled with the merge base, which differs between the two merges when
+  the head carries part of the competitor's history. Stripping that label
+  would also strip a literal `||||||| …` source line inside a block and hide
+  a head edit of it. Pinned, git writes no such line, lines starting with
+  `|` or `=` are compared whole, and the grade does not depend on the host.
+  The first trial merge only decides which paths conflict and keeps the
+  host's style.
+
+The proof does not promise that the head will merge cleanly with whatever
+resolution the competitor later writes; it shows that today's conflicts are
+the base's and that the head's edits lie outside them. It is an argument
+about git's built-in text merge: a host that defines a custom merge driver,
+`merge.default` or `merge.renormalize` is outside it.
