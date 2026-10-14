@@ -1,28 +1,27 @@
 # Fog ceiling retention — native Metal evidence
 
-Fresh two-ref captures for PR #4381, taken in one macOS session on
-2026-10-13 (local time) by Codex (GPT-6). These replace the earlier WIP
-pairs. Master was pinned before the paired measurements; no later rebase
-is included in this evidence.
+Two-ref captures for PR #4381, retaken in one macOS session on 2026-10-14
+(local time) by Claude Fable 5.1 (fleet worker, pool-3) after the rebase onto
+master, so both arms carry the snapped rotated-view scatter that moved the
+yawed rows. The original pairs (Codex, GPT-6, 2026-10-13, before
+`8a1bc317a` / after `50c685205`) are in this directory's history; the
+cardinal retakes are byte-identical to them and the yawed retakes differ by
+the scatter move on both arms.
 
-- Before: `8a1bc317a11218c27f46cd3c55080635fdb95397`.
-- After code: `50c68520505c9621237a1ec936ead20523e4ff17`; the later
-  `bad76c32a83b5d8ff0cfa78aadc985330bcf0d1c` adds evidence only.
-- Host: macOS 26.5.2 arm64, Apple M4 Max (32 GPU cores), Metal,
-  `macos-debug`, Debug with the repository's `-O3` setting.
-- Head executable build: `20261013T225309Z-build-4fcb8f`, terminal
-  `succeeded exit=0`, at `f4fd403eddaff4419917168a10ef7c542c6bbef2`.
-  The only subsequent runtime code change is the GLSL/Metal face-selector
-  BODY fast path; those shaders were copied from `50c685205` into the
-  isolated head runtime. The full head sweep also rebuilt the ordinary
-  targets at `bad76c32a`.
-- Master build: `20261014T000738Z-build-e6c255`, terminal
-  `succeeded exit=0`, at the pinned before ref.
-- Captures use `fleet-run --build-dir <isolated-runtime> --timeout 60
-  IRFogDemo <scene-arguments> --auto-screenshot 10`. Head runtime:
-  `/tmp/pool-1-4381/fog-fixed-build`; master:
-  `/tmp/pool-1-4381/fog-base-build`. Every production run exits CLEAN.
-  Logs, probes, capture hashes and runtime provenance are in `verification/`.
+- Before: `9d9cecc3f7a490b7735f667b16049d7f3382b07b`, the PR's merge base,
+  built in a scratch worktree (`/private/tmp/pool3-4381-base/build`).
+- After: `2ed29dcf59d88f726e65c2511074c1a1d60a7c02`, the shipped renderer
+  with the no-ceiling compact declaring master's prefix mirror of
+  `FogObserverData`, built in the pool-3 worktree.
+- Host: macOS 26.5.2 arm64, Apple M4 Max, Metal, `macos-debug`, Debug with
+  the repository's `-O3` setting.
+- Captures use `fleet-run --build-dir <arm build> --timeout 60 IRFogDemo
+  <scene-arguments> --auto-screenshot 10`; every run exits `RESULT=CLEAN`.
+  Logs, probe lines, commands and capture hashes are in
+  `verification/rebased/`; the earlier session's evidence stays under
+  `verification/`.
+- Every `-after` full frame is byte-identical to the committed
+  `macos-debug` render-verify reference of the same view.
 - Viewport 1280 × 720; full PNG framebuffer 2560 × 1440. Requested camera (0,0),
   yaw 0 and .35 radians, requested zoom 9 / effective zoom 8 (column-top
   requests 8), subdivisions 8. Effective iso position is (0,0) at yaw 0;
