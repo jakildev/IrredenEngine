@@ -10,10 +10,23 @@ namespace {
 
 class WorldConfigAudioMonitorTest : public testing::Test {
   protected:
+    void SetUp() override {
+        const std::string testName = testing::UnitTest::GetInstance()->current_test_info()->name();
+        const std::filesystem::path tempDirectory = std::filesystem::temp_directory_path();
+        for (unsigned int suffix = 0;; ++suffix) {
+            m_directory = tempDirectory /
+                          ("ir_world_audio_monitor_" + testName + "_" + std::to_string(suffix));
+            if (std::filesystem::create_directory(m_directory)) {
+                break;
+            }
+        }
+        m_configFile = m_directory / "config.lua";
+        m_presetFile = m_directory / "preset.lua";
+    }
+
     void TearDown() override {
         std::error_code error;
-        std::filesystem::remove(m_configFile, error);
-        std::filesystem::remove(m_presetFile, error);
+        std::filesystem::remove_all(m_directory, error);
     }
 
     const char *
@@ -24,10 +37,9 @@ class WorldConfigAudioMonitorTest : public testing::Test {
         return pathStorage.c_str();
     }
 
-    std::filesystem::path m_configFile =
-        std::filesystem::temp_directory_path() / "ir_world_audio_monitor_config.lua";
-    std::filesystem::path m_presetFile =
-        std::filesystem::temp_directory_path() / "ir_world_audio_monitor_preset.lua";
+    std::filesystem::path m_directory;
+    std::filesystem::path m_configFile;
+    std::filesystem::path m_presetFile;
     std::string m_configPath;
     std::string m_presetPath;
 };
