@@ -16,6 +16,8 @@ Only the yaw180 PNGs are retained here; their manifests/logs cover all six shots
 The independently repeated beauty run also passes its four incompatible-option
 controls and exact first/restored-frame check. All six beauty images are
 byte-identical to the existing references after integrating master `9d9cecc3f`.
+The [full integrated regression](integration-regression.txt) passes all 62
+ShapeDebug checks without further reference or tolerance changes.
 This is correctness evidence, not a frame-time measurement or Windows smoke.
 Local account/worktree paths in text evidence are normalized; the export
 inventory preserves original and exported file hashes. PNGs are unmodified.
