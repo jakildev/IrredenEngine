@@ -1257,9 +1257,12 @@ class Builder {
 
     // Left-drag the selected part's move gizmo from @p from to @p to, which
     // translates the part by @p partDelta; the model follows, so later aims
-    // land on the moved part. The gizmo sits at the part's pivot, the middle
-    // of its box, and an occluded handle takes no click: drag before anything
-    // is authored into the part.
+    // land on the moved part. The gizmo is drawn at the part's pivot, the
+    // middle of its box, in front of the part's own content. A handle is a
+    // few trixels across at the session zoom, and which of its pixels are
+    // drawn depends on where the part sits on the voxel lattice and on the
+    // camera's yaw: take a new grab point from a run, not from the handle's
+    // geometry.
     void dragPartGizmo(IRMath::vec3 from, IRMath::vec3 to, IRMath::vec3 partDelta) {
         if (m_partModels.empty()) {
             recordError("dragPartGizmo needs an entity-scene part");
