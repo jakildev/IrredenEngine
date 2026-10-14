@@ -32,6 +32,7 @@ add_executable(IrredenEngineTest
   ecs/archetype_move_storage_test.cpp
   ecs/chunk_bounds_eviction_test.cpp
   ecs/chunked_field_test.cpp
+  ecs/collision_swept_test.cpp
   ecs/command_randomize_voxels_test.cpp
   ecs/entity_event_handlers_test.cpp
   ecs/entity_manager_test.cpp
