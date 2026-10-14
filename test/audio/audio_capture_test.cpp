@@ -392,6 +392,16 @@ TEST(AudioCaptureBackendTest, NullBackendAsserts) {
     EXPECT_THROW(Audio{std::unique_ptr<IRAudio::detail::IAudioInputBackend>{}}, std::runtime_error);
 }
 
+TEST_F(AudioCaptureTest, DeviceSummariesListTheEnumeratedDevices) {
+    const std::vector<IRAudio::AudioDeviceSummary> devices = m_audio->deviceSummaries();
+    ASSERT_EQ(devices.size(), 1u);
+    EXPECT_EQ(devices[0].name_, kFakeDeviceName);
+    EXPECT_EQ(devices[0].inputChannels_, 2u);
+    EXPECT_EQ(devices[0].outputChannels_, 2u);
+    EXPECT_TRUE(devices[0].defaultInput_);
+    EXPECT_EQ(devices[0].preferredSampleRate_, 44'100u);
+}
+
 TEST_F(AudioCaptureTest, UnlistedRateUsesNearestListedRateAndWarnsOnce) {
     EngineLogCapture log;
 

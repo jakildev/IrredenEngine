@@ -38,6 +38,9 @@ std::vector<std::string> midiOutPorts();
 std::vector<int> midiInOpenPorts();
 /// Returns the RtMidi port indices of every currently-open MIDI output port.
 std::vector<int> midiOutOpenPorts();
+/// Returns every audio device the backend reported at startup, by name: the
+/// names a capture config (`video_capture_audio_input_device_name`) matches.
+std::vector<AudioDeviceSummary> audioDevices();
 /// Opens a MIDI input port by hardcoded interface index.
 int openPortMidiIn(MidiInInterfaces midiInInterface);
 /// Opens the first MIDI input port whose name contains @p deviceName (substring match).
