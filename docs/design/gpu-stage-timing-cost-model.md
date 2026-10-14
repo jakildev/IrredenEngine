@@ -77,7 +77,7 @@ waits and adds no lookup to the per-frame timing brackets.
   not a sum over all canvases in a frame.
 - **SDF rows are non-nested dispatch scopes:** `shapeOwnerClear` covers
   scratch preparation/clear (Metal samples the blit, excluding CPU allocation); `shapeDepth` covers pass zero; `shapeOwnerElect`
-  covers equal-depth owner election; `shapePublish` covers color/identity
+  covers equal-depth owner election and the occluded x-ray candidate's; `shapePublish` covers color/identity
   publication. Casting has separate `shapeCastClear`, `shapeCastBoxes`,
   `shapeCastFallback`, `shapeCastResolve` and `shapeCastBake` rows for the
   depth clear, finite-box dispatch, non-box depth raster, atomic scratch

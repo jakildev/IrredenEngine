@@ -66,7 +66,7 @@ layout(std430, binding = 22) buffer ShapeOwnerBuffer {
 layout(r32i, binding = 1) uniform iimage2D triangleCanvasDistances;
 // `triangleCanvasColors` is read+write (not `writeonly`) so the
 // SHAPE_FLAG_XRAY_OCCLUDED branch in pass 1 can load the existing pixel
-// and blend the occluded shape's color on top at reduced alpha.
+// and blend the elected occluded sample's color on top at reduced alpha.
 layout(rgba8, binding = 0) uniform image2D triangleCanvasColors;
 layout(rg32ui, binding = 2) writeonly uniform uimage2D triangleCanvasEntityIds;
 
@@ -75,12 +75,17 @@ const uint FLAG_VISIBLE = 8u;
 const uint FLAG_FOG_BODY = 16u;
 const uint FLAG_XRAY_OCCLUDED = 128u;
 
-// X-ray silhouette intensity. When a SHAPE_FLAG_XRAY_OCCLUDED fragment
-// loses the atomicMin contest against geometry that's already won the
-// pixel, pass 1 blends the shape color over the existing canvas pixel
-// at this alpha so the shape still reads as a faint silhouette through
-// the occluder.
+// X-ray silhouette intensity. On a pixel no sample of this submission owns,
+// pass 1 blends the elected occluded SHAPE_FLAG_XRAY_OCCLUDED sample over
+// the canvas pixel at this alpha, so the shape reads as a faint silhouette
+// through content drawn before the shape stage.
 const float kXrayOccludedAlpha = 0.25;
+
+// An occluded x-ray sample contends for its pixel under its owner key with
+// this bit set. Every owner key has the bit clear, so a sample at the stored
+// depth outranks every candidate, and no candidate equals the cleared word
+// 0xFFFFFFFF. The CPU side asserts the key range that keeps the bit free.
+const uint kXrayCandidateBit = 0x80000000u;
 
 // FP→int snap guard for analytical depth solvers. dEntry/dIntExit are
 // FMA-reordered across GPU scheduling, so a mathematically-integer entry
@@ -1012,7 +1017,6 @@ void main() {
         }
     }
 
-    bool xrayOccluded = (shape.flags & FLAG_XRAY_OCCLUDED) != 0u;
     // Shape ids are 32-bit; descriptor bits 23:16 carry the BODY factor.
     const uvec2 packedEntityId = encodeEntityIdAnalyticSurface(encodeEntityIdFogBody(
         uvec2(shape.entityId, 0u),
@@ -1020,6 +1024,9 @@ void main() {
         (shape.flags >> 16u) & 0xFFu
     ));
 
+#endif
+#if IR_SHAPE_PASS == 1 || IR_SHAPE_PASS == 3
+    bool xrayOccluded = (shape.flags & FLAG_XRAY_OCCLUDED) != 0u;
 #endif
 
     for (int face = 0; face < 3; face++) {
@@ -1045,8 +1052,12 @@ void main() {
             const uint sampleOwner = ((uint(tileIdx) * 64u + gl_LocalInvocationIndex) * 3u + uint(face)) * 2u + uint(subPixel);
 #if IR_SHAPE_PASS == 3
             {
-                if (depthEncoded == imageLoad(triangleCanvasDistances, canvasPixel).r)
+                int stored = imageLoad(triangleCanvasDistances, canvasPixel).r;
+                if (depthEncoded == stored) {
                     atomicMin(sampleOwners[linearIndex], sampleOwner);
+                } else if (xrayOccluded && depthEncoded > stored) {
+                    atomicMin(sampleOwners[linearIndex], sampleOwner | kXrayCandidateBit);
+                }
             }
 #elif IR_SHAPE_PASS != 1
             {
@@ -1061,15 +1072,12 @@ void main() {
                     imageStore(triangleCanvasColors, canvasPixel, baseColor);
                     imageStore(triangleCanvasEntityIds, canvasPixel,
                                uvec4(packedEntityId, 0u, 0u));
-                } else if (xrayOccluded && depthEncoded > stored) {
-                    // This shape lost the atomicMin contest — something
-                    // closer owns the pixel. Blend its color over the
-                    // existing canvas color at reduced alpha so the shape
-                    // still reads as a faint silhouette through the
-                    // occluder.
-                    // Non-atomic RMW: racing stores produce one mix level
-                    // instead of two — the dimming is visually
-                    // indistinguishable; no coord-level race risk.
+                } else if (xrayOccluded && depthEncoded > stored &&
+                           (sampleOwner | kXrayCandidateBit) == sampleOwners[linearIndex]) {
+                    // The elected candidate is this pixel's only writer: a
+                    // candidate key is elected only where no sample owns the
+                    // pixel, so its load reads content drawn before the
+                    // shape stage and never races an owner's store.
                     vec4 existing = imageLoad(triangleCanvasColors,
                                               canvasPixel);
                     vec3 blended = mix(existing.rgb, baseColor.rgb,

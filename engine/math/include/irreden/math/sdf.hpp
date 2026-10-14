@@ -48,11 +48,11 @@ enum ShapeFlags : std::uint32_t {
     /// visually distinguishing individual shapes regardless of world position.
     SHAPE_FLAG_DEPTH_COLOR = 1u << 6,
     /// X-ray silhouette on occlusion. The shape writes its color normally
-    /// where it wins the depth contest; where it loses (something closer
-    /// already owns the pixel) `c_shapes_to_trixel` blends the shape color
-    /// at reduced alpha over the existing canvas color, so the shape still
-    /// reads as a faint silhouette through the occluder. Generic per-shape
-    /// opt-in (T-164).
+    /// where it wins the depth contest. Where it sits behind content drawn
+    /// before the shape stage, `c_shapes_to_trixel` blends one of its samples
+    /// at reduced alpha over the canvas color, so the shape still reads as a
+    /// faint silhouette through that content. Behind another shape of the
+    /// same canvas it draws nothing. Generic per-shape opt-in (T-164).
     SHAPE_FLAG_XRAY_OCCLUDED = 1u << 7,
     SHAPE_FLAG_FOG_HIDDEN = 1u << 8,
     SHAPE_FLAG_FOG_GHOST = 1u << 9,

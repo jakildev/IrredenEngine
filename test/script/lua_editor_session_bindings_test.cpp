@@ -19,6 +19,7 @@ IR_SESSION_PREDICATE_STUB(evaluatePartEditableCheck)
 IR_SESSION_PREDICATE_STUB(evaluateCanvasCountCheck)
 IR_SESSION_PREDICATE_STUB(evaluateRotationModeCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartYawCheck)
+IR_SESSION_PREDICATE_STUB(evaluatePartTurnAxisCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartSpinCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartAnchorCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartModeDropdownCheck)
@@ -199,6 +200,7 @@ TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
         s:expectCanvasCount(0, "canvas_count")
         s:expectRotationMode(0, 0, "rotation_mode")
         s:expectPartYaw(0, 60, 1, "part_yaw")
+        s:expectPartTurnAxis(0, {0, 1, 0}, 10, "part_turn_axis")
         s:expectPartSpinRate(0, 0.02, true, "part_spin_rate")
         s:expectPartAnchor(0, IRComponent.EntityAnchor.CENTER, "part_anchor")
         s:expectPartModeDropdown(0, "part_mode_dropdown")
@@ -349,6 +351,7 @@ TEST_F(LuaEditorSessionBindingsTest, RejectsEveryArgumentFamilyAndNonComparableF
         "session:clickGui({0})",
         "session:tapKey(9999)",
         "session:expectRotationMode(0, 9999, 'bad')",
+        "session:expectPartTurnAxis(0, {0,1}, 10, 'bad')",
         "session:expectPartAnchor(0, 9999, 'bad')",
         "session:selectPartMode(9999)",
         "session:expectPartModeDropdown(9999, 'bad')",

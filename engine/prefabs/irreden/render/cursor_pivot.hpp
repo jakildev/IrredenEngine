@@ -75,8 +75,8 @@ inline IRMath::vec3 resolveFocusWorld(IREntity::EntityId excludeEntity = IREntit
 // `SHAPE_FLAG_XRAY_OCCLUDED` (a behavior-named flag, per
 // engine/render/CLAUDE.md §"Name identifiers after the rendering effect")
 // keeps it readable as a faint silhouette when the latched point sits behind
-// closer geometry, which is the common case for a surface pick on a concave
-// scene.
+// closer voxel content, which is the common case for a surface pick on a
+// concave scene. Behind another shape of the same canvas it draws nothing.
 //
 // Call this lazily, on the first cursor-pivot drag rather than at system
 // registration: a creation that never uses the mode then spawns no entity, so
