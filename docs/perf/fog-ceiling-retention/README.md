@@ -4,6 +4,12 @@ Five interleaved master/head pairs per lane on the same macOS 26.5.2 arm64 host 
 
 The scene uses 1280×720 game resolution, zoom 1, subdivisions 1 and a 64³ contiguous voxel grid with the configured per-cell wave (262,332 total entities). Lighting is one sun in direction (.35,.85,-.4), shadows enabled, and one emissive source at (0,0,-64), radius 24. Every accepted report has 262,144 retained candidates out of 262,144 pool slots, zero feeders and zero per-axis entries. The eight analytic fog sources use the existing identity/surface routes.
 
+The amended renderer (the compact split into a no-ceiling and a ceiling
+specialization, the per-canvas `fogCeilingEnabled` lane, head `79627c49c`) is
+re-measured on the same host and fixture in [`metal-amended/`](metal-amended/README.md);
+the tables below are the pre-amendment renderer and stand as the retention
+model's original baseline.
+
 Each pair runs head identity, head treatment, master identity, master treatment through `scripts/perf/repeat_profile.py --repeats 1`. The common demo arguments are `--auto-profile 300 --fog-reveal --grid-size 64 --yaw 0`; treatment adds `--fog-reveal-surface`. This flag requires `--fog-reveal` as well. No profiling runs overlap.
 
 Both commits were built with `fleet-build`. Their executable, shader, script and data artifacts were retained separately, then restored into the normal build runtime directory at each checkout. Every retained manifest records a clean source tree, the matching commit, stable per-arm executable/shader/script hashes, `RESULT=CLEAN`, `QUIET=guarded`, stationary yaw, and measured GPU timing. The executable is unchanged by the shader-only BODY optimization; its shader hash changes. Full reports and manifests are adjacent.
