@@ -372,6 +372,12 @@ inline void setDropdownSelectedIndex(IREntity::EntityId widget, int index) {
     dd.selectedIndex_ = (n == 0) ? -1 : IRMath::clamp(index, 0, n - 1);
 }
 
+inline void
+setDropdownItems(IREntity::EntityId widget, std::vector<std::string> items, int selectedIndex = 0) {
+    IREntity::getComponent<IRComponents::C_WidgetDropdown>(widget).items_ = std::move(items);
+    setDropdownSelectedIndex(widget, selectedIndex);
+}
+
 inline bool radioSelected(IREntity::EntityId widget) {
     return IREntity::getComponent<IRComponents::C_WidgetRadio>(widget).selected_;
 }

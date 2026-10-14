@@ -52,6 +52,7 @@
 #include <string_view>
 #include <tuple>
 #include <unordered_map>
+#include <vector>
 
 namespace IRScript::detail {
 
@@ -112,6 +113,40 @@ optionalHandler(const sol::table &options, const char *key, const char *caller) 
         throw sol::error{std::string(caller) + ": option '" + key + "' must be a function"};
     }
     return value.as<sol::protected_function>();
+}
+
+// The widget component `T` on entity `id`, or a Lua error naming the call and
+// the kind of widget it needs. Per-frame Lua readers share the binding-time
+// getComponent allowance: they do not run inside a tick.
+template <typename T>
+inline T *requireWidget(lua_Integer id, const char *caller, const char *kind) {
+    const IREntity::EntityId widget = static_cast<IREntity::EntityId>(id);
+    T *component = nullptr;
+    if (id > 0 && IREntity::entityExists(widget)) {
+        component = IREntity::getComponentOptional<T>(widget).value_or(nullptr);
+    }
+    if (component == nullptr) {
+        throw sol::error{
+            std::string(caller) + ": entity " + std::to_string(id) + " is not a " + kind +
+            " — pass the id the matching IRGui.make* call returned"
+        };
+    }
+    return component;
+}
+
+// A Lua array of strings (1..#t), or a Lua error naming the call.
+inline std::vector<std::string> stringList(const sol::table &items, const char *caller) {
+    std::vector<std::string> out;
+    const std::size_t n = items.size();
+    out.reserve(n);
+    for (std::size_t i = 1; i <= n; ++i) {
+        const sol::object item = items[i];
+        if (item.get_type() != sol::type::string) {
+            throw sol::error{std::string(caller) + ": items must be a list of strings"};
+        }
+        out.push_back(item.as<std::string>());
+    }
+    return out;
 }
 
 inline constexpr std::array<std::string_view, 4> kHitRegionOptionKeys{
@@ -238,34 +273,15 @@ inline void bindWidgets(LuaScript &script) {
     // widget's Lua handlers go with it, and none of them runs after this
     // call, events already queued this frame included.
     gui["destroyWidget"] = [](lua_Integer id) {
-        const IREntity::EntityId widget = static_cast<IREntity::EntityId>(id);
-        const bool isWidget =
-            id > 0 && IREntity::entityExists(widget) &&
-            IREntity::getComponentOptional<IRComponents::C_Widget>(widget).has_value();
-        if (!isWidget) {
-            throw sol::error{
-                "IRGui.destroyWidget: entity " + std::to_string(id) +
-                " is not a live widget — pass the id an IRGui.make* call returned"
-            };
-        }
-        IREntity::destroyEntity(widget);
+        requireWidget<IRComponents::C_Widget>(id, "IRGui.destroyWidget", "live widget");
+        IREntity::destroyEntity(static_cast<IREntity::EntityId>(id));
     };
 
     // Raises on a non-label id rather than attaching a C_WidgetLabel to it: a
     // label needs the C_Widget / C_GuiPosition siblings makeLabel creates.
     gui["setLabelText"] = [](lua_Integer id, std::string text) {
-        IRComponents::C_WidgetLabel *label =
-            IREntity::getComponentOptional<IRComponents::C_WidgetLabel>(
-                static_cast<IREntity::EntityId>(id)
-            )
-                .value_or(nullptr);
-        if (label == nullptr) {
-            throw sol::error{
-                "IRGui.setLabelText: entity " + std::to_string(id) +
-                " is not a label — pass the id IRGui.makeLabel returned"
-            };
-        }
-        label->text_ = std::move(text);
+        requireWidget<IRComponents::C_WidgetLabel>(id, "IRGui.setLabelText", "label")->text_ =
+            std::move(text);
     };
 
     gui["wasClicked"] = [](lua_Integer id) -> bool {
@@ -274,6 +290,113 @@ inline void bindWidgets(LuaScript &script) {
 
     gui["glyphStep"] = []() {
         return std::make_tuple(IRRender::kGlyphStepX, IRRender::kGlyphStepY);
+    };
+
+    // ── Value widgets: slider, checkbox, dropdown ────────────────────────────
+    // An editor polls these each frame (`sliderValue`, `checkboxState`,
+    // `dropdownSelected`) and pushes values back with the setters. They need
+    // WIDGET_APPLY_* in INPUT (after WIDGET_INPUT) to take the mouse and
+    // WIDGET_RENDER_* in RENDER to draw. Dropdown indices are 1-based here
+    // (0 = nothing selected) and 0-based in C++.
+
+    gui["makeSlider"] = [](int x,
+                           int y,
+                           int w,
+                           int h,
+                           std::string label,
+                           float minValue,
+                           float maxValue,
+                           float value) -> lua_Integer {
+        if (!(minValue < maxValue)) {
+            throw sol::error{"IRGui.makeSlider: min must be below max"};
+        }
+        return static_cast<lua_Integer>(IRPrefab::Widget::makeSlider(
+            IRMath::ivec2(x, y),
+            IRMath::ivec2(w, h),
+            std::move(label),
+            minValue,
+            maxValue,
+            IRMath::clamp(value, minValue, maxValue)
+        ));
+    };
+    gui["sliderValue"] = [](lua_Integer id) -> float {
+        requireWidget<IRComponents::C_WidgetSlider>(id, "IRGui.sliderValue", "slider");
+        return IRPrefab::Widget::sliderValue(static_cast<IREntity::EntityId>(id));
+    };
+    gui["setSliderValue"] = [](lua_Integer id, float value) {
+        requireWidget<IRComponents::C_WidgetSlider>(id, "IRGui.setSliderValue", "slider");
+        IRPrefab::Widget::setSliderValue(static_cast<IREntity::EntityId>(id), value);
+    };
+
+    gui["makeCheckbox"] =
+        [](int x, int y, int w, int h, std::string label, sol::optional<bool> checked)
+        -> lua_Integer {
+        return static_cast<lua_Integer>(IRPrefab::Widget::makeCheckbox(
+            IRMath::ivec2(x, y),
+            IRMath::ivec2(w, h),
+            std::move(label),
+            checked.value_or(false)
+        ));
+    };
+    gui["checkboxState"] = [](lua_Integer id) -> bool {
+        requireWidget<IRComponents::C_WidgetCheckbox>(id, "IRGui.checkboxState", "checkbox");
+        return IRPrefab::Widget::checkboxState(static_cast<IREntity::EntityId>(id));
+    };
+    gui["setCheckboxState"] = [](lua_Integer id, bool checked) {
+        requireWidget<IRComponents::C_WidgetCheckbox>(id, "IRGui.setCheckboxState", "checkbox");
+        IRPrefab::Widget::setCheckboxState(static_cast<IREntity::EntityId>(id), checked);
+    };
+
+    gui["makeDropdown"] = [](int x,
+                             int y,
+                             int w,
+                             int h,
+                             const sol::table &items,
+                             sol::optional<int> selected,
+                             sol::optional<int> itemHeight) -> lua_Integer {
+        const IREntity::EntityId widget = IRPrefab::Widget::makeDropdown(
+            IRMath::ivec2(x, y),
+            IRMath::ivec2(w, h),
+            {},
+            -1,
+            itemHeight.value_or(h)
+        );
+        IRPrefab::Widget::setDropdownItems(
+            widget,
+            stringList(items, "IRGui.makeDropdown"),
+            selected.value_or(1) - 1
+        );
+        return static_cast<lua_Integer>(widget);
+    };
+    gui["dropdownSelected"] = [](lua_Integer id) -> int {
+        requireWidget<IRComponents::C_WidgetDropdown>(id, "IRGui.dropdownSelected", "dropdown");
+        return IRPrefab::Widget::dropdownSelectedIndex(static_cast<IREntity::EntityId>(id)) + 1;
+    };
+    gui["setDropdownSelected"] = [](lua_Integer id, int index) {
+        requireWidget<IRComponents::C_WidgetDropdown>(id, "IRGui.setDropdownSelected", "dropdown");
+        IRPrefab::Widget::setDropdownSelectedIndex(static_cast<IREntity::EntityId>(id), index - 1);
+    };
+    gui["setDropdownItems"] =
+        [](lua_Integer id, const sol::table &items, sol::optional<int> selected) {
+            requireWidget<IRComponents::C_WidgetDropdown>(id, "IRGui.setDropdownItems", "dropdown");
+            IRPrefab::Widget::setDropdownItems(
+                static_cast<IREntity::EntityId>(id),
+                stringList(items, "IRGui.setDropdownItems"),
+                selected.value_or(1) - 1
+            );
+        };
+    gui["isDropdownOpen"] = [](lua_Integer id) -> bool {
+        requireWidget<IRComponents::C_WidgetDropdown>(id, "IRGui.isDropdownOpen", "dropdown");
+        return IRPrefab::Widget::isDropdownOpen(static_cast<IREntity::EntityId>(id));
+    };
+
+    gui["setDisabled"] = [](lua_Integer id, bool disabled) {
+        requireWidget<IRComponents::C_Widget>(id, "IRGui.setDisabled", "widget");
+        IRPrefab::Widget::setDisabled(static_cast<IREntity::EntityId>(id), disabled);
+    };
+    gui["isHovered"] = [](lua_Integer id) -> bool {
+        requireWidget<IRComponents::C_WidgetState>(id, "IRGui.isHovered", "widget");
+        return IRPrefab::Widget::isHovered(static_cast<IREntity::EntityId>(id));
     };
 
     // Extend (never replace) IRRender so the render-glue setters bound earlier
