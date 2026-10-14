@@ -66,6 +66,39 @@ TEST(EntityCanvasPlacement, SnappedCameraTermIsTheWholePixelsOfTheSubCellOffset)
     EXPECT_EQ(offset, IRMath::vec2(2.0f, -1.0f));
 }
 
+// The framebuffer is twice the main canvas across and equal to it down, so the
+// extents' ratio times a power-of-two zoom is the exact pitch at any even
+// width: a camera a whole number of pixels into its cell lands on that pixel.
+// 324 x 182 is an extent at which a pitch rebuilt through the rotated-view
+// store size lands one ulp short instead.
+TEST(EntityCanvasPlacement, SnappedCameraTermIsExactOnThePixelLattice) {
+    for (const IRMath::vec2 framebuffer : {
+             IRMath::vec2(324.0f, 182.0f),
+             IRMath::vec2(644.0f, 362.0f),
+             IRMath::vec2(1284.0f, 722.0f),
+         }) {
+        const IRMath::vec2 mainCanvas = framebuffer / IRMath::vec2(2.0f, 1.0f);
+        for (const float zoom : {1.0f, 2.0f, 4.0f, 8.0f}) {
+            const IRMath::vec2 pitch = IRMath::vec2(IRMath::cameraZoomPitch(IRMath::vec2(zoom)));
+            for (int kx = 0; kx < static_cast<int>(pitch.x); ++kx) {
+                for (int ky = 0; ky < static_cast<int>(pitch.y); ++ky) {
+                    const IRMath::vec2 camera = IRMath::vec2(17.0f) + IRMath::vec2(kx, ky) / pitch;
+                    EXPECT_EQ(
+                        EntityCanvasToFramebuffer::snappedCameraFramebufferOffset(
+                            camera,
+                            framebuffer,
+                            IRMath::vec2(zoom),
+                            mainCanvas
+                        ),
+                        IRMath::vec2(kx, -ky)
+                    ) << "framebuffer="
+                      << framebuffer.x << " zoom=" << zoom << " k=(" << kx << "," << ky << ")";
+                }
+            }
+        }
+    }
+}
+
 // Continuous zoom, two camera offsets: the detached centre's camera term plus
 // the whole cells the placement already added lands within one framebuffer
 // pixel of the raw camera offset, and exactly where the world canvas lands.

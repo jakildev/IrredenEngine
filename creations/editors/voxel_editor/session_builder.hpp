@@ -463,6 +463,19 @@ struct PickCheck {
     std::string name_;
 };
 
+// Fill-preview expectation, read from the main canvas's entity ids at a shot's
+// capture frame. With expectDrawn_ the ghost shape is flagged visible, owns at
+// least one texel, and every texel it owns lies on a view ray through the box
+// of world cells worldLo_..worldHi_; without it the ghost is hidden and owns
+// none. Owned texels are the ones the ghost is the nearest surface on, so a
+// ghost inside the voxels it would carve owns none while it is drawn.
+struct FillGhostCheck {
+    bool expectDrawn_ = false;
+    IRMath::ivec3 worldLo_ = IRMath::ivec3(0);
+    IRMath::ivec3 worldHi_ = IRMath::ivec3(0);
+    std::string name_;
+};
+
 // Which ANIM or LOD panel slider a SliderCheck reads. Named rather than
 // carrying the widget's EntityId directly: Session::build runs well before
 // initEntities creates the widgets, so the id isn't known yet at recipe-build
@@ -588,6 +601,8 @@ struct Recipe {
     std::deque<SliderCheck> sliderChecks_;
     // Same stable-storage contract as checks_, for expectPick.
     std::deque<PickCheck> pickChecks_;
+    // Same contract, for expectFillGhost and expectNoFillGhost.
+    std::deque<FillGhostCheck> fillGhostChecks_;
     // Same contract, for the module checks.
     std::deque<ComponentCheck> componentChecks_;
     std::deque<PanelLabelCheck> panelLabelChecks_;
@@ -661,6 +676,10 @@ bool evaluatePickCheck(const void *context, std::string &actual);
 // Sweeps the rendered frame for agreement with the edit pick; takes no
 // context. Defined in main.cpp.
 bool evaluatePickMatchesRender(const void *context, std::string &actual);
+
+// Reads one FillGhostCheck against the fill tool's ghost shape and the main
+// canvas's entity ids. Defined in main.cpp, where the ghost entity lives.
+bool evaluateFillGhostCheck(const void *context, std::string &actual);
 
 // Reads one SliderCheck against the live widget its target_ names. Same
 // PREDICATE channel as evaluateOccupancyCheck, for the same reason: the
@@ -834,26 +853,29 @@ class Builder {
     // cells to fill (each aimed via its own anchor face); in erase mode they
     // are existing voxels to carve.
     void dragBox(IRMath::ivec3 a, IRMath::ivec3 b) {
-        const std::optional<IRMath::vec3> aimA = aimFor(a);
-        if (!aimA) {
-            recordUnreachable("dragBox start", a);
+        if (pressBox("dragBox", a, b))
+            releaseBox();
+    }
+
+    // dragBox up to and including its HELD frame: the button stays down with
+    // the cursor on `b`, so the fill preview is still drawn at the segment's
+    // capture. The harness carries the held button into the next segment,
+    // where releaseBox commits the fill. A recipe that finishes with a box
+    // held is an error.
+    void holdBox(IRMath::ivec3 a, IRMath::ivec3 b) {
+        pressBox("holdBox", a, b);
+    }
+
+    // Release the box holdBox is holding: the editor commits the fill and the
+    // model follows.
+    void releaseBox() {
+        if (!m_heldBox) {
+            recordError("releaseBox with no box held in segment " + m_current.label_);
             return;
         }
-        emitMove(*aimA);
-        emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
-        // The drag's end cell is aimed against the model as it stands at PRESS
-        // time — the fill only commits on RELEASE, so no voxel has appeared yet.
-        const std::optional<IRMath::vec3> aimB = aimFor(b);
-        if (!aimB) {
-            recordUnreachable("dragBox end", b);
-            return;
-        }
-        emitMove(*aimB);
-        // One idle frame so the editor's HELD branch samples the moved cursor
-        // before the release commits the fill.
-        m_frame += kFramesPerClickStep;
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
-        m_model.setBoxMirrored(a, b, !m_eraseMode, m_symmetry);
+        m_model.setBoxMirrored(m_heldBox->a_, m_heldBox->b_, !m_eraseMode, m_symmetry);
+        m_heldBox.reset();
     }
 
     // Tap a key with no modifier (V erase-mode toggle, X/Y/Z mirrors, K layer).
@@ -1569,6 +1591,32 @@ class Builder {
         );
     }
 
+    // Assert the fill preview is drawn on the cells `a`..`b` when this segment
+    // settles: the positive fire for holdBox. It reads the pixels the ghost
+    // owns, so it cannot pass on a ghost that is hidden behind the voxels it
+    // would carve; an erase drag has no place for it.
+    void expectFillGhost(IRMath::ivec3 a, IRMath::ivec3 b, std::string name) {
+        addPredicateCheck(
+            m_recipe.fillGhostChecks_,
+            FillGhostCheck{
+                true,
+                IRMath::roundVec3HalfUp(m_model.worldCenter(IRMath::min(a, b))),
+                IRMath::roundVec3HalfUp(m_model.worldCenter(IRMath::max(a, b))),
+                std::move(name)
+            },
+            &evaluateFillGhostCheck
+        );
+    }
+
+    // Assert no fill preview is drawn when this segment settles.
+    void expectNoFillGhost(std::string name) {
+        addPredicateCheck(
+            m_recipe.fillGhostChecks_,
+            FillGhostCheck{false, IRMath::ivec3(0), IRMath::ivec3(0), std::move(name)},
+            &evaluateFillGhostCheck
+        );
+    }
+
     // Assert a slider's live value when this segment settles — the positive
     // fire for dragGuiSlider: a drag that missed the track and landed on the
     // panel background never presses the widget, so its value stays wherever
@@ -1708,6 +1756,8 @@ class Builder {
     // Closes the last segment and hands back the recipe. The shot table is NOT
     // built here — see resolveShots.
     Recipe finish() {
+        if (m_heldBox)
+            recordError("the recipe ends with a box held: holdBox needs a releaseBox");
         flushSegment();
         return std::move(m_recipe);
     }
@@ -1862,6 +1912,41 @@ class Builder {
         m_frame += kFramesPerClickStep;
     }
 
+    struct HeldBox {
+        IRMath::ivec3 a_;
+        IRMath::ivec3 b_;
+    };
+
+    // Shared body of dragBox and holdBox: press on `a`, move to `b`, and leave
+    // the button down for releaseBox. False, with nothing emitted, when either
+    // cell cannot be aimed or a box is already held.
+    bool pressBox(const char *op, IRMath::ivec3 a, IRMath::ivec3 b) {
+        if (m_heldBox) {
+            recordError(std::string(op) + " while a box is held in segment " + m_current.label_);
+            return false;
+        }
+        // Both cells are aimed against the model as it stands at PRESS time:
+        // the fill only commits on RELEASE, so no voxel appears in between.
+        const std::optional<IRMath::vec3> aimA = aimFor(a);
+        if (!aimA) {
+            recordUnreachable((std::string(op) + " start").c_str(), a);
+            return false;
+        }
+        const std::optional<IRMath::vec3> aimB = aimFor(b);
+        if (!aimB) {
+            recordUnreachable((std::string(op) + " end").c_str(), b);
+            return false;
+        }
+        emitMove(*aimA);
+        emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
+        emitMove(*aimB);
+        // One idle frame so the editor's HELD branch samples the moved cursor
+        // before a release commits the fill.
+        m_frame += kFramesPerClickStep;
+        m_heldBox = HeldBox{a, b};
+        return true;
+    }
+
     // An op the model could not aim: no camera-facing face that would land the
     // edit is visible with margin. The remedy is to re-order the recipe so one
     // is exposed.
@@ -1907,6 +1992,8 @@ class Builder {
     int m_frame = 0;
     bool m_eraseMode = false;
     SymmetryState m_symmetry;
+    // The box a holdBox pressed and no releaseBox has released yet.
+    std::optional<HeldBox> m_heldBox;
 };
 
 } // namespace IRVoxelEditor::Session

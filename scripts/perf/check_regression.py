@@ -18,7 +18,9 @@ With --baseline-history (CI always passes it) the baseline is not the branch
 tip but the most recent capture of the head's slug whose ref_ms sits inside
 the LOAD_FACTOR_TRUST_NORMALIZED band of the head's:
 
-    Class-matched capture found        → check raw deltas against it.
+    Class-matched capture found        → check raw deltas, except measured
+                                         host classes whose slow heads use
+                                         calibration-scaled frame averages.
     No capture in the head's class     → informational only, pass, no table.
 
 On a host class in LOAD_GATE_THRESHOLDS, a cell whose `load_ref_ms.before`
@@ -54,6 +56,7 @@ from compare_perf_runs import (  # noqa: E402
     LoadFlag,
     build_host_note,
     calibration_ref_ms,
+    class_match_head_scale,
     host_slug,
     load_factor,
     load_flagged_cells,
@@ -69,8 +72,7 @@ from compare_perf_runs import (  # noqa: E402
 
 
 def _regressed_cells(base, head, regress_pct: float, *,
-                     head_ref_ms: float, base_ref_ms: float,
-                     use_normalized: bool, ungraded: set[str]) -> list[str]:
+                     head_scale: float, ungraded: set[str]) -> list[str]:
     out = []
     for cell_id in sorted((set(base) & set(head)) - ungraded):
         avg_b = base[cell_id].frame.avg
@@ -82,8 +84,7 @@ def _regressed_cells(base, head, regress_pct: float, *,
         # reference is the baseline's own ref_ms from the same SKU; scaling
         # against the fixed 50 ms target instead would divide out how slow the
         # SKU is, which no regression can change.
-        if use_normalized:
-            avg_h = normalize_ms(avg_h, head_ref_ms, base_ref_ms)
+        avg_h *= head_scale
         if pct_delta(avg_b, avg_h) >= regress_pct:
             out.append(cell_id)
     return out
@@ -233,17 +234,6 @@ def main() -> int:
     host_note = build_host_note(base_manifest, head_manifest,
                                 capture=capture, capture_is_tip=capture_is_tip)
 
-    md = render_markdown(
-        base_dir, head_dir, base, head,
-        args.regress_pct, args.improve_pct,
-        args.gpu_only, args.cpu_only,
-        host_note=host_note, load_flags=load_flags,
-    )
-    print(md, end="")
-    if load_flags:
-        print(f"check_regression: {len(load_flags)} load-flagged cell(s) informational, "
-              f"not graded: {_describe_flags(load_flags)}", file=sys.stderr)
-
     # Decide whether to gate.
     base_slug = host_slug(base_manifest)
     head_slug_str = host_slug(head_manifest)
@@ -253,6 +243,15 @@ def main() -> int:
         and base_slug == head_slug_str
     )
     if not same_host:
+        print(render_markdown(
+            base_dir, head_dir, base, head,
+            args.regress_pct, args.improve_pct,
+            args.gpu_only, args.cpu_only,
+            host_note=host_note, load_flags=load_flags,
+        ), end="")
+        if load_flags:
+            print(f"check_regression: {len(load_flags)} load-flagged cell(s) informational, "
+                  f"not graded: {_describe_flags(load_flags)}", file=sys.stderr)
         print(
             f"check_regression: host mismatch — informational only (baseline "
             f"slug '{base_slug}', head slug '{head_slug_str}'); no gate fired.",
@@ -271,15 +270,34 @@ def main() -> int:
     # A class-matched capture is in band by construction; normalizing across
     # a class split under-corrects it, so history mode never does.
     use_normalized = capture is None and lf >= LOAD_FACTOR_TRUST_NORMALIZED
+    head_scale = (
+        class_match_head_scale(head_slug_str, head_ref_ms, base_ref_ms)
+        if capture is not None else
+        normalize_ms(1.0, head_ref_ms, base_ref_ms) if use_normalized else 1.0
+    )
+
+    md = render_markdown(
+        base_dir, head_dir, base, head,
+        args.regress_pct, args.improve_pct,
+        args.gpu_only, args.cpu_only,
+        host_note=host_note, load_flags=load_flags,
+        frame_avg_head_scale=head_scale if capture is not None else 1.0,
+    )
+    print(md, end="")
+    if load_flags:
+        print(f"check_regression: {len(load_flags)} load-flagged cell(s) informational, "
+              f"not graded: {_describe_flags(load_flags)}", file=sys.stderr)
 
     regressed = _regressed_cells(
         base, head, args.regress_pct,
-        head_ref_ms=head_ref_ms, base_ref_ms=base_ref_ms,
-        use_normalized=use_normalized,
+        head_scale=head_scale,
         ungraded={f.cell_id for f in load_flags},
     )
     if regressed:
-        weighting = "normalized" if use_normalized else "raw"
+        weighting = (
+            "calibration-scaled" if capture is not None and head_scale != 1.0
+            else "normalized" if use_normalized else "raw"
+        )
         print(
             f"check_regression: FAIL — {len(regressed)} cell(s) regressed "
             f">{args.regress_pct:.0f}% on {weighting} mean frame avg: "
@@ -288,9 +306,13 @@ def main() -> int:
         )
         return 1
 
+    weighting = (
+        "calibration-scaled" if capture is not None and head_scale != 1.0
+        else "normalized" if use_normalized else "raw"
+    )
     print(
         "check_regression: PASS — no cells regressed "
-        f"({'normalized' if use_normalized else 'raw'}, "
+        f"({weighting}, "
         f"load_factor {lf:.2f}×).",
         file=sys.stderr,
     )
