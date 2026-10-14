@@ -60,6 +60,13 @@ int cardinalShapeReceiverDepth(int storedDepth, int subdivisions, bool shapeOwne
         : storedDepth;
 }
 
+bool shapeSampleIsOwned(ivec2 pixel, int ownerWidth, int shapeCount,
+                        const uint owners[], const ShapeTileDescriptor tiles[]) {
+    if (shapeCount <= 0) return false;
+    const uint key = owners[uint(pixel.y * ownerWidth + pixel.x)];
+    return key != 0xffffffffu && tiles[key / kShapeSamplesPerTile].shapeIndex >= 0;
+}
+
 bool shapeHasEntityRotation(vec4 rotation) {
     return abs(rotation.w) < 0.9999;
 }

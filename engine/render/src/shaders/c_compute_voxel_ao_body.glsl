@@ -115,12 +115,6 @@ layout(std430, binding = 22) readonly buffer AOShapeOwners {
 layout(std430, binding = 30) readonly buffer AOShapeTiles {
     ShapeTileDescriptor aoShapeTiles[];
 };
-
-bool aoSampleIsShapeOwned(ivec2 pixel, int ownerWidth) {
-    if (receiverFrame.shapeCount <= 0) return false;
-    const uint key = aoShapeOwners[uint(pixel.y * ownerWidth + pixel.x)];
-    return key != 0xffffffffu && aoShapeTiles[key / kShapeSamplesPerTile].shapeIndex >= 0;
-}
 #endif
 
 // The single canvas holds continuous-yaw SDF/text depth at a residual yaw
@@ -138,7 +132,13 @@ vec3 singleCanvasPixelToWorld3D(ivec2 pixel, int rawDepth, int cardinalIndex) {
     rawDepth = cardinalShapeReceiverDepth(
         rawDepth,
         receiverFrame.voxelRenderOptions.y,
-        finiteCoverage && aoSampleIsShapeOwned(pixel, receiverFrame.canvasSize.x),
+        finiteCoverage && shapeSampleIsOwned(
+            pixel,
+            receiverFrame.canvasSize.x,
+            receiverFrame.shapeCount,
+            aoShapeOwners,
+            aoShapeTiles
+        ),
         smoothMode && receiverFrame.smoothYawEnabled == 0,
         finiteCoverage
     );

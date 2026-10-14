@@ -316,12 +316,13 @@ kernel void IR_LIGHTING_KERNEL_NAME(
             const bool smoothMode = voxelFrameData.voxelRenderOptions.x != 0 &&
                                     voxelFrameData.voxelRenderOptions.y > 1;
             const bool finiteCoverage = frameData.shapeReceiverOptions.y != 0;
-            bool shapeOwned = false;
-            if (frameData.shapeReceiverOptions.x > 0 && finiteCoverage) {
-                const uint key = receiverOwners[uint(pixel.y * size.x + pixel.x)];
-                shapeOwned = key != 0xffffffffu &&
-                             receiverTiles[key / kShapeSamplesPerTile].shapeIndex >= 0;
-            }
+            const bool shapeOwned = finiteCoverage && shapeSampleIsOwned(
+                pixel,
+                size.x,
+                frameData.shapeReceiverOptions.x,
+                receiverOwners,
+                receiverTiles
+            );
             localLightDepth = cardinalShapeReceiverDepth(
                 rawDepth,
                 voxelFrameData.voxelRenderOptions.y,

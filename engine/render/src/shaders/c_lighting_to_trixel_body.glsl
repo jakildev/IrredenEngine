@@ -144,13 +144,6 @@ layout(std430, binding = 22) readonly buffer LightingShapeOwners {
 layout(std430, binding = 30) readonly buffer LightingShapeTiles {
     ShapeTileDescriptor lightingShapeTiles[];
 };
-
-bool lightingSampleIsShapeOwned(ivec2 pixel, int ownerWidth) {
-    if (shapeReceiverOptions.x <= 0) return false;
-    const uint key = lightingShapeOwners[uint(pixel.y * ownerWidth + pixel.x)];
-    return key != 0xffffffffu &&
-           lightingShapeTiles[key / kShapeSamplesPerTile].shapeIndex >= 0;
-}
 #endif
 void writeLitTrixel(bool sourceMode, uint index, ivec2 pixel, vec4 color) {
     if (sourceMode) sourceFaces[index].color = color;
@@ -405,7 +398,13 @@ void main() {
             localLightDepth = cardinalShapeReceiverDepth(
                 rawDepth,
                 voxelRenderOptions.y,
-                finiteCoverage && lightingSampleIsShapeOwned(pixel, size.x),
+                finiteCoverage && shapeSampleIsOwned(
+                    pixel,
+                    size.x,
+                    shapeReceiverOptions.x,
+                    lightingShapeOwners,
+                    lightingShapeTiles
+                ),
                 smoothMode && shapeReceiverOptions.z == 0,
                 finiteCoverage
             );

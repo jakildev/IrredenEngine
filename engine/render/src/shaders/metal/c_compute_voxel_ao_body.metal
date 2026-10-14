@@ -62,12 +62,13 @@ inline float3 singleCanvasPixelToWorld3D(
     const bool smoothMode = receiverFrame.voxelRenderOptions.x != 0 &&
                             receiverFrame.voxelRenderOptions.y > 1;
     const bool finiteCoverage = receiverFrame.finiteCoverage != 0;
-    bool shapeOwned = false;
-    if (receiverFrame.shapeCount > 0 && finiteCoverage) {
-        const uint key = receiverOwners[uint(pixel.y * receiverFrame.canvasSize.x + pixel.x)];
-        shapeOwned = key != 0xffffffffu &&
-                     receiverTiles[key / kShapeSamplesPerTile].shapeIndex >= 0;
-    }
+    const bool shapeOwned = finiteCoverage && shapeSampleIsOwned(
+        pixel,
+        receiverFrame.canvasSize.x,
+        receiverFrame.shapeCount,
+        receiverOwners,
+        receiverTiles
+    );
     rawDepth = cardinalShapeReceiverDepth(
         rawDepth,
         receiverFrame.voxelRenderOptions.y,

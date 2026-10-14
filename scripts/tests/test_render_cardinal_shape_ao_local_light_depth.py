@@ -3,14 +3,10 @@
 import unittest
 from pathlib import Path
 
-from shader_contract_helpers import extract_function
+from shader_contract_helpers import compact, extract_function
 
 ROOT = Path(__file__).resolve().parents[2]
 SHADERS = ROOT / "engine/render/src/shaders"
-
-
-def compact(source):
-    return " ".join(source.split())
 
 
 def assert_ao_contract(source):
@@ -19,7 +15,7 @@ def assert_ao_contract(source):
         raise AssertionError("AO reconstruction bypasses cardinal shape depth recovery")
     owner_gate = (
         "shapeOwned," if "device const uint *receiverOwners" in source else
-        "finiteCoverage && aoSampleIsShapeOwned("
+        "finiteCoverage && shapeSampleIsOwned("
     )
     if owner_gate not in recovery:
         raise AssertionError("AO reconstruction does not gate recovery on shape ownership")
@@ -34,7 +30,7 @@ def assert_local_light_contract(source, metal):
     if "localLightDepth = cardinalShapeReceiverDepth(" not in body:
         raise AssertionError("local-light reconstruction bypasses cardinal shape depth recovery")
     owner_gate = "shapeOwned," if metal else (
-        "finiteCoverage && lightingSampleIsShapeOwned(pixel, size.x),"
+        "finiteCoverage && shapeSampleIsOwned("
     )
     if owner_gate not in body:
         raise AssertionError("local-light reconstruction does not preserve voxel-owned depth")
@@ -45,35 +41,37 @@ def assert_local_light_contract(source, metal):
 
 
 class CardinalShapeAOLocalLightDepthTest(unittest.TestCase):
+    def assert_contract_rejects_mutation(self, source, contract, before, after):
+        mutant = source.replace(before, after, 1)
+        self.assertNotEqual(mutant, source)
+        with self.assertRaises(AssertionError):
+            contract(mutant)
+
     def test_ao_center_neighbour_and_beyond_samples_recover_shape_depth(self):
         for suffix, folder in (("glsl", ""), ("metal", "metal/")):
             source = (SHADERS / folder / f"c_compute_voxel_ao_body.{suffix}").read_text()
             with self.subTest(backend=suffix, variant="production"):
                 assert_ao_contract(source)
-            mutant = source.replace(
-                "rawDepth = cardinalShapeReceiverDepth(",
-                "rawDepth = rawDepth + (",
-                1,
-            )
-            self.assertNotEqual(mutant, source)
             with self.subTest(backend=suffix, variant="recovery-removed"):
-                with self.assertRaises(AssertionError):
-                    assert_ao_contract(mutant)
+                self.assert_contract_rejects_mutation(
+                    source,
+                    assert_ao_contract,
+                    "rawDepth = cardinalShapeReceiverDepth(",
+                    "rawDepth = rawDepth + (",
+                )
 
     def test_local_light_uses_shape_only_recovery(self):
         for suffix, folder in (("glsl", ""), ("metal", "metal/")):
             source = (SHADERS / folder / f"c_lighting_to_trixel_body.{suffix}").read_text()
             with self.subTest(backend=suffix, variant="production"):
                 assert_local_light_contract(source, suffix == "metal")
-            mutant = source.replace(
-                "localLightDepth,",
-                "rawDepth,",
-                1,
-            )
-            self.assertNotEqual(mutant, source)
             with self.subTest(backend=suffix, variant="recovery-removed"):
-                with self.assertRaises(AssertionError):
-                    assert_local_light_contract(mutant, suffix == "metal")
+                self.assert_contract_rejects_mutation(
+                    source,
+                    lambda mutant: assert_local_light_contract(mutant, suffix == "metal"),
+                    "localLightDepth,",
+                    "rawDepth,",
+                )
 
 
 if __name__ == "__main__":
