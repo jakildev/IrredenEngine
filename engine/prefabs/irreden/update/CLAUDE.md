@@ -70,8 +70,10 @@ in the `UPDATE` pipeline unless explicitly noted.
   `C_ContactEvent` write stays first-contact-only, so existing consumers are
   byte-identical and non-opted-in creations keep the fast break path.
   Contacts are swept: a collider with `C_Velocity3D` is tested over its
-  `velocity * dt` motion relative to the other box this frame, so a fast body
-  never tunnels through a thin one; a directly written position is not swept.
+  `C_WorldTransform` displacement since the system's previous tick (stored on
+  `C_ContactEvent` by its `endTick`) relative to the other box, so a fast body
+  never tunnels through a thin one, under any parent transform; a collider's
+  first tick is not swept.
 - `DISPATCH_LUA_OVERLAP` (#1817) — turns `C_OverlapContactBatch` into
   Lua `IRCollision.onOverlapEnter/onOverlapExit` callbacks. Owns the
   pair-level enter/exit state machine (prev/cur pair maps, reused across

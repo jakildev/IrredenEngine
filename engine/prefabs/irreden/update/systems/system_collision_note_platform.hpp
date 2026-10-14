@@ -4,7 +4,6 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_profile.hpp>
-#include <irreden/ir_time.hpp>
 
 #include <irreden/common/components/component_world_transform.hpp>
 #include <irreden/update/components/component_collider_iso3d_aabb.hpp>
@@ -118,14 +117,16 @@ inline bool narrowPhaseAabbSwept(
     return sweptAabbOverlap(outMinA, outMaxA, outMinB, outMaxB, motion);
 }
 
-// The node's C_Velocity3D column, or nullptr when its entities have none
-// (a static collider: no motion this frame).
-inline const std::vector<C_Velocity3D> *
-velocityColumn(IREntity::ArchetypeNode *node, IREntity::ComponentId velocityType) {
-    if (!node->type_.contains(velocityType)) {
-        return nullptr;
+// The collider's world displacement since the previous tick of this system:
+// zero for a collider without a C_Velocity3D (static here) and on a
+// collider's first tick (no previous position yet).
+inline vec3 sweepDisplacement(
+    const C_WorldTransform &transform, const C_ContactEvent &event, bool hasVelocity
+) {
+    if (!hasVelocity || !event.hasPreviousTranslation_) {
+        return vec3(0.0f);
     }
-    return &IREntity::getComponentData<C_Velocity3D>(node);
+    return transform.translation_ - event.previousTranslation_;
 }
 
 inline void markContact(C_ContactEvent &event, IREntity::EntityId otherEntity, vec3 normal) {
@@ -141,13 +142,16 @@ inline void markContact(C_ContactEvent &event, IREntity::EntityId otherEntity, v
 }
 } // namespace detail
 
-// Contacts are swept over the frame: a collider with a C_Velocity3D moved by
-// velocity * dt since the previous tick (VELOCITY_3D integrates exactly that
-// ahead of this system), and a pair counts as touching if the two boxes met
-// at any moment in between. A fast body therefore never passes through a thin
-// one between two frames. Colliders without a velocity are static here, and a
-// position written directly (a snap, a teleport) is not swept. The velocity is
-// read as world motion, which holds for unparented colliders.
+// Contacts are swept over the frame: a collider with a C_Velocity3D is tested
+// over its world displacement since the previous tick of this system (the
+// translation stored in C_ContactEvent by endTick), and a pair counts as
+// touching if the two boxes met at any moment in between. A fast body
+// therefore never passes through a thin one between two ticks. The
+// displacement is measured on C_WorldTransform, so it holds under a rotated
+// or scaled parent and whatever moved the collider. Colliders without a
+// velocity are static here, and a collider's first tick is not swept. A
+// velocity-bearing collider moved by a direct write (a teleport) is swept
+// along the jump.
 template <> struct System<COLLISION_NOTE_PLATFORM> {
     static SystemId create() {
         return createSystem<
@@ -181,22 +185,7 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
 
                 const IREntity::ComponentId velocityType =
                     IREntity::getComponentType<C_Velocity3D>();
-                const std::vector<C_Velocity3D> *selfVelocities = nullptr;
-                for (auto *node : allColliderNodes) {
-                    if (node->type_ == selfArchetype) {
-                        selfVelocities = detail::velocityColumn(node, velocityType);
-                        break;
-                    }
-                }
-                // Read only when some collider moves: a scene of static
-                // colliders (and a test without a TimeManager) never asks.
-                float dt = -1.0f;
-                auto frameDt = [&dt]() {
-                    if (dt < 0.0f) {
-                        dt = static_cast<float>(IRTime::deltaTime(IRTime::UPDATE));
-                    }
-                    return dt;
-                };
+                const bool selfHasVelocity = selfArchetype.contains(velocityType);
 
                 for (int i = 0; i < static_cast<int>(entities.size()); i++) {
                     IR_PROFILE_BLOCK("CollisionBlockScan", IR_PROFILER_COLOR_UPDATE);
@@ -207,8 +196,8 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                     auto &selfEvent = events[i];
 
                     bool foundAnyContact = false;
-                    const vec3 selfVelocity =
-                        selfVelocities != nullptr ? (*selfVelocities)[i].velocity_ : vec3(0.0f);
+                    const vec3 selfDisplacement =
+                        detail::sweepDisplacement(selfTransform, selfEvent, selfHasVelocity);
 
                     vec3 blockMin(0.0f);
                     vec3 blockMax(0.0f);
@@ -223,8 +212,7 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                             IREntity::getComponentData<C_ColliderIso3DAABB>(otherNode);
                         auto &otherLayers = IREntity::getComponentData<C_CollisionLayer>(otherNode);
                         auto &otherEvents = IREntity::getComponentData<C_ContactEvent>(otherNode);
-                        const std::vector<C_Velocity3D> *otherVelocities =
-                            detail::velocityColumn(otherNode, velocityType);
+                        const bool otherHasVelocity = otherNode->type_.contains(velocityType);
 
                         for (int j = 0; j < otherNode->length_; j++) {
                             if (otherEntities[j] == selfEntity) {
@@ -239,12 +227,11 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                             auto &otherTransform = otherTransforms[j];
                             auto &otherCollider = otherColliders[j];
 
-                            const vec3 relativeVelocity =
-                                selfVelocity - (otherVelocities != nullptr
-                                                    ? (*otherVelocities)[j].velocity_
-                                                    : vec3(0.0f));
-                            const bool moving = relativeVelocity != vec3(0.0f);
-                            const vec3 motion = moving ? relativeVelocity * frameDt() : vec3(0.0f);
+                            const vec3 motion = selfDisplacement - detail::sweepDisplacement(
+                                                                       otherTransform,
+                                                                       otherEvents[j],
+                                                                       otherHasVelocity
+                                                                   );
 
                             if (!detail::broadPhaseIsoDepthSwept(
                                     selfTransform,
@@ -315,6 +302,26 @@ template <> struct System<COLLISION_NOTE_PLATFORM> {
                         if (!emitPairs && foundAnyContact) {
                             break;
                         }
+                    }
+                }
+            },
+            nullptr,
+            // Every pair reads both colliders' previous translations, so
+            // they advance only after the whole tick.
+            []() {
+                auto colliderNodes = IREntity::queryArchetypeNodesSimple(
+                    IREntity::getArchetype<
+                        C_WorldTransform,
+                        C_ColliderIso3DAABB,
+                        C_CollisionLayer,
+                        C_ContactEvent>()
+                );
+                for (auto *node : colliderNodes) {
+                    auto &transforms = IREntity::getComponentData<C_WorldTransform>(node);
+                    auto &events = IREntity::getComponentData<C_ContactEvent>(node);
+                    for (int i = 0; i < node->length_; i++) {
+                        events[i].previousTranslation_ = transforms[i].translation_;
+                        events[i].hasPreviousTranslation_ = true;
                     }
                 }
             }
