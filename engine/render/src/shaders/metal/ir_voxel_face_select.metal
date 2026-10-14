@@ -179,7 +179,8 @@ static VoxelFaceSelect selectVoxelFace(
     const int perAxisRouteIn,
     const float isDetachedCanvasIn,
     const float4 detachedWorldReceiveIn,
-    const float4 detachedViewToWorldIn
+    const float4 detachedViewToWorldIn,
+    const int fogCeilingEnabledIn
 ) {
     VoxelFaceSelect sel;
     sel.faceId = faceIdIn;
@@ -218,11 +219,13 @@ static VoxelFaceSelect selectVoxelFace(
         sel.isCutFace = sel.keepFace;
     }
 
-    // BODY never needs ceiling selection, including the source scan.
-    const bool ceilingActive = (reserved & 8u) == 0u && obs.visionCircleCount > 0 &&
+    // Whether any bound source has a ceiling is a per-frame fact the CPU
+    // publishes (FrameDataVoxelToCanvas::fogCeilingEnabled_), so a FIELD voxel
+    // on a frame with no ceiling pays one uniform read, never a source scan.
+    // BODY never needs ceiling selection.
+    const bool ceilingActive = (reserved & 8u) == 0u && fogCeilingEnabledIn != 0 &&
         (isDetachedCanvasIn < 0.5f ||
-         (perAxisRouteIn == 0 && detachedWorldReceiveIn.w != 0.0f)) &&
-        fogAnyCeilingEnabled(obs.visionCircleCeilings, obs.visionCircleCount);
+         (perAxisRouteIn == 0 && detachedWorldReceiveIn.w != 0.0f));
     if (ceilingActive) {
         const float3 worldPosition = isDetachedCanvasIn > 0.5f
             ? rotateByQuat(voxelPosition.xyz, detachedViewToWorldIn) + detachedWorldReceiveIn.xyz

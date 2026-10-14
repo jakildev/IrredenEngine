@@ -290,9 +290,9 @@ TEST(FogCrossSectionShaderParity, ClipConstantsAgreeAcrossBackends) {
 // one pass reads a different texel than the others for the same column.
 TEST(FogCrossSectionShaderParity, WindowTexelMappingIsIdenticalAcrossBackends) {
     const std::string kGlslCompactPath =
-        std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_voxel_visibility_compact.glsl";
+        std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_voxel_visibility_compact_body.glsl";
     const std::string kMetalCompactPath =
-        std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_voxel_visibility_compact.metal";
+        std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_voxel_visibility_compact_body.metal";
     const std::string reference =
         extractFunctionBody(readShaderSource(kGlslIsoCommonPath), "fogWindowTexel");
     ASSERT_FALSE(reference.empty()) << "fogWindowTexel not found in ir_voxel_face_select.glsl";
@@ -555,9 +555,9 @@ TEST(FogCrossSectionShaderParity, ChannelSourceSkipIsIdenticalAcrossBackends) {
 // (unexplored, default channel) in both twins.
 TEST(FogCrossSectionShaderParity, IntegerFogWindowReadsAreIdenticalAcrossBackends) {
     const std::string kGlslCompactPath =
-        std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_voxel_visibility_compact.glsl";
+        std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_voxel_visibility_compact_body.glsl";
     const std::string kMetalCompactPath =
-        std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_voxel_visibility_compact.metal";
+        std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_voxel_visibility_compact_body.metal";
     const std::string kMetalCompactPathCopy = kMetalCompactPath;
 
     for (const std::string &path : {kGlslFogCommonPath, kGlslFaceSelectPath, kGlslCompactPath}) {
@@ -1065,8 +1065,9 @@ TEST(FogCrossSectionShaderParity, RevealSurfaceHelpersAreIdenticalAcrossBackends
     for (const std::string &path :
          {kGlslFaceSelectPath,
           kMetalFaceSelectPath,
-          std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_voxel_visibility_compact.glsl",
-          std::string(IR_TEST_RENDER_SHADER_DIR) + "/metal/c_voxel_visibility_compact.metal"}) {
+          std::string(IR_TEST_RENDER_SHADER_DIR) + "/c_voxel_visibility_compact_body.glsl",
+          std::string(IR_TEST_RENDER_SHADER_DIR) +
+              "/metal/c_voxel_visibility_compact_body.metal"}) {
         EXPECT_TRUE(std::regex_search(readShaderSource(path), tail)) << path;
     }
 }
@@ -1134,7 +1135,6 @@ TEST(FogCrossSectionShaderParity, CeilingRetentionAndOverflowKeysAgree) {
     for (const char *helper :
          {"fogRevealSurfaceHash01",
           "fogCeilingPhaseHeight",
-          "fogAnyCeilingEnabled",
           "fogCeilingSourceMask",
           "fogCeilingPresenceFromMask",
           "fogCeilingPresence",
@@ -1185,7 +1185,7 @@ TEST(FogCrossSectionShaderParity, CeilingSelectionBindingsAndCapSitesArePresentO
                 "fogSelectionCell("
             );
         };
-        const auto compact = read("c_voxel_visibility_compact");
+        const auto compact = read("c_voxel_visibility_compact_body");
         for (const char *term :
              {"visionCircleCeilings",
               "revealSurfaceTreatment",
@@ -1412,6 +1412,7 @@ TEST(FogCrossSectionShaderParity, CutFaceRuleSkipsBodyVoxelsOnBothBackends) {
 #include <irreden/render/texture.hpp>
 
 #include <cstdint>
+#include <cstdio>
 #include <cstring>
 #include <limits>
 #include <memory>
@@ -2567,14 +2568,56 @@ TEST_F(FogCrossSectionTest, GpuRevealSurfaceMatchesTheCpuOracle) {
         std::vector<IRMath::vec4> ceilingReadback(samples.size());
         ceilingOut
             .getSubData(0, ceilingReadback.size() * sizeof(IRMath::vec4), ceilingReadback.data());
+        // The retained verdict steps at a hard ceiling plane and at the hash
+        // threshold. A sample whose perturbed height or hash sits within float
+        // noise of such a step is a tie the two backends may round differently
+        // (the GPU's phase height agrees with the CPU's to 1e-5, not to the
+        // ulp), so it is counted, not graded.
+        constexpr float kHeightTieMargin = 1e-4f;
+        constexpr float kDissolveTieMargin = 1e-5f;
+        int dissolveTies = 0;
+        const auto expectRetained = [&](std::size_t i, float gpu, float phase) {
+            using namespace IRPrefab::Fog::detail;
+            const IRMath::vec3 position(samples[i].position_);
+            const auto voxel = IRMath::roundVec3HalfUp(position);
+            const IRPrefab::Fog::FogWindowTexel cell{};
+            const bool treated = observers.revealSurfaceTreatmentEnabled();
+            const float density = observers.dissolveDensity();
+            const float hash = revealSurfaceHash01(voxel);
+            const float offset = treated ? ceilingPhaseHeight(voxel, phase) : 0.0f;
+            const auto verdict = [&](float heightOffset) {
+                const float presence = ceilingPresence(observers, voxel, cell, heightOffset);
+                if (presence <= 0.0f)
+                    return 0;
+                if (presence >= 1.0f || !treated || density == 0.0f)
+                    return 1;
+                const float margin = hash - IRMath::mix(1.0f, presence, density);
+                return IRMath::abs(margin) <= kDissolveTieMargin ? -1 : (margin <= 0.0f ? 1 : 0);
+            };
+            // An unperturbed height is exact integer arithmetic on both backends,
+            // so only a non-zero phase offset can sit within noise of a plane.
+            const int expected = verdict(offset);
+            const bool stable = expected >= 0 &&
+                                (offset == 0.0f ||
+                                 (verdict(offset - kHeightTieMargin) == expected &&
+                                  verdict(offset + kHeightTieMargin) == expected));
+            if (!stable) {
+                ++dissolveTies;
+                return;
+            }
+            EXPECT_EQ(gpu, ceilingRetained(observers, voxel, cell, phase) ? 1.0f : 0.0f)
+                << "sample " << i << " voxel (" << voxel.x << ", " << voxel.y << ", " << voxel.z
+                << ") phase " << phase << " height offset " << offset << " presence "
+                << ceilingPresence(observers, voxel, cell, offset) << " hash " << hash;
+        };
         for (std::size_t i = 0; i < samples.size(); ++i) {
             const IRMath::vec3 position(samples[i].position_);
             const auto voxel = IRMath::roundVec3HalfUp(position);
             const IRPrefab::Fog::FogWindowTexel cell{};
             using namespace IRPrefab::Fog::detail;
             EXPECT_NEAR(ceilingReadback[i].x, ceilingPresence(observers, voxel, cell), 1e-5f);
-            EXPECT_EQ(ceilingReadback[i].y, ceilingRetained(observers, voxel, cell, 0.0f));
-            EXPECT_EQ(ceilingReadback[i].z, ceilingRetained(observers, voxel, cell, 0.37f));
+            expectRetained(i, ceilingReadback[i].y, 0.0f);
+            expectRetained(i, ceilingReadback[i].z, 0.37f);
             EXPECT_NEAR(ceilingReadback[i].w, ceilingPhaseHeight(voxel, 0.37f), 1e-5f);
             const IRPrefab::Fog::RevealSurfaceSample cpu = IRPrefab::Fog::evalRevealSurface(
                 observers,
@@ -2630,6 +2673,12 @@ TEST_F(FogCrossSectionTest, GpuRevealSurfaceMatchesTheCpuOracle) {
                 gpuState < plain.state_ - 1e-3f) {
                 ++counts.dissolved_;
             }
+        }
+        // Two retained verdicts per sample; a tie is a float coincidence, so
+        // more than a handful means the margin is masking a real divergence.
+        EXPECT_LE(dissolveTies, 8) << arm.label_ << ": too many dissolve ties";
+        if (dissolveTies > 0) {
+            std::printf("FOG-SURFACE-PROBE %s dissolveTies=%d\n", arm.label_, dissolveTies);
         }
     };
 

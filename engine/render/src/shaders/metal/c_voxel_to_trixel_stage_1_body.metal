@@ -311,7 +311,8 @@ kernel void IR_STAGE1_KERNEL_NAME(
         canvasFogOfWar, fogObservers, faceId, reVoxelize,
         voxels[voxelIndex].reserved, flagsByte, voxelPosition,
         frameData.perAxisRoute, frameData.isDetachedCanvas,
-        frameData.detachedWorldReceive, frameData.detachedViewToWorld
+        frameData.detachedWorldReceive, frameData.detachedViewToWorld,
+        frameData.fogCeilingEnabled.x
     );
     if (!sel.keepFace) return;
     faceId = sel.faceId;

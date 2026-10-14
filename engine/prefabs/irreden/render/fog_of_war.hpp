@@ -294,8 +294,7 @@ inline float evalGatedVisionReveal(
     const IRComponents::FrameDataFogObservers &observers,
     IRMath::vec3 worldPosition,
     std::uint32_t channels,
-    VisibilityFn &&visibilityOf,
-    bool analyticSurface = true
+    VisibilityFn &&visibilityOf
 ) {
     float reveal = 0.0f;
     float pending[IRComponents::kMaxFogVisionCircles] = {};

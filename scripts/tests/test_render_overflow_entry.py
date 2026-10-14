@@ -10,6 +10,7 @@ from test_render_per_axis_caster_position import COMPILER, ROOT, functions
 HOST = r"""
 #include <cstdint>
 #include <cstdio>
+#include <initializer_list>
 #include <tuple>
 using uint = std::uint32_t;
 struct ivec2 { int x, y; };

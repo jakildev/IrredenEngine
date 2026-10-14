@@ -33,6 +33,7 @@
 #include <irreden/render/components/component_detached_revoxelize_buffer.hpp>
 #include <irreden/render/components/component_canvas_fog_of_war.hpp>
 #include <irreden/render/fog_line_of_sight.hpp>
+#include <irreden/render/fog_of_war.hpp>
 
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
@@ -345,6 +346,10 @@ static_assert(
 template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
     System<BAKE_SUN_SHADOW_MAP> *voxelFaceBaker_ = nullptr;
     ShaderProgram *compactProgram_ = nullptr;
+    // Fog-ceiling compile-time specialization of the compact
+    // (IR_FOG_CEILING_PASS 1), dispatched in place of compactProgram_ only
+    // for a canvas whose own fog window has a ceiling-enabled source live.
+    ShaderProgram *compactCeilingProgram_ = nullptr;
     ShaderProgram *stage1Program_ = nullptr;
     // Feeder-pass compile-time specialization
     // of stage 1 (IR_FEEDER_PASS 1) — a second compiled program dispatched for
@@ -1750,6 +1755,27 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             frameData_.voxelRenderOptions_.y
         );
         frameData_.feederPassTailBase_ = effectiveVoxelCount;
+
+        // World fog source for the cut-section dispatch. A canvas
+        // with its OWN fog (the main world canvas) cross-sections against it
+        // directly; a WORLD-PLACED detached re-voxelize canvas has no fog of its
+        // own, so it cross-sections against the MAIN canvas's world fog (resolved +
+        // uploaded in beginTick). STAGE_1/STAGE_2 recover each detached voxel's
+        // world column from detachedWorldReceive; the compact below keeps the
+        // placeholder because its cull keys on the un-offset model column. Plain
+        // octahedral DETACHED / per-axis / non-fog → null → the no-fog placeholder.
+        const bool worldPlacedRevoxel = canvasLocalRotation.isDetached() &&
+                                        canvasLocalRotation.reVoxelize_ &&
+                                        canvasLocalRotation.worldPlaced_;
+        C_CanvasFogOfWar *cutSectionFog =
+            (fog != nullptr) ? fog : (worldPlacedRevoxel ? worldFog_ : nullptr);
+        // Face selection reads whether the fog it selects against has a ceiling
+        // as one uniform; the per-source scan runs here, once per canvas.
+        frameData_.fogCeilingEnabled_.x =
+            cutSectionFog != nullptr &&
+                    IRPrefab::Fog::anyCeilingEnabled(cutSectionFog->observers_)
+                ? 1
+                : 0;
         frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
 
         if (occlusionCullActive) {
@@ -1979,21 +2005,12 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             frameDataBuf_->subData(0, sizeof(FrameDataVoxelToCanvas), &frameData_);
         }
 
-        // World fog source for the cut-section dispatch. A canvas
-        // with its OWN fog (the main world canvas) cross-sections against it
-        // directly; a WORLD-PLACED detached re-voxelize canvas has no fog of its
-        // own, so it cross-sections against the MAIN canvas's world fog (resolved +
-        // uploaded in beginTick). STAGE_1/STAGE_2 recover each detached voxel's
-        // world column from detachedWorldReceive; the compact below keeps the
-        // placeholder because its cull keys on the un-offset model column. Plain
-        // octahedral DETACHED / per-axis / non-fog → null → the no-fog placeholder.
-        const bool worldPlacedRevoxel = canvasLocalRotation.isDetached() &&
-                                        canvasLocalRotation.reVoxelize_ &&
-                                        canvasLocalRotation.worldPlaced_;
-        C_CanvasFogOfWar *cutSectionFog =
-            (fog != nullptr) ? fog : (worldPlacedRevoxel ? worldFog_ : nullptr);
-
-        compactProgram_->use();
+        // The ceiling specialization runs only where the compact's grid cull
+        // runs: the canvas's own fog window (the world-placed detached canvas
+        // binds the placeholder here and stage 1 alone cuts that route).
+        const bool compactCeiling =
+            fog != nullptr && IRPrefab::Fog::anyCeilingEnabled(fog->observers_);
+        (compactCeiling ? compactCeilingProgram_ : compactProgram_)->use();
         // Fog cull input: the real fog window texture for the world fog
         // canvas, else the shared 1×1 all-visible placeholder (compact shader
         // short-circuits on imageSize<=1 → no cull, byte-identical to master).
@@ -2399,6 +2416,16 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             "VoxelCompactProgram",
             std::vector{ShaderStage{IRRender::kFileCompVoxelVisibilityCompact, ShaderType::COMPUTE}}
         );
+        // Fog-ceiling compile-time specialization of the compact, built from the
+        // shared body with IR_FOG_CEILING_PASS 1. Dispatched only for a canvas
+        // whose bound fog window has a ceiling-enabled source live, so
+        // VoxelCompactProgram stays byte-for-byte master's kernel.
+        IRRender::createNamedResource<ShaderProgram>(
+            "VoxelCompactCeilingProgram",
+            std::vector{ShaderStage{
+                IRRender::kFileCompVoxelVisibilityCompactCeiling, ShaderType::COMPUTE
+            }}
+        );
         IRRender::createNamedResource<ShaderProgram>(
             "SingleVoxelProgram1",
             std::vector{ShaderStage{IRRender::kFileCompVoxelToTrixelStage1, ShaderType::COMPUTE}}
@@ -2666,6 +2693,8 @@ template <> struct System<VOXEL_TO_TRIXEL_STAGE_1> {
             C_CanvasLocalRotation>("SingleVoxelToCanvasFirst");
         auto *p = getSystemParams<System<VOXEL_TO_TRIXEL_STAGE_1>>(systemId);
         p->compactProgram_ = IRRender::getNamedResource<ShaderProgram>("VoxelCompactProgram");
+        p->compactCeilingProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("VoxelCompactCeilingProgram");
         p->cellCompactProgram_ =
             IRRender::getNamedResource<ShaderProgram>("PerAxisCellCompactProgram");
         p->cellFinalizeProgram_ =

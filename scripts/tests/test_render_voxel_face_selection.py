@@ -65,7 +65,6 @@ using uvec2=ivec2;
 using uint2=ivec2;
 vec4 visionCircles[8],visionCircleHeights[8],visionCircleCeilings[8],revealSurfaceTreatment;
 uvec4 visionCircleChannels[2];
-bool fogAnyCeilingEnabled(const vec4*,int){return false;}
 uvec2 fogSelectionCell(ivec2){return uvec2(0);}
 bool fogCeilingRetained(
     ivec3,uvec2,const vec4*,const vec4*,const vec4*,const uvec4*,int,vec4,float){return true;}
@@ -99,7 +98,7 @@ int main(){
     for(int route=0;route<=3;++route){
         visionCircleCount=0;
         const VoxelFaceSelect actual=selectVoxelFace(face,revoxelized,reserved,
-            uint(mask<<2),position,route,0.f,receive,quaternion);
+            uint(mask<<2),position,route,0.f,receive,quaternion,0);
         const bool cardinalRiser=route==0 && !revoxelized && (reserved&4u)!=0u;
         const bool flip=cardinalRiser && !exposed(mask,face) && exposed(mask,face^1);
         const int expectedFace=flip?(face^1):face;
@@ -124,7 +123,7 @@ int main(){
     const uint occludedX=1u<<2;
     for(int route=0;route<=3;++route){
         const VoxelFaceSelect actual=selectVoxelFace(0,false,0u,occludedX,
-            position,route,0.f,receive,quaternion);
+            position,route,0.f,receive,quaternion,0);
         const bool cut=route<=2;
         if(actual.keepFace!=cut || actual.isCutFace!=cut || actual.fogActive!=cut ||
            actual.faceId!=0 || actual.riserFlip || actual.bothPolaritiesExposed){
@@ -132,7 +131,7 @@ int main(){
         }
     }
     const VoxelFaceSelect top=selectVoxelFace(4,false,0u,1u<<6,
-        position,1,0.f,receive,quaternion);
+        position,1,0.f,receive,quaternion,0);
     if(top.keepFace||top.isCutFace)return 5;
     std::printf("face cases=%d cardinal flips=%d duals=%d\n",
         cases,cardinalFlips,cardinalDuals);

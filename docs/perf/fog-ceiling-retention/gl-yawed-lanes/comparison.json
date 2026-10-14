@@ -1,0 +1,818 @@
+{
+  "identity": [
+    {
+      "metric": "frame",
+      "base_ms": 59.19333333333333,
+      "head_ms": 60.949999999999996,
+      "ratio": 1.029676765401509,
+      "delta_us": 1756.6666666666677,
+      "pass": true,
+      "base_runs": [
+        58.82,
+        63.89,
+        54.87
+      ],
+      "head_runs": [
+        57.96,
+        62.15,
+        62.74
+      ]
+    },
+    {
+      "metric": "steady frame",
+      "base_ms": 58.18333333333334,
+      "head_ms": 58.846666666666664,
+      "ratio": 1.0114007447722715,
+      "delta_us": 663.3333333333269,
+      "pass": true,
+      "base_runs": [
+        58.51,
+        63.57,
+        52.47
+      ],
+      "head_runs": [
+        57.11,
+        58.48,
+        60.95
+      ]
+    },
+    {
+      "metric": "GPU voxelCompact",
+      "base_ms": 0.04,
+      "head_ms": 0.041,
+      "ratio": 1.025,
+      "delta_us": 1.0000000000000009,
+      "pass": true,
+      "base_runs": [
+        0.037,
+        0.04,
+        0.043
+      ],
+      "head_runs": [
+        0.04,
+        0.041,
+        0.042
+      ]
+    },
+    {
+      "metric": "GPU voxelPerAxisStore",
+      "base_ms": 4.301333333333333,
+      "head_ms": 4.462000000000001,
+      "ratio": 1.0373527588344702,
+      "delta_us": 160.66666666666762,
+      "pass": true,
+      "base_runs": [
+        4.151,
+        4.501,
+        4.252
+      ],
+      "head_runs": [
+        4.222,
+        4.493,
+        4.671
+      ]
+    },
+    {
+      "metric": "GPU voxelPerAxisOverflow",
+      "base_ms": 9.382333333333333,
+      "head_ms": 9.739333333333333,
+      "ratio": 1.0380502362596369,
+      "delta_us": 356.9999999999993,
+      "pass": true,
+      "base_runs": [
+        8.995,
+        9.844,
+        9.308
+      ],
+      "head_runs": [
+        9.277,
+        9.745,
+        10.196
+      ]
+    },
+    {
+      "metric": "GPU voxelPerAxisFinalize",
+      "base_ms": 8.504333333333333,
+      "head_ms": 8.712,
+      "ratio": 1.024418923685964,
+      "delta_us": 207.66666666666646,
+      "pass": true,
+      "base_runs": [
+        8.387,
+        8.845,
+        8.281
+      ],
+      "head_runs": [
+        8.277,
+        8.861,
+        8.998
+      ]
+    },
+    {
+      "metric": "GPU perAxisScatter",
+      "base_ms": 3.231666666666667,
+      "head_ms": 3.1906666666666665,
+      "ratio": 0.9873130479628673,
+      "delta_us": -41.00000000000037,
+      "pass": true,
+      "base_runs": [
+        3.163,
+        3.446,
+        3.086
+      ],
+      "head_runs": [
+        3.052,
+        3.2,
+        3.32
+      ]
+    },
+    {
+      "metric": "GPU fogPerAxis",
+      "base_ms": 0.009666666666666665,
+      "head_ms": 0.009666666666666665,
+      "ratio": 1.0,
+      "delta_us": 0.0,
+      "pass": true,
+      "base_runs": [
+        0.01,
+        0.009,
+        0.01
+      ],
+      "head_runs": [
+        0.009,
+        0.01,
+        0.01
+      ]
+    },
+    {
+      "metric": "GPU fogOverflow",
+      "base_ms": 0.03266666666666667,
+      "head_ms": 0.03133333333333333,
+      "ratio": 0.9591836734693876,
+      "delta_us": -1.3333333333333393,
+      "pass": true,
+      "base_runs": [
+        0.03,
+        0.035,
+        0.033
+      ],
+      "head_runs": [
+        0.03,
+        0.03,
+        0.034
+      ]
+    },
+    {
+      "metric": "GPU fogToTrixel",
+      "base_ms": 0.015333333333333332,
+      "head_ms": 0.015666666666666666,
+      "ratio": 1.0217391304347825,
+      "delta_us": 0.33333333333333304,
+      "pass": true,
+      "base_runs": [
+        0.015,
+        0.015,
+        0.016
+      ],
+      "head_runs": [
+        0.015,
+        0.016,
+        0.016
+      ]
+    },
+    {
+      "metric": "GPU voxelSunFaces",
+      "base_ms": 0.268,
+      "head_ms": 0.27299999999999996,
+      "ratio": 1.0186567164179103,
+      "delta_us": 4.9999999999999485,
+      "pass": true,
+      "base_runs": [
+        0.261,
+        0.274,
+        0.269
+      ],
+      "head_runs": [
+        0.257,
+        0.288,
+        0.274
+      ]
+    },
+    {
+      "metric": "GPU bakeSunShadowMap",
+      "base_ms": 0.001,
+      "head_ms": 0.001,
+      "ratio": 1.0,
+      "delta_us": 0.0,
+      "pass": true,
+      "base_runs": [
+        0.001,
+        0.001,
+        0.001
+      ],
+      "head_runs": [
+        0.001,
+        0.001,
+        0.001
+      ]
+    },
+    {
+      "metric": "CPU voxelStage1",
+      "base_ms": 22.916666666666668,
+      "head_ms": 23.738666666666663,
+      "ratio": 1.0358690909090906,
+      "delta_us": 821.9999999999957,
+      "pass": true,
+      "base_runs": [
+        22.272,
+        23.945,
+        22.533
+      ],
+      "head_runs": [
+        22.598,
+        23.933,
+        24.685
+      ]
+    },
+    {
+      "metric": "CPU fogToTrixel",
+      "base_ms": 0.24066666666666667,
+      "head_ms": 0.22866666666666666,
+      "ratio": 0.9501385041551246,
+      "delta_us": -12.00000000000001,
+      "pass": true,
+      "base_runs": [
+        0.239,
+        0.244,
+        0.239
+      ],
+      "head_runs": [
+        0.222,
+        0.238,
+        0.226
+      ]
+    },
+    {
+      "metric": "CPU bakeSunShadowMap",
+      "base_ms": 0.042333333333333334,
+      "head_ms": 0.04066666666666666,
+      "ratio": 0.9606299212598425,
+      "delta_us": -1.6666666666666705,
+      "pass": true,
+      "base_runs": [
+        0.04,
+        0.045,
+        0.042
+      ],
+      "head_runs": [
+        0.039,
+        0.042,
+        0.041
+      ]
+    }
+  ],
+  "nofog": [
+    {
+      "metric": "frame",
+      "base_ms": 67.83666666666666,
+      "head_ms": 66.31333333333333,
+      "ratio": 0.9775441010269766,
+      "delta_us": -1523.3333333333262,
+      "pass": true,
+      "base_runs": [
+        66.39,
+        67.13,
+        69.99
+      ],
+      "head_runs": [
+        69.34,
+        64.3,
+        65.3
+      ]
+    },
+    {
+      "metric": "steady frame",
+      "base_ms": 60.80666666666667,
+      "head_ms": 60.61333333333334,
+      "ratio": 0.9968205240653437,
+      "delta_us": -193.33333333333513,
+      "pass": true,
+      "base_runs": [
+        59.07,
+        59.86,
+        63.49
+      ],
+      "head_runs": [
+        63.83,
+        58.17,
+        59.84
+      ]
+    },
+    {
+      "metric": "GPU voxelCompact",
+      "base_ms": 0.042666666666666665,
+      "head_ms": 0.039,
+      "ratio": 0.9140625,
+      "delta_us": -3.666666666666665,
+      "pass": true,
+      "base_runs": [
+        0.038,
+        0.047,
+        0.043
+      ],
+      "head_runs": [
+        0.037,
+        0.038,
+        0.042
+      ]
+    },
+    {
+      "metric": "GPU voxelPerAxisStore",
+      "base_ms": 4.439,
+      "head_ms": 4.364666666666667,
+      "ratio": 0.9832544867462644,
+      "delta_us": -74.33333333333269,
+      "pass": true,
+      "base_runs": [
+        4.273,
+        4.572,
+        4.472
+      ],
+      "head_runs": [
+        4.213,
+        4.36,
+        4.521
+      ]
+    },
+    {
+      "metric": "GPU voxelPerAxisOverflow",
+      "base_ms": 9.833666666666666,
+      "head_ms": 9.578333333333333,
+      "ratio": 0.9740347784820854,
+      "delta_us": -255.33333333333275,
+      "pass": true,
+      "base_runs": [
+        9.465,
+        10.019,
+        10.017
+      ],
+      "head_runs": [
+        9.338,
+        9.383,
+        10.014
+      ]
+    },
+    {
+      "metric": "GPU voxelPerAxisFinalize",
+      "base_ms": 8.777,
+      "head_ms": 8.596333333333334,
+      "ratio": 0.9794158976111809,
+      "delta_us": -180.66666666666544,
+      "pass": true,
+      "base_runs": [
+        8.577,
+        8.865,
+        8.889
+      ],
+      "head_runs": [
+        8.453,
+        8.58,
+        8.756
+      ]
+    },
+    {
+      "metric": "GPU perAxisScatter",
+      "base_ms": 3.3356666666666666,
+      "head_ms": 3.2439999999999998,
+      "ratio": 0.9725192365344258,
+      "delta_us": -91.66666666666679,
+      "pass": true,
+      "base_runs": [
+        3.314,
+        3.372,
+        3.321
+      ],
+      "head_runs": [
+        3.322,
+        3.179,
+        3.231
+      ]
+    },
+    {
+      "metric": "GPU fogPerAxis",
+      "base_ms": 0.011666666666666667,
+      "head_ms": 0.011000000000000001,
+      "ratio": 0.942857142857143,
+      "delta_us": -0.6666666666666661,
+      "pass": true,
+      "base_runs": [
+        0.01,
+        0.013,
+        0.012
+      ],
+      "head_runs": [
+        0.01,
+        0.01,
+        0.013
+      ]
+    },
+    {
+      "metric": "GPU fogOverflow",
+      "base_ms": 0.032,
+      "head_ms": 0.030666666666666665,
+      "ratio": 0.9583333333333333,
+      "delta_us": -1.3333333333333357,
+      "pass": true,
+      "base_runs": [
+        0.03,
+        0.032,
+        0.034
+      ],
+      "head_runs": [
+        0.032,
+        0.03,
+        0.03
+      ]
+    },
+    {
+      "metric": "GPU fogToTrixel",
+      "base_ms": 0.016666666666666666,
+      "head_ms": 0.017333333333333333,
+      "ratio": 1.04,
+      "delta_us": 0.6666666666666661,
+      "pass": true,
+      "base_runs": [
+        0.017,
+        0.016,
+        0.017
+      ],
+      "head_runs": [
+        0.019,
+        0.018,
+        0.015
+      ]
+    },
+    {
+      "metric": "GPU voxelSunFaces",
+      "base_ms": 0.27,
+      "head_ms": 0.27,
+      "ratio": 1.0,
+      "delta_us": 0.0,
+      "pass": true,
+      "base_runs": [
+        0.266,
+        0.274,
+        0.27
+      ],
+      "head_runs": [
+        0.261,
+        0.277,
+        0.272
+      ]
+    },
+    {
+      "metric": "GPU bakeSunShadowMap",
+      "base_ms": 0.001,
+      "head_ms": 0.001,
+      "ratio": 1.0,
+      "delta_us": 0.0,
+      "pass": true,
+      "base_runs": [
+        0.001,
+        0.001,
+        0.001
+      ],
+      "head_runs": [
+        0.001,
+        0.001,
+        0.001
+      ]
+    },
+    {
+      "metric": "CPU voxelStage1",
+      "base_ms": 24.020333333333337,
+      "head_ms": 23.428,
+      "ratio": 0.9753403366592192,
+      "delta_us": -592.333333333336,
+      "pass": true,
+      "base_runs": [
+        23.316,
+        24.387,
+        24.358
+      ],
+      "head_runs": [
+        22.768,
+        23.251,
+        24.265
+      ]
+    },
+    {
+      "metric": "CPU fogToTrixel",
+      "base_ms": 0.24466666666666667,
+      "head_ms": 0.228,
+      "ratio": 0.9318801089918256,
+      "delta_us": -16.666666666666664,
+      "pass": true,
+      "base_runs": [
+        0.255,
+        0.235,
+        0.244
+      ],
+      "head_runs": [
+        0.233,
+        0.232,
+        0.219
+      ]
+    },
+    {
+      "metric": "CPU bakeSunShadowMap",
+      "base_ms": 0.042666666666666665,
+      "head_ms": 0.04133333333333333,
+      "ratio": 0.96875,
+      "delta_us": -1.3333333333333321,
+      "pass": true,
+      "base_runs": [
+        0.042,
+        0.043,
+        0.043
+      ],
+      "head_runs": [
+        0.041,
+        0.041,
+        0.042
+      ]
+    }
+  ],
+  "treatment": [
+    {
+      "metric": "frame",
+      "base_ms": 58.656666666666666,
+      "head_ms": 63.60333333333333,
+      "ratio": 1.0843325566857986,
+      "delta_us": 4946.666666666665,
+      "pass": true,
+      "base_runs": [
+        58.81,
+        63.14,
+        54.02
+      ],
+      "head_runs": [
+        62.54,
+        66.52,
+        61.75
+      ]
+    },
+    {
+      "metric": "steady frame",
+      "base_ms": 56.56666666666666,
+      "head_ms": 62.76666666666666,
+      "ratio": 1.1096051856216853,
+      "delta_us": 6199.999999999995,
+      "pass": true,
+      "base_runs": [
+        57.71,
+        60.6,
+        51.39
+      ],
+      "head_runs": [
+        59.97,
+        67.6,
+        60.73
+      ]
+    },
+    {
+      "metric": "GPU voxelCompact",
+      "base_ms": 0.04033333333333333,
+      "head_ms": 0.04133333333333333,
+      "ratio": 1.024793388429752,
+      "delta_us": 1.0000000000000009,
+      "pass": true,
+      "base_runs": [
+        0.039,
+        0.04,
+        0.042
+      ],
+      "head_runs": [
+        0.041,
+        0.039,
+        0.044
+      ]
+    },
+    {
+      "metric": "GPU voxelPerAxisStore",
+      "base_ms": 4.312,
+      "head_ms": 4.479,
+      "ratio": 1.0387291280148423,
+      "delta_us": 166.99999999999983,
+      "pass": true,
+      "base_runs": [
+        4.148,
+        4.595,
+        4.193
+      ],
+      "head_runs": [
+        4.392,
+        4.514,
+        4.531
+      ]
+    },
+    {
+      "metric": "GPU voxelPerAxisOverflow",
+      "base_ms": 9.458333333333334,
+      "head_ms": 9.984333333333334,
+      "ratio": 1.055612334801762,
+      "delta_us": 525.9999999999998,
+      "pass": true,
+      "base_runs": [
+        9.054,
+        10.084,
+        9.237
+      ],
+      "head_runs": [
+        9.733,
+        10.243,
+        9.977
+      ]
+    },
+    {
+      "metric": "GPU voxelPerAxisFinalize",
+      "base_ms": 8.527,
+      "head_ms": 8.891333333333334,
+      "ratio": 1.0427270239630977,
+      "delta_us": 364.3333333333345,
+      "pass": true,
+      "base_runs": [
+        8.347,
+        8.986,
+        8.248
+      ],
+      "head_runs": [
+        8.803,
+        8.982,
+        8.889
+      ]
+    },
+    {
+      "metric": "GPU perAxisScatter",
+      "base_ms": 3.1726666666666667,
+      "head_ms": 3.3200000000000003,
+      "ratio": 1.0464383273797018,
+      "delta_us": 147.33333333333354,
+      "pass": true,
+      "base_runs": [
+        3.123,
+        3.353,
+        3.042
+      ],
+      "head_runs": [
+        3.233,
+        3.432,
+        3.295
+      ]
+    },
+    {
+      "metric": "GPU fogPerAxis",
+      "base_ms": 0.010666666666666666,
+      "head_ms": 0.01,
+      "ratio": 0.9375,
+      "delta_us": -0.6666666666666661,
+      "pass": true,
+      "base_runs": [
+        0.01,
+        0.012,
+        0.01
+      ],
+      "head_runs": [
+        0.01,
+        0.01,
+        0.01
+      ]
+    },
+    {
+      "metric": "GPU fogOverflow",
+      "base_ms": 0.03,
+      "head_ms": 0.03233333333333333,
+      "ratio": 1.0777777777777777,
+      "delta_us": 2.333333333333333,
+      "pass": true,
+      "base_runs": [
+        0.03,
+        0.03,
+        0.03
+      ],
+      "head_runs": [
+        0.03,
+        0.032,
+        0.035
+      ]
+    },
+    {
+      "metric": "GPU fogToTrixel",
+      "base_ms": 0.015666666666666666,
+      "head_ms": 0.02,
+      "ratio": 1.2765957446808511,
+      "delta_us": 4.333333333333335,
+      "pass": true,
+      "base_runs": [
+        0.015,
+        0.016,
+        0.016
+      ],
+      "head_runs": [
+        0.017,
+        0.016,
+        0.027
+      ]
+    },
+    {
+      "metric": "GPU voxelSunFaces",
+      "base_ms": 0.264,
+      "head_ms": 0.27366666666666667,
+      "ratio": 1.0366161616161615,
+      "delta_us": 9.666666666666657,
+      "pass": true,
+      "base_runs": [
+        0.258,
+        0.27,
+        0.264
+      ],
+      "head_runs": [
+        0.258,
+        0.274,
+        0.289
+      ]
+    },
+    {
+      "metric": "GPU bakeSunShadowMap",
+      "base_ms": 0.001,
+      "head_ms": 0.001,
+      "ratio": 1.0,
+      "delta_us": 0.0,
+      "pass": true,
+      "base_runs": [
+        0.001,
+        0.001,
+        0.001
+      ],
+      "head_runs": [
+        0.001,
+        0.001,
+        0.001
+      ]
+    },
+    {
+      "metric": "CPU voxelStage1",
+      "base_ms": 23.038333333333338,
+      "head_ms": 24.16433333333333,
+      "ratio": 1.0488750633002963,
+      "delta_us": 1125.999999999994,
+      "pass": true,
+      "base_runs": [
+        22.268,
+        24.483,
+        22.364
+      ],
+      "head_runs": [
+        23.816,
+        24.55,
+        24.127
+      ]
+    },
+    {
+      "metric": "CPU fogToTrixel",
+      "base_ms": 0.2353333333333333,
+      "head_ms": 0.22966666666666669,
+      "ratio": 0.9759206798866857,
+      "delta_us": -5.666666666666625,
+      "pass": true,
+      "base_runs": [
+        0.24,
+        0.238,
+        0.228
+      ],
+      "head_runs": [
+        0.234,
+        0.228,
+        0.227
+      ]
+    },
+    {
+      "metric": "CPU bakeSunShadowMap",
+      "base_ms": 0.041666666666666664,
+      "head_ms": 0.04133333333333333,
+      "ratio": 0.992,
+      "delta_us": -0.3333333333333313,
+      "pass": true,
+      "base_runs": [
+        0.041,
+        0.044,
+        0.04
+      ],
+      "head_runs": [
+        0.041,
+        0.042,
+        0.041
+      ]
+    }
+  ]
+}

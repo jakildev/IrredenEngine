@@ -375,6 +375,19 @@ cuts that route at its world voxel. The envelope can over-admit at most
 `span` world units above the static cut while a ceiling and treatment are
 enabled; stage 1 removes the excess before emitting geometry.
 
+Whether any source has a ceiling is a per-frame fact, and the kernels learn
+it from the CPU rather than scanning the sources per voxel or per face.
+`VOXEL_TO_TRIXEL_STAGE_1` evaluates `anyCeilingEnabled` once per canvas: the
+compact is two compile-time specializations of one body
+(`c_voxel_visibility_compact`, no ceiling code, and
+`c_voxel_visibility_compact_ceiling`, selected by `IR_FOG_CEILING_PASS`), and
+the ceiling kernel is dispatched only when the canvas's own fog window has a
+ceiling-enabled source live; stage 1 and stage 2 read the same verdict as the
+`fogCeilingEnabled` lane of their frame data, computed over the observers
+they select against (the main window for a world-placed detached canvas).
+A canvas with no ceiling therefore runs master's compact kernel, and a FIELD
+voxel on such a frame pays one uniform read in face selection.
+
 In split mode, every voxel and axis whose final face-selection test emits a
 cut or cap at any phase must reach that axis's region, including fully
 interior authored voxels. Region admission reads the lower envelope

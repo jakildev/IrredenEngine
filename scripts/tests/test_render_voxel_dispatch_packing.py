@@ -30,7 +30,7 @@ def harness(backend):
     folder, suffix = (SHADERS, "glsl") if backend == "glsl" else (SHADERS / "metal", "metal")
     constants = (folder / f"ir_constants.{suffix}").read_text()
     packing = int(re.search(r"kStageMicroSlicesPerGroup\s*=\s*(\d+)", constants)[1])
-    compact = (folder / f"c_voxel_visibility_compact.{suffix}").read_text()
+    compact = (folder / f"c_voxel_visibility_compact_body.{suffix}").read_text()
     writer = extract_function(compact, "writeDispatchDims").replace("device ", "")
     finalizer = extract_function(compact, "finalizeDispatchDims")
     finalizer = finalizer.replace("device ", "").replace("constant ", "const ")

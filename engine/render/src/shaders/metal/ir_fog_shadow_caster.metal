@@ -1,7 +1,7 @@
 #ifndef IR_FOG_SHADOW_CASTER_METAL_INCLUDED
 #define IR_FOG_SHADOW_CASTER_METAL_INCLUDED
 
-constant int kFogShadowMaxSources = 8;
+constant int kFogShadowMaxSources = kMaxFogVisionCircles;
 
 struct FogShadowObserverData {
     float4 visionCircles[kFogShadowMaxSources];

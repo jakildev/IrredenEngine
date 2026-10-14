@@ -1213,13 +1213,6 @@ float fogCeilingPhaseHeight(ivec3 voxel, float phase) {
     return kFogCeilingFlickerSpan * (1.0 - 4.0 * abs(fract(rate * phase + 0.25) - 0.5));
 }
 
-bool fogAnyCeilingEnabled(vec4 ceilings[kMaxFogVisionCircles], int count) {
-    for (int source = 0; source < count; ++source) {
-        if (ceilings[source].x >= 0.0) return true;
-    }
-    return false;
-}
-
 // Admission is independent of height and phase; Z neighbours reuse this mask.
 uint fogCeilingSourceMask(
     ivec2 column, uvec2 cell, vec4 circles[kMaxFogVisionCircles],

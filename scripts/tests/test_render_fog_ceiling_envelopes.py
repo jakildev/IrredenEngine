@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[2]
 COMPILER = shutil.which("c++")
 
 PREAMBLE = r"""
+#define IR_FOG_CEILING_PASS 1
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -129,16 +130,36 @@ int main(){
     check(kFogCeilingAdmitAa>std::sqrt(.5),"aa_pixel_bound");
     uint rng=0x94762a31;
     auto random=[&](){rng=1664525u*rng+1013904223u;return float(rng>>8)/16777216.f;};
-    int cuts=0,drops=0,changes=0,checks=0;
+    // A column within 1e-4 of a source's admission edge is a float/double tie the
+    // scalar oracle cannot settle; such scenes are skipped, not graded.
+    auto nearAdmissionEdge=[&](ivec2 col){
+        for(int i=0;i<visionCircleCount;++i){
+            auto c=visionCircles[i];double a=std::max(double(c.w),.75);
+            double dx=std::max(std::abs(double(c.x)-col.x)-.5,0.);
+            double dy=std::max(std::abs(double(c.y)-col.y)-.5,0.);
+            if(std::abs(std::hypot(dx,dy)-(c.z+a))<1e-4)return true;
+        }
+        return false;
+    };
+    int cuts=0,drops=0,changes=0,checks=0,skipped=0;
     for(int scene=0;scene<500;++scene){
         reset();visionCircleCount=1+scene%8;revealSurfaceTreatment.y=random();
-        ivec3 v(int(random()*20)-10,int(random()*20)-10,-int(random()*18));
+        // Sequenced draws: a parenthesized constructor call evaluates its
+        // arguments in an unspecified order, which would make the scene stream
+        // compiler-dependent.
+        const int vx=int(random()*20)-10;
+        const int vy=int(random()*20)-10;
+        const int vz=-int(random()*18);
+        const ivec3 v(vx,vy,vz);
         for(int i=0;i<visionCircleCount;++i){
             visionCircles[i]={random()*20-10,random()*20-10,random()*20+1,random()*2};
             visionCircleHeights[i]={random()*6,random()*2,random()*2,random()};
             visionCircleCeilings[i]={i==7?-1:random()*10,scene%3?random()*5:0,0,0};
             visionCircleChannels[i/4][i%4]=1u<<(i%3);
         }
+        if(nearAdmissionEdge(xy(v))||nearAdmissionEdge({v.x+1,v.y})||
+           nearAdmissionEdge({v.x-1,v.y})||nearAdmissionEdge({v.x,v.y+1})||
+           nearAdmissionEdge({v.x,v.y-1})){++skipped;continue;}
         cells[{v.x,v.y}]={scene%17==0?255u:(scene%11==0?128u:0u),1u+uint(scene%7)};
         cells[{v.x+1,v.y}]={0,1u<<uint(scene%3)};
         cells[{v.x,v.y-1}]={255,1};
@@ -167,7 +188,8 @@ int main(){
         check(compact(v,0,false,0).region,"authored_exposure_identity");
     }
     check(cuts>0&&drops>0&&changes>0,"nonvacuous_sweep");
-    std::printf("checks=%d cuts=%d drops=%d phaseChanges=%d\n",checks,cuts,drops,changes);
+    std::printf("checks=%d cuts=%d drops=%d phaseChanges=%d skipped=%d\n",
+                checks,cuts,drops,changes,skipped);
 }
 """
 
@@ -175,23 +197,30 @@ int main(){
 def shader_source(suffix, directory):
     shaders = ROOT / "engine/render/src/shaders" / directory
     common = (shaders / f"ir_iso_common.{suffix}").read_text()
-    compact = (shaders / f"c_voxel_visibility_compact.{suffix}").read_text()
+    compact = (shaders / f"c_voxel_visibility_compact_body.{suffix}").read_text()
     names = ("faceIsExposed", "fogVisionCircleReveal", "fogCeilingVisibility",
-             "fogRevealSurfaceHash01", "fogCeilingPhaseHeight", "fogAnyCeilingEnabled",
-             "fogCeilingSourceMask",
+             "fogRevealSurfaceHash01", "fogCeilingPhaseHeight", "fogCeilingSourceMask",
              "fogCeilingPresenceFromMask", "fogCeilingPresence", "fogCeilingRetained")
     constants = "\n".join(re.search(
         rf"(?:const|constant) (?:int|float) {name} = [^;]+;", common).group()
         for name in ("kMaxFogVisionCircles", "kFogCeilingAdmitAa", "kFogCeilingFlickerSpan"))
     source = constants + "\n" + "\n".join(extract_function(common, name) for name in names)
-    drop = compact[compact.index("const bool ceilingActive ="):compact.index("if (isoPos.x >=")]
-    region = compact[compact.index("bool possibleCut ="):
-                     compact.index("if (faceIsExposed(flagsByte, 2 * axis)")]
+
+    # Each ceiling block sits under its own `#if IR_FOG_CEILING_PASS`; the slice
+    # starts at that directive so the `#else` identity arm stays balanced.
+    def ceiling_block(marker, stop):
+        start = compact.rindex("#if IR_FOG_CEILING_PASS", 0, compact.index(marker))
+        return compact[start:compact.index(stop, start)]
+
+    drop = ceiling_block("const bool ceilingActive =", "if (isoPos.x >=")
+    invariant = ceiling_block("const float ownMinimum =", "for (int axis = 0; axis < 3; ++axis)")
+    region = ceiling_block("bool possibleCut = false;",
+                           "if (faceIsExposed(flagsByte, 2 * axis)")
     append = re.search(r"if \((faceIsExposed\(flagsByte, 2 \* axis\).*?)\) \{",
                        compact, re.DOTALL).group(1)
     source += ("\nGate compact(ivec3 voxelPosRaw,int axis,bool fogWholeBodyExempt=false,"
-               "uint flagsByte=0xFCu){" + drop + region
-               + "return {ceilingPossible," + append + "};}\n")
+               "uint flagsByte=0xFCu){\n" + drop + "\n" + invariant + "\n" + region
+               + "\nreturn {ceilingPossible," + append + "};}\n")
     source = source.replace("fogSelectionCell(canvasFogOfWar, fogObservers, ", "fogSelectionCell(")
     source = source.replace("fogObservers.", "")
     source = source.replace("imageSize(canvasFogOfWar).x", "fogWidth")

@@ -1,7 +1,9 @@
 // FIELD caster policy for the sun-shadow bake. The block mirrors
 // FrameDataFogObservers; only the circle, height and ceiling lanes are read.
+// The arrays are typed on the ir_iso_common helpers' source count, so the
+// block and the predicates it feeds cannot drift apart.
 
-const int kFogShadowMaxSources = 8;
+const int kFogShadowMaxSources = kMaxFogVisionCircles;
 
 layout(std140, binding = 27) uniform FogShadowObserverData {
     vec4 fogShadowVisionCircles[kFogShadowMaxSources];

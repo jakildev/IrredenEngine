@@ -58,7 +58,7 @@ void main() {
         true
     );
     const ivec3 voxel = roundHalfUp(position);
-    const uvec2 cell = fogTapTexel(voxel.xy);
+    const uvec2 cell = fogTapTexel(voxel.xy, imageSize(canvasFogOfWar));
     ceilingProbes[index] = vec4(
         fogCeilingPresence(voxel, cell, visionCircles, visionCircleHeights,
             visionCircleCeilings, visionCircleChannels, visionCircleCount, 0.0),

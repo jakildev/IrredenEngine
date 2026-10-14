@@ -1118,6 +1118,10 @@ struct FrameDataVoxelToTrixel {
     // origin, .z = cardinal index of the view the key positions are rotated
     // into. Mirrors FrameDataVoxelToCanvas::perAxisStoreFrame_.
     int4 perAxisStoreFrame;
+    // .x non-zero while the bound fog window has a ceiling-enabled source
+    // live; face selection's one-uniform ceiling gate. Mirrors
+    // FrameDataVoxelToCanvas::fogCeilingEnabled_ (offset 272).
+    int4 fogCeilingEnabled;
 };
 
 // Smooth analytic vision-circle reveal for one fog disc at `worldXY`.
@@ -1195,13 +1199,6 @@ inline float fogCeilingPhaseHeight(int3 voxel, float phase) {
     hash ^= hash >> 15u;
     const float rate = 0.125f + 0.875f * (float(hash & 0xFFFFFFu) / 16777216.0f);
     return kFogCeilingFlickerSpan * (1.0f - 4.0f * abs(fract(rate * phase + 0.25f) - 0.5f));
-}
-
-inline bool fogAnyCeilingEnabled(constant float4* ceilings, int count) {
-    for (int source = 0; source < count; ++source) {
-        if (ceilings[source].x >= 0.0f) return true;
-    }
-    return false;
 }
 
 // Admission is independent of height and phase; Z neighbours reuse this mask.
