@@ -111,6 +111,7 @@ add_executable(IrredenEngineTest
   render/per_axis_canvas_size_test.cpp
   render/per_axis_cast_subcell_test.cpp
   render/per_axis_store_frame_test.cpp
+  render/per_axis_surface_lighting_test.cpp
   render/frame_data_sun_layout_test.cpp
   render/gizmo_drag_reset_test.cpp
   render/gizmo_ring_orientation_test.cpp
