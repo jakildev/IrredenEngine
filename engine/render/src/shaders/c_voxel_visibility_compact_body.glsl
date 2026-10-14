@@ -145,12 +145,18 @@ layout(std140, binding = 27) uniform FogObserverData {
     int losSourceMask;
     int windowOriginX;
     int windowOriginY;
+    // The no-ceiling specialization declares only this prefix: a std140 block
+    // truncated after a field keeps every earlier offset, and Metal sizes its
+    // constant preload from the declared type, so the tail stays out of the
+    // kernel that never reads it.
+#if IR_FOG_CEILING_PASS
     vec4 visionCircleHeights[kMaxFogVisionCircles];
     vec4 unexploredColor;
     vec4 losParams[kMaxFogVisionCircles];
     uvec4 visionCircleChannels[2];
     vec4 visionCircleCeilings[kMaxFogVisionCircles];
     vec4 revealSurfaceTreatment;
+#endif
 };
 
 #if IR_FOG_CEILING_PASS

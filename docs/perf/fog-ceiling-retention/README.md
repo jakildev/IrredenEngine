@@ -6,9 +6,12 @@ The scene uses 1280×720 game resolution, zoom 1, subdivisions 1 and a 64³ cont
 
 The amended renderer (the compact split into a no-ceiling and a ceiling
 specialization, the per-canvas `fogCeilingEnabled` lane, head `79627c49c`) is
-re-measured on the same host and fixture in [`metal-amended/`](metal-amended/README.md);
-the tables below are the pre-amendment renderer and stand as the retention
-model's original baseline.
+re-measured on the same host and fixture in [`metal-amended/`](metal-amended/README.md),
+and the shipped head (rebased onto master, the no-ceiling compact declaring
+master's prefix mirror of `FogObserverData`) in
+[`metal-restored/`](metal-restored/README.md), the criterion 8 tables of
+record; the tables below are the pre-amendment renderer and stand as the
+retention model's original baseline.
 
 Each pair runs head identity, head treatment, master identity, master treatment through `scripts/perf/repeat_profile.py --repeats 1`. The common demo arguments are `--auto-profile 300 --fog-reveal --grid-size 64 --yaw 0`; treatment adds `--fog-reveal-surface`. This flag requires `--fog-reveal` as well. No profiling runs overlap.
 

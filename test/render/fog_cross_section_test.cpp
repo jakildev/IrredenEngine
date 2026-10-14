@@ -1056,7 +1056,7 @@ TEST(FogCrossSectionShaderParity, RevealSurfaceHelpersAreIdenticalAcrossBackends
 
     const std::regex tail(
         R"(visionCircleChannels\[2\];\s*(//[^\n]*\s*)*(vec4|float4) visionCircleCeilings\[kMaxFogVisionCircles\];)"
-        R"(\s*(//[^\n]*\s*)*(vec4|float4) revealSurfaceTreatment;\s*\};)"
+        R"(\s*(//[^\n]*\s*)*(vec4|float4) revealSurfaceTreatment;\s*(#endif\s*)?\};)"
     );
     for (const std::string &path : {kGlslFogCommonPath, kMetalFogCommonPath}) {
         EXPECT_TRUE(std::regex_search(readShaderSource(path), tail))
@@ -1236,6 +1236,41 @@ TEST(FogCrossSectionShaderParity, CeilingSelectionBindingsAndCapSitesArePresentO
                 .find("isoPixelToPos3D("),
             std::string::npos
         );
+    }
+}
+
+TEST(FogCrossSectionShaderParity, CompactObserverBlockIsAPrefixMirrorWithoutTheCeilingPass) {
+    for (const auto &[folder, extension] :
+         {std::pair{"/", ".glsl"}, std::pair{"/metal/", ".metal"}}) {
+        const auto compact = readShaderSource(
+            std::string(IR_TEST_RENDER_SHADER_DIR) + folder + "c_voxel_visibility_compact_body" +
+            extension
+        );
+        const auto blockStart = compact.find("FogObserverData {");
+        ASSERT_NE(blockStart, std::string::npos) << extension;
+        const auto block = compact.substr(blockStart, compact.find("};", blockStart) - blockStart);
+        const auto prefixEnd = block.find("windowOriginY;");
+        const auto gate = block.find("#if IR_FOG_CEILING_PASS");
+        const auto tailStart = block.find("visionCircleHeights[");
+        const auto tailEnd = block.find("revealSurfaceTreatment;");
+        const auto gateEnd = block.find("#endif");
+        for (const auto offset : {prefixEnd, gate, tailStart, tailEnd, gateEnd})
+            ASSERT_NE(offset, std::string::npos) << extension << "\n" << block;
+        EXPECT_LT(prefixEnd, gate) << extension;
+        EXPECT_LT(gate, tailStart) << extension;
+        EXPECT_LT(tailStart, tailEnd) << extension;
+        EXPECT_LT(tailEnd, gateEnd) << extension;
+        const auto prefix = block.substr(0, gate);
+        for (const char *field :
+             {"visionCircles[",
+              "visionCircleCount;",
+              "losSourceMask;",
+              "windowOriginX;",
+              "windowOriginY;"})
+            EXPECT_NE(prefix.find(field), std::string::npos) << field << extension;
+        for (const char *field :
+             {"unexploredColor", "losParams", "visionCircleChannels", "visionCircleCeilings"})
+            EXPECT_EQ(prefix.find(field), std::string::npos) << field << extension;
     }
 }
 

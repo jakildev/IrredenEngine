@@ -8,8 +8,12 @@ and built in a scratch worktree; head is `79627c49ce52d2548fde04f36bb32778c84f0f
 the amended renderer with the compact split into `c_voxel_visibility_compact`
 and `c_voxel_visibility_compact_ceiling` and the per-canvas `fogCeilingEnabled`
 lane. The tables in [`../README.md`](../README.md) measure `50c685205`, the
-renderer before that amendment; this directory re-measures criterion 8 on the
-shipped head.
+renderer before that amendment; this directory re-measures criterion 8 on
+that head. The criterion's tables of record are the later
+[`../metal-restored/`](../metal-restored/README.md) block, measured after the
+rebase onto master and the prefix-mirror restore in the no-ceiling compact;
+the tables here are the measurement that raised the identity `voxelCompact`
+question and are kept as its record.
 
 `../gl-yawed-lanes/run_pairs.py --out <this dir>` ran each pair as head
 identity, head treatment, master identity, master treatment through

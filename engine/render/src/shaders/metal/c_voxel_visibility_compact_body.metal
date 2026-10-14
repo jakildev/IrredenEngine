@@ -93,12 +93,18 @@ struct FogObserverData {
     int losSourceMask;
     int windowOriginX;
     int windowOriginY;
+    // The no-ceiling specialization declares only this prefix: a block
+    // truncated after a field keeps every earlier offset, and Metal sizes its
+    // constant preload from the declared type, so the tail stays out of the
+    // kernel that never reads it.
+#if IR_FOG_CEILING_PASS
     float4 visionCircleHeights[kMaxFogVisionCircles];
     float4 unexploredColor;
     float4 losParams[kMaxFogVisionCircles];
     uint4 visionCircleChannels[2];
     float4 visionCircleCeilings[kMaxFogVisionCircles];
     float4 revealSurfaceTreatment;
+#endif
 };
 
 #if IR_FOG_CEILING_PASS
