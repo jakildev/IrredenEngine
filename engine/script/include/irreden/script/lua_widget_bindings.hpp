@@ -354,6 +354,8 @@ inline void bindWidgets(LuaScript &script) {
                              const sol::table &items,
                              sol::optional<int> selected,
                              sol::optional<int> itemHeight) -> lua_Integer {
+        // Parsed before the entity exists, so a malformed list creates nothing.
+        std::vector<std::string> parsedItems = stringList(items, "IRGui.makeDropdown");
         const IREntity::EntityId widget = IRPrefab::Widget::makeDropdown(
             IRMath::ivec2(x, y),
             IRMath::ivec2(w, h),
@@ -363,7 +365,7 @@ inline void bindWidgets(LuaScript &script) {
         );
         IRPrefab::Widget::setDropdownItems(
             widget,
-            stringList(items, "IRGui.makeDropdown"),
+            std::move(parsedItems),
             selected.value_or(1) - 1
         );
         return static_cast<lua_Integer>(widget);

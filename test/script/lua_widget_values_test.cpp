@@ -128,11 +128,32 @@ TEST_F(LuaWidgetValues, DropdownIndicesAreOneBasedInLua) {
     EXPECT_EQ(eval<int>("IRGui.dropdownSelected(dd)"), 0)
         << "an empty dropdown has nothing selected";
     EXPECT_FALSE(eval<bool>("IRGui.isDropdownOpen(dd)"));
+}
 
+TEST_F(LuaWidgetValues, DropdownZeroMeansNothingSelected) {
+    run(R"lua(dd = IRGui.makeDropdown(0, 0, 100, 14, { "A", "B", "C" }, 0))lua");
+    const IREntity::EntityId id = entity("dd");
+    EXPECT_EQ(IREntity::getComponent<C_WidgetDropdown>(id).selectedIndex_, -1);
+    EXPECT_EQ(eval<int>("IRGui.dropdownSelected(dd)"), 0);
+
+    run("IRGui.setDropdownSelected(dd, 2)");
+    EXPECT_EQ(eval<int>("IRGui.dropdownSelected(dd)"), 2);
+    run("IRGui.setDropdownSelected(dd, 0)");
+    EXPECT_EQ(eval<int>("IRGui.dropdownSelected(dd)"), 0) << "the setter clears the selection";
+    EXPECT_EQ(IREntity::getComponent<C_WidgetDropdown>(id).selectedIndex_, -1);
+
+    run(R"lua(IRGui.setDropdownItems(dd, { "X", "Y" }, 0))lua");
+    EXPECT_EQ(eval<int>("IRGui.dropdownSelected(dd)"), 0);
+}
+
+TEST_F(LuaWidgetValues, MalformedDropdownItemsCreateNoWidget) {
+    const IREntity::EntityId before = m_entityManager.getLiveEntityCount();
     EXPECT_NE(
         error("IRGui.makeDropdown(0, 0, 10, 10, { 'A', 3 })").find("list of strings"),
         std::string::npos
     );
+    EXPECT_EQ(m_entityManager.getLiveEntityCount(), before)
+        << "a rejected item list leaves no dropdown or hitbox behind";
 }
 
 TEST_F(LuaWidgetValues, ReadersRejectTheWrongKindOfWidget) {
