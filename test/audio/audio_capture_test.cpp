@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 
+#include <irreden/ir_audio.hpp>
 #include <irreden/audio/audio.hpp>
+#include <irreden/audio/audio_manager.hpp>
 #include <irreden/profile/logger_spd.hpp>
 
 #include <spdlog/sinks/ostream_sink.h>
@@ -407,7 +409,8 @@ void expectSummary(
 
 // Both arms enumerate the same IDs in the same order and swap the two names, so
 // the device map iterates identically in both while the name order flips: only
-// a sort by name passes both.
+// a sort by name passes both. Read through IRAudio::audioDevices(), the
+// creation-facing surface, against the injected manager.
 TEST(AudioDeviceSummaryTest, DeviceSummariesListTheEnumeratedDevicesByName) {
     for (int arm = 0; arm < 2; ++arm) {
         auto backend = std::make_shared<FakeBackendState>();
@@ -415,13 +418,16 @@ TEST(AudioDeviceSummaryTest, DeviceSummariesListTheEnumeratedDevicesByName) {
         if (arm == 1) {
             std::swap(backend->inputDeviceName_, backend->outputDeviceName_);
         }
-        Audio audio{std::make_unique<FakeAudioInputBackend>(backend)};
+        IRAudio::AudioManager audioManager{
+            std::make_unique<FakeAudioInputBackend>(backend),
+            nullptr
+        };
         const IRAudio::AudioDeviceSummary
             input{backend->inputDeviceName_, 2, 2, true, false, 44'100};
         const IRAudio::AudioDeviceSummary
             output{backend->outputDeviceName_, 0, 2, false, true, 44'100};
 
-        const std::vector<IRAudio::AudioDeviceSummary> devices = audio.deviceSummaries();
+        const std::vector<IRAudio::AudioDeviceSummary> devices = IRAudio::audioDevices();
 
         ASSERT_EQ(devices.size(), 2u) << "arm " << arm;
         expectSummary(devices[0], arm == 0 ? input : output, arm);
