@@ -43,6 +43,9 @@ a gate that silently passes produce the same check mark — so they get arms:
     AA an unlisted host class keeps raw grading
     AB p99, GPU stage, and CPU system marks stay raw on a scaled run
     AC the operator docs name the table, entry, and weighting rule
+    AD only calibrated frame-average improvements reach the machine verdict
+    AE the label synchronizer handles all states, races, and API retries
+    AF the workflow resets before expensive work and always synchronizes
 
 Stdlib only, no network, no build. Wired into the perf-gate job so it
 executes rather than drifting.
@@ -65,14 +68,17 @@ _SCRIPTS_PERF = _TESTS_DIR.parent
 _REPO_ROOT = _SCRIPTS_PERF.parent.parent
 
 sys.path.insert(0, str(_SCRIPTS_PERF))
+from check_regression import _write_improved_cells  # noqa: E402
 from compare_perf_runs import (  # noqa: E402
     class_match_head_scale,
     class_match_scale_threshold,
+    frame_avg_improved,
     resolve_baseline,
 )
 
 CHECK_REGRESSION = _SCRIPTS_PERF / "check_regression.py"
 COMPARE_STEP = _SCRIPTS_PERF / "ci_compare_step.sh"
+LABEL_STEP = _SCRIPTS_PERF / "ci_label_step.sh"
 
 HEAD_SLUG = "linux-x86_64-epyc-7763-64-unknown"   # top SKU of the hosted pool
 OTHER_SLUG = "linux-x86_64-xeon-platinum-8573c-unknown"
@@ -224,6 +230,100 @@ def run_scale_history_case(work: Path, head_reading: tuple,
                            **kwargs) -> subprocess.CompletedProcess:
     root, history, head = scale_fixture(work, head_reading, **kwargs)
     return run_checker(root, head, history)
+
+
+def run_compare_case(work: Path, head_reading: tuple, **kwargs) -> tuple[
+        subprocess.CompletedProcess, Path, Path]:
+    flag_zoom1 = kwargs.pop("flag_zoom1", False)
+    root, history, head = scale_fixture(work, head_reading, **kwargs)
+    if flag_zoom1:
+        manifest_path = head / "manifest.json"
+        manifest = json.loads(manifest_path.read_text())
+        manifest["cells"][0]["load_ref_ms"] = {"before": head_reading[0] * 1.15}
+        manifest["cells"][1]["load_ref_ms"] = {"before": head_reading[0]}
+        manifest_path.write_text(json.dumps(manifest))
+    gh_stub = work / "gh-comment"
+    gh_stub.write_text("#!/usr/bin/env bash\nexit 0\n")
+    gh_stub.chmod(0o755)
+    output = work / "github_output.txt"
+    env = dict(os.environ)
+    env.update({
+        "BASELINE_ROOT": str(root),
+        "BASELINE_HISTORY": str(history),
+        "HEAD_DIR": str(head),
+        "PR_NUMBER": "9999",
+        "PERF_TMPDIR": str(work),
+        "GH_BIN": str(gh_stub),
+        "GITHUB_OUTPUT": str(output),
+    })
+    result = subprocess.run(["bash", str(COMPARE_STEP)], env=env,
+                            capture_output=True, text=True)
+    return result, output, work / "perf_improved_cells.txt"
+
+
+def write_label_stub(work: Path, state: dict) -> tuple[Path, Path]:
+    work.mkdir(parents=True, exist_ok=True)
+    state_path = work / "state.json"
+    state_path.write_text(json.dumps(state))
+    stub = work / "gh-stateful"
+    stub.write_text(
+        "#!/usr/bin/env python3\n"
+        "import json, os, sys\n"
+        "p = os.environ['STUB_STATE']\n"
+        "s = json.loads(open(p).read())\n"
+        "a = sys.argv[1:]\n"
+        "if a[:2] == ['pr', 'view']:\n"
+        "    if s.get('view_failures', 0):\n"
+        "        s['view_failures'] -= 1\n"
+        "        open(p, 'w').write(json.dumps(s))\n"
+        "        sys.exit(1)\n"
+        "    print(json.dumps({'headRefOid': s['head'], "
+        "'labels': [{'name': x} for x in s['labels']]}))\n"
+        "    sys.exit(0)\n"
+        "if a[:2] == ['pr', 'edit']:\n"
+        "    s['edits'] = s.get('edits', 0) + 1\n"
+        "    if '--add-label' in a:\n"
+        "        if 'perf:improved' not in s['labels']: s['labels'].append('perf:improved')\n"
+        "        if s.get('move_on_add'):\n"
+        "            s['head'] = s.get('new_head', 'head-new')\n"
+        "            s['move_on_add'] = False\n"
+        "        s['view_failures'] = s.get('post_add_view_failures', 0)\n"
+        "        s['post_add_view_failures'] = 0\n"
+        "    elif '--remove-label' in a:\n"
+        "        if s.get('undo_failures', 0):\n"
+        "            s['undo_failures'] -= 1\n"
+        "            open(p, 'w').write(json.dumps(s))\n"
+        "            sys.exit(1)\n"
+        "        s['labels'] = [x for x in s['labels'] if x != 'perf:improved']\n"
+        "    open(p, 'w').write(json.dumps(s))\n"
+        "    sys.exit(0)\n"
+        "sys.exit(2)\n"
+    )
+    stub.chmod(0o755)
+    return stub, state_path
+
+
+def run_label_case(work: Path, state: dict, *, phase: str,
+                   head: str = "head-a", status: str = "",
+                   improved: str = "", attempts: str = "3") -> tuple[
+                       subprocess.CompletedProcess, dict]:
+    stub, state_path = write_label_stub(work, state)
+    env = dict(os.environ)
+    env.update({
+        "LABEL_PHASE": phase,
+        "HEAD_SHA": head,
+        "PR_NUMBER": "9999",
+        "REPO": "owner/repo",
+        "GATE_STATUS": status,
+        "GATE_IMPROVED": improved,
+        "GH_BIN": str(stub),
+        "LABEL_ATTEMPTS": attempts,
+        "LABEL_RETRY_SLEEP": "0",
+        "STUB_STATE": str(state_path),
+    })
+    result = subprocess.run(["bash", str(LABEL_STEP)], env=env,
+                            capture_output=True, text=True)
+    return result, json.loads(state_path.read_text())
 
 
 # --- Arms A/B/C: baseline resolution -------------------------------------
@@ -818,6 +918,231 @@ def arm_ac_docs() -> None:
           "the perf and validation docs name the grading rule")
 
 
+def output_values(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    return dict(line.split("=", 1) for line in path.read_text().splitlines())
+
+
+def arm_ad_improvement_verdict(tmp: Path) -> None:
+    check("AD", frame_avg_improved(100.0, 90.0, 1.0, 5.0)
+          and not frame_avg_improved(100.0, 84.0, 1.20, 5.0),
+          "the shared predicate requires both raw and calibrated improvement")
+    direct_verdict = tmp / "ad-direct-verdict.txt"
+    _write_improved_cells(str(direct_verdict), ["zoom=1"])
+    check("AD", direct_verdict.read_text() == "zoom=1\n",
+          "the verdict writer records one cell id per line")
+
+    for slug in (OTHER_SLUG, HEAD_SLUG):
+        noisy = (SCALE_CAPTURE[0], SCALE_CAPTURE[1] * 1.005,
+                 SCALE_CAPTURE[2] * 0.995)
+        r, output, cells = run_compare_case(
+            tmp / f"ad-noisy-{slug}", noisy, slug=slug,
+            capture_stage_ms=10.0, head_stage_ms=9.0,
+            capture_system_ms=10.0, head_system_ms=9.0,
+        )
+        check("AD", r.returncode == 0 and output_values(output).get("improved") == "false",
+              f"noisy rows do not improve on {slug}")
+        check("AD", "↓" in (tmp / f"ad-noisy-{slug}" / "perf_comment_body.md").read_text(),
+              f"the noisy-row control still renders informational marks on {slug}")
+        check("AD", cells.exists() and cells.read_text() == "",
+              f"noisy rows write an empty verdict on {slug}")
+
+        real = (SCALE_CAPTURE[0], SCALE_CAPTURE[1] * 0.90, SCALE_CAPTURE[2])
+        r, output, cells = run_compare_case(tmp / f"ad-real-{slug}", real, slug=slug)
+        check("AD", output_values(output).get("improved") == "true"
+              and cells.read_text().splitlines() == ["zoom=1"],
+              f"one real frame improvement fires on {slug}")
+
+        faster = (65.18, 393.13, 1258.60)
+        r, output, cells = run_compare_case(tmp / f"ad-faster-{slug}", faster, slug=slug)
+        avg_cell = frame_line((tmp / f"ad-faster-{slug}" / "perf_comment_body.md").read_text(),
+                              "zoom=1").split("|")[2]
+        check("AD", output_values(output).get("improved") == "false"
+              and cells.read_text() == "" and "↓" not in avg_cell
+              and "raw" in avg_cell and "scaled" in avg_cell,
+              f"runner speed alone is withheld on {slug}")
+
+        faster_real = (65.18, 393.13 * 0.85, 1258.60 * 0.85)
+        r, output, cells = run_compare_case(
+            tmp / f"ad-faster-real-{slug}", faster_real, slug=slug)
+        check("AD", output_values(output).get("improved") == "true"
+              and cells.read_text().splitlines() == ["zoom=1", "zoom=4"],
+              f"a calibrated improvement still fires on {slug}")
+
+        scaled_only = (90.45, SCALE_CAPTURE[1] * 1.05, SCALE_CAPTURE[2] * 1.05)
+        r, output, cells = run_compare_case(
+            tmp / f"ad-scaled-only-{slug}", scaled_only, slug=slug)
+        check("AD", output_values(output).get("improved") == "false"
+              and cells.read_text() == "",
+              f"calibration scaling never creates an improvement on {slug}")
+
+    load_reading = (SCALE_CAPTURE[0], SCALE_CAPTURE[1] * 0.90, SCALE_CAPTURE[2])
+    r, output, cells = run_compare_case(
+        tmp / "ad-load-flagged", load_reading, slug=HEAD_SLUG, flag_zoom1=True)
+    check("AD", r.returncode == 0 and output_values(output).get("improved") == "false"
+          and cells.read_text() == "",
+          "a load-flagged improvement is excluded from the verdict")
+
+
+def arm_ae_label_sync(tmp: Path) -> None:
+    unrelated = "human:approved"
+
+    r, state = run_label_case(
+        tmp / "ae-reset", {"head": "head-a", "labels": [unrelated, "perf:improved"]},
+        phase="reset")
+    check("AE", r.returncode == 0 and state["labels"] == [unrelated]
+          and state["edits"] == 1,
+          "reset removes only the inherited improvement label")
+
+    cases = [
+        ("true-add", [], "0", "true", True, 1),
+        ("true-keep", ["perf:improved"], "0", "true", True, 0),
+        ("false-remove", ["perf:improved"], "0", "false", False, 1),
+        ("regression-remove", ["perf:improved"], "1", "true", False, 1),
+        ("empty-remove", ["perf:improved"], "", "", False, 1),
+    ]
+    for name, labels, status, improved, wanted, edits in cases:
+        r, state = run_label_case(
+            tmp / f"ae-{name}",
+            {"head": "head-a", "labels": [unrelated, *labels]},
+            phase="sync", status=status, improved=improved)
+        check("AE", r.returncode == 0
+              and (("perf:improved" in state["labels"]) == wanted)
+              and unrelated in state["labels"] and state.get("edits", 0) == edits,
+              f"sync reaches the {name} state without touching other labels")
+
+    r, state = run_label_case(
+        tmp / "ae-superseded",
+        {"head": "head-new", "labels": [unrelated]},
+        phase="sync", status="0", improved="true")
+    check("AE", r.returncode == 0 and state.get("edits", 0) == 0
+          and "perf:improved" not in state["labels"],
+          "a superseded run never edits")
+
+    race_states = [
+        ("race", {}),
+        ("post-add-read", {"post_add_view_failures": 1}),
+        ("undo-retry", {"undo_failures": 1}),
+    ]
+    for name, extra in race_states:
+        r, state = run_label_case(
+            tmp / f"ae-{name}",
+            {"head": "head-a", "labels": [unrelated], "move_on_add": True,
+             "new_head": "head-new", **extra},
+            phase="sync", status="0", improved="true", attempts="5")
+        check("AE", r.returncode == 0 and "perf:improved" not in state["labels"]
+              and unrelated in state["labels"],
+              f"{name} preserves the post-add undo obligation")
+
+    r, state = run_label_case(
+        tmp / "ae-undo-exhausted",
+        {"head": "head-a", "labels": [unrelated], "move_on_add": True,
+         "new_head": "head-new", "undo_failures": 99},
+        phase="sync", status="0", improved="true", attempts="3")
+    check("AE", r.returncode != 0 and "label sync" in r.stderr,
+          "a permanent undo failure exhausts attempts and names the sync phase")
+
+    r, state = run_label_case(
+        tmp / "ae-read-recovers",
+        {"head": "head-a", "labels": [unrelated], "view_failures": 1},
+        phase="sync", status="0", improved="true")
+    check("AE", r.returncode == 0 and "perf:improved" in state["labels"],
+          "a transient API read is retried")
+    r, state = run_label_case(
+        tmp / "ae-read-exhausted",
+        {"head": "head-a", "labels": [unrelated], "view_failures": 99},
+        phase="reset", attempts="3")
+    check("AE", r.returncode != 0 and "label reset" in r.stderr,
+          "permanent API failure is bounded and names the reset phase")
+
+
+def workflow_step(name: str) -> str:
+    lines = (_REPO_ROOT / ".github" / "workflows" / "perf-gate.yml").read_text().splitlines()
+    marker = f"      - name: {name}"
+    start = lines.index(marker)
+    end = next((i for i in range(start + 1, len(lines))
+                if lines[i].startswith("      - name:")), len(lines))
+    return "\n".join(lines[start:end])
+
+
+def workflow_run(step: str) -> str:
+    line = next(line for line in step.splitlines() if line.startswith("        run: "))
+    return line.split("run: ", 1)[1]
+
+
+def arm_af_workflow_wiring(tmp: Path) -> None:
+    workflow = (_REPO_ROOT / ".github" / "workflows" / "perf-gate.yml").read_text()
+    checkout_at = workflow.index("      - name: Checkout")
+    reset_at = workflow.index("      - name: Clear an inherited perf:improved label (PR)")
+    controls_at = workflow.index("      - name: Gate controls")
+    gate_at = workflow.index("      - name: Compare head against baseline (PR)")
+    sync_at = workflow.index("      - name: Sync perf:improved to this head's verdict (PR)")
+    fail_at = workflow.index("      - name: Fail check on regression (PR)")
+    reset = workflow_step("Clear an inherited perf:improved label (PR)")
+    sync = workflow_step("Sync perf:improved to this head's verdict (PR)")
+    check("AF", checkout_at < reset_at < controls_at and gate_at < sync_at < fail_at,
+          "reset is immediately cheap and sync precedes the regression failure")
+    check("AF", "if: github.event_name == 'pull_request'" in reset
+          and "continue-on-error: true" in reset and "LABEL_PHASE: reset" in reset,
+          "reset has the required event and failure policy")
+    check("AF", "if: always() && github.event_name == 'pull_request'" in sync
+          and "continue-on-error" not in sync and "LABEL_PHASE: sync" in sync
+          and "steps.gate.outputs.status" in sync
+          and "steps.gate.outputs.improved" in sync,
+          "sync runs for every PR outcome and consumes both verdict outputs")
+    check("AF", "grep" not in reset + sync and "↓" not in reset + sync
+          and workflow.count("--add-label") == 0 and workflow.count("--remove-label") == 0,
+          "the workflow contains no glyph predicate or inline label edit")
+
+    work = tmp / "af-sequence"
+    stub, state_path = write_label_stub(
+        work, {"head": "head-b", "labels": ["human:approved", "perf:improved"]})
+    base_env = dict(os.environ)
+    base_env.update({
+        "PR_NUMBER": "9999", "REPO": "owner/repo", "GH_BIN": str(stub),
+        "LABEL_ATTEMPTS": "3", "LABEL_RETRY_SLEEP": "0",
+        "STUB_STATE": str(state_path),
+    })
+
+    def run_shipped(step_text: str, **values: str) -> subprocess.CompletedProcess:
+        env = dict(base_env)
+        env.update(values)
+        return subprocess.run(["bash", "-c", workflow_run(step_text)], cwd=_REPO_ROOT,
+                              env=env, capture_output=True, text=True)
+
+    r = run_shipped(reset, LABEL_PHASE="reset", HEAD_SHA="head-b")
+    state = json.loads(state_path.read_text())
+    check("AF", r.returncode == 0 and "perf:improved" not in state["labels"],
+          "head B clears head A's inherited label before expensive work")
+    edits = state["edits"]
+    r = run_shipped(sync, LABEL_PHASE="sync", HEAD_SHA="head-a",
+                    GATE_STATUS="0", GATE_IMPROVED="true")
+    state = json.loads(state_path.read_text())
+    check("AF", r.returncode == 0 and state["edits"] == edits,
+          "head A finishing late cannot restore its label")
+
+    _, verdict_output, _ = run_compare_case(
+        tmp / "af-real-verdict",
+        (SCALE_CAPTURE[0], SCALE_CAPTURE[1] * 0.90, SCALE_CAPTURE[2]))
+    verdict = output_values(verdict_output)
+    r = run_shipped(sync, LABEL_PHASE="sync", HEAD_SHA="head-b",
+                    GATE_STATUS=verdict["status"], GATE_IMPROVED=verdict["improved"])
+    state = json.loads(state_path.read_text())
+    check("AF", r.returncode == 0 and "perf:improved" in state["labels"],
+          "head B's real passing improvement verdict restores the label")
+
+    for head, status, improved in (("head-c", "1", "true"), ("head-d", "", "")):
+        state["head"] = head
+        state_path.write_text(json.dumps(state))
+        run_shipped(reset, LABEL_PHASE="reset", HEAD_SHA=head)
+        run_shipped(sync, LABEL_PHASE="sync", HEAD_SHA=head,
+                    GATE_STATUS=status, GATE_IMPROVED=improved)
+        state = json.loads(state_path.read_text())
+        check("AF", "perf:improved" not in state["labels"],
+              f"{head}'s non-improving outcome leaves the label absent")
+
+
 def main() -> int:
     print("perf-gate baseline layout + exit-mapping control")
     with tempfile.TemporaryDirectory(prefix="perfgate.") as td:
@@ -849,6 +1174,9 @@ def main() -> int:
         arm_z_tip_mode(tmp)
         arm_aa_unlisted_host(tmp)
         arm_ab_non_avg_marks(tmp)
+        arm_ad_improvement_verdict(tmp)
+        arm_ae_label_sync(tmp)
+        arm_af_workflow_wiring(tmp)
     arm_g_retired_literal()
     arm_ac_docs()
 
