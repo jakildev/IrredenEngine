@@ -25,8 +25,11 @@ Work through these slices in order, keeping their image and cost evidence separa
 **Current direction: SDF authoring, shared voxel runtime.** The
 [representation contract](voxel-and-sdf-rendering.md#sdf-authoring-with-voxel-runtime-geometry)
 prioritizes baking lit procedural objects into ordinary DENSE occupancy. The
-first slice adds a pure bounded baker and a matched direct/baked ShapeDebug scene;
+first slice (#4451) adds a pure bounded baker and a matched direct/baked ShapeDebug scene;
 it does not automatically migrate existing SDF entities or qualify performance.
+The repeat-profile adapter now requires fixed fixture poses, explicit paired
+timing presets, stable configuration hashes, guarded runs and matching
+pose/zoom/count/overflow evidence; it also disables the profiling minimap.
 Next compare warm frame/stage cost, startup cost and resident memory with shadows
 off/on, cardinal/intermediate yaw, density and overlap. Then cover authored
 rotation/attachments, local-light blocking and finer-grid/LOD scale conventions.
@@ -34,6 +37,8 @@ Arbitrary voxel occupancy already shares the geometry path; composed/custom SDF
 recipes and dynamic GPU baking need explicit authoring and invalidation designs.
 Defer additional shape-specific analytic receiver algorithms while measuring
 this route. Keep the correctness and cross-backend work below as regression gates.
+Investigate the small intermediate-yaw floor-shadow gap retained in the baked
+fixture captures; do not treat conversion as closure of shared voxel defects.
 
 1. **Crowded finite-index coverage — native correctness validated in #4399.** Preserve
    the inline 64-entry lists and allocate bounded spill nodes only for crowded
