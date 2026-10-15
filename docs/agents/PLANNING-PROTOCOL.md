@@ -103,6 +103,9 @@ task are a separate docs-first PR — [`architect-protocol.md`](architect-protoc
      proves only that the OFF path is a no-op. The criterion names the
      fixture or scene it fires on, and that fixture exists, or creating it
      is part of this plan, or it is filed as a blocker first.
+     A criterion that names a GPU stage row follows the per-row noise rule in
+     [`gpu-stage-timing-cost-model.md`](../design/gpu-stage-timing-cost-model.md)
+     § "State the noise bound".
      **Pixel evidence for a placement re-bless** (render-verify and
      light-verify rows). A change that moves content by **whole**
      framebuffer pixels may use a translation check: the old image shifted
