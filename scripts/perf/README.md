@@ -21,6 +21,12 @@ p99, GPU-stage, and CPU-system marks stay raw. A different slug or no baseline
 is informational and exits 0. A perf verdict therefore says nothing about a
 host whose slug has no baseline.
 
+The `perf:improved` verdict is narrower than regression grading. Only a
+graded frame `avg` cell contributes, and it must clear the improvement
+threshold both raw and after multiplying the head by the capture-to-head
+calibration ratio. That ratio can only withhold the label and applies on every
+host class; `p99`, GPU-stage, and CPU-system marks remain informational.
+
 | Host class | `CLASS_MATCH_SCALE_FROM` | Evidence and limit |
 |---|---:|---|
 | `linux-x86_64-xeon-platinum-8573c-unknown` | 1.10 | Seven PR heads at or above the threshold, on six changes against two captures: scaling puts all 14 frame-average cells inside the 10% gate. The median residual is -1.5% at zoom 1 and -3.4% at zoom 4, so a zoom-4 regression on a runner near 1.17× needs about 13.5% to fail. |
@@ -89,8 +95,8 @@ never refreshes the baseline.
 
 **Refresh when:**
 
-- a merged PR labelled `perf:improved` touches `engine/render/` or the GL
-  backend;
+- a merged PR labelled `perf:improved`, after that head's `perf-gate` run has
+  concluded, touches `engine/render/` or the GL backend;
 - the NVIDIA driver is updated. The fingerprint does not change, but shader
   compile and dispatch behaviour do;
 - `engine/math/` changes. `ir-perf-grid` recalibrates `ir_ref_bench` then,

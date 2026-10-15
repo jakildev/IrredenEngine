@@ -1,5 +1,7 @@
 #version 450 core
 
+#include "ir_iso_common.glsl"
+
 // Canonical-order the overflow entry list.
 //
 // The mode-3 append (c_voxel_to_trixel_stage_1_body.glsl) assigns entry
@@ -11,8 +13,8 @@
 // making draw order — and therefore every equal-key winner — a pure
 // function of the appended SET.
 //
-// Sort key: lexicographic (packedCell, encodedDistance, colorPacked) =
-// entry words (0, 2, 1). Any total value order works; this one groups
+// Sort key: lexicographic (masked cell, encoded distance, color, cut flag).
+// The flag in word 0 bit 31 breaks only otherwise identical ties; this groups
 // cell ties adjacently. The key spans ALL THREE words, so key-equality and
 // record-equality coincide — which is why the compare-exchange can be
 // strict (equal records never swap) without making draw order depend on
@@ -26,8 +28,9 @@
 //       region above the live range holds stale prior-frame entries, NOT
 //       zeros — the fill is mandatory, every rotating frame, before any
 //       network step. A real entry cannot tie the sentinel: word 0 packs
-//       canvas cell x|y at 16+16 bits and canvas cell coordinates never
-//       reach 65535, so a real all-max key is unproducible.
+//       x at 15:0, y at 30:16 and the cut flag at 31. Canvas height is
+//       below 32768 and x never reaches 65535, so its masked cell cannot
+//       equal the sentinel's 0x7FFFFFFF.
 //   1 — fused local phase: full bitonic sort of each contiguous
 //       kBlock-element block in shared memory (stages k = 2..kBlock).
 //   2 — fused STRIDED-SLAB phase: every compare-exchange stride of stage k
@@ -159,11 +162,14 @@ uint sortSpan() {
     return min(span, capEntries());
 }
 
-// Lexicographic (cell, distance, color) — words (0, 2, 1).
+// Lexicographic (cell, distance, color, cut flag), covering the full record.
 bool recordLess(uint a0, uint a1, uint a2, uint b0, uint b1, uint b2) {
-    if (a0 != b0) return a0 < b0;
+    const uint aCell = overflowEntryCell(a0);
+    const uint bCell = overflowEntryCell(b0);
+    if (aCell != bCell) return aCell < bCell;
     if (a2 != b2) return a2 < b2;
-    return a1 < b1;
+    if (a1 != b1) return a1 < b1;
+    return !overflowEntryIsCutFace(a0) && overflowEntryIsCutFace(b0);
 }
 
 // Reinsert the active-bit window into a compressed slab index.

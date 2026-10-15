@@ -366,10 +366,17 @@ inline bool isDropdownOpen(IREntity::EntityId widget) {
     return IREntity::getComponent<IRComponents::C_WidgetDropdown>(widget).isOpen_;
 }
 
+// A negative index clears the selection, as for setListSelectedIndex.
 inline void setDropdownSelectedIndex(IREntity::EntityId widget, int index) {
     auto &dd = IREntity::getComponent<IRComponents::C_WidgetDropdown>(widget);
     const int n = static_cast<int>(dd.items_.size());
-    dd.selectedIndex_ = (n == 0) ? -1 : IRMath::clamp(index, 0, n - 1);
+    dd.selectedIndex_ = (n == 0) ? -1 : IRMath::clamp(index, -1, n - 1);
+}
+
+inline void
+setDropdownItems(IREntity::EntityId widget, std::vector<std::string> items, int selectedIndex = 0) {
+    IREntity::getComponent<IRComponents::C_WidgetDropdown>(widget).items_ = std::move(items);
+    setDropdownSelectedIndex(widget, selectedIndex);
 }
 
 inline bool radioSelected(IREntity::EntityId widget) {

@@ -119,7 +119,7 @@ vertex VertexOut v_peraxis_scatter(
         // color. Everything below is bit-identical to
         // the cell path; only the data source differs.
         const uint entryBase = instanceId * 3u;
-        const uint packedCell = compactedCells[entryBase + 0u];
+        const uint packedCell = overflowEntryCell(compactedCells[entryBase + 0u]);
         ij = int2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
         color = unpackColor(compactedCells[entryBase + 1u]);
         color.a = 1.0f;

@@ -19,10 +19,13 @@ import re
 import shutil
 import statistics
 import subprocess
+import sys
 import time
 from pathlib import Path
 
-from compare_perf_runs import RunWitness, parse_report
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from compare_perf_runs import RunWitness, parse_report  # noqa: E402
+from verify_common import platform_launch_argv  # noqa: E402
 
 TARGETS = {"IRPerfGrid": "perf_grid", "IRCanvasStress": "canvas_stress"}
 # The pose and the per-axis overflow loss are read from the profile report's
@@ -413,15 +416,33 @@ def host_load() -> float | None:
         return None
 
 
-def cmake_build_type(build_dir: Path) -> str | None:
-    """CMAKE_BUILD_TYPE of a configured tree, from its cache."""
+def cmake_cache_entry(build_dir: Path, key: str) -> str | None:
+    """One entry of a configured tree's cache, by its KEY:TYPE prefix."""
     cache = build_dir / "CMakeCache.txt"
     if not cache.is_file():
         return None
     for line in cache.read_text().splitlines():
-        if line.startswith("CMAKE_BUILD_TYPE:"):
+        if line.startswith(key + ":"):
             return line.split("=", 1)[1] or None
     return None
+
+
+def cmake_build_type(build_dir: Path) -> str | None:
+    """CMAKE_BUILD_TYPE of a configured tree, from its cache."""
+    return cmake_cache_entry(build_dir, "CMAKE_BUILD_TYPE")
+
+
+def cmake_source_dir(build_dir: Path, fallback: Path) -> Path:
+    """The checkout a configured tree was built from, so a foreign
+    IRREDEN_BUILD_DIR records its own commit rather than the caller's."""
+    source = cmake_cache_entry(build_dir, "CMAKE_HOME_DIRECTORY")
+    return Path(source).resolve() if source else fallback
+
+
+def demo_binary(build_dir: Path, target: str) -> Path:
+    """The built executable; Windows trees carry the .exe suffix."""
+    binary = build_dir / "creations/demos" / TARGETS[target] / target
+    return binary if binary.is_file() else binary.with_suffix(".exe")
 
 
 def find_demo_pid(parent_pid: int, binary: Path, process_table: str) -> int | None:
@@ -450,7 +471,9 @@ def redact_sample_output(sample_log: str, root: Path, trace: Path) -> str:
 def run_profile(command, root, log_path, binary, sample_seconds, sample_delay):
     sampling = None
     with log_path.open("w") as log:
-        with subprocess.Popen(command, cwd=root, stdout=log, stderr=subprocess.STDOUT) as demo:
+        with subprocess.Popen(
+            platform_launch_argv(command), cwd=root, stdout=log, stderr=subprocess.STDOUT
+        ) as demo:
             if sample_seconds:
                 try:
                     launched = time.monotonic()
@@ -572,10 +595,14 @@ def main() -> int:
     output.mkdir(parents=True, exist_ok=False)
     command = ["fleet-run", "--timeout", str(args.timeout), args.target, *demo_args]
     build_dir = Path(os.environ.get("IRREDEN_BUILD_DIR", root / "build")).resolve()
-    binary = build_dir / "creations/demos" / TARGETS[args.target] / args.target
+    binary = demo_binary(build_dir, args.target)
+    source = cmake_source_dir(build_dir, root)
     manifest = {
-        "head": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip(),
-        "changes": subprocess.check_output(["git", "status", "--short"], cwd=root, text=True),
+        "head": subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=source, text=True
+        ).strip(),
+        "changes": subprocess.check_output(["git", "status", "--short"], cwd=source, text=True),
+        "source_dir": str(source),
         "host": platform.platform(),
         "host_power": host_power_source(),
         "host_cpus": os.cpu_count(),

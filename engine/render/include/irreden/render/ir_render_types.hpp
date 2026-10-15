@@ -800,6 +800,12 @@ struct FrameDataVoxelToCanvas {
     // shader that inverts a store cell read this one value, so they agree on
     // `cell <-> world` by construction.
     ivec4 perAxisStoreFrame_ = ivec4(0, 0, 0, 0);
+    // .x non-zero while the fog window this canvas selects against has a
+    // ceiling-enabled source live (`IRPrefab::Fog::anyCeilingEnabled` over the
+    // observers stage 1 binds). Voxel face selection reads it as one uniform
+    // instead of scanning the sources per face, so a FIELD voxel on a frame
+    // with no ceiling pays nothing. .yzw unused.
+    ivec4 fogCeilingEnabled_ = ivec4(0, 0, 0, 0);
 };
 
 struct FrameDataTrixelToTrixel {
@@ -1212,9 +1218,14 @@ static_assert(
     "per-axis store and recovery shader declares it there, after detachedViewToWorld_"
 );
 static_assert(
-    sizeof(FrameDataVoxelToCanvas) == 272,
+    offsetof(FrameDataVoxelToCanvas, fogCeilingEnabled_) == 272,
+    "FrameDataVoxelToCanvas::fogCeilingEnabled_ must land at offset 272; the "
+    "voxel face-selection stages declare it after perAxisStoreFrame_"
+);
+static_assert(
+    sizeof(FrameDataVoxelToCanvas) == 288,
     "FrameDataVoxelToCanvas size must mirror its std140 GLSL block "
-    "(perAxisStoreFrame_ ivec4 append: 256 + 16 = 272)"
+    "(fogCeilingEnabled_ ivec4 append: 272 + 16 = 288)"
 );
 
 struct FrameDataSun {

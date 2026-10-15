@@ -64,6 +64,15 @@ inline int integerArg(const sol::object &value, const char *method, const char *
     return integer;
 }
 
+inline int radialRadiusArg(const sol::object &value, const char *method) {
+    const int radius = integerArg(value, method, "radius");
+    if (radius < static_cast<int>(kArrayRadiusSliderMin) ||
+        radius > static_cast<int>(kArrayRadiusSliderMax)) {
+        throw argumentError(method, "radius", "within the RADIUS/X slider range");
+    }
+    return radius;
+}
+
 inline sol::object vectorEntry(const sol::table &table, const char *key, int index) {
     const sol::object keyed = table[key];
     return keyed.valid() && keyed.get_type() != sol::type::lua_nil ? keyed
@@ -342,6 +351,37 @@ class Handle {
             value
         );
     }
+    void applyRecipe(const sol::object &name, const sol::object &values) {
+        const std::string parsedName = stringArg(name, "applyRecipe", "name");
+        const sol::table valueTable = tableArg(values, "applyRecipe", "values");
+        std::vector<std::pair<std::string, float>> parsedValues;
+        parsedValues.reserve(valueTable.size());
+        for (const auto &entry : valueTable) {
+            parsedValues.emplace_back(
+                stringArg(entry.first, "applyRecipe", "values key"),
+                numberArg(entry.second, "applyRecipe", "values value")
+            );
+        }
+        builder().applyRecipe(parsedName, parsedValues);
+    }
+    void attachComponent(const sol::object &name) {
+        builder().attachComponent(stringArg(name, "attachComponent", "name"));
+    }
+    void setComponentField(
+        const sol::object &component, const sol::object &field, const sol::object &text
+    ) {
+        builder().setComponentField(
+            stringArg(component, "setComponentField", "component"),
+            stringArg(field, "setComponentField", "field"),
+            stringArg(text, "setComponentField", "text")
+        );
+    }
+    void setComponentOverrides(const sol::object &component, const sol::object &text) {
+        builder().setComponentOverrides(
+            stringArg(component, "setComponentOverrides", "component"),
+            stringArg(text, "setComponentOverrides", "text")
+        );
+    }
     void setPartSize(const sol::object &size) {
         builder().setPartSize(ivec3Arg(size, "setPartSize", "size"));
     }
@@ -419,8 +459,20 @@ class Handle {
     void applyRadialArray(int count) {
         builder().applyRadialArray(count);
     }
+    void applyRadialArray(const sol::object &count, const sol::object &radius) {
+        builder().applyRadialArray(
+            integerArg(count, "applyRadialArray", "count"),
+            radialRadiusArg(radius, "applyRadialArray")
+        );
+    }
     void applyRadialArrayToLiveScene(int count) {
         builder().applyRadialArrayToLiveScene(count);
+    }
+    void applyRadialArrayToLiveScene(const sol::object &count, const sol::object &radius) {
+        builder().applyRadialArrayToLiveScene(
+            integerArg(count, "applyRadialArrayToLiveScene", "count"),
+            radialRadiusArg(radius, "applyRadialArrayToLiveScene")
+        );
     }
     void expectCanvasCount(int offset, const std::string &name) {
         builder().expectCanvasCount(offset, name);
@@ -431,6 +483,16 @@ class Handle {
     }
     void expectPartYaw(int part, float degrees, float tolerance, const std::string &name) {
         builder().expectPartYaw(part, degrees, tolerance, name);
+    }
+    void expectPartTurnAxis(
+        int part, const sol::object &axis, float minDegrees, const std::string &name
+    ) {
+        builder().expectPartTurnAxis(
+            part,
+            vec3Arg(axis, "expectPartTurnAxis", "axis"),
+            minDegrees,
+            name
+        );
     }
     void expectPartSpinRate(int part, float radiansPerFrame, bool equal, const std::string &name) {
         builder().expectPartSpinRate(part, radiansPerFrame, equal, name);
@@ -685,6 +747,14 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         &Handle::typeText,
         "dragGuiSlider",
         &Handle::dragGuiSlider,
+        "applyRecipe",
+        &Handle::applyRecipe,
+        "attachComponent",
+        &Handle::attachComponent,
+        "setComponentField",
+        &Handle::setComponentField,
+        "setComponentOverrides",
+        &Handle::setComponentOverrides,
         "duplicateFrame",
         &Handle::duplicateFrame,
         "prevFrame",
@@ -730,9 +800,19 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         "selectPartMode",
         &Handle::selectPartMode,
         "applyRadialArray",
-        &Handle::applyRadialArray,
+        sol::overload(
+            static_cast<void (Handle::*)(int)>(&Handle::applyRadialArray),
+            static_cast<void (Handle::*)(const sol::object &, const sol::object &)>(
+                &Handle::applyRadialArray
+            )
+        ),
         "applyRadialArrayToLiveScene",
-        &Handle::applyRadialArrayToLiveScene,
+        sol::overload(
+            static_cast<void (Handle::*)(int)>(&Handle::applyRadialArrayToLiveScene),
+            static_cast<void (Handle::*)(const sol::object &, const sol::object &)>(
+                &Handle::applyRadialArrayToLiveScene
+            )
+        ),
         "toggleRotationalSymmetry",
         &Handle::toggleRotationalSymmetry,
         "expectOccupancy",
@@ -761,6 +841,8 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         &Handle::expectRotationMode,
         "expectPartYaw",
         &Handle::expectPartYaw,
+        "expectPartTurnAxis",
+        &Handle::expectPartTurnAxis,
         "expectPartSpinRate",
         &Handle::expectPartSpinRate,
         "expectPartAnchor",

@@ -16,17 +16,22 @@
 #include "array_panel.hpp"
 #include "bake_panel.hpp"
 #include "component_records.hpp"
+#include "components_panel.hpp"
 #include "lod_panel.hpp"
 #include "loft_panel.hpp"
+#include "module_session_view.hpp"
 #include "palette.hpp"
 #include "part_size_panel.hpp"
 #include "parts_panel.hpp"
+#include "recipes_panel.hpp"
 #include "symmetry.hpp"
 
+#include <algorithm>
 #include <deque>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 // Authoring sessions — compile a recipe of editor gestures into
@@ -408,6 +413,17 @@ struct PartYawCheck {
     std::string name_;
 };
 
+// Turn expectation on one entity-scene part: its C_LocalTransform rotation
+// is a turn of at least minDegrees_ about plus or minus axis_, a unit vector
+// in the part's own frame. The sign and size of a gizmo ring drag follow the
+// cursor's path, so only the axis is exact.
+struct PartTurnAxisCheck {
+    int partIndex_ = 0;
+    IRMath::vec3 axis_ = IRMath::vec3(0.0f, 0.0f, 1.0f);
+    float minDegrees_ = 0.0f;
+    std::string name_;
+};
+
 // Spin expectation on one entity-scene part: it carries C_AutoSpin turning
 // radiansPerFrame_ a tick, or with expectEqual_ false, it does not (an absent
 // component counts as not equal).
@@ -592,6 +608,7 @@ struct Recipe {
     std::deque<RotationModeCheck> rotationModeChecks_;
     std::deque<PartAnchorCheck> partAnchorChecks_;
     std::deque<PartYawCheck> partYawChecks_;
+    std::deque<PartTurnAxisCheck> partTurnAxisChecks_;
     std::deque<PartSpinCheck> partSpinChecks_;
     std::deque<PartModeDropdownCheck> partModeDropdownChecks_;
     std::deque<EditorInputCheck> editorInputChecks_;
@@ -660,6 +677,7 @@ bool evaluateCanvasCountCheck(const void *context, std::string &actual);
 bool evaluateRotationModeCheck(const void *context, std::string &actual);
 bool evaluatePartAnchorCheck(const void *context, std::string &actual);
 bool evaluatePartYawCheck(const void *context, std::string &actual);
+bool evaluatePartTurnAxisCheck(const void *context, std::string &actual);
 bool evaluatePartSpinCheck(const void *context, std::string &actual);
 bool evaluatePartModeDropdownCheck(const void *context, std::string &actual);
 bool evaluateEditorInputCheck(const void *context, std::string &actual);
@@ -712,10 +730,16 @@ bool evaluateLoftMaskCheck(const void *context, std::string &actual);
 // cannot be aimed record an error instead of emitting a bogus click.
 class Builder {
   public:
-    Builder(std::string name, IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin)
+    Builder(
+        std::string name,
+        IRMath::ivec3 sceneSize,
+        IRMath::vec3 sceneOrigin,
+        const ModuleSessionView *moduleView = nullptr
+    )
         : m_model(sceneSize, sceneOrigin)
         , m_sceneSize(sceneSize)
-        , m_partSize(sceneSize) {
+        , m_partSize(sceneSize)
+        , m_moduleView(moduleView) {
         m_recipe.name_ = std::move(name);
         m_model.seedGroundPlane();
         segment("start");
@@ -1054,6 +1078,160 @@ class Builder {
         emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
     }
 
+    void applyRecipe(
+        const std::string &name, const std::vector<std::pair<std::string, float>> &requestedValues
+    ) {
+        if (m_moduleView == nullptr) {
+            recordError("applyRecipe needs a loaded module");
+            return;
+        }
+        const auto recipe = std::find_if(
+            m_moduleView->recipes_.begin(),
+            m_moduleView->recipes_.end(),
+            [&name](const ModuleRecipe &candidate) { return candidate.name_ == name; }
+        );
+        if (recipe == m_moduleView->recipes_.end()) {
+            recordError("applyRecipe: unknown recipe '" + name + "'");
+            return;
+        }
+        const int row = static_cast<int>(recipe - m_moduleView->recipes_.begin());
+        if (row * kRecipeListItemHeight >= kRecipeListSize.y) {
+            recordError("applyRecipe: recipe '" + name + "' is below the list's visible rows");
+            return;
+        }
+        std::vector<float> values;
+        values.reserve(recipe->params_.size());
+        for (const RecipeParam &param : recipe->params_) {
+            const auto requested = std::find_if(
+                requestedValues.begin(),
+                requestedValues.end(),
+                [&param](const auto &entry) { return entry.first == param.name_; }
+            );
+            const float value =
+                requested == requestedValues.end() ? param.default_ : requested->second;
+            if (param.type_ != RecipeParamType::INT) {
+                recordError("applyRecipe: param '" + param.name_ + "' is not INT");
+                return;
+            }
+            if (value < param.min_ || value > param.max_) {
+                recordError("applyRecipe: param '" + param.name_ + "' is outside its range");
+                return;
+            }
+            if (value != static_cast<float>(IRMath::roundHalfUp(value))) {
+                recordError("applyRecipe: param '" + param.name_ + "' is not a whole number");
+                return;
+            }
+            if ((param.max_ - param.min_) * 4.0f > static_cast<float>(kRecipeSliderSize.x)) {
+                recordError(
+                    "applyRecipe: param '" + param.name_ + "' has fewer than 4 trixels per unit"
+                );
+                return;
+            }
+            values.push_back(value);
+        }
+        for (const auto &requested : requestedValues) {
+            const auto declared = std::find_if(
+                recipe->params_.begin(),
+                recipe->params_.end(),
+                [&requested](const RecipeParam &param) { return param.name_ == requested.first; }
+            );
+            if (declared == recipe->params_.end()) {
+                recordError("applyRecipe: unknown param '" + requested.first + "'");
+                return;
+            }
+        }
+        std::vector<RecipeCell> cells;
+        std::string error;
+        const std::size_t recipeIndex =
+            static_cast<std::size_t>(recipe - m_moduleView->recipes_.begin());
+        if (!m_moduleView->evaluate_ ||
+            !m_moduleView->evaluate_(recipeIndex, values, m_model.size(), cells, error)) {
+            recordError(
+                "applyRecipe: " + (error.empty() ? std::string("evaluation failed") : error)
+            );
+            return;
+        }
+        clickGui(recipeListRowCenterGuiTrixel(row));
+        for (std::size_t i = 0; i < recipe->params_.size(); ++i) {
+            const RecipeParam &param = recipe->params_[i];
+            dragGuiSlider(
+                recipeParamSliderGeometry(static_cast<int>(i)),
+                param.min_,
+                param.max_,
+                values[i]
+            );
+        }
+        clickGui(recipeApplyCenterGuiTrixel());
+        for (const RecipeCell &cell : cells)
+            m_model.set(cell.local_, true);
+    }
+
+    void attachComponent(const std::string &name) {
+        const ComponentRecord *component = findComponent(name, "attachComponent");
+        if (component == nullptr)
+            return;
+        const int row = static_cast<int>(component - m_moduleView->components_.data());
+        clickGui(componentListRowCenterGuiTrixel(row));
+        clickGui(componentButtonCenterGuiTrixel(kComponentAttachPos));
+    }
+
+    void setComponentField(
+        const std::string &componentName, const std::string &fieldName, std::string_view text
+    ) {
+        const ComponentRecord *component = findComponent(componentName, "setComponentField");
+        if (component == nullptr)
+            return;
+        if (component->source_ != ComponentSource::MODULE) {
+            recordError(
+                "setComponentField: component '" + componentName + "' is not a module component"
+            );
+            return;
+        }
+        const auto field = std::find_if(
+            component->fields_.begin(),
+            component->fields_.end(),
+            [&fieldName](const ComponentField &candidate) { return candidate.name_ == fieldName; }
+        );
+        if (field == component->fields_.end()) {
+            recordError("setComponentField: unknown field '" + fieldName + "'");
+            return;
+        }
+        if (!parseFieldText(field->type_, text)) {
+            recordError(
+                "setComponentField: field '" + fieldName + "' cannot hold '" + std::string(text) +
+                "'"
+            );
+            return;
+        }
+        const int listRow = static_cast<int>(component - m_moduleView->components_.data());
+        const int fieldIndex = static_cast<int>(field - component->fields_.begin());
+        const int fieldPage = fieldIndex / kComponentFieldRowsPerPage;
+        const int lastPage =
+            componentFieldPageCount(static_cast<int>(component->fields_.size())) - 1;
+        clickGui(componentListRowCenterGuiTrixel(listRow));
+        for (int page = 0; page < lastPage; ++page)
+            clickGui(componentButtonCenterGuiTrixel(kComponentPagePrevPos));
+        for (int page = 0; page < fieldPage; ++page)
+            clickGui(componentButtonCenterGuiTrixel(kComponentPageNextPos));
+        typeText(componentFieldInputCenterGuiTrixel(fieldIndex % kComponentFieldRowsPerPage), text);
+    }
+
+    void setComponentOverrides(const std::string &componentName, std::string_view text) {
+        const ComponentRecord *component = findComponent(componentName, "setComponentOverrides");
+        if (component == nullptr)
+            return;
+        if (component->source_ != ComponentSource::ENGINE) {
+            recordError(
+                "setComponentOverrides: component '" + componentName +
+                "' is not an engine component"
+            );
+            return;
+        }
+        const int row = static_cast<int>(component - m_moduleView->components_.data());
+        clickGui(componentListRowCenterGuiTrixel(row));
+        typeText(componentOverridesInputCenterGuiTrixel(), text);
+    }
+
     // Duplicate the active animation frame (D) and select the copy. The editor
     // snapshots the live voxels into the source frame first, so the duplicate
     // starts as an exact copy — which is why the shadow model can simply be
@@ -1387,15 +1565,23 @@ class Builder {
     }
 
     void applyRadialArray(int count) {
-        dragGuiSlider(kArrayCountSliderGeometry, 2.0f, 12.0f, static_cast<float>(count));
-        clickGui(kArrayApplyCenter);
+        applyRadialArray(count, kArrayDefaultRadius);
+    }
+
+    void applyRadialArray(int count, int radius) {
+        if (!configureRadialArray(count, radius))
+            return;
         if (m_partModels.empty()) {
             recordError("radial array needs an entity-scene part");
             return;
         }
         m_partModels[static_cast<std::size_t>(m_activePart)] = m_model;
         const OccupancyModel source = m_model;
-        const auto offsets = IRPrefab::Arrays::radial(count, IRMath::vec3(0.0f, 0.0f, 1.0f), 4.0f);
+        const auto offsets = IRPrefab::Arrays::radial(
+            count,
+            IRMath::vec3(0.0f, 0.0f, 1.0f),
+            static_cast<float>(radius)
+        );
         for (const auto &offset : offsets) {
             OccupancyModel copy = source;
             copy.setOrigin(source.origin() + offset.translation_);
@@ -1407,10 +1593,32 @@ class Builder {
     }
 
     void applyRadialArrayToLiveScene(int count) {
-        dragGuiSlider(kArrayCountSliderGeometry, 2.0f, 12.0f, static_cast<float>(count));
-        clickGui(kArrayApplyCenter);
+        applyRadialArrayToLiveScene(count, kArrayDefaultRadius);
     }
 
+    void applyRadialArrayToLiveScene(int count, int radius) {
+        configureRadialArray(count, radius);
+    }
+
+  private:
+    bool configureRadialArray(int count, int radius) {
+        if (radius < static_cast<int>(kArrayRadiusSliderMin) ||
+            radius > static_cast<int>(kArrayRadiusSliderMax)) {
+            recordError("radial array radius is outside the RADIUS/X range");
+            return false;
+        }
+        dragGuiSlider(kArrayCountSliderGeometry, 2.0f, 12.0f, static_cast<float>(count));
+        dragGuiSlider(
+            kArrayRadiusSliderGeometry,
+            kArrayRadiusSliderMin,
+            kArrayRadiusSliderMax,
+            static_cast<float>(radius)
+        );
+        clickGui(kArrayApplyCenter);
+        return true;
+    }
+
+  public:
     void toggleRotationalSymmetry() {
         chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonY);
     }
@@ -1450,6 +1658,18 @@ class Builder {
         );
     }
 
+    // Assert part @p partIndex is turned at least @p minDegrees about plus or
+    // minus @p axis, a unit vector in the part's own frame, when this segment
+    // settles. A turn composed onto an earlier one is about no single axis:
+    // start the gesture on an unturned part.
+    void expectPartTurnAxis(int partIndex, IRMath::vec3 axis, float minDegrees, std::string name) {
+        addPredicateCheck(
+            m_recipe.partTurnAxisChecks_,
+            PartTurnAxisCheck{partIndex, axis, minDegrees, std::move(name)},
+            &evaluatePartTurnAxisCheck
+        );
+    }
+
     // Assert part @p partIndex carries a C_AutoSpin turning @p radiansPerFrame
     // a tick when this segment settles, or with @p expectEqual false, that it
     // does not.
@@ -1481,6 +1701,31 @@ class Builder {
     }
 
   private:
+    const ComponentRecord *findComponent(const std::string &name, const char *operation) {
+        if (m_moduleView == nullptr) {
+            recordError(std::string(operation) + " needs a loaded module");
+            return nullptr;
+        }
+        const auto component = std::find_if(
+            m_moduleView->components_.begin(),
+            m_moduleView->components_.end(),
+            [&name](const ComponentRecord &candidate) { return candidate.name_ == name; }
+        );
+        if (component == m_moduleView->components_.end()) {
+            recordError(std::string(operation) + ": unknown component '" + name + "'");
+            return nullptr;
+        }
+        const int row = static_cast<int>(component - m_moduleView->components_.begin());
+        if (row * kComponentListItemHeight >= kComponentListSize.y) {
+            recordError(
+                std::string(operation) + ": component '" + name +
+                "' is below the list's visible rows"
+            );
+            return nullptr;
+        }
+        return &*component;
+    }
+
     template <typename Check>
     void addPredicateCheck(
         std::deque<Check> &checks,
@@ -1978,6 +2223,7 @@ class Builder {
     IRMath::ivec3 m_sceneSize;
     // What the PART SIZE sliders read: the extent the next addVoxelPart creates.
     IRMath::ivec3 m_partSize;
+    const ModuleSessionView *m_moduleView = nullptr;
     std::vector<OccupancyModel> m_partModels;
     int m_activePart = -1;
     std::optional<RemovedPartModel> m_removedPartModel;

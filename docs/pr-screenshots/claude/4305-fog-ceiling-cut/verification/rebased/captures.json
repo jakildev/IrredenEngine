@@ -1,0 +1,166 @@
+{
+ "base/ceiling": {
+  "command": "fleet-run --build-dir /private/tmp/pool3-4381-base/build --timeout 60 IRFogDemo --ceiling-treatment --auto-screenshot 10",
+  "exit": 0,
+  "result": "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0",
+  "shots": {
+   "screenshot_000001.png": "46b1fe80b250d10ffa142ab692c13681888dea6c11a94ea7c4c64b2fc5d0ff47",
+   "screenshot_000002.png": "cbf9c7e100486ba47842b7d9f015ba850855e9cf94b7f63ccc501d9414ef85cf"
+  },
+  "probes": [
+   "[2026-10-14 00:56:03.942] [ClientLog] [info] FOG-SURFACE-PROBE column=centre texels=272 cpuFirstHidden=5 cpuFullyHidden=10 treatedFirstHidden=5 treatedFullyHidden=10 gpuFirstHidden=5 gpuFullyHidden=10 partialBand=64 bandChanged=0 dissolved=0 retained=64 capToned=0 topTexels=40 topPainted=40",
+   "[2026-10-14 00:56:03.942] [ClientLog] [info] FOG-SURFACE-PROBE column=rim texels=272 cpuFirstHidden=5 cpuFullyHidden=10 treatedFirstHidden=5 treatedFullyHidden=10 gpuFirstHidden=5 gpuFullyHidden=10 partialBand=64 bandChanged=0 dissolved=0 retained=64 capToned=0 topTexels=40 topPainted=40",
+   "[2026-10-14 00:56:03.942] [ClientLog] [info] FOG-SURFACE-PROBE roi=band canvas=642x722 changed=0 centreBand=0 rimBand=0 outsideBand=0",
+   "[2026-10-14 00:56:03.943] [ClientLog] [info] FOG-SURFACE-PROBE body=twin texels=272 aboveCeiling=192 painted=0 partial=0 ratioMin=1.000 ratioMax=1.000",
+   "[2026-10-14 00:56:03.974] [ClientLog] [info] CaptureCamera: label=fog_ceiling9 yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)",
+   "[2026-10-14 00:56:04.222] [ClientLog] [info] CaptureCamera: label=fog_ceiling_yaw9 yaw=0.3499999 zoom=(8,8) effectiveIso=(-1.4001657,0.24756145) subdivisions=8 gameResolution=(1280,720)"
+  ]
+ },
+ "base/treated": {
+  "command": "fleet-run --build-dir /private/tmp/pool3-4381-base/build --timeout 60 IRFogDemo --ceiling-treatment --reveal-treatment --auto-screenshot 10",
+  "exit": 0,
+  "result": "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0",
+  "shots": {
+   "screenshot_000001.png": "c65b9b90bcfcf43f0c4f6a125ef4cd98ccc7872bb450ac0208e07d50c0ec30fa",
+   "screenshot_000002.png": "ce05531d8c9665a2295307327a592c319ba4d0386e86551258d06bcfa8a93871"
+  },
+  "probes": [
+   "[2026-10-14 00:56:05.894] [ClientLog] [info] FOG-SURFACE-PROBE column=centre texels=272 cpuFirstHidden=5 cpuFullyHidden=10 treatedFirstHidden=5 treatedFullyHidden=10 gpuFirstHidden=5 gpuFullyHidden=10 partialBand=64 bandChanged=56 dissolved=15 retained=49 capToned=33 topTexels=40 topPainted=40",
+   "[2026-10-14 00:56:05.894] [ClientLog] [info] FOG-SURFACE-PROBE column=rim texels=272 cpuFirstHidden=5 cpuFullyHidden=10 treatedFirstHidden=5 treatedFullyHidden=10 gpuFirstHidden=5 gpuFullyHidden=10 partialBand=64 bandChanged=64 dissolved=21 retained=43 capToned=27 topTexels=40 topPainted=40",
+   "[2026-10-14 00:56:05.894] [ClientLog] [info] FOG-SURFACE-PROBE roi=band canvas=642x722 changed=120 centreBand=56 rimBand=64 outsideBand=0",
+   "[2026-10-14 00:56:05.895] [ClientLog] [info] FOG-SURFACE-PROBE body=twin texels=272 aboveCeiling=192 painted=0 partial=0 ratioMin=1.000 ratioMax=1.000",
+   "[2026-10-14 00:56:05.926] [ClientLog] [info] CaptureCamera: label=fog_ceiling_treatment9 yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)",
+   "[2026-10-14 00:56:06.156] [ClientLog] [info] CaptureCamera: label=fog_ceiling_treatment_yaw9 yaw=0.3499999 zoom=(8,8) effectiveIso=(-1.4001657,0.24756145) subdivisions=8 gameResolution=(1280,720)"
+  ]
+ },
+ "base/column-top": {
+  "command": "fleet-run --build-dir /private/tmp/pool3-4381-base/build --timeout 60 IRFogDemo --occlusion=column-top --fog-debug-color --auto-screenshot 10",
+  "exit": 0,
+  "result": "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0",
+  "shots": {
+   "screenshot_000001.png": "4d50b730f5e573dd5d75342c7471c931161b734088cfa2ada0110e5ce1e6d092",
+   "screenshot_000002.png": "a8a23e757ed3f3223d398b42bcb69872d2ca9fffea44a3f81e8f4253e5308ec5"
+  },
+  "probes": [
+   "[2026-10-14 00:56:14.582] [ClientLog] [info] FOG-SURFACE-PROBE scene=occlusion_column_top canvas=642x722 bandTexels=120 bandOwnHidden=120 bandOracleHidden=0 bandPainted=0 bandLit=120 controlTexels=120 controlOracleHidden=120 controlPainted=120",
+   "[2026-10-14 00:56:14.614] [ClientLog] [info] CaptureCamera: label=fog_occlusion_column_top yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)",
+   "[2026-10-14 00:56:14.858] [ClientLog] [info] CaptureCamera: label=fog_occlusion_column_top_yaw yaw=0.3499999 zoom=(8,8) effectiveIso=(-2.428859,0.42944288) subdivisions=8 gameResolution=(1280,720)"
+  ]
+ },
+ "base/shadow": {
+  "command": "fleet-run --build-dir /private/tmp/pool3-4381-base/build --timeout 60 IRFogDemo --ceiling-shadow --auto-screenshot 10",
+  "exit": 0,
+  "result": "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0",
+  "shots": {
+   "screenshot_000001.png": "eef231ad322141404bec6faced4cdb489cc87b65dcc990b21708cbda454f4afb",
+   "screenshot_000002.png": "128c35ac9079ef8edd4be51d11e7187ee91c4b0889fcd66d3f49d5a1a6c49674"
+  },
+  "probes": [
+   "[2026-10-14 00:56:17.020] [ClientLog] [info] FOG-SHADOW-PROBE cap witnesses centre=0/16 rim=0/16 control=0/16",
+   "[2026-10-14 00:56:17.020] [ClientLog] [info] FOG-SHADOW-PROBE casters=voxel centre=94:17.460 rim=96:17.460 control=94:17.079 body=twin 118:20.996 sunTexel=0.463",
+   "[2026-10-14 00:56:17.051] [ClientLog] [info] CaptureCamera: label=fog_ceiling_shadow9 yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)",
+   "[2026-10-14 00:56:17.296] [ClientLog] [info] CaptureCamera: label=fog_ceiling_shadow_yaw9 yaw=0.3499999 zoom=(8,8) effectiveIso=(-1.4001657,0.24756145) subdivisions=8 gameResolution=(1280,720)"
+  ]
+ },
+ "head/ceiling": {
+  "command": "fleet-run --build-dir /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build --timeout 60 IRFogDemo --ceiling-treatment --auto-screenshot 10",
+  "exit": 0,
+  "result": "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0",
+  "shots": {
+   "screenshot_000001.png": "f4cf77bba8d3bf881f62158048799267861628330cf503db54283a97d853e0d0",
+   "screenshot_000002.png": "bd2eecc44dc5dbdf4ca5079472218d007416370ca29dae8a7a63c4b98bd70743"
+  },
+  "probes": [
+   "[2026-10-14 00:56:19.518] [ClientLog] [info] FOG-SURFACE-PROBE column=centre texels=160 top=8/8 aboveCut=0 capFaces=32 core=48 hollow=0",
+   "[2026-10-14 00:56:19.519] [ClientLog] [info] FOG-SURFACE-PROBE column=rim texels=160 top=8/8 aboveCut=0 capFaces=32 core=48 hollow=0",
+   "[2026-10-14 00:56:19.519] [ClientLog] [info] FOG-SURFACE-PROBE roi=band phase=0 changed=0 outsideBand=0",
+   "[2026-10-14 00:56:19.519] [ClientLog] [info] FOG-SURFACE-PROBE body=twin texels=272 aboveCeiling=192 painted=0 partial=0 ratioMin=1.000 ratioMax=1.000",
+   "[2026-10-14 00:56:19.592] [ClientLog] [info] CaptureCamera: label=fog_ceiling9 yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)",
+   "[2026-10-14 00:56:19.865] [ClientLog] [info] FOG-SURFACE-PROBE route=per-axis column=centre capFaces=16 topCaps=16 core=24 hollow=0",
+   "[2026-10-14 00:56:19.869] [ClientLog] [info] FOG-SURFACE-PROBE route=per-axis column=rim capFaces=16 topCaps=16 core=24 hollow=0",
+   "[2026-10-14 00:56:19.901] [ClientLog] [info] CaptureCamera: label=fog_ceiling_yaw9 yaw=0.3499999 zoom=(8,8) effectiveIso=(-1.4001657,0.24756145) subdivisions=8 gameResolution=(1280,720)"
+  ]
+ },
+ "head/treated": {
+  "command": "fleet-run --build-dir /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build --timeout 60 IRFogDemo --ceiling-treatment --reveal-treatment --auto-screenshot 10",
+  "exit": 0,
+  "result": "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0",
+  "shots": {
+   "screenshot_000001.png": "4c596eba21e185cbb7016bce2aa8c9f4a44e89d3af57cc5399fb40faf3423ea2",
+   "screenshot_000002.png": "1b9e724e8152518b3763a109ec3e205373e8ed328d466bdb2d71192499c321cf"
+  },
+  "probes": [
+   "[2026-10-14 00:56:21.486] [ClientLog] [info] FOG-SURFACE-PROBE column=centre texels=157 top=8/8 aboveCut=0 capFaces=37 core=16 hollow=0",
+   "[2026-10-14 00:56:21.487] [ClientLog] [info] FOG-SURFACE-PROBE column=rim texels=150 top=8/8 aboveCut=0 capFaces=50 core=16 hollow=0",
+   "[2026-10-14 00:56:21.487] [ClientLog] [info] FOG-SURFACE-PROBE roi=band phase=0 changed=0 outsideBand=0",
+   "[2026-10-14 00:56:21.487] [ClientLog] [info] FOG-SURFACE-PROBE body=twin texels=272 aboveCeiling=192 painted=0 partial=0 ratioMin=1.000 ratioMax=1.000",
+   "[2026-10-14 00:56:21.560] [ClientLog] [info] CaptureCamera: label=fog_ceiling_treatment9 yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)",
+   "[2026-10-14 00:56:21.851] [ClientLog] [info] FOG-SURFACE-PROBE route=per-axis column=centre capFaces=26 topCaps=17 core=24 hollow=0",
+   "[2026-10-14 00:56:21.856] [ClientLog] [info] FOG-SURFACE-PROBE route=per-axis column=rim capFaces=35 topCaps=18 core=24 hollow=0",
+   "[2026-10-14 00:56:21.887] [ClientLog] [info] CaptureCamera: label=fog_ceiling_treatment_yaw9 yaw=0.3499999 zoom=(8,8) effectiveIso=(-1.4001657,0.24756145) subdivisions=8 gameResolution=(1280,720)"
+  ]
+ },
+ "head/column-top": {
+  "command": "fleet-run --build-dir /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build --timeout 60 IRFogDemo --occlusion=column-top --fog-debug-color --auto-screenshot 10",
+  "exit": 0,
+  "result": "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0",
+  "shots": {
+   "screenshot_000001.png": "a7e5841778c306d0f85f992d236350d9b02d19959bff2f00f1dc7b9a08a3def0",
+   "screenshot_000002.png": "2874e91cbe39d17d63774e3bcb548457d0bf9fb4207a7fe38454ba5673a00e66"
+  },
+  "probes": [
+   "[2026-10-14 00:56:23.337] [ClientLog] [info] FOG-SURFACE-PROBE scene=occlusion_column_top controlCap=72 controlCore=48 controlHollow=0",
+   "[2026-10-14 00:56:23.337] [ClientLog] [info] FOG-SURFACE-PROBE scene=occlusion_column_top canvas=642x722 bandTexels=108 bandOwnHidden=108 bandOracleHidden=0 bandPainted=0 bandLit=108 controlTexels=0 controlOracleHidden=0 controlPainted=0",
+   "[2026-10-14 00:56:23.391] [ClientLog] [info] CaptureCamera: label=fog_occlusion_column_top yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)",
+   "[2026-10-14 00:56:23.649] [ClientLog] [info] CaptureCamera: label=fog_occlusion_column_top_yaw yaw=0.3499999 zoom=(8,8) effectiveIso=(-2.428859,0.42944288) subdivisions=8 gameResolution=(1280,720)"
+  ]
+ },
+ "head/shadow": {
+  "command": "fleet-run --build-dir /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build --timeout 60 IRFogDemo --ceiling-shadow --auto-screenshot 10",
+  "exit": 0,
+  "result": "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0",
+  "shots": {
+   "screenshot_000001.png": "0fb15f251e4dd5c5b7f59c43b6773fdf1e4e084984e6633a9b98196a7f881d5a",
+   "screenshot_000002.png": "fe0b88790db822123ca34e85bcec1420485ffee1c10e29d72387f2b1686d42dd"
+  },
+  "probes": [
+   "[2026-10-14 00:56:24.749] [ClientLog] [info] FOG-SHADOW-PROBE cap witnesses centre=0/10 rim=0/8 control=0/8",
+   "[2026-10-14 00:56:24.749] [ClientLog] [info] FOG-SHADOW-PROBE casters=voxel centre=110:19.690 rim=110:19.690 control=108:19.690 body=twin 118:20.996 sunTexel=0.463",
+   "[2026-10-14 00:56:24.804] [ClientLog] [info] CaptureCamera: label=fog_ceiling_shadow9 yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)",
+   "[2026-10-14 00:56:25.049] [ClientLog] [info] CaptureCamera: label=fog_ceiling_shadow_yaw9 yaw=0.3499999 zoom=(8,8) effectiveIso=(-1.4001657,0.24756145) subdivisions=8 gameResolution=(1280,720)"
+  ]
+ },
+ "head/hard": {
+  "command": "fleet-run --build-dir /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build --timeout 60 IRFogDemo --ceiling-treatment --ceiling-hard --auto-screenshot 10",
+  "exit": 0,
+  "result": "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0",
+  "shots": {
+   "screenshot_000001.png": "71d7742a8dffb665ce7e9cb411e63ad999743132b60fa6b7a2d8af01264e07d5",
+   "screenshot_000002.png": "1206e43b29600876f7d9d513e7fed118a39c343a93fc3bf96a076f0d0db49e49"
+  },
+  "probes": [
+   "[2026-10-14 00:56:26.168] [ClientLog] [info] FOG-SURFACE-PROBE column=centre texels=112 top=5/5 aboveCut=0 capFaces=32 core=48 hollow=0",
+   "[2026-10-14 00:56:26.168] [ClientLog] [info] FOG-SURFACE-PROBE column=rim texels=112 top=5/5 aboveCut=0 capFaces=32 core=48 hollow=0",
+   "[2026-10-14 00:56:26.169] [ClientLog] [info] FOG-SURFACE-PROBE roi=band phase=0 changed=0 outsideBand=0",
+   "[2026-10-14 00:56:26.169] [ClientLog] [info] FOG-SURFACE-PROBE body=twin texels=272 aboveCeiling=192 painted=0 partial=0 ratioMin=1.000 ratioMax=1.000",
+   "[2026-10-14 00:56:26.242] [ClientLog] [info] CaptureCamera: label=fog_ceiling_hard9 yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)",
+   "[2026-10-14 00:56:26.521] [ClientLog] [info] FOG-SURFACE-PROBE route=per-axis column=centre capFaces=16 topCaps=16 core=24 hollow=0",
+   "[2026-10-14 00:56:26.526] [ClientLog] [info] FOG-SURFACE-PROBE route=per-axis column=rim capFaces=16 topCaps=16 core=24 hollow=0",
+   "[2026-10-14 00:56:26.557] [ClientLog] [info] CaptureCamera: label=fog_ceiling_hard_yaw9 yaw=0.3499999 zoom=(8,8) effectiveIso=(-1.3715909,0.24250913) subdivisions=8 gameResolution=(1280,720)"
+  ]
+ },
+ "head/curved": {
+  "command": "fleet-run --build-dir /Users/evinjkill/src/IrredenEngine/.claude/worktrees/pool-3/build --timeout 60 IRFogDemo --ceiling-shadow-curved --auto-screenshot 10",
+  "exit": 0,
+  "result": "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0",
+  "shots": {
+   "screenshot_000001.png": "c00671b0d18d6ea245a52c8def5bf158b99f3e4f8c0e3f23c26929b6dd5a2514"
+  },
+  "probes": [
+   "[2026-10-14 00:56:27.582] [ClientLog] [info] FOG-SHADOW-PROBE cap witnesses centre=0/10 rim=0/8 control=0/8",
+   "[2026-10-14 00:56:27.582] [ClientLog] [info] FOG-SHADOW-PROBE casters=cylinder centre=100:20.996 rim=110:19.690 control=108:19.690 body=twin 108:22.845 sunTexel=0.463",
+   "[2026-10-14 00:56:27.582] [ClientLog] [info] FOG-SHADOW-PROBE curved gap=1.849 min=1.149 receiver=39.000/30.841",
+   "[2026-10-14 00:56:27.640] [ClientLog] [info] CaptureCamera: label=fog_ceiling_shadow_curved9 yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)"
+  ]
+ }
+}

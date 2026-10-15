@@ -132,7 +132,7 @@ equivalent and produces byte-identical results to the pre-yaw path.
 
 ## Physics
 
-`physics.hpp` — ballistic helpers (`impulseForHeight`, `flightTimeForHeight`, `heightForImpulse`) and `isTunnelingSafe`. Use these; don't re-derive kinematics inline.
+`physics.hpp` — ballistic helpers (`impulseForHeight`, `flightTimeForHeight`, `heightForImpulse`), `isTunnelingSafe`, and the swept box test `sweptAabbOverlap`. Use these; don't re-derive kinematics inline.
 
 ## Quaternions
 

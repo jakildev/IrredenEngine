@@ -216,10 +216,21 @@ neighbourhood is sparse) could reclaim the remaining cost; deferred (lever
    BODY bit from its entity-id plane. World-placed and non-box analytic-shape
    FIELD samples are cut by their feeder before its depth texture is baked, so
    both bakes run on the scoped `precut` lane. The per-axis resolve has no
-   entity-id plane and remains uncut; its dispatch uses the scoped `precut` lane
-   to avoid misclassifying BODY samples as FIELD. Retained-set raster selection
-   will close that route structurally (#4305). The guard restores the canonical
-   lane before downstream consumers run.
+   entity-id plane; its dispatch uses the scoped `precut` lane to avoid
+   misclassifying BODY samples as FIELD. The guard restores the canonical lane
+   before downstream consumers run.
+
+   The geometric-ceiling contract uses the raster's phase-zero retained set: absent or dissolved FIELD
+   voxels cast nothing, and BODY remains whole. The per-axis resolve inherits
+   the raster cut; the other raster-derived routes intersect their current
+   raster with the static set, while voxel-face, box and analytic-shape bakes
+   evaluate the static set directly. The retained predicate takes the observers,
+   integer world voxel and an explicit cell sample from the main world fog
+   window, with UNEXPLORED/default-channel fallback outside it. The caller
+   samples only after the no-ceiling/BODY identity gates; an all-visible
+   placeholder never supplies a retention override. The authoritative contract is in
+   [Sun-shadow caster ceiling](fog-of-war-reveal-model.md#sun-shadow-caster-ceiling).
+   This is target behavior until that implementation lands.
 
 ## The receiver same-plane test (#2319) — removing the splat's coplanar self-acne
 

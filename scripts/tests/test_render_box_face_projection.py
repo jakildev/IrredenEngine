@@ -121,7 +121,9 @@ bool solverHit=true;
 bool sdfRayHit(uint,vec3,vec3,vec3,float,float,float,float& depth){
  depth=solvedDepth;return solverHit;
 }
-bool fogFieldCastsSunShadow(vec3 pos,bool body,int enabled){
+int fogShadowWindow=0, fogShadowVisionCircleCount=1;
+int fogShadowCell(vec3,int=0){return 0;}
+bool fogFieldCastsSunShadow(vec3 pos,bool body,int enabled,int){
  ++fogCalls;lastFogZ=pos.z;return body||!enabled||pos.z>=2;
 }
 uint packSunSurfaceDepth(float d){return uint(d*100);}
@@ -136,7 +138,8 @@ int main(){
   const uint indexed=emit(box,body,ceiling);
   const bool retained=body||!ceiling||depth>=2;
   if(indexed!=uint(body||!ceiling))return 1;
-  if(fogCalls!=1||std::abs(lastFogZ-depth)>1.e-5)return 2;
+  if(fogCalls!=int(!body&&ceiling))return 2;
+  if(!body&&ceiling&&std::abs(lastFogZ-depth)>1.e-5)return 2;
   const uint layer=body||!ceiling?kSourceFaceFallbackOffset:0u;
   if(sunDepthBuf[layer]!=(retained?uint(depth*100):999u))return 3;
   if(sunDepthBuf[layer==0?kSourceFaceFallbackOffset:0]!=999u)return 4;
@@ -171,6 +174,7 @@ int main(){
                     + "return uint(indexWholeShape);")
             body = body.replace("sunFrame.", "").replace(".xyz", "")
             body = body.replace(", fogObservers", "").replace("float3", "vec3")
+            body = body.replace("fogObservers.visionCircleCount", "fogShadowVisionCircleCount")
             variants = {
                 "production": body,
                 "uncut_index": body.replace("fogBody || fogCeilingEnabled.x == 0", "true"),

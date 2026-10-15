@@ -32,6 +32,7 @@ add_executable(IrredenEngineTest
   ecs/archetype_move_storage_test.cpp
   ecs/chunk_bounds_eviction_test.cpp
   ecs/chunked_field_test.cpp
+  ecs/collision_swept_test.cpp
   ecs/command_randomize_voxels_test.cpp
   ecs/entity_event_handlers_test.cpp
   ecs/entity_manager_test.cpp
@@ -110,8 +111,10 @@ add_executable(IrredenEngineTest
   render/per_axis_canvas_size_test.cpp
   render/per_axis_cast_subcell_test.cpp
   render/per_axis_store_frame_test.cpp
+  render/per_axis_surface_lighting_test.cpp
   render/frame_data_sun_layout_test.cpp
   render/gizmo_drag_reset_test.cpp
+  render/gizmo_ring_orientation_test.cpp
   render/gizmo_view_clearance_test.cpp
   render/gui_canvas_routing_test.cpp
   render/gpu_compute_dispatch_test.cpp
@@ -167,6 +170,7 @@ add_executable(IrredenEngineTest
   script/lua_entity_anchor_test.cpp
   script/lua_entity_events_test.cpp
   script/lua_widget_hit_region_test.cpp
+  script/lua_widget_values_test.cpp
   script/lua_voxel_seam_test.cpp
   script/lua_hierarchy_test.cpp
   script/lua_enum_register_test.cpp

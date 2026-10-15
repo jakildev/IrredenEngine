@@ -6,6 +6,7 @@
 // lattice, the geometry its receiver reads and its display shows.
 layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #include "ir_iso_common.glsl"
+layout(rg32ui, binding = 4) readonly uniform uimage2D fogShadowWindow;
 #include "ir_fog_shadow_caster.glsl"
 #include "ir_sun_projection.glsl"
 #include "ir_sun_face_query_layout.glsl"
@@ -85,17 +86,21 @@ void main() {
         : vec3(roundHalfUp(snapNearIntegerVoxelPosition(positions[index].xyz) * subdivisions)) / subdivisions;
     const vec3 worldCenter = rotateByQuat(position, viewToWorld) + worldOrigin.xyz;
     const bool fogBody = (voxels[index].reserved & (1u << 3u)) != 0u;
-    if (!fogFieldCastsSunShadow(worldCenter, fogBody, fogCeilingEnabled.x)) return;
+    if (!(fogBody) && fogCeilingEnabled.x != 0 && fogShadowVisionCircleCount > 0 &&
+        !fogFieldCastsSunShadow(worldCenter, false, fogCeilingEnabled.x,
+            fogShadowCell(worldCenter))) return;
     for (int axis = 0; axis < 3; ++axis) {
         vec3 normal = vec3(0.0);
         normal[axis] = 1.0;
         const vec3 worldAxis = rotateByQuat(normal, viewToWorld);
         const bool positive = dot(worldAxis, sunDirection.xyz) > 0.0;
         const int faceId = axis * 2 + (positive ? 1 : 0);
-        if (!fogVoxelFaceCastsSunShadow(
-                faceIsExposed(flags, faceId), worldCenter,
-                positive ? worldAxis : -worldAxis, fogBody,
-                fogCeilingEnabled.x)) continue;
+        if (!faceIsExposed(flags, faceId)) {
+            if (fogBody || fogCeilingEnabled.x == 0 || fogShadowVisionCircleCount == 0) continue;
+            const vec3 neighbor = worldCenter + (positive ? worldAxis : -worldAxis);
+            if (!fogVoxelFaceCastsSunShadow(false, worldCenter, positive ? worldAxis : -worldAxis,
+                    false, fogCeilingEnabled.x, fogShadowCell(neighbor))) continue;
+        }
         vec3 corner = position - kVoxelRasterCellAnchor;
         corner[axis] += positive ? 1.0 : 0.0;
         vec3 edgeU = vec3(0.0);

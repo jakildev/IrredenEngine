@@ -50,6 +50,7 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
         return MTL::Size(8, 8, 1);
     }
     if (functionName == "c_voxel_visibility_compact" ||
+        functionName == "c_voxel_visibility_compact_ceiling" ||
         functionName == "c_update_voxel_positions" ||
         functionName == "c_revoxelize_detached" ||
         functionName == "c_update_gpu_particles" ||
@@ -72,7 +73,10 @@ MTL::Size threadgroupSizeForFunctionName(const std::string &functionName) {
     if (functionName == "c_lighting_to_trixel" || functionName == "c_lighting_to_trixel_shapes") {
         return MTL::Size(16, 16, 1);
     }
-    if (functionName == "c_compute_voxel_ao" || functionName == "c_compute_voxel_ao_smooth_yaw") {
+    if (functionName == "c_compute_voxel_ao" ||
+        functionName == "c_compute_voxel_ao_shapes" ||
+        functionName == "c_compute_voxel_ao_smooth_yaw" ||
+        functionName == "c_compute_voxel_ao_shapes_smooth_yaw") {
         return MTL::Size(16, 16, 1);
     }
     if (functionName == "c_fog_to_trixel") {
