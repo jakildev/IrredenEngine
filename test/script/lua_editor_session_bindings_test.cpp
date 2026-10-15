@@ -279,8 +279,10 @@ TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
         s:dragWorld({0, 0, 0}, {1, 0, 0})
         s:applyRadialArray(2)
         s:applyRadialArray(2, 8)
+        s:applyRadialArray(2, 8, 60)
         s:applyRadialArrayToLiveScene(2)
         s:applyRadialArrayToLiveScene(2, -8)
+        s:applyRadialArrayToLiveScene(2, -8, -60)
         s:toggleRotationalSymmetry()
         s:selectPartThroughList(0, 0)
 
@@ -457,8 +459,14 @@ TEST_F(LuaEditorSessionBindingsTest, RejectsEveryArgumentFamilyAndNonComparableF
         "session:dragWorld({0,0}, {1,1,1})",
         "session:applyRadialArray(2, 8.5)",
         "session:applyRadialArray(2, 13)",
+        "session:applyRadialArray(2, 8, 60.5)",
+        "session:applyRadialArray(2, 8, 61)",
+        "session:applyRadialArray(2, 8, 183)",
         "session:applyRadialArrayToLiveScene(2, 8.5)",
         "session:applyRadialArrayToLiveScene(2, 13)",
+        "session:applyRadialArrayToLiveScene(2, 8, 60.5)",
+        "session:applyRadialArrayToLiveScene(2, 8, 61)",
+        "session:applyRadialArrayToLiveScene(2, 8, 183)",
         "session:applyRecipe({}, {})",
         "session:applyRecipe('matrix_recipe', 1)",
         "session:applyRecipe('matrix_recipe', { count = 'bad' })",
@@ -492,6 +500,45 @@ TEST_F(LuaEditorSessionBindingsTest, RadialArrayRejectsOutOfRangeRadiusBeforeEve
     Builder live("live_radius", IRMath::ivec3(16), IRMath::vec3(-8.0f));
     live.applyRadialArrayToLiveScene(2, -13);
     expectOneErrorAndNoEvents(live.finish(), "radius");
+}
+
+TEST_F(LuaEditorSessionBindingsTest, RadialArrayRejectsUnreachableYawBeforeEvents) {
+    Builder radial("radial_yaw", IRMath::ivec3(16), IRMath::vec3(-8.0f));
+    radial.applyRadialArray(2, 4, 61);
+    expectOneErrorAndNoEvents(radial.finish(), "yaw");
+
+    Builder live("live_yaw", IRMath::ivec3(16), IRMath::vec3(-8.0f));
+    live.applyRadialArrayToLiveScene(2, 4, 183);
+    expectOneErrorAndNoEvents(live.finish(), "yaw");
+}
+
+TEST_F(LuaEditorSessionBindingsTest, RadialYawSliderHitsEveryReachableTurn) {
+    const int step = static_cast<int>(IRVoxelEditor::kArrayYawDegreesPerTrixel);
+    for (int target = static_cast<int>(IRVoxelEditor::kArrayYawSliderMin);
+         target <= static_cast<int>(IRVoxelEditor::kArrayYawSliderMax);
+         target += step) {
+        const IRMath::vec2 aim = IRVoxelEditor::sliderValueGuiTrixel(
+            IRVoxelEditor::kArrayYawSliderGeometry,
+            IRVoxelEditor::kArrayYawSliderMin,
+            IRVoxelEditor::kArrayYawSliderMax,
+            static_cast<float>(target)
+        );
+        EXPECT_EQ(IRMath::round(aim.x), aim.x) << "target=" << target;
+        const float held =
+            IRVoxelEditor::kArrayYawSliderMin +
+            (aim.x - static_cast<float>(IRVoxelEditor::kArrayYawSliderGeometry.pos_.x)) /
+                static_cast<float>(IRVoxelEditor::kArrayYawSliderGeometry.size_.x) *
+                (IRVoxelEditor::kArrayYawSliderMax - IRVoxelEditor::kArrayYawSliderMin);
+        EXPECT_EQ(IRMath::round(held), target) << "target=" << target;
+        if (target < static_cast<int>(IRVoxelEditor::kArrayYawSliderMax)) {
+            EXPECT_EQ(IRMath::round(held + IRVoxelEditor::kArrayYawDegreesPerTrixel), target + step)
+                << "target=" << target;
+        }
+        if (target > static_cast<int>(IRVoxelEditor::kArrayYawSliderMin)) {
+            EXPECT_EQ(IRMath::round(held - IRVoxelEditor::kArrayYawDegreesPerTrixel), target - step)
+                << "target=" << target;
+        }
+    }
 }
 
 TEST_F(LuaEditorSessionBindingsTest, RadialRadiusSliderRoundsWholeTargetsInsideTwoTrixels) {

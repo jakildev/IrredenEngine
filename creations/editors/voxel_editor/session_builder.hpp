@@ -1661,11 +1661,15 @@ class Builder {
     }
 
     void applyRadialArray(int count) {
-        applyRadialArray(count, kArrayDefaultRadius);
+        applyRadialArray(count, kArrayDefaultRadius, 0);
     }
 
     void applyRadialArray(int count, int radius) {
-        if (!configureRadialArray(count, radius))
+        applyRadialArray(count, radius, 0);
+    }
+
+    void applyRadialArray(int count, int radius, int copyYawDegrees) {
+        if (!configureRadialArray(count, radius, copyYawDegrees))
             return;
         if (m_partModels.empty()) {
             recordError("radial array needs an entity-scene part");
@@ -1689,18 +1693,28 @@ class Builder {
     }
 
     void applyRadialArrayToLiveScene(int count) {
-        applyRadialArrayToLiveScene(count, kArrayDefaultRadius);
+        applyRadialArrayToLiveScene(count, kArrayDefaultRadius, 0);
     }
 
     void applyRadialArrayToLiveScene(int count, int radius) {
-        configureRadialArray(count, radius);
+        applyRadialArrayToLiveScene(count, radius, 0);
+    }
+
+    void applyRadialArrayToLiveScene(int count, int radius, int copyYawDegrees) {
+        configureRadialArray(count, radius, copyYawDegrees);
     }
 
   private:
-    bool configureRadialArray(int count, int radius) {
+    bool configureRadialArray(int count, int radius, int copyYawDegrees) {
         if (radius < static_cast<int>(kArrayRadiusSliderMin) ||
             radius > static_cast<int>(kArrayRadiusSliderMax)) {
             recordError("radial array radius is outside the RADIUS/X range");
+            return false;
+        }
+        if (copyYawDegrees < static_cast<int>(kArrayYawSliderMin) ||
+            copyYawDegrees > static_cast<int>(kArrayYawSliderMax) ||
+            copyYawDegrees % static_cast<int>(kArrayYawDegreesPerTrixel) != 0) {
+            recordError("radial array yaw must be a reachable COPY YAW value");
             return false;
         }
         dragGuiSlider(kArrayCountSliderGeometry, 2.0f, 12.0f, static_cast<float>(count));
@@ -1709,6 +1723,12 @@ class Builder {
             kArrayRadiusSliderMin,
             kArrayRadiusSliderMax,
             static_cast<float>(radius)
+        );
+        dragGuiSlider(
+            kArrayYawSliderGeometry,
+            kArrayYawSliderMin,
+            kArrayYawSliderMax,
+            static_cast<float>(copyYawDegrees)
         );
         clickGui(kArrayApplyCenter);
         return true;
