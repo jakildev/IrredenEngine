@@ -147,7 +147,7 @@ void main() {
         // color. The rest of the vertex path is
         // bit-identical to the cell path; only the data source differs.
         const uint entryBase = uint(gl_InstanceID) * 3u;
-        const uint packedCell = compactedCells[entryBase + 0u];
+        const uint packedCell = overflowEntryCell(compactedCells[entryBase + 0u]);
         ij = ivec2(int(packedCell & 0xFFFFu), int(packedCell >> 16u));
         color = unpackColor(compactedCells[entryBase + 1u]);
         color.a = 1.0;

@@ -1,0 +1,8 @@
+{
+  "source_head": "50c68520505c9621237a1ec936ead20523e4ff17",
+  "binary_built_at": "f4fd403eddaff4419917168a10ef7c542c6bbef2",
+  "shader_update": "BODY exemption before source scan; only runtime code difference from binary build head",
+  "binary_sha256": "a826da786407d3a8d204059eea59f635ba3d939bbed4c73af9dc0382f85253c1",
+  "shader_tree_sha256": "fdb46db0d4f50f3949de577324a20e2b3f95b906f3804be104f5516927063c94",
+  "shader_hash_method": "sha256 of sorted relative UTF-8 path, NUL, file bytes, NUL for every shader file"
+}

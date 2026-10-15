@@ -9,7 +9,6 @@
 #include "ir_fog_color.metal"
 #include "ir_fog_los.metal"
 
-constant int kMaxFogVisionCircles = 8;
 constant float kFogCutTone = 0.85f;
 constant float kFogCutMaxRimCells = 2.0f;
 // MUST equal kFogHiddenKeepCells (ir_voxel_face_select.metal).
@@ -32,7 +31,7 @@ struct FogObserverData {
     uint4 visionCircleChannels[2];
     // Per-source upward ceiling, (ceilingHeight, fadeHeight, 0, 0); negative = off.
     float4 visionCircleCeilings[kMaxFogVisionCircles];
-    // The canvas's reveal-surface treatment, (enabled, dissolveDensity, capTone, 0).
+    // The canvas's reveal-surface treatment, (enabled, dissolveDensity, capTone, phase).
     float4 revealSurfaceTreatment;
 };
 
@@ -43,18 +42,6 @@ struct FogReveal {
     float styledBand;
 };
 
-// GLSL twin: fogRevealSurfaceHash01 in ../ir_fog_common.glsl.
-inline float fogRevealSurfaceHash01(int3 voxel) {
-    uint hash = uint(voxel.x) * 0x8DA6B343u ^ uint(voxel.y) * 0xD8163841u ^
-        uint(voxel.z) * 0xCB1AB31Fu;
-    hash ^= hash >> 16u;
-    hash *= 0x7FEB352Du;
-    hash ^= hash >> 15u;
-    hash *= 0x846CA68Bu;
-    hash ^= hash >> 16u;
-    return float(hash & 0xFFFFFFu) / 16777216.0f;
-}
-
 inline float fogRevealSurfaceBandWeight(float surfaceVisibility) {
     return 4.0f * surfaceVisibility * (1.0f - surfaceVisibility);
 }
@@ -63,26 +50,6 @@ inline float3 fogCutCapBlend(
     float3 color, float3 sourceColor, float tone, float state, float weight
 ) {
     return mix(color, mix(sourceColor * tone, sourceColor, state), weight);
-}
-
-// Texel of world column `col` in the fog window, or (-1, -1) when the column
-// is outside it. GLSL twin: fogWindowTexel in ../ir_fog_common.glsl.
-inline int2 fogWindowTexel(int2 col, int2 origin, int2 fogSize) {
-    const int2 rel = col - origin;
-    if (rel.x < 0 || rel.x >= fogSize.x || rel.y < 0 || rel.y >= fogSize.y) {
-        return int2(-1);
-    }
-    int2 base;
-    base.x = origin.x >= 0 ? origin.x % fogSize.x : fogSize.x - 1 - (-(origin.x + 1)) % fogSize.x;
-    base.y = origin.y >= 0 ? origin.y % fogSize.y : fogSize.y - 1 - (-(origin.y + 1)) % fogSize.y;
-    int2 texel = rel + base;
-    if (texel.x >= fogSize.x) {
-        texel.x -= fogSize.x;
-    }
-    if (texel.y >= fogSize.y) {
-        texel.y -= fogSize.y;
-    }
-    return texel;
 }
 
 // Grid texel of world column `col`: (state integer, channel mask), or
@@ -99,6 +66,22 @@ inline uint2 fogTapTexel(
         return uint2(0u, kFogChannelDefault);
     }
     return canvasFogOfWar.read(uint2(cell)).rg;
+}
+
+inline bool fogCeilingCutFace(
+    float3 facePoint, int faceId, constant FogObserverData& fogObservers,
+    texture2d<uint, access::read> canvasFogOfWar
+) {
+    const int3 normal = faceOutwardNormal6I(faceId);
+    const int3 owner = roundHalfUp(facePoint - 0.5f * float3(normal));
+    const int3 neighbor = owner + normal;
+    const int2 fogSize = int2(int(canvasFogOfWar.get_width()), int(canvasFogOfWar.get_height()));
+    const uint2 cell = fogTapTexel(neighbor.xy,
+        int2(fogObservers.windowOriginX, fogObservers.windowOriginY), fogSize, canvasFogOfWar);
+    return !fogCeilingRetained(neighbor, cell, fogObservers.visionCircles,
+        fogObservers.visionCircleHeights, fogObservers.visionCircleCeilings,
+        fogObservers.visionCircleChannels, fogObservers.visionCircleCount,
+        fogObservers.revealSurfaceTreatment, fogObservers.revealSurfaceTreatment.w);
 }
 
 // GLSL twin: fogColumnTopState in ../ir_fog_common.glsl.
@@ -161,6 +144,7 @@ inline FogReveal fogRevealSample(
     float3 columnPoint,
     int faceAxis,
     float aaFloor,
+    bool analyticSurface,
     constant FogObserverData& fogObservers,
     texture2d<uint, access::read> canvasFogOfWar,
     texture2d<float, access::read> fogLineOfSight
@@ -236,15 +220,16 @@ inline FogReveal fogRevealSample(
         float bandWeight = 0.0f;
         if (treated && contribution > 0.0f) {
             const float surfaceVisibility = ceilingVisibility * losVisibility;
-            if (surfaceVisibility < 1.0f) {
+            const float dissolveVisibility = analyticSurface ? surfaceVisibility : losVisibility;
+            if (dissolveVisibility < 1.0f) {
                 if (hash01 < 0.0f) {
                     hash01 = fogRevealSurfaceHash01(surfaceVoxel);
                 }
-                if (hash01 > mix(1.0f, surfaceVisibility, fogObservers.revealSurfaceTreatment.y)) {
+                if (hash01 > mix(1.0f, dissolveVisibility, fogObservers.revealSurfaceTreatment.y)) {
                     continue;
                 }
-                bandWeight = fogRevealSurfaceBandWeight(surfaceVisibility);
             }
+            bandWeight = fogRevealSurfaceBandWeight(surfaceVisibility);
         }
         if (contribution > state) {
             state = contribution;

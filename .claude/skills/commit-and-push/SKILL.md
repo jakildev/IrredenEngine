@@ -47,8 +47,9 @@ files; a procedure's "`SKILL.md` step N" means step N of the shared flow.
   the post-open `gh stack link` step every stack mode runs.
 - [`procedures/pr-body.md`](procedures/pr-body.md) — PR body template +
   stack-mode deltas.
-- [`procedures/host-label.md`](procedures/host-label.md) — the
-  `fleet:authored-on-<host>` stamp.
+- [`procedures/host-label.md`](procedures/host-label.md) — the post-open
+  stamps: `fleet:author-<runtime>` provenance (`fleet-runtime stamp`) and
+  `fleet:authored-on-<host>`, with the read-back gate.
 - [`procedures/rebase-guard.md`](procedures/rebase-guard.md) — the
   pre-rebase diff-snapshot guard.
 

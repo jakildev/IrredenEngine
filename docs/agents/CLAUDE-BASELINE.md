@@ -175,7 +175,7 @@ pattern example or an actionable gotcha, clutter when they list what exists.
 | Component-method tier rules | `engine/prefabs/CLAUDE.md` |
 | Asset serialization version-bump | `engine/asset/CLAUDE.md` |
 | `--auto-screenshot` contract | `engine/video/CLAUDE.md` |
-| PR-body templates · host-stamp logic | `.claude/skills/commit-and-push/procedures/` |
+| PR-body templates · post-open provenance and host stamps | `.claude/skills/commit-and-push/procedures/` |
 
 ---
 

@@ -95,6 +95,7 @@
 #include <irreden/render/components/component_light_blocker.hpp>
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_lod_tier_override.hpp>
+#include <irreden/render/components/component_per_axis_surface_lighting.hpp>
 #include <irreden/render/components/component_per_axis_trixel_canvases.hpp>
 #include <irreden/render/components/component_render_cache.hpp>
 #include <irreden/render/components/component_settings_menu.hpp>
@@ -419,6 +420,10 @@ IR_SAVE_OPT_OUT(IRComponents::C_HelpOverlayState)
 // C_SettingsMenuState: OPT-OUT — same reasoning as the help overlay above. A
 // menu left open is a momentary view, not authored state.
 IR_SAVE_OPT_OUT(IRComponents::C_SettingsMenuState)
+// C_PerAxisSurfaceLighting: OPT-OUT — a presentation switch the environment
+// flag or the creation sets every run, not world state; a snapshot taken with
+// it on must not turn it on in a session that left it off.
+IR_SAVE_OPT_OUT(IRComponents::C_PerAxisSurfaceLighting)
 // C_GuiCanvasDisplay: OPT-OUT — applied from the creation's world config
 // (`gui_pixelated`) on every run; a snapshot would only shadow that setting.
 IR_SAVE_OPT_OUT(IRComponents::C_GuiCanvasDisplay)
@@ -632,6 +637,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_WidgetTheme,
     IRComponents::C_HelpOverlayState,
     IRComponents::C_SettingsMenuState,
+    IRComponents::C_PerAxisSurfaceLighting,
     IRComponents::C_GuiCanvasDisplay,
     IRComponents::C_SettingsRegistry,
     IRComponents::C_Splitter,

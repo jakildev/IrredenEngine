@@ -39,6 +39,10 @@ layout(std430, binding = 1) writeonly buffer FogSurfaceProbeOut {
     vec4 probes[];
 };
 
+layout(std430, binding = 3) writeonly buffer CeilingProbeOut {
+    vec4 ceilingProbes[];
+};
+
 void main() {
     const int index = int(gl_GlobalInvocationID.x);
     if (index >= sampleCount) {
@@ -50,8 +54,19 @@ void main() {
         position,
         samples[index].columnPoint.xyz,
         int(samples[index].position.w),
-        0.0
+        0.0,
+        true
     );
+    const ivec3 voxel = roundHalfUp(position);
+    const uvec2 cell = fogTapTexel(voxel.xy, imageSize(canvasFogOfWar));
+    ceilingProbes[index] = vec4(
+        fogCeilingPresence(voxel, cell, visionCircles, visionCircleHeights,
+            visionCircleCeilings, visionCircleChannels, visionCircleCount, 0.0),
+        fogCeilingRetained(voxel, cell, visionCircles, visionCircleHeights,
+            visionCircleCeilings, visionCircleChannels, visionCircleCount, revealSurfaceTreatment, 0.0) ? 1.0 : 0.0,
+        fogCeilingRetained(voxel, cell, visionCircles, visionCircleHeights,
+            visionCircleCeilings, visionCircleChannels, visionCircleCount, revealSurfaceTreatment, 0.37) ? 1.0 : 0.0,
+        fogCeilingPhaseHeight(voxel, 0.37));
     probes[index] =
         vec4(reveal.state, reveal.gridState, reveal.hardDistPastRim, reveal.styledBand);
 }

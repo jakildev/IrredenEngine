@@ -1325,6 +1325,27 @@ bool Audio::isInputMonitorEnabled() const {
     return m_monitorChannel != nullptr && m_monitorChannel->effectiveEnabled();
 }
 
+std::vector<AudioDeviceSummary> Audio::deviceSummaries() const {
+    std::vector<AudioDeviceSummary> out;
+    out.reserve(m_deviceInfo.size());
+    for (const auto &[id, info] : m_deviceInfo) {
+        out.push_back(
+            AudioDeviceSummary{
+                info.name,
+                info.inputChannels,
+                info.outputChannels,
+                info.isDefaultInput,
+                info.isDefaultOutput,
+                info.preferredSampleRate,
+            }
+        );
+    }
+    std::sort(out.begin(), out.end(), [](const AudioDeviceSummary &a, const AudioDeviceSummary &b) {
+        return a.name_ < b.name_;
+    });
+    return out;
+}
+
 void Audio::logDeviceInfoAll() {
     for (auto &[id, info] : m_deviceInfo) {
         IRE_LOG_INFO("Device: {}", info.name);

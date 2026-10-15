@@ -89,6 +89,11 @@
 // direction would leave the arrow's pixels; and drags the Z arrow of a radial
 // copy turned about Z, where one applied in the part's own frame would.
 //
+// `part_ring_turn` proves each ring of a selected part's rotate gizmo turns the
+// part about that ring's own axis. It drags the X, Y and Z rings in turn, each
+// on a fresh Ctrl+P part, and asserts the part's rotation is a turn about that
+// axis alone; the three turns are asserted again together at the end.
+//
 // `parts_scroll` proves the PARTS list reaches every part once an array makes
 // more parts than the list has rows: the array's selection is scrolled into
 // view, the wheel walks the list to either end, and a row click there selects
@@ -149,6 +154,7 @@ enum class Id {
     TEXT_INPUT_COMMAND_CAPTURE,
     PART_SIZES,
     PART_GIZMO_REACH,
+    PART_RING_TURN,
     PARTS_SCROLL,
     PART_MODE_CYCLE,
     CORNER_PART_REVOX_REFUSED,
@@ -204,6 +210,8 @@ inline Id idFromName(const std::string &name) {
         return Id::PART_SIZES;
     if (name == "part_gizmo_reach")
         return Id::PART_GIZMO_REACH;
+    if (name == "part_ring_turn")
+        return Id::PART_RING_TURN;
     if (name == "parts_scroll")
         return Id::PARTS_SCROLL;
     if (name == "part_mode_cycle")
@@ -240,16 +248,14 @@ struct ModuleSessionSpec {
         std::string name_;
         std::string label_;
     };
-    struct ParamDrag {
-        int index_ = 0;
-        float min_ = 0.0f;
-        float max_ = 1.0f;
+    struct ParamValue {
+        std::string name_;
         float value_ = 0.0f;
     };
     std::vector<Component> components_;
     std::vector<Panel> panels_;
-    int recipeRow_ = -1;
-    std::vector<ParamDrag> params_;
+    std::string recipe_;
+    std::vector<ParamValue> values_;
     // The recipe's cells at the session's values.
     std::vector<IRMath::ivec3> appliedCells_;
     // Cells the recipe writes at its default values but not at the session's:
@@ -266,11 +272,6 @@ struct ComponentAttachSpec {
     std::string session_;
     std::string component_;
     std::string field_;
-    // COMPONENTS list row of the component, then the field's page of the
-    // field area and its row on that page.
-    int listRow_ = -1;
-    int fieldPage_ = 0;
-    int fieldRow_ = -1;
     // What the session types, the value it must read back, and the value the
     // field holds right after ATTACH (which the read-back must not be).
     std::string typedText_;
@@ -295,8 +296,6 @@ constexpr const char *kCompositeProofSpinLiteral = "{ axis = { 0, 0, 1 }, radian
 struct CompositeProofSpec {
     ModuleSessionSpec stem_;
     ModuleSessionSpec frame_;
-    // COMPONENTS list row of kCompositeProofSpinComponent.
-    int spinListRow_ = -1;
     std::vector<std::string> errors_;
 };
 
@@ -308,6 +307,12 @@ namespace detail {
 // same cells. In cells relative to (size / 2), the blob's front face is at
 // z = -2 and a paint cell one further forward, at z = -3, is empty.
 constexpr float kFirstWriteBlobRadius = 1.9f;
+
+// The zoom a part session paints its baked blob at. A selected part's gizmo
+// holds its pixel size and is drawn in front of the part, so at kSessionZoom
+// its handles own the pixels of the blob's front faces; one zoom step in, the
+// blob is drawn twice as large and those faces lie outside the gizmo.
+constexpr float kPartPaintZoom = 8.0f;
 
 // Translation of a Ctrl+P voxel part of the scene's size: the middle of its
 // box, (size - 1) / 2 cells in from the scene origin. Spelled from the scene
@@ -330,13 +335,53 @@ constexpr IRMath::vec3 kGizmoDragPartDelta{8.0f / 3.0f, 0.0f, 0.0f};
 constexpr IRMath::vec3 kGizmoDragFarGrabOffset{1.625f, 0.0f, 0.0f};
 
 // The gesture on the Z arrow, which a part turned about Z keeps, at
-// kGizmoDragZoomZ. The arrow is a few trixels across and the rings' near arc
-// covers it from one unit up, so the grab sits below the arc and in the
-// middle of the columns the arrow is drawn in, a quarter trixel off its axis.
+// kGizmoDragZoomZ. The arrow is one trixel column across there and a ring
+// owns the columns beside it, so the grab is on the arrow's axis, in the
+// middle of the stretch of shaft the rings leave clear.
 constexpr float kGizmoDragZoomZ = 2.0f;
-constexpr IRMath::vec3 kGizmoDragGrabOffsetZ{0.1875f, -0.1875f, 0.5f};
+constexpr IRMath::vec3 kGizmoDragGrabOffsetZ{0.0f, 0.0f, 1.25f};
 constexpr IRMath::vec3 kGizmoDragPullZ{0.0f, 0.0f, 4.0f};
 constexpr IRMath::vec3 kGizmoDragPartDeltaZ{0.0f, 0.0f, 8.0f / 3.0f};
+
+// One rotate-ring drag of `part_ring_turn`: press the ring about axis_ at
+// grab_ and release at release_, both offsets from the part's pivot on the
+// ring's circle at the session zoom, an eighth of a turn apart. Each grab is
+// the middle of the longest arc its ring owns on screen at yaw 0, clear of the
+// other two rings and the arrows. The arcs are read from a run, as
+// dragPartGizmo's grab points are.
+struct RingTurn {
+    const char *segment_;
+    const char *name_;
+    const char *held_;
+    IRMath::vec3 axis_;
+    IRMath::vec3 grab_;
+    IRMath::vec3 release_;
+};
+// A ring's radius in world units at kSessionZoom: 9 reference units, which a
+// gizmo's constant pixel size divides by the zoom.
+constexpr float kRingTurnRadius = 9.0f / kSessionZoom;
+constexpr float kRingTurnDiagonal = kRingTurnRadius * 0.70710678f;
+constexpr float kRingTurnMinDegrees = 10.0f;
+constexpr RingTurn kRingTurns[] = {
+    {"turn_x",
+     "x_ring_turns_about_x",
+     "x_turn_held",
+     IRMath::vec3(1.0f, 0.0f, 0.0f),
+     IRMath::vec3(0.0f, -kRingTurnDiagonal, -kRingTurnDiagonal),
+     IRMath::vec3(0.0f, 0.0f, -kRingTurnRadius)},
+    {"turn_y",
+     "y_ring_turns_about_y",
+     "y_turn_held",
+     IRMath::vec3(0.0f, 1.0f, 0.0f),
+     IRMath::vec3(-kRingTurnRadius, 0.0f, 0.0f),
+     IRMath::vec3(-kRingTurnDiagonal, 0.0f, -kRingTurnDiagonal)},
+    {"turn_z",
+     "z_ring_turns_about_z",
+     "z_turn_held",
+     IRMath::vec3(0.0f, 0.0f, 1.0f),
+     IRMath::vec3(-kRingTurnDiagonal, -kRingTurnDiagonal, 0.0f),
+     IRMath::vec3(0.0f, -kRingTurnRadius, 0.0f)},
+};
 
 // The four gestures, on the seeded ground plane at the scene's centre — clear
 // of the left-column GUI panels in screen space and clear of the ground's edges
@@ -1564,26 +1609,20 @@ inline Recipe buildTree(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) {
     return builder.finish();
 }
 
-// Selects @p recipe in the RECIPES list, drags its params to the session's
-// values and clicks APPLY: a first write into the selected part that needs no
-// pick. The builder's occupancy model does not follow it.
 inline void applyModuleRecipe(Builder &builder, const ModuleSessionSpec &recipe) {
-    builder.clickGui(recipeListRowCenterGuiTrixel(recipe.recipeRow_));
-    for (const ModuleSessionSpec::ParamDrag &drag : recipe.params_) {
-        builder.dragGuiSlider(
-            recipeParamSliderGeometry(drag.index_),
-            drag.min_,
-            drag.max_,
-            drag.value_
-        );
-    }
-    builder.clickGui(recipeApplyCenterGuiTrixel());
+    std::vector<std::pair<std::string, float>> values;
+    for (const ModuleSessionSpec::ParamValue &value : recipe.values_)
+        values.emplace_back(value.name_, value.value_);
+    builder.applyRecipe(recipe.recipe_, values);
 }
 
 inline Recipe buildModuleLoaded(
-    IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin, const ModuleSessionSpec &spec
+    IRMath::ivec3 sceneSize,
+    IRMath::vec3 sceneOrigin,
+    const ModuleSessionSpec &spec,
+    const ModuleSessionView *moduleView
 ) {
-    Builder builder("module_loaded", sceneSize, sceneOrigin);
+    Builder builder("module_loaded", sceneSize, sceneOrigin, moduleView);
     for (const std::string &error : spec.errors_)
         builder.recordError(error);
     if (!spec.errors_.empty())
@@ -1624,9 +1663,12 @@ inline Recipe buildModuleLoaded(
 }
 
 inline Recipe buildComponentAttach(
-    IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin, const ComponentAttachSpec &spec
+    IRMath::ivec3 sceneSize,
+    IRMath::vec3 sceneOrigin,
+    const ComponentAttachSpec &spec,
+    const ModuleSessionView *moduleView
 ) {
-    Builder builder(spec.session_, sceneSize, sceneOrigin);
+    Builder builder(spec.session_, sceneSize, sceneOrigin, moduleView);
     for (const std::string &error : spec.errors_)
         builder.recordError(error);
     if (!spec.errors_.empty())
@@ -1644,8 +1686,7 @@ inline Recipe buildComponentAttach(
     );
 
     builder.segment("attach");
-    builder.clickGui(componentListRowCenterGuiTrixel(spec.listRow_));
-    builder.clickGui(componentButtonCenterGuiTrixel(kComponentAttachPos));
+    builder.attachComponent(spec.component_);
     builder.expectComponentValue(
         0,
         spec.component_,
@@ -1655,15 +1696,8 @@ inline Recipe buildComponentAttach(
         "component_default_after_attach"
     );
 
-    // A page turn rebuilds the field rows, so the typing gets its own segment.
-    if (spec.fieldPage_ > 0) {
-        builder.segment("turn_page");
-        for (int page = 0; page < spec.fieldPage_; ++page)
-            builder.clickGui(componentButtonCenterGuiTrixel(kComponentPageNextPos));
-    }
-
     builder.segment("set_field");
-    builder.typeText(componentFieldInputCenterGuiTrixel(spec.fieldRow_), spec.typedText_);
+    builder.setComponentField(spec.component_, spec.field_, spec.typedText_);
     builder.expectComponentValue(
         0,
         spec.component_,
@@ -1734,10 +1768,13 @@ inline Recipe buildComponentAttach(
 }
 
 inline Recipe buildCompositeProof(
-    IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin, const CompositeProofSpec &spec
+    IRMath::ivec3 sceneSize,
+    IRMath::vec3 sceneOrigin,
+    const CompositeProofSpec &spec,
+    const ModuleSessionView *moduleView
 ) {
     constexpr IRMath::ivec3 kSize = kCompositeProofPartSize;
-    Builder builder("composite_proof", sceneSize, sceneOrigin);
+    Builder builder("composite_proof", sceneSize, sceneOrigin, moduleView);
     for (const std::string &error : spec.errors_)
         builder.recordError(error);
     if (!spec.errors_.empty())
@@ -1835,12 +1872,11 @@ inline Recipe buildCompositeProof(
     builder.expectPartGated(kFrame, false, kFollowsZoom, "frame_drawn_at_zoom_tier");
 
     builder.segment("frame_spin_attach");
-    builder.clickGui(componentListRowCenterGuiTrixel(spec.spinListRow_));
-    builder.clickGui(componentButtonCenterGuiTrixel(kComponentAttachPos));
+    builder.attachComponent(kCompositeProofSpinComponent);
     builder.expectPartSpinRate(kFrame, 0.0f, true, "attach_gives_the_default_spin");
 
     builder.segment("frame_spin_rate");
-    builder.typeText(componentOverridesInputCenterGuiTrixel(), kCompositeProofSpinLiteral);
+    builder.setComponentOverrides(kCompositeProofSpinComponent, kCompositeProofSpinLiteral);
     builder.expectPartSpinRate(kFrame, kCompositeProofSpinRate, true, "frame_spin_rate_typed");
     builder.expectPartCount(kFrame + 1, "typing_adds_no_part");
 
@@ -1944,7 +1980,8 @@ inline Recipe build(
     IRMath::vec3 sceneOrigin,
     const ModuleSessionSpec &moduleSpec,
     const ComponentAttachSpec &componentSpec,
-    const CompositeProofSpec &proofSpec
+    const CompositeProofSpec &proofSpec,
+    const ModuleSessionView *moduleView
 ) {
     switch (id) {
     case Id::MODULE:
@@ -2002,7 +2039,7 @@ inline Recipe build(
         builder.expectPartOccupancy(1, blobFront, true, "second_part_blob_baked");
         builder.expectPartOccupancy(1, first, false, "second_part_paint_cell_empty");
 
-        builder.segment("paint_second");
+        builder.segment("paint_second", detail::kPartPaintZoom);
         builder.click(second);
         builder.expectPartOccupancy(1, second, true, "second_part_cell_painted");
 
@@ -2011,7 +2048,7 @@ inline Recipe build(
         builder.bakeSphere(detail::kFirstWriteBlobRadius);
         builder.expectPartOccupancy(0, blobFront, true, "first_part_blob_baked");
 
-        builder.segment("paint_first");
+        builder.segment("paint_first", detail::kPartPaintZoom);
         builder.click(first);
         builder.expectPartOccupancy(0, first, true, "first_part_cell_painted");
 
@@ -2036,7 +2073,7 @@ inline Recipe build(
         return builder.finish();
     }
     case Id::REMOVE_PART: {
-        Builder builder("remove_part", sceneSize, sceneOrigin);
+        Builder builder("remove_part", sceneSize, sceneOrigin, moduleView);
         for (const std::string &error : componentSpec.errors_)
             builder.recordError(error);
         if (!componentSpec.errors_.empty())
@@ -2053,7 +2090,7 @@ inline Recipe build(
         builder.addVoxelPart();
         builder.bakeSphere(detail::kFirstWriteBlobRadius);
 
-        builder.segment("cold_undo_paint");
+        builder.segment("cold_undo_paint", detail::kPartPaintZoom);
         builder.click(edited);
         builder.expectPartOccupancy(0, edited, true, "edit_exists_before_frame_switch");
 
@@ -2088,14 +2125,10 @@ inline Recipe build(
         builder.bakeSphere(detail::kFirstWriteBlobRadius);
 
         builder.segment("attach_source_component");
-        builder.clickGui(componentListRowCenterGuiTrixel(componentSpec.listRow_));
-        builder.clickGui(componentButtonCenterGuiTrixel(kComponentAttachPos));
-        if (componentSpec.fieldPage_ > 0) {
-            for (int page = 0; page < componentSpec.fieldPage_; ++page)
-                builder.clickGui(componentButtonCenterGuiTrixel(kComponentPageNextPos));
-        }
-        builder.typeText(
-            componentFieldInputCenterGuiTrixel(componentSpec.fieldRow_),
+        builder.attachComponent(componentSpec.component_);
+        builder.setComponentField(
+            componentSpec.component_,
+            componentSpec.field_,
             componentSpec.typedText_
         );
         builder.expectComponentValue(
@@ -2107,7 +2140,7 @@ inline Recipe build(
             "source_component_has_distinct_value"
         );
 
-        builder.segment("array_and_edit_source");
+        builder.segment("array_and_edit_source", detail::kPartPaintZoom);
         builder.applyRadialArray(3);
         builder.nextPart();
         builder.nextPart();
@@ -2182,7 +2215,7 @@ inline Recipe build(
         builder.expectPartCount(4, "rotation_group_shrinks_by_one");
         builder.expectSelectedPartVisible(3, "short_group_selects_surviving_neighbor");
 
-        builder.segment("short_group_edit");
+        builder.segment("short_group_edit", detail::kPartPaintZoom);
         builder.click(groupEdit);
         builder.expectPartOccupancy(3, groupEdit, true, "short_group_edits_selected_survivor");
         builder.expectPartOccupancy(2, groupPartA, false, "short_group_does_not_fan_out");
@@ -2196,7 +2229,7 @@ inline Recipe build(
         builder.expectPartCount(5, "rotation_group_member_restored");
         builder.expectSelectedPartVisible(4, "restored_group_member_reselected");
 
-        builder.segment("restored_group_edit");
+        builder.segment("restored_group_edit", detail::kPartPaintZoom);
         builder.click(groupEdit);
         builder
             .expectPartOccupancy(2, groupPartA, true, "restored_group_first_member_receives_edit");
@@ -2384,7 +2417,7 @@ inline Recipe build(
         builder.expectPartOccupancy(2, onPart2, false, "second_sibling_empty_before_stroke");
         builder.expectPartOccupancy(3, source, false, "source_empty_before_stroke");
 
-        builder.segment("paint");
+        builder.segment("paint", detail::kPartPaintZoom);
         builder.click(source);
         builder.expectPartOccupancy(1, onPart1, true, "first_sibling_receives_stroke");
         builder.expectPartOccupancy(2, onPart2, true, "second_sibling_receives_stroke");
@@ -2675,6 +2708,30 @@ inline Recipe build(
         );
         return builder.finish();
     }
+    case Id::PART_RING_TURN: {
+        Builder builder("part_ring_turn", sceneSize, sceneOrigin);
+        const IRMath::vec3 pivot = detail::partPivot(sceneSize, sceneOrigin);
+        // A ring drag composes onto the press-time rotation, so each ring is
+        // dragged on a part of its own, unturned at the press. Every part is
+        // seated on the one pivot and only the selected one carries a gizmo.
+        int part = 0;
+        for (const detail::RingTurn &turn : detail::kRingTurns) {
+            builder.segment(turn.segment_);
+            builder.addVoxelPart();
+            builder.dragWorld(pivot + turn.grab_, pivot + turn.release_);
+            builder.expectPartTurnAxis(part, turn.axis_, detail::kRingTurnMinDegrees, turn.name_);
+            ++part;
+        }
+
+        builder.segment("all_turned");
+        builder.expectPartCount(part, "one_part_per_ring");
+        part = 0;
+        for (const detail::RingTurn &turn : detail::kRingTurns) {
+            builder.expectPartTurnAxis(part, turn.axis_, detail::kRingTurnMinDegrees, turn.held_);
+            ++part;
+        }
+        return builder.finish();
+    }
     case Id::PARTS_SCROLL: {
         Builder builder("parts_scroll", sceneSize, sceneOrigin);
         constexpr int kCopies = 6;
@@ -2841,13 +2898,13 @@ inline Recipe build(
         return builder.finish();
     }
     case Id::MODULE_LOADED:
-        return detail::buildModuleLoaded(sceneSize, sceneOrigin, moduleSpec);
+        return detail::buildModuleLoaded(sceneSize, sceneOrigin, moduleSpec, moduleView);
     case Id::COMPONENT_ATTACH:
     case Id::COMPONENT_FIELD_PAGE:
     case Id::COMPONENT_FIELD_KEY:
-        return detail::buildComponentAttach(sceneSize, sceneOrigin, componentSpec);
+        return detail::buildComponentAttach(sceneSize, sceneOrigin, componentSpec, moduleView);
     case Id::COMPOSITE_PROOF:
-        return detail::buildCompositeProof(sceneSize, sceneOrigin, proofSpec);
+        return detail::buildCompositeProof(sceneSize, sceneOrigin, proofSpec, moduleView);
     case Id::NONE:
         break;
     }

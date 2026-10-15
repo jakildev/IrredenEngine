@@ -52,6 +52,7 @@ COMMENT_RETRY_SLEEP="${COMMENT_RETRY_SLEEP:-5}"
 BODY="${PERF_TMPDIR}/perf_comment_body.md"
 STDERR="${PERF_TMPDIR}/perf_gate_stderr.txt"
 COMMENT="${PERF_TMPDIR}/perf_comment.md"
+IMPROVED_CELLS="${PERF_TMPDIR}/perf_improved_cells.txt"
 
 if [[ ! -d "$HEAD_DIR" ]]; then
   echo "perf-gate: head run directory not found: '${HEAD_DIR}'" >&2
@@ -77,9 +78,11 @@ if [[ -n "$BASELINE_HISTORY" ]]; then
 fi
 
 STATUS=0
+rm -f "$IMPROVED_CELLS"
 # shellcheck disable=SC2086  # CHECK_REGRESSION is an intentionally split command
 $CHECK_REGRESSION "$BASELINE_ROOT" "$HEAD_DIR" ${HISTORY_ARGS[@]+"${HISTORY_ARGS[@]}"} \
   --regress-pct "$REGRESS_PCT" --improve-pct "$IMPROVE_PCT" \
+  --improved-cells-out "$IMPROVED_CELLS" \
   > "$BODY" 2> "$STDERR" || STATUS=$?
 
 if [[ $STATUS -ge 2 ]]; then
@@ -125,6 +128,11 @@ fi
 if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
   echo "status=$STATUS" >> "$GITHUB_OUTPUT"
   echo "head_slug=$HEAD_SLUG" >> "$GITHUB_OUTPUT"
+  if [[ -s "$IMPROVED_CELLS" ]]; then
+    echo "improved=true" >> "$GITHUB_OUTPUT"
+  else
+    echo "improved=false" >> "$GITHUB_OUTPUT"
+  fi
 fi
 
 exit 0

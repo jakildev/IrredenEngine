@@ -7,6 +7,7 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 #include "ir_shape_receiver.glsl"
 #include "ir_shape_sun_ray.glsl"
 #include "ir_sun_projection.glsl"
+layout(rg32ui, binding = 4) readonly uniform uimage2D fogShadowWindow;
 #include "ir_fog_shadow_caster.glsl"
 #include "ir_sun_face_query_layout.glsl"
 
@@ -125,7 +126,9 @@ void main() {
                 (box || sdfRayHit(shape.shapeType, shape.params, rayOrigin, direction, threshold, nearDepth, farDepth, casterDepth))) {
                 const vec3 worldSample = sunBasisU.xyz * uv.x + sunBasisV.xyz * uv.y -
                     sunDirection.xyz * casterDepth;
-                if (!fogFieldCastsSunShadow(worldSample, fogBody, fogCeilingEnabled.x)) continue;
+                if (!(fogBody) && fogCeilingEnabled.x != 0 && fogShadowVisionCircleCount > 0 &&
+        !fogFieldCastsSunShadow(worldSample, false, fogCeilingEnabled.x,
+            fogShadowCell(worldSample))) continue;
                 atomicMin(sunDepthBuf[depthLayerOffset + cascade * kCascadeTexelCount + pixel.y * kSunShadowMapDim + pixel.x], packSunSurfaceDepth(casterDepth));
             }
         }

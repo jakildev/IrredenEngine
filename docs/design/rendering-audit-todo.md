@@ -841,10 +841,13 @@ ray intersection is not a projected quad and retains its separate implementation
 
 [Deterministic SDF winner publication](../pr-screenshots/codex/sdf-winner-ownership/README.md)
 selects one submitted sample at the winning depth before color/identity writes.
-This closes the opaque tie race prerequisite. Surface position/normal storage,
-fragment receiver recovery, X-ray overlay ordering, and bounded shared geometric
-caster queries remain pending. Measure and reduce the extra SDF election cost
-without returning to independently raced surface fields.
+This closes the opaque tie race prerequisite. The same election orders the
+X-ray overlay: an occluded flagged sample contends under its owner key with bit
+31 set, so one sample blends per pixel and only where no sample owns it
+([contract](prefab-render-surface.md#gizmo-interaction)). Surface position/normal
+storage, fragment receiver recovery, and bounded shared geometric caster queries
+remain pending. Measure and reduce the extra SDF election cost without returning
+to independently raced surface fields.
 
 ### Sharp-shadow acceptance and optional softness
 

@@ -24,6 +24,7 @@ kernel void c_resolve_world_placed_depth(
     texture2d<int, access::read> detachedDistances [[texture(0)]],
     device atomic_int* resolveScratch [[buffer(28)]],
     constant FogShadowObserverData& fogObservers [[buffer(27)]],
+    texture2d<uint, access::read> fogShadowWindow [[texture(4)]],
     uint3 globalId [[thread_position_in_grid]]
 ) {
     const int2 cell = int2(globalId.xy);
@@ -50,11 +51,9 @@ kernel void c_resolve_world_placed_depth(
     );
     const float3 worldPoint = rotateByQuat(viewLocalPos, casterFrame.viewToWorld)
                             + casterFrame.worldOriginAndDensity.xyz;
-    if (!fogFieldCastsSunShadow(
-            worldPoint,
-            casterFrame.fogPolicy.x != 0,
-            casterFrame.fogPolicy.y,
-            fogObservers)) return;
+    if (!(casterFrame.fogPolicy.x != 0) && casterFrame.fogPolicy.y != 0 && fogObservers.visionCircleCount > 0 &&
+        !fogFieldCastsSunShadow(worldPoint, false, casterFrame.fogPolicy.y,
+            fogShadowCell(worldPoint, fogObservers, fogShadowWindow), fogObservers)) return;
     const int scale = effectiveTrixelSubdivisionScale(frameData.voxelRenderOptions);
     const int3 worldPos = roundHalfUp(worldPoint * float(scale));
 

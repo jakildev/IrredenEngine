@@ -189,3 +189,18 @@ that found a new one; never add a pattern that was only suspected.
   fog cuts and saturation behavior, and measure the downstream consumers too.
   This candidate is deferred: a fresh integrated sweep changed a 12-pixel
   lighting seam. Resolve tied overflow ordering before applying it.
+
+### 16. Exemption checked after a negative source scan
+
+- **Pattern**: compute an enabled-source predicate before checking that the
+  subject is exempt from the effect.
+- **Where**: `selectVoxelFace` in `ir_voxel_face_select.glsl` and its Metal twin.
+- **Symptom**: BODY-heavy fog scenes with no ceiling scan all eight sources
+  for each face invocation; an enabled ceiling stops that scan earlier and
+  can misleadingly look cheaper. Five native Metal pairs measured stage 1
+  at 0.6806 ms versus 0.5452 ms on master with ceilings disabled.
+- **Fix**: put the existing BODY exemption first in the short-circuit
+  predicate. Five fresh interleaved pairs measured 0.5640 ms versus
+  master's 0.5476 ms (1.030×); both fog lanes passed their acceptance limits.
+  Raw reports: `docs/perf/fog-ceiling-retention/`. Also verify native image
+  identity after reordering a shader predicate.

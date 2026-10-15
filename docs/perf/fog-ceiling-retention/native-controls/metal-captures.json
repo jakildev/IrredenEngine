@@ -1,0 +1,203 @@
+[
+  {
+    "name": "ceiling",
+    "command": "fleet-run --build-dir /tmp/pool-1-4381/fog-fixed-build --timeout 60 IRFogDemo --ceiling-treatment --auto-screenshot 10",
+    "exit": 0,
+    "clean": true,
+    "probes": [
+      "ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /tmp/pool-1-4381/fog-fixed-build/creations/demos/fog_demo/IRFogDemo --ceiling-treatment --auto-screenshot 10 (timeout: 60s) (window mode: offscreen)",
+      "[2026-10-13 16:38:47.105] [ClientLog] [info] FOG-SURFACE-PROBE column=centre texels=160 top=8/8 aboveCut=0 capFaces=32 core=48 hollow=0",
+      "[2026-10-13 16:38:47.106] [ClientLog] [info] FOG-SURFACE-PROBE column=rim texels=160 top=8/8 aboveCut=0 capFaces=32 core=48 hollow=0",
+      "[2026-10-13 16:38:47.106] [ClientLog] [info] FOG-SURFACE-PROBE roi=band phase=0 changed=0 outsideBand=0",
+      "[2026-10-13 16:38:47.107] [ClientLog] [info] FOG-SURFACE-PROBE body=twin texels=272 aboveCeiling=192 painted=0 partial=0 ratioMin=1.000 ratioMax=1.000",
+      "[2026-10-13 16:38:47.530] [ClientLog] [info] FOG-SURFACE-PROBE route=per-axis column=centre capFaces=16 topCaps=16 core=24 hollow=0",
+      "[2026-10-13 16:38:47.535] [ClientLog] [info] FOG-SURFACE-PROBE route=per-axis column=rim capFaces=16 topCaps=16 core=24 hollow=0",
+      "ir-run: IRFogDemo exited cleanly after 9s",
+      "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0"
+    ]
+  },
+  {
+    "name": "column-top",
+    "command": "fleet-run --build-dir /tmp/pool-1-4381/fog-fixed-build --timeout 60 IRFogDemo --occlusion=column-top --fog-debug-color --auto-screenshot 10",
+    "exit": 0,
+    "clean": true,
+    "probes": [
+      "ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /tmp/pool-1-4381/fog-fixed-build/creations/demos/fog_demo/IRFogDemo --occlusion=column-top --fog-debug-color --auto-screenshot 10 (timeout: 60s) (window mode: offscreen)",
+      "[2026-10-13 16:39:57.446] [ClientLog] [info] FOG-SURFACE-PROBE scene=occlusion_column_top controlCap=72 controlCore=48 controlHollow=0",
+      "[2026-10-13 16:39:57.446] [ClientLog] [info] FOG-SURFACE-PROBE scene=occlusion_column_top canvas=642x722 bandTexels=108 bandOwnHidden=108 bandOracleHidden=0 bandPainted=0 bandLit=108 controlTexels=0 controlOracleHidden=0 controlPainted=0",
+      "[2026-10-13 16:39:57.447] [ClientLog] [info] FOG-LOS-PROBE near=1 far=0",
+      "ir-run: IRFogDemo exited cleanly after 2s",
+      "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0"
+    ]
+  },
+  {
+    "name": "grid-placeholder",
+    "command": "fleet-run --build-dir /tmp/pool-1-4381/fog-grid-placeholder-build --timeout 60 IRFogDemo --ceiling-shadow --ceiling-shadow-grid --auto-screenshot 10",
+    "exit": 1,
+    "clean": false,
+    "probes": [
+      "ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /tmp/pool-1-4381/fog-grid-placeholder-build/creations/demos/fog_demo/IRFogDemo --ceiling-shadow --ceiling-shadow-grid --auto-screenshot 10 (timeout: 60s) (window mode: offscreen)",
+      "[2026-10-13 16:42:40.856] [ClientLog] [info] FOG-SHADOW-PROBE cap witnesses centre=0/10 rim=0/8 control=0/8",
+      "[2026-10-13 16:42:40.856] [ClientLog] [info] FOG-SHADOW-PROBE casters=voxel centre=110:19.690 rim=110:19.690 control=108:19.690 body=twin 118:20.996 sunTexel=0.463",
+      "[2026-10-13 16:42:40.856] [ClientLog] [info] FOG-SHADOW-PROBE retained-oracle centre=19.690/31.765 rim=19.690/19.690",
+      "[2026-10-13 16:42:40.856] [ClientLog] [error] FOG-SHADOW-PROBE FAIL: treated shadow differs from the CPU-retained solid",
+      "ir-run: IRFogDemo crashed after 7s",
+      "ir-run: RESULT=CRASH exe=IRFogDemo exit=1 signal=none",
+      "ir-run: this run FAILED the clean-exit policy \u2014 outputs saved before the crash do not make it green. Fix the crash before shipping, whoever introduced it (docs/agents/FLEET.md \u00a7\"Clean-exit policy\")."
+    ]
+  },
+  {
+    "name": "hard",
+    "command": "fleet-run --build-dir /tmp/pool-1-4381/fog-fixed-build --timeout 60 IRFogDemo --ceiling-treatment --ceiling-hard --auto-screenshot 10",
+    "exit": 0,
+    "clean": true,
+    "probes": [
+      "ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /tmp/pool-1-4381/fog-fixed-build/creations/demos/fog_demo/IRFogDemo --ceiling-treatment --ceiling-hard --auto-screenshot 10 (timeout: 60s) (window mode: offscreen)",
+      "[2026-10-13 16:38:50.908] [ClientLog] [info] FOG-SURFACE-PROBE column=centre texels=112 top=5/5 aboveCut=0 capFaces=32 core=48 hollow=0",
+      "[2026-10-13 16:38:50.908] [ClientLog] [info] FOG-SURFACE-PROBE column=rim texels=112 top=5/5 aboveCut=0 capFaces=32 core=48 hollow=0",
+      "[2026-10-13 16:38:50.908] [ClientLog] [info] FOG-SURFACE-PROBE roi=band phase=0 changed=0 outsideBand=0",
+      "[2026-10-13 16:38:50.909] [ClientLog] [info] FOG-SURFACE-PROBE body=twin texels=272 aboveCeiling=192 painted=0 partial=0 ratioMin=1.000 ratioMax=1.000",
+      "[2026-10-13 16:38:51.257] [ClientLog] [info] FOG-SURFACE-PROBE route=per-axis column=centre capFaces=16 topCaps=16 core=24 hollow=0",
+      "[2026-10-13 16:38:51.261] [ClientLog] [info] FOG-SURFACE-PROBE route=per-axis column=rim capFaces=16 topCaps=16 core=24 hollow=0",
+      "ir-run: IRFogDemo exited cleanly after 1s",
+      "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0"
+    ]
+  },
+  {
+    "name": "lua",
+    "command": "fleet-run --build-dir /tmp/pool-1-4381/fog-fixed-build --timeout 60 IRFogDemo --lua-fog-selftest --auto-screenshot 10",
+    "exit": 0,
+    "clean": true,
+    "probes": [
+      "ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /tmp/pool-1-4381/fog-fixed-build/creations/demos/fog_demo/IRFogDemo --lua-fog-selftest --auto-screenshot 10 (timeout: 60s) (window mode: offscreen)",
+      "[2026-10-13 16:41:13.681] [ScriptLog] [info] LUA-FOG-CAP requested=9 fieldTier=1 PASS",
+      "[2026-10-13 16:41:13.699] [ScriptLog] [info] LUA-FOG-SETUP sources=2 centers=-10,0;10,0 ceiling=2.5,1.5 treatment=0.25 PASS",
+      "[2026-10-13 16:41:13.824] [ClientLog] [info] LUA-FOG-PROBE sources=2 centers=-10,0;10,0 observerZ=3 zCostUp=0.5 zCostDown=0.5 freeBand=1 ceiling=2.5,1.5 treatment=true,0.25,0.85 PASS",
+      "ir-run: IRFogDemo exited cleanly after 2s",
+      "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0"
+    ]
+  },
+  {
+    "name": "phase-less",
+    "command": "fleet-run --build-dir /tmp/pool-1-4381/fog-phase-less-build --timeout 60 IRFogDemo --ceiling-treatment --reveal-treatment --ceiling-phase=0 --auto-screenshot 10",
+    "exit": 0,
+    "clean": true,
+    "probes": [
+      "ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /tmp/pool-1-4381/fog-phase-less-build/creations/demos/fog_demo/IRFogDemo --ceiling-treatment --reveal-treatment --ceiling-phase=0 --auto-screenshot 10 (timeout: 60s) (window mode: offscreen)",
+      "[2026-10-13 16:42:31.579] [ClientLog] [info] FOG-SURFACE-PROBE column=centre texels=157 top=8/8 aboveCut=0 capFaces=37 core=16 hollow=0",
+      "[2026-10-13 16:42:31.579] [ClientLog] [info] FOG-SURFACE-PROBE column=rim texels=150 top=8/8 aboveCut=0 capFaces=50 core=16 hollow=0",
+      "[2026-10-13 16:42:31.580] [ClientLog] [info] FOG-SURFACE-PROBE roi=band phase=0 changed=0 outsideBand=0",
+      "[2026-10-13 16:42:31.580] [ClientLog] [info] FOG-SURFACE-PROBE body=twin texels=272 aboveCeiling=192 painted=0 partial=0 ratioMin=1.000 ratioMax=1.000",
+      "[2026-10-13 16:42:32.067] [ClientLog] [info] FOG-SURFACE-PROBE route=per-axis column=centre capFaces=26 topCaps=17 core=24 hollow=0",
+      "[2026-10-13 16:42:32.072] [ClientLog] [info] FOG-SURFACE-PROBE route=per-axis column=rim capFaces=35 topCaps=18 core=24 hollow=0",
+      "ir-run: IRFogDemo exited cleanly after 9s",
+      "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0"
+    ]
+  },
+  {
+    "name": "phase-moving",
+    "command": "fleet-run --build-dir /tmp/pool-1-4381/fog-fixed-build --timeout 60 IRFogDemo --ceiling-treatment --reveal-treatment --ceiling-phase=0.37 --auto-screenshot 10",
+    "exit": 0,
+    "clean": true,
+    "probes": [
+      "ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /tmp/pool-1-4381/fog-fixed-build/creations/demos/fog_demo/IRFogDemo --ceiling-treatment --reveal-treatment --ceiling-phase=0.37 --auto-screenshot 10 (timeout: 60s) (window mode: offscreen)",
+      "[2026-10-13 16:38:55.040] [ClientLog] [info] FOG-SURFACE-PROBE column=centre texels=142 top=8/8 aboveCut=0 capFaces=36 core=16 hollow=0",
+      "[2026-10-13 16:38:55.041] [ClientLog] [info] FOG-SURFACE-PROBE column=rim texels=136 top=8/8 aboveCut=0 capFaces=42 core=16 hollow=0",
+      "[2026-10-13 16:38:55.041] [ClientLog] [info] FOG-SURFACE-PROBE roi=band phase=0.37 changed=76 outsideBand=0",
+      "[2026-10-13 16:38:55.041] [ClientLog] [info] FOG-SURFACE-PROBE body=twin texels=272 aboveCeiling=192 painted=0 partial=0 ratioMin=1.000 ratioMax=1.000",
+      "[2026-10-13 16:38:55.371] [ClientLog] [info] FOG-SURFACE-PROBE route=per-axis column=centre capFaces=26 topCaps=16 core=24 hollow=0",
+      "[2026-10-13 16:38:55.376] [ClientLog] [info] FOG-SURFACE-PROBE route=per-axis column=rim capFaces=29 topCaps=17 core=24 hollow=0",
+      "ir-run: IRFogDemo exited cleanly after 2s",
+      "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0"
+    ]
+  },
+  {
+    "name": "phase-zero",
+    "command": "fleet-run --build-dir /tmp/pool-1-4381/fog-fixed-build --timeout 60 IRFogDemo --ceiling-treatment --reveal-treatment --ceiling-phase=0 --auto-screenshot 10",
+    "exit": 0,
+    "clean": true,
+    "probes": [
+      "ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /tmp/pool-1-4381/fog-fixed-build/creations/demos/fog_demo/IRFogDemo --ceiling-treatment --reveal-treatment --ceiling-phase=0 --auto-screenshot 10 (timeout: 60s) (window mode: offscreen)",
+      "[2026-10-13 16:38:52.689] [ClientLog] [info] FOG-SURFACE-PROBE column=centre texels=157 top=8/8 aboveCut=0 capFaces=37 core=16 hollow=0",
+      "[2026-10-13 16:38:52.689] [ClientLog] [info] FOG-SURFACE-PROBE column=rim texels=150 top=8/8 aboveCut=0 capFaces=50 core=16 hollow=0",
+      "[2026-10-13 16:38:52.690] [ClientLog] [info] FOG-SURFACE-PROBE roi=band phase=0 changed=0 outsideBand=0",
+      "[2026-10-13 16:38:52.690] [ClientLog] [info] FOG-SURFACE-PROBE body=twin texels=272 aboveCeiling=192 painted=0 partial=0 ratioMin=1.000 ratioMax=1.000",
+      "[2026-10-13 16:38:53.038] [ClientLog] [info] FOG-SURFACE-PROBE route=per-axis column=centre capFaces=26 topCaps=17 core=24 hollow=0",
+      "[2026-10-13 16:38:53.043] [ClientLog] [info] FOG-SURFACE-PROBE route=per-axis column=rim capFaces=35 topCaps=18 core=24 hollow=0",
+      "ir-run: IRFogDemo exited cleanly after 1s",
+      "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0"
+    ]
+  },
+  {
+    "name": "shadow",
+    "command": "fleet-run --build-dir /tmp/pool-1-4381/fog-fixed-build --timeout 60 IRFogDemo --ceiling-shadow --auto-screenshot 10",
+    "exit": 0,
+    "clean": true,
+    "probes": [
+      "ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /tmp/pool-1-4381/fog-fixed-build/creations/demos/fog_demo/IRFogDemo --ceiling-shadow --auto-screenshot 10 (timeout: 60s) (window mode: offscreen)",
+      "[2026-10-13 16:39:59.707] [ClientLog] [info] FOG-SHADOW-PROBE cap witnesses centre=0/10 rim=0/8 control=0/8",
+      "[2026-10-13 16:39:59.707] [ClientLog] [info] FOG-SHADOW-PROBE casters=voxel centre=110:19.690 rim=110:19.690 control=108:19.690 body=twin 118:20.996 sunTexel=0.463",
+      "ir-run: IRFogDemo exited cleanly after 1s",
+      "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0"
+    ]
+  },
+  {
+    "name": "shadow-curved",
+    "command": "fleet-run --build-dir /tmp/pool-1-4381/fog-fixed-build --timeout 60 IRFogDemo --ceiling-shadow-curved --auto-screenshot 10",
+    "exit": 0,
+    "clean": true,
+    "probes": [
+      "ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /tmp/pool-1-4381/fog-fixed-build/creations/demos/fog_demo/IRFogDemo --ceiling-shadow-curved --auto-screenshot 10 (timeout: 60s) (window mode: offscreen)",
+      "[2026-10-13 16:40:07.728] [ClientLog] [info] FOG-SHADOW-PROBE cap witnesses centre=0/10 rim=0/8 control=0/8",
+      "[2026-10-13 16:40:07.729] [ClientLog] [info] FOG-SHADOW-PROBE casters=cylinder centre=100:20.996 rim=110:19.690 control=108:19.690 body=twin 108:22.845 sunTexel=0.463",
+      "[2026-10-13 16:40:07.729] [ClientLog] [info] FOG-SHADOW-PROBE curved gap=1.849 min=1.149 receiver=39.000/30.841",
+      "ir-run: IRFogDemo exited cleanly after 4s",
+      "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0"
+    ]
+  },
+  {
+    "name": "shadow-grid",
+    "command": "fleet-run --build-dir /tmp/pool-1-4381/fog-fixed-build --timeout 60 IRFogDemo --ceiling-shadow --ceiling-shadow-grid --auto-screenshot 10",
+    "exit": 0,
+    "clean": true,
+    "probes": [
+      "ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /tmp/pool-1-4381/fog-fixed-build/creations/demos/fog_demo/IRFogDemo --ceiling-shadow --ceiling-shadow-grid --auto-screenshot 10 (timeout: 60s) (window mode: offscreen)",
+      "[2026-10-13 16:40:03.311] [ClientLog] [info] FOG-SHADOW-PROBE cap witnesses centre=0/10 rim=0/8 control=0/8",
+      "[2026-10-13 16:40:03.311] [ClientLog] [info] FOG-SHADOW-PROBE casters=voxel centre=182:31.765 rim=110:19.690 control=108:19.690 body=twin 118:20.996 sunTexel=0.463",
+      "[2026-10-13 16:40:03.311] [ClientLog] [info] FOG-SHADOW-PROBE retained-oracle centre=31.765/31.765 rim=19.690/19.690",
+      "ir-run: IRFogDemo exited cleanly after 1s",
+      "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0"
+    ]
+  },
+  {
+    "name": "shadow-treated",
+    "command": "fleet-run --build-dir /tmp/pool-1-4381/fog-fixed-build --timeout 60 IRFogDemo --ceiling-shadow --reveal-treatment --auto-screenshot 10",
+    "exit": 0,
+    "clean": true,
+    "probes": [
+      "ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /tmp/pool-1-4381/fog-fixed-build/creations/demos/fog_demo/IRFogDemo --ceiling-shadow --reveal-treatment --auto-screenshot 10 (timeout: 60s) (window mode: offscreen)",
+      "[2026-10-13 16:40:01.461] [ClientLog] [info] FOG-SHADOW-PROBE cap witnesses centre=0/10 rim=0/8 control=0/8",
+      "[2026-10-13 16:40:01.461] [ClientLog] [info] FOG-SHADOW-PROBE casters=voxel centre=110:19.690 rim=106:19.690 control=106:19.690 body=twin 118:20.996 sunTexel=0.463",
+      "[2026-10-13 16:40:01.461] [ClientLog] [info] FOG-SHADOW-PROBE retained-oracle centre=19.690/19.690 rim=19.690/19.309",
+      "ir-run: IRFogDemo exited cleanly after 1s",
+      "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0"
+    ]
+  },
+  {
+    "name": "treated",
+    "command": "fleet-run --build-dir /tmp/pool-1-4381/fog-fixed-build --timeout 60 IRFogDemo --ceiling-treatment --reveal-treatment --auto-screenshot 10",
+    "exit": 0,
+    "clean": true,
+    "probes": [
+      "ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /tmp/pool-1-4381/fog-fixed-build/creations/demos/fog_demo/IRFogDemo --ceiling-treatment --reveal-treatment --auto-screenshot 10 (timeout: 60s) (window mode: offscreen)",
+      "[2026-10-13 16:38:49.013] [ClientLog] [info] FOG-SURFACE-PROBE column=centre texels=157 top=8/8 aboveCut=0 capFaces=37 core=16 hollow=0",
+      "[2026-10-13 16:38:49.014] [ClientLog] [info] FOG-SURFACE-PROBE column=rim texels=150 top=8/8 aboveCut=0 capFaces=50 core=16 hollow=0",
+      "[2026-10-13 16:38:49.014] [ClientLog] [info] FOG-SURFACE-PROBE roi=band phase=0 changed=0 outsideBand=0",
+      "[2026-10-13 16:38:49.014] [ClientLog] [info] FOG-SURFACE-PROBE body=twin texels=272 aboveCeiling=192 painted=0 partial=0 ratioMin=1.000 ratioMax=1.000",
+      "[2026-10-13 16:38:49.354] [ClientLog] [info] FOG-SURFACE-PROBE route=per-axis column=centre capFaces=26 topCaps=17 core=24 hollow=0",
+      "[2026-10-13 16:38:49.359] [ClientLog] [info] FOG-SURFACE-PROBE route=per-axis column=rim capFaces=35 topCaps=18 core=24 hollow=0",
+      "ir-run: IRFogDemo exited cleanly after 1s",
+      "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0"
+    ]
+  }
+]

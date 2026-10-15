@@ -1,7 +1,7 @@
 // Metal twin of c_per_axis_overflow_sort.glsl; keep the two in lockstep.
 // Shared contract:
 // pass modes (0 fill / 1 local sort / 2 strided slab / 3 indirect grids),
-// the (cell, distance, color) = words (0, 2, 1) key, the mandatory
+// the (masked cell, distance, color, cut flag) key, the mandatory
 // pre-network fill (the region above the live range holds stale prior-frame
 // entries), sentinel substitution (never thread-skip one side of a
 // compare-exchange), the strict compare-exchange, and the strided-slab
@@ -27,13 +27,16 @@ constant uint kSortThreads = 256u;
 constant uint kSortBlockBits = 11u;
 constant uint kSortBlock = 1u << kSortBlockBits;
 
-// Lexicographic (cell, distance, color) — words (0, 2, 1).
+// Lexicographic (cell, distance, color, cut flag), covering the full record.
 inline bool overflowRecordLess(
     uint a0, uint a1, uint a2, uint b0, uint b1, uint b2
 ) {
-    if (a0 != b0) return a0 < b0;
+    const uint aCell = overflowEntryCell(a0);
+    const uint bCell = overflowEntryCell(b0);
+    if (aCell != bCell) return aCell < bCell;
     if (a2 != b2) return a2 < b2;
-    return a1 < b1;
+    if (a1 != b1) return a1 < b1;
+    return !overflowEntryIsCutFace(a0) && overflowEntryIsCutFace(b0);
 }
 
 // Reinsert the active-bit window into a compressed slab index.

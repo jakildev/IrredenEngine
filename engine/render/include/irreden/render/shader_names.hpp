@@ -94,9 +94,12 @@ const char *const kFileCompLightOverflowFaces = "shaders/c_light_overflow_faces.
 const char *const kFileCompFogToTrixel = "shaders/c_fog_to_trixel.glsl";
 const char *const kFileCompFogOverflowFaces = "shaders/c_fog_overflow_faces.glsl";
 const char *const kFileCompComputeVoxelAO = "shaders/c_compute_voxel_ao.glsl";
+const char *const kFileCompComputeVoxelAOShapes = "shaders/c_compute_voxel_ao_shapes.glsl";
 // Same body with the smooth-yaw single-canvas inverse; dispatched while the
 // uploaded residualYaw is non-zero.
 const char *const kFileCompComputeVoxelAOSmoothYaw = "shaders/c_compute_voxel_ao_smooth_yaw.glsl";
+const char *const kFileCompComputeVoxelAOShapesSmoothYaw =
+    "shaders/c_compute_voxel_ao_shapes_smooth_yaw.glsl";
 // Hi-Z (max-depth) distance mip-chain build for voxel occlusion culling.
 const char *const kFileCompBuildDistanceHiZ = "shaders/c_build_distance_hiz.glsl";
 // Chunk-occlusion pre-pass: HZB-tests each pool-chunk's iso AABB against the
@@ -125,6 +128,8 @@ const char *const kFileCompBakeSunShadowMap = "shaders/c_bake_sun_shadow_map.gls
 const char *const kFileCompComputeSunShadow = "shaders/c_compute_sun_shadow.glsl";
 const char *const kFileCompComputeSunShadowShapes = "shaders/c_compute_sun_shadow_shapes.glsl";
 const char *const kFileCompVoxelVisibilityCompact = "shaders/c_voxel_visibility_compact.glsl";
+const char *const kFileCompVoxelVisibilityCompactCeiling =
+    "shaders/c_voxel_visibility_compact_ceiling.glsl";
 const char *const kFileCompClearLightVolume = "shaders/c_clear_light_volume.glsl";
 const char *const kFileCompSeedLightVolume = "shaders/c_seed_light_volume.glsl";
 const char *const kFileCompPropagateLightVolume = "shaders/c_propagate_light_volume.glsl";

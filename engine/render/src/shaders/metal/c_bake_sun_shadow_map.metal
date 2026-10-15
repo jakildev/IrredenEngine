@@ -85,6 +85,7 @@ kernel void c_bake_sun_shadow_map(
     texture2d<int, access::read> trixelDistances [[texture(0)]],
     texture2d<uint, access::read> trixelEntityIds [[texture(3)]],
     constant FogShadowObserverData& fogObservers [[buffer(27)]],
+    texture2d<uint, access::read> fogShadowWindow [[texture(4)]],
     uint3 globalId [[thread_position_in_grid]]
 ) {
     int2 pixel = int2(globalId.xy);
@@ -128,8 +129,9 @@ kernel void c_bake_sun_shadow_map(
 
     const bool fogBodyOrPrecut = sunFrameData.fogCeilingEnabled.y != 0 ||
         decodeFogBody(trixelEntityIds.read(uint2(pixel)).xy);
-    if (!fogFieldCastsSunShadow(
-            pos3D, fogBodyOrPrecut, sunFrameData.fogCeilingEnabled.x, fogObservers)) return;
+    if (!(fogBodyOrPrecut) && sunFrameData.fogCeilingEnabled.x != 0 && fogObservers.visionCircleCount > 0 &&
+        !fogFieldCastsSunShadow(pos3D, false, sunFrameData.fogCeilingEnabled.x,
+            fogShadowCell(pos3D, fogObservers, fogShadowWindow), fogObservers)) return;
 
     // Shared caster/receiver projection — the receiver lookup
     // (ir_sun_shadow_sample.metal worldSunShadowFactor) derives its sun UV +

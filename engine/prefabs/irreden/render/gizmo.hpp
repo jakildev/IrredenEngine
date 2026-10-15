@@ -44,7 +44,9 @@ constexpr float kArrowShaftLength = 6.0f;
 constexpr float kArrowHeadRadius = 1.0f;
 constexpr float kArrowHeadLength = 2.0f;
 
-constexpr float kRingMajorRadius = 5.0f;
+// The rings clear the arrows: the first whole radius outside an arrow's
+// reach from the anchor.
+constexpr float kRingMajorRadius = kArrowShaftLength + kArrowHeadLength + 1.0f;
 constexpr float kRingMinorRadius = 0.4f;
 
 constexpr float kScaleStickRadius = 0.35f;
@@ -101,6 +103,21 @@ inline vec3 axisOffset(GizmoAxis axis, float distance) {
     }
 }
 
+// Local rotation that turns a TORUS's axis of revolution, shape-local +Z,
+// onto `axis`: each ring lies in the plane its axis is normal to.
+inline vec4 ringRotation(GizmoAxis axis) {
+    switch (axis) {
+    case GizmoAxis::X:
+        return IRMath::quatAxisAngle(vec3(0.0f, 1.0f, 0.0f), IRMath::kHalfPi);
+    case GizmoAxis::Y:
+        return IRMath::quatAxisAngle(vec3(1.0f, 0.0f, 0.0f), -IRMath::kHalfPi);
+    case GizmoAxis::Z:
+    case GizmoAxis::NONE:
+    default:
+        return vec4(0.0f, 0.0f, 0.0f, 1.0f);
+    }
+}
+
 inline IREntity::EntityId spawnHandle(
     IREntity::EntityId parent,
     GizmoKind kind,
@@ -110,7 +127,8 @@ inline IREntity::EntityId spawnHandle(
     vec4 shapeParams,
     Color color,
     const char *name,
-    float viewClearance = 0.0f
+    float viewClearance = 0.0f,
+    vec4 localRotation = vec4(0.0f, 0.0f, 0.0f, 1.0f)
 ) {
     // Opt the handle's shape into the generic xray-occlusion shader path
     // so SHAPES_TO_TRIXEL emits the faint-silhouette alpha blend where
@@ -133,7 +151,7 @@ inline IREntity::EntityId spawnHandle(
     // no-op.
     const bool isAnchor = (parent == IREntity::kNullEntity);
     IREntity::EntityId handle = IREntity::createEntity(
-        C_LocalTransform{localPos},
+        C_LocalTransform{localPos, localRotation},
         shapeDesc,
         IRComponents::C_FogExempt{},
         C_GizmoHandle{kind, axis, shapeParams, localPos, isAnchor, color, parent, viewClearance},
@@ -159,7 +177,9 @@ inline IREntity::EntityId makeGroup(IREntity::EntityId parent, const char *name)
 }
 
 // Shared by createRotateGizmo / createRotateGizmoForAnchor: the three axis
-// rings (TORUS per axis), parented to — and anchored at — `parent`.
+// rings (a TORUS about each axis), parented to — and anchored at — `parent`.
+// A ring's orientation is its handle's local rotation, so it follows the
+// anchor through the parent chain and names the anchor's local axis.
 inline void
 spawnRotateRings(IREntity::EntityId parent, const char *ringName, float viewClearance = 0.0f) {
     for (GizmoAxis axis : {GizmoAxis::X, GizmoAxis::Y, GizmoAxis::Z}) {
@@ -172,7 +192,8 @@ spawnRotateRings(IREntity::EntityId parent, const char *ringName, float viewClea
             vec4(kRingMajorRadius, kRingMinorRadius, 0.0f, 0.0f),
             axisColor(axis),
             ringName,
-            viewClearance
+            viewClearance,
+            ringRotation(axis)
         );
     }
 }
@@ -275,7 +296,8 @@ createTranslateGizmoForAnchor(IREntity::EntityId anchor, float viewClearance = 0
     return anchor;
 }
 
-/// Rotate gizmo — three axis rings (TORUS per axis).
+/// Rotate gizmo — three axis rings, each a TORUS about its own axis. A drag
+/// that starts on a ring turns the anchor about that ring's axis.
 inline IREntity::EntityId createRotateGizmo(IREntity::EntityId parent = IREntity::kNullEntity) {
     using namespace detail;
     IREntity::EntityId group = makeGroup(parent, "GizmoRotate");

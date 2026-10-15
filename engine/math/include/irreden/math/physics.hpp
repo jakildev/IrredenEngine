@@ -3,6 +3,8 @@
 
 #include <cmath>
 
+#include <irreden/math/ir_math_types.hpp>
+
 namespace IRMath {
 
 /// Upward impulse speed (in units/s) required for a symmetric ballistic arc
@@ -43,6 +45,40 @@ constexpr bool isTunnelingSafe(
     float colliderThicknessB
 ) {
     return maxFrameDisplacement(maxVelocity, dt) < (colliderThicknessA + colliderThicknessB);
+}
+
+/// Whether box A, which ends a step at [@p minA, @p maxA] after moving by
+/// @p motion relative to box B, touched B at any moment of the step. Per axis,
+/// the slab entry/exit fractions of the step; the intervals of the three axes
+/// must share a moment in [0, 1]. Boundaries are inclusive, so a zero
+/// @p motion reduces to the static closed-interval overlap test.
+inline bool sweptAabbOverlap(vec3 minA, vec3 maxA, vec3 minB, vec3 maxB, vec3 motion) {
+    float enter = 0.0f;
+    float exit = 1.0f;
+    for (int axis = 0; axis < 3; ++axis) {
+        const float startMin = minA[axis] - motion[axis];
+        const float startMax = maxA[axis] - motion[axis];
+        const float step = motion[axis];
+        if (step == 0.0f) {
+            if (startMin > maxB[axis] || startMax < minB[axis]) {
+                return false;
+            }
+            continue;
+        }
+        float tFirst = (minB[axis] - startMax) / step;
+        float tLast = (maxB[axis] - startMin) / step;
+        if (tFirst > tLast) {
+            const float swap = tFirst;
+            tFirst = tLast;
+            tLast = swap;
+        }
+        enter = tFirst > enter ? tFirst : enter;
+        exit = tLast < exit ? tLast : exit;
+        if (enter > exit) {
+            return false;
+        }
+    }
+    return true;
 }
 
 } // namespace IRMath
