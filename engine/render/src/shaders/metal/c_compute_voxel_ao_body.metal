@@ -69,6 +69,8 @@ inline float3 singleCanvasPixelToWorld3D(
         receiverOwners,
         receiverTiles
     );
+    // AO reconstructs a world position, so it removes the lattice offset
+    // before either cardinal or smooth-yaw inverse maps the stored depth.
     rawDepth = cardinalShapeReceiverDepth(
         rawDepth,
         receiverFrame.voxelRenderOptions.y,

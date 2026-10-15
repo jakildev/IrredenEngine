@@ -207,6 +207,8 @@ template <> struct System<COMPUTE_VOXEL_AO> {
     void beginTick() {
         residentResidualYaw_ = IRPrefab::Camera::getResidualYaw();
         if (animationParamsBuf_ == nullptr && findSystem(SHAPES_TO_TRIXEL) != kNullSystemId) {
+            // Shape-receiver resources are created by COMPUTE_SUN_SHADOW;
+            // a shapes-plus-AO pipeline must register that system as well.
             animationParamsBuf_ = IRRender::getNamedResource<Buffer>("AnimationParamsBuffer");
             shapeProducerFrameBuf_ = IRRender::getNamedResource<Buffer>("ShapesFrameDataBuffer");
             shapeReceiverFrameBuf_ = IRRender::getNamedResource<Buffer>("ShapeReceiverFrameData");
