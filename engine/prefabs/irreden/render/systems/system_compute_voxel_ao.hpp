@@ -22,6 +22,7 @@
 #include <irreden/render/components/component_canvas_local_rotation.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
+#include <irreden/render/shape_receiver_bindings.hpp>
 #include <irreden/render/voxel_frame_data.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_substage_timing.hpp>
@@ -39,8 +40,10 @@ constexpr int kComputeVoxelAOGroupSize = 16;
 
 template <> struct System<COMPUTE_VOXEL_AO> {
     ShaderProgram *program_ = nullptr;
+    ShaderProgram *shapeProgram_ = nullptr;
     // Same kernel with the smooth-yaw single-canvas inverse compiled in.
     ShaderProgram *smoothYawProgram_ = nullptr;
+    ShaderProgram *shapeSmoothYawProgram_ = nullptr;
     Buffer *voxelFrameDataBuf_ = nullptr;
     // residualYaw of the voxel frame resident in the shared UBO, which picks
     // the program per canvas. Seeded with the world frame's split in beginTick
@@ -51,6 +54,10 @@ template <> struct System<COMPUTE_VOXEL_AO> {
     // Resolved lazily on the first beginTick (which fires before any
     // per-entity tick), so the per-entity tick can use it directly.
     Buffer *sunFrameDataBuf_ = nullptr;
+    Buffer *shapeReceiverFrameBuf_ = nullptr;
+    Buffer *shapeReceiverFallbackBuf_ = nullptr;
+    Buffer *animationParamsBuf_ = nullptr;
+    Buffer *shapeProducerFrameBuf_ = nullptr;
 
     // Smooth camera Z-yaw: the main canvas + its per-axis voxel
     // canvases, re-resolved every frame in beginTick (never held across frames,
@@ -109,9 +116,21 @@ template <> struct System<COMPUTE_VOXEL_AO> {
             )) {
             residentResidualYaw_ = scratchVoxelFrame_.residualYaw_;
         }
-        // The per-axis AO dispatch reads no single-canvas position, so it runs
-        // under whichever variant the main canvas selected.
-        (residentResidualYaw_ != 0.0f ? smoothYawProgram_ : program_)->use();
+        const auto &shapeGeometry = canvasTextures.shapeGeometry_;
+        const bool useShapeReceiver =
+            entity == perAxisCanvasEntity_ && shapeGeometry.samplesValid();
+        ShaderProgram *activeProgram =
+            residentResidualYaw_ != 0.0f
+                ? (useShapeReceiver ? shapeSmoothYawProgram_ : smoothYawProgram_)
+                : (useShapeReceiver ? shapeProgram_ : program_);
+        activeProgram->use();
+        if (useShapeReceiver) {
+            IRPrefab::detail::bindShapeReceiver(
+                shapeGeometry,
+                canvasTextures.size_,
+                *shapeReceiverFrameBuf_
+            );
+        }
 
         {
             // Sub-scope: the main-canvas AO dispatch only — the system
@@ -140,6 +159,13 @@ template <> struct System<COMPUTE_VOXEL_AO> {
             perAxisCanvases_->isAllocated()) {
             GpuSubStageScope perAxisScope("computeVoxelAoPerAxis");
             dispatchPerAxisAO(*perAxisCanvases_, canvasTextures, ao);
+        }
+        if (useShapeReceiver) {
+            IRPrefab::detail::restoreShapeReceiver(
+                *shapeReceiverFallbackBuf_,
+                shapeProducerFrameBuf_,
+                animationParamsBuf_
+            );
         }
     }
 
@@ -180,6 +206,14 @@ template <> struct System<COMPUTE_VOXEL_AO> {
 
     void beginTick() {
         residentResidualYaw_ = IRPrefab::Camera::getResidualYaw();
+        if (animationParamsBuf_ == nullptr && findSystem(SHAPES_TO_TRIXEL) != kNullSystemId) {
+            // Shape-receiver resources are created by COMPUTE_SUN_SHADOW;
+            // a shapes-plus-AO pipeline must register that system as well.
+            animationParamsBuf_ = IRRender::getNamedResource<Buffer>("AnimationParamsBuffer");
+            shapeProducerFrameBuf_ = IRRender::getNamedResource<Buffer>("ShapesFrameDataBuffer");
+            shapeReceiverFrameBuf_ = IRRender::getNamedResource<Buffer>("ShapeReceiverFrameData");
+            shapeReceiverFallbackBuf_ = IRRender::getNamedResource<Buffer>("ShapeReceiverFallback");
+        }
         // AO only writes `aoEnabled_` into the shared FrameDataSun
         // buffer. All other fields carry the previous frame's values
         // written by BAKE_SUN_SHADOW_MAP's tick — AO must not read
@@ -237,9 +271,19 @@ template <> struct System<COMPUTE_VOXEL_AO> {
             std::vector{ShaderStage{IRRender::kFileCompComputeVoxelAO, ShaderType::COMPUTE}}
         );
         IRRender::createNamedResource<ShaderProgram>(
+            "ComputeVoxelAOShapesProgram",
+            std::vector{ShaderStage{IRRender::kFileCompComputeVoxelAOShapes, ShaderType::COMPUTE}}
+        );
+        IRRender::createNamedResource<ShaderProgram>(
             "ComputeVoxelAOSmoothYawProgram",
             std::vector{
                 ShaderStage{IRRender::kFileCompComputeVoxelAOSmoothYaw, ShaderType::COMPUTE}
+            }
+        );
+        IRRender::createNamedResource<ShaderProgram>(
+            "ComputeVoxelAOShapesSmoothYawProgram",
+            std::vector{
+                ShaderStage{IRRender::kFileCompComputeVoxelAOShapesSmoothYaw, ShaderType::COMPUTE}
             }
         );
 
@@ -250,8 +294,11 @@ template <> struct System<COMPUTE_VOXEL_AO> {
             C_TrixelCanvasRenderBehavior>("ComputeVoxelAO");
         auto *p = getSystemParams<System<COMPUTE_VOXEL_AO>>(systemId);
         p->program_ = IRRender::getNamedResource<ShaderProgram>("ComputeVoxelAOProgram");
+        p->shapeProgram_ = IRRender::getNamedResource<ShaderProgram>("ComputeVoxelAOShapesProgram");
         p->smoothYawProgram_ =
             IRRender::getNamedResource<ShaderProgram>("ComputeVoxelAOSmoothYawProgram");
+        p->shapeSmoothYawProgram_ =
+            IRRender::getNamedResource<ShaderProgram>("ComputeVoxelAOShapesSmoothYawProgram");
         p->voxelFrameDataBuf_ = IRRender::getNamedResource<Buffer>("SingleVoxelFrameData");
         // NOT observer-tagged: the tick owns GpuSubStageScopes, which
         // reuse the observer's timestamp attachment slot.

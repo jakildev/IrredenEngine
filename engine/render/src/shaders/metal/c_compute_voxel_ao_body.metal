@@ -1,6 +1,9 @@
 #include "ir_iso_common.metal"
 #include "ir_per_axis_lighting.metal"
 #include "ir_per_axis_cell_dispatch.metal"
+#if IR_AO_SHAPE_RECEIVER
+#include "ir_shape_data.metal"
+#endif
 
 // Mirrors shaders/c_compute_voxel_ao_body.glsl.
 
@@ -49,7 +52,33 @@ inline float3 singleCanvasPixelToWorld3D(
     int2 pixel,
     int rawDepth,
     int cardinalIndex
+#if IR_AO_SHAPE_RECEIVER
+    , constant ShapeProjectionData &receiverFrame,
+    device const uint *receiverOwners,
+    device const ShapeTileDescriptor *receiverTiles
+#endif
 ) {
+#if IR_AO_SHAPE_RECEIVER
+    const bool smoothMode = receiverFrame.voxelRenderOptions.x != 0 &&
+                            receiverFrame.voxelRenderOptions.y > 1;
+    const bool finiteCoverage = receiverFrame.finiteCoverage != 0;
+    const bool shapeOwned = finiteCoverage && shapeSampleIsOwned(
+        pixel,
+        receiverFrame.canvasSize.x,
+        receiverFrame.shapeCount,
+        receiverOwners,
+        receiverTiles
+    );
+    // AO reconstructs a world position, so it removes the lattice offset
+    // before either cardinal or smooth-yaw inverse maps the stored depth.
+    rawDepth = cardinalShapeReceiverDepth(
+        rawDepth,
+        receiverFrame.voxelRenderOptions.y,
+        shapeOwned,
+        smoothMode && receiverFrame.smoothYawEnabled == 0,
+        finiteCoverage
+    );
+#endif
 #if IR_AO_SMOOTH_YAW
     return trixelCanvasPixelToWorld3DSmoothYaw(
         pixel,
@@ -72,6 +101,11 @@ inline float3 singleCanvasPixelToWorld3D(
 }
 
 kernel void IR_AO_KERNEL_NAME(
+#if IR_AO_SHAPE_RECEIVER
+    constant ShapeProjectionData &receiverFrame [[buffer(23)]],
+    device const uint *receiverOwners [[buffer(22)]],
+    device const ShapeTileDescriptor *receiverTiles [[buffer(30)]],
+#endif
     constant FrameDataVoxelToTrixel &frameData [[buffer(7)]],
     constant FrameDataSun &sunFrameData [[buffer(29)]],
     texture2d<int, access::read> trixelDistances [[texture(0)]],
@@ -135,7 +169,12 @@ kernel void IR_AO_KERNEL_NAME(
         ? perAxisCellToWorld3DSubCell(
             pixel, encoded, faceId, frameData.perAxisStoreFrame
         )
-        : singleCanvasPixelToWorld3D(frameData, pixel, rawDepth, cardinalIndex);
+        : singleCanvasPixelToWorld3D(
+            frameData, pixel, rawDepth, cardinalIndex
+#if IR_AO_SHAPE_RECEIVER
+            , receiverFrame, receiverOwners, receiverTiles
+#endif
+        );
 
     // World-frame outward normal + in-plane tangents for the camera-visible
     // face this pixel rendered. Tangents are rotated through R_z(-rasterYaw)
@@ -197,6 +236,9 @@ kernel void IR_AO_KERNEL_NAME(
         } else {
             neighbourPos3D = singleCanvasPixelToWorld3D(
                 frameData, samplePixel, neighbourRawDepth, cardinalIndex
+#if IR_AO_SHAPE_RECEIVER
+                , receiverFrame, receiverOwners, receiverTiles
+#endif
             );
         }
 
@@ -223,6 +265,9 @@ kernel void IR_AO_KERNEL_NAME(
                     decodeFlipSingle(beyondEncoded) == flip) {
                     float3 beyondPos3D = singleCanvasPixelToWorld3D(
                         frameData, beyondPixel, decodeDepthSingle(beyondEncoded), cardinalIndex
+#if IR_AO_SHAPE_RECEIVER
+                        , receiverFrame, receiverOwners, receiverTiles
+#endif
                     );
                     if (dot(beyondPos3D - pos3D, worldOutward) > kAOStaircaseStepHeight) continue;
                 }
