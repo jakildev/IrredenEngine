@@ -790,6 +790,11 @@ def main() -> int:
                 run.get("overflow_failure"),
                 run.get("measurement_failure"),
             ]
+            if shape_args is not None:
+                if run["quiet"] != "guarded":
+                    reasons.append(f"quiet window was {run['quiet']}")
+                if not run["configuration_unchanged"]:
+                    reasons.append("runtime configuration changed during measurement")
             print(
                 f"run {index}: failed or missing requested measurements"
                 f"{''.join(f'; {reason}' for reason in reasons if reason)}; inspect {log_path}",

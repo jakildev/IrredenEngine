@@ -178,6 +178,10 @@ class ShapeProfileWitnessTest(unittest.TestCase):
                     patch("sys.stdout", new_callable=io.StringIO) as stdout,
                 ):
                     self.assertEqual(main(), 0 if failure is None else 1, stdout.getvalue())
+                    if failure == "quiet":
+                        self.assertIn("quiet window was unguarded", stdout.getvalue())
+                    if failure == "config":
+                        self.assertIn("configuration changed", stdout.getvalue())
                 self.assertEqual((output / "summary.md").exists(), failure is None)
                 manifest = json.loads((output / "manifest.json").read_text())
                 self.assertIn("configuration_sha256", manifest)

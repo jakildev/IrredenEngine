@@ -1,0 +1,153 @@
+{
+  "rounds": 3,
+  "common": [
+    "--auto-profile",
+    "300",
+    "--zoom",
+    "4",
+    "--sdf-voxel-blockers",
+    "--no-ao",
+    "--window-mode",
+    "offscreen"
+  ],
+  "cases": {
+    "direct-yaw0-shadows-on-timing-on": [
+      "--sdf-voxel-scene",
+      "direct",
+      "--yaw",
+      "0",
+      "--config-preset",
+      "configs/perf/sdf-on.lua"
+    ],
+    "baked-yaw0-shadows-on-timing-on": [
+      "--sdf-voxel-scene",
+      "baked",
+      "--yaw",
+      "0",
+      "--config-preset",
+      "configs/perf/sdf-on.lua"
+    ],
+    "direct-yaw0-shadows-on-timing-off": [
+      "--sdf-voxel-scene",
+      "direct",
+      "--yaw",
+      "0",
+      "--config-preset",
+      "configs/perf/sdf-off.lua"
+    ],
+    "baked-yaw0-shadows-on-timing-off": [
+      "--sdf-voxel-scene",
+      "baked",
+      "--yaw",
+      "0",
+      "--config-preset",
+      "configs/perf/sdf-off.lua"
+    ],
+    "direct-yaw0-shadows-off-timing-on": [
+      "--sdf-voxel-scene",
+      "direct",
+      "--yaw",
+      "0",
+      "--config-preset",
+      "configs/perf/sdf-on.lua",
+      "--no-shadows"
+    ],
+    "baked-yaw0-shadows-off-timing-on": [
+      "--sdf-voxel-scene",
+      "baked",
+      "--yaw",
+      "0",
+      "--config-preset",
+      "configs/perf/sdf-on.lua",
+      "--no-shadows"
+    ],
+    "direct-yaw0-shadows-off-timing-off": [
+      "--sdf-voxel-scene",
+      "direct",
+      "--yaw",
+      "0",
+      "--config-preset",
+      "configs/perf/sdf-off.lua",
+      "--no-shadows"
+    ],
+    "baked-yaw0-shadows-off-timing-off": [
+      "--sdf-voxel-scene",
+      "baked",
+      "--yaw",
+      "0",
+      "--config-preset",
+      "configs/perf/sdf-off.lua",
+      "--no-shadows"
+    ],
+    "direct-yaw45-shadows-on-timing-on": [
+      "--sdf-voxel-scene",
+      "direct",
+      "--yaw",
+      "0.7853981633974483",
+      "--config-preset",
+      "configs/perf/sdf-on.lua"
+    ],
+    "baked-yaw45-shadows-on-timing-on": [
+      "--sdf-voxel-scene",
+      "baked",
+      "--yaw",
+      "0.7853981633974483",
+      "--config-preset",
+      "configs/perf/sdf-on.lua"
+    ],
+    "direct-yaw45-shadows-on-timing-off": [
+      "--sdf-voxel-scene",
+      "direct",
+      "--yaw",
+      "0.7853981633974483",
+      "--config-preset",
+      "configs/perf/sdf-off.lua"
+    ],
+    "baked-yaw45-shadows-on-timing-off": [
+      "--sdf-voxel-scene",
+      "baked",
+      "--yaw",
+      "0.7853981633974483",
+      "--config-preset",
+      "configs/perf/sdf-off.lua"
+    ],
+    "direct-yaw45-shadows-off-timing-on": [
+      "--sdf-voxel-scene",
+      "direct",
+      "--yaw",
+      "0.7853981633974483",
+      "--config-preset",
+      "configs/perf/sdf-on.lua",
+      "--no-shadows"
+    ],
+    "baked-yaw45-shadows-off-timing-on": [
+      "--sdf-voxel-scene",
+      "baked",
+      "--yaw",
+      "0.7853981633974483",
+      "--config-preset",
+      "configs/perf/sdf-on.lua",
+      "--no-shadows"
+    ],
+    "direct-yaw45-shadows-off-timing-off": [
+      "--sdf-voxel-scene",
+      "direct",
+      "--yaw",
+      "0.7853981633974483",
+      "--config-preset",
+      "configs/perf/sdf-off.lua",
+      "--no-shadows"
+    ],
+    "baked-yaw45-shadows-off-timing-off": [
+      "--sdf-voxel-scene",
+      "baked",
+      "--yaw",
+      "0.7853981633974483",
+      "--config-preset",
+      "configs/perf/sdf-off.lua",
+      "--no-shadows"
+    ]
+  },
+  "target": "IRShapeDebug",
+  "order": "forward on odd rounds; reverse on even rounds"
+}

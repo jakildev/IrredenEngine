@@ -1,0 +1,43 @@
+[2026-10-14 18:14:17.013] [ClientLog] [info] AutoScreenshot 1/6: sdf_voxel_yaw0 (zoom=4, cam=(0,0), yaw=0, cull=0)
+[2026-10-14 18:14:17.021] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=4, effective_subdivisions=4
+[2026-10-14 18:14:17.038] [ClientLog] [info] CaptureCamera: label=sdf_voxel_yaw0 yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-10-14 18:14:17.162] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000004.png
+[2026-10-14 18:14:17.179] [ClientLog] [info] AutoScreenshot 2/6: sdf_voxel_yaw45 (zoom=4, cam=(0,0), yaw=0.7853982, cull=0)
+[2026-10-14 18:14:17.187] [EngineLog] [info] Created ResourceId=147, type=1
+[2026-10-14 18:14:17.187] [EngineLog] [info] Created ResourceId=148, type=1
+[2026-10-14 18:14:17.187] [EngineLog] [info] Created ResourceId=149, type=1
+[2026-10-14 18:14:17.188] [EngineLog] [info] Created ResourceId=150, type=1
+[2026-10-14 18:14:17.188] [EngineLog] [info] Created ResourceId=151, type=1
+[2026-10-14 18:14:17.188] [EngineLog] [info] Created ResourceId=152, type=1
+[2026-10-14 18:14:17.188] [EngineLog] [info] Created ResourceId=153, type=1
+[2026-10-14 18:14:17.188] [EngineLog] [info] Created ResourceId=154, type=1
+[2026-10-14 18:14:17.188] [EngineLog] [info] Created ResourceId=155, type=1
+[2026-10-14 18:14:17.188] [EngineLog] [info] Created ResourceId=156, type=1
+[2026-10-14 18:14:17.188] [EngineLog] [info] Created ResourceId=157, type=1
+[2026-10-14 18:14:17.188] [EngineLog] [info] Created ResourceId=158, type=1
+[2026-10-14 18:14:17.188] [EngineLog] [info] Created ResourceId=159, type=1
+[2026-10-14 18:14:17.188] [EngineLog] [info] Created ResourceId=160, type=1
+[2026-10-14 18:14:17.188] [EngineLog] [info] Created ResourceId=161, type=1
+[2026-10-14 18:14:17.188] [EngineLog] [info] Created ResourceId=162, type=1
+[2026-10-14 18:14:17.189] [EngineLog] [info] Created ResourceId=163, type=5
+[2026-10-14 18:14:17.189] [EngineLog] [info] Created ResourceId=164, type=5
+[2026-10-14 18:14:17.189] [EngineLog] [info] Created ResourceId=165, type=5
+[2026-10-14 18:14:17.231] [EngineLog] [info] Created ResourceId=166, type=5
+[2026-10-14 18:14:17.282] [ClientLog] [info] CaptureCamera: label=sdf_voxel_yaw45 yaw=0.78539824 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-10-14 18:14:17.398] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000005.png
+[2026-10-14 18:14:17.416] [ClientLog] [info] AutoScreenshot 3/6: sdf_voxel_yaw90 (zoom=4, cam=(0,0), yaw=1.5707964, cull=0)
+[2026-10-14 18:14:17.441] [ClientLog] [info] CaptureCamera: label=sdf_voxel_yaw90 yaw=1.5707963 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-10-14 18:14:17.554] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000006.png
+[2026-10-14 18:14:17.571] [ClientLog] [info] AutoScreenshot 4/6: sdf_voxel_yaw180 (zoom=4, cam=(0,0), yaw=3.1415927, cull=0)
+[2026-10-14 18:14:17.596] [ClientLog] [info] CaptureCamera: label=sdf_voxel_yaw180 yaw=-3.1414928 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-10-14 18:14:17.707] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000007.png
+[2026-10-14 18:14:17.725] [ClientLog] [info] AutoScreenshot 5/6: sdf_voxel_yaw270 (zoom=4, cam=(0,0), yaw=4.712389, cull=0)
+[2026-10-14 18:14:17.750] [ClientLog] [info] CaptureCamera: label=sdf_voxel_yaw270 yaw=-1.5707963 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+[2026-10-14 18:14:17.858] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000008.png
+[2026-10-14 18:14:17.876] [ClientLog] [info] AutoScreenshot 6/6: sdf_voxel_zoom2 (zoom=2, cam=(0,0), yaw=0.7853982, cull=0)
+[2026-10-14 18:14:17.884] [EngineLog] [info] Voxel render mode=2, base_subdivisions=1, zoom=2, effective_subdivisions=2
+[2026-10-14 18:14:17.901] [ClientLog] [info] CaptureCamera: label=sdf_voxel_zoom2 yaw=0.78539824 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)
+[2026-10-14 18:14:18.011] [EngineLog] [info] Saved screenshot: save_files/screenshots/screenshot_000009.png
+[2026-10-14 18:14:18.037] [EngineLog] [info] Clean shutdown complete.
+ir-run: IRShapeDebug exited cleanly after 3s
+ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0

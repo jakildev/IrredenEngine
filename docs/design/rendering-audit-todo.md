@@ -30,11 +30,17 @@ it does not automatically migrate existing SDF entities or qualify performance.
 The repeat-profile adapter now requires fixed fixture poses, explicit paired
 timing presets, stable configuration hashes, guarded runs and matching
 pose/zoom/count/overflow evidence; it also disables the profiling minimap.
+The [native profiling smoke](../perf/sdf-voxel-profile/README.md) passes eight
+arms, but two full-matrix attempts stopped on quiet-window breaches. Complete
+the repeat matrix on a quiet host before making a representation speed claim.
 Next compare warm frame/stage cost, startup cost and resident memory with shadows
 off/on, cardinal/intermediate yaw, density and overlap. Then cover authored
 rotation/attachments, local-light blocking and finer-grid/LOD scale conventions.
 Arbitrary voxel occupancy already shares the geometry path; composed/custom SDF
 recipes and dynamic GPU baking need explicit authoring and invalidation designs.
+For the baker's next API slice, make supported-primitive enumeration resilient
+to new shape kinds and define a caller-controlled allocation budget; explicit
+grid bounds currently limit geometry, not peak author-time memory.
 Defer additional shape-specific analytic receiver algorithms while measuring
 this route. Keep the correctness and cross-backend work below as regression gates.
 Investigate the small intermediate-yaw floor-shadow gap retained in the baked
