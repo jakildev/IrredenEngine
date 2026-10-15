@@ -4869,13 +4869,12 @@ void initSystems() {
             }
             const int count =
                 static_cast<int>(IRMath::round(IRPrefab::Widget::sliderValue(g_arrayCountSlider)));
-            const float x = IRPrefab::Widget::sliderValue(g_arrayDistanceSlider);
             const int type = IRPrefab::Widget::listSelectedIndex(g_arrayTypeList);
             if (type == 1) {
                 applyLinearArray(
                     count,
                     vec3(
-                        x,
+                        IRPrefab::Widget::sliderValue(g_arrayDistanceSlider),
                         IRPrefab::Widget::sliderValue(g_arrayStepYSlider),
                         IRPrefab::Widget::sliderValue(g_arrayStepZSlider)
                     )
@@ -4884,7 +4883,11 @@ void initSystems() {
             }
             const float yaw = IRMath::round(IRPrefab::Widget::sliderValue(g_arrayYawSlider)) *
                               IRMath::kPi / 180.0f;
-            applyRadialArray(count, x, yaw);
+            applyRadialArray(
+                count,
+                IRMath::round(IRPrefab::Widget::sliderValue(g_arrayDistanceSlider)),
+                yaw
+            );
         }
     );
 
@@ -6503,12 +6506,12 @@ void initEntities() {
         6.0f
     );
     IRVoxelEditor::g_arrayDistanceSlider = IRPrefab::Widget::makeSlider(
-        ivec2(IRVoxelEditor::kArrayPanelPos.x + 4, IRVoxelEditor::kArrayPanelPos.y + 68),
-        ivec2(122, 14),
+        IRVoxelEditor::kArrayRadiusSliderGeometry.pos_,
+        IRVoxelEditor::kArrayRadiusSliderGeometry.size_,
         "RADIUS/X",
-        -12.0f,
-        12.0f,
-        4.0f
+        IRVoxelEditor::kArrayRadiusSliderMin,
+        IRVoxelEditor::kArrayRadiusSliderMax,
+        static_cast<float>(IRVoxelEditor::kArrayDefaultRadius)
     );
     IRVoxelEditor::g_arrayStepYSlider = IRPrefab::Widget::makeSlider(
         ivec2(IRVoxelEditor::kArrayPanelPos.x + 4, IRVoxelEditor::kArrayPanelPos.y + 86),

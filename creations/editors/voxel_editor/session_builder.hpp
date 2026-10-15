@@ -1565,15 +1565,23 @@ class Builder {
     }
 
     void applyRadialArray(int count) {
-        dragGuiSlider(kArrayCountSliderGeometry, 2.0f, 12.0f, static_cast<float>(count));
-        clickGui(kArrayApplyCenter);
+        applyRadialArray(count, kArrayDefaultRadius);
+    }
+
+    void applyRadialArray(int count, int radius) {
+        if (!configureRadialArray(count, radius))
+            return;
         if (m_partModels.empty()) {
             recordError("radial array needs an entity-scene part");
             return;
         }
         m_partModels[static_cast<std::size_t>(m_activePart)] = m_model;
         const OccupancyModel source = m_model;
-        const auto offsets = IRPrefab::Arrays::radial(count, IRMath::vec3(0.0f, 0.0f, 1.0f), 4.0f);
+        const auto offsets = IRPrefab::Arrays::radial(
+            count,
+            IRMath::vec3(0.0f, 0.0f, 1.0f),
+            static_cast<float>(radius)
+        );
         for (const auto &offset : offsets) {
             OccupancyModel copy = source;
             copy.setOrigin(source.origin() + offset.translation_);
@@ -1585,10 +1593,32 @@ class Builder {
     }
 
     void applyRadialArrayToLiveScene(int count) {
-        dragGuiSlider(kArrayCountSliderGeometry, 2.0f, 12.0f, static_cast<float>(count));
-        clickGui(kArrayApplyCenter);
+        applyRadialArrayToLiveScene(count, kArrayDefaultRadius);
     }
 
+    void applyRadialArrayToLiveScene(int count, int radius) {
+        configureRadialArray(count, radius);
+    }
+
+  private:
+    bool configureRadialArray(int count, int radius) {
+        if (radius < static_cast<int>(kArrayRadiusSliderMin) ||
+            radius > static_cast<int>(kArrayRadiusSliderMax)) {
+            recordError("radial array radius is outside the RADIUS/X range");
+            return false;
+        }
+        dragGuiSlider(kArrayCountSliderGeometry, 2.0f, 12.0f, static_cast<float>(count));
+        dragGuiSlider(
+            kArrayRadiusSliderGeometry,
+            kArrayRadiusSliderMin,
+            kArrayRadiusSliderMax,
+            static_cast<float>(radius)
+        );
+        clickGui(kArrayApplyCenter);
+        return true;
+    }
+
+  public:
     void toggleRotationalSymmetry() {
         chordKey(IRInput::kKeyButtonLeftControl, IRInput::kKeyButtonY);
     }

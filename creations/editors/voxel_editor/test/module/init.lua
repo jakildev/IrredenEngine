@@ -157,6 +157,34 @@ IREditor.registerSession("test_single", function(session)
     session:save()
 end)
 
+IREditor.registerSession("test_radius", function(session)
+    local size = session:sceneSize()
+    local pivot = {
+        x = session:sceneOrigin().x + (size.x - 1) / 2,
+        y = session:sceneOrigin().y + (size.y - 1) / 2,
+        z = session:sceneOrigin().z + (size.z - 1) / 2,
+    }
+    local blob_front = {
+        math.floor(size.x / 2),
+        math.floor(size.y / 2),
+        math.floor(size.z / 2) - 2,
+    }
+    local painted = { blob_front[1] + 1, blob_front[2], blob_front[3] - 1 }
+
+    session:segment("bake")
+    session:addVoxelPart()
+    session:bakeSphere(2)
+
+    session:segment("radius_array")
+    session:applyRadialArray(2, 8)
+    session:expectPartTransform(
+        2, { pivot.x - 8, pivot.y, pivot.z }, 0.001, true, "copy_one_at_radius_8"
+    )
+    session:expectPartOccupancy(2, blob_front, true, "copy_blob_at_radius_8")
+    session:click(painted)
+    session:expectPartOccupancy(2, painted, true, "copy_cell_at_radius_8")
+end)
+
 IREditor.registerSession("test_unreachable", function(session)
     session:click({ 0, 0, 0 })
 end)
