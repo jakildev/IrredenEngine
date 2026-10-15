@@ -1,0 +1,334 @@
+{
+  "parent": "c9496f2ab20fb82053cda5aefcc125d23f5f3449",
+  "source_at_capture": {
+    "engine/render/src/shaders/ir_projected_face.glsl": "784e19567463eea0d1b323d2dea3937f88c12a85ea28ef8e6c04cf4b9bfb6872",
+    "engine/render/src/shaders/ir_sun_face_query_layout.glsl": "03765444e6b8e26976bce1378fb2700ae74a631b9d6ae0ced32a4b71090cc7c1",
+    "engine/render/src/shaders/metal/ir_projected_face.metal": "4c1d053d504d65dc0a57ee383bbd0d0f0f2f9a6ef4a7fd984ecdd132923220e7",
+    "engine/render/src/shaders/metal/ir_sun_face_query_layout.metal": "52adb46dac7e25d9006febeaaee13ef68032debe863f98b15aa3d9ca11e7be85"
+  },
+  "binary_sha256": "775733c4f205da4e1237e3299f2e219d668697c615f503ffd0a11b4b5334a38d",
+  "base_config_sha256": "166871772731ac258fc82028c21f35b54ccbe894586c9e7f0b3a6dcc1892f538",
+  "runs": [
+    {
+      "name": "baked",
+      "command": [
+        "fleet-run",
+        "IRShapeDebug",
+        "--sdf-voxel-scene",
+        "baked",
+        "--sdf-voxel-blockers",
+        "--no-ao",
+        "--auto-screenshot",
+        "20",
+        "--window-mode",
+        "offscreen"
+      ],
+      "result": "CLEAN",
+      "images": [
+        {
+          "file": "baked/sdf_voxel_yaw0.png",
+          "sha256": "2272f722ceb94f1417534f8f604553e3db8e93175333405775c49f35cff0be34",
+          "baseline": "docs/pr-screenshots/codex/sdf-profile-controls/sdf_voxel_yaw0.png",
+          "baseline_sha256": "3b4dcff790e3b5cd373a81e0491ec794358aec7fd831d9f0ec864426e2cc459c",
+          "size": [
+            2560,
+            1440
+          ],
+          "changed_rgb_pixels": 1960,
+          "difference_bounds": [
+            776,
+            552,
+            1632,
+            1146
+          ]
+        },
+        {
+          "file": "baked/sdf_voxel_yaw45.png",
+          "sha256": "3203e1a88ce40bdbd3b33a713aae3d735176417658919c523c5b7a16b35ba835",
+          "baseline": "docs/pr-screenshots/codex/sdf-profile-controls/sdf_voxel_yaw45.png",
+          "baseline_sha256": "28e62c32dc5f33290421a1376203f84d478528e0075da4785531e506710a4baa",
+          "size": [
+            2560,
+            1440
+          ],
+          "changed_rgb_pixels": 940,
+          "difference_bounds": [
+            1528,
+            854,
+            1732,
+            910
+          ]
+        },
+        {
+          "file": "baked/sdf_voxel_yaw90.png",
+          "sha256": "986cf18d86443a416aff2d8874c215a4d8ca4078b997c0225a5b02433dbb24a4",
+          "baseline": "docs/pr-screenshots/codex/sdf-profile-controls/sdf_voxel_yaw90.png",
+          "baseline_sha256": "c4b4cf0680e4bde067f897698b1fc9df8b8449bdeca3d556da3728fa300a157e",
+          "size": [
+            2560,
+            1440
+          ],
+          "changed_rgb_pixels": 1816,
+          "difference_bounds": [
+            988,
+            474,
+            1956,
+            1060
+          ]
+        },
+        {
+          "file": "baked/sdf_voxel_yaw180.png",
+          "sha256": "a49c514970440d70fde28f39ead603f57b87a6c6284a1be75152ffcb5a5bcbb4",
+          "baseline": "docs/pr-screenshots/codex/sdf-profile-controls/sdf_voxel_yaw180.png",
+          "baseline_sha256": "54950006f7ec4235fd8ca093e41ab6a49bbf274c95df884e7b230a840b982620",
+          "size": [
+            2560,
+            1440
+          ],
+          "changed_rgb_pixels": 1768,
+          "difference_bounds": [
+            928,
+            560,
+            1780,
+            882
+          ]
+        },
+        {
+          "file": "baked/sdf_voxel_yaw270.png",
+          "sha256": "4368343fad4cd5440222058122a63089a6e17c226b738c7a40b8cd778d61bd39",
+          "baseline": "docs/pr-screenshots/codex/sdf-profile-controls/sdf_voxel_yaw270.png",
+          "baseline_sha256": "74b2fda922107cef547d8e76f793a164b3dc064a1cbdcc667fdb922bf2f5a1c8",
+          "size": [
+            2560,
+            1440
+          ],
+          "changed_rgb_pixels": 1680,
+          "difference_bounds": [
+            716,
+            510,
+            1572,
+            952
+          ]
+        },
+        {
+          "file": "baked/sdf_voxel_zoom2.png",
+          "sha256": "0e810c9022f70a9e5b4103d3e20b88a469776e1f7e6e4fa885a83402025e49b5",
+          "baseline": "docs/pr-screenshots/codex/sdf-profile-controls/sdf_voxel_zoom2.png",
+          "baseline_sha256": "05b25be67b7f118aaad06d15fe051a341152fe3e86ed34c814fc48915adcebb9",
+          "size": [
+            2560,
+            1440
+          ],
+          "changed_rgb_pixels": 232,
+          "difference_bounds": [
+            1410,
+            786,
+            1506,
+            814
+          ]
+        }
+      ]
+    },
+    {
+      "name": "no-shadow",
+      "command": [
+        "fleet-run",
+        "IRShapeDebug",
+        "--sdf-voxel-scene",
+        "baked",
+        "--sdf-voxel-blockers",
+        "--no-ao",
+        "--no-shadows",
+        "--auto-screenshot",
+        "20",
+        "--window-mode",
+        "offscreen"
+      ],
+      "result": "CLEAN",
+      "images": [
+        {
+          "file": "no-shadow/sdf_voxel_yaw0.png",
+          "sha256": "e63f80e9d538538e9324fb1dd80bb8be7977e18c03757f24e9c229823f19877e",
+          "baseline": "docs/pr-screenshots/codex/sdf-voxel-lighting/baked-no-shadow/sdf_voxel_yaw0.png",
+          "baseline_sha256": "e63f80e9d538538e9324fb1dd80bb8be7977e18c03757f24e9c229823f19877e",
+          "size": [
+            2560,
+            1440
+          ],
+          "changed_rgb_pixels": 0,
+          "difference_bounds": null
+        },
+        {
+          "file": "no-shadow/sdf_voxel_yaw45.png",
+          "sha256": "e23098d164de3185286092061e61701ba25247bdc7e0a2ddbe8671c4012702cc",
+          "baseline": "docs/pr-screenshots/codex/sdf-voxel-lighting/baked-no-shadow/sdf_voxel_yaw45.png",
+          "baseline_sha256": "e23098d164de3185286092061e61701ba25247bdc7e0a2ddbe8671c4012702cc",
+          "size": [
+            2560,
+            1440
+          ],
+          "changed_rgb_pixels": 0,
+          "difference_bounds": null
+        },
+        {
+          "file": "no-shadow/sdf_voxel_yaw90.png",
+          "sha256": "92e2e81565e403d0d77ee6d338b6b2480cce67b0a652ee962d749675989ccd9a",
+          "baseline": "docs/pr-screenshots/codex/sdf-voxel-lighting/baked-no-shadow/sdf_voxel_yaw90.png",
+          "baseline_sha256": "92e2e81565e403d0d77ee6d338b6b2480cce67b0a652ee962d749675989ccd9a",
+          "size": [
+            2560,
+            1440
+          ],
+          "changed_rgb_pixels": 0,
+          "difference_bounds": null
+        },
+        {
+          "file": "no-shadow/sdf_voxel_yaw180.png",
+          "sha256": "3eeb36989289f7f9fb89637565cd886a1eb00f164261b5b5180f1dd1708dbdfa",
+          "baseline": "docs/pr-screenshots/codex/sdf-voxel-lighting/baked-no-shadow/sdf_voxel_yaw180.png",
+          "baseline_sha256": "3eeb36989289f7f9fb89637565cd886a1eb00f164261b5b5180f1dd1708dbdfa",
+          "size": [
+            2560,
+            1440
+          ],
+          "changed_rgb_pixels": 0,
+          "difference_bounds": null
+        },
+        {
+          "file": "no-shadow/sdf_voxel_yaw270.png",
+          "sha256": "3e8f920d7186d20cf4e09e9e54ec27f189772cb5435672b07013ccd562b98a73",
+          "baseline": "docs/pr-screenshots/codex/sdf-voxel-lighting/baked-no-shadow/sdf_voxel_yaw270.png",
+          "baseline_sha256": "3e8f920d7186d20cf4e09e9e54ec27f189772cb5435672b07013ccd562b98a73",
+          "size": [
+            2560,
+            1440
+          ],
+          "changed_rgb_pixels": 0,
+          "difference_bounds": null
+        },
+        {
+          "file": "no-shadow/sdf_voxel_zoom2.png",
+          "sha256": "09fe8e914e5b16a1c213a5db7f3db5baa0f3baf0ae67978bd0229f0f96c0241d",
+          "baseline": "docs/pr-screenshots/codex/sdf-voxel-lighting/baked-no-shadow/sdf_voxel_zoom2.png",
+          "baseline_sha256": "09fe8e914e5b16a1c213a5db7f3db5baa0f3baf0ae67978bd0229f0f96c0241d",
+          "size": [
+            2560,
+            1440
+          ],
+          "changed_rgb_pixels": 0,
+          "difference_bounds": null
+        }
+      ]
+    },
+    {
+      "name": "direct",
+      "command": [
+        "fleet-run",
+        "IRShapeDebug",
+        "--sdf-voxel-scene",
+        "direct",
+        "--sdf-voxel-blockers",
+        "--no-ao",
+        "--auto-screenshot",
+        "20",
+        "--window-mode",
+        "offscreen"
+      ],
+      "result": "CLEAN",
+      "images": [
+        {
+          "file": "direct/sdf_voxel_yaw0.png",
+          "sha256": "16ac94ed16d129855a24dbb71394056525ba9ec765eba790d956f6611a18fb66",
+          "baseline": "docs/pr-screenshots/codex/sdf-voxel-lighting/direct-blockers/sdf_voxel_yaw0.png",
+          "baseline_sha256": "39fc3dabd7c3686b48898030afbe8663e1be33f5ace2b0444b9510c731731fbc",
+          "size": [
+            2560,
+            1440
+          ],
+          "changed_rgb_pixels": 120,
+          "difference_bounds": [
+            1032,
+            656,
+            1088,
+            878
+          ]
+        },
+        {
+          "file": "direct/sdf_voxel_yaw45.png",
+          "sha256": "8dd265275d7929a0e0d952e78e60437e2ad40eb80c5924927467f5e1d2a727e9",
+          "baseline": "docs/pr-screenshots/codex/sdf-voxel-lighting/direct-blockers/sdf_voxel_yaw45.png",
+          "baseline_sha256": "8dd265275d7929a0e0d952e78e60437e2ad40eb80c5924927467f5e1d2a727e9",
+          "size": [
+            2560,
+            1440
+          ],
+          "changed_rgb_pixels": 0,
+          "difference_bounds": null
+        },
+        {
+          "file": "direct/sdf_voxel_yaw90.png",
+          "sha256": "521ad860a77abd79c81e124a96ff6e45b0adb85c0fe024c793f66818e9d381f1",
+          "baseline": "docs/pr-screenshots/codex/sdf-voxel-lighting/direct-blockers/sdf_voxel_yaw90.png",
+          "baseline_sha256": "6de6c0aa1fb27798d2040a457bc041c62bb09d0b040a39bae2023c2e7919ae7f",
+          "size": [
+            2560,
+            1440
+          ],
+          "changed_rgb_pixels": 120,
+          "difference_bounds": [
+            1288,
+            776,
+            1420,
+            920
+          ]
+        },
+        {
+          "file": "direct/sdf_voxel_yaw180.png",
+          "sha256": "56048e2efe636e5ad97409be96b9fc048bf1abf9c2943d5494b69b71368f4a93",
+          "baseline": "docs/pr-screenshots/codex/sdf-voxel-lighting/direct-blockers/sdf_voxel_yaw180.png",
+          "baseline_sha256": "9a959829a30c46d2b0536f69bb8b7b7815fc15b49da9723ed6100f416a40dee0",
+          "size": [
+            2560,
+            1440
+          ],
+          "changed_rgb_pixels": 8,
+          "difference_bounds": [
+            1528,
+            648,
+            1532,
+            650
+          ]
+        },
+        {
+          "file": "direct/sdf_voxel_yaw270.png",
+          "sha256": "e799b9319a8d89c5e67743247a5a7bf9aa9675e8cc55da21dd3b8b223cd059a8",
+          "baseline": "docs/pr-screenshots/codex/sdf-voxel-lighting/direct-blockers/sdf_voxel_yaw270.png",
+          "baseline_sha256": "9382a790bf5fe2ca1e499651cade4615fd82685fd3256cd2ca0a653629067ffb",
+          "size": [
+            2560,
+            1440
+          ],
+          "changed_rgb_pixels": 120,
+          "difference_bounds": [
+            1140,
+            528,
+            1276,
+            712
+          ]
+        },
+        {
+          "file": "direct/sdf_voxel_zoom2.png",
+          "sha256": "3facdb0850ec8673556cae4aa4a678969af7899b30e07bedb37b2bd9da2890a7",
+          "baseline": "docs/pr-screenshots/codex/sdf-voxel-lighting/direct-blockers/sdf_voxel_zoom2.png",
+          "baseline_sha256": "3facdb0850ec8673556cae4aa4a678969af7899b30e07bedb37b2bd9da2890a7",
+          "size": [
+            2560,
+            1440
+          ],
+          "changed_rgb_pixels": 0,
+          "difference_bounds": null
+        }
+      ]
+    }
+  ]
+}

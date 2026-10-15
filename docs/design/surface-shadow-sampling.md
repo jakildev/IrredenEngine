@@ -102,6 +102,37 @@ The earlier rejected variants are not shipping: global zero normal offset,
 unfiltered finite sampling for raster-origin receivers, and a neighbor-presence
 shortcut that suppressed mixed legacy blockers.
 
+## Rounded finite-face boundaries
+
+Finite face queries use `projectedFaceContainsClosed` from the shared projected
+face helpers. Strict interior hits retain their fast path. For a rejected hit,
+the four oriented edge numerators admit binary32 rounding uncertainty instead
+of treating a slightly negative edge value as an exact miss. This closes the
+reproduced interior floor-shadow hole in the SDF-authored voxel fixture without
+blurring or changing its occupancy.
+
+For the U coordinate, let `N = cross(P-C,V)` and `D = cross(U,V)`. The edge
+tests are `sign(D)*N >= -E` and `sign(D)*(D-N) >= -E`, where
+`E = gamma(7) * ((abs(P.x)+abs(C.x))*abs(V.y) +
+(abs(P.y)+abs(C.y))*abs(V.x) + abs(U.x*V.y)+abs(U.y*V.x))`.
+The V test swaps the basis axes. `gamma(7)=7u/(1-7u)`, with binary32 unit
+roundoff `u=2^-24`, conservatively covers independently once-rounded projected
+inputs and the edge arithmetic under finite normal operations. It is not a
+bound on cancellation in upstream world-to-sun projection. Nearly grazing
+faces can have large coordinate uncertainty, so accepted U/V coordinates are
+clamped to the finite face before evaluating depth; they cannot extrapolate
+an unbounded caster plane.
+
+`test_render_projected_face_boundary.py` runs both production shader queries
+against independently rounded double-precision parallelogram points: 20,952
+boundary, exterior and grazing checks per backend, with strict-edge, inflated
+footprint and separate U/V depth-extrapolation mutations. This certifies the
+bounded predicate contract, not every projection or every candidate-list entry.
+Candidate AABB seams at tile boundaries and exact classification inside a
+grazing face's numerical uncertainty remain separate questions. The additional
+arithmetic runs on candidate misses; profile rejection-heavy 64/256-candidate
+tiles before claiming neutral GPU cost.
+
 ## Remaining work
 
 Finite voxel casters of all three bases (world GRID, camera-aligned resampled,
