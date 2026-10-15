@@ -28,9 +28,16 @@ reading marks it as run under load, in either manifest, is reported as
 informational and left out of grading. --strict-load turns any such cell into
 a measurement error instead (the seed self-check uses it).
 
+--attribution-base and --attribution-trunk (CI passes both on the PR path)
+credit an improvement against a class-matched capture to the PR only when the
+capture history shows no master improvement between the capture's master and
+the merge base; otherwise the improved-cells file is written empty. The host
+note says which (`- attribution:`). Grading and exit codes do not change.
+
 Usage:
     scripts/perf/check_regression.py <baseline_root> <head_dir>
         [--baseline-history DIR] [--strict-load]
+        [--attribution-base COMMIT --attribution-trunk REF]
         [--regress-pct N] [--improve-pct N] [--gpu-only] [--cpu-only]
 
 Exit codes:
@@ -66,6 +73,7 @@ from compare_perf_runs import (  # noqa: E402
     normalize_ms,
     pct_delta,
     render_markdown,
+    resolve_attribution,
     resolve_baseline,
     resolve_class_matched_baseline,
     unmeasured_cell_ids,
@@ -145,12 +153,19 @@ def main() -> int:
     p.add_argument("--strict-load", action="store_true",
                    help="exit 2 when any cell in either run is load-flagged, "
                         "instead of reporting it as informational")
+    p.add_argument("--attribution-base", metavar="COMMIT",
+                   help="the PR merge commit's first parent; empty when HEAD "
+                        "is not a two-parent merge (withholds the improvement)")
+    p.add_argument("--attribution-trunk", metavar="REF",
+                   help="the default branch ref the merge base must be on")
     p.add_argument("--gpu-only", action="store_true")
     p.add_argument("--cpu-only", action="store_true")
     args = p.parse_args()
 
     if args.gpu_only and args.cpu_only:
         p.error("--gpu-only and --cpu-only are mutually exclusive")
+    if (args.attribution_base is None) != (args.attribution_trunk is None):
+        p.error("--attribution-base and --attribution-trunk go together")
 
     baseline_arg = Path(args.baseline).resolve()
     head_dir = Path(args.head).resolve()
@@ -270,6 +285,14 @@ def main() -> int:
         _write_improved_cells(args.improved_cells_out, [])
         return 0
 
+    attribution = None
+    if capture is not None and args.attribution_trunk is not None:
+        attribution = resolve_attribution(history_root, capture,
+                                          args.attribution_base,
+                                          args.attribution_trunk,
+                                          args.improve_pct)
+        host_note += "\n" + attribution.note_line()
+
     head_cal = head_manifest.get("calibration") or {}
     base_cal = base_manifest.get("calibration") or {}
     head_ref_ms = float(head_cal.get("ref_ms", 0.0))
@@ -318,6 +341,11 @@ def main() -> int:
             args.improve_pct,
         )
     ]
+    if attribution is not None and attribution.withheld:
+        if improved:
+            print(f"check_regression: improvement withheld ({attribution.reason}) "
+                  f"on {', '.join(improved)}", file=sys.stderr)
+        improved = []
     if regressed:
         weighting = (
             "calibration-scaled" if capture is not None and head_scale != 1.0

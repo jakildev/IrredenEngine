@@ -27,6 +27,35 @@ threshold both raw and after multiplying the head by the capture-to-head
 calibration ratio. That ratio can only withhold the label and applies on every
 host class; `p99`, GPU-stage, and CPU-system marks remain informational.
 
+On the PR path the improvement must also be attributable to the PR. The run
+measures the merge ref, so the head carries every master commit between the
+capture's master `k` and the merge's first parent `m`.
+`check_regression.py --attribution-base m --attribution-trunk origin/<default>`
+writes no improved cells for the first of these that holds:
+
+1. **attribution unavailable**: HEAD is not a two-parent merge, or `m`, `k` or
+   the trunk does not resolve to one commit;
+2. **stacked**: `m` is not on the trunk, so the run measured a base branch's
+   unmerged changes;
+3. **capture ahead**: `k` is not an ancestor of `m`;
+4. **master improved**: some capture in the history (any slug) and its
+   class-matched predecessor form a step whose master range meets `k..m` and
+   whose frame `avg` improves on every common cell, raw and calibrated.
+
+The host note's `- attribution:` line names the reason and, for a master step,
+its slug, both masters and the per-cell deltas. A master improvement that no
+capture had measured when the run read the history is still credited to the
+PR.
+
+`replay_attribution.py` re-grades a rule change over the gate's own PR
+comments. It fetches the class-matched comments in a `--since`/`--until`
+window, resolves each merge ref's first parent through the API, and runs
+`resolve_attribution` against the `perf-baseline` history as each run could
+see it (captures committed at or before the comment). It prints the reason
+totals for every row and for the rows whose frame `avg` would have earned the
+label; `--stale-master` / `--stale-after` tally a known set of stale captures.
+Run it from a checkout with `origin/master` and `origin/perf-baseline` fetched.
+
 | Host class | `CLASS_MATCH_SCALE_FROM` | Evidence and limit |
 |---|---:|---|
 | `linux-x86_64-xeon-platinum-8573c-unknown` | 1.10 | Seven PR heads at or above the threshold, on six changes against two captures: scaling puts all 14 frame-average cells inside the 10% gate. The median residual is -1.5% at zoom 1 and -3.4% at zoom 4, so a zoom-4 regression on a runner near 1.17× needs about 13.5% to fail. |

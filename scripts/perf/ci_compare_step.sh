@@ -25,6 +25,10 @@
 #                  the checker gates against the class-matched capture
 #   HEAD_DIR       head perf run directory (must exist and be non-empty)
 #   PR_NUMBER      pull request number to comment on
+#   DEFAULT_BRANCH the repository's default branch; when set, the checker
+#                  attributes an improvement against refs/remotes/origin/<it>
+#                  with HEAD's first parent as the merge base (empty when
+#                  HEAD is not a two-parent merge)
 #   REGRESS_PCT    regression threshold, default 10
 #   IMPROVE_PCT    improvement threshold, default 5
 #   PERF_TMPDIR    where the comment/stderr artifacts land, default /tmp
@@ -39,6 +43,7 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 BASELINE_ROOT="${BASELINE_ROOT:?BASELINE_ROOT is required}"
 BASELINE_HISTORY="${BASELINE_HISTORY:-}"
+DEFAULT_BRANCH="${DEFAULT_BRANCH:-}"
 HEAD_DIR="${HEAD_DIR:?HEAD_DIR is required}"
 PR_NUMBER="${PR_NUMBER:?PR_NUMBER is required}"
 REGRESS_PCT="${REGRESS_PCT:-10}"
@@ -77,10 +82,25 @@ if [[ -n "$BASELINE_HISTORY" ]]; then
   HISTORY_ARGS=(--baseline-history "$BASELINE_HISTORY")
 fi
 
+# HEAD is the PR merge ref: its first parent is the base tip the PR merged
+# onto, never github.sha or the PR head.
+ATTRIBUTION_ARGS=()
+if [[ -n "$DEFAULT_BRANCH" ]]; then
+  read -r -a PARENTS <<< "$(git rev-list --parents -n 1 HEAD 2>/dev/null || true)"
+  FIRST_PARENT=""
+  if [[ ${#PARENTS[@]} -eq 3 ]]; then
+    FIRST_PARENT="${PARENTS[1]}"
+  fi
+  echo "perf-gate: attribution merge base=${FIRST_PARENT:-(none)} trunk=origin/${DEFAULT_BRANCH}"
+  ATTRIBUTION_ARGS=(--attribution-base "$FIRST_PARENT"
+                    --attribution-trunk "refs/remotes/origin/${DEFAULT_BRANCH}")
+fi
+
 STATUS=0
 rm -f "$IMPROVED_CELLS"
 # shellcheck disable=SC2086  # CHECK_REGRESSION is an intentionally split command
 $CHECK_REGRESSION "$BASELINE_ROOT" "$HEAD_DIR" ${HISTORY_ARGS[@]+"${HISTORY_ARGS[@]}"} \
+  ${ATTRIBUTION_ARGS[@]+"${ATTRIBUTION_ARGS[@]}"} \
   --regress-pct "$REGRESS_PCT" --improve-pct "$IMPROVE_PCT" \
   --improved-cells-out "$IMPROVED_CELLS" \
   > "$BODY" 2> "$STDERR" || STATUS=$?

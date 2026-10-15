@@ -237,6 +237,7 @@ jobs:
           BASELINE_HISTORY: ${{ steps.baseline.outputs.history }}
           HEAD_DIR: ${{ steps.head.outputs.dir }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           REGRESS_PCT: '10'
           IMPROVE_PCT: '5'
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
