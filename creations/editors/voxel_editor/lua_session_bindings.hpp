@@ -73,6 +73,15 @@ inline int radialRadiusArg(const sol::object &value, const char *method) {
     return radius;
 }
 
+inline int radialCopyYawArg(const sol::object &value, const char *method) {
+    const int yaw = integerArg(value, method, "yaw");
+    if (yaw < static_cast<int>(kArrayYawSliderMin) || yaw > static_cast<int>(kArrayYawSliderMax) ||
+        yaw % static_cast<int>(kArrayYawDegreesPerTrixel) != 0) {
+        throw argumentError(method, "yaw", "a reachable COPY YAW value");
+    }
+    return yaw;
+}
+
 inline sol::object vectorEntry(const sol::table &table, const char *key, int index) {
     const sol::object keyed = table[key];
     return keyed.valid() && keyed.get_type() != sol::type::lua_nil ? keyed
@@ -465,6 +474,15 @@ class Handle {
             radialRadiusArg(radius, "applyRadialArray")
         );
     }
+    void applyRadialArray(
+        const sol::object &count, const sol::object &radius, const sol::object &copyYawDegrees
+    ) {
+        builder().applyRadialArray(
+            integerArg(count, "applyRadialArray", "count"),
+            radialRadiusArg(radius, "applyRadialArray"),
+            radialCopyYawArg(copyYawDegrees, "applyRadialArray")
+        );
+    }
     void applyRadialArrayToLiveScene(int count) {
         builder().applyRadialArrayToLiveScene(count);
     }
@@ -472,6 +490,15 @@ class Handle {
         builder().applyRadialArrayToLiveScene(
             integerArg(count, "applyRadialArrayToLiveScene", "count"),
             radialRadiusArg(radius, "applyRadialArrayToLiveScene")
+        );
+    }
+    void applyRadialArrayToLiveScene(
+        const sol::object &count, const sol::object &radius, const sol::object &copyYawDegrees
+    ) {
+        builder().applyRadialArrayToLiveScene(
+            integerArg(count, "applyRadialArrayToLiveScene", "count"),
+            radialRadiusArg(radius, "applyRadialArrayToLiveScene"),
+            radialCopyYawArg(copyYawDegrees, "applyRadialArrayToLiveScene")
         );
     }
     void expectCanvasCount(int offset, const std::string &name) {
@@ -804,12 +831,20 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
             static_cast<void (Handle::*)(int)>(&Handle::applyRadialArray),
             static_cast<void (Handle::*)(const sol::object &, const sol::object &)>(
                 &Handle::applyRadialArray
+            ),
+            static_cast<
+                void (Handle::*)(const sol::object &, const sol::object &, const sol::object &)>(
+                &Handle::applyRadialArray
             )
         ),
         "applyRadialArrayToLiveScene",
         sol::overload(
             static_cast<void (Handle::*)(int)>(&Handle::applyRadialArrayToLiveScene),
             static_cast<void (Handle::*)(const sol::object &, const sol::object &)>(
+                &Handle::applyRadialArrayToLiveScene
+            ),
+            static_cast<
+                void (Handle::*)(const sol::object &, const sol::object &, const sol::object &)>(
                 &Handle::applyRadialArrayToLiveScene
             )
         ),

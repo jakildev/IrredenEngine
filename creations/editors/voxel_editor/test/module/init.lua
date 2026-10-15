@@ -185,6 +185,17 @@ IREditor.registerSession("test_radius", function(session)
     session:expectPartOccupancy(2, painted, true, "copy_cell_at_radius_8")
 end)
 
+IREditor.registerSession("test_yaw", function(session)
+    session:segment("bake")
+    session:addVoxelPart()
+    session:bakeSphere(2)
+
+    session:segment("yaw_array")
+    session:applyRadialArray(3, 4, 60)
+    session:expectPartYaw(2, 60, 0.01, "copy_one_yaw_60")
+    session:expectPartYaw(3, 120, 0.01, "copy_two_yaw_120")
+end)
+
 IREditor.registerSession("test_unreachable", function(session)
     session:click({ 0, 0, 0 })
 end)

@@ -32,12 +32,9 @@ constexpr float kArrayYawSliderMax = 180.0f;
 constexpr SliderGeometry kArrayYawSliderGeometry{
     IRMath::ivec2(kArrayPanelPos.x + 4, kArrayPanelPos.y + 122), IRMath::ivec2(120, 14)
 };
-static_assert(
-    (kArrayYawSliderMax - kArrayYawSliderMin) /
-            static_cast<float>(kArrayYawSliderGeometry.size_.x) ==
-        3.0f,
-    "COPY YAW's track must be 3 degrees a trixel"
-);
+constexpr float kArrayYawDegreesPerTrixel =
+    (kArrayYawSliderMax - kArrayYawSliderMin) / static_cast<float>(kArrayYawSliderGeometry.size_.x);
+static_assert(kArrayYawDegreesPerTrixel == 3.0f, "COPY YAW's track must be 3 degrees a trixel");
 constexpr IRMath::vec2 kArrayApplyCenter{
     static_cast<float>(kArrayPanelPos.x + 65), static_cast<float>(kArrayPanelPos.y + 149)
 };

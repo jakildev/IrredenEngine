@@ -1881,13 +1881,7 @@ inline Recipe buildCompositeProof(
     builder.expectPartCount(kFrame + 1, "typing_adds_no_part");
 
     builder.segment("array");
-    builder.dragGuiSlider(
-        kArrayYawSliderGeometry,
-        kArrayYawSliderMin,
-        kArrayYawSliderMax,
-        kCopyYawDegrees
-    );
-    builder.applyRadialArray(kCopies);
+    builder.applyRadialArray(kCopies, kArrayDefaultRadius, static_cast<int>(kCopyYawDegrees));
     builder.expectPartCount(kParts, "nine_parts");
     builder.expectPartTransform(kFrame, pivot, 0.001f, true, "source_frame_stays_at_the_pivot");
     builder.expectPartYaw(kFrame, 0.0f, 0.001f, "source_frame_unturned");
@@ -2680,13 +2674,7 @@ inline Recipe build(
         constexpr float kYawToleranceDegrees = 0.01f;
         const IRMath::vec3 copyPivot = movedTwice - IRMath::vec3(4.0f, 0.0f, 0.0f);
         builder.segment("array");
-        builder.dragGuiSlider(
-            kArrayYawSliderGeometry,
-            kArrayYawSliderMin,
-            kArrayYawSliderMax,
-            kCopyYawDegrees
-        );
-        builder.applyRadialArray(kCopies);
+        builder.applyRadialArray(kCopies, kArrayDefaultRadius, static_cast<int>(kCopyYawDegrees));
         builder.expectPartCount(kCopies + 1, "two_copies_plus_source");
         builder.expectPartYaw(kCopies, kCopyYawDegrees, kYawToleranceDegrees, "last_copy_turned");
         builder.expectPartYaw(0, 0.0f, kYawToleranceDegrees, "source_unturned");
