@@ -9,6 +9,65 @@ The [rendering/profiling cleanup audit](render-profile-cleanup-audit.md) records
 the parallel audit findings and bounded follow-ups after the timing-control stack.
 Keep behavior-preserving consolidation separate from visual or scheduling fixes.
 
+## Current sequence after the reconciled shadow stack
+
+The analytic caster, fragment registration, overflow proof and cardinal receiver
+stack (#4298, #4338, #4344, #4363) is merged. Its final integration run passes
+183 native checks across nine demos and 89 CPU suites; see the
+[final validation](https://github.com/jakildev/IrredenEngine/pull/4363#issuecomment-6151987785).
+The #4362 moving-caster fixture is retained, its alternative receiver/tolerance
+is rejected by the independent geometry comparison, and the current FIELD
+midpoint bake now closes retained voxel caps. The older evidence below remains
+historical, not a claim that every shadow defect is closed.
+
+Work through these slices in order, keeping their image and cost evidence separate:
+
+1. **Crowded finite-index coverage — native correctness validated in #4399.** Preserve
+   the inline 64-entry lists and allocate bounded spill nodes only for crowded
+   tiles. Exact queries require complete local coverage and at most 256
+   candidates. Pool exhaustion disables spill queries frame-wide; local query
+   and global geometry exhaustion retain sampled fallback. Test independent
+   ray coverage, reservation permutations, stale resets, unrelated records,
+   both cascades and independent depth layers. Measure build/query cost and
+   memory before adoption; this is not a solution for arbitrary overlap.
+   Eight crowded edge controls have zero missing/excess pixels. Eleven full-scene
+   captures equal a complete-geometry diagnostic, and actual half-face receiver
+   tests verify parity, density and anchors. The changed Metal references are
+   intentional. Bounded Release controls are preliminary: mixed capture/profile
+   flags selected GPU-only reservation, so quiet-host timing still needs retry.
+2. **Current-master performance qualification — pending measurements.** Use
+   warmed Release controls at cardinal, diagonal and moving views, fixed
+   effective densities, zoom changes and dense overlap. Separate profiling
+   overhead and frame pacing from render work; report CPU, GPU spans,
+   allocation limits and tail latency. Passing CI does not establish hardware
+   throughput or million-entity/60-fps qualification.
+   Fix capture/profile reservation precedence before the next mixed-run timing.
+3. **Curved receiver correctness — prototype, not yet promoted.** Extend
+   retained-owner ray reconstruction using the same represented field as the
+   caster, without changing elected coverage or displayed face normals. Native
+   external-blocker/no-shadow, torus-hole and timing controls must justify
+   promotion. The torus surface-band representation question stays separate.
+4. **Representative authored-LOD scene — prototype, native validation pending.**
+   Exercise repeated assets, terrain, moving attached parts, lazy/resident
+   variants and reversible zoom/yaw transitions. Shared loaded assets are not
+   GPU geometry instancing; log selected and retained spans independently.
+   Orthographic depth alone does not change apparent size, so do not introduce
+   distance LOD implicitly.
+
+Concurrent ownership: #4381 owns the new animated FIELD ceiling policy, #4303
+owns snapped camera placement, and #4308 owns cardinal AO/local-light depth.
+Integrate their results and recapture shared rows without duplicating those
+implementations. Windows-native smoke of the merged stack remains separate
+validation debt.
+
+New numerical follow-up: nearly sun-edge-on finite faces can amplify float
+projection error after translation. A constructed determinant-`5e-5` midpoint
+at sun-UV origin 100 produces false self-separation near 0.042, versus zero at
+the origin. This predates the spill index and is not attributed to the native
+scene differences above. Preserve the witness and investigate subtracting
+world-relative coordinates before projection; do not repair it with a larger
+bias or by rejecting all same-entity shadows.
+
 ## Active analytic-shadow follow-up
 
 The [analytic caster repair](../pr-screenshots/codex/shape-shadow-sun-space/README.md)
@@ -84,16 +143,12 @@ checked against independent voxel occupancy: an actual distinct voxel blocks the
 surface-center ray, while the old outward offset misses it. Do not erase genuine
 stepped occlusion to make a beauty image more uniform.
 
-The refreshed native whole-suite run passes 172 checks across nine demos, with
-zero failures or skips; Linux render-harness CI passes all 88 suites.
-
-Before merge: reconcile the overlapping #4362 receiver implementation and its
-moving-caster coverage with this contract, and preserve the existing #4246
-integration hold. Other-host smoke and measured
-receiver-stage cost remain due. This item is not a claim that incomplete-index
+The earlier 172-check run is superseded by the final integrated result above.
+The #4362 reconciliation is complete and #4246 is merged; neither remains a
+merge hold. Other-host smoke and measured receiver-stage cost remain due. This item is not a claim that incomplete-index
 fallback edges, every curved receiver, or million-entity throughput are solved.
 
-### FOW integration checkpoint (2026-10-11)
+### FOW integration checkpoint (updated 2026-10-13)
 
 Master `9e45a862e` includes #4248's fog-gate repair across rotation-mode switches
 and #4319's FIELD column-top wall reveal;
@@ -102,9 +157,9 @@ preserve its transition coverage. The following work is already filed elsewhere:
 | Existing work | Implication for this rendering session |
 |---|---|
 | #4319 / #4304: FIELD column-top wall reveal | Merged and integrated into this branch. Owns the shared fog formula and reference changes. BODY and EXEMPT keep their existing semantics. Do not duplicate this implementation. |
-| #4269 / #4246: FIELD ceiling sun-shadow filtering | Still needs fixes and native/performance evidence. Our curved caster records must obey the same eligibility as finite box records; fog evaluation must use the curved hit, not AABB entry. |
-| #4305, revision 2 plan: voxel ceiling geometry cuts | Plans retained occupancy and real exposed caps, with static retained occupancy for shadows replacing the midpoint rule. Depends on #4304 and #4246 and remains parked for a dependency/plan update. It is not a landed renderer contract. |
-| #4321: FIELD performance fixture | Repairs the slab/wall fixture's unintended BODY adoption so it actually exercises the FIELD march. Existing timings from that fixture do not measure the added FIELD work. |
+| #4269 / #4246: FIELD ceiling sun-shadow filtering | Merged. The reconciled stack applies curved-record eligibility, evaluates fog at the solved hit and preserves independent fallback depth for intentionally unindexed casters. |
+| #4305 / #4381: voxel ceiling geometry cuts | Active separate work on absence, animated geometric bands and static retained occupancy for shadows. The current midpoint repair does not implement that future policy. |
+| #4321: FIELD performance fixture | Closed. Use the corrected FIELD fixture for new timings; older BODY-adopted measurements do not measure the FIELD march. |
 | #4197: rotation-source/private-canvas fog carriers | Owns snapshot and carrier reapplication across rotation/part transitions; reuse its coverage rather than create a competing lifecycle repair. |
 
 Before reconciling the caster shaders, verify both exact-index publication and

@@ -2,27 +2,33 @@
 #ifndef IR_SUN_FACE_QUERY_LAYOUT_INCLUDED
 #define IR_SUN_FACE_QUERY_LAYOUT_INCLUDED
 
-// Tail of SunShadowDepthMap: face count, bounded tile lists, then projected face records.
+// SunShadowDepthMap holds depth layers, primary tile lists, geometry and bounded spill lists.
 constant uint kSourceFaceMapDimension = 1024u;
 constant uint kSourceFaceCascadeCount = 2u;
 constant uint kSourceFaceTileEdge = 8u;
 constant uint kSourceFaceTilesPerAxis = kSourceFaceMapDimension / kSourceFaceTileEdge;
 constant uint kSourceFaceTileCount = kSourceFaceCascadeCount * kSourceFaceTilesPerAxis * kSourceFaceTilesPerAxis;
 constant uint kSourceFaceTileCapacity = 64u;
+constant uint kSourceFaceTileQueryCapacity = 256u;
+constant uint kSourceFaceSpillCapacity = 262144u;
+constant uint kSourceFaceSpillNodeWords = 2u;
 constant uint kSourceFaceCapacity = 65536u;
 constant uint kSourceFaceRecordWords = 10u;
 constant uint kSourceFaceFallbackOffset = kSourceFaceCascadeCount * kSourceFaceMapDimension * kSourceFaceMapDimension;
 constant uint kSourceFaceHeaderOffset = 2u * kSourceFaceFallbackOffset;
 constant uint kSourceFaceTileOffset = kSourceFaceHeaderOffset + 1u;
 constant uint kSourceFaceRecordOffset = kSourceFaceTileOffset + kSourceFaceTileCount * (kSourceFaceTileCapacity + 1u);
-constant uint kSourceFaceBufferWords = kSourceFaceRecordOffset + kSourceFaceCapacity * kSourceFaceRecordWords;
+constant uint kSourceFaceSpillCounterOffset = kSourceFaceRecordOffset + kSourceFaceCapacity * kSourceFaceRecordWords;
+constant uint kSourceFaceSpillHeadOffset = kSourceFaceSpillCounterOffset + 1u;
+constant uint kSourceFaceSpillNodeOffset = kSourceFaceSpillHeadOffset + kSourceFaceTileCount;
+constant uint kSourceFaceBufferWords = kSourceFaceSpillNodeOffset + kSourceFaceSpillCapacity * kSourceFaceSpillNodeWords;
 
 inline uint sourceFaceTileBase(uint tileIndex) {
     return kSourceFaceTileOffset + tileIndex * (kSourceFaceTileCapacity + 1u);
 }
 
 inline bool sourceFaceQueryComplete(uint count) {
-    return count <= kSourceFaceTileCapacity;
+    return count <= kSourceFaceTileQueryCapacity;
 }
 
 // Positive separation means the receiver ray intersects this finite face in front.

@@ -4,6 +4,7 @@ Checks projected records and bounded writes, not GPU ordering, caster transforms
 fallback rasterization, or the complete receiver shader.
 """
 
+import re
 import shutil
 import subprocess
 import tempfile
@@ -24,11 +25,12 @@ PREAMBLE = r"""
 #include <vector>
 using uint = std::uint32_t;
 using atomic_uint = uint;
-std::uint64_t atomicAdds=0, atomicMaxes=0;
+std::uint64_t atomicAdds=0, atomicMaxes=0, atomicExchanges=0;
 using std::abs;
 constexpr int memory_order_relaxed = 0;
 struct vec2 {
     float x,y;
+    explicit vec2(float a):x(a),y(a){}
     vec2(float a,float b):x(a),y(b){}
 };
 struct ivec2 {
@@ -54,6 +56,8 @@ uint floatBitsToUint(float a){uint b;std::memcpy(&b,&a,4);return b;}
 template<class T> T as_type(float a){T b;std::memcpy(&b,&a,4);return b;}
 uint atomicAdd(uint& p,uint n){++atomicAdds;uint old=p;p+=n;return old;}
 uint atomicMax(uint& p,uint n){++atomicMaxes;uint old=p;p=std::max(p,n);return old;}
+uint atomicExchange(uint& p,uint n){++atomicExchanges;uint old=p;p=n;return old;}
+uint atomic_exchange_explicit(uint* p,uint n,int){return atomicExchange(*p,n);}
 uint atomic_fetch_add_explicit(uint* p,uint n,int){return atomicAdd(*p,n);}
 uint atomic_fetch_max_explicit(uint* p,uint n,int){return atomicMax(*p,n);}
 void atomic_store_explicit(uint* p,uint n,int){*p=n;}
@@ -79,13 +83,16 @@ constexpr uint guardWords=32, canary=0xa5c31e79u, unwritten=0xccccccccu;
 std::vector<uint> actual(kSourceFaceBufferWords+2*guardWords,canary),expected;
 uint* oracle;
 void reset() {
-    atomicAdds=atomicMaxes=0;
+    atomicAdds=atomicMaxes=atomicExchanges=0;
     std::fill(actual.begin(),actual.end(),canary);
     sunDepthBuf={actual.data()+guardWords,kSourceFaceBufferWords};
     std::fill(sunDepthBuf.data,sunDepthBuf.data+kSourceFaceBufferWords,unwritten);
     sunDepthBuf[kSourceFaceHeaderOffset]=0;
-    for(uint tile=0;tile<32768;++tile)
+    sunDepthBuf[kSourceFaceSpillCounterOffset]=0;
+    for(uint tile=0;tile<32768;++tile) {
         sunDepthBuf[kSourceFaceTileOffset+tile*65]=0;
+        sunDepthBuf[kSourceFaceSpillHeadOffset+tile]=0xffffffffu;
+    }
     expected=actual;
     oracle=expected.data()+guardWords;
 }
@@ -111,33 +118,49 @@ bool check(const char* label) {
 }
 // Explicit fixture tile IDs are independent of the shader's bounds arithmetic.
 void emit(vec3 corner,vec3 u,vec3 v,const std::vector<uint>& tiles) {
-    const auto addsBefore=atomicAdds, maxesBefore=atomicMaxes;
-    const uint expectedId=oracle[kSourceFaceHeaderOffset];
+    const auto addsBefore=atomicAdds, maxesBefore=atomicMaxes, exchangesBefore=atomicExchanges;
+    uint expectedAdds=0,expectedMaxes=0,expectedExchanges=0;
     CALL_INDEX
-    const bool allocated=tiles.size()>0;
-    const bool exact=expectedId<65536;
-    const auto expectedAdds=allocated ? 1+(exact ? tiles.size() : 0) : 0;
-    const auto expectedMaxes=allocated && !exact ? tiles.size() : 0;
+    if(!tiles.empty()) {
+        const uint id=oracle[kSourceFaceHeaderOffset]++;
+        ++expectedAdds;
+        if(id<65536) {
+            oracle[kSourceFaceRecordOffset+id*kSourceFaceRecordWords+9]=0;
+            const vec3 vectors[]={corner,u,v};
+            for(uint vector=0;vector<3;++vector) for(uint axis=0;axis<3;++axis)
+                oracle[kSourceFaceRecordOffset+id*kSourceFaceRecordWords+vector*3+axis]=floatBitsToUint(vectors[vector][axis]);
+        }
+        for(uint tile:tiles) {
+            uint* list=oracle+kSourceFaceTileOffset+tile*65;
+            if(id>=65536) {
+                list[0]=std::max(list[0],257u);
+                ++expectedMaxes;
+                continue;
+            }
+            const uint count=list[0]++;
+            ++expectedAdds;
+            if(count<64) list[count+1]=id;
+            else if(count<256) {
+                const uint slot=oracle[kSourceFaceSpillCounterOffset]++;
+                ++expectedAdds;
+                if(slot>=262144) {
+                    list[0]=std::max(list[0],257u);
+                    ++expectedMaxes;
+                    continue;
+                }
+                const uint node=kSourceFaceSpillNodeOffset+slot*2;
+                oracle[node]=id;
+                oracle[node+1]=oracle[kSourceFaceSpillHeadOffset+tile];
+                oracle[kSourceFaceSpillHeadOffset+tile]=slot;
+                ++expectedExchanges;
+            }
+        }
+    }
     if(CHECK_ATOMIC_WORKLOAD &&
-       (atomicAdds-addsBefore!=expectedAdds || atomicMaxes-maxesBefore!=expectedMaxes)) {
+       (atomicAdds-addsBefore!=expectedAdds || atomicMaxes-maxesBefore!=expectedMaxes ||
+        atomicExchanges-exchangesBefore!=expectedExchanges)) {
         std::cerr<<"unexpected index atomic workload\n";
         std::exit(18);
-    }
-    if(tiles.size()==0) return;
-    const uint id=oracle[kSourceFaceHeaderOffset]++;
-    if(id<65536) {
-        oracle[kSourceFaceRecordOffset+id*kSourceFaceRecordWords+9]=0;
-        const vec3 vectors[]={corner,u,v};
-        for(uint vector=0;vector<3;++vector) for(uint axis=0;axis<3;++axis)
-            oracle[kSourceFaceRecordOffset+id*kSourceFaceRecordWords+vector*3+axis]=floatBitsToUint(vectors[vector][axis]);
-    }
-    for(uint tile:tiles) {
-        uint* list=oracle+kSourceFaceTileOffset+tile*65;
-        if(id>=65536) list[0]=std::max(list[0],65u);
-        else {
-            const uint count=list[0]++;
-            if(count<64) list[count+1]=id;
-        }
     }
 }
 vec3 storedVector(uint record,uint offset) {
@@ -145,9 +168,41 @@ vec3 storedVector(uint record,uint offset) {
     for(uint i=0;i<3;++i) std::memcpy(&value[i],sunDepthBuf.data+record+offset+i,4);
     return {value[0],value[1],value[2]};
 }
+std::vector<uint> candidates(uint tile) {
+    const uint base=kSourceFaceTileOffset+tile*65;
+    const uint count=sunDepthBuf[base];
+    if(!sourceFaceQueryComplete(count)) return {};
+    std::vector<uint> ids;
+    for(uint i=0;i<std::min(count,64u);++i) ids.push_back(sunDepthBuf[base+1+i]);
+    if(count>64) {
+        uint node=sunDepthBuf[kSourceFaceSpillHeadOffset+tile];
+        for(uint i=64;i<count;++i) {
+            if(node>=262144) {std::cerr<<"missing or poisoned spill node\n";std::exit(30);}
+            const uint address=kSourceFaceSpillNodeOffset+2*node;
+            ids.push_back(sunDepthBuf[address]);
+            node=sunDepthBuf[address+1];
+        }
+        if(node!=0xffffffffu) {std::cerr<<"stale or cyclic spill tail\n";std::exit(31);}
+    }
+    for(uint id:ids) if(id>=std::min(65536u,sunDepthBuf[kSourceFaceHeaderOffset])) {
+        std::cerr<<"unpublished face ID\n";std::exit(32);
+    }
+    std::sort(ids.begin(),ids.end());
+    if(std::adjacent_find(ids.begin(),ids.end())!=ids.end()) {
+        std::cerr<<"duplicate candidate ID\n";std::exit(33);
+    }
+    return ids;
+}
+bool allCandidates(uint tile,uint first,uint count) {
+    const auto ids=candidates(tile);
+    if(ids.size()!=count) return false;
+    for(uint i=0;i<count;++i) if(ids[i]!=first+i) return false;
+    return true;
+}
 int main() {
     static_assert(kSourceFaceCapacity==65536 && kSourceFaceTileCapacity==64);
     static_assert(kSourceFaceTileCount==32768 && kSourceFaceRecordWords==10);
+    static_assert(kSourceFaceSpillCapacity==262144 && kSourceFaceTileQueryCapacity==256);
     const vec3 corner{7,7,2},u{3,0,1.5f},v{0,3,-.75f};
     reset();
     emit(corner,u,v,{0,1,128,129,16384,16385});
@@ -176,10 +231,19 @@ int main() {
     emit(corner,u,v,{0,1,128,129,16384,16385});
     report("small-65");
     if(!check("65 candidates") ||
-       sourceFaceQueryComplete(sunDepthBuf[kSourceFaceTileOffset])) return 7;
+       !sourceFaceQueryComplete(sunDepthBuf[kSourceFaceTileOffset]) ||
+       !allCandidates(0,0,65) || !allCandidates(16385,0,65)) return 7;
     emit(corner,u,v,{0,1,128,129,16384,16385});
     if(!check("66 candidates remain bounded")) return 19;
     report("small-66");
+    for(uint n=66;n<256;++n) emit(corner,u,v,{0,1,128,129,16384,16385});
+    if(!check("256 candidates") || !allCandidates(0,0,256) ||
+       !allCandidates(16385,0,256)) return 20;
+    const uint spillAtLimit=sunDepthBuf[kSourceFaceSpillCounterOffset];
+    emit(corner,u,v,{0,1,128,129,16384,16385});
+    if(!check("257 candidates") || !candidates(0).empty() ||
+       sunDepthBuf[kSourceFaceSpillCounterOffset]!=spillAtLimit) return 21;
+    report("small-257");
     reset();
     emit({-100,-100,2},u,v,{});
     if(!check("off-map faces consume no quota")) return 8;
@@ -193,6 +257,8 @@ int main() {
     emit({48,48,2},u,v,{774,16643});
     if(!check("overflow on previously empty tiles")) return 11;
     report("global-exhaustion");
+    if(!candidates(774).empty() || sunDepthBuf[kSourceFaceTileOffset+774*65+1]!=unwritten)
+        return 22;
     emit({-100,-100,2},u,v,{});
     if(!check("off-map overflow")) return 12;
     reset();
@@ -210,9 +276,62 @@ int main() {
     report("full-map-65");
     if(!check("large face overflow keeps every tile bounded")) return 16;
     for(uint tile:allTiles)
-        if(sourceFaceQueryComplete(sunDepthBuf[kSourceFaceTileOffset+tile*65])) return 17;
+        if(!allCandidates(tile,0,65)) return 17;
     std::cout<<"large-face control: 32768 tile entries per face; "
-             <<"65 overlapping faces make both cascades incomplete\n";
+             <<"65 overlapping faces retain complete candidates in both cascades\n";
+
+    reset();
+    for(uint n=0;n<64;++n) emit(corner,u,v,{0,1,128,129,16384,16385});
+    sunDepthBuf[kSourceFaceSpillCounterOffset]=oracle[kSourceFaceSpillCounterOffset]=262143;
+    emit(corner,u,v,{0,1,128,129,16384,16385});
+    if(!check("last spill node then pool exhaustion") || !allCandidates(0,0,65)) return 23;
+    for(uint tile:{1u,128u,129u,16384u,16385u}) if(!candidates(tile).empty()) return 24;
+    const uint failedCount=sunDepthBuf[kSourceFaceTileOffset+65];
+    emit(corner,u,v,{0,1,128,129,16384,16385});
+    if(!check("pool failure stays incomplete") || !candidates(0).empty() ||
+       sunDepthBuf[kSourceFaceTileOffset+65]<=failedCount) return 25;
+    emit({32,32,2},u,v,{516,16514});
+    if(!check("full pool leaves primary lists usable") || !allCandidates(516,66,1)) return 26;
+
+    const auto stale=actual;
+    for(uint index=0;index<kSourceFaceFallbackOffset+17;++index) clearIndex(index);
+    for(uint i=0;i<kSourceFaceFallbackOffset*2;++i) oracle[i]=0xffffffffu;
+    oracle[kSourceFaceHeaderOffset]=oracle[kSourceFaceSpillCounterOffset]=0;
+    for(uint tile=0;tile<32768;++tile) {
+        oracle[kSourceFaceTileOffset+tile*65]=0;
+        oracle[kSourceFaceSpillHeadOffset+tile]=0xffffffffu;
+    }
+    if(!check("production clear resets counters and heads without erasing records")) return 27;
+    if(!std::equal(actual.begin()+guardWords+kSourceFaceSpillNodeOffset,
+                   actual.begin()+guardWords+kSourceFaceBufferWords,
+                   stale.begin()+guardWords+kSourceFaceSpillNodeOffset)) return 28;
+    for(uint n=0;n<65;++n) emit(corner,u,v,{0,1,128,129,16384,16385});
+    if(!check("reused nodes have no stale tail") || !allCandidates(0,0,65)) return 29;
+
+    for(uint seed=1;seed<=12;++seed) {
+        reset();
+        std::vector<uint> identities;
+        for(uint i=0;i<256;++i) identities.push_back(i);
+        uint random=seed;
+        for(uint i=256;i>1;--i) {
+            random=random*1664525u+1013904223u;
+            std::swap(identities[i-1],identities[random%i]);
+        }
+        for(uint identity:identities)
+            emit({7,7,float(identity)},u,v,{0,1,128,129,16384,16385});
+        if(!check("permuted complete candidates")) return 34;
+        for(uint tile:{0u,16385u}) {
+            std::vector<uint> recovered;
+            for(uint id:candidates(tile)) recovered.push_back(uint(storedVector(
+                kSourceFaceRecordOffset+id*kSourceFaceRecordWords,0).z));
+            std::sort(recovered.begin(),recovered.end());
+            if(recovered.size()!=256) return 35;
+            for(uint i=0;i<256;++i) if(recovered[i]!=i) return 36;
+        }
+        emit(corner,u,v,{0,1,128,129,16384,16385});
+        if(!candidates(0).empty() || !check("permuted query exhaustion")) return 37;
+    }
+    std::cout<<"spill boundary, pool exhaustion, stale reset and 12 insertion permutations pass\n";
 }
 """
 
@@ -227,12 +346,14 @@ class SourceFaceIndexTest(unittest.TestCase):
             layout = (shaders / f"ir_sun_face_query_layout.{suffix}").read_text()
             geometry = (shaders / f"ir_projected_face.{suffix}").read_text()
             layout = layout.replace(f'#include "ir_projected_face.{suffix}"', geometry)
+            clear = (shaders / f"c_clear_sun_shadow_map.{suffix}").read_text()
+            clear = clear[clear.index("    if (linearIdx >= kTotalTexels)"):]
             variants = {
                 "production": indexer,
                 "missing_cascade": indexer.replace(
                     "cascade < kSourceFaceCascadeCount", "cascade < 1u"),
                 "unmarked_global_overflow": indexer.replace(
-                    "kSourceFaceTileCapacity + 1u", "0u"),
+                    "kSourceFaceTileQueryCapacity + 1u", "0u"),
                 "tile_list_overrun": indexer.replace(
                     "slot < kSourceFaceTileCapacity", "slot <= kSourceFaceTileCapacity"),
                 "record_overrun": indexer.replace(
@@ -240,13 +361,36 @@ class SourceFaceIndexTest(unittest.TestCase):
                 "corrupt_record": indexer.replace("corner[axis]", "edgeU[axis]"),
                 "unculled_off_map": indexer.replace(
                     "if (first.x > last.x || first.y > last.y) continue;", ""),
+                "spill_pool_overrun": indexer.replace(
+                    "spill < kSourceFaceSpillCapacity", "spill <= kSourceFaceSpillCapacity"),
+                "spill_query_overrun": indexer.replace(
+                    "slot < kSourceFaceTileQueryCapacity", "slot <= kSourceFaceTileQueryCapacity"),
+                "missing_spill_candidates": indexer.replace(
+                    "slot < kSourceFaceTileQueryCapacity", "false"),
+                "wrong_spill_record": indexer.replace(
+                    "sunDepthBuf[node] = faceIndex", "sunDepthBuf[node] = 0u") if suffix == "glsl"
+                else indexer.replace("&sunDepthBuf[node], faceIndex", "&sunDepthBuf[node], 0u"),
+                "stale_spill_heads": indexer,
+                "stale_spill_counter": indexer,
             }
             layouts = dict.fromkeys(variants, layout)
+            clears = dict.fromkeys(variants, clear)
+            clears["stale_spill_heads"] = re.sub(
+                r"[^\n]*sunDepthBuf\[kSourceFaceSpillHeadOffset[^\n]*\n", "", clear)
+            clears["stale_spill_counter"] = re.sub(
+                r"[^\n]*(?:sourceFaceSpillCounterIndex|kSourceFaceSpillCounterOffset)[^\n]*\n",
+                "", clear)
             if suffix == "glsl":
                 variants["header_index_off_by_one"] = indexer
                 layouts["header_index_off_by_one"] = layout.replace(
                     "kSourceFaceBufferWords - kSourceFaceHeaderOffset)",
                     "kSourceFaceBufferWords - kSourceFaceHeaderOffset - 1u)")
+                clears["header_index_off_by_one"] = clear
+                variants["spill_counter_index_off_by_one"] = indexer
+                layouts["spill_counter_index_off_by_one"] = layout.replace(
+                    "kSourceFaceBufferWords - kSourceFaceSpillCounterOffset)",
+                    "kSourceFaceBufferWords - kSourceFaceSpillCounterOffset - 1u)")
+                clears["spill_counter_index_off_by_one"] = clear
             call = ("indexSourceSunFace(corner,u,v);" if suffix == "glsl" else
                     "indexSourceSunFace(sunDepthBuf.data,corner,u,v,sunFrame);")
             degenerate = ("indexSourceSunFace(corner,u,u);" if suffix == "glsl" else
@@ -256,8 +400,17 @@ class SourceFaceIndexTest(unittest.TestCase):
                 with (self.subTest(backend=suffix, variant=variant),
                       tempfile.TemporaryDirectory() as temporary):
                     if variant != "production":
-                        self.assertNotEqual((layouts[variant], body), (layout, indexer))
+                        self.assertNotEqual((layouts[variant], body, clears[variant]),
+                                            (layout, indexer, clear))
                     shader = layouts[variant] + "\n" + body
+                    clear_function = (
+                        "void clearIndex(uint linearIdx) {\n" if suffix == "glsl" else
+                        "void clearIndexImpl(uint* sunDepthBuf,uint linearIdx) {\n")
+                    shader += "\n" + clear_function + (
+                        "const uint kTotalTexels=kSourceFaceFallbackOffset;\n" + clears[variant])
+                    if suffix == "metal":
+                        shader += ("\nvoid clearIndex(uint index) {"
+                                   "clearIndexImpl(sunDepthBuf.data,index);}\n")
                     shader = (shader.replace("constant uint", "const uint")
                               .replace("constant FrameDataSun&", "const FrameDataSun&")
                               .replace("device atomic_uint*", "atomic_uint*")

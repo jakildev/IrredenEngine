@@ -452,11 +452,13 @@ casters retain their independent primary layer. Ordinary sampled receivers merge
 both layers as before. No buffer or dispatch is added, but record insertion and
 tile atomics add real production GPU work.
 
-Boxes share the existing 65,536-record / 64-candidate-per-tile limits with voxel
-faces. Large faces can touch many tiles, and overflow still loses exact boundary
-coverage. Profile large overlapping boxes and mixed dense voxel scenes before
-claiming scalability or widening the index. A broader capacity strategy belongs
-with the performance work, not a hidden allocation increase here.
+Boxes and voxel faces share the [finite sun-face index capacity](sun-face-index-capacity.md):
+65,536 records, 64 inline candidates per tile and a bounded spill pool extending
+complete queries to 256 candidates. Large faces can touch many tiles. Tile,
+record or spill-pool exhaustion still selects sampled fallback, so this is not
+an arbitrary-density sharpness guarantee. Profile large overlapping boxes and
+mixed dense voxel scenes, including spill traversal and memory, before claiming
+scalability.
 
 [Native comparisons](../pr-screenshots/codex/fragment-caster-footprint/README.md)
 show straight boundaries in the fragment diagnostic and normal source-face floor

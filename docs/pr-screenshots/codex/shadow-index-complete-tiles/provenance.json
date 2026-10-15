@@ -1,0 +1,80 @@
+{
+  "base_revision": "90503255f84bf5046b04fc9a31788bc17c2447ed",
+  "backend": "Metal",
+  "host_device": "Apple M4 Max",
+  "run_status": "Both logs report RESULT=CLEAN exit=0. Manifest clean describes process completion, not a git-clean tree.",
+  "source_delta": "after/capture-source.patch supplements captured renderer.patch with current allocation/probe headers. Reconstructed after capture; captured shader patch equals current shader diff byte-for-byte. The CSV independently reports buffer_bytes=30146568.",
+  "after_source_patch_sha256": "5f5874aae2be9126d0375a95e475198075e2de4747e596e4fbd176d6bf5ed7e7",
+  "shader_patch_matches_captured": true,
+  "historical_complete_comparison": [
+    {
+      "image": "0.png",
+      "byte_identical": true,
+      "sha256": "bdbee03a7c0d559765f0bf5b8a9fe7bf89bde408fd2e86c6cc1dc3dad4ebf69f"
+    },
+    {
+      "image": "1.png",
+      "byte_identical": true,
+      "sha256": "739eb1c85a74725d1ba61c81db4043ff82dd5875b83dc0bf6e0aef187c2d1602"
+    },
+    {
+      "image": "2.png",
+      "byte_identical": true,
+      "sha256": "1c8b6db8eace892251087259d392101089264eae6cc7e248232aa72c3c7fde20"
+    },
+    {
+      "image": "3.png",
+      "byte_identical": true,
+      "sha256": "c5c921637f08aa96f9fbab41f6a5306e720fe00e539d32ac16e3b2258c9df024"
+    },
+    {
+      "image": "4.png",
+      "byte_identical": true,
+      "sha256": "50f8bb796efa763e6c3800348fcae0a548da3f622191af9ba7519b43626693ff"
+    },
+    {
+      "image": "5.png",
+      "byte_identical": true,
+      "sha256": "f9ead1ebdcebf52065d45e0705b77f187cf73d8193444ca71199bb70eefa9f1a"
+    },
+    {
+      "image": "6.png",
+      "byte_identical": true,
+      "sha256": "cb70b2cb6aefe7cc8f69621132fd8658096fda526ade6057c82d2640f365385e"
+    },
+    {
+      "image": "7.png",
+      "byte_identical": true,
+      "sha256": "bfc865dc828bc3d717f045e150df55a9ed25a817c222144ff19b28019e237bf5"
+    }
+  ],
+  "metric_script_sha256": "db11b1728539f6d8dcd3e8d4b073d132f8a8233d652d010b56a0c28a59a92d33",
+  "probe_summarizer_sha256": "b0b1c5ff6a523d8f399219734edeab3118ed3316f6ac80041d01d75b5b79d850",
+  "source_sha256_at_review_snapshot": {
+    "engine/prefabs/irreden/render/sun_face_query_layout.hpp": "6fa8f2de558ce9ed74b21c1a2387f0780be20d01be4ec8beef484220ebd287c2",
+    "engine/prefabs/irreden/render/sun_shadow_probe.hpp": "e10da040ca653f25e40d9f06c8b084d865b45b4a62a496ca87a36a344abca825",
+    "engine/render/src/shaders/c_clear_sun_shadow_map.glsl": "b73b009a12a3e5523e950c1ab529a6a23c8fc30561e97cdb6058e061d3b37c83",
+    "engine/render/src/shaders/ir_sun_face_index.glsl": "e98ed7981a6e5ea0f790677bc6cc9c17fad5655f599d84586d196e586d1c15a3",
+    "engine/render/src/shaders/ir_sun_face_query_layout.glsl": "a910f1137859b2eb7898cdd84c87370b54f25eb73ac1987e7e7d0836f41b321f",
+    "engine/render/src/shaders/ir_sun_shadow_sample.glsl": "9327f81ee0c88ea680af5dda90751e4ffc0b72494e99bebe0940abdfe662781c",
+    "engine/render/src/shaders/metal/c_clear_sun_shadow_map.metal": "303b1117f2e35970f35a65398e380ee91f678f0c5f341f2c0e588801ed37beac",
+    "engine/render/src/shaders/metal/ir_sun_face_index.metal": "2f1571d89a283d3ec3ad19a13fb9351a201004d733f777b8ac2e86067e489290",
+    "engine/render/src/shaders/metal/ir_sun_face_query_layout.metal": "350ed8a9ec6f408fa344b5bb51201e337a416d48f21b61b9e13f881d05f1b32b",
+    "engine/render/src/shaders/metal/ir_sun_shadow_sample.metal": "559e66a1864f7f17157d0271f10221b2b4acbf6c4d9347002af533273c5092b3"
+  },
+  "subsequent_header_formatting_check": [
+    {
+      "path": "engine/prefabs/irreden/render/sun_face_query_layout.hpp",
+      "same_non_whitespace_tokens_after_formatting": true,
+      "patch_reconstructed_sha256": "c2490262ed75898b42b45c3e5d156b6c0430d70d80a5620e04ff7a21b3ca638f",
+      "formatted_sha256": "6fa8f2de558ce9ed74b21c1a2387f0780be20d01be4ec8beef484220ebd287c2"
+    },
+    {
+      "path": "engine/prefabs/irreden/render/sun_shadow_probe.hpp",
+      "same_non_whitespace_tokens_after_formatting": true,
+      "patch_reconstructed_sha256": "b6a568ce805a5f5c3e86bc6bd1a90f3dcec3707d2f2fb01f64c777515715316e",
+      "formatted_sha256": "e10da040ca653f25e40d9f06c8b084d865b45b4a62a496ca87a36a344abca825"
+    }
+  ],
+  "source_hash_note": "Source hashes were sampled during review after the two headers were formatted. The formatting check reconstructs their earlier bytes from base_revision plus capture-source.patch and verifies equal non-whitespace tokens, preserving string literals."
+}

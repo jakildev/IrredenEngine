@@ -16,6 +16,9 @@ constexpr std::uint32_t kSourceFaceTilesPerAxis = kSourceFaceMapDimension / kSou
 constexpr std::uint32_t kSourceFaceTileCount =
     kSourceFaceCascadeCount * kSourceFaceTilesPerAxis * kSourceFaceTilesPerAxis;
 constexpr std::uint32_t kSourceFaceTileCapacity = 64u;
+constexpr std::uint32_t kSourceFaceTileQueryCapacity = 256u;
+constexpr std::uint32_t kSourceFaceSpillCapacity = 262144u;
+constexpr std::uint32_t kSourceFaceSpillNodeWords = 2u;
 constexpr std::uint32_t kSourceFaceCapacity = 65536u;
 constexpr std::uint32_t kSourceFaceRecordWords = 10u;
 constexpr std::uint32_t kSourceFaceFallbackOffset =
@@ -24,8 +27,22 @@ constexpr std::uint32_t kSourceFaceHeaderOffset = 2u * kSourceFaceFallbackOffset
 constexpr std::uint32_t kSourceFaceTileOffset = kSourceFaceHeaderOffset + 1u;
 constexpr std::uint32_t kSourceFaceRecordOffset =
     kSourceFaceTileOffset + kSourceFaceTileCount * (kSourceFaceTileCapacity + 1u);
-constexpr std::uint32_t kSourceFaceBufferWords =
+constexpr std::uint32_t kSourceFaceSpillCounterOffset =
     kSourceFaceRecordOffset + kSourceFaceCapacity * kSourceFaceRecordWords;
+constexpr std::uint32_t kSourceFaceSpillHeadOffset = kSourceFaceSpillCounterOffset + 1u;
+constexpr std::uint32_t kSourceFaceSpillNodeOffset =
+    kSourceFaceSpillHeadOffset + kSourceFaceTileCount;
+constexpr std::uint32_t kSourceFaceBufferWords =
+    kSourceFaceSpillNodeOffset + kSourceFaceSpillCapacity * kSourceFaceSpillNodeWords;
+
+static_assert(
+    kSourceFaceTileQueryCapacity > kSourceFaceTileCapacity,
+    "Spill queries must extend the inline tile capacity"
+);
+static_assert(
+    kSourceFaceTileCount * (kSourceFaceTileQueryCapacity - kSourceFaceTileCapacity) < 0xFFFFFFFFu,
+    "Spill allocation attempts must not wrap the counter"
+);
 
 static_assert(
     kSourceFaceMapDimension % kSourceFaceTileEdge == 0u,

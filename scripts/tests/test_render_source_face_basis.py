@@ -53,7 +53,7 @@ int main(){
     const uint empty=0xffffffffu;
     int queries=0,hits=0,misses=0;
     for(uint cascade:{0u,1u}) {
-        reset(65,65,cascade);
+        reset(kSourceFaceTileQueryCapacity+1,kSourceFaceTileQueryCapacity+1,cascade);
         for(double yaw:{.37,1.13,-.81}) for(double pitch:{.29,-.53}) {
             const vec4 camera=cameraQuaternion(yaw,pitch);
             for(int face=0;face<6;++face) for(int basis:{0,1}) {

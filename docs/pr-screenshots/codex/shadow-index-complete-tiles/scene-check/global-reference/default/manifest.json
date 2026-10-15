@@ -1,0 +1,19 @@
+{
+  "command": [
+    "fleet-run",
+    "IRCanvasStress",
+    "--auto-screenshot",
+    "120",
+    "--sun-face-index-probe"
+  ],
+  "revision": "9256ac0473584699c98de0e1f470378224f7fff0",
+  "binary_sha256": "eef0569f2f41627d1cb0c7a52252cadccf579623c446f948f4d117462dd1c393",
+  "images": {
+    "so3_smooth_sweep": "3c5eff1bc822d86e43f9c2f61abf9148c3ea4438eb6e10c4caf467ed8294030f",
+    "so3_offsnap_disc": "95b9c1f264f85910a12655c1a8bc95c05846a2cd09d577c46ae09d52b6f9e3c0",
+    "so3_wide_parity": "d5b513118fa54eb769b35b7aac56fb25a2f848428122f136e10de11ec3825615",
+    "so3_grid_cross": "cf9a9f9e712f39631f583eb1ffe8000a229fc468159420aab49f478e56d05085",
+    "so3_offsnap_wide": "826f501f79087573352aafef681b69c9019fc6a91b678b6ea3bc43de10e26394",
+    "revoxelize_solids": "fb8416fa86f02e9939b6b2bffbe6806b007425803f1467b233304f6b8ee51834"
+  }
+}

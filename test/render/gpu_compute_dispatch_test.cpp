@@ -2334,6 +2334,23 @@ TEST_F(SunProbeGpuTest, SourceFaceProbeReadsPendingGpuClearAndTileBoundaries) {
     const std::string cleared = probe.contents();
     EXPECT_NE(cleared.find("# active=1\n"), std::string::npos);
     ASSERT_NE(cleared.find("# face_records_requested=0\n"), std::string::npos);
+    EXPECT_NE(cleared.find("# spill_nodes_requested=0\n"), std::string::npos);
+    EXPECT_NE(cleared.find("# tile_capacity=256\n"), std::string::npos);
+    std::vector<std::uint32_t> heads(Shadow::kSourceFaceTileCount);
+    depth.getSubData(
+        Shadow::kSourceFaceSpillHeadOffset * sizeof(std::uint32_t),
+        heads.size() * sizeof(std::uint32_t),
+        heads.data()
+    );
+    for (const auto head : heads)
+        EXPECT_EQ(head, 0xFFFFFFFFu);
+    std::uint32_t staleNode = 0;
+    depth.getSubData(
+        Shadow::kSourceFaceSpillNodeOffset * sizeof(std::uint32_t),
+        sizeof(staleNode),
+        &staleNode
+    );
+    EXPECT_EQ(staleNode, 0xDEADBEEFu);
     std::istringstream rows(cleared);
     std::string line;
     std::size_t tileRows = 0;
@@ -2355,8 +2372,8 @@ TEST_F(SunProbeGpuTest, SourceFaceProbeReadsPendingGpuClearAndTileBoundaries) {
     }
     EXPECT_EQ(tileRows, Shadow::kSourceFaceTileCount);
 
-    const std::uint32_t requested = 65u;
-    const std::uint32_t completeCount = 64u;
+    const std::uint32_t requested = 257u;
+    const std::uint32_t completeCount = 256u;
     depth.subData(
         Shadow::kSourceFaceHeaderOffset * sizeof(std::uint32_t),
         sizeof(requested),
@@ -2373,13 +2390,13 @@ TEST_F(SunProbeGpuTest, SourceFaceProbeReadsPendingGpuClearAndTileBoundaries) {
     depth.subData(lastTile * sizeof(std::uint32_t), sizeof(requested), &requested);
     ASSERT_TRUE(Shadow::writeSourceFaceIndexProbe(probe.path_.string()));
     const std::string captured = probe.contents();
-    EXPECT_NE(captured.find("# face_records_requested=65\n"), std::string::npos);
+    EXPECT_NE(captured.find("# face_records_requested=257\n"), std::string::npos);
     EXPECT_NE(captured.find("# basis_u=0.125,0.25,0.5\n"), std::string::npos);
     EXPECT_NE(captured.find("# basis_v=-0.5,0,0.25\n"), std::string::npos);
-    EXPECT_NE(captured.find("\n0,0,0,64,1,-3,5,-1,9\n"), std::string::npos);
+    EXPECT_NE(captured.find("\n0,0,0,256,1,-3,5,-1,9\n"), std::string::npos);
     EXPECT_NE(captured.find("\n0,127,127,0,1,251,513,253,517\n"), std::string::npos);
     EXPECT_NE(captured.find("\n1,0,0,0,1,11,-7,19,9\n"), std::string::npos);
-    EXPECT_NE(captured.find("\n1,127,127,65,0,1027,2025,1035,2041\n"), std::string::npos);
+    EXPECT_NE(captured.find("\n1,127,127,257,0,1027,2025,1035,2041\n"), std::string::npos);
 }
 #endif
 

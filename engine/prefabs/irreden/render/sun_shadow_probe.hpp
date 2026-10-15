@@ -41,12 +41,23 @@ inline bool writeSourceFaceIndexProbe(const std::string &path) {
         words.size() * sizeof(std::uint32_t),
         words.data()
     );
+    std::uint32_t spillRequested = 0;
+    buffer->getSubData(
+        std::size_t(kSourceFaceSpillCounterOffset) * sizeof(std::uint32_t),
+        sizeof(spillRequested),
+        &spillRequested
+    );
     frameBuffer->getSubData(0, sizeof(frame), &frame);
     output << std::setprecision(9);
     output << "# active=1\n";
     output << "# face_records_requested=" << words[0] << "\n";
     output << "# face_record_capacity=" << kSourceFaceCapacity << "\n";
-    output << "# tile_capacity=" << kSourceFaceTileCapacity << "\n";
+    output << "# spill_nodes_requested=" << spillRequested << "\n";
+    output << "# spill_node_capacity=" << kSourceFaceSpillCapacity << "\n";
+    output << "# tile_inline_capacity=" << kSourceFaceTileCapacity << "\n";
+    output << "# buffer_bytes=" << std::size_t(kSourceFaceBufferWords) * sizeof(std::uint32_t)
+           << "\n";
+    output << "# tile_capacity=" << kSourceFaceTileQueryCapacity << "\n";
     output << "# tiles_per_axis=" << kSourceFaceTilesPerAxis << "\n";
     output << "# cascade_count=" << kSourceFaceCascadeCount << "\n";
     output << "# basis_u=" << frame.sunBasisU_.x << ',' << frame.sunBasisU_.y << ','
@@ -67,8 +78,9 @@ inline bool writeSourceFaceIndexProbe(const std::string &path) {
         const auto low = origin + IRMath::vec2(float(x), float(y)) * size;
         const auto high = low + size;
         output << cascade << ',' << x << ',' << y << ',' << count << ','
-               << (count <= kSourceFaceTileCapacity) << ',' << low.x << ',' << low.y << ','
-               << high.x << ',' << high.y << "\n";
+               << (count <= kSourceFaceTileQueryCapacity &&
+                   (count <= kSourceFaceTileCapacity || spillRequested <= kSourceFaceSpillCapacity))
+               << ',' << low.x << ',' << low.y << ',' << high.x << ',' << high.y << "\n";
     }
     output.close();
     return !output.fail();

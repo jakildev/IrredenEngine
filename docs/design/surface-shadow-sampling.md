@@ -113,10 +113,12 @@ other casters stay in the independent primary layer. Incomplete tiles use the
 indexed fallback layer, which preserves world/camera face markers for the plane-agreement calculation
 above. Raster-origin receivers retain the minimum of both depth layers.
 
-Only faces overlapping at least one cascade consume records. Capacity remains
-65,536 records and 64 candidates per tile, shared by all voxel bases. Added GRID
-or resampled geometry can force previously exact rigid-source tiles into
-approximate fallback; this is not a guarantee of sharp edges at arbitrary density.
+Only faces overlapping at least one cascade consume records. All voxel bases
+share the [bounded index](sun-face-index-capacity.md): 65,536 records, 64 inline
+candidates per tile and up to 256 candidates with shared spill storage. Added
+GRID or resampled geometry can still exhaust capacity and force previously exact
+rigid-source tiles into approximate fallback; sharp edges at arbitrary density
+are not guaranteed.
 Native sparse-scene acceptance and outstanding limits are recorded in the
 [finite voxel query evidence](../pr-screenshots/codex/finite-voxel-shadow-query/README.md).
 

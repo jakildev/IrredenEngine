@@ -37,6 +37,17 @@ def summarize(path, world_point=None):
     record_capacity = int(metadata["face_record_capacity"])
     if min(capacity, dimension, cascades, record_capacity) <= 0 or requested < 0:
         raise ValueError("invalid index dimensions")
+    spill_keys = {"spill_nodes_requested", "spill_node_capacity", "tile_inline_capacity",
+                  "buffer_bytes"}
+    spill = {}
+    if spill_keys & metadata.keys():
+        if not spill_keys <= metadata.keys():
+            raise ValueError("missing spill metadata")
+        spill = {key: int(metadata[key]) for key in spill_keys}
+        if (spill["spill_nodes_requested"] < 0 or spill["spill_node_capacity"] <= 0
+                or not 0 < spill["tile_inline_capacity"] < capacity
+                or spill["buffer_bytes"] <= 0):
+            raise ValueError("invalid spill dimensions")
     result = [{"occupied_tiles": 0, "incomplete_tiles": 0, "max_counter": 0}
               for _ in range(cascades)]
     projected = None
@@ -66,6 +77,8 @@ def summarize(path, world_point=None):
     has_bounds = bounds_columns <= columns
     if (projected is not None or bounds_columns & columns) and not has_bounds:
         raise ValueError("missing tile bounds")
+    spill_exhausted = bool(spill) and (
+        spill["spill_nodes_requested"] > spill["spill_node_capacity"])
     for row in reader:
         if None in row or any(value is None for value in row.values()):
             raise ValueError("invalid tile row")
@@ -75,7 +88,9 @@ def summarize(path, world_point=None):
         if (not 0 <= cascade < cascades or not 0 <= x < dimension
                 or not 0 <= y < dimension or count < 0 or key in seen):
             raise ValueError("invalid or duplicate tile")
-        if complete != int(count <= capacity):
+        expected_complete = count <= capacity and (
+            not spill_exhausted or count <= spill["tile_inline_capacity"])
+        if complete != int(expected_complete):
             raise ValueError("tile completeness disagrees with capacity")
         seen.add(key)
         if has_bounds:
@@ -99,6 +114,7 @@ def summarize(path, world_point=None):
     summary = {"face_records_requested": requested,
                "face_record_capacity": record_capacity,
                "tile_capacity": capacity, "cascades": result}
+    summary.update(spill)
     if projected is not None:
         summary["sun_uv"] = projected
         summary["point_tiles"] = point_tiles

@@ -49,11 +49,23 @@ inline void indexSourceSunGeometry(device atomic_uint* sunDepthBuf, float3 corne
             const uint tile = cascade * kSourceFaceTilesPerAxis * kSourceFaceTilesPerAxis + uint(y) * kSourceFaceTilesPerAxis + uint(x);
             const uint base = sourceFaceTileBase(tile);
             if (faceIndex >= kSourceFaceCapacity) {
-                atomic_fetch_max_explicit(&sunDepthBuf[base], kSourceFaceTileCapacity + 1u, memory_order_relaxed);
+                atomic_fetch_max_explicit(&sunDepthBuf[base], kSourceFaceTileQueryCapacity + 1u, memory_order_relaxed);
                 continue;
             }
             const uint slot = atomic_fetch_add_explicit(&sunDepthBuf[base], 1u, memory_order_relaxed);
-            if (slot < kSourceFaceTileCapacity) atomic_store_explicit(&sunDepthBuf[base + 1u + slot], faceIndex, memory_order_relaxed);
+            if (slot < kSourceFaceTileCapacity) {
+                atomic_store_explicit(&sunDepthBuf[base + 1u + slot], faceIndex, memory_order_relaxed);
+            } else if (slot < kSourceFaceTileQueryCapacity) {
+                const uint spill = atomic_fetch_add_explicit(&sunDepthBuf[kSourceFaceSpillCounterOffset], 1u, memory_order_relaxed);
+                if (spill < kSourceFaceSpillCapacity) {
+                    const uint node = kSourceFaceSpillNodeOffset + spill * kSourceFaceSpillNodeWords;
+                    atomic_store_explicit(&sunDepthBuf[node], faceIndex, memory_order_relaxed);
+                    const uint previous = atomic_exchange_explicit(&sunDepthBuf[kSourceFaceSpillHeadOffset + tile], spill, memory_order_relaxed);
+                    atomic_store_explicit(&sunDepthBuf[node + 1u], previous, memory_order_relaxed);
+                } else {
+                    atomic_fetch_max_explicit(&sunDepthBuf[base], kSourceFaceTileQueryCapacity + 1u, memory_order_relaxed);
+                }
+            }
         }
     }
 }

@@ -69,10 +69,12 @@ const float kShadowBiasQuantNoise=4.0/kSunDepthScale;
 uint depth(float z){return (uint((z+512)*1024)<<8)|0x89u;}
 struct BoundBuffer {
     std::vector<uint> words;
-    uint recordOffset=0,readCount=0;
+    uint recordOffset=0,recordEnd=0,readCount=0;
+    uint spillCounterOffset=0,spillCounterReads=0;
     uint operator[](uint i){
         if(i>=words.size()){std::cerr<<"out-of-bounds read\n";std::exit(90);}
-        if(i>=recordOffset)++readCount;
+        if(i>=recordOffset && i<recordEnd)++readCount;
+        if(i==spillCounterOffset)++spillCounterReads;
         return words[i];
     }
     int length() const{return int(words.size());}
@@ -90,10 +92,23 @@ uint tileBase(uint cascade){return kSourceFaceTileOffset+cascade*128*128*65;}
 void reset(uint count,uint tileCount,uint cascade=0) {
     sunDepthBuf.words.assign(kSourceFaceBufferWords,0xffffffffu);
     sunDepthBuf.recordOffset=kSourceFaceRecordOffset;
+    sunDepthBuf.recordEnd=kSourceFaceSpillCounterOffset;
     sunDepthBuf.readCount=0;
+    sunDepthBuf.spillCounterOffset=kSourceFaceSpillCounterOffset;
+    sunDepthBuf.spillCounterReads=0;
     sunDepthBuf.words[kSourceFaceHeaderOffset]=count;
+    sunDepthBuf.words[kSourceFaceSpillCounterOffset]=0;
     sunDepthBuf.words[tileBase(cascade)]=tileCount;
     for(uint i=0;i<64;++i)sunDepthBuf.words[tileBase(cascade)+1+i]=63-i;
+    if(tileCount>64 && tileCount<=kSourceFaceTileQueryCapacity){
+        const uint tile=cascade*128*128;
+        sunDepthBuf.words[kSourceFaceSpillHeadOffset+tile]=tileCount-65;
+        for(uint i=64;i<tileCount;++i){
+            const uint node=kSourceFaceSpillNodeOffset+(i-64)*kSourceFaceSpillNodeWords;
+            sunDepthBuf.words[node]=i;
+            sunDepthBuf.words[node+1]=i==64?0xffffffffu:i-65;
+        }
+    }
     faces.clear();
 }
 void writeFace(Face f){
@@ -157,7 +172,7 @@ int main(){
             reset(count,count,cascade);
             fill(std::min(count,256u),tapOnly);
             fallback(cascade,empty,depth(1));
-            const bool exact=count<=64 || (enabled && count<=256);
+            const bool exact=count<=kSourceFaceTileQueryCapacity;
             require(sample({2.9f,3.5f},10,cascade)==(exact?0:1),"exact miss/fallback boundary");
             require(sunDepthBuf.readCount==(exact?count*kSourceFaceRecordWords:0),
                     "bounded no-hit record reads");
@@ -168,7 +183,7 @@ int main(){
             reset(count,count,cascade);
             fill(count-1,tapOnly);
             writeFace(hit);
-            require(sample({2.9f,3.5f},10,cascade)==((count<=64||enabled)?1:0),
+            require(sample({2.9f,3.5f},10,cascade)==1,
                     "real hit at final stored record");
         }
         // A complete list remains authoritative even when the global pool overflowed.
@@ -176,6 +191,18 @@ int main(){
         fallback(cascade,empty,depth(1));
         require(sample({2.9f,3.5f},10,cascade)==0,"complete tile in exhausted pool");
         require(sunDepthBuf.readCount==64*kSourceFaceRecordWords,"complete tile uses bounded list");
+    }
+    // Unrelated records must not change a complete local spill query.
+    for(uint total:{257u,65537u}){
+        reset(total,65);fill(64,tapOnly);writeFace(hit);
+        require(sample()==1,"local spill independent of global population");
+    }
+    // Global spill failure must not pick exact tiles by allocation order.
+    for(uint tileCount:{65u,257u}){
+        reset(257,tileCount);fill(64,tapOnly);writeFace(hit);
+        sunDepthBuf.words[kSourceFaceSpillCounterOffset]=kSourceFaceSpillCapacity+1u;
+        require(sample()==0,"spill exhaustion does not select allocation winners");
+        require(sunDepthBuf.readCount==0,"spill exhaustion bypasses all partial records");
     }
     reset(257,1);fill(63,tapOnly);writeFace(hit);
     require(sample()==1,"complete list uses stored record IDs");
@@ -189,7 +216,14 @@ int main(){
     require(sample({2.9f,3.5f},10,0,true,{0,0,-1})==0 && sunDepthBuf.readCount==0,
             "back-facing receiver bypasses exact query");
     require(sample({-1,3.5f})==0 && sunDepthBuf.readCount==0,"outside-map query");
-    if(enabled){
+    // Resource failure can make a small complete record pool's tile incomplete.
+    reset(65,257);fill(64,tapOnly);writeFace(hit);
+    require(sample()==(enabled?1:0),"bounded reference rescues incomplete tile");
+    reset(257,257);fill(257,tapOnly);
+    fallback(0,empty,depth(1));
+    require(sample()==1,"reference never exceeds pool query budget");
+    reset(65,65);fill(65,hit);
+    {
         for(float z:{2.0f,2.00390625f,2.004f,102.0f,102.01f})
             require(sample({2.9f,3.5f},z)==oracle({2.9f,3.5f},z,100),
                     "strict self-bias and throw window");
@@ -234,7 +268,7 @@ int main(){
     const Face tapOnly{{2,3,1},{.75f,0,0},{0,1,0}};
     const Face hit{{2.8f,3,2},{.2f,0,0},{0,1,0}};
     uint comparisons=0;
-    for(uint cascade:{0u,1u})for(uint count:{65u,129u}){
+    for(uint cascade:{0u,1u})for(uint count:{257u,513u}){
         for(uint indexed:{empty,depth(1)})for(uint primary:{empty,depth(2)}){
             reset(count,count,cascade);
             writeFace(indexed==empty?miss:tapOnly);
@@ -248,18 +282,65 @@ int main(){
             sunDepthBuf.words[tileBase(cascade)+64]=count-1;
             const float retained=sample({2.9f,3.5f},10,cascade);
             require(retained==excluded,"retained subset changes shadow coverage");
-            const bool expected=enabled || indexed!=empty || primary!=empty;
+            const bool expected=indexed!=empty || primary!=empty;
             require(retained==expected,"complete reference or sampled fallback");
             ++comparisons;
         }
         // A failed global reservation can poison an empty tile without publishing IDs.
-        reset(kSourceFaceCapacity+1,65,cascade);
+        reset(kSourceFaceCapacity+1,kSourceFaceTileQueryCapacity+1,cascade);
         for(uint i=0;i<64;++i)sunDepthBuf.words[tileBase(cascade)+1+i]=empty;
         fallback(cascade,empty,depth(1));
         require(sample({2.9f,3.5f},10,cascade)==1,"exhaustion retains fallback");
         require(sunDepthBuf.readCount==0,"exhaustion never reads unpublished records");
     }
     std::cout<<comparisons<<" retained-subset comparisons; poisoned exhaustion safe\n";
+}
+"""
+
+
+SPILL_POOL_CASES = CASES[:CASES.index("int main(){")] + r"""
+int main(){
+    const uint empty=0xffffffffu;
+    const Face miss{{2,3,1},{.25f,0,0},{0,1,0}};
+    const Face hit{{2.8f,3,2},{.2f,0,0},{0,1,0}};
+    uint comparisons=0;
+    for(uint cascade:{0u,1u})for(uint count:{1u,64u,65u,256u}){
+        for(uint allocation:{kSourceFaceSpillCapacity-1u,kSourceFaceSpillCapacity,
+                            kSourceFaceSpillCapacity+1u}){
+            reset(257,count,cascade);
+            fill(std::max(count,64u)-1u,miss);writeFace(hit);
+            sunDepthBuf.words[kSourceFaceSpillCounterOffset]=allocation;
+            const bool exact=count<=64 || allocation<=kSourceFaceSpillCapacity;
+            require(sample({2.9f,3.5f},10,cascade)==(exact?1:0),
+                    "global spill exhaustion guard");
+            require((sunDepthBuf.readCount>0)==exact,
+                    "global spill exhaustion bypasses geometry");
+            require(sunDepthBuf.spillCounterReads==(count<=64?0u:1u),
+                    "inline query bypasses spill counter");
+            ++comparisons;
+        }
+    }
+    // Winners have complete nodes; losers can have no published IDs at all.
+    for(uint cascade:{0u,1u})for(uint indexed:{empty,depth(1)}){
+        for(uint primary:{empty,depth(2)}){
+            float result[2];
+            for(uint winner=0;winner<2;++winner){
+                reset(257,winner?65:257,cascade);
+                fill(64,miss);writeFace(hit);
+                sunDepthBuf.words[kSourceFaceSpillCounterOffset]=kSourceFaceSpillCapacity+1u;
+                if(!winner)for(uint i=0;i<64;++i)
+                    sunDepthBuf.words[tileBase(cascade)+1+i]=empty;
+                fallback(cascade,primary,indexed);
+                result[winner]=sample({2.9f,3.5f},10,cascade);
+                require(sunDepthBuf.readCount==0,"pool winners and losers skip record reads");
+            }
+            require(result[0]==result[1],"global allocation order does not select coverage");
+            require(result[0]==(primary!=empty||indexed!=empty),
+                    "global spill exhaustion preserves both fallback layers");
+            ++comparisons;
+        }
+    }
+    std::cout<<comparisons<<" global spill boundary and allocation-order controls passed\n";
 }
 """
 
@@ -300,6 +381,28 @@ def host_source(suffix, directory, enabled, mutation=None, cases=CASES):
 
 @unittest.skipUnless(COMPILER, "finite receiver controls require a C++ compiler")
 class SourceFaceOverflowTest(unittest.TestCase):
+    def test_global_spill_exhaustion_guard_and_mutations(self):
+        for suffix, directory in (("glsl", ""), ("metal", "metal/")):
+            with self.subTest(backend=suffix):
+                run = self.compile_and_run(host_source(
+                    suffix, directory, False, cases=SPILL_POOL_CASES))
+                self.assertEqual(run.returncode, 0, run.stderr)
+                print(f"{suffix}: {run.stdout}", end="")
+            for name, mutation in {
+                "missing_global_guard": ("<= kSourceFaceSpillCapacity", "<= 0xffffffffu"),
+                "premature_pool_exhaustion": ("<= kSourceFaceSpillCapacity",
+                                              "< kSourceFaceSpillCapacity"),
+                "demote_inline_tiles": ("count <= kSourceFaceTileCapacity ||", "false ||"),
+            }.items():
+                with self.subTest(backend=suffix, mutation=name):
+                    run = self.compile_and_run(host_source(
+                        suffix, directory, False, mutation, SPILL_POOL_CASES))
+                    self.assertNotEqual(run.returncode, 0)
+                    expected_failure = ("inline query bypasses spill counter"
+                                        if name == "demote_inline_tiles" else
+                                        "global spill exhaustion guard")
+                    self.assertIn(expected_failure, run.stderr)
+
     def test_reference_and_default_with_independent_geometry(self):
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):
             for enabled in (False, True):
@@ -336,11 +439,13 @@ class SourceFaceOverflowTest(unittest.TestCase):
             "drop_reference": ("sourceQueryComplete || queryAllFaces", "sourceQueryComplete"),
             "truncate_pool": ("candidate < candidateCount", "candidate + 1u < candidateCount"),
             "scan_beyond_budget": ("sourceFaceCount <= kSourceFaceOverflowReferenceBudget", "true"),
-            "wrong_record": ("queryAllFaces ? candidate :", "queryAllFaces ? 0u :"),
+            "wrong_record": ("faceIndex = candidate;", "faceIndex = 0u;"),
             "accept_sample_after_miss": ("if (layer == 1 && sourceQueryComplete) continue;", ""),
             "drop_other_layer": ("layer == 1 && sourceQueryComplete", "sourceQueryComplete"),
-            "ignore_list": ("queryAllFaces ? candidate : sunDepthBuf[tileBase + 1u + candidate]",
-                            "candidate"),
+            "ignore_list": ("faceIndex = sunDepthBuf[tileBase + 1u + candidate];",
+                            "faceIndex = candidate;"),
+            "truncate_spill": ("candidate < candidateCount",
+                               "candidate < min(candidateCount, kSourceFaceTileCapacity)"),
         }
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):
             for name, mutation in mutations.items():
