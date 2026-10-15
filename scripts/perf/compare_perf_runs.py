@@ -24,11 +24,12 @@ import fnmatch
 import json
 import math
 import re
+import subprocess
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional, Sequence
+from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence, Tuple
 
 # --- Parser --------------------------------------------------------------
 
@@ -680,6 +681,194 @@ def resolve_class_matched_baseline(history_root: Path, head_manifest: Dict) -> C
             continue
         return ClassMatch(capture, captures)
     return ClassMatch(None, captures)
+
+
+# --- Master-movement attribution -----------------------------------------
+
+# The PR path measures the merge ref, so the head carries every master commit
+# between the capture's master and the merge's first parent. An improvement
+# master gained in that window reads as the PR's own unless the capture
+# history shows it. Git runs in the repository containing the working
+# directory.
+
+ATTRIBUTED = "attributed"
+UNAVAILABLE = "attribution unavailable"
+STACKED = "stacked"
+CAPTURE_AHEAD = "capture ahead"
+MASTER_IMPROVED = "master improved"
+
+_HEX_SHA_RE = re.compile(r"^[0-9a-fA-F]{4,40}$")
+
+
+@dataclass
+class MasterStep:
+    """A capture and its class-matched predecessor, the predecessor's master
+    an ancestor of the capture's."""
+    slug: str
+    before_sha: str
+    after_sha: str
+    # (cell id, raw %, calibrated %) for every common cell.
+    deltas: List[Tuple[str, float, float]]
+
+
+@dataclass
+class Attribution:
+    withheld: bool
+    reason: str
+    detail: str
+    step: Optional[MasterStep] = None
+
+    def note_line(self) -> str:
+        """Never carries `↓`: readers and corpus tooling scan the comment for it."""
+        if not self.withheld:
+            return f"- attribution: {self.detail}"
+        return f"- attribution: improvement withheld, {self.reason}: {self.detail}"
+
+
+def _git(*args: str, stdin: Optional[str] = None) -> subprocess.CompletedProcess:
+    return subprocess.run(["git", *args], input=stdin, capture_output=True, text=True)
+
+
+def _rev_parse(name: str) -> Optional[str]:
+    if not name or name.startswith("-"):
+        return None
+    r = _git("rev-parse", "--verify", "--quiet", f"{name}^{{commit}}")
+    return r.stdout.strip() if r.returncode == 0 and r.stdout.strip() else None
+
+
+def _resolve_shas(names: Iterable[str]) -> Dict[str, str]:
+    """Full SHAs for the hex names that name exactly one commit. Ambiguous,
+    absent and non-hex names are left out."""
+    names = sorted({n for n in names if _HEX_SHA_RE.match(n)})
+    if not names:
+        return {}
+    r = _git("cat-file", "--batch-check=%(objectname) %(objecttype)",
+             stdin="".join(f"{n}^{{commit}}\n" for n in names))
+    if r.returncode != 0:
+        return {}
+    resolved = {}
+    for name, line in zip(names, r.stdout.splitlines()):
+        parts = line.split()
+        if len(parts) == 2 and parts[1] == "commit":
+            resolved[name] = parts[0]
+    return resolved
+
+
+def _is_ancestor(ancestor: str, descendant: str) -> bool:
+    return _git("merge-base", "--is-ancestor", ancestor, descendant).returncode == 0
+
+
+def _rev_list(spec: str) -> Optional[FrozenSet[str]]:
+    r = _git("rev-list", spec)
+    return frozenset(r.stdout.split()) if r.returncode == 0 else None
+
+
+def _improving_deltas(before: HistoryCapture, after: HistoryCapture,
+                      improve_pct: float) -> Optional[List[Tuple[str, float, float]]]:
+    """The per-cell deltas when `after` improves frame avg on every common cell,
+    raw and calibrated; None otherwise."""
+    after_cells = load_run(after.path)
+    if not after_cells or unmeasured_cell_ids(after_cells):
+        return None
+    before_cells = load_run(before.path)
+    scale = normalize_ms(1.0, after.ref_ms, before.ref_ms)
+    common = sorted(cell_id for cell_id in set(before_cells) & set(after_cells)
+                    if before_cells[cell_id].frame.avg > 0.0)
+    deltas = []
+    for cell_id in common:
+        b = before_cells[cell_id].frame.avg
+        a = after_cells[cell_id].frame.avg
+        if not frame_avg_improved(b, a, scale, improve_pct):
+            return None
+        deltas.append((cell_id, pct_delta(b, a), pct_delta(b, a * scale)))
+    return deltas or None
+
+
+def _first_improving_step(history_root: Path, capture_sha: str,
+                          window: FrozenSet[str],
+                          improve_pct: float) -> Optional[MasterStep]:
+    captures = []
+    for manifest_path in sorted(history_root.glob("*/*/manifest.json")):
+        path = manifest_path.parent
+        manifest = load_manifest(path)
+        captures.append(HistoryCapture(path, manifest, calibration_ref_ms(manifest),
+                                       parse_utc(manifest.get("finished_at"))))
+    resolved = _resolve_shas(str(c.manifest.get("git_sha") or "") for c in captures)
+    # A step ending at or behind the capture's master has its whole range
+    # inside that master's history, which the window excludes.
+    behind = _rev_list(capture_sha) or frozenset()
+    unknown = datetime.min.replace(tzinfo=timezone.utc)
+    captures.sort(key=lambda c: (c.finished_at or unknown, str(c.path)))
+    for after in captures:
+        after_sha = resolved.get(str(after.manifest.get("git_sha") or ""))
+        if after_sha is None or after_sha in behind:
+            continue
+        before = resolve_class_matched_baseline(history_root, after.manifest).selected
+        if before is None:
+            continue
+        before_sha = resolved.get(str(before.manifest.get("git_sha") or ""))
+        if before_sha is None or not _is_ancestor(before_sha, after_sha):
+            continue
+        step_range = _rev_list(f"{before_sha}..{after_sha}")
+        if not step_range or not step_range & window:
+            continue
+        deltas = _improving_deltas(before, after, improve_pct)
+        if deltas is not None:
+            return MasterStep(host_slug(after.manifest), before_sha, after_sha, deltas)
+    return None
+
+
+def _format_step(step: MasterStep) -> str:
+    cells = ", ".join(f"`{cell_id}` {raw:+.1f}% raw / {calibrated:+.1f}% calibrated"
+                      for cell_id, raw, calibrated in step.deltas)
+    return (f"`{step.slug}` master `{step.before_sha[:9]}` → `{step.after_sha[:9]}` "
+            f"improved frame avg on every cell ({cells})")
+
+
+def resolve_attribution(history_root: Path, capture: HistoryCapture,
+                        merge_base: str, trunk: str,
+                        improve_pct: float) -> Attribution:
+    """Decide whether the head's improvement can be credited to the PR.
+
+    `merge_base` is the PR merge commit's first parent (empty when HEAD is not
+    a two-parent merge) and `trunk` the default branch's ref. The checks run
+    in order and the first match is the reason: an unresolvable input, a merge
+    base off the trunk (a stacked PR measures its base branch too), a capture
+    master the merge base lacks, then a master step in the capture history
+    whose range meets the drift window and improves every common cell.
+    """
+    capture_name = str(capture.manifest.get("git_sha") or "")
+    if not merge_base:
+        return Attribution(True, UNAVAILABLE, "HEAD is not a two-parent merge, "
+                           "so there is no merge base to attribute against")
+    merge_sha = _rev_parse(merge_base)
+    if merge_sha is None:
+        return Attribution(True, UNAVAILABLE, f"merge base `{merge_base}` does not resolve")
+    trunk_sha = _rev_parse(trunk)
+    if trunk_sha is None:
+        return Attribution(True, UNAVAILABLE, f"trunk `{trunk}` does not resolve")
+    capture_sha = _resolve_shas([capture_name]).get(capture_name)
+    if capture_sha is None:
+        return Attribution(True, UNAVAILABLE,
+                           f"capture master `{capture_name or '(none)'}` does not "
+                           "resolve to one commit")
+    k, m = capture_sha[:9], merge_sha[:9]
+    if not _is_ancestor(merge_sha, trunk_sha):
+        return Attribution(True, STACKED,
+                           f"merge base `{m}` is not on `{trunk}`, so the run "
+                           "measured the base branch's unmerged changes")
+    if not _is_ancestor(capture_sha, merge_sha):
+        return Attribution(True, CAPTURE_AHEAD,
+                           f"capture master `{k}` is not an ancestor of merge base `{m}`")
+    window = _rev_list(f"{capture_sha}..{merge_sha}") or frozenset()
+    between = (f"between capture master `{k}` and merge base `{m}` "
+               f"({len(window)} commits)")
+    step = (_first_improving_step(history_root, capture_sha, window, improve_pct)
+            if window else None)
+    if step is not None:
+        return Attribution(True, MASTER_IMPROVED,
+                           f"{_format_step(step)}, inside the window {between}", step)
+    return Attribution(False, ATTRIBUTED, f"no measured master improvement {between}")
 
 
 # --- Comparator ----------------------------------------------------------

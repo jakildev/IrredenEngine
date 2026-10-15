@@ -398,6 +398,16 @@ the gate is exercised by the gate.
   measurement can continue; in
   that case the inherited label may remain during the run, but the final sync
   must re-derive it or fail the check loudly.
+- The PR run measures the merge ref, so an improvement master gained after the
+  capture would read as the PR's own. The improvement is withheld, with the
+  reason on the host note's `- attribution:` line, when HEAD is not a
+  two-parent merge or an input does not resolve (**attribution
+  unavailable**), when the merge's first parent is not on the default branch
+  (**stacked**), when the capture's master is not an ancestor of that parent
+  (**capture ahead**), or when the `perf-baseline` history holds a master step
+  on any slug whose range meets the window and whose frame `avg` improves on
+  every cell (**master improved**). A master improvement no capture has
+  measured yet is still credited to the PR. Regression grading is unchanged.
 - Baseline resolution belongs to `compare_perf_runs.py` alone
   (`resolve_baseline` for the tip, `resolve_class_matched_baseline` for the
   history) — the workflow hands over a baseline *root* and a history root

@@ -46,6 +46,12 @@ a gate that silently passes produce the same check mark — so they get arms:
     AD only calibrated frame-average improvements reach the machine verdict
     AE the label synchronizer handles all states, races, and API retries
     AF the workflow resets before expensive work and always synchronizes
+    AG an improvement is withheld when the capture history shows master
+       improving between the capture's master and the merge base, when the
+       merge base is off the trunk, when the capture is ahead of it, or when
+       an input does not resolve; grading and exit codes stay unchanged
+    AH ci_compare_step.sh passes HEAD's first parent and the trunk, and the
+       workflow hands it the default branch
 
 Stdlib only, no network, no build. Wired into the perf-gate job so it
 executes rather than drifting.
@@ -141,7 +147,8 @@ def write_capture(run_dir: Path, reading: tuple, *, finished_at: str,
                   started_at: str | None = None, frames: int = 60,
                   reportless: bool = False, slug: str = SPLIT_SLUG,
                   stage_ms: float | None = None,
-                  system_ms: float | None = None) -> Path:
+                  system_ms: float | None = None,
+                  git_sha: str | None = None) -> Path:
     """A perf-run directory shaped like a real CI capture: two zoom cells and
     the manifest fields the class-matched resolver filters on."""
     ref_ms, *avgs = reading
@@ -173,7 +180,7 @@ def write_capture(run_dir: Path, reading: tuple, *, finished_at: str,
     (run_dir / "manifest.json").write_text(json.dumps({
         "matrix": "quick",
         "frames": frames,
-        "git_sha": run_dir.name[:9],
+        "git_sha": git_sha or run_dir.name[:9],
         "started_at": started_at or finished_at,
         "finished_at": finished_at,
         "cells": cells,
@@ -246,7 +253,15 @@ def run_compare_case(work: Path, head_reading: tuple, **kwargs) -> tuple[
     gh_stub.write_text("#!/usr/bin/env bash\nexit 0\n")
     gh_stub.chmod(0o755)
     output = work / "github_output.txt"
+    return run_compare_step(work, root, history, head, gh_stub, output)
+
+
+def run_compare_step(work: Path, root: Path, history: Path, head: Path,
+                     gh_stub: Path, output: Path, *, cwd: Path | None = None,
+                     default_branch: str | None = None) -> tuple[
+                         subprocess.CompletedProcess, Path, Path]:
     env = dict(os.environ)
+    env.pop("DEFAULT_BRANCH", None)
     env.update({
         "BASELINE_ROOT": str(root),
         "BASELINE_HISTORY": str(history),
@@ -256,7 +271,9 @@ def run_compare_case(work: Path, head_reading: tuple, **kwargs) -> tuple[
         "GH_BIN": str(gh_stub),
         "GITHUB_OUTPUT": str(output),
     })
-    result = subprocess.run(["bash", str(COMPARE_STEP)], env=env,
+    if default_branch is not None:
+        env["DEFAULT_BRANCH"] = default_branch
+    result = subprocess.run(["bash", str(COMPARE_STEP)], env=env, cwd=cwd,
                             capture_output=True, text=True)
     return result, output, work / "perf_improved_cells.txt"
 
@@ -1143,6 +1160,229 @@ def arm_af_workflow_wiring(tmp: Path) -> None:
               f"{head}'s non-improving outcome leaves the label absent")
 
 
+# --- Arms AG/AH: master-movement attribution ------------------------------
+
+# The hosted runner has no git identity, and a developer's global config may
+# sign commits; the fixture repos need neither.
+GIT_ENV = {
+    "GIT_AUTHOR_NAME": "perf-gate test", "GIT_AUTHOR_EMAIL": "test@example.invalid",
+    "GIT_COMMITTER_NAME": "perf-gate test", "GIT_COMMITTER_EMAIL": "test@example.invalid",
+    "GIT_CONFIG_GLOBAL": os.devnull, "GIT_CONFIG_NOSYSTEM": "1",
+}
+TRUNK = "refs/remotes/origin/master"
+ATTR_CAPTURE = (60.0, 500.0, 1000.0)
+# (started_at, finished_at): a capture that finished after it started cannot
+# be its own class-matched predecessor.
+ATTR_CAPTURED_AT = ("2026-09-30T23:50:00Z", "2026-10-01T00:00:00Z")
+ATTR_STEP_BEFORE_AT = ("2026-10-01T05:50:00Z", "2026-10-01T06:00:00Z")
+ATTR_STEP_AFTER_AT = ("2026-10-01T23:50:00Z", "2026-10-02T00:00:00Z")
+ATTR_HEAD_AT = "2026-10-03T00:00:00Z"
+FASTER = (0.70, 0.70)
+
+
+def git(repo: Path, *args: str) -> str:
+    return subprocess.run(["git", "-C", str(repo), *args], env={**os.environ, **GIT_ENV},
+                          check=True, capture_output=True, text=True).stdout.strip()
+
+
+def commit(repo: Path, message: str, *parents: str) -> str:
+    tree = git(repo, "hash-object", "-w", "-t", "tree", os.devnull)
+    return git(repo, "commit-tree", tree, "-m", message,
+               *(arg for parent in parents for arg in ("-p", parent)))
+
+
+def attribution_repo(path: Path) -> dict[str, str]:
+    """Trunk `w → v → k → x → m`, plus `side`, a child of `k` off the trunk."""
+    path.mkdir(parents=True)
+    git(path, "init", "-q")
+    shas: dict[str, str] = {}
+    parent: tuple[str, ...] = ()
+    for name in ("w", "v", "k", "x", "m"):
+        shas[name] = commit(path, name, *parent)
+        parent = (shas[name],)
+    shas["side"] = commit(path, "side", shas["k"])
+    git(path, "update-ref", TRUNK, shas["m"])
+    return shas
+
+
+def scaled(reading: tuple, factors: tuple, ref_factor: float = 1.0) -> tuple:
+    ref_ms, *avgs = reading
+    return (ref_ms * ref_factor, *(avg * f for avg, f in zip(avgs, factors)))
+
+
+def attribution_fixture(work: Path, capture_sha: str, *,
+                        step: tuple | None = None,
+                        head_factors: tuple = FASTER) -> tuple[Path, Path, Path]:
+    """The head slug's only capture measured `capture_sha`, and the head reads
+    `head_factors` of it. `step` is (before sha, after sha, after reading) on a
+    second slug, both captures filed before the head started."""
+    root = work / "baseline_latest"
+    history = work / "history"
+    for run_dir in (root / HEAD_SLUG, history / HEAD_SLUG / "capture"):
+        write_capture(run_dir, ATTR_CAPTURE, slug=HEAD_SLUG,
+                      started_at=ATTR_CAPTURED_AT[0], finished_at=ATTR_CAPTURED_AT[1],
+                      git_sha=capture_sha[:9])
+    if step is not None:
+        before, after, reading = step
+        write_capture(history / SPLIT_SLUG / "step-before", ATTR_CAPTURE,
+                      slug=SPLIT_SLUG, started_at=ATTR_STEP_BEFORE_AT[0],
+                      finished_at=ATTR_STEP_BEFORE_AT[1], git_sha=before[:9])
+        write_capture(history / SPLIT_SLUG / "step-after", reading,
+                      slug=SPLIT_SLUG, started_at=ATTR_STEP_AFTER_AT[0],
+                      finished_at=ATTR_STEP_AFTER_AT[1], git_sha=after[:9])
+    head = write_capture(work / "head", scaled(ATTR_CAPTURE, head_factors),
+                         slug=HEAD_SLUG, started_at=ATTR_HEAD_AT,
+                         finished_at=ATTR_HEAD_AT)
+    return root, history, head
+
+
+def run_attributed(repo: Path, work: Path, *flags: str, **fixture) -> tuple[
+        subprocess.CompletedProcess, list[str] | None]:
+    root, history, head = attribution_fixture(work, **fixture)
+    cells = work / "improved_cells.txt"
+    r = subprocess.run(
+        [sys.executable, str(CHECK_REGRESSION), str(root), str(head),
+         "--baseline-history", str(history), "--improved-cells-out", str(cells),
+         *flags],
+        cwd=repo, capture_output=True, text=True)
+    return r, cells.read_text().splitlines() if cells.exists() else None
+
+
+def attribution_line(stdout: str) -> str:
+    return next((line for line in stdout.splitlines()
+                 if line.startswith("- attribution:")), "")
+
+
+def arm_ag_attribution(tmp: Path) -> None:
+    repo = tmp / "ag-repo"
+    sha = attribution_repo(repo)
+    k, x, m = sha["k"], sha["x"], sha["m"]
+    master_step = (k, x, scaled(ATTR_CAPTURE, FASTER))
+    both = list(ZOOM_CELLS)
+
+    def attributed(name: str, base: str = m, **fixture):
+        return run_attributed(repo, tmp / f"ag-{name}", "--attribution-base", base,
+                              "--attribution-trunk", TRUNK, **fixture)
+
+    r, cells = attributed("fire", capture_sha=k, step=master_step)
+    line = attribution_line(r.stdout)
+    check("AG", r.returncode == 0 and cells == [],
+          f"a master improvement in the window withholds the head's "
+          f"(rc {r.returncode}, cells {cells})")
+    check("AG", "master improved" in line and SPLIT_SLUG in line
+          and k[:9] in line and x[:9] in line
+          and line.count("-30.0% raw") == 2 and "↓" not in line,
+          f"the line names the step's slug, both masters and both cell deltas ({line})")
+
+    r, cells = attributed("fire-control", capture_sha=k)
+    line = attribution_line(r.stdout)
+    check("AG", cells == both and "no measured master improvement" in line
+          and "(2 commits)" in line and "↓" not in line,
+          f"with no step the head keeps both cells ({cells}; {line})")
+
+    r, cells = attributed("one-cell", capture_sha=k,
+                          step=(k, x, scaled(ATTR_CAPTURE, (0.70, 1.0))))
+    check("AG", cells == both, f"a step that improves one cell does not count ({cells})")
+
+    r, cells = attributed("outside", capture_sha=k,
+                          step=(sha["w"], sha["v"], scaled(ATTR_CAPTURE, FASTER)))
+    check("AG", cells == both, f"a step behind the capture's master does not count ({cells})")
+
+    r, cells = attributed("off-window", capture_sha=k,
+                          step=(k, sha["side"], scaled(ATTR_CAPTURE, FASTER)))
+    check("AG", cells == both,
+          f"a step ahead of the capture but outside the window does not count ({cells})")
+
+    r, cells = attributed("calibrated", capture_sha=k,
+                          step=(k, x, scaled(ATTR_CAPTURE, (0.85, 0.85), 0.85)))
+    check("AG", cells == both,
+          f"a step whose raw gain its calibration explains does not count ({cells})")
+
+    r, cells = attributed("ahead", base=k, capture_sha=x)
+    check("AG", cells == [] and "capture ahead" in attribution_line(r.stdout),
+          f"a capture ahead of the merge base withholds ({cells}; {attribution_line(r.stdout)})")
+    r, cells = attributed("ahead-control", base=k, capture_sha=k)
+    check("AG", cells == both and "(0 commits)" in attribution_line(r.stdout),
+          f"a capture at the merge base keeps both cells ({cells})")
+
+    r, cells = attributed("stacked", base=sha["side"], capture_sha=k)
+    check("AG", cells == [] and "stacked" in attribution_line(r.stdout),
+          f"a merge base off the trunk withholds ({cells}; {attribution_line(r.stdout)})")
+    git(repo, "update-ref", TRUNK, commit(repo, "merge side", m, sha["side"]))
+    r, cells = attributed("stacked-control", base=sha["side"], capture_sha=k)
+    git(repo, "update-ref", TRUNK, m)
+    check("AG", cells == both,
+          f"the same merge base once merged into the trunk keeps both cells ({cells})")
+
+    for name, base, capture_sha in (("empty-base", "", k),
+                                    ("unknown-base", "deadbeefdeadbeef", k),
+                                    ("unknown-capture", m, "0123456789abc")):
+        r, cells = attributed(name, base=base, capture_sha=capture_sha)
+        check("AG", r.returncode == 0 and cells == []
+              and "attribution unavailable" in attribution_line(r.stdout),
+              f"{name} withholds as unavailable ({cells}; {attribution_line(r.stdout)})")
+
+    r, _ = run_attributed(repo, tmp / "ag-half", "--attribution-base", m, capture_sha=k)
+    check("AG", r.returncode == 2,
+          f"--attribution-base without --attribution-trunk is a usage error (rc {r.returncode})")
+
+    slower = (1.15, 1.15)
+    r, _ = attributed("regression", capture_sha=k, step=master_step, head_factors=slower)
+    plain, _ = run_attributed(repo, tmp / "ag-regression-plain", capture_sha=k,
+                              step=master_step, head_factors=slower)
+
+    def without_attribution(stdout: str) -> list[str]:
+        return [line.replace(str(tmp / "ag-regression-plain"), "<work>")
+                    .replace(str(tmp / "ag-regression"), "<work>")
+                for line in stdout.splitlines() if not line.startswith("- attribution:")]
+
+    check("AG", r.returncode == 1 and "check_regression: FAIL" in r.stderr
+          and attribution_line(r.stdout) != "",
+          f"a regression still fails with the improving step present (rc {r.returncode})")
+    check("AG", without_attribution(r.stdout) == without_attribution(plain.stdout),
+          "the comment matches the run without the flags but for the attribution line")
+
+    r, cells = run_attributed(repo, tmp / "ag-no-flags", capture_sha=k, step=master_step)
+    check("AG", cells == both and attribution_line(r.stdout) == "",
+          f"without the flags the head keeps both cells and no line is written ({cells})")
+
+
+def arm_ah_step_wiring(tmp: Path) -> None:
+    repo = tmp / "ah-repo"
+    sha = attribution_repo(repo)
+    k, x, m = sha["k"], sha["x"], sha["m"]
+    pr_head = commit(repo, "pr", m)
+    git(repo, "update-ref", "--no-deref", "HEAD", commit(repo, "merge", m, pr_head))
+    gh_stub = tmp / "ah-gh"
+    gh_stub.write_text("#!/usr/bin/env bash\nexit 0\n")
+    gh_stub.chmod(0o755)
+
+    def step_run(name: str, **fixture) -> dict[str, str]:
+        work = tmp / f"ah-{name}"
+        root, history, head = attribution_fixture(work, **fixture)
+        r, output, _ = run_compare_step(work, root, history, head, gh_stub,
+                                        work / "github_output.txt", cwd=repo,
+                                        default_branch="master")
+        check("AH", r.returncode == 0, f"{name}: the step exits 0 (got {r.returncode}; {r.stderr})")
+        return output_values(output)
+
+    fired = step_run("fire", capture_sha=k, step=(k, x, scaled(ATTR_CAPTURE, FASTER)))
+    control = step_run("control", capture_sha=k)
+    check("AH", fired.get("improved") == "false" and control.get("improved") == "true",
+          f"HEAD's first parent reaches the checker (fire {fired}, control {control})")
+    check("AH", m[:9] in (tmp / "ah-control" / "perf_comment.md").read_text(),
+          "the comment's attribution line names the first parent")
+
+    git(repo, "update-ref", "--no-deref", "HEAD", m)
+    single = step_run("one-parent", capture_sha=k)
+    check("AH", single.get("improved") == "false",
+          f"a one-parent HEAD withholds the improvement ({single})")
+
+    compare = workflow_step("Compare head against baseline (PR)")
+    check("AH", "DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}" in compare,
+          "the workflow's compare step passes the default branch")
+
+
 def main() -> int:
     print("perf-gate baseline layout + exit-mapping control")
     with tempfile.TemporaryDirectory(prefix="perfgate.") as td:
@@ -1177,6 +1417,8 @@ def main() -> int:
         arm_ad_improvement_verdict(tmp)
         arm_ae_label_sync(tmp)
         arm_af_workflow_wiring(tmp)
+        arm_ag_attribution(tmp)
+        arm_ah_step_wiring(tmp)
     arm_g_retired_literal()
     arm_ac_docs()
 
