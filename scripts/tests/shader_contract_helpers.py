@@ -3,6 +3,10 @@
 import re
 
 
+def compact(source):
+    return " ".join(source.split())
+
+
 def replace_once(source, before, after):
     if source.count(before) != 1:
         raise ValueError(f"expected one mutation site for {before!r}")

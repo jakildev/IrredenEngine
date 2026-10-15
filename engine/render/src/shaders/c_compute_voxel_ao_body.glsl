@@ -10,6 +10,9 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 #include "ir_iso_common.glsl"
 #include "ir_per_axis_lighting.glsl"
 #include "ir_per_axis_cell_dispatch.glsl"
+#if IR_AO_SHAPE_RECEIVER
+#include "ir_shape_data.glsl"
+#endif
 
 // Same threshold LIGHTING_TO_TRIXEL uses for "empty pixel" — encoded
 // distances >= 65535 mean the clear value was never overwritten.
@@ -102,6 +105,18 @@ layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
     uint cellDrawArgs[];
 };
 
+#if IR_AO_SHAPE_RECEIVER
+layout(std140, binding = 23) uniform AOShapeReceiverFrame {
+    ShapeProjectionData receiverFrame;
+};
+layout(std430, binding = 22) readonly buffer AOShapeOwners {
+    uint aoShapeOwners[];
+};
+layout(std430, binding = 30) readonly buffer AOShapeTiles {
+    ShapeTileDescriptor aoShapeTiles[];
+};
+#endif
+
 // The single canvas holds continuous-yaw SDF/text depth at a residual yaw
 // (voxels move to the per-axis canvases), so it needs the smooth-yaw inverse,
 // like the sun-shadow, lighting and fog receivers; the cardinal inverse would
@@ -110,6 +125,30 @@ layout(std430, binding = 26) readonly buffer PerAxisCellIndirect {
 // dispatches the c_compute_voxel_ao_smooth_yaw variant exactly when the
 // uploaded residualYaw is non-zero.
 vec3 singleCanvasPixelToWorld3D(ivec2 pixel, int rawDepth, int cardinalIndex) {
+#if IR_AO_SHAPE_RECEIVER
+    const bool smoothMode = receiverFrame.voxelRenderOptions.x != 0 &&
+                            receiverFrame.voxelRenderOptions.y > 1;
+    const bool finiteCoverage = receiverFrame.finiteCoverage != 0;
+    uint shapeOwnerKey = 0xffffffffu;
+    if (finiteCoverage && receiverFrame.shapeCount > 0) {
+        shapeOwnerKey = aoShapeOwners[
+            uint(pixel.y * receiverFrame.canvasSize.x + pixel.x)
+        ];
+    }
+    const bool shapeOwned = shapeOwnerKey != 0xffffffffu &&
+                            aoShapeTiles[
+                                shapeOwnerKey / kShapeSamplesPerTile
+                            ].shapeIndex >= 0;
+    // AO reconstructs a world position, so it removes the lattice offset
+    // before either cardinal or smooth-yaw inverse maps the stored depth.
+    rawDepth = cardinalShapeReceiverDepth(
+        rawDepth,
+        receiverFrame.voxelRenderOptions.y,
+        shapeOwned,
+        smoothMode && receiverFrame.smoothYawEnabled == 0,
+        finiteCoverage
+    );
+#endif
 #if IR_AO_SMOOTH_YAW
     return trixelCanvasPixelToWorld3DSmoothYaw(
         pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset, voxelRenderOptions, visualYaw

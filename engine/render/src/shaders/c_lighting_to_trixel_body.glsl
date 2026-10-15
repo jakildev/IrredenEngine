@@ -16,6 +16,7 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 #include "ir_iso_common.glsl"
 #if IR_SHAPE_RECEIVER
 #include "ir_receiver_face.glsl"
+#include "ir_shape_data.glsl"
 #endif
 #include "ir_per_axis_lighting.glsl"
 #include "ir_per_axis_cell_dispatch.glsl"
@@ -135,6 +136,15 @@ layout(std430, binding = 8) buffer SourceVoxelFaces {
     uint sourceIndexCount; uint sourceFaceCount; uint sourcePadding[6];
     SourceVoxelFace sourceFaces[];
 };
+
+#if IR_SHAPE_RECEIVER
+layout(std430, binding = 22) readonly buffer LightingShapeOwners {
+    uint lightingShapeOwners[];
+};
+layout(std430, binding = 30) readonly buffer LightingShapeTiles {
+    ShapeTileDescriptor lightingShapeTiles[];
+};
+#endif
 void writeLitTrixel(bool sourceMode, uint index, ivec2 pixel, vec4 color) {
     if (sourceMode) sourceFaces[index].color = color;
     else imageStore(trixelColors, pixel, color);
@@ -380,6 +390,28 @@ void main() {
         //     zero yaw) the cardinal-snap reconstruction, with the same
         //     subdivision-aware canvasOffset as c_compute_voxel_ao.glsl and
         //     R(-rasterYaw) composed afterward.
+        int localLightDepth = rawDepth;
+#if IR_SHAPE_RECEIVER
+        if (!worldReceive && perAxisRoute == 0 && residualYaw == 0.0) {
+            const bool smoothMode = voxelRenderOptions.x != 0 && voxelRenderOptions.y > 1;
+            const bool finiteCoverage = shapeReceiverOptions.y != 0;
+            uint shapeOwnerKey = 0xffffffffu;
+            if (finiteCoverage && shapeReceiverOptions.x > 0) {
+                shapeOwnerKey = lightingShapeOwners[uint(pixel.y * size.x + pixel.x)];
+            }
+            const bool shapeOwned = shapeOwnerKey != 0xffffffffu &&
+                                    lightingShapeTiles[
+                                        shapeOwnerKey / kShapeSamplesPerTile
+                                    ].shapeIndex >= 0;
+            localLightDepth = cardinalShapeReceiverDepth(
+                rawDepth,
+                voxelRenderOptions.y,
+                shapeOwned,
+                smoothMode && shapeReceiverOptions.z == 0,
+                finiteCoverage
+            );
+        }
+#endif
         vec3 pos3D = worldReceive
             ? worldReceivePos
             : (perAxisRoute != 0
@@ -390,7 +422,7 @@ void main() {
                           voxelRenderOptions, visualYaw
                       )
                     : trixelCanvasPixelToWorld3D(
-                          pixel, rawDepth, trixelCanvasOffsetZ1, frameCanvasOffset,
+                          pixel, localLightDepth, trixelCanvasOffsetZ1, frameCanvasOffset,
                           voxelRenderOptions, rasterYaw
                       )));
 

@@ -20,6 +20,7 @@
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/render/per_axis_canvas.hpp>
 #include <irreden/render/per_axis_surface_lighting.hpp>
+#include <irreden/render/shape_receiver_bindings.hpp>
 #include <irreden/render/voxel_dispatch_grid.hpp>
 #include <irreden/render/voxel_frame_data.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
@@ -63,6 +64,8 @@ struct FrameDataLightingToTrixel {
     vec4 skyColor_ = vec4(0.5f, 0.7f, 1.0f, 0.0f);
     vec4 detachedViewToWorld_ = vec4(0.0f, 0.0f, 0.0f, 1.0f);
     ivec4 normalOptions_{0};
+    // .x = shape count, .y = paired finite coverage, .z = smooth-yaw store.
+    ivec4 shapeReceiverOptions_{0};
 };
 
 static_assert(
@@ -73,7 +76,11 @@ static_assert(
     offsetof(FrameDataLightingToTrixel, normalOptions_) == 64,
     "Canvas normal options must begin at byte 64"
 );
-static_assert(sizeof(FrameDataLightingToTrixel) == 80, "Lighting frame must match the shader UBO");
+static_assert(
+    offsetof(FrameDataLightingToTrixel, shapeReceiverOptions_) == 80,
+    "Shape receiver options must begin at byte 80"
+);
+static_assert(sizeof(FrameDataLightingToTrixel) == 96, "Lighting frame must match the shader UBO");
 
 // Screen-space lighting application pass. Inserts between the final
 // geometry stage and the compositing stage; reads the canvas distance
@@ -127,6 +134,9 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     // never reads it. Whenever LIGHTING_TO_TRIXEL runs the main canvas carries
     // C_CanvasSunShadow (asserted below), so BAKE ran and the map exists.
     Buffer *sunShadowDepthMap_ = nullptr;
+    Buffer *shapeReceiverFallbackBuf_ = nullptr;
+    Buffer *animationParamsBuf_ = nullptr;
+    Buffer *shapeProducerFrameBuf_ = nullptr;
     // Lazily-resolved named VoxelActiveMaskBuffer — re-bound to slot 8 after
     // the overflow-lighting dispatch borrows that slot (see the restore note
     // in the per-axis block).
@@ -178,15 +188,27 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
 
         // Only the main canvas moves its voxel geometry to per-axis storage during yaw.
         // Its remaining raster slots describe view-aligned SDF/text faces.
+        const auto &shapeGeometry = canvasTextures.shapeGeometry_;
         const bool useShapeReceiver = entity == perAxisCanvasEntity_ &&
                                       mainCanvasSunShadow_ != nullptr &&
-                                      canvasTextures.shapeGeometry_.samplesValid();
+                                      shapeGeometry.samplesValid();
         (useShapeReceiver ? shapeProgram_ : program_)->use();
         frameData_.normalOptions_.x = entity == perAxisCanvasEntity_ ? 1 : 0;
+        frameData_.shapeReceiverOptions_ = useShapeReceiver
+                                               ? ivec4(
+                                                     shapeGeometry.frameData_.shapeCount,
+                                                     shapeGeometry.frameData_.finiteCoverage,
+                                                     shapeGeometry.frameData_.smoothYawEnabled,
+                                                     0
+                                                 )
+                                               : ivec4(0);
         const C_CanvasCamera *canvasCamera = canvasCameraOrNull(entity);
         frameData_.detachedViewToWorld_ =
             canvasCamera != nullptr ? canvasCamera->rotation_ : worldViewToWorld_;
         frameDataBuf_->subData(0, sizeof(FrameDataLightingToTrixel), &frameData_);
+        if (useShapeReceiver) {
+            IRPrefab::detail::bindShapeReceiverOwnership(shapeGeometry);
+        }
 
         // Author THIS canvas's voxel frame data so the Lambert + sky terms read
         // its own visible-triplet world normals and isDetachedCanvas flag, not
@@ -364,6 +386,13 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
                 dispatchPerAxisLighting(*perAxisCanvases_, canvasTextures, ao, *shadow);
             }
         }
+        if (useShapeReceiver) {
+            IRPrefab::detail::restoreShapeReceiver(
+                *shapeReceiverFallbackBuf_,
+                shapeProducerFrameBuf_,
+                animationParamsBuf_
+            );
+        }
     }
 
     // Light each per-axis canvas in place. The palette LUT (3) and the shared
@@ -484,6 +513,11 @@ template <> struct System<LIGHTING_TO_TRIXEL> {
     void beginTick() {
         perAxisSurfaceLightingEligible_ = false;
         perAxisSurfaceLightingReady_ = false;
+        if (animationParamsBuf_ == nullptr && findSystem(SHAPES_TO_TRIXEL) != kNullSystemId) {
+            animationParamsBuf_ = IRRender::getNamedResource<Buffer>("AnimationParamsBuffer");
+            shapeProducerFrameBuf_ = IRRender::getNamedResource<Buffer>("ShapesFrameDataBuffer");
+            shapeReceiverFallbackBuf_ = IRRender::getNamedResource<Buffer>("ShapeReceiverFallback");
+        }
         // Resolve the baked sun-depth map once (created by BAKE_SUN_SHADOW_MAP,
         // registered ahead of LIGHTING_TO_TRIXEL). Lazy single-init: the resolve
         // is deferred to beginTick so BAKE_SUN_SHADOW_MAP has already registered

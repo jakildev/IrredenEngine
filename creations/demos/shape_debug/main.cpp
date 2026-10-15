@@ -1478,6 +1478,7 @@ void registerCliArgs() {
     args.flag("--ao-contact-probe", "Isolate a voxel inside corner and convex cube for AO");
     args.flag("--no-ao", "Disable ambient occlusion for lighting isolation");
     args.flag("--no-shadows", "Disable sun shadows for lighting isolation");
+    args.flag("--no-local-lights", "Disable local lights for lighting isolation");
     args.flag("--depth-color", "Tint each voxel by local iso-depth (front=red, back=blue)");
     args.flag("--checkerboard", "Tint alternating voxels darker (flickers; off by default)");
     args.flag(
@@ -5185,10 +5186,17 @@ void initEntities() {
     // Emissive point light placed between the shape rows so its colored
     // falloff is visible across both the voxel-pool and SDF copies of the
     // nearby shapes. Cyan reads cleanly against the warm shape palette.
-    IREntity::createEntity(
-        C_LocalTransform{vec3(40.0f, 6.0f, -2.0f)},
-        C_LightSource{LightType::EMISSIVE, Color{80, 200, 255, 255}, 2.0f, static_cast<uint8_t>(30)}
-    );
+    if (!IREngine::args().getFlag("--no-local-lights")) {
+        IREntity::createEntity(
+            C_LocalTransform{vec3(40.0f, 6.0f, -2.0f)},
+            C_LightSource{
+                LightType::EMISSIVE,
+                Color{80, 200, 255, 255},
+                2.0f,
+                static_cast<uint8_t>(30)
+            }
+        );
+    }
 
     // --load-vxs: load a DENSE-mode .vxs file and place the voxel set at the
     // origin so it can be compared against the procedural shapes. A
