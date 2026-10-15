@@ -174,10 +174,15 @@ bool overlay=false,depth=false;
 DebugOverlayMode getDebugOverlay(){return overlay?DebugOverlayMode::AO:DebugOverlayMode::NONE;}
 bool getDepthColorDebugMode(){return depth;}
 }
+struct C_PerAxisSurfaceLighting {bool enabled_;};
 struct C_TrixelCanvasRenderBehavior {bool useCameraPositionIso_;};
 namespace IREntity {
 C_TrixelCanvasRenderBehavior behavior;
-bool hasBehavior;
+C_PerAxisSurfaceLighting surfaceLighting;
+bool hasBehavior,hasSurfaceLighting;
+template<class T>T* singletonOrNull(){
+    return hasSurfaceLighting?&surfaceLighting:nullptr;
+}
 template<class T>std::optional<T*> getComponentOptional(int){
     return hasBehavior?std::optional<T*>(&behavior):std::nullopt;
 }
@@ -185,7 +190,6 @@ template<class T>std::optional<T*> getComponentOptional(int){
 struct Axes {bool allocated;bool isAllocated()const{return allocated;}};
 struct Program {int calls=0;void use(){++calls;}};
 struct Producer {
-    bool perAxisSurfaceLightingEnabled_=false;
     bool perAxisSurfaceLightingEligible_=false,perAxisSurfaceLightingReady_=false;
     Axes* perAxisCanvases_=nullptr;
     const int *mainCanvasTextures_=nullptr,*mainCanvasAO_=nullptr;
@@ -203,11 +207,12 @@ int main(){
         if(enabledFromEnv(value)!=expected){std::fprintf(stderr,"explicit opt-in\n");return 1;}
     }
     int resource=1;
-    for(unsigned bits=0;bits<(1u<<14);++bits){
+    for(unsigned bits=0;bits<(1u<<15);++bits){
         const auto on=[bits](unsigned bit){return (bits&(1u<<bit))!=0;};
         Axes axes{on(2)};Program program;Producer producer;
         producer.program_=&program;
-        producer.perAxisSurfaceLightingEnabled_=on(0);
+        IREntity::surfaceLighting.enabled_=on(0);
+        IREntity::hasSurfaceLighting=on(14);
         producer.perAxisCanvases_=on(1)?&axes:nullptr;
         producer.mainCanvasTextures_=on(3)?&resource:nullptr;
         producer.mainCanvasAO_=on(4)?&resource:nullptr;
@@ -219,7 +224,7 @@ int main(){
         producer.perAxisSurfaceLightingEligible_=true;
         producer.perAxisSurfaceLightingReady_=true;
         producer.begin();
-        const bool expectedEligible=bits==(1u<<14)-1;
+        const bool expectedEligible=bits==(1u<<15)-1;
         if(producer.perAxisSurfaceLightingEligible_!=expectedEligible){
             std::fprintf(stderr,"eligibility %u\n",bits);return 2;
         }
@@ -243,7 +248,7 @@ int main(){
         }
     }
     if(consume(nullptr)){std::fprintf(stderr,"missing producer\n");return 7;}
-    std::printf("16384 readiness combinations\n");
+    std::printf("32768 readiness combinations\n");
 }
 """
 
@@ -255,13 +260,16 @@ def routing_harness(variant):
     begin = functions(producer, "beginTick")
     reset = "\n".join(re.findall(
         r"perAxisSurfaceLighting(?:Eligible|Ready)_\s*=\s*false\s*;", begin))
-    gate = braced_block(begin, r"if\s*\(\s*perAxisSurfaceLightingEnabled_\b")
+    state = re.search(r"const C_PerAxisSurfaceLighting\s*\*\s*surfaceLighting\s*=[^;]+;", begin)[0]
+    gate = braced_block(begin, r"if\s*\(\s*surfaceLighting\s*!=\s*nullptr")
     tick = functions(producer, "tick")
     skip_detached = braced_block(tick, r"if\s*\(\s*!behavior\.useCameraPositionIso_\b")
     publish = braced_block(tick, r"if\s*\(\s*entity\s*==\s*perAxisCanvasEntity_\b")
     consume = re.search(r"scatterLightingEnabled_\s*=\s*[^;]+;",
                         functions(consumer, "beginTick"))[0]
-    enabled = re.search(r"p->perAxisSurfaceLightingEnabled_\s*=\s*([^;]+);", producer)[1]
+    enabled = re.search(
+        r"if\s*\((surfaceLighting\s*!=\s*nullptr\s*&&\s*surfaceLighting\[0\][^{};]*)\)"
+        r"\s*\{\s*IRPrefab::PerAxisSurfaceLighting::setEnabled\(true\);", producer)[1]
     if variant == "stale-ready":
         reset = re.sub(r"perAxisSurfaceLightingReady_\s*=\s*false\s*;", "", reset)
     elif variant == "ready-before-tick":
@@ -274,7 +282,7 @@ def routing_harness(variant):
         publish = re.sub(r"if\s*\(perAxisSurfaceLightingEligible_\)", "if (false)", publish)
     elif variant == "presence-enables":
         enabled = "surfaceLighting != nullptr"
-    return (ROUTING_ADAPTER + "void begin(){" + reset + gate + "}\n"
+    return (ROUTING_ADAPTER + "void begin(){" + reset + state + gate + "}\n"
             "void tick(int entity,const int* shadow){int canvasTextures=0,ao=0;"
             "const auto& behavior=IREntity::behavior;" + skip_detached + publish + "}\n};\n"
             "bool consume(const Producer* lighting_){bool scatterLightingEnabled_=false;"
@@ -472,7 +480,7 @@ class PerAxisSurfaceLightingTest(unittest.TestCase):
                 result = subprocess.run([str(executable)], capture_output=True, text=True)
                 if variant == "production":
                     self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertIn("16384 readiness combinations", result.stdout)
+                    self.assertIn("32768 readiness combinations", result.stdout)
                 else:
                     self.assertIn(result.returncode, range(1, 8), result.stderr)
 
