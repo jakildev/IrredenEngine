@@ -17,6 +17,8 @@
 #include <irreden/script/lua_script.hpp>
 #include <irreden/script/prefab_api.hpp>
 
+#include "lod_scene.hpp"
+
 #include <algorithm>
 #include <array>
 #include <cctype>
@@ -520,6 +522,8 @@ bool g_cullEvictTest = false;
 // The DENSE LOD-swap fixture replaces both the scene and capture table; keep it
 // flag-gated so the standing render references retain their scene.
 bool g_lodDenseSwap = false;
+bool g_lodScene = false;
+IRShapeDebug::LodScene g_lodSceneState;
 
 // --viewport-portrait: a secondary-viewport fixture. One blue voxel cube and
 // one orange decoy sit in the world at zoom 1; a viewport pinned to a GUI
@@ -1496,6 +1500,10 @@ void registerCliArgs() {
         "--moving-caster",
         "Voxel cube over a voxel floor, falling a quarter voxel per capture shot"
     );
+    args.flag(
+        "--lod-scene",
+        "Shared prefab assets, resident/lazy parts and moving attached LOD variants"
+    );
     args.flag("--pan-sweep", "Fine fixed-yaw camera-pan jitter sweep (#1944)");
     args.flag("--yaw-sweep", "Fine fixed-position camera-yaw jitter sweep (#1944)");
     args.enumValue(
@@ -1649,6 +1657,7 @@ void readCliArgs() {
     g_guiTest = args.getFlag("--gui-test");
     g_cullEvictTest = args.getFlag("--cull-evict-test");
     g_lodDenseSwap = args.getFlag("--lod-dense-swap");
+    g_lodScene = args.getFlag("--lod-scene");
     g_viewportPortrait = args.getFlag("--viewport-portrait");
     g_viewportLodSwap = g_viewportPortrait && args.getFlag("--viewport-lod-swap");
     g_cursorPivotIndicator = args.getFlag("--cursor-pivot-indicator");
@@ -1712,6 +1721,16 @@ int main(int argc, char **argv) {
     registerCliArgs();
     IREngine::args().parse(argc, argv);
     readCliArgs();
+    if (g_lodScene &&
+        (g_guiTest || g_continuousZoomGuiTest || g_cullValidate || g_spinYawDegPerSec > 0.0f ||
+         g_pivotFocusDemo || g_pivotVerifyBlock != "off" || g_zoomSweep || g_panSweep ||
+         g_yawSweep || g_shadowFootprintProbe || g_movingCaster || g_lodDenseSwap ||
+         g_viewportPortrait || g_zoomCalibration || g_cullEvictTest || g_shapeSampleProbe ||
+         !g_loadPrefabPath.empty() || !g_loadVxsPath.empty() || !g_spinShapeType.empty() ||
+         IREngine::args().getFlag("--ao-contact-probe"))) {
+        IR_LOG_ERROR("--lod-scene cannot be combined with another scene or capture override");
+        return 2;
+    }
     if (g_shapeSampleProbe && (g_shapeSampleProbePixel.x < 0 || g_autoWarmupFrames <= 0)) {
         IR_LOG_ERROR(
             "--shape-sample-probe requires integer screenshot coordinates and --auto-screenshot"
@@ -1725,7 +1744,7 @@ int main(int argc, char **argv) {
             return 2;
         }
         if (g_viewportPortrait || IREngine::args().getFlag("--ao-contact-probe") ||
-            g_cullEvictTest || g_lodDenseSwap || !g_loadPrefabPath.empty() ||
+            g_cullEvictTest || g_lodDenseSwap || g_lodScene || !g_loadPrefabPath.empty() ||
             g_pivotVerifyBlock != "off" || g_pivotFocusDemo || g_zoomCalibration) {
             IR_LOG_ERROR("--spin-shape-floor cannot be combined with another scene override");
             return 2;
@@ -1733,7 +1752,7 @@ int main(int argc, char **argv) {
     }
 
     IREngine::registerLuaBindings([](IRScript::LuaScript &lua) {
-        if (IREngine::args().wasProvided("--load-prefab")) {
+        if (IREngine::args().wasProvided("--load-prefab") || g_lodScene) {
             lua.bindLuaDrivenEcs();
             // The engine components a manifest's `components` may name.
             lua.registerTypeFromTraits<IRComponents::C_AutoSpin>();
@@ -3426,7 +3445,7 @@ void initSystems() {
         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS>(),
         IRSystem::createSystem<IRSystem::REBUILD_GRID_VOXELS_IMPLICIT>()
     };
-    if (!g_loadPrefabPath.empty()) {
+    if (!g_loadPrefabPath.empty() || g_lodScene) {
         // After LOD_UPDATE, so the parts follow this tick's tier, and before
         // PROPAGATE_TRANSFORM, so a part spawned this tick is placed this tick
         // and a part's spin reaches its world transform the tick it turns.
@@ -4066,6 +4085,10 @@ void initSystems() {
                 IREntity::getComponent<C_LocalTransform>(g_movingCasterEntity).translation_ =
                     kMovingCasterStart + kMovingCasterStep * static_cast<float>(shotIndex + 1);
             };
+        } else if (g_lodScene) {
+            IRVideo::setAutoScreenshotShots(cfg, IRShapeDebug::LodScene::shots_);
+            cfg.settleFrames_ = IRConstants::kPrefabPartsTierSettleTicks + 12;
+            cfg.onCaptureFrame_ = [](int shotIndex) { g_lodSceneState.capture(shotIndex); };
         } else if (g_lodDenseSwap) {
             IRVideo::setAutoScreenshotShots(cfg, kLodDenseSwapShots);
         } else if (g_viewportLodSwap) {
@@ -4859,6 +4882,11 @@ void initEntities() {
     if (g_cullEvictTest) {
         IR_LOG_INFO("--- #2830 cull-invalidation fixture scene ---");
         initCullEvictScene();
+        setupCanvasLighting();
+        return;
+    }
+    if (g_lodScene) {
+        g_lodSceneState.initialize(*g_prefabLua);
         setupCanvasLighting();
         return;
     }

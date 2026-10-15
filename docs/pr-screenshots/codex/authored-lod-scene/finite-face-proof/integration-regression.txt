@@ -1,0 +1,90 @@
+Command: python3 scripts/render-verify.py --target IRShapeDebug --no-build --timeout 180
+Native macOS Debug; master 9d9cecc3f plus stack through authored LOD.
+Production engine/creation sources match captured revision d80e7a70a.
+Stdout excerpt (extra-run progress and final comparison table):
+
+[render-verify] extra run 'lod_scene': --lod-scene --pivot-origin
++ fleet-run --timeout 180 IRShapeDebug --auto-screenshot 20 --lod-scene --pivot-origin
+[render-verify] extra run 'moving_caster': --moving-caster
++ fleet-run --timeout 180 IRShapeDebug --auto-screenshot 10 --moving-caster
+[render-verify] extra run 'pivot_focus_ctr_z4': --pivot-verify focus-ctr --zoom 4
++ fleet-run --timeout 180 IRShapeDebug --auto-screenshot 12 --pivot-verify focus-ctr --zoom 4
+[render-verify] extra run 'lod_dense_swap': --lod-dense-swap
++ fleet-run --timeout 180 IRShapeDebug --auto-screenshot 10 --lod-dense-swap
+[render-verify] extra run 'viewport_portrait': --viewport-portrait --no-ao --no-shadows
++ fleet-run --timeout 180 IRShapeDebug --auto-screenshot 10 --viewport-portrait --no-ao --no-shadows
+[render-verify] extra run 'viewport_portrait_lod_swap': --viewport-portrait --viewport-lod-swap --no-ao --no-shadows
++ fleet-run --timeout 180 IRShapeDebug --auto-screenshot 10 --viewport-portrait --viewport-lod-swap --no-ao --no-shadows
+[render-verify] extra run 'prefab_flower': --load-prefab assets/prefabs/flower.prefab.lua
++ fleet-run --timeout 180 IRShapeDebug --auto-screenshot 10 --load-prefab assets/prefabs/flower.prefab.lua
+[render-verify] extra run 'editor_parts_z4': --load-prefab assets/prefabs/editor_parts/editor_parts.prefab.lua --zoom 4
++ fleet-run --timeout 180 IRShapeDebug --auto-screenshot 10 --load-prefab assets/prefabs/editor_parts/editor_parts.prefab.lua --zoom 4
+[render-verify] extra run 'composite_proof': --load-prefab assets/voxel/entities/composite_proof/composite_proof.prefab.lua
++ fleet-run --timeout 180 IRShapeDebug --auto-screenshot 10 --load-prefab assets/voxel/entities/composite_proof/composite_proof.prefab.lua
+
+shot                                     result     match%  max_d     psnr
+----------------------------------------------------------------------------
+zoom1_origin                             PASS      99.9997     53    70.59
+zoom2_origin                             PASS        100.0      0      inf
+zoom4_origin                             PASS        100.0      0      inf
+zoom1_odd_offset                         PASS      99.9997     53    70.59
+zoom8_origin                             PASS        100.0      0      inf
+zoom4_offset_3_5                         PASS        100.0      0      inf
+zoom16_lod_fine_sphere                   PASS        100.0      0      inf
+lod_swap_zoom1_cube                      PASS        100.0      0      inf
+lod_swap_zoom2_cube                      PASS        100.0      0      inf
+lod_swap_zoom4_cone                      PASS        100.0      0      inf
+lod_swap_zoom8_cone                      PASS        100.0      0      inf
+lod_swap_zoom16_sphere                   PASS        100.0      0      inf
+zoom4_yaw90                              PASS        100.0      0      inf
+zoom4_yaw180                             PASS        100.0      0      inf
+zoom4_yaw270                             PASS        100.0      0      inf
+zoom4_yaw45_inter_cardinal               PASS        100.0      0      inf
+zoom8_yaw180                             PASS        100.0      0      inf
+zoom4_pan16_yaw0_pivot                   PASS        100.0      0      inf
+zoom4_pan16_yaw90_pivot                  PASS        100.0      0      inf
+zoom4_pan16_yaw180_pivot                 PASS        100.0      0      inf
+zoom4_pan16_yaw45_pivot                  PASS        100.0      0      inf
+zoom4_origin:coverage                    PASS
+zoom16_lod_fine_sphere:silhouette        PASS
+zoom1_origin:clip                        PASS
+lod_scene:lod_scene_coarse               PASS        100.0      0      inf
+lod_scene:lod_scene_medium_yaw45         PASS        100.0      0      inf
+lod_scene:lod_scene_fine_yaw90           PASS        100.0      0      inf
+lod_scene:lod_scene_return_yaw180        PASS        100.0      0      inf
+lod_scene:lod_scene_coarse_yaw270        PASS        100.0      0      inf
+lod_scene:lod_scene_restored             PASS        100.0      0      inf
+moving_caster:moving_caster_0            PASS        100.0      0      inf
+moving_caster:moving_caster_1            PASS        100.0      0      inf
+moving_caster:moving_caster_2            PASS        100.0      0      inf
+moving_caster:moving_caster_3            PASS        100.0      0      inf
+moving_caster:moving_caster_4            PASS        100.0      0      inf
+moving_caster:moving_caster_5            PASS        100.0      0      inf
+moving_caster:moving_caster_6            PASS        100.0      0      inf
+moving_caster:moving_caster_7            PASS        100.0      0      inf
+moving_caster:moving_caster_8            PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_000 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_001 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_002 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_003 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_004 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_005 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_006 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_007 PASS        100.0      0      inf
+pivot_focus_ctr_z4:pivot_focus_ctr_z4_yaw_008 PASS        100.0      0      inf
+lod_dense_swap:lod_dense_swap_z2         PASS        100.0      0      inf
+lod_dense_swap:lod_dense_swap_z8         PASS        100.0      0      inf
+viewport_portrait:portrait_world_z1      PASS        100.0      0      inf
+viewport_portrait:portrait_world_z1_world_yaw90 PASS        100.0      0      inf
+viewport_portrait:portrait_world_z1:clip PASS
+viewport_portrait:portrait_world_z1_world_yaw90:clip PASS
+viewport_portrait_lod_swap:portrait_lod_swap_z1 PASS        100.0      0      inf
+prefab_flower:prefab_flower_z1           PASS        100.0      0      inf
+prefab_flower:prefab_flower_z4           PASS      99.9989     34    71.93
+prefab_flower:prefab_flower_z16          PASS      99.9563     36    54.86
+editor_parts_z4:prefab_editor_parts_z4   PASS        100.0      0      inf
+composite_proof:composite_proof_z1       PASS        100.0      0      inf
+composite_proof:composite_proof_z4       PASS        100.0      0      inf
+composite_proof:composite_proof_z16      PASS        100.0      0      inf
+
+[render-verify] all 62 checks PASS

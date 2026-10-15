@@ -55,15 +55,26 @@ Work through these slices in order, keeping their image and cost evidence separa
    without sun shadows; investigate emitted face ownership/parity independently
    rather than suppressing potentially legitimate voxel stairs. Native cost
    qualification and continuous-angle transition coverage remain open.
-4. **Representative authored-LOD scene — prototype, native validation pending.**
-   Exercise repeated assets, terrain, moving attached parts, lazy/resident
-   variants and reversible zoom/yaw transitions. Shared loaded assets are not
-   GPU geometry instancing; log selected and retained spans independently.
-   Orthographic depth alone does not change apparent size, so do not introduce
-   distance LOD implicitly.
+4. **Representative authored-LOD scene — implemented, native witnesses validated.**
+   The [six-shot evidence](../pr-screenshots/codex/authored-lod-scene/README.md)
+   covers repeated assets, terrain, moving attachments, lazy/resident first-use
+   behavior and origin-pivot zoom/yaw reversal. Initial/restored pixels match
+   exactly; one-channel, residency, parent-relation and closed-camera faults
+   are rejected. The full ShapeDebug suite passes all 62 checks. Shared loaded
+   assets are not GPU instancing: DENSE variants retain 432 allocated slots and
+   select one 216-slot span, whose fine occupancy is a subset. LOD is zoom-based,
+   and motion advances only during automatic captures; no performance claim.
+   The [paired finite-face proof](../pr-screenshots/codex/authored-lod-scene/finite-face-proof/README.md)
+   clears the apparent blue-sphere gaps at yaw180: all 17,664 object pixels have
+   the independently predicted occupied-cell coverage and nearest face normal.
+   Preserve those legitimate steps. Petal/stamen combs and floor-shadow
+   holes/ragged tails still need retained-field and AO controls; their causes
+   and regression status are not established. All six beauty references remain
+   byte-identical after integration of the snapped scatter-placement fix.
 
-Concurrent ownership: #4381 owns the new animated FIELD ceiling policy, #4303
-owns snapped camera placement, and #4308 owns cardinal AO/local-light depth.
+Concurrent ownership: #4381 owns the new animated FIELD ceiling policy, #4433
+owns the runtime per-axis surface-lighting switch, and #4308 owns cardinal
+AO/local-light depth. The snapped camera placement fix from #4303 is integrated.
 Integrate their results and recapture shared rows without duplicating those
 implementations. Windows-native smoke of the merged stack remains separate
 validation debt.

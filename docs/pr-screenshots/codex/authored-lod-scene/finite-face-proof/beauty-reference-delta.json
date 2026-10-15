@@ -1,0 +1,38 @@
+[
+  {
+    "name": "lod_scene_coarse",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  },
+  {
+    "name": "lod_scene_coarse_yaw270",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  },
+  {
+    "name": "lod_scene_fine_yaw90",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  },
+  {
+    "name": "lod_scene_medium_yaw45",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  },
+  {
+    "name": "lod_scene_restored",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  },
+  {
+    "name": "lod_scene_return_yaw180",
+    "pixels": 0,
+    "max": 0,
+    "bbox": null
+  }
+]

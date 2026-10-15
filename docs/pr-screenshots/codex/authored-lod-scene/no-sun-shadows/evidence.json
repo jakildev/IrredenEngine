@@ -1,0 +1,32 @@
+[
+  {
+    "source": "lod_scene_medium_yaw45.png",
+    "export": "lod_scene_medium_yaw45.png",
+    "source_sha256": "67ee7141a04bfe57bf245967cf5177ab98da5613c423005cb08a3cacbf7c6462",
+    "export_sha256": "67ee7141a04bfe57bf245967cf5177ab98da5613c423005cb08a3cacbf7c6462"
+  },
+  {
+    "source": "lod_scene_fine_yaw90.png",
+    "export": "lod_scene_fine_yaw90.png",
+    "source_sha256": "d9e21fffac8f8ddb73f8ab5cc7b219ab33536915778a9e04dbdb5b599a314f08",
+    "export_sha256": "d9e21fffac8f8ddb73f8ab5cc7b219ab33536915778a9e04dbdb5b599a314f08"
+  },
+  {
+    "source": "lod_scene_return_yaw180.png",
+    "export": "lod_scene_return_yaw180.png",
+    "source_sha256": "ef867425c30625361aab875772e89ef53dfc8817fbcc0d3ad17292b67664a5fb",
+    "export_sha256": "ef867425c30625361aab875772e89ef53dfc8817fbcc0d3ad17292b67664a5fb"
+  },
+  {
+    "source": "run.log",
+    "export": "run.log.gz",
+    "source_sha256": "c570f4e5ffb870e6f5fbc00a26799ad11d07ac7382f8a58a5dfc51d7ae2ab468",
+    "export_sha256": "bd8553d8f7681467760f74d676fd24009d10decbbf4ecc9a708227a9f5fa8396"
+  },
+  {
+    "source": "manifest.json",
+    "export": "manifest.json.gz",
+    "source_sha256": "e655435de1e151043b7eb0e1ee004e706d079303b7c0a8c8646be31919ff448c",
+    "export_sha256": "a04ed9f2e4912295c7986df926d5718e8c7680ac46fc67956eb74f22a01945cd"
+  }
+]
