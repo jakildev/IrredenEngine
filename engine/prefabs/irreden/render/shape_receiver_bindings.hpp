@@ -5,6 +5,18 @@
 
 namespace IRPrefab::detail {
 
+inline void bindShapeReceiverOwnership(const IRComponents::CanvasShapeGeometry &geometry) {
+    using namespace IRRender;
+    geometry.sampleOwners_.second->bindBase(
+        BufferTarget::SHADER_STORAGE,
+        kBufferIndex_ShapeSampleOwners
+    );
+    geometry.tiles_.second->bindBase(
+        BufferTarget::SHADER_STORAGE,
+        kBufferIndex_ShapeTileDescriptors
+    );
+}
+
 inline void bindShapeReceiver(
     const IRComponents::CanvasShapeGeometry &geometry,
     IRMath::ivec2 canvasSize,
@@ -21,14 +33,7 @@ inline void bindShapeReceiver(
         BufferTarget::SHADER_STORAGE,
         kBufferIndex_ShapeDescriptors
     );
-    geometry.sampleOwners_.second->bindBase(
-        BufferTarget::SHADER_STORAGE,
-        kBufferIndex_ShapeSampleOwners
-    );
-    geometry.tiles_.second->bindBase(
-        BufferTarget::SHADER_STORAGE,
-        kBufferIndex_ShapeTileDescriptors
-    );
+    bindShapeReceiverOwnership(geometry);
 }
 
 inline void restoreShapeReceiver(

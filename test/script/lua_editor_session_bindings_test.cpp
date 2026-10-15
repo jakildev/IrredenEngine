@@ -183,7 +183,9 @@ TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
         s:toggleLodFollowZoom()
         s:dragWorld({0, 0, 0}, {1, 0, 0})
         s:applyRadialArray(2)
+        s:applyRadialArray(2, 8)
         s:applyRadialArrayToLiveScene(2)
+        s:applyRadialArrayToLiveScene(2, -8)
         s:toggleRotationalSymmetry()
         s:selectPartThroughList(0, 0)
 
@@ -342,6 +344,10 @@ TEST_F(LuaEditorSessionBindingsTest, RejectsEveryArgumentFamilyAndNonComparableF
         "session:clickLoftCell(99, {0,0})",
         "session:dragGuiSlider({pos={0,0},size='bad'}, 0, 1, 0)",
         "session:dragWorld({0,0}, {1,1,1})",
+        "session:applyRadialArray(2, 8.5)",
+        "session:applyRadialArray(2, 13)",
+        "session:applyRadialArrayToLiveScene(2, 8.5)",
+        "session:applyRadialArrayToLiveScene(2, 13)",
         "session:applyRecipe({}, {})",
         "session:applyRecipe('matrix_recipe', 1)",
         "session:applyRecipe('matrix_recipe', { count = 'bad' })",
@@ -363,6 +369,40 @@ TEST_F(LuaEditorSessionBindingsTest, RejectsEveryArgumentFamilyAndNonComparableF
         const sol::protected_function_result result =
             m_lua.lua().safe_script(call, sol::script_pass_on_error);
         EXPECT_FALSE(result.valid()) << call;
+    }
+}
+
+TEST_F(LuaEditorSessionBindingsTest, RadialArrayRejectsOutOfRangeRadiusBeforeEvents) {
+    Builder radial("radial_radius", IRMath::ivec3(16), IRMath::vec3(-8.0f));
+    radial.applyRadialArray(2, 13);
+    expectOneErrorAndNoEvents(radial.finish(), "radius");
+
+    Builder live("live_radius", IRMath::ivec3(16), IRMath::vec3(-8.0f));
+    live.applyRadialArrayToLiveScene(2, -13);
+    expectOneErrorAndNoEvents(live.finish(), "radius");
+}
+
+TEST_F(LuaEditorSessionBindingsTest, RadialRadiusSliderRoundsWholeTargetsInsideTwoTrixels) {
+    constexpr int kSixteenthsPerTrixel = 16;
+    for (int target = static_cast<int>(IRVoxelEditor::kArrayRadiusSliderMin);
+         target <= static_cast<int>(IRVoxelEditor::kArrayRadiusSliderMax);
+         ++target) {
+        const IRMath::vec2 aim = IRVoxelEditor::sliderValueGuiTrixel(
+            IRVoxelEditor::kArrayRadiusSliderGeometry,
+            IRVoxelEditor::kArrayRadiusSliderMin,
+            IRVoxelEditor::kArrayRadiusSliderMax,
+            static_cast<float>(target)
+        );
+        for (int offset = -2 * kSixteenthsPerTrixel + 1; offset < 2 * kSixteenthsPerTrixel;
+             ++offset) {
+            const float cursor = aim.x + static_cast<float>(offset) / kSixteenthsPerTrixel;
+            const float held =
+                IRVoxelEditor::kArrayRadiusSliderMin +
+                (cursor - static_cast<float>(IRVoxelEditor::kArrayRadiusSliderGeometry.pos_.x)) /
+                    static_cast<float>(IRVoxelEditor::kArrayRadiusSliderGeometry.size_.x) *
+                    (IRVoxelEditor::kArrayRadiusSliderMax - IRVoxelEditor::kArrayRadiusSliderMin);
+            EXPECT_EQ(IRMath::round(held), target) << "target=" << target << " offset=" << offset;
+        }
     }
 }
 

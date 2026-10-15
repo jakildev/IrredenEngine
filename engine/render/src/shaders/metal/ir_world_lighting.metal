@@ -47,6 +47,7 @@ struct FrameDataLightingToTrixel {
     float4 skyColor;
     float4 detachedViewToWorld;
     int4 normalOptions;
+    int4 shapeReceiverOptions;
 };
 
 // The light-volume UBO (`[[buffer(23)]]`), written once by the CPU and read by
