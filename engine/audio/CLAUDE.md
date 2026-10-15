@@ -12,6 +12,8 @@ functions:
 
 - `getAudioManager()`, `getMidiIn()`, `getMidiOut()`, `getAudio()`.
 - MIDI device enumeration: list ports, open by index or substring.
+- Audio device listing: `audioDevices()` — the devices the backend enumerated
+  at startup, sorted by name (no hot-plug refresh).
 - MIDI query: per-channel, per-frame CC/note-on/note-off queues.
 - MIDI send: `sendMidiMessage(message)` (default port) / `sendMidiMessage(portIndex,
   message)` — raw RtMidi bytes. (There are no `sendNoteOn`/`sendNoteOff`/`sendCC`

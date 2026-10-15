@@ -110,7 +110,7 @@ void main() {
     }
 
     const uint entryBase = uint(overflowScratchLayout.z) + gid * 3u;
-    const uint packedCell = overflowScratch[entryBase + 0u];
+    const uint packedCell = overflowEntryCell(overflowScratch[entryBase + 0u]);
     const uint colorPacked = overflowScratch[entryBase + 1u];
     const int  rawDist = int(overflowScratch[entryBase + 2u]);
 

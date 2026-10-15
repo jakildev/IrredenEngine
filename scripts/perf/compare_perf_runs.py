@@ -698,6 +698,17 @@ def mark(delta_pct: float, regress_pct: float, improve_pct: float) -> str:
     return ""
 
 
+def frame_avg_improved(
+    baseline: float,
+    head: float,
+    calibration_ratio: float,
+    improve_pct: float,
+) -> bool:
+    raw_delta = pct_delta(baseline, head)
+    calibrated_delta = pct_delta(baseline, head * calibration_ratio)
+    return max(raw_delta, calibrated_delta) <= -improve_pct
+
+
 def format_frame_row(
     cell_id: str,
     base: CellReport,
@@ -706,25 +717,39 @@ def format_frame_row(
     improve_pct: float,
     load_flagged: bool = False,
     avg_head_scale: float = 1.0,
+    avg_improvement_scale: float = 1.0,
 ) -> str:
     avg_b, avg_h = base.frame.avg, head.frame.avg
     p99_b, p99_h = base.frame.p99, head.frame.p99
     avg_delta = pct_delta(avg_b, avg_h)
     scaled_avg_delta = pct_delta(avg_b, avg_h * avg_head_scale)
+    improvement_scaled_delta = pct_delta(avg_b, avg_h * avg_improvement_scale)
     p99_delta = pct_delta(p99_b, p99_h)
     if load_flagged:
         avg_mark = ""
-    elif avg_head_scale != 1.0:
-        avg_mark = " ⚠" if scaled_avg_delta >= regress_pct else (
-            " ↓" if avg_delta <= -improve_pct else ""
-        )
     else:
-        avg_mark = mark(avg_delta, regress_pct, improve_pct)
+        regressed = (
+            scaled_avg_delta >= regress_pct
+            if avg_head_scale != 1.0 else avg_delta >= regress_pct
+        )
+        improved = frame_avg_improved(
+            avg_b, avg_h, avg_improvement_scale, improve_pct
+        )
+        avg_mark = " ⚠" if regressed else " ↓" if improved else ""
     p99_mark = "" if load_flagged else mark(p99_delta, regress_pct, improve_pct)
     label = f"`{cell_id}` (load-flagged)" if load_flagged else f"`{cell_id}`"
+    show_improvement_scale = (
+        avg_delta <= -improve_pct
+        and avg_improvement_scale != 1.0
+        and improvement_scaled_delta > -improve_pct
+    )
+    display_scaled_delta = (
+        scaled_avg_delta if avg_head_scale != 1.0 else improvement_scaled_delta
+    )
     avg_delta_text = (
-        f"{avg_delta:+.1f}% raw, {scaled_avg_delta:+.1f}% scaled"
-        if avg_head_scale != 1.0 else f"{avg_delta:+.1f}%"
+        f"{avg_delta:+.1f}% raw, {display_scaled_delta:+.1f}% scaled"
+        if avg_head_scale != 1.0 or show_improvement_scale
+        else f"{avg_delta:+.1f}%"
     )
     return (
         f"| {label} "
@@ -795,10 +820,9 @@ def render_markdown(
     host_note: str = "",
     load_flags: Sequence[LoadFlag] = (),
     frame_avg_head_scale: float = 1.0,
+    frame_avg_improvement_scale: float = 1.0,
 ) -> str:
-    """A load-flagged cell keeps its rows but carries no ⚠ or ↓ mark: the
-    gate does not grade it, and a ↓ anywhere in the comment labels the PR
-    perf:improved."""
+    """A load-flagged cell keeps its rows but carries no grading mark."""
     ungraded = {f.cell_id for f in load_flags}
     out: List[str] = []
     out.append(f"# perf comparison: {base_dir.name} → {head_dir.name}")
@@ -855,7 +879,8 @@ def render_markdown(
         for cell_id in matched:
             out.append(format_frame_row(cell_id, base[cell_id], head[cell_id],
                                         regress_pct, improve_pct, cell_id in ungraded,
-                                        frame_avg_head_scale))
+                                        frame_avg_head_scale,
+                                        frame_avg_improvement_scale))
         out.append("")
 
     if not cpu_only and any(c.gpu_frame.supported is not None

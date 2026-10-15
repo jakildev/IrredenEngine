@@ -111,6 +111,42 @@ IREditor.registerSession("test_parts", function(session)
     session:expectPartGated(2, true, 0, "reload_band")
 end)
 
+IREditor.registerSession("test_recipe_attach", function(session)
+    local size = session:sceneSize()
+    local x = math.floor(size.x / 2)
+    local y = math.floor(size.y / 2)
+    local recipe_cell = { x, y, size.z - 4 }
+    local click_target = { x, y, size.z - 5 }
+
+    session:segment("apply")
+    session:addVoxelPart()
+    session:expectComponentValue(
+        0, "TestModuleTag", "weight", nil, true, "component_absent_before_attach")
+    session:applyRecipe("test_column", { height = 3 })
+    session:expectPartOccupancy(0, recipe_cell, true, "recipe_cell_filled")
+    session:expectPartOccupancy(0, click_target, false, "click_target_empty_before_click")
+
+    session:segment("click")
+    session:click(click_target)
+    session:expectPartOccupancy(0, click_target, true, "click_target_filled")
+
+    session:segment("component")
+    session:attachComponent("TestModuleTag")
+    session:setComponentField("TestModuleTag", "weight", "7")
+    session:expectComponentValue(0, "TestModuleTag", "weight", 7, true, "field_set_to_seven")
+
+    session:segment("save")
+    session:save()
+    session:segment("clear")
+    session:clearEntityScene()
+    session:segment("reload")
+    session:reload()
+    session:expectPartOccupancy(0, click_target, true, "clicked_cell_survives_reload")
+    session:expectComponentValue(0, "TestModuleTag", "weight", 7, true, "field_survives_reload")
+    session:expectComponentValue(
+        0, "TestModuleTag", "weight", 1, false, "field_is_not_default_after_reload")
+end)
+
 IREditor.registerSession("test_single", function(session)
     local size = session:sceneSize()
     local cell = { math.floor(size.x / 2), math.floor(size.y / 2), size.z - 2 }

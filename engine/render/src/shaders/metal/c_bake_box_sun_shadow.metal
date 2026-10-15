@@ -18,6 +18,7 @@ kernel void c_bake_box_sun_shadow(
     constant FrameDataSun& sunFrame [[buffer(29)]],
     constant ShapeProjectionData& shapeProjection [[buffer(23)]],
     constant FogShadowObserverData& fogObservers [[buffer(27)]],
+    texture2d<uint, access::read> fogShadowWindow [[texture(4)]],
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 localId [[thread_position_in_threadgroup]]
 ) {
@@ -106,8 +107,9 @@ kernel void c_bake_box_sun_shadow(
                 (box || sdfRayHit(shape.shapeType, shape.params, rayOrigin, direction, threshold, nearDepth, farDepth, casterDepth))) {
                 const float3 worldSample = sunFrame.sunBasisU.xyz * uv.x +
                     sunFrame.sunBasisV.xyz * uv.y - sunFrame.sunDirection.xyz * casterDepth;
-                if (!fogFieldCastsSunShadow(
-                        worldSample, fogBody, sunFrame.fogCeilingEnabled.x, fogObservers)) continue;
+                if (!(fogBody) && sunFrame.fogCeilingEnabled.x != 0 && fogObservers.visionCircleCount > 0 &&
+        !fogFieldCastsSunShadow(worldSample, false, sunFrame.fogCeilingEnabled.x,
+            fogShadowCell(worldSample, fogObservers, fogShadowWindow), fogObservers)) continue;
                 atomic_fetch_min_explicit(&sunDepthBuf[depthLayerOffset + cascade * kCascadeTexelCount + pixel.y * kSunShadowMapDim + pixel.x], packSunSurfaceDepth(casterDepth), memory_order_relaxed);
             }
         }

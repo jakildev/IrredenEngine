@@ -97,6 +97,10 @@ layout(std140, binding = 7) uniform FrameDataVoxelToTrixel {
     // origin, .z = cardinal index of the view the key positions are rotated
     // into. FrameDataVoxelToCanvas::perAxisStoreFrame_ (offset 256).
     uniform ivec4 perAxisStoreFrame;
+    // .x non-zero while the bound fog window has a ceiling-enabled source
+    // live; face selection's one-uniform ceiling gate.
+    // FrameDataVoxelToCanvas::fogCeilingEnabled_ (offset 272).
+    uniform ivec4 fogCeilingEnabled;
 };
 
 layout(std430, binding = 5) readonly buffer PositionBuffer {
@@ -327,7 +331,7 @@ void main() {
     const VoxelFaceSelect sel = selectVoxelFace(
         faceId, reVoxelize, voxels[voxelIndex].reserved, flagsByte,
         voxelPosition, perAxisRoute, isDetachedCanvas, detachedWorldReceive,
-        detachedViewToWorld
+        detachedViewToWorld, fogCeilingEnabled.x
     );
     if (!sel.keepFace) return;
     faceId = sel.faceId;

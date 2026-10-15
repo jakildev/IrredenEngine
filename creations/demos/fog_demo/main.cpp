@@ -1949,7 +1949,10 @@ void probeGhostPolicy(int shotIndex) {
 // the soft line-of-sight band on the ground slab (FOG-SURFACE-PROBE too).
 bool g_ceilingTreatment = false; // --ceiling-treatment
 bool g_ceilingShadow = false;    // --ceiling-shadow
-bool g_revealTreatment = false;  // --reveal-treatment
+bool g_ceilingHard = false;
+bool g_ceilingShadowGrid = false;
+float g_ceilingPhase = 0.0f;
+bool g_revealTreatment = false; // --reveal-treatment
 constexpr float kCeilingVisionRadius = 14.0f;
 constexpr float kCeilingVisionEdge = 2.0f;
 constexpr float kCeilingObserverZ = 4.0f;
@@ -1983,20 +1986,19 @@ static_assert(
         kCeilingShadowBody.y == 2.0f * kCeilingShadowRim.y,
     "ceiling-shadow controls must preserve integral receiver and caster lattice phases"
 );
-// At the warmup probe's density-one cardinal raster, GROUND's half-integer
-// centers round upward. The inclusive midpoint retains z=-3 through z=4.
-constexpr int kCeilingShadowControlHeight =
-    static_cast<int>(kCeilingHeight + 0.5f * kCeilingFade) + 1;
+// Positive soft presence retains integer rises 0 through ceiling + fade - 1.
+constexpr int kCeilingShadowControlHeight = static_cast<int>(kCeilingHeight + kCeilingFade);
+static_assert(kCeilingShadowControlHeight == 9);
 // The curved variant swaps the centre FIELD column and the BODY twin for
 // cylinders of the same footprint, which only the analytic-shape caster route
 // bakes. A shape takes its BODY reveal verdict at its centre, so the centre
-// stays under the ceiling plane while the top rises past the cut midpoint.
+// stays under the ceiling plane while the top rises past the retained levels.
 bool g_ceilingShadowCurved = false;
 constexpr float kCeilingShadowCylinderHeight = 10.0f;
 static_assert(
     0.5f * (kCeilingShadowCylinderHeight - 1.0f) < kCeilingHeight &&
-        kCeilingShadowCylinderHeight - 1.0f > kCeilingHeight + 0.5f * kCeilingFade,
-    "the BODY cylinder must be revealed at its centre and cast above the cut midpoint"
+        kCeilingShadowCylinderHeight - 1.0f > float(kCeilingShadowControlHeight - 1),
+    "the BODY cylinder must be revealed at its centre and cast above the retained levels"
 );
 constexpr vec4 kCeilingShadowCylinder{
     kCeilingColumnFootprint * 0.5f,
@@ -2008,6 +2010,10 @@ constexpr float kCeilingShotYaw = 0.35f;
 constexpr IRVideo::AutoScreenshotShot kCeilingShots[] = {
     {9.0f, vec2(0, 0), 0.0f, "fog_ceiling9"},
     {9.0f, vec2(0, 0), kCeilingShotYaw, "fog_ceiling_yaw9"},
+};
+constexpr IRVideo::AutoScreenshotShot kCeilingHardShots[] = {
+    {9.0f, vec2(0, 0), 0.0f, "fog_ceiling_hard9"},
+    {9.0f, vec2(0, 0), kCeilingShotYaw, "fog_ceiling_hard_yaw9"},
 };
 constexpr IRVideo::AutoScreenshotShot kCeilingTreatmentShots[] = {
     {9.0f, vec2(0, 0), 0.0f, "fog_ceiling_treatment9"},
@@ -2033,6 +2039,10 @@ int g_shadowProbeFrame = 0;
 // The fog output of the frame ahead of the probed one, rendered with the
 // treatment off: the control half of the ceiling probe's treatment diff.
 std::vector<Color> g_surfaceControlColors;
+std::vector<IRMath::uvec2> g_ceilingUncutCarriers;
+std::vector<int> g_ceilingUncutDistances;
+std::vector<IRMath::uvec2> g_ceilingStaticCarriers;
+std::vector<int> g_ceilingStaticDistances;
 // A readback channel within this of its prediction matches it.
 constexpr float kSurfaceProbeColorTolerance = 3.0f;
 // The fog pass's hard-disc rim lift, mirrored from ir_fog_common
@@ -2093,49 +2103,109 @@ SurfaceHeights surfaceHeights(const std::map<int, SurfaceLevelCount> &levels) {
     return heights;
 }
 
-// `cpu_` reads the untreated oracle (the ceiling alone decides the heights),
-// `treated_` the oracle with the canvas treatment, whose dissolve lowers the
-// fully-hidden edge toward the band's cut end exactly as the pass paints it.
-// `bandChanged_` counts the band texels the treatment recoloured against the
-// control frame.
-struct SurfaceColumnReading {
-    int texels_ = 0;
-    int partialBand_ = 0;
-    int bandChanged_ = 0;
-    int dissolved_ = 0;
-    int retained_ = 0;
-    int capToned_ = 0;
-    int topTexels_ = 0;
-    int topPainted_ = 0;
-    SurfaceHeights cpu_;
-    SurfaceHeights treated_;
-    SurfaceHeights gpu_;
-};
+int g_ceilingYawProbeFrame = 0;
+std::array<std::vector<IRMath::uvec2>, 3> g_ceilingYawCore;
 
-// Runs at the render front on the frame after the before-fog snapshot, like
-// FOG-BODY-PROBE, so both halves describe one frame. The two frames ahead of
-// it stage the treatment diff: the first renders with the treatment off, the
-// second reads that frame back as the control and turns the treatment on
-// again, so the probed frame differs from the control by the treatment alone.
-void probeCeilingSurface() {
-    ++g_surfaceProbeFrame;
-    const auto &textures =
-        IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity());
-    if (g_surfaceProbeFrame == g_autoWarmupFrames - 2) {
+// A short solid control supplies the exact occupied vertical-face carrier
+// footprint on each axis. Every such cell must remain in the full cut solid;
+// its top cap is excluded because a taller solid hides that face.
+void probeCeilingYawSurface() {
+    const auto *stage1 =
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>>(
+            IRSystem::findSystem(IRSystem::VOXEL_TO_TRIXEL_STAGE_1)
+        );
+    if (stage1->frameData_.residualYaw_ == 0.0f || g_ceilingYawProbeFrame >= 4)
+        return;
+    const auto &axes =
+        IREntity::getComponent<C_PerAxisTrixelCanvases>(IRRender::getActiveCanvasEntity());
+    if (!axes.isAllocated())
+        return;
+    ++g_ceilingYawProbeFrame;
+    if (g_ceilingYawProbeFrame == 1) {
         IRPrefab::Fog::clearRevealSurfaceTreatment();
+        IRPrefab::Fog::setRevealSurfacePhase(0);
+        IRPrefab::Fog::setVisionCircleCeiling(0, 2, 0);
         return;
     }
-    if (g_surfaceProbeFrame == g_autoWarmupFrames - 1) {
-        textures.readColors(g_surfaceControlColors);
-        if (g_revealTreatment) {
+    if (g_ceilingYawProbeFrame == 2) {
+        for (int axis = 0; axis < 3; ++axis)
+            axes.axes_[axis].readEntityIdCarriers(axes.size_, g_ceilingYawCore[axis]);
+        IRPrefab::Fog::setVisionCircleCeiling(0, kCeilingHeight, g_ceilingHard ? 0 : kCeilingFade);
+        if (g_revealTreatment)
             IRPrefab::Fog::setRevealSurfaceTreatment(kRevealTreatmentDensity, kRevealTreatmentTone);
+        IRPrefab::Fog::setRevealSurfacePhase(g_ceilingPhase);
+        return;
+    }
+    if (g_ceilingYawProbeFrame != 4)
+        return;
+    std::array<std::vector<IRMath::uvec2>, 3> carriers;
+    for (int axis = 0; axis < 3; ++axis)
+        axes.axes_[axis].readEntityIdCarriers(axes.size_, carriers[axis]);
+    for (const auto &[label, entity] :
+         {std::pair{"centre", g_ceilingCentreColumn}, std::pair{"rim", g_ceilingRimColumn}}) {
+        const auto id = static_cast<std::uint32_t>(entity);
+        int core = 0, hollow = 0, caps = 0, topCaps = 0;
+        for (int axis = 0; axis < 3; ++axis) {
+            for (std::size_t i = 0; i < carriers[axis].size(); ++i) {
+                const auto now = carriers[axis][i], control = g_ceilingYawCore[axis][i];
+                const auto capBit = IRRender::kEntityIdCutFaceMaskInHighWord;
+                if (now.x == id && (now.y & capBit)) {
+                    ++caps;
+                    topCaps += axis == 2;
+                }
+                if (control.x == id && !(control.y & capBit) && axis != 2) {
+                    ++core;
+                    hollow += now.x != id;
+                }
+            }
         }
+        IR_LOG_INFO(
+            "FOG-SURFACE-PROBE route=per-axis column={} capFaces={} topCaps={} core={} hollow={}",
+            label,
+            caps,
+            topCaps,
+            core,
+            hollow
+        );
+        requireSurfaceProbe(
+            core > 0 && caps > 0 && topCaps > 0 && hollow == 0,
+            "the per-axis ceiling cut is not a closed solid"
+        );
+    }
+}
+
+// Two controls precede the measured frame: uncut geometry witnesses the
+// solid core, then phase zero witnesses the animated band's pixel delta.
+void probeCeilingSurface() {
+    probeCeilingYawSurface();
+    ++g_surfaceProbeFrame;
+    const auto canvas = IRRender::getActiveCanvasEntity();
+    const auto &textures = IREntity::getComponent<C_TriangleCanvasTextures>(canvas);
+    const auto &fog = IREntity::getComponent<C_CanvasFogOfWar>(canvas);
+    if (g_surfaceProbeFrame == g_autoWarmupFrames - 4) {
+        IRPrefab::Fog::setVisionCircleCeiling(0, -1.0f);
+        IRPrefab::Fog::setRevealSurfacePhase(0.0f);
         return;
     }
-    if (g_surfaceProbeFrame != g_autoWarmupFrames || g_bodyProbeBeforeColors.empty()) {
+    if (g_surfaceProbeFrame == g_autoWarmupFrames - 3) {
+        textures.readEntityIdCarriers(g_ceilingUncutCarriers);
+        textures.readDistances(g_ceilingUncutDistances);
+        IRPrefab::Fog::setVisionCircleCeiling(
+            0,
+            kCeilingHeight,
+            g_ceilingHard ? 0.0f : kCeilingFade
+        );
         return;
     }
-    const auto &fog = IREntity::getComponent<C_CanvasFogOfWar>(IRRender::getActiveCanvasEntity());
+    if (g_surfaceProbeFrame == g_autoWarmupFrames - 2) {
+        textures.readColors(g_surfaceControlColors);
+        textures.readEntityIdCarriers(g_ceilingStaticCarriers);
+        textures.readDistances(g_ceilingStaticDistances);
+        IRPrefab::Fog::setRevealSurfacePhase(g_ceilingPhase);
+        return;
+    }
+    if (g_surfaceProbeFrame != g_autoWarmupFrames || g_bodyProbeBeforeColors.empty())
+        return;
     std::vector<IRMath::uvec2> carriers;
     std::vector<Color> colors;
     std::vector<int> distances;
@@ -2146,159 +2216,109 @@ void probeCeilingSurface() {
         IRSystem::getSystemParams<IRSystem::System<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>>(
             IRSystem::findSystem(IRSystem::VOXEL_TO_TRIXEL_STAGE_1)
         );
+    const auto &frame = stage1->frameData_;
     const vec3 unexplored(IRMath::colorToVec4(kFogDebugUnexploredColor));
-    const int topLevel = kCeilingColumnHeight - 1;
-
-    const auto readColumn = [&](IREntity::EntityId entity) {
-        SurfaceColumnReading reading;
-        std::map<int, SurfaceLevelCount> cpuLevels;
-        std::map<int, SurfaceLevelCount> treatedLevels;
-        std::map<int, SurfaceLevelCount> gpuLevels;
-        const auto classify = [](SurfaceLevelCount &count, float state) {
-            ++(state <= 0.0f ? count.hidden_ : state >= 1.0f ? count.lit_ : count.partial_);
-        };
-        const auto expected = static_cast<std::uint32_t>(entity);
-        for (int y = 0; y < textures.size_.y; ++y) {
-            for (int x = 0; x < textures.size_.x; ++x) {
-                const std::size_t i = static_cast<std::size_t>(y) * textures.size_.x + x;
-                if (carriers[i].x != expected) {
-                    continue;
-                }
-                ++reading.texels_;
-                const vec3 world =
-                    canvasTexelToWorld(IRMath::ivec2(x, y), distances[i], stage1->frameData_);
-                const int level =
-                    static_cast<int>(kCeilingObserverZ) - IRMath::roundHalfUp(world.z);
-                const float plain = IRPrefab::Fog::evalActiveVisionReveal(world);
-                const IRPrefab::Fog::RevealSurfaceSample treated =
-                    IRPrefab::Fog::evalRevealSurface(fog, world);
-                const Color before = g_bodyProbeBeforeColors[i];
-                const bool gpuHidden = colorMatches(colors[i], unexplored);
-                const bool gpuLit = colorEquals(colors[i], before);
-                classify(cpuLevels[level], plain);
-                classify(treatedLevels[level], treated.state_);
-                SurfaceLevelCount &gpuLevel = gpuLevels[level];
-                ++(gpuHidden ? gpuLevel.hidden_ : gpuLit ? gpuLevel.lit_ : gpuLevel.partial_);
-                if (level == topLevel) {
-                    ++reading.topTexels_;
-                    reading.topPainted_ += gpuHidden ? 1 : 0;
-                }
-                if (plain <= 0.0f || plain >= 1.0f) {
-                    continue;
-                }
-                ++reading.partialBand_;
-                reading.bandChanged_ += colorEquals(colors[i], g_surfaceControlColors[i]) ? 0 : 1;
-                if (gpuHidden) {
-                    ++reading.dissolved_;
-                    continue;
-                }
-                ++reading.retained_;
-                const vec3 source(IRMath::colorToVec4(before));
-                const vec3 untreated = predictFieldColor(plain, source, unexplored, 8.0f);
-                const vec3 toned = IRPrefab::Fog::detail::cutCapBlend(
-                    untreated,
-                    source,
-                    fog.observers_.capTone(),
-                    treated.state_,
-                    treated.styledBand_
-                );
-                if (!colorMatches(colors[i], untreated) && colorMatches(colors[i], toned)) {
-                    ++reading.capToned_;
+    requireSurfaceProbe(
+        g_ceilingUncutCarriers.size() == carriers.size() &&
+            g_surfaceControlColors.size() == colors.size(),
+        "ceiling controls were not captured"
+    );
+    const float span = g_revealTreatment ? IRPrefab::Fog::detail::kFogCeilingFlickerSpan : 0.0f;
+    const float bandEnd = kCeilingHeight + (g_ceilingHard ? 0.0f : kCeilingFade) + span;
+    const auto ownerAt = [&](std::size_t i, const std::vector<int> &depths) {
+        const int slot = depths[i] & 3;
+        const auto face =
+            static_cast<IRMath::FaceId>(frame.visibleFaceIds_[slot] ^ ((depths[i] >> 2) & 1));
+        const IRMath::ivec2 pixel(i % textures.size_.x, i / textures.size_.x);
+        const auto iso = pixel - frame.trixelCanvasOffsetZ1_ -
+                         IRMath::ivec2(IRMath::floor(frame.cameraTrixelOffset_));
+        const int half = ((iso.x + iso.y) & 1) ^ (slot == IRMath::kYFace ? 1 : 0);
+        const auto originIso = iso - IRMath::deformedTrixelIsoPixel(slot, half, 0.0f);
+        const vec3 origin =
+            IRMath::isoPixelToPos3D(originIso.x, originIso.y, float(depths[i] >> 3));
+        vec3 axis(0);
+        axis[slot] = 1;
+        const float scale = float(IRMath::max(frame.voxelRenderOptions_.y, 1));
+        const vec3 surface = (origin + 0.5f * (vec3(1) - axis)) / scale - vec3(0.5f);
+        return IRMath::roundVec3HalfUp(surface - 0.5f * IRMath::faceOutwardNormal(face));
+    };
+    for (const auto &[label, entity] :
+         {std::pair{"centre", g_ceilingCentreColumn}, std::pair{"rim", g_ceilingRimColumn}}) {
+        const auto id = static_cast<std::uint32_t>(entity);
+        int texels = 0, above = 0, caps = 0, hollow = 0, core = 0, highest = -1, expectedTop = -1;
+        const auto &set = IREntity::getComponent<C_VoxelSetNew>(entity);
+        for (const auto &position : set.globalPositions_) {
+            const auto voxel = IRMath::roundVec3HalfUp(position.pos_);
+            const IRPrefab::Fog::FogWindowTexel cell{
+                fog.field_->getCell(IRMath::ivec2(voxel)),
+                fog.field_->getCellChannels(IRMath::ivec2(voxel))
+            };
+            if (IRPrefab::Fog::detail::ceilingRetained(fog.observers_, voxel, cell, g_ceilingPhase))
+                expectedTop = IRMath::max(expectedTop, int(kCeilingObserverZ) - voxel.z);
+        }
+        for (std::size_t i = 0; i < carriers.size(); ++i) {
+            if (carriers[i].x == id) {
+                ++texels;
+                const auto owner = ownerAt(i, distances);
+                const int rise = int(kCeilingObserverZ) - owner.z;
+                highest = IRMath::max(highest, rise);
+                above += rise > expectedTop ? 1 : 0;
+                caps += (carriers[i].y & IRRender::kEntityIdCutFaceMaskInHighWord) != 0u ? 1 : 0;
+            }
+            if (g_ceilingUncutCarriers[i].x == id) {
+                const auto owner = ownerAt(i, g_ceilingUncutDistances);
+                const float rise = kCeilingObserverZ - static_cast<float>(owner.z);
+                if (rise > 0.0f && rise < kCeilingHeight - span - 1.0f) {
+                    ++core;
+                    hollow += carriers[i].x != id ? 1 : 0;
                 }
             }
         }
-        reading.cpu_ = surfaceHeights(cpuLevels);
-        reading.treated_ = surfaceHeights(treatedLevels);
-        reading.gpu_ = surfaceHeights(gpuLevels);
-        return reading;
-    };
-
-    requireSurfaceProbe(
-        g_surfaceControlColors.size() == colors.size(),
-        "the control frame was not read back"
-    );
-    const SurfaceColumnReading centre = readColumn(g_ceilingCentreColumn);
-    const SurfaceColumnReading rim = readColumn(g_ceilingRimColumn);
-    for (const auto &[label, reading] : {std::pair{"centre", &centre}, std::pair{"rim", &rim}}) {
         IR_LOG_INFO(
-            "FOG-SURFACE-PROBE column={} texels={} cpuFirstHidden={} cpuFullyHidden={} "
-            "treatedFirstHidden={} treatedFullyHidden={} gpuFirstHidden={} gpuFullyHidden={} "
-            "partialBand={} bandChanged={} dissolved={} retained={} capToned={} topTexels={} "
-            "topPainted={}",
+            "FOG-SURFACE-PROBE column={} texels={} top={}/{} aboveCut={} capFaces={} core={} "
+            "hollow={}",
             label,
-            reading->texels_,
-            reading->cpu_.firstHidden_,
-            reading->cpu_.fullyHidden_,
-            reading->treated_.firstHidden_,
-            reading->treated_.fullyHidden_,
-            reading->gpu_.firstHidden_,
-            reading->gpu_.fullyHidden_,
-            reading->partialBand_,
-            reading->bandChanged_,
-            reading->dissolved_,
-            reading->retained_,
-            reading->capToned_,
-            reading->topTexels_,
-            reading->topPainted_
+            texels,
+            highest,
+            expectedTop,
+            above,
+            caps,
+            core,
+            hollow
         );
-        requireSurfaceProbe(reading->texels_ > 0, "a FIELD column has no texels");
-        requireSurfaceProbe(
-            reading->cpu_.firstHidden_ >= 0 && reading->cpu_.fullyHidden_ >= 0,
-            "the oracle finds no ceiling cut on a FIELD column"
-        );
-        requireSurfaceProbe(
-            reading->treated_ == reading->gpu_,
-            "the GPU cut heights differ from the oracle's"
-        );
-        requireSurfaceProbe(
-            reading->treated_.firstHidden_ == reading->cpu_.firstHidden_ &&
-                reading->treated_.fullyHidden_ <= reading->cpu_.fullyHidden_ &&
-                reading->treated_.fullyHidden_ > reading->cpu_.firstHidden_,
-            "the treatment moved the cut outside the ceiling's band"
-        );
-        requireSurfaceProbe(reading->partialBand_ > 0, "a FIELD column has no partial band");
-        requireSurfaceProbe(
-            reading->topTexels_ > 0 && reading->topPainted_ == reading->topTexels_,
-            "the FIELD silhouette above the band is not painted whole"
-        );
-        if (g_revealTreatment) {
-            requireSurfaceProbe(reading->dissolved_ > 0, "the treatment dissolved nothing");
-            requireSurfaceProbe(reading->retained_ > 0, "the treatment retained nothing");
-            requireSurfaceProbe(reading->capToned_ > 0, "the treatment toned nothing");
-            requireSurfaceProbe(
-                reading->bandChanged_ > 0,
-                "the treatment changed nothing in a column's band"
-            );
-        } else {
-            requireSurfaceProbe(
-                reading->dissolved_ == 0 && reading->capToned_ == 0 && reading->bandChanged_ == 0,
-                "the untreated control carries treatment"
-            );
-        }
+        requireSurfaceProbe(highest == expectedTop, "the carrier top differs from CPU retention");
+        requireSurfaceProbe(texels > 0 && core > 0, "ceiling fixture has no retained core");
+        requireSurfaceProbe(above == 0, "a FIELD voxel above the ceiling envelope was rasterized");
+        requireSurfaceProbe(caps > 0 && hollow == 0, "ceiling cut is not closed");
     }
-    requireSurfaceProbe(
-        centre.cpu_ == rim.cpu_ && centre.gpu_ == rim.gpu_,
-        "the centre and rim columns cut at different heights"
-    );
-
-    int changed = 0;
+    int changed = 0, outsideBand = 0;
     for (std::size_t i = 0; i < colors.size(); ++i) {
-        changed += colorEquals(colors[i], g_surfaceControlColors[i]) ? 0 : 1;
+        if (colorEquals(colors[i], g_surfaceControlColors[i]) &&
+            carriers[i] == g_ceilingStaticCarriers[i])
+            continue;
+        ++changed;
+        bool inBand = false;
+        for (int control = 0; control < 2; ++control) {
+            const auto &ids = control == 0 ? carriers : g_ceilingStaticCarriers;
+            const auto &depths = control == 0 ? distances : g_ceilingStaticDistances;
+            if (ids[i].x != static_cast<std::uint32_t>(g_ceilingCentreColumn) &&
+                ids[i].x != static_cast<std::uint32_t>(g_ceilingRimColumn))
+                continue;
+            const float rise = kCeilingObserverZ - static_cast<float>(ownerAt(i, depths).z);
+            inBand |= rise >= kCeilingHeight - span && rise <= bandEnd;
+        }
+        outsideBand += inBand ? 0 : 1;
     }
-    const int changedOutsideBand = changed - centre.bandChanged_ - rim.bandChanged_;
     IR_LOG_INFO(
-        "FOG-SURFACE-PROBE roi=band canvas={}x{} changed={} centreBand={} rimBand={} "
-        "outsideBand={}",
-        textures.size_.x,
-        textures.size_.y,
+        "FOG-SURFACE-PROBE roi=band phase={} changed={} outsideBand={}",
+        g_ceilingPhase,
         changed,
-        centre.bandChanged_,
-        rim.bandChanged_,
-        changedOutsideBand
+        outsideBand
     );
+    requireSurfaceProbe(outsideBand == 0, "phase moved pixels outside the ceiling band");
     requireSurfaceProbe(
-        changedOutsideBand == 0,
-        "the treatment changed a texel outside the columns' partial band"
+        g_ceilingPhase == 0.0f ? changed == 0 : changed > 0,
+        "phase control did not match the requested animation"
     );
 
     const auto twin = static_cast<std::uint32_t>(g_ceilingBodyTwin);
@@ -2352,8 +2372,10 @@ void probeCeilingSurface() {
 struct ShadowFootprintReading {
     int texels_ = 0;
     float reach_ = -1.0f;
+    float receiverReach_ = -1.0f;
     int capWitnesses_ = 0;
     int capWitnessesLit_ = 0;
+    float expectedReach_ = -1.0f;
 };
 
 void probeCeilingShadow() {
@@ -2382,13 +2404,17 @@ void probeCeilingShadow() {
             frame.rasterYaw_ == 0.0f && frame.residualYaw_ == 0.0f,
         "the ceiling-shadow oracle requires the density-one cardinal fixture"
     );
-    const auto retainedCells = [](IREntity::EntityId entity, vec3 origin, bool cut) {
+    const auto &fog = IREntity::getComponent<C_CanvasFogOfWar>(canvas);
+    const auto retainedCells = [&](IREntity::EntityId entity, vec3 origin, bool cut) {
         std::vector<IRMath::ivec3> cells;
         const auto &set = IREntity::getComponent<C_VoxelSetNew>(entity);
         for (const auto &position : set.globalPositions_) {
             const auto center = IRMath::roundVec3HalfUp(position.pos_);
-            const float rise = kCeilingObserverZ - static_cast<float>(center.z);
-            if (cut && rise > kCeilingHeight + 0.5f * kCeilingFade)
+            const IRPrefab::Fog::FogWindowTexel cell{
+                fog.field_->getCell(IRMath::ivec2(center)),
+                fog.field_->getCellChannels(IRMath::ivec2(center))
+            };
+            if (cut && !IRPrefab::Fog::detail::ceilingRetained(fog.observers_, center, cell, 0.0f))
                 continue;
             cells.push_back(center - IRMath::ivec3(origin));
         }
@@ -2405,13 +2431,14 @@ void probeCeilingShadow() {
         retainedCells(g_ceilingShadowControl, kCeilingShadowControlPosition, false);
     requireFogProbe(
         "FOG-SHADOW-PROBE",
-        controlCells.size() ==
-                static_cast<std::size_t>(
-                    kCeilingColumnFootprint * kCeilingColumnFootprint * kCeilingShadowControlHeight
-                ) &&
-            retainedCells(g_ceilingRimColumn, kCeilingShadowRim, true) == controlCells &&
-            (g_ceilingShadowCurved ||
-             retainedCells(g_ceilingCentreColumn, kCeilingShadowCentre, true) == controlCells),
+        g_revealTreatment ||
+            (controlCells.size() ==
+                 static_cast<std::size_t>(
+                     kCeilingColumnFootprint * kCeilingColumnFootprint * kCeilingShadowControlHeight
+                 ) &&
+             retainedCells(g_ceilingRimColumn, kCeilingShadowRim, true) == controlCells &&
+             (g_ceilingShadowCurved || g_ceilingShadowGrid ||
+              retainedCells(g_ceilingCentreColumn, kCeilingShadowCentre, true) == controlCells)),
         "the authored control differs from the translated ceiling-retained occupancy"
     );
     const auto floorSample = [&](IRMath::ivec2 pixel, int encoded) {
@@ -2435,7 +2462,7 @@ void probeCeilingShadow() {
     shadowDirection /= IRMath::length(shadowDirection);
     const vec2 lateral{-shadowDirection.y, shadowDirection.x};
     const std::uint32_t slab = static_cast<std::uint32_t>(g_occlusionSlab);
-    const auto read = [&](vec3 origin) {
+    const auto read = [&](vec3 origin, const std::vector<IRMath::ivec3> &retained) {
         ShadowFootprintReading reading;
         for (int y = 0; y < textures.size_.y; ++y) {
             for (int x = 0; x < textures.size_.x; ++x) {
@@ -2448,6 +2475,24 @@ void probeCeilingShadow() {
                 const float along = IRMath::dot(delta, shadowDirection);
                 if (along < 0.0f || IRMath::abs(IRMath::dot(delta, lateral)) > 1.5f) {
                     continue;
+                }
+                reading.receiverReach_ = IRMath::max(reading.receiverReach_, along);
+                // Independent slab intersection over the CPU-retained solid,
+                // evaluated on this lane's actual receiver samples. It includes
+                // finite floor extent and treatment holes in the expected reach.
+                for (const auto cell : retained) {
+                    const vec3 delta = world - (vec3(cell) + origin);
+                    float near = 0.0f, far = 1.0e20f;
+                    for (int axis = 0; axis < 3; ++axis) {
+                        const float a = (-0.5f - delta[axis]) / sun[axis];
+                        const float b = (0.5f - delta[axis]) / sun[axis];
+                        near = IRMath::max(near, IRMath::min(a, b));
+                        far = IRMath::min(far, IRMath::max(a, b));
+                    }
+                    if (near <= far && far > 0.0f) {
+                        reading.expectedReach_ = IRMath::max(reading.expectedReach_, along);
+                        break;
+                    }
                 }
                 // Interior cap hits cannot be supplied by the retained side
                 // walls: the sun ray exits those walls above the cut plane.
@@ -2466,10 +2511,19 @@ void probeCeilingShadow() {
         return reading;
     };
 
-    const ShadowFootprintReading centre = read(kCeilingShadowCentre);
-    const ShadowFootprintReading rim = read(kCeilingShadowRim);
-    const ShadowFootprintReading control = read(kCeilingShadowControlPosition);
-    const ShadowFootprintReading body = read(kCeilingShadowBody);
+    const ShadowFootprintReading centre = read(
+        kCeilingShadowCentre,
+        g_ceilingShadowCurved ? std::vector<IRMath::ivec3>{}
+                              : retainedCells(g_ceilingCentreColumn, kCeilingShadowCentre, true)
+    );
+    const ShadowFootprintReading rim =
+        read(kCeilingShadowRim, retainedCells(g_ceilingRimColumn, kCeilingShadowRim, true));
+    const ShadowFootprintReading control = read(kCeilingShadowControlPosition, controlCells);
+    const ShadowFootprintReading body = read(
+        kCeilingShadowBody,
+        g_ceilingShadowCurved ? std::vector<IRMath::ivec3>{}
+                              : retainedCells(g_ceilingBodyTwin, kCeilingShadowBody, false)
+    );
     IR_LOG_INFO(
         "FOG-SHADOW-PROBE cap witnesses centre={}/{} rim={}/{} control={}/{}",
         centre.capWitnessesLit_,
@@ -2482,11 +2536,11 @@ void probeCeilingShadow() {
     for (const auto &reading : {rim, control}) {
         requireFogProbe(
             "FOG-SHADOW-PROBE",
-            reading.capWitnesses_ > 0 && reading.capWitnessesLit_ == 0,
+            g_revealTreatment || (reading.capWitnesses_ > 0 && reading.capWitnessesLit_ == 0),
             "a voxel cut-cap interior is missing its geometrically required shadow"
         );
     }
-    if (!g_ceilingShadowCurved) {
+    if (!g_ceilingShadowCurved && !g_ceilingShadowGrid && !g_revealTreatment) {
         requireFogProbe(
             "FOG-SHADOW-PROBE",
             centre.capWitnesses_ > 0 && centre.capWitnessesLit_ == 0,
@@ -2519,24 +2573,49 @@ void probeCeilingShadow() {
         centre.texels_ > 0 && rim.texels_ > 0 && control.texels_ > 0 && body.texels_ > 0,
         "a shadow footprint lane is empty"
     );
+    if (g_revealTreatment || g_ceilingShadowGrid) {
+        IR_LOG_INFO(
+            "FOG-SHADOW-PROBE retained-oracle centre={:.3f}/{:.3f} rim={:.3f}/{:.3f}",
+            centre.reach_,
+            centre.expectedReach_,
+            rim.reach_,
+            rim.expectedReach_
+        );
+        for (const auto &reading : {centre, rim})
+            requireFogProbe(
+                "FOG-SHADOW-PROBE",
+                reading.expectedReach_ > 0.0f &&
+                    IRMath::abs(reading.reach_ - reading.expectedReach_) <= sunTexel,
+                "treated shadow differs from the CPU-retained solid"
+            );
+    }
     requireFogProbe(
         "FOG-SHADOW-PROBE",
-        IRMath::abs(rim.reach_ - control.reach_) <= sunTexel,
+        g_revealTreatment || IRMath::abs(rim.reach_ - control.reach_) <= sunTexel,
         "the cut rim footprint differs from the cut-height control by more than one sun texel"
     );
-    // The control is calibrated to the voxel layers the midpoint keeps; an
-    // analytic cylinder is cut on the continuous plane instead, so the curved
-    // variant compares the FIELD cylinder against its BODY twin only. The BODY
-    // twin must keep at least half the throw of its height above the midpoint.
+    // A cylinder's footprint differs from the voxel control, so compare identical
+    // curved casters. The BODY twin must keep at least half the throw of its
+    // height above the static retained boundary.
     if (g_ceilingShadowCurved) {
+        // Unlike the voxel oracle, this comparison needs both complete shadows.
+        for (const auto &reading : {centre, body}) {
+            requireFogProbe(
+                "FOG-SHADOW-PROBE",
+                reading.receiverReach_ > reading.reach_ + sunTexel,
+                "the finite receiver clips a curved shadow footprint lane"
+            );
+        }
         const float throwPerHeight = IRMath::length(vec2(sun)) / IRMath::abs(sun.z);
         const float riseAboveCut =
-            kCeilingShadowCylinderHeight - 1.0f - (kCeilingHeight + 0.5f * kCeilingFade);
+            kCeilingShadowCylinderHeight - 1.0f - (float(kCeilingShadowControlHeight - 1));
         const float minGap = 0.5f * riseAboveCut * throwPerHeight;
         IR_LOG_INFO(
-            "FOG-SHADOW-PROBE curved gap={:.3f} min={:.3f}",
+            "FOG-SHADOW-PROBE curved gap={:.3f} min={:.3f} receiver={:.3f}/{:.3f}",
             body.reach_ - centre.reach_,
-            minGap
+            minGap,
+            centre.receiverReach_,
+            body.receiverReach_
         );
         requireFogProbe(
             "FOG-SHADOW-PROBE",
@@ -2546,7 +2625,8 @@ void probeCeilingShadow() {
     } else {
         requireFogProbe(
             "FOG-SHADOW-PROBE",
-            IRMath::abs(centre.reach_ - control.reach_) <= sunTexel,
+            g_revealTreatment || g_ceilingShadowGrid ||
+                IRMath::abs(centre.reach_ - control.reach_) <= sunTexel,
             "the cut centre footprint differs from the cut-height control by more than one "
             "sun texel"
         );
@@ -2942,11 +3022,21 @@ struct ColumnTopBandCount {
 // column top, on both the oracle and the readback; on the control plateau,
 // whose top no source reveals, the whole band stays painted.
 void probeColumnTop() {
-    if (++g_surfaceProbeFrame != g_autoWarmupFrames || g_bodyProbeBeforeColors.empty()) {
-        return;
-    }
+    ++g_surfaceProbeFrame;
     const auto &textures =
         IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity());
+    if (g_surfaceProbeFrame == g_autoWarmupFrames - 2) {
+        IRPrefab::Fog::setVisionCircleCeiling(1, -1.0f);
+        return;
+    }
+    if (g_surfaceProbeFrame == g_autoWarmupFrames - 1) {
+        textures.readEntityIdCarriers(g_ceilingUncutCarriers);
+        textures.readDistances(g_ceilingUncutDistances);
+        IRPrefab::Fog::setVisionCircleCeiling(1, kColumnTopFootCeiling);
+        return;
+    }
+    if (g_surfaceProbeFrame != g_autoWarmupFrames || g_bodyProbeBeforeColors.empty())
+        return;
     const auto &fog = IREntity::getComponent<C_CanvasFogOfWar>(IRRender::getActiveCanvasEntity());
     std::vector<IRMath::uvec2> carriers;
     std::vector<Color> colors;
@@ -2982,7 +3072,7 @@ void probeColumnTop() {
                 }
                 const vec3 world =
                     canvasTexelToWorld(IRMath::ivec2(x, y), encoded, stage1->frameData_);
-                if (world.z >= kColumnTopCeilingPlaneZ) {
+                if (IRMath::roundHalfUp(world.z) >= kColumnTopCeilingPlaneZ) {
                     continue;
                 }
                 ++count.texels_;
@@ -3014,6 +3104,37 @@ void probeColumnTop() {
 
     const ColumnTopBandCount band = countBand(g_columnTopPlateau, kColumnTopPlateauMin);
     const ColumnTopBandCount control = countBand(g_columnTopControl, kColumnTopControlMin);
+    int controlCap = 0, controlCore = 0, controlHollow = 0;
+    const auto controlId = static_cast<std::uint32_t>(g_columnTopControl);
+    requireSurfaceProbe(
+        g_ceilingUncutCarriers.size() == carriers.size(),
+        "column-top control missing"
+    );
+    for (std::size_t i = 0; i < carriers.size(); ++i) {
+        controlCap += carriers[i].x == controlId &&
+                              (carriers[i].y & IRRender::kEntityIdCutFaceMaskInHighWord) != 0u
+                          ? 1
+                          : 0;
+        if (g_ceilingUncutCarriers[i].x == controlId) {
+            const vec3 world = canvasTexelToWorld(
+                IRMath::ivec2(i % textures.size_.x, i / textures.size_.x),
+                g_ceilingUncutDistances[i],
+                stage1->frameData_
+            );
+            if (world.z > kColumnTopCeilingPlaneZ + 1.0f &&
+                world.z < kColumnTopGroundPlaneZ - 1.0f) {
+                ++controlCore;
+                controlHollow += carriers[i].x != controlId ? 1 : 0;
+            }
+        }
+    }
+    IR_LOG_INFO(
+        "FOG-SURFACE-PROBE scene=occlusion_column_top controlCap={} controlCore={} "
+        "controlHollow={}",
+        controlCap,
+        controlCore,
+        controlHollow
+    );
     IR_LOG_INFO(
         "FOG-SURFACE-PROBE scene=occlusion_column_top canvas={}x{} bandTexels={} "
         "bandOwnHidden={} bandOracleHidden={} bandPainted={} bandLit={} controlTexels={} "
@@ -3043,8 +3164,8 @@ void probeColumnTop() {
         "the pass painted a band texel under a revealed column top"
     );
     requireSurfaceProbe(
-        control.texels_ > 0 && control.painted_ == control.texels_,
-        "the control plateau's band is not painted whole: its top is unrevealed"
+        control.texels_ == 0 && controlCap > 0 && controlCore > 0 && controlHollow == 0,
+        "the control plateau must be absent above the ceiling and closed below it"
     );
 }
 
@@ -3346,6 +3467,12 @@ int main(int argc, char **argv) {
         "and rim FIELD columns and a governed BODY twin, painted the debug colour; logs "
         "FOG-SURFACE-PROBE on the cardinal shot and parks a non-cardinal yaw for the second"
     );
+    IREngine::args().number("--ceiling-phase", "Ceiling treatment phase", 0.0f);
+    IREngine::args().flag("--ceiling-hard", "Use a hard ceiling with zero fade");
+    IREngine::args().flag(
+        "--ceiling-shadow-grid",
+        "Keep the centre shadow column visible through the grid"
+    );
     IREngine::args().flag(
         "--ceiling-shadow",
         "Angled-sun ceiling fixture: cut FIELD columns, a cut-height control, and the BODY "
@@ -3536,8 +3663,12 @@ int main(int argc, char **argv) {
     g_entityRevealSoftEdge = g_entityRevealSoftEdge || g_ghostPolicy;
     g_entityReveal = g_entityReveal || g_ghostPolicy;
     g_entityReveal = g_entityReveal || (g_entityRevealSoftEdge && !g_detachedBody);
+    g_ceilingPhase = IREngine::args().getFloat("--ceiling-phase");
+    g_ceilingHard = IREngine::args().getFlag("--ceiling-hard");
+    g_ceilingShadowGrid = IREngine::args().getFlag("--ceiling-shadow-grid");
     g_ceilingShadowCurved = IREngine::args().getFlag("--ceiling-shadow-curved");
-    g_ceilingShadow = IREngine::args().getFlag("--ceiling-shadow") || g_ceilingShadowCurved;
+    g_ceilingShadow = IREngine::args().getFlag("--ceiling-shadow") || g_ceilingShadowCurved ||
+                      g_ceilingShadowGrid;
     g_ceilingTreatment = IREngine::args().getFlag("--ceiling-treatment") || g_ceilingShadow;
     g_revealTreatment = IREngine::args().getFlag("--reveal-treatment");
     g_fogDebugColor = IREngine::args().getFlag("--fog-debug-color") || g_ceilingTreatment;
@@ -3581,6 +3712,9 @@ int main(int argc, char **argv) {
         g_entityReveal = false;
         g_perAxisOverflow = false;
         g_ceilingTreatment = false;
+        g_ceilingShadow = false;
+        g_ceilingShadowCurved = false;
+        g_ceilingShadowGrid = false;
     }
     if (g_ceilingTreatment) {
         g_entityReveal = false;
@@ -3940,7 +4074,7 @@ void initSystems() {
         renderPipeline.push_front(bodyProbeTickId);
     }
 
-    if (g_ceilingTreatment && !g_ceilingShadow && g_autoWarmupFrames > 2) {
+    if (g_ceilingTreatment && !g_ceilingShadow && g_autoWarmupFrames > 4) {
         renderPipeline.push_front(
             IRSystem::createSystem<C_Name>(
                 "FogCeilingSurfaceProbe",
@@ -4017,7 +4151,7 @@ void initSystems() {
     if (g_autoWarmupFrames > 0) {
         IRVideo::AutoScreenshotConfig cfg{};
         cfg.warmupFrames_ = g_autoWarmupFrames;
-        cfg.settleFrames_ = 3;
+        cfg.settleFrames_ = g_ceilingTreatment && !g_ceilingShadow ? 8 : 3;
         if (g_lightingDensityCheck) {
             cfg.onCaptureFrame_ = &probeLightingDensity;
         } else if (g_worldPan) {
@@ -4095,6 +4229,8 @@ void initSystems() {
             IRVideo::setAutoScreenshotShots(cfg, kCeilingShadowCurvedShots);
         } else if (g_ceilingShadow) {
             IRVideo::setAutoScreenshotShots(cfg, kCeilingShadowShots);
+        } else if (g_ceilingTreatment && g_ceilingHard) {
+            IRVideo::setAutoScreenshotShots(cfg, kCeilingHardShots);
         } else if (g_ceilingTreatment && g_revealTreatment) {
             IRVideo::setAutoScreenshotShots(cfg, kCeilingTreatmentShots);
         } else if (g_ceilingTreatment) {
@@ -4208,14 +4344,14 @@ createFieldShape(vec3 position, IRRender::ShapeType type, vec4 params, Color col
 }
 
 // The cross-section scenes' shared VOXEL ground slab. centerAroundOrigin
-// places the 60×60×3 cells at [-29,30]²×[4,6], so the radius-9 vision disc is
+// places the default 60×60×3 cells at [-29,30]²×[4,6], so the radius-9 vision disc is
 // fully interior and the whole cut arc runs through pool voxels the occlusion
 // bitfield knows — an off-origin slab covers only part of the arc and the
 // uncovered segments cut to black.
-IREntity::EntityId createEdgeGroundSlab() {
+IREntity::EntityId createEdgeGroundSlab(IRMath::ivec2 footprint = {60, 60}) {
     return IREntity::createEntity(
         C_LocalTransform{vec3(0.0f, 0.0f, 5.0f)},
-        C_VoxelSetNew{IRMath::ivec3{60, 60, 3}, Color{90, 100, 120, 255}, true},
+        C_VoxelSetNew{IRMath::ivec3{footprint, 3}, Color{90, 100, 120, 255}, true},
         C_FogField{}
     );
 }
@@ -4317,7 +4453,10 @@ void initDepthSlabScene() {
 // equal-height FIELD columns at its centre and near its rim, and a governed
 // BODY twin anchored on the ground under the ceiling.
 void initCeilingTreatmentScene() {
-    g_occlusionSlab = createEdgeGroundSlab();
+    // The offset BODY lane needs receiver cells beyond the full-height shadow;
+    // clipping it at the slab edge can conceal a missing FIELD ceiling cut.
+    g_occlusionSlab =
+        createEdgeGroundSlab(g_ceilingShadowCurved ? IRMath::ivec2{60, 96} : IRMath::ivec2{60, 60});
     const int slot = IRPrefab::Fog::setVisionCircle(
         0.0f,
         0.0f,
@@ -4326,7 +4465,15 @@ void initCeilingTreatmentScene() {
         kCeilingObserverZ
     );
     IR_ASSERT(slot == 0, "the ceiling scene's vision circle was rejected");
-    IRPrefab::Fog::setVisionCircleCeiling(slot, kCeilingHeight, kCeilingFade);
+    IRPrefab::Fog::setVisionCircleCeiling(
+        slot,
+        kCeilingHeight,
+        g_ceilingHard ? 0.0f : kCeilingFade
+    );
+    IRPrefab::Fog::setRevealSurfacePhase(g_ceilingPhase);
+    if (g_ceilingShadowGrid) {
+        IRPrefab::Fog::revealRadius(0.0f, 0.0f, 4.0f);
+    }
     if (g_revealTreatment) {
         IRPrefab::Fog::setRevealSurfaceTreatment(kRevealTreatmentDensity, kRevealTreatmentTone);
     }

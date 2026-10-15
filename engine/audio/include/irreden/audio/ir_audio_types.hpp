@@ -3,6 +3,7 @@
 
 #include <array>
 #include <chrono>
+#include <string>
 
 #include <irreden/audio/music_theory.hpp>
 
@@ -18,6 +19,18 @@ using MidiStatus = unsigned char;
 using CCData = unsigned char;
 /// MIDI CC (control-change) message number byte.
 using CCMessage = unsigned char;
+
+/// One audio device the backend reported when the engine started, as
+/// `IRAudio::audioDevices` lists it: what a capture or playback config can
+/// name (`video_capture_audio_input_device_name` matches `name_`).
+struct AudioDeviceSummary {
+    std::string name_;
+    unsigned int inputChannels_ = 0;
+    unsigned int outputChannels_ = 0;
+    bool defaultInput_ = false;
+    bool defaultOutput_ = false;
+    unsigned int preferredSampleRate_ = 0;
+};
 
 /// Sentinel value returned by @ref checkCCMessage when no CC was received this frame.
 constexpr CCData kCCFalse = 0xFF;

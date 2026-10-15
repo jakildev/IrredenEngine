@@ -125,6 +125,8 @@ const char *const kFileCompBakeSunShadowMap = "shaders/c_bake_sun_shadow_map.gls
 const char *const kFileCompComputeSunShadow = "shaders/c_compute_sun_shadow.glsl";
 const char *const kFileCompComputeSunShadowShapes = "shaders/c_compute_sun_shadow_shapes.glsl";
 const char *const kFileCompVoxelVisibilityCompact = "shaders/c_voxel_visibility_compact.glsl";
+const char *const kFileCompVoxelVisibilityCompactCeiling =
+    "shaders/c_voxel_visibility_compact_ceiling.glsl";
 const char *const kFileCompClearLightVolume = "shaders/c_clear_light_volume.glsl";
 const char *const kFileCompSeedLightVolume = "shaders/c_seed_light_volume.glsl";
 const char *const kFileCompPropagateLightVolume = "shaders/c_propagate_light_volume.glsl";

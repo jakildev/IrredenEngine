@@ -57,6 +57,7 @@ from compare_perf_runs import (  # noqa: E402
     build_host_note,
     calibration_ref_ms,
     class_match_head_scale,
+    frame_avg_improved,
     host_slug,
     load_factor,
     load_flagged_cells,
@@ -88,6 +89,11 @@ def _regressed_cells(base, head, regress_pct: float, *,
         if pct_delta(avg_b, avg_h) >= regress_pct:
             out.append(cell_id)
     return out
+
+
+def _write_improved_cells(path: str | None, cells: list[str]) -> None:
+    if path is not None:
+        Path(path).write_text("".join(f"{cell_id}\n" for cell_id in cells))
 
 
 def _no_class_match_body(slug: str, head_ref_ms: float, match: ClassMatch) -> str:
@@ -134,6 +140,8 @@ def main() -> int:
                    help=">= this %% on mean frame avg counts as regression (default 10)")
     p.add_argument("--improve-pct", type=float, default=5.0,
                    help="<= negative this %% marks improvement in the table (default 5)")
+    p.add_argument("--improved-cells-out",
+                   help="write graded frame-average improvement cell ids")
     p.add_argument("--strict-load", action="store_true",
                    help="exit 2 when any cell in either run is load-flagged, "
                         "instead of reporting it as informational")
@@ -193,6 +201,7 @@ def main() -> int:
             f"path for slug {head_slug_str})",
             file=sys.stderr,
         )
+        _write_improved_cells(args.improved_cells_out, [])
         return 0
 
     capture = None
@@ -209,6 +218,7 @@ def main() -> int:
                 f"{head_ref_ms:.2f}, {len(match.captures)} capture(s) considered)",
                 file=sys.stderr,
             )
+            _write_improved_cells(args.improved_cells_out, [])
             return 0
         capture = match.selected
         capture_is_tip = capture.manifest == load_manifest(base_dir)
@@ -257,6 +267,7 @@ def main() -> int:
             f"slug '{base_slug}', head slug '{head_slug_str}'); no gate fired.",
             file=sys.stderr,
         )
+        _write_improved_cells(args.improved_cells_out, [])
         return 0
 
     head_cal = head_manifest.get("calibration") or {}
@@ -267,6 +278,7 @@ def main() -> int:
     # it does not have.
     base_ref_ms = float(base_cal.get("ref_ms", 0.0))
     lf = load_factor(head_ref_ms, base_ref_ms)
+    improvement_scale = normalize_ms(1.0, head_ref_ms, base_ref_ms)
     # A class-matched capture is in band by construction; normalizing across
     # a class split under-corrects it, so history mode never does.
     use_normalized = capture is None and lf >= LOAD_FACTOR_TRUST_NORMALIZED
@@ -282,6 +294,7 @@ def main() -> int:
         args.gpu_only, args.cpu_only,
         host_note=host_note, load_flags=load_flags,
         frame_avg_head_scale=head_scale if capture is not None else 1.0,
+        frame_avg_improvement_scale=improvement_scale,
     )
     print(md, end="")
     if load_flags:
@@ -293,6 +306,18 @@ def main() -> int:
         head_scale=head_scale,
         ungraded={f.cell_id for f in load_flags},
     )
+    ungraded = {f.cell_id for f in load_flags}
+    improved = [
+        cell_id
+        for cell_id in sorted((set(base) & set(head)) - ungraded)
+        if base[cell_id].frame.avg > 0.0
+        and frame_avg_improved(
+            base[cell_id].frame.avg,
+            head[cell_id].frame.avg,
+            improvement_scale,
+            args.improve_pct,
+        )
+    ]
     if regressed:
         weighting = (
             "calibration-scaled" if capture is not None and head_scale != 1.0
@@ -304,6 +329,7 @@ def main() -> int:
             f"{', '.join(regressed)}",
             file=sys.stderr,
         )
+        _write_improved_cells(args.improved_cells_out, improved)
         return 1
 
     weighting = (
@@ -316,6 +342,7 @@ def main() -> int:
         f"load_factor {lf:.2f}×).",
         file=sys.stderr,
     )
+    _write_improved_cells(args.improved_cells_out, improved)
     return 0
 
 

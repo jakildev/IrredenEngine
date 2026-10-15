@@ -23,6 +23,13 @@ double length(vec2 a){return std::hypot(a.x,a.y);}
 double smoothstep(double a,double b,double x){
  double t=std::clamp((x-a)/(b-a),0.,1.);return t*t*(3-2*t);
 }
+struct uvec2 {unsigned x,y;};
+using uint2=uvec2;
+int fogShadowWindow=0;
+uvec2 fogShadowCell(vec3,int=0){return {0,1};}
+vec3 roundHalfUp(vec3 p){return {floor(p.x+.5),floor(p.y+.5),floor(p.z+.5)};}
+vec4 fogShadowVisionCircleChannels[2]={{1,1,1,1},{1,1,1,1}};
+vec4 fogShadowRevealSurfaceTreatment{0,0,.5,0};
 int fogShadowVisionCircleCount=1;
 vec4 fogShadowVisionCircles[2]={{0,0,100,0},{0,0,100,0}};
 vec4 fogShadowVisionCircleHeights[2]={{4,0,0,0},{4,0,0,0}};
@@ -37,7 +44,7 @@ std::vector<Face> faces;
 
 CHECKS = r"""
 bool occupied(int x,int y,int z){return x>=-1&&x<=2&&y>=-1&&y<=2&&z>=-11&&z<=4;}
-bool retained(vec3 p,bool body,int enabled){return body||!enabled||p.z>=-3;}
+bool retained(vec3 p,bool body,int enabled){return body||!enabled||floor(p.z+.5)>=-4;}
 // Independent ray/slab oracle for the union of retained original voxel cells.
 bool slab(vec3 origin,vec3 ray,vec3 center,vec4 q){
  vec4 inv{-q.x,-q.y,-q.z,q.w};
@@ -78,7 +85,7 @@ int main(){
    if(retained(world,body,enabled))cells.push_back(world);
   }
   if((body||!enabled)&&faces.size()!=144)return 4;
-  for(double x=-16.213;x<8;x+=.703)for(double y=-25.317;y<8;y+=.719){
+  for(double x=-24.213;x<8;x+=.703)for(double y=-44.317;y<8;y+=.719){
    vec3 p(x,y,10);bool expected=false;
    for(vec3 c:cells)expected=expected||slab(p,sunDirection,c,q);
    if(faceHit(p,sunDirection)!=expected){
@@ -88,11 +95,11 @@ int main(){
    }
    ++checks;
   }
-  if(q.w==1&&!body&&enabled&&!faceHit(vec3(-7,-16,4.5),sunDirection))return 2;
+  if(q.w==1&&!body&&enabled&&!faceHit(vec3(-7.375,-18.625,4.5),sunDirection))return 2;
  }
  // A second covering source with no ceiling keeps the neighbor and its face hidden.
  fogShadowVisionCircleCount=2;
- if(fogVoxelFaceCastsSunShadow(false,vec3(0,0,-3),vec3(0,0,-1),false,1))return 3;
+ if(fogVoxelFaceCastsSunShadow(false,vec3(0,0,-4),vec3(0,0,-1),false,1,uvec2{0,1}))return 3;
  std::cout<<checks<<" retained-solid rays; cut-cap witness and covering-source union pass\n";
 }
 """
@@ -107,9 +114,21 @@ class FogCutVoxelFacesTest(unittest.TestCase):
             common = (shaders / f"ir_iso_common.{suffix}").read_text()
             bake = (shaders / f"c_bake_voxel_sun_faces.{suffix}").read_text()
             functions = extract_function(common, "fogCeilingVisibility") + "\n"
+            # This adapter tests face emission against a retained solid. The
+            # native FogRevealEval and GL probe test the full retention policy;
+            # use its density-zero, wide-disc fixture specialization here.
+            functions += r"""
+bool fogCeilingRetained(vec3 p,uvec2 cell,const vec4*,const vec4* heights,
+ const vec4* ceilings,const vec4*,int count,vec4,float){
+ double presence=0;
+ for(int i=0;i<count;++i)presence=max(presence,
+  fogCeilingVisibility(ceilings[i],max(heights[i].x-p.z,0.)));
+ return cell.x==255||presence>0;
+}
+"""
             functions += extract_function(fog, "fogFieldCastsSunShadow") + "\n"
             functions += extract_function(fog, "fogVoxelFaceCastsSunShadow")
-            gate = re.search(r"if \(!fogFieldCastsSunShadow\([\s\S]*?\)\) return;", bake).group()
+            gate = re.search(r"if \(!\(fogBody\)[\s\S]*?\)\) return;", bake).group()
             loop = extract_block(bake, "for (int axis = 0;")
             loop = loop[:loop.index("        // Arbitrary source rotations")]
             emit = ("void emit(vec3 position,unsigned flags,bool fogBody){"
@@ -117,11 +136,12 @@ class FogCutVoxelFacesTest(unittest.TestCase):
                     + "faces.push_back({corner,edgeU,edgeV});}}")
             code = functions + emit
             code = re.sub(r",\s*constant FogShadowObserverData& observers", "", code)
-            code = re.sub(r",\s*(?:observers|fogObservers)\)", ")", code)
+            code = re.sub(r",\s*(?:observers|fogObservers)(?=[,)])", "", code)
             for field in ("visionCircleCount", "visionCircles", "visionCircleHeights",
-                          "visionCircleCeilings"):
+                          "visionCircleCeilings", "visionCircleChannels", "revealSurfaceTreatment"):
                 code = code.replace("observers." + field,
                                     "fogShadow" + field[0].upper() + field[1:])
+            code = code.replace("fogObservers.visionCircleCount", "fogShadowVisionCircleCount")
             code = code.replace("sunFrame.", "").replace("faceFrame.", "")
             code = code.replace(".xyz", "").replace("float3", "vec3").replace("float4", "vec4")
             code = re.sub(r"(worldPos|fogShadowVisionCircles\[i\])\.xy", r"xy(\1)", code)
@@ -131,8 +151,7 @@ class FogCutVoxelFacesTest(unittest.TestCase):
                                              "return false && !fogFieldCastsSunShadow("),
                 "reversed_neighbor": code.replace("worldCenter + outwardNormal",
                                                    "worldCenter - outwardNormal"),
-                "lost_body_guard": code.replace("if (fogBody || ceilingEnabled == 0) return false;",
-                                                "if (ceilingEnabled == 0) return false;"),
+                "lost_body_guard": code.replace("fogBody || ", "").replace("!(fogBody) && ", ""),
             }
             for name, variant in variants.items():
                 with (self.subTest(backend=suffix, mutation=name),

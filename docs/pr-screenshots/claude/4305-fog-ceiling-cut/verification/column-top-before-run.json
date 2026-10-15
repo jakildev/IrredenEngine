@@ -1,0 +1,15 @@
+{
+  "clean": true,
+  "exit": 0,
+  "hashes": {
+    "screenshot_000001.png": "4d50b730f5e573dd5d75342c7471c931161b734088cfa2ada0110e5ce1e6d092",
+    "screenshot_000002.png": "d37795ecc2ce91da5c5f0558bc140c10fa0d30950949e7f0852661b5e617519e"
+  },
+  "probes": [
+    "[2026-10-13 17:10:17.027] [ClientLog] [info] FOG-SURFACE-PROBE scene=occlusion_column_top canvas=642x722 bandTexels=120 bandOwnHidden=120 bandOracleHidden=0 bandPainted=0 bandLit=120 controlTexels=120 controlOracleHidden=120 controlPainted=120",
+    "[2026-10-13 17:10:17.027] [ClientLog] [info] FOG-LOS-PROBE near=1 far=0",
+    "[2026-10-13 17:10:17.093] [ClientLog] [info] CaptureCamera: label=fog_occlusion_column_top yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)",
+    "[2026-10-13 17:10:17.394] [ClientLog] [info] CaptureCamera: label=fog_occlusion_column_top_yaw yaw=0.3499999 zoom=(8,8) effectiveIso=(-2.428859,0.42944288) subdivisions=8 gameResolution=(1280,720)",
+    "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0"
+  ]
+}

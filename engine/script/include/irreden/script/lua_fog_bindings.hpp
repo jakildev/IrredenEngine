@@ -490,6 +490,22 @@ bindFog(LuaScript &script, FogVisionTargetResolver resolveTarget = activeFogVisi
                 static_cast<double>(treatment.capTone_)
             );
         });
+    fog["setRevealSurfacePhase"] = statefulLuaFunction([resolveTarget](sol::variadic_args args) {
+        requireFogArity("setRevealSurfacePhase", args.size(), 1, 1);
+        const float phase = requireFogFloat(args[0], "setRevealSurfacePhase", 0);
+        if (auto *observers = resolveTarget().observers_) {
+            IRComponents::C_CanvasFogOfWar::setRevealSurfacePhase(*observers, phase);
+        }
+    });
+    fog["getRevealSurfacePhase"] = statefulLuaFunction([resolveTarget](sol::variadic_args args) {
+        requireFogArity("getRevealSurfacePhase", args.size(), 0, 0);
+        const auto *observers = resolveTarget().observers_;
+        return observers == nullptr
+                   ? 0.0
+                   : static_cast<double>(
+                         IRComponents::C_CanvasFogOfWar::revealSurfacePhase(*observers)
+                     );
+    });
     fog["clearVisions"] = statefulLuaFunction([resolveTarget](sol::variadic_args args) {
         requireFogArity("clearVisions", args.size(), 0, 0);
         const FogVisionTarget target = resolveTarget();

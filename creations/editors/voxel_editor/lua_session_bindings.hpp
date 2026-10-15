@@ -342,6 +342,37 @@ class Handle {
             value
         );
     }
+    void applyRecipe(const sol::object &name, const sol::object &values) {
+        const std::string parsedName = stringArg(name, "applyRecipe", "name");
+        const sol::table valueTable = tableArg(values, "applyRecipe", "values");
+        std::vector<std::pair<std::string, float>> parsedValues;
+        parsedValues.reserve(valueTable.size());
+        for (const auto &entry : valueTable) {
+            parsedValues.emplace_back(
+                stringArg(entry.first, "applyRecipe", "values key"),
+                numberArg(entry.second, "applyRecipe", "values value")
+            );
+        }
+        builder().applyRecipe(parsedName, parsedValues);
+    }
+    void attachComponent(const sol::object &name) {
+        builder().attachComponent(stringArg(name, "attachComponent", "name"));
+    }
+    void setComponentField(
+        const sol::object &component, const sol::object &field, const sol::object &text
+    ) {
+        builder().setComponentField(
+            stringArg(component, "setComponentField", "component"),
+            stringArg(field, "setComponentField", "field"),
+            stringArg(text, "setComponentField", "text")
+        );
+    }
+    void setComponentOverrides(const sol::object &component, const sol::object &text) {
+        builder().setComponentOverrides(
+            stringArg(component, "setComponentOverrides", "component"),
+            stringArg(text, "setComponentOverrides", "text")
+        );
+    }
     void setPartSize(const sol::object &size) {
         builder().setPartSize(ivec3Arg(size, "setPartSize", "size"));
     }
@@ -431,6 +462,16 @@ class Handle {
     }
     void expectPartYaw(int part, float degrees, float tolerance, const std::string &name) {
         builder().expectPartYaw(part, degrees, tolerance, name);
+    }
+    void expectPartTurnAxis(
+        int part, const sol::object &axis, float minDegrees, const std::string &name
+    ) {
+        builder().expectPartTurnAxis(
+            part,
+            vec3Arg(axis, "expectPartTurnAxis", "axis"),
+            minDegrees,
+            name
+        );
     }
     void expectPartSpinRate(int part, float radiansPerFrame, bool equal, const std::string &name) {
         builder().expectPartSpinRate(part, radiansPerFrame, equal, name);
@@ -685,6 +726,14 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         &Handle::typeText,
         "dragGuiSlider",
         &Handle::dragGuiSlider,
+        "applyRecipe",
+        &Handle::applyRecipe,
+        "attachComponent",
+        &Handle::attachComponent,
+        "setComponentField",
+        &Handle::setComponentField,
+        "setComponentOverrides",
+        &Handle::setComponentOverrides,
         "duplicateFrame",
         &Handle::duplicateFrame,
         "prevFrame",
@@ -761,6 +810,8 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         &Handle::expectRotationMode,
         "expectPartYaw",
         &Handle::expectPartYaw,
+        "expectPartTurnAxis",
+        &Handle::expectPartTurnAxis,
         "expectPartSpinRate",
         &Handle::expectPartSpinRate,
         "expectPartAnchor",

@@ -30,13 +30,13 @@ Design log, findings and the authoring-session history:
   alone (reveal after the array, wheel, row click),
   `mode_preview` proves the deferred render-mode switch allocates and releases
   the selected part's private canvas while rotated and private-canvas parts stay
-  outside the axis-aligned edit pick, `part_sizes` creates two parts of different
-  extents and holds the mirror and loft tools to them, and `part_gizmo_reach`
-  drags a part's gizmo after a bake at its pivot, a camera turn, and on a turned copy.
+  outside the axis-aligned edit pick, `part_sizes` creates two parts of different extents and holds
+  the mirror and loft tools to them, `part_gizmo_reach` drags a part's gizmo after a bake at its pivot,
+  a camera turn, and on a turned copy, and `part_ring_turn` turns a part about each rotate ring's axis.
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --module <dir>
   --module-session <name>` — one session registered by a creation module.
-  `test/module` registers `test_parts`, `test_single`, and the deliberately
-  failing `test_unreachable` fixture.
+  `test/module` registers `test_parts`, `test_recipe_attach`, `test_single`,
+  and the deliberately failing `test_unreachable` fixture.
 - `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
   render reference set, discovered under this creation's `test/references/`.
 - `python3 scripts/author-entity.py <entity>` — replays an entity session twice
@@ -132,9 +132,9 @@ render, because the aim and the pick share one screen mapping.
   not teach the model a rule the pick does not have.
 - A segment's assertions evaluate once, after all of its events. Arm a
   pre-click check in its own segment.
-- Entity sessions author on a bare stage; a session opts into the reference
-  furniture with `Builder::withReferenceFurniture()` and then keeps its own
-  aims off gizmo pixels (the model does not know where handles are drawn).
+- Entity sessions author on a bare stage; one that opts into `Builder::withReferenceFurniture()`
+  keeps its own aims off gizmo pixels (the model does not know where handles are drawn). A selected
+  part's gizmo covers a first-write blob at the session zoom: paint it at `detail::kPartPaintZoom`.
 - A new session is four edits: `Session::Id`, `idFromName`, `Session::build`,
   and the `--gui-session` enum list in `main()`.
 - A button left down at a segment's end stays down into the next: `holdBox`
@@ -144,6 +144,12 @@ render, because the aim and the pick share one screen mapping.
 - `Session::Builder` is also the Lua authoring ABI. Adding or changing a public
   builder operation requires the matching `IREditor.registerSession` binding,
   conversion coverage, and binding-matrix test in the same change.
+- Module sessions use `applyRecipe(name, values)`, `attachComponent(name)`,
+  `setComponentField(component, field, text)`, and
+  `setComponentOverrides(component, text)` instead of RECIPES or COMPONENTS
+  panel coordinates. `applyRecipe` accepts only INT params with whole targets
+  and at least four slider trixels per unit; other recipes keep using the raw
+  GUI gestures without occupancy-model updates.
 
 ## Creation modules (`--module <dir>`)
 
