@@ -6,6 +6,7 @@ they do not emulate the GPU rasterizer or compare reference images.
 """
 
 import math
+import re
 import shutil
 import struct
 import subprocess
@@ -161,13 +162,16 @@ static_assert(std::is_same_v<decltype(abs(0.5f)), float>, "shader abs must prese
 float dot(vec3 a,vec3 b){return a.x*b.x+a.y*b.y+a.z*b.z;}
 """
             for file, names in (
-                ("ir_projected_face", ("projectedFaceDeterminant", "projectedFaceCoordinates")),
+                ("ir_projected_face", ("projectedFaceDeterminant", "projectedFaceCoordinates",
+                                       "projectedFaceContainsClosed")),
                 ("ir_sun_projection", ("sunSpaceProject",)),
                 ("ir_sun_face_query_layout", ("sourceFaceRaySeparation",)),
             ):
                 shader = (shaders / f"{file}.{backend}").read_text()
                 helpers += "\n".join(extract_function(shader, name) for name in names) + "\n"
-            bounds = "uv.x < 0.0 || uv.y < 0.0 || uv.x > 1.0 || uv.y > 1.0"
+            bounds = re.search(
+                r"if \((!projectedFaceContainsClosed[\s\S]*?)\) return -1.0;", helpers
+            ).group(1)
             unbounded = replace_once(extract_function(helpers, "sourceFaceRaySeparation"),
                                      bounds, "false")
             unbounded = unbounded.replace("sourceFaceRaySeparation",

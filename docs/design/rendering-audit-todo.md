@@ -43,8 +43,12 @@ to new shape kinds and define a caller-controlled allocation budget; explicit
 grid bounds currently limit geometry, not peak author-time memory.
 Defer additional shape-specific analytic receiver algorithms while measuring
 this route. Keep the correctness and cross-backend work below as regression gates.
-Investigate the small intermediate-yaw floor-shadow gap retained in the baked
-fixture captures; do not treat conversion as closure of shared voxel defects.
+The small intermediate-yaw floor-shadow gap in the baked fixture is a rounded
+finite-face boundary miss. The [closed-edge predicate](surface-shadow-sampling.md#rounded-finite-face-boundaries)
+closes that reproduction, with independently rounded boundary/exterior controls
+and bounded grazing-face depth. Keep candidate-index tile-boundary coverage and
+rejection-heavy 64/256-candidate GPU cost on the TODO; this is not closure of all
+shared voxel shadow defects.
 
 1. **Crowded finite-index coverage — native correctness validated in #4399.** Preserve
    the inline 64-entry lists and allocate bounded spill nodes only for crowded
