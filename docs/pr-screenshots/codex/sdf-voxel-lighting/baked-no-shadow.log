@@ -480,4 +480,3 @@ ir-run: <home>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/b
 [2026-10-14 17:36:39.612] [EngineLog] [info] Clean shutdown complete.
 ir-run: IRShapeDebug exited cleanly after 4s
 ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0
-

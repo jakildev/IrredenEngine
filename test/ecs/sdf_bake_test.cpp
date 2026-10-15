@@ -66,12 +66,12 @@ TEST(SdfBake, SphereThresholdIncludesBoundaryAndKeepsInteriorFilled) {
     count = 0;
     for (const auto &record : even.voxels_)
         count += record.color_.alpha_ != 0;
-    EXPECT_EQ(count, 160u); // Radius3 plus threshold0.5, not the radius3-only 136-cell carve.
+    EXPECT_EQ(count, 160u); // Radius 3 plus threshold 0.5, not the radius-3-only 136-cell carve.
 }
 
 TEST(SdfBake, TorusPreservesHoleAndTubeThreshold) {
     const auto dense = bakeSdfGrid(ivec3(11), ShapeType::TORUS, vec4(3, 0.5f, 0, 0), kColor);
-    // Grid index5 is local zero. Major radius3; tube radius+threshold=1.
+    // Grid index 5 is local zero. Major radius 3; tube radius + threshold = 1.
     EXPECT_FALSE(occupied(dense, {5, 5, 5}));
     EXPECT_FALSE(occupied(dense, {6, 5, 5}));
     EXPECT_TRUE(occupied(dense, {8, 5, 5}));

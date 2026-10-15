@@ -48,6 +48,8 @@ the floor/blockers. It is a storage observation, not a speedup measurement.
   reference deltas; this is not a claim that all 62 images were byte-identical.
 - Four invalid CLI combinations rejected before window initialization; exact
   arguments and child exit codes are in `cli-controls.json`.
+  Their wrapper `RESULT=CRASH exit=2` labels describe intentional CLI rejection,
+  not a crash in a valid rendering run. Exported logs omit trailing blank lines.
 - `git diff --check` and comment-reference lint passed. Instruction-size lint
   reports eight inherited over-budget documents; the edited voxel instruction
   file remains 210 lines, unchanged from the parent.
