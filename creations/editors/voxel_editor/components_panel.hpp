@@ -2,6 +2,7 @@
 #define IR_VOXEL_EDITOR_COMPONENTS_PANEL_H
 
 #include <irreden/ir_math.hpp>
+#include <irreden/render/components/component_widget.hpp>
 
 #include "lod_panel.hpp"
 
@@ -59,11 +60,24 @@ constexpr IRMath::ivec2 kComponentPagePrevPos{kComponentsPanelPos.x + 4, kCompon
 constexpr IRMath::ivec2 kComponentPageNextPos{kComponentDetachPos.x, kComponentPagerY};
 constexpr IRMath::ivec2 kComponentPageLabelPos{kComponentsPanelPos.x + 73, kComponentPagerY};
 
-constexpr IRMath::vec2 componentListRowCenterGuiTrixel(int row) {
+// The list's row geometry with no items in it.
+inline IRComponents::C_WidgetList componentListGeometry() {
+    IRComponents::C_WidgetList list;
+    list.itemHeight_ = kComponentListItemHeight;
+    return list;
+}
+
+inline int componentListVisibleRows() {
+    return componentListGeometry().visibleRows(kComponentListSize.y);
+}
+
+// Centre of the list's @p visibleRow-th row from the top, whichever component
+// the scroll offset currently puts there.
+inline IRMath::vec2 componentListRowCenterGuiTrixel(int visibleRow) {
     return IRMath::vec2(
         static_cast<float>(kComponentListPos.x) + static_cast<float>(kComponentListSize.x) / 2.0f,
         static_cast<float>(kComponentListPos.y) +
-            (static_cast<float>(row) + 0.5f) * static_cast<float>(kComponentListItemHeight)
+            componentListGeometry().rowCenterOffsetY(visibleRow)
     );
 }
 

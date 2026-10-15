@@ -1,5 +1,6 @@
--- Neutral fixture for IRVoxelEditor --module: three components, two recipes
--- and one panel, so every registration path the editor hosts is exercised.
+-- Neutral fixture for IRVoxelEditor --module: five components, five recipes
+-- and one panel, so every registration path the editor hosts is exercised and
+-- both the COMPONENTS and RECIPES lists hold more rows than they show.
 
 IRComponent.register("TestModuleTag", {
     weight = 1,
@@ -23,6 +24,16 @@ IRComponent.register("TestModuleWide", {
 IRComponent.register("TestModuleKeys", {
     ["end"] = 1,
     ["max-value"] = 1,
+})
+
+-- The last two module rows: the second lies below the COMPONENTS view, and
+-- the editor's own C++ rows follow it.
+IRComponent.register("TestModuleSpare", {
+    level = 1,
+})
+
+IRComponent.register("TestModuleBelow", {
+    depth = 1,
 })
 
 -- A 1x1 column standing on the seeded ground plane (local z == size.z - 1)
@@ -62,6 +73,36 @@ IREditor.registerRecipe(
                     cells[#cells + 1] = { cx + dx, cy + dy, cz, { r = 90, g = 170, b = 230 } }
                 end
             end
+        end
+        return cells
+    end
+)
+
+-- One cell at the set's centre, on the centre layer.
+IREditor.registerRecipe("test_dot", {}, function(values, size)
+    return { { math.floor(size.x / 2), math.floor(size.y / 2), math.floor(size.z / 2) } }
+end)
+
+-- A 1x1 column like test_column's, two cells off the centre in +X and +Y.
+IREditor.registerRecipe("test_post", {}, function(values, size)
+    local x = math.floor(size.x / 2) + 2
+    local y = math.floor(size.y / 2) + 2
+    return { { x, y, size.z - 2 }, { x, y, size.z - 3 } }
+end)
+
+-- A 1x1 column two cells off the centre in -X and +Y, `depth` cells tall; the
+-- fifth recipe, so it lies below the RECIPES view.
+IREditor.registerRecipe(
+    "test_below",
+    {
+        { name = "depth", type = IREditor.ParamType.INT, default = 1, min = 1, max = 4 },
+    },
+    function(values, size)
+        local x = math.floor(size.x / 2) - 2
+        local y = math.floor(size.y / 2) + 2
+        local cells = {}
+        for i = 1, values.depth do
+            cells[#cells + 1] = { x, y, size.z - 1 - i, { r = 120, g = 200, b = 90 } }
         end
         return cells
     end
@@ -145,6 +186,49 @@ IREditor.registerSession("test_recipe_attach", function(session)
     session:expectComponentValue(0, "TestModuleTag", "weight", 7, true, "field_survives_reload")
     session:expectComponentValue(
         0, "TestModuleTag", "weight", 1, false, "field_is_not_default_after_reload")
+end)
+
+-- Reaches rows below both list views by name alone: the last recipe, the last
+-- module component, and the C++ C_AutoSpin row after it.
+IREditor.registerSession("test_list_scroll", function(session)
+    local size = session:sceneSize()
+    local x = math.floor(size.x / 2) - 2
+    local y = math.floor(size.y / 2) + 2
+    local recipe_top = { x, y, size.z - 4 }
+    local spin = 0.25
+
+    session:segment("arm")
+    session:addVoxelPart()
+    session:expectPartOccupancy(0, recipe_top, false, "below_view_recipe_cell_empty_before_apply")
+    session:expectComponentValue(
+        0, "TestModuleBelow", "depth", nil, true, "below_view_component_absent_before_attach")
+    session:expectPartSpinRate(0, spin, false, "spin_absent_before_attach")
+
+    session:segment("recipe")
+    session:applyRecipe("test_below", { depth = 3 })
+    session:expectPartOccupancy(0, recipe_top, true, "below_view_recipe_cell_filled")
+
+    session:segment("module_component")
+    session:attachComponent("TestModuleBelow")
+    session:setComponentField("TestModuleBelow", "depth", "6")
+    session:expectComponentValue(0, "TestModuleBelow", "depth", 6, true, "below_view_field_set")
+
+    session:segment("engine_component")
+    session:attachComponent("C_AutoSpin")
+    session:setComponentOverrides(
+        "C_AutoSpin", "{ axis = { 0, 0, 1 }, radiansPerFrame = " .. spin .. " }")
+    session:expectPartSpinRate(0, spin, true, "engine_row_spin_set")
+
+    session:segment("save")
+    session:save()
+    session:segment("clear")
+    session:clearEntityScene()
+    session:segment("reload")
+    session:reload()
+    session:expectPartOccupancy(0, recipe_top, true, "below_view_recipe_cell_survives_reload")
+    session:expectComponentValue(
+        0, "TestModuleBelow", "depth", 6, true, "below_view_field_survives_reload")
+    session:expectPartSpinRate(0, spin, true, "engine_row_spin_survives_reload")
 end)
 
 IREditor.registerSession("test_single", function(session)

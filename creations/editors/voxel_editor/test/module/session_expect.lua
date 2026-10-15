@@ -27,6 +27,8 @@ return {
         { name = "TestModuleTag", fieldCount = 2 },
         { name = "TestModuleWide", fieldCount = 7 },
         { name = "TestModuleKeys", fieldCount = 2 },
+        { name = "TestModuleSpare", fieldCount = 1 },
+        { name = "TestModuleBelow", fieldCount = 1 },
     },
     panels = {
         { name = "TestModulePanel", label = "MODULE LOADED" },
