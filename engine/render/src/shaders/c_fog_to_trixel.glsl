@@ -176,8 +176,21 @@ void main() {
         }
     }
 
+    if (decodeCutFace(rawId)) {
+        const vec3 facePoint = fogLosFacePoint(pos3D, faceId,
+            perAxisRoute == 0 && residualYaw == 0.0 ? kFogLosRouteCardinal :
+                kFogLosRoutePerAxis, scale);
+        if (fogCeilingCutFace(facePoint, faceId)) {
+            const vec4 sourceColor = imageLoad(trixelColors, pixel);
+            const vec4 capColor = vec4(fogCutCapBlend(sourceColor.rgb,
+                sourceColor.rgb, revealSurfaceTreatment.z, 0.0, 1.0), sourceColor.a);
+            imageStore(trixelColors, pixel, capColor);
+            return;
+        }
+    }
+
     const FogReveal reveal =
-        fogRevealSample(pos3D, losSample, columnPoint, faceId >> 1, aaFloor);
+        fogRevealSample(pos3D, losSample, columnPoint, faceId >> 1, aaFloor, decodeAnalyticSurface(rawId));
     if (reveal.state >= 1.0) {
         return;
     }

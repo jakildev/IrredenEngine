@@ -1,0 +1,14 @@
+{
+  "name": "column-top",
+  "command": "fleet-run --build-dir /tmp/pool-1-4381/fog-fixed-build --timeout 60 IRFogDemo --occlusion=column-top --fog-debug-color --auto-screenshot 10",
+  "exit": 0,
+  "clean": true,
+  "probes": [
+    "ir-run: /Users/evinjkill/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- /tmp/pool-1-4381/fog-fixed-build/creations/demos/fog_demo/IRFogDemo --occlusion=column-top --fog-debug-color --auto-screenshot 10 (timeout: 60s) (window mode: offscreen)",
+    "[2026-10-13 16:39:57.446] [ClientLog] [info] FOG-SURFACE-PROBE scene=occlusion_column_top controlCap=72 controlCore=48 controlHollow=0",
+    "[2026-10-13 16:39:57.446] [ClientLog] [info] FOG-SURFACE-PROBE scene=occlusion_column_top canvas=642x722 bandTexels=108 bandOwnHidden=108 bandOracleHidden=0 bandPainted=0 bandLit=108 controlTexels=0 controlOracleHidden=0 controlPainted=0",
+    "[2026-10-13 16:39:57.447] [ClientLog] [info] FOG-LOS-PROBE near=1 far=0",
+    "ir-run: IRFogDemo exited cleanly after 2s",
+    "ir-run: RESULT=CLEAN exe=IRFogDemo exit=0"
+  ]
+}

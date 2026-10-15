@@ -13,6 +13,8 @@ from compare_perf_runs import RunWitness
 from repeat_profile import (
     RESIDUAL_YAW_DEADBAND_RAD,
     cmake_build_type,
+    cmake_source_dir,
+    demo_binary,
     directory_digest,
     engine_logged,
     find_demo_pid,
@@ -459,6 +461,28 @@ class BuildTreeTest(unittest.TestCase):
             self.assertEqual(cmake_build_type(tree), "Release")
             cache.write_text("CMAKE_BUILD_TYPE:STRING=\n")
             self.assertIsNone(cmake_build_type(tree))
+
+    def test_source_dir_comes_from_the_cache_so_a_foreign_tree_records_its_own_commit(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            tree = Path(temporary) / "build"
+            tree.mkdir()
+            fallback = Path(temporary) / "caller"
+            self.assertEqual(cmake_source_dir(tree, fallback), fallback)
+            source = Path(temporary) / "scratch-worktree"
+            source.mkdir()
+            (tree / "CMakeCache.txt").write_text(
+                f"CMAKE_BUILD_TYPE:STRING=Debug\nCMAKE_HOME_DIRECTORY:INTERNAL={source}\n"
+            )
+            self.assertEqual(cmake_source_dir(tree, fallback), source.resolve())
+
+    def test_demo_binary_falls_back_to_the_windows_exe_suffix(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            tree = Path(temporary)
+            demo = tree / "creations/demos/perf_grid"
+            demo.mkdir(parents=True)
+            self.assertEqual(demo_binary(tree, "IRPerfGrid"), demo / "IRPerfGrid.exe")
+            (demo / "IRPerfGrid").write_bytes(b"")
+            self.assertEqual(demo_binary(tree, "IRPerfGrid"), demo / "IRPerfGrid")
 
 
 class ManifestEnvironmentTest(unittest.TestCase):

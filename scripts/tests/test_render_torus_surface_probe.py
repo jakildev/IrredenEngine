@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from shader_contract_helpers import extract_block, extract_function
+from shader_contract_helpers import extract_block, extract_function, shape_owner_contract
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import render_torus_surface_probe as probe  # noqa: E402
@@ -32,6 +32,9 @@ struct vec4 {float x,y,z,w;};
 float length(vec2 v){return std::sqrt(v.x*v.x+v.y*v.y);}
 const int kXFace=0,kYFace=1,kZFace=2,kInvalidDepth=999999,kDepthEncodeShift=8;
 using Candidate=std::tuple<int,uint,int,int,int,int>;
+// The probed torus is opaque.
+const bool xrayOccluded=false;
+CANDIDATE_BIT
 uint owner(int i,int j,int face,int subPixel){
  uint x=i+104,y=j+136,tileIdx=(y/8)*26+x/8,gl_LocalInvocationIndex=(y%8)*8+x%8;
  struct {uint x,y;} localId{gl_LocalInvocationIndex%8,gl_LocalInvocationIndex/8};
@@ -95,23 +98,7 @@ def program(backend):
     emitter = (folder / f"c_shapes_to_trixel_body.{backend}").read_text()
     iso = (folder / f"ir_iso_common.{backend}").read_text()
     sdf = (folder / f"ir_sdf_common.{backend}").read_text()
-    key = re.search(r"const uint sampleOwner = ([^;]+);", emitter).group(1)
-    predicate = re.search(r"if \((depthEncoded == stored &&.*?)\) \{",
-                          emitter, re.DOTALL).group(1)
-    predicate = re.sub(
-        r"atomic_load_explicit\(&sampleOwners\[linearIndex\], memory_order_relaxed\)",
-        "elected", predicate).replace("sampleOwners[linearIndex]", "elected")
-    election = extract_block(emitter, "#if IR_SHAPE_PASS == 3")
-    election = election[election.index("{"):]
-    election = re.sub(r"imageLoad\(triangleCanvasDistances, canvasPixel\).r", "stored", election)
-    election = election.replace(
-        "atomic_load_explicit(&distanceScratch[linearIndex], memory_order_relaxed)", "stored")
-    election = election.replace("sampleOwners[linearIndex]", "elected")
-    election = election.replace("atomicMin(elected, sampleOwner)",
-                                 "fixtureAtomicMin(elected, sampleOwner)")
-    election = election.replace(
-        "atomic_fetch_min_explicit(&elected, sampleOwner, memory_order_relaxed)",
-        "fixtureAtomicMin(elected, sampleOwner)")
+    contract = shape_owner_contract(emitter)
     depth_election = extract_block(emitter, "#elif IR_SHAPE_PASS != 1")
     depth_election = depth_election[depth_election.index("{"):]
     depth_election = re.sub(
@@ -121,8 +108,11 @@ def program(backend):
         r"atomic_fetch_min_explicit\(\s*&distanceScratch\[linearIndex\],\s*"
         r"depthEncoded,\s*memory_order_relaxed\s*\)",
         "fixtureAtomicMin(stored, depthEncoded)", depth_election)
-    code = (PREAMBLE.replace("OWNER", key).replace("PREDICATE", predicate)
-            .replace("DEPTH_ELECTION", depth_election).replace("ELECTION", election))
+    code = (PREAMBLE.replace("CANDIDATE_BIT", contract["candidate_bit"])
+            .replace("OWNER", contract["key"])
+            .replace("PREDICATE", contract["owner_predicate"])
+            .replace("DEPTH_ELECTION", depth_election)
+            .replace("ELECTION", contract["election"]))
     code += re.search(r"(?:const|constant) float kSdfBiasEpsilon = [^;]+;", emitter).group()
     for name in ("isoPositionToPos3D", "isoPixelToPos3D", "isoToLocal3D"):
         code += extract_function(iso, name)

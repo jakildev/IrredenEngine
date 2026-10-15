@@ -50,6 +50,7 @@ kernel void c_bake_voxel_sun_faces(
     device atomic_uint* sunDepthBuf [[buffer(28)]],
     constant FrameDataSun& sunFrame [[buffer(29)]],
     constant FogShadowObserverData& fogObservers [[buffer(27)]],
+    texture2d<uint, access::read> fogShadowWindow [[texture(4)]],
     uint3 groupId [[threadgroup_position_in_grid]],
     uint3 localId [[thread_position_in_threadgroup]]
 ) {
@@ -68,18 +69,22 @@ kernel void c_bake_voxel_sun_faces(
         : float3(roundHalfUp(snapNearIntegerVoxelPosition(positions[index].xyz) * subdivisions)) / subdivisions;
     const float3 worldCenter = rotateByQuat(position, faceFrame.viewToWorld) + faceFrame.worldOrigin.xyz;
     const bool fogBody = (voxels[index].reserved & (1u << 3u)) != 0u;
-    if (!fogFieldCastsSunShadow(
-            worldCenter, fogBody, sunFrame.fogCeilingEnabled.x, fogObservers)) return;
+    if (!(fogBody) && sunFrame.fogCeilingEnabled.x != 0 && fogObservers.visionCircleCount > 0 &&
+        !fogFieldCastsSunShadow(worldCenter, false, sunFrame.fogCeilingEnabled.x,
+            fogShadowCell(worldCenter, fogObservers, fogShadowWindow), fogObservers)) return;
     for (int axis = 0; axis < 3; ++axis) {
         float3 normal = float3(0.0);
         normal[axis] = 1.0;
         const float3 worldAxis = rotateByQuat(normal, faceFrame.viewToWorld);
         const bool positive = dot(worldAxis, sunFrame.sunDirection.xyz) > 0.0;
         const int faceId = axis * 2 + (positive ? 1 : 0);
-        if (!fogVoxelFaceCastsSunShadow(
-                faceIsExposed(flags, faceId), worldCenter,
-                positive ? worldAxis : -worldAxis, fogBody,
-                sunFrame.fogCeilingEnabled.x, fogObservers)) continue;
+        if (!faceIsExposed(flags, faceId)) {
+            if (fogBody || sunFrame.fogCeilingEnabled.x == 0 || fogObservers.visionCircleCount == 0) continue;
+            const float3 neighbor = worldCenter + (positive ? worldAxis : -worldAxis);
+            if (!fogVoxelFaceCastsSunShadow(false, worldCenter, positive ? worldAxis : -worldAxis,
+                    false, sunFrame.fogCeilingEnabled.x,
+                    fogShadowCell(neighbor, fogObservers, fogShadowWindow), fogObservers)) continue;
+        }
         float3 corner = position - kVoxelRasterCellAnchor;
         corner[axis] += positive ? 1.0 : 0.0;
         float3 edgeU = float3(0.0);

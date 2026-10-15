@@ -131,9 +131,25 @@ per-joint placement and FK-posing handles. A marker built with `kNullEntity`
 stays hoverable but no-ops on drag.
 
 `SHAPE_FLAG_XRAY_OCCLUDED` is a generic `ShapeFlags` bit: the shader blends a
-flagged shape at reduced alpha wherever it loses the depth contest and knows
-nothing about gizmos. Any prefab that needs a see-through overlay opts in the
-same way without touching `engine/render/`.
+flagged shape at reduced alpha where it sits behind content drawn before the
+shape stage, and knows nothing about gizmos. Any prefab that needs a
+see-through overlay opts in the same way without touching `engine/render/`.
+
+The blend has one writer per canvas pixel. The owner pass elects, on a pixel no
+shape sample owns, one occluded flagged sample: it contends under its owner key
+with bit 31 set, so a sample at the stored depth outranks every candidate, and
+the publish pass blends only the elected one. Two consequences follow. A
+flagged shape draws its silhouette over voxels and other pre-shape content
+only; where another shape of the same canvas submission wins the pixel it
+draws nothing, so handles do not tint each other. And a frame's shape pixels,
+and the handle a click on them picks, do not depend on the order the GPU ran
+the samples in. The flag's producers are the gizmo handles (`gizmo.hpp`), the
+cursor-pivot marker (`cursor_pivot.hpp`) and the voxel editor's fill ghost.
+
+A rotate gizmo's three rings are one torus shape each, turned by the handle's
+local rotation so its axis of revolution is the handle's axis. The rings sit
+one unit outside the arrows' reach from the anchor, so no ring passes through
+an arrow.
 
 ### View clearance
 

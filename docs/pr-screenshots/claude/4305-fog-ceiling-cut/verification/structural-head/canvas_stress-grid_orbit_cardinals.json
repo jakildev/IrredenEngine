@@ -1,0 +1,42 @@
+{
+  "demo": "canvas_stress",
+  "target": "IRCanvasStress",
+  "name": "grid_orbit_cardinals",
+  "args": [
+    "--only",
+    "orbit",
+    "--focus-orbit",
+    "6",
+    "--no-spin",
+    "--no-auto-rotate",
+    "--pivot-origin",
+    "--no-ao",
+    "--debug-overlay",
+    "normals",
+    "--zoom",
+    "4",
+    "--subdivisions",
+    "2",
+    "--sweep-yaw",
+    "0",
+    "4.71238898",
+    "4"
+  ],
+  "warmup": 6,
+  "offset": 0,
+  "shots": [
+    "grid_orbit_cardinal_0",
+    "grid_orbit_cardinal_90",
+    "grid_orbit_cardinal_180",
+    "grid_orbit_cardinal_270"
+  ],
+  "command": "fleet-run --timeout 60 IRCanvasStress --auto-screenshot 6 --only orbit --focus-orbit 6 --no-spin --no-auto-rotate --pivot-origin --no-ao --debug-overlay normals --zoom 4 --subdivisions 2 --sweep-yaw 0 4.71238898 4",
+  "exit": 0,
+  "clean": true,
+  "hashes": {
+    "grid_orbit_cardinal_90.png": "04d8309fca683dfb05f41cc9b839f12a37fc12d79500aceb6733fdbbad5c0a19",
+    "grid_orbit_cardinal_270.png": "c5f4fa304eff6391bb1c289c19ae58e777afb094fe38677ff8efbfbead23eb6a",
+    "grid_orbit_cardinal_0.png": "c8a6fa771795b47b99f0e529f936548f1dd32d11d375cf051ffe800dd611ff34",
+    "grid_orbit_cardinal_180.png": "cf384cace28ab1860436c60158d473afef8044c594d70fd6ac11f82aa6202234"
+  }
+}

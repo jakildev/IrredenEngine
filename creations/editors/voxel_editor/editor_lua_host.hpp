@@ -7,6 +7,7 @@
 
 #include "recipes_panel.hpp"
 #include "lua_session_bindings.hpp"
+#include "module_session_view.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -45,26 +46,6 @@
 // The World closes the lua_State before process-exit static destruction, so a
 // sol reference held by a static host would unref against a dead state.
 namespace IRVoxelEditor {
-
-enum class RecipeParamType { INT, FLOAT };
-
-struct RecipeParam {
-    std::string name_;
-    RecipeParamType type_ = RecipeParamType::INT;
-    float default_ = 0.0f;
-    float min_ = 0.0f;
-    float max_ = 1.0f;
-};
-
-struct RecipeCell {
-    IRMath::ivec3 local_ = IRMath::ivec3(0);
-    std::optional<IRMath::Color> color_;
-};
-
-struct ModuleRecipe {
-    std::string name_;
-    std::vector<RecipeParam> params_;
-};
 
 class ModuleHost {
   public:
@@ -236,7 +217,8 @@ class ModuleHost {
     Session::Recipe
     buildSession(const std::string &name, IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) const {
         const auto found = std::find(m_sessionNames.begin(), m_sessionNames.end(), name);
-        Session::Builder builder(name, sceneSize, sceneOrigin);
+        const ModuleSessionView view = sessionView();
+        Session::Builder builder(name, sceneSize, sceneOrigin, &view);
         if (found == m_sessionNames.end()) {
             builder.recordError("module session '" + name + "' is not registered");
             return builder.finish();
@@ -272,6 +254,31 @@ class ModuleHost {
 
     IRScript::LuaScript &script() const {
         return *m_script;
+    }
+
+    ModuleSessionView sessionView() const {
+        ModuleSessionView view;
+        view.recipes_ = m_recipes;
+        for (const IRScript::LuaTypedComponentInfo &info : m_script->luaTypedComponents())
+            view.components_.push_back(makeComponentRecord(*m_script, info.name_));
+        const std::size_t moduleCount = view.components_.size();
+        for (std::string name : IRPrefab::Prefab::listComponentFactories()) {
+            const auto duplicate = std::find_if(
+                view.components_.begin(),
+                view.components_.begin() + static_cast<std::ptrdiff_t>(moduleCount),
+                [&name](const ComponentRecord &component) { return component.name_ == name; }
+            );
+            if (duplicate == view.components_.begin() + static_cast<std::ptrdiff_t>(moduleCount))
+                view.components_.push_back(makeComponentRecord(*m_script, std::move(name)));
+        }
+        view.evaluate_ = [this](
+                             std::size_t recipe,
+                             const std::vector<float> &values,
+                             IRMath::ivec3 size,
+                             std::vector<RecipeCell> &cells,
+                             std::string &error
+                         ) { return evaluate(recipe, values, size, cells, error); };
+        return view;
     }
 
   private:

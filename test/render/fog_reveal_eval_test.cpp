@@ -645,34 +645,66 @@ TEST(FogRevealEvalTest, CeilingFadeIsOneAtThePlaneAndZeroExactlyAtItsEnd) {
     ) << "a negative height is off whatever the fade";
 }
 
-TEST(FogRevealEvalTest, CeilingShadowPolicyUsesHardMidpointAndMaxAcrossCoveringSources) {
-    FrameDataFogObservers observers = oneCircle(10.0f, 2.0f, 4.0f);
+TEST(FogRevealEvalTest, CeilingShadowUsesStaticRetainedSetAndCellAdmission) {
+    FrameDataFogObservers observers = oneCircle(10.0f, 2.0f, 0.0f);
     IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(observers, 0, 5.0f, 4.0f);
+    const IRPrefab::Fog::FogWindowTexel hidden{};
+    const IRPrefab::Fog::FogWindowTexel visible{IRComponents::kFogStateVisible, 1u};
+    const IRPrefab::Fog::FogWindowTexel other{IRComponents::kFogStateUnexplored, 2u};
+    for (int z = 0; z <= 16; ++z) {
+        const IRMath::vec3 position(0, 0, -z);
+        EXPECT_EQ(IRPrefab::Fog::detail::fieldCastsSunShadow(observers, position, hidden), z < 9);
+        EXPECT_TRUE(IRPrefab::Fog::detail::fieldCastsSunShadow(observers, position, visible));
+        EXPECT_TRUE(IRPrefab::Fog::detail::fieldCastsSunShadow(observers, position, other));
+        EXPECT_TRUE(IRPrefab::Fog::detail::fieldCastsSunShadow(observers, position, hidden, true));
+    }
+    IRComponents::C_CanvasFogOfWar::setRevealSurfaceTreatment(observers, 0.5f);
+    IRComponents::C_CanvasFogOfWar::setRevealSurfacePhase(observers, 0.37f);
+    for (int x = -12; x <= 12; ++x) {
+        for (int z = 0; z <= 16; ++z) {
+            const IRMath::ivec3 voxel(x, -4, -z);
+            EXPECT_EQ(
+                IRPrefab::Fog::detail::fieldCastsSunShadow(observers, IRMath::vec3(voxel), hidden),
+                IRPrefab::Fog::detail::ceilingRetained(observers, voxel, hidden, 0.0f)
+            );
+        }
+    }
+}
 
-    EXPECT_TRUE(
-        IRPrefab::Fog::detail::fieldCastsSunShadow(observers, IRMath::vec3(0.0f, 0.0f, -3.0f))
-    ) << "the fade midpoint is inclusive";
-    EXPECT_FALSE(
-        IRPrefab::Fog::detail::fieldCastsSunShadow(observers, IRMath::vec3(0.0f, 0.0f, -3.01f))
-    );
-    EXPECT_TRUE(
-        IRPrefab::Fog::detail::fieldCastsSunShadow(observers, IRMath::vec3(20.0f, 0.0f, -20.0f))
-    ) << "uncovered matter is unchanged";
-    EXPECT_TRUE(
-        IRPrefab::Fog::detail::fieldCastsSunShadow(
-            observers,
-            IRMath::vec3(0.0f, 0.0f, -20.0f),
-            true
-        )
-    ) << "BODY subjects remain whole";
-
-    observers.visionCircles_[1] = IRMath::vec4(0.0f, 0.0f, 10.0f, 0.0f);
-    observers.visionCircleHeights_[1] = IRMath::vec4(4.0f, 0.0f, 0.0f, 0.0f);
-    observers.visionCircleCeilings_[1] = IRMath::vec4(-1.0f, 0.0f, 0.0f, 0.0f);
-    observers.visionCircleCount_ = 2;
-    EXPECT_TRUE(
-        IRPrefab::Fog::detail::fieldCastsSunShadow(observers, IRMath::vec3(0.0f, 0.0f, -20.0f))
-    ) << "the maximum across covering sources wins, including a ceiling-off source";
+TEST(FogRevealEvalTest, CeilingEnvelopesKeepFlickerAndInteriorNeighbourCaps) {
+    using namespace IRPrefab::Fog::detail;
+    FrameDataFogObservers observers = oneCircle(20.0f, 0.0f, 0.0f);
+    IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(observers, 0, 5.0f, 0.0f);
+    IRComponents::C_CanvasFogOfWar::setRevealSurfaceTreatment(observers, 0.5f);
+    const IRPrefab::Fog::FogWindowTexel cell{};
+    for (int height : {6, 7}) {
+        const IRMath::ivec3 voxel(0, 0, -height);
+        EXPECT_EQ(ceilingPresence(observers, voxel, cell), 0.0f);
+        EXPECT_EQ(ceilingPresence(observers, voxel, cell, -kFogCeilingFlickerSpan), 1.0f);
+    }
+    IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(observers, 0, 5.0f, 4.0f);
+    const IRMath::ivec3 voxel(-1, -4, -6);
+    EXPECT_TRUE(ceilingRetained(observers, voxel, cell, 0.0f));
+    EXPECT_FALSE(ceilingRetained(observers, voxel + IRMath::ivec3(1, 0, 0), cell, 0.0f));
+    EXPECT_EQ(ceilingPresence(observers, voxel, cell, -kFogCeilingFlickerSpan), 1.0f);
+    EXPECT_LT(ceilingPresence(observers, voxel, cell, kFogCeilingFlickerSpan), 1.0f);
+    for (int x = -25; x <= 25; ++x) {
+        for (int z = -16; z <= 4; ++z) {
+            const IRMath::ivec3 v(x, 3, z);
+            const float lo = ceilingPresence(observers, v, cell, kFogCeilingFlickerSpan);
+            const float hi = ceilingPresence(observers, v, cell, -kFogCeilingFlickerSpan);
+            EXPECT_FLOAT_EQ(ceilingPhaseHeight(v, 0.0f), 0.0f);
+            for (float phase : {-100.0f, -0.37f, 0.0f, 0.37f, 19.0f}) {
+                const float offset = ceilingPhaseHeight(v, phase);
+                EXPECT_LE(IRMath::abs(offset), kFogCeilingFlickerSpan);
+                const float c = ceilingPresence(observers, v, cell, offset);
+                EXPECT_GE(c, lo);
+                EXPECT_LE(c, hi);
+                if (hi == 0.0f)
+                    EXPECT_FALSE(ceilingRetained(observers, v, cell, phase));
+            }
+        }
+    }
 }
 
 // The additive height cost and the ceiling are independent terms of one
@@ -1829,3 +1861,157 @@ TEST(FogRevealEvalTest, LanePressureMarchesThenGrowsAndStaysAllocationFree) {
 }
 
 } // namespace
+
+TEST(FogRevealEvalTest, CeilingAdmissionContainsAaAndIgnoresHeightCostAndLos) {
+    using namespace IRPrefab::Fog::detail;
+    const IRPrefab::Fog::FogWindowTexel cell{};
+    FrameDataFogObservers observers = oneCircle(20.0f, 0.0f, 0.0f);
+    IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(observers, 0, 0.0f, 0.0f);
+    observers.visionCircleCount_ = 2;
+    observers.visionCircles_[1] = IRMath::vec4(2.1f, 0.0f, 1.0f, 0.0f);
+    observers.visionCircleCeilings_[1] = IRMath::vec4(-1.0f, 0.0f, 0.0f, 0.0f);
+    const IRMath::ivec3 voxel(0, 0, -6);
+    // Source B misses its hard radius but reaches the closed cell under AA.
+    EXPECT_EQ(ceilingSourceMask(observers, IRMath::ivec2(voxel), cell), 3u);
+    EXPECT_EQ(ceilingPresence(observers, voxel, cell), 1.0f);
+    EXPECT_TRUE(ceilingRetained(observers, voxel, cell, 0.0f));
+    observers.visionCircleHeights_[1] = IRMath::vec4(0.0f, 100.0f, 100.0f, 0.0f);
+    observers.losSourceMask_ = 3;
+    EXPECT_EQ(ceilingPresence(observers, voxel, cell), 1.0f);
+    observers.visionCircleChannels_[0][1] = 2u;
+    EXPECT_EQ(ceilingPresence(observers, voxel, cell), 0.0f);
+    EXPECT_EQ(ceilingPresence(observers, voxel, {IRComponents::kFogStateExplored, 1u}), 0.0f);
+    EXPECT_EQ(ceilingPresence(observers, IRMath::ivec3(100, 100, -100), cell), 1.0f);
+
+    const float expected = IRMath::sqrt(0.5f);
+    EXPECT_GT(expected, 0.70f); // Mutation: 0.70 cannot bound a base-density pixel.
+    EXPECT_LT(expected, kFogCeilingAdmitAa);
+    for (int x = -8; x <= 8; ++x) {
+        for (int depth = -20; depth <= 20; ++depth) {
+            for (int angle = 0; angle < 32; ++angle) {
+                const float yaw = static_cast<float>(angle) * 0.2f;
+                const auto p = IRMath::isoPixelToPos3DYawed(IRMath::vec2(x, 7), float(depth), yaw);
+                const auto q =
+                    IRMath::isoPixelToPos3DYawed(IRMath::vec2(x + 1, 7), float(depth), yaw);
+                EXPECT_NEAR(IRMath::length(IRMath::vec2(q - p)), expected, 3.0e-6f);
+            }
+        }
+    }
+}
+
+TEST(FogRevealEvalTest, RandomizedCeilingBoundsContainTopContributorsAndEveryCutAxis) {
+    using namespace IRPrefab::Fog::detail;
+    using IRComponents::C_CanvasFogOfWar;
+    std::uint32_t randomState = 0x43054381u;
+    const auto random = [&]() {
+        randomState = 1664525u * randomState + 1013904223u;
+        return static_cast<float>(randomState >> 8u) / 16777216.0f;
+    };
+    int cuts = 0, dropped = 0, tops = 0;
+    for (int scene = 0; scene < 500; ++scene) {
+        FrameDataFogObservers observers{};
+        const IRMath::ivec3 voxel{
+            int(random() * 20) - 10,
+            int(random() * 20) - 10,
+            -int(random() * 18)
+        };
+        observers.visionCircleCount_ = 1 + scene % 8;
+        for (int source = 0; source < observers.visionCircleCount_; ++source) {
+            observers.visionCircles_[source] =
+                {random() * 20 - 10, random() * 20 - 10, random() * 20 + 1, random() * 2};
+            observers.visionCircleHeights_[source] =
+                {random() * 6, random() * 2, random() * 2, random()};
+            observers.visionCircleCeilings_[source] =
+                {source == 7 ? -1.0f : random() * 10, scene % 3 ? random() * 5 : 0.0f, 0, 0};
+            observers.visionCircleChannels_[source / 4][source % 4] = 1u << (source % 3);
+        }
+        const IRPrefab::Fog::FogWindowTexel cell{
+            scene % 17 == 0 ? IRComponents::kFogStateVisible : IRComponents::kFogStateUnexplored,
+            1u + unsigned(scene % 7)
+        };
+        C_CanvasFogOfWar::setRevealSurfaceTreatment(observers, random(), 0.5f);
+        const float lower = ceilingPresence(observers, voxel, cell, kFogCeilingFlickerSpan);
+        const float upper = ceilingPresence(observers, voxel, cell, -kFogCeilingFlickerSpan);
+        const float staticPresence = ceilingPresence(observers, voxel, cell);
+        // Top-plane samples are inside the closed owner cell and at or above
+        // its top. LOS can only reduce this radial/height-cost contribution.
+        const IRMath::vec3 top{
+            float(voxel.x) + random() - 0.5f,
+            float(voxel.y) + random() - 0.5f,
+            float(voxel.z) - 0.5f - random() * 8
+        };
+        float topState = 0;
+        for (int source = 0; source < observers.visionCircleCount_; ++source) {
+            if (!(observers.channels(source) & cell.channels_))
+                continue;
+            auto paint = observers;
+            paint.visionCircles_[source].w =
+                IRMath::max(paint.visionCircles_[source].w, IRMath::sqrt(0.5f));
+            topState = IRMath::max(topState, evalVisionCircleReveal(paint, source, top));
+        }
+        EXPECT_GE(staticPresence + 1e-6f, topState);
+        tops += topState > 0;
+        for (int sample = 0; sample < 24; ++sample) {
+            const float phase = float(sample) * 0.37f - 3.0f;
+            const float animated =
+                ceilingPresence(observers, voxel, cell, ceilingPhaseHeight(voxel, phase));
+            EXPECT_LE(lower, animated + 1e-6f);
+            EXPECT_GE(upper + 1e-6f, animated);
+            const bool own = ceilingRetained(observers, voxel, cell, phase);
+            if (upper == 0) {
+                EXPECT_FALSE(own);
+                ++dropped;
+            }
+            for (int axis = 0; axis < 3; ++axis) {
+                for (int side : {-1, 1}) {
+                    auto neighbor = voxel;
+                    neighbor[axis] += side;
+                    // X/Y neighbor cells are independent; Z shares the column.
+                    const IRPrefab::Fog::FogWindowTexel neighborCell =
+                        axis == 2 ? cell
+                                  : IRPrefab::Fog::FogWindowTexel{
+                                        IRComponents::kFogStateUnexplored,
+                                        1u << ((scene + axis) % 3)
+                                    };
+                    if (own && !ceilingRetained(observers, neighbor, neighborCell, phase)) {
+                        ++cuts;
+                        EXPECT_LT(
+                            ceilingPresence(
+                                observers,
+                                neighbor,
+                                neighborCell,
+                                kFogCeilingFlickerSpan
+                            ),
+                            1.0f
+                        );
+                    }
+                }
+            }
+        }
+        C_CanvasFogOfWar::clearRevealSurfaceTreatment(observers);
+        EXPECT_EQ(ceilingPresence(observers, voxel, cell, 0), staticPresence);
+        EXPECT_EQ(ceilingRetained(observers, voxel, cell, 8.75f), staticPresence > 0);
+    }
+    EXPECT_GT(cuts, 0);
+    EXPECT_GT(dropped, 0);
+    EXPECT_GT(tops, 0);
+}
+
+TEST(FogRevealEvalTest, VoxelPaintKeepsCeilingBandWhileAnalyticPaintStillDissolves) {
+    using namespace IRPrefab::Fog::detail;
+    auto observers = oneCircle(100, 0, 0);
+    IRComponents::C_CanvasFogOfWar::setVisionCircleCeiling(observers, 0, 5, 4);
+    IRComponents::C_CanvasFogOfWar::setRevealSurfaceTreatment(observers, 1, 0.5f);
+    const auto alwaysVisible = [](int) { return 1.0f; };
+    const IRMath::vec3 point{0, -4, -6};
+    EXPECT_GT(
+        revealSurfaceHash01(IRMath::ivec3(point)),
+        ceilingPresence(observers, IRMath::ivec3(point), IRPrefab::Fog::FogWindowTexel{})
+    );
+    const auto voxel = evalRevealSurfaceComposition(observers, 0, point, 1u, alwaysVisible, false);
+    const auto analytic =
+        evalRevealSurfaceComposition(observers, 0, point, 1u, alwaysVisible, true);
+    EXPECT_GT(voxel.state_, 0.0f);
+    EXPECT_GT(voxel.styledBand_, 0.0f);
+    EXPECT_EQ(analytic.state_, 0.0f);
+}

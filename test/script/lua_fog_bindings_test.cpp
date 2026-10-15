@@ -621,6 +621,28 @@ TEST_F(LuaFogVisionSlotsTest, TreatmentEntriesRoundTripClearAndReject) {
     ) << "a rejected call must leave the treatment untouched";
 }
 
+TEST_F(LuaFogVisionSlotsTest, PhaseRoundTripsAndRejectsWithoutChangingStoredValue) {
+    ASSERT_TRUE(m_lua.lua()
+                    .safe_script(R"lua(
+        assert(IRFog.getRevealSurfacePhase() == 0)
+        IRFog.setRevealSurfacePhase(-0.375)
+        IRFog.setRevealSurfaceTreatment(0.5)
+        IRFog.clearRevealSurfaceTreatment()
+        assert(IRFog.getRevealSurfacePhase() == -0.375)
+        assert(select('#', IRFog.getRevealSurfaceTreatment()) == 3)
+    )lua")
+                    .valid());
+    for (const char *source :
+         {"IRFog.setRevealSurfacePhase(0/0)",
+          "IRFog.setRevealSurfacePhase(math.huge)",
+          "IRFog.setRevealSurfacePhase('bad')",
+          "IRFog.setRevealSurfacePhase()",
+          "IRFog.getRevealSurfacePhase(1)"}) {
+        EXPECT_NE(scriptError(source).find("IRFog."), std::string::npos);
+        EXPECT_FLOAT_EQ(m_observers.revealSurfaceTreatment_.w, -0.375f);
+    }
+}
+
 TEST(LuaFogPipelineTest, FogLosBuildResolvesFromALuaPipeline) {
     IRScript::LuaScript lua;
     IREntity::EntityManager entityManager;

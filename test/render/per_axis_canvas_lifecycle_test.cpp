@@ -1,8 +1,12 @@
 #include <gtest/gtest.h>
 
 #include <irreden/render/per_axis_canvas.hpp>
+#include <spdlog/sinks/ostream_sink.h>
 
+#include <memory>
+#include <sstream>
 #include <stdexcept>
+#include <string>
 
 // The per-axis set's lifecycle policy with the ECS lookups and GPU calls lifted
 // out (`IRPrefab::PerAxisCanvas::lifecycleStep`): a frame sequence that
@@ -39,6 +43,20 @@ TEST(PerAxisCanvasLifecycle, ScratchUniformUsesTheOwnedRegionOffsets) {
 }
 
 #ifndef IR_RELEASE
+TEST(PerAxisCanvasLifecycle, AllocationRefusesHeightReservedForOverflowProvenance) {
+    IRComponents::PerAxisCanvasStore store;
+    std::ostringstream captured;
+    auto logger = LoggerSpd::instance()->getGLAPILogger();
+    logger->sinks().push_back(std::make_shared<spdlog::sinks::ostream_sink_st>(captured));
+    EXPECT_THROW(store.allocate(IRMath::ivec2(8, 32768), IRMath::ivec2(8)), std::runtime_error);
+    logger->sinks().pop_back();
+    EXPECT_NE(
+        captured.str().find("per-axis canvas height must be below 32768 cells"),
+        std::string::npos
+    );
+    EXPECT_FALSE(store.isAllocated());
+}
+
 TEST(PerAxisCanvasLifecycle, ScratchLayoutRefusesNegativeAndOverflowingOffsets) {
     using Store = IRComponents::PerAxisCanvasStore;
     EXPECT_THROW(Store::scratchLayoutFor(-1, 1), std::runtime_error);

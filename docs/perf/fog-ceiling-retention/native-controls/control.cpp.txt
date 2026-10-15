@@ -1,0 +1,65 @@
+#include <irreden/render/fog_of_war.hpp>
+#include <cstdio>
+#include <cstdlib>
+using namespace IRPrefab::Fog::detail;
+using IRComponents::FrameDataFogObservers;
+using IRPrefab::Fog::FogWindowTexel;
+void check(bool value, const char *name) {
+    if (!value) { std::printf("FAIL %s\n", name); std::exit(1); }
+}
+FrameDataFogObservers setup() {
+    FrameDataFogObservers o{};
+    o.visionCircleCount_=1;
+    o.visionCircles_[0]={0,0,20,0};
+    o.visionCircleCeilings_[0]={5,4,0,0};
+    o.revealSurfaceTreatment_={1,1,.5,0};
+    return o;
+}
+int main() {
+    auto o=setup();
+    const IRMath::ivec3 v(0,-4,-6);
+    check(ceilingPresence(o,{100,100,-100},{})==1,"uncovered");
+    check(ceilingPresence(o,{0,0,-100},{255,1})==1,"visible");
+    check(ceilingPresence(o,{0,0,-100},{128,1})==0,"explored");
+    o.visionCircleCount_=2;
+    o.visionCircles_[1]={0,0,20,0};
+    o.visionCircleCeilings_[1]={0,0,0,0};
+    check(ceilingPresence(o,v,{})==.84375f,"source_maximum");
+    o=setup();o.visionCircleCount_=2;o.visionCircleCeilings_[0]={0,0,0,0};
+    o.visionCircles_[1]={2.1,0,1,0};o.visionCircleCeilings_[1]={-1,0,0,0};
+    check(ceilingRetained(o,{0,0,-6},{},0),"aa_admission");
+    check(kFogCeilingAdmitAa>IRMath::sqrt(.5f),"aa_pixel_bound");
+    o.visionCircleHeights_[1]={0,100,100,0};o.losSourceMask_=3;
+    check(ceilingPresence(o,{0,0,-6},{})==1,"height_and_los_ignored");
+    o.visionCircleChannels_[0][1]=2;
+    check(ceilingPresence(o,{0,0,-6},{})==0,"source_channels");
+    o=setup();o.visionCircleHeights_[0]={0,100,100,0};o.losSourceMask_=1;
+    check(ceilingPresence(o,v,{})==.84375f,"height_and_los_ignored");
+    o=setup();o.revealSurfaceTreatment_.y=0;
+    check(ceilingRetained(o,v,{},0),"zero_density");
+    check(ceilingPhaseHeight(v,0)==0,"phase_zero");
+    for (int i=0;i<1000;++i)
+        check(IRMath::abs(ceilingPhaseHeight(v,float(i)*.017f-5))<=2,"phase_bound");
+    o=setup();o.visionCircleCeilings_[0]={5,0,0,0};
+    bool revived=false;
+    for (int i=1;i<1000;++i) revived|=ceilingRetained(o,{0,0,-6},{},i*.017f);
+    check(revived,"phase_revives");
+    o=setup();o.revealSurfaceTreatment_.w=.37f;
+    check(!fieldCastsSunShadow(o,{0,0,-100},{0,1}),"shadow_hidden");
+    check(fieldCastsSunShadow(o,{0,0,-100},{255,1}),"shadow_visible");
+    check(fieldCastsSunShadow(o,{0,0,-100},{0,2}),"shadow_other_channel");
+    check(fieldCastsSunShadow(o,{0,0,-100},{0,1},true),"shadow_body");
+    for (int x=-5;x<=5;++x) for(int z=-12;z<=0;++z) {
+        IRMath::ivec3 p(x,-4,z);
+        check(fieldCastsSunShadow(o,IRMath::vec3(p),{})==ceilingRetained(o,p,{},0),"shadow_static");
+    }
+    const auto visible=[](int){return 1.f;};
+    auto voxel=evalRevealSurfaceComposition(o,0,IRMath::vec3(v),1,visible,false);
+    auto analytic=evalRevealSurfaceComposition(o,0,IRMath::vec3(v),1,visible,true);
+    check(voxel.state_>0&&voxel.styledBand_>0,"voxel_ceiling_paint");
+    check(analytic.state_==0,"analytic_ceiling_paint");
+    o.losSourceMask_=1;
+    auto occluded=evalRevealSurfaceComposition(o,0,IRMath::vec3(v),1,[](int){return .1f;},false);
+    check(occluded.state_==0,"voxel_los_paint");
+    std::puts("PASS production C++ ceiling, phase, static caster and paint controls");
+}

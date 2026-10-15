@@ -109,6 +109,8 @@ class Audio : public IAudioCaptureSource {
     [[nodiscard]] double getInputLatencyMs() const override;
     void setInputMonitorEnabled(bool enabled);
     [[nodiscard]] bool isInputMonitorEnabled() const;
+    // The devices enumerated at construction, by name.
+    [[nodiscard]] std::vector<AudioDeviceSummary> deviceSummaries() const;
 
   private:
     // Shared with the control thread, which outlives this object while a

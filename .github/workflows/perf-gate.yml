@@ -57,6 +57,17 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Clear an inherited perf:improved label (PR)
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: scripts/perf/ci_label_step.sh
+        env:
+          LABEL_PHASE: reset
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       # Cheap and first: an unexecuted spec drifts (#2727), and these are the
       # only signals that discriminate "the gate compared" from "the gate
       # silently skipped" without a full build. The writer control drives this
@@ -230,15 +241,16 @@ jobs:
           IMPROVE_PCT: '5'
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Add perf:improved label when improvements detected (PR)
-        if: github.event_name == 'pull_request' && steps.gate.outputs.status == '0'
-        run: |
-          if [[ -f /tmp/perf_comment_body.md ]] && grep -q '↓' /tmp/perf_comment_body.md; then
-            gh pr edit "${{ github.event.pull_request.number }}" \
-              --add-label "perf:improved" \
-              --repo "${{ github.repository }}"
-          fi
+      - name: Sync perf:improved to this head's verdict (PR)
+        if: always() && github.event_name == 'pull_request'
+        run: scripts/perf/ci_label_step.sh
         env:
+          LABEL_PHASE: sync
+          GATE_STATUS: ${{ steps.gate.outputs.status }}
+          GATE_IMPROVED: ${{ steps.gate.outputs.improved }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Fail check on regression (PR)

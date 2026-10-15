@@ -2701,27 +2701,17 @@ void updateComponentsPanel() {
 
 } // namespace
 
-// The COMPONENTS panel's list: the module's components in registration order,
-// then every other component with a prefab factory, by name.
-std::vector<std::string> componentPaletteNames() {
+std::vector<std::string> componentPaletteNames(const ModuleSessionView &view) {
     std::vector<std::string> names;
-    for (const IRScript::LuaTypedComponentInfo &info : g_moduleHost.script().luaTypedComponents())
-        names.push_back(info.name_);
-    const std::size_t moduleCount = names.size();
-    for (std::string &factory : IRPrefab::Prefab::listComponentFactories()) {
-        if (std::find(
-                names.begin(),
-                names.begin() + static_cast<std::ptrdiff_t>(moduleCount),
-                factory
-            ) == names.begin() + static_cast<std::ptrdiff_t>(moduleCount))
-            names.push_back(std::move(factory));
-    }
+    for (const ComponentRecord &component : view.components_)
+        names.push_back(component.name_);
     return names;
 }
 
 // Builds the COMPONENTS panel when there is anything to attach.
 void initComponentsUi() {
-    g_componentNames = componentPaletteNames();
+    const ModuleSessionView view = g_moduleHost.sessionView();
+    g_componentNames = componentPaletteNames(view);
     if (g_componentNames.empty())
         return;
     const std::size_t moduleCount = g_moduleHost.script().luaTypedComponents().size();
@@ -3162,6 +3152,33 @@ bool evaluatePartYawCheck(const void *context, std::string &actual) {
     return IRMath::abs(off) <= check.toleranceDegrees_;
 }
 
+bool evaluatePartTurnAxisCheck(const void *context, std::string &actual) {
+    const PartTurnAxisCheck &check = *static_cast<const PartTurnAxisCheck *>(context);
+    if (check.partIndex_ < 0 ||
+        check.partIndex_ >= static_cast<int>(g_entityScene.parts().size())) {
+        actual = "part index out of range";
+        return false;
+    }
+    const IREntity::EntityId entity =
+        g_entityScene.parts()[static_cast<std::size_t>(check.partIndex_)].entity_;
+    const vec4 rotation = IREntity::getComponent<C_LocalTransform>(entity).rotation_;
+    const vec3 imaginary(rotation.x, rotation.y, rotation.z);
+    const float sinHalf = IRMath::length(imaginary);
+    constexpr float kDegreesPerRadian = 180.0f / IRMath::kPi;
+    const float degrees =
+        2.0f * IRMath::atan2(sinHalf, IRMath::abs(rotation.w)) * kDegreesPerRadian;
+    // The share of the turn's axis that lies along the expected one; 0 for
+    // an unturned part, which has no axis.
+    constexpr float kNoTurn = 1e-6f;
+    const float along =
+        sinHalf > kNoTurn ? IRMath::abs(IRMath::dot(imaginary, check.axis_)) / sinHalf : 0.0f;
+    actual = "turn=" + std::to_string(degrees) + " along_axis=" + std::to_string(along) +
+             " want_axis=(" + std::to_string(check.axis_.x) + "," + std::to_string(check.axis_.y) +
+             "," + std::to_string(check.axis_.z) + ") min=" + std::to_string(check.minDegrees_);
+    constexpr float kAxisTolerance = 1e-4f;
+    return degrees >= check.minDegrees_ && along >= 1.0f - kAxisTolerance;
+}
+
 bool evaluatePartSpinCheck(const void *context, std::string &actual) {
     const PartSpinCheck &check = *static_cast<const PartSpinCheck *>(context);
     if (check.partIndex_ < 0 ||
@@ -3554,10 +3571,14 @@ Session::ComponentAttachSpec resolveComponentAttachSpec(Session::Id id) {
         IRVoxelEditor::detail::findModuleComponent(script, spec.component_);
     if (info == nullptr)
         return fail("component '" + spec.component_ + "' is not registered by the module");
-    const std::vector<std::string> names = componentPaletteNames();
-    spec.listRow_ =
-        static_cast<int>(std::find(names.begin(), names.end(), spec.component_) - names.begin());
-    if (spec.listRow_ * kComponentListItemHeight >= kComponentListSize.y)
+    const ModuleSessionView view = g_moduleHost.sessionView();
+    const auto componentRecord = std::find_if(
+        view.components_.begin(),
+        view.components_.end(),
+        [&spec](const ComponentRecord &candidate) { return candidate.name_ == spec.component_; }
+    );
+    const int listRow = static_cast<int>(componentRecord - view.components_.begin());
+    if (listRow * kComponentListItemHeight >= kComponentListSize.y)
         return fail("component '" + spec.component_ + "' is below the list's visible rows");
 
     // The panel lays a record's fields out in the record's order.
@@ -3569,9 +3590,8 @@ Session::ComponentAttachSpec resolveComponentAttachSpec(Session::Id id) {
     if (field == layout.fields_.end())
         return fail("component '" + spec.component_ + "' has no field '" + spec.field_ + "'");
     const int fieldIndex = static_cast<int>(field - layout.fields_.begin());
-    spec.fieldPage_ = fieldIndex / kComponentFieldRowsPerPage;
-    spec.fieldRow_ = fieldIndex % kComponentFieldRowsPerPage;
-    if (paged && spec.fieldPage_ == 0)
+    const int fieldPage = fieldIndex / kComponentFieldRowsPerPage;
+    if (paged && fieldPage == 0)
         return fail("field '" + spec.field_ + "' is on the first page of the field area");
     if (keyed && IRScript::isLuaIdentifier(spec.field_))
         return fail("field '" + spec.field_ + "' is a Lua identifier");
@@ -3612,9 +3632,7 @@ std::optional<std::string> resolveRecipeExpect(
     if (recipeIt == recipes.end())
         return "recipe '" + *recipeName + "' is not registered by the module";
     const std::size_t recipeIndex = static_cast<std::size_t>(recipeIt - recipes.begin());
-    spec.recipeRow_ = static_cast<int>(recipeIndex);
-    if (spec.recipeRow_ * kRecipeListItemHeight >= kRecipeListSize.y)
-        return "recipe '" + *recipeName + "' is below the list's visible rows";
+    spec.recipe_ = *recipeName;
 
     const sol::optional<sol::table> values = (*recipeExpect)["values"];
     std::vector<float> sessionValues;
@@ -3631,10 +3649,10 @@ std::optional<std::string> resolveRecipeExpect(
             return "value for param '" + param.name_ + "' is outside its range";
         if (*value == param.default_)
             return "value for param '" + param.name_ + "' equals its default";
-        spec.params_.push_back({static_cast<int>(i), param.min_, param.max_, *value});
+        spec.values_.push_back({param.name_, *value});
         sessionValues.push_back(*value);
     }
-    if (spec.params_.empty())
+    if (spec.values_.empty())
         return key + ".values must move at least one param off its default";
 
     std::vector<RecipeCell> applied;
@@ -3726,17 +3744,6 @@ Session::CompositeProofSpec resolveCompositeProofSpec() {
         ))
         return fail(*error);
 
-    const std::vector<std::string> names = componentPaletteNames();
-    spec.spinListRow_ = static_cast<int>(
-        std::find(names.begin(), names.end(), Session::kCompositeProofSpinComponent) - names.begin()
-    );
-    if (spec.spinListRow_ >= static_cast<int>(names.size()))
-        return fail(std::string(Session::kCompositeProofSpinComponent) + " has no prefab factory");
-    if (spec.spinListRow_ * kComponentListItemHeight >= kComponentListSize.y)
-        return fail(
-            std::string(Session::kCompositeProofSpinComponent) +
-            " is below the COMPONENTS list's visible rows"
-        );
     return spec;
 }
 
@@ -3804,7 +3811,8 @@ int main(int argc, char **argv) {
         "tier_scrub | remove_part | radial_array | linear_array | nway_symmetry | mode_preview | "
         "mode_preview_shots | part_mode_cycle | corner_part_revox_refused | "
         "parts_scroll | module_loaded | component_attach | component_field_page | "
-        "component_field_key | text_input_command_capture | part_sizes | composite_proof",
+        "component_field_key | text_input_command_capture | part_sizes | part_gizmo_reach | "
+        "part_ring_turn | composite_proof",
         {"none",
          "drag_probe",
          "place_below",
@@ -3833,6 +3841,7 @@ int main(int argc, char **argv) {
          "text_input_command_capture",
          "part_sizes",
          "part_gizmo_reach",
+         "part_ring_turn",
          "composite_proof"},
         "none"
     );
@@ -3932,6 +3941,11 @@ int main(int argc, char **argv) {
             IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::COMPOSITE_PROOF
                 ? IRVoxelEditor::resolveCompositeProofSpec()
                 : IRVoxelEditor::Session::CompositeProofSpec{};
+        const std::optional<IRVoxelEditor::ModuleSessionView> moduleView =
+            IRVoxelEditor::g_moduleHost.loaded()
+                ? std::optional<IRVoxelEditor::ModuleSessionView>{IRVoxelEditor::g_moduleHost
+                                                                      .sessionView()}
+                : std::nullopt;
         IRVoxelEditor::g_session = IRVoxelEditor::g_sessionId == IRVoxelEditor::Session::Id::MODULE
                                        ? IRVoxelEditor::g_moduleHost.buildSession(
                                              moduleSession,
@@ -3944,7 +3958,8 @@ int main(int argc, char **argv) {
                                              IRVoxelEditor::g_editableSceneOrigin,
                                              moduleSpec,
                                              componentSpec,
-                                             proofSpec
+                                             proofSpec,
+                                             moduleView ? &*moduleView : nullptr
                                          );
         if (!IRVoxelEditor::g_session.ok()) {
             for (const std::string &error : IRVoxelEditor::g_session.errors_)
