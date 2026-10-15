@@ -133,6 +133,38 @@ IRCanvasStress` before `--` for rotating/attached canvas workloads, with that
 demo’s `--auto-profile --auto-screenshot N` exit controls. Canvas stress enables
 both CPU and GPU timing for auto-profile.
 
+For the matched SDF authoring comparison, use `--target IRShapeDebug --
+--sdf-voxel-scene direct --auto-profile 300 --yaw 0.785398163 --zoom 4
+--config-preset configs/perf/sdf-on.lua --sdf-voxel-blockers --no-ao`.
+Change only `direct` to `baked` for the other representation. The bounded
+adapter accepts fixed yaw and snapped zoom 1/2/4/8/16, with optional blockers,
+AO/shadow disabling and offscreen mode. It rejects duplicate flags, live
+rotation, screenshot/recording and other scene overrides. Automatic profiling
+disables ShapeDebug's culling minimap. Capture beauty images in separate runs.
+
+Pair `sdf-on.lua` with `sdf-off.lua` to measure instrumentation overhead. Off
+disables easy_profiler and GPU stage timestamps; frame/system wall timers,
+full-frame GPU timestamps and the Debug CPU histogram remain active. Release
+compiles the CPU scope macros out in both arms. The runner fingerprints the
+staged base config and selected preset, requires unchanged configuration,
+`QUIET=guarded`, a fresh clean report, complete finite frame samples, a steady
+window, the requested pose/count/zoom, zero overflow drops and sampled rotated
+coverage. GPU stage samples must agree with the chosen timing preset. The
+fixture sets ORIGIN pivot mode in source; the report verifies absence of an
+explicit focus but does not independently witness ORIGIN mode. CPU profiler
+enablement is configuration evidence, not an independently witnessed gate.
+This first adapter measures four subjects, not a density scaling qualification.
+Separate startup baking/storage from warm frame cost and run both backends
+before choosing a representation default.
+
+`python3 scripts/perf/sdf_controls.py --output save_files/perf/sdf-comparison`
+runs three alternating-order rounds of the 16 direct/baked × yaw 0/45 × shadows
+on/off × timing on/off cases. AO is disabled and voxel blockers remain present.
+It reuses the shared matrix runner and summaries, rejects runtime artifact or
+configuration drift, and retains each raw report. `--zoom` selects one snapped
+scale per matrix. Keep its Debug four-subject results separate from Release,
+startup, memory and large-population qualification.
+
 For a fixed CanvasStress camera, use `--sweep-frames 2 480` with
 `--auto-screenshot 6`. The runner requires finite yaw samples, unchanged yaw
 and all-frame zoom bounds; `--yaw` also fixes the expected angle when supplied.

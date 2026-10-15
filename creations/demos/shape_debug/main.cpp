@@ -3622,11 +3622,10 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::VIEWPORT_TO_FRAMEBUFFER>()
         );
     }
-    // Off during --auto-screenshot / --auto-record captures — the minimap is
-    // a live debug aid, not part of the render-verify golden image or a
-    // reviewer clip. Interactive / --auto-profile runs default it visible;
-    // F11 (initCommands below) toggles it either way.
-    IRRender::setCullingMinimapEnabled(g_autoWarmupFrames == 0 && g_autoRecordFrames == 0);
+    // The interactive minimap is not part of captures or timed scene work.
+    IRRender::setCullingMinimapEnabled(
+        g_autoWarmupFrames == 0 && g_autoRecordFrames == 0 && g_autoProfileFrames == 0
+    );
 
     if (g_autoProfileFrames > 0) {
         IRSystem::SystemId autoProfileId = IRSystem::createSystem<C_VoxelSetNew>(

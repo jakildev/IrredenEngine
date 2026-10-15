@@ -1,0 +1,18 @@
+{
+  "yaw_pose_mismatch": null,
+  "pivot_mismatch": null,
+  "explicit_pivot_samples": 0,
+  "overflow_failure": null,
+  "yaw_first_deg": 45.0,
+  "yaw_last_deg": 45.0,
+  "yaw_travel_deg": 0.0,
+  "zoom_first": 4.0,
+  "zoom_last": 4.0,
+  "zoom_min": 4.0,
+  "zoom_max": 4.0,
+  "zoom_range_present": true,
+  "overflow_max_dropped": 0,
+  "overflow_max_entries": 403,
+  "overflow_samples": 300,
+  "measurement_failure": null
+}

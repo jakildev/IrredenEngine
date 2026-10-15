@@ -24,10 +24,12 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from compare_perf_runs import RunWitness, parse_report  # noqa: E402
+from compare_perf_runs import CellReport, RunWitness, parse_report  # noqa: E402
 from verify_common import platform_launch_argv  # noqa: E402
 
-TARGETS = {"IRPerfGrid": "perf_grid", "IRCanvasStress": "canvas_stress"}
+TARGETS = {
+    "IRPerfGrid": "perf_grid", "IRCanvasStress": "canvas_stress", "IRShapeDebug": "shape_debug",
+}
 # The pose and the per-axis overflow loss are read from the profile report's
 # run witness, which every build type writes; the log is not a witness, since
 # IR_RELEASE compiles every log macro out.
@@ -51,6 +53,97 @@ RENDER_EXPERIMENT_ENV = (
     "IR_OVERFLOW_FOG_DISABLE",
     "IR_OVERFLOW_COUNT_LOG",
 )
+
+
+def shape_profile_arguments(demo_args: list[str]) -> dict[str, str]:
+    """Accept only the fixed-pose SDF comparison, with explicit measurements.
+
+    Other ShapeDebug modes can override the scene or camera. Reject them rather
+    than treating an unknown combination as a qualified comparison.
+    """
+    values = {}
+    valued = {"--auto-profile", "--yaw", "--zoom", "--sdf-voxel-scene",
+              "--config-preset", "--window-mode"}
+    flags = {"--sdf-voxel-blockers", "--no-ao", "--no-shadows"}
+    index = 0
+    while index < len(demo_args):
+        flag = demo_args[index]
+        if flag in values:
+            raise ValueError(f"duplicate ShapeDebug argument: {flag}")
+        if flag in flags:
+            values[flag] = "true"
+        elif flag in valued and index + 1 < len(demo_args):
+            index += 1
+            values[flag] = demo_args[index]
+        else:
+            raise ValueError(f"unsupported ShapeDebug profile argument: {flag}")
+        index += 1
+    for flag in ("--auto-profile", "--yaw", "--zoom", "--sdf-voxel-scene", "--config-preset"):
+        if flag not in values:
+            raise ValueError(f"ShapeDebug profiling requires explicit {flag}")
+    frames = values["--auto-profile"]
+    if not frames.isdigit() or int(frames) <= 0:
+        raise ValueError("ShapeDebug --auto-profile requires a positive frame count")
+    yaw, zoom = float(values["--yaw"]), float(values["--zoom"])
+    if not math.isfinite(yaw) or not math.isfinite(zoom) or zoom <= 0:
+        raise ValueError("ShapeDebug yaw and zoom must be finite; zoom must be positive")
+    # These snapped scales are accepted without modelling arbitrary camera clamps.
+    if zoom not in (1, 2, 4, 8, 16):
+        raise ValueError("ShapeDebug profiles require zoom 1, 2, 4, 8 or 16")
+    if values["--sdf-voxel-scene"] not in ("direct", "baked"):
+        raise ValueError("ShapeDebug requires the direct or baked SDF fixture")
+    if values["--config-preset"] not in (
+        "configs/perf/sdf-on.lua", "configs/perf/sdf-off.lua",
+    ):
+        raise ValueError("ShapeDebug requires the sdf-on.lua or sdf-off.lua timing preset")
+    if values.get("--window-mode", "offscreen") != "offscreen":
+        raise ValueError("ShapeDebug profiles require offscreen window mode")
+    return values
+
+
+def shape_configuration(binary: Path, values: dict[str, str]) -> dict[str, str]:
+    """Fingerprint the runtime base config and the exact selected overlay."""
+    return {
+        name: hashlib.sha256((binary.parent / name).read_bytes()).hexdigest()
+        for name in ("scripts/config.lua", values["--config-preset"])
+    }
+
+
+def shape_pose_mismatch(demo_args: list[str], witness: RunWitness) -> str | None:
+    values = shape_profile_arguments(demo_args)
+    frames = int(values["--auto-profile"])
+    if witness.pose_samples != frames:
+        return f"the report witnessed {witness.pose_samples} frames; expected {frames}"
+    expected = math.degrees(float(values["--yaw"]))
+    for label, yaw in (("first", witness.yaw_first_deg), ("last", witness.yaw_last_deg)):
+        if (yaw is None or not math.isfinite(yaw)
+                or degrees_apart(expected, yaw) > YAW_POSE_TOLERANCE_DEG):
+            return f"the {label} yaw was {yaw}; expected {expected:.3f} deg"
+    travel = witness.yaw_travel_deg
+    if (travel is None or not math.isfinite(travel)
+            or not 0 <= travel <= YAW_POSE_TOLERANCE_DEG):
+        return f"the fixed camera travelled {travel} deg"
+    mismatch = fixed_zoom_mismatch(witness, require_range=True)
+    if mismatch:
+        return mismatch
+    if witness.zoom_first != float(values["--zoom"]):
+        return f"the zoom was {witness.zoom_first}; expected {values['--zoom']}"
+    return None
+
+
+def shape_measurement_failure(values: dict[str, str], report: CellReport) -> str | None:
+    frames = int(values["--auto-profile"])
+    if report.recorded_frames != frames or len(report.frame_times_ms) != frames:
+        return "the frame-time series does not cover the requested frame count"
+    if any(not math.isfinite(value) or value <= 0 for value in report.frame_times_ms):
+        return "the frame-time series contains nonpositive or nonfinite measurements"
+    if not report.steady_frame_times_ms():
+        return "the report has no complete steady-frame series"
+    stage_samples = any((stage.samples or 0) > 0 for stage in report.gpu_stages)
+    expected = values["--config-preset"].endswith("sdf-on.lua")
+    if stage_samples != expected:
+        return "GPU stage samples disagree with the selected timing preset"
+    return None
 
 
 def directory_digest(directory: Path) -> str:
@@ -258,6 +351,8 @@ def yaw_pose_mismatch(target: str, demo_args: list[str], witness: RunWitness) ->
     held pose was held from frame 2: a gradual ramp to it has the same first,
     last and travel as the jump.
     """
+    if target == "IRShapeDebug":
+        return shape_pose_mismatch(demo_args, witness)
     if target == "IRCanvasStress":
         return canvas_frame_pose_mismatch(demo_args, witness)
     pose = checked_pose(target, demo_args)
@@ -313,6 +408,12 @@ def pivot_mismatch(target: str, demo_args: list[str], witness: RunWitness) -> st
     the world a yaw shows depends on how the run began, so an arm that is
     labelled pinned and is not would be timing a different view.
     """
+    if target == "IRShapeDebug":
+        # ORIGIN is a mode, not an explicit focus; the witness cannot distinguish
+        # it from other non-explicit policies. The fixture sets ORIGIN in source.
+        if witness.explicit_pivot_samples != 0:
+            return "the SDF fixture must not use an explicit focus pivot"
+        return None
     if checked_pose(target, demo_args) is None or witness.explicit_pivot_samples is None:
         return None
     pinned = "--pivot-origin" in demo_args or (
@@ -336,6 +437,9 @@ def overflow_failure(target: str, demo_args: list[str], witness: RunWitness) -> 
             f"the per-axis overflow list dropped up to {witness.overflow_max_dropped} "
             f"entries in a frame (cap {witness.overflow_cap})"
         )
+    if target == "IRShapeDebug" and off_cardinal(requested_yaw(demo_args)):
+        if witness.overflow_samples is None or witness.overflow_samples <= 0:
+            return "a rotated ShapeDebug pose never sampled the per-axis overflow counters"
     if checked_pose(target, demo_args) is not None and witness.overflow_samples == 0:
         frames = range(1, max(witness.pose_samples, 1) + 1)
         if any(off_cardinal(frame_yaw(demo_args, frame)) for frame in frames):
@@ -586,8 +690,11 @@ def main() -> int:
         requested_first_frame_yaw(demo_args)
         if args.target == "IRCanvasStress":
             static_canvas_frame_sweep(demo_args)
+        shape_args = shape_profile_arguments(demo_args) if args.target == "IRShapeDebug" else None
     except ValueError as error:
-        parser.error(f"camera and sweep arguments must be finite numbers: {error}")
+        parser.error(str(error))
+    if shape_args is not None and "--window-mode" not in shape_args:
+        demo_args = [*demo_args, "--window-mode", "offscreen"]
     if any(argument.split("=", 1)[0] == "--capture-frame" for argument in demo_args):
         parser.error("--capture-frame puts a screenshot readback inside the timed window")
     root = Path(__file__).resolve().parents[2]
@@ -615,6 +722,9 @@ def main() -> int:
         "render_environment": {name: os.environ.get(name) for name in RENDER_EXPERIMENT_ENV},
         "runs": [],
     }
+    if shape_args is not None:
+        manifest["configuration_sha256"] = shape_configuration(binary, shape_args)
+        manifest["pivot_policy"] = "origin set by fixture; mode itself is not witnessed"
     report = build_dir / "creations/demos" / TARGETS[args.target] / "save_files/profile_report.txt"
     rows = []
     for index in range(1, args.repeats + 1):
@@ -643,12 +753,18 @@ def main() -> int:
             "quiet": quiet_matches[-1] if quiet_matches else "unknown",
             "engine_logged": engine_logged(log_text),
         }
+        if shape_args is not None:
+            run["configuration_unchanged"] = (
+                shape_configuration(binary, shape_args) == manifest["configuration_sha256"]
+            )
         manifest["runs"].append(run)
         if fresh:
             destination = output / f"run-{index}.txt"
             shutil.copy2(report, destination)
             row = parse_report(destination, f"run-{index}")
             run.update(witness_checks(args.target, demo_args, row.witness))
+            if shape_args is not None:
+                run["measurement_failure"] = shape_measurement_failure(shape_args, row)
             run["gpu_measured"] = (
                 any(stage.avg_ms > 0 for stage in row.gpu_stages)
                 or (row.gpu_frame.supported is True and row.gpu_frame.valid > 0)
@@ -659,6 +775,10 @@ def main() -> int:
             not clean
             or not fresh
             or not run.get("gpu_measured")
+            or (shape_args is not None and (
+                run["quiet"] != "guarded" or not run["configuration_unchanged"]
+                or run.get("measurement_failure") is not None
+            ))
             or run["yaw_pose_mismatch"] is not None
             or run["pivot_mismatch"] is not None
             or run["overflow_failure"] is not None
@@ -668,7 +788,13 @@ def main() -> int:
                 run.get("yaw_pose_mismatch"),
                 run.get("pivot_mismatch"),
                 run.get("overflow_failure"),
+                run.get("measurement_failure"),
             ]
+            if shape_args is not None:
+                if run["quiet"] != "guarded":
+                    reasons.append(f"quiet window was {run['quiet']}")
+                if not run["configuration_unchanged"]:
+                    reasons.append("runtime configuration changed during measurement")
             print(
                 f"run {index}: failed or missing requested measurements"
                 f"{''.join(f'; {reason}' for reason in reasons if reason)}; inspect {log_path}",
