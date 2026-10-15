@@ -395,16 +395,18 @@ void main() {
         if (!worldReceive && perAxisRoute == 0 && residualYaw == 0.0) {
             const bool smoothMode = voxelRenderOptions.x != 0 && voxelRenderOptions.y > 1;
             const bool finiteCoverage = shapeReceiverOptions.y != 0;
+            uint shapeOwnerKey = 0xffffffffu;
+            if (finiteCoverage && shapeReceiverOptions.x > 0) {
+                shapeOwnerKey = lightingShapeOwners[uint(pixel.y * size.x + pixel.x)];
+            }
+            const bool shapeOwned = shapeOwnerKey != 0xffffffffu &&
+                                    lightingShapeTiles[
+                                        shapeOwnerKey / kShapeSamplesPerTile
+                                    ].shapeIndex >= 0;
             localLightDepth = cardinalShapeReceiverDepth(
                 rawDepth,
                 voxelRenderOptions.y,
-                finiteCoverage && shapeSampleIsOwned(
-                    pixel,
-                    size.x,
-                    shapeReceiverOptions.x,
-                    lightingShapeOwners,
-                    lightingShapeTiles
-                ),
+                shapeOwned,
                 smoothMode && shapeReceiverOptions.z == 0,
                 finiteCoverage
             );

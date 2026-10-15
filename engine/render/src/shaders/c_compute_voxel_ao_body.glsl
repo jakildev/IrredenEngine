@@ -129,16 +129,20 @@ vec3 singleCanvasPixelToWorld3D(ivec2 pixel, int rawDepth, int cardinalIndex) {
     const bool smoothMode = receiverFrame.voxelRenderOptions.x != 0 &&
                             receiverFrame.voxelRenderOptions.y > 1;
     const bool finiteCoverage = receiverFrame.finiteCoverage != 0;
+    uint shapeOwnerKey = 0xffffffffu;
+    if (finiteCoverage && receiverFrame.shapeCount > 0) {
+        shapeOwnerKey = aoShapeOwners[
+            uint(pixel.y * receiverFrame.canvasSize.x + pixel.x)
+        ];
+    }
+    const bool shapeOwned = shapeOwnerKey != 0xffffffffu &&
+                            aoShapeTiles[
+                                shapeOwnerKey / kShapeSamplesPerTile
+                            ].shapeIndex >= 0;
     rawDepth = cardinalShapeReceiverDepth(
         rawDepth,
         receiverFrame.voxelRenderOptions.y,
-        finiteCoverage && shapeSampleIsOwned(
-            pixel,
-            receiverFrame.canvasSize.x,
-            receiverFrame.shapeCount,
-            aoShapeOwners,
-            aoShapeTiles
-        ),
+        shapeOwned,
         smoothMode && receiverFrame.smoothYawEnabled == 0,
         finiteCoverage
     );

@@ -13,12 +13,13 @@ def assert_ao_contract(source):
     recovery = compact(extract_function(source, "singleCanvasPixelToWorld3D"))
     if "rawDepth = cardinalShapeReceiverDepth(" not in recovery:
         raise AssertionError("AO reconstruction bypasses cardinal shape depth recovery")
-    owner_gate = (
-        "shapeOwned," if "device const uint *receiverOwners" in source else
-        "finiteCoverage && shapeSampleIsOwned("
-    )
-    if owner_gate not in recovery:
+    if "shapeOwned," not in recovery:
         raise AssertionError("AO reconstruction does not gate recovery on shape ownership")
+    if "device const uint *receiverOwners" not in source:
+        if "aoShapeOwners[" not in recovery or "aoShapeTiles[" not in recovery:
+            raise AssertionError("GLSL AO ownership must read the SSBO members directly")
+        if "shapeSampleIsOwned(" in source:
+            raise AssertionError("GLSL AO ownership must not pass unsized SSBO arrays")
     if "smoothMode && receiverFrame.smoothYawEnabled == 0" not in recovery:
         raise AssertionError("AO reconstruction does not gate recovery on the cardinal store")
     if source.count("singleCanvasPixelToWorld3D(") != 4:
@@ -29,11 +30,13 @@ def assert_local_light_contract(source, metal):
     body = compact(source)
     if "localLightDepth = cardinalShapeReceiverDepth(" not in body:
         raise AssertionError("local-light reconstruction bypasses cardinal shape depth recovery")
-    owner_gate = "shapeOwned," if metal else (
-        "finiteCoverage && shapeSampleIsOwned("
-    )
-    if owner_gate not in body:
+    if "shapeOwned," not in body:
         raise AssertionError("local-light reconstruction does not preserve voxel-owned depth")
+    if not metal:
+        if "lightingShapeOwners[" not in body or "lightingShapeTiles[" not in body:
+            raise AssertionError("GLSL local-light ownership must read the SSBO members directly")
+        if "shapeSampleIsOwned(" in body:
+            raise AssertionError("GLSL local-light ownership must not pass unsized SSBO arrays")
     if body.count("pixel, localLightDepth,") != 1:
         raise AssertionError("only the cardinal local-light position may use recovered depth")
     if "residualYaw == 0.0" not in body:
