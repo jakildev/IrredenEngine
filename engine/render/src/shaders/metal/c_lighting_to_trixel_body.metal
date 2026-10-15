@@ -1,6 +1,7 @@
 #include "ir_iso_common.metal"
 #if IR_SHAPE_RECEIVER
 #include "ir_receiver_face.metal"
+#include "ir_shape_data.metal"
 #endif
 #include "ir_per_axis_lighting.metal"
 #include "ir_per_axis_cell_dispatch.metal"
@@ -31,6 +32,10 @@ void writeLitTrixel(texture2d<float, access::read_write> canvas,
 
 kernel void IR_LIGHTING_KERNEL_NAME(
     device SourceVoxelFaces& sourceFaces [[buffer(8)]],
+#if IR_SHAPE_RECEIVER
+    device const uint *receiverOwners [[buffer(22)]],
+    device const ShapeTileDescriptor *receiverTiles [[buffer(30)]],
+#endif
     constant FrameDataLightingToTrixel& frameData [[buffer(27)]],
     constant FrameDataVoxelToTrixel& voxelFrameData [[buffer(7)]],
     constant FrameDataSun& sunFrameData [[buffer(29)]],
@@ -304,6 +309,29 @@ kernel void IR_LIGHTING_KERNEL_NAME(
         //     as |residual| grows;
         //   * otherwise (including every detached canvas, whose frame carries
         //     zero yaw) the cardinal-snap reconstruction.
+        int localLightDepth = rawDepth;
+#if IR_SHAPE_RECEIVER
+        if (!worldReceive && voxelFrameData.perAxisRoute == 0 &&
+            voxelFrameData.residualYaw == 0.0f) {
+            const bool smoothMode = voxelFrameData.voxelRenderOptions.x != 0 &&
+                                    voxelFrameData.voxelRenderOptions.y > 1;
+            const bool finiteCoverage = frameData.shapeReceiverOptions.y != 0;
+            const bool shapeOwned = finiteCoverage && shapeSampleIsOwned(
+                pixel,
+                size.x,
+                frameData.shapeReceiverOptions.x,
+                receiverOwners,
+                receiverTiles
+            );
+            localLightDepth = cardinalShapeReceiverDepth(
+                rawDepth,
+                voxelFrameData.voxelRenderOptions.y,
+                shapeOwned,
+                smoothMode && frameData.shapeReceiverOptions.z == 0,
+                finiteCoverage
+            );
+        }
+#endif
         float3 pos3D = worldReceive
             ? worldReceivePos
             : (voxelFrameData.perAxisRoute != 0
@@ -321,7 +349,7 @@ kernel void IR_LIGHTING_KERNEL_NAME(
                       )
                     : trixelCanvasPixelToWorld3D(
                           pixel,
-                          rawDepth,
+                          localLightDepth,
                           voxelFrameData.trixelCanvasOffsetZ1,
                           voxelFrameData.frameCanvasOffset,
                           voxelFrameData.voxelRenderOptions,

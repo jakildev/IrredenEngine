@@ -10,4 +10,5 @@ layout(std140, binding = 27) uniform FrameDataLightingToTrixel {
     uniform vec4  skyColor;
     uniform vec4  detachedViewToWorld;
     uniform ivec4 normalOptions;
+    uniform ivec4 shapeReceiverOptions;
 };

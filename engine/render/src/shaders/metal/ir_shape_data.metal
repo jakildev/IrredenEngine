@@ -87,6 +87,18 @@ inline int cardinalShapeReceiverDepth(
         : storedDepth;
 }
 
+inline bool shapeSampleIsOwned(
+    int2 pixel,
+    int ownerWidth,
+    int shapeCount,
+    device const uint *owners,
+    device const ShapeTileDescriptor *tiles
+) {
+    if (shapeCount <= 0) return false;
+    const uint key = owners[uint(pixel.y * ownerWidth + pixel.x)];
+    return key != 0xffffffffu && tiles[key / kShapeSamplesPerTile].shapeIndex >= 0;
+}
+
 inline bool shapeHasEntityRotation(float4 rotation) {
     return abs(rotation.w) < 0.9999;
 }
