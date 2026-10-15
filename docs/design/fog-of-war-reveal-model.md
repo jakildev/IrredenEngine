@@ -164,7 +164,9 @@ max(10 µs, ceil_to_10us(1.15 * M))` (#3878). A fixture whose `M` rounds to
 zero runs no FIELD march the stage's timing resolves, so the floor is the
 whole allowance, and a pass proves that the stage did not grow, not that the
 change's march cost is bounded. A fixture that changes the marched pixels,
-the sources or the blocks crossed measures its own `M`.
+the sources or the blocks crossed measures its own `M`. Any future criterion
+for a GPU stage row follows the general noise-aware per-stage rule in
+[gpu-stage-timing-cost-model.md](gpu-stage-timing-cost-model.md#state-the-noise-bound).
 
 ### Unpainted-route FIELD deviations
 

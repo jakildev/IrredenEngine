@@ -209,7 +209,28 @@ workload before applying them to a new optimization:
 3. **State the noise bound.** The IRPerfGrid wave scene is run-to-run
    nondeterministic; single-run deltas inside ~±10 ms at the 140 ms scale
    are not findings. Rank stages by *deltas across poses/configs*, repeat
-   runs, and prefer a quiet host when quoting absolute ms.
+   runs, and prefer a quiet host when quoting absolute ms. A criterion for a
+   GPU stage row must first measure that row's spread in its verified state,
+   then set its tolerance per row and lane rather than borrowing another
+   row's floor. For at least five interleaved base/head pairs, a row passes
+   when either (i) its head mean is within the lane's ratio limit of the base
+   mean or within the lane's absolute floor, or (ii) the one-sided 95% lower
+   confidence bound of its paired mean delta, `mean - t(0.95, n - 1) * sd /
+   sqrt(n)`, is within that limit. The fallback also requires a point ratio no
+   greater than 1.15x, and the frame rows must pass (i); it does not let a
+   whole-frame regression pass on stage-row variance. The committed
+   `comparison.json` is the evidence: its `base_runs` and `head_runs`, paired
+   by interleaving order, provide the inputs for the calculation.
+
+   PR #4381's Metal evidence in
+   `docs/perf/fog-ceiling-retention/metal-amended/` and its
+   `replication-identity/` block records why the floor is row-specific:
+   paired standard deviation is 47 to 59 microseconds for `voxelCompact`, 5
+   to 8 for `voxelStage1`, 1 to 4 for `voxelStage2` and
+   `voxelCardinalElect`, under 1 for `fogToTrixel`, and 90 to 350 for the
+   frame rows. These are between-run spreads over 300-frame
+   `--auto-profile` windows on the same Metal host and session, not
+   per-frame spread.
 
 ## 4. Migration status / open items
 
