@@ -10,8 +10,9 @@ using namespace IRMath;
 
 namespace IRComponents {
 
-// Preferred rendering component for game entities. The GPU evaluates the
-// shape's SDF directly -- no per-voxel allocation, no dirty tracking.
+// Direct analytic rendering for procedural effects, tools and measured scenes.
+// Lit game geometry can bake SDF authoring into ordinary voxel assets via
+// IRPrefab::Voxel::bakeSdfGrid; this descriptor allocates no voxel records.
 // Rendered by SHAPES_TO_TRIXEL (two-pass distance + color/entityID).
 //
 // flags_ values (see ShapeFlags in IRMath::SDF):

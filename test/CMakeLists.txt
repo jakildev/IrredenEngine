@@ -66,6 +66,7 @@ add_executable(IrredenEngineTest
   ecs/voxel_pool_teardown_test.cpp
   ecs/voxel_set_anchor_test.cpp
   ecs/voxel_set_edit_api_test.cpp
+  ecs/sdf_bake_test.cpp
   ecs/voxel_set_target_canvas_test.cpp
   math/physics_test.cpp
   math/edt_test.cpp

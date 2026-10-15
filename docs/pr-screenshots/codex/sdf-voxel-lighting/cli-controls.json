@@ -1,0 +1,34 @@
+[
+  {
+    "arguments": "--sdf-voxel-blockers",
+    "chunk_id": "ed9d0b",
+    "wall_time_seconds": 1.003176833,
+    "original_token_count": 78,
+    "output": "ir-run: <worktree>/build/creations/demos/shape_debug/IRShapeDebug --sdf-voxel-blockers (timeout: 20s) (window mode: background)\n[2026-10-14 17:39:55.688] [ClientLog] [error] --sdf-voxel-scene requires an isolated scene; blockers require that scene\nir-run: IRShapeDebug crashed after 1s\nir-run: RESULT=CRASH exe=IRShapeDebug exit=2 signal=none\nir-run: this run FAILED the clean-exit policy — outputs saved before the crash do not make it green. Fix the crash before shipping, whoever introduced it (docs/agents/FLEET.md §\"Clean-exit policy\").\n",
+    "exit_code": 1
+  },
+  {
+    "arguments": "--sdf-voxel-scene baked --lod-scene",
+    "chunk_id": "8ccf14",
+    "wall_time_seconds": 1.000004417,
+    "exit_code": 1,
+    "original_token_count": 156,
+    "output": "ir-run: <worktree>/build/creations/demos/shape_debug/IRShapeDebug --sdf-voxel-scene baked --lod-scene (timeout: 20s) (window mode: background)\n[2026-10-14 17:39:56.840] [ClientLog] [error] --sdf-voxel-scene requires an isolated scene; blockers require that scene\nir-run: IRShapeDebug crashed after 1s\nir-run: RESULT=CRASH exe=IRShapeDebug exit=2 signal=none\nir-run: this run FAILED the clean-exit policy — outputs saved before the crash do not make it green. Fix the crash before shipping, whoever introduced it (docs/agents/FLEET.md §\"Clean-exit policy\").\n"
+  },
+  {
+    "arguments": "--sdf-voxel-scene direct --spin-yaw 8 --auto-screenshot 20",
+    "chunk_id": "e46d5b",
+    "wall_time_seconds": 0.201646916,
+    "exit_code": 1,
+    "original_token_count": 179,
+    "output": "ir-run: <home>/src/IrredenEngine/engine/tools/bin/ir-acquire gpu -- <worktree>/build/creations/demos/shape_debug/IRShapeDebug --sdf-voxel-scene direct --spin-yaw 8 --auto-screenshot 20 (timeout: 20s) (window mode: offscreen)\n[2026-10-14 17:39:58.036] [ClientLog] [error] --sdf-voxel-scene requires an isolated scene; blockers require that scene\nir-run: IRShapeDebug crashed after 0s\nir-run: RESULT=CRASH exe=IRShapeDebug exit=2 signal=none\nir-run: this run FAILED the clean-exit policy — outputs saved before the crash do not make it green. Fix the crash before shipping, whoever introduced it (docs/agents/FLEET.md §\"Clean-exit policy\").\n"
+  },
+  {
+    "arguments": "--sdf-voxel-scene direct --ao-contact-probe",
+    "chunk_id": "29452e",
+    "wall_time_seconds": 1.002061875,
+    "original_token_count": 84,
+    "output": "ir-run: <worktree>/build/creations/demos/shape_debug/IRShapeDebug --sdf-voxel-scene direct --ao-contact-probe (timeout: 20s) (window mode: background)\n[2026-10-14 17:39:58.372] [ClientLog] [error] --sdf-voxel-scene requires an isolated scene; blockers require that scene\nir-run: IRShapeDebug crashed after 1s\nir-run: RESULT=CRASH exe=IRShapeDebug exit=2 signal=none\nir-run: this run FAILED the clean-exit policy — outputs saved before the crash do not make it green. Fix the crash before shipping, whoever introduced it (docs/agents/FLEET.md §\"Clean-exit policy\").\n",
+    "exit_code": 1
+  }
+]

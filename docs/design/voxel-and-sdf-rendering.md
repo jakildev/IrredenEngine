@@ -20,6 +20,53 @@ useful, but they must not require developers to guess different dimensions,
 placement or lighting behavior. Removal requires a consumer audit and an explicit
 API decision; a local demo is not evidence that external users do not need one.
 
+## SDF authoring with voxel runtime geometry
+
+Lit game objects should converge on ordinary voxel geometry. An SDF can be an
+authoring recipe without being a second runtime lighting representation.
+`IRPrefab::Voxel::bakeSdfGrid` produces a DENSE asset that can be saved with the
+existing asset writer or attached through `DenseVoxel::toComponent`. Rendering,
+sun casting, reception, AO and local-light blocking then consume the same voxel
+data as hand-authored occupancy. No shape-specific receiver solver is added by
+this route. Direct SDF remains available for compatibility, tools, effects and
+measured workloads; existing descriptors are not silently converted.
+
+The initial baker handles solid built-in primitives. It has explicit grid bounds,
+unit cells, opaque occupied records and the existing `distance <= 0.5` threshold.
+It accepts descriptor-authored parameters and applies BOX `effectiveParams`
+once; existing `fillSdf` callers retain their raw evaluation-parameter convention.
+Cell centers are `i - (size - 1)/2`, so odd and even grids have different phases.
+A BOX sample satisfies `2*abs(center) <= authored dimension`; boundary ties can
+include an additional cell when grid and shape parity differ. The grid clips the
+result. It must be sized intentionally, not inferred from a bounding radius and
+assumed complete. CENTER/GROUND anchors and model transforms are applied when the
+asset becomes an entity, not baked twice. Hollow flags, procedural color flags
+and custom shader SDFs are not implicit conversion inputs.
+
+The resulting finite cubes are the geometry of the object, including its shadow.
+This is not a promise of the smooth analytic silhouette: direct rendering changes
+its field threshold with subdivision, while a baked asset keeps its authored
+occupancy. Finer authored grids and LODs require an explicit world-scale contract.
+Do not blur or inflate the voxel shadow to resemble the analytic arm.
+
+`IRShapeDebug --sdf-voxel-scene direct|baked` compares the same four primitive
+parameters, placements and materials on an ordinary voxel floor with a local
+light. `--sdf-voxel-blockers` adds ordinary voxel casters above the subjects;
+`--no-shadows`, `--no-ao` and debug overlays isolate the effects. Automatic shots
+include cardinal/intermediate yaw and two zoom levels with a fixed origin pivot.
+Live `--spin-yaw` is supported separately from those automatic shots. This is a representation
+comparison, not an assertion that both images must match. The baker's unit tests
+independently check occupancy, threshold ties, torus holes, serialization and
+pool attachment (all six face-occlusion bits, active masks and AO contribution).
+
+Baking costs CPU time and dense storage once per authored asset; attaching still
+allocates one pool span per entity. Sharing an asset does not yet imply shared
+resident GPU geometry. Warm-frame comparisons must separate startup baking and
+uploads, then measure geometry, shadow, AO and lighting stages and complete frame
+time on both backends before choosing defaults. Dynamic fields that change every
+frame need a separate GPU occupancy-generation design and cost comparison.
+Further analytic receiver extensions are deferred while this route is evaluated.
+
 ## Shared geometric contract
 
 World dimensions and transforms are independent of camera yaw, zoom and sample
