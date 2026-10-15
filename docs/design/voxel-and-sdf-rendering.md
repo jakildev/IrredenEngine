@@ -80,6 +80,46 @@ Both account for the Z1 framebuffer origin and exclude pixels hidden by the
 caster using a matching no-shadow control. A one-pixel boundary band is a
 measurement tolerance, not renderer smoothing.
 
+### Retained curved shadow receivers
+
+Smooth sphere and cylinder receivers recover the camera ray of the
+retained producer sample, before its six display offsets. The ray intersects
+`evaluateSDF <= 0.5 / effectiveSubdivisions`, the same solid used for casting.
+The shared rendered center and rounded projected origin define placement;
+cylinder rays also apply the producer's inverse model rotation. A local
+AABB bounds the existing algebraic/partitioned solver. The earliest hit supplies
+the world shadow position; the displayed signed face normal still supplies the
+sun-facing test. Replacing that normal with an analytic gradient could skip
+self-occlusion on a displayed face that faces the light from the solid's back side.
+
+This computes shadow visibility per occupied canvas receiver texel, not per
+framebuffer fragment. Display texels sharing a retained producer sample share
+the same ray but can repeat the query; there is no per-owner result cache.
+It preserves owner, depth, coverage, face-slot normals and material lighting. Hollow, lattice, subdivision-one and residual-deformed cardinal
+shapes keep their existing path. The rounded cylinder cap solver is bounded but can invoke torus root queries;
+native stage timings are required before calling this extension performance-neutral.
+
+`test_render_curved_shadow_receiver.py` executes both shader receivers against
+independent double-precision field bracketing and exact cap rays,
+including model rotation, snapped placement, camera yaw, density and owner-key
+halves. The sphere route controls separately preserve normal and provenance
+gating. A deterministic rotated-torus control forbids moving a retained sample
+onto a skipped nearer ray interval. These tests do not certify curved display reconstruction: accepted
+fractional SDF samples are not a single voxel occupancy lattice, so their
+finite-cube union is a representation comparison rather than a required surface.
+Cone and torus receivers remain on their existing fallback. The producer keeps
+its first accepted integer-depth sample; the first continuous root can belong
+to a nearer interval containing no such sample. The torus is nonconvex, and the
+cone's positive-threshold field is also locally nonconvex where its linear side
+meets the spherical apex cap. Supporting these shapes requires recovering the
+retained sample depth and selecting the entry of its connected occupied interval,
+not merely the first root or a root in the preceding integer step. That work
+must retain native owner/depth controls and bounded query cost.
+
+The [torus ownership probe](../pr-screenshots/codex/shape-shadow-sun-space/torus-surface-probe/README.md)
+retains the unresolved face-coverage evidence. An explicit finite-face display
+contract must precede changes to those bands; normal averaging is not a repair.
+
 Ambient occlusion is local ambient visibility, separate from sun visibility and
 Lambert shading. A rotated voxel staircase has actual exposed faces and can have
 actual concave contacts. Do not erase those normals or darken every face solely

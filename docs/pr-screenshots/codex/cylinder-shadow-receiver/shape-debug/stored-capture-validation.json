@@ -1,0 +1,539 @@
+{
+  "native_rerun": false,
+  "method": "Compare 21 preserved clean current captures against the updated macos-debug references with the real repository comparator.",
+  "thresholds": {
+    "per_pixel_tol": 8,
+    "match_pct": 99.9,
+    "max_delta": 64,
+    "psnr_db": 35.0
+  },
+  "passed": 21,
+  "total": 21,
+  "rows": [
+    {
+      "label": "zoom1_origin",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "scripts/render-compare.py",
+        "/tmp/cylinder-default-controls/after/zoom1_origin.png",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/creations/demos/shape_debug/test/references/macos-debug/zoom1_origin.png",
+        "--json",
+        "--per-pixel-tol",
+        "8",
+        "--threshold-match-pct",
+        "99.9",
+        "--threshold-max-delta",
+        "64",
+        "--threshold-psnr",
+        "35.0"
+      ],
+      "exit_code": 0,
+      "result": {
+        "pass": true,
+        "match_pct": 99.9997,
+        "max_delta": 53,
+        "psnr_db": 70.59
+      }
+    },
+    {
+      "label": "zoom2_origin",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "scripts/render-compare.py",
+        "/tmp/cylinder-default-controls/after/zoom2_origin.png",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/creations/demos/shape_debug/test/references/macos-debug/zoom2_origin.png",
+        "--json",
+        "--per-pixel-tol",
+        "8",
+        "--threshold-match-pct",
+        "99.9",
+        "--threshold-max-delta",
+        "64",
+        "--threshold-psnr",
+        "35.0"
+      ],
+      "exit_code": 0,
+      "result": {
+        "pass": true,
+        "match_pct": 100.0,
+        "max_delta": 0,
+        "psnr_db": "inf"
+      }
+    },
+    {
+      "label": "zoom4_origin",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "scripts/render-compare.py",
+        "/tmp/cylinder-default-controls/after/zoom4_origin.png",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/creations/demos/shape_debug/test/references/macos-debug/zoom4_origin.png",
+        "--json",
+        "--per-pixel-tol",
+        "8",
+        "--threshold-match-pct",
+        "99.9",
+        "--threshold-max-delta",
+        "64",
+        "--threshold-psnr",
+        "35.0"
+      ],
+      "exit_code": 0,
+      "result": {
+        "pass": true,
+        "match_pct": 100.0,
+        "max_delta": 0,
+        "psnr_db": "inf"
+      }
+    },
+    {
+      "label": "zoom1_odd_offset",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "scripts/render-compare.py",
+        "/tmp/cylinder-default-controls/after/zoom1_odd_offset.png",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/creations/demos/shape_debug/test/references/macos-debug/zoom1_odd_offset.png",
+        "--json",
+        "--per-pixel-tol",
+        "8",
+        "--threshold-match-pct",
+        "99.9",
+        "--threshold-max-delta",
+        "64",
+        "--threshold-psnr",
+        "35.0"
+      ],
+      "exit_code": 0,
+      "result": {
+        "pass": true,
+        "match_pct": 99.9997,
+        "max_delta": 53,
+        "psnr_db": 70.59
+      }
+    },
+    {
+      "label": "zoom8_origin",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "scripts/render-compare.py",
+        "/tmp/cylinder-default-controls/after/zoom8_origin.png",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/creations/demos/shape_debug/test/references/macos-debug/zoom8_origin.png",
+        "--json",
+        "--per-pixel-tol",
+        "8",
+        "--threshold-match-pct",
+        "99.9",
+        "--threshold-max-delta",
+        "64",
+        "--threshold-psnr",
+        "35.0"
+      ],
+      "exit_code": 0,
+      "result": {
+        "pass": true,
+        "match_pct": 100.0,
+        "max_delta": 0,
+        "psnr_db": "inf"
+      }
+    },
+    {
+      "label": "zoom4_offset_3_5",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "scripts/render-compare.py",
+        "/tmp/cylinder-default-controls/after/zoom4_offset_3_5.png",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/creations/demos/shape_debug/test/references/macos-debug/zoom4_offset_3_5.png",
+        "--json",
+        "--per-pixel-tol",
+        "8",
+        "--threshold-match-pct",
+        "99.9",
+        "--threshold-max-delta",
+        "64",
+        "--threshold-psnr",
+        "35.0"
+      ],
+      "exit_code": 0,
+      "result": {
+        "pass": true,
+        "match_pct": 100.0,
+        "max_delta": 0,
+        "psnr_db": "inf"
+      }
+    },
+    {
+      "label": "zoom16_lod_fine_sphere",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "scripts/render-compare.py",
+        "/tmp/cylinder-default-controls/after/zoom16_lod_fine_sphere.png",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/creations/demos/shape_debug/test/references/macos-debug/zoom16_lod_fine_sphere.png",
+        "--json",
+        "--per-pixel-tol",
+        "8",
+        "--threshold-match-pct",
+        "99.9",
+        "--threshold-max-delta",
+        "64",
+        "--threshold-psnr",
+        "35.0"
+      ],
+      "exit_code": 0,
+      "result": {
+        "pass": true,
+        "match_pct": 100.0,
+        "max_delta": 0,
+        "psnr_db": "inf"
+      }
+    },
+    {
+      "label": "lod_swap_zoom1_cube",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "scripts/render-compare.py",
+        "/tmp/cylinder-default-controls/after/lod_swap_zoom1_cube.png",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/creations/demos/shape_debug/test/references/macos-debug/lod_swap_zoom1_cube.png",
+        "--json",
+        "--per-pixel-tol",
+        "8",
+        "--threshold-match-pct",
+        "99.9",
+        "--threshold-max-delta",
+        "64",
+        "--threshold-psnr",
+        "35.0"
+      ],
+      "exit_code": 0,
+      "result": {
+        "pass": true,
+        "match_pct": 100.0,
+        "max_delta": 0,
+        "psnr_db": "inf"
+      }
+    },
+    {
+      "label": "lod_swap_zoom2_cube",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "scripts/render-compare.py",
+        "/tmp/cylinder-default-controls/after/lod_swap_zoom2_cube.png",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/creations/demos/shape_debug/test/references/macos-debug/lod_swap_zoom2_cube.png",
+        "--json",
+        "--per-pixel-tol",
+        "8",
+        "--threshold-match-pct",
+        "99.9",
+        "--threshold-max-delta",
+        "64",
+        "--threshold-psnr",
+        "35.0"
+      ],
+      "exit_code": 0,
+      "result": {
+        "pass": true,
+        "match_pct": 100.0,
+        "max_delta": 0,
+        "psnr_db": "inf"
+      }
+    },
+    {
+      "label": "lod_swap_zoom4_cone",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "scripts/render-compare.py",
+        "/tmp/cylinder-default-controls/after/lod_swap_zoom4_cone.png",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/creations/demos/shape_debug/test/references/macos-debug/lod_swap_zoom4_cone.png",
+        "--json",
+        "--per-pixel-tol",
+        "8",
+        "--threshold-match-pct",
+        "99.9",
+        "--threshold-max-delta",
+        "64",
+        "--threshold-psnr",
+        "35.0"
+      ],
+      "exit_code": 0,
+      "result": {
+        "pass": true,
+        "match_pct": 100.0,
+        "max_delta": 0,
+        "psnr_db": "inf"
+      }
+    },
+    {
+      "label": "lod_swap_zoom8_cone",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "scripts/render-compare.py",
+        "/tmp/cylinder-default-controls/after/lod_swap_zoom8_cone.png",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/creations/demos/shape_debug/test/references/macos-debug/lod_swap_zoom8_cone.png",
+        "--json",
+        "--per-pixel-tol",
+        "8",
+        "--threshold-match-pct",
+        "99.9",
+        "--threshold-max-delta",
+        "64",
+        "--threshold-psnr",
+        "35.0"
+      ],
+      "exit_code": 0,
+      "result": {
+        "pass": true,
+        "match_pct": 100.0,
+        "max_delta": 0,
+        "psnr_db": "inf"
+      }
+    },
+    {
+      "label": "lod_swap_zoom16_sphere",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "scripts/render-compare.py",
+        "/tmp/cylinder-default-controls/after/lod_swap_zoom16_sphere.png",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/creations/demos/shape_debug/test/references/macos-debug/lod_swap_zoom16_sphere.png",
+        "--json",
+        "--per-pixel-tol",
+        "8",
+        "--threshold-match-pct",
+        "99.9",
+        "--threshold-max-delta",
+        "64",
+        "--threshold-psnr",
+        "35.0"
+      ],
+      "exit_code": 0,
+      "result": {
+        "pass": true,
+        "match_pct": 100.0,
+        "max_delta": 0,
+        "psnr_db": "inf"
+      }
+    },
+    {
+      "label": "zoom4_yaw90",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "scripts/render-compare.py",
+        "/tmp/cylinder-default-controls/after/zoom4_yaw90.png",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/creations/demos/shape_debug/test/references/macos-debug/zoom4_yaw90.png",
+        "--json",
+        "--per-pixel-tol",
+        "8",
+        "--threshold-match-pct",
+        "99.9",
+        "--threshold-max-delta",
+        "64",
+        "--threshold-psnr",
+        "35.0"
+      ],
+      "exit_code": 0,
+      "result": {
+        "pass": true,
+        "match_pct": 100.0,
+        "max_delta": 0,
+        "psnr_db": "inf"
+      }
+    },
+    {
+      "label": "zoom4_yaw180",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "scripts/render-compare.py",
+        "/tmp/cylinder-default-controls/after/zoom4_yaw180.png",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/creations/demos/shape_debug/test/references/macos-debug/zoom4_yaw180.png",
+        "--json",
+        "--per-pixel-tol",
+        "8",
+        "--threshold-match-pct",
+        "99.9",
+        "--threshold-max-delta",
+        "64",
+        "--threshold-psnr",
+        "35.0"
+      ],
+      "exit_code": 0,
+      "result": {
+        "pass": true,
+        "match_pct": 100.0,
+        "max_delta": 0,
+        "psnr_db": "inf"
+      }
+    },
+    {
+      "label": "zoom4_yaw270",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "scripts/render-compare.py",
+        "/tmp/cylinder-default-controls/after/zoom4_yaw270.png",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/creations/demos/shape_debug/test/references/macos-debug/zoom4_yaw270.png",
+        "--json",
+        "--per-pixel-tol",
+        "8",
+        "--threshold-match-pct",
+        "99.9",
+        "--threshold-max-delta",
+        "64",
+        "--threshold-psnr",
+        "35.0"
+      ],
+      "exit_code": 0,
+      "result": {
+        "pass": true,
+        "match_pct": 100.0,
+        "max_delta": 0,
+        "psnr_db": "inf"
+      }
+    },
+    {
+      "label": "zoom4_yaw45_inter_cardinal",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "scripts/render-compare.py",
+        "/tmp/cylinder-default-controls/after/zoom4_yaw45_inter_cardinal.png",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/creations/demos/shape_debug/test/references/macos-debug/zoom4_yaw45_inter_cardinal.png",
+        "--json",
+        "--per-pixel-tol",
+        "8",
+        "--threshold-match-pct",
+        "99.9",
+        "--threshold-max-delta",
+        "64",
+        "--threshold-psnr",
+        "35.0"
+      ],
+      "exit_code": 0,
+      "result": {
+        "pass": true,
+        "match_pct": 100.0,
+        "max_delta": 0,
+        "psnr_db": "inf"
+      }
+    },
+    {
+      "label": "zoom8_yaw180",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "scripts/render-compare.py",
+        "/tmp/cylinder-default-controls/after/zoom8_yaw180.png",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/creations/demos/shape_debug/test/references/macos-debug/zoom8_yaw180.png",
+        "--json",
+        "--per-pixel-tol",
+        "8",
+        "--threshold-match-pct",
+        "99.9",
+        "--threshold-max-delta",
+        "64",
+        "--threshold-psnr",
+        "35.0"
+      ],
+      "exit_code": 0,
+      "result": {
+        "pass": true,
+        "match_pct": 100.0,
+        "max_delta": 0,
+        "psnr_db": "inf"
+      }
+    },
+    {
+      "label": "zoom4_pan16_yaw0_pivot",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "scripts/render-compare.py",
+        "/tmp/cylinder-default-controls/after/zoom4_pan16_yaw0_pivot.png",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/creations/demos/shape_debug/test/references/macos-debug/zoom4_pan16_yaw0_pivot.png",
+        "--json",
+        "--per-pixel-tol",
+        "8",
+        "--threshold-match-pct",
+        "99.9",
+        "--threshold-max-delta",
+        "64",
+        "--threshold-psnr",
+        "35.0"
+      ],
+      "exit_code": 0,
+      "result": {
+        "pass": true,
+        "match_pct": 100.0,
+        "max_delta": 0,
+        "psnr_db": "inf"
+      }
+    },
+    {
+      "label": "zoom4_pan16_yaw90_pivot",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "scripts/render-compare.py",
+        "/tmp/cylinder-default-controls/after/zoom4_pan16_yaw90_pivot.png",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/creations/demos/shape_debug/test/references/macos-debug/zoom4_pan16_yaw90_pivot.png",
+        "--json",
+        "--per-pixel-tol",
+        "8",
+        "--threshold-match-pct",
+        "99.9",
+        "--threshold-max-delta",
+        "64",
+        "--threshold-psnr",
+        "35.0"
+      ],
+      "exit_code": 0,
+      "result": {
+        "pass": true,
+        "match_pct": 100.0,
+        "max_delta": 0,
+        "psnr_db": "inf"
+      }
+    },
+    {
+      "label": "zoom4_pan16_yaw180_pivot",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "scripts/render-compare.py",
+        "/tmp/cylinder-default-controls/after/zoom4_pan16_yaw180_pivot.png",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/creations/demos/shape_debug/test/references/macos-debug/zoom4_pan16_yaw180_pivot.png",
+        "--json",
+        "--per-pixel-tol",
+        "8",
+        "--threshold-match-pct",
+        "99.9",
+        "--threshold-max-delta",
+        "64",
+        "--threshold-psnr",
+        "35.0"
+      ],
+      "exit_code": 0,
+      "result": {
+        "pass": true,
+        "match_pct": 100.0,
+        "max_delta": 0,
+        "psnr_db": "inf"
+      }
+    },
+    {
+      "label": "zoom4_pan16_yaw45_pivot",
+      "command": [
+        "/opt/homebrew/opt/python@3.14/bin/python3.14",
+        "scripts/render-compare.py",
+        "/tmp/cylinder-default-controls/after/zoom4_pan16_yaw45_pivot.png",
+        "/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render/creations/demos/shape_debug/test/references/macos-debug/zoom4_pan16_yaw45_pivot.png",
+        "--json",
+        "--per-pixel-tol",
+        "8",
+        "--threshold-match-pct",
+        "99.9",
+        "--threshold-max-delta",
+        "64",
+        "--threshold-psnr",
+        "35.0"
+      ],
+      "exit_code": 0,
+      "result": {
+        "pass": true,
+        "match_pct": 100.0,
+        "max_delta": 0,
+        "psnr_db": "inf"
+      }
+    }
+  ]
+}

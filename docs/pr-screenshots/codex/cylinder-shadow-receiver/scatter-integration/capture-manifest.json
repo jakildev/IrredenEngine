@@ -1,0 +1,167 @@
+{
+  "arm": "after",
+  "revision": "1aaaba07387530f836988428a645d353b6850802",
+  "command": [
+    "fleet-run",
+    "--timeout",
+    "180",
+    "IRShapeDebug",
+    "--auto-screenshot",
+    "10"
+  ],
+  "exit_code": 0,
+  "clean": true,
+  "binary_sha256": "5599f593a4335868682b0736875bc7ade1f34c99a0346cff2f96f6e943068a60",
+  "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "images": [
+    {
+      "label": "zoom1_origin",
+      "file": "zoom1_origin.png",
+      "source": "screenshot_000010.png",
+      "sha256": "756b1865478e62cd07dd86a8915332bbdde1592a38a3e3a044586e192220e9e0"
+    },
+    {
+      "label": "zoom2_origin",
+      "file": "zoom2_origin.png",
+      "source": "screenshot_000011.png",
+      "sha256": "ed90a3751b806d1df9070de0caf7827c8a8497e6b6dec0e82b9f379227a7fc3d"
+    },
+    {
+      "label": "zoom4_origin",
+      "file": "zoom4_origin.png",
+      "source": "screenshot_000012.png",
+      "sha256": "b3da3a9a0ac0dea3eca945cca9a91d20eb25348f500dec1259452dc0123c3ecb"
+    },
+    {
+      "label": "zoom1_odd_offset",
+      "file": "zoom1_odd_offset.png",
+      "source": "screenshot_000013.png",
+      "sha256": "61ba1d21d6d8c7195ee6d67afedd231913601d64b9c05f6f147aac8aea4d8964"
+    },
+    {
+      "label": "zoom8_origin",
+      "file": "zoom8_origin.png",
+      "source": "screenshot_000014.png",
+      "sha256": "56e8841b9824951df13b1ecffecbb02a48925950d0e35d2d53fd819bcb87b622"
+    },
+    {
+      "label": "zoom4_offset_3_5",
+      "file": "zoom4_offset_3_5.png",
+      "source": "screenshot_000015.png",
+      "sha256": "29f3dff978225afa44c28ea7d52a10b803c405a9b72686bd84add209de1dbc88"
+    },
+    {
+      "label": "zoom16_lod_fine_sphere",
+      "file": "zoom16_lod_fine_sphere.png",
+      "source": "screenshot_000016.png",
+      "sha256": "a1e844ac8a280746f0670e84b81476606c3938f2642a6ccca93dd19926cbe42e"
+    },
+    {
+      "label": "lod_swap_zoom1_cube",
+      "file": "lod_swap_zoom1_cube.png",
+      "source": "screenshot_000017.png",
+      "sha256": "7554eab7c5915900fe5c9cbe74c4462290bc83c94e381e82dcd443ee10a16803"
+    },
+    {
+      "label": "lod_swap_zoom2_cube",
+      "file": "lod_swap_zoom2_cube.png",
+      "source": "screenshot_000018.png",
+      "sha256": "a678d5317a3f6282b536cb0d95e27b63b2973942d0d6c57fdc1d5221785e9e1d"
+    },
+    {
+      "label": "lod_swap_zoom4_cone",
+      "file": "lod_swap_zoom4_cone.png",
+      "source": "screenshot_000019.png",
+      "sha256": "26fa328bf46327cf20137d95ec2539228dcf80d5ff0856f43a1cd3ce6e81d9f1"
+    },
+    {
+      "label": "lod_swap_zoom8_cone",
+      "file": "lod_swap_zoom8_cone.png",
+      "source": "screenshot_000020.png",
+      "sha256": "44ed6228fb3099f1d3b83007d930451ed2287b21b6742d688d11727578e7d1e0"
+    },
+    {
+      "label": "lod_swap_zoom16_sphere",
+      "file": "lod_swap_zoom16_sphere.png",
+      "source": "screenshot_000021.png",
+      "sha256": "5afa8541ecd25e5437a494ae8c61106d3421d9744e1cbbd0d2dc2e4b245d84b7"
+    },
+    {
+      "label": "zoom4_yaw90",
+      "file": "zoom4_yaw90.png",
+      "source": "screenshot_000022.png",
+      "sha256": "7810bfd8a6e358ead9992a35e80f3fc112db5013e14541636c6acd681705a475"
+    },
+    {
+      "label": "zoom4_yaw180",
+      "file": "zoom4_yaw180.png",
+      "source": "screenshot_000023.png",
+      "sha256": "79031c6646f8b321f91beb08d07d4bd6cd6174b4562a55867c205a6c76573600"
+    },
+    {
+      "label": "zoom4_yaw270",
+      "file": "zoom4_yaw270.png",
+      "source": "screenshot_000024.png",
+      "sha256": "7516f96104a41a5f4938933f0b719a040ae68f563c9c44384e1094a96b7aaa0b"
+    },
+    {
+      "label": "zoom4_yaw45_inter_cardinal",
+      "file": "zoom4_yaw45_inter_cardinal.png",
+      "source": "screenshot_000025.png",
+      "sha256": "598283855343767dcc316e2a733503f2c1fc91e08adea1d719c8eba40447fce7"
+    },
+    {
+      "label": "zoom8_yaw180",
+      "file": "zoom8_yaw180.png",
+      "source": "screenshot_000026.png",
+      "sha256": "4e1ce64f02993aa67d6bc4695a2161331a176ad9829054458d34490c6e38be0d"
+    },
+    {
+      "label": "zoom4_pan16_yaw0_pivot",
+      "file": "zoom4_pan16_yaw0_pivot.png",
+      "source": "screenshot_000027.png",
+      "sha256": "ed4c0ab01a987a96ae83178d753f795b7d71f2c089f84f945f195d1cbfc1c5d6"
+    },
+    {
+      "label": "zoom4_pan16_yaw90_pivot",
+      "file": "zoom4_pan16_yaw90_pivot.png",
+      "source": "screenshot_000028.png",
+      "sha256": "5105aae5f2877fdd9beb891f47d10bf3ea7a259dc09d6226616f3895fd02b065"
+    },
+    {
+      "label": "zoom4_pan16_yaw180_pivot",
+      "file": "zoom4_pan16_yaw180_pivot.png",
+      "source": "screenshot_000029.png",
+      "sha256": "761b4d9c2b104316a643375e09a940c93ead17102853370b9b61da933a4760d7"
+    },
+    {
+      "label": "zoom4_pan16_yaw45_pivot",
+      "file": "zoom4_pan16_yaw45_pivot.png",
+      "source": "screenshot_000030.png",
+      "sha256": "4e3d0c962aa15ef79f3e66b03966db3c7ec1948e1d38b8a5fc32705c82cdf330"
+    }
+  ],
+  "cameras": [
+    "label=zoom1_origin yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)",
+    "label=zoom2_origin yaw=0 zoom=(2,2) effectiveIso=(0,0) subdivisions=2 gameResolution=(1280,720)",
+    "label=zoom4_origin yaw=0 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)",
+    "label=zoom1_odd_offset yaw=0 zoom=(1,1) effectiveIso=(1,0) subdivisions=1 gameResolution=(1280,720)",
+    "label=zoom8_origin yaw=0 zoom=(8,8) effectiveIso=(0,0) subdivisions=8 gameResolution=(1280,720)",
+    "label=zoom4_offset_3_5 yaw=0 zoom=(4,4) effectiveIso=(3,5) subdivisions=4 gameResolution=(1280,720)",
+    "label=zoom16_lod_fine_sphere yaw=0 zoom=(16,16) effectiveIso=(0,0) subdivisions=16 gameResolution=(1280,720)",
+    "label=lod_swap_zoom1_cube yaw=0 zoom=(1,1) effectiveIso=(16,-16) subdivisions=1 gameResolution=(1280,720)",
+    "label=lod_swap_zoom2_cube yaw=0 zoom=(2,2) effectiveIso=(16,-16) subdivisions=2 gameResolution=(1280,720)",
+    "label=lod_swap_zoom4_cone yaw=0 zoom=(4,4) effectiveIso=(16,-16) subdivisions=4 gameResolution=(1280,720)",
+    "label=lod_swap_zoom8_cone yaw=0 zoom=(8,8) effectiveIso=(16,-16) subdivisions=8 gameResolution=(1280,720)",
+    "label=lod_swap_zoom16_sphere yaw=0 zoom=(16,16) effectiveIso=(16,-16) subdivisions=16 gameResolution=(1280,720)",
+    "label=zoom4_yaw90 yaw=1.5707963 zoom=(4,4) effectiveIso=(-15.291667,15.291666) subdivisions=4 gameResolution=(1280,720)",
+    "label=zoom4_yaw180 yaw=-3.1414928 zoom=(4,4) effectiveIso=(0.0015258789,30.583334) subdivisions=4 gameResolution=(1280,720)",
+    "label=zoom4_yaw270 yaw=-1.5707963 zoom=(4,4) effectiveIso=(15.291667,15.291666) subdivisions=4 gameResolution=(1280,720)",
+    "label=zoom4_yaw45_inter_cardinal yaw=0.78539824 zoom=(4,4) effectiveIso=(-3.3194757,-13.611761) subdivisions=4 gameResolution=(1280,720)",
+    "label=zoom8_yaw180 yaw=-3.1414928 zoom=(8,8) effectiveIso=(-15.23695,31.19373) subdivisions=8 gameResolution=(1280,720)",
+    "label=zoom4_pan16_yaw0_pivot yaw=0 zoom=(4,4) effectiveIso=(31.23895,7.0660973) subdivisions=4 gameResolution=(1280,720)",
+    "label=zoom4_pan16_yaw90_pivot yaw=1.5707963 zoom=(4,4) effectiveIso=(-2.1446323,-22.028215) subdivisions=4 gameResolution=(1280,720)",
+    "label=zoom4_pan16_yaw180_pivot yaw=-3.1414928 zoom=(4,4) effectiveIso=(-31.342525,11.462285) subdivisions=4 gameResolution=(1280,720)",
+    "label=zoom4_pan16_yaw45_pivot yaw=0.78539824 zoom=(4,4) effectiveIso=(20.641697,-14.375439) subdivisions=4 gameResolution=(1280,720)"
+  ]
+}

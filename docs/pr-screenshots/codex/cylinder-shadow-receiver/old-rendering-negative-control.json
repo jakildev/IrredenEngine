@@ -1,0 +1,12 @@
+{
+  "actual": "before/cylinder-external/yaw-045.png",
+  "reference": "after/cylinder-external/yaw-045.png",
+  "per_pixel_tol": 8,
+  "threshold_match_pct": 99.9,
+  "threshold_max_delta": 64,
+  "exit_code": 1,
+  "pass": false,
+  "match_pct": 99.7431,
+  "max_delta": 132,
+  "psnr_db": 39.49
+}

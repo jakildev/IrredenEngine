@@ -246,9 +246,9 @@ vec3 cardinalVoxelSurfaceCenter(ivec2 p,int e,ivec2 z,vec2 offset,ivec2 options,
   std::exit(21);
  ++centerCalls;return surfacePoint;
 }
-bool selectedShapeSphereShadowReceiver(ivec2,int,vec3& p){p={31,32,33};return sphere;}
-bool selectedShapeSphereShadowReceiver(ivec2 p,int w,int,int,int,int,vec3& out){
- return selectedShapeSphereShadowReceiver(p,w,out);
+bool selectedShapeAnalyticShadowReceiver(ivec2,int,vec3& p){p={31,32,33};return sphere;}
+bool selectedShapeAnalyticShadowReceiver(ivec2 p,int w,int,int,int,int,vec3& out){
+ return selectedShapeAnalyticShadowReceiver(p,w,out);
 }
 float worldSurfaceSunShadowFactor(vec3 p,vec3 n,float depth,vec4 rotation,int=0,int=0){
  ++surfaceCalls;sampledPosition=p;sampledNormal=n;sampledDepth=depth;sampledRotation=rotation;
