@@ -18,6 +18,7 @@
 #include <irreden/script/prefab_api.hpp>
 
 #include "lod_scene.hpp"
+#include "sdf_voxel_scene.hpp"
 
 #include <algorithm>
 #include <array>
@@ -1503,6 +1504,13 @@ void registerCliArgs() {
         "--lod-scene",
         "Shared prefab assets, resident/lazy parts and moving attached LOD variants"
     );
+    args.enumValue(
+        "--sdf-voxel-scene",
+        "Matched lit primitives using direct SDF or baked ordinary voxel assets",
+        {"off", "direct", "baked"},
+        "off"
+    );
+    args.flag("--sdf-voxel-blockers", "Add external voxel casters to --sdf-voxel-scene");
     args.flag("--pan-sweep", "Fine fixed-yaw camera-pan jitter sweep (#1944)");
     args.flag("--yaw-sweep", "Fine fixed-position camera-yaw jitter sweep (#1944)");
     args.enumValue(
@@ -1720,6 +1728,23 @@ int main(int argc, char **argv) {
     registerCliArgs();
     IREngine::args().parse(argc, argv);
     readCliArgs();
+    const bool sdfVoxelScene = IREngine::args().getEnum("--sdf-voxel-scene") != "off";
+    if ((IREngine::args().getFlag("--sdf-voxel-blockers") && !sdfVoxelScene) ||
+        (sdfVoxelScene &&
+         (g_lodScene || g_guiTest || g_continuousZoomGuiTest || g_cullValidate ||
+          g_pivotFocusDemo || g_pivotVerifyBlock != "off" || g_zoomSweep || g_panSweep ||
+          g_yawSweep || g_shadowFootprintProbe || g_movingCaster || g_lodDenseSwap ||
+          g_viewportPortrait || g_zoomCalibration || g_cullEvictTest || g_shapeSampleProbe ||
+          !g_loadPrefabPath.empty() || !g_loadVxsPath.empty() || !g_spinShapeType.empty() ||
+          g_depthColor || g_checkerboard || g_gpuVoxelSmoke || g_skinSmoke ||
+          (g_autoWarmupFrames > 0 && g_spinYawDegPerSec > 0.0f) ||
+          IREngine::args().getFlag("--ao-contact-probe")))) {
+        IR_LOG_ERROR("--sdf-voxel-scene requires an isolated scene; blockers require that scene");
+        return 2;
+    }
+    if (sdfVoxelScene) {
+        g_pivotOrigin = true;
+    }
     if (g_lodScene &&
         (g_guiTest || g_continuousZoomGuiTest || g_cullValidate || g_spinYawDegPerSec > 0.0f ||
          g_pivotFocusDemo || g_pivotVerifyBlock != "off" || g_zoomSweep || g_panSweep ||
@@ -4074,6 +4099,8 @@ void initSystems() {
                 kYawHi,
                 sweepZoom
             );
+        } else if (IREngine::args().getEnum("--sdf-voxel-scene") != "off") {
+            IRVideo::setAutoScreenshotShots(cfg, IRShapeDebug::SdfVoxelScene::shots_);
         } else if (g_shadowFootprintProbe) {
             IRVideo::setAutoScreenshotShots(cfg, kShadowFootprintShots);
         } else if (g_movingCaster) {
@@ -4325,36 +4352,25 @@ void applyDepthColor(C_VoxelSetNew &voxelSet, IRRender::ShapeType type, vec4 sdf
     }
 }
 
-// Create a voxel-pool entity carved to match an SDF shape.  Allocates a
-// centered box of @p size cells, then deactivates every voxel whose SDF value
-// exceeds the 0.5 surface threshold. An even size puts the cells, and so the
-// shape's center, half a voxel off the lattice of @p position.
+// The centered grid fixes the sampling phase: even sizes put cell centers half
+// a voxel off the entity-position lattice. Baking preserves that authored phase.
 EntityId createVoxelPoolShapeSized(
     vec3 position, IRRender::ShapeType type, vec4 shapeParams, Color color, ivec3 size
 ) {
-    EntityId entity =
-        IREntity::createEntity(C_LocalTransform{position}, C_VoxelSetNew{size, color, true});
+    const auto dense = IRPrefab::Voxel::bakeSdfGrid(size, type, shapeParams, color);
+    EntityId entity = IREntity::createEntity(
+        C_LocalTransform{position},
+        IRPrefab::DenseVoxel::toComponent(dense, EntityAnchor::CENTER)
+    );
     auto &vs = IREntity::getComponent<C_VoxelSetNew>(entity);
 
     auto sdfType = static_cast<IRMath::SDF::ShapeType>(type);
     vec4 sdfParams = IRMath::SDF::effectiveParams(sdfType, shapeParams);
 
-    // Batch-evaluate the SDF over the whole grid via the shared helper rather
-    // than calling evaluate() per cell. evaluateGrid samples each cell at
-    // vec3(x,y,z) - size*0.5 + 0.5 in index3DtoIndex1D order — bit-identical to
-    // the centered positions C_VoxelSetNew laid out for centerAroundOrigin — so
-    // distances[i] lines up one-for-one with voxel i.
-    std::vector<float> distances(static_cast<std::size_t>(vs.numVoxels_));
-    IRMath::SDF::evaluateGrid(vs.size_, sdfType, sdfParams, distances);
-
     int activeCount = 0;
-    vs.editVoxels([&](int i, C_Voxel &voxel, vec3) {
-        if (distances[i] > IRMath::SDF::kSurfaceThreshold) {
-            voxel.deactivate();
-        } else {
-            ++activeCount;
-        }
-    });
+    for (const auto &voxel : vs.voxels_) {
+        activeCount += voxel.color_.alpha_ != 0;
+    }
     // Debug tint is opt-in: --depth-color visualizes z-bands; --checkerboard
     // distinguishes adjacent same-color voxels. Default is plain shape color
     // — the checkerboard path was flickering frame-to-frame and breaking
@@ -4835,6 +4851,15 @@ void initViewportPortraitScene() {
 }
 
 void initEntities() {
+    const auto &sdfVoxelMode = IREngine::args().getEnum("--sdf-voxel-scene");
+    if (sdfVoxelMode != "off") {
+        IRShapeDebug::SdfVoxelScene::initialize(
+            sdfVoxelMode == "baked",
+            IREngine::args().getFlag("--sdf-voxel-blockers")
+        );
+        setupCanvasLighting();
+        return;
+    }
     if (g_movingCaster) {
         IR_LOG_INFO("--- Moving sub-voxel caster scene ---");
         IREntity::createEntity(

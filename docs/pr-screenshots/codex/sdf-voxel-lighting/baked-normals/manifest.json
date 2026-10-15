@@ -1,0 +1,44 @@
+{
+  "source": {
+    "head": "085da98d0eafaf29faaac234d7c1174a2087301d",
+    "hashes": {
+      "creations/demos/shape_debug/main.cpp": "55291230fa4cceba64161b34c62b0db683ebb138dada149861ae9ee3cba918d9",
+      "creations/demos/shape_debug/sdf_voxel_scene.hpp": "e3f8bea63e772043736c9230b6e6919ee3830b7a8b3f8203138a6f632bff8f88",
+      "engine/prefabs/irreden/voxel/sdf_bake.hpp": "35c93963c89cc190cfd543c5fed1e72cc8244990b8cc1fefad691da9c8247690",
+      "build/creations/demos/shape_debug/IRShapeDebug": "2c1191e824b4f542eecf05ab97252ec4927eceb827f66903c54435eeb58da3e2"
+    }
+  },
+  "name": "baked-normals",
+  "images": [
+    {
+      "label": "sdf_voxel_yaw0",
+      "original": "save_files/screenshots/screenshot_000040.png",
+      "sha256": "89e4dbf26b8c1271bfe962de84aceb5159daf24d9806ae24b84fa5f7be253aa6"
+    },
+    {
+      "label": "sdf_voxel_yaw45",
+      "original": "save_files/screenshots/screenshot_000041.png",
+      "sha256": "e6eac578cc0e9173b8991b83f80329725bf14c960e622bd95d6bd6642b1ee846"
+    },
+    {
+      "label": "sdf_voxel_yaw90",
+      "original": "save_files/screenshots/screenshot_000042.png",
+      "sha256": "65f159d804f430f36508bce5be5d64bf8d5426b08e8bb6378e3b2dc5efbbf03b"
+    },
+    {
+      "label": "sdf_voxel_yaw180",
+      "original": "save_files/screenshots/screenshot_000043.png",
+      "sha256": "aba8eb1caaf11938da138b5990d0813afee93dcbb999de86afe6765ac2460f47"
+    },
+    {
+      "label": "sdf_voxel_yaw270",
+      "original": "save_files/screenshots/screenshot_000044.png",
+      "sha256": "e0db8c5f9bcee77317f7a704fab97a3603adcf8d04b1014dfd23c444736f7c44"
+    },
+    {
+      "label": "sdf_voxel_zoom2",
+      "original": "save_files/screenshots/screenshot_000045.png",
+      "sha256": "e4b715d868944bebaf0721c39113d5cc23d7dfbb48a4130cbbc500f1a7204bd0"
+    }
+  ]
+}

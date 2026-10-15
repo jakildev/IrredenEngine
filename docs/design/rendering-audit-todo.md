@@ -22,6 +22,19 @@ historical, not a claim that every shadow defect is closed.
 
 Work through these slices in order, keeping their image and cost evidence separate:
 
+**Current direction: SDF authoring, shared voxel runtime.** The
+[representation contract](voxel-and-sdf-rendering.md#sdf-authoring-with-voxel-runtime-geometry)
+prioritizes baking lit procedural objects into ordinary DENSE occupancy. The
+first slice adds a pure bounded baker and a matched direct/baked ShapeDebug scene;
+it does not automatically migrate existing SDF entities or qualify performance.
+Next compare warm frame/stage cost, startup cost and resident memory with shadows
+off/on, cardinal/intermediate yaw, density and overlap. Then cover authored
+rotation/attachments, local-light blocking and finer-grid/LOD scale conventions.
+Arbitrary voxel occupancy already shares the geometry path; composed/custom SDF
+recipes and dynamic GPU baking need explicit authoring and invalidation designs.
+Defer additional shape-specific analytic receiver algorithms while measuring
+this route. Keep the correctness and cross-backend work below as regression gates.
+
 1. **Crowded finite-index coverage — native correctness validated in #4399.** Preserve
    the inline 64-entry lists and allocate bounded spill nodes only for crowded
    tiles. Exact queries require complete local coverage and at most 256
@@ -78,8 +91,8 @@ Work through these slices in order, keeping their image and cost evidence separa
    and regression status are not established. All six beauty references remain
    byte-identical after integration of the snapped scatter-placement fix.
 
-Concurrent ownership: #4381 owns the new animated FIELD ceiling policy, #4433
-owns the runtime per-axis surface-lighting switch, and #4308 owns cardinal
+Concurrent ownership: #4381's animated FIELD ceiling policy and #4433's runtime
+per-axis surface-lighting switch are integrated from master; #4308 owns cardinal
 AO/local-light depth. The snapped camera placement fix from #4303 is integrated.
 Integrate their results and recapture shared rows without duplicating those
 implementations. Windows-native smoke of the merged stack remains separate

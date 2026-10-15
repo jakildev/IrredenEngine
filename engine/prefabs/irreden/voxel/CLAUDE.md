@@ -66,8 +66,8 @@ the fourth argument supports headless/detached canvases. There is no boolean arm
 Lua voxel authoring uses `setVoxel`, `clearVoxel`, `fillSdf`, and `carveSdf` on
 `C_VoxelSetNew`. Wrap multi-cell recipes in `set:batch(fn)` to resync rotation,
 masks, bounds, and occupancy once. Coordinates are set-local integer cells;
-out-of-range writes are errors. New SDF callers use the voxel editor's shared
-`sdf_fill.hpp` rather than duplicating an `evaluateGrid` loop.
+out-of-range writes are errors. Use `sdf_fill.hpp` for in-place fills and
+`sdf_bake.hpp` for DENSE assets; their [parameter conventions differ](../../../../docs/design/voxel-and-sdf-rendering.md#sdf-authoring-with-voxel-runtime-geometry).
 
 ## Transform and revoxelization pipeline
 
