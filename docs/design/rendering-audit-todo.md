@@ -41,9 +41,15 @@ Work through these slices in order, keeping their image and cost evidence separa
    overhead and frame pacing from render work; report CPU, GPU spans,
    allocation limits and tail latency. Passing CI does not establish hardware
    throughput or million-entity/60-fps qualification.
-   Capture/profile reservation precedence is fixed in #4404. A current-master
-   million matrix and a bounded cylinder cost comparison both refused quiet-host
-   admission; neither produced a new timing measurement.
+   Capture/profile reservation precedence is fixed in #4404. The
+   [qualification record](../perf/current-master-qualification/README.md) retains
+   two older guarded fixed-pose samples as partial evidence and rejects the
+   contaminated sweep. Later million-grid and cylinder-baseline attempts both
+   refused quiet-host admission; no new benchmark was admitted, and no cost
+   comparison or speedup is established. Retry matched Release profile-off/on
+   controls on a quiet AC-powered host before repeated yaw, density and motion
+   controls. Keep #4428's concurrent runner-calibration work separate from
+   native throughput qualification.
 3. **Curved receiver correctness — cylinder geometry validated; cost pending.**
    The [cylinder receiver evidence](../pr-screenshots/codex/cylinder-shadow-receiver/README.md)
    covers 240 native pairs, 216 byte-identical unchanged controls, independent

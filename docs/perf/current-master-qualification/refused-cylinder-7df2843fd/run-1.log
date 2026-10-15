@@ -1,0 +1,4 @@
+ir-run: ${WORKTREE}/engine/tools/bin/ir-acquire benchmark -- ${WORKTREE}/build-release/creations/demos/canvas_stress/IRCanvasStress --only shadowbox,floor --probe-analytic-shape cylinder --probe-overlapping-source --pivot-origin --no-spin --no-auto-rotate --no-ao --subdivisions 1 --zoom 6 --yaw 0.785398163 --auto-profile --auto-screenshot 30 --sweep-frames 2 480 --window-mode offscreen (timeout: 180s)
+ir-acquire: QUIET-REFUSED 46ff3e3c-6707-47b0-b3b2-95010b9763d3 pid=80508 state=busy age=371s
+ir-run: QUIET=refused exe=IRCanvasStress
+ir-run: RESULT=HOST-NOT-QUIET exe=IRCanvasStress exit=75

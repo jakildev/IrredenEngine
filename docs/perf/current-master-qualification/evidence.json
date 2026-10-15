@@ -1,0 +1,156 @@
+{
+  "recorded_utc": "2026-10-13T20:18:54Z",
+  "status": "incomplete; not current-master performance qualification",
+  "artifacts": [
+    {
+      "source": "/tmp/current-master-million/cases.json",
+      "export": "partial-9256ac047/cases.json",
+      "source_sha256": "0b4468c8c2ad60f76d02821b4820d5f1ce43a0857b446d7144ad01a351e58e04",
+      "export_uncompressed_sha256": "0b4468c8c2ad60f76d02821b4820d5f1ce43a0857b446d7144ad01a351e58e04",
+      "export_file_sha256": "0b4468c8c2ad60f76d02821b4820d5f1ce43a0857b446d7144ad01a351e58e04",
+      "source_bytes": 1172,
+      "export_bytes": 1172,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/current-master-million/release-profiling-on-yaw0/round-1/manifest.json",
+      "export": "partial-9256ac047/release-profiling-on-yaw0/round-1/manifest.json",
+      "source_sha256": "c6b4879e2e01f64583a4ead32d3f217e90056671fd753ce03fe95b4eeaf79895",
+      "export_uncompressed_sha256": "c6b4879e2e01f64583a4ead32d3f217e90056671fd753ce03fe95b4eeaf79895",
+      "export_file_sha256": "c6b4879e2e01f64583a4ead32d3f217e90056671fd753ce03fe95b4eeaf79895",
+      "source_bytes": 1894,
+      "export_bytes": 1894,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/current-master-million/release-profiling-on-yaw0/round-1/run-1.log",
+      "export": "partial-9256ac047/release-profiling-on-yaw0/round-1/run-1.log",
+      "source_sha256": "79c4cfa850d92d19b5cda060efb850ec7b38703e59829a3233eb739c50ac2fd3",
+      "export_uncompressed_sha256": "13444437dcaa37c453dbc1e32a2a7029e1b35d2bd0db7dd93cbdc1c923930627",
+      "export_file_sha256": "13444437dcaa37c453dbc1e32a2a7029e1b35d2bd0db7dd93cbdc1c923930627",
+      "source_bytes": 484,
+      "export_bytes": 403,
+      "normalization": "engine/worktree absolute path prefixes normalized"
+    },
+    {
+      "source": "/tmp/current-master-million/release-profiling-on-yaw0/round-1/run-1.txt",
+      "export": "partial-9256ac047/release-profiling-on-yaw0/round-1/run-1.txt.gz",
+      "source_sha256": "d034311a42037be46460a7cf1f5c6ee35a68aea98d390515ad4c911b322b8fdb",
+      "export_uncompressed_sha256": "d034311a42037be46460a7cf1f5c6ee35a68aea98d390515ad4c911b322b8fdb",
+      "export_file_sha256": "a8df6745be8758c70c716f9d2848987c3b1b32f49152e909edc4477bfd0a9ad3",
+      "source_bytes": 18786,
+      "export_bytes": 5719,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/current-master-million/release-profiling-on-yaw45/round-1/manifest.json",
+      "export": "partial-9256ac047/release-profiling-on-yaw45/round-1/manifest.json",
+      "source_sha256": "3fd0a26d02e55d1c18cc87cd2a1905b78b24a8e66da9161dae0d637c0bd0d6f0",
+      "export_uncompressed_sha256": "3fd0a26d02e55d1c18cc87cd2a1905b78b24a8e66da9161dae0d637c0bd0d6f0",
+      "export_file_sha256": "3fd0a26d02e55d1c18cc87cd2a1905b78b24a8e66da9161dae0d637c0bd0d6f0",
+      "source_bytes": 1915,
+      "export_bytes": 1915,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/current-master-million/release-profiling-on-yaw45/round-1/run-1.log",
+      "export": "partial-9256ac047/release-profiling-on-yaw45/round-1/run-1.log",
+      "source_sha256": "bd48d71265188f97114521147e90d337fc4ce3e0f141d2d67b251d272589f778",
+      "export_uncompressed_sha256": "d19c6def666a2a4231d4d8ece259285b67b7d4499c7963c72a9fa3baea64a4cd",
+      "export_file_sha256": "d19c6def666a2a4231d4d8ece259285b67b7d4499c7963c72a9fa3baea64a4cd",
+      "source_bytes": 494,
+      "export_bytes": 413,
+      "normalization": "engine/worktree absolute path prefixes normalized"
+    },
+    {
+      "source": "/tmp/current-master-million/release-profiling-on-yaw45/round-1/run-1.txt",
+      "export": "partial-9256ac047/release-profiling-on-yaw45/round-1/run-1.txt.gz",
+      "source_sha256": "a5fe19c25041c6fa8741cf43282773819473eddc3640d16c8db8b8eae36c2d54",
+      "export_uncompressed_sha256": "a5fe19c25041c6fa8741cf43282773819473eddc3640d16c8db8b8eae36c2d54",
+      "export_file_sha256": "52b67d839cda69744de0e44290cfe7829048b88f0db12d708aa777914854acef",
+      "source_bytes": 19468,
+      "export_bytes": 6052,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/current-master-million/release-profiling-on-yawsweep/round-1/manifest.json",
+      "export": "partial-9256ac047/release-profiling-on-yawsweep/round-1/manifest.json",
+      "source_sha256": "ce269e0d98f648e06d16b4548b166b673bcb0488b5cd76fe436cb9205fccff32",
+      "export_uncompressed_sha256": "ce269e0d98f648e06d16b4548b166b673bcb0488b5cd76fe436cb9205fccff32",
+      "export_file_sha256": "ce269e0d98f648e06d16b4548b166b673bcb0488b5cd76fe436cb9205fccff32",
+      "source_bytes": 1944,
+      "export_bytes": 1944,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/current-master-million/release-profiling-on-yawsweep/round-1/run-1.log",
+      "export": "partial-9256ac047/release-profiling-on-yawsweep/round-1/run-1.log",
+      "source_sha256": "d440f51b076891c2c776662f415bcb6e28d5331be03ad6b8784076dfc98f32c6",
+      "export_uncompressed_sha256": "6ae242241e1506ebdc1d4bb91ef62929c5ff10807a4170403612071cf0817cf9",
+      "export_file_sha256": "6ae242241e1506ebdc1d4bb91ef62929c5ff10807a4170403612071cf0817cf9",
+      "source_bytes": 579,
+      "export_bytes": 498,
+      "normalization": "engine/worktree absolute path prefixes normalized"
+    },
+    {
+      "source": "/tmp/current-master-million/release-profiling-on-yawsweep/round-1/run-1.txt",
+      "export": "partial-9256ac047/release-profiling-on-yawsweep/round-1/run-1.txt.gz",
+      "source_sha256": "3c44b96ca524296bc5e45e6b8a4a63e8f2494ea9619d2c02aea595e3254bdfde",
+      "export_uncompressed_sha256": "3c44b96ca524296bc5e45e6b8a4a63e8f2494ea9619d2c02aea595e3254bdfde",
+      "export_file_sha256": "0d321a3fd42d9d82d227f70f02429d45c458ea16637c0fbb6bccc7faa9f519d2",
+      "source_bytes": 19932,
+      "export_bytes": 6370,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/current-master-million-qualified/cases.json",
+      "export": "refused-44e89a222/cases.json",
+      "source_sha256": "e13eefb2a08251923fe375b3f98a787ada676ee7e5919e7a0ba87649190f8cf8",
+      "export_uncompressed_sha256": "e13eefb2a08251923fe375b3f98a787ada676ee7e5919e7a0ba87649190f8cf8",
+      "export_file_sha256": "e13eefb2a08251923fe375b3f98a787ada676ee7e5919e7a0ba87649190f8cf8",
+      "source_bytes": 1171,
+      "export_bytes": 1171,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/current-master-million-qualified/release-profiling-on-yaw0/round-1/manifest.json",
+      "export": "refused-44e89a222/release-profiling-on-yaw0/round-1/manifest.json",
+      "source_sha256": "8ea594e6bfcda35374f9bf6535bc5e1a0ba1d6982cbc08d2b2fd22d18f552ba7",
+      "export_uncompressed_sha256": "8ea594e6bfcda35374f9bf6535bc5e1a0ba1d6982cbc08d2b2fd22d18f552ba7",
+      "export_file_sha256": "8ea594e6bfcda35374f9bf6535bc5e1a0ba1d6982cbc08d2b2fd22d18f552ba7",
+      "source_bytes": 1422,
+      "export_bytes": 1422,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/current-master-million-qualified/release-profiling-on-yaw0/round-1/run-1.log",
+      "export": "refused-44e89a222/release-profiling-on-yaw0/round-1/run-1.log",
+      "source_sha256": "babc25aeb79da172ad7d677a8aaf9cce1254331b2ab293f444776721add6fcfd",
+      "export_uncompressed_sha256": "5714ab21a8ad0328dadd56a9898ffacaada74245b9ca4cc022ef69e7dabae0b6",
+      "export_file_sha256": "5714ab21a8ad0328dadd56a9898ffacaada74245b9ca4cc022ef69e7dabae0b6",
+      "source_bytes": 543,
+      "export_bytes": 462,
+      "normalization": "engine/worktree absolute path prefixes normalized"
+    },
+    {
+      "source": "/tmp/cylinder-cost-before/manifest.json",
+      "export": "refused-cylinder-7df2843fd/manifest.json",
+      "source_sha256": "7190398d5ca5d5a568d9db06e522ba91235fcc73ecab29b23b383f251f5e3c72",
+      "export_uncompressed_sha256": "7190398d5ca5d5a568d9db06e522ba91235fcc73ecab29b23b383f251f5e3c72",
+      "export_file_sha256": "7190398d5ca5d5a568d9db06e522ba91235fcc73ecab29b23b383f251f5e3c72",
+      "source_bytes": 1714,
+      "export_bytes": 1714,
+      "normalization": "none"
+    },
+    {
+      "source": "/tmp/cylinder-cost-before/run-1.log",
+      "export": "refused-cylinder-7df2843fd/run-1.log",
+      "source_sha256": "f3df20b4f7f15108c7e383cc17dd759fd47a687de41ce4136c66bd2ac6106b2f",
+      "export_uncompressed_sha256": "bdf588debf2912d1d594732ce2b92e79448f0d0dfbf084861ba051f1ae0f4d81",
+      "export_file_sha256": "bdf588debf2912d1d594732ce2b92e79448f0d0dfbf084861ba051f1ae0f4d81",
+      "source_bytes": 718,
+      "export_bytes": 596,
+      "normalization": "engine/worktree absolute path prefixes normalized"
+    }
+  ]
+}

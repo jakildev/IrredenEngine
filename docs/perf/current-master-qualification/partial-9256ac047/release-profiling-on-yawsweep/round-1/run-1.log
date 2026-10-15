@@ -1,0 +1,5 @@
+ir-run: ${ENGINE_ROOT}/engine/tools/bin/ir-acquire benchmark -- ${WORKTREE}/build-release/creations/demos/perf_grid/IRPerfGrid --wave-freeze --no-overlay --pivot-origin --auto-profile 1200 --config-preset configs/perf/million.lua --yaw 0 --yaw-step 0.020943951 (timeout: 900s) (window mode: offscreen)
+ir-acquire: QUIET-BREACH b6190231-632b-40ab-8de6-76425c6370ec uncovered
+ir-run: IRPerfGrid crashed after 77s
+ir-run: QUIET=breach exe=IRPerfGrid
+ir-run: RESULT=CONTAMINATED exe=IRPerfGrid exit=76
