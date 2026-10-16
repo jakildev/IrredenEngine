@@ -9,7 +9,8 @@
 --
 -- Also exercises the shared render-glue bindings: the
 -- IRRender.setSun*/setSky* lighting setters and a RENDER-phase Lua system
--- that draws a HUD via IRGui.drawDisc / IRGui.drawLine onto the gui canvas.
+-- that draws a HUD via IRGui.drawDisc / IRGui.drawLine / IRGui.fillRect onto
+-- the gui canvas.
 
 local SystemName = IRSystem.SystemName
 
@@ -124,6 +125,7 @@ local hudDrawSysId = IRSystem.registerSystem({
         IRGui.drawDisc(40, 30, 18, { 235, 90, 70 })       -- filled disc
         IRGui.drawLine(8, 56, 96, 56, { 90, 200, 255 })   -- horizontal line
         IRGui.drawLine(40, 8, 40, 56, { 120, 235, 140 })  -- vertical line
+        IRGui.fillRect(72, 12, 20, 12, { 240, 200, 60 })  -- filled rect
 
     end,
 })

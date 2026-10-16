@@ -164,7 +164,7 @@ inline IREntity::EntityId getActiveCanvasEntity() {
 
 /// @{
 /// @name GUI-canvas immediate shape draw
-/// Rasterize a filled disc / line onto the engine-default "gui" trixel canvas
+/// Rasterize a filled disc / line / rect onto the engine-default "gui" trixel canvas
 /// (the same canvas @c IRText draws to), in screen-space trixel coordinates.
 /// Immediate-mode: the GUI canvas is cleared every frame by @c TEXT_TO_TRIXEL,
 /// so re-issue these each frame from a RENDER-phase system to keep the shape on
@@ -173,8 +173,9 @@ inline IREntity::EntityId getActiveCanvasEntity() {
 /// through the render bindings.
 void drawGuiDisc(ivec2 center, int radius, Color color);
 void drawGuiLine(ivec2 from, ivec2 to, Color color);
-/// A filled axis-aligned rectangle: one upload per row, where a line per row
-/// would be one per trixel. Exposed to Lua as @c IRGui.fillRect.
+/// A filled axis-aligned rectangle, clipped to the canvas: one upload per
+/// texture (color, distance) for the whole rect, where a line costs one per
+/// trixel. Exposed to Lua as @c IRGui.fillRect.
 void fillGuiRect(ivec2 pos, ivec2 size, Color color);
 /// @}
 
