@@ -12,6 +12,7 @@
 // FrameDataSun, the cascade PCF sampler, and the world-space
 // worldSunShadowFactor() lookup — shared with c_lighting_to_trixel's detached
 // world-receive path.
+#include "ir_sun_face_query_layout.metal"
 #include "ir_sun_shadow_sample.metal"
 #include "ir_per_axis_shadow.metal"
 #if IR_SHAPE_RECEIVER

@@ -15,6 +15,7 @@
 #include "ir_shape_data.glsl"
 #include "ir_shape_receiver.glsl"
 #include "ir_selected_shape_receiver.glsl"
+#include "ir_sun_face_query_layout.glsl"
 #include "ir_sun_shadow_sample.glsl"
 #if IR_SHAPE_LIGHTING
 #include "ir_shape_surface_lighting.glsl"

@@ -170,7 +170,7 @@ float dot(vec3 a,vec3 b){return a.x*b.x+a.y*b.y+a.z*b.z;}
                 shader = (shaders / f"{file}.{backend}").read_text()
                 helpers += "\n".join(extract_function(shader, name) for name in names) + "\n"
             bounds = re.search(
-                r"if \((!projectedFaceContainsClosed[\s\S]*?)\) return -1.0;", helpers
+                r"if \((!projectedFaceContainsClosed[\s\S]*?)\) \{", helpers
             ).group(1)
             unbounded = replace_once(extract_function(helpers, "sourceFaceRaySeparation"),
                                      bounds, "false")

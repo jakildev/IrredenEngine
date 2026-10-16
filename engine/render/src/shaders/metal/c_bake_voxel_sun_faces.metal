@@ -5,6 +5,7 @@
 #include "ir_iso_common.metal"
 #include "ir_fog_shadow_caster.metal"
 #include "ir_sun_projection.metal"
+#include "ir_sun_face_query_layout.metal"
 #include "ir_sun_shadow_sample.metal"
 #include <metal_atomic>
 
