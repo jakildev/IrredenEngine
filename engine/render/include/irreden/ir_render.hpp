@@ -173,6 +173,9 @@ inline IREntity::EntityId getActiveCanvasEntity() {
 /// through the render bindings.
 void drawGuiDisc(ivec2 center, int radius, Color color);
 void drawGuiLine(ivec2 from, ivec2 to, Color color);
+/// A filled axis-aligned rectangle: one upload per row, where a line per row
+/// would be one per trixel. Exposed to Lua as @c IRGui.fillRect.
+void fillGuiRect(ivec2 pos, ivec2 size, Color color);
 /// @}
 
 /// @{

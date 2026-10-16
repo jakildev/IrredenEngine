@@ -159,6 +159,8 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   building widgets. Opt-in hover publication: `makeGuiHoverState()` creates the `C_GuiHoverState` singleton; `hoveredWidget()` reads it.
 - Dropdown strip and list scroll geometry have one owner each (the `C_WidgetDropdown` / `C_WidgetList` helpers); read a list's
   first row from `topIndex`, never raw `scrollOffset_`. Authored `zOrder_` stays below `kWidgetDropdownOpenZBias`; two open dropdowns are unordered.
+  `WIDGET_RENDER_DROPDOWN` paints open strips in `endTick`, after every header's text has been dispatched: a glyph dispatch lands after
+  the per-entity fills, so a strip painted in the tick would carry the headers beneath it. `IRGui.setDropdownOpen` opens one from Lua.
 - The wheel scrolls the hovered list; `setListSelectedIndex` reveals the row only when the index
   changes, so a caller that mirrors its state into the list every frame never fights the wheel.
 - Radio exclusion (`makeRadio(..., groupId, value)`) runs in `WIDGET_APPLY_RADIO::endTick`; text inputs edit only while pointer-focused; Enter or a click off widgets drops focus;
