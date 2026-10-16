@@ -183,6 +183,15 @@ int decodeFlipRoute(int encoded, int perAxisRoute) {
     return perAxisRoute != 0 ? decodeFlipPerAxis(encoded) : decodeFlipSingle(encoded);
 }
 
+// Framebuffer composite key of a single-canvas stored distance. While the
+// per-axis scatter co-renders, its continuous key carries no face bits, so a
+// gather drawn beside it drops the stored (flip << 2) | slot too: kept, they
+// would bias a Y or Z surface one or two encode steps behind a coincident
+// scattered face. Cardinal composites keep the bits.
+int compositeCanvasDistance(int rawDist, bool faceFree) {
+    return faceFree ? decodeDepthSingle(rawDist) * kDepthEncodeShift : rawDist;
+}
+
 // Two-tier composite depth partition. The most-negative
 // kDepthForegroundBandWidth codes of [kMinTriangleDistance, kMaxTriangleDistance]
 // are reserved for foreground-priority detached solids: the framebuffer gather
@@ -976,11 +985,11 @@ float yawedIsoDistanceCellAnchor(vec3 rasterPos, float visualYaw) {
     return yawedIsoDistance(rasterPos - kVoxelRasterCellAnchor, visualYaw);
 }
 
-// Exact (unquantized) composite depth key for a forward-scattered face: the
-// true yawed camera-space iso depth of the recovered face origin, in the
-// cardinal encodeDepthWithFace scale (× kDepthEncodeShift) so it stays
-// comparable with the quantized integer keys other composite writers (the SDF
-// smooth-yaw path) emit. The face priority rides the tie band
+// Exact (unquantized) composite depth key for a forward-scattered face corner:
+// its cell-anchor yawed iso depth scaled by encScale (kDepthEncodeShift × the
+// effective subdivision), the encodeDepthWithFace scale the SDF smooth-yaw
+// gather is composited in (compositeCanvasDistance strips its face bits while
+// this key is live). The face priority rides the tie band
 // (scatterFinalDepth), never this key: added here it would be a per-axis depth
 // bias of a whole encode step. Do not round it: a rounded key (roundHalfUp of the
 // yawed sum) ties adjacent micro-cells along a foreshortened in-plane axis on
@@ -991,8 +1000,8 @@ float yawedIsoDistanceCellAnchor(vec3 rasterPos, float visualYaw) {
 // voxel boundaries). A continuous key makes geometric ties measure-zero.
 // Shared by every forward-scatter composite writer — do not inline per-shader
 // copies.
-float scatterCompositeDepthKey(vec3 origin, float visualYaw) {
-    return yawedIsoDistance(origin, visualYaw) * float(kDepthEncodeShift);
+float scatterCompositeDepthKey(vec3 rasterPos, float visualYaw, float encScale) {
+    return yawedIsoDistanceCellAnchor(rasterPos, visualYaw) * encScale;
 }
 
 // Conservative XY growth of an axis-aligned half-extent swept under a Z-yaw of

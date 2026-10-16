@@ -92,11 +92,8 @@ Changes without a visual effect need no captures.
 - **The engine GUI canvas displays as `LOCAL_TRIANGLES`** (render-manager-stamped;
   `RECTANGULAR` at full resolution), hover off. `IRPrefab::GuiCanvas` owns which
   pass composites it: [GUI trixel display](../../docs/design/gui-trixel-display.md).
-- The per-axis scatter's composite depth key carries no face bits: face
-  priority rides the `scatterFinalDepth` tie band, and a fragment on an edge
-  across which its face recedes yields one band, so a face hidden behind a
-  neighbouring surface never wins their shared edge
-  ([depth key and edge ties](../../docs/design/per-axis-trixel-canvas-rotation.md#composite-depth-key-and-shared-edge-ties)).
+- No composite key carries face bits while the per-axis scatter draws; a face
+  yields its receding edges ([depth key, edge ties](../../docs/design/per-axis-trixel-canvas-rotation.md#composite-depth-key-and-shared-edge-ties)).
 - The gather derives its canvas position from the fragment pixel, never an
   interpolated varying; producers place through `placeGatherQuad` ([contract](../../docs/design/trixel-gather-sampling.md)).
 - CPU frame-data structs and shader blocks must agree on field order, `std140`

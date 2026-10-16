@@ -152,6 +152,19 @@ effective subdivision 4, 1/8 at subdivision 1): a face hidden directly behind
 a neighbouring surface then leads that surface by the bias and wins pixels
 along their shared edge, where its geometric lag vanishes.
 
+The main-canvas gather that composites SDF / text beside the scatter follows
+the same rule. Its stored distance is the integer `encodeDepthWithFace` key,
+whose face bits are a true sub-depth tiebreak among integer depths but, set
+against the continuous scatter key, would sit a Y face one encode step and a
+Z face two behind a coincident scattered voxel face. While the scatter draws,
+`TRIXEL_TO_FRAMEBUFFER` sets `scatterFbResolution_.w` and the gather composites
+`compositeCanvasDistance(rawDist, true)`: depth only, face bits dropped. A
+coincident SDF and voxel face then land within one tie band whatever the
+face. At a cardinal the flag is clear and the gather keeps the full key.
+`scripts/tests/test_render_scatter_visibility.py` compiles both backends' key
+helpers and checks coincident X / Y / Z (and flipped) pairs co-sort, with
+mutation controls for a gather that keeps the bits and a biased scatter key.
+
 Hidden perpendicular faces are ordinary content: adjacent voxels that belong
 to separate entities get no cross-entity exposed-face mask, so every lattice
 line of such a surface is an edge shared with a receding face. Without the

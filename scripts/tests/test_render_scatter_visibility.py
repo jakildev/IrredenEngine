@@ -187,6 +187,45 @@ int main(){
 }
 """
 
+COSORT_CHECKS = r"""
+const int kMin=-65535,kMax=65535;
+int fail(const char* label){std::fprintf(stderr,"%s\n",label);return 1;}
+float normalizeDistance(int distance){return float(distance-kMin)/float(kMax-kMin);}
+float voxelDepth(vec3 corner,float yaw,int sub,int tieCode){
+    const float key=scatterCompositeDepthKey(corner,yaw,float(kDepthEncodeShift*sub));
+    const float depth=(key-float(kMin))/float(kMax-kMin);
+    return scatterFinalDepth(scatterEdgeTieDepth(depth,vec2(0.f,0.f),vec2(.5f,.5f)),
+                             float(tieCode)*kScatterCellTieStep);
+}
+float sdfDepth(int depth,int slot,int flip){
+    return normalizeDistance(compositeCanvasDistance(encodeDepthWithFace(depth,slot,flip),true));
+}
+int main(){
+    int pairs=0;
+    for(int depth=-70000;depth<=70000;depth+=997)
+        for(int slot=0;slot<3;++slot)for(int flip:{0,1}){
+            const int stored=encodeDepthWithFace(depth,slot,flip);
+            if(compositeCanvasDistance(stored,false)!=stored)return fail("cardinal key changed");
+            if(compositeCanvasDistance(stored,true)!=encodeDepthWithFace(depth,0,0))
+                return fail("face bits kept");
+        }
+    for(float yaw:{.15f,.4f,.7f,-.3f})for(int sub:{1,2,4,8})for(int k=-40;k<=40;++k)
+    for(int slot=0;slot<3;++slot)for(int flip:{0,1})for(int cell=0;cell<4;++cell){
+        // On the cell anchor's vertical line the yawed depth is k at every yaw,
+        // so the SDF's integer depth k * sub is the voxel corner's exact twin.
+        const vec3 corner(.5f,.5f,float(k)+.5f);
+        const float voxel=voxelDepth(corner,yaw,sub,((flip?3:slot)<<2)|cell);
+        const float sdf=sdfDepth(k*sub,slot,flip);
+        if(std::abs(voxel-sdf)>kScatterCellTieBand)return fail("coincident faces split");
+        if(!(sdfDepth(k*sub-1,slot,flip)<voxel)||!(sdfDepth(k*sub+1,slot,flip)>voxel))
+            return fail("one-step neighbour out of order");
+        ++pairs;
+    }
+    std::printf("coincident sdf/voxel face pairs=%d\n",pairs);
+    return 0;
+}
+"""
+
 ROUTING = r"""
 int main(int argc,char** argv){
     Fragment prepass=fragmentPrepass,replay=fragmentReplay;
@@ -341,6 +380,19 @@ struct vec4 {
         + "\n" + generated + ROUTING
 
 
+def cosort_helpers(root, suffix):
+    common = (root / f"ir_iso_common.{suffix}").read_text()
+    constants = "\n".join(
+        re.search(pattern, common)[0] for pattern in (
+            r"(?:const|constant) int kDepthEncodeShift\s*=[^;]+;",
+            r"(?:const|constant) (?:vec3|float3) kVoxelRasterCellAnchor\s*=[^;]+;"))
+    names = ("encodeDepthWithFace", "decodeDepthSingle", "compositeCanvasDistance",
+             "yawedIsoDistance", "yawedIsoDistanceCellAnchor", "scatterCompositeDepthKey")
+    scatter_constants, depth = depth_helpers(root, suffix)
+    return host(constants + "\n" + scatter_constants + "\n"
+                + "\n".join(functions(common, name) for name in names) + "\n" + depth)
+
+
 def depth_helpers(root, suffix):
     common = (root / f"ir_iso_common.{suffix}").read_text()
     constants = "\n".join(
@@ -428,6 +480,21 @@ class ScatterVisibilityTest(unittest.TestCase):
             }
             self.check_variants(suffix, variants, "edge_tie", lambda candidate:
                                 PREAMBLE + EDGE_TIE_ADAPTER + candidate + EDGE_TIE_CHECKS)
+
+
+    def test_sdf_gather_cosorts_with_scatter_faces(self):
+        """A coincident SDF and scattered voxel face co-sort whatever the face."""
+        for suffix, folder in (("glsl", ""), ("metal", "metal/")):
+            helpers = cosort_helpers(ROOT / "engine/render/src/shaders" / folder, suffix)
+            variants = {
+                "production": helpers,
+                "gather-keeps-face-bits": re.sub(
+                    r"decodeDepthSingle\(rawDist\)\s*\*\s*kDepthEncodeShift", "rawDist", helpers),
+                "cardinal-stripped": re.sub(r"faceFree\s*\?", "true ?", helpers),
+                "scatter-face-bias": re.sub(r"\*\s*encScale;", "* encScale + 1.0f;", helpers),
+            }
+            self.check_variants(suffix, variants, "cosort", lambda candidate:
+                                PREAMBLE + EDGE_TIE_ADAPTER + candidate + COSORT_CHECKS)
 
 
 if __name__ == "__main__":

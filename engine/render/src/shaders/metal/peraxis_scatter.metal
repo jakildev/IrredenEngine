@@ -244,19 +244,19 @@ vertex VertexOut v_peraxis_scatter(
     // The SDF floor + cardinal gather encode iso-depth SUBDIVIDED (×effSub); the
     // per-axis store is BASE-resolution, so lift the scatter iso-depth to
     // the same subdivided magnitude (effSub via effectiveSubdivisionsForHover.x) or
-    // the floor out-scales the voxels ~effSub× at high zoom and clips them. Scale
-    // only the iso-depth (×kDepthEncodeShift) term, not the slot tiebreak;
+    // the floor out-scales the voxels ~effSub× at high zoom and clips them.
     // worldCorner keeps its sub-cell offset so precision is preserved.
     const float subScale = max(frameData.effectiveSubdivisionsForHover.x, 1.0f);
     const float encScale = float(kDepthEncodeShift) * subScale;
     // Cell-anchor depth: measured at the corner's authored-lattice
     // world point so voxel and SDF surfaces at one world location co-sort
-    // exactly at every residual. The face priority ((flip << 2) | slot) lives
+    // exactly at every residual; the gather drops the SDF's stored face bits
+    // for the same reason. The face priority ((flip << 2) | slot) lives
     // in the tie band (cellTieOffset); added to this continuous key it would be a
     // per-axis depth bias of 1 / encScale world units per rank, enough for a
     // face hidden behind a neighbouring surface to win pixels along their
     // shared edge. Matches the GLSL twin.
-    const float cornerKey = yawedIsoDistanceCellAnchor(worldCorner, frameData.visualYaw) * encScale;
+    const float cornerKey = scatterCompositeDepthKey(worldCorner, frameData.visualYaw, encScale);
     const float depthRange =
         float(globals.kMaxTriangleDistance - globals.kMinTriangleDistance);
     out.depth =

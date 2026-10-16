@@ -290,19 +290,18 @@ void main() {
     // to the same subdivided magnitude (effSub, carried in
     // effectiveSubdivisionsForHover.x) so SDF + scattered voxels co-sort at every
     // zoom — otherwise the floor out-scales the voxels ~effSub× at high zoom and
-    // clips them into the floor. Scale only the iso-depth (×kDepthEncodeShift)
-    // term, NOT the slot tiebreak, so slot stays a unit-scale tiebreak comparable
-    // to the SDF's face bits. worldCorner carries the sub-cell offset, so this
-    // scale-up keeps sub-cell depth precision (no z-fight).
+    // clips them into the floor. worldCorner carries the sub-cell offset, so
+    // this scale-up keeps sub-cell depth precision (no z-fight).
     const float subScale = max(effectiveSubdivisionsForHover.x, 1.0);
     const float encScale = float(kDepthEncodeShift) * subScale;
     // Cell-anchor depth: measured at the corner's authored-lattice world point so
     // voxel and SDF surfaces at one world location co-sort exactly at every
-    // residual. The face priority ((flip << 2) | slot) lives in the tie band
+    // residual; the gather drops the SDF's stored face bits for the same reason.
+    // The face priority ((flip << 2) | slot) lives in the tie band
     // (vCellTieOffset); added to this continuous key it would be a per-axis depth bias of
     // 1 / encScale world units per rank, enough for a face hidden behind a
     // neighbouring surface to win pixels along their shared edge.
-    const float cornerKey = yawedIsoDistanceCellAnchor(worldCorner, visualYaw) * encScale;
+    const float cornerKey = scatterCompositeDepthKey(worldCorner, visualYaw, encScale);
     const float depthRange = float(kMaxTriangleDistance - kMinTriangleDistance);
     vDepth = (cornerKey + float(distanceOffset - kMinTriangleDistance)) / depthRange;
     vDepthSlope = vec2(

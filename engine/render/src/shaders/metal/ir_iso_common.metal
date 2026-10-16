@@ -170,6 +170,15 @@ inline int decodeFlipRoute(int encoded, int perAxisRoute) {
     return perAxisRoute != 0 ? decodeFlipPerAxis(encoded) : decodeFlipSingle(encoded);
 }
 
+// Framebuffer composite key of a single-canvas stored distance — mirror of
+// compositeCanvasDistance in ir_iso_common.glsl. While the per-axis scatter
+// co-renders, its continuous key carries no face bits, so a gather drawn
+// beside it drops the stored (flip << 2) | slot too. Cardinal composites keep
+// the bits.
+inline int compositeCanvasDistance(int rawDist, bool faceFree) {
+    return faceFree ? decodeDepthSingle(rawDist) * kDepthEncodeShift : rawDist;
+}
+
 // Two-tier composite depth partition. The most-negative
 // kDepthForegroundBandWidth codes of [kMinTriangleDistance, kMaxTriangleDistance]
 // are reserved for foreground-priority detached solids: trixel_to_framebuffer
@@ -892,16 +901,17 @@ inline float yawedIsoDistanceCellAnchor(float3 rasterPos, float visualYaw) {
     return yawedIsoDistance(rasterPos - kVoxelRasterCellAnchor, visualYaw);
 }
 
-// Exact (unquantized) composite depth key for a forward-scattered face —
-// mirror of scatterCompositeDepthKey in ir_iso_common.glsl. Keeps the cardinal
-// encodeDepthWithFace scale (× kDepthEncodeShift) so it co-sorts with the SDF
-// smooth-yaw path; the face priority rides the tie band (scatterFinalDepth),
-// never this key. Do not round it: a rounded key ties adjacent
-// micro-cells on a foreshortened axis and lets draw order pick the farther quad
-// on the sign-flip side of a bracket (wrong-voxel-color bands). Shared by every
-// forward-scatter composite writer.
-inline float scatterCompositeDepthKey(float3 origin, float visualYaw) {
-    return yawedIsoDistance(origin, visualYaw) * float(kDepthEncodeShift);
+// Exact (unquantized) composite depth key for a forward-scattered face corner —
+// mirror of scatterCompositeDepthKey in ir_iso_common.glsl. encScale
+// (kDepthEncodeShift × the effective subdivision) keeps the encodeDepthWithFace
+// scale the SDF smooth-yaw gather is composited in (compositeCanvasDistance
+// strips its face bits while this key is live); the face priority rides the
+// tie band (scatterFinalDepth), never this key. Do not round it: a rounded key
+// ties adjacent micro-cells on a foreshortened axis and lets draw order pick
+// the farther quad on the sign-flip side of a bracket (wrong-voxel-color
+// bands). Shared by every forward-scatter composite writer.
+inline float scatterCompositeDepthKey(float3 rasterPos, float visualYaw, float encScale) {
+    return yawedIsoDistanceCellAnchor(rasterPos, visualYaw) * encScale;
 }
 
 // Conservative XY growth of an axis-aligned half-extent swept under a Z-yaw of
