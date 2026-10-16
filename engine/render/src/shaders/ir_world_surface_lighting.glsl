@@ -35,10 +35,18 @@ vec3 composeWorldSurfaceLighting(vec3 albedo, float ao, vec3 normal, float lambe
 
 // Shadow geometry may vary across a face whose local-light sample stays fixed.
 vec3 worldSurfaceLighting(vec3 albedo, float ao, vec3 position, vec3 normal,
-                          vec4 casterRotation, vec3 localLightPosition) {
+                          vec4 casterRotation, vec3 localLightPosition
+#if IR_SUN_QUERY_STATS
+    , inout SunQueryStats sunQueryStats
+#endif
+) {
     const float lambert = max(0.0, dot(normal, sunDirection.xyz));
     const float visibility = worldSurfaceNeedsSunShadow(lambert) ?
-        worldSurfaceSunShadowFactor(position, normal, pos3DtoDistance(position), casterRotation) :
+        worldSurfaceSunShadowFactor(position, normal, pos3DtoDistance(position), casterRotation
+#if IR_SUN_QUERY_STATS
+            , sunQueryStats
+#endif
+        ) :
         1.0;
     return composeWorldSurfaceLighting(albedo, ao, normal, lambert, visibility, localLightPosition);
 }

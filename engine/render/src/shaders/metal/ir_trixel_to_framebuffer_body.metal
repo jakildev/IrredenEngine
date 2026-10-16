@@ -8,6 +8,7 @@ using namespace metal;
 #include "ir_shape_data.metal"
 #include "ir_shape_receiver.metal"
 #include "ir_selected_shape_receiver.metal"
+#include "ir_sun_face_query_layout.metal"
 #include "ir_sun_shadow_sample.metal"
 #if IR_SHAPE_LIGHTING
 #include "ir_shape_surface_lighting.metal"

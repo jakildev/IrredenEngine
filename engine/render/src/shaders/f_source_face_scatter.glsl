@@ -1,6 +1,7 @@
 #version 450 core
 #include "ir_iso_common.glsl"
 #include "ir_fog_color.glsl"
+#include "ir_sun_face_query_layout.glsl"
 #include "ir_sun_shadow_sample.glsl"
 #include "ir_source_face_lighting.glsl"
 layout(std140, binding = 1) uniform GlobalConstants {

@@ -22,6 +22,7 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 // FrameDataSun UBO (29), sun-depth SSBO (28), the cascade PCF sampler, and the
 // world-space worldSunShadowFactor() lookup — shared with c_lighting_to_trixel's
 // detached world-receive path.
+#include "ir_sun_face_query_layout.glsl"
 #include "ir_sun_shadow_sample.glsl"
 #include "ir_per_axis_shadow.glsl"
 

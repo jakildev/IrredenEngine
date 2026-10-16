@@ -1,0 +1,100 @@
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import time
+
+from PIL import Image, ImageChops
+
+w = Path('/Users/evinjkill/src/IrredenEngine/.claude/worktrees/codex-shadow-render')
+out = w / 'docs/pr-screenshots/codex/sun-query-work-counters'
+out.mkdir(parents=True, exist_ok=True)
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+shape = ['--surface-lighting', '--sdf-voxel-blockers', '--no-ao']
+mixed = ['--only', 'shadowocclusion,orbit,floor', '--probe-grid', '--probe-staircase',
+         '--no-spin', '--no-auto-rotate', '--pivot-origin', '--subdivisions', '1']
+cases = []
+for mode in ('direct', 'baked'):
+    for stats in (0, 1):
+        cases.append((f'{mode}-stats{stats}', 'IRShapeDebug', 'shape_debug', stats,
+                      shape + ['--sdf-voxel-scene', mode, '--auto-screenshot', '20']))
+for stats in (0, 1):
+    cases.append((f'mixed-stats{stats}', 'IRCanvasStress', 'canvas_stress', stats,
+                  mixed + ['--zoom', '1', '--auto-screenshot', '20',
+                           '--sweep-yaw', '0', '6.283185307179586', '9']))
+for mode in ('direct', 'baked'):
+    for zoom in (1, 4):
+        cases.append((f'{mode}-query-z{zoom}', 'IRShapeDebug', 'shape_debug', 1,
+                      shape + ['--sdf-voxel-scene', mode, '--zoom', str(zoom),
+                               '--yaw', '0.7853981633974483', '--auto-profile', '200']))
+cases.append(('baked-no-shadows', 'IRShapeDebug', 'shape_debug', 1,
+              shape + ['--sdf-voxel-scene', 'baked', '--zoom', '4', '--no-shadows',
+                       '--yaw', '0.7853981633974483', '--auto-profile', '200']))
+for zoom in (1, 4):
+    cases.append((f'mixed-query-z{zoom}', 'IRCanvasStress', 'canvas_stress', 1,
+                  mixed + ['--zoom', str(zoom), '--yaw', '1.276272', '--auto-screenshot',
+                           '180', '--sweep-frames', '1', '180']))
+manifest = {'source_head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=w, text=True).strip(),
+            'dirty_diff_sha256': hashlib.sha256(subprocess.check_output(['git', 'diff'], cwd=w)).hexdigest(),
+            'source_sha256': {str(p.relative_to(w)): digest(p) for p in
+                              sorted((w/'engine/render/src/shaders').rglob('*')) if p.is_file()},
+            'cases': []}
+(out/'manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
+for name, target, folder, stats, args in cases:
+    dest = out / name
+    dest.mkdir(exist_ok=True)
+    screenshots = w / 'build/creations/demos' / folder / 'save_files/screenshots'
+    before = set(screenshots.glob('*.png'))
+    command = ['fleet-run', '--env', 'IR_PERAXIS_SURFACE_LIGHTING=1',
+               '--env', 'IR_PERAXIS_VISIBILITY_PREPASS=1', '--env',
+               f'IR_PERAXIS_VISIBILITY_STATS={stats}', target, *args]
+    env = os.environ.copy()
+    log = dest/'run.log'
+    print(name, flush=True)
+    started = time.time()
+    with log.open('w') as stream:
+        run = subprocess.run(command, cwd=w, env=env, stdout=stream, stderr=subprocess.STDOUT)
+    raw = log.read_text()
+    if run.returncode or 'RESULT=CLEAN' not in raw:
+        raise RuntimeError(f'{name} failed; see {log}')
+    shots = sorted(set(screenshots.glob('*.png')) - before)
+    captures = []
+    for index, path in enumerate(shots):
+        copied = dest/f'{index}.png'
+        shutil.copyfile(path, copied)
+        captures.append({'path': str(copied.relative_to(out)), 'original': path.name,
+                         'sha256': digest(copied)})
+    query = re.findall(r'SUN-QUERY-PROBE ([^\n]+)', raw)
+    counts = [{key: int(value) for key, value in re.findall(r'(\w+)=(\d+)', line)} for line in query]
+    excerpt = '\n'.join(line for line in raw.splitlines() if any(x in line for x in
+                        ('PROBE', 'RESULT=', 'QUIET=', 'AutoScreenshot', 'Auto-profile:',
+                         'warning', 'error', '[warn]', 'Initial camera', 'Initial zoom',
+                         'Capture', 'screenshot saved')))
+    (dest/'excerpt.log').write_text(excerpt+'\n')
+    manifest['cases'].append({'name': name, 'command': command, 'elapsed_seconds': time.time()-started,
+                              'binary_sha256': digest(w/'build/creations/demos'/folder/target),
+                              'log_sha256': digest(log), 'captures': captures, 'queries': counts})
+    (out/'manifest.json').write_text(json.dumps(manifest, indent=2)+'\n')
+    print(name, 'shots', len(shots), counts, flush=True)
+
+pairs = []
+for name in ('direct', 'baked', 'mixed'):
+    a = sorted((out/f'{name}-stats0').glob('*.png'))
+    b = sorted((out/f'{name}-stats1').glob('*.png'))
+    if not a or len(a)!=len(b):
+        raise RuntimeError(f'missing captures {name}')
+    for first, second in zip(a, b):
+        x,y = Image.open(first).convert('RGB'),Image.open(second).convert('RGB')
+        if x.size!=y.size:
+            raise RuntimeError('dimensions differ')
+        diff=ImageChops.difference(x,y)
+        changed=sum(p!=(0,0,0) for p in diff.getdata())
+        pairs.append({'off':str(first.relative_to(out)), 'on':str(second.relative_to(out)),
+                      'changed_rgb_pixels':changed,'size':x.size})
+(out/'comparison.json').write_text(json.dumps(pairs,indent=2)+'\n')
+print('comparisons',len(pairs),'changed',sum(p['changed_rgb_pixels'] for p in pairs),flush=True)

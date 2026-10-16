@@ -1,0 +1,23 @@
+[2026-10-16 14:06:54.627] [EngineLog] [warning] tagGpuStage: unknown stage name "guiToScreen" — stage will not be timed. Check gpuStageRegistry() for the registered name.
+[2026-10-16 14:06:54.627] [EngineLog] [info] Regestered component type=N7IRVideo12_GLOBAL__N_122C_AutoScreenshotAnchorE, sizeof=1 with id=432
+[2026-10-16 14:06:54.627] [ClientLog] [info] LIGHTING-PROBE sun=(-0.4585579,-0.65508276,-0.60049254) shadows=true ao=true
+[2026-10-16 14:06:54.639] [EngineLog] [warning] REBUILD_GRID_VOXELS span cap: dropped 12 of 1740 covered dest cells (span=1728, surface=610) — new high-water for this run
+[2026-10-16 14:06:55.053] [ClientLog] [info] AutoScreenshot 1/9: sweep_yaw_0 (zoom=1, cam=(0,0), yaw=0, cull=0)
+[2026-10-16 14:06:55.593] [ClientLog] [info] CaptureCamera: label=sweep_yaw_0 yaw=0 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)
+[2026-10-16 14:06:55.757] [ClientLog] [info] AutoScreenshot 2/9: sweep_yaw_1 (zoom=1, cam=(0,0), yaw=0.7853982, cull=0)
+[2026-10-16 14:06:56.964] [ClientLog] [info] CaptureCamera: label=sweep_yaw_1 yaw=0.78539824 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)
+[2026-10-16 14:06:57.138] [ClientLog] [info] AutoScreenshot 3/9: sweep_yaw_2 (zoom=1, cam=(0,0), yaw=1.5707964, cull=0)
+[2026-10-16 14:06:57.763] [ClientLog] [info] CaptureCamera: label=sweep_yaw_2 yaw=1.5707963 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)
+[2026-10-16 14:06:57.920] [ClientLog] [info] AutoScreenshot 4/9: sweep_yaw_3 (zoom=1, cam=(0,0), yaw=2.3561945, cull=0)
+[2026-10-16 14:06:59.038] [ClientLog] [info] CaptureCamera: label=sweep_yaw_3 yaw=2.3561947 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)
+[2026-10-16 14:06:59.194] [ClientLog] [info] AutoScreenshot 5/9: sweep_yaw_4 (zoom=1, cam=(0,0), yaw=3.1415927, cull=0)
+[2026-10-16 14:06:59.720] [ClientLog] [info] CaptureCamera: label=sweep_yaw_4 yaw=-3.1414928 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)
+[2026-10-16 14:06:59.876] [ClientLog] [info] AutoScreenshot 6/9: sweep_yaw_5 (zoom=1, cam=(0,0), yaw=3.926991, cull=0)
+[2026-10-16 14:07:00.951] [ClientLog] [info] CaptureCamera: label=sweep_yaw_5 yaw=-2.3561947 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)
+[2026-10-16 14:07:01.114] [ClientLog] [info] AutoScreenshot 7/9: sweep_yaw_6 (zoom=1, cam=(0,0), yaw=4.712389, cull=0)
+[2026-10-16 14:07:01.651] [ClientLog] [info] CaptureCamera: label=sweep_yaw_6 yaw=-1.5707963 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)
+[2026-10-16 14:07:01.801] [ClientLog] [info] AutoScreenshot 8/9: sweep_yaw_7 (zoom=1, cam=(0,0), yaw=5.4977875, cull=0)
+[2026-10-16 14:07:02.995] [ClientLog] [info] CaptureCamera: label=sweep_yaw_7 yaw=-0.78539777 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)
+[2026-10-16 14:07:03.161] [ClientLog] [info] AutoScreenshot 9/9: sweep_yaw_8 (zoom=1, cam=(0,0), yaw=6.2831855, cull=0)
+[2026-10-16 14:07:03.700] [ClientLog] [info] CaptureCamera: label=sweep_yaw_8 yaw=-2.3841858e-07 zoom=(1,1) effectiveIso=(0,0) subdivisions=1 gameResolution=(1280,720)
+ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0

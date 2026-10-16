@@ -24,6 +24,7 @@ layout(local_size_x = 64, local_size_y = 1, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"        // decode*, faceOutwardNormal6, unpack/packColor
 #include "ir_sun_projection.glsl"    // shared caster/receiver sun-space projection
+#include "ir_sun_face_query_layout.glsl"
 #include "ir_sun_shadow_sample.glsl" // FrameDataSun(29), sun-depth SSBO(28), worldSunShadowFactor()
 #include "ir_per_axis_shadow.glsl"
 #include "ir_world_lighting.glsl"    // GPULightSource list (slot 4), spotConeFactor, ACESFilm

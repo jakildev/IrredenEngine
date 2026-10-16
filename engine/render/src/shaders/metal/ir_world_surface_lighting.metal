@@ -42,11 +42,19 @@ inline float3 worldSurfaceLighting(float3 albedo, float ao, float3 position, flo
                                    device const GPULightSource *lights,
                                    texture2d<float> paletteLUT,
                                    texture3d<float> lightVolume,
-                                   texture3d<float, access::read> lightVolumeId) {
+                                   texture3d<float, access::read> lightVolumeId
+#if IR_SUN_QUERY_STATS
+    , thread SunQueryStats &sunQueryStats
+#endif
+) {
     const float lambert = max(0.0, dot(normal, sun.sunDirection.xyz));
     const float visibility = worldSurfaceNeedsSunShadow(lambert, sun) ?
         worldSurfaceSunShadowFactor(position, normal, pos3DtoDistance(position), casterRotation,
-                                    sun, sunDepthBuf) : 1.0;
+                                    sun, sunDepthBuf
+#if IR_SUN_QUERY_STATS
+            , sunQueryStats
+#endif
+        ) : 1.0;
     return composeWorldSurfaceLighting(albedo, ao, normal, lambert, visibility,
                                        localLightPosition, lighting, volumeParams, sun, lights,
                                        paletteLUT, lightVolume, lightVolumeId);

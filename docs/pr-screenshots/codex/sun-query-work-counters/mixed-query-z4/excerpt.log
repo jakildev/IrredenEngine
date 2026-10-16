@@ -1,0 +1,9 @@
+[2026-10-16 14:07:56.279] [EngineLog] [warning] tagGpuStage: unknown stage name "guiToScreen" — stage will not be timed. Check gpuStageRegistry() for the registered name.
+[2026-10-16 14:07:56.279] [EngineLog] [info] Regestered component type=N7IRVideo12_GLOBAL__N_122C_AutoScreenshotAnchorE, sizeof=1 with id=432
+[2026-10-16 14:07:56.279] [ClientLog] [info] LIGHTING-PROBE sun=(-0.4585579,-0.65508276,-0.60049254) shadows=true ao=true
+[2026-10-16 14:07:56.282] [EngineLog] [warning] REBUILD_GRID_VOXELS span cap: dropped 12 of 1740 covered dest cells (span=1728, surface=610) — new high-water for this run
+[2026-10-16 14:08:00.123] [ClientLog] [info] VISIBILITY-PROBE fragments=125203 retained=106026 rejected=19177 pixels=927048
+[2026-10-16 14:08:00.123] [ClientLog] [info] SUN-QUERY-PROBE cascades=85338 indexed=85338 candidates=1264602 face_misses=1084479 shape_candidates=0 blocked=36178 first_blocker_visits=475072 exhausted=49160 incomplete=0 outside=0 valid=1
+[2026-10-16 14:08:00.138] [ClientLog] [info] AutoScreenshot 1/1: sweep_frame_0 (zoom=4, cam=(0,0), yaw=1.276272, cull=0)
+[2026-10-16 14:08:03.881] [ClientLog] [info] CaptureCamera: label=sweep_frame_0 yaw=1.276272 zoom=(4,4) effectiveIso=(0,0) subdivisions=4 gameResolution=(1280,720)
+ir-run: RESULT=CLEAN exe=IRCanvasStress exit=0
