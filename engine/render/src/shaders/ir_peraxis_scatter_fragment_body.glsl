@@ -16,6 +16,7 @@ flat in ivec3 vVisibilityExtent;
 // Per-fragment planar depth from the hardware-rasterized finite face.
 noperspective in float vDepth;
 noperspective in vec2 vQuadParam;
+flat in vec2 vDepthSlope;
 // Face-center iso-depth for per-face depth-color; flat — constant across the
 // face instance.
 flat in float vIsoDepth;
@@ -38,7 +39,8 @@ void main() {
     if (vColor.a < 0.1) {
         discard;
     }
-    const float finalDepth = scatterFinalDepth(vDepth, vCellTieOffset);
+    const float finalDepth =
+        scatterFinalDepth(scatterEdgeTieDepth(vDepth, vDepthSlope, vQuadParam), vCellTieOffset);
 #if IR_PER_AXIS_VISIBILITY
     const ivec2 pixel = ivec2(gl_FragCoord.xy);
     if (any(lessThan(pixel, ivec2(0))) || any(greaterThanEqual(pixel, vVisibilityExtent.xy))) discard;

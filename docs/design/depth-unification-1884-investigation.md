@@ -198,7 +198,8 @@ magnitude (`× effSub`, carried in `effectiveSubdivisionsForHover.x`) in
 `v_/f_peraxis_scatter`; the #1458 frac bits keep the recovered corner sub-cell
 exact, so the scale-up preserves precision (no floor z-fight — confirmed: scaling
 the SDF *down* to base instead caused floor z-fighting, the wrong direction). The
-slot tiebreak is left unscaled so it stays comparable to the SDF face bits.
+face priority stays out of the key altogether and rides the `scatterFinalDepth`
+tie band ([per-axis design](per-axis-trixel-canvas-rotation.md#composite-depth-key-and-shared-edge-ties)).
 Verified `canvas_stress` static + spinning yaw grid (zoom 4/8/16 × yaw
 0/26/45/60/80/115/160/214°): no clip / no disappear at any pose; cardinal still
 byte-identical.
