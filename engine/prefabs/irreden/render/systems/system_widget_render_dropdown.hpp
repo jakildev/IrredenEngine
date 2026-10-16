@@ -17,20 +17,33 @@ namespace IRSystem {
 
 // Renders the dropdown collapsed header (one row, like a button), plus
 // the expanded item panel below it when isOpen_. The header always
-// occupies widget.size_; the expanded panel is drawn below the header
-// in painter order so it overpaints any widget that happens to share
-// the same z-stripe. Hit-region growth to cover the open panel is
-// handled by WIDGET_APPLY_DROPDOWN (hitbox size mutation).
+// occupies widget.size_. The expanded panels are painted in endTick, after
+// every header's text has been dispatched: a panel's fill must land over the
+// headers of the dropdowns below it, and glyphs are drawn by a dispatch that
+// runs after the per-entity fills, so a panel painted in the tick would have
+// those headers' text written over it. Hit-region growth to cover the open
+// panel is handled by WIDGET_APPLY_DROPDOWN (hitbox size mutation).
 template <> struct System<WIDGET_RENDER_DROPDOWN> {
+    // An open dropdown, held from its tick to endTick of the same frame (no
+    // structural change runs in between).
+    struct OpenPanel {
+        const IRComponents::C_Widget *widget_;
+        const IRComponents::C_WidgetDropdown *dd_;
+        const IRComponents::C_WidgetState *state_;
+        IRMath::ivec2 pos_;
+    };
+
     IRComponents::C_TriangleCanvasTextures *canvas_ = nullptr;
     IRPrefab::Widget::WidgetTheme theme_;
     IRRender::RectFillScratch scratch_;
     std::vector<IRRender::GlyphDrawCommand> textCmds_;
+    std::vector<OpenPanel> openPanels_;
 
     void beginTick() {
         IREntity::EntityId guiCanvas = IRRender::getCanvas("gui");
         canvas_ = &IREntity::getComponent<IRComponents::C_TriangleCanvasTextures>(guiCanvas);
         theme_ = IRPrefab::Widget::defaultTheme();
+        openPanels_.clear();
     }
 
     void tick(
@@ -107,13 +120,22 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
             );
         }
 
-        if (!dd.isOpen_ || n == 0)
-            return;
+        if (dd.isOpen_ && n > 0) {
+            openPanels_.push_back(OpenPanel{&widget, &dd, &state, guiPos.pos_});
+        }
+    }
 
-        // Expanded item panel. Painted in painter order over anything below it.
+    // Expanded item panel. Painted over anything below it, the other
+    // dropdowns' headers included (their text was dispatched first).
+    void paintPanel(const OpenPanel &panel) {
+        const IRComponents::C_Widget &widget = *panel.widget_;
+        const IRComponents::C_WidgetDropdown &dd = *panel.dd_;
+        const IRComponents::C_WidgetState &state = *panel.state_;
+        const int itemH = dd.rowHeight();
+        const int n = static_cast<int>(dd.items_.size());
         const IRMath::ivec2 panelPos(
-            guiPos.pos_.x,
-            guiPos.pos_.y + dd.itemTopOffsetY(widget.size_.y, 0)
+            panel.pos_.x,
+            panel.pos_.y + dd.itemTopOffsetY(widget.size_.y, 0)
         );
         const IRMath::ivec2 panelSize(widget.size_.x, dd.stripHeight());
         IRRender::fillRect(
@@ -132,7 +154,7 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
         for (int i = 0; i < n; ++i) {
             const IRMath::ivec2 rowPos(
                 panelPos.x,
-                guiPos.pos_.y + dd.itemTopOffsetY(widget.size_.y, i)
+                panel.pos_.y + dd.itemTopOffsetY(widget.size_.y, i)
             );
             const IRMath::ivec2 rowSize(panelSize.x, itemH);
             if (i == dd.selectedIndex_) {
@@ -179,6 +201,14 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
     }
 
     void endTick() {
+        // The headers' text first, then the open panels over it, then theirs.
+        IRPrefab::GuiText::dispatchGuiText(textCmds_);
+        if (openPanels_.empty()) {
+            return;
+        }
+        for (const OpenPanel &panel : openPanels_) {
+            paintPanel(panel);
+        }
         IRPrefab::GuiText::dispatchGuiText(textCmds_);
     }
 
