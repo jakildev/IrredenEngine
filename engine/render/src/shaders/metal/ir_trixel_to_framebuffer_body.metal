@@ -182,7 +182,9 @@ fragment FragmentOut IR_TRIXEL_FRAGMENT_NAME(
     // roundHalfUp, not hardware round(): a fractional depthScale (effSub /
     // cubeSub) lands odd rawDist values on exact .5 ties, where the GLSL
     // twin's round() is implementation-defined; both twins share roundHalfUp.
-    int base = roundHalfUp(float(rawDist) * depthScale);
+    // scatterFbResolution.w != 0: the per-axis scatter co-renders this frame.
+    int base = roundHalfUp(float(compositeCanvasDistance(
+        rawDist, frameData.scatterFbResolution.w != 0.0f)) * depthScale);
     // Priority and color/depth select the same stored cell.
     int tier = frameData.depthPriorityMode;
     if (frameData.anyPerTrixelPriority != 0) {

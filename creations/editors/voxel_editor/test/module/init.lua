@@ -125,12 +125,14 @@ IREditor.registerSession("test_parts", function(session)
 
     session:segment("bake")
     session:addVoxelPart()
-    session:bakeSphere(2)
+    session:bakeSphere(1.9)
     session:expectPartOccupancy(0, blob_front, true, "blob_baked")
 
     session:segment("before_click")
     session:expectPartOccupancy(0, painted, false, "before_click_empty")
-    session:segment("click")
+    -- At the session zoom the selected part's gizmo owns the blob's front
+    -- faces; one zoom step in they lie outside it.
+    session:segment("click", 8)
     session:click(painted)
     session:expectPartOccupancy(0, painted, true, "clicked_cell_filled")
 
@@ -271,4 +273,18 @@ end)
 
 IREditor.registerSession("test_unreachable", function(session)
     session:click({ 0, 0, 0 })
+end)
+
+-- At the default scene size the BAKE slider can hold a radius either side of
+-- 2.0981 for this request, where the sphere gains 32 cells, (7, 7, 5) among
+-- them. bakeSphere refuses it, so the part stays clear and the click has
+-- nothing to pick.
+IREditor.registerSession("test_bake_radius_guard", function(session)
+    session:segment("bake")
+    session:addVoxelPart()
+    session:bakeSphere(2.095)
+    session:segment("click")
+    session:click({ 7, 7, 5 })
+    session:segment("save")
+    session:save()
 end)

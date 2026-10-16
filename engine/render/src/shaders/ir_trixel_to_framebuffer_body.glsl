@@ -134,7 +134,9 @@ void main() {
     // roundHalfUp, not hardware round(): a fractional depthScale (effSub /
     // cubeSub) lands odd rawDist values on exact .5 ties, where GLSL round()
     // is implementation-defined and diverges from the Metal twin.
-    int base = roundHalfUp(float(rawDist) * depthScale);
+    // scatterFbResolution.w != 0: the per-axis scatter co-renders this frame.
+    int base = roundHalfUp(
+        float(compositeCanvasDistance(rawDist, scatterFbResolution.w != 0.0)) * depthScale);
     // Match voxel-to-trixel write: texture coord = trixelOriginOffsetZ1 + canvasOffset + worldIndex
     // canvasOffset is already scaled by subdivisions in smooth mode (CPU side)
     // mouseHoveredTriangleIndex is base space; scale to subdivided space for comparison

@@ -162,6 +162,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         );
         frameData.frameData_.textureOffset_ = vec2(0);
         frameData.frameData_.distanceOffset_ = 0;
+        frameData.frameData_.scatterFbResolution_.w = 0.0f;
         // Main world gather is always WORLD content: the gather clamps it
         // out of the reserved foreground near band (a no-op for in-budget content).
         // Explicit so the persistent mainFramebuffer frame-data (shared with the
@@ -227,6 +228,8 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 logicalCanvasSize,
                 framebufferResolution
             );
+            // SDF / text gathered beside the scatter composite on its face-free key.
+            frameData.frameData_.scatterFbResolution_.w = 1.0f;
             // Fall through (no early return) to the single-canvas gather below:
             // during rotation the main canvas holds only SDF / text / overlay
             // content (its voxel pass is skipped in VOXEL_TO_TRIXEL_STAGE_1), so
