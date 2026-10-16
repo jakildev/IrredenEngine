@@ -43,6 +43,17 @@ assumed complete. CENTER/GROUND anchors and model transforms are applied when th
 asset becomes an entity, not baked twice. Hollow flags, procedural color flags
 and custom shader SDFs are not implicit conversion inputs.
 
+The optional `maxWorkingBytes` argument defaults to 256 MiB and caps the
+combined voxel-record and temporary distance-grid payload before either is
+allocated. It excludes allocator overhead, existing caller-owned assets and later
+pool/GPU uploads; it is not a process RSS limit. A caller can raise or lower this
+authoring budget independently of grid dimensions. The integer cell-index limit
+still applies, and a zero budget rejects every nonempty grid. Invalid extents,
+nonfinite parameters, unsupported shape types and over-budget requests return an
+empty asset; an actual allocation failure propagates normally. Supported built-ins
+are explicitly enumerated, so a new enum value cannot silently use the evaluator's
+fallback box. There is no 64-cubed bake limit.
+
 The resulting finite cubes are the geometry of the object, including its shadow.
 This is not a promise of the smooth analytic silhouette: direct rendering changes
 its field threshold with subdivision, while a baked asset keeps its authored

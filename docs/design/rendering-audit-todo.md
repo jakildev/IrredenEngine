@@ -38,9 +38,11 @@ off/on, cardinal/intermediate yaw, density and overlap. Then cover authored
 rotation/attachments, local-light blocking and finer-grid/LOD scale conventions.
 Arbitrary voxel occupancy already shares the geometry path; composed/custom SDF
 recipes and dynamic GPU baking need explicit authoring and invalidation designs.
-For the baker's next API slice, make supported-primitive enumeration resilient
-to new shape kinds and define a caller-controlled allocation budget; explicit
-grid bounds currently limit geometry, not peak author-time memory.
+The baker now explicitly enumerates supported primitives and accepts a caller
+budget for output plus temporary distance payload (256 MiB by default).
+Exact-boundary, scratch-accounting, oversized-grid and beyond-64-cubed controls
+cover the admission contract. This bounds authoring payload, not process RSS or
+later pool/GPU residency; those remain part of the performance comparison.
 Defer additional shape-specific analytic receiver algorithms while measuring
 this route. Keep the correctness and cross-backend work below as regression gates.
 The small intermediate-yaw floor-shadow gap in the baked fixture is a rounded
