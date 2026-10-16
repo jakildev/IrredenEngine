@@ -66,12 +66,17 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
     ShaderProgram *scatterProbeProgram_ = nullptr;
     ShaderProgram *scatterLightingProgram_ = nullptr;
     ShaderProgram *visibleLightingProgram_ = nullptr;
+    ShaderProgram *queryStatsProgram_ = nullptr;
     bool scatterProbeEnabled_ = false;
     bool scatterLightingEnabled_ = false;
     bool visibilityPrepassEnabled_ = false;
     bool visibilityStatsEnabled_ = false;
     int visibilityStatsFrameCount_ = 0;
-    // One uint per framebuffer pixel, followed by three optional diagnostic counters.
+    static constexpr std::size_t kVisibilityCounterCount = 3;
+    static constexpr std::size_t kSunQueryCounterCount = 10;
+    static constexpr std::size_t kVisibilityProbeWords =
+        kVisibilityCounterCount + kSunQueryCounterCount + 1;
+    // One uint per pixel, then visibility/query counters and a query-overflow marker.
     // Slot 26 is borrowed from voxel compaction only while these draws run.
     std::unique_ptr<Buffer> visibilityBuffer_;
     std::size_t visibilityPixelCount_ = 0;
@@ -482,7 +487,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             // Both passes must share the compiled fragment function: independent
             // interpolation rounding can cross a quantized depth boundary.
             (visibilityPrepass
-                 ? visibleLightingProgram_
+                 ? (visibilityStatsEnabled_ ? queryStatsProgram_ : visibleLightingProgram_)
                  : (scatterLightingEnabled_
                         ? scatterLightingProgram_
                         : (scatterProbeEnabled_ ? scatterProbeProgram_ : scatterProgram_)))
@@ -492,7 +497,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 IRRender::device()->memoryBarrier(BarrierType::ALL);
                 IRRender::device()->fillBuffer(
                     visibilityBuffer_.get(),
-                    (visibilityPixelCount_ + 3u) * sizeof(std::uint32_t),
+                    (visibilityPixelCount_ + kVisibilityProbeWords) * sizeof(std::uint32_t),
                     0xFF
                 );
                 IRRender::device()->memoryBarrier(BarrierType::SHADER_STORAGE);
@@ -525,7 +530,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
             // Readback is diagnostic-only; ordinary profiles never wait for it.
             IRRender::device()->memoryBarrier(BarrierType::ALL);
             IRRender::device()->finish();
-            std::array<std::uint32_t, 3> counts{};
+            std::array<std::uint32_t, kVisibilityProbeWords> counts{};
             visibilityBuffer_->getSubData(
                 static_cast<std::ptrdiff_t>(visibilityPixelCount_ * sizeof(std::uint32_t)),
                 sizeof(counts),
@@ -538,6 +543,22 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
                 counts[1] + 1u,
                 counts[2] + 1u,
                 visibilityPixelCount_
+            );
+            IR_LOG_INFO(
+                "SUN-QUERY-PROBE cascades={} indexed={} candidates={} face_misses={} "
+                "shape_candidates={} blocked={} first_blocker_visits={} exhausted={} "
+                "incomplete={} outside={} valid={}",
+                counts[3] + 1u,
+                counts[4] + 1u,
+                counts[5] + 1u,
+                counts[6] + 1u,
+                counts[7] + 1u,
+                counts[8] + 1u,
+                counts[9] + 1u,
+                counts[10] + 1u,
+                counts[11] + 1u,
+                counts[12] + 1u,
+                counts[13] == 0xFFFFFFFFu ? 1 : 0
             );
         }
     }
@@ -604,7 +625,7 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         }
         visibilityBuffer_ = std::make_unique<Buffer>(
             nullptr,
-            (pixels + 3u) * sizeof(std::uint32_t),
+            (pixels + kVisibilityProbeWords) * sizeof(std::uint32_t),
             BUFFER_STORAGE_DYNAMIC
         );
         visibilityPixelCount_ = pixels;
@@ -832,6 +853,17 @@ template <> struct System<TRIXEL_TO_FRAMEBUFFER> {
         const char *visibilityStats = std::getenv("IR_PERAXIS_VISIBILITY_STATS");
         sys->visibilityStatsEnabled_ =
             visibilityStats != nullptr && visibilityStats[0] == '1' && visibilityStats[1] == '\0';
+        if (sys->visibilityPrepassEnabled_ && sys->visibilityStatsEnabled_) {
+            IRRender::createNamedResource<ShaderProgram>(
+                "PerAxisQueryStatsProgram",
+                std::vector{
+                    ShaderStage{IRRender::kFileVertPerAxisScatter, ShaderType::VERTEX},
+                    ShaderStage{IRRender::kFileFragPerAxisQueryStats, ShaderType::FRAGMENT}
+                }
+            );
+            sys->queryStatsProgram_ =
+                IRRender::getNamedResource<ShaderProgram>("PerAxisQueryStatsProgram");
+        }
         sys->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAO");
         sys->overflowDrawDisabled_ = std::getenv("IR_PERAXIS_OVERFLOW_DISABLE") != nullptr;
         // NOT observer-tagged: the tick owns GpuSubStageScopes, which

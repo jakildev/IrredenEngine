@@ -40,10 +40,13 @@ struct Buffer;
 Buffer* storage[32]{};
 std::ptrdiff_t offsets[32]{};
 int textures[8]{},used=0,residentMode=1,allocations=0,destructions=0,finishes=0,reads=0,logs=0;
+int queryLogs=0;
+bool queryOverflow=false;
 bool depthTest=true,depthWrite=true,stats=false,prepassSelector=false;
 bool sunReady=false,surfaceReady=false;
 std::vector<std::string> events;
 std::array<std::size_t,4> logged{};
+std::array<std::uint32_t,11> queryLogged{};
 void event(std::string value){events.push_back(value);}
 struct Buffer{
  int id;bool owned=false;std::vector<std::uint32_t> words;
@@ -59,7 +62,7 @@ struct Buffer{
   storage[slot]=this;offsets[slot]=offset;
  }
  void getSubData(std::ptrdiff_t offset,std::size_t size,void* out){
-  check(finishes>reads,"readback must wait");check(size==12,"only statistics tail read");
+  check(finishes>reads,"readback must wait");check(size==14*4,"only statistics tail read");
   check(std::size_t(offset)+size==words.size()*4,"statistics tail offset");
   std::memcpy(out,reinterpret_cast<char*>(words.data())+offset,size);++reads;
  }
@@ -98,26 +101,32 @@ struct Device{
  void setDepthTest(bool value){depthTest=value;event(value?"depth1":"depth0");}
  void setDepthWrite(bool value){depthWrite=value;event(value?"write1":"write0");}
  void drawElementsInstancedIndirect(DrawMode,IndexType,const Buffer* args,std::ptrdiff_t offset){
-  const bool prepass=used==3&&prepassSelector,replay=used==3&&!prepassSelector;
+  const bool visibility=used==3||used==6;
+  const bool prepass=visibility&&prepassSelector,replay=visibility&&!prepassSelector;
   check(depthTest==!prepass&&depthWrite==!prepass,"depth state per pass");
-  if(used==1||used==3)check(sunReady&&surfaceReady,"lighting bindings before either phase");
+  if(used==1||visibility)check(sunReady&&surfaceReady,"lighting bindings before either phase");
   check(residentMode==0||residentMode==1,"resident overflow selector");
   if(residentMode==0){
    const int axis=int(offset/kPerAxisCellIndirectStrideBytes);
    check(axis>=0&&axis<3&&offset==axis*32&&args->id==126,"regular indirect arguments");
    check(storage[25]&&storage[25]->id==25&&offsets[25]==axis*16*4,"regular cell region");
    check(textures[0]==100+axis&&textures[1]==200+axis,"regular textures");
-   if(used==1||used==3)check(textures[4]==300+axis,"axis AO texture");
+   if(used==1||visibility)check(textures[4]==300+axis,"axis AO texture");
   }else{
    check(args->id==125&&offset==12*4,"overflow indirect arguments");
    check(storage[25]&&storage[25]->id==125&&offsets[25]==64*4,"overflow region");
   }
   if(prepass||replay){
    check(storage[26]&&storage[26]->owned,"visibility resource at slot 26");
-   auto& words=storage[26]->words;const auto tail=words.size()-3;
+   check((used==6)==stats,"query shader only for statistics");
+   auto& words=storage[26]->words;const auto tail=words.size()-14;
    if(prepass){words[0]=7;if(stats)words[tail]+=3;}
    else{check(words[0]==7,"prepass must precede replay");
-    if(stats){words[tail+1]+=2;words[tail+2]+=1;}}
+    if(stats){
+     words[tail+1]+=2;words[tail+2]+=1;
+     for(unsigned counter=0;counter<9;++counter)words[tail+3+counter]+=(counter+1)*7;
+     if(queryOverflow)words[tail+13]=0;
+    }}
   }
   event("draw"+std::to_string(residentMode));
  }
@@ -128,6 +137,11 @@ struct GpuSubStageScope{explicit GpuSubStageScope(const char*){}};
 void log(const char*,std::uint32_t a,std::uint32_t b,std::uint32_t c,std::size_t pixels){
  ++logs;logged={a,b,c,pixels};
 }
+void log(const char*,std::uint32_t a,std::uint32_t b,std::uint32_t c,std::uint32_t d,
+ std::uint32_t e,std::uint32_t f,std::uint32_t g,std::uint32_t h,std::uint32_t i,
+ std::uint32_t j,int valid){
+ ++queryLogs;queryLogged={a,b,c,d,e,f,g,h,i,j,std::uint32_t(valid)};
+}
 #define IR_LOG_INFO log
 struct Framebuffer{ivec2 size;ivec2 getResolutionPlusBuffer(){return size;}};
 struct Adapter{
@@ -136,10 +150,11 @@ struct Adapter{
  int visibilityStatsFrameCount_=0;
  std::unique_ptr<Buffer> visibilityBuffer_;std::size_t visibilityPixelCount_=0;
  Buffer frame{3},voxelCells{225},voxelIndirect{226};Buffer* frameDataBuf_=&frame;
- ShaderProgram gather{0},lighting{1},visible{3},beauty{4},probe{5};
+ ShaderProgram gather{0},lighting{1},visible{3},beauty{4},probe{5},queryStats{6};
  ShaderProgram *program_=&gather,*scatterLightingProgram_=&lighting;
  ShaderProgram *visibleLightingProgram_=&visible,*scatterProgram_=&beauty;
  ShaderProgram *scatterProbeProgram_=&probe;
+ ShaderProgram *queryStatsProgram_=&queryStats;
  void bindSunShadowResources(){sunReady=true;event("sun");}
  void bindSurfaceLightingResources(){surfaceReady=true;event("surface");}
  void restoreSurfaceLightingResources(){textures[4]=400;event("restoreSurface");}
@@ -165,17 +180,18 @@ int main(){
         "exact environment opt-in");
  }
  for(bool enabled:{false,true})for(bool lighting:{false,true})for(bool probe:{false,true})
- for(bool overflow:{false,true})for(bool statistics:{false,true}){
+ for(bool overflow:{false,true})for(bool statistics:{false,true})for(bool invalid:{false,true}){
+  queryOverflow=invalid;
   const int allocBefore=allocations,destroyBefore=destructions;
   {
    Adapter a;a.visibilityPrepassEnabled_=enabled;a.scatterLightingEnabled_=lighting;
    a.scatterProbeEnabled_=probe;a.overflowDrawDisabled_=!overflow;a.visibilityStatsEnabled_=statistics;
    const bool active=enabled&&lighting;Framebuffer framebuffer{{37,19}};
    a.prepare(framebuffer);check(allocations==allocBefore+int(active),"eligible allocation only");
-   if(active)check(a.visibilityBuffer_->words.size()==37*19+3,"framebuffer and counter capacity");
+   if(active)check(a.visibilityBuffer_->words.size()==37*19+14,"framebuffer and counter capacity");
    a.prepare(framebuffer);check(allocations==allocBefore+int(active),"allocation reuse");
    C_FrameDataTrixelToFramebuffer frameData;C_PerAxisTrixelCanvases axes;
-   a.restoreVoxelCompactionSlots();events.clear();finishes=reads=logs=0;
+   a.restoreVoxelCompactionSlots();events.clear();finishes=reads=logs=queryLogs=0;
    sunReady=surfaceReady=false;
    a.run(frameData,axes,vec2{37,19});
    check(frameData.frameData_.scatterFbResolution_.x==37&&
@@ -184,7 +200,7 @@ int main(){
          "extent and stats flag");
    std::vector<std::string> wanted;
    if(probe||lighting)wanted.push_back("sun");if(lighting)wanted.push_back("surface");
-   wanted.push_back("program"+std::to_string(active?3:lighting?1:probe?5:4));
+   wanted.push_back("program"+std::to_string(active?(statistics?6:3):lighting?1:probe?5:4));
    if(active){wanted.insert(wanted.end(),{"all","fill","storage","bind26","depth0","write0"});
     appendDraws(wanted,overflow,true);
     wanted.insert(wanted.end(),{"storage","depth1","write1"});}
@@ -195,10 +211,16 @@ int main(){
    check(depthTest&&depthWrite&&used==0&&frameData.frameData_.overflowMode_==0&&!prepassSelector,
          "restored draw state");
    for(int frame=1;frame<181;++frame){events.clear();a.run(frameData,axes,vec2{37,19});}
-   check(finishes==int(active&&statistics)&&reads==finishes&&logs==finishes,
+   check(finishes==int(active&&statistics)&&reads==finishes&&logs==finishes&&queryLogs==finishes,
          "bounded diagnostic readback");
    if(logs)check(logged==std::array<std::size_t,4>{std::size_t((overflow?4:3)*3),
       std::size_t((overflow?4:3)*2),std::size_t(overflow?4:3),37*19},"wrapping counter correction");
+   if(queryLogs){
+    for(unsigned counter=0;counter<10;++counter)
+     check(queryLogged[counter]==(counter==9?0u:(overflow?4u:3u)*(counter+1)*7),
+           "query counter log offset and wrapping correction");
+    check(queryLogged[10]==unsigned(!invalid),"query overflow validity marker");
+   }
    framebuffer.size={19,37};a.prepare(framebuffer);
    check(allocations==allocBefore+int(active),"same capacity reuse");
    framebuffer.size={38,19};a.prepare(framebuffer);
@@ -224,7 +246,10 @@ def harness():
         source, "        if (visibilityPrepassEnabled_ && scatterLightingEnabled_)")
     flags = "\n".join(re.search(rf"sys->{name}\s*=.*?;", source, re.DOTALL)[0]
                       for name in ("visibilityPrepassEnabled_", "visibilityStatsEnabled_"))
-    return (PREAMBLE + extract_block(source, "    void ensurePerAxisVisibilityBuffer(")
+    constants = "\n".join(re.search(
+        rf"static constexpr std::size_t {name}\s*=.*?;", source, re.DOTALL)[0]
+        for name in ("kVisibilityCounterCount", "kSunQueryCounterCount", "kVisibilityProbeWords"))
+    return (PREAMBLE + constants + extract_block(source, "    void ensurePerAxisVisibilityBuffer(")
             + extract_block(source, "    void drawPerAxisFaces(")
             + "void readFlags(const char* visibilityPrepass,const char* visibilityStats){"
             + "auto* sys=this;" + flags + "}\n"
@@ -280,9 +305,17 @@ class VisibilityRoutingTest(unittest.TestCase):
                 r"drawPerAxisFaces\(frameData, axes, true\);",
                 "scatterLightingProgram_->use(); drawPerAxisFaces(frameData, axes, true);"),
             "lost-compaction-restore": (r"(?<!\.)\brestoreVoxelCompactionSlots\(\);", ""),
-            "lost-counter-tail": (r"\(pixels \+ 3u\) \* sizeof\(std::uint32_t\)",
+            "lost-counter-tail": (r"\(pixels \+ kVisibilityProbeWords\) \* sizeof\(std::uint32_t\)",
                                   "pixels * sizeof(std::uint32_t)"),
             "lost-counter-correction": (r"counts\[0\] \+ 1u", "counts[0]"),
+            "lost-query-program": (r"visibilityStatsEnabled_ \? queryStatsProgram_",
+                                   "visibilityStatsEnabled_ ? visibleLightingProgram_"),
+            "query-program-without-stats": (r"queryStatsProgram_ : visibleLightingProgram_",
+                                            "queryStatsProgram_ : queryStatsProgram_"),
+            "wrong-query-offset": (r"counts\[3\] \+ 1u", "counts[2] + 1u"),
+            "lost-query-correction": (r"counts\[12\] \+ 1u", "counts[12]"),
+            "wrong-query-validity-offset": (r"counts\[13\] ==", "counts[12] =="),
+            "inverted-query-validity": (r"counts\[13\] ==", "counts[13] !="),
         }
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary)
@@ -302,7 +335,7 @@ class VisibilityRoutingTest(unittest.TestCase):
                         self.assertNotEqual(result.returncode, 0, f"survived: {name}")
                     else:
                         self.assertEqual(result.returncode, 0, result.stderr)
-                        self.assertIn("32 routing/lifecycle configurations", result.stdout)
+                        self.assertIn("64 routing/lifecycle configurations", result.stdout)
 
 
 if __name__ == "__main__":

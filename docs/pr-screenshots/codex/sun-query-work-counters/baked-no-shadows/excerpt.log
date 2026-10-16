@@ -1,0 +1,8 @@
+[2026-10-16 14:07:44.834] [EngineLog] [warning] tagGpuStage: unknown stage name "guiToScreen" — stage will not be timed. Check gpuStageRegistry() for the registered name.
+[2026-10-16 14:07:44.835] [ClientLog] [info] Initial zoom: requested=4, getCameraZoom()=4, effective_subdivisions=4 (snapped to nearest power of two)
+[2026-10-16 14:07:44.835] [ClientLog] [info] Initial camera Z-yaw: 0.7853982 rad (45 deg)
+[2026-10-16 14:07:47.512] [ClientLog] [info] VISIBILITY-PROBE fragments=195352 retained=155352 rejected=40000 pixels=927048
+[2026-10-16 14:07:47.512] [ClientLog] [info] SUN-QUERY-PROBE cascades=0 indexed=0 candidates=0 face_misses=0 shape_candidates=0 blocked=0 first_blocker_visits=0 exhausted=0 incomplete=0 outside=0 valid=1
+[2026-10-16 14:07:47.802] [ClientLog] [info] Auto-profile: 200 frames collected, exiting
+ir-run: QUIET=guarded exe=IRShapeDebug
+ir-run: RESULT=CLEAN exe=IRShapeDebug exit=0

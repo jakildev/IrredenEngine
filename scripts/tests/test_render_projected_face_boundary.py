@@ -112,11 +112,11 @@ def query_source(suffix, mutation):
         if count != 1:
             raise ValueError("depth mutation did not reach exactly one query")
     elif mutation:
-        gate = r"if \(!projectedFaceContainsClosed\([\s\S]*?\)\) return -1.0;"
+        gate = r"(?<=if \()!projectedFaceContainsClosed\([\s\S]*?, uv\)(?=\) \{)"
         replacement = (
-            "if (uv.x < 0 || uv.y < 0 || uv.x > 1 || uv.y > 1) return -1.0;"
+            "uv.x < 0 || uv.y < 0 || uv.x > 1 || uv.y > 1"
             if mutation == "strict" else
-            "if (uv.x < -.01 || uv.y < -.01 || uv.x > 1.01 || uv.y > 1.01) return -1.0;"
+            "uv.x < -.01 || uv.y < -.01 || uv.x > 1.01 || uv.y > 1.01"
         )
         source, count = re.subn(gate, replacement, source)
         if count != 1:

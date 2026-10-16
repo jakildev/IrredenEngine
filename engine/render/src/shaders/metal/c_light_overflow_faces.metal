@@ -1,5 +1,6 @@
 #include "ir_iso_common.metal"        // decode*, faceOutwardNormal6, unpack/packColor,
                                      // FrameDataVoxelToTrixel (with overflowScratchLayout)
+#include "ir_sun_face_query_layout.metal"
 #include "ir_sun_shadow_sample.metal" // FrameDataSun + worldSunShadowFactor()
 #include "ir_per_axis_shadow.metal"
 #include "ir_world_lighting.metal"

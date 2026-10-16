@@ -13,7 +13,6 @@
 // sunCascadeKernelInterior — one source with the caster bake.
 #include "ir_sun_projection.metal"
 
-#include "ir_sun_face_query_layout.metal"
 #include "ir_sun_shape_query.metal"
 
 #ifndef IR_SUN_FACE_OVERFLOW_REFERENCE
@@ -58,7 +57,13 @@ inline float sampleCascadeShadow(
     float2 origin, float2 texelSz, int bufferOffset,
     device const uint *sunDepthBuf, float maxShadowThrow, bool surfaceReceiver, float4 casterViewToWorld,
     float3 pcfOffset
+#if IR_SUN_QUERY_STATS
+    , thread SunQueryStats &sunQueryStats
+#endif
 ) {
+#if IR_SUN_QUERY_STATS
+    sunQueryStats.counts[kSunQueryCascades] += 1u;
+#endif
     const uint sourceFaceCount = sunDepthBuf[kSourceFaceHeaderOffset];
     const bool hasSourceFaces = sourceFaceCount != 0u;
     bool sourceQueryComplete = !hasSourceFaces;
@@ -76,11 +81,20 @@ inline float sampleCascadeShadow(
                 && !sourceQueryComplete && sourceFaceCount <= kSourceFaceOverflowReferenceBudget
                 && sourceFaceCount <= kSourceFaceCapacity;
             sourceQueryComplete = sourceQueryComplete || queryAllFaces;
+#if IR_SUN_QUERY_STATS
+            if (!sourceQueryComplete) sunQueryStats.counts[kSunQueryIncomplete] += 1u;
+#endif
             const uint candidateCount = queryAllFaces ? sourceFaceCount : count;
             if (sourceQueryComplete && dot(normal, sunDir) > 0.0) {
+#if IR_SUN_QUERY_STATS
+                sunQueryStats.counts[kSunQueryIndexed] += 1u;
+#endif
                 uint spill = !queryAllFaces && count > kSourceFaceTileCapacity
                     ? sunDepthBuf[kSourceFaceSpillHeadOffset + tileIndex] : 0xFFFFFFFFu;
                 for (uint candidate = 0; candidate < candidateCount; ++candidate) {
+#if IR_SUN_QUERY_STATS
+                    sunQueryStats.counts[kSunQueryCandidates] += 1u;
+#endif
                     uint faceIndex;
                     if (queryAllFaces) {
                         faceIndex = candidate;
@@ -96,12 +110,32 @@ inline float sampleCascadeShadow(
                     const float3 edgeU = float3(as_type<float>(sunDepthBuf[record+3u]), as_type<float>(sunDepthBuf[record+4u]), as_type<float>(sunDepthBuf[record+5u]));
                     const float3 edgeV = float3(as_type<float>(sunDepthBuf[record+6u]), as_type<float>(sunDepthBuf[record+7u]), as_type<float>(sunDepthBuf[record+8u]));
                     const uint type = sunDepthBuf[record + 9u];
+#if IR_SUN_QUERY_STATS
+                    if (type != 0u) sunQueryStats.counts[kSunQueryShapeCandidates] += 1u;
+#endif
                     const float separation = type == 0u
-                        ? sourceFaceRaySeparation(sunUV, sunZ, corner, edgeU, edgeV)
+                        ? sourceFaceRaySeparation(sunUV, sunZ, corner, edgeU, edgeV
+#if IR_SUN_QUERY_STATS
+                            , sunQueryStats
+#endif
+                        )
                         : sourceShapeRaySeparation(sunUV, sunZ, type, corner, edgeU, edgeV);
-                    if (separation > kShadowBiasQuantNoise && separation < maxShadowThrow) return 1.0;
+                    if (separation > kShadowBiasQuantNoise && separation < maxShadowThrow) {
+#if IR_SUN_QUERY_STATS
+                        sunQueryStats.counts[kSunQueryBlocked] += 1u;
+                        sunQueryStats.counts[kSunQueryFirstBlockerVisits] += candidate + 1u;
+#endif
+                        return 1.0;
+                    }
                 }
+#if IR_SUN_QUERY_STATS
+                sunQueryStats.counts[kSunQueryExhausted] += 1u;
+#endif
             }
+#if IR_SUN_QUERY_STATS
+        } else {
+            sunQueryStats.counts[kSunQueryOutside] += 1u;
+#endif
         }
     }
     // Finite footprints are rasterized at sun texel centers. Query their cell
@@ -207,6 +241,9 @@ inline float worldSunShadowFactorImpl(
     float3 pos3D, float3 normal, float isoDepth,
     constant FrameDataSun &sun, device const uint *sunDepthBuf, bool surfaceReceiver, float4 casterViewToWorld,
     float pcfNormalBias
+#if IR_SUN_QUERY_STATS
+    , thread SunQueryStats &sunQueryStats
+#endif
 ) {
     float3 sunDir = sun.sunDirection.xyz;
     float3 uHat = sun.sunBasisU.xyz;
@@ -261,6 +298,9 @@ inline float worldSunShadowFactorImpl(
             sunUV, sunZ, normal, sunDir, uHat, vHat,
             origin, texelSize, cascade * kCascadeTexelCount, sunDepthBuf, sun.sunMaxShadowThrow, surfaceReceiver, casterViewToWorld,
             pcfOffset
+#if IR_SUN_QUERY_STATS
+            , sunQueryStats
+#endif
         );
         shadowAccum = sampleIndex == 0 ? shadow : mix(shadowAccum, shadow, blend);
     }
@@ -271,15 +311,29 @@ inline float worldSunShadowFactorImpl(
 inline float worldSunShadowFactor(
     float3 pos3D, float3 normal, float isoDepth,
     constant FrameDataSun &sunFrameData, device const uint *sunDepthBuf
+#if IR_SUN_QUERY_STATS
+    , thread SunQueryStats &sunQueryStats
+#endif
 ) {
-    return worldSunShadowFactorImpl(pos3D + normal * kNormalBiasVoxels, normal, isoDepth, sunFrameData, sunDepthBuf, false, float4(0.0, 0.0, 0.0, 1.0), 0.0);
+    return worldSunShadowFactorImpl(pos3D + normal * kNormalBiasVoxels, normal, isoDepth, sunFrameData, sunDepthBuf, false, float4(0.0, 0.0, 0.0, 1.0), 0.0
+#if IR_SUN_QUERY_STATS
+        , sunQueryStats
+#endif
+    );
 }
 
 inline float worldSurfaceSunShadowFactor(
     float3 pos3D, float3 normal, float isoDepth, float4 casterViewToWorld,
     constant FrameDataSun &sunFrameData, device const uint *sunDepthBuf
+#if IR_SUN_QUERY_STATS
+    , thread SunQueryStats &sunQueryStats
+#endif
 ) {
-    return worldSunShadowFactorImpl(pos3D, normal, isoDepth, sunFrameData, sunDepthBuf, true, casterViewToWorld, 0.0);
+    return worldSunShadowFactorImpl(pos3D, normal, isoDepth, sunFrameData, sunDepthBuf, true, casterViewToWorld, 0.0
+#if IR_SUN_QUERY_STATS
+        , sunQueryStats
+#endif
+    );
 }
 
 // Finite shape fragments: the canvas-baked coverage splats of the shape's own
@@ -288,8 +342,15 @@ inline float worldSurfaceSunShadowFactor(
 inline float worldShapeSurfaceSunShadowFactor(
     float3 pos3D, float3 normal, float isoDepth, float4 casterViewToWorld,
     constant FrameDataSun &sunFrameData, device const uint *sunDepthBuf
+#if IR_SUN_QUERY_STATS
+    , thread SunQueryStats &sunQueryStats
+#endif
 ) {
-    return worldSunShadowFactorImpl(pos3D, normal, isoDepth, sunFrameData, sunDepthBuf, true, casterViewToWorld, kNormalBiasVoxels);
+    return worldSunShadowFactorImpl(pos3D, normal, isoDepth, sunFrameData, sunDepthBuf, true, casterViewToWorld, kNormalBiasVoxels
+#if IR_SUN_QUERY_STATS
+        , sunQueryStats
+#endif
+    );
 }
 
 #endif // IR_SUN_SHADOW_SAMPLE_METAL_INCLUDED

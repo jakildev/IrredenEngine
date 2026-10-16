@@ -69,13 +69,14 @@ struct Adapter {
  Buffer *shapeProbeFallbackBuf_=nullptr,*shapeProducerFrameBuf_=nullptr;
  Buffer *animationParamsBuf_=nullptr;
  bool scatterProbeEnabled_=false,shapeProbeEnabled_=false,shapeLightingEnabled_=false;
- bool scatterLightingEnabled_=false,visibilityPrepass=false;
+ bool scatterLightingEnabled_=false,visibilityPrepass=false,visibilityStatsEnabled_=false;
  int perAxisCanvasEntity_=-1;
  Axes *perAxisCanvases_=nullptr;
- ShaderProgram beauty{1},probe{2},surfaceLighting{3},visibleLighting{4};
+ ShaderProgram beauty{1},probe{2},surfaceLighting{3},visibleLighting{4},queryStats{5};
  ShaderProgram *scatterProgram_=&beauty,*scatterProbeProgram_=&probe;
  ShaderProgram *scatterLightingProgram_=&surfaceLighting;
  ShaderProgram *visibleLightingProgram_=&visibleLighting;
+ ShaderProgram *queryStatsProgram_=&queryStats;
  void bindSurfaceLightingResources(){++surfaceBinds;}
 """
 
@@ -110,13 +111,15 @@ int main(){
   if(adapter.scatterProbeEnabled_||adapter.shapeProbeEnabled_||lookups!=firstLookups)return 7;
   ++cases;
  }
- for(bool probe:{false,true})for(bool lighting:{false,true})for(bool visible:{false,true}){
+ for(bool probe:{false,true})for(bool lighting:{false,true})for(bool visible:{false,true})
+ for(bool statistics:{false,true}){
   Adapter adapter;Buffer frame{29},depth{28};Axes axes{true};
   adapter.sunFrameBuf_=&frame;adapter.sunDepthBuf_=&depth;
   adapter.scatterProbeEnabled_=probe;adapter.scatterLightingEnabled_=lighting;
   adapter.visibilityPrepass=visible&&lighting;
+  adapter.visibilityStatsEnabled_=statistics;
   used=binds=surfaceBinds=0;adapter.drawPerAxisScatter(0,axes,0,0);
-  const int expected=visible&&lighting?4:lighting?3:probe?2:1;
+  const int expected=visible&&lighting?(statistics?5:4):lighting?3:probe?2:1;
   if(used!=expected||surfaceBinds!=int(lighting)||binds!=((probe||lighting)?2:0))return 4;
  }
  return cases==48?0:8;
@@ -220,6 +223,12 @@ int main(){
             "wrong_program": (
                 r"\bscatterProbeEnabled_\s*\?\s*scatterProbeProgram_\s*:\s*scatterProgram_\b",
                 "scatterProgram_"),
+            "lost_query_program": (
+                r"visibilityStatsEnabled_\s*\?\s*queryStatsProgram_",
+                "visibilityStatsEnabled_ ? visibleLightingProgram_"),
+            "query_program_without_stats": (
+                r"queryStatsProgram_\s*:\s*visibleLightingProgram_",
+                "queryStatsProgram_ : queryStatsProgram_"),
             "lost_cache": (r"\bsunFrameBuf_\s*==\s*nullptr\b", "true"),
             "lost_cardinal_gate": (r"\bperAxisCanvases_\s*->\s*isAllocated\(\s*\)", "true"),
             "foreign_canvas": (r"\bentity\s*==\s*perAxisCanvasEntity_\s*&&\s*", ""),

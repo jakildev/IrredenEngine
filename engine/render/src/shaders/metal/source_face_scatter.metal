@@ -2,6 +2,7 @@
 using namespace metal;
 #include "ir_iso_common.metal"
 #include "ir_fog_color.metal"
+#include "ir_sun_face_query_layout.metal"
 #include "ir_sun_shadow_sample.metal"
 #include "ir_source_face_lighting.metal"
 struct VertexIn { float2 position [[attribute(0)]]; };

@@ -32,14 +32,28 @@ inline bool sourceFaceQueryComplete(uint count) {
 }
 
 // Positive separation is a front hit, including conservative rounded boundaries.
-inline float sourceFaceRaySeparation(float2 sunUV, float sunZ, float3 corner, float3 edgeU, float3 edgeV) {
+inline float sourceFaceRaySeparation(float2 sunUV, float sunZ, float3 corner, float3 edgeU, float3 edgeV
+#if IR_SUN_QUERY_STATS
+    , thread SunQueryStats &sunQueryStats
+#endif
+) {
     const float determinant = projectedFaceDeterminant(float2(edgeU.x, edgeU.y), float2(edgeV.x, edgeV.y));
-    if (abs(determinant) < 0.000001) return -1.0;
+    if (abs(determinant) < 0.000001) {
+#if IR_SUN_QUERY_STATS
+        sunQueryStats.counts[kSunQueryFaceMisses] += 1u;
+#endif
+        return -1.0;
+    }
     const float2 uv = projectedFaceCoordinates(
         float2(sunUV.x - corner.x, sunUV.y - corner.y),
         float2(edgeU.x, edgeU.y), float2(edgeV.x, edgeV.y), determinant);
     if (!projectedFaceContainsClosed(sunUV, float2(corner.x, corner.y),
-            float2(edgeU.x, edgeU.y), float2(edgeV.x, edgeV.y), determinant, uv)) return -1.0;
+            float2(edgeU.x, edgeU.y), float2(edgeV.x, edgeV.y), determinant, uv)) {
+#if IR_SUN_QUERY_STATS
+        sunQueryStats.counts[kSunQueryFaceMisses] += 1u;
+#endif
+        return -1.0;
+    }
     // An uncertain boundary hit must never extrapolate depth beyond the face.
     const float u = uv.x < 0.0 ? 0.0 : (uv.x > 1.0 ? 1.0 : uv.x);
     const float v = uv.y < 0.0 ? 0.0 : (uv.y > 1.0 ? 1.0 : uv.y);

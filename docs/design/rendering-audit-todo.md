@@ -548,7 +548,7 @@ acceptance limits for each step.
   evidence includes the rejected first attempt.
   Storage follows internal framebuffer pixels (3.54 MiB in this fixture), not
   entity or face capacity. Both attached lighting and this extra pass remain
-  default-off. Next measure candidate visits and dense/moving-camera workloads,
+  default-off. Next qualify dense/moving-camera workloads,
   including native OpenGL, before deciding adoption or routing.
   Added [subdivision and cardinal-lifecycle controls](../pr-screenshots/codex/visibility-subdivision-controls/README.md):
   nine yaw views at each base density 2, 4 and 8 remain RGB-identical with the
@@ -560,9 +560,14 @@ acceptance limits for each step.
   environment data. Orbit-shape banding remains visible in both arms; image
   parity does not accept those existing visual defects. Validate dense/incomplete
   tiles, overflow and fog before default adoption; exact shadow-query cost remains
-  substantial after this pass. Next instrument actual post-prepass candidate
-  visits, footprint misses and first-blocker ordinal in diagnostic-only runs,
-  then time any change with counters disabled. Consider delaying depth-coordinate
+  substantial after this pass. Added diagnostic-only
+  [post-prepass query counters](../pr-screenshots/codex/sun-query-work-counters/README.md):
+  21 off/on native images match exactly. Six sampled frames show 85.76–97.93%
+  of candidate visits rejected by finite-face footprint/degeneracy tests; no
+  incomplete lists occur in those fixtures. Reservation order can change the
+  work counts without changing visibility. Next test more selective candidate
+  indexing against build time, memory and incomplete-list rates, then time any
+  change with counters disabled. Consider delaying depth-coordinate
   loads until the unchanged footprint test accepts only if native evidence shows
   avoidable work; compilers may already do this. Coordinate shared sampler edits
   with the separate analytical-box self-shadow work.

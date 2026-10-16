@@ -25,6 +25,7 @@ layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 // FrameDataSun UBO (29), sun-depth SSBO (28), and worldSunShadowFactor() — for
 // the opt-in detached re-voxelize world-receive path. Shared with
 // c_compute_sun_shadow.
+#include "ir_sun_face_query_layout.glsl"
 #include "ir_sun_shadow_sample.glsl"
 // GPULightSource list (slot 4), light-volume extents, spotConeFactor, ACESFilm.
 #include "ir_world_lighting.glsl"
