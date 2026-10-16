@@ -80,7 +80,8 @@ fleet workflow.
   and launches it under `lldb` or `gdb`. Use `--batch` for non-interactive
   crash triage that runs once and prints all thread backtraces.
 - **`fleet-jobs`** — pane-scoped durable jobs for work that outlives the
-  tool window: `start build|fleet-tests|render-verify`, then `status`,
+  tool window: `start build|fleet-tests|render-verify|light-verify|gui-verify`,
+  then `status`,
   `wait` (streams the log, exits with the child's code), `kill`, `list`.
   A new-session supervisor owns the child, so the job survives the
   invoking tool call or Codex session; state lives under

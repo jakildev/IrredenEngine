@@ -31,6 +31,11 @@ python3 scripts/gui-verify.py IRVoxelEditor --no-build
 python3 scripts/gui-verify.py IRVoxelEditor --warmup-frames 20   # timing-sensitive assertions
 ```
 
+A run that would outlive the tool window (a Codex command window) starts
+as the `gui-verify` job profile instead
+([`FLEET-RUNTIME.md § Long-running jobs`](../../../docs/agents/FLEET-RUNTIME.md#long-running-jobs));
+its evidence is the later terminal `wait`.
+
 `creations/editors/voxel_editor/main.cpp` ships two assertion shots in its
 `kGuiTestShots[]` table:
 

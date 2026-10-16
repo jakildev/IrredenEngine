@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""fleet-jobs — pane-scoped durable jobs for builds, the fleet suite, and render-verify.
+"""fleet-jobs — pane-scoped durable jobs for builds, the fleet suite, and the display verifiers.
 
 A job outlives the tool call, Claude invocation, or Codex session that started
 it: a new-session supervisor owns the child, appends its output to a durable
@@ -10,6 +10,8 @@ Usage:
   fleet-jobs start build [--name NAME] -- <ir-build arguments>
   fleet-jobs start fleet-tests [--name NAME] [--only <substring>]
   fleet-jobs start render-verify [--name NAME] -- <render-verify arguments>
+  fleet-jobs start light-verify [--name NAME] -- <light-verify arguments>
+  fleet-jobs start gui-verify [--name NAME] -- <target> [options] [-- <target arguments>]
   fleet-jobs status [--json] <job-id>
   fleet-jobs wait [--quiet] [--timeout SECONDS] <job-id>
   fleet-jobs kill <job-id>
@@ -20,9 +22,14 @@ Profiles are fixed; there is no executable, path, or shell-string form.
                  enters here after its format -> format-changed rewrite)
   fleet-tests    <cwd's checkout>/scripts/fleet/tests/run_all.sh
   render-verify  <cwd's checkout>/scripts/render-verify.py; --build-dir,
-                 --update-references and --force are rejected, a pane
-                 runs one render-verify job at a time, and the log opens
-                 with the displays the job's session can reach
+                 --update-references and --force are rejected
+  light-verify   <cwd's checkout>/scripts/light-verify.py; --build-dir,
+                 --update-baselines and --force are rejected
+  gui-verify     <cwd's checkout>/scripts/gui-verify.py; the target name
+                 comes first, then its options, then what it forwards to
+                 the target after a second --
+A pane runs one display verifier (render-verify, light-verify, gui-verify)
+at a time, and that job's log opens with the displays its session can reach.
 
 wait streams the job log and exits with the child's exit code; a job that is
 still running when --timeout elapses exits 124, a lost job exits 1, and a
@@ -54,19 +61,37 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 from fleet_codex_doctor import DISPLAY_PROBE  # noqa: E402
 
-PROFILES = ("build", "fleet-tests", "render-verify")
+PROFILES = ("build", "fleet-tests", "render-verify", "light-verify", "gui-verify")
+# The verifiers that drive a demo through fleet-run. Each needs a display,
+# and each clears or fills the build's shared screenshot directory, so a
+# pane runs one at a time. fleet_codex_policy.DISPLAY_PROFILES names the
+# same set.
+DISPLAY_PROFILES = ("render-verify", "light-verify", "gui-verify")
 TERMINAL = ("succeeded", "failed", "killed")
 # Supervisor-vouched states that still own the log; "draining" holds a process
 # that outlived SIGKILL's grace.
 LIVE = ("starting", "running", "draining")
-# render-verify options a detached run may pass. --build-dir selects the
-# directory the demo executable is resolved from; --update-references and
-# --force rewrite committed references behind a prompt the closed stdin
-# cannot answer.
-RENDER_VERIFY_VALUE_OPTS = {"--target": r"[A-Za-z0-9_]+", "--demo": r"[A-Za-z0-9_]+",
-                            "--warmup": r"[0-9]+", "--timeout": r"[0-9]+",
-                            "--demo-arg": None}
-RENDER_VERIFY_FLAGS = ("--all", "--no-build")
+IDENT = r"[A-Za-z0-9_]+"
+COUNT = r"[0-9]+"
+# A ref light-verify diffs against; no leading dash, so it never reads as
+# an option of the script.
+GIT_REF = r"[A-Za-z0-9][A-Za-z0-9._/-]*"
+# The options a detached verifier run may pass, by profile. --build-dir
+# selects the directory the demo executable is resolved from;
+# --update-references, --update-baselines and --force rewrite committed
+# references behind a prompt the closed stdin cannot answer.
+VALUE_OPTS = {
+    "render-verify": {"--target": IDENT, "--demo": IDENT, "--warmup": COUNT,
+                      "--timeout": COUNT, "--demo-arg": None},
+    "light-verify": {"--target": IDENT, "--warmup": COUNT, "--timeout": COUNT,
+                     "--against": GIT_REF},
+    "gui-verify": {"--warmup-frames": COUNT, "--timeout": COUNT},
+}
+FLAGS = {
+    "render-verify": ("--all", "--no-build"),
+    "light-verify": ("--no-build", "--if-changed"),
+    "gui-verify": ("--no-build", "--allow-no-assertions"),
+}
 NAME_RE = re.compile(r"[A-Za-z0-9._-]{1,40}")
 JOB_ID_RE = re.compile(r"[0-9]{8}T[0-9]{6}Z-[a-z-]+-[0-9a-f]{6}")
 STARTUP_TIMEOUT = 30.0
@@ -231,25 +256,39 @@ def interpreter_for(script):
     return [str(script)]
 
 
-def validate_render_verify(passthrough):
+def validate_options(profile, args):
+    value_opts, flags = VALUE_OPTS[profile], FLAGS[profile]
     i = 0
-    while i < len(passthrough):
-        arg = passthrough[i]
+    while i < len(args):
+        arg = args[i]
         key, eq, inline = arg.partition("=")
-        if key in RENDER_VERIFY_FLAGS and not eq:
+        if key in flags and not eq:
             i += 1
             continue
-        if key not in RENDER_VERIFY_VALUE_OPTS:
-            raise UsageError(f"render-verify option {arg!r} is not supported by the job profile")
+        if key not in value_opts:
+            raise UsageError(f"{profile} option {arg!r} is not supported by the job profile")
         if eq:
             value, i = inline, i + 1
-        elif i + 1 < len(passthrough):
-            value, i = passthrough[i + 1], i + 2
+        elif i + 1 < len(args):
+            value, i = args[i + 1], i + 2
         else:
             raise UsageError(f"{key} needs a value")
-        pattern = RENDER_VERIFY_VALUE_OPTS[key]
+        pattern = value_opts[key]
         if (pattern and not re.fullmatch(pattern, value)) or (not pattern and not value):
             raise UsageError(f"{key} value {value!r} is not allowed")
+
+
+def validate_gui_verify(passthrough):
+    """The target name, its options, then what it forwards after a second --."""
+    if not passthrough or not re.fullmatch(IDENT, passthrough[0]):
+        raise UsageError("gui-verify needs the target name first (e.g. -- IRVoxelEditor)")
+    options = passthrough[1:]
+    if "--" in options:
+        cut = options.index("--")
+        options, forwarded = options[:cut], options[cut + 1:]
+        if not all(forwarded):
+            raise UsageError("gui-verify forwards no empty argument")
+    validate_options("gui-verify", options)
 
 
 def resolve(profile, args, cwd):
@@ -283,11 +322,14 @@ def resolve(profile, args, cwd):
         if not script.is_file():
             raise UsageError(f"ir-build not found at {script}")
         return interpreter_for(script) + passthrough, name
-    validate_render_verify(passthrough)
+    if profile == "gui-verify":
+        validate_gui_verify(passthrough)
+    else:
+        validate_options(profile, passthrough)
     top = checkout_root(cwd)
-    script = top / "scripts/render-verify.py" if top else None
+    script = top / f"scripts/{profile}.py" if top else None
     if not script or not script.is_file():
-        raise UsageError("cwd is not a checkout with scripts/render-verify.py")
+        raise UsageError(f"cwd is not a checkout with scripts/{profile}.py")
     return [sys.executable, str(script), *passthrough], name
 
 
@@ -906,7 +948,7 @@ def supervise():
                         exit_code=127, finished_at=now_iso())
             write_atomic(job_dir / "meta.json", meta)
             return 127
-        if meta["profile"] == "render-verify":
+        if meta["profile"] in DISPLAY_PROFILES:
             log.write(f"[fleet-jobs] display: {display_discovery()}\n".encode())
         name, _, value = marks[0].partition("=")
         try:
@@ -1009,16 +1051,15 @@ def admission_lock(root):
             yield
 
 
-def live_render_verify(root):
-    """Id of this pane's live render-verify job, or None."""
+def live_display_job(root):
+    """(id, profile) of this pane's live display-verifier job, or None."""
     if not root.is_dir():
         return None
     for job_dir in root.iterdir():
         if (job_dir / "meta.json").is_file():
             meta = read_meta(job_dir)
-            if (meta.get("profile") == "render-verify"
-                    and effective(meta)[0] in LIVE):
-                return meta["id"]
+            if meta.get("profile") in DISPLAY_PROFILES and effective(meta)[0] in LIVE:
+                return meta["id"], meta["profile"]
     return None
 
 
@@ -1031,14 +1072,15 @@ def cmd_start(rest, cwd):
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     job_id = f"{stamp}-{profile}-{secrets.token_hex(3)}"
     job_dir = root / job_id
-    # render-verify clears and captures into the build's shared screenshot
-    # directory, so a concurrent run in the same checkout can grade the other
-    # run's frames and report PASS for a demo that never rendered. The scan
-    # and the "starting" record it must see are one step under the lock.
+    # The display verifiers clear and capture into the build's shared
+    # screenshot directory, so two running in the same checkout can grade
+    # each other's frames and report PASS for a demo that never rendered.
+    # The scan and the "starting" record it must see are one step under
+    # the lock.
     with admission_lock(root):
-        if profile == "render-verify" and (busy := live_render_verify(root)):
-            die(f"render-verify job {busy} is still running in this pane; "
-                "wait for or kill it before starting another", 1)
+        if profile in DISPLAY_PROFILES and (busy := live_display_job(root)):
+            die(f"{busy[1]} job {busy[0]} is still running in this pane; "
+                "wait for or kill it before starting another display verifier", 1)
         job_dir.mkdir()
         (job_dir / "job.log").touch()
         meta = {"id": job_id, "pane": root.name, "profile": profile, "name": name,

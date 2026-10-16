@@ -2,8 +2,8 @@
 and the fixed-profile boundary.
 
 Every job runs a fixture: the subject is copied into a temp checkout whose
-adjacent engine/tools/bin/ir-build, scripts/fleet/tests/run_all.sh and
-scripts/render-verify.py are stubs, so the real profiles resolve fixtures.
+adjacent engine/tools/bin/ir-build, scripts/fleet/tests/run_all.sh and the
+three verifier scripts are stubs, so the real profiles resolve fixtures.
 State lives under a temp FLEET_STATE_DIR and HOME; the live ~/.fleet is never
 read or written.
 """
@@ -84,13 +84,15 @@ while not os.path.exists(sys.argv[1]):
     time.sleep(0.05)
 """
 RUN_ALL = '#!/usr/bin/env bash\necho "run_all $*"\nexit 0\n'
-RENDER_VERIFY = r"""import os, sys, time
+# One stub for the three verifier profiles: it echoes its own script name.
+VERIFIER = r"""import os, sys, time
 hold = [a[5:] for a in sys.argv if a.startswith("hold=")]
 while hold and not os.path.exists(hold[0]):
     time.sleep(0.05)
-print("render-verify", *sys.argv[1:])
+print(os.path.basename(sys.argv[0])[:-3], *sys.argv[1:])
 sys.exit(3)
 """
+VERIFIERS = ("render-verify", "light-verify", "gui-verify")
 
 
 # Holds the first _supervise process that finds the flag file, so its job's
@@ -190,7 +192,7 @@ class JobsCase(unittest.TestCase):
         shutil.copy2(SUBJECT.with_name("fleet_codex_doctor.py"), self.repo / "scripts/fleet")
         for rel, text in (("engine/tools/bin/ir-build", IR_BUILD),
                           ("scripts/fleet/tests/run_all.sh", RUN_ALL),
-                          ("scripts/render-verify.py", RENDER_VERIFY)):
+                          *((f"scripts/{name}.py", VERIFIER) for name in VERIFIERS)):
             (self.repo / rel).write_text(text)
             (self.repo / rel).chmod(0o755)
         self.clone(self.checkout(self.pane_b))
@@ -313,27 +315,40 @@ class Lifecycle(JobsCase):
             (["render-verify", "--name", "rv", "--", "--target", "IRAnalyticOracle",
               "--no-build", "--warmup=3", "--demo-arg", "--occlusion-cull"], 3,
              "render-verify --target IRAnalyticOracle --no-build --warmup=3 "
-             "--demo-arg --occlusion-cull"))
+             "--demo-arg --occlusion-cull"),
+            (["light-verify", "--", "--if-changed", "--no-build", "--warmup=3",
+              "--against", "origin/master", "--target=IRLighting"], 3,
+             "light-verify --if-changed --no-build --warmup=3 --against origin/master "
+             "--target=IRLighting"),
+            (["gui-verify", "--name", "gv", "--", "IRVoxelEditor", "--no-build",
+              "--timeout", "25", "--allow-no-assertions", "--", "--gui-session",
+              "drag_probe", "--scene-size", "20", "20", "20"], 3,
+             "gui-verify IRVoxelEditor --no-build --timeout 25 --allow-no-assertions "
+             "-- --gui-session drag_probe --scene-size 20 20 20"),
+            (["gui-verify", "--", "IRVoxelEditor", "--"], 3, "gui-verify IRVoxelEditor --"))
         for args, code, line in cases:
             with self.subTest(args=args):
                 job = self.start(args)
                 waited = self.jobs(["wait", job])
                 self.assertEqual(waited.returncode, code, waited.stderr)
                 lines = waited.stdout.splitlines()
-                if args[0] == "render-verify":
+                if args[0] in VERIFIERS:
                     self.assertTrue(lines[0].startswith("[fleet-jobs] display: "), lines)
                     lines = lines[1:]
                 self.assertEqual("\n".join(lines).strip(), line)
 
-    def test_one_live_render_verify_per_pane(self):
+    def test_one_live_display_verifier_per_pane(self):
         release = self.root / "release"
         held = ["render-verify", "--", "--target", "IRAnalyticOracle",
                 "--demo-arg", f"hold={release}"]
         first = self.start(held)
         self.assertEqual(self.status(first)["status"], "running")
-        refused = self.jobs(["start", *held])
-        self.assertEqual(refused.returncode, 1, refused.stdout)
-        self.assertIn(f"render-verify job {first} is still running", refused.stderr)
+        for args in (held, ["light-verify", "--", "--no-build"],
+                     ["gui-verify", "--", "IRVoxelEditor", "--no-build"]):
+            with self.subTest(args=args):
+                refused = self.jobs(["start", *args])
+                self.assertEqual(refused.returncode, 1, refused.stdout)
+                self.assertIn(f"render-verify job {first} is still running", refused.stderr)
         self.assertEqual(len(self.job_dirs()), 1)
         other_pane = self.start(held, pane=self.pane_b)
         build = self.start(["build", "--", "plain"])
@@ -341,6 +356,14 @@ class Lifecycle(JobsCase):
         release.touch()
         for pane, job in ((self.pane_a, first), (self.pane_b, other_pane)):
             self.assertEqual(self.jobs(["wait", "--quiet", job], pane=pane).returncode, 3)
+        # The guard is symmetric: a live gui-verify refuses a render-verify.
+        gui_release = self.root / "gui-release"
+        gui = self.start(["gui-verify", "--", "IRVoxelEditor", "--", f"hold={gui_release}"])
+        refused = self.jobs(["start", "render-verify", "--", "--target", "IRAnalyticOracle"])
+        self.assertEqual(refused.returncode, 1, refused.stdout)
+        self.assertIn(f"gui-verify job {gui} is still running", refused.stderr)
+        gui_release.touch()
+        self.assertEqual(self.jobs(["wait", "--quiet", gui]).returncode, 3)
         after = self.start(["render-verify", "--", "--target", "IRAnalyticOracle"])
         self.assertEqual(self.jobs(["wait", "--quiet", after]).returncode, 3)
 
@@ -1016,6 +1039,26 @@ class ProfileBoundary(JobsCase):
         ["start", "render-verify", "--", "--only", "x"],
         ["start", "render-verify", "--", "--update-references", "--force"],
         ["start", "render-verify", "--", "/tmp/evil.py"],
+        ["start", "light-verify", "--no-build"],
+        ["start", "light-verify", "--", "--build-dir", "/tmp"],
+        ["start", "light-verify", "--", "--build-dir=/tmp"],
+        ["start", "light-verify", "--", "--update-baselines"],
+        ["start", "light-verify", "--", "--force"],
+        ["start", "light-verify", "--", "--against", "-evil"],
+        ["start", "light-verify", "--", "--against="],
+        ["start", "light-verify", "--", "--target", "../x"],
+        ["start", "light-verify", "--", "--demo-arg", "x"],
+        ["start", "light-verify", "--", "/tmp/evil.py"],
+        ["start", "gui-verify", "IRVoxelEditor"],
+        ["start", "gui-verify", "--"],
+        ["start", "gui-verify", "--", "--no-build"],
+        ["start", "gui-verify", "--", "../IRVoxelEditor"],
+        ["start", "gui-verify", "--", "/tmp/evil.py"],
+        ["start", "gui-verify", "--", "IRVoxelEditor", "--gui-session", "x"],
+        ["start", "gui-verify", "--", "IRVoxelEditor", "--build-dir", "/tmp"],
+        ["start", "gui-verify", "--", "IRVoxelEditor", "--timeout"],
+        ["start", "gui-verify", "--", "IRVoxelEditor", "--timeout", "x"],
+        ["start", "gui-verify", "--", "IRVoxelEditor", "--", ""],
         ["status", "../../etc"],
         ["frobnicate"],
     )
@@ -1026,6 +1069,14 @@ class ProfileBoundary(JobsCase):
                 result = self.jobs(args)
                 self.assertNotEqual(result.returncode, 0, result.stdout)
                 self.assertEqual(self.job_dirs(), [])
+
+    def test_display_profiles_match_the_codex_policy(self):
+        sys.path.insert(0, str(SUBJECT.parent))
+        import fleet_codex_policy as policy
+        subject = load_subject()
+        self.assertEqual(set(subject.DISPLAY_PROFILES), set(policy.DISPLAY_PROFILES))
+        self.assertEqual(set(subject.DISPLAY_PROFILES), set(VERIFIERS))
+        self.assertTrue(set(subject.DISPLAY_PROFILES) < set(subject.PROFILES))
 
     def test_supervisor_revalidates_its_spec(self):
         job_dir = self.state / "jobs" / self.pane_a / "20260101T000000Z-build-abcdef"
