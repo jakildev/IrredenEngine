@@ -88,6 +88,11 @@ bool envFlagSet(const char *name) {
     return nonEmptyEnv(name) != nullptr;
 }
 
+std::string envString(const char *name) {
+    const char *value = nonEmptyEnv(name);
+    return value != nullptr ? std::string{value} : std::string{};
+}
+
 std::string formatNumberedFilename(
     const std::string &prefix, int index, int width, const std::string &extension
 ) {

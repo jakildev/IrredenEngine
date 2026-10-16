@@ -98,5 +98,9 @@ of lag manually (used by the loading-screen / pause path).
   itself, an uncapped deterministic capture races through its tick window.
   Real-time auto-record intentionally leaves the accumulator wall-clock paced;
   interactive runs are unchanged.
+- **`resumeAfterSuspend()` after a blocking hand-off.** `IREngine.handOff`
+  parks the main thread mid-frame; the resume restarts the loop and RENDER
+  marks and drops pending catch-up ticks to the one in flight, so the wait
+  arrives as neither a catch-up burst nor one long render delta.
 - **FPS windows don't match display frequency.** The 1-second rolling
   window is in engine time, not vsync time. Numbers can look noisy.

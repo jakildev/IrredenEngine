@@ -181,6 +181,11 @@ template <> class EventProfiler<RENDER> {
         return m_deltaTimeActual.count();
     }
 
+    /// The next `beginEvent` measures its delta from @p from.
+    void rebaseline(TimePoint from) {
+        m_timePointBeginEvent = from;
+    }
+
     double frameTimeMs() const {
         return std::chrono::duration<double, std::milli>(m_deltaTimeActual).count();
     }

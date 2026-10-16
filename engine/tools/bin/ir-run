@@ -238,6 +238,10 @@ Run mode
     IR_RUN_HOST_CLOSE_*         Test seams for the HOST-CLOSED check (see
                                 the comment above ir_host_closed_event).
 
+  Exported to the program (IREngine.handOff launches its child through them):
+    IR_RUN_WRAPPER, IRREDEN_BUILD_DIR, IR_RUN_BASH (native Windows), and
+    IR_RUN_LOCK_TOKEN / IR_ACQUIRE_TOOL when a gpu lock covers the run.
+
   Result reporting (self-terminating runs — auto verbs and --timeout):
     ir-run: RESULT=CLEAN exe=<name> exit=0
         The program ran to completion and exited 0, teardown included.
@@ -401,6 +405,23 @@ if [[ -n "$acquire_verb" ]] && ir_inherited_lock_covers "$acquire_verb"; then
     acquire_verb=""
 fi
 
+# Hand-off capability (IREngine.handOff, engine/script/CLAUDE.md): the engine
+# launches its child run through this same wrapper, as argv, never a shell
+# string. Native Windows cannot execute the extensionless script, so the
+# engine also gets the bash that runs it. A gpu lease token reaches the exe
+# only when the lock it names covers this run: the ancestor's when its hold
+# is inherited, else a fresh one from the ir-acquire below.
+IR_RUN_WRAPPER="$SCRIPT_DIR/ir-run"
+if [[ "$IR_IS_WINDOWS" == "1" ]]; then
+    IR_RUN_WRAPPER="$(cygpath -m "$IR_RUN_WRAPPER")"
+    IR_RUN_BASH="$(cygpath -w "$BASH")"
+    export IR_RUN_BASH
+fi
+export IR_RUN_WRAPPER
+if [[ -n "$acquire_verb" ]] || ! ir_inherited_lock_covers gpu; then
+    unset IR_RUN_LOCK_TOKEN IR_ACQUIRE_TOOL
+fi
+
 # Default build dir: invoker's worktree, not the script-source clone.
 # Downstream-creation worktrees resolve to the dedicated
 # <engine>/build-<creation>-<agent>/ tree ir-build configures for them.
@@ -414,6 +435,9 @@ if [[ ! -d "$BUILD_DIR" ]]; then
     echo "        run 'ir-build --target $EXE_NAME' first." >&2
     exit 1
 fi
+# A child run the exe hands off to resolves its executable in this same tree.
+IRREDEN_BUILD_DIR="$(cd "$BUILD_DIR" && pwd)"
+export IRREDEN_BUILD_DIR
 
 # Find the executable in the build tree.
 EXE_PATH=$(find "$BUILD_DIR" -maxdepth 8 -name "$EXE_NAME" -type f -perm -u=x 2>/dev/null | head -1)

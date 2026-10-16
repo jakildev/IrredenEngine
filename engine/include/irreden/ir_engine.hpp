@@ -5,6 +5,7 @@
 #include <irreden/world.hpp>
 #include <filesystem>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -66,6 +67,12 @@ void applyAutoRecordArgs();
 // and inlining it would put ir_video.hpp in this header's include graph —
 // widening every includer of ir_engine.hpp to buy one log line.
 void warnIfAutoCaptureNeverArmed();
+
+// The spawn-and-wait half of `IREngine.handOff`: posix_spawn + waitpid, or
+// CreateProcessW + WaitForSingleObject on native Windows, with the GPU drained
+// through the render device. Out-of-line in hand_off_process.cpp so platform
+// headers stay out of this one.
+std::unique_ptr<HandOffPlatform> makeProcessHandOffPlatform();
 
 } // namespace detail
 
@@ -138,6 +145,7 @@ inline void init(const char *argv0, const char *configFileName = "config.lua") {
         workerThreadsOverride,
         windowModeOverride
     );
+    g_world->setHandOffPlatform(detail::makeProcessHandOffPlatform());
     g_world->setupLuaBindings(g_luaBindingRegistrations);
 }
 
@@ -164,6 +172,12 @@ inline void enableFrameTiming(bool enabled) {
 
 inline int entityCountOverride() {
     return getWorld().entityCountOverride();
+}
+
+// The C++ face of `IREngine.handOff` (engine/script/CLAUDE.md): blocks the main
+// thread in a child run launched through ir-run and resumes when it exits.
+inline HandOffResult handOff(const HandOffRequest &request) {
+    return getWorld().handOff(request);
 }
 
 // Destroys the World when the loop exits, so every manager destructor runs

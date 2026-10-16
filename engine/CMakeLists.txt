@@ -9,6 +9,7 @@ include_directories(
 
 add_library(IrredenEngine STATIC
     engine.cpp
+    hand_off_process.cpp
     ir_args.cpp
 )
 
@@ -102,3 +103,8 @@ target_include_directories(
     IrredenEngine PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
+
+# DisableProcessWindowsGhosting (hand_off_process.cpp).
+if(IR_isWindows)
+    target_link_libraries(IrredenEngine PRIVATE user32)
+endif()

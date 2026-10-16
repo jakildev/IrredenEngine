@@ -416,17 +416,26 @@ _ir_lock_holder() {
 
 # Try to create a lock dir. If it exists, check whether the holder is dead;
 # if so, reclaim. Returns 0 on success, 1 if the lock is held by a live PID.
+#
+# _ir_try_lock <lockdir> [<pid> <owner-token>] stamps the lock for another
+# live process: a GPU lease reacquire runs in a short-lived control process
+# but restores the lock to the ir-acquire shell that owns the lease.
 _ir_stamp_lock() {
     local lockdir="$1"
-    echo "$$" > "$lockdir/pid"
+    echo "${2:-$$}" > "$lockdir/pid"
     date +%s > "$lockdir/acquired_at"
-    _ir_write_winpid "$lockdir/winpid"
+    if (( $# >= 3 )); then
+        [[ -z "$3" ]] || echo "$3" > "$lockdir/winpid"
+    else
+        _ir_write_winpid "$lockdir/winpid"
+    fi
 }
 
 _ir_try_lock() {
     local lockdir="$1"
+    shift
     if mkdir "$lockdir" 2>/dev/null; then
-        _ir_stamp_lock "$lockdir"
+        _ir_stamp_lock "$lockdir" "$@"
         return 0
     fi
     local holder
@@ -439,7 +448,7 @@ _ir_try_lock() {
     # reclaimer; that's correct (the other wins).
     rm -rf "$lockdir" 2>/dev/null || true
     if mkdir "$lockdir" 2>/dev/null; then
-        _ir_stamp_lock "$lockdir"
+        _ir_stamp_lock "$lockdir" "$@"
         return 0
     fi
     return 1
@@ -633,6 +642,143 @@ ir_release_all() {
     done
     rm -f "$heldroot/.winpid" 2>/dev/null || true
     rmdir "$heldroot" 2>/dev/null || true
+}
+
+# ---------------------------------------------------------------------------
+# GPU lease — lend the gpu lock to a child run and take it back
+# ---------------------------------------------------------------------------
+#
+# An ir-acquire that holds the gpu lock records a lease under
+# $IR_LOCK_ROOT/leases/<token>/ and exports the token to its command
+# (IR_RUN_LOCK_TOKEN). The lock belongs to the ir-acquire shell, not to the
+# engine it wraps, so the engine lends it through two control verbs that run
+# in their own short-lived process:
+#   ir-acquire --lease-release <token>     HELD -> RELEASED
+#   ir-acquire --lease-reacquire <token>   RELEASED -> HELD (waits for the lock)
+# The record names the owner (pid, winpid record, held ledger); every
+# transition re-verifies that owner is alive and never re-stamps the lock to
+# the control process. A `released` marker dir is the state; a `transition`
+# dir serializes the verbs. The owner's EXIT trap drops the record in either
+# state.
+
+_ir_lease_dir() {
+    [[ "$1" =~ ^[0-9a-f]{32}$ ]] || return 1
+    echo "$IR_LOCK_ROOT/leases/$1"
+}
+
+# ir_gpu_lease_create — records a lease on the gpu lock this process holds and
+# prints its token.
+ir_gpu_lease_create() {
+    local token lease
+    token="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+    lease="$(_ir_lease_dir "$token")" || return 1
+    mkdir -p "$IR_LOCK_ROOT/leases"
+    mkdir "$lease"
+    echo "$$" > "$lease/holder"
+    _ir_write_winpid "$lease/winpid"
+    _ir_held_dir > "$lease/held_dir"
+    echo "$token"
+}
+
+ir_gpu_lease_drop() {
+    local lease
+    lease="$(_ir_lease_dir "${1:-}")" || return 0
+    rm -rf "$lease" 2>/dev/null || true
+}
+
+# _ir_lease_transition <release|reacquire> <token> [--timeout SECS] — one
+# guarded transition. Exit 2 for a malformed token, 1 for any refusal; a
+# refusal leaves the lock and the lease as they were.
+_ir_lease_transition() {
+    local op="$1" token="${2:-}"
+    shift 2 || shift $#
+    local timeout
+    timeout="$(ir_queue_timeout)"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --timeout) timeout="$2"; shift ;;
+        esac
+        shift
+    done
+    local lease
+    if ! lease="$(_ir_lease_dir "$token")"; then
+        echo "ir-acquire: malformed lease token" >&2
+        return 2
+    fi
+    if [[ ! -d "$lease" ]] || ! mkdir "$lease/transition" 2>/dev/null; then
+        echo "ir-acquire: no lease for that token, or a transition is in progress" >&2
+        return 1
+    fi
+    local status=0
+    "_ir_lease_$op" "$lease" "$timeout" || status=$?
+    rmdir "$lease/transition" 2>/dev/null || true
+    return "$status"
+}
+
+_ir_lease_owner_alive() {
+    local lease="$1"
+    _ir_holder_alive "$(cat "$lease/holder" 2>/dev/null || true)" "$lease/winpid"
+}
+
+_ir_lease_release() {
+    local lease="$1"
+    local holder owner lockdir="$IR_LOCK_ROOT/gpu/lock"
+    holder="$(cat "$lease/holder")"
+    owner="$(cat "$lease/winpid" 2>/dev/null || true)"
+    if ! _ir_lease_owner_alive "$lease"; then
+        echo "ir-acquire: lease owner $holder is not alive" >&2
+        return 1
+    fi
+    if [[ -d "$lease/released" ]]; then
+        echo "ir-acquire: lease is already released" >&2
+        return 1
+    fi
+    if ! _ir_lock_owned_by "$lockdir" "$holder" "$owner"; then
+        echo "ir-acquire: gpu lock is not held by lease owner $holder" >&2
+        return 1
+    fi
+    # The state flips before the lock goes: a release interrupted here leaves
+    # RELEASED with the owner still stamped, which reacquire accepts as-is.
+    mkdir "$lease/released"
+    rm -f "$(cat "$lease/held_dir")/gpu__lock" 2>/dev/null || true
+    rm -rf "$lockdir"
+}
+
+_ir_lease_reacquire() {
+    local lease="$1" timeout="$2"
+    local holder owner helddir lockdir="$IR_LOCK_ROOT/gpu/lock"
+    holder="$(cat "$lease/holder")"
+    owner="$(cat "$lease/winpid" 2>/dev/null || true)"
+    helddir="$(cat "$lease/held_dir")"
+    if [[ ! -d "$lease/released" ]]; then
+        echo "ir-acquire: lease is not released" >&2
+        return 1
+    fi
+    local started now
+    started="$(date +%s)"
+    while ! _ir_lock_owned_by "$lockdir" "$holder" "$owner"; do
+        if ! _ir_lease_owner_alive "$lease"; then
+            echo "ir-acquire: lease owner $holder is not alive" >&2
+            return 1
+        fi
+        _ir_try_lock "$lockdir" "$holder" "$owner" && break
+        now="$(date +%s)"
+        if (( now - started >= timeout )); then
+            echo "ir-acquire: timeout reacquiring the gpu lock (${timeout}s)" >&2
+            return 1
+        fi
+        sleep 0.2
+    done
+    # The owner may have exited while this waited; its trap has dropped the
+    # lease and would never release a lock stamped after it ran.
+    if [[ ! -d "$lease" ]] || ! _ir_lease_owner_alive "$lease"; then
+        _ir_lock_owned_by "$lockdir" "$holder" "$owner" && rm -rf "$lockdir"
+        echo "ir-acquire: lease owner $holder exited during reacquire" >&2
+        return 1
+    fi
+    mkdir -p "$helddir" 2>/dev/null || true
+    : > "$helddir/gpu__lock"
+    rmdir "$lease/released"
 }
 
 # Sweep dead holders' locks. Cheap enough to run on every ir-acquire --info
