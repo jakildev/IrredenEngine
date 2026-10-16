@@ -11,6 +11,7 @@ keeps the one-screen quick-ref. Host setup (WSL2, macOS, native Windows):
 | `linux-debug`   | Linux / WSL2 Ubuntu, gcc-13+, OpenGL  | **Fleet environment**          |
 | `windows-debug` | Windows native, MSYS2 mingw64, OpenGL | Original / ship-it environment |
 | `macos-debug`   | macOS native, Metal backend           | Matured on demand              |
+| `linux-release` / `windows-release` / `macos-release` | Matching optimized host build | Recordings and performance measurements |
 
 Inside WSL (the fleet) use the Linux section — your Bash tool is real Linux,
 no `cmd.exe` wrapping, no PATH fixes, working against `~/src/IrredenEngine`.
@@ -24,11 +25,12 @@ In all three:
 - **Each worktree has its own build tree.** `ir-build` (and the `fleet-build`
   shim) auto-detects the worktree root (`git rev-parse --show-toplevel`),
   uses `<worktree>/build/`, and runs `cmake --preset` itself on first use.
-- **Release is a second tree, for perf controls only.** Each `*-debug` preset
-  has a `*-release` twin that configures into `<worktree>/build-release/`;
-  point `fleet-build`, `fleet-run` and `scripts/perf/repeat_profile.py` at it
-  with `IRREDEN_BUILD_DIR` ([`docs/perf/README.md`](../perf/README.md)
-  §"Repeat a targeted CPU/GPU profile"). The fleet builds and validates Debug.
+- **Release is a second tree, for recordings and perf controls.** Each
+  `*-debug` preset has a `*-release` twin that configures into
+  `<worktree>/build-release/`. Use `fleet-build --release --target <name>`
+  and `fleet-run --release <name> [args]`; these are the supported commands
+  for recordings and `docs/perf` measurements. The fleet builds and validates
+  Debug by default.
 - `CMAKE_CXX_STANDARD` is **23** (gcc ≥ 13 on Linux/WSL and MSYS2).
 - **Doc snippets that cite a preset:** if the recipe's expected cwd is not
   the engine root, pass `-S <engine-root>` explicitly (`cmake --preset`
