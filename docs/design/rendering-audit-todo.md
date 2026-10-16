@@ -57,12 +57,17 @@ and bounded grazing-face depth. Keep candidate-index tile-boundary coverage and
 rejection-heavy 64/256-candidate GPU cost on the TODO; this is not closure of all
 shared voxel shadow defects.
 
-The [tilted baked-shape control](../pr-screenshots/codex/sdf-baked-transform-controls/README.md)
-retains a small isolated light patch inside the cylinder's floor shadow at
-yaw45 (native detail ROI x=900, y=650, width=500, height=420).
-Root and parented poses match exactly, so inspect occupied caster cells,
-finite-face queries and candidate tile coverage before blaming transform
-propagation or smoothing the result. This observation is not yet a diagnosed bug.
+The apparent hole in the [tilted baked-shape control](../pr-screenshots/codex/sdf-baked-transform-controls/README.md)
+is a real channel between the cylinder and torus shadows, made into an isolated
+patch by face-center receiving. Independent double-precision box/slab queries
+over production-baked, GRID-rebuilt occupancy preserve the clear ray and identify
+the two neighboring casters. Full-record candidate queries reproduce all six
+original frames exactly. The [receiver comparison](../pr-screenshots/codex/tilted-baked-shadow-gaps/README.md)
+shows the existing continuous-surface path preserving the channel without
+filtering or inflating geometry. ShapeDebug exposes that path through
+`--surface-lighting` and honors `--no-local-lights` in the isolated SDF/voxel
+scene. Keep continuous receiving opt-in until its wider-view GPU cost is resolved;
+this attribution does not certify every self-shadow or every render mode.
 
 1. **Crowded finite-index coverage — native correctness validated in #4399.** Preserve
    the inline 64-entry lists and allocate bounded spill nodes only for crowded
