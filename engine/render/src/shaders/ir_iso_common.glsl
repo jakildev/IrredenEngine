@@ -978,9 +978,11 @@ float yawedIsoDistanceCellAnchor(vec3 rasterPos, float visualYaw) {
 
 // Exact (unquantized) composite depth key for a forward-scattered face: the
 // true yawed camera-space iso depth of the recovered face origin, in the
-// cardinal encodeDepthWithFace scale (× kDepthEncodeShift + slot) so it stays
+// cardinal encodeDepthWithFace scale (× kDepthEncodeShift) so it stays
 // comparable with the quantized integer keys other composite writers (the SDF
-// smooth-yaw path) emit. Do not round it: a rounded key (roundHalfUp of the
+// smooth-yaw path) emit. The face priority rides the tie band
+// (scatterFinalDepth), never this key: added here it would be a per-axis depth
+// bias of a whole encode step. Do not round it: a rounded key (roundHalfUp of the
 // yawed sum) ties adjacent micro-cells along a foreshortened in-plane axis on
 // integer depth whenever |cos-sin| or |sin+cos| < 1, and GL_LESS resolves an
 // equal-depth overlap by draw order — which runs AGAINST the depth gradient on
@@ -989,8 +991,8 @@ float yawedIsoDistanceCellAnchor(vec3 rasterPos, float visualYaw) {
 // voxel boundaries). A continuous key makes geometric ties measure-zero.
 // Shared by every forward-scatter composite writer — do not inline per-shader
 // copies.
-float scatterCompositeDepthKey(vec3 origin, float visualYaw, int slot) {
-    return yawedIsoDistance(origin, visualYaw) * float(kDepthEncodeShift) + float(slot);
+float scatterCompositeDepthKey(vec3 origin, float visualYaw) {
+    return yawedIsoDistance(origin, visualYaw) * float(kDepthEncodeShift);
 }
 
 // Conservative XY growth of an axis-aligned half-extent swept under a Z-yaw of
@@ -1091,6 +1093,13 @@ void faceInPlaneIsoSteps(int faceId, out ivec2 su, out ivec2 sv) {
 // ir_render_types.hpp and the final-depth helper in ir_scatter_depth.glsl.
 const float kScatterCellTieStep = 1.0 / 8388608.0;
 const float kScatterCellTieBand = 16.0 * kScatterCellTieStep;
+
+// A face that recedes behind a surface it shares an edge with ties that
+// surface at pixel centers on the edge. A fragment within this in-plane
+// distance of its face's edge, in face units, yields one tie band when the
+// face's depth grows toward its own interior across that edge; the face that
+// advances toward its interior keeps the pixel.
+const float kScatterEdgeTieWidth = 1.0 / 32.0;
 
 // Builds the local->world matrix from an SQT triple (scale, quaternion
 // rotation, translation). Composition is T * R * S: local p maps to

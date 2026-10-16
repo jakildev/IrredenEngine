@@ -894,13 +894,14 @@ inline float yawedIsoDistanceCellAnchor(float3 rasterPos, float visualYaw) {
 
 // Exact (unquantized) composite depth key for a forward-scattered face —
 // mirror of scatterCompositeDepthKey in ir_iso_common.glsl. Keeps the cardinal
-// encodeDepthWithFace scale (× kDepthEncodeShift + slot) so it co-sorts with
-// the SDF smooth-yaw path. Do not round it: a rounded key ties adjacent
+// encodeDepthWithFace scale (× kDepthEncodeShift) so it co-sorts with the SDF
+// smooth-yaw path; the face priority rides the tie band (scatterFinalDepth),
+// never this key. Do not round it: a rounded key ties adjacent
 // micro-cells on a foreshortened axis and lets draw order pick the farther quad
 // on the sign-flip side of a bracket (wrong-voxel-color bands). Shared by every
 // forward-scatter composite writer.
-inline float scatterCompositeDepthKey(float3 origin, float visualYaw, int slot) {
-    return yawedIsoDistance(origin, visualYaw) * float(kDepthEncodeShift) + float(slot);
+inline float scatterCompositeDepthKey(float3 origin, float visualYaw) {
+    return yawedIsoDistance(origin, visualYaw) * float(kDepthEncodeShift);
 }
 
 // Conservative XY growth of an axis-aligned half-extent swept under a Z-yaw of
@@ -982,6 +983,13 @@ inline void faceInPlaneIsoSteps(int faceId, thread int2& su, thread int2& sv) {
 // ir_render_types.hpp and the final-depth helper in ir_scatter_depth.metal.
 constant float kScatterCellTieStep = 1.0f / 8388608.0f;
 constant float kScatterCellTieBand = 16.0f * kScatterCellTieStep;
+
+// A face that recedes behind a surface it shares an edge with ties that
+// surface at pixel centers on the edge. A fragment within this in-plane
+// distance of its face's edge, in face units, yields one tie band when the
+// face's depth grows toward its own interior across that edge; the face that
+// advances toward its interior keeps the pixel.
+constant float kScatterEdgeTieWidth = 1.0f / 32.0f;
 
 // Builds the local->world matrix from an SQT triple (scale, quaternion
 // rotation, translation). Composition is T * R * S; quaternion layout matches

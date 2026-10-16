@@ -87,6 +87,8 @@ flat out ivec3 vVisibilityExtent;
 noperspective out float vDepth;
 // Finite-face in-plane coordinates for surface shadow and lighting queries.
 noperspective out vec2 vQuadParam;
+// Depth change per unit of each in-plane parameter, on vDepth's scale.
+flat out vec2 vDepthSlope;
 // Face-center iso-depth for per-face depth-color. Flat (constant across
 // the quad) — origin is the same for all 4 corners of a face instance, so
 // interpolation would be a no-op anyway and flat avoids shader-pipeline
@@ -171,6 +173,7 @@ void main() {
         vDepthColorMode = 0;
         vDepthColorExtent = 0.0;
         vQuadParam = vec2(0.5);
+        vDepthSlope = vec2(0.0);
         vCellTieOffset = 0.0;
         return;
     }
@@ -293,15 +296,19 @@ void main() {
     // scale-up keeps sub-cell depth precision (no z-fight).
     const float subScale = max(effectiveSubdivisionsForHover.x, 1.0);
     const float encScale = float(kDepthEncodeShift) * subScale;
-    // Tiebreak mirrors the integer encode's low bits ((flip << 2) | slot) so a
-    // flipped cell co-sorts exactly where a real cardinal store would land it.
     // Cell-anchor depth: measured at the corner's authored-lattice world point so
     // voxel and SDF surfaces at one world location co-sort exactly at every
-    // residual.
-    const float cornerKey = yawedIsoDistanceCellAnchor(worldCorner, visualYaw) * encScale +
-                            float((flip << 2) | slot);
+    // residual. The face priority ((flip << 2) | slot) lives in the tie band
+    // (vCellTieOffset); added to this continuous key it would be a per-axis depth bias of
+    // 1 / encScale world units per rank, enough for a face hidden behind a
+    // neighbouring surface to win pixels along their shared edge.
+    const float cornerKey = yawedIsoDistanceCellAnchor(worldCorner, visualYaw) * encScale;
     const float depthRange = float(kMaxTriangleDistance - kMinTriangleDistance);
     vDepth = (cornerKey + float(distanceOffset - kMinTriangleDistance)) / depthRange;
+    vDepthSlope = vec2(
+        yawedIsoDistance(eu, visualYaw),
+        yawedIsoDistance(ev, visualYaw)
+    ) * (encScale / depthRange);
     // Overflow entries sit two tie bands BEHIND everything else,
     // so an entry can never beat an
     // equal-yawed-depth cell-path face (near the 120°/240° coset-depth

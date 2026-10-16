@@ -141,6 +141,7 @@ vertex VertexOut v_peraxis_scatter(
         out.depthColorMode = 0;
         out.depthColorExtent = 0.0;
         out.quadParam = float2(0.5);
+        out.depthSlope = float2(0.0);
         out.cellTieOffset = 0.0;
         return out;
     }
@@ -248,17 +249,22 @@ vertex VertexOut v_peraxis_scatter(
     // worldCorner keeps its sub-cell offset so precision is preserved.
     const float subScale = max(frameData.effectiveSubdivisionsForHover.x, 1.0f);
     const float encScale = float(kDepthEncodeShift) * subScale;
-    // Tiebreak mirrors the integer encode's low bits ((flip << 2) | slot) so a
-    // flipped cell co-sorts exactly where a real cardinal store would land it.
     // Cell-anchor depth: measured at the corner's authored-lattice
     // world point so voxel and SDF surfaces at one world location co-sort
-    // exactly at every residual. Matches the GLSL twin.
-    const float cornerKey = yawedIsoDistanceCellAnchor(worldCorner, frameData.visualYaw) * encScale +
-                            float((flip << 2) | slot);
+    // exactly at every residual. The face priority ((flip << 2) | slot) lives
+    // in the tie band (cellTieOffset); added to this continuous key it would be a
+    // per-axis depth bias of 1 / encScale world units per rank, enough for a
+    // face hidden behind a neighbouring surface to win pixels along their
+    // shared edge. Matches the GLSL twin.
+    const float cornerKey = yawedIsoDistanceCellAnchor(worldCorner, frameData.visualYaw) * encScale;
     const float depthRange =
         float(globals.kMaxTriangleDistance - globals.kMinTriangleDistance);
     out.depth =
         (cornerKey + float(frameData.distanceOffset - globals.kMinTriangleDistance)) / depthRange;
+    out.depthSlope = float2(
+        yawedIsoDistance(eu, frameData.visualYaw),
+        yawedIsoDistance(ev, frameData.visualYaw)
+    ) * (encScale / depthRange);
     // Overflow entries sit two tie bands BEHIND everything else,
     // so an entry can never beat an
     // equal-yawed-depth cell-path face (near the 120°/240° coset-depth

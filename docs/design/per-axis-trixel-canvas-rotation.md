@@ -140,6 +140,32 @@ former view-mask admission rule, origin-mask measurements, and conservative
 margin contract document previous implementations. They are **superseded**,
 not current correctness or performance claims.
 
+### Composite depth key and shared-edge ties
+
+The scatter's composite depth key is the continuous yawed depth of each face
+corner, scaled to the cardinal encode (`× kDepthEncodeShift × effSub`), and
+carries **no face bits**. The face priority `(flip << 2) | slot` lives only in
+the 16-step tie band of `scatterFinalDepth`, where it orders fragments whose
+depths are otherwise equal. Added to the continuous key it is not a tiebreak
+but a per-axis depth bias of one encode step per rank (1/32 world unit at
+effective subdivision 4, 1/8 at subdivision 1): a face hidden directly behind
+a neighbouring surface then leads that surface by the bias and wins pixels
+along their shared edge, where its geometric lag vanishes.
+
+Hidden perpendicular faces are ordinary content: adjacent voxels that belong
+to separate entities get no cross-entity exposed-face mask, so every lattice
+line of such a surface is an edge shared with a receding face. Without the
+bias the two still tie within a band at pixel centers the rasterizer snaps
+onto the edge, and the fixed slot rank would hand those pixels to the hidden
+face. `scatterEdgeTieDepth` settles them geometrically: a fragment within
+`kScatterEdgeTieWidth` of its face's edge, across which the face's depth grows
+toward its own interior, yields one tie band. A face that recedes behind a
+surface it shares an edge with always recedes toward its interior there, and
+the surface in front always advances toward its own, so the surface keeps the
+pixel; two faces that both advance or both recede fall back to the band code.
+Fixture: `IRShapeDebug --voxel-entity-cube --auto-screenshot` draws a cube of
+single-voxel entities beside its voxel-set twin at inter-cardinal yaws.
+
 ## Overflow lane background — superseded mask admission (epic #2331, 2026-07-14)
 
 > Supersedes §"Per-axis store occlusion model — engine invariant (established
