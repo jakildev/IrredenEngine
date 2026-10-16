@@ -18,7 +18,7 @@ routine, proven by scripted interaction rather than claimed.
 - [ ] The gui_scale space mismatch is reconciled —
   `GuiInputEvent.screenPx_` and `worldToScreen` agree on one space
   (the known ergonomic gap in `editor-authoring-friction.md`).
-- [ ] The editor participates in the verify culture beyond its current
+- [x] The editor participates in the verify culture beyond its current
   22 GUI assertions: assertion coverage grows with each authoring
   feature, and editor scenes get reference images or a structural
   oracle.
@@ -36,19 +36,41 @@ is the standing bet.
 
 ## Current state
 The editor builds clean on macOS/Metal and runs green headless through the
-GUI-test harness (22 assertions in `voxel_editor`, including the
-load-bearing `PICKS_VOXEL` over the real picking/ray path). Phase 1 static
-authoring (#604) shipped; the `.vxs` v1 save format with JSON sidecar has
-asset tests. The #766 proof landed (PRs #2472, #2558, #2577, #2593, #3151):
-ant (20³), mushroom, rock, bird (two frames) and tree authored end to end
-through scripted GUI sessions (`scripts/author-entity.py`), committed under
-`assets/voxel/entities/` with sidecars, and played back by
+GUI-test harness: the standing shot table is 22 assertions (including the
+load-bearing `PICKS_VOXEL` over the real picking/ray path), and beside it
+`--gui-session` names 29 scripted sessions (`drag_probe` through
+`composite_proof`), the fixture module registers six more, and
+`composite_proof` alone evaluates 79 assertions. Every authoring feature
+since the entity creator landed with its own session (`voxel_editor/CLAUDE.md`
+§Validators). Editor scenes have a committed render-verify reference set
+(`creations/editors/voxel_editor/test/references/macos-debug/`, the
+`mode_preview_grid` / `mode_preview_revox` pair from
+`--gui-session mode_preview_shots`), so Done-means row 4 verifies.
+Phase 1 static authoring (#604) shipped; the `.vxs` v1 save format with JSON
+sidecar has asset tests. The #766 proof landed (PRs #2472, #2558, #2577,
+#2593, #3151): ant (20³), mushroom, rock, bird (two frames) and tree authored
+end to end through scripted GUI sessions (`scripts/author-entity.py`),
+committed under `assets/voxel/entities/` with sidecars, and played back by
 `IRShapeDebug --load-vxs`. The Phase-0 mechanism probes ran and the gate
-passed (`editor-authoring-friction.md` §"Phase 0 mechanism probe"). The
-friction log §2g records seven findings from the proof; the two it shaped
-into defects are approved (#3148 place-below modifier, #3149 widget drag).
-Open: the gui_scale space mismatch (row 3) and reference images or a
-structural oracle for editor scenes (row 4).
+passed (`editor-authoring-friction.md` §"Phase 0 mechanism probe").
+
+Row 3 stays open: `debug_overlay_draws.hpp`'s `worldToScreen` still
+projects through the viewport centre alone, while the picking chain's inverse
+`worldPos3DToMouseScreenPx` carries the letterbox, buffer and canvas-centre
+terms; nothing reconciles the two.
+
+The entity-creator epic (#3974) closed on 2026-10-13 and its post-merge
+follow-ups have landed: remove part (#4181), PARTS list scroll (#4222), linear
+array offset (#4221), CENTER-anchored parts (#4245), gizmo drawn in front of
+its part (#4348), per-axis rotate rings (#4410), the fill ghost (#4418), and
+module-safe `Session::Builder` operations with Lua bindings (#4250, #4353,
+#4376, #4379 RADIUS, #4406 named list scroll). Still open from that audit:
+the COPY YAW binding (#4402) and the bake-radius model (#4396), the panel
+overlap (#4220), and the product call on a selected part's gizmo owning a
+small part's paint pixels at zoom 4 (#4420). Every change since the owner's
+2026-09-30 review has been validated by scripted sessions only; the owner's
+hands-on pass is the next input, to land as `editor-authoring-friction.md`
+Part 4 and the next decomposition.
 
 The entity creator (#3974) landed its reference proof: the `composite_proof`
 session authors nine parts (a stem and a frame from the fixture module's
@@ -72,3 +94,4 @@ objective-linked decomposition for the entity creator.
 | 2026-09-19 | #604 close-out; #608/#610/#612/#613 retired; #3148, #3149 approved | phase direction now flows from this objective plus the friction-report review |
 | 2026-09-30 | #3974 (proposal), #3982 | friction-report review done; non-goals narrowed to phases 3, 4, 7, 8; composite-entity Done-means row added |
 | 2026-10-13 | #3974 / #3992 | composite proof authored through the harness from the fixture module, committed, and spawned by `Prefab.spawn`; Done-means row 5 verifies |
+| 2026-10-15 | sweep | Current state re-verified against master `741d3f0ab`; Done-means row 4 verifies (29 sessions plus the `mode_preview` render-verify set); row 3 confirmed open; entity-creator follow-ups recorded; owner's hands-on pass is the next input |

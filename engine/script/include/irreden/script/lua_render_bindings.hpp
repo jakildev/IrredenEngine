@@ -122,6 +122,10 @@ inline void bindRenderGlue(LuaScript &script) {
             colorFromLua(color)
         );
     };
+
+    lua["IRGui"]["fillRect"] = [](int x, int y, int w, int h, sol::object color) {
+        IRRender::fillGuiRect(IRMath::ivec2(x, y), IRMath::ivec2(w, h), colorFromLua(color));
+    };
 }
 
 } // namespace IRScript::detail
