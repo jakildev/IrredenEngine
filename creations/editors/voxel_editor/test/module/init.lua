@@ -259,7 +259,7 @@ IREditor.registerSession("test_radius", function(session)
 
     session:segment("bake")
     session:addVoxelPart()
-    session:bakeSphere(2)
+    session:bakeSphere(1.9)
 
     session:segment("radius_array")
     session:applyRadialArray(2, 8)
