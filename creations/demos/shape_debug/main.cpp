@@ -223,6 +223,23 @@ constexpr IRVideo::AutoScreenshotShot kMovingCasterShots[] = {
 bool g_movingCaster = false;
 IREntity::EntityId g_movingCasterEntity = IREntity::kNullEntity;
 
+// A cube assembled from single-voxel entities emits every interior face, so
+// each lattice line of its exterior is an edge shared with a hidden
+// perpendicular face; its voxel-set twin culls those faces. The fractional
+// origin keeps both off the integer lattice. Inter-cardinal yaws route the
+// pair through the per-axis scatter; the yaw-0 shot is the cardinal control.
+constexpr int kVoxelEntityCubeSize = 6;
+constexpr vec3 kVoxelEntityCubeOrigin{-2.8125f, -2.8125f, -6.0625f};
+constexpr vec3 kVoxelEntityCubeTwinOffset{9.0f, -9.0f, 0.0f};
+constexpr Color kVoxelEntityCubeColor{200, 170, 180, 255};
+constexpr IRVideo::AutoScreenshotShot kVoxelEntityCubeShots[] = {
+    {2.0f, vec2(0.0f), 0.35f, "voxel_entity_cube_zoom2_yaw20"},
+    {4.0f, vec2(0.0f), 0.35f, "voxel_entity_cube_zoom4_yaw20"},
+    {2.0f, vec2(0.0f), 0.7f, "voxel_entity_cube_zoom2_yaw40"},
+    {2.0f, vec2(0.0f), 0.0f, "voxel_entity_cube_zoom2_yaw0"},
+};
+bool g_voxelEntityCube = false;
+
 int g_autoWarmupFrames = 0; // 0 = --auto-screenshot not requested
 int g_autoRecordFrames = 0; // 0 = --auto-record not requested
 bool g_depthColor = false;
@@ -1495,6 +1512,11 @@ void registerCliArgs() {
     args.flag("--pivot-focus-demo", "Yaw sweep pinning the pivot on a tall pillar (#1921)");
     args.flag("--skin-smoke", "Spawn one 2-bone rigged voxel bar skinned via binding-17 (#1605)");
     args.flag(
+        "--voxel-entity-cube",
+        "Replace the scene + capture table with a cube of single-voxel entities beside its "
+        "voxel-set twin, captured at inter-cardinal yaws; needs --auto-screenshot"
+    );
+    args.flag(
         "--shadow-footprint-probe",
         "Isolate grounded voxel/SDF cone and torus pairs on a measured receiver plane"
     );
@@ -1664,6 +1686,7 @@ void readCliArgs() {
     g_pivotFocusDemo = args.getFlag("--pivot-focus-demo");
     g_skinSmoke = args.getFlag("--skin-smoke");
     g_shadowFootprintProbe = args.getFlag("--shadow-footprint-probe");
+    g_voxelEntityCube = args.getFlag("--voxel-entity-cube");
     g_movingCaster = args.getFlag("--moving-caster");
     g_panSweep = args.getFlag("--pan-sweep");
     g_yawSweep = args.getFlag("--yaw-sweep");
@@ -1743,11 +1766,11 @@ int main(int argc, char **argv) {
         (sdfVoxelScene &&
          (g_lodScene || g_guiTest || g_continuousZoomGuiTest || g_cullValidate ||
           g_pivotFocusDemo || g_pivotVerifyBlock != "off" || g_zoomSweep || g_panSweep ||
-          g_yawSweep || g_shadowFootprintProbe || g_movingCaster || g_lodDenseSwap ||
-          g_viewportPortrait || g_zoomCalibration || g_cullEvictTest || g_shapeSampleProbe ||
-          !g_loadPrefabPath.empty() || !g_loadVxsPath.empty() || !g_spinShapeType.empty() ||
-          g_depthColor || g_checkerboard || g_gpuVoxelSmoke || g_skinSmoke ||
-          (g_autoWarmupFrames > 0 && g_spinYawDegPerSec > 0.0f) ||
+          g_yawSweep || g_shadowFootprintProbe || g_voxelEntityCube || g_movingCaster ||
+          g_lodDenseSwap || g_viewportPortrait || g_zoomCalibration || g_cullEvictTest ||
+          g_shapeSampleProbe || !g_loadPrefabPath.empty() || !g_loadVxsPath.empty() ||
+          !g_spinShapeType.empty() || g_depthColor || g_checkerboard || g_gpuVoxelSmoke ||
+          g_skinSmoke || (g_autoWarmupFrames > 0 && g_spinYawDegPerSec > 0.0f) ||
           IREngine::args().getFlag("--ao-contact-probe")))) {
         IR_LOG_ERROR(
             "--sdf-voxel-scene requires an isolated scene; blockers/pose require that scene"
@@ -1760,10 +1783,10 @@ int main(int argc, char **argv) {
     if (g_lodScene &&
         (g_guiTest || g_continuousZoomGuiTest || g_cullValidate || g_spinYawDegPerSec > 0.0f ||
          g_pivotFocusDemo || g_pivotVerifyBlock != "off" || g_zoomSweep || g_panSweep ||
-         g_yawSweep || g_shadowFootprintProbe || g_movingCaster || g_lodDenseSwap ||
-         g_viewportPortrait || g_zoomCalibration || g_cullEvictTest || g_shapeSampleProbe ||
-         !g_loadPrefabPath.empty() || !g_loadVxsPath.empty() || !g_spinShapeType.empty() ||
-         IREngine::args().getFlag("--ao-contact-probe"))) {
+         g_yawSweep || g_shadowFootprintProbe || g_voxelEntityCube || g_movingCaster ||
+         g_lodDenseSwap || g_viewportPortrait || g_zoomCalibration || g_cullEvictTest ||
+         g_shapeSampleProbe || !g_loadPrefabPath.empty() || !g_loadVxsPath.empty() ||
+         !g_spinShapeType.empty() || IREngine::args().getFlag("--ao-contact-probe"))) {
         IR_LOG_ERROR("--lod-scene cannot be combined with another scene or capture override");
         return 2;
     }
@@ -1780,8 +1803,9 @@ int main(int argc, char **argv) {
             return 2;
         }
         if (g_viewportPortrait || IREngine::args().getFlag("--ao-contact-probe") ||
-            g_cullEvictTest || g_lodDenseSwap || g_lodScene || !g_loadPrefabPath.empty() ||
-            g_pivotVerifyBlock != "off" || g_pivotFocusDemo || g_zoomCalibration) {
+            g_voxelEntityCube || g_cullEvictTest || g_lodDenseSwap || g_lodScene ||
+            !g_loadPrefabPath.empty() || g_pivotVerifyBlock != "off" || g_pivotFocusDemo ||
+            g_zoomCalibration) {
             IR_LOG_ERROR("--spin-shape-floor cannot be combined with another scene override");
             return 2;
         }
@@ -2209,7 +2233,7 @@ void onDragPanAssertFrame(int shotIndex) {
     g_dragPan.events_[3].screenPx_ = start + kDragPanCursorDelta;
 }
 
-IREntity::EntityId createHoverParityVoxel(vec3 world, Color color) {
+IREntity::EntityId createCornerVoxel(vec3 world, Color color) {
     return IREntity::createEntity(
         C_LocalTransform{world},
         C_VoxelSetNew{ivec3(1), color, IRComponents::EntityAnchor::CORNER}
@@ -2217,10 +2241,10 @@ IREntity::EntityId createHoverParityVoxel(vec3 world, Color color) {
 }
 
 void initHoverParityFixture() {
-    g_hoverParity.voxelEntity_ = createHoverParityVoxel(kHoverParityVoxelWorld, kHoverParityColor);
+    g_hoverParity.voxelEntity_ = createCornerVoxel(kHoverParityVoxelWorld, kHoverParityColor);
     g_hoverParity.stackedVoxelEntity_ =
-        createHoverParityVoxel(kHoverParityStackedVoxelWorld, kHoverParityColor);
-    g_hoverParity.neighbourEntity_ = createHoverParityVoxel(
+        createCornerVoxel(kHoverParityStackedVoxelWorld, kHoverParityColor);
+    g_hoverParity.neighbourEntity_ = createCornerVoxel(
         kHoverParityStackedVoxelWorld + kHoverParityNeighbourOffset,
         kHoverParityNeighbourColor
     );
@@ -4116,6 +4140,8 @@ void initSystems() {
             } else {
                 IRVideo::setAutoScreenshotShots(cfg, IRShapeDebug::SdfVoxelScene::posedShots_);
             }
+        } else if (g_voxelEntityCube) {
+            IRVideo::setAutoScreenshotShots(cfg, kVoxelEntityCubeShots);
         } else if (g_shadowFootprintProbe) {
             IRVideo::setAutoScreenshotShots(cfg, kShadowFootprintShots);
         } else if (g_movingCaster) {
@@ -4503,6 +4529,24 @@ EntityId createSDFShape(vec3 position, IRRender::ShapeType type, vec4 params, Co
 }
 
 void setupCanvasLighting();
+
+void initVoxelEntityCubeScene() {
+    for (int z = 0; z < kVoxelEntityCubeSize; ++z) {
+        for (int y = 0; y < kVoxelEntityCubeSize; ++y) {
+            for (int x = 0; x < kVoxelEntityCubeSize; ++x) {
+                createCornerVoxel(kVoxelEntityCubeOrigin + vec3(x, y, z), kVoxelEntityCubeColor);
+            }
+        }
+    }
+    IREntity::createEntity(
+        C_LocalTransform{kVoxelEntityCubeOrigin + kVoxelEntityCubeTwinOffset},
+        C_VoxelSetNew{
+            ivec3(kVoxelEntityCubeSize),
+            kVoxelEntityCubeColor,
+            IRComponents::EntityAnchor::CORNER
+        }
+    );
+}
 
 void initShadowFootprintProbeScene() {
     constexpr vec3 kShadowProbeFloorCenter{0.0f, 0.0f, 5.0f};
@@ -4897,6 +4941,12 @@ void initEntities() {
         setupCanvasLighting();
         IRRender::setSunDirection(kMovingCasterSunDirection);
         IRRender::setVoxelRenderSubdivisions(kMovingCasterSubdivisions);
+        return;
+    }
+    if (g_voxelEntityCube) {
+        IR_LOG_INFO("--- Voxel-entity cube fixture scene ---");
+        initVoxelEntityCubeScene();
+        setupCanvasLighting();
         return;
     }
     if (g_shadowFootprintProbe) {

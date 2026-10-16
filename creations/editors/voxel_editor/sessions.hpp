@@ -302,10 +302,11 @@ struct CompositeProofSpec {
 namespace detail {
 
 // An entity-scene part starts clear, so a click has nothing to pick until BAKE
-// writes a blob. Radius 1.9 keeps every cell's squared distance off the
-// sphere's surface threshold, so a slider landing a trixel off still bakes the
-// same cells. In cells relative to (size / 2), the blob's front face is at
-// z = -2 and a paint cell one further forward, at z = -3, is empty.
+// writes a blob. On a part of even extent the baked cells change at radius
+// 1.6794 and 2.0981, so every radius the slider can hold around 1.9 bakes the
+// same cells. An odd extent moves a change to 1.9495, and Builder::bakeSphere
+// then refuses 1.9. In cells relative to (size / 2), the blob's front face is
+// at z = -2 and a paint cell one further forward, at z = -3, is empty.
 constexpr float kFirstWriteBlobRadius = 1.9f;
 
 // The zoom a part session paints its baked blob at. A selected part's gizmo

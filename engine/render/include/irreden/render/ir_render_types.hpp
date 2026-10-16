@@ -164,9 +164,12 @@ struct FrameDataTrixelToFramebuffer {
     /// Preserve offsets 144 / 160 so framebuffer resolution remains at 176.
     vec4 detachedResidual_{0.0f, 0.0f, 0.0f, 1.0f};
     vec4 detachedDepthAxis_{1.0f, 1.0f, 1.0f, 0.0f};
-    /// Per-axis scatter framebuffer extent (.xy), visibility-pass flags (.z),
-    /// and padding (.w). It follows detachedDepthAxis_ at std140 offset 176;
-    /// the earlier gather and detached blocks keep their existing offsets.
+    /// Per-axis scatter framebuffer extent (.xy) and visibility-pass flags (.z).
+    /// .w != 0 tells the gather the scatter co-renders this frame, so it drops
+    /// the stored face bits from its composite key (`compositeCanvasDistance`);
+    /// 0 keeps the cardinal key. It follows detachedDepthAxis_ at std140
+    /// offset 176; the earlier gather and detached blocks keep their existing
+    /// offsets.
     vec4 scatterFbResolution_{0.0f, 0.0f, 0.0f, 0.0f};
     /// Depth-color debug mode for the per-axis scatter path. When
     /// depthColorMode_ != 0, the scatter fragment shader evaluates hue from the
