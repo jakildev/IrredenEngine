@@ -130,6 +130,14 @@ TEST_F(LuaWidgetValues, DropdownIndicesAreOneBasedInLua) {
     EXPECT_FALSE(eval<bool>("IRGui.isDropdownOpen(dd)"));
 }
 
+TEST_F(LuaWidgetValues, SetDropdownOpenOpensAndClosesTheStrip) {
+    run(R"lua(dd = IRGui.makeDropdown(0, 0, 100, 14, { "A", "B" }))lua");
+    run("IRGui.setDropdownOpen(dd, true)");
+    EXPECT_TRUE(eval<bool>("IRGui.isDropdownOpen(dd)"));
+    run("IRGui.setDropdownOpen(dd, false)");
+    EXPECT_FALSE(eval<bool>("IRGui.isDropdownOpen(dd)"));
+}
+
 TEST_F(LuaWidgetValues, DropdownZeroMeansNothingSelected) {
     run(R"lua(dd = IRGui.makeDropdown(0, 0, 100, 14, { "A", "B", "C" }, 0))lua");
     const IREntity::EntityId id = entity("dd");

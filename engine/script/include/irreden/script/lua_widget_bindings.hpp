@@ -391,6 +391,11 @@ inline void bindWidgets(LuaScript &script) {
         requireWidget<IRComponents::C_WidgetDropdown>(id, "IRGui.isDropdownOpen", "dropdown");
         return IRPrefab::Widget::isDropdownOpen(static_cast<IREntity::EntityId>(id));
     };
+    // Opens or closes the item strip as a click on the header would.
+    gui["setDropdownOpen"] = [](lua_Integer id, bool open) {
+        requireWidget<IRComponents::C_WidgetDropdown>(id, "IRGui.setDropdownOpen", "dropdown")
+            ->isOpen_ = open;
+    };
 
     gui["setDisabled"] = [](lua_Integer id, bool disabled) {
         requireWidget<IRComponents::C_Widget>(id, "IRGui.setDisabled", "widget");
