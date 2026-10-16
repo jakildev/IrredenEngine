@@ -12,6 +12,8 @@
 namespace IRShapeDebug {
 
 struct SdfVoxelScene {
+    enum class Pose { REST, ROOT, PARENTED };
+
     static constexpr IRVideo::AutoScreenshotShot shots_[] = {
         {4.0f, IRMath::vec2(0), 0.0f, "sdf_voxel_yaw0"},
         {4.0f, IRMath::vec2(0), IRMath::kQuarterPi, "sdf_voxel_yaw45"},
@@ -21,7 +23,16 @@ struct SdfVoxelScene {
         {2.0f, IRMath::vec2(0), IRMath::kQuarterPi, "sdf_voxel_zoom2"},
     };
 
-    static void initialize(bool baked, bool blockers) {
+    static constexpr IRVideo::AutoScreenshotShot posedShots_[] = {
+        {4.0f, IRMath::vec2(0), 0.0f, "sdf_voxel_pose_yaw0"},
+        {4.0f, IRMath::vec2(0), IRMath::kQuarterPi, "sdf_voxel_pose_yaw45"},
+        {4.0f, IRMath::vec2(0), IRMath::kHalfPi, "sdf_voxel_pose_yaw90"},
+        {4.0f, IRMath::vec2(0), IRMath::kPi, "sdf_voxel_pose_yaw180"},
+        {4.0f, IRMath::vec2(0), IRMath::kPi * 1.5f, "sdf_voxel_pose_yaw270"},
+        {2.0f, IRMath::vec2(0), IRMath::kQuarterPi, "sdf_voxel_pose_zoom2"},
+    };
+
+    static void initialize(bool baked, bool blockers, Pose pose = Pose::REST) {
         using namespace IRComponents;
         using namespace IRMath;
         struct Subject {
@@ -38,7 +49,28 @@ struct SdfVoxelScene {
         };
         std::size_t allocated = 0;
         std::size_t occupied = 0;
+        const vec3 parentPosition(2.5f, -3.5f, -1.5f);
+        const vec4 localRotation = quatAxisAngle(normalize(vec3(1, 2, 0.5f)), kPi / 5.0f);
+        // Independent half-turn composition: Rz(pi) * (x,y,z,w) = (-y,x,w,-z).
+        // The root arm must not use the propagation helper it is checking.
+        const vec4
+            worldRotation(-localRotation.y, localRotation.x, localRotation.w, -localRotation.z);
+        const auto parent =
+            pose == Pose::REST
+                ? IREntity::kNullEntity
+                : IREntity::createEntity(C_LocalTransform{parentPosition, vec4(0, 0, 1, 0)});
         for (const auto &subject : subjects) {
+            C_LocalTransform transform{subject.position_};
+            if (pose != Pose::REST) {
+                transform.translation_ += vec3(0.25f, -0.5f, -2.0f);
+                transform.rotation_ = worldRotation;
+            }
+            if (pose == Pose::PARENTED) {
+                const vec3 relative = transform.translation_ - parentPosition;
+                transform.translation_ = vec3(-relative.x, -relative.y, relative.z);
+                transform.rotation_ = localRotation;
+            }
+            IREntity::EntityId entity;
             if (baked) {
                 const auto dense = IRPrefab::Voxel::bakeSdfGrid(
                     ivec3(11),
@@ -50,15 +82,18 @@ struct SdfVoxelScene {
                 for (const auto &voxel : dense.voxels_) {
                     occupied += voxel.color_.alpha_ != 0;
                 }
-                IREntity::createEntity(
-                    C_LocalTransform{subject.position_},
+                entity = IREntity::createEntity(
+                    transform,
                     IRPrefab::DenseVoxel::toComponent(dense, EntityAnchor::CENTER)
                 );
             } else {
-                IREntity::createEntity(
-                    C_LocalTransform{subject.position_},
+                entity = IREntity::createEntity(
+                    transform,
                     C_ShapeDescriptor{subject.type_, subject.params_, subject.color_}
                 );
+            }
+            if (pose == Pose::PARENTED) {
+                IREntity::setParent(entity, parent);
             }
             if (blockers) {
                 IREntity::createEntity(
@@ -82,10 +117,11 @@ struct SdfVoxelScene {
             }
         );
         IR_LOG_INFO(
-            "SDF voxel scene: representation={} blockers={} subjects=4 "
+            "SDF voxel scene: representation={} blockers={} pose={} subjects=4 "
             "subject_allocated_slots={} subject_occupied_cells={} subject_record_bytes={}",
             baked ? "baked" : "direct",
             blockers,
+            static_cast<int>(pose),
             allocated,
             occupied,
             allocated * sizeof(C_Voxel)
