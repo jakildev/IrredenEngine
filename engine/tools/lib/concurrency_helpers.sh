@@ -126,24 +126,56 @@ ir_creation_worktree_engine_root() {
     return 1
 }
 
-# ir_default_build_dir <worktree-root> — the build tree ir-build/ir-run
-# use when IRREDEN_BUILD_DIR is not set. Engine checkouts build in-tree
-# (<root>/build, the preset binaryDir). A downstream-creation worktree
-# has no presets of its own — its targets compile through the enclosing
-# engine with the worktree added as a user project — so it gets a
-# dedicated dir at <engine>/build-<creation>-<agent>/ (covered by the
-# engine .gitignore's build-*/ pattern), keeping build output out of the
-# creation repo and away from the engine's own build trees.
+# ir_default_build_dir <worktree-root> [debug|release] — the build tree
+# ir-build/ir-run use when IRREDEN_BUILD_DIR is not set. Release builds stay
+# separate from debug builds so their CMake caches never cross-contaminate.
 ir_default_build_dir() {
     local root="$1"
+    local mode="${2:-debug}"
+    local suffix=""
+    case "$mode" in
+        debug) ;;
+        release) suffix="-release" ;;
+        *)
+            echo "ir-tools: unsupported build mode '$mode'" >&2
+            return 2
+            ;;
+    esac
     local eng
     if eng="$(ir_creation_worktree_engine_root "$root")"; then
         local rel="${root#"$eng"/creations/}"
         local creation="${rel%%/*}"
-        echo "$eng/build-$creation-$(basename "$root")"
+        echo "$eng/build-$creation-$(basename "$root")$suffix"
     else
-        echo "$root/build"
+        if [[ "$mode" == "release" ]]; then
+            echo "$root/build-release"
+        else
+            echo "$root/build"
+        fi
     fi
+}
+
+# ir_build_preset [debug|release] [platform] — resolve the host CMake preset.
+# The optional platform makes resolver tests hermetic; production uses uname.
+ir_build_preset() {
+    local mode="${1:-debug}"
+    local platform="${2:-$(uname -s)}"
+    case "$mode" in
+        debug|release) ;;
+        *)
+            echo "ir-tools: unsupported build mode '$mode'" >&2
+            return 2
+            ;;
+    esac
+    case "$platform" in
+        Darwin)               echo "macos-$mode" ;;
+        Linux)                echo "linux-$mode" ;;
+        MINGW*|MSYS*|CYGWIN*) echo "windows-$mode" ;;
+        *)
+            echo "ir-tools: unsupported platform $platform" >&2
+            return 1
+            ;;
+    esac
 }
 
 # Lock dir lives in a runtime-temp location so it survives across shells but

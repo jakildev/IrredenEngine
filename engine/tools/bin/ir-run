@@ -22,6 +22,7 @@
 # Usage:
 #   ir-run IrredenEngineTest --gtest_brief=1
 #   ir-run IRShapeDebug
+#   ir-run --release IRShapeDebug
 #   ir-run --timeout 5 IRShapeDebug          # auto-kill after 5 seconds
 #   ir-run --timeout 0 IRShapeDebug          # explicit opt-out of any default
 #   ir-run --build-dir /path/to/build IrredenEngineTest
@@ -99,10 +100,15 @@ case "$(uname -s)" in
 esac
 
 BUILD_DIR=""
+BUILD_MODE="debug"
 TIMEOUT=""
 TIMEOUT_EXPLICIT=0
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --release)
+            BUILD_MODE="release"
+            shift
+            ;;
         --env)
             if [[ $# -lt 2 || "$2" != *=* ]]; then
                 echo "ir-run: --env requires KEY=VALUE" >&2
@@ -151,7 +157,7 @@ while [[ $# -gt 0 ]]; do
                 exit 1
             fi
             if [[ -z "$BUILD_DIR" ]]; then
-                BUILD_DIR="${IRREDEN_BUILD_DIR:-$(ir_default_build_dir "$WORKTREE_ROOT")}"
+                BUILD_DIR="${IRREDEN_BUILD_DIR:-$(ir_default_build_dir "$WORKTREE_ROOT" "$BUILD_MODE")}"
             fi
             exec "$HELPER" --build-dir "$BUILD_DIR" "$@"
             ;;
@@ -179,6 +185,7 @@ Run mode
     holding the verb       still holds it (IR_ACQUIRE_HOLDER_PID/_HELD_VERB)
 
   Options (run mode):
+    --release          Use the worktree's separate release build tree.
     --env KEY=VALUE    Export a variable into the child process. Repeat before
                        <executable-name> for multiple variables; use this for
                        probe switches such as IR_SHAPE_PROBE=1.
@@ -267,7 +274,7 @@ Run mode
 
   Build directory (when not using --build-dir):
     1. $IRREDEN_BUILD_DIR if set
-    2. <git-worktree-root>/build from git rev-parse
+    2. <git-worktree-root>/build (or build-release with --release) from git rev-parse
        (downstream-creation worktrees — creations/<name>/.claude/
        worktrees/<agent>/ — resolve to the dedicated
        <engine>/build-<creation>-<agent>/ tree instead)
@@ -406,7 +413,7 @@ fi
 # <engine>/build-<creation>-<agent>/ tree ir-build configures for them.
 if [[ -z "$BUILD_DIR" ]]; then
     WORKTREE_ROOT="$(ir_worktree_root)"
-    BUILD_DIR="${IRREDEN_BUILD_DIR:-$(ir_default_build_dir "$WORKTREE_ROOT")}"
+    BUILD_DIR="${IRREDEN_BUILD_DIR:-$(ir_default_build_dir "$WORKTREE_ROOT" "$BUILD_MODE")}"
 fi
 
 if [[ ! -d "$BUILD_DIR" ]]; then
@@ -433,6 +440,8 @@ EXE_DIR=$(dirname "$EXE_PATH")
 # Run by the actual on-disk basename so the `.exe` suffix (Windows) is
 # preserved; on Linux/macOS this is identical to $EXE_NAME.
 EXE_RUN=$(basename "$EXE_PATH")
+
+echo "ir-run: running $BUILD_MODE tree $BUILD_DIR"
 
 # Pre-compose the ir-acquire prefix (empty when no exclusive verb).
 # Using an array preserves quoting around exe args containing spaces.

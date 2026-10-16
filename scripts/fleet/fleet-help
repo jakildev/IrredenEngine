@@ -34,9 +34,10 @@ print_tool_help() {
     case "$name" in
         fleet-build)
             cat <<'EOF'
-fleet-build — forwards to cmake --build with auto -j and worktree build/.
+fleet-build — forwards to cmake --build with auto -j and a worktree build tree.
 
   fleet-build --target IRShapeDebug
+  fleet-build --release --target IRShapeDebug
   fleet-build --target IrredenEngineTest -- --clean-first   # extra cmake args
   fleet-build --detach --target IrredenEngineTest          # durable job; then
   fleet-jobs wait <job-id>                                  # exit = build's exit
@@ -179,9 +180,9 @@ More context:
 ----------------------------------------------------------------------
 Engine build / run (everyday dev)
 ----------------------------------------------------------------------
-  fleet-build [--target <name>] [...]
+  fleet-build [--release] [--target <name>] [...]
       cmake --build wrapper; auto -j; auto-configures <worktree>/build
-      on first run. Same build directory as fleet-run.
+      on first run. --release selects <worktree>/build-release.
   fleet-build --detach [--target <name>] [...]
       Same build as a fleet-jobs job that outlives this tool call.
 
@@ -197,8 +198,8 @@ Engine build / run (everyday dev)
       Read-only per-role dispatch-state dump (trigger / seen-hash / projection
       slice / suppression #2181). See "Parallel-agent fleet" below.
 
-  fleet-run [--build-dir <dir>] [--timeout N] <exe-name> [args...]
-      Finds the built binary under build/, cd's beside data/shaders/scripts.
+  fleet-run [--release] [--build-dir <dir>] [--timeout N] <exe-name> [args...]
+      Finds the built binary under build/ or build-release, cd's beside data/shaders/scripts.
 
   fleet-run --targets [...]    alias of fleet-run-targets (list names)
   fleet-run-targets [...]        --built | --plan | --plain | --build-dir
