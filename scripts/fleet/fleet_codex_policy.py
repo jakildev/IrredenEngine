@@ -18,6 +18,9 @@ DISPLAY_VALIDATORS = (
     "scripts/occlusion-fire-verify.py", "scripts/pivot-verify.py",
     "scripts/render-continuous-zoom-metric.py", "scripts/render-verify.py",
     "scripts/perf/repeat_profile.py", "scripts/perf/perf_grid_matrix.sh")
+# The fleet-jobs profiles that run a DISPLAY_VALIDATORS script detached;
+# fleet-jobs' DISPLAY_PROFILES names the same set.
+DISPLAY_PROFILES = ("render-verify", "light-verify", "gui-verify")
 
 
 def rules(worktree, role):
@@ -51,7 +54,7 @@ def rules(worktree, role):
     settings_path = Path(__file__).resolve().parents[2] / ".claude/settings.json"
     settings = json.loads(settings_path.read_text())
     # fleet-jobs launches a child, so a bare ["fleet-jobs"] allow would carry
-    # every profile outside the sandbox; only the display profile gets a rule.
+    # every profile outside the sandbox; only the display profiles get rules.
     excluded = {"fleet-up", "fleet-down", "fleet-dispatcher", "fleet-babysit", "fleet-rebase",
                 "fleet-dispatch-wrap", "fleet-state-scout", "fleet-claude-stream", "fleet-runtime",
                 "fleet-jobs"}
@@ -68,10 +71,11 @@ def rules(worktree, role):
         for path in (script, str(worktree / script)):
             for runner in runners:
                 rule(runner + [path], "allow")
-    # The detached render-verify profile needs the same WindowServer access as
-    # a direct DISPLAY_VALIDATORS run; build and fleet-tests profiles stay
+    # The detached verifier profiles need the same WindowServer access as a
+    # direct DISPLAY_VALIDATORS run; build and fleet-tests profiles stay
     # sandboxed unless entered through the already-allowed fleet-build.
-    rule(["fleet-jobs", "start", "render-verify"], "allow")
+    for profile in DISPLAY_PROFILES:
+        rule(["fleet-jobs", "start", profile], "allow")
     for name in ("sudo",):
         rule([name], "forbidden")
     return "\n".join(lines) + "\n"
@@ -113,6 +117,8 @@ def check(path, role):
              (["python3", "scripts/perf/repeat_profile.py", "--target", "IRPerfGrid"], "allow"),
              (["python3", "-c", "print(1)"], None),
              (["fleet-jobs", "start", "render-verify", "--", "--target", "IRShapeDebug"], "allow"),
+             (["fleet-jobs", "start", "light-verify", "--", "--if-changed"], "allow"),
+             (["fleet-jobs", "start", "gui-verify", "--", "IRVoxelEditor", "--no-build"], "allow"),
              (["fleet-jobs", "start", "fleet-tests"], None),
              (["fleet-jobs", "start", "--", "python3", "-c", "print(1)"], None),
              (["fleet-jobs", "start", "build", "--", "--target", "IRShapeDebug"], None)]

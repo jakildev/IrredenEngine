@@ -185,7 +185,7 @@ Engine build / run (everyday dev)
   fleet-build --detach [--target <name>] [...]
       Same build as a fleet-jobs job that outlives this tool call.
 
-  fleet-jobs start build|fleet-tests|render-verify ...
+  fleet-jobs start build|fleet-tests|render-verify|light-verify|gui-verify ...
   fleet-jobs status|wait|kill <job-id>   fleet-jobs list
       Pane-scoped durable jobs for work longer than the tool window; wait
       streams the log and exits with the child's code. Fixed profiles only.

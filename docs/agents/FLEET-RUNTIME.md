@@ -173,6 +173,8 @@ running it.
 | Engine build (`IrredenEngineTest`, a cold demo) | `fleet-build --detach --target <name>` | the same domain as foreground `fleet-build` |
 | Fleet suite | `fleet-jobs start fleet-tests [--only <substring>]` | the caller's sandbox |
 | Render verification | `fleet-jobs start render-verify -- <render-verify args>` | the display-capable domain of a direct `render-verify` run |
+| Lighting verification | `fleet-jobs start light-verify -- <light-verify args>` | the display-capable domain of a direct `light-verify` run |
+| GUI verification | `fleet-jobs start gui-verify -- <target> [options] [-- <target args>]` | the display-capable domain of a direct `gui-verify` run |
 
 Then, from any later call in the same pane: `fleet-jobs wait --timeout 540
 <job-id>` streams the log and exits with the child's exit code (124: still
@@ -189,9 +191,10 @@ process, and a supervisor that cannot anchor fails the job before it runs;
 its job object on native Windows), so the log is final when `wait` returns;
 a process that outlives the drain's SIGKILL keeps the job `draining` (not
 terminal; `wait` keeps waiting) until it ends, then fails the job with exit
-125 whatever the child returned. A pane runs one `render-verify` job at a
-time: runs share the build's screenshot directory, so a second start
-exits 1 while the first is live. Its log opens with a `[fleet-jobs]
+125 whatever the child returned. A pane runs one display verifier
+(`render-verify`, `light-verify`, `gui-verify`) at a time: their runs
+share the build's screenshot directory, so a second start exits 1 while
+the first is live. A verifier job's log opens with a `[fleet-jobs]
 display:` line; `none` there means the job runs where no demo can render.
 
 **Evidence is a terminal `wait`, never a start.** A PR's validation row or
@@ -200,7 +203,7 @@ final `fleet-jobs: <id> <status> exit=<n>` line. Do not end an iteration
 with your own job still running: wait for it, or `kill` it and report the
 check as not run.
 
-Only these three profiles detach; there is no arbitrary-command form.
+Only these five profiles detach; there is no arbitrary-command form.
 Other long commands (perf matrices, the other display validators) run in
 the foreground. A new profile is a policy-reviewed change to
 `scripts/fleet/fleet-jobs` and `scripts/fleet/fleet_codex_policy.py`.
