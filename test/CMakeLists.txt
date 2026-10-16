@@ -183,6 +183,7 @@ add_executable(IrredenEngineTest
   script/lod_tier_lua_test.cpp
   script/lua_fog_revealed_test.cpp
   script/lua_fog_bindings_test.cpp
+  script/lua_engine_hand_off_test.cpp
   script/lua_file_bindings_test.cpp
   script/lua_script_get_table_test.cpp
   script/lua_viewport_bindings_test.cpp
@@ -208,6 +209,7 @@ add_executable(IrredenEngineTest
   time/timer_test.cpp
   time/stopwatch_test.cpp
   time/lua_sim_test.cpp
+  time/time_manager_hand_off_test.cpp
   job/ir_job_test.cpp
   job/worker_block_queue_test.cpp
   utility/ir_utility_test.cpp
@@ -220,6 +222,7 @@ add_executable(IrredenEngineTest
   world/chunk_coord_test.cpp
   world/chunk_membership_migration_test.cpp
   world/chunk_persistence_test.cpp
+  world/hand_off_test.cpp
   world/field_chunk_persistence_test.cpp
   world/fog_explored_decay_test.cpp
   world/fog_world_field_test.cpp

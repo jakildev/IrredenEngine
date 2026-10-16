@@ -3,6 +3,7 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_input.hpp>
+#include <irreden/ir_job.hpp>
 #include <irreden/ir_audio.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gui_canvas.hpp>
@@ -11,6 +12,7 @@
 #include <irreden/input/components/component_entity_event_handlers.hpp>
 
 #include <irreden/world.hpp>
+#include <irreden/world/main_loop_frame.hpp>
 
 #include <chrono>
 
@@ -222,10 +224,75 @@ void World::setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings
         return out;
     };
 
+    bindHandOffLua(
+        m_lua,
+        [this](const HandOffRequest &request) { return handOff(request); },
+        []() { return IRJob::isMainThread(); }
+    );
+
     for (const auto &bind : bindings) {
         bind(m_lua);
     }
 }
+
+HandOffResult World::handOff(const HandOffRequest &request) {
+    if (m_handOffPlatform == nullptr) {
+        IRE_LOG_INFO("IREngine.handOff: no process platform on this world; ignoring the handoff");
+        HandOffResult unsupported;
+        unsupported.error_ = "no process platform";
+        return unsupported;
+    }
+    const HandOffOutcome outcome =
+        runHandOff(request, HandOffEnvironment::fromProcess(), *m_handOffPlatform);
+    if (outcome.leaseLost_) {
+        m_handOffLeaseLost = true;
+    } else if (outcome.suspended_) {
+        m_timeManager.resumeAfterSuspend();
+    }
+    return outcome.result_;
+}
+
+void World::setHandOffPlatform(std::unique_ptr<HandOffPlatform> platform) {
+    m_handOffPlatform = std::move(platform);
+}
+
+struct World::FrameStages {
+    World &world_;
+
+    bool shouldUpdate() {
+        return world_.m_timeManager.shouldUpdate();
+    }
+    void pollEvents() {
+        world_.m_IRGLFWWindow.pollEvents();
+    }
+    void input() {
+        world_.input();
+    }
+    bool holdForFirstInput() {
+        if (!world_.m_hasHandledFirstInput && IRInput::hasAnyButtonPressedThisFrame()) {
+            world_.m_hasHandledFirstInput = true;
+            if (world_.m_startRecordingOnFirstInput && !world_.m_videoManager.isRecording()) {
+                world_.m_videoManager.toggleRecording();
+            }
+        }
+        if (world_.m_waitForFirstUpdateInput && !world_.m_hasHandledFirstInput) {
+            // Consume one fixed update slot while paused so render still advances and we
+            // don't accumulate a large catch-up update burst after unpausing.
+            world_.m_timeManager.skipUpdate();
+            return true;
+        }
+        return false;
+    }
+    void update() {
+        world_.update();
+    }
+    void render() {
+        world_.render();
+    }
+    bool halted() const {
+        return world_.m_handOffLeaseLost;
+    }
+};
 
 void World::runScript(const char *fileName) {
     m_lua.scriptFile(fileName);
@@ -279,28 +346,11 @@ void World::gameLoop() {
                 frameStart = Clock::now();
             }
 
-            uint32_t updateTicksThisFrame = 0;
-            while (m_timeManager.shouldUpdate()) {
-                m_IRGLFWWindow.pollEvents();
-                input();
-                if (!m_hasHandledFirstInput && IRInput::hasAnyButtonPressedThisFrame()) {
-                    m_hasHandledFirstInput = true;
-                    if (m_startRecordingOnFirstInput && !m_videoManager.isRecording()) {
-                        m_videoManager.toggleRecording();
-                    }
-                }
-
-                if (m_waitForFirstUpdateInput && !m_hasHandledFirstInput) {
-                    // Consume one fixed update slot while paused so render still advances and we
-                    // don't accumulate a large catch-up update burst after unpausing.
-                    m_timeManager.skipUpdate();
-                    break;
-                }
-
-                update();
-                ++updateTicksThisFrame;
+            FrameStages stages{*this};
+            const uint32_t updateTicksThisFrame = runMainLoopFrame(stages);
+            if (m_handOffLeaseLost) {
+                break;
             }
-            render();
             // Histogram frame boundary. It sits outside render() so render()'s
             // own IR_PROFILE_SCOPE has exited and lands in the frame it
             // measured; the HUD reads the swapped "last frame" map next frame,

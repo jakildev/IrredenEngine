@@ -1,11 +1,26 @@
 #include <gtest/gtest.h>
 #include <irreden/ir_utility.hpp>
 
+#include "../common/env_var.hpp"
+
 #include <filesystem>
 #include <fstream>
 #include <string>
 
 namespace {
+
+TEST(EnvStringTest, ReadsSetValueAndTreatsUnsetOrEmptyAsEmpty) {
+    {
+        IRTest::ScopedEnv set("IR_TEST_ENV_STRING", "C:/msys64/usr/bin/bash.exe");
+        EXPECT_EQ(IRUtility::envString("IR_TEST_ENV_STRING"), "C:/msys64/usr/bin/bash.exe");
+    }
+    {
+        IRTest::ScopedEnv empty("IR_TEST_ENV_STRING", "");
+        EXPECT_EQ(IRUtility::envString("IR_TEST_ENV_STRING"), "");
+    }
+    IRTest::ScopedEnv unset("IR_TEST_ENV_STRING", nullptr);
+    EXPECT_EQ(IRUtility::envString("IR_TEST_ENV_STRING"), "");
+}
 
 // ─────────────────────────────────────────────
 // joinPath

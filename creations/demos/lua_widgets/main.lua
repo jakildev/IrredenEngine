@@ -100,3 +100,48 @@ local rowRegion = IRGui.makeHitRegion(260, 410, 330, 30, {
     end,
 })
 IRTest.setRowRegion(rowRegion)
+
+-- Hand-off fixture (--hand-off-fixture button|auto; absent, nothing below runs).
+-- HAND OFF hands this process to a GUI-test take of the same demo and resumes
+-- when it exits. The markers print the render frame and engine tick: equal
+-- across a pair, the loop did not iterate while handed off.
+local handOffMode = IRTest.handOffFixture()
+if handOffMode ~= "off" then
+    local frames = 0
+    local function markers(phase)
+        return "LUA_WIDGETS HANDOFF " .. phase .. " frame=" .. frames .. " tick=" .. IRTest.engineTick()
+    end
+    local function handOff()
+        print(markers("before"))
+        local r = IREngine.handOff{ argv = { "IRLuaWidgetsDemo", "--auto-screenshot", "3" } }
+        print(markers("resumed") .. " ok=" .. tostring(r.ok) .. " supported=" .. tostring(r.supported) ..
+              " exit=" .. tostring(r.exitCode) .. " error=" .. tostring(r.error))
+        return r
+    end
+    IRGui.makeButton(260, 620, 240, 80, "HAND OFF", function() handOff() end)
+
+    local C_HandOffClock = IRComponent.register("LuaWidgetsHandOffClock", { n = 0 })
+    IREntity.singleton(C_HandOffClock)
+    IRSystem.appendSystem(IRTime.RENDER, IRSystem.registerSystem({
+        name = "LuaWidgetsHandOffFrames",
+        components = { C_HandOffClock },
+        tick = function() frames = frames + 1 end,
+    }))
+    if handOffMode == "auto" then
+        local ticks, resumedAt = 0, nil
+        IRSystem.appendSystem(IRTime.INPUT, IRSystem.registerSystem({
+            name = "LuaWidgetsHandOffAuto",
+            components = { C_HandOffClock },
+            tick = function()
+                ticks = ticks + 1
+                if ticks == 30 then
+                    handOff()
+                    resumedAt = ticks
+                elseif resumedAt ~= nil and ticks == resumedAt + 30 then
+                    print(markers("closing"))
+                    IRTest.closeWindow()
+                end
+            end,
+        }))
+    end
+end

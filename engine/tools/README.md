@@ -92,6 +92,14 @@ On native Windows it also inherits `IR_ACQUIRE_HOLDER_WINPID`, which must
 match the lock's `winpid` record: the other runtime's holder can carry the
 same pid number.
 
+A `gpu` or `benchmark` hold can lend its gpu lock to a child run
+(`IREngine.handOff`). The wrapped command gets `IR_RUN_LOCK_TOKEN` and
+`IR_ACQUIRE_TOOL`; `ir-acquire --lease-release <token>` frees the lock and
+`ir-acquire --lease-reacquire <token>` waits for it and restamps it to the
+original holder. The lease record lives under `leases/<token>/`, and the
+holder's exit trap drops it. Contract:
+[`docs/design/engine-hand-off.md`](../../docs/design/engine-hand-off.md).
+
 `ir-acquire benchmark` also raises a quiet window under the lock root. Every
 dispatched fleet session holds a lease; the dispatcher stops launching, tool
 hooks and queued lock users park, and the benchmark waits until every live

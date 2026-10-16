@@ -6,6 +6,7 @@ add_library(IrredenEngineWorld STATIC
     src/world_snapshot.cpp
     src/world_snapshot_relations.cpp
     src/world_default_registry.cpp
+    src/hand_off.cpp
 )
 
 target_link_libraries(IrredenEngineWorld PUBLIC
@@ -22,6 +23,7 @@ target_link_libraries(IrredenEngineWorld PUBLIC
     IrredenEngineMath
     IrredenEngineCommand
     IrredenEngineAsset
+    IrredenEngineUtility
 )
 
 target_include_directories(IrredenEngineWorld PUBLIC

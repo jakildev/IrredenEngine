@@ -60,6 +60,16 @@ class TimeManager {
         m_fixedStep = true;
     }
 
+    /// Re-baselines the loop clock after the main thread was suspended
+    /// mid-frame (`IREngine.handOff`): the suspension adds no UPDATE lag and
+    /// no RENDER delta, and pending catch-up ticks drop to the one in flight.
+    void resumeAfterSuspend() {
+        const TimePoint now = Clock::now();
+        m_mainLoopPrevious = now;
+        m_profilerUpdate.clampLag(1);
+        m_profilerRender.rebaseline(now);
+    }
+
     template <Events event> double deltaTime();
     template <Events event> double fps();
     template <Events event> double frameTimeMs();

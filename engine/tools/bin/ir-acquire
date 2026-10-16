@@ -14,6 +14,8 @@
 #   ir-acquire --quiet-status [--json]    # show benchmark quiet-window state
 #   ir-acquire --quiet-disable [reason]   # run benchmarks without the window
 #   ir-acquire --quiet-enable             # restore guarded benchmarks
+#   ir-acquire --lease-release TOKEN      # lend the gpu lock (see below)
+#   ir-acquire --lease-reacquire TOKEN    # take a lent gpu lock back
 #
 # Flags (before the resource verb):
 #   --nonblock        fail fast if any required lock is contended
@@ -24,6 +26,12 @@
 #   wraps a single command. Don't keep a perf lock open while drafting the
 #   next PR comment; reclaim per measurement. The trap on EXIT makes this
 #   automatic for normal use.
+#
+# GPU lease: gpu and benchmark export IR_RUN_LOCK_TOKEN and IR_ACQUIRE_TOOL
+# to the command, so an engine that hands off to a child run can lend the gpu
+# lock and take it back (IREngine.handOff). The lease verbs run in their own
+# process; the lock stays the ir-acquire shell's, and its EXIT trap drops the
+# lease. Only the gpu lock is lent. --timeout bounds the reacquire wait.
 
 set -euo pipefail
 
@@ -42,7 +50,10 @@ source "$HELPERS"
 quiet_record=""
 quiet_parker_pid=""
 
+lease_token=""
+
 cleanup() {
+    [[ -z "$lease_token" ]] || ir_gpu_lease_drop "$lease_token"
     if [[ -n "$quiet_parker_pid" ]]; then
         kill "$quiet_parker_pid" 2>/dev/null || true
         wait "$quiet_parker_pid" 2>/dev/null || true
@@ -104,6 +115,15 @@ while [[ $# -gt 0 ]]; do
         --quiet-enable)
             python3 "$IR_QUIET_HELPER" enable
             exit 0
+            ;;
+        --lease-release|--lease-reacquire)
+            op="${1#--lease-}"
+            shift
+            lease_args=()
+            [[ -n "$timeout_secs" ]] && lease_args+=(--timeout "$timeout_secs")
+            set +e
+            _ir_lease_transition "$op" "${1:-}" ${lease_args[@]+"${lease_args[@]}"}
+            exit $?
             ;;
         -h|--help) usage; exit 0 ;;
         *) break ;;
@@ -210,6 +230,12 @@ fi
 export IR_ACQUIRE_HOLDER_PID="$$" IR_ACQUIRE_HELD_VERB="$verb"
 IR_ACQUIRE_HOLDER_WINPID="$(ir_self_owner_token)"
 export IR_ACQUIRE_HOLDER_WINPID
+if [[ "$verb" == "gpu" || "$verb" == "benchmark" ]]; then
+    lease_token="$(ir_gpu_lease_create)"
+    IR_ACQUIRE_TOOL="$SCRIPT_DIR/ir-acquire"
+    [[ -z "$_IR_SELF_WINPID" ]] || IR_ACQUIRE_TOOL="$(cygpath -m "$IR_ACQUIRE_TOOL")"
+    export IR_RUN_LOCK_TOKEN="$lease_token" IR_ACQUIRE_TOOL
+fi
 set +e
 "$@"
 command_status=$?
