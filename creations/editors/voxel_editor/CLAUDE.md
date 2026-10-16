@@ -40,6 +40,9 @@ Design log, findings and the authoring-session history:
   `test_unreachable` fixture.
 - `python3 scripts/render-verify.py --target IRVoxelEditor` — the editor's
   render reference set, discovered under this creation's `test/references/`.
+- `--module test/module --module-session test_bake_radius_guard` is a second
+  deliberately failing fixture: it exits 1 before any replay, on a recipe
+  error that names `bakeSphere` and radius 2.095.
 - `python3 scripts/author-entity.py <entity>` — replays an entity session twice
   and byte-compares the saved `.vxs` (rock, mushroom, bird at the default
   scene; `ant --scene-size 20 20 20`; `tree --scene-size 16 16 26`). A clean
@@ -91,6 +94,11 @@ render, because the aim and the pick share one screen mapping.
   plane), so a click has nothing to pick until a first write that needs no
   pick: BAKE, or a module recipe APPLY. Sessions author that write with
   `Builder::bakeSphere` (panel geometry in `bake_panel.hpp`).
+- BAKE reads the radius the P1 slider holds, and a scripted drag leaves that
+  within `kBakeParamSliderDragDrift` of the request. `bakeSphere` models the
+  bake only when both ends of that range bake the same cells, and is a recipe
+  error otherwise. The radii where the cells change depend on the parity of
+  the part's extent (1.9 holds on an even extent, 2.14 on an odd one).
 - A voxel part's extent is its `C_VoxelSetNew::size_`, saved as its `.vxs`
   bounds; the manifest carries no size. An edit path sizes from the set it
   edits, never from `g_editableSceneSize`. The loft tool is the exception: its

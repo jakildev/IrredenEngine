@@ -42,6 +42,16 @@ constexpr SliderGeometry kBakeParam2SliderGeometry{
     IRMath::ivec2(kBakePanelPos.x + 4, kBakePanelPos.y + 118), IRMath::ivec2(112, 14)
 };
 
+// The most a P1 / P2 value a scripted drag leaves on its track can differ from
+// the value the drag aimed at: one GUI trixel of travel. The cursor lands on a
+// whole window point, half a point from the aim at worst, and a window point
+// spans (content scale / output scale) trixels of the editor's
+// framebuffer-resolution GUI canvas: two at most on a display of content scale
+// up to 2. A display above 2x is outside this bound.
+constexpr float kBakeParamSliderDragDrift = (kBakeParamSliderMax - kBakeParamSliderMin) /
+                                            static_cast<float>(kBakeParam1SliderGeometry.size_.x);
+static_assert(kBakeParam1SliderGeometry.size_.x == kBakeParam2SliderGeometry.size_.x);
+
 constexpr IRMath::ivec2 kBakeButtonPos{kBakePanelPos.x + 4, kBakePanelPos.y + 136};
 constexpr IRMath::ivec2 kBakeButtonSize{112, 12};
 
