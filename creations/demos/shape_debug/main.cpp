@@ -48,6 +48,7 @@
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
+#include <irreden/render/per_axis_surface_lighting.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
@@ -1501,6 +1502,7 @@ void registerCliArgs() {
     args.flag("--no-ao", "Disable ambient occlusion for lighting isolation");
     args.flag("--no-shadows", "Disable sun shadows for lighting isolation");
     args.flag("--no-local-lights", "Disable local lights for lighting isolation");
+    args.flag("--surface-lighting", "Enable experimental continuous per-axis surface lighting");
     args.flag("--depth-color", "Tint each voxel by local iso-depth (front=red, back=blue)");
     args.flag("--checkerboard", "Tint alternating voxels darker (flickers; off by default)");
     args.flag(
@@ -4859,6 +4861,9 @@ void setupCanvasLighting() {
     IRRender::setSunDirection(vec3(0.35f, 0.85f, -0.4f));
     IRRender::setAOEnabled(!IREngine::args().getFlag("--no-ao"));
     IRRender::setSunShadowsEnabled(!IREngine::args().getFlag("--no-shadows"));
+    if (IREngine::args().getFlag("--surface-lighting")) {
+        IRPrefab::PerAxisSurfaceLighting::setEnabled(true);
+    }
 }
 
 // The --viewport-portrait scene (see g_viewportPortrait).
@@ -4918,7 +4923,8 @@ void initEntities() {
             IREngine::args().getFlag("--sdf-voxel-blockers"),
             pose == "root"       ? Pose::ROOT
             : pose == "parented" ? Pose::PARENTED
-                                 : Pose::REST
+                                 : Pose::REST,
+            !IREngine::args().getFlag("--no-local-lights")
         );
         setupCanvasLighting();
         return;

@@ -1,0 +1,12 @@
+--- a/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
++++ b/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
+@@ -38,8 +38,7 @@
+     const float2 uv = projectedFaceCoordinates(
+         float2(sunUV.x - corner.x, sunUV.y - corner.y),
+         float2(edgeU.x, edgeU.y), float2(edgeV.x, edgeV.y), determinant);
+-    if (!projectedFaceContainsClosed(sunUV, float2(corner.x, corner.y),
+-            float2(edgeU.x, edgeU.y), float2(edgeV.x, edgeV.y), determinant, uv)) return -1.0;
++    if (any(uv < float2(-0.001)) || any(uv > float2(1.001))) return -1.0;
+     // An uncertain boundary hit must never extrapolate depth beyond the face.
+     const float u = uv.x < 0.0 ? 0.0 : (uv.x > 1.0 ? 1.0 : uv.x);
+     const float v = uv.y < 0.0 ? 0.0 : (uv.y > 1.0 ? 1.0 : uv.y);

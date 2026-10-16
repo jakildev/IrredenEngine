@@ -1,0 +1,13 @@
+--- a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
++++ b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+@@ -72,9 +72,7 @@
+             sourceQueryComplete = sourceFaceQueryComplete(count)
+                 && (count <= kSourceFaceTileCapacity || sunDepthBuf[kSourceFaceSpillCounterOffset] <= kSourceFaceSpillCapacity);
+             // A complete small record pool is an exact reference for an incomplete tile.
+-            const bool queryAllFaces = IR_SUN_FACE_OVERFLOW_REFERENCE != 0
+-                && !sourceQueryComplete && sourceFaceCount <= kSourceFaceOverflowReferenceBudget
+-                && sourceFaceCount <= kSourceFaceCapacity;
++            const bool queryAllFaces = sourceFaceCount <= kSourceFaceCapacity;
+             sourceQueryComplete = sourceQueryComplete || queryAllFaces;
+             const uint candidateCount = queryAllFaces ? sourceFaceCount : count;
+             if (sourceQueryComplete && dot(normal, sunDir) > 0.0) {

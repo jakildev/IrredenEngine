@@ -80,6 +80,16 @@ view and effective subdivisions 4/2 with external voxel casters and a local ligh
 This comparison checks transform-path equivalence, not absolute correctness of
 every voxel step, local-light occlusion or projected shadow boundary.
 
+For sun-only receiver comparisons, add `--no-ao --no-local-lights`; the isolated
+scene honors both. `--surface-lighting` enables the existing experimental
+continuous per-axis receiver. It changes where an eligible face samples lighting,
+not its caster geometry, and cardinal/fog/debug paths keep their existing
+eligibility rules. Face-center sampling can turn a narrow real opening between
+two projected solids into an isolated lit cell. The
+[tilted-shape attribution](../pr-screenshots/codex/tilted-baked-shadow-gaps/README.md)
+checks such a ray against rebuilt occupancy instead of filling it by appearance.
+The continuous path remains opt-in because its wider-view cost is unresolved.
+
 Baking costs CPU time and dense storage once per authored asset; attaching still
 allocates one pool span per entity. Sharing an asset does not yet imply shared
 resident GPU geometry. Warm-frame comparisons must separate startup baking and
