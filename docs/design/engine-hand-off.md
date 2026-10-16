@@ -19,9 +19,10 @@ local r = IREngine.handOff{ argv = { "IRMyCreation", "--auto-record", "600" }, r
   argument; nothing is joined into a shell command.
 - `resume` defaults to `true`; `false` raises. Replacing the parent for good
   is a different lifecycle, not an alternate meaning of this call.
-- A non-table argument, a missing / empty / sparse / non-string `argv`, a
-  non-boolean `resume`, and a call off the main thread all raise before
-  anything is drained or released.
+- A non-table argument, a missing / empty / sparse / non-string `argv`, an
+  element holding a NUL byte (the OS would truncate it), a non-boolean
+  `resume`, and a call off the main thread all raise before anything is
+  drained or released. The C++ `runHandOff` refuses a NUL byte the same way.
 - `ok` is true only when the child started and exited 0. A spawn failure or a
   non-zero exit returns `supported = true`, `ok = false`, the reading in
   `error` / `exitCode`, and the parent resumes.
@@ -77,7 +78,10 @@ with `ir-acquire --lease-reacquire <token>`, each a short-lived control process.
 The lease record (`$IR_LOCK_ROOT/leases/<token>/`) names the owner; every
 transition re-verifies that owner is alive and restamps the lock to it, never to
 the control process. Double transitions, an unknown token and a dead owner are
-refused without touching the lock. Once released, the parent's
+refused without touching the lock. The owner's exit trap takes the same mutex
+that serializes the transitions before it drops the lease and releases its
+locks, so a transition already past its checks finishes against a live owner
+and cannot free a lock a contender took after the owner left. Once released, the parent's
 `IR_ACQUIRE_HOLDER_PID` no longer owns `gpu/lock`, so the nested `ir-run` queues
 on its own lock instead of riding the inherited hold. `ir-run` passes a token
 only to a run its lock covers.

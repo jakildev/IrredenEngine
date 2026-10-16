@@ -98,6 +98,13 @@ TEST_F(LuaEngineHandOffTest, MalformedInputRaisesBeforeTheHandOff) {
     expectRaises("IREngine.handOff{ argv = { 'IRDemo', 5 } }", "argv[2] must be a string");
     expectRaises("IREngine.handOff{ argv = { 'IRDemo', mode = 'x' } }", "non-integer key");
     expectRaises("IREngine.handOff{ argv = { [1.5] = 'IRDemo' } }", "non-integer key");
+    expectRaises("IREngine.handOff{ argv = { 'IRDemo', [1e300] = '-x' } }", "holes");
+    expectRaises("IREngine.handOff{ argv = { 'IRDemo', [math.huge] = '-x' } }", "holes");
+    expectRaises(
+        "IREngine.handOff{ argv = { 'IRDemo', '--x' .. string.char(0) .. 'y' } }",
+        "argv[2] contains a NUL byte"
+    );
+    expectRaises("IREngine.handOff{ argv = { string.char(0) } }", "argv[1] contains a NUL byte");
     expectRaises("IREngine.handOff{ argv = { 'IRDemo' }, resume = 1 }", "boolean");
     EXPECT_TRUE(m_requests.empty());
 }

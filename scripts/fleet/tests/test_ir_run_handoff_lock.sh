@@ -198,6 +198,71 @@ assert_eq "$([[ -e "$IR_LOCK_ROOT/leases/$HOLDER_TOKEN" ]] && echo kept || echo 
 assert_eq "$([[ -e "$LOCK" ]] && echo held || echo free)" "free" "no gpu lock outlives the released holder"
 assert_eq "$(ls "$IR_LOCK_ROOT/.held" 2>/dev/null | wc -l | tr -d ' ')" "0" "no held ledger outlives the released holder"
 
+echo "Owner exit during release: a contender's lock survives the release"
+GATE="$HANDOFF_DIR/release-gate"
+rm -f "$GATE.reached" "$GATE.go" "$HANDOFF_DIR/contender-in" "$HANDOFF_DIR/contender-go"
+start_holder 'echo "$IR_RUN_LOCK_TOKEN" > "$HANDOFF_DIR/holder-token"; wait_for "$HANDOFF_DIR/holder-go"'
+IR_LEASE_TEST_GATE="$GATE" "$ACQUIRE" --lease-release "$HOLDER_TOKEN" 2>/dev/null &
+RELEASE_PID=$!
+for (( i = 0; i < 200; i++ )); do [[ -e "$GATE.reached" ]] && break; sleep 0.1; done
+assert_eq "$([[ -e "$GATE.reached" ]] && echo parked || echo missing)" "parked" \
+    "the release passed its checks and parked before removing the lock"
+touch "$HANDOFF_DIR/holder-go"
+# The owner's command has returned and its exit trap is running: it either
+# parks on the transition (marked by `dropping`) or exits outright.
+for (( i = 0; i < 200; i++ )); do
+    [[ -e "$IR_LOCK_ROOT/leases/$HOLDER_TOKEN/dropping" ]] && break
+    kill -0 "$HOLDER_PID" 2>/dev/null || break
+    sleep 0.1
+done
+assert_eq "$(cat "$LOCK/pid" 2>/dev/null)" "$HOLDER_PID" \
+    "the exiting owner keeps its lock while the release is in flight"
+"$ACQUIRE" --timeout 20 gpu -- bash -c \
+    "$WAIT_FOR; touch \"\$HANDOFF_DIR/contender-in\"; wait_for \"\$HANDOFF_DIR/contender-go\"" &
+CONTENDER_PID=$!
+for (( i = 0; i < 20; i++ )); do [[ -e "$HANDOFF_DIR/contender-in" ]] && break; sleep 0.1; done
+assert_eq "$([[ -e "$HANDOFF_DIR/contender-in" ]] && echo entered || echo queued)" "queued" \
+    "a contender cannot enter while the release is in flight"
+touch "$GATE.go"
+wait "$RELEASE_PID"
+assert_eq "$?" "0" "the parked release completes against the live owner"
+wait "$HOLDER_PID"
+assert_eq "$?" "0" "the owner exits 0 once the release is done"
+for (( i = 0; i < 200; i++ )); do [[ -e "$HANDOFF_DIR/contender-in" ]] && break; sleep 0.1; done
+assert_eq "$([[ -e "$HANDOFF_DIR/contender-in" ]] && echo entered || echo queued)" "entered" \
+    "the contender enters once the owner has exited"
+assert_eq "$(cat "$LOCK/pid" 2>/dev/null)" "$CONTENDER_PID" \
+    "the contender's lock survives the completed release"
+touch "$HANDOFF_DIR/contender-go"
+wait "$CONTENDER_PID"
+assert_eq "$([[ -e "$IR_LOCK_ROOT/leases/$HOLDER_TOKEN" ]] && echo kept || echo dropped)" "dropped" \
+    "the owner's exit still drops the lease"
+
+echo "Owner exit during reacquire: the waiting reacquire yields to the exit"
+rm -f "$HANDOFF_DIR/contender-in" "$HANDOFF_DIR/contender-go"
+start_holder '"$IR_ACQUIRE_TOOL" --lease-release "$IR_RUN_LOCK_TOKEN"; echo "$IR_RUN_LOCK_TOKEN" > "$HANDOFF_DIR/holder-token"; wait_for "$HANDOFF_DIR/holder-go"'
+"$ACQUIRE" gpu -- bash -c \
+    "$WAIT_FOR; touch \"\$HANDOFF_DIR/contender-in\"; wait_for \"\$HANDOFF_DIR/contender-go\"" &
+CONTENDER_PID=$!
+for (( i = 0; i < 200; i++ )); do [[ -e "$HANDOFF_DIR/contender-in" ]] && break; sleep 0.1; done
+"$ACQUIRE" --timeout 60 --lease-reacquire "$HOLDER_TOKEN" 2>/dev/null &
+REACQUIRE_PID=$!
+for (( i = 0; i < 200; i++ )); do
+    [[ -d "$IR_LOCK_ROOT/leases/$HOLDER_TOKEN/transition" ]] && break
+    sleep 0.1
+done
+touch "$HANDOFF_DIR/holder-go"
+SECONDS=0
+wait "$HOLDER_PID"
+assert_eq "$?" "0" "the owner exits 0 while its reacquire waits"
+assert_eq "$(( SECONDS < 10 ))" "1" "the owner's exit does not wait out the reacquire timeout"
+wait "$REACQUIRE_PID"
+assert_eq "$?" "1" "the waiting reacquire is refused once the owner exits"
+assert_eq "$(cat "$LOCK/pid" 2>/dev/null)" "$CONTENDER_PID" "the contender's lock is untouched"
+touch "$HANDOFF_DIR/contender-go"
+wait "$CONTENDER_PID"
+assert_eq "$([[ -e "$LOCK" ]] && echo held || echo free)" "free" "no gpu lock outlives the contender"
+
 echo "Token scope: only a run its gpu lock covers sees a token"
 OUT=$("$ACQUIRE" cpu 1 -- bash -c 'echo "token=${IR_RUN_LOCK_TOKEN:-none}"' 2>&1)
 assert_contains "$OUT" "token=none" "a cpu-only hold exports no lease token"

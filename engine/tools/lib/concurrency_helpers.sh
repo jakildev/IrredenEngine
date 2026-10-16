@@ -659,7 +659,14 @@ ir_release_all() {
 # transition re-verifies that owner is alive and never re-stamps the lock to
 # the control process. A `released` marker dir is the state; a `transition`
 # dir serializes the verbs. The owner's EXIT trap drops the record in either
-# state.
+# state, and takes the same `transition` mutex to do it: a transition whose
+# checks passed then runs to completion against a live owner, so the owner's
+# lock release can never interleave with it and free a lock a contender has
+# since taken.
+#
+# IR_LEASE_TEST_GATE=<path> parks a release between its checks and the lock
+# removal (touches <path>.reached, waits for <path>.go) — the test seam for
+# that interleaving.
 
 _ir_lease_dir() {
     [[ "$1" =~ ^[0-9a-f]{32}$ ]] || return 1
@@ -680,10 +687,33 @@ ir_gpu_lease_create() {
     echo "$token"
 }
 
+# ir_gpu_lease_drop <token> — the owner's exit path. `dropping` makes a
+# reacquire still waiting on the lock give up rather than hold this exit for
+# its whole timeout; a mutex whose control process died is broken.
 ir_gpu_lease_drop() {
     local lease
     lease="$(_ir_lease_dir "${1:-}")" || return 0
+    [[ -d "$lease" ]] || return 0
+    mkdir "$lease/dropping" 2>/dev/null || true
+    local pid unstamped=0
+    until _ir_lease_lock_transition "$lease"; do
+        pid="$(cat "$lease/transition/pid" 2>/dev/null || true)"
+        if [[ -n "$pid" ]]; then
+            _ir_holder_alive "$pid" "$lease/transition/winpid" || rm -rf "$lease/transition"
+        elif (( ++unstamped > 50 )); then
+            rm -rf "$lease/transition"
+        fi
+        sleep 0.1
+    done
     rm -rf "$lease" 2>/dev/null || true
+}
+
+# _ir_lease_lock_transition <lease> — the winpid record lands before the pid,
+# so a reader that sees the pid can judge it from either Cygwin runtime.
+_ir_lease_lock_transition() {
+    mkdir "$1/transition" 2>/dev/null || return 1
+    _ir_write_winpid "$1/transition/winpid"
+    echo "$$" > "$1/transition/pid"
 }
 
 # _ir_lease_transition <release|reacquire> <token> [--timeout SECS] — one
@@ -705,13 +735,18 @@ _ir_lease_transition() {
         echo "ir-acquire: malformed lease token" >&2
         return 2
     fi
-    if [[ ! -d "$lease" ]] || ! mkdir "$lease/transition" 2>/dev/null; then
+    if [[ ! -d "$lease" ]] || ! _ir_lease_lock_transition "$lease"; then
         echo "ir-acquire: no lease for that token, or a transition is in progress" >&2
         return 1
     fi
     local status=0
-    "_ir_lease_$op" "$lease" "$timeout" || status=$?
-    rmdir "$lease/transition" 2>/dev/null || true
+    if [[ -d "$lease/dropping" ]]; then
+        echo "ir-acquire: lease owner is exiting" >&2
+        status=1
+    else
+        "_ir_lease_$op" "$lease" "$timeout" || status=$?
+    fi
+    rm -rf "$lease/transition" 2>/dev/null || true
     return "$status"
 }
 
@@ -737,6 +772,10 @@ _ir_lease_release() {
         echo "ir-acquire: gpu lock is not held by lease owner $holder" >&2
         return 1
     fi
+    if [[ -n "${IR_LEASE_TEST_GATE:-}" ]]; then
+        : > "$IR_LEASE_TEST_GATE.reached"
+        while [[ ! -e "$IR_LEASE_TEST_GATE.go" ]]; do sleep 0.05; done
+    fi
     # The state flips before the lock goes: a release interrupted here leaves
     # RELEASED with the owner still stamped, which reacquire accepts as-is.
     mkdir "$lease/released"
@@ -757,8 +796,8 @@ _ir_lease_reacquire() {
     local started now
     started="$(date +%s)"
     while ! _ir_lock_owned_by "$lockdir" "$holder" "$owner"; do
-        if ! _ir_lease_owner_alive "$lease"; then
-            echo "ir-acquire: lease owner $holder is not alive" >&2
+        if [[ -d "$lease/dropping" ]] || ! _ir_lease_owner_alive "$lease"; then
+            echo "ir-acquire: lease owner $holder is exiting or gone" >&2
             return 1
         fi
         _ir_try_lock "$lockdir" "$holder" "$owner" && break
@@ -769,9 +808,11 @@ _ir_lease_reacquire() {
         fi
         sleep 0.2
     done
-    # The owner may have exited while this waited; its trap has dropped the
-    # lease and would never release a lock stamped after it ran.
-    if [[ ! -d "$lease" ]] || ! _ir_lease_owner_alive "$lease"; then
+    # The owner may have begun exiting, or died, while this waited. Its ledger
+    # does not list a lock stamped here, so its trap would leave the lock
+    # behind. An exiting owner is parked on the mutex, still alive, so no
+    # reclaimer can have taken the lock from it.
+    if [[ -d "$lease/dropping" ]] || ! _ir_lease_owner_alive "$lease"; then
         _ir_lock_owned_by "$lockdir" "$holder" "$owner" && rm -rf "$lockdir"
         echo "ir-acquire: lease owner $holder exited during reacquire" >&2
         return 1

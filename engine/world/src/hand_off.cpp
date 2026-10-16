@@ -47,6 +47,17 @@ std::string describeExit(const ChildExit &exit) {
     return exit.started_ ? "exit " + std::to_string(exit.exitCode_) : exit.error_;
 }
 
+constexpr double kMaxArgvIndex = 4294967295.0;
+
+bool containsNul(const std::vector<std::string> &argv) {
+    for (const std::string &arg : argv) {
+        if (arg.find('\0') != std::string::npos) {
+            return true;
+        }
+    }
+    return false;
+}
+
 [[noreturn]] void raise(const std::string &message) {
     throw sol::error{"IREngine.handOff: " + message};
 }
@@ -63,15 +74,28 @@ std::vector<std::string> parseArgv(const sol::object &argvObject) {
             raise("argv must be an array; it has a non-integer key");
         }
         const double index = key.as<double>();
-        if (index < 1.0 || index != static_cast<double>(static_cast<std::size_t>(index))) {
+        if (index < 1.0) {
+            raise("argv must be an array; it has a non-integer key");
+        }
+        // Converting a double beyond std::size_t's range is undefined, so the
+        // range check precedes the cast. No table reaches this bound, so a
+        // key past it is necessarily a hole.
+        if (index > kMaxArgvIndex) {
+            raise("argv must be a dense array; it has holes");
+        }
+        const auto position = static_cast<std::size_t>(index);
+        if (static_cast<double>(position) != index) {
             raise("argv must be an array; it has a non-integer key");
         }
         if (value.get_type() != sol::type::string) {
-            raise("argv[" + std::to_string(static_cast<std::size_t>(index)) + "] must be a string");
+            raise("argv[" + std::to_string(position) + "] must be a string");
+        }
+        if (value.as<std::string_view>().find('\0') != std::string_view::npos) {
+            raise("argv[" + std::to_string(position) + "] contains a NUL byte");
         }
         ++count;
-        if (static_cast<std::size_t>(index) > maxIndex) {
-            maxIndex = static_cast<std::size_t>(index);
+        if (position > maxIndex) {
+            maxIndex = position;
         }
     }
     if (count == 0) {
@@ -139,6 +163,12 @@ HandOffOutcome runHandOff(
     result.supported_ = true;
     if (request.argv_.empty()) {
         result.error_ = "argv is empty";
+        return outcome;
+    }
+    // The OS receives each argument NUL-terminated, so an embedded NUL would
+    // silently truncate what the child runs.
+    if (containsNul(request.argv_)) {
+        result.error_ = "argv contains a NUL byte";
         return outcome;
     }
     // A benchmark parent keeps its cpu and perf locks while handed off, so a

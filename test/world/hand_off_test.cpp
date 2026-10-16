@@ -274,6 +274,19 @@ TEST(HandOffControllerTest, EmptyArgvLaunchesNothing) {
     EXPECT_FALSE(outcome.result_.ok_);
 }
 
+TEST(HandOffControllerTest, ArgvWithANulByteLaunchesNothing) {
+    for (const std::string &arg :
+         {std::string{"--x\0y", 5}, std::string{"\0", 1}, std::string{"IRDemo\0", 7}}) {
+        StubPlatform platform;
+        const HandOffOutcome outcome =
+            runHandOff(HandOffRequest{{"IRShapeDebug", arg}}, withLease(), platform);
+        EXPECT_TRUE(platform.steps_.empty());
+        EXPECT_FALSE(outcome.suspended_);
+        EXPECT_FALSE(outcome.result_.ok_);
+        EXPECT_NE(outcome.result_.error_.find("NUL"), std::string::npos);
+    }
+}
+
 TEST(HandOffControllerTest, EnvironmentReadsWhatTheWrapperExported) {
     IRTest::ScopedEnv wrapper("IR_RUN_WRAPPER", kWrapper.c_str());
     IRTest::ScopedEnv token("IR_RUN_LOCK_TOKEN", kToken.c_str());

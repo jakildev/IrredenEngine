@@ -21,7 +21,8 @@ namespace IREngine {
 
 struct HandOffRequest {
     /// The child's ir-run arguments (executable name first), passed as
-    /// separate arguments, never joined into a shell command.
+    /// separate arguments, never joined into a shell command. The OS takes
+    /// each NUL-terminated, so `runHandOff` refuses one holding a NUL byte.
     std::vector<std::string> argv_;
 };
 
