@@ -97,6 +97,7 @@ TEST_F(LuaRenderBindingsTest, CanAllocateVoxelsReadsTheActiveCanvasPool) {
 TEST_F(LuaRenderBindingsTest, GuiDrawPrimitivesBound) {
     EXPECT_TRUE(isFunction("IRGui.drawDisc"));
     EXPECT_TRUE(isFunction("IRGui.drawLine"));
+    EXPECT_TRUE(isFunction("IRGui.fillRect"));
 }
 
 // bindRenderGlue must EXTEND, not replace, an IRRender table a creation has

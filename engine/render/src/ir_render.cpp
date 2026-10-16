@@ -645,4 +645,13 @@ void drawGuiLine(ivec2 from, ivec2 to, Color color) {
     drawLine(*canvas, from, to, color, kGuiTextDistance);
 }
 
+void fillGuiRect(ivec2 pos, ivec2 size, Color color) {
+    IRComponents::C_TriangleCanvasTextures *canvas = guiCanvasTexturesOrNull();
+    if (canvas == nullptr || size.x <= 0 || size.y <= 0) {
+        return;
+    }
+    static RectFillScratch scratch;
+    fillRect(*canvas, pos, size, color, kGuiTextDistance, scratch);
+}
+
 } // namespace IRRender
