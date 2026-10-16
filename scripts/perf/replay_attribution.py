@@ -34,7 +34,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import compare_perf_runs as cpr
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "fleet"))
+import compare_perf_runs as cpr  # noqa: E402
+import fleet_github  # noqa: E402
 
 MARKER = "<!-- perf-gate -->"
 CAPTURE_RE = re.compile(r"baseline capture: `perf-baseline@(\w+)` \([^)]*\); master `(\w+)`")
@@ -56,8 +58,8 @@ def fetch_corpus(repo: str, since: str) -> List[Dict]:
     `created`, because the API's `since` is an updated-at bound."""
     jq = (f'.[] | select(.body | startswith("{MARKER}")) | '
           '{id, url: .issue_url, created: .created_at, body}')
-    out = subprocess.run(
-        ["gh", "api", "--paginate", f"repos/{repo}/issues/comments?since={since}&per_page=100",
+    out = fleet_github.run(
+        ["api", "--paginate", f"repos/{repo}/issues/comments?since={since}&per_page=100",
          "--jq", jq], capture_output=True, text=True, check=True).stdout
     return [json.loads(line) for line in out.splitlines() if line.strip()]
 
@@ -142,9 +144,9 @@ def resolve_merges(repo: str, heads: List[str], cache_path: Path) -> Dict[str, O
     for head in heads:
         if head in cache:
             continue
-        res = subprocess.run(["gh", "api", f"repos/{repo}/commits/{head}",
-                              "--jq", "[.sha, (.parents | map(.sha))]"],
-                             capture_output=True, text=True)
+        res = fleet_github.run(["api", f"repos/{repo}/commits/{head}",
+                                "--jq", "[.sha, (.parents | map(.sha))]"],
+                               capture_output=True, text=True)
         cache[head] = json.loads(res.stdout) if res.returncode == 0 else None
     cache_path.write_text(json.dumps(cache, indent=0, sort_keys=True))
     return cache
