@@ -33,6 +33,44 @@
   },
   "extra_runs": [
     {
+      "name": "sdf_baked_pose_root",
+      "demo_args": [
+        "--sdf-voxel-scene",
+        "baked",
+        "--sdf-voxel-pose",
+        "root",
+        "--sdf-voxel-blockers"
+      ],
+      "shots": [
+        "sdf_voxel_pose_yaw0",
+        "sdf_voxel_pose_yaw45",
+        "sdf_voxel_pose_yaw90",
+        "sdf_voxel_pose_yaw180",
+        "sdf_voxel_pose_yaw270",
+        "sdf_voxel_pose_zoom2"
+      ],
+      "capture_offset": 0
+    },
+    {
+      "name": "sdf_baked_pose_parented",
+      "demo_args": [
+        "--sdf-voxel-scene",
+        "baked",
+        "--sdf-voxel-pose",
+        "parented",
+        "--sdf-voxel-blockers"
+      ],
+      "shots": [
+        "sdf_voxel_pose_yaw0",
+        "sdf_voxel_pose_yaw45",
+        "sdf_voxel_pose_yaw90",
+        "sdf_voxel_pose_yaw180",
+        "sdf_voxel_pose_yaw270",
+        "sdf_voxel_pose_zoom2"
+      ],
+      "capture_offset": 0
+    },
+    {
       "name": "lod_scene",
       "demo_args": [
         "--lod-scene",

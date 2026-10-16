@@ -1534,6 +1534,12 @@ void registerCliArgs() {
         "off"
     );
     args.flag("--sdf-voxel-blockers", "Add external voxel casters to --sdf-voxel-scene");
+    args.enumValue(
+        "--sdf-voxel-pose",
+        "SDF/voxel subjects at rest or at equivalent rotated root/parented poses",
+        {"rest", "root", "parented"},
+        "rest"
+    );
     args.flag("--pan-sweep", "Fine fixed-yaw camera-pan jitter sweep (#1944)");
     args.flag("--yaw-sweep", "Fine fixed-position camera-yaw jitter sweep (#1944)");
     args.enumValue(
@@ -1753,7 +1759,9 @@ int main(int argc, char **argv) {
     IREngine::args().parse(argc, argv);
     readCliArgs();
     const bool sdfVoxelScene = IREngine::args().getEnum("--sdf-voxel-scene") != "off";
-    if ((IREngine::args().getFlag("--sdf-voxel-blockers") && !sdfVoxelScene) ||
+    if (((IREngine::args().getFlag("--sdf-voxel-blockers") ||
+          IREngine::args().getEnum("--sdf-voxel-pose") != "rest") &&
+         !sdfVoxelScene) ||
         (sdfVoxelScene &&
          (g_lodScene || g_guiTest || g_continuousZoomGuiTest || g_cullValidate ||
           g_pivotFocusDemo || g_pivotVerifyBlock != "off" || g_zoomSweep || g_panSweep ||
@@ -1763,7 +1771,9 @@ int main(int argc, char **argv) {
           !g_spinShapeType.empty() || g_depthColor || g_checkerboard || g_gpuVoxelSmoke ||
           g_skinSmoke || (g_autoWarmupFrames > 0 && g_spinYawDegPerSec > 0.0f) ||
           IREngine::args().getFlag("--ao-contact-probe")))) {
-        IR_LOG_ERROR("--sdf-voxel-scene requires an isolated scene; blockers require that scene");
+        IR_LOG_ERROR(
+            "--sdf-voxel-scene requires an isolated scene; blockers/pose require that scene"
+        );
         return 2;
     }
     if (sdfVoxelScene) {
@@ -4124,7 +4134,11 @@ void initSystems() {
                 sweepZoom
             );
         } else if (IREngine::args().getEnum("--sdf-voxel-scene") != "off") {
-            IRVideo::setAutoScreenshotShots(cfg, IRShapeDebug::SdfVoxelScene::shots_);
+            if (IREngine::args().getEnum("--sdf-voxel-pose") == "rest") {
+                IRVideo::setAutoScreenshotShots(cfg, IRShapeDebug::SdfVoxelScene::shots_);
+            } else {
+                IRVideo::setAutoScreenshotShots(cfg, IRShapeDebug::SdfVoxelScene::posedShots_);
+            }
         } else if (g_voxelEntityCube) {
             IRVideo::setAutoScreenshotShots(cfg, kVoxelEntityCubeShots);
         } else if (g_shadowFootprintProbe) {
@@ -4897,9 +4911,14 @@ void initViewportPortraitScene() {
 void initEntities() {
     const auto &sdfVoxelMode = IREngine::args().getEnum("--sdf-voxel-scene");
     if (sdfVoxelMode != "off") {
+        using Pose = IRShapeDebug::SdfVoxelScene::Pose;
+        const auto &pose = IREngine::args().getEnum("--sdf-voxel-pose");
         IRShapeDebug::SdfVoxelScene::initialize(
             sdfVoxelMode == "baked",
-            IREngine::args().getFlag("--sdf-voxel-blockers")
+            IREngine::args().getFlag("--sdf-voxel-blockers"),
+            pose == "root"       ? Pose::ROOT
+            : pose == "parented" ? Pose::PARENTED
+                                 : Pose::REST
         );
         setupCanvasLighting();
         return;
