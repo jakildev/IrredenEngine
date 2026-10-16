@@ -43,8 +43,9 @@ load-bearing `PICKS_VOXEL` over the real picking/ray path), and beside it
 `composite_proof` alone evaluates 79 assertions. Every authoring feature
 since the entity creator landed with its own session (`voxel_editor/CLAUDE.md`
 §Validators). Editor scenes have a committed render-verify reference set
-(`test/references/macos-debug/`, the `mode_preview_grid` / `mode_preview_revox`
-pair from `--gui-session mode_preview_shots`), so Done-means row 4 verifies.
+(`creations/editors/voxel_editor/test/references/macos-debug/`, the
+`mode_preview_grid` / `mode_preview_revox` pair from
+`--gui-session mode_preview_shots`), so Done-means row 4 verifies.
 Phase 1 static authoring (#604) shipped; the `.vxs` v1 save format with JSON
 sidecar has asset tests. The #766 proof landed (PRs #2472, #2558, #2577,
 #2593, #3151): ant (20³), mushroom, rock, bird (two frames) and tree authored
