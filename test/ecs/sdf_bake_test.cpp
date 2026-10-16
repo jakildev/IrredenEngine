@@ -99,6 +99,67 @@ TEST(SdfBake, RejectsInvalidInputsBeforeAllocating) {
     }
 }
 
+TEST(SdfBake, BudgetIncludesOutputAndScratchWithInclusiveByteBoundary) {
+    constexpr std::size_t cells = 2 * 3 * 4;
+    constexpr std::size_t outputBytes = cells * sizeof(IRAsset::VoxelRecord);
+    constexpr std::size_t workingBytes = outputBytes + cells * sizeof(float);
+    for (const auto budget : {std::size_t(0), outputBytes, workingBytes - 1}) {
+        const auto rejected = bakeSdfGrid(ivec3(2, 3, 4), ShapeType::BOX, vec4(4), kColor, budget);
+        EXPECT_TRUE(rejected.voxels_.empty());
+        EXPECT_EQ(rejected.boundsMin_, ivec3(0));
+        EXPECT_EQ(rejected.boundsMax_, ivec3(0));
+    }
+    const auto accepted =
+        bakeSdfGrid(ivec3(2, 3, 4), ShapeType::BOX, vec4(4), kColor, workingBytes);
+    ASSERT_EQ(accepted.voxels_.size(), cells);
+    for (const auto &record : accepted.voxels_)
+        EXPECT_EQ(record.color_.alpha_, 255);
+}
+
+TEST(SdfBake, DefaultBudgetRejectsLargeValidGridAndAllowsBeyondLegacy64Cube) {
+    EXPECT_TRUE(bakeSdfGrid(ivec3(1024), ShapeType::BOX, vec4(1), kColor).voxels_.empty());
+    const int limit = std::numeric_limits<int>::max();
+    EXPECT_TRUE(bakeSdfGrid(ivec3(limit), ShapeType::BOX, vec4(1), kColor).voxels_.empty());
+    EXPECT_TRUE(bakeSdfGrid(
+                    ivec3(limit),
+                    ShapeType::BOX,
+                    vec4(1),
+                    kColor,
+                    std::numeric_limits<std::size_t>::max()
+    )
+                    .voxels_.empty());
+    const auto dense = bakeSdfGrid(ivec3(65), ShapeType::SPHERE, vec4(1), kColor);
+    ASSERT_EQ(dense.voxels_.size(), 65u * 65u * 65u);
+    EXPECT_TRUE(occupied(dense, ivec3(32)));
+    EXPECT_FALSE(occupied(dense, ivec3(0)));
+}
+
+TEST(SdfBake, ExplicitBuiltinSupportRejectsUnknownTypes) {
+    for (const auto type :
+         {ShapeType::BOX,
+          ShapeType::SPHERE,
+          ShapeType::CYLINDER,
+          ShapeType::ELLIPSOID,
+          ShapeType::CURVED_PANEL,
+          ShapeType::WEDGE,
+          ShapeType::TAPERED_BOX,
+          ShapeType::CONE,
+          ShapeType::TORUS}) {
+        const auto dense = bakeSdfGrid(ivec3(7), type, vec4(2, 2, 4, 1), kColor);
+        ASSERT_EQ(dense.voxels_.size(), 343u) << static_cast<unsigned>(type);
+        bool anyOccupied = false;
+        for (const auto &record : dense.voxels_)
+            anyOccupied |= record.color_.alpha_ != 0;
+        EXPECT_TRUE(anyOccupied) << static_cast<unsigned>(type);
+    }
+    for (const auto type :
+         {ShapeType::CUSTOM_SDF,
+          static_cast<ShapeType>(10),
+          static_cast<ShapeType>(std::numeric_limits<std::uint32_t>::max())}) {
+        EXPECT_TRUE(bakeSdfGrid(ivec3(7), type, vec4(2, 2, 4, 1), kColor).voxels_.empty());
+    }
+}
+
 TEST(SdfBake, AssetChunksPreserveBoundsOccupancyAndOrdinaryVoxelFields) {
     const auto dense = bakeSdfGrid(ivec3(7), ShapeType::SPHERE, vec4(1.5f, 0, 0, 0), kColor);
     const auto bounds = IRAsset::makeBoundsChunk(dense.boundsMin_, dense.boundsMax_);
