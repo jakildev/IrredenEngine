@@ -4,6 +4,11 @@ The fixed-pose adapter and matrix runner support the shared-voxel authoring
 decision. These records validate the measurement path. They do not establish
 that baked occupancy is faster than direct SDF.
 
+The subsequent [guarded Debug/Release comparison](current-stack/README.md)
+completes both 48-run matrices and retains separate CPU samples. The smoke and
+rejected attempts below remain historical evidence; the new comparison is
+bounded to its four-subject scene and does not establish a general speedup.
+
 ## Successful smoke
 
 `smoke/` retains eight single-run macOS/Metal Debug reports: direct/baked ×
@@ -49,9 +54,12 @@ it contributes no timing evidence.
   retains frame/system timers and the Debug CPU histogram. CPU profiler
   enablement and ORIGIN pivot mode remain configuration/source evidence.
 
-Finish the alternating matrix on a quiet host, then repeat in Release and on
-Windows/OpenGL. Population, overlap, subdivisions, startup baking, resident
+Repeat the completed comparison on AC power and Windows/OpenGL.
+Population, overlap, subdivisions, startup baking, resident
 memory and authored rotation/attachments need separate coverage. The four
 subjects and shared floor are not a large-entity performance workload. The
-known intermediate-yaw voxel floor-shadow gap remains open; profiling controls
-do not fix or conceal it.
+earlier rounded-edge miss has a
+[closed-boundary fix](../../design/surface-shadow-sampling.md#rounded-finite-face-boundaries).
+The distinct apparent gap in the tilted fixture is a
+[verified clear channel](../../pr-screenshots/codex/tilted-baked-shadow-gaps/README.md).
+Neither attribution closes all voxel shadow defects.

@@ -237,6 +237,13 @@ submission time is not GPU execution time. The
 [stage timing cost model](gpu-stage-timing-cost-model.md) describes the profiler.
 Choose the representation from this measured workload and its geometric needs.
 
+The [guarded SDF/baked-voxel baseline](../perf/sdf-voxel-profile/current-stack/README.md)
+covers a four-subject fixture in Debug and Release on Metal, with shadows and
+stage timing crossed at yaw 0/45. Baked geometry has lower average GPU spans
+in these cells; diagonal wall-frame results are mixed. It does not measure
+startup baking, total residency, population scaling or continuous receiving,
+and does not establish a general speed advantage for either representation.
+
 ## Current acceptance work
 
 These are open correctness gates, not approved visual baselines:

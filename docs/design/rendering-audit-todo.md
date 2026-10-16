@@ -30,11 +30,17 @@ it does not automatically migrate existing SDF entities or qualify performance.
 The repeat-profile adapter now requires fixed fixture poses, explicit paired
 timing presets, stable configuration hashes, guarded runs and matching
 pose/zoom/count/overflow evidence; it also disables the profiling minimap.
-The [native profiling smoke](../perf/sdf-voxel-profile/README.md) passes eight
-arms, but two full-matrix attempts stopped on quiet-window breaches. Complete
-the repeat matrix on a quiet host before making a representation speed claim.
-Next compare warm frame/stage cost, startup cost and resident memory with shadows
-off/on, cardinal/intermediate yaw, density and overlap.
+The [guarded comparison](../perf/sdf-voxel-profile/current-stack/README.md)
+completes 48 Debug and 48 Release runs on Metal: direct/baked, yaw 0/45,
+shadows off/on and stage timing off/on. Baked geometry has lower cell-mean GPU
+spans in this small fixture, but diagonal wall-frame results are mixed.
+These battery-powered controls do not qualify general representation throughput
+or the opt-in continuous receiver. Separate CPU samples mainly observe GPU wait
+and intentional offscreen pacing, not evidence for a CPU simulation rewrite.
+Next measure density, overlap and motion, startup baking and resident memory;
+repeat on AC power and Windows/OpenGL. For continuous receiving, instrument
+actual post-prepass candidate visits/misses/first blockers before choosing the
+next query optimization.
 Fixed tilted GRID subjects now have paired root/parented ShapeDebug controls:
 six native frames match exactly with external voxel casters, AO and local light.
 Both placement arms use one shared golden reference set. This establishes
