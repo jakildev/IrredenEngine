@@ -151,14 +151,14 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
 
 ## Widget framework
 
-- `IRPrefab::Widget::make<Kind>` builds one entity: `C_Widget` + `C_GuiPosition` + `C_Widget<Kind>`,
-  plus `C_WidgetState` + `C_HitBox2DGui` for interactive kinds. `makeHitRegion` is the invisible kind
-  (no `C_Widget<Kind>`, no renderer, never a Tab stop): lay it over content drawn elsewhere; like any
-  GUI hitbox it shadows world picks beneath it. `topmostHoveredWidget()` owns hover routing.
-  Mutate the `C_WidgetTheme` singleton (`widget_theme.hpp::defaultTheme()`) once at init, before
-  building widgets. Opt-in hover publication: `makeGuiHoverState()` creates the `C_GuiHoverState` singleton; `hoveredWidget()` reads it.
-- Dropdown strip and list scroll geometry have one owner each (the `C_WidgetDropdown` / `C_WidgetList` helpers); read a list's
-  first row from `topIndex`, never raw `scrollOffset_`. Authored `zOrder_` stays below `kWidgetDropdownOpenZBias`; two open dropdowns are unordered.
+- `IRPrefab::Widget::make<Kind>` builds one entity: `C_Widget` + `C_GuiPosition` + `C_Widget<Kind>`, plus `C_WidgetState` +
+  `C_HitBox2DGui` for interactive kinds. `makeHitRegion` is the invisible kind (no `C_Widget<Kind>`, no renderer, never a Tab stop): lay
+  it over content drawn elsewhere; like any GUI hitbox it shadows world picks beneath it. `topmostHoveredWidget()` owns hover routing.
+  Mutate the `C_WidgetTheme` singleton (`widget_theme.hpp::defaultTheme()`) once at init, before building widgets. Opt-in hover
+  publication: `makeGuiHoverState()` creates the `C_GuiHoverState` singleton; `hoveredWidget()` reads it.
+- Dropdown strip and list scroll geometry have one owner each (the `C_WidgetDropdown` / `C_WidgetList` helpers); read a list's first row
+  from `topIndex`, never raw `scrollOffset_`. Authored `zOrder_` stays below `kWidgetDropdownOpenZBias`; two open dropdowns are unordered.
+  `WIDGET_RENDER_DROPDOWN` paints open strips in `endTick`, after the headers' text dispatch, so a strip covers the headers below it.
 - The wheel scrolls the hovered list; `setListSelectedIndex` reveals the row only when the index
   changes, so a caller that mirrors its state into the list every frame never fights the wheel.
 - Radio exclusion (`makeRadio(..., groupId, value)`) runs in `WIDGET_APPLY_RADIO::endTick`; text inputs edit only while pointer-focused; Enter or a click off widgets drops focus;
