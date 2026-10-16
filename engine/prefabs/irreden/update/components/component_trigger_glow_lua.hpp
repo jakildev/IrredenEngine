@@ -15,6 +15,14 @@ template <> inline void bindLuaType<IRComponents::C_TriggerGlow>(LuaScript &luaS
         "C_TriggerGlow",
         "targetColor",
         &IRComponents::C_TriggerGlow::targetColor_,
+        // The colour the glow eases back to and repaints while idle. The
+        // system captures it from the voxels on its first tick; a script that
+        // recolours the voxels afterwards sets it too (and marks it captured),
+        // or the next idle tick paints the old colour back.
+        "baseColor",
+        &IRComponents::C_TriggerGlow::baseColor_,
+        "baseColorInitialized",
+        &IRComponents::C_TriggerGlow::baseColorInitialized_,
         "holdSeconds",
         &IRComponents::C_TriggerGlow::holdSeconds_,
         "fadeSeconds",
