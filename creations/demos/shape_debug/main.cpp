@@ -10,6 +10,7 @@
 #include <irreden/render/camera.hpp>
 #include <irreden/render/cull_viewport_state.hpp>
 #include <irreden/render/default_pivot_latch.hpp>
+#include <irreden/render/per_axis_surface_lighting.hpp>
 #include <irreden/render/shape_sample_probe.hpp>
 
 #include <irreden/asset/voxel_set_format.hpp>
@@ -48,11 +49,9 @@
 #include <irreden/render/components/component_canvas_sun_shadow.hpp>
 #include <irreden/render/components/component_light_source.hpp>
 #include <irreden/render/components/component_light_blocker.hpp>
-#include <irreden/render/per_axis_surface_lighting.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_trixel_canvas_render_behavior.hpp>
-#include <irreden/render/camera.hpp>
 
 // SYSTEMS
 #include <irreden/update/systems/system_auto_spin_local_transform.hpp>
