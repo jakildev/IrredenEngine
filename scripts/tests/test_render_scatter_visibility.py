@@ -84,11 +84,15 @@ bvec2 operator>(vec2 a,vec2 b){return greaterThan(a,b);}
 bool any(bvec2 a){return a.x||a.y;}
 vec2 operator-(vec2 a){return {-a.x,-a.y};}
 vec2 max(vec2 a,vec2 b){return {std::max(a.x,b.x),std::max(a.y,b.y)};}
+vec2 min(vec2 a,vec2 b){return {std::min(a.x,b.x),std::min(a.y,b.y)};}
+vec2 mix(vec2 a,vec2 b,vec2 t){return {a.x+(b.x-a.x)*t.x,a.y+(b.y-a.y)*t.y};}
+vec2 step(float edge,vec2 v){return {v.x<edge?0.f:1.f,v.y<edge?0.f:1.f};}
+using bool2=bvec2;
 float max(float a,float b){return std::max(a,b);}
 float clamp(float d,float a,float b){return std::clamp(d,a,b);}
 struct Input {
     vec4 color{1,1,1,1};
-    vec2 quadParam{.5f,.5f},position{2.5f,1.5f};
+    vec2 quadParam{.5f,.5f},position{2.5f,1.5f},depthSlope{0,0};
     ivec3 visibilityExtent{4,3,1};
     vec3 faceOrigin{0,0,0};int faceId=0;ivec2 ownerPixel{-1,-1};
     float depth=.25f,cellTieOffset=0;
@@ -131,6 +135,94 @@ bool run(Fragment fragment,Input in){try{fragment(in);return true;}catch(Discard
 void reset(){
     visibilityCodes.fill(0xffffffffu);
     lightingCalls=shadowCalls=minCalls=addCalls=0;outputDepth=-999;
+}
+"""
+
+EDGE_TIE_ADAPTER = r"""
+using bvec2=V2<bool>;
+using bool2=bvec2;
+bool any(bvec2 a){return a.x||a.y;}
+vec2 operator-(vec2 a){return {-a.x,-a.y};}
+vec2 min(vec2 a,vec2 b){return {std::min(a.x,b.x),std::min(a.y,b.y)};}
+vec2 mix(vec2 a,vec2 b,vec2 t){return {a.x+(b.x-a.x)*t.x,a.y+(b.y-a.y)*t.y};}
+vec2 step(float edge,vec2 v){return {v.x<edge?0.f:1.f,v.y<edge?0.f:1.f};}
+"""
+
+EDGE_TIE_CHECKS = r"""
+int fail(const char* label){std::fprintf(stderr,"%s\n",label);return 1;}
+int check(float depth,vec2 slope,vec2 q,float expected,const char* label){
+    return scatterEdgeTieDepth(depth,slope,q)==expected?0:fail(label);
+}
+int main(){
+    const float band=kScatterCellTieBand;
+    const vec2 receding(0x1p-12f,0x1p-12f),advancing(-0x1p-12f,-0x1p-12f);
+    const float edge=0x1p-10f,gate=kScatterEdgeTieWidth;
+    for(float depth:{.25f,.5f,.75f}){
+        const float yield=depth+band;
+        // Interior fragments and fragments exactly at the gate keep their depth.
+        for(vec2 q:{vec2(.5f,.5f),vec2(gate,.5f),vec2(1.f-gate,.5f),vec2(.5f,gate),
+                    vec2(.5f,1.f-gate)})
+            for(vec2 slope:{receding,advancing})
+                if(check(depth,slope,q,depth,"interior moved"))return 1;
+        // Crossing a low edge toward the interior follows +slope, a high edge -slope.
+        if(check(depth,receding,vec2(edge,.5f),yield,"low u edge kept"))return 1;
+        if(check(depth,receding,vec2(.5f,edge),yield,"low v edge kept"))return 1;
+        if(check(depth,advancing,vec2(1.f-edge,.5f),yield,"high u edge kept"))return 1;
+        if(check(depth,advancing,vec2(.5f,1.f-edge),yield,"high v edge kept"))return 1;
+        if(check(depth,advancing,vec2(edge,.5f),depth,"advancing low edge yielded"))return 1;
+        if(check(depth,receding,vec2(1.f-edge,.5f),depth,"advancing high edge yielded"))return 1;
+        // Coverage snapped a hair outside the face still counts as its edge.
+        if(check(depth,receding,vec2(-edge,.5f),yield,"outside low edge kept"))return 1;
+        if(check(depth,advancing,vec2(1.f+edge,.5f),yield,"outside high edge kept"))return 1;
+        // One band moves the final depth up by exactly one band index.
+        const float kept=scatterFinalDepth(depth,0.f);
+        const float yielded=scatterFinalDepth(yield,0.f);
+        if(std::floor(yielded/band)!=std::floor(kept/band)+1.f)return fail("yield is not one band");
+        // A yielded edge still beats a face two bands farther.
+        if(!(yielded>kept)||!(yielded<scatterFinalDepth(depth+2.f*band,0.f)))
+            return fail("yield out of order");
+    }
+    std::printf("edge tie checks passed\n");
+    return 0;
+}
+"""
+
+COSORT_CHECKS = r"""
+const int kMin=-65535,kMax=65535;
+int fail(const char* label){std::fprintf(stderr,"%s\n",label);return 1;}
+float normalizeDistance(int distance){return float(distance-kMin)/float(kMax-kMin);}
+float voxelDepth(vec3 corner,float yaw,int sub,int tieCode){
+    const float key=scatterCompositeDepthKey(corner,yaw,float(kDepthEncodeShift*sub));
+    const float depth=(key-float(kMin))/float(kMax-kMin);
+    return scatterFinalDepth(scatterEdgeTieDepth(depth,vec2(0.f,0.f),vec2(.5f,.5f)),
+                             float(tieCode)*kScatterCellTieStep);
+}
+float sdfDepth(int depth,int slot,int flip){
+    return normalizeDistance(compositeCanvasDistance(encodeDepthWithFace(depth,slot,flip),true));
+}
+int main(){
+    int pairs=0;
+    for(int depth=-70000;depth<=70000;depth+=997)
+        for(int slot=0;slot<3;++slot)for(int flip:{0,1}){
+            const int stored=encodeDepthWithFace(depth,slot,flip);
+            if(compositeCanvasDistance(stored,false)!=stored)return fail("cardinal key changed");
+            if(compositeCanvasDistance(stored,true)!=encodeDepthWithFace(depth,0,0))
+                return fail("face bits kept");
+        }
+    for(float yaw:{.15f,.4f,.7f,-.3f})for(int sub:{1,2,4,8})for(int k=-40;k<=40;++k)
+    for(int slot=0;slot<3;++slot)for(int flip:{0,1})for(int cell=0;cell<4;++cell){
+        // On the cell anchor's vertical line the yawed depth is k at every yaw,
+        // so the SDF's integer depth k * sub is the voxel corner's exact twin.
+        const vec3 corner(.5f,.5f,float(k)+.5f);
+        const float voxel=voxelDepth(corner,yaw,sub,((flip?3:slot)<<2)|cell);
+        const float sdf=sdfDepth(k*sub,slot,flip);
+        if(std::abs(voxel-sdf)>kScatterCellTieBand)return fail("coincident faces split");
+        if(!(sdfDepth(k*sub-1,slot,flip)<voxel)||!(sdfDepth(k*sub+1,slot,flip)>voxel))
+            return fail("one-step neighbour out of order");
+        ++pairs;
+    }
+    std::printf("coincident sdf/voxel face pairs=%d\n",pairs);
+    return 0;
 }
 """
 
@@ -210,8 +302,8 @@ def conditional_block(source):
 
 def fragment_body(source, suffix):
     body = host(function_body(source, "main" if suffix == "glsl" else "IR_PER_AXIS_FRAGMENT_NAME"))
-    fields = ("Color", "QuadParam", "Depth", "CellTieOffset", "VisibilityExtent",
-              "FaceOrigin", "FaceId", "OwnerPixel")
+    fields = ("Color", "QuadParam", "Depth", "DepthSlope", "CellTieOffset",
+              "VisibilityExtent", "FaceOrigin", "FaceId", "OwnerPixel")
     for field in sorted(fields, key=len, reverse=True):
         body = body.replace("v" + field, "in." + field[0].lower() + field[1:])
     body = body.replace("in.visibilityExtent.xy",
@@ -266,10 +358,8 @@ def routing_harness(root, suffix):
                   "#define IR_PER_AXIS_VISIBILITY 0\n"
                   "float fragmentShadow(Input in){\n" + body
                   + "\nreturn outputDepth;\n}\n#undef IR_PER_AXIS_VISIBILITY\n")
+    constants, depth = depth_helpers(root, suffix)
     common = (root / f"ir_iso_common.{suffix}").read_text()
-    constants = "\n".join(re.search(r"(?:const|constant) float " + name + r"\s*=[^;]+;", common)[0]
-                          for name in ("kScatterCellTieStep", "kScatterCellTieBand"))
-    depth = functions((root / f"ir_scatter_depth.{suffix}").read_text(), "scatterFinalDepth")
     anchor = re.search(r"(?:const|constant) (?:vec3|float3) kVoxelRasterCellAnchor\s*=[^;]+;",
                        common)[0]
     axes = functions(common, "faceInPlaneUnitAxes")
@@ -290,6 +380,30 @@ struct vec4 {
         + "\n" + generated + ROUTING
 
 
+def cosort_helpers(root, suffix):
+    common = (root / f"ir_iso_common.{suffix}").read_text()
+    constants = "\n".join(
+        re.search(pattern, common)[0] for pattern in (
+            r"(?:const|constant) int kDepthEncodeShift\s*=[^;]+;",
+            r"(?:const|constant) (?:vec3|float3) kVoxelRasterCellAnchor\s*=[^;]+;"))
+    names = ("encodeDepthWithFace", "decodeDepthSingle", "compositeCanvasDistance",
+             "yawedIsoDistance", "yawedIsoDistanceCellAnchor", "scatterCompositeDepthKey")
+    scatter_constants, depth = depth_helpers(root, suffix)
+    return host(constants + "\n" + scatter_constants + "\n"
+                + "\n".join(functions(common, name) for name in names) + "\n" + depth)
+
+
+def depth_helpers(root, suffix):
+    common = (root / f"ir_iso_common.{suffix}").read_text()
+    constants = "\n".join(
+        re.search(r"(?:const|constant) float " + name + r"\s*=[^;]+;", common)[0]
+        for name in ("kScatterCellTieStep", "kScatterCellTieBand", "kScatterEdgeTieWidth"))
+    source = (root / f"ir_scatter_depth.{suffix}").read_text()
+    depth = "\n".join(functions(source, name)
+                      for name in ("scatterFinalDepth", "scatterEdgeTieDepth"))
+    return constants, depth
+
+
 def visibility_helpers(root, suffix):
     source = (root / f"ir_scatter_visibility.{suffix}").read_text()
     return host("\n".join(functions(source, name) for name in (
@@ -298,6 +412,26 @@ def visibility_helpers(root, suffix):
 
 @unittest.skipUnless(COMPILER, "scatter visibility controls require a C++ compiler")
 class ScatterVisibilityTest(unittest.TestCase):
+    def check_variants(self, suffix, variants, basename, program):
+        """The production source passes; every regex-mutated variant must fail."""
+        for name, candidate in variants.items():
+            with (self.subTest(backend=suffix, variant=name),
+                  tempfile.TemporaryDirectory() as tmp):
+                if name != "production":
+                    self.assertNotEqual(candidate, variants["production"])
+                path = Path(tmp)
+                cpp, executable = path / f"{basename}.cpp", path / basename
+                cpp.write_text(program(candidate))
+                build = subprocess.run([COMPILER, "-std=c++17", "-O2", str(cpp),
+                                        "-o", str(executable)], capture_output=True, text=True)
+                self.assertEqual(build.returncode, 0, build.stderr)
+                run = subprocess.run([str(executable)], capture_output=True, text=True)
+                if name == "production":
+                    self.assertEqual(run.returncode, 0, run.stderr)
+                    print(suffix, run.stdout.strip())
+                else:
+                    self.assertNotEqual(run.returncode, 0)
+
     def test_fragment_prepass_and_replay_order(self):
         for suffix, folder in (("glsl", ""), ("metal", "metal/")):
             with self.subTest(backend=suffix), tempfile.TemporaryDirectory() as tmp:
@@ -325,27 +459,42 @@ class ScatterVisibilityTest(unittest.TestCase):
                 "too-tight": re.sub(r"code\s*-\s*winner\s*>\s*2u", "code - winner > 0u", helpers),
                 "unsigned-wrap": re.sub(r"code\s*>\s*winner\s*&&", "", helpers),
             }
-            for name, candidate in variants.items():
-                with (self.subTest(backend=suffix, variant=name),
-                      tempfile.TemporaryDirectory() as tmp):
-                    if name != "production":
-                        self.assertNotEqual(candidate, helpers)
-                    path = Path(tmp)
-                    cpp, executable = path / "visibility.cpp", path / "visibility"
-                    cpp.write_text("#include <algorithm>\n#include <cmath>\n#include <cstdio>\n"
-                                   "#include <limits>\nusing uint=unsigned;\n"
-                                   "float clamp(float d,float a,float b){"
-                                   "return std::clamp(d,a,b);}\n" + candidate + NUMERIC
-                                   + "\nint main(){return numericControls();}\n")
-                    build = subprocess.run([COMPILER, "-std=c++17", "-O2", str(cpp),
-                                            "-o", str(executable)], capture_output=True, text=True)
-                    self.assertEqual(build.returncode, 0, build.stderr)
-                    run = subprocess.run([str(executable)], capture_output=True, text=True)
-                    if name == "production":
-                        self.assertEqual(run.returncode, 0, run.stderr)
-                        print(suffix, run.stdout.strip())
-                    else:
-                        self.assertNotEqual(run.returncode, 0)
+            self.check_variants(suffix, variants, "visibility", lambda candidate: (
+                "#include <algorithm>\n#include <cmath>\n#include <cstdio>\n"
+                "#include <limits>\nusing uint=unsigned;\n"
+                "float clamp(float d,float a,float b){return std::clamp(d,a,b);}\n"
+                + candidate + NUMERIC + "\nint main(){return numericControls();}\n"))
+
+    def test_edge_tie_yields_receding_face(self):
+        for suffix, folder in (("glsl", ""), ("metal", "metal/")):
+            constants, depth = depth_helpers(ROOT / "engine/render/src/shaders" / folder, suffix)
+            helpers = host(constants + depth)
+            variants = {
+                "production": helpers,
+                "slope-blind": re.sub(r"&&\s*inwardSlope\.x\s*>\s*0\.0f?", "", helpers,
+                                      count=1),
+                "outward": re.sub(r"mix\(depthSlope,\s*-depthSlope,",
+                                  "mix(-depthSlope, depthSlope,", helpers, count=1),
+                "ungated": re.sub(r"edgeDistance\.x\s*<\s*kScatterEdgeTieWidth\s*&&", "", helpers,
+                                  count=1),
+            }
+            self.check_variants(suffix, variants, "edge_tie", lambda candidate:
+                                PREAMBLE + EDGE_TIE_ADAPTER + candidate + EDGE_TIE_CHECKS)
+
+
+    def test_sdf_gather_cosorts_with_scatter_faces(self):
+        """A coincident SDF and scattered voxel face co-sort whatever the face."""
+        for suffix, folder in (("glsl", ""), ("metal", "metal/")):
+            helpers = cosort_helpers(ROOT / "engine/render/src/shaders" / folder, suffix)
+            variants = {
+                "production": helpers,
+                "gather-keeps-face-bits": re.sub(
+                    r"decodeDepthSingle\(rawDist\)\s*\*\s*kDepthEncodeShift", "rawDist", helpers),
+                "cardinal-stripped": re.sub(r"faceFree\s*\?", "true ?", helpers),
+                "scatter-face-bias": re.sub(r"\*\s*encScale;", "* encScale + 1.0f;", helpers),
+            }
+            self.check_variants(suffix, variants, "cosort", lambda candidate:
+                                PREAMBLE + EDGE_TIE_ADAPTER + candidate + COSORT_CHECKS)
 
 
 if __name__ == "__main__":

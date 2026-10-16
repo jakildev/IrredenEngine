@@ -12,6 +12,8 @@ struct VertexOut {
     // finite face projected by the vertex shader.
     float depth [[center_no_perspective]];
     float2 quadParam [[center_no_perspective]];
+    // Depth change per unit of each in-plane parameter, on depth's scale.
+    float2 depthSlope [[flat]];
     // Face-center iso-depth for depth-color. Flat (constant across the
     // quad) — origin is the same for all 4 corners of a face instance so
     // interpolation is a no-op; flat avoids rasterization divergence.

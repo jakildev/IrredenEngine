@@ -39,7 +39,8 @@ fragment FragmentOut IR_PER_AXIS_FRAGMENT_NAME(
     if (in.color.a < 0.1f) {
         discard_fragment();
     }
-    const float finalDepth = scatterFinalDepth(in.depth, in.cellTieOffset);
+    const float finalDepth =
+        scatterFinalDepth(scatterEdgeTieDepth(in.depth, in.depthSlope, in.quadParam), in.cellTieOffset);
 #if IR_PER_AXIS_VISIBILITY
     const int2 pixel = int2(in.position.xy);
     if (any(pixel < int2(0)) || any(pixel >= in.visibilityExtent.xy)) discard_fragment();
