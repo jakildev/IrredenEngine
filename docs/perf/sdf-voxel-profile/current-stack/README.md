@@ -11,7 +11,9 @@ verdict. No rendering default or shader changes accompany this record.
 ## Scope and provenance
 
 - Source: `a371b9f4391b819b20007d1bc05490e727ee8745`, clean during profiles;
-  master ancestor `741d3f0ab`. Profiles preceded the include-only cleanup.
+  master ancestor `741d3f0ab`. Profiles preceded the include-only cleanup and the later master integration
+  (`19e87b5d2`, including the shared-edge scatter fix). These numbers remain
+  evidence for the recorded source, not fresh measurements of that integration.
 - Apple M4 Max, 14 CPU cores, macOS 26.5.2, Metal, **battery power** throughout.
   Debug and Release are separate comparisons. Artifact/configuration hashes,
   host data and exact rendering environment are in [manifest.json](manifest.json).

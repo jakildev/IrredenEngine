@@ -10,7 +10,9 @@ Both captures ran IRShapeDebug on Metal/Debug from
 `--sdf-voxel-scene direct|baked --sdf-voxel-blockers --no-ao --auto-screenshot 10`
 through `fleet-run`. Each exited 0 with `RESULT=CLEAN`, producing six native
 2560×1440 PNGs. No shader or runtime source was changed for these captures.
-The accompanying include cleanup has no runtime effect.
+The accompanying include cleanup has no runtime effect. These images predate
+the subsequent integration of master `19e87b5d2` and its shared-edge scatter
+fix; they document the measured scene revision, not the new integration head.
 
 | Pose | Direct SDF | Baked occupancy |
 |---|---|---|
