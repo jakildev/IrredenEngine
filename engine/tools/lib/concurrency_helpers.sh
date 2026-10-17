@@ -852,6 +852,24 @@ ir_sweep_stale() {
     done
 }
 
+# _ir_lock_holder_info <lockdir> — print the holder age and, where ps supports
+# it, the command line. A missing command is intentionally not an error: the
+# MSYS2 ps implementation does not accept -o.
+_ir_lock_holder_info() {
+    local lockdir="$1" holder="$2" acquired_at="" now age=0 command_line=""
+    acquired_at="$(cat "$lockdir/acquired_at" 2>/dev/null || true)"
+    if [[ "$acquired_at" =~ ^[0-9]+$ ]]; then
+        now="$(date +%s)"
+        if (( now >= acquired_at )); then
+            age=$(( now - acquired_at ))
+        fi
+    fi
+    command_line="$(ps -o command= -p "$holder" 2>/dev/null || true)"
+    printf 'pid %s (age %ss' "$holder" "$age"
+    [[ -n "$command_line" ]] && printf ', command: %s' "$command_line"
+    printf ')'
+}
+
 # Print human-readable lock state. Used by ir-acquire --info.
 ir_print_lock_state() {
     ir_sweep_stale
@@ -859,13 +877,12 @@ ir_print_lock_state() {
     budget="$(ir_cpu_budget)"
     local in_use=0
     local i
-    local cpu_holders=()
     for (( i=1; i<=budget; i++ )); do
         local slot="$IR_LOCK_ROOT/cpu/slot-$i"
         if [[ -d "$slot" ]]; then
             local h
             h="$(_ir_lock_holder "$slot" || echo "?")"
-            cpu_holders+=("$h")
+            echo "cpu slot-$i lock: held by $(_ir_lock_holder_info "$slot" "$h")"
             in_use=$(( in_use + 1 ))
         fi
     done
@@ -875,18 +892,13 @@ ir_print_lock_state() {
     [[ -d "$IR_LOCK_ROOT/perf/lock" ]] && perf_holder="$(_ir_lock_holder "$IR_LOCK_ROOT/perf/lock" || echo "?")"
 
     echo "cpu budget: $budget ($in_use in use, $(( budget - in_use )) free)"
-    if (( ${#cpu_holders[@]} > 0 )); then
-        local uniq
-        uniq="$(printf '%s\n' "${cpu_holders[@]}" | sort -u | tr '\n' ' ' | sed 's/ $//')"
-        echo "  cpu holders (pids): $uniq"
-    fi
     if [[ -n "$gpu_holder" ]]; then
-        echo "gpu lock: held by pid $gpu_holder"
+        echo "gpu lock: held by $(_ir_lock_holder_info "$IR_LOCK_ROOT/gpu/lock" "$gpu_holder")"
     else
         echo "gpu lock: free"
     fi
     if [[ -n "$perf_holder" ]]; then
-        echo "perf lock: held by pid $perf_holder"
+        echo "perf lock: held by $(_ir_lock_holder_info "$IR_LOCK_ROOT/perf/lock" "$perf_holder")"
     else
         echo "perf lock: free"
     fi
