@@ -63,7 +63,7 @@ uniformity does not prove a centered pivot. Keep the guard where both set and po
 Lua exposes integer anchor enums. Constructors take `(size, color, anchor[, targetCanvas])`;
 the fourth argument supports headless/detached canvases. There is no boolean arm.
 
-Lua voxel authoring uses `setVoxel`, `clearVoxel`, `fillSdf`, and `carveSdf` on
+Lua voxel authoring uses `setVoxel`, `voxelColor`, `clearVoxel`, `fillSdf`, and `carveSdf` on
 `C_VoxelSetNew`. Wrap multi-cell recipes in `set:batch(fn)` to resync rotation,
 masks, bounds, and occupancy once. Coordinates are set-local integer cells;
 out-of-range writes are errors. Use `sdf_fill.hpp` for in-place fills and
