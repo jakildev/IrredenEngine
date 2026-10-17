@@ -128,9 +128,9 @@ returns a `SystemId` for any pipeline.
 
 ## Pipeline composition (`IRSystem.registerPipeline`, `IRSystem.SystemName`)
 
-C++ declares nameable prefab systems with `registerPrefabSystems` or
-`registerPrefabSystemId`; Lua spells `IRTime.X` and
-`IRSystem.systemId(IRSystem.SystemName.X)`, which raises for an unknown name.
+`IRSystem.systemId(IRSystem.SystemName.X)` reads the C++ `registerPrefabSystems` /
+`registerPrefabSystemId` map and raises on a miss. `IRSystem.findSystem` reads the
+`SystemManager` registry, so it finds any `createSystem<X>` stage: nil on a miss, raises on a typo.
 
 - `registerPipeline` / `registerPipelineGroups` **replace** the event's list;
   extend a C++ list with `appendSystem` / `insertSystemBefore/After`

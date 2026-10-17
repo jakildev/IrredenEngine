@@ -82,6 +82,39 @@ TEST_F(LuaPipelineRegisterTest, SystemNameEnumBound) {
     );
 }
 
+TEST_F(LuaPipelineRegisterTest, WidgetRenderSystemNamesBound) {
+    struct Row {
+        const char *name_;
+        IRSystem::SystemName value_;
+    };
+#define IR_WIDGET_ROW(name)                                                                        \
+    Row {                                                                                          \
+        #name, IRSystem::name                                                                      \
+    }
+    const Row rows[] = {
+        IR_WIDGET_ROW(WIDGET_RENDER_PANEL),
+        IR_WIDGET_ROW(WIDGET_RENDER_LABEL),
+        IR_WIDGET_ROW(WIDGET_RENDER_BUTTON),
+        IR_WIDGET_ROW(WIDGET_RENDER_SLIDER),
+        IR_WIDGET_ROW(WIDGET_RENDER_CHECKBOX),
+        IR_WIDGET_ROW(WIDGET_RENDER_LIST),
+        IR_WIDGET_ROW(WIDGET_RENDER_DROPDOWN),
+        IR_WIDGET_ROW(WIDGET_RENDER_RADIO),
+        IR_WIDGET_ROW(WIDGET_RENDER_TEXT_INPUT),
+        IR_WIDGET_ROW(WIDGET_RENDER_SCROLL),
+        IR_WIDGET_ROW(WIDGET_RENDER_COLOR_SWATCH),
+        IR_WIDGET_ROW(WIDGET_RENDER_SPLITTER),
+        IR_WIDGET_ROW(WIDGET_RENDER_DOCK_PREVIEW),
+    };
+#undef IR_WIDGET_ROW
+    sol::table names = m_lua.lua()["IRSystem"]["SystemName"];
+    for (const Row &row : rows) {
+        const sol::optional<int> bound = names[row.name_];
+        ASSERT_TRUE(bound.has_value()) << row.name_;
+        EXPECT_EQ(*bound, static_cast<int>(row.value_)) << row.name_;
+    }
+}
+
 // ---- IRComponent.C_Name handle (C++ component handle exposure) -----------
 
 TEST_F(LuaPipelineRegisterTest, CppComponentHandleAvailableAfterRegisterType) {
@@ -144,6 +177,82 @@ TEST_F(LuaPipelineRegisterTest, RegisterPrefabSystemIsIdempotent) {
     const auto first = m_lua.registerPrefabSystem<IRSystem::LIFETIME>();
     const auto second = m_lua.registerPrefabSystem<IRSystem::LIFETIME>();
     EXPECT_EQ(first, second);
+}
+
+// ---- IRSystem.findSystem (SystemManager registry) --------------------------
+
+TEST_F(LuaPipelineRegisterTest, FindSystemReturnsTheRegisteredId) {
+    const IRSystem::SystemId expected = m_lua.registerPrefabSystem<IRSystem::LIFETIME>();
+    auto result = m_lua.lua().safe_script(
+        "return IRSystem.findSystem(IRSystem.SystemName.LIFETIME)",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+    EXPECT_EQ(static_cast<IRSystem::SystemId>(result.get<lua_Integer>()), expected);
+}
+
+// The case `systemId` cannot serve: a C++ runner built the stage itself and
+// never put it in the `LuaScript` map.
+TEST_F(LuaPipelineRegisterTest, FindSystemResolvesASystemTheLuaMapNeverSaw) {
+    const IRSystem::SystemId expected = IRSystem::createSystem<IRSystem::LIFETIME>();
+    auto &lua = m_lua.lua();
+
+    auto viaMap = lua.safe_script(
+        "return IRSystem.systemId(IRSystem.SystemName.LIFETIME)",
+        sol::script_pass_on_error
+    );
+    EXPECT_FALSE(viaMap.valid());
+
+    auto viaRegistry = lua.safe_script(
+        "return IRSystem.findSystem(IRSystem.SystemName.LIFETIME)",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(viaRegistry.valid()) << sol::error{viaRegistry}.what();
+    EXPECT_EQ(static_cast<IRSystem::SystemId>(viaRegistry.get<lua_Integer>()), expected);
+}
+
+TEST_F(LuaPipelineRegisterTest, FindSystemReturnsNilForAnUnregisteredName) {
+    auto result = m_lua.lua().safe_script(
+        R"(
+        return IRSystem.findSystem(IRSystem.SystemName.TRIXEL_TO_FRAMEBUFFER) == nil,
+               IRSystem.findSystem(IRSystem.SystemName.NULL_SYSTEM) == nil
+    )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+    EXPECT_TRUE(result.get<bool>(0));
+    EXPECT_TRUE(result.get<bool>(1));
+}
+
+TEST_F(LuaPipelineRegisterTest, FindSystemRaisesForAValueThatIsNotASystemName) {
+    auto &lua = m_lua.lua();
+    lua["g_pastLast"] = static_cast<lua_Integer>(IRSystem::TEST_CADENCE_SPEC_DEFAULT) + 1;
+    const char *badCalls[] = {
+        "IRSystem.findSystem(IRSystem.SystemName.NO_SUCH_SYSTEM)",
+        "IRSystem.findSystem(nil)",
+        "IRSystem.findSystem('LIFETIME')",
+        "IRSystem.findSystem('1')",
+        "IRSystem.findSystem(1.5)",
+        "IRSystem.findSystem(0/0)",
+        "IRSystem.findSystem(-1)",
+        "IRSystem.findSystem(g_pastLast)",
+    };
+    for (const char *call : badCalls) {
+        auto result = lua.safe_script(call, sol::script_pass_on_error);
+        ASSERT_FALSE(result.valid()) << call;
+        const std::string message = sol::error{result}.what();
+        EXPECT_NE(message.find("IRSystem.findSystem"), std::string::npos) << message;
+    }
+
+    // Positive control: both ends of the range are accepted, so the rejections
+    // above are about the argument rather than the call.
+    lua["g_last"] = static_cast<lua_Integer>(IRSystem::TEST_CADENCE_SPEC_DEFAULT);
+    auto last = lua.safe_script(
+        "return IRSystem.findSystem(g_last) == nil and IRSystem.findSystem(0) == nil",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(last.valid()) << sol::error{last}.what();
+    EXPECT_TRUE(last.get<bool>());
 }
 
 // ---- registerPipeline: mixed prefab + Lua system ---------------------------
@@ -491,6 +600,33 @@ TEST_F(LuaPipelineRegisterTest, InsertSystemAfterViaLuaPlacesGroup) {
     ASSERT_EQ(groups.size(), 2u);
     EXPECT_EQ(groups[0][0], lifetime); // prefab system before the inserted one
     EXPECT_EQ(groups[1][0], luaSys);   // inserted after the prefab system
+}
+
+TEST_F(LuaPipelineRegisterTest, InsertSystemBeforeAcceptsAFindSystemAnchor) {
+    const IRSystem::SystemId lifetime = IRSystem::createSystem<IRSystem::LIFETIME>();
+    IRSystem::registerPipeline(IRTime::Events::UPDATE, {lifetime});
+    auto &lua = m_lua.lua();
+    auto result = lua.safe_script(
+        R"(
+        local Marker = IRComponent.register("FindAnchorMarker", { dummy = 0 })
+        local luaSys = IRSystem.registerSystem({
+            name = "FindAnchorLuaSys",
+            components = { Marker },
+            tick = function(arch) end,
+        })
+        IRSystem.insertSystemBefore(IRTime.UPDATE, luaSys,
+            IRSystem.findSystem(IRSystem.SystemName.LIFETIME))
+        return luaSys
+    )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << sol::error{result}.what();
+    const auto luaSys = static_cast<IRSystem::SystemId>(result.get<lua_Integer>());
+
+    const auto &groups = m_system_manager.getPipelineGroups(IRTime::Events::UPDATE);
+    ASSERT_EQ(groups.size(), 2u);
+    EXPECT_EQ(groups[0][0], luaSys);
+    EXPECT_EQ(groups[1][0], lifetime);
 }
 
 TEST_F(LuaPipelineRegisterTest, AppendSystemRejectsInvalidEvent) {
