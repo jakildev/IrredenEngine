@@ -397,6 +397,32 @@ inline void bindWidgets(LuaScript &script) {
             ->isOpen_ = open;
     };
 
+    gui["makeTextInput"] = [](int x,
+                              int y,
+                              int w,
+                              int h,
+                              sol::optional<std::string> text,
+                              sol::optional<int> maxLength) -> lua_Integer {
+        const int resolvedMaxLength = maxLength.value_or(0);
+        if (resolvedMaxLength < 0) {
+            throw sol::error{"IRGui.makeTextInput: maxLength must not be negative"};
+        }
+        return static_cast<lua_Integer>(IRPrefab::Widget::makeTextInput(
+            IRMath::ivec2(x, y),
+            IRMath::ivec2(w, h),
+            text.value_or(std::string{}),
+            resolvedMaxLength
+        ));
+    };
+    gui["textInputValue"] = [](lua_Integer id) -> std::string {
+        requireWidget<IRComponents::C_WidgetTextInput>(id, "IRGui.textInputValue", "text input");
+        return IRPrefab::Widget::textInputValue(static_cast<IREntity::EntityId>(id));
+    };
+    gui["setTextInputValue"] = [](lua_Integer id, std::string text) {
+        requireWidget<IRComponents::C_WidgetTextInput>(id, "IRGui.setTextInputValue", "text input");
+        IRPrefab::Widget::setTextInputValue(static_cast<IREntity::EntityId>(id), std::move(text));
+    };
+
     gui["setDisabled"] = [](lua_Integer id, bool disabled) {
         requireWidget<IRComponents::C_Widget>(id, "IRGui.setDisabled", "widget");
         IRPrefab::Widget::setDisabled(static_cast<IREntity::EntityId>(id), disabled);

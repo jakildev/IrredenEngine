@@ -18,6 +18,7 @@ using IRComponents::C_Widget;
 using IRComponents::C_WidgetCheckbox;
 using IRComponents::C_WidgetDropdown;
 using IRComponents::C_WidgetSlider;
+using IRComponents::C_WidgetTextInput;
 using IRComponents::WidgetKind;
 
 // Drives the IRGui value widgets (slider, checkbox, dropdown) from Lua: their
@@ -154,6 +155,35 @@ TEST_F(LuaWidgetValues, DropdownZeroMeansNothingSelected) {
     EXPECT_EQ(eval<int>("IRGui.dropdownSelected(dd)"), 0);
 }
 
+TEST_F(LuaWidgetValues, TextInputBuildsReadsAndSets) {
+    run(R"lua(input = IRGui.makeTextInput(10, 20, 120, 12, "before", 24))lua");
+    const IREntity::EntityId id = entity("input");
+    const C_WidgetTextInput &input = IREntity::getComponent<C_WidgetTextInput>(id);
+    EXPECT_EQ(IREntity::getComponent<C_Widget>(id).kind_, WidgetKind::TEXT_INPUT);
+    EXPECT_EQ(IREntity::getComponent<C_GuiPosition>(id).pos_, IRMath::ivec2(10, 20));
+    EXPECT_EQ(input.maxLength_, 24);
+    EXPECT_EQ(eval<std::string>("IRGui.textInputValue(input)"), "before");
+
+    run(R"lua(IRGui.setTextInputValue(input, "after"))lua");
+    EXPECT_EQ(eval<std::string>("IRGui.textInputValue(input)"), "after");
+
+    run(R"lua(plainInput = IRGui.makeTextInput(0, 0, 40, 12))lua");
+    const C_WidgetTextInput &plainInput =
+        IREntity::getComponent<C_WidgetTextInput>(entity("plainInput"));
+    EXPECT_EQ(eval<std::string>("IRGui.textInputValue(plainInput)"), "");
+    EXPECT_EQ(plainInput.maxLength_, 0);
+}
+
+TEST_F(LuaWidgetValues, TextInputRejectsNegativeLengthBeforeCreation) {
+    const IREntity::EntityId before = m_entityManager.getLiveEntityCount();
+    EXPECT_NE(
+        error(R"lua(IRGui.makeTextInput(0, 0, 40, 12, "", -1))lua")
+            .find("maxLength must not be negative"),
+        std::string::npos
+    );
+    EXPECT_EQ(m_entityManager.getLiveEntityCount(), before);
+}
+
 TEST_F(LuaWidgetValues, MalformedDropdownItemsCreateNoWidget) {
     const IREntity::EntityId before = m_entityManager.getLiveEntityCount();
     EXPECT_NE(
@@ -172,6 +202,7 @@ TEST_F(LuaWidgetValues, ReadersRejectTheWrongKindOfWidget) {
     EXPECT_NE(error("IRGui.checkboxState(slider)").find("is not a checkbox"), std::string::npos);
     EXPECT_NE(error("IRGui.dropdownSelected(label)").find("is not a dropdown"), std::string::npos);
     EXPECT_NE(error("IRGui.sliderValue(12345)").find("is not a slider"), std::string::npos);
+    EXPECT_NE(error("IRGui.textInputValue(slider)").find("is not a text input"), std::string::npos);
 
     run("IRGui.setDisabled(slider, true)");
     EXPECT_TRUE(IREntity::getComponent<C_Widget>(entity("slider")).disabled_);
