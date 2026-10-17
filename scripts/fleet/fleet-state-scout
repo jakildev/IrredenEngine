@@ -175,6 +175,16 @@ CLAIM_CLEANUP_MARKER_NAME = "claim-cleanup.last-run"
 STALLED_SWEEP_INTERVAL_SECONDS = 60 * 60
 STALLED_SWEEP_MARKER_NAME = "stalled-sweep.last-run"
 
+# The master-CI watch reads the newest master run of every checked-in workflow
+# and keeps one standing alert per red workflow. Level-triggered off its own
+# deadline like the sweeps above; one `gh run list` per workflow, so the
+# default 15 minutes bounds the cost while a red master surfaces well inside
+# the hour it would otherwise take someone to read a failing PR check as the
+# cause rather than as their own problem.
+MASTER_CI_INTERVAL_DEFAULT_SECONDS = 15 * 60
+MASTER_CI_MARKER_NAME = "master-ci.last-run"
+MASTER_CI_ALERT_PREFIX = "scout-master-ci-"
+
 # A projection that stays unchanged after its consumer crashes has no edge left
 # to wake that role again. The seen file's mtime is the projection's last-change
 # time, so it supplies the liveness floor without another state file. The
@@ -4936,6 +4946,167 @@ def _stalled_sweep_due(now: int | None = None) -> bool:
     return now - last_run >= STALLED_SWEEP_INTERVAL_SECONDS
 
 
+class _MasterCiMiss(Exception):
+    """A master-CI read that could not decide green or red (never a green)."""
+
+    def __init__(self, kind: str, detail: str):
+        super().__init__(detail)
+        self.kind = kind
+
+
+def _master_ci_interval_seconds() -> int:
+    try:
+        value = int(os.environ.get("FLEET_MASTER_CI_INTERVAL_SECS") or "")
+    except ValueError:
+        return MASTER_CI_INTERVAL_DEFAULT_SECONDS
+    return value if value >= 0 else MASTER_CI_INTERVAL_DEFAULT_SECONDS
+
+
+def _master_ci_marker_path() -> Path:
+    return SEEN_DIR / MASTER_CI_MARKER_NAME
+
+
+def _master_ci_due(now: int | None = None) -> bool:
+    """Return whether the authoritative master-CI watch is due."""
+    if now is None:
+        now = int(time.time())
+    try:
+        last_run = int(_master_ci_marker_path().read_text().strip())
+    except (FileNotFoundError, ValueError):
+        return True
+    return now - last_run >= _master_ci_interval_seconds()
+
+
+def _master_ci_workflows() -> list[str]:
+    """Workflow file names under the engine checkout, sorted; [] when unreadable."""
+    try:
+        return sorted(p.name for p in (ENGINE / ".github" / "workflows").iterdir()
+                      if p.is_file() and p.suffix in (".yml", ".yaml"))
+    except OSError:
+        return []
+
+
+def _master_ci_alert_path(workflow: str) -> Path:
+    return _alerts_dir() / f"{MASTER_CI_ALERT_PREFIX}{workflow}"
+
+
+def _master_ci_latest_run(workflow: str) -> dict | None:
+    """The newest master run of `workflow`, None when it has never run on master.
+
+    Raises _MasterCiMiss on a transport error, a non-zero exit or unreadable
+    JSON: an unknown result is neither green nor red.
+    """
+    args = ["run", "list", "--repo", REPO_SWEEP_SLUGS["engine"], "--branch", "master",
+            "--workflow", workflow, "--limit", "1",
+            "--json", "conclusion,headSha,createdAt,url"]
+    try:
+        proc = fleet_github.run(args, capture_output=True, text=True,
+                                timeout=GH_TIMEOUT_SECONDS)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise _MasterCiMiss("gh-unreachable", f"{workflow}: {type(e).__name__}: {e}")
+    if proc.returncode != 0:
+        raise _MasterCiMiss("gh-failed", f"{workflow}: exit {proc.returncode}: "
+                                         f"{(proc.stderr or '').strip()[:200]}")
+    try:
+        runs = json.loads(proc.stdout)
+    except ValueError as e:
+        raise _MasterCiMiss("bad-json", f"{workflow}: {e}")
+    if not isinstance(runs, list) or any(not isinstance(r, dict) for r in runs):
+        raise _MasterCiMiss("bad-json", f"{workflow}: unexpected shape")
+    return runs[0] if runs else None
+
+
+def _master_ci_mark_red(workflow: str, run: dict) -> None:
+    def field(key: str) -> str:
+        return str(run.get(key) or "unknown").replace("\n", " ")
+
+    payload = (f"master CI red: {workflow}\n"
+               f"workflow={workflow}\n"
+               f"sha={field('headSha')}\n"
+               f"created_at={field('createdAt')}\n"
+               f"url={field('url')}\n")
+    path = _master_ci_alert_path(workflow)
+    try:
+        if path.read_text() == payload:
+            return
+    except OSError:
+        pass
+    log(f"master-ci: {workflow} is RED on master at {field('headSha')} "
+        f"({field('url')}); wrote {path}")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_atomic(path, payload)
+    except OSError:
+        pass
+
+
+def _master_ci_mark_green(workflow: str) -> None:
+    try:
+        _master_ci_alert_path(workflow).unlink()
+    except OSError:
+        return
+    log(f"master-ci: {workflow} is green on master again; cleared its alert")
+
+
+def _master_ci_prune_orphans(workflows: list[str]) -> None:
+    """Drop alerts for workflows that no longer exist: they can never see a green run."""
+    live = set(workflows)
+    try:
+        stale = [p for p in _alerts_dir().glob(f"{MASTER_CI_ALERT_PREFIX}*")
+                 if p.name[len(MASTER_CI_ALERT_PREFIX):] not in live]
+    except OSError:
+        return
+    for path in stale:
+        try:
+            path.unlink()
+        except OSError:
+            continue
+        log(f"master-ci: removed orphan alert {path.name} (workflow no longer exists)")
+
+
+def run_master_ci_lane() -> None:
+    """Alert on a red master workflow run, per workflow, until its next green run.
+
+    Authoritative poller only (the caller gates it), so the alert lives in that
+    host's alerts dir: a clean `fleet-health` on a follower host does not mean
+    master is green. A `failure` writes the alert, a `success` clears it, and
+    everything else (queued or in-progress runs report an empty conclusion,
+    plus cancelled/skipped/neutral) leaves it as it was. A workflow with no
+    master run (pull_request-only triggers) is a quiet skip. A real read miss
+    is fail-closed: nothing written, nothing cleared, the deadline marker left
+    unwritten so the next tick retries, and `_spawn_failed` escalates a
+    persistent miss. The first miss breaks the pass: the retry re-runs the set.
+    """
+    if not _master_ci_due():
+        return
+    workflows = _master_ci_workflows()
+    try:
+        if not workflows:
+            raise _MasterCiMiss("no-workflows",
+                                f"no workflow files under {ENGINE / '.github' / 'workflows'}")
+        for workflow in workflows:
+            run = _master_ci_latest_run(workflow)
+            if run is None:
+                continue
+            conclusion = run.get("conclusion")
+            if conclusion not in ("failure", "success"):
+                continue
+            if conclusion == "failure":
+                _master_ci_mark_red(workflow, run)
+            else:
+                _master_ci_mark_green(workflow)
+    except _MasterCiMiss as miss:
+        _spawn_failed("master-ci", miss.kind,
+                      f"master-ci: could not read master workflow runs ({miss}) — "
+                      f"no alert written or cleared, retrying next tick")
+        return
+    # Only a pass that decoded every workflow may prune, and only now is the
+    # deadline consumed: every early `continue` above falls through to here.
+    _master_ci_prune_orphans(workflows)
+    _spawn_ok("master-ci")
+    write_atomic(_master_ci_marker_path(), f"{int(time.time())}\n")
+
+
 def emit_state(state) -> int:
     """Serialize + atomically write `state.json`, returning its on-disk bytes.
 
@@ -5559,6 +5730,11 @@ def tick_once():
             refresh_all_details(state)
         except Exception as e:
             log(f"refresh_all_details failed: {e}")
+        # Global alert state, so authoritative-poller-only like the sweeps below.
+        try:
+            run_master_ci_lane()
+        except Exception as e:
+            log(f"master-ci lane failed: {e}")
 
     triggers_fired = []
     for role, projector in PROJECTORS.items():

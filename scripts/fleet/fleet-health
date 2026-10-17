@@ -20,7 +20,10 @@ a stretch of autonomous running:
     the open PRs that carry no `fleet:author-*` stamp (their reviews cannot
     route while cross-provider review is on — CODEX.md).
   * Standing alerts, empty-exit streaks / stand-down backoffs, and the
-    iterations running right now.
+    iterations running right now. A red master workflow (the scout's
+    `scout-master-ci-*` alerts) renders with its sha, run age and URL and
+    warns once per workflow; only the authoritative poller's host holds
+    those files, so a clean follower report does not mean master is green.
   * Who spends the GitHub quota? GitHub CLI command attempts per actor in
     the window (fleet_github's accounting events), split into GraphQL reads,
     GraphQL writes, explicit `gh api graphql`, REST `gh api`, and other.
@@ -506,8 +509,35 @@ def collect_alerts(alerts_dir):
             age = int(now - p.stat().st_mtime)
         except OSError:
             continue
-        out.append({"name": p.name, "age_s": age, "line": first[:160]})
+        rec = {"name": p.name, "age_s": age, "line": first[:160]}
+        if p.name.startswith(MASTER_CI_ALERT_PREFIX):
+            rec["master_ci"] = parse_master_ci_alert(p, now_utc())
+        out.append(rec)
     return out
+
+
+MASTER_CI_ALERT_PREFIX = "scout-master-ci-"
+
+
+def parse_master_ci_alert(path, now):
+    """The scout's red-master record, or None when the file is not one.
+
+    None keeps the file a generic standing alert. The scout writes these only on
+    the authoritative poller's host, so a clean report on a follower says nothing
+    about master.
+    """
+    try:
+        fields = kv(path.read_text(errors="replace"))
+    except OSError:
+        return None
+    created = parse_ts(fields.get("created_at", ""))
+    if created is None or not all(fields.get(k) for k in ("workflow", "sha", "url")):
+        return None
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=dt.timezone.utc)
+    return {"workflow": fields["workflow"], "sha": fields["sha"],
+            "created_at": fields["created_at"], "url": fields["url"],
+            "run_age_s": max(0, int((now - created).total_seconds()))}
 
 
 def collect_streaks(state_dir):
@@ -594,6 +624,11 @@ def derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts):
             w.append(f"runtime routing problem: {pr['key']}: {pr['reason']} (x{pr['count']})")
     for name in runtimes["gate_alerts"]:
         w.append(f"standing dispatch-gate alert: {name}")
+    for a in alerts:
+        red = a.get("master_ci")
+        if red:
+            w.append(f"master CI red: {red['workflow']} at {red['sha'][:9]} "
+                     f"({fmt_age(red['run_age_s'])} old) {red['url']}")
     return w
 
 
@@ -717,7 +752,12 @@ def render_text(report):
     if not al:
         o.append("  (none)")
     for x in al:
-        o.append(f"  {x['name']:32s} {fmt_age(x['age_s']):>4s}  {x['line']}")
+        red = x.get("master_ci")
+        if red:
+            o.append(f"  master CI red: {red['workflow']}  sha {red['sha'][:9]}  "
+                     f"run {fmt_age(red['run_age_s'])} ago  {red['url']}")
+        else:
+            o.append(f"  {x['name']:32s} {fmt_age(x['age_s']):>4s}  {x['line']}")
     o.append("")
     if report["warnings"]:
         o.append("## WARN")

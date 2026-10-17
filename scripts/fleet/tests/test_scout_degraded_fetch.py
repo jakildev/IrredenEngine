@@ -441,15 +441,19 @@ class _ScoutTickHarness:
             self.addCleanup(streak.clear)
 
     def _tick(self, tmp, projection, degraded, spawns, popen=None, logs=None,
-              served=False, game_dir=None):
+              served=False, game_dir=None, master_ci=None):
         """Run one tick_once() against a hermetic state dir.
 
         `spawns` accumulates each subprocess.Popen argv so a caller can count
         real spawns per lane. `popen` overrides the recorder (used to raise).
         `logs`, when given, accumulates the tick's log lines. `served` drives
         the follower arm (`authoritative = not served`), and `game_dir` stands
-        in for a present game clone. Returns nothing — assertions read those
-        lists and the seen-hash files under tmp.
+        in for a present game clone. `master_ci` is None for every suite that
+        does not test the master-CI lane, which is then replaced by a no-op so
+        no tick reaches the real `gh`; the master-CI suite passes
+        `(gh_run, workflows)` to mock `fleet_github.run` and the workflow
+        listing instead. Returns nothing — assertions read those lists and the
+        seen-hash files under tmp.
         """
         state = {"generated_at": "2026-08-08T00:00:00Z", "repos": {}}
         if degraded:
@@ -487,6 +491,14 @@ class _ScoutTickHarness:
             p(patch.object(_mod, "build_state", return_value=(state, served)))
             p(patch.object(_mod.subprocess, "Popen", popen or _popen))
             p(patch.object(_mod, "log", _log))
+            if master_ci is None:
+                # create=True: a scout tree that predates the lane has no such
+                # attribute, and the older cases must still run against it.
+                p(patch.object(_mod, "run_master_ci_lane", create=True))
+            else:
+                gh_run, workflows = master_ci
+                p(patch.object(_mod.fleet_github, "run", gh_run))
+                p(patch.object(_mod, "_master_ci_workflows", return_value=workflows))
             for fn in ("_refresh_gh_token", "sample_github_rate_limit",
                        "refresh_all_details", "_populate_done_tasks",
                        "resolve_blocked_by",

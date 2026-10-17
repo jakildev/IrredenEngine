@@ -341,6 +341,77 @@ class Runtimes(Env):
         self.assertIn("codex provider is in cooldown", rep["warnings"])
 
 
+MASTER_CI_SHA = "0123456789abcdef0123456789abcdef01234567"
+MASTER_CI_URL = "https://example.invalid/runs/1"
+MASTER_CI_CREATED = "2026-09-09T05:00:00Z"
+
+
+def master_ci_alert(workflow, sha=MASTER_CI_SHA, created=MASTER_CI_CREATED):
+    return (f"master CI red: {workflow}\nworkflow={workflow}\nsha={sha}\n"
+            f"created_at={created}\nurl={MASTER_CI_URL}\n")
+
+
+class MasterCiAlerts(Env):
+    """The scout's red-master alert renders with the run's identity and warns."""
+
+    def _write(self, workflow, text=None):
+        (self.root / "alerts" / f"scout-master-ci-{workflow}").write_text(
+            master_ci_alert(workflow) if text is None else text)
+
+    def _text(self, instant):
+        out = io.StringIO()
+        with pinned_clock(instant), redirect_stdout(out):
+            fleet_health.main(["--fleet-dir", str(self.root)])
+        return out.getvalue()
+
+    def test_red_workflow_reports_name_sha_age_and_url_and_warns_once(self):
+        self._write("fleet-tests.yml")
+        rc, rep = self.run_report_at("2026-09-09T07:00:00Z")
+        red = [a["master_ci"] for a in rep["alerts"] if a.get("master_ci")]
+        self.assertEqual(red, [{"workflow": "fleet-tests.yml", "sha": MASTER_CI_SHA,
+                                "created_at": MASTER_CI_CREATED, "url": MASTER_CI_URL,
+                                "run_age_s": 2 * 3600}])
+        warned = [w for w in rep["warnings"] if w.startswith("master CI red:")]
+        self.assertEqual(len(warned), 1, warned)
+        self.assertIn("fleet-tests.yml", warned[0])
+        self.assertIn(MASTER_CI_SHA[:9], warned[0])
+        self.assertIn(MASTER_CI_URL, warned[0])
+        self.assertEqual(rc, 1)
+
+    def test_text_row_carries_workflow_sha_age_and_url(self):
+        self._write("fleet-tests.yml")
+        text = self._text("2026-09-09T07:00:00Z")
+        row = next(line for line in text.splitlines() if "master CI red: fleet-tests.yml" in line
+                   and "sha" in line)
+        self.assertIn(MASTER_CI_SHA[:9], row)
+        self.assertIn("2h", row)
+        self.assertIn(MASTER_CI_URL, row)
+
+    def test_each_red_workflow_warns_separately(self):
+        self._write("fleet-tests.yml")
+        self._write("ci.yml")
+        _, rep = self.run_report_at("2026-09-09T07:00:00Z")
+        warned = sorted(w for w in rep["warnings"] if w.startswith("master CI red:"))
+        self.assertEqual(len(warned), 2, warned)
+        self.assertIn("ci.yml", warned[0])
+        self.assertIn("fleet-tests.yml", warned[1])
+
+    def test_unparseable_master_ci_alert_stays_a_generic_row_without_a_warning(self):
+        self._write("broken.yml", "master CI red: broken.yml\nsha=abc\n")
+        _, rep = self.run_report_at("2026-09-09T07:00:00Z")
+        row = next(a for a in rep["alerts"] if a["name"] == "scout-master-ci-broken.yml")
+        self.assertIsNone(row["master_ci"])
+        self.assertFalse(any(w.startswith("master CI red:") for w in rep["warnings"]))
+        self.assertIn("scout-master-ci-broken.yml", self._text("2026-09-09T07:00:00Z"))
+
+    def test_other_alerts_keep_the_generic_shape(self):
+        _, rep = self.run_report()
+        row = next(a for a in rep["alerts"] if a["name"] == "witness-roster.stuck")
+        self.assertNotIn("master_ci", row)
+        self.assertEqual(row["line"], "roster=opus-architect count=4033")
+        self.assertFalse(any(w.startswith("master CI red:") for w in rep["warnings"]))
+
+
 class DaemonsAndWindow(Env):
     @unittest.skipUnless(os.name == "nt", "native-Windows pid probe")
     def test_windows_pid_probe_reads_native_and_msys_pids(self):
