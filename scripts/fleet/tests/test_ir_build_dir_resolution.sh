@@ -99,6 +99,15 @@ assert_eq "$(ir_default_build_dir "$NON_CREATION")" "$NON_CREATION/build" \
     "non-creation repo under the engine builds in-tree"
 assert_eq "$(ir_default_build_dir "$OUTSIDE")" "$OUTSIDE/build" \
     "repo outside the engine tree builds in-tree"
+assert_eq "$(ir_default_build_dir "$ENG" release)" "$ENG/build-release" \
+    "engine checkout keeps release output beside debug"
+assert_eq "$(ir_default_build_dir "$CREATION_WT" release)" "$ENG/build-game-agent-1-release" \
+    "creation worktree gets an isolated release tree"
+
+echo "T3b: ir_build_preset host resolution"
+assert_eq "$(ir_build_preset release Linux)" "linux-release" "Linux release preset resolves"
+assert_eq "$(ir_build_preset release Darwin)" "macos-release" "macOS release preset resolves"
+assert_eq "$(ir_build_preset release MINGW64_NT)" "windows-release" "Windows release preset resolves"
 
 # --- T4: mixed-spelling regression -------------------------------------------
 # On native Windows, `git rev-parse --show-toplevel` (the real source of
@@ -264,5 +273,72 @@ assert_eq "$cfg_src" "$EXPECT_ENG" \
     "configure sources the enclosing engine, not the worktree"
 assert_eq "$cfg_bin" "$EXPECT_BUILD" \
     "configure targets <engine>/build-<creation>-<agent>"
+
+# --- T6b: fleet-build forwards the release mode ------------------------------
+echo "T6b: fleet-build release wrapper route"
+
+FLEET_BUILD="$SCRIPT_DIR/scripts/fleet/fleet-build"
+RELEASE_EXPECT_BUILD="$EXPECT_ENG/build-game-agent-1-release"
+RELEASE_PRESET="$(ir_build_preset release)"
+: > "$CMAKE_LOG"
+FLEET_BUILD_LOG="$FAKE/fleet-build-release.log"
+rc=0
+if [[ -n "$TIMEOUT_CMD" ]]; then
+    ( cd "$CREATION_WT" && PATH="$STUB_BIN:$PATH" \
+        "$TIMEOUT_CMD" 60 "$FLEET_BUILD" --release --target IRMidiMoire ) >"$FLEET_BUILD_LOG" 2>&1 || rc=$?
+else
+    ( cd "$CREATION_WT" && PATH="$STUB_BIN:$PATH" \
+        "$FLEET_BUILD" --release --target IRMidiMoire ) >"$FLEET_BUILD_LOG" 2>&1 || rc=$?
+fi
+fleet_build_out="$(cat "$FLEET_BUILD_LOG")"
+release_configure_line="$(grep -F -- '--preset' "$CMAKE_LOG" || true)"
+release_cfg_bin="${release_configure_line#*-B }"; release_cfg_bin="${release_cfg_bin%% *}"
+
+assert_rc "$rc" 0 "fleet-build forwards --release to ir-build"
+assert_contains "$fleet_build_out" "configuring with preset '$RELEASE_PRESET'" \
+    "fleet-build selects the host release preset"
+assert_eq "$release_cfg_bin" "$RELEASE_EXPECT_BUILD" \
+    "fleet-build configures the isolated creation release tree"
+
+# --- T6c: ir-build accepts an empty argument list under Bash 3.2 ------------
+echo "T6c: ir-build empty argument list"
+
+: > "$CMAKE_LOG"
+rc=0
+( cd "$CREATION_WT" && PATH="$STUB_BIN:$PATH" \
+    /bin/bash "$IR_BUILD" --release ) >"$FAKE/ir-build-bare-release.log" 2>&1 || rc=$?
+assert_rc "$rc" 0 "ir-build --release reaches cmake with no build arguments"
+assert_contains "$(cat "$CMAKE_LOG")" "--build $RELEASE_EXPECT_BUILD" \
+    "bare release build uses the isolated release tree"
+
+: > "$CMAKE_LOG"
+rc=0
+( cd "$CREATION_WT" && PATH="$STUB_BIN:$PATH" \
+    /bin/bash "$IR_BUILD" ) >"$FAKE/ir-build-bare-debug.log" 2>&1 || rc=$?
+assert_rc "$rc" 0 "bare ir-build reaches cmake with no build arguments"
+assert_contains "$(cat "$CMAKE_LOG")" "--build $EXPECT_BUILD" \
+    "bare debug build keeps the default build tree"
+
+# --- T7: ir-run selects and reports the release tree -------------------------
+echo "T7: ir-run release tree selection"
+
+IR_RUN="$SCRIPT_DIR/engine/tools/bin/ir-run"
+RELEASE_BUILD="$RELEASE_EXPECT_BUILD"
+mkdir -p "$RELEASE_BUILD/bin"
+cat > "$RELEASE_BUILD/bin/IRReleaseTest" <<'STUB'
+#!/usr/bin/env bash
+printf 'release executable args: %s\n' "$*"
+STUB
+chmod +x "$RELEASE_BUILD/bin/IRReleaseTest"
+
+IR_RUN_LOG="$FAKE/ir-run.log"
+rc=0
+( cd "$CREATION_WT" && "$IR_RUN" --release IRReleaseTest --record-seconds 5 ) >"$IR_RUN_LOG" 2>&1 || rc=$?
+ir_run_out="$(cat "$IR_RUN_LOG")"
+assert_rc "$rc" 0 "ir-run executes from the release tree"
+assert_contains "$ir_run_out" "ir-run: running release tree $RELEASE_BUILD" \
+    "ir-run reports the selected release tree"
+assert_contains "$ir_run_out" "release executable args: --record-seconds 5" \
+    "ir-run forwards executable arguments unchanged"
 
 summarize "ir-build build-dir resolution tests"

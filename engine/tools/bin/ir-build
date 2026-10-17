@@ -30,6 +30,7 @@
 #
 # Usage:
 #   ir-build --target IRShapeDebug
+#   ir-build --release --target IRShapeDebug
 #   ir-build --target IRCreationDefault
 #   ir-build --target IrredenEngineTest -- -j4   # override parallelism
 #
@@ -95,23 +96,24 @@ ir_cmake() {
     fi
 }
 
-# --- Build directory resolution ---
-# Priority: $IRREDEN_BUILD_DIR > worktree default (engine worktree:
-# <root>/build; downstream-creation worktree: <engine>/build-<creation>-<agent>).
+# --- Build mode and directory resolution ---
+BUILD_MODE="debug"
+build_args=()
+for arg in "$@"; do
+    if [[ "$arg" == "--release" ]]; then
+        BUILD_MODE="release"
+    else
+        build_args+=("$arg")
+    fi
+done
+
+# Priority: $IRREDEN_BUILD_DIR > worktree default.
 WORKTREE_ROOT="$(ir_worktree_root)"
-BUILD_DIR="${IRREDEN_BUILD_DIR:-$(ir_default_build_dir "$WORKTREE_ROOT")}"
+BUILD_DIR="${IRREDEN_BUILD_DIR:-$(ir_default_build_dir "$WORKTREE_ROOT" "$BUILD_MODE")}"
 
 # --- Auto-configure if the build tree doesn't exist yet ---
 if [[ ! -f "$BUILD_DIR/CMakeCache.txt" ]]; then
-    case "$(uname -s)" in
-        Darwin)               PRESET="macos-debug" ;;
-        Linux)                PRESET="linux-debug" ;;
-        MINGW*|MSYS*|CYGWIN*) PRESET="windows-debug" ;;
-        *)
-            echo "ir-build: unsupported platform $(uname -s)" >&2
-            exit 1
-            ;;
-    esac
+    PRESET="$(ir_build_preset "$BUILD_MODE")" || exit $?
     echo "ir-build: no build tree at $BUILD_DIR"
     if CREATION_ENGINE_ROOT="$(ir_creation_worktree_engine_root "$WORKTREE_ROOT")"; then
         # Downstream-creation worktree: the creation repo has no CMake
@@ -139,6 +141,7 @@ fi
 # the same number of CPU slots). Otherwise we default to ir_per_build_max
 # (budget/workers floor) so two parallel fleet workers each get their
 # fair share of cores without manual math.
+set -- ${build_args[@]+"${build_args[@]}"}
 user_jobs=""
 forward_args=()
 i=1
