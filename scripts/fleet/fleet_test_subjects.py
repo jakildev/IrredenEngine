@@ -15,12 +15,11 @@ Four checks, deliberately separate (each can fail while the others pass):
       both-blocks predicate, `fleet-tests.yml` included) must be covered by
       `OUT_OF_TREE_SUBJECTS` too. That population has no path literal to find,
       so F1 structurally cannot see it.
-  F3  filter completeness — every registered subject must be covered by BOTH
-      `paths:` blocks of `fleet-tests.yml` (GitHub Actions has no YAML anchors,
-      so the two lists are hand-duplicated and drift independently)
+  F3  filter completeness — every registered subject must be covered by the
+      runtime detector list in `fleet-tests.yml`
   F4  tree width — one subject is not a file but a TREE:
       `lint_python_registry.py` derives its population from `_SCAN_ROOT`, so
-      both blocks must carry that root's own recursive glob. A file-list
+      the detector must carry that root's own recursive glob. A file-list
       ratchet structurally cannot express this.
 
 The F1 grammar (conservative by design)

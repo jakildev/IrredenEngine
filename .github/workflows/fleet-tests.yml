@@ -1,5 +1,10 @@
 name: Fleet Tests
 
+# The detector list is the runtime source for suite coverage and the T5/T6
+# path ratchets. `scripts/**` is intentionally broad because the Python
+# registry suite scans that whole tree; the remaining entries are subjects
+# exercised by suites that live under scripts/fleet/tests/.
+
 on:
   push:
     branches: [master]
@@ -12,9 +17,14 @@ permissions:
 jobs:
   changes:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
       covered: ${{ steps.filter.outputs.covered }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
       - uses: dorny/paths-filter@v3
         id: filter
         with:
