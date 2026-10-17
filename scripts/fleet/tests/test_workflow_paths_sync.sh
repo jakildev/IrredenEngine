@@ -28,6 +28,8 @@ WORKFLOWS_DIR="$REPO_ROOT/.github/workflows"
 
 # shellcheck source=lib_assert.sh
 source "$(dirname "$0")/lib_assert.sh"
+# shellcheck source=lib_fleet_workflow_paths.sh
+source "$(dirname "$0")/lib_fleet_workflow_paths.sh"
 
 if [[ ! -d "$WORKFLOWS_DIR" ]]; then
     echo "SKIP: workflows dir not found at $WORKFLOWS_DIR" >&2
@@ -151,19 +153,16 @@ echo "T4: fleet-tests.yml triggers on every workflow this suite covers"
 # OUT_OF_TREE_SUBJECTS in test_fleet_tests_workflow_paths.sh.
 FLEET_TESTS_WORKFLOW="$WORKFLOWS_DIR/fleet-tests.yml"
 
-# missing_triggers <fleet-tests.yml> — one "<block> <path>" line per (block,
-# covered workflow) pair whose repo-relative path is absent from that block's
-# paths: list. Empty output means every covered workflow actually triggers
-# this suite. Pure check, no ok/bad — callers decide what output means.
+# missing_triggers <fleet-tests.yml> — one workflow path absent from the
+# detector job's covered list. Empty output means every covered workflow
+# triggers this suite.
 missing_triggers() {
-    local file="$1" block entries wf name
-    for block in push pull_request; do
-        entries=$(paths_list "$file" "$block")
-        for wf in ${covered_workflows[@]+"${covered_workflows[@]}"}; do
-            name=$(basename "$wf")
-            printf '%s' "$entries" | grep -qF -- ".github/workflows/$name" \
-                || echo "$block .github/workflows/$name"
-        done
+    local file="$1" entries wf name
+    entries=$(fleet_coverage_list "$file")
+    for wf in ${covered_workflows[@]+"${covered_workflows[@]}"}; do
+        name=$(basename "$wf")
+        printf '%s' "$entries" | grep -qF -- ".github/workflows/$name" \
+            || echo ".github/workflows/$name"
     done
 }
 
@@ -172,7 +171,7 @@ if [[ ! -f "$FLEET_TESTS_WORKFLOW" ]]; then
 else
     real_missing_triggers=$(missing_triggers "$FLEET_TESTS_WORKFLOW")
     assert_eq "$real_missing_triggers" "" \
-        "fleet-tests.yml paths: covers every covered workflow, in both blocks"
+        "fleet-tests.yml detector covers every covered workflow"
 
     echo "T5: positive control — dropping a covered workflow from fleet-tests.yml paths: is reported"
 fi
@@ -184,10 +183,8 @@ if [[ -f "$FLEET_TESTS_WORKFLOW" ]] && (( ${#covered_workflows[@]} > 0 )); then
     grep -vF ".github/workflows/$control_target" "$FLEET_TESTS_WORKFLOW" > "$CTL"
 
     ctl_missing=$(missing_triggers "$CTL")
-    assert_contains "$ctl_missing" "push .github/workflows/$control_target" \
-        "control fires: dropped workflow reported missing from push"
-    assert_contains "$ctl_missing" "pull_request .github/workflows/$control_target" \
-        "control fires: dropped workflow reported missing from pull_request"
+    assert_contains "$ctl_missing" ".github/workflows/$control_target" \
+        "control fires: dropped workflow reported missing from the detector"
     # Isolate the control to the one dropped entry — looping the whole tail
     # keeps that isolation complete as the covered set grows, where a
     # single-index assert would leave every later workflow unexercised.

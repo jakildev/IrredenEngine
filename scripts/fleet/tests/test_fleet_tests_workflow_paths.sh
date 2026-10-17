@@ -1,57 +1,18 @@
 #!/usr/bin/env bash
-# Tests for .github/workflows/fleet-tests.yml's path filters.
+# Tests for .github/workflows/fleet-tests.yml's detector coverage list.
 #
-# The workflow path-filters on scripts/** — broadly the LOCATION of its
-# suites, not the SUBJECTS they test. Eleven suites test files that live
-# outside that path (test_format_changed_line_scoping.sh covers
-# cmake/run_clang_format_changed.cmake; test_format_changed_standalone.sh
-# covers its sibling standalone CMake file;
-# test_format_changed_diff_root.sh covers cmake/ir_quality_tools.cmake;
-# test_ir_build_dir_resolution.sh covers
-# engine/tools/lib/concurrency_helpers.sh; test_fleet_transition.sh covers
-# docs/agents/fleet-state-machine.json; test_lint_rules_commands.py
-# covers every doc under .claude/rules/ and docs/agents/;
-# test_lint_rules_registry.py covers .claude/rules/cpp-*.md and
-# docs/agents/CLAUDE-BASELINE.md; test_lint_comment_refs.py covers
-# .claude/skills/simplify/**;
-# test_fleet_labels_check.sh covers the fleet state machine and label reference;
-# test_fleet_pr_body_lint.py covers the commit-and-push PR-body procedures;
-# test_workflow_paths_sync.sh covers the other path-filtered
-# .github/workflows/*.yml files; test_lint_python_registry.py covers
-# ruff.toml), so a PR touching only one of those subjects previously got
-# no fleet-tests run at all — the only regression coverage for that subject
-# silently never fired.
-#
-# T4 covers the other half of the same gap: one subject is not a file but a
-# TREE — lint_python_registry.py derives its population from _SCAN_ROOT
-# (scripts/), so the workflow's own location filter has to be at least that
-# wide or the registry ratchet misses files added outside scripts/fleet/**.
-# That is a filter-vs-constant check, not a list membership one, so it
-# lives in its own case rather than in OUT_OF_TREE_SUBJECTS.
-#
-# What T1-T3 below assert is that every REGISTERED out-of-tree subject is
-# present in BOTH `paths:` blocks of the workflow (push and pull_request —
-# GitHub Actions has no YAML anchors, so the two lists are hand-duplicated and
-# can drift independently).
-#
-# T1-T3 quantify over OUT_OF_TREE_SUBJECTS, so they cannot report a subject
-# the list lacks. T5 executes scripts/fleet/fleet_test_subjects.py, which
-# derives the live subject population (path literals in every suite source,
-# plus the derived both-blocks workflow set) and fails on any member this list
-# does not cover.
-#
-# T5 is also the stricter of the two on the axis T1 does cover. T1 matches a
-# subject as a literal SUBSTRING of the block, so a longer entry that happens
-# to contain it reads as coverage — delete the 'CLAUDE.md' entry and the
-# 'creations/CLAUDE.md' one keeps T1 green. The checker's F3 parses the block
-# into list entries and accepts only an exact entry or a segment-bounded
-# recursive glob, so it reports that deletion. T1 stays as the retained
-# ratchet (and as T2's control surface); F3 is the authority.
+# The list includes `scripts/**` because lint_python_registry.py scans that
+# whole tree. It also includes subjects outside scripts/ that the fleet suites
+# inspect, including the path-filtered workflows discovered by
+# test_workflow_paths_sync.sh. T1-T4 exercise the registered list and scan-root
+# width; T5 derives the subject population independently and reports omissions.
 
 set -uo pipefail
 
 SCRIPT_DIR=$(cd "$(dirname "$0")/../../.." && pwd)
 source "$(dirname "$0")/lib_preflight.sh"
+# shellcheck source=lib_fleet_workflow_paths.sh
+source "$(dirname "$0")/lib_fleet_workflow_paths.sh"
 WORKFLOW="$SCRIPT_DIR/.github/workflows/fleet-tests.yml"
 
 # shellcheck source=lib_assert.sh
@@ -186,49 +147,59 @@ OUT_OF_TREE_SUBJECTS=(
 # the scan can never silently outgrow the workflow filter that triggers it.
 REGISTRY_LINTER="$SCRIPT_DIR/scripts/fleet/lint_python_registry.py"
 
-# paths_block <file> <section> — the raw text of the named top-level `on:`
-# sub-block (`push` or `pull_request`), from its own header line up to
-# (not including) the next sibling key at the same two-space indent. A
-# plain sed range keeps this independent of any YAML parser being present
-# on the runner.
-paths_block() {
-    local file="$1" section="$2"
-    sed -n "/^  ${section}:/,/^  [a-zA-Z_]\+:/p" "$file" | sed '1d;$d'
-}
-
-# missing_subjects <file> — prints one "<block> <subject>" line per
-# (block, subject) pair NOT found in that block of <file>. Empty output
-# means every subject is covered in both blocks. Pure check, no ok/bad —
-# callers decide what the presence/absence of output means for them.
+# missing_subjects <file> — prints one subject missing from the detector's
+# coverage list. Empty output means every subject is covered.
 missing_subjects() {
-    local file="$1"
-    local push_block pr_block subject
-    push_block=$(paths_block "$file" push)
-    pr_block=$(paths_block "$file" pull_request)
+    local file="$1" entries subject
+    entries=$(fleet_coverage_list "$file")
     for subject in "${OUT_OF_TREE_SUBJECTS[@]}"; do
-        printf '%s' "$push_block" | grep -qF -- "$subject" || echo "push $subject"
-        printf '%s' "$pr_block" | grep -qF -- "$subject" || echo "pull_request $subject"
+        printf '%s' "$entries" | grep -qF -- "$subject" || echo "$subject"
     done
 }
 
-# missing_scan_root <file> <root> — prints one "<block>" line per paths:
-# block of <file> that does NOT cover the tree <root> (trailing slash
-# optional, e.g. "scripts/"). Coverage means the block carries that tree's
-# own recursive glob; a glob for a subdirectory of it (scripts/fleet/**)
-# deliberately does NOT count, since that is exactly the too-narrow filter
-# this case exists to catch.
+# missing_scan_root <file> <root> — prints `covered` when the detector's
+# coverage list does not include the tree's own recursive glob.
 missing_scan_root() {
-    local file="$1" root="${2%/}"
-    local block section
-    for section in push pull_request; do
-        block=$(paths_block "$file" "$section")
-        printf '%s' "$block" | grep -qF -- "'${root}/**'" || echo "$section"
-    done
+    local file="$1" root="${2%/}" entries
+    entries=$(fleet_coverage_list "$file")
+    printf '%s' "$entries" | grep -qF -- "'${root}/**'" || echo "covered"
 }
 
-echo "T1: the real workflow lists every out-of-tree subject in both paths: blocks"
+detector_setup_errors() {
+    local file="$1" changes_block checkout_line filter_line
+    changes_block=$(awk '
+        /^  changes:$/ { in_job=1 }
+        in_job && /^  [A-Za-z0-9_-]+:$/ && $0 != "  changes:" { exit }
+        in_job { print }
+    ' "$file")
+    printf '%s\n' "$changes_block" | grep -q '^    permissions:$' \
+        || echo "permissions"
+    printf '%s\n' "$changes_block" | grep -q '^      contents: read$' \
+        || echo "contents"
+    printf '%s\n' "$changes_block" | grep -q '^      pull-requests: read$' \
+        || echo "pull-requests"
+    checkout_line=$(printf '%s\n' "$changes_block" | grep -n 'uses: actions/checkout@v4' | cut -d: -f1)
+    filter_line=$(printf '%s\n' "$changes_block" | grep -n 'uses: dorny/paths-filter@v3' | cut -d: -f1)
+    if [[ -z "$checkout_line" || -z "$filter_line" || "$checkout_line" -ge "$filter_line" ]]; then
+        echo "checkout-before-filter"
+    fi
+}
+
+echo "T0: the detector can inspect both pull requests and checked-out push refs"
+setup_errors=$(detector_setup_errors "$WORKFLOW")
+assert_eq "$setup_errors" "" "changes job grants read permissions and checks out before filtering"
+SETUP_MUTATED=$(mktemp -t fleet-tests-detector-setup.XXXXXX.yml)
+grep -vE 'actions/checkout@v4|pull-requests: read' "$WORKFLOW" > "$SETUP_MUTATED"
+mutated_setup_errors=$(detector_setup_errors "$SETUP_MUTATED")
+assert_contains "$mutated_setup_errors" "pull-requests" \
+    "control fires: missing pull-request permission is reported"
+assert_contains "$mutated_setup_errors" "checkout-before-filter" \
+    "control fires: missing checkout before the filter is reported"
+rm -f "$SETUP_MUTATED"
+
+echo "T1: the real workflow lists every out-of-tree subject in the detector"
 real_missing=$(missing_subjects "$WORKFLOW")
-assert_eq "$real_missing" "" "fleet-tests.yml: no missing out-of-tree subjects"
+assert_eq "$real_missing" "" "fleet-tests.yml: detector covers every out-of-tree subject"
 
 echo "T2: positive control — deleting a subject from the workflow makes the check fail"
 MUTATED=$(mktemp -t fleet-tests-workflow-mutated.XXXXXX.yml)
@@ -238,10 +209,8 @@ trap 'rm -f "$MUTATED"' EXIT
 grep -vF "${OUT_OF_TREE_SUBJECTS[0]}" "$WORKFLOW" > "$MUTATED"
 
 mutated_missing=$(missing_subjects "$MUTATED")
-assert_contains "$mutated_missing" "push ${OUT_OF_TREE_SUBJECTS[0]}" \
-    "control fires: mutated copy reports the deleted subject missing from push"
-assert_contains "$mutated_missing" "pull_request ${OUT_OF_TREE_SUBJECTS[0]}" \
-    "control fires: mutated copy reports the deleted subject missing from pull_request"
+assert_contains "$mutated_missing" "${OUT_OF_TREE_SUBJECTS[0]}" \
+    "control fires: mutated copy reports the deleted subject missing"
 # The mutated copy's OTHER subjects must all still be found — isolates the
 # control to the one deleted entry rather than a blanket empty-block bug.
 # Looping the whole tail is what keeps the isolation complete as the list
@@ -270,17 +239,15 @@ else
     else
         ok "_SCAN_ROOT read from the module under test: $SCAN_ROOT"
         assert_eq "$(missing_scan_root "$WORKFLOW" "$SCAN_ROOT")" "" \
-            "fleet-tests.yml: both paths: blocks cover the registry scan root ($SCAN_ROOT)"
+            "fleet-tests.yml: detector covers the registry scan root ($SCAN_ROOT)"
 
         # Positive control — narrowing the filter back to its earlier,
         # narrower value (scripts/fleet/**) must be reported, in both blocks.
         NARROWED=$(mktemp -t fleet-tests-workflow-narrowed.XXXXXX.yml)
         sed "s|'${SCAN_ROOT%/}/\*\*'|'${SCAN_ROOT%/}/fleet/**'|" "$WORKFLOW" > "$NARROWED"
         narrowed_missing=$(missing_scan_root "$NARROWED" "$SCAN_ROOT")
-        assert_contains "$narrowed_missing" "push" \
-            "control fires: narrowed copy reports push no longer covering $SCAN_ROOT"
-        assert_contains "$narrowed_missing" "pull_request" \
-            "control fires: narrowed copy reports pull_request no longer covering $SCAN_ROOT"
+        assert_contains "$narrowed_missing" "covered" \
+            "control fires: narrowed copy reports the detector no longer covering $SCAN_ROOT"
         rm -f "$NARROWED"
     fi
 fi
