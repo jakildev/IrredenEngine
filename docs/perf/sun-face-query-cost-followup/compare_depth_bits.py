@@ -9,7 +9,7 @@ sys.path.insert(0, str(root / 'scripts/tests'))
 boundary = importlib.import_module("test_render_projected_face_boundary")
 extract_function = importlib.import_module("shader_contract_helpers").extract_function
 
-parent = "91cb430562b62cfb681b0065d1ff21291fd37555"
+parent = "f54b28254"
 
 for suffix, folder in [('glsl', ''), ('metal', 'metal/')]:
     path = f'engine/render/src/shaders/{folder}ir_sun_face_query_layout.{suffix}'
