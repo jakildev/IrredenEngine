@@ -24,8 +24,9 @@
 #   - apply: labels_at_staging narrows the race guard to labels gained beyond
 #     the staged set
 #   - stamp: a complete graduated comment posts and stamps; direction and an
-#     incomplete bar recommend; an issue already carrying a verdict label is
-#     skipped with no write; --dry-run writes nothing; --comment-file required
+#     incomplete bar recommend; an issue already carrying a verdict label or
+#     a `## Triage` comment is skipped with no write; a live view without
+#     its comment list refuses; --dry-run writes nothing; --comment-file required
 #   - --repo is required; dual-spelling (--repo= empty) rejected
 
 set -uo pipefail
@@ -73,9 +74,11 @@ fixtures="$TMP"
 EOF
 cat >> "$TMP/bin/gh" << 'EOF'
 repo=""
+fields=""
 prev=""
 for arg in "$@"; do
     [[ "$prev" == "--repo" ]] && repo="$arg"
+    [[ "$prev" == "--json" ]] && fields="$arg"
     prev="$arg"
 done
 case "$1 $2 $repo" in
@@ -83,7 +86,14 @@ case "$1 $2 $repo" in
     "issue edit jakildev/IrredenEngine") echo "$*" >> "$fixtures/gh-writes.log" ;;
     "issue close jakildev/IrredenEngine")
         echo "$*" >> "$fixtures/gh-closes.log" ;;
-    "issue view jakildev/IrredenEngine") cat "$fixtures/view-$3.json" ;;
+    # Like gh, the view emits only the --json fields asked for.
+    "issue view jakildev/IrredenEngine")
+        python3 -c '
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    view = json.load(f)
+print(json.dumps({k: view[k] for k in sys.argv[2].split(",") if k in view}))
+' "$fixtures/view-$3.json" "$fields" ;;
     "issue comment jakildev/IrredenEngine") echo "$*" >> "$fixtures/gh-comments.log" ;;
     *) echo "gh stub: unexpected invocation: $*" >&2; exit 99 ;;
 esac
@@ -372,9 +382,20 @@ assert_contains "$out" "gained human:owned since staging" "the skip names the la
 
 # --- stamp: the dispatched role's write path ---------------------------------
 
-echo '{"labels": []}' > "$TMP/view-301.json"
-echo '{"labels": []}' > "$TMP/view-306.json"
-echo '{"labels": [{"name": "fleet:triage-recommend"}]}' > "$TMP/view-307.json"
+echo '{"labels": [], "comments": []}' > "$TMP/view-301.json"
+cat > "$TMP/view-306.json" << 'EOF'
+{"labels": [], "comments": [
+  {"body": "Triage should judge this; the role posts a `## Triage` comment first."}
+]}
+EOF
+echo '{"labels": [{"name": "fleet:triage-recommend"}], "comments": []}' > "$TMP/view-307.json"
+cat > "$TMP/view-308.json" << 'EOF'
+{"labels": [], "comments": [
+  {"body": "Repro attached."},
+  {"body": "## Triage\n\n**Verdict:** recommend-approve\n**Class:** rebless\n"}
+]}
+EOF
+echo '{"labels": []}' > "$TMP/view-309.json"
 cat > "$TMP/triage-rebless.md" << 'EOF'
 ## Triage
 
@@ -453,6 +474,26 @@ assert_eq "$status" "0" "stamp on an already-triaged issue exits 0"
 assert_contains "$out" "skipped   #307: already carries fleet:triage-recommend" "the idempotency guard names the label held"
 assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "no label write on a held issue"
 assert_eq "$(wc -l < "$TMP/gh-comments.log" | tr -d ' ')" "0" "no comment on a held issue"
+
+# An interrupted stamp: its comment landed, its label write never did.
+: > "$TMP/gh-writes.log"; : > "$TMP/gh-comments.log"
+log_lines=$(wc -l < "$TMP/fleet-home/triage/log.jsonl" | tr -d ' ')
+status=$(run_sweep stamp --repo engine 308 --comment-file "$TMP/triage-rebless.md")
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "stamp on an issue with a prior triage comment exits 0"
+assert_contains "$out" "skipped   #308: already has a \`## Triage\` comment" \
+    "the idempotency guard names the prior comment"
+assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "no label write after a prior triage comment"
+assert_eq "$(wc -l < "$TMP/gh-comments.log" | tr -d ' ')" "0" "no duplicate triage comment"
+assert_eq "$(wc -l < "$TMP/fleet-home/triage/log.jsonl" | tr -d ' ')" "$log_lines" \
+    "no audit line for a skipped stamp"
+
+status=$(run_sweep stamp --repo engine 309 --comment-file "$TMP/triage-rebless.md")
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "1" "stamp refuses a live view with no comment list"
+assert_contains "$out" "refused   #309" "the refusal names the issue"
+assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "no label write without a comment list"
+assert_eq "$(wc -l < "$TMP/gh-comments.log" | tr -d ' ')" "0" "no comment without a comment list"
 
 status=$(run_sweep stamp --repo engine 306)
 err=$(cat "$TMP/err.txt")

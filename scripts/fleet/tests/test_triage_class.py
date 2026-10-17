@@ -107,6 +107,15 @@ class Comments(unittest.TestCase):
             "host": "macos",
             "confinement": "one framebuffer pixel (criterion 2)"})
 
+    def test_triage_heading_is_a_heading_line_not_a_mention(self):
+        for text in (COMMENT, "Repro.\n\n## Triage\n", "   ## triage\n", "##\tTriage"):
+            with self.subTest(text=text):
+                self.assertTrue(tc.has_triage_heading(text))
+        for text in ("posts a `## Triage` comment", "### Triage", "## Triaged",
+                     "    ## Triage", "", None):
+            with self.subTest(text=text):
+                self.assertFalse(tc.has_triage_heading(text))
+
     def test_decide_stamps_only_a_complete_graduated_approve(self):
         labels, reason = tc.decide(tc.parse_triage_comment(COMMENT))
         self.assertEqual(labels, ["fleet:agent-approved", "fleet:sonnet"])

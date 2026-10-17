@@ -76,6 +76,14 @@ _BAR_LINE_RE = re.compile(r"^\s*[-*]\s*(?P<key>[a-z_]+)\s*:\s*(?P<value>.+)$")
 # Prose beside the name refuses: fleet_model_field.declared_class would take
 # the first token out of "sonnet — if the owner agrees", a stamp nobody made.
 _MODEL_VALUE_RE = re.compile(rf"[`*\[\]\s]*({'|'.join(MODELS)})[`*\[\]\s]*", re.IGNORECASE)
+_HEADING_RE = re.compile(r"^ {0,3}##[ \t]+Triage\b", re.IGNORECASE | re.MULTILINE)
+
+
+def has_triage_heading(text):
+    """Whether text carries a `## Triage` heading line. A prose mention of
+    the heading mid-line is not one; any heading line is, so a skip on a
+    quoted template errs toward writing nothing."""
+    return bool(_HEADING_RE.search(text or ""))
 
 
 def is_approve(verdict):

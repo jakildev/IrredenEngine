@@ -220,7 +220,7 @@ if [[ "$SUBCMD" == "stamp" ]]; then
     view_f=$(mktemp "${TMPDIR:-/tmp}/fleet-triage-sweep-view.XXXXXX")
     plan_f=$(mktemp "${TMPDIR:-/tmp}/fleet-triage-sweep-stamp.XXXXXX")
     trap 'rm -f "$view_f" "$plan_f"' EXIT
-    if ! gh issue view "$ISSUE" --repo "$REPO" --json labels > "$view_f" 2>/dev/null; then
+    if ! gh issue view "$ISSUE" --repo "$REPO" --json labels,comments > "$view_f" 2>/dev/null; then
         echo "fleet-triage-sweep stamp: could not read #$ISSUE in $REPO" >&2
         exit 1
     fi
@@ -237,13 +237,21 @@ comment_path, view_path, plan_path, issue = sys.argv[1:5]
 with open(comment_path, encoding="utf-8") as f:
     text = f.read()
 with open(view_path, encoding="utf-8") as f:
-    live = [label["name"] for label in json.load(f).get("labels", [])]
+    view = json.load(f)
+if not isinstance(view.get("comments"), list):
+    print(f"  refused   #{issue}: the live view carries no comment list to guard on")
+    sys.exit(2)
+live = [label["name"] for label in view.get("labels", [])]
 
 held = sorted({triage_class.RECOMMEND, triage_class.AGENT_APPROVED, "human:approved"} & set(live))
 if held:
     print(f"  skipped   #{issue}: already carries {', '.join(held)}")
     sys.exit(3)
-if "## Triage" not in text:
+# An interrupted stamp can post its comment and die before the label write.
+if any(triage_class.has_triage_heading(c.get("body")) for c in view["comments"]):
+    print(f"  skipped   #{issue}: already has a `## Triage` comment")
+    sys.exit(3)
+if not triage_class.has_triage_heading(text):
     print(f"  refused   #{issue}: the comment file has no `## Triage` heading")
     sys.exit(2)
 
