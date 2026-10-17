@@ -395,6 +395,10 @@ for entry in staged.get("entries", []):
                          + ", ".join(bad or ["(no labels staged)"])))
         continue
     if triage_class.AGENT_APPROVED in labels:
+        if not triage_class.is_approve(entry.get("verdict")):
+            rejected.append((number, f"{triage_class.AGENT_APPROVED} needs verdict "
+                             f"exactly {triage_class.APPROVE}, got {entry.get('verdict')!r}"))
+            continue
         ok, reason = triage_class.check(entry.get("class"), entry.get("bar"))
         if not ok:
             rejected.append((number, reason))

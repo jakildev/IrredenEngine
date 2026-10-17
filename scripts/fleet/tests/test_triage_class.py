@@ -116,13 +116,21 @@ class Comments(unittest.TestCase):
                      COMMENT.replace("**Suggested model:** sonnet", "**Model:** [fable]")):
             labels, _ = tc.decide(tc.parse_triage_comment(text))
             self.assertEqual(labels[0], "fleet:agent-approved", text)
+        labels, _ = tc.decide(tc.parse_triage_comment(
+            COMMENT.replace("**Verdict:** recommend-approve", "**Verdict:** `Recommend-Approve`")))
+        self.assertEqual(labels[0], "fleet:agent-approved")
         self.assertEqual(tc.model_of("`sonnet`"), "sonnet")
         self.assertIsNone(tc.model_of("sonnet (n/a)"))
         cases = (
             (COMMENT.replace("**Class:** rebless", "**Class:** direction"), "recommend-only"),
             (COMMENT.replace("- host: macos\n", ""), "missing host"),
             (COMMENT.replace("**Verdict:** recommend-approve", "**Verdict:** park"),
-             "not recommend-approve"),
+             "not exactly recommend-approve"),
+            (COMMENT.replace("**Verdict:** recommend-approve",
+                             "**Verdict:** recommend-approve-extra"),
+             "not exactly recommend-approve"),
+            (COMMENT.replace("**Verdict:** recommend-approve", "**Verdict:** recommend-approved"),
+             "not exactly recommend-approve"),
             (COMMENT.replace("**Suggested model:** sonnet", "**Suggested model:** (n/a)"),
              "suggested model"),
             (COMMENT.replace("**Class:** rebless\n", ""), "recommend-only"),

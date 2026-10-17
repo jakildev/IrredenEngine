@@ -17,8 +17,9 @@
 #     no `gh issue close`, and reports the race-guard issue as skipped
 #   - apply: recommend-close is reported as a ready-to-run line, never run
 #   - apply: a graduated-class entry (class + complete bar) stamps
-#     fleet:agent-approved plus the model label; an incomplete bar or a
-#     direction entry refuses the whole apply with no gh write; a park entry
+#     fleet:agent-approved plus the model label; an incomplete bar, a
+#     direction entry or a verdict other than exactly recommend-approve
+#     refuses the whole apply with no gh write; a park entry
 #     stages human:owned; the audit line carries the class and the mode
 #   - apply: labels_at_staging narrows the race guard to labels gained beyond
 #     the staged set
@@ -329,6 +330,24 @@ out=$(cat "$TMP/out.txt")
 assert_eq "$status" "1" "apply refuses fleet:agent-approved on a direction entry"
 assert_contains "$out" "recommend-only" "refusal says direction stays recommend-only"
 assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "direction entry issues no gh write"
+
+cat > "$TMP/suffixed-verdict.json" << 'EOF'
+{
+  "repo": "jakildev/IrredenEngine",
+  "human_confirmed": true,
+  "entries": [
+    {"number": 301, "verdict": "recommend-approve-extra", "class": "rebless",
+     "bar": {"measurement": "14/14 rows match, max delta 0 on macos-debug",
+             "host": "macos", "confinement": "one framebuffer pixel (criterion 2)"},
+     "labels": ["fleet:agent-approved", "fleet:sonnet"], "confirmed": true}
+  ]
+}
+EOF
+status=$(run_sweep apply --repo engine "$TMP/suffixed-verdict.json")
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "1" "apply refuses fleet:agent-approved on a suffixed verdict"
+assert_contains "$out" "needs verdict exactly recommend-approve" "refusal names the exact verdict"
+assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "suffixed verdict issues no gh write"
 
 # --- apply: labels_at_staging narrows the race guard -------------------------
 

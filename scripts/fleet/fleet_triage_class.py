@@ -13,6 +13,7 @@ import re
 import fleet_model_field
 
 AGENT_APPROVED = "fleet:agent-approved"
+APPROVE = "recommend-approve"
 RECOMMEND = "fleet:triage-recommend"
 DIRECTION = "direction"
 MODELS = fleet_model_field.MODEL_CLASSES
@@ -77,6 +78,13 @@ _BAR_LINE_RE = re.compile(r"^\s*[-*]\s*(?P<key>[a-z_]+)\s*:\s*(?P<value>.+)$")
 _MODEL_VALUE_RE = re.compile(rf"[`*\[\]\s]*({'|'.join(MODELS)})[`*\[\]\s]*", re.IGNORECASE)
 
 
+def is_approve(verdict):
+    """Whether a verdict value is exactly recommend-approve, decorated at most
+    with backticks, brackets or asterisks. The verdict grammar is a closed
+    set: a suffixed or extended value never grants approval."""
+    return str(verdict or "").strip("`*[] \t").lower() == APPROVE
+
+
 def model_of(value):
     """The class a suggested-model value names, or None."""
     match = _MODEL_VALUE_RE.fullmatch(value or "")
@@ -117,8 +125,8 @@ def decide(fields):
     verdict is recommend-approve and the class meets its bar, else the
     recommend label."""
     verdict = fields.get("verdict", "").strip()
-    if not verdict.startswith("recommend-approve"):
-        return [RECOMMEND], f"verdict {verdict or '(none)'!r} is not recommend-approve"
+    if not is_approve(verdict):
+        return [RECOMMEND], f"verdict {verdict or '(none)'!r} is not exactly {APPROVE}"
     ok, reason = check(fields.get("class", DIRECTION).strip().lower(), fields.get("bar"))
     if not ok:
         return [RECOMMEND], reason

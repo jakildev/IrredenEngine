@@ -250,9 +250,10 @@ ever stamps `human:approved`.
 | `verification-run` — verification run / parity measurement | `criteria`: runnable; `host`: named; `no_plan`: `fleet:no-plan` |
 | `objective-row` — objective Done-means row | `objective`: the active objective file; `row`: verbatim; `filer`: `architect` or `steward` |
 
-`scripts/fleet/fleet_triage_class.py` is the one judge of the bar, and both
-writers (`fleet-triage-sweep stamp` and `apply`) call it before any
-approval label leaves them. A graduated verdict stamps `fleet:agent-approved`
+`scripts/fleet/fleet_triage_class.py` is the one judge of the verdict
+(exactly `recommend-approve`; a suffixed or extended value never stamps)
+and the bar, and both writers (`fleet-triage-sweep stamp` and `apply`)
+call it before any approval label leaves them. A graduated verdict stamps `fleet:agent-approved`
 plus the model label; `fleet:agent-approved` is never removed and is the
 audit trail. Every stamp lands once in `fleet-decisions` § "Agent-approved
 since last digest"; the human's veto is ordinary mechanics (close,
