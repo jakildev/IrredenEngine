@@ -141,7 +141,7 @@ fi
 # the same number of CPU slots). Otherwise we default to ir_per_build_max
 # (budget/workers floor) so two parallel fleet workers each get their
 # fair share of cores without manual math.
-set -- "${build_args[@]}"
+set -- ${build_args[@]+"${build_args[@]}"}
 user_jobs=""
 forward_args=()
 i=1

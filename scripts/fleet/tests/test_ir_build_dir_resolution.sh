@@ -300,6 +300,25 @@ assert_contains "$fleet_build_out" "configuring with preset '$RELEASE_PRESET'" \
 assert_eq "$release_cfg_bin" "$RELEASE_EXPECT_BUILD" \
     "fleet-build configures the isolated creation release tree"
 
+# --- T6c: ir-build accepts an empty argument list under Bash 3.2 ------------
+echo "T6c: ir-build empty argument list"
+
+: > "$CMAKE_LOG"
+rc=0
+( cd "$CREATION_WT" && PATH="$STUB_BIN:$PATH" \
+    /bin/bash "$IR_BUILD" --release ) >"$FAKE/ir-build-bare-release.log" 2>&1 || rc=$?
+assert_rc "$rc" 0 "ir-build --release reaches cmake with no build arguments"
+assert_contains "$(cat "$CMAKE_LOG")" "--build $RELEASE_EXPECT_BUILD" \
+    "bare release build uses the isolated release tree"
+
+: > "$CMAKE_LOG"
+rc=0
+( cd "$CREATION_WT" && PATH="$STUB_BIN:$PATH" \
+    /bin/bash "$IR_BUILD" ) >"$FAKE/ir-build-bare-debug.log" 2>&1 || rc=$?
+assert_rc "$rc" 0 "bare ir-build reaches cmake with no build arguments"
+assert_contains "$(cat "$CMAKE_LOG")" "--build $EXPECT_BUILD" \
+    "bare debug build keeps the default build tree"
+
 # --- T7: ir-run selects and reports the release tree -------------------------
 echo "T7: ir-run release tree selection"
 
