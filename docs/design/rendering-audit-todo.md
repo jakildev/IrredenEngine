@@ -34,8 +34,13 @@ The [native profiling smoke](../perf/sdf-voxel-profile/README.md) passes eight
 arms, but two full-matrix attempts stopped on quiet-window breaches. Complete
 the repeat matrix on a quiet host before making a representation speed claim.
 Next compare warm frame/stage cost, startup cost and resident memory with shadows
-off/on, cardinal/intermediate yaw, density and overlap. Then cover authored
-rotation/attachments, local-light blocking and finer-grid/LOD scale conventions.
+off/on, cardinal/intermediate yaw, density and overlap.
+Fixed tilted GRID subjects now have paired root/parented ShapeDebug controls:
+six native frames match exactly with external voxel casters, AO and local light.
+Both placement arms use one shared golden reference set. This establishes
+transform-path equivalence, not absolute shadow correctness. Continuous parent
+motion, DETACHED/source-face and detached-revoxelized modes, isolated local-light
+blocking and finer-grid/LOD scale conventions remain open.
 Arbitrary voxel occupancy already shares the geometry path; composed/custom SDF
 recipes and dynamic GPU baking need explicit authoring and invalidation designs.
 The baker now explicitly enumerates supported primitives and accepts a caller
@@ -51,6 +56,13 @@ closes that reproduction, with independently rounded boundary/exterior controls
 and bounded grazing-face depth. Keep candidate-index tile-boundary coverage and
 rejection-heavy 64/256-candidate GPU cost on the TODO; this is not closure of all
 shared voxel shadow defects.
+
+The [tilted baked-shape control](../pr-screenshots/codex/sdf-baked-transform-controls/README.md)
+retains a small isolated light patch inside the cylinder's floor shadow at
+yaw45 (native detail ROI x=900, y=650, width=500, height=420).
+Root and parented poses match exactly, so inspect occupied caster cells,
+finite-face queries and candidate tile coverage before blaming transform
+propagation or smoothing the result. This observation is not yet a diagnosed bug.
 
 1. **Crowded finite-index coverage — native correctness validated in #4399.** Preserve
    the inline 64-entry lists and allocate bounded spill nodes only for crowded

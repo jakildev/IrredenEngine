@@ -1,0 +1,104 @@
+{
+  "parent_commit": "0ab68809ad9c6d73f234611e76e03037a623b284",
+  "source_state": "fixture changes captured before commit; source fingerprints below",
+  "host": "macOS Apple M4 Max Metal Debug",
+  "framebuffer": [
+    2560,
+    1440
+  ],
+  "subjects": 4,
+  "blockers": 4,
+  "floor": 1,
+  "local_lights": 1,
+  "render_mode": "GRID revoxelized occupancy",
+  "source_and_binary_sha256": {
+    "creations/demos/shape_debug/main.cpp": "a2d1b9e2a234dcb869a25645f2e1e5a9ba9b987792abe59272a88930d957332f",
+    "creations/demos/shape_debug/sdf_voxel_scene.hpp": "af2ac6a1d9bc45cc581b79eb7e842dd35d428e1d943ba82e5830915ff01b7cb2",
+    "build/creations/demos/shape_debug/IRShapeDebug": "e2c03615691dbfe099c4aa030e2fdc06fbdce6cab04adab1d9945c78344460fd",
+    "build/creations/demos/shape_debug/scripts/config.lua": "166871772731ac258fc82028c21f35b54ccbe894586c9e7f0b3a6dcc1892f538"
+  },
+  "images_sha256": {
+    "direct-parented/yaw0.png": "a18e95bfa3e8c13601fcc6060cca271f1ca1d8330d37f67a10ed82e31a42e759",
+    "direct-parented/yaw180.png": "71e55039f121a1918d130634a817aa13c0a05a90b5d5297df541dc67104b5d89",
+    "direct-parented/yaw270.png": "373d91bf3e08ed655d11e797a96fa6e17e64865815b0eaa823a665be30900513",
+    "direct-parented/yaw45.png": "20da4564124d2bddeb1969c7e324c4c7c572426be8716a43ba6c120e7e8fa166",
+    "direct-parented/yaw90.png": "fd2554915616b90f2d5813dd89f5315922cb1da2ba2a0f3773a5574e1005ce44",
+    "direct-parented/zoom2.png": "d1852780b8a2028701b3b342c5e5ba94cfe736a975557849e94428adc3867353",
+    "direct-root/yaw0.png": "a18e95bfa3e8c13601fcc6060cca271f1ca1d8330d37f67a10ed82e31a42e759",
+    "direct-root/yaw180.png": "71e55039f121a1918d130634a817aa13c0a05a90b5d5297df541dc67104b5d89",
+    "direct-root/yaw270.png": "373d91bf3e08ed655d11e797a96fa6e17e64865815b0eaa823a665be30900513",
+    "direct-root/yaw45.png": "20da4564124d2bddeb1969c7e324c4c7c572426be8716a43ba6c120e7e8fa166",
+    "direct-root/yaw90.png": "fd2554915616b90f2d5813dd89f5315922cb1da2ba2a0f3773a5574e1005ce44",
+    "direct-root/zoom2.png": "d1852780b8a2028701b3b342c5e5ba94cfe736a975557849e94428adc3867353",
+    "disconnected-parent.png": "645506c6f409468773be8ce61658ce3462abb1196f9bfd9743b5fc5bc2185699",
+    "no-shadow/yaw0.png": "a596aa49648b0bb960330df940c039ecdfe66f8ab23c504740604f7870145cfe",
+    "no-shadow/yaw180.png": "29f7aa253c87466a6bfc39280cd141f98310a66a1c0608ef4f247714df183714",
+    "no-shadow/yaw270.png": "e811744ebe143433bcad21414ed4ddca55374190feb3c6e875ed2424d5fe40cb",
+    "no-shadow/yaw45.png": "ad194f984c4efc2703c1f0f410272829fd0904e9f01364fb5adf2169a1f7f400",
+    "no-shadow/yaw90.png": "3409e8277b01815247464d2f376df65a829e239aae80de9a80ddc919ef40b2e1",
+    "no-shadow/zoom2.png": "f1a70debf80458ae3108162300667906e8d95e7787e9cd5c38fa6ffb34631cfb",
+    "parented/yaw0.png": "6877e8eb2920dbd1d6d13a86759792fbd31db46ae1d0362b9fad40f9c8e8b521",
+    "parented/yaw180.png": "0fc1eb2fcee4b86918c3501dbf0db7d229d5f9e625582a5a2331799291527f6c",
+    "parented/yaw270.png": "2c4cfbb015fcd01896c535bc28831945b1c27553fcb0fdfeadac5cbb75cd6549",
+    "parented/yaw45.png": "26d8130287390de7ec58fc63192472e77b3d0fc37a429c2ea6756f5540cdd3ac",
+    "parented/yaw90.png": "9486d9fb6aa18c607c1aee0457333340f1066204ff4dcc5a7b66dad9741857f7",
+    "parented/zoom2.png": "1cd76f9592cc6fa9d56c74d53f6948397860a5da87e766baebafb5c2c2b6c0fc",
+    "root/yaw0.png": "6877e8eb2920dbd1d6d13a86759792fbd31db46ae1d0362b9fad40f9c8e8b521",
+    "root/yaw180.png": "0fc1eb2fcee4b86918c3501dbf0db7d229d5f9e625582a5a2331799291527f6c",
+    "root/yaw270.png": "2c4cfbb015fcd01896c535bc28831945b1c27553fcb0fdfeadac5cbb75cd6549",
+    "root/yaw45.png": "26d8130287390de7ec58fc63192472e77b3d0fc37a429c2ea6756f5540cdd3ac",
+    "root/yaw90.png": "9486d9fb6aa18c607c1aee0457333340f1066204ff4dcc5a7b66dad9741857f7",
+    "root/zoom2.png": "1cd76f9592cc6fa9d56c74d53f6948397860a5da87e766baebafb5c2c2b6c0fc",
+    "yaw45-detail.png": "4d4cb1949a38e232570d2db94bcd3634ce8dc74c58fe100304e054d89bdfef6f"
+  },
+  "root_parented_changed_rgb_pixels": {
+    "yaw0": 0,
+    "yaw45": 0,
+    "yaw90": 0,
+    "yaw180": 0,
+    "yaw270": 0,
+    "zoom2": 0
+  },
+  "commands": [
+    "fleet-run IRShapeDebug --sdf-voxel-scene baked --sdf-voxel-pose root --sdf-voxel-blockers --auto-screenshot 10",
+    "fleet-run IRShapeDebug --sdf-voxel-scene baked --sdf-voxel-pose parented --sdf-voxel-blockers --auto-screenshot 10",
+    "fleet-run IRShapeDebug --sdf-voxel-scene baked --sdf-voxel-pose parented --sdf-voxel-blockers --no-shadows --auto-screenshot 10",
+    "fleet-run IRShapeDebug --sdf-voxel-scene direct --sdf-voxel-pose root --sdf-voxel-blockers --auto-screenshot 10",
+    "fleet-run IRShapeDebug --sdf-voxel-scene direct --sdf-voxel-pose parented --sdf-voxel-blockers --auto-screenshot 10"
+  ],
+  "limits": "Static composed poses; not continuous motion, detached canvases or throughput qualification.",
+  "direct_root_parented_changed_rgb_pixels": {
+    "yaw0": 0,
+    "yaw45": 0,
+    "yaw90": 0,
+    "yaw180": 0,
+    "yaw270": 0,
+    "zoom2": 0
+  },
+  "validation": {
+    "render_verify": {
+      "job": "20261016T020825Z-render-verify-70c7a7",
+      "checks_passed": 74,
+      "new_exact_matches": 12,
+      "log": "render-verify.log.gz"
+    },
+    "positive_control": {
+      "mutation": "replace setParent(entity, parent) with setParent(entity, IREntity::kNullEntity)",
+      "comparison": "disconnected-parent.png against sdf_voxel_pose_yaw0.png",
+      "exit_code": 1,
+      "match_pct": 95.2278,
+      "max_delta": 197,
+      "psnr_db": 27.48
+    },
+    "restored_build": {
+      "job": "20261016T021548Z-build-095bd7",
+      "exit_code": 0,
+      "baked_parented_exact_matches": 6,
+      "log": "restored-parented.log.gz"
+    },
+    "orphan_pose_cli": {
+      "exit_code": 2
+    }
+  },
+  "restored_binary_sha256": "422dfd09947edf2e169698807aa78b159c278fe9e4a6cf070b001481537e0edb"
+}

@@ -70,6 +70,16 @@ comparison, not an assertion that both images must match. The baker's unit tests
 independently check occupancy, threshold ties, torus holes, serialization and
 pool attachment (all six face-occlusion bits, active masks and AO contribution).
 
+`--sdf-voxel-pose root|parented` adds a fixed tilted pose and fractional
+translation. The parented arm composes a translated Z half-turn with an oblique
+local rotation; the root arm uses the independently expanded half-turn result.
+Both must display the same geometry and lighting within a representation.
+The baked runs use GRID rotation (resampled occupancy), not rigid DETACHED
+faces. Their shared six-shot reference set checks four cardinal views, a 45-degree
+view and effective subdivisions 4/2 with external voxel casters and a local light.
+This comparison checks transform-path equivalence, not absolute correctness of
+every voxel step, local-light occlusion or projected shadow boundary.
+
 Baking costs CPU time and dense storage once per authored asset; attaching still
 allocates one pool span per entity. Sharing an asset does not yet imply shared
 resident GPU geometry. Warm-frame comparisons must separate startup baking and
