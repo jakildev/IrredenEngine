@@ -154,6 +154,12 @@ def target_record(data, target):
     raise ValueError("target missing from projection")
 
 
+def _balanced(available, target):
+    # Stable across hosts and restarts; local counters would race or skew.
+    index = int.from_bytes(hashlib.sha256(target.encode()).digest()[:4], "big")
+    return available[index % len(available)]
+
+
 def choose_runtime(kind, record, target, env, claude_gate="open"):
     available = sorted({x.strip() for x in env.get("FLEET_RUNTIMES", "claude").split(",")})
     if not available or any(x not in RUNTIMES for x in available):
@@ -165,9 +171,9 @@ def choose_runtime(kind, record, target, env, claude_gate="open"):
     if len(authors) > 1:
         raise ValueError("conflicting author runtime labels")
     if kind == "review" and env.get("FLEET_CROSS_PROVIDER_REVIEW", "1") == "1":
-        if not authors:
-            raise ValueError("unstamped PR: record implementation provider before review")
-        chosen = "claude" if authors == ["codex"] else "codex"
+        # The author label is a preference: absent, any available provider reviews.
+        chosen = ("claude" if authors == ["codex"] else "codex") if authors \
+            else _balanced(available, target)
     else:
         pins = [x for x in RUNTIMES if f"fleet:runtime-{x}" in labels]
         if len(pins) > 1:
@@ -180,9 +186,7 @@ def choose_runtime(kind, record, target, env, claude_gate="open"):
         elif policy in RUNTIMES:
             chosen = policy
         elif policy == "balanced":
-            # Stable across hosts and restarts; local counters would race or skew.
-            index = int.from_bytes(hashlib.sha256(target.encode()).digest()[:4], "big")
-            chosen = available[index % len(available)]
+            chosen = _balanced(available, target)
         else:
             raise ValueError("FLEET_WORKER_RUNTIME must be balanced, claude, or codex")
     if kind == "merge" and chosen == "claude" and claude_gate == "closed" \

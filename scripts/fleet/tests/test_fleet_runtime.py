@@ -160,9 +160,21 @@ class Routing(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "FLEET_REVIEW_FIRST_PASS_CLASS"):
             first_pass({"candidate_prs": [core]}, 902, env=env)
 
-    def test_unstamped_author_and_no_same_provider_fallback(self):
-        with self.assertRaisesRegex(ValueError, "unstamped"):
-            runtime.choose_runtime("review", {}, "review:engine:9", self.env)
+    def test_unstamped_review_falls_back_to_any_available_provider(self):
+        picks = {runtime.choose_runtime("review", {}, f"review:engine:{n}", self.env)
+                 for n in range(1, 100)}
+        self.assertEqual(picks, {"claude", "codex"})
+        for only in ("claude", "codex"):
+            env = dict(self.env, FLEET_RUNTIMES=only)
+            self.assertEqual(runtime.choose_runtime("review", {}, "review:engine:9", env), only)
+
+    def test_unstamped_review_ignores_runtime_pins(self):
+        record = {"labels": ["fleet:runtime-codex"]}
+        picks = {runtime.choose_runtime("review", record, f"review:engine:{n}", self.env)
+                 for n in range(1, 100)}
+        self.assertEqual(picks, {"claude", "codex"})
+
+    def test_stamped_review_with_no_opposite_provider_is_unavailable(self):
         self.env["FLEET_RUNTIMES"] = "claude"
         with self.assertRaisesRegex(ValueError, "unavailable"):
             runtime.choose_runtime("review", {"labels": ["fleet:author-claude"]},

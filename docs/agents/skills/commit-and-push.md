@@ -280,10 +280,9 @@ gh pr view <N> --repo <repo> --json labels \
 
 The PR is open only when the read-back prints exactly one of
 `fleet:author-claude` / `fleet:author-codex` beside the host label. A PR
-with no `fleet:author-*` label is invisible to the review lane: the
-cross-provider router refuses it on every tick (`route:review:…:
-unstamped PR`), the reviewer burns its claim budget on it and dispatches
-nothing, and the PR waits until a human stamps it by hand. The create-time
+with no `fleet:author-*` label loses the cross-provider preference: any
+available provider reviews it, so the same provider may review its own
+work. The create-time
 `--label` is only a head start; the stamp is authoritative and corrects a
 wrong guess. The label names the provider that made the change,
 amendments included; no Claude co-author trailer on Codex-authored work.
