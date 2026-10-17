@@ -270,6 +270,20 @@ class WorkflowParsing(unittest.TestCase):
         self.assertTrue(fts.declares_both_blocks(self.YAML))
         self.assertFalse(fts.declares_both_blocks("on:\n  push:\n    branches: [master]\n"))
 
+    def test_filter_paths_reads_the_runtime_coverage_list(self):
+        yaml = (
+            "jobs:\n"
+            "  changes:\n"
+            "    steps:\n"
+            "      - with:\n"
+            "          filters: |\n"
+            "            covered:\n"
+            "              - 'scripts/**'\n"
+            "              - 'ruff.toml'\n"
+        )
+        self.assertEqual(fts.filter_paths(yaml), ["scripts/**", "ruff.toml"])
+        self.assertEqual(fts.fleet_test_paths(yaml), {"covered": ["scripts/**", "ruff.toml"]})
+
 
 # ----------------------------------------------------------------------
 # Synthetic-tree integration
@@ -620,8 +634,10 @@ class CommittedTree(unittest.TestCase):
                      "cmake/run_header_checks_standalone.cmake"):
             self.assertIn(path, self.literals, path)
 
-    def test_the_derived_workflow_population_includes_fleet_tests_itself(self):
-        self.assertIn(".github/workflows/fleet-tests.yml", fts.covered_workflows(_REPO_ROOT))
+    def test_fleet_tests_uses_its_runtime_filter_instead_of_event_paths(self):
+        text = (_REPO_ROOT / ".github/workflows/fleet-tests.yml").read_text(encoding="utf-8")
+        self.assertIn("scripts/**", fts.filter_paths(text))
+        self.assertNotIn(".github/workflows/fleet-tests.yml", fts.covered_workflows(_REPO_ROOT))
 
 
 if __name__ == "__main__":

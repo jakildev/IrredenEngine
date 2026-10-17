@@ -253,6 +253,32 @@ def paths_list(text, section):
     return entries
 
 
+def filter_paths(text, name="covered"):
+    """The named dorny/paths-filter list, or [] when it is absent."""
+    entries = []
+    in_filter = False
+    for line in text.splitlines():
+        if re.match(rf"^            {re.escape(name)}:\s*$", line):
+            in_filter = True
+            continue
+        if not in_filter:
+            continue
+        if line.startswith("              - "):
+            entries.append(line[len("              - "):].strip().strip("'\""))
+            continue
+        if line and not line.startswith("              "):
+            break
+    return entries
+
+
+def fleet_test_paths(text):
+    """The fleet-tests coverage list, preferring its runtime filter."""
+    covered = filter_paths(text)
+    if covered:
+        return {"covered": covered}
+    return {block: paths_list(text, block) for block in _BLOCKS}
+
+
 def declares_both_blocks(text):
     """The both-blocks predicate: a workflow is in the sync suite's derived
     population exactly when it declares a `paths:` list under each block."""
@@ -349,10 +375,10 @@ def check(root, tracked):
     literals = discover_literal_subjects(root, tracked)
     workflows = covered_workflows(root)
     scan_root = read_scan_root(linter_text)
-    blocks = {block: paths_list(workflow_text, block) for block in _BLOCKS}
+    blocks = fleet_test_paths(workflow_text)
     for block, entries in blocks.items():
         if not entries:
-            raise SetupError(f"fleet-tests.yml declares no paths: list under {block}:")
+            raise SetupError(f"fleet-tests.yml declares no coverage list for {block}")
 
     findings = []
     for path in uncovered(literals, subjects):
@@ -369,11 +395,11 @@ def check(root, tracked):
         for subject in uncovered(subjects, entries):
             findings.append(
                 f"F3 {block} {subject}: registered subject missing from "
-                f"fleet-tests.yml's {block}: paths: list"
+                f"fleet-tests.yml's {block} coverage list"
             )
         if not covers_scan_root(entries, scan_root):
             findings.append(
-                f"F4 {block}: paths: list does not cover lint_python_registry.py's "
+                f"F4 {block}: coverage list does not cover lint_python_registry.py's "
                 f"_SCAN_ROOT ({scan_root}) — needs that tree's own recursive glob"
             )
 
