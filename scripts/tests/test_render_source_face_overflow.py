@@ -345,7 +345,7 @@ int main(){
 """
 
 
-def host_source(suffix, directory, enabled, mutation=None, cases=CASES):
+def host_source(suffix, directory, enabled, mutation=None, cases=CASES, query_stats=False):
     sampler = (SHADERS / directory / f"ir_sun_shadow_sample.{suffix}").read_text()
     layout = (SHADERS / directory / f"ir_sun_face_query_layout.{suffix}").read_text()
     geometry = (SHADERS / directory / f"ir_projected_face.{suffix}").read_text()
@@ -368,12 +368,20 @@ def host_source(suffix, directory, enabled, mutation=None, cases=CASES):
             "{0,0},{1,1},int(cascade)*kCascadeTexelCount,")
     if suffix == "metal":
         call += "sunDepthBuf,"
-    call += "maxThrow,surface,{0,0,0,1},{0,0,0})"
+    call += "maxThrow,surface,{0,0,0,1},{0,0,0}"
+    call += ",sunQueryStats)" if query_stats else ")"
     define = "#define IR_SUN_FACE_OVERFLOW_REFERENCE 1\n" if enabled else ""
+    if query_stats:
+        define += "#define IR_SUN_QUERY_STATS 1\n"
+        define += (SHADERS / directory / f"ir_sun_query_stats.{suffix}").read_text()
     code = PREAMBLE + define + constants[0] + "\n" + layout + helpers + body
     code += f"static_assert(IR_SUN_FACE_OVERFLOW_REFERENCE == {int(enabled)});\n"
+    if query_stats:
+        code += "SunQueryStats sunQueryStats{};\n"
     code += cases.replace("SAMPLE_CALL", call)
     return (code.replace("constant uint", "const uint")
+            .replace("inout SunQueryStats sunQueryStats", "SunQueryStats &sunQueryStats")
+            .replace("thread SunQueryStats &sunQueryStats", "SunQueryStats &sunQueryStats")
             .replace("device const uint *sunDepthBuf", "BoundBuffer& sunDepthBuf")
             .replace("float2", "vec2").replace("float3", "vec3")
             .replace("float4", "vec4").replace("int2", "ivec2"))

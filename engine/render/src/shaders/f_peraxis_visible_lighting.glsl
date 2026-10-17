@@ -5,6 +5,7 @@
 #include "ir_scatter_depth.glsl"
 #include "ir_scatter_visibility.glsl"
 #include "ir_per_axis_surface.glsl"
+#include "ir_sun_face_query_layout.glsl"
 #include "ir_sun_shadow_sample.glsl"
 #include "ir_world_surface_lighting.glsl"
 layout(binding = 4) uniform sampler2D surfaceAO;

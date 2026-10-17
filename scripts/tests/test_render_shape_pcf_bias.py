@@ -180,10 +180,10 @@ class ShapePcfBiasTest(unittest.TestCase):
                 "production": functions,
                 "shape_unbiased": _wrapper_mutation(
                     functions, "worldShapeSurfaceSunShadowFactor",
-                    "casterViewToWorld, kNormalBiasVoxels)", "casterViewToWorld, 0.0)"),
+                    "casterViewToWorld, kNormalBiasVoxels\n", "casterViewToWorld, 0.0\n"),
                 "surface_biased": _wrapper_mutation(
                     functions, "worldSurfaceSunShadowFactor",
-                    "casterViewToWorld, 0.0)", "casterViewToWorld, kNormalBiasVoxels)"),
+                    "casterViewToWorld, 0.0\n", "casterViewToWorld, kNormalBiasVoxels\n"),
                 "blend_far_tap_unbiased": functions.replace(
                     impl, _replace_last(impl, "pcfOffset\n",
                                         "sampleIndex == 1 ? pcfOffset * 0.0 : pcfOffset\n")),

@@ -8,6 +8,7 @@
 // FrameDataSun + the sun-depth buffer cascade lookup (worldSunShadowFactor) —
 // for the opt-in detached re-voxelize world-receive path. Shared with
 // c_compute_sun_shadow.
+#include "ir_sun_face_query_layout.metal"
 #include "ir_sun_shadow_sample.metal"
 // GPULightSource layout, light-volume extents, spotConeFactor, ACESFilm, plus
 // the FrameDataLightingToTrixel + LightVolumeParams UBO layouts this kernel and

@@ -66,11 +66,30 @@ void main() {
         );
     FragColor = vec4(visibility >= 0.999 ? vec3(0.0) : vec3(1.0, 0.0, 1.0), vColor.a);
 #elif IR_PER_AXIS_SURFACE_LIGHTING
+#if IR_SUN_QUERY_STATS
+    SunQueryStats sunQueryStats;
+    for (uint counter = 0u; counter < kSunQueryCounterCount; ++counter)
+        sunQueryStats.counts[counter] = 0u;
+#endif
     const vec3 position = perAxisFaceClosestPoint(vFaceOrigin, vFaceId, vQuadParam);
     // Overflow faces have no AO owner texel; their material uses AO 1.
     const float ao = vOwnerPixel.x < 0 ? 1.0 : texelFetch(surfaceAO, vOwnerPixel, 0).r;
     FragColor = vec4(worldSurfaceLighting(vColor.rgb, ao, position,
-                      faceOutwardNormal6(vFaceId), sunCasterViewToWorld, vFaceOrigin), vColor.a);
+                      faceOutwardNormal6(vFaceId), sunCasterViewToWorld, vFaceOrigin
+#if IR_SUN_QUERY_STATS
+            , sunQueryStats
+#endif
+    ), vColor.a);
+#if IR_SUN_QUERY_STATS
+    for (uint counter = 0u; counter < kSunQueryCounterCount; ++counter) {
+        const uint value = sunQueryStats.counts[counter];
+        if (value == 0u) continue;
+        const uint previous = atomicAdd(visibilityCodes[pixels + 3u + counter], value);
+        // The all-ones clear stores count minus one; reaching all-ones again overflows.
+        if (previous != 0xFFFFFFFFu && previous >= 0xFFFFFFFFu - value)
+            atomicExchange(visibilityCodes[pixels + 3u + kSunQueryCounterCount], 0u);
+    }
+#endif
 #else
     if (vDepthColorMode == -1) {
         FragColor = vec4(vColor.rgb * 0.4, 1.0);

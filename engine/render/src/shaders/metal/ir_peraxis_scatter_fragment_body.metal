@@ -66,13 +66,32 @@ fragment FragmentOut IR_PER_AXIS_FRAGMENT_NAME(
         );
     out.color = float4(visibility >= 0.999 ? float3(0.0) : float3(1.0, 0.0, 1.0), in.color.a);
 #elif IR_PER_AXIS_SURFACE_LIGHTING
+#if IR_SUN_QUERY_STATS
+    SunQueryStats sunQueryStats;
+    for (uint counter = 0u; counter < kSunQueryCounterCount; ++counter)
+        sunQueryStats.counts[counter] = 0u;
+#endif
     const float3 position = perAxisFaceClosestPoint(in.faceOrigin, in.faceId, in.quadParam);
     // Overflow faces have no AO owner texel; their material uses AO 1.
     const float ao = in.ownerPixel.x < 0 ? 1.0 : surfaceAO.read(uint2(in.ownerPixel)).r;
     out.color = float4(worldSurfaceLighting(in.color.rgb, ao, position,
                        faceOutwardNormal6(in.faceId), sunFrameData.sunCasterViewToWorld, in.faceOrigin,
                        lighting, volumeParams, sunFrameData, sunDepthBuf, lights,
-                       paletteLUT, lightVolume, lightVolumeId), in.color.a);
+                       paletteLUT, lightVolume, lightVolumeId
+#if IR_SUN_QUERY_STATS
+            , sunQueryStats
+#endif
+    ), in.color.a);
+#if IR_SUN_QUERY_STATS
+    for (uint counter = 0u; counter < kSunQueryCounterCount; ++counter) {
+        const uint value = sunQueryStats.counts[counter];
+        if (value == 0u) continue;
+        const uint previous = atomic_fetch_add_explicit(&visibilityCodes[pixels + 3u + counter], value, memory_order_relaxed);
+        // The all-ones clear stores count minus one; reaching all-ones again overflows.
+        if (previous != 0xFFFFFFFFu && previous >= 0xFFFFFFFFu - value)
+            atomic_store_explicit(&visibilityCodes[pixels + 3u + kSunQueryCounterCount], 0u, memory_order_relaxed);
+    }
+#endif
 #else
     if (in.depthColorMode == -1) {
         out.color = float4(in.color.rgb * 0.4f, 1.0f);
