@@ -567,10 +567,16 @@ acceptance limits for each step.
   incomplete lists occur in those fixtures. Reservation order can change the
   work counts without changing visibility. Next test more selective candidate
   indexing against build time, memory and incomplete-list rates, then time any
-  change with counters disabled. Consider delaying depth-coordinate
-  loads until the unchanged footprint test accepts only if native evidence shows
-  avoidable work; compilers may already do this. Coordinate shared sampler edits
-  with the separate analytical-box self-shadow work.
+  change with counters disabled. [Deferred depth loading was tested and rejected](../perf/sun-face-query-cost-followup/README.md):
+  source-level reads fall from ten to seven for misses, but the native fixture
+  demonstrates no GPU gain; production query code is restored. Twelve paired
+  captures remain RGB-identical. The same investigation deterministically
+  reproduces an unresolved index/query mismatch: the rounded closed-face query
+  accepts a receiver across a tile boundary where the unexpanded index omits the
+  face. Establish conservative producer/query coverage before finer indexing,
+  with rounding-aware bounds and executable tile-membership gates. This host
+  witness does not yet establish which visible artifacts it causes. Coordinate
+  shared sampler edits with the separate analytical-box self-shadow work.
 - [Bounded overflow reference](../perf/bounded-source-face-reference.md) isolates
   the dense analytical-box teeth: identical geometry and tile tables regain
   clean floor edges when incomplete tiles query the complete small face pool.

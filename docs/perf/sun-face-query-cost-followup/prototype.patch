@@ -1,0 +1,455 @@
+diff --git a/engine/render/src/shaders/ir_sun_face_query_layout.glsl b/engine/render/src/shaders/ir_sun_face_query_layout.glsl
+index 4ffd2458a..e70c3c285 100644
+--- a/engine/render/src/shaders/ir_sun_face_query_layout.glsl
++++ b/engine/render/src/shaders/ir_sun_face_query_layout.glsl
+@@ -45,8 +45,7 @@ bool sourceFaceQueryComplete(uint count) {
+     return count <= kSourceFaceTileQueryCapacity;
+ }
+ 
+-// Positive separation is a front hit, including conservative rounded boundaries.
+-float sourceFaceRaySeparation(vec2 sunUV, float sunZ, vec3 corner, vec3 edgeU, vec3 edgeV
++bool sourceFaceCoordinatesClosed(vec2 sunUV, vec2 corner, vec2 edgeU, vec2 edgeV, out vec2 uv
+ #if IR_SUN_QUERY_STATS
+     , inout SunQueryStats sunQueryStats
+ #endif
+@@ -56,9 +55,9 @@ float sourceFaceRaySeparation(vec2 sunUV, float sunZ, vec3 corner, vec3 edgeU, v
+ #if IR_SUN_QUERY_STATS
+         sunQueryStats.counts[kSunQueryFaceMisses] += 1u;
+ #endif
+-        return -1.0;
++        return false;
+     }
+-    const vec2 uv = projectedFaceCoordinates(
++    uv = projectedFaceCoordinates(
+         vec2(sunUV.x - corner.x, sunUV.y - corner.y),
+         vec2(edgeU.x, edgeU.y), vec2(edgeV.x, edgeV.y), determinant);
+     if (!projectedFaceContainsClosed(sunUV, vec2(corner.x, corner.y),
+@@ -66,12 +65,29 @@ float sourceFaceRaySeparation(vec2 sunUV, float sunZ, vec3 corner, vec3 edgeU, v
+ #if IR_SUN_QUERY_STATS
+         sunQueryStats.counts[kSunQueryFaceMisses] += 1u;
+ #endif
+-        return -1.0;
++        return false;
+     }
+     // An uncertain boundary hit must never extrapolate depth beyond the face.
+     const float u = uv.x < 0.0 ? 0.0 : (uv.x > 1.0 ? 1.0 : uv.x);
+     const float v = uv.y < 0.0 ? 0.0 : (uv.y > 1.0 ? 1.0 : uv.y);
+-    return sunZ - (corner.z + u * edgeU.z + v * edgeV.z);
++    uv = vec2(u, v);
++    return true;
++}
++
++// Positive separation is a front hit, including conservative rounded boundaries.
++float sourceFaceRaySeparation(vec2 sunUV, float sunZ, vec3 corner, vec3 edgeU, vec3 edgeV
++#if IR_SUN_QUERY_STATS
++    , inout SunQueryStats sunQueryStats
++#endif
++) {
++    vec2 uv = vec2(0.0, 0.0);
++    if (!sourceFaceCoordinatesClosed(sunUV, vec2(corner.x, corner.y),
++            vec2(edgeU.x, edgeU.y), vec2(edgeV.x, edgeV.y), uv
++#if IR_SUN_QUERY_STATS
++            , sunQueryStats
++#endif
++    )) return -1.0;
++    return sunZ - (corner.z + uv.x * edgeU.z + uv.y * edgeV.z);
+ }
+ 
+ #endif
+diff --git a/engine/render/src/shaders/ir_sun_shadow_sample.glsl b/engine/render/src/shaders/ir_sun_shadow_sample.glsl
+index 872f075c7..2ca0045c8 100644
+--- a/engine/render/src/shaders/ir_sun_shadow_sample.glsl
++++ b/engine/render/src/shaders/ir_sun_shadow_sample.glsl
+@@ -107,20 +107,31 @@ float sampleCascadeShadow(
+                         spill = sunDepthBuf[node + 1u];
+                     }
+                     const uint record = kSourceFaceRecordOffset + kSourceFaceRecordWords * faceIndex;
+-                    const vec3 corner = vec3(uintBitsToFloat(sunDepthBuf[record]), uintBitsToFloat(sunDepthBuf[record+1u]), uintBitsToFloat(sunDepthBuf[record+2u]));
+-                    const vec3 edgeU = vec3(uintBitsToFloat(sunDepthBuf[record+3u]), uintBitsToFloat(sunDepthBuf[record+4u]), uintBitsToFloat(sunDepthBuf[record+5u]));
+-                    const vec3 edgeV = vec3(uintBitsToFloat(sunDepthBuf[record+6u]), uintBitsToFloat(sunDepthBuf[record+7u]), uintBitsToFloat(sunDepthBuf[record+8u]));
++                    const vec2 corner = vec2(uintBitsToFloat(sunDepthBuf[record]), uintBitsToFloat(sunDepthBuf[record+1u]));
++                    const vec2 edgeU = vec2(uintBitsToFloat(sunDepthBuf[record+3u]), uintBitsToFloat(sunDepthBuf[record+4u]));
++                    const vec2 edgeV = vec2(uintBitsToFloat(sunDepthBuf[record+6u]), uintBitsToFloat(sunDepthBuf[record+7u]));
+                     const uint type = sunDepthBuf[record + 9u];
++                    float separation;
++                    if (type == 0u) {
++                        vec2 uv = vec2(0.0, 0.0);
++                        if (!sourceFaceCoordinatesClosed(sunUV, corner, edgeU, edgeV, uv
+ #if IR_SUN_QUERY_STATS
+-                    if (type != 0u) sunQueryStats.counts[kSunQueryShapeCandidates] += 1u;
++                                , sunQueryStats
+ #endif
+-                    const float separation = type == 0u
+-                        ? sourceFaceRaySeparation(sunUV, sunZ, corner, edgeU, edgeV
++                        )) continue;
++                        const float cornerZ = uintBitsToFloat(sunDepthBuf[record+2u]);
++                        const float edgeUZ = uintBitsToFloat(sunDepthBuf[record+5u]);
++                        const float edgeVZ = uintBitsToFloat(sunDepthBuf[record+8u]);
++                        separation = sunZ - (cornerZ + uv.x * edgeUZ + uv.y * edgeVZ);
++                    } else {
+ #if IR_SUN_QUERY_STATS
+-                            , sunQueryStats
++                        sunQueryStats.counts[kSunQueryShapeCandidates] += 1u;
+ #endif
+-                        )
+-                        : sourceShapeRaySeparation(sunUV, sunZ, type, corner, edgeU, edgeV);
++                        separation = sourceShapeRaySeparation(sunUV, sunZ, type,
++                            vec3(corner.x, corner.y, uintBitsToFloat(sunDepthBuf[record+2u])),
++                            vec3(edgeU.x, edgeU.y, uintBitsToFloat(sunDepthBuf[record+5u])),
++                            vec3(edgeV.x, edgeV.y, uintBitsToFloat(sunDepthBuf[record+8u])));
++                    }
+                     if (separation > kShadowBiasQuantNoise && separation < maxShadowThrow) {
+ #if IR_SUN_QUERY_STATS
+                         sunQueryStats.counts[kSunQueryBlocked] += 1u;
+diff --git a/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal b/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
+index b22332d2a..3d4d1c81a 100644
+--- a/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
++++ b/engine/render/src/shaders/metal/ir_sun_face_query_layout.metal
+@@ -31,8 +31,7 @@ inline bool sourceFaceQueryComplete(uint count) {
+     return count <= kSourceFaceTileQueryCapacity;
+ }
+ 
+-// Positive separation is a front hit, including conservative rounded boundaries.
+-inline float sourceFaceRaySeparation(float2 sunUV, float sunZ, float3 corner, float3 edgeU, float3 edgeV
++inline bool sourceFaceCoordinatesClosed(float2 sunUV, float2 corner, float2 edgeU, float2 edgeV, thread float2 &uv
+ #if IR_SUN_QUERY_STATS
+     , thread SunQueryStats &sunQueryStats
+ #endif
+@@ -42,9 +41,9 @@ inline float sourceFaceRaySeparation(float2 sunUV, float sunZ, float3 corner, fl
+ #if IR_SUN_QUERY_STATS
+         sunQueryStats.counts[kSunQueryFaceMisses] += 1u;
+ #endif
+-        return -1.0;
++        return false;
+     }
+-    const float2 uv = projectedFaceCoordinates(
++    uv = projectedFaceCoordinates(
+         float2(sunUV.x - corner.x, sunUV.y - corner.y),
+         float2(edgeU.x, edgeU.y), float2(edgeV.x, edgeV.y), determinant);
+     if (!projectedFaceContainsClosed(sunUV, float2(corner.x, corner.y),
+@@ -52,12 +51,29 @@ inline float sourceFaceRaySeparation(float2 sunUV, float sunZ, float3 corner, fl
+ #if IR_SUN_QUERY_STATS
+         sunQueryStats.counts[kSunQueryFaceMisses] += 1u;
+ #endif
+-        return -1.0;
++        return false;
+     }
+     // An uncertain boundary hit must never extrapolate depth beyond the face.
+     const float u = uv.x < 0.0 ? 0.0 : (uv.x > 1.0 ? 1.0 : uv.x);
+     const float v = uv.y < 0.0 ? 0.0 : (uv.y > 1.0 ? 1.0 : uv.y);
+-    return sunZ - (corner.z + u * edgeU.z + v * edgeV.z);
++    uv = float2(u, v);
++    return true;
++}
++
++// Positive separation is a front hit, including conservative rounded boundaries.
++inline float sourceFaceRaySeparation(float2 sunUV, float sunZ, float3 corner, float3 edgeU, float3 edgeV
++#if IR_SUN_QUERY_STATS
++    , thread SunQueryStats &sunQueryStats
++#endif
++) {
++    float2 uv = float2(0.0, 0.0);
++    if (!sourceFaceCoordinatesClosed(sunUV, float2(corner.x, corner.y),
++            float2(edgeU.x, edgeU.y), float2(edgeV.x, edgeV.y), uv
++#if IR_SUN_QUERY_STATS
++            , sunQueryStats
++#endif
++    )) return -1.0;
++    return sunZ - (corner.z + uv.x * edgeU.z + uv.y * edgeV.z);
+ }
+ 
+ #endif
+diff --git a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+index b35ee194a..1d3b2935f 100644
+--- a/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
++++ b/engine/render/src/shaders/metal/ir_sun_shadow_sample.metal
+@@ -106,20 +106,31 @@ inline float sampleCascadeShadow(
+                         spill = sunDepthBuf[node + 1u];
+                     }
+                     const uint record = kSourceFaceRecordOffset + kSourceFaceRecordWords * faceIndex;
+-                    const float3 corner = float3(as_type<float>(sunDepthBuf[record]), as_type<float>(sunDepthBuf[record+1u]), as_type<float>(sunDepthBuf[record+2u]));
+-                    const float3 edgeU = float3(as_type<float>(sunDepthBuf[record+3u]), as_type<float>(sunDepthBuf[record+4u]), as_type<float>(sunDepthBuf[record+5u]));
+-                    const float3 edgeV = float3(as_type<float>(sunDepthBuf[record+6u]), as_type<float>(sunDepthBuf[record+7u]), as_type<float>(sunDepthBuf[record+8u]));
++                    const float2 corner = float2(as_type<float>(sunDepthBuf[record]), as_type<float>(sunDepthBuf[record+1u]));
++                    const float2 edgeU = float2(as_type<float>(sunDepthBuf[record+3u]), as_type<float>(sunDepthBuf[record+4u]));
++                    const float2 edgeV = float2(as_type<float>(sunDepthBuf[record+6u]), as_type<float>(sunDepthBuf[record+7u]));
+                     const uint type = sunDepthBuf[record + 9u];
++                    float separation;
++                    if (type == 0u) {
++                        float2 uv = float2(0.0, 0.0);
++                        if (!sourceFaceCoordinatesClosed(sunUV, corner, edgeU, edgeV, uv
+ #if IR_SUN_QUERY_STATS
+-                    if (type != 0u) sunQueryStats.counts[kSunQueryShapeCandidates] += 1u;
++                                , sunQueryStats
+ #endif
+-                    const float separation = type == 0u
+-                        ? sourceFaceRaySeparation(sunUV, sunZ, corner, edgeU, edgeV
++                        )) continue;
++                        const float cornerZ = as_type<float>(sunDepthBuf[record+2u]);
++                        const float edgeUZ = as_type<float>(sunDepthBuf[record+5u]);
++                        const float edgeVZ = as_type<float>(sunDepthBuf[record+8u]);
++                        separation = sunZ - (cornerZ + uv.x * edgeUZ + uv.y * edgeVZ);
++                    } else {
+ #if IR_SUN_QUERY_STATS
+-                            , sunQueryStats
++                        sunQueryStats.counts[kSunQueryShapeCandidates] += 1u;
+ #endif
+-                        )
+-                        : sourceShapeRaySeparation(sunUV, sunZ, type, corner, edgeU, edgeV);
++                        separation = sourceShapeRaySeparation(sunUV, sunZ, type,
++                            float3(corner.x, corner.y, as_type<float>(sunDepthBuf[record+2u])),
++                            float3(edgeU.x, edgeU.y, as_type<float>(sunDepthBuf[record+5u])),
++                            float3(edgeV.x, edgeV.y, as_type<float>(sunDepthBuf[record+8u])));
++                    }
+                     if (separation > kShadowBiasQuantNoise && separation < maxShadowThrow) {
+ #if IR_SUN_QUERY_STATS
+                         sunQueryStats.counts[kSunQueryBlocked] += 1u;
+diff --git a/scripts/tests/test_render_cooperative_face_index.py b/scripts/tests/test_render_cooperative_face_index.py
+index 4caba9d6d..c87cf198d 100644
+--- a/scripts/tests/test_render_cooperative_face_index.py
++++ b/scripts/tests/test_render_cooperative_face_index.py
+@@ -186,6 +186,8 @@ class CooperativeFaceIndexTest(unittest.TestCase):
+                               .replace("constant FrameDataSun&", "const FrameDataSun&")
+                               .replace("device atomic_uint*", "atomic_uint*")
+                               .replace("threadgroup uint&", "std::atomic<uint>&")
++                              .replace("out vec2 uv", "vec2 &uv")
++                              .replace("thread float2 &uv", "vec2 &uv")
+                               .replace("float2", "vec2").replace("float3", "vec3")
+                               .replace("int2", "ivec2").replace(".xy", ".xy()"))
+                     path = Path(tmp)
+diff --git a/scripts/tests/test_render_detached_triangle_receiver.py b/scripts/tests/test_render_detached_triangle_receiver.py
+index 882266c5c..85e44ec18 100644
+--- a/scripts/tests/test_render_detached_triangle_receiver.py
++++ b/scripts/tests/test_render_detached_triangle_receiver.py
+@@ -245,7 +245,7 @@ def harness(backend):
+         ("ir_sun_projection", ("sunSpaceProject",)),
+         ("ir_projected_face", ("projectedFaceDeterminant", "projectedFaceCoordinates",
+                                "projectedFaceContainsClosed")),
+-        ("ir_sun_face_query_layout", ("sourceFaceRaySeparation",)),
++        ("ir_sun_face_query_layout", ("sourceFaceCoordinatesClosed", "sourceFaceRaySeparation")),
+     ):
+         text = (shaders / f"{filename}.{backend}").read_text()
+         for name in names:
+diff --git a/scripts/tests/test_render_impulse_shadow.py b/scripts/tests/test_render_impulse_shadow.py
+index b27802387..10df722df 100644
+--- a/scripts/tests/test_render_impulse_shadow.py
++++ b/scripts/tests/test_render_impulse_shadow.py
+@@ -165,15 +165,19 @@ float dot(vec3 a,vec3 b){return a.x*b.x+a.y*b.y+a.z*b.z;}
+                 ("ir_projected_face", ("projectedFaceDeterminant", "projectedFaceCoordinates",
+                                        "projectedFaceContainsClosed")),
+                 ("ir_sun_projection", ("sunSpaceProject",)),
+-                ("ir_sun_face_query_layout", ("sourceFaceRaySeparation",)),
++                ("ir_sun_face_query_layout", ("sourceFaceCoordinatesClosed",
++                                             "sourceFaceRaySeparation")),
+             ):
+                 shader = (shaders / f"{file}.{backend}").read_text()
+                 helpers += "\n".join(extract_function(shader, name) for name in names) + "\n"
+             bounds = re.search(
+                 r"if \((!projectedFaceContainsClosed[\s\S]*?)\) \{", helpers
+             ).group(1)
+-            unbounded = replace_once(extract_function(helpers, "sourceFaceRaySeparation"),
++            unbounded = replace_once(extract_function(helpers, "sourceFaceCoordinatesClosed"),
+                                      bounds, "false")
++            unbounded += "\n" + extract_function(helpers, "sourceFaceRaySeparation")
++            unbounded = unbounded.replace("sourceFaceCoordinatesClosed",
++                                          "unboundedSourceFaceCoordinatesClosed")
+             unbounded = unbounded.replace("sourceFaceRaySeparation",
+                                           "unboundedSourceFaceRaySeparation")
+             source += cpp(helpers + unbounded) + checks
+diff --git a/scripts/tests/test_render_mixed_source_shadow.py b/scripts/tests/test_render_mixed_source_shadow.py
+index d7b97674f..f62ef7f32 100644
+--- a/scripts/tests/test_render_mixed_source_shadow.py
++++ b/scripts/tests/test_render_mixed_source_shadow.py
+@@ -136,6 +136,8 @@ class MixedSourceShadowTest(unittest.TestCase):
+                 with self.subTest(backend=suffix, variant=variant):
+                     code = PREAMBLE + layout + helpers + MAIN.replace("SURFACE_LOOP", body)
+                     code = (code.replace("constant uint", "const uint")
++                            .replace("out vec2 uv", "vec2 &uv")
++                            .replace("thread float2 &uv", "vec2 &uv")
+                             .replace("float2", "vec2").replace("float3", "vec3"))
+                     with tempfile.TemporaryDirectory() as tmp:
+                         path = Path(tmp)
+diff --git a/scripts/tests/test_render_projected_face_boundary.py b/scripts/tests/test_render_projected_face_boundary.py
+index 513a426ce..41c412ec6 100644
+--- a/scripts/tests/test_render_projected_face_boundary.py
++++ b/scripts/tests/test_render_projected_face_boundary.py
+@@ -104,10 +104,12 @@ def query_source(suffix, mutation):
+     geometry = (directory / f"ir_projected_face.{suffix}").read_text()
+     source = layout.replace(f'#include "ir_projected_face.{suffix}"', geometry)
+     source = (source.replace("constant uint", "const uint")
++              .replace("out vec2 uv", "vec2 &uv")
++              .replace("thread float2 &uv", "vec2 &uv")
+               .replace("float2", "vec2").replace("float3", "vec3"))
+     if mutation in ("unbounded_u", "unbounded_v"):
+-        before, after = (r"\bu \* edgeU.z", "uv.x * edgeU.z") if mutation == "unbounded_u" else (
+-            r"\bv \* edgeV.z", "uv.y * edgeV.z")
++        before, after = (r"vec2\(u, v\)", "vec2(uv.x, v)") if mutation == "unbounded_u" else (
++            r"vec2\(u, v\)", "vec2(u, uv.y)")
+         source, count = re.subn(before, after, source)
+         if count != 1:
+             raise ValueError("depth mutation did not reach exactly one query")
+diff --git a/scripts/tests/test_render_source_face_index.py b/scripts/tests/test_render_source_face_index.py
+index 4e014d643..75558a9b9 100644
+--- a/scripts/tests/test_render_source_face_index.py
++++ b/scripts/tests/test_render_source_face_index.py
+@@ -414,6 +414,8 @@ class SourceFaceIndexTest(unittest.TestCase):
+                     shader = (shader.replace("constant uint", "const uint")
+                               .replace("constant FrameDataSun&", "const FrameDataSun&")
+                               .replace("device atomic_uint*", "atomic_uint*")
++                              .replace("out vec2 uv", "vec2 &uv")
++                              .replace("thread float2 &uv", "vec2 &uv")
+                               .replace("float2", "vec2").replace("float3", "vec3")
+                               .replace("int2", "ivec2").replace(".xy", ".xy()"))
+                     path = Path(temporary)
+diff --git a/scripts/tests/test_render_source_face_overflow.py b/scripts/tests/test_render_source_face_overflow.py
+index b41fe9aaf..956f43f7b 100644
+--- a/scripts/tests/test_render_source_face_overflow.py
++++ b/scripts/tests/test_render_source_face_overflow.py
+@@ -70,10 +70,13 @@ uint depth(float z){return (uint((z+512)*1024)<<8)|0x89u;}
+ struct BoundBuffer {
+     std::vector<uint> words;
+     uint recordOffset=0,recordEnd=0,readCount=0;
++    uint recordWordReads[10]{};
+     uint spillCounterOffset=0,spillCounterReads=0;
+     uint operator[](uint i){
+         if(i>=words.size()){std::cerr<<"out-of-bounds read\n";std::exit(90);}
+-        if(i>=recordOffset && i<recordEnd)++readCount;
++        if(i>=recordOffset && i<recordEnd){
++            ++readCount;++recordWordReads[(i-recordOffset)%10];
++        }
+         if(i==spillCounterOffset)++spillCounterReads;
+         return words[i];
+     }
+@@ -94,6 +97,7 @@ void reset(uint count,uint tileCount,uint cascade=0) {
+     sunDepthBuf.recordOffset=kSourceFaceRecordOffset;
+     sunDepthBuf.recordEnd=kSourceFaceSpillCounterOffset;
+     sunDepthBuf.readCount=0;
++    std::fill(std::begin(sunDepthBuf.recordWordReads),std::end(sunDepthBuf.recordWordReads),0);
+     sunDepthBuf.spillCounterOffset=kSourceFaceSpillCounterOffset;
+     sunDepthBuf.spillCounterReads=0;
+     sunDepthBuf.words[kSourceFaceHeaderOffset]=count;
+@@ -174,7 +178,7 @@ int main(){
+             fallback(cascade,empty,depth(1));
+             const bool exact=count<=kSourceFaceTileQueryCapacity;
+             require(sample({2.9f,3.5f},10,cascade)==(exact?0:1),"exact miss/fallback boundary");
+-            require(sunDepthBuf.readCount==(exact?count*kSourceFaceRecordWords:0),
++            require(sunDepthBuf.readCount==(exact?count*7u:0),
+                     "bounded no-hit record reads");
+             fallback(cascade,depth(2),depth(1));
+             require(sample({2.9f,3.5f},10,cascade)==1,"preserve other surface layer");
+@@ -190,7 +194,7 @@ int main(){
+         reset(65537,64,cascade);fill(64,tapOnly);
+         fallback(cascade,empty,depth(1));
+         require(sample({2.9f,3.5f},10,cascade)==0,"complete tile in exhausted pool");
+-        require(sunDepthBuf.readCount==64*kSourceFaceRecordWords,"complete tile uses bounded list");
++        require(sunDepthBuf.readCount==64*7u,"complete tile uses bounded list");
+     }
+     // Unrelated records must not change a complete local spill query.
+     for(uint total:{257u,65537u}){
+@@ -380,6 +384,8 @@ def host_source(suffix, directory, enabled, mutation=None, cases=CASES, query_st
+         code += "SunQueryStats sunQueryStats{};\n"
+     code += cases.replace("SAMPLE_CALL", call)
+     return (code.replace("constant uint", "const uint")
++            .replace("out vec2 uv", "vec2 &uv")
++            .replace("thread float2 &uv", "vec2 &uv")
+             .replace("inout SunQueryStats sunQueryStats", "SunQueryStats &sunQueryStats")
+             .replace("thread SunQueryStats &sunQueryStats", "SunQueryStats &sunQueryStats")
+             .replace("device const uint *sunDepthBuf", "BoundBuffer& sunDepthBuf")
+diff --git a/scripts/tests/test_render_source_face_query.py b/scripts/tests/test_render_source_face_query.py
+index 80a587e3e..7d9f1a0d1 100644
+--- a/scripts/tests/test_render_source_face_query.py
++++ b/scripts/tests/test_render_source_face_query.py
+@@ -22,6 +22,8 @@ class SourceFaceQueryTest(unittest.TestCase):
+                             f"ir_projected_face.{suffix}").read_text()
+                 shader = shader.replace(f'#include "ir_projected_face.{suffix}"', geometry)
+                 shader = (shader.replace("constant uint", "const uint")
++                          .replace("out vec2 uv", "vec2 &uv")
++                          .replace("thread float2 &uv", "vec2 &uv")
+                           .replace("float2", "vec2").replace("float3", "vec3"))
+                 names = re.findall(r"const uint (kSourceFace\w+) =", shader)
+                 checks = "\n".join(f"static_assert({n} == IRPrefab::SunShadow::{n});"
+diff --git a/scripts/tests/test_render_sun_query_stats.py b/scripts/tests/test_render_sun_query_stats.py
+index 419065d85..0203d6166 100644
+--- a/scripts/tests/test_render_sun_query_stats.py
++++ b/scripts/tests/test_render_sun_query_stats.py
+@@ -16,6 +16,14 @@ void clearStats(){
+     sunQueryStats = {};
+ #endif
+     sunDepthBuf.readCount=0;
++    std::fill(std::begin(sunDepthBuf.recordWordReads),std::end(sunDepthBuf.recordWordReads),0);
++}
++void expectReads(uint visits,uint depthVisits){
++    require(sunDepthBuf.readCount==visits*7+depthVisits*3,"candidate word reads");
++    for(uint word=0;word<10;++word)
++        require(sunDepthBuf.recordWordReads[word]==
++                    (word==2||word==5||word==8?depthVisits:visits),
++                "only accepted footprints read depth words");
+ }
+ void expect(std::initializer_list<uint> expected,const char* label){
+ #if IR_SUN_QUERY_STATS
+@@ -49,13 +57,13 @@ int main(){
+         ordered(6,cascade);
+         require(sample({2.9f,3.5f},10,cascade)==1,"final blocker result");
+         expect({1,1,6,2,0,1,6,0,0,0},"footprint misses versus depth rejection");
+-        require(sunDepthBuf.readCount==6*kSourceFaceRecordWords,"six candidate reads");
++        expectReads(6,4);
+ 
+         sunDepthBuf.words[tileBase(cascade)+1]=5;
+         clearStats();
+         require(sample({2.9f,3.5f},10,cascade)==1,"first blocker result");
+         expect({1,1,1,0,0,1,1,0,0,0},"first blocker early exit");
+-        require(sunDepthBuf.readCount==kSourceFaceRecordWords,"early exit skips later records");
++        expectReads(1,1);
+         require(sample({2.9f,3.5f},10,cascade)==1,"repeated blocker result");
+         expect({2,2,2,0,0,2,2,0,0,0},"additive receiver counters");
+ 
+@@ -64,17 +72,20 @@ int main(){
+         writeFace(self);writeFace(tooFar);ordered(5,cascade);
+         require(sample({2.9f,3.5f},10,cascade)==0,"exhausted query result");
+         expect({1,1,5,2,0,0,0,1,0,0},"exhausted list");
++        expectReads(5,3);
+ 
+         for(uint count:{64u,65u,256u}){
+             reset(count,count,cascade);fill(count,miss);ordered(count,cascade);
+             require(sample({2.9f,3.5f},10,cascade)==0,"bounded spill miss result");
+             expect({1,1,count,count,0,0,0,1,0,0},"inline and spill visits");
++            expectReads(count,0);
+             if(count>64){
+                 const uint firstSpill=kSourceFaceRecordOffset+(count-1)*kSourceFaceRecordWords;
+                 sunDepthBuf.words[firstSpill+3]=floatBitsToUint(1);
+                 clearStats();
+                 require(sample({2.9f,3.5f},10,cascade)==1,"spill blocker result");
+                 expect({1,1,65,64,0,1,65,0,0,0},"first spill blocker visits");
++                expectReads(65,1);
+             }
+         }
+ 
+@@ -115,7 +126,7 @@ int main(){
+         sunDepthBuf.words[kSourceFaceRecordOffset+kSourceFaceRecordWords+9]=2;
+         require(sample({2.9f,3.5f},10,cascade)==1,"analytic blocker result");
+         expect({1,1,2,0,2,1,2,0,0,0},"analytic classification excludes face misses");
+-        require(sunDepthBuf.readCount==2*kSourceFaceRecordWords,"analytic early exit");
++        expectReads(2,2);
+     }
+     std::cout<<"deterministic query counters passed\n";
+ }
+@@ -190,6 +201,19 @@ class SunQueryStatsTest(unittest.TestCase):
+                     self.assertNotEqual(run.returncode, 0, "missing counter escaped controls")
+                     self.assertIn(" counter ", run.stderr)
+ 
++    def test_footprint_misses_never_read_depth_words(self):
++        for suffix, directory in (("glsl", ""), ("metal", "metal/")):
++            for word in (2, 5, 8):
++                with self.subTest(backend=suffix, depth_word=word):
++                    source = stats_source(suffix, directory)
++                    anchor = "if (!sourceFaceCoordinatesClosed(sunUV, corner, edgeU, edgeV, uv"
++                    self.assertEqual(source.count(anchor), 1)
++                    mutated = source.replace(
++                        anchor, f"(void)sunDepthBuf[record+{word}u];\n" + anchor)
++                    run = self.compile_and_run(mutated)
++                    self.assertNotEqual(run.returncode, 0, "eager depth read escaped controls")
++                    self.assertIn("candidate word reads", run.stderr)
++
+     def test_disabled_specialization_removes_counter_state(self):
+         for suffix, directory in (("glsl", ""), ("metal", "metal/")):
+             with self.subTest(backend=suffix):

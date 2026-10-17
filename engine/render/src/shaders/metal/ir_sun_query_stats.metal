@@ -1,5 +1,5 @@
-#ifndef IR_SUN_QUERY_STATS_H
-#define IR_SUN_QUERY_STATS_H
+#ifndef IR_SUN_QUERY_STATS_INCLUDED
+#define IR_SUN_QUERY_STATS_INCLUDED
 
 constant uint kSunQueryCascades = 0u;
 constant uint kSunQueryIndexed = 1u;
