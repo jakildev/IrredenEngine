@@ -36,6 +36,7 @@ streaming design: [`docs/design/world-streaming.md`](../../docs/design/world-str
 
 `gameLoop()`: `executePipeline(INPUT)` → `executePipeline(UPDATE)` while
 `TimeManager::shouldUpdate()` → `executePipeline(RENDER)` → swap + pacing.
+One frame is `runMainLoopFrame` (`world/main_loop_frame.hpp`); a hand-off that lost its gpu lease stops it and the loop ([contract](../../docs/design/engine-hand-off.md)).
 
 ## Lua wiring
 

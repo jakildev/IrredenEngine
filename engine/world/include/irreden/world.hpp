@@ -15,8 +15,10 @@
 #include <irreden/time/time_manager.hpp>
 #include <irreden/video/video_manager.hpp>
 #include <irreden/world/config.hpp>
+#include <irreden/world/hand_off.hpp>
 #include <sol/sol.hpp>
 #include <functional>
+#include <memory>
 #include <optional>
 #include <vector>
 
@@ -45,6 +47,11 @@ class World {
     void runScript(const char *fileName);
     void enableFrameTiming(bool enabled);
     int entityCountOverride();
+    /// Blocks the main thread in a child run (`IREngine.handOff`); returns
+    /// unsupported without a platform. A lost GPU lease ends the loop before
+    /// another update or render.
+    HandOffResult handOff(const HandOffRequest &request);
+    void setHandOffPlatform(std::unique_ptr<HandOffPlatform> platform);
 
     // void setPlayer(const IREntity::EntityId& player);
     // void setCameraPosition3D(const vec3& position);
@@ -77,6 +84,8 @@ class World {
     bool m_startRecordingOnFirstInput = false;
     bool m_hasHandledFirstInput = false;
     uint32_t m_maxUpdateTicksPerFrame = 8;
+    std::unique_ptr<HandOffPlatform> m_handOffPlatform;
+    bool m_handOffLeaseLost = false;
 
     // Agent-readable profiling: frame timing accumulation
     bool m_frameTimingEnabled = false;
@@ -88,6 +97,8 @@ class World {
     // entity! I have tried this before btw but wasnt ready
     // EntityHandle m_worldEngine;
     // EntityHandle m_worldGame;
+    struct FrameStages;
+
     void initEngineSystems();
     void initIROutputSystems();
     void initIRInputSystems();

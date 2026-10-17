@@ -31,6 +31,9 @@ std::string formatNumberedFilename(
 /// re-derive the getenv-null-and-empty check.
 bool envFlagSet(const char *name);
 
+/// The env var's value, or empty when it is unset or empty.
+std::string envString(const char *name);
+
 } // namespace IRUtility
 
 #endif /* IR_UTILITY_PATH_UTILS_H */

@@ -31,6 +31,16 @@
 //   * shot 5 moves onto the `IRGui.makeHitRegion` row, clicks it and moves
 //     off → LUA_ROW_REGION PASS (the region's onHover, onClick and onUnhover
 //     ran once each, in that order, with the region's id).
+//
+// Hand-off fixture (opt-in; absent, the demo is unchanged):
+// `--hand-off-fixture button` adds a HAND OFF button whose onClick calls
+// `IREngine.handOff` to run this demo's GUI-test take as a child, and logs
+// `LUA_WIDGETS HANDOFF before` / `resumed` with the render frame and engine
+// tick (equal across the pair: the loop did not iterate while handed off).
+// `auto` also fires it 30 ticks in and closes the window 30 ticks after it
+// resumes, so `fleet-run IRLuaWidgetsDemo --hand-off-fixture auto` proves the
+// round trip unattended. Outside ir-run the call logs one notice and returns
+// ok=false, supported=false.
 
 #include <irreden/ir_engine.hpp>
 #include <irreden/ir_entity.hpp>
@@ -39,6 +49,7 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_time.hpp>
 #include <irreden/ir_video.hpp>
+#include <irreden/ir_window.hpp>
 
 // Systems composed into the pipelines (visible so createSystem<N> can
 // instantiate at the call sites).
@@ -439,6 +450,12 @@ void initSystems();
 
 int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: lua_widgets");
+    IREngine::args().enumValue(
+        "--hand-off-fixture",
+        "Add the IREngine.handOff fixture: off | button | auto",
+        {"off", "button", "auto"},
+        "off"
+    );
     registerLuaBindings();
     IREngine::init(argc, argv, "config.lua");
     IRLuaWidgets::g_autoWarmupFrames = IREngine::args().autoScreenshotWarmupFrames();
@@ -476,6 +493,11 @@ void registerLuaBindings() {
             };
         lua["IRTest"]["onClickFired"] = []() { IRLuaWidgets::g_luaOnClickFired = true; };
         lua["IRTest"]["onPollFired"] = []() { IRLuaWidgets::g_pollWasClickedSeen = true; };
+        lua["IRTest"]["handOffFixture"] = []() {
+            return IREngine::args().getEnum("--hand-off-fixture");
+        };
+        lua["IRTest"]["engineTick"] = []() { return static_cast<lua_Integer>(IRTime::tick()); };
+        lua["IRTest"]["closeWindow"] = []() { IRWindow::closeWindow(); };
         lua["IRTest"]["setRowRegion"] = [](lua_Integer region) {
             IRLuaWidgets::g_rowRegion = static_cast<IREntity::EntityId>(region);
         };
