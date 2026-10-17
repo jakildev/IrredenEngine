@@ -32,7 +32,8 @@ Design log, findings and the authoring-session history:
   the selected part's private canvas while rotated and private-canvas parts stay
   outside the axis-aligned edit pick, `part_sizes` creates two parts of different extents and holds
   the mirror and loft tools to them, `part_gizmo_reach` drags a part's gizmo after a bake at its pivot,
-  a camera turn, and on a turned copy, and `part_ring_turn` turns a part about each rotate ring's axis.
+  a camera turn, and on a turned copy, and `part_ring_turn` turns a part about each rotate ring's axis
+  after a dimmed / transform-mode idle pair on the same gizmo texels.
 - `python3 scripts/gui-verify.py IRVoxelEditor -- --module <dir>
   --module-session <name>` — one session registered by a creation module.
   `test/module` registers `test_parts`, `test_recipe_attach`, `test_radius`,
@@ -72,9 +73,10 @@ from an edit path.
   `C_EditorReference` and is passed through even when drawn in front; SDF
   shapes are left out of the edit pick wholesale (a shape hit has no face). A
   new reference voxel set gets the tag at creation, or it is editable.
-- **A gizmo handle owns exactly the pixels it is drawn on**
-  (`cursorOnGizmoHandle()`, the GPU entity-id readback). A click beside a
-  handle reaches the scene.
+- **Gizmo handles take clicks only in transform mode** (G; off at start, so
+  joint placement and FK posing need it too). Outside it they draw dimmed and a
+  click on one edits the scene beneath. In it a handle owns exactly the pixels
+  it is drawn on (`cursorOnGizmoHandle()`, the GPU entity-id readback).
 - A voxel's underside is never visible from the iso camera; Alt places on the
   far side of the picked face. That is a fact of the view, not of the pick.
 
@@ -141,14 +143,14 @@ render, because the aim and the pick share one screen mapping.
   not teach the model a rule the pick does not have.
 - A segment's assertions evaluate once, after all of its events. Arm a
   pre-click check in its own segment.
-- Entity sessions author on a bare stage; one that opts into `Builder::withReferenceFurniture()`
-  keeps its own aims off gizmo pixels (the model does not know where handles are drawn). A selected
-  part's gizmo covers a first-write blob at the session zoom: paint it at `detail::kPartPaintZoom`.
+- Entity sessions author on a bare stage. A session enters transform mode
+  (`toggleTransformMode`) only around its gizmo drags and leaves it before
+  painting: the model does not know where handles are drawn.
 - A new session is four edits: `Session::Id`, `idFromName`, `Session::build`,
   and the `--gui-session` enum list in `main()`.
-- A button left down at a segment's end stays down into the next: `holdBox`
-  ends a segment with the drag held, and `releaseBox` commits it in a later
-  one. `expectFillGhost` reads the texels the ghost owns, and a ghost inside
+- A button left down at a segment's end stays down into the next: `holdBox` /
+  `holdPartGizmo` end a segment with the drag held, and `releaseBox` /
+  `releasePartGizmo` end it in a later one. `expectFillGhost` reads the texels the ghost owns, and a ghost inside
   the voxels an erase drag would carve owns none.
 - `Session::Builder` is also the Lua authoring ABI. Adding or changing a public
   builder operation requires the matching `IREditor.registerSession` binding,

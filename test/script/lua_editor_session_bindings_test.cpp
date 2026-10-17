@@ -22,6 +22,8 @@ IR_SESSION_PREDICATE_STUB(evaluateCanvasCountCheck)
 IR_SESSION_PREDICATE_STUB(evaluateRotationModeCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartYawCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartTurnAxisCheck)
+IR_SESSION_PREDICATE_STUB(evaluateGizmoDragCheck)
+IR_SESSION_PREDICATE_STUB(evaluateGizmoTexelCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartSpinCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartAnchorCheck)
 IR_SESSION_PREDICATE_STUB(evaluatePartModeDropdownCheck)
@@ -233,6 +235,7 @@ TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
         s:chordKey(IRInput.Key.LEFT_CONTROL, IRInput.Key.S)
         s:toggleEraseMode()
         s:toggleEraseMode()
+        s:toggleTransformMode()
         s:enableSymmetry(false, false, false)
         s:addLayer()
         s:selectPrevLayer()
@@ -258,6 +261,8 @@ TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
         s:setPartSize({8, 8, 8})
         s:addVoxelPart()
         s:dragPartGizmo({0, 0, 0}, {1, 0, 0}, {1, 0, 0})
+        s:holdPartGizmo({1, 0, 0}, {0, 0, 0}, {-1, 0, 0})
+        s:releasePartGizmo()
         s:selectPartMode(0)
         s:bakeSphere(1.9)
         s:nextPart()
@@ -304,6 +309,9 @@ TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
         s:expectPickMatchesRender("pick_render")
         s:expectFillGhost({10, 6, 14}, {13, 6, 14}, "fill_ghost")
         s:expectNoFillGhost("no_fill_ghost")
+        s:expectGizmoDragActive(false, "gizmo_drag")
+        s:expectGizmoHandleTexels("gizmo_texels")
+        s:expectGizmoHandleTexelsUnchanged("gizmo_texels_unchanged")
         s:expectSliderValue(IREditor.SliderTarget.FPS, 12, 1, "slider")
         s:expectPartGated(0, false, -1, "part_gated")
         s:expectPreviewGated(false, -1, "preview_gated")
@@ -323,7 +331,7 @@ TEST_F(LuaEditorSessionBindingsTest, EveryBuilderMethodForwardsThroughLua) {
     EXPECT_TRUE(recipe.ok()) << (recipe.errors_.empty() ? "" : recipe.errors_.front());
 }
 
-TEST_F(LuaEditorSessionBindingsTest, HeldBoxNeedsExactlyOneRelease) {
+TEST_F(LuaEditorSessionBindingsTest, HeldButtonNeedsExactlyOneRelease) {
     struct Case {
         const char *script_;
         const char *error_;
@@ -335,6 +343,19 @@ TEST_F(LuaEditorSessionBindingsTest, HeldBoxNeedsExactlyOneRelease) {
          "holdBox while a box is held"},
         {"session:holdBox({10, 6, 14}, {13, 6, 14}); session:dragBox({10, 4, 14}, {13, 4, 14})",
          "dragBox while a box is held"},
+        {"session:addVoxelPart(); session:holdPartGizmo({0, 0, 0}, {1, 0, 0}, {1, 0, 0})",
+         "ends with a gizmo held"},
+        {"session:releasePartGizmo()", "releasePartGizmo with no gizmo held"},
+        {"session:holdPartGizmo({0, 0, 0}, {1, 0, 0}, {1, 0, 0})",
+         "holdPartGizmo needs an entity-scene part"},
+        {"session:addVoxelPart(); session:holdPartGizmo({0, 0, 0}, {1, 0, 0}, {1, 0, 0}); "
+         "session:holdBox({10, 6, 14}, {13, 6, 14})",
+         "holdBox while a gizmo is held"},
+        {"session:holdBox({10, 6, 14}, {13, 6, 14}); "
+         "session:dragPartGizmo({0, 0, 0}, {1, 0, 0}, {1, 0, 0})",
+         "dragPartGizmo while a button is held"},
+        {"session:expectGizmoHandleTexelsUnchanged('unchanged')",
+         "no expectGizmoHandleTexels before it"},
     };
     for (const Case &testCase : cases) {
         Builder builder("held", IRMath::ivec3(16), IRMath::vec3(-8.0f));
@@ -448,6 +469,7 @@ TEST_F(LuaEditorSessionBindingsTest, RejectsEveryArgumentFamilyAndNonComparableF
         "session:tapKey(9999)",
         "session:expectRotationMode(0, 9999, 'bad')",
         "session:expectPartTurnAxis(0, {0,1}, 10, 'bad')",
+        "session:holdPartGizmo({0,0,0}, {1,0}, {1,0,0})",
         "session:expectPartAnchor(0, 9999, 'bad')",
         "session:selectPartMode(9999)",
         "session:expectPartModeDropdown(9999, 'bad')",

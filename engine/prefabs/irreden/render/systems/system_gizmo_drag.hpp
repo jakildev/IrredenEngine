@@ -21,6 +21,10 @@ namespace IRSystem {
 // gets its C_LocalTransform / accumulated rotation / accumulated scale
 // updated until the mouse button releases.
 //
+// `enabled_` (default true) gates the whole state machine: disabled, no drag
+// starts, and an active one ends where it is, exactly as a mouse-up would
+// (the anchor keeps its last applied transform; endTick logs the release).
+//
 // Pipeline: INPUT, after GIZMO_HOVER. Mutates anchor
 // `C_LocalTransform::translation_` (translate) and
 // `C_LocalTransform::rotation_` (rotate; FK pose editing reads
@@ -84,6 +88,8 @@ template <> struct System<GIZMO_DRAG> {
     float accumScaleUniform_ = 1.0f;
     IRMath::vec3 accumScalePerAxis_ = IRMath::vec3(1.0f);
 
+    bool enabled_ = true;
+
     // Per-frame input state.
     bool mouseLeftPressedThisFrame_ = false;
     bool mouseLeftReleasedThisFrame_ = false;
@@ -131,13 +137,16 @@ template <> struct System<GIZMO_DRAG> {
         mouseScreen_ = IRInput::getMousePositionScreen();
         mouseCanvasIso_ = IRRender::mousePosition2DIsoWorldRender();
 
-        if (dragHandle_ != IREntity::kNullEntity && !mouseLeftDown_) {
-            // Release on previous frame's HELD slipping to RELEASED+up.
+        if (dragHandle_ != IREntity::kNullEntity && (!mouseLeftDown_ || !enabled_)) {
+            // Release on previous frame's HELD slipping to RELEASED+up, or
+            // on the gate closing mid-drag.
             dragHandle_ = IREntity::kNullEntity;
         }
     }
 
     void tick(IREntity::EntityId id, IRComponents::C_GizmoHandle &handle) {
+        if (!enabled_)
+            return;
         // 1) Drag-start: this handle is hovered + mouse just pressed + no other drag.
         if (dragHandle_ == IREntity::kNullEntity && mouseLeftPressedThisFrame_ && handle.hover_ &&
             handle.anchorEntity_ != IREntity::kNullEntity) {

@@ -141,6 +141,7 @@
 #include <optional>
 #include <queue>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -360,6 +361,22 @@ SymmetryState g_symmetry;
 // the carve primitive the session-authoring recipes (Part 2c) need. Right-click
 // single-voxel erase is unchanged (always erases regardless of this mode).
 bool g_eraseMode = false;
+
+// Transform mode. Gizmo handles take clicks only while it is ON. Outside it
+// GIZMO_HOVER and GIZMO_DRAG are gated off, the handles draw dimmed, and a click
+// on a handle's pixels edits the scene beneath it. The gate covers every handle:
+// a part's move and rotate gizmo and the starter rig's joint gizmos, so J-mode
+// joint placement and FK posing need it too. Toggled with G; starts OFF.
+bool g_transformMode = false;
+IRSystem::SystemId g_gizmoHoverSystem = IRSystem::kNullSystemId;
+IRSystem::SystemId g_gizmoDragSystem = IRSystem::kNullSystemId;
+
+void setTransformMode(bool on) {
+    using IRSystem::System;
+    g_transformMode = on;
+    IRSystem::getSystemParams<System<IRSystem::GIZMO_HOVER>>(g_gizmoHoverSystem)->enabled_ = on;
+    IRSystem::getSystemParams<System<IRSystem::GIZMO_DRAG>>(g_gizmoDragSystem)->enabled_ = on;
+}
 
 struct RotateParams {
     bool firstRotFrame_ = true;
@@ -2811,22 +2828,33 @@ namespace Session {
 constexpr float kPickDepthAgreement = 0.75f;
 
 // Calls visit(texel, flat index) for every texel of @p canvas whose entity id
-// is @p entity: the texels that entity is the nearest surface on.
-template <typename Visit>
-void forEachTexelOwnedBy(
-    const C_TriangleCanvasTextures &canvas, IREntity::EntityId entity, Visit &&visit
-) {
+// @p accepts: the texels such an entity is the nearest surface on.
+template <typename Accepts, typename Visit>
+void forEachTexelWhere(const C_TriangleCanvasTextures &canvas, Accepts &&accepts, Visit &&visit) {
     std::vector<IRMath::uvec2> ids;
     canvas.readEntityIdCarriers(ids);
     for (int y = 0; y < canvas.size_.y; ++y) {
         for (int x = 0; x < canvas.size_.x; ++x) {
             const std::size_t texel = static_cast<std::size_t>(y) * canvas.size_.x + x;
-            if (static_cast<IREntity::EntityId>(IRRender::decodeCarrierEntityId(ids[texel])) ==
-                entity) {
+            if (accepts(
+                    static_cast<IREntity::EntityId>(IRRender::decodeCarrierEntityId(ids[texel]))
+                )) {
                 visit(IRMath::ivec2(x, y), texel);
             }
         }
     }
+}
+
+// The texels @p entity is the nearest surface on.
+template <typename Visit>
+void forEachTexelOwnedBy(
+    const C_TriangleCanvasTextures &canvas, IREntity::EntityId entity, Visit &&visit
+) {
+    forEachTexelWhere(
+        canvas,
+        [entity](IREntity::EntityId id) { return id == entity; },
+        std::forward<Visit>(visit)
+    );
 }
 
 // The whole-frame form of the picking contract: every main-canvas texel that
@@ -3145,6 +3173,45 @@ bool evaluatePartYawCheck(const void *context, std::string &actual) {
     actual = "yaw=" + std::to_string(IRMath::wrapAngleTwoPi(yaw) * kDegreesPerRadian) +
              " want=" + std::to_string(check.expectedDegrees_);
     return IRMath::abs(off) <= check.toleranceDegrees_;
+}
+
+bool evaluateGizmoDragCheck(const void *context, std::string &actual) {
+    const GizmoDragCheck &check = *static_cast<const GizmoDragCheck *>(context);
+    const IREntity::EntityId handle =
+        IRSystem::getSystemParams<IRSystem::System<IRSystem::GIZMO_DRAG>>(g_gizmoDragSystem)
+            ->dragHandle_;
+    const bool active = handle != IREntity::kNullEntity;
+    actual = std::string(active ? "drag=" + std::to_string(handle) : "no-drag") +
+             " transformMode=" + (g_transformMode ? "ON" : "OFF");
+    return active == check.expectActive_;
+}
+
+// Reads one gizmo handle census from the main canvas's entity ids. The texels
+// are recorded on the check itself, so a later check can name it as baseline.
+bool evaluateGizmoTexelCheck(const void *context, std::string &actual) {
+    const GizmoTexelCheck &check = *static_cast<const GizmoTexelCheck *>(context);
+    const auto &canvas =
+        IREntity::getComponent<C_TriangleCanvasTextures>(IRRender::getActiveCanvasEntity());
+    std::unordered_map<IREntity::EntityId, bool> isHandle;
+    check.texels_.clear();
+    forEachTexelWhere(
+        canvas,
+        [&isHandle](IREntity::EntityId id) {
+            if (id == IREntity::kNullEntity)
+                return false;
+            const auto [it, inserted] = isHandle.try_emplace(id, false);
+            if (inserted)
+                it->second =
+                    IREntity::getComponentOptional<IRComponents::C_GizmoHandle>(id).has_value();
+            return it->second;
+        },
+        [&check](IRMath::ivec2, std::size_t flat) { check.texels_.push_back(flat); }
+    );
+    actual = "texels=" + std::to_string(check.texels_.size());
+    if (check.baseline_ == nullptr)
+        return !check.texels_.empty();
+    actual += " baseline=" + std::to_string(check.baseline_->texels_.size());
+    return !check.texels_.empty() && check.texels_ == check.baseline_->texels_;
 }
 
 bool evaluatePartTurnAxisCheck(const void *context, std::string &actual) {
@@ -4298,6 +4365,9 @@ void initSystems() {
                 if (sym.rotationalOrder_ > 1) {
                     status += " | ROT " + std::to_string(sym.rotationalOrder_);
                 }
+                if (IRVoxelEditor::g_transformMode) {
+                    status = "TRANSFORM | " + status;
+                }
                 IRPrefab::Widget::setLabelText(IRVoxelEditor::g_fillModeLabel, std::move(status));
             }
 
@@ -4337,9 +4407,11 @@ void initSystems() {
                 }
             }
 
-            // A gizmo handle under the cursor owns the click, the same way a
-            // widget does: GIZMO_DRAG starts its drag on this press.
-            overWidget = overWidget || IRVoxelEditor::cursorOnGizmoHandle();
+            // In transform mode a gizmo handle under the cursor owns the click,
+            // the same way a widget does: GIZMO_DRAG starts its drag on this
+            // press. Outside it the click passes through to the scene.
+            overWidget = overWidget ||
+                         (IRVoxelEditor::g_transformMode && IRVoxelEditor::cursorOnGizmoHandle());
 
             const bool inBoneMode = IRVoxelEditor::g_bonePaint.active_;
             const std::uint8_t placeBoneId =
@@ -4901,6 +4973,10 @@ void initSystems() {
     // own state (handle → kNullEntity) so a plain scene click — or a drag
     // of a non-rig showcase gizmo — never touches the rig.
     const IRSystem::SystemId gizmoDragId = IRSystem::createSystem<IRSystem::GIZMO_DRAG>();
+    const IRSystem::SystemId gizmoHoverId = IRSystem::createSystem<IRSystem::GIZMO_HOVER>();
+    IRVoxelEditor::g_gizmoHoverSystem = gizmoHoverId;
+    IRVoxelEditor::g_gizmoDragSystem = gizmoDragId;
+    IRVoxelEditor::setTransformMode(false);
     auto jointBindSyncSystem = IRSystem::createSystem<C_GuiElement>(
         "EditorJointBindSync",
         [](const C_GuiElement &) {},
@@ -5058,7 +5134,7 @@ void initSystems() {
          bonePaintUpdateSystem,
          placeEraseSystem,
          IRSystem::System<IRSystem::CAMERA_SCROLL_ZOOM>::create(),
-         IRSystem::createSystem<IRSystem::GIZMO_HOVER>(),
+         gizmoHoverId,
          gizmoDragId,
          jointBindSyncSystem,
          jointTreeSyncSystem}
@@ -5331,6 +5407,21 @@ void initCommands() {
         IRInput::kModifierNone,
         "ERASE MODE",
         "TOGGLE ERASE-FILL MODE"
+    );
+
+    // G — toggle transform mode: gizmo handles take clicks only while it is on.
+    IRCommand::createCommand(
+        IRInput::InputTypes::KEY_MOUSE,
+        IRInput::ButtonStatuses::PRESSED,
+        IRInput::KeyMouseButtons::kKeyButtonG,
+        []() {
+            IRVoxelEditor::setTransformMode(!IRVoxelEditor::g_transformMode);
+            IR_LOG_INFO("Transform mode: {}", IRVoxelEditor::g_transformMode ? "ON" : "OFF");
+        },
+        IRInput::kModifierNone,
+        IRInput::kModifierNone,
+        "TRANSFORM MODE",
+        "GIZMOS TAKE CLICKS (PART MOVE/TURN, JOINT PLACE, FK POSE)"
     );
 
     // Frame-based animation controls. Keys not taken by the gizmo

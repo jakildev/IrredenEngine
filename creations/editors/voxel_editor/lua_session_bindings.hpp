@@ -300,6 +300,8 @@ class Handle {
         builder().name();                                                                          \
     }
     IR_SESSION_FORWARD_0(toggleEraseMode)
+    IR_SESSION_FORWARD_0(toggleTransformMode)
+    IR_SESSION_FORWARD_0(releasePartGizmo)
     IR_SESSION_FORWARD_0(addLayer)
     IR_SESSION_FORWARD_0(selectPrevLayer)
     IR_SESSION_FORWARD_0(selectNextLayer)
@@ -406,6 +408,14 @@ class Handle {
             vec3Arg(from, "dragPartGizmo", "from"),
             vec3Arg(to, "dragPartGizmo", "to"),
             vec3Arg(partDelta, "dragPartGizmo", "partDelta")
+        );
+    }
+    void
+    holdPartGizmo(const sol::object &from, const sol::object &to, const sol::object &partDelta) {
+        builder().holdPartGizmo(
+            vec3Arg(from, "holdPartGizmo", "from"),
+            vec3Arg(to, "holdPartGizmo", "to"),
+            vec3Arg(partDelta, "holdPartGizmo", "partDelta")
         );
     }
     void selectPartMode(const sol::object &mode) {
@@ -538,6 +548,15 @@ class Handle {
     }
     void expectNoFillGhost(const std::string &name) {
         builder().expectNoFillGhost(name);
+    }
+    void expectGizmoDragActive(bool active, const std::string &name) {
+        builder().expectGizmoDragActive(active, name);
+    }
+    void expectGizmoHandleTexels(const std::string &name) {
+        builder().expectGizmoHandleTexels(name);
+    }
+    void expectGizmoHandleTexelsUnchanged(const std::string &name) {
+        builder().expectGizmoHandleTexelsUnchanged(name);
     }
     void expectSliderValue(
         const sol::object &target, float expected, float tolerance, const std::string &name
@@ -723,6 +742,8 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         &Handle::chordKey,
         "toggleEraseMode",
         &Handle::toggleEraseMode,
+        "toggleTransformMode",
+        &Handle::toggleTransformMode,
         "enableSymmetry",
         &Handle::enableSymmetry,
         "addLayer",
@@ -797,6 +818,10 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         &Handle::dragWorld,
         "dragPartGizmo",
         &Handle::dragPartGizmo,
+        "holdPartGizmo",
+        &Handle::holdPartGizmo,
+        "releasePartGizmo",
+        &Handle::releasePartGizmo,
         "selectPartMode",
         &Handle::selectPartMode,
         "applyRadialArray",
@@ -863,6 +888,12 @@ inline void bind(IRScript::LuaScript &script, sol::table editor) {
         &Handle::expectFillGhost,
         "expectNoFillGhost",
         &Handle::expectNoFillGhost,
+        "expectGizmoDragActive",
+        &Handle::expectGizmoDragActive,
+        "expectGizmoHandleTexels",
+        &Handle::expectGizmoHandleTexels,
+        "expectGizmoHandleTexelsUnchanged",
+        &Handle::expectGizmoHandleTexelsUnchanged,
         "expectSliderValue",
         &Handle::expectSliderValue,
         "expectPartGated",
