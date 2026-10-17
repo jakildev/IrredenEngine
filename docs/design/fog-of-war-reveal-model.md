@@ -423,6 +423,20 @@ it is absent. Retained samples blend toward the unexplored colour by their
 reveal. The treatment adds geometric ceiling dissolve and animation, painted
 line-of-sight dissolve, and a cap tone.
 
+**Height-cost authoring.** Voxel ceiling selection reads the ceiling alone:
+`fogCeilingRetained` through `fogCeilingPresence`
+(`engine/render/src/shaders/ir_iso_common.glsl::fogCeilingPresence`, lines
+1252–1288) admits a source by its XY disc and applies
+`fogCeilingVisibility`; `visionCircleHeights` supplies only `observerZ` to
+that selection. FIELD paint instead includes the additive height cost before
+the radial curve (`engine/render/src/shaders/ir_fog_common.glsl::fogRevealSample`,
+lines 211–225). If that height-cost radial curve reaches zero inside the
+ceiling fade band, retained band matter has zero contribution: an unrevealed
+grid cell paints unexplored with no band tone. Author a cut with the ceiling
+alone. A source that also keeps a height cost must leave the band alone by
+placing its free band at or beyond
+`ceilingHeight + fadeHeight`.
+
 The style belongs to the canvas: one `dissolveDensity` and one `capTone`,
 each in [0, 1], plus a finite creation-supplied phase. The ceiling and fade
 stay per source. Setting or clearing the treatment controls whether density
@@ -631,8 +645,8 @@ radius.
 
 | Parameter | Owner | Default | Rule |
 |---|---|---|---|
-| `ceilingHeight` | Analytic source | Disabled | World units above `observerZ`. Any negative value disables the ceiling. |
-| `fadeHeight` | Analytic source | 0 | World units, never negative. 0 is the hard plane. |
+| `ceilingHeight` | Analytic source | Disabled | World units above `observerZ`. Any negative value disables the ceiling; see [height-cost authoring](#treatment). |
+| `fadeHeight` | Analytic source | 0 | World units, never negative. 0 is the hard plane; see [height-cost authoring](#treatment). |
 | `dissolveDensity` | Canvas | 0 | In [0, 1]. |
 | `capTone` | Canvas | The radial rim cap's tone | In [0, 1]. |
 | Phase | Canvas | 0 | Finite float supplied by the creation. Zero pins the static retained set; read only while treatment is enabled. |
