@@ -32,7 +32,8 @@ struct SdfVoxelScene {
         {2.0f, IRMath::vec2(0), IRMath::kQuarterPi, "sdf_voxel_pose_zoom2"},
     };
 
-    static void initialize(bool baked, bool blockers, Pose pose = Pose::REST) {
+    static void
+    initialize(bool baked, bool blockers, Pose pose = Pose::REST, bool localLights = true) {
         using namespace IRComponents;
         using namespace IRMath;
         struct Subject {
@@ -107,21 +108,24 @@ struct SdfVoxelScene {
             C_VoxelSetNew{ivec3(48, 48, 1), Color{130, 135, 145, 255}, EntityAnchor::CENTER},
             C_LightBlocker{false, false, 0.0f}
         );
-        IREntity::createEntity(
-            C_LocalTransform{vec3(0, 0, -3)},
-            C_LightSource{
-                LightType::EMISSIVE,
-                Color{80, 200, 255, 255},
-                1.5f,
-                static_cast<std::uint8_t>(24)
-            }
-        );
+        if (localLights) {
+            IREntity::createEntity(
+                C_LocalTransform{vec3(0, 0, -3)},
+                C_LightSource{
+                    LightType::EMISSIVE,
+                    Color{80, 200, 255, 255},
+                    1.5f,
+                    static_cast<std::uint8_t>(24)
+                }
+            );
+        }
         IR_LOG_INFO(
-            "SDF voxel scene: representation={} blockers={} pose={} subjects=4 "
+            "SDF voxel scene: representation={} blockers={} pose={} local_lights={} subjects=4 "
             "subject_allocated_slots={} subject_occupied_cells={} subject_record_bytes={}",
             baked ? "baked" : "direct",
             blockers,
             static_cast<int>(pose),
+            localLights ? 1 : 0,
             allocated,
             occupied,
             allocated * sizeof(C_Voxel)

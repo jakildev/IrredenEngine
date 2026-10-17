@@ -33,6 +33,28 @@
   },
   "extra_runs": [
     {
+      "name": "sdf_baked_surface_parented",
+      "demo_args": [
+        "--sdf-voxel-scene",
+        "baked",
+        "--sdf-voxel-pose",
+        "parented",
+        "--sdf-voxel-blockers",
+        "--surface-lighting",
+        "--no-local-lights",
+        "--no-ao"
+      ],
+      "shots": [
+        "sdf_voxel_surface_yaw0",
+        "sdf_voxel_surface_yaw45",
+        "sdf_voxel_surface_yaw90",
+        "sdf_voxel_surface_yaw180",
+        "sdf_voxel_surface_yaw270",
+        "sdf_voxel_surface_zoom2"
+      ],
+      "capture_offset": 0
+    },
+    {
       "name": "sdf_baked_pose_root",
       "demo_args": [
         "--sdf-voxel-scene",

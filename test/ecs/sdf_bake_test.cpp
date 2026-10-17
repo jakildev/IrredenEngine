@@ -3,6 +3,7 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/sdf_bake.hpp>
+#include <irreden/voxel/systems/system_rebuild_grid_voxels.hpp>
 
 #include <array>
 #include <limits>
@@ -245,5 +246,90 @@ TEST_F(SdfBakePool, HeadlessAssetAttachesWithAnchorsMasksAndAllSixFaceBits) {
         IREntity::destroyEntity(canvas);
         IREntity::getEntityManager().destroyMarkedEntities();
     }
+}
+
+TEST_F(SdfBakePool, TiltedCylinderAndTorusLeaveARealChannelBetweenTheirShadows) {
+    using IRComponents::C_WorldTransform;
+    struct Subject {
+        ShapeType type_;
+        vec4 params_;
+        vec3 position_;
+        std::size_t occupied_;
+    };
+    const std::array<Subject, 4> subjects{{
+        {ShapeType::SPHERE, vec4(4, 0, 0, 0), vec3(-8.75f, -9.5f, -2), 386},
+        {ShapeType::CYLINDER, vec4(4, 0, 8, 0), vec3(9.25f, -9.5f, -2), 625},
+        {ShapeType::CONE, vec4(4, 0, 8, 0), vec3(-8.75f, 8.5f, -2), 230},
+        {ShapeType::TORUS, vec4(3, 1.5f, 0, 0), vec3(9.25f, 8.5f, -2), 215},
+    }};
+    const vec4 local = quatAxisAngle(normalize(vec3(1, 2, 0.5f)), kPi / 5.0f);
+    std::array<std::vector<vec3>, 5> occupiedCells;
+    for (std::size_t shape = 0; shape < subjects.size(); ++shape) {
+        const auto &subject = subjects[shape];
+        const auto dense = bakeSdfGrid(ivec3(11), subject.type_, subject.params_, kColor);
+        const auto canvas = IREntity::createEntity(C_VoxelPool{ivec3(12)});
+        const auto entity =
+            IREntity::createEntity(IRPrefab::DenseVoxel::toComponent(dense, EntityAnchor::CENTER));
+        auto &set = IREntity::getComponent<C_VoxelSetNew>(entity);
+        ASSERT_TRUE(set.attachToCanvas(canvas));
+        auto &pool = IREntity::getComponent<C_VoxelPool>(canvas);
+        C_WorldTransform transform;
+        transform.translation_ = subject.position_;
+        transform.rotation_ = vec4(-local.y, local.x, local.w, -local.z);
+        IRSystem::System<IRSystem::REBUILD_GRID_VOXELS> rebuild;
+        ASSERT_TRUE(rebuild.inverseArm(set, transform, pool, set.voxelStartIdx_, set.numVoxels_));
+        for (int i = 0; i < set.numVoxels_; ++i) {
+            const auto slot = set.voxelStartIdx_ + static_cast<std::size_t>(i);
+            if (pool.getColors()[slot].color_.alpha_ != 0)
+                occupiedCells[shape].push_back(pool.getPositionGlobals()[slot].pos_);
+        }
+        ASSERT_EQ(occupiedCells[shape].size(), subject.occupied_);
+    }
+
+    for (const vec3 center :
+         {vec3(-5.5f, -0.5f, -8),
+          vec3(12.5f, -0.5f, -8),
+          vec3(-5.5f, 17.5f, -8),
+          vec3(12.5f, 17.5f, -8)}) {
+        for (int x = -1; x <= 1; ++x)
+            for (float y : {-0.5f, 0.5f})
+                occupiedCells[4].push_back(center + vec3(float(x), y, 0));
+    }
+
+    // Independent double-precision slabs over the actual rebuilt unit boxes;
+    // no sun-map projection, face flags, candidate index or shader predicate.
+    const auto blocked = [](vec3 receiver, const std::vector<vec3> &cells) {
+        constexpr std::array<double, 3> sun{0.35, 0.85, -0.4};
+        for (const auto cell : cells) {
+            double near = 0.0;
+            double far = std::numeric_limits<double>::infinity();
+            for (int axis = 0; axis < 3; ++axis) {
+                const double a = (double(cell[axis]) - 0.5 - receiver[axis]) / sun[axis];
+                const double b = (double(cell[axis]) + 0.5 - receiver[axis]) / sun[axis];
+                near = IRMath::max(near, IRMath::min(a, b));
+                far = IRMath::min(far, IRMath::max(a, b));
+            }
+            if (near <= far)
+                return true;
+        }
+        return false;
+    };
+    const auto hitMask = [&](vec3 receiver) {
+        unsigned result = 0;
+        for (std::size_t shape = 0; shape < occupiedCells.size(); ++shape)
+            if (blocked(receiver, occupiedCells[shape]))
+                result |= 1u << shape;
+        return result;
+    };
+    EXPECT_EQ(hitMask(vec3(2.5f, -14.5f, 5.5f)), 0u);
+    EXPECT_EQ(hitMask(vec3(2.4f, -14.5f, 5.5f)), 0u);
+    EXPECT_EQ(hitMask(vec3(2.6f, -14.5f, 5.5f)), 0u);
+    EXPECT_EQ(hitMask(vec3(3.5f, -14.5f, 5.5f)), 2u); // Cylinder.
+    EXPECT_EQ(hitMask(vec3(1.5f, -14.5f, 5.5f)), 8u); // Torus.
+    EXPECT_EQ(hitMask(vec3(2.5f, -13.4f, 5.5f)), 8u);
+    EXPECT_EQ(hitMask(vec3(2.5f, -15.5f, 5.5f)), 2u);
+    occupiedCells[1].push_back(vec3(6, -6, 2));
+    EXPECT_EQ(hitMask(vec3(2.5f, -14.5f, 5.5f)), 2u)
+        << "An occupied cell across the channel must block the formerly clear ray";
 }
 } // namespace
