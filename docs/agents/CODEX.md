@@ -218,8 +218,9 @@ Create the `fleet:author-*` / `fleet:runtime-*` labels with `fleet-labels`
 on each repo first
 ([`fleet-labels-reference.md § Provider routing`](fleet-labels-reference.md));
 pass the `fleet:author-*` label in `gh pr create --label` so provenance
-exists from the first tick; stamp known legacy authors before enabling
-the review policy; never infer authorship from a missing label.
+exists from the first tick. The author label selects the opposite provider
+for review when present; absent, any available provider reviews. Never infer
+authorship from a missing label.
 `balanced` hashes assignments across the host's available providers.
 Every host must enable cross-provider review; a Claude-only host declares
 `FLEET_RUNTIMES="claude"` and waits when the required reviewer is Codex. A

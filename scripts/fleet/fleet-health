@@ -615,10 +615,6 @@ def derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts):
             w.append("FLEET_RUNTIMES includes codex but `codex` is not on PATH")
         if runtimes["codex_cooldown_until"]:
             w.append("codex provider is in cooldown")
-        if runtimes["cross_provider_review"] and runtimes["open_prs_unstamped"]:
-            n = len(runtimes["open_prs_unstamped"])
-            w.append(f"{n} open PR(s) carry no fleet:author-* label; cross-provider "
-                     f"review routing refuses them until stamped")
     for pr in runtimes["problems"]:
         if pr["warn"]:
             w.append(f"runtime routing problem: {pr['key']}: {pr['reason']} (x{pr['count']})")

@@ -240,7 +240,7 @@
       "name": "fleet:author-codex",
       "scope": "pr",
       "color": "0075ca",
-      "description": "Provenance: Codex was the most recent implementation provider on this PR. Stamped at `gh pr create` time and re-stamped on each amend; cross-provider review routing reads it (a PR last amended by Codex is reviewed by Claude). Never inferred from absence \u2014 an unstamped PR waits for explicit provenance"
+      "description": "Provenance: Codex was the most recent implementation provider on this PR. Stamped at `gh pr create` time and re-stamped on each amend; cross-provider review routing reads it (a PR last amended by Codex is reviewed by Claude). Never inferred from absence \u2014 an unstamped PR is reviewed by any available provider"
     },
     {
       "name": "fleet:author-claude",

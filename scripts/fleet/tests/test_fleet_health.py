@@ -303,11 +303,12 @@ class TriggersAndLadder(Env):
 
 
 class Runtimes(Env):
-    def test_unstamped_prs_warn_under_cross_provider_review(self):
+    def test_unstamped_prs_are_informational_under_cross_provider_review(self):
         rc, rep = self.run_report()
         self.assertEqual(rep["runtimes"]["open_prs_unstamped"], ["engine#3081", "game#901"])
         self.assertEqual(rep["runtimes"]["open_prs_stamped"], 1)
-        self.assertTrue(any("carry no fleet:author-* label" in w for w in rep["warnings"]))
+        self.assertFalse(any("fleet:author-*" in w for w in rep["warnings"]))
+        self.assertFalse(any("unstamped" in w for w in rep["warnings"]))
 
     def test_unstamped_is_silent_without_codex(self):
         (self.root / "fleet-up.conf").write_text('FLEET_RUNTIMES="claude"\n')

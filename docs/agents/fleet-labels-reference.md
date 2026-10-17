@@ -368,9 +368,9 @@ Protocol: [`FLEET-CROSS-HOST-SMOKE.md`](FLEET-CROSS-HOST-SMOKE.md).
   create` labels) and re-stamped on each amend by `fleet_runtime.stamp()`,
   which swaps the pair in one edit and refuses to run under a reviewer
   role. Under `FLEET_CROSS_PROVIDER_REVIEW=1`, `choose_runtime()` routes the
-  review to the other provider; an unstamped PR is a hard error, never a
-  default (stamp legacy authors before enabling), and so are two author
-  labels at once. Don't add to issues.
+  review to the other provider when the label is present; absent, any available
+  provider reviews. Two author labels at once is a hard error. Don't add to
+  issues.
 - `fleet:runtime-claude` / `fleet:runtime-codex` — human pin of an issue or
   PR to a provider, honoured ahead of every other signal for non-review
   dispatch; two pins is a hard error. Without a pin, feedback and conflict
