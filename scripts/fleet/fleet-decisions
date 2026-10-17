@@ -551,35 +551,56 @@ for repo, report in (survey_report.get("repos") or {}).items():
                         (epic.get("left") or {}).get(number, ""))).startswith("ghost")]
         closeouts.append((repo, number, row, parks, epics))
 
-# Graduated triage stamps (triage-protocol.md § Graduation), each seen once:
-# audit-log lines newer than the seen marker render, then the marker advances
-# to the newest one rendered. A line without a timestamp predates the marker
-# and never renders.
+# Graduated triage stamps (triage-protocol.md § Graduation), each seen once.
+# The log is append-only, so a byte offset into it is a total order that
+# timestamps (whole seconds, possibly out of order) are not. The seen marker
+# holds one offset per repo; a digest reads the complete lines past its
+# repos' offsets in file order, then moves only those offsets, so a scoped
+# run leaves the other repo's stamps unread. A line still being appended has
+# no newline yet and waits for the next digest. An offset past the end of
+# the file, or off a line boundary, means the log was replaced: that repo
+# reads it from the start. A line without a timestamp predates the
+# graduation writer and never renders.
 seen_marker = os.path.join(triage_dir, ".decisions-seen")
 try:
     with open(seen_marker, encoding="utf-8") as f:
-        seen_ts = f.read().strip()
+        seen = json.load(f)
+except (OSError, ValueError):
+    seen = {}
+if not isinstance(seen, dict):
+    seen = {}
+try:
+    with open(os.path.join(triage_dir, "log.jsonl"), "rb") as f:
+        log_bytes = f.read()
 except OSError:
-    seen_ts = ""
+    log_bytes = b""
+log_end = log_bytes.rfind(b"\n") + 1
 in_scope = {repo for repo, _, _, _ in repos}
+starts = {}
+for repo in in_scope:
+    offset = seen.get(repo)
+    on_boundary = (isinstance(offset, int) and 0 <= offset <= log_end
+                   and (offset == 0 or log_bytes[offset - 1:offset] == b"\n"))
+    starts[repo] = offset if on_boundary else 0
 titles = {(repo, issue["number"]): issue["title"]
           for repo, _, issues, _ in repos for issue in issues}
 stamps = []
-try:
-    with open(os.path.join(triage_dir, "log.jsonl"), encoding="utf-8") as f:
-        for line in f:
-            try:
-                entry = json.loads(line)
-            except ValueError:
-                continue
-            ts = entry.get("ts") or ""
-            repo = SHORT.get(entry.get("repo"), entry.get("repo"))
-            if ("fleet:agent-approved" in (entry.get("labels") or [])
-                    and ts > seen_ts and repo in in_scope):
-                stamps.append((ts, repo, entry))
-except OSError:
-    pass
-stamps.sort(key=lambda stamp: stamp[0])
+line_end = min(starts.values(), default=log_end)
+while line_end < log_end:
+    line_start = line_end
+    line_end = log_bytes.index(b"\n", line_start) + 1
+    try:
+        entry = json.loads(log_bytes[line_start:line_end])
+    except ValueError:
+        continue
+    if not isinstance(entry, dict):
+        continue
+    repo = SHORT.get(entry.get("repo"), entry.get("repo"))
+    ts = entry.get("ts") or ""
+    if (repo in starts and line_start >= starts[repo] and ts
+            and "fleet:agent-approved" in (entry.get("labels") or [])):
+        stamps.append((ts, repo, entry))
+advanced = {**seen, **{repo: log_end for repo in in_scope}}
 
 total = len(merge_queue) + len(decisions) + len(closeouts)
 scope = "+".join(repo for repo, _, _, _ in repos)
@@ -626,15 +647,18 @@ if stamps:
         title = titles.get((repo, number), "(not open)")
         print(f"  {repo} issue #{number}  {title}  "
               f"[{entry.get('class') or '?'} via {entry.get('mode') or 'apply'}, {ts}]")
-    newest = stamps[-1][0]
+
+if log_end and advanced != seen:
     try:
         os.makedirs(triage_dir, exist_ok=True)
         tmp = f"{seen_marker}.{os.getpid()}.tmp"
         with open(tmp, "w", encoding="utf-8") as f:
-            f.write(newest + "\n")
+            json.dump(advanced, f, sort_keys=True)
+            f.write("\n")
         os.replace(tmp, seen_marker)
     except OSError as e:
-        print(f"      warn: could not advance the seen marker ({e}); these render again")
+        if stamps:
+            print(f"      warn: could not advance the seen marker ({e}); these render again")
 
 cues = []
 if coding_improvements >= CI_DRAIN_THRESHOLD:
