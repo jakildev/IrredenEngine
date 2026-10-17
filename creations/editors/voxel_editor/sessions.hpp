@@ -309,12 +309,6 @@ namespace detail {
 // at z = -2 and a paint cell one further forward, at z = -3, is empty.
 constexpr float kFirstWriteBlobRadius = 1.9f;
 
-// The zoom a part session paints its baked blob at. A selected part's gizmo
-// holds its pixel size and is drawn in front of the part, so at kSessionZoom
-// its handles own the pixels of the blob's front faces; one zoom step in, the
-// blob is drawn twice as large and those faces lie outside the gizmo.
-constexpr float kPartPaintZoom = 8.0f;
-
 // Translation of a Ctrl+P voxel part of the scene's size: the middle of its
 // box, (size - 1) / 2 cells in from the scene origin. Spelled from the scene
 // origin rather than through derivePartPivot, so an assertion on where the
@@ -440,16 +434,41 @@ inline Recipe buildDragProbe(IRMath::ivec3 sceneSize, IRMath::vec3 sceneOrigin) 
     builder.expectOccupancy(placed, false, "erase_removes_voxel");
     builder.expectOccupancy(dragStart, true, "erase_spares_drag_run");
 
-    // A gizmo handle owns the pixels it is drawn on and no others. The scale
-    // gizmo's handles cross the near corner of the ground: one cell's anchor
-    // face lies under a handle, and its diagonal neighbour's lies just clear
-    // of it. Place mode again first — the erase toggle is still on.
-    builder.segment("gizmo");
+    // The scale gizmo's handles cross the near corner of the ground: one cell's
+    // anchor face lies under a handle, and its diagonal neighbour's lies just
+    // clear of it. In transform mode the handle owns the pixels it is drawn on
+    // and no others, so a click beside it still edits. The neighbour goes
+    // first: the covered cell, once placed, stands in front of its anchor face.
+    // Place mode again first — the erase toggle is still on.
+    builder.segment("gizmo_beside");
     builder.toggleEraseMode();
-    builder.clickExpectingNoEdit(underGizmo);
+    builder.toggleTransformMode();
     builder.click(besideGizmo);
-    builder.expectOccupancy(underGizmo, false, "gizmo_keeps_its_own_pixels");
+    builder.toggleTransformMode();
     builder.expectOccupancy(besideGizmo, true, "click_beside_gizmo_places_voxel");
+
+    // Outside transform mode a click on the handle edits the cell beneath it.
+    // The handle is drawn in front of the voxel that click places, and the
+    // edit ray from that pixel enters the voxel.
+    const std::optional<IRMath::vec3> handlePixel = builder.model().aimToPlace(underGizmo);
+    if (!handlePixel)
+        builder.recordError("drag_probe: no aim places the cell under the scale gizmo");
+    builder.segment("gizmo_paint");
+    builder.click(underGizmo);
+    builder.expectOccupancy(underGizmo, true, "click_through_gizmo_places_voxel");
+
+    // In transform mode the handle takes the click: an erase on that same
+    // pixel, which picks the voxel it placed, is swallowed. A zero-length drag
+    // is the editor's single-click gesture.
+    builder.segment("gizmo_transform");
+    builder.toggleTransformMode();
+    builder.toggleEraseMode();
+    if (handlePixel)
+        builder.dragWorld(*handlePixel, *handlePixel);
+    builder.toggleEraseMode();
+    builder.toggleTransformMode();
+    builder.expectPick(underGizmo, "handle_pixel_picks_the_covered_voxel");
+    builder.expectOccupancy(underGizmo, true, "gizmo_keeps_its_own_pixels");
 
     // Ctrl+S through the recipe's own chord scheduling. The save-dispatch probe
     // drives the editor's save with a hand-written event list; this proves the
@@ -2027,11 +2046,13 @@ inline Recipe build(
         const IRMath::vec3 pivot = detail::partPivot(sceneSize, sceneOrigin);
         const IRMath::vec3 movedPivot = pivot + detail::kGizmoDragPartDelta;
         builder.segment("move_second");
+        builder.toggleTransformMode();
         builder.dragPartGizmo(
             pivot + detail::kGizmoDragGrabOffset,
             pivot + detail::kGizmoDragGrabOffset + detail::kGizmoDragPull,
             detail::kGizmoDragPartDelta
         );
+        builder.toggleTransformMode();
         builder.expectPartTransform(1, movedPivot, 0.25f, true, "second_part_moved_by_gizmo");
         builder.expectPartTransform(0, pivot, 0.25f, true, "first_part_stays_at_its_pivot");
 
@@ -2040,7 +2061,7 @@ inline Recipe build(
         builder.expectPartOccupancy(1, blobFront, true, "second_part_blob_baked");
         builder.expectPartOccupancy(1, first, false, "second_part_paint_cell_empty");
 
-        builder.segment("paint_second", detail::kPartPaintZoom);
+        builder.segment("paint_second");
         builder.click(second);
         builder.expectPartOccupancy(1, second, true, "second_part_cell_painted");
 
@@ -2049,7 +2070,7 @@ inline Recipe build(
         builder.bakeSphere(detail::kFirstWriteBlobRadius);
         builder.expectPartOccupancy(0, blobFront, true, "first_part_blob_baked");
 
-        builder.segment("paint_first", detail::kPartPaintZoom);
+        builder.segment("paint_first");
         builder.click(first);
         builder.expectPartOccupancy(0, first, true, "first_part_cell_painted");
 
@@ -2091,7 +2112,7 @@ inline Recipe build(
         builder.addVoxelPart();
         builder.bakeSphere(detail::kFirstWriteBlobRadius);
 
-        builder.segment("cold_undo_paint", detail::kPartPaintZoom);
+        builder.segment("cold_undo_paint");
         builder.click(edited);
         builder.expectPartOccupancy(0, edited, true, "edit_exists_before_frame_switch");
 
@@ -2115,11 +2136,13 @@ inline Recipe build(
         const IRMath::vec3 pivot = detail::partPivot(sceneSize, sceneOrigin);
         const IRMath::vec3 movedPivot = pivot + detail::kGizmoDragPartDelta;
         builder.segment("move_source");
+        builder.toggleTransformMode();
         builder.dragPartGizmo(
             pivot + detail::kGizmoDragGrabOffset,
             pivot + detail::kGizmoDragGrabOffset + detail::kGizmoDragPull,
             detail::kGizmoDragPartDelta
         );
+        builder.toggleTransformMode();
         builder.expectPartTransform(1, movedPivot, 0.25f, true, "source_moved_by_gizmo");
 
         builder.segment("bake_source");
@@ -2141,7 +2164,7 @@ inline Recipe build(
             "source_component_has_distinct_value"
         );
 
-        builder.segment("array_and_edit_source", detail::kPartPaintZoom);
+        builder.segment("array_and_edit_source");
         builder.applyRadialArray(3);
         builder.nextPart();
         builder.nextPart();
@@ -2216,7 +2239,7 @@ inline Recipe build(
         builder.expectPartCount(4, "rotation_group_shrinks_by_one");
         builder.expectSelectedPartVisible(3, "short_group_selects_surviving_neighbor");
 
-        builder.segment("short_group_edit", detail::kPartPaintZoom);
+        builder.segment("short_group_edit");
         builder.click(groupEdit);
         builder.expectPartOccupancy(3, groupEdit, true, "short_group_edits_selected_survivor");
         builder.expectPartOccupancy(2, groupPartA, false, "short_group_does_not_fan_out");
@@ -2230,7 +2253,7 @@ inline Recipe build(
         builder.expectPartCount(5, "rotation_group_member_restored");
         builder.expectSelectedPartVisible(4, "restored_group_member_reselected");
 
-        builder.segment("restored_group_edit", detail::kPartPaintZoom);
+        builder.segment("restored_group_edit");
         builder.click(groupEdit);
         builder
             .expectPartOccupancy(2, groupPartA, true, "restored_group_first_member_receives_edit");
@@ -2418,7 +2441,7 @@ inline Recipe build(
         builder.expectPartOccupancy(2, onPart2, false, "second_sibling_empty_before_stroke");
         builder.expectPartOccupancy(3, source, false, "source_empty_before_stroke");
 
-        builder.segment("paint", detail::kPartPaintZoom);
+        builder.segment("paint");
         builder.click(source);
         builder.expectPartOccupancy(1, onPart1, true, "first_sibling_receives_stroke");
         builder.expectPartOccupancy(2, onPart2, true, "second_sibling_receives_stroke");
@@ -2654,7 +2677,10 @@ inline Recipe build(
         builder.expectPartOccupancy(0, center, true, "centre_cell_authored");
         builder.expectPartTransform(0, pivot, 0.25f, true, "baked_part_at_its_pivot");
 
+        // Every drag below is a gizmo drag, so the session stays in transform
+        // mode from here on.
         builder.segment("drag_x");
+        builder.toggleTransformMode();
         builder.dragPartGizmo(
             pivot + detail::kGizmoDragGrabOffset,
             pivot + detail::kGizmoDragGrabOffset + detail::kGizmoDragPull,
@@ -2712,14 +2738,24 @@ inline Recipe build(
     case Id::PART_RING_TURN: {
         Builder builder("part_ring_turn", sceneSize, sceneOrigin);
         const IRMath::vec3 pivot = detail::partPivot(sceneSize, sceneOrigin);
+        // The two idle frames differ only in transform mode: the gizmo is drawn
+        // dimmed, then at its own colours, on the same texels.
+        builder.segment("idle_dimmed");
+        builder.addVoxelPart();
+        builder.expectGizmoHandleTexels("dimmed_gizmo_drawn");
+        builder.segment("idle_transform");
+        builder.toggleTransformMode();
+        builder.expectGizmoHandleTexelsUnchanged("transform_mode_keeps_gizmo_texels");
+
         // A ring drag composes onto the press-time rotation, so each ring is
         // dragged on a part of its own, unturned at the press. Every part is
         // seated on the one pivot and only the selected one carries a gizmo.
         int part = 0;
         for (const detail::RingTurn &turn : detail::kRingTurns) {
             builder.segment(turn.segment_);
-            builder.addVoxelPart();
-            builder.dragWorld(pivot + turn.grab_, pivot + turn.release_);
+            if (part > 0)
+                builder.addVoxelPart();
+            builder.dragPartGizmo(pivot + turn.grab_, pivot + turn.release_, IRMath::vec3(0.0f));
             builder.expectPartTurnAxis(part, turn.axis_, detail::kRingTurnMinDegrees, turn.name_);
             ++part;
         }
@@ -2731,6 +2767,26 @@ inline Recipe build(
             builder.expectPartTurnAxis(part, turn.axis_, detail::kRingTurnMinDegrees, turn.held_);
             ++part;
         }
+
+        // Leaving transform mode under a held drag ends it where it is: the part
+        // keeps the turn applied so far.
+        const detail::RingTurn &held = detail::kRingTurns[0];
+        builder.segment("hold_ring");
+        builder.addVoxelPart();
+        builder.holdPartGizmo(pivot + held.grab_, pivot + held.release_, IRMath::vec3(0.0f));
+        builder.expectGizmoDragActive(true, "ring_drag_active_while_held");
+        builder.segment("leave_transform_mid_drag");
+        builder.toggleTransformMode();
+        builder.expectGizmoDragActive(false, "leaving_transform_mode_ends_drag");
+        builder.expectPartTurnAxis(
+            part,
+            held.axis_,
+            detail::kRingTurnMinDegrees,
+            "ended_drag_keeps_its_turn"
+        );
+        builder.segment("release_ring");
+        builder.releasePartGizmo();
+        builder.expectGizmoDragActive(false, "release_after_ended_drag_starts_nothing");
         return builder.finish();
     }
     case Id::PARTS_SCROLL: {

@@ -19,12 +19,18 @@ namespace IRSystem {
 // captured at spawn. Keeping both ends of the round-trip on this system
 // means the renderer needs no per-frame branch on hover_.
 //
+// `enabled_` (default true) lets a creation take clicks away from every
+// handle: disabled, no handle is hovered and each is drawn at half its base
+// RGB. Alpha is kept, so a disabled handle covers the same pixels and still
+// publishes its entity id.
+//
 // Pipeline: INPUT, after INPUT_KEY_MOUSE (the cursor position used by the
 // previous frame's framebuffer pass is what `getEntityIdAtMouseTrixel`
 // returns; nothing in INPUT mutates it). Must come before GIZMO_DRAG so
 // press detection sees a fresh hover_.
 template <> struct System<GIZMO_HOVER> {
     IREntity::EntityId cursorEntity_ = IREntity::kNullEntity;
+    bool enabled_ = true;
 
     void beginTick() {
         cursorEntity_ = IRRender::getEntityIdAtMouseTrixel();
@@ -35,6 +41,11 @@ template <> struct System<GIZMO_HOVER> {
         IRComponents::C_GizmoHandle &handle,
         IRComponents::C_ShapeDescriptor &shape
     ) {
+        if (!enabled_) {
+            handle.hover_ = false;
+            shape.color_ = dim(handle.baseColor_);
+            return;
+        }
         const bool hovered = (cursorEntity_ != IREntity::kNullEntity) && (id == cursorEntity_);
         handle.hover_ = hovered;
         shape.color_ = hovered ? brighten(handle.baseColor_) : handle.baseColor_;
@@ -58,6 +69,15 @@ template <> struct System<GIZMO_HOVER> {
             return static_cast<std::uint8_t>(IRMath::min(255, boosted));
         };
         return IRMath::Color{lift(c.red_), lift(c.green_), lift(c.blue_), c.alpha_};
+    }
+
+    static IRMath::Color dim(IRMath::Color c) {
+        return IRMath::Color{
+            static_cast<std::uint8_t>(c.red_ / 2),
+            static_cast<std::uint8_t>(c.green_ / 2),
+            static_cast<std::uint8_t>(c.blue_ / 2),
+            c.alpha_
+        };
     }
 };
 

@@ -432,6 +432,22 @@ struct PartTurnAxisCheck {
     std::string name_;
 };
 
+// Gizmo drag expectation: GIZMO_DRAG holds an active drag when the segment
+// settles, or with expectActive_ false, holds none.
+struct GizmoDragCheck {
+    bool expectActive_ = false;
+    std::string name_;
+};
+
+// Gizmo handle census: the main-canvas texels whose entity id is a gizmo
+// handle. A check with no baseline_ records them and needs at least one; a
+// check naming one must read exactly the texels it recorded.
+struct GizmoTexelCheck {
+    const GizmoTexelCheck *baseline_ = nullptr;
+    mutable std::vector<std::size_t> texels_;
+    std::string name_;
+};
+
 // Spin expectation on one entity-scene part: it carries C_AutoSpin turning
 // radiansPerFrame_ a tick, or with expectEqual_ false, it does not (an absent
 // component counts as not equal).
@@ -617,6 +633,8 @@ struct Recipe {
     std::deque<PartAnchorCheck> partAnchorChecks_;
     std::deque<PartYawCheck> partYawChecks_;
     std::deque<PartTurnAxisCheck> partTurnAxisChecks_;
+    std::deque<GizmoDragCheck> gizmoDragChecks_;
+    std::deque<GizmoTexelCheck> gizmoTexelChecks_;
     std::deque<PartSpinCheck> partSpinChecks_;
     std::deque<PartModeDropdownCheck> partModeDropdownChecks_;
     std::deque<EditorInputCheck> editorInputChecks_;
@@ -686,6 +704,8 @@ bool evaluateRotationModeCheck(const void *context, std::string &actual);
 bool evaluatePartAnchorCheck(const void *context, std::string &actual);
 bool evaluatePartYawCheck(const void *context, std::string &actual);
 bool evaluatePartTurnAxisCheck(const void *context, std::string &actual);
+bool evaluateGizmoDragCheck(const void *context, std::string &actual);
+bool evaluateGizmoTexelCheck(const void *context, std::string &actual);
 bool evaluatePartSpinCheck(const void *context, std::string &actual);
 bool evaluatePartModeDropdownCheck(const void *context, std::string &actual);
 bool evaluateEditorInputCheck(const void *context, std::string &actual);
@@ -943,6 +963,13 @@ class Builder {
     void toggleEraseMode() {
         tapKey(IRInput::kKeyButtonV);
         m_eraseMode = !m_eraseMode;
+    }
+
+    // G: gizmo handles take clicks only in transform mode, which starts off.
+    // Enter it before a gizmo drag, and leave it before a paint click on a
+    // cell a handle is drawn over, or the handle takes that click.
+    void toggleTransformMode() {
+        tapKey(IRInput::kKeyButtonG);
     }
 
     // Enable mirror-symmetry axes for subsequent edits. Taps
@@ -1513,12 +1540,26 @@ class Builder {
     // camera's yaw: take a new grab point from a run, not from the handle's
     // geometry.
     void dragPartGizmo(IRMath::vec3 from, IRMath::vec3 to, IRMath::vec3 partDelta) {
-        if (m_partModels.empty()) {
-            recordError("dragPartGizmo needs an entity-scene part");
+        if (pressPartGizmo("dragPartGizmo", from, to, partDelta))
+            releasePartGizmo();
+    }
+
+    // dragPartGizmo up to its last move: the button stays down on @p to, so the
+    // drag is still active at the segment's capture, and releasePartGizmo ends
+    // it in a later segment. The model takes @p partDelta at once: a drag that
+    // ends early (transform mode turned off under it) keeps the moved part. A
+    // recipe that finishes with a gizmo held is an error.
+    void holdPartGizmo(IRMath::vec3 from, IRMath::vec3 to, IRMath::vec3 partDelta) {
+        pressPartGizmo("holdPartGizmo", from, to, partDelta);
+    }
+
+    void releasePartGizmo() {
+        if (!m_heldGizmo) {
+            recordError("releasePartGizmo with no gizmo held in segment " + m_current.label_);
             return;
         }
-        dragWorld(from, to);
-        m_model.setOrigin(m_model.origin() + partDelta);
+        emitButton(IRVideo::GuiInputEvent::Type::RELEASE, IRInput::kMouseButtonLeft);
+        m_heldGizmo = false;
     }
 
     // Pick @p mode in the PART MODE dropdown: one click opens it, the next
@@ -1716,6 +1757,47 @@ class Builder {
             m_recipe.partTurnAxisChecks_,
             PartTurnAxisCheck{partIndex, axis, minDegrees, std::move(name)},
             &evaluatePartTurnAxisCheck
+        );
+    }
+
+    // Assert GIZMO_DRAG is (or, with @p expectActive false, is not) driving a
+    // drag when this segment settles: the positive fire for holdPartGizmo, and
+    // for a gesture that must end one.
+    void expectGizmoDragActive(bool expectActive, std::string name) {
+        addPredicateCheck(
+            m_recipe.gizmoDragChecks_,
+            GizmoDragCheck{expectActive, std::move(name)},
+            &evaluateGizmoDragCheck
+        );
+    }
+
+    // Record the main-canvas texels gizmo handles are drawn on when this
+    // segment settles; fails when there are none.
+    // expectGizmoHandleTexelsUnchanged compares a later segment against it.
+    void expectGizmoHandleTexels(std::string name) {
+        addPredicateCheck(
+            m_recipe.gizmoTexelChecks_,
+            GizmoTexelCheck{nullptr, {}, std::move(name)},
+            &evaluateGizmoTexelCheck
+        );
+        m_lastGizmoTexels = &m_recipe.gizmoTexelChecks_.back();
+    }
+
+    // Assert gizmo handles are drawn on exactly the texels the last
+    // expectGizmoHandleTexels recorded.
+    void expectGizmoHandleTexelsUnchanged(std::string name) {
+        if (m_lastGizmoTexels == nullptr) {
+            recordError(
+                "expectGizmoHandleTexelsUnchanged with no expectGizmoHandleTexels before it "
+                "in segment " +
+                m_current.label_
+            );
+            return;
+        }
+        addPredicateCheck(
+            m_recipe.gizmoTexelChecks_,
+            GizmoTexelCheck{m_lastGizmoTexels, {}, std::move(name)},
+            &evaluateGizmoTexelCheck
         );
     }
 
@@ -2071,6 +2153,10 @@ class Builder {
     Recipe finish() {
         if (m_heldBox)
             recordError("the recipe ends with a box held: holdBox needs a releaseBox");
+        if (m_heldGizmo)
+            recordError(
+                "the recipe ends with a gizmo held: holdPartGizmo needs a releasePartGizmo"
+            );
         flushSegment();
         return std::move(m_recipe);
     }
@@ -2252,6 +2338,10 @@ class Builder {
             recordError(std::string(op) + " while a box is held in segment " + m_current.label_);
             return false;
         }
+        if (m_heldGizmo) {
+            recordError(std::string(op) + " while a gizmo is held in segment " + m_current.label_);
+            return false;
+        }
         // Both cells are aimed against the model as it stands at PRESS time:
         // the fill only commits on RELEASE, so no voxel appears in between.
         const std::optional<IRMath::vec3> aimA = aimFor(a);
@@ -2271,6 +2361,29 @@ class Builder {
         // before a release commits the fill.
         m_frame += kFramesPerClickStep;
         m_heldBox = HeldBox{a, b};
+        return true;
+    }
+
+    // Shared body of dragPartGizmo and holdPartGizmo: press on @p from, move to
+    // @p to, and leave the button down for releasePartGizmo.
+    bool
+    pressPartGizmo(const char *op, IRMath::vec3 from, IRMath::vec3 to, IRMath::vec3 partDelta) {
+        if (m_heldBox || m_heldGizmo) {
+            recordError(std::string(op) + " while a button is held in segment " + m_current.label_);
+            return false;
+        }
+        if (m_partModels.empty()) {
+            recordError(std::string(op) + " needs an entity-scene part");
+            return false;
+        }
+        emitMove(from);
+        emitButton(IRVideo::GuiInputEvent::Type::PRESS, IRInput::kMouseButtonLeft);
+        emitMove(to);
+        // One idle frame so GIZMO_DRAG applies the moved cursor before a
+        // release ends the drag.
+        m_frame += kFramesPerClickStep;
+        m_model.setOrigin(m_model.origin() + partDelta);
+        m_heldGizmo = true;
         return true;
     }
 
@@ -2327,6 +2440,10 @@ class Builder {
     SymmetryState m_symmetry;
     // The box a holdBox pressed and no releaseBox has released yet.
     std::optional<HeldBox> m_heldBox;
+    // A holdPartGizmo no releasePartGizmo has released yet.
+    bool m_heldGizmo = false;
+    // The census expectGizmoHandleTexelsUnchanged compares against.
+    const GizmoTexelCheck *m_lastGizmoTexels = nullptr;
 };
 
 } // namespace IRVoxelEditor::Session
