@@ -48,6 +48,14 @@ inline void clearVoxelRaw(IRComponents::C_VoxelSetNew &set, int x, int y, int z)
     records[flat].deactivate();
 }
 
+inline IRMath::Color voxelColorRaw(IRComponents::C_VoxelSetNew &set, int x, int y, int z) {
+    requireVoxelCell(set, x, y, z, "voxelColor");
+    const auto records = IRPrefab::Voxel::detail::editableRecords(set);
+    const std::size_t flat =
+        static_cast<std::size_t>(IRMath::index3DtoIndex1D({x, y, z}, set.size_));
+    return records[flat].color_;
+}
+
 struct VoxelBatchState {
     explicit VoxelBatchState(IRComponents::C_VoxelSetNew &set)
         : set_{&set} {}
@@ -258,6 +266,9 @@ template <> inline void bindLuaType<IRComponents::C_VoxelSetNew>(LuaScript &luaS
     voxelSetType["clearVoxel"] = [](IRComponents::C_VoxelSetNew &set, int x, int y, int z) {
         detail::clearVoxelRaw(set, x, y, z);
         set.resyncAfterRawEdits();
+    };
+    voxelSetType["voxelColor"] = [](IRComponents::C_VoxelSetNew &set, int x, int y, int z) {
+        return detail::voxelColorRaw(set, x, y, z);
     };
     voxelSetType["fillSdf"] = [](IRComponents::C_VoxelSetNew &set,
                                  lua_Integer shape,

@@ -107,6 +107,47 @@ TEST_F(LuaVoxelSeam, SetAndClearRoundTrip) {
     EXPECT_EQ(written.alpha_, 255);
 }
 
+TEST_F(LuaVoxelSeam, VoxelColorReadsEditableRecords) {
+    const IREntity::EntityId canvas = makeCanvas();
+    auto &lua = m_lua.lua();
+    lua["testCanvas"] = canvas;
+
+    auto result = lua.safe_script(R"lua(
+        local set = C_VoxelSetNew.new(
+            ivec3.new(9, 9, 9),
+            Color.new(0, 0, 0, 0),
+            IRComponent.EntityAnchor.CENTER,
+            testCanvas
+        )
+        set:setVoxel(1, 1, 1, Color.new(12, 34, 56, 255))
+        local written = set:voxelColor(1, 1, 1)
+        set:fillSdf(IRShape.SPHERE, { 3.5, 0.0, 0.0, 0.0 }, Color.new(40, 120, 220, 255))
+        local filled = set:voxelColor(4, 4, 4)
+        set:carveSdf(IRShape.SPHERE, { 3.5, 0.0, 0.0, 0.0 })
+        local carved = set:voxelColor(4, 4, 4)
+        set:clearVoxel(1, 1, 1)
+        local cleared = set:voxelColor(1, 1, 1)
+        return { written, filled, carved, cleared }
+    )lua");
+    ASSERT_TRUE(result.valid());
+
+    const sol::table colors = result;
+    const Color written = colors.get<Color>(1);
+    EXPECT_EQ(written.red_, 12);
+    EXPECT_EQ(written.green_, 34);
+    EXPECT_EQ(written.blue_, 56);
+    EXPECT_EQ(written.alpha_, 255);
+
+    const Color filled = colors.get<Color>(2);
+    EXPECT_EQ(filled.red_, 40);
+    EXPECT_EQ(filled.green_, 120);
+    EXPECT_EQ(filled.blue_, 220);
+    EXPECT_EQ(filled.alpha_, 255);
+
+    EXPECT_EQ(colors.get<Color>(3).alpha_, 0);
+    EXPECT_EQ(colors.get<Color>(4).alpha_, 0);
+}
+
 TEST_F(LuaVoxelSeam, SdfFillMatchesEditor) {
     const IREntity::EntityId canvas = makeCanvas();
     auto &lua = m_lua.lua();
@@ -238,6 +279,27 @@ TEST_F(LuaVoxelSeam, OutOfRangeWritesRaise) {
     )lua");
     ASSERT_TRUE(result.valid());
     EXPECT_FALSE(result.get<bool>());
+}
+
+TEST_F(LuaVoxelSeam, OutOfRangeVoxelColorRaises) {
+    const IREntity::EntityId canvas = makeCanvas();
+    auto &lua = m_lua.lua();
+    lua["testCanvas"] = canvas;
+
+    auto result = lua.safe_script(R"lua(
+        local set = C_VoxelSetNew.new(
+            ivec3.new(2, 2, 2),
+            Color.new(0, 0, 0, 0),
+            IRComponent.EntityAnchor.CORNER,
+            testCanvas
+        )
+        return { pcall(set.voxelColor, set, 2, 0, 0) }
+    )lua");
+    ASSERT_TRUE(result.valid());
+
+    const sol::table outcome = result;
+    EXPECT_FALSE(outcome.get<bool>(1));
+    EXPECT_NE(outcome.get<std::string>(2).find("voxelColor"), std::string::npos);
 }
 
 } // namespace
