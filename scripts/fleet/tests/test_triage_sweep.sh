@@ -24,9 +24,11 @@
 #   - apply: labels_at_staging narrows the race guard to labels gained beyond
 #     the staged set
 #   - stamp: a complete graduated comment posts and stamps; direction and an
-#     incomplete bar recommend; an issue already carrying a verdict label or
-#     a `## Triage` comment is skipped with no write; a live view without
-#     its comment list refuses; --dry-run writes nothing; --comment-file required
+#     incomplete bar recommend; an issue already carrying any fleet:/human:
+#     label or a `## Triage` comment is skipped with no write; a state label
+#     that lands between the first read and the label write stops the label
+#     and audit writes; a live view or re-read without its list refuses;
+#     --dry-run writes nothing; --comment-file required
 #   - --repo is required; dual-spelling (--repo= empty) rejected
 
 set -uo pipefail
@@ -87,13 +89,18 @@ case "$1 $2 $repo" in
     "issue close jakildev/IrredenEngine")
         echo "$*" >> "$fixtures/gh-closes.log" ;;
     # Like gh, the view emits only the --json fields asked for.
+    # Read <n> of an issue serves view-<N>-read<n>.json when the fixture has one.
     "issue view jakildev/IrredenEngine")
+        reads=$(( $(cat "$fixtures/view-$3.reads" 2>/dev/null || echo 0) + 1 ))
+        echo "$reads" > "$fixtures/view-$3.reads"
+        src="$fixtures/view-$3.json"
+        [[ -f "$fixtures/view-$3-read$reads.json" ]] && src="$fixtures/view-$3-read$reads.json"
         python3 -c '
 import json, sys
 with open(sys.argv[1], encoding="utf-8") as f:
     view = json.load(f)
 print(json.dumps({k: view[k] for k in sys.argv[2].split(",") if k in view}))
-' "$fixtures/view-$3.json" "$fields" ;;
+' "$src" "$fields" ;;
     "issue comment jakildev/IrredenEngine") echo "$*" >> "$fixtures/gh-comments.log" ;;
     *) echo "gh stub: unexpected invocation: $*" >&2; exit 99 ;;
 esac
@@ -494,6 +501,45 @@ assert_eq "$status" "1" "stamp refuses a live view with no comment list"
 assert_contains "$out" "refused   #309" "the refusal names the issue"
 assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "no label write without a comment list"
 assert_eq "$(wc -l < "$TMP/gh-comments.log" | tr -d ' ')" "0" "no comment without a comment list"
+
+# Any fleet:/human: state takes the issue out of the untriaged set.
+echo '{"labels": [{"name": "human:owned"}], "comments": []}' > "$TMP/view-310.json"
+: > "$TMP/gh-writes.log"; : > "$TMP/gh-comments.log"
+log_lines=$(wc -l < "$TMP/fleet-home/triage/log.jsonl" | tr -d ' ')
+status=$(run_sweep stamp --repo engine 310 --comment-file "$TMP/triage-rebless.md")
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "stamp on a human:owned issue exits 0"
+assert_contains "$out" "skipped   #310: already carries human:owned" "the guard names the state label held"
+assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "no label write on a human:owned issue"
+assert_eq "$(wc -l < "$TMP/gh-comments.log" | tr -d ' ')" "0" "no comment on a human:owned issue"
+assert_eq "$(wc -l < "$TMP/fleet-home/triage/log.jsonl" | tr -d ' ')" "$log_lines" \
+    "no audit line on a human:owned issue"
+
+# A human parks the issue between the first read and the label write.
+echo '{"labels": [], "comments": []}' > "$TMP/view-311.json"
+echo '{"labels": [{"name": "human:owned"}], "comments": []}' > "$TMP/view-311-read2.json"
+: > "$TMP/gh-writes.log"; : > "$TMP/gh-comments.log"
+status=$(run_sweep stamp --repo engine 311 --comment-file "$TMP/triage-rebless.md")
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "stamp that loses the race to a state label exits 0"
+assert_eq "$(cat "$TMP/view-311.reads")" "2" "stamp re-reads the issue before the label write"
+assert_contains "$out" "skipped   #311: gained human:owned before the label write" \
+    "the late guard names the label gained"
+assert_eq "$(wc -l < "$TMP/gh-comments.log" | tr -d ' ')" "1" "the comment posted before the re-read stands"
+assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "no approval label after a late state label"
+assert_eq "$(wc -l < "$TMP/fleet-home/triage/log.jsonl" | tr -d ' ')" "$log_lines" \
+    "no audit line after a late state label"
+
+echo '{"labels": [], "comments": []}' > "$TMP/view-312.json"
+echo '{}' > "$TMP/view-312-read2.json"
+: > "$TMP/gh-writes.log"
+status=$(run_sweep stamp --repo engine 312 --comment-file "$TMP/triage-rebless.md")
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "1" "stamp refuses a re-read with no label list"
+assert_contains "$out" "refused   #312: the re-read carries no label list" "the refusal names the re-read"
+assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "no label write without a re-read label list"
+assert_eq "$(wc -l < "$TMP/fleet-home/triage/log.jsonl" | tr -d ' ')" "$log_lines" \
+    "no audit line without a re-read label list"
 
 status=$(run_sweep stamp --repo engine 306)
 err=$(cat "$TMP/err.txt")

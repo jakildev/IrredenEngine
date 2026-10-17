@@ -93,6 +93,11 @@ class Labels(unittest.TestCase):
         with self.assertRaises(ValueError):
             tc.labels_for("gpt")
 
+    def test_state_labels_are_every_fleet_and_human_label(self):
+        names = ["bug", "human:owned", "area:render", "fleet:needs-human", "fleetish"]
+        self.assertEqual(tc.state_labels(names), ["fleet:needs-human", "human:owned"])
+        self.assertEqual(tc.state_labels(iter(["enhancement"])), [])
+
 
 class Comments(unittest.TestCase):
     def test_parse_reads_every_field_and_the_bar_block(self):

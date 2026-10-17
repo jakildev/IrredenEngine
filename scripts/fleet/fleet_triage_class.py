@@ -79,6 +79,12 @@ _MODEL_VALUE_RE = re.compile(rf"[`*\[\]\s]*({'|'.join(MODELS)})[`*\[\]\s]*", re.
 _HEADING_RE = re.compile(r"^ {0,3}##[ \t]+Triage\b", re.IGNORECASE | re.MULTILINE)
 
 
+def state_labels(names):
+    """The fleet:/human: labels among `names`, sorted. Any one takes an issue
+    out of the untriaged set, so a stamp writes nothing on it."""
+    return sorted(name for name in names if name.startswith(("fleet:", "human:")))
+
+
 def has_triage_heading(text):
     """Whether text carries a `## Triage` heading line. A prose mention of
     the heading mid-line is not one; any heading line is, so a skip on a

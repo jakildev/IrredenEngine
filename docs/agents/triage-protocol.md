@@ -101,9 +101,10 @@ a recommend-approve verdict in a graduated class whose bar is cited
 
 - **Singleton by designation:** runs only on the host carrying the
   **singleton-env** flag (the `FLEET_EPIC_STEWARD` pattern).
-- **Idempotent by guard:** skip any issue that already carries
-  `fleet:triage-recommend`, `fleet:agent-approved` or `human:approved`, or
-  has a `## Triage` comment; `stamp` refuses those too.
+- **Idempotent by guard:** skip any issue that already carries a `fleet:`
+  or `human:` label, or has a `## Triage` comment; `stamp` refuses those
+  too, and re-reads the labels before its label write so a state label
+  that lands mid-stamp still wins.
 
 ```markdown
 ## Triage
@@ -120,8 +121,8 @@ what the issue serves or duplicates — citations, not vibes>
 
 Write the comment to a file and run
 `fleet-triage-sweep stamp --repo <repo-slug> <N> --comment-file <file>`: it
-posts the comment and applies the label set in immediate succession, and
-logs the stamp. A recommend label routes the issue into the
+posts the comment, re-reads the labels, applies the label set unless a
+`fleet:` / `human:` label landed in between, and logs the stamp. A recommend label routes the issue into the
 `fleet-decisions` digest; the human acts with ordinary mechanics
 (`human:approved`, close, `human:owned`, a reply) and removes the label,
 which re-arms the guard for a re-triage. A graduated stamp shows once in
