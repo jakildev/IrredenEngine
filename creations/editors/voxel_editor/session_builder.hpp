@@ -20,6 +20,7 @@
 #include "lod_panel.hpp"
 #include "loft_panel.hpp"
 #include "module_session_view.hpp"
+#include "panel_layout.hpp"
 #include "palette.hpp"
 #include "part_size_panel.hpp"
 #include "parts_panel.hpp"
@@ -104,8 +105,8 @@ inline constexpr float kSessionZoom = 4.0f;
 // Keep this above the live focus-candidate count so the capture session proves
 // that keyboard navigation wraps the complete widget cycle.
 inline constexpr int kTabWalkPresses = 80;
-inline constexpr IRMath::ivec2 kSkeletonPanelPos{378, 342};
-inline constexpr IRMath::ivec2 kSkeletonPanelSize{120, 114};
+using ::IRVoxelEditor::kSkeletonPanelPos;
+using ::IRVoxelEditor::kSkeletonPanelSize;
 inline constexpr IRMath::ivec2 kJointRenameInputPos{
     kSkeletonPanelPos.x + 4, kSkeletonPanelPos.y + 74
 };

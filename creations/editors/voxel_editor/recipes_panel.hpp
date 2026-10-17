@@ -12,8 +12,7 @@
 // module_loaded session, which aims scripted clicks and drags at them — the
 // same split palette.hpp and anim_panel.hpp make.
 //
-// The column sits right of the BONE / SKELETON column, so it overlaps no
-// panel an existing session drives.
+// The column begins below ARRAY and right of COMPONENTS.
 
 namespace IRVoxelEditor {
 
@@ -21,7 +20,7 @@ namespace IRVoxelEditor {
 // load error.
 constexpr int kMaxRecipeParams = 3;
 
-constexpr IRMath::ivec2 kRecipesPanelPos{382, 240};
+constexpr IRMath::ivec2 kRecipesPanelPos{682, 240};
 constexpr IRMath::ivec2 kRecipesPanelSize{120, 150};
 
 constexpr IRMath::ivec2 kRecipeListPos{kRecipesPanelPos.x + 4, kRecipesPanelPos.y + 18};
