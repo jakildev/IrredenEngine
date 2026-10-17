@@ -237,7 +237,7 @@ class Transport(unittest.TestCase):
                 self.assertIn(f"pattern={json.dumps(pattern)}, decision=\"allow\"", text)
             self.assertNotIn('pattern=["python3"]', text)
 
-    def test_fleet_jobs_gets_only_the_display_profile_rule(self):
+    def test_fleet_jobs_gets_only_the_display_profile_rules(self):
         # A settings entry for fleet-jobs must not become a bare prefix allow:
         # that would run every profile's child outside the sandbox.
         settings = json.dumps({"permissions": {"allow": [
@@ -249,15 +249,18 @@ class Transport(unittest.TestCase):
                 with self.subTest(role=role):
                     text = policy.rules(root, role)
                     self.assertNotIn('pattern=["fleet-jobs"]', text)
-                    self.assertIn('pattern=["fleet-jobs", "start", "render-verify"], '
-                                  'decision="allow"', text)
-                    self.assertEqual(text.count('"fleet-jobs"'), 1)
+                    for profile in ("render-verify", "light-verify", "gui-verify"):
+                        self.assertIn(f'pattern=["fleet-jobs", "start", "{profile}"], '
+                                      'decision="allow"', text)
+                    self.assertEqual(text.count('"fleet-jobs"'), len(policy.DISPLAY_PROFILES))
                     self.assertIn('pattern=["fleet-build"], decision="allow"', text)
 
     @unittest.skipUnless(shutil.which("codex"), "codex CLI absent; text-level case above")
     def test_fleet_jobs_profiles_keep_their_execpolicy_decisions(self):
         cases = (
             (["fleet-jobs", "start", "render-verify", "--", "--target", "IRShapeDebug"], "allow"),
+            (["fleet-jobs", "start", "light-verify", "--", "--if-changed"], "allow"),
+            (["fleet-jobs", "start", "gui-verify", "--", "IRVoxelEditor", "--no-build"], "allow"),
             (["fleet-jobs", "start", "fleet-tests", "--only", "x"], None),
             (["fleet-jobs", "start", "build", "--", "--target", "IRShapeDebug"], None),
             (["fleet-jobs", "start", "--", "python3", "-c", "print(1)"], None),

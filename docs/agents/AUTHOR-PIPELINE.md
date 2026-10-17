@@ -24,12 +24,13 @@ the touched code has an executable for: `--auto-screenshot` demos with
 `closeWindow()`), other GUI and test executables with `fleet-run --timeout
 15 <name>`. Never `cd <dir> && ./<exe>` (compound-command security gate).
 Verdict per [`FLEET.md § Clean-exit policy`](FLEET.md). A build, fleet
-suite, or `render-verify` run expected to outlive the tool window runs
-detached per [`FLEET-RUNTIME.md § Long-running jobs`](FLEET-RUNTIME.md#long-running-jobs);
+suite, or verifier run (`render-verify`, `light-verify`, `gui-verify`)
+expected to outlive the tool window runs detached per
+[`FLEET-RUNTIME.md § Long-running jobs`](FLEET-RUNTIME.md#long-running-jobs);
 its evidence is the later terminal `wait`.
 
-Run `python3 scripts/light-verify.py --if-changed` unpiped before publishing
-every author change. The script includes committed, staged, unstaged, and
+Run `python3 scripts/light-verify.py --if-changed` unpiped (or as its
+detached job) before publishing every author change. The script includes committed, staged, unstaged, and
 untracked paths in its trigger decision and runs for engine, lighting-demo,
 render-harness, and build-system inputs. A capture/domain failure that remains
 after one rerun blocks the PR. For an image failure, compare the same row on

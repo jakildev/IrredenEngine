@@ -181,9 +181,10 @@ IRShapeDebug --auto-screenshot 10`; `--env` also supports `IR_WINDOW_MODE`.
 Set a build-tree override in the launch environment instead. A new driver
 that launches a demo joins the list (`test_fleet_codex.py` fails until it
 does). A detached
-`fleet-jobs start render-verify …` gets the same exact-prefix rule; the
-other `fleet-jobs` profiles get none, so `fleet-tests` stays sandboxed and
-`fleet-build --detach` runs where `fleet-build` does
+`fleet-jobs start render-verify …`, `… light-verify …` or `… gui-verify …`
+gets the same exact-prefix rule; the other `fleet-jobs` profiles get none,
+so `fleet-tests` stays sandboxed and `fleet-build --detach` runs where
+`fleet-build` does
 ([`FLEET-RUNTIME.md § Long-running jobs`](FLEET-RUNTIME.md#long-running-jobs)).
 
 After a failed checkout, verify `git rev-parse HEAD` against the PR's
