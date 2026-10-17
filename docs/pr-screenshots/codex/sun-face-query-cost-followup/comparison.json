@@ -1,0 +1,62 @@
+[
+  {
+    "parent": "parent/0.png",
+    "candidate": "candidate/0.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "parent": "parent/1.png",
+    "candidate": "candidate/1.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "parent": "parent/2.png",
+    "candidate": "candidate/2.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "parent": "parent/3.png",
+    "candidate": "candidate/3.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "parent": "parent/4.png",
+    "candidate": "candidate/4.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "parent": "parent/5.png",
+    "candidate": "candidate/5.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "parent": "parent/0.png",
+    "restored": "restored/0.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "parent": "parent/1.png",
+    "restored": "restored/1.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "parent": "parent/2.png",
+    "restored": "restored/2.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "parent": "parent/3.png",
+    "restored": "restored/3.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "parent": "parent/4.png",
+    "restored": "restored/4.png",
+    "changed_rgb_pixels": 0
+  },
+  {
+    "parent": "parent/5.png",
+    "restored": "restored/5.png",
+    "changed_rgb_pixels": 0
+  }
+]
