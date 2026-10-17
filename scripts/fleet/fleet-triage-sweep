@@ -14,8 +14,9 @@
 #          and bar through fleet_triage_class, and never closes an issue.
 #   stamp  the dispatched role's writing path: posts a `## Triage` comment
 #          and the label set its verdict earns — fleet:agent-approved plus
-#          the model label for a graduated class with its bar cited,
-#          fleet:triage-recommend for everything else.
+#          the model label (and fleet:no-plan for verification-run) for a
+#          graduated class with its bar cited, fleet:triage-recommend for
+#          everything else.
 #
 # Usage:
 #   fleet-triage-sweep list --repo engine
@@ -400,14 +401,15 @@ staged_path, live_path, plan_path = sys.argv[1:4]
 # Deliberately narrow. fleet:queued / fleet:task / verdict labels are
 # scout- and ingest-owned; pre-applying them is the anti-pattern
 # TASK-FILING.md bans. fleet:agent-approved rides only on an entry whose
-# class and bar pass the judge.
+# class and bar pass the judge, and a class label only on that class's stamp.
 MODEL_LABELS = {"fleet:sonnet", "fleet:opus", "fleet:fable"}
+CLASS_LABELS = {label for labels in triage_class.CLASS_LABELS.values() for label in labels}
 ALLOWED = {
     "human:approved",
     "human:no-plan",
     "human:owned",
     triage_class.AGENT_APPROVED,
-} | MODEL_LABELS
+} | MODEL_LABELS | CLASS_LABELS
 
 with open(staged_path, encoding="utf-8") as f:
     staged = json.load(f)
@@ -446,6 +448,18 @@ for entry in staged.get("entries", []):
         if len(MODEL_LABELS & set(labels)) != 1:
             rejected.append((number, f"{triage_class.AGENT_APPROVED} needs exactly one model label"))
             continue
+        owed = set(triage_class.CLASS_LABELS.get(entry.get("class"), ()))
+    else:
+        owed = set()
+    stray, missing = (CLASS_LABELS & set(labels)) - owed, owed - set(labels)
+    if stray:
+        rejected.append((number, f"{', '.join(sorted(stray))} rides only a graduated "
+                         "stamp of the class that writes it"))
+        continue
+    if missing:
+        rejected.append((number, f"a graduated {entry.get('class')} stamp also writes "
+                         f"{', '.join(sorted(missing))}"))
+        continue
 
     if number not in live_labels:
         skipped.append((number, "no longer open (or not found)"))

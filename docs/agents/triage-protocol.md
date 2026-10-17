@@ -94,9 +94,10 @@ graduated classes in § Graduation when every bar line can be cited, else
 ## Dispatched mode
 
 Outputs a `## Triage` comment and one label set, both written by
-`fleet-triage-sweep stamp`: `fleet:agent-approved` plus the model label for
-a recommend-approve verdict in a graduated class whose bar is cited
-(§ Graduation), `fleet:triage-recommend` for everything else. Never
+`fleet-triage-sweep stamp`: `fleet:agent-approved` plus the model label
+(and `fleet:no-plan` for `verification-run`) for a recommend-approve
+verdict in a graduated class whose bar is cited (§ Graduation),
+`fleet:triage-recommend` for everything else. Never
 `human:approved`, `fleet:queued`, or a label written by hand.
 
 - **Singleton by designation:** runs only on the host carrying the
@@ -197,8 +198,9 @@ untriaged list.
 
 Proposed labels draw from a narrow allowlist the tool enforces:
 `human:approved`, `human:no-plan`, `human:owned`, `fleet:agent-approved`
-(a graduated class only, beside its model label), and one of `fleet:sonnet`
-/ `fleet:opus` / `fleet:fable`. `fleet:queued` and `fleet:task` are absent
+(a graduated class only, beside its model label), `fleet:no-plan` (a
+graduated `verification-run` only, which must stage it), and one of
+`fleet:sonnet` / `fleet:opus` / `fleet:fable`. `fleet:queued` and `fleet:task` are absent
 by design. A park verdict whose basis names the open PR or the human
 session that owns the item stages `human:owned`, so the issue leaves the
 untriaged set instead of re-surfacing every sweep.
@@ -255,7 +257,8 @@ ever stamps `human:approved`.
 (exactly `recommend-approve`; a suffixed or extended value never stamps)
 and the bar, and both writers (`fleet-triage-sweep stamp` and `apply`)
 call it before any approval label leaves them. A graduated verdict stamps `fleet:agent-approved`
-plus the model label; `fleet:agent-approved` is never removed and is the
+plus the model label, and a `verification-run` also `fleet:no-plan` so
+ingest queues it without a plan; `fleet:agent-approved` is never removed and is the
 audit trail. Every stamp lands once in `fleet-decisions` § "Agent-approved
 since last digest"; the human's veto is ordinary mechanics (close,
 `human:owned`, `fleet:needs-human`). Two weeks after the first stamp the

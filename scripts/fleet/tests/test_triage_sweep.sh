@@ -366,6 +366,53 @@ assert_eq "$status" "1" "apply refuses fleet:agent-approved on a suffixed verdic
 assert_contains "$out" "needs verdict exactly recommend-approve" "refusal names the exact verdict"
 assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "suffixed verdict issues no gh write"
 
+# A verification-run promises no plan, and ingest queues a plan-less issue
+# only on an opt-out label: the stamp writes fleet:no-plan, and only it does.
+VERIFY_BAR='"bar": {"criteria": "render-verify --target IRPerfGrid exits 0", "host": "windows", "no_plan": "fleet:no-plan"}'
+cat > "$TMP/verification.json" << EOF
+{
+  "repo": "jakildev/IrredenEngine",
+  "human_confirmed": true,
+  "entries": [
+    {"number": 301, "verdict": "recommend-approve", "class": "verification-run", $VERIFY_BAR,
+     "labels": ["fleet:agent-approved", "fleet:sonnet", "fleet:no-plan"], "confirmed": true}
+  ]
+}
+EOF
+: > "$TMP/gh-writes.log"
+status=$(run_sweep apply --repo engine "$TMP/verification.json")
+writes=$(cat "$TMP/gh-writes.log")
+assert_eq "$status" "0" "verification-run apply exits 0"
+assert_eq "$writes" "issue edit 301 --repo jakildev/IrredenEngine --add-label fleet:agent-approved --add-label fleet:sonnet --add-label fleet:no-plan" \
+    "a complete verification-run entry stamps approval, the model label and fleet:no-plan"
+assert_contains "$(tail -1 "$TMP/fleet-home/triage/log.jsonl")" '"labels":["fleet:agent-approved", "fleet:sonnet", "fleet:no-plan"]' \
+    "the audit line records fleet:no-plan"
+
+for case in \
+    'verification-run|"fleet:agent-approved", "fleet:sonnet"|also writes fleet:no-plan' \
+    'rebless|"fleet:agent-approved", "fleet:sonnet", "fleet:no-plan"|fleet:no-plan rides only' \
+    'verification-run|"human:approved", "fleet:no-plan"|fleet:no-plan rides only'; do
+    IFS='|' read -r cls staged reason <<< "$case"
+    bar="$VERIFY_BAR"
+    [[ "$cls" == rebless ]] && bar='"bar": {"measurement": "14/14 rows match", "host": "macos", "confinement": "one framebuffer pixel"}'
+    cat > "$TMP/no-plan-misuse.json" << EOF
+{
+  "repo": "jakildev/IrredenEngine",
+  "human_confirmed": true,
+  "entries": [
+    {"number": 301, "verdict": "recommend-approve", "class": "$cls", $bar,
+     "labels": [$staged], "confirmed": true}
+  ]
+}
+EOF
+    : > "$TMP/gh-writes.log"
+    status=$(run_sweep apply --repo engine "$TMP/no-plan-misuse.json")
+    out=$(cat "$TMP/out.txt")
+    assert_eq "$status" "1" "apply refuses $cls staging [$staged]"
+    assert_contains "$out" "$reason" "the refusal for $cls [$staged] says why"
+    assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "$cls [$staged] issues no gh write"
+done
+
 # --- apply: labels_at_staging narrows the race guard -------------------------
 
 cat > "$TMP/staged-with-labels.json" << 'EOF'
@@ -425,6 +472,19 @@ cat > "$TMP/triage-direction.md" << 'EOF'
 **Suggested model:** opus
 **Basis:** a public API addition; the owner decides.
 EOF
+cat > "$TMP/triage-verification.md" << 'EOF'
+## Triage
+
+**Verdict:** recommend-approve
+**Class:** verification-run
+**Objective:** (none — defect-shaped)
+**Suggested model:** sonnet
+**Bar:**
+- criteria: render-verify --target IRPerfGrid exits 0
+- host: windows
+- no_plan: fleet:no-plan
+**Basis:** a parity measurement on the named host; nothing to design.
+EOF
 cat > "$TMP/triage-short.md" << 'EOF'
 ## Triage
 
@@ -473,6 +533,15 @@ writes=$(cat "$TMP/gh-writes.log")
 assert_eq "$status" "0" "incomplete-bar stamp exits 0"
 assert_contains "$writes" "issue edit 301 --repo jakildev/IrredenEngine --add-label fleet:triage-recommend" "an incomplete bar recommends"
 assert_contains "$out" "missing decision" "the report names the missing bar key"
+
+: > "$TMP/gh-writes.log"
+status=$(run_sweep stamp --repo engine 301 --comment-file "$TMP/triage-verification.md")
+writes=$(cat "$TMP/gh-writes.log")
+assert_eq "$status" "0" "verification-run stamp exits 0"
+assert_eq "$writes" "issue edit 301 --repo jakildev/IrredenEngine --add-label fleet:agent-approved --add-label fleet:sonnet --add-label fleet:no-plan" \
+    "a complete verification-run comment stamps approval, the model label and fleet:no-plan"
+assert_contains "$(tail -1 "$TMP/fleet-home/triage/log.jsonl")" '"class":"verification-run"' \
+    "audit log records the verification-run stamp"
 
 : > "$TMP/gh-writes.log"; : > "$TMP/gh-comments.log"
 status=$(run_sweep stamp --repo engine 307 --comment-file "$TMP/triage-rebless.md")

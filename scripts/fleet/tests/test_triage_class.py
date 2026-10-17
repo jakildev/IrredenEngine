@@ -88,10 +88,22 @@ class Bars(unittest.TestCase):
 
 
 class Labels(unittest.TestCase):
-    def test_label_set_and_model_guard(self):
-        self.assertEqual(tc.labels_for("sonnet"), ["fleet:agent-approved", "fleet:sonnet"])
+    def test_label_set_and_model_and_class_guards(self):
+        self.assertEqual(tc.labels_for("sonnet", "rebless"),
+                         ["fleet:agent-approved", "fleet:sonnet"])
+        self.assertEqual(tc.labels_for("opus", "verification-run"),
+                         ["fleet:agent-approved", "fleet:opus", "fleet:no-plan"])
         with self.assertRaises(ValueError):
-            tc.labels_for("gpt")
+            tc.labels_for("gpt", "rebless")
+        for name in (tc.DIRECTION, "perf"):
+            with self.assertRaises(ValueError):
+                tc.labels_for("sonnet", name)
+
+    def test_only_verification_run_writes_no_plan(self):
+        for name in tc.GRADUATED:
+            with self.subTest(cls=name):
+                self.assertEqual("fleet:no-plan" in tc.labels_for("sonnet", name),
+                                 name == "verification-run")
 
     def test_state_labels_are_every_fleet_and_human_label(self):
         names = ["bug", "human:owned", "area:render", "fleet:needs-human", "fleetish"]
@@ -125,6 +137,14 @@ class Comments(unittest.TestCase):
         labels, reason = tc.decide(tc.parse_triage_comment(COMMENT))
         self.assertEqual(labels, ["fleet:agent-approved", "fleet:sonnet"])
         self.assertIn("rebless", reason)
+        verification = COMMENT.replace("**Class:** rebless", "**Class:** Verification-Run").replace(
+            "- measurement: 14/14 rows match, max delta 0 on macos-debug\n- host: macos\n"
+            "- confinement: one framebuffer pixel (criterion 2)\n",
+            "- criteria: render-verify --target IRPerfGrid exits 0\n- host: windows\n"
+            "- no_plan: fleet:no-plan\n")
+        labels, reason = tc.decide(tc.parse_triage_comment(verification))
+        self.assertEqual(labels, ["fleet:agent-approved", "fleet:sonnet", "fleet:no-plan"])
+        self.assertIn("verification-run", reason)
         # The shared field grammar: a decorated name or the plain **Model:** key.
         for text in (COMMENT.replace("**Suggested model:** sonnet", "**Suggested model:** `Opus`"),
                      COMMENT.replace("**Suggested model:** sonnet", "**Model:** [fable]")):

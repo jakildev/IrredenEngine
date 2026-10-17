@@ -13,6 +13,7 @@ import re
 import fleet_model_field
 
 AGENT_APPROVED = "fleet:agent-approved"
+NO_PLAN = "fleet:no-plan"
 APPROVE = "recommend-approve"
 RECOMMEND = "fleet:triage-recommend"
 DIRECTION = "direction"
@@ -38,6 +39,10 @@ CLASSES = {
         "the active objective file, the row verbatim, filed by the architect or the steward"),
 }
 GRADUATED = tuple(CLASSES)
+# class -> labels its stamp writes beside the approval and model labels.
+# Ingest queues a plan-less issue only on an opt-out label, so a class whose
+# bar promises no plan must write that label itself.
+CLASS_LABELS = {"verification-run": (NO_PLAN,)}
 NEGATIVE = ("no", "false", "0", "none")
 
 
@@ -63,11 +68,13 @@ def check(class_name, bar):
     return True, f"{class_name}: every bar line cited"
 
 
-def labels_for(model):
-    """The label set a graduated stamp writes."""
+def labels_for(model, class_name):
+    """The label set a graduated stamp of `class_name` writes."""
     if model not in MODELS:
         raise ValueError(f"model must be one of {', '.join(MODELS)}, got {model!r}")
-    return [AGENT_APPROVED, f"fleet:{model}"]
+    if class_name not in CLASSES:
+        raise ValueError(f"class must be one of {', '.join(GRADUATED)}, got {class_name!r}")
+    return [AGENT_APPROVED, f"fleet:{model}", *CLASS_LABELS.get(class_name, ())]
 
 
 _FIELD_RE = re.compile(r"^\*\*(?P<key>[A-Za-z ]+):\*\*\s*(?P<value>.*)$")
@@ -141,11 +148,12 @@ def decide(fields):
     verdict = fields.get("verdict", "").strip()
     if not is_approve(verdict):
         return [RECOMMEND], f"verdict {verdict or '(none)'!r} is not exactly {APPROVE}"
-    ok, reason = check(fields.get("class", DIRECTION).strip().lower(), fields.get("bar"))
+    class_name = fields.get("class", DIRECTION).strip().lower()
+    ok, reason = check(class_name, fields.get("bar"))
     if not ok:
         return [RECOMMEND], reason
     model = model_of(fields.get("model"))
     if model is None:
         return [RECOMMEND], (f"suggested model {fields.get('model') or '(none)'!r} is not "
                              f"exactly one of {', '.join(MODELS)}")
-    return labels_for(model), reason
+    return labels_for(model, class_name), reason

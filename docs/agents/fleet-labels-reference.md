@@ -94,9 +94,9 @@ the author or the human, and the lane re-dispatched it every tick.
   by an agent-approved follow-up filed with a `## Plan` comment.
 - `human:no-plan` — **human, at filing**: skip planning, queue directly.
   The `[no-plan]` token and "investigation spike" are honored the same way.
-- `fleet:no-plan` — **author agent**, the agent twin of `human:no-plan`,
-  applied at filing with `fleet:agent-approved` when the fix is bounded to
-  one session (single module, no design choice, runnable criteria). Never
+- `fleet:no-plan` — **author agent** (or a `verification-run` triage stamp), the
+  agent twin of `human:no-plan`, applied with `fleet:agent-approved` when the fix
+  is bounded to one session (single module, no design choice, runnable criteria). Never
   together with `fleet:plan-review`.
 - `human:revise-plan` — **human only**, on a plan in review whose approach
   needs rework, with a comment. On the next tick ingest adds
