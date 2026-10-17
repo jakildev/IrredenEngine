@@ -16,8 +16,9 @@ gh issue create --repo jakildev/IrredenEngine --title "<short title>" --body "<b
 State labels (`fleet:task`, `fleet:queued`, `fleet:needs-plan`,
 `fleet:opus` / `fleet:sonnet`, …) belong to reviewers, the human, and the
 scout's ingest: the human stamps `human:approved` and the scout adds the
-rest. The one filer-owned exception is the agent-approved follow-up lane
-below.
+rest. The filer-owned exceptions are the agent-approved follow-up lane
+below and the triage role's graduated classes
+([`triage-protocol.md`](triage-protocol.md) § Graduation).
 
 The body carries these standalone lines (the scout's ingest and
 `fleet-claim`'s blocker gate parse them):

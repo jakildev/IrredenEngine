@@ -53,7 +53,7 @@ the author or the human, and the lane re-dispatched it every tick.
   `fleet:agent-approved`). Kept through every park (`fleet:needs-human`,
   `fleet:gated`, `human:owned`); an agent never strips it.
 - `fleet:agent-approved` — **author agent, at filing**, on a follow-up that
-  meets the lane's bar ([`TASK-FILING.md`](TASK-FILING.md)). Approval-equivalent
+  meets the lane's bar ([`TASK-FILING.md`](TASK-FILING.md)), or **triage** on a graduated class ([`triage-protocol.md`](triage-protocol.md) § Graduation). Approval-equivalent
   to `human:approved` and never removed (`gh issue list --label
   fleet:agent-approved` is the audit trail of work that queued without human
   triage). Never on another agent's issue, a `fleet:coding-improvement` ticket,
@@ -128,9 +128,9 @@ the author or the human, and the lane re-dispatched it every tick.
   `fleet:queued`; the human-cued `triage-coding-improvements` batch
   drains it, accepting a validator or closing.
 - `fleet:triage-recommend` — **triage role**
-  ([`triage-protocol.md`](triage-protocol.md)), with a `## Triage` comment.
-  Inert; routes the issue into `fleet-decisions`. The human acts and
-  removes it, which re-arms re-triage.
+  ([`triage-protocol.md`](triage-protocol.md)), with a `## Triage` comment, on
+  every verdict that is not a graduated stamp. Inert; routes the issue into
+  `fleet-decisions`. The human acts and removes it, which re-arms re-triage.
 - `human:owned` — **human** de-queue on an issue: ingest never re-stamps
   `fleet:queued`. Reconcile R6 flags `fleet:queued` + `human:owned` and
   never auto-strips either.

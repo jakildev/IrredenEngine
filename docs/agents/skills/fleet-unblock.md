@@ -52,6 +52,11 @@ points here and answers the delta keys below
 | Unapproved `fleet:task` that is defect-shaped with verifiable forensics, an epic child under a `human:approved` umbrella, or filed by the human with a structured body | stamps `human:approved` plus the body's model label | nothing |
 | Unapproved `fleet:task` that is direction-shaped: a new capability, a public API addition, a Non-goal crossing, a design choice | nothing; reports a one-line recommendation and the question | decides |
 | Untriaged issue | judges per `triage-protocol.md`, writes the staging file, confirms the granted-class entries itself and runs `fleet-triage-sweep apply` | confirms the rest |
+| Untriaged issue in the `rebless` class (`triage-protocol.md` § Graduation): a reference re-bless or render-verify refresh with a measured table on the named host and a confinement rule in its criteria | stages it with `class` and `bar`, confirms it, and `apply` stamps `fleet:agent-approved` plus the model label | nothing; the stamp shows once in the **decisions tool** |
+| Untriaged issue in the `docs-capture` class: a doc capturing a posted ruling, with the ruling comment and a grep showing the doc lacks it on master | the same | nothing |
+| Untriaged issue in the `plan-residual` class: a residual an approved `## Plan` comment names, with its decision line | the same | nothing |
+| Untriaged issue in the `verification-run` class: a verification run or parity measurement with runnable criteria, a named host and `fleet:no-plan` | the same | nothing |
+| Untriaged issue in the `objective-row` class: an objective Done-means row filed by the architect or the steward, with the row verbatim and runnable criteria | the same | nothing |
 | `fleet:needs-human` whose open question is factual: does X hold on master, did Y merge, what does the measurement read | gathers the evidence, posts it, removes the label, takes the resulting action (close, approve, unpark) | nothing |
 | `fleet:needs-human` whose question is a product or design call | posts the recommendation and the question in one line | decides |
 | `fleet:awaiting-infra` park whose named blocker is a ghost | closes the ghost; reconcile R8 lifts the park | nothing |

@@ -38,7 +38,10 @@
 # state rides along from `gh pr list`: BEHIND is an Update-branch hold, and
 # UNSTABLE with no failed run above accounts for it is held as unread.
 #
-# Read-only: changes no labels, writes no state.
+# Read-only on GitHub: changes no labels. The one state it writes is its own
+# seen marker for graduated triage stamps (~/.fleet/triage/.decisions-seen),
+# so each fleet:agent-approved stamp in ~/.fleet/triage/log.jsonl renders in
+# exactly one digest.
 #
 # Usage:
 #   fleet-decisions                  # engine + game
@@ -163,7 +166,7 @@ fi
 
 # PYTHONIOENCODING forces UTF-8 stdout for native-Windows consoles (cp1252
 # default raises on the report's em-dash / middle-dot glyphs).
-PYTHONIOENCODING=utf-8 python3 - "$manifest" "$workdir" "$feedback_f" "$marker_age_days" "$survey_f" << 'PYEOF'
+PYTHONIOENCODING=utf-8 python3 - "$manifest" "$workdir" "$feedback_f" "$marker_age_days" "$survey_f" "$FLEET_HOME/triage" << 'PYEOF'
 import base64
 import json
 import os
@@ -481,6 +484,7 @@ try:
         survey_report = json.load(survey_file)
 except (OSError, ValueError):
     survey_report = {}
+triage_dir = sys.argv[6]
 
 
 def names(item):
@@ -547,6 +551,36 @@ for repo, report in (survey_report.get("repos") or {}).items():
                         (epic.get("left") or {}).get(number, ""))).startswith("ghost")]
         closeouts.append((repo, number, row, parks, epics))
 
+# Graduated triage stamps (triage-protocol.md § Graduation), each seen once:
+# audit-log lines newer than the seen marker render, then the marker advances
+# to the newest one rendered. A line without a timestamp predates the marker
+# and never renders.
+seen_marker = os.path.join(triage_dir, ".decisions-seen")
+try:
+    with open(seen_marker, encoding="utf-8") as f:
+        seen_ts = f.read().strip()
+except OSError:
+    seen_ts = ""
+in_scope = {repo for repo, _, _, _ in repos}
+titles = {(repo, issue["number"]): issue["title"]
+          for repo, _, issues, _ in repos for issue in issues}
+stamps = []
+try:
+    with open(os.path.join(triage_dir, "log.jsonl"), encoding="utf-8") as f:
+        for line in f:
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            ts = entry.get("ts") or ""
+            repo = SHORT.get(entry.get("repo"), entry.get("repo"))
+            if ("fleet:agent-approved" in (entry.get("labels") or [])
+                    and ts > seen_ts and repo in in_scope):
+                stamps.append((ts, repo, entry))
+except OSError:
+    pass
+stamps.sort(key=lambda stamp: stamp[0])
+
 total = len(merge_queue) + len(decisions) + len(closeouts)
 scope = "+".join(repo for repo, _, _, _ in repos)
 print(f"fleet-decisions: {total} decision(s) waiting   [{scope}]")
@@ -584,6 +618,23 @@ if closeouts:
             print(f"      impact: PR #{pr} declares Parked-until: #{number}")
         for epic in epics:
             print(f"      impact: epic #{epic} has unchecked child #{number}")
+
+if stamps:
+    print(f"\n## Agent-approved since last digest ({len(stamps)})")
+    for ts, repo, entry in stamps:
+        number = entry.get("issue")
+        title = titles.get((repo, number), "(not open)")
+        print(f"  {repo} issue #{number}  {title}  "
+              f"[{entry.get('class') or '?'} via {entry.get('mode') or 'apply'}, {ts}]")
+    newest = stamps[-1][0]
+    try:
+        os.makedirs(triage_dir, exist_ok=True)
+        tmp = f"{seen_marker}.{os.getpid()}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(newest + "\n")
+        os.replace(tmp, seen_marker)
+    except OSError as e:
+        print(f"      warn: could not advance the seen marker ({e}); these render again")
 
 cues = []
 if coding_improvements >= CI_DRAIN_THRESHOLD:
@@ -639,6 +690,6 @@ print("\n## Status")
 for repo, open_prs, queued, needs_plan in status:
     print(f"  {repo}: {open_prs} open PR(s) · {queued} queued · {needs_plan} needs-plan")
 
-if total == 0 and not cues:
+if total == 0 and not cues and not stamps:
     print("\n  nothing is waiting on you.")
 PYEOF

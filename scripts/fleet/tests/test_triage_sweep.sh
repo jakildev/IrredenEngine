@@ -16,6 +16,15 @@
 #   - apply --dry-run: emits the expected `gh issue edit --add-label` set,
 #     no `gh issue close`, and reports the race-guard issue as skipped
 #   - apply: recommend-close is reported as a ready-to-run line, never run
+#   - apply: a graduated-class entry (class + complete bar) stamps
+#     fleet:agent-approved plus the model label; an incomplete bar or a
+#     direction entry refuses the whole apply with no gh write; a park entry
+#     stages human:owned; the audit line carries the class and the mode
+#   - apply: labels_at_staging narrows the race guard to labels gained beyond
+#     the staged set
+#   - stamp: a complete graduated comment posts and stamps; direction and an
+#     incomplete bar recommend; an issue already carrying a verdict label is
+#     skipped with no write; --dry-run writes nothing; --comment-file required
 #   - --repo is required; dual-spelling (--repo= empty) rejected
 
 set -uo pipefail
@@ -73,6 +82,8 @@ case "$1 $2 $repo" in
     "issue edit jakildev/IrredenEngine") echo "$*" >> "$fixtures/gh-writes.log" ;;
     "issue close jakildev/IrredenEngine")
         echo "$*" >> "$fixtures/gh-closes.log" ;;
+    "issue view jakildev/IrredenEngine") cat "$fixtures/view-$3.json" ;;
+    "issue comment jakildev/IrredenEngine") echo "$*" >> "$fixtures/gh-comments.log" ;;
     *) echo "gh stub: unexpected invocation: $*" >&2; exit 99 ;;
 esac
 EOF
@@ -254,6 +265,180 @@ with open(sys.argv[1], encoding="utf-8") as f:
 else
     bad "every audit-log line parses as JSON with a list-valued labels field"
 fi
+
+# --- apply: a graduated-class entry stamps fleet:agent-approved -------------
+
+cat > "$TMP/graduated.json" << 'EOF'
+{
+  "repo": "jakildev/IrredenEngine",
+  "human_confirmed": true,
+  "entries": [
+    {"number": 301, "verdict": "recommend-approve", "class": "rebless",
+     "bar": {"measurement": "14/14 rows match, max delta 0 on macos-debug",
+             "host": "macos", "confinement": "one framebuffer pixel (criterion 2)"},
+     "labels": ["fleet:agent-approved", "fleet:sonnet"], "confirmed": true},
+    {"number": 302, "verdict": "park", "basis": "owned by the open PR #999",
+     "labels": ["human:owned"], "confirmed": true}
+  ]
+}
+EOF
+: > "$TMP/gh-writes.log"
+status=$(run_sweep apply --repo engine "$TMP/graduated.json")
+writes=$(cat "$TMP/gh-writes.log")
+assert_eq "$status" "0" "graduated apply exits 0"
+assert_contains "$writes" "issue edit 301 --repo jakildev/IrredenEngine --add-label fleet:agent-approved --add-label fleet:sonnet" \
+    "a complete rebless entry stamps fleet:agent-approved plus the model label"
+assert_contains "$writes" "issue edit 302 --repo jakildev/IrredenEngine --add-label human:owned" \
+    "a park entry naming its owner stamps human:owned"
+assert_contains "$(tail -2 "$TMP/fleet-home/triage/log.jsonl")" '"class":"rebless"' "audit log records the class"
+assert_contains "$(tail -2 "$TMP/fleet-home/triage/log.jsonl")" '"mode":"apply"' "audit log records the mode"
+assert_contains "$(tail -1 "$TMP/fleet-home/triage/log.jsonl")" '"ts":"20' "audit log records a timestamp"
+
+cat > "$TMP/incomplete.json" << 'EOF'
+{
+  "repo": "jakildev/IrredenEngine",
+  "human_confirmed": true,
+  "entries": [
+    {"number": 301, "verdict": "recommend-approve", "class": "docs-capture",
+     "bar": {"ruling": "https://example.invalid/issues/1#issuecomment-2"},
+     "labels": ["fleet:agent-approved", "fleet:sonnet"], "confirmed": true}
+  ]
+}
+EOF
+: > "$TMP/gh-writes.log"
+status=$(run_sweep apply --repo engine "$TMP/incomplete.json")
+out=$(cat "$TMP/out.txt")
+err=$(cat "$TMP/err.txt")
+assert_eq "$status" "1" "apply refuses a graduated entry with an incomplete bar"
+assert_contains "$out" "missing grep" "refusal names the missing bar key"
+assert_contains "$err" "refusing" "bar refusal reaches stderr"
+assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "incomplete bar issues no gh write"
+
+cat > "$TMP/direction.json" << 'EOF'
+{
+  "repo": "jakildev/IrredenEngine",
+  "human_confirmed": true,
+  "entries": [
+    {"number": 301, "verdict": "recommend-approve", "class": "direction",
+     "labels": ["fleet:agent-approved", "fleet:opus"], "confirmed": true}
+  ]
+}
+EOF
+status=$(run_sweep apply --repo engine "$TMP/direction.json")
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "1" "apply refuses fleet:agent-approved on a direction entry"
+assert_contains "$out" "recommend-only" "refusal says direction stays recommend-only"
+assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "direction entry issues no gh write"
+
+# --- apply: labels_at_staging narrows the race guard -------------------------
+
+cat > "$TMP/staged-with-labels.json" << 'EOF'
+{
+  "repo": "jakildev/IrredenEngine",
+  "human_confirmed": true,
+  "entries": [
+    {"number": 304, "verdict": "recommend-approve", "labels_at_staging": ["fleet:queued"],
+     "labels": ["human:approved", "fleet:sonnet"], "confirmed": true},
+    {"number": 305, "verdict": "recommend-approve", "labels_at_staging": ["fleet:task"],
+     "labels": ["human:approved", "fleet:sonnet"], "confirmed": true}
+  ]
+}
+EOF
+status=$(run_sweep apply --repo engine "$TMP/staged-with-labels.json" --dry-run)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "dry-run with labels_at_staging exits 0"
+assert_contains "$out" "would run: gh issue edit 304" "an issue staged with its fleet:queued recorded is applied"
+assert_contains "$out" "skipped   #305" "an issue that gained a label beyond its staged set is skipped"
+assert_contains "$out" "gained human:owned since staging" "the skip names the label gained"
+
+# --- stamp: the dispatched role's write path ---------------------------------
+
+echo '{"labels": []}' > "$TMP/view-301.json"
+echo '{"labels": []}' > "$TMP/view-306.json"
+echo '{"labels": [{"name": "fleet:triage-recommend"}]}' > "$TMP/view-307.json"
+cat > "$TMP/triage-rebless.md" << 'EOF'
+## Triage
+
+**Verdict:** recommend-approve
+**Class:** rebless
+**Objective:** (none — defect-shaped)
+**Suggested model:** sonnet
+**Bar:**
+- measurement: 14/14 rows match, max delta 0, PSNR inf on macos-debug
+- host: macos
+- confinement: one framebuffer pixel (criterion 2)
+**Basis:** the six rows moved by whole pixels after the scatter fix merged.
+EOF
+cat > "$TMP/triage-direction.md" << 'EOF'
+## Triage
+
+**Verdict:** recommend-approve
+**Class:** direction
+**Objective:** (none — see verdict)
+**Suggested model:** opus
+**Basis:** a public API addition; the owner decides.
+EOF
+cat > "$TMP/triage-short.md" << 'EOF'
+## Triage
+
+**Verdict:** recommend-approve
+**Class:** plan-residual
+**Suggested model:** sonnet
+**Bar:**
+- plan: https://example.invalid/issues/9#issuecomment-1
+**Basis:** carved out of the plan.
+EOF
+
+: > "$TMP/gh-writes.log"; : > "$TMP/gh-comments.log"
+status=$(run_sweep stamp --repo engine 306 --comment-file "$TMP/triage-rebless.md" --dry-run)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "stamp --dry-run exits 0"
+assert_contains "$out" "would run: gh issue edit 306 --repo jakildev/IrredenEngine --add-label fleet:agent-approved --add-label fleet:sonnet" \
+    "dry-run shows the graduated label set"
+assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "stamp dry-run issues no gh write"
+assert_eq "$(wc -l < "$TMP/gh-comments.log" | tr -d ' ')" "0" "stamp dry-run posts no comment"
+
+status=$(run_sweep stamp --repo engine 306 --comment-file "$TMP/triage-rebless.md")
+out=$(cat "$TMP/out.txt")
+writes=$(cat "$TMP/gh-writes.log")
+comments=$(cat "$TMP/gh-comments.log")
+assert_eq "$status" "0" "graduated stamp exits 0"
+assert_contains "$comments" "issue comment 306 --repo jakildev/IrredenEngine --body-file" "stamp posts the comment"
+assert_contains "$writes" "issue edit 306 --repo jakildev/IrredenEngine --add-label fleet:agent-approved --add-label fleet:sonnet" \
+    "a complete rebless comment stamps fleet:agent-approved plus the model label"
+assert_contains "$out" "stamp     #306" "stamp reports the graduated verb"
+assert_contains "$(tail -1 "$TMP/fleet-home/triage/log.jsonl")" '"mode":"stamp"' "audit log records the stamp"
+assert_contains "$(tail -1 "$TMP/fleet-home/triage/log.jsonl")" '"class":"rebless"' "audit log records the stamped class"
+
+: > "$TMP/gh-writes.log"
+status=$(run_sweep stamp --repo engine 301 --comment-file "$TMP/triage-direction.md")
+out=$(cat "$TMP/out.txt")
+writes=$(cat "$TMP/gh-writes.log")
+assert_eq "$status" "0" "direction stamp exits 0"
+assert_contains "$writes" "issue edit 301 --repo jakildev/IrredenEngine --add-label fleet:triage-recommend" "a direction verdict recommends"
+assert_absent  "$writes" "fleet:agent-approved" "a direction verdict never stamps approval"
+assert_contains "$out" "recommend-only" "the report says why"
+
+: > "$TMP/gh-writes.log"
+status=$(run_sweep stamp --repo engine 301 --comment-file "$TMP/triage-short.md")
+out=$(cat "$TMP/out.txt")
+writes=$(cat "$TMP/gh-writes.log")
+assert_eq "$status" "0" "incomplete-bar stamp exits 0"
+assert_contains "$writes" "issue edit 301 --repo jakildev/IrredenEngine --add-label fleet:triage-recommend" "an incomplete bar recommends"
+assert_contains "$out" "missing decision" "the report names the missing bar key"
+
+: > "$TMP/gh-writes.log"; : > "$TMP/gh-comments.log"
+status=$(run_sweep stamp --repo engine 307 --comment-file "$TMP/triage-rebless.md")
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "stamp on an already-triaged issue exits 0"
+assert_contains "$out" "skipped   #307: already carries fleet:triage-recommend" "the idempotency guard names the label held"
+assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "no label write on a held issue"
+assert_eq "$(wc -l < "$TMP/gh-comments.log" | tr -d ' ')" "0" "no comment on a held issue"
+
+status=$(run_sweep stamp --repo engine 306)
+err=$(cat "$TMP/err.txt")
+assert_eq "$status" "1" "stamp without --comment-file is refused"
+assert_contains "$err" "--comment-file" "refusal names the missing flag"
 
 # --- arg handling -----------------------------------------------------------
 

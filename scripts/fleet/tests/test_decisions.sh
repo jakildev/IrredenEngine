@@ -25,6 +25,10 @@
 #   - both repos reachable at once: each repo's manifest-indexed artifacts
 #     resolve independently, not cross-contaminated
 #   - --repo=engine equals-form works; empty --repo= rejected (dual-spelling)
+#   - agent-approved stamps: a graduated triage stamp in the audit log renders
+#     once under "Agent-approved since last digest", names issue, class, mode
+#     and time, skips lines without a timestamp, human:approved lines and the
+#     other repo, advances the seen marker, and never renders again
 #   - CI gate holds per approved PR, keyed on (head sha, workflow path): a
 #     replay of a recorded head whose runs predate one gate (a
 #     no-completed-run hold) and failed another (a failed-on-head hold naming
@@ -855,5 +859,37 @@ assert_contains "$out" "[engine+game]" "scope lists both repos"
 assert_contains "$out" "engine PR #101" "engine's own PR survives alongside game's"
 assert_contains "$out" "game PR #301  game: gated edit" "game's PR is read from its own artifact, not engine's"
 assert_contains "$out" "game issue #401" "game's issue is read from its own artifact, not engine's"
+
+# --- agent-approved stamps: seen once --------------------------------------
+# A graduated triage stamp (triage-protocol.md § Graduation) lands in the
+# digest once; the seen marker advances to the newest rendered timestamp.
+
+mkdir -p "$TMP/fleet-home/triage"
+cat > "$TMP/fleet-home/triage/log.jsonl" << 'EOF'
+{"repo":"jakildev/IrredenEngine","issue":203,"labels":["fleet:agent-approved","fleet:sonnet"],"ts":"2026-10-17T00:00:00Z","mode":"stamp","class":"rebless"}
+{"repo":"jakildev/IrredenEngine","issue":999,"labels":["fleet:agent-approved","fleet:opus"],"ts":"2026-10-17T00:01:00Z","mode":"apply","class":"docs-capture"}
+{"repo":"jakildev/IrredenEngine","issue":204,"labels":["human:approved","fleet:sonnet"],"ts":"2026-10-17T00:02:00Z","mode":"apply"}
+{"repo":"jakildev/IrredenEngine","issue":205,"labels":["fleet:agent-approved","fleet:sonnet"]}
+{"repo":"jakildev/irreden","issue":7,"labels":["fleet:agent-approved","fleet:sonnet"],"ts":"2026-10-17T00:03:00Z","mode":"stamp","class":"rebless"}
+EOF
+rm -f "$TMP/fleet-home/triage/.decisions-seen"
+status=$(run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "digest with agent-approved stamps exits 0"
+assert_contains "$out" "## Agent-approved since last digest (2)" "every unseen graduated stamp in scope renders"
+assert_contains "$out" "engine issue #203  idea: untriaged thing  [rebless via stamp, 2026-10-17T00:00:00Z]" \
+    "a stamp names its issue, class, mode and time"
+assert_contains "$out" "engine issue #999  (not open)" "a stamp on an issue no longer open still renders"
+section=$(printf '%s\n' "$out" | awk '/^## Agent-approved since last digest/{p=1; next} /^## /{p=0} p')
+assert_absent  "$section" "#204" "a human:approved apply line is not an agent-approved stamp"
+assert_absent  "$section" "#205" "a line without a timestamp never renders"
+assert_absent  "$section" "#7 " "a game stamp stays out of an engine-only digest"
+assert_eq "$(cat "$TMP/fleet-home/triage/.decisions-seen")" "2026-10-17T00:01:00Z" \
+    "the seen marker advances to the newest rendered stamp"
+
+status=$(run_decisions --repo=engine)
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "second digest exits 0"
+assert_absent "$out" "Agent-approved since last digest" "a stamp already seen never renders again"
 
 summarize "fleet-decisions tests"
