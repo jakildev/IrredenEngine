@@ -118,7 +118,11 @@ assert_eq "$RC" "0" "parent run exits 0"
 TOKEN=$(field token)
 assert_eq "$([[ "$TOKEN" =~ ^[0-9a-f]{32}$ ]] && echo yes || echo "$TOKEN")" "yes" \
     "ir-acquire gpu exports an opaque lease token"
-assert_eq "$(field wrapper)" "$(cd "$(dirname "$RUN")" && pwd)/ir-run" \
+EXPECTED_WRAPPER="$(cd "$(dirname "$RUN")" && pwd)/ir-run"
+case "$(uname -s)" in
+    MINGW*|MSYS*|CYGWIN*) EXPECTED_WRAPPER="$(cygpath -m "$EXPECTED_WRAPPER")" ;;  # ir-run hands the exe a Windows-form path
+esac
+assert_eq "$(field wrapper)" "$EXPECTED_WRAPPER" \
     "ir-run exports its canonical wrapper path"
 PARENT_HOLDER=$(sed -n 's/.*acquire_holder=\([0-9]*\).*/\1/p' "$HANDOFF_LOG" | head -1)
 assert_eq "$(field initial_holder)" "$PARENT_HOLDER" "parent's ir-acquire owns gpu/lock at start"
