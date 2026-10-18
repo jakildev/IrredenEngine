@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "UI dockspace",
+  "description": "Demonstrates the ui dockspace creation and its engine integration.",
+  "group": "ui",
+  "tags": [
+    "ui"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRUiDockspace",
+      "description": "Runs the ui dockspace creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

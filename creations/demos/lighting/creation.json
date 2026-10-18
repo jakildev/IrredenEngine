@@ -1,0 +1,285 @@
+{
+  "version": 1,
+  "name": "Lighting demos",
+  "description": "Demonstrates the lighting demos creation and its engine integration.",
+  "group": "render/lighting",
+  "tags": [
+    "render",
+    "lighting"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRLightingAO",
+      "description": "Runs the lighting demos creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRLightingSunShadow",
+      "description": "Runs the lighting demos creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRLightingEmissive",
+      "description": "Runs the lighting demos creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRLightingCombined",
+      "description": "Runs the lighting demos creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRLightingDebugOverlays",
+      "description": "Runs the lighting demos creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRLightingPoint",
+      "description": "Runs the lighting demos creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRLightingSpot",
+      "description": "Runs the lighting demos creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRLightingDirectional",
+      "description": "Runs the lighting demos creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRLightingSunShading",
+      "description": "Runs the lighting demos creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRLightingSdfCascade",
+      "description": "Runs the lighting demos creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRLightingSdfBlocker",
+      "description": "Runs the lighting demos creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRLightingSunOrbit",
+      "description": "Runs the lighting demos creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRLightingSunElevationOrbit",
+      "description": "Runs the lighting demos creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRLightingPerCanvasScope",
+      "description": "Runs the lighting demos creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRLightingHDR",
+      "description": "Runs the lighting demos creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRLightingOccludedBoundary",
+      "description": "Runs the lighting demos creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -34,6 +34,10 @@ work. A private creation that wants different conventions should:
 
 ## What lives under each creation
 
+Every tracked demo and editor ships a `creation.json` v1 manifest for the
+launcher. The schema is [`docs/design/engine-launcher.md`](../docs/design/engine-launcher.md)
+§D2; validate it with `python3 scripts/lint_creation_manifests.py`.
+
 Minimum for a C++-only creation:
 
 - `CMakeLists.txt`

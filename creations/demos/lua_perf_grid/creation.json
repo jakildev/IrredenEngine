@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "Lua performance grid",
+  "description": "Demonstrates the lua performance grid creation and its engine integration.",
+  "group": "perf",
+  "tags": [
+    "perf"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRLuaPerfGrid",
+      "description": "Runs the lua performance grid creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

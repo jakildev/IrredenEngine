@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "Collision overlap",
+  "description": "Demonstrates the collision overlap creation and its engine integration.",
+  "group": "physics",
+  "tags": [
+    "physics"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRCollisionOverlapDemo",
+      "description": "Runs the collision overlap creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

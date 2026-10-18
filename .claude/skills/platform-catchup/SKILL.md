@@ -149,6 +149,14 @@ desktop (no build-only downgrade) and MSYS2 ships `/usr/bin/timeout`.
   here first). A clean Linux build is not evidence the program links on
   Windows; a Windows run crash is an engine bug to root-cause under gdb, not a
   flaky demo.
+- Optional perf row (step 9): on a host with a `perf-baseline` entry for its
+  slug (`ir-host-probe --slug`; `git ls-tree origin/perf-baseline
+  docs/perf/baseline_latest/`), run `ir-perf-grid --label catchup` on the
+  built master and report `check_regression.py`'s verdict as `perf:`. It is
+  informational and never gates the sweep. The matrix takes about 220 s on the ship
+  host, and its readings are only meaningful with the fleet down and the
+  desktop idle (`scripts/perf/README.md` § Exclusivity). A live fleet
+  spreads same-SHA runs 10–43% per cell.
 
 ## Flow
 
@@ -414,6 +422,8 @@ platform-catchup: <repo> on <host-tag>
   run:     <X/Y> targets pass (<failed>)
   parity:  green <demos> | red <demos> (held) | no-verdict <demos> (held)
            | skipped <demos> (no windows-debug set)
+  perf:    <PASS | FAIL <cells> | no baseline> vs <host_slug> (informational;
+           optional, only on a host with a perf-baseline entry)
   outcome: <green | partial-runtime | partial-build | red>
   swept:   <N> PRs (fleet:needs-<label-host-tag>-smoke → fleet:verified-<label-host-tag>)
   held:    <N> PRs (touched <held-paths>; will sweep after <PR/issue> resolves)

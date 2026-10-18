@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "Modifier demo",
+  "description": "Demonstrates the modifier demo creation and its engine integration.",
+  "group": "render/shapes",
+  "tags": [
+    "render",
+    "shapes"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRModifierDemo",
+      "description": "Runs the modifier demo creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

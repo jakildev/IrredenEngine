@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "Stateless particles",
+  "description": "Demonstrates the stateless particles creation and its engine integration.",
+  "group": "render/particles",
+  "tags": [
+    "render",
+    "particles"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRStatelessParticles",
+      "description": "Runs the stateless particles creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

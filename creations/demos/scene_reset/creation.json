@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "Scene reset",
+  "description": "Demonstrates the scene reset creation and its engine integration.",
+  "group": "world/persistence",
+  "tags": [
+    "world",
+    "persistence"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRSceneReset",
+      "description": "Runs the scene reset creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

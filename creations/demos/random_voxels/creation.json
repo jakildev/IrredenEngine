@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "Random voxels",
+  "description": "Demonstrates the random voxels creation and its engine integration.",
+  "group": "render/shapes",
+  "tags": [
+    "render",
+    "shapes"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRRandomVoxels",
+      "description": "Runs the random voxels creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}
