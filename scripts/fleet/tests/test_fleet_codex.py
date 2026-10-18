@@ -25,6 +25,11 @@ import fleet_codex_policy as policy
 
 
 class Transport(unittest.TestCase):
+    def test_worker_prompt_uses_pr_stamp_gate(self):
+        text = codex.prompt("worker", "live", "task:engine:123")
+        self.assertIn("fleet-pr-stamp", text)
+        self.assertNotIn("fleet-runtime stamp", text)
+
     def test_batch_role_prompts_and_target_guards(self):
         for role in codex.BATCH_ROLES:
             with self.subTest(role=role):
@@ -32,10 +37,12 @@ class Transport(unittest.TestCase):
                 self.assertIn(f"role-{role}.md", text)
                 self.assertIn("has no dispatch target", text)
                 self.assertNotIn("fleet-runtime stamp", text)
+                self.assertNotIn("fleet-pr-stamp", text)
                 self.assertNotIn("Do not discover", text)
         merger = codex.prompt("merger", "live", "merge:engine:1")
         self.assertIn("assigned target is merge:engine:1", merger)
         self.assertNotIn("fleet-runtime stamp", merger)
+        self.assertNotIn("fleet-pr-stamp", merger)
 
     def test_batch_role_run_accepts_no_target(self):
         with tempfile.TemporaryDirectory() as temp:

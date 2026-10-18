@@ -14,6 +14,7 @@ from pathlib import Path
 import fleet_github
 
 RUNTIMES = ("claude", "codex")
+REPO_SLUGS = {"engine": "jakildev/IrredenEngine", "game": "jakildev/irreden"}
 CODEX_MODELS = {"fable": "gpt-6-astra", "opus": "gpt-5.6-sol", "sonnet": "gpt-5.6-terra"}
 BATCH_ROLES = ("epic-steward", "design-answerer")
 ROLE_CLASSES = {"sonnet-reviewer": "sonnet", "opus-reviewer": "opus", "smoke-worker": "sonnet"}
@@ -45,6 +46,10 @@ def atomic_json(path, data):
         os.replace(temp, path)
     finally:
         Path(temp).unlink(missing_ok=True)
+
+
+# fleet_gh_fallback imports atomic_json from this partially initialized module.
+import fleet_gh_fallback  # noqa: E402
 
 
 def routing_problem(state, key, message=None):
@@ -266,15 +271,53 @@ def route_role(role, cls, model, effort, claude_gate, env):
     return resolve_assignment(runtime, role, cls, model, effort, env)
 
 
+def resolve_repo(repo, state_dir=None):
+    if "/" in repo:
+        return repo
+    if repo not in REPO_SLUGS:
+        raise ValueError("repo must be engine, game, or owner/repo")
+    state = Path(state_dir or os.environ.get("FLEET_STATE_DIR", Path.home() / ".fleet/state"))
+    try:
+        configured = json.loads((state / "repos.json").read_text())
+    except (OSError, ValueError):
+        configured = {}
+    repos = configured.get("repos", configured)
+    slug = repos.get(repo, REPO_SLUGS[repo]) if isinstance(repos, dict) else REPO_SLUGS[repo]
+    return slug if isinstance(slug, str) and "/" in slug else REPO_SLUGS[repo]
+
+
+def github_call(args):
+    proc = fleet_github.run(args, capture_output=True, timeout=30)
+    if proc.returncode == 0:
+        return proc
+    if not fleet_gh_fallback.is_refusal(proc.stderr):
+        return proc
+    try:
+        fleet_gh_fallback.latch_refusal(fleet_gh_fallback.refusal_reason(args, proc.stderr))
+    except OSError as exc:
+        print(f"fleet-runtime: GraphQL refusal latch failed: {exc}", file=sys.stderr)
+    try:
+        stdout = fleet_gh_fallback.translate(args)
+    except fleet_gh_fallback.Unmodeled:
+        return proc
+    except fleet_gh_fallback.RestFailed as exc:
+        return subprocess.CompletedProcess(args, 1, b"", exc.stderr)
+    return subprocess.CompletedProcess(args, 0, stdout, b"")
+
+
 def stamp(pr, repo, runtime):
     if not pr.isdigit() or int(pr) < 1 or runtime not in RUNTIMES:
         raise ValueError("expected positive PR number and supported runtime")
     if os.environ.get("FLEET_ROLE", "") in ("sonnet-reviewer", "opus-reviewer", "smoke-worker"):
         raise ValueError("reviewers must not change author provenance")
+    repo = resolve_repo(repo)
     other = "claude" if runtime == "codex" else "codex"
-    fleet_github.run(["pr", "edit", pr, "--repo", repo,
-                      "--remove-label", f"fleet:author-{other}",
-                      "--add-label", f"fleet:author-{runtime}"], check=True, timeout=30)
+    args = ["pr", "edit", pr, "--repo", repo,
+            "--remove-label", f"fleet:author-{other}",
+            "--add-label", f"fleet:author-{runtime}"]
+    proc = github_call(args)
+    if proc.returncode != 0:
+        raise subprocess.CalledProcessError(proc.returncode, args, proc.stdout, proc.stderr)
 
 
 def ready(state):
@@ -320,7 +363,8 @@ def main(argv=None):
     p = subs.add_parser("stamp", help="record the provider that last authored this PR")
     p.add_argument("pr")
     p.add_argument("--repo", required=True)
-    p.add_argument("--runtime", choices=RUNTIMES, default=os.environ.get("FLEET_RUNTIME", "claude"))
+    p.add_argument("--runtime", choices=RUNTIMES,
+                   default=os.environ.get("FLEET_RUNTIME") or "claude")
     p = subs.add_parser("ready", help="check the Codex provider cooldown")
     p.add_argument("state")
     p = subs.add_parser("resume-route", help="restore a reserved provider assignment")

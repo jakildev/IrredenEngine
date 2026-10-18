@@ -249,9 +249,41 @@ class Routing(unittest.TestCase):
     def test_stamp_has_exact_provider_and_no_live_network(self):
         with patch.dict(runtime.os.environ, {}, clear=True), \
                 patch.object(runtime.subprocess, "run") as run:
+            run.return_value.returncode = 0
+            run.return_value.stderr = b""
             runtime.stamp("123", "example/test", "codex")
             self.assertIn("fleet:author-codex", run.call_args.args[0])
             self.assertIn("fleet:author-claude", run.call_args.args[0])
+
+    def test_stamp_resolves_repo_alias(self):
+        with tempfile.TemporaryDirectory() as temp:
+            state = Path(temp)
+            (state / "repos.json").write_text(json.dumps({"game": "acme/game"}))
+            with patch.dict(runtime.os.environ, {"FLEET_STATE_DIR": temp}, clear=True), \
+                    patch.object(runtime.fleet_github, "run") as run:
+                run.return_value = subprocess.CompletedProcess([], 0, b"", b"")
+                runtime.stamp("123", "game", "codex")
+            self.assertIn("acme/game", run.call_args.args[0])
+
+    def test_stamp_refuses_each_reviewer_before_github(self):
+        for role in ("sonnet-reviewer", "opus-reviewer", "smoke-worker"):
+            with self.subTest(role=role), \
+                    patch.dict(runtime.os.environ, {"FLEET_ROLE": role}, clear=True), \
+                    patch.object(runtime.fleet_github, "run") as run:
+                with self.assertRaisesRegex(ValueError, "reviewers"):
+                    runtime.stamp("123", "engine", "codex")
+                run.assert_not_called()
+
+    def test_stamp_completes_graphql_refusal_through_rest(self):
+        refusal = b"GraphQL: API rate limit already exceeded for user ID 1.\n"
+        failed = subprocess.CompletedProcess([], 1, b"", refusal)
+        with patch.dict(runtime.os.environ, {}, clear=True), \
+                patch.object(runtime.fleet_github, "run", return_value=failed), \
+                patch("fleet_gh_fallback.latch_refusal") as latch, \
+                patch("fleet_gh_fallback.translate", return_value=b"url\n") as translate:
+            runtime.stamp("123", "engine", "codex")
+        latch.assert_called_once()
+        translate.assert_called_once()
 
 
 class Prune(unittest.TestCase):
