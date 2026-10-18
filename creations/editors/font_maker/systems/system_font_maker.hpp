@@ -17,6 +17,8 @@
 #include <irreden/render/trixel_text.hpp>
 #include <irreden/render/widgets.hpp>
 
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -329,6 +331,48 @@ inline void rasterSample(App &app, const std::string &text) {
     }
 }
 
+// Uploads the part of `image` inside the canvas at the widget border
+// distance: one subImage2D per channel.
+inline void uploadImage(
+    IRComponents::C_TriangleCanvasTextures &canvas,
+    const LatticeImage &image,
+    IRRender::RectFillScratch &scratch
+) {
+    ivec2 lo, hi;
+    if (!IRRender::clipRectToCanvas(image.origin_, image.size_, canvas.size_, lo, hi)) {
+        return;
+    }
+    const ivec2 size = hi - lo;
+    scratch.colors_.resize(static_cast<std::size_t>(size.x * size.y));
+    scratch.distances_.assign(scratch.colors_.size(), IRRender::kWidgetBorderDistance);
+    for (int y = 0; y < size.y; ++y) {
+        const ivec2 local = ivec2(lo.x, lo.y + y) - image.origin_;
+        std::copy_n(
+            image.colors_.begin() + static_cast<std::ptrdiff_t>(local.y * image.size_.x + local.x),
+            size.x,
+            scratch.colors_.begin() + static_cast<std::ptrdiff_t>(y * size.x)
+        );
+    }
+    canvas.getTextureColorsForGeometryWrite()->subImage2D(
+        lo.x,
+        lo.y,
+        size.x,
+        size.y,
+        IRRender::PixelDataFormat::RGBA,
+        IRRender::PixelDataType::UNSIGNED_BYTE,
+        scratch.colors_.data()
+    );
+    canvas.textureTriangleDistances_.second->subImage2D(
+        lo.x,
+        lo.y,
+        size.x,
+        size.y,
+        IRRender::PixelDataFormat::RED_INTEGER,
+        IRRender::PixelDataType::INT32,
+        scratch.distances_.data()
+    );
+}
+
 // What the sample strip drew: a hash of where the LARGE texels are, and the
 // LARGE and SMALL texel counts.
 struct SampleStats {
@@ -504,14 +548,7 @@ inline IRSystem::SystemId createRenderSystem(App &app) {
             rasterSample(app, IRPrefab::Widget::textInputValue(app.widgets_.sampleText_));
             for (const LatticeImage *image :
                  {&app.frame_.table_, &app.frame_.grid_, &app.frame_.sample_}) {
-                IRRender::writeColorRect(
-                    canvas,
-                    image->origin_,
-                    image->size_,
-                    image->colors_,
-                    IRRender::kWidgetBorderDistance,
-                    app.scratch_
-                );
+                uploadImage(canvas, *image, app.scratch_);
             }
         }
     );
