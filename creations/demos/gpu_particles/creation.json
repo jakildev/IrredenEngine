@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "GPU particles",
+  "description": "Demonstrates the gpu particles creation and its engine integration.",
+  "group": "render/particles",
+  "tags": [
+    "render",
+    "particles"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRGpuParticles",
+      "description": "Runs the gpu particles creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

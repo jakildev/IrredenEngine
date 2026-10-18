@@ -50,6 +50,9 @@ jobs:
       - name: Configure
         run: cmake --preset linux-debug
 
+      - name: Validate creation manifests
+        run: python3 scripts/lint_creation_manifests.py --build-dir build
+
       - name: Build tests
         run: cmake --build --preset linux-tests --parallel 2
 

@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "Persistence round trip",
+  "description": "Demonstrates the persistence round trip creation and its engine integration.",
+  "group": "world/persistence",
+  "tags": [
+    "world",
+    "persistence"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRPersistRoundtrip",
+      "description": "Runs the persistence round trip creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

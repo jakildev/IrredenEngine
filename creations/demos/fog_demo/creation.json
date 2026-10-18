@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "Fog demo",
+  "description": "Demonstrates the fog demo creation and its engine integration.",
+  "group": "render/fog",
+  "tags": [
+    "render",
+    "fog"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRFogDemo",
+      "description": "Runs the fog demo creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

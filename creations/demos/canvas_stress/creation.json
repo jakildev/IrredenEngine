@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "Canvas stress",
+  "description": "Demonstrates the canvas stress creation and its engine integration.",
+  "group": "perf",
+  "tags": [
+    "perf"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRCanvasStress",
+      "description": "Runs the canvas stress creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

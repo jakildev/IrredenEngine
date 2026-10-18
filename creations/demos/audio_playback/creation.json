@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "Audio playback",
+  "description": "Demonstrates the audio playback creation and its engine integration.",
+  "group": "audio-midi",
+  "tags": [
+    "audio-midi"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRAudioPlayback",
+      "description": "Runs the audio playback creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

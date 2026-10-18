@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "UI widgets",
+  "description": "Demonstrates the ui widgets creation and its engine integration.",
+  "group": "ui",
+  "tags": [
+    "ui"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRUIWidgetsDemo",
+      "description": "Runs the ui widgets creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}
