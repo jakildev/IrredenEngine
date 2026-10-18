@@ -280,7 +280,10 @@ that line in step 9. A non-zero exit means it is not open, and the line shows
 what is missing. The create-time `--label` is only a head start; this gate is
 authoritative and corrects a wrong guess. The label names the provider that
 made the change, amendments included; no Claude co-author trailer on
-Codex-authored work. Provider behavior is defined in
+Codex-authored work. A PR that reaches the fleet unstamped is still reviewed,
+and the scout backfills `fleet:author-claude` from the trailer
+(`fleet-pr-stamp --backfill`); a Codex stamp is only ever the author's.
+Provider behavior is defined in
 [`fleet-labels-reference.md`](../fleet-labels-reference.md#provider-routing).
 
 ### 9. Report

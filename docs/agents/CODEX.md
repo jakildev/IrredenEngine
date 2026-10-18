@@ -220,7 +220,10 @@ on each repo first
 pass the `fleet:author-*` label in `gh pr create --label` so provenance
 exists from the first tick. The author label selects the opposite provider
 for review when present; absent, any available provider reviews. Never infer
-authorship from a missing label.
+authorship from a missing label: the scout's `fleet-pr-stamp --backfill`
+stamps `fleet:author-claude` only from the Claude co-author trailer on an
+unstamped PR's head commit, and Codex work, which carries no trailer, is
+stamped by its author alone.
 `balanced` hashes assignments across the host's available providers.
 Every host must enable cross-provider review; a Claude-only host declares
 `FLEET_RUNTIMES="claude"` and waits when the required reviewer is Codex. A

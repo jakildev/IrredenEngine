@@ -18,3 +18,9 @@ Both apply to every engine and game PR, in every stack mode.
 
 `command not found` means this host's `~/bin` predates the tool; run
 `scripts/fleet/install.sh` from the engine clone.
+
+A PR that reaches the fleet unstamped is still reviewed (any available
+provider), and the scout's `fleet-pr-stamp --backfill` stamps
+`fleet:author-claude` on it from the Claude co-author trailer of its head
+commit on the claim-cleanup cadence. Codex work carries no trailer, so a
+Codex author's stamp is only ever its own, and no backfill adds a host label.
