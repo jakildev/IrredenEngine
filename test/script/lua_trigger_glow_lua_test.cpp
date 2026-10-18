@@ -157,7 +157,8 @@ TEST_F(TriggerGlowLuaTest, LuaWritesTheColorStateBaseAndCurrent) {
         sol::script_pass_on_error
     );
     ASSERT_TRUE(registerResult.valid()) << sol::error{registerResult}.what();
-    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {registerResult.get<lua_Integer>()});
+    const IRSystem::SystemId stateSysId = registerResult.get<lua_Integer>();
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {stateSysId});
     m_system_manager.executePipeline(IRTime::Events::UPDATE);
 
     const auto &state = IREntity::getComponent<C_AnimColorState>(id);
