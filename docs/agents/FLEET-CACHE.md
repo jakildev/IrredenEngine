@@ -165,8 +165,8 @@ detail caches at `http://0.0.0.0:<poll_port>/state` (ETag =
 only `clone_freshness` and `repos.<key>.path`), recomputes projections
 and triggers, makes zero GitHub read calls while the leader is reachable,
 and self-polls for a tick when it is not. Global mutations (`fleet-claim
-cleanup --gh`, `fleet-queue-ingest`, `fleet-stalled-sweep`) run only on the
-authoritative poller; a follower runs `fleet-claim cleanup --gh --own-host`
+cleanup --gh`, `fleet-pr-stamp --backfill`, `fleet-queue-ingest`,
+`fleet-stalled-sweep`) run only on the authoritative poller; a follower runs `fleet-claim cleanup --gh --own-host`
 over its own host's claim labels ([`fleet-claim-liveness.md`](fleet-claim-liveness.md)),
 and `fleet-claim reconcile --apply` runs on every host.
 

@@ -369,8 +369,11 @@ Protocol: [`FLEET-CROSS-HOST-SMOKE.md`](FLEET-CROSS-HOST-SMOKE.md).
   which swaps the pair in one edit and refuses to run under a reviewer
   role. Under `FLEET_CROSS_PROVIDER_REVIEW=1`, `choose_runtime()` routes the
   review to the other provider when the label is present; absent, any available
-  provider reviews. Two author labels at once is a hard error. Don't add to
-  issues.
+  provider reviews. The scout's claim-cleanup cadence runs `fleet-pr-stamp
+  --backfill` on the authoritative poller: an unstamped open PR whose head
+  commit carries the Claude co-author trailer gets `fleet:author-claude`;
+  Codex work has no trailer and is only ever stamped by its author. Two
+  author labels at once is a hard error. Don't add to issues.
 - `fleet:runtime-claude` / `fleet:runtime-codex` — human pin of an issue or
   PR to a provider, honoured ahead of every other signal for non-review
   dispatch; two pins is a hard error. Without a pin, feedback and conflict

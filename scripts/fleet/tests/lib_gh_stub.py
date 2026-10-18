@@ -415,6 +415,11 @@ def rest_get(state, parts, query):
             return page([comment_rest(state, parts[1], c) for c in rec.get("comments", [])], query)
         if parts[2:] == ["reviews"] and parts[0] == "pulls":
             return state.get("reviews", {}).get(parts[1], [])
+    if len(parts) == 2 and parts[0] == "commits":
+        commit = state.get("commits", {}).get(parts[1])
+        if commit is None:
+            not_found()
+        return {"sha": parts[1], "commit": {"message": commit["message"]}}
     return None
 
 

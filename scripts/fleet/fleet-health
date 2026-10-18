@@ -17,8 +17,9 @@ a stretch of autonomous running:
   * Are both providers being used? FLEET_RUNTIMES / cross-provider review /
     worker policy from the conf, whether `codex` is on PATH and out of
     cooldown, the per-runtime dispatch split, standing routing problems, and
-    the open PRs that carry no `fleet:author-*` stamp (their reviews cannot
-    route while cross-provider review is on — CODEX.md).
+    the open PRs that carry no `fleet:author-*` stamp (reviewed by any
+    available provider until the scout's `fleet-pr-stamp --backfill` or the
+    author stamps them — CODEX.md).
   * Standing alerts, empty-exit streaks / stand-down backoffs, and the
     iterations running right now. A red master workflow (the scout's
     `scout-master-ci-*` alerts) renders with its sha, run age and URL and

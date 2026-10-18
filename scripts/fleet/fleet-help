@@ -287,8 +287,12 @@ Parallel-agent fleet (tmux + Claude)
   fleet-dispatcher               assigned-job dispatcher (generic worker pool)
   fleet-codex --help             Codex worker/architect launch and permission checks
   fleet-runtime --help           provider routing and PR author provenance
-  fleet-pr-stamp <PR> --repo <engine|game|owner/repo> [--runtime claude|codex]
-                                 apply and verify PR author/runtime host labels
+  fleet-pr-stamp <PR> --repo <engine|game|owner/repo> [--runtime claude|codex | --infer]
+                                 apply and verify PR author/runtime host labels; --infer stamps
+                                 fleet:author-claude from the head commit's Claude trailer
+  fleet-pr-stamp --backfill --repo <engine|game|owner/repo>
+                                 --infer over every open PR still missing a fleet:author-* label
+                                 (the scout runs it on the claim-cleanup cadence)
   fleet-dispatch-wrap <pane> <model> <effort> <role> [fallback] [mode]
                                  runs one transient-role claude iteration;
                                  records rate-limit exits for fleet-dispatcher's

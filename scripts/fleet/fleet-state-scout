@@ -5786,11 +5786,14 @@ def tick_once():
                     log(f"queue-manager: {held_repos} degraded — sweeping "
                         f"{[key for key, _slug in healthy_repos]} only; the rest "
                         f"is owed to the next healthy tick")
-                # cleanup --gh is GLOBAL stale-label reaping, and
-                # fleet-stalled-sweep posts a GLOBAL human-facing comment — run
-                # both only on the authoritative poller (leader, or a follower
-                # currently self-polling), else every follower re-multiplies the
-                # very mutation calls Q2 exists to collapse. A follower runs
+                # cleanup --gh is GLOBAL stale-label reaping, the provenance
+                # backfill is a GLOBAL label write (fleet-pr-stamp --backfill:
+                # fleet:author-claude from the head commit's Claude trailer on
+                # every open PR still unstamped), and fleet-stalled-sweep posts
+                # a GLOBAL human-facing comment — run all three only on the
+                # authoritative poller (leader, or a follower currently
+                # self-polling), else every follower re-multiplies the very
+                # mutation calls Q2 exists to collapse. A follower runs
                 # `cleanup --gh --own-host` instead: only labels naming its own
                 # host, the only ones it can judge. reconcile
                 # --apply is conservative host-local + TTL-gated claim hygiene
@@ -5802,7 +5805,8 @@ def tick_once():
                 sweep_cmds = []
                 # One process per sweep, every healthy repo in one argv:
                 # fleet-stalled-sweep and reconcile take --repo repeatably and
-                # sweep each independently. cleanup is one process per repo.
+                # sweep each independently. cleanup and the provenance backfill
+                # are one process per repo, on the cleanup cadence.
                 stalled_cmd = ["fleet-stalled-sweep"]
                 reconcile_cmd = ["fleet-claim", "reconcile", "--apply"]
                 for key, slug in healthy_repos:
@@ -5811,6 +5815,9 @@ def tick_once():
                         sweep_cmds.append(
                             ["fleet-claim", *ns, "cleanup", "--gh", *cleanup_scope,
                              "--repo", slug])
+                        if authoritative:
+                            sweep_cmds.append(
+                                ["fleet-pr-stamp", "--backfill", "--repo", slug])
                     stalled_cmd += ["--repo", slug]
                     reconcile_cmd += ["--repo", slug]
                 if stalled_due or owed_repos:
@@ -5865,6 +5872,8 @@ def tick_once():
                 _actions = []
                 if cleanup_due:
                     _actions.append("cleanup")
+                    if authoritative:
+                        _actions.append("provenance-backfill")
                 if projection_changed:
                     _actions.append("reconcile")
                 if stalled_due:

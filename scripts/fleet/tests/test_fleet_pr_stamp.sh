@@ -43,13 +43,26 @@ labels = {
         "fleet:authored-on-windows",
     )
 }
-pull = {
-    "title": "Synthetic PR", "body": "", "state": "open", "labels": [],
-    "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
-    "comments": [], "head": "feature", "sha": "1" * 40, "base": "master",
-    "draft": False, "merged_at": None, "mergeable": True,
+def pull(sha, labels=()):
+    return {
+        "title": "Synthetic PR", "body": "", "state": "open", "labels": list(labels),
+        "created_at": "2026-01-01T00:00:00Z", "updated_at": "2026-01-01T00:00:00Z",
+        "comments": [], "head": "feature", "sha": sha, "base": "master",
+        "draft": False, "merged_at": None, "mergeable": True,
+    }
+
+
+# 7: Claude-trailered head, unstamped. 8: trailer-less head, unstamped.
+# 9: trailer-less head, stamped by its Codex author.
+pulls = {"7": pull("1" * 40), "8": pull("2" * 40),
+         "9": pull("3" * 40, ["fleet:author-codex"])}
+commits = {
+    "1" * 40: {"message": "fix: thing\n\nCo-Authored-By: Claude Fable 5.1 "
+                          "<noreply@anthropic.com>\n"},
+    "2" * 40: {"message": "fix: thing\n"},
+    "3" * 40: {"message": "fix: thing\n"},
 }
-json.dump({"repo": "acme/widgets", "labels": labels, "pulls": {"7": pull},
+json.dump({"repo": "acme/widgets", "labels": labels, "pulls": pulls, "commits": commits,
            "issues": {}, "reviews": {}}, open(sys.argv[1], "w"))
 PY
 printf '{"engine":"acme/widgets","game":"acme/widgets"}\n' > "$FLEET_STATE_DIR/repos.json"
@@ -70,6 +83,7 @@ run_stamp() {
 }
 
 labels_now() { jq -c '.pulls["7"].labels' "$GH_STUB_STATE"; }
+labels_of() { jq -c --arg n "$1" '.pulls[$n].labels' "$GH_STUB_STATE"; }
 
 reset_case
 FLEET_PR_STAMP_KERNEL=Darwin run_stamp fresh 7 --repo engine
@@ -133,6 +147,67 @@ FLEET_PR_STAMP_KERNEL=Darwin run_stamp dropped-write 7 --repo engine
 assert_eq "$(cat "$TMPROOT/dropped-write.rc")" "1" "read-back rejects a dropped author write"
 assert_absent "$(cat "$TMPROOT/dropped-write.out")" 'fleet:author-claude' \
     "dropped author write is visible in the report"
+mv "$BIN/gh-real" "$BIN/gh"
+chmod +x "$BIN/gh"
+
+reset_case
+FLEET_PR_STAMP_KERNEL=Darwin run_stamp infer 7 --repo engine --infer
+assert_eq "$(cat "$TMPROOT/infer.rc")" "0" "trailered head infers claude"
+assert_eq "$(cat "$TMPROOT/infer.out")" '["fleet:author-claude"]' \
+    "inferred stamp reports the author label alone"
+assert_absent "$(labels_now)" 'fleet:authored-on-' "inference adds no host label"
+
+reset_case
+run_stamp infer-none 8 --repo engine --infer
+assert_eq "$(cat "$TMPROOT/infer-none.rc")" "3" "trailer-less head is not inferable"
+assert_contains "$(cat "$TMPROOT/infer-none.err")" 'no Claude co-author trailer' \
+    "not-inferable names the missing trailer"
+assert_eq "$(labels_of 8)" '[]' "not-inferable writes nothing"
+assert_absent "$(cat "$GH_STUB_LOG")" '--add-label' "not-inferable makes no label write"
+
+reset_case
+run_stamp infer-stamped 9 --repo engine --infer
+assert_eq "$(cat "$TMPROOT/infer-stamped.rc")" "0" "an author's own stamp is kept"
+assert_eq "$(cat "$TMPROOT/infer-stamped.out")" '["fleet:author-codex"]' \
+    "kept stamp is reported as is"
+assert_absent "$(cat "$GH_STUB_LOG")" '--add-label' "kept stamp makes no label write"
+
+reset_case
+run_stamp infer-both 7 --repo engine --infer --runtime codex
+assert_eq "$(cat "$TMPROOT/infer-both.rc")" "2" "--infer with --runtime is a usage refusal"
+
+reset_case
+run_stamp backfill --backfill --repo game
+assert_eq "$(cat "$TMPROOT/backfill.rc")" "0" "backfill passes with a skip"
+assert_eq "$(cat "$TMPROOT/backfill.out")" $'8: skipped\n7: stamped' \
+    "backfill reports each unstamped PR once"
+assert_contains "$(labels_of 7)" 'fleet:author-claude' "backfill stamps the trailered PR"
+assert_eq "$(labels_of 8)" '[]' "backfill leaves the trailer-less PR alone"
+assert_eq "$(labels_of 9)" '["fleet:author-codex"]' "backfill never touches a stamped PR"
+assert_absent "$(cat "$GH_STUB_LOG")" 'pulls/9' "backfill reads no stamped PR's head"
+assert_absent "$(labels_of 7)" 'fleet:authored-on-' "backfill adds no host label"
+
+reset_case
+run_stamp backfill-pr 7 --backfill --repo engine
+assert_eq "$(cat "$TMPROOT/backfill-pr.rc")" "2" "--backfill with a PR is a usage refusal"
+
+reset_case
+FLEET_ROLE=sonnet-reviewer run_stamp backfill-reviewer --backfill --repo engine
+assert_eq "$(cat "$TMPROOT/backfill-reviewer.rc")" "2" "reviewer role cannot backfill"
+assert_eq "$(wc -c < "$GH_STUB_LOG" | tr -d ' ')" "0" "reviewer backfill refusal makes no gh call"
+
+reset_case
+mv "$BIN/gh" "$BIN/gh-real"
+cat > "$BIN/gh" <<'SH'
+#!/usr/bin/env bash
+if [[ " $* " == *" --remove-label "* ]]; then
+    exit 0
+fi
+exec python3 "$(dirname "$0")/gh-real" "$@"
+SH
+chmod +x "$BIN/gh"
+run_stamp backfill-dropped --backfill --repo engine
+assert_eq "$(cat "$TMPROOT/backfill-dropped.rc")" "1" "backfill read-back rejects a dropped write"
 mv "$BIN/gh-real" "$BIN/gh"
 chmod +x "$BIN/gh"
 
