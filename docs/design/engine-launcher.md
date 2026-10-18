@@ -434,13 +434,16 @@ that no longer exists. So every write to `installed/` happens under one
 lock.
 - **The lock** is `build-launcher/lock/`, scoped to the checkout's launcher
   tree. It uses the primitive `ir-acquire` uses
-  (`engine/tools/lib/concurrency_helpers.sh`), once #4546 lands:
-  - Ownership is the exclusive hard link of a complete record (pid, the
-    native-Windows two-runtime token, and a generation nonce) at
-    `lock/pid`.
+  (`engine/tools/lib/concurrency_helpers.sh`), once #4546 lands, and
+  reaches it only through the helper's functions: `_ir_try_lock` to acquire
+  or seed, `_ir_lock_holder` to read the holder, and the helper's release.
+  The record layout inside `lock/` belongs to the helper; neither the
+  launcher nor its suite names a file there. What the helper guarantees:
+  - Ownership is an exclusive record (pid, the native-Windows two-runtime
+    token, and a generation nonce); exactly one contender creates it.
   - A dead holder's lock is transferred, never removed. Only the contender
-    that links that generation's `reap.<nonce>` marker may replace the
-    record, and only while the record is unchanged.
+    that claims that generation's reap marker may replace the record, and
+    only while the record is unchanged.
   - Release renames the directory away before deleting it.
 - **Exclusion holds for stale holders too.** Both double-win paths in
   today's `_ir_try_lock` are reproduced in #4546:
@@ -793,13 +796,15 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
   - **Running launcher.** While a supervisor's stub launcher is still
     running, `--update` refuses the same way, and `installed/` is
     unchanged.
-  - **Stale lock.** `build-launcher/lock/` is pre-seeded with a record whose
+  - **Stale lock.** `build-launcher/lock/` is pre-seeded through the helper
+    (`_ir_try_lock build-launcher/lock <dead-pid> ""`) with a record whose
     pid is not alive. `--update` takes it over and completes.
   - **Two stale reclaimers.** Over the same pre-seeded dead record, two
     `--update` runs start together, for 20 rounds. In every round the
     winner parks on the step-4 `mv` barrier. While it is parked, the other
     run has exited non-zero through the contention path with zero
-    stub-`cmake` calls, and `lock/pid` still holds the winner's record.
+    stub-`cmake` calls, and `_ir_lock_holder build-launcher/lock` still
+    names the winner.
     After the release, exactly one new `<id>` exists. The barrier-ordered
     proof that exactly one contender wins lives in #4546's
     `ir_lock_transfer` suite, which can park the liveness probe; the
