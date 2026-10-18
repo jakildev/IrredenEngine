@@ -5,8 +5,12 @@
 #include "../common/env_var.hpp"
 
 #include <chrono>
+#include <cerrno>
+#include <csignal>
 #include <filesystem>
 #include <fstream>
+#include <optional>
+#include <string_view>
 #include <thread>
 
 namespace {
@@ -21,7 +25,8 @@ class ToolSpawnTest : public testing::Test {
         writeExecutable(
             m_root / "bin" / "ir-build",
             "#!/usr/bin/env bash\n"
-            "if [[ \"$2\" == Sleep ]]; then sleep 10 & wait; exit 0; fi\n"
+            "if [[ \"$2\" == Sleep ]]; then echo \"parent:$$\"; sleep 10 & echo \"child:$!\"; "
+            "wait; exit 0; fi\n"
             "if [[ \"$2\" == Flood ]]; then for ((i=0; i<2058; ++i)); do echo \"line-$i\"; done; "
             "exit 0; fi\n"
             "if [[ \"$2\" == Env ]]; then printf '%s\\n%s\\n' \"$PWD\" "
@@ -58,6 +63,33 @@ class ToolSpawnTest : public testing::Test {
         );
     }
 
+    static std::optional<int>
+    processId(const std::vector<std::string> &lines, std::string_view key) {
+        for (const std::string &line : lines) {
+            if (line.starts_with(key)) {
+                return std::stoi(line.substr(key.size()));
+            }
+        }
+        return std::nullopt;
+    }
+
+#ifndef _WIN32
+    static bool processExists(int process) {
+        errno = 0;
+        return ::kill(process, 0) == 0 || errno != ESRCH;
+    }
+
+    static bool waitForProcessExit(int process) {
+        for (int attempt = 0; attempt < 100; ++attempt) {
+            if (!processExists(process)) {
+                return true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        return false;
+    }
+#endif
+
     std::filesystem::path m_root;
     std::unique_ptr<IRTest::ScopedEnv> m_wrapper;
     std::unique_ptr<IREngine::ToolService> m_service;
@@ -82,11 +114,32 @@ TEST_F(ToolSpawnTest, PollAcrossChunks) {
 TEST_F(ToolSpawnTest, KillReaps) {
     auto spawned = m_service->spawn({IREngine::ToolName::IR_BUILD, "Sleep", ""});
     ASSERT_TRUE(spawned.has_value()) << spawned.error();
+    std::vector<std::string> lines;
+    for (int attempt = 0; attempt < 100 && lines.size() < 2; ++attempt) {
+        std::vector<std::string> next = spawned->poll();
+        lines.insert(lines.end(), next.begin(), next.end());
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
     const auto start = std::chrono::steady_clock::now();
     spawned->kill();
     EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::seconds(3));
     EXPECT_TRUE(spawned->exitCode().has_value());
     EXPECT_FALSE(m_service->live());
+#ifndef _WIN32
+    ASSERT_TRUE(processId(lines, "parent:").has_value());
+    ASSERT_TRUE(processId(lines, "child:").has_value());
+    EXPECT_TRUE(waitForProcessExit(*processId(lines, "parent:")));
+    EXPECT_TRUE(waitForProcessExit(*processId(lines, "child:")));
+#endif
+}
+
+TEST_F(ToolSpawnTest, HandleDestructionLeavesTheChildRunning) {
+    {
+        auto spawned = m_service->spawn({IREngine::ToolName::IR_BUILD, "Sleep", ""});
+        ASSERT_TRUE(spawned.has_value()) << spawned.error();
+    }
+    EXPECT_TRUE(m_service->live());
+    m_service->shutdown();
 }
 
 TEST_F(ToolSpawnTest, BoundsOutputAndRejectsStaleHandles) {
@@ -128,9 +181,21 @@ TEST_F(ToolSpawnTest, ServiceDestructionKillsTheChildTree) {
     auto service = std::make_unique<IREngine::ToolService>(m_root);
     auto spawned = service->spawn({IREngine::ToolName::IR_BUILD, "Sleep", ""});
     ASSERT_TRUE(spawned.has_value()) << spawned.error();
+    std::vector<std::string> lines;
+    for (int attempt = 0; attempt < 100 && lines.size() < 2; ++attempt) {
+        std::vector<std::string> next = spawned->poll();
+        lines.insert(lines.end(), next.begin(), next.end());
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
     const auto start = std::chrono::steady_clock::now();
     service.reset();
     EXPECT_LT(std::chrono::steady_clock::now() - start, std::chrono::seconds(3));
+#ifndef _WIN32
+    ASSERT_TRUE(processId(lines, "parent:").has_value());
+    ASSERT_TRUE(processId(lines, "child:").has_value());
+    EXPECT_TRUE(waitForProcessExit(*processId(lines, "parent:")));
+    EXPECT_TRUE(waitForProcessExit(*processId(lines, "child:")));
+#endif
 }
 
 TEST_F(ToolSpawnTest, Refusals) {
