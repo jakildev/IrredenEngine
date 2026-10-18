@@ -254,16 +254,18 @@ TEST(VideoAudioLevelLogTest, LogsTheMeteredWindowTheInputReports) {
     EngineLogCapture log;
 
     EXPECT_FALSE(levelLog.observe(0.0, audio.getInputLevels()));
-    EXPECT_FALSE(levelLog.observe(IRVideo::AudioLevelLog::kIntervalSeconds - 0.1, audio.getInputLevels()));
+    EXPECT_FALSE(
+        levelLog.observe(IRVideo::AudioLevelLog::kIntervalSeconds - 0.1, audio.getInputLevels())
+    );
     EXPECT_TRUE(levelLog.observe(IRVideo::AudioLevelLog::kIntervalSeconds, audio.getInputLevels()));
 
     const IRAudio::AudioChannelLevel &left = levels->channels_[0];
     const IRAudio::AudioChannelLevel &right = levels->channels_[1];
-    const std::string expected = "Audio levels: peak=" + displayed(left.peakDbfs_) + "/" +
-                                 displayed(right.peakDbfs_) + " dBFS, RMS=" +
-                                 displayed(left.rmsDbfs_) + "/" + displayed(right.rmsDbfs_) +
-                                 " dBFS, clipped=" + std::to_string(left.clippedSamples_) + "/" +
-                                 std::to_string(right.clippedSamples_) + " samples, generation=1";
+    const std::string expected =
+        "Audio levels: peak=" + displayed(left.peakDbfs_) + "/" + displayed(right.peakDbfs_) +
+        " dBFS, RMS=" + displayed(left.rmsDbfs_) + "/" + displayed(right.rmsDbfs_) +
+        " dBFS, clipped=" + std::to_string(left.clippedSamples_) + "/" +
+        std::to_string(right.clippedSamples_) + " samples, generation=1";
     const std::string text = log.text();
     EXPECT_TRUE(text.contains(expected)) << "expected: " << expected << "\nlog: " << text;
     EXPECT_EQ(right.clippedSamples_, 1u);

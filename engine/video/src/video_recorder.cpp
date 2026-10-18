@@ -971,10 +971,7 @@ bool AudioLevelLog::observe(
         );
     }
     if (loudestRmsDbfs < -40.0f) {
-        IRE_LOG_WARN(
-            "Audio very quiet (RMS {:.1f} dBFS). Check input connection.",
-            loudestRmsDbfs
-        );
+        IRE_LOG_WARN("Audio very quiet (RMS {:.1f} dBFS). Check input connection.", loudestRmsDbfs);
     }
     return true;
 }

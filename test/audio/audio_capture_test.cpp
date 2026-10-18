@@ -1406,7 +1406,10 @@ TEST_F(AudioCaptureTest, ArmInputFailuresReturnReasonsAndLeaveNoHold) {
 TEST(AudioInputArmTest, MeterReportsEachChannelsWindowAndASwitchClearsIt) {
     auto backend = std::make_shared<FakeBackendState>();
     backend->hasSecondInputDevice_ = true;
-    Audio audio{std::make_unique<FakeAudioInputBackend>(backend), {kPatientDeadline, kPatientDeadline}};
+    Audio audio{
+        std::make_unique<FakeAudioInputBackend>(backend),
+        {kPatientDeadline, kPatientDeadline}
+    };
     ASSERT_TRUE(audio.armInput(kFakeDeviceName, kMeterRate).armed_);
 
     std::optional<IRAudio::AudioInputLevels> levels = audio.getInputLevels();
@@ -1439,7 +1442,8 @@ TEST(AudioInputArmTest, MeterReportsEachChannelsWindowAndASwitchClearsIt) {
     EXPECT_EQ(levels->channels_[1].clippedSamples_, 1u);
     EXPECT_NEAR(levels->channels_[1].peakDbfs_, 0.0f, 0.01f);
 
-    const IRAudio::AudioInputArmResult switched = audio.armInput(kSecondInputDeviceName, kMeterRate);
+    const IRAudio::AudioInputArmResult switched =
+        audio.armInput(kSecondInputDeviceName, kMeterRate);
     ASSERT_TRUE(switched.armed_) << switched.reason_;
     EXPECT_EQ(backend->openCalls_, 2);
     EXPECT_EQ(backend->openedDeviceId_, kSecondInputDeviceId);
@@ -1452,7 +1456,10 @@ TEST(AudioInputArmTest, MeterReportsEachChannelsWindowAndASwitchClearsIt) {
 TEST(AudioInputArmTest, MonoDeviceArmsAndMetersOneChannel) {
     auto backend = std::make_shared<FakeBackendState>();
     backend->inputChannels_ = 1;
-    Audio audio{std::make_unique<FakeAudioInputBackend>(backend), {kPatientDeadline, kPatientDeadline}};
+    Audio audio{
+        std::make_unique<FakeAudioInputBackend>(backend),
+        {kPatientDeadline, kPatientDeadline}
+    };
 
     ASSERT_TRUE(audio.armInput(kFakeDeviceName, kMeterRate).armed_);
 
@@ -1550,7 +1557,10 @@ TEST(AudioInputArmTest, SwitchingDevicesOutsideATakeCarriesTheCaptureCallback) {
 TEST(AudioInputArmTest, SwitchingDevicesDuringATakeIsRefused) {
     auto backend = std::make_shared<FakeBackendState>();
     backend->hasSecondInputDevice_ = true;
-    Audio audio{std::make_unique<FakeAudioInputBackend>(backend), {kPatientDeadline, kPatientDeadline}};
+    Audio audio{
+        std::make_unique<FakeAudioInputBackend>(backend),
+        {kPatientDeadline, kPatientDeadline}
+    };
     ASSERT_TRUE(audio.startCapture(fakeDeviceConfig(), {}));
     audio.setCaptureRecording(true);
 

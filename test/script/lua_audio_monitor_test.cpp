@@ -248,8 +248,17 @@ TEST_F(LuaAudioMonitorTest, LevelsReadBackAKnownSinePerChannel) {
     );
 
     ASSERT_TRUE(read.valid()) << sol::error(read).what();
-    const auto [channels, sampleRate, generation, leftPeak, leftRms, leftClipped, rightPeak, rightRms, rightClipped] =
-        read.get<std::tuple<int, int, int, float, float, int, float, float, int>>();
+    const auto
+        [channels,
+         sampleRate,
+         generation,
+         leftPeak,
+         leftRms,
+         leftClipped,
+         rightPeak,
+         rightRms,
+         rightClipped] =
+            read.get<std::tuple<int, int, int, float, float, int, float, float, int>>();
     EXPECT_EQ(channels, 2);
     EXPECT_EQ(sampleRate, 44'100);
     EXPECT_EQ(generation, 1);

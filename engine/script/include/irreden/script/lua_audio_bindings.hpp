@@ -136,9 +136,9 @@ inline void bindAudioApi(LuaScript &script) {
     // audioInputLevels() returns nil while no input is open, else
     // `{ {peakDbfs, rmsDbfs, clippedSamples}, ..., sampleRate, generation }`
     // with one entry per channel in device order.
-    audio["armAudioInput"] = [](sol::optional<std::string> deviceName,
-                                sol::optional<int> sampleRate
-                             ) -> std::tuple<bool, sol::optional<std::string>> {
+    audio["armAudioInput"] =
+        [](sol::optional<std::string> deviceName,
+           sol::optional<int> sampleRate) -> std::tuple<bool, sol::optional<std::string>> {
         IRAudio::AudioInputArmResult result = IRAudio::armAudioInput(
             deviceName.value_or(""),
             sampleRate.value_or(IRAudio::AudioCaptureConfig{}.sample_rate_)

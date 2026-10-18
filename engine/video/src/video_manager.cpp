@@ -271,27 +271,25 @@ void VideoManager::armAudioInput() {
         adoptAudioInputFormat();
         return;
     }
-    IRAudio::AudioCaptureCallback audioCallback = [this, levelsSource = &source](
-                                                      const float *samples,
-                                                      int frameCount,
-                                                      double streamTime,
-                                                      bool inputOverflow
-                                                  ) {
-        if (!m_captureEnabled) {
-            return;
-        }
-        if (inputOverflow) {
-            IRE_LOG_WARN("Audio input overflow detected while recording.");
-        }
-        if (samples != nullptr && frameCount > 0) {
-            m_videoRecorder.submitAudioInputSamples(
-                samples,
-                frameCount,
-                streamTime,
-                levelsSource->getInputLevels()
-            );
-        }
-    };
+    IRAudio::AudioCaptureCallback audioCallback =
+        [this,
+         levelsSource =
+             &source](const float *samples, int frameCount, double streamTime, bool inputOverflow) {
+            if (!m_captureEnabled) {
+                return;
+            }
+            if (inputOverflow) {
+                IRE_LOG_WARN("Audio input overflow detected while recording.");
+            }
+            if (samples != nullptr && frameCount > 0) {
+                m_videoRecorder.submitAudioInputSamples(
+                    samples,
+                    frameCount,
+                    streamTime,
+                    levelsSource->getInputLevels()
+                );
+            }
+        };
 
     IRAudio::AudioCaptureConfig captureConfig;
     captureConfig.device_name_ = m_audioInputDeviceName;
