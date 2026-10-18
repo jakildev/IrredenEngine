@@ -23,9 +23,9 @@ inline void ensureDisplaySingleton() {
 // canvas composites into the game-resolution framebuffer and upscales with it,
 // so its lattice triangles snap to the game pixel grid. Off,
 // GUI_CANVAS_TO_SCREEN draws the canvas at screen resolution with anti-aliased
-// triangle edges. Readable as a trixel display only when a GUI texel spans at
-// least four framebuffer pixels (`gui_scale` >= 2). Takes effect on the next
-// frame.
+// triangle edges. At the minimum 2x1-pixel texel footprint the composite uses
+// hard triangle ownership because no fractional edge sample can leave both
+// neighbours solid. Takes effect on the next frame.
 inline void setPixelated(bool pixelated) {
     display().pixelated_ = pixelated;
 }

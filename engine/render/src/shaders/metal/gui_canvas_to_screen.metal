@@ -6,8 +6,8 @@ using namespace metal;
 // Screen-resolution composite of the GUI canvas; mirrors
 // shaders/v_gui_canvas_to_screen.glsl + f_gui_canvas_to_screen.glsl. Each texel
 // displays as the lattice triangle localTrixelFramebufferSamplePosition
-// selects, with every triangle edge anti-aliased analytically against the
-// texel across it.
+// selects. Minimum-footprint samples use hard ownership; larger footprints
+// anti-alias analytically against the texel across each edge.
 
 struct VertexIn {
     float2 position [[attribute(0)]];
@@ -51,6 +51,14 @@ static float4 texelPremultiplied(texture2d<float> canvasColors, int2 t, int2 can
     }
     const float4 c = canvasColors.read(uint2(t));
     return float4(c.rgb * c.a, c.a);
+}
+
+static float trixelEdgeCoverage(float nearest, float2 texelScreenPx) {
+    const float effectiveDisplayScale = min(0.5f * texelScreenPx.x, texelScreenPx.y);
+    if (effectiveDisplayScale <= 1.0f) {
+        return 1.0f;
+    }
+    return clamp(nearest + 0.5f, 0.0f, 1.0f);
 }
 
 fragment float4 f_gui_canvas_to_screen(
@@ -99,9 +107,9 @@ fragment float4 f_gui_canvas_to_screen(
             nearest = distLower;
             across = int2(t.x, t.y + 1);
         }
-        // Box-filter coverage of this triangle along its nearest edge; the
-        // remainder of the pixel shows the texel across that edge.
-        const float coverage = clamp(nearest + 0.5f, 0.0f, 1.0f);
+        // A minimum-footprint triangle owns only two pixel samples. Fractional
+        // coverage there leaves neither the triangle nor its neighbour solid.
+        const float coverage = trixelEdgeCoverage(nearest, frameData.texelScreenPx);
         color = mix(
             texelPremultiplied(canvasColors, across, canvasSize),
             texelPremultiplied(canvasColors, t, canvasSize),
