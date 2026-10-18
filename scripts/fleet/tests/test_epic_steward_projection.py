@@ -11,6 +11,7 @@ self-trigger the role forever.
 import importlib.machinery
 import importlib.util
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -27,6 +28,7 @@ project_opus_reviewer = _mod.project_opus_reviewer
 project_merger = _mod.project_merger
 enrich_stackable_blocker_prs = _mod.enrich_stackable_blocker_prs
 _epic_is_managed = _mod._epic_is_managed
+fetch_epics = _mod.fetch_epics
 stable_hash = _mod.stable_hash
 
 
@@ -35,7 +37,7 @@ def _entry(num, *, checked=False, closed=False):
 
 
 def _epic(num, *, checklist=None, labels=None, managed=False,
-          updated_at="2026-06-10T00:00:00Z"):
+          filing=False, updated_at="2026-06-10T00:00:00Z"):
     return {
         "number": num,
         "title": f"epic {num}",
@@ -43,6 +45,7 @@ def _epic(num, *, checklist=None, labels=None, managed=False,
         "updatedAt": updated_at,
         "checklist": checklist if checklist is not None else [],
         "managed": managed,
+        "filing": filing,
     }
 
 
@@ -180,6 +183,22 @@ class RollupOp(unittest.TestCase):
 
 
 class AdoptOp(unittest.TestCase):
+    def test_filing_epic_withholds_adopt_and_closeout(self):
+        state = _state(
+            epics=[_epic(10, filing=True)],
+            epic_backrefs=[_backref(11, 10), _backref(12, 10)],
+        )
+        self.assertEqual(project_epic_steward(state), [])
+        self.assertEqual(slice_epic_steward(state)["adoptable"], [])
+
+    def test_unmanaged_epic_past_filing_window_still_emits_adopt(self):
+        items = project_epic_steward(_state(
+            epics=[_epic(10)],
+            epic_backrefs=[_backref(11, 10)],
+        ))
+        self.assertEqual(items, [{"kind": "adopt", "repo": "engine",
+                                  "epic": 10, "issue": 11}])
+
     def test_declared_child_missing_from_checklist_emits_adopt(self):
         items = project_epic_steward(_state(
             epics=[_epic(10, checklist=[_entry(11)])],
@@ -195,6 +214,29 @@ class AdoptOp(unittest.TestCase):
                        epic_backrefs=[_backref(14, 10)])
         self.assertNotEqual(_hash(before), _hash(after))
         self.assertEqual(project_epic_steward(after), [])
+
+
+class EpicFetch(unittest.TestCase):
+    def test_filing_window_marks_only_recent_unmanaged_empty_epics(self):
+        raw_epics = [
+            {"number": 10, "title": "recent", "labels": [],
+             "updated_at": "2026-10-18T12:00:00Z",
+             "created_at": "2026-10-18T11:55:00Z", "body": ""},
+            {"number": 11, "title": "old", "labels": [],
+             "updated_at": "2026-10-18T12:00:00Z",
+             "created_at": "2026-10-18T11:40:00Z", "body": ""},
+            {"number": 12, "title": "managed", "labels": [],
+             "updated_at": "2026-10-18T12:00:00Z",
+             "created_at": "2026-10-18T11:55:00Z",
+             "body": "## Children\n- [ ] #13"},
+        ]
+        with patch.object(_mod, "_rest_list", return_value=raw_epics):
+            epics = fetch_epics(
+                "jakildev/IrredenEngine",
+                now=datetime(2026, 10, 18, 12, 0, tzinfo=timezone.utc),
+            )
+        self.assertEqual([epic["filing"] for epic in epics], [True, False, False])
+        self.assertTrue(all("created_at" not in epic for epic in epics))
 
     def test_ref_to_unknown_umbrella_emits_nothing(self):
         # Closed or non-epic umbrella: no checklist to adopt into.

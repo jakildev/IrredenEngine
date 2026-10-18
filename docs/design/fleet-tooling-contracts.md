@@ -86,6 +86,10 @@ longer discriminates. An injected clock pinned from the fixture's own
 timestamps, paired with a window that excludes the fixture and asserts the
 reported boundary, is the form a real clock reproduces for free.
 
+The epic scout suppresses adoption only while an unmanaged, checklist-empty
+umbrella is within its 900-second filing window. After that window, a missing
+checklist remains eligible for the steward's heal-on-first-claim flow.
+
 ## Workflow path filters are two ratchets on one axis each
 
 `fleet-tests.yml` is the only thing that executes the fleet suites, so a

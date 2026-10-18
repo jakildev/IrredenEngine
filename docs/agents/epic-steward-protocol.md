@@ -214,6 +214,9 @@ Trigger: an open issue's body declares membership in the umbrella but it is
 absent from the checklist — found by the scout's label-blind body back-ref
 scan (`epic_backrefs`), so an unlabeled follow-up is visible. While any
 adopt item is pending for an umbrella, its `closeout` trigger is withheld.
+An unmanaged umbrella with an empty checklist is withheld during the scout's
+900-second filing window; once the window passes, the normal heal-on-first-
+claim path applies.
 
 1. `fleet-validate-stack <umbrella> --children <K>`; fix only the three
    machine-parsed lines if flagged (a bare child number is read as an
