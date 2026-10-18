@@ -10,6 +10,9 @@
 //   IRGui.setLabelText(label, text)
 //   local button = IRGui.makeButton(x, y, w, h, label, onClick?, size?)   -- onClick(id)
 //   if IRGui.wasClicked(button) then ... end
+//   local number = IRGui.makeNumberField(x, y, w, h, value, min, max, step?, size?)
+//   local value  = IRGui.numberFieldValue(number)
+//   IRGui.setNumberFieldValue(number, value)
 //   local region = IRGui.makeHitRegion(x, y, w, h, {
 //       zOrder = 0, onHover = fn(id), onUnhover = fn(id), onClick = fn(id),
 //   })                                                -- every key optional
@@ -157,6 +160,17 @@ inline std::vector<std::string> stringList(const sol::table &items, const char *
         out.push_back(item.as<std::string>());
     }
     return out;
+}
+
+inline float finiteNumber(const sol::object &value, const char *caller, const char *argument) {
+    if (!value.valid() || value.get_type() != sol::type::number) {
+        throw sol::error{std::string(caller) + ": " + argument + " must be a finite number"};
+    }
+    const float number = value.as<float>();
+    if (!IRMath::isFinite(number)) {
+        throw sol::error{std::string(caller) + ": " + argument + " must be a finite number"};
+    }
+    return number;
 }
 
 inline constexpr std::array<std::string_view, 4> kHitRegionOptionKeys{
@@ -452,6 +466,60 @@ inline void bindWidgets(LuaScript &script) {
     gui["setTextInputValue"] = [](lua_Integer id, std::string text) {
         requireWidget<IRComponents::C_WidgetTextInput>(id, "IRGui.setTextInputValue", "text input");
         IRPrefab::Widget::setTextInputValue(static_cast<IREntity::EntityId>(id), std::move(text));
+    };
+
+    gui["makeNumberField"] = [](int x,
+                                int y,
+                                int w,
+                                int h,
+                                sol::object value,
+                                sol::object minValue,
+                                sol::object maxValue,
+                                sol::object step,
+                                sol::object size) -> lua_Integer {
+        constexpr const char *kCaller = "IRGui.makeNumberField";
+        const float resolvedValue = finiteNumber(value, kCaller, "value");
+        const float resolvedMin = finiteNumber(minValue, kCaller, "min");
+        const float resolvedMax = finiteNumber(maxValue, kCaller, "max");
+        if (!(resolvedMin < resolvedMax)) {
+            throw sol::error{"IRGui.makeNumberField: min must be below max"};
+        }
+        float resolvedStep = 0.0f;
+        if (step.valid() && step.get_type() != sol::type::lua_nil) {
+            resolvedStep = finiteNumber(step, kCaller, "step");
+            if (!(resolvedStep > 0.0f)) {
+                throw sol::error{"IRGui.makeNumberField: step must be above zero"};
+            }
+        }
+        const IRRender::TextSize textSize = textSizeFromLua(size, kCaller);
+        return static_cast<lua_Integer>(IRPrefab::Widget::makeNumberField(
+            IRMath::ivec2(x, y),
+            IRMath::ivec2(w, h),
+            resolvedValue,
+            resolvedMin,
+            resolvedMax,
+            resolvedStep,
+            textSize
+        ));
+    };
+    gui["numberFieldValue"] = [](lua_Integer id) -> float {
+        requireWidget<IRComponents::C_WidgetNumberField>(
+            id,
+            "IRGui.numberFieldValue",
+            "number field"
+        );
+        return IRPrefab::Widget::numberFieldValue(static_cast<IREntity::EntityId>(id));
+    };
+    gui["setNumberFieldValue"] = [](lua_Integer id, sol::object value) {
+        requireWidget<IRComponents::C_WidgetNumberField>(
+            id,
+            "IRGui.setNumberFieldValue",
+            "number field"
+        );
+        IRPrefab::Widget::setNumberFieldValue(
+            static_cast<IREntity::EntityId>(id),
+            finiteNumber(value, "IRGui.setNumberFieldValue", "value")
+        );
     };
 
     gui["setDisabled"] = [](lua_Integer id, bool disabled) {

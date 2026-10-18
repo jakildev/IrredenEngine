@@ -26,7 +26,7 @@ namespace IRScript {
 // Absent or nil reads LARGE; anything else but an `IRText.Size` value raises
 // `<caller>: size must be ...`.
 inline IRRender::TextSize textSizeFromLua(const sol::object &value, const char *caller) {
-    if (!value.valid()) {
+    if (!value.valid() || value.get_type() == sol::type::lua_nil) {
         return IRRender::TextSize::LARGE;
     }
     if (value.get_type() == sol::type::number) {

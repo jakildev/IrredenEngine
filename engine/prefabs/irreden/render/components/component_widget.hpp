@@ -5,8 +5,11 @@
 #include <irreden/ir_profile.hpp>
 #include <irreden/render/trixel_font.hpp>
 
+#include <charconv>
 #include <cstdint>
+#include <cstdio>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace IRComponents {
@@ -32,6 +35,7 @@ enum class WidgetKind : int {
     // drawn by no renderer. For grouping things drawn elsewhere (text, a
     // swatch strip on another canvas) into one hover / click target.
     HIT_REGION = 11,
+    NUMBER_FIELD = 12,
 };
 
 // Z-order bias WIDGET_APPLY_DROPDOWN adds to a dropdown for as long as it is
@@ -321,6 +325,116 @@ struct C_WidgetTextInput {
     std::string text_;
     int cursorPos_ = 0;
     int maxLength_ = 0;
+};
+
+struct C_WidgetNumberField {
+    float value_ = 0.0f;
+    float minValue_ = 0.0f;
+    float maxValue_ = 1.0f;
+    float step_ = 0.0f;
+    IRRender::TextSize textSize_ = IRRender::TextSize::LARGE;
+    std::string editBuffer_;
+    bool editing_ = false;
+
+    static float clampAndSnap(float value, float minValue, float maxValue, float step) {
+        const float clamped = IRMath::clamp(value, minValue, maxValue);
+        if (!(step > 0.0f)) {
+            return clamped;
+        }
+        const float snapped =
+            minValue + static_cast<float>(IRMath::roundHalfUp((clamped - minValue) / step)) * step;
+        return IRMath::min(snapped, maxValue);
+    }
+
+    void setValue(float value) {
+        value_ = clampAndSnap(value, minValue_, maxValue_, step_);
+    }
+
+    int displayDecimals() const {
+        if (!(step_ > 0.0f)) {
+            return 2;
+        }
+        float scale = 1.0f;
+        for (int decimals = 0; decimals <= 4; ++decimals) {
+            const float scaledStep = step_ * scale;
+            const float scaledMin = minValue_ * scale;
+            if (IRMath::abs(scaledStep - static_cast<float>(IRMath::roundHalfUp(scaledStep))) <
+                    1.0e-4f &&
+                IRMath::abs(scaledMin - static_cast<float>(IRMath::roundHalfUp(scaledMin))) <
+                    1.0e-4f) {
+                return decimals;
+            }
+            scale *= 10.0f;
+        }
+        return 4;
+    }
+
+    void formatValue(std::string &out) const {
+        char buffer[48];
+        std::snprintf(buffer, sizeof(buffer), "%.*f", displayDecimals(), value_);
+        out.assign(buffer);
+    }
+
+    std::string formattedValue() const {
+        std::string out;
+        formatValue(out);
+        return out;
+    }
+
+    void updateEdit(
+        bool focused,
+        bool disabled,
+        std::string_view typed,
+        bool backspace,
+        bool escape,
+        int maxCharacters
+    ) {
+        if (focused && !editing_) {
+            editBuffer_.reserve(static_cast<std::size_t>(maxCharacters));
+            formatValue(editBuffer_);
+            editing_ = true;
+        }
+        if (!editing_) {
+            return;
+        }
+        if (disabled || escape) {
+            editBuffer_.clear();
+            editing_ = false;
+            return;
+        }
+        for (const char character : typed) {
+            if (static_cast<int>(editBuffer_.size()) >= maxCharacters) {
+                break;
+            }
+            if (character >= '0' && character <= '9') {
+                editBuffer_.push_back(character);
+            } else if (character == '-' && editBuffer_.empty()) {
+                editBuffer_.push_back(character);
+            } else if (character == '.' && editBuffer_.find('.') == std::string::npos) {
+                editBuffer_.push_back(character);
+            }
+        }
+        if (backspace && !editBuffer_.empty()) {
+            editBuffer_.pop_back();
+        }
+        if (focused) {
+            return;
+        }
+
+        std::string seeded;
+        formatValue(seeded);
+        if (editBuffer_ != seeded) {
+            float parsed = 0.0f;
+            const char *begin = editBuffer_.data();
+            const char *end = begin + editBuffer_.size();
+            const auto result = std::from_chars(begin, end, parsed);
+            if (result.ec == std::errc{} && result.ptr == end && IRMath::isFinite(parsed)) {
+                setValue(parsed);
+            }
+        }
+        editBuffer_.clear();
+        editing_ = false;
+    }
 };
 
 // COLOR_SWATCH — a single solid-color clickable cell. Carries its own

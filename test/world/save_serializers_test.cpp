@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
 #include <string>
 #include <type_traits>
@@ -1201,6 +1202,47 @@ TEST(SaveSerializers, WidgetTextInputRoundTrips) {
     EXPECT_EQ(restored.cursorPos_, 6);
     EXPECT_EQ(restored.maxLength_, 64);
     expectConsumesAllBytes(input);
+}
+
+TEST(SaveSerializers, WidgetNumberFieldRoundTripsAndDropsEditState) {
+    C_WidgetNumberField field{};
+    field.value_ = 3.5f;
+    field.minValue_ = -2.0f;
+    field.maxValue_ = 8.0f;
+    field.step_ = 0.5f;
+    field.textSize_ = IRRender::TextSize::SMALL;
+    field.editBuffer_ = "7.5";
+    field.editing_ = true;
+    const C_WidgetNumberField restored = roundTrip(field);
+    EXPECT_FLOAT_EQ(restored.value_, 3.5f);
+    EXPECT_FLOAT_EQ(restored.minValue_, -2.0f);
+    EXPECT_FLOAT_EQ(restored.maxValue_, 8.0f);
+    EXPECT_FLOAT_EQ(restored.step_, 0.5f);
+    EXPECT_EQ(restored.textSize_, IRRender::TextSize::SMALL);
+    EXPECT_FALSE(restored.editing_);
+    EXPECT_TRUE(restored.editBuffer_.empty());
+    expectConsumesAllBytes(field);
+    expectTruncationIsRecoverable(field);
+    expectOutOfRangeTextSizeIsRejected(field, 2);
+}
+
+TEST(SaveSerializers, WidgetNumberFieldRejectsInvalidStoredValues) {
+    const auto invalid = [](float value, float minValue, float maxValue, float step) {
+        IRAsset::MemoryBinaryWriter writer;
+        writer.writeF32(value);
+        writer.writeF32(minValue);
+        writer.writeF32(maxValue);
+        writer.writeF32(step);
+        writer.writeU8(static_cast<std::uint8_t>(IRRender::TextSize::LARGE));
+        return deserialize<C_WidgetNumberField>(writer.buffer());
+    };
+    EXPECT_FALSE(invalid(0.0f, 1.0f, 1.0f, 0.0f).ok());
+    EXPECT_FALSE(invalid(0.0f, std::numeric_limits<float>::infinity(), 1.0f, 0.0f).ok());
+    EXPECT_FALSE(invalid(0.0f, 0.0f, std::numeric_limits<float>::infinity(), 0.0f).ok());
+    EXPECT_FALSE(invalid(0.0f, 0.0f, 1.0f, -1.0f).ok());
+    EXPECT_FALSE(invalid(2.0f, 0.0f, 1.0f, 0.0f).ok());
+    EXPECT_FALSE(invalid(std::numeric_limits<float>::infinity(), 0.0f, 1.0f, 0.0f).ok());
+    EXPECT_FALSE(invalid(0.0f, 0.0f, 1.0f, std::numeric_limits<float>::infinity()).ok());
 }
 
 // --- truncation ------------------------------------------------------------

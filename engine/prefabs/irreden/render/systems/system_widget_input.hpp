@@ -38,9 +38,10 @@ namespace IRSystem {
 // the hitbox. Capture is released when the mouse button is released.
 //
 // **Keyboard focus**: a single `focusedWidgetId_` is tracked.
-// Tab (forward) / Shift+Tab (backward) cycles through non-disabled,
-// non-text interactive widgets. Text inputs gain focus by pointer click and
-// release it on Tab without transferring focus on that press.
+// Tab (forward) / Shift+Tab (backward) cycles through non-disabled widgets
+// that do not capture keyboard editing. Text inputs and number fields gain
+// focus by pointer click and release it on Tab without transferring focus on
+// that press.
 //
 // **Hotkey dispatch**: each `beginTick` fires registered callbacks from
 // `IRPrefab::Widget::getHotkeyRegistry()` for any matching PRESSED key
@@ -66,22 +67,21 @@ template <> struct System<WIDGET_INPUT> {
     IREntity::EntityId topHoveredId_ = IREntity::kNullEntity;
     IREntity::EntityId capturedWidgetId_ = IREntity::kNullEntity;
     IREntity::EntityId focusedWidgetId_ = IREntity::kNullEntity;
-    bool textInputFocusedAtStart_ = false;
+    bool keyboardWidgetFocusedAtStart_ = false;
 
     std::vector<IREntity::EntityId> focusableWidgets_;
 
-    bool hasFocusedTextInput() const {
+    bool hasFocusedKeyboardWidget() const {
         if (focusedWidgetId_ == IREntity::kNullEntity ||
             !IREntity::entityExists(focusedWidgetId_)) {
             return false;
         }
         auto widget = IREntity::getComponentOptional<IRComponents::C_Widget>(focusedWidgetId_);
-        return widget.has_value() && !(*widget)->disabled_ &&
-               (*widget)->kind_ == IRComponents::WidgetKind::TEXT_INPUT;
+        return widget.has_value() && IRPrefab::Widget::takesKeyboardFocus(**widget);
     }
 
     void beginTick() {
-        textInputFocusedAtStart_ = hasFocusedTextInput();
+        keyboardWidgetFocusedAtStart_ = hasFocusedKeyboardWidget();
         mouseGuiTrixel_ = IRPrefab::Layout::mousePositionInGuiTrixels();
 
         mouseLeftPressedThisFrame_ = IRInput::checkKeyMouseButton(
@@ -110,21 +110,29 @@ template <> struct System<WIDGET_INPUT> {
         }
 
         // Focus ends with its widget, with a click that lands on no widget, and
-        // with Enter in a text input, so typed text never outlives the edit.
+        // when the focused keyboard editor submits or cancels its edit.
         if (focusedWidgetId_ != IREntity::kNullEntity) {
             const auto focusedWidget =
                 IREntity::entityExists(focusedWidgetId_)
                     ? IREntity::getComponentOptional<IRComponents::C_Widget>(focusedWidgetId_)
                     : std::nullopt;
-            const bool submitted =
-                focusedWidget && (*focusedWidget)->kind_ == IRComponents::WidgetKind::TEXT_INPUT &&
-                IRInput::checkKeyMouseButton(
-                    IRInput::KeyMouseButtons::kKeyButtonEnter,
-                    IRInput::ButtonStatuses::PRESSED
-                );
+            const bool submitted = focusedWidget &&
+                                   IRPrefab::Widget::takesKeyboardFocus(**focusedWidget) &&
+                                   IRInput::checkKeyMouseButton(
+                                       IRInput::KeyMouseButtons::kKeyButtonEnter,
+                                       IRInput::ButtonStatuses::PRESSED
+                                   );
             const bool clickedAway =
                 mouseLeftPressedThisFrame_ && topHoveredId_ == IREntity::kNullEntity;
-            if (!focusedWidget || submitted || clickedAway) {
+            const bool cancelled =
+                focusedWidget &&
+                (*focusedWidget)->kind_ == IRComponents::WidgetKind::NUMBER_FIELD &&
+                IRInput::checkKeyMouseButton(
+                    IRInput::KeyMouseButtons::kKeyButtonEscape,
+                    IRInput::ButtonStatuses::PRESSED
+                );
+            if (!focusedWidget || (*focusedWidget)->disabled_ || submitted || cancelled ||
+                clickedAway) {
                 focusedWidgetId_ = IREntity::kNullEntity;
             }
         }
@@ -135,7 +143,7 @@ template <> struct System<WIDGET_INPUT> {
             IRInput::ButtonStatuses::PRESSED
         );
         if (tabPressed) {
-            if (textInputFocusedAtStart_) {
+            if (keyboardWidgetFocusedAtStart_) {
                 focusedWidgetId_ = IREntity::kNullEntity;
             } else {
                 const bool shiftHeld = IRInput::checkKeyMouseModifiers(IRInput::kModifierShift);
@@ -235,7 +243,7 @@ template <> struct System<WIDGET_INPUT> {
     // harness to assert hover without re-scanning hitboxes.
     void endTick() {
         IRCommand::getCommandManager().setKeyboardCaptured(
-            textInputFocusedAtStart_ || hasFocusedTextInput()
+            keyboardWidgetFocusedAtStart_ || hasFocusedKeyboardWidget()
         );
         IREntity::forEachComponent<IRComponents::C_GuiHoverState>(
             [this](IREntity::EntityId &, IRComponents::C_GuiHoverState &hoverState) {

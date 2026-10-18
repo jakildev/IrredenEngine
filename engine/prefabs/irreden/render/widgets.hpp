@@ -23,7 +23,13 @@ namespace IRPrefab::Widget {
 // A hit region draws nothing, so keyboard focus on one would be invisible.
 inline bool isTabFocusCandidate(const IRComponents::C_Widget &widget) {
     return !widget.disabled_ && widget.kind_ != IRComponents::WidgetKind::TEXT_INPUT &&
+           widget.kind_ != IRComponents::WidgetKind::NUMBER_FIELD &&
            widget.kind_ != IRComponents::WidgetKind::HIT_REGION;
+}
+
+inline bool takesKeyboardFocus(const IRComponents::C_Widget &widget) {
+    return !widget.disabled_ && (widget.kind_ == IRComponents::WidgetKind::TEXT_INPUT ||
+                                 widget.kind_ == IRComponents::WidgetKind::NUMBER_FIELD);
 }
 
 // The single widget WIDGET_INPUT routes hover to: among enabled widgets whose
@@ -336,6 +342,31 @@ inline IREntity::EntityId makeTextInput(
     );
 }
 
+inline IREntity::EntityId makeNumberField(
+    IRMath::ivec2 pos,
+    IRMath::ivec2 size,
+    float value,
+    float minValue,
+    float maxValue,
+    float step = 0.0f,
+    IRRender::TextSize textSize = IRRender::TextSize::LARGE
+) {
+    IRComponents::C_WidgetNumberField field;
+    field.minValue_ = minValue;
+    field.maxValue_ = maxValue;
+    field.step_ = step;
+    field.textSize_ = textSize;
+    field.setValue(value);
+    return IREntity::createEntity(
+        IRComponents::C_Widget{IRComponents::WidgetKind::NUMBER_FIELD, size},
+        IRComponents::C_GuiPosition{pos},
+        IRComponents::C_GuiElement{},
+        IRComponents::C_WidgetState{},
+        std::move(field),
+        IRComponents::C_HitBox2DGui{size}
+    );
+}
+
 inline IREntity::EntityId makeScroll(
     IRMath::ivec2 pos,
     IRMath::ivec2 size,
@@ -414,6 +445,14 @@ inline void setTextInputValue(IREntity::EntityId widget, std::string text) {
     auto &ti = IREntity::getComponent<IRComponents::C_WidgetTextInput>(widget);
     ti.text_ = std::move(text);
     ti.cursorPos_ = static_cast<int>(ti.text_.size());
+}
+
+inline float numberFieldValue(IREntity::EntityId widget) {
+    return IREntity::getComponent<IRComponents::C_WidgetNumberField>(widget).value_;
+}
+
+inline void setNumberFieldValue(IREntity::EntityId widget, float value) {
+    IREntity::getComponent<IRComponents::C_WidgetNumberField>(widget).setValue(value);
 }
 
 inline int scrollPosition(IREntity::EntityId widget) {

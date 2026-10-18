@@ -407,6 +407,7 @@ IR_SAVE_OPT_IN(IRComponents::C_WidgetColorSwatch, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetDropdown, 2)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetLabel, 2)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetList, 1)
+IR_SAVE_OPT_IN(IRComponents::C_WidgetNumberField, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetPanel, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetRadio, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetScroll, 1)
@@ -637,6 +638,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_WidgetDropdown,
     IRComponents::C_WidgetLabel,
     IRComponents::C_WidgetList,
+    IRComponents::C_WidgetNumberField,
     IRComponents::C_WidgetPanel,
     IRComponents::C_WidgetRadio,
     IRComponents::C_WidgetScroll,
