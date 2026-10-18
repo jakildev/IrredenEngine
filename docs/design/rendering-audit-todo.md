@@ -571,12 +571,15 @@ acceptance limits for each step.
   source-level reads fall from ten to seven for misses, but the native fixture
   demonstrates no GPU gain; production query code is restored. Twelve paired
   captures remain RGB-identical. The same investigation deterministically
-  reproduces an unresolved index/query mismatch: the rounded closed-face query
-  accepts a receiver across a tile boundary where the unexpanded index omits the
-  face. Establish conservative producer/query coverage before finer indexing,
-  with rounding-aware bounds and executable tile-membership gates. This host
-  witness does not yet establish which visible artifacts it causes. Coordinate
-  shared sampler edits with the separate analytical-box self-shadow work.
+  reproduced an index/query mismatch: the rounded closed-face query accepted
+  receivers across tile boundaries where the unexpanded index omitted the face.
+  [Conservative index bounds](sun-face-index-coverage.md) now enclose the accepted
+  query region, including independent determinant contraction and tile-division
+  rounding. Host membership/capacity controls and a manual native Metal
+  containment validator cover the contract. Native OpenGL validation remains
+  pending; the boundary witness does not identify which earlier visible artifacts
+  it caused. Before finer indexing, qualify grazing-face fallback cost and denser
+  workloads. Coordinate shared sampler edits with analytical-box self-shadow work.
 - [Bounded overflow reference](../perf/bounded-source-face-reference.md) isolates
   the dense analytical-box teeth: identical geometry and tile tables regain
   clean floor edges when incomplete tiles query the complete small face pool.

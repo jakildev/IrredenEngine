@@ -1,3 +1,5 @@
+#include "ir_sun_face_bounds.metal"
+
 // Cooperative callers provide identical geometry and cascade bounds on every lane.
 #ifdef IR_SUN_FACE_INDEX_COOPERATIVE
 inline void indexSourceSunGeometry(device atomic_uint* sunDepthBuf, float3 corner, float3 edgeU, float3 edgeV, uint type, float2 low, float2 high, constant FrameDataSun& sunFrame, uint lane, threadgroup uint& sharedFaceIndex) {
@@ -11,8 +13,15 @@ inline void indexSourceSunGeometry(device atomic_uint* sunDepthBuf, float3 corne
     for (uint cascade = 0u; cascade < kSourceFaceCascadeCount; ++cascade) {
         const float2 origin = cascade == 0u ? sunFrame.cascadeOriginUV_0 : sunFrame.cascadeOriginUV_1;
         const float2 cellSize = (cascade == 0u ? sunFrame.cascadeTexelSize_0 : sunFrame.cascadeTexelSize_1) * float(kSourceFaceTileEdge);
-        const int2 first = max(int2(floor((low - origin) / cellSize)), int2(0));
-        const int2 last = min(int2(floor((high - origin) / cellSize)), int2(kSourceFaceTilesPerAxis - 1u));
+        const bool fullCascade = type == 0u && !sourceFaceCascadeArithmeticSafe(origin, cellSize);
+        const float2 tileX = fullCascade ? float2(0.0, float(kSourceFaceTilesPerAxis - 1u))
+            : sourceFaceTileInterval(low.x, high.x, origin.x, cellSize.x);
+        const float2 tileY = fullCascade ? float2(0.0, float(kSourceFaceTilesPerAxis - 1u))
+            : sourceFaceTileInterval(low.y, high.y, origin.y, cellSize.y);
+        const int2 first = int2(clamp(floor(float2(tileX.x, tileY.x)),
+            float2(0.0), float2(float(kSourceFaceTilesPerAxis))));
+        const int2 last = int2(clamp(floor(float2(tileX.y, tileY.y)),
+            float2(-1.0), float2(float(kSourceFaceTilesPerAxis - 1u))));
         if (first.x > last.x || first.y > last.y) continue;
         if (faceIndex == 0xFFFFFFFFu) {
 #ifdef IR_SUN_FACE_INDEX_COOPERATIVE
@@ -75,9 +84,13 @@ inline void indexSourceSunFace(device atomic_uint* sunDepthBuf, float3 corner, f
 #else
 inline void indexSourceSunFace(device atomic_uint* sunDepthBuf, float3 corner, float3 edgeU, float3 edgeV, constant FrameDataSun& sunFrame) {
 #endif
-    if (abs(projectedFaceDeterminant(edgeU.xy, edgeV.xy)) < 0.000001) return;
-    const float2 low = min(min(corner.xy, corner.xy + edgeU.xy), min(corner.xy + edgeV.xy, corner.xy + edgeU.xy + edgeV.xy));
-    const float2 high = max(max(corner.xy, corner.xy + edgeU.xy), max(corner.xy + edgeV.xy, corner.xy + edgeU.xy + edgeV.xy));
+    const float determinant = projectedFaceDeterminant(edgeU.xy, edgeV.xy);
+    if (sourceFaceDefinitelyDegenerate(edgeU.xy, edgeV.xy, determinant)) return;
+    float2 low, high;
+    if (!sourceFaceIndexBounds(corner.xy, edgeU.xy, edgeV.xy, determinant, low, high)) {
+        low = float2(-3.4028234663852886e38);
+        high = float2(3.4028234663852886e38);
+    }
 #ifdef IR_SUN_FACE_INDEX_COOPERATIVE
     indexSourceSunGeometry(sunDepthBuf, corner, edgeU, edgeV, 0u, low, high, sunFrame, lane, sharedFaceIndex);
 #else

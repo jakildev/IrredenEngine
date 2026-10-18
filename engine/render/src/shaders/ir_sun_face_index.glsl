@@ -1,3 +1,5 @@
+#include "ir_sun_face_bounds.glsl"
+
 // Cooperative callers provide identical geometry and cascade bounds on every lane.
 void indexSourceSunGeometry(vec3 corner, vec3 edgeU, vec3 edgeV, uint type, vec2 low, vec2 high) {
 #ifdef IR_SUN_FACE_INDEX_COOPERATIVE
@@ -8,8 +10,15 @@ void indexSourceSunGeometry(vec3 corner, vec3 edgeU, vec3 edgeV, uint type, vec2
     for (uint cascade = 0u; cascade < kSourceFaceCascadeCount; ++cascade) {
         const vec2 origin = cascade == 0u ? cascadeOriginUV_0 : cascadeOriginUV_1;
         const vec2 cellSize = (cascade == 0u ? cascadeTexelSize_0 : cascadeTexelSize_1) * float(kSourceFaceTileEdge);
-        const ivec2 first = max(ivec2(floor((low - origin) / cellSize)), ivec2(0));
-        const ivec2 last = min(ivec2(floor((high - origin) / cellSize)), ivec2(kSourceFaceTilesPerAxis - 1u));
+        const bool fullCascade = type == 0u && !sourceFaceCascadeArithmeticSafe(origin, cellSize);
+        const vec2 tileX = fullCascade ? vec2(0.0, float(kSourceFaceTilesPerAxis - 1u))
+            : sourceFaceTileInterval(low.x, high.x, origin.x, cellSize.x);
+        const vec2 tileY = fullCascade ? vec2(0.0, float(kSourceFaceTilesPerAxis - 1u))
+            : sourceFaceTileInterval(low.y, high.y, origin.y, cellSize.y);
+        const ivec2 first = ivec2(clamp(floor(vec2(tileX.x, tileY.x)),
+            vec2(0.0), vec2(float(kSourceFaceTilesPerAxis))));
+        const ivec2 last = ivec2(clamp(floor(vec2(tileX.y, tileY.y)),
+            vec2(-1.0), vec2(float(kSourceFaceTilesPerAxis - 1u))));
         if (first.x > last.x || first.y > last.y) continue;
         if (faceIndex == 0xFFFFFFFFu) {
 #ifdef IR_SUN_FACE_INDEX_COOPERATIVE
@@ -67,8 +76,12 @@ void indexSourceSunGeometry(vec3 corner, vec3 edgeU, vec3 edgeV, uint type, vec2
 }
 
 void indexSourceSunFace(vec3 corner, vec3 edgeU, vec3 edgeV) {
-    if (abs(projectedFaceDeterminant(edgeU.xy, edgeV.xy)) < 0.000001) return;
-    const vec2 low = min(min(corner.xy, corner.xy + edgeU.xy), min(corner.xy + edgeV.xy, corner.xy + edgeU.xy + edgeV.xy));
-    const vec2 high = max(max(corner.xy, corner.xy + edgeU.xy), max(corner.xy + edgeV.xy, corner.xy + edgeU.xy + edgeV.xy));
+    const float determinant = projectedFaceDeterminant(edgeU.xy, edgeV.xy);
+    if (sourceFaceDefinitelyDegenerate(edgeU.xy, edgeV.xy, determinant)) return;
+    vec2 low, high;
+    if (!sourceFaceIndexBounds(corner.xy, edgeU.xy, edgeV.xy, determinant, low, high)) {
+        low = vec2(-3.4028234663852886e38);
+        high = vec2(3.4028234663852886e38);
+    }
     indexSourceSunGeometry(corner, edgeU, edgeV, 0u, low, high);
 }
