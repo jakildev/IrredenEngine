@@ -65,8 +65,8 @@ target ms) are documented inline in `concurrency.toml`.
 
 ## Lock model
 
-Atomic `mkdir`-based locks under `$XDG_RUNTIME_DIR/irreden/locks/` (Linux)
-or `/tmp/irreden-$USER/locks/` (macOS / hosts without `$XDG_RUNTIME_DIR`).
+Lock dirs under `$XDG_RUNTIME_DIR/irreden/locks/` (Linux) or
+`/tmp/irreden-$USER/locks/` (macOS / hosts without `$XDG_RUNTIME_DIR`).
 Three resource types:
 
 - `cpu/slot-{1..budget}/` — N independent slot dirs, one per core in the
@@ -74,22 +74,34 @@ Three resource types:
 - `gpu/lock/` — single exclusive lock dir.
 - `perf/lock/` — single exclusive lock dir.
 
-Each lock dir contains a `pid` file with the holding process PID. Stale
-locks (holder PID is dead) are reclaimed on the next acquire attempt.
-`ir-acquire --info` runs a passive stale-sweep before printing state.
-On native Windows a lock also records the holder's Windows pid (`winpid`),
-because MSYS2 bash and Git for Windows bash share the lock root through
-`TEMP` but not a pid table, and `kill -0` from one runtime reports every
-holder in the other dead. Release and the stale-sweep require that record to
-match as well as the pid, and the per-holder ledger under `.held/` is keyed
-`<pid>.<winpid>` there, so two holders sharing a pid number never release
-each other's locks.
+Holding a lock means owning its `owner` file: the holder pid, its owner
+token (below), and a nonce. The record is written whole beside the lock dir
+and hard-linked in, so exactly one caller's `ln` wins. A dead holder's lock
+is transferred, not removed: a contender links a `reap.<nonce>` takeover
+marker for the dead record, then swaps its own record into `owner`. A
+contender that finds the marker taken by another dead process walks on to
+that process's marker, so two reclaimers never both win. Release renames the
+lock dir aside and deletes the copy; nothing removes a lock dir in place.
+`ir-acquire --info` runs a passive stale-sweep, through the same transfer,
+before printing state, and reads the holder's age from the nonce.
+
+The holder also writes single-line `pid`, `winpid` and `acquired_at`
+mirrors, so a helper copy older than `owner` (another worktree's branch, a
+shell that sourced the file before a pull) still reads a live lock as held.
+New code adopts such a copy's lock only when its `pid` holder is dead.
+
+On native Windows the owner token is the holder's Windows pid, because MSYS2
+bash and Git for Windows bash share the lock root through `TEMP` but not a
+pid table, and `kill -0` from one runtime reports every holder in the other
+dead. Release and the stale-sweep require the token to match as well as the
+pid, and the per-holder ledger under `.held/` is keyed `<pid>.<winpid>`
+there, so two holders sharing a pid number never release each other's locks.
 
 Locks are not re-entrant. The wrapped command inherits
 `IR_ACQUIRE_HOLDER_PID` / `IR_ACQUIRE_HELD_VERB`, and a nested `ir-run` whose
 verb the ancestor still holds runs inside that hold instead of queueing on it.
 On native Windows it also inherits `IR_ACQUIRE_HOLDER_WINPID`, which must
-match the lock's `winpid` record: the other runtime's holder can carry the
+match the owner token on the lock: the other runtime's holder can carry the
 same pid number.
 
 A `gpu` or `benchmark` hold can lend its gpu lock to a child run
@@ -167,4 +179,12 @@ test/tools/normalization_test.sh   # comparator: normalize, fingerprint, gate de
 ```
 
 All three isolate via temp `$XDG_RUNTIME_DIR` / `$XDG_CACHE_HOME` so they
-don't conflict with a live fleet on the same host.
+don't conflict with a live fleet on the same host. An exported
+`IR_LOCK_ROOT` outranks that temp dir and an exported `IR_QUIET_OWNER` parks
+every acquisition, so run them from a fleet pane as
+`env -u IR_LOCK_ROOT -u IR_QUIET_OWNER bash test/tools/concurrency_test.sh`.
+
+The lock races themselves (two reclaimers, an unstamped creator, the stale
+sweep, helper copies of two versions on one lock root) run under FIFO
+barriers in `scripts/fleet/tests/test_ir_lock_transfer.sh`, which CI runs
+through `bash scripts/fleet/tests/run_all.sh`.

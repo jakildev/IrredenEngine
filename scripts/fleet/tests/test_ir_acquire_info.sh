@@ -69,4 +69,15 @@ assert_eq "$stub_rc" "0" "--info succeeds when ps rejects -o"
 assert_contains "$stub_info" "gpu lock: held by pid $holder_pid (age " "fallback keeps holder pid and age"
 assert_absent "$stub_info" "command:" "fallback omits unavailable command"
 
+# The non-negative regex above also matches the `age 0s` an unreadable
+# acquisition time falls back to.
+sleep 2
+aged_info="$(IR_LOCK_ROOT="$LOCK_ROOT" "$ACQUIRE" --info)"
+if grep -Eq "gpu lock: held by pid $holder_pid \\(age [1-9][0-9]*s" <<<"$aged_info"; then
+    ok "--info reports a non-zero age for a hold at least 2 s old"
+else
+    bad "--info reports a non-zero age for a hold at least 2 s old"
+    printf '        info: %s\n' "$aged_info"
+fi
+
 summarize "ir-acquire info tests"

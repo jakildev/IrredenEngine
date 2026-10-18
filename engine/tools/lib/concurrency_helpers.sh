@@ -7,9 +7,10 @@
 # everything else (paths, defaults) is computed from the three-config-layer
 # resolver below.
 #
-# The lock primitives use atomic mkdir, which works identically on Linux,
-# macOS, and WSL — no flock dependency. Each lock holds a `pid` file so
-# `ir-acquire --info` can attribute waits to the holding process.
+# The lock primitives use mkdir plus hard links, which work identically on
+# Linux, macOS, WSL and MSYS2 — no flock dependency. Each lock holds an
+# `owner` record so `ir-acquire --info` can attribute waits to the holding
+# process.
 
 set -euo pipefail
 
@@ -380,13 +381,33 @@ _ir_quiet_defer_nonbenchmark() {
 }
 
 # ---------------------------------------------------------------------------
-# Lock primitives — atomic mkdir, PID-death recovery
+# Lock primitives — exclusive owner record, dead-holder transfer
 # ---------------------------------------------------------------------------
 #
-# A "lock" is a directory under $IR_LOCK_ROOT/{cpu,gpu,perf}/. mkdir is the
-# atomic operation: only one caller can create a given dir, the rest see
-# EEXIST. After creating it we write our PID into the dir; on acquire
-# contention, we re-check and reclaim if the holder PID is gone.
+# A "lock" is a directory under $IR_LOCK_ROOT/{cpu,gpu,perf}/. The directory
+# is only a container: holding the lock means owning its `owner` file, a
+# three-line record (holder pid, owner token, nonce "<epoch>.<writer>.<hex>").
+# A record is written complete as a dotfile in the lock's parent and then
+# hard-linked into place, so `ln` is the exclusive step and no reader sees a
+# partial record.
+#
+# - Free lock: the first `ln <record> <lock>/owner` wins.
+# - Dead owner R: a contender links `reap.<nonce(R)>`, then replaces `owner`
+#   with `mv -f`, but only while `owner` is still a record on the chain of
+#   dead records it walked. A failed marker link names the marker's holder M:
+#   live means refuse, dead means walk on to `reap.<nonce(M)>`. Every owner
+#   after the first is a node of that one chain, so its first unheld marker
+#   can be linked exactly once. Markers stay until the lock is released.
+# - Release renames the lock dir aside, then deletes the copy. Nothing removes
+#   a lock dir in place, so no remover can land after a contender's take.
+#
+# Helper copies older than the record still share the lock root (a worktree
+# branch, a shell that sourced an older file). `pid`, `winpid` and
+# `acquired_at` stay as single-line mirrors the owner writes once it holds
+# `owner`, so those copies read a live lock as held. A dir with `pid` but no
+# `owner` is such a copy's lock: judged from those files, adopted through
+# `ln owner` when its holder is dead, never removed. New code never reads a
+# mirror in a dir that has `owner`.
 #
 # Held resources are tracked in a per-process list under $IR_LOCK_ROOT/.held/
 # (see _ir_held_dir) — the trap in ir-acquire walks it on exit.
@@ -428,62 +449,218 @@ ir_owner_token_for_pid() {
     echo "$winpid $_IR_RUNTIME_ROOT"
 }
 
-# _ir_holder_alive <pid> <winpid-file> — same-runtime holders are judged by
+# _ir_holder_alive <pid> <owner-token> — same-runtime holders are judged by
 # `kill -0` alone; a holder from the other runtime by its Windows pid.
 _ir_holder_alive() {
-    local pid="$1" winpid_file="$2"
+    local pid="$1" token="$2" winpid="" root=""
     _ir_pid_alive "$pid" && return 0
-    [[ -f "$winpid_file" ]] || return 1
-    local winpid="" root=""
-    read -r winpid root < "$winpid_file" || true
+    read -r winpid root <<<"$token" || true
     [[ -n "$winpid" && "$root" != "$_IR_RUNTIME_ROOT" ]] || return 1
     ps -W 2>/dev/null | awk -v w="$winpid" '$4 == w { found = 1 } END { exit !found }'
 }
 
+# The lock paths read their files with `read` and build names with
+# `printf -v`, not command substitution: on native Windows every fork costs
+# milliseconds, and a cpu-slot wait polls every slot five times a second.
+_IR_BASH_VERSION=$(( BASH_VERSINFO[0] * 100 + BASH_VERSINFO[1] ))
+
+# _ir_lock_rec_read <file> — reads a record into _IR_REC_PID, _IR_REC_TOKEN
+# and _IR_REC_NONCE; fails when the file is missing or the pid or nonce is
+# empty. A record file is only ever replaced whole, so one open sees one
+# record.
+_ir_lock_rec_read() {
+    _IR_REC_PID="" _IR_REC_TOKEN="" _IR_REC_NONCE=""
+    { IFS= read -r _IR_REC_PID; IFS= read -r _IR_REC_TOKEN; IFS= read -r _IR_REC_NONCE; } 2>/dev/null < "$1" || true
+    [[ -n "$_IR_REC_PID" && -n "$_IR_REC_NONCE" ]]
+}
+
+# _ir_read_line <file> — sets _IR_LINE to the file's first line, empty when
+# the file is missing.
+_ir_read_line() {
+    _IR_LINE=""
+    { IFS= read -r _IR_LINE; } 2>/dev/null < "$1" || true
+}
+
+# _ir_lock_rand — sets _IR_RAND to random hex digits. A bash 3.2 subshell's
+# $$ is its parent's, so this is what keeps names written by two subshells
+# apart.
+_ir_lock_rand() {
+    if (( _IR_BASH_VERSION >= 501 )); then
+        printf -v _IR_RAND '%08x%08x' "$SRANDOM" "$SRANDOM"
+    else
+        _IR_RAND="$(od -An -N6 -tx1 /dev/urandom)"
+        _IR_RAND="${_IR_RAND//[!0-9a-f]/}"
+    fi
+}
+
+# _ir_lock_rec_ensure <lockdir> [<pid> [<owner-token>]] — writes this
+# attempt's record on first use and leaves its path in `_ir_rec`, which the
+# caller declares local and removes. Writing it lazily keeps the poll against
+# a live holder cheap. The record sits beside the lock dir because a hard
+# link cannot cross filesystems.
+_ir_lock_rec_ensure() {
+    [[ -z "$_ir_rec" ]] || return 0
+    local lockdir="$1" pid="${2:-$$}" token now rec
+    if (( $# >= 3 )); then token="$3"; else token="$(ir_self_owner_token)"; fi
+    if (( _IR_BASH_VERSION >= 402 )); then
+        printf -v now '%(%s)T' -1
+    else
+        now="$(date +%s)"
+    fi
+    _ir_lock_rand
+    rec="${lockdir%/*}/.rec.$now.$$.$_IR_RAND"
+    if ! printf '%s\n%s\n%s\n' "$pid" "$token" "$now.$$.$_IR_RAND" > "$rec" 2>/dev/null; then
+        rm -f "$rec"
+        return 1
+    fi
+    _ir_rec="$rec"
+}
+
+# _ir_retry_mv <src> <dst> — native Windows refuses a rename while another
+# process has a handle open on the file or inside the dir. That clears within
+# moments, so retry for about 5 s; fail at once when <src> is gone.
+_ir_retry_mv() {
+    local i
+    for (( i = 0; i < 50; i++ )); do
+        mv -f "$1" "$2" 2>/dev/null && return 0
+        [[ -e "$1" ]] || return 1
+        sleep 0.1
+    done
+    return 1
+}
+
+# _ir_lock_mirror <lockdir> <record-file> — writes the single-line files that
+# older helper copies read. winpid lands before pid, because an older reader
+# in the other Cygwin runtime judges a pid it cannot see by that file. A
+# mirror that never lands is logged, not fatal: new code never reads one
+# beside `owner`.
+_ir_lock_mirror() {
+    local lockdir="$1"
+    _ir_lock_rec_read "$2" || return 0
+    if [[ -n "$_IR_REC_TOKEN" ]]; then
+        _ir_lock_mirror_one "$lockdir" winpid "$_IR_REC_TOKEN" "$_IR_REC_NONCE"
+    elif [[ -e "$lockdir/winpid" ]]; then
+        rm -f "$lockdir/winpid"
+    fi
+    _ir_lock_mirror_one "$lockdir" acquired_at "${_IR_REC_NONCE%%.*}" "$_IR_REC_NONCE"
+    _ir_lock_mirror_one "$lockdir" pid "$_IR_REC_PID" "$_IR_REC_NONCE"
+}
+
+_ir_lock_mirror_one() {  # <lockdir> <name> <value> <nonce>
+    local tmp="$1/.$2.$4"
+    if ! { echo "$3" > "$tmp" && _ir_retry_mv "$tmp" "$1/$2"; } 2>/dev/null; then
+        rm -f "$tmp" 2>/dev/null
+        echo "ir-acquire: could not write the $2 mirror on $1" >&2
+    fi
+    return 0
+}
+
 _ir_lock_holder() {
     local lockdir="$1"
-    [[ -f "$lockdir/pid" ]] || return 1
+    if _ir_lock_rec_read "$lockdir/owner"; then
+        echo "$_IR_REC_PID"
+        return 0
+    fi
+    [[ ! -e "$lockdir/owner" && -f "$lockdir/pid" ]] || return 1
     cat "$lockdir/pid" 2>/dev/null
 }
 
-# Try to create a lock dir. If it exists, check whether the holder is dead;
-# if so, reclaim. Returns 0 on success, 1 if the lock is held by a live PID.
-#
-# _ir_try_lock <lockdir> [<pid> <owner-token>] stamps the lock for another
-# live process: a GPU lease reacquire runs in a short-lived control process
-# but restores the lock to the ir-acquire shell that owns the lease.
-_ir_stamp_lock() {
-    local lockdir="$1"
-    echo "${2:-$$}" > "$lockdir/pid"
-    date +%s > "$lockdir/acquired_at"
-    if (( $# >= 3 )); then
-        [[ -z "$3" ]] || echo "$3" > "$lockdir/winpid"
-    else
-        _ir_write_winpid "$lockdir/winpid"
+# _ir_lock_take <lockdir> [<pid> [<owner-token>]] — transfers a lock whose
+# `owner` was just read into _IR_REC_* along the takeover-marker chain.
+# Returns as _ir_lock_contend does.
+_ir_lock_take() {
+    local lockdir="$1" chain=" " marker="" swap
+    while :; do
+        [[ "$chain" != *" $_IR_REC_NONCE "* ]] || return 1
+        chain+="$_IR_REC_NONCE "
+        _ir_holder_alive "$_IR_REC_PID" "$_IR_REC_TOKEN" && return 1
+        _ir_lock_rec_ensure "$@" || return 1
+        marker="$lockdir/reap.$_IR_REC_NONCE"
+        ln "$_ir_rec" "$marker" 2>/dev/null && break
+        [[ -d "$lockdir" ]] || return 2
+        _ir_lock_rec_read "$marker" || return 1
+    done
+    # A refusal drops the marker: nobody else can link that name while this
+    # process lives, so keeping it would wedge the lock until this exits.
+    if ! _ir_lock_rec_read "$lockdir/owner"; then
+        rm -f "$marker"
+        return 2
     fi
-}
-
-_ir_try_lock() {
-    local lockdir="$1"
-    shift
-    if mkdir "$lockdir" 2>/dev/null; then
-        _ir_stamp_lock "$lockdir" "$@"
-        return 0
-    fi
-    local holder
-    holder="$(_ir_lock_holder "$lockdir" || echo "")"
-    if [[ -n "$holder" ]] && _ir_holder_alive "$holder" "$lockdir/winpid"; then
+    if [[ "$chain" != *" $_IR_REC_NONCE "* ]]; then
+        rm -f "$marker"
         return 1
     fi
-    # Stale — reclaim. Use rm -rf to nuke any files left by the dead holder,
-    # then re-create atomically. The re-create may still lose to a concurrent
-    # reclaimer; that's correct (the other wins).
-    rm -rf "$lockdir" 2>/dev/null || true
-    if mkdir "$lockdir" 2>/dev/null; then
-        _ir_stamp_lock "$lockdir" "$@"
+    swap="$lockdir/.swap.${_ir_rec##*/.rec.}"
+    if ln "$_ir_rec" "$swap" 2>/dev/null && mv -f "$swap" "$lockdir/owner" 2>/dev/null; then
         return 0
     fi
+    rm -f "$swap" "$marker"
     return 1
+}
+
+# _ir_lock_contend <lockdir> [<pid> [<owner-token>]] — one attempt on a lock
+# dir that exists. 0 acquired, 1 refused, 2 the dir went away mid-attempt (a
+# release renamed it) and the caller may retry.
+_ir_lock_contend() {
+    local lockdir="$1" legacy
+    if _ir_lock_rec_read "$lockdir/owner"; then
+        _ir_lock_take "$@"
+        return $?
+    fi
+    [[ -d "$lockdir" ]] || return 2
+    [[ ! -e "$lockdir/owner" ]] || return 1
+    _ir_read_line "$lockdir/pid"
+    legacy="$_IR_LINE"
+    if [[ -n "$legacy" ]]; then
+        _ir_read_line "$lockdir/winpid"
+        _ir_holder_alive "$legacy" "$_IR_LINE" && return 1
+    fi
+    _ir_lock_rec_ensure "$@" || return 1
+    if ! ln "$_ir_rec" "$lockdir/owner" 2>/dev/null; then
+        [[ -d "$lockdir" ]] || return 2
+        return 1
+    fi
+    # An older copy reclaims by removing and recreating the dir, then stamping
+    # `pid`; a changed `pid` means this link landed in that copy's new lock.
+    _ir_read_line "$lockdir/pid"
+    if [[ "$_IR_LINE" != "$legacy" ]]; then
+        rm -f "$lockdir/owner"
+        return 1
+    fi
+    return 0
+}
+
+# _ir_try_lock <lockdir> [<pid> [<owner-token>]] — 0 when this call took the
+# lock, 1 when a live holder has it. The pid and token stamp the lock for
+# another live process: a GPU lease reacquire runs in a short-lived control
+# process but restores the lock to the ir-acquire shell that owns the lease.
+# Tests seed locks through this call too, never by writing the files.
+_ir_try_lock() {
+    local lockdir="$1" _ir_rec="" i rc=1
+    for (( i = 0; i < 3; i++ )); do
+        mkdir "$lockdir" 2>/dev/null || true
+        rc=0
+        _ir_lock_contend "$@" || rc=$?
+        (( rc == 2 )) || break
+        rc=1
+    done
+    if (( rc == 0 )); then
+        _ir_lock_mirror "$lockdir" "$_ir_rec"
+    fi
+    [[ -z "$_ir_rec" ]] || rm -f "$_ir_rec"
+    return "$rc"
+}
+
+# _ir_lock_detach <lockdir> — releases a lock the caller owns: renames the
+# dir aside, then deletes the copy. A dir that cannot be renamed stays in
+# place and reads as a dead holder once its owner exits; it is never removed
+# in place, where the remove could land after a contender's take.
+_ir_lock_detach() {
+    local lockdir="$1" gone
+    _ir_lock_rand
+    gone="${lockdir%/*}/.released.${lockdir##*/}.$$.$_IR_RAND"
+    _ir_retry_mv "$lockdir" "$gone" || return 1
+    rm -rf "$gone" 2>/dev/null || true
 }
 
 # Acquire a single named exclusive lock. Blocks until available or timeout.
@@ -624,11 +801,22 @@ _ir_held_dir() {
     echo "$IR_LOCK_ROOT/.held/$$${_IR_SELF_WINPID:+.$_IR_SELF_WINPID}"
 }
 
-# _ir_lock_owned_by <lockdir> <pid> <owner-token> — the lock's pid and winpid
-# records both match. Off Windows the token and the record are both empty.
+# _ir_lock_owned_by <lockdir> <pid> <owner-token> — the lock's pid and owner
+# token both match. Off Windows the token and the record's are both empty. An
+# older copy's lock is read from its pid and winpid files, which keeps
+# ir_inherited_lock_covers right in a process tree that mixes versions.
+#
+# Every return in the lock paths names its status: under bash 5.2 a bare
+# `return` run anywhere inside a trap handler returns the status from before
+# the trap, and ir-acquire releases from its EXIT trap.
 _ir_lock_owned_by() {
     local lockdir="$1" pid="$2" token="$3"
-    [[ "$(_ir_lock_holder "$lockdir" || echo "")" == "$pid" ]] || return 1
+    if _ir_lock_rec_read "$lockdir/owner"; then
+        [[ "$_IR_REC_PID" == "$pid" && "$_IR_REC_TOKEN" == "$token" ]]
+        return $?
+    fi
+    [[ ! -e "$lockdir/owner" ]] || return 1
+    [[ "$(cat "$lockdir/pid" 2>/dev/null || true)" == "$pid" ]] || return 1
     [[ "$(cat "$lockdir/winpid" 2>/dev/null || true)" == "$token" ]]
 }
 
@@ -652,7 +840,7 @@ _ir_release_one() {
     local lockdir="$1"
     # Only release if we hold it (defensive against double-release).
     if _ir_lock_owned_by "$lockdir" "$$" "$(ir_self_owner_token)"; then
-        rm -rf "$lockdir" 2>/dev/null || true
+        _ir_lock_detach "$lockdir" || true
     fi
     local rel="${lockdir#$IR_LOCK_ROOT/}"
     local safe="${rel//\//__}"
@@ -669,7 +857,8 @@ ir_release_all() {
         [[ -e "$f" ]] || continue
         local safe
         safe="$(basename "$f")"
-        local rel="${safe//__/\/}"
+        # Not `${safe//__/\/}`: bash 3.2 keeps that backslash.
+        local rel="${safe//__//}"
         _ir_release_one "$IR_LOCK_ROOT/$rel"
     done
     rm -f "$heldroot/.winpid" 2>/dev/null || true
@@ -731,7 +920,7 @@ ir_gpu_lease_drop() {
     until _ir_lease_lock_transition "$lease"; do
         pid="$(cat "$lease/transition/pid" 2>/dev/null || true)"
         if [[ -n "$pid" ]]; then
-            _ir_holder_alive "$pid" "$lease/transition/winpid" || rm -rf "$lease/transition"
+            _ir_holder_alive "$pid" "$(cat "$lease/transition/winpid" 2>/dev/null || true)" || rm -rf "$lease/transition"
         elif (( ++unstamped > 50 )); then
             rm -rf "$lease/transition"
         fi
@@ -784,7 +973,7 @@ _ir_lease_transition() {
 
 _ir_lease_owner_alive() {
     local lease="$1"
-    _ir_holder_alive "$(cat "$lease/holder" 2>/dev/null || true)" "$lease/winpid"
+    _ir_holder_alive "$(cat "$lease/holder" 2>/dev/null || true)" "$(cat "$lease/winpid" 2>/dev/null || true)"
 }
 
 _ir_lease_release() {
@@ -812,7 +1001,7 @@ _ir_lease_release() {
     # RELEASED with the owner still stamped, which reacquire accepts as-is.
     mkdir "$lease/released"
     rm -f "$(cat "$lease/held_dir")/gpu__lock" 2>/dev/null || true
-    rm -rf "$lockdir"
+    _ir_lock_detach "$lockdir"
 }
 
 _ir_lease_reacquire() {
@@ -832,6 +1021,10 @@ _ir_lease_reacquire() {
             echo "ir-acquire: lease owner $holder is exiting or gone" >&2
             return 1
         fi
+        # The record, and so any takeover marker it links, names the owner:
+        # a control process killed between that link and its replace of
+        # `owner` leaves the marker reading live, and the lock held, until the
+        # owner exits.
         _ir_try_lock "$lockdir" "$holder" "$owner" && break
         now="$(date +%s)"
         if (( now - started >= timeout )); then
@@ -845,13 +1038,25 @@ _ir_lease_reacquire() {
     # behind. An exiting owner is parked on the mutex, still alive, so no
     # reclaimer can have taken the lock from it.
     if [[ -d "$lease/dropping" ]] || ! _ir_lease_owner_alive "$lease"; then
-        _ir_lock_owned_by "$lockdir" "$holder" "$owner" && rm -rf "$lockdir"
+        _ir_lock_owned_by "$lockdir" "$holder" "$owner" && _ir_lock_detach "$lockdir"
         echo "ir-acquire: lease owner $holder exited during reacquire" >&2
         return 1
     fi
     mkdir -p "$helddir" 2>/dev/null || true
     : > "$helddir/gpu__lock"
     rmdir "$lease/released"
+}
+
+# _ir_lock_sweep_one <lockdir> — takes a dead holder's lock through the same
+# transfer a contender uses, then releases it. A lock a contender took first
+# reads live and is left alone; nothing here removes a lock it does not own.
+_ir_lock_sweep_one() {
+    local lockdir="$1" _ir_rec="" rc=0
+    _ir_lock_contend "$lockdir" "$$" || rc=$?
+    [[ -z "$_ir_rec" ]] || rm -f "$_ir_rec"
+    if (( rc == 0 )); then
+        _ir_lock_detach "$lockdir" || true
+    fi
 }
 
 # Sweep dead holders' locks. Cheap enough to run on every ir-acquire --info
@@ -866,17 +1071,16 @@ ir_sweep_stale() {
         pid="$(basename "$pdir")"
         pid="${pid%%.*}"
         token="$(cat "$pdir/.winpid" 2>/dev/null || true)"
-        if ! _ir_holder_alive "$pid" "$pdir/.winpid"; then
+        if ! _ir_holder_alive "$pid" "$token"; then
             local f
             for f in "$pdir"/*; do
                 [[ -e "$f" ]] || continue
                 local safe rel lockdir
                 safe="$(basename "$f")"
-                rel="${safe//__/\/}"
+                rel="${safe//__//}"
                 lockdir="$IR_LOCK_ROOT/$rel"
-                # Only nuke if the lock still attributes to the dead holder.
                 if _ir_lock_owned_by "$lockdir" "$pid" "$token"; then
-                    rm -rf "$lockdir" 2>/dev/null || true
+                    _ir_lock_sweep_one "$lockdir"
                 fi
             done
             rm -rf "$pdir" 2>/dev/null || true
@@ -886,10 +1090,16 @@ ir_sweep_stale() {
 
 # _ir_lock_holder_info <lockdir> — print the holder age and, where ps supports
 # it, the command line. A missing command is intentionally not an error: the
-# MSYS2 ps implementation does not accept -o.
+# MSYS2 ps implementation does not accept -o. The age comes from the owner
+# record's nonce, which a transfer replaces; an older copy's lock has only
+# `acquired_at`.
 _ir_lock_holder_info() {
     local lockdir="$1" holder="$2" acquired_at="" now age=0 command_line=""
-    acquired_at="$(cat "$lockdir/acquired_at" 2>/dev/null || true)"
+    if _ir_lock_rec_read "$lockdir/owner"; then
+        acquired_at="${_IR_REC_NONCE%%.*}"
+    else
+        acquired_at="$(cat "$lockdir/acquired_at" 2>/dev/null || true)"
+    fi
     if [[ "$acquired_at" =~ ^[0-9]+$ ]]; then
         now="$(date +%s)"
         if (( now >= acquired_at )); then
