@@ -88,11 +88,15 @@ inline IREntity::EntityId makePanel(
 }
 
 inline IREntity::EntityId makeLabel(
-    IRMath::ivec2 pos, std::string text, IRMath::Color colorOverride = IRMath::Color{0, 0, 0, 0}
+    IRMath::ivec2 pos,
+    std::string text,
+    IRMath::Color colorOverride = IRMath::Color{0, 0, 0, 0},
+    IRRender::TextSize textSize = IRRender::TextSize::LARGE
 ) {
     IRComponents::C_WidgetLabel labelData;
     labelData.text_ = std::move(text);
     labelData.colorOverride_ = colorOverride;
+    labelData.textSize_ = textSize;
     return IREntity::createEntity(
         IRComponents::C_Widget{IRComponents::WidgetKind::LABEL, IRMath::ivec2(0, 0)},
         IRComponents::C_GuiPosition{pos},
@@ -101,9 +105,15 @@ inline IREntity::EntityId makeLabel(
     );
 }
 
-inline IREntity::EntityId makeButton(IRMath::ivec2 pos, IRMath::ivec2 size, std::string label) {
+inline IREntity::EntityId makeButton(
+    IRMath::ivec2 pos,
+    IRMath::ivec2 size,
+    std::string label,
+    IRRender::TextSize textSize = IRRender::TextSize::LARGE
+) {
     IRComponents::C_WidgetButton buttonData;
     buttonData.label_ = std::move(label);
+    buttonData.textSize_ = textSize;
     return IREntity::createEntity(
         IRComponents::C_Widget{IRComponents::WidgetKind::BUTTON, size},
         IRComponents::C_GuiPosition{pos},
@@ -120,13 +130,15 @@ inline IREntity::EntityId makeSlider(
     std::string label,
     float minValue,
     float maxValue,
-    float initialValue
+    float initialValue,
+    IRRender::TextSize textSize = IRRender::TextSize::LARGE
 ) {
     IRComponents::C_WidgetSlider sliderData;
     sliderData.label_ = std::move(label);
     sliderData.minValue_ = minValue;
     sliderData.maxValue_ = maxValue;
     sliderData.currentValue_ = initialValue;
+    sliderData.textSize_ = textSize;
     return IREntity::createEntity(
         IRComponents::C_Widget{IRComponents::WidgetKind::SLIDER, size},
         IRComponents::C_GuiPosition{pos},
@@ -152,11 +164,16 @@ inline IREntity::EntityId makeHitRegion(IRMath::ivec2 pos, IRMath::ivec2 size, i
 }
 
 inline IREntity::EntityId makeCheckbox(
-    IRMath::ivec2 pos, IRMath::ivec2 size, std::string label, bool initialChecked = false
+    IRMath::ivec2 pos,
+    IRMath::ivec2 size,
+    std::string label,
+    bool initialChecked = false,
+    IRRender::TextSize textSize = IRRender::TextSize::LARGE
 ) {
     IRComponents::C_WidgetCheckbox checkboxData;
     checkboxData.label_ = std::move(label);
     checkboxData.checked_ = initialChecked;
+    checkboxData.textSize_ = textSize;
     return IREntity::createEntity(
         IRComponents::C_Widget{IRComponents::WidgetKind::CHECKBOX, size},
         IRComponents::C_GuiPosition{pos},
@@ -261,12 +278,14 @@ inline IREntity::EntityId makeDropdown(
     IRMath::ivec2 size,
     std::vector<std::string> items,
     int initialSelected = 0,
-    int itemHeight = 18
+    int itemHeight = 18,
+    IRRender::TextSize textSize = IRRender::TextSize::LARGE
 ) {
     IRComponents::C_WidgetDropdown ddData;
     ddData.items_ = std::move(items);
     ddData.selectedIndex_ = initialSelected;
     ddData.itemHeight_ = itemHeight;
+    ddData.textSize_ = textSize;
     return IREntity::createEntity(
         IRComponents::C_Widget{IRComponents::WidgetKind::DROPDOWN, size},
         IRComponents::C_GuiPosition{pos},

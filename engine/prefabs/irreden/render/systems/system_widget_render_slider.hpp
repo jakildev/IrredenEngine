@@ -45,7 +45,8 @@ template <> struct System<WIDGET_RENDER_SLIDER> {
             return;
 
         // Top half is the optional label, bottom half is track + thumb.
-        const int labelH = slider.label_.empty() ? 0 : IRRender::kGlyphStepY;
+        const int labelH =
+            slider.label_.empty() ? 0 : IRRender::glyphMetrics(slider.textSize_).stepY_;
         const int trackY = guiPos.pos_.y + labelH + (H - labelH - theme_.sliderTrackThickness_) / 2;
         const int trackX = guiPos.pos_.x;
 
@@ -56,7 +57,9 @@ template <> struct System<WIDGET_RENDER_SLIDER> {
                 slider.label_,
                 guiPos.pos_,
                 labelH,
-                IRPrefab::Widget::detail::stateText(theme_, widget)
+                IRPrefab::Widget::detail::stateText(theme_, widget),
+                IRPrefab::Widget::detail::kWidgetTextFontSize,
+                slider.textSize_
             );
         }
 
@@ -106,7 +109,9 @@ template <> struct System<WIDGET_RENDER_SLIDER> {
                 IRComponents::TextAlignH::RIGHT,
                 IRComponents::TextAlignV::CENTER,
                 W,
-                labelH
+                labelH,
+                0,
+                slider.textSize_
             );
         }
     }

@@ -58,7 +58,9 @@ template <> struct System<WIDGET_RENDER_BUTTON> {
             button.label_,
             guiPos.pos_,
             widget.size_,
-            IRPrefab::Widget::detail::stateText(theme_, widget)
+            IRPrefab::Widget::detail::stateText(theme_, widget),
+            IRPrefab::Widget::detail::kWidgetTextFontSize,
+            button.textSize_
         );
     }
 

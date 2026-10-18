@@ -3,6 +3,7 @@
 
 #include <irreden/ir_math.hpp>
 #include <irreden/ir_profile.hpp>
+#include <irreden/render/trixel_font.hpp>
 
 #include <cstdint>
 #include <string>
@@ -93,6 +94,7 @@ struct C_WidgetPanel {
 struct C_WidgetLabel {
     std::string text_;
     IRMath::Color colorOverride_ = IRMath::Color{0, 0, 0, 0}; // alpha=0 means "use theme"
+    IRRender::TextSize textSize_ = IRRender::TextSize::LARGE;
 };
 
 // BUTTON — clickable rect with a label. The click signal lives on
@@ -100,6 +102,7 @@ struct C_WidgetLabel {
 // `IRPrefab::Widget::wasClicked(eid)`.
 struct C_WidgetButton {
     std::string label_;
+    IRRender::TextSize textSize_ = IRRender::TextSize::LARGE;
 };
 
 // SLIDER — horizontal numeric slider. minValue_ / maxValue_ define
@@ -111,6 +114,8 @@ struct C_WidgetSlider {
     float minValue_ = 0.0f;
     float maxValue_ = 1.0f;
     float currentValue_ = 0.5f;
+    // The label row is one line of this size; label and value readout share it.
+    IRRender::TextSize textSize_ = IRRender::TextSize::LARGE;
 };
 
 // CHECKBOX — toggle. checked_ flips on click-release inside the
@@ -118,6 +123,7 @@ struct C_WidgetSlider {
 struct C_WidgetCheckbox {
     std::string label_;
     bool checked_ = false;
+    IRRender::TextSize textSize_ = IRRender::TextSize::LARGE;
 };
 
 // LIST — vertical selectable item list that scrolls by whole rows.
@@ -240,6 +246,8 @@ struct C_WidgetDropdown {
     int selectedIndex_ = -1;
     bool isOpen_ = false;
     int itemHeight_ = 18;
+    // Header and item text; row geometry stays itemHeight_.
+    IRRender::TextSize textSize_ = IRRender::TextSize::LARGE;
 
     // --- Expanded-strip geometry ------------------------------------------
     //

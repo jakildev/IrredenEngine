@@ -196,6 +196,23 @@
         "composite_proof_z16"
       ],
       "capture_offset": 0
+    },
+    {
+      "name": "text_sizes",
+      "demo_args": ["--text-size-sample"],
+      "shots": ["text_size_sample"],
+      "capture_offset": 0,
+      "structural": {
+        "text_size_sample": [
+          {
+            "metric": "text-size-ratio",
+            "roi": [0, 0, 1400, 100],
+            "roi_at": [2560, 1440],
+            "min_ratio": 0.62,
+            "max_ratio": 0.72
+          }
+        ]
+      }
     }
   ],
   "structural": {

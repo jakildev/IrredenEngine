@@ -43,7 +43,13 @@ template <> struct System<WIDGET_RENDER_LABEL> {
             guiPos.pos_,
             canvas_->size_,
             color,
-            IRPrefab::Widget::detail::kWidgetTextFontSize
+            IRPrefab::Widget::detail::kWidgetTextFontSize,
+            IRComponents::TextAlignH::LEFT,
+            IRComponents::TextAlignV::TOP,
+            0,
+            0,
+            0,
+            label.textSize_
         );
     }
 

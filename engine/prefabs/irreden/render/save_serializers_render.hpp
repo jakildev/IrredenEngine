@@ -19,6 +19,7 @@
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_gizmo_handle.hpp>
 #include <irreden/render/components/component_text_segment.hpp>
+#include <irreden/render/components/component_text_style.hpp>
 #include <irreden/render/components/component_triangle_canvas_background.hpp>
 #include <irreden/render/components/component_triangles_only_set.hpp>
 #include <irreden/render/components/component_widget.hpp>
@@ -102,6 +103,84 @@ struct GizmoHandleV1 {
 };
 
 static_assert(sizeof(GizmoHandleV1) == 48);
+
+struct TextStyleV1 {
+    IRMath::Color color_;
+    int wrapWidth_;
+    IRComponents::TextAlignH alignH_;
+    IRComponents::TextAlignV alignV_;
+    int boxWidth_;
+    int boxHeight_;
+    int fontSize_;
+};
+
+static_assert(sizeof(TextStyleV1) == 28);
+
+// An enum whose enumerators run 0..`last` is one byte on disk. Its `int`
+// underlying type admits values no enumerator names, so `read` rejects them:
+// the text draws index the glyph sets and alignment offsets by these values.
+template <typename E> bool enumInRange(E value, E last) {
+    const int raw = static_cast<int>(value);
+    return raw >= 0 && raw <= static_cast<int>(last);
+}
+
+template <typename E>
+void writeEnumByte(IRAsset::BinaryWriter &w, E value, E last, const char *field) {
+    IR_ASSERT(
+        enumInRange(value, last),
+        "{}: saving {}, which read will reject",
+        field,
+        static_cast<int>(value)
+    );
+    w.writeU8(static_cast<std::uint8_t>(value));
+}
+
+template <typename E>
+IRAsset::BinaryStatus readEnumByte(IRAsset::BinaryReader &r, E last, const char *field, E &out) {
+    IRAsset::Result<std::uint8_t> raw = r.readU8();
+    if (!raw.ok()) {
+        return raw.status_;
+    }
+    const E value = static_cast<E>(raw.value_);
+    if (!enumInRange(value, last)) {
+        return IRAsset::BinaryStatus::error(
+            IRAsset::BinaryIOError::UnknownTag,
+            std::string(field) + " " + std::to_string(raw.value_) + " is outside [0, " +
+                std::to_string(static_cast<int>(last)) + "]"
+        );
+    }
+    out = value;
+    return IRAsset::BinaryStatus::success();
+}
+
+inline void writeTextSize(IRAsset::BinaryWriter &w, IRRender::TextSize size, const char *field) {
+    writeEnumByte(w, size, IRRender::TextSize::SMALL, field);
+}
+
+inline IRAsset::BinaryStatus
+readTextSize(IRAsset::BinaryReader &r, const char *field, IRRender::TextSize &out) {
+    return readEnumByte(r, IRRender::TextSize::SMALL, field, out);
+}
+
+// Version 2 of a text-bearing widget is its version-1 record followed by the
+// text size. `SaveSerialize<C>::readV1` reads that record; it stays frozen at
+// the version-1 layout because the migration below reads old rows through it.
+template <typename C>
+IRAsset::Result<C> readWithTextSize(IRAsset::BinaryReader &r, const char *field) {
+    using Res = IRAsset::Result<C>;
+    Res value = SaveSerialize<C>::readV1(r);
+    if (!value.ok()) {
+        return value;
+    }
+    IR_SAVE_READ_STATUS(readTextSize(r, field, value.value_.textSize_));
+    return value;
+}
+
+template <typename C> struct TextSizedWidgetMigration {
+    static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<C>>> migrators() {
+        return {{1u, SaveSerialize<C>::readV1}};
+    }
+};
 
 } // namespace detail
 
@@ -209,6 +288,97 @@ template <> struct SaveSerialize<IRComponents::C_TextSegment> {
         IRComponents::C_TextSegment value{};
         IR_SAVE_READ(value.text_, r.readString());
         return Res::success(std::move(value));
+    }
+};
+
+template <> struct SaveSerialize<IRComponents::C_TextStyle> {
+    static void write(IRAsset::BinaryWriter &w, const IRComponents::C_TextStyle &value) {
+        w.writeU32(value.color_.toPackedRGBA());
+        w.writeI32(value.wrapWidth_);
+        detail::writeEnumByte(
+            w,
+            value.alignH_,
+            IRComponents::TextAlignH::RIGHT,
+            "C_TextStyle horizontal alignment"
+        );
+        detail::writeEnumByte(
+            w,
+            value.alignV_,
+            IRComponents::TextAlignV::BOTTOM,
+            "C_TextStyle vertical alignment"
+        );
+        w.writeI32(value.boxWidth_);
+        w.writeI32(value.boxHeight_);
+        w.writeI32(value.fontSize_);
+        detail::writeTextSize(w, value.textSize_, "C_TextStyle text size");
+    }
+
+    static IRAsset::Result<IRComponents::C_TextStyle> read(IRAsset::BinaryReader &r) {
+        using Res = IRAsset::Result<IRComponents::C_TextStyle>;
+        IRComponents::C_TextStyle value{};
+        std::uint32_t packed = 0;
+        IR_SAVE_READ(packed, r.readU32());
+        value.color_ = IRMath::Color::fromPackedRGBA(packed);
+        IR_SAVE_READ(value.wrapWidth_, r.readI32());
+        IR_SAVE_READ_STATUS(
+            detail::readEnumByte(
+                r,
+                IRComponents::TextAlignH::RIGHT,
+                "C_TextStyle horizontal alignment",
+                value.alignH_
+            )
+        );
+        IR_SAVE_READ_STATUS(
+            detail::readEnumByte(
+                r,
+                IRComponents::TextAlignV::BOTTOM,
+                "C_TextStyle vertical alignment",
+                value.alignV_
+            )
+        );
+        IR_SAVE_READ(value.boxWidth_, r.readI32());
+        IR_SAVE_READ(value.boxHeight_, r.readI32());
+        IR_SAVE_READ(value.fontSize_, r.readI32());
+        IR_SAVE_READ_STATUS(detail::readTextSize(r, "C_TextStyle text size", value.textSize_));
+        return Res::success(value);
+    }
+};
+
+template <> struct SaveMigration<IRComponents::C_TextStyle> {
+    static std::vector<std::pair<std::uint32_t, ColumnMigratorFn<IRComponents::C_TextStyle>>>
+    migrators() {
+        return {
+            {1u, [](IRAsset::BinaryReader &reader) -> IRAsset::Result<IRComponents::C_TextStyle> {
+                 using Res = IRAsset::Result<IRComponents::C_TextStyle>;
+                 detail::TextStyleV1 old{};
+                 IRAsset::BinaryStatus status = reader.readBytes(&old, sizeof(old));
+                 if (!status.ok()) {
+                     return Res::error(status.code_, std::move(status.message_));
+                 }
+                 // The current reader's alignment checks, so a migrated row
+                 // saves back without tripping the writer's assert.
+                 if (!detail::enumInRange(old.alignH_, IRComponents::TextAlignH::RIGHT) ||
+                     !detail::enumInRange(old.alignV_, IRComponents::TextAlignV::BOTTOM)) {
+                     return Res::error(
+                         IRAsset::BinaryIOError::UnknownTag,
+                         "C_TextStyle: version 1 alignment (" +
+                             std::to_string(static_cast<int>(old.alignH_)) + ", " +
+                             std::to_string(static_cast<int>(old.alignV_)) + ") is outside [0, 2]"
+                     );
+                 }
+                 return Res::success(
+                     IRComponents::C_TextStyle{
+                         old.color_,
+                         old.wrapWidth_,
+                         old.alignH_,
+                         old.alignV_,
+                         old.boxWidth_,
+                         old.boxHeight_,
+                         old.fontSize_,
+                     }
+                 );
+             }},
+        };
     }
 };
 
@@ -509,7 +679,8 @@ template <> struct SaveSerialize<IRComponents::C_TriangleCanvasBackground> {
 // trivially copyable, so they take SaveSerialize's fast path) plus one
 // per-kind data component. Only the per-kind components that own a string or
 // a vector of strings need a specialization here; C_WidgetColorSwatch and
-// C_WidgetScroll are plain data and are covered by the fast path.
+// C_WidgetScroll are plain data and are covered by the fast path. The five
+// text-bearing kinds read through `detail::readWithTextSize`.
 // ---------------------------------------------------------------------------
 
 template <> struct SaveSerialize<IRComponents::C_WidgetPanel> {
@@ -531,9 +702,14 @@ template <> struct SaveSerialize<IRComponents::C_WidgetLabel> {
     static void write(IRAsset::BinaryWriter &w, const IRComponents::C_WidgetLabel &value) {
         w.writeString(value.text_);
         w.writeU32(value.colorOverride_.toPackedRGBA());
+        detail::writeTextSize(w, value.textSize_, "C_WidgetLabel text size");
     }
 
     static IRAsset::Result<IRComponents::C_WidgetLabel> read(IRAsset::BinaryReader &r) {
+        return detail::readWithTextSize<IRComponents::C_WidgetLabel>(r, "C_WidgetLabel text size");
+    }
+
+    static IRAsset::Result<IRComponents::C_WidgetLabel> readV1(IRAsset::BinaryReader &r) {
         using Res = IRAsset::Result<IRComponents::C_WidgetLabel>;
         IRComponents::C_WidgetLabel value{};
         IR_SAVE_READ(value.text_, r.readString());
@@ -547,9 +723,17 @@ template <> struct SaveSerialize<IRComponents::C_WidgetLabel> {
 template <> struct SaveSerialize<IRComponents::C_WidgetButton> {
     static void write(IRAsset::BinaryWriter &w, const IRComponents::C_WidgetButton &value) {
         w.writeString(value.label_);
+        detail::writeTextSize(w, value.textSize_, "C_WidgetButton text size");
     }
 
     static IRAsset::Result<IRComponents::C_WidgetButton> read(IRAsset::BinaryReader &r) {
+        return detail::readWithTextSize<IRComponents::C_WidgetButton>(
+            r,
+            "C_WidgetButton text size"
+        );
+    }
+
+    static IRAsset::Result<IRComponents::C_WidgetButton> readV1(IRAsset::BinaryReader &r) {
         using Res = IRAsset::Result<IRComponents::C_WidgetButton>;
         IRComponents::C_WidgetButton value{};
         IR_SAVE_READ(value.label_, r.readString());
@@ -563,9 +747,17 @@ template <> struct SaveSerialize<IRComponents::C_WidgetSlider> {
         w.writeF32(value.minValue_);
         w.writeF32(value.maxValue_);
         w.writeF32(value.currentValue_);
+        detail::writeTextSize(w, value.textSize_, "C_WidgetSlider text size");
     }
 
     static IRAsset::Result<IRComponents::C_WidgetSlider> read(IRAsset::BinaryReader &r) {
+        return detail::readWithTextSize<IRComponents::C_WidgetSlider>(
+            r,
+            "C_WidgetSlider text size"
+        );
+    }
+
+    static IRAsset::Result<IRComponents::C_WidgetSlider> readV1(IRAsset::BinaryReader &r) {
         using Res = IRAsset::Result<IRComponents::C_WidgetSlider>;
         IRComponents::C_WidgetSlider value{};
         IR_SAVE_READ(value.label_, r.readString());
@@ -580,9 +772,17 @@ template <> struct SaveSerialize<IRComponents::C_WidgetCheckbox> {
     static void write(IRAsset::BinaryWriter &w, const IRComponents::C_WidgetCheckbox &value) {
         w.writeString(value.label_);
         w.writeU8(value.checked_ ? 1 : 0);
+        detail::writeTextSize(w, value.textSize_, "C_WidgetCheckbox text size");
     }
 
     static IRAsset::Result<IRComponents::C_WidgetCheckbox> read(IRAsset::BinaryReader &r) {
+        return detail::readWithTextSize<IRComponents::C_WidgetCheckbox>(
+            r,
+            "C_WidgetCheckbox text size"
+        );
+    }
+
+    static IRAsset::Result<IRComponents::C_WidgetCheckbox> readV1(IRAsset::BinaryReader &r) {
         using Res = IRAsset::Result<IRComponents::C_WidgetCheckbox>;
         IRComponents::C_WidgetCheckbox value{};
         IR_SAVE_READ(value.label_, r.readString());
@@ -616,9 +816,17 @@ template <> struct SaveSerialize<IRComponents::C_WidgetDropdown> {
         w.writeI32(value.selectedIndex_);
         w.writeU8(value.isOpen_ ? 1 : 0);
         w.writeI32(value.itemHeight_);
+        detail::writeTextSize(w, value.textSize_, "C_WidgetDropdown text size");
     }
 
     static IRAsset::Result<IRComponents::C_WidgetDropdown> read(IRAsset::BinaryReader &r) {
+        return detail::readWithTextSize<IRComponents::C_WidgetDropdown>(
+            r,
+            "C_WidgetDropdown text size"
+        );
+    }
+
+    static IRAsset::Result<IRComponents::C_WidgetDropdown> readV1(IRAsset::BinaryReader &r) {
         using Res = IRAsset::Result<IRComponents::C_WidgetDropdown>;
         IRComponents::C_WidgetDropdown value{};
         IR_SAVE_READ_STATUS(detail::readStringVector(r, value.items_));
@@ -628,6 +836,22 @@ template <> struct SaveSerialize<IRComponents::C_WidgetDropdown> {
         return Res::success(std::move(value));
     }
 };
+
+template <>
+struct SaveMigration<IRComponents::C_WidgetLabel>
+    : detail::TextSizedWidgetMigration<IRComponents::C_WidgetLabel> {};
+template <>
+struct SaveMigration<IRComponents::C_WidgetButton>
+    : detail::TextSizedWidgetMigration<IRComponents::C_WidgetButton> {};
+template <>
+struct SaveMigration<IRComponents::C_WidgetSlider>
+    : detail::TextSizedWidgetMigration<IRComponents::C_WidgetSlider> {};
+template <>
+struct SaveMigration<IRComponents::C_WidgetCheckbox>
+    : detail::TextSizedWidgetMigration<IRComponents::C_WidgetCheckbox> {};
+template <>
+struct SaveMigration<IRComponents::C_WidgetDropdown>
+    : detail::TextSizedWidgetMigration<IRComponents::C_WidgetDropdown> {};
 
 template <> struct SaveSerialize<IRComponents::C_WidgetRadio> {
     static void write(IRAsset::BinaryWriter &w, const IRComponents::C_WidgetRadio &value) {

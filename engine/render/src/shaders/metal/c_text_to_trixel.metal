@@ -4,15 +4,16 @@
 // shaders/c_text_to_trixel.glsl — supports a fontSize multiplier so each
 // glyph cell is rendered as fontSize x fontSize trixel pixels.
 //
-// Workgroup dimensions: (6, 11, 1) — one thread per (col, row) of the 6x11
-// glyph bitmap.
+// Workgroup dimensions: (6, 11, 1) — one thread per (col, row) of the
+// largest glyph cell; threads outside a command's cell draw nothing.
 
 struct GlyphDrawCommand {
     uint positionPacked;  // x | (y << 16)
-    uint glyphIndex;      // 0-127 ASCII index into the font atlas
+    uint firstFontRow;    // the glyph's first row in fontRows
     uint colorPacked;     // RGBA8 packed
     uint distance;        // depth value to stamp
-    uint styleFlags;      // low byte = fontSize; bit 8 = lattice-scaled glyphs
+    uint styleFlags;      // low byte = fontSize; bit 8 = lattice-scaled glyphs;
+                          // bits 16-19 / 20-23 = glyph cell width / height
 };
 
 kernel void c_text_to_trixel(
@@ -28,14 +29,18 @@ kernel void c_text_to_trixel(
         int(cmd.positionPacked & 0xFFFFu),
         int(cmd.positionPacked >> 16u)
     );
-    const uint glyphIdx = cmd.glyphIndex;
     const uint fontSize = max(cmd.styleFlags & 0xFFu, 1u);
+    const uint cellWidth = (cmd.styleFlags >> 16u) & 0xFu;
+    const uint cellHeight = (cmd.styleFlags >> 20u) & 0xFu;
 
-    const uint rowBits = fontRows[glyphIdx * 11u + localId.y];
     const uint col = localId.x;
     const uint row = localId.y;
+    if (col >= cellWidth || row >= cellHeight) {
+        return;
+    }
 
-    if (((rowBits >> (5u - col)) & 1u) == 0u) {
+    const uint rowBits = fontRows[cmd.firstFontRow + row];
+    if (((rowBits >> (cellWidth - 1u - col)) & 1u) == 0u) {
         return;
     }
 

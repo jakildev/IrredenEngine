@@ -27,31 +27,41 @@ inline ivec2 parityAlignedPosition(ivec2 position, ivec2 canvasSize) {
     return position;
 }
 
-// Renders a single glyph onto a canvas at the given trixel position.
-inline void renderGlyph(
+// Draws one glyph's bitmap `rows` (glyphRowPixel at `width`) onto a canvas at
+// the given trixel position.
+inline void renderGlyphRows(
     C_TriangleCanvasTextures &canvas,
-    const Glyph &glyph,
+    std::span<const uint8_t> rows,
+    int width,
     ivec2 position,
     Color color
 ) {
-    for (int row = 0; row < kGlyphHeight; ++row) {
-        for (int col = 0; col < kGlyphWidth; ++col) {
-            if (glyphPixel(glyph, col, row)) {
-                ivec2 trixelPos = position + ivec2(col, row);
-                if (trixelPos.x >= 0 && trixelPos.y >= 0 &&
-                    trixelPos.x < canvas.size_.x && trixelPos.y < canvas.size_.y) {
-                    canvas.setTrixel(trixelPos, color, kGuiTextDistance);
-                }
+    for (int row = 0; row < static_cast<int>(rows.size()); ++row) {
+        for (int col = 0; col < width; ++col) {
+            if (!glyphRowPixel(rows[row], width, col)) {
+                continue;
+            }
+            ivec2 trixelPos = position + ivec2(col, row);
+            if (trixelPos.x >= 0 && trixelPos.y >= 0 && trixelPos.x < canvas.size_.x &&
+                trixelPos.y < canvas.size_.y) {
+                canvas.setTrixel(trixelPos, color, kGuiTextDistance);
             }
         }
     }
 }
 
+// Renders a single large-set glyph onto a canvas at the given trixel position.
+inline void
+renderGlyph(C_TriangleCanvasTextures &canvas, const Glyph &glyph, ivec2 position, Color color) {
+    renderGlyphRows(canvas, glyph, kGlyphWidth, position, color);
+}
+
 // Measures the width (in trixels) of the next word starting at position i.
-inline int nextWordWidth(const std::string &text, size_t i) {
+inline int nextWordWidth(const std::string &text, size_t i, TextSize size = TextSize::LARGE) {
+    const int stepX = glyphMetrics(size).stepX_;
     int width = 0;
     while (i < text.size() && text[i] != ' ' && text[i] != '\n') {
-        width += kGlyphStepX;
+        width += stepX;
         i++;
     }
     return width;
@@ -64,8 +74,10 @@ inline void renderText(
     const std::string &text,
     ivec2 position,
     Color color,
-    int wrapWidth = 0
+    int wrapWidth = 0,
+    TextSize size = TextSize::LARGE
 ) {
+    const GlyphMetrics metrics = glyphMetrics(size);
     ivec2 aligned = parityAlignedPosition(position, canvas.size_);
     ivec2 cursor = aligned;
     const int effectiveWrap = (wrapWidth > 0)
@@ -76,35 +88,34 @@ inline void renderText(
         char c = text[i];
         if (c == '\n') {
             cursor.x = aligned.x;
-            cursor.y += kGlyphStepY;
+            cursor.y += metrics.stepY_;
             continue;
         }
 
         if (effectiveWrap > 0 && c == ' ') {
-            int upcoming = nextWordWidth(text, i + 1);
-            if (cursor.x + kGlyphStepX + upcoming > effectiveWrap) {
+            int upcoming = nextWordWidth(text, i + 1, size);
+            if (cursor.x + metrics.stepX_ + upcoming > effectiveWrap) {
                 cursor.x = aligned.x;
-                cursor.y += kGlyphStepY;
+                cursor.y += metrics.stepY_;
                 continue;
             }
         }
 
-        if (effectiveWrap > 0 && cursor.x + kGlyphWidth > effectiveWrap && c != ' ') {
+        if (effectiveWrap > 0 && cursor.x + metrics.width_ > effectiveWrap && c != ' ') {
             cursor.x = aligned.x;
-            cursor.y += kGlyphStepY;
+            cursor.y += metrics.stepY_;
         }
 
-        const Glyph *glyph = getGlyph(c);
-        if (glyph) {
-            renderGlyph(canvas, *glyph, cursor, color);
-        }
-        cursor.x += kGlyphStepX;
+        renderGlyphRows(canvas, glyphRows(size, c), metrics.width_, cursor, color);
+        cursor.x += metrics.stepX_;
     }
 }
 
 // Measures the size in trixels that a text string would occupy.
 // wrapWidth: max trixels per line (0 = no wrapping).
-inline ivec2 measureText(const std::string &text, int wrapWidth = 0) {
+inline ivec2
+measureText(const std::string &text, int wrapWidth = 0, TextSize size = TextSize::LARGE) {
+    const GlyphMetrics metrics = glyphMetrics(size);
     int maxWidth = 0;
     int currentWidth = 0;
     int lines = 1;
@@ -117,29 +128,29 @@ inline ivec2 measureText(const std::string &text, int wrapWidth = 0) {
             lines++;
         } else {
             if (wrapWidth > 0 && c == ' ') {
-                int upcoming = nextWordWidth(text, i + 1);
-                if (currentWidth + kGlyphStepX + upcoming > wrapWidth) {
+                int upcoming = nextWordWidth(text, i + 1, size);
+                if (currentWidth + metrics.stepX_ + upcoming > wrapWidth) {
                     maxWidth = IRMath::max(maxWidth, currentWidth);
                     currentWidth = 0;
                     lines++;
                     continue;
                 }
             }
-            if (wrapWidth > 0 && currentWidth + kGlyphWidth > wrapWidth && c != ' ') {
+            if (wrapWidth > 0 && currentWidth + metrics.width_ > wrapWidth && c != ' ') {
                 maxWidth = IRMath::max(maxWidth, currentWidth);
                 currentWidth = 0;
                 lines++;
             }
-            currentWidth += kGlyphStepX;
+            currentWidth += metrics.stepX_;
         }
     }
     maxWidth = IRMath::max(maxWidth, currentWidth);
 
     if (maxWidth > 0) {
-        maxWidth -= kGlyphSpacingX;
+        maxWidth -= metrics.spacingX_;
     }
 
-    return ivec2(maxWidth, lines * kGlyphStepY - kGlyphSpacingY);
+    return ivec2(maxWidth, lines * metrics.stepY_ - metrics.spacingY_);
 }
 
 } // namespace IRRender
