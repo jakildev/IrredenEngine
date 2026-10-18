@@ -1579,7 +1579,7 @@ TEST(AudioInputArmTest, SwitchingDevicesDuringATakeIsRefused) {
     EXPECT_EQ(backend->openCalls_, 2);
 }
 
-TEST(AudioInputFacadeTest, ArmReadAndDisarmThroughTheManager) {
+TEST(AudioInputFacadeTest, ArmSharesTheRecordersInputThroughTheManager) {
     auto backend = std::make_shared<FakeBackendState>();
     IRAudio::AudioManager audioManager{std::make_unique<FakeAudioInputBackend>(backend), nullptr};
     EXPECT_FALSE(IRAudio::audioInputLevels().has_value());
@@ -1588,16 +1588,46 @@ TEST(AudioInputFacadeTest, ArmReadAndDisarmThroughTheManager) {
 
     ASSERT_TRUE(armed.armed_) << armed.reason_;
     deliverStereoSine(backend->callback_, 0, kMeterWindowFrames, 0.5f, 0.25f);
-    const std::optional<IRAudio::AudioInputLevels> levels = IRAudio::audioInputLevels();
+    std::optional<IRAudio::AudioInputLevels> levels = IRAudio::audioInputLevels();
     ASSERT_TRUE(levels.has_value());
     EXPECT_EQ(levels->generation_, 1u);
     expectHalfAndQuarterScaleSine(*levels);
     EXPECT_FALSE(IRAudio::armAudioInput("Missing Device", kMeterRate).armed_);
 
+    // The recorder attaches the way VideoManager does, through the manager's
+    // capture source, and joins the armed stream.
+    IRAudio::IAudioCaptureSource &recorderSource = IRAudio::getAudioCaptureSource();
+    int recordedFrames = 0;
+    const bool attached =
+        recorderSource.startCapture(fakeDeviceConfig(), countDeliveredFrames(recordedFrames));
+    ASSERT_TRUE(attached);
+
+    EXPECT_EQ(backend->openCalls_, 1);
+    EXPECT_EQ(backend->startCalls_, 1);
+    EXPECT_EQ(recorderSource.getCaptureSampleRate(), kMeterRate);
+    deliverStereoSine(backend->callback_, kMeterWindowFrames, kMeterWindowFrames, 0.5f, 0.25f);
+    EXPECT_EQ(recordedFrames, kMeterWindowFrames);
+    levels = IRAudio::audioInputLevels();
+    ASSERT_TRUE(levels.has_value());
+    EXPECT_EQ(levels->generation_, 2u);
+
+    recorderSource.stopCapture();
+
+    EXPECT_EQ(backend->stopCalls_, 0);
+    EXPECT_EQ(backend->closeCalls_, 0);
+    deliverStereoSine(backend->callback_, 2 * kMeterWindowFrames, kMeterWindowFrames, 0.5f, 0.25f);
+    EXPECT_EQ(recordedFrames, kMeterWindowFrames);
+    levels = IRAudio::audioInputLevels();
+    ASSERT_TRUE(levels.has_value());
+    EXPECT_EQ(levels->generation_, 3u);
+
     IRAudio::disarmAudioInput();
 
     EXPECT_FALSE(IRAudio::audioInputLevels().has_value());
     EXPECT_EQ(backend->openCalls_, 1);
+    EXPECT_EQ(backend->stopCalls_, 1);
+    EXPECT_EQ(backend->closeCalls_, 1);
+    IRAudio::disarmAudioInput();
     EXPECT_EQ(backend->closeCalls_, 1);
 }
 
