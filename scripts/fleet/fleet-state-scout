@@ -26,7 +26,7 @@ import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Force UTF-8 Mode when this script is invoked directly on native-Windows
@@ -597,7 +597,7 @@ def _rest_list(repo_slug, path, params, per_page=100, max_pages=1):
     return items
 
 
-def _rest_issue_summary(issue, with_body=False):
+def _rest_issue_summary(issue, with_body=False, with_created_at=False):
     # Mirror the exact field set fetch_issues_by_label produced from gh's
     # --json number,title,labels,updatedAt(,body): explicit keys only, so no
     # extra REST fields (id, node_id, …) leak into the projection.
@@ -609,6 +609,8 @@ def _rest_issue_summary(issue, with_body=False):
     }
     if with_body:
         summary["body"] = issue.get("body", "") or ""
+    if with_created_at:
+        summary["created_at"] = issue.get("created_at", "") or ""
     return summary
 
 
@@ -1414,7 +1416,8 @@ def _ingest_skipped(labels):
 
 
 def fetch_issues_by_label(repo, filter_label, exclude_labels=None,
-                          with_body=False, per_page=100, max_pages=1):
+                          with_body=False, with_created_at=False,
+                          per_page=100, max_pages=1):
     # with_body pulls the issue body too — the queue-manager-ingest projection
     # needs it to resolve each human:approved issue's `**Blocked by:**` chain
     # (resolve_human_approved_blockers); the cheaper label-only mapping is the
@@ -1434,7 +1437,8 @@ def fetch_issues_by_label(repo, filter_label, exclude_labels=None,
     if raw is None:
         return None
     issues = [
-        _rest_issue_summary(i, with_body=with_body)
+        _rest_issue_summary(i, with_body=with_body,
+                            with_created_at=with_created_at)
         for i in raw if not _is_pull_request(i)
     ]
     if exclude_labels:
@@ -1466,19 +1470,42 @@ def fetch_plan_review(repo):
     return issues
 
 
-def fetch_epics(repo):
+EPIC_FILING_WINDOW_SECONDS = 900
+
+
+def _epic_is_filing(epic, now):
+    created_at = epic.get("created_at", "")
+    if not created_at:
+        return False
+    try:
+        created = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    if created.tzinfo is None:
+        return False
+    age_seconds = (now - created).total_seconds()
+    return 0 <= age_seconds <= EPIC_FILING_WINDOW_SECONDS
+
+
+def fetch_epics(repo, now=None):
     # Open fleet:epic umbrellas for the epic-steward role. The body's
     # `## Children` checklist is the steward's membership source of truth —
     # parse it into `checklist` and pop the body before the state write (epic
     # bodies are large; the per-issue detail cache keeps the full body for the
     # role's drill-in).
-    epics = fetch_issues_by_label(repo, "fleet:epic", with_body=True)
+    epics = fetch_issues_by_label(repo, "fleet:epic", with_body=True,
+                                  with_created_at=True)
     if epics is None:
         return None
+    if now is None:
+        now = datetime.now(timezone.utc)
     for epic in epics:
         body = epic.pop("body", "") or ""
         epic["checklist"] = _parse_epic_checklist(body)
         epic["managed"] = _epic_is_managed(body)
+        epic["filing"] = (not epic["managed"] and not epic["checklist"]
+                           and _epic_is_filing(epic, now))
+        epic.pop("created_at", None)
     return epics
 
 
@@ -4130,7 +4157,7 @@ def _epic_adopt_candidates(repo_state):
         return []
     member_sets = {
         e.get("number"): {entry.get("number") for entry in e.get("checklist", [])}
-        for e in epics
+        for e in epics if not e.get("filing")
     }
     out = []
     for issue in repo_state.get("epic_backrefs", []):
