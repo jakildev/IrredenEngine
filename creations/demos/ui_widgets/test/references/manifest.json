@@ -16,5 +16,10 @@
     "max_delta": 64,
     "psnr_db": 35.0
   },
-  "notes": "Shot order mirrors kShots in main.cpp. The last three shots prove number-field focus, commit, and cancel behavior while the GUI-test predicates gate the corresponding value and keyboard-capture state."
+  "structural": {
+    "widgets_idle": [
+      {"metric": "image-widget", "max_delta": 8}
+    ]
+  },
+  "notes": "Shot order mirrors kShots in main.cpp. The last three shots prove number-field focus, commit, and cancel behavior while the GUI-test predicates gate the corresponding value and keyboard-capture state. The set includes an image widget (data/image_widget_probe.png box-filtered into 96x64 texels) and a missing-file image's placeholder hatch; the image-widget structural gate samples four probe texels against the source PNG's block averages (scripts/render-image-widget-metric.py). Each backend's references are captured on its own host."
 }

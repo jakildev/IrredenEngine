@@ -3,8 +3,11 @@
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_math.hpp>
+#include <irreden/ir_profile.hpp>
 
+#include <irreden/render/image_data.hpp>
 #include <irreden/render/components/component_widget.hpp>
+#include <irreden/render/components/component_widget_image.hpp>
 #include <irreden/render/components/component_gui_position.hpp>
 #include <irreden/render/components/component_gui_hover_state.hpp>
 #include <irreden/input/components/component_hitbox_2d_gui.hpp>
@@ -13,6 +16,7 @@
 #include <irreden/render/widget_hotkeys.hpp>
 
 #include <climits>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <utility>
@@ -499,6 +503,122 @@ inline bool colorSwatchSelected(IREntity::EntityId widget) {
 
 inline void setColorSwatchSelected(IREntity::EntityId widget, bool selected) {
     IREntity::getComponent<IRComponents::C_WidgetColorSwatch>(widget).selected_ = selected;
+}
+
+// IMAGE — a PNG drawn into the widget's trixel rect by WIDGET_RENDER_IMAGE.
+// The file is decoded and box-filtered here, on the calling thread, and again
+// only when `setImagePath` / `setImageSize` change its inputs; the component
+// keeps the path and the texels, never the decoded image. A missing or
+// undecodable file draws a diagonal hatch in the theme's disabled colours and
+// `imageError` names the path. The path is trusted: a caller taking it from
+// script resolves it inside a base first (`IRGui.makeImage` does). A relative
+// path resolves from the working directory.
+namespace detail {
+
+// One hatch line every period texels along a row, two texels wide: on the
+// parity-aligned origin WIDGET_RENDER_IMAGE draws from, each line is a chain
+// of lattice diamonds stepping one column per row, a straight diagonal.
+constexpr int kImageHatchPeriod = 8;
+constexpr int kImageHatchWidth = 2;
+
+// Decodes the PNG at @p path and box-filters it into @p texelSize texels over
+// @p background. False, with @p error naming the path, when it cannot decode.
+using ImageDecoder = bool (*)(
+    const std::string &path,
+    IRMath::ivec2 texelSize,
+    IRMath::Color background,
+    std::vector<IRMath::Color> &texels,
+    std::string &error
+);
+
+inline bool decodeImageTexels(
+    const std::string &path,
+    IRMath::ivec2 texelSize,
+    IRMath::Color background,
+    std::vector<IRMath::Color> &texels,
+    std::string &error
+) {
+    const IRRender::ImageData decoded{path.c_str(), error};
+    if (decoded.data_ == nullptr) {
+        return false;
+    }
+    texels = IRRender::boxFilterToTrixels(
+        decoded.data_,
+        IRMath::ivec2(decoded.width_, decoded.height_),
+        texelSize,
+        background
+    );
+    return true;
+}
+
+// The decoder every image load goes through. Tests swap in a stub that
+// records each call, so a refused path is proven never to reach the file.
+inline ImageDecoder &imageDecoder() {
+    static ImageDecoder decoder = &decodeImageTexels;
+    return decoder;
+}
+
+inline void loadImageTexels(IRComponents::C_WidgetImage &image, IRMath::ivec2 size) {
+    const WidgetTheme &theme = defaultTheme();
+    image.texelSize_ = IRMath::max(size, IRMath::ivec2(0));
+    image.error_.clear();
+    image.loaded_ = imageDecoder()(
+        image.path_,
+        image.texelSize_,
+        theme.backgroundIdle_,
+        image.texels_,
+        image.error_
+    );
+    if (image.loaded_) {
+        return;
+    }
+    IRE_LOG_WARN("IRPrefab::Widget::makeImage: {}", image.error_);
+    image.texels_.assign(
+        static_cast<std::size_t>(image.texelSize_.x) * image.texelSize_.y,
+        theme.backgroundDisabled_
+    );
+    for (int y = 0; y < image.texelSize_.y; ++y) {
+        for (int x = 0; x < image.texelSize_.x; ++x) {
+            if ((x + y) % kImageHatchPeriod < kImageHatchWidth) {
+                image.texels_[static_cast<std::size_t>(y) * image.texelSize_.x + x] =
+                    theme.textDisabled_;
+            }
+        }
+    }
+}
+
+} // namespace detail
+
+inline IREntity::EntityId makeImage(IRMath::ivec2 pos, IRMath::ivec2 size, std::string path) {
+    IRComponents::C_WidgetImage imageData;
+    imageData.path_ = std::move(path);
+    detail::loadImageTexels(imageData, size);
+    return IREntity::createEntity(
+        IRComponents::C_Widget{IRComponents::WidgetKind::IMAGE, size},
+        IRComponents::C_GuiPosition{pos},
+        IRComponents::C_GuiElement{},
+        std::move(imageData)
+    );
+}
+
+inline void setImagePath(IREntity::EntityId widget, std::string path) {
+    auto &image = IREntity::getComponent<IRComponents::C_WidgetImage>(widget);
+    image.path_ = std::move(path);
+    detail::loadImageTexels(image, IREntity::getComponent<IRComponents::C_Widget>(widget).size_);
+}
+
+inline void setImageSize(IREntity::EntityId widget, IRMath::ivec2 size) {
+    IREntity::getComponent<IRComponents::C_Widget>(widget).size_ = size;
+    detail::loadImageTexels(IREntity::getComponent<IRComponents::C_WidgetImage>(widget), size);
+}
+
+// Empty when the image decoded; otherwise the load failure, naming the path.
+inline const std::string &imageError(IREntity::EntityId widget) {
+    return IREntity::getComponent<IRComponents::C_WidgetImage>(widget).error_;
+}
+
+inline bool imageLoaded(IREntity::EntityId widget) {
+    return IREntity::getComponent<IRComponents::C_WidgetImage>(widget).loaded_;
 }
 
 } // namespace IRPrefab::Widget

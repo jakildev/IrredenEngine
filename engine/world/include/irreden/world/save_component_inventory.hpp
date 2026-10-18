@@ -119,6 +119,7 @@
 #include <irreden/render/components/component_viewport_subject.hpp>
 #include <irreden/render/components/component_voxel_selection.hpp>
 #include <irreden/render/components/component_widget.hpp>
+#include <irreden/render/components/component_widget_image.hpp>
 #include <irreden/render/components/component_widget_theme.hpp>
 #include <irreden/render/components/component_zoom_level.hpp>
 #include <irreden/render/systems/system_perf_stats_overlay.hpp>
@@ -405,6 +406,7 @@ IR_SAVE_OPT_IN(IRComponents::C_WidgetButton, 2)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetCheckbox, 2)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetColorSwatch, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetDropdown, 2)
+IR_SAVE_OPT_IN(IRComponents::C_WidgetImage, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetLabel, 2)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetList, 1)
 IR_SAVE_OPT_IN(IRComponents::C_WidgetNumberField, 1)
@@ -636,6 +638,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_WidgetCheckbox,
     IRComponents::C_WidgetColorSwatch,
     IRComponents::C_WidgetDropdown,
+    IRComponents::C_WidgetImage,
     IRComponents::C_WidgetLabel,
     IRComponents::C_WidgetList,
     IRComponents::C_WidgetNumberField,

@@ -4,7 +4,10 @@ add_executable(IRUIWidgetsDemo main.cpp)
 target_link_libraries(IRUIWidgetsDemo PUBLIC IrredenEngine)
 
 # Exe-relative runtime layout (data/ shaders/ scripts/ + Windows DLLs).
-irreden_bundle_assets(IRUIWidgetsDemo SCRIPTS config.lua)
+irreden_bundle_assets(IRUIWidgetsDemo
+    SCRIPTS config.lua
+    EXTRA_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/data data/ui_widgets
+)
 
 add_custom_target(IRUIWidgetsDemoRun
     COMMAND $<TARGET_FILE:IRUIWidgetsDemo>

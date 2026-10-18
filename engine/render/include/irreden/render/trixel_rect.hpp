@@ -4,6 +4,8 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/ir_math.hpp>
 
+#include <algorithm>
+#include <cstddef>
 #include <vector>
 
 namespace IRRender {
@@ -48,6 +50,42 @@ struct RectFillScratch {
     std::vector<int> distances_;
 };
 
+namespace detail {
+
+// One subImage2D per channel: `colors` (w x h, row-major) and a uniform
+// `distance` over the already-clipped block at `lo`.
+inline void uploadClippedRect(
+    IRComponents::C_TriangleCanvasTextures &canvas,
+    IRMath::ivec2 lo,
+    int w,
+    int h,
+    const IRMath::Color *colors,
+    int distance,
+    RectFillScratch &scratch
+) {
+    scratch.distances_.assign(static_cast<std::size_t>(w) * h, distance);
+    canvas.getTextureColorsForGeometryWrite()->subImage2D(
+        lo.x,
+        lo.y,
+        w,
+        h,
+        IRRender::PixelDataFormat::RGBA,
+        IRRender::PixelDataType::UNSIGNED_BYTE,
+        colors
+    );
+    canvas.textureTriangleDistances_.second->subImage2D(
+        lo.x,
+        lo.y,
+        w,
+        h,
+        IRRender::PixelDataFormat::RED_INTEGER,
+        IRRender::PixelDataType::INT32,
+        scratch.distances_.data()
+    );
+}
+
+} // namespace detail
+
 // Fill a solid rectangle on a canvas via one subImage2D per channel
 // (color + distance). `scratch` is reused across calls so allocations
 // only grow to the largest rect ever drawn; subsequent rects of equal
@@ -69,26 +107,41 @@ inline void fillRect(
     const int pixels = w * h;
 
     scratch.colors_.assign(pixels, color);
-    scratch.distances_.assign(pixels, distance);
+    detail::uploadClippedRect(canvas, lo, w, h, scratch.colors_.data(), distance, scratch);
+}
 
-    canvas.getTextureColorsForGeometryWrite()->subImage2D(
-        lo.x,
-        lo.y,
-        w,
-        h,
-        IRRender::PixelDataFormat::RGBA,
-        IRRender::PixelDataType::UNSIGNED_BYTE,
-        scratch.colors_.data()
-    );
-    canvas.textureTriangleDistances_.second->subImage2D(
-        lo.x,
-        lo.y,
-        w,
-        h,
-        IRRender::PixelDataFormat::RED_INTEGER,
-        IRRender::PixelDataType::INT32,
-        scratch.distances_.data()
-    );
+// Write a `size` block of per-texel colors at one distance, clipped to the
+// canvas, through the same subImage2D pair as `fillRect`. `colors` is
+// row-major with `stride` colors per row; entry (x, y) lands on texel
+// `pos + (x, y)`. Whole rows upload straight from `colors`; a block clipped
+// on either side is staged row by row in `scratch` first.
+inline void blitRect(
+    IRComponents::C_TriangleCanvasTextures &canvas,
+    IRMath::ivec2 pos,
+    IRMath::ivec2 size,
+    const IRMath::Color *colors,
+    int stride,
+    int distance,
+    RectFillScratch &scratch
+) {
+    IRMath::ivec2 lo, hi;
+    if (!clipRectToCanvas(pos, size, canvas.size_, lo, hi))
+        return;
+
+    const int w = hi.x - lo.x;
+    const int h = hi.y - lo.y;
+    const IRMath::Color *firstRow =
+        colors + static_cast<std::size_t>(lo.y - pos.y) * stride + (lo.x - pos.x);
+    const IRMath::Color *upload = firstRow;
+    if (w != stride) {
+        scratch.colors_.resize(static_cast<std::size_t>(w) * h);
+        for (int y = 0; y < h; ++y) {
+            const IRMath::Color *src = firstRow + static_cast<std::size_t>(y) * stride;
+            std::copy(src, src + w, scratch.colors_.begin() + static_cast<std::ptrdiff_t>(y) * w);
+        }
+        upload = scratch.colors_.data();
+    }
+    detail::uploadClippedRect(canvas, lo, w, h, upload, distance, scratch);
 }
 
 // Fill a solid disc (filled circle) of `radius` trixels centered on
