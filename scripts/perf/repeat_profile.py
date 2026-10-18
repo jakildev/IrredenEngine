@@ -55,15 +55,44 @@ RENDER_EXPERIMENT_ENV = (
 )
 
 
+# --glitch-test fixtures that keep the fixed pose; "none" is the unselected default.
+GLITCH_TEST_MODES = (
+    "standard-off", "off", "tear", "hold", "split", "bars", "cells",
+    "depth-tear", "depth-hold", "hold-divisor", "all",
+)
+
+
+# One-sided 95% Student-t quantiles for 1..30 degrees of freedom.
+T_ONE_SIDED_95 = (
+    6.314, 2.920, 2.353, 2.132, 2.015, 1.943, 1.895, 1.860, 1.833, 1.812,
+    1.796, 1.782, 1.771, 1.761, 1.753, 1.746, 1.740, 1.734, 1.729, 1.725,
+    1.721, 1.717, 1.714, 1.711, 1.708, 1.706, 1.703, 1.701, 1.699, 1.697,
+)
+
+
+def upper_bound_95(values: list[float]) -> float | None:
+    """One-sided 95% upper confidence bound on the mean of per-run values.
+
+    Needs two runs. Beyond 30 degrees of freedom the normal quantile applies.
+    """
+    if len(values) < 2:
+        return None
+    degrees = len(values) - 1
+    quantile = T_ONE_SIDED_95[degrees - 1] if degrees <= len(T_ONE_SIDED_95) else 1.645
+    return statistics.mean(values) + quantile * statistics.stdev(values) / math.sqrt(len(values))
+
+
 def shape_profile_arguments(demo_args: list[str]) -> dict[str, str]:
     """Accept only the fixed-pose SDF comparison, with explicit measurements.
 
     Other ShapeDebug modes can override the scene or camera. Reject them rather
     than treating an unknown combination as a qualified comparison.
+    --glitch-test <mode> is the one fixture selector admitted; shape_configuration
+    records it so runs of different fixtures never compare.
     """
     values = {}
     valued = {"--auto-profile", "--yaw", "--zoom", "--sdf-voxel-scene",
-              "--config-preset", "--window-mode"}
+              "--config-preset", "--window-mode", "--glitch-test"}
     flags = {"--sdf-voxel-blockers", "--no-ao", "--no-shadows"}
     index = 0
     while index < len(demo_args):
@@ -96,17 +125,27 @@ def shape_profile_arguments(demo_args: list[str]) -> dict[str, str]:
         "configs/perf/sdf-on.lua", "configs/perf/sdf-off.lua",
     ):
         raise ValueError("ShapeDebug requires the sdf-on.lua or sdf-off.lua timing preset")
+    if "--glitch-test" in values and values["--glitch-test"] not in GLITCH_TEST_MODES:
+        raise ValueError(
+            f"ShapeDebug --glitch-test requires one of: {', '.join(GLITCH_TEST_MODES)}"
+        )
     if values.get("--window-mode", "offscreen") != "offscreen":
         raise ValueError("ShapeDebug profiles require offscreen window mode")
     return values
 
 
 def shape_configuration(binary: Path, values: dict[str, str]) -> dict[str, str]:
-    """Fingerprint the runtime base config and the exact selected overlay."""
-    return {
+    """Fingerprint the runtime base config and the exact selected overlay.
+
+    A selected --glitch-test mode is recorded verbatim beside the hashes.
+    """
+    fingerprint = {
         name: hashlib.sha256((binary.parent / name).read_bytes()).hexdigest()
         for name in ("scripts/config.lua", values["--config-preset"])
     }
+    if "--glitch-test" in values:
+        fingerprint["--glitch-test"] = values["--glitch-test"]
+    return fingerprint
 
 
 def shape_pose_mismatch(demo_args: list[str], witness: RunWitness) -> str | None:
@@ -830,10 +869,13 @@ def main() -> int:
         stages = [row.gpu_by_name(name) for row in rows]
         if all(stage is not None for stage in stages):
             metrics[f"GPU {name}"] = [stage.avg_ms for stage in stages]
-    lines = ["| Measurement | Mean ms | Run min–max ms |", "|---|---:|---:|"]
+    lines = ["| Measurement | Mean ms | Run min–max ms | One-sided 95% upper bound ms |",
+             "|---|---:|---:|---:|"]
     for name, values in metrics.items():
+        bound = upper_bound_95(values)
         lines.append(
-            f"| {name} | {statistics.mean(values):.3f} | {min(values):.3f}–{max(values):.3f} |"
+            f"| {name} | {statistics.mean(values):.3f} | {min(values):.3f}–{max(values):.3f} "
+            f"| {'n/a' if bound is None else f'{bound:.3f}'} |"
         )
     steady = [ms for row in rows for ms in row.steady_frame_times_ms()]
     if steady:

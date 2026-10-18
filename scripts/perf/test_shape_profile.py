@@ -15,6 +15,7 @@ from repeat_profile import (
     shape_configuration,
     shape_measurement_failure,
     shape_profile_arguments,
+    upper_bound_95,
     witness_checks,
 )
 from test_profile_parser import WITNESSED_REPORT
@@ -42,6 +43,17 @@ class ShapeProfileArgumentsTest(unittest.TestCase):
                       ["--window-mode", "visible"], ["--debug-overlay", "normals"]):
             with self.subTest(extra=extra), self.assertRaises(ValueError):
                 shape_profile_arguments([*ARGS, *extra])
+
+    def test_glitch_test_fixture_is_allowlisted_and_unknown_flags_still_fail(self):
+        parsed = shape_profile_arguments([*ARGS, "--glitch-test", "all"])
+        self.assertEqual(parsed["--glitch-test"], "all")
+        for bad in (["--glitch-test"], ["--glitch-test", "none"],
+                    ["--glitch-test", "bogus"],
+                    ["--glitch-test", "all", "--glitch-test", "off"]):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                shape_profile_arguments([*ARGS, *bad])
+        with self.assertRaisesRegex(ValueError, "unsupported ShapeDebug profile argument"):
+            shape_profile_arguments([*ARGS, "--bogus"])
 
     def test_missing_values_invalid_numbers_and_unmatched_configs_fail(self):
         for flag in ("--auto-profile", "--yaw", "--zoom", "--config-preset",
@@ -76,6 +88,35 @@ class ShapeProfileArgumentsTest(unittest.TestCase):
             self.assertNotEqual(before, shape_configuration(root / "IRShapeDebug", values))
             values["--config-preset"] = "configs/perf/sdf-off.lua"
             self.assertNotEqual(before, shape_configuration(root / "IRShapeDebug", values))
+
+    def test_glitch_test_mode_is_part_of_the_configuration_identity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "configs/perf").mkdir(parents=True)
+            (root / "scripts").mkdir()
+            (root / "scripts/config.lua").write_text("base")
+            (root / "configs/perf/sdf-on.lua").write_text("on")
+            binary = root / "IRShapeDebug"
+            plain = shape_configuration(binary, shape_profile_arguments(ARGS))
+            tear = shape_configuration(
+                binary, shape_profile_arguments([*ARGS, "--glitch-test", "tear"]))
+            every = shape_configuration(
+                binary, shape_profile_arguments([*ARGS, "--glitch-test", "all"]))
+            self.assertNotIn("--glitch-test", plain)
+            self.assertEqual(len({json.dumps(c, sort_keys=True) for c in (plain, tear, every)}), 3)
+            self.assertEqual(every["--glitch-test"], "all")
+
+
+class UpperBoundTest(unittest.TestCase):
+    def test_five_repeat_bound_matches_the_hand_computation(self):
+        runs = [0.341, 0.327, 0.339, 0.337, 0.333]
+        self.assertAlmostEqual(upper_bound_95(runs), 0.3407, places=4)
+
+    def test_one_run_has_no_bound_and_many_runs_use_the_normal_quantile(self):
+        self.assertIsNone(upper_bound_95([1.0]))
+        runs = [1.0, 2.0] * 20
+        self.assertAlmostEqual(upper_bound_95(runs), 1.5 + 1.645 * 0.5063696835 / 40 ** 0.5,
+                               places=4)
 
 
 class ShapeProfileWitnessTest(unittest.TestCase):
