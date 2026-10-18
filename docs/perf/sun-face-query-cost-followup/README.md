@@ -76,7 +76,10 @@ fleet-build --target IRShapeDebug
 Use the exact environment and command retained in each profile manifest for
 timing. Do not interpret diagnostic-enabled runs as performance evidence.
 
-## Diagnosed index/query boundary mismatch — unresolved
+## Diagnosed index/query boundary mismatch — historical reproduction
+
+The subsequent [conservative index bounds](../../design/sun-face-index-coverage.md)
+address this contract. The following records the pre-fix behavior.
 
 `indexSourceSunFace` inserts an unexpanded projected AABB into tiles, while
 `sourceFaceRaySeparation` accepts a conservative rounded closed footprint. The
@@ -99,15 +102,14 @@ backends reproduce the omission on the parent and on the prototype. It is not
 a rendered reproduction and does not establish the cause of earlier screenshots.
 
 ```bash
-python3 docs/perf/sun-face-query-cost-followup/reproduce_index_boundary.py --repo .
+python3 docs/perf/sun-face-query-cost-followup/reproduce_index_boundary.py --repo . --ref f54b28254
 ```
 
 Exit zero means the documented mismatch was reproduced, **not** a correctness
-pass. This diagnostic is intentionally outside the CI test suite. Once fixed,
-turn it into a regression gate asserting that every accepted receiver's tile
-contains the face or is marked incomplete. Extend coverage across winding,
-translations, anisotropic cascade texels, subnormal/rounded edges and grazing
-bases. Derive outward-rounded producer bounds from the complete accepted query
-envelope and tile mapping. Arbitrary padding, smaller tiles, or geometric SAT
-alone do not prove this inclusion. After that contract is established, measure
-more selective lists against build cost, memory and incomplete-list frequency.
+pass. This historical diagnostic is intentionally outside CI and must run against
+the pre-fix revision above. The active regression gate is
+`scripts/tests/test_render_source_face_index_coverage.py`; it checks the accepted
+receiver's actual candidate list or incomplete marker, including winding,
+translations, anisotropic texels, grazing bases and arithmetic fallbacks.
+More selective lists still need measurements of build cost, memory and
+incomplete-list frequency.

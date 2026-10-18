@@ -1,0 +1,36 @@
+{
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "fixture_sha256": "9d8b2e7d8f5404986f5427958dc149ff87db8df57eb2324c9ac1ad80910cdf97",
+  "launcher_source_sha256": "a36636ac55012ef203463dea02d15cb34f880048993f5770da81aa7bc6bc806c",
+  "launcher_sha256": "08bcd1cb23f32d16b66bd714d811de8ede088ffae22ebcd284c8eb3d0bbb42b6",
+  "reports": [
+    {
+      "device": "Apple M4 Max",
+      "compile_options": "nil (runtime default)",
+      "rejected": 4680,
+      "validation": "native Metal predicate and index-bound containment",
+      "accepted_in_map": 288083,
+      "fixture_samples": 300122,
+      "cascade_queries": 600244,
+      "failures": 0,
+      "first_failure_query": 4294967295,
+      "outside": 307481,
+      "variant": "production",
+      "shader_sha256": "85922a9005183ad638d7cbfb8fafd35a7b2d7ee5098fb47222ee49efb8a14594"
+    },
+    {
+      "device": "Apple M4 Max",
+      "compile_options": "nil (runtime default)",
+      "rejected": 4680,
+      "validation": "native Metal predicate and index-bound containment",
+      "accepted_in_map": 288083,
+      "fixture_samples": 300122,
+      "cascade_queries": 600244,
+      "failures": 1882,
+      "first_failure_query": 15910,
+      "outside": 307481,
+      "variant": "raw-aabb-mutation",
+      "shader_sha256": "f4fa4cf5922cd8b15c25f0d2a8017d26500d0606667a86907b4c78327c572229"
+    }
+  ]
+}

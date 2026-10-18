@@ -1,0 +1,48 @@
+{
+  "source_head": "9917cb533ec8ee517390ed716edfa4a200e7d242",
+  "archives": {
+    "parent": {
+      "sha256": "e00305064da916edd5313e00d6add257e2d380cc23f95faad9934fb9b42fae3d",
+      "members": {
+        "manifest.json": "47e6e55fb283cabde12b21ca6f7b9517334cd4e25001ce0a9e9e764167dae47c",
+        "run-1.log": "726a8a24ee49745da1531ba35ee35d1d40984c67e780184fdd7ad197d48bc8c3",
+        "run-1.txt": "650177cd12a5db62f98b33b4285fce40b9c01af15f7ddaa4ca54be2dfcde14a8",
+        "run-2.log": "1aa1b5a8b29ae20dffbff4cf8889a3a4ced250f43728ebf0d3f00c2c617fd358",
+        "run-2.txt": "7c8a7bb98bfe4602e2078e548ff481659aabe463181c2e961575b292d3c567e8",
+        "run-3.log": "fffad531255eee0298a89d78b8fe039c04d1af9940511753ce66ea1505f66397",
+        "run-3.txt": "fa68c517a12595a9207f0ceb27a64ac7847ee73f77e2fe355bc32451f1235619",
+        "summary.md": "17e05db82ed79522f5ca10883f750d23b926ca3d1e947ae4aba0378f75469951"
+      }
+    },
+    "candidate": {
+      "sha256": "5f86f8656610c61e2b66ae09dc602ea77ed72a601b66d6fdd165bd36b2e7ac65",
+      "members": {
+        "manifest.json": "d399961f0f233d47b471481221de56e6988cc51391968840e7142b86ec663958",
+        "run-1.log": "0cd9af3643f06d706db787e7ff4736933dc954f8fb5ecf56bf79598d1cf62433",
+        "run-1.txt": "5415bd511cf1dea422306594422e476f09bcce6f8e6bd0fac338fb108f0f88e5",
+        "run-2.log": "c135388ea084409d080d42897f32c12263198f2b9eb0f3fe19a74aa5f71bd07a",
+        "run-2.txt": "6dc07dd8d16379052e9c6aa0df9b09023aeb137459cd82172a47570826079299",
+        "run-3.log": "19e06d9783ac85393fd93de13edb595cb328182e27d1389a1d80b9dd543b8bdf",
+        "run-3.txt": "30570453d41eaf264eb65265837fc1d2dd695dff986373c37a4e7f744ebfed0d",
+        "summary.md": "407897937b91910a96dab2e46c8e265d016379c89e8cc8b5e2f0911e4e352375"
+      }
+    },
+    "restored": {
+      "sha256": "1eb614ad38f7583c8d33698660c273bfe5f132f36ca1078ad468a98b19dd031a",
+      "members": {
+        "manifest.json": "1173cfb4cd4621f2eb5ae1ca6be3cf1dc953b56732d2048703ba04c2d47c0f87",
+        "run-1.log": "45cfdb61e67dba38cb13d2a6d08cf9a0beb8fd47ec9cd11328d03327ee684dbe",
+        "run-1.txt": "c210568a78e9cc4d789e1250876e02cf80a31cad8e8f34cb74ccf2ddbf2170a1",
+        "run-2.log": "48f5de7e50434d69084652cdaba935fc6731ea539d9c7bba7636d4009d7053bd",
+        "run-2.txt": "1ab4269807636f34c4453c6c01e0fdf2dcbddcdb01a1649eda820e74aab3ebb5",
+        "run-3.log": "1a83961a25b2821ec70489eacae9a0e6d6fe85a85ff9260b040a7ab5db85fa02",
+        "run-3.txt": "73122c86929a5f00e45ecc22042125189947841ae5b03cfbd95109389aeedc8d",
+        "summary.md": "c8b1d3f341ddc39a08fb50715241ced6ec093965eaca9d172c8d08f1ca9df48d"
+      }
+    }
+  },
+  "native": {
+    "native-metal.json": "77d53816a41e6bfbb162527875d8a861997e7c8e2bbad93871055d8a1d585bfc",
+    "native-programs.tar.gz": "56ee9d7eac77848eca2df36a472e047fb6aff5cbb6f07fc776a48a1845698e3e"
+  }
+}

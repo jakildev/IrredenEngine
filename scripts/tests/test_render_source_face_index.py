@@ -30,6 +30,7 @@ using std::abs;
 constexpr int memory_order_relaxed = 0;
 struct vec2 {
     float x,y;
+    vec2()=default;
     explicit vec2(float a):x(a),y(a){}
     vec2(float a,float b):x(a),y(b){}
 };
@@ -47,13 +48,18 @@ vec2 operator+(vec2 a,vec2 b){return {a.x+b.x,a.y+b.y};}
 vec2 operator-(vec2 a,vec2 b){return {a.x-b.x,a.y-b.y};}
 vec2 operator/(vec2 a,vec2 b){return {a.x/b.x,a.y/b.y};}
 vec2 operator*(vec2 a,float b){return {a.x*b,a.y*b};}
+vec2 abs(vec2 a){return {std::abs(a.x),std::abs(a.y)};}
+float min(float a,float b){return std::min(a,b);}
+float max(float a,float b){return std::max(a,b);}
 vec2 min(vec2 a,vec2 b){return {std::min(a.x,b.x),std::min(a.y,b.y)};}
 vec2 max(vec2 a,vec2 b){return {std::max(a.x,b.x),std::max(a.y,b.y)};}
+vec2 clamp(vec2 a,vec2 low,vec2 high){return min(max(a,low),high);}
 ivec2 min(ivec2 a,ivec2 b){return ivec2(vec2(std::min(a.x,b.x),std::min(a.y,b.y)));}
 ivec2 max(ivec2 a,ivec2 b){return ivec2(vec2(std::max(a.x,b.x),std::max(a.y,b.y)));}
 vec2 floor(vec2 a){return {std::floor(a.x),std::floor(a.y)};}
 uint floatBitsToUint(float a){uint b;std::memcpy(&b,&a,4);return b;}
-template<class T> T as_type(float a){T b;std::memcpy(&b,&a,4);return b;}
+float uintBitsToFloat(uint a){float b;std::memcpy(&b,&a,4);return b;}
+template<class T,class U> T as_type(U a){T b;std::memcpy(&b,&a,4);return b;}
 uint atomicAdd(uint& p,uint n){++atomicAdds;uint old=p;p+=n;return old;}
 uint atomicMax(uint& p,uint n){++atomicMaxes;uint old=p;p=std::max(p,n);return old;}
 uint atomicExchange(uint& p,uint n){++atomicExchanges;uint old=p;p=n;return old;}
@@ -249,12 +255,12 @@ int main() {
     if(!check("off-map faces consume no quota")) return 8;
     for(uint n=0;n<65535;++n) emit(corner,u,v,{0,1,128,129,16384,16385});
     if(!check("global quota approach")) return 9;
-    emit({32,32,2},u,v,{516,16514});
+    emit({32,32,2},u,v,{387,388,515,516,16514});
     if(!check("65536th record") || sunDepthBuf[kSourceFaceHeaderOffset]!=65536) return 9;
-    emit({32,32,2},u,v,{516,16514});
+    emit({32,32,2},u,v,{387,388,515,516,16514});
     if(!check("65537th record fallback") ||
        sourceFaceQueryComplete(sunDepthBuf[kSourceFaceTileOffset+516*65])) return 10;
-    emit({48,48,2},u,v,{774,16643});
+    emit({48,48,2},u,v,{645,646,773,774,16643});
     if(!check("overflow on previously empty tiles")) return 11;
     report("global-exhaustion");
     if(!candidates(774).empty() || sunDepthBuf[kSourceFaceTileOffset+774*65+1]!=unwritten)
@@ -290,7 +296,7 @@ int main() {
     emit(corner,u,v,{0,1,128,129,16384,16385});
     if(!check("pool failure stays incomplete") || !candidates(0).empty() ||
        sunDepthBuf[kSourceFaceTileOffset+65]<=failedCount) return 25;
-    emit({32,32,2},u,v,{516,16514});
+    emit({32,32,2},u,v,{387,388,515,516,16514});
     if(!check("full pool leaves primary lists usable") || !allCandidates(516,66,1)) return 26;
 
     const auto stale=actual;
@@ -336,16 +342,31 @@ int main() {
 """
 
 
+def load_shader(shaders, name, suffix):
+    source = (shaders / f"{name}.{suffix}").read_text()
+    return re.sub(r'#include "(\w+)\.' + suffix + r'"',
+                  lambda match: load_shader(shaders, match[1], suffix), source)
+
+
+def shader_to_cpp(source):
+    source = (source.replace("constant uint", "const uint")
+              .replace("constant FrameDataSun&", "const FrameDataSun&")
+              .replace("device atomic_uint*", "atomic_uint*")
+              .replace("thread ", "")
+              .replace("float2", "vec2").replace("float3", "vec3")
+              .replace("int2", "ivec2"))
+    source = re.sub(r"\bout (vec2|ivec2|float) (\w+)", r"\1 &\2", source)
+    return re.sub(r"\.xy\b(?!\()", ".xy()", source)
+
+
 @unittest.skipUnless(COMPILER, "source-face index controls require a C++ compiler")
 class SourceFaceIndexTest(unittest.TestCase):
     def test_production_indexers_and_mutation_controls(self):
         for suffix, directory in (("glsl", ""), ("metal", "metal/")):
             shaders = ROOT / "engine/render/src/shaders" / directory
-            source = (shaders / f"ir_sun_face_index.{suffix}").read_text()
+            source = load_shader(shaders, "ir_sun_face_index", suffix)
             indexer = source
-            layout = (shaders / f"ir_sun_face_query_layout.{suffix}").read_text()
-            geometry = (shaders / f"ir_projected_face.{suffix}").read_text()
-            layout = layout.replace(f'#include "ir_projected_face.{suffix}"', geometry)
+            layout = load_shader(shaders, "ir_sun_face_query_layout", suffix)
             clear = (shaders / f"c_clear_sun_shadow_map.{suffix}").read_text()
             clear = clear[clear.index("    if (linearIdx >= kTotalTexels)"):]
             variants = {
@@ -411,11 +432,7 @@ class SourceFaceIndexTest(unittest.TestCase):
                     if suffix == "metal":
                         shader += ("\nvoid clearIndex(uint index) {"
                                    "clearIndexImpl(sunDepthBuf.data,index);}\n")
-                    shader = (shader.replace("constant uint", "const uint")
-                              .replace("constant FrameDataSun&", "const FrameDataSun&")
-                              .replace("device atomic_uint*", "atomic_uint*")
-                              .replace("float2", "vec2").replace("float3", "vec3")
-                              .replace("int2", "ivec2").replace(".xy", ".xy()"))
+                    shader = shader_to_cpp(shader)
                     path = Path(temporary)
                     (path / "index.cpp").write_text(
                         PREAMBLE + shader + cases.replace(

@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from test_render_source_face_index import COMPILER, PREAMBLE, ROOT
+from test_render_source_face_index import COMPILER, PREAMBLE, ROOT, load_shader, shader_to_cpp
 
 CASES = r"""
 #include <atomic>
@@ -72,7 +72,7 @@ int main(){
   for(uint tile=0;tile<32768;++tile){
    const uint x=tile%128,y=(tile%16384)/128;
    const bool rectangleCovered=tile<16384?
-    (x>=2&&x<=(fixture==7?4:66)):(x>=1&&x<=(fixture==7?2:33)&&y<=42);
+    (x>=1&&x<=(fixture==7?4:66)):(x>=1&&x<=(fixture==7?2:33)&&y<=42);
    const bool covered=records &&
     (rectangle?rectangleCovered:farOnly?tile==16587:
      (giant||tile==0||tile==1||tile==128||tile==129||tile==16384||tile==16385));
@@ -153,10 +153,8 @@ class CooperativeFaceIndexTest(unittest.TestCase):
         preamble = preamble.replace("*p=n;", "std::atomic_ref<uint>(*p).store(n);")
         for suffix, folder in (("glsl", ""), ("metal", "metal/")):
             shaders = ROOT / "engine/render/src/shaders" / folder
-            layout = (shaders / f"ir_sun_face_query_layout.{suffix}").read_text()
-            geometry = (shaders / f"ir_projected_face.{suffix}").read_text()
-            layout = layout.replace(f'#include "ir_projected_face.{suffix}"', geometry)
-            source = (shaders / f"ir_sun_face_index.{suffix}").read_text()
+            layout = load_shader(shaders, "ir_sun_face_query_layout", suffix)
+            source = load_shader(shaders, "ir_sun_face_index", suffix)
             barrier = ("barrier();" if suffix == "glsl" else
                        "threadgroup_barrier(mem_flags::mem_threadgroup);")
             variants = {
@@ -182,12 +180,8 @@ class CooperativeFaceIndexTest(unittest.TestCase):
                     shader = layout + "\n" + variant
                     if suffix == "glsl":
                         shader = shader.replace("sharedFaceIndex", "sharedFaceIndices[groupIndex]")
-                    shader = (shader.replace("constant uint", "const uint")
-                              .replace("constant FrameDataSun&", "const FrameDataSun&")
-                              .replace("device atomic_uint*", "atomic_uint*")
-                              .replace("threadgroup uint&", "std::atomic<uint>&")
-                              .replace("float2", "vec2").replace("float3", "vec3")
-                              .replace("int2", "ivec2").replace(".xy", ".xy()"))
+                    shader = shader_to_cpp(shader.replace(
+                        "threadgroup uint&", "std::atomic<uint>&"))
                     path = Path(tmp)
                     (path / "index.cpp").write_text(
                         "#define IR_SUN_FACE_INDEX_COOPERATIVE\n" + preamble
