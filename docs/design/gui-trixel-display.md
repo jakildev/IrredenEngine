@@ -137,8 +137,9 @@ step. `fontSize` scales either set the same way.
   of the large cell and drops the threads outside a command's cell.
 
 `scripts/trixel-font-preview.py` renders the header's glyphs exactly as the
-screen composite displays them (`--mode smooth --gui-scale 1 --output-scale 1`;
-both scales default to 1 and `--upscale` only nearest-magnifies the result), as the framebuffer path
-shows them at a given `gui_scale` (`--mode pixelated --fb-scale 2·guiScale`),
-or as plain texels (`--mode rect`); run it before and after editing a glyph.
-`--set small` reads `trixel_font_small.hpp`.
+screen composite displays them (`--mode smooth --gui-scale 1 --output-scale
+1`; both scales default to 1 and `--upscale` only nearest-magnifies the
+result), as the framebuffer path shows them at a given `gui_scale` (`--mode
+pixelated --fb-scale 2·guiScale`), or as plain texels (`--mode rect`); run it
+before and after editing a glyph. `--set small` reads
+`trixel_font_small.hpp`.

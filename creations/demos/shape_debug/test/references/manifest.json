@@ -219,6 +219,9 @@
       "demo_args": [
         "--config-preset",
         "configs/gui_text_scale1.lua",
+        "--framebuffer-size",
+        "1280",
+        "960",
         "--text-size-sample"
       ],
       "shots": ["text_size_sample"],

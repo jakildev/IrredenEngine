@@ -1,5 +1,5 @@
--- A 2x macOS framebuffer produces the fixed 1280x960 output-scale-1 text
--- fixture: each gui_scale-1 texel covers 2x1 output pixels.
+-- The render fixture corrects this starting window to a fixed 1280x960
+-- framebuffer: each gui_scale-1 texel covers 2x1 output pixels.
 config = {
     init_window_width = 640,
     init_window_height = 480,

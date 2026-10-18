@@ -109,13 +109,17 @@ class TextStrokeContrastMetricTest(unittest.TestCase):
             1,
         )
 
-    def test_blank_and_wrong_sized_captures_do_not_pass(self):
+    def test_blank_capture_does_not_pass(self):
         blank = self.directory / "blank.png"
         util.write_png(blank, 1280, 960, bytes(1280 * 960 * 3), 3)
         self.assertEqual(run([str(blank), "--min-stroke-coverage", "0.95"]), 1)
-        small = self.directory / "small.png"
-        util.write_png(small, 8, 8, bytes(8 * 8 * 3), 3)
-        self.assertEqual(run([str(small), "--min-stroke-coverage", "0.95"]), 1)
+
+    def test_unresized_one_x_capture_does_not_pass(self):
+        one_x = self.directory / "one-x.png"
+        util.write_png(one_x, 640, 480, bytes(640 * 480 * 3), 3)
+        result = metric.contrast_metrics(str(one_x))
+        self.assertEqual(result["error"], "fixture must be 1280x960, got 640x480")
+        self.assertEqual(run([str(one_x), "--min-stroke-coverage", "0.95"]), 1)
 
     def test_manifest_names_the_fixed_positive_gate(self):
         manifest = json.loads(
@@ -125,6 +129,17 @@ class TextStrokeContrastMetricTest(unittest.TestCase):
         )
         run_spec = next(
             entry for entry in manifest["extra_runs"] if entry["name"] == "text_scale1_legibility"
+        )
+        self.assertEqual(
+            run_spec["demo_args"],
+            [
+                "--config-preset",
+                "configs/gui_text_scale1.lua",
+                "--framebuffer-size",
+                "1280",
+                "960",
+                "--text-size-sample",
+            ],
         )
         self.assertEqual(run_spec["structural_only"], ["text_size_sample"])
         (gate,) = run_spec["structural"]["text_size_sample"]
