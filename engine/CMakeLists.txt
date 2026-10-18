@@ -37,6 +37,7 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/video)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/math)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/entity)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/common)
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/catalog)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/job)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/system)
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/time)
@@ -95,6 +96,7 @@ target_link_libraries(
     # IrredenEngineComponent
     IrredenEngineTime
     IrredenEngineCommand
+    IrredenEngineCatalog
     IrredenEngineWorld
     IrredenEngineWindow
 )

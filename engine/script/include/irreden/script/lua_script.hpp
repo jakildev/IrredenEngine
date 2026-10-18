@@ -15,6 +15,7 @@
 #include <irreden/script/lua_component_data.hpp>
 
 #include <cstddef>
+#include <filesystem>
 #include <functional>
 #include <memory>
 #include <string>
@@ -100,6 +101,10 @@ class LuaScript {
     // Bind run-directory-relative text file access. Absolute paths and paths
     // that resolve outside the run directory are rejected.
     void bindLuaFiles();
+
+    // Bind creation and asset discovery under a trusted checkout root.
+    // Lua paths are relative to this root and cannot escape it.
+    void bindLuaCatalog(const std::filesystem::path &toolRoot);
 
     // Bind the synthetic-input surface — IRInput.KeyMouseButtons,
     // IRInput.ButtonStatuses, and IRInput.{beginSyntheticInput,
