@@ -10,62 +10,141 @@
 #include <irreden/render/components/component_trixel_framebuffer.hpp>
 #include <irreden/render/components/component_camera_position_2d_iso.hpp>
 #include <irreden/render/components/component_texture_scroll.hpp>
+#include <irreden/render/framebuffer_screen_math.hpp>
+#include <irreden/render/glitch.hpp>
 #include <irreden/render/gpu_stage_timing.hpp>
 #include <irreden/render/gpu_stage_timing_observer.hpp>
 
+#include <cstdint>
 #include <vector>
 
 using namespace IRMath;
 
-// TODO: effects at this stage like blur, etc!!
-
-// MODIFY THIS TO JUST BE THE 2D SPRITE RENDERER.
-// CHANGE FRAMEBUFFERS TO RENDERBUFFERS
-
 namespace IRSystem {
 
-template <> struct System<FRAMEBUFFER_TO_SCREEN> {
-    Buffer *frameDataBuf_ = nullptr;
-    ShaderProgram *program_ = nullptr;
-    VAO *quadVao_ = nullptr;
-    FrameDataFramebuffer frameData_{};
-    // Screen-pixel half of the camera's sub-pixel decomposition for this
-    // frame; the main framebuffer's blit is the only one that carries it.
-    vec2 cameraScreenResidual_{0.0f};
+// The GPU work of one ordinary blit tick, and everything it reads from the
+// RenderManager. `beginFrame` issues one `beginScreen`, then `encodeBlit` one
+// `drawFramebuffer` per framebuffer; a RENDER tick the glitch pass already
+// composited issues neither. `ScreenBlitGpuEncoder` encodes them; the
+// headless probes record them.
+class ScreenBlitEncoder {
+  public:
+    // Binds and clears the default target, then binds the blit's program,
+    // frame data and quad.
+    virtual void beginScreen() = 0;
+    virtual void drawFramebuffer(
+        const C_TrixelCanvasFramebuffer &framebuffer, vec3 cameraPosition, bool isMainFramebuffer
+    ) = 0;
 
-    void tick(
-        const C_TrixelCanvasFramebuffer &framebuffer,
-        const C_WorldTransform &cameraWorldXform,
-        const C_Name &name
-    ) {
-        framebuffer.bindTextures(0, 1);
-        frameData_.mvpMatrix = calcProjectionMatrix() * calcModelMatrix(
-                                                            framebuffer.getResolution(),
-                                                            framebuffer.getResolutionPlusBuffer(),
-                                                            cameraWorldXform.translation_,
-                                                            cameraScreenResidual_,
-                                                            name.name_
-                                                        );
-        frameDataBuf_->subData(0, sizeof(FrameDataFramebuffer), &frameData_);
-        IRRender::device()->setPolygonMode(PolygonMode::FILL);
-        IRRender::device()->drawArrays(DrawMode::TRIANGLES, 0, 6);
-    }
+  protected:
+    ~ScreenBlitEncoder() = default;
+};
 
-    void beginTick() {
-        cameraScreenResidual_ = vec2(
+class ScreenBlitGpuEncoder final : public ScreenBlitEncoder {
+  public:
+    ScreenBlitGpuEncoder(
+        Buffer &frameDataBuf, ShaderProgram &program, VAO &quadVao, vec2 &cameraScreenResidual
+    )
+        : m_frameDataBuf{frameDataBuf}
+        , m_program{program}
+        , m_quadVao{quadVao}
+        , m_cameraScreenResidual{cameraScreenResidual} {}
+
+    void beginScreen() override {
+        m_cameraScreenResidual = vec2(
             IRPrefab::Camera::screenResidual(
                 IRRender::getEffectiveCameraIso(),
                 IRRender::getCameraZoom(),
                 IRRender::getOutputScaleFactor()
             )
         );
-        bindDefaultFramebuffer();
-        clearDefaultFramebuffer();
+        IRRender::device()->bindDefaultFramebuffer();
+        IRRender::device()->clearDefaultFramebuffer();
         // Slot 2 is shared with GUI_CANVAS_TO_SCREEN's UBO; each screen pass
         // re-asserts its own binding before it draws.
-        frameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FramebufferFrameDataUniform);
-        program_->use();
-        quadVao_->bind();
+        m_frameDataBuf.bindBase(BufferTarget::UNIFORM, kBufferIndex_FramebufferFrameDataUniform);
+        m_program.use();
+        m_quadVao.bind();
+    }
+
+    void drawFramebuffer(
+        const C_TrixelCanvasFramebuffer &framebuffer, vec3 cameraPosition, bool isMainFramebuffer
+    ) override {
+        framebuffer.bindTextures(0, 1);
+        FrameDataFramebuffer frameData{};
+        frameData.mvpMatrix = detail::framebufferScreenMvp(
+            framebuffer.getResolutionPlusBuffer(),
+            cameraPosition,
+            m_cameraScreenResidual,
+            isMainFramebuffer
+        );
+        m_frameDataBuf.subData(0, sizeof(FrameDataFramebuffer), &frameData);
+        IRRender::device()->setPolygonMode(PolygonMode::FILL);
+        IRRender::device()->drawArrays(DrawMode::TRIANGLES, 0, 6);
+    }
+
+  private:
+    Buffer &m_frameDataBuf;
+    ShaderProgram &m_program;
+    VAO &m_quadVao;
+    vec2 &m_cameraScreenResidual;
+};
+
+template <> struct System<FRAMEBUFFER_TO_SCREEN> {
+    Buffer *frameDataBuf_ = nullptr;
+    ShaderProgram *program_ = nullptr;
+    VAO *quadVao_ = nullptr;
+    // Screen-pixel half of the camera's sub-pixel decomposition for this
+    // frame; the main framebuffer's blit is the only one that carries it.
+    vec2 cameraScreenResidual_{0.0f};
+    // True for a RENDER tick on which `FRAMEBUFFER_GLITCH` already cleared the
+    // default target and drew the screen base: this pass then binds, clears
+    // and draws nothing, so the target is filled exactly once.
+    bool screenAlreadyComposited_ = false;
+    // Main-framebuffer blits drawn since registration; the headless probes
+    // that prove which pass drew the screen base read it.
+    std::uint64_t ordinaryBlitCount_ = 0;
+
+    void beginFrame(ScreenBlitEncoder &encoder) {
+        screenAlreadyComposited_ = IRPrefab::Glitch::screenCompositedForCurrentRenderTick();
+        if (screenAlreadyComposited_) {
+            return;
+        }
+        encoder.beginScreen();
+    }
+
+    void encodeBlit(
+        ScreenBlitEncoder &encoder,
+        const C_TrixelCanvasFramebuffer &framebuffer,
+        const C_WorldTransform &cameraWorldXform,
+        const C_Name &name
+    ) {
+        if (screenAlreadyComposited_) {
+            return;
+        }
+        const bool isMainFramebuffer = name.name_ == "mainFramebuffer";
+        encoder.drawFramebuffer(framebuffer, cameraWorldXform.translation_, isMainFramebuffer);
+        if (isMainFramebuffer) {
+            ++ordinaryBlitCount_;
+        }
+    }
+
+    void beginTick() {
+        ScreenBlitGpuEncoder encoder = gpuEncoder();
+        beginFrame(encoder);
+    }
+
+    void tick(
+        const C_TrixelCanvasFramebuffer &framebuffer,
+        const C_WorldTransform &cameraWorldXform,
+        const C_Name &name
+    ) {
+        ScreenBlitGpuEncoder encoder = gpuEncoder();
+        encodeBlit(encoder, framebuffer, cameraWorldXform, name);
+    }
+
+    ScreenBlitGpuEncoder gpuEncoder() {
+        return ScreenBlitGpuEncoder{*frameDataBuf_, *program_, *quadVao_, cameraScreenResidual_};
     }
 
     static SystemId create() {
@@ -96,68 +175,6 @@ template <> struct System<FRAMEBUFFER_TO_SCREEN> {
         sys->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAOArrays");
         IRRender::tagGpuStage(id, "fbToScreen");
         return id;
-    }
-
-  private:
-    static mat4 calcModelMatrix(
-        ivec2 resolution,
-        ivec2 resolutionPlusBuffer,
-        vec3 cameraPosition,
-        vec2 cameraScreenResidual,
-        std::string name
-    ) {
-        const ivec2 scaleFactor = IRRender::getOutputScaleFactor();
-
-        // also known as screen center
-        float xOffset = IRRender::getViewport().x / 2.0f;
-        float yOffset = IRRender::getViewport().y / 2.0f;
-        vec2 offset = vec2(xOffset, yOffset) + isoDeltaToScreenDelta(
-                                                   pos3DtoPos2DIso(cameraPosition),
-                                                   IRRender::getTriangleStepSizeScreen()
-                                               );
-
-        mat4 model = mat4(1.0f);
-
-        // Screen-pixel half of the anti-vibration decomposition
-        // (`IRPrefab::Camera::screenResidual`). `TRIXEL_TO_FRAMEBUFFER`
-        // consumes the matching framebuffer half of the same split, so the two
-        // cannot disagree at game-pixel boundaries. The name check matches the
-        // framebuffer entity created by `RenderManager` (see `kFramebuffer`
-        // prefab, `render_manager.cpp:47`); only the main framebuffer carries
-        // the camera-driven sub-pixel residual.
-        if (name == "mainFramebuffer") {
-            offset += cameraScreenResidual;
-        }
-        model = IRMath::translate(model, vec3(offset.x, offset.y, 0.0f));
-        model = IRMath::scale(
-            model,
-            vec3(
-                resolutionPlusBuffer.x * scaleFactor.x,
-                resolutionPlusBuffer.y * scaleFactor.y,
-                1.0f
-            )
-        );
-        return model;
-    }
-
-    static mat4 calcProjectionMatrix() {
-        mat4 projection = IRMath::ortho(
-            0.0f,
-            (float)IRRender::getViewport().x,
-            0.0f,
-            (float)IRRender::getViewport().y,
-            -1.0f,
-            100.0f
-        );
-        return projection;
-    }
-
-    static void bindDefaultFramebuffer() {
-        IRRender::device()->bindDefaultFramebuffer();
-    }
-
-    static void clearDefaultFramebuffer() {
-        IRRender::device()->clearDefaultFramebuffer();
     }
 };
 

@@ -175,6 +175,32 @@ class OpenGLRenderDevice final : public RenderDevice {
         );
     }
 
+    void copyTexture2D(const Texture2D &source, Texture2D &destination) override {
+        IR_ASSERT(
+            source.getSize() == destination.getSize() &&
+                source.getNativePixelFormat() == destination.getNativePixelFormat(),
+            "copyTexture2D: source and destination must match in size and native pixel format"
+        );
+        const uvec2 size = source.getSize();
+        ENG_API->glCopyImageSubData(
+            source.getHandle(),
+            GL_TEXTURE_2D,
+            0,
+            0,
+            0,
+            0,
+            destination.getHandle(),
+            GL_TEXTURE_2D,
+            0,
+            0,
+            0,
+            0,
+            static_cast<GLsizei>(size.x),
+            static_cast<GLsizei>(size.y),
+            1
+        );
+    }
+
     void setPolygonMode(PolygonMode polygonMode) override {
         ENG_API->glPolygonMode(GL_FRONT_AND_BACK, toGLPolygonMode(polygonMode));
     }

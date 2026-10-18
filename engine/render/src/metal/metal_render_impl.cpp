@@ -734,6 +734,34 @@ class MetalRenderDevice final : public RenderDevice {
         // Metal texture copy - stub.
     }
 
+    void copyTexture2D(const Texture2D &source, Texture2D &destination) override {
+        IR_ASSERT(
+            source.getSize() == destination.getSize() &&
+                source.getNativePixelFormat() == destination.getNativePixelFormat(),
+            "copyTexture2D: source and destination must match in size and native pixel format"
+        );
+        auto *src = static_cast<MTL::Texture *>(source.getNativeTexture());
+        auto *dst = static_cast<MTL::Texture *>(destination.getNativeTexture());
+        auto *commandBuffer = metalCommandBuffer();
+        if (src == nullptr || dst == nullptr || commandBuffer == nullptr) {
+            return;
+        }
+        // createBlitEncoder so an enclosing GpuSubStageScope samples the copy.
+        auto *blit = createBlitEncoder(commandBuffer);
+        blit->copyFromTexture(
+            src,
+            0,
+            0,
+            MTL::Origin::Make(0, 0, 0),
+            MTL::Size::Make(src->width(), src->height(), 1),
+            dst,
+            0,
+            0,
+            MTL::Origin::Make(0, 0, 0)
+        );
+        blit->endEncoding();
+    }
+
     void drawArrays(DrawMode drawMode, int first, int count) override {
         auto *pipeline = activeMetalPipeline();
         const auto &layout = activeMetalVertexLayout();

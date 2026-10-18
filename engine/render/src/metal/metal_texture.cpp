@@ -63,7 +63,10 @@ std::size_t pixelSizeBytes(PixelDataFormat format, PixelDataType type) {
 
 MTL::TextureUsage defaultTextureUsage(TextureFormat format) {
     if (format == TextureFormat::DEPTH24_STENCIL8) {
-        return MTL::TextureUsageRenderTarget;
+        // Shader-readable so a screen pass can select by composite depth.
+        return static_cast<MTL::TextureUsage>(
+            MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead
+        );
     }
     MTL::TextureUsage usage = static_cast<MTL::TextureUsage>(
         MTL::TextureUsageShaderRead |

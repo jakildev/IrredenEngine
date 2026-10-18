@@ -75,6 +75,11 @@ class RenderDevice {
         int height,
         int depth
     ) = 0;
+    // GPU-to-GPU copy of @p source's whole level-0 extent into @p destination,
+    // ordered with the surrounding commands, with no CPU wait and no format
+    // conversion. Both must be 2D textures of identical size and native pixel
+    // format.
+    virtual void copyTexture2D(const Texture2D &source, Texture2D &destination) = 0;
     virtual void setPolygonMode(PolygonMode polygonMode) = 0;
     virtual void bindDefaultFramebuffer() = 0;
     virtual void clearDefaultFramebuffer() = 0;

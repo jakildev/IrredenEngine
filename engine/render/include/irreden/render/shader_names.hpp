@@ -6,6 +6,12 @@ namespace IRRender {
 const char *const kFileVertFramebufferToScreen = "shaders/v_framebuffer_to_screen.glsl";
 const char *const kFileFragFramebufferToScreen = "shaders/f_framebuffer_to_screen.glsl";
 
+// Period-quantised glitch draw that replaces the main framebuffer's screen blit
+// on enabled frames (Metal mirror in metal/framebuffer_glitch.metal; shared
+// tick/hash/band math in ir_glitch_common.{glsl,metal}).
+const char *const kFileVertFramebufferGlitch = "shaders/v_framebuffer_glitch.glsl";
+const char *const kFileFragFramebufferGlitch = "shaders/f_framebuffer_glitch.glsl";
+
 const char *const kFileVertSpritesToScreen = "shaders/v_sprites_to_screen.glsl";
 const char *const kFileFragSpritesToScreen = "shaders/f_sprites_to_screen.glsl";
 

@@ -192,6 +192,12 @@ workload before applying them to a new optimization:
   not invocation-count-bound. #2256 closed via #2273 with the delta
   unrecovered; its per-stage attribution uses the existing per-system
   timers (plan on #2281).
+- **A pass drawing the default screen target scales with the output scale
+  squared.** It shades the game-resolution pixel count times
+  `outputScale²`, so on a 2x HiDPI host it costs several times its 1x
+  figure. Budget such a pass at 1x output, as the cost it adds over the base
+  composite it replaces; measured pair and method in
+  [`glitch-pass.md` §Cost](glitch-pass.md#cost).
 
 ## 3. Rules for perf plans
 
