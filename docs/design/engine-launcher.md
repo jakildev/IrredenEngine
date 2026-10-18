@@ -113,6 +113,22 @@ targets (the lighting family). Schema v1:
 - Unknown keys are ignored (forward compatible); a missing required key
   (`version`, `name`, `targets[].name`) fails the manifest, and the launcher
   lists the directory as "invalid manifest" rather than hiding it.
+- **`parseCreationManifest` checks every value that later reaches a
+  process or a path, for every manifest it reads.** Tracked or private, linted
+  or not, the parser is the gate, because the scan reads gitignored
+  directories no lint sees.
+  - `targets[].name` must pass `IRAsset::isTargetName`: the D4 pattern
+    `^[A-Za-z0-9_][A-Za-z0-9_.+-]*$`, and not a Windows device name
+    (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`COM9`, `LPT1`–`LPT9`, any case).
+    The name becomes `ir-run`'s first argument, where a leading `-` would be
+    read as an `ir-run` option. `ir-run` then hands it to `find -name` as a
+    pattern, where `*`, `?` and `[` select other binaries. It is also the
+    stem of the D5 result file, where `/` or `\` would leave
+    `ir-run-results/`.
+  - `thumbnail` and each `docs` entry go through the D4 path model against
+    the creation directory.
+  - A value that fails marks the whole manifest invalid, with the key and
+    the reason, so a bad target is never offered for Build or Run.
 
 Rejected: extending each demo's `config.lua` — mixes runtime config with
 catalog data and needs a Lua reader in the scanner; `irreden_creation(...)`
@@ -158,6 +174,7 @@ starts a child from a fixed tool table and returns a handle;
 `handle:poll()` returns the lines written since the last poll, `handle:exit()`
 the exit code once it has one, `handle:kill()` stops it. One tool runs at a
 time; a RENDER-phase Lua system polls the handle into the log panel.
+Ownership and shutdown are covered below the table.
 
 **Lua names no program, directory, or environment.** Each table entry fixes
 its argv shape, working directory and environment, and takes only the typed
@@ -167,7 +184,6 @@ its check. Every failure happens before a child is started.
 | Tool | Lua fields | Child |
 |---|---|---|
 | `ir-build` | `target` | `ir-build --target <target>`, cwd `<root>`, `IRREDEN_BUILD_DIR=<root>/build` |
-| `ir-launcher` | none | `ir-launcher --update --relaunch`, cwd `<root>` (D6) |
 | `editor` | `path` | `<editor> <resolved path>`, cwd `<root>` (D8) |
 | `open-folder` | `path` | `open` / `explorer` / `xdg-open` `<resolved path>`, cwd `<root>` |
 
@@ -181,7 +197,7 @@ its check. Every failure happens before a child is started.
   in any process that never set a root, so no other creation gets the
   service. The service class takes the root as a constructor argument, so
   tests can point it at a fixture tree.
-- **`target`** must match `^[A-Za-z0-9_][A-Za-z0-9_.+-]*$`: a CMake target
+- **`target`** must pass `IRAsset::isTargetName` (D2): a CMake target
   name, which cannot start with `-`. `ir-build` forwards everything else to
   `cmake --build`, and anything after `--` to the native tool (for example
   `-- -C <dir>` under Ninja). So free-form `args` would be a second way out
@@ -215,10 +231,51 @@ its check. Every failure happens before a child is started.
   tree builds that checkout. The service therefore sets `IRREDEN_BUILD_DIR`
   to `<root>/build`, replacing the inherited value. `ir-build` honours that
   variable before worktree detection. `ir-run` exports it to its child, so
-  the launcher (D6) inherits `build-launcher/`, and without the override a
-  launcher Build would compile the demo into the launcher's own tree. For
+  the launcher (D6) inherits `build-launcher/installed/`, and without the
+  override a launcher Build would compile the demo into the launcher's own
+  tree. For
   every other tool the service removes `IRREDEN_BUILD_DIR` from the child's
   environment. Lua sets no environment variable.
+
+**Ownership and shutdown.** No tool child outlives the engine.
+
+- **The service owns everything a run holds:** the child, its process tree,
+  the output pipe and the line buffer. `ToolService` is a member of `World`.
+  - The Lua handle is a value naming one run (an id plus a generation); it
+    owns nothing. Garbage-collecting a handle does not stop the child.
+  - A handle from an earlier run raises on `poll`, `exit` and `kill`.
+- **There is no reader thread.** The service drains the pipe without
+  blocking, on the main thread: on every `poll()`, and once per frame from
+  the world loop while a run is live. On POSIX the read end is
+  `O_NONBLOCK`; on Windows the service reads only what `PeekNamedPipe`
+  reports. Lines wait in a bounded buffer whose oldest lines are dropped and
+  counted. A script that stops polling cannot stall the child on a full
+  pipe, and there is never a thread to join.
+- **A kill takes the whole tree.** `ir-build` runs `cmake`, which runs
+  Ninja and the compilers, so killing the wrapper alone would leave them
+  running.
+  - On POSIX the child starts as the leader of a new process group. `kill()`
+    sends `SIGTERM` to the group, waits up to 2 s, then sends `SIGKILL` to
+    the group, and reaps the child with `waitpid`.
+  - On Windows the child starts suspended. It is assigned to a job object
+    with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` before it resumes, and
+    `kill()` is `TerminateJobObject` followed by the wait.
+  - `exit()` after a kill reports the signal (or the job's exit code).
+- **Teardown kills a live run.** `World::end()` destroys the service before
+  any manager it could reach. A live run gets the same kill, the child is
+  reaped, and the pipe and job handles close. The bound is the 2 s grace
+  plus one `SIGKILL` round trip. Nothing is detached or abandoned.
+- **One child at a time, across both services.** `handOff` raises while a
+  tool run is live. Run would otherwise block the main loop with a build
+  still writing into the pipe, or start an executable the build is about to
+  relink.
+- **Stated limit.** If the launcher process itself crashes on POSIX, no
+  destructor runs. The orphaned group finishes its build under the init
+  process, and `ir-acquire` releases the cpu lock when the build ends. On
+  Windows the job handle closes with the process, which kills the tree.
+
+The launcher's own update is not a tool run (D6); it happens after the
+engine has exited.
 
 A tool name outside the table raises; argv is never joined into a shell
 command; on native Windows the extensionless wrappers run through
@@ -239,12 +296,20 @@ result. This is identical on all three hosts today and needs no new
 lifecycle; on native Windows a live launcher could not render anyway while a
 child owns the gpu lock.
 
-Two extensions to the hand-off contract:
+Three extensions to the hand-off contract:
 
+- **`argv[0]` is a target name.** `runHandOff` refuses an `argv[0]` that
+  fails `IRAsset::isTargetName` (D2), before the drain and before any child
+  starts. It also places `--` ahead of `argv[0]` in the `ir-run` command, so
+  `ir-run` stops reading options there. Today `handOff` accepts any first
+  string. A Lua caller could pass `{ "--build-dir", "/elsewhere", "x" }`
+  and choose the tree itself, which would make the `buildDir` check below
+  pointless. The check also keeps the result file name below to a single
+  safe path component.
 - `HandOffRequest::buildDir_` (Lua `buildDir`), passed to the child as
   `ir-run --build-dir`. Without it the child inherits the launcher's own
-  `IRREDEN_BUILD_DIR` (`build-launcher/`, D6) and looks for the demo in the
-  wrong tree. `buildDir` is a root-relative path checked by the D4 path
+  `IRREDEN_BUILD_DIR` (`build-launcher/installed/`, D6) and looks for the
+  demo in the wrong tree. `buildDir` is a root-relative path checked by the D4 path
   model, and `ir-run` gets the resolved path. Setting it raises in a process
   with no tool root, and the launcher passes `"build"`. Without that check,
   any Lua creation could point `ir-run` at an arbitrary directory and run
@@ -263,17 +328,67 @@ in-memory state and needs a file handoff for the verdict.
 ### D6 — The launcher builds into its own tree and updates on demand
 
 `engine/tools/bin/ir-launcher` configures `<checkout>/build-launcher/` with
-the host's preset (`-B` override) on first use, builds `IRLauncher` there,
-and runs it through `ir-run --build-dir build-launcher IRLauncher
---window-mode normal`. It rebuilds only with `--update`; a
-failed update leaves the previous executable in place and exits non-zero.
+the host's preset (`-B` override) on first use and builds `IRLauncher` there.
 The launcher itself builds and runs creations in `<checkout>/build`, so a
-broken worktree build never takes the launcher down. The in-app "Update
-launcher" button spawns `ir-launcher --update --relaunch` (D4) and quits;
-the script waits for the parent to exit, rebuilds, and relaunches.
+broken worktree build never takes the launcher down.
 
-Rejected: another target in `build/` — any engine compile break kills the
-launcher; a packaged zip — isolated but updating is manual.
+**The launcher runs from an installed copy.** The build output is never the
+running program.
+- After a successful build, the script copies the executable's directory
+  into `build-launcher/installed/`. That directory holds the executable and
+  its staged `data/`, `shaders/`, `scripts/` and runtime DLLs.
+- The launcher runs as `ir-run --build-dir build-launcher/installed
+  IRLauncher --window-mode normal --supervised`.
+- The copy is needed because `<target>Assets` stages scripts and shaders
+  before the link. A build that fails to compile can still leave new
+  `scripts/` beside the old executable.
+
+**`ir-launcher` is the supervisor, and the update happens after the engine
+exits.** The script never `exec`s. It loops:
+1. It runs the installed launcher and waits for it. `ir-run`'s interactive
+   path `exec`s the executable, so the exit code reaches the script
+   unchanged.
+2. If the exit code is `kUpdateRequestedExit`, it updates, then goes back
+   to step 1. The value is chosen apart from 0, 1, 2, `ir-run`'s 75 and 76,
+   and the signal range from 128 up.
+3. Any other exit code ends the loop, and the script exits with that code.
+
+The in-app "Update launcher" button calls `IRLauncher.requestUpdate()`. This
+is a launcher-local binding that `main_lua.cpp` registers; it is not part of
+the engine-wide `IREngine` table. The call sets a flag and closes the
+window. `main` returns `kUpdateRequestedExit` after `IREngine::gameLoop()`
+returns, so every manager has already been torn down. That includes the D4
+`ToolService` and any build it was running. The binding exists only under
+`--supervised`, which only `ir-launcher` passes. Without that flag the
+button is hidden, because nothing would act on the exit code.
+
+**The update step:**
+1. The script builds `IRLauncher` in `build-launcher/` and writes the output
+   to `build-launcher/update.log`.
+2. On success, it copies the new executable directory to
+   `installed.next/`, along with the old `installed/save_files/`, which
+   holds `launcher.irkv` (D8). It then renames `installed/` to
+   `installed.prev/`, renames `installed.next/` to `installed/`, and
+   removes `installed.prev/`.
+3. On failure, `installed/` is not touched. The next pass of the loop runs
+   it with `--update-failed build-launcher/update.log`. The previous
+   launcher comes back with a banner and an "Open log in IDE" button that
+   opens that root-relative path.
+4. `ir-launcher --update` from a shell runs the same step without the
+   loop, and exits non-zero on failure.
+
+No process waits for its parent, and no child outlives the engine. Nothing
+has the installed executable open while it is replaced, which matters on
+Windows, where a running `.exe` cannot be overwritten.
+
+Rejected:
+- Another target in `build/`: any engine compile break kills the launcher.
+- A packaged zip: isolated, but updating is manual.
+- A detached `ir-launcher --update --relaunch` child spawned by the
+  launcher, which waits for its parent to exit. A spawned tool belongs to
+  `ToolService`, which kills it at teardown (D4). Exempting this one child
+  would need a second, detached launch path with its own handle and reaping
+  rules on each OS.
 
 ### D7 — One root in v1: the checkout the launcher was built from
 
@@ -387,6 +502,7 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
 | `IRCatalog` | `scan{ root, buildDir }`, `assets{ root }` (root-relative, tool root required) | `engine/catalog` |
 | `IREngine` | `spawnTool{ tool, target \| path }` → handle (`poll`, `exit`, `kill`); `toolRoot()`; `handOff{ argv, buildDir }` → `r.verdict` | `engine/world` |
 | `IRGui` | `makeImage(x, y, w, h, path)`, `setImagePath(id, path)` (`path` relative to the image base, D9) | `engine/prefabs/irreden/render` |
+| `IRLauncher` | `requestUpdate()` (launcher-local, `--supervised` only, D6) | `creations/launcher` |
 
 ## Validators
 
@@ -394,7 +510,12 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
   conformance corpus (valid, each error class with line/column), the schema
   (required keys, unknown keys ignored, every `kind`), and a scan over a
   fixture tree with a valid, an invalid, and a missing manifest plus a fake
-  build dir with one built target and one result file. `IRCatalog` raises,
+  build dir with one built target and one result file. A manifest is
+  invalid, with the key named, when a `targets[].name` starts with `-`
+  (`-x`, `--build-dir`), holds `/`, `\`, whitespace or a glob character
+  (`IR*`, `IR?`, `IR[ab]`), is empty, or is a device name (`NUL`, `com1`).
+  It is also invalid when a `thumbnail` or `docs` path is absolute, holds
+  `..`, or escapes the creation directory. `IRCatalog` raises,
   having read nothing, for a `root` or `buildDir` that is absolute, holds
   `..`, or escapes through a symlink, and for any call in a process with no
   tool root. Every returned path is relative to the tool root.
@@ -416,7 +537,11 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
   - **Lua-input refusals.** These all raise:
     - an unknown tool, or an unknown key (`cwd`, `buildDir`, `args`);
     - a NUL byte;
-    - a `target` that starts with `-` or contains a space or `/`;
+    - a `target` that fails `isTargetName` (the manifest cases above);
+    - a `handOff` whose `argv[0]` fails `isTargetName`, including
+      `{ "--build-dir", "<elsewhere>", "x" }`. The drain also records zero
+      calls;
+    - a `handOff` while a tool run is live;
     - a `path` that is absolute (`/etc`, `C:\x`, `\\host\s`) or holds `..`
       (`creations/../..`);
     - a fixture symlink `creations/escape` pointing outside the root, plus a
@@ -431,17 +556,51 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
     reports `<root>` and `<root>/build` for `ir-build`, while the parent's
     `IRREDEN_BUILD_DIR` points elsewhere. It reports the variable unset for
     every other tool.
-  - **Argv and lifecycle.** The `ir-build` argv is exactly
-    `ir-build --target <T>`. Poll returns lines across chunk boundaries, and
-    kill ends a sleeping child.
+  - **Argv.** The `ir-build` argv is exactly `ir-build --target <T>`. The
+    hand-off command has `--` immediately before `argv[0]`.
   - **Hand-off.** The `buildDir_` reaches the child argv as the resolved
     path. The verdict parses from the result file and is absent without one.
+    For a valid name, the result path is exactly
+    `<buildDir>/ir-run-results/<name>.last.json`, a single component below
+    that directory.
+  - **Lifecycle, with real children, on Linux, macOS and native Windows.**
+    The stub tool starts a sleeping grandchild, prints both process ids and
+    keeps writing.
+    - Poll returns lines across chunk boundaries.
+    - A child that writes past the pipe capacity while nothing calls
+      `poll()` still runs to exit as the test steps frames, because of the
+      per-frame drain. The buffer reports the dropped-line count.
+    - Garbage-collecting the handle leaves the child running. A handle from
+      the earlier run raises after a second spawn.
+    - `kill()`, and separately destroying the service with a run still live,
+      each return within the 2 s grace plus one second. Afterwards neither
+      process id is alive, and the child has been reaped (POSIX `waitpid`
+      reports `ECHILD`; on Windows the job reports zero active processes).
+- `bash scripts/fleet/tests/run_all.sh --only ir_launcher_update`, on every
+  host that runs the suite, native Windows included. Stub `cmake` and
+  `ir-run` sit on `PATH`, and a stub installed `IRLauncher` logs each step
+  with a timestamp and its pid.
+  - **Update.** The stub exits with `kUpdateRequestedExit`. The log shows
+    its exit before the build starts. The second launch runs the new
+    installed copy with `installed/save_files/launcher.irkv` carried over,
+    and the script exits with the second launch's code.
+  - **Failed update.** The stub build fails after staging a new
+    `scripts/` file. `installed/` is byte-identical before and after (a
+    hashed tree listing), the relaunch gets `--update-failed
+    build-launcher/update.log`, and `installed.next/` is gone.
+  - **No leftovers.** After the script exits, no pid it logged is alive.
+  - **Pass-through.** Any other exit code ends the loop with that code and no
+    build. `--update` alone runs one update and exits non-zero on a failed
+    build.
 - `bash scripts/fleet/tests/run_all.sh --only ir_run_result_file` — `ir-run
   --result-file` writes every verdict class the stdout line reports.
 - `python3 scripts/lint_creation_manifests.py` — every directory under
   `creations/demos` and `creations/editors` has a valid manifest and every
   `targets[].name` is a target the configured tree knows (CI runs it after
-  configure).
+  configure). It applies the same value checks as `parseCreationManifest`.
+  Its test and the `CreationManifest` ctest read one shared corpus of
+  invalid manifests, so the lint and the launcher cannot disagree about
+  what is invalid.
 - `python3 scripts/gui-verify.py IRLauncher -- --gui-session <name>` —
   `catalog_tree` (groups fold and filter), `details_build` (Build streams a
   stub tool's lines into the log and reports its exit), `run_hand_off`

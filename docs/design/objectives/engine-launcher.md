@@ -13,7 +13,7 @@ at the voxel entities, prefabs and screenshots the engine has produced.
   group and targets the launcher shows; the manifest lint is green in CI.
 - [ ] Build from the launcher streams the `ir-build` log into the window and
   reports the exit; a broken `build/` never prevents the launcher from
-  starting (`ir-launcher` runs the `build-launcher/` executable).
+  starting (`ir-launcher` runs the installed copy under `build-launcher/`).
 - [ ] Run from the launcher hands off through `ir-run`, and the child's
   `RESULT=` verdict is shown on the target row when the launcher resumes.
 - [ ] Open in IDE opens the creation directory in the configured editor on
