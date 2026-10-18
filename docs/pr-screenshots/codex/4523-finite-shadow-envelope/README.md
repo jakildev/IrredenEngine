@@ -75,7 +75,7 @@ validated by geometry witnesses than by its subpixel silhouette.
 
 All 21 fixed images match the parent RGB exactly: six baked ShapeDebug, six
 direct ShapeDebug and nine mixed CanvasStress frames. `regression/manifest.json`
-retains commands, binary and shader hashes; `comparisons.json` records all pairs.
+retains commands, binary and shader hashes; `regression/comparisons.json` records all pairs.
 Duplicate PNGs reference the existing parent captures, with candidate PNG hashes
 retained. Full run logs are included. Existing visible artifacts remain tracked
 in the rendering worklist rather than being relabeled as fixed here.
@@ -100,3 +100,20 @@ ranges and drift in several unchanged stages. It does not establish zero
 receiver overhead or a general speedup. The deterministic local-index work
 reduction is the primary result. Rejection-heavy 64/256-candidate receiver
 cost, dense local overflow, Release scaling and native OpenGL remain follow-ups.
+
+A restored-parent ordinary crowded control, after the candidate series, records
+0.782 ms (0.580–1.028) box casting and 8.780 ms mean frames. The unchanged
+screen presentation and other stages also moved substantially. Its manifest
+confirms the original binary and parent staged-shader hashes; the working tree
+contained candidate sources, so the staged shader hash is authoritative. All
+three restored runs were guarded and clean. An earlier sandbox launch failed
+to initialize a display and produced no fresh report; it is excluded.
+
+## Master integration
+
+Replayed the feature onto master `18404060457df49d4e2f8380617be340f18eb1fd`
+after the parent merged. The feature diff is byte-identical across the rebase.
+Rebuilt both demos and repeated all 21 captures with the new binaries: all
+remain RGB-identical to the retained parent images. Commands, binary/shader
+hashes, comparisons and raw logs are in `rebased-regression/`. The timing
+comparison above deliberately keeps the original matched binary.
