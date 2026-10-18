@@ -214,13 +214,14 @@ TEST_F(PrefabSystemProbeTest, GlitchOffFrameDoesNoWorkAndZeroesItsTimingRow) {
     EXPECT_FALSE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick());
 }
 
-// The enabled-frame destination and resource contract. The pass's real
-// `encodeFrame` runs against a recording encoder, so every image allocation,
-// history copy, default-target clear and screen-base draw it issues lands in
-// one ordered log. The blit's real `beginTick` and `tick` run against a
-// recording device that appends any default-target or draw call to the same
-// log. `tick` only resolves the camera and the framebuffer before
-// `encodeFrame`; those need a live RenderManager and backend.
+// The screen-base destination and resource contract. The glitch pass's real
+// `encodeFrame` and the blit's real `beginFrame` / `encodeBlit` run against
+// recording encoders, so every image allocation, history copy, default-target
+// clear and screen-base draw either pass issues lands in one ordered log. A
+// recording device appends any device call made outside the encoders to the
+// same log. The systems' `tick` / `beginTick` only resolve the camera, the
+// framebuffer and the GPU encoders; those need a live RenderManager and
+// backend.
 using GlitchSystem = IRSystem::System<IRSystem::FRAMEBUFFER_GLITCH>;
 using ScreenBlitSystem = IRSystem::System<IRSystem::FRAMEBUFFER_TO_SCREEN>;
 
@@ -257,6 +258,24 @@ class GlitchRecordingEncoder final : public IRSystem::GlitchEncoder {
 
     int liveImages_ = 0;
     IRMath::ivec2 historySize_{0};
+
+  private:
+    RenderOpLog &m_log;
+};
+
+class ScreenBlitRecordingEncoder final : public IRSystem::ScreenBlitEncoder {
+  public:
+    explicit ScreenBlitRecordingEncoder(RenderOpLog &log)
+        : m_log{log} {}
+
+    void beginScreen() override {
+        m_log.push_back("blit:beginScreen");
+    }
+    void drawFramebuffer(
+        const IRComponents::C_TrixelCanvasFramebuffer &, IRMath::vec3, bool isMainFramebuffer
+    ) override {
+        m_log.push_back(isMainFramebuffer ? "blit:drawMainFramebuffer" : "blit:drawFramebuffer");
+    }
 
   private:
     RenderOpLog &m_log;
@@ -347,6 +366,7 @@ class GlitchScheduleProbeTest : public PrefabSystemProbeTest {
   protected:
     GlitchScheduleProbeTest()
         : m_encoder{m_log}
+        , m_blitEncoder{m_log}
         , m_device{m_log} {
         m_previousDevice = IRRender::g_renderDevice;
         IRRender::setDevice(&m_device);
@@ -359,31 +379,35 @@ class GlitchScheduleProbeTest : public PrefabSystemProbeTest {
     }
 
     // One RENDER tick of the two screen passes in pipeline order; returns
-    // everything they issued. The blit runs only after an enabled glitch
-    // frame: its ordinary path needs a RenderManager, so a glitch frame that
-    // failed to publish fails the probe there instead of passing silently.
+    // everything they issued. An off glitch frame runs the pass's real `tick`,
+    // which must return before resolving anything.
     RenderOpLog renderFrame(IRMath::ivec2 framebufferSize = kProbeFramebufferSize) {
         m_log.clear();
         advanceRenderTick();
         m_glitch->beginTick();
-        if (!m_glitch->enabledThisFrame_) {
+        if (m_glitch->enabledThisFrame_) {
+            m_glitch->encodeFrame(m_encoder, framebufferSize, kProbeTrixelStep, IRMath::mat4(1.0f));
+        } else {
             m_glitch->tick(m_offscreenFramebuffer, m_cameraXform, m_mainName);
-            return m_log;
         }
-        m_glitch->encodeFrame(m_encoder, framebufferSize, kProbeTrixelStep, IRMath::mat4(1.0f));
-        m_blit->beginTick();
-        m_blit->tick(m_offscreenFramebuffer, m_cameraXform, m_mainName);
+        runBlit();
         return m_log;
+    }
+
+    void runBlit() {
+        m_blit->beginFrame(m_blitEncoder);
+        m_blit->encodeBlit(m_blitEncoder, m_offscreenFramebuffer, m_cameraXform, m_mainName);
     }
 
     RenderOpLog m_log;
     GlitchRecordingEncoder m_encoder;
+    ScreenBlitRecordingEncoder m_blitEncoder;
     RecordingRenderDevice m_device;
     IRRender::RenderDevice *m_previousDevice = nullptr;
     GlitchSystem *m_glitch = nullptr;
     ScreenBlitSystem *m_blit = nullptr;
-    // Never dereferenced: the passes return before reading it on every tick
-    // these probes run.
+    // Never read: the recording encoders ignore it, and the glitch pass's
+    // real `tick` runs only on off frames, where it returns first.
     const IRComponents::C_TrixelCanvasFramebuffer m_offscreenFramebuffer{};
     const IRComponents::C_WorldTransform m_cameraXform{};
     const IRComponents::C_Name m_mainName{"mainFramebuffer"};
@@ -417,6 +441,7 @@ TEST_F(GlitchScheduleProbeTest, EnabledFrameClearsAndDrawsTheScreenBaseOnceInPla
     m_glitch->clock_.holdTick_ += 1;
     m_log.clear();
     m_glitch->encodeFrame(m_encoder, kProbeFramebufferSize, kProbeTrixelStep, IRMath::mat4(1.0f));
+    runBlit();
     EXPECT_EQ(
         m_log,
         (RenderOpLog{"glitch:copyHistory", "glitch:bindAndClearScreen", "glitch:drawScreenBase"})
@@ -469,14 +494,25 @@ TEST_F(GlitchScheduleProbeTest, ResizeWithdrawsPublicationAndReplacesOnlyTheHist
     EXPECT_EQ(m_blit->ordinaryBlitCount_, 0u);
 }
 
-TEST_F(GlitchScheduleProbeTest, OffFrameIssuesNothingAndReseedsOnReturn) {
+TEST_F(GlitchScheduleProbeTest, OffFrameLeavesTheScreenBaseToTheOrdinaryBlit) {
+    EXPECT_EQ(renderFrame(), (RenderOpLog{"blit:beginScreen", "blit:drawMainFramebuffer"}))
+        << "with no glitch state the blit clears and draws the main framebuffer once";
+    EXPECT_FALSE(m_blit->screenAlreadyComposited_);
+    EXPECT_EQ(m_blit->ordinaryBlitCount_, 1u);
+    EXPECT_EQ(m_encoder.liveImages_, 0) << "an unused pass allocates nothing";
+
     auto &state = enableHoldGlitch();
     renderFrame();
+    ASSERT_EQ(m_blit->ordinaryBlitCount_, 1u);
 
     state.intensity_ = 0.0f;
-    EXPECT_TRUE(renderFrame().empty()) << "an off tick encodes no glitch work";
-    EXPECT_FALSE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick())
-        << "an off tick leaves the screen base to the ordinary blit";
+    EXPECT_EQ(renderFrame(), (RenderOpLog{"blit:beginScreen", "blit:drawMainFramebuffer"}))
+        << "an off tick encodes no glitch work; the blit clears and draws once";
+    EXPECT_FALSE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick());
+    EXPECT_FALSE(m_blit->screenAlreadyComposited_);
+    EXPECT_EQ(m_blit->ordinaryBlitCount_, 2u);
+    EXPECT_EQ(m_glitch->frameDraws_, 0);
+    EXPECT_EQ(m_glitch->frameHistoryCopies_, 0);
     EXPECT_EQ(m_encoder.liveImages_, 1) << "an off tick keeps the history image";
     EXPECT_FALSE(m_glitch->historyValid_);
 
@@ -486,6 +522,7 @@ TEST_F(GlitchScheduleProbeTest, OffFrameIssuesNothingAndReseedsOnReturn) {
         (RenderOpLog{"glitch:copyHistory", "glitch:bindAndClearScreen", "glitch:drawScreenBase"})
     ) << "the snapshot from before the off tick is stale";
     EXPECT_EQ(m_encoder.liveImages_, 1);
+    EXPECT_EQ(m_blit->ordinaryBlitCount_, 2u);
 }
 
 } // namespace

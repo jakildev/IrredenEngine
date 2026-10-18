@@ -106,9 +106,13 @@ An enabled frame runs `encodeFrame`, which issues its GPU work through a
 after an off tick, then one `bindAndClearScreen` and one `drawScreenBase`. The
 pass publishes only after that draw. `tick` resolves the camera and hands
 `encodeFrame` a `GlitchGpuEncoder`, which makes the device and resource calls.
-`test/render/prefab_system_probe_test.cpp` runs `encodeFrame` against a
-recording encoder and the blit's `beginTick` and `tick` against a recording
-`RenderDevice`, and asserts the whole schedule of each RENDER tick, without a
+`FRAMEBUFFER_TO_SCREEN` has the same shape: `beginFrame` and `encodeBlit`
+decide and count, and issue their work through a `ScreenBlitEncoder`
+(`beginScreen`, then one `drawFramebuffer` per framebuffer) that
+`ScreenBlitGpuEncoder` encodes.
+`test/render/prefab_system_probe_test.cpp` runs both passes against recording
+encoders, with a recording `RenderDevice` catching any call made outside them,
+and asserts the whole schedule of each RENDER tick, enabled and off, without a
 GPU.
 
 Off (no singleton, zero intensity, all weights zero) does no GPU work: no copy,
