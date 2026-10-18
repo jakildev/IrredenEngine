@@ -33,6 +33,11 @@ subjects; `ctest` never sees them. Validator index: [`VALIDATION.md`](../../docs
 - **An extensionless PATH stub is invisible to native-Windows Python
   `subprocess`**: launch `gh` via `fleet_github.run()` (`lint_gh_launches.py`
   ratchets it); the suite poisons the real gh's env — `tests/lib_hermetic.sh`.
+- **A suite launches `shutil.which("bash") or "bash"`, never a bare
+  `"bash"` argv.** Native-Windows `CreateProcess` searches System32 first,
+  where `bash.exe` is the WSL launcher: the child gets none of the suite's
+  hermetic env and reaches WSL's real `gh` and `$HOME`.
+  `tests/test_no_bare_bash_argv.py` ratchets it.
 - **A CLI stub models the tool's argument parsing, not just its endpoint.**
   Transcribe the accepted flag set from the real tool's `--help` and fail the
   way it fails; a stub that emulates `--jq` evaluates the program against

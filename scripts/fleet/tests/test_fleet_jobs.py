@@ -259,8 +259,9 @@ class Lifecycle(JobsCase):
     def test_job_survives_launcher_group_kill_and_wait_returns_exact_exit(self):
         release = self.root / "release"
         launcher = subprocess.Popen(
-            ["bash", "-c", f'"{sys.executable}" "{self.subject}" start build -- hold '
-                           f'"{release}"; exec sleep 60'],
+            [shutil.which("bash") or "bash", "-c",
+             f'"{sys.executable}" "{self.subject}" start build -- hold '
+             f'"{release}"; exec sleep 60'],
             cwd=self.repo, env=self.env(self.pane_a), stdout=subprocess.PIPE, text=True,
             start_new_session=True)
         first = launcher.stdout.readline()

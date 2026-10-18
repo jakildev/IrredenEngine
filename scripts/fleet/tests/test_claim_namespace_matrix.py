@@ -307,7 +307,7 @@ def run_claim(claim_path: Path, command: str, labels: list[str], agent: str):
             }
         )
         result = subprocess.run(
-            ["bash", str(claim_path), command, "990001", agent],
+            [shutil.which("bash") or "bash", str(claim_path), command, "990001", agent],
             capture_output=True,
             check=False,
             env=env,

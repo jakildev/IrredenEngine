@@ -57,8 +57,9 @@ esac''')
         path.chmod(0o755)
 
     def shell(self, command, **env):
-        return subprocess.run(["bash", "-c", command], env={**self.env, **env},
-                              capture_output=True, text=True, timeout=30, cwd=self.root)
+        return subprocess.run([shutil.which("bash") or "bash", "-c", command],
+                              env={**self.env, **env}, capture_output=True, text=True,
+                              timeout=30, cwd=self.root)
 
     def sample(self, identity, pool, utilization=0.1, **fields):
         sample = dict(identity=identity, rateLimitType="github_" + pool,
@@ -126,7 +127,7 @@ printf '%s\\n' "$FLEET_DISPATCH_ID"
         command = ('source "$COMMON"; fleet_select_github_identity app; '
                    'printf "%s\\n" "$GH_TOKEN"')
         proc = subprocess.run(
-            ["bash", "-c", command],
+            [shutil.which("bash") or "bash", "-c", command],
             env={**env, "COMMON": str(lib / "fleet-common.sh")}, capture_output=True,
             text=True, timeout=30, cwd=self.root)
         self.assertEqual(proc.returncode, 0, proc.stderr)
@@ -303,9 +304,9 @@ main
             if any(word.endswith("fleet-pr-stamp") for word in words):
                 lane = "pr-stamp-backfill"
             with patch.object(subprocess, "Popen", real_popen):
-                proc = subprocess.run(["bash", str(self.bin / "gh"), "api", "user"],
-                                      env=kwargs.get("env"), capture_output=True,
-                                      text=True, timeout=10)
+                proc = subprocess.run(
+                    [shutil.which("bash") or "bash", str(self.bin / "gh"), "api", "user"],
+                    env=kwargs.get("env"), capture_output=True, text=True, timeout=10)
             charged[lane] = proc.stdout.strip()
 
         with patch.dict(os.environ, {**self.env, "FLEET_GH_IDENTITY": "app"}, clear=True), \

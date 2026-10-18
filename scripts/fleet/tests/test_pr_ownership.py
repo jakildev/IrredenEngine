@@ -1,6 +1,7 @@
 """Persistent PR ownership gates writes without preventing independent review."""
 
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -60,7 +61,7 @@ TEST_RESUME=1
 cmd_pr_claim 990001 probeA
 """
                 result = subprocess.run(
-                    ["bash", "-c", script, "test", str(CLAIM_PATH)],
+                    [shutil.which("bash") or "bash", "-c", script, "test", str(CLAIM_PATH)],
                     env=env,
                     capture_output=True,
                     text=True,
@@ -155,7 +156,7 @@ _fetch_live_labels() {
 _acquire_label_on example/repo 990001 "fleet:${TEST_LANE}-mac-probeA" "fleet:${TEST_LANE}-"
 """
                     result = subprocess.run(
-                        ["bash", "-c", script, "test", str(CLAIM_PATH)],
+                        [shutil.which("bash") or "bash", "-c", script, "test", str(CLAIM_PATH)],
                         env=env,
                         capture_output=True,
                         text=True,
@@ -169,7 +170,7 @@ _acquire_label_on example/repo 990001 "fleet:${TEST_LANE}-mac-probeA" "fleet:${T
             env = dict(os.environ, FLEET_CLAIM_LIB="1", HOME=temp)
             result = subprocess.run(
                 [
-                    "bash",
+                    shutil.which("bash") or "bash",
                     "-c",
                     'fleet-gh-token() { return 0; }; source "$1"; '
                     "gh() { echo unexpected-network; return 99; }; "
