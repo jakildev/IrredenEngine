@@ -16,6 +16,7 @@
 #include <irreden/render/components/component_entity_canvas.hpp>
 #include <irreden/render/components/component_fog_exempt.hpp>
 #include <irreden/render/components/component_fog_field.hpp>
+#include <irreden/render/components/component_text_style.hpp>
 #include <irreden/render/components/component_widget.hpp>
 #include <irreden/render/fog_of_war.hpp>
 #include <irreden/update/components/component_angular_velocity.hpp>
@@ -64,10 +65,16 @@ using IRComponents::C_PositionInt3D;
 using IRComponents::C_RotationTarget;
 using IRComponents::C_SizeInt3D;
 using IRComponents::C_Skeleton;
+using IRComponents::C_TextStyle;
 using IRComponents::C_Voxel;
 using IRComponents::C_VoxelSetNew;
+using IRComponents::C_WidgetButton;
+using IRComponents::C_WidgetCheckbox;
+using IRComponents::C_WidgetDropdown;
 using IRComponents::C_WidgetLabel;
+using IRComponents::C_WidgetSlider;
 using IREntity::EntityId;
+using IRRender::TextSize;
 
 std::vector<std::uint8_t> readFileBytes(const std::string &path) {
     std::ifstream in(path, std::ios::binary);
@@ -132,28 +139,27 @@ class LuaWorldSnapshotTest : public testing::Test {
             .generic_string();
     }
 
-    void writeHitBoxV1Snapshot(const std::string &path, EntityId entity) const {
-        struct LegacyHitBox2D {
-            IRMath::vec2 halfExtent_;
-            bool hovered_;
-        };
-        static_assert(std::is_trivially_copyable_v<LegacyHitBox2D>);
-        static_assert(sizeof(LegacyHitBox2D) == 12);
-
+    // One entity carrying one component column, written at @p version.
+    void writeSingleColumnSnapshot(
+        const std::string &path,
+        EntityId entity,
+        const char *componentName,
+        std::uint32_t version,
+        const std::vector<std::uint8_t> &column
+    ) const {
         IRAsset::MemoryBinaryWriter componentNames;
         componentNames.writeVarUInt(1);
-        componentNames.writeString("IRComponents::C_HitBox2D");
+        componentNames.writeString(componentName);
 
-        const LegacyHitBox2D legacy{IRMath::vec2{6.0f, 4.0f}, true};
         IRAsset::MemoryBinaryWriter archetypes;
         archetypes.writeVarUInt(1);
         archetypes.writeVarUInt(1);
         archetypes.writeVarUInt(0);
         archetypes.writeVarUInt(1);
         archetypes.writeVarUInt(entity);
-        archetypes.writeU32(1);
-        archetypes.writeVarUInt(sizeof(legacy));
-        archetypes.writeBytes(&legacy, sizeof(legacy));
+        archetypes.writeU32(version);
+        archetypes.writeVarUInt(column.size());
+        archetypes.writeBytes(column.data(), column.size());
 
         IRAsset::MemoryBinaryWriter metadata;
         metadata.writeVarUInt(entity + 1);
@@ -177,6 +183,25 @@ class LuaWorldSnapshotTest : public testing::Test {
         );
     }
 
+    void writeHitBoxV1Snapshot(const std::string &path, EntityId entity) const {
+        struct LegacyHitBox2D {
+            IRMath::vec2 halfExtent_;
+            bool hovered_;
+        };
+        static_assert(std::is_trivially_copyable_v<LegacyHitBox2D>);
+        static_assert(sizeof(LegacyHitBox2D) == 12);
+
+        const LegacyHitBox2D legacy{IRMath::vec2{6.0f, 4.0f}, true};
+        const auto *bytes = reinterpret_cast<const std::uint8_t *>(&legacy);
+        writeSingleColumnSnapshot(
+            path,
+            entity,
+            "IRComponents::C_HitBox2D",
+            1,
+            std::vector<std::uint8_t>(bytes, bytes + sizeof(legacy))
+        );
+    }
+
     void writeEntityCanvasV2Snapshot(const std::string &path, EntityId entity) const {
         struct LegacyEntityCanvas {
             EntityId canvasEntity_;
@@ -190,10 +215,6 @@ class LuaWorldSnapshotTest : public testing::Test {
         static_assert(std::is_trivially_copyable_v<LegacyEntityCanvas>);
         static_assert(sizeof(LegacyEntityCanvas) == 32);
 
-        IRAsset::MemoryBinaryWriter componentNames;
-        componentNames.writeVarUInt(1);
-        componentNames.writeString("IRComponents::C_EntityCanvas");
-
         const LegacyEntityCanvas legacy{
             42,
             IRMath::ivec2{320, 180},
@@ -203,35 +224,13 @@ class LuaWorldSnapshotTest : public testing::Test {
             0.0f,
             true,
         };
-        IRAsset::MemoryBinaryWriter archetypes;
-        archetypes.writeVarUInt(1);
-        archetypes.writeVarUInt(1);
-        archetypes.writeVarUInt(0);
-        archetypes.writeVarUInt(1);
-        archetypes.writeVarUInt(entity);
-        archetypes.writeU32(2);
-        archetypes.writeVarUInt(sizeof(legacy));
-        archetypes.writeBytes(&legacy, sizeof(legacy));
-
-        IRAsset::MemoryBinaryWriter metadata;
-        metadata.writeVarUInt(entity + 1);
-        metadata.writeVarUInt(1);
-
-        std::vector<IRAsset::ChunkPayload> chunks;
-        chunks.push_back({IRAsset::makeTag("CMPN"), componentNames.takeBuffer()});
-        chunks.push_back({IRAsset::makeTag("ARCH"), archetypes.takeBuffer()});
-        chunks.push_back({IRAsset::makeTag("META"), metadata.takeBuffer()});
-
-        IRAsset::FileBinaryWriter writer(path);
-        ASSERT_TRUE(writer.ok());
-        ASSERT_TRUE(
-            IRAsset::writeChunked(
-                writer,
-                IRWorld::kWorldSnapshotMagic,
-                IRWorld::kWorldSnapshotVersion,
-                chunks
-            )
-                .ok()
+        const auto *bytes = reinterpret_cast<const std::uint8_t *>(&legacy);
+        writeSingleColumnSnapshot(
+            path,
+            entity,
+            "IRComponents::C_EntityCanvas",
+            2,
+            std::vector<std::uint8_t>(bytes, bytes + sizeof(legacy))
         );
     }
 
@@ -314,6 +313,140 @@ TEST_F(LuaWorldSnapshotTest, MigratesEntityCanvasV2AndDropsDerivedFogState) {
     EXPECT_EQ(restored.depthPriority_, 7);
     EXPECT_FLOAT_EQ(restored.fogRevealFactor_, 1.0f);
     EXPECT_FALSE(restored.fogHidden_);
+}
+
+// Every component that stores a glyph-set size keeps SMALL across a save and
+// load through the Lua surface; a reader that dropped the field reads LARGE.
+TEST_F(LuaWorldSnapshotTest, RoundTripsTheSmallTextSize) {
+    const EntityId style = m_entity_manager.createEntity(
+        C_TextStyle{
+            IRMath::IRColors::kWhite,
+            0,
+            IRComponents::TextAlignH::CENTER,
+            IRComponents::TextAlignV::BOTTOM,
+            80,
+            20,
+            1,
+            TextSize::SMALL,
+        }
+    );
+    C_WidgetLabel label{};
+    label.text_ = "LABEL";
+    label.textSize_ = TextSize::SMALL;
+    const EntityId labelEntity = m_entity_manager.createEntity(label);
+    C_WidgetButton button{};
+    button.label_ = "BUTTON";
+    button.textSize_ = TextSize::SMALL;
+    const EntityId buttonEntity = m_entity_manager.createEntity(button);
+    C_WidgetSlider slider{};
+    slider.label_ = "GAIN";
+    slider.textSize_ = TextSize::SMALL;
+    const EntityId sliderEntity = m_entity_manager.createEntity(slider);
+    C_WidgetCheckbox checkbox{};
+    checkbox.label_ = "LOCK";
+    checkbox.textSize_ = TextSize::SMALL;
+    const EntityId checkboxEntity = m_entity_manager.createEntity(checkbox);
+    C_WidgetDropdown dropdown{};
+    dropdown.items_ = {"RAMP", "SINE"};
+    dropdown.textSize_ = TextSize::SMALL;
+    const EntityId dropdownEntity = m_entity_manager.createEntity(dropdown);
+
+    const std::string path = tempPath("text_sizes");
+    ASSERT_TRUE(runOk("assert(IRPersist.saveWorld('" + path + "'))"));
+    m_entity_manager.destroyAllEntities();
+    ASSERT_EQ(m_entity_manager.getLiveEntityCount(), 0u);
+    ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + path + "'))"));
+
+    const C_TextStyle &restoredStyle = m_entity_manager.getComponent<C_TextStyle>(style);
+    EXPECT_EQ(restoredStyle.textSize_, TextSize::SMALL);
+    EXPECT_EQ(restoredStyle.alignH_, IRComponents::TextAlignH::CENTER);
+    EXPECT_EQ(restoredStyle.alignV_, IRComponents::TextAlignV::BOTTOM);
+    EXPECT_EQ(restoredStyle.boxWidth_, 80);
+    EXPECT_EQ(restoredStyle.fontSize_, 1);
+    EXPECT_EQ(m_entity_manager.getComponent<C_WidgetLabel>(labelEntity).textSize_, TextSize::SMALL);
+    EXPECT_EQ(m_entity_manager.getComponent<C_WidgetLabel>(labelEntity).text_, "LABEL");
+    EXPECT_EQ(
+        m_entity_manager.getComponent<C_WidgetButton>(buttonEntity).textSize_,
+        TextSize::SMALL
+    );
+    EXPECT_EQ(
+        m_entity_manager.getComponent<C_WidgetSlider>(sliderEntity).textSize_,
+        TextSize::SMALL
+    );
+    EXPECT_EQ(
+        m_entity_manager.getComponent<C_WidgetCheckbox>(checkboxEntity).textSize_,
+        TextSize::SMALL
+    );
+    EXPECT_EQ(
+        m_entity_manager.getComponent<C_WidgetDropdown>(dropdownEntity).textSize_,
+        TextSize::SMALL
+    );
+}
+
+// Rows saved before the glyph-set size existed load through the retired
+// readers as LARGE with every other field intact.
+TEST_F(LuaWorldSnapshotTest, MigratesVersionOneTextRowsAsLarge) {
+    struct LegacyTextStyle {
+        IRMath::Color color_;
+        int wrapWidth_;
+        IRComponents::TextAlignH alignH_;
+        IRComponents::TextAlignV alignV_;
+        int boxWidth_;
+        int boxHeight_;
+        int fontSize_;
+    };
+    static_assert(std::is_trivially_copyable_v<LegacyTextStyle>);
+    static_assert(sizeof(LegacyTextStyle) == 28);
+    const LegacyTextStyle legacy{
+        IRMath::Color{5, 6, 7, 8},
+        -1,
+        IRComponents::TextAlignH::RIGHT,
+        IRComponents::TextAlignV::CENTER,
+        64,
+        32,
+        2,
+    };
+    const auto *legacyBytes = reinterpret_cast<const std::uint8_t *>(&legacy);
+    const EntityId styleEntity = 1002;
+    const std::string stylePath = tempPath("text_style_v1");
+    ASSERT_NO_FATAL_FAILURE(writeSingleColumnSnapshot(
+        stylePath,
+        styleEntity,
+        "IRComponents::C_TextStyle",
+        1,
+        std::vector<std::uint8_t>(legacyBytes, legacyBytes + sizeof(legacy))
+    ));
+    ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + stylePath + "'))"));
+    ASSERT_TRUE(m_entity_manager.entityExists(styleEntity));
+    const C_TextStyle &style = m_entity_manager.getComponent<C_TextStyle>(styleEntity);
+    EXPECT_EQ(style.color_.green_, 6);
+    EXPECT_EQ(style.wrapWidth_, -1);
+    EXPECT_EQ(style.alignH_, IRComponents::TextAlignH::RIGHT);
+    EXPECT_EQ(style.alignV_, IRComponents::TextAlignV::CENTER);
+    EXPECT_EQ(style.boxWidth_, 64);
+    EXPECT_EQ(style.boxHeight_, 32);
+    EXPECT_EQ(style.fontSize_, 2);
+    EXPECT_EQ(style.textSize_, TextSize::LARGE);
+
+    m_entity_manager.destroyAllEntities();
+    IRAsset::MemoryBinaryWriter labelV1;
+    labelV1.writeString("Frames/sec");
+    labelV1.writeU32(IRMath::Color{9, 8, 7, 240}.toPackedRGBA());
+    const EntityId labelEntity = 1003;
+    const std::string labelPath = tempPath("widget_label_v1");
+    ASSERT_NO_FATAL_FAILURE(writeSingleColumnSnapshot(
+        labelPath,
+        labelEntity,
+        "IRComponents::C_WidgetLabel",
+        1,
+        labelV1.buffer()
+    ));
+    ASSERT_TRUE(runOk("assert(IRPersist.loadWorld('" + labelPath + "'))"));
+    ASSERT_TRUE(m_entity_manager.entityExists(labelEntity));
+    const C_WidgetLabel &label = m_entity_manager.getComponent<C_WidgetLabel>(labelEntity);
+    EXPECT_EQ(label.text_, "Frames/sec");
+    EXPECT_EQ(label.colorOverride_.alpha_, 240);
+    EXPECT_EQ(label.textSize_, TextSize::LARGE);
 }
 
 // The core W-9 acceptance: a non-trivial world (multiple archetypes +

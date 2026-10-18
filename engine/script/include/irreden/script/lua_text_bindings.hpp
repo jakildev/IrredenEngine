@@ -31,15 +31,20 @@ inline IRRender::TextSize textSizeFromLua(const sol::object &value, const char *
     }
     if (value.get_type() == sol::type::number) {
         const double number = value.as<double>();
-        const auto integer = static_cast<lua_Integer>(number);
-        if (static_cast<double>(integer) == number) {
-            switch (integer) {
-            case static_cast<lua_Integer>(IRRender::TextSize::LARGE):
-                return IRRender::TextSize::LARGE;
-            case static_cast<lua_Integer>(IRRender::TextSize::SMALL):
-                return IRRender::TextSize::SMALL;
-            default:
-                break;
+        // Bounded before the cast: converting NaN, an infinity or any double
+        // past lua_Integer's range is undefined behaviour.
+        if (number >= static_cast<double>(IRRender::TextSize::LARGE) &&
+            number <= static_cast<double>(IRRender::TextSize::SMALL)) {
+            const auto integer = static_cast<lua_Integer>(number);
+            if (static_cast<double>(integer) == number) {
+                switch (integer) {
+                case static_cast<lua_Integer>(IRRender::TextSize::LARGE):
+                    return IRRender::TextSize::LARGE;
+                case static_cast<lua_Integer>(IRRender::TextSize::SMALL):
+                    return IRRender::TextSize::SMALL;
+                default:
+                    break;
+                }
             }
         }
     }

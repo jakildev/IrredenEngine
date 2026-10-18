@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <stdexcept>
 #include <string>
 #include <type_traits>
 #include <vector>
@@ -53,9 +54,11 @@ concept UsesRawImageSerializer =
 static_assert(IRWorld::SaveTrait<C_EntityCanvas>::kHandWrittenLayout);
 static_assert(IRWorld::SaveTrait<C_HitBox2D>::kHandWrittenLayout);
 static_assert(IRWorld::SaveTrait<C_ShapeDescriptor>::kHandWrittenLayout);
+static_assert(IRWorld::SaveTrait<C_TextStyle>::kHandWrittenLayout);
 static_assert(!UsesRawImageSerializer<C_EntityCanvas>);
 static_assert(!UsesRawImageSerializer<C_HitBox2D>);
 static_assert(!UsesRawImageSerializer<C_ShapeDescriptor>);
+static_assert(!UsesRawImageSerializer<C_TextStyle>);
 
 template <typename C> std::vector<std::uint8_t> serialize(const C &value) {
     IRAsset::MemoryBinaryWriter writer;
@@ -96,6 +99,51 @@ template <typename C> C roundTrip(const C &value) {
     IRAsset::Result<C> restored = deserialize<C>(serialize(value));
     EXPECT_TRUE(restored.ok()) << restored.status_.message_;
     return restored.value_;
+}
+
+// Rule #5: a truncated payload is a recoverable error, not a crash or a
+// silently half-filled component. Checked on a representative serializer from
+// each container shape (string, string vector, trivial vector, map).
+template <typename C> void expectTruncationIsRecoverable(const C &value) {
+    const std::vector<std::uint8_t> full = serialize(value);
+    ASSERT_GT(full.size(), 1u);
+    for (std::size_t cut = 0; cut < full.size(); ++cut) {
+        const std::vector<std::uint8_t> partial(full.begin(), full.begin() + cut);
+        IRAsset::MemoryBinaryReader reader(partial.data(), partial.size());
+        IRAsset::Result<C> restored = IRWorld::SaveSerialize<C>::read(reader);
+        EXPECT_FALSE(restored.ok()) << "truncating to " << cut << " byte(s) still read as OK";
+    }
+}
+
+// The single retired-version reader `C` declares for @p fromVersion, run over
+// @p bytes. Fails the calling test if the reader is missing or leaves bytes.
+template <typename C>
+IRAsset::Result<C> migrate(std::uint32_t fromVersion, const std::vector<std::uint8_t> &bytes) {
+    const auto migrators = IRWorld::SaveMigration<C>::migrators();
+    const auto migrator = std::find_if(migrators.begin(), migrators.end(), [&](const auto &entry) {
+        return entry.first == fromVersion;
+    });
+    if (migrator == migrators.end()) {
+        ADD_FAILURE() << "no migrator for version " << fromVersion;
+        return IRAsset::Result<C>::error(IRAsset::BinaryIOError::MigratorMissing, "missing");
+    }
+    IRAsset::MemoryBinaryReader reader(bytes.data(), bytes.size());
+    IRAsset::Result<C> restored = migrator->second(reader);
+    EXPECT_EQ(reader.remaining(), 0u) << "migrator left unread bytes";
+    return restored;
+}
+
+// The current record of a text-bearing component ends in its text-size byte;
+// overwriting it with @p raw must make the reader refuse the record.
+template <typename C> void expectOutOfRangeTextSizeIsRejected(const C &value, std::uint8_t raw) {
+    std::vector<std::uint8_t> bytes = serialize(value);
+    ASSERT_FALSE(bytes.empty());
+    bytes.back() = raw;
+    const IRAsset::Result<C> restored = deserialize<C>(bytes);
+    ASSERT_FALSE(restored.ok()) << "text size " << int{raw} << " read back as valid";
+    EXPECT_EQ(restored.status_.code_, IRAsset::BinaryIOError::UnknownTag);
+    EXPECT_NE(restored.status_.message_.find("text size"), std::string::npos)
+        << restored.status_.message_;
 }
 
 // --- common/ ---------------------------------------------------------------
@@ -695,6 +743,116 @@ TEST(SaveSerializers, TextSegmentRoundTrips) {
     expectConsumesAllBytes(C_TextSegment{""});
 }
 
+TEST(SaveSerializers, TextStyleRoundTripsEveryFieldWithTheSmallSet) {
+    const C_TextStyle style{
+        IRMath::Color{10, 20, 30, 40},
+        -1,
+        TextAlignH::RIGHT,
+        TextAlignV::BOTTOM,
+        96,
+        48,
+        3,
+        IRRender::TextSize::SMALL,
+    };
+    const C_TextStyle restored = roundTrip(style);
+    EXPECT_EQ(restored.color_.red_, 10);
+    EXPECT_EQ(restored.color_.green_, 20);
+    EXPECT_EQ(restored.color_.blue_, 30);
+    EXPECT_EQ(restored.color_.alpha_, 40);
+    EXPECT_EQ(restored.wrapWidth_, -1);
+    EXPECT_EQ(restored.alignH_, TextAlignH::RIGHT);
+    EXPECT_EQ(restored.alignV_, TextAlignV::BOTTOM);
+    EXPECT_EQ(restored.boxWidth_, 96);
+    EXPECT_EQ(restored.boxHeight_, 48);
+    EXPECT_EQ(restored.fontSize_, 3);
+    EXPECT_EQ(restored.textSize_, IRRender::TextSize::SMALL);
+    EXPECT_EQ(roundTrip(C_TextStyle{}).textSize_, IRRender::TextSize::LARGE);
+    expectConsumesAllBytes(style);
+    expectReserializesIdentically(style);
+    expectTruncationIsRecoverable(style);
+    expectOutOfRangeTextSizeIsRejected(style, 2);
+    expectOutOfRangeTextSizeIsRejected(style, 0xFF);
+}
+
+TEST(SaveSerializers, TextStyleRejectsAnOutOfRangeAlignment) {
+    const C_TextStyle
+        style{IRMath::IRColors::kWhite, 0, TextAlignH::CENTER, TextAlignV::CENTER, 0, 0};
+    // Color (4 bytes) and wrap width (4) precede the two alignment bytes.
+    for (const std::size_t offset : {std::size_t{8}, std::size_t{9}}) {
+        std::vector<std::uint8_t> bytes = serialize(style);
+        ASSERT_EQ(bytes[offset], 1u);
+        bytes[offset] = 3;
+        const IRAsset::Result<C_TextStyle> restored = deserialize<C_TextStyle>(bytes);
+        ASSERT_FALSE(restored.ok()) << "alignment byte " << offset << " = 3 read back as valid";
+        EXPECT_NE(restored.status_.message_.find("alignment"), std::string::npos)
+            << restored.status_.message_;
+    }
+}
+
+#ifndef IR_RELEASE
+// The writer's debug mirror of the readers' range checks: the culprit entity is
+// still live when the save is taken, where the read failure surfaces a load later.
+TEST(SaveSerializers, SavingAnOutOfRangeTextEnumAsserts) {
+    C_WidgetLabel label{};
+    label.textSize_ = static_cast<IRRender::TextSize>(7);
+    IRAsset::MemoryBinaryWriter labelWriter;
+    EXPECT_THROW(
+        IRWorld::SaveSerialize<C_WidgetLabel>::write(labelWriter, label),
+        std::runtime_error
+    );
+
+    C_TextStyle style{};
+    style.alignV_ = static_cast<TextAlignV>(4);
+    IRAsset::MemoryBinaryWriter styleWriter;
+    EXPECT_THROW(
+        IRWorld::SaveSerialize<C_TextStyle>::write(styleWriter, style),
+        std::runtime_error
+    );
+
+    IRAsset::MemoryBinaryWriter inRange;
+    EXPECT_NO_THROW(IRWorld::SaveSerialize<C_TextStyle>::write(inRange, C_TextStyle{}));
+}
+#endif
+
+TEST(SaveSerializers, TextStyleV1MigrationPreservesEveryFieldAndReadsLarge) {
+    const IRWorld::detail::TextStyleV1 old{
+        IRMath::Color{1, 2, 3, 4},
+        64,
+        TextAlignH::CENTER,
+        TextAlignV::BOTTOM,
+        120,
+        30,
+        1,
+    };
+    IRAsset::MemoryBinaryWriter writer;
+    writer.writeBytes(&old, sizeof(old));
+
+    ASSERT_EQ(IRWorld::SaveMigration<C_TextStyle>::migrators().size(), 1u);
+    const IRAsset::Result<C_TextStyle> restored = migrate<C_TextStyle>(1u, writer.buffer());
+    ASSERT_TRUE(restored.ok()) << restored.status_.message_;
+    EXPECT_EQ(restored.value_.color_.red_, 1);
+    EXPECT_EQ(restored.value_.color_.alpha_, 4);
+    EXPECT_EQ(restored.value_.wrapWidth_, 64);
+    EXPECT_EQ(restored.value_.alignH_, TextAlignH::CENTER);
+    EXPECT_EQ(restored.value_.alignV_, TextAlignV::BOTTOM);
+    EXPECT_EQ(restored.value_.boxWidth_, 120);
+    EXPECT_EQ(restored.value_.boxHeight_, 30);
+    EXPECT_EQ(restored.value_.fontSize_, 1);
+    EXPECT_EQ(restored.value_.textSize_, IRRender::TextSize::LARGE);
+    EXPECT_EQ(IRWorld::saveVersion<C_TextStyle>(), 2u);
+}
+
+TEST(SaveSerializers, TextStyleV1MigrationRejectsAnOutOfRangeAlignment) {
+    IRWorld::detail::TextStyleV1
+        old{IRMath::IRColors::kWhite, 0, TextAlignH::LEFT, TextAlignV::TOP, 0, 0, 2};
+    old.alignH_ = static_cast<TextAlignH>(5);
+    IRAsset::MemoryBinaryWriter writer;
+    writer.writeBytes(&old, sizeof(old));
+    const IRAsset::Result<C_TextStyle> restored = migrate<C_TextStyle>(1u, writer.buffer());
+    ASSERT_FALSE(restored.ok());
+    EXPECT_EQ(restored.status_.code_, IRAsset::BinaryIOError::UnknownTag);
+}
+
 TEST(SaveSerializers, SpriteAnimationRoundTrips) {
     C_SpriteAnimation animation{};
     animation.sheetEntity_ = 4242;
@@ -853,20 +1011,29 @@ TEST(SaveSerializers, WidgetLabelRoundTrips) {
     C_WidgetLabel label{};
     label.text_ = "Frames";
     label.colorOverride_ = IRMath::Color{12, 34, 56, 200};
+    label.textSize_ = IRRender::TextSize::SMALL;
     const C_WidgetLabel restored = roundTrip(label);
     EXPECT_EQ(restored.text_, "Frames");
     EXPECT_EQ(restored.colorOverride_.red_, 12);
     EXPECT_EQ(restored.colorOverride_.green_, 34);
     EXPECT_EQ(restored.colorOverride_.blue_, 56);
     EXPECT_EQ(restored.colorOverride_.alpha_, 200);
+    EXPECT_EQ(restored.textSize_, IRRender::TextSize::SMALL);
+    EXPECT_EQ(roundTrip(C_WidgetLabel{}).textSize_, IRRender::TextSize::LARGE);
     expectConsumesAllBytes(label);
+    expectTruncationIsRecoverable(label);
+    expectOutOfRangeTextSizeIsRejected(label, 2);
 }
 
 TEST(SaveSerializers, WidgetButtonRoundTrips) {
     C_WidgetButton button{};
     button.label_ = "Save";
-    EXPECT_EQ(roundTrip(button).label_, "Save");
+    button.textSize_ = IRRender::TextSize::SMALL;
+    const C_WidgetButton restored = roundTrip(button);
+    EXPECT_EQ(restored.label_, "Save");
+    EXPECT_EQ(restored.textSize_, IRRender::TextSize::SMALL);
     expectConsumesAllBytes(button);
+    expectOutOfRangeTextSizeIsRejected(button, 2);
 }
 
 TEST(SaveSerializers, WidgetSliderRoundTrips) {
@@ -875,22 +1042,28 @@ TEST(SaveSerializers, WidgetSliderRoundTrips) {
     slider.minValue_ = -2.0f;
     slider.maxValue_ = 8.0f;
     slider.currentValue_ = 3.25f;
+    slider.textSize_ = IRRender::TextSize::SMALL;
     const C_WidgetSlider restored = roundTrip(slider);
     EXPECT_EQ(restored.label_, "Zoom");
     EXPECT_FLOAT_EQ(restored.minValue_, -2.0f);
     EXPECT_FLOAT_EQ(restored.maxValue_, 8.0f);
     EXPECT_FLOAT_EQ(restored.currentValue_, 3.25f);
+    EXPECT_EQ(restored.textSize_, IRRender::TextSize::SMALL);
     expectConsumesAllBytes(slider);
+    expectOutOfRangeTextSizeIsRejected(slider, 2);
 }
 
 TEST(SaveSerializers, WidgetCheckboxRoundTrips) {
     C_WidgetCheckbox checkbox{};
     checkbox.label_ = "Wireframe";
     checkbox.checked_ = true;
+    checkbox.textSize_ = IRRender::TextSize::SMALL;
     const C_WidgetCheckbox restored = roundTrip(checkbox);
     EXPECT_EQ(restored.label_, "Wireframe");
     EXPECT_TRUE(restored.checked_);
+    EXPECT_EQ(restored.textSize_, IRRender::TextSize::SMALL);
     expectConsumesAllBytes(checkbox);
+    expectOutOfRangeTextSizeIsRejected(checkbox, 2);
 }
 
 TEST(SaveSerializers, WidgetListRoundTrips) {
@@ -922,13 +1095,86 @@ TEST(SaveSerializers, WidgetDropdownRoundTrips) {
     dropdown.selectedIndex_ = 1;
     dropdown.isOpen_ = true;
     dropdown.itemHeight_ = 20;
+    dropdown.textSize_ = IRRender::TextSize::SMALL;
     const C_WidgetDropdown restored = roundTrip(dropdown);
     ASSERT_EQ(restored.items_.size(), 2u);
     EXPECT_EQ(restored.items_[1], "two");
     EXPECT_EQ(restored.selectedIndex_, 1);
     EXPECT_TRUE(restored.isOpen_);
     EXPECT_EQ(restored.itemHeight_, 20);
+    EXPECT_EQ(restored.textSize_, IRRender::TextSize::SMALL);
     expectConsumesAllBytes(dropdown);
+    expectOutOfRangeTextSizeIsRejected(dropdown, 2);
+}
+
+// Each version 1 record below is spelled out field by field in the layout
+// that version wrote, so a reader that drifted from it fails here.
+TEST(SaveSerializers, TextBearingWidgetV1MigrationsPreserveEveryFieldAndReadLarge) {
+    {
+        IRAsset::MemoryBinaryWriter v1;
+        v1.writeString("Frames");
+        v1.writeU32(IRMath::Color{12, 34, 56, 200}.toPackedRGBA());
+        const IRAsset::Result<C_WidgetLabel> label = migrate<C_WidgetLabel>(1u, v1.buffer());
+        ASSERT_TRUE(label.ok()) << label.status_.message_;
+        EXPECT_EQ(label.value_.text_, "Frames");
+        EXPECT_EQ(label.value_.colorOverride_.blue_, 56);
+        EXPECT_EQ(label.value_.colorOverride_.alpha_, 200);
+        EXPECT_EQ(label.value_.textSize_, IRRender::TextSize::LARGE);
+    }
+    {
+        IRAsset::MemoryBinaryWriter v1;
+        v1.writeString("Save");
+        const IRAsset::Result<C_WidgetButton> button = migrate<C_WidgetButton>(1u, v1.buffer());
+        ASSERT_TRUE(button.ok()) << button.status_.message_;
+        EXPECT_EQ(button.value_.label_, "Save");
+        EXPECT_EQ(button.value_.textSize_, IRRender::TextSize::LARGE);
+    }
+    {
+        IRAsset::MemoryBinaryWriter v1;
+        v1.writeString("Zoom");
+        v1.writeF32(-2.0f);
+        v1.writeF32(8.0f);
+        v1.writeF32(3.25f);
+        const IRAsset::Result<C_WidgetSlider> slider = migrate<C_WidgetSlider>(1u, v1.buffer());
+        ASSERT_TRUE(slider.ok()) << slider.status_.message_;
+        EXPECT_EQ(slider.value_.label_, "Zoom");
+        EXPECT_FLOAT_EQ(slider.value_.minValue_, -2.0f);
+        EXPECT_FLOAT_EQ(slider.value_.maxValue_, 8.0f);
+        EXPECT_FLOAT_EQ(slider.value_.currentValue_, 3.25f);
+        EXPECT_EQ(slider.value_.textSize_, IRRender::TextSize::LARGE);
+    }
+    {
+        IRAsset::MemoryBinaryWriter v1;
+        v1.writeString("Wireframe");
+        v1.writeU8(1);
+        const IRAsset::Result<C_WidgetCheckbox> checkbox =
+            migrate<C_WidgetCheckbox>(1u, v1.buffer());
+        ASSERT_TRUE(checkbox.ok()) << checkbox.status_.message_;
+        EXPECT_EQ(checkbox.value_.label_, "Wireframe");
+        EXPECT_TRUE(checkbox.value_.checked_);
+        EXPECT_EQ(checkbox.value_.textSize_, IRRender::TextSize::LARGE);
+    }
+    {
+        IRAsset::MemoryBinaryWriter v1;
+        IRWorld::detail::writeStringVector(v1, {"one", "two"});
+        v1.writeI32(1);
+        v1.writeU8(1);
+        v1.writeI32(20);
+        const IRAsset::Result<C_WidgetDropdown> dropdown =
+            migrate<C_WidgetDropdown>(1u, v1.buffer());
+        ASSERT_TRUE(dropdown.ok()) << dropdown.status_.message_;
+        ASSERT_EQ(dropdown.value_.items_.size(), 2u);
+        EXPECT_EQ(dropdown.value_.items_[1], "two");
+        EXPECT_EQ(dropdown.value_.selectedIndex_, 1);
+        EXPECT_TRUE(dropdown.value_.isOpen_);
+        EXPECT_EQ(dropdown.value_.itemHeight_, 20);
+        EXPECT_EQ(dropdown.value_.textSize_, IRRender::TextSize::LARGE);
+    }
+    EXPECT_EQ(IRWorld::saveVersion<C_WidgetLabel>(), 2u);
+    EXPECT_EQ(IRWorld::saveVersion<C_WidgetButton>(), 2u);
+    EXPECT_EQ(IRWorld::saveVersion<C_WidgetSlider>(), 2u);
+    EXPECT_EQ(IRWorld::saveVersion<C_WidgetCheckbox>(), 2u);
+    EXPECT_EQ(IRWorld::saveVersion<C_WidgetDropdown>(), 2u);
 }
 
 TEST(SaveSerializers, WidgetRadioRoundTrips) {
@@ -958,20 +1204,6 @@ TEST(SaveSerializers, WidgetTextInputRoundTrips) {
 }
 
 // --- truncation ------------------------------------------------------------
-
-// Rule #5: a truncated payload is a recoverable error, not a crash or a
-// silently half-filled component. Checked on a representative serializer from
-// each container shape (string, string vector, trivial vector, map).
-template <typename C> void expectTruncationIsRecoverable(const C &value) {
-    const std::vector<std::uint8_t> full = serialize(value);
-    ASSERT_GT(full.size(), 1u);
-    for (std::size_t cut = 0; cut < full.size(); ++cut) {
-        const std::vector<std::uint8_t> partial(full.begin(), full.begin() + cut);
-        IRAsset::MemoryBinaryReader reader(partial.data(), partial.size());
-        IRAsset::Result<C> restored = IRWorld::SaveSerialize<C>::read(reader);
-        EXPECT_FALSE(restored.ok()) << "truncating to " << cut << " byte(s) still read as OK";
-    }
-}
 
 TEST(SaveSerializers, TruncatedPayloadsFailCleanly) {
     expectTruncationIsRecoverable(C_Name{"abc"});

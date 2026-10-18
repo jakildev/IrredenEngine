@@ -311,6 +311,26 @@ TEST_F(LuaWidgetValues, ABadTextSizeRaisesAndCreatesNothing) {
     EXPECT_EQ(m_entityManager.getLiveEntityCount(), before);
 }
 
+// Numbers no lua_Integer can hold, and the near misses either side of the two
+// members, raise the same error rather than reaching an integer conversion.
+TEST_F(LuaWidgetValues, ANonRepresentableTextSizeRaises) {
+    const IREntity::EntityId before = m_entityManager.getLiveEntityCount();
+    for (const char *size :
+         {"math.huge", "-math.huge", "0/0", "2^63", "-2^63", "1e308", "-1", "2", "1.5", "-0.5"}) {
+        for (const std::string &call : {
+                 std::string("IRText.measure('A', ") + size + ")",
+                 std::string("IRGui.glyphStep(") + size + ")",
+                 std::string("IRGui.makeLabel(0, 0, 'L', nil, ") + size + ")",
+             }) {
+            EXPECT_NE(
+                error(call.c_str()).find("size must be IRText.Size.LARGE or IRText.Size.SMALL"),
+                std::string::npos
+            ) << call;
+        }
+    }
+    EXPECT_EQ(m_entityManager.getLiveEntityCount(), before);
+}
+
 TEST_F(LuaWidgetValues, TextStyleTextSizeIsRangeChecked) {
     IRScript::bindLuaType<IRComponents::C_TextStyle>(m_lua);
     run(R"lua(
