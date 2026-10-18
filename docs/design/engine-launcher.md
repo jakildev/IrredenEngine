@@ -576,7 +576,7 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
       each return within the 2 s grace plus one second. Afterwards neither
       process id is alive, and the child has been reaped (POSIX `waitpid`
       reports `ECHILD`; on Windows the job reports zero active processes).
-- `bash scripts/fleet/tests/run_all.sh --only ir_launcher_update`, on every
+- `bash scripts/fleet/tests/run_all.sh --only ir_launcher`, on every
   host that runs the suite, native Windows included. Stub `cmake` and
   `ir-run` sit on `PATH`, and a stub installed `IRLauncher` logs each step
   with a timestamp and its pid.
