@@ -36,15 +36,34 @@ class ToolSpawnTest : public testing::Test {
             "printf 'o\\nthree\\n'\n"
         );
         writeExecutable(m_root / "bin" / "ir-run", "#!/usr/bin/env bash\nexit 0\n");
+#ifndef _WIN32
+        writeExecutable(
+            m_root / "bin" / "cursor",
+            "#!/usr/bin/env bash\nprintf '%s\\n%s\\n' \"$1\" \"${IRREDEN_BUILD_DIR-unset}\"\n"
+        );
+#endif
         m_wrapper = std::make_unique<IRTest::ScopedEnv>(
             "IR_RUN_WRAPPER",
             (m_root / "bin" / "ir-run").string().c_str()
         );
+        const char *path = std::getenv("PATH");
+#ifdef _WIN32
+        constexpr char kPathSeparator = ';';
+#else
+        constexpr char kPathSeparator = ':';
+#endif
+        const std::string augmentedPath =
+            (m_root / "bin").string() + kPathSeparator + (path == nullptr ? "" : path);
+        m_path = std::make_unique<IRTest::ScopedEnv>("PATH", augmentedPath.c_str());
+        m_parentBuildDir =
+            std::make_unique<IRTest::ScopedEnv>("IRREDEN_BUILD_DIR", "/parent/build");
         m_service = std::make_unique<IREngine::ToolService>(m_root);
     }
 
     void TearDown() override {
         m_service.reset();
+        m_parentBuildDir.reset();
+        m_path.reset();
         m_wrapper.reset();
         std::error_code error;
         std::filesystem::remove_all(m_root, error);
@@ -92,6 +111,8 @@ class ToolSpawnTest : public testing::Test {
 
     std::filesystem::path m_root;
     std::unique_ptr<IRTest::ScopedEnv> m_wrapper;
+    std::unique_ptr<IRTest::ScopedEnv> m_path;
+    std::unique_ptr<IRTest::ScopedEnv> m_parentBuildDir;
     std::unique_ptr<IREngine::ToolService> m_service;
 };
 
@@ -175,6 +196,34 @@ TEST_F(ToolSpawnTest, UsesRootAsCwdAndSuppliesBuildDirectory) {
         std::filesystem::weakly_canonical(lines[1]),
         std::filesystem::weakly_canonical(m_root / "build")
     );
+}
+
+TEST_F(ToolSpawnTest, ResolvesInRootSymlinksAndRemovesBuildDirectoryForEditor) {
+#ifdef _WIN32
+    GTEST_SKIP() << "POSIX stub executable test";
+#else
+    std::error_code linkError;
+    std::filesystem::create_directory_symlink(
+        m_root / "creations" / "inside",
+        m_root / "creations" / "link",
+        linkError
+    );
+    if (linkError) {
+        GTEST_SKIP() << "could not create an in-root symlink: " << linkError.message();
+    }
+    auto spawned = m_service->spawn({IREngine::ToolName::EDITOR, "", "creations/link"});
+    ASSERT_TRUE(spawned.has_value()) << spawned.error();
+    for (int attempt = 0; attempt < 100 && !spawned->exitCode().has_value(); ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    const std::vector<std::string> lines = spawned->poll();
+    ASSERT_EQ(lines.size(), 2);
+    EXPECT_EQ(
+        std::filesystem::weakly_canonical(lines[0]),
+        std::filesystem::weakly_canonical(m_root / "creations" / "inside")
+    );
+    EXPECT_EQ(lines[1], "unset");
+#endif
 }
 
 TEST_F(ToolSpawnTest, ServiceDestructionKillsTheChildTree) {
