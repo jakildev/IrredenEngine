@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # gh — the fleet's shell-side GitHub CLI launcher (fleet_github.py `launch`).
 #
-# Reached two ways: first on a daemon's PATH (fleet-up prepends this
+# Reached three ways: first on a daemon's PATH (fleet-up prepends this
 # directory for the scout and dispatcher, whose environment no rc file
-# rewrites), and through the exported `gh` function in gh-function.sh, which
-# survives a pane's ~/.bashrc re-ordering PATH. Either way it resolves,
-# counts, and runs the real gh with stdin/stdout/stderr and the exit status
-# passed through.
+# rewrites); through the exported `gh` function in gh-function.sh, which
+# survives a pane's ~/.bashrc re-ordering PATH; and from the token shim
+# (scripts/fleet/gh), which every other shell's `gh` resolves to. Each way it
+# resolves, counts, and runs the real gh with stdin/stdout/stderr and the exit
+# status passed through.
 #
 # The interpreter is fleet-up's absolute FLEET_GH_PYTHON, never a PATH
 # lookup: Git Bash can resolve `python3` to the Microsoft Store alias stub.

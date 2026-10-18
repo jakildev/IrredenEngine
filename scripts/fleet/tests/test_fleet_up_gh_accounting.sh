@@ -6,7 +6,9 @@
 #     when the pinned gh cannot answer through the launcher;
 #   the daemon launch environment — a `gh` run from the dispatcher's env
 #     reaches the launcher first on PATH and is counted as `dispatcher`, also
-#     with the token shim (scripts/fleet/gh) installed ahead of the real gh;
+#     with the token shim (scripts/fleet/gh) installed ahead of the real gh,
+#     where a Python tool, a bash pane's function and a function-less pane's
+#     raw gh each count exactly once too;
 #   seed_tmux_pane_env + the new-session block — on a PRE-EXISTING tmux
 #     server, pool-1 (the new-session pane) and split panes both start with
 #     this boot's values, never PATH and never a stale token;
@@ -204,20 +206,48 @@ elif (( IS_WINDOWS )); then
         "each attributed to its own actor"
 else
     # install.sh's layout: ~/bin/gh -> scripts/fleet/gh, ahead of the real gh.
+    # fleet-up pins the shim, and each caller class counts once against it:
+    # the daemon's shell gh (launcher first on PATH), a Python tool, a bash
+    # pane through the exported function, and a pane whose tool shell never
+    # imports that function, reached through the shim alone.
     SHIM_DIR="$HOME/bin"
     mkdir -p "$SHIM_DIR"
     ln -s "$SHIM_SRC" "$SHIM_DIR/gh"
     EVENTS_SHIM="$TMPROOT/events-shim"
+    PY_CALLER="$TMPROOT/py-caller.py"
+    printf '%s\n' 'import sys' 'sys.path.insert(0, sys.argv[1])' 'import fleet_github' \
+        'sys.exit(fleet_github.run(["pr", "view", "1"]).returncode)' > "$PY_CALLER"
+    # zsh is the tool shell of Codex and of Claude Code on macOS; -f reads no
+    # rc file. Without zsh, a bash that was handed no function stands in.
+    if command -v zsh >/dev/null 2>&1; then
+        PANE_SHELL=(zsh -fc)
+    else
+        PANE_SHELL=("$BASH" --norc --noprofile -c)
+        echo "  (no zsh on PATH: the function-less pane is a bash with the function stripped)"
+    fi
     out="$(PATH="$LAUNCHER_DIR:$SHIM_DIR:$REAL_DIR:$SYS_PATH" "${BOUNDED[@]}" "$BASH" -c \
         "$(extract_fn "$FLEET_UP" resolve_gh_accounting)"'
         resolve_gh_accounting "$0" || { echo "resolve failed"; exit 1; }
         echo "real=$FLEET_GH_REAL"
-        FLEET_GH_EVENT_ROOT="$1" FLEET_GH_ACTOR=dispatcher FLEET_GH_SHIM=0 gh pr list --repo o/r' \
-        "$LAUNCHER" "$EVENTS_SHIM" 2>&1)"
+        export FLEET_GH_EVENT_ROOT="$1"
+        FLEET_GH_ACTOR=dispatcher FLEET_GH_SHIM=0 gh pr list --repo o/r
+        PATH="${PATH#*:}"
+        FLEET_ROLE=worker "$FLEET_GH_PYTHON" "$3" "$2"
+        FLEET_ROLE=merger env -u "BASH_FUNC_gh%%" "${@:4}" "gh issue view 3; echo rc=\$?"
+        source "$2/gh-accounting-bin/gh-function.sh"
+        FLEET_ROLE=reviewer gh issue view 2' \
+        "$LAUNCHER" "$EVENTS_SHIM" "$FLEET_DIR" "$PY_CALLER" "${PANE_SHELL[@]}" 2>&1)"
     assert_contains "$out" "real=$SHIM_DIR/gh" "fleet-up pins the shim, the first non-launcher gh on PATH"
     assert_contains "$out" "REAL pr list --repo o/r" "the real gh answered through launcher and shim"
+    assert_contains "$out" "REAL pr view 1" "the Python tool reached the real gh"
+    assert_contains "$out" "REAL issue view 3" "the function-less pane reached the real gh"
+    assert_contains "$out" "rc=0" "the function-less pane got the real gh's status"
+    assert_contains "$out" "REAL issue view 2" "the bash pane's function reached the real gh"
     events="$(find "$EVENTS_SHIM" -type f -name '*.json' ! -name '.*' 2>/dev/null)"
-    assert_eq "$(printf '%s\n' "$events" | grep -c .)" "1" "exactly one event, not one per bounce"
+    assert_eq "$(printf '%s\n' "$events" | grep -c .)" "4" "one event per caller, not one per bounce"
+    actors="$(cat $events 2>/dev/null | grep -o '"actor": "[a-z]*"' | sort | tr '\n' ' ')"
+    assert_eq "$actors" '"actor": "dispatcher" "actor": "merger" "actor": "reviewer" "actor": "worker" ' \
+        "each attributed to its own actor"
 fi
 
 echo "3. one owned-name list across fleet-up, fleet-down and fleet_github"

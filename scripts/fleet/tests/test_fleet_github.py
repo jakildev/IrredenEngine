@@ -168,10 +168,21 @@ class Resolution(Base):
 
     def test_python_path_starts_no_extra_interpreter(self):
         argv = fleet_github.argv(["pr", "view", "1"], env=self.env(self.real_dir()))
-        want = fleet_github._launch_argv(self.real)
-        self.assertEqual(argv[:len(want)], want)
-        if os.name != "nt":
-            self.assertEqual(argv[0], self.real, "argv[0] is gh itself, not python")
+        if os.name == "nt":
+            want = fleet_github._launch_argv(self.real)
+            self.assertEqual(argv[:len(want)], want)
+        else:
+            # The marker tells the token shim (the POSIX pin) this call is
+            # counted; `env` exec's gh in place, so it adds no interpreter.
+            self.assertEqual(argv, ["/usr/bin/env", "FLEET_GH_LAUNCH_DEPTH=1", self.real,
+                                    "pr", "view", "1"])
+            self.assertNotIn(sys.executable, argv)
+
+    def test_uncounted_python_path_carries_no_marker(self):
+        argv = fleet_github.argv(["pr", "view", "1"],
+                                 env=self.env(Path(self.stub).parent, self.real_dir()))
+        self.assertFalse(any(a.startswith("FLEET_GH_LAUNCH_DEPTH") for a in argv), argv)
+        self.assertIn("stub", argv[-4], "the stub runs unchanged")
 
     def test_disabled_accounting_counts_nothing(self):
         res = fleet_github.resolve(env=self.env(self.real_dir(), accounting=False))
