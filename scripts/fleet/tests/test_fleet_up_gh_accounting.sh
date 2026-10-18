@@ -91,7 +91,10 @@ echo "1. resolve_gh_accounting pins the real gh, never the launcher"
 resolved="$(cat "$TMPROOT/resolved")"
 assert_contains "$resolved" "acct=1" "accounting on"
 if (( IS_WINDOWS )); then
-    assert_contains "$resolved" "real=$(native "$REAL_DIR/gh")" "pinned in mixed form"
+    # PATHEXT case comes from the environment, so compare case-folded.
+    pin="$(sed -n 's/^real=//p' "$TMPROOT/resolved")"
+    assert_eq "${pin,,}" "$(native "$REAL_DIR/gh.bat" | tr '[:upper:]' '[:lower:]')" \
+        "pinned in mixed form: the twin native Python's PATH walk finds"
     assert_contains "$resolved" "py=$(native "$PYTHON")" "interpreter pinned in mixed form"
     [[ "$(sed -n 's/^py=//p' "$TMPROOT/resolved")" == *.exe ]] \
         && ok "the interpreter pin carries its .exe" || bad "interpreter pin lacks .exe"
@@ -163,10 +166,42 @@ assert_contains "$(grep '_dispatcher_env=(' "$FLEET_UP")" "FLEET_GH_ACTOR=dispat
 
 echo "2b. the token shim ahead of the real gh: pinned, and one call reaches the real gh once"
 SHIM_SRC="$FLEET_DIR/gh"
-if (( IS_WINDOWS )); then
-    skip "native Python cannot exec the extensionless shim — the shim-pinned daemon shape is POSIX-only"
-elif [[ ! -f "$SHIM_SRC" ]]; then
-    bad "scripts/fleet/gh is missing; the shim-pinned daemon shape is unexercised"
+if [[ ! -f "$SHIM_SRC" ]]; then
+    bad "scripts/fleet/gh is missing; the shim-ahead layout is unexercised"
+elif (( IS_WINDOWS )); then
+    # Native Python never sees the extensionless shim, so the pin is the twin
+    # behind it, and each caller class counts against that pin: the daemon's
+    # shell gh (launcher first on PATH), a Python tool, and a pane's shell gh
+    # through the exported function.
+    SHIM_DIR="$HOME/bin"
+    mkdir -p "$SHIM_DIR"
+    cp "$SHIM_SRC" "$SHIM_DIR/gh"
+    EVENTS_SHIM="$TMPROOT/events-shim"
+    PY_CALLER="$TMPROOT/py-caller.py"
+    printf '%s\n' 'import sys' 'sys.path.insert(0, sys.argv[1])' 'import fleet_github' \
+        'sys.exit(fleet_github.run(["pr", "view", "1"]).returncode)' > "$PY_CALLER"
+    out="$(PATH="$LAUNCHER_DIR:$SHIM_DIR:$REAL_DIR:$SYS_PATH" "${BOUNDED[@]}" "$BASH" -c \
+        "$(extract_fn "$FLEET_UP" resolve_gh_accounting)"'
+        resolve_gh_accounting "$0" || { echo "resolve failed"; exit 1; }
+        echo "real=$FLEET_GH_REAL"
+        export FLEET_GH_EVENT_ROOT="$1"
+        FLEET_GH_ACTOR=dispatcher gh pr list --repo o/r
+        PATH="${PATH#*:}"
+        FLEET_ROLE=worker "$FLEET_GH_PYTHON" "$3" "$2"
+        source "$2/gh-accounting-bin/gh-function.sh"
+        FLEET_ROLE=reviewer gh issue view 2' \
+        "$LAUNCHER" "$(native "$EVENTS_SHIM")" "$(native "$FLEET_DIR")" "$(native "$PY_CALLER")" 2>&1)"
+    pin="$(sed -n 's/^real=//p' <<<"$out")"
+    assert_eq "${pin,,}" "$(native "$REAL_DIR/gh.bat" | tr '[:upper:]' '[:lower:]')" \
+        "fleet-up pins the twin behind the shim, not the shim"
+    assert_contains "$out" "REAL pr list --repo o/r" "the daemon's shell gh reached the real gh"
+    assert_contains "$out" "REAL pr view 1" "the Python tool reached the real gh"
+    assert_contains "$out" "REAL issue view 2" "the pane's shell gh reached the real gh"
+    events="$(find "$EVENTS_SHIM" -type f -name '*.json' ! -name '.*' 2>/dev/null)"
+    assert_eq "$(printf '%s\n' "$events" | grep -c .)" "3" "one event per caller"
+    actors="$(cat $events 2>/dev/null | grep -o '"actor": "[a-z]*"' | sort | tr '\n' ' ')"
+    assert_eq "$actors" '"actor": "dispatcher" "actor": "reviewer" "actor": "worker" ' \
+        "each attributed to its own actor"
 else
     # install.sh's layout: ~/bin/gh -> scripts/fleet/gh, ahead of the real gh.
     SHIM_DIR="$HOME/bin"

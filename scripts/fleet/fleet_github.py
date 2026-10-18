@@ -381,6 +381,11 @@ def launch(args, env=None):
         record(args, env)
     full = res.argv + list(args)
     child_env = {**env, LAUNCH_DEPTH_VAR: str(depth + 1)}
+    # The token shim's user-identity arm, applied here too: on native Windows
+    # the pin is gh.exe itself, so a pane's shell call never reaches the shim.
+    if child_env.get("FLEET_GH_IDENTITY") == "user":
+        child_env.pop("GH_TOKEN", None)
+        child_env.pop("GITHUB_TOKEN", None)
     if os.name != "nt":
         sys.stdout.flush()
         try:

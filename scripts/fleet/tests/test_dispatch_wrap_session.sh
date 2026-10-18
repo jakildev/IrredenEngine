@@ -23,6 +23,8 @@
 #   - cleanup: in-flight work (reservation present, branch otherwise clean) keeps the sidecar
 #   - cleanup: in-flight work (claude/* branch, clean but ahead of master) keeps the sidecar
 #   - cleanup: finished/no-op (clean master) clears the sidecar
+#   - GitHub CLI accounting: the exported gh function reaches the provider
+#     only while accounting is on
 #   - planning assignment: 7th plan= arg -> FLEET_PLAN_ISSUE export;
 #     absent/bare arg stays unset; a resume releases the pre-claim instead
 #   - hermeticity: the suite is immune to an inherited FLEET_PLAN_ISSUE
@@ -67,6 +69,8 @@ source "$(dirname "$0")/lib_assert.sh"
 TMPROOT=""; cleanup(){ [[ -n "$TMPROOT" && -d "$TMPROOT" ]] && rm -rf "$TMPROOT"; }
 trap cleanup EXIT
 TMPROOT=$(mktemp -d)
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMPROOT"
 
 export FLEET_SESSIONS_DIR="$TMPROOT/sessions"
 export FLEET_STATE_DIR="$TMPROOT/state"
@@ -520,6 +524,31 @@ run_wrap sonnet high queue-manager >/dev/null
 python3 -c "import json,sys;d=json.load(open(sys.argv[1]));assert d['wrapper_pid'] > 0 and d['sentinel'] == 'kept'" \
   "$FLEET_STATE_DIR/dispatch/pane-3.json" 2>/dev/null \
   && ok "wrapper PID stamped without losing record fields" || bad "wrapper PID missing or record fields changed"
+
+echo "T17b: accounting on hands the provider the exported gh function; off hands it nothing"
+cat > "$BIN/claude" <<'EOF'
+#!/usr/bin/env bash
+printf 'GH %s\n' "$(type -t gh)" >> "$CLAUDE_ARGV_LOG"
+exit 0
+EOF
+chmod +x "$BIN/claude"
+rm -f "$FLEET_STATE_DIR/dispatch/pane-3.json"   # T17's record names another launch
+: > "$CLAUDE_ARGV_LOG"
+(cd "$WT" && env -u 'BASH_FUNC_gh%%' FLEET_GH_ACCOUNTING=1 \
+    FLEET_GH_LAUNCHER="$SCRIPT_DIR/gh-accounting-bin/gh" \
+    "$WRAP" pane-3 sonnet high queue-manager "" live >/dev/null 2>&1)
+assert_eq "$(grep '^GH ' "$CLAUDE_ARGV_LOG")" "GH function" "accounting on: gh is the exported function"
+: > "$CLAUDE_ARGV_LOG"
+(cd "$WT" && env -u 'BASH_FUNC_gh%%' -u FLEET_GH_ACCOUNTING -u FLEET_GH_LAUNCHER \
+    "$WRAP" pane-3 sonnet high queue-manager "" live >/dev/null 2>&1)
+assert_contains "$(grep '^GH ' "$CLAUDE_ARGV_LOG")" "GH" "accounting off: the provider still launched"
+assert_absent "$(grep '^GH ' "$CLAUDE_ARGV_LOG")" "function" "accounting off: no gh function"
+cat > "$BIN/claude" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$CLAUDE_ARGV_LOG"
+exit "${STUB_CLAUDE_RC:-0}"
+EOF
+chmod +x "$BIN/claude"
 
 echo "T18: Codex failures re-arm merger targets"
 BATCH_RUNTIME="$TMPROOT/batch-runtime"

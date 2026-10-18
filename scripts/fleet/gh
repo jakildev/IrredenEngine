@@ -29,7 +29,8 @@ fi
 # $HOME/bin/) that differ textually.
 #
 # The launcher (gh-accounting-bin/gh) is the other fleet wrapper: fleet-up puts
-# it first on a daemon's PATH and pins this shim as the gh it exec's. Choosing
+# it first on a daemon's PATH and, on POSIX, pins this shim as the gh it
+# exec's (native Windows pins gh.exe, which native Python can launch). Choosing
 # it here hands the call straight back, and the two exec each other until the
 # caller's timeout. Both spellings are skipped — the one fleet-up exported and
 # the sibling of this file — so a shim copied out of the repo is covered too.

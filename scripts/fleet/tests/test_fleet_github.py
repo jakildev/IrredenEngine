@@ -39,6 +39,13 @@ sys.exit(subprocess.run([sys.executable, os.environ["LAUNCH_SUBJECT"], "launch",
                          *sys.argv[1:]]).returncode)
 '''
 
+# A pinned "real gh" that reports which inherited tokens reached it.
+TOKENS_BODY = r'''
+import os, sys
+print(" ".join("%s=%s" % (k, "set" if os.environ.get(k) else "-")
+               for k in ("GH_TOKEN", "GITHUB_TOKEN")))
+'''
+
 SECRETS = ("secret-owner", "secret-repo", "4242", "TITLE-SECRET", "BODY-SECRET",
            "https://github.com/secret-owner/secret-repo/issues/4242", "ghp_TOKENSECRET")
 
@@ -354,6 +361,19 @@ class Launcher(Base):
         self.assertEqual(got.returncode, 0)
         self.assertTrue(got.stdout.startswith(b"OUT real "), got.stdout)
         self.assertEqual(len(events_in(self.events)), 1)
+
+    def test_user_identity_reaches_gh_without_inherited_tokens(self):
+        # On native Windows the pin is gh.exe itself, so the token shim's
+        # user-identity arm never runs for a pane's shell call; launch owns it.
+        real = make_gh(self.root / "tokens", TOKENS_BODY)
+        tokens = {"GH_TOKEN": "ghs_INHERITED", "GITHUB_TOKEN": "ghp_INHERITED"}
+        user = self.launch(self.env(Path(real).parent, FLEET_GH_REAL=real,
+                                    FLEET_GH_IDENTITY="user", **tokens), "pr", "view", "1")
+        self.assertEqual(user.stdout.strip(), b"GH_TOKEN=- GITHUB_TOKEN=-")
+        app = self.launch(self.env(Path(real).parent, FLEET_GH_REAL=real,
+                                   FLEET_GH_IDENTITY="app", **tokens), "pr", "view", "1")
+        self.assertEqual(app.stdout.strip(), b"GH_TOKEN=set GITHUB_TOKEN=set")
+        self.assertEqual(len(events_in(self.events)), 2, "both calls are counted")
 
     def test_unreadable_depth_is_a_first_pass(self):
         for raw in ("", "garbage", "-3"):
