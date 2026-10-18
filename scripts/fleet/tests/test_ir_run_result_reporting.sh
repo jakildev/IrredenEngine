@@ -229,23 +229,6 @@ assert_contains "$OUT" "RESULT=ALIVE-TIMEOUT exe=hang" \
     "wrapped run that outlives --timeout reports ALIVE-TIMEOUT"
 if [[ -d "$IR_LOCK_ROOT/gpu/lock" ]]; then
     bad "gpu lock released after the watchdog kill"
-    {
-        echo "DIAG uname=$(uname -a) bash=$BASH_VERSION"
-        echo "DIAG OUT:"; printf '%s\n' "$OUT" | sed 's/^/DIAG   /'
-        echo "DIAG tree:"; ls -laR "$IR_LOCK_ROOT" 2>&1 | sed 's/^/DIAG   /'
-        for f in owner pid acquired_at winpid; do
-            echo "DIAG [$f]: $(tr '\n' '|' < "$IR_LOCK_ROOT/gpu/lock/$f" 2>&1)"
-        done
-        ps -eo pid,ppid,pgid,stat,etimes,args 2>&1 | grep -E 'sleep|ir-|hang' | grep -v grep | sed 's/^/DIAG ps /'
-        sleep 2
-        echo "DIAG after 2s: $(ls -la "$IR_LOCK_ROOT/gpu/lock" 2>&1 | tr '\n' '|')"
-        rm -rf "$IR_LOCK_ROOT/gpu/lock"
-        export PS4='+ $$ ${BASH_SOURCE##*/}:${LINENO}: '
-        TRACE="$(env SHELLOPTS=xtrace "$IR_RUN" --build-dir "$FAKE_BUILD" --timeout 1 hang --auto-screenshot 1 2>&1)"
-        echo "DIAG traced rerun left lock: $([[ -d "$IR_LOCK_ROOT/gpu/lock" ]] && echo yes || echo no)"
-        printf '%s\n' "$TRACE" | grep -v -E 'ir-run:[0-9]+: (\[\[|local|case|shift)' | tail -250 | sed 's/^/DIAG T /'
-        rm -rf "$IR_LOCK_ROOT/gpu/lock"
-    } >&2
 else
     ok "gpu lock released after the watchdog kill"
 fi

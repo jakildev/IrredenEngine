@@ -325,6 +325,29 @@ else
     echo "  note: runs in the /bin/bash 3.x pass"
 fi
 
+# ir-acquire releases from its EXIT trap, where bash 5.2 hands a bare `return`
+# the status from before the trap: a failed command would keep the lock, and
+# a clean exit would release a lock someone else holds.
+echo "== release from the exit trap"
+if [[ -x "$ACQUIRE" ]]; then
+    trap_root="$ROOT/trap-release"
+    IR_LOCK_ROOT="$trap_root" "$BASH" "$ACQUIRE" gpu -- sh -c 'exit 3' >/dev/null 2>&1
+    assert_eq "$([[ -d "$trap_root/gpu/lock" ]] && echo left || echo released)" "released" \
+        "exit trap: a command that exits 3 leaves no gpu lock behind"
+else
+    bad "exit trap: ir-acquire not found at $ACQUIRE"
+fi
+reset_gpu
+other=$(live)
+env -u _IR_HELPERS_LOADED "$BASH" -c '
+    source "$1"
+    _ir_try_lock "$2" "$3" || exit 9
+    _ir_record_held "$2"
+    trap ir_release_all EXIT
+    exit 0' trap-release "$HELPERS" "$LOCK" "$other"
+assert_eq "$(holder)" "$other" \
+    "exit trap: a clean exit leaves a lock its ledger lists but another process holds"
+
 echo "== stress"
 cat > "$ROOT/contend.sh" <<'EOF'
 # contend.sh <helpers> <lock-root> <rounds> <log>

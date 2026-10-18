@@ -605,7 +605,7 @@ _ir_lock_contend() {
     local lockdir="$1" legacy
     if _ir_lock_rec_read "$lockdir/owner"; then
         _ir_lock_take "$@"
-        return
+        return $?
     fi
     [[ -d "$lockdir" ]] || return 2
     [[ ! -e "$lockdir/owner" ]] || return 1
@@ -805,11 +805,15 @@ _ir_held_dir() {
 # token both match. Off Windows the token and the record's are both empty. An
 # older copy's lock is read from its pid and winpid files, which keeps
 # ir_inherited_lock_covers right in a process tree that mixes versions.
+#
+# Every return in the lock paths names its status: under bash 5.2 a bare
+# `return` run anywhere inside a trap handler returns the status from before
+# the trap, and ir-acquire releases from its EXIT trap.
 _ir_lock_owned_by() {
     local lockdir="$1" pid="$2" token="$3"
     if _ir_lock_rec_read "$lockdir/owner"; then
         [[ "$_IR_REC_PID" == "$pid" && "$_IR_REC_TOKEN" == "$token" ]]
-        return
+        return $?
     fi
     [[ ! -e "$lockdir/owner" ]] || return 1
     [[ "$(cat "$lockdir/pid" 2>/dev/null || true)" == "$pid" ]] || return 1
