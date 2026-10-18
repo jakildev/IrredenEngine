@@ -1,9 +1,12 @@
 #include <gtest/gtest.h>
 
 #include <irreden/asset/creation_manifest.hpp>
+#include <irreden/utility/file_utils.hpp>
 
 #include <cstdint>
+#include <filesystem>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -11,11 +14,51 @@ using namespace IRAsset;
 
 CreationManifest parseOk(std::string_view text) {
     auto result = parseCreationManifest(text);
-    EXPECT_TRUE(result.has_value())
-        << "line " << result.error().line_ << " col " << result.error().column_ << " "
-        << result.error().path_ << ": " << result.error().message_;
-    return result.has_value() ? *result : CreationManifest{};
+    if (!result) {
+        ADD_FAILURE() << "line " << result.error().line_ << " col " << result.error().column_ << " "
+                      << result.error().path_ << ": " << result.error().message_;
+        return {};
+    }
+    return *result;
 }
+
+// Fails the test unless @p text is rejected naming @p path, and returns the
+// reason so a caller can assert on it.
+std::string expectKeyError(std::string_view text, std::string_view path) {
+    auto result = parseCreationManifest(text);
+    if (result) {
+        ADD_FAILURE() << "parsed, expected a failure at " << path << ": " << text;
+        return {};
+    }
+    EXPECT_EQ(result.error().path_, path) << result.error().message_ << "\n" << text;
+    EXPECT_FALSE(result.error().message_.empty()) << text;
+    return result.error().message_;
+}
+
+std::string jsonString(std::string_view value) {
+    std::string out = "\"";
+    for (const char c : value) {
+        if (c == '"' || c == '\\') {
+            out.push_back('\\');
+            out.push_back(c);
+        } else if (static_cast<unsigned char>(c) < 0x20) {
+            constexpr std::string_view kHex = "0123456789abcdef";
+            out.append("\\u00");
+            out.push_back(kHex[(c >> 4) & 0xf]);
+            out.push_back(kHex[c & 0xf]);
+        } else {
+            out.push_back(c);
+        }
+    }
+    out.push_back('"');
+    return out;
+}
+
+std::string manifestWithTarget(std::string_view name) {
+    return R"({"version": 1, "name": "N", "targets": [{"name": )" + jsonString(name) + "}]}";
+}
+
+const std::filesystem::path kFixtureDir = IR_CREATION_MANIFEST_FIXTURE_DIR;
 
 void expectError(
     std::string_view text,
@@ -269,6 +312,154 @@ TEST(CreationManifestTest, WrongTypeForKnownKey) {
 
 TEST(CreationManifestTest, RootMustBeAnObject) {
     expectError("[1]", 1, 1, "", "expected an object at the manifest root, got array");
+}
+
+const std::vector<std::string> kRejectedTargetNames = {
+    "-x",
+    "--build-dir",
+    "a/b",
+    "a\\b",
+    "a b",
+    "IR*",
+    "IR?",
+    "IR[ab]",
+    "",
+    "NUL",
+    "com1",
+    "NUL.txt",
+    "CON.log",
+    "con.log.bak",
+    "Aux.cpp",
+    "COM1.x",
+    "lpt0",
+    "nul.",
+    "COM0",
+    "prn",
+    "LPT9.a.b",
+    ".hidden",
+    "+x",
+    "a\tb",
+    std::string("a\0b", 3),
+};
+
+TEST(CreationManifestTest, IsTargetName) {
+    for (std::string_view name :
+         {"IRShapeDebug",
+          "DemoMidiDevice",
+          "a.b+c-d",
+          "_x",
+          "COM10",
+          "CONSOLE",
+          "NULL",
+          "LPT10",
+          "nul_x",
+          "x.nul",
+          "0",
+          "COMA"}) {
+        EXPECT_TRUE(isTargetName(name)) << name;
+    }
+    for (const std::string &name : kRejectedTargetNames) {
+        EXPECT_FALSE(isTargetName(name)) << name;
+    }
+}
+
+TEST(CreationManifestTest, RejectedTargetNameFailsTheManifest) {
+    for (const std::string &name : kRejectedTargetNames) {
+        SCOPED_TRACE(name);
+        expectKeyError(manifestWithTarget(name), "targets[0].name");
+    }
+    expectError(
+        R"({"version": 1, "name": "N", "targets": [{"name": "IRA"}, {"name": "-x"}]})",
+        1,
+        67,
+        "targets[1].name",
+        "leading '-'"
+    );
+    EXPECT_NE(
+        expectKeyError(manifestWithTarget("con.log"), "targets[0].name").find("'con'"),
+        std::string::npos
+    );
+    EXPECT_NE(
+        expectKeyError(manifestWithTarget("IR*"), "targets[0].name").find("'*'"),
+        std::string::npos
+    );
+}
+
+TEST(CreationManifestTest, PathKeysRejectedLexically) {
+    const std::vector<std::string> rejected = {
+        "/etc/x.png",
+        "C:\\x.png",
+        "c:x.png",
+        "\\x.png",
+        "\\\\host\\s\\x.png",
+        "../x.png",
+        "a/../../x.png",
+        "a\\..\\x.png",
+        "a/..",
+        "",
+        std::string("a\0b", 3),
+    };
+    for (const std::string &path : rejected) {
+        SCOPED_TRACE(path);
+        expectKeyError(
+            R"({"version": 1, "name": "N", "thumbnail": )" + jsonString(path) +
+                R"(, "targets": []})",
+            "thumbnail"
+        );
+        expectKeyError(
+            R"({"version": 1, "name": "N", "docs": ["docs/ok.md", )" + jsonString(path) +
+                R"(], "targets": []})",
+            "docs[1]"
+        );
+    }
+    expectError(
+        R"({"version": 1, "name": "N", "docs": ["/etc/passwd"], "targets": []})",
+        1,
+        38,
+        "docs[0]",
+        "must be a relative path"
+    );
+}
+
+TEST(CreationManifestTest, RelativePathKeysParse) {
+    const CreationManifest m = parseOk(R"({
+  "version": 1,
+  "name": "N",
+  "thumbnail": "test/references/a..b/shot.png",
+  "docs": ["docs/design/x.md", "creations/demos/x/README.md", "./notes.md"],
+  "targets": []
+})");
+    EXPECT_EQ(m.thumbnail_, "test/references/a..b/shot.png");
+    EXPECT_EQ(m.docs_.size(), 3u);
+}
+
+TEST(CreationManifestTest, SharedInvalidCorpus) {
+    std::size_t cases = 0;
+    for (const auto &entry : std::filesystem::directory_iterator(kFixtureDir / "invalid")) {
+        if (entry.path().extension() != ".json") {
+            continue;
+        }
+        const std::string stem = entry.path().stem().string();
+        const std::size_t separator = stem.find("__");
+        ASSERT_NE(separator, std::string::npos) << "fixture name lacks '__': " << stem;
+        SCOPED_TRACE(entry.path().filename().string());
+        expectKeyError(
+            IRUtility::readFileAsString(entry.path().string()),
+            stem.substr(0, separator)
+        );
+        ++cases;
+    }
+    EXPECT_GE(cases, 1u) << "no fixtures under " << (kFixtureDir / "invalid");
+}
+
+TEST(CreationManifestTest, SharedAcceptedTargetNames) {
+    const CreationManifest m =
+        parseOk(IRUtility::readFileAsString((kFixtureDir / "accepted_target_names.json").string()));
+    std::vector<std::string> names;
+    for (const CreationTarget &target : m.targets_) {
+        names.push_back(target.name_);
+    }
+    EXPECT_EQ(names, (std::vector<std::string>{"NULL", "LPT10", "nul_x", "x.nul"}));
 }
 
 } // namespace

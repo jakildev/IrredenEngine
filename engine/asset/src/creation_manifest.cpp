@@ -1,8 +1,10 @@
 #include <irreden/asset/creation_manifest.hpp>
 
 #include <irreden/asset/json_reader.hpp>
+#include <irreden/utility/path_utils.hpp>
 
 #include <array>
+#include <cstdio>
 #include <optional>
 #include <utility>
 
@@ -35,6 +37,74 @@ std::string memberPath(const std::string &parent, std::string_view key) {
 
 std::string indexPath(const std::string &parent, std::size_t index) {
     return parent + "[" + std::to_string(index) + "]";
+}
+
+bool isAsciiAlnum(char c) {
+    return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9');
+}
+
+bool isTargetNameStart(char c) {
+    return isAsciiAlnum(c) || c == '_';
+}
+
+bool isTargetNameChar(char c) {
+    return isTargetNameStart(c) || c == '.' || c == '+' || c == '-';
+}
+
+bool equalsIgnoringAsciiCase(std::string_view text, std::string_view upper) {
+    if (text.size() != upper.size()) {
+        return false;
+    }
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        const char c = text[i];
+        if ((c >= 'a' && c <= 'z' ? static_cast<char>(c - 'a' + 'A') : c) != upper[i]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool isReservedDeviceStem(std::string_view stem) {
+    for (std::string_view device : {"CON", "PRN", "AUX", "NUL"}) {
+        if (equalsIgnoringAsciiCase(stem, device)) {
+            return true;
+        }
+    }
+    if (stem.size() != 4 || stem[3] < '0' || stem[3] > '9') {
+        return false;
+    }
+    const std::string_view prefix = stem.substr(0, 3);
+    return equalsIgnoringAsciiCase(prefix, "COM") || equalsIgnoringAsciiCase(prefix, "LPT");
+}
+
+std::string quotedChar(char c) {
+    const auto byte = static_cast<unsigned char>(c);
+    if (byte < 0x20 || byte >= 0x7f) {
+        char hex[8];
+        std::snprintf(hex, sizeof(hex), "0x%02x", byte);
+        return std::string("byte ") + hex;
+    }
+    return std::string("'") + c + "'";
+}
+
+// Empty when @p name passes `isTargetName`, else why it fails.
+std::string targetNameRejection(std::string_view name) {
+    if (name.empty()) {
+        return "must not be empty";
+    }
+    if (!isTargetNameStart(name.front())) {
+        return "leading " + quotedChar(name.front());
+    }
+    for (const char c : name) {
+        if (!isTargetNameChar(c)) {
+            return quotedChar(c) + " is not allowed in a target name";
+        }
+    }
+    const std::string_view stem = name.substr(0, name.find('.'));
+    if (isReservedDeviceStem(stem)) {
+        return "reserved Windows device stem '" + std::string(stem) + "'";
+    }
+    return {};
 }
 
 class ManifestParser {
@@ -134,6 +204,37 @@ class ManifestParser {
         return true;
     }
 
+    bool checkContainedPath(const JsonValue &at, std::string path, std::string_view text) {
+        if (const std::optional<std::string_view> reason =
+                IRUtility::containedPathRejection(text)) {
+            return fail(at, std::move(path), std::string(*reason));
+        }
+        return true;
+    }
+
+    bool readOptionalPath(const JsonValue &object, std::string_view key, std::string &out) {
+        const JsonValue *value = findTyped(object, key, "", JsonType::STRING, "a string");
+        if (value == nullptr) {
+            return !failed();
+        }
+        out = *value->asString();
+        return checkContainedPath(*value, std::string(key), out);
+    }
+
+    bool
+    readPathArray(const JsonValue &object, std::string_view key, std::vector<std::string> &out) {
+        if (!readStringArray(object, key, "", out) || out.empty()) {
+            return !failed();
+        }
+        const JsonArray &elements = *object.find(key)->asArray();
+        for (std::size_t i = 0; i < out.size(); ++i) {
+            if (!checkContainedPath(elements[i], indexPath(std::string(key), i), out[i])) {
+                return false;
+            }
+        }
+        return true;
+    }
+
     bool readVersion(const JsonValue &root, std::int64_t &out) {
         const JsonValue *value = root.find("version");
         if (value == nullptr) {
@@ -189,6 +290,9 @@ class ManifestParser {
         if (!readRequiredString(value, "name", path, out.name_)) {
             return false;
         }
+        if (std::string reason = targetNameRejection(out.name_); !reason.empty()) {
+            return fail(*value.find("name"), memberPath(path, "name"), std::move(reason));
+        }
         out.display_ = out.name_;
         if (!readOptionalString(value, "display", path, out.display_) ||
             !readOptionalString(value, "description", path, out.description_)) {
@@ -235,8 +339,8 @@ class ManifestParser {
                readOptionalString(root, "description", "", out.description_) &&
                readOptionalString(root, "group", "", out.group_) &&
                readStringArray(root, "tags", "", out.tags_) && readKind(root, out.kind_) &&
-               readOptionalString(root, "thumbnail", "", out.thumbnail_) &&
-               readStringArray(root, "docs", "", out.docs_) && readTargets(root, out.targets_);
+               readOptionalPath(root, "thumbnail", out.thumbnail_) &&
+               readPathArray(root, "docs", out.docs_) && readTargets(root, out.targets_);
     }
 
     ManifestError m_error;
@@ -252,6 +356,10 @@ std::expected<CreationManifest, ManifestError> parseCreationManifest(std::string
         );
     }
     return ManifestParser().parse(*root);
+}
+
+bool isTargetName(std::string_view name) {
+    return targetNameRejection(name).empty();
 }
 
 } // namespace IRAsset

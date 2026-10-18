@@ -12,9 +12,12 @@ using namespace IRAsset;
 
 JsonValue parseOk(std::string_view text) {
     auto result = parseJson(text);
-    EXPECT_TRUE(result.has_value()) << "line " << result.error().line_ << " col "
-                                    << result.error().column_ << ": " << result.error().message_;
-    return result.has_value() ? *result : JsonValue{};
+    if (!result) {
+        ADD_FAILURE() << "line " << result.error().line_ << " col " << result.error().column_
+                      << ": " << result.error().message_;
+        return {};
+    }
+    return *result;
 }
 
 void expectError(
