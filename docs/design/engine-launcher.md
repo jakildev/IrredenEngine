@@ -434,9 +434,24 @@ that no longer exists. So every write to `installed/` happens under one
 lock.
 - **The lock** is `build-launcher/lock/`, scoped to the checkout's launcher
   tree. It uses the primitive `ir-acquire` uses
-  (`engine/tools/lib/concurrency_helpers.sh`): an atomic `mkdir`, a `pid`
-  record, the native-Windows two-runtime pid record, and reclaim when the
-  holder is dead.
+  (`engine/tools/lib/concurrency_helpers.sh`), once #4546 lands:
+  - Ownership is the exclusive hard link of a complete record (pid, the
+    native-Windows two-runtime token, and a generation nonce) at
+    `lock/pid`.
+  - A dead holder's lock is transferred, never removed. Only the contender
+    that links that generation's `reap.<nonce>` marker may replace the
+    record, and only while the record is unchanged.
+  - Release renames the directory away before deleting it.
+- **Exclusion holds for stale holders too.** Both double-win paths in
+  today's `_ir_try_lock` are reproduced in #4546:
+  - two contenders reclaim the same dead holder, and the second `rm -rf`
+    removes the first one's new lock;
+  - a contender reads a live creator's lock between its `mkdir` and its
+    `pid` stamp, takes the empty record as stale, and removes it.
+
+  Either one is the two-writer interleaving above, so the launcher
+  creation slice is blocked by #4546 and does not ship a launcher lock on
+  the current primitive.
 - **The supervisor holds it for its whole life:** recovery, every launch,
   and every update, until the script exits. `--update` holds it from
   recovery through step 5. Nothing reads or writes `installed/` before
@@ -499,20 +514,19 @@ Nothing has an installed executable open while the update runs, which
 matters on Windows, where a running `.exe` cannot be overwritten or
 removed.
 
-**Stated limits.** Both need a holder that died without releasing the lock.
-- Reclaiming a dead holder's lock is the shared primitive's `rm -rf` then
-  `mkdir`. Two invocations that find the same dead holder at the same
-  instant can both proceed. The fix belongs in the primitive, for every
-  lock that uses it.
-- A supervisor killed with `SIGKILL` leaves its launcher running under a
-  dead holder pid. The next invocation reclaims the lock, and a later
-  update can remove the directory that orphan runs from.
+**Stated limit.** A supervisor killed with `SIGKILL` leaves its launcher
+running under a dead holder pid. The next invocation takes the lock over,
+and a later update can remove the directory that orphan runs from.
 
 Rejected:
 - Locking only around the update step. Recovery and step 5 in a shell
   update would still remove the copy a running launcher executes from.
 - Waiting on a held lock. A shell `--update` would block until a GUI
   session ends.
+- A kernel advisory lock (`flock`). It needs no stale reclaim, but macOS
+  ships no `flock(1)`, and on native Windows MSYS2 and Git for Windows each
+  emulate it inside their own runtime: the two-runtime gap the primitive's
+  Windows token exists to close.
 - Swapping `installed.next/` → `installed/` → `installed.prev/` with two
   directory renames. Between the first rename and the second, no
   `installed/` exists. A failed second rename, or an interrupt in that
@@ -779,8 +793,17 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
   - **Running launcher.** While a supervisor's stub launcher is still
     running, `--update` refuses the same way, and `installed/` is
     unchanged.
-  - **Stale lock.** `build-launcher/lock/` is pre-seeded with a pid that is
-    not alive. `--update` reclaims it and completes.
+  - **Stale lock.** `build-launcher/lock/` is pre-seeded with a record whose
+    pid is not alive. `--update` takes it over and completes.
+  - **Two stale reclaimers.** Over the same pre-seeded dead record, two
+    `--update` runs start together, for 20 rounds. In every round the
+    winner parks on the step-4 `mv` barrier. While it is parked, the other
+    run has exited non-zero through the contention path with zero
+    stub-`cmake` calls, and `lock/pid` still holds the winner's record.
+    After the release, exactly one new `<id>` exists. The barrier-ordered
+    proof that exactly one contender wins lives in #4546's
+    `ir_lock_transfer` suite, which can park the liveness probe; the
+    shipped script has no seam for it.
   - **Unique ids.** A `date` stub returns one fixed stamp. Two sequential
     `--update` runs still produce two different `<id>`s.
   - **No leftovers.** After the script exits, no pid it logged is alive.
@@ -815,8 +838,9 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
   `IRAsset::isTargetName` and `IRUtility::resolveContainedPath` together,
   and every later engine slice depends on it alone. Catalog, tool service
   and image widget each need only those two functions, so they land in any
-  order. The launcher creation follows the catalog and the tool service,
-  and previews follow the launcher and the image widget. The catalog and
+  order. The launcher creation follows the catalog, the tool service and
+  the lock-primitive fix (#4546, D6), and previews follow the launcher and
+  the image widget. The catalog and
   the image widget take their base at bind time (D3, D9), so neither waits
   on the tool service for the tool root.
 - `creations/CLAUDE.md` and `creations/demos/CLAUDE.md` gain "every creation
