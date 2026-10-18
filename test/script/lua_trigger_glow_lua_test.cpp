@@ -8,6 +8,8 @@
 #include <irreden/update/components/component_contact_event.hpp>
 #include <irreden/update/components/component_trigger_glow.hpp>
 #include <irreden/update/components/component_trigger_glow_lua.hpp>
+#include <irreden/update/components/component_anim_color_state.hpp>
+#include <irreden/update/components/component_anim_color_state_lua.hpp>
 #include <irreden/update/systems/system_contact_trigger_glow.hpp>
 #include <irreden/voxel/components/component_voxel_pool.hpp>
 #include <irreden/voxel/components/component_voxel_set.hpp>
@@ -16,6 +18,7 @@
 
 namespace {
 
+using IRComponents::C_AnimColorState;
 using IRComponents::C_ContactEvent;
 using IRComponents::C_TriggerGlow;
 using IRComponents::C_VoxelPool;
@@ -45,6 +48,7 @@ class TriggerGlowLuaTest : public testing::Test {
             &Color::alpha_
         );
         m_lua.registerTypeFromTraits<C_TriggerGlow>();
+        m_lua.registerTypeFromTraits<C_AnimColorState>();
     }
 
     static bool sameColor(Color a, Color b) {
@@ -124,6 +128,44 @@ TEST_F(TriggerGlowLuaTest, LuaWrittenBaseColorIsWhatTheIdleGlowPaints) {
     m_system_manager.executePipeline(IRTime::Events::UPDATE);
     EXPECT_TRUE(sameColor(glow.baseColor_, teal));
     EXPECT_TRUE(sameColor(IREntity::getComponent<C_VoxelSetNew>(id).voxels_[0].color_, teal));
+}
+
+// The same cache on the colour state the spring and clip colour systems
+// paint from: a script sets the base (and the current colour) through the
+// binding, and the capture flag, when it recolours the voxels underneath.
+TEST_F(TriggerGlowLuaTest, LuaWritesTheColorStateBaseAndCurrent) {
+    auto &lua = m_lua.lua();
+    const auto id =
+        IREntity::createEntity(C_AnimColorState{IRComponents::ANIM_COLOR_BLEND_REPLACE});
+
+    auto registerResult = lua.safe_script(
+        R"(
+        return IRSystem.registerSystem({
+            name = 'RecolorState',
+            components = { IRComponent.C_AnimColorState },
+            tick = function(arch)
+                for i = 0, arch.length - 1 do
+                    local st = arch.C_AnimColorState:at(i)
+                    readInit = st.baseInitialized
+                    st.baseColor = Color.new(10, 120, 130, 255)
+                    st.currentColor = Color.new(10, 120, 130, 255)
+                    st.baseInitialized = true
+                end
+            end,
+        })
+    )",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(registerResult.valid()) << sol::error{registerResult}.what();
+    const IRSystem::SystemId stateSysId = registerResult.get<lua_Integer>();
+    m_system_manager.registerPipeline(IRTime::Events::UPDATE, {stateSysId});
+    m_system_manager.executePipeline(IRTime::Events::UPDATE);
+
+    const auto &state = IREntity::getComponent<C_AnimColorState>(id);
+    EXPECT_FALSE(lua["readInit"].get<bool>());
+    EXPECT_TRUE(state.baseInitialized_);
+    EXPECT_TRUE(sameColor(state.baseColor_, Color{10, 120, 130, 255}));
+    EXPECT_TRUE(sameColor(state.currentColor_, Color{10, 120, 130, 255}));
 }
 
 } // namespace
