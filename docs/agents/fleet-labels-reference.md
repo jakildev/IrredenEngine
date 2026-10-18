@@ -364,16 +364,13 @@ Protocol: [`FLEET-CROSS-HOST-SMOKE.md`](FLEET-CROSS-HOST-SMOKE.md).
 ## Provider routing (catalog only, not in the state machine)
 
 - `fleet:author-claude` / `fleet:author-codex` — PR provenance: the most
-  recent implementation provider. Set by `commit-and-push` (in the `gh pr
-  create` labels) and re-stamped on each amend by `fleet_runtime.stamp()`,
-  which swaps the pair in one edit and refuses to run under a reviewer
-  role. Under `FLEET_CROSS_PROVIDER_REVIEW=1`, `choose_runtime()` routes the
-  review to the other provider when the label is present; absent, any available
-  provider reviews. The scout's claim-cleanup cadence runs `fleet-pr-stamp
-  --backfill` on the authoritative poller: an unstamped open PR whose head
-  commit carries the Claude co-author trailer gets `fleet:author-claude`;
-  Codex work has no trailer and is only ever stamped by its author. Two
-  author labels at once is a hard error. Don't add to issues.
+  recent implementation provider. Set by `commit-and-push`, re-stamped on each
+  amend by `fleet_runtime.stamp()` (swaps the pair in one edit, refuses under a
+  reviewer role), and backfilled from a head's Claude trailer by the scout's
+  `fleet-pr-stamp --backfill`, never for Codex ([`CODEX.md`](CODEX.md)). Under
+  `FLEET_CROSS_PROVIDER_REVIEW=1`, `choose_runtime()` routes the review to the
+  other provider when the label is present; absent, any available provider
+  reviews. Two author labels at once is a hard error. Don't add to issues.
 - `fleet:runtime-claude` / `fleet:runtime-codex` — human pin of an issue or
   PR to a provider, honoured ahead of every other signal for non-review
   dispatch; two pins is a hard error. Without a pin, feedback and conflict
