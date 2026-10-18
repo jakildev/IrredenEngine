@@ -26,8 +26,9 @@
 #   - stamp: a complete graduated comment posts and stamps; direction and an
 #     incomplete bar recommend; an issue already carrying any fleet:/human:
 #     label or a `## Triage` comment is skipped with no write; a state label
-#     that lands between the first read and the label write stops the label
-#     and audit writes; a live view or re-read without its list refuses;
+#     or a close that lands between the first read and the label write stops
+#     the label and audit writes; a closed issue is skipped with no write; a
+#     live view or re-read without its list or state refuses;
 #     --dry-run writes nothing; --comment-file required
 #   - --repo is required; dual-spelling (--repo= empty) rejected
 
@@ -436,20 +437,20 @@ assert_contains "$out" "gained human:owned since staging" "the skip names the la
 
 # --- stamp: the dispatched role's write path ---------------------------------
 
-echo '{"labels": [], "comments": []}' > "$TMP/view-301.json"
+echo '{"state": "OPEN", "labels": [], "comments": []}' > "$TMP/view-301.json"
 cat > "$TMP/view-306.json" << 'EOF'
-{"labels": [], "comments": [
+{"state": "OPEN", "labels": [], "comments": [
   {"body": "Triage should judge this; the role posts a `## Triage` comment first."}
 ]}
 EOF
-echo '{"labels": [{"name": "fleet:triage-recommend"}], "comments": []}' > "$TMP/view-307.json"
+echo '{"state": "OPEN", "labels": [{"name": "fleet:triage-recommend"}], "comments": []}' > "$TMP/view-307.json"
 cat > "$TMP/view-308.json" << 'EOF'
-{"labels": [], "comments": [
+{"state": "OPEN", "labels": [], "comments": [
   {"body": "Repro attached."},
   {"body": "## Triage\n\n**Verdict:** recommend-approve\n**Class:** rebless\n"}
 ]}
 EOF
-echo '{"labels": []}' > "$TMP/view-309.json"
+echo '{"state": "OPEN", "labels": []}' > "$TMP/view-309.json"
 cat > "$TMP/triage-rebless.md" << 'EOF'
 ## Triage
 
@@ -572,7 +573,7 @@ assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "no label write with
 assert_eq "$(wc -l < "$TMP/gh-comments.log" | tr -d ' ')" "0" "no comment without a comment list"
 
 # Any fleet:/human: state takes the issue out of the untriaged set.
-echo '{"labels": [{"name": "human:owned"}], "comments": []}' > "$TMP/view-310.json"
+echo '{"state": "OPEN", "labels": [{"name": "human:owned"}], "comments": []}' > "$TMP/view-310.json"
 : > "$TMP/gh-writes.log"; : > "$TMP/gh-comments.log"
 log_lines=$(wc -l < "$TMP/fleet-home/triage/log.jsonl" | tr -d ' ')
 status=$(run_sweep stamp --repo engine 310 --comment-file "$TMP/triage-rebless.md")
@@ -585,8 +586,8 @@ assert_eq "$(wc -l < "$TMP/fleet-home/triage/log.jsonl" | tr -d ' ')" "$log_line
     "no audit line on a human:owned issue"
 
 # A human parks the issue between the first read and the label write.
-echo '{"labels": [], "comments": []}' > "$TMP/view-311.json"
-echo '{"labels": [{"name": "human:owned"}], "comments": []}' > "$TMP/view-311-read2.json"
+echo '{"state": "OPEN", "labels": [], "comments": []}' > "$TMP/view-311.json"
+echo '{"state": "OPEN", "labels": [{"name": "human:owned"}], "comments": []}' > "$TMP/view-311-read2.json"
 : > "$TMP/gh-writes.log"; : > "$TMP/gh-comments.log"
 status=$(run_sweep stamp --repo engine 311 --comment-file "$TMP/triage-rebless.md")
 out=$(cat "$TMP/out.txt")
@@ -599,7 +600,7 @@ assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "no approval label a
 assert_eq "$(wc -l < "$TMP/fleet-home/triage/log.jsonl" | tr -d ' ')" "$log_lines" \
     "no audit line after a late state label"
 
-echo '{"labels": [], "comments": []}' > "$TMP/view-312.json"
+echo '{"state": "OPEN", "labels": [], "comments": []}' > "$TMP/view-312.json"
 echo '{}' > "$TMP/view-312-read2.json"
 : > "$TMP/gh-writes.log"
 status=$(run_sweep stamp --repo engine 312 --comment-file "$TMP/triage-rebless.md")
@@ -609,6 +610,52 @@ assert_contains "$out" "refused   #312: the re-read carries no label list" "the 
 assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "no label write without a re-read label list"
 assert_eq "$(wc -l < "$TMP/fleet-home/triage/log.jsonl" | tr -d ' ')" "$log_lines" \
     "no audit line without a re-read label list"
+
+# A closed issue left the open untriaged set, however stale the dispatch.
+echo '{"state": "CLOSED", "labels": [], "comments": []}' > "$TMP/view-313.json"
+: > "$TMP/gh-writes.log"; : > "$TMP/gh-comments.log"
+status=$(run_sweep stamp --repo engine 313 --comment-file "$TMP/triage-rebless.md")
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "stamp on a closed issue exits 0"
+assert_contains "$out" "skipped   #313: is closed" "the guard names the closed state"
+assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "no label write on a closed issue"
+assert_eq "$(wc -l < "$TMP/gh-comments.log" | tr -d ' ')" "0" "no comment on a closed issue"
+assert_eq "$(wc -l < "$TMP/fleet-home/triage/log.jsonl" | tr -d ' ')" "$log_lines" \
+    "no audit line on a closed issue"
+
+# The human closes the issue between the first read and the label write.
+echo '{"state": "OPEN", "labels": [], "comments": []}' > "$TMP/view-314.json"
+echo '{"state": "CLOSED", "labels": [], "comments": []}' > "$TMP/view-314-read2.json"
+: > "$TMP/gh-writes.log"; : > "$TMP/gh-comments.log"
+status=$(run_sweep stamp --repo engine 314 --comment-file "$TMP/triage-rebless.md")
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "0" "stamp that loses the race to a close exits 0"
+assert_eq "$(cat "$TMP/view-314.reads")" "2" "stamp re-reads a closing issue before the label write"
+assert_contains "$out" "skipped   #314: closed before the label write" "the late guard names the close"
+assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "no approval label after a late close"
+assert_eq "$(wc -l < "$TMP/fleet-home/triage/log.jsonl" | tr -d ' ')" "$log_lines" \
+    "no audit line after a late close"
+
+# The stub emits only the fields asked for, so a read that drops `state`
+# lands here too.
+echo '{"labels": [], "comments": []}' > "$TMP/view-315.json"
+: > "$TMP/gh-writes.log"; : > "$TMP/gh-comments.log"
+status=$(run_sweep stamp --repo engine 315 --comment-file "$TMP/triage-rebless.md")
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "1" "stamp refuses a live view with no state"
+assert_contains "$out" "refused   #315: the live view carries no state" "the refusal names the missing state"
+assert_eq "$(wc -l < "$TMP/gh-comments.log" | tr -d ' ')" "0" "no comment without a live state"
+
+echo '{"state": "OPEN", "labels": [], "comments": []}' > "$TMP/view-316.json"
+echo '{"labels": []}' > "$TMP/view-316-read2.json"
+: > "$TMP/gh-writes.log"
+status=$(run_sweep stamp --repo engine 316 --comment-file "$TMP/triage-rebless.md")
+out=$(cat "$TMP/out.txt")
+assert_eq "$status" "1" "stamp refuses a re-read with no state"
+assert_contains "$out" "refused   #316: the re-read carries no state" "the refusal names the re-read's missing state"
+assert_eq "$(wc -l < "$TMP/gh-writes.log" | tr -d ' ')" "0" "no label write without a re-read state"
+assert_eq "$(wc -l < "$TMP/fleet-home/triage/log.jsonl" | tr -d ' ')" "$log_lines" \
+    "no audit line without a re-read state"
 
 status=$(run_sweep stamp --repo engine 306)
 err=$(cat "$TMP/err.txt")
