@@ -1,0 +1,238 @@
+#!/usr/bin/env python3
+"""fleet-worktree-sweep — list, and optionally clear, git worktrees of the fleet
+clones that live outside the pool layout.
+
+    fleet-worktree-sweep [--json] [--no-size] [--prune [--dirty-too]]
+
+The pool layout is `<clone>/.claude/worktrees/<name>/`. A worktree anywhere
+else is a leak: nothing else in the fleet knows it exists, and each one can
+carry a full build. Both clones are swept — the engine clone
+(`FLEET_ENGINE_ROOT`, default `~/src/IrredenEngine`) and the nested game clone
+(`<engine>/creations/game`, skipped when absent). Not leaks: a clone's main
+checkout, anything under that clone's `.claude/worktrees/`, and the scratch
+worktrees `fleet-rebase` owns under `FLEET_REBASE_SCRATCH` (default
+`~/.fleet/rebase-scratch`).
+
+Each leak row reports path, HEAD, dirty-file count, whether HEAD is reachable
+from any `origin/` ref, and size on disk.
+
+`--prune` removes the clean leaks whose HEAD is on origin
+(`git worktree remove --force`, then `git worktree prune`). A leak whose HEAD is
+not on origin gets a `salvage/<path-slug>` branch at that HEAD first, so
+removal never drops a commit. A leak with dirty files, or whose status cannot
+be read, is never touched unless `--dirty-too` is given; a locked worktree is
+never touched.
+
+Exit status: 0 nothing left outside the pool layout, 1 at least one leak
+remains (listed, or kept by --prune), 2 usage error.
+
+Source of truth: scripts/fleet/fleet-worktree-sweep in the engine repo.
+Installed to ~/bin/fleet-worktree-sweep by scripts/fleet/install.sh.
+"""
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+GIT_TIMEOUT_S = 60
+
+
+def git(repo, *args):
+    """Run git in `repo`; (returncode, stdout). A git failure is a value, not a raise."""
+    try:
+        res = subprocess.run(
+            ["git", "-C", str(repo), *args],
+            capture_output=True, text=True, timeout=GIT_TIMEOUT_S, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        return 1, ""
+    return res.returncode, res.stdout.replace("\r", "")
+
+
+def canon(path):
+    return os.path.normcase(os.path.realpath(str(path)))
+
+
+def is_under(path, root):
+    root = canon(root)
+    path = canon(path)
+    return path != root and path.startswith(root.rstrip(os.sep) + os.sep)
+
+
+def clones():
+    engine = Path(os.environ.get("FLEET_ENGINE_ROOT") or Path.home() / "src" / "IrredenEngine")
+    found = [("engine", engine), ("game", engine / "creations" / "game")]
+    return [(name, root) for name, root in found if (root / ".git").exists()]
+
+
+def parse_worktrees(porcelain):
+    """Records of `git worktree list --porcelain`; the first is the main checkout."""
+    records = []
+    for block in porcelain.split("\n\n"):
+        rec = {}
+        for line in block.strip().splitlines():
+            key, _, value = line.partition(" ")
+            rec[key] = value or True
+        if "worktree" in rec:
+            records.append(rec)
+    return records
+
+
+def dirty_count(path):
+    """Changed-path count, or None when status cannot be read (never treated as clean)."""
+    if not Path(path).is_dir():
+        return 0
+    rc, out = git(path, "status", "--porcelain", "--untracked-files=normal")
+    return len(out.splitlines()) if rc == 0 else None
+
+
+def on_origin(clone, head):
+    rc, out = git(clone, "for-each-ref", "--count=1", "--contains", head, "refs/remotes/origin/")
+    return rc == 0 and bool(out.strip())
+
+
+def tree_size(path):
+    total = 0
+    for dirpath, _dirs, files in os.walk(path):
+        for name in files:
+            try:
+                total += os.lstat(os.path.join(dirpath, name)).st_size
+            except OSError:
+                continue
+    return total
+
+
+def slug(path):
+    return re.sub(r"[^A-Za-z0-9]+", "-", str(path)).strip("-")
+
+
+def scratch_root():
+    return os.environ.get("FLEET_REBASE_SCRATCH") or str(Path.home() / ".fleet" / "rebase-scratch")
+
+
+def collect(with_size):
+    leaks = []
+    for name, clone in clones():
+        rc, out = git(clone, "worktree", "list", "--porcelain")
+        if rc != 0:
+            continue
+        pool = clone / ".claude" / "worktrees"
+        for rec in parse_worktrees(out)[1:]:
+            path = rec["worktree"]
+            if is_under(path, pool) or is_under(path, scratch_root()):
+                continue
+            head = rec.get("HEAD") if isinstance(rec.get("HEAD"), str) else ""
+            leaks.append({
+                "repo": name,
+                "clone": str(clone),
+                "path": path,
+                "head": head,
+                "branch": rec["branch"].removeprefix("refs/heads/")
+                if isinstance(rec.get("branch"), str) else None,
+                "dirty": dirty_count(path),
+                "on_origin": on_origin(clone, head) if head else False,
+                "locked": "locked" in rec,
+                "missing": not Path(path).is_dir(),
+                "size_bytes": tree_size(path) if with_size and Path(path).is_dir() else None,
+            })
+    return leaks
+
+
+def salvage(leak):
+    """Branch the leak's HEAD under `salvage/<path-slug>`; returns the branch name."""
+    branch = f"salvage/{slug(leak['path'])}"
+    rc, out = git(leak["clone"], "rev-parse", "--verify", "--quiet", f"refs/heads/{branch}")
+    if rc == 0 and out.strip() != leak["head"]:
+        branch = f"{branch}-{leak['head'][:9]}"
+    rc, _ = git(leak["clone"], "branch", "--force", branch, leak["head"])
+    return branch if rc == 0 else None
+
+
+def prune_one(leak, dirty_too):
+    """(action, detail) for one leak; the action is `removed` or `kept`."""
+    if leak["locked"]:
+        return "kept", "locked"
+    if not dirty_too and leak["dirty"] != 0:
+        return "kept", ("status unreadable" if leak["dirty"] is None
+                        else f"{leak['dirty']} dirty file(s)")
+    detail = "on origin"
+    if not leak["on_origin"]:
+        if not leak["head"]:
+            return "kept", "no HEAD to salvage"
+        branch = salvage(leak)
+        if branch is None:
+            return "kept", "salvage branch failed"
+        detail = f"salvaged to {branch}"
+    if not leak["missing"]:
+        rc, _ = git(leak["clone"], "worktree", "remove", "--force", leak["path"])
+        if rc != 0:
+            return "kept", "git worktree remove failed"
+    git(leak["clone"], "worktree", "prune")
+    return "removed", detail
+
+
+def human_size(n):
+    if n is None:
+        return "-"
+    for unit in ("B", "K", "M", "G"):
+        if n < 1024 or unit == "G":
+            return f"{n:.1f}{unit}" if unit != "B" else f"{n}B"
+        n /= 1024
+    return f"{n}B"
+
+
+def render(leaks):
+    if not leaks:
+        return "no worktrees outside the pool layout\n"
+    lines = ["worktrees outside the pool layout:"]
+    for lk in leaks:
+        dirty = "?" if lk["dirty"] is None else lk["dirty"]
+        lines.append(
+            f"  [{lk['repo']}] {lk['path']}\n"
+            f"      head {lk['head'][:9] or '-'}  dirty {dirty}  "
+            f"on-origin {'yes' if lk['on_origin'] else 'no'}  size {human_size(lk['size_bytes'])}"
+            + ("  locked" if lk["locked"] else "") + ("  missing" if lk["missing"] else ""))
+    return "\n".join(lines) + "\n"
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(
+        prog="fleet-worktree-sweep",
+        description="List git worktrees of the fleet clones outside the pool layout; "
+                    "--prune clears the safe ones.")
+    ap.add_argument("--json", action="store_true", help="machine-readable output")
+    ap.add_argument("--no-size", action="store_true", help="skip the per-worktree size walk")
+    ap.add_argument("--prune", action="store_true",
+                    help="remove clean leaks whose HEAD is on origin; salvage any other HEAD "
+                         "to a salvage/<path-slug> branch first")
+    ap.add_argument("--dirty-too", action="store_true",
+                    help="with --prune, also remove leaks that have dirty files")
+    args = ap.parse_args(argv)
+    if args.dirty_too and not args.prune:
+        ap.error("--dirty-too only applies with --prune")
+
+    leaks = collect(with_size=not args.no_size)
+    results = []
+    if args.prune:
+        for leak in leaks:
+            action, detail = prune_one(leak, args.dirty_too)
+            results.append({"path": leak["path"], "action": action, "detail": detail})
+        remaining = [lk for lk, r in zip(leaks, results) if r["action"] == "kept"]
+    else:
+        remaining = leaks
+
+    if args.json:
+        print(json.dumps({"leaks": leaks, "pruned": results, "remaining": len(remaining)},
+                         indent=2, sort_keys=True))
+    else:
+        sys.stdout.write(render(leaks))
+        for r in results:
+            print(f"{r['action']}: {r['path']} ({r['detail']})")
+    return 1 if remaining else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

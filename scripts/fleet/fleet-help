@@ -324,7 +324,14 @@ Parallel-agent fleet (tmux + Claude)
                                  claude/codex split), trigger arms by source,
                                  the tier-0 -> LLM merger ladder, provider
                                  readiness + unstamped PRs, standing alerts,
-                                 iterations in flight; exit 0 OK / 1 WARN
+                                 iterations in flight, worktrees outside the
+                                 pool layout; exit 0 OK / 1 WARN
+  fleet-worktree-sweep [--json] [--no-size] [--prune [--dirty-too]]
+                                 list git worktrees of the fleet clones
+                                 outside .claude/worktrees/ (path, HEAD, dirty
+                                 count, on-origin, size); --prune removes the
+                                 clean ones, salvaging unpushed HEADs to
+                                 salvage/<path-slug>; exit 0 clean / 1 leaks
   fleet-claude-stream            format claude stream-json for tmux
   fleet-heartbeat <agent>        bump heartbeat mtime
   fleet-iteration-summary <agent> "<text>"

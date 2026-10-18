@@ -94,9 +94,15 @@ fleet workflow.
   (scout, tier-0 `fleet-rebase`, periodic worker re-arm), the merger
   ladder's tier-0 → LLM hand-offs, provider readiness plus the open PRs
   still missing a `fleet:author-*` stamp, standing alerts, and the
-  iterations in flight. Window defaults to the current dispatcher boot
+  iterations in flight, and any worktree outside the pool layout. Window defaults to the current dispatcher boot
   (`--since 24h`, `7d`, or an ISO timestamp to widen); `--json` for
   scripting; exit 1 when it has a WARN line.
+- **`fleet-worktree-sweep`** — lists every worktree of the engine and nested
+  game clones that is not the main checkout, not under `.claude/worktrees/`, and
+  not `fleet-rebase`'s scratch: path, HEAD, dirty-file count, whether HEAD is on
+  an `origin/` ref, size. `--prune` removes the clean on-origin ones and
+  salvages any other HEAD to `salvage/<path-slug>` first; `--dirty-too` extends
+  it to dirty ones. `fleet-health` runs the listing and warns on a non-empty one.
 - **`fleet-edit`** — exact string replacement CLI (Python3). Takes a
   target file, an old-text file, and a new-text file; replaces exactly
   one occurrence (or all with `--replace-all`). Use for tasks that need
