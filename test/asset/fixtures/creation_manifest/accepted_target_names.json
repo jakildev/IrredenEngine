@@ -1,0 +1,48 @@
+{
+  "version": 1,
+  "name": "Fixture",
+  "description": "A shared creation-manifest fixture.",
+  "group": "test",
+  "tags": [
+    "fixture"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "NULL",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        }
+      ]
+    },
+    {
+      "name": "LPT10",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        }
+      ]
+    },
+    {
+      "name": "nul_x",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        }
+      ]
+    },
+    {
+      "name": "x.nul",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        }
+      ]
+    }
+  ]
+}
