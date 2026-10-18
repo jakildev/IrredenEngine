@@ -421,9 +421,9 @@ platform-catchup: <repo> on <host-tag>
   build:   <X/Y> targets clean (<failed>)
   run:     <X/Y> targets pass (<failed>)
   parity:  green <demos> | red <demos> (held) | no-verdict <demos> (held)
+           | skipped <demos> (no windows-debug set)
   perf:    <PASS | FAIL <cells> | no baseline> vs <host_slug> (informational;
            optional, only on a host with a perf-baseline entry)
-           | skipped <demos> (no windows-debug set)
   outcome: <green | partial-runtime | partial-build | red>
   swept:   <N> PRs (fleet:needs-<label-host-tag>-smoke → fleet:verified-<label-host-tag>)
   held:    <N> PRs (touched <held-paths>; will sweep after <PR/issue> resolves)
