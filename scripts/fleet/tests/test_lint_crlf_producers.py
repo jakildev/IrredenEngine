@@ -27,6 +27,7 @@ stdlib-only; every fixture lives under a TemporaryDirectory.
 import importlib.util
 import io
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -651,10 +652,12 @@ class BytePositiveControl(TmpTree):
         real = Path(sys.executable).as_posix()
         stub_dir = self.root / "bin"
         injected = (self.root / "injected.bin").as_posix()
-        self.write("bin/python3", f"""
+        # The shebang must be byte 0: MSYS2 treats an extensionless file as
+        # executable only when it starts with `#!`.
+        self.write("bin/python3", f"""\
             #!/usr/bin/env bash
             "{real}" "$@" | "{real}" -c 'import sys
-            d = sys.stdin.buffer.read().replace(b"\\n", b"\\r\\n")
+            d = sys.stdin.buffer.read().replace(b"\\r\\n", b"\\n").replace(b"\\n", b"\\r\\n")
             sys.stdout.buffer.write(d)' | tee -a "{injected}"
         """, mode=0o755)
         out = self.root / f"rows-{'guarded' if guard else 'unguarded'}.bin"
@@ -667,7 +670,7 @@ class BytePositiveControl(TmpTree):
             done <<< "$labels"
         """)
         env = dict(os.environ, PATH=f"{stub_dir}{os.pathsep}{os.environ.get('PATH', '')}")
-        subprocess.run(["bash", str(script)], env=env, check=True)
+        subprocess.run([shutil.which("bash") or "bash", str(script)], env=env, check=True)
         return Path(injected).read_bytes(), out.read_bytes()
 
     def test_unguarded_consumer_keeps_the_cr_on_the_first_row(self):

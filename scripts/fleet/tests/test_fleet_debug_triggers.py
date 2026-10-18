@@ -8,6 +8,7 @@ load-bearing property — that the dump writes NOTHING under the state tree.
 """
 import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -44,8 +45,9 @@ class FleetDebugTriggers(unittest.TestCase):
     def _run(self):
         env = dict(os.environ)
         env["HOME"] = str(self.home)
+        env["USERPROFILE"] = str(self.home)
         return subprocess.run(
-            ["bash", str(_SCRIPT), "triggers"],
+            [shutil.which("bash") or "bash", str(_SCRIPT), "triggers"],
             capture_output=True, text=True, env=env, timeout=30,
         )
 
