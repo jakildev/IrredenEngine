@@ -191,6 +191,21 @@ class Docs(unittest.TestCase):
                 self.assertIn(f"`{name}`", unblock)
         self.assertNotIn("(not in effect)", graduation.splitlines()[0])
 
+    def test_role_wrapper_carries_every_class_row(self):
+        wrapper = (REPO / ".claude/commands/role-triage.md").read_text(encoding="utf-8")
+        table = wrapper.split("## Graduated classes", 1)[1]
+        rows = {line.split("|")[1].strip(): line for line in table.splitlines()
+                if line.startswith("| `")}
+        self.assertEqual(set(rows), {f"`{name}`" for name in tc.GRADUATED})
+        for name in tc.GRADUATED:
+            with self.subTest(cls=name):
+                row = rows[f"`{name}`"]
+                for key in tc.CLASSES[name][0]:
+                    self.assertIn(f"`{key}`", row)
+                for label in tc.CLASS_LABELS.get(name, ()):
+                    self.assertIn(f"`{label}`", row)
+                self.assertEqual(row.count(tc.NO_PLAN), len(tc.CLASS_LABELS.get(name, ())))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
