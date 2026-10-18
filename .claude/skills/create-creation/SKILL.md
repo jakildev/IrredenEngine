@@ -49,6 +49,10 @@ systems add `irreden_lua_codegen(...)` (`lua-creation-setup` skill).
 
 ## 2. Register
 
+Create `creation.json` beside the CMake file. It uses the v1 schema in
+[`docs/design/engine-launcher.md`](../../../docs/design/engine-launcher.md) §D2
+and lists the runnable target plus an `Interactive` preset.
+
 - Engine-owned: append
   `add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/<category>/<name>)` to
   `creations/CMakeLists.txt` — append, never reorder.

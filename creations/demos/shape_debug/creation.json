@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "Shape debug",
+  "description": "Demonstrates the shape debug creation and its engine integration.",
+  "group": "render/shapes",
+  "tags": [
+    "render",
+    "shapes"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRShapeDebug",
+      "description": "Runs the shape debug creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

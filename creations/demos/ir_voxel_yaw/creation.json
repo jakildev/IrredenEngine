@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "Voxel yaw",
+  "description": "Demonstrates the voxel yaw creation and its engine integration.",
+  "group": "render/camera",
+  "tags": [
+    "render",
+    "camera"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRVoxelYaw",
+      "description": "Runs the voxel yaw creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

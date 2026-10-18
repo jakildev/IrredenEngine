@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "name": "Fixture",
+  "description": "A shared creation-manifest fixture.",
+  "group": "test",
+  "tags": [
+    "fixture"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRValid",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        }
+      ]
+    }
+  ],
+  "thumbnail": "../thumbnail.png"
+}

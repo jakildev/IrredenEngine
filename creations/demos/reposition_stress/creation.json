@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "Reposition stress",
+  "description": "Demonstrates the reposition stress creation and its engine integration.",
+  "group": "perf",
+  "tags": [
+    "perf"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRRepositionStress",
+      "description": "Runs the reposition stress creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

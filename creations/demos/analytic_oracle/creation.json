@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "Analytic oracle",
+  "description": "Demonstrates the analytic oracle creation and its engine integration.",
+  "group": "render/shapes",
+  "tags": [
+    "render",
+    "shapes"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRAnalyticOracle",
+      "description": "Runs the analytic oracle creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

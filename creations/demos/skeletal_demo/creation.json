@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "Skeletal demo",
+  "description": "Demonstrates the skeletal demo creation and its engine integration.",
+  "group": "physics",
+  "tags": [
+    "physics"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRSkeletalDemo",
+      "description": "Runs the skeletal demo creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "Chunk streaming smoke",
+  "description": "Demonstrates the chunk streaming smoke creation and its engine integration.",
+  "group": "world/streaming",
+  "tags": [
+    "world",
+    "streaming"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRChunkStreamingSmoke",
+      "description": "Runs the chunk streaming smoke creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

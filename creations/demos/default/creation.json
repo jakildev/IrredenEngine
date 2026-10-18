@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "Default creation",
+  "description": "Demonstrates the default creation creation and its engine integration.",
+  "group": "lua/ecs",
+  "tags": [
+    "lua",
+    "ecs"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRCreationDefault",
+      "description": "Runs the default creation creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "Lua widgets",
+  "description": "Demonstrates the lua widgets creation and its engine integration.",
+  "group": "lua/widgets",
+  "tags": [
+    "lua",
+    "widgets"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRLuaWidgetsDemo",
+      "description": "Runs the lua widgets creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

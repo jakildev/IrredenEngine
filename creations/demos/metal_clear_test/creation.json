@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "Metal clear test",
+  "description": "Demonstrates the metal clear test creation and its engine integration.",
+  "group": "render/canvas",
+  "tags": [
+    "render",
+    "canvas"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRMetalClearTest",
+      "description": "Runs the metal clear test creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}
