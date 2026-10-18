@@ -41,6 +41,10 @@ template <> inline void bindLuaType<IRComponents::C_FogRevealed>(LuaScript &luaS
     );
     type["ghostHeld"] = sol::readonly(&C_FogRevealed::ghostHeld_);
 
+    // A creation that never calls bindLuaDrivenEcs() has no IRComponent table.
+    if (!luaScript.lua()["IRComponent"].valid()) {
+        luaScript.lua()["IRComponent"] = luaScript.lua().create_table();
+    }
     sol::table overrides = luaScript.lua().create_table();
 #define IR_BIND_FOG_OVERRIDE(name) overrides[#name] = static_cast<lua_Integer>(FogOverride::name)
     IR_BIND_FOG_OVERRIDE(NONE);

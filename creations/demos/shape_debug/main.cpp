@@ -22,6 +22,7 @@
 #include "glitch_subject_fixture.hpp"
 #include "lod_scene.hpp"
 #include "sdf_voxel_scene.hpp"
+#include "voxel_text_sample.hpp"
 
 #include <algorithm>
 #include <array>
@@ -588,6 +589,14 @@ ivec2 g_requestedFramebufferSize{0};
 constexpr IRVideo::AutoScreenshotShot kTextSizeSampleShots[] = {
     {1.0f, vec2(0, 0), 0.0f, "text_size_sample"},
 };
+
+// --voxel-text-sample: the IRShapeDebug::VoxelTextSample scene, built and
+// captured at --voxel-text-yaw degrees; the one shot is
+// voxel_text_yaw<degrees>.
+bool g_voxelTextSample = false;
+float g_voxelTextYawDegrees = 0.0f;
+std::array<char, 32> g_voxelTextShotLabel{};
+IRVideo::AutoScreenshotShot g_voxelTextShot{};
 
 // --load-prefab <path>: the scene is the prefab manifest at <path> (exe-relative)
 // spawned at the origin, so each shot shows the parts its LOD bands select at
@@ -1714,6 +1723,16 @@ void registerCliArgs() {
         2
     );
     args.flag(
+        "--voxel-text-sample",
+        "Replace the scene + capture table with three voxel titles on a lit floor (default path, "
+        "world -X, a bent polyline), built facing --voxel-text-yaw"
+    );
+    args.number(
+        "--voxel-text-yaw",
+        "Camera Z-yaw in degrees the --voxel-text-sample titles are built facing and captured at",
+        0.0f
+    );
+    args.flag(
         "--viewport-lod-swap",
         "With --viewport-portrait: the subject is a coarse/fine pair on disjoint LOD bands; the "
         "world draws the coarse variant and the portrait the fine one"
@@ -1775,6 +1794,8 @@ void readCliArgs() {
             g_requestedFramebufferSize = ivec2(size[0], size[1]);
         }
     }
+    g_voxelTextSample = args.getFlag("--voxel-text-sample");
+    g_voxelTextYawDegrees = args.getFloat("--voxel-text-yaw");
     g_viewportLodSwap = g_viewportPortrait && args.getFlag("--viewport-lod-swap");
     g_cursorPivotIndicator = args.getFlag("--cursor-pivot-indicator");
     g_continuousZoomGuiTest = args.getFlag("--continuous-zoom-gui-test");
@@ -4378,6 +4399,18 @@ void initSystems() {
             IRVideo::setAutoScreenshotShots(cfg, kViewportPortraitShots);
         } else if (g_textSizeSample) {
             IRVideo::setAutoScreenshotShots(cfg, kTextSizeSampleShots);
+        } else if (g_voxelTextSample) {
+            std::snprintf(
+                g_voxelTextShotLabel.data(),
+                g_voxelTextShotLabel.size(),
+                "voxel_text_yaw%d",
+                static_cast<int>(g_voxelTextYawDegrees)
+            );
+            g_voxelTextShot.zoom_ = IRShapeDebug::VoxelTextSample::kZoom;
+            g_voxelTextShot.yawRadians_ = g_voxelTextYawDegrees * (IRMath::kPi / 180.0f);
+            g_voxelTextShot.label_ = g_voxelTextShotLabel.data();
+            cfg.shots_ = &g_voxelTextShot;
+            cfg.numShots_ = 1;
         } else if (!g_loadPrefabPath.empty()) {
             buildLoadPrefabShots();
             cfg.shots_ = g_loadPrefabShots.data();
@@ -5287,6 +5320,12 @@ void initEntities() {
     if (g_textSizeSample) {
         IR_LOG_INFO("--- GUI text-size sample scene ---");
         initTextSizeSampleScene();
+        return;
+    }
+    if (g_voxelTextSample) {
+        IR_LOG_INFO("--- Voxel text sample scene (yaw {} deg) ---", g_voxelTextYawDegrees);
+        IRShapeDebug::VoxelTextSample::initialize(g_voxelTextYawDegrees * (IRMath::kPi / 180.0f));
+        setupCanvasLighting();
         return;
     }
     if (g_viewportPortrait) {

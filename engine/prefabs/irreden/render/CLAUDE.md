@@ -82,8 +82,8 @@ overpaint overlay text: keep widgets clear of the perf-stats overlay (top-right)
   (`SHAPES_TO_TRIXEL`) or `C_VoxelSetNew` (`GATE_VOXEL_SETS_BY_LOD`) draws only
   inside its `[lodMax_ .. lodMin_]` band; disjoint co-located bands swap. A new
   consumer resolves via `IRPrefab::Lod::TierSnapshot`, which honours `C_LodTierOverride`.
-- Sprites bypass the trixel pipeline ([`docs/design/sprites.md`](../../../../docs/design/sprites.md));
-  `C_Sprite::screenPixelSmooth_` (no game-pixel snap) is for the avatar or a camera-locked entity only.
+- Sprites bypass the trixel pipeline ([`docs/design/sprites.md`](../../../../docs/design/sprites.md)); `C_Sprite::screenPixelSmooth_` (no game-pixel snap) is for the avatar or a camera-locked entity only.
+- Voxel titles (`IRText.createVoxel`; `voxel_text.hpp` over the `voxel_font.hpp` glyphs) are GRID letters authored onto the plane facing the build-time camera yaw: re-face by rebuilding, never rotate or scale the root ([contract](../../../../docs/design/voxel-text.md)).
 - Fog subject classes: untagged voxel sets, SDF shapes and world-placed detached
   canvas owners are BODY subjects (one owner/ground-anchor `evalReveal` verdict);
   detached BODY factor + hidden state modulates/skips the whole authored composite.

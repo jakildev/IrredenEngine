@@ -8,7 +8,7 @@ add_executable(IRCreationDefault
 target_link_libraries(IRCreationDefault PUBLIC IrredenEngine)
 
 # Exe-relative runtime layout (data/ shaders/ scripts/ + Windows DLLs).
-irreden_bundle_assets(IRCreationDefault SCRIPTS main.lua config.lua commands.lua)
+irreden_bundle_assets(IRCreationDefault SCRIPTS main.lua config.lua commands.lua voxel_title.lua)
 
 # Run helper target:
 # - Launches the creation executable from the build directory

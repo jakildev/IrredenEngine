@@ -64,7 +64,8 @@ class LuaScript {
     // engine/script/CLAUDE.md.
     void bindLuaDrivenEcs();
 
-    // Bind IRText.Size and IRText.measure, extending an existing IRText table
+    // Bind IRText.Size, IRText.measure and the voxel titles
+    // (IRText.createVoxel / removeVoxel), extending an existing IRText table
     // (a non-table IRText raises). Idempotent; bindLuaDrivenEcs() calls it, so
     // a creation that replaces IRText afterwards must call it again.
     void bindLuaText();

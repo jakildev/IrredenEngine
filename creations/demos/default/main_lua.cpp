@@ -1,4 +1,5 @@
 #include <irreden/ir_engine.hpp>
+#include <irreden/ir_video.hpp>
 #include "lua_bindings.hpp"
 
 // COMPONENTS
@@ -45,6 +46,11 @@
 void initSystems();
 void initEntities();
 
+// --auto-screenshot: one capture of the opening view, then exit.
+constexpr IRVideo::AutoScreenshotShot kShots[] = {
+    {1.0f, IRMath::vec2(0.0f), 0.0f, "default_opening"},
+};
+
 int main(int argc, char **argv) {
     IR_LOG_INFO("Starting creation: default");
 
@@ -52,6 +58,7 @@ int main(int argc, char **argv) {
     IREngine::init(argc, argv);
     initSystems();
     IREngine::runScript("commands.lua");
+    IREngine::runScript("voxel_title.lua");
     IREngine::gameLoop();
 
     return 0;
@@ -93,6 +100,11 @@ void initSystems() {
          IRSystem::createSystem<IRSystem::DEBUG_OVERLAY>(),
          IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
          IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>()}
+    );
+    IRVideo::appendAutoScreenshotIfRequested(
+        renderPipeline,
+        IREngine::args().autoScreenshotWarmupFrames(),
+        kShots
     );
     IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
 }
