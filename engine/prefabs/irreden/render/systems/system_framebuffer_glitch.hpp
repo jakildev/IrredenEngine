@@ -123,12 +123,79 @@ inline GlitchFramePlan planGlitchFrame(
     return {true, readsHistory && (!historyValid || holdTick != lastHoldTick)};
 }
 
-// The resource work one enabled frame encodes ahead of its screen-base draw,
-// decided from CPU state alone before any of it is issued.
-struct GlitchFrameWork {
-    // Allocate the history image, or reallocate it at a new framebuffer size.
-    bool createHistory_ = false;
-    bool copyHistory_ = false;
+// The GPU work of one enabled frame. `encodeFrame` issues it in this order and
+// nothing else: `recreateHistory` on first use and on a resize,
+// `copyHistory` on a hold-tick change, then always one `bindAndClearScreen`
+// and one `drawScreenBase`. `GlitchGpuEncoder` encodes it; the headless
+// probes record it.
+class GlitchEncoder {
+  public:
+    // Replaces the one history image with one of @p size.
+    virtual void recreateHistory(IRMath::ivec2 size) = 0;
+    // Snapshots the unglitched main colour into the history image.
+    virtual void copyHistory() = 0;
+    virtual void bindAndClearScreen() = 0;
+    virtual void drawScreenBase(const FrameDataFramebufferGlitch &frameData) = 0;
+
+  protected:
+    ~GlitchEncoder() = default;
+};
+
+class GlitchGpuEncoder final : public GlitchEncoder {
+  public:
+    GlitchGpuEncoder(
+        const C_TrixelCanvasFramebuffer &source,
+        std::pair<ResourceId, Texture2D *> &history,
+        Buffer &frameDataBuf,
+        ShaderProgram &program,
+        VAO &quadVao
+    )
+        : m_source{source}
+        , m_history{history}
+        , m_frameDataBuf{frameDataBuf}
+        , m_program{program}
+        , m_quadVao{quadVao} {}
+
+    void recreateHistory(IRMath::ivec2 size) override {
+        if (m_history.second != nullptr) {
+            IRRender::destroyResource<Texture2D>(m_history.first);
+        }
+        m_history = IRRender::createResource<Texture2D>(
+            TextureKind::TEXTURE_2D,
+            static_cast<unsigned int>(size.x),
+            static_cast<unsigned int>(size.y),
+            TextureFormat::RGBA8,
+            TextureWrap::CLAMP_TO_EDGE,
+            TextureFilter::NEAREST
+        );
+    }
+
+    void copyHistory() override {
+        IRRender::device()->copyTexture2D(m_source.getTextureColor(), *m_history.second);
+    }
+
+    void bindAndClearScreen() override {
+        IRRender::device()->bindDefaultFramebuffer();
+        IRRender::device()->clearDefaultFramebuffer();
+    }
+
+    void drawScreenBase(const FrameDataFramebufferGlitch &frameData) override {
+        m_frameDataBuf.subData(0, sizeof(FrameDataFramebufferGlitch), &frameData);
+        m_frameDataBuf.bindBase(BufferTarget::UNIFORM, kBufferIndex_FramebufferGlitchFrameData);
+        m_program.use();
+        m_quadVao.bind();
+        m_source.bindTextures(0, 1);
+        m_history.second->bind(2);
+        IRRender::device()->setPolygonMode(PolygonMode::FILL);
+        IRRender::device()->drawArrays(DrawMode::TRIANGLES, 0, 6);
+    }
+
+  private:
+    const C_TrixelCanvasFramebuffer &m_source;
+    std::pair<ResourceId, Texture2D *> &m_history;
+    Buffer &m_frameDataBuf;
+    ShaderProgram &m_program;
+    VAO &m_quadVao;
 };
 
 // Replaces the main framebuffer's screen blit with a glitched one on enabled
@@ -162,12 +229,12 @@ template <> struct System<FRAMEBUFFER_GLITCH> {
     // draw is encoded.
     std::uint64_t publishedRenderTick_ = kNotPublished;
 
-    // Work counters for the headless probes: per frame and since registration.
+    // Encoder calls issued, per frame and since registration; the
+    // `[glitch-probe]` lines report them.
     int frameHistoryCopies_ = 0;
     int frameDraws_ = 0;
     std::uint64_t historyCopyCount_ = 0;
     std::uint64_t drawCount_ = 0;
-    std::uint64_t historyAllocationCount_ = 0;
 
     bool isPublishedForRenderTick(std::uint64_t renderTick) const {
         return publishedRenderTick_ == renderTick;
@@ -175,12 +242,6 @@ template <> struct System<FRAMEBUFFER_GLITCH> {
 
     bool ownsHistoryImage() const {
         return history_.second != nullptr;
-    }
-
-    // Images the pass holds: the history snapshot once first enabled, and
-    // nothing else. A resize replaces that image rather than adding one.
-    int ownedImageCount() const {
-        return historySize_ == IRMath::ivec2(0) ? 0 : 1;
     }
 
     void beginTick() {
@@ -202,33 +263,47 @@ template <> struct System<FRAMEBUFFER_GLITCH> {
         clock_ = IRPrefab::Glitch::clockAt(state_, IRPrefab::Glitch::engineTimeSeconds());
     }
 
-    // Resize and history-cadence bookkeeping for one enabled frame. Withdraws
-    // any publication when the framebuffer size changes: the snapshot and the
-    // screen base drawn against the old size are both void until the next
-    // `finishFrame`.
-    GlitchFrameWork planFrame(IRMath::ivec2 framebufferSize) {
-        GlitchFrameWork work;
+    // One enabled frame through @p encoder. A resize withdraws the publication
+    // before the history is replaced: the snapshot and any screen base drawn
+    // against the old size are void. The pass publishes only after the
+    // screen-base draw, so `FRAMEBUFFER_TO_SCREEN` never skips a frame this
+    // pass did not draw.
+    void encodeFrame(
+        GlitchEncoder &encoder,
+        IRMath::ivec2 framebufferSize,
+        IRMath::ivec2 trixelStep,
+        const IRMath::mat4 &mvpMatrix
+    ) {
         if (historySize_ != framebufferSize) {
             publishedRenderTick_ = kNotPublished;
             historyValid_ = false;
             historySize_ = framebufferSize;
-            work.createHistory_ = true;
-            ++historyAllocationCount_;
+            encoder.recreateHistory(framebufferSize);
         }
-        work.copyHistory_ =
+        const bool copyHistory =
             planGlitchFrame(&state_, clock_.holdTick_, historyValid_, lastHoldTick_).copyHistory_;
-        if (work.copyHistory_) {
-            historyValid_ = true;
-            lastHoldTick_ = clock_.holdTick_;
-            ++frameHistoryCopies_;
-            ++historyCopyCount_;
-        }
-        return work;
-    }
 
-    // Records the encoded screen-base draw. The only place the pass publishes,
-    // so `FRAMEBUFFER_TO_SCREEN` never skips a frame this pass did not draw.
-    void finishFrame() {
+        const IRPrefab::Glitch::FrameTables tables = IRPrefab::Glitch::frameTables(
+            IRPrefab::Glitch::frameParams(state_, clock_, trixelStep, framebufferSize)
+        );
+        frameData_ =
+            packGlitchFrameData(tables, IRPrefab::Glitch::toTickWords(clock_.holdTick_), mvpMatrix);
+
+        {
+            IRRender::GpuSubStageScope scope("framebufferGlitch");
+            if (copyHistory) {
+                // Snapshot before the default target is bound, from the
+                // unglitched composite: feeding glitched output back would
+                // accumulate artifacts.
+                encoder.copyHistory();
+                historyValid_ = true;
+                lastHoldTick_ = clock_.holdTick_;
+                ++frameHistoryCopies_;
+                ++historyCopyCount_;
+            }
+            encoder.bindAndClearScreen();
+            encoder.drawScreenBase(frameData_);
+        }
         ++frameDraws_;
         ++drawCount_;
         publishedRenderTick_ = renderTick_;
@@ -244,22 +319,11 @@ template <> struct System<FRAMEBUFFER_GLITCH> {
         }
         IR_PROFILE_SCOPE("framebufferGlitch");
         const IRMath::ivec2 size = framebuffer.getResolutionPlusBuffer();
-        const GlitchFrameWork work = planFrame(size);
-        if (work.createHistory_) {
-            recreateHistory(size);
-        }
-
-        const IRPrefab::Glitch::FrameTables tables = IRPrefab::Glitch::frameTables(
-            IRPrefab::Glitch::frameParams(
-                state_,
-                clock_,
-                IRPrefab::Glitch::trixelStepForZoom(IRRender::getCameraZoom()),
-                size
-            )
-        );
-        frameData_ = packGlitchFrameData(
-            tables,
-            IRPrefab::Glitch::toTickWords(clock_.holdTick_),
+        GlitchGpuEncoder encoder{framebuffer, history_, *frameDataBuf_, *program_, *quadVao_};
+        encodeFrame(
+            encoder,
+            size,
+            IRPrefab::Glitch::trixelStepForZoom(IRRender::getCameraZoom()),
             detail::framebufferScreenMvp(
                 size,
                 cameraWorldXform.translation_,
@@ -273,27 +337,6 @@ template <> struct System<FRAMEBUFFER_GLITCH> {
                 true
             )
         );
-
-        {
-            IRRender::GpuSubStageScope scope("framebufferGlitch");
-            if (work.copyHistory_) {
-                // Snapshot before the default target is bound, from the
-                // unglitched composite: feeding glitched output back would
-                // accumulate artifacts.
-                IRRender::device()->copyTexture2D(framebuffer.getTextureColor(), *history_.second);
-            }
-            IRRender::device()->bindDefaultFramebuffer();
-            IRRender::device()->clearDefaultFramebuffer();
-            frameDataBuf_->subData(0, sizeof(FrameDataFramebufferGlitch), &frameData_);
-            frameDataBuf_->bindBase(BufferTarget::UNIFORM, kBufferIndex_FramebufferGlitchFrameData);
-            program_->use();
-            quadVao_->bind();
-            framebuffer.bindTextures(0, 1);
-            history_.second->bind(2);
-            IRRender::device()->setPolygonMode(PolygonMode::FILL);
-            IRRender::device()->drawArrays(DrawMode::TRIANGLES, 0, 6);
-        }
-        finishFrame();
     }
 
     static SystemId create() {
@@ -320,25 +363,10 @@ template <> struct System<FRAMEBUFFER_GLITCH> {
         sys->frameDataBuf_ = IRRender::getNamedResource<Buffer>("FramebufferGlitchFrameData");
         sys->program_ = IRRender::getNamedResource<ShaderProgram>("FramebufferGlitchProgram");
         sys->quadVao_ = IRRender::getNamedResource<VAO>("QuadVAOArrays");
-        // Deliberately untagged: the GpuSubStageScope above owns the
+        // Deliberately untagged: `encodeFrame`'s GpuSubStageScope owns the
         // `framebufferGlitch` row, and a system tag would share its timestamp
         // attachment.
         return id;
-    }
-
-  private:
-    void recreateHistory(IRMath::ivec2 size) {
-        if (history_.second != nullptr) {
-            IRRender::destroyResource<Texture2D>(history_.first);
-        }
-        history_ = IRRender::createResource<Texture2D>(
-            TextureKind::TEXTURE_2D,
-            static_cast<unsigned int>(size.x),
-            static_cast<unsigned int>(size.y),
-            TextureFormat::RGBA8,
-            TextureWrap::CLAMP_TO_EDGE,
-            TextureFilter::NEAREST
-        );
     }
 };
 

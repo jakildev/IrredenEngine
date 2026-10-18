@@ -100,13 +100,16 @@ tick. `IRPrefab::Glitch::screenCompositedForCurrentRenderTick()` is true only
 for that tick, and `FRAMEBUFFER_TO_SCREEN` then skips its bind, clear and
 draw. The target is cleared and drawn exactly once per frame.
 
-An enabled frame's resource work is decided on the CPU before any GPU call
-(`planFrame`). It allocates the history on first use or on a framebuffer
-resize. A resize also withdraws the publication. It re-snapshots on a
-hold-tick change and after an off tick. `finishFrame`, run after the draw is
-encoded, is the only place the pass publishes.
-`test/render/prefab_system_probe_test.cpp` drives both, with the blit's
-`beginTick`, without a GPU.
+An enabled frame runs `encodeFrame`, which issues its GPU work through a
+`GlitchEncoder`: `recreateHistory` on first use or on a framebuffer resize
+(after withdrawing the publication), `copyHistory` on a hold-tick change and
+after an off tick, then one `bindAndClearScreen` and one `drawScreenBase`. The
+pass publishes only after that draw. `tick` resolves the camera and hands
+`encodeFrame` a `GlitchGpuEncoder`, which makes the device and resource calls.
+`test/render/prefab_system_probe_test.cpp` runs `encodeFrame` against a
+recording encoder and the blit's `beginTick` and `tick` against a recording
+`RenderDevice`, and asserts the whole schedule of each RENDER tick, without a
+GPU.
 
 Off (no singleton, zero intensity, all weights zero) does no GPU work: no copy,
 no draw, no timing scope. The live `framebufferGlitch` row is written to zero
