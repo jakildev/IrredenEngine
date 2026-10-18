@@ -115,7 +115,8 @@ if handOffMode ~= "off" then
         print(markers("before"))
         local r = IREngine.handOff{ argv = { "IRLuaWidgetsDemo", "--auto-screenshot", "3" } }
         print(markers("resumed") .. " ok=" .. tostring(r.ok) .. " supported=" .. tostring(r.supported) ..
-              " exit=" .. tostring(r.exitCode) .. " error=" .. tostring(r.error))
+              " exit=" .. tostring(r.exitCode) .. " verdict=" .. tostring(r.verdict) ..
+              " error=" .. tostring(r.error))
         return r
     end
     IRGui.makeButton(260, 620, 240, 80, "HAND OFF", function() handOff() end)

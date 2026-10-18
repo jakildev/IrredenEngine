@@ -1,13 +1,20 @@
 #include <irreden/world/hand_off.hpp>
 
+#include "tool_target.hpp"
+
 #include <irreden/ir_profile.hpp>
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
 #include <irreden/utility/path_utils.hpp>
+#include <irreden/utility/contained_path.hpp>
 
 #include <sol/sol.hpp>
 
 #include <string_view>
+#include <fstream>
+#include <filesystem>
+#include <iterator>
+#include <ranges>
 #include <utility>
 
 namespace IREngine {
@@ -22,6 +29,32 @@ bool requestsProfile(const std::vector<std::string> &argv) {
         }
     }
     return false;
+}
+
+std::optional<std::string> readVerdict(const std::filesystem::path &path) {
+    std::ifstream input(path, std::ios::binary);
+    if (!input) {
+        return std::nullopt;
+    }
+    const std::string text(
+        (std::istreambuf_iterator<char>(input)),
+        std::istreambuf_iterator<char>()
+    );
+    const std::string key = "\"verdict\"";
+    std::size_t position = text.find(key);
+    if (position == std::string::npos) {
+        return std::nullopt;
+    }
+    position = text.find(':', position + key.size());
+    position = text.find('"', position == std::string::npos ? position : position + 1);
+    if (position == std::string::npos) {
+        return std::nullopt;
+    }
+    const std::size_t end = text.find('"', position + 1);
+    if (end == std::string::npos) {
+        return std::nullopt;
+    }
+    return text.substr(position + 1, end - position - 1);
 }
 
 std::vector<std::string> wrapperCommand(
@@ -117,8 +150,28 @@ HandOffRequest parseRequest(const sol::object &arg) {
         raise("expects a table { argv = {...}, resume = true }");
     }
     const sol::table options = arg.as<sol::table>();
+    for (const auto &[key, value] : options) {
+        (void)value;
+        if (key.get_type() != sol::type::string) {
+            raise("request keys must be strings");
+        }
+        const std::string name = key.as<std::string>();
+        if (name != "argv" && name != "resume" && name != "buildDir") {
+            raise("unknown key '" + name + "'");
+        }
+    }
     HandOffRequest request;
     request.argv_ = parseArgv(options["argv"]);
+    const sol::object buildDir = options["buildDir"];
+    if (buildDir.valid() && buildDir.get_type() != sol::type::lua_nil) {
+        if (buildDir.get_type() != sol::type::string) {
+            raise("buildDir must be a string");
+        }
+        request.buildDir_ = buildDir.as<std::string>();
+        if (request.buildDir_->find('\0') != std::string::npos) {
+            raise("buildDir contains a NUL byte");
+        }
+    }
     const sol::object resume = options["resume"];
     if (resume.valid() && resume.get_type() != sol::type::lua_nil) {
         if (resume.get_type() != sol::type::boolean) {
@@ -143,11 +196,15 @@ HandOffEnvironment HandOffEnvironment::fromProcess() {
     environment.leaseToken_ = IRUtility::envString("IR_RUN_LOCK_TOKEN");
     environment.acquireToolPath_ = IRUtility::envString("IR_ACQUIRE_TOOL");
     environment.heldVerb_ = IRUtility::envString("IR_ACQUIRE_HELD_VERB");
+    environment.inheritedBuildDir_ = IRUtility::envString("IRREDEN_BUILD_DIR");
     return environment;
 }
 
 HandOffOutcome runHandOff(
-    const HandOffRequest &request, const HandOffEnvironment &environment, HandOffPlatform &platform
+    const HandOffRequest &request,
+    const HandOffEnvironment &environment,
+    HandOffPlatform &platform,
+    const std::optional<std::filesystem::path> &toolRoot
 ) {
     HandOffOutcome outcome;
     HandOffResult &result = outcome.result_;
@@ -163,6 +220,10 @@ HandOffOutcome runHandOff(
     result.supported_ = true;
     if (request.argv_.empty()) {
         result.error_ = "argv is empty";
+        return outcome;
+    }
+    if (!detail::isToolTargetName(request.argv_.front())) {
+        result.error_ = "argv[0] is not a valid target name";
         return outcome;
     }
     // The OS receives each argument NUL-terminated, so an embedded NUL would
@@ -183,6 +244,31 @@ HandOffOutcome runHandOff(
         return outcome;
     }
 
+    std::optional<std::filesystem::path> buildDir;
+    if (request.buildDir_.has_value()) {
+        if (!toolRoot.has_value()) {
+            result.error_ = "buildDir requires a configured tool root";
+            return outcome;
+        }
+        buildDir = IRUtility::resolveContainedPath(*toolRoot, *request.buildDir_);
+        if (!buildDir.has_value()) {
+            result.error_ = "buildDir must resolve inside the tool root";
+            return outcome;
+        }
+    } else if (!environment.inheritedBuildDir_.empty()) {
+        buildDir = std::filesystem::path{environment.inheritedBuildDir_};
+    }
+    std::optional<std::filesystem::path> resultFile;
+    if (buildDir.has_value()) {
+        resultFile = *buildDir / "ir-run-results" / (request.argv_.front() + ".last.json");
+        std::error_code error;
+        std::filesystem::create_directories(resultFile->parent_path(), error);
+        if (error) {
+            result.error_ = "could not create the result-file directory";
+            return outcome;
+        }
+    }
+
     IRE_LOG_INFO("IREngine.handOff: suspending for {}", request.argv_.front());
     platform.drainGpu();
     outcome.suspended_ = true;
@@ -199,10 +285,22 @@ HandOffOutcome runHandOff(
         IRE_LOG_INFO("IREngine.handOff: released the gpu lease");
     }
 
+    std::vector<std::string> runArgs;
+    if (buildDir.has_value()) {
+        runArgs.insert(runArgs.end(), {"--build-dir", buildDir->string()});
+    }
+    if (resultFile.has_value()) {
+        runArgs.insert(runArgs.end(), {"--result-file", resultFile->string()});
+    }
+    runArgs.push_back("--");
+    runArgs.insert(runArgs.end(), request.argv_.begin(), request.argv_.end());
     const ChildExit child =
-        platform.runToExit(wrapperCommand(environment, environment.wrapperPath_, request.argv_));
+        platform.runToExit(wrapperCommand(environment, environment.wrapperPath_, runArgs));
     if (child.started_) {
         result.exitCode_ = child.exitCode_;
+        if (resultFile.has_value()) {
+            result.verdict_ = readVerdict(*resultFile);
+        }
     }
 
     if (holdsLease) {
@@ -250,6 +348,9 @@ void bindHandOffLua(
             out["supported"] = result.supported_;
             if (result.exitCode_.has_value()) {
                 out["exitCode"] = *result.exitCode_;
+            }
+            if (result.verdict_.has_value()) {
+                out["verdict"] = *result.verdict_;
             }
             if (!result.error_.empty()) {
                 out["error"] = result.error_;

@@ -9,6 +9,7 @@
 // child never links shaders against a parent with GPU work in flight.
 
 #include <functional>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -24,6 +25,7 @@ struct HandOffRequest {
     /// separate arguments, never joined into a shell command. The OS takes
     /// each NUL-terminated, so `runHandOff` refuses one holding a NUL byte.
     std::vector<std::string> argv_;
+    std::optional<std::string> buildDir_;
 };
 
 struct HandOffResult {
@@ -33,6 +35,7 @@ struct HandOffResult {
     /// Set once the child started.
     std::optional<int> exitCode_;
     std::string error_;
+    std::optional<std::string> verdict_;
 };
 
 /// What ir-run and ir-acquire exported to this process.
@@ -44,6 +47,7 @@ struct HandOffEnvironment {
     std::string leaseToken_;
     std::string acquireToolPath_;
     std::string heldVerb_;
+    std::string inheritedBuildDir_;
 
     static HandOffEnvironment fromProcess();
 };
@@ -74,7 +78,10 @@ struct HandOffOutcome {
 };
 
 HandOffOutcome runHandOff(
-    const HandOffRequest &request, const HandOffEnvironment &environment, HandOffPlatform &platform
+    const HandOffRequest &request,
+    const HandOffEnvironment &environment,
+    HandOffPlatform &platform,
+    const std::optional<std::filesystem::path> &toolRoot = std::nullopt
 );
 
 using HandOffInvoker = std::function<HandOffResult(const HandOffRequest &)>;

@@ -18,6 +18,7 @@ class LuaEngineHandOffTest : public testing::Test {
             m_lua,
             [this](const HandOffRequest &request) {
                 m_requests.push_back(request.argv_);
+                m_buildDirs.push_back(request.buildDir_);
                 return m_next;
             },
             [this]() { return m_onMainThread; }
@@ -38,6 +39,7 @@ class LuaEngineHandOffTest : public testing::Test {
 
     IRScript::LuaScript m_lua;
     std::vector<std::vector<std::string>> m_requests;
+    std::vector<std::optional<std::string>> m_buildDirs;
     HandOffResult m_next{true, true, 0, ""};
     bool m_onMainThread = true;
 };
@@ -65,6 +67,18 @@ TEST_F(LuaEngineHandOffTest, ExplicitResumeTrueMatchesTheDefault) {
     )lua");
     ASSERT_TRUE(result.valid()) << sol::error(result).what();
     EXPECT_EQ(m_requests.size(), 2u);
+}
+
+TEST_F(LuaEngineHandOffTest, PassesBuildDirAndReturnsVerdict) {
+    m_next.verdict_ = "CLEAN";
+    const sol::protected_function_result result = run(R"lua(
+        local r = IREngine.handOff{ argv = { "IRDemo" }, buildDir = "build" }
+        assert(r.verdict == "CLEAN")
+    )lua");
+    ASSERT_TRUE(result.valid()) << sol::error(result).what();
+    ASSERT_EQ(m_buildDirs.size(), 1u);
+    ASSERT_TRUE(m_buildDirs.front().has_value());
+    EXPECT_EQ(*m_buildDirs.front(), "build");
 }
 
 TEST_F(LuaEngineHandOffTest, ChildFailureReportsExitCodeAndError) {
@@ -106,6 +120,7 @@ TEST_F(LuaEngineHandOffTest, MalformedInputRaisesBeforeTheHandOff) {
     );
     expectRaises("IREngine.handOff{ argv = { string.char(0) } }", "argv[1] contains a NUL byte");
     expectRaises("IREngine.handOff{ argv = { 'IRDemo' }, resume = 1 }", "boolean");
+    expectRaises("IREngine.handOff{ argv = { 'IRDemo' }, cwd = '.' }", "unknown key");
     EXPECT_TRUE(m_requests.empty());
 }
 

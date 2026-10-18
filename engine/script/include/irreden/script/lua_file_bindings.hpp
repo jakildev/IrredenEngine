@@ -2,6 +2,7 @@
 #define LUA_FILE_BINDINGS_H
 
 #include <irreden/script/lua_script.hpp>
+#include <irreden/utility/contained_path.hpp>
 
 #include <sol/sol.hpp>
 
@@ -14,36 +15,6 @@
 #include <string>
 
 namespace IRScript::detail {
-
-inline bool
-isWithinDirectory(const std::filesystem::path &directory, const std::filesystem::path &candidate) {
-    auto directoryPart = directory.begin();
-    auto candidatePart = candidate.begin();
-    while (directoryPart != directory.end() && candidatePart != candidate.end()) {
-        if (*directoryPart != *candidatePart) {
-            return false;
-        }
-        ++directoryPart;
-        ++candidatePart;
-    }
-    return directoryPart == directory.end();
-}
-
-inline std::optional<std::filesystem::path>
-resolveRunPath(const std::filesystem::path &runDirectory, const std::string &path) {
-    const std::filesystem::path relativePath(path);
-    if (relativePath.empty() || relativePath.is_absolute() || relativePath.has_root_name()) {
-        return std::nullopt;
-    }
-
-    std::error_code error;
-    const std::filesystem::path resolved =
-        std::filesystem::weakly_canonical(runDirectory / relativePath, error);
-    if (error || !isWithinDirectory(runDirectory, resolved)) {
-        return std::nullopt;
-    }
-    return resolved;
-}
 
 inline void bindFiles(LuaScript &script, const std::filesystem::path &runDirectory) {
     std::error_code error;
@@ -64,7 +35,7 @@ inline void bindFiles(LuaScript &script, const std::filesystem::path &runDirecto
 
     files["readText"] =
         [resolvedRunDirectory](const std::string &path) -> sol::optional<std::string> {
-        const auto resolved = resolveRunPath(resolvedRunDirectory, path);
+        const auto resolved = IRUtility::resolveContainedPath(resolvedRunDirectory, path);
         if (!resolved) {
             return sol::nullopt;
         }
@@ -80,7 +51,7 @@ inline void bindFiles(LuaScript &script, const std::filesystem::path &runDirecto
         return text.str();
     };
     files["writeText"] = [resolvedRunDirectory](const std::string &path, const std::string &text) {
-        const auto resolved = resolveRunPath(resolvedRunDirectory, path);
+        const auto resolved = IRUtility::resolveContainedPath(resolvedRunDirectory, path);
         if (!resolved) {
             return false;
         }
@@ -95,7 +66,7 @@ inline void bindFiles(LuaScript &script, const std::filesystem::path &runDirecto
         return !output.fail();
     };
     files["mtime"] = [resolvedRunDirectory](const std::string &path) {
-        const auto resolved = resolveRunPath(resolvedRunDirectory, path);
+        const auto resolved = IRUtility::resolveContainedPath(resolvedRunDirectory, path);
         if (!resolved) {
             return 0.0;
         }

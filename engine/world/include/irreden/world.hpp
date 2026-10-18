@@ -16,6 +16,7 @@
 #include <irreden/video/video_manager.hpp>
 #include <irreden/world/config.hpp>
 #include <irreden/world/hand_off.hpp>
+#include <irreden/world/tool_spawn.hpp>
 #include <sol/sol.hpp>
 #include <functional>
 #include <memory>
@@ -52,6 +53,9 @@ class World {
     /// another update or render.
     HandOffResult handOff(const HandOffRequest &request);
     void setHandOffPlatform(std::unique_ptr<HandOffPlatform> platform);
+    void setToolRoot(const std::filesystem::path &root);
+    std::optional<std::filesystem::path> toolRoot() const;
+    std::expected<ToolHandle, std::string> spawnTool(const ToolSpawnRequest &request);
 
     // void setPlayer(const IREntity::EntityId& player);
     // void setCameraPosition3D(const vec3& position);
@@ -80,6 +84,7 @@ class World {
     IRAudio::AudioManager m_audioManager;
     IRTime::TimeManager m_timeManager;
     IRVideo::VideoManager m_videoManager;
+    ToolService m_toolService;
     bool m_waitForFirstUpdateInput = false;
     bool m_startRecordingOnFirstInput = false;
     bool m_hasHandledFirstInput = false;
