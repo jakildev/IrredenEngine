@@ -48,8 +48,9 @@ files; a procedure's "`SKILL.md` step N" means step N of the shared flow.
 - [`procedures/pr-body.md`](procedures/pr-body.md) — PR body template +
   stack-mode deltas.
 - [`procedures/host-label.md`](procedures/host-label.md) — the post-open
-  stamps: `fleet:author-<runtime>` provenance (`fleet-runtime stamp`) and
-  `fleet:authored-on-<host>`, with the read-back gate.
+  stamp gate: `fleet-pr-stamp <N> --repo <engine|game>` applies
+  `fleet:author-<runtime>` and `fleet:authored-on-<host>`, reads them back,
+  and its exit code is the gate.
 - [`procedures/rebase-guard.md`](procedures/rebase-guard.md) — the
   pre-rebase diff-snapshot guard.
 
