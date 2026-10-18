@@ -169,12 +169,7 @@ struct VideoRecorder::FFmpegState {
     std::string fallbackAudioPath;
     std::vector<float> fallbackAudioPcm;
 
-    float levelPeakSample = 0.0f;
-    double levelRmsAccumulator = 0.0;
-    int64_t levelRmsSampleCount = 0;
-    int levelClippedSamples = 0;
-    double levelLastLogStreamTime = -1.0;
-    static constexpr double kLevelLogIntervalSeconds = 5.0;
+    AudioLevelLog levelLog;
 
     std::mutex queueMutex;
     std::condition_variable queueCv;
@@ -922,16 +917,77 @@ std::vector<std::uint8_t> VideoRecorder::acquireFrameBuffer(std::size_t minCapac
     return std::vector<std::uint8_t>(minCapacity);
 }
 
+bool AudioLevelLog::observe(
+    double streamTime, const std::optional<IRAudio::AudioInputLevels> &levels
+) {
+    if (m_lastLogStreamTime < 0.0) {
+        m_lastLogStreamTime = streamTime;
+    }
+    if (streamTime - m_lastLogStreamTime < kIntervalSeconds || !levels ||
+        levels->channelCount_ == 0) {
+        return false;
+    }
+    m_lastLogStreamTime = streamTime;
+
+    const IRAudio::AudioChannelLevel &first = levels->channels_[0];
+    float loudestPeakDbfs = first.peakDbfs_;
+    float loudestRmsDbfs = first.rmsDbfs_;
+    std::uint32_t clippedSamples = first.clippedSamples_;
+    if (levels->channelCount_ == 1) {
+        IRE_LOG_INFO(
+            "Audio levels: peak={:.1f} dBFS, RMS={:.1f} dBFS, clipped={} samples, "
+            "generation={}",
+            first.peakDbfs_,
+            first.rmsDbfs_,
+            first.clippedSamples_,
+            levels->generation_
+        );
+    } else {
+        const IRAudio::AudioChannelLevel &second = levels->channels_[1];
+        loudestPeakDbfs = IRMath::max(loudestPeakDbfs, second.peakDbfs_);
+        loudestRmsDbfs = IRMath::max(loudestRmsDbfs, second.rmsDbfs_);
+        clippedSamples += second.clippedSamples_;
+        IRE_LOG_INFO(
+            "Audio levels: peak={:.1f}/{:.1f} dBFS, RMS={:.1f}/{:.1f} dBFS, clipped={}/{} "
+            "samples, generation={}",
+            first.peakDbfs_,
+            second.peakDbfs_,
+            first.rmsDbfs_,
+            second.rmsDbfs_,
+            first.clippedSamples_,
+            second.clippedSamples_,
+            levels->generation_
+        );
+    }
+    if (clippedSamples > 0) {
+        IRE_LOG_WARN(
+            "Audio CLIPPING detected! {} samples clipped. Reduce input gain.",
+            clippedSamples
+        );
+    } else if (loudestPeakDbfs > -1.0f) {
+        IRE_LOG_WARN(
+            "Audio near clipping! Peak at {:.1f} dBFS. Consider reducing input gain.",
+            loudestPeakDbfs
+        );
+    }
+    if (loudestRmsDbfs < -40.0f) {
+        IRE_LOG_WARN("Audio very quiet (RMS {:.1f} dBFS). Check input connection.", loudestRmsDbfs);
+    }
+    return true;
+}
+
 bool VideoRecorder::submitAudioInputSamples(
     const float *interleavedSamples,
     int frameCount,
-    double streamTime
+    double streamTime,
+    const std::optional<IRAudio::AudioInputLevels> &levels
 ) {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_AUDIO);
 #if !IR_VIDEO_HAS_FFMPEG
     (void)interleavedSamples;
     (void)frameCount;
     (void)streamTime;
+    (void)levels;
     return false;
 #else
     if (!m_isRecording || interleavedSamples == nullptr || frameCount <= 0) {
@@ -953,49 +1009,7 @@ bool VideoRecorder::submitAudioInputSamples(
         );
     }
 
-    for (std::size_t i = 0; i < totalSamples; ++i) {
-        const float absSample = std::fabs(interleavedSamples[i]);
-        if (absSample > state->levelPeakSample) {
-            state->levelPeakSample = absSample;
-        }
-        state->levelRmsAccumulator += static_cast<double>(interleavedSamples[i]) *
-                                      static_cast<double>(interleavedSamples[i]);
-        ++state->levelRmsSampleCount;
-        if (absSample >= 1.0f) {
-            ++state->levelClippedSamples;
-        }
-    }
-
-    if (state->levelLastLogStreamTime < 0.0) {
-        state->levelLastLogStreamTime = streamTime;
-    }
-    if (streamTime - state->levelLastLogStreamTime >= FFmpegState::kLevelLogIntervalSeconds) {
-        const float peak = state->levelPeakSample;
-        const double peakDbfs = (peak > 0.0f)
-            ? 20.0 * std::log10(static_cast<double>(peak))
-            : -120.0;
-        const double rmsDbfs = (state->levelRmsSampleCount > 0 && state->levelRmsAccumulator > 0.0)
-            ? 10.0 * std::log10(state->levelRmsAccumulator /
-                                static_cast<double>(state->levelRmsSampleCount))
-            : -120.0;
-        IRE_LOG_INFO("Audio levels: peak={:.1f} dBFS, RMS={:.1f} dBFS, clipped={} samples",
-                     peakDbfs, rmsDbfs, state->levelClippedSamples);
-        if (state->levelClippedSamples > 0) {
-            IRE_LOG_WARN("Audio CLIPPING detected! {} samples clipped. Reduce input gain.",
-                         state->levelClippedSamples);
-        } else if (peakDbfs > -1.0) {
-            IRE_LOG_WARN("Audio near clipping! Peak at {:.1f} dBFS. Consider reducing input gain.",
-                         peakDbfs);
-        }
-        if (rmsDbfs < -40.0) {
-            IRE_LOG_WARN("Audio very quiet (RMS {:.1f} dBFS). Check input connection.", rmsDbfs);
-        }
-        state->levelPeakSample = 0.0f;
-        state->levelRmsAccumulator = 0.0;
-        state->levelRmsSampleCount = 0;
-        state->levelClippedSamples = 0;
-        state->levelLastLogStreamTime = streamTime;
-    }
+    state->levelLog.observe(streamTime, levels);
 
     if (!state->audioMuxEnabled) {
         return true;

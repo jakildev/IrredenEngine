@@ -1,4 +1,5 @@
 #include <irreden/audio/audio.hpp>
+#include <irreden/audio/audio_input_meter.hpp>
 #include <irreden/audio/audio_monitor_ring.hpp>
 
 #include <irreden/ir_math.hpp>
@@ -189,21 +190,26 @@ class AudioMonitorChannel {
     std::atomic<std::uint64_t> m_outputCallbacks = 0;
 };
 
-// Carries the engine's sample callback to the driver thread. The callback the
+// Carries the engine's sample callback to the driver thread, metering each
+// delivery before the callback and the monitor see it. The callback the
 // backend stores holds the gate, never the session that owns the backend, so
 // the two cannot keep each other alive.
 class AudioInputGate {
   public:
     AudioInputGate(
-        Audio::AudioInputCallback callback, std::shared_ptr<AudioMonitorChannel> monitorChannel
+        Audio::AudioInputCallback callback,
+        std::shared_ptr<AudioMonitorChannel> monitorChannel,
+        std::shared_ptr<AudioInputMeter> meter
     )
         : m_callback(std::move(callback))
-        , m_monitorChannel(std::move(monitorChannel)) {}
+        , m_monitorChannel(std::move(monitorChannel))
+        , m_meter(std::move(meter)) {}
 
     // Driver thread; never blocks.
     void deliver(const float *samples, int frameCount, double streamTime, bool overflow) {
         m_inFlight.fetch_add(1);
         if (!m_closed.load()) {
+            m_meter->accumulate(samples, frameCount);
             if (m_callback) {
                 m_callback(samples, frameCount, streamTime, overflow);
             }
@@ -216,20 +222,34 @@ class AudioInputGate {
     // Returns once no delivery is in flight; none starts afterwards. Must not
     // be called from inside a delivery.
     void close() {
-        m_closed.store(true);
-        for (int inFlight = m_inFlight.load(); inFlight != 0; inFlight = m_inFlight.load()) {
-            m_inFlight.wait(inFlight);
-        }
+        drain();
         m_callback = {};
+    }
+
+    // Swaps the callback between deliveries; one arriving meanwhile is
+    // dropped whole. Must not be called from inside a delivery.
+    void replaceCallback(Audio::AudioInputCallback callback) {
+        drain();
+        m_callback = std::move(callback);
+        m_closed.store(false);
     }
 
   private:
     // deliver() reads it only between its in-flight increment and its closed
-    // check, which is what lets close() clear it without a lock.
+    // check, which is what lets close() and replaceCallback() write it
+    // without a lock.
     Audio::AudioInputCallback m_callback;
     std::shared_ptr<AudioMonitorChannel> m_monitorChannel;
+    std::shared_ptr<AudioInputMeter> m_meter;
     std::atomic<bool> m_closed = false;
     std::atomic<int> m_inFlight = 0;
+
+    void drain() {
+        m_closed.store(true);
+        for (int inFlight = m_inFlight.load(); inFlight != 0; inFlight = m_inFlight.load()) {
+            m_inFlight.wait(inFlight);
+        }
+    }
 };
 
 // The control thread's view of the backend. No other thread touches it while
@@ -576,11 +596,20 @@ void logMonitorTimeout(
 constexpr const char *kArmTimedOut = "Audio input unavailable";
 constexpr const char *kTeardownTimedOut = "Audio input teardown not confirmed";
 
+AudioInputArmResult armFailure(std::string reason) {
+    return AudioInputArmResult{false, std::move(reason)};
+}
+
+std::string singleQuoted(const std::string &deviceName) {
+    return "'" + deviceName + "'";
+}
+
 } // namespace
 
 Audio::Audio()
     : m_session(detail::AudioInputSession::create(nullptr))
-    , m_monitorChannel(std::make_shared<detail::AudioMonitorChannel>()) {
+    , m_monitorChannel(std::make_shared<detail::AudioMonitorChannel>())
+    , m_meter(std::make_shared<detail::AudioInputMeter>()) {
     enumerateDevices();
 }
 
@@ -596,6 +625,7 @@ Audio::Audio(
 )
     : m_pendingMonitorBackend(std::move(outputBackend))
     , m_monitorChannel(std::make_shared<detail::AudioMonitorChannel>())
+    , m_meter(std::make_shared<detail::AudioInputMeter>())
     , m_deadlines(deadlines) {
     IR_ASSERT(inputBackend != nullptr, "Audio requires an input backend");
     m_session = detail::AudioInputSession::create(std::move(inputBackend));
@@ -642,10 +672,32 @@ void Audio::enumerateDevices() {
 bool Audio::openStreamIn(
     const std::string &deviceName, int sampleRate, int channels, AudioInputCallback callback
 ) {
-    return armStreamIn(deviceName, sampleRate, channels, std::move(callback), false);
+    closeStreamIn();
+    return armStreamIn(deviceName, sampleRate, channels, std::move(callback), false).armed_;
 }
 
-bool Audio::armStreamIn(
+std::optional<unsigned int>
+Audio::resolveInputDevice(const std::string &deviceName, std::string &reason) const {
+    if (!deviceName.empty()) {
+        const int requestedDeviceId = getDeviceIndexByName(deviceName);
+        if (requestedDeviceId < 0) {
+            IRE_LOG_ERROR("Audio input device not found: {}", deviceName.c_str());
+            reason = "audio input device not found: " + singleQuoted(deviceName);
+            return std::nullopt;
+        }
+        return static_cast<unsigned int>(requestedDeviceId);
+    }
+    const unsigned int deviceId = getDefaultInputDeviceId();
+    if (deviceId == 0) {
+        IRE_LOG_ERROR("No default audio input device available.");
+        reason = "no default audio input device";
+        return std::nullopt;
+    }
+    return deviceId;
+}
+
+// Callers close any open stream first.
+AudioInputArmResult Audio::armStreamIn(
     const std::string &deviceName,
     int sampleRate,
     int channels,
@@ -653,41 +705,39 @@ bool Audio::armStreamIn(
     bool startAfterOpen,
     std::optional<std::chrono::steady_clock::time_point> deadline
 ) {
-    closeStreamIn();
     if (m_session->isQuarantined()) {
         IRE_LOG_ERROR(
             "Audio input unavailable: an earlier backend call has not returned; not starting "
             "another."
         );
-        return false;
+        return armFailure("an earlier audio backend call has not returned");
     }
-    unsigned int deviceId = 0;
-    if (!deviceName.empty()) {
-        const int requestedDeviceId = getDeviceIndexByName(deviceName);
-        if (requestedDeviceId < 0) {
-            IRE_LOG_ERROR("Audio input device not found: {}", deviceName.c_str());
-            return false;
-        }
-        deviceId = static_cast<unsigned int>(requestedDeviceId);
-    } else {
-        deviceId = getDefaultInputDeviceId();
-        if (deviceId == 0) {
-            IRE_LOG_ERROR("No default audio input device available.");
-            return false;
-        }
+    std::string reason;
+    const std::optional<unsigned int> resolvedDeviceId = resolveInputDevice(deviceName, reason);
+    if (!resolvedDeviceId) {
+        return armFailure(std::move(reason));
     }
+    const unsigned int deviceId = *resolvedDeviceId;
 
-    const unsigned int requestedChannels =
-        static_cast<unsigned int>(IRMath::clamp(channels, 1, 2));
+    const unsigned int requestedChannels = static_cast<unsigned int>(
+        IRMath::clamp(channels, 1, static_cast<int>(kAudioInputMaxChannels))
+    );
     const unsigned int requestedSampleRate =
         static_cast<unsigned int>(IRMath::max(sampleRate, 8'000));
     const std::string enumeratedDeviceName = m_deviceInfo.at(deviceId).name;
 
-    auto gate = std::make_shared<detail::AudioInputGate>(std::move(callback), m_monitorChannel);
+    auto gate =
+        std::make_shared<detail::AudioInputGate>(std::move(callback), m_monitorChannel, m_meter);
     auto report = std::make_shared<ArmReport>();
     const Completion completion = m_session->run(
         deadline.value_or(Clock::now() + m_deadlines.arm_),
-        [report, gate, deviceId, requestedChannels, requestedSampleRate, startAfterOpen](
+        [report,
+         gate,
+         meter = m_meter,
+         deviceId,
+         requestedChannels,
+         requestedSampleRate,
+         startAfterOpen](
             detail::AudioInputBackendStream &stream,
             const std::atomic<bool> &abandoned
         ) {
@@ -739,6 +789,13 @@ bool Audio::armStreamIn(
             }
             stream.open_ = true;
             report->backendSampleRate_ = backend.getStreamSampleRate();
+            // No delivery can overlap: the previous stream's gate is closed
+            // and this one has not started.
+            meter->reset(
+                requestedChannels,
+                report->backendSampleRate_ == 0 ? report->attemptedSampleRate_
+                                                : report->backendSampleRate_
+            );
             if (!startAfterOpen || abandoned) {
                 return;
             }
@@ -750,8 +807,13 @@ bool Audio::armStreamIn(
 
     if (completion == Completion::TIMED_OUT) {
         gate->close();
-        logBackendTimeout(kArmTimedOut, report->operation_, m_deadlines.arm_, enumeratedDeviceName);
-        return false;
+        const BackendOperation operation = report->operation_;
+        logBackendTimeout(kArmTimedOut, operation, m_deadlines.arm_, enumeratedDeviceName);
+        return armFailure(
+            std::string("backend ") + operationName(operation) + " did not return within " +
+            std::to_string(m_deadlines.arm_.count()) + " ms (device " +
+            singleQuoted(enumeratedDeviceName) + ")"
+        );
     }
     if (!report->channelsAvailable_) {
         gate->close();
@@ -761,7 +823,11 @@ bool Audio::armStreamIn(
             report->deviceName_.c_str(),
             report->availableInputChannels_
         );
-        return false;
+        return armFailure(
+            "device " + singleQuoted(report->deviceName_) + " provides " +
+            std::to_string(report->availableInputChannels_) + " input channels; " +
+            std::to_string(requestedChannels) + " requested"
+        );
     }
     const unsigned int attemptedSampleRate = report->attemptedSampleRate_;
     if (attemptedSampleRate != requestedSampleRate) {
@@ -774,6 +840,8 @@ bool Audio::armStreamIn(
             formatSampleRates(report->listedSampleRates_)
         );
     }
+    const std::string openFailure = "failed to open device " + singleQuoted(report->deviceName_) +
+                                    " at " + std::to_string(attemptedSampleRate) + " Hz";
     if (report->open_.outcome_ == CallOutcome::THREW) {
         gate->close();
         IRE_LOG_ERROR(
@@ -784,7 +852,7 @@ bool Audio::armStreamIn(
             attemptedSampleRate,
             requestedChannels
         );
-        return false;
+        return armFailure(openFailure + ": " + callFailureText(report->open_));
     }
     if (report->open_.outcome_ != CallOutcome::SUCCEEDED) {
         gate->close();
@@ -797,7 +865,7 @@ bool Audio::armStreamIn(
             requestedChannels,
             report->open_.errorText_.c_str()
         );
-        return false;
+        return armFailure(openFailure + ": " + callFailureText(report->open_));
     }
     if (startAfterOpen && logIfCallFailed("start", report->start_)) {
         gate->close();
@@ -806,7 +874,10 @@ bool Audio::armStreamIn(
             "Audio input stream opened but did not start; the audio control thread closes it "
             "without the caller waiting."
         );
-        return false;
+        return armFailure(
+            "failed to start device " + singleQuoted(report->deviceName_) + ": " +
+            callFailureText(report->start_)
+        );
     }
 
     m_gate = std::move(gate);
@@ -815,9 +886,12 @@ bool Audio::armStreamIn(
     const unsigned int actualSampleRate =
         report->backendSampleRate_ == 0 ? attemptedSampleRate : report->backendSampleRate_;
     m_streamSampleRate = static_cast<int>(actualSampleRate);
+    m_streamRequestedSampleRate = static_cast<int>(requestedSampleRate);
     m_streamChannels = requestedChannels;
     m_streamBufferFrames = report->bufferFrames_;
+    m_streamDeviceId = deviceId;
     m_streamDeviceName = report->deviceName_;
+    m_meter->setActive(true);
     if (actualSampleRate != attemptedSampleRate) {
         IRE_LOG_WARN(
             "Audio input backend adjusted sample rate: device='{}' requestedRate={} "
@@ -835,7 +909,7 @@ bool Audio::armStreamIn(
         requestedChannels,
         report->bufferFrames_
     );
-    return true;
+    return AudioInputArmResult{true, {}};
 }
 
 bool Audio::armMonitorBy(
@@ -1124,10 +1198,16 @@ void Audio::stopStreamIn() {
 }
 
 void Audio::closeStreamIn() {
+    m_inputArmed = false;
+    m_captureHeld = false;
+    m_captureCallback = {};
+    closeInput();
+}
+
+// Closes the input and monitor streams; the holds are the caller's to settle.
+void Audio::closeInput() {
     const Clock::time_point deadline = Clock::now() + m_deadlines.teardown_;
-    if (m_monitorChannel) {
-        m_monitorChannel->closeAdmission();
-    }
+    m_monitorChannel->closeAdmission();
     closeStreamInBy(deadline);
     closeMonitorBy(deadline);
 }
@@ -1235,9 +1315,12 @@ void Audio::unpublishStreamIn() {
         m_gate->close();
         m_gate.reset();
     }
+    m_meter->setActive(false);
     m_streamInOpen = false;
     m_streamInRunning = false;
     m_streamChannels = 0;
+    m_streamDeviceId = 0;
+    m_streamRequestedSampleRate = 0;
     m_streamDeviceName.clear();
 }
 
@@ -1258,20 +1341,119 @@ bool Audio::isStreamInRunning() const {
     return m_streamInRunning;
 }
 
-bool Audio::startCapture(const AudioCaptureConfig &config, AudioCaptureCallback cb) {
+// A request the device would substitute to the delivered rate is equivalent
+// too, so substitution cannot cause a reopen on every arm.
+bool Audio::runsEquivalentStream(unsigned int deviceId, int sampleRate) const {
+    if (!m_streamInRunning || deviceId != m_streamDeviceId) {
+        return false;
+    }
+    const int requestedSampleRate = IRMath::max(sampleRate, 8'000);
+    const unsigned int selectedSampleRate = selectSampleRate(
+        static_cast<unsigned int>(requestedSampleRate),
+        m_deviceInfo.at(deviceId).sampleRates
+    );
+    return requestedSampleRate == m_streamRequestedSampleRate ||
+           static_cast<int>(selectedSampleRate) == m_streamSampleRate;
+}
+
+void Audio::attachCaptureCallback() {
+    if (m_gate) {
+        m_gate->replaceCallback(m_captureCallback);
+    }
+}
+
+AudioInputArmResult Audio::armInput(const std::string &deviceName, int sampleRate) {
+    std::string reason;
+    const std::optional<unsigned int> deviceId = resolveInputDevice(deviceName, reason);
+    if (!deviceId) {
+        return armFailure(std::move(reason));
+    }
+    if (runsEquivalentStream(*deviceId, sampleRate)) {
+        m_inputArmed = true;
+        return AudioInputArmResult{true, {}};
+    }
+    if (m_captureRecording && m_captureHeld) {
+        IRE_LOG_WARN(
+            "Audio input arm refused: a recording is consuming device '{}'; switch inputs "
+            "between takes.",
+            m_streamDeviceName
+        );
+        return armFailure("cannot switch the audio input while a recording is in progress");
+    }
+
     const Clock::time_point deadline = Clock::now() + m_deadlines.arm_;
-    const bool inputStarted = armStreamIn(
-        config.device_name_,
-        config.sample_rate_,
-        config.channels_,
-        std::move(cb),
+    closeInput();
+    const unsigned int channels =
+        IRMath::clamp(m_deviceInfo.at(*deviceId).inputChannels, 1U, kAudioInputMaxChannels);
+    AudioInputArmResult result = armStreamIn(
+        deviceName,
+        sampleRate,
+        static_cast<int>(channels),
+        m_captureHeld ? m_captureCallback : AudioInputCallback{},
         true,
         deadline
     );
-    if (!inputStarted) {
-        return false;
+    m_inputArmed = result.armed_;
+    if (result.armed_ && m_captureHeld && m_captureConfig.monitor_enabled_) {
+        armMonitorBy(m_captureConfig, deadline);
     }
-    if (!config.monitor_enabled_) {
+    return result;
+}
+
+void Audio::disarmInput() {
+    if (!m_inputArmed) {
+        return;
+    }
+    m_inputArmed = false;
+    if (!m_captureHeld) {
+        closeInput();
+    }
+}
+
+bool Audio::isInputArmed() const {
+    return m_inputArmed;
+}
+
+bool Audio::startCapture(const AudioCaptureConfig &config, AudioCaptureCallback cb) {
+    const Clock::time_point deadline = Clock::now() + m_deadlines.arm_;
+    m_captureConfig = config;
+    std::string reason;
+    const std::optional<unsigned int> deviceId = resolveInputDevice(config.device_name_, reason);
+    if (deviceId && runsEquivalentStream(*deviceId, config.sample_rate_)) {
+        m_captureCallback = std::move(cb);
+        m_captureHeld = true;
+        attachCaptureCallback();
+        IRE_LOG_INFO(
+            "Audio capture attached to the open input stream: device='{}' sampleRate={} "
+            "channels={}",
+            m_streamDeviceName,
+            m_streamSampleRate,
+            m_streamChannels
+        );
+    } else {
+        // The input hold loses its stream here, so a failed reopen ends it too.
+        closeInput();
+        m_captureHeld = false;
+        m_captureCallback = {};
+        m_inputArmed = false;
+        if (!deviceId) {
+            return false;
+        }
+        const AudioInputArmResult result = armStreamIn(
+            config.device_name_,
+            config.sample_rate_,
+            config.channels_,
+            cb,
+            true,
+            deadline
+        );
+        if (!result.armed_) {
+            return false;
+        }
+        m_captureCallback = std::move(cb);
+        m_captureHeld = true;
+    }
+    if (!config.monitor_enabled_ || m_monitorStreamOpen) {
         return true;
     }
     if (config.device_name_.empty() && config.monitor_device_name_.empty()) {
@@ -1286,10 +1468,15 @@ bool Audio::startCapture(const AudioCaptureConfig &config, AudioCaptureCallback 
 
 void Audio::stopCapture() {
     const Clock::time_point deadline = Clock::now() + m_deadlines.teardown_;
-    if (m_monitorChannel) {
-        m_monitorChannel->closeAdmission();
+    m_captureHeld = false;
+    m_captureRecording = false;
+    m_captureCallback = {};
+    m_monitorChannel->closeAdmission();
+    if (m_inputArmed) {
+        attachCaptureCallback();
+    } else {
+        closeStreamInBy(deadline);
     }
-    closeStreamInBy(deadline);
     closeMonitorBy(deadline);
 }
 
@@ -1299,6 +1486,18 @@ bool Audio::isCapturing() const {
 
 int Audio::getCaptureSampleRate() const {
     return m_streamInOpen ? m_streamSampleRate : 0;
+}
+
+int Audio::getCaptureChannels() const {
+    return m_streamInOpen ? static_cast<int>(m_streamChannels) : 0;
+}
+
+void Audio::setCaptureRecording(bool recording) {
+    m_captureRecording = recording;
+}
+
+std::optional<AudioInputLevels> Audio::getInputLevels() const {
+    return m_meter->read();
 }
 
 double Audio::getInputLatencyMs() const {

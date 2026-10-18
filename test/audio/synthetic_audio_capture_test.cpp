@@ -5,23 +5,32 @@
 #include <atomic>
 #include <chrono>
 #include <mutex>
+#include <optional>
 #include <thread>
 #include <vector>
 
 namespace {
 
-TEST(SyntheticAudioCaptureTest, ReportsConfiguredRateOnlyWhileCapturing) {
+TEST(SyntheticAudioCaptureTest, ReportsConfiguredFormatAndLevelsOnlyWhileCapturing) {
     IRAudio::SyntheticAudioCaptureSource source;
     EXPECT_EQ(source.getCaptureSampleRate(), 0);
+    EXPECT_EQ(source.getCaptureChannels(), 0);
+    EXPECT_FALSE(source.getInputLevels().has_value());
 
     ASSERT_TRUE(source.startCapture(
         IRAudio::AudioCaptureConfig{"", 44'100, 2},
         [](const float *, int, double, bool) {}
     ));
     EXPECT_EQ(source.getCaptureSampleRate(), 44'100);
+    EXPECT_EQ(source.getCaptureChannels(), 2);
+    ASSERT_TRUE(source.getInputLevels().has_value());
+    EXPECT_EQ(source.getInputLevels()->channelCount_, 2u);
+    EXPECT_EQ(source.getInputLevels()->sampleRate_, 44'100u);
 
     source.stopCapture();
     EXPECT_EQ(source.getCaptureSampleRate(), 0);
+    EXPECT_EQ(source.getCaptureChannels(), 0);
+    EXPECT_FALSE(source.getInputLevels().has_value());
 }
 
 TEST(SyntheticAudioCaptureTest, DeliversWallClockPacedMonotonicAudioAndStopsSynchronously) {
@@ -49,6 +58,13 @@ TEST(SyntheticAudioCaptureTest, DeliversWallClockPacedMonotonicAudioAndStopsSync
     ));
     EXPECT_TRUE(source.isCapturing());
     std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    // The tone is 0.1 full scale on every channel.
+    const std::optional<IRAudio::AudioInputLevels> levels = source.getInputLevels();
+    ASSERT_TRUE(levels.has_value());
+    EXPECT_GE(levels->generation_, 1u);
+    EXPECT_NEAR(levels->channels_[0].peakDbfs_, -20.0f, 0.5f);
+    EXPECT_NEAR(levels->channels_[0].rmsDbfs_, -23.01f, 0.5f);
+    EXPECT_NEAR(levels->channels_[1].peakDbfs_, -20.0f, 0.5f);
     const auto stopRequestedAt = std::chrono::steady_clock::now();
     source.stopCapture();
     const auto stoppedAt = std::chrono::steady_clock::now();

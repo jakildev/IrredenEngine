@@ -69,6 +69,10 @@ class VideoManager {
     [[nodiscard]] RecordingState recordingState() const;
     [[nodiscard]] bool isAudioInputArmed() const;
     [[nodiscard]] int recordingAudioSampleRate() const;
+    /// The capture input's delivered channel count once armed (it can exceed
+    /// the configured count when the recorder shares an armed input), else
+    /// the configured count.
+    [[nodiscard]] int recordingAudioChannels() const;
     [[nodiscard]] std::int64_t capturedUpdateTicks() const;
     [[nodiscard]] std::uint64_t getFrameCount() const;
     [[nodiscard]] const std::string &getLastError() const;
@@ -119,7 +123,10 @@ class VideoManager {
     std::thread m_finalizeThread;
     std::mutex m_recorderMutex;
 
+    IRAudio::IAudioCaptureSource &audioCaptureSource() const;
     void armAudioInput();
+    void adoptAudioInputFormat();
+    void setAudioTakeRecording(bool recording);
     void toggleCapture();
     bool captureScreenshot();
     bool captureCanvasScreenshot();

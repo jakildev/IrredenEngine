@@ -192,6 +192,18 @@ void stopAudioInputCapture() {
     getAudioManager().getAudio().stopCapture();
 }
 
+AudioInputArmResult armAudioInput(const std::string &deviceName, int sampleRate) {
+    return getAudioManager().getAudio().armInput(deviceName, sampleRate);
+}
+
+void disarmAudioInput() {
+    getAudioManager().getAudio().disarmInput();
+}
+
+std::optional<AudioInputLevels> audioInputLevels() {
+    return getAudioManager().getAudio().getInputLevels();
+}
+
 SoundHandle playSound(const std::string &path, AudioBus bus, float volume, bool loop) {
     return getAudioManager().getAudioPlayback().playSound(path, bus, volume, loop);
 }

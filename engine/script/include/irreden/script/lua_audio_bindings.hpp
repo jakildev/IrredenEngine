@@ -8,8 +8,10 @@
 
 #include <sol/sol.hpp>
 
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <tuple>
 #include <utility>
 
 namespace IRScript::detail {
@@ -127,6 +129,48 @@ inline void bindAudioApi(LuaScript &script) {
         IRAudio::setInputMonitorEnabled(enabled);
     };
     audio["isInputMonitorEnabled"] = []() { return IRAudio::isInputMonitorEnabled(); };
+
+    // Input level metering (IRAudio::armAudioInput). armAudioInput(deviceName?,
+    // sampleRate?) returns `true` or `false, reason`; deviceName defaults to
+    // the default input and sampleRate to the recorder's default.
+    // audioInputLevels() returns nil while no input is open, else
+    // `{ {peakDbfs, rmsDbfs, clippedSamples}, ..., sampleRate, generation }`
+    // with one entry per channel in device order.
+    audio["armAudioInput"] =
+        [](sol::optional<std::string> deviceName,
+           sol::optional<int> sampleRate) -> std::tuple<bool, sol::optional<std::string>> {
+        IRAudio::AudioInputArmResult result = IRAudio::armAudioInput(
+            deviceName.value_or(""),
+            sampleRate.value_or(IRAudio::AudioCaptureConfig{}.sample_rate_)
+        );
+        if (result.armed_) {
+            return {true, sol::nullopt};
+        }
+        return {false, std::move(result.reason_)};
+    };
+    audio["disarmAudioInput"] = []() { IRAudio::disarmAudioInput(); };
+    audio["audioInputLevels"] = [](sol::this_state state) -> sol::object {
+        sol::state_view lua(state);
+        const std::optional<IRAudio::AudioInputLevels> levels = IRAudio::audioInputLevels();
+        if (!levels) {
+            return sol::make_object(lua, sol::lua_nil);
+        }
+        sol::table out = lua.create_table(static_cast<int>(levels->channelCount_), 2);
+        for (unsigned int channel = 0; channel < levels->channelCount_; ++channel) {
+            const IRAudio::AudioChannelLevel &level = levels->channels_[channel];
+            out[channel + 1] = lua.create_table_with(
+                "peakDbfs",
+                level.peakDbfs_,
+                "rmsDbfs",
+                level.rmsDbfs_,
+                "clippedSamples",
+                static_cast<lua_Integer>(level.clippedSamples_)
+            );
+        }
+        out["sampleRate"] = static_cast<lua_Integer>(levels->sampleRate_);
+        out["generation"] = static_cast<lua_Integer>(levels->generation_);
+        return out;
+    };
 
     // Outbound-MIDI observer. A Lua monitor sees EVERY outbound
     // message, including ones the C++ ECS audio path emits — not just what Lua

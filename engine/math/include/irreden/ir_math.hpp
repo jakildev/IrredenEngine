@@ -501,6 +501,11 @@ inline float log2(float value) noexcept {
     return std::log2(value);
 }
 
+/// Base-10 logarithm of @p value. Wraps std::log10. Caller guarantees value > 0.
+inline double log10(double value) noexcept {
+    return std::log10(value);
+}
+
 /// Snaps @p value to the nearest power of two (in log space, so the tie goes
 /// to the geometrically nearer neighbour, not the arithmetically nearer one).
 /// Caller guarantees value > 0.

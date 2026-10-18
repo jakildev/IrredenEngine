@@ -20,8 +20,8 @@ functions:
   helpers; build the `C_MidiMessage` and call `sendMidiMessage`.)
 - MIDI send observer: `setOutboundMidiObserver(cb)` / `clearOutboundMidiObserver()`
   — see "Outbound MIDI observer" below.
-- Audio input: open/start/stop a capture stream, register a float-sample
-  callback.
+- Audio input: a capture stream with a float-sample callback, and an input
+  arm with a level meter (`armAudioInput`, `audioInputLevels`; see below).
 - File playback: `playSound` / `playMusic` / `playSoundAt`, `stopSound`,
   `setSoundVolume`, `fadeInSound` / `fadeOutSound`, `setBusVolume`,
   `setMasterVolume`, `setListenerPosition`. The Lua mirror is the `IRAudio`
@@ -39,7 +39,7 @@ functions:
   one mutex it shares with the `MidiClock` thread.
 - **`MidiClock`** — MIDI beat clock on one open output port (`midi_clock.hpp`).
 - **`Audio`** — `RtAudio` wrapper for microphone/line-in. Implements
-  `IAudioCaptureSource`. Used by `VideoManager` for recording soundtracks.
+  `IAudioCaptureSource`; the recorder and the input arm share its stream.
 - **`SyntheticAudioCaptureSource`** — wall-clock-paced tone source used by
   capture validation; its worker thread joins synchronously on stop.
 - **`AudioPlayback`** — miniaudio file playback (see below). `getAudioPlayback()`.
@@ -111,7 +111,8 @@ Lua (`scripts/audio_demo.lua`).
   CC collapses same-channel+cc traffic (last write wins)** — use the per-port
   query when two devices share a channel.
 - The buffer is cleared at the start of every `MidiIn::tick()` — there is no
-  history. Systems must read during their tick or they miss the event. The
+  history. Systems must read during their tick or they miss the event, and a
+  reference held across frames is UB. The
   deprecated entity route is listed in `engine/prefabs/irreden/audio/CLAUDE.md`
   under `## Deprecated`.
 - Device names are substring-matched at `openPort()` time, with hardcoded
@@ -186,13 +187,19 @@ monitor would otherwise miss.
 - The synthetic capture source follows the same callback contract and paces
   against accumulated deadlines so scheduler jitter cannot shorten a take.
 
+## Input arm and level meter
+
+Unlike the audible monitor, `armInput` (Lua `IRAudio.armAudioInput`; exact
+device name, empty = default) opens the input only. It and `startCapture` are
+two holds on one stream (contract: `class Audio`); a switch is refused
+mid-take. The meter (`audio_input_meter.hpp`) publishes 100 ms per-channel
+windows from the driver thread before the recorder/monitor fan-out — no
+allocation, lock, or log there. `IRVideo::AudioLevelLog` logs what Lua reads.
+
 ## Gotchas
 
 - **No hot-swap.** If a MIDI device is unplugged mid-run, the `RtMidiIn`
   callback stops firing silently. There is no reconnection logic.
-- **Per-frame queue wipe.** Query MIDI state only in systems that run
-  after `MidiIn::tick()` and before the next one. Holding a reference
-  across frames is UB.
 - **Custom RtMidi/RtAudio patches.** Don't assume stock upstream behavior
   — check `patches/` before debugging driver-level issues.
 - **Single-thread `tick()` assumption.** `MidiIn::tick()` has no mutex.

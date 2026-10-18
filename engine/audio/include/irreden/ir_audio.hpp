@@ -10,6 +10,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <vector>
 #include <string>
 
@@ -149,6 +150,23 @@ void setInputMonitorEnabled(bool enabled);
 /// Stops the active RtAudio input stream; @p callback is not invoked once this
 /// returns. Waits on the backend for at most @ref kAudioInputBackendDeadline.
 void stopAudioInputCapture();
+
+/// Opens the capture input for level metering without a recording. Matches
+/// @p deviceName exactly against @ref audioDevices, as recording does (empty:
+/// the default input), with up to two channels. Idempotent: a running input
+/// on the same device at this requested or delivered rate is reused — the
+/// recorder's included, so arming and then recording opens the device once.
+/// Arming another device closes the current input and opens the new one,
+/// carrying the recorder's callback; refused while a take is recording. Never
+/// opens an output stream: audible monitoring is @ref setInputMonitorEnabled.
+/// Waits on the backend for at most @ref kAudioInputBackendDeadline.
+AudioInputArmResult armAudioInput(const std::string &deviceName, int sampleRate);
+/// Releases @ref armAudioInput's hold; the input closes unless the recorder
+/// still holds it. Idempotent.
+void disarmAudioInput();
+/// The open input's latest @ref kAudioInputMeterWindow of per-channel levels
+/// (armed or recording), or nullopt when no input is open.
+std::optional<AudioInputLevels> audioInputLevels();
 
 /// @name File playback (miniaudio) — load + play `.wav`/`.ogg` through category buses
 /// Forwards to `AudioManager::getAudioPlayback()`. When no playback device came

@@ -157,6 +157,7 @@ void VideoManager::render() {
     if (!captureFrame()) {
         stopRecording();
         m_captureEnabled = false;
+        setAudioTakeRecording(false);
         return;
     }
     ++m_totalCapturedFrames;
@@ -173,6 +174,7 @@ void VideoManager::render() {
         if (!encodeCurrentRawFrame()) {
             stopRecording();
             m_captureEnabled = false;
+            setAudioTakeRecording(false);
             return;
         }
         ++m_totalCapturedFrames;
@@ -189,11 +191,7 @@ void VideoManager::shutdown() {
     }
 
     if (m_audioInputArmed) {
-        if (m_audioCaptureSource != nullptr) {
-            m_audioCaptureSource->stopCapture();
-        } else {
-            IRAudio::stopAudioInputCapture();
-        }
+        audioCaptureSource().stopCapture();
         m_audioInputArmed = false;
     }
 
@@ -245,6 +243,10 @@ int VideoManager::recordingAudioSampleRate() const {
     return m_audioSampleRate;
 }
 
+int VideoManager::recordingAudioChannels() const {
+    return m_audioChannels;
+}
+
 std::int64_t VideoManager::capturedUpdateTicks() const {
     return m_totalFixedUpdates;
 }
@@ -257,54 +259,47 @@ const std::string &VideoManager::getLastError() const {
     return m_videoRecorder.getLastError();
 }
 
+IRAudio::IAudioCaptureSource &VideoManager::audioCaptureSource() const {
+    return m_audioCaptureSource != nullptr ? *m_audioCaptureSource
+                                           : IRAudio::getAudioCaptureSource();
+}
+
 void VideoManager::armAudioInput() {
     IR_PROFILE_FUNCTION(IR_PROFILER_COLOR_AUDIO);
+    IRAudio::IAudioCaptureSource &source = audioCaptureSource();
     if (m_audioInputArmed) {
-        m_audioSampleRate = m_audioCaptureSource != nullptr
-                                ? m_audioCaptureSource->getCaptureSampleRate()
-                                : IRAudio::getAudioCaptureSource().getCaptureSampleRate();
+        adoptAudioInputFormat();
         return;
     }
-    IRAudio::AudioCaptureCallback audioCallback = [this](
-                                                      const float *samples,
-                                                      int frameCount,
-                                                      double streamTime,
-                                                      bool inputOverflow
-                                                  ) {
-        if (!m_captureEnabled) {
-            return;
-        }
-        if (inputOverflow) {
-            IRE_LOG_WARN("Audio input overflow detected while recording.");
-        }
-        if (samples != nullptr && frameCount > 0) {
-            m_videoRecorder.submitAudioInputSamples(samples, frameCount, streamTime);
-        }
-    };
+    IRAudio::AudioCaptureCallback audioCallback =
+        [this,
+         levelsSource =
+             &source](const float *samples, int frameCount, double streamTime, bool inputOverflow) {
+            if (!m_captureEnabled) {
+                return;
+            }
+            if (inputOverflow) {
+                IRE_LOG_WARN("Audio input overflow detected while recording.");
+            }
+            if (samples != nullptr && frameCount > 0) {
+                m_videoRecorder.submitAudioInputSamples(
+                    samples,
+                    frameCount,
+                    streamTime,
+                    levelsSource->getInputLevels()
+                );
+            }
+        };
 
-    bool started = false;
-    if (m_audioCaptureSource != nullptr) {
-        IRAudio::AudioCaptureConfig captureConfig;
-        captureConfig.device_name_ = m_audioInputDeviceName;
-        captureConfig.sample_rate_ = m_audioSampleRate;
-        captureConfig.channels_ = m_audioChannels;
-        captureConfig.monitor_enabled_ = m_audioMonitorEnabled;
-        captureConfig.monitor_device_name_ = m_audioMonitorDeviceName;
-        started = m_audioCaptureSource->startCapture(captureConfig, std::move(audioCallback));
-    } else {
-        started = IRAudio::startAudioInputCapture(
-            m_audioInputDeviceName,
-            m_audioSampleRate,
-            m_audioChannels,
-            std::move(audioCallback)
-        );
-    }
-
-    if (started) {
+    IRAudio::AudioCaptureConfig captureConfig;
+    captureConfig.device_name_ = m_audioInputDeviceName;
+    captureConfig.sample_rate_ = m_audioSampleRate;
+    captureConfig.channels_ = m_audioChannels;
+    captureConfig.monitor_enabled_ = m_audioMonitorEnabled;
+    captureConfig.monitor_device_name_ = m_audioMonitorDeviceName;
+    if (source.startCapture(captureConfig, std::move(audioCallback))) {
         m_audioInputArmed = true;
-        m_audioSampleRate = m_audioCaptureSource != nullptr
-                                ? m_audioCaptureSource->getCaptureSampleRate()
-                                : IRAudio::getAudioCaptureSource().getCaptureSampleRate();
+        adoptAudioInputFormat();
         IRE_LOG_INFO("Audio input armed (device='{}', rate={}, ch={})",
                      m_audioInputDeviceName.c_str(),
                      m_audioSampleRate,
@@ -317,6 +312,23 @@ void VideoManager::armAudioInput() {
     }
 }
 
+// The source can deliver another rate than requested, more channels when it
+// shares an armed input, and another device's format after an input switch.
+void VideoManager::adoptAudioInputFormat() {
+    const IRAudio::IAudioCaptureSource &source = audioCaptureSource();
+    m_audioSampleRate = source.getCaptureSampleRate();
+    const int channels = source.getCaptureChannels();
+    if (channels > 0) {
+        m_audioChannels = channels;
+    }
+}
+
+void VideoManager::setAudioTakeRecording(bool recording) {
+    if (m_audioInputArmed) {
+        audioCaptureSource().setCaptureRecording(recording);
+    }
+}
+
 void VideoManager::toggleCapture() {
     if (m_finalizeInProgress.load()) {
         return;
@@ -326,7 +338,17 @@ void VideoManager::toggleCapture() {
         IRE_LOG_INFO("Stopping capture (audio + video).");
         beginAsyncFinalize();
         m_captureEnabled = false;
+        setAudioTakeRecording(false);
         return;
+    }
+
+    // An input switch between takes can change the format, and a failed
+    // switch leaves the recorder without a stream.
+    if (m_audioInputArmed) {
+        if (!audioCaptureSource().isCapturing()) {
+            m_audioInputArmed = false;
+        }
+        armAudioInput();
     }
 
     const auto &framebuffer = IREntity::getComponent<IRComponents::C_TrixelCanvasFramebuffer>(
@@ -415,6 +437,7 @@ void VideoManager::toggleCapture() {
     m_totalFixedUpdates = 0;
     m_totalCapturedFrames = 0;
     m_captureEnabled = true;
+    setAudioTakeRecording(true);
     if (m_audioInputArmed) {
         IRE_LOG_INFO("Audio capture recording started.");
     }
