@@ -300,6 +300,8 @@ main
                 lane = "stalled-sweep"
             if any(word.endswith("fleet-queue-ingest") for word in words):
                 lane = "queue-ingest"
+            if any(word.endswith("fleet-pr-stamp") for word in words):
+                lane = "pr-stamp-backfill"
             with patch.object(subprocess, "Popen", real_popen):
                 proc = subprocess.run(["bash", str(self.bin / "gh"), "api", "user"],
                                       env=kwargs.get("env"), capture_output=True,
@@ -310,7 +312,8 @@ main
                 patch.object(_mod, "USAGE_DIR", self.usage):
             _ScoutTickHarness()._tick(str(self.root), ["issue-1"], False, [], popen=spawn)
         self.assertEqual(charged, {lane: "app" for lane in
-                                  ("cleanup", "reconcile", "stalled-sweep", "queue-ingest")})
+                                  ("cleanup", "reconcile", "stalled-sweep", "queue-ingest",
+                                   "pr-stamp-backfill")})
 
     def test_wrapper_selects_user_before_launch_for_every_target_kind(self):
         self.stub("git", 'if [[ "$*" == *--show-toplevel* ]]; then pwd; fi')
