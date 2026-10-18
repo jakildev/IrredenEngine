@@ -15,7 +15,17 @@ template <> inline void bindLuaType<IRComponents::C_AnimColorState>(LuaScript &l
         IRComponents::C_AnimColorState()>(
         "C_AnimColorState",
         "blendMode",
-        &IRComponents::C_AnimColorState::blendMode_
+        &IRComponents::C_AnimColorState::blendMode_,
+        // The colour the shifts start from and the one painted each frame.
+        // The system captures the base from the voxels on its first tick; a
+        // script that recolours the voxels afterwards sets both (and marks
+        // the base captured), or the next tick paints the old colour back.
+        "baseColor",
+        &IRComponents::C_AnimColorState::baseColor_,
+        "baseInitialized",
+        &IRComponents::C_AnimColorState::baseInitialized_,
+        "currentColor",
+        &IRComponents::C_AnimColorState::currentColor_
     );
 }
 
