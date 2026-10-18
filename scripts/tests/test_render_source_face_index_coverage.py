@@ -151,7 +151,6 @@ int main(){
     configure({0,0},{-8,-8},{1,1},{2,3});
     for(float tiny:{subnormal,-subnormal})
         fullCascade({tiny,0,0},{1,0,0},{0,1,0});
-    fullCascade({0,0,0},{8,1,0},{8,1.000001f,0});
     fullCascade({0,0,0},{std::ldexp(1.0f,61),0,0},{0,1,0});
     fullCascade({0,0,0},{std::ldexp(1.0f,100),0,0},{0,std::ldexp(1.0f,100),0});
     query({0,0,0},{std::ldexp(1.0f,100),0,0},{0,std::ldexp(1.0f,100),0},{.5f,.5f},false);

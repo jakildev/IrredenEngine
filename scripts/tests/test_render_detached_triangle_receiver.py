@@ -243,7 +243,8 @@ def harness(backend):
     )
     for filename, names in (
         ("ir_sun_projection", ("sunSpaceProject",)),
-        ("ir_projected_face", ("projectedFaceDeterminant", "projectedFaceCoordinates",
+        ("ir_projected_face", ("sourceFaceWithinProjectedBounds",
+                                       "projectedFaceDeterminant", "projectedFaceCoordinates",
                                "projectedFaceContainsClosed")),
         ("ir_sun_face_query_layout", ("sourceFaceRaySeparation",)),
     ):

@@ -162,7 +162,8 @@ static_assert(std::is_same_v<decltype(abs(0.5f)), float>, "shader abs must prese
 float dot(vec3 a,vec3 b){return a.x*b.x+a.y*b.y+a.z*b.z;}
 """
             for file, names in (
-                ("ir_projected_face", ("projectedFaceDeterminant", "projectedFaceCoordinates",
+                ("ir_projected_face", ("sourceFaceWithinProjectedBounds",
+                                       "projectedFaceDeterminant", "projectedFaceCoordinates",
                                        "projectedFaceContainsClosed")),
                 ("ir_sun_projection", ("sunSpaceProject",)),
                 ("ir_sun_face_query_layout", ("sourceFaceRaySeparation",)),

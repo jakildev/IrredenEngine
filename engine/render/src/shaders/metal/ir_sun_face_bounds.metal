@@ -27,13 +27,6 @@ inline float sourceFaceBoundDown(float value) {
     return as_type<float>((bits & 0x80000000u) != 0u ? bits + 1u : bits - 1u);
 }
 
-// Four quotient ULPs give relative error at most 8u. This binary32 factor
-// exceeds 1/(1-8u); one outward step encloses the final multiplication.
-inline float sourceFaceBoundDivideUp(float numerator, float denominator) {
-    const float quotient = sourceFaceBoundUp(numerator / denominator);
-    return sourceFaceBoundUp(quotient * 1.00000059604644775390625);
-}
-
 // Independently compiled producer and receiver determinants may contract differently.
 inline bool sourceFaceDefinitelyDegenerate(float2 edgeU, float2 edgeV, float determinant) {
     if (!sourceFaceBoundNormalOrZero(edgeU.x) || !sourceFaceBoundNormalOrZero(edgeU.y) ||
@@ -114,49 +107,27 @@ inline bool sourceFaceIndexBounds(float2 corner, float2 edgeU, float2 edgeV, flo
     if (max(absoluteCorner.x, absoluteCorner.y) > maximumInput ||
         max(absoluteU.x, absoluteU.y) > maximumInput ||
         max(absoluteV.x, absoluteV.y) > maximumInput) return false;
-    const float cornerExtent = max(absoluteCorner.x, absoluteCorner.y);
-    const float extentU = max(absoluteU.x, absoluteU.y);
-    const float extentV = max(absoluteV.x, absoluteV.y);
-    const float sumU = sourceFaceBoundUp(absoluteU.x + absoluteU.y);
-    const float sumV = sourceFaceBoundUp(absoluteV.x + absoluteV.y);
-    const float edgeExtent = sourceFaceBoundUp(extentU + extentV);
-    const float radius = sourceFaceBoundUp(cornerExtent + edgeExtent);
-    const float determinantMagnitude = sourceFaceBoundUp(
-        sourceFaceBoundUp(absoluteU.x * absoluteV.y) +
-        sourceFaceBoundUp(absoluteU.y * absoluteV.x));
-    const float coupling = sourceFaceBoundUp(
-        sourceFaceBoundUp(extentU * sumV) + sourceFaceBoundUp(extentV * sumU));
-    const float determinantTerm = sourceFaceBoundUp(edgeExtent * determinantMagnitude);
-
-    // ceil_binary32(gamma(16)), with u = 2^-24.
-    const float relativeError = as_type<float>(0x35800009u);
-    const float absoluteError = sourceFaceBoundUp(
-        sourceFaceBoundUp(32.0 * as_type<float>(0x00800000u)) *
-        sourceFaceBoundUp(1.0 + sourceFaceBoundUp(sumU + sumV)));
-    const float denominatorError = sourceFaceBoundUp(
-        sourceFaceBoundUp(relativeError *
-            sourceFaceBoundUp(determinantMagnitude + coupling)) + absoluteError);
-    const float denominator = sourceFaceBoundDown(abs(determinant) - denominatorError);
-    if (!sourceFaceBoundFinite(denominator) || denominator <= 0.0) return false;
-
-    const float relativeNumerator = sourceFaceBoundUp(relativeError * sourceFaceBoundUp(
-        sourceFaceBoundUp(sourceFaceBoundUp(radius + cornerExtent) * coupling) +
-        determinantTerm));
-    const float numerator = sourceFaceBoundUp(
-        relativeNumerator + sourceFaceBoundUp(edgeExtent * absoluteError));
-    const float padding = sourceFaceBoundDivideUp(numerator, denominator);
-    if (!sourceFaceBoundFinite(padding)) return false;
+    const float2 extent = float2(
+        sourceFaceBoundUp(sourceFaceBoundUp(absoluteCorner.x + absoluteU.x) + absoluteV.x),
+        sourceFaceBoundUp(sourceFaceBoundUp(absoluteCorner.y + absoluteU.y) + absoluteV.y));
+    // The receiver margin is smaller: this encloses independently rounded
+    // sourceFaceWithinProjectedBounds endpoints, including contraction and FTZ.
+    const float relativeMargin = 0.0000019073486328125;
+    const float absoluteMargin = 64.0 * as_type<float>(0x00800000u);
+    const float2 padding = float2(
+        sourceFaceBoundUp(sourceFaceBoundUp(relativeMargin * extent.x) + absoluteMargin),
+        sourceFaceBoundUp(sourceFaceBoundUp(relativeMargin * extent.y) + absoluteMargin));
 
     low = float2(
         sourceFaceBoundDown(sourceFaceBoundDown(
-            sourceFaceBoundDown(corner.x + min(0.0, edgeU.x)) + min(0.0, edgeV.x)) - padding),
+            sourceFaceBoundDown(corner.x + min(0.0, edgeU.x)) + min(0.0, edgeV.x)) - padding.x),
         sourceFaceBoundDown(sourceFaceBoundDown(
-            sourceFaceBoundDown(corner.y + min(0.0, edgeU.y)) + min(0.0, edgeV.y)) - padding));
+            sourceFaceBoundDown(corner.y + min(0.0, edgeU.y)) + min(0.0, edgeV.y)) - padding.y));
     high = float2(
         sourceFaceBoundUp(sourceFaceBoundUp(
-            sourceFaceBoundUp(corner.x + max(0.0, edgeU.x)) + max(0.0, edgeV.x)) + padding),
+            sourceFaceBoundUp(corner.x + max(0.0, edgeU.x)) + max(0.0, edgeV.x)) + padding.x),
         sourceFaceBoundUp(sourceFaceBoundUp(
-            sourceFaceBoundUp(corner.y + max(0.0, edgeU.y)) + max(0.0, edgeV.y)) + padding));
+            sourceFaceBoundUp(corner.y + max(0.0, edgeU.y)) + max(0.0, edgeV.y)) + padding.y));
     return sourceFaceBoundFinite(low.x) && sourceFaceBoundFinite(low.y) &&
            sourceFaceBoundFinite(high.x) && sourceFaceBoundFinite(high.y);
 }

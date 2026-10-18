@@ -59,9 +59,13 @@ this route. Keep the correctness and cross-backend work below as regression gate
 The small intermediate-yaw floor-shadow gap in the baked fixture is a rounded
 finite-face boundary miss. The [closed-edge predicate](surface-shadow-sampling.md#rounded-finite-face-boundaries)
 closes that reproduction, with independently rounded boundary/exterior controls
-and bounded grazing-face depth. Keep candidate-index tile-boundary coverage and
-rejection-heavy 64/256-candidate GPU cost on the TODO; this is not closure of all
-shared voxel shadow defects.
+and bounded grazing-face depth. The [finite-index contract](sun-face-index-coverage.md)
+now covers rounded tile boundaries and independently compiled receiver arithmetic.
+Its finite projected envelope retains thin geometry while preventing near-cardinal
+box faces from occupying every tile. The [grazing controls](../pr-screenshots/codex/4523-finite-shadow-envelope/README.md)
+retain ordinary images and measure index-build cost separately from receiver cost.
+Keep rejection-heavy 64/256-candidate GPU cost, dense local overflow and native
+OpenGL qualification on the TODO; this is not closure of all shared voxel shadow defects.
 
 The apparent hole in the [tilted baked-shape control](../pr-screenshots/codex/sdf-baked-transform-controls/README.md)
 is a real channel between the cylinder and torus shadows, made into an isolated
