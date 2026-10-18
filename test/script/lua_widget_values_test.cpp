@@ -21,6 +21,7 @@ using IRComponents::C_WidgetButton;
 using IRComponents::C_WidgetCheckbox;
 using IRComponents::C_WidgetDropdown;
 using IRComponents::C_WidgetLabel;
+using IRComponents::C_WidgetNumberField;
 using IRComponents::C_WidgetSlider;
 using IRComponents::C_WidgetTextInput;
 using IRComponents::WidgetKind;
@@ -189,6 +190,96 @@ TEST_F(LuaWidgetValues, TextInputRejectsNegativeLengthBeforeCreation) {
     EXPECT_EQ(m_entityManager.getLiveEntityCount(), before);
 }
 
+TEST_F(LuaWidgetValues, NumberFieldBuildsReadsClampsAndSnaps) {
+    run(R"lua(
+        field = IRGui.makeNumberField(10, 20, 120, 18, 70, 1, 64, 1)
+        free = IRGui.makeNumberField(0, 0, 80, 18, 2, 0, 10)
+    )lua");
+    const IREntity::EntityId id = entity("field");
+    EXPECT_EQ(IREntity::getComponent<C_Widget>(id).kind_, WidgetKind::NUMBER_FIELD);
+    EXPECT_EQ(IREntity::getComponent<C_GuiPosition>(id).pos_, IRMath::ivec2(10, 20));
+    EXPECT_FLOAT_EQ(eval<float>("IRGui.numberFieldValue(field)"), 64.0f);
+    run("IRGui.setNumberFieldValue(field, 3.6)");
+    EXPECT_FLOAT_EQ(eval<float>("IRGui.numberFieldValue(field)"), 4.0f);
+    run("IRGui.setNumberFieldValue(field, -5)");
+    EXPECT_FLOAT_EQ(eval<float>("IRGui.numberFieldValue(field)"), 1.0f);
+    run("IRGui.setNumberFieldValue(free, 2.5)");
+    EXPECT_FLOAT_EQ(eval<float>("IRGui.numberFieldValue(free)"), 2.5f);
+}
+
+TEST_F(LuaWidgetValues, NumberFieldRejectsBadArgumentsBeforeCreation) {
+    const IREntity::EntityId before = m_entityManager.getLiveEntityCount();
+    for (const char *call : {
+             "IRGui.makeNumberField(0, 0, 10, 10, math.huge, 0, 1)",
+             "IRGui.makeNumberField(0, 0, 10, 10, 0, 0/0, 1)",
+             "IRGui.makeNumberField(0, 0, 10, 10, 0, 0, -math.huge)",
+             "IRGui.makeNumberField(0, 0, 10, 10, 0, 1, 1)",
+             "IRGui.makeNumberField(0, 0, 10, 10, 0, 0, 1, 0)",
+             "IRGui.makeNumberField(0, 0, 10, 10, 0, 0, 1, math.huge)",
+             "IRGui.makeNumberField(0, 0, 10, 10, 0, 0, 1, 1, 7)",
+         }) {
+        EXPECT_FALSE(error(call).empty()) << call;
+        EXPECT_EQ(m_entityManager.getLiveEntityCount(), before) << call;
+    }
+
+    run("field = IRGui.makeNumberField(0, 0, 10, 10, 0.5, 0, 1, nil, nil)");
+    EXPECT_FLOAT_EQ(eval<float>("IRGui.numberFieldValue(field)"), 0.5f);
+}
+
+TEST_F(LuaWidgetValues, NumberFieldEditCycleCommitsCancelsAndFilters) {
+    run("field = IRGui.makeNumberField(0, 0, 120, 18, 4, 1, 64, 1)");
+    C_WidgetNumberField &field = IREntity::getComponent<C_WidgetNumberField>(entity("field"));
+    field.updateEdit(true, false, "", false, false, 16);
+    EXPECT_EQ(field.editBuffer_, "4");
+    field.editBuffer_.clear();
+    field.updateEdit(true, false, "99", false, false, 16);
+    EXPECT_FLOAT_EQ(eval<float>("IRGui.numberFieldValue(field)"), 4.0f);
+    field.updateEdit(false, false, "", false, false, 16);
+    EXPECT_FLOAT_EQ(eval<float>("IRGui.numberFieldValue(field)"), 64.0f);
+
+    field.setValue(4.0f);
+    field.updateEdit(true, false, "", false, false, 16);
+    field.editBuffer_.clear();
+    field.updateEdit(true, false, "2.6", false, false, 16);
+    field.updateEdit(false, false, "", false, false, 16);
+    EXPECT_FLOAT_EQ(field.value_, 3.0f);
+
+    field.updateEdit(true, false, "", false, false, 16);
+    field.editBuffer_.clear();
+    field.updateEdit(true, false, "1-2", false, false, 16);
+    EXPECT_EQ(field.editBuffer_, "12");
+    field.editBuffer_.clear();
+    field.updateEdit(true, false, "1.2.3", false, false, 16);
+    EXPECT_EQ(field.editBuffer_, "1.23");
+    field.updateEdit(false, false, "", false, true, 16);
+    EXPECT_FLOAT_EQ(field.value_, 3.0f);
+
+    field.updateEdit(true, false, "", false, false, 16);
+    field.editBuffer_ = "-";
+    field.updateEdit(false, false, "", false, false, 16);
+    EXPECT_FLOAT_EQ(field.value_, 3.0f);
+    field.updateEdit(true, false, "", false, false, 16);
+    field.editBuffer_ = "12";
+    field.updateEdit(true, true, "", false, false, 16);
+    EXPECT_FLOAT_EQ(field.value_, 3.0f);
+}
+
+TEST_F(LuaWidgetValues, NumberFieldFormattingPreservesUneditedValues) {
+    run("free = IRGui.makeNumberField(0, 0, 120, 18, 2.555, 0, 10)");
+    C_WidgetNumberField &free = IREntity::getComponent<C_WidgetNumberField>(entity("free"));
+    free.updateEdit(true, false, "", false, false, 16);
+    EXPECT_EQ(free.editBuffer_, "2.56");
+    free.updateEdit(false, false, "", false, false, 16);
+    EXPECT_FLOAT_EQ(free.value_, 2.555f);
+
+    run("offset = IRGui.makeNumberField(0, 0, 120, 18, 1.5, 0.5, 10, 1)");
+    C_WidgetNumberField &offset = IREntity::getComponent<C_WidgetNumberField>(entity("offset"));
+    EXPECT_EQ(offset.formattedValue(), "1.5");
+    offset.updateEdit(true, false, "", false, false, 16);
+    offset.updateEdit(false, false, "", false, false, 16);
+    EXPECT_FLOAT_EQ(offset.value_, 1.5f);
+}
+
 TEST_F(LuaWidgetValues, MalformedDropdownItemsCreateNoWidget) {
     const IREntity::EntityId before = m_entityManager.getLiveEntityCount();
     EXPECT_NE(
@@ -208,6 +299,10 @@ TEST_F(LuaWidgetValues, ReadersRejectTheWrongKindOfWidget) {
     EXPECT_NE(error("IRGui.dropdownSelected(label)").find("is not a dropdown"), std::string::npos);
     EXPECT_NE(error("IRGui.sliderValue(12345)").find("is not a slider"), std::string::npos);
     EXPECT_NE(error("IRGui.textInputValue(slider)").find("is not a text input"), std::string::npos);
+    EXPECT_NE(
+        error("IRGui.numberFieldValue(slider)").find("is not a number field"),
+        std::string::npos
+    );
 
     run("IRGui.setDisabled(slider, true)");
     EXPECT_TRUE(IREntity::getComponent<C_Widget>(entity("slider")).disabled_);
@@ -222,6 +317,7 @@ TEST_F(LuaWidgetValues, FactoriesStoreTheTrailingTextSize) {
         slider = IRGui.makeSlider(0, 0, 40, 20, "S", 0, 1, 0, S)
         box = IRGui.makeCheckbox(0, 0, 40, 12, "C", false, S)
         dd = IRGui.makeDropdown(0, 0, 40, 12, { "A" }, 1, 12, S)
+        number = IRGui.makeNumberField(0, 0, 40, 12, 1, 0, 2, 0.5, S)
 
         plainLabel = IRGui.makeLabel(0, 0, "L")
         plainButton = IRGui.makeButton(0, 0, 40, 12, "B")
@@ -234,6 +330,10 @@ TEST_F(LuaWidgetValues, FactoriesStoreTheTrailingTextSize) {
     EXPECT_EQ(IREntity::getComponent<C_WidgetSlider>(entity("slider")).textSize_, TextSize::SMALL);
     EXPECT_EQ(IREntity::getComponent<C_WidgetCheckbox>(entity("box")).textSize_, TextSize::SMALL);
     EXPECT_EQ(IREntity::getComponent<C_WidgetDropdown>(entity("dd")).textSize_, TextSize::SMALL);
+    EXPECT_EQ(
+        IREntity::getComponent<C_WidgetNumberField>(entity("number")).textSize_,
+        TextSize::SMALL
+    );
 
     EXPECT_EQ(
         IREntity::getComponent<C_WidgetLabel>(entity("plainLabel")).textSize_,

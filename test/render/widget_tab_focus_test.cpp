@@ -34,4 +34,32 @@ TEST(WidgetTabFocusTest, CandidateIncludesEnabledInteractiveWidgets) {
     );
 }
 
+TEST(WidgetTabFocusTest, NumberFieldTakesPointerKeyboardFocusOnly) {
+    const IRComponents::C_Widget numberField{
+        IRComponents::WidgetKind::NUMBER_FIELD,
+        IRMath::ivec2(80, 18)
+    };
+    EXPECT_FALSE(IRPrefab::Widget::isTabFocusCandidate(numberField));
+    EXPECT_TRUE(IRPrefab::Widget::takesKeyboardFocus(numberField));
+
+    IRComponents::C_Widget disabled = numberField;
+    disabled.disabled_ = true;
+    EXPECT_FALSE(IRPrefab::Widget::takesKeyboardFocus(disabled));
+    EXPECT_FALSE(
+        IRPrefab::Widget::takesKeyboardFocus(
+            IRComponents::C_Widget{IRComponents::WidgetKind::BUTTON, IRMath::ivec2(80, 18)}
+        )
+    );
+    EXPECT_FALSE(
+        IRPrefab::Widget::takesKeyboardFocus(
+            IRComponents::C_Widget{IRComponents::WidgetKind::SLIDER, IRMath::ivec2(80, 18)}
+        )
+    );
+    EXPECT_TRUE(
+        IRPrefab::Widget::takesKeyboardFocus(
+            IRComponents::C_Widget{IRComponents::WidgetKind::TEXT_INPUT, IRMath::ivec2(80, 18)}
+        )
+    );
+}
+
 } // namespace

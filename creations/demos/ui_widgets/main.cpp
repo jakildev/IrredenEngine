@@ -1,9 +1,9 @@
-// Trixel-rendered UI widget primitives demo (T-145 + T-177, F-0.1).
+// Trixel-rendered UI widget primitives demo.
 //
-// Shows the ten Phase 0 / Phase 0 follow-up widgets: panel, label, button,
-// slider, checkbox, list, dropdown, radio, text input, scroll. The render
-// harness fires `--auto-screenshot` if requested so the demo doubles as a
-// visual-regression canary for the widget framework.
+// Shows the widget set: panel, label, button, slider, number field, checkbox,
+// list, dropdown, radio, text input, and scroll. The render harness fires
+// `--auto-screenshot` if requested so the demo doubles as a visual-regression
+// canary for the widget framework.
 
 #include <irreden/ir_engine.hpp>
 #include <irreden/ir_system.hpp>
@@ -32,6 +32,7 @@
 #include <irreden/render/systems/system_widget_apply_dropdown.hpp>
 #include <irreden/render/systems/system_widget_apply_radio.hpp>
 #include <irreden/render/systems/system_widget_apply_text_input.hpp>
+#include <irreden/render/systems/system_widget_apply_number_field.hpp>
 #include <irreden/render/systems/system_widget_apply_scroll.hpp>
 #include <irreden/render/systems/system_widget_render_panel.hpp>
 #include <irreden/render/systems/system_widget_render_label.hpp>
@@ -42,8 +43,10 @@
 #include <irreden/render/systems/system_widget_render_dropdown.hpp>
 #include <irreden/render/systems/system_widget_render_radio.hpp>
 #include <irreden/render/systems/system_widget_render_text_input.hpp>
+#include <irreden/render/systems/system_widget_render_number_field.hpp>
 #include <irreden/render/systems/system_widget_render_scroll.hpp>
 
+#include <irreden/render/gui_test_assertions.hpp>
 #include <irreden/render/widgets.hpp>
 #include <irreden/render/widget_theme.hpp>
 
@@ -65,6 +68,7 @@ IREntity::EntityId g_buttonEnable = IREntity::kNullEntity;
 IREntity::EntityId g_buttonReset = IREntity::kNullEntity;
 IREntity::EntityId g_buttonDisabled = IREntity::kNullEntity;
 IREntity::EntityId g_sliderVolume = IREntity::kNullEntity;
+IREntity::EntityId g_numberFieldVolume = IREntity::kNullEntity;
 IREntity::EntityId g_sliderBrightness = IREntity::kNullEntity;
 IREntity::EntityId g_checkboxMusic = IREntity::kNullEntity;
 IREntity::EntityId g_checkboxWireframe = IREntity::kNullEntity;
@@ -80,17 +84,127 @@ IREntity::EntityId g_scroll = IREntity::kNullEntity;
 
 int g_clickCount = 0;
 int g_resetCount = 0;
+int g_digitCommandCount = 0;
 bool g_panelEnabled = true;
 
 namespace {
-// Three shots — wide framings so the screenshot harness records the
-// full widget set. Camera position is irrelevant for the GUI canvas but
-// the harness still varies it.
-constexpr IRVideo::AutoScreenshotShot kShots[] = {
-    {1.0f, IRMath::vec2(0.0f, 0.0f), 0.0f, "widgets_idle"},
-    {1.0f, IRMath::vec2(0.0f, 0.0f), 0.0f, "widgets_after_settle"},
-    {1.0f, IRMath::vec2(0.0f, 0.0f), 0.0f, "widgets_followup"},
+constexpr IRMath::ivec2 kNumberFieldScreen(424, 176);
+
+constexpr IRVideo::GuiInputEvent kFocusedEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::PRESS, {}, {}, IRInput::kKeyButton9},
+    {1, IRVideo::GuiInputEvent::Type::RELEASE, {}, {}, IRInput::kKeyButton9},
+    {2, IRVideo::GuiInputEvent::Type::MOVE, kNumberFieldScreen},
+    {3, IRVideo::GuiInputEvent::Type::PRESS, kNumberFieldScreen, {}, IRInput::kMouseButtonLeft},
+    {4, IRVideo::GuiInputEvent::Type::RELEASE, kNumberFieldScreen, {}, IRInput::kMouseButtonLeft},
+    {5, IRVideo::GuiInputEvent::Type::PRESS, {}, {}, IRInput::kKeyButtonBackspace},
+    {6, IRVideo::GuiInputEvent::Type::RELEASE, {}, {}, IRInput::kKeyButtonBackspace},
+    {7, IRVideo::GuiInputEvent::Type::PRESS, {}, {}, IRInput::kKeyButtonBackspace},
+    {8, IRVideo::GuiInputEvent::Type::RELEASE, {}, {}, IRInput::kKeyButtonBackspace},
+    {9, IRVideo::GuiInputEvent::Type::PRESS, {}, {}, IRInput::kKeyButton9},
+    {10, IRVideo::GuiInputEvent::Type::RELEASE, {}, {}, IRInput::kKeyButton9},
+    {11, IRVideo::GuiInputEvent::Type::PRESS, {}, {}, IRInput::kKeyButton9},
+    {12, IRVideo::GuiInputEvent::Type::RELEASE, {}, {}, IRInput::kKeyButton9},
 };
+
+constexpr IRVideo::GuiInputEvent kCommittedEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::PRESS, {}, {}, IRInput::kKeyButtonEnter},
+    {1, IRVideo::GuiInputEvent::Type::RELEASE, {}, {}, IRInput::kKeyButtonEnter},
+    {2, IRVideo::GuiInputEvent::Type::PRESS, {}, {}, IRInput::kKeyButton9},
+    {3, IRVideo::GuiInputEvent::Type::RELEASE, {}, {}, IRInput::kKeyButton9},
+};
+
+constexpr IRVideo::GuiInputEvent kCancelledEvents[] = {
+    {0, IRVideo::GuiInputEvent::Type::MOVE, kNumberFieldScreen},
+    {1, IRVideo::GuiInputEvent::Type::PRESS, kNumberFieldScreen, {}, IRInput::kMouseButtonLeft},
+    {2, IRVideo::GuiInputEvent::Type::RELEASE, kNumberFieldScreen, {}, IRInput::kMouseButtonLeft},
+    {3, IRVideo::GuiInputEvent::Type::PRESS, {}, {}, IRInput::kKeyButtonBackspace},
+    {4, IRVideo::GuiInputEvent::Type::RELEASE, {}, {}, IRInput::kKeyButtonBackspace},
+    {5, IRVideo::GuiInputEvent::Type::PRESS, {}, {}, IRInput::kKeyButtonBackspace},
+    {6, IRVideo::GuiInputEvent::Type::RELEASE, {}, {}, IRInput::kKeyButtonBackspace},
+    {7, IRVideo::GuiInputEvent::Type::PRESS, {}, {}, IRInput::kKeyButtonMinus},
+    {8, IRVideo::GuiInputEvent::Type::RELEASE, {}, {}, IRInput::kKeyButtonMinus},
+    {9, IRVideo::GuiInputEvent::Type::PRESS, {}, {}, IRInput::kKeyButton1},
+    {10, IRVideo::GuiInputEvent::Type::RELEASE, {}, {}, IRInput::kKeyButton1},
+    {11, IRVideo::GuiInputEvent::Type::PRESS, {}, {}, IRInput::kKeyButtonEscape},
+    {12, IRVideo::GuiInputEvent::Type::RELEASE, {}, {}, IRInput::kKeyButtonEscape},
+};
+
+constexpr IRVideo::GuiTestShot kShots[] = {
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "widgets_idle"}, nullptr, 0},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "widgets_after_settle"}, nullptr, 0},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "widgets_followup"}, nullptr, 0},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "number_field_focused"},
+     kFocusedEvents,
+     static_cast<int>(std::size(kFocusedEvents))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "number_field_committed"},
+     kCommittedEvents,
+     static_cast<int>(std::size(kCommittedEvents))},
+    {{1.0f, IRMath::vec2(0.0f), 0.0f, "number_field_cancelled"},
+     kCancelledEvents,
+     static_cast<int>(std::size(kCancelledEvents))},
+};
+
+struct ExpectedState {
+    bool editing_;
+    float value_;
+    bool captured_;
+    int commandCount_;
+    bool checkSlider_;
+};
+
+constexpr ExpectedState kFocusedExpected{true, 12.0f, true, 1, false};
+constexpr ExpectedState kCommittedExpected{false, 64.0f, false, 2, true};
+constexpr ExpectedState kCancelledExpected{false, 64.0f, false, 2, true};
+
+bool numberFieldState(const void *context, std::string &actual) {
+    const auto &expected = *static_cast<const ExpectedState *>(context);
+    const auto &field =
+        IREntity::getComponent<IRComponents::C_WidgetNumberField>(g_numberFieldVolume);
+    const bool captured = IRCommand::getCommandManager().isKeyboardCaptured();
+    const float slider = IRPrefab::Widget::sliderValue(g_sliderVolume);
+    actual = "editing=" + std::to_string(field.editing_) +
+             " value=" + std::to_string(field.value_) + " captured=" + std::to_string(captured) +
+             " commands=" + std::to_string(g_digitCommandCount) +
+             " slider=" + std::to_string(slider);
+    return field.editing_ == expected.editing_ && field.value_ == expected.value_ &&
+           captured == expected.captured_ && g_digitCommandCount == expected.commandCount_ &&
+           (!expected.checkSlider_ || slider == expected.value_);
+}
+
+const IRPrefab::GuiTest::Assertion kFocusedAssertions[] = {
+    IRPrefab::GuiTest::predicate(&numberFieldState, &kFocusedExpected, "number_field_focused"),
+};
+const IRPrefab::GuiTest::Assertion kCommittedAssertions[] = {
+    IRPrefab::GuiTest::predicate(&numberFieldState, &kCommittedExpected, "number_field_committed"),
+};
+const IRPrefab::GuiTest::Assertion kCancelledAssertions[] = {
+    IRPrefab::GuiTest::predicate(&numberFieldState, &kCancelledExpected, "number_field_cancelled"),
+};
+
+IRPrefab::GuiTest::LatchState g_guiLatch;
+
+void onGuiAssertFrame(int shotIndex, bool isCaptureFrame) {
+    const IRPrefab::GuiTest::Assertion *assertions = nullptr;
+    int count = 0;
+    if (shotIndex == 3) {
+        assertions = kFocusedAssertions;
+        count = static_cast<int>(std::size(kFocusedAssertions));
+    } else if (shotIndex == 4) {
+        assertions = kCommittedAssertions;
+        count = static_cast<int>(std::size(kCommittedAssertions));
+    } else if (shotIndex == 5) {
+        assertions = kCancelledAssertions;
+        count = static_cast<int>(std::size(kCancelledAssertions));
+    }
+    IRPrefab::GuiTest::onFrame(
+        g_guiLatch,
+        shotIndex,
+        isCaptureFrame,
+        kShots[shotIndex].render_.label_,
+        assertions,
+        count
+    );
+}
 
 int g_autoWarmupFrames = 0;
 } // namespace
@@ -128,6 +242,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_DROPDOWN>(),
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_RADIO>(),
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_TEXT_INPUT>(),
+            IRSystem::createSystem<IRSystem::WIDGET_APPLY_NUMBER_FIELD>(),
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_SCROLL>(),
         }
     );
@@ -140,7 +255,7 @@ void initSystems() {
         []() {
             if (IRPrefab::Widget::wasClicked(IRWidgetsDemo::g_buttonReset)) {
                 ++IRWidgetsDemo::g_resetCount;
-                IRPrefab::Widget::setSliderValue(IRWidgetsDemo::g_sliderVolume, 0.5f);
+                IRPrefab::Widget::setSliderValue(IRWidgetsDemo::g_sliderVolume, 12.0f);
                 IRPrefab::Widget::setSliderValue(IRWidgetsDemo::g_sliderBrightness, 0.75f);
                 IRPrefab::Widget::setCheckboxState(IRWidgetsDemo::g_checkboxMusic, true);
                 IRPrefab::Widget::setCheckboxState(IRWidgetsDemo::g_checkboxWireframe, false);
@@ -170,6 +285,17 @@ void initSystems() {
             }
             if (IRPrefab::Widget::wasClicked(IRWidgetsDemo::g_buttonDisabled)) {
                 ++IRWidgetsDemo::g_clickCount; // never fires; button stays disabled
+            }
+            if (IRPrefab::Widget::isPressed(IRWidgetsDemo::g_sliderVolume)) {
+                IRPrefab::Widget::setNumberFieldValue(
+                    IRWidgetsDemo::g_numberFieldVolume,
+                    IRPrefab::Widget::sliderValue(IRWidgetsDemo::g_sliderVolume)
+                );
+            } else {
+                IRPrefab::Widget::setSliderValue(
+                    IRWidgetsDemo::g_sliderVolume,
+                    IRPrefab::Widget::numberFieldValue(IRWidgetsDemo::g_numberFieldVolume)
+                );
             }
 
             char buf[160];
@@ -209,6 +335,7 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_LIST>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_RADIO>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_TEXT_INPUT>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_NUMBER_FIELD>(),
             IRSystem::createSystem<IRSystem::WIDGET_RENDER_SCROLL>(),
             // Dropdown renders LAST among widgets so its open panel paints
             // over any neighbor it overlaps.
@@ -219,11 +346,15 @@ void initSystems() {
         }
     );
 
-    IRVideo::appendAutoScreenshotIfRequested(
-        renderPipeline,
-        IRWidgetsDemo::g_autoWarmupFrames,
-        IRWidgetsDemo::kShots
-    );
+    if (IRWidgetsDemo::g_autoWarmupFrames > 0) {
+        IRVideo::GuiTestConfig config{};
+        config.warmupFrames_ = IRWidgetsDemo::g_autoWarmupFrames;
+        config.settleFrames_ = 3;
+        config.shots_ = IRWidgetsDemo::kShots;
+        config.numShots_ = static_cast<int>(std::size(IRWidgetsDemo::kShots));
+        config.onAssertFrame_ = &IRWidgetsDemo::onGuiAssertFrame;
+        renderPipeline.push_back(IRVideo::createGuiTestSystem(config));
+    }
 
     IRSystem::registerPipeline(IRTime::Events::RENDER, renderPipeline);
 }
@@ -231,6 +362,9 @@ void initSystems() {
 void initCommands() {
     IRPrefab::Camera::registerStandardKeyboardCommands();
     IRCommand::registerCaptureCommands();
+    IRCommand::createCommand(IRInput::KEY_MOUSE, IRInput::PRESSED, IRInput::kKeyButton9, []() {
+        ++IRWidgetsDemo::g_digitCommandCount;
+    });
 }
 
 void initEntities() {
@@ -278,11 +412,19 @@ void initEntities() {
     const int slH = 30;
     IRWidgetsDemo::g_sliderVolume = IRPrefab::Widget::makeSlider(
         ivec2(leftX, panelPos.y + 130),
-        ivec2(slW, slH),
+        ivec2(170, slH),
         "VOLUME",
-        0.0f,
         1.0f,
-        0.5f
+        64.0f,
+        12.0f
+    );
+    IRWidgetsDemo::g_numberFieldVolume = IRPrefab::Widget::makeNumberField(
+        ivec2(leftX + 178, panelPos.y + 130),
+        ivec2(90, slH),
+        12.0f,
+        1.0f,
+        64.0f,
+        1.0f
     );
     IRWidgetsDemo::g_sliderBrightness = IRPrefab::Widget::makeSlider(
         ivec2(leftX, panelPos.y + 170),

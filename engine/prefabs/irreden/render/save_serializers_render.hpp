@@ -889,6 +889,83 @@ template <> struct SaveSerialize<IRComponents::C_WidgetTextInput> {
     }
 };
 
+template <> struct SaveSerialize<IRComponents::C_WidgetNumberField> {
+    static void write(IRAsset::BinaryWriter &w, const IRComponents::C_WidgetNumberField &value) {
+        IR_ASSERT(IRMath::isFinite(value.value_), "C_WidgetNumberField value must be finite");
+        IR_ASSERT(IRMath::isFinite(value.minValue_), "C_WidgetNumberField min must be finite");
+        IR_ASSERT(IRMath::isFinite(value.maxValue_), "C_WidgetNumberField max must be finite");
+        IR_ASSERT(IRMath::isFinite(value.step_), "C_WidgetNumberField step must be finite");
+        IR_ASSERT(value.minValue_ < value.maxValue_, "C_WidgetNumberField range must be ordered");
+        IR_ASSERT(value.step_ >= 0.0f, "C_WidgetNumberField step must not be negative");
+        IR_ASSERT(
+            value.value_ >= value.minValue_ && value.value_ <= value.maxValue_,
+            "C_WidgetNumberField value must be inside its range"
+        );
+        w.writeF32(value.value_);
+        w.writeF32(value.minValue_);
+        w.writeF32(value.maxValue_);
+        w.writeF32(value.step_);
+        detail::writeTextSize(w, value.textSize_, "C_WidgetNumberField text size");
+    }
+
+    static IRAsset::Result<IRComponents::C_WidgetNumberField> read(IRAsset::BinaryReader &r) {
+        using Res = IRAsset::Result<IRComponents::C_WidgetNumberField>;
+        IRComponents::C_WidgetNumberField value{};
+        IR_SAVE_READ(value.value_, r.readF32());
+        IR_SAVE_READ(value.minValue_, r.readF32());
+        IR_SAVE_READ(value.maxValue_, r.readF32());
+        IR_SAVE_READ(value.step_, r.readF32());
+        IR_SAVE_READ_STATUS(
+            detail::readTextSize(r, "C_WidgetNumberField text size", value.textSize_)
+        );
+        if (!IRMath::isFinite(value.minValue_)) {
+            return Res::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_WidgetNumberField min must be finite"
+            );
+        }
+        if (!IRMath::isFinite(value.maxValue_)) {
+            return Res::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_WidgetNumberField max must be finite"
+            );
+        }
+        if (!(value.minValue_ < value.maxValue_)) {
+            return Res::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_WidgetNumberField min must be below max"
+            );
+        }
+        if (!IRMath::isFinite(value.step_)) {
+            return Res::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_WidgetNumberField step must be finite"
+            );
+        }
+        if (value.step_ < 0.0f) {
+            return Res::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_WidgetNumberField step must be non-negative"
+            );
+        }
+        if (!IRMath::isFinite(value.value_)) {
+            return Res::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_WidgetNumberField value must be finite"
+            );
+        }
+        if (value.value_ < value.minValue_ || value.value_ > value.maxValue_) {
+            return Res::error(
+                IRAsset::BinaryIOError::UnknownTag,
+                "C_WidgetNumberField value must be inside its range"
+            );
+        }
+        value.editBuffer_.clear();
+        value.editing_ = false;
+        return Res::success(std::move(value));
+    }
+};
+
 } // namespace IRWorld
 
 #endif /* IR_SAVE_SERIALIZERS_RENDER_H */

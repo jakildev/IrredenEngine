@@ -1,0 +1,20 @@
+{
+  "demo": "ui_widgets",
+  "target": "IRUIWidgetsDemo",
+  "screenshot_subdir": "save_files/screenshots",
+  "shots": [
+    "widgets_idle",
+    "widgets_after_settle",
+    "widgets_followup",
+    "number_field_focused",
+    "number_field_committed",
+    "number_field_cancelled"
+  ],
+  "thresholds": {
+    "per_pixel_tol": 8,
+    "match_pct": 99.9,
+    "max_delta": 64,
+    "psnr_db": 35.0
+  },
+  "notes": "Shot order mirrors kShots in main.cpp. The last three shots prove number-field focus, commit, and cancel behavior while the GUI-test predicates gate the corresponding value and keyboard-capture state."
+}

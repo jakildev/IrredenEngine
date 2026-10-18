@@ -72,6 +72,7 @@ using IRComponents::C_WidgetButton;
 using IRComponents::C_WidgetCheckbox;
 using IRComponents::C_WidgetDropdown;
 using IRComponents::C_WidgetLabel;
+using IRComponents::C_WidgetNumberField;
 using IRComponents::C_WidgetSlider;
 using IREntity::EntityId;
 using IRRender::TextSize;
@@ -350,6 +351,15 @@ TEST_F(LuaWorldSnapshotTest, RoundTripsTheSmallTextSize) {
     dropdown.items_ = {"RAMP", "SINE"};
     dropdown.textSize_ = TextSize::SMALL;
     const EntityId dropdownEntity = m_entity_manager.createEntity(dropdown);
+    C_WidgetNumberField numberField{};
+    numberField.value_ = 3.5f;
+    numberField.minValue_ = 1.0f;
+    numberField.maxValue_ = 8.0f;
+    numberField.step_ = 0.5f;
+    numberField.textSize_ = TextSize::SMALL;
+    numberField.editing_ = true;
+    numberField.editBuffer_ = "7.5";
+    const EntityId numberFieldEntity = m_entity_manager.createEntity(numberField);
 
     const std::string path = tempPath("text_sizes");
     ASSERT_TRUE(runOk("assert(IRPersist.saveWorld('" + path + "'))"));
@@ -381,6 +391,15 @@ TEST_F(LuaWorldSnapshotTest, RoundTripsTheSmallTextSize) {
         m_entity_manager.getComponent<C_WidgetDropdown>(dropdownEntity).textSize_,
         TextSize::SMALL
     );
+    const C_WidgetNumberField &restoredNumber =
+        m_entity_manager.getComponent<C_WidgetNumberField>(numberFieldEntity);
+    EXPECT_FLOAT_EQ(restoredNumber.value_, 3.5f);
+    EXPECT_FLOAT_EQ(restoredNumber.minValue_, 1.0f);
+    EXPECT_FLOAT_EQ(restoredNumber.maxValue_, 8.0f);
+    EXPECT_FLOAT_EQ(restoredNumber.step_, 0.5f);
+    EXPECT_EQ(restoredNumber.textSize_, TextSize::SMALL);
+    EXPECT_FALSE(restoredNumber.editing_);
+    EXPECT_TRUE(restoredNumber.editBuffer_.empty());
 }
 
 // Rows saved before the glyph-set size existed load through the retired
