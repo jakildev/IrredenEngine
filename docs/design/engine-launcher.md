@@ -145,13 +145,25 @@ toolchain the trixel host cannot call back into.
 ### D4 — Build runs through a new tool-spawn service, not `handOff`
 
 `handOff` blocks the main loop, which is right for a run (D5) and wrong for a
-build. `IREngine.spawnTool{ tool = "ir-build", args = {...}, cwd = ... }`
+build. `IREngine.spawnTool{ tool = "ir-build", args = {...}, cwd = ..., buildDir = ... }`
 starts a child from a fixed tool table and returns a handle;
 `handle:poll()` returns the lines written since the last poll, `handle:exit()`
 the exit code once it has one, `handle:kill()` stops it. One tool runs at a
-time; the launcher's Build button spawns
-`ir-build --build-dir <root>/build --target <T>` and a RENDER-phase Lua
-system polls the handle into the log panel.
+time; the launcher's Build button spawns `ir-build --target <T>` with
+`cwd = <root>` and `buildDir = <root>/build`, and a RENDER-phase Lua system
+polls the handle into the log panel.
+
+`ir-build` has no build-directory flag: it resolves the tree from the
+invoking worktree (`git rev-parse --show-toplevel` of its cwd) unless
+`IRREDEN_BUILD_DIR` is set, and forwards every other argument to
+`cmake --build`. The cwd alone is not enough, because `ir-run` exports
+`IRREDEN_BUILD_DIR` to the process it runs, so the launcher (D6) and every
+child it spawns inherit `build-launcher/`. `buildDir` is therefore a typed
+field, not free-form env: the service sets the child's
+`IRREDEN_BUILD_DIR` to it, replacing the inherited value. Without `buildDir`
+the service removes the variable from the child's environment, so a tool
+never builds into the launcher's own tree by accident. Lua cannot set any
+other environment variable.
 
 The tool table is `ir-build`, `ir-launcher` (self-update, D6), `editor` and
 `open-folder` (D8). A tool name outside the table raises; argv is never
@@ -287,7 +299,7 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
 | Table | Call | Owner |
 |---|---|---|
 | `IRCatalog` | `scan{ root, buildDir }`, `assets{ root }` | `engine/catalog` |
-| `IREngine` | `spawnTool{ tool, args, cwd }` → handle (`poll`, `exit`, `kill`); `handOff{ argv, buildDir }` → `r.verdict` | `engine/world` |
+| `IREngine` | `spawnTool{ tool, args, cwd, buildDir }` → handle (`poll`, `exit`, `kill`); `handOff{ argv, buildDir }` → `r.verdict` | `engine/world` |
 | `IRGui` | `makeImage(x, y, w, h, path)`, `setImagePath(id, path)` | `engine/prefabs/irreden/render` |
 
 ## Validators
@@ -299,8 +311,13 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
   build dir with one built target and one result file.
 - `ctest -R 'SpawnTool|HandOff'` — the tool table refuses unknown tools and
   NUL bytes; poll returns lines across chunk boundaries; kill ends a sleeping
-  child; `buildDir_` reaches the child argv; the verdict parses from the
-  result file and is absent without one.
+  child; a stub tool that prints its working directory and
+  `IRREDEN_BUILD_DIR` reports the requested `cwd` and `buildDir` with the
+  parent's `IRREDEN_BUILD_DIR` set to a different path, and reports the
+  variable unset when `buildDir` is omitted; the `ir-build` entry's argv is
+  exactly `ir-build --target <T>` (no build-directory flag); the hand-off
+  `buildDir_` reaches the child argv; the verdict parses from the result file
+  and is absent without one.
 - `bash scripts/fleet/tests/run_all.sh --only ir_run_result_file` — `ir-run
   --result-file` writes every verdict class the stdout line reports.
 - `python3 scripts/lint_creation_manifests.py` — every directory under
