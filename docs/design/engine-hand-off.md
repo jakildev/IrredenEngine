@@ -10,8 +10,11 @@ editor afterwards. Lua surface summary: [`engine/script/CLAUDE.md`](../../engine
 ## The call
 
 ```lua
-local r = IREngine.handOff{ argv = { "IRMyCreation", "--auto-record", "600" }, resume = true }
--- r.ok, r.supported, r.exitCode (set once the child started), r.error
+local r = IREngine.handOff{
+    argv = { "IRMyCreation", "--auto-record", "600" },
+    resume = true,
+}
+-- r.ok, r.supported, r.exitCode (set once the child started), r.verdict, r.error
 ```
 
 - `argv` is a non-empty dense array of strings: the child's `ir-run`
@@ -19,6 +22,9 @@ local r = IREngine.handOff{ argv = { "IRMyCreation", "--auto-record", "600" }, r
   argument; nothing is joined into a shell command.
 - `resume` defaults to `true`; `false` raises. Replacing the parent for good
   is a different lifecycle, not an alternate meaning of this call.
+- `argv[1]` is a target name, not an `ir-run` option. The wrapper receives
+  `--` immediately before it. When C++ configured a tool root, the child build
+  tree is fixed at `<toolRoot>/build`; Lua cannot choose another directory.
 - A non-table argument, a missing / empty / sparse / non-string `argv`, an
   element holding a NUL byte (the OS would truncate it), a non-boolean
   `resume`, and a call off the main thread all raise before anything is
@@ -27,6 +33,11 @@ local r = IREngine.handOff{ argv = { "IRMyCreation", "--auto-record", "600" }, r
   non-zero exit returns `supported = true`, `ok = false`, the reading in
   `error` / `exitCode`, and the parent resumes.
 - C++ callers use `IREngine::handOff(HandOffRequest)` (`ir_engine.hpp`).
+- With a configured tool root, hand-off requests
+  `<toolRoot>/build/ir-run-results/<target>.last.json`; `r.verdict` is the
+  parsed `RESULT=` class, or nil when no result file was written. Without a
+  tool root, the child inherits `IRREDEN_BUILD_DIR` and no result file is
+  requested.
 
 ## The sequence
 
@@ -36,7 +47,9 @@ local r = IREngine.handOff{ argv = { "IRMyCreation", "--auto-record", "600" }, r
 2. drain the GPU — `RenderDevice::finish()` (`glFinish`; Metal commits and
    waits on the frame command buffer);
 3. release the `ir-run` gpu lease when this run holds one;
-4. launch `ir-run <argv...>` and block in the OS wait (`posix_spawn` +
+4. with a tool root, launch `ir-run --build-dir <toolRoot>/build --result-file
+   <path> -- <argv...>`; without one, launch `ir-run -- <argv...>`; then
+   block in the OS wait (`posix_spawn` +
    `waitpid`, or `CreateProcessW` + `WaitForSingleObject`), stdio inherited so
    the child's `ir-run: RESULT=` line lands in the parent's log;
 5. reacquire the lease;
@@ -70,6 +83,7 @@ drops pending catch-up ticks to the one in flight and restarts both marks.
 | `IR_RUN_WRAPPER` | `ir-run` | canonical wrapper path the child launches through |
 | `IR_RUN_BASH` | `ir-run`, native Windows | the bash that runs the extensionless wrapper |
 | `IRREDEN_BUILD_DIR` | `ir-run` | the build tree the child resolves its executable in |
+| `IR_RUN_RESULT_FILE` | caller | fallback path for the JSON verdict file |
 | `IR_RUN_LOCK_TOKEN`, `IR_ACQUIRE_TOOL` | `ir-acquire gpu` / `benchmark` | the gpu lease and the tool that lends it |
 
 The gpu lock belongs to the `ir-acquire` shell, not to the engine, so the
@@ -90,6 +104,11 @@ A run with no gpu lease (macOS interactive runs, `IR_RUN_GL_EXCLUSIVE=0`) still
 drains and launches through the wrapper. Outside `ir-run` the call logs one
 notice and returns `ok = false, supported = false` with no drain, no child, no
 lease change.
+
+Every printed result class can also be persisted with `ir-run --result-file
+<path>` or `IR_RUN_RESULT_FILE`. The wrapper creates the parent directory and
+writes `{ verdict, exe, exit, signal, argv, at }` atomically. The stdout line
+remains the compatibility surface for existing consumers.
 
 ## Constraints
 
@@ -118,6 +137,8 @@ lease change.
   re-baseline (`test/time/time_manager_hand_off_test.cpp`).
 - `bash scripts/fleet/tests/run_all.sh --only ir_run_handoff_lock` — the real
   wrapper lending its lock to one nested `ir-run` and taking it back.
+- `bash scripts/fleet/tests/run_all.sh --only ir_run_result_file` — CLEAN,
+  CRASH and ALIVE-TIMEOUT stdout/JSON verdict parity.
 - `fleet-run --timeout 120 IRLuaWidgetsDemo --hand-off-fixture auto` — the
   round trip end to end: `LUA_WIDGETS HANDOFF before` and `resumed` print equal
   `frame=` / `tick=` readings, the child's verdict, then the parent's.

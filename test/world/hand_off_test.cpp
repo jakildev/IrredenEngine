@@ -6,6 +6,10 @@
 #include "../common/env_var.hpp"
 
 #include <functional>
+#include <filesystem>
+#include <fstream>
+#include <iterator>
+#include <ranges>
 #include <string>
 #include <vector>
 
@@ -47,6 +51,9 @@ class StubPlatform : public HandOffPlatform {
         if (kind == "reacquire") {
             return reacquire_;
         }
+        if (childHook_) {
+            childHook_(argv);
+        }
         return child_;
     }
 
@@ -82,6 +89,7 @@ class StubPlatform : public HandOffPlatform {
     const int *updates_ = nullptr;
     const int *renders_ = nullptr;
     std::vector<Step> steps_;
+    std::function<void(const std::vector<std::string> &)> childHook_;
 
   private:
     static std::string classify(const std::vector<std::string> &argv) {
@@ -134,7 +142,7 @@ TEST(HandOffControllerTest, LeaseHolderDrainsReleasesLaunchesWaitsReacquires) {
     EXPECT_EQ(platform.count("reacquire"), 1);
     EXPECT_EQ(
         platform.step("child").argv_,
-        (std::vector<std::string>{kWrapper, "IRLuaWidgetsDemo", "--auto-screenshot", "3"})
+        (std::vector<std::string>{kWrapper, "--", "IRLuaWidgetsDemo", "--auto-screenshot", "3"})
     );
     EXPECT_EQ(
         platform.step("release").argv_,
@@ -163,6 +171,82 @@ TEST(HandOffControllerTest, RunWithoutLeaseStillDrainsAndLaunchesThroughTheWrapp
     EXPECT_TRUE(outcome.suspended_);
 }
 
+TEST(HandOffTest, FixedBuildDirArgv) {
+    const std::filesystem::path rawRoot =
+        std::filesystem::temp_directory_path() / "ir_handoff_build_dir";
+    std::filesystem::remove_all(rawRoot);
+    std::filesystem::create_directories(rawRoot / "build");
+    const std::filesystem::path root = std::filesystem::weakly_canonical(rawRoot);
+    IRTest::ScopedEnv parentBuildDir("IRREDEN_BUILD_DIR", "/different/parent/build");
+    StubPlatform platform;
+    platform.childHook_ = [](const std::vector<std::string> &argv) {
+        const auto result = std::ranges::find(argv, "--result-file");
+        ASSERT_NE(result, argv.end());
+        const std::filesystem::path resultPath = *std::next(result);
+        std::filesystem::create_directories(resultPath.parent_path());
+        std::ofstream output(resultPath);
+        output
+            << R"({"verdict":"C\u004cEAN","exe":"IRDemo","exit":0,"signal":null,"argv":["IRDemo"],"at":"now"})";
+    };
+    HandOffRequest request{{"IRDemo", "--flag"}};
+    const HandOffOutcome outcome = runHandOff(request, wrapperOnly(), platform, root);
+
+    const std::filesystem::path build = std::filesystem::weakly_canonical(root / "build");
+    EXPECT_EQ(
+        platform.step("child").argv_,
+        (std::vector<std::string>{
+            kWrapper,
+            "--build-dir",
+            build.string(),
+            "--result-file",
+            (build / "ir-run-results" / "IRDemo.last.json").string(),
+            "--",
+            "IRDemo",
+            "--flag"
+        })
+    );
+    ASSERT_TRUE(outcome.result_.verdict_.has_value());
+    EXPECT_EQ(*outcome.result_.verdict_, "CLEAN");
+    std::filesystem::remove_all(rawRoot);
+}
+
+TEST(HandOffTest, DoesNotReuseAStaleResult) {
+    const std::filesystem::path root =
+        std::filesystem::temp_directory_path() / "ir_handoff_stale_result";
+    const std::filesystem::path result = root / "build" / "ir-run-results" / "IRDemo.last.json";
+    std::filesystem::remove_all(root);
+    std::filesystem::create_directories(result.parent_path());
+    {
+        std::ofstream output(result);
+        output << R"({"verdict":"CLEAN"})";
+    }
+    StubPlatform platform;
+    const HandOffOutcome outcome =
+        runHandOff(HandOffRequest{{"IRDemo"}}, wrapperOnly(), platform, root);
+
+    EXPECT_TRUE(outcome.result_.ok_);
+    EXPECT_FALSE(outcome.result_.verdict_.has_value());
+    EXPECT_FALSE(std::filesystem::exists(result));
+    std::filesystem::remove_all(root);
+}
+
+TEST(HandOffTest, WithoutToolRootUsesNoBuildDirOrResultFile) {
+    StubPlatform platform;
+    const HandOffOutcome outcome = runHandOff(HandOffRequest{{"IRDemo"}}, wrapperOnly(), platform);
+
+    EXPECT_TRUE(outcome.result_.ok_);
+    EXPECT_FALSE(outcome.result_.verdict_.has_value());
+    EXPECT_EQ(platform.step("child").argv_, (std::vector<std::string>{kWrapper, "--", "IRDemo"}));
+}
+
+TEST(HandOffTest, InvalidTargetRefusesBeforeDrain) {
+    for (const std::string &target : {"--build-dir", "a/b", "IR*", "NUL.txt"}) {
+        StubPlatform platform;
+        EXPECT_FALSE(runHandOff(HandOffRequest{{target}}, wrapperOnly(), platform).result_.ok_);
+        EXPECT_TRUE(platform.steps_.empty()) << target;
+    }
+}
+
 TEST(HandOffControllerTest, NativeWindowsRunsTheWrapperAndLeaseVerbsThroughBash) {
     HandOffEnvironment environment = withLease();
     environment.shellPath_ = "C:\\msys64\\usr\\bin\\bash.exe";
@@ -175,6 +259,7 @@ TEST(HandOffControllerTest, NativeWindowsRunsTheWrapperAndLeaseVerbsThroughBash)
         (std::vector<std::string>{
             environment.shellPath_,
             kWrapper,
+            "--",
             "IRLuaWidgetsDemo",
             "--auto-screenshot",
             "3"

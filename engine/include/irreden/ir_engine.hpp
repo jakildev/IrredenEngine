@@ -180,6 +180,18 @@ inline HandOffResult handOff(const HandOffRequest &request) {
     return getWorld().handOff(request);
 }
 
+inline void setToolRoot(const std::filesystem::path &root) {
+    getWorld().setToolRoot(root);
+}
+
+inline std::optional<std::filesystem::path> toolRoot() {
+    return getWorld().toolRoot();
+}
+
+inline std::expected<ToolHandle, std::string> spawnTool(const ToolSpawnRequest &request) {
+    return getWorld().spawnTool(request);
+}
+
 // Destroys the World when the loop exits, so every manager destructor runs
 // while main() is still on the stack and the window/graphics driver are alive.
 // Leaving it to process-exit static destruction is the hazard: a

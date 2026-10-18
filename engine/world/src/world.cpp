@@ -229,6 +229,7 @@ void World::setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings
         [this](const HandOffRequest &request) { return handOff(request); },
         []() { return IRJob::isMainThread(); }
     );
+    bindToolSpawnLua(m_lua, m_toolService, []() { return IRJob::isMainThread(); });
 
     for (const auto &bind : bindings) {
         bind(m_lua);
@@ -236,20 +237,39 @@ void World::setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings
 }
 
 HandOffResult World::handOff(const HandOffRequest &request) {
+    if (m_toolService.live()) {
+        throw std::runtime_error("IREngine.handOff: a tool is still running");
+    }
     if (m_handOffPlatform == nullptr) {
         IRE_LOG_INFO("IREngine.handOff: no process platform on this world; ignoring the handoff");
         HandOffResult unsupported;
         unsupported.error_ = "no process platform";
         return unsupported;
     }
-    const HandOffOutcome outcome =
-        runHandOff(request, HandOffEnvironment::fromProcess(), *m_handOffPlatform);
+    const HandOffOutcome outcome = runHandOff(
+        request,
+        HandOffEnvironment::fromProcess(),
+        *m_handOffPlatform,
+        m_toolService.root()
+    );
     if (outcome.leaseLost_) {
         m_handOffLeaseLost = true;
     } else if (outcome.suspended_) {
         m_timeManager.resumeAfterSuspend();
     }
     return outcome.result_;
+}
+
+void World::setToolRoot(const std::filesystem::path &root) {
+    m_toolService.setRoot(root);
+}
+
+std::optional<std::filesystem::path> World::toolRoot() const {
+    return m_toolService.root();
+}
+
+std::expected<ToolHandle, std::string> World::spawnTool(const ToolSpawnRequest &request) {
+    return m_toolService.spawn(request);
 }
 
 void World::setHandOffPlatform(std::unique_ptr<HandOffPlatform> platform) {
@@ -338,6 +358,7 @@ void World::gameLoop() {
             update();
         }
         while (!m_IRGLFWWindow.shouldClose()) {
+            m_toolService.tick();
             m_timeManager.beginMainLoop();
             m_timeManager.clampUpdateLag(m_maxUpdateTicksPerFrame);
 
@@ -401,6 +422,7 @@ void World::start() {
 }
 
 void World::end() {
+    m_toolService.shutdown();
     buildAndWriteProfileReport();
     // Release the GPU stage-timing observer's GL timestamp queries here, while
     // the render context is guaranteed live. The observer is World-owned;
