@@ -8,12 +8,12 @@ share the same inputs and judgment:
 
 | Mode | Who | Output | Approval |
 |---|---|---|---|
-| **Dispatched dry-run** | the transient `triage` role, on the singleton host | a `## Triage` comment + the inert `fleet:triage-recommend` label | never — the human acts from the digest |
-| **Architect-managed sweep** | an architect session, on human cue | a staged report under `~/.fleet/triage/`, labels applied after the human confirms | the human's, executed by the session |
+| **Dispatched** | the transient `triage` role, on the singleton host | a `## Triage` comment + the label set `fleet-triage-sweep stamp` earns it | `fleet:agent-approved` for a graduated class with its bar cited (§ Graduation); otherwise none — the human acts from the digest |
+| **Architect-managed sweep** | an architect session, on human cue | a staged report under `~/.fleet/triage/`, labels applied after the human confirms | the human's, executed by the session; a graduated entry stamps `fleet:agent-approved` |
 
-Neither mode approves on its own judgment; graduating a verdict class to
-autonomous `fleet:agent-approved` stamping is a separate, human-authorized
-protocol change (§ Graduation).
+Neither mode writes `human:approved`. The five graduated classes
+(§ Graduation) stamp `fleet:agent-approved` through one executable judge;
+every other verdict waits for the human.
 
 ## Repo deltas this flow needs
 
@@ -41,10 +41,14 @@ classification reference is **objectives-path**.
   when the basis cites an open PR that edits the same files and names its
   backing issue — the entry records it as `blocked_by_added` and a comment
   on the issue carries the citation. Dispatched mode never writes a body.
-- **Never approve on the role's own judgment.** Dispatched mode adds only
-  `fleet:triage-recommend`; sweep mode writes labels only from a staging
-  file the human confirmed, and never `fleet:queued` / `fleet:task` /
-  verdict labels (scout- and ingest-owned — [`TASK-FILING.md`](TASK-FILING.md)).
+- **Never approve on the role's own judgment.** Dispatched mode writes
+  labels only through `fleet-triage-sweep stamp`, which grants
+  `fleet:agent-approved` to a graduated class with its bar cited
+  (§ Graduation) and `fleet:triage-recommend` to everything else; sweep
+  mode writes labels only from a staging file the human confirmed, and a
+  graduated entry there passes the same judge. Never `human:approved`, and
+  never `fleet:queued` / `fleet:task` / verdict labels (scout- and
+  ingest-owned — [`TASK-FILING.md`](TASK-FILING.md)).
 - **Read-only on the tree** — grep, file reads, `gh` queries; no builds, no
   runs.
 - **One target repo per run**, never citing another repo's private content
@@ -83,31 +87,47 @@ duplicate. Then exactly one verdict:
   observed output, the file); the comment must let the filer fix it in one
   edit.
 
-## Dispatched dry-run mode
+A recommend-approve verdict also names its **class**: one of the five
+graduated classes in § Graduation when every bar line can be cited, else
+`direction`.
 
-Outputs exactly two things: a `## Triage` comment and
-`fleet:triage-recommend`. Never `human:approved`, `fleet:agent-approved`,
-`fleet:queued`, or a model label.
+## Dispatched mode
+
+Outputs a `## Triage` comment and one label set, both written by
+`fleet-triage-sweep stamp`: `fleet:agent-approved` plus the model label
+(and `fleet:no-plan` for `verification-run`) for a recommend-approve
+verdict in a graduated class whose bar is cited (§ Graduation),
+`fleet:triage-recommend` for everything else. Never
+`human:approved`, `fleet:queued`, or a label written by hand.
 
 - **Singleton by designation:** runs only on the host carrying the
   **singleton-env** flag (the `FLEET_EPIC_STEWARD` pattern).
-- **Idempotent by guard:** skip any issue that already carries
-  `fleet:triage-recommend` or has a `## Triage` comment.
+- **Idempotent by guard:** skip any issue that already carries a `fleet:`
+  or `human:` label, or has a `## Triage` comment; `stamp` refuses those
+  and closed issues too, and re-reads state and labels before its label
+  write so a close or state label that lands mid-stamp still wins.
 
 ```markdown
 ## Triage
 
 **Verdict:** recommend-approve | park | recommend-close | insufficient-info
+**Class:** rebless | docs-capture | plan-residual | verification-run | objective-row | direction
 **Objective:** <slug + Done-means row, or "(none — defect-shaped)" or "(none — see verdict)">
 **Suggested model:** opus | sonnet | (n/a)
+**Bar:**
+- <key>: <citation>    (one line per key the class requires; omit the block for direction)
 **Basis:** <2-5 lines: what you verified in the tree, what you searched,
 what the issue serves or duplicates — citations, not vibes>
 ```
 
-Post the comment and add the label in immediate succession. The label routes
-the issue into the `fleet-decisions` digest; the human acts with ordinary
-mechanics (`human:approved`, close, `human:owned`, a reply) and removes the
-label, which re-arms the guard for a re-triage.
+Write the comment to a file and run
+`fleet-triage-sweep stamp --repo <repo-slug> <N> --comment-file <file>`: it
+posts the comment, re-reads the issue, applies the label set unless it
+closed or a `fleet:` / `human:` label landed in between, and logs the stamp. A recommend label routes the issue into the
+`fleet-decisions` digest; the human acts with ordinary mechanics
+(`human:approved`, close, `human:owned`, a reply) and removes the label,
+which re-arms the guard for a re-triage. A graduated stamp shows once in
+`fleet-decisions` § "Agent-approved since last digest".
 
 Invocation (cue "triage sweep", or a cron one-shot on the designated host):
 
@@ -158,6 +178,9 @@ conversation:
       "verdict": "recommend-approve",
       "labels": ["human:approved", "fleet:sonnet"],
       "basis": "2-5 lines of citations, not vibes",
+      "class": "rebless",
+      "bar": {"measurement": "…", "host": "macos", "confinement": "…"},
+      "labels_at_staging": [],
       "blocked_by_added": ["#NNN (PR #MMM edits the same files)"],
       "confirmed": false
     }
@@ -167,11 +190,20 @@ conversation:
 
 `blocked_by_added` is optional and informational: it records a dependency
 line the session added under § Hard rules; `apply` does not write it.
+`class` and `bar` are required on an entry that stages
+`fleet:agent-approved` (§ Graduation). `labels_at_staging` records the
+`fleet:` / `human:` labels the issue already carried when staged, for an
+entry that reaches the sweep through the authority table rather than the
+untriaged list.
 
 Proposed labels draw from a narrow allowlist the tool enforces:
-`human:approved`, `human:no-plan`, `human:owned`, and one of `fleet:sonnet`
-/ `fleet:opus` / `fleet:fable`. `fleet:queued` and `fleet:task` are absent
-by design.
+`human:approved`, `human:no-plan`, `human:owned`, `fleet:agent-approved`
+(a graduated class only, beside its model label), `fleet:no-plan` (a
+graduated `verification-run` only, which must stage it), and one of
+`fleet:sonnet` / `fleet:opus` / `fleet:fable`. `fleet:queued` and `fleet:task` are absent
+by design. A park verdict whose basis names the open PR or the human
+session that owns the item stages `human:owned`, so the issue leaves the
+untriaged set instead of re-surfacing every sweep.
 
 ### 4. Confirm
 
@@ -186,8 +218,11 @@ fleet-triage-sweep apply --repo <repo-slug> ~/.fleet/triage/<file>.json [--dry-r
 ```
 
 Refuses unless both markers are set. Before each write it re-fetches labels
-and skips any issue that gained a `fleet:` / `human:` label since staging.
-Applied issues append to `~/.fleet/triage/log.jsonl`. **Closes stay
+and skips any issue that gained a `fleet:` / `human:` label since staging
+(beyond the entry's `labels_at_staging`); a `fleet:agent-approved` entry
+whose class or bar fails the judge refuses the whole apply. Applied issues
+append to `~/.fleet/triage/log.jsonl` with their class and a timestamp;
+`fleet-decisions` reads the graduated stamps from it. **Closes stay
 human-executed**: a recommend-close entry is reported with a ready-to-run
 `gh issue close` line; neither `list` nor `apply` closes anything.
 
@@ -201,19 +236,34 @@ flips their cues to OVERDUE past the thresholds (12 open tickets; a
 `fleet-decisions` and run each drain whose cue shows, issues first. The
 sweep cue carries the drain cues; the dispatched mode never runs them.
 
-## Graduation (not in effect)
+## Graduation
 
 Autonomous approval is earned: the human audits verdict quality over a
-sustained window, then explicitly authorizes bounded classes (sonnet-scale,
-single-module, defect / parity / test-debt) to stamp `fleet:agent-approved`
-directly; direction-shaped work stays recommend-only. That flip is a change
-to this protocol plus the role doc (gated self-config). Until then no
-verdict reaches a label without a human.
+window, then authorizes bounded classes. The owner graduated the five
+classes below on 2026-10-17 (#4388). Direction-shaped work (a new
+capability, a public API, a Non-goal crossing, a design choice, an
+objective amendment, fleet self-config) stays recommend-only, and no agent
+ever stamps `human:approved`.
 
-The first granted class is the `fleet-unblock` skill's authority table
-([`skills/fleet-unblock.md`](skills/fleet-unblock.md)): within a
-human-cued run, the architect applies the approve and park verdicts for
-defect-shaped, epic-child and human-filed issues itself, through the same
-staging file and `fleet-triage-sweep apply`, and leaves direction-shaped
-entries unconfirmed for the human. The dispatched dry-run stays
-recommend-only.
+| class | the verdict cites, one `**Bar:**` line per key |
+|---|---|
+| `rebless` — reference re-bless / render-verify refresh | `measurement`: the measured table (match %, max delta, PSNR) on `host`; `confinement`: the rule in the criteria (one framebuffer pixel) |
+| `docs-capture` — docs capture of a posted ruling | `ruling`: the architect, steward or design-answerer comment it captures; `grep`: the search showing the doc lacks it on master |
+| `plan-residual` — plan-named residual of an approved issue | `plan`: the approved `## Plan` comment; `decision`: the decision line that carves it out |
+| `verification-run` — verification run / parity measurement | `criteria`: runnable; `host`: named; `no_plan`: exactly `fleet:no-plan` |
+| `objective-row` — objective Done-means row | `objective`: the active objective file; `row`: verbatim; `filer`: `architect` or `steward` |
+
+`scripts/fleet/fleet_triage_class.py` is the one judge of the verdict
+(exactly `recommend-approve`; a suffixed or extended value never stamps)
+and the bar, and both writers (`fleet-triage-sweep stamp` and `apply`)
+call it before any approval label leaves them. A graduated verdict stamps `fleet:agent-approved`
+plus the model label, and a `verification-run` also `fleet:no-plan` so
+ingest queues it without a plan; `fleet:agent-approved` is never removed and is the
+audit trail. Every stamp lands once in `fleet-decisions` § "Agent-approved
+since last digest"; the human's veto is ordinary mechanics (close,
+`human:owned`, `fleet:needs-human`). Two weeks after the first stamp the
+audit list is posted on the follow-up issue; zero vetoes keeps the classes.
+The `fleet-unblock` authority table
+([`skills/fleet-unblock.md`](skills/fleet-unblock.md)) carries the same
+five rows for the cued sweep, beside its defect-shaped, epic-child and
+human-filed rows.

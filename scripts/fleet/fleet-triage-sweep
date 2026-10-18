@@ -7,15 +7,23 @@
 #   list   read-only: the untriaged set (open issues with no fleet:/human:
 #          label), oldest-first, annotated with any prior verdict found in
 #          ~/.fleet/triage/.
-#   apply  the ONLY writing path: applies each confirmed entry's labels from
-#          a staging file. Refuses unless the human confirmed, skips issues
-#          that gained a state label since staging, and never closes an issue.
+#   apply  the sweep's writing path: applies each confirmed entry's labels
+#          from a staging file. Refuses unless the human confirmed, skips
+#          issues that gained a state label since staging (beyond the entry's
+#          labels_at_staging), judges a fleet:agent-approved entry's class
+#          and bar through fleet_triage_class, and never closes an issue.
+#   stamp  the dispatched role's writing path: posts a `## Triage` comment
+#          and the label set its verdict earns — fleet:agent-approved plus
+#          the model label (and fleet:no-plan for verification-run) for a
+#          graduated class with its bar cited, fleet:triage-recommend for
+#          everything else.
 #
 # Usage:
 #   fleet-triage-sweep list --repo engine
 #   fleet-triage-sweep list --repo game --json
 #   fleet-triage-sweep apply --repo game ~/.fleet/triage/game-sweep-2026-07-30.json
 #   fleet-triage-sweep apply --repo game <file> --dry-run
+#   fleet-triage-sweep stamp --repo engine 1234 --comment-file triage.md [--dry-run]
 #
 # Protocol: docs/agents/triage-protocol.md § Architect-managed sweep.
 # Source of truth: scripts/fleet/fleet-triage-sweep in the engine repo.
@@ -23,12 +31,31 @@
 
 set -euo pipefail
 
+# The inline python imports fleet_triage_class from this script's real directory.
+_sweep_self="${BASH_SOURCE[0]}"
+while [[ -L "$_sweep_self" ]]; do _sweep_self="$(readlink "$_sweep_self")"; done
+FLEET_LIB_DIR="$(cd "$(dirname "$_sweep_self")" && pwd)"
+export FLEET_LIB_DIR
+unset _sweep_self
+
 FLEET_HOME="${FLEET_HOME:-$HOME/.fleet}"
 TRIAGE_DIR="$FLEET_HOME/triage"
 
+# append_triage_log <mode> <issue> <label-json> <class> — one audit line per
+# label write; fleet-decisions reads the graduated stamps from it.
+append_triage_log() {
+    local mode="$1" issue="$2" label_json="$3" class_name="$4" class_field=""
+    [[ -n "$class_name" ]] && class_field=",\"class\":\"$class_name\""
+    mkdir -p "$TRIAGE_DIR"
+    printf '{"repo":"%s","issue":%s,"labels":%s,"ts":"%s","mode":"%s"%s}\n' \
+        "$REPO" "$issue" "$label_json" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$mode" "$class_field" \
+        >> "$TRIAGE_DIR/log.jsonl"
+}
+
 REPO=""
 SUBCMD=""
-STAGING_FILE=""
+POSITIONAL=""
+COMMENT_FILE=""
 DRY_RUN=0
 AS_JSON=0
 
@@ -37,6 +64,7 @@ usage() {
 Usage:
   fleet-triage-sweep list  --repo engine|game|<owner/name> [--json]
   fleet-triage-sweep apply --repo engine|game|<owner/name> <staging-file> [--dry-run]
+  fleet-triage-sweep stamp --repo engine|game|<owner/name> <issue> --comment-file <path> [--dry-run]
 EOF
     exit 1
 }
@@ -52,7 +80,7 @@ resolve_repo() {
 
 [[ $# -gt 0 ]] || usage
 case "$1" in
-    list|apply) SUBCMD="$1"; shift ;;
+    list|apply|stamp) SUBCMD="$1"; shift ;;
     *) usage ;;
 esac
 
@@ -62,10 +90,12 @@ while [[ $# -gt 0 ]]; do
         --repo=*)   resolve_repo "${1#--repo=}"; shift ;;
         --dry-run)  DRY_RUN=1; shift ;;
         --json)     AS_JSON=1; shift ;;
+        --comment-file)   shift; COMMENT_FILE="${1:-}"; shift ;;
+        --comment-file=*) COMMENT_FILE="${1#--comment-file=}"; shift ;;
         -*)         usage ;;
         *)
-            [[ -z "$STAGING_FILE" ]] || usage
-            STAGING_FILE="$1"
+            [[ -z "$POSITIONAL" ]] || usage
+            POSITIONAL="$1"
             shift
             ;;
     esac
@@ -79,7 +109,7 @@ fi
 # --- list -------------------------------------------------------------------
 
 if [[ "$SUBCMD" == "list" ]]; then
-    [[ -z "$STAGING_FILE" ]] || usage
+    [[ -z "$POSITIONAL" ]] || usage
 
     issues_f=$(mktemp "${TMPDIR:-/tmp}/fleet-triage-sweep.XXXXXX")
     trap 'rm -f "$issues_f"' EXIT
@@ -171,8 +201,142 @@ PYEOF
     exit 0
 fi
 
+# --- stamp ------------------------------------------------------------------
+# The dispatched role's only writing path. The `## Triage` comment decides
+# the label set through fleet_triage_class: a graduated class with its bar
+# cited stamps fleet:agent-approved plus the model label, everything else
+# recommends. The role's idempotency guard is enforced here, where the
+# write happens.
+
+if [[ "$SUBCMD" == "stamp" ]]; then
+    ISSUE="$POSITIONAL"
+    if [[ -z "$ISSUE" || ! "$ISSUE" =~ ^[0-9]+$ ]]; then
+        echo "fleet-triage-sweep stamp: an issue number argument is required" >&2
+        exit 1
+    fi
+    if [[ -z "$COMMENT_FILE" || ! -f "$COMMENT_FILE" ]]; then
+        echo "fleet-triage-sweep stamp: --comment-file <path> is required and must exist" >&2
+        exit 1
+    fi
+    view_f=$(mktemp "${TMPDIR:-/tmp}/fleet-triage-sweep-view.XXXXXX")
+    plan_f=$(mktemp "${TMPDIR:-/tmp}/fleet-triage-sweep-stamp.XXXXXX")
+    trap 'rm -f "$view_f" "$plan_f"' EXIT
+    if ! gh issue view "$ISSUE" --repo "$REPO" --json state,labels,comments > "$view_f" 2>/dev/null; then
+        echo "fleet-triage-sweep stamp: could not read #$ISSUE in $REPO" >&2
+        exit 1
+    fi
+    rc=0
+    PYTHONIOENCODING=utf-8 python3 - "$COMMENT_FILE" "$view_f" "$plan_f" "$ISSUE" << 'PYEOF' || rc=$?
+import json
+import os
+import sys
+
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+import fleet_triage_class as triage_class  # noqa: E402
+
+comment_path, view_path, plan_path, issue = sys.argv[1:5]
+with open(comment_path, encoding="utf-8") as f:
+    text = f.read()
+with open(view_path, encoding="utf-8") as f:
+    view = json.load(f)
+for key in ("labels", "comments"):
+    if not isinstance(view.get(key), list):
+        print(f"  refused   #{issue}: the live view carries no {key[:-1]} list to guard on")
+        sys.exit(2)
+if not isinstance(view.get("state"), str):
+    print(f"  refused   #{issue}: the live view carries no state to guard on")
+    sys.exit(2)
+if view["state"] != "OPEN":
+    print(f"  skipped   #{issue}: is {view['state'].lower()}")
+    sys.exit(3)
+held = triage_class.state_labels(label["name"] for label in view["labels"])
+if held:
+    print(f"  skipped   #{issue}: already carries {', '.join(held)}")
+    sys.exit(3)
+# An interrupted stamp can post its comment and die before the label write.
+if any(triage_class.has_triage_heading(c.get("body")) for c in view["comments"]):
+    print(f"  skipped   #{issue}: already has a `## Triage` comment")
+    sys.exit(3)
+if not triage_class.has_triage_heading(text):
+    print(f"  refused   #{issue}: the comment file has no `## Triage` heading")
+    sys.exit(2)
+
+fields = triage_class.parse_triage_comment(text)
+labels, reason = triage_class.decide(fields)
+with open(plan_path, "w", encoding="utf-8") as f:
+    json.dump({"labels": labels, "class": fields.get("class", "")}, f)
+verb = "stamp" if triage_class.AGENT_APPROVED in labels else "recommend"
+print(f"  {verb:<9} #{issue}: {' '.join(labels)} ({reason})")
+PYEOF
+    if [[ $rc -eq 3 ]]; then
+        exit 0
+    elif [[ $rc -ne 0 ]]; then
+        echo "fleet-triage-sweep stamp: refusing" >&2
+        exit 1
+    fi
+    IFS=$'\t' read -r labels label_json class_name < <(python3 -c '
+import json, sys
+with open(sys.argv[1], encoding="utf-8") as f:
+    plan = json.load(f)
+flags = " ".join("--add-label %s" % label for label in plan["labels"])
+print("%s\t%s\t%s" % (flags, json.dumps(plan["labels"]), plan["class"]))
+' "$plan_f" | tr -d '\r')
+    if [[ $DRY_RUN -eq 1 ]]; then
+        echo "  would run: gh issue comment $ISSUE --repo $REPO --body-file $COMMENT_FILE"
+        echo "  would run: gh issue edit $ISSUE --repo $REPO $labels"
+        exit 0
+    fi
+    gh issue comment "$ISSUE" --repo "$REPO" --body-file "$COMMENT_FILE" > /dev/null
+    # A state label a human or another lane wrote since the first read, or a
+    # close, wins: re-read right before the label write, and write nothing
+    # when one landed. The posted comment then holds the issue out of any
+    # later stamp.
+    if ! gh issue view "$ISSUE" --repo "$REPO" --json state,labels > "$view_f" 2>/dev/null; then
+        echo "fleet-triage-sweep stamp: could not re-read #$ISSUE before the label write; no label written" >&2
+        exit 1
+    fi
+    rc=0
+    PYTHONIOENCODING=utf-8 python3 - "$view_f" "$ISSUE" << 'PYEOF' || rc=$?
+import json
+import os
+import sys
+
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+import fleet_triage_class as triage_class  # noqa: E402
+
+view_path, issue = sys.argv[1:3]
+with open(view_path, encoding="utf-8") as f:
+    view = json.load(f)
+labels = view.get("labels")
+if not isinstance(labels, list):
+    print(f"  refused   #{issue}: the re-read carries no label list; no label written")
+    sys.exit(2)
+if not isinstance(view.get("state"), str):
+    print(f"  refused   #{issue}: the re-read carries no state; no label written")
+    sys.exit(2)
+if view["state"] != "OPEN":
+    print(f"  skipped   #{issue}: {view['state'].lower()} before the label write; no label written")
+    sys.exit(3)
+gained = triage_class.state_labels(label["name"] for label in labels)
+if gained:
+    print(f"  skipped   #{issue}: gained {', '.join(gained)} before the label write; no label written")
+    sys.exit(3)
+PYEOF
+    if [[ $rc -eq 3 ]]; then
+        exit 0
+    elif [[ $rc -ne 0 ]]; then
+        echo "fleet-triage-sweep stamp: refusing" >&2
+        exit 1
+    fi
+    # shellcheck disable=SC2086 # $labels is a pre-built, allowlisted flag string
+    gh issue edit "$ISSUE" --repo "$REPO" $labels > /dev/null
+    append_triage_log stamp "$ISSUE" "$label_json" "$class_name"
+    exit 0
+fi
+
 # --- apply ------------------------------------------------------------------
 
+STAGING_FILE="$POSITIONAL"
 if [[ -z "$STAGING_FILE" ]]; then
     echo "fleet-triage-sweep apply: a staging file argument is required" >&2
     exit 1
@@ -240,21 +404,26 @@ fi
 rc=0
 PYTHONIOENCODING=utf-8 python3 - "$STAGING_FILE" "$live_f" "$plan_f" << 'PYEOF' || rc=$?
 import json
+import os
 import sys
+
+sys.path.insert(0, os.environ["FLEET_LIB_DIR"])
+import fleet_triage_class as triage_class  # noqa: E402
 
 staged_path, live_path, plan_path = sys.argv[1:4]
 
 # Deliberately narrow. fleet:queued / fleet:task / verdict labels are
 # scout- and ingest-owned; pre-applying them is the anti-pattern
-# TASK-FILING.md bans.
+# TASK-FILING.md bans. fleet:agent-approved rides only on an entry whose
+# class and bar pass the judge, and a class label only on that class's stamp.
+MODEL_LABELS = {"fleet:sonnet", "fleet:opus", "fleet:fable"}
+CLASS_LABELS = {label for labels in triage_class.CLASS_LABELS.values() for label in labels}
 ALLOWED = {
     "human:approved",
     "human:no-plan",
     "human:owned",
-    "fleet:sonnet",
-    "fleet:opus",
-    "fleet:fable",
-}
+    triage_class.AGENT_APPROVED,
+} | MODEL_LABELS | CLASS_LABELS
 
 with open(staged_path, encoding="utf-8") as f:
     staged = json.load(f)
@@ -278,23 +447,51 @@ for entry in staged.get("entries", []):
 
     bad = [label for label in labels if label not in ALLOWED]
     if bad or not labels:
-        rejected.append((number, bad or ["(no labels staged)"]))
+        rejected.append((number, "label(s) outside the apply allowlist: "
+                         + ", ".join(bad or ["(no labels staged)"])))
+        continue
+    if triage_class.AGENT_APPROVED in labels:
+        if not triage_class.is_approve(entry.get("verdict")):
+            rejected.append((number, f"{triage_class.AGENT_APPROVED} needs verdict "
+                             f"exactly {triage_class.APPROVE}, got {entry.get('verdict')!r}"))
+            continue
+        ok, reason = triage_class.check(entry.get("class"), entry.get("bar"))
+        if not ok:
+            rejected.append((number, reason))
+            continue
+        if len(MODEL_LABELS & set(labels)) != 1:
+            rejected.append((number, f"{triage_class.AGENT_APPROVED} needs exactly one model label"))
+            continue
+        owed = set(triage_class.CLASS_LABELS.get(entry.get("class"), ()))
+    else:
+        owed = set()
+    stray, missing = (CLASS_LABELS & set(labels)) - owed, owed - set(labels)
+    if stray:
+        rejected.append((number, f"{', '.join(sorted(stray))} rides only a graduated "
+                         "stamp of the class that writes it"))
+        continue
+    if missing:
+        rejected.append((number, f"a graduated {entry.get('class')} stamp also writes "
+                         f"{', '.join(sorted(missing))}"))
         continue
 
     if number not in live_labels:
         skipped.append((number, "no longer open (or not found)"))
         continue
 
+    # A label the issue already carried when staged is not a race.
+    baseline = set(entry.get("labels_at_staging") or [])
     current = live_labels[number]
-    gained = [label for label in current if label.startswith(("fleet:", "human:"))]
+    gained = [label for label in current
+              if label.startswith(("fleet:", "human:")) and label not in baseline]
     if gained:
         skipped.append((number, "gained %s since staging" % ", ".join(sorted(gained))))
         continue
 
-    plan.append({"number": number, "labels": labels})
+    plan.append({"number": number, "labels": labels, "class": entry.get("class") or ""})
 
-for number, bad in rejected:
-    print(f"  rejected  #{number}: label(s) outside the apply allowlist: {', '.join(bad)}")
+for number, why in rejected:
+    print(f"  rejected  #{number}: {why}")
 for number, why in skipped:
     print(f"  skipped   #{number}: {why}")
 
@@ -305,14 +502,14 @@ if rejected:
     sys.exit(2)
 PYEOF
 if [[ $rc -ne 0 ]]; then
-    echo "fleet-triage-sweep apply: refusing — a confirmed entry stages a label outside the allowlist" >&2
+    echo "fleet-triage-sweep apply: refusing — a confirmed entry was rejected (see above)" >&2
     exit 1
 fi
 
 [[ $DRY_RUN -eq 1 ]] || mkdir -p "$TRIAGE_DIR"
 
 applied=0
-while IFS=$'\t' read -r number labels label_json; do
+while IFS=$'\t' read -r number labels label_json class_name; do
     [[ -n "$number" ]] || continue
     if [[ $DRY_RUN -eq 1 ]]; then
         echo "  would run: gh issue edit $number --repo $REPO $labels"
@@ -320,8 +517,7 @@ while IFS=$'\t' read -r number labels label_json; do
         # shellcheck disable=SC2086 # $labels is a pre-built, allowlisted flag string
         gh issue edit "$number" --repo "$REPO" $labels > /dev/null
         echo "  applied   #$number: $labels"
-        printf '{"repo":"%s","issue":%s,"labels":%s}\n' \
-            "$REPO" "$number" "$label_json" >> "$TRIAGE_DIR/log.jsonl"
+        append_triage_log apply "$number" "$label_json" "$class_name"
     fi
     applied=$((applied + 1))
 done < <(python3 -c '
@@ -329,7 +525,7 @@ import json, sys
 with open(sys.argv[1], encoding="utf-8") as f:
     for entry in json.load(f):
         flags = " ".join("--add-label %s" % label for label in entry["labels"])
-        print("%s\t%s\t%s" % (entry["number"], flags, json.dumps(entry["labels"])))
+        print("%s\t%s\t%s\t%s" % (entry["number"], flags, json.dumps(entry["labels"]), entry.get("class", "")))
 ' "$plan_f" | tr -d '\r')
 
 if [[ $DRY_RUN -eq 1 ]]; then

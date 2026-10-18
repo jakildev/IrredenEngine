@@ -47,6 +47,8 @@ PROJ="$HOME/.fleet/state/projections/queue-manager-ingest.json"
 # issue 749 = fleet:agent-approved + fleet:no-plan (follow-up lane) → stamp
 # issue 750 = fleet:agent-approved, no plan, no opt-out  → bounce to fleet:needs-plan
 # issue 751 = fleet:agent-approved + filed plan + fleet:plan-review → early-skip
+# issue 752 = a graduated verification-run triage stamp (approval, model label,
+#             fleet:no-plan; model only on the label)    → stamp
 cat > "$PROJ" <<'JSON'
 {"pending_issues":[
   {"number":740,"repo":"engine"},
@@ -57,7 +59,8 @@ cat > "$PROJ" <<'JSON'
   {"number":748,"repo":"engine"},
   {"number":749,"repo":"engine"},
   {"number":750,"repo":"engine"},
-  {"number":751,"repo":"engine"}
+  {"number":751,"repo":"engine"},
+  {"number":752,"repo":"engine"}
 ],"unblock_issues":[]}
 JSON
 
@@ -82,6 +85,7 @@ if args[:2] == ["issue", "view"]:
         "749": '{"title":"render: stale baseline follow-up","body":"**Model:** sonnet\\n**Blocked by:** (none)","labels":[{"name":"fleet:agent-approved"},{"name":"fleet:no-plan"}]}',
         "750": '{"title":"render: verified defect, fix unknown","body":"**Model:** opus\\n**Blocked by:** (none)","labels":[{"name":"fleet:agent-approved"}]}',
         "751": '{"title":"render: follow-up filed with plan","body":"**Model:** sonnet\\n**Blocked by:** (none)","labels":[{"name":"fleet:agent-approved"},{"name":"fleet:plan-review"}],"comments":[{"body":"## Plan: filed by the finder\\n\\nstep one"}]}',
+        "752": '{"title":"perf: measure the grid on windows","body":"Run the parity measurement.","labels":[{"name":"fleet:agent-approved"},{"name":"fleet:sonnet"},{"name":"fleet:no-plan"}],"comments":[{"body":"## Triage\\n\\n**Verdict:** recommend-approve\\n**Class:** verification-run"}]}',
     }
     print(bodies.get(n, '{"title":"","body":"","labels":[]}'))
 elif args[:2] == ["issue", "edit"]:
@@ -200,6 +204,15 @@ if [[ -z "$l751" ]]; then
     ok "#751 (agent-approved + filed plan + plan-review) early-skipped"
 else
     bad "#751 filed-plan follow-up was not skipped: '$l751'"
+fi
+
+# issue 752: the label set fleet-triage-sweep stamps on a verification-run
+# needs no plan and no body model field to queue.
+l752=$(edit_line 752)
+if [[ -n "$l752" && "$l752" == *"fleet:queued"* && "$l752" != *"fleet:needs-plan"* ]]; then
+    ok "#752 (graduated verification-run stamp) queued without a plan"
+else
+    bad "#752 verification-run stamp did not queue: '$l752'"
 fi
 
 echo

@@ -94,6 +94,7 @@ OUT_OF_TREE_SUBJECTS=(
     '.claude/commands/role-merger.md'
     '.claude/commands/role-opus-architect.md'
     '.claude/commands/role-opus-reviewer.md'
+    '.claude/commands/role-triage.md'
     '.claude/commands/role-worker.md'
     '.claude/settings.json'
     '.claude/skills/commit-and-push/SKILL.md'
