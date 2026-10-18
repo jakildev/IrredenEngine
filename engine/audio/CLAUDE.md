@@ -189,12 +189,12 @@ monitor would otherwise miss.
 
 ## Input arm and level meter
 
-`armInput` (Lua `IRAudio.armAudioInput`) opens the input only, never an
-output, so it cannot feed back. It and `startCapture` are two holds on one
-stream (contract: `class Audio`, `audio.hpp`); a switch is refused mid-take.
-The meter (`audio_input_meter.hpp`) runs on the driver thread before the
-recorder/monitor fan-out — no allocation, lock, or log there; readers use its
-seqlock. `IRVideo::AudioLevelLog` logs the same snapshot Lua reads.
+Unlike the audible monitor, `armInput` (Lua `IRAudio.armAudioInput`; exact
+device name, empty = default) opens the input only. It and `startCapture` are
+two holds on one stream (contract: `class Audio`); a switch is refused
+mid-take. The meter (`audio_input_meter.hpp`) publishes 100 ms per-channel
+windows from the driver thread before the recorder/monitor fan-out — no
+allocation, lock, or log there. `IRVideo::AudioLevelLog` logs what Lua reads.
 
 ## Gotchas
 
