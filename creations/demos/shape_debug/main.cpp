@@ -3721,7 +3721,7 @@ void initSystems() {
             []() {
                 ++g_autoProfileCount;
                 if (g_autoProfileCount >= g_autoProfileFrames) {
-                    IRShapeDebug::GlitchFixture::logProbe("profile-end");
+                    IRShapeDebug::GlitchFixture::logProbe("profile-end", false);
                     IR_LOG_INFO("Auto-profile: {} frames collected, exiting", g_autoProfileFrames);
                     IRWindow::closeWindow();
                 }
@@ -4212,7 +4212,9 @@ void initSystems() {
         ) {
             cfg.shots_ = IRShapeDebug::GlitchFixture::shot(g_glitchMode);
             cfg.numShots_ = 1;
-            cfg.onCaptureFrame_ = [](int) { IRShapeDebug::GlitchFixture::logProbe("capture"); };
+            cfg.onCaptureFrame_ = [](int) {
+                IRShapeDebug::GlitchFixture::logProbe("capture", true);
+            };
         } else if (g_lodScene) {
             IRVideo::setAutoScreenshotShots(cfg, IRShapeDebug::LodScene::shots_);
             cfg.settleFrames_ = IRConstants::kPrefabPartsTierSettleTicks + 12;
@@ -5035,7 +5037,8 @@ void initViewportPortraitScene() {
 }
 
 // Every capturing glitch mode adds a cube that steps one voxel per engine
-// tick, so a held band shows it where the history snapshot caught it.
+// tick, so a held band shows it where the history snapshot caught it, and the
+// sentinel sprite drawn after the pass.
 void initGlitchFixture() {
     using IRShapeDebug::GlitchFixture;
     if (g_glitchMode == GlitchFixture::Mode::NONE) {
@@ -5046,6 +5049,7 @@ void initGlitchFixture() {
         return;
     }
     const IREntity::EntityId mover = GlitchFixture::spawnMover();
+    GlitchFixture::spawnSentinel();
     IRSystem::insertIntoPipelineBefore(
         IRTime::Events::RENDER,
         IRSystem::createSystem<IRComponents::C_GlitchState>(

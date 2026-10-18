@@ -107,13 +107,33 @@ proves the off path byte-identical against the standing references.
 
 ## Cost
 
-The pass shades every pixel of the screen target, so its GPU cost scales
-with the output scale squared, not with the game resolution. Measured on an
-Apple M4 Max (macOS Metal, 1280x720 game resolution on a 2560x1440 HiDPI
-target, 300 profiled frames per run): the plain blit it replaces is about
-0.12 ms; one effect alone is 0.31–0.53 ms; every effect at once, with a
-history copy every frame, averaged 1.06 ms across five runs. CPU cost per
-call is about 0.04 ms.
+The pass draws the default screen target, so it shades the game-resolution
+pixel count times `outputScale²`: a 1280x720 game on a 2x HiDPI target is
+2560x1440 fragments. Its budget is therefore stated at 1x output (one output
+pixel per game pixel), as the GPU cost it adds over the base composite it
+replaces:
+
+    UCB95(framebufferGlitch per-run means, --glitch-test all)
+      - mean(fbToScreen per-run means, --glitch-test off)  <  0.30 ms
+
+On a 2x host, `configs/perf/glitch-1x.lua` (a 640x360-point window against
+the 1280x720 game resolution) gives a 1280x720 target at output scale 1; a
+1x host gets it from the default config. Executor: five quiet runs each of
+`fleet-run IRShapeDebug --glitch-test <all|off> --auto-profile 300
+--config-preset configs/perf/glitch-1x.lua`, read from the GPU stage table
+in `save_files/profile_report.txt`.
+
+Measured on an Apple M4 Max (macOS Metal, 300 profiled frames per run, runs
+interleaved all/off):
+
+| Output | `framebufferGlitch`, all effects | `fbToScreen`, pass off | Added |
+|---|---|---|---|
+| 1x, 1280x720 | mean 0.335 ms, UCB 0.341 | 0.052 ms | 0.284 ms, UCB 0.289 |
+| 2x, 2560x1440 | mean 1.085 ms, UCB 1.109 | 0.124 ms | 0.961 ms, UCB 0.985 |
+
+Four times the pixels cost about 3.2 times as much: roughly 0.08 ms is fixed
+per enabled frame (encoder boundaries, the clear, the history copy) and the
+rest scales with output pixels. CPU cost per call is about 0.025 ms.
 
 GPU timing gotcha: the pass's vertex stage reads the composite (texel size
 and the depth probes). A Metal render pass whose vertex stage reads no
@@ -131,6 +151,23 @@ after the pass and stay clean. This is deliberate and not special-cased.
 
 `IRShapeDebug --glitch-test <mode>` captures one shot per effect at a fixed
 seed and phase, plus a cube stepping one voxel per tick so held history is
-visibly stale. `[glitch-probe]` lines log the ticks, trixel step, copy, draw
-and ordinary-blit counts and the tear offsets. Rows live in
+visibly stale. `[glitch-probe]` lines log the ticks, trixel step, output
+scale and viewport, copy, draw and ordinary-blit counts and the tear
+offsets. Rows live in
 `creations/demos/shape_debug/test/references/manifest.json`.
+
+On the capture frame the probe reads the screen target back and compares
+each pixel with the unglitched composite texel the ordinary blit would have
+drawn there (the inverse of `framebufferScreenModel`'s placement). That
+texel is what `glitch_off` shows at the same pixel, so the `screen ...
+changed=` count is the diff against the control, and an `off` capture must
+report zero. For the depth modes it also reads the full depth attachment,
+reselects the interval through the CPU twin (`selectDepthInterval`), and
+splits the pixels into in-range and out-of-range, changed and unchanged. The
+depth effect passes when in-range changed is positive, out-of-range changed
+is zero and out-of-range unchanged is positive.
+
+Every capturing mode also spawns a one-colour sentinel sprite. Sprites draw
+after the pass, so the sentinel's pixel set (`sentinelPx`, `sentinelRect`,
+`sentinelHash`) must be identical in every capture. A pass that drew or
+cleared after the sprites would erase it.
