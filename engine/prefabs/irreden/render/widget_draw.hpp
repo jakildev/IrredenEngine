@@ -18,10 +18,9 @@
 namespace IRPrefab::Widget::detail {
 
 // Widget text renders through the batched compute path (IRPrefab::GuiText)
-// at this base font size. 1 == the native 6x11 glyph (no upscale), matching
-// the legacy renderText path so the migration is visually identical. A
-// higher-resolution GUI canvas can raise this for larger body text without
-// touching call sites.
+// at this base font size. 1 == the native glyph cell (no upscale); a widget's
+// own TextSize picks the cell. A higher-resolution GUI canvas can raise this
+// for larger body text without touching call sites.
 constexpr int kWidgetTextFontSize = 1;
 
 // The chevron is a 6-wide "v" of lattice diamonds; its display spans one row
@@ -89,7 +88,8 @@ inline void queueCenteredText(
     IRMath::ivec2 pos,
     IRMath::ivec2 size,
     IRMath::Color color,
-    int fontSize = kWidgetTextFontSize
+    int fontSize = kWidgetTextFontSize,
+    IRRender::TextSize textSize = IRRender::TextSize::LARGE
 ) {
     IRPrefab::GuiText::queueGuiText(
         cmds,
@@ -101,7 +101,9 @@ inline void queueCenteredText(
         IRComponents::TextAlignH::CENTER,
         IRComponents::TextAlignV::CENTER,
         size.x,
-        size.y
+        size.y,
+        0,
+        textSize
     );
 }
 
@@ -114,7 +116,8 @@ inline void queueLeftText(
     IRMath::ivec2 pos,
     int height,
     IRMath::Color color,
-    int fontSize = kWidgetTextFontSize
+    int fontSize = kWidgetTextFontSize,
+    IRRender::TextSize textSize = IRRender::TextSize::LARGE
 ) {
     IRPrefab::GuiText::queueGuiText(
         cmds,
@@ -126,7 +129,9 @@ inline void queueLeftText(
         IRComponents::TextAlignH::LEFT,
         IRComponents::TextAlignV::CENTER,
         0,
-        height
+        height,
+        0,
+        textSize
     );
 }
 

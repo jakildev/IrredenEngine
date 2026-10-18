@@ -22,6 +22,7 @@
 #include <irreden/script/lua_render_bindings.hpp>
 #include <irreden/script/lua_sim_bindings.hpp>
 #include <irreden/script/lua_spatial_bindings.hpp>
+#include <irreden/script/lua_text_bindings.hpp>
 #include <irreden/script/lua_viewport_bindings.hpp>
 #include <irreden/script/lua_widget_bindings.hpp>
 #include <irreden/script/lua_world_snapshot_bindings.hpp>
@@ -1000,6 +1001,7 @@ void LuaScript::bindLuaDrivenEcs() {
     detail::bindPrefabApi(*this);
     detail::bindSpatialApi(*this);
     detail::bindRenderGlue(*this);
+    bindLuaText();
     detail::bindWidgets(*this);
     detail::bindDebugOverlay(*this);
     detail::bindCollisionEvents(*this);
@@ -1015,6 +1017,10 @@ void LuaScript::bindLuaCommands() {
     detail::bindCommandFunctions(*this);
     detail::bindEntityEvents(*this);
     detail::bindCursorPosition(*this);
+}
+
+void LuaScript::bindLuaText() {
+    detail::bindText(*this);
 }
 
 void LuaScript::bindLuaInputEnums() {

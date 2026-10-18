@@ -135,6 +135,7 @@ add_executable(IrredenEngineTest
   render/shape_sample_probe_test.cpp
   render/run_witness_test.cpp
   render/settings_menu_layout_test.cpp
+  render/trixel_font_test.cpp
   render/settings_menu_reset_test.cpp
   render/shape_tile_bounds_test.cpp
   render/sun_direction_test.cpp

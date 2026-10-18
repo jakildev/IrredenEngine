@@ -14,6 +14,7 @@
 #include <irreden/render/components/component_text_style.hpp>
 #include <irreden/common/components/component_tags_all.hpp>
 #include <irreden/render/trixel_text.hpp>
+#include <irreden/script/lua_text_bindings.hpp>
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 
 namespace IRDefaultCreation {
@@ -149,7 +150,7 @@ void registerLuaBindings() {
             "BOTTOM",
             static_cast<int>(TextAlignV::BOTTOM)
         );
-        luaScript.lua()["IRText"] = luaScript.lua().create_table();
+        luaScript.bindLuaText();
         luaScript.lua()["IRText"]["create"] =
             [](const std::string &text, int x, int y, sol::table opts, sol::this_state L) {
                 Color color = IRMath::IRColors::kWhite;
@@ -160,6 +161,7 @@ void registerLuaBindings() {
                 int fontSize = 2;
                 int boxWidth = 0;
                 int boxHeight = 0;
+                IRRender::TextSize textSize = IRRender::TextSize::LARGE;
                 if (opts.valid()) {
                     sol::optional<sol::table> colorOpt = opts["color"];
                     if (colorOpt) {
@@ -178,8 +180,19 @@ void registerLuaBindings() {
                     fontSize = opts.get_or("fontSize", 2);
                     boxWidth = opts.get_or("boxWidth", 0);
                     boxHeight = opts.get_or("boxHeight", 0);
+                    const sol::object sizeOpt = opts["size"];
+                    textSize = IRScript::textSizeFromLua(sizeOpt, "IRText.create");
                 }
-                C_TextStyle style{color, wrapWidth, alignH, alignV, boxWidth, boxHeight, fontSize};
+                C_TextStyle style{
+                    color,
+                    wrapWidth,
+                    alignH,
+                    alignV,
+                    boxWidth,
+                    boxHeight,
+                    fontSize,
+                    textSize
+                };
                 IREntity::EntityId entity;
                 if (lifetime > 0) {
                     entity = IREntity::createEntity(

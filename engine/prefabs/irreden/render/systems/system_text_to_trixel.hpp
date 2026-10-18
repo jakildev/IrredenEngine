@@ -63,7 +63,8 @@ template <> struct System<TEXT_TO_TRIXEL> {
             style.alignV_,
             style.boxWidth_,
             style.boxHeight_,
-            style.fontSize_
+            style.fontSize_,
+            style.textSize_
         );
     }
 

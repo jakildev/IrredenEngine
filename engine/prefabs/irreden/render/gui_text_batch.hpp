@@ -41,6 +41,7 @@
 #include <irreden/render/gui_rect.hpp>
 
 #include <cstdint>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -52,75 +53,112 @@ namespace IRPrefab::GuiText {
 constexpr int kMaxGlyphCommands = 8192;
 constexpr int kFontTableEntries = 128;
 constexpr int kFontRowsPerGlyph = IRRender::kGlyphHeight;
-constexpr int kFontBufferSize = kFontTableEntries * kFontRowsPerGlyph;
+constexpr int kSmallFontRowsPerGlyph = IRRender::kSmallGlyphHeight;
+// The LARGE block (kFontTableEntries glyphs of kFontRowsPerGlyph rows), then
+// the SMALL block (kFontTableEntries glyphs of kSmallFontRowsPerGlyph rows).
+constexpr int kSmallFontBlockStart = kFontTableEntries * kFontRowsPerGlyph;
+constexpr int kFontBufferSize = kSmallFontBlockStart + kFontTableEntries * kSmallFontRowsPerGlyph;
 constexpr IRMath::ivec2 kGuiOverlayPadding = IRMath::ivec2(24, 24);
 
-// Packs the fixed 6x11 glyph bitmaps into a flat uint32 SSBO (one row per
-// uint, low 6 bits used). Uploaded once into "FontDataBuffer".
+// c_text_to_trixel runs one thread per texel of the large cell, and the
+// command carries each cell dimension in four bits.
+static_assert(
+    IRRender::kSmallGlyphWidth <= IRRender::kGlyphWidth &&
+        IRRender::kSmallGlyphHeight <= IRRender::kGlyphHeight,
+    "every glyph cell must fit the text shader's (kGlyphWidth, kGlyphHeight) workgroup"
+);
+static_assert(IRRender::kGlyphWidth <= 15 && IRRender::kGlyphHeight <= 15);
+
+// The font-buffer row where `c`'s `size` glyph starts.
+inline std::uint32_t firstFontRow(IRRender::TextSize size, char c) {
+    const auto ascii = static_cast<std::uint32_t>(static_cast<unsigned char>(c));
+    if (size == IRRender::TextSize::SMALL) {
+        return kSmallFontBlockStart + ascii * kSmallFontRowsPerGlyph;
+    }
+    return ascii * kFontRowsPerGlyph;
+}
+
+// Packs both glyph sets into a flat uint32 SSBO (one row per uint, low
+// cell-width bits used). Uploaded once into "FontDataBuffer".
 inline std::vector<std::uint32_t> buildFontBuffer() {
     std::vector<std::uint32_t> buf(kFontBufferSize, 0);
-    for (int ascii = 0; ascii < kFontTableEntries; ++ascii) {
-        const IRRender::Glyph *g = IRRender::getGlyph(static_cast<char>(ascii));
-        if (!g)
-            continue;
-        for (int row = 0; row < kFontRowsPerGlyph; ++row) {
-            buf[ascii * kFontRowsPerGlyph + row] = static_cast<std::uint32_t>((*g)[row]);
+    for (IRRender::TextSize size : {IRRender::TextSize::LARGE, IRRender::TextSize::SMALL}) {
+        for (int ascii = 0; ascii < kFontTableEntries; ++ascii) {
+            const char c = static_cast<char>(ascii);
+            const std::span<const std::uint8_t> rows = IRRender::glyphRows(size, c);
+            const std::uint32_t first = firstFontRow(size, c);
+            for (std::size_t row = 0; row < rows.size(); ++row) {
+                buf[first + row] = static_cast<std::uint32_t>(rows[row]);
+            }
         }
     }
     return buf;
 }
 
-inline int glyphWidth(int fontSize) {
-    return IRRender::kGlyphWidth * fontSize;
-}
-inline int glyphHeight(int fontSize) {
-    return IRRender::kGlyphHeight * fontSize;
-}
-inline int glyphStepX(int fontSize) {
-    return IRRender::kGlyphStepX * fontSize;
-}
-inline int glyphStepY(int fontSize) {
-    return IRRender::kGlyphStepY * fontSize;
-}
-inline int glyphSpacingX(int fontSize) {
-    return IRRender::kGlyphSpacingX * fontSize;
-}
-inline int glyphSpacingY(int fontSize) {
-    return IRRender::kGlyphSpacingY * fontSize;
+// The styleFlags cell bits for `size`; the shader draws only inside the cell.
+inline std::uint32_t glyphCellStyleBits(IRRender::TextSize size) {
+    const IRRender::GlyphMetrics metrics = IRRender::glyphMetrics(size);
+    return (static_cast<std::uint32_t>(metrics.width_) << IRRender::kGlyphStyleCellWidthShift) |
+           (static_cast<std::uint32_t>(metrics.height_) << IRRender::kGlyphStyleCellHeightShift);
 }
 
-inline int textRunWidth(std::string_view text, int fontSize) {
+inline int glyphWidth(int fontSize, IRRender::TextSize size = IRRender::TextSize::LARGE) {
+    return IRRender::glyphMetrics(size).width_ * fontSize;
+}
+inline int glyphHeight(int fontSize, IRRender::TextSize size = IRRender::TextSize::LARGE) {
+    return IRRender::glyphMetrics(size).height_ * fontSize;
+}
+inline int glyphStepX(int fontSize, IRRender::TextSize size = IRRender::TextSize::LARGE) {
+    return IRRender::glyphMetrics(size).stepX_ * fontSize;
+}
+inline int glyphStepY(int fontSize, IRRender::TextSize size = IRRender::TextSize::LARGE) {
+    return IRRender::glyphMetrics(size).stepY_ * fontSize;
+}
+inline int glyphSpacingX(int fontSize, IRRender::TextSize size = IRRender::TextSize::LARGE) {
+    return IRRender::glyphMetrics(size).spacingX_ * fontSize;
+}
+inline int glyphSpacingY(int fontSize, IRRender::TextSize size = IRRender::TextSize::LARGE) {
+    return IRRender::glyphMetrics(size).spacingY_ * fontSize;
+}
+
+inline int textRunWidth(
+    std::string_view text, int fontSize, IRRender::TextSize size = IRRender::TextSize::LARGE
+) {
     if (text.empty()) {
         return 0;
     }
-    return static_cast<int>(text.size()) * glyphStepX(fontSize) - glyphSpacingX(fontSize);
+    return static_cast<int>(text.size()) * glyphStepX(fontSize, size) -
+           glyphSpacingX(fontSize, size);
 }
 
-inline GuiRect
-textBounds(IRMath::ivec2 origin, IRMath::ivec2 canvasSize, std::string_view text, int fontSize) {
+inline GuiRect textBounds(
+    IRMath::ivec2 origin,
+    IRMath::ivec2 canvasSize,
+    std::string_view text,
+    int fontSize,
+    IRRender::TextSize size = IRRender::TextSize::LARGE
+) {
     return {
         IRRender::parityAlignedPosition(origin, canvasSize),
-        IRMath::ivec2(textRunWidth(text, fontSize), glyphHeight(fontSize))
+        IRMath::ivec2(textRunWidth(text, fontSize, size), glyphHeight(fontSize, size))
     };
 }
 
-inline int nextWordWidth(const std::string &text, std::size_t i, int fontSize) {
-    int width = 0;
-    const int stepX = glyphStepX(fontSize);
-    while (i < text.size() && text[i] != ' ' && text[i] != '\n') {
-        width += stepX;
-        i++;
-    }
-    return width;
+inline int nextWordWidth(
+    const std::string &text,
+    std::size_t i,
+    int fontSize,
+    IRRender::TextSize size = IRRender::TextSize::LARGE
+) {
+    return IRRender::nextWordWidth(text, i, size) * fontSize;
 }
 
 // CPU-side layout: appends one GlyphDrawCommand per visible glyph of `text`
 // to `commands`, handling newlines, word-wrap (wrapWidth), and H/V box
 // alignment (boxWidth/boxHeight, defaulting to the canvas extent). Each
-// command carries packed position, glyph index, packed color, the GUI-text
-// distance, and `fontSize` in styleFlags. This is the prior in-system layout
-// implementation, moved here unchanged so both TEXT_TO_TRIXEL and the widget
-// render systems share one code path.
+// command carries packed position, the glyph's first font-buffer row, packed
+// color, the GUI-text distance, and `fontSize` plus the `size` cell in
+// styleFlags. TEXT_TO_TRIXEL and the widget render systems share this path.
 inline void expandTextToCommands(
     std::vector<IRRender::GlyphDrawCommand> &commands,
     const std::string &text,
@@ -132,15 +170,18 @@ inline void expandTextToCommands(
     IRComponents::TextAlignV alignV = IRComponents::TextAlignV::TOP,
     int boxWidth = 0,
     int boxHeight = 0,
-    int fontSize = 2
+    int fontSize = 2,
+    IRRender::TextSize size = IRRender::TextSize::LARGE
 ) {
     IRMath::ivec2 aligned = IRRender::parityAlignedPosition(position, canvasSize);
     IRMath::ivec2 cursor = aligned;
-    const int gw = glyphWidth(fontSize);
-    const int stepX = glyphStepX(fontSize);
-    const int stepY = glyphStepY(fontSize);
-    const int spacX = glyphSpacingX(fontSize);
-    const int spacY = glyphSpacingY(fontSize);
+    const int gw = glyphWidth(fontSize, size);
+    const int stepX = glyphStepX(fontSize, size);
+    const int stepY = glyphStepY(fontSize, size);
+    const int spacX = glyphSpacingX(fontSize, size);
+    const int spacY = glyphSpacingY(fontSize, size);
+    const std::uint32_t styleFlags =
+        static_cast<std::uint32_t>(fontSize) | glyphCellStyleBits(size);
     const int effectiveWrap =
         (wrapWidth > 0) ? aligned.x + wrapWidth : (wrapWidth < 0 ? canvasSize.x : 0);
     std::uint32_t packed = color.toPackedRGBA();
@@ -168,7 +209,7 @@ inline void expandTextToCommands(
         }
 
         if (effectiveWrap > 0 && c == ' ') {
-            int upcoming = nextWordWidth(text, i + 1, fontSize);
+            int upcoming = nextWordWidth(text, i + 1, fontSize, size);
             if (cursor.x + stepX + upcoming > effectiveWrap) {
                 lines.back().width_ = cursor.x - aligned.x;
                 if (lines.back().width_ > 0)
@@ -189,18 +230,15 @@ inline void expandTextToCommands(
             lines.push_back({commands.size(), 0, 0});
         }
 
-        const IRRender::Glyph *glyph = IRRender::getGlyph(c);
-        if (glyph) {
-            IRRender::GlyphDrawCommand cmd;
-            cmd.positionPacked = static_cast<std::uint32_t>(cursor.x & 0xFFFF) |
-                                 (static_cast<std::uint32_t>(cursor.y & 0xFFFF) << 16);
-            cmd.glyphIndex = static_cast<std::uint32_t>(static_cast<unsigned char>(c));
-            cmd.colorPacked = packed;
-            cmd.distance = static_cast<std::uint32_t>(IRRender::kGuiTextDistance);
-            cmd.styleFlags = static_cast<std::uint32_t>(fontSize);
-            commands.push_back(cmd);
-            lines.back().count_++;
-        }
+        IRRender::GlyphDrawCommand cmd;
+        cmd.positionPacked = static_cast<std::uint32_t>(cursor.x & 0xFFFF) |
+                             (static_cast<std::uint32_t>(cursor.y & 0xFFFF) << 16);
+        cmd.firstFontRow = firstFontRow(size, c);
+        cmd.colorPacked = packed;
+        cmd.distance = static_cast<std::uint32_t>(IRRender::kGuiTextDistance);
+        cmd.styleFlags = styleFlags;
+        commands.push_back(cmd);
+        lines.back().count_++;
         cursor.x += stepX;
     }
 
@@ -254,7 +292,8 @@ inline void queueGuiText(
     IRComponents::TextAlignV alignV = IRComponents::TextAlignV::TOP,
     int boxWidth = 0,
     int boxHeight = 0,
-    int wrapWidth = 0
+    int wrapWidth = 0,
+    IRRender::TextSize size = IRRender::TextSize::LARGE
 ) {
     if (text.empty())
         return;
@@ -269,7 +308,8 @@ inline void queueGuiText(
         alignV,
         boxWidth,
         boxHeight,
-        fontSize
+        fontSize,
+        size
     );
 }
 

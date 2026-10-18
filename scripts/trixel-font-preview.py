@@ -15,9 +15,14 @@ Modes:
              gui_scale = fb-scale / 2
   rect       plain rectangular texels
 
+The large set lives in trixel_font.hpp, the small one in trixel_font_small.hpp
+(--set small reads its kSmallGlyph* names).
+
 Usage:
   python3 scripts/trixel-font-preview.py \
       engine/render/include/irreden/render/trixel_font.hpp --out sheet.png
+  python3 scripts/trixel-font-preview.py --set small \
+      engine/render/include/irreden/render/trixel_font_small.hpp --out small.png
   python3 scripts/trixel-font-preview.py <header> --text 'HELLO' --out hello.png
 """
 import argparse
@@ -35,26 +40,32 @@ GLYPH_W, GLYPH_H = 6, 11
 STEP_X, STEP_Y = 8, 14
 
 
-def read_constants(src: str):
-    """Pull kGlyphWidth / kGlyphHeight / spacing out of the header so the
+SET_PREFIX = {"large": "", "small": "Small"}
+
+
+def read_constants(src: str, prefix: str = ""):
+    """Pull k<prefix>GlyphWidth / Height / spacing out of the header so the
     layout here never drifts from the engine's."""
     global GLYPH_W, GLYPH_H, STEP_X, STEP_Y
     vals = {}
-    for name in ("kGlyphWidth", "kGlyphHeight", "kGlyphSpacingX", "kGlyphSpacingY"):
-        m = re.search(rf"constexpr int {name} = (\d+);", src)
+    for field in ("Width", "Height", "SpacingX", "SpacingY"):
+        m = re.search(rf"constexpr int k{prefix}Glyph{field} = (\d+);", src)
         if m:
-            vals[name] = int(m.group(1))
-    GLYPH_W = vals.get("kGlyphWidth", GLYPH_W)
-    GLYPH_H = vals.get("kGlyphHeight", GLYPH_H)
-    STEP_X = GLYPH_W + vals.get("kGlyphSpacingX", STEP_X - GLYPH_W)
-    STEP_Y = GLYPH_H + vals.get("kGlyphSpacingY", STEP_Y - GLYPH_H)
+            vals[field] = int(m.group(1))
+    GLYPH_W = vals.get("Width", GLYPH_W)
+    GLYPH_H = vals.get("Height", GLYPH_H)
+    STEP_X = GLYPH_W + vals.get("SpacingX", STEP_X - GLYPH_W)
+    STEP_Y = GLYPH_H + vals.get("SpacingY", STEP_Y - GLYPH_H)
 
 
-def parse_font(path: Path):
+def parse_font(path: Path, glyph_set: str = "large"):
+    prefix = SET_PREFIX[glyph_set]
     src = path.read_text()
-    read_constants(src)
+    read_constants(src, prefix)
     glyphs = {}
-    block = re.compile(r"kGlyph_(\w+)\s*=\s*makeGlyph\(\s*((?:\s*\"[^\"]*\"\s*)+)\)")
+    block = re.compile(
+        rf"k{prefix}Glyph_(\w+)\s*=\s*make{prefix}Glyph\(\s*((?:\s*\"[^\"]*\"\s*)+)\)"
+    )
     for m in block.finditer(src):
         name = m.group(1)
         rows = re.findall(r"\"([^\"]*)\"", m.group(2))
@@ -63,7 +74,9 @@ def parse_font(path: Path):
             continue
         glyphs[name] = [[ch in "X#" for ch in r] for r in rows]
     char_map = {}
-    cases = re.compile(r"((?:case\s+'(?:\\.|[^'])+'\s*:\s*)+)return\s+&kGlyph_(\w+);")
+    cases = re.compile(
+        rf"((?:case\s+'(?:\\.|[^'])+'\s*:\s*)+)return\s+&k{prefix}Glyph_(\w+);"
+    )
     for m in cases.finditer(src):
         for c in re.findall(r"case\s+'((?:\\.|[^'])+)'", m.group(1)):
             char_map[c.encode().decode("unicode_escape")] = m.group(2)
@@ -151,6 +164,12 @@ def render_pixelated(
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("font", type=Path)
+    ap.add_argument(
+        "--set",
+        choices=sorted(SET_PREFIX),
+        default="large",
+        help="which glyph set the header holds",
+    )
     ap.add_argument("--text", default=None, help="text to render (default: full glyph sheet)")
     ap.add_argument("--mode", choices=["smooth", "pixelated", "rect"], default="smooth")
     ap.add_argument(
@@ -167,7 +186,9 @@ def main():
     ap.add_argument("--cols", type=int, default=13, help="glyphs per row of the sheet")
     args = ap.parse_args()
 
-    glyphs, char_map = parse_font(args.font)
+    glyphs, char_map = parse_font(args.font, args.set)
+    if not glyphs:
+        sys.exit(f"no {args.set} glyphs found in {args.font}")
     if args.text is None:
         order = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.,:;!?-_/\\()[]=+@#*%|<>~'\""
         lines = [order[i:i + args.cols] for i in range(0, len(order), args.cols)]

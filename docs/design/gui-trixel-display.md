@@ -98,7 +98,35 @@ bitmap and row 10's one below, which the 3-row line spacing (`kGlyphStepY =
 14`) covers. The design-rule comment at the top of `trixel_font.hpp` is the
 contract a new glyph is checked against.
 
+### The small set
+
+A second set (`TextSize::SMALL`, `trixel_font_small.hpp`) draws the same 63
+characters in a 4×7 cell with step 6×10. Every text draw takes a `TextSize`
+(default `LARGE`), and `glyphMetrics(size)` owns each set's cell, spacing and
+step. `fontSize` scales either set the same way.
+
+- **Why 4×7.** Both steps stay even, so every glyph origin keeps the same
+  parity. A 5-wide body would centre on x = 2.5, which is not a lattice mirror
+  axis, so its symmetric glyphs would render lopsided; a 4-wide body mirrors
+  about x = 2. Three separated 1-row bars need rows 0, 3 and 6, so 6 rows
+  cannot draw E, S, 8 or 2. Line spacing below 3 rows makes adjacent lines
+  touch, so 10 is the smallest step Y: a panel fits 1.4× the rows of the large
+  set.
+- **Art rules.** The comment at the top of `trixel_font_small.hpp` holds
+  them. Strokes are 1 texel wide (a column of texels is a solid strip).
+  Full-width bars sit on even rows, since odd rows pair only columns 1-2.
+  Diagonals are diamond chains. No glyph has a lone triangle, and no two
+  characters share a bitmap. `test/render/trixel_font_test.cpp` checks
+  coverage, lone triangles and duplicate bitmaps for both sets.
+- **GPU layout.** `FontDataBuffer` holds the large block (128 glyphs × 11
+  rows), then the small block (128 × 7). A `GlyphDrawCommand` names its
+  glyph's first row (`firstFontRow`), and `styleFlags` bits 16-19 / 20-23 carry
+  the cell width / height. `c_text_to_trixel` reads the cell from the command,
+  so neither shader holds a glyph-set constant. It runs one thread per texel
+  of the large cell and drops the threads outside a command's cell.
+
 `scripts/trixel-font-preview.py` renders the header's glyphs exactly as the
 screen composite displays them (`--mode smooth`), as the framebuffer path
 shows them at a given `gui_scale` (`--mode pixelated --fb-scale 2·guiScale`),
 or as plain texels (`--mode rect`); run it before and after editing a glyph.
+`--set small` reads `trixel_font_small.hpp`.

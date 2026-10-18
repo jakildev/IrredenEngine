@@ -63,6 +63,11 @@ class LuaScript {
     // engine/script/CLAUDE.md.
     void bindLuaDrivenEcs();
 
+    // Bind IRText.Size and IRText.measure, extending an existing IRText table
+    // (a non-table IRText raises). Idempotent; bindLuaDrivenEcs() calls it, so
+    // a creation that replaces IRText afterwards must call it again.
+    void bindLuaText();
+
     // Bind the input + command surface — IRCommand.{bindPrefab,
     // createCommand, fire, fireByName, CommandName}, IRInput.{InputType,
     // ButtonStatus, Key, Modifier, GamepadButton, GamepadAxis}, and the

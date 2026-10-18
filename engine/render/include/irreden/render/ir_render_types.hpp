@@ -818,18 +818,24 @@ struct FrameDataTrixelToTrixel {
     vec2 texturePos2DIso_;
 };
 
-// `styleFlags` low byte is the font size (canvas texels per glyph texel).
-// `kGlyphStyleLatticeScale` set: the canvas displays lattice triangles, so a
-// scaled glyph texel rasters as the exactly scaled triangle (fontSize² lattice
-// triangles) rather than a square block of texels.
+// `firstFontRow` is the glyph's first row in the font buffer; the glyph's
+// cell rows follow it. `styleFlags` low byte is the font size (canvas texels
+// per glyph texel). `kGlyphStyleLatticeScale` set: the canvas displays lattice
+// triangles, so a scaled glyph texel rasters as the exactly scaled triangle
+// (fontSize² lattice triangles) rather than a square block of texels. Bits
+// 16-19 and 20-23 carry the glyph cell's width and height; the text shader
+// reads the cell from them and owns no glyph-set constant.
 struct GlyphDrawCommand {
     uint32_t positionPacked; // x | (y << 16)
-    uint32_t glyphIndex;
+    uint32_t firstFontRow;
     uint32_t colorPacked; // RGBA as packed uint
     uint32_t distance;
     uint32_t styleFlags = 0;
 };
 constexpr uint32_t kGlyphStyleLatticeScale = 0x100u;
+constexpr uint32_t kGlyphStyleCellWidthShift = 16u;
+constexpr uint32_t kGlyphStyleCellHeightShift = 20u;
+constexpr uint32_t kGlyphStyleCellMask = 0xFu;
 
 /// Per-frame UBO for the GUI_CANVAS_TO_SCREEN pass.
 struct FrameDataGuiCanvasToScreen {

@@ -4,18 +4,19 @@ layout(local_size_x = 6, local_size_y = 11, local_size_z = 1) in;
 
 #include "ir_iso_common.glsl"
 
-// Font bitmap data: fontRows[glyphIndex * 11 + row] = packed row bits
-// Bit layout: bit 5 = col 0 (left), bit 0 = col 5 (right)
+// Font bitmap data, one packed row per uint: a glyph's rows start at its
+// command's firstFontRow. Bit (cellWidth - 1 - col) is column col.
 layout(std430, binding = 11) buffer FontBuffer {
     uint fontRows[];
 };
 
 struct GlyphDrawCommand {
     uint positionPacked;  // x | y<<16
-    uint glyphIndex;      // 0-127 ASCII
+    uint firstFontRow;    // the glyph's first row in fontRows
     uint colorPacked;     // RGBA as uint
     uint distance;
-    uint styleFlags;      // low byte = fontSize; bit 8 = lattice-scaled glyphs
+    uint styleFlags;      // low byte = fontSize; bit 8 = lattice-scaled glyphs;
+                          // bits 16-19 / 20-23 = glyph cell width / height
 };
 
 layout(std430, binding = 12) buffer CommandBuffer {
@@ -28,14 +29,18 @@ layout(r32i, binding = 1) uniform iimage2D canvasDistances;
 void main() {
     GlyphDrawCommand cmd = commands[gl_WorkGroupID.x];
     ivec2 basePos = ivec2(int(cmd.positionPacked & 0xFFFFu), int(cmd.positionPacked >> 16u));
-    uint glyphIdx = cmd.glyphIndex;
     uint fontSize = max(cmd.styleFlags & 0xFFu, 1u);
+    uint cellWidth = (cmd.styleFlags >> 16u) & 0xFu;
+    uint cellHeight = (cmd.styleFlags >> 20u) & 0xFu;
 
-    uint rowBits = fontRows[glyphIdx * 11u + gl_LocalInvocationID.y];
     uint col = gl_LocalInvocationID.x;
     uint row = gl_LocalInvocationID.y;
+    if (col >= cellWidth || row >= cellHeight) {
+        return;
+    }
 
-    if (((rowBits >> (5u - col)) & 1u) == 0u) {
+    uint rowBits = fontRows[cmd.firstFontRow + row];
+    if (((rowBits >> (cellWidth - 1u - col)) & 1u) == 0u) {
         return;
     }
 

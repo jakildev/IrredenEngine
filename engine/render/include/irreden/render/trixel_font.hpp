@@ -1,8 +1,11 @@
 #ifndef TRIXEL_FONT_H
 #define TRIXEL_FONT_H
 
+#include <irreden/render/trixel_font_small.hpp>
+
 #include <array>
 #include <cstdint>
+#include <span>
 
 namespace IRRender {
 
@@ -37,19 +40,7 @@ using Glyph = std::array<uint8_t, kGlyphHeight>;
 // 'X' or '#' = filled trixel, anything else = empty.
 // Adjacent string literals auto-concatenate: "row1" "row2" "row3" ...
 constexpr Glyph makeGlyph(const char* pattern) {
-    Glyph g{};
-    int i = 0;
-    for (int row = 0; row < kGlyphHeight; ++row) {
-        uint8_t rowBits = 0;
-        for (int col = 0; col < kGlyphWidth; ++col) {
-            if (pattern[i] == 'X' || pattern[i] == '#') {
-                rowBits |= static_cast<uint8_t>(1 << (kGlyphWidth - 1 - col));
-            }
-            ++i;
-        }
-        g[row] = rowBits;
-    }
-    return g;
+    return detail::packGlyphPattern<kGlyphWidth, kGlyphHeight>(pattern);
 }
 
 // --- Letters A-Z ---
@@ -1009,8 +1000,49 @@ constexpr const Glyph *getGlyph(char c) {
     }
 }
 
+constexpr bool glyphRowPixel(uint8_t rowBits, int width, int col) {
+    return (rowBits >> (width - 1 - col)) & 1;
+}
+
 constexpr bool glyphPixel(const Glyph &glyph, int col, int row) {
-    return (glyph[row] >> (kGlyphWidth - 1 - col)) & 1;
+    return glyphRowPixel(glyph[row], kGlyphWidth, col);
+}
+
+// Which glyph set a text draw uses. LARGE is this header's 6x11 set, SMALL the
+// 4x7 set in trixel_font_small.hpp; both cover the same characters.
+enum class TextSize : int { LARGE = 0, SMALL = 1 };
+
+// Cell, spacing and step of one glyph set, in texels at font size 1.
+struct GlyphMetrics {
+    int width_;
+    int height_;
+    int spacingX_;
+    int spacingY_;
+    int stepX_;
+    int stepY_;
+};
+
+constexpr GlyphMetrics glyphMetrics(TextSize size) {
+    if (size == TextSize::SMALL) {
+        return {
+            kSmallGlyphWidth,
+            kSmallGlyphHeight,
+            kSmallGlyphSpacingX,
+            kSmallGlyphSpacingY,
+            kSmallGlyphStepX,
+            kSmallGlyphStepY
+        };
+    }
+    return {kGlyphWidth, kGlyphHeight, kGlyphSpacingX, kGlyphSpacingY, kGlyphStepX, kGlyphStepY};
+}
+
+// The bitmap rows of `c` in `size`'s set, top row first; glyphRowPixel reads
+// column `col` with width glyphMetrics(size).width_.
+constexpr std::span<const uint8_t> glyphRows(TextSize size, char c) {
+    if (size == TextSize::SMALL) {
+        return *getSmallGlyph(c);
+    }
+    return *getGlyph(c);
 }
 
 } // namespace IRRender

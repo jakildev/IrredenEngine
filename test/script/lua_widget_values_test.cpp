@@ -4,7 +4,9 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/entity/entity_manager.hpp>
 #include <irreden/render/components/component_gui_position.hpp>
+#include <irreden/render/components/component_text_style_lua.hpp>
 #include <irreden/render/components/component_widget.hpp>
+#include <irreden/render/trixel_font.hpp>
 #include <irreden/script/lua_script.hpp>
 
 #include <sol/sol.hpp>
@@ -15,11 +17,14 @@ namespace {
 
 using IRComponents::C_GuiPosition;
 using IRComponents::C_Widget;
+using IRComponents::C_WidgetButton;
 using IRComponents::C_WidgetCheckbox;
 using IRComponents::C_WidgetDropdown;
+using IRComponents::C_WidgetLabel;
 using IRComponents::C_WidgetSlider;
 using IRComponents::C_WidgetTextInput;
 using IRComponents::WidgetKind;
+using IRRender::TextSize;
 
 // Drives the IRGui value widgets (slider, checkbox, dropdown) from Lua: their
 // factories, the polled readers an editor uses each frame, the setters, and
@@ -207,6 +212,119 @@ TEST_F(LuaWidgetValues, ReadersRejectTheWrongKindOfWidget) {
     run("IRGui.setDisabled(slider, true)");
     EXPECT_TRUE(IREntity::getComponent<C_Widget>(entity("slider")).disabled_);
     EXPECT_FALSE(eval<bool>("IRGui.isHovered(slider)"));
+}
+
+TEST_F(LuaWidgetValues, FactoriesStoreTheTrailingTextSize) {
+    run(R"lua(
+        S = IRText.Size.SMALL
+        label = IRGui.makeLabel(0, 0, "L", nil, S)
+        button = IRGui.makeButton(0, 0, 40, 12, "B", nil, S)
+        slider = IRGui.makeSlider(0, 0, 40, 20, "S", 0, 1, 0, S)
+        box = IRGui.makeCheckbox(0, 0, 40, 12, "C", false, S)
+        dd = IRGui.makeDropdown(0, 0, 40, 12, { "A" }, 1, 12, S)
+
+        plainLabel = IRGui.makeLabel(0, 0, "L")
+        plainButton = IRGui.makeButton(0, 0, 40, 12, "B")
+        plainSlider = IRGui.makeSlider(0, 0, 40, 20, "S", 0, 1, 0)
+        plainBox = IRGui.makeCheckbox(0, 0, 40, 12, "C")
+        plainDd = IRGui.makeDropdown(0, 0, 40, 12, { "A" })
+    )lua");
+    EXPECT_EQ(IREntity::getComponent<C_WidgetLabel>(entity("label")).textSize_, TextSize::SMALL);
+    EXPECT_EQ(IREntity::getComponent<C_WidgetButton>(entity("button")).textSize_, TextSize::SMALL);
+    EXPECT_EQ(IREntity::getComponent<C_WidgetSlider>(entity("slider")).textSize_, TextSize::SMALL);
+    EXPECT_EQ(IREntity::getComponent<C_WidgetCheckbox>(entity("box")).textSize_, TextSize::SMALL);
+    EXPECT_EQ(IREntity::getComponent<C_WidgetDropdown>(entity("dd")).textSize_, TextSize::SMALL);
+
+    EXPECT_EQ(
+        IREntity::getComponent<C_WidgetLabel>(entity("plainLabel")).textSize_,
+        TextSize::LARGE
+    );
+    EXPECT_EQ(
+        IREntity::getComponent<C_WidgetButton>(entity("plainButton")).textSize_,
+        TextSize::LARGE
+    );
+    EXPECT_EQ(
+        IREntity::getComponent<C_WidgetSlider>(entity("plainSlider")).textSize_,
+        TextSize::LARGE
+    );
+    EXPECT_EQ(
+        IREntity::getComponent<C_WidgetCheckbox>(entity("plainBox")).textSize_,
+        TextSize::LARGE
+    );
+    EXPECT_EQ(
+        IREntity::getComponent<C_WidgetDropdown>(entity("plainDd")).textSize_,
+        TextSize::LARGE
+    );
+    EXPECT_EQ(IREntity::getComponent<C_WidgetLabel>(entity("label")).colorOverride_.alpha_, 0)
+        << "a nil color before the size keeps the theme color";
+}
+
+TEST_F(LuaWidgetValues, TextMeasureAndGlyphStepFollowTheSize) {
+    run(R"lua(
+        sw, sh = IRText.measure("ABCD", IRText.Size.SMALL)
+        lw, lh = IRText.measure("ABCD", IRText.Size.LARGE)
+        dw, dh = IRText.measure("ABCD")
+        ssx, ssy = IRGui.glyphStep(IRText.Size.SMALL)
+        dsx, dsy = IRGui.glyphStep()
+    )lua");
+    EXPECT_EQ(eval<int>("sw"), 22);
+    EXPECT_EQ(eval<int>("sh"), 7);
+    EXPECT_EQ(eval<int>("lw"), 30);
+    EXPECT_EQ(eval<int>("lh"), 11);
+    EXPECT_EQ(eval<int>("dw"), 30);
+    EXPECT_EQ(eval<int>("ssx"), 6);
+    EXPECT_EQ(eval<int>("ssy"), 10);
+    EXPECT_EQ(eval<int>("dsx"), 8);
+    EXPECT_EQ(eval<int>("dsy"), 14);
+}
+
+// A 140-trixel panel fits 14 SMALL rows and 10 LARGE ones.
+TEST_F(LuaWidgetValues, SmallRowsFitProportionallyMoreLines) {
+    run(R"lua(
+        function linesHeight(count, size)
+            local _, h = IRText.measure(string.rep("ROW\n", count - 1) .. "ROW", size)
+            return h
+        end
+    )lua");
+    EXPECT_LE(eval<int>("linesHeight(14, IRText.Size.SMALL)"), 140);
+    EXPECT_GT(eval<int>("linesHeight(15, IRText.Size.SMALL)"), 140);
+    EXPECT_LE(eval<int>("linesHeight(10, IRText.Size.LARGE)"), 140);
+    EXPECT_GT(eval<int>("linesHeight(11, IRText.Size.LARGE)"), 140);
+}
+
+TEST_F(LuaWidgetValues, ABadTextSizeRaisesAndCreatesNothing) {
+    const IREntity::EntityId before = m_entityManager.getLiveEntityCount();
+    for (const char *call : {
+             "IRGui.makeLabel(0, 0, 'L', nil, 'SMALL')",
+             "IRGui.makeButton(0, 0, 10, 10, 'B', nil, 7)",
+             "IRGui.makeSlider(0, 0, 10, 10, 'S', 0, 1, 0, 'SMALL')",
+             "IRGui.makeCheckbox(0, 0, 10, 10, 'C', false, 7)",
+             "IRGui.makeDropdown(0, 0, 10, 10, { 'A' }, 1, 10, 0.5)",
+             "IRText.measure('A', 'SMALL')",
+             "IRGui.glyphStep(7)",
+         }) {
+        EXPECT_NE(
+            error(call).find("size must be IRText.Size.LARGE or IRText.Size.SMALL"),
+            std::string::npos
+        ) << call;
+    }
+    EXPECT_EQ(m_entityManager.getLiveEntityCount(), before);
+}
+
+TEST_F(LuaWidgetValues, TextStyleTextSizeIsRangeChecked) {
+    IRScript::bindLuaType<IRComponents::C_TextStyle>(m_lua);
+    run(R"lua(
+        style = C_TextStyle.new()
+        before = style.textSize
+        style.textSize = IRText.Size.SMALL
+    )lua");
+    EXPECT_EQ(eval<int>("before"), static_cast<int>(TextSize::LARGE));
+    EXPECT_EQ(eval<int>("style.textSize"), static_cast<int>(TextSize::SMALL));
+    EXPECT_NE(
+        error("style.textSize = 'LARGE'").find("C_TextStyle.textSize: size must be IRText.Size"),
+        std::string::npos
+    );
+    EXPECT_EQ(eval<int>("style.textSize"), static_cast<int>(TextSize::SMALL));
 }
 
 } // namespace

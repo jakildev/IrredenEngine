@@ -75,7 +75,9 @@ template <> struct System<WIDGET_RENDER_CHECKBOX> {
                 checkbox.label_,
                 IRMath::ivec2(guiPos.pos_.x + boxSize + theme_.padding_ * 2, guiPos.pos_.y),
                 widget.size_.y,
-                IRPrefab::Widget::detail::stateText(theme_, widget)
+                IRPrefab::Widget::detail::stateText(theme_, widget),
+                IRPrefab::Widget::detail::kWidgetTextFontSize,
+                checkbox.textSize_
             );
         }
     }

@@ -88,6 +88,10 @@
 #include <irreden/render/gui_test_assertions.hpp>
 #include <irreden/render/help_overlay.hpp>
 #include <irreden/render/settings_menu.hpp>
+#include <irreden/render/widgets.hpp>
+#include <irreden/render/components/component_gui_position.hpp>
+#include <irreden/render/components/component_text_segment.hpp>
+#include <irreden/render/components/component_text_style.hpp>
 #include <irreden/render/systems/system_text_to_trixel.hpp>
 #include <irreden/render/systems/system_render_velocity_2d_iso.hpp>
 #include <irreden/render/systems/system_auto_yaw_rotate.hpp>
@@ -569,6 +573,15 @@ bool g_viewportLodSwap = false;
 constexpr Color kPortraitCoarseColor{220, 150, 70, 255};
 constexpr IRVideo::AutoScreenshotShot kViewportLodSwapShots[] = {
     {1.0f, vec2(0, 0), 0.0f, "portrait_lod_swap_z1"},
+};
+
+// --text-size-sample: an empty world under both glyph sets side by side on the
+// GUI canvas — LARGE in the left column, SMALL in the right. Each column is
+// the full character sheet as fontSize-1 free text, then a label, a button, a
+// slider with its readout, a checkbox and an open dropdown in that size.
+bool g_textSizeSample = false;
+constexpr IRVideo::AutoScreenshotShot kTextSizeSampleShots[] = {
+    {1.0f, vec2(0, 0), 0.0f, "text_size_sample"},
 };
 
 // --load-prefab <path>: the scene is the prefab manifest at <path> (exe-relative)
@@ -1647,6 +1660,11 @@ void registerCliArgs() {
         "zoom 1 and its GUI-pinned portrait at zoom 16"
     );
     args.flag(
+        "--text-size-sample",
+        "Replace the scene + capture table with both GUI glyph sets side by side: the character "
+        "sheet and one of each text widget per size, over an empty world"
+    );
+    args.flag(
         "--viewport-lod-swap",
         "With --viewport-portrait: the subject is a coarse/fine pair on disjoint LOD bands; the "
         "world draws the coarse variant and the portrait the fine one"
@@ -1697,6 +1715,7 @@ void readCliArgs() {
     g_lodDenseSwap = args.getFlag("--lod-dense-swap");
     g_lodScene = args.getFlag("--lod-scene");
     g_viewportPortrait = args.getFlag("--viewport-portrait");
+    g_textSizeSample = args.getFlag("--text-size-sample");
     g_viewportLodSwap = g_viewportPortrait && args.getFlag("--viewport-lod-swap");
     g_cursorPivotIndicator = args.getFlag("--cursor-pivot-indicator");
     g_continuousZoomGuiTest = args.getFlag("--continuous-zoom-gui-test");
@@ -4162,6 +4181,8 @@ void initSystems() {
             IRVideo::setAutoScreenshotShots(cfg, kViewportLodSwapShots);
         } else if (g_viewportPortrait) {
             IRVideo::setAutoScreenshotShots(cfg, kViewportPortraitShots);
+        } else if (g_textSizeSample) {
+            IRVideo::setAutoScreenshotShots(cfg, kTextSizeSampleShots);
         } else if (!g_loadPrefabPath.empty()) {
             buildLoadPrefabShots();
             cfg.shots_ = g_loadPrefabShots.data();
@@ -4865,6 +4886,65 @@ void setupCanvasLighting() {
     }
 }
 
+// The --text-size-sample scene (see g_textSizeSample).
+void initTextSizeSampleScene() {
+    // The 63 characters both sets cover, 21 per line.
+    constexpr const char *kCharacterSheet = "ABCDEFGHIJKLMNOPQRSTU\n"
+                                            "VWXYZ0123456789.,:;!?\n"
+                                            "-_/\\()[]=+@#*% |<>~'\"";
+    constexpr int kTop = 8;
+    constexpr int kGap = 6;
+    constexpr int kWidgetWidth = 120;
+    struct Column {
+        IRRender::TextSize size_;
+        int x_;
+    };
+    for (const Column column :
+         {Column{IRRender::TextSize::LARGE, 8}, Column{IRRender::TextSize::SMALL, 192}}) {
+        const IRRender::TextSize size = column.size_;
+        const int stepY = IRRender::glyphMetrics(size).stepY_;
+        IREntity::createEntity(
+            C_TextSegment{kCharacterSheet},
+            C_GuiPosition{column.x_, kTop},
+            C_GuiElement{},
+            C_TextStyle{IRColors::kWhite, 0, TextAlignH::LEFT, TextAlignV::TOP, 0, 0, 1, size}
+        );
+        int y = kTop + 3 * stepY + kGap;
+        IRPrefab::Widget::makeLabel(ivec2(column.x_, y), "LABEL 0.50", Color{0, 0, 0, 0}, size);
+        y += stepY + kGap;
+        const int rowHeight = stepY + 4;
+        IRPrefab::Widget::makeButton(ivec2(column.x_, y), ivec2(72, rowHeight), "BUTTON", size);
+        y += rowHeight + kGap;
+        IRPrefab::Widget::makeSlider(
+            ivec2(column.x_, y),
+            ivec2(kWidgetWidth, stepY + 8),
+            "GAIN",
+            0.0f,
+            1.0f,
+            0.25f,
+            size
+        );
+        y += stepY + 8 + kGap;
+        IRPrefab::Widget::makeCheckbox(
+            ivec2(column.x_, y),
+            ivec2(kWidgetWidth, rowHeight),
+            "LOCK",
+            true,
+            size
+        );
+        y += rowHeight + kGap;
+        const EntityId dropdown = IRPrefab::Widget::makeDropdown(
+            ivec2(column.x_, y),
+            ivec2(kWidgetWidth, rowHeight),
+            {"RAMP", "TRIANGLE", "SINE"},
+            1,
+            rowHeight,
+            size
+        );
+        IREntity::getComponent<C_WidgetDropdown>(dropdown).isOpen_ = true;
+    }
+}
+
 // The --viewport-portrait scene (see g_viewportPortrait).
 void initViewportPortraitScene() {
     EntityId subject = IREntity::kNullEntity;
@@ -4952,6 +5032,11 @@ void initEntities() {
     if (g_shadowFootprintProbe) {
         IR_LOG_INFO("--- Shape shadow-footprint probe scene ---");
         initShadowFootprintProbeScene();
+        return;
+    }
+    if (g_textSizeSample) {
+        IR_LOG_INFO("--- GUI text-size sample scene ---");
+        initTextSizeSampleScene();
         return;
     }
     if (g_viewportPortrait) {

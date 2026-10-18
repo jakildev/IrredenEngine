@@ -92,7 +92,9 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
                 guiPos.pos_.y
             ),
             widget.size_.y,
-            IRPrefab::Widget::detail::stateText(theme_, widget)
+            IRPrefab::Widget::detail::stateText(theme_, widget),
+            IRPrefab::Widget::detail::kWidgetTextFontSize,
+            dd.textSize_
         );
 
         // Dropdown chevron at the right edge: a "v" of lattice diamonds, two
@@ -185,7 +187,9 @@ template <> struct System<WIDGET_RENDER_DROPDOWN> {
                     rowPos.y
                 ),
                 itemH,
-                IRPrefab::Widget::detail::stateText(theme_, widget)
+                IRPrefab::Widget::detail::stateText(theme_, widget),
+                IRPrefab::Widget::detail::kWidgetTextFontSize,
+                dd.textSize_
             );
         }
 

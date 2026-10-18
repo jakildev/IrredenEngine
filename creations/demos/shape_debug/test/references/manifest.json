@@ -196,6 +196,12 @@
         "composite_proof_z16"
       ],
       "capture_offset": 0
+    },
+    {
+      "name": "text_sizes",
+      "demo_args": ["--text-size-sample"],
+      "shots": ["text_size_sample"],
+      "capture_offset": 0
     }
   ],
   "structural": {

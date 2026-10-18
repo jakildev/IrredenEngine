@@ -6,15 +6,15 @@
 // click and a polling `wasClicked`.
 //
 //   local panel  = IRGui.makePanel(x, y, w, h, title?, drawBorder?, zOrder?)
-//   local label  = IRGui.makeLabel(x, y, text, color?)
+//   local label  = IRGui.makeLabel(x, y, text, color?, size?)
 //   IRGui.setLabelText(label, text)
-//   local button = IRGui.makeButton(x, y, w, h, label, onClick?)   -- onClick(id)
+//   local button = IRGui.makeButton(x, y, w, h, label, onClick?, size?)   -- onClick(id)
 //   if IRGui.wasClicked(button) then ... end
 //   local region = IRGui.makeHitRegion(x, y, w, h, {
 //       zOrder = 0, onHover = fn(id), onUnhover = fn(id), onClick = fn(id),
 //   })                                                -- every key optional
 //   IRGui.destroyWidget(region)
-//   local gx, gy = IRGui.glyphStep()
+//   local gx, gy = IRGui.glyphStep(size?)
 //   local w, h   = IRRender.getGuiCanvasSize()
 //
 // `onClick` / `onHover` / `onUnhover` are stored in WIDGET_LUA_DISPATCH's
@@ -25,6 +25,15 @@
 // INPUT pipeline immediately after WIDGET_INPUT before registering handlers.
 // The dispatcher passes the widget's EntityId as each callback's only
 // argument.
+//
+// `size` is an `IRText.Size` value (absent or nil = LARGE) choosing the
+// widget's glyph set; makeSlider / makeCheckbox / makeDropdown take it last
+// too. A bad size raises before the widget exists.
+//
+// The optional arguments ahead of `size` that bind as Lua references
+// (`color`, `onClick`) are plain `sol::object`s: a nil `sol::optional` of a
+// reference type does not consume its argument slot, so the size after it
+// would read the nil instead.
 //
 // The C++ widget constructors take `IRMath::ivec2 pos, IRMath::ivec2 size`,
 // not `(x, y, w, h)` — the binding composes the ivec2s, so Lua authors in
@@ -40,6 +49,7 @@
 #include <irreden/ir_system.hpp>
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
+#include <irreden/script/lua_text_bindings.hpp>
 
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/render/systems/system_widget_lua_dispatch.hpp>
@@ -186,11 +196,12 @@ inline void bindWidgets(LuaScript &script) {
     };
 
     gui["makeLabel"] =
-        [](int x, int y, std::string text, sol::optional<sol::object> color) -> lua_Integer {
+        [](int x, int y, std::string text, sol::object color, sol::object size) -> lua_Integer {
+        const IRRender::TextSize textSize = textSizeFromLua(size, "IRGui.makeLabel");
         const IRMath::Color resolved =
-            color.has_value() ? colorFromLua(color.value()) : IRMath::Color{0, 0, 0, 0};
+            color.valid() ? colorFromLua(color) : IRMath::Color{0, 0, 0, 0};
         const IREntity::EntityId id =
-            IRPrefab::Widget::makeLabel(IRMath::ivec2(x, y), std::move(text), resolved);
+            IRPrefab::Widget::makeLabel(IRMath::ivec2(x, y), std::move(text), resolved, textSize);
         return static_cast<lua_Integer>(id);
     };
 
@@ -200,16 +211,22 @@ inline void bindWidgets(LuaScript &script) {
                             int w,
                             int h,
                             std::string label,
-                            sol::optional<sol::protected_function> onClick
+                            sol::object onClick,
+                            sol::object size
                         ) -> lua_Integer {
+        const IRRender::TextSize textSize = textSizeFromLua(size, "IRGui.makeButton");
+        if (onClick.valid() && onClick.get_type() != sol::type::function) {
+            throw sol::error{"IRGui.makeButton: onClick must be a function"};
+        }
         const IREntity::EntityId id = IRPrefab::Widget::makeButton(
             IRMath::ivec2(x, y),
             IRMath::ivec2(w, h),
-            std::move(label)
+            std::move(label),
+            textSize
         );
-        if (onClick.has_value() && onClick.value().valid()) {
+        if (onClick.valid()) {
             resolveWidgetDispatch(prefabSystemIds, "IRGui.makeButton(onClick)")
-                ->registerClickHandler(id, std::move(onClick.value()));
+                ->registerClickHandler(id, onClick.as<sol::protected_function>());
         }
         return static_cast<lua_Integer>(id);
     };
@@ -288,8 +305,10 @@ inline void bindWidgets(LuaScript &script) {
         return IRPrefab::Widget::wasClicked(static_cast<IREntity::EntityId>(id));
     };
 
-    gui["glyphStep"] = []() {
-        return std::make_tuple(IRRender::kGlyphStepX, IRRender::kGlyphStepY);
+    gui["glyphStep"] = [](sol::object size) {
+        const IRRender::GlyphMetrics metrics =
+            IRRender::glyphMetrics(textSizeFromLua(size, "IRGui.glyphStep"));
+        return std::make_tuple(metrics.stepX_, metrics.stepY_);
     };
 
     // ── Value widgets: slider, checkbox, dropdown ────────────────────────────
@@ -306,17 +325,20 @@ inline void bindWidgets(LuaScript &script) {
                            std::string label,
                            float minValue,
                            float maxValue,
-                           float value) -> lua_Integer {
+                           float value,
+                           sol::object size) -> lua_Integer {
         if (!(minValue < maxValue)) {
             throw sol::error{"IRGui.makeSlider: min must be below max"};
         }
+        const IRRender::TextSize textSize = textSizeFromLua(size, "IRGui.makeSlider");
         return static_cast<lua_Integer>(IRPrefab::Widget::makeSlider(
             IRMath::ivec2(x, y),
             IRMath::ivec2(w, h),
             std::move(label),
             minValue,
             maxValue,
-            IRMath::clamp(value, minValue, maxValue)
+            IRMath::clamp(value, minValue, maxValue),
+            textSize
         ));
     };
     gui["sliderValue"] = [](lua_Integer id) -> float {
@@ -328,14 +350,20 @@ inline void bindWidgets(LuaScript &script) {
         IRPrefab::Widget::setSliderValue(static_cast<IREntity::EntityId>(id), value);
     };
 
-    gui["makeCheckbox"] =
-        [](int x, int y, int w, int h, std::string label, sol::optional<bool> checked)
-        -> lua_Integer {
+    gui["makeCheckbox"] = [](int x,
+                             int y,
+                             int w,
+                             int h,
+                             std::string label,
+                             sol::optional<bool> checked,
+                             sol::object size) -> lua_Integer {
+        const IRRender::TextSize textSize = textSizeFromLua(size, "IRGui.makeCheckbox");
         return static_cast<lua_Integer>(IRPrefab::Widget::makeCheckbox(
             IRMath::ivec2(x, y),
             IRMath::ivec2(w, h),
             std::move(label),
-            checked.value_or(false)
+            checked.value_or(false),
+            textSize
         ));
     };
     gui["checkboxState"] = [](lua_Integer id) -> bool {
@@ -353,15 +381,18 @@ inline void bindWidgets(LuaScript &script) {
                              int h,
                              const sol::table &items,
                              sol::optional<int> selected,
-                             sol::optional<int> itemHeight) -> lua_Integer {
+                             sol::optional<int> itemHeight,
+                             sol::object size) -> lua_Integer {
         // Parsed before the entity exists, so a malformed list creates nothing.
         std::vector<std::string> parsedItems = stringList(items, "IRGui.makeDropdown");
+        const IRRender::TextSize textSize = textSizeFromLua(size, "IRGui.makeDropdown");
         const IREntity::EntityId widget = IRPrefab::Widget::makeDropdown(
             IRMath::ivec2(x, y),
             IRMath::ivec2(w, h),
             {},
             -1,
-            itemHeight.value_or(h)
+            itemHeight.value_or(h),
+            textSize
         );
         IRPrefab::Widget::setDropdownItems(
             widget,
