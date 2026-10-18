@@ -75,7 +75,8 @@ def prompt(role, mode, target, worktree=None):
             "Finish the assigned workflow and return a final response so this iteration exits."
         )
     provenance = "" if role == "merger" else (
-        "For every PR you create or amend, run fleet-runtime stamp <PR> --repo <owner/repo> "
+        "For every PR you create or amend, run fleet-pr-stamp <PR> "
+        "--repo <engine|game|owner/repo> "
         "--runtime codex after pushing and before requesting review. "
     )
     return (

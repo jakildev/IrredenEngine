@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Verify command-position `fleet-*` citations in rules/protocol docs resolve.
+"""Verify command-position `fleet-*` citations in agent instructions resolve.
 
-`.claude/rules/*.md` and `docs/agents/*.md` prescribe executable commands
-inside their `## Detection` (or equivalent) fenced code blocks. A rule doc can
+Role, skill, rule, and `docs/agents/**` files prescribe executable commands
+inside fenced code blocks. An instruction can
 land ahead of the tool it cites — #2823: `.claude/rules/cpp-math.md` mandated
 `fleet-rules-sweep` as the *only* correct Detection command a full PR cycle
 before the PR adding that script (#2744) merged, leaving the block
@@ -54,8 +54,6 @@ from pathlib import Path
 FENCE_RE = re.compile(r"^\s*```")
 ALLOW_RE = re.compile(r"^<!--\s*lint:\s*rules-cmd-ok\s+(\S+)")
 FLEET_TOKEN_RE = re.compile(r"^fleet-[a-zA-Z0-9_-]+$")
-
-DEFAULT_DOC_GLOBS = (".claude/rules/*.md", "docs/agents/*.md")
 
 # slug -> (leading tokens, what to run instead). The slug is what a
 # `rules-cmd-ok` marker names.
@@ -164,14 +162,7 @@ def find_forbidden(path):
 
 
 def iter_forbidden_docs(repo_root):
-    seen = set()
-    for pattern in FORBIDDEN_DOC_GLOBS:
-        for doc in sorted(Path(repo_root).glob(pattern)):
-            # is_file() skips a dangling symlink (an install-time link whose
-            # target is absent on this host).
-            if doc not in seen and doc.is_file():
-                seen.add(doc)
-                yield doc
+    yield from iter_docs(repo_root, FORBIDDEN_DOC_GLOBS)
 
 
 def resolve(token, tracked_basenames, tracked_stems):
@@ -213,9 +204,13 @@ def scan_file(path, tracked_basenames, tracked_stems):
     return sorted(findings)
 
 
-def iter_docs(repo_root, doc_globs=DEFAULT_DOC_GLOBS):
-    for pattern in doc_globs:
-        yield from sorted(Path(repo_root).glob(pattern))
+def iter_docs(repo_root, doc_globs=None):
+    seen = set()
+    for pattern in doc_globs or FORBIDDEN_DOC_GLOBS:
+        for doc in sorted(Path(repo_root).glob(pattern)):
+            if doc not in seen and doc.is_file():
+                seen.add(doc)
+                yield doc
 
 
 def main(argv):

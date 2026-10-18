@@ -1,6 +1,6 @@
 """Unit + integration tests for lint_rules_commands.py.
 
-The lint scans fenced code blocks in `.claude/rules/*.md` / `docs/agents/*.md`
+The lint scans fenced code blocks across every agent instruction surface
 for command-position `fleet-*` tokens (first whitespace-delimited token per
 line, optional `$ ` prompt stripped) and requires each to resolve against a
 git-tracked file's basename/stem or PATH. These cases lock the contract:
@@ -79,6 +79,15 @@ class TmpTreeTest(PathPinnedTest):
         path.write_text(body, encoding="utf-8")
         return path
 
+    def assert_each_path_flagged(self, paths, body):
+        for rel in paths:
+            with self.subTest(rel=rel):
+                root = Path(tempfile.mkdtemp(dir=self.root))
+                path = root / rel
+                path.parent.mkdir(parents=True)
+                path.write_text(body, encoding="utf-8")
+                self.assertEqual(_run_main(root), 1)
+
 
 class ScanFile(TmpTreeTest):
     def test_unresolved_command_position_token_is_flagged(self):
@@ -151,6 +160,12 @@ class IterDocsAndMain(TmpTreeTest):
                   "```\nfleet-nonexistent-tool\n```\n")
         self.assertEqual(_run_main(self.root), 1)
 
+    def test_skill_procedure_and_shared_skill_are_scanned(self):
+        self.assert_each_path_flagged(
+            (".claude/skills/example/procedures/check.md", "docs/agents/skills/check.md"),
+            "```\nfleet-nonexistent-tool\n```\n",
+        )
+
     def test_clean_tree_exits_zero(self):
         self.write(".claude/rules/example.md", "prose only, no fences\n")
         self.assertEqual(_run_main(self.root), 0)
@@ -205,15 +220,12 @@ class ForbiddenCommands(TmpTreeTest):
 
     def test_every_instruction_surface_is_in_scope(self):
         bad = "`gh pr checkout <N>`\n"
-        for rel in (".claude/commands/role-x.md", ".claude/agents/a.md", ".claude/rules/r.md",
-                    ".claude/skills/s/SKILL.md", ".claude/skills/s/procedures/p.md",
-                    "docs/agents/FLEET.md", "docs/agents/skills/flow.md"):
-            with self.subTest(rel=rel):
-                root = Path(tempfile.mkdtemp(dir=self.root))
-                path = root / rel
-                path.parent.mkdir(parents=True)
-                path.write_text(bad, encoding="utf-8")
-                self.assertEqual(_run_main(root), 1)
+        self.assert_each_path_flagged(
+            (".claude/commands/role-x.md", ".claude/agents/a.md", ".claude/rules/r.md",
+             ".claude/skills/s/SKILL.md", ".claude/skills/s/procedures/p.md",
+             "docs/agents/FLEET.md", "docs/agents/skills/flow.md"),
+            bad,
+        )
 
     def test_design_docs_are_out_of_scope(self):
         self.write("docs/design/history.md", "`gh pr checkout <N>`\n")

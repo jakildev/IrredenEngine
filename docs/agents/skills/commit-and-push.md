@@ -267,25 +267,21 @@ and verify the number independently before proceeding.
 
 #### 8b. Post-open stamps — every PR, every mode, every runtime
 
-**procedures** `host-label.md` carries the fence. Run it as soon as
+**procedures** `host-label.md` carries the gate. Run it as soon as
 `gh pr create` / `gh pr edit` returns, and again after every push that
-precedes a review. It stamps two facts and reads them back:
+precedes a review:
 
 ```bash
-fleet-runtime stamp <N> --repo <repo>   # fleet:author-<runtime>: FLEET_RUNTIME, claude when unset
-gh pr edit <N> --repo <repo> --add-label "fleet:authored-on-<host>"
-gh pr view <N> --repo <repo> --json labels \
-    --jq '[.labels[].name] | map(select(startswith("fleet:author")))'
+fleet-pr-stamp <N> --repo <engine|game|owner/repo>
 ```
 
-The PR is open only when the read-back prints exactly one of
-`fleet:author-claude` / `fleet:author-codex` beside the host label. A PR
-with no `fleet:author-*` label loses the cross-provider preference: any
-available provider reviews it, so the same provider may review its own
-work. The create-time
-`--label` is only a head start; the stamp is authoritative and corrects a
-wrong guess. The label names the provider that made the change,
-amendments included; no Claude co-author trailer on Codex-authored work.
+Exit 0 plus the printed label line means the PR is open to the fleet; quote
+that line in step 9. A non-zero exit means it is not open, and the line shows
+what is missing. The create-time `--label` is only a head start; this gate is
+authoritative and corrects a wrong guess. The label names the provider that
+made the change, amendments included; no Claude co-author trailer on
+Codex-authored work. Provider behavior is defined in
+[`fleet-labels-reference.md`](../fleet-labels-reference.md#provider-routing).
 
 ### 9. Report
 
