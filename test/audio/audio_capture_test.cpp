@@ -3,6 +3,7 @@
 #include <irreden/ir_audio.hpp>
 #include <irreden/audio/audio.hpp>
 #include <irreden/audio/audio_manager.hpp>
+#include <irreden/ir_math.hpp>
 #include <irreden/profile/logger_spd.hpp>
 
 #include <spdlog/sinks/ostream_sink.h>
@@ -14,6 +15,7 @@
 #include <condition_variable>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -34,8 +36,10 @@ using IRAudio::AudioCaptureConfig;
 
 constexpr unsigned int kFakeDeviceId = 7;
 constexpr unsigned int kFakeOutputDeviceId = 8;
+constexpr unsigned int kSecondInputDeviceId = 9;
 constexpr const char *kFakeDeviceName = "Fake Capture Device";
 constexpr const char *kFakeOutputDeviceName = "Fake Monitor Device";
+constexpr const char *kSecondInputDeviceName = "Second Capture Device";
 constexpr const char *kOpenErrorText = "FakeBackend::openStream: sample rate rejected";
 constexpr const char *kStartErrorText = "FakeBackend::startStream: stream is closed";
 constexpr const char *kStopErrorText = "FakeBackend::stopStream: device refused";
@@ -85,6 +89,7 @@ struct FakeBackendState {
     unsigned int inputChannels_ = 2;
     unsigned int outputChannels_ = 2;
     bool hasSeparateOutputDevice_ = false;
+    bool hasSecondInputDevice_ = false;
     bool hasDefaultOutput_ = true;
     std::vector<unsigned int> sampleRates_ = {44'100};
     std::thread::id enumerationThread_;
@@ -160,16 +165,27 @@ class FakeAudioInputBackend final : public IRAudio::detail::IAudioInputBackend {
 
     std::vector<unsigned int> getDeviceIds() override {
         m_state->enumerationThread_ = std::this_thread::get_id();
+        std::vector<unsigned int> ids{m_state->inputDeviceId_};
         if (m_state->hasSeparateOutputDevice_) {
-            return {m_state->inputDeviceId_, m_state->outputDeviceId_};
+            ids.push_back(m_state->outputDeviceId_);
         }
-        return {m_state->inputDeviceId_};
+        if (m_state->hasSecondInputDevice_) {
+            ids.push_back(kSecondInputDeviceId);
+        }
+        return ids;
     }
 
     RtAudio::DeviceInfo getDeviceInfo(unsigned int deviceId) override {
         ++m_state->deviceInfoCalls_;
         RtAudio::DeviceInfo info;
         info.ID = deviceId;
+        if (deviceId == kSecondInputDeviceId) {
+            info.name = kSecondInputDeviceName;
+            info.inputChannels = m_state->inputChannels_;
+            info.sampleRates = m_state->sampleRates_;
+            info.preferredSampleRate = 44'100;
+            return info;
+        }
         if (deviceId == m_state->outputDeviceId_) {
             info.name = m_state->outputDeviceName_;
             info.outputChannels = m_state->outputChannels_;
@@ -1282,6 +1298,297 @@ TEST(AudioMonitorTest, EnablingWithoutAnOutputWarnsPerRequestAndRemainsFalse) {
 
     EXPECT_FALSE(audio.isInputMonitorEnabled());
     EXPECT_EQ(countOf(log.text(), "no monitor output stream is active"), 2);
+}
+
+// The fake backend delivers at 44.1 kHz, so one meter window is 4410 frames
+// and a 100 Hz sine completes ten whole cycles in it.
+constexpr int kMeterRate = 44'100;
+constexpr int kMeterWindowFrames = 4'410;
+constexpr float kSineHz = 100.0f;
+constexpr float kHalfScalePeakDbfs = -6.02f;
+constexpr float kHalfScaleSineRmsDbfs = -9.03f;
+constexpr float kQuarterScalePeakDbfs = -12.04f;
+constexpr float kQuarterScaleSineRmsDbfs = -15.05f;
+constexpr float kLevelTolerance = 0.5f;
+
+// Feeds `frames` stereo frames of a sine with per-channel amplitudes, its
+// phase continuing from `startFrame`, in driver-sized buffers.
+void deliverStereoSine(
+    const RtAudioCallback &callback, int startFrame, int frames, float left, float right
+) {
+    constexpr int kBufferFrames = 1'000;
+    std::vector<float> buffer;
+    for (int delivered = 0; delivered < frames;) {
+        const int count = IRMath::min(kBufferFrames, frames - delivered);
+        buffer.assign(static_cast<std::size_t>(count) * 2, 0.0f);
+        for (int i = 0; i < count; ++i) {
+            const float time = static_cast<float>(startFrame + delivered + i) / kMeterRate;
+            const float sample = IRMath::sin(IRMath::kTwoPi * kSineHz * time);
+            buffer[static_cast<std::size_t>(i) * 2] = left * sample;
+            buffer[static_cast<std::size_t>(i) * 2 + 1] = right * sample;
+        }
+        callback(nullptr, buffer.data(), static_cast<unsigned int>(count), 0.0, 0, nullptr);
+        delivered += count;
+    }
+}
+
+void expectSilent(const IRAudio::AudioInputLevels &levels) {
+    for (unsigned int channel = 0; channel < levels.channelCount_; ++channel) {
+        EXPECT_EQ(levels.channels_[channel].peakDbfs_, IRAudio::kAudioInputSilenceDbfs);
+        EXPECT_EQ(levels.channels_[channel].rmsDbfs_, IRAudio::kAudioInputSilenceDbfs);
+        EXPECT_EQ(levels.channels_[channel].clippedSamples_, 0u);
+    }
+}
+
+void expectHalfAndQuarterScaleSine(const IRAudio::AudioInputLevels &levels) {
+    ASSERT_EQ(levels.channelCount_, 2u);
+    EXPECT_NEAR(levels.channels_[0].peakDbfs_, kHalfScalePeakDbfs, kLevelTolerance);
+    EXPECT_NEAR(levels.channels_[0].rmsDbfs_, kHalfScaleSineRmsDbfs, kLevelTolerance);
+    EXPECT_NEAR(levels.channels_[1].peakDbfs_, kQuarterScalePeakDbfs, kLevelTolerance);
+    EXPECT_NEAR(levels.channels_[1].rmsDbfs_, kQuarterScaleSineRmsDbfs, kLevelTolerance);
+}
+
+TEST_F(AudioCaptureTest, ArmInputOpensOnceAndEquivalentArmsMakeNoBackendCall) {
+    const IRAudio::AudioInputArmResult first = m_audio->armInput(kFakeDeviceName, 48'000);
+
+    ASSERT_TRUE(first.armed_) << first.reason_;
+    EXPECT_TRUE(first.reason_.empty());
+    EXPECT_TRUE(m_audio->isInputArmed());
+    EXPECT_EQ(m_backend->openedChannels_, 2u);
+    EXPECT_EQ(m_backend->openedSampleRate_, 44'100u);
+
+    // The same request, the rate the first was substituted to, and the
+    // default input, which is the same device.
+    EXPECT_TRUE(m_audio->armInput(kFakeDeviceName, 48'000).armed_);
+    EXPECT_TRUE(m_audio->armInput(kFakeDeviceName, 44'100).armed_);
+    EXPECT_TRUE(m_audio->armInput("", 44'100).armed_);
+    EXPECT_EQ(m_backend->openCalls_, 1);
+    EXPECT_EQ(m_backend->startCalls_, 1);
+    EXPECT_EQ(m_backend->stopCalls_, 0);
+
+    m_audio->disarmInput();
+
+    EXPECT_FALSE(m_audio->isInputArmed());
+    EXPECT_FALSE(m_audio->isStreamInOpen());
+    EXPECT_FALSE(m_audio->getInputLevels().has_value());
+    EXPECT_EQ(m_backend->stopCalls_, 1);
+    EXPECT_EQ(m_backend->closeCalls_, 1);
+
+    m_audio->disarmInput();
+
+    EXPECT_EQ(m_backend->stopCalls_, 1);
+    EXPECT_EQ(m_backend->closeCalls_, 1);
+}
+
+TEST_F(AudioCaptureTest, ArmInputFailuresReturnReasonsAndLeaveNoHold) {
+    const IRAudio::AudioInputArmResult missing = m_audio->armInput("Missing Device", 44'100);
+    EXPECT_FALSE(missing.armed_);
+    EXPECT_TRUE(missing.reason_.contains("not found")) << missing.reason_;
+    EXPECT_TRUE(missing.reason_.contains("Missing Device")) << missing.reason_;
+    EXPECT_EQ(m_backend->openCalls_, 0);
+
+    m_backend->openResult_ = RTAUDIO_SYSTEM_ERROR;
+    const IRAudio::AudioInputArmResult openFailed = m_audio->armInput(kFakeDeviceName, 44'100);
+    EXPECT_FALSE(openFailed.armed_);
+    EXPECT_TRUE(openFailed.reason_.contains(kFakeDeviceName)) << openFailed.reason_;
+    EXPECT_TRUE(openFailed.reason_.contains(kOpenErrorText)) << openFailed.reason_;
+
+    m_backend->openResult_ = RTAUDIO_NO_ERROR;
+    m_backend->startResult_ = RTAUDIO_SYSTEM_ERROR;
+    const IRAudio::AudioInputArmResult startFailed = m_audio->armInput(kFakeDeviceName, 44'100);
+    EXPECT_FALSE(startFailed.armed_);
+    EXPECT_TRUE(startFailed.reason_.contains(kStartErrorText)) << startFailed.reason_;
+
+    EXPECT_FALSE(m_audio->isInputArmed());
+    EXPECT_FALSE(m_audio->getInputLevels().has_value());
+}
+
+TEST(AudioInputArmTest, MeterReportsEachChannelsWindowAndASwitchClearsIt) {
+    auto backend = std::make_shared<FakeBackendState>();
+    backend->hasSecondInputDevice_ = true;
+    Audio audio{std::make_unique<FakeAudioInputBackend>(backend), {kPatientDeadline, kPatientDeadline}};
+    ASSERT_TRUE(audio.armInput(kFakeDeviceName, kMeterRate).armed_);
+
+    std::optional<IRAudio::AudioInputLevels> levels = audio.getInputLevels();
+    ASSERT_TRUE(levels.has_value());
+    EXPECT_EQ(levels->channelCount_, 2u);
+    EXPECT_EQ(levels->sampleRate_, static_cast<unsigned int>(kMeterRate));
+    EXPECT_EQ(levels->generation_, 0u);
+    expectSilent(*levels);
+
+    // One complete window, then 590 frames into the next: the buffer that
+    // crosses the boundary splits between them.
+    deliverStereoSine(backend->callback_, 0, 5'000, 0.5f, 0.25f);
+    levels = audio.getInputLevels();
+    ASSERT_TRUE(levels.has_value());
+    EXPECT_EQ(levels->generation_, 1u);
+    expectHalfAndQuarterScaleSine(*levels);
+    EXPECT_EQ(levels->channels_[0].clippedSamples_, 0u);
+    EXPECT_EQ(levels->channels_[1].clippedSamples_, 0u);
+
+    // Silence completes the second window, carrying one full-scale sample on
+    // the right channel only.
+    const int rest = kMeterWindowFrames - (5'000 - kMeterWindowFrames);
+    std::vector<float> silence(static_cast<std::size_t>(rest) * 2, 0.0f);
+    silence[1] = 1.0f;
+    backend->callback_(nullptr, silence.data(), static_cast<unsigned int>(rest), 0.0, 0, nullptr);
+    levels = audio.getInputLevels();
+    ASSERT_TRUE(levels.has_value());
+    EXPECT_EQ(levels->generation_, 2u);
+    EXPECT_EQ(levels->channels_[0].clippedSamples_, 0u);
+    EXPECT_EQ(levels->channels_[1].clippedSamples_, 1u);
+    EXPECT_NEAR(levels->channels_[1].peakDbfs_, 0.0f, 0.01f);
+
+    const IRAudio::AudioInputArmResult switched = audio.armInput(kSecondInputDeviceName, kMeterRate);
+    ASSERT_TRUE(switched.armed_) << switched.reason_;
+    EXPECT_EQ(backend->openCalls_, 2);
+    EXPECT_EQ(backend->openedDeviceId_, kSecondInputDeviceId);
+    levels = audio.getInputLevels();
+    ASSERT_TRUE(levels.has_value());
+    EXPECT_EQ(levels->generation_, 0u);
+    expectSilent(*levels);
+}
+
+TEST(AudioInputArmTest, MonoDeviceArmsAndMetersOneChannel) {
+    auto backend = std::make_shared<FakeBackendState>();
+    backend->inputChannels_ = 1;
+    Audio audio{std::make_unique<FakeAudioInputBackend>(backend), {kPatientDeadline, kPatientDeadline}};
+
+    ASSERT_TRUE(audio.armInput(kFakeDeviceName, kMeterRate).armed_);
+
+    EXPECT_EQ(backend->openedChannels_, 1u);
+    EXPECT_EQ(audio.getCaptureChannels(), 1);
+    std::vector<float> fullScale(kMeterWindowFrames, 0.5f);
+    backend->callback_(
+        nullptr,
+        fullScale.data(),
+        static_cast<unsigned int>(kMeterWindowFrames),
+        0.0,
+        0,
+        nullptr
+    );
+    const std::optional<IRAudio::AudioInputLevels> levels = audio.getInputLevels();
+    ASSERT_TRUE(levels.has_value());
+    EXPECT_EQ(levels->channelCount_, 1u);
+    EXPECT_EQ(levels->generation_, 1u);
+    EXPECT_NEAR(levels->channels_[0].peakDbfs_, kHalfScalePeakDbfs, kLevelTolerance);
+    EXPECT_NEAR(levels->channels_[0].rmsDbfs_, kHalfScalePeakDbfs, kLevelTolerance);
+}
+
+TEST(AudioInputArmTest, CaptureSharesAnArmedInputAndEachHoldReleasesOnlyItself) {
+    auto input = std::make_shared<FakeBackendState>();
+    auto output = std::make_shared<FakeBackendState>();
+    Audio audio{
+        std::make_unique<FakeAudioInputBackend>(input),
+        std::make_unique<FakeAudioInputBackend>(output),
+        {kPatientDeadline, kPatientDeadline}
+    };
+    ASSERT_TRUE(audio.armInput(kFakeDeviceName, kMeterRate).armed_);
+    int recordedFrames = 0;
+
+    // The recorder asks for 48 kHz, which this device substitutes to the
+    // armed stream's rate.
+    ASSERT_TRUE(audio.startCapture(fakeDeviceConfig(), countDeliveredFrames(recordedFrames)));
+
+    EXPECT_EQ(input->openCalls_, 1);
+    EXPECT_EQ(input->startCalls_, 1);
+    EXPECT_EQ(audio.getCaptureSampleRate(), kMeterRate);
+    EXPECT_EQ(audio.getCaptureChannels(), 2);
+    deliverStereoSine(input->callback_, 0, kMeterWindowFrames, 0.5f, 0.25f);
+    EXPECT_EQ(recordedFrames, kMeterWindowFrames);
+    ASSERT_TRUE(audio.getInputLevels().has_value());
+    EXPECT_EQ(audio.getInputLevels()->generation_, 1u);
+
+    audio.stopCapture();
+
+    EXPECT_EQ(input->stopCalls_, 0);
+    EXPECT_EQ(input->closeCalls_, 0);
+    EXPECT_TRUE(audio.isInputArmed());
+    deliverStereoSine(input->callback_, kMeterWindowFrames, kMeterWindowFrames, 0.5f, 0.25f);
+    EXPECT_EQ(recordedFrames, kMeterWindowFrames);
+    ASSERT_TRUE(audio.getInputLevels().has_value());
+    EXPECT_EQ(audio.getInputLevels()->generation_, 2u);
+
+    audio.disarmInput();
+
+    EXPECT_EQ(input->stopCalls_, 1);
+    EXPECT_EQ(input->closeCalls_, 1);
+    EXPECT_FALSE(audio.getInputLevels().has_value());
+    EXPECT_EQ(output->openCalls_, 0);
+    EXPECT_EQ(output->startCalls_, 0);
+}
+
+TEST(AudioInputArmTest, SwitchingDevicesOutsideATakeCarriesTheCaptureCallback) {
+    auto input = std::make_shared<FakeBackendState>();
+    auto output = std::make_shared<FakeBackendState>();
+    input->hasSecondInputDevice_ = true;
+    Audio audio{
+        std::make_unique<FakeAudioInputBackend>(input),
+        std::make_unique<FakeAudioInputBackend>(output),
+        {kPatientDeadline, kPatientDeadline}
+    };
+    int recordedFrames = 0;
+    ASSERT_TRUE(audio.startCapture(fakeDeviceConfig(), countDeliveredFrames(recordedFrames)));
+    ASSERT_TRUE(audio.armInput(kFakeDeviceName, 48'000).armed_);
+    EXPECT_EQ(input->openCalls_, 1);
+
+    const IRAudio::AudioInputArmResult switched = audio.armInput(kSecondInputDeviceName, 48'000);
+
+    ASSERT_TRUE(switched.armed_) << switched.reason_;
+    EXPECT_EQ(input->stopCalls_, 1);
+    EXPECT_EQ(input->closeCalls_, 1);
+    EXPECT_EQ(input->openCalls_, 2);
+    EXPECT_EQ(input->startCalls_, 2);
+    EXPECT_EQ(input->openedDeviceId_, kSecondInputDeviceId);
+    expectRecorderDelivery(input, recordedFrames);
+    EXPECT_EQ(output->openCalls_, 0);
+    EXPECT_EQ(output->startCalls_, 0);
+    EXPECT_EQ(output->stopCalls_, 0);
+    EXPECT_EQ(output->closeCalls_, 0);
+}
+
+TEST(AudioInputArmTest, SwitchingDevicesDuringATakeIsRefused) {
+    auto backend = std::make_shared<FakeBackendState>();
+    backend->hasSecondInputDevice_ = true;
+    Audio audio{std::make_unique<FakeAudioInputBackend>(backend), {kPatientDeadline, kPatientDeadline}};
+    ASSERT_TRUE(audio.startCapture(fakeDeviceConfig(), {}));
+    audio.setCaptureRecording(true);
+
+    const IRAudio::AudioInputArmResult refused = audio.armInput(kSecondInputDeviceName, 48'000);
+
+    EXPECT_FALSE(refused.armed_);
+    EXPECT_TRUE(refused.reason_.contains("recording")) << refused.reason_;
+    EXPECT_FALSE(audio.isInputArmed());
+    EXPECT_TRUE(audio.isCapturing());
+    EXPECT_EQ(backend->openCalls_, 1);
+    EXPECT_EQ(backend->closeCalls_, 0);
+
+    EXPECT_TRUE(audio.armInput(kFakeDeviceName, 48'000).armed_);
+    audio.setCaptureRecording(false);
+    EXPECT_TRUE(audio.armInput(kSecondInputDeviceName, 48'000).armed_);
+    EXPECT_EQ(backend->openCalls_, 2);
+}
+
+TEST(AudioInputFacadeTest, ArmReadAndDisarmThroughTheManager) {
+    auto backend = std::make_shared<FakeBackendState>();
+    IRAudio::AudioManager audioManager{std::make_unique<FakeAudioInputBackend>(backend), nullptr};
+    EXPECT_FALSE(IRAudio::audioInputLevels().has_value());
+
+    const IRAudio::AudioInputArmResult armed = IRAudio::armAudioInput(kFakeDeviceName, kMeterRate);
+
+    ASSERT_TRUE(armed.armed_) << armed.reason_;
+    deliverStereoSine(backend->callback_, 0, kMeterWindowFrames, 0.5f, 0.25f);
+    const std::optional<IRAudio::AudioInputLevels> levels = IRAudio::audioInputLevels();
+    ASSERT_TRUE(levels.has_value());
+    EXPECT_EQ(levels->generation_, 1u);
+    expectHalfAndQuarterScaleSine(*levels);
+    EXPECT_FALSE(IRAudio::armAudioInput("Missing Device", kMeterRate).armed_);
+
+    IRAudio::disarmAudioInput();
+
+    EXPECT_FALSE(IRAudio::audioInputLevels().has_value());
+    EXPECT_EQ(backend->openCalls_, 1);
+    EXPECT_EQ(backend->closeCalls_, 1);
 }
 
 } // namespace

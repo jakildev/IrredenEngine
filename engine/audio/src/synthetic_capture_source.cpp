@@ -30,7 +30,13 @@ bool SyntheticAudioCaptureSource::startCapture(
     if (m_captureThread.joinable()) {
         m_captureThread.join();
     }
+    m_meter.reset(
+        static_cast<unsigned int>(config.channels_),
+        static_cast<unsigned int>(config.sample_rate_)
+    );
+    m_meter.setActive(true);
     m_captureSampleRate = config.sample_rate_;
+    m_captureChannels = config.channels_;
     m_capturing = true;
     m_captureThread =
         std::thread(&SyntheticAudioCaptureSource::captureLoop, this, config, std::move(callback));
@@ -43,7 +49,9 @@ void SyntheticAudioCaptureSource::stopCapture() {
     if (m_captureThread.joinable()) {
         m_captureThread.join();
     }
+    m_meter.setActive(false);
     m_captureSampleRate = 0;
+    m_captureChannels = 0;
 }
 
 bool SyntheticAudioCaptureSource::isCapturing() const {
@@ -54,8 +62,18 @@ int SyntheticAudioCaptureSource::getCaptureSampleRate() const {
     return m_captureSampleRate;
 }
 
+int SyntheticAudioCaptureSource::getCaptureChannels() const {
+    return m_captureChannels;
+}
+
 double SyntheticAudioCaptureSource::getInputLatencyMs() const {
     return 0.0;
+}
+
+void SyntheticAudioCaptureSource::setCaptureRecording(bool) {}
+
+std::optional<AudioInputLevels> SyntheticAudioCaptureSource::getInputLevels() const {
+    return m_meter.read();
 }
 
 void SyntheticAudioCaptureSource::captureLoop(
@@ -86,6 +104,7 @@ void SyntheticAudioCaptureSource::captureLoop(
             }
         }
         const double streamTime = static_cast<double>(deliveredFrames) / config.sample_rate_;
+        m_meter.accumulate(samples.data(), kBufferFrames);
         callback(samples.data(), kBufferFrames, streamTime, false);
         deliveredFrames = nextDeliveredFrames;
     }

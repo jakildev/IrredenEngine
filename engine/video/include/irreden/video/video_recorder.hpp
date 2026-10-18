@@ -1,12 +1,30 @@
 #ifndef IR_VIDEO_VIDEO_RECORDER_H
 #define IR_VIDEO_VIDEO_RECORDER_H
 
+#include <irreden/audio/ir_audio_types.hpp>
+
 #include <atomic>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace IRVideo {
+
+/// The recording's `Audio levels:` diagnostic: once per @c kIntervalSeconds of
+/// stream time it logs the capture input's latest meter window per channel,
+/// with clipping and quiet-input warnings. The values are the ones
+/// @c IRAudio::audioInputLevels returns for that window.
+class AudioLevelLog {
+  public:
+    static constexpr double kIntervalSeconds = 5.0;
+
+    /// True when this call logged. The first call starts the interval.
+    bool observe(double streamTime, const std::optional<IRAudio::AudioInputLevels> &levels);
+
+  private:
+    double m_lastLogStreamTime = -1.0;
+};
 
 /// Configuration for a single recording session. Pass to @c VideoRecorder::start or
 /// @c IRVideo::startRecording. All fields have sane defaults; at minimum set
@@ -95,7 +113,14 @@ class VideoRecorder {
     /// @param interleavedSamples  Interleaved float samples (left, right, left, …).
     /// @param frameCount          Number of sample frames (total samples / channels).
     /// @param streamTime          RtAudio stream timestamp in seconds.
-    bool submitAudioInputSamples(const float *interleavedSamples, int frameCount, double streamTime);
+    /// @param levels              The capture source's latest meter window, for the
+    ///                            @c AudioLevelLog diagnostic.
+    bool submitAudioInputSamples(
+        const float *interleavedSamples,
+        int frameCount,
+        double streamTime,
+        const std::optional<IRAudio::AudioInputLevels> &levels
+    );
     /// Acquire a pooled RGBA frame buffer of at least @p minCapacity bytes. Reusing the
     /// returned buffer across frames avoids repeated heap allocations.
     std::vector<std::uint8_t> acquireFrameBuffer(std::size_t minCapacity);

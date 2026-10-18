@@ -22,6 +22,9 @@ functions:
   — see "Outbound MIDI observer" below.
 - Audio input: open/start/stop a capture stream, register a float-sample
   callback.
+- Input arm and level meter: `armAudioInput(deviceName, sampleRate)` /
+  `disarmAudioInput()` / `audioInputLevels()` — see "Input arm and level
+  meter" below.
 - File playback: `playSound` / `playMusic` / `playSoundAt`, `stopSound`,
   `setSoundVolume`, `fadeInSound` / `fadeOutSound`, `setBusVolume`,
   `setMasterVolume`, `setListenerPosition`. The Lua mirror is the `IRAudio`
@@ -39,7 +42,8 @@ functions:
   one mutex it shares with the `MidiClock` thread.
 - **`MidiClock`** — MIDI beat clock on one open output port (`midi_clock.hpp`).
 - **`Audio`** — `RtAudio` wrapper for microphone/line-in. Implements
-  `IAudioCaptureSource`. Used by `VideoManager` for recording soundtracks.
+  `IAudioCaptureSource`. Used by `VideoManager` for recording soundtracks
+  and by the input arm for level metering, over one shared stream.
 - **`SyntheticAudioCaptureSource`** — wall-clock-paced tone source used by
   capture validation; its worker thread joins synchronously on stop.
 - **`AudioPlayback`** — miniaudio file playback (see below). `getAudioPlayback()`.
@@ -185,6 +189,45 @@ monitor would otherwise miss.
 - Lua toggles the monitor gate without device calls; recorder sync uses only input latency.
 - The synthetic capture source follows the same callback contract and paces
   against accumulated deadlines so scheduler jitter cannot shorten a take.
+
+## Input arm and level meter
+
+Distinct from the audible monitor above: arming opens the **input** only and
+never an output stream, so it cannot feed back or disturb playback.
+
+- **One input stream, two holds.** `Audio` owns at most one RtAudio input.
+  The input arm (`armInput`, Lua `IRAudio.armAudioInput`) and the capture
+  consumer (`startCapture`, the recorder) each hold it; each release drops only
+  its own hold, and the stream closes when neither remains. A request for the
+  running device at its requested rate — or at a rate the device substitutes to
+  the delivered one — reuses the stream with no backend call, so arming and then
+  recording opens the device once. `openStreamIn` / `closeStreamIn` sit outside
+  both holds.
+- **Device matching** is the recorder's: exact name against `audioDevices()`,
+  empty for the default input. Up to two channels (one for a mono device).
+- **Switching.** Arming another device or rate closes the input and opens the
+  new one, carrying the recorder's callback (and its monitor, when configured);
+  `VideoManager` re-reads the delivered rate and channel count at each take
+  start. Refused with a reason while a take records
+  (`IAudioCaptureSource::setCaptureRecording`). A replacement that fails to
+  open leaves no input hold.
+- **Meter** (`detail::AudioInputMeter`, `audio_input_meter.hpp`). `AudioInputGate`
+  meters each delivery before the recorder and monitor see it: per channel,
+  non-overlapping `kAudioInputMeterWindow` (100 ms) windows counted in
+  delivered frames at the actual rate, a buffer crossing a boundary split
+  between windows. A window publishes peak and RMS in dBFS (silence clamps to
+  `kAudioInputSilenceDbfs`) and the count of `|sample| >= 1.0` samples. The
+  arm task resets it before the stream starts, so a new stream reads silent at
+  `generation_` 0 until its first window. Allocation-free, lock-free, no
+  logging on the driver thread; reads are a seqlock, safe from any thread.
+- **Levels** read nullopt (Lua `nil`) while no input is open, recorder-only
+  included. The Lua table is one `{peakDbfs, rmsDbfs, clippedSamples}` per
+  channel in device order plus `sampleRate` and `generation`.
+- **Recorder diagnostic.** `IRVideo::AudioLevelLog` logs the latest window
+  every 5 s of stream time (`Audio levels: peak=L/R dBFS, ...,
+  generation=N`) from `IAudioCaptureSource::getInputLevels`, so the log and
+  the Lua reading are one snapshot. The synthetic source meters its tone the
+  same way.
 
 ## Gotchas
 

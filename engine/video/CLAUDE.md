@@ -30,7 +30,10 @@ functions:
 - **Screenshot numbering** — seeded by scanning the output dir for
   existing files, so numbers don't collide across runs.
 - **Audio arming** — delegates to `IRAudio::Audio` (or an external
-  `IAudioCaptureSource`) for the recording's soundtrack.
+  `IAudioCaptureSource`) for the recording's soundtrack. Each take start
+  re-reads the source's delivered rate and channel count (an input arm can
+  switch devices between takes, `engine/audio/CLAUDE.md` §"Input arm and
+  level meter") and brackets the take with `setCaptureRecording`.
 - **Async finalize thread** — encoder shutdown runs off the main thread
   so stopping a long recording doesn't block. `toggleCapture` drops every
   toggle while it runs, so a stop-then-restart must wait it out:

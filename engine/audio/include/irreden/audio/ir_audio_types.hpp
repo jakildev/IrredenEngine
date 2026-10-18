@@ -3,6 +3,7 @@
 
 #include <array>
 #include <chrono>
+#include <cstdint>
 #include <string>
 
 #include <irreden/audio/music_theory.hpp>
@@ -39,6 +40,42 @@ constexpr unsigned int kAudioInputDefaultBufferFrames = 1024;
 /// Longest the main thread waits on the audio-input backend for one arm
 /// attempt (device lookup, open, start) or for one teardown (stop, close).
 constexpr std::chrono::milliseconds kAudioInputBackendDeadline{2'000};
+
+/// Most input channels an arm opens and the level meter reports.
+constexpr unsigned int kAudioInputMaxChannels = 2;
+/// Length of one level-meter window, counted in delivered frames at the
+/// stream's actual rate.
+constexpr std::chrono::milliseconds kAudioInputMeterWindow{100};
+/// The level reported for digital silence.
+constexpr float kAudioInputSilenceDbfs = -120.0f;
+
+/// One input channel's levels over the last complete meter window.
+struct AudioChannelLevel {
+    float peakDbfs_ = kAudioInputSilenceDbfs;
+    float rmsDbfs_ = kAudioInputSilenceDbfs;
+    /// Samples with magnitude >= 1.0 in the window.
+    std::uint32_t clippedSamples_ = 0;
+};
+
+/// The armed input's latest published meter window, as
+/// `IRAudio::audioInputLevels` returns it. Every channel reads silent until
+/// the stream completes its first window.
+struct AudioInputLevels {
+    /// Device-channel order; entries past `channelCount_` are unused.
+    std::array<AudioChannelLevel, kAudioInputMaxChannels> channels_{};
+    unsigned int channelCount_ = 0;
+    /// The stream's actual rate.
+    unsigned int sampleRate_ = 0;
+    /// Windows completed since the stream opened; 0 until the first.
+    std::uint64_t generation_ = 0;
+};
+
+/// Outcome of `IRAudio::armAudioInput`: `reason_` names what failed when
+/// `armed_` is false and is empty otherwise.
+struct AudioInputArmResult {
+    bool armed_ = false;
+    std::string reason_;
+};
 
 /// Opaque handle to a live playback sound, returned by `IRAudio::playSound` /
 /// `playMusic`. Pass back to `stop` / `setSoundVolume` / `fade*`. Values are
