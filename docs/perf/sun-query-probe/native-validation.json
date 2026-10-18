@@ -1,0 +1,32 @@
+{
+  "device": "Apple M4 Max",
+  "rounds": 0,
+  "measurement": false,
+  "dispatches_per_sample": 1,
+  "queries": 65536,
+  "samples": [],
+  "warmup_seconds": 0,
+  "warmup_elapsed_seconds": 0,
+  "warmup_rounds": 0,
+  "compile_options": "nil (runtime default)",
+  "diagnostic_all_receivers_validated": true,
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "head": "cae209ad121f0132012f1f04802ac254b42cebce",
+  "command": [
+    "scripts/perf/sun_query_probe.py",
+    "--validate-only",
+    "--output",
+    "/tmp/sun-query-probe-validation-final"
+  ],
+  "changes": "M  .github/workflows/render-harness-tests.yml\nM  docs/agents/VALIDATION.md\nM  docs/design/rendering-audit-todo.md\nA  docs/perf/sun-query-probe/README.md\nA  docs/perf/sun-query-probe/archives.json\nA  docs/perf/sun-query-probe/initial-short-warmup-sources.tar.gz\nA  docs/perf/sun-query-probe/initial-short-warmup.json\nA  docs/perf/sun-query-probe/native-validation-sources.tar.gz\nA  docs/perf/sun-query-probe/native-validation.json\nM  scripts/perf/README.md\nA  scripts/perf/sun_query_probe.py\nA  scripts/tests/test_sun_query_probe.py\n",
+  "compiler_version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.5.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin",
+  "host_power_before": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=22872163)\t87%; charging; (no estimate) present: true",
+  "host_power": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=22872163)\t87%; charging; 0:46 remaining present: true",
+  "hashes": {
+    "timed.metal": "2bfe6a3f1982a3dc7a26d6fc1ea374bce14c34349c97a44cc2d2ce4115668745",
+    "diagnostic.metal": "afe95f57afe595ca79f5edc104d51dd365c11b8d4ebccd7454a00d3640de6e8a",
+    "native.mm": "f9d120ea8f38c6fb2162a23bc2027ff40bf515d344397659fb2e08a0180c95e6",
+    "native": "85ed1f68e03dac7e544b6ed77a6c303e31d9036017f7454be666c54b08663c47"
+  },
+  "summary": []
+}

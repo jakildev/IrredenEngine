@@ -1,0 +1,663 @@
+{
+  "device": "Apple M4 Max",
+  "rounds": 7,
+  "measurement": true,
+  "dispatches_per_sample": 8,
+  "queries": 65536,
+  "samples": [
+    {
+      "face_misses_per_receiver": 64,
+      "kind": 0,
+      "round": 0,
+      "count": 64,
+      "gpu_ms": 0.06962500629015267,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 64,
+      "kind": 1,
+      "round": 0,
+      "count": 64,
+      "gpu_ms": 0.11016667122021317,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 2,
+      "round": 0,
+      "count": 64,
+      "gpu_ms": 0.10106770787388086,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 3,
+      "round": 0,
+      "count": 64,
+      "gpu_ms": 0.006328133167698979,
+      "candidate_visits_per_receiver": 1
+    },
+    {
+      "face_misses_per_receiver": 63,
+      "kind": 4,
+      "round": 0,
+      "count": 64,
+      "gpu_ms": 0.07735937833786011,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 256,
+      "kind": 0,
+      "round": 0,
+      "count": 256,
+      "gpu_ms": 0.2777291811071336,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 256,
+      "kind": 1,
+      "round": 0,
+      "count": 256,
+      "gpu_ms": 0.43385938624851406,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 2,
+      "round": 0,
+      "count": 256,
+      "gpu_ms": 0.4389531386550516,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 3,
+      "round": 0,
+      "count": 256,
+      "gpu_ms": 0.006015616236254573,
+      "candidate_visits_per_receiver": 1
+    },
+    {
+      "face_misses_per_receiver": 255,
+      "kind": 4,
+      "round": 0,
+      "count": 256,
+      "gpu_ms": 0.26344272191636264,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 255,
+      "kind": 4,
+      "round": 1,
+      "count": 256,
+      "gpu_ms": 0.30028127366676927,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 3,
+      "round": 1,
+      "count": 256,
+      "gpu_ms": 0.006843736628070474,
+      "candidate_visits_per_receiver": 1
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 2,
+      "round": 1,
+      "count": 256,
+      "gpu_ms": 0.41045312536880374,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 256,
+      "kind": 1,
+      "round": 1,
+      "count": 256,
+      "gpu_ms": 0.4736250266432762,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 256,
+      "kind": 0,
+      "round": 1,
+      "count": 256,
+      "gpu_ms": 0.2999531279783696,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 63,
+      "kind": 4,
+      "round": 1,
+      "count": 64,
+      "gpu_ms": 0.06793750799261034,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 3,
+      "round": 1,
+      "count": 64,
+      "gpu_ms": 0.005953130312263966,
+      "candidate_visits_per_receiver": 1
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 2,
+      "round": 1,
+      "count": 64,
+      "gpu_ms": 0.11300522601231933,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 64,
+      "kind": 1,
+      "round": 1,
+      "count": 64,
+      "gpu_ms": 0.12578125461004674,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 64,
+      "kind": 0,
+      "round": 1,
+      "count": 64,
+      "gpu_ms": 0.07946876576170325,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 64,
+      "kind": 0,
+      "round": 2,
+      "count": 64,
+      "gpu_ms": 0.07949999417178333,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 64,
+      "kind": 1,
+      "round": 2,
+      "count": 64,
+      "gpu_ms": 0.12592188431881368,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 2,
+      "round": 2,
+      "count": 64,
+      "gpu_ms": 0.11127605102956295,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 3,
+      "round": 2,
+      "count": 64,
+      "gpu_ms": 0.006343732820823789,
+      "candidate_visits_per_receiver": 1
+    },
+    {
+      "face_misses_per_receiver": 63,
+      "kind": 4,
+      "round": 2,
+      "count": 64,
+      "gpu_ms": 0.07731249206699431,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 256,
+      "kind": 0,
+      "round": 2,
+      "count": 256,
+      "gpu_ms": 0.3027500060852617,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 256,
+      "kind": 1,
+      "round": 2,
+      "count": 256,
+      "gpu_ms": 0.4940781509503722,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 2,
+      "round": 2,
+      "count": 256,
+      "gpu_ms": 0.44605208677239716,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 3,
+      "round": 2,
+      "count": 256,
+      "gpu_ms": 0.006776041118428111,
+      "candidate_visits_per_receiver": 1
+    },
+    {
+      "face_misses_per_receiver": 255,
+      "kind": 4,
+      "round": 2,
+      "count": 256,
+      "gpu_ms": 0.301328138448298,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 255,
+      "kind": 4,
+      "round": 3,
+      "count": 256,
+      "gpu_ms": 0.335531251039356,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 3,
+      "round": 3,
+      "count": 256,
+      "gpu_ms": 0.006796879461035132,
+      "candidate_visits_per_receiver": 1
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 2,
+      "round": 3,
+      "count": 256,
+      "gpu_ms": 0.4461666685529053,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 256,
+      "kind": 1,
+      "round": 3,
+      "count": 256,
+      "gpu_ms": 0.5405624979175627,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 256,
+      "kind": 0,
+      "round": 3,
+      "count": 256,
+      "gpu_ms": 0.3030781226698309,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 63,
+      "kind": 4,
+      "round": 3,
+      "count": 64,
+      "gpu_ms": 0.07748958887532353,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 3,
+      "round": 3,
+      "count": 64,
+      "gpu_ms": 0.006703136023133993,
+      "candidate_visits_per_receiver": 1
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 2,
+      "round": 3,
+      "count": 64,
+      "gpu_ms": 0.11542189167812467,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 64,
+      "kind": 1,
+      "round": 3,
+      "count": 64,
+      "gpu_ms": 0.12584374053403735,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 64,
+      "kind": 0,
+      "round": 3,
+      "count": 64,
+      "gpu_ms": 0.07947394624352455,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 64,
+      "kind": 0,
+      "round": 4,
+      "count": 64,
+      "gpu_ms": 0.0795260421000421,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 64,
+      "kind": 1,
+      "round": 4,
+      "count": 64,
+      "gpu_ms": 0.1219218538608402,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 2,
+      "round": 4,
+      "count": 64,
+      "gpu_ms": 0.11512500350363553,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 3,
+      "round": 4,
+      "count": 64,
+      "gpu_ms": 0.006317713996395469,
+      "candidate_visits_per_receiver": 1
+    },
+    {
+      "face_misses_per_receiver": 63,
+      "kind": 4,
+      "round": 4,
+      "count": 64,
+      "gpu_ms": 0.07754689431749284,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 256,
+      "kind": 0,
+      "round": 4,
+      "count": 256,
+      "gpu_ms": 0.30310938018374145,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 256,
+      "kind": 1,
+      "round": 4,
+      "count": 256,
+      "gpu_ms": 0.4721249861177057,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 2,
+      "round": 4,
+      "count": 256,
+      "gpu_ms": 0.4461562493816018,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 3,
+      "round": 4,
+      "count": 256,
+      "gpu_ms": 0.00679164077155292,
+      "candidate_visits_per_receiver": 1
+    },
+    {
+      "face_misses_per_receiver": 255,
+      "kind": 4,
+      "round": 4,
+      "count": 256,
+      "gpu_ms": 0.2848489675670862,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 255,
+      "kind": 4,
+      "round": 5,
+      "count": 256,
+      "gpu_ms": 0.3007604100275785,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 3,
+      "round": 5,
+      "count": 256,
+      "gpu_ms": 0.006796879461035132,
+      "candidate_visits_per_receiver": 1
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 2,
+      "round": 5,
+      "count": 256,
+      "gpu_ms": 0.4301822918932885,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 256,
+      "kind": 1,
+      "round": 5,
+      "count": 256,
+      "gpu_ms": 0.48824999248608947,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 256,
+      "kind": 0,
+      "round": 5,
+      "count": 256,
+      "gpu_ms": 0.2975104143843055,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 63,
+      "kind": 4,
+      "round": 5,
+      "count": 64,
+      "gpu_ms": 0.07726563489995897,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 3,
+      "round": 5,
+      "count": 64,
+      "gpu_ms": 0.006328133167698979,
+      "candidate_visits_per_receiver": 1
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 2,
+      "round": 5,
+      "count": 64,
+      "gpu_ms": 0.11538021499291062,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 64,
+      "kind": 1,
+      "round": 5,
+      "count": 64,
+      "gpu_ms": 0.12596874148584902,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 64,
+      "kind": 0,
+      "round": 5,
+      "count": 64,
+      "gpu_ms": 0.07956771878525615,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 64,
+      "kind": 0,
+      "round": 6,
+      "count": 64,
+      "gpu_ms": 0.07949999417178333,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 64,
+      "kind": 1,
+      "round": 6,
+      "count": 64,
+      "gpu_ms": 0.11360939242877066,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 2,
+      "round": 6,
+      "count": 64,
+      "gpu_ms": 0.11528126196935773,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 3,
+      "round": 6,
+      "count": 64,
+      "gpu_ms": 0.006703106919303536,
+      "candidate_visits_per_receiver": 1
+    },
+    {
+      "face_misses_per_receiver": 63,
+      "kind": 4,
+      "round": 6,
+      "count": 64,
+      "gpu_ms": 0.07751560769975185,
+      "candidate_visits_per_receiver": 64
+    },
+    {
+      "face_misses_per_receiver": 256,
+      "kind": 0,
+      "round": 6,
+      "count": 256,
+      "gpu_ms": 0.3028750070370734,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 256,
+      "kind": 1,
+      "round": 6,
+      "count": 256,
+      "gpu_ms": 0.47199998516589403,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 2,
+      "round": 6,
+      "count": 256,
+      "gpu_ms": 0.4461718781385571,
+      "candidate_visits_per_receiver": 256
+    },
+    {
+      "face_misses_per_receiver": 0,
+      "kind": 3,
+      "round": 6,
+      "count": 256,
+      "gpu_ms": 0.006890622898936272,
+      "candidate_visits_per_receiver": 1
+    },
+    {
+      "face_misses_per_receiver": 255,
+      "kind": 4,
+      "round": 6,
+      "count": 256,
+      "gpu_ms": 0.2914687502197921,
+      "candidate_visits_per_receiver": 256
+    }
+  ],
+  "warmup_seconds": 3,
+  "warmup_elapsed_seconds": 3.016514875,
+  "warmup_rounds": 186,
+  "compile_options": "nil (runtime default)",
+  "diagnostic_all_receivers_validated": true,
+  "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+  "head": "cae209ad121f0132012f1f04802ac254b42cebce",
+  "command": [
+    "scripts/perf/sun_query_probe.py",
+    "--output",
+    "/tmp/sun-query-probe-repeat-native"
+  ],
+  "changes": "M  .github/workflows/render-harness-tests.yml\nM  docs/agents/VALIDATION.md\nM  docs/design/rendering-audit-todo.md\nAM docs/perf/sun-query-probe/README.md\nAM docs/perf/sun-query-probe/archives.json\nA  docs/perf/sun-query-probe/initial-short-warmup-sources.tar.gz\nA  docs/perf/sun-query-probe/initial-short-warmup.json\nAM docs/perf/sun-query-probe/native-validation-sources.tar.gz\nAM docs/perf/sun-query-probe/native-validation.json\nM  scripts/perf/README.md\nA  scripts/perf/sun_query_probe.py\nA  scripts/tests/test_sun_query_probe.py\n",
+  "compiler_version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.5.0\nThread model: posix\nInstalledDir: /Library/Developer/CommandLineTools/usr/bin",
+  "host_power_before": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=22872163)\t87%; charging; 0:46 remaining present: true",
+  "host_power": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=22872163)\t87%; charging; 0:46 remaining present: true",
+  "hashes": {
+    "timed.metal": "2bfe6a3f1982a3dc7a26d6fc1ea374bce14c34349c97a44cc2d2ce4115668745",
+    "diagnostic.metal": "afe95f57afe595ca79f5edc104d51dd365c11b8d4ebccd7454a00d3640de6e8a",
+    "native.mm": "f9d120ea8f38c6fb2162a23bc2027ff40bf515d344397659fb2e08a0180c95e6",
+    "native": "85ed1f68e03dac7e544b6ed77a6c303e31d9036017f7454be666c54b08663c47"
+  },
+  "summary": [
+    {
+      "count": 64,
+      "case": "envelope_miss",
+      "median_gpu_ms": 0.07949999417178333,
+      "min_gpu_ms": 0.06962500629015267,
+      "max_gpu_ms": 0.07956771878525615
+    },
+    {
+      "count": 64,
+      "case": "footprint_miss",
+      "median_gpu_ms": 0.12578125461004674,
+      "min_gpu_ms": 0.11016667122021317,
+      "max_gpu_ms": 0.12596874148584902
+    },
+    {
+      "count": 64,
+      "case": "behind",
+      "median_gpu_ms": 0.11512500350363553,
+      "min_gpu_ms": 0.10106770787388086,
+      "max_gpu_ms": 0.11542189167812467
+    },
+    {
+      "count": 64,
+      "case": "first_blocker",
+      "median_gpu_ms": 0.006328133167698979,
+      "min_gpu_ms": 0.005953130312263966,
+      "max_gpu_ms": 0.006703136023133993
+    },
+    {
+      "count": 64,
+      "case": "last_blocker",
+      "median_gpu_ms": 0.07735937833786011,
+      "min_gpu_ms": 0.06793750799261034,
+      "max_gpu_ms": 0.07754689431749284
+    },
+    {
+      "count": 256,
+      "case": "envelope_miss",
+      "median_gpu_ms": 0.3027500060852617,
+      "min_gpu_ms": 0.2777291811071336,
+      "max_gpu_ms": 0.30310938018374145
+    },
+    {
+      "count": 256,
+      "case": "footprint_miss",
+      "median_gpu_ms": 0.4736250266432762,
+      "min_gpu_ms": 0.43385938624851406,
+      "max_gpu_ms": 0.5405624979175627
+    },
+    {
+      "count": 256,
+      "case": "behind",
+      "median_gpu_ms": 0.44605208677239716,
+      "min_gpu_ms": 0.41045312536880374,
+      "max_gpu_ms": 0.4461718781385571
+    },
+    {
+      "count": 256,
+      "case": "first_blocker",
+      "median_gpu_ms": 0.006796879461035132,
+      "min_gpu_ms": 0.006015616236254573,
+      "max_gpu_ms": 0.006890622898936272
+    },
+    {
+      "count": 256,
+      "case": "last_blocker",
+      "median_gpu_ms": 0.30028127366676927,
+      "min_gpu_ms": 0.26344272191636264,
+      "max_gpu_ms": 0.335531251039356
+    }
+  ]
+}
