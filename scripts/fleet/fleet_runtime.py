@@ -48,6 +48,10 @@ def atomic_json(path, data):
         Path(temp).unlink(missing_ok=True)
 
 
+# fleet_gh_fallback imports atomic_json from this partially initialized module.
+import fleet_gh_fallback  # noqa: E402
+
+
 def routing_problem(state, key, message=None):
     """Warn once, then maintain an alert after three identical route failures."""
     tag = hashlib.sha256(key.encode()).hexdigest()[:16]
@@ -286,25 +290,17 @@ def github_call(args):
     proc = fleet_github.run(args, capture_output=True, timeout=30)
     if proc.returncode == 0:
         return proc
-    from fleet_gh_fallback import (
-        RestFailed,
-        Unmodeled,
-        is_refusal,
-        latch_refusal,
-        refusal_reason,
-        translate,
-    )
-    if not is_refusal(proc.stderr):
+    if not fleet_gh_fallback.is_refusal(proc.stderr):
         return proc
     try:
-        latch_refusal(refusal_reason(args, proc.stderr))
+        fleet_gh_fallback.latch_refusal(fleet_gh_fallback.refusal_reason(args, proc.stderr))
     except OSError as exc:
         print(f"fleet-runtime: GraphQL refusal latch failed: {exc}", file=sys.stderr)
     try:
-        stdout = translate(args)
-    except Unmodeled:
+        stdout = fleet_gh_fallback.translate(args)
+    except fleet_gh_fallback.Unmodeled:
         return proc
-    except RestFailed as exc:
+    except fleet_gh_fallback.RestFailed as exc:
         return subprocess.CompletedProcess(args, 1, b"", exc.stderr)
     return subprocess.CompletedProcess(args, 0, stdout, b"")
 
