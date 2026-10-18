@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "Voxel editor",
+  "description": "Demonstrates the voxel editor creation and its engine integration.",
+  "group": "editors",
+  "tags": [
+    "editors"
+  ],
+  "kind": "editor",
+  "targets": [
+    {
+      "name": "IRVoxelEditor",
+      "description": "Runs the voxel editor creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

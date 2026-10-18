@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "Detached probe",
+  "description": "Demonstrates the detached probe creation and its engine integration.",
+  "group": "render/shapes",
+  "tags": [
+    "render",
+    "shapes"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRDetachedProbe",
+      "description": "Runs the detached probe creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

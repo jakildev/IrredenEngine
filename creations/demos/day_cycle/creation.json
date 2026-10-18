@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "Day cycle",
+  "description": "Demonstrates the day cycle creation and its engine integration.",
+  "group": "render/lighting",
+  "tags": [
+    "render",
+    "lighting"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRDayCycle",
+      "description": "Runs the day cycle creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "Sprite demo",
+  "description": "Demonstrates the sprite demo creation and its engine integration.",
+  "group": "render/sprites",
+  "tags": [
+    "render",
+    "sprites"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRSpriteDemo",
+      "description": "Runs the sprite demo creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

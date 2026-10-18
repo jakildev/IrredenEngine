@@ -32,6 +32,9 @@ silently absent from every sweep (#2919). Schema + flow:
 
 ## Conventions
 
+- **Catalog manifest.** Every demo ships `creation.json` v1. Its schema is
+  [`docs/design/engine-launcher.md`](../../docs/design/engine-launcher.md) §D2.
+
 - **Self-contained.** A demo must build and run without any private
   creation being present. Don't cross-link from a demo to a private
   creation's code.

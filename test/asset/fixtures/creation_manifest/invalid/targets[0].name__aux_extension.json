@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "name": "Fixture",
+  "description": "A shared creation-manifest fixture.",
+  "group": "test",
+  "tags": [
+    "fixture"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "Aux.cpp",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        }
+      ]
+    }
+  ]
+}

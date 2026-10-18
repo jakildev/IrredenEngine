@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "Low-resolution pan",
+  "description": "Demonstrates the low-resolution pan creation and its engine integration.",
+  "group": "render/camera",
+  "tags": [
+    "render",
+    "camera"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRLowresPan",
+      "description": "Runs the low-resolution pan creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

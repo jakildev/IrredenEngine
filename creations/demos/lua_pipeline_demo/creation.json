@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "name": "Lua pipeline",
+  "description": "Demonstrates the lua pipeline creation and its engine integration.",
+  "group": "lua/ecs",
+  "tags": [
+    "lua",
+    "ecs"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRLuaPipelineDemo",
+      "description": "Runs the lua pipeline creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

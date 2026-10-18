@@ -1,0 +1,64 @@
+{
+  "version": 1,
+  "name": "Z yaw rotation",
+  "description": "Demonstrates the z yaw rotation creation and its engine integration.",
+  "group": "render/camera",
+  "tags": [
+    "render",
+    "camera"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRZYawStatic",
+      "description": "Runs the z yaw rotation creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRZYawInteractive",
+      "description": "Runs the z yaw rotation creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "IRZYawCoverage",
+      "description": "Runs the z yaw rotation creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}

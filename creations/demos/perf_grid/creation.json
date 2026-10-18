@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "name": "Performance grid",
+  "description": "Demonstrates the performance grid creation and its engine integration.",
+  "group": "perf",
+  "tags": [
+    "perf"
+  ],
+  "kind": "demo",
+  "targets": [
+    {
+      "name": "IRPerfGrid",
+      "description": "Runs the performance grid creation.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Screenshot",
+          "args": [
+            "--auto-screenshot",
+            "5"
+          ]
+        }
+      ]
+    }
+  ]
+}
