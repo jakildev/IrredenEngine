@@ -263,8 +263,8 @@ its check. Every failure happens before a child is started.
   as `bindFiles` canonicalizes the run directory today. `engine/utility` is
   the file-and-path helper module: `IrredenEngineAsset` links it `PUBLIC`,
   scripting reaches it through `asset`, and `IrredenEngineWorld` links it
-  directly. So the catalog (D3), `spawnTool`, `handOff{ buildDir }` (D5),
-  the image binding (D9) and `IRFile` all reach it with no new CMake edge.
+  directly. So the catalog (D3), `spawnTool`, the image binding (D9) and
+  `IRFile` all reach it with no new CMake edge.
   It does not go in `common/` (compile-time constants only) or `asset/`
   (formats; a filesystem rule is not a format). The first engine child
   lands it beside `isTargetName` and retargets
@@ -284,7 +284,10 @@ its check. Every failure happens before a child is started.
   override a launcher Build would compile the demo into the launcher's own
   tree. For
   every other tool the service removes `IRREDEN_BUILD_DIR` from the child's
-  environment. Lua sets no environment variable.
+  environment. Lua sets no environment variable. Run uses the same fixed
+  tree (D5): containment alone cannot tell `<root>/build` from a nested
+  checkout's `.claude/worktrees/pool-1/build`, so neither service takes a
+  build dir from Lua.
 
 **Ownership and shutdown.** No tool child outlives the engine.
 
@@ -352,21 +355,26 @@ Three extensions to the hand-off contract:
   starts. It also places `--` ahead of `argv[0]` in the `ir-run` command, so
   `ir-run` stops reading options there. Today `handOff` accepts any first
   string. A Lua caller could pass `{ "--build-dir", "/elsewhere", "x" }`
-  and choose the tree itself, which would make the `buildDir` check below
-  pointless. The check also keeps the result file name below to a single
-  safe path component.
-- `HandOffRequest::buildDir_` (Lua `buildDir`), passed to the child as
-  `ir-run --build-dir`. Without it the child inherits the launcher's own
-  `IRREDEN_BUILD_DIR` (`build-launcher/installed/<id>/`, D6) and looks for the
-  demo in the wrong tree. `buildDir` is a root-relative path checked by the D4 path
-  model, and `ir-run` gets the resolved path. Setting it raises in a process
-  with no tool root, and the launcher passes `"build"`. Without that check,
-  any Lua creation could point `ir-run` at an arbitrary directory and run
-  whatever executable it finds there.
+  and choose the tree itself, defeating the fixed tree below. The check
+  also keeps the result file name below to a single safe path component.
+- **In a process with a tool root, the hand-off runs from `<root>/build`.**
+  `runHandOff` passes `ir-run --build-dir <root>/build`, built from the tool
+  root (D4), never from a Lua value. Without it the child inherits the
+  launcher's own `IRREDEN_BUILD_DIR` (`build-launcher/installed/<id>/`, D6)
+  and looks for the demo in the wrong tree. Lua has no `buildDir` key, and
+  `handOff` raises on any key other than `argv` and `resume`, so a passed
+  directory fails at the call instead of being ignored. The reason:
+  `ir-run` searches the directory it is given and executes a matching
+  binary, and a root-contained directory can still be a nested checkout's
+  build tree (`.claude/worktrees/pool-1/build`, `creations/game/build`).
+  That is the boundary D4 fixes Build's tree to keep, so Run keeps it the
+  same way. In a process with no tool root, `handOff` is unchanged: no
+  `--build-dir`, and the child inherits the parent's `IRREDEN_BUILD_DIR`.
 - `ir-run --result-file <path>` writes the `RESULT=` verdict it prints as
-  JSON (`verdict`, `exe`, `exit`, `signal`, `argv`, `at`). `handOff` passes a
-  path under `<buildDir>/ir-run-results/<exe>.last.json` and surfaces the
-  parsed verdict as `HandOffResult::verdict_` (Lua `r.verdict`); the catalog
+  JSON (`verdict`, `exe`, `exit`, `signal`, `argv`, `at`). With a tool root,
+  `handOff` passes `<root>/build/ir-run-results/<exe>.last.json` and surfaces
+  the parsed verdict as `HandOffResult::verdict_` (Lua `r.verdict`); without
+  one it passes no result file and `r.verdict` is absent. The catalog
   (D3) reads the same file for "last run" on every target, so a run from the
   shell shows up too.
 
@@ -385,7 +393,8 @@ broken worktree build never takes the launcher down.
 running program.
 - After a successful build, the script copies the executable's directory
   into a versioned directory `build-launcher/installed/<id>/`, where `<id>`
-  is a UTC stamp (`20261018T071500Z`). It holds the executable and its
+  is a UTC stamp and the script's pid (`20261018T071500Z-48213`), so two
+  updates in the same second never share a name. It holds the executable and its
   staged `data/`, `shaders/`, `scripts/` and runtime DLLs.
 - `build-launcher/installed/current` is a one-line file naming the live
   `<id>`.
@@ -416,6 +425,28 @@ returns, so every manager has already been torn down. That includes the D4
 `--supervised`, which only `ir-launcher` passes. Without that flag the
 button is hidden, because nothing would act on the exit code.
 
+**One writer per checkout.** Two invocations can reach `installed/`: the
+supervisor loop and a shell `ir-launcher --update`. Unserialized, they
+break the invariant below. Updater A finishes step 3 with `installed/<a>/`
+complete. Updater B's recovery then sees `current` still naming the old
+copy and removes `<a>`. A's step 4 then points `current` at a directory
+that no longer exists. So every write to `installed/` happens under one
+lock.
+- **The lock** is `build-launcher/lock/`, scoped to the checkout's launcher
+  tree. It uses the primitive `ir-acquire` uses
+  (`engine/tools/lib/concurrency_helpers.sh`): an atomic `mkdir`, a `pid`
+  record, the native-Windows two-runtime pid record, and reclaim when the
+  holder is dead.
+- **The supervisor holds it for its whole life:** recovery, every launch,
+  and every update, until the script exits. `--update` holds it from
+  recovery through step 5. Nothing reads or writes `installed/` before
+  taking it. So one launcher runs per checkout, matching D7's single root.
+- **Contention fails fast.** A second invocation (a second `ir-launcher`,
+  or `--update` while a launcher runs) does not wait. It prints the
+  holder's pid and exits non-zero, having touched nothing under
+  `installed/`. While a launcher runs, the in-app button is the update
+  path.
+
 **The update step** commits with one atomic file replace:
 1. The script builds `IRLauncher` in `build-launcher/` and writes the output
    to `build-launcher/update.log`.
@@ -434,12 +465,13 @@ First use is steps 1–4 with nothing to carry. `ir-launcher --update` from a
 shell runs recovery and the update step without the loop, and exits
 non-zero on failure.
 
-**Invariant.** `current` is written only after the directory it names is
-complete, and only by an atomic replace. At every instant `current` names a
-runnable launcher, and the previous launcher is never removed before the new
-one is live.
+**Invariant.** `current` is written only by the lock holder, only after the
+directory it names is complete, and only by an atomic replace. At every
+instant `current` names a runnable launcher, and the previous launcher is
+never removed before the new one is live.
 
-**Recovery** runs first in every loop pass, in `--update`, and on first use:
+**Recovery** runs under the lock, first in every loop pass, in `--update`,
+and on first use:
 - Remove every `installed/*.staging/`.
 - If `current` names a directory holding the executable, remove every other
   `installed/*/`: the orphan of a crash between steps 3 and 5, or of a
@@ -467,7 +499,20 @@ Nothing has an installed executable open while the update runs, which
 matters on Windows, where a running `.exe` cannot be overwritten or
 removed.
 
+**Stated limits.** Both need a holder that died without releasing the lock.
+- Reclaiming a dead holder's lock is the shared primitive's `rm -rf` then
+  `mkdir`. Two invocations that find the same dead holder at the same
+  instant can both proceed. The fix belongs in the primitive, for every
+  lock that uses it.
+- A supervisor killed with `SIGKILL` leaves its launcher running under a
+  dead holder pid. The next invocation reclaims the lock, and a later
+  update can remove the directory that orphan runs from.
+
 Rejected:
+- Locking only around the update step. Recovery and step 5 in a shell
+  update would still remove the copy a running launcher executes from.
+- Waiting on a held lock. A shell `--update` would block until a GUI
+  session ends.
 - Swapping `installed.next/` → `installed/` → `installed.prev/` with two
   directory renames. Between the first rename and the second, no
   `installed/` exists. A failed second rename, or an interrupt in that
@@ -598,7 +643,7 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
 | Table | Call | Owner |
 |---|---|---|
 | `IRCatalog` | `scan{ root, buildDir }`, `assets{ root }` (relative to the bound tool root); installed only by `bindLuaCatalog(toolRoot)` | `engine/catalog` |
-| `IREngine` | `spawnTool{ tool, target \| path }` → handle (`poll`, `exit`, `kill`); `toolRoot()`; `handOff{ argv, buildDir }` → `r.verdict` | `engine/world` |
+| `IREngine` | `spawnTool{ tool, target \| path }` → handle (`poll`, `exit`, `kill`); `toolRoot()`; `handOff{ argv }` → `r.verdict` (runs from `<root>/build` when a tool root is set, D5) | `engine/world` |
 | `IRGui` | `makeImage(x, y, w, h, path)`, `setImagePath(id, path)` (`path` relative to the image base bound by `bindWidgets`, D9) | `engine/prefabs/irreden/render` |
 | `IRLauncher` | `requestUpdate()` (launcher-local, `--supervised` only, D6) | `creations/launcher` |
 
@@ -665,7 +710,12 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
       cannot create symlinks);
     - a sibling directory whose name has the root as a string prefix
       (`<root>2`);
-    - `spawnTool` and `handOff{ buildDir }` in a process with no tool root;
+    - a `handOff` carrying `buildDir` or any other key outside `argv` and
+      `resume`. That includes a contained nested-checkout tree,
+      `buildDir = ".claude/worktrees/pool-1/build"`, where the fixture holds
+      a stub binary named like `argv[0]`. The drain also records zero
+      calls;
+    - `spawnTool` in a process with no tool root;
     - a second `setToolRoot` call.
   - **Accepted requests.** A symlink that stays inside the root is accepted
     and passed resolved. A stub that prints its cwd and `IRREDEN_BUILD_DIR`
@@ -674,11 +724,13 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
     every other tool.
   - **Argv.** The `ir-build` argv is exactly `ir-build --target <T>`. The
     hand-off command has `--` immediately before `argv[0]`.
-  - **Hand-off.** The `buildDir_` reaches the child argv as the resolved
-    path. The verdict parses from the result file and is absent without one.
-    For a valid name, the result path is exactly
-    `<buildDir>/ir-run-results/<name>.last.json`, a single component below
-    that directory.
+  - **Hand-off.** With a tool root, the child argv carries
+    `--build-dir <root>/build` while the parent's `IRREDEN_BUILD_DIR`
+    points elsewhere. With no tool root it carries no `--build-dir` and no
+    result file. The verdict parses from the result file and is absent
+    without one. For a valid name, the result path is exactly
+    `<root>/build/ir-run-results/<name>.last.json`, a single component
+    below that directory.
   - **Lifecycle, with real children, on Linux, macOS and native Windows.**
     The stub tool starts a sleeping grandchild, prints both process ids and
     keeps writing.
@@ -715,6 +767,22 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
     `installed/<y>/` while `current` names `<z>`; (c) no `current`, with an
     orphan present. After (a) and (b) only `<z>` remains, and it ran. (c)
     runs first use and writes `current`.
+  - **Overlapping writers.** The `mv` stub is the barrier: on step 4's
+    replace it touches a ready file and waits for a release file. Updater A
+    (`--update`) parks there with `installed/<a>/` complete and `current`
+    still naming the old copy. While A is parked, a second `--update` and a
+    plain `ir-launcher` each exit non-zero within one second and print A's
+    pid. The stub `cmake` logs no call from either, and the hashed tree
+    listing of `installed/` is identical before and after them. After the
+    release, `current` names `<a>`, `<a>` holds the executable, and no
+    other directory remains.
+  - **Running launcher.** While a supervisor's stub launcher is still
+    running, `--update` refuses the same way, and `installed/` is
+    unchanged.
+  - **Stale lock.** `build-launcher/lock/` is pre-seeded with a pid that is
+    not alive. `--update` reclaims it and completes.
+  - **Unique ids.** A `date` stub returns one fixed stamp. Two sequential
+    `--update` runs still produce two different `<id>`s.
   - **No leftovers.** After the script exits, no pid it logged is alive.
   - **Pass-through.** Any other exit code ends the loop with that code and no
     build. `--update` alone runs one update and exits non-zero on a failed
