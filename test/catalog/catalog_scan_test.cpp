@@ -55,7 +55,7 @@ TEST(CatalogScanTest, FixtureTree) {
     EXPECT_EQ(valid->manifest_->name_, "Fixture creation");
     ASSERT_EQ(valid->targets_.size(), 2u);
     EXPECT_TRUE(valid->targets_[0].built_);
-    EXPECT_TRUE(valid->targets_[0].exePath_.ends_with("IRFixtureBuilt"));
+    EXPECT_TRUE(valid->targets_[0].exePath_.ends_with("IRFixtureBuilt.exe"));
     EXPECT_NE(valid->targets_[0].mtime_, 0.0);
     ASSERT_TRUE(valid->targets_[0].lastRun_.has_value());
     EXPECT_EQ(valid->targets_[0].lastRun_->verdict_, "CLEAN");
