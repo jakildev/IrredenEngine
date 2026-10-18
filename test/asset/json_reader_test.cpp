@@ -100,10 +100,15 @@ TEST(JsonReaderTest, SimpleEscapesDecode) {
 }
 
 TEST(JsonReaderTest, UnicodeEscapesDecodeToUtf8) {
-    EXPECT_EQ(*parseOk(R"("A")").asString(), "A");
-    EXPECT_EQ(*parseOk(R"("é")").asString(), "\xC3\xA9");
-    EXPECT_EQ(*parseOk(R"("€")").asString(), "\xE2\x82\xAC");
-    EXPECT_EQ(*parseOk(R"("😀")").asString(), "\xF0\x9F\x98\x80");
+    EXPECT_EQ(*parseOk(R"("\u0041")").asString(), "A");
+    EXPECT_EQ(*parseOk(R"("\u00E9")").asString(), "\xC3\xA9");
+    EXPECT_EQ(*parseOk(R"("\u00e9")").asString(), "\xC3\xA9");
+    EXPECT_EQ(*parseOk(R"("\u07FF")").asString(), "\xDF\xBF");
+    EXPECT_EQ(*parseOk(R"("\u20AC")").asString(), "\xE2\x82\xAC");
+    EXPECT_EQ(*parseOk(R"("\uFFFF")").asString(), "\xEF\xBF\xBF");
+    EXPECT_EQ(*parseOk(R"("\uD83D\uDE00")").asString(), "\xF0\x9F\x98\x80");
+    EXPECT_EQ(*parseOk(R"("\uDBFF\uDFFF")").asString(), "\xF4\x8F\xBF\xBF");
+    EXPECT_EQ(*parseOk(R"("x\u00E9\uD83D\uDE00y")").asString(), "x\xC3\xA9\xF0\x9F\x98\x80y");
     EXPECT_EQ(parseOk(R"("a\u0000b")").asString()->size(), 3u);
 }
 
