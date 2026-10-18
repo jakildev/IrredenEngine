@@ -145,30 +145,72 @@ toolchain the trixel host cannot call back into.
 ### D4 — Build runs through a new tool-spawn service, not `handOff`
 
 `handOff` blocks the main loop, which is right for a run (D5) and wrong for a
-build. `IREngine.spawnTool{ tool = "ir-build", args = {...}, cwd = ..., buildDir = ... }`
+build. `IREngine.spawnTool{ tool = "ir-build", target = "IRShapeDebug" }`
 starts a child from a fixed tool table and returns a handle;
 `handle:poll()` returns the lines written since the last poll, `handle:exit()`
 the exit code once it has one, `handle:kill()` stops it. One tool runs at a
-time; the launcher's Build button spawns `ir-build --target <T>` with
-`cwd = <root>` and `buildDir = <root>/build`, and a RENDER-phase Lua system
-polls the handle into the log panel.
+time; a RENDER-phase Lua system polls the handle into the log panel.
 
-`ir-build` has no build-directory flag: it resolves the tree from the
-invoking worktree (`git rev-parse --show-toplevel` of its cwd) unless
-`IRREDEN_BUILD_DIR` is set, and forwards every other argument to
-`cmake --build`. The cwd alone is not enough, because `ir-run` exports
-`IRREDEN_BUILD_DIR` to the process it runs, so the launcher (D6) and every
-child it spawns inherit `build-launcher/`. `buildDir` is therefore a typed
-field, not free-form env: the service sets the child's
-`IRREDEN_BUILD_DIR` to it, replacing the inherited value. Without `buildDir`
-the service removes the variable from the child's environment, so a tool
-never builds into the launcher's own tree by accident. Lua cannot set any
-other environment variable.
+**Lua names no program, directory, or environment.** Each table entry fixes
+its argv shape, working directory and environment, and takes only the typed
+fields listed below; any other key raises, and so does a field that fails
+its check. Every failure happens before a child is started.
 
-The tool table is `ir-build`, `ir-launcher` (self-update, D6), `editor` and
-`open-folder` (D8). A tool name outside the table raises; argv is never
-joined into a shell command; on native Windows the extensionless wrappers run
-through `IR_RUN_BASH` exactly as `handOff` does. The spawn, pipe and wait
+| Tool | Lua fields | Child |
+|---|---|---|
+| `ir-build` | `target` | `ir-build --target <target>`, cwd `<root>`, `IRREDEN_BUILD_DIR=<root>/build` |
+| `ir-launcher` | none | `ir-launcher --update --relaunch`, cwd `<root>` (D6) |
+| `editor` | `path` | `<editor> <resolved path>`, cwd `<root>` (D8) |
+| `open-folder` | `path` | `open` / `explorer` / `xdg-open` `<resolved path>`, cwd `<root>` |
+
+- **The root is trusted state, never a Lua value.** `<root>` is the checkout
+  the launcher was built from (D7). CMake defines `IR_LAUNCHER_ROOT` on the
+  `IRLauncher` target as `CMAKE_SOURCE_DIR`. Before any script runs,
+  `main_lua.cpp` calls `IREngine::setToolRoot(IR_LAUNCHER_ROOT)`. That C++
+  call canonicalizes the path, requires an existing directory, and may run
+  only once: a second call raises. Lua can read the root
+  (`IREngine.toolRoot()`) but has no call that changes it. `spawnTool` raises
+  in any process that never set a root, so no other creation gets the
+  service. The service class takes the root as a constructor argument, so
+  tests can point it at a fixture tree.
+- **`target`** must match `^[A-Za-z0-9_][A-Za-z0-9_.+-]*$`: a CMake target
+  name, which cannot start with `-`. `ir-build` forwards everything else to
+  `cmake --build`, and anything after `--` to the native tool (for example
+  `-- -C <dir>` under Ninja). So free-form `args` would be a second way out
+  of the root, and the entry takes none.
+- **`path` is root-relative and must resolve inside the root.** These are
+  rejected:
+  - an empty string or a NUL byte;
+  - an absolute path, including a Windows drive (`C:`), a root-relative path
+    (`\x`), and UNC (`\\host`);
+  - any `..` component.
+
+  The survivor is joined to `<root>`, and every existing component is
+  resolved, following symlinks and Windows junctions
+  (`std::filesystem::weakly_canonical`). The result must equal `<root>` or
+  lie beneath it, compared component by component, never as a string prefix
+  (`/src/IrredenEngine2` is not under `/src/IrredenEngine`). The child gets
+  the resolved path, never the Lua string. Lua has no call that creates a
+  symlink (`io` / `os` stay closed), so a check-then-spawn race needs another
+  host process. That is outside this boundary.
+- **No caller-chosen cwd.** `ir-build` resolves its tree from
+  `git rev-parse --show-toplevel` of its cwd. A cwd that is merely contained
+  could still name a nested checkout under the root: a `.claude/worktrees/`
+  pool or the private `creations/game` clone. Building one runs that
+  checkout's CMake. So the cwd is always `<root>`.
+- **No caller-chosen build dir.** A configured build dir carries its own
+  source dir in `CMakeCache.txt`, so `cmake --build` on another checkout's
+  tree builds that checkout. The service therefore sets `IRREDEN_BUILD_DIR`
+  to `<root>/build`, replacing the inherited value. `ir-build` honours that
+  variable before worktree detection. `ir-run` exports it to its child, so
+  the launcher (D6) inherits `build-launcher/`, and without the override a
+  launcher Build would compile the demo into the launcher's own tree. For
+  every other tool the service removes `IRREDEN_BUILD_DIR` from the child's
+  environment. Lua sets no environment variable.
+
+A tool name outside the table raises; argv is never joined into a shell
+command; on native Windows the extensionless wrappers run through
+`IR_RUN_BASH` exactly as `handOff` does. The spawn, pipe and wait
 primitives are factored out of `engine/hand_off_process.cpp` into one
 platform file both services use.
 
@@ -190,7 +232,11 @@ Two extensions to the hand-off contract:
 - `HandOffRequest::buildDir_` (Lua `buildDir`), passed to the child as
   `ir-run --build-dir`. Without it the child inherits the launcher's own
   `IRREDEN_BUILD_DIR` (`build-launcher/`, D6) and looks for the demo in the
-  wrong tree.
+  wrong tree. `buildDir` is a root-relative path checked by the D4 path
+  model, and `ir-run` gets the resolved path. Setting it raises in a process
+  with no tool root, and the launcher passes `"build"`. Without that check,
+  any Lua creation could point `ir-run` at an arbitrary directory and run
+  whatever executable it finds there.
 - `ir-run --result-file <path>` writes the `RESULT=` verdict it prints as
   JSON (`verdict`, `exe`, `exit`, `signal`, `argv`, `at`). `handOff` passes a
   path under `<buildDir>/ir-run-results/<exe>.last.json` and surfaces the
@@ -207,7 +253,7 @@ in-memory state and needs a file handoff for the verdict.
 `engine/tools/bin/ir-launcher` configures `<checkout>/build-launcher/` with
 the host's preset (`-B` override) on first use, builds `IRLauncher` there,
 and runs it through `ir-run --build-dir build-launcher IRLauncher
---window-mode normal --root <checkout>`. It rebuilds only with `--update`; a
+--window-mode normal`. It rebuilds only with `--update`; a
 failed update leaves the previous executable in place and exits non-zero.
 The launcher itself builds and runs creations in `<checkout>/build`, so a
 broken worktree build never takes the launcher down. The in-app "Update
@@ -219,10 +265,17 @@ launcher; a packaged zip — isolated but updating is manual.
 
 ### D7 — One root in v1: the checkout the launcher was built from
 
-`--root` is the checkout; the scan covers its `creations/**`, gitignored
-private creations included. A root list in the settings store (D8) is v2,
-with a worktree picker; the data model already carries `root` on every
-creation so nothing in the UI assumes one.
+The root is the checkout `IRLauncher` was compiled from (`IR_LAUNCHER_ROOT`,
+D4). There is no `--root` flag, because a command-line root would let any
+`handOff` parent aim a launcher at another tree and build it. The scan covers
+the root's `creations/**`, gitignored private creations included.
+`--catalog-root <path>` changes only what `IRCatalog.scan` reads, which is a
+read-only walk. GUI sessions and render-verify use it to show the fixture
+tree, and the tool root never follows it. Unit tests point the C++ services
+at a fixture tree through their constructors. A root
+list in the settings store (D8) is v2, with a worktree picker; each entry
+would go through the same containment rules. The data model already carries
+`root` on every creation, so nothing in the UI assumes a single root.
 
 Rejected: a configurable root list on day one — setup before value;
 auto-scanning `~/src` — noisy with ten fleet worktrees.
@@ -231,11 +284,13 @@ auto-scanning `~/src` — noisy with ten fleet worktrees.
 
 Launcher settings live in the launcher's own run dir through `IRSave`
 (`save_files/launcher.irkv`): editor command, favourites, collapsed groups,
-last preset per target, panel layout (the dockspace serializer). The editor
-command defaults to the first of `cursor`, `code` found on `PATH`; the
-`editor` tool (D4) runs it with the creation directory; `open-folder` runs
-`open` / `explorer` / `xdg-open`. Both are chosen by the settings panel, never
-by Lua.
+last preset per target, panel layout (the dockspace serializer). The `editor`
+tool (D4) runs one entry of a fixed C++ list (`cursor`, `code`) resolved on
+`PATH`. The settings panel stores the entry's name, and a stored value
+outside the list falls back to the first entry found. A stored string is
+never run as a command, because `.irkv` is writable from Lua. `open-folder`
+runs the host's `open` / `explorer` / `xdg-open`. Both take one D4-checked
+`path`: the creation directory or a docs file.
 
 ### D9 — Previews: live viewports for voxels, a trixelized image widget for PNGs
 
@@ -299,7 +354,7 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
 | Table | Call | Owner |
 |---|---|---|
 | `IRCatalog` | `scan{ root, buildDir }`, `assets{ root }` | `engine/catalog` |
-| `IREngine` | `spawnTool{ tool, args, cwd, buildDir }` → handle (`poll`, `exit`, `kill`); `handOff{ argv, buildDir }` → `r.verdict` | `engine/world` |
+| `IREngine` | `spawnTool{ tool, target \| path }` → handle (`poll`, `exit`, `kill`); `toolRoot()`; `handOff{ argv, buildDir }` → `r.verdict` | `engine/world` |
 | `IRGui` | `makeImage(x, y, w, h, path)`, `setImagePath(id, path)` | `engine/prefabs/irreden/render` |
 
 ## Validators
@@ -309,15 +364,32 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
   (required keys, unknown keys ignored, every `kind`), and a scan over a
   fixture tree with a valid, an invalid, and a missing manifest plus a fake
   build dir with one built target and one result file.
-- `ctest -R 'SpawnTool|HandOff'` — the tool table refuses unknown tools and
-  NUL bytes; poll returns lines across chunk boundaries; kill ends a sleeping
-  child; a stub tool that prints its working directory and
-  `IRREDEN_BUILD_DIR` reports the requested `cwd` and `buildDir` with the
-  parent's `IRREDEN_BUILD_DIR` set to a different path, and reports the
-  variable unset when `buildDir` is omitted; the `ir-build` entry's argv is
-  exactly `ir-build --target <T>` (no build-directory flag); the hand-off
-  `buildDir_` reaches the child argv; the verdict parses from the result file
-  and is absent without one.
+- `ctest -R 'SpawnTool|HandOff'`. The service runs over a fixture root.
+  Every refusal case asserts that the stub spawn primitive recorded zero
+  launches:
+  - **Lua-input refusals.** These all raise:
+    - an unknown tool, or an unknown key (`cwd`, `buildDir`, `args`);
+    - a NUL byte;
+    - a `target` that starts with `-` or contains a space or `/`;
+    - a `path` that is absolute (`/etc`, `C:\x`, `\\host\s`) or holds `..`
+      (`creations/../..`);
+    - a fixture symlink `creations/escape` pointing outside the root, plus a
+      file beneath it (on native Windows, a junction stands in when the host
+      cannot create symlinks);
+    - a sibling directory whose name has the root as a string prefix
+      (`<root>2`);
+    - `spawnTool` and `handOff{ buildDir }` in a process with no tool root;
+    - a second `setToolRoot` call.
+  - **Accepted requests.** A symlink that stays inside the root is accepted
+    and passed resolved. A stub that prints its cwd and `IRREDEN_BUILD_DIR`
+    reports `<root>` and `<root>/build` for `ir-build`, while the parent's
+    `IRREDEN_BUILD_DIR` points elsewhere. It reports the variable unset for
+    every other tool.
+  - **Argv and lifecycle.** The `ir-build` argv is exactly
+    `ir-build --target <T>`. Poll returns lines across chunk boundaries, and
+    kill ends a sleeping child.
+  - **Hand-off.** The `buildDir_` reaches the child argv as the resolved
+    path. The verdict parses from the result file and is absent without one.
 - `bash scripts/fleet/tests/run_all.sh --only ir_run_result_file` — `ir-run
   --result-file` writes every verdict class the stdout line reports.
 - `python3 scripts/lint_creation_manifests.py` — every directory under
