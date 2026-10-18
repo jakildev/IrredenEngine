@@ -511,12 +511,15 @@ def collect_worktree_leaks():
                              capture_output=True, text=True, timeout=120, check=False)
     except (OSError, subprocess.TimeoutExpired) as e:
         return {"leaks": [], "error": f"{type(e).__name__}: {e}"}
-    if res.returncode not in (0, 1):
+    if res.returncode not in (0, 1, 3):
         return {"leaks": [], "error": f"exit {res.returncode}: {res.stderr.strip()[:160]}"}
     try:
-        leaks = json.loads(res.stdout)["leaks"]
+        data = json.loads(res.stdout)
+        leaks = data["leaks"]
     except (ValueError, KeyError):
         return {"leaks": [], "error": "unparseable sweep output"}
+    if res.returncode == 3:
+        return {"leaks": leaks, "error": "; ".join(data.get("errors") or []) or "exit 3"}
     return {"leaks": leaks, "error": None}
 
 
@@ -774,8 +777,10 @@ def render_text(report):
     wt = report["worktree_leaks"]
     o.append("")
     o.append("## Worktrees outside the pool layout")
-    if not wt["leaks"]:
-        o.append("  (none)" if not wt["error"] else f"  (sweep failed: {wt['error']})")
+    if wt["error"]:
+        o.append(f"  (sweep failed: {wt['error']})")
+    elif not wt["leaks"]:
+        o.append("  (none)")
     for lk in wt["leaks"]:
         dirty = "?" if lk["dirty"] is None else lk["dirty"]
         o.append(f"  [{lk['repo']}] {lk['path']}  dirty {dirty}  "

@@ -277,16 +277,12 @@ human's bare `ir-run` shows its window. Modes and the `--window-mode normal` esc
 
 ### Worktree identity
 
-Every agent works inside its own `…/.claude/worktrees/<name>/`; the main
-clones are shared. `commit-and-push`, `start-next-task` and
-`fleet-pr-checkout-detached` run `fleet-assert-worktree` first and refuse
-outside a `.claude/worktrees/*` path — `cd` into your worktree and retry
-rather than setting `FLEET_ALLOW_MAIN_CLONE=1`. Absolute Edit/Write paths
-start with your worktree root ([`CLAUDE-BASELINE.md`](CLAUDE-BASELINE.md)
-§"Hard rules for autonomous fleet roles"). An agent never runs `git worktree add`
-outside its own pool worktree: scratch checkouts go inside the pool worktree's
-tree or under a path the task's close-out removes (`fleet-worktree-sweep` lists
-what escapes).
+Every agent works inside its own `…/.claude/worktrees/<name>/`; the main clones are shared. `commit-and-push`,
+`start-next-task` and `fleet-pr-checkout-detached` run `fleet-assert-worktree` first and refuse outside a
+`.claude/worktrees/*` path — `cd` into your worktree and retry rather than setting `FLEET_ALLOW_MAIN_CLONE=1`.
+Absolute Edit/Write paths start with your worktree root ([`CLAUDE-BASELINE.md`](CLAUDE-BASELINE.md) §"Hard rules
+for autonomous fleet roles"). An agent never runs `git worktree add` outside its own pool worktree: scratch
+checkouts go inside its tree or under a path the task's close-out removes (`fleet-worktree-sweep` lists what escapes).
 
 ### Editing `.claude/` paths in headless mode (`fleet-edit`)
 

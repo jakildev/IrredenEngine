@@ -23,8 +23,12 @@ removal never drops a commit. A leak with dirty files, or whose status cannot
 be read, is never touched unless `--dirty-too` is given; a locked worktree is
 never touched.
 
+A clone whose `git worktree list` fails is reported under `errors` (stderr in
+text mode) rather than skipped, so a broken clone never reads as a clean one.
+
 Exit status: 0 nothing left outside the pool layout, 1 at least one leak
-remains (listed, or kept by --prune), 2 usage error.
+remains (listed, or kept by --prune), 2 usage error, 3 a clone's worktrees
+could not be enumerated (the listing of the other clones is still printed).
 
 Source of truth: scripts/fleet/fleet-worktree-sweep in the engine repo.
 Installed to ~/bin/fleet-worktree-sweep by scripts/fleet/install.sh.
@@ -114,10 +118,12 @@ def scratch_root():
 
 
 def collect(with_size):
-    leaks = []
+    """(leaks, errors); an error names a clone whose worktrees could not be listed."""
+    leaks, errors = [], []
     for name, clone in clones():
         rc, out = git(clone, "worktree", "list", "--porcelain")
         if rc != 0:
+            errors.append(f"[{name}] {clone}: git worktree list failed (exit {rc})")
             continue
         pool = clone / ".claude" / "worktrees"
         for rec in parse_worktrees(out)[1:]:
@@ -138,7 +144,7 @@ def collect(with_size):
                 "missing": not Path(path).is_dir(),
                 "size_bytes": tree_size(path) if with_size and Path(path).is_dir() else None,
             })
-    return leaks
+    return leaks, errors
 
 
 def salvage(leak):
@@ -214,7 +220,7 @@ def main(argv=None):
     if args.dirty_too and not args.prune:
         ap.error("--dirty-too only applies with --prune")
 
-    leaks = collect(with_size=not args.no_size)
+    leaks, errors = collect(with_size=not args.no_size)
     results = []
     if args.prune:
         for leak in leaks:
@@ -225,12 +231,16 @@ def main(argv=None):
         remaining = leaks
 
     if args.json:
-        print(json.dumps({"leaks": leaks, "pruned": results, "remaining": len(remaining)},
-                         indent=2, sort_keys=True))
+        print(json.dumps({"leaks": leaks, "pruned": results, "remaining": len(remaining),
+                          "errors": errors}, indent=2, sort_keys=True))
     else:
         sys.stdout.write(render(leaks))
         for r in results:
             print(f"{r['action']}: {r['path']} ({r['detail']})")
+        for e in errors:
+            print(f"fleet-worktree-sweep: error: {e}", file=sys.stderr)
+    if errors:
+        return 3
     return 1 if remaining else 0
 
 

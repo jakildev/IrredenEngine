@@ -608,6 +608,25 @@ class WorktreeLeaks(Env):
         _, rep = self.run_report()
         self.assertEqual(rep["worktree_leaks"]["leaks"], [])
 
+    def test_an_unlistable_clone_warns_and_keeps_the_readable_leaks(self):
+        self._git(self.engine, "worktree", "add", "-q", "--detach", str(self.leak))
+        game = self.engine / "creations" / "game"
+        game.mkdir(parents=True)
+        (game / ".git").write_text(f"gitdir: {Path(self.tmp.name) / 'no-such-gitdir'}\n")
+        rc, rep = self.run_report()
+        self.assertEqual([lk["path"].endswith("leak-p1") for lk in rep["worktree_leaks"]["leaks"]],
+                         [True])
+        self.assertIn("[game]", rep["worktree_leaks"]["error"] or "")
+        failed = [w for w in rep["warnings"] if w.startswith("fleet-worktree-sweep failed:")]
+        self.assertEqual(len(failed), 1, rep["warnings"])
+        self.assertIn("git worktree list failed", failed[0])
+        self.assertTrue(any("leak-p1" in w for w in rep["warnings"]), rep["warnings"])
+        self.assertEqual(rc, 1)
+        out = io.StringIO()
+        with redirect_stdout(out):
+            fleet_health.main(["--fleet-dir", str(self.root)])
+        self.assertIn("(sweep failed: [game]", out.getvalue())
+
     def test_a_failed_sweep_warns_instead_of_reading_clean(self):
         fleet_health.collect_worktree_leaks = self._sweep
         real_run = fleet_health.subprocess.run

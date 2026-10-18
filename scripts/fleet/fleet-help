@@ -332,6 +332,7 @@ Parallel-agent fleet (tmux + Claude)
                                  count, on-origin, size); --prune removes the
                                  clean ones, salvaging unpushed HEADs to
                                  salvage/<path-slug>; exit 0 clean / 1 leaks
+                                 / 3 a clone's worktrees unlistable
   fleet-claude-stream            format claude stream-json for tmux
   fleet-heartbeat <agent>        bump heartbeat mtime
   fleet-iteration-summary <agent> "<text>"

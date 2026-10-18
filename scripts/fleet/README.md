@@ -102,7 +102,8 @@ fleet workflow.
   not `fleet-rebase`'s scratch: path, HEAD, dirty-file count, whether HEAD is on
   an `origin/` ref, size. `--prune` removes the clean on-origin ones and
   salvages any other HEAD to `salvage/<path-slug>` first; `--dirty-too` extends
-  it to dirty ones. `fleet-health` runs the listing and warns on a non-empty one.
+  it to dirty ones. A clone whose worktrees cannot be listed exits 3, never
+  clean. `fleet-health` runs the listing and warns on a non-empty or failed one.
 - **`fleet-edit`** — exact string replacement CLI (Python3). Takes a
   target file, an old-text file, and a new-text file; replaces exactly
   one occurrence (or all with `--replace-all`). Use for tasks that need

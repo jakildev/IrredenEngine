@@ -161,4 +161,44 @@ FLEET_ENGINE_ROOT="$TMPROOT/nowhere" python3 "$SWEEP" >/dev/null
 assert_eq "$?" "0" "T5 a host with no clone sweeps clean"
 set -e
 
+# --- T6: an unlistable clone ---------------------------------------------------
+# The game clone's .git points at a gitdir that does not exist, so its
+# `git worktree list` fails while the engine clone still lists a leak.
+echo "T6: unlistable clone"
+git -C "$ENGINE" worktree add -q --detach "$LEAKS/leak-late"
+mv "$GAME/.git" "$GAME/.git.bak"
+printf 'gitdir: %s\n' "$TMPROOT/no-such-gitdir" > "$GAME/.git"
+set +e
+broken=$(python3 "$SWEEP" --json --no-size 2>/dev/null | tr -d '\r')
+rc=$?
+stderr_text=$(python3 "$SWEEP" --no-size 2>&1 >/dev/null | tr -d '\r')
+set -e
+assert_eq "$rc" "3" "T6 an unlistable clone exits 3, not clean"
+summary=$(printf '%s' "$broken" | python3 -c '
+import json, os, sys
+d = json.load(sys.stdin)
+print(" ".join(os.path.basename(lk["path"]) for lk in d["leaks"]))
+for e in d["errors"]:
+    print(e)
+' | tr -d '\r')
+assert_contains "$summary" "leak-late" "T6 the readable clone's leak is still listed"
+assert_contains "$summary" "[game]" "T6 the error names the unlistable clone"
+assert_contains "$summary" "git worktree list failed" "T6 the error names the failed enumeration"
+assert_contains "$stderr_text" "fleet-worktree-sweep: error: [game]" "T6 text mode reports the error on stderr"
+
+set +e
+python3 "$SWEEP" --prune --no-size >/dev/null 2>&1
+rc=$?
+set -e
+assert_eq "$rc" "3" "T6 prune still exits 3 while a clone is unlistable"
+[[ ! -d "$LEAKS/leak-late" ]] && ok "T6 prune clears the readable clone's leak" \
+    || bad "T6 prune clears the readable clone's leak"
+
+rm "$GAME/.git"
+mv "$GAME/.git.bak" "$GAME/.git"
+set +e
+python3 "$SWEEP" --no-size >/dev/null
+assert_eq "$?" "0" "T6 a repaired clone sweeps clean again"
+set -e
+
 summarize "fleet-worktree-sweep tests"
