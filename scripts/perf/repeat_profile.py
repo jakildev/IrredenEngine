@@ -70,15 +70,30 @@ T_ONE_SIDED_95 = (
 )
 
 
+def t_one_sided_95(degrees: int) -> float:
+    """Student-t 0.95 quantile: the table to 30 degrees of freedom, then the
+    Cornish-Fisher expansion of A&S 26.7.5, within 1e-4 of the exact value there.
+    """
+    if degrees <= len(T_ONE_SIDED_95):
+        return T_ONE_SIDED_95[degrees - 1]
+    z = statistics.NormalDist().inv_cdf(0.95)
+    terms = (
+        (z**3 + z) / 4,
+        (5 * z**5 + 16 * z**3 + 3 * z) / 96,
+        (3 * z**7 + 19 * z**5 + 17 * z**3 - 15 * z) / 384,
+        (79 * z**9 + 776 * z**7 + 1482 * z**5 - 1920 * z**3 - 945 * z) / 92160,
+    )
+    return z + sum(term / degrees ** power for power, term in enumerate(terms, 1))
+
+
 def upper_bound_95(values: list[float]) -> float | None:
     """One-sided 95% upper confidence bound on the mean of per-run values.
 
-    Needs two runs. Beyond 30 degrees of freedom the normal quantile applies.
+    Needs two runs.
     """
     if len(values) < 2:
         return None
-    degrees = len(values) - 1
-    quantile = T_ONE_SIDED_95[degrees - 1] if degrees <= len(T_ONE_SIDED_95) else 1.645
+    quantile = t_one_sided_95(len(values) - 1)
     return statistics.mean(values) + quantile * statistics.stdev(values) / math.sqrt(len(values))
 
 

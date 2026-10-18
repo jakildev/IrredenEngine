@@ -3,6 +3,7 @@
 import io
 import json
 import os
+import statistics
 import tempfile
 import unittest
 from dataclasses import replace
@@ -15,6 +16,7 @@ from repeat_profile import (
     shape_configuration,
     shape_measurement_failure,
     shape_profile_arguments,
+    t_one_sided_95,
     upper_bound_95,
     witness_checks,
 )
@@ -112,11 +114,18 @@ class UpperBoundTest(unittest.TestCase):
         runs = [0.341, 0.327, 0.339, 0.337, 0.333]
         self.assertAlmostEqual(upper_bound_95(runs), 0.3407, places=4)
 
-    def test_one_run_has_no_bound_and_many_runs_use_the_normal_quantile(self):
+    def test_one_run_has_no_bound_and_many_runs_use_the_t_quantile(self):
         self.assertIsNone(upper_bound_95([1.0]))
         runs = [1.0, 2.0] * 20
-        self.assertAlmostEqual(upper_bound_95(runs), 1.5 + 1.645 * 0.5063696835 / 40 ** 0.5,
+        self.assertAlmostEqual(upper_bound_95(runs), 1.5 + 1.6849 * 0.5063696835 / 40 ** 0.5,
                                places=4)
+
+    def test_t_quantile_past_the_table_matches_published_values(self):
+        # Exact one-sided 0.95 Student-t quantiles.
+        for degrees, exact in ((30, 1.697), (31, 1.6955), (39, 1.6849), (60, 1.6706),
+                               (120, 1.6577)):
+            self.assertAlmostEqual(t_one_sided_95(degrees), exact, places=3)
+        self.assertGreater(t_one_sided_95(31), statistics.NormalDist().inv_cdf(0.95))
 
 
 class ShapeProfileWitnessTest(unittest.TestCase):
