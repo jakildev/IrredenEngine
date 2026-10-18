@@ -20,6 +20,8 @@ a stretch of autonomous running:
     the open PRs that carry no `fleet:author-*` stamp (reviewed by any
     available provider until the scout's `fleet-pr-stamp --backfill` or the
     author stamps them — CODEX.md).
+  * Worktree leaks: any worktree of the fleet clones outside the pool layout,
+    from `fleet-worktree-sweep` (listing only; clear them with its --prune).
   * Standing alerts, empty-exit streaks / stand-down backoffs, and the
     iterations running right now. A red master workflow (the scout's
     `scout-master-ci-*` alerts) renders with its sha, run age and URL and
@@ -497,6 +499,30 @@ def collect_runtimes(conf, state_dir, alerts_dir, state_json, rows):
 
 # --- Misc state ------------------------------------------------------------------
 
+def collect_worktree_leaks():
+    """Worktrees outside the pool layout, from fleet-worktree-sweep's listing.
+
+    `error` is set when the sweep itself failed: a broken sweep must not read as
+    a clean one. The size walk is skipped; the report only needs the paths.
+    """
+    sweep = os.path.join(os.path.dirname(os.path.realpath(__file__)), "fleet-worktree-sweep")
+    try:
+        res = subprocess.run([sys.executable, sweep, "--json", "--no-size"],
+                             capture_output=True, text=True, timeout=120, check=False)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return {"leaks": [], "error": f"{type(e).__name__}: {e}"}
+    if res.returncode not in (0, 1, 3):
+        return {"leaks": [], "error": f"exit {res.returncode}: {res.stderr.strip()[:160]}"}
+    try:
+        data = json.loads(res.stdout)
+        leaks = data["leaks"]
+    except (ValueError, KeyError):
+        return {"leaks": [], "error": "unparseable sweep output"}
+    if res.returncode == 3:
+        return {"leaks": leaks, "error": "; ".join(data.get("errors") or []) or "exit 3"}
+    return {"leaks": leaks, "error": None}
+
+
 def collect_alerts(alerts_dir):
     now = time.time()
     out = []
@@ -590,7 +616,7 @@ NO_OP_MIN_SAMPLE = 3
 NO_OP_RATIO = 0.5
 
 
-def derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts):
+def derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts, worktrees):
     w = []
     if not daemons["dispatcher"]["alive"]:
         w.append("dispatcher is not running")
@@ -626,6 +652,11 @@ def derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts):
         if red:
             w.append(f"master CI red: {red['workflow']} at {red['sha'][:9]} "
                      f"({fmt_age(red['run_age_s'])} old) {red['url']}")
+    for lk in worktrees["leaks"]:
+        w.append(f"worktree outside the pool layout: [{lk['repo']}] {lk['path']} "
+                 "(fleet-worktree-sweep --prune clears the clean ones)")
+    if worktrees["error"]:
+        w.append(f"fleet-worktree-sweep failed: {worktrees['error']}")
     return w
 
 
@@ -743,6 +774,17 @@ def render_text(report):
         o.append("## Empty-exit streaks / stand-down backoffs")
         for x in st:
             o.append(f"  {x['counter']}={x['value']}")
+    wt = report["worktree_leaks"]
+    o.append("")
+    o.append("## Worktrees outside the pool layout")
+    if wt["error"]:
+        o.append(f"  (sweep failed: {wt['error']})")
+    elif not wt["leaks"]:
+        o.append("  (none)")
+    for lk in wt["leaks"]:
+        dirty = "?" if lk["dirty"] is None else lk["dirty"]
+        o.append(f"  [{lk['repo']}] {lk['path']}  dirty {dirty}  "
+                 f"on-origin {'yes' if lk['on_origin'] else 'no'}")
     al = report["alerts"]
     o.append("")
     o.append("## Standing alerts")
@@ -800,6 +842,7 @@ def build_report(args):
                "scout": {"pid": spid, "alive": salive, "processes": scout_process_count()},
                "mode": mode, "profile": profile}
     alerts = collect_alerts(alerts_dir)
+    worktrees = collect_worktree_leaks()
     report = {
         "window": {"since": since.strftime("%Y-%m-%dT%H:%M:%SZ"), "label": args.since or "boot"},
         "daemons": daemons,
@@ -816,9 +859,11 @@ def build_report(args):
         "live": collect_live(dispatch_dir, sessions_dir),
         "streaks": collect_streaks(state_dir),
         "alerts": alerts,
+        "worktree_leaks": worktrees,
         "github": collect_github(state_dir / "gh-accounting", since, now_utc()),
     }
-    report["warnings"] = derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts)
+    report["warnings"] = derive_warnings(roles, triggers, rebase, runtimes, daemons, alerts,
+                                     worktrees)
     return report
 
 

@@ -56,6 +56,7 @@ extend-include = [
     "scripts/fleet/fleet-survey",
     "scripts/fleet/fleet-validate-roles",
     "scripts/fleet/fleet-validate-stack",
+    "scripts/fleet/fleet-worktree-sweep",
     "scripts/fleet/review-fleet-feedback",
 ]
 

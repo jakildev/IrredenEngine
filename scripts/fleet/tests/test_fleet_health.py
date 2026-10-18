@@ -192,9 +192,13 @@ class Env(unittest.TestCase):
         # reading so no fixture depends on what is running where the suite runs.
         self._probe = fleet_health.scout_process_count
         fleet_health.scout_process_count = lambda: 1
+        # The worktree sweep reads the live clones; pin it to the clean reading.
+        self._sweep = fleet_health.collect_worktree_leaks
+        fleet_health.collect_worktree_leaks = lambda: {"leaks": [], "error": None}
 
     def tearDown(self):
         fleet_health.scout_process_count = self._probe
+        fleet_health.collect_worktree_leaks = self._sweep
         self.tmp.cleanup()
         for k, v in self._saved.items():
             # Pop first: a test that pins one of these must not leak it into
@@ -543,6 +547,97 @@ class DaemonsAndWindow(Env):
         self.assertIn("## Merger ladder", res.stdout)
         self.assertIn("merger: 4 of 4 completed dispatches did no work", res.stdout)
         self.assertIn("witness-roster.stuck", res.stdout)
+
+
+class WorktreeLeaks(Env):
+    """A worktree outside the pool layout is a named warning; a clean sweep clears it."""
+
+    def _git(self, repo, *args):
+        subprocess.run(["git", "-C", str(repo), *args], check=True, capture_output=True,
+                       env={**os.environ, "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@t",
+                            "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@t"})
+
+    def setUp(self):
+        super().setUp()
+        fleet_health.collect_worktree_leaks = self._sweep
+        base = Path(self.tmp.name)
+        self._env = {k: os.environ.get(k) for k in ("FLEET_ENGINE_ROOT", "FLEET_REBASE_SCRATCH")}
+        self.engine = base / "engine"
+        os.environ["FLEET_ENGINE_ROOT"] = str(self.engine)
+        os.environ["FLEET_REBASE_SCRATCH"] = str(base / "rebase-scratch")
+        origin = base / "origin.git"
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "master", str(origin)], check=True)
+        subprocess.run(["git", "clone", "-q", str(origin), str(self.engine)], check=True,
+                       capture_output=True)
+        (self.engine / "readme.txt").write_text("init\n")
+        self._git(self.engine, "add", "readme.txt")
+        self._git(self.engine, "-c", "commit.gpgsign=false", "commit", "-q", "-m", "init")
+        self._git(self.engine, "push", "-q", "origin", "master")
+        self.leak = base / "leak-p1"
+
+    def tearDown(self):
+        for k, v in self._env.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+        super().tearDown()
+
+    def test_a_leak_creates_a_named_warning_and_a_clean_sweep_removes_it(self):
+        self._git(self.engine, "worktree", "add", "-q", "--detach", str(self.leak))
+        rc, rep = self.run_report()
+        self.assertEqual([lk["path"].endswith("leak-p1") for lk in rep["worktree_leaks"]["leaks"]],
+                         [True])
+        warned = [w for w in rep["warnings"] if w.startswith("worktree outside the pool layout:")]
+        self.assertEqual(len(warned), 1, warned)
+        self.assertIn("leak-p1", warned[0])
+        self.assertEqual(rc, 1)
+        out = io.StringIO()
+        with redirect_stdout(out):
+            fleet_health.main(["--fleet-dir", str(self.root)])
+        self.assertIn("## Worktrees outside the pool layout", out.getvalue())
+
+        self._git(self.engine, "worktree", "remove", "--force", str(self.leak))
+        _, rep = self.run_report()
+        self.assertEqual(rep["worktree_leaks"], {"leaks": [], "error": None})
+        self.assertFalse(any("worktree outside" in w for w in rep["warnings"]), rep["warnings"])
+
+    def test_pool_worktrees_do_not_warn(self):
+        pool = self.engine / ".claude" / "worktrees" / "pool-1"
+        pool.parent.mkdir(parents=True)
+        self._git(self.engine, "worktree", "add", "-q", "--detach", str(pool))
+        _, rep = self.run_report()
+        self.assertEqual(rep["worktree_leaks"]["leaks"], [])
+
+    def test_an_unlistable_clone_warns_and_keeps_the_readable_leaks(self):
+        self._git(self.engine, "worktree", "add", "-q", "--detach", str(self.leak))
+        game = self.engine / "creations" / "game"
+        game.mkdir(parents=True)
+        (game / ".git").write_text(f"gitdir: {Path(self.tmp.name) / 'no-such-gitdir'}\n")
+        rc, rep = self.run_report()
+        self.assertEqual([lk["path"].endswith("leak-p1") for lk in rep["worktree_leaks"]["leaks"]],
+                         [True])
+        self.assertIn("[game]", rep["worktree_leaks"]["error"] or "")
+        failed = [w for w in rep["warnings"] if w.startswith("fleet-worktree-sweep failed:")]
+        self.assertEqual(len(failed), 1, rep["warnings"])
+        self.assertIn("git worktree list failed", failed[0])
+        self.assertTrue(any("leak-p1" in w for w in rep["warnings"]), rep["warnings"])
+        self.assertEqual(rc, 1)
+        out = io.StringIO()
+        with redirect_stdout(out):
+            fleet_health.main(["--fleet-dir", str(self.root)])
+        self.assertIn("(sweep failed: [game]", out.getvalue())
+
+    def test_a_failed_sweep_warns_instead_of_reading_clean(self):
+        fleet_health.collect_worktree_leaks = self._sweep
+        real_run = fleet_health.subprocess.run
+        fleet_health.subprocess.run = lambda *a, **k: subprocess.CompletedProcess(
+            a[0], 2, "", "boom")
+        try:
+            _, rep = self.run_report()
+        finally:
+            fleet_health.subprocess.run = real_run
+        self.assertTrue(any(w.startswith("fleet-worktree-sweep failed: exit 2")
+                            for w in rep["warnings"]), rep["warnings"])
 
 
 GH_NOW = "2026-09-29T12:00:00Z"

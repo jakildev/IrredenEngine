@@ -46,6 +46,8 @@ EXEMPT=(
     "fleet-quiet-wait"                   # hook wired by fleet-up / dispatch wrap
     "fleet-stalled-sweep"                # scout-invoked idle sweep
     "fleet-queue-backfill-model-labels"  # one-time human backfill
+    "fleet-worktree-sweep"               # fleet-health runs its listing in-process; --prune
+                                         # (incl. --dirty-too deletion) is a human cleanup step
     "solo-architect"                     # human pane launcher
     "review-fleet-feedback"              # the cue-only skill of that name calls it by
                                          # relative path, which a bare-name entry never matches
