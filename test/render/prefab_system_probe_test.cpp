@@ -27,10 +27,13 @@
 
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_system.hpp>
+#include <irreden/ir_time.hpp>
 #include <irreden/entity/entity_manager.hpp>
+#include <irreden/time/time_manager.hpp>
 #include <irreden/render/glitch.hpp>
 #include <irreden/render/help_overlay.hpp>
 #include <irreden/render/settings_menu.hpp>
+#include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_perf_stats_overlay.hpp>
 
 namespace {
@@ -40,7 +43,8 @@ struct C_PrefabProbeSibling {};
 class PrefabSystemProbeTest : public testing::Test {
   protected:
     PrefabSystemProbeTest()
-        : m_entity_manager{}
+        : m_time_manager{}
+        , m_entity_manager{}
         , m_system_manager{} {}
 
     void expectMainThreadRegistration(IRSystem::SystemId target, const char *targetName) {
@@ -68,6 +72,21 @@ class PrefabSystemProbeTest : public testing::Test {
         EXPECT_THROW(m_system_manager.validateAllPipelineGroups(), std::runtime_error);
     }
 
+    // Registers a no-op RENDER pipeline so `advanceRenderTick` moves the
+    // RENDER event tick without running either screen pass's GPU path.
+    void startRenderClock() {
+        const IRSystem::SystemId sibling = IRSystem::createSystem<C_PrefabProbeSibling>(
+            "PrefabProbeSibling",
+            [](C_PrefabProbeSibling &) {}
+        );
+        m_system_manager.registerPipeline(IRTime::Events::RENDER, {sibling});
+    }
+
+    void advanceRenderTick() {
+        m_system_manager.executePipeline(IRTime::Events::RENDER);
+    }
+
+    IRTime::TimeManager m_time_manager;
     IREntity::EntityManager m_entity_manager;
     IRSystem::SystemManager m_system_manager;
 };
@@ -151,18 +170,14 @@ TEST_F(PrefabSystemProbeTest, GlitchPublicationHoldsForTheCurrentRenderTickOnly)
         << "a freshly registered pass has published nothing";
     EXPECT_FALSE(system->ownsHistoryImage()) << "history allocates on first enabled use";
 
-    const IRSystem::SystemId sibling = IRSystem::createSystem<C_PrefabProbeSibling>(
-        "PrefabProbeSibling",
-        [](C_PrefabProbeSibling &) {}
-    );
-    m_system_manager.registerPipeline(IRTime::Events::RENDER, {sibling});
-    m_system_manager.executePipeline(IRTime::Events::RENDER);
+    startRenderClock();
+    advanceRenderTick();
     const std::uint64_t current = IRSystem::getEventTickCount(IRTime::Events::RENDER);
 
     system->publishedRenderTick_ = current;
     EXPECT_TRUE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick());
 
-    m_system_manager.executePipeline(IRTime::Events::RENDER);
+    advanceRenderTick();
     EXPECT_FALSE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick())
         << "a publication from the previous RENDER tick is stale";
 }
@@ -187,6 +202,142 @@ TEST_F(PrefabSystemProbeTest, GlitchOffFrameDoesNoWorkAndZeroesItsTimingRow) {
     EXPECT_EQ(system->historyCopyCount_, 0u);
     EXPECT_EQ(system->drawCount_, 0u);
     EXPECT_FALSE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick());
+}
+
+// The enabled-frame destination and resource contract, driven through the
+// pass's own frame bookkeeping (`beginTick`, `planFrame`, `finishFrame`) and
+// the blit's real `beginTick`. Only the GPU encode between `planFrame` and
+// `finishFrame` is skipped; it binds and clears the default target once and
+// draws once.
+using GlitchSystem = IRSystem::System<IRSystem::FRAMEBUFFER_GLITCH>;
+using ScreenBlitSystem = IRSystem::System<IRSystem::FRAMEBUFFER_TO_SCREEN>;
+
+IRSystem::SystemId registerScreenBlitParamsOnly() {
+    return IRSystem::registerSystem<
+        IRSystem::FRAMEBUFFER_TO_SCREEN,
+        IRComponents::C_TrixelCanvasFramebuffer,
+        IRComponents::C_WorldTransform,
+        IRComponents::C_Name>("FramebufferToScreen");
+}
+
+IRComponents::C_GlitchState &enableHoldGlitch() {
+    auto &state = IREntity::singleton<IRComponents::C_GlitchState>();
+    state.intensity_ = 1.0f;
+    state.holdWeight_ = 1.0f;
+    return state;
+}
+
+constexpr IRMath::ivec2 kProbeFramebufferSize{320, 180};
+
+TEST_F(PrefabSystemProbeTest, GlitchEnabledFrameDrawsTheScreenBaseInPlaceOfTheBlit) {
+    auto *glitch = IRSystem::getSystemParams<GlitchSystem>(registerGlitchParamsOnly());
+    auto *blit = IRSystem::getSystemParams<ScreenBlitSystem>(registerScreenBlitParamsOnly());
+    startRenderClock();
+    advanceRenderTick();
+    enableHoldGlitch();
+
+    glitch->beginTick();
+    ASSERT_TRUE(glitch->enabledThisFrame_);
+    EXPECT_EQ(glitch->ownedImageCount(), 0) << "no image before the first enabled draw";
+    const IRSystem::GlitchFrameWork first = glitch->planFrame(kProbeFramebufferSize);
+    EXPECT_TRUE(first.createHistory_);
+    EXPECT_TRUE(first.copyHistory_) << "a new history is seeded before hold reads it";
+    EXPECT_FALSE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick())
+        << "nothing is published before the screen-base draw";
+    glitch->finishFrame();
+    EXPECT_TRUE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick());
+    blit->beginTick();
+    EXPECT_TRUE(blit->screenAlreadyComposited_)
+        << "the ordinary blit must bind, clear and draw nothing on this tick";
+    EXPECT_EQ(glitch->frameDraws_, 1);
+    EXPECT_EQ(glitch->ownedImageCount(), 1);
+
+    // Same size and hold tick: the image and its snapshot are reused.
+    advanceRenderTick();
+    EXPECT_FALSE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick())
+        << "the previous tick's publication is stale";
+    glitch->beginTick();
+    const IRSystem::GlitchFrameWork reuse = glitch->planFrame(kProbeFramebufferSize);
+    EXPECT_FALSE(reuse.createHistory_);
+    EXPECT_FALSE(reuse.copyHistory_);
+    glitch->finishFrame();
+    blit->beginTick();
+    EXPECT_TRUE(blit->screenAlreadyComposited_);
+
+    // A new hold tick re-snapshots into the same image.
+    advanceRenderTick();
+    glitch->beginTick();
+    glitch->clock_.holdTick_ += 1;
+    const IRSystem::GlitchFrameWork nextHold = glitch->planFrame(kProbeFramebufferSize);
+    EXPECT_FALSE(nextHold.createHistory_);
+    EXPECT_TRUE(nextHold.copyHistory_);
+    glitch->finishFrame();
+
+    EXPECT_EQ(glitch->historyAllocationCount_, 1u);
+    EXPECT_EQ(glitch->historyCopyCount_, 2u);
+    EXPECT_EQ(glitch->drawCount_, 3u);
+    EXPECT_EQ(glitch->ownedImageCount(), 1);
+}
+
+TEST_F(PrefabSystemProbeTest, GlitchResizeWithdrawsPublicationAndReseedsOnlyHistory) {
+    auto *glitch = IRSystem::getSystemParams<GlitchSystem>(registerGlitchParamsOnly());
+    startRenderClock();
+    advanceRenderTick();
+    enableHoldGlitch();
+
+    glitch->beginTick();
+    glitch->planFrame(kProbeFramebufferSize);
+    glitch->finishFrame();
+    ASSERT_TRUE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick());
+
+    const IRMath::ivec2 resized{kProbeFramebufferSize.x * 2, kProbeFramebufferSize.y + 6};
+    const IRSystem::GlitchFrameWork work = glitch->planFrame(resized);
+    EXPECT_FALSE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick())
+        << "a resize voids the screen base drawn against the old size";
+    EXPECT_TRUE(work.createHistory_);
+    EXPECT_TRUE(work.copyHistory_) << "the replacement history is reseeded on the same hold tick";
+    EXPECT_EQ(glitch->ownedImageCount(), 1) << "the history is replaced, not joined";
+    EXPECT_EQ(glitch->historyAllocationCount_, 2u);
+    glitch->finishFrame();
+    EXPECT_TRUE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick());
+
+    // Without a history reader the replacement is allocated but never copied.
+    auto &state = IREntity::singleton<IRComponents::C_GlitchState>();
+    state.holdWeight_ = 0.0f;
+    state.tearWeight_ = 1.0f;
+    advanceRenderTick();
+    glitch->beginTick();
+    const IRSystem::GlitchFrameWork tearOnly = glitch->planFrame(kProbeFramebufferSize);
+    EXPECT_TRUE(tearOnly.createHistory_);
+    EXPECT_FALSE(tearOnly.copyHistory_);
+    EXPECT_EQ(glitch->historyCopyCount_, 2u);
+}
+
+TEST_F(PrefabSystemProbeTest, GlitchOffFrameHandsTheScreenBackAndReseedsOnReturn) {
+    auto *glitch = IRSystem::getSystemParams<GlitchSystem>(registerGlitchParamsOnly());
+    startRenderClock();
+    advanceRenderTick();
+    auto &state = enableHoldGlitch();
+
+    glitch->beginTick();
+    glitch->planFrame(kProbeFramebufferSize);
+    glitch->finishFrame();
+
+    advanceRenderTick();
+    state.intensity_ = 0.0f;
+    glitch->beginTick();
+    EXPECT_FALSE(glitch->enabledThisFrame_);
+    EXPECT_FALSE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick())
+        << "an off tick leaves the screen base to the ordinary blit";
+    EXPECT_EQ(glitch->ownedImageCount(), 1) << "an off tick keeps the history image";
+
+    advanceRenderTick();
+    state.intensity_ = 1.0f;
+    glitch->beginTick();
+    const IRSystem::GlitchFrameWork back = glitch->planFrame(kProbeFramebufferSize);
+    EXPECT_FALSE(back.createHistory_);
+    EXPECT_TRUE(back.copyHistory_) << "the snapshot from before the off tick is stale";
+    EXPECT_EQ(glitch->historyAllocationCount_, 1u);
 }
 
 } // namespace

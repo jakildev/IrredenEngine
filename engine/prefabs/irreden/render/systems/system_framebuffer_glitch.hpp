@@ -123,6 +123,14 @@ inline GlitchFramePlan planGlitchFrame(
     return {true, readsHistory && (!historyValid || holdTick != lastHoldTick)};
 }
 
+// The resource work one enabled frame encodes ahead of its screen-base draw,
+// decided from CPU state alone before any of it is issued.
+struct GlitchFrameWork {
+    // Allocate the history image, or reallocate it at a new framebuffer size.
+    bool createHistory_ = false;
+    bool copyHistory_ = false;
+};
+
 // Replaces the main framebuffer's screen blit with a glitched one on enabled
 // frames: one fullscreen fragment reads the composed main colour, its depth
 // attachment and a history snapshot, and writes the default screen target
@@ -149,7 +157,6 @@ template <> struct System<FRAMEBUFFER_GLITCH> {
     IRPrefab::Glitch::Clock clock_{};
     bool enabledThisFrame_ = false;
     std::uint64_t renderTick_ = 0;
-    IRMath::vec2 cameraScreenResidual_ = IRMath::vec2(0.0f);
 
     // RENDER event tick whose screen base this pass drew, stamped after the
     // draw is encoded.
@@ -160,6 +167,7 @@ template <> struct System<FRAMEBUFFER_GLITCH> {
     int frameDraws_ = 0;
     std::uint64_t historyCopyCount_ = 0;
     std::uint64_t drawCount_ = 0;
+    std::uint64_t historyAllocationCount_ = 0;
 
     bool isPublishedForRenderTick(std::uint64_t renderTick) const {
         return publishedRenderTick_ == renderTick;
@@ -167,6 +175,12 @@ template <> struct System<FRAMEBUFFER_GLITCH> {
 
     bool ownsHistoryImage() const {
         return history_.second != nullptr;
+    }
+
+    // Images the pass holds: the history snapshot once first enabled, and
+    // nothing else. A resize replaces that image rather than adding one.
+    int ownedImageCount() const {
+        return historySize_ == IRMath::ivec2(0) ? 0 : 1;
     }
 
     void beginTick() {
@@ -186,13 +200,38 @@ template <> struct System<FRAMEBUFFER_GLITCH> {
         }
         state_ = *state;
         clock_ = IRPrefab::Glitch::clockAt(state_, IRPrefab::Glitch::engineTimeSeconds());
-        cameraScreenResidual_ = IRMath::vec2(
-            IRPrefab::Camera::screenResidual(
-                IRRender::getEffectiveCameraIso(),
-                IRRender::getCameraZoom(),
-                IRRender::getOutputScaleFactor()
-            )
-        );
+    }
+
+    // Resize and history-cadence bookkeeping for one enabled frame. Withdraws
+    // any publication when the framebuffer size changes: the snapshot and the
+    // screen base drawn against the old size are both void until the next
+    // `finishFrame`.
+    GlitchFrameWork planFrame(IRMath::ivec2 framebufferSize) {
+        GlitchFrameWork work;
+        if (historySize_ != framebufferSize) {
+            publishedRenderTick_ = kNotPublished;
+            historyValid_ = false;
+            historySize_ = framebufferSize;
+            work.createHistory_ = true;
+            ++historyAllocationCount_;
+        }
+        work.copyHistory_ =
+            planGlitchFrame(&state_, clock_.holdTick_, historyValid_, lastHoldTick_).copyHistory_;
+        if (work.copyHistory_) {
+            historyValid_ = true;
+            lastHoldTick_ = clock_.holdTick_;
+            ++frameHistoryCopies_;
+            ++historyCopyCount_;
+        }
+        return work;
+    }
+
+    // Records the encoded screen-base draw. The only place the pass publishes,
+    // so `FRAMEBUFFER_TO_SCREEN` never skips a frame this pass did not draw.
+    void finishFrame() {
+        ++frameDraws_;
+        ++drawCount_;
+        publishedRenderTick_ = renderTick_;
     }
 
     void tick(
@@ -205,9 +244,10 @@ template <> struct System<FRAMEBUFFER_GLITCH> {
         }
         IR_PROFILE_SCOPE("framebufferGlitch");
         const IRMath::ivec2 size = framebuffer.getResolutionPlusBuffer();
-        ensureHistory(size);
-        const GlitchFramePlan plan =
-            planGlitchFrame(&state_, clock_.holdTick_, historyValid_, lastHoldTick_);
+        const GlitchFrameWork work = planFrame(size);
+        if (work.createHistory_) {
+            recreateHistory(size);
+        }
 
         const IRPrefab::Glitch::FrameTables tables = IRPrefab::Glitch::frameTables(
             IRPrefab::Glitch::frameParams(
@@ -223,22 +263,24 @@ template <> struct System<FRAMEBUFFER_GLITCH> {
             detail::framebufferScreenMvp(
                 size,
                 cameraWorldXform.translation_,
-                cameraScreenResidual_,
+                IRMath::vec2(
+                    IRPrefab::Camera::screenResidual(
+                        IRRender::getEffectiveCameraIso(),
+                        IRRender::getCameraZoom(),
+                        IRRender::getOutputScaleFactor()
+                    )
+                ),
                 true
             )
         );
 
         {
             IRRender::GpuSubStageScope scope("framebufferGlitch");
-            if (plan.copyHistory_) {
+            if (work.copyHistory_) {
                 // Snapshot before the default target is bound, from the
                 // unglitched composite: feeding glitched output back would
                 // accumulate artifacts.
                 IRRender::device()->copyTexture2D(framebuffer.getTextureColor(), *history_.second);
-                historyValid_ = true;
-                lastHoldTick_ = clock_.holdTick_;
-                ++frameHistoryCopies_;
-                ++historyCopyCount_;
             }
             IRRender::device()->bindDefaultFramebuffer();
             IRRender::device()->clearDefaultFramebuffer();
@@ -251,9 +293,7 @@ template <> struct System<FRAMEBUFFER_GLITCH> {
             IRRender::device()->setPolygonMode(PolygonMode::FILL);
             IRRender::device()->drawArrays(DrawMode::TRIANGLES, 0, 6);
         }
-        ++frameDraws_;
-        ++drawCount_;
-        publishedRenderTick_ = renderTick_;
+        finishFrame();
     }
 
     static SystemId create() {
@@ -287,12 +327,7 @@ template <> struct System<FRAMEBUFFER_GLITCH> {
     }
 
   private:
-    void ensureHistory(IRMath::ivec2 size) {
-        if (history_.second != nullptr && historySize_ == size) {
-            return;
-        }
-        publishedRenderTick_ = kNotPublished;
-        historyValid_ = false;
+    void recreateHistory(IRMath::ivec2 size) {
         if (history_.second != nullptr) {
             IRRender::destroyResource<Texture2D>(history_.first);
         }
@@ -304,7 +339,6 @@ template <> struct System<FRAMEBUFFER_GLITCH> {
             TextureWrap::CLAMP_TO_EDGE,
             TextureFilter::NEAREST
         );
-        historySize_ = size;
     }
 };
 

@@ -84,6 +84,7 @@
 #include <irreden/render/components/component_fog_revealed.hpp>
 #include <irreden/render/components/component_frame_data_trixel_to_framebuffer.hpp>
 #include <irreden/render/components/component_geometric_shape.hpp>
+#include <irreden/render/components/component_glitch_state.hpp>
 #include <irreden/render/components/component_gizmo_handle.hpp>
 #include <irreden/render/components/component_gpu_particle_pool.hpp>
 #include <irreden/render/components/component_gui_canvas_display.hpp>
@@ -428,6 +429,10 @@ IR_SAVE_OPT_OUT(IRComponents::C_SettingsMenuState)
 // flag or the creation sets every run, not world state; a snapshot taken with
 // it on must not turn it on in a session that left it off.
 IR_SAVE_OPT_OUT(IRComponents::C_PerAxisSurfaceLighting)
+// C_GlitchState: OPT-OUT — a presentation effect the creation's Lua drives
+// every run; a snapshot taken mid-glitch must not glitch a session that never
+// turned it on.
+IR_SAVE_OPT_OUT(IRComponents::C_GlitchState)
 // C_GuiCanvasDisplay: OPT-OUT — applied from the creation's world config
 // (`gui_pixelated`) on every run; a snapshot would only shadow that setting.
 IR_SAVE_OPT_OUT(IRComponents::C_GuiCanvasDisplay)
@@ -642,6 +647,7 @@ using AllEngineComponents = std::tuple<
     IRComponents::C_HelpOverlayState,
     IRComponents::C_SettingsMenuState,
     IRComponents::C_PerAxisSurfaceLighting,
+    IRComponents::C_GlitchState,
     IRComponents::C_GuiCanvasDisplay,
     IRComponents::C_SettingsRegistry,
     IRComponents::C_Splitter,
