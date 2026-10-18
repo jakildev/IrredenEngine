@@ -18,6 +18,12 @@
 // missing registration call (mirrors the same fail-fast principle as
 // the Lua component-pack — Lua sees only what C++ explicitly wired in).
 //
+// `IRSystem.findSystem(SystemName.X)` reads the `SystemManager` registry
+// instead, so it resolves a stage a C++ runner built with
+// `createSystem<X>()` and never handed to the `LuaScript` map. It returns
+// nil for a name nothing registered; a Lua-defined system has no
+// `SystemName` and is never found.
+//
 // `IRSystem.registerPipeline(event, {ids})` accepts any mix of:
 //   - prefab system ids returned by `IRSystem.systemId(name)`
 //   - dynamic system ids returned by `IRSystem.registerSystem({...})`
@@ -30,6 +36,7 @@
 #define SOL_ALL_SAFETIES_ON 1
 #include <sol/sol.hpp>
 
+#include <irreden/ir_math.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_time.hpp>
 #include <irreden/script/lua_script.hpp>
@@ -200,6 +207,19 @@ inline void bindSystemNameEnum(LuaScript &script) {
     IR_BIND_SYS(SYNC_VIEWPORT_SUBJECTS);
     IR_BIND_SYS(VIEWPORT_TO_FRAMEBUFFER);
     IR_BIND_SYS(WIDGET_LUA_DISPATCH);
+    IR_BIND_SYS(WIDGET_RENDER_PANEL);
+    IR_BIND_SYS(WIDGET_RENDER_LABEL);
+    IR_BIND_SYS(WIDGET_RENDER_BUTTON);
+    IR_BIND_SYS(WIDGET_RENDER_SLIDER);
+    IR_BIND_SYS(WIDGET_RENDER_CHECKBOX);
+    IR_BIND_SYS(WIDGET_RENDER_LIST);
+    IR_BIND_SYS(WIDGET_RENDER_DROPDOWN);
+    IR_BIND_SYS(WIDGET_RENDER_RADIO);
+    IR_BIND_SYS(WIDGET_RENDER_TEXT_INPUT);
+    IR_BIND_SYS(WIDGET_RENDER_SCROLL);
+    IR_BIND_SYS(WIDGET_RENDER_COLOR_SWATCH);
+    IR_BIND_SYS(WIDGET_RENDER_SPLITTER);
+    IR_BIND_SYS(WIDGET_RENDER_DOCK_PREVIEW);
 #undef IR_BIND_SYS
     lua["IRSystem"]["SystemName"] = t;
 }
@@ -254,6 +274,37 @@ inline void bindRegisterPipelineAndSystemId(
             };
         }
         return static_cast<lua_Integer>(it->second);
+    };
+
+    // The argument is a `sol::object` because a `lua_Integer` parameter
+    // reads nil as 0 (`NULL_SYSTEM`), so a misspelled `SystemName.X` would
+    // come back nil instead of raising. The type and whole-number checks are
+    // spelled out because `is<lua_Integer>()` accepts `1.5` and numeric
+    // strings in a TU whose sol2 config lacks safe numerics.
+    //
+    //     local anchor = IRSystem.findSystem(IRSystem.SystemName.WIDGET_RENDER_DROPDOWN)
+    //     IRSystem.insertSystemBefore(IRTime.RENDER, luaSysId, anchor)
+    lua["IRSystem"]["findSystem"] = [](sol::object name) -> sol::optional<lua_Integer> {
+        if (name.get_type() != sol::type::number) {
+            throw sol::error{
+                "IRSystem.findSystem: expected an IRSystem.SystemName value, got " +
+                sol::type_name(name.lua_state(), name.get_type())
+            };
+        }
+        const double value = name.as<double>();
+        if (value != IRMath::floor(value) || value < 0.0 ||
+            value > static_cast<double>(IRSystem::TEST_CADENCE_SPEC_DEFAULT)) {
+            throw sol::error{
+                "IRSystem.findSystem: " + std::to_string(value) +
+                " is not an IRSystem.SystemName value"
+            };
+        }
+        const IRSystem::SystemId id =
+            IRSystem::findSystem(static_cast<IRSystem::SystemName>(static_cast<int>(value)));
+        if (id == IRSystem::kNullSystemId) {
+            return sol::nullopt;
+        }
+        return static_cast<lua_Integer>(id);
     };
 
     lua["IRSystem"]["registerPipeline"] = [](lua_Integer event, sol::table ids) {

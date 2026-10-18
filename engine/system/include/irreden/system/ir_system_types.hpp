@@ -307,6 +307,10 @@ enum SystemName {
     // system.
     TEST_CADENCE_SPEC_MEMBER, // declares kCadence / kCadenceOffset
     TEST_CADENCE_SPEC_DEFAULT // declares neither (defaults path)
+
+    // Keep TEST_CADENCE_SPEC_DEFAULT last: the Lua `IRSystem.findSystem`
+    // binding range-checks its argument against it. Add new names above the
+    // test block.
 };
 
 template <typename... RelationComponents> struct RelationParams {
