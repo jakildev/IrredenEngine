@@ -90,12 +90,18 @@ inline Clock clock() {
     return clockAt(stateOrDefault(), engineTimeSeconds());
 }
 
-inline IRSystem::System<IRSystem::FRAMEBUFFER_GLITCH> *systemOrNull() {
-    const IRSystem::SystemId id = IRSystem::findSystem(IRSystem::FRAMEBUFFER_GLITCH);
+// The registered glitch pass named @p Name, or null when the creation did not
+// register it.
+template <IRSystem::SystemName Name> IRSystem::System<Name> *glitchSystemOrNull() {
+    const IRSystem::SystemId id = IRSystem::findSystem(Name);
     if (id == IRSystem::kNullSystemId) {
         return nullptr;
     }
-    return IRSystem::getSystemParams<IRSystem::System<IRSystem::FRAMEBUFFER_GLITCH>>(id);
+    return IRSystem::getSystemParams<IRSystem::System<Name>>(id);
+}
+
+inline IRSystem::System<IRSystem::FRAMEBUFFER_GLITCH> *systemOrNull() {
+    return glitchSystemOrNull<IRSystem::FRAMEBUFFER_GLITCH>();
 }
 
 // True only on the RENDER tick in which `FRAMEBUFFER_GLITCH` has already

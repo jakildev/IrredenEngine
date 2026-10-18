@@ -19,6 +19,7 @@
 #include <irreden/script/prefab_api.hpp>
 
 #include "glitch_fixture.hpp"
+#include "glitch_subject_fixture.hpp"
 #include "lod_scene.hpp"
 #include "sdf_voxel_scene.hpp"
 
@@ -227,6 +228,7 @@ constexpr IRVideo::AutoScreenshotShot kMovingCasterShots[] = {
 };
 bool g_movingCaster = false;
 IRShapeDebug::GlitchFixture::Mode g_glitchMode = IRShapeDebug::GlitchFixture::Mode::NONE;
+IRShapeDebug::GlitchSubjectFixture g_glitchSubject;
 IREntity::EntityId g_movingCasterEntity = IREntity::kNullEntity;
 
 // A cube assembled from single-voxel entities emits every interior face, so
@@ -1574,6 +1576,27 @@ void registerCliArgs() {
          "all"},
         "none"
     );
+    args.enumValue(
+        "--glitch-subject-test",
+        "Canvas-space subject glitch fixture (none|standard-off|off|tear|hold|split|echo|dissolve|"
+        "depth|spill-far-off|spill-far-on|spill-near-off|spill-near-on|choreography|all)",
+        {"none",
+         "standard-off",
+         "off",
+         "tear",
+         "hold",
+         "split",
+         "echo",
+         "dissolve",
+         "depth",
+         "spill-far-off",
+         "spill-far-on",
+         "spill-near-off",
+         "spill-near-on",
+         "choreography",
+         "all"},
+        "none"
+    );
     args.flag("--pan-sweep", "Fine fixed-yaw camera-pan jitter sweep (#1944)");
     args.flag("--yaw-sweep", "Fine fixed-position camera-yaw jitter sweep (#1944)");
     args.enumValue(
@@ -1727,6 +1750,8 @@ void readCliArgs() {
     g_voxelEntityCube = args.getFlag("--voxel-entity-cube");
     g_movingCaster = args.getFlag("--moving-caster");
     g_glitchMode = IRShapeDebug::GlitchFixture::info(args.getEnum("--glitch-test")).mode_;
+    g_glitchSubject.mode_ =
+        IRShapeDebug::GlitchSubjectFixture::info(args.getEnum("--glitch-subject-test")).mode_;
     g_panSweep = args.getFlag("--pan-sweep");
     g_yawSweep = args.getFlag("--yaw-sweep");
     g_pivotVerifyBlock = args.getEnum("--pivot-verify");
@@ -1794,6 +1819,7 @@ void initSystems();
 void initCommands();
 void initEntities();
 void initGlitchFixture();
+void initGlitchSubjectFixture();
 void registerDemoSettings();
 
 int main(int argc, char **argv) {
@@ -1884,6 +1910,7 @@ int main(int argc, char **argv) {
     initCommands();
     initEntities();
     initGlitchFixture();
+    initGlitchSubjectFixture();
     // After initEntities: the tint setters re-apply over the shapes it created.
     registerDemoSettings();
     if (g_zoomContinuous) {
@@ -3709,6 +3736,45 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::FRAMEBUFFER_GLITCH>()
         );
     }
+    if (g_glitchSubject.mode_ != IRShapeDebug::GlitchSubjectFixture::Mode::NONE) {
+        // Immediately before the composite: shape_debug registers no fog, so
+        // lighting is the last main-canvas colour producer.
+        const auto trixelGlitch = renderPipeline.insert(
+            std::find(renderPipeline.begin(), renderPipeline.end(), trixelToFramebufferId),
+            IRSystem::createSystem<IRSystem::TRIXEL_GLITCH>()
+        );
+        // Capture runs only: the probes read the canvas back, which a profiled
+        // run must not pay for.
+        if (g_glitchSubject.captures() && g_autoWarmupFrames > 0) {
+            renderPipeline.insert(
+                trixelGlitch,
+                IRSystem::createSystem<IRComponents::C_GlitchSubject>(
+                    "ShapeDebugGlitchSubjectPreProbe",
+                    [](const IRComponents::C_GlitchSubject &) {},
+                    []() { g_glitchSubject.preGlitchFrame(); }
+                )
+            );
+            renderPipeline.insert(
+                std::next(trixelGlitch),
+                IRSystem::createSystem<IRComponents::C_GlitchSubject>(
+                    "ShapeDebugGlitchSubjectPostProbe",
+                    [](const IRComponents::C_GlitchSubject &) {},
+                    []() { g_glitchSubject.postGlitchFrame(); }
+                )
+            );
+        }
+        if (g_glitchSubject.mode_ == IRShapeDebug::GlitchSubjectFixture::Mode::CHOREOGRAPHY &&
+            IRSystem::findSystem(IRSystem::FRAMEBUFFER_GLITCH) == IRSystem::kNullSystemId) {
+            renderPipeline.insert(
+                std::find(
+                    renderPipeline.begin(),
+                    renderPipeline.end(),
+                    IRSystem::findSystem(IRSystem::FRAMEBUFFER_TO_SCREEN)
+                ),
+                IRSystem::createSystem<IRSystem::FRAMEBUFFER_GLITCH>()
+            );
+        }
+    }
     // The interactive minimap is not part of captures or timed scene work.
     IRRender::setCullingMinimapEnabled(
         g_autoWarmupFrames == 0 && g_autoRecordFrames == 0 && g_autoProfileFrames == 0
@@ -3722,6 +3788,7 @@ void initSystems() {
                 ++g_autoProfileCount;
                 if (g_autoProfileCount >= g_autoProfileFrames) {
                     IRShapeDebug::GlitchFixture::logProbe("profile-end", false);
+                    g_glitchSubject.logSystemLine("profile-end");
                     IR_LOG_INFO("Auto-profile: {} frames collected, exiting", g_autoProfileFrames);
                     IRWindow::closeWindow();
                 }
@@ -4215,6 +4282,12 @@ void initSystems() {
             cfg.onCaptureFrame_ = [](int) {
                 IRShapeDebug::GlitchFixture::logProbe("capture", true);
             };
+        } else if (g_glitchSubject.captures()) {
+            cfg.shots_ = g_glitchSubject.shots(cfg.numShots_);
+            if (cfg.numShots_ == 1) {
+                cfg.settleFrames_ = IRShapeDebug::GlitchSubjectFixture::kSettleFrames;
+            }
+            cfg.onCaptureFrame_ = [](int shotIndex) { g_glitchSubject.logCapture(shotIndex); };
         } else if (g_lodScene) {
             IRVideo::setAutoScreenshotShots(cfg, IRShapeDebug::LodScene::shots_);
             cfg.settleFrames_ = IRConstants::kPrefabPartsTierSettleTicks + 12;
@@ -5059,6 +5132,33 @@ void initGlitchFixture() {
                 IREntity::getComponent<C_LocalTransform>(mover).translation_ =
                     GlitchFixture::moverPosition();
             }
+        ),
+        IRSystem::findSystem(IRSystem::VOXEL_TO_TRIXEL_STAGE_1)
+    );
+}
+
+// Every capturing subject mode adds two striped voxel subjects (eight for
+// `all`) and a RENDER controller ahead of the voxel raster that poses and
+// configures them each tick.
+void initGlitchSubjectFixture() {
+    using IRShapeDebug::GlitchSubjectFixture;
+    if (!g_glitchSubject.captures()) {
+        return;
+    }
+    IRPrefab::Glitch::setState(GlitchSubjectFixture::clockState(g_glitchSubject.mode_));
+    g_glitchSubject.spawn();
+    for (int i = 0; i < g_glitchSubject.subjectCount_; ++i) {
+        IRPrefab::Glitch::setSubject(
+            g_glitchSubject.subjects_[static_cast<std::size_t>(i)],
+            GlitchSubjectFixture::inactive()
+        );
+    }
+    IRSystem::insertIntoPipelineBefore(
+        IRTime::Events::RENDER,
+        IRSystem::createSystem<IRComponents::C_GlitchState>(
+            "ShapeDebugGlitchSubjectControl",
+            [](const IRComponents::C_GlitchState &) {},
+            []() { g_glitchSubject.controlFrame(); }
         ),
         IRSystem::findSystem(IRSystem::VOXEL_TO_TRIXEL_STAGE_1)
     );

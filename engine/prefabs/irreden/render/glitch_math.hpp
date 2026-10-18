@@ -232,6 +232,12 @@ inline IRMath::ivec2 trixelStepForZoom(IRMath::vec2 zoom) {
 
 // ---- Frame tables and the per-pixel plan the shader twins mirror ----------
 
+// A row, band or cell selected by the low 16 bits of its hash fires when they
+// fall below this.
+inline std::uint32_t hashThreshold(float strength) {
+    return static_cast<std::uint32_t>(65536.0f * strength);
+}
+
 inline int bandCount(float strength) {
     if (strength <= 0.0f) {
         return 0;
@@ -397,7 +403,7 @@ inline FrameTables frameTables(const FrameParams &params) {
     for (int band = 0; band < tables.cellCount_; ++band) {
         tables.cells_[band] = bandSpan(seed, tick, kEffectCells, band, cellRowCount);
     }
-    tables.cellThreshold_ = static_cast<std::uint32_t>(65536.0f * cellStrength);
+    tables.cellThreshold_ = hashThreshold(cellStrength);
 
     const float depthStrength = params.intensity_ * params.depth_;
     tables.depthEnabled_ = depthStrength > 0.0f;
