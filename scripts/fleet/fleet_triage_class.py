@@ -43,7 +43,6 @@ GRADUATED = tuple(CLASSES)
 # Ingest queues a plan-less issue only on an opt-out label, so a class whose
 # bar promises no plan must write that label itself.
 CLASS_LABELS = {"verification-run": (NO_PLAN,)}
-NEGATIVE = ("no", "false", "0", "none")
 
 
 def check(class_name, bar):
@@ -63,8 +62,9 @@ def check(class_name, bar):
     if class_name == "objective-row" and str(bar["filer"]).strip().lower() not in FILERS:
         return False, (f"objective-row filer must be one of {', '.join(FILERS)}, "
                        f"got {bar['filer']!r}")
-    if class_name == "verification-run" and str(bar["no_plan"]).strip().lower() in NEGATIVE:
-        return False, "verification-run needs fleet:no-plan"
+    if class_name == "verification-run" and _bare(bar["no_plan"]) != NO_PLAN:
+        return False, (f"verification-run no_plan must be exactly {NO_PLAN}, "
+                       f"got {bar['no_plan']!r}")
     return True, f"{class_name}: every bar line cited"
 
 
@@ -99,11 +99,16 @@ def has_triage_heading(text):
     return bool(_HEADING_RE.search(text or ""))
 
 
+def _bare(value):
+    """`value` lowercased, stripped of backtick, bracket and asterisk decoration."""
+    return str(value or "").strip("`*[] \t").lower()
+
+
 def is_approve(verdict):
     """Whether a verdict value is exactly recommend-approve, decorated at most
     with backticks, brackets or asterisks. The verdict grammar is a closed
     set: a suffixed or extended value never grants approval."""
-    return str(verdict or "").strip("`*[] \t").lower() == APPROVE
+    return _bare(verdict) == APPROVE
 
 
 def model_of(value):

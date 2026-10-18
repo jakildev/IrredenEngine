@@ -79,12 +79,17 @@ class Bars(unittest.TestCase):
         self.assertFalse(ok)
         self.assertIn("filer", reason)
         self.assertTrue(tc.check("objective-row", dict(bad_filer, filer="Steward"))[0])
-        for value in ("no", "false", "0"):
+        for value in ("no", "false", "0", "human:no-plan", "yes", "fleet:no-plan-ish",
+                      "fleet:no-plan if the owner agrees"):
             with self.subTest(no_plan=value):
                 ok, reason = tc.check("verification-run",
                                       dict(FULL["verification-run"], no_plan=value))
                 self.assertFalse(ok)
                 self.assertIn("fleet:no-plan", reason)
+        for value in ("`fleet:no-plan`", " FLEET:NO-PLAN ", "[fleet:no-plan]"):
+            with self.subTest(no_plan=value):
+                self.assertTrue(tc.check("verification-run",
+                                         dict(FULL["verification-run"], no_plan=value))[0])
 
 
 class Labels(unittest.TestCase):
@@ -145,6 +150,10 @@ class Comments(unittest.TestCase):
         labels, reason = tc.decide(tc.parse_triage_comment(verification))
         self.assertEqual(labels, ["fleet:agent-approved", "fleet:sonnet", "fleet:no-plan"])
         self.assertIn("verification-run", reason)
+        labels, reason = tc.decide(tc.parse_triage_comment(
+            verification.replace("- no_plan: fleet:no-plan", "- no_plan: human:no-plan")))
+        self.assertEqual(labels, ["fleet:triage-recommend"])
+        self.assertIn("human:no-plan", reason)
         # The shared field grammar: a decorated name or the plain **Model:** key.
         for text in (COMMENT.replace("**Suggested model:** sonnet", "**Suggested model:** `Opus`"),
                      COMMENT.replace("**Suggested model:** sonnet", "**Model:** [fable]")):

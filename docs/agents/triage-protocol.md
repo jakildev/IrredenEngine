@@ -250,7 +250,7 @@ ever stamps `human:approved`.
 | `rebless` — reference re-bless / render-verify refresh | `measurement`: the measured table (match %, max delta, PSNR) on `host`; `confinement`: the rule in the criteria (one framebuffer pixel) |
 | `docs-capture` — docs capture of a posted ruling | `ruling`: the architect, steward or design-answerer comment it captures; `grep`: the search showing the doc lacks it on master |
 | `plan-residual` — plan-named residual of an approved issue | `plan`: the approved `## Plan` comment; `decision`: the decision line that carves it out |
-| `verification-run` — verification run / parity measurement | `criteria`: runnable; `host`: named; `no_plan`: `fleet:no-plan` |
+| `verification-run` — verification run / parity measurement | `criteria`: runnable; `host`: named; `no_plan`: exactly `fleet:no-plan` |
 | `objective-row` — objective Done-means row | `objective`: the active objective file; `row`: verbatim; `filer`: `architect` or `steward` |
 
 `scripts/fleet/fleet_triage_class.py` is the one judge of the verdict
