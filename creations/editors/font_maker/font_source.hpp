@@ -22,6 +22,10 @@
 namespace FontMaker {
 
 constexpr int kMaxGlyphWidth = 8;
+// Appended to a header's path: the file a save is written to before it
+// replaces the header, and where the header is moved aside meanwhile.
+constexpr char kSaveSuffix[] = ".font-maker-save";
+constexpr char kBackupSuffix[] = ".font-maker-backup";
 
 struct GlyphLiteral {
     std::string name_;
@@ -161,6 +165,47 @@ inline bool readFile(const std::filesystem::path &path, std::string &out) {
     buffer << file.rdbuf();
     out = buffer.str();
     return true;
+}
+
+using RenameFile =
+    void (*)(const std::filesystem::path &, const std::filesystem::path &, std::error_code &);
+
+inline void renameFile(
+    const std::filesystem::path &from, const std::filesystem::path &to, std::error_code &error
+) {
+    std::filesystem::rename(from, to, error);
+}
+
+// Moves `temporary` over `target`. Some Windows runtimes refuse to rename over
+// an existing file; `target` is then moved aside to a backup first and moved
+// back if `temporary` still cannot be installed, so a failed save never leaves
+// the original missing. Returns an empty string on success, else the refusal.
+inline std::string replaceFile(
+    const std::filesystem::path &temporary, const std::filesystem::path &target, RenameFile rename
+) {
+    std::error_code error;
+    rename(temporary, target, error);
+    if (!error) {
+        return {};
+    }
+    std::filesystem::path backup = target;
+    backup += kBackupSuffix;
+    error.clear();
+    rename(target, backup, error);
+    if (error) {
+        return "cannot replace " + target.string();
+    }
+    rename(temporary, target, error);
+    if (error) {
+        std::error_code restoreError;
+        rename(backup, target, restoreError);
+        if (restoreError) {
+            return "cannot replace " + target.string() + "; the original is at " + backup.string();
+        }
+        return "cannot replace " + target.string();
+    }
+    std::filesystem::remove(backup, error);
+    return {};
 }
 
 } // namespace detail
@@ -348,9 +393,14 @@ inline std::string withGlyphRows(
 // reloads `source` from the written text. Refuses, leaving the file
 // untouched, when the file no longer matches the loaded snapshot, the literal
 // is malformed, or `rows` has the wrong height. Returns an empty string on
-// success, else the refusal.
-inline std::string
-saveGlyph(FontSource &source, int glyphIndex, const std::vector<std::uint8_t> &rows) {
+// success, else the refusal. `rename` is the file-move primitive the
+// replacement runs on.
+inline std::string saveGlyph(
+    FontSource &source,
+    int glyphIndex,
+    const std::vector<std::uint8_t> &rows,
+    detail::RenameFile rename = detail::renameFile
+) {
     if (glyphIndex < 0 || glyphIndex >= static_cast<int>(source.glyphs_.size())) {
         return "no literal to save into";
     }
@@ -373,7 +423,7 @@ saveGlyph(FontSource &source, int glyphIndex, const std::vector<std::uint8_t> &r
     std::error_code error;
     const std::filesystem::perms perms = std::filesystem::status(source.path_, error).permissions();
     std::filesystem::path temporary = source.path_;
-    temporary += ".font-maker-save";
+    temporary += kSaveSuffix;
     {
         std::ofstream file(temporary, std::ios::binary | std::ios::trunc);
         if (!file) {
@@ -389,17 +439,10 @@ saveGlyph(FontSource &source, int glyphIndex, const std::vector<std::uint8_t> &r
     if (perms != std::filesystem::perms::unknown) {
         std::filesystem::permissions(temporary, perms, error);
     }
-    std::filesystem::rename(temporary, source.path_, error);
-    if (error) {
-        // Some Windows runtimes refuse to rename over an existing file; the
-        // snapshot check above already proved the old bytes are disposable.
-        error.clear();
-        std::filesystem::remove(source.path_, error);
-        std::filesystem::rename(temporary, source.path_, error);
-    }
-    if (error) {
+    const std::string refusal = detail::replaceFile(temporary, source.path_, rename);
+    if (!refusal.empty()) {
         std::filesystem::remove(temporary, error);
-        return "cannot replace " + source.path_.string();
+        return refusal;
     }
     return parseFontSource(text, source);
 }

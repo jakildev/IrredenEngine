@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <string>
+#include <system_error>
 #include <vector>
 
 namespace {
@@ -24,6 +25,39 @@ std::string readAll(const fs::path &path) {
 void writeAll(const fs::path &path, const std::string &text) {
     std::ofstream file(path, std::ios::binary | std::ios::trunc);
     file << text;
+}
+
+fs::path withSuffix(fs::path path, const char *suffix) {
+    path += suffix;
+    return path;
+}
+
+// A runtime that refuses to rename over an existing file.
+void renameRefusingOverwrite(const fs::path &from, const fs::path &to, std::error_code &error) {
+    if (fs::exists(to)) {
+        error = std::make_error_code(std::errc::file_exists);
+        return;
+    }
+    fs::rename(from, to, error);
+}
+
+// Every attempt to install the save's temporary file fails.
+void renameFailingInstall(const fs::path &from, const fs::path &to, std::error_code &error) {
+    if (from.string().ends_with(FontMaker::kSaveSuffix)) {
+        error = std::make_error_code(std::errc::permission_denied);
+        return;
+    }
+    fs::rename(from, to, error);
+}
+
+// Only a move onto the backup path succeeds, so neither the edit nor the
+// original can be put back on the header path.
+void renameOnlyToBackup(const fs::path &from, const fs::path &to, std::error_code &error) {
+    if (!to.string().ends_with(FontMaker::kBackupSuffix)) {
+        error = std::make_error_code(std::errc::permission_denied);
+        return;
+    }
+    fs::rename(from, to, error);
 }
 
 struct ShippedHeader {
@@ -185,6 +219,53 @@ TEST_F(FontMakerSource, SaveRefusesAMalformedOrMissingLiteral) {
     EXPECT_NE(FontMaker::saveGlyph(source, malformed, rows), "");
     EXPECT_NE(FontMaker::saveGlyph(source, source.glyphFor('C'), rows), "");
     EXPECT_EQ(readAll(path), text);
+}
+
+TEST_F(FontMakerSource, SaveMovesTheOriginalAsideWhenRenameCannotOverwrite) {
+    const fs::path path = copyShipped("trixel_font.hpp");
+    FontSource source;
+    ASSERT_EQ(FontMaker::loadFontSource(path, source), "");
+    const int glyph = source.glyphFor('E');
+    std::vector<std::uint8_t> rows = source.glyphs_[glyph].rows_;
+    rows[0] ^= 1u;
+
+    ASSERT_EQ(FontMaker::saveGlyph(source, glyph, rows, renameRefusingOverwrite), "");
+    EXPECT_EQ(readAll(path), source.text_);
+    EXPECT_EQ(source.glyphs_[glyph].rows_, rows);
+    EXPECT_FALSE(fs::exists(withSuffix(path, FontMaker::kBackupSuffix)));
+    EXPECT_FALSE(fs::exists(withSuffix(path, FontMaker::kSaveSuffix)));
+}
+
+TEST_F(FontMakerSource, SaveKeepsTheOriginalWhenTheEditCannotBeInstalled) {
+    const fs::path path = copyShipped("trixel_font.hpp");
+    const std::string original = readAll(path);
+    FontSource source;
+    ASSERT_EQ(FontMaker::loadFontSource(path, source), "");
+    const int glyph = source.glyphFor('E');
+    std::vector<std::uint8_t> rows = source.glyphs_[glyph].rows_;
+    rows[0] ^= 1u;
+
+    EXPECT_NE(FontMaker::saveGlyph(source, glyph, rows, renameFailingInstall), "");
+    EXPECT_EQ(readAll(path), original);
+    EXPECT_EQ(source.text_, original);
+    EXPECT_FALSE(fs::exists(withSuffix(path, FontMaker::kBackupSuffix)));
+    EXPECT_FALSE(fs::exists(withSuffix(path, FontMaker::kSaveSuffix)));
+}
+
+TEST_F(FontMakerSource, SaveNamesTheBackupWhenTheOriginalCannotBeRestored) {
+    const fs::path path = copyShipped("trixel_font.hpp");
+    const fs::path backup = withSuffix(path, FontMaker::kBackupSuffix);
+    const std::string original = readAll(path);
+    FontSource source;
+    ASSERT_EQ(FontMaker::loadFontSource(path, source), "");
+    const int glyph = source.glyphFor('E');
+    std::vector<std::uint8_t> rows = source.glyphs_[glyph].rows_;
+    rows[0] ^= 1u;
+
+    const std::string refusal = FontMaker::saveGlyph(source, glyph, rows, renameOnlyToBackup);
+    EXPECT_NE(refusal.find(backup.string()), std::string::npos) << refusal;
+    EXPECT_EQ(readAll(backup), original);
+    EXPECT_FALSE(fs::exists(withSuffix(path, FontMaker::kSaveSuffix)));
 }
 
 TEST_F(FontMakerSource, RejectsAHeaderOutsideTheSchema) {

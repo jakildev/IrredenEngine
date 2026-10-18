@@ -68,7 +68,10 @@ SAVE rewrites only the quoted rows of the selected glyph's literal, and only
 the characters of texels whose value changed; comments, constants, the switch
 and every other glyph keep their bytes, and the file's line endings and
 permissions are kept. The write goes to a temporary file in the same
-directory, which then replaces the header.
+directory, which then replaces the header. Where the platform cannot rename
+over an existing file, the header is first moved to
+`<header>.font-maker-backup` and moved back if the replacement fails; if even
+that fails, the refusal names the backup, which holds the original.
 
 SAVE refuses, leaving the file untouched, when the header changed on disk
 since it was loaded (RELOAD it), when the glyph's literal is malformed, or
@@ -96,6 +99,7 @@ fleet-run IrredenEngineTest --gtest_filter='TrixelFont.*:FontMakerSource.*'
 - `sample` (the render-verify rows) edits E and captures the sample strip
   through both composites at `gui_scale` 1 and 2.
 - `FontMakerSource.*` round-trips both shipped headers through a save on
-  temporary copies, checks the refusals, and compiles the saved copies.
+  temporary copies, checks the refusals, forces each replacement failure
+  to prove the original survives, and compiles the saved copies.
 
 No session saves into the shipped headers.
