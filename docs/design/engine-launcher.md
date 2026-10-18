@@ -138,6 +138,14 @@ last run verdict (D5). Lua: `IRCatalog.scan{ root = ..., buildDir = ... }`
 returns an array of creations with their targets and state;
 `IRCatalog.assets{ root = ... }` returns the asset index (D9).
 
+The catalog reads only under the tool root (D4). `root` and `buildDir` are
+optional root-relative paths, checked by the D4 path model, and default to
+`.` and `build`. Both calls raise in a process with no tool root, and a
+refused path raises before anything is read. Every path the catalog returns
+(a thumbnail, a reference, a screenshot, a docs file) is relative to the tool
+root, so it passes unchanged to `makeImage` (D9) and to the `editor` and
+`open-folder` tools.
+
 Rejected: scanning in Lua over a generic `IRFile.listDir` — spreads
 filesystem policy into scripts; a Python catalog generator — a second
 toolchain the trixel host cannot call back into.
@@ -192,7 +200,11 @@ its check. Every failure happens before a child is started.
   (`/src/IrredenEngine2` is not under `/src/IrredenEngine`). The child gets
   the resolved path, never the Lua string. Lua has no call that creates a
   symlink (`io` / `os` stay closed), so a check-then-spawn race needs another
-  host process. That is outside this boundary.
+  host process. That is outside this boundary. The check is one function,
+  `resolveContainedPath(base, path)`. It is hoisted from
+  `IRScript::detail::resolveRunPath`, which already does the canonicalize and
+  compare half for `IRFile`. The catalog (D3), `handOff{ buildDir }` (D5) and
+  the image widget (D9) call it too.
 - **No caller-chosen cwd.** `ir-build` resolves its tree from
   `git rev-parse --show-toplevel` of its cwd. A cwd that is merely contained
   could still name a nested checkout under the root: a `.claude/worktrees/`
@@ -269,9 +281,10 @@ The root is the checkout `IRLauncher` was compiled from (`IR_LAUNCHER_ROOT`,
 D4). There is no `--root` flag, because a command-line root would let any
 `handOff` parent aim a launcher at another tree and build it. The scan covers
 the root's `creations/**`, gitignored private creations included.
-`--catalog-root <path>` changes only what `IRCatalog.scan` reads, which is a
-read-only walk. GUI sessions and render-verify use it to show the fixture
-tree, and the tool root never follows it. Unit tests point the C++ services
+`--catalog-root <path>` changes only the default `root` of `IRCatalog.scan`,
+a read-only walk. It is root-relative and goes through the same check, so the
+fixture tree that GUI sessions and render-verify show lives inside the
+checkout. The tool root never follows it. Unit tests point the C++ services
 at a fixture tree through their constructors. A root
 list in the settings store (D8) is v2, with a worktree picker; each entry
 would go through the same containment rules. The data model already carries
@@ -303,6 +316,24 @@ runs the host's `open` / `explorer` / `xdg-open`. Both take one D4-checked
   widget's trixel rectangle (a texel is two pixels wide, one tall) and
   written into the GUI canvas like any fill. Thumbnails read on-brand; the
   rendering is exact enough to recognise a scene, not to inspect pixels.
+- **The image `path` follows the D4 path model.** It is relative to the
+  *image base*. In a process that set a tool root (the launcher), the base
+  is that root. Everywhere else it is the run directory, the tree `IRFile`
+  is already confined to. `IRGui` is an engine-wide table, so the widget
+  must not become a host-file read for an arbitrary creation.
+  `makeImage` and `setImagePath` raise before the file is opened or decoded
+  when the path:
+  - is empty or holds a NUL byte;
+  - is absolute;
+  - has a `..` component;
+  - resolves outside the base, through a symlink or as a sibling that has
+    the base as a string prefix.
+
+  An in-base path that is missing or is not a PNG draws the placeholder and
+  logs once, because a thumbnail can vanish between the scan and the draw.
+  The catalog's paths are tool-root-relative (D3), so the launcher passes
+  them through unchanged. `IRUIWidgetsDemo` stages its test PNG into its run
+  directory.
 - A creation's thumbnail is `thumbnail` from its manifest, else the first
   render-verify reference for the current preset, else its newest
   `save_files/screenshots/*.png`, else a placeholder.
@@ -353,9 +384,9 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
 
 | Table | Call | Owner |
 |---|---|---|
-| `IRCatalog` | `scan{ root, buildDir }`, `assets{ root }` | `engine/catalog` |
+| `IRCatalog` | `scan{ root, buildDir }`, `assets{ root }` (root-relative, tool root required) | `engine/catalog` |
 | `IREngine` | `spawnTool{ tool, target \| path }` → handle (`poll`, `exit`, `kill`); `toolRoot()`; `handOff{ argv, buildDir }` → `r.verdict` | `engine/world` |
-| `IRGui` | `makeImage(x, y, w, h, path)`, `setImagePath(id, path)` | `engine/prefabs/irreden/render` |
+| `IRGui` | `makeImage(x, y, w, h, path)`, `setImagePath(id, path)` (`path` relative to the image base, D9) | `engine/prefabs/irreden/render` |
 
 ## Validators
 
@@ -363,7 +394,22 @@ harness (`--gui-session`), the way the voxel editor's sessions are.
   conformance corpus (valid, each error class with line/column), the schema
   (required keys, unknown keys ignored, every `kind`), and a scan over a
   fixture tree with a valid, an invalid, and a missing manifest plus a fake
-  build dir with one built target and one result file.
+  build dir with one built target and one result file. `IRCatalog` raises,
+  having read nothing, for a `root` or `buildDir` that is absolute, holds
+  `..`, or escapes through a symlink, and for any call in a process with no
+  tool root. Every returned path is relative to the tool root.
+- `ctest -R 'WidgetImage'` — the image path check over a fixture base, with
+  a stub decoder that records each call. These raise from both `makeImage`
+  and `setImagePath`, and the decoder records zero calls:
+  - an absolute path (`/etc/x.png`, `C:\x.png`, `\\host\s\x.png`);
+  - a `..` path (`../x.png`);
+  - a fixture symlink that points at a PNG outside the base;
+  - a fixture symlink into a `<base>2` sibling, whose path has the base as
+    a string prefix.
+
+  An in-base symlink to an in-base PNG decodes once, with the resolved path.
+  A missing in-base file draws the placeholder. With no tool root, the base
+  is the run directory.
 - `ctest -R 'SpawnTool|HandOff'`. The service runs over a fixture root.
   Every refusal case asserts that the stub spawn primitive recorded zero
   launches:
