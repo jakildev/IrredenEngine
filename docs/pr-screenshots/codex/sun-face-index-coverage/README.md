@@ -22,3 +22,9 @@ witnesses, not by these scenes. [Numerical tests, timing and remaining limits](.
 | ![Baked original](parent/baked/4.png) | ![Baked corrected](candidate/baked/4.png) |
 | ![Direct original](parent/direct/4.png) | ![Direct corrected](candidate/direct/4.png) |
 | ![Mixed original](parent/mixed/2.png) | ![Mixed corrected](candidate/mixed/2.png) |
+
+After rebasing onto master `594a22bfb`, both demos rebuilt successfully. A fresh
+21-image main matrix is RGB-identical to the corresponding `candidate` images.
+The [post-rebase manifest](post-rebase/manifest.json) records the rebuilt binary
+and shader hashes, commands and capture hashes; full logs are retained. Duplicate
+PNGs are omitted. The lighting domain, boundary and hover checks also passed.
