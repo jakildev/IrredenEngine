@@ -18,6 +18,7 @@
 #include <irreden/script/lua_script.hpp>
 #include <irreden/script/prefab_api.hpp>
 
+#include "glitch_fixture.hpp"
 #include "lod_scene.hpp"
 #include "sdf_voxel_scene.hpp"
 
@@ -225,6 +226,7 @@ constexpr IRVideo::AutoScreenshotShot kMovingCasterShots[] = {
     {2.0f, vec2(0.0f), 0.0f, "moving_caster_8"},
 };
 bool g_movingCaster = false;
+IRShapeDebug::GlitchFixture::Mode g_glitchMode = IRShapeDebug::GlitchFixture::Mode::NONE;
 IREntity::EntityId g_movingCasterEntity = IREntity::kNullEntity;
 
 // A cube assembled from single-voxel entities emits every interior face, so
@@ -1554,6 +1556,24 @@ void registerCliArgs() {
         {"rest", "root", "parented"},
         "rest"
     );
+    args.enumValue(
+        "--glitch-test",
+        "Framebuffer glitch fixture "
+        "(none|standard-off|off|tear|hold|split|bars|cells|depth-tear|depth-hold|hold-divisor|all)",
+        {"none",
+         "standard-off",
+         "off",
+         "tear",
+         "hold",
+         "split",
+         "bars",
+         "cells",
+         "depth-tear",
+         "depth-hold",
+         "hold-divisor",
+         "all"},
+        "none"
+    );
     args.flag("--pan-sweep", "Fine fixed-yaw camera-pan jitter sweep (#1944)");
     args.flag("--yaw-sweep", "Fine fixed-position camera-yaw jitter sweep (#1944)");
     args.enumValue(
@@ -1706,6 +1726,7 @@ void readCliArgs() {
     g_shadowFootprintProbe = args.getFlag("--shadow-footprint-probe");
     g_voxelEntityCube = args.getFlag("--voxel-entity-cube");
     g_movingCaster = args.getFlag("--moving-caster");
+    g_glitchMode = IRShapeDebug::GlitchFixture::info(args.getEnum("--glitch-test")).mode_;
     g_panSweep = args.getFlag("--pan-sweep");
     g_yawSweep = args.getFlag("--yaw-sweep");
     g_pivotVerifyBlock = args.getEnum("--pivot-verify");
@@ -1772,6 +1793,7 @@ void readCliArgs() {
 void initSystems();
 void initCommands();
 void initEntities();
+void initGlitchFixture();
 void registerDemoSettings();
 
 int main(int argc, char **argv) {
@@ -1861,6 +1883,7 @@ int main(int argc, char **argv) {
     initSystems();
     initCommands();
     initEntities();
+    initGlitchFixture();
     // After initEntities: the tint setters re-apply over the shapes it created.
     registerDemoSettings();
     if (g_zoomContinuous) {
@@ -3676,6 +3699,16 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::VIEWPORT_TO_FRAMEBUFFER>()
         );
     }
+    if (g_glitchMode != IRShapeDebug::GlitchFixture::Mode::NONE) {
+        renderPipeline.insert(
+            std::find(
+                renderPipeline.begin(),
+                renderPipeline.end(),
+                IRSystem::findSystem(IRSystem::FRAMEBUFFER_TO_SCREEN)
+            ),
+            IRSystem::createSystem<IRSystem::FRAMEBUFFER_GLITCH>()
+        );
+    }
     // The interactive minimap is not part of captures or timed scene work.
     IRRender::setCullingMinimapEnabled(
         g_autoWarmupFrames == 0 && g_autoRecordFrames == 0 && g_autoProfileFrames == 0
@@ -3688,6 +3721,7 @@ void initSystems() {
             []() {
                 ++g_autoProfileCount;
                 if (g_autoProfileCount >= g_autoProfileFrames) {
+                    IRShapeDebug::GlitchFixture::logProbe("profile-end");
                     IR_LOG_INFO("Auto-profile: {} frames collected, exiting", g_autoProfileFrames);
                     IRWindow::closeWindow();
                 }
@@ -4171,6 +4205,14 @@ void initSystems() {
                 IREntity::getComponent<C_LocalTransform>(g_movingCasterEntity).translation_ =
                     kMovingCasterStart + kMovingCasterStep * static_cast<float>(shotIndex + 1);
             };
+        } else if (
+            IRShapeDebug::GlitchFixture::shot(g_glitchMode) != nullptr &&
+            g_glitchMode != IRShapeDebug::GlitchFixture::Mode::NONE &&
+            g_glitchMode != IRShapeDebug::GlitchFixture::Mode::STANDARD_OFF
+        ) {
+            cfg.shots_ = IRShapeDebug::GlitchFixture::shot(g_glitchMode);
+            cfg.numShots_ = 1;
+            cfg.onCaptureFrame_ = [](int) { IRShapeDebug::GlitchFixture::logProbe("capture"); };
         } else if (g_lodScene) {
             IRVideo::setAutoScreenshotShots(cfg, IRShapeDebug::LodScene::shots_);
             cfg.settleFrames_ = IRConstants::kPrefabPartsTierSettleTicks + 12;
@@ -4989,6 +5031,32 @@ void initViewportPortraitScene() {
         guiSize.y,
         desc.zoom_,
         desc.yawRadians_
+    );
+}
+
+// Every capturing glitch mode adds a cube that steps one voxel per engine
+// tick, so a held band shows it where the history snapshot caught it.
+void initGlitchFixture() {
+    using IRShapeDebug::GlitchFixture;
+    if (g_glitchMode == GlitchFixture::Mode::NONE) {
+        return;
+    }
+    IRPrefab::Glitch::setState(GlitchFixture::state(g_glitchMode));
+    if (g_glitchMode == GlitchFixture::Mode::STANDARD_OFF) {
+        return;
+    }
+    const IREntity::EntityId mover = GlitchFixture::spawnMover();
+    IRSystem::insertIntoPipelineBefore(
+        IRTime::Events::RENDER,
+        IRSystem::createSystem<IRComponents::C_GlitchState>(
+            "ShapeDebugGlitchMover",
+            [](const IRComponents::C_GlitchState &) {},
+            [mover]() {
+                IREntity::getComponent<C_LocalTransform>(mover).translation_ =
+                    GlitchFixture::moverPosition();
+            }
+        ),
+        IRSystem::findSystem(IRSystem::VOXEL_TO_TRIXEL_STAGE_1)
     );
 }
 

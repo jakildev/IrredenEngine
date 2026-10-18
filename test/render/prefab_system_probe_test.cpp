@@ -28,6 +28,7 @@
 #include <irreden/ir_entity.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/entity/entity_manager.hpp>
+#include <irreden/render/glitch.hpp>
 #include <irreden/render/help_overlay.hpp>
 #include <irreden/render/settings_menu.hpp>
 #include <irreden/render/systems/system_perf_stats_overlay.hpp>
@@ -122,6 +123,70 @@ TEST_F(PrefabSystemProbeTest, PerfStatsOverlayRegistrationRequiresMainThread) {
 TEST_F(PrefabSystemProbeTest, SettingsMenuRegistrationRequiresMainThread) {
     const IRSystem::SystemId id = IRSystem::createSystem<IRSystem::SETTINGS_MENU>();
     expectMainThreadRegistration(id, "SettingsMenu");
+}
+
+// `FRAMEBUFFER_TO_SCREEN` skips its blit only when the glitch pass published
+// the CURRENT RENDER tick. Registering through `registerSystem` directly sets
+// up the params without `create()`'s GPU resources.
+IRSystem::SystemId registerGlitchParamsOnly() {
+    return IRSystem::registerSystem<
+        IRSystem::FRAMEBUFFER_GLITCH,
+        IRComponents::C_TrixelCanvasFramebuffer,
+        IRComponents::C_WorldTransform,
+        IRComponents::C_Name>("FramebufferGlitch");
+}
+
+TEST_F(PrefabSystemProbeTest, GlitchPublicationReadsFalseWhenTheSystemIsAbsent) {
+    ASSERT_EQ(IRSystem::findSystem(IRSystem::FRAMEBUFFER_GLITCH), IRSystem::kNullSystemId);
+    EXPECT_EQ(IRPrefab::Glitch::systemOrNull(), nullptr);
+    EXPECT_FALSE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick());
+}
+
+TEST_F(PrefabSystemProbeTest, GlitchPublicationHoldsForTheCurrentRenderTickOnly) {
+    const IRSystem::SystemId id = registerGlitchParamsOnly();
+    ASSERT_EQ(id, IRSystem::SystemId{0});
+    auto *system = IRPrefab::Glitch::systemOrNull();
+    ASSERT_NE(system, nullptr);
+    EXPECT_FALSE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick())
+        << "a freshly registered pass has published nothing";
+    EXPECT_FALSE(system->ownsHistoryImage()) << "history allocates on first enabled use";
+
+    const IRSystem::SystemId sibling = IRSystem::createSystem<C_PrefabProbeSibling>(
+        "PrefabProbeSibling",
+        [](C_PrefabProbeSibling &) {}
+    );
+    m_system_manager.registerPipeline(IRTime::Events::RENDER, {sibling});
+    m_system_manager.executePipeline(IRTime::Events::RENDER);
+    const std::uint64_t current = IRSystem::getEventTickCount(IRTime::Events::RENDER);
+
+    system->publishedRenderTick_ = current;
+    EXPECT_TRUE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick());
+
+    m_system_manager.executePipeline(IRTime::Events::RENDER);
+    EXPECT_FALSE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick())
+        << "a publication from the previous RENDER tick is stale";
+}
+
+// Off state: no singleton, or one with zero intensity. beginTick publishes
+// nothing, zeroes the live GPU row and counts no copy or draw, all without a
+// GPU context.
+TEST_F(PrefabSystemProbeTest, GlitchOffFrameDoesNoWorkAndZeroesItsTimingRow) {
+    const IRSystem::SystemId id = registerGlitchParamsOnly();
+    auto *system = IRSystem::getSystemParams<IRSystem::System<IRSystem::FRAMEBUFFER_GLITCH>>(id);
+    IRRender::gpuStageTiming().framebufferGlitchMs_ = 0.42f;
+
+    system->beginTick();
+    EXPECT_FALSE(system->enabledThisFrame_);
+    EXPECT_FLOAT_EQ(IRRender::gpuStageTiming().framebufferGlitchMs_, 0.0f);
+
+    IREntity::singleton<IRComponents::C_GlitchState>().tearWeight_ = 1.0f;
+    system->beginTick();
+    EXPECT_FALSE(system->enabledThisFrame_) << "zero intensity is off";
+    EXPECT_EQ(system->frameHistoryCopies_, 0);
+    EXPECT_EQ(system->frameDraws_, 0);
+    EXPECT_EQ(system->historyCopyCount_, 0u);
+    EXPECT_EQ(system->drawCount_, 0u);
+    EXPECT_FALSE(IRPrefab::Glitch::screenCompositedForCurrentRenderTick());
 }
 
 } // namespace

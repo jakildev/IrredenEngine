@@ -73,6 +73,10 @@ TEST_F(LuaPipelineRegisterTest, SystemNameEnumBound) {
         static_cast<int>(IRSystem::GUI_CANVAS_TO_SCREEN)
     );
     EXPECT_EQ(
+        lua.script("return IRSystem.SystemName.FRAMEBUFFER_GLITCH").get<int>(),
+        static_cast<int>(IRSystem::FRAMEBUFFER_GLITCH)
+    );
+    EXPECT_EQ(
         lua.script("return IRSystem.SystemName.PROPAGATE_CANVAS_PARTS").get<int>(),
         static_cast<int>(IRSystem::PROPAGATE_CANVAS_PARTS)
     );
@@ -215,13 +219,15 @@ TEST_F(LuaPipelineRegisterTest, FindSystemReturnsNilForAnUnregisteredName) {
     auto result = m_lua.lua().safe_script(
         R"(
         return IRSystem.findSystem(IRSystem.SystemName.TRIXEL_TO_FRAMEBUFFER) == nil,
-               IRSystem.findSystem(IRSystem.SystemName.NULL_SYSTEM) == nil
+               IRSystem.findSystem(IRSystem.SystemName.NULL_SYSTEM) == nil,
+               IRSystem.findSystem(IRSystem.SystemName.FRAMEBUFFER_GLITCH) == nil
     )",
         sol::script_pass_on_error
     );
     ASSERT_TRUE(result.valid()) << sol::error{result}.what();
     EXPECT_TRUE(result.get<bool>(0));
     EXPECT_TRUE(result.get<bool>(1));
+    EXPECT_TRUE(result.get<bool>(2));
 }
 
 TEST_F(LuaPipelineRegisterTest, FindSystemRaisesForAValueThatIsNotASystemName) {

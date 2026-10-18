@@ -267,6 +267,8 @@ template <> struct System<PERF_STATS_OVERLAY> {
             return "PERAXIS-DEPTH";
         if (name == "fbToScreen")
             return "FB-SCREEN";
+        if (name == "framebufferGlitch")
+            return "FB-GLITCH";
         return nullptr;
     }
 

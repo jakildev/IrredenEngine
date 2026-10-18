@@ -262,6 +262,11 @@ enum SystemName {
     // FRAMEBUFFER_TO_SCREEN.
     SYNC_VIEWPORT_SUBJECTS,
     VIEWPORT_TO_FRAMEBUFFER,
+    // Period-quantised framebuffer glitch (engine/prefabs/irreden/render/glitch.hpp).
+    // RENDER after every main-framebuffer producer (TRIXEL_TO_FRAMEBUFFER,
+    // VIEWPORT_TO_FRAMEBUFFER, framebuffer debug overlays) and immediately
+    // before FRAMEBUFFER_TO_SCREEN, whose blit it replaces on enabled frames.
+    FRAMEBUFFER_GLITCH,
     WIDGET_INPUT,
     WIDGET_LUA_DISPATCH,
     WIDGET_APPLY_SLIDER,

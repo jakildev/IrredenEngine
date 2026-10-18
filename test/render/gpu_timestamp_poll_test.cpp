@@ -33,6 +33,7 @@ class TimestampDevice : public RenderDevice {
     void copyImageSubData(
         std::uint32_t, int, int, int, int, std::uint32_t, int, int, int, int, int, int, int
     ) override {}
+    void copyTexture2D(const Texture2D &, Texture2D &) override {}
     void setPolygonMode(PolygonMode) override {}
     void bindDefaultFramebuffer() override {}
     void clearDefaultFramebuffer() override {}

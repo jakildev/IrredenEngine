@@ -297,6 +297,12 @@ constexpr bool isFinite(float value) {
            value <= std::numeric_limits<float>::max();
 }
 
+/// Double-precision overload of @ref isFinite(float).
+constexpr bool isFinite(double value) {
+    return value >= -std::numeric_limits<double>::max() &&
+           value <= std::numeric_limits<double>::max();
+}
+
 /// Clamps @p value to [minValue, maxValue] (scalar or component-wise).
 /// GLM wrapper.
 template <typename T> constexpr T clamp(const T &value, const T &minValue, const T &maxValue) {
