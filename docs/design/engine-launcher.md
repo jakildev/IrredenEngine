@@ -126,7 +126,10 @@ targets (the lighting family). Schema v1:
     stem of the D5 result file, where `/` or `\` would leave
     `ir-run-results/`.
   - `thumbnail` and each `docs` entry go through the D4 path model against
-    the creation directory.
+    the creation directory. The parser sees only the text, so it rejects
+    the lexical cases (empty, a NUL byte, absolute, any `..` component). The
+    D3 scan knows the directory: it resolves symlinks, and an escape
+    invalidates the manifest the same way.
   - A value that fails marks the whole manifest invalid, with the key and
     the reason, so a bad target is never offered for Build or Run.
 
