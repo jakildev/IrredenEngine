@@ -4,6 +4,9 @@
 #include <irreden/render/components/component_triangle_canvas_textures.hpp>
 #include <irreden/ir_math.hpp>
 
+#include <algorithm>
+#include <cstddef>
+#include <span>
 #include <vector>
 
 namespace IRRender {
@@ -70,6 +73,54 @@ inline void fillRect(
 
     scratch.colors_.assign(pixels, color);
     scratch.distances_.assign(pixels, distance);
+
+    canvas.getTextureColorsForGeometryWrite()->subImage2D(
+        lo.x,
+        lo.y,
+        w,
+        h,
+        IRRender::PixelDataFormat::RGBA,
+        IRRender::PixelDataType::UNSIGNED_BYTE,
+        scratch.colors_.data()
+    );
+    canvas.textureTriangleDistances_.second->subImage2D(
+        lo.x,
+        lo.y,
+        w,
+        h,
+        IRRender::PixelDataFormat::RED_INTEGER,
+        IRRender::PixelDataType::INT32,
+        scratch.distances_.data()
+    );
+}
+
+// Writes a rectangle of per-texel colours (`colors` row-major, `size.x`
+// per row) at `pos`, every texel at `distance`, clipped to the canvas: one
+// subImage2D per channel. `scratch` holds the clipped copy.
+inline void writeColorRect(
+    IRComponents::C_TriangleCanvasTextures &canvas,
+    IRMath::ivec2 pos,
+    IRMath::ivec2 size,
+    std::span<const IRMath::Color> colors,
+    int distance,
+    RectFillScratch &scratch
+) {
+    IRMath::ivec2 lo, hi;
+    if (!clipRectToCanvas(pos, size, canvas.size_, lo, hi))
+        return;
+
+    const int w = hi.x - lo.x;
+    const int h = hi.y - lo.y;
+    scratch.colors_.resize(static_cast<std::size_t>(w * h));
+    scratch.distances_.assign(scratch.colors_.size(), distance);
+    for (int y = 0; y < h; ++y) {
+        const IRMath::ivec2 local = IRMath::ivec2(lo.x, lo.y + y) - pos;
+        std::copy_n(
+            colors.begin() + static_cast<std::ptrdiff_t>(local.y * size.x + local.x),
+            w,
+            scratch.colors_.begin() + static_cast<std::ptrdiff_t>(y * w)
+        );
+    }
 
     canvas.getTextureColorsForGeometryWrite()->subImage2D(
         lo.x,

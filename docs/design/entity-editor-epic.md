@@ -163,7 +163,7 @@ revisited per-phase:
 | **GUI rendered via trixel** | See above. No dear-imgui. No third-party UI lib. |
 | **Skeletal animation + IK in-engine** | Joints are entities (`C_Skeleton` rig root + `C_Joint`-tagged joint entities, parent chain via `CHILD_OF`). FABRIK + Two-Bone. Foot-IK + interaction-IK at runtime. |
 | **Modular interpolation** | Registry of built-in C++ curves; Lua-defined custom interpolators per keyframe. Zero-overhead for built-ins. |
-| **Editor exe lives at `creations/editors/voxel_editor/`** | Tracked in the engine repo (gitignore exception added in F-0.8). Private editor tools such as `font_maker` remain gitignored. |
+| **Editor exe lives at `creations/editors/voxel_editor/`** | Tracked in the engine repo (gitignore exception added in F-0.8). Other private editor tools remain gitignored; `font_maker` (the trixel-font editor) is tracked too. |
 | **Per-voxel record extends to 12 B** | `{material_id, flags, bone_id}` added. `bone_id = 0` is identity (zero-cost back-compat). |
 | **Prefab format is Lua tables** | Consistent with the rest of the engine's Lua scripting story. Round-trips through `Prefab.spawn(...)`. |
 | **Single-window invariant lifted only at Phase 8** | Real multi-window has cost; defer until single-window editor proves valuable first. |

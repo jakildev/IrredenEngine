@@ -36,21 +36,25 @@ using SmallGlyph = std::array<uint8_t, kSmallGlyphHeight>;
 
 namespace detail {
 
-// Packs `Height` rows of `Width` chars ('X' or '#' lit) into one byte per row,
-// column 0 in bit (Width - 1). Both glyph sets build their bitmaps with it.
+// Packs one row of `width` chars ('X' or '#' lit) into a byte, column 0 in
+// bit (width - 1).
+constexpr uint8_t packGlyphRow(const char *row, int width) {
+    uint8_t rowBits = 0;
+    for (int col = 0; col < width; ++col) {
+        if (row[col] == 'X' || row[col] == '#') {
+            rowBits |= static_cast<uint8_t>(1 << (width - 1 - col));
+        }
+    }
+    return rowBits;
+}
+
+// Packs `Height` rows of `Width` chars into one byte per row. Both glyph sets
+// build their bitmaps with it.
 template <int Width, int Height>
 constexpr std::array<uint8_t, Height> packGlyphPattern(const char *pattern) {
     std::array<uint8_t, Height> rows{};
-    int i = 0;
     for (int row = 0; row < Height; ++row) {
-        uint8_t rowBits = 0;
-        for (int col = 0; col < Width; ++col) {
-            if (pattern[i] == 'X' || pattern[i] == '#') {
-                rowBits |= static_cast<uint8_t>(1 << (Width - 1 - col));
-            }
-            ++i;
-        }
-        rows[row] = rowBits;
+        rows[row] = packGlyphRow(pattern + row * Width, Width);
     }
     return rows;
 }

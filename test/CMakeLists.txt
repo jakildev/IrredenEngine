@@ -99,6 +99,7 @@ add_executable(IrredenEngineTest
   render/entity_canvas_hitbox_test.cpp
   render/entity_id_carrier_test.cpp
   render/fog_carrier_policy_test.cpp
+  render/font_maker_source_test.cpp
   render/fog_cross_section_test.cpp
   render/fog_ghost_policy_test.cpp
   render/fog_line_of_sight_test.cpp
@@ -274,6 +275,8 @@ target_compile_definitions(IrredenEngineTest PRIVATE
     IR_LUA_VOXEL_ASSET_PATH="${CMAKE_SOURCE_DIR}/assets/voxel/entities/rock.vxs"
     IR_FLOWER_PREFAB_PATH="${CMAKE_SOURCE_DIR}/assets/prefabs/flower.prefab.lua"
     IR_FLOWER_ASSET_ROOT="${CMAKE_SOURCE_DIR}"
+    IR_TEST_FONT_HEADER_DIR="${CMAKE_SOURCE_DIR}/engine/render/include/irreden/render"
+    IR_TEST_CXX_COMPILER="${CMAKE_CXX_COMPILER}"
 )
 
 # Build lua_component_codegen_fixtures.hpp from the sibling .lua
@@ -345,6 +348,8 @@ target_compile_definitions(IrredenEngineTest PRIVATE
 
 target_include_directories(IrredenEngineTest PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
+    # font_maker/font_source.hpp: the font maker's header source model.
+    ${CMAKE_SOURCE_DIR}/creations/editors
     ${googletest_SOURCE_DIR}/googletest/include
     ${googletest_SOURCE_DIR}/googlemock/include
 )
