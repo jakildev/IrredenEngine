@@ -1568,7 +1568,11 @@ fi
 # of them — a later PATH lookup could find the launcher itself. On native
 # Windows both are pinned in mixed form with their .exe: native Python must
 # os.stat them, and MSYS's extensionless `type -P` answer names no file on
-# disk. FLEET_GH_ACCOUNTING=0 (conf or env) turns it off.
+# disk. The Windows gh pin is the first gh native Python's PATHEXT walk finds,
+# not bash's first: fleet_github.resolve counts a candidate only when it is
+# the same file as the pin, and that walk never sees an extensionless gh —
+# the token shim (scripts/fleet/gh) ahead of gh.exe included.
+# FLEET_GH_ACCOUNTING=0 (conf or env) turns it off.
 resolve_gh_accounting() {  # resolve_gh_accounting <launcher> — exports FLEET_GH_* or returns 1
     local launcher="$1" real="" py="" candidate events="$HOME/.fleet/state/gh-accounting"
     unset FLEET_GH_REAL FLEET_GH_PYTHON FLEET_GH_LAUNCHER FLEET_GH_EVENT_ROOT
@@ -1590,7 +1594,17 @@ resolve_gh_accounting() {  # resolve_gh_accounting <launcher> — exports FLEET_
     fi
     case "$(uname -s)" in
         MINGW*|MSYS*|CYGWIN*)
-            [[ -f "$real.exe" ]] && real="$real.exe"
+            real="$("$py" -c 'import os, shutil
+for entry in os.environ.get("PATH", "").split(os.pathsep):
+    hit = entry and shutil.which("gh", path=entry)
+    if hit:
+        print(hit)
+        break' 2>/dev/null | tr -d '\r')"
+            if [[ -z "$real" ]]; then
+                echo "fleet-up: GitHub CLI accounting off (no gh native Python can launch on PATH)" >&2
+                unset FLEET_GH_ACCOUNTING
+                return 1
+            fi
             [[ -f "$py.exe" ]] && py="$py.exe"
             real="$(cygpath -m "$real")"
             py="$(cygpath -m "$py")"

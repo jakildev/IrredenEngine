@@ -9,6 +9,18 @@
 # An unselected ghs_ token is assumed to belong to the fleet App; do not share
 # this shim with a self-hosted Actions runner or another installation token.
 
+# With GitHub CLI accounting on, a call that has not passed through the
+# accounting launcher yet is handed to it first. This file is the `gh` every
+# POSIX shell resolves (~/bin leads PATH), and a non-bash tool shell (zsh, as
+# Codex and Claude Code on macOS run) never imports the exported bash `gh`
+# function. The launcher counts the call and runs the pinned gh — this shim,
+# on POSIX — with FLEET_GH_LAUNCH_DEPTH set, so the second pass falls through.
+# fleet_github's counted Python launches set it too.
+if [[ "${FLEET_GH_ACCOUNTING:-}" == "1" && -z "${FLEET_GH_LAUNCH_DEPTH:-}" \
+      && -f "${FLEET_GH_LAUNCHER:-}" ]]; then
+    exec "$BASH" "$FLEET_GH_LAUNCHER" "$@"
+fi
+
 _resolve() {
     if command -v realpath >/dev/null 2>&1; then
         realpath "$1" 2>/dev/null && return 0
@@ -29,7 +41,8 @@ fi
 # $HOME/bin/) that differ textually.
 #
 # The launcher (gh-accounting-bin/gh) is the other fleet wrapper: fleet-up puts
-# it first on a daemon's PATH and pins this shim as the gh it exec's. Choosing
+# it first on a daemon's PATH and, on POSIX, pins this shim as the gh it
+# exec's (native Windows pins gh.exe, which native Python can launch). Choosing
 # it here hands the call straight back, and the two exec each other until the
 # caller's timeout. Both spellings are skipped — the one fleet-up exported and
 # the sibling of this file — so a shim copied out of the repo is covered too.

@@ -595,6 +595,17 @@ fleet_install_maybe_refresh || true
 # starting with /role- from conversion; inert on macOS/Linux.
 export MSYS2_ARG_CONV_EXCL="${MSYS2_ARG_CONV_EXCL:+$MSYS2_ARG_CONV_EXCL;}/role-"
 
+# The role's shell `gh` calls are counted through the accounting launcher.
+# The exported function goes in here, after the pane's rc files have
+# re-ordered PATH, and reaches a bash tool shell through the environment. A
+# zsh tool shell (Codex; Claude Code on macOS) drops it, and its `gh` is
+# counted by the token shim instead. The wrapper's own earlier `gh` calls
+# stay uncounted.
+if [[ "${FLEET_GH_ACCOUNTING:-}" == "1" && -f "${FLEET_GH_LAUNCHER:-}" ]]; then
+    # shellcheck source=gh-accounting-bin/gh-function.sh
+    source "${FLEET_GH_LAUNCHER%/*}/gh-function.sh"
+fi
+
 if [[ "$FLEET_RUNTIME" == codex ]]; then
     _runtime_self="${BASH_SOURCE[0]}"
     while [[ -L "$_runtime_self" ]]; do

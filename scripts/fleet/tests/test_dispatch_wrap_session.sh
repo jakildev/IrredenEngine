@@ -23,6 +23,9 @@
 #   - cleanup: in-flight work (reservation present, branch otherwise clean) keeps the sidecar
 #   - cleanup: in-flight work (claude/* branch, clean but ahead of master) keeps the sidecar
 #   - cleanup: finished/no-op (clean master) clears the sidecar
+#   - GitHub CLI accounting: the exported gh function reaches the provider
+#     only while accounting is on; a Codex dispatch's raw gh from its zsh
+#     tool shell, which drops that function, is counted once through the shim
 #   - planning assignment: 7th plan= arg -> FLEET_PLAN_ISSUE export;
 #     absent/bare arg stays unset; a resume releases the pre-claim instead
 #   - hermeticity: the suite is immune to an inherited FLEET_PLAN_ISSUE
@@ -67,6 +70,8 @@ source "$(dirname "$0")/lib_assert.sh"
 TMPROOT=""; cleanup(){ [[ -n "$TMPROOT" && -d "$TMPROOT" ]] && rm -rf "$TMPROOT"; }
 trap cleanup EXIT
 TMPROOT=$(mktemp -d)
+source "$(dirname "$0")/lib_hermetic.sh"
+hermetic_poison_gh_env "$TMPROOT"
 
 export FLEET_SESSIONS_DIR="$TMPROOT/sessions"
 export FLEET_STATE_DIR="$TMPROOT/state"
@@ -520,6 +525,102 @@ run_wrap sonnet high queue-manager >/dev/null
 python3 -c "import json,sys;d=json.load(open(sys.argv[1]));assert d['wrapper_pid'] > 0 and d['sentinel'] == 'kept'" \
   "$FLEET_STATE_DIR/dispatch/pane-3.json" 2>/dev/null \
   && ok "wrapper PID stamped without losing record fields" || bad "wrapper PID missing or record fields changed"
+
+echo "T17b: accounting on hands the provider the exported gh function; off hands it nothing"
+cat > "$BIN/claude" <<'EOF'
+#!/usr/bin/env bash
+printf 'GH %s\n' "$(type -t gh)" >> "$CLAUDE_ARGV_LOG"
+exit 0
+EOF
+chmod +x "$BIN/claude"
+rm -f "$FLEET_STATE_DIR/dispatch/pane-3.json"   # T17's record names another launch
+: > "$CLAUDE_ARGV_LOG"
+(cd "$WT" && env -u 'BASH_FUNC_gh%%' FLEET_GH_ACCOUNTING=1 \
+    FLEET_GH_LAUNCHER="$SCRIPT_DIR/gh-accounting-bin/gh" \
+    "$WRAP" pane-3 sonnet high queue-manager "" live >/dev/null 2>&1)
+assert_eq "$(grep '^GH ' "$CLAUDE_ARGV_LOG")" "GH function" "accounting on: gh is the exported function"
+: > "$CLAUDE_ARGV_LOG"
+(cd "$WT" && env -u 'BASH_FUNC_gh%%' -u FLEET_GH_ACCOUNTING -u FLEET_GH_LAUNCHER \
+    "$WRAP" pane-3 sonnet high queue-manager "" live >/dev/null 2>&1)
+assert_contains "$(grep '^GH ' "$CLAUDE_ARGV_LOG")" "GH" "accounting off: the provider still launched"
+assert_absent "$(grep '^GH ' "$CLAUDE_ARGV_LOG")" "function" "accounting off: no gh function"
+cat > "$BIN/claude" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$CLAUDE_ARGV_LOG"
+exit "${STUB_CLAUDE_RC:-0}"
+EOF
+chmod +x "$BIN/claude"
+
+echo "T17c: a Codex dispatch's raw gh from its zsh tool shell is counted once, as the role"
+case "$(uname -s)" in
+  MINGW*|MSYS*|CYGWIN*)
+    echo "  SKIP: the Codex runtime is POSIX-only; native Windows panes run Claude" ;;
+  *)
+    # The real wrapper and fleet_codex.py; only the codex binary is a stub. It
+    # runs the sandbox preflight's argv, and runs one tool command the way
+    # Codex does: in zsh (which never imports the exported bash function),
+    # after a login profile that puts ~/bin first, then reports a turn.
+    CODEX_WT="$TMPROOT/codex-engine/.claude/worktrees/pool-9"
+    CODEX_SHIM_DIR="$TMPROOT/codex-home/bin"
+    CODEX_REAL_DIR="$TMPROOT/codex-real"
+    CODEX_EVENTS="$TMPROOT/codex-gh-events"
+    export STUB_TOOL_LOG="$TMPROOT/codex-tool.log"; : > "$STUB_TOOL_LOG"
+    codex_role=sonnet-reviewer
+    mkdir -p "$CODEX_WT/.claude/commands" "$CODEX_SHIM_DIR" "$CODEX_REAL_DIR"
+    echo "stub role" > "$CODEX_WT/.claude/commands/role-$codex_role.md"
+    ln -s "$SCRIPT_DIR/gh" "$CODEX_SHIM_DIR/gh"
+    printf '#!/usr/bin/env bash\necho "REAL $*"\n' > "$CODEX_REAL_DIR/gh"
+    chmod +x "$CODEX_REAL_DIR/gh"
+    if command -v zsh >/dev/null 2>&1; then
+      tool_shell="zsh -fc"
+    else
+      echo "  (no zsh on PATH: the tool shell is a bash with the function stripped)"
+      tool_shell="env -u BASH_FUNC_gh%% bash --norc --noprofile -c"
+    fi
+    cp "$BIN/codex" "$TMPROOT/codex.saved"
+    cat > "$BIN/codex" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" == sandbox ]]; then
+    while [[ $# -gt 0 && "$1" != "--" ]]; do shift; done
+    shift
+    exec "$@"
+fi
+read -ra shell <<<"$STUB_TOOL_SHELL"
+PATH="$STUB_LOGIN_PATH:$PATH" "${shell[@]}" \
+    'whence -w gh 2>/dev/null || type -t gh; gh issue view 7; echo "rc=$?"' >> "$STUB_TOOL_LOG" 2>&1
+echo '{"type":"turn.completed","usage":{}}'
+EOF
+    chmod +x "$BIN/codex"
+    # fleet_codex.py asks git for the worktree's gitdirs (sandbox roots).
+    cp "$BIN/git" "$TMPROOT/git.saved"
+    { head -n 1 "$TMPROOT/git.saved"
+      echo '[[ "$*" == *"--absolute-git-dir --git-common-dir"* ]] && { echo "$PWD/.git"; echo "$PWD/.git"; exit 0; }'
+      tail -n +2 "$TMPROOT/git.saved"; } > "$BIN/git"
+    ( cd "$CODEX_WT" && env -u 'BASH_FUNC_gh%%' -u FLEET_GH_ACTOR -u FLEET_GH_IDENTITY \
+        -u FLEET_GH_LAUNCH_DEPTH FLEET_GH_ACCOUNTING=1 \
+        FLEET_GH_LAUNCHER="$SCRIPT_DIR/gh-accounting-bin/gh" FLEET_GH_REAL="$CODEX_SHIM_DIR/gh" \
+        FLEET_GH_PYTHON="$(command -v python3)" FLEET_GH_EVENT_ROOT="$CODEX_EVENTS" \
+        STUB_TOOL_SHELL="$tool_shell" STUB_LOGIN_PATH="$CODEX_SHIM_DIR:$CODEX_REAL_DIR" \
+        "$WRAP" pane-9 gpt-5.6-terra high "$codex_role" "" live target=review:engine:77 codex sonnet \
+        >/dev/null 2>>"$TMPROOT/stderr.log" )
+    tool_out="$(cat "$STUB_TOOL_LOG")"
+    assert_absent "$tool_out" "function" "the tool shell sees no gh function"
+    assert_contains "$tool_out" "REAL issue view 7" "the tool shell's raw gh reached the real gh"
+    assert_contains "$tool_out" "rc=0" "the real gh's status came back"
+    events="$(python3 - "$CODEX_EVENTS" <<'PYEOF'
+import json, pathlib, sys
+root = pathlib.Path(sys.argv[1])
+for path in sorted(root.rglob("*.json")) if root.is_dir() else []:
+    if not path.name.startswith("."):
+        event = json.loads(path.read_text())
+        print(event["actor"], event["runtime"], event["route"], event["access"])
+PYEOF
+)"
+    assert_eq "$events" "sonnet-reviewer codex graphql read" "exactly one event, the Codex role's"
+    cp "$TMPROOT/codex.saved" "$BIN/codex"
+    cp "$TMPROOT/git.saved" "$BIN/git"
+    ;;
+esac
 
 echo "T18: Codex failures re-arm merger targets"
 BATCH_RUNTIME="$TMPROOT/batch-runtime"

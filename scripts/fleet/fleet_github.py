@@ -28,9 +28,12 @@ Environment (set by fleet-up; absent = accounting off):
   FLEET_GH_EVENT_ROOT   event directory
   FLEET_GH_ACTOR        explicit actor (scout, dispatcher); else FLEET_ROLE
 
-Launcher-internal (set by `launch`, never by fleet-up):
+Launcher-internal (set by `launch` and by a counted POSIX `argv()`, never by
+fleet-up):
   FLEET_GH_LAUNCH_DEPTH launcher passes one call has already made; `launch`
-                        refuses at MAX_LAUNCH_DEPTH instead of looping
+                        refuses at MAX_LAUNCH_DEPTH instead of looping, and
+                        the token shim (scripts/fleet/gh) hands only a call
+                        without it to the launcher
 """
 
 import datetime as dt
@@ -345,8 +348,14 @@ def argv(args, override_var=None, env=None):
     """The full argv for `gh <args>`, counting the attempt when accounted."""
     args = list(args)
     res = resolve(override_var, env)
-    if res.accounted:
-        record(args, env)
+    if not res.accounted:
+        return res.argv + args
+    record(args, env)
+    if os.name != "nt":
+        # The POSIX pin is the token shim, which hands an unmarked call to the
+        # launcher for counting; this one is counted already. `env` exec's gh
+        # in place, so no extra process outlives the launch.
+        return ["/usr/bin/env", f"{LAUNCH_DEPTH_VAR}=1", *res.argv, *args]
     return res.argv + args
 
 
@@ -381,6 +390,11 @@ def launch(args, env=None):
         record(args, env)
     full = res.argv + list(args)
     child_env = {**env, LAUNCH_DEPTH_VAR: str(depth + 1)}
+    # The token shim's user-identity arm, applied here too: on native Windows
+    # the pin is gh.exe itself, so a pane's shell call never reaches the shim.
+    if child_env.get("FLEET_GH_IDENTITY") == "user":
+        child_env.pop("GH_TOKEN", None)
+        child_env.pop("GITHUB_TOKEN", None)
     if os.name != "nt":
         sys.stdout.flush()
         try:
