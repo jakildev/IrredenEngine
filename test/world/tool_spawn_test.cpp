@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include "../common/env_var.hpp"
+#include "../common/wait_for.hpp"
 
 #include <chrono>
 #include <cerrno>
@@ -117,15 +118,6 @@ class ToolSpawnTest : public testing::Test {
         return ::kill(process, 0) == 0 || errno != ESRCH;
     }
 
-    static bool waitForProcessExit(int process) {
-        for (int attempt = 0; attempt < 100; ++attempt) {
-            if (!processExists(process)) {
-                return true;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        }
-        return false;
-    }
 #endif
 
     std::filesystem::path m_root;
@@ -171,8 +163,8 @@ TEST_F(ToolSpawnTest, KillReaps) {
 #ifndef _WIN32
     ASSERT_TRUE(processId(lines, "parent:").has_value());
     ASSERT_TRUE(processId(lines, "child:").has_value());
-    EXPECT_TRUE(waitForProcessExit(*processId(lines, "parent:")));
-    EXPECT_TRUE(waitForProcessExit(*processId(lines, "child:")));
+    EXPECT_TRUE(IRTest::waitFor([&]() { return !processExists(*processId(lines, "parent:")); }));
+    EXPECT_TRUE(IRTest::waitFor([&]() { return !processExists(*processId(lines, "child:")); }));
 #endif
 }
 
@@ -317,8 +309,8 @@ TEST_F(ToolSpawnTest, ServiceDestructionKillsTheChildTree) {
 #ifndef _WIN32
     ASSERT_TRUE(processId(lines, "parent:").has_value());
     ASSERT_TRUE(processId(lines, "child:").has_value());
-    EXPECT_TRUE(waitForProcessExit(*processId(lines, "parent:")));
-    EXPECT_TRUE(waitForProcessExit(*processId(lines, "child:")));
+    EXPECT_TRUE(IRTest::waitFor([&]() { return !processExists(*processId(lines, "parent:")); }));
+    EXPECT_TRUE(IRTest::waitFor([&]() { return !processExists(*processId(lines, "child:")); }));
     int status = 0;
     errno = 0;
     EXPECT_EQ(::waitpid(*processId(lines, "parent:"), &status, WNOHANG), -1);

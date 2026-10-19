@@ -4,6 +4,7 @@
 
 #include "process_spawn.hpp"
 
+#include <irreden/ir_math.hpp>
 #include <irreden/world/hand_off.hpp>
 
 #include <algorithm>
@@ -346,8 +347,11 @@ std::string readChildOutput(ChildProcess &child, std::size_t maxBytes) {
         char buffer[4096];
         DWORD read = 0;
         const std::size_t remaining = maxBytes - output.size();
-        const DWORD requested =
-            static_cast<DWORD>(std::min<std::size_t>({available, sizeof(buffer), remaining}));
+        const std::size_t requestedBytes = IRMath::min(
+            static_cast<std::size_t>(available),
+            IRMath::min(sizeof(buffer), remaining)
+        );
+        const DWORD requested = static_cast<DWORD>(requestedBytes);
         if (!ReadFile(child.state_->output_, buffer, requested, &read, nullptr) || read == 0) {
             break;
         }
@@ -361,7 +365,7 @@ std::string readChildOutput(ChildProcess &child, std::size_t maxBytes) {
         char buffer[4096];
         const std::size_t remaining = maxBytes - output.size();
         const ssize_t count =
-            read(child.state_->output_, buffer, std::min(sizeof(buffer), remaining));
+            read(child.state_->output_, buffer, IRMath::min(sizeof(buffer), remaining));
         if (count > 0) {
             output.append(buffer, static_cast<std::size_t>(count));
             continue;
