@@ -5,6 +5,7 @@
 -- for an Unsorted row) and keeps the matched rows' ancestors open.
 
 local L = require("launcher_layout")
+local WidgetList = require("widget_list")
 
 local M = {}
 
@@ -209,10 +210,7 @@ function M.pollFilter(app, view)
 end
 
 function M.rebuild(app, view)
-    for _, id in ipairs(view.widgets) do
-        IRGui.destroyWidget(id)
-    end
-    view.widgets = {}
+    WidgetList.clear(view.widgets)
     view.rows = buildRows(app, view)
     view.scroll = math.min(view.scroll, math.max(0, #view.rows - L.tree.rows))
     for slot = 1, L.tree.rows do

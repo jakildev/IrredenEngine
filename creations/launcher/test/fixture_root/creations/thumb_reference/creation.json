@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "Thumbnail Reference",
+  "description": "Exercises the render reference rung.",
+  "group": "z_thumbnails",
+  "tags": ["fixture"],
+  "kind": "demo",
+  "targets": [{"name": "IRThumbReference", "display": "Fixture", "presets": []}]
+}

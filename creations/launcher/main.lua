@@ -12,6 +12,7 @@ local catalogView = require("catalog_view")
 local details = require("details")
 local logPanel = require("log_panel")
 local settingsModule = require("settings")
+local assetsModule = require("assets")
 
 local SMALL = IRText.Size.SMALL
 local SETTINGS_STORE = "launcher"
@@ -47,6 +48,7 @@ end
 app.tree = catalogView.new(app)
 app.tree.collapsed = app.settings.collapsed
 app.details = details.new(app)
+app.assetBrowser = assetsModule.new(app)
 
 function app.selected()
     return app.selectedDir and app.byDir[app.selectedDir] or nil
@@ -343,6 +345,7 @@ local function poll()
     catalogView.pollFilter(app, app.tree)
     details.pollPresets(app, app.details)
     settingsModule.poll(app.settings)
+    assetsModule.poll(app.assetBrowser)
     logPanel.render(app.logView)
 end
 
@@ -371,5 +374,26 @@ IRSystem.appendSystem(IRTime.INPUT, IRSystem.registerSystem({
 }))
 
 app.rescan()
+if IRLauncher.session() == "asset_preview" then
+    assetsModule.previewIndex(app.assetBrowser, "voxel_set", 1)
+end
+if IRLauncher.session() == "thumbnail_chain" then
+    local names = { "thumb_manifest", "thumb_reference", "thumb_screenshot", "thumb_none" }
+    local paths = {}
+    for _, name in ipairs(names) do
+        local dir = "creations/launcher/test/fixture_root/creations/" .. name
+        paths[#paths + 1] = details.thumbnailFor(app.byDir[dir], IRLauncher.preset(),
+            app.assetBrowser.index)
+    end
+    local labels = {}
+    local probes = {}
+    for index, path in ipairs(paths) do
+        labels[index] = path:match("([^/]+)$") or path
+        local image = IRGui.makeImage(210 + (index - 1) * 70, 300, 64, 48, path)
+        probes[index] = IRTest.imageProbe(image)
+    end
+    IRTest.report("thumbnailChain", table.concat(labels, "|"))
+    IRTest.report("thumbnailProbes", table.concat(probes, "|"))
+end
 app.log(string.format("catalog: %d creations under %s", #app.creations, IRLauncher.catalogRoot()))
 settingsModule.report(app.settings)

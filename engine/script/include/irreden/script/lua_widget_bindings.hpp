@@ -606,6 +606,10 @@ inline void bindWidgets(LuaScript &script, const std::filesystem::path &imageBas
         requireWidget<IRComponents::C_WidgetState>(id, "IRGui.isHovered", "widget");
         return IRPrefab::Widget::isHovered(static_cast<IREntity::EntityId>(id));
     };
+    gui["isPressed"] = [](lua_Integer id) -> bool {
+        requireWidget<IRComponents::C_WidgetState>(id, "IRGui.isPressed", "widget");
+        return IRPrefab::Widget::isPressed(static_cast<IREntity::EntityId>(id));
+    };
 
     // Extend (never replace) IRRender so the render-glue setters bound earlier
     // (setSunDirection, setSkyColor, ...) survive.

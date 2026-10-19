@@ -25,6 +25,7 @@
 //     favourite then survive a save, a local change and a revert from disk.
 
 #include <irreden/ir_engine.hpp>
+#include <irreden/ir_entity.hpp>
 #include <irreden/ir_input.hpp>
 #include <irreden/ir_system.hpp>
 #include <irreden/ir_time.hpp>
@@ -33,7 +34,15 @@
 
 #include <irreden/input/systems/system_input_key_mouse.hpp>
 #include <irreden/input/systems/system_hitbox_mouse_test_gui.hpp>
+#include <irreden/common/components/component_local_transform_lua.hpp>
+#include <irreden/update/systems/system_propagate_transform.hpp>
+#include <irreden/voxel/components/component_voxel_set_lua.hpp>
+#include <irreden/voxel/systems/system_update_voxel_set_children.hpp>
+#include <irreden/render/camera_controls.hpp>
 #include <irreden/render/gui_test_assertions.hpp>
+#include <irreden/render/systems/system_sync_viewport_subjects.hpp>
+#include <irreden/render/systems/system_viewport_to_framebuffer.hpp>
+#include <irreden/render/systems/system_voxel_to_trixel.hpp>
 #include <irreden/render/systems/system_framebuffer_to_screen.hpp>
 #include <irreden/render/systems/system_gui_canvas_to_screen.hpp>
 #include <irreden/render/systems/system_text_to_trixel.hpp>
@@ -45,9 +54,11 @@
 #include <irreden/render/systems/system_widget_render_button.hpp>
 #include <irreden/render/systems/system_widget_render_dropdown.hpp>
 #include <irreden/render/systems/system_widget_render_label.hpp>
+#include <irreden/render/systems/system_widget_render_image.hpp>
 #include <irreden/render/systems/system_widget_render_panel.hpp>
 #include <irreden/render/systems/system_widget_render_text_input.hpp>
 #include <irreden/script/lua_widget_bindings.hpp>
+#include <irreden/utility/path_utils.hpp>
 
 #include <chrono>
 #include <cstdlib>
@@ -55,6 +66,7 @@
 #include <list>
 #include <optional>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -69,7 +81,15 @@ constexpr int kUpdateRequestedExit = 86;
 
 namespace {
 
-enum class Session { NONE, CATALOG_TREE, DETAILS_BUILD, RUN_HAND_OFF, SETTINGS_ROUNDTRIP };
+enum class Session {
+    NONE,
+    CATALOG_TREE,
+    DETAILS_BUILD,
+    RUN_HAND_OFF,
+    SETTINGS_ROUNDTRIP,
+    ASSET_PREVIEW,
+    THUMBNAIL_CHAIN,
+};
 
 IRSystem::SystemId g_dispatchId = IRSystem::kNullSystemId;
 bool g_updateRequested = false;
@@ -91,6 +111,12 @@ Session parseSession(const std::string &name) {
     }
     if (name == "settings_roundtrip") {
         return Session::SETTINGS_ROUNDTRIP;
+    }
+    if (name == "asset_preview") {
+        return Session::ASSET_PREVIEW;
+    }
+    if (name == "thumbnail_chain") {
+        return Session::THUMBNAIL_CHAIN;
     }
     return Session::NONE;
 }
@@ -249,6 +275,22 @@ constexpr Event kFavouriteEvents[] = {
     IR_LAUNCHER_CLICK(0, treeRow(2)),
     IR_LAUNCHER_CLICK(6, kFavourite),
 };
+constexpr IRMath::ivec2 kAssetVoxelTab{1048, 55};
+constexpr IRMath::ivec2 kAssetPrefabTab{1106, 55};
+constexpr IRMath::ivec2 kAssetPngTab{1164, 55};
+constexpr IRMath::ivec2 kAssetRow0{1140, 75};
+constexpr IRMath::ivec2 kAssetRow1{1140, 91};
+constexpr Event kAssetPreviewEvents[] = {
+    IR_LAUNCHER_CLICK(0, kAssetPngTab),
+    IR_LAUNCHER_CLICK(8, kAssetRow0),
+    IR_LAUNCHER_CLICK(20, kAssetVoxelTab),
+    IR_LAUNCHER_CLICK(28, kAssetRow0),
+};
+constexpr Event kAssetOversizeEvents[] = {IR_LAUNCHER_CLICK(0, kAssetRow1)};
+constexpr Event kAssetPrefabEvents[] = {
+    IR_LAUNCHER_CLICK(0, kAssetPrefabTab),
+    IR_LAUNCHER_CLICK(8, kAssetRow0),
+};
 constexpr Event kOpenSettingsEvents[] = {IR_LAUNCHER_CLICK(0, kSettings)};
 constexpr Event kSaveEvents[] = {
     IR_LAUNCHER_CLICK(0, kSettings),
@@ -295,6 +337,12 @@ constexpr IRVideo::GuiTestShot kSettingsShots[] = {
     shot("settings_mutate", kMutateEvents),
     shot("settings_revert", kRevertEvents),
 };
+constexpr IRVideo::GuiTestShot kAssetPreviewShots[] = {
+    shot("asset_preview_switch", kAssetPreviewEvents),
+    shot("asset_preview_oversize", kAssetOversizeEvents),
+    shot("asset_preview_prefab", kAssetPrefabEvents),
+};
+constexpr IRVideo::GuiTestShot kThumbnailShots[] = {shot("thumbnail_chain")};
 
 std::span<const IRVideo::GuiTestShot> sessionShots(Session session) {
     switch (session) {
@@ -306,6 +354,10 @@ std::span<const IRVideo::GuiTestShot> sessionShots(Session session) {
         return kRunHandOffShots;
     case Session::SETTINGS_ROUNDTRIP:
         return kSettingsShots;
+    case Session::ASSET_PREVIEW:
+        return kAssetPreviewShots;
+    case Session::THUMBNAIL_CHAIN:
+        return kThumbnailShots;
     case Session::NONE:
         break;
     }
@@ -345,10 +397,14 @@ bool reportMatches(const void *context, std::string &actual) {
 // The fixture tree, every group open: groups sort by name, Unsorted trails.
 const ReportCheck kTreeAll{
     "tree",
-    "G:fixture|G:one|C:Alpha|G:two|C:Beta|G:UNSORTED|C:broken (INVALID)|C:gamma (NO MANIFEST)"
+    "G:fixture|G:one|C:Alpha|G:two|C:Beta|G:z_thumbnails|C:Thumbnail Manifest|C:Thumbnail "
+    "None|C:Thumbnail Reference|C:Thumbnail Screenshot|G:UNSORTED|C:broken (INVALID)|C:gamma (NO "
+    "MANIFEST)"
 };
 const ReportCheck kTreeFolded{
-    "tree", "G:fixture|G:one|G:two|C:Beta|G:UNSORTED|C:broken (INVALID)|C:gamma (NO MANIFEST)"
+    "tree",
+    "G:fixture|G:one|G:two|C:Beta|G:z_thumbnails|C:Thumbnail Manifest|C:Thumbnail None|C:Thumbnail "
+    "Reference|C:Thumbnail Screenshot|G:UNSORTED|C:broken (INVALID)|C:gamma (NO MANIFEST)"
 };
 const ReportCheck kTreeFiltered{"tree", "G:fixture|G:two|C:Beta"};
 const ReportCheck kOneCreation{"treeCreations", "1"};
@@ -367,6 +423,20 @@ const ReportCheck kFavouriteAdded{"settings", "|" IR_LAUNCHER_FAVOURITE};
 const ReportCheck kFavouritesGroup{"tree", "G:FAVOURITES|C:Alpha|", true};
 const ReportCheck kSaved{"settings", "code|" IR_LAUNCHER_FAVOURITE};
 const ReportCheck kChangedLocally{"settings", "cursor|"};
+const ReportCheck kAssetSequence{"assetSequence", "voxel_set|png|voxel_set"};
+const ReportCheck kAssetCountRestored{"assetCountRestored", "true"};
+const ReportCheck kAssetSubjectMatches{"assetSubjectMatches", "true"};
+const ReportCheck kAssetPngOnly{"assetPngOnly", "true"};
+const ReportCheck kAssetOversize{"assetOversize", "true"};
+const ReportCheck kAssetPrefabKind{"assetKind", "prefab"};
+const ReportCheck kAssetHasEntity{"assetHasEntity", "true"};
+const ReportCheck kAssetHasViewport{"assetHasViewport", "true"};
+const ReportCheck kThumbnailChain{
+    "thumbnailChain", "manifest.png|reference.png|recent.png|missing-thumbnail.png", true
+};
+const ReportCheck kThumbnailProbes{
+    "thumbnailProbes", "230,140,40,255|84,86,92,255|56,71,77,255|120,124,132,255"
+};
 
 #undef IR_LAUNCHER_FAVOURITE
 
@@ -403,6 +473,20 @@ const ShotAssertions kSettingsAssertions[] = {
     {predicate(&reportMatches, &kSaved, "reverted_from_disk"),
      predicate(&reportMatches, &kFavouritesGroup, "favourite_restored")},
 };
+const ShotAssertions kAssetPreviewAssertions[] = {
+    {predicate(&reportMatches, &kAssetSequence, "switch_sequence"),
+     predicate(&reportMatches, &kAssetCountRestored, "entity_count_restored"),
+     predicate(&reportMatches, &kAssetSubjectMatches, "viewport_names_loaded_entity"),
+     predicate(&reportMatches, &kAssetPngOnly, "png_has_image_without_viewport")},
+    {predicate(&reportMatches, &kAssetOversize, "oversize_label")},
+    {predicate(&reportMatches, &kAssetPrefabKind, "prefab_selected"),
+     predicate(&reportMatches, &kAssetHasEntity, "prefab_entity"),
+     predicate(&reportMatches, &kAssetHasViewport, "prefab_viewport")},
+};
+const ShotAssertions kThumbnailAssertions[] = {
+    {predicate(&reportMatches, &kThumbnailChain, "thumbnail_fallback_chain"),
+     predicate(&reportMatches, &kThumbnailProbes, "thumbnail_probe_colours")},
+};
 
 std::span<const ShotAssertions> sessionAssertions(Session session) {
     switch (session) {
@@ -414,6 +498,10 @@ std::span<const ShotAssertions> sessionAssertions(Session session) {
         return kRunHandOffAssertions;
     case Session::SETTINGS_ROUNDTRIP:
         return kSettingsAssertions;
+    case Session::ASSET_PREVIEW:
+        return kAssetPreviewAssertions;
+    case Session::THUMBNAIL_CHAIN:
+        return kThumbnailAssertions;
     case Session::NONE:
         break;
     }
@@ -424,6 +512,8 @@ static_assert(std::size(kCatalogTreeAssertions) == std::size(kCatalogTreeShots))
 static_assert(std::size(kDetailsBuildAssertions) == std::size(kDetailsBuildShots));
 static_assert(std::size(kRunHandOffAssertions) == std::size(kRunHandOffShots));
 static_assert(std::size(kSettingsAssertions) == std::size(kSettingsShots));
+static_assert(std::size(kAssetPreviewAssertions) == std::size(kAssetPreviewShots));
+static_assert(std::size(kThumbnailAssertions) == std::size(kThumbnailShots));
 
 IRPrefab::GuiTest::LatchState g_assertLatch;
 
@@ -465,7 +555,13 @@ int main(int argc, char **argv) {
     IREngine::args().enumValue(
         "--gui-session",
         "Scripted GUI session for gui-verify",
-        {"none", "catalog_tree", "details_build", "run_hand_off", "settings_roundtrip"},
+        {"none",
+         "catalog_tree",
+         "details_build",
+         "run_hand_off",
+         "settings_roundtrip",
+         "asset_preview",
+         "thumbnail_chain"},
         "none"
     );
     registerLuaBindings();
@@ -491,7 +587,16 @@ void registerLuaBindings() {
         // Rebinds IRGui with image paths confined to the tool root, replacing
         // the run-directory base bindLuaDrivenEcs() installs.
         IRScript::detail::bindWidgets(script, root);
+        script.registerType<IRMath::Color, IRMath::Color(int, int, int, int)>("Color");
+        script.registerType<IRMath::ivec3, IRMath::ivec3(int, int, int)>("ivec3");
+        script.registerType<IRMath::vec3, IRMath::vec3(float, float, float)>("vec3");
+        script
+            .registerTypesFromTraits<IRComponents::C_LocalTransform, IRComponents::C_VoxelSetNew>();
+        script.registerCreateEntityFunction<
+             IRComponents::C_LocalTransform,
+             IRComponents::C_VoxelSetNew>("createPreviewEntity");
         script.bindLuaCommands();
+        script.bindLuaViewport();
         script.bindLuaFiles();
         script.bindLuaCatalog(root);
         script.bindLuaSave(std::filesystem::current_path() / "save_files");
@@ -516,6 +621,15 @@ void registerLuaBindings() {
             return std::string{IRWindow::windowModeName(IRWindow::getWindow().getWindowMode())};
         };
         launcher["formatTime"] = &IRLauncher::formatTime;
+        launcher["preset"] = []() { return std::string{IR_LAUNCHER_PRESET}; };
+        launcher["session"] = []() { return IREngine::args().getEnum("--gui-session"); };
+        launcher["assetPath"] = [root](const std::string &path) {
+            const auto resolved = IRUtility::resolveContainedPath(root, path);
+            if (!resolved) {
+                throw std::invalid_argument{"IRLauncher.assetPath: path leaves the tool root"};
+            }
+            return resolved->string();
+        };
         if (args.getFlag("--supervised")) {
             launcher["requestUpdate"] = []() {
                 IRLauncher::g_updateRequested = true;
@@ -527,6 +641,23 @@ void registerLuaBindings() {
             sol::table test = lua.create_named_table("IRTest");
             test["report"] = [](const std::string &key, const std::string &value) {
                 IRLauncher::g_reports[key] = value;
+            };
+            test["entityCount"] = []() {
+                return static_cast<lua_Integer>(IREntity::getLiveEntityCount());
+            };
+            test["imageProbe"] = [](lua_Integer id) {
+                const auto color =
+                    IRPrefab::GuiTest::imageCenterColor(static_cast<IREntity::EntityId>(id));
+                if (!color) {
+                    throw std::invalid_argument{"IRTest.imageProbe: id is not a decoded image"};
+                }
+                return fmt::format(
+                    "{},{},{},{}",
+                    color->red_,
+                    color->green_,
+                    color->blue_,
+                    color->alpha_
+                );
             };
         }
     });
@@ -544,19 +675,33 @@ void initSystems() {
             IRSystem::createSystem<IRSystem::WIDGET_APPLY_TEXT_INPUT>(),
         }
     );
-    IRSystem::registerPipeline(IRTime::Events::UPDATE, {});
+    IRSystem::registerPipeline(
+        IRTime::Events::UPDATE,
+        {
+            IRSystem::createSystem<IRSystem::PROPAGATE_TRANSFORM>(),
+            IRSystem::createSystem<IRSystem::UPDATE_VOXEL_SET_CHILDREN>(),
+        }
+    );
 
-    std::list<IRSystem::SystemId> renderPipeline{
-        IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_TEXT_INPUT>(),
-        IRSystem::createSystem<IRSystem::WIDGET_RENDER_DROPDOWN>(),
-        IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
-        IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
-        IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>(),
-    };
+    std::list<IRSystem::SystemId> renderPipeline = IRPrefab::Camera::standardControlSystems();
+    renderPipeline.insert(
+        renderPipeline.end(),
+        {
+            IRSystem::createSystem<IRSystem::SYNC_VIEWPORT_SUBJECTS>(),
+            IRSystem::createSystem<IRSystem::VOXEL_TO_TRIXEL_STAGE_1>(),
+            IRSystem::createSystem<IRSystem::TEXT_TO_TRIXEL>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_PANEL>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_LABEL>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_BUTTON>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_TEXT_INPUT>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_DROPDOWN>(),
+            IRSystem::createSystem<IRSystem::WIDGET_RENDER_IMAGE>(),
+            IRSystem::createSystem<IRSystem::TRIXEL_TO_FRAMEBUFFER>(),
+            IRSystem::createSystem<IRSystem::VIEWPORT_TO_FRAMEBUFFER>(),
+            IRSystem::createSystem<IRSystem::FRAMEBUFFER_TO_SCREEN>(),
+            IRSystem::createSystem<IRSystem::GUI_CANVAS_TO_SCREEN>(),
+        }
+    );
 
     if (IRLauncher::g_autoWarmupFrames > 0) {
         const std::span<const IRVideo::GuiTestShot> shots =

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "name": "Thumbnail Manifest",
+  "description": "Exercises the manifest thumbnail rung.",
+  "group": "z_thumbnails",
+  "tags": ["fixture"],
+  "kind": "demo",
+  "thumbnail": "manifest.png",
+  "targets": [{"name": "IRThumbManifest", "display": "Fixture", "presets": []}]
+}
