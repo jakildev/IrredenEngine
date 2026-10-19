@@ -6,6 +6,7 @@
 #include <irreden/script/ir_script_utils.hpp>
 #include <irreden/script/lua_script.hpp>
 #include <irreden/utility/path_utils.hpp>
+#include <irreden/world/tool_spawn.hpp>
 
 #include <sol/sol.hpp>
 
@@ -304,6 +305,18 @@ HandOffOutcome runHandOff(
     }
     IRE_LOG_INFO("IREngine.handOff: resumed ({})", result.ok_ ? "ok" : result.error_);
     return outcome;
+}
+
+HandOffOutcome runHandOff(
+    const HandOffRequest &request,
+    const HandOffEnvironment &environment,
+    HandOffPlatform &platform,
+    ToolService &toolService
+) {
+    if (toolService.live()) {
+        throw std::runtime_error("IREngine.handOff: a tool is still running");
+    }
+    return runHandOff(request, environment, platform, toolService.root());
 }
 
 void bindHandOffLua(

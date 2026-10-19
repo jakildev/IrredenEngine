@@ -20,6 +20,8 @@ class LuaScript;
 
 namespace IREngine {
 
+class ToolService;
+
 struct HandOffRequest {
     /// The child's ir-run arguments (executable name first), passed as
     /// separate arguments, never joined into a shell command. The OS takes
@@ -80,6 +82,13 @@ HandOffOutcome runHandOff(
     const HandOffEnvironment &environment,
     HandOffPlatform &platform,
     const std::optional<std::filesystem::path> &toolRoot = std::nullopt
+);
+
+HandOffOutcome runHandOff(
+    const HandOffRequest &request,
+    const HandOffEnvironment &environment,
+    HandOffPlatform &platform,
+    ToolService &toolService
 );
 
 using HandOffInvoker = std::function<HandOffResult(const HandOffRequest &)>;

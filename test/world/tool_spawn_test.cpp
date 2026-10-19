@@ -1,15 +1,17 @@
+#include <irreden/world/hand_off.hpp>
 #include <irreden/world/tool_spawn.hpp>
 
 #include <gtest/gtest.h>
 
+#include "../common/counting_hand_off_platform.hpp"
 #include "../common/env_var.hpp"
+#include "../common/executable_file.hpp"
 #include "../common/wait_for.hpp"
 
 #include <chrono>
 #include <cerrno>
 #include <csignal>
 #include <filesystem>
-#include <fstream>
 #include <optional>
 #include <string_view>
 #include <thread>
@@ -27,7 +29,7 @@ class ToolSpawnTest : public testing::Test {
                  ("ir_tool_spawn_" +
                   std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
         std::filesystem::create_directories(m_root / "creations" / "inside");
-        writeExecutable(
+        IRTest::writeExecutableFile(
             m_root / "bin" / "ir-build",
             "#!/usr/bin/env bash\n"
             "if [[ \"$2\" == Sleep ]]; then echo \"parent:$$\"; sleep 10 & echo \"child:$!\"; "
@@ -44,19 +46,19 @@ class ToolSpawnTest : public testing::Test {
             "sleep 0.05\n"
             "printf 'o\\nthree\\n'\n"
         );
-        writeExecutable(m_root / "bin" / "ir-run", "#!/usr/bin/env bash\nexit 0\n");
+        IRTest::writeExecutableFile(m_root / "bin" / "ir-run", "#!/usr/bin/env bash\nexit 0\n");
 #ifndef _WIN32
-        writeExecutable(
+        IRTest::writeExecutableFile(
             m_root / "bin" / "cursor",
             "#!/usr/bin/env bash\nprintf '%s\\n%s\\n' \"$1\" \"${IRREDEN_BUILD_DIR-unset}\"\n"
         );
 #ifdef __APPLE__
-        writeExecutable(
+        IRTest::writeExecutableFile(
             m_root / "bin" / "open",
             "#!/usr/bin/env bash\nprintf '%s\\n%s\\n' \"$1\" \"${IRREDEN_BUILD_DIR-unset}\"\n"
         );
 #else
-        writeExecutable(
+        IRTest::writeExecutableFile(
             m_root / "bin" / "xdg-open",
             "#!/usr/bin/env bash\nprintf '%s\\n%s\\n' \"$1\" \"${IRREDEN_BUILD_DIR-unset}\"\n"
         );
@@ -87,19 +89,6 @@ class ToolSpawnTest : public testing::Test {
         m_wrapper.reset();
         std::error_code error;
         std::filesystem::remove_all(m_root, error);
-    }
-
-    static void writeExecutable(const std::filesystem::path &path, const std::string &text) {
-        std::filesystem::create_directories(path.parent_path());
-        std::ofstream output(path);
-        output << text;
-        output.close();
-        std::filesystem::permissions(
-            path,
-            std::filesystem::perms::owner_exec | std::filesystem::perms::owner_read |
-                std::filesystem::perms::owner_write,
-            std::filesystem::perm_options::replace
-        );
     }
 
     static std::optional<int>
@@ -175,6 +164,27 @@ TEST_F(ToolSpawnTest, HandleDestructionLeavesTheChildRunning) {
     }
     EXPECT_TRUE(m_service->live());
     m_service->shutdown();
+}
+
+TEST_F(ToolSpawnTest, LiveToolRefusesHandOffBeforeDrainOrLaunch) {
+    auto spawned = m_service->spawn({IREngine::ToolName::IR_BUILD, "Sleep", ""});
+    ASSERT_TRUE(spawned.has_value()) << spawned.error();
+    IREngine::HandOffEnvironment environment;
+    environment.wrapperPath_ = (m_root / "bin" / "ir-run").string();
+    IRTest::CountingHandOffPlatform platform;
+
+    EXPECT_THROW(
+        IREngine::runHandOff(
+            IREngine::HandOffRequest{{"IRDemo"}},
+            environment,
+            platform,
+            *m_service
+        ),
+        std::runtime_error
+    );
+    EXPECT_EQ(platform.drains_, 0);
+    EXPECT_EQ(platform.launches_, 0);
+    spawned->kill();
 }
 
 TEST_F(ToolSpawnTest, BoundsOutputAndRejectsStaleHandles) {

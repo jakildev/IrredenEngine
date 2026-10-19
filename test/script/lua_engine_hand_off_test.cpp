@@ -3,6 +3,8 @@
 
 #include <gtest/gtest.h>
 
+#include "../common/counting_hand_off_platform.hpp"
+
 #include <string>
 #include <vector>
 
@@ -137,17 +139,7 @@ TEST_F(LuaEngineHandOffTest, OffTheMainThreadRaises) {
 // The binding in front of the real controller: outside ir-run the call is
 // inert — no drain, no child, no lease verb.
 TEST(LuaEngineHandOffUnsupportedTest, OutsideTheWrapperStartsNothing) {
-    struct CountingPlatform : IREngine::HandOffPlatform {
-        void drainGpu() override {
-            ++drains_;
-        }
-        IREngine::ChildExit runToExit(const std::vector<std::string> &) override {
-            ++launches_;
-            return {true, 0, ""};
-        }
-        int drains_ = 0;
-        int launches_ = 0;
-    } platform;
+    IRTest::CountingHandOffPlatform platform;
     IRScript::LuaScript lua;
     IREngine::bindHandOffLua(
         lua,

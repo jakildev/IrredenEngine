@@ -33,6 +33,9 @@ local r = IREngine.handOff{
   non-zero exit returns `supported = true`, `ok = false`, the reading in
   `error` / `exitCode`, and the parent resumes.
 - C++ callers use `IREngine::handOff(HandOffRequest)` (`ir_engine.hpp`).
+- A hand-off raises while a tool spawned through `IREngine.spawnTool` is still
+  running. The tool must exit or be killed before the hand-off; refusal occurs
+  before the GPU drain and before any child process starts.
 - With a configured tool root, hand-off requests
   `<toolRoot>/build/ir-run-results/<target>.last.json`; `r.verdict` is the
   parsed `RESULT=` class, or nil when no result file was written. Without a

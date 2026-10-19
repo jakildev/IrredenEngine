@@ -3,8 +3,14 @@
 
 #include <gtest/gtest.h>
 
+#include "../common/env_var.hpp"
+#include "../common/executable_file.hpp"
+
 #include <chrono>
 #include <filesystem>
+#include <memory>
+#include <optional>
+#include <thread>
 
 namespace {
 
@@ -17,6 +23,10 @@ class LuaSpawnToolTest : public testing::Test {
                std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()))
           )
         , m_service(makeRoot()) {
+        m_wrapper = std::make_unique<IRTest::ScopedEnv>(
+            "IR_RUN_WRAPPER",
+            (m_root / "bin" / "ir-run").string().c_str()
+        );
         IREngine::bindToolSpawnLua(m_lua, m_service, [this]() { return m_mainThread; });
     }
 
@@ -27,6 +37,13 @@ class LuaSpawnToolTest : public testing::Test {
 
     std::filesystem::path makeRoot() {
         std::filesystem::create_directories(m_root / "creations");
+        IRTest::writeExecutableFile(
+            m_root / "bin" / "ir-build",
+            "#!/usr/bin/env bash\n"
+            "if [[ \"$2\" == Sleep ]]; then sleep 10; fi\n"
+            "printf 'done\\n'\n"
+        );
+        IRTest::writeExecutableFile(m_root / "bin" / "ir-run", "#!/usr/bin/env bash\nexit 0\n");
         return m_root;
     }
 
@@ -40,8 +57,41 @@ class LuaSpawnToolTest : public testing::Test {
     IRScript::LuaScript m_lua;
     std::filesystem::path m_root;
     IREngine::ToolService m_service;
+    std::unique_ptr<IRTest::ScopedEnv> m_wrapper;
     bool m_mainThread = true;
 };
+
+TEST_F(LuaSpawnToolTest, ExposesHandleLifecycleAndRejectsAStaleHandle) {
+    sol::protected_function_result result = m_lua.lua().safe_script(
+        R"lua(first = IREngine.spawnTool{ tool = "ir-build", target = "Exit" })lua",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << sol::error(result).what();
+
+    std::optional<int> exit;
+    for (int attempt = 0; attempt < 100 && !exit.has_value(); ++attempt) {
+        result =
+            m_lua.lua().safe_script("first:poll(); return first:exit()", sol::script_pass_on_error);
+        ASSERT_TRUE(result.valid()) << sol::error(result).what();
+        exit = result.get<std::optional<int>>();
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    ASSERT_EQ(exit, 0);
+
+    result = m_lua.lua().safe_script(
+        R"lua(
+            assert(type(first:droppedLines()) == "number")
+            local second = IREngine.spawnTool{ tool = "ir-build", target = "Sleep" }
+            local ok, error = pcall(function() first:poll() end)
+            assert(not ok and string.find(error, "stale tool handle", 1, true))
+            second:poll()
+            second:kill()
+            assert(second:exit() ~= nil)
+        )lua",
+        sol::script_pass_on_error
+    );
+    ASSERT_TRUE(result.valid()) << sol::error(result).what();
+}
 
 TEST_F(LuaSpawnToolTest, RefusesUnknownAndUntypedInput) {
     expectRaises("IREngine.spawnTool{ tool = 'shell', path = '.' }", "unknown tool");

@@ -237,21 +237,14 @@ void World::setupLuaBindings(const std::vector<LuaBindingRegistration> &bindings
 }
 
 HandOffResult World::handOff(const HandOffRequest &request) {
-    if (m_toolService.live()) {
-        throw std::runtime_error("IREngine.handOff: a tool is still running");
-    }
     if (m_handOffPlatform == nullptr) {
         IRE_LOG_INFO("IREngine.handOff: no process platform on this world; ignoring the handoff");
         HandOffResult unsupported;
         unsupported.error_ = "no process platform";
         return unsupported;
     }
-    const HandOffOutcome outcome = runHandOff(
-        request,
-        HandOffEnvironment::fromProcess(),
-        *m_handOffPlatform,
-        m_toolService.root()
-    );
+    const HandOffOutcome outcome =
+        runHandOff(request, HandOffEnvironment::fromProcess(), *m_handOffPlatform, m_toolService);
     if (outcome.leaseLost_) {
         m_handOffLeaseLost = true;
     } else if (outcome.suspended_) {
