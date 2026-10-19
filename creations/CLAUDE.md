@@ -11,12 +11,14 @@ No opt-outs.
 
 ## Two visibility tiers
 
-`creations/demos/`, `creations/editors/voxel_editor/` and `creations/launcher/`
-are checked into the engine repo. All other subdirectories under `creations/`
-(games, personal tools, experimental editors) are gitignored and live only
-locally. The top-level `.gitignore` tracks only these subtrees; see it for the
+`creations/demos/` and `creations/editors/voxel_editor/` are checked into
+the engine repo. All other subdirectories under `creations/` (games,
+personal tools, experimental editors) are gitignored and live only locally.
+The top-level `.gitignore` tracks only these two subtrees; see it for the
 exact allowlist. A private creation may have its own repo, its own
 conventions, its own review criteria, even its own CLAUDE.md hierarchy.
+
+`creations/launcher/` (`IRLauncher`, the engine's own hub) is tracked too.
 
 ## Engine vs. creation separation
 
