@@ -16,11 +16,12 @@
 
 namespace IRScript::detail {
 
-// On-disk path for a named store: <userDataDir("irreden")>/<name>.irkv. The
-// per-user data dir (not the exe dir) is what makes a save survive a clean
-// reinstall of the game bundle. `saveKeyValueStore` creates the directory.
-inline std::string keyValueStorePath(const std::string &name) {
-    return IRUtility::joinPath(IRUtility::userDataDir("irreden"), name, "irkv");
+// On-disk path for a named store: <directory>/<name>.irkv. The default
+// directory is the per-user data dir (not the exe dir), which is what makes a
+// save survive a clean reinstall of the game bundle. `saveKeyValueStore`
+// creates the directory.
+inline std::string keyValueStorePath(const std::string &directory, const std::string &name) {
+    return IRUtility::joinPath(directory, name, "irkv");
 }
 
 // Convert a Lua scalar (number / bool / string) to a list element. Any other
@@ -144,7 +145,10 @@ inline sol::object luaFromValue(sol::state_view lua, const IRAsset::Value &value
 // Values cross the boundary by sol::type inspection (number/string/bool/
 // array-table), NOT a Lua-spelled enum, so the cpp-lua-enums rule does not
 // apply here.
-inline void bindPersistenceApi(LuaScript &script) {
+// Stores live under @p directory. Rebinding replaces every IRSave function,
+// so a creation that keeps its settings beside its executable rebinds after
+// bindLuaDrivenEcs().
+inline void bindPersistenceApi(LuaScript &script, const std::string &directory) {
     sol::state &lua = script.lua();
     if (!lua["IRSave"].valid()) {
         lua["IRSave"] = lua.create_table();
@@ -153,8 +157,8 @@ inline void bindPersistenceApi(LuaScript &script) {
 
     auto stores = std::make_shared<std::unordered_map<std::string, IRAsset::KeyValueStore>>();
 
-    save["load"] = statefulLuaFunction([stores](const std::string &name) -> bool {
-        auto loaded = IRAsset::loadKeyValueStore(keyValueStorePath(name));
+    save["load"] = statefulLuaFunction([stores, directory](const std::string &name) -> bool {
+        auto loaded = IRAsset::loadKeyValueStore(keyValueStorePath(directory, name));
         if (!loaded.ok()) {
             (*stores)[name] = IRAsset::KeyValueStore{};
             return false;
@@ -163,12 +167,12 @@ inline void bindPersistenceApi(LuaScript &script) {
         return true;
     });
 
-    save["save"] = statefulLuaFunction([stores](const std::string &name) -> bool {
+    save["save"] = statefulLuaFunction([stores, directory](const std::string &name) -> bool {
         const auto it = stores->find(name);
         if (it == stores->end()) {
             return false;
         }
-        return IRAsset::saveKeyValueStore(keyValueStorePath(name), it->second).ok();
+        return IRAsset::saveKeyValueStore(keyValueStorePath(directory, name), it->second).ok();
     });
 
     save["set"] = statefulLuaFunction(
@@ -210,6 +214,10 @@ inline void bindPersistenceApi(LuaScript &script) {
 
     save["clear"] =
         statefulLuaFunction([stores](const std::string &name) { (*stores)[name].clear(); });
+}
+
+inline void bindPersistenceApi(LuaScript &script) {
+    bindPersistenceApi(script, IRUtility::userDataDir("irreden"));
 }
 
 } // namespace IRScript::detail

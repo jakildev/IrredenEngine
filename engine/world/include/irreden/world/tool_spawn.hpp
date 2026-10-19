@@ -7,7 +7,9 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace IRScript {
@@ -22,7 +24,17 @@ struct ToolSpawnRequest {
     ToolName tool_ = ToolName::IR_BUILD;
     std::string target_;
     std::string path_;
+    /// One of @ref editorNames for the `editor` tool; empty runs the first
+    /// entry found on PATH.
+    std::string editor_;
 };
+
+/// The `editor` tool's fixed table, in fallback order. A caller chooses an
+/// entry by name; it never supplies a command.
+std::span<const std::string_view> editorNames();
+
+/// Whether the @ref editorNames entry @p name resolves on PATH.
+bool editorAvailable(std::string_view name);
 
 class ToolService;
 

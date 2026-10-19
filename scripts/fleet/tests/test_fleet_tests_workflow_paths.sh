@@ -135,6 +135,8 @@ OUT_OF_TREE_SUBJECTS=(
     'engine/tools/bin/ir-acquire'
     'engine/tools/bin/ir-build'
     'engine/tools/bin/ir-run'
+    'engine/tools/bin/ir-launcher'
+    'engine/tools/concurrency.toml'
     'engine/video/src/metal/video_backend.cpp'
     'engine/video/src/opengl/video_backend.cpp'
     'engine/world/include/irreden/world/save_component_inventory.hpp'

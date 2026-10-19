@@ -106,6 +106,10 @@ class LuaScript {
     // Lua paths are relative to this root and cannot escape it.
     void bindLuaCatalog(const std::filesystem::path &toolRoot);
 
+    // Rebind IRSave so its stores live under @p directory instead of the
+    // per-user data dir bindLuaDrivenEcs() uses.
+    void bindLuaSave(const std::filesystem::path &directory);
+
     // Bind the synthetic-input surface — IRInput.KeyMouseButtons,
     // IRInput.ButtonStatuses, and IRInput.{beginSyntheticInput,
     // isSyntheticInputActive, injectButton, injectMouseMove, injectScroll}.
