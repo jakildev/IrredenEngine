@@ -2,10 +2,10 @@
   "target": "IRPerfGrid",
   "matrix": "quick",
   "frames": 60,
-  "git_sha": "277af7f01",
+  "git_sha": "34c1b7b66",
   "git_dirty": false,
-  "run_name": "277af7f01-ci",
-  "started_at": "2026-10-18T03:51:58Z",
+  "run_name": "34c1b7b66-ci",
+  "started_at": "2026-10-19T01:29:15Z",
   "cells": [
     {
       "id": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1",
@@ -17,13 +17,13 @@
       "status": "ok",
       "report": "target=IRPerfGrid,zoom=1,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 104.303,
+        "before": 103.491,
         "before_samples": [
-          103.459,
-          109.689,
-          104.303
+          103.355,
+          103.491,
+          103.866
         ],
-        "after": 103.702
+        "after": 105.217
       }
     },
     {
@@ -36,19 +36,19 @@
       "status": "ok",
       "report": "target=IRPerfGrid,zoom=4,sub_mode=full,sub_base=1.txt",
       "load_ref_ms": {
-        "before": 103.724,
+        "before": 103.346,
         "before_samples": [
-          103.022,
-          103.724,
-          105.045
+          103.651,
+          103.346,
+          103.217
         ],
-        "after": 104.826
+        "after": 105.011
       }
     }
   ],
-  "finished_at": "2026-10-18T03:54:32Z",
+  "finished_at": "2026-10-19T01:31:52Z",
   "calibration": {
-    "ref_ms": 103.619,
+    "ref_ms": 103.811,
     "ref_target_ms": 50,
     "host_slug": "linux-x86_64-epyc-7763-64-unknown",
     "host_fingerprint": {
@@ -70,6 +70,6 @@
       },
       "slug": "linux-x86_64-epyc-7763-64-unknown"
     },
-    "math_sha": "112c6605e36dc4e270b396be3a8aead5da38aeb6"
+    "math_sha": "ca66cb785275d24102b5db8db8c6af1c464d670c"
   }
 }
