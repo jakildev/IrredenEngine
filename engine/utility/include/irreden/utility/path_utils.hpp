@@ -38,6 +38,10 @@ bool envFlagSet(const char *name);
 /// The env var's value, or empty when it is unset or empty.
 std::string envString(const char *name);
 
+/// The first regular file named @p name plus a suffix from @p suffixes under a
+/// `PATH` directory, as `weakly_canonical`. Suffixes are tried in order within
+/// each directory before the next directory is searched; nullopt when none
+/// matches.
 std::optional<std::filesystem::path>
 findOnPath(std::string_view name, std::initializer_list<std::string_view> suffixes);
 
