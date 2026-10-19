@@ -8,6 +8,7 @@
     "fonts"
   ],
   "kind": "editor",
+  "thumbnail": "test/references/macos-debug/sample_screen_scale1.png",
   "docs": [
     "creations/editors/font_maker/README.md",
     "docs/design/gui-trixel-display.md"

@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Day cycle",
-  "description": "Demonstrates the day cycle creation and its engine integration.",
+  "description": "A live simulation clock driving a day cycle, sun direction, and sky tint.",
   "group": "render/lighting",
   "tags": [
     "render",
@@ -11,7 +11,7 @@
   "targets": [
     {
       "name": "IRDayCycle",
-      "description": "Runs the day cycle creation.",
+      "description": "Shows continuous day-cycle lighting alongside boundary and timer events.",
       "presets": [
         {
           "name": "Interactive",

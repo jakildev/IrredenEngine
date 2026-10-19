@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Persistence round trip",
-  "description": "Demonstrates the persistence round trip creation and its engine integration.",
+  "description": "A persistence round-trip scene for saving and restoring creation state.",
   "group": "world/persistence",
   "tags": [
     "world",
@@ -11,7 +11,7 @@
   "targets": [
     {
       "name": "IRPersistRoundtrip",
-      "description": "Runs the persistence round trip creation.",
+      "description": "Verifies persisted scene state through a save and reload cycle.",
       "presets": [
         {
           "name": "Interactive",

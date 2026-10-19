@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Detached probe",
-  "description": "Demonstrates the detached probe creation and its engine integration.",
+  "description": "A detached-canvas orientation, clipping, and placement-parity probe scene.",
   "group": "render/shapes",
   "tags": [
     "render",
@@ -11,7 +11,7 @@
   "targets": [
     {
       "name": "IRDetachedProbe",
-      "description": "Runs the detached probe creation.",
+      "description": "Checks detached and revoxelized totems against grid reference placement.",
       "presets": [
         {
           "name": "Interactive",

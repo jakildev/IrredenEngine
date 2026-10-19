@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Chunk streaming smoke",
-  "description": "Demonstrates the chunk streaming smoke creation and its engine integration.",
+  "description": "A smoke scene for chunk persistence, residency, and voxel-pool allocation.",
   "group": "world/streaming",
   "tags": [
     "world",
@@ -11,7 +11,7 @@
   "targets": [
     {
       "name": "IRChunkStreamingSmoke",
-      "description": "Runs the chunk streaming smoke creation.",
+      "description": "Validates chunk disk round trips against live voxel residency.",
       "presets": [
         {
           "name": "Interactive",

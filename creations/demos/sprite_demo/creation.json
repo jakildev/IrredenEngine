@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Sprite demo",
-  "description": "Demonstrates the sprite demo creation and its engine integration.",
+  "description": "Lua-driven sprite sheets, animation loop modes, and viewport anchoring.",
   "group": "render/sprites",
   "tags": [
     "render",
@@ -11,7 +11,7 @@
   "targets": [
     {
       "name": "IRSpriteDemo",
-      "description": "Runs the sprite demo creation.",
+      "description": "Shows animated sprite-sheet playback over a voxel reference scene.",
       "presets": [
         {
           "name": "Interactive",

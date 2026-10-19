@@ -1,16 +1,17 @@
 {
   "version": 1,
   "name": "Canvas stress",
-  "description": "Demonstrates the canvas stress creation and its engine integration.",
+  "description": "Stress scenes for canvas residency, detachment, revoxelization, and rotation.",
   "group": "perf",
   "tags": [
     "perf"
   ],
   "kind": "demo",
+  "thumbnail": "test/references/macos-debug/compare_yaw0.png",
   "targets": [
     {
       "name": "IRCanvasStress",
-      "description": "Runs the canvas stress creation.",
+      "description": "Exercises dense canvas and detached-canvas render stress scenes.",
       "presets": [
         {
           "name": "Interactive",

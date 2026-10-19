@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "UI dockspace",
-  "description": "Demonstrates the ui dockspace creation and its engine integration.",
+  "description": "A trixel editor dockspace with draggable panels, splitters, and layout persistence.",
   "group": "ui",
   "tags": [
     "ui"
@@ -10,7 +10,7 @@
   "targets": [
     {
       "name": "IRUiDockspace",
-      "description": "Runs the ui dockspace creation.",
+      "description": "Demonstrates dockspace panel movement, splitters, and layout serialization.",
       "presets": [
         {
           "name": "Interactive",

@@ -1,17 +1,18 @@
 {
   "version": 1,
   "name": "Lighting demos",
-  "description": "Demonstrates the lighting demos creation and its engine integration.",
+  "description": "Focused scenes for ambient occlusion, shadows, light volumes, and lighting diagnostics.",
   "group": "render/lighting",
   "tags": [
     "render",
     "lighting"
   ],
   "kind": "demo",
+  "thumbnail": "test/references/macos-debug/light-verify/hover-sweep/hover_h000.png",
   "targets": [
     {
       "name": "IRLightingAO",
-      "description": "Runs the lighting demos creation.",
+      "description": "Visualizes ambient-occlusion computation on the lighting reference scene.",
       "presets": [
         {
           "name": "Interactive",
@@ -28,7 +29,7 @@
     },
     {
       "name": "IRLightingSunShadow",
-      "description": "Runs the lighting demos creation.",
+      "description": "Renders directional sun shadows and their receiver geometry.",
       "presets": [
         {
           "name": "Interactive",
@@ -45,7 +46,7 @@
     },
     {
       "name": "IRLightingEmissive",
-      "description": "Runs the lighting demos creation.",
+      "description": "Shows emissive geometry contributing to the lit scene.",
       "presets": [
         {
           "name": "Interactive",
@@ -62,7 +63,7 @@
     },
     {
       "name": "IRLightingCombined",
-      "description": "Runs the lighting demos creation.",
+      "description": "Combines ambient occlusion, sun shadows, and colored light volumes.",
       "presets": [
         {
           "name": "Interactive",
@@ -79,7 +80,7 @@
     },
     {
       "name": "IRLightingDebugOverlays",
-      "description": "Runs the lighting demos creation.",
+      "description": "Displays diagnostic overlays for lighting intermediate buffers.",
       "presets": [
         {
           "name": "Interactive",
@@ -96,7 +97,7 @@
     },
     {
       "name": "IRLightingPoint",
-      "description": "Runs the lighting demos creation.",
+      "description": "Demonstrates local point-light volume shading.",
       "presets": [
         {
           "name": "Interactive",
@@ -113,7 +114,7 @@
     },
     {
       "name": "IRLightingSpot",
-      "description": "Runs the lighting demos creation.",
+      "description": "Demonstrates cone-limited spot-light volume shading.",
       "presets": [
         {
           "name": "Interactive",
@@ -130,7 +131,7 @@
     },
     {
       "name": "IRLightingDirectional",
-      "description": "Runs the lighting demos creation.",
+      "description": "Demonstrates directional-light volume shading.",
       "presets": [
         {
           "name": "Interactive",
@@ -147,7 +148,7 @@
     },
     {
       "name": "IRLightingSunShading",
-      "description": "Runs the lighting demos creation.",
+      "description": "Shows sun shading across the voxel and shape scene.",
       "presets": [
         {
           "name": "Interactive",
@@ -164,7 +165,7 @@
     },
     {
       "name": "IRLightingSdfCascade",
-      "description": "Runs the lighting demos creation.",
+      "description": "Exercises cascaded SDF shadowing for the sun-light path.",
       "presets": [
         {
           "name": "Interactive",
@@ -181,7 +182,7 @@
     },
     {
       "name": "IRLightingSdfBlocker",
-      "description": "Runs the lighting demos creation.",
+      "description": "Places an SDF blocker to inspect its shadow contribution.",
       "presets": [
         {
           "name": "Interactive",
@@ -198,7 +199,7 @@
     },
     {
       "name": "IRLightingSunOrbit",
-      "description": "Runs the lighting demos creation.",
+      "description": "Animates the sun direction around the scene.",
       "presets": [
         {
           "name": "Interactive",
@@ -215,7 +216,7 @@
     },
     {
       "name": "IRLightingSunElevationOrbit",
-      "description": "Runs the lighting demos creation.",
+      "description": "Varies sun elevation while orbiting the lighting scene.",
       "presets": [
         {
           "name": "Interactive",
@@ -232,7 +233,7 @@
     },
     {
       "name": "IRLightingPerCanvasScope",
-      "description": "Runs the lighting demos creation.",
+      "description": "Scopes lighting independently for each render canvas.",
       "presets": [
         {
           "name": "Interactive",
@@ -249,7 +250,7 @@
     },
     {
       "name": "IRLightingHDR",
-      "description": "Runs the lighting demos creation.",
+      "description": "Tests high-dynamic-range lighting and tone response.",
       "presets": [
         {
           "name": "Interactive",
@@ -266,7 +267,7 @@
     },
     {
       "name": "IRLightingOccludedBoundary",
-      "description": "Runs the lighting demos creation.",
+      "description": "Exercises occluded boundaries in the lighting volume.",
       "presets": [
         {
           "name": "Interactive",

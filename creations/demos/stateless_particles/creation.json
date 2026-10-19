@@ -1,7 +1,7 @@
 {
   "version": 1,
   "name": "Stateless particles",
-  "description": "Demonstrates the stateless particles creation and its engine integration.",
+  "description": "Stateless particle emitters rendered through the lit trixel pipeline.",
   "group": "render/particles",
   "tags": [
     "render",
@@ -11,7 +11,7 @@
   "targets": [
     {
       "name": "IRStatelessParticles",
-      "description": "Runs the stateless particles creation.",
+      "description": "Displays stateless particle emitters with voxel lighting.",
       "presets": [
         {
           "name": "Interactive",
