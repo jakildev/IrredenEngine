@@ -31,7 +31,7 @@ Changes without a visual effect need no captures.
 
 - Pipeline order is INPUT, UPDATE, then RENDER. Within RENDER, geometry writes
   canvas depth/color/id before AO, shadow, and lighting consume them;
-  compositing precedes framebuffer output, which precedes screen output; an enabled [glitch pass](../../docs/design/glitch-pass.md) replaces the main framebuffer's screen blit.
+  compositing precedes framebuffer output, which precedes screen output; an enabled [glitch pass](../../docs/design/glitch-pass.md) replaces the main framebuffer's screen blit, and its subject pass rewrites the main canvas colour just before the composite.
 - Multiple canvases render in registration order. A canvas's geometry stage
   must finish before another canvas reads its textures.
 - `C_TriangleCanvasTextures::onDestroy()` frees GPU textures. Never destroy a

@@ -267,6 +267,11 @@ enum SystemName {
     // VIEWPORT_TO_FRAMEBUFFER, framebuffer debug overlays) and immediately
     // before FRAMEBUFFER_TO_SCREEN, whose blit it replaces on enabled frames.
     FRAMEBUFFER_GLITCH,
+    // Canvas-space glitch of `C_GlitchSubject` entities
+    // (engine/prefabs/irreden/render/glitch_subject.hpp). RENDER after every
+    // main-canvas colour producer (FOG_TO_TRIXEL when present) and immediately
+    // before TRIXEL_TO_FRAMEBUFFER.
+    TRIXEL_GLITCH,
     WIDGET_INPUT,
     WIDGET_LUA_DISPATCH,
     WIDGET_APPLY_SLIDER,

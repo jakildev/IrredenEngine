@@ -20,7 +20,7 @@ Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md). Rationale: [`d
   ctor and released by their owner: never `destroyResource` a component-owned handle
   externally or destroy a still-referenced canvas mid-frame. Main-canvas backing
   growth runs before producer pointers are acquired and resizes color, depth,
-  entity-id, Hi-Z and optional AO/shadow textures together. Logical viewport size
+  entity-id, Hi-Z and optional AO/shadow textures together; `TRIXEL_GLITCH`'s images drop and return lazily. Logical viewport size
   remains independent of this retained physical capacity; see
   [canvas coverage](../../../../docs/design/trixel-canvas-coverage.md).
 - New canvas textures allocate through `detail::makeCanvas*Texture` in
@@ -55,7 +55,7 @@ Prefab-wide rules: [`engine/prefabs/CLAUDE.md`](../../CLAUDE.md). Rationale: [`d
 | `TEXT_TO_TRIXEL` → `LAYOUT_COMPUTE` → `WIDGET_RENDER_*` | RENDER, before `TRIXEL_TO_FRAMEBUFFER`; `WIDGET_RENDER_DROPDOWN` last among the renderers |
 | `HelpOverlay::systems()`, `SettingsMenu::renderSystems()` / `inputSystems()` | RENDER after `TEXT_TO_TRIXEL`, before the composite / INPUT after `INPUT_KEY_MOUSE` |
 | `ENTITY_CANVAS_TO_FRAMEBUFFER` · `FRAMEBUFFER_TO_SCREEN` · `SPRITE_TO_SCREEN` · `GUI_CANVAS_TO_SCREEN` | after `TRIXEL_TO_FRAMEBUFFER`, whose `beginTick` alone publishes the frame's [continuous-zoom sample](../../../../docs/design/continuous-camera-zoom.md) (`IRPrefab::Camera::zoomFrame`); sprites after the main canvas's `FRAMEBUFFER_TO_SCREEN`; the GUI composite last, so the GUI sits above sprites ([display contract](../../../../docs/design/gui-trixel-display.md)) |
-| `SYNC_VIEWPORT_SUBJECTS` / `VIEWPORT_TO_FRAMEBUFFER` · `FRAMEBUFFER_GLITCH` | RENDER before `VOXEL_TO_TRIXEL_STAGE_1` / after `TRIXEL_TO_FRAMEBUFFER`, before `FRAMEBUFFER_TO_SCREEN` · after every main-framebuffer producer, immediately before `FRAMEBUFFER_TO_SCREEN` ([contract](../../../../docs/design/glitch-pass.md)) |
+| `SYNC_VIEWPORT_SUBJECTS` / `VIEWPORT_TO_FRAMEBUFFER` · `FRAMEBUFFER_GLITCH` · `TRIXEL_GLITCH` | RENDER before `VOXEL_TO_TRIXEL_STAGE_1` / after `TRIXEL_TO_FRAMEBUFFER`, before `FRAMEBUFFER_TO_SCREEN` · after every main-framebuffer producer, immediately before `FRAMEBUFFER_TO_SCREEN` · after every main-canvas colour producer, immediately before `TRIXEL_TO_FRAMEBUFFER` ([contract](../../../../docs/design/glitch-pass.md)) |
 
 `VOXEL_TO_TRIXEL_STAGE_1` runs compact + stage 1 + stage 2 per canvas in one
 tick; never split them. `TEXT_TO_TRIXEL` clears the GUI canvas in `beginTick`

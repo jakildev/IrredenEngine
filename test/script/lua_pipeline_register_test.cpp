@@ -77,6 +77,10 @@ TEST_F(LuaPipelineRegisterTest, SystemNameEnumBound) {
         static_cast<int>(IRSystem::FRAMEBUFFER_GLITCH)
     );
     EXPECT_EQ(
+        lua.script("return IRSystem.SystemName.TRIXEL_GLITCH").get<int>(),
+        static_cast<int>(IRSystem::TRIXEL_GLITCH)
+    );
+    EXPECT_EQ(
         lua.script("return IRSystem.SystemName.PROPAGATE_CANVAS_PARTS").get<int>(),
         static_cast<int>(IRSystem::PROPAGATE_CANVAS_PARTS)
     );

@@ -11,6 +11,9 @@ const char *const kFileFragFramebufferToScreen = "shaders/f_framebuffer_to_scree
 // tick/hash/band math in ir_glitch_common.{glsl,metal}).
 const char *const kFileVertFramebufferGlitch = "shaders/v_framebuffer_glitch.glsl";
 const char *const kFileFragFramebufferGlitch = "shaders/f_framebuffer_glitch.glsl";
+// Canvas-space subject glitch over the main canvas planes (Metal mirror in
+// metal/c_trixel_glitch.metal; shared ABI in ir_glitch_common.{glsl,metal}).
+const char *const kFileCompTrixelGlitch = "shaders/c_trixel_glitch.glsl";
 
 const char *const kFileVertSpritesToScreen = "shaders/v_sprites_to_screen.glsl";
 const char *const kFileFragSpritesToScreen = "shaders/f_sprites_to_screen.glsl";
