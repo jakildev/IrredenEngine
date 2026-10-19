@@ -28,6 +28,7 @@ in the format headers, not here:
 | `.vxs` | [`voxel_set_format.hpp`](include/irreden/asset/voxel_set_format.hpp) |
 | `.rig` | [`rig_format.hpp`](include/irreden/asset/rig_format.hpp) |
 | `.irkv` | [`key_value_store.hpp`](include/irreden/asset/key_value_store.hpp) |
+| `creation.json` | [`creation_manifest.hpp`](include/irreden/asset/creation_manifest.hpp) |
 
 Update the owning header block whenever its format changes. The long-form
 rationale for forward-compatible formats lives in
@@ -45,7 +46,8 @@ rationale for forward-compatible formats lives in
   payload before its first mutation, or stages the result and splices it only
   after complete success.
 - JSON sidecars are generated from the binary on save and ignored on load.
-  They are for inspection, never a second source of truth.
+  They are for inspection, never a second source of truth. `json_reader.hpp`
+  is for hand-authored manifests (`creation.json`), never sidecars.
 - Registered enums persist as numeric id plus a name table. Readers prefer
   name-to-current-enum lookup and use the id only when the table is absent.
 

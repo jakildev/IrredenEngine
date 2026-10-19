@@ -29,6 +29,7 @@ target_link_libraries(
     IrredenEngineEntity
     IrredenEngineSystem
     IrredenEngineAsset
+    IrredenEngineCatalog
     # The lua_command_bindings.hpp surface exposes IRCommand, so the
     # public scripting interface needs the IRCommand umbrella in scope wherever
     # LuaScript is included.

@@ -5,10 +5,11 @@
 /// JSON dependency — sidecars are write-only and small, and the binary
 /// asset is always the source of truth.
 ///
-/// **Read side is not implemented by design.** Save Format Extensibility
+/// **Sidecars are never read back, by design.** Save Format Extensibility
 /// Rule #6: the JSON sidecar is regenerated from the binary on every
 /// save and ignored on load. Extending the binary side never forces a
 /// sidecar schema migration; the emitter just learns the new field.
+/// `json_reader.hpp` reads hand-authored manifests, not sidecars.
 ///
 /// Supported shape: any nesting of objects + arrays containing strings,
 /// integers, floats, and booleans. The emitter pretty-prints with

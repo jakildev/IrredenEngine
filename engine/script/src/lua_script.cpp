@@ -9,6 +9,7 @@
 #include <irreden/common/modifier_field_registry.hpp>
 #include <irreden/script/lua_audio_bindings.hpp>
 #include <irreden/script/lua_collision_bindings.hpp>
+#include <irreden/script/lua_catalog_bindings.hpp>
 #include <irreden/script/lua_command_bindings.hpp>
 #include <irreden/script/lua_debug_overlay_bindings.hpp>
 #include <irreden/script/lua_input_bindings.hpp>
@@ -1037,6 +1038,10 @@ void LuaScript::bindLuaViewport() {
 
 void LuaScript::bindLuaFiles() {
     detail::bindFiles(*this);
+}
+
+void LuaScript::bindLuaCatalog(const std::filesystem::path &toolRoot) {
+    detail::bindCatalog(*this, toolRoot);
 }
 
 void LuaScript::bindLuaInput() {
