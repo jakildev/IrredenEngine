@@ -47,6 +47,7 @@
 #include <irreden/render/systems/system_widget_render_label.hpp>
 #include <irreden/render/systems/system_widget_render_panel.hpp>
 #include <irreden/render/systems/system_widget_render_text_input.hpp>
+#include <irreden/script/lua_widget_bindings.hpp>
 
 #include <chrono>
 #include <cstdlib>
@@ -487,6 +488,9 @@ void registerLuaBindings() {
         const std::filesystem::path root = *IREngine::toolRoot();
 
         script.bindLuaDrivenEcs();
+        // Rebinds IRGui with image paths confined to the tool root, replacing
+        // the run-directory base bindLuaDrivenEcs() installs.
+        IRScript::detail::bindWidgets(script, root);
         script.bindLuaCommands();
         script.bindLuaFiles();
         script.bindLuaCatalog(root);
