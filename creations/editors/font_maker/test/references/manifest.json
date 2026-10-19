@@ -1,0 +1,19 @@
+{
+  "demo": "editors/font_maker",
+  "target": "EditorFontMaker",
+  "screenshot_subdir": "save_files/screenshots",
+  "demo_args": ["--font-maker-test", "sample"],
+  "shots": [
+    "sample_screen_scale1",
+    "sample_screen_scale2",
+    "sample_pixelated_scale1",
+    "sample_pixelated_scale2"
+  ],
+  "thresholds": {
+    "per_pixel_tol": 8,
+    "match_pct": 99.9,
+    "max_delta": 64,
+    "psnr_db": 35.0
+  },
+  "notes": "Shot order mirrors kSampleShots in main.cpp: the sample strip with an unsaved edit to E, through the screen and pixelated composites at gui_scale 1 and 2. The session's sample_preview predicate gates lit LARGE and SMALL sample texels and the edited strip differing from its unedited control."
+}

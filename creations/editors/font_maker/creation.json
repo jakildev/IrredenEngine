@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "name": "Font maker",
+  "description": "Edits the trixel-font glyph headers on their lattice and saves them in place.",
+  "group": "editors",
+  "tags": [
+    "editors",
+    "fonts"
+  ],
+  "kind": "editor",
+  "docs": [
+    "creations/editors/font_maker/README.md",
+    "docs/design/gui-trixel-display.md"
+  ],
+  "targets": [
+    {
+      "name": "EditorFontMaker",
+      "description": "Runs the font maker on the shipped LARGE and SMALL glyph sets.",
+      "presets": [
+        {
+          "name": "Interactive",
+          "args": []
+        },
+        {
+          "name": "Sample strip",
+          "args": [
+            "--auto-screenshot",
+            "10",
+            "--font-maker-test",
+            "sample"
+          ]
+        }
+      ]
+    }
+  ]
+}

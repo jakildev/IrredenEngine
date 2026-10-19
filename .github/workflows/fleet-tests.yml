@@ -94,6 +94,7 @@ jobs:
               - 'cmake/run_metal_scratch_consumer_check.cmake'
               - 'cmake/run_save_inventory_population_check.cmake'
               - 'creations/CLAUDE.md'
+              - 'creations/editors/font_maker/creation.json'
               - 'creations/editors/voxel_editor/main.cpp'
               - 'docs/design/claude-md-sharing.md'
               - 'docs/design/detached-revoxelize-world-light.md'

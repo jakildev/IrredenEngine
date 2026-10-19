@@ -117,13 +117,27 @@ step. `fontSize` scales either set the same way.
   Full-width bars sit on even rows, since odd rows pair only columns 1-2.
   Diagonals are diamond chains. No glyph has a lone triangle, and no two
   characters share a bitmap. `test/render/trixel_font_test.cpp` checks
-  coverage, lone triangles and duplicate bitmaps for both sets.
+  coverage for both sets and runs the rules in `trixel_font_validation.hpp`
+  over them.
 - **GPU layout.** `FontDataBuffer` holds the large block (128 glyphs × 11
   rows), then the small block (128 × 7). A `GlyphDrawCommand` names its
   glyph's first row (`firstFontRow`), and `styleFlags` bits 16-19 / 20-23 carry
   the cell width / height. `c_text_to_trixel` reads the cell from the command,
   so neither shader holds a glyph-set constant. It runs one thread per texel
   of the large cell and drops the threads outside a command's cell.
+
+### Authoring glyphs
+
+Draw and edit glyphs in `EditorFontMaker`
+([README](../../creations/editors/font_maker/README.md)). It shows every
+character on its lattice, flags each rule finding as you toggle texels,
+previews the unsaved set in sample text at both sizes, scales and composite
+paths, and saves a glyph into its header's bitmap literal in place.
+`trixel_font_validation.hpp` holds the rules both the editor and
+`trixel_font_test.cpp` check: a lone triangle; for LARGE, a 2-wide stem of 3+
+rows whose free end has a left column and end row of opposite parity (a
+notch); for SMALL, an odd-row texel in column 0 or 3 with no lit vertical
+neighbour; and a non-empty bitmap two characters share.
 
 `scripts/trixel-font-preview.py` renders the header's glyphs exactly as the
 screen composite displays them (`--mode smooth`), as the framebuffer path

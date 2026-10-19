@@ -2,10 +2,13 @@
 
 #include <irreden/render/gui_text_batch.hpp>
 #include <irreden/render/trixel_font.hpp>
+#include <irreden/render/trixel_font_validation.hpp>
 #include <irreden/render/trixel_text.hpp>
 
 #include <algorithm>
 #include <cstdint>
+#include <initializer_list>
+#include <utility>
 #include <span>
 #include <string>
 #include <vector>
@@ -37,31 +40,45 @@ bool smallHasGlyph(char c) {
     return c == '?' || IRRender::getSmallGlyph(c) != &IRRender::kSmallGlyph_Question;
 }
 
-// Lit texels that are a lone lattice triangle: no lit vertical neighbour and
-// no lit diamond partner, (c + 1, r) when c + r is even, else (c - 1, r).
-std::vector<std::string> loneTriangles(TextSize size, char c) {
+IRRender::GlyphBitmap shippedBitmap(TextSize size, char c) {
     const IRRender::GlyphMetrics metrics = IRRender::glyphMetrics(size);
-    const std::span<const std::uint8_t> rows = IRRender::glyphRows(size, c);
-    const auto lit = [&](int col, int row) {
-        return col >= 0 && col < metrics.width_ && row >= 0 && row < metrics.height_ &&
-               IRRender::glyphRowPixel(rows[row], metrics.width_, col);
-    };
-    std::vector<std::string> lone;
-    for (int row = 0; row < metrics.height_; ++row) {
-        for (int col = 0; col < metrics.width_; ++col) {
-            if (!lit(col, row)) {
-                continue;
-            }
-            const int partner = (col + row) % 2 == 0 ? col + 1 : col - 1;
-            if (!lit(col, row - 1) && !lit(col, row + 1) && !lit(partner, row)) {
-                lone.push_back(
-                    std::string("'") + c + "' (" + std::to_string(col) + ", " +
-                    std::to_string(row) + ")"
-                );
-            }
+    return {metrics.width_, metrics.height_, IRRender::glyphRows(size, c)};
+}
+
+// One bitmap per distinct glyph the set's 128-entry table reaches.
+std::vector<IRRender::GlyphBitmap> uniqueShippedBitmaps(TextSize size) {
+    std::vector<const std::uint8_t *> seen;
+    std::vector<IRRender::GlyphBitmap> bitmaps;
+    for (char c : allChars()) {
+        const IRRender::GlyphBitmap bitmap = shippedBitmap(size, c);
+        if (std::find(seen.begin(), seen.end(), bitmap.rows_.data()) == seen.end()) {
+            seen.push_back(bitmap.rows_.data());
+            bitmaps.push_back(bitmap);
         }
     }
-    return lone;
+    return bitmaps;
+}
+
+std::vector<std::string> describe(char c, const std::vector<IRRender::GlyphTexelFinding> &found) {
+    std::vector<std::string> out;
+    for (const IRRender::GlyphTexelFinding &finding : found) {
+        out.push_back(
+            std::string("'") + c + "' " + IRRender::glyphRuleName(finding.rule_) + " (" +
+            std::to_string(finding.col_) + ", " + std::to_string(finding.row_) + ")"
+        );
+    }
+    return out;
+}
+
+bool hasFinding(
+    const std::vector<IRRender::GlyphTexelFinding> &found,
+    IRRender::GlyphRule rule,
+    int col,
+    int row
+) {
+    return std::any_of(found.begin(), found.end(), [&](const IRRender::GlyphTexelFinding &f) {
+        return f.rule_ == rule && f.col_ == col && f.row_ == row;
+    });
 }
 
 TEST(TrixelFont, SmallSetCoversExactlyTheLargeSetsCharacters) {
@@ -74,30 +91,88 @@ TEST(TrixelFont, SmallSetCoversExactlyTheLargeSetsCharacters) {
     EXPECT_EQ(covered, 63 + 26) << "63 glyphs, 26 of them also reached by a lowercase letter";
 }
 
-TEST(TrixelFont, NeitherSetHasALoneTriangle) {
+TEST(TrixelFont, NeitherSetBreaksAGlyphRule) {
     for (TextSize size : {TextSize::LARGE, TextSize::SMALL}) {
         for (char c : allChars()) {
-            const std::vector<std::string> lone = loneTriangles(size, c);
-            EXPECT_TRUE(lone.empty())
-                << (size == TextSize::SMALL ? "SMALL " : "LARGE ") << testing::PrintToString(lone);
+            const std::vector<std::string> found =
+                describe(c, IRRender::glyphTexelFindings(size, shippedBitmap(size, c)));
+            EXPECT_TRUE(found.empty())
+                << (size == TextSize::SMALL ? "SMALL " : "LARGE ") << testing::PrintToString(found);
         }
     }
 }
 
-TEST(TrixelFont, NoTwoSmallCharactersShareABitmap) {
-    std::vector<const IRRender::SmallGlyph *> glyphs;
-    for (char c : allChars()) {
-        const IRRender::SmallGlyph *glyph = IRRender::getSmallGlyph(c);
-        if (std::find(glyphs.begin(), glyphs.end(), glyph) == glyphs.end()) {
-            glyphs.push_back(glyph);
-        }
+TEST(TrixelFont, NeitherSetHasTwoCharactersSharingABitmap) {
+    for (TextSize size : {TextSize::LARGE, TextSize::SMALL}) {
+        const std::vector<IRRender::GlyphBitmap> bitmaps = uniqueShippedBitmaps(size);
+        ASSERT_EQ(bitmaps.size(), 63u);
+        EXPECT_TRUE(IRRender::duplicateBitmapPairs(bitmaps).empty())
+            << (size == TextSize::SMALL ? "SMALL" : "LARGE");
     }
-    ASSERT_EQ(glyphs.size(), 63u);
-    for (std::size_t i = 0; i < glyphs.size(); ++i) {
-        for (std::size_t j = i + 1; j < glyphs.size(); ++j) {
-            EXPECT_NE(*glyphs[i], *glyphs[j]) << "glyphs " << i << " and " << j;
-        }
-    }
+}
+
+TEST(TrixelFont, LoneTriangleFiresOnAnIsolatedTexel) {
+    constexpr IRRender::Glyph rows = IRRender::makeGlyph(
+        "......"
+        "......"
+        "......"
+        "......"
+        "......"
+        "..X..."
+        "......"
+        "......"
+        "......"
+        "......"
+        "......"
+    );
+    const auto found = IRRender::glyphTexelFindings(TextSize::LARGE, {6, 11, rows});
+    ASSERT_EQ(found.size(), 1u) << testing::PrintToString(describe('?', found));
+    EXPECT_TRUE(hasFinding(found, IRRender::GlyphRule::LONE_TRIANGLE, 2, 5));
+}
+
+TEST(TrixelFont, LargeWrongParityFiresOnlyOnTheNotchedStemEnd) {
+    // Columns 0-1 over rows 1-6: the row-1 end is a notch, the row-6 end a point.
+    constexpr IRRender::Glyph rows = IRRender::makeGlyph(
+        "......"
+        "XX...."
+        "XX...."
+        "XX...."
+        "XX...."
+        "XX...."
+        "XX...."
+        "......"
+        "......"
+        "......"
+        "......"
+    );
+    const auto found = IRRender::glyphTexelFindings(TextSize::LARGE, {6, 11, rows});
+    ASSERT_EQ(found.size(), 1u) << testing::PrintToString(describe('?', found));
+    EXPECT_TRUE(hasFinding(found, IRRender::GlyphRule::WRONG_PARITY, 0, 1));
+}
+
+TEST(TrixelFont, SmallWrongParityFiresOnAnOddRowOuterTexel) {
+    constexpr IRRender::SmallGlyph rows = IRRender::makeSmallGlyph(
+        "...."
+        "X..."
+        "...."
+        "...."
+        "...."
+        "...."
+        "...."
+    );
+    const auto found = IRRender::glyphTexelFindings(TextSize::SMALL, {4, 7, rows});
+    EXPECT_TRUE(hasFinding(found, IRRender::GlyphRule::WRONG_PARITY, 0, 1))
+        << testing::PrintToString(describe('?', found));
+}
+
+TEST(TrixelFont, DuplicateBitmapFiresOnACopiedGlyphButNotOnTwoEmptyOnes) {
+    const IRRender::GlyphBitmap a = shippedBitmap(TextSize::SMALL, 'A');
+    const IRRender::GlyphBitmap b = shippedBitmap(TextSize::SMALL, 'B');
+    const IRRender::GlyphBitmap space = shippedBitmap(TextSize::SMALL, ' ');
+    const std::vector<IRRender::GlyphBitmap> glyphs = {a, b, space, a, space};
+    const auto pairs = IRRender::duplicateBitmapPairs(glyphs);
+    ASSERT_EQ(pairs.size(), 1u);
+    EXPECT_EQ(pairs[0], (std::pair<std::size_t, std::size_t>(0, 3)));
 }
 
 TEST(TrixelFont, FontBufferHoldsTheLargeBlockThenTheSmallBlock) {

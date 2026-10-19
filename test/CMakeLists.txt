@@ -103,6 +103,7 @@ add_executable(IrredenEngineTest
   render/entity_canvas_hitbox_test.cpp
   render/entity_id_carrier_test.cpp
   render/fog_carrier_policy_test.cpp
+  render/font_maker_source_test.cpp
   render/fog_cross_section_test.cpp
   render/fog_ghost_policy_test.cpp
   render/fog_line_of_sight_test.cpp
@@ -361,6 +362,14 @@ target_include_directories(IrredenEngineTest PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
     ${googletest_SOURCE_DIR}/googletest/include
     ${googletest_SOURCE_DIR}/googlemock/include
+)
+
+# render/font_maker_source_test.cpp drives the font maker's header source
+# model on copies of the shipped font headers, then compiles the saved copies.
+target_include_directories(IrredenEngineTest PRIVATE ${CMAKE_SOURCE_DIR}/creations/editors)
+target_compile_definitions(IrredenEngineTest PRIVATE
+    IR_TEST_FONT_HEADER_DIR="${CMAKE_SOURCE_DIR}/engine/render/include/irreden/render"
+    IR_TEST_CXX_COMPILER="${CMAKE_CXX_COMPILER}"
 )
 
 # Ensure runtime DLL dependencies are available for test discovery/execution.
